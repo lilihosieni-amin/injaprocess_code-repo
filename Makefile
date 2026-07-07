@@ -1,17 +1,18 @@
-VENV := .venv
-BIN  := $(VENV)/bin
+VENV  := .venv
+BIN   := $(VENV)/bin
+STAMP := $(VENV)/.installed
 
-$(VENV): requirements-dev.txt
-	uv venv -q $(VENV)
+$(STAMP): requirements-dev.txt
+	test -d $(VENV) || uv venv -q $(VENV)
 	uv pip install -q --python $(VENV)/bin/python -r requirements-dev.txt
-	touch $(VENV)
+	touch $(STAMP)
 
 .PHONY: test
-test: $(VENV)
+test: $(STAMP)
 	$(BIN)/pytest -q
 
 .PHONY: lint
-lint: $(VENV)
+lint: $(STAMP)
 	$(BIN)/ruff check .
 
 .PHONY: clean
