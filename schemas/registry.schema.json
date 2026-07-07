@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "registry.schema.json",
+  "title": "Department registry (ARD §4.5)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["departments"],
+  "properties": {
+    "departments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "name"],
+        "properties": {
+          "code": { "type": "string", "pattern": "^[a-z]+$" },
+          "name": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

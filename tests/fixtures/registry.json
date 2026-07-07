@@ -1,0 +1,13 @@
+{
+  "departments": [
+    { "code": "management",  "name": "مدیریت" },
+    { "code": "accounting",  "name": "حسابداری" },
+    { "code": "warehouse",   "name": "انبار" },
+    { "code": "procurement", "name": "کارپردازی" },
+    { "code": "cooking",     "name": "پخت" },
+    { "code": "preparation", "name": "آماده‌سازی" },
+    { "code": "dining",      "name": "سالن" },
+    { "code": "cashier",     "name": "صندوق" },
+    { "code": "logistics",   "name": "لجستیک" }
+  ]
+}
