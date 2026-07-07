@@ -93,7 +93,8 @@
         "subprocess": { "type": ["string", "null"] },
         "position": { "$ref": "#/$defs/position" },
         "layout": { "enum": ["auto", "manual"] },
-        "source": { "$ref": "#/$defs/nodeSource" }
+        "source": { "$ref": "#/$defs/nodeSource" },
+        "removed": { "type": "boolean" }
       }
     },
     "terminalNode": {
@@ -104,7 +105,8 @@
         "type": { "enum": ["start", "end"] },
         "label": { "type": "string" },
         "position": { "$ref": "#/$defs/position" },
-        "layout": { "enum": ["auto", "manual"] }
+        "layout": { "enum": ["auto", "manual"] },
+        "removed": { "type": "boolean" }
       }
     },
     "junctionNode": {
@@ -116,7 +118,8 @@
         "junctionType": { "enum": ["AND", "OR", "XOR"] },
         "direction": { "enum": ["split", "join"] },
         "position": { "$ref": "#/$defs/position" },
-        "layout": { "enum": ["auto", "manual"] }
+        "layout": { "enum": ["auto", "manual"] },
+        "removed": { "type": "boolean" }
       }
     },
     "edge": {

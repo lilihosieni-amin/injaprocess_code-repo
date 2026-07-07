@@ -43,3 +43,12 @@ def test_bad_timestamp_rejected(validate):
     p = copy.deepcopy(load_fixture("process.cooking-001.json"))
     p["updated_at"] = "tomorrow"
     assert validate(SCHEMA, p) != []
+
+
+def test_node_removed_flag_allowed(validate):
+    p = copy.deepcopy(load_fixture("process.cooking-001.json"))
+    for n in p["nodes"]:
+        if n["type"] == "activity":
+            n["removed"] = True
+            break
+    assert validate(SCHEMA, p) == []
