@@ -94,7 +94,7 @@ every later phase agrees on shapes and has fixtures to test against.
 **Workstreams**
 
 1. **JSON contract as machine-checkable schemas.** Turn the ARD §4/§6 shapes into
-   validatable schemas (JSON Schema) committed to `data-repo`:
+   validatable schemas (JSON Schema) committed to `code-repo/schemas/` (enforced by code; INV-2 keeps them out of runtime's reach):
    - `process.json` (ARD §4.3) — nodes/edges/idef0/kpis/pending/source/layout.
    - `overview.json` (ARD §4.4).
    - `registry.json` (ARD §4.5) — the nine departments with `code`/`name`.
@@ -118,8 +118,8 @@ every later phase agrees on shapes and has fixtures to test against.
 5. **Config surface.** Confirm the `config/*.env.example` files enumerate every variable
    each component needs (no real secrets — CLAUDE.md rule).
 
-**Deliverables:** schemas + fixtures committed to `data-repo`; `data-repo` directory
-skeleton; tooling and CI-lite scripts in `code-repo`.
+**Deliverables:** schemas in `code-repo/schemas/` + fixtures in `code-repo/tests/fixtures/`; (data-repo skeleton + `registry.json` already done, commit `84079d7`);
+tooling and CI-lite scripts in `code-repo`.
 
 **Exit criteria**
 - Every schema validates its corresponding fixture and rejects a deliberately broken copy.

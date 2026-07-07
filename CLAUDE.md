@@ -14,6 +14,7 @@ brain — extraction rules live in the separate `data-repo` (INV-2: code/data se
 | `ui-backend/` | Thin FastAPI backend: JSON read/write + auth, serves built frontend |
 | `deploy/` | docker-compose stack, Dockerfiles, proxy config |
 | `config/` | Sample env files — **no real secrets ever** |
+| `schemas/` | Frozen JSON data contract (draft 2020-12); validated by `make test` |
 
 ## Rules
 
