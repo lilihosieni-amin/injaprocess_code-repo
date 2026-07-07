@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "run-meta.schema.json",
+  "title": "Per-run metadata (ARD §2.2 runs/{voice}/meta.json)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["voice", "departments", "started_at", "attempt", "processes"],
+  "properties": {
+    "voice": { "type": "string" },
+    "departments": { "type": "array", "items": { "type": "string", "pattern": "^[a-z]+$" } },
+    "started_at": { "type": "string", "format": "date-time" },
+    "finished_at": { "type": ["string", "null"], "format": "date-time" },
+    "attempt": { "type": "integer", "minimum": 1 },
+    "processes": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "status"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z]+-[0-9]{3}$" },
+          "status": { "enum": ["new", "update", "unchanged"] }
+        }
+      }
+    }
+  }
+}

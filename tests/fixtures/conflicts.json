@@ -1,0 +1,8 @@
+{
+  "voice": "cooking-2026-07-06",
+  "conflicts": [
+    { "process": "cooking-001", "node": "cooking-001-n020", "field": "actor",
+      "current": "مدیر رستوران", "proposed": "معاون مدیر",
+      "source": "runs/cooking-2026-07-06", "status": "open" }
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "conflicts.schema.json",
+  "title": "Per-run conflicts (ARD §2.2 runs/{voice}/conflicts.json)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["voice", "conflicts"],
+  "properties": {
+    "voice": { "type": "string" },
+    "conflicts": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["process", "node", "field", "current", "proposed", "source", "status"],
+        "properties": {
+          "process": { "type": "string", "pattern": "^[a-z]+-[0-9]{3}$" },
+          "node": { "type": "string" },
+          "field": { "type": "string" },
+          "current": {},
+          "proposed": {},
+          "source": { "type": "string" },
+          "status": { "enum": ["open", "accepted", "rejected"] }
+        }
+      }
+    }
+  }
+}
