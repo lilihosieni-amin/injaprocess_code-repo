@@ -46,6 +46,11 @@ def merge_new(candidate, dept, run, now, root=None):
         nid = _alloc(process, cn)            # sees nodes appended so far -> n001, n002...
         keymap[cn["key"]] = nid
         process["nodes"].append(_new_node(cn, nid, run))
+    # Referential-integrity guard: every edge endpoint must be a candidate node key
+    keys = set(keymap)
+    for e in candidate["edges"]:
+        if e["from"] not in keys or e["to"] not in keys:
+            raise ValueError(f"candidate edge references unknown node key: {e}")
     process["edges"] = _map_edges(candidate["edges"], keymap)
     full_relayout(process)
     validate("process.schema.json", process)

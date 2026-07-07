@@ -1,3 +1,4 @@
+import pytest
 from conftest import load_fixture
 from engine_common import validate
 from merge import merge_new
@@ -34,3 +35,10 @@ def test_merge_new_second_process_increments(data_root):
     proc = merge_new(load_fixture("candidate.json"), "cooking", RUN, NOW,
                      root=data_root)
     assert proc["id"] == "cooking-002"
+
+
+def test_merge_new_rejects_dangling_edge(data_root):
+    cand = load_fixture("candidate.json")
+    cand = {**cand, "edges": cand["edges"] + [{"from": "n1", "to": "ghost", "label": ""}]}
+    with pytest.raises(ValueError):
+        merge_new(cand, "cooking", RUN, NOW, root=data_root)
