@@ -20,3 +20,7 @@ to validate every fixture against its schema.
 
 **Convention:** stored data uses ISO-8601 UTC timestamps and Latin digits.
 Persian numerals and Jalali dates are UI-only presentation (Phase 6).
+
+## Known gaps (to reconcile in later phases)
+
+- **node `source`**: the process schema uses the ARD §4.3 object shape `{created_by, touched_by}`; the UI design prototype currently emits a plain string — the Phase-6 UI must adopt the object shape when it deserializes `process.json`.

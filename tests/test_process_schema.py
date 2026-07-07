@@ -37,3 +37,9 @@ def test_pending_original_value_untouched_shape(validate):
     p = copy.deepcopy(load_fixture("process.cooking-001.json"))
     p["pending"][0]["status"] = "banana"  # not in enum
     assert validate(SCHEMA, p) != []
+
+
+def test_bad_timestamp_rejected(validate):
+    p = copy.deepcopy(load_fixture("process.cooking-001.json"))
+    p["updated_at"] = "tomorrow"
+    assert validate(SCHEMA, p) != []
