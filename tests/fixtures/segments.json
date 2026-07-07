@@ -1,0 +1,26 @@
+{
+  "voice": "cooking-2026-07-06",
+  "segments": [
+    {
+      "department": "cooking",
+      "process_name": "خرید و پرداخت هزینه",
+      "transcript_excerpt": "… وقتی درخواست خرید می‌رسد …",
+      "status": "new",
+      "match": { "existing_id": null }
+    },
+    {
+      "department": "cooking",
+      "process_name": "پخت غذای روز",
+      "transcript_excerpt": "… سفارش‌های روز جمع می‌شود …",
+      "status": "update",
+      "match": { "existing_id": "cooking-002" }
+    },
+    {
+      "department": "cooking",
+      "process_name": "کنترل موجودی مواد اولیه",
+      "transcript_excerpt": "… چیز جدیدی گفته نشد …",
+      "status": "unchanged",
+      "match": { "existing_id": "cooking-003" }
+    }
+  ]
+}

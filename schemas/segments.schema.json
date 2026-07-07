@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "segments.schema.json",
+  "title": "Classify output — process segments (ARD §5.2)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["voice", "segments"],
+  "properties": {
+    "voice": { "type": "string" },
+    "segments": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["department", "process_name", "transcript_excerpt", "status", "match"],
+        "properties": {
+          "department": { "type": "string", "pattern": "^[a-z]+$" },
+          "process_name": { "type": "string" },
+          "transcript_excerpt": { "type": "string" },
+          "status": { "enum": ["new", "update", "unchanged"] },
+          "match": {
+            "type": "object", "additionalProperties": false,
+            "required": ["existing_id"],
+            "properties": { "existing_id": { "type": ["string", "null"] } }
+          }
+        }
+      }
+    }
+  }
+}
