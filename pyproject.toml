@@ -1,6 +1,7 @@
 [tool.pytest.ini_options]
 testpaths = ["tests", "engine/tests"]
 python_files = ["test_*.py"]
+markers = ["integration: real external calls (Vertex); skipped by default"]
 
 [tool.ruff]
 line-length = 100
