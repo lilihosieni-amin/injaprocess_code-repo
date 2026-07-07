@@ -1,0 +1,15 @@
+{
+  "add_nodes": [
+    { "key": "n1", "type": "activity", "label": "کنترل کیفیت", "description": "", "actor": "انباردار",
+      "icom": { "inputs": [], "controls": [], "outputs": [], "mechanisms": [] }, "subprocess": null }
+  ],
+  "add_edges": [
+    { "from": "cooking-001-n030", "to": "n1", "label": "" }
+  ],
+  "enrich_nodes": [
+    { "id": "cooking-001-n020", "set": { "description": "اقلام بالاتر از سقف نیاز به تأیید مدیر دارند.", "actor": "مدیر رستوران" } }
+  ],
+  "flag_removed": [
+    { "id": "cooking-001-n050" }
+  ]
+}

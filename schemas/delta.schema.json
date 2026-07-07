@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "delta.schema.json",
+  "title": "Extract update delta (ARD §6.2)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["add_nodes", "add_edges", "enrich_nodes", "flag_removed"],
+  "properties": {
+    "add_nodes": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object", "additionalProperties": false,
+            "required": ["key", "type", "label", "description", "actor", "icom", "subprocess"],
+            "properties": {
+              "key": { "type": "string" },
+              "type": { "const": "activity" },
+              "label": { "type": "string" }, "description": { "type": "string" },
+              "actor": { "type": "string" },
+              "icom": { "$ref": "#/$defs/icom" },
+              "subprocess": { "type": ["string", "null"] }
+            }
+          },
+          {
+            "type": "object", "additionalProperties": false,
+            "required": ["key", "type", "junctionType", "direction"],
+            "properties": {
+              "key": { "type": "string" },
+              "type": { "const": "junction" },
+              "junctionType": { "enum": ["AND", "OR", "XOR"] },
+              "direction": { "enum": ["split", "join"] }
+            }
+          }
+        ]
+      }
+    },
+    "add_edges": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["from", "to"],
+        "properties": {
+          "from": { "type": "string" }, "to": { "type": "string" }, "label": { "type": "string" }
+        }
+      }
+    },
+    "enrich_nodes": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "set"],
+        "properties": {
+          "id": { "type": "string" },
+          "set": { "type": "object" }
+        }
+      }
+    },
+    "flag_removed": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id"],
+        "properties": { "id": { "type": "string" } }
+      }
+    }
+  },
+  "$defs": {
+    "icom": {
+      "type": "object", "additionalProperties": false,
+      "required": ["inputs", "controls", "outputs", "mechanisms"],
+      "properties": {
+        "inputs": { "type": "array", "items": { "type": "string" } },
+        "controls": { "type": "array", "items": { "type": "string" } },
+        "outputs": { "type": "array", "items": { "type": "string" } },
+        "mechanisms": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}
