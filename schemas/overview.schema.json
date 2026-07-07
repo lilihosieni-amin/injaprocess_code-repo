@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "overview.schema.json",
+  "title": "Department overview (ARD §4.4)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["department", "name", "sub_units", "personnel", "updated_at"],
+  "properties": {
+    "department": { "type": "string", "pattern": "^[a-z]+$" },
+    "name": { "type": "string" },
+    "sub_units": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["name", "description"],
+        "properties": { "name": { "type": "string" }, "description": { "type": "string" } }
+      }
+    },
+    "personnel": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["role", "duties"],
+        "properties": {
+          "role": { "type": "string" },
+          "person": { "type": ["string", "null"] },
+          "duties": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "updated_at": { "type": "string", "format": "date-time" }
+  }
+}
