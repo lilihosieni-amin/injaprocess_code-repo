@@ -1,0 +1,1444 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{font-family:'Vazirmatn',system-ui,sans-serif;background:#FBF7F1;color:#2A1D5E}
+  input{font-family:inherit}
+  ::selection{background:#FA5A52;color:#fff}
+  ::-webkit-scrollbar{width:10px;height:10px}
+  ::-webkit-scrollbar-thumb{background:#DFD6EE;border-radius:8px;border:2px solid transparent;background-clip:content-box}
+  a{color:#4A25A9}a:hover{color:#FA5A52}
+</style>
+</helmet>
+
+<div dir="rtl" style="height:100vh;display:flex;flex-direction:column;background:#FBF7F1;overflow:hidden">
+
+  <!-- ============================ LOGIN ============================ -->
+  <sc-if value="{{ isLogin }}" hint-placeholder-val="{{ true }}">
+    <div style="flex:1;position:relative;display:flex;align-items:center;justify-content:center;background:#2E1668;overflow:hidden">
+      <div style="position:absolute;width:420px;height:420px;border-radius:50%;background:#3A1D85;opacity:.55;top:-140px;left:-110px"></div>
+      <div style="position:absolute;width:300px;height:300px;border-radius:50%;background:#3A1D85;opacity:.5;bottom:-120px;right:-90px"></div>
+      <div style="position:relative;width:380px;background:#FBF7F1;border-radius:24px;padding:34px 32px;box-shadow:0 40px 90px -30px rgba(0,0,0,.6)">
+        <div style="display:flex;flex-direction:column;align-items:center;gap:14px;margin-bottom:26px">
+          <img src="assets/inja-logo.jpg" alt="اینجا فست‌فود" style="width:76px;height:76px;border-radius:20px;object-fit:cover;box-shadow:0 12px 30px -12px rgba(74,37,169,.6)">
+          <div style="text-align:center">
+            <div style="font-weight:800;font-size:19px;color:#2A1D5E">اینجا فست‌فود</div>
+            <div style="font-size:12.5px;color:#8a7db0;margin-top:3px">سامانهٔ مستندسازی فرآیندها</div>
+          </div>
+        </div>
+        <label style="display:block;font-size:12.5px;font-weight:600;color:#4A25A9;margin-bottom:6px">نام کاربری</label>
+        <input value="{{ loginUser }}" onInput="{{ onUser }}" placeholder="analyst" style="width:100%;padding:12px 14px;border:1.5px solid #E3D8F5;border-radius:12px;font-size:14px;color:#2A1D5E;background:#fff;outline:none;margin-bottom:16px" style-focus="{{ inputFocus }}">
+        <label style="display:block;font-size:12.5px;font-weight:600;color:#4A25A9;margin-bottom:6px">گذرواژه</label>
+        <input value="{{ loginPass }}" onInput="{{ onPass }}" type="password" placeholder="••••••••" style="width:100%;padding:12px 14px;border:1.5px solid #E3D8F5;border-radius:12px;font-size:14px;color:#2A1D5E;background:#fff;outline:none;margin-bottom:22px" style-focus="{{ inputFocus }}">
+        <button onClick="{{ doLogin }}" style="width:100%;padding:13px;border:none;border-radius:13px;background:#FA5A52;color:#fff;font-family:inherit;font-weight:700;font-size:14.5px;cursor:pointer;box-shadow:0 12px 26px -12px rgba(250,90,82,.9)" style-hover="{{ coralHover }}">ورود به سامانه</button>
+        <div style="text-align:center;margin-top:16px;font-size:11px;color:#a99fc4">دسترسی تک‌کاربره · محافظت‌شده با نام‌کاربری و گذرواژه</div>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- ============================ APP (after login) ============================ -->
+  <sc-if value="{{ isApp }}" hint-placeholder-val="{{ true }}">
+
+    <!-- Top bar -->
+    <div style="display:flex;align-items:center;gap:14px;padding:12px 22px;background:#fff;border-bottom:1px solid #EFE7DC;flex:none;z-index:20">
+      <div onClick="{{ goHome }}" style="display:flex;align-items:center;gap:10px;cursor:pointer">
+        <img src="assets/inja-logo.jpg" alt="" style="width:38px;height:38px;border-radius:11px;object-fit:cover">
+        <div style="line-height:1.2"><div style="font-weight:700;font-size:14px;color:#2A1D5E">اینجا فست‌فود</div><div style="font-size:10.5px;color:#8a7db0">سامانهٔ فرآیندها</div></div>
+      </div>
+      <div style="width:1px;height:26px;background:#EDE5F5;margin:0 4px"></div>
+      <sc-if value="{{ canBack }}" hint-placeholder-val="{{ false }}">
+        <button onClick="{{ goBack }}" style="display:flex;align-items:center;gap:6px;padding:8px 13px;border:1.5px solid #E3D8F5;background:#fff;border-radius:11px;font-family:inherit;font-size:12.5px;font-weight:600;color:#4A25A9;cursor:pointer" style-hover="{{ ghostHover }}">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"></path></svg>
+          بازگشت
+        </button>
+      </sc-if>
+      <!-- breadcrumb -->
+      <div style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:#8a7db0;flex-wrap:wrap">
+        <sc-for list="{{ crumbs }}" as="c" hint-placeholder-count="2">
+          <span onClick="{{ c.go }}" style="{{ c.style }}">{{ c.label }}</span>
+        </sc-for>
+      </div>
+      <div style="margin-inline-start:auto;display:flex;align-items:center;gap:10px">
+        <button onClick="{{ openInbox }}" style="position:relative;display:flex;align-items:center;gap:7px;padding:8px 13px;border:1.5px solid #E3D8F5;background:#fff;border-radius:11px;font-family:inherit;font-size:12.5px;font-weight:600;color:#4A25A9;cursor:pointer" style-hover="{{ ghostHover }}">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-6l-2 3h-4l-2-3H2"></path><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"></path></svg>
+          صندوق بازبینی
+          <sc-if value="{{ hasPending }}" hint-placeholder-val="{{ true }}"><span style="position:absolute;top:-7px;left:-7px;min-width:19px;height:19px;padding:0 5px;background:#FA5A52;color:#fff;border-radius:20px;font-size:10.5px;font-weight:700;display:flex;align-items:center;justify-content:center;border:2px solid #fff">{{ pendingCountFa }}</span></sc-if>
+        </button>
+        <div style="width:34px;height:34px;border-radius:10px;background:#F0E9FB;color:#4A25A9;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px">آ</div>
+      </div>
+    </div>
+
+    <!-- ---------- DEPARTMENTS ---------- -->
+    <sc-if value="{{ isDepartments }}" hint-placeholder-val="{{ true }}">
+      <div style="flex:1;overflow:auto;padding:34px 40px">
+        <div style="max-width:1080px;margin:0 auto">
+          <div style="margin-bottom:24px">
+            <div style="font-weight:800;font-size:24px;color:#2A1D5E">دپارتمان‌ها</div>
+            <div style="font-size:13.5px;color:#8a7db0;margin-top:5px">یک دپارتمان را برای مشاهدهٔ فرآیندهای مستندشدهٔ آن انتخاب کنید.</div>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:18px">
+            <sc-for list="{{ departments }}" as="d" hint-placeholder-count="9">
+              <div onClick="{{ d.open }}" style="background:#fff;border:1px solid #EFE7DC;border-radius:18px;padding:20px;cursor:pointer;display:flex;align-items:center;gap:15px;box-shadow:0 3px 14px -8px rgba(74,37,169,.25);transition:transform .15s,box-shadow .15s" style-hover="{{ cardHover }}">
+                <div style="{{ d.tileStyle }}"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="{{ d.icon }}"></path></svg></div>
+                <div style="flex:1;min-width:0">
+                  <div style="font-weight:700;font-size:15.5px;color:#2A1D5E">{{ d.name }}</div>
+                  <div style="font-size:12px;color:#8a7db0;margin-top:3px">{{ d.countLabel }}</div>
+                </div>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#C9B8EC" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"></path></svg>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- ---------- PROCESS LIST ---------- -->
+    <sc-if value="{{ isProcessList }}" hint-placeholder-val="{{ true }}">
+      <div style="flex:1;overflow:auto;padding:30px 40px">
+        <div style="max-width:920px;margin:0 auto">
+          <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:22px">
+            <div>
+              <div style="display:flex;align-items:center;gap:12px">
+                <div style="{{ deptObj.tileStyle }}"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="{{ deptObj.icon }}"></path></svg></div>
+                <div style="font-weight:800;font-size:22px;color:#2A1D5E">دپارتمان {{ deptObj.name }}</div>
+              </div>
+              <div style="font-size:13px;color:#8a7db0;margin-top:8px">{{ deptObj.countLabel }} · برای مشاهدهٔ کارت خلاصه و فلوچارت روی هر فرآیند بزنید.</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;flex:none">
+              <button onClick="{{ goOverview }}" style="display:flex;align-items:center;gap:7px;padding:11px 16px;border:1.5px solid #E3D8F5;background:#fff;color:#4A25A9;font-family:inherit;font-weight:700;font-size:13px;cursor:pointer;border-radius:12px" style-hover="{{ ghostHover }}">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+                اطلاعات دپارتمان
+              </button>
+              <button onClick="{{ openCreate }}" style="display:flex;align-items:center;gap:7px;padding:11px 16px;border:none;border-radius:12px;background:#FA5A52;color:#fff;font-family:inherit;font-weight:700;font-size:13px;cursor:pointer;box-shadow:0 10px 22px -12px rgba(250,90,82,.9)" style-hover="{{ coralHover }}">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>
+                فرآیند جدید
+              </button>
+            </div>
+          </div>
+          <div style="position:relative;margin-bottom:16px">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#a99fc4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="position:absolute;top:50%;inset-inline-start:15px;transform:translateY(-50%);pointer-events:none"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4-4"></path></svg>
+            <input value="{{ listSearch }}" onInput="{{ setListSearch }}" placeholder="جست‌وجو براساس نام یا شناسهٔ فرآیند…" style="width:100%;box-sizing:border-box;padding:13px 44px;border:1.5px solid #E3D8F5;border-radius:13px;font-family:inherit;font-size:13px;color:#2A1D5E;background:#fff;outline:none" style-focus="{{ inputFocus }}">
+            <sc-if value="{{ hasListSearch }}" hint-placeholder-val="{{ false }}">
+              <button onClick="{{ clearListSearch }}" style="position:absolute;top:50%;inset-inline-end:12px;transform:translateY(-50%);width:22px;height:22px;border:none;border-radius:50%;background:#F4EFFB;color:#8a7db0;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px;line-height:1" title="پاک کردن">×</button>
+            </sc-if>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:12px">
+            <sc-if value="{{ listEmpty }}" hint-placeholder-val="{{ false }}">
+              <div style="text-align:center;padding:48px 20px;color:#a99fc4;background:#fff;border:1px solid #EFE7DC;border-radius:16px">
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#C9B8EC" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom:10px"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4-4"></path></svg>
+                <div style="font-size:13.5px;font-weight:600;color:#8a7db0">فرآیندی با این نام پیدا نشد</div>
+              </div>
+            </sc-if>
+            <sc-for list="{{ processList }}" as="p" hint-placeholder-count="4">
+              <div style="background:#fff;border:1px solid #EFE7DC;border-radius:16px;padding:17px 19px;display:flex;align-items:center;gap:16px;box-shadow:0 3px 14px -9px rgba(74,37,169,.25)">
+                <div style="flex:1;min-width:0">
+                  <div style="display:flex;align-items:center;gap:9px">
+                    <span style="font-family:ui-monospace,Menlo,monospace;font-size:11px;color:#8a7db0;background:#F4EFFB;padding:2px 8px;border-radius:6px" dir="ltr">{{ p.id }}</span>
+                    <span style="font-weight:700;font-size:15px;color:#2A1D5E">{{ p.name }}</span>
+                    <span style="{{ p.tagStyle }}">{{ p.tag }}</span>
+                  </div>
+                  <div style="font-size:12.5px;color:#8a7db0;margin-top:6px;line-height:1.5">{{ p.summary }}</div>
+                </div>
+                <div style="text-align:center;flex:none;min-width:52px">
+                  <div style="font-weight:800;font-size:17px;color:#4A25A9">{{ p.nodeCountFa }}</div>
+                  <div style="font-size:10px;color:#a99fc4">فعالیت</div>
+                </div>
+                <div style="display:flex;gap:8px;flex:none">
+                  <button onClick="{{ p.openSummary }}" style="display:flex;align-items:center;gap:6px;padding:9px 14px;border:1.5px solid #E3D8F5;background:#fff;border-radius:11px;font-family:inherit;font-size:12.5px;font-weight:600;color:#4A25A9;cursor:pointer" style-hover="{{ ghostHover }}">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 16v-4M12 8h.01"></path></svg>
+                    اطلاعات کلی
+                  </button>
+                  <button onClick="{{ p.openFlowD }}" style="display:flex;align-items:center;gap:6px;padding:9px 14px;border:none;border-radius:11px;background:#4A25A9;color:#fff;font-family:inherit;font-size:12.5px;font-weight:700;cursor:pointer;box-shadow:0 8px 18px -10px rgba(74,37,169,.9)" style-hover="{{ violetHover }}">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="5" rx="1"></rect><rect x="14" y="9" width="7" height="5" rx="1"></rect><rect x="3" y="16" width="7" height="5" rx="1"></rect><path d="M10 5.5h2a2 2 0 0 1 2 2V11M10 18.5h2a2 2 0 0 0 2-2V14"></path></svg>
+                    فلوچارت
+                  </button>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- ---------- DEPARTMENT OVERVIEW ---------- -->
+    <sc-if value="{{ isOverview }}" hint-placeholder-val="{{ false }}">
+      <div style="flex:1;overflow:auto;padding:30px 40px">
+        <div style="max-width:920px;margin:0 auto">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:24px">
+            <div>
+              <div style="display:flex;align-items:center;gap:12px">
+                <div style="{{ deptObj.tileStyle }}"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="{{ deptObj.icon }}"></path></svg></div>
+                <div>
+                  <div style="font-weight:800;font-size:22px;color:#2A1D5E">{{ ov.name }}</div>
+                  <div style="font-size:12px;color:#a99fc4;margin-top:4px">آخرین به‌روزرسانی: {{ ov.updatedAt }}</div>
+                </div>
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;flex:none">
+              <sc-if value="{{ ovIsView }}" hint-placeholder-val="{{ true }}">
+                <button onClick="{{ enterOvEdit }}" style="display:flex;align-items:center;gap:7px;padding:10px 16px;border:none;border-radius:12px;background:#4A25A9;color:#fff;font-family:inherit;font-weight:700;font-size:13px;cursor:pointer;box-shadow:0 10px 22px -13px rgba(74,37,169,.9)" style-hover="{{ violetHover }}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg>ویرایش</button>
+              </sc-if>
+              <sc-if value="{{ ovIsEdit }}" hint-placeholder-val="{{ false }}">
+                <button onClick="{{ cancelOvEdit }}" style="padding:10px 16px;border:1.5px solid #E3D8F5;background:#fff;border-radius:12px;font-family:inherit;font-weight:600;font-size:13px;color:#8a7db0;cursor:pointer" style-hover="{{ ghostHover }}">انصراف</button>
+                <button onClick="{{ saveOvEdit }}" style="display:flex;align-items:center;gap:7px;padding:10px 18px;border:none;border-radius:12px;background:#1F8A5B;color:#fff;font-family:inherit;font-weight:700;font-size:13px;cursor:pointer;box-shadow:0 10px 22px -13px rgba(31,138,91,.9)" style-hover="{{ greenHover }}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg>ذخیره</button>
+              </sc-if>
+            </div>
+          </div>
+
+          <!-- SUB-UNITS -->
+          <div style="margin-bottom:28px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:13px">
+              <div style="display:flex;align-items:center;gap:8px">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#4A25A9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"></rect><rect x="14" y="3" width="7" height="7" rx="1"></rect><rect x="3" y="14" width="7" height="7" rx="1"></rect><rect x="14" y="14" width="7" height="7" rx="1"></rect></svg>
+                <span style="font-weight:800;font-size:15px;color:#2A1D5E">واحدهای زیرمجموعه</span>
+              </div>
+              <sc-if value="{{ ovIsEdit }}" hint-placeholder-val="{{ false }}">
+                <button onClick="{{ ovAddSub }}" style="display:flex;align-items:center;gap:5px;padding:7px 12px;border:1.5px dashed #C9B8EC;background:#fff;border-radius:10px;font-family:inherit;font-size:12px;font-weight:600;color:#4A25A9;cursor:pointer"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>افزودن واحد</button>
+              </sc-if>
+            </div>
+            <sc-if value="{{ ovIsView }}" hint-placeholder-val="{{ true }}">
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                <sc-for list="{{ ovSubs }}" as="s" hint-placeholder-count="2">
+                  <div style="background:#fff;border:1px solid #EFE7DC;border-radius:14px;padding:15px 17px;box-shadow:0 3px 14px -9px rgba(74,37,169,.25)">
+                    <div style="font-weight:700;font-size:14px;color:#2A1D5E">{{ s.name }}</div>
+                    <div style="font-size:12.5px;color:#8a7db0;margin-top:6px;line-height:1.6">{{ s.description }}</div>
+                  </div>
+                </sc-for>
+              </div>
+              <sc-if value="{{ ovSubsEmpty }}" hint-placeholder-val="{{ false }}"><div style="font-size:12.5px;color:#a99fc4;padding:6px 2px">واحدی ثبت نشده است.</div></sc-if>
+            </sc-if>
+            <sc-if value="{{ ovIsEdit }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;flex-direction:column;gap:12px">
+                <sc-for list="{{ ovSubsE }}" as="s" hint-placeholder-count="1">
+                  <div style="background:#fff;border:1px solid #EFE7DC;border-radius:14px;padding:14px;display:flex;gap:12px;align-items:flex-start">
+                    <div style="flex:1;display:flex;flex-direction:column;gap:8px">
+                      <input value="{{ s.name }}" onInput="{{ s.setName }}" placeholder="نام واحد" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #E3D8F5;border-radius:10px;font-family:inherit;font-size:13px;font-weight:700;color:#2A1D5E;background:#fff;outline:none" style-focus="{{ inputFocus }}">
+                      <textarea value="{{ s.description }}" onInput="{{ s.setDesc }}" rows="2" placeholder="شرح واحد" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #E3D8F5;border-radius:10px;font-family:inherit;font-size:12.5px;color:#2A1D5E;background:#fff;outline:none;resize:vertical;line-height:1.6" style-focus="{{ inputFocus }}"></textarea>
+                    </div>
+                    <button onClick="{{ s.del }}" style="flex:none;width:32px;height:32px;border:1.5px solid #FADAD8;background:#fff;border-radius:9px;color:#E23D35;cursor:pointer;display:flex;align-items:center;justify-content:center" title="حذف واحد"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"></path></svg></button>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-if>
+          </div>
+
+          <!-- PERSONNEL -->
+          <div>
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:13px">
+              <div style="display:flex;align-items:center;gap:8px">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#4A25A9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+                <span style="font-weight:800;font-size:15px;color:#2A1D5E">پرسنل و شرح وظایف</span>
+              </div>
+              <sc-if value="{{ ovIsEdit }}" hint-placeholder-val="{{ false }}">
+                <button onClick="{{ ovAddPerson }}" style="display:flex;align-items:center;gap:5px;padding:7px 12px;border:1.5px dashed #C9B8EC;background:#fff;border-radius:10px;font-family:inherit;font-size:12px;font-weight:600;color:#4A25A9;cursor:pointer"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>افزودن نفر</button>
+              </sc-if>
+            </div>
+            <sc-if value="{{ ovIsView }}" hint-placeholder-val="{{ true }}">
+              <div style="display:flex;flex-direction:column;gap:12px">
+                <sc-for list="{{ ovPeople }}" as="pr" hint-placeholder-count="2">
+                  <div style="background:#fff;border:1px solid #EFE7DC;border-radius:14px;padding:16px 18px;box-shadow:0 3px 14px -9px rgba(74,37,169,.25)">
+                    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+                      <div style="width:34px;height:34px;border-radius:9px;background:#F0E9FB;color:#4A25A9;display:flex;align-items:center;justify-content:center;flex:none"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle></svg></div>
+                      <div style="font-weight:700;font-size:14px;color:#2A1D5E">{{ pr.role }}</div>
+                    </div>
+                    <div style="display:flex;flex-wrap:wrap;gap:6px">
+                      <sc-for list="{{ pr.dutiesList }}" as="d" hint-placeholder-count="2">
+                        <span style="font-size:11.5px;color:#4A25A9;background:#F4EFFB;padding:4px 10px;border-radius:20px">{{ d }}</span>
+                      </sc-for>
+                    </div>
+                    <sc-if value="{{ pr.dutiesEmpty }}" hint-placeholder-val="{{ false }}"><div style="font-size:11.5px;color:#a99fc4">وظیفه‌ای ثبت نشده است.</div></sc-if>
+                  </div>
+                </sc-for>
+              </div>
+              <sc-if value="{{ ovPeopleEmpty }}" hint-placeholder-val="{{ false }}"><div style="font-size:12.5px;color:#a99fc4;padding:6px 2px">پرسنلی ثبت نشده است.</div></sc-if>
+            </sc-if>
+            <sc-if value="{{ ovIsEdit }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;flex-direction:column;gap:12px">
+                <sc-for list="{{ ovPeopleE }}" as="pr" hint-placeholder-count="1">
+                  <div style="background:#fff;border:1px solid #EFE7DC;border-radius:14px;padding:14px;display:flex;gap:12px;align-items:flex-start">
+                    <div style="flex:1;display:flex;flex-direction:column;gap:8px">
+                      <input value="{{ pr.role }}" onInput="{{ pr.setRole }}" placeholder="عنوان شغلی" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #E3D8F5;border-radius:10px;font-family:inherit;font-size:13px;font-weight:700;color:#2A1D5E;background:#fff;outline:none" style-focus="{{ inputFocus }}">
+                      <textarea value="{{ pr.dutiesText }}" onInput="{{ pr.setDuties }}" rows="3" placeholder="هر وظیفه در یک خط…" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #E3D8F5;border-radius:10px;font-family:inherit;font-size:12.5px;color:#2A1D5E;background:#fff;outline:none;resize:vertical;line-height:1.7" style-focus="{{ inputFocus }}"></textarea>
+                    </div>
+                    <button onClick="{{ pr.del }}" style="flex:none;width:32px;height:32px;border:1.5px solid #FADAD8;background:#fff;border-radius:9px;color:#E23D35;cursor:pointer;display:flex;align-items:center;justify-content:center" title="حذف نفر"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"></path></svg></button>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-if>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- ---------- SUMMARY CARD ---------- -->
+    <sc-if value="{{ isSummary }}" hint-placeholder-val="{{ true }}">
+      <div style="flex:1;overflow:auto;padding:30px 40px">
+        <div style="max-width:960px;margin:0 auto">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:22px">
+            <div>
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+                <span style="font-family:ui-monospace,Menlo,monospace;font-size:12px;color:#fff;background:#4A25A9;padding:3px 9px;border-radius:7px" dir="ltr">{{ procObj.id }}</span>
+                <sc-if value="{{ procObj.isSub }}" hint-placeholder-val="{{ false }}"><span style="font-size:11px;color:#4A25A9;background:#F0E9FB;padding:3px 9px;border-radius:7px;font-weight:600">زیرفرآیند</span></sc-if>
+              </div>
+              <sc-if value="{{ summaryView }}" hint-placeholder-val="{{ true }}">
+                <div style="font-weight:800;font-size:23px;color:#2A1D5E">{{ procObj.name }}</div>
+                <div style="font-size:13.5px;color:#8a7db0;margin-top:8px;max-width:640px;line-height:1.6">{{ procObj.summary }}</div>
+              </sc-if>
+              <sc-if value="{{ summaryEdit }}" hint-placeholder-val="{{ false }}">
+                <input value="{{ procObj.name }}" onInput="{{ setName }}" placeholder="نام فرآیند" style="width:520px;max-width:100%;font-weight:800;font-size:19px;color:#2A1D5E;border:1.5px solid #E3D8F5;border-radius:11px;padding:9px 13px;font-family:inherit;background:#fff;outline:none" style-focus="{{ inputFocus }}">
+                <textarea value="{{ procObj.summary }}" onInput="{{ setSummaryText }}" rows="2" placeholder="خلاصهٔ فرآیند" style="width:520px;max-width:100%;margin-top:9px;font-size:13px;color:#2A1D5E;border:1.5px solid #E3D8F5;border-radius:11px;padding:9px 13px;font-family:inherit;background:#fff;outline:none;resize:vertical;line-height:1.7" style-focus="{{ inputFocus }}"></textarea>
+              </sc-if>
+            </div>
+            <div style="display:flex;gap:10px;flex:none">
+              <sc-if value="{{ summaryView }}" hint-placeholder-val="{{ true }}">
+                <button onClick="{{ enterSummaryEdit }}" style="display:flex;align-items:center;gap:7px;padding:12px 16px;border:1.5px solid #E3D8F5;background:#fff;border-radius:13px;font-family:inherit;font-weight:700;font-size:13px;color:#4A25A9;cursor:pointer;flex:none" style-hover="{{ ghostHover }}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg>ویرایش اطلاعات</button>
+                <button onClick="{{ openFlow }}" style="display:flex;align-items:center;gap:8px;padding:12px 18px;border:none;border-radius:13px;background:#FA5A52;color:#fff;font-family:inherit;font-weight:700;font-size:13.5px;cursor:pointer;box-shadow:0 12px 26px -12px rgba(250,90,82,.9);flex:none" style-hover="{{ coralHover }}">
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="5" rx="1"></rect><rect x="14" y="9" width="7" height="5" rx="1"></rect><rect x="3" y="16" width="7" height="5" rx="1"></rect><path d="M10 5.5h2a2 2 0 0 1 2 2V11M10 18.5h2a2 2 0 0 0 2-2V14"></path></svg>
+                  مشاهدهٔ فلوچارت
+                </button>
+              </sc-if>
+              <sc-if value="{{ summaryEdit }}" hint-placeholder-val="{{ false }}">
+                <button onClick="{{ cancelSummaryEdit }}" style="padding:12px 16px;border:1.5px solid #E3D8F5;background:#fff;border-radius:13px;font-family:inherit;font-weight:600;font-size:13px;color:#8a7db0;cursor:pointer;flex:none" style-hover="{{ ghostHover }}">انصراف</button>
+                <button onClick="{{ saveSummaryEdit }}" style="display:flex;align-items:center;gap:7px;padding:12px 20px;border:none;border-radius:13px;background:#1F8A5B;color:#fff;font-family:inherit;font-weight:700;font-size:13.5px;cursor:pointer;box-shadow:0 12px 26px -12px rgba(31,138,91,.9);flex:none" style-hover="{{ greenHover }}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg>ذخیره</button>
+              </sc-if>
+            </div>
+          </div>
+
+          <!-- IDEF0 A-0 box (view) -->
+          <sc-if value="{{ summaryView }}" hint-placeholder-val="{{ true }}">
+          <div style="background:#fff;border:1px solid #EFE7DC;border-radius:18px;padding:24px;margin-bottom:20px;box-shadow:0 3px 16px -10px rgba(74,37,169,.25)">
+            <div style="font-weight:700;font-size:14px;color:#4A25A9;margin-bottom:18px;display:flex;align-items:center;gap:8px"><span style="width:8px;height:8px;background:#FA5A52;border-radius:50%"></span>نمای IDEF0 سطح فرآیند (A-0)</div>
+            <div style="display:grid;grid-template-columns:1fr 1.4fr 1fr;grid-template-rows:auto auto auto;gap:14px;align-items:center">
+              <!-- controls top -->
+              <div style="grid-column:2;grid-row:1;text-align:center">
+                <div style="font-size:11px;color:#8a7db0;margin-bottom:6px">کنترل‌ها ↓</div>
+                <div style="display:flex;flex-wrap:wrap;gap:6px;justify-content:center"><sc-for list="{{ idef.controls }}" as="t" hint-placeholder-count="2"><span style="{{ chipControl }}">{{ t }}</span></sc-for></div>
+              </div>
+              <!-- inputs right(RTL start) -->
+              <div style="grid-column:3;grid-row:2;text-align:center">
+                <div style="font-size:11px;color:#8a7db0;margin-bottom:6px">ورودی‌ها →</div>
+                <div style="display:flex;flex-direction:column;gap:6px;align-items:center"><sc-for list="{{ idef.inputs }}" as="t" hint-placeholder-count="2"><span style="{{ chipInput }}">{{ t }}</span></sc-for></div>
+              </div>
+              <!-- center box -->
+              <div style="grid-column:2;grid-row:2;background:#4A25A9;border-radius:14px;padding:22px 16px;text-align:center;color:#fff;box-shadow:0 14px 30px -14px rgba(74,37,169,.7)">
+                <div style="font-weight:700;font-size:15px">{{ procObj.name }}</div>
+                <div style="font-family:ui-monospace,Menlo,monospace;font-size:11px;color:#C9BEEE;margin-top:6px" dir="ltr">A-0 · {{ procObj.id }}</div>
+              </div>
+              <!-- outputs left -->
+              <div style="grid-column:1;grid-row:2;text-align:center">
+                <div style="font-size:11px;color:#8a7db0;margin-bottom:6px">← خروجی‌ها</div>
+                <div style="display:flex;flex-direction:column;gap:6px;align-items:center"><sc-for list="{{ idef.outputs }}" as="t" hint-placeholder-count="2"><span style="{{ chipOutput }}">{{ t }}</span></sc-for></div>
+              </div>
+              <!-- mechanisms bottom -->
+              <div style="grid-column:2;grid-row:3;text-align:center">
+                <div style="display:flex;flex-wrap:wrap;gap:6px;justify-content:center"><sc-for list="{{ idef.mechanisms }}" as="t" hint-placeholder-count="2"><span style="{{ chipMech }}">{{ t }}</span></sc-for></div>
+                <div style="font-size:11px;color:#8a7db0;margin-top:6px">↑ مکانیزم‌ها</div>
+              </div>
+            </div>
+          </div>
+          </sc-if>
+
+          <!-- IDEF0 edit form -->
+          <sc-if value="{{ summaryEdit }}" hint-placeholder-val="{{ false }}">
+            <div style="background:#fff;border:1px solid #EFE7DC;border-radius:18px;padding:22px;margin-bottom:20px;box-shadow:0 3px 16px -10px rgba(74,37,169,.25)">
+              <div style="font-weight:700;font-size:14px;color:#4A25A9;margin-bottom:16px;display:flex;align-items:center;gap:8px"><span style="width:8px;height:8px;background:#FA5A52;border-radius:50%"></span>ویرایش اطلاعات IDEF0 (A-0)</div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+                <sc-for list="{{ icomGroups }}" as="g" hint-placeholder-count="4">
+                  <div>
+                    <div style="font-size:12px;font-weight:700;color:#2A1D5E;margin-bottom:8px">{{ g.label }}</div>
+                    <div style="display:flex;flex-direction:column;gap:7px">
+                      <sc-for list="{{ g.items }}" as="it" hint-placeholder-count="1">
+                        <div style="display:flex;gap:6px;align-items:center">
+                          <input value="{{ it.v }}" onInput="{{ it.set }}" style="flex:1;padding:8px 11px;border:1.5px solid #E3D8F5;border-radius:9px;font-size:12.5px;color:#2A1D5E;background:#fff;outline:none;font-family:inherit" style-focus="{{ inputFocus }}">
+                          <button onClick="{{ it.del }}" style="width:30px;height:30px;flex:none;border:1.5px solid #FDD9D6;background:#FFF3F2;color:#E23D35;border-radius:9px;cursor:pointer;font-size:15px" style-hover="{{ ghostHover }}">×</button>
+                        </div>
+                      </sc-for>
+                      <button onClick="{{ g.add }}" style="align-self:flex-start;display:flex;align-items:center;gap:5px;padding:6px 11px;border:1.5px dashed #C9B8EC;background:#F8F4FE;color:#4A25A9;border-radius:9px;cursor:pointer;font-family:inherit;font-size:11.5px;font-weight:600" style-hover="{{ ghostHover }}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>افزودن</button>
+                    </div>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </sc-if>
+
+          <!-- KPIs -->
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+            <div style="font-weight:700;font-size:15px;color:#2A1D5E">شاخص‌های کلیدی عملکرد (KPI)</div>
+            <sc-if value="{{ summaryEdit }}" hint-placeholder-val="{{ false }}"><button onClick="{{ addKpi }}" style="display:flex;align-items:center;gap:5px;padding:7px 12px;border:1.5px dashed #C9B8EC;background:#F8F4FE;color:#4A25A9;border-radius:9px;cursor:pointer;font-family:inherit;font-size:12px;font-weight:600" style-hover="{{ ghostHover }}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>افزودن شاخص</button></sc-if>
+          </div>
+          <sc-if value="{{ summaryEdit }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;flex-direction:column;gap:12px">
+              <sc-for list="{{ kpisEdit }}" as="k" hint-placeholder-count="1">
+                <div style="background:#fff;border:1px solid #EFE7DC;border-radius:14px;padding:14px 16px;display:flex;gap:10px;align-items:flex-start">
+                  <div style="flex:1;display:flex;flex-direction:column;gap:8px">
+                    <input value="{{ k.name }}" onInput="{{ k.setName }}" placeholder="نام شاخص" style="width:100%;padding:8px 11px;border:1.5px solid #E3D8F5;border-radius:9px;font-size:13px;font-weight:700;color:#2A1D5E;background:#fff;outline:none;font-family:inherit" style-focus="{{ inputFocus }}">
+                    <input value="{{ k.definition }}" onInput="{{ k.setDef }}" placeholder="تعریف شاخص" style="width:100%;padding:8px 11px;border:1.5px solid #E3D8F5;border-radius:9px;font-size:12.5px;color:#2A1D5E;background:#fff;outline:none;font-family:inherit" style-focus="{{ inputFocus }}">
+                    <input value="{{ k.target }}" onInput="{{ k.setTarget }}" placeholder="مقدار هدف" style="width:100%;padding:8px 11px;border:1.5px solid #E3D8F5;border-radius:9px;font-size:12.5px;color:#E23D35;font-weight:600;background:#fff;outline:none;font-family:inherit" style-focus="{{ inputFocus }}">
+                  </div>
+                  <button onClick="{{ k.del }}" style="width:32px;height:32px;flex:none;border:1.5px solid #FDD9D6;background:#FFF3F2;color:#E23D35;border-radius:9px;cursor:pointer;font-size:16px" style-hover="{{ ghostHover }}">×</button>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+          <sc-if value="{{ kpiViewHas }}" hint-placeholder-val="{{ true }}">
+            <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:14px">
+              <sc-for list="{{ kpis }}" as="k" hint-placeholder-count="2">
+                <div style="background:#fff;border:1px solid #EFE7DC;border-radius:14px;padding:16px 18px">
+                  <div style="display:flex;align-items:center;justify-content:space-between"><div style="font-weight:700;font-size:14px;color:#2A1D5E">{{ k.name }}</div><div style="font-size:12px;font-weight:700;color:#E23D35;background:#FFE9E7;padding:3px 10px;border-radius:8px">{{ k.target }}</div></div>
+                  <div style="font-size:12px;color:#8a7db0;margin-top:8px;line-height:1.5">{{ k.definition }}</div>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+          <sc-if value="{{ kpiViewNone }}" hint-placeholder-val="{{ false }}">
+            <div style="background:#fff;border:1px dashed #E3D8F5;border-radius:14px;padding:20px;text-align:center;color:#a99fc4;font-size:12.5px">شاخصی برای این فرآیند ثبت نشده است. (سامانه اطلاعات را نمی‌سازد؛ فقط از محتوای واقعی جلسه پر می‌شود.)</div>
+          </sc-if>
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- ---------- FLOWCHART ---------- -->
+    <sc-if value="{{ isFlow }}" hint-placeholder-val="{{ true }}">
+      <div style="flex:1;display:flex;flex-direction:column;min-height:0">
+        <!-- flow toolbar -->
+        <div style="display:flex;align-items:center;gap:12px;padding:11px 22px;background:#fff;border-bottom:1px solid #EFE7DC;flex:none">
+          <sc-if value="{{ procObj.isSub }}" hint-placeholder-val="{{ false }}">
+            <button onClick="{{ backFromSub }}" style="display:flex;align-items:center;gap:6px;padding:7px 12px;border:1.5px solid #E3D8F5;background:#fff;border-radius:10px;font-family:inherit;font-size:12px;font-weight:600;color:#4A25A9;cursor:pointer" style-hover="{{ ghostHover }}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"></path></svg>فرآیند والد</button>
+          </sc-if>
+          <div>
+            <div style="display:flex;align-items:center;gap:9px">
+              <span style="font-family:ui-monospace,Menlo,monospace;font-size:11px;color:#fff;background:#4A25A9;padding:2px 8px;border-radius:6px" dir="ltr">{{ procObj.id }}</span>
+              <sc-if value="{{ viewMode }}" hint-placeholder-val="{{ true }}"><span style="font-weight:700;font-size:15px;color:#2A1D5E">{{ procObj.name }}</span></sc-if>
+              <sc-if value="{{ editMode }}" hint-placeholder-val="{{ false }}"><input value="{{ procObj.name }}" onInput="{{ setName }}" placeholder="نام فرآیند" style="font-weight:700;font-size:15px;color:#2A1D5E;border:1.5px solid #E3D8F5;border-radius:9px;padding:5px 11px;font-family:inherit;background:#fff;outline:none;width:280px;max-width:40vw" style-focus="{{ inputFocus }}"></sc-if>
+            </div>
+          </div>
+          <div style="margin-inline-start:auto;display:flex;align-items:center;gap:9px">
+            <!-- view mode -->
+            <sc-if value="{{ viewMode }}" hint-placeholder-val="{{ true }}">
+              <button onClick="{{ enterEdit }}" style="display:flex;align-items:center;gap:7px;padding:9px 16px;border:none;border-radius:11px;background:#4A25A9;color:#fff;font-family:inherit;font-weight:700;font-size:13px;cursor:pointer;box-shadow:0 10px 22px -13px rgba(74,37,169,.9)" style-hover="{{ violetHover }}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg>ویرایش</button>
+            </sc-if>
+            <!-- edit mode -->
+            <sc-if value="{{ editMode }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;align-items:center;gap:3px;background:#F4EFFB;border-radius:12px;padding:5px">
+                <button onClick="{{ undo }}" style="{{ undoStyle }}" title="واگرد"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14L4 9l5-5"></path><path d="M4 9h11a5 5 0 0 1 0 10h-1"></path></svg></button>
+                <button onClick="{{ redo }}" style="{{ redoStyle }}" title="ازنو"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 14l5-5-5-5"></path><path d="M20 9H9a5 5 0 0 0 0 10h1"></path></svg></button>
+              </div>
+              <div style="display:flex;align-items:center;gap:7px;background:#F4EFFB;border-radius:12px;padding:5px">
+                <button onClick="{{ relayout }}" style="{{ toolBtn }}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6M3 12a9 9 0 0 1 15-6.7L21 8M3 22v-6h6M21 12a9 9 0 0 1-15 6.7L3 16"></path></svg>چیدمان</button>
+                <button onClick="{{ deleteSel }}" style="{{ toolBtnDel }}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"></path></svg>حذف</button>
+              </div>
+              <div style="display:flex;align-items:center;gap:7px;background:#F4EFFB;border-radius:12px;padding:5px">
+                <button onClick="{{ addActivity }}" style="{{ toolBtn }}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="7" width="16" height="10" rx="2"></rect><path d="M12 10v4M10 12h4" stroke-width="2.2"></path></svg>فعالیت</button>
+                <button onClick="{{ addJunction }}" style="{{ toolBtn }}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3l9 9-9 9-9-9z"></path></svg>اتصال</button>
+              </div>
+              <button onClick="{{ cancelEdit }}" style="padding:9px 14px;border:1.5px solid #E3D8F5;background:#fff;border-radius:11px;font-family:inherit;font-weight:600;font-size:12.5px;color:#8a7db0;cursor:pointer" style-hover="{{ ghostHover }}">انصراف</button>
+              <button onClick="{{ saveEdit }}" style="display:flex;align-items:center;gap:7px;padding:9px 18px;border:none;border-radius:11px;background:#1F8A5B;color:#fff;font-family:inherit;font-weight:700;font-size:13px;cursor:pointer;box-shadow:0 10px 22px -13px rgba(31,138,91,.9)" style-hover="{{ greenHover }}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg>ذخیره</button>
+            </sc-if>
+          </div>
+        </div>
+
+        <!-- canvas viewport -->
+        <div ref="{{ vpRef }}" onPointerDown="{{ onBgDown }}" style="{{ viewportStyle }}">
+          <div style="{{ worldStyle }}">
+            <svg width="2600" height="1600" style="position:absolute;left:0;top:0;overflow:visible;pointer-events:none">
+              <defs>
+                <marker id="arrowh" markerWidth="10" markerHeight="10" refX="8" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#9B86D9"></path></marker>
+              </defs>
+              <sc-for list="{{ edgesR }}" as="e" hint-placeholder-count="8">
+                <path d="{{ e.d }}" fill="none" stroke="{{ e.stroke }}" stroke-width="{{ e.w }}" marker-end="url(#arrowh)" opacity="{{ e.op }}"></path>
+                <path d="{{ e.d }}" fill="none" stroke="transparent" stroke-width="16" style="{{ e.hitStyle }}" onPointerDown="{{ e.onSel }}"></path>
+              </sc-for>
+              <sc-if value="{{ linkActive }}" hint-placeholder-val="{{ false }}"><path d="{{ linkD }}" fill="none" stroke="#FA5A52" stroke-width="2.6" stroke-dasharray="6 5"></path></sc-if>
+            </svg>
+            <sc-for list="{{ edgeLabels }}" as="l" hint-placeholder-count="2">
+              <div style="{{ l.style }}">{{ l.label }}</div>
+            </sc-for>
+            <sc-for list="{{ edgeDel }}" as="b" hint-placeholder-count="0">
+              <div style="{{ b.style }}" onPointerDown="{{ b.onDel }}" title="حذف خط">×</div>
+            </sc-for>
+            <sc-for list="{{ nodesR }}" as="node" hint-placeholder-count="7">
+              <div style="{{ node.wrapStyle }}" data-node-id="{{ node.id }}" onPointerDown="{{ node.onDown }}">
+                <sc-if value="{{ node.isActivity }}" hint-placeholder-val="{{ true }}">
+                  <div style="{{ node.cardStyle }}">
+                    <div style="position:absolute;top:5px;left:5px;display:flex;align-items:center;gap:2px;padding:4px 5px;border-radius:7px;cursor:pointer;z-index:4" onPointerDown="{{ node.stopDown }}" onClick="{{ node.openDetail }}" title="جزئیات و ویرایش" style-hover="{{ node.menuHover }}">
+                      <span style="width:3px;height:3px;border-radius:50%;background:#b3a9cc"></span><span style="width:3px;height:3px;border-radius:50%;background:#b3a9cc"></span><span style="width:3px;height:3px;border-radius:50%;background:#b3a9cc"></span>
+                    </div>
+                    <sc-if value="{{ node.hasConflict }}" hint-placeholder-val="{{ false }}"><div onPointerDown="{{ node.stopDown }}" onClick="{{ node.openDetail }}" title="تعارض بازبینی‌نشده" style="position:absolute;top:5px;right:5px;min-width:17px;height:17px;padding:0 4px;display:flex;align-items:center;justify-content:center;gap:2px;background:#FA5A52;color:#fff;border-radius:20px;font-size:9.5px;font-weight:800;cursor:pointer;z-index:5">! {{ node.conflictCountFa }}</div></sc-if>
+                    <span style="font-family:ui-monospace,Menlo,monospace;font-size:9.5px;color:#8a7db0;background:#F4EFFB;padding:1px 6px;border-radius:5px;margin-bottom:5px" dir="ltr">{{ node.idShort }}</span>
+                    <div style="font-weight:700;font-size:12.5px;color:#2A1D5E;line-height:1.4;text-align:center;overflow-wrap:anywhere;word-break:break-word">{{ node.label }}</div>
+                    <sc-if value="{{ node.hasActor }}" hint-placeholder-val="{{ true }}"><div style="display:flex;align-items:center;justify-content:center;gap:5px;margin-top:6px"><span style="width:15px;height:15px;border-radius:50%;background:#F0E9FB;color:#4A25A9;font-size:8px;display:flex;align-items:center;justify-content:center;font-weight:700">۰</span><span style="font-size:10.5px;color:#8a7db0;overflow-wrap:anywhere">{{ node.actor }}</span></div></sc-if>
+                    <sc-if value="{{ node.hasSub }}" hint-placeholder-val="{{ false }}"><div style="display:flex;align-items:center;justify-content:center;gap:4px;margin-top:7px;font-size:9px;color:#E23D35;background:#FFE9E7;padding:2px 8px;border-radius:20px;font-weight:600"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"></path></svg>زیرفرآیند — برای ورود کلیک کنید</div></sc-if>
+                  </div>
+                </sc-if>
+                <sc-if value="{{ node.isJunction }}" hint-placeholder-val="{{ false }}">
+                  <div style="{{ node.diamondStyle }}"></div>
+                  <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:10.5px;color:#fff;pointer-events:none">{{ node.jt }}</div>
+                </sc-if>
+                <sc-if value="{{ node.isTerminal }}" hint-placeholder-val="{{ false }}">
+                  <div style="{{ node.termStyle }}">{{ node.label }}</div>
+                </sc-if>
+                <sc-if value="{{ node.showHandle }}" hint-placeholder-val="{{ false }}">
+                  <div style="{{ node.handleStyle }}" onPointerDown="{{ node.onLink }}" title="بکشید تا اتصال بسازید"></div>
+                </sc-if>
+              </div>
+            </sc-for>
+          </div>
+
+          <sc-if value="{{ editMode }}" hint-placeholder-val="{{ false }}">
+            <div style="position:absolute;top:14px;left:50%;transform:translateX(-50%);background:#2A1D5E;color:#fff;font-size:11.5px;padding:8px 15px;border-radius:22px;display:flex;align-items:center;gap:12px;box-shadow:0 10px 24px -12px rgba(0,0,0,.5);pointer-events:none;z-index:12">
+              <span style="display:flex;align-items:center;gap:6px"><span style="width:9px;height:9px;border-radius:50%;background:#FA5A52;border:2px solid #fff"></span>از نقطهٔ مرجانیِ کنار هر گره بکشید تا خط بسازید</span>
+              <span style="opacity:.4">|</span>
+              <span>روی یک خط کلیک کنید تا حذف شود</span>
+            </div>
+          </sc-if>
+
+          <!-- zoom controls -->
+          <div style="position:absolute;bottom:18px;left:18px;display:flex;flex-direction:column;gap:6px;background:#fff;border:1px solid #EFE7DC;border-radius:12px;padding:5px;box-shadow:0 6px 18px -10px rgba(74,37,169,.4)">
+            <button onClick="{{ zoomIn }}" style="{{ zoomBtn }}">+</button>
+            <button onClick="{{ zoomOut }}" style="{{ zoomBtn }}">−</button>
+            <button onClick="{{ fitView }}" style="{{ zoomBtnSm }}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8V5a2 2 0 0 1 2-2h3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M21 16v3a2 2 0 0 1-2 2h-3"></path></svg></button>
+          </div>
+          <!-- legend -->
+          <div style="position:absolute;bottom:18px;right:18px;display:flex;gap:14px;background:#fff;border:1px solid #EFE7DC;border-radius:12px;padding:9px 14px;box-shadow:0 6px 18px -10px rgba(74,37,169,.4);font-size:11px;color:#8a7db0">
+            <span style="display:flex;align-items:center;gap:5px"><span style="width:11px;height:11px;background:#FA5A52;transform:rotate(45deg);display:inline-block"></span>XOR</span>
+            <span style="display:flex;align-items:center;gap:5px"><span style="width:11px;height:11px;background:#4A25A9;transform:rotate(45deg);display:inline-block"></span>AND</span>
+            <span style="display:flex;align-items:center;gap:5px"><span style="width:11px;height:11px;background:#E8A33D;transform:rotate(45deg);display:inline-block"></span>OR</span>
+          </div>
+
+          <!-- detail drawer -->
+          <sc-if value="{{ detailOpen }}" hint-placeholder-val="{{ false }}">
+            <div style="position:absolute;top:0;bottom:0;left:0;width:340px;background:#fff;border-inline-end:1px solid #EFE7DC;box-shadow:20px 0 50px -30px rgba(74,37,169,.5);display:flex;flex-direction:column;z-index:15">
+              <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 18px;border-bottom:1px solid #F0E9FB">
+                <span style="font-family:ui-monospace,Menlo,monospace;font-size:11px;color:#fff;background:#4A25A9;padding:2px 8px;border-radius:6px" dir="ltr">{{ detail.id }}</span>
+                <button onClick="{{ closeDetail }}" style="width:28px;height:28px;border:none;background:#F4EFFB;border-radius:8px;cursor:pointer;color:#8a7db0;font-size:16px" style-hover="{{ ghostHover }}">×</button>
+              </div>
+              <div style="flex:1;overflow:auto;padding:18px">
+                <sc-if value="{{ detailJuncView }}" hint-placeholder-val="{{ false }}">
+                  <div style="font-weight:800;font-size:16px;color:#2A1D5E">دروازهٔ منطقی {{ detail.jt }}</div>
+                  <div style="font-size:12.5px;color:#8a7db0;margin-top:10px;line-height:1.7">{{ detail.jtLabel }}</div>
+                </sc-if>
+                <sc-if value="{{ detailJuncEdit }}" hint-placeholder-val="{{ false }}">
+                  <label style="{{ fieldLabel }}">نوع دروازهٔ منطقی</label>
+                  <div style="display:flex;gap:8px;margin-top:6px">
+                    <div onClick="{{ detail.setXOR }}" style="{{ detail.btnXOR }}">XOR</div>
+                    <div onClick="{{ detail.setAND }}" style="{{ detail.btnAND }}">AND</div>
+                    <div onClick="{{ detail.setOR }}" style="{{ detail.btnOR }}">OR</div>
+                  </div>
+                  <div style="font-size:11.5px;color:#8a7db0;margin-top:16px;line-height:1.9">XOR: فقط یکی از مسیرها فعال می‌شود.<br>AND: همهٔ مسیرها هم‌زمان.<br>OR: یک یا چند مسیر.</div>
+                </sc-if>
+                <!-- view -->
+                <sc-if value="{{ detailViewAct }}" hint-placeholder-val="{{ true }}">
+                  <div style="font-weight:800;font-size:16px;color:#2A1D5E;line-height:1.4">{{ detail.label }}</div>
+                  <div style="display:flex;align-items:center;gap:7px;margin-top:12px;padding:9px 12px;background:#F8F4FE;border-radius:10px">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#4A25A9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"></circle><path d="M4 21a8 8 0 0 1 16 0"></path></svg>
+                    <span style="font-size:12.5px;color:#4A25A9;font-weight:600">{{ detail.actor }}</span>
+                  </div>
+                  <div style="font-size:11px;font-weight:700;color:#8a7db0;margin:18px 0 6px">توضیحات</div>
+                  <div style="font-size:12.5px;color:#5a5175;line-height:1.7">{{ detail.desc }}</div>
+                  <div style="font-size:11px;font-weight:700;color:#8a7db0;margin:18px 0 8px">اطلاعات ICOM</div>
+                  <div style="display:flex;flex-direction:column;gap:10px">
+                    <div><div style="font-size:10.5px;color:#a99fc4;margin-bottom:5px">ورودی‌ها</div><div style="display:flex;flex-wrap:wrap;gap:5px"><sc-for list="{{ detail.inputs }}" as="t" hint-placeholder-count="1"><span style="{{ chipInput }}">{{ t }}</span></sc-for></div></div>
+                    <div><div style="font-size:10.5px;color:#a99fc4;margin-bottom:5px">کنترل‌ها</div><div style="display:flex;flex-wrap:wrap;gap:5px"><sc-for list="{{ detail.controls }}" as="t" hint-placeholder-count="1"><span style="{{ chipControl }}">{{ t }}</span></sc-for></div></div>
+                    <div><div style="font-size:10.5px;color:#a99fc4;margin-bottom:5px">خروجی‌ها</div><div style="display:flex;flex-wrap:wrap;gap:5px"><sc-for list="{{ detail.outputs }}" as="t" hint-placeholder-count="1"><span style="{{ chipOutput }}">{{ t }}</span></sc-for></div></div>
+                    <div><div style="font-size:10.5px;color:#a99fc4;margin-bottom:5px">مکانیزم‌ها</div><div style="display:flex;flex-wrap:wrap;gap:5px"><sc-for list="{{ detail.mechanisms }}" as="t" hint-placeholder-count="1"><span style="{{ chipMech }}">{{ t }}</span></sc-for></div></div>
+                  </div>
+                  <sc-if value="{{ detail.hasConflict }}" hint-placeholder-val="{{ false }}">
+                    <div style="display:flex;align-items:center;gap:6px;font-size:11px;font-weight:700;color:#E23D35;margin:20px 0 8px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"></path></svg>تعارض‌های این باکس ({{ detail.conflictCountFa }})</div>
+                    <sc-for list="{{ detail.conflicts }}" as="c" hint-placeholder-count="1">
+                      <div style="background:#fff;border:1px solid #FDD9D6;border-radius:12px;padding:12px;margin-bottom:10px">
+                        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:9px"><span style="font-size:11.5px;font-weight:700;color:#2A1D5E">{{ c.fieldFa }}</span><span style="font-size:10px;color:#a99fc4">{{ c.source }}</span></div>
+                        <div style="background:#F6F3FB;border:1px solid #EDE5F5;border-radius:9px;padding:8px 10px;margin-bottom:7px"><div style="font-size:9.5px;color:#a99fc4;margin-bottom:3px">مقدار فعلی</div><div style="font-size:12px;color:#5a5175;line-height:1.5">{{ c.current }}</div></div>
+                        <div style="background:#FFF3F2;border:1px solid #FDD9D6;border-radius:9px;padding:8px 10px;margin-bottom:10px"><div style="font-size:9.5px;color:#E23D35;margin-bottom:3px">پیشنهاد جدید</div><div style="font-size:12px;color:#8a2b26;line-height:1.5;font-weight:600">{{ c.proposed }}</div></div>
+                        <div style="display:flex;gap:8px">
+                          <button onClick="{{ c.accept }}" style="flex:1;padding:8px;border:none;border-radius:9px;background:#1F8A5B;color:#fff;font-family:inherit;font-weight:700;font-size:12px;cursor:pointer" style-hover="{{ greenHover }}">پذیرش</button>
+                          <button onClick="{{ c.reject }}" style="flex:1;padding:8px;border:1.5px solid #E3D8F5;background:#fff;color:#8a7db0;font-family:inherit;font-weight:600;font-size:12px;cursor:pointer;border-radius:9px" style-hover="{{ ghostHover }}">رد</button>
+                        </div>
+                      </div>
+                    </sc-for>
+                  </sc-if>
+                  <sc-if value="{{ detail.hasSub }}" hint-placeholder-val="{{ false }}">
+                    <button onClick="{{ openSub }}" style="width:100%;margin-top:20px;display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;border:none;border-radius:12px;background:#FA5A52;color:#fff;font-family:inherit;font-weight:700;font-size:13px;cursor:pointer;box-shadow:0 10px 22px -13px rgba(250,90,82,.9)" style-hover="{{ coralHover }}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3h7v7H3zM14 14h7v7h-7zM14 3l7 7M10 14l-7 7"></path></svg>باز کردن زیرفرآیند</button>
+                  </sc-if>
+                  <div style="font-size:10.5px;color:#c3bad6;margin-top:20px;border-top:1px dashed #EDE5F5;padding-top:12px" dir="ltr">source: {{ detail.source }}</div>
+                </sc-if>
+                <!-- edit -->
+                <sc-if value="{{ detailEditAct }}" hint-placeholder-val="{{ false }}">
+                  <label style="{{ fieldLabel }}">عنوان</label>
+                  <input value="{{ detail.label }}" onInput="{{ editLabel }}" style="{{ fieldInput }}" style-focus="{{ inputFocus }}">
+                  <label style="{{ fieldLabel }}">مجری فعالیت</label>
+                  <input value="{{ detail.actorRaw }}" onInput="{{ editActor }}" style="{{ fieldInput }}" style-focus="{{ inputFocus }}">
+                  <label style="{{ fieldLabel }}">توضیحات</label>
+                  <textarea value="{{ detail.descRaw }}" onInput="{{ editDesc }}" rows="5" style="{{ fieldArea }}" style-focus="{{ inputFocus }}"></textarea>
+                  <label style="{{ fieldLabel }}">شناسهٔ زیرفرآیند (اختیاری)</label>
+                  <input value="{{ detail.subRaw }}" onInput="{{ editSub }}" placeholder="مثلاً cooking-014" dir="ltr" style="{{ fieldInput }};text-align:left;font-family:ui-monospace,Menlo,monospace" style-focus="{{ inputFocus }}">
+                  <div style="font-size:11px;color:#a99fc4;margin-top:6px;line-height:1.6">با ورود شناسهٔ یک فرآیند، این باکس به آن به‌عنوان زیرفرآیند پیوند می‌خورد؛ سپس با کلیک روی باکس می‌توان وارد فلوچارت آن شد. برای حذف پیوند، فیلد را خالی کنید.</div>
+                  <sc-if value="{{ detail.subValid }}" hint-placeholder-val="{{ false }}"><div style="display:flex;align-items:center;gap:5px;font-size:11px;color:#1F8A5B;margin-top:7px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg>پیوند معتبر: {{ detail.subName }}</div></sc-if>
+                  <sc-if value="{{ detail.subInvalid }}" hint-placeholder-val="{{ false }}"><div style="display:flex;align-items:center;gap:5px;font-size:11px;color:#E23D35;margin-top:7px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"></path></svg>فرآیندی با این شناسه یافت نشد</div></sc-if>
+                  <button onClick="{{ createSub }}" style="width:100%;margin-top:14px;display:flex;align-items:center;justify-content:center;gap:8px;padding:11px;border:1.5px solid #FA5A52;background:#fff;color:#E23D35;border-radius:12px;font-family:inherit;font-weight:700;font-size:12.5px;cursor:pointer" style-hover="{{ ghostHover }}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3h7v7H3zM14 14h7v7h-7zM14 3l7 7M10 14l-7 7"></path></svg>ساخت زیرفرآیند جدید و ورود</button>
+                  <div style="font-size:11px;color:#a99fc4;margin-top:14px;line-height:1.6">تغییرات فقط پس از فشردن «ذخیره» روی دیسک نوشته می‌شوند.</div>
+                </sc-if>
+              </div>
+            </div>
+          </sc-if>
+        </div>
+      </div>
+    </sc-if>
+
+  </sc-if>
+
+  <!-- ============================ INBOX MODAL ============================ -->
+  <sc-if value="{{ showInbox }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closeInbox }}" style="position:fixed;inset:0;background:rgba(36,17,82,.45);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;z-index:50;padding:24px">
+      <div onClick="{{ stop }}" style="width:640px;max-width:100%;max-height:86vh;background:#FBF7F1;border-radius:20px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 40px 90px -30px rgba(0,0,0,.6)">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:20px 22px;background:#fff;border-bottom:1px solid #EFE7DC">
+          <div><div style="font-weight:800;font-size:17px;color:#2A1D5E">صندوق بازبینی تعارض‌ها</div><div style="font-size:12px;color:#8a7db0;margin-top:3px">مقدار فعلی در برابر پیشنهاد — تا تصمیم شما مقدار اصلی دست‌نخورده می‌ماند.</div></div>
+          <button onClick="{{ closeInbox }}" style="width:32px;height:32px;border:none;background:#F4EFFB;border-radius:9px;cursor:pointer;color:#8a7db0;font-size:18px">×</button>
+        </div>
+        <div style="flex:1;overflow:auto;padding:20px">
+          <sc-if value="{{ hasPending }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex;flex-direction:column;gap:14px">
+              <sc-for list="{{ pendingList }}" as="c" hint-placeholder-count="2">
+                <div style="background:#fff;border:1px solid #EFE7DC;border-radius:14px;padding:16px">
+                  <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+                    <span style="font-family:ui-monospace,Menlo,monospace;font-size:10.5px;color:#8a7db0;background:#F4EFFB;padding:2px 7px;border-radius:5px" dir="ltr">{{ c.node }}</span>
+                    <span style="font-size:12.5px;font-weight:700;color:#2A1D5E">{{ c.fieldFa }}</span>
+                    <span style="font-size:10.5px;color:#a99fc4">{{ c.source }}</span>
+                    <button onClick="{{ c.goTo }}" style="margin-inline-start:auto;display:flex;align-items:center;gap:5px;padding:5px 10px;border:1.5px solid #E3D8F5;background:#fff;border-radius:8px;font-family:inherit;font-size:11px;font-weight:600;color:#4A25A9;cursor:pointer;flex:none" style-hover="{{ ghostHover }}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="5" rx="1"></rect><rect x="14" y="9" width="7" height="5" rx="1"></rect><rect x="3" y="16" width="7" height="5" rx="1"></rect><path d="M10 5.5h2a2 2 0 0 1 2 2V11M10 18.5h2a2 2 0 0 0 2-2V14"></path></svg>مشاهده در فلوچارت</button>
+                  </div>
+                  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+                    <div style="background:#F6F3FB;border:1px solid #EDE5F5;border-radius:10px;padding:11px 13px"><div style="font-size:10px;color:#a99fc4;margin-bottom:5px">مقدار فعلی</div><div style="font-size:12.5px;color:#5a5175;line-height:1.5">{{ c.current }}</div></div>
+                    <div style="background:#FFF3F2;border:1px solid #FDD9D6;border-radius:10px;padding:11px 13px"><div style="font-size:10px;color:#E23D35;margin-bottom:5px">پیشنهاد جدید</div><div style="font-size:12.5px;color:#8a2b26;line-height:1.5;font-weight:600">{{ c.proposed }}</div></div>
+                  </div>
+                  <div style="display:flex;gap:9px">
+                    <button onClick="{{ c.accept }}" style="flex:1;padding:9px;border:none;border-radius:10px;background:#1F8A5B;color:#fff;font-family:inherit;font-weight:700;font-size:12.5px;cursor:pointer" style-hover="{{ greenHover }}">پذیرش پیشنهاد</button>
+                    <button onClick="{{ c.reject }}" style="flex:1;padding:9px;border:1.5px solid #E3D8F5;background:#fff;color:#8a7db0;font-family:inherit;font-weight:600;font-size:12.5px;cursor:pointer;border-radius:10px" style-hover="{{ ghostHover }}">رد کردن</button>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+          <sc-if value="{{ noPending }}" hint-placeholder-val="{{ false }}">
+            <div style="text-align:center;padding:40px 20px;color:#a99fc4">
+              <svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="#C9B8EC" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom:12px"><path d="M20 6L9 17l-5-5"></path></svg>
+              <div style="font-size:13.5px;font-weight:600;color:#8a7db0">تعارض بازی وجود ندارد</div>
+              <div style="font-size:12px;margin-top:5px">همهٔ پیشنهادها رسیدگی شده‌اند.</div>
+            </div>
+          </sc-if>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- ============================ CREATE MODAL ============================ -->
+  <sc-if value="{{ showCreate }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closeCreate }}" style="position:fixed;inset:0;background:rgba(36,17,82,.45);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;z-index:50;padding:24px">
+      <div onClick="{{ stop }}" style="width:440px;max-width:100%;background:#FBF7F1;border-radius:20px;overflow:hidden;box-shadow:0 40px 90px -30px rgba(0,0,0,.6)">
+        <div style="padding:20px 22px;background:#fff;border-bottom:1px solid #EFE7DC"><div style="font-weight:800;font-size:17px;color:#2A1D5E">ایجاد فرآیند جدید</div><div style="font-size:12px;color:#8a7db0;margin-top:3px">شناسه به‌صورت خودکار توسط سامانه تخصیص می‌یابد.</div></div>
+        <div style="padding:22px">
+          <label style="{{ fieldLabel }}">دپارتمان</label>
+          <div style="{{ fieldInput }};background:#F4EFFB;color:#8a7db0;display:flex;align-items:center">{{ deptObj.name }}</div>
+          <label style="{{ fieldLabel }}">نام فرآیند</label>
+          <input value="{{ createName }}" onInput="{{ onCreateName }}" placeholder="مثلاً: فرآیند کنترل کیفیت" style="{{ fieldInput }}" style-focus="{{ inputFocus }}">
+          <label style="{{ fieldLabel }}">شناسهٔ پیشنهادی سامانه</label>
+          <div style="{{ fieldInput }};background:#F4EFFB;color:#4A25A9;font-family:ui-monospace,Menlo,monospace" dir="ltr">{{ nextId }}</div>
+          <div style="display:flex;gap:10px;margin-top:22px">
+            <button onClick="{{ closeCreate }}" style="flex:1;padding:11px;border:1.5px solid #E3D8F5;background:#fff;color:#8a7db0;font-family:inherit;font-weight:600;font-size:13px;cursor:pointer;border-radius:11px" style-hover="{{ ghostHover }}">انصراف</button>
+            <button onClick="{{ doCreate }}" style="flex:1;padding:11px;border:none;border-radius:11px;background:#FA5A52;color:#fff;font-family:inherit;font-weight:700;font-size:13px;cursor:pointer" style-hover="{{ coralHover }}">ایجاد و ویرایش</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- ============================ TOAST ============================ -->
+  <sc-if value="{{ showToast }}" hint-placeholder-val="{{ false }}">
+    <div style="position:fixed;bottom:26px;left:50%;transform:translateX(-50%);background:#2A1D5E;color:#fff;padding:12px 20px;border-radius:12px;font-size:13px;font-weight:600;box-shadow:0 16px 40px -14px rgba(0,0,0,.6);z-index:60;display:flex;align-items:center;gap:9px">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#7BE0A8" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg>
+      {{ toast }}
+    </div>
+  </sc-if>
+
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  constructor(props){
+    super(props);
+    const data = this.buildData();
+    this.state = {
+      authed:false, loginUser:'analyst', loginPass:'',
+      screen:'departments', currentDept:null, currentProcess:null, stack:[],
+      processes:data.processes, departments:data.departments, overviews:data.overviews,
+      ovEdit:false, ovDraft:null,
+      editMode:false, selectedNode:null, detailNode:null,
+      view:{tx:40,ty:24,scale:0.92},
+      showInbox:false, showCreate:false, createName:'', toast:null, listSearch:'',
+      linkFrom:null, linkPos:null, selectedEdge:null,
+      histIdx:0, histLen:1,
+      summaryEdit:false,
+    };
+    this.vp = React.createRef();
+    this._snapshot = null;
+    this.onWinMove = this.onWinMove.bind(this);
+    this.onWinUp = this.onWinUp.bind(this);
+  }
+  componentDidMount(){
+    window.addEventListener('pointermove', this.onWinMove);
+    window.addEventListener('pointerup', this.onWinUp);
+    this.measureNodes();
+  }
+  componentWillUnmount(){
+    window.removeEventListener('pointermove', this.onWinMove);
+    window.removeEventListener('pointerup', this.onWinUp);
+  }
+  toFa(x){return String(x).replace(/[0-9]/g,d=>'۰۱۲۳۴۵۶۷۸۹'[d]);}
+
+  // ---------------- DATA ----------------
+  buildData(){
+    const DEPTS=[
+      {code:'management',name:'مدیریت',icon:'M4 21V5l8-2v18M12 21V9l6 2v10M8 8h.01M8 12h.01M8 16h.01',t:'v'},
+      {code:'accounting',name:'حسابداری',icon:'M6 3h12v18l-2-1-2 1-2-1-2 1-2-1-2 1V3zM9 8h6M9 12h6',t:'c'},
+      {code:'warehouse',name:'انبار',icon:'M3 8l9-4 9 4v8l-9 4-9-4V8zM3 8l9 4 9-4M12 12v9',t:'v'},
+      {code:'procurement',name:'کارپردازی',icon:'M3 4h2l2 12h11l2-8H6M9 20a1 1 0 1 0 .01 0M17 20a1 1 0 1 0 .01 0',t:'c'},
+      {code:'cooking',name:'پخت',icon:'M12 3c2 4 5 5 5 9a5 5 0 0 1-10 0c0-2 1-3 2-4 .5 1 1 1.5 2 1.5-1-2 0-4 1-6.5z',t:'c'},
+      {code:'preparation',name:'آماده‌سازی',icon:'M4 20l7-7M14 4l4 4-8 8-3-1 1-3z',t:'v'},
+      {code:'dining',name:'سالن',icon:'M6 3v8a2 2 0 0 0 4 0V3M8 11v10M17 3c-2 0-3 2-3 5s1 4 3 4v9',t:'c'},
+      {code:'cashier',name:'صندوق',icon:'M3 6h18v12H3zM3 10h18M7 15h4',t:'v'},
+      {code:'logistics',name:'لجستیک',icon:'M3 6h11v9H3zM14 9h4l3 3v3h-7M7 18a1.5 1.5 0 1 0 .01 0M18 18a1.5 1.5 0 1 0 .01 0',t:'c'},
+    ];
+    const P={};
+    // ---- linear builder ----
+    const linear=(id,dept,name,summary,steps,extra)=>{
+      const per=4,sx=40,sy=90,gx=210,gy=175;
+      const items=['start',...steps.map((s,i)=>({...s,nid:id+'-n'+String((i+1)*10).padStart(3,'0')})),'end'];
+      const nodes=[],edges=[];
+      items.forEach((it,k)=>{
+        const row=Math.floor(k/per); let col=k%per; if(row%2===1) col=per-1-col;
+        const pos={x:sx+col*gx,y:sy+row*gy};
+        if(it==='start') nodes.push({id:'start',type:'start',label:'شروع',position:pos});
+        else if(it==='end') nodes.push({id:'end',type:'end',label:'پایان',position:pos});
+        else nodes.push({id:it.nid,type:'activity',label:it.label,actor:it.actor||'',desc:it.desc||'',icom:it.icom||{inputs:[],controls:[],outputs:[],mechanisms:[]},subprocess:it.sub||null,position:pos,source:it.source||('runs/'+dept)});
+      });
+      for(let k=0;k<nodes.length-1;k++) edges.push({from:nodes[k].id,to:nodes[k+1].id,label:''});
+      return Object.assign({id,department:dept,name,summary,idef0:{inputs:[],controls:[],outputs:[],mechanisms:[]},kpis:[],pending:[],parent:null,nodes,edges},extra||{});
+    };
+    // ---- COOKING 001 (showcase, branchy) ----
+    P['cooking-001']={
+      id:'cooking-001',department:'cooking',name:'خرید و پرداخت هزینه',
+      summary:'از دریافت درخواست خرید تا پرداخت نهایی به تأمین‌کننده و بایگانی رسید — شامل تأیید مدیر برای اقلام بالای سقف بودجه.',
+      parent:null,
+      idef0:{inputs:['درخواست خرید'],controls:['بودجهٔ ماهانه','سیاست خرید'],outputs:['کالای خریداری‌شده','فاکتور پرداخت‌شده'],mechanisms:['کارپرداز','حسابدار','مدیر']},
+      kpis:[
+        {name:'زمان چرخهٔ خرید',definition:'فاصلهٔ زمانی از ثبت درخواست تا دریافت کالا',target:'کمتر از ۳ روز',unit:'روز'},
+        {name:'نرخ مغایرت فاکتور',definition:'درصد فاکتورهای دارای مغایرت هنگام تحویل',target:'زیر ۵٪',unit:'٪'},
+      ],
+      pending:[
+        {node:'cooking-001-n020',field:'actor',fieldFa:'مجری فعالیت',current:'مدیر رستوران',proposed:'معاون مدیر',source:'جلسهٔ ۱۴۰۵/۰۴/۲۰',status:'open'},
+        {node:'cooking-001-n040',field:'desc',fieldFa:'توضیحات',current:'کالا تحویل گرفته و از نظر کیفیت و تعداد کنترل می‌شود.',proposed:'کنترل کیفیت طبق چک‌لیست واحد QC و ثبت مغایرت‌ها در سامانه.',source:'جلسهٔ ۱۴۰۵/۰۴/۲۰',status:'open'},
+      ],
+      nodes:[
+        {id:'start',type:'start',label:'شروع',position:{x:30,y:104}},
+        {id:'cooking-001-n010',type:'activity',label:'دریافت درخواست خرید',actor:'کارپرداز',desc:'درخواست خرید از سرآشپز یا انباردار دریافت و در سامانه ثبت می‌شود.',icom:{inputs:['درخواست شفاهی/کتبی'],controls:['سقف بودجهٔ ماهانه'],outputs:['درخواست ثبت‌شده'],mechanisms:['کارپرداز']},subprocess:null,position:{x:150,y:90},source:'runs/cooking-2026-07-06'},
+        {id:'cooking-001-j1',type:'junction',junctionType:'XOR',direction:'split',position:{x:392,y:107}},
+        {id:'cooking-001-n020',type:'activity',label:'تأیید مدیر',actor:'مدیر رستوران',desc:'اقلام بالاتر از سقف مشخص نیاز به تأیید مدیر دارند.',icom:{inputs:['درخواست ثبت‌شده'],controls:['سیاست تأیید خرید'],outputs:['درخواست تأییدشده'],mechanisms:['مدیر']},subprocess:null,position:{x:500,y:80},source:'runs/cooking-2026-07-06'},
+        {id:'cooking-001-j2',type:'junction',junctionType:'XOR',direction:'join',position:{x:722,y:107}},
+        {id:'cooking-001-n030',type:'activity',label:'ثبت سفارش نزد تأمین‌کننده',actor:'کارپرداز',desc:'سفارش نهایی به تأمین‌کنندهٔ منتخب ارسال می‌شود.',icom:{inputs:['درخواست تأییدشده'],controls:['لیست تأمین‌کنندگان مجاز'],outputs:['سفارش ارسال‌شده'],mechanisms:['کارپرداز']},subprocess:null,position:{x:830,y:90},source:'runs/cooking-2026-07-06'},
+        {id:'cooking-001-n040',type:'activity',label:'دریافت کالا و کنترل کیفیت',actor:'انباردار',desc:'کالا تحویل گرفته و از نظر کیفیت و تعداد کنترل می‌شود.',icom:{inputs:['کالای ارسالی'],controls:['استاندارد کیفیت'],outputs:['کالای تأییدشده'],mechanisms:['انباردار']},subprocess:null,position:{x:660,y:296}},
+        {id:'cooking-001-n050',type:'activity',label:'ثبت فاکتور در حسابداری',actor:'حسابدار',desc:'فاکتور خرید در سیستم حسابداری ثبت می‌شود.',icom:{inputs:['فاکتور خرید'],controls:[],outputs:['سند حسابداری'],mechanisms:['حسابدار']},subprocess:null,position:{x:400,y:296}},
+        {id:'cooking-001-n060',type:'activity',label:'پرداخت هزینه',actor:'حسابدار',desc:'پرداخت به تأمین‌کننده انجام و رسید بایگانی می‌شود.',icom:{inputs:['سند حسابداری'],controls:['مجوز پرداخت'],outputs:['رسید پرداخت'],mechanisms:['حسابدار','مدیر مالی']},subprocess:'cooking-014',position:{x:140,y:296}},
+        {id:'end',type:'end',label:'پایان',position:{x:150,y:430}},
+      ],
+      edges:[
+        {from:'start',to:'cooking-001-n010',label:''},
+        {from:'cooking-001-n010',to:'cooking-001-j1',label:''},
+        {from:'cooking-001-j1',to:'cooking-001-n020',label:'نیاز به تأیید'},
+        {from:'cooking-001-j1',to:'cooking-001-j2',label:'بدون نیاز'},
+        {from:'cooking-001-n020',to:'cooking-001-j2',label:''},
+        {from:'cooking-001-j2',to:'cooking-001-n030',label:''},
+        {from:'cooking-001-n030',to:'cooking-001-n040',label:''},
+        {from:'cooking-001-n040',to:'cooking-001-n050',label:''},
+        {from:'cooking-001-n050',to:'cooking-001-n060',label:''},
+        {from:'cooking-001-n060',to:'end',label:''},
+      ],
+    };
+    // subprocess
+    P['cooking-014']=linear('cooking-014','cooking','پرداخت هزینه','زیرفرآیند پرداخت: از بررسی فاکتور تا بایگانی رسید.',[
+      {label:'بررسی فاکتور و مجوز پرداخت',actor:'حسابدار',desc:'صحت فاکتور و وجود مجوز پرداخت بررسی می‌شود.'},
+      {label:'صدور دستور پرداخت',actor:'مدیر مالی',desc:'دستور پرداخت پس از تأیید صادر می‌شود.'},
+      {label:'پرداخت بانکی',actor:'حسابدار',desc:'انتقال وجه از طریق درگاه بانکی انجام می‌شود.'},
+      {label:'بایگانی رسید',actor:'حسابدار',desc:'رسید پرداخت اسکن و بایگانی می‌شود.'},
+    ],{parent:{process:'cooking-001',node:'cooking-001-n060'}});
+    // other cooking
+    P['cooking-002']=linear('cooking-002','cooking','پخت غذای روز','از دریافت سفارش آشپزخانه تا تحویل غذای آمادهٔ سرو.',[
+      {label:'دریافت لیست سفارش',actor:'سرآشپز',desc:'سفارش‌های روز از سالن و بیرون‌بر جمع‌آوری می‌شود.'},
+      {label:'آماده‌سازی مواد',actor:'کمک‌آشپز',desc:'مواد اولیه طبق دستور پخت آماده می‌شود.'},
+      {label:'پخت',actor:'آشپز',desc:'غذا طبق استاندارد کیفیت پخته می‌شود.'},
+      {label:'کنترل نهایی و تحویل',actor:'سرآشپز',desc:'کیفیت نهایی کنترل و غذا تحویل سالن می‌شود.'},
+    ],{
+      idef0:{inputs:['لیست سفارش روز','مواد اولیه'],controls:['دستور پخت استاندارد','استانداردهای بهداشتی'],outputs:['غذای آمادهٔ سرو'],mechanisms:['سرآشپز','آشپز','کمک‌آشپز']},
+      kpis:[
+        {name:'زمان آماده‌سازی سفارش',definition:'میانگین زمان از ثبت سفارش تا تحویل به سالن',target:'کمتر از ۱۵ دقیقه',unit:'دقیقه'},
+        {name:'نرخ برگشت غذا',definition:'درصد سفارش‌های برگشتی به دلیل کیفیت یا اشتباه',target:'زیر ۲٪',unit:'٪'},
+      ],
+    });
+    P['cooking-003']=linear('cooking-003','cooking','کنترل موجودی مواد اولیه','بررسی دوره‌ای موجودی و ثبت درخواست خرید در صورت کمبود.',[
+      {label:'شمارش موجودی',actor:'انباردار',desc:'موجودی مواد اولیه شمارش می‌شود.'},
+      {label:'مقایسه با حد سفارش',actor:'انباردار',desc:'موجودی با نقطهٔ سفارش مقایسه می‌شود.'},
+      {label:'ثبت درخواست کمبود',actor:'کارپرداز',desc:'برای اقلام کم درخواست خرید ثبت می‌شود.'},
+    ]);
+    P['cooking-004']=linear('cooking-004','cooking','آماده‌سازی سفارش ویژه','رسیدگی به سفارش‌های خاص و مناسبتی مشتریان.',[
+      {label:'ثبت مشخصات سفارش',actor:'سرآشپز',desc:''},{label:'برآورد مواد و زمان',actor:'سرآشپز',desc:''},{label:'اجرا و تحویل',actor:'آشپز',desc:''},
+    ]);
+    P['cooking-005']=linear('cooking-005','cooking','نظافت و بهداشت آشپزخانه','برنامهٔ روزانهٔ نظافت و رعایت بهداشت.',[
+      {label:'نظافت ابتدای شیفت',actor:'کمک‌آشپز',desc:''},{label:'نظافت حین کار',actor:'کمک‌آشپز',desc:''},{label:'گندزدایی پایان شیفت',actor:'کمک‌آشپز',desc:''},
+    ]);
+    P['cooking-006']=linear('cooking-006','cooking','تحویل غذا به سالن','هماهنگی تحویل غذای آماده به میزها.',[
+      {label:'اعلام آماده بودن',actor:'آشپز',desc:''},{label:'تحویل به گارسون',actor:'سرآشپز',desc:''},
+    ]);
+    // accounting
+    P['accounting-001']=linear('accounting-001','accounting','ثبت فاکتور خرید','ثبت اسناد خرید در سیستم حسابداری.',[
+      {label:'دریافت فاکتور',actor:'حسابدار',desc:''},{label:'کنترل و کدینگ',actor:'حسابدار',desc:''},{label:'ثبت سند',actor:'حسابدار',desc:''},
+    ]);
+    P['accounting-002']=linear('accounting-002','accounting','تسویه با تأمین‌کنندگان','مدیریت پرداخت به تأمین‌کنندگان.',[
+      {label:'استخراج بدهی‌ها',actor:'حسابدار',desc:''},{label:'اولویت‌بندی پرداخت',actor:'مدیر مالی',desc:''},{label:'اجرای پرداخت',actor:'حسابدار',desc:''},
+    ]);
+    P['accounting-003']=linear('accounting-003','accounting','پرداخت حقوق پرسنل','محاسبه و پرداخت ماهانهٔ حقوق.',[
+      {label:'جمع‌آوری کارکرد',actor:'حسابدار',desc:''},{label:'محاسبهٔ حقوق',actor:'حسابدار',desc:''},{label:'واریز',actor:'مدیر مالی',desc:''},
+    ]);
+    P['accounting-004']=linear('accounting-004','accounting','بستن صندوق روزانه','مغایرت‌گیری صندوق در پایان روز.',[
+      {label:'دریافت گزارش صندوق',actor:'حسابدار',desc:''},{label:'مغایرت‌گیری',actor:'حسابدار',desc:''},
+    ]);
+    P['accounting-005']=linear('accounting-005','accounting','گزارش مالی ماهانه','تهیهٔ گزارش‌های مدیریتی.',[
+      {label:'بستن حساب‌ها',actor:'حسابدار',desc:''},{label:'تهیهٔ گزارش',actor:'مدیر مالی',desc:''},
+    ]);
+    // warehouse
+    P['warehouse-001']=linear('warehouse-001','warehouse','دریافت و انبارش کالا','تحویل، کنترل و چیدمان کالا.',[
+      {label:'تحویل کالا',actor:'انباردار',desc:''},{label:'کنترل کیفی',actor:'انباردار',desc:''},{label:'انبارش',actor:'انباردار',desc:''},
+    ]);
+    P['warehouse-002']=linear('warehouse-002','warehouse','صدور حواله به آشپزخانه','تحویل مواد به واحد پخت.',[
+      {label:'دریافت درخواست',actor:'انباردار',desc:''},{label:'صدور حواله',actor:'انباردار',desc:''},
+    ]);
+    P['warehouse-003']=linear('warehouse-003','warehouse','انبارگردانی دوره‌ای','شمارش و تطبیق موجودی.',[
+      {label:'شمارش فیزیکی',actor:'انباردار',desc:''},{label:'تطبیق با سیستم',actor:'حسابدار',desc:''},
+    ]);
+    // procurement
+    P['procurement-001']=linear('procurement-001','procurement','استعلام قیمت','دریافت قیمت از تأمین‌کنندگان.',[{label:'ارسال استعلام',actor:'کارپرداز',desc:''},{label:'جمع‌آوری پاسخ',actor:'کارپرداز',desc:''}]);
+    P['procurement-002']=linear('procurement-002','procurement','انتخاب تأمین‌کننده','مقایسه و انتخاب بهترین گزینه.',[{label:'مقایسهٔ پیشنهادها',actor:'کارپرداز',desc:''},{label:'تأیید انتخاب',actor:'مدیر',desc:''}]);
+    P['procurement-003']=linear('procurement-003','procurement','ثبت سفارش خرید','ارسال سفارش رسمی.',[{label:'صدور سفارش',actor:'کارپرداز',desc:''}]);
+    P['procurement-004']=linear('procurement-004','procurement','پیگیری تحویل','پیگیری وضعیت سفارش تا تحویل.',[{label:'پیگیری',actor:'کارپرداز',desc:''},{label:'تأیید تحویل',actor:'انباردار',desc:''}]);
+    // preparation
+    P['preparation-001']=linear('preparation-001','preparation','آماده‌سازی مواد اولیه','پاک‌سازی و آماده‌سازی اولیهٔ مواد.',[{label:'شست‌وشو',actor:'کمک‌آشپز',desc:''},{label:'خردکردن و بسته‌بندی',actor:'کمک‌آشپز',desc:''}]);
+    P['preparation-002']=linear('preparation-002','preparation','بسته‌بندی سفارش بیرون‌بر','آماده‌سازی سفارش برای ارسال.',[{label:'کنترل سفارش',actor:'کمک‌آشپز',desc:''},{label:'بسته‌بندی',actor:'کمک‌آشپز',desc:''}]);
+    // dining
+    P['dining-001']=linear('dining-001','dining','پذیرش و راهنمایی مشتری','استقبال و هدایت به میز.',[{label:'استقبال',actor:'میزبان',desc:''},{label:'هدایت به میز',actor:'میزبان',desc:''}]);
+    P['dining-002']=linear('dining-002','dining','ثبت سفارش میز','دریافت و ثبت سفارش مشتری.',[{label:'دریافت سفارش',actor:'گارسون',desc:''},{label:'ثبت در سیستم',actor:'گارسون',desc:''}]);
+    P['dining-003']=linear('dining-003','dining','تسویه‌حساب مشتری','صدور صورت‌حساب و دریافت وجه.',[{label:'صدور صورت‌حساب',actor:'گارسون',desc:''},{label:'دریافت وجه',actor:'صندوق‌دار',desc:''}]);
+    // cashier
+    P['cashier-001']=linear('cashier-001','cashier','دریافت وجه و صدور فاکتور','دریافت پرداخت و صدور فاکتور.',[{label:'محاسبهٔ مبلغ',actor:'صندوق‌دار',desc:''},{label:'دریافت و صدور فاکتور',actor:'صندوق‌دار',desc:''}]);
+    P['cashier-002']=linear('cashier-002','cashier','بستن صندوق پایان شیفت','شمارش و تحویل صندوق.',[{label:'شمارش وجوه',actor:'صندوق‌دار',desc:''},{label:'تحویل به حسابداری',actor:'صندوق‌دار',desc:''}]);
+    // logistics
+    P['logistics-001']=linear('logistics-001','logistics','تخصیص سفارش به پیک','هماهنگی ارسال سفارش بیرون‌بر.',[{label:'دریافت سفارش آماده',actor:'مسئول لجستیک',desc:''},{label:'تخصیص پیک',actor:'مسئول لجستیک',desc:''}]);
+    P['logistics-002']=linear('logistics-002','logistics','مسیریابی و تحویل','انتخاب مسیر و تحویل به مشتری.',[{label:'مسیریابی',actor:'پیک',desc:''},{label:'تحویل و دریافت وجه',actor:'پیک',desc:''}]);
+    P['logistics-003']=linear('logistics-003','logistics','مدیریت بازگشت سفارش','رسیدگی به سفارش‌های مرجوعی.',[{label:'ثبت مرجوعی',actor:'مسئول لجستیک',desc:''},{label:'پیگیری علت',actor:'مدیر',desc:''}]);
+
+    // departments with counts
+    const departments=DEPTS.map(d=>{
+      const count=Object.values(P).filter(p=>p.department===d.code && !p.parent).length;
+      return {...d,count};
+    });
+    const OV={
+      management:{sub_units:[{name:'مدیریت ارشد',description:'تصمیم‌گیری راهبردی و سیاست‌گذاری مجموعه'}],personnel:[{role:'مدیر مجموعه',person:'علی رستمی',duties:['هدایت کلی مجموعه','تصویب بودجه','نظارت بر دپارتمان‌ها']}],updated_at:'۱۴۰۳/۰۴/۱۰'},
+      accounting:{sub_units:[{name:'واحد دریافت و پرداخت',description:'مدیریت جریان نقدی و تسویه‌حساب‌ها'},{name:'واحد گزارش‌گیری مالی',description:'تهیهٔ صورت‌های مالی و گزارش‌های دوره‌ای'}],personnel:[{role:'حسابدار ارشد',person:'مریم صادقی',duties:['ثبت اسناد حسابداری','تهیهٔ گزارش مالی','تسویه با تأمین‌کنندگان']},{role:'کمک‌حسابدار',person:'حسین مرادی',duties:['ثبت فاکتورها','بایگانی اسناد']}],updated_at:'۱۴۰۳/۰۴/۱۲'},
+      warehouse:{sub_units:[{name:'انبار مواد اولیه',description:'نگهداری مواد غذایی خام و بسته‌بندی'},{name:'انبار ملزومات',description:'نگهداری تجهیزات و اقلام مصرفی'}],personnel:[{role:'انباردار',person:'کاظم یوسفی',duties:['کنترل موجودی','تحویل و صدور کالا','ثبت درخواست خرید']}],updated_at:'۱۴۰۳/۰۴/۰۸'},
+      procurement:{sub_units:[{name:'واحد تأمین',description:'شناسایی و ارتباط با تأمین‌کنندگان'}],personnel:[{role:'کارپرداز',person:'نیما حسینی',duties:['ثبت سفارش خرید','دریافت درخواست خرید','پیگیری تحویل کالا']}],updated_at:'۱۴۰۳/۰۴/۱۴'},
+      cooking:{sub_units:[{name:'آشپزخانهٔ گرم',description:'تهیهٔ غذاهای اصلی و گرم منو'},{name:'آشپزخانهٔ سرد',description:'تهیهٔ سالاد، پیش‌غذا و دسر'},{name:'واحد کنترل کیفیت',description:'بررسی سلامت و کیفیت مواد و غذای آماده'}],personnel:[{role:'سرآشپز',person:'رضا کاظمی',duties:['مدیریت آشپزخانه','کنترل کیفیت نهایی غذا','آموزش کارکنان']},{role:'آشپز',person:'مهدی نوری',duties:['پخت غذای روز','آماده‌سازی مواد اولیه']},{role:'کمک‌آشپز',person:'سارا احمدی',duties:['آماده‌سازی مواد','نظافت ایستگاه کاری']}],updated_at:'۱۴۰۳/۰۴/۱۵'},
+      preparation:{sub_units:[{name:'واحد آماده‌سازی سفارش',description:'بسته‌بندی و آماده‌سازی سفارش‌های ویژه'}],personnel:[{role:'مسئول آماده‌سازی',person:'زهرا کریمی',duties:['آماده‌سازی سفارش خاص','بسته‌بندی نهایی']}],updated_at:'۱۴۰۳/۰۴/۱۱'},
+      dining:{sub_units:[{name:'سالن پذیرایی',description:'میزبانی و سرو غذا به مشتریان'},{name:'واحد راهنمایی مشتری',description:'استقبال و هدایت مهمانان'}],personnel:[{role:'میزبان',person:'امیر تهرانی',duties:['استقبال از مهمان','هدایت به میز','ثبت سفارش']},{role:'گارسون',person:'فاطمه رضایی',duties:['سرو غذا','رسیدگی به میزها']}],updated_at:'۱۴۰۳/۰۴/۱۳'},
+      cashier:{sub_units:[{name:'واحد صندوق',description:'دریافت وجه و صدور فاکتور فروش'}],personnel:[{role:'صندوق‌دار',person:'محمد اکبری',duties:['دریافت وجه','صدور فاکتور','تسویهٔ پایان شیفت']}],updated_at:'۱۴۰۳/۰۴/۰۹'},
+      logistics:{sub_units:[{name:'واحد حمل‌ونقل',description:'توزیع و ارسال سفارش‌ها'}],personnel:[{role:'مسئول لجستیک',person:'سعید نجفی',duties:['برنامه‌ریزی ارسال','هماهنگی پیک‌ها']}],updated_at:'۱۴۰۳/۰۴/۰۷'},
+    };
+    const overviews={};
+    DEPTS.forEach(d=>{ const o=OV[d.code]||{sub_units:[],personnel:[],updated_at:'۱۴۰۳/۰۴/۰۱'}; overviews[d.code]={department:d.code,name:'دپارتمان '+d.name,sub_units:o.sub_units,personnel:o.personnel.map(pr=>({role:pr.role,duties:pr.duties})),updated_at:o.updated_at}; });
+    return {processes:P,departments,overviews};
+  }
+
+  // ---------------- helpers ----------------
+  dims(n){ if(n.type==='junction')return{w:50,h:50}; if(n.type==='start'||n.type==='end')return{w:94,h:48}; const s=this._nodeSizes&&this._nodeSizes[n.id]; return s?{w:s.w,h:s.h}:{w:170,h:78}; }
+  measureNodes(){
+    if(!this.vp||!this.vp.current) return;
+    let changed=false; const sizes=Object.assign({},this._nodeSizes||{});
+    this.vp.current.querySelectorAll('[data-node-id]').forEach(el=>{
+      const id=el.getAttribute('data-node-id'); const w=el.offsetWidth,h=el.offsetHeight;
+      if(w&&h&&(!sizes[id]||sizes[id].w!==w||sizes[id].h!==h)){ sizes[id]={w,h}; changed=true; }
+    });
+    if(changed){ this._nodeSizes=sizes; this.forceUpdate(); }
+  }
+  componentDidUpdate(){ this.measureNodes(); }
+  cur(){ return this.state.processes[this.state.currentProcess]; }
+  setToast(msg){ this.setState({toast:msg}); clearTimeout(this._t); this._t=setTimeout(()=>this.setState({toast:null}),2200); }
+
+  // ---------------- drag / pan ----------------
+  onNodeDown(id,e){
+    e.stopPropagation();
+    const p=this.cur(); const n=p.nodes.find(x=>x.id===id);
+    this._drag={id,sx:e.clientX,sy:e.clientY,ox:n.position.x,oy:n.position.y,moved:false};
+    this.setState({selectedNode:id});
+  }
+  onBgDown(e){
+    this._pan={sx:e.clientX,sy:e.clientY,tx:this.state.view.tx,ty:this.state.view.ty};
+    this.setState({selectedNode:null,selectedEdge:null});
+  }
+  worldFromClient(cx,cy){ const r=this.vp.current.getBoundingClientRect(); const v=this.state.view; return {x:(cx-r.left-v.tx)/v.scale,y:(cy-r.top-v.ty)/v.scale}; }
+  startLink(id,e){ e.stopPropagation(); this._link={from:id}; this.setState({linkFrom:id,linkPos:this.worldFromClient(e.clientX,e.clientY),selectedNode:id,selectedEdge:null,detailNode:null}); }
+  finishLink(from,tid){
+    if(!tid||tid===from||tid==='start'){ this.setState({linkFrom:null,linkPos:null}); return; }
+    const p={...this.state.processes[this.state.currentProcess]};
+    if(p.edges.some(x=>x.from===from&&x.to===tid)){ this.setState({linkFrom:null,linkPos:null}); this.setToast('این اتصال از قبل وجود دارد'); return; }
+    p.edges=[...p.edges,{from,to:tid,label:''}];
+    this.applyProc(p,{linkFrom:null,linkPos:null}); this.setToast('اتصال جدید افزوده شد');
+  }
+  selectEdge(i){ this.setState({selectedEdge:i,selectedNode:null,detailNode:null}); }
+  deleteEdge(i){ const p={...this.state.processes[this.state.currentProcess]}; p.edges=p.edges.filter((_,k)=>k!==i); this.applyProc(p,{selectedEdge:null}); this.setToast('خط حذف شد'); }
+  onWinMove(e){
+    if(this._link){ this.setState({linkPos:this.worldFromClient(e.clientX,e.clientY)}); return; }
+    if(this._drag){
+      const sc=this.state.view.scale;
+      const dx=(e.clientX-this._drag.sx)/sc, dy=(e.clientY-this._drag.sy)/sc;
+      if(Math.abs(e.clientX-this._drag.sx)+Math.abs(e.clientY-this._drag.sy)>3) this._drag.moved=true;
+      if(!this.state.editMode) return;
+      const procs={...this.state.processes};
+      const p={...procs[this.state.currentProcess]};
+      p.nodes=p.nodes.map(n=> n.id===this._drag.id ? {...n,position:{x:this._drag.ox+dx,y:this._drag.oy+dy},layout:'manual'} : n);
+      procs[this.state.currentProcess]=p;
+      this.setState({processes:procs});
+    } else if(this._pan){
+      const dx=e.clientX-this._pan.sx, dy=e.clientY-this._pan.sy;
+      this.setState({view:{...this.state.view,tx:this._pan.tx+dx,ty:this._pan.ty+dy}});
+    }
+  }
+  onWinUp(e){
+    if(this._link){ const from=this._link.from; this._link=null; let tid=null; const el=document.elementFromPoint(e.clientX,e.clientY); if(el){ const nd=el.closest('[data-node-id]'); if(nd) tid=nd.getAttribute('data-node-id'); } this.finishLink(from,tid); return; }
+    if(this._drag){ const nd0=this.cur()&&this.cur().nodes.find(x=>x.id===this._drag.id); const wasMoved=this._drag.moved; if(!wasMoved && nd0){ if(nd0.type==='junction'){ this.setState({detailNode:this._drag.id}); } else if(nd0.type==='activity' && nd0.subprocess && !this.state.editMode){ this.openSubById(nd0.subprocess); } } this._drag=null; if(wasMoved && this.state.editMode) this.pushHistOnly(); }
+    this._pan=null;
+  }
+  zoom(f){ let s=Math.min(2,Math.max(0.4,this.state.view.scale*f)); this.setState({view:{...this.state.view,scale:s}}); }
+  fit(){ this.setState({view:{tx:40,ty:24,scale:0.92}}); }
+
+  // ---------------- nav ----------------
+  login(){ this.setState({authed:true,screen:'departments'}); }
+  openDept(code){ this.setState({currentDept:code,screen:'processList'}); }
+  openOverview(code){ this.setState({currentDept:code,screen:'overview',ovEdit:false,ovDraft:null}); }
+  goOverview(){ this.setState({screen:'overview',ovEdit:false,ovDraft:null,detailNode:null}); }
+  openProc(id){ this.setState({currentProcess:id,currentDept:this.state.processes[id].department,screen:'summary',stack:[],detailNode:null,editMode:false}); }
+  openProcFlow(id){ this.setState({currentProcess:id,currentDept:this.state.processes[id].department,screen:'flow',stack:[],detailNode:null,editMode:false}); this.fit(); }
+  openFlow(){ this.setState({screen:'flow',detailNode:null,summaryEdit:false}); this.fit(); }
+  goDepts(){ this.setState({screen:'departments',detailNode:null,editMode:false}); }
+  goList(){ this.setState({screen:'processList',detailNode:null,editMode:false}); }
+  goSummary(){ this.setState({screen:'summary',detailNode:null,editMode:false}); }
+  goBack(){
+    const S=this.state;
+    if(S.screen==='flow'){ if(S.stack.length){ this.backSub(); } else { this.goSummary(); } }
+    else if(S.screen==='summary'){ this.goList(); }
+    else if(S.screen==='overview'){ this.goList(); }
+    else if(S.screen==='processList'){ this.goDepts(); }
+  }
+
+  // ---------------- overview edit ----------------
+  jNow(){
+    const d=new Date(), gy=d.getFullYear(), gm=d.getMonth()+1, gd=d.getDate();
+    const gdm=[31,28,31,30,31,30,31,31,30,31,30,31], jdm=[31,31,31,31,31,31,30,30,30,30,30,29];
+    let gy2=gy-1600, gm2=gm-1, gd2=gd-1;
+    let dayNo=365*gy2+Math.floor((gy2+3)/4)-Math.floor((gy2+99)/100)+Math.floor((gy2+399)/400);
+    for(let i=0;i<gm2;++i) dayNo+=gdm[i];
+    if(gm2>1 && ((gy%4===0&&gy%100!==0)||gy%400===0)) dayNo++;
+    dayNo+=gd2; let jdn=dayNo-79; const np=Math.floor(jdn/12053); jdn%=12053;
+    let jy=979+33*np+4*Math.floor(jdn/1461); jdn%=1461;
+    if(jdn>=366){ jy+=Math.floor((jdn-1)/365); jdn=(jdn-1)%365; }
+    let i=0; for(;i<11&&jdn>=jdm[i];++i) jdn-=jdm[i];
+    const jm=i+1, jd=jdn+1;
+    return this.toFa(jy+'/'+String(jm).padStart(2,'0')+'/'+String(jd).padStart(2,'0'));
+  }
+  enterOvEdit(){ const o=this.state.overviews[this.state.currentDept]; this.setState({ovEdit:true,ovDraft:JSON.parse(JSON.stringify(o))}); }
+  cancelOvEdit(){ this.setState({ovEdit:false,ovDraft:null}); }
+  saveOvEdit(){
+    const S=this.state; const ov={...S.overviews};
+    const draft=JSON.parse(JSON.stringify(S.ovDraft)); draft.updated_at=this.jNow();
+    ov[S.currentDept]=draft;
+    this.setState({overviews:ov,ovEdit:false,ovDraft:null}); this.setToast('اطلاعات دپارتمان ذخیره شد');
+  }
+  _ovMut(fn){ const d=JSON.parse(JSON.stringify(this.state.ovDraft)); fn(d); this.setState({ovDraft:d}); }
+  ovAddSub(){ this._ovMut(d=>d.sub_units.push({name:'',description:''})); }
+  ovDelSub(i){ this._ovMut(d=>d.sub_units.splice(i,1)); }
+  ovSetSub(i,f,v){ this._ovMut(d=>{d.sub_units[i][f]=v;}); }
+  ovAddPerson(){ this._ovMut(d=>d.personnel.push({role:'',duties:[]})); }
+  ovDelPerson(i){ this._ovMut(d=>d.personnel.splice(i,1)); }
+  ovSetPerson(i,f,v){ this._ovMut(d=>{d.personnel[i][f]=v;}); }
+  ovSetDuties(i,text){ this._ovMut(d=>{d.personnel[i].duties=text.split('\n').map(s=>s.trim()).filter(Boolean);}); }
+
+  openSubP(){
+    const n=this.cur().nodes.find(x=>x.id===this.state.detailNode);
+    if(!n||!n.subprocess) return;
+    this.openSubById(n.subprocess);
+  }
+  openSubById(subId){
+    if(!this.state.processes[subId]) return;
+    this.setState({stack:[...this.state.stack,this.state.currentProcess],currentProcess:subId,detailNode:null,editMode:false});
+    this.fit();
+  }
+  createSubForNode(){
+    const nodeId=this.state.detailNode; if(!nodeId) return;
+    const p=this.cur(); const dept=p.department;
+    const node=p.nodes.find(n=>n.id===nodeId); if(!node) return;
+    const newId=this.nextIdFor(dept);
+    const procs={...this.state.processes};
+    procs[newId]={id:newId,department:dept,name:'زیرفرآیندِ «'+(node.label||'')+'»',summary:'زیرفرآیند ایجادشده از یک باکس.',idef0:{inputs:[],controls:[],outputs:[],mechanisms:[]},kpis:[],pending:[],parent:{process:p.id,node:nodeId},
+      nodes:[{id:'start',type:'start',label:'شروع',position:{x:60,y:130}},{id:'end',type:'end',label:'پایان',position:{x:340,y:130}}],
+      edges:[{from:'start',to:'end',label:''}]};
+    const cp=JSON.parse(JSON.stringify(procs[p.id]));
+    cp.nodes=cp.nodes.map(n=>n.id===nodeId?{...n,subprocess:newId}:n);
+    procs[p.id]=cp;
+    this.setState({processes:procs,stack:[...this.state.stack,p.id],currentProcess:newId,detailNode:null,editMode:true,selectedNode:null});
+    this._snapshot=JSON.stringify(procs[newId]); this._hist=[JSON.stringify(procs[newId])]; this._histIdx=0; this.setState({histIdx:0,histLen:1});
+    this.fit();
+    this.setToast('زیرفرآیند '+newId+' ساخته و پیوند شد');
+  }
+  backSub(){
+    const st=[...this.state.stack]; const prev=st.pop();
+    this.setState({stack:st,currentProcess:prev,detailNode:null,editMode:false}); this.fit();
+  }
+
+  // ---------------- edit ----------------
+  applyProc(p, extra, coalesce){
+    const procs={...this.state.processes}; procs[this.state.currentProcess]=p;
+    if(coalesce && this._lastCoalesce){
+      this._hist[this.state.histIdx]=JSON.stringify(p);
+      this.setState(Object.assign({processes:procs},extra||{}));
+    } else {
+      this._hist=this._hist.slice(0,this.state.histIdx+1);
+      this._hist.push(JSON.stringify(p));
+      this.setState(Object.assign({processes:procs,histIdx:this._hist.length-1,histLen:this._hist.length},extra||{}));
+    }
+    this._lastCoalesce=!!coalesce;
+  }
+  pushHistOnly(){
+    this._hist=this._hist.slice(0,this.state.histIdx+1);
+    this._hist.push(JSON.stringify(this.cur()));
+    this.setState({histIdx:this._hist.length-1,histLen:this._hist.length});
+    this._lastCoalesce=false;
+  }
+  undo(){
+    if(this.state.histIdx<=0) return;
+    const i=this.state.histIdx-1;
+    const procs={...this.state.processes}; procs[this.state.currentProcess]=JSON.parse(this._hist[i]);
+    this.setState({processes:procs,histIdx:i,selectedNode:null,selectedEdge:null,detailNode:null});
+    this._lastCoalesce=false; this.setToast('واگرد');
+  }
+  redo(){
+    if(this.state.histIdx>=this._hist.length-1) return;
+    const i=this.state.histIdx+1;
+    const procs={...this.state.processes}; procs[this.state.currentProcess]=JSON.parse(this._hist[i]);
+    this.setState({processes:procs,histIdx:i,selectedNode:null,selectedEdge:null,detailNode:null});
+    this._lastCoalesce=false; this.setToast('ازنو');
+  }
+  enterEdit(){ this._snapshot=JSON.stringify(this.state.processes[this.state.currentProcess]); this._hist=[this._snapshot]; this._lastCoalesce=false; this.setState({editMode:true,histIdx:0,histLen:1}); }
+  cancelEdit(){
+    const procs={...this.state.processes};
+    procs[this.state.currentProcess]=JSON.parse(this._snapshot);
+    this.setState({processes:procs,editMode:false,selectedNode:null,detailNode:null});
+    this.setToast('تغییرات لغو شد');
+  }
+  saveEdit(){
+    const p=this.cur();
+    this.setState({editMode:false,selectedNode:null});
+    this.setToast('ذخیره شد · ui-edit('+p.id+')');
+  }
+  allocId(type){
+    const p=this.cur(); const pid=p.id;
+    if(type==='junction'){
+      let mx=0; p.nodes.forEach(n=>{const m=/-j(\d+)$/.exec(n.id); if(m)mx=Math.max(mx,+m[1]);});
+      return pid+'-j'+(mx+1);
+    }
+    let mx=0; p.nodes.forEach(n=>{const m=/-n(\d+)$/.exec(n.id); if(m)mx=Math.max(mx,+m[1]);});
+    return pid+'-n'+String(mx+10).padStart(3,'0');
+  }
+  centerPos(){ const v=this.state.view; return {x:(300-v.tx)/v.scale, y:(220-v.ty)/v.scale}; }
+  addActivity(){
+    const procs={...this.state.processes}; const p={...procs[this.state.currentProcess]};
+    const id=this.allocId('activity'); const pos=this.centerPos();
+    p.nodes=[...p.nodes,{id,type:'activity',label:'فعالیت جدید',actor:'',desc:'',icom:{inputs:[],controls:[],outputs:[],mechanisms:[]},subprocess:null,position:pos,layout:'manual',source:'ui'}];
+    this.applyProc(p,{selectedNode:id,detailNode:id});
+    this.setToast('فعالیت افزوده شد · '+id);
+  }
+  addJunction(){
+    const procs={...this.state.processes}; const p={...procs[this.state.currentProcess]};
+    const id=this.allocId('junction'); const pos=this.centerPos();
+    p.nodes=[...p.nodes,{id,type:'junction',junctionType:'XOR',direction:'split',position:pos,layout:'manual'}];
+    this.applyProc(p,{selectedNode:id,detailNode:id});
+    this.setToast('دروازه افزوده شد — نوعش را انتخاب کنید');
+  }
+  setJType(t){
+    const p={...this.state.processes[this.state.currentProcess]};
+    p.nodes=p.nodes.map(n=> n.id===this.state.detailNode ? {...n,junctionType:t} : n);
+    this.applyProc(p);
+    this.setToast('نوع دروازه: '+t);
+  }
+  deleteSel(){
+    const sel=this.state.selectedNode;
+    if(!sel||sel==='start'||sel==='end'){ this.setToast('گرهی برای حذف انتخاب نشده'); return; }
+    const p={...this.state.processes[this.state.currentProcess]};
+    p.nodes=p.nodes.map(n=> n.id===sel ? {...n,removed:!n.removed} : n);
+    this.applyProc(p);
+    this.setToast('علامت‌گذاری برای حذف (بدون حذف خودکار)');
+  }
+  relayout(){
+    const p={...this.state.processes[this.state.currentProcess]};
+    // order by edges from start
+    const order=[]; const seen={}; const adj={};
+    p.edges.forEach(e=>{(adj[e.from]=adj[e.from]||[]).push(e.to);});
+    const walk=(id)=>{ if(seen[id])return; seen[id]=1; order.push(id); (adj[id]||[]).forEach(walk); };
+    walk('start'); p.nodes.forEach(n=>{ if(!seen[n.id])order.push(n.id); });
+    const per=4,sx=40,sy=90,gx=210,gy=175;
+    p.nodes=p.nodes.map(n=>{
+      const k=order.indexOf(n.id); const row=Math.floor(k/per); let col=k%per; if(row%2===1)col=per-1-col;
+      return {...n,position:{x:sx+col*gx,y:sy+row*gy},layout:'auto'};
+    });
+    this.applyProc(p);
+    this.setToast('چیدمان مجدد انجام شد');
+  }
+  editField(field,val){
+    const p={...this.state.processes[this.state.currentProcess]};
+    p.nodes=p.nodes.map(n=> n.id===this.state.detailNode ? {...n,[field]:val} : n);
+    this.applyProc(p,undefined,true);
+  }
+
+  // ---------------- summary edit ----------------
+  enterSummaryEdit(){ this._sumSnap=JSON.stringify(this.state.processes[this.state.currentProcess]); this.setState({summaryEdit:true}); }
+  cancelSummaryEdit(){ const procs={...this.state.processes}; procs[this.state.currentProcess]=JSON.parse(this._sumSnap); this.setState({processes:procs,summaryEdit:false}); this.setToast('تغییرات لغو شد'); }
+  saveSummaryEdit(){ this.setState({summaryEdit:false}); this.setToast('اطلاعات فرآیند ذخیره شد'); }
+  mutSummary(fn){ const procs={...this.state.processes}; const p=JSON.parse(JSON.stringify(procs[this.state.currentProcess])); if(!p.idef0)p.idef0={inputs:[],controls:[],outputs:[],mechanisms:[]}; if(!p.kpis)p.kpis=[]; fn(p); procs[this.state.currentProcess]=p; this.setState({processes:procs}); }
+  setProcField(f,v){ this.mutSummary(p=>{p[f]=v;}); }
+  setIcom(g,i,v){ this.mutSummary(p=>{p.idef0[g][i]=v;}); }
+  addIcom(g){ this.mutSummary(p=>{p.idef0[g].push('');}); }
+  delIcom(g,i){ this.mutSummary(p=>{p.idef0[g].splice(i,1);}); }
+  addKpi(){ this.mutSummary(p=>{p.kpis.push({name:'',definition:'',target:'',unit:''});}); }
+  setKpi(i,f,v){ this.mutSummary(p=>{p.kpis[i][f]=v;}); }
+  delKpi(i){ this.mutSummary(p=>{p.kpis.splice(i,1);}); }
+
+  // ---------------- conflicts ----------------
+  resolveConflict(idx,accept){
+    const procs={...this.state.processes}; const p={...procs[this.state.currentProcess]};
+    const c=p.pending[idx];
+    if(accept){ p.nodes=p.nodes.map(n=> n.id===c.node ? {...n,[c.field]:c.proposed} : n); }
+    p.pending=p.pending.filter((_,i)=>i!==idx);
+    procs[this.state.currentProcess]=p;
+    this.setState({processes:procs});
+    this.setToast(accept?'پیشنهاد پذیرفته و اعمال شد':'پیشنهاد رد شد');
+  }
+
+  // ---------------- create ----------------
+  nextIdFor(dept){
+    let mx=0; Object.values(this.state.processes).forEach(p=>{ const m=new RegExp('^'+dept+'-(\\d+)$').exec(p.id); if(m)mx=Math.max(mx,+m[1]); });
+    return dept+'-'+String(mx+1).padStart(3,'0');
+  }
+  doCreate(){
+    const dept=this.state.currentDept; const id=this.nextIdFor(dept);
+    const name=this.state.createName.trim()||'فرآیند جدید';
+    const procs={...this.state.processes};
+    procs[id]={id,department:dept,name,summary:'فرآیند دستی ایجادشده.',idef0:{inputs:[],controls:[],outputs:[],mechanisms:[]},kpis:[],pending:[],parent:null,
+      nodes:[{id:'start',type:'start',label:'شروع',position:{x:60,y:120}},{id:'end',type:'end',label:'پایان',position:{x:320,y:120}}],
+      edges:[{from:'start',to:'end',label:''}]};
+    this.setState({processes:procs,showCreate:false,createName:'',currentProcess:id,screen:'flow',editMode:true,detailNode:null,histIdx:0,histLen:1});
+    this._snapshot=JSON.stringify(procs[id]);
+    this._hist=[this._snapshot]; this._lastCoalesce=false;
+    this.fit();
+    this.setToast('شناسهٔ '+id+' تخصیص یافت');
+  }
+
+  // ---------------- render ----------------
+  renderVals(){
+    const S=this.state;
+    const chipInput='font-size:11px;color:#1F6FB2;background:#E7F1FB;padding:3px 9px;border-radius:7px;white-space:nowrap';
+    const chipControl='font-size:11px;color:#8A5A00;background:#FBF0DA;padding:3px 9px;border-radius:7px;white-space:nowrap';
+    const chipOutput='font-size:11px;color:#1F8A5B;background:#E4F6EC;padding:3px 9px;border-radius:7px;white-space:nowrap';
+    const chipMech='font-size:11px;color:#4A25A9;background:#F0E9FB;padding:3px 9px;border-radius:7px;white-space:nowrap';
+    const tile=(t)=> t==='c'
+      ? 'width:48px;height:48px;border-radius:14px;background:#FFE9E7;color:#E23D35;display:flex;align-items:center;justify-content:center;flex:none'
+      : 'width:48px;height:48px;border-radius:14px;background:#F0E9FB;color:#4A25A9;display:flex;align-items:center;justify-content:center;flex:none';
+
+    const base={
+      isLogin:!S.authed, isApp:S.authed,
+      isDepartments:S.authed&&S.screen==='departments',
+      isProcessList:S.authed&&S.screen==='processList',
+      isSummary:S.authed&&S.screen==='summary',
+      isFlow:S.authed&&S.screen==='flow',
+      loginUser:S.loginUser, loginPass:S.loginPass,
+      onUser:(e)=>this.setState({loginUser:e.target.value}),
+      onPass:(e)=>this.setState({loginPass:e.target.value}),
+      doLogin:()=>this.login(),
+      goHome:()=>this.goDepts(),
+      canBack:S.authed && S.screen!=='departments',
+      goBack:()=>this.goBack(),
+      chipInput,chipControl,chipOutput,chipMech,
+      // hover styles
+      coralHover:{filter:'brightness(1.06)',transform:'translateY(-1px)'},
+      violetHover:{filter:'brightness(1.12)'},
+      greenHover:{filter:'brightness(1.08)'},
+      ghostHover:{background:'#F4EFFB'},
+      cardHover:{transform:'translateY(-2px)',boxShadow:'0 14px 30px -14px rgba(74,37,169,.45)'},
+      inputFocus:{borderColor:'#FA5A52'},
+      toolBtn:'display:flex;align-items:center;gap:5px;padding:7px 11px;border:none;background:#fff;border-radius:9px;font-family:inherit;font-size:12px;font-weight:600;color:#4A25A9;cursor:pointer',
+      toolBtnDel:'display:flex;align-items:center;gap:5px;padding:7px 11px;border:none;background:#fff;border-radius:9px;font-family:inherit;font-size:12px;font-weight:600;color:#E23D35;cursor:pointer',
+      zoomBtn:'width:32px;height:32px;border:none;background:#fff;border-radius:8px;font-size:19px;font-weight:600;color:#4A25A9;cursor:pointer;display:flex;align-items:center;justify-content:center',
+      zoomBtnSm:'width:32px;height:32px;border:none;background:#fff;border-radius:8px;color:#4A25A9;cursor:pointer;display:flex;align-items:center;justify-content:center',
+      fieldLabel:'display:block;font-size:12px;font-weight:600;color:#4A25A9;margin:14px 0 6px',
+      fieldInput:'width:100%;padding:10px 12px;border:1.5px solid #E3D8F5;border-radius:10px;font-size:13px;color:#2A1D5E;background:#fff;outline:none;font-family:inherit',
+      fieldArea:'width:100%;padding:10px 12px;border:1.5px solid #E3D8F5;border-radius:10px;font-size:13px;color:#2A1D5E;background:#fff;outline:none;font-family:inherit;resize:vertical;line-height:1.6',
+      // departments
+      departments:S.departments.map(d=>({
+        name:d.name, icon:d.icon, tileStyle:tile(d.t),
+        countLabel:this.toFa(d.count)+' فرآیند',
+        open:()=>this.openDept(d.code),
+      })),
+      // inbox / create flags
+      showInbox:S.showInbox, showCreate:S.showCreate,
+      openInbox:()=>this.setState({showInbox:true}),
+      closeInbox:()=>this.setState({showInbox:false}),
+      openCreate:()=>this.setState({showCreate:true,createName:''}),
+      closeCreate:()=>this.setState({showCreate:false}),
+      onCreateName:(e)=>this.setState({createName:e.target.value}),
+      createName:S.createName,
+      doCreate:()=>this.doCreate(),
+      stop:(e)=>e.stopPropagation(),
+      showToast:!!S.toast, toast:S.toast||'',
+    };
+
+    // department object (for list/summary/create)
+    const dobj=S.departments.find(d=>d.code===S.currentDept);
+    if(dobj){
+      base.deptObj={name:dobj.name,icon:dobj.icon,tileStyle:tile(dobj.t),countLabel:this.toFa(dobj.count)+' فرآیند مستندشده'};
+      base.nextId=this.nextIdFor(S.currentDept);
+    } else { base.deptObj={name:'',icon:'',tileStyle:tile('v'),countLabel:''}; base.nextId=''; }
+
+    // process list
+    if(S.currentDept){
+      const q=(S.listSearch||'').trim();
+      base.listSearch=S.listSearch||'';
+      base.setListSearch=(e)=>this.setState({listSearch:e.target.value});
+      base.clearListSearch=()=>this.setState({listSearch:''});
+      base.hasListSearch=q.length>0;
+      base.processList=Object.values(S.processes).filter(p=>p.department===S.currentDept&&!p.parent&&(!q||(p.name||'').includes(q)||(p.id||'').includes(q))).map(p=>{
+        const nc=p.nodes.filter(n=>n.type==='activity'&&!n.removed).length;
+        const tag=p.pending&&p.pending.length? this.toFa(p.pending.length)+' تعارض' : (p.kpis&&p.kpis.length?'دارای KPI':'مستند');
+        const tagStyle=p.pending&&p.pending.length
+          ? 'font-size:10.5px;color:#E23D35;background:#FFE9E7;padding:2px 8px;border-radius:20px;font-weight:600'
+          : 'font-size:10.5px;color:#4A25A9;background:#F0E9FB;padding:2px 8px;border-radius:20px;font-weight:600';
+        return {id:p.id,name:p.name,summary:p.summary,nodeCountFa:this.toFa(nc),tag,tagStyle,openSummary:()=>this.openProc(p.id),openFlowD:()=>this.openProcFlow(p.id)};
+      });
+      base.listEmpty=base.processList.length===0;
+    } else { base.processList=[]; base.listSearch=''; base.setListSearch=()=>{}; base.clearListSearch=()=>{}; base.hasListSearch=false; base.listEmpty=false; }
+
+    // department overview
+    base.isOverview=S.authed&&S.screen==='overview';
+    base.goOverview=()=>this.goOverview();
+    base.enterOvEdit=()=>this.enterOvEdit();
+    base.cancelOvEdit=()=>this.cancelOvEdit();
+    base.saveOvEdit=()=>this.saveOvEdit();
+    base.ovAddSub=()=>this.ovAddSub();
+    base.ovAddPerson=()=>this.ovAddPerson();
+    base.ovIsView=!S.ovEdit; base.ovIsEdit=!!S.ovEdit;
+    {
+      const src=(S.ovEdit&&S.ovDraft)?S.ovDraft:(S.currentDept?S.overviews[S.currentDept]:null);
+      if(src){
+        base.ov={name:src.name,updatedAt:src.updated_at};
+        base.ovSubs=src.sub_units.map(s=>({name:s.name,description:s.description}));
+        base.ovSubsEmpty=src.sub_units.length===0;
+        base.ovPeople=src.personnel.map(pr=>({role:pr.role,dutiesList:pr.duties||[],dutiesEmpty:!(pr.duties&&pr.duties.length)}));
+        base.ovPeopleEmpty=src.personnel.length===0;
+        base.ovSubsE=src.sub_units.map((s,i)=>({name:s.name,description:s.description,setName:(e)=>this.ovSetSub(i,'name',e.target.value),setDesc:(e)=>this.ovSetSub(i,'description',e.target.value),del:()=>this.ovDelSub(i)}));
+        base.ovPeopleE=src.personnel.map((pr,i)=>({role:pr.role,dutiesText:(pr.duties||[]).join('\n'),setRole:(e)=>this.ovSetPerson(i,'role',e.target.value),setDuties:(e)=>this.ovSetDuties(i,e.target.value),del:()=>this.ovDelPerson(i)}));
+      } else {
+        base.ov={name:'',updatedAt:''}; base.ovSubs=[]; base.ovSubsEmpty=true; base.ovPeople=[]; base.ovPeopleEmpty=true; base.ovSubsE=[]; base.ovPeopleE=[];
+      }
+    }
+
+    // current process
+    const p=S.processes[S.currentProcess];
+    if(p){
+      base.procObj={id:p.id,name:p.name,summary:p.summary,isSub:!!p.parent};
+      base.idef=p.idef0;
+      base.summaryEdit=S.summaryEdit;
+      base.summaryView=!S.summaryEdit;
+      base.enterSummaryEdit=()=>this.enterSummaryEdit();
+      base.cancelSummaryEdit=()=>this.cancelSummaryEdit();
+      base.saveSummaryEdit=()=>this.saveSummaryEdit();
+      base.setName=(e)=>this.setProcField('name',e.target.value);
+      base.setSummaryText=(e)=>this.setProcField('summary',e.target.value);
+      base.icomGroups=[
+        {key:'inputs',label:'ورودی‌ها',chip:chipInput},
+        {key:'controls',label:'کنترل‌ها',chip:chipControl},
+        {key:'outputs',label:'خروجی‌ها',chip:chipOutput},
+        {key:'mechanisms',label:'مکانیزم‌ها',chip:chipMech},
+      ].map(g=>({label:g.label,chip:g.chip,add:()=>this.addIcom(g.key),items:((p.idef0&&p.idef0[g.key])||[]).map((v,i)=>({v,set:(e)=>this.setIcom(g.key,i,e.target.value),del:()=>this.delIcom(g.key,i)}))}));
+      base.kpisEdit=(p.kpis||[]).map((k,i)=>({name:k.name,definition:k.definition,target:k.target,setName:(e)=>this.setKpi(i,'name',e.target.value),setDef:(e)=>this.setKpi(i,'definition',e.target.value),setTarget:(e)=>this.setKpi(i,'target',e.target.value),del:()=>this.delKpi(i)}));
+      base.addKpi=()=>this.addKpi();
+      base.kpis=p.kpis; base.hasKpis=p.kpis.length>0; base.noKpis=p.kpis.length===0;
+      base.kpiViewHas=!S.summaryEdit && p.kpis.length>0; base.kpiViewNone=!S.summaryEdit && p.kpis.length===0;
+      base.pendingList=(p.pending||[]).map((c,i)=>({...c,accept:()=>this.resolveConflict(i,true),reject:()=>this.resolveConflict(i,false),goTo:()=>{this.setState({showInbox:false,screen:'flow',summaryEdit:false,detailNode:c.node,selectedNode:c.node,selectedEdge:null});this.fit();}}));
+      base.hasPending=(p.pending||[]).length>0; base.noPending=(p.pending||[]).length===0;
+      base.pendingCountFa=this.toFa((p.pending||[]).length);
+    } else {
+      base.procObj={id:'',name:'',summary:'',isSub:false}; base.idef={inputs:[],controls:[],outputs:[],mechanisms:[]};
+      base.kpis=[]; base.hasKpis=false; base.noKpis=true; base.pendingList=[]; base.hasPending=false; base.noPending=true; base.pendingCountFa='۰';
+      base.kpiViewHas=false; base.kpiViewNone=false;
+      base.summaryEdit=false; base.summaryView=false; base.enterSummaryEdit=()=>{}; base.cancelSummaryEdit=()=>{}; base.saveSummaryEdit=()=>{}; base.setName=()=>{}; base.setSummaryText=()=>{}; base.icomGroups=[]; base.kpisEdit=[]; base.addKpi=()=>{};
+    }
+
+    // flow view
+    base.editMode=S.editMode; base.viewMode=!S.editMode;
+    base.openFlow=()=>this.openFlow();
+    base.enterEdit=()=>this.enterEdit(); base.cancelEdit=()=>this.cancelEdit(); base.saveEdit=()=>this.saveEdit();
+    base.addActivity=()=>this.addActivity(); base.addJunction=()=>this.addJunction(); base.deleteSel=()=>this.deleteSel(); base.relayout=()=>this.relayout();
+    base.undo=()=>this.undo(); base.redo=()=>this.redo();
+    base.canUndo=S.histIdx>0; base.canRedo=S.histIdx<S.histLen-1;
+    base.undoStyle='display:flex;align-items:center;justify-content:center;width:34px;height:34px;border:none;background:#fff;border-radius:9px;color:'+(S.histIdx>0?'#4A25A9':'#cfc7e0')+';cursor:'+(S.histIdx>0?'pointer':'default')+'';
+    base.redoStyle='display:flex;align-items:center;justify-content:center;width:34px;height:34px;border:none;background:#fff;border-radius:9px;color:'+(S.histIdx<S.histLen-1?'#4A25A9':'#cfc7e0')+';cursor:'+(S.histIdx<S.histLen-1?'pointer':'default')+'';
+    base.zoomIn=()=>this.zoom(1.2); base.zoomOut=()=>this.zoom(1/1.2); base.fitView=()=>this.fit();
+    base.backFromSub=()=>this.backSub();
+    base.onBgDown=(e)=>this.onBgDown(e);
+    base.vpRef=this.vp;
+    base.viewportStyle='flex:1;position:relative;overflow:hidden;background:#F6F2FB;background-image:radial-gradient(#DDD3F0 1.2px,transparent 1.2px);background-size:22px 22px;cursor:grab;min-height:0';
+    base.worldStyle={position:'absolute',left:0,top:0,transform:`translate(${S.view.tx}px,${S.view.ty}px) scale(${S.view.scale})`,transformOrigin:'0 0'};
+
+    // nodes + edges
+    if(p){
+      const jColors={XOR:'#FA5A52',AND:'#4A25A9',OR:'#E8A33D'};
+      base.nodesR=p.nodes.map(n=>{
+        const d=this.dims(n); const sel=S.selectedNode===n.id;
+        const wrap={position:'absolute',left:n.position.x+'px',top:n.position.y+'px',cursor:S.editMode?'grab':'pointer',opacity:n.removed?0.4:1,zIndex:sel?6:2};
+        if(n.type!=='activity'){ wrap.width=d.w+'px'; wrap.height=d.h+'px'; }
+        const out={id:n.id,wrapStyle:wrap,isActivity:n.type==='activity',isJunction:n.type==='junction',isTerminal:(n.type==='start'||n.type==='end'),onDown:(e)=>this.onNodeDown(n.id,e)};
+        out.showHandle=S.editMode;
+        out.handleStyle='position:absolute;left:'+(d.w-7)+'px;top:'+(d.h/2-7)+'px;width:14px;height:14px;border-radius:50%;background:#FA5A52;border:2.5px solid #fff;box-shadow:0 2px 7px rgba(250,90,82,.7);cursor:crosshair;z-index:9';
+        out.onLink=(e)=>this.startLink(n.id,e);
+        if(n.type==='activity'){
+          out.idShort=n.id.replace(p.id+'-',''); out.label=n.label; out.actor=n.actor||''; out.hasActor=!!n.actor; out.hasSub=!!n.subprocess;
+          out.hasConflict=(p.pending||[]).some(c=>c.node===n.id); out.conflictCountFa=this.toFa((p.pending||[]).filter(c=>c.node===n.id).length);
+          out.cardStyle='position:relative;min-width:132px;max-width:230px;width:max-content;background:#fff;border-radius:12px;padding:19px 12px 11px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;box-shadow:'+(sel?'0 0 0 2.5px #FA5A52,0 10px 22px -12px rgba(74,37,169,.5)':'0 4px 14px -8px rgba(74,37,169,.4)')+';border:1px solid '+(sel?'#FA5A52':'#ECE3F8')+(n.removed?';text-decoration:line-through':'');
+          out.stopDown=(e)=>{e.stopPropagation();};
+          out.openDetail=(e)=>{if(e&&e.stopPropagation)e.stopPropagation(); this.setState({detailNode:n.id,selectedNode:n.id,selectedEdge:null});};
+          out.menuHover={background:'#F4EFFB'};
+        } else if(n.type==='junction'){
+          out.jt=n.junctionType;
+          out.diamondStyle='position:absolute;inset:8px;background:'+jColors[n.junctionType]+';border-radius:6px;transform:rotate(45deg);box-shadow:'+(sel?'0 0 0 2.5px rgba(250,90,82,.5),':'')+'0 6px 14px -8px rgba(0,0,0,.4)';
+        } else {
+          out.label=n.label;
+          const c=n.type==='start'?'#4A25A9':'#fff'; const bg=n.type==='start'?'#4A25A9':'#fff'; const col=n.type==='start'?'#fff':'#4A25A9';
+          out.termStyle='width:100%;height:100%;display:flex;align-items:center;justify-content:center;border-radius:24px;font-weight:700;font-size:13px;background:'+bg+';color:'+col+';border:2px solid #4A25A9;box-shadow:'+(sel?'0 0 0 2.5px #FA5A52,':'')+'0 6px 16px -10px rgba(74,37,169,.5)';
+        }
+        return out;
+      });
+      // edges
+      const nmap={}; p.nodes.forEach(n=>{nmap[n.id]={n,d:this.dims(n)};});
+      base.edgesR=[]; base.edgeLabels=[]; base.edgeDel=[];
+      p.edges.forEach((e,i)=>{
+        const A=nmap[e.from],B=nmap[e.to]; if(!A||!B)return;
+        const acx=A.n.position.x+A.d.w/2, acy=A.n.position.y+A.d.h/2;
+        const bcx=B.n.position.x+B.d.w/2, bcy=B.n.position.y+B.d.h/2;
+        const dxAbs=Math.abs(bcx-acx), dyAbs=Math.abs(bcy-acy);
+        let sx,sy,ex,ey,c1x,c1y,c2x,c2y;
+        if(dxAbs>=dyAbs){
+          const right=bcx>=acx;
+          sx=right?A.n.position.x+A.d.w:A.n.position.x; sy=acy;
+          ex=right?B.n.position.x:B.n.position.x+B.d.w; ey=bcy;
+          const off=Math.max(45,dxAbs/2);
+          c1x=right?sx+off:sx-off; c1y=sy; c2x=right?ex-off:ex+off; c2y=ey;
+        } else {
+          const down=bcy>=acy;
+          sx=acx; sy=down?A.n.position.y+A.d.h:A.n.position.y;
+          ex=bcx; ey=down?B.n.position.y:B.n.position.y+B.d.h;
+          const off=Math.max(34,dyAbs/2);
+          c1x=sx; c1y=down?sy+off:sy-off; c2x=ex; c2y=down?ey-off:ey+off;
+        }
+        const dd='M'+sx+','+sy+' C'+c1x+','+c1y+' '+c2x+','+c2y+' '+ex+','+ey;
+        const op=(A.n.removed||B.n.removed)?0.3:1;
+        const sel=S.selectedEdge===i;
+        base.edgesR.push({d:dd,op,stroke:sel?'#FA5A52':'#9B86D9',w:sel?3:2,hitStyle:S.editMode?'pointer-events:stroke;cursor:pointer':'pointer-events:none',onSel:(ev)=>{if(ev&&ev.stopPropagation)ev.stopPropagation(); this.selectEdge(i);}});
+        const mx=(sx+ex)/2, my=(sy+ey)/2;
+        if(e.label){
+          base.edgeLabels.push({label:e.label,style:{position:'absolute',left:(mx-30)+'px',top:(my-11)+'px',background:'#fff',border:'1px solid #ECE3F8',color:'#8a7db0',fontSize:'10px',fontWeight:600,padding:'2px 8px',borderRadius:'20px',whiteSpace:'nowrap',pointerEvents:'none'}});
+        }
+        if(sel && S.editMode){
+          base.edgeDel.push({onDel:(ev)=>{if(ev&&ev.stopPropagation)ev.stopPropagation(); this.deleteEdge(i);},style:{position:'absolute',left:(mx-12)+'px',top:(my-12)+'px',width:'24px',height:'24px',borderRadius:'50%',background:'#FA5A52',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'16px',fontWeight:700,cursor:'pointer',boxShadow:'0 4px 12px -4px rgba(250,90,82,.9)',border:'2px solid #fff',zIndex:10}});
+        }
+      });
+      if(S.linkFrom && nmap[S.linkFrom] && S.linkPos){
+        const A=nmap[S.linkFrom]; const sx=A.n.position.x+A.d.w, sy=A.n.position.y+A.d.h/2; const ex=S.linkPos.x, ey=S.linkPos.y; const dx=Math.max(40,Math.abs(ex-sx)/2);
+        base.linkActive=true; base.linkD='M'+sx+','+sy+' C'+(sx+dx)+','+sy+' '+(ex-dx)+','+ey+' '+ex+','+ey;
+      } else { base.linkActive=false; base.linkD=''; }
+      // detail
+      const dn=p.nodes.find(n=>n.id===S.detailNode);
+      base.detailOpen=!!dn && (S.screen==='flow');
+      if(dn){
+        const isJ=dn.type==='junction';
+        const jc={XOR:'#FA5A52',AND:'#4A25A9',OR:'#E8A33D'};
+        const jbtn=(t)=>{ const on=dn.junctionType===t; return 'flex:1;text-align:center;padding:10px;border-radius:10px;font-family:inherit;font-weight:700;font-size:12.5px;cursor:pointer;'+(on?('background:'+jc[t]+';color:#fff;border:2px solid '+jc[t]):'background:#fff;color:#8a7db0;border:2px solid #E3D8F5'); };
+        base.detail={id:dn.id,isJunction:isJ,isActivity:dn.type==='activity',
+          jt:dn.junctionType||'',jtLabel:({XOR:'یای انحصاری (XOR) — فقط یکی از مسیرها فعال می‌شود.',AND:'وَ (AND) — همهٔ مسیرها هم‌زمان.',OR:'یا (OR) — یک یا چند مسیر.'})[dn.junctionType]||'',
+          setXOR:()=>this.setJType('XOR'),setAND:()=>this.setJType('AND'),setOR:()=>this.setJType('OR'),
+          btnXOR:jbtn('XOR'),btnAND:jbtn('AND'),btnOR:jbtn('OR'),
+          label:dn.label||'',actor:dn.actor||'—',actorRaw:dn.actor||'',desc:dn.desc||'بدون توضیحات ثبت‌شده.',descRaw:dn.desc||'',
+          inputs:(dn.icom&&dn.icom.inputs)||[],controls:(dn.icom&&dn.icom.controls)||[],outputs:(dn.icom&&dn.icom.outputs)||[],mechanisms:(dn.icom&&dn.icom.mechanisms)||[],
+          hasSub:!!dn.subprocess,source:dn.source||'—',
+          subRaw:dn.subprocess||'',
+          subValid:!!dn.subprocess && !!S.processes[dn.subprocess],
+          subInvalid:!!dn.subprocess && !S.processes[dn.subprocess],
+          subName:(dn.subprocess&&S.processes[dn.subprocess])?S.processes[dn.subprocess].name:'',
+          hasConflict:(p.pending||[]).some(c=>c.node===dn.id),
+          conflictCountFa:this.toFa((p.pending||[]).filter(c=>c.node===dn.id).length),
+          conflicts:(p.pending||[]).map((c,i)=>({c,i})).filter(o=>o.c.node===dn.id).map(o=>({fieldFa:o.c.fieldFa,current:o.c.current,proposed:o.c.proposed,source:o.c.source,accept:()=>this.resolveConflict(o.i,true),reject:()=>this.resolveConflict(o.i,false)}))};
+      } else base.detail={id:'',isJunction:false,isActivity:false,jt:'',jtLabel:'',setXOR:()=>{},setAND:()=>{},setOR:()=>{},btnXOR:'',btnAND:'',btnOR:'',label:'',actor:'',actorRaw:'',desc:'',descRaw:'',inputs:[],controls:[],outputs:[],mechanisms:[],hasSub:false,source:'',hasConflict:false,conflictCountFa:'۰',conflicts:[],subRaw:'',subValid:false,subInvalid:false,subName:''};
+      base.detailViewAct=base.detailOpen && !S.editMode && base.detail.isActivity;
+      base.detailEditAct=base.detailOpen && S.editMode && base.detail.isActivity;
+      base.detailJuncView=base.detailOpen && !S.editMode && base.detail.isJunction;
+      base.detailJuncEdit=base.detailOpen && S.editMode && base.detail.isJunction;
+      base.closeDetail=()=>this.setState({detailNode:null});
+      base.openSub=()=>this.openSubP();
+      base.editLabel=(e)=>this.editField('label',e.target.value);
+      base.editActor=(e)=>this.editField('actor',e.target.value);
+      base.editDesc=(e)=>this.editField('desc',e.target.value);
+      base.editSub=(e)=>this.editField('subprocess',e.target.value.trim()||null);
+      base.createSub=()=>this.createSubForNode();
+    } else {
+      base.nodesR=[]; base.edgesR=[]; base.edgeLabels=[]; base.edgeDel=[]; base.linkActive=false; base.linkD=''; base.detailOpen=false;
+      base.detail={id:'',isJunction:false,isActivity:false,jt:'',jtLabel:'',setXOR:()=>{},setAND:()=>{},setOR:()=>{},btnXOR:'',btnAND:'',btnOR:'',label:'',actor:'',actorRaw:'',desc:'',descRaw:'',inputs:[],controls:[],outputs:[],mechanisms:[],hasSub:false,source:'',hasConflict:false,conflictCountFa:'۰',conflicts:[],subRaw:'',subValid:false,subInvalid:false,subName:''};
+      base.detailViewAct=false; base.detailEditAct=false; base.detailJuncView=false; base.detailJuncEdit=false;
+      base.closeDetail=()=>{}; base.openSub=()=>{}; base.editLabel=()=>{}; base.editActor=()=>{}; base.editDesc=()=>{}; base.editSub=()=>{}; base.createSub=()=>{};
+    }
+
+    // breadcrumb
+    const cr=[{label:'دپارتمان‌ها',go:()=>this.goDepts(),leaf:false}];
+    if(S.currentDept&&(S.screen==='processList'||S.screen==='summary'||S.screen==='flow'||S.screen==='overview')) cr.push({label:base.deptObj.name,go:()=>this.goList(),leaf:S.screen==='processList'});
+    if(S.screen==='overview') cr.push({label:'اطلاعات دپارتمان',go:()=>{},leaf:true});
+    if(p&&(S.screen==='summary'||S.screen==='flow')) cr.push({label:p.name,go:()=>this.goSummary(),leaf:S.screen==='summary'});
+    if(p&&S.screen==='flow') cr.push({label:'فلوچارت',go:()=>{},leaf:true});
+    base.crumbs=cr.map((c,i)=>({label:(i>0?'/ ':'')+c.label,go:c.go,style:'cursor:pointer;'+(c.leaf?'color:#2A1D5E;font-weight:700':'color:#8a7db0')}));
+
+    return base;
+  }
+}
+</script>
+</body>
+</html>

@@ -24,3 +24,4 @@ __pycache__/
 # Dev tooling caches
 .pytest_cache/
 .ruff_cache/
+*.log
