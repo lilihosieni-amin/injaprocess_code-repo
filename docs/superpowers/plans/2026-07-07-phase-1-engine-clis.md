@@ -1057,7 +1057,11 @@ NOW = "2026-07-11T09:00:00Z"
 
 
 def _proc_with_pending():
-    p = copy.deepcopy(load_fixture("process.cooking-001.json"))  # has 1 open pending
+    # the golden fixture has empty pending; build one targeting a real node
+    p = copy.deepcopy(load_fixture("process.cooking-001.json"))
+    p["pending"].append({"node": "cooking-001-n010", "field": "actor",
+                         "current": "کارپرداز", "proposed": "انباردار",
+                         "source": "runs/cooking-2026-07-10", "status": "open"})
     return p
 
 
@@ -1081,7 +1085,7 @@ def test_reject_closes_without_changing_node(data_root):
     assert p["pending"][0]["status"] == "rejected"
 ```
 
-> Note: the `process.cooking-001.json` fixture's open `pending` row targets node `cooking-001-n020`, which is not among the fixture's nodes. Before Step 1, add a matching node to the fixture OR point the test at an existing node. Simplest: in this test, set `p["pending"][0]["node"] = "cooking-001-n010"` and `field="actor"` after loading, so accept has a real node to write. Do that in `_proc_with_pending()`.
+> Note: the `process.cooking-001.json` fixture has `pending: []` (Task 7 removed a dangling row). `_proc_with_pending()` above builds its own open row targeting the real node `cooking-001-n010` (`field="actor"`), so `accept` has a real node to write into.
 
 `engine/tests/test_merge_cli.py`:
 ```python
