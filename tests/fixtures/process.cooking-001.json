@@ -43,7 +43,5 @@
     { "from": "cooking-001-j1", "to": "cooking-001-n060", "label": "نیاز به تأیید" },
     { "from": "cooking-001-n060", "to": "end" }
   ],
-  "pending": [
-    { "node": "cooking-001-n020", "field": "actor", "current": "مدیر رستوران", "proposed": "معاون مدیر", "source": "runs/cooking-2026-07-10", "status": "open" }
-  ]
+  "pending": []
 }

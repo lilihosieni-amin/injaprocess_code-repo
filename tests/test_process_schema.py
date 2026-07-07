@@ -35,7 +35,9 @@ def test_activity_extra_field_rejected(validate):
 def test_pending_original_value_untouched_shape(validate):
     # pending rows carry current + proposed + status (FR-M3)
     p = copy.deepcopy(load_fixture("process.cooking-001.json"))
-    p["pending"][0]["status"] = "banana"  # not in enum
+    p["pending"].append({"node": "cooking-001-n010", "field": "actor",
+                         "current": "کارپرداز", "proposed": "انباردار",
+                         "source": "runs/cooking-2026-07-10", "status": "banana"})
     assert validate(SCHEMA, p) != []
 
 

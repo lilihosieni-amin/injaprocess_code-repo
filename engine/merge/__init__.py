@@ -1,6 +1,6 @@
 from allocate_id import next_box_id, next_junction_id, next_process_id
-from engine_common import validate
-from layout import full_relayout
+from engine_common import is_empty, validate
+from layout import full_relayout, local_relayout, topo_order
 
 
 def _new_node(cand_node, nid, run):
@@ -53,5 +53,55 @@ def merge_new(candidate, dept, run, now, root=None):
             raise ValueError(f"candidate edge references unknown node key: {e}")
     process["edges"] = _map_edges(candidate["edges"], keymap)
     full_relayout(process)
+    validate("process.schema.json", process)
+    return process
+
+
+def _touch(node, run):
+    if "source" in node:
+        tb = node["source"].setdefault("touched_by", [])
+        if run not in tb:
+            tb.append(run)
+
+
+def apply_delta(process, delta, run, now):
+    validate("delta.schema.json", delta)
+    keymap, new_ids = {}, []
+    for an in delta["add_nodes"]:
+        nid = next_box_id(process) if an["type"] == "activity" \
+            else next_junction_id(process)
+        keymap[an["key"]] = nid
+        new_ids.append(nid)
+        process["nodes"].append(_new_node(an, nid, run))
+    valid_ep = set(keymap) | {n["id"] for n in process["nodes"]}
+    for e in delta["add_edges"]:
+        if e["from"] not in valid_ep or e["to"] not in valid_ep:
+            raise ValueError(f"delta edge references unknown node: {e}")
+    process["edges"].extend(_map_edges(delta["add_edges"], keymap))
+
+    byid = {n["id"]: n for n in process["nodes"]}
+    for en in delta["enrich_nodes"]:
+        n = byid.get(en["id"])
+        if n is None:
+            continue
+        for field, val in en["set"].items():
+            cur = n.get(field)
+            if is_empty(cur):
+                n[field] = val
+                _touch(n, run)
+            elif cur != val:
+                process["pending"].append(
+                    {"node": en["id"], "field": field, "current": cur,
+                     "proposed": val, "source": run, "status": "open"})
+    for fr in delta["flag_removed"]:
+        n = byid.get(fr["id"])
+        if n is not None:
+            n["removed"] = True
+            _touch(n, run)
+
+    if new_ids:
+        order = topo_order(process["nodes"], process["edges"])
+        local_relayout(process, min(order.index(i) for i in new_ids))
+    process["updated_at"] = now
     validate("process.schema.json", process)
     return process
