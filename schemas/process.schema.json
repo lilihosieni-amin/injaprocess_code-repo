@@ -1,0 +1,144 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "process.schema.json",
+  "title": "IDEF0/IDEF3 process (ARD §4.3)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "department", "name", "summary", "source", "parent",
+               "created_at", "updated_at", "idef0", "kpis", "nodes", "edges", "pending"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^[a-z]+-[0-9]{3}$" },
+    "department": { "type": "string", "pattern": "^[a-z]+$" },
+    "name": { "type": "string" },
+    "summary": { "type": "string" },
+    "source": {
+      "type": "object", "additionalProperties": false,
+      "required": ["type", "ref", "run"],
+      "properties": {
+        "type": { "enum": ["voice", "manual", "chat"] },
+        "ref": { "type": ["string", "null"] },
+        "run": { "type": ["string", "null"] }
+      }
+    },
+    "parent": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["process", "node"],
+          "properties": { "process": { "type": "string" }, "node": { "type": "string" } }
+        }
+      ]
+    },
+    "created_at": { "type": "string", "format": "date-time" },
+    "updated_at": { "type": "string", "format": "date-time" },
+    "idef0": { "$ref": "#/$defs/icom" },
+    "kpis": { "type": "array", "items": { "$ref": "#/$defs/kpi" } },
+    "nodes": { "type": "array", "items": { "$ref": "#/$defs/node" } },
+    "edges": { "type": "array", "items": { "$ref": "#/$defs/edge" } },
+    "pending": { "type": "array", "items": { "$ref": "#/$defs/pending" } }
+  },
+  "$defs": {
+    "icom": {
+      "type": "object", "additionalProperties": false,
+      "required": ["inputs", "controls", "outputs", "mechanisms"],
+      "properties": {
+        "inputs": { "type": "array", "items": { "type": "string" } },
+        "controls": { "type": "array", "items": { "type": "string" } },
+        "outputs": { "type": "array", "items": { "type": "string" } },
+        "mechanisms": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "kpi": {
+      "type": "object", "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string" },
+        "definition": { "type": "string" },
+        "target": { "type": "string" },
+        "unit": { "type": "string" }
+      }
+    },
+    "position": {
+      "type": "object", "additionalProperties": false,
+      "required": ["x", "y"],
+      "properties": { "x": { "type": "number" }, "y": { "type": "number" } }
+    },
+    "nodeSource": {
+      "type": "object", "additionalProperties": false,
+      "required": ["created_by", "touched_by"],
+      "properties": {
+        "created_by": { "type": "string" },
+        "touched_by": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "node": {
+      "oneOf": [
+        { "$ref": "#/$defs/activityNode" },
+        { "$ref": "#/$defs/terminalNode" },
+        { "$ref": "#/$defs/junctionNode" }
+      ]
+    },
+    "activityNode": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "type", "label", "description", "actor", "icom",
+                   "subprocess", "position", "layout", "source"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z]+-[0-9]{3}-n[0-9]{3}$" },
+        "type": { "const": "activity" },
+        "label": { "type": "string" },
+        "description": { "type": "string" },
+        "actor": { "type": "string" },
+        "icom": { "$ref": "#/$defs/icom" },
+        "subprocess": { "type": ["string", "null"] },
+        "position": { "$ref": "#/$defs/position" },
+        "layout": { "enum": ["auto", "manual"] },
+        "source": { "$ref": "#/$defs/nodeSource" }
+      }
+    },
+    "terminalNode": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "type", "label", "position", "layout"],
+      "properties": {
+        "id": { "enum": ["start", "end"] },
+        "type": { "enum": ["start", "end"] },
+        "label": { "type": "string" },
+        "position": { "$ref": "#/$defs/position" },
+        "layout": { "enum": ["auto", "manual"] }
+      }
+    },
+    "junctionNode": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "type", "junctionType", "direction", "position", "layout"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z]+-[0-9]{3}-j[0-9]+$" },
+        "type": { "const": "junction" },
+        "junctionType": { "enum": ["AND", "OR", "XOR"] },
+        "direction": { "enum": ["split", "join"] },
+        "position": { "$ref": "#/$defs/position" },
+        "layout": { "enum": ["auto", "manual"] }
+      }
+    },
+    "edge": {
+      "type": "object", "additionalProperties": false,
+      "required": ["from", "to"],
+      "properties": {
+        "from": { "type": "string" },
+        "to": { "type": "string" },
+        "label": { "type": "string" }
+      }
+    },
+    "pending": {
+      "type": "object", "additionalProperties": false,
+      "required": ["node", "field", "current", "proposed", "source", "status"],
+      "properties": {
+        "node": { "type": "string" },
+        "field": { "type": "string" },
+        "current": {},
+        "proposed": {},
+        "source": { "type": "string" },
+        "status": { "enum": ["open", "accepted", "rejected"] }
+      }
+    }
+  }
+}

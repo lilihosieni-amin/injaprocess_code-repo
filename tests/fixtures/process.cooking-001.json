@@ -1,0 +1,49 @@
+{
+  "id": "cooking-001",
+  "department": "cooking",
+  "name": "خرید و پرداخت هزینه",
+  "summary": "از دریافت درخواست خرید تا پرداخت نهایی به تأمین‌کننده و بایگانی رسید.",
+  "source": { "type": "voice", "ref": "cooking-2026-07-06", "run": "runs/cooking-2026-07-06" },
+  "parent": null,
+  "created_at": "2026-07-06T10:00:00Z",
+  "updated_at": "2026-07-06T10:00:00Z",
+  "idef0": {
+    "inputs": ["درخواست خرید"],
+    "controls": ["بودجهٔ ماهانه", "سیاست خرید"],
+    "outputs": ["کالای خریداری‌شده", "فاکتور پرداخت‌شده"],
+    "mechanisms": ["کارپرداز", "حسابدار", "مدیر"]
+  },
+  "kpis": [
+    { "name": "زمان چرخهٔ خرید", "definition": "از ثبت درخواست تا دریافت کالا", "target": "کمتر از ۳ روز", "unit": "روز" }
+  ],
+  "nodes": [
+    { "id": "start", "type": "start", "label": "شروع", "position": { "x": 30, "y": 104 }, "layout": "auto" },
+    {
+      "id": "cooking-001-n010", "type": "activity", "label": "دریافت درخواست خرید",
+      "description": "درخواست خرید از سرآشپز یا انباردار دریافت و در سامانه ثبت می‌شود.",
+      "actor": "کارپرداز",
+      "icom": { "inputs": ["درخواست شفاهی/کتبی"], "controls": ["سقف بودجهٔ ماهانه"], "outputs": ["درخواست ثبت‌شده"], "mechanisms": ["کارپرداز"] },
+      "subprocess": null, "position": { "x": 150, "y": 90 }, "layout": "auto",
+      "source": { "created_by": "runs/cooking-2026-07-06", "touched_by": [] }
+    },
+    { "id": "cooking-001-j1", "type": "junction", "junctionType": "XOR", "direction": "split", "position": { "x": 392, "y": 107 }, "layout": "auto" },
+    {
+      "id": "cooking-001-n060", "type": "activity", "label": "پرداخت هزینه",
+      "description": "پرداخت به تأمین‌کننده انجام و رسید بایگانی می‌شود.",
+      "actor": "حسابدار",
+      "icom": { "inputs": ["سند حسابداری"], "controls": ["مجوز پرداخت"], "outputs": ["رسید پرداخت"], "mechanisms": ["حسابدار"] },
+      "subprocess": "cooking-014", "position": { "x": 140, "y": 296 }, "layout": "manual",
+      "source": { "created_by": "runs/cooking-2026-07-06", "touched_by": [] }
+    },
+    { "id": "end", "type": "end", "label": "پایان", "position": { "x": 150, "y": 430 }, "layout": "auto" }
+  ],
+  "edges": [
+    { "from": "start", "to": "cooking-001-n010" },
+    { "from": "cooking-001-n010", "to": "cooking-001-j1" },
+    { "from": "cooking-001-j1", "to": "cooking-001-n060", "label": "نیاز به تأیید" },
+    { "from": "cooking-001-n060", "to": "end" }
+  ],
+  "pending": [
+    { "node": "cooking-001-n020", "field": "actor", "current": "مدیر رستوران", "proposed": "معاون مدیر", "source": "runs/cooking-2026-07-10", "status": "open" }
+  ]
+}
