@@ -1,0 +1,18 @@
+{
+  "department": "cooking",
+  "process_name": "خرید و پرداخت هزینه",
+  "summary": "از دریافت درخواست خرید تا پرداخت نهایی.",
+  "idef0": {
+    "inputs": ["درخواست خرید"], "controls": ["بودجهٔ ماهانه"],
+    "outputs": ["کالای خریداری‌شده"], "mechanisms": ["کارپرداز"]
+  },
+  "kpis": [],
+  "nodes": [
+    { "key": "n1", "type": "activity", "label": "دریافت درخواست خرید", "description": "", "actor": "کارپرداز",
+      "icom": { "inputs": [], "controls": [], "outputs": [], "mechanisms": [] }, "subprocess": null },
+    { "key": "j1", "type": "junction", "junctionType": "XOR", "direction": "split" }
+  ],
+  "edges": [
+    { "from": "n1", "to": "j1", "label": "" }
+  ]
+}

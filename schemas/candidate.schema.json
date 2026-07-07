@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "candidate.schema.json",
+  "title": "Extract candidate graph — NEW process, temp keys (ARD §5.4)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["department", "process_name", "summary", "idef0", "kpis", "nodes", "edges"],
+  "properties": {
+    "department": { "type": "string", "pattern": "^[a-z]+$" },
+    "process_name": { "type": "string" },
+    "summary": { "type": "string" },
+    "idef0": { "$ref": "#/$defs/icom" },
+    "kpis": { "type": "array", "items": { "$ref": "#/$defs/kpi" } },
+    "nodes": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object", "additionalProperties": false,
+            "required": ["key", "type", "label", "description", "actor", "icom", "subprocess"],
+            "properties": {
+              "key": { "type": "string" },
+              "type": { "const": "activity" },
+              "label": { "type": "string" },
+              "description": { "type": "string" },
+              "actor": { "type": "string" },
+              "icom": { "$ref": "#/$defs/icom" },
+              "subprocess": { "type": ["string", "null"] }
+            }
+          },
+          {
+            "type": "object", "additionalProperties": false,
+            "required": ["key", "type", "junctionType", "direction"],
+            "properties": {
+              "key": { "type": "string" },
+              "type": { "const": "junction" },
+              "junctionType": { "enum": ["AND", "OR", "XOR"] },
+              "direction": { "enum": ["split", "join"] }
+            }
+          }
+        ]
+      }
+    },
+    "edges": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["from", "to"],
+        "properties": {
+          "from": { "type": "string" },
+          "to": { "type": "string" },
+          "label": { "type": "string" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "icom": {
+      "type": "object", "additionalProperties": false,
+      "required": ["inputs", "controls", "outputs", "mechanisms"],
+      "properties": {
+        "inputs": { "type": "array", "items": { "type": "string" } },
+        "controls": { "type": "array", "items": { "type": "string" } },
+        "outputs": { "type": "array", "items": { "type": "string" } },
+        "mechanisms": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "kpi": {
+      "type": "object", "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string" }, "definition": { "type": "string" },
+        "target": { "type": "string" }, "unit": { "type": "string" }
+      }
+    }
+  }
+}
