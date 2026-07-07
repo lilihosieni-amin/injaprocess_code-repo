@@ -28,3 +28,32 @@ def topo_order(nodes, edges):
         if i not in seen:
             out.append(i)
     return out
+
+PER_ROW = 4
+SX, SY, GX, GY = 40, 90, 210, 175
+
+
+def cell(k):
+    row, col = divmod(k, PER_ROW)
+    if row % 2 == 1:
+        col = PER_ROW - 1 - col
+    return {"x": SX + col * GX, "y": SY + row * GY}
+
+
+def full_relayout(process):
+    order = topo_order(process["nodes"], process["edges"])
+    byid = {n["id"]: n for n in process["nodes"]}
+    for k, nid in enumerate(order):
+        n = byid[nid]
+        n["position"] = cell(k)
+        n["layout"] = "auto"
+
+
+def local_relayout(process, from_index=0):
+    order = topo_order(process["nodes"], process["edges"])
+    byid = {n["id"]: n for n in process["nodes"]}
+    for k in range(from_index, len(order)):
+        n = byid[order[k]]
+        if n.get("layout") == "manual":
+            continue
+        n["position"] = cell(k)
