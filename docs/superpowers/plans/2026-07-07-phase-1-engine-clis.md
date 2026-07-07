@@ -315,13 +315,13 @@ def _write_proc(root, pid):
 
 
 def test_first_process_id_is_001(data_root):
-    assert next_process_id("cooking", data_root()) == "cooking-001"
+    assert next_process_id("cooking", data_root) == "cooking-001"
 
 
 def test_process_id_is_max_plus_one(data_root):
-    _write_proc(data_root(), "cooking-001")
-    _write_proc(data_root(), "cooking-003")
-    assert next_process_id("cooking", data_root()) == "cooking-004"
+    _write_proc(data_root, "cooking-001")
+    _write_proc(data_root, "cooking-003")
+    assert next_process_id("cooking", data_root) == "cooking-004"
 
 
 def test_box_and_junction_ids_from_nodes():
@@ -682,7 +682,7 @@ NOW = "2026-07-06T10:00:00Z"
 
 def test_merge_new_builds_valid_process(data_root):
     cand = load_fixture("candidate.json")           # 1 activity (n1) + 1 junction (j1)
-    proc = merge_new(cand, "cooking", RUN, NOW, root=data_root())
+    proc = merge_new(cand, "cooking", RUN, NOW, root=data_root)
     validate("process.schema.json", proc)           # raises if invalid
     assert proc["id"] == "cooking-001"
     assert proc["created_at"] == NOW and proc["updated_at"] == NOW
@@ -691,7 +691,7 @@ def test_merge_new_builds_valid_process(data_root):
 
 def test_merge_new_allocates_real_ids_not_temp_keys(data_root):
     cand = load_fixture("candidate.json")
-    proc = merge_new(cand, "cooking", RUN, NOW, root=data_root())
+    proc = merge_new(cand, "cooking", RUN, NOW, root=data_root)
     ids = [n["id"] for n in proc["nodes"]]
     assert "cooking-001-n001" in ids          # activity temp 'n1' -> real box id
     assert "cooking-001-j1" in ids            # junction temp 'j1' -> real junction id
@@ -703,10 +703,10 @@ def test_merge_new_allocates_real_ids_not_temp_keys(data_root):
 
 
 def test_merge_new_second_process_increments(data_root):
-    (data_root() / "departments/cooking/processes/cooking-001.json").write_text(
+    (data_root / "departments/cooking/processes/cooking-001.json").write_text(
         '{"id": "cooking-001"}', encoding="utf-8")
     proc = merge_new(load_fixture("candidate.json"), "cooking", RUN, NOW,
-                     root=data_root())
+                     root=data_root)
     assert proc["id"] == "cooking-002"
 ```
 
@@ -1108,9 +1108,9 @@ def test_merge_new_cli_writes_valid_process(data_root, tmp_path):
     cand.write_text(json.dumps(load_fixture("candidate.json")), encoding="utf-8")
     r = _run(["new", "--candidate", str(cand), "--department", "cooking",
               "--run", "runs/cooking-2026-07-06", "--now", "2026-07-06T10:00:00Z"],
-             data_root())
+             data_root)
     assert r.returncode == 0, r.stderr
-    out = data_root() / "departments/cooking/processes/cooking-001.json"
+    out = data_root / "departments/cooking/processes/cooking-001.json"
     assert out.is_file()
     proc = json.loads(out.read_text(encoding="utf-8"))
     assert proc["id"] == "cooking-001"
@@ -1120,7 +1120,7 @@ def test_update_missing_target_fails_precondition(data_root, tmp_path):
     delta = tmp_path / "delta.json"
     delta.write_text(json.dumps(load_fixture("delta.json")), encoding="utf-8")
     r = _run(["update", "--process", "cooking-999", "--delta", str(delta),
-              "--run", "runs/x", "--now", "2026-07-06T10:00:00Z"], data_root())
+              "--run", "runs/x", "--now", "2026-07-06T10:00:00Z"], data_root)
     assert r.returncode == 2  # precondition gate: target process must exist
 ```
 
@@ -1266,7 +1266,7 @@ class FakeTranscriber:
 
 
 def test_idempotency_skips_vertex_when_transcript_exists(data_root):
-    root = data_root()
+    root = data_root
     (root / "meetings/audio/cooking-2026-07-06.ogg").write_bytes(b"x")
     transcript_path(root, "cooking-2026-07-06").write_text("cached", encoding="utf-8")
     fake = FakeTranscriber()
@@ -1275,7 +1275,7 @@ def test_idempotency_skips_vertex_when_transcript_exists(data_root):
 
 
 def test_calls_transcriber_when_no_transcript(data_root):
-    root = data_root()
+    root = data_root
     (root / "meetings/audio/cooking-2026-07-06.ogg").write_bytes(b"x")
     fake = FakeTranscriber()
     text, called = run_transcribe("cooking-2026-07-06", fake, root=root)
@@ -1284,7 +1284,7 @@ def test_calls_transcriber_when_no_transcript(data_root):
 
 def test_missing_audio_raises(data_root):
     with pytest.raises(FileNotFoundError):
-        find_audio(data_root(), "does-not-exist")
+        find_audio(data_root, "does-not-exist")
 
 
 @pytest.mark.integration
