@@ -1,5 +1,5 @@
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["tests", "engine/tests"]
 python_files = ["test_*.py"]
 
 [tool.ruff]
