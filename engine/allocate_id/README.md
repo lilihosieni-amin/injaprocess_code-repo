@@ -1,4 +1,7 @@
-# allocate-id (deterministic CLI — to be implemented)
+# allocate-id (deterministic CLI — implemented)
+
+Console command: `allocate-id` → `allocate_id.cli:main`
+
 
 The ONLY source of IDs in the whole system (INV-1, FR-D1/D2), for all three
 paths: pipeline, chat, UI.

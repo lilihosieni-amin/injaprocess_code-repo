@@ -171,6 +171,8 @@ precondition failure (ARD §7). A short install/version note recorded in `data-r
 - `merge` demonstrably realizes FR-M2/FR-M3/FR-D8 on fixtures (the AC-6 mechanism).
 - Runtime cannot mutate the CLIs (they live outside `APPROVED_DIRECTORY`) — verified in Phase 7 deploy.
 
+Implemented in `docs/superpowers/plans/2026-07-07-phase-1-engine-clis.md`; `transcribe`'s real Vertex call is a deferred integration test (GCP not yet set up).
+
 ---
 
 ## 4. Phase 2 — Upload bot

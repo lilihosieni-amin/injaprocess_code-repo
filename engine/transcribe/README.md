@@ -1,4 +1,7 @@
-# transcribe (CLI — to be implemented)
+# transcribe (CLI — implemented)
+
+Console command: `transcribe` → `transcribe.cli:main`
+
 
 Gemini-on-Vertex transcription with idempotency pre-check (ARD §5.1, FR-P2):
 

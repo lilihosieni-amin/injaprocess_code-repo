@@ -1,4 +1,7 @@
-# merge (deterministic CLI — to be implemented)
+# merge (deterministic CLI — implemented)
+
+Console command: `merge` → `merge.cli:main`
+
 
 The heart of determinism (ARD §5.5, §6). Applies extract deltas to
 `departments/{dept}/processes/{id}.json`:

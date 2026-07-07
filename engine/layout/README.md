@@ -1,4 +1,7 @@
-# layout (deterministic CLI — to be implemented)
+# layout (deterministic CLI — implemented)
+
+Console command: `layout` → `layout.cli:main`
+
 
 Serpentine (boustrophedon) layout, LLM-free (ARD §9, FR-D9/D10):
 
