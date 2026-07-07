@@ -106,7 +106,12 @@ every later phase agrees on shapes and has fixtures to test against.
    an initial `registry.json`, and a placeholder `CLAUDE.md` (filled in Phase 3).
 3. **Fixtures.** A tiny hand-authored corpus: one sample transcript, one `segments.json`,
    one candidate graph, one update delta, and 2–3 golden `process.json` files. These are the
-   test oracle for Phases 1, 5, 6.
+   test oracle for Phases 1, 5, 6. The design prototype's `buildData()`
+   (`ui/design/…dc.html`) is a useful cross-check: its sample `process.json` shapes
+   (nodes/edges/idef0/kpis/pending/parent/source) already track ARD §4.3 and can seed the
+   golden files. Note UI-only presentation concerns it introduces — Persian numerals and
+   **Jalali** date display — are formatting done in the UI (Phase 6); the stored data stays
+   as the ARD defines it (ISO timestamps, Latin digits).
 4. **Tooling.** Python env strategy (`uv`/venv, pinned), test runners (pytest for
    Python engine + backend; vitest for UI), lint/format config, and a `Makefile`/task
    runner so every component builds and tests the same way.
@@ -295,25 +300,67 @@ manual creation; documented env surface (`config/ui-backend.env.example`).
 ## 8. Phase 6 — UI frontend
 
 **Repo:** `code-repo/ui/` (React + TypeScript + Vite + `@xyflow/react`; replaces the current
-default template). **Goal:** the interactive view/edit surface. Uses TanStack Query for server
-data, React state for local edits, Tailwind for styling (ARD §13.1).
+default template). **Goal:** the interactive view/edit surface, built to **exactly reproduce
+the approved design prototype**. Uses TanStack Query for server data, React state for local
+edits (ARD §13.1).
+
+**Authoritative design reference.** `ui/design/Inja Process System.dc.html` (+ `support.js`
+runtime) is a pixel- and interaction-complete RTL Persian prototype and is the **visual and
+behavioral source of truth** for this phase. The UI must match it. Note it is a *reference to
+reproduce, not to ship*: the prototype hand-rolls its own SVG canvas, whereas the ARD mandates
+`@xyflow/react` — so we rebuild the prototype's look and interactions on top of `@xyflow/react`
+custom node/edge components (see the reconciliation note in the risk register, §10).
 
 **Workstreams**
-- **Navigation** (FR-I2): department → process list → flowchart → sub-process flowchart →
-  box detail; process **summary card** (idef0 + KPIs) before entering boxes.
-- **Graph rendering:** map `nodes` (incl. junctions AND/OR/XOR split/join) and `edges`
-  directly; render sub-process links bidirectionally (FR-D6).
-- **View-only default + Edit mode** (FR-I3): nothing movable/editable until "Edit"; changes
-  held in memory until manual **"Save"** (no autosave).
-- **Layout behavior** (FR-D9/D10): positions persisted so manual moves stick; append vs.
-  local re-layout on insertion is surfaced; a full **"re-layout"** button offered.
-- **Review inbox** (FR-I4): diff + accept/reject wired to the Phase-5 endpoints.
-- **Manual creation** (FR-I5): create a new process for a department; backend assigns the ID.
+- **Design-system foundation (do first).** Extract the prototype's design tokens into the app:
+  Vazirmatn web font, global `dir="rtl"`, the color palette (bg `#FBF7F1`, ink `#2A1D5E`,
+  violet `#4A25A9`, coral `#FA5A52`, save-green `#1F8A5B`, conflict-red `#E23D35`, muted
+  `#8a7db0`, borders `#EFE7DC`/`#E3D8F5`, tile fills `#F0E9FB`/`#F4EFFB`), radii/shadow scale,
+  the shared button variants (coral/violet/green/ghost) and ICOM **chip** styles, a
+  **Persian-numeral** formatter (`toFa`) and a **Jalali** date display, and the Inja logo asset.
+- **Screen inventory (reproduce each per the prototype):**
+  - **Login** (FR-I3/NFR-3): username/password, single-user, brand panel.
+  - **App shell:** top bar with logo/home, **breadcrumb**, contextual back button,
+    **review-inbox button with a pending-count badge**, user avatar.
+  - **Departments grid** (FR-I2): nine department tiles with icons and process counts.
+  - **Process list** (FR-I2): search by name/ID, "department info" + "new process" actions,
+    per-process cards (ID chip, name, new/update tag, summary, activity count, actions).
+  - **Department overview** (FR-P6): sub-units + personnel/duties, **view and edit** modes,
+    manual Save.
+  - **Summary card** (FR-I2, FR-D3): the **IDEF0 A-0 box** visualization (inputs/controls/
+    outputs/mechanisms around the center box) + **KPI** cards; view and edit modes; empty-KPI
+    state states the no-fabrication rule (INV-3).
+  - **Flowchart canvas** (FR-I2/I3, FR-D9/10): see the canvas workstream below.
+  - **Node detail drawer** (FR-D4): view (label, actor, description, ICOM chips, `source`
+    line) and edit (fields + **subprocess link-by-ID with live validation** and a
+    "create sub-process & enter" action — FR-D6/D7); **inline conflict accept/reject** on the
+    box (mirrors the inbox — FR-M4).
+  - **Junction gate editor:** XOR/AND/OR selector with explanations.
+  - **Conflict inbox modal** (FR-I4/FR-M4): current-vs-proposed diff, accept/reject, "view in
+    flowchart" jump; empty state.
+  - **Create-process modal** (FR-I5): shows the system-allocated next ID (from `allocate-id`
+    via Phase 5); never an LLM ID (INV-1).
+  - **Toasts** for action feedback.
+- **Flowchart canvas on `@xyflow/react`** (reproducing the prototype's behavior):
+  - Custom nodes — **activity** card (ID chip, title, actor, conflict badge, sub-process
+    affordance), **start/end** terminals, **junction diamonds** color-coded XOR/AND/OR with a
+    legend; custom edges with optional labels and a click-to-delete affordance.
+  - **View-only default + Edit mode** (FR-I3): pan/zoom/fit always; drag, drag-a-coral-handle
+    to create edges, delete, add activity/junction, **undo/redo** only in Edit mode.
+  - **Manual Save** (FR-I3): all edits held in memory; one write + one commit on Save (via
+    Phase 5); Cancel discards.
+  - **Layout** (FR-D9/D10): initial positions from the `layout` CLI (serpentine); manual moves
+    set `layout: manual` and persist; a full **"re-layout"** button; append vs. middle-insert
+    local re-layout surfaced.
+  - Sub-process navigation is bidirectional (FR-D6): click a linked box to enter its flowchart,
+    "parent process" to return.
 
-**Deliverables:** the working SPA built to `ui/dist`, component tests for the edit-state and
-navigation logic.
+**Deliverables:** the working SPA built to `ui/dist`, matching the prototype; the extracted
+design-token module; component tests for edit-state, navigation, and the custom nodes/edges.
 
 **Exit criteria**
+- **Visual & interaction fidelity:** each screen matches `ui/design/` (layout, palette,
+  typography, RTL, Persian numerals/Jalali dates, states) against live `data-repo` data.
 - **AC-5:** repositioning parts is preserved after reopening, and a subsequent voice/run does
   not break the manual layout (verified with Phase-3 output).
 - All FR-I* behaviors demonstrable; view-only default prevents accidental edits.
@@ -392,6 +439,8 @@ secrets. Vertex key, UI hash + signing key, bot tokens, `ANTHROPIC_API_KEY` all 
 | Auto sub-process creation threshold (number of sub-steps) | Phase 3 | Start conservative; tune from the `runs/` corpus (FR-D7, ARD §18) |
 | VPS backup strategy for `data-repo` | Phase 7 | Finalize in Phase 7; git push to GitHub is the off-site baseline (NFR-7) |
 | KPIs rarely stated in interviews | Post-v1 | Out of v1 scope; leave fields empty (INV-3), fill later via question/manual entry |
+| Design prototype uses a bespoke SVG canvas, but ARD §13.1 mandates `@xyflow/react` | Phase 6 | ARD is authoritative for the stack: reproduce the prototype's look/interactions with `@xyflow/react` custom nodes/edges. Confirm `@xyflow/react` supports the drag-to-link, junction diamonds, and edge-delete affordances before committing (spike early in Phase 6) |
+| Jalali date display + Inja logo/brand assets needed by the UI | Phase 6 | Pick a small Jalali formatting approach (the prototype includes an inline converter); source the logo asset (`assets/inja-logo.jpg`) into `ui/` |
 
 ---
 
