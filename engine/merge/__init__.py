@@ -114,8 +114,9 @@ def resolve_pending(process, index, decision, now):
     if decision == "accept":
         byid = {n["id"]: n for n in process["nodes"]}
         node = byid.get(row["node"])
-        if node is not None:
-            node[row["field"]] = row["proposed"]
+        if node is None:
+            raise ValueError(f"pending row {index} targets unknown node {row['node']}")
+        node[row["field"]] = row["proposed"]
         row["status"] = "accepted"
     elif decision == "reject":
         row["status"] = "rejected"

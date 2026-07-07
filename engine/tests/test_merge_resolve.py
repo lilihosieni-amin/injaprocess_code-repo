@@ -1,5 +1,6 @@
 import copy
 
+import pytest
 from conftest import load_fixture
 from merge import resolve_pending
 
@@ -33,3 +34,17 @@ def test_reject_closes_without_changing_node(data_root):
     resolve_pending(p, 0, "reject", NOW)
     assert node.get(row["field"]) == before
     assert p["pending"][0]["status"] == "rejected"
+
+
+def test_accept_unknown_node_raises(data_root):
+    p = _proc_with_pending()
+    p["pending"][0]["node"] = "cooking-001-nZZZ"  # not a real node
+    with pytest.raises(ValueError):
+        resolve_pending(p, 0, "accept", NOW)
+
+
+def test_re_resolve_closed_row_raises(data_root):
+    p = _proc_with_pending()
+    resolve_pending(p, 0, "accept", NOW)
+    with pytest.raises(ValueError):
+        resolve_pending(p, 0, "reject", NOW)
