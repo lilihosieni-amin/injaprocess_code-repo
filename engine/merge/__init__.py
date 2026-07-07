@@ -105,3 +105,22 @@ def apply_delta(process, delta, run, now):
     process["updated_at"] = now
     validate("process.schema.json", process)
     return process
+
+
+def resolve_pending(process, index, decision, now):
+    row = process["pending"][index]
+    if row["status"] != "open":
+        raise ValueError(f"pending row {index} already {row['status']}")
+    if decision == "accept":
+        byid = {n["id"]: n for n in process["nodes"]}
+        node = byid.get(row["node"])
+        if node is not None:
+            node[row["field"]] = row["proposed"]
+        row["status"] = "accepted"
+    elif decision == "reject":
+        row["status"] = "rejected"
+    else:
+        raise ValueError("decision must be 'accept' or 'reject'")
+    process["updated_at"] = now
+    validate("process.schema.json", process)
+    return process
