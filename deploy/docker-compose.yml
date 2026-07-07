@@ -1,0 +1,40 @@
+# Deployment stack skeleton (ARD §16) — services declared, images/builds TODO.
+# data-repo is a shared volume: the "only point of connection" between services.
+# code-repo is baked into images; data-repo NEVER is (INV-2).
+# Secrets via env files outside the repo / Docker secrets — never baked in.
+
+name: inja-food-process
+
+services:
+  telegram-bot-api:
+    image: tdlib/telegram-bot-api   # local Bot API server, 2 GB cap (NFR-2)
+    restart: unless-stopped
+    # TODO: TELEGRAM_API_ID / TELEGRAM_API_HASH env, port, data volume
+
+  upload-bot:
+    # TODO: build ../upload-bot
+    restart: unless-stopped
+    # volumes: data-repo mount (DATA_ROOT)
+
+  control-bot:
+    # TODO: custom image — Python + Node + Claude Code CLI + engine CLIs + git (ARD §16)
+    restart: unless-stopped
+    # volumes: data-repo mount (APPROVED_DIRECTORY)
+
+  ui-backend:
+    # TODO: build ../ui-backend, serves built frontend from ../ui/dist
+    restart: unless-stopped
+    # volumes: data-repo mount; calls engine CLIs + git
+
+  proxy:
+    # TODO: nginx or Caddy — TLS for the UI only
+    restart: unless-stopped
+
+  git-push:
+    # TODO: cron 11:00 & 23:00, push only if unpushed commits exist (NFR-7, ARD §15)
+    restart: unless-stopped
+    # volumes: data-repo mount + deploy key
+
+volumes:
+  data-repo:
+    # TODO: bind-mount the host data-repo path so dev sessions can also reach it

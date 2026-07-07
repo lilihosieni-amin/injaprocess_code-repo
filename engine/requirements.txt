@@ -1,0 +1,4 @@
+# Deterministic engine CLIs (ARD §8)
+# allocate-id / merge / layout: stdlib only, no model
+# transcribe: Gemini on Vertex AI (ARD §5.1)
+google-genai~=1.16

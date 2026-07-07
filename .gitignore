@@ -1,0 +1,22 @@
+# Node / frontend
+node_modules/
+ui/dist/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+
+# Secrets & env — samples live in config/, real values never in git
+.env
+*.env
+!*.env.example
+!.env.example
+*.key
+*service-account*.json
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store

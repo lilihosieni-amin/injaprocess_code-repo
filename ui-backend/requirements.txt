@@ -1,0 +1,5 @@
+# Thin UI backend (ARD §13.1) — no ORM/database, direct JSON on DATA_ROOT
+fastapi~=0.116
+uvicorn[standard]~=0.35
+argon2-cffi~=25.1
+itsdangerous~=2.2

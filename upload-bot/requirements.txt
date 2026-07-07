@@ -1,0 +1,3 @@
+# Bot 1 — upload bot (ARD §11)
+# Talks to the LOCAL Bot API server (tdlib/telegram-bot-api) for >20MB voice files (NFR-2)
+python-telegram-bot~=22.0
