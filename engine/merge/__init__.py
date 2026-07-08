@@ -1,3 +1,5 @@
+import re
+
 from allocate_id import next_box_id, next_junction_id, next_process_id
 from engine_common import is_empty, validate
 from layout import full_relayout, local_relayout, topo_order
@@ -32,29 +34,79 @@ def _map_edges(edges, keymap):
     return out
 
 
-def merge_new(candidate, dept, run, now, root=None):
-    validate("candidate.schema.json", candidate)
-    pid = next_process_id(dept, root)
-    process = {"id": pid, "department": dept, "name": candidate["process_name"],
-               "summary": candidate["summary"],
-               "source": {"type": "voice", "ref": run.split("/")[-1], "run": run},
-               "parent": None, "created_at": now, "updated_at": now,
-               "idef0": candidate["idef0"], "kpis": candidate["kpis"],
+def _voice_ref(run):
+    # robust voice basename from a run path: strip a trailing attempt-NN if present
+    # (a re-run's run_dir is runs/<voice>/attempt-NN — the last component is NOT the voice)
+    parts = run.rstrip("/").split("/")
+    if re.fullmatch(r"attempt-\d{2,}", parts[-1]) and len(parts) >= 2:
+        return parts[-2]
+    return parts[-1]
+
+
+def _build_process(cand, dept, pid, run, now, parent, source_type):
+    process = {"id": pid, "department": dept, "name": cand["process_name"],
+               "summary": cand["summary"],
+               "source": {"type": source_type, "ref": _voice_ref(run), "run": run},
+               "parent": parent, "created_at": now, "updated_at": now,
+               "idef0": cand["idef0"], "kpis": cand["kpis"],
                "nodes": [], "edges": [], "pending": []}
     keymap = {}
-    for cn in candidate["nodes"]:
-        nid = _alloc(process, cn)            # sees nodes appended so far -> n001, n002...
+    for cn in cand["nodes"]:
+        nid = _alloc(process, cn)
         keymap[cn["key"]] = nid
         process["nodes"].append(_new_node(cn, nid, run))
-    # Referential-integrity guard: every edge endpoint must be a candidate node key
     keys = set(keymap)
-    for e in candidate["edges"]:
+    for e in cand["edges"]:
         if e["from"] not in keys or e["to"] not in keys:
             raise ValueError(f"candidate edge references unknown node key: {e}")
-    process["edges"] = _map_edges(candidate["edges"], keymap)
+    process["edges"] = _map_edges(cand["edges"], keymap)
     full_relayout(process)
-    validate("process.schema.json", process)
-    return process
+    return process, keymap
+
+
+def _sync_icom(parent_node, child_idef0, run):
+    # the box boundary IS its sub-process: child idef0 is authoritative (always wins)
+    parent_node["icom"] = child_idef0
+    _touch(parent_node, run)
+
+
+def _attach_subprocesses(parent, keymap, entries, run, now, root, ref_field):
+    children = []
+    dept = parent["department"]
+    byid = {n["id"]: n for n in parent["nodes"]}
+    for ent in entries:
+        ref = ent[ref_field]
+        node_id = keymap.get(ref, ref)              # temp key -> real id, or an already-real id
+        node = byid.get(node_id)
+        if node is None or node.get("type") != "activity":
+            raise ValueError(f"subprocess parent '{ref}' is not an activity node in {parent['id']}")
+        if node.get("subprocess") is not None:
+            raise ValueError(f"node {node_id} already has subprocess {node['subprocess']}; duplicate")
+        child_pid = next_process_id(dept, root, reserved={parent["id"]} | {c["id"] for c in children})
+        child, _ = _build_process(ent["process"], dept, child_pid, run, now,
+                                  parent={"process": parent["id"], "node": node_id},
+                                  source_type="auto")
+        node["subprocess"] = child_pid
+        _sync_icom(node, child["idef0"], run)
+        children.append(child)
+    return children
+
+
+def build_new(candidate, dept, run, now, root=None):
+    validate("candidate.schema.json", candidate)
+    pid = next_process_id(dept, root)
+    parent, keymap = _build_process(candidate, dept, pid, run, now,
+                                    parent=None, source_type="voice")
+    children = _attach_subprocesses(parent, keymap, candidate.get("subprocesses", []),
+                                    run, now, root, "parent_key")
+    validate("process.schema.json", parent)
+    for c in children:
+        validate("process.schema.json", c)
+    return parent, children
+
+
+def merge_new(candidate, dept, run, now, root=None):
+    return build_new(candidate, dept, run, now, root)[0]
 
 
 def _touch(node, run):
