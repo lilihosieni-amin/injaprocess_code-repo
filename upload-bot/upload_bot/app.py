@@ -1,0 +1,42 @@
+from telegram.ext import (
+    ApplicationBuilder,
+    CallbackQueryHandler,
+    CommandHandler,
+    ConversationHandler,
+    MessageHandler,
+    filters,
+)
+
+from upload_bot.handlers import (
+    CHOOSE_KIND,
+    F_COLLECT,
+    F_DEPT,
+    V_DATE,
+    V_DEPTS,
+    V_FILE,
+    build_handlers,
+)
+
+
+def build_application(config):
+    builder = ApplicationBuilder().token(config.bot_token)
+    if config.api_base_url:
+        base = config.api_base_url.rstrip("/")
+        builder = builder.base_url(f"{base}/bot").base_file_url(f"{base}/file/bot")
+    app = builder.build()
+    h = build_handlers(config)
+    conv = ConversationHandler(
+        entry_points=[CommandHandler("start", h["start"])],
+        states={
+            CHOOSE_KIND: [CallbackQueryHandler(h["choose_kind"], pattern=r"^k:")],
+            V_DATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, h["v_date"])],
+            V_DEPTS: [CallbackQueryHandler(h["v_depts"], pattern=r"^vd:")],
+            V_FILE: [MessageHandler(filters.VOICE | filters.AUDIO, h["v_file"])],
+            F_DEPT: [CallbackQueryHandler(h["f_dept"], pattern=r"^fd:")],
+            F_COLLECT: [MessageHandler(filters.Document.ALL, h["f_collect"]),
+                        CommandHandler("done", h["f_done"])],
+        },
+        fallbacks=[CommandHandler("cancel", h["cancel"])],
+    )
+    app.add_handler(conv)
+    return app
