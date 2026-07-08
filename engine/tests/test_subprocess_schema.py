@@ -1,4 +1,5 @@
 import copy
+
 import pytest
 from conftest import load_fixture
 from engine_common import validate
@@ -52,7 +53,9 @@ def test_candidate_without_subprocesses_still_valid():
 
 def test_delta_accepts_add_subprocesses():
     d = copy.deepcopy(load_fixture("delta.json"))
-    d["add_subprocesses"] = [{"parent": "cooking-001-n020", "process": load_fixture("candidate.json")}]
+    d["add_subprocesses"] = [
+        {"parent": "cooking-001-n020", "process": load_fixture("candidate.json")},
+    ]
     validate("delta.schema.json", d)
 
 

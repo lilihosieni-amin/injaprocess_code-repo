@@ -1,4 +1,5 @@
 import copy
+
 import pytest
 from conftest import load_fixture
 from engine_common import validate
@@ -12,7 +13,9 @@ def _candidate_with_child():
     parent = copy.deepcopy(load_fixture("candidate.json"))  # nodes: n1 (activity), j1 (junction)
     child = copy.deepcopy(load_fixture("candidate.json"))
     child["process_name"] = "زیرفرایند تأیید"
-    child["idef0"] = {"inputs": ["درخواست"], "controls": [], "outputs": ["تأیید"], "mechanisms": ["مدیر"]}
+    child["idef0"] = {
+        "inputs": ["درخواست"], "controls": [], "outputs": ["تأیید"], "mechanisms": ["مدیر"],
+    }
     parent["subprocesses"] = [{"parent_key": "n1", "process": child}]
     return parent
 
@@ -42,7 +45,10 @@ def test_child_nodes_are_laid_out(data_root):
 
 def test_duplicate_subprocess_on_same_box_rejected(data_root):
     cand = _candidate_with_child()
-    cand["subprocesses"].append({"parent_key": "n1", "process": copy.deepcopy(cand["subprocesses"][0]["process"])})
+    cand["subprocesses"].append({
+        "parent_key": "n1",
+        "process": copy.deepcopy(cand["subprocesses"][0]["process"]),
+    })
     with pytest.raises(ValueError):
         build_new(cand, "cooking", RUN, NOW, root=data_root)
 
@@ -86,6 +92,8 @@ def test_build_update_rejects_duplicate_child(data_root):
     box = next(n for n in proc["nodes"] if n["id"] == "cooking-001-n010")
     box["subprocess"] = "cooking-099"                         # already has one
     delta = {"add_nodes": [], "add_edges": [], "enrich_nodes": [], "flag_removed": [],
-             "add_subprocesses": [{"parent": "cooking-001-n010", "process": load_fixture("candidate.json")}]}
+             "add_subprocesses": [
+                 {"parent": "cooking-001-n010", "process": load_fixture("candidate.json")},
+             ]}
     with pytest.raises(ValueError):
         build_update(proc, delta, "runs/x", NOW, root=data_root)

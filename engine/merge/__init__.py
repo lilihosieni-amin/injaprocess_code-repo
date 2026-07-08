@@ -81,8 +81,12 @@ def _attach_subprocesses(parent, keymap, entries, run, now, root, ref_field):
         if node is None or node.get("type") != "activity":
             raise ValueError(f"subprocess parent '{ref}' is not an activity node in {parent['id']}")
         if node.get("subprocess") is not None:
-            raise ValueError(f"node {node_id} already has subprocess {node['subprocess']}; duplicate")
-        child_pid = next_process_id(dept, root, reserved={parent["id"]} | {c["id"] for c in children})
+            raise ValueError(
+                f"node {node_id} already has subprocess {node['subprocess']}; duplicate"
+            )
+        child_pid = next_process_id(
+            dept, root, reserved={parent["id"]} | {c["id"] for c in children}
+        )
         child, _ = _build_process(ent["process"], dept, child_pid, run, now,
                                   parent={"process": parent["id"], "node": node_id},
                                   source_type="auto")
