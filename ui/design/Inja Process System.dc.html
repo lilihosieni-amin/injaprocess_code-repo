@@ -468,6 +468,11 @@
             <sc-for list="{{ edgeDel }}" as="b" hint-placeholder-count="0">
               <div style="{{ b.style }}" onPointerDown="{{ b.onDel }}" title="حذف خط">×</div>
             </sc-for>
+            <sc-for list="{{ edgeEdit }}" as="ee" hint-placeholder-count="0">
+              <div style="{{ ee.style }}" onPointerDown="{{ stop }}">
+                <input value="{{ ee.value }}" onInput="{{ ee.onInput }}" onPointerDown="{{ stop }}" placeholder="متن روی خط…" style="width:100%;box-sizing:border-box;padding:5px 10px;border:1.5px solid #FA5A52;border-radius:9px;font-family:inherit;font-size:11px;color:#2A1D5E;background:#fff;outline:none;box-shadow:0 6px 18px -8px rgba(74,37,169,.5);text-align:center">
+              </div>
+            </sc-for>
             <sc-for list="{{ nodesR }}" as="node" hint-placeholder-count="7">
               <div style="{{ node.wrapStyle }}" data-node-id="{{ node.id }}" onPointerDown="{{ node.onDown }}">
                 <sc-if value="{{ node.isActivity }}" hint-placeholder-val="{{ true }}">
@@ -662,6 +667,25 @@
     </div>
   </sc-if>
 
+  <!-- ============================ CONFIRM DELETE ============================ -->
+  <sc-if value="{{ hasConfirmDel }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ cancelDelete }}" style="position:fixed;inset:0;background:rgba(36,17,82,.45);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;z-index:70;padding:24px">
+      <div onClick="{{ stop }}" style="width:420px;max-width:100%;background:#FBF7F1;border-radius:20px;overflow:hidden;box-shadow:0 40px 90px -30px rgba(0,0,0,.6)">
+        <div style="padding:26px 26px 20px;text-align:center">
+          <div style="width:54px;height:54px;border-radius:50%;background:#FDE7E5;color:#E23D35;display:flex;align-items:center;justify-content:center;margin:0 auto 15px">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M10 11v6M14 11v6"></path></svg>
+          </div>
+          <div style="font-weight:800;font-size:17px;color:#2A1D5E;margin-bottom:8px">حذف «{{ confirmDelLabel }}»؟</div>
+          <div style="font-size:13px;color:#8a7db0;line-height:1.8">این گره حذف می‌شود و گرهِ قبلی به گرهِ بعدی متصل می‌ماند تا مسیر نشکند. این کار با «واگرد» قابل بازگردانی است.</div>
+        </div>
+        <div style="display:flex;gap:10px;padding:0 22px 22px">
+          <button onClick="{{ cancelDelete }}" style="flex:1;padding:12px;border:1.5px solid #E3D8F5;background:#fff;border-radius:12px;font-family:inherit;font-size:14px;font-weight:700;color:#6B5CA5;cursor:pointer">انصراف</button>
+          <button onClick="{{ confirmDeleteNode }}" style="flex:1;padding:12px;border:none;background:#E23D35;border-radius:12px;font-family:inherit;font-size:14px;font-weight:700;color:#fff;cursor:pointer;box-shadow:0 10px 24px -10px rgba(226,61,53,.9)">حذف کامل</button>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
   <!-- ============================ TOAST ============================ -->
   <sc-if value="{{ showToast }}" hint-placeholder-val="{{ false }}">
     <div style="position:fixed;bottom:26px;left:50%;transform:translateX(-50%);background:#2A1D5E;color:#fff;padding:12px 20px;border-radius:12px;font-size:13px;font-weight:600;box-shadow:0 16px 40px -14px rgba(0,0,0,.6);z-index:60;display:flex;align-items:center;gap:9px">
@@ -685,7 +709,7 @@ class Component extends DCLogic {
       ovEdit:false, ovDraft:null,
       editMode:false, selectedNode:null, detailNode:null,
       view:{tx:40,ty:24,scale:0.92},
-      showInbox:false, showCreate:false, createName:'', toast:null, listSearch:'',
+      showInbox:false, showCreate:false, createName:'', toast:null, listSearch:'', confirmDel:null,
       linkFrom:null, linkPos:null, selectedEdge:null,
       histIdx:0, histLen:1,
       summaryEdit:false,
@@ -847,7 +871,40 @@ class Component extends DCLogic {
     P['dining-002']=linear('dining-002','dining','ثبت سفارش میز','دریافت و ثبت سفارش مشتری.',[{label:'دریافت سفارش',actor:'گارسون',desc:''},{label:'ثبت در سیستم',actor:'گارسون',desc:''}]);
     P['dining-003']=linear('dining-003','dining','تسویه‌حساب مشتری','صدور صورت‌حساب و دریافت وجه.',[{label:'صدور صورت‌حساب',actor:'گارسون',desc:''},{label:'دریافت وجه',actor:'صندوق‌دار',desc:''}]);
     // cashier
-    P['cashier-001']=linear('cashier-001','cashier','دریافت وجه و صدور فاکتور','دریافت پرداخت و صدور فاکتور.',[{label:'محاسبهٔ مبلغ',actor:'صندوق‌دار',desc:''},{label:'دریافت و صدور فاکتور',actor:'صندوق‌دار',desc:''}]);
+    P['cashier-001']={
+      id:'cashier-001',department:'cashier',name:'پرداخت کارت‌به‌کارت و تأیید واریز',
+      summary:'مشتری مبلغ دقیق فاکتور را به کارت سرپرست سالن واریز می‌کند و سرپرست همان مبلغ را با کارت‌خوان می‌کشد. پرسنل صندوق پیامک بانک را روی گوشی اختصاصی بررسی و در صورت دریافت، تأیید می‌کنند؛ در غیر این‌صورت شماره کارت مشتری اخذ و فرم برای پیگیری به حسابداری ارسال می‌شود تا زیر ۲۴ ساعت تسویه شود.',
+      parent:null,
+      idef0:{inputs:['درخواست پرداخت کارت‌به‌کارت','مبلغ فاکتور (ریال)'],controls:['مبلغ واریزی دقیقاً برابر فاکتور','تأیید دریافت زیر ۲۴ ساعت','ثبت شماره کارت در صورت عدم دریافت فوری پیامک'],outputs:['تأیید دریافت وجه','کشیدن کارت‌خوان معادل فاکتور','فرم ارسالی به حسابداری'],mechanisms:['سرپرست سالن','پرسنل صندوق','دستگاه کارت‌خوان','گوشی اختصاصی صندوق','حسابداری']},
+      kpis:[],
+      pending:[],
+      nodes:[
+        {id:'start',type:'start',label:'شروع',position:{x:30,y:104}},
+        {id:'cashier-001-n001',type:'activity',label:'اعلام شماره کارت و مبلغ به مشتری',actor:'سرپرست سالن',desc:'سرپرست سالن شماره کارت اختصاصی و مبلغ دقیق فاکتور (به ریال) را به مشتری اعلام و تأکید می‌کند که مبلغ باید دقیقاً همان عدد باشد.',icom:{inputs:['مبلغ فاکتور (ریال)'],controls:['مبلغ واریزی دقیقاً برابر فاکتور'],outputs:['شماره کارت و مبلغ اعلام‌شده'],mechanisms:['سرپرست سالن']},subprocess:null,position:{x:140,y:90}},
+        {id:'cashier-001-n002',type:'activity',label:'واریز وجه توسط مشتری',actor:'مشتری',desc:'مشتری مبلغ دقیق فاکتور را از کارت خود به شماره کارت اعلام‌شده واریز می‌کند.',icom:{inputs:['شماره کارت مقصد','مبلغ فاکتور'],controls:['مبلغ دقیقاً برابر فاکتور'],outputs:['واریز انجام‌شده'],mechanisms:['مشتری']},subprocess:null,position:{x:380,y:90}},
+        {id:'cashier-001-n003',type:'activity',label:'اعلام واریز توسط مشتری',actor:'مشتری',desc:'مشتری به پرسنل سالن یا صندوق اطلاع می‌دهد که واریز انجام شده است.',icom:{inputs:['اطمینان مشتری از واریز'],controls:[],outputs:['اعلام شفاهی واریز'],mechanisms:['مشتری']},subprocess:null,position:{x:620,y:90}},
+        {id:'cashier-001-n004',type:'activity',label:'بررسی پیامک بانک در صندوق',actor:'پرسنل صندوق',desc:'پرسنل صندوق گوشی اختصاصی داخل صندوق را بررسی می‌کنند تا پیامک واریز بانک را مشاهده کنند.',icom:{inputs:['اعلام واریز توسط مشتری'],controls:[],outputs:['نتیجهٔ بررسی پیامک'],mechanisms:['پرسنل صندوق','گوشی اختصاصی صندوق']},subprocess:null,position:{x:860,y:90}},
+        {id:'cashier-001-j1',type:'junction',junctionType:'XOR',direction:'split',position:{x:912,y:300}},
+        {id:'cashier-001-n005',type:'activity',label:'تأیید دریافت وجه به مشتری',actor:'پرسنل صندوق',desc:'پرسنل صندوق پس از مشاهدهٔ پیامک بانک، دریافت وجه را به مشتری تأیید می‌کنند.',icom:{inputs:['پیامک بانک مبنی بر واریز'],controls:[],outputs:['تأیید شفاهی دریافت وجه'],mechanisms:['پرسنل صندوق']},subprocess:null,position:{x:750,y:290}},
+        {id:'cashier-001-n006',type:'activity',label:'کشیدن کارت‌خوان توسط سرپرست سالن',actor:'سرپرست سالن',desc:'سرپرست سالن بلافاصله پس از تأیید دریافت واریز، همان مبلغ را از طریق کارت‌خوان می‌کشد تا تراکنش ثبت شود.',icom:{inputs:['تأیید دریافت واریز','مبلغ فاکتور'],controls:['مبلغ کارت‌خوان برابر واریز مشتری'],outputs:['تراکنش کارت‌خوان ثبت‌شده'],mechanisms:['سرپرست سالن','دستگاه کارت‌خوان']},subprocess:null,position:{x:500,y:290}},
+        {id:'cashier-001-n007',type:'activity',label:'اخذ شماره کارت مشتری و تکمیل فرم',actor:'پرسنل صندوق',desc:'در صورت عدم دریافت فوری پیامک بانک، پرسنل صندوق شماره کارت مشتری را دریافت و فرم مربوطه را تکمیل می‌کنند تا پیگیری انجام شود.',icom:{inputs:['عدم دریافت پیامک بانک','اطلاعات مشتری'],controls:['تسویه زیر ۲۴ ساعت'],outputs:['فرم تکمیل‌شده','شماره کارت ثبت‌شده'],mechanisms:['پرسنل صندوق']},subprocess:null,position:{x:210,y:290}},
+        {id:'cashier-001-n008',type:'activity',label:'ارسال فرم به حسابداری برای پیگیری',actor:'پرسنل صندوق',desc:'فرم تکمیل‌شده به حسابداری ارسال می‌شود تا واریز را پیگیری کرده و زیر ۲۴ ساعت تسویه صورت گیرد.',icom:{inputs:['فرم تکمیل‌شده'],controls:['مهلت تسویه: زیر ۲۴ ساعت'],outputs:['فرم ارسال‌شده به حسابداری'],mechanisms:['پرسنل صندوق','حسابداری']},subprocess:null,position:{x:210,y:470}},
+        {id:'end',type:'end',label:'پایان',position:{x:540,y:478}},
+      ],
+      edges:[
+        {from:'start',to:'cashier-001-n001',label:''},
+        {from:'cashier-001-n001',to:'cashier-001-n002',label:'شماره کارت و مبلغ'},
+        {from:'cashier-001-n002',to:'cashier-001-n003',label:''},
+        {from:'cashier-001-n003',to:'cashier-001-n004',label:'اعلام واریز'},
+        {from:'cashier-001-n004',to:'cashier-001-j1',label:''},
+        {from:'cashier-001-j1',to:'cashier-001-n005',label:'پیامک دریافت شد'},
+        {from:'cashier-001-j1',to:'cashier-001-n007',label:'پیامک دریافت نشد'},
+        {from:'cashier-001-n005',to:'cashier-001-n006',label:''},
+        {from:'cashier-001-n006',to:'end',label:''},
+        {from:'cashier-001-n007',to:'cashier-001-n008',label:''},
+        {from:'cashier-001-n008',to:'end',label:''},
+      ],
+    };
     P['cashier-002']=linear('cashier-002','cashier','بستن صندوق پایان شیفت','شمارش و تحویل صندوق.',[{label:'شمارش وجوه',actor:'صندوق‌دار',desc:''},{label:'تحویل به حسابداری',actor:'صندوق‌دار',desc:''}]);
     // logistics
     P['logistics-001']=linear('logistics-001','logistics','تخصیص سفارش به پیک','هماهنگی ارسال سفارش بیرون‌بر.',[{label:'دریافت سفارش آماده',actor:'مسئول لجستیک',desc:''},{label:'تخصیص پیک',actor:'مسئول لجستیک',desc:''}]);
@@ -856,7 +913,7 @@ class Component extends DCLogic {
 
     // departments with counts
     const departments=DEPTS.map(d=>{
-      const count=Object.values(P).filter(p=>p.department===d.code && !p.parent).length;
+      const count=Object.values(P).filter(p=>p.department===d.code).length;
       return {...d,count};
     });
     const OV={
@@ -911,6 +968,7 @@ class Component extends DCLogic {
     this.applyProc(p,{linkFrom:null,linkPos:null}); this.setToast('اتصال جدید افزوده شد');
   }
   selectEdge(i){ this.setState({selectedEdge:i,selectedNode:null,detailNode:null}); }
+  setEdgeLabel(i,val){ const p={...this.state.processes[this.state.currentProcess]}; p.edges=p.edges.map((e,k)=>k===i?{...e,label:val}:e); this.applyProc(p,undefined,true); }
   deleteEdge(i){ const p={...this.state.processes[this.state.currentProcess]}; p.edges=p.edges.filter((_,k)=>k!==i); this.applyProc(p,{selectedEdge:null}); this.setToast('خط حذف شد'); }
   onWinMove(e){
     if(this._link){ this.setState({linkPos:this.worldFromClient(e.clientX,e.clientY)}); return; }
@@ -1016,8 +1074,16 @@ class Component extends DCLogic {
     this.setToast('زیرفرآیند '+newId+' ساخته و پیوند شد');
   }
   backSub(){
-    const st=[...this.state.stack]; const prev=st.pop();
-    this.setState({stack:st,currentProcess:prev,detailNode:null,editMode:false}); this.fit();
+    const st=[...this.state.stack]; let prev=st.pop();
+    if(!prev){
+      // opened directly (no nav stack) — go to the declared parent process
+      const cur=this.cur();
+      const pid=cur&&cur.parent&&cur.parent.process;
+      if(pid&&this.state.processes[pid]){ this.setState({currentProcess:pid,currentDept:this.state.processes[pid].department,detailNode:null,editMode:false,screen:'flow'}); this.fit(); return; }
+      // no parent available — fall back to the process list
+      this.goList(); return;
+    }
+    this.setState({stack:st,currentProcess:prev,detailNode:null,editMode:false,screen:'flow'}); this.fit();
   }
 
   // ---------------- edit ----------------
@@ -1098,10 +1164,29 @@ class Component extends DCLogic {
   deleteSel(){
     const sel=this.state.selectedNode;
     if(!sel||sel==='start'||sel==='end'){ this.setToast('گرهی برای حذف انتخاب نشده'); return; }
+    const p=this.state.processes[this.state.currentProcess];
+    const n=(p.nodes||[]).find(x=>x.id===sel);
+    const label=n?(n.type==='junction'?('اتصال '+(n.junctionType||'')):(n.label||'این فعالیت')):'این گره';
+    this.setState({confirmDel:{id:sel,label:label}});
+  }
+  cancelDelete(){ this.setState({confirmDel:null}); }
+  confirmDeleteNode(){
+    const cd=this.state.confirmDel; if(!cd){return;}
+    const sel=cd.id;
     const p={...this.state.processes[this.state.currentProcess]};
-    p.nodes=p.nodes.map(n=> n.id===sel ? {...n,removed:!n.removed} : n);
-    this.applyProc(p);
-    this.setToast('علامت‌گذاری برای حذف (بدون حذف خودکار)');
+    const incoming=(p.edges||[]).filter(e=>e.to===sel);
+    const outgoing=(p.edges||[]).filter(e=>e.from===sel);
+    let edges=(p.edges||[]).filter(e=>e.from!==sel&&e.to!==sel);
+    // bridge: reconnect each predecessor to each successor
+    incoming.forEach(ie=>{ outgoing.forEach(oe=>{
+      if(ie.from===oe.to) return; // avoid self-loop
+      if(edges.some(x=>x.from===ie.from&&x.to===oe.to)) return; // avoid duplicate
+      edges.push({from:ie.from,to:oe.to,label:ie.label||oe.label||''});
+    }); });
+    p.nodes=(p.nodes||[]).filter(n=>n.id!==sel);
+    p.edges=edges;
+    this.applyProc(p,{selectedNode:null,detailNode:null,confirmDel:null});
+    this.setToast('گره حذف شد و مسیر بازپیوند شد');
   }
   relayout(){
     const p={...this.state.processes[this.state.currentProcess]};
@@ -1216,6 +1301,8 @@ class Component extends DCLogic {
       showInbox:S.showInbox, showCreate:S.showCreate,
       openInbox:()=>this.setState({showInbox:true}),
       closeInbox:()=>this.setState({showInbox:false}),
+      confirmDel:S.confirmDel, hasConfirmDel:!!S.confirmDel, confirmDelLabel:S.confirmDel?S.confirmDel.label:'',
+      confirmDeleteNode:()=>this.confirmDeleteNode(), cancelDelete:()=>this.cancelDelete(),
       openCreate:()=>this.setState({showCreate:true,createName:''}),
       closeCreate:()=>this.setState({showCreate:false}),
       onCreateName:(e)=>this.setState({createName:e.target.value}),
@@ -1239,12 +1326,15 @@ class Component extends DCLogic {
       base.setListSearch=(e)=>this.setState({listSearch:e.target.value});
       base.clearListSearch=()=>this.setState({listSearch:''});
       base.hasListSearch=q.length>0;
-      base.processList=Object.values(S.processes).filter(p=>p.department===S.currentDept&&!p.parent&&(!q||(p.name||'').includes(q)||(p.id||'').includes(q))).map(p=>{
+      base.processList=Object.values(S.processes).filter(p=>p.department===S.currentDept&&(!q||(p.name||'').includes(q)||(p.id||'').includes(q))).map(p=>{
         const nc=p.nodes.filter(n=>n.type==='activity'&&!n.removed).length;
-        const tag=p.pending&&p.pending.length? this.toFa(p.pending.length)+' تعارض' : (p.kpis&&p.kpis.length?'دارای KPI':'مستند');
-        const tagStyle=p.pending&&p.pending.length
+        const isSub=!!p.parent;
+        const tag=isSub?'زیرفرآیند':(p.pending&&p.pending.length? this.toFa(p.pending.length)+' تعارض' : (p.kpis&&p.kpis.length?'دارای KPI':'مستند'));
+        const tagStyle=isSub
+          ? 'font-size:10.5px;color:#B4690E;background:#FBEEDC;padding:2px 8px;border-radius:20px;font-weight:600'
+          : (p.pending&&p.pending.length
           ? 'font-size:10.5px;color:#E23D35;background:#FFE9E7;padding:2px 8px;border-radius:20px;font-weight:600'
-          : 'font-size:10.5px;color:#4A25A9;background:#F0E9FB;padding:2px 8px;border-radius:20px;font-weight:600';
+          : 'font-size:10.5px;color:#4A25A9;background:#F0E9FB;padding:2px 8px;border-radius:20px;font-weight:600');
         return {id:p.id,name:p.name,summary:p.summary,nodeCountFa:this.toFa(nc),tag,tagStyle,openSummary:()=>this.openProc(p.id),openFlowD:()=>this.openProcFlow(p.id)};
       });
       base.listEmpty=base.processList.length===0;
@@ -1352,7 +1442,7 @@ class Component extends DCLogic {
       });
       // edges
       const nmap={}; p.nodes.forEach(n=>{nmap[n.id]={n,d:this.dims(n)};});
-      base.edgesR=[]; base.edgeLabels=[]; base.edgeDel=[];
+      base.edgesR=[]; base.edgeLabels=[]; base.edgeDel=[]; base.edgeEdit=[];
       p.edges.forEach((e,i)=>{
         const A=nmap[e.from],B=nmap[e.to]; if(!A||!B)return;
         const acx=A.n.position.x+A.d.w/2, acy=A.n.position.y+A.d.h/2;
@@ -1377,11 +1467,12 @@ class Component extends DCLogic {
         const sel=S.selectedEdge===i;
         base.edgesR.push({d:dd,op,stroke:sel?'#FA5A52':'#9B86D9',w:sel?3:2,hitStyle:S.editMode?'pointer-events:stroke;cursor:pointer':'pointer-events:none',onSel:(ev)=>{if(ev&&ev.stopPropagation)ev.stopPropagation(); this.selectEdge(i);}});
         const mx=(sx+ex)/2, my=(sy+ey)/2;
-        if(e.label){
+        if(e.label && !(sel && S.editMode)){
           base.edgeLabels.push({label:e.label,style:{position:'absolute',left:(mx-30)+'px',top:(my-11)+'px',background:'#fff',border:'1px solid #ECE3F8',color:'#8a7db0',fontSize:'10px',fontWeight:600,padding:'2px 8px',borderRadius:'20px',whiteSpace:'nowrap',pointerEvents:'none'}});
         }
         if(sel && S.editMode){
-          base.edgeDel.push({onDel:(ev)=>{if(ev&&ev.stopPropagation)ev.stopPropagation(); this.deleteEdge(i);},style:{position:'absolute',left:(mx-12)+'px',top:(my-12)+'px',width:'24px',height:'24px',borderRadius:'50%',background:'#FA5A52',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'16px',fontWeight:700,cursor:'pointer',boxShadow:'0 4px 12px -4px rgba(250,90,82,.9)',border:'2px solid #fff',zIndex:10}});
+          base.edgeEdit.push({value:e.label||'',onInput:(ev)=>this.setEdgeLabel(i,ev.target.value),style:{position:'absolute',left:(mx-85)+'px',top:(my-46)+'px',width:'170px',zIndex:11}});
+          base.edgeDel.push({onDel:(ev)=>{if(ev&&ev.stopPropagation)ev.stopPropagation(); this.deleteEdge(i);},style:{position:'absolute',left:(mx-12)+'px',top:(my+4)+'px',width:'24px',height:'24px',borderRadius:'50%',background:'#FA5A52',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'16px',fontWeight:700,cursor:'pointer',boxShadow:'0 4px 12px -4px rgba(250,90,82,.9)',border:'2px solid #fff',zIndex:10}});
         }
       });
       if(S.linkFrom && nmap[S.linkFrom] && S.linkPos){
@@ -1422,7 +1513,7 @@ class Component extends DCLogic {
       base.editSub=(e)=>this.editField('subprocess',e.target.value.trim()||null);
       base.createSub=()=>this.createSubForNode();
     } else {
-      base.nodesR=[]; base.edgesR=[]; base.edgeLabels=[]; base.edgeDel=[]; base.linkActive=false; base.linkD=''; base.detailOpen=false;
+      base.nodesR=[]; base.edgesR=[]; base.edgeLabels=[]; base.edgeDel=[]; base.edgeEdit=[]; base.linkActive=false; base.linkD=''; base.detailOpen=false;
       base.detail={id:'',isJunction:false,isActivity:false,jt:'',jtLabel:'',setXOR:()=>{},setAND:()=>{},setOR:()=>{},btnXOR:'',btnAND:'',btnOR:'',label:'',actor:'',actorRaw:'',desc:'',descRaw:'',inputs:[],controls:[],outputs:[],mechanisms:[],hasSub:false,source:'',hasConflict:false,conflictCountFa:'۰',conflicts:[],subRaw:'',subValid:false,subInvalid:false,subName:''};
       base.detailViewAct=false; base.detailEditAct=false; base.detailJuncView=false; base.detailJuncEdit=false;
       base.closeDetail=()=>{}; base.openSub=()=>{}; base.editLabel=()=>{}; base.editActor=()=>{}; base.editDesc=()=>{}; base.editSub=()=>{}; base.createSub=()=>{};
