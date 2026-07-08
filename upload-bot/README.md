@@ -18,6 +18,16 @@ the async Telegram layer is thin and verified live.
 - **File:** `/start` → فایل → pick ONE department → send documents → `/done` →
   bot stores them under `departments/{dept}/attachments/`. `/cancel` discards staged files.
 
+## Proxy (if Telegram needs one)
+If Telegram is only reachable through a proxy (e.g. a local SOCKS proxy), set
+`TELEGRAM_PROXY` to its URL and, for SOCKS, install the extra first:
+```bash
+uv pip install --python .venv/bin/python "httpx[socks]"      # SOCKS support (socksio)
+export TELEGRAM_PROXY=socks5://127.0.0.1:2080                 # use socks5h:// to resolve DNS via the proxy
+```
+Passing it explicitly makes httpx ignore ambiguous shell proxies (`ALL_PROXY` with a
+bare `socks://` scheme, which httpx rejects). `http://…` proxies work without the extra.
+
 ## Large files (>20 MB, NFR-2)
 The standard Telegram Bot API caps downloads at 20 MB. For large meeting audio, run a
 local Bot API server and set `TELEGRAM_API_BASE_URL` to it, e.g.:

@@ -9,6 +9,7 @@ class Config:
     allowed_user_id: int
     data_root: Path
     api_base_url: str | None = None
+    proxy_url: str | None = None
 
     @classmethod
     def from_env(cls, env=None):
@@ -25,4 +26,5 @@ class Config:
             allowed_user_id=int(req("ALLOWED_USER_ID")),
             data_root=Path(req("DATA_ROOT")),
             api_base_url=(env.get("TELEGRAM_API_BASE_URL") or None),
+            proxy_url=(env.get("TELEGRAM_PROXY") or None),
         )

@@ -16,6 +16,14 @@ def test_api_base_url_optional(data_root):
     cfg = Config.from_env({"TELEGRAM_BOT_TOKEN": "t", "ALLOWED_USER_ID": "1",
                            "DATA_ROOT": str(data_root)})
     assert cfg.api_base_url is None
+    assert cfg.proxy_url is None
+
+
+def test_proxy_url_from_env(data_root):
+    cfg = Config.from_env({"TELEGRAM_BOT_TOKEN": "t", "ALLOWED_USER_ID": "1",
+                           "DATA_ROOT": str(data_root),
+                           "TELEGRAM_PROXY": "socks5://127.0.0.1:2080"})
+    assert cfg.proxy_url == "socks5://127.0.0.1:2080"
 
 
 def test_missing_required_raises(data_root):

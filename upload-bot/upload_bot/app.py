@@ -20,6 +20,10 @@ from upload_bot.handlers import (
 
 def build_application(config):
     builder = ApplicationBuilder().token(config.bot_token)
+    if config.proxy_url:
+        # Reach Telegram through a proxy (e.g. a local SOCKS proxy). Passing it
+        # explicitly makes httpx ignore ambiguous env proxies (ALL_PROXY etc.).
+        builder = builder.proxy(config.proxy_url).get_updates_proxy(config.proxy_url)
     if config.api_base_url:
         base = config.api_base_url.rstrip("/")
         builder = builder.base_url(f"{base}/bot").base_file_url(f"{base}/file/bot")
