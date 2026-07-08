@@ -31,18 +31,24 @@ def build_handlers(config):
         return CHOOSE_KIND
 
     async def choose_kind(update: Update, ctx):
+        if not guard(update):
+            return ConversationHandler.END
         q = update.callback_query
         await q.answer()
         if q.data == "k:voice":
             ctx.user_data["voice"] = VoiceUpload()
             await q.edit_message_text("تاریخ جلسه را وارد کنید (مثلاً 2026-07-06):")
             return V_DATE
-        ctx.user_data["batch"] = FileBatch()
-        await q.edit_message_text("دپارتمان این دسته را انتخاب کنید:",
-                                  reply_markup=_dept_kb(root, "fd"))
-        return F_DEPT
+        if q.data == "k:file":
+            ctx.user_data["batch"] = FileBatch()
+            await q.edit_message_text("دپارتمان این دسته را انتخاب کنید:",
+                                      reply_markup=_dept_kb(root, "fd"))
+            return F_DEPT
+        return CHOOSE_KIND
 
     async def v_date(update: Update, ctx):
+        if not guard(update):
+            return ConversationHandler.END
         try:
             ctx.user_data["voice"].date = normalize_date(update.message.text)
         except ValueError as e:
@@ -53,6 +59,8 @@ def build_handlers(config):
         return V_DEPTS
 
     async def v_depts(update: Update, ctx):
+        if not guard(update):
+            return ConversationHandler.END
         q = update.callback_query
         await q.answer()
         v = ctx.user_data["voice"]
@@ -67,18 +75,26 @@ def build_handlers(config):
         return V_DEPTS
 
     async def v_file(update: Update, ctx):
+        if not guard(update):
+            return ConversationHandler.END
         v = ctx.user_data["voice"]
         tg = update.message.voice or update.message.audio
         data = bytes(await (await tg.get_file()).download_as_bytearray())
         staged = stage(root, data, hint="voice")
         base = voice_basename(v.departments, v.date, root)
         ext = "ogg" if update.message.voice else "mp3"
-        finalize(staged, root / "meetings" / "audio" / f"{base}.{ext}")
+        try:
+            finalize(staged, root / "meetings" / "audio" / f"{base}.{ext}")
+        except Exception:
+            discard([staged])
+            raise
         await update.message.reply_text(
             f"ذخیره شد. شناسه برای شروع پردازش:\n`{base}`", parse_mode="Markdown")
         return ConversationHandler.END
 
     async def f_dept(update: Update, ctx):
+        if not guard(update):
+            return ConversationHandler.END
         q = update.callback_query
         await q.answer()
         code = q.data.split(":", 1)[1]
@@ -89,6 +105,8 @@ def build_handlers(config):
         return F_COLLECT
 
     async def f_collect(update: Update, ctx):
+        if not guard(update):
+            return ConversationHandler.END
         doc = update.message.document
         b = ctx.user_data["batch"]
         data = bytes(await (await doc.get_file()).download_as_bytearray())
@@ -97,6 +115,8 @@ def build_handlers(config):
         return F_COLLECT
 
     async def f_done(update: Update, ctx):
+        if not guard(update):
+            return ConversationHandler.END
         b = ctx.user_data["batch"]
         if not b.ready():
             await update.message.reply_text("هیچ فایلی دریافت نشد.")
@@ -108,6 +128,8 @@ def build_handlers(config):
         return ConversationHandler.END
 
     async def cancel(update: Update, ctx):
+        if not guard(update):
+            return ConversationHandler.END
         for key in ("voice", "batch"):
             obj = ctx.user_data.pop(key, None)
             if isinstance(obj, FileBatch):
