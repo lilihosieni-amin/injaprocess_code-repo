@@ -9,7 +9,7 @@ def _new_node(cand_node, nid, run):
     if cand_node["type"] == "activity":
         return {"id": nid, "type": "activity", "label": cand_node["label"],
                 "description": cand_node["description"], "actor": cand_node["actor"],
-                "icom": cand_node["icom"], "subprocess": cand_node["subprocess"],
+                "icom": cand_node["icom"], "subprocess": None,
                 "position": {"x": 0, "y": 0}, "layout": "auto",
                 "source": {"created_by": run, "touched_by": []}}
     return {"id": nid, "type": "junction", "junctionType": cand_node["junctionType"],

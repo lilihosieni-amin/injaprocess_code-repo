@@ -51,7 +51,7 @@
             "description": { "type": "string" },
             "actor": { "type": "string" },
             "icom": { "$ref": "#/$defs/icom" },
-            "subprocess": { "type": ["string", "null"] }
+            "subprocess": { "type": "null" }
           }
         },
         {
