@@ -15,7 +15,7 @@
       "type": "object", "additionalProperties": false,
       "required": ["type", "ref", "run"],
       "properties": {
-        "type": { "enum": ["voice", "manual", "chat"] },
+        "type": { "enum": ["voice", "manual", "chat", "auto"] },
         "ref": { "type": ["string", "null"] },
         "run": { "type": ["string", "null"] }
       }

@@ -18,7 +18,8 @@
         "required": ["id", "status"],
         "properties": {
           "id": { "type": "string", "pattern": "^[a-z]+-[0-9]{3}$" },
-          "status": { "enum": ["new", "update", "unchanged"] }
+          "status": { "enum": ["new", "update", "unchanged"] },
+          "auto_subprocess_of": { "type": "string", "pattern": "^[a-z]+-[0-9]{3}$" }
         }
       }
     }
