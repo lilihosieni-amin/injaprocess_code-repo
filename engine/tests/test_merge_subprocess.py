@@ -2,7 +2,7 @@ import copy
 import pytest
 from conftest import load_fixture
 from engine_common import validate
-from merge import build_new, merge_new
+from merge import build_new, build_update, merge_new
 
 RUN = "runs/cooking-2026-07-06"
 NOW = "2026-07-06T10:00:00Z"
@@ -65,3 +65,27 @@ def test_source_ref_survives_attempt_rerun(data_root):
                                  "runs/cooking-2026-07-06/attempt-02", NOW, root=data_root)
     assert parent["source"]["ref"] == "cooking-2026-07-06"
     assert children[0]["source"]["ref"] == "cooking-2026-07-06"
+
+
+def test_build_update_adds_subprocess_on_existing_node(data_root):
+    proc = copy.deepcopy(load_fixture("process.cooking-001.json"))  # has real node cooking-001-n010
+    box = next(n for n in proc["nodes"] if n["id"] == "cooking-001-n010")
+    box["subprocess"] = None
+    child = copy.deepcopy(load_fixture("candidate.json"))
+    delta = {"add_nodes": [], "add_edges": [], "enrich_nodes": [], "flag_removed": [],
+             "add_subprocesses": [{"parent": "cooking-001-n010", "process": child}]}
+    updated, children = build_update(proc, delta, "runs/cooking-2026-07-10", NOW, root=data_root)
+    assert len(children) == 1
+    assert children[0]["parent"] == {"process": "cooking-001", "node": "cooking-001-n010"}
+    box2 = next(n for n in updated["nodes"] if n["id"] == "cooking-001-n010")
+    assert box2["subprocess"] == children[0]["id"]
+
+
+def test_build_update_rejects_duplicate_child(data_root):
+    proc = copy.deepcopy(load_fixture("process.cooking-001.json"))
+    box = next(n for n in proc["nodes"] if n["id"] == "cooking-001-n010")
+    box["subprocess"] = "cooking-099"                         # already has one
+    delta = {"add_nodes": [], "add_edges": [], "enrich_nodes": [], "flag_removed": [],
+             "add_subprocesses": [{"parent": "cooking-001-n010", "process": load_fixture("candidate.json")}]}
+    with pytest.raises(ValueError):
+        build_update(proc, delta, "runs/x", NOW, root=data_root)

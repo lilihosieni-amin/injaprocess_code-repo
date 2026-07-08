@@ -116,12 +116,11 @@ def _touch(node, run):
             tb.append(run)
 
 
-def apply_delta(process, delta, run, now):
+def build_update(process, delta, run, now, root=None):
     validate("delta.schema.json", delta)
     keymap, new_ids = {}, []
     for an in delta["add_nodes"]:
-        nid = next_box_id(process) if an["type"] == "activity" \
-            else next_junction_id(process)
+        nid = next_box_id(process) if an["type"] == "activity" else next_junction_id(process)
         keymap[an["key"]] = nid
         new_ids.append(nid)
         process["nodes"].append(_new_node(an, nid, run))
@@ -130,7 +129,6 @@ def apply_delta(process, delta, run, now):
         if e["from"] not in valid_ep or e["to"] not in valid_ep:
             raise ValueError(f"delta edge references unknown node: {e}")
     process["edges"].extend(_map_edges(delta["add_edges"], keymap))
-
     byid = {n["id"]: n for n in process["nodes"]}
     for en in delta["enrich_nodes"]:
         n = byid.get(en["id"])
@@ -150,13 +148,20 @@ def apply_delta(process, delta, run, now):
         if n is not None:
             n["removed"] = True
             _touch(n, run)
-
+    children = _attach_subprocesses(process, keymap, delta.get("add_subprocesses", []),
+                                    run, now, root, "parent")
     if new_ids:
         order = topo_order(process["nodes"], process["edges"])
         local_relayout(process, min(order.index(i) for i in new_ids))
     process["updated_at"] = now
     validate("process.schema.json", process)
-    return process
+    for c in children:
+        validate("process.schema.json", c)
+    return process, children
+
+
+def apply_delta(process, delta, run, now, root=None):
+    return build_update(process, delta, run, now, root)[0]
 
 
 def resolve_pending(process, index, decision, now):
