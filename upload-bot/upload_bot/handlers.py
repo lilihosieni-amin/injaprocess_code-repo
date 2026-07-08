@@ -4,7 +4,7 @@ from telegram.ext import ContextTypes, ConversationHandler
 from upload_bot.attachments import attachment_dest
 from upload_bot.auth import is_allowed
 from upload_bot.naming import normalize_date, voice_basename
-from upload_bot.registry import department_codes, is_valid_department
+from upload_bot.registry import department_choices, is_valid_department
 from upload_bot.session import FileBatch, VoiceUpload
 from upload_bot.staging import discard, finalize, stage
 
@@ -121,7 +121,7 @@ def build_handlers(config):
         b = ctx.user_data["batch"]
         data = bytes(await (await doc.get_file()).download_as_bytearray())
         b.add_file(doc.file_name or "file", stage(root, data, hint="file"))
-        await update.message.reply_text(f"دریافت شد ({len(b.files)}). ادامه دهید یا /done.")
+        await update.message.reply_text(f"دریافت شد ({len(b.files)})")
         return F_COLLECT
 
     async def f_done(update: Update, ctx):
@@ -155,9 +155,9 @@ def build_handlers(config):
 
 def _dept_kb(data_root, prefix, multi=False, chosen=()):
     rows = []
-    for code in department_codes(data_root):
+    for code, name in department_choices(data_root):
         mark = "✅ " if code in chosen else ""
-        rows.append([InlineKeyboardButton(f"{mark}{code}", callback_data=f"{prefix}:{code}")])
+        rows.append([InlineKeyboardButton(f"{mark}{name}", callback_data=f"{prefix}:{code}")])
     if multi:
         rows.append([InlineKeyboardButton("تمام شد", callback_data=f"{prefix}:done")])
     return InlineKeyboardMarkup(rows)

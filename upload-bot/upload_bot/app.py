@@ -1,3 +1,4 @@
+from telegram import BotCommand
 from telegram.ext import (
     ApplicationBuilder,
     CallbackQueryHandler,
@@ -18,8 +19,13 @@ from upload_bot.handlers import (
 )
 
 
+async def _set_commands(app):
+    # Show /start in the bot's ☰ menu.
+    await app.bot.set_my_commands([BotCommand("start", "شروع")])
+
+
 def build_application(config):
-    builder = ApplicationBuilder().token(config.bot_token)
+    builder = ApplicationBuilder().token(config.bot_token).post_init(_set_commands)
     if config.proxy_url:
         # Reach Telegram through a proxy (e.g. a local SOCKS proxy). Passing it
         # explicitly makes httpx ignore ambiguous env proxies (ALL_PROXY etc.).
