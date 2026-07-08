@@ -11,6 +11,13 @@ from upload_bot.staging import discard, finalize, stage
 CHOOSE_KIND, V_DATE, V_DEPTS, V_FILE, F_DEPT, F_COLLECT = range(6)
 
 
+def _discard_staged(ctx):
+    for key in ("voice", "batch"):
+        obj = ctx.user_data.pop(key, None)
+        if isinstance(obj, FileBatch):
+            discard([s for _, s in obj.files])
+
+
 def _guard(config):
     def ok(update):
         u = update.effective_user
@@ -25,6 +32,7 @@ def build_handlers(config):
     async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if not guard(update):
             return ConversationHandler.END
+        _discard_staged(ctx)
         kb = InlineKeyboardMarkup([[InlineKeyboardButton("صوت", callback_data="k:voice"),
                                     InlineKeyboardButton("فایل", callback_data="k:file")]])
         await update.message.reply_text("نوع بارگذاری را انتخاب کنید:", reply_markup=kb)
@@ -90,16 +98,18 @@ def build_handlers(config):
             raise
         await update.message.reply_text(
             f"ذخیره شد. شناسه برای شروع پردازش:\n`{base}`", parse_mode="Markdown")
+        ctx.user_data.pop("voice", None)
         return ConversationHandler.END
 
     async def f_dept(update: Update, ctx):
         if not guard(update):
             return ConversationHandler.END
         q = update.callback_query
-        await q.answer()
         code = q.data.split(":", 1)[1]
         if not is_valid_department(code, root):
+            await q.answer("دپارتمان نامعتبر", show_alert=True)
             return F_DEPT
+        await q.answer()
         ctx.user_data["batch"].department = code
         await q.edit_message_text("فایل‌ها را بفرستید؛ در پایان /done را بزنید.")
         return F_COLLECT
@@ -125,6 +135,7 @@ def build_handlers(config):
             finalize(staged, attachment_dest(b.department, original, root))
         await update.message.reply_text(
             f"{len(b.files)} فایل در دپارتمان {b.department} ذخیره شد.")
+        ctx.user_data.pop("batch", None)
         return ConversationHandler.END
 
     async def cancel(update: Update, ctx):

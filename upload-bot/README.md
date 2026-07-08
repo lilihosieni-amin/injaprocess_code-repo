@@ -27,3 +27,7 @@ local Bot API server and set `TELEGRAM_API_BASE_URL` to it, e.g.:
 ## Notes
 - Voice date input is ISO Gregorian for now; Jalali input is a planned enhancement.
 - Only `ALLOWED_USER_ID` is served; other users are silently ignored (NFR-1).
+- Staged files from an abandoned file batch are discarded when the user re-runs `/start`
+  or sends `/cancel`. A fully-abandoned batch (no further interaction at all) leaves
+  residual files in `.staging/`; these are cleaned by a periodic `.staging/` sweep wired
+  in Phase 7.

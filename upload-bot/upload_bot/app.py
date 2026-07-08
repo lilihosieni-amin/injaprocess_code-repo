@@ -27,6 +27,7 @@ def build_application(config):
     h = build_handlers(config)
     conv = ConversationHandler(
         entry_points=[CommandHandler("start", h["start"])],
+        allow_reentry=True,
         states={
             CHOOSE_KIND: [CallbackQueryHandler(h["choose_kind"], pattern=r"^k:")],
             V_DATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, h["v_date"])],
