@@ -16,6 +16,7 @@ allocate-id = "allocate_id.cli:main"
 layout = "layout.cli:main"
 merge = "merge.cli:main"
 transcribe = "transcribe.cli:main"
+validate = "validate.cli:main"
 
 [tool.setuptools.packages.find]
-include = ["engine_common*", "allocate_id*", "layout*", "merge*", "transcribe*"]
+include = ["engine_common*", "allocate_id*", "layout*", "merge*", "transcribe*", "validate*"]

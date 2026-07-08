@@ -162,8 +162,14 @@ test-first, in dependency order. Installed as pinned CLIs on PATH, **outside** t
    Vertex call is isolated behind a seam so tests mock it and only integration tests hit real Vertex.
    *Test (unit):* idempotency pre-check short-circuits; prompt assembled correctly; chrome-
    stripping logic on a sample with a known preamble. *Integration (manual/gated):* real Vertex call.
+5. **`validate`** (ARD §8) — check a JSON artifact against a named schema; exit 2 on
+   mismatch/unknown-schema/missing-file. Guards the LLM-written `segments`/`overview`/`meta`
+   outputs that no other CLI validates. *(Added during the Phase-3 hardening, not one of the
+   original four.)*
+   *Test:* valid fixture passes; a broken copy exits 2; short and full schema names are
+   equivalent; unknown schema and missing file exit 2.
 
-**Deliverables:** four tested CLIs with `--help`, precondition checks, and non-zero exit on
+**Deliverables:** five tested CLIs with `--help`, precondition checks, and non-zero exit on
 precondition failure (ARD §7). A short install/version note recorded in `data-repo` (ARD §8).
 
 **Exit criteria**
@@ -257,6 +263,13 @@ built process `unchanged`/`cashier-001` with no duplicate (AC-3); guard blocks a
 `processes/*.json` write and a `.claude/` edit while allowing the `merge` CLI (AC-7). The
 **full Telegram-driven run (AC-2 end-to-end) is deferred to Phase 4** (control bot), per this
 table's "driven via Phase 4" note.
+
+A post-merge hardening added the `validate` engine CLI (Phase 1 §3) and wired it into the
+playbook — after `classify`/`summarize`/meta writes the orchestrator runs `validate` on
+`segments`/`overview`/`meta` and re-dispatches the writing agent on failure — giving those
+LLM-written artifacts the same deterministic schema check `merge` already gives candidate/delta/
+process (NFR-10). The brain also stopped referencing `code-repo/schemas/*.json` by path (the
+runtime cannot reach code-repo; the shapes are inline and `validate`/`merge` own enforcement).
 
 ---
 

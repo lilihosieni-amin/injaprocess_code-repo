@@ -58,11 +58,12 @@ code-repo/
 ├── .claude/                      # dev agents/skills (optional)
 ├── upload-bot/                   # Bot 1 (custom code)
 ├── control-bot/                  # config & launch profile for claude-code-telegram
-├── engine/                       # deterministic CLIs (allocate-id, merge, layout, transcribe)
+├── engine/                       # deterministic CLIs (allocate-id, merge, layout, transcribe, validate)
 │   ├── allocate_id/
 │   ├── merge/
 │   ├── layout/
-│   └── transcribe/               # Gemini-on-Vertex call
+│   ├── transcribe/               # Gemini-on-Vertex call
+│   └── validate/                 # JSON-vs-schema gate for LLM-written artifacts
 ├── ui/                           # React + React Flow (frontend)
 │   └── design/                   # visual design reference (source of truth for look) + support.js
 ├── ui-backend/                   # thin UI backend (read/write JSON + auth)
@@ -345,7 +346,7 @@ This list states only **what must be built**; the full prompt/skill text and the
 | `process-voice` | playbook (slash command) | orchestrate the whole pipeline + own the checkpoint and conflict report |
 | `idef-extraction` | knowledge (preloaded in `extract`) | IDEF0/IDEF3 rules + the `process.json` schema + the "no fabrication" rule |
 
-**Non-agent (part of the engine, not `.claude`):** `transcribe`, `merge`, `allocate-id`, `layout` — all deterministic CLIs in `code-repo/engine` (Section 8). This list is updated here whenever a new agent/skill is added.
+**Non-agent (part of the engine, not `.claude`):** `transcribe`, `merge`, `allocate-id`, `layout`, `validate` — all deterministic CLIs in `code-repo/engine` (Section 8). This list is updated here whenever a new agent/skill is added.
 
 ---
 
@@ -397,7 +398,7 @@ The four-layer ladder (weak → strong):
 
 1. **CLAUDE.md** (`data-repo`): invariants and facts. Baseline, but subject to drift.
 2. **The `/process-voice` skill**: an explicit script of the stages; every run starts from this, not from improvisation.
-3. **Precondition gating (the main pillar):** each CLI checks its precondition; e.g. `merge` won't run without **confirmed** segments, and `extract` won't run without `classify`'s output. Ordering is imposed by data dependency, not by the model's discipline.
+3. **Precondition gating (the main pillar):** each CLI checks its precondition; e.g. `merge` won't run without **confirmed** segments, and `extract` won't run without `classify`'s output. Ordering is imposed by data dependency, not by the model's discipline. The playbook also runs the `validate` CLI on the LLM-written artifacts (`segments.json`, `overview.json`, `meta.json`) and re-dispatches the writing agent on a nonconforming output — the deterministic counterpart to `merge`'s own validation of candidate/delta/process.
 4. **Hooks (hard guarantee — PreToolUse, exit code 2):** the only way to get a 100% guarantee in Claude Code.
 
 **Runtime hooks:**
@@ -419,6 +420,7 @@ In `code-repo/engine/`, installed as **pinned** CLIs on the server's PATH; outsi
 | `merge` | apply delta, assign IDs, preserve id/position, record pending, mark removed |
 | `layout` | deterministic serpentine layout (Section 9) |
 | `transcribe` | Gemini-on-Vertex call + idempotency pre-check |
+| `validate` | check a JSON artifact against a named schema (exit 2 on mismatch); guards the classify/summarize/playbook outputs (`segments`/`overview`/`meta`) that no other CLI validates |
 
 The skills/prompts/IDEF rules stay in `data-repo/.claude` (intentionally easy to edit, since they are meant to improve over time). Two separate improvement activities: extraction quality → edit skills in `data-repo`; the deterministic engine → edit CLIs in `code-repo`.
 

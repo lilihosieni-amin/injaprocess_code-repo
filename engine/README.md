@@ -1,6 +1,6 @@
 # engine/ — deterministic CLIs (ARD §8)
 
-Four console scripts, installed editable into the repo `.venv` (`pip install -e engine`,
+Five console scripts, installed editable into the repo `.venv` (`pip install -e engine`,
 done automatically by `make test`). All are deterministic and LLM-free except
 `transcribe`, which calls Gemini-on-Vertex behind a seam.
 
@@ -10,6 +10,7 @@ done automatically by `make test`). All are deterministic and LLM-free except
 | `layout` | serpentine flowchart positions (ARD §9) | manual nodes preserved; full vs local re-layout |
 | `merge` | apply candidate/delta, resolve pending | enrich empty-only; conflict→pending (FR-M3); flag-removed never deletes (INV-4); validates against schemas/ before write |
 | `transcribe` | Gemini-on-Vertex + idempotency pre-check | skips Vertex if transcript exists; raw text to stdout (pipeline cleans) |
+| `validate` | check a JSON file against a named schema | `validate <schema> <file>`; exit 2 on mismatch/unknown-schema/missing-file; guards the classify/summarize/playbook outputs no other CLI validates |
 
 Runtime env: `DATA_ROOT` (data location), `SCHEMA_DIR` (optional; defaults to the repo
 `schemas/`), and for `transcribe`: `VERTEX_PROJECT`/`VERTEX_LOCATION`/`GEMINI_MODEL` +

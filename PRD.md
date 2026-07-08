@@ -155,6 +155,7 @@ The system consists of five components that communicate **only through the share
 - **NFR-7 (history & backup):** All changes — from any path (voice processing, chat, or UI) — are recorded in the history, and no change goes unrecorded. In addition, an off-site backup is taken **twice a day** (11am and 11pm, only if there is a new change).
 - **NFR-8 (extensibility):** Adding a new department must be simple and must not change the system's logic.
 - **NFR-9 (service durability):** The bots must run as permanent, durable services on the server.
+- **NFR-10 (output integrity):** Every structured output the system produces conforms to the system's fixed data contract; a nonconforming output is detected and corrected before anything relies on it.
 
 ---
 
