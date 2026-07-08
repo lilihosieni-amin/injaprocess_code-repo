@@ -245,6 +245,19 @@ the Phase-0 fixtures and at least one real transcript.
 - **AC-7:** the hooks actually block a direct `processes/*.json` write and a `.claude/` edit
   (tested by attempting them).
 
+Implemented in `docs/superpowers/plans/2026-07-08-phase-3-extraction-brain.md` (lands in
+`data-repo`, branch `phase-3-extraction-brain`). Authored: `idef-extraction` + `process-voice`
+skills, `classify`/`extract`/`summarize` agents, `CLAUDE.md`, and the `PreToolUse` guard hook
+(13/13 pytest passing). Mechanics verified in-session against the real `dining-2026-05-06`
+transcript: transcribe idempotency (AC-3 half); `classify`→schema-valid `segments.json` with
+true-department assignment spanning cashier/management beyond the `dining` tag (AC-4 basis);
+`extract`→schema-valid candidate (XOR junction, temp keys, sub-process flagged); `merge`→valid
+`cashier-001.json` with allocated IDs + serpentine layout (AC-2 mechanics); re-run marks the
+built process `unchanged`/`cashier-001` with no duplicate (AC-3); guard blocks a
+`processes/*.json` write and a `.claude/` edit while allowing the `merge` CLI (AC-7). The
+**full Telegram-driven run (AC-2 end-to-end) is deferred to Phase 4** (control bot), per this
+table's "driven via Phase 4" note.
+
 ---
 
 ## 6. Phase 4 — Control bot
