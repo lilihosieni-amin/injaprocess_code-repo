@@ -3,7 +3,7 @@ import re
 from engine_common import data_root
 
 
-def next_process_id(dept, root=None):
+def next_process_id(dept, root=None, reserved=()):
     root = root or data_root()
     d = root / "departments" / dept / "processes"
     rx = re.compile(rf"^{re.escape(dept)}-(\d{{3}})$")
@@ -13,6 +13,10 @@ def next_process_id(dept, root=None):
             m = rx.match(f.stem)
             if m:
                 mx = max(mx, int(m.group(1)))
+    for rid in reserved:
+        m = rx.match(rid)
+        if m:
+            mx = max(mx, int(m.group(1)))
     return f"{dept}-{mx + 1:03d}"
 
 

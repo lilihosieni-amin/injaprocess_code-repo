@@ -11,50 +11,68 @@
     "summary": { "type": "string" },
     "idef0": { "$ref": "#/$defs/icom" },
     "kpis": { "type": "array", "items": { "$ref": "#/$defs/kpi" } },
-    "nodes": {
-      "type": "array",
-      "items": {
-        "oneOf": [
-          {
-            "type": "object", "additionalProperties": false,
-            "required": ["key", "type", "label", "description", "actor", "icom", "subprocess"],
-            "properties": {
-              "key": { "type": "string" },
-              "type": { "const": "activity" },
-              "label": { "type": "string" },
-              "description": { "type": "string" },
-              "actor": { "type": "string" },
-              "icom": { "$ref": "#/$defs/icom" },
-              "subprocess": { "type": ["string", "null"] }
-            }
-          },
-          {
-            "type": "object", "additionalProperties": false,
-            "required": ["key", "type", "junctionType", "direction"],
-            "properties": {
-              "key": { "type": "string" },
-              "type": { "const": "junction" },
-              "junctionType": { "enum": ["AND", "OR", "XOR"] },
-              "direction": { "enum": ["split", "join"] }
-            }
-          }
-        ]
-      }
-    },
-    "edges": {
+    "nodes": { "type": "array", "items": { "$ref": "#/$defs/node" } },
+    "edges": { "type": "array", "items": { "$ref": "#/$defs/edge" } },
+    "subprocesses": {
       "type": "array",
       "items": {
         "type": "object", "additionalProperties": false,
-        "required": ["from", "to"],
+        "required": ["parent_key", "process"],
         "properties": {
-          "from": { "type": "string" },
-          "to": { "type": "string" },
-          "label": { "type": "string" }
+          "parent_key": { "type": "string" },
+          "process": { "$ref": "#/$defs/candidateNoSub" }
         }
       }
     }
   },
   "$defs": {
+    "candidateNoSub": {
+      "type": "object", "additionalProperties": false,
+      "required": ["department", "process_name", "summary", "idef0", "kpis", "nodes", "edges"],
+      "properties": {
+        "department": { "type": "string", "pattern": "^[a-z]+$" },
+        "process_name": { "type": "string" },
+        "summary": { "type": "string" },
+        "idef0": { "$ref": "#/$defs/icom" },
+        "kpis": { "type": "array", "items": { "$ref": "#/$defs/kpi" } },
+        "nodes": { "type": "array", "items": { "$ref": "#/$defs/node" } },
+        "edges": { "type": "array", "items": { "$ref": "#/$defs/edge" } }
+      }
+    },
+    "node": {
+      "oneOf": [
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["key", "type", "label", "description", "actor", "icom", "subprocess"],
+          "properties": {
+            "key": { "type": "string" },
+            "type": { "const": "activity" },
+            "label": { "type": "string" },
+            "description": { "type": "string" },
+            "actor": { "type": "string" },
+            "icom": { "$ref": "#/$defs/icom" },
+            "subprocess": { "type": ["string", "null"] }
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["key", "type", "junctionType", "direction"],
+          "properties": {
+            "key": { "type": "string" },
+            "type": { "const": "junction" },
+            "junctionType": { "enum": ["AND", "OR", "XOR"] },
+            "direction": { "enum": ["split", "join"] }
+          }
+        }
+      ]
+    },
+    "edge": {
+      "type": "object", "additionalProperties": false,
+      "required": ["from", "to"],
+      "properties": {
+        "from": { "type": "string" }, "to": { "type": "string" }, "label": { "type": "string" }
+      }
+    },
     "icom": {
       "type": "object", "additionalProperties": false,
       "required": ["inputs", "controls", "outputs", "mechanisms"],

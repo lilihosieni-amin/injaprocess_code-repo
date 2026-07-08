@@ -30,3 +30,14 @@ def test_removed_nodes_still_hold_their_id():
         {"id": "cooking-001-n010", "type": "activity", "removed": True}]}
     # a flagged-removed node keeps its number reserved (never reused)
     assert next_box_id(p) == "cooking-001-n011"
+
+
+def test_reserved_ids_bump_the_counter(data_root):
+    # nothing on disk; reserving cooking-001 forces the next to be 002
+    assert next_process_id("cooking", data_root, reserved={"cooking-001"}) == "cooking-002"
+    assert (
+        next_process_id("cooking", data_root, reserved={"cooking-001", "cooking-002"})
+        == "cooking-003"
+    )
+    # other dept ignored
+    assert next_process_id("cooking", data_root, reserved={"dining-009"}) == "cooking-001"
