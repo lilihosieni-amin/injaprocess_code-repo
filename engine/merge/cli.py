@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 from engine_common import data_root, read_json, write_json_atomic
 
-from merge import apply_delta, merge_new, resolve_pending
+from merge import build_new, build_update, resolve_pending
 
 
 def _now(v):
@@ -42,24 +42,36 @@ def main(argv=None):
         r.add_argument("--now")
     args = ap.parse_args(argv)
 
-    if args.cmd == "new":
-        _require(pathlib_exists(args.candidate), "candidate file must exist")
-        proc = merge_new(read_json(args.candidate), args.department, args.run,
-                         _now(args.now))
-        write_json_atomic(_proc_path(proc["id"]), proc)
-        print(proc["id"])
-    elif args.cmd == "update":
-        path = _proc_path(args.process)
-        _require(path.is_file(), f"target process {args.process} must exist")
-        _require(pathlib_exists(args.delta), "delta file must exist")
-        proc = apply_delta(read_json(path), read_json(args.delta), args.run,
-                           _now(args.now))
-        write_json_atomic(path, proc)
-    else:  # accept | reject
-        path = _proc_path(args.process)
-        _require(path.is_file(), f"process {args.process} must exist")
-        proc = resolve_pending(read_json(path), args.index, args.cmd, _now(args.now))
-        write_json_atomic(path, proc)
+    try:
+        if args.cmd == "new":
+            _require(pathlib_exists(args.candidate), "candidate file must exist")
+            parent, children = build_new(read_json(args.candidate), args.department,
+                                         args.run, _now(args.now))
+            write_json_atomic(_proc_path(parent["id"]), parent)
+            for c in children:
+                write_json_atomic(_proc_path(c["id"]), c)
+            print(parent["id"])
+            for c in children:
+                print(f"subprocess {c['id']} node {c['parent']['node']}")
+        elif args.cmd == "update":
+            path = _proc_path(args.process)
+            _require(path.is_file(), f"target process {args.process} must exist")
+            _require(pathlib_exists(args.delta), "delta file must exist")
+            parent, children = build_update(read_json(path), read_json(args.delta),
+                                            args.run, _now(args.now))
+            write_json_atomic(path, parent)
+            for c in children:
+                write_json_atomic(_proc_path(c["id"]), c)
+            for c in children:
+                print(f"subprocess {c['id']} node {c['parent']['node']}")
+        else:  # accept | reject
+            path = _proc_path(args.process)
+            _require(path.is_file(), f"process {args.process} must exist")
+            proc = resolve_pending(read_json(path), args.index, args.cmd, _now(args.now))
+            write_json_atomic(path, proc)
+    except ValueError as e:
+        print(f"merge: {e}", file=sys.stderr)
+        raise SystemExit(2)
     return 0
 
 
