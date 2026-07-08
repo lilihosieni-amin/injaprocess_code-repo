@@ -32,8 +32,7 @@
 - Create: `upload-bot/pyproject.toml`
 - Create: `upload-bot/upload_bot/__init__.py`
 - Create: `upload-bot/upload_bot/config.py`
-- Create: `upload-bot/tests/__init__.py`
-- Create: `upload-bot/tests/conftest.py`
+- Create: `upload-bot/tests/conftest.py` (do NOT add `upload-bot/tests/__init__.py` — it collides with `engine/tests`'s `tests.conftest` module name under pytest prepend mode)
 - Create: `upload-bot/tests/test_config.py`
 - Modify: `requirements-dev.txt` (add `-e ./upload-bot`)
 - Modify: `pyproject.toml` (root — add `upload-bot/tests` to testpaths)
@@ -64,9 +63,7 @@ include = ["upload_bot*"]
 
 - [ ] **Step 2: Write the failing test**
 
-`upload-bot/tests/__init__.py`: empty.
-
-`upload-bot/tests/conftest.py`:
+`upload-bot/tests/conftest.py` (no `__init__.py` in this dir):
 ```python
 import pathlib
 
@@ -116,7 +113,7 @@ def test_missing_required_raises(data_root):
 
 - [ ] **Step 3: Wire the harness and run to verify it fails**
 
-Append `-e ./upload-bot` to `requirements-dev.txt`. In root `pyproject.toml`, change `testpaths = ["tests", "engine/tests"]` to `testpaths = ["tests", "engine/tests", "upload-bot/tests"]`.
+Append `-e ./upload-bot` to `requirements-dev.txt`. In root `pyproject.toml`, set `testpaths = ["upload-bot/tests", "tests", "engine/tests"]` (upload-bot FIRST: under pytest's prepend import mode the last-collected dir lands first on `sys.path`, so listing `upload-bot/tests` first keeps its `conftest` from shadowing the root/engine `conftest` that engine/root tests import `load_fixture` from).
 
 Run: `make clean && make test`
 Expected: FAIL — `ModuleNotFoundError: No module named 'upload_bot.config'`.
