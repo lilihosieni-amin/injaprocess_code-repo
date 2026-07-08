@@ -202,6 +202,8 @@ a documented env surface (`config/upload-bot.env.example`).
 - Unauthorized Telegram ID gets no reply (AC-8, bot half).
 - Naming/validation/staging covered by unit tests without touching Telegram.
 
+Implemented in `docs/superpowers/plans/2026-07-08-phase-2-upload-bot.md`; deterministic logic unit-tested via `make test`; live Telegram flow verified manually (AC-1).
+
 ---
 
 ## 5. Phase 3 — Extraction brain
