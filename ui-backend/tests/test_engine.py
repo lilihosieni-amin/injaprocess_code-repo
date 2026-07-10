@@ -3,7 +3,7 @@ from inja_ui_backend import engine, ids
 
 
 def _cfg(data_root):
-    from inja_ui_backend.tests_helpers import cfg_for  # created below
+    from inja_ui_backend.tests_helpers import cfg_for
     return cfg_for(data_root)
 
 

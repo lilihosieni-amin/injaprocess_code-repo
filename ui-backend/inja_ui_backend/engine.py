@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -16,9 +18,6 @@ class EngineError(Exception):
 
 
 def _env(cfg: Settings) -> dict:
-    import os
-    import sys
-
     bindir = os.path.dirname(sys.executable)
     path = os.environ.get("PATH", "")
     parts = path.split(os.pathsep) if path else []
@@ -36,10 +35,8 @@ def _run(cfg: Settings, args: list[str]) -> str:
 
 def _tmp_doc(doc: dict) -> Path:
     fd, name = tempfile.mkstemp(suffix=".json")
-    Path(name).write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
-    import os
-
     os.close(fd)
+    Path(name).write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
     return Path(name)
 
 
