@@ -35,3 +35,9 @@ def test_correct_login_sets_cookie_and_unlocks(data_root):
 def test_hash_is_not_plaintext(data_root):
     cfg = cfg_for(data_root)
     assert cfg.ui_password_hash != "pw"
+
+
+def test_tampered_cookie_rejected(data_root):
+    c = _client(data_root)
+    c.cookies.set("inja_session", "forged-not-a-valid-signed-token")
+    assert c.get("/api/auth/me").status_code == 401
