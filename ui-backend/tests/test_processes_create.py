@@ -70,3 +70,11 @@ def test_subprocess_already_linked_409(data_root):
         "department": "cooking",
         "parent": {"process": "cooking-001", "node": "cooking-001-n010"}})
     assert again.status_code == 409  # never silently overwrite an existing link
+
+
+def test_subprocess_unknown_parent_process_404(data_root):
+    c = _c(data_root)
+    r = c.post("/api/processes", json={
+        "department": "cooking",
+        "parent": {"process": "cooking-999", "node": "cooking-999-n010"}})
+    assert r.status_code == 404
