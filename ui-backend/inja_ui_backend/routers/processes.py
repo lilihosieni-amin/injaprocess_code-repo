@@ -122,6 +122,20 @@ async def delete_process(pid: str, request: Request, _: str = Depends(require_se
     return {"deleted": pid}
 
 
+@router.post("/{pid}/relayout")
+def relayout(pid: str, body: dict, request: Request, _: str = Depends(require_session)):
+    cfg = request.app.state.cfg
+    body["id"] = pid
+    body["department"] = storage.dept_of(pid)
+    # Realize temp-keyed new nodes so the layout CLI's schema check passes. Stateless:
+    # nothing is written; these real ids ride back to the editor and are kept at Save.
+    doc, _remap = save_mod.allocate_new_node_ids(cfg, body)
+    try:
+        return engine.run_layout(cfg, doc)
+    except engine.EngineError as e:
+        raise HTTPException(status_code=422, detail=e.message)
+
+
 @router.put("/{pid}")
 async def save_process(pid: str, body: dict, request: Request,
                        _: str = Depends(require_session)):
