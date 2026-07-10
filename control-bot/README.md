@@ -19,14 +19,14 @@ Telegram on a locked runtime that can reach `data-repo` only (INV-2).
 uv tool install "git+https://github.com/RichardAtCT/claude-code-telegram@v1.6.0"
 ```
 
-`uv` is not on this dev machine; this runs on the server / in the Docker image (see `deploy/`).
 Fallback if `uv tool install` fails on the poetry-core/`dynamic` build:
 
 ```bash
 pipx install "git+https://github.com/RichardAtCT/claude-code-telegram@v1.6.0"
 ```
 
-The console script is `claude-telegram-bot` either way.
+The console script is `claude-telegram-bot` either way. (Verified working via `uv` on
+2026-07-10 — see `VERIFICATION.md`.)
 
 ## Prerequisites (live run)
 
@@ -37,7 +37,9 @@ The console script is `claude-telegram-bot` either way.
   `ANTHROPIC_API_KEY` in the real env file.
 - **A real env file outside git.** Copy `runtime.env.example`, fill the blanks
   (`TELEGRAM_BOT_TOKEN`, `ALLOWED_USERS`, `APPROVED_DIRECTORY=<abs data-repo>`, budgets,
-  `DATABASE_URL` outside data-repo).
+  `DATABASE_URL` outside data-repo). **Quote any value containing spaces** — e.g.
+  `APPROVED_DIRECTORY="/abs/path with spaces/data-repo"` — or `set -a && source` truncates it
+  at the first space and the bot fails with `approved_directory … Field required`.
 - **Clean `data-repo` tree**, so the run's commit is isolated and reviewable.
 
 ## Launch
@@ -46,6 +48,24 @@ The console script is `claude-telegram-bot` either way.
 set -a && source /abs/path/outside/git/control-bot.env && set +a
 claude-telegram-bot
 ```
+
+## Restricted networks (proxy)
+
+If `api.telegram.org` is blocked on the host (verify: `curl -m5 https://api.telegram.org` times
+out), route the bot through a proxy. **v1.6.0 has no proxy config field**, but it honors httpx
+environment proxies. With a local SOCKS proxy (e.g. Nekoray on `127.0.0.1:2080`):
+
+```bash
+# add the SOCKS backend to the bot's venv once:
+uv tool install --with socksio "git+https://github.com/RichardAtCT/claude-code-telegram@v1.6.0"
+
+# then export before launch (exclude Anthropic so the Claude subprocess stays direct):
+export ALL_PROXY="socks5h://127.0.0.1:2080" HTTPS_PROXY="socks5h://127.0.0.1:2080"
+export NO_PROXY="api.anthropic.com,.anthropic.com,localhost,127.0.0.1"
+```
+
+On success the bot logs `Proxy configured: socks5h://127.0.0.1:2080`. (Alternatively run a local
+`telegram-bot-api` server and point `TELEGRAM_API_BASE_URL` at it.)
 
 ## Drive a run (classic mode, AGENTIC_MODE=false)
 
