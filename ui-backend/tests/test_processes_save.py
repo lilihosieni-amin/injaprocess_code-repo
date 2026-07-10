@@ -1,5 +1,6 @@
 import argon2
 from fastapi.testclient import TestClient
+from inja_ui_backend import ids
 from inja_ui_backend.app import create_app
 from inja_ui_backend.tests_helpers import cfg_for
 
@@ -29,6 +30,7 @@ def test_save_ignores_body_id_and_department(data_root):
 def test_save_allocates_new_node_ids_and_rewrites_edges(data_root):
     c = _c(data_root)
     doc = c.get("/api/processes/cooking-001").json()
+    pre_ids = {n["id"] for n in doc["nodes"]}
     doc["nodes"].append({
         "id": "tmp-A", "type": "activity", "label": "فعالیت تازه",
         "description": "", "actor": "", "subprocess": None,
@@ -39,10 +41,12 @@ def test_save_allocates_new_node_ids_and_rewrites_edges(data_root):
     r = c.put("/api/processes/cooking-001", json=doc)
     assert r.status_code == 200
     saved = r.json()
-    new_ids = [n["id"] for n in saved["nodes"] if n["id"].endswith(("n060", "n070", "n080"))]
-    assert any(nid.startswith("cooking-001-n") for nid in new_ids)
     assert not any(n["id"] == "tmp-A" for n in saved["nodes"])
     assert not any(e["to"] == "tmp-A" for e in saved["edges"])
+    created = [n for n in saved["nodes"] if n["id"] not in pre_ids]
+    assert len(created) == 1
+    assert ids.is_real_activity_id(created[0]["id"])
+    assert any(e["to"] == created[0]["id"] for e in saved["edges"])
 
 
 def test_save_forces_manual_on_new_node_only_and_trusts_incoming(data_root):

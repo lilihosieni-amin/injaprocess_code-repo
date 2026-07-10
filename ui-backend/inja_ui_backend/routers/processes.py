@@ -97,8 +97,8 @@ async def save_process(pid: str, body: dict, request: Request,
                        _: str = Depends(require_session)):
     cfg = request.app.state.cfg
     path = storage.proc_path(cfg.data_root, pid)
-    on_disk = storage.read_json(path) if path.is_file() else None
     async with storage.file_lock(path):
+        on_disk = storage.read_json(path) if path.is_file() else None
         doc = save_mod.prepare_save(cfg, pid, body, on_disk)
         try:
             engine.validate_doc(cfg, "process.schema.json", doc)
