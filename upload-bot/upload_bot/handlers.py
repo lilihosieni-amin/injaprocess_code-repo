@@ -45,7 +45,7 @@ def build_handlers(config):
         await q.answer()
         if q.data == "k:voice":
             ctx.user_data["voice"] = VoiceUpload()
-            await q.edit_message_text("تاریخ جلسه را وارد کنید (مثلاً 2026-07-06):")
+            await q.edit_message_text("تاریخ جلسه را وارد کنید (شمسی، مثلاً ۱۴۰۵/۰۴/۱۹):")
             return V_DATE
         if q.data == "k:file":
             ctx.user_data["batch"] = FileBatch()
@@ -97,7 +97,8 @@ def build_handlers(config):
             discard([staged])
             raise
         await update.message.reply_text(
-            f"ذخیره شد. شناسه برای شروع پردازش:\n`{base}`", parse_mode="Markdown")
+            f"ذخیره شد ✅\nبرای شروع پردازش این را در ربات کنترل بفرستید:\n"
+            f"`Start /process-voice {base}`", parse_mode="Markdown")
         ctx.user_data.pop("voice", None)
         return ConversationHandler.END
 
