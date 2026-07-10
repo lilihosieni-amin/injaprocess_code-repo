@@ -15,6 +15,7 @@ def _proc():
 
 def test_enrich_fills_empty_field_only(data_root):
     p = _proc()
+    p["pending"] = []                           # isolate: start with no prior conflicts
     n = next(x for x in p["nodes"] if x["id"] == "cooking-001-n010")
     n["description"] = ""                      # empty -> should be filled
     delta = {"add_nodes": [], "add_edges": [], "flag_removed": [],
@@ -28,6 +29,7 @@ def test_enrich_fills_empty_field_only(data_root):
 
 def test_filled_value_change_becomes_pending_not_overwrite(data_root):
     p = _proc()
+    p["pending"] = []                           # isolate: start with no prior conflicts
     n = next(x for x in p["nodes"] if x["id"] == "cooking-001-n010")
     original = n["actor"]                        # 'کارپرداز' (filled)
     delta = {"add_nodes": [], "add_edges": [], "flag_removed": [],

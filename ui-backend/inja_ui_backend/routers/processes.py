@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from .. import engine, gitcommit, storage
 from .. import save as save_mod
 from ..auth import require_session
-from ..models import CreateProcessBody
+from ..models import CreateProcessBody, PendingDecision
 
 router = APIRouter(prefix="/api/processes")
 
@@ -151,3 +151,21 @@ async def save_process(pid: str, body: dict, request: Request,
         storage.write_json_atomic(path, doc)
         gitcommit.commit(cfg, [path], pid, "save")
     return doc
+
+
+@router.post("/{pid}/pending/{index}")
+async def resolve(pid: str, index: int, body: PendingDecision, request: Request,
+                  _: str = Depends(require_session)):
+    cfg = request.app.state.cfg
+    if body.decision not in ("accept", "reject"):
+        raise HTTPException(status_code=400, detail="decision must be accept|reject")
+    path = storage.proc_path(cfg.data_root, pid)
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="process not found")
+    async with storage.file_lock(path):
+        try:
+            engine.resolve_pending(cfg, pid, index, body.decision)
+        except engine.EngineError as e:
+            raise HTTPException(status_code=409, detail=e.message)
+        gitcommit.commit(cfg, [path], pid, f"{body.decision} pending #{index}")
+        return storage.read_json(path)
