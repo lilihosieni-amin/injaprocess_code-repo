@@ -43,7 +43,7 @@ at `v1.6.0`. Each is a config-correctness fact, not a preference.
 | Runtime hooks fire (§7, AC-7) | The SDK path builds `ClaudeAgentOptions(..., setting_sources=["project"], cwd=<data-repo>)` → project `.claude/settings.json` (and its `PreToolUse` guard) **is loaded**. | Confirmed at source (`sdk_integration.py:337`). The Phase-3 guard fires. |
 | CLAUDE.md is loaded | The bot reads `<cwd>/CLAUDE.md` into the system prompt **and** `setting_sources=["project"]` loads it via the engine. | Confirmed. |
 | `CLAUDE_ALLOWED_TOOLS` minimum set | Default list is broad (WebFetch, Skill, etc.). | Override to `Read,Write,Edit,Bash,Glob,Grep,Task`. |
-| Uploads/voice disabled | `ENABLE_FILE_UPLOADS`, `ENABLE_IMAGE_UPLOADS`, `ENABLE_VOICE_MESSAGES`, `ENABLE_QUICK_ACTIONS`, `ENABLE_CONVERSATION_MODE`, `ENABLE_MCP` all default **on/true**. | Explicitly set all to `false`. Uploads are Bot-1-only (FR-U8); transcription is Vertex, not the bot's Whisper/Voxtral (ARD §12). |
+| Uploads/voice disabled | `ENABLE_FILE_UPLOADS`, `ENABLE_IMAGE_UPLOADS`, `ENABLE_VOICE_MESSAGES`, `ENABLE_QUICK_ACTIONS`, `ENABLE_CONVERSATION_MODE` default **true**; `ENABLE_MCP` and `ENABLE_TELEMETRY` already default **false** (settings.py:195). We set all of them explicitly for an auditable profile. | Explicitly set all to `false`. Uploads are Bot-1-only (FR-U8); transcription is Vertex, not the bot's Whisper/Voxtral (ARD §12). |
 | Install command | Console script is `claude-telegram-bot` (poetry-core build). | `uv tool install git+https://github.com/RichardAtCT/claude-code-telegram@v1.6.0`, then run `claude-telegram-bot`. |
 
 **Additional live-run prerequisites (implied by ARD §16, not in the env profile):**
@@ -95,6 +95,13 @@ DATABASE_URL=sqlite:////abs/path/outside/data-repo/bot.db
 ANTHROPIC_API_KEY=             # optional if the CLI is already logged in
 CLAUDE_CLI_PATH=               # optional; e.g. /usr/local/bin/claude
 ```
+
+The shipped `control-bot/runtime.env.example` additionally pins the upstream guard flags
+(`ENABLE_TOKEN_AUTH=false`, `DISABLE_SECURITY_PATTERNS=false`, `DISABLE_TOOL_VALIDATION=false`
+— keeping the tool allow/disallow check active), disables the bot's read-only git buttons
+(`ENABLE_GIT_INTEGRATION=false`; the pipeline commits via the Bash tool), and sets a
+production posture (`ENVIRONMENT=production`, `DEVELOPMENT_MODE=false`, `DEBUG=false`,
+`LOG_LEVEL=INFO`). These are all real v1.6.0 settings; the sample file is the source of truth.
 
 **Why each hardening line matters** — every disabled feature removes a way for the
 runtime to step outside "read/write data-repo through the pipeline": no uploads
