@@ -1238,8 +1238,8 @@ git commit -m "phase-5(ui-backend): read a process"
 - Test: `ui-backend/tests/test_processes_create.py`
 
 **Interfaces:**
-- Consumes: `engine.allocate_process_id`, `models.CreateProcessBody`.
-- Produces: `POST /api/processes` → new doc (top-level or sub-process). Helper `_skeleton(pid, department, name, parent) -> dict`.
+- Consumes: `engine.allocate_process_id`, `models.CreateProcessBody`, `_load`.
+- Produces: `POST /api/processes` → new doc (top-level or sub-process). Helper `_skeleton(pid, department, name, parent) -> dict`. Sub-process parent guards (checked before allocation): parent process missing → 404; parent node missing → 404; parent node not an activity → 400; parent node already links a sub-process → 409.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1291,6 +1291,34 @@ def test_create_subprocess_links_parent_node(data_root):
     parent = c.get("/api/processes/cooking-001").json()
     node = next(n for n in parent["nodes"] if n["id"] == "cooking-001-n010")
     assert node["subprocess"] == child["id"]
+
+
+def test_subprocess_unknown_node_404(data_root):
+    c = _c(data_root)
+    r = c.post("/api/processes", json={
+        "department": "cooking",
+        "parent": {"process": "cooking-001", "node": "cooking-001-n999"}})
+    assert r.status_code == 404
+
+
+def test_subprocess_non_activity_node_400(data_root):
+    c = _c(data_root)
+    r = c.post("/api/processes", json={
+        "department": "cooking",
+        "parent": {"process": "cooking-001", "node": "start"}})  # terminal, not activity
+    assert r.status_code == 400
+
+
+def test_subprocess_already_linked_409(data_root):
+    c = _c(data_root)
+    first = c.post("/api/processes", json={
+        "department": "cooking",
+        "parent": {"process": "cooking-001", "node": "cooking-001-n010"}})
+    assert first.status_code == 201
+    again = c.post("/api/processes", json={
+        "department": "cooking",
+        "parent": {"process": "cooking-001", "node": "cooking-001-n010"}})
+    assert again.status_code == 409  # never silently overwrite an existing link
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -1335,6 +1363,19 @@ async def create_process(body: CreateProcessBody, request: Request, response: Re
     if body.department not in {d["code"] for d in reg["departments"]}:
         raise HTTPException(status_code=400, detail="unknown department")
 
+    # Guard the parent link BEFORE allocating anything, mirroring merge's guards,
+    # so a rejected request never leaves an orphan child file.
+    ppath = pdoc = pnode = None
+    if body.parent:
+        ppath, pdoc = _load(cfg, body.parent["process"])          # 404 if parent missing
+        pnode = next((n for n in pdoc["nodes"] if n["id"] == body.parent["node"]), None)
+        if pnode is None:
+            raise HTTPException(status_code=404, detail="parent node not found")
+        if pnode.get("type") != "activity":
+            raise HTTPException(status_code=400, detail="parent node must be an activity")
+        if pnode.get("subprocess") is not None:
+            raise HTTPException(status_code=409, detail="parent node already links a sub-process")
+
     pid = engine.allocate_process_id(cfg, body.department)
     child = _skeleton(pid, body.department, body.name, body.parent)
     try:
@@ -1347,10 +1388,7 @@ async def create_process(body: CreateProcessBody, request: Request, response: Re
     async with storage.file_lock(child_path):
         storage.write_json_atomic(child_path, child)
         if body.parent:
-            ppath, pdoc = _load(cfg, body.parent["process"])
-            for n in pdoc["nodes"]:
-                if n["id"] == body.parent["node"]:
-                    n["subprocess"] = pid
+            pnode["subprocess"] = pid
             pdoc["updated_at"] = _now()
             engine.validate_doc(cfg, "process.schema.json", pdoc)
             storage.write_json_atomic(ppath, pdoc)
@@ -1364,7 +1402,7 @@ async def create_process(body: CreateProcessBody, request: Request, response: Re
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `.venv/bin/pytest ui-backend/tests/test_processes_create.py -q`
-Expected: PASS (3 passed).
+Expected: PASS (6 passed).
 
 - [ ] **Step 5: Commit**
 
@@ -1383,7 +1421,8 @@ git commit -m "phase-5(ui-backend): manual process + sub-process creation via al
 - Test: `ui-backend/tests/test_processes_save.py`
 
 **Interfaces:**
-- Produces (`save.py`): `prepare_save(cfg, pid, incoming: dict, on_disk: dict | None) -> dict` — returns the finished doc ready to write. Pure except for calling `engine.allocate_box_id`/`allocate_junction_id` (feed-forward). Steps: force id/department from `pid`; replace temp node ids via allocate-id and rewrite edges; stamp `layout:"manual"` for new/moved nodes; stamp `updated_at` + `source.touched_by`; preserve `created_at`.
+- Produces (`save.py`): `allocate_new_node_ids(cfg, doc: dict) -> tuple[dict, dict]` — replaces every temp-keyed node id with a real `allocate-id` id (feed-forward), rewrites `edges[].from/to`, and returns `(new_doc, remap)`. Reused by relayout (Task 11).
+- Produces (`save.py`): `prepare_save(cfg, pid, incoming: dict, on_disk: dict | None) -> dict` — returns the finished doc ready to write. Steps: force id/department from `pid`; call `allocate_new_node_ids`; **force `layout:"manual"` only on the newly-created nodes** (trust the incoming `layout` on all others — no position-diff heuristic); stamp `updated_at` + `source.touched_by`; preserve `created_at`.
 - Produces route: `PUT /api/processes/{pid}`.
 
 - [ ] **Step 1: Write the failing test**
@@ -1439,16 +1478,28 @@ def test_save_allocates_new_node_ids_and_rewrites_edges(data_root):
     assert not any(e["to"] == "tmp-A" for e in saved["edges"])
 
 
-def test_save_stamps_manual_on_moved_node(data_root):
+def test_save_forces_manual_on_new_node_only_and_trusts_incoming(data_root):
     c = _c(data_root)
     doc = c.get("/api/processes/cooking-001").json()
-    target = next(n for n in doc["nodes"] if n["id"] == "cooking-001-j1")
-    target["layout"] = "auto"
-    target["position"] = {"x": target["position"]["x"] + 50, "y": target["position"]["y"]}
-    r = c.put("/api/processes/cooking-001", json=doc)
-    saved = r.json()
-    moved = next(n for n in saved["nodes"] if n["id"] == "cooking-001-j1")
-    assert moved["layout"] == "manual"
+    pre_ids = {n["id"] for n in doc["nodes"]}  # every existing real id (before adding temp)
+    # An existing node the client reports as auto stays auto (server trusts the client);
+    # inferring manual from a move would freeze it against future merges.
+    existing = next(n for n in doc["nodes"] if n["id"] == "cooking-001-n010")
+    existing["layout"] = "auto"
+    existing["position"] = {"x": existing["position"]["x"] + 50, "y": existing["position"]["y"]}
+    # A brand-new node must come back pinned manual regardless of what was sent.
+    doc["nodes"].append({
+        "id": "tmp-M", "type": "activity", "label": "تازه", "description": "",
+        "actor": "", "subprocess": None,
+        "icom": {"inputs": [], "controls": [], "outputs": [], "mechanisms": []},
+        "position": {"x": 700, "y": 400}, "layout": "auto",
+        "source": {"created_by": "ui-edit", "touched_by": ["ui-edit"]}})
+    doc["edges"].append({"from": "cooking-001-n010", "to": "tmp-M", "label": ""})
+    saved = c.put("/api/processes/cooking-001", json=doc).json()
+    kept = next(n for n in saved["nodes"] if n["id"] == "cooking-001-n010")
+    assert kept["layout"] == "auto"                       # trusted, not forced to manual
+    created = [n for n in saved["nodes"] if n["id"] not in pre_ids]  # tmp-M, now a real id
+    assert len(created) == 1 and created[0]["layout"] == "manual"
 
 
 def test_save_invalid_doc_422_leaves_file_unchanged(data_root):
@@ -1490,15 +1541,12 @@ def _is_new_node(node: dict) -> bool:
     return not ids.is_real_activity_id(nid)
 
 
-def prepare_save(cfg, pid: str, incoming: dict, on_disk: dict | None) -> dict:
-    doc = dict(incoming)
-    doc["id"] = pid
-    doc["department"] = storage.dept_of(pid)
-
-    # 1) allocate real ids for temp nodes, feed-forward, and rewrite edges
+def allocate_new_node_ids(cfg, doc: dict) -> tuple[dict, dict]:
+    """Replace temp-keyed node ids with real allocate-id ids (feed-forward) and
+    rewrite edges. Returns (new_doc, remap). Only calls allocate-id; writes nothing."""
     remap: dict[str, str] = {}
-    working = {**doc, "nodes": list(doc.get("nodes", []))}
-    resolved_nodes = []
+    working = {**doc, "nodes": []}
+    resolved = []
     for node in doc.get("nodes", []):
         if _is_new_node(node):
             if node.get("type") == "junction":
@@ -1507,20 +1555,30 @@ def prepare_save(cfg, pid: str, incoming: dict, on_disk: dict | None) -> dict:
                 new_id = engine.allocate_box_id(cfg, working)
             remap[node["id"]] = new_id
             node = {**node, "id": new_id}
-        resolved_nodes.append(node)
-        # keep working in sync so the next allocation sees this id
-        working["nodes"] = resolved_nodes
-    doc["nodes"] = resolved_nodes
+        resolved.append(node)
+        working["nodes"] = resolved  # next allocation sees the id we just assigned
+    new_doc = {**doc, "nodes": resolved}
     if remap:
-        doc["edges"] = [{**e, "from": remap.get(e["from"], e["from"]),
-                         "to": remap.get(e["to"], e["to"])} for e in doc.get("edges", [])]
+        new_doc["edges"] = [{**e, "from": remap.get(e["from"], e["from"]),
+                             "to": remap.get(e["to"], e["to"])}
+                            for e in doc.get("edges", [])]
+    return new_doc, remap
 
-    # 2) stamp layout:"manual" for new or moved nodes
-    disk_pos = {n["id"]: n.get("position") for n in (on_disk or {}).get("nodes", [])}
+
+def prepare_save(cfg, pid: str, incoming: dict, on_disk: dict | None) -> dict:
+    doc = dict(incoming)
+    doc["id"] = pid
+    doc["department"] = storage.dept_of(pid)
+
+    # 1) allocate real ids for temp nodes + rewrite edges
+    doc, remap = allocate_new_node_ids(cfg, doc)
+    new_ids = set(remap.values())
+
+    # 2) trust the incoming layout; force "manual" ONLY on newly-created nodes.
+    #    (No position-diff heuristic: a full relayout returns layout:"auto", and
+    #    inferring "manual" from a move would freeze every node against future merges.)
     for node in doc["nodes"]:
-        was_new = node["id"] in remap.values()
-        moved = node["id"] in disk_pos and disk_pos[node["id"]] != node.get("position")
-        if was_new or moved:
+        if node["id"] in new_ids:
             node["layout"] = "manual"
 
     # 3) provenance
@@ -1530,7 +1588,7 @@ def prepare_save(cfg, pid: str, incoming: dict, on_disk: dict | None) -> dict:
     for node in doc["nodes"]:
         if node.get("type") != "activity":
             continue
-        changed = node["id"] in remap.values() or disk_nodes.get(node["id"]) != node
+        changed = node["id"] in new_ids or disk_nodes.get(node["id"]) != node
         if changed:
             src = node.setdefault("source", {"created_by": "ui-edit", "touched_by": []})
             tb = src.setdefault("touched_by", [])
@@ -1696,7 +1754,8 @@ git commit -m "phase-5(ui-backend): hard delete process + unlink references"
 - Test: `ui-backend/tests/test_processes_relayout.py`
 
 **Interfaces:**
-- Produces: `POST /api/processes/{pid}/relayout` (body = full working doc) → repositioned doc; **no write, no commit**.
+- Consumes: `save.allocate_new_node_ids` (Task 9).
+- Produces: `POST /api/processes/{pid}/relayout` (body = full working doc) → repositioned doc; **no write, no commit**. Realizes temp-keyed node ids first (the `layout` CLI validates against the schema, so temp ids would 422), then runs `layout --full`.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1729,6 +1788,25 @@ def test_relayout_returns_doc_without_persisting(data_root):
     assert len(out["nodes"]) == len(doc["nodes"])
     # unchanged on disk (compute-only)
     assert c.get("/api/processes/cooking-001").json() == on_disk_before
+
+
+def test_relayout_with_unsaved_temp_node_does_not_422(data_root):
+    c = _c(data_root)
+    doc = c.get("/api/processes/cooking-001").json()
+    on_disk_before = c.get("/api/processes/cooking-001").json()
+    doc["nodes"].append({
+        "id": "tmp-Z", "type": "activity", "label": "z", "description": "",
+        "actor": "", "subprocess": None,
+        "icom": {"inputs": [], "controls": [], "outputs": [], "mechanisms": []},
+        "position": {"x": 0, "y": 0}, "layout": "manual",
+        "source": {"created_by": "ui-edit", "touched_by": ["ui-edit"]}})
+    doc["edges"].append({"from": "cooking-001-n010", "to": "tmp-Z", "label": ""})
+    r = c.post("/api/processes/cooking-001/relayout", json=doc)
+    assert r.status_code == 200                     # temp id realized before layout, not 422
+    out = r.json()
+    assert not any(n["id"] == "tmp-Z" for n in out["nodes"])   # got a real allocate-id id
+    assert not any(e["to"] == "tmp-Z" for e in out["edges"])
+    assert c.get("/api/processes/cooking-001").json() == on_disk_before  # still no persistence
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -1746,16 +1824,21 @@ def relayout(pid: str, body: dict, request: Request, _: str = Depends(require_se
     cfg = request.app.state.cfg
     body["id"] = pid
     body["department"] = storage.dept_of(pid)
+    # Realize temp-keyed new nodes so the layout CLI's schema check passes. Stateless:
+    # nothing is written; these real ids ride back to the editor and are kept at Save.
+    doc, _remap = save_mod.allocate_new_node_ids(cfg, body)
     try:
-        return engine.run_layout(cfg, body)
+        return engine.run_layout(cfg, doc)
     except engine.EngineError as e:
         raise HTTPException(status_code=422, detail=e.message)
 ```
 
+> `save_mod` is already imported in `processes.py` (Task 9). No new import needed.
+
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `.venv/bin/pytest ui-backend/tests/test_processes_relayout.py -q`
-Expected: PASS (1 passed). If `run_layout`'s contract differed from Task 3's assumption, reconcile now.
+Expected: PASS (2 passed).
 
 - [ ] **Step 5: Commit**
 
@@ -2034,10 +2117,10 @@ git commit -m "phase-5(ui-backend): static serving + server entrypoint + env/run
 - §2 verbatim schema contract — enforced by validating against `process/overview.schema.json` and never reshaping (Tasks 6, 8, 9). ✅
 - §3 module layout — realized file-for-file. ✅
 - §4 API surface — auth (T5), departments+overview (T6), read (T7), create/sub (T8), save (T9), delete (T10), relayout (T11), pending (T12), static (T13). ✅
-- §5 Save path (path-authoritative id/dept, temp-id feed-forward allocation, edge rewrite, layout:manual, provenance, validate, atomic write, commit) — Task 9 + `save.py`. ✅
-- §6 create/sub-process — Task 8. ✅
+- §5 Save path (path-authoritative id/dept, temp-id feed-forward allocation, edge rewrite, `layout:"manual"` forced **only on new nodes** / incoming layout trusted, provenance, validate, atomic write, commit) — Task 9 + `save.py` (`allocate_new_node_ids` + `prepare_save`). ✅
+- §6 create/sub-process **with merge-mirroring parent guards (404/400/409)** — Task 8. ✅
 - §7 delete + unlink — Task 10. ✅
-- §8 compute-only relayout — Task 11. ✅
+- §8 compute-only relayout, **temp-ids realized before `layout` to avoid a schema 422** — Task 11. ✅
 - §9 pending accept/reject via merge, status flips, 409 on re-resolve — Task 12. ✅
 - §10 storage/concurrency/git/errors — Tasks 2, 4; error codes used across routers (400/401/404/409/422). ✅
 - §11 auth — Task 5. ✅

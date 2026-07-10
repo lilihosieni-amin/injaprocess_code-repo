@@ -153,10 +153,13 @@ Receives the whole document the editor holds in memory. Steps, under the process
    > `reserved` parameter (only `next_process_id` does). Feed-forward needs **no engine change**
    > and keeps the INV-1 boundary hard (the backend never invents a number; every id comes from
    > the CLI). The temp file is deleted after the Save.
-4. **Enforce `layout:"manual"` for user-touched nodes.** So a later `merge` never moves them
-   (FR-D9/D10, AC-5): for every node that is **new** (not on disk before) **or** whose
-   `position` differs from the on-disk version, set `layout = "manual"`. The backend enforces
-   this regardless of what the client sent.
+4. **`layout` field: trust the client, force `manual` only on new nodes.** The frontend already
+   stamps `layout:"manual"` when the user drags a node, and re-layout returns nodes with
+   `layout:"auto"`. So the backend **trusts the incoming `layout` value** and only **forces
+   `layout:"manual"` on nodes it just created** (the ones whose ids were allocated in step 3).
+   It does **not** infer `manual` from a position diff — doing so would make a full re-layout +
+   Save turn every node `manual`, after which `merge` could never auto-place anything (FR-D9/D10,
+   AC-5). New nodes are pinned `manual` so merges never move a box the user placed by hand.
 5. **Stamp provenance.** Set `updated_at` to now (ISO-8601 `…Z`). For every activity node that
    is **new** or whose content/position **differs from the on-disk version**, append
    `"ui-edit"` to its `source.touched_by` (deduplicated); a newly added activity node gets
@@ -190,7 +193,12 @@ them via §9.
 4. Validate → atomic write → commit `ui-edit(<id>): create process` → return the doc.
 
 **Create sub-process** — body `{department, name?, parent:{process, node}}`:
-- As above (skeleton child with `parent` set), **and** open the parent process file under its
+- **Guard the parent link first (mirror `merge`'s guards), before allocating anything** so a
+  rejected request leaves no orphan child file: the parent process must exist (else `404`);
+  `parent.node` must exist in it (else `404`); that node must be an **activity** node (else
+  `400`); and its `subprocess` must currently be `null` — a node that already links a
+  sub-process is **never silently overwritten** (else `409`).
+- Then, as above (skeleton child with `parent` set), open the parent process file under its
   lock and set `nodes[<parent.node>].subprocess = <child id>`. Validate **both** docs, write
   **both** atomically, and make **one** commit `ui-edit(<childId>): create sub-process of
   <parent.process>`. Return the child doc.
@@ -214,11 +222,17 @@ Human-initiated hard delete (distinct from the pipeline's INV-4 "never auto-dele
 
 Takes the current (possibly **unsaved**) working doc in the body, so it operates on the
 editor's in-memory state, not just what's on disk:
-1. Write the working doc to a private temp file.
-2. Shell the `layout` CLI against it; it returns/repositions nodes per the deterministic
-   serpentine algorithm and marks them `layout:"auto"`.
-3. Return the repositioned doc to the client. **No file is written and no commit is made** —
-   the user persists (or cancels) via the normal Save path.
+1. **Realize any temp-keyed new nodes first.** The `layout` CLI validates its input against
+   `process.schema.json`, and temp ids (e.g. `tmp-A`) fail the node-id pattern → it would exit
+   non-zero (surfaced as `422`). So the endpoint runs the **same temp-id allocation
+   feed-forward as Save** (§5 step 3) before calling `layout`. This is stateless (nothing is
+   written) and safe: the resulting real ids travel back to the editor and are simply kept at
+   the next Save (Save's own feed-forward scans the incoming doc, so no id collides).
+2. Write the (now schema-valid) working doc to a private temp file.
+3. Shell the `layout` CLI (`layout <file> --full`); it repositions nodes in place per the
+   deterministic serpentine algorithm and marks them `layout:"auto"`.
+4. Read the temp file back and return the repositioned doc. **No file under `DATA_ROOT` is
+   written and no commit is made** — the user persists (or cancels) via the normal Save path.
 
 ---
 
