@@ -16,7 +16,7 @@ live Telegram-driven run on the date below.
 
 | # | Step | Verifies | Result |
 |---|---|---|---|
-| 1 | A non-allowlisted Telegram ID sends a message and gets **no reply** | AC-8 (bot half), NFR-1 | ◑ **Config-verified.** Bot logged `allowed_users: 1`; only ID `7217498815` authenticated (`WhitelistAuthProvider … success`). Live cross-account probe **deferred** — no second Telegram account available this session. |
+| 1 | A non-allowlisted Telegram ID sends a message and gets **no reply** | AC-8 (bot half), NFR-1 | ✅ **Live-verified.** A second account (`user_id 6120381135`) messaged the bot → `Authentication failed for user … success: false`; no session created, no Claude command run, no functional response. The sole whitelisted ID `7217498815` works. |
 | 2 | `/new`; send the process request | FR-C1 | ✅ `/start` + `/new` authenticated; the request drove a Claude command with `cwd = <data-repo>` (`working_directory` in log). |
 | 3 | Checkpoint / clarifying question appears in chat; user replies | FR-P4, FR-C3, INV-5 | ✅ Bot posted a conversational checkpoint ("no selection came through … 1 Re-process / 2 Show results / 3 Cancel") and the user replied `1`. Clarifying question surfaced as a plain conversational turn (FR-C3). The A/B/D **new-process** confirmation did not appear — 0 new processes to classify (see step 4). |
 | 4 | Extract → merge → commit produces schema-valid `processes/*.json` with allocated IDs; the run's `git commit` lands despite `ENABLE_GIT_INTEGRATION=false` | AC-2, INV-1 | ◑ **Drivability proven; idempotent no-op path.** Pipeline ran end-to-end over Telegram and committed `dc782e3`; the 20 existing `departments/**/processes/*.json` stay schema-valid. **0 new** processes/IDs — `dining-2026-05-06` was already fully extracted in prior runs, so classify matched every segment to an existing ID. Fresh-ID allocation is proven at engine level (Phase-3 `merge`/`allocate-id` tests) and by prior runs (05-07: 8, 05-08: 14), but was **not** re-exercised over Telegram this run. The commit landed with `ENABLE_GIT_INTEGRATION=false` ✅ (pipeline commits via the Bash tool). |
@@ -57,6 +57,18 @@ surface-minimization gap, not a containment breach. **Resolution:** Phase-7 Dock
 `HOME` (no global skills/plugins/MCP) removes them. **Phase-7 action:** verify the container session
 lists only `idef-extraction` + `process-voice`.
 
+**Finding 5 — long runs freeze the visible progress; re-running a done voice dirties the tree.**
+A second run (target `dining-2026-05-08`, itself **already processed** — commit `95f23e0`, 14
+processes) ran the backend to completion (**81 turns, $2.01, `is_error: false`**) but the Telegram
+progress message **froze at "Stage 3"**: the bot's rapid `editMessageText` progress updates were
+rejected by Telegram (`Failed to update progress message: Message is not modified`), so the operator
+saw a stall while work continued. Separately, that re-run **deleted the committed `candidates/*` +
+`deltas/*` and modified `meta/segments`** in-place and left them **uncommitted** (interrupted before
+its final commit). Restored with `git restore` (fully recoverable; 20 processes intact). **Lessons:**
+(a) don't judge a long run by the progress bar — check the backend log / disk; (b) re-processing an
+already-extracted voice is an in-place no-op that can leave a dirty tree if interrupted — the
+playbook should stage to a fresh `attempt-NN/` and commit atomically (some paths already do).
+
 **Observation — feature-registry vs env flags.** The bot logged `image_handler` and `conversation`
 features "enabled" despite `ENABLE_IMAGE_UPLOADS=false` / `ENABLE_CONVERSATION_MODE=false`; those
 registry features key off different internals. Uploads/voice themselves remained disabled. Minor
@@ -68,8 +80,8 @@ reconciliation nuance, no security impact.
   processing → conversational checkpoint → confirm → commit `dc782e3`); output schema-valid. Fresh-ID
   allocation **not** re-demonstrated here because the target corpus is already exhausted (0 new) — the
   no-op/idempotent path was exercised instead. New-ID minting remains proven at engine level + prior runs.
-- **AC-8 (bot half):** ◑ Whitelist enforced in config/logs (`allowed_users: 1`, sole authenticated ID);
-  live unauthorized-account probe deferred (needs a 2nd account).
+- **AC-8 (bot half):** ✅ Live-verified — a non-allowlisted account (`6120381135`) was rejected at
+  auth (`success: false`), got no session and no functional reply.
 - **FR-C1 / FR-C3 / FR-M4:** ✅ Drivable run with a conversational checkpoint and an end-of-run conflict
   report, all over Telegram.
 - **AC-7 / INV-1 / INV-2:** ✅ Direct `processes/*.json` write blocked by the `PreToolUse` hook at runtime.
@@ -77,7 +89,11 @@ reconciliation nuance, no security impact.
   present ⚠️ (dev-machine artifact, Phase-7 Docker with clean `HOME` resolves — Finding 4).
 
 ### Open items for a fully-green record
-1. AC-8 live probe from a non-allowlisted account (record: no reply).
-2. A fresh-content Telegram run that yields **new** processes, to demonstrate AC-2 ID allocation over the
-   bot (needs an unprocessed transcript).
-3. Phase-7: confirm the containerized session exposes only the two project skills and no MCP.
+1. ~~AC-8 live probe~~ — **done** (account `6120381135` rejected).
+2. **AC-2 fresh ID allocation over the bot** — still open: all three available voices
+   (05-06/07/08) are already fully processed, so every re-run is an idempotent no-op. Needs a
+   genuinely **unprocessed** transcript/recording, which does not exist in the corpus today.
+   New-ID minting stays proven at engine level (Phase-3 `merge`/`allocate-id` tests) and by the
+   original pipeline runs that created the 20 processes.
+3. Phase-7: confirm the containerized session exposes only the two project skills and no MCP
+   (Finding 4), and that long-run progress updates don't freeze (Finding 5).
