@@ -5,6 +5,7 @@ import datetime
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 
 from .. import engine, gitcommit, storage
+from .. import save as save_mod
 from ..auth import require_session
 from ..models import CreateProcessBody
 
@@ -89,3 +90,20 @@ async def create_process(body: CreateProcessBody, request: Request, response: Re
                   if body.parent else "create process")
         gitcommit.commit(cfg, written, pid, action)
     return child
+
+
+@router.put("/{pid}")
+async def save_process(pid: str, body: dict, request: Request,
+                       _: str = Depends(require_session)):
+    cfg = request.app.state.cfg
+    path = storage.proc_path(cfg.data_root, pid)
+    on_disk = storage.read_json(path) if path.is_file() else None
+    async with storage.file_lock(path):
+        doc = save_mod.prepare_save(cfg, pid, body, on_disk)
+        try:
+            engine.validate_doc(cfg, "process.schema.json", doc)
+        except engine.EngineError as e:
+            raise HTTPException(status_code=422, detail=e.message)
+        storage.write_json_atomic(path, doc)
+        gitcommit.commit(cfg, [path], pid, "save")
+    return doc
