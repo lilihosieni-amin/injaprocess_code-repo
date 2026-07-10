@@ -25,3 +25,13 @@ def test_commit_noop_when_no_change(data_root):
     before = len(_log(data_root).splitlines())
     gitcommit.commit(cfg, [], "cooking-001", "save")
     assert len(_log(data_root).splitlines()) == before
+
+
+def test_commit_noop_when_paths_unchanged(data_root):
+    cfg = cfg_for(data_root)
+    p = storage.proc_path(data_root, "cooking-001")
+    before = len(_log(data_root).splitlines())
+    # re-write byte-identical content, then commit the path: no real change → no-op
+    storage.write_json_atomic(p, storage.read_json(p))
+    gitcommit.commit(cfg, [p], "cooking-001", "save")
+    assert len(_log(data_root).splitlines()) == before
