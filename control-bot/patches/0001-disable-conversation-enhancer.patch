@@ -1,0 +1,35 @@
+Subject: [control-bot] Disable ConversationEnhancer follow-up buttons in classic mode
+
+claude-code-telegram v1.6.0 hardcodes the ConversationEnhancer to load whenever
+`agentic_mode` is false (classic mode). It has NO env flag — `ENABLE_CONVERSATION_MODE`
+appears in the upstream .env.example but is not a Settings field, so it is silently
+ignored. The enhancer appends a "💡 What would you like to do next?" inline keyboard
+(Add tests / Review / Continue Coding / End Session …) after every Claude reply, which
+is noise for our single-purpose pipeline bot.
+
+This patch gates the feature off so it never loads. Apply during the Phase-7 image
+build, after installing the bot, e.g.:
+
+  PKG=$(python -c "import src.bot.features.registry as r, os; print(os.path.dirname(r.__file__))")
+  patch -p1 -d "$PKG/../.." < control-bot/patches/0001-disable-conversation-enhancer.patch
+
+(Adjust -d to the site-packages root so the a/src/... path resolves. Verify with:
+the startup log must show `enabled_features` WITHOUT "conversation".)
+
+--- a/src/bot/features/registry.py
++++ b/src/bot/features/registry.py
+@@ -91,9 +91,12 @@ class FeatureRegistry:
+                 logger.error("Failed to initialize image handler", error=str(e))
+
+-        # Conversation enhancements - skip in agentic mode
+-        if not self.config.agentic_mode:
++        # Conversation enhancements - DISABLED for the locked control-bot profile.
++        # v1.6.0 has no env flag for this (ENABLE_CONVERSATION_MODE is not a Settings
++        # field), so it is patched off here to suppress the "What would you like to do
++        # next?" follow-up suggestion buttons after every pipeline reply.
++        if False and not self.config.agentic_mode:
+             try:
+                 self.features["conversation"] = ConversationEnhancer()
+                 logger.info("Conversation enhancer feature enabled")
+             except Exception as e:
+                 logger.error("Failed to initialize conversation enhancer", error=str(e))

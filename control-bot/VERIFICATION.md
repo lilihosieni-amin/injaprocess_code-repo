@@ -69,10 +69,17 @@ its final commit). Restored with `git restore` (fully recoverable; 20 processes 
 already-extracted voice is an in-place no-op that can leave a dirty tree if interrupted — the
 playbook should stage to a fresh `attempt-NN/` and commit atomically (some paths already do).
 
-**Observation — feature-registry vs env flags.** The bot logged `image_handler` and `conversation`
-features "enabled" despite `ENABLE_IMAGE_UPLOADS=false` / `ENABLE_CONVERSATION_MODE=false`; those
-registry features key off different internals. Uploads/voice themselves remained disabled. Minor
-reconciliation nuance, no security impact.
+**Finding 6 — two upstream env vars are documented but not wired; needs a source patch.**
+`ENABLE_CONVERSATION_MODE` and `ENABLE_IMAGE_UPLOADS` appear in the upstream `.env.example` (so
+they pass the reconciliation check) but are **not Settings fields** in v1.6.0 `settings.py` — the
+bot silently ignores them. In classic mode the registry loads the `ConversationEnhancer`
+unconditionally (`registry.py:95`, gated only on `not agentic_mode`), which appends a "💡 What
+would you like to do next?" suggestion keyboard after every reply, and the image handler is
+"always-on". No env switch turns these off. **Resolution:** `control-bot/patches/0001-disable-
+conversation-enhancer.patch` gates the enhancer off; applied by hand to the local `uv` install on
+2026-07-10 (startup then logs `enabled_features: [session_export, image_handler]`, no
+`conversation`), and to be baked into the Phase-7 image build. `ENABLE_QUICK_ACTIONS=false` **is**
+honored (those buttons stay off). No security impact — cosmetic surface only.
 
 ## Summary
 

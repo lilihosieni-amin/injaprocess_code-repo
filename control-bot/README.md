@@ -88,6 +88,18 @@ require an upstream patch to point the bot at it.)
 If skills or the data-repo hook don't surface on the SDK path, flip `USE_SDK=false` (CLI
 subprocess mode), which loads project settings/hooks directly, and relaunch.
 
+## Known limitations & patches (v1.6.0)
+
+Some hardening the profile wants has no env switch in v1.6.0 and needs a small source patch,
+applied during the Phase-7 image build — see `patches/`:
+
+- **Follow-up suggestion buttons** ("💡 What would you like to do next?" after every reply) come
+  from the always-on `ConversationEnhancer` in classic mode. `ENABLE_CONVERSATION_MODE` is
+  documented upstream but is **not** a real Settings field, so it has no effect —
+  `patches/0001-disable-conversation-enhancer.patch` removes the feature.
+- `ENABLE_IMAGE_UPLOADS` is likewise not wired (the image handler is always-on); harmless while
+  `ENABLE_FILE_UPLOADS=false`, so left as-is.
+
 ## References
 
 Upstream docs to read during setup: the repo's `docs/setup.md`, `docs/configuration.md`,
