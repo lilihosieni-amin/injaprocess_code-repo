@@ -12,7 +12,8 @@ the async Telegram layer is thin and verified live.
 3. `set -a; . your.env; set +a; upload-bot`   (or `python -m upload_bot`)
 
 ## Flows
-- **Voice:** `/start` → صوت → enter date `YYYY-MM-DD` → pick departments → «تمام شد»
+- **Voice:** `/start` → صوت → enter the **Shamsi** meeting date (Persian or Latin digits,
+  `/` or `-`, e.g. `۱۴۰۵/۰۴/۱۹`) → pick departments → «تمام شد»
   → send the voice → bot stores `meetings/audio/{basename}.ogg` and replies with the
   copyable identifier (paste into the control bot to start processing).
 - **File:** `/start` → فایل → pick ONE department → send documents → `/done` →
@@ -35,7 +36,9 @@ local Bot API server and set `TELEGRAM_API_BASE_URL` to it, e.g.:
 (the full stack wires this in Phase 7).
 
 ## Notes
-- Voice date input is ISO Gregorian for now; Jalali input is a planned enhancement.
+- Voice date is **Shamsi** (Jalali), stored in the filename as Latin `YYYY-MM-DD`
+  (e.g. `cooking-1405-04-19`). Input accepts Persian/Latin digits and `/` or `-`
+  and is validated with `jdatetime`. Machine timestamps in the data stay Gregorian ISO.
 - Only `ALLOWED_USER_ID` is served; other users are silently ignored (NFR-1).
 - Staged files from an abandoned file batch are discarded when the user re-runs `/start`
   or sends `/cancel`. A fully-abandoned batch (no further interaction at all) leaves

@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "inja-upload-bot"
 version = "0.1.0"
 requires-python = ">=3.11"
-dependencies = ["python-telegram-bot~=22.0"]
+dependencies = ["python-telegram-bot~=22.0", "jdatetime~=5.0"]
 
 [project.optional-dependencies]
 # Install (`pip install -e "upload-bot[socks]"`) when Telegram is reached via a
