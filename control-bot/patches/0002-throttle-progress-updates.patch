@@ -1,0 +1,46 @@
+Subject: [control-bot] Throttle progress-message edits (prevent long-run bar freeze)
+
+The stream handler in src/bot/handlers/message.py edits a single Telegram "progress"
+message on EVERY SDK stream event, with no dedupe and no rate-limit. On long multi-stage
+pipeline runs this floods Telegram with `editMessageText` calls — Telegram then rejects
+them ("Message is not modified" / edit-rate limits) and the visible progress bar freezes
+mid-run even though the backend keeps working (observed on a dining-2026-05-08 run:
+81 turns / 4 min while the bar stuck at "Stage 3"). The final result/checkpoint message is
+sent separately (delete+send), so throttling intermediate progress edits is safe.
+
+This patch: (a) skips the edit when the rendered text is unchanged, and (b) rate-limits
+edits to at most once per 2s (using the asyncio loop clock — no new import).
+
+Apply during the Phase-7 image build, at the site-packages root:
+  patch -p1 -d "$SITE_PACKAGES" < control-bot/patches/0002-throttle-progress-updates.patch
+Verify: a long run's progress bar advances through stages without a flood of
+"Failed to update progress message" warnings.
+
+--- a/src/bot/handlers/message.py
++++ b/src/bot/handlers/message.py
+@@ -358,7 +358,12 @@
+         mcp_images: list[ImageAttachment] = []
+
+-        # Enhanced stream updates handler with progress tracking
++        # Enhanced stream updates handler with progress tracking.
++        # Throttled (control-bot patch 0002): skip unchanged text (avoids Telegram
++        # "Message is not modified") and rate-limit edits so long multi-stage runs
++        # don't freeze the progress bar under Telegram's edit-rate limits.
++        _progress_state = {"text": None, "at": 0.0}
++
+         async def stream_handler(update_obj):
+             # Intercept send_image_to_user MCP tool calls.
+             # The SDK namespaces MCP tools as "mcp__<server>__<tool>".
+@@ -378,10 +383,13 @@
+             try:
+                 progress_text = await _format_progress_update(update_obj)
+-                if progress_text:
+-                    await progress_msg.edit_text(progress_text, parse_mode="HTML")
++                if progress_text and progress_text != _progress_state["text"]:
++                    now = asyncio.get_running_loop().time()
++                    if now - _progress_state["at"] >= 2.0:
++                        await progress_msg.edit_text(progress_text, parse_mode="HTML")
++                        _progress_state["text"] = progress_text
++                        _progress_state["at"] = now
+             except Exception as e:
+                 logger.warning("Failed to update progress message", error=str(e))

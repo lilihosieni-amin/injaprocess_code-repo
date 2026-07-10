@@ -68,6 +68,12 @@ its final commit). Restored with `git restore` (fully recoverable; 20 processes 
 (a) don't judge a long run by the progress bar — check the backend log / disk; (b) re-processing an
 already-extracted voice is an in-place no-op that can leave a dirty tree if interrupted — the
 playbook should stage to a fresh `attempt-NN/` and commit atomically (some paths already do).
+**Resolution:** `control-bot/patches/0002-throttle-progress-updates.patch` dedupes + rate-limits the
+progress edits (applied to the local install for continued testing; Phase-7 image bakes it in). The
+checkpoint questions were already plain-text/turn-ending (SKILL.md Stage 4), and the profile now
+also sets `CLAUDE_DISALLOWED_TOOLS=["AskUserQuestion","ExitPlanMode","EnterPlanMode"]` so no inline
+prompt the bot can't render is ever attempted. Recovery for any stuck run: send a message — the
+session persists and resumes.
 
 **Finding 6 — two upstream env vars are documented but not wired; needs a source patch.**
 `ENABLE_CONVERSATION_MODE` and `ENABLE_IMAGE_UPLOADS` appear in the upstream `.env.example` (so

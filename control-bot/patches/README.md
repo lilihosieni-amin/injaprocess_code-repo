@@ -11,6 +11,7 @@ see the header of each `.patch` for the exact command and the log line that veri
 | Patch | Why |
 |---|---|
 | `0001-disable-conversation-enhancer.patch` | v1.6.0 has no env flag to disable the "What would you like to do next?" follow-up suggestion buttons in classic mode (`ENABLE_CONVERSATION_MODE` is documented in `.env.example` but is **not** a real Settings field). The patch stops the `ConversationEnhancer` from loading. |
+| `0002-throttle-progress-updates.patch` | The stream handler edits the Telegram progress message on every SDK event with no dedupe/rate-limit; long multi-stage runs flood `editMessageText`, Telegram throttles it, and the progress bar freezes mid-run while the backend keeps working. The patch dedupes unchanged text and rate-limits edits to ≤ once/2s. |
 
 **Note on the dev-machine run (2026-07-10):** patch 0001 was applied by hand to the local
 `uv` install to remove the buttons during testing; a `uv tool` reinstall/upgrade wipes that,

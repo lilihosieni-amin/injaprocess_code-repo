@@ -99,6 +99,16 @@ applied during the Phase-7 image build — see `patches/`:
   `patches/0001-disable-conversation-enhancer.patch` removes the feature.
 - `ENABLE_IMAGE_UPLOADS` is likewise not wired (the image handler is always-on); harmless while
   `ENABLE_FILE_UPLOADS=false`, so left as-is.
+- **Progress bar freezes on long runs.** The bot edits one progress message per SDK event with
+  no rate-limit; long pipeline runs flood Telegram, which throttles the edits, freezing the bar
+  mid-run (the backend keeps going) — `patches/0002-throttle-progress-updates.patch` dedupes +
+  rate-limits the edits.
+
+**Interactive prompts:** the pipeline asks its checkpoint questions as plain Telegram text and
+ends the turn (you reply with a normal message; the session resumes). As belt-and-suspenders the
+profile also sets `CLAUDE_DISALLOWED_TOOLS=["AskUserQuestion","ExitPlanMode","EnterPlanMode"]`, so
+the model can never attempt an inline prompt the bot can't render. If a run ever looks stuck,
+just send a message — the session persists and Claude continues.
 
 ## References
 
