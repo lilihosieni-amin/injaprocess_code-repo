@@ -64,8 +64,9 @@ export ALL_PROXY="socks5h://127.0.0.1:2080" HTTPS_PROXY="socks5h://127.0.0.1:208
 export NO_PROXY="api.anthropic.com,.anthropic.com,localhost,127.0.0.1"
 ```
 
-On success the bot logs `Proxy configured: socks5h://127.0.0.1:2080`. (Alternatively run a local
-`telegram-bot-api` server and point `TELEGRAM_API_BASE_URL` at it.)
+On success the bot logs `Proxy configured: socks5h://127.0.0.1:2080`. (v1.6.0 has no custom
+API-base-URL setting, so the env-proxy is the mechanism; a local `telegram-bot-api` server would
+require an upstream patch to point the bot at it.)
 
 ## Drive a run (classic mode, AGENTIC_MODE=false)
 
