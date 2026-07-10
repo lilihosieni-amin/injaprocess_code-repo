@@ -1,5 +1,5 @@
 [tool.pytest.ini_options]
-testpaths = ["upload-bot/tests", "tests", "engine/tests"]
+testpaths = ["upload-bot/tests", "tests", "engine/tests", "ui-backend/tests"]
 python_files = ["test_*.py"]
 markers = ["integration: real external calls (Vertex); skipped by default"]
 filterwarnings = [
