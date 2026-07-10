@@ -92,6 +92,36 @@ async def create_process(body: CreateProcessBody, request: Request, response: Re
     return child
 
 
+@router.delete("/{pid}")
+async def delete_process(pid: str, request: Request, _: str = Depends(require_session)):
+    cfg = request.app.state.cfg
+    path = storage.proc_path(cfg.data_root, pid)
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="process not found")
+
+    reg = storage.read_json(storage.registry_path(cfg.data_root))
+    written = []
+    path.unlink()
+    written.append(path)
+    for d in reg["departments"]:
+        for fp in storage.list_process_files(cfg.data_root, d["code"]):
+            doc = storage.read_json(fp)
+            changed = False
+            for n in doc.get("nodes", []):
+                if n.get("subprocess") == pid:
+                    n["subprocess"] = None
+                    changed = True
+            if doc.get("parent") and doc["parent"].get("process") == pid:
+                doc["parent"] = None
+                changed = True
+            if changed:
+                doc["updated_at"] = _now()
+                storage.write_json_atomic(fp, doc)
+                written.append(fp)
+    gitcommit.commit(cfg, written, pid, "delete process")
+    return {"deleted": pid}
+
+
 @router.put("/{pid}")
 async def save_process(pid: str, body: dict, request: Request,
                        _: str = Depends(require_session)):
