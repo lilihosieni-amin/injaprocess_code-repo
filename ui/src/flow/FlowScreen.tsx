@@ -108,38 +108,38 @@ function FlowEditor() {
           <span className="flex items-center gap-1"><span className="w-[11px] h-[11px] bg-violet rotate-45 inline-block" />AND</span>
           <span className="flex items-center gap-1"><span className="w-[11px] h-[11px] bg-[#E8A33D] rotate-45 inline-block" />OR</span>
         </div>
+        {(() => {
+          if (!detailId) return null
+          const detailNode = proc.nodes.find((x) => x.id === detailId)
+          if (!detailNode) return null
+          return (
+            <DetailDrawer
+              node={detailNode}
+              editing={editing}
+              conflicts={(proc.pending ?? []).map((pending, index) => ({ pending, index })).filter((x) => x.pending.status === 'open' && x.pending.node === detailId)}
+              process={proc}
+              onClose={() => setDetailId(null)}
+              onEdit={() => {}}
+              onAccept={(index) => resolve.mutate({ index, decision: 'accept' })}
+              onReject={(index) => resolve.mutate({ index, decision: 'reject' })}
+              onOpenSub={(sub) => nav(`/processes/${sub}/flow`)}
+              onPatch={(patch) => ed.patchActivity(detailId, patch as Partial<Pick<ActivityNode, 'label' | 'actor' | 'description'>>)}
+              onLinkSub={(s) => ed.linkSub(detailId, s)}
+              onSetJunction={(t) => ed.setJunction(detailId, t)}
+              onCreateSub={() => {
+                createProcess.mutate(
+                  { department: proc.department, name: 'زیرفرآیند جدید', parent: { process: proc.id, node: detailId! } },
+                  { onSuccess: (child) => { setDetailId(null); nav(`/processes/${child.id}/flow`) } },
+                )
+              }}
+            />
+          )
+        })()}
       </div>
       {pendingDel && (() => {
         const n = proc.nodes.find((x) => x.id === pendingDel)
         const label = n && 'label' in n ? (n as { label: string }).label : pendingDel
         return <DeleteNodeConfirm label={label} onCancel={() => setPendingDel(null)} onConfirm={() => { ed.deleteNode(pendingDel); setPendingDel(null) }} />
-      })()}
-      {(() => {
-        if (!detailId) return null
-        const detailNode = proc.nodes.find((x) => x.id === detailId)
-        if (!detailNode) return null
-        return (
-          <DetailDrawer
-            node={detailNode}
-            editing={editing}
-            conflicts={(proc.pending ?? []).map((pending, index) => ({ pending, index })).filter((x) => x.pending.status === 'open' && x.pending.node === detailId)}
-            process={proc}
-            onClose={() => setDetailId(null)}
-            onEdit={() => {}}
-            onAccept={(index) => resolve.mutate({ index, decision: 'accept' })}
-            onReject={(index) => resolve.mutate({ index, decision: 'reject' })}
-            onOpenSub={(sub) => nav(`/processes/${sub}/flow`)}
-            onPatch={(patch) => ed.patchActivity(detailId, patch as Partial<Pick<ActivityNode, 'label' | 'actor' | 'description'>>)}
-            onLinkSub={(s) => ed.linkSub(detailId, s)}
-            onSetJunction={(t) => ed.setJunction(detailId, t)}
-            onCreateSub={() => {
-              createProcess.mutate(
-                { department: proc.department, name: 'زیرفرآیند جدید', parent: { process: proc.id, node: detailId! } },
-                { onSuccess: (child) => { setDetailId(null); nav(`/processes/${child.id}/flow`) } },
-              )
-            }}
-          />
-        )
       })()}
     </div>
   )

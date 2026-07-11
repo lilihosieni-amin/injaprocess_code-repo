@@ -45,7 +45,7 @@ export function DetailDrawer(props: DrawerProps) {
     <div className="absolute top-0 bottom-0 left-0 w-[340px] bg-white border-e border-warm shadow-[20px_0_50px_-30px_rgba(74,37,169,.5)] flex flex-col z-[15]">
       <div className="flex items-center justify-between px-[18px] py-4 border-b border-[#F0E9FB]">
         <span className="id-badge bg-violet text-white" dir="ltr">{node.id}</span>
-        <button onClick={onClose} className="w-7 h-7 bg-tile-v2 rounded-lg text-muted">×</button>
+        <button onClick={onClose} title="بستن" className="w-7 h-7 bg-tile-v2 rounded-lg text-muted text-lg">×</button>
       </div>
       <div className="flex-1 overflow-auto p-[18px]">
         {props.editing && node.type === 'junction' ? (
