@@ -5,6 +5,7 @@ import { deptMeta } from '../lib/departments'
 import { deriveTag, toFa } from '../lib/format'
 import { IdBadge } from '../ui/IdBadge'
 import { Button } from '../ui/Button'
+import { CreateProcessModal } from '../write/CreateProcessModal'
 import type { Process } from '../api/types'
 
 const TAG_CLS: Record<string, string> = {
@@ -16,6 +17,7 @@ export function ProcessList() {
   const { code = '' } = useParams()
   const nav = useNavigate()
   const [q, setQ] = useState('')
+  const [creating, setCreating] = useState(false)
   const { data: procs = [] } = useProcesses(code)
   const { data: depts = [] } = useDepartments()
   const dept = depts.find((d) => d.code === code)
@@ -40,7 +42,7 @@ export function ProcessList() {
           </div>
           <div className="flex items-center gap-2.5 shrink-0">
             <Button variant="ghost" onClick={() => nav(`/departments/${code}/overview`)} className="px-4 py-[11px] text-[13px]">اطلاعات دپارتمان</Button>
-            <Button variant="coral" className="px-4 py-[11px] text-[13px]">فرآیند جدید</Button>
+            <Button variant="coral" onClick={() => setCreating(true)} className="px-4 py-[11px] text-[13px]">فرآیند جدید</Button>
           </div>
         </div>
 
@@ -78,6 +80,7 @@ export function ProcessList() {
           })}
         </div>
       </div>
+      {creating && <CreateProcessModal department={code} departmentName={dept?.name ?? ''} onClose={() => setCreating(false)} />}
     </div>
   )
 }
