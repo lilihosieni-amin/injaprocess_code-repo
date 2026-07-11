@@ -1,68 +1,25 @@
-:root {
-  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-  color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
-
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+@layer base {
+  html { direction: rtl; }
+  body { margin: 0; }
+  ::selection { background: #FA5A52; color: #fff; }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-thumb { background: #DFD6EE; border-radius: 8px; border: 2px solid transparent; background-clip: content-box; }
 }
 
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
-}
-a:hover {
-  color: #535bf2;
-}
-
-body {
-  margin: 0;
-  display: flex;
-  place-items: center;
-  min-width: 320px;
-  min-height: 100vh;
-}
-
-h1 {
-  font-size: 3.2em;
-  line-height: 1.1;
-}
-
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  background-color: #1a1a1a;
-  cursor: pointer;
-  transition: border-color 0.25s;
-}
-button:hover {
-  border-color: #646cff;
-}
-button:focus,
-button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
-}
-
-@media (prefers-color-scheme: light) {
-  :root {
-    color: #213547;
-    background-color: #ffffff;
-  }
-  a:hover {
-    color: #747bff;
-  }
-  button {
-    background-color: #f9f9f9;
-  }
+@layer components {
+  .btn { @apply inline-flex items-center justify-center gap-2 rounded-xl font-bold cursor-pointer border-0; }
+  .btn-coral  { @apply bg-coral  text-white shadow-coral  hover:brightness-105; }
+  .btn-violet { @apply bg-violet text-white shadow-violet hover:brightness-110; }
+  .btn-green  { @apply bg-green  text-white shadow-green  hover:brightness-105; }
+  .btn-ghost  { @apply bg-white text-violet border-[1.5px] border-line hover:bg-[#F4EFFB]; }
+  .chip { @apply text-[11px] px-[9px] py-[3px] rounded-[7px] whitespace-nowrap; }
+  .chip-input   { @apply chip text-[#1F6FB2] bg-[#E7F1FB]; }
+  .chip-control { @apply chip text-[#8A5A00] bg-[#FBF0DA]; }
+  .chip-output  { @apply chip text-[#1F8A5B] bg-[#E4F6EC]; }
+  .chip-mech    { @apply chip text-[#4A25A9] bg-[#F0E9FB]; }
+  .id-badge { @apply font-mono text-[11px] px-2 py-[2px] rounded-md; }
 }
