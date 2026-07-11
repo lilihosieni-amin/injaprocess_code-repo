@@ -48,8 +48,12 @@ reimplement by hand only where the spike shows a genuine gap.
 - **Manual Save** — all edits held in memory; one `PUT /api/processes/{pid}` + one commit on
   Save; Cancel discards (reset from query cache).
 - **Layout** (ARD §9): initial positions from the stored `process.json`; a manual move sets
-  that node's `layout: "manual"`; a **relayout** button calls `POST /api/processes/{pid}/
-  relayout` and applies returned positions to non-manual nodes.
+  that node's `layout: "manual"`. The **relayout** button is a **full reset**: it calls
+  `POST /api/processes/{pid}/relayout`, which reflows **every** node into the serpentine
+  layout — *including* `layout:"manual"` ones — and returns each repositioned node with
+  `layout:"auto"`. The editor replaces all positions and layout fields from the response
+  wholesale (so the subsequent Save, which trusts the incoming `layout` field, persists them as
+  auto). This is the *only* path that overrides hand placement; see §3.5.
 - **Node detail drawer**: view (label, actor, description, ICOM chips, `source` line) and edit
   (label, actor, description, **subprocess link-by-ID with live validation** + **"create
   sub-process & enter"**); **inline conflict accept/reject** on the box (per-process `pending`,
@@ -112,14 +116,40 @@ ui/src/flow/
 ```
 Replaces A's `FlowPlaceholder.tsx` at route `/processes/:pid/flow`.
 
+### 3.5 Relayout full-reset (cross-phase prerequisite)
+The full-reset behavior requires an additive engine + backend change (Phase 1 + Phase 5),
+implemented as part of B:
+- **Engine `layout`** gains a `--full` mode that repositions **all** nodes into the serpentine
+  layout, ignoring `layout:"manual"`, and emits every node with `layout:"auto"`. The default
+  (no `--full`) mode is unchanged: it honors `layout:"manual"` and leaves hand-placed nodes
+  put.
+- **`POST /api/processes/{pid}/relayout`** shells `layout --full`, so the UI button always does
+  a full reset.
+- **Unchanged:** the `merge` pipeline's local relayout on mid-insertion still honors
+  `layout:"manual"` and never moves hand-placed nodes. Only the explicit UI relayout button
+  ignores manual. This keeps the invariant that a later voice/run never disturbs the operator's
+  manual layout (AC-5), while giving the operator a deliberate "reset to auto" escape hatch.
+
 ## 4. Testing
 - Custom node/edge components render correctly from fixtures (activity chips/actor/conflict
   badge/sub affordance; junction color+type; edge label + delete button in edit only).
 - `useFlowEditor`: add activity/junction, link (onConnect), delete-with-relink, undo/redo
   round-trips, move sets `layout:"manual"`, Save payload equals the edited doc.
+- **Relayout full-reset** (`useFlowEditor`): after a relayout response, a previously
+  `layout:"manual"` node is repositioned and its layout field becomes `"auto"`; the editor's
+  Save payload carries it as auto.
 - Sub-process navigation routes to the child and back.
 - Inline conflict accept/reject calls the resolve hook with the right index.
 - View-only mode exposes no edit actions.
+
+**Engine/backend (pytest, existing harness — §3.5):**
+- `layout --full` **moves a `layout:"manual"` node** into the serpentine position and returns
+  it with `layout:"auto"`; every returned node is `"auto"`.
+- The default `layout` mode is unchanged (manual nodes stay put) — existing assertion holds.
+- The `merge` local-relayout test still asserts **manual nodes are not moved** on mid-insertion
+  (unchanged).
+- `POST /api/processes/{pid}/relayout` invokes the `--full` path (a manual node comes back
+  repositioned as auto).
 
 ## 5. Exit criteria (B)
 - The flow screen matches the prototype (nodes, junctions, edges, drawer, toolbar, legend,
@@ -132,5 +162,7 @@ Replaces A's `FlowPlaceholder.tsx` at route `/processes/:pid/flow`.
 - Vitest suite passes.
 
 ## 6. Dependencies
-No new packages (`@xyflow/react` already in `package.json`). Consumes A's tokens/shell/data
-layer and the `useResolvePending`/`useCreateProcess` mutation hooks (shared with C).
+No new frontend packages (`@xyflow/react` already in `package.json`). Consumes A's
+tokens/shell/data layer and the `useResolvePending`/`useCreateProcess` mutation hooks (shared
+with C). One additive cross-phase change: engine `layout --full` mode + the relayout endpoint
+wiring (§3.5).
