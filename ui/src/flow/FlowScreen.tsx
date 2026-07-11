@@ -1,6 +1,6 @@
 import { useNavigate, useParams } from 'react-router-dom'
 import { ReactFlowProvider, type Connection } from '@xyflow/react'
-import { useProcess, usePutProcess } from '../api/hooks'
+import { useProcess, usePutProcess, useRelayout } from '../api/hooks'
 import { useFlowEditor } from './useFlowEditor'
 import { toFlowNodes, toFlowEdges } from './adapt'
 import { Canvas } from './Canvas'
@@ -14,6 +14,7 @@ export function FlowScreen() {
   const { data: server } = useProcess(pid)
   const ed = useFlowEditor(server)
   const put = usePutProcess(pid)
+  const relayout = useRelayout(pid)
   if (!ed.doc) return <div className="flex-1 bg-bg" />
   const proc = ed.doc
   const editing = ed.editing
@@ -21,6 +22,8 @@ export function FlowScreen() {
   function onSave() {
     put.mutate(proc, { onSuccess: (saved) => { ed.adopt(saved); ed.cancel() } })
   }
+
+  function onRelayout() { relayout.mutate(proc, { onSuccess: (laid) => ed.adopt(laid) }) }
 
   const nodes = toFlowNodes(proc)
   const edges = toFlowEdges(proc).map((e) => ({
@@ -56,6 +59,7 @@ export function FlowScreen() {
               </div>
               <Button variant="ghost" onClick={() => ed.addActivity()} className="px-3 py-2 text-[12.5px]">فعالیت</Button>
               <Button variant="ghost" onClick={() => ed.addJunction()} className="px-3 py-2 text-[12.5px]">اتصال</Button>
+              <Button variant="ghost" onClick={onRelayout} disabled={relayout.isPending} className="px-3 py-2 text-[12.5px]">چیدمان</Button>
               <Button variant="ghost" onClick={() => ed.selected && ed.deleteNode(ed.selected)} className="px-3 py-2 text-[12.5px]">حذف</Button>
               <Button variant="ghost" onClick={ed.cancel} className="px-3 py-2 text-[12.5px]">انصراف</Button>
               <Button variant="green" onClick={onSave} disabled={put.isPending} className="px-4 py-2 text-[13px]" data-testid="save">ذخیره</Button>
