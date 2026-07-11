@@ -6,6 +6,11 @@ export interface Pending {
   node: string; field: string; current: unknown; proposed: unknown
   source: string; status: 'open' | 'accepted' | 'rejected'
 }
+export interface PendingItem {
+  process: string; department: string; name: string
+  node: string; index: number; field: string
+  current: unknown; proposed: unknown; source: string; status: 'open'
+}
 export interface Position { x: number; y: number }
 export interface NodeSource { created_by: string; touched_by: string[] }
 
