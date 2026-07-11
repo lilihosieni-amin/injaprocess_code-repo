@@ -72,7 +72,10 @@ export function useCreateProcess() {
   return useMutation({
     mutationFn: (body: { department: string; name?: string; parent?: { process: string; node: string } }) =>
       fetchJson<Process>('/api/processes', { method: 'POST', body: JSON.stringify(body) }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['processes'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['processes'] })
+      qc.invalidateQueries({ queryKey: ['next-id'] })
+    },
   })
 }
 
@@ -91,6 +94,7 @@ export function useDeleteProcess() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['processes'] })
       qc.invalidateQueries({ queryKey: ['departments'] })
+      qc.invalidateQueries({ queryKey: ['next-id'] })
     },
   })
 }
