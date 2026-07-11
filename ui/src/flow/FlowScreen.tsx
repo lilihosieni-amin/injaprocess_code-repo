@@ -51,9 +51,10 @@ function FlowEditor() {
   function onRelayout() { relayout.mutate(proc, { onSuccess: (laid) => ed.adopt(laid) }) }
 
   function onNodeClick(id: string) {
+    const n = proc.nodes.find((x) => x.id === id)
+    if (n && n.type === 'junction') { setDetailId(id); return }
     if (editing) { ed.select(id); return }
-    const n = proc.nodes.find((x) => x.id === id) as ActivityNode | undefined
-    if (n && n.type === 'activity' && n.subprocess) nav(`/processes/${n.subprocess}/flow`)
+    if (n && n.type === 'activity' && (n as ActivityNode).subprocess) nav(`/processes/${(n as ActivityNode).subprocess}/flow`)
   }
 
   return (
