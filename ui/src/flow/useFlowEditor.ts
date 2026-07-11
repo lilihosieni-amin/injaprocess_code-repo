@@ -12,61 +12,67 @@ export function useFlowEditor(server: Process | undefined) {
   const past = useRef<Process[]>([])
   const future = useRef<Process[]>([])
   const tmp = useRef(0)
-  const [, force] = useState(0)
+  const [revision, setRevision] = useState(0)
 
   // Keep the working copy in sync with the server doc while NOT editing.
   useEffect(() => {
-    if (!editing && server) setDoc(server)
+    if (!editing && server) { setDoc(server); setRevision((r) => r + 1) }
   }, [server, editing])
 
-  const commit = useCallback((next: Process) => {
+  const commit = useCallback((next: Process, structural = true) => {
     if (doc) past.current.push(doc)
     future.current = []
     setDoc(next)
+    if (structural) setRevision((r) => r + 1)
   }, [doc])
 
-  const mutate = useCallback((fn: (d: Process) => void) => {
+  const mutate = useCallback((fn: (d: Process) => void, structural = true) => {
     if (!doc) return
     const next = clone(doc)
     fn(next)
-    commit(next)
+    commit(next, structural)
   }, [doc, commit])
 
-  const enter = useCallback(() => { past.current = []; future.current = []; setEditing(true) }, [])
-  const cancel = useCallback(() => { past.current = []; future.current = []; setEditing(false); if (server) setDoc(server) }, [server])
-  const adopt = useCallback((next: Process) => { past.current = []; future.current = []; setDoc(next) }, [])
-  const exitEdit = useCallback(() => { past.current = []; future.current = []; setEditing(false) }, [])
+  const enter = useCallback(() => { past.current = []; future.current = []; setEditing(true); setRevision((r) => r + 1) }, [])
+  const cancel = useCallback(() => { past.current = []; future.current = []; setEditing(false); if (server) setDoc(server); setRevision((r) => r + 1) }, [server])
+  const adopt = useCallback((next: Process) => { past.current = []; future.current = []; setDoc(next); setRevision((r) => r + 1) }, [])
+  const exitEdit = useCallback(() => { past.current = []; future.current = []; setEditing(false); setRevision((r) => r + 1) }, [])
 
   const undo = useCallback(() => {
     if (!past.current.length || !doc) return
-    future.current.push(doc)
-    setDoc(past.current.pop()!)
-    force((n) => n + 1)
+    future.current.push(doc); setDoc(past.current.pop()!); setRevision((r) => r + 1)
   }, [doc])
   const redo = useCallback(() => {
     if (!future.current.length || !doc) return
-    past.current.push(doc!)
-    setDoc(future.current.pop()!)
-    force((n) => n + 1)
+    past.current.push(doc!); setDoc(future.current.pop()!); setRevision((r) => r + 1)
   }, [doc])
 
   const setName = useCallback((name: string) => mutate((d) => { d.name = name }), [mutate])
   const moveNode = useCallback((id: string, pos: Pos) => mutate((d) => {
     const n = d.nodes.find((x) => x.id === id); if (n) { n.position = pos; n.layout = 'manual' }
-  }), [mutate])
+  }, false), [mutate])
 
-  const addActivity = useCallback(() => mutate((d) => {
+  const moveNodes = useCallback((updates: { id: string; pos: Pos }[]) => mutate((d) => {
+    for (const u of updates) {
+      const n = d.nodes.find((x) => x.id === u.id); if (n) { n.position = u.pos; n.layout = 'manual' }
+    }
+  }, false), [mutate])
+
+  const setEdgeLabel = useCallback((from: string, to: string, label: string) => mutate((d) => {
+    const e = d.edges.find((x) => x.from === from && x.to === to); if (e) e.label = label
+  }, false), [mutate])
+
+  const addActivity = useCallback((pos: Pos = { x: 120, y: 120 }) => mutate((d) => {
     const id = nextTempId('n', ++tmp.current)
     const node: ActivityNode = { id, type: 'activity', label: 'فعالیت جدید', description: '', actor: '',
       icom: { inputs: [], controls: [], outputs: [], mechanisms: [] }, subprocess: null,
-      position: { x: 120, y: 120 }, layout: 'manual', source: { created_by: 'ui-edit', touched_by: [] } }
+      position: pos, layout: 'manual', source: { created_by: 'ui-edit', touched_by: [] } }
     d.nodes.push(node)
   }), [mutate])
 
-  const addJunction = useCallback(() => mutate((d) => {
+  const addJunction = useCallback((pos: Pos = { x: 160, y: 160 }) => mutate((d) => {
     const id = nextTempId('j', ++tmp.current)
-    const node: JunctionNode = { id, type: 'junction', junctionType: 'XOR', direction: 'split',
-      position: { x: 160, y: 160 }, layout: 'manual' }
+    const node: JunctionNode = { id, type: 'junction', junctionType: 'XOR', direction: 'split', position: pos, layout: 'manual' }
     d.nodes.push(node)
   }), [mutate])
 
@@ -105,9 +111,10 @@ export function useFlowEditor(server: Process | undefined) {
   }), [mutate])
 
   return {
-    doc: doc as Process, editing, selected, select: setSelected,
+    doc: doc as Process, editing, selected, select: setSelected, revision,
     enter, cancel, adopt, exitEdit,
     canUndo: past.current.length > 0, canRedo: future.current.length > 0, undo, redo,
-    setName, moveNode, addActivity, addJunction, connect, deleteEdge, deleteNode, setJunction, patchActivity, linkSub,
+    setName, moveNode, moveNodes, addActivity, addJunction, connect, deleteEdge, deleteNode,
+    setJunction, patchActivity, linkSub, setEdgeLabel,
   }
 }

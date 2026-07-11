@@ -57,4 +57,38 @@ describe('useFlowEditor', () => {
     expect(result.current.editing).toBe(false)
     expect(result.current.doc.name).toBe('p')
   })
+  it('moveNodes batch-sets positions + manual, is undoable, and does NOT bump revision', () => {
+    const { result } = renderHook(() => useFlowEditor(server))
+    act(() => result.current.enter())
+    const r0 = result.current.revision
+    act(() => result.current.moveNodes([{ id: 'cooking-001-n010', pos: { x: 7, y: 8 } }]))
+    const n = result.current.doc.nodes.find((x) => x.id === 'cooking-001-n010')!
+    expect(n.position).toEqual({ x: 7, y: 8 })
+    expect(n.layout).toBe('manual')
+    expect(result.current.revision).toBe(r0)                 // transient commit: no re-seed
+    act(() => result.current.undo())
+    expect(result.current.doc.nodes.find((x) => x.id === 'cooking-001-n010')!.position).not.toEqual({ x: 7, y: 8 })
+  })
+  it('a structural action bumps revision', () => {
+    const { result } = renderHook(() => useFlowEditor(server))
+    act(() => result.current.enter())
+    const r0 = result.current.revision
+    act(() => result.current.addActivity())
+    expect(result.current.revision).toBe(r0 + 1)
+  })
+  it('setEdgeLabel updates the matching edge label without bumping revision', () => {
+    const { result } = renderHook(() => useFlowEditor(server))
+    act(() => result.current.enter())
+    const r0 = result.current.revision
+    act(() => result.current.setEdgeLabel('start', 'cooking-001-n010', 'برچسب'))
+    expect(result.current.doc.edges.find((e) => e.from === 'start' && e.to === 'cooking-001-n010')!.label).toBe('برچسب')
+    expect(result.current.revision).toBe(r0)
+  })
+  it('addActivity places the node at the given position when provided', () => {
+    const { result } = renderHook(() => useFlowEditor(server))
+    act(() => result.current.enter())
+    act(() => result.current.addActivity({ x: 300, y: 400 }))
+    const added = result.current.doc.nodes.find((n) => n.id.startsWith('tmp-n-'))!
+    expect(added.position).toEqual({ x: 300, y: 400 })
+  })
 })
