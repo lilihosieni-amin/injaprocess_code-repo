@@ -35,3 +35,12 @@ def test_commit_noop_when_paths_unchanged(data_root):
     storage.write_json_atomic(p, storage.read_json(p))
     gitcommit.commit(cfg, [p], "cooking-001", "save")
     assert len(_log(data_root).splitlines()) == before
+
+
+def test_commit_raises_on_git_failure(tmp_path):
+    import pytest
+    cfg = cfg_for(tmp_path)          # a real dir, but NOT a git repository
+    p = tmp_path / "x.json"
+    p.write_text("{}", encoding="utf-8")
+    with pytest.raises(RuntimeError):
+        gitcommit.commit(cfg, [p], "x-001", "save")
