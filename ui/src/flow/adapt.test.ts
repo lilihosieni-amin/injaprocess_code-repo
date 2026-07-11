@@ -49,4 +49,8 @@ describe('adapt', () => {
     expect(isTempId('cooking-001-j1')).toBe(false)
     expect(isTempId('start')).toBe(false)
   })
+  it('edges carry an arrowhead markerEnd', () => {
+    const es = toFlowEdges(proc)
+    expect(es[0].markerEnd).toMatchObject({ type: 'arrowclosed' })
+  })
 })

@@ -1,3 +1,4 @@
+import { MarkerType } from '@xyflow/react'
 import type { Node, Edge } from '@xyflow/react'
 import type { Process, ProcNode } from '../api/types'
 
@@ -48,6 +49,7 @@ export function toFlowEdges(proc: Process): Edge[] {
     source: e.from,
     target: e.to,
     type: 'labeled',
+    markerEnd: { type: MarkerType.ArrowClosed, color: '#9B86D9', width: 18, height: 18 },
     data: { label: e.label ?? '' },
   }))
 }
