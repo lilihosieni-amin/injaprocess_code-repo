@@ -51,3 +51,18 @@ def test_process_list(data_root):
     c = _auth_client(data_root)
     procs = c.get("/api/departments/cooking/processes").json()
     assert any(p["id"] == "cooking-001" for p in procs)
+
+
+def test_next_id_previews_allocation(data_root):
+    c = _auth_client(data_root)
+    r = c.get("/api/departments/cooking/next-id")
+    assert r.status_code == 200
+    nid = r.json()["next_id"]
+    assert nid.startswith("cooking-")
+    # stateless: a second call returns the same id (nothing was written)
+    assert c.get("/api/departments/cooking/next-id").json()["next_id"] == nid
+
+
+def test_next_id_unknown_department_404(data_root):
+    c = _auth_client(data_root)
+    assert c.get("/api/departments/nope/next-id").status_code == 404

@@ -55,3 +55,12 @@ async def put_overview(code: str, body: dict, request: Request,
 def list_processes(code: str, request: Request, _: str = Depends(require_session)):
     cfg = request.app.state.cfg
     return [storage.read_json(p) for p in storage.list_process_files(cfg.data_root, code)]
+
+
+@router.get("/{code}/next-id")
+def next_id(code: str, request: Request, _: str = Depends(require_session)):
+    cfg = request.app.state.cfg
+    reg = storage.read_json(storage.registry_path(cfg.data_root))
+    if code not in {d["code"] for d in reg["departments"]}:
+        raise HTTPException(status_code=404, detail="unknown department")
+    return {"next_id": engine.allocate_process_id(cfg, code)}
