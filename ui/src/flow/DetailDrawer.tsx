@@ -46,7 +46,28 @@ export function DetailDrawer(props: DrawerProps) {
         <button onClick={onClose} className="w-7 h-7 bg-tile-v2 rounded-lg text-muted">×</button>
       </div>
       <div className="flex-1 overflow-auto p-[18px]">
-        {props.editing && isActivity ? (
+        {props.editing && node.type === 'junction' ? (
+          /* ─── EDIT BRANCH (junction) ─── */
+          <>
+            <div className="font-extrabold text-[16px] text-ink mb-4">انتخاب دروازهٔ منطقی</div>
+            <div className="flex gap-3 mb-5">
+              {(['XOR', 'AND', 'OR'] as const).map((type) => (
+                <button
+                  key={type}
+                  onClick={() => props.onSetJunction(type)}
+                  className={`flex-1 py-3 px-3 rounded-lg font-bold text-[13px] border-[1.5px] transition-all ${
+                    j.junctionType === type
+                      ? 'bg-violet border-violet text-white'
+                      : 'bg-white border-line text-ink hover:border-violet'
+                  }`}
+                >
+                  {type}
+                </button>
+              ))}
+            </div>
+            <div className="text-[12.5px] text-muted leading-loose">XOR: فقط یکی از مسیرها فعال می‌شود. AND: همهٔ مسیرها هم‌زمان. OR: یک یا چند مسیر.</div>
+          </>
+        ) : props.editing && isActivity ? (
           /* ─── EDIT BRANCH (activity) ─── */
           <>
             <label className="text-[11px] font-bold text-muted block mt-1 mb-1.5">عنوان</label>
