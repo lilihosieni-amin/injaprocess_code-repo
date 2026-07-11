@@ -6,6 +6,7 @@ import { deriveTag, toFa } from '../lib/format'
 import { IdBadge } from '../ui/IdBadge'
 import { Button } from '../ui/Button'
 import { CreateProcessModal } from '../write/CreateProcessModal'
+import { DeleteProcessConfirm } from '../write/DeleteProcessConfirm'
 import type { Process } from '../api/types'
 
 const TAG_CLS: Record<string, string> = {
@@ -18,6 +19,7 @@ export function ProcessList() {
   const nav = useNavigate()
   const [q, setQ] = useState('')
   const [creating, setCreating] = useState(false)
+  const [delTarget, setDelTarget] = useState<{ pid: string; name: string } | null>(null)
   const { data: procs = [] } = useProcesses(code)
   const { data: depts = [] } = useDepartments()
   const dept = depts.find((d) => d.code === code)
@@ -74,6 +76,10 @@ export function ProcessList() {
                 <div className="flex gap-2 shrink-0">
                   <Button variant="ghost" onClick={() => nav(`/processes/${p.id}`)} className="px-3.5 py-[9px] text-[12.5px]">اطلاعات کلی</Button>
                   <Button variant="violet" onClick={() => nav(`/processes/${p.id}/flow`)} className="px-3.5 py-[9px] text-[12.5px]">فلوچارت</Button>
+                  <button onClick={() => setDelTarget({ pid: p.id, name: p.name })} title="حذف فرآیند"
+                    className="flex items-center justify-center w-[38px] shrink-0 border-[1.5px] border-[#FDD9D6] bg-[#FFF3F2] rounded-[11px] text-conflict">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M10 11v6M14 11v6" /></svg>
+                  </button>
                 </div>
               </div>
             )
@@ -81,6 +87,7 @@ export function ProcessList() {
         </div>
       </div>
       {creating && <CreateProcessModal department={code} departmentName={dept?.name ?? ''} onClose={() => setCreating(false)} />}
+      {delTarget && <DeleteProcessConfirm pid={delTarget.pid} name={delTarget.name} onClose={() => setDelTarget(null)} />}
     </div>
   )
 }
