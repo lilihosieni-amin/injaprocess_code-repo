@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Chip } from '../ui/Chip'
 import { useProcesses } from '../api/hooks'
 import { fieldFa } from './adapt'
+import { toFa } from '../lib/format'
 import type { ProcNode, ActivityNode, JunctionNode, Pending, Process } from '../api/types'
 
 export type DrawerProps = {
@@ -180,7 +181,7 @@ export function DetailDrawer(props: DrawerProps) {
               <div className="mt-5">
                 <div className="flex items-center gap-[6px] text-[11px] font-bold text-[#E23D35] mb-2">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" /></svg>
-                  تعارض‌های این باکس ({props.conflicts.length})
+                  تعارض‌های این باکس ({toFa(props.conflicts.length)})
                 </div>
                 {props.conflicts.map((c) => (
                   <div key={c.index} className="bg-white border border-[#FDD9D6] rounded-[12px] p-3 mb-[10px]">

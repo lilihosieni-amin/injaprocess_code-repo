@@ -35,6 +35,7 @@ export function useFlowEditor(server: Process | undefined) {
   const enter = useCallback(() => { past.current = []; future.current = []; setEditing(true) }, [])
   const cancel = useCallback(() => { past.current = []; future.current = []; setEditing(false); if (server) setDoc(server) }, [server])
   const adopt = useCallback((next: Process) => { past.current = []; future.current = []; setDoc(next) }, [])
+  const exitEdit = useCallback(() => { past.current = []; future.current = []; setEditing(false) }, [])
 
   const undo = useCallback(() => {
     if (!past.current.length || !doc) return
@@ -105,7 +106,7 @@ export function useFlowEditor(server: Process | undefined) {
 
   return {
     doc: doc as Process, editing, selected, select: setSelected,
-    enter, cancel, adopt,
+    enter, cancel, adopt, exitEdit,
     canUndo: past.current.length > 0, canRedo: future.current.length > 0, undo, redo,
     setName, moveNode, addActivity, addJunction, connect, deleteEdge, deleteNode, setJunction, patchActivity, linkSub,
   }

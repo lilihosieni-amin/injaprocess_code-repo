@@ -27,7 +27,7 @@ export function FlowScreen() {
   const editing = ed.editing
 
   function onSave() {
-    put.mutate(proc, { onSuccess: (saved) => { ed.adopt(saved); ed.cancel() } })
+    put.mutate(proc, { onSuccess: (saved) => { ed.adopt(saved); ed.exitEdit() } })
   }
 
   function onRelayout() { relayout.mutate(proc, { onSuccess: (laid) => ed.adopt(laid) }) }
