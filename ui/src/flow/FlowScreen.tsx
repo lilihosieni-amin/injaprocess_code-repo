@@ -52,7 +52,7 @@ function FlowEditor() {
 
   function onNodeClick(id: string) {
     const n = proc.nodes.find((x) => x.id === id)
-    if (n && n.type === 'junction') { setDetailId(id); return }
+    if (n && n.type === 'junction') { if (editing) ed.select(id); setDetailId(id); return }
     if (editing) { ed.select(id); return }
     if (n && n.type === 'activity' && (n as ActivityNode).subprocess) nav(`/processes/${(n as ActivityNode).subprocess}/flow`)
   }

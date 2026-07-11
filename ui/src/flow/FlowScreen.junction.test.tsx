@@ -21,4 +21,13 @@ describe('FlowScreen junction', () => {
     // Drawer edit branch shows the AND button (from Task 14 junction editor).
     expect(await screen.findByRole('button', { name: 'AND' })).toBeInTheDocument()
   })
+
+  it('a junction click in edit mode also selects it so the toolbar can delete it', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify(proc), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+    renderAt('/processes/:pid/flow', <FlowScreen />, '/processes/cooking-001/flow')
+    fireEvent.click(await screen.findByTestId('enter-edit'))
+    fireEvent.click(screen.getAllByText('XOR')[0])            // select + open drawer
+    fireEvent.click(screen.getByRole('button', { name: 'حذف' }))  // toolbar delete
+    expect(await screen.findByRole('button', { name: /حذف کامل/ })).toBeInTheDocument()  // confirm modal for the selected junction
+  })
 })
