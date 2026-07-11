@@ -4,7 +4,7 @@ import { DetailDrawer } from './DetailDrawer'
 import type { ActivityNode } from '../api/types'
 
 const n: ActivityNode = { id: 'cooking-001-n010', type: 'activity', label: 'دریافت درخواست', description: 'شرح', actor: 'کارپرداز',
-  icom: { inputs: ['درخواست'], controls: ['بودجه'], outputs: ['ثبت'], mechanisms: ['کارپرداز'] },
+  icom: { inputs: ['درخواست'], controls: ['بودجه'], outputs: ['ثبت'], mechanisms: ['سامانه رزرو'] },
   subprocess: null, position: { x: 0, y: 0 }, layout: 'auto', source: { created_by: 'voice', touched_by: [] } } as ActivityNode
 
 describe('DetailDrawer view', () => {
@@ -15,5 +15,6 @@ describe('DetailDrawer view', () => {
     expect(screen.getByText('شرح')).toBeInTheDocument()
     expect(screen.getByText('درخواست')).toBeInTheDocument()
     expect(screen.getByText('بودجه')).toBeInTheDocument()
+    expect(screen.getByText('سامانه رزرو')).toBeInTheDocument()
   })
 })

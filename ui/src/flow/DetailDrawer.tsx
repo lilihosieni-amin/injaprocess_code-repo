@@ -23,39 +23,6 @@ export function DetailDrawer(props: DrawerProps) {
   const a = node as ActivityNode
   const j = node as JunctionNode
 
-  // Editing branch — scaffolded for Tasks 13–15; references all handlers so
-  // noUnusedLocals is satisfied at the FlowScreen call site.
-  if (props.editing) {
-    return (
-      <div className="absolute top-0 bottom-0 left-0 w-[340px] bg-white border-e border-warm shadow-[20px_0_50px_-30px_rgba(74,37,169,.5)] flex flex-col z-[15]">
-        <div className="flex items-center justify-between px-[18px] py-4 border-b border-[#F0E9FB]">
-          <span className="id-badge bg-violet text-white" dir="ltr">{node.id}</span>
-          <button onClick={onClose} className="w-7 h-7 bg-tile-v2 rounded-lg text-muted">×</button>
-        </div>
-        <div className="flex-1 overflow-auto p-[18px]">
-          <div className="text-[12.5px] text-muted">
-            {/* Edit branch — implemented in Tasks 13–15 */}
-            <button onClick={props.onEdit} className="hidden" />
-            {props.conflicts.map((c, i) => (
-              <div key={i}>
-                <button onClick={() => props.onAccept(c.index)} className="hidden" />
-                <button onClick={() => props.onReject(c.index)} className="hidden" />
-              </div>
-            ))}
-            {isActivity && a.subprocess && (
-              <button onClick={() => props.onOpenSub(a.subprocess!)} className="hidden" />
-            )}
-            <button onClick={() => props.onPatch({})} className="hidden" />
-            <button onClick={() => props.onLinkSub(null)} className="hidden" />
-            <button onClick={() => props.onSetJunction(j.junctionType ?? 'XOR')} className="hidden" />
-            <button onClick={props.onCreateSub} className="hidden" />
-            {props.process.nodes.length >= 0 && null}
-          </div>
-        </div>
-      </div>
-    )
-  }
-
   return (
     <div className="absolute top-0 bottom-0 left-0 w-[340px] bg-white border-e border-warm shadow-[20px_0_50px_-30px_rgba(74,37,169,.5)] flex flex-col z-[15]">
       <div className="flex items-center justify-between px-[18px] py-4 border-b border-[#F0E9FB]">
@@ -71,8 +38,9 @@ export function DetailDrawer(props: DrawerProps) {
         ) : isActivity ? (
           <>
             <div className="font-extrabold text-[16px] text-ink leading-tight">{a.label}</div>
-            <div className="mt-3 px-3 py-2.5 bg-[#F8F4FE] rounded-[10px] text-[12.5px] text-violet font-semibold" aria-label={`مجری: ${a.actor}`}>
-              {`مجری: ${a.actor}`}
+            <div className="flex items-center gap-2 mt-3 px-3 py-2.5 bg-[#F8F4FE] rounded-[10px]">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#4A25A9" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="4"></circle><path d="M4 21a8 8 0 0 1 16 0"></path></svg>
+              <span className="text-[12.5px] text-violet font-semibold">{a.actor}</span>
             </div>
             <div className="text-[11px] font-bold text-muted mt-[18px] mb-1.5">توضیحات</div>
             <div className="text-[12.5px] text-[#5a5175] leading-relaxed">{a.description}</div>
