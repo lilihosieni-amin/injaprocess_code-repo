@@ -1,6 +1,6 @@
 import { useNavigate, useParams } from 'react-router-dom'
-import { useState } from 'react'
-import { ReactFlowProvider, type Connection } from '@xyflow/react'
+import { useState, useRef } from 'react'
+import { ReactFlowProvider, useReactFlow, type Connection } from '@xyflow/react'
 import { useProcess, usePutProcess, useRelayout, useCreateProcess, useResolvePending } from '../api/hooks'
 import { useFlowEditor } from './useFlowEditor'
 import { toFlowNodes, toFlowEdges } from './adapt'
@@ -12,6 +12,14 @@ import { DetailDrawer } from './DetailDrawer'
 import type { ActivityNode } from '../api/types'
 
 export function FlowScreen() {
+  return (
+    <ReactFlowProvider>
+      <FlowEditor />
+    </ReactFlowProvider>
+  )
+}
+
+function FlowEditor() {
   const { pid = '' } = useParams()
   const nav = useNavigate()
   const { data: server } = useProcess(pid)
@@ -22,6 +30,16 @@ export function FlowScreen() {
   const resolve = useResolvePending(pid)
   const [pendingDel, setPendingDel] = useState<string | null>(null)
   const [detailId, setDetailId] = useState<string | null>(null)
+  const rf = useReactFlow()
+  const wrapRef = useRef<HTMLDivElement>(null)
+
+  function centerPos() {
+    const el = wrapRef.current
+    if (!el) return { x: 120, y: 120 }
+    const r = el.getBoundingClientRect()
+    return rf.screenToFlowPosition({ x: r.left + r.width / 2, y: r.top + r.height / 2 })
+  }
+
   if (!ed.doc) return <div className="flex-1 bg-bg" />
   const proc = ed.doc
   const editing = ed.editing
@@ -31,11 +49,6 @@ export function FlowScreen() {
   }
 
   function onRelayout() { relayout.mutate(proc, { onSuccess: (laid) => ed.adopt(laid) }) }
-
-  const nodes = toFlowNodes(proc)
-  const edges = toFlowEdges(proc).map((e) => ({
-    ...e, data: { ...(e.data as object), editing, onDelete: () => ed.deleteEdge(e.source, e.target) },
-  }))
 
   function onNodeClick(id: string) {
     if (editing) { ed.select(id); return }
@@ -64,8 +77,8 @@ export function FlowScreen() {
                 <button disabled={!ed.canUndo} onClick={ed.undo} title="واگرد" className="px-2 py-1 rounded-lg disabled:opacity-40 text-violet">↶</button>
                 <button disabled={!ed.canRedo} onClick={ed.redo} title="ازنو" className="px-2 py-1 rounded-lg disabled:opacity-40 text-violet">↷</button>
               </div>
-              <Button variant="ghost" onClick={() => ed.addActivity()} className="px-3 py-2 text-[12.5px]">فعالیت</Button>
-              <Button variant="ghost" onClick={() => ed.addJunction()} className="px-3 py-2 text-[12.5px]">اتصال</Button>
+              <Button variant="ghost" onClick={() => ed.addActivity(centerPos())} className="px-3 py-2 text-[12.5px]">فعالیت</Button>
+              <Button variant="ghost" onClick={() => ed.addJunction(centerPos())} className="px-3 py-2 text-[12.5px]">اتصال</Button>
               <Button variant="ghost" onClick={onRelayout} disabled={relayout.isPending} className="px-3 py-2 text-[12.5px]">چیدمان</Button>
               <Button variant="ghost" onClick={() => ed.selected && setPendingDel(ed.selected)} className="px-3 py-2 text-[12.5px]">حذف</Button>
               <Button variant="ghost" onClick={ed.cancel} className="px-3 py-2 text-[12.5px]">انصراف</Button>
@@ -75,16 +88,16 @@ export function FlowScreen() {
         </div>
       </div>
 
-      <div className="flex-1 min-h-0 relative">
-        <ReactFlowProvider>
-          <Canvas
-            nodes={nodes} edges={edges} editing={editing}
-            onNodeClick={onNodeClick}
-            onNodeDragStop={(id, pos) => ed.moveNode(id, pos)}
-            onConnect={(c: Connection) => c.source && c.target && ed.connect(c.source, c.target)}
-            onOpenDetail={setDetailId}
-          />
-        </ReactFlowProvider>
+      <div ref={wrapRef} className="flex-1 min-h-0 relative">
+        <Canvas
+          docNodes={toFlowNodes(proc)} docEdges={toFlowEdges(proc)} revision={ed.revision} editing={editing}
+          onNodeClick={onNodeClick}
+          onConnect={(c: Connection) => c.source && c.target && ed.connect(c.source, c.target)}
+          onOpenDetail={setDetailId}
+          onCommitPositions={(u) => ed.moveNodes(u)}
+          onSetEdgeLabel={(f, t, v) => ed.setEdgeLabel(f, t, v)}
+          onDeleteEdge={(f, t) => ed.deleteEdge(f, t)}
+        />
         {editing && (
           <div className="absolute top-3.5 left-1/2 -translate-x-1/2 bg-ink text-white text-[11.5px] px-4 py-2 rounded-full pointer-events-none z-10">
             از نقطهٔ مرجانیِ کنار هر گره بکشید تا خط بسازید · روی یک خط کلیک کنید تا حذف شود

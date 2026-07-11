@@ -1,4 +1,8 @@
-import { ReactFlow, Background, Controls, type Node, type Edge, type NodeChange, type EdgeChange, type Connection } from '@xyflow/react'
+import { useEffect, useRef, useCallback } from 'react'
+import {
+  ReactFlow, Background, Controls, useNodesState, useEdgesState,
+  type Node, type Edge, type Connection,
+} from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { ActivityNode } from './nodes/ActivityNode'
 import { StartNode } from './nodes/StartNode'
@@ -8,27 +12,51 @@ import { LabeledEdge } from './edges/LabeledEdge'
 
 const nodeTypes = { activity: ActivityNode, start: StartNode, end: EndNode, junction: JunctionNode }
 const edgeTypes = { labeled: LabeledEdge }
+type Pos = { x: number; y: number }
 
-export function Canvas({ nodes, edges, editing, onNodesChange, onEdgesChange, onConnect, onNodeClick, onNodeDragStop, onOpenDetail }: {
-  nodes: Node[]; edges: Edge[]; editing: boolean
-  onNodesChange?: (c: NodeChange[]) => void
-  onEdgesChange?: (c: EdgeChange[]) => void
+export function Canvas({ docNodes, docEdges, revision, editing, onConnect, onNodeClick, onOpenDetail, onCommitPositions, onSetEdgeLabel, onDeleteEdge }: {
+  docNodes: Node[]; docEdges: Edge[]; revision: number; editing: boolean
   onConnect?: (c: Connection) => void
   onNodeClick?: (id: string) => void
-  onNodeDragStop?: (id: string, pos: { x: number; y: number }) => void
   onOpenDetail?: (id: string) => void
+  onCommitPositions: (updates: { id: string; pos: Pos }[]) => void
+  onSetEdgeLabel: (from: string, to: string, label: string) => void
+  onDeleteEdge: (from: string, to: string) => void
 }) {
-  const nodesWithDetail = nodes.map((n) => ({ ...n, data: { ...n.data, onOpenDetail } }))
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node>([])
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
+  const seeded = useRef<Map<string, Pos>>(new Map())
+
+  // Re-seed from the doc ONLY when structure changes (revision) or the edit flag flips.
+  // moveNodes/setEdgeLabel don't bump revision, so a drag/type won't snap back.
+  useEffect(() => {
+    setNodes(docNodes.map((n) => ({ ...n, data: { ...n.data, onOpenDetail }, draggable: editing, selectable: editing })))
+    setEdges(docEdges.map((e) => ({
+      ...e, selectable: editing,
+      data: { ...(e.data as object), editing, onSetLabel: (v: string) => onSetEdgeLabel(e.source, e.target, v), onDelete: () => onDeleteEdge(e.source, e.target) },
+    })))
+    seeded.current = new Map(docNodes.map((n) => [n.id, n.position]))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [revision, editing])
+
+  const commitMoved = useCallback(() => {
+    const moved = nodes
+      .filter((n) => { const s = seeded.current.get(n.id); return s && (s.x !== n.position.x || s.y !== n.position.y) })
+      .map((n) => ({ id: n.id, pos: n.position }))
+    if (moved.length) { onCommitPositions(moved); for (const m of moved) seeded.current.set(m.id, m.pos) }
+  }, [nodes, onCommitPositions])
+
   return (
     <div dir="ltr" className="w-full h-full">
       <ReactFlow
-        nodes={nodesWithDetail} edges={edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes}
-        nodesDraggable={editing} nodesConnectable={editing} elementsSelectable={editing}
-        onNodesChange={editing ? onNodesChange : undefined}
-        onEdgesChange={editing ? onEdgesChange : undefined}
+        nodes={nodes} edges={edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes}
+        onNodesChange={onNodesChange} onEdgesChange={onEdgesChange}
         onConnect={editing ? onConnect : undefined}
         onNodeClick={(_, n) => onNodeClick?.(n.id)}
-        onNodeDragStop={(_, n) => onNodeDragStop?.(n.id, n.position)}
+        onNodeDragStop={commitMoved}
+        nodesConnectable={editing}
+        selectionOnDrag={editing}
+        panOnDrag={editing ? [1, 2] : true}
         fitView proOptions={{ hideAttribution: true }}
       >
         <Background />
