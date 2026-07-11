@@ -1,8 +1,7 @@
 import argparse
 
-from engine_common import read_json
-
 from allocate_id import next_box_id, next_junction_id, next_process_id
+from engine_common import read_json
 
 
 def main(argv=None):

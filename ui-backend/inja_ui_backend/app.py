@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import os
+
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 
 from .config import Settings, load_settings
 from .routers import auth as auth_router
@@ -16,4 +19,9 @@ def create_app(cfg: Settings | None = None) -> FastAPI:
     app.include_router(auth_router.router)
     app.include_router(departments_router.router)
     app.include_router(processes_router.router)
+    if cfg.static_dir and cfg.static_dir.is_dir():
+        app.mount("/", StaticFiles(directory=str(cfg.static_dir), html=True), name="static")
     return app
+
+
+app = create_app() if os.environ.get("DATA_ROOT") else None
