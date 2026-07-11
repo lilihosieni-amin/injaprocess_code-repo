@@ -9,12 +9,13 @@ import { LabeledEdge } from './edges/LabeledEdge'
 const nodeTypes = { activity: ActivityNode, start: StartNode, end: EndNode, junction: JunctionNode }
 const edgeTypes = { labeled: LabeledEdge }
 
-export function Canvas({ nodes, edges, editing, onNodesChange, onEdgesChange, onConnect, onNodeClick }: {
+export function Canvas({ nodes, edges, editing, onNodesChange, onEdgesChange, onConnect, onNodeClick, onNodeDragStop }: {
   nodes: Node[]; edges: Edge[]; editing: boolean
   onNodesChange?: (c: NodeChange[]) => void
   onEdgesChange?: (c: EdgeChange[]) => void
   onConnect?: (c: Connection) => void
   onNodeClick?: (id: string) => void
+  onNodeDragStop?: (id: string, pos: { x: number; y: number }) => void
 }) {
   return (
     <div dir="ltr" className="w-full h-full">
@@ -25,6 +26,7 @@ export function Canvas({ nodes, edges, editing, onNodesChange, onEdgesChange, on
         onEdgesChange={editing ? onEdgesChange : undefined}
         onConnect={editing ? onConnect : undefined}
         onNodeClick={(_, n) => onNodeClick?.(n.id)}
+        onNodeDragStop={(_, n) => onNodeDragStop?.(n.id, n.position)}
         fitView proOptions={{ hideAttribution: true }}
       >
         <Background />
