@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Chip } from '../ui/Chip'
 import { useProcesses } from '../api/hooks'
 import { fieldFa } from './adapt'
-import { toFa } from '../lib/format'
+import { toFa, formatConflictValue } from '../lib/format'
 import type { ProcNode, ActivityNode, JunctionNode, Pending, Process } from '../api/types'
 
 export type DrawerProps = {
@@ -191,11 +191,11 @@ export function DetailDrawer(props: DrawerProps) {
                     </div>
                     <div className="bg-[#F6F3FB] border border-[#EDE5F5] rounded-[9px] px-[10px] py-2 mb-[7px]">
                       <div className="text-[9.5px] text-[#a99fc4] mb-[3px]">مقدار فعلی</div>
-                      <div className="text-[12px] text-[#5a5175] leading-relaxed">{String(c.pending.current)}</div>
+                      <div className="text-[12px] text-[#5a5175] leading-relaxed whitespace-pre-line">{formatConflictValue(c.pending.current)}</div>
                     </div>
                     <div className="bg-[#FFF3F2] border border-[#FDD9D6] rounded-[9px] px-[10px] py-2 mb-[10px]">
                       <div className="text-[9.5px] text-[#E23D35] mb-[3px]">پیشنهاد جدید</div>
-                      <div className="text-[12px] text-[#8a2b26] leading-relaxed font-semibold">{String(c.pending.proposed)}</div>
+                      <div className="text-[12px] text-[#8a2b26] leading-relaxed font-semibold whitespace-pre-line">{formatConflictValue(c.pending.proposed)}</div>
                     </div>
                     <div className="flex gap-2">
                       <button

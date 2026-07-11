@@ -17,6 +17,7 @@ export function nextTempId(kind: 'n' | 'j', counter: number): string {
 
 const FIELD_FA: Record<string, string> = {
   label: 'عنوان', actor: 'مجری فعالیت', description: 'توضیحات', desc: 'توضیحات',
+  icom: 'اطلاعات ICOM', subprocess: 'زیرفرآیند', name: 'نام', summary: 'خلاصه',
 }
 export function fieldFa(field: string): string {
   return FIELD_FA[field] ?? field

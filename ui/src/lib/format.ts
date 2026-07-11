@@ -33,6 +33,35 @@ export function jalali(iso: string): string {
   return `${toFa(jy)}/${p(jm)}/${p(jd)}`
 }
 
+const ICOM_LABELS: Record<string, string> = {
+  inputs: 'ورودی‌ها', controls: 'کنترل‌ها', outputs: 'خروجی‌ها', mechanisms: 'مکانیزم‌ها',
+}
+
+// Render a pending conflict's current/proposed value as readable text. Values are
+// strings (description/actor), the icom object {inputs,controls,outputs,mechanisms},
+// or an array; a plain String() would print "[object Object]".
+export function formatConflictValue(v: unknown): string {
+  if (v == null) return '—'
+  if (typeof v === 'string') return v
+  if (typeof v === 'number' || typeof v === 'boolean') return toFa(String(v))
+  if (Array.isArray(v)) {
+    const items = v.map((x) => (typeof x === 'string' ? x : JSON.stringify(x)))
+    return items.length ? items.join('، ') : '—'
+  }
+  if (typeof v === 'object') {
+    const o = v as Record<string, unknown>
+    const keys = Object.keys(o)
+    if (keys.length > 0 && keys.every((k) => k in ICOM_LABELS)) {
+      const parts = keys
+        .filter((k) => Array.isArray(o[k]) && (o[k] as unknown[]).length > 0)
+        .map((k) => `${ICOM_LABELS[k]}: ${(o[k] as unknown[]).map(String).join('، ')}`)
+      return parts.length ? parts.join('\n') : '—'
+    }
+    return JSON.stringify(o)
+  }
+  return String(v)
+}
+
 export type TagKind = 'sub' | 'conflict' | 'kpi' | 'plain'
 
 export function deriveTag(p: Process): { label: string; kind: TagKind } {

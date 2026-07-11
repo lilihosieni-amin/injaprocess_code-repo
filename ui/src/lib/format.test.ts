@@ -1,5 +1,23 @@
 import { describe, it, expect } from 'vitest'
-import { toFa, jalali, deriveTag } from './format'
+import { toFa, jalali, deriveTag, formatConflictValue } from './format'
+
+describe('formatConflictValue', () => {
+  it('returns a string value unchanged', () => {
+    expect(formatConflictValue('مدیر رستوران')).toBe('مدیر رستوران')
+  })
+  it('renders an icom object as labelled, non-empty groups (not [object Object])', () => {
+    const out = formatConflictValue({ inputs: [], controls: ['چک‌لیست', 'زمان'], outputs: ['سالن تمیز'], mechanisms: [] })
+    expect(out).not.toContain('[object Object]')
+    expect(out).toContain('کنترل‌ها: چک‌لیست، زمان')
+    expect(out).toContain('خروجی‌ها: سالن تمیز')
+    expect(out).not.toContain('ورودی‌ها') // empty group omitted
+  })
+  it('joins arrays and handles empty/null', () => {
+    expect(formatConflictValue(['a', 'b'])).toBe('a، b')
+    expect(formatConflictValue([])).toBe('—')
+    expect(formatConflictValue(null)).toBe('—')
+  })
+})
 
 describe('toFa', () => {
   it('maps Latin digits to Persian', () => {

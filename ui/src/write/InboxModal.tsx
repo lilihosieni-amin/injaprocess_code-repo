@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom'
 import { usePending, useResolveInboxPending } from '../api/hooks'
 import { useToast } from './ToastProvider'
 import { fieldFa } from '../flow/adapt'
+import { formatConflictValue } from '../lib/format'
 import { IdBadge } from '../ui/IdBadge'
 
 export function InboxModal({ onClose }: { onClose: () => void }) {
@@ -41,8 +42,8 @@ export function InboxModal({ onClose }: { onClose: () => void }) {
                     <button onClick={() => { onClose(); nav(`/processes/${c.process}/flow`) }} className="ms-auto text-[11px] font-semibold text-violet border-[1.5px] border-line bg-white rounded-lg px-2.5 py-1.5">مشاهده در فلوچارت</button>
                   </div>
                   <div className="grid grid-cols-2 gap-2.5 mb-3.5">
-                    <div className="bg-[#F6F3FB] border border-[#EDE5F5] rounded-[10px] px-3 py-2.5"><div className="text-[10px] text-faint mb-1">مقدار فعلی</div><div className="text-[12.5px] text-[#5a5175] leading-normal">{String(c.current)}</div></div>
-                    <div className="bg-[#FFF3F2] border border-[#FDD9D6] rounded-[10px] px-3 py-2.5"><div className="text-[10px] text-conflict mb-1">پیشنهاد جدید</div><div className="text-[12.5px] text-[#8a2b26] font-semibold leading-normal">{String(c.proposed)}</div></div>
+                    <div className="bg-[#F6F3FB] border border-[#EDE5F5] rounded-[10px] px-3 py-2.5"><div className="text-[10px] text-faint mb-1">مقدار فعلی</div><div className="text-[12.5px] text-[#5a5175] leading-normal whitespace-pre-line">{formatConflictValue(c.current)}</div></div>
+                    <div className="bg-[#FFF3F2] border border-[#FDD9D6] rounded-[10px] px-3 py-2.5"><div className="text-[10px] text-conflict mb-1">پیشنهاد جدید</div><div className="text-[12.5px] text-[#8a2b26] font-semibold leading-normal whitespace-pre-line">{formatConflictValue(c.proposed)}</div></div>
                   </div>
                   <div className="flex gap-2.5">
                     <button onClick={() => decide(c.process, c.index, 'accept')} className="flex-1 py-2.5 rounded-[10px] bg-green text-white font-bold text-[12.5px]">پذیرش پیشنهاد</button>
