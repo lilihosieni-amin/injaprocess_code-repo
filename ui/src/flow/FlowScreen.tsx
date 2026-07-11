@@ -8,6 +8,7 @@ import { Canvas } from './Canvas'
 import { Button } from '../ui/Button'
 import { IdBadge } from '../ui/IdBadge'
 import { DeleteNodeConfirm } from './DeleteNodeConfirm'
+import { DetailDrawer } from './DetailDrawer'
 import type { ActivityNode } from '../api/types'
 
 export function FlowScreen() {
@@ -18,6 +19,7 @@ export function FlowScreen() {
   const put = usePutProcess(pid)
   const relayout = useRelayout(pid)
   const [pendingDel, setPendingDel] = useState<string | null>(null)
+  const [detailId, setDetailId] = useState<string | null>(null)
   if (!ed.doc) return <div className="flex-1 bg-bg" />
   const proc = ed.doc
   const editing = ed.editing
@@ -78,6 +80,7 @@ export function FlowScreen() {
             onNodeClick={onNodeClick}
             onNodeDragStop={(id, pos) => ed.moveNode(id, pos)}
             onConnect={(c: Connection) => c.source && c.target && ed.connect(c.source, c.target)}
+            onOpenDetail={setDetailId}
           />
         </ReactFlowProvider>
         {editing && (
@@ -95,6 +98,28 @@ export function FlowScreen() {
         const n = proc.nodes.find((x) => x.id === pendingDel)
         const label = n && 'label' in n ? (n as { label: string }).label : pendingDel
         return <DeleteNodeConfirm label={label} onCancel={() => setPendingDel(null)} onConfirm={() => { ed.deleteNode(pendingDel); setPendingDel(null) }} />
+      })()}
+      {(() => {
+        if (!detailId) return null
+        const detailNode = proc.nodes.find((x) => x.id === detailId)
+        if (!detailNode) return null
+        return (
+          <DetailDrawer
+            node={detailNode}
+            editing={editing}
+            conflicts={[]}
+            process={proc}
+            onClose={() => setDetailId(null)}
+            onEdit={() => {}}
+            onAccept={() => {}}
+            onReject={() => {}}
+            onOpenSub={(sub) => nav(`/processes/${sub}/flow`)}
+            onPatch={(patch) => ed.patchActivity(detailId, patch as Partial<Pick<ActivityNode, 'label' | 'actor' | 'description'>>)}
+            onLinkSub={(s) => ed.linkSub(detailId, s)}
+            onSetJunction={(t) => ed.setJunction(detailId, t)}
+            onCreateSub={() => {}}
+          />
+        )
       })()}
     </div>
   )
