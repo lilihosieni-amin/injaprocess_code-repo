@@ -1,11 +1,12 @@
 [tool.pytest.ini_options]
-testpaths = ["upload-bot/tests", "tests", "engine/tests"]
+testpaths = ["upload-bot/tests", "tests", "engine/tests", "ui-backend/tests"]
 python_files = ["test_*.py"]
 markers = ["integration: real external calls (Vertex); skipped by default"]
 filterwarnings = [
     # Intentional: our ConversationHandler mixes inline-button (CallbackQueryHandler)
     # and message handlers, which requires per_message=False. The advisory is expected.
     "ignore:If 'per_message=False':telegram.warnings.PTBUserWarning",
+    "ignore:Using `httpx` with `starlette.testclient` is deprecated",
 ]
 
 [tool.ruff]

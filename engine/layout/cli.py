@@ -1,7 +1,6 @@
 import argparse
 
 from engine_common import read_json, validate, write_json_atomic
-
 from layout import full_relayout, local_relayout, topo_order
 
 

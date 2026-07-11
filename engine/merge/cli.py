@@ -3,7 +3,6 @@ import sys
 from datetime import datetime, timezone
 
 from engine_common import data_root, read_json, write_json_atomic
-
 from merge import build_new, build_update, resolve_pending
 
 
