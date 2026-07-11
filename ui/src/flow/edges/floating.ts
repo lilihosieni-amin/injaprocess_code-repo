@@ -25,6 +25,8 @@ function nodeIntersection(node: Geom, other: Geom): { x: number; y: number } {
 }
 
 // Which side of `node` the point sits on → the Position for the bezier control.
+// Invariant: `point` is the output of nodeIntersection(node, …), i.e. a point on
+// `node`'s border; Left/Right/Top are checked, and Bottom is the remaining side.
 function sideOf(node: Geom, point: { x: number; y: number }): Position {
   const nx = node.internals.positionAbsolute.x
   const ny = node.internals.positionAbsolute.y

@@ -10,7 +10,8 @@ export function LabeledEdge({ id, source, target, sourceX, sourceY, targetX, tar
   // show direction), so serpentine/spiral rows route cleanly. Fall back to the
   // handle-based coords when node geometry isn't available (e.g. unmeasured / tests).
   let sx = sourceX, sy = sourceY, tx = targetX, ty = targetY, sPos = sourcePosition, tPos = targetPosition
-  if (sourceNode?.measured?.width && targetNode?.measured?.width) {
+  if (sourceNode?.measured?.width && sourceNode.measured?.height &&
+      targetNode?.measured?.width && targetNode.measured?.height) {
     const p = getEdgeParams(sourceNode as unknown as Geom, targetNode as unknown as Geom)
     sx = p.sx; sy = p.sy; tx = p.tx; ty = p.ty; sPos = p.sourcePos; tPos = p.targetPos
   }
