@@ -1,7 +1,7 @@
 import { useNavigate, useParams } from 'react-router-dom'
 import { useState } from 'react'
 import { ReactFlowProvider, type Connection } from '@xyflow/react'
-import { useProcess, usePutProcess, useRelayout } from '../api/hooks'
+import { useProcess, usePutProcess, useRelayout, useCreateProcess } from '../api/hooks'
 import { useFlowEditor } from './useFlowEditor'
 import { toFlowNodes, toFlowEdges } from './adapt'
 import { Canvas } from './Canvas'
@@ -18,6 +18,7 @@ export function FlowScreen() {
   const ed = useFlowEditor(server)
   const put = usePutProcess(pid)
   const relayout = useRelayout(pid)
+  const createProcess = useCreateProcess()
   const [pendingDel, setPendingDel] = useState<string | null>(null)
   const [detailId, setDetailId] = useState<string | null>(null)
   if (!ed.doc) return <div className="flex-1 bg-bg" />
@@ -117,7 +118,12 @@ export function FlowScreen() {
             onPatch={(patch) => ed.patchActivity(detailId, patch as Partial<Pick<ActivityNode, 'label' | 'actor' | 'description'>>)}
             onLinkSub={(s) => ed.linkSub(detailId, s)}
             onSetJunction={(t) => ed.setJunction(detailId, t)}
-            onCreateSub={() => {}}
+            onCreateSub={() => {
+              createProcess.mutate(
+                { department: proc.department, name: 'زیرفرآیند جدید', parent: { process: proc.id, node: detailId! } },
+                { onSuccess: (child) => { setDetailId(null); nav(`/processes/${child.id}/flow`) } },
+              )
+            }}
           />
         )
       })()}

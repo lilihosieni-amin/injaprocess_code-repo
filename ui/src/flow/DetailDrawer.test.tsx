@@ -3,6 +3,8 @@ import { render, screen } from '@testing-library/react'
 import { DetailDrawer } from './DetailDrawer'
 import type { ActivityNode } from '../api/types'
 
+vi.mock('../api/hooks', () => ({ useProcesses: () => ({ data: [] }) }))
+
 const n: ActivityNode = { id: 'cooking-001-n010', type: 'activity', label: 'دریافت درخواست', description: 'شرح', actor: 'کارپرداز',
   icom: { inputs: ['درخواست'], controls: ['بودجه'], outputs: ['ثبت'], mechanisms: ['سامانه رزرو'] },
   subprocess: null, position: { x: 0, y: 0 }, layout: 'auto', source: { created_by: 'voice', touched_by: [] } } as ActivityNode

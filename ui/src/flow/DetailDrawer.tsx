@@ -1,4 +1,6 @@
+import { useState } from 'react'
 import { Chip } from '../ui/Chip'
+import { useProcesses } from '../api/hooks'
 import type { ProcNode, ActivityNode, JunctionNode, Pending, Process } from '../api/types'
 
 export type DrawerProps = {
@@ -23,6 +25,20 @@ export function DetailDrawer(props: DrawerProps) {
   const a = node as ActivityNode
   const j = node as JunctionNode
 
+  // Must be called unconditionally (Rules of Hooks); result used only in the edit branch.
+  const { data: deptProcesses } = useProcesses(props.process.department ?? '')
+  const [subQuery, setSubQuery] = useState('')
+  const [subDropOpen, setSubDropOpen] = useState(false)
+
+  // Subprocess search options: same department, excluding current process, filtered by query.
+  const subOptions = (deptProcesses ?? []).filter(
+    (p) => p.id !== props.process.id &&
+      (subQuery === '' ||
+        p.name.includes(subQuery) ||
+        p.id.toLowerCase().includes(subQuery.toLowerCase())),
+  )
+  const linkedProcess = (deptProcesses ?? []).find((p) => p.id === (isActivity ? a.subprocess : null))
+
   return (
     <div className="absolute top-0 bottom-0 left-0 w-[340px] bg-white border-e border-warm shadow-[20px_0_50px_-30px_rgba(74,37,169,.5)] flex flex-col z-[15]">
       <div className="flex items-center justify-between px-[18px] py-4 border-b border-[#F0E9FB]">
@@ -30,12 +46,99 @@ export function DetailDrawer(props: DrawerProps) {
         <button onClick={onClose} className="w-7 h-7 bg-tile-v2 rounded-lg text-muted">×</button>
       </div>
       <div className="flex-1 overflow-auto p-[18px]">
-        {node.type === 'junction' ? (
+        {props.editing && isActivity ? (
+          /* ─── EDIT BRANCH (activity) ─── */
+          <>
+            <label className="text-[11px] font-bold text-muted block mt-1 mb-1.5">عنوان</label>
+            <input
+              aria-label="عنوان"
+              value={a.label}
+              onChange={(e) => props.onPatch({ label: e.target.value })}
+              className="w-full px-3 py-2 border-[1.5px] border-line rounded-lg text-[12.5px] outline-none focus:border-coral"
+            />
+
+            <label className="text-[11px] font-bold text-muted block mt-4 mb-1.5">مجری فعالیت</label>
+            <input
+              aria-label="مجری فعالیت"
+              value={a.actor}
+              onChange={(e) => props.onPatch({ actor: e.target.value })}
+              className="w-full px-3 py-2 border-[1.5px] border-line rounded-lg text-[12.5px] outline-none focus:border-coral"
+            />
+
+            <label className="text-[11px] font-bold text-muted block mt-4 mb-1.5">توضیحات</label>
+            <textarea
+              aria-label="توضیحات"
+              value={a.description}
+              rows={5}
+              onChange={(e) => props.onPatch({ description: e.target.value })}
+              className="w-full px-3 py-2 border-[1.5px] border-line rounded-lg text-[12.5px] outline-none focus:border-coral resize-none"
+            />
+
+            <label className="text-[11px] font-bold text-muted block mt-4 mb-1.5">زیرفرآیندِ پیوندی (اختیاری)</label>
+            <div className="relative">
+              <input
+                value={subQuery}
+                onChange={(e) => setSubQuery(e.target.value)}
+                onFocus={() => setSubDropOpen(true)}
+                onBlur={() => setTimeout(() => setSubDropOpen(false), 150)}
+                placeholder="جست‌وجوی نام یا شناسهٔ فرآیند…"
+                autoComplete="off"
+                className="w-full px-3 py-2 ps-[34px] border-[1.5px] border-line rounded-lg text-[12.5px] outline-none focus:border-coral"
+              />
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#a99fc4" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="absolute left-[11px] top-1/2 -translate-y-1/2 pointer-events-none"><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" /></svg>
+              {subDropOpen && (
+                <div className="absolute top-[calc(100%+5px)] left-0 right-0 bg-white border border-[#E3D8F5] rounded-xl shadow-[0_18px_40px_-16px_rgba(74,37,169,.5)] z-20 max-h-[236px] overflow-auto p-[5px]">
+                  {subOptions.length === 0 ? (
+                    <div className="px-[10px] py-3 text-[12px] text-muted text-center">فرآیندی یافت نشد</div>
+                  ) : subOptions.map((opt) => (
+                    <div
+                      key={opt.id}
+                      onPointerDown={() => { props.onLinkSub(opt.id); setSubQuery(opt.name); setSubDropOpen(false) }}
+                      className="flex items-center gap-[9px] px-[10px] py-[9px] rounded-[9px] cursor-pointer hover:bg-[#F8F4FE]"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="text-[13px] font-bold text-[#2A1D5E] truncate">{opt.name}</div>
+                        <div className="font-mono text-[10.5px] text-muted mt-0.5" dir="ltr">{opt.id}</div>
+                      </div>
+                      {opt.id === a.subprocess && (
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#1F8A5B" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" className="flex-none"><path d="M20 6L9 17l-5-5" /></svg>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {linkedProcess && (
+              <div className="flex items-center justify-between gap-2 mt-2">
+                <div className="flex items-center gap-[5px] text-[11px] text-[#1F8A5B]">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
+                  پیوند شده به «{linkedProcess.name}»
+                </div>
+                <button onClick={() => props.onLinkSub(null)} className="border-none bg-transparent text-[#E23D35] font-bold text-[11px] cursor-pointer px-1 py-0.5">حذف پیوند</button>
+              </div>
+            )}
+
+            <div className="text-[11px] text-muted mt-[7px] leading-relaxed">با انتخاب یک فرآیند، این باکس به آن به‌عنوان زیرفرآیند پیوند می‌خورد؛ سپس با کلیک روی باکس می‌توان وارد فلوچارتش شد.</div>
+
+            <button
+              onClick={props.onCreateSub}
+              className="w-full mt-[14px] flex items-center justify-center gap-2 py-[11px] border-[1.5px] border-coral bg-white text-coral rounded-xl font-bold text-[12.5px] cursor-pointer hover:bg-[#FFF3F2]"
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3h7v7H3zM14 14h7v7h-7zM14 3l7 7M10 14l-7 7" /></svg>
+              ساخت زیرفرآیند جدید و ورود
+            </button>
+
+            <div className="text-[11px] text-muted mt-[14px] leading-relaxed">تغییرات فقط پس از فشردن «ذخیره» روی دیسک نوشته می‌شوند.</div>
+          </>
+        ) : node.type === 'junction' ? (
+          /* ─── VIEW: junction ─── */
           <>
             <div className="font-extrabold text-[16px] text-ink">دروازهٔ منطقی {j.junctionType}</div>
             <div className="text-[12.5px] text-muted mt-2.5 leading-loose">XOR: فقط یکی از مسیرها فعال می‌شود. AND: همهٔ مسیرها هم‌زمان. OR: یک یا چند مسیر.</div>
           </>
         ) : isActivity ? (
+          /* ─── VIEW: activity ─── */
           <>
             <div className="font-extrabold text-[16px] text-ink leading-tight">{a.label}</div>
             <div className="flex items-center gap-2 mt-3 px-3 py-2.5 bg-[#F8F4FE] rounded-[10px]">
