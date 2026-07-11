@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Chip } from '../ui/Chip'
 import { useProcesses } from '../api/hooks'
+import { fieldFa } from './adapt'
 import type { ProcNode, ActivityNode, JunctionNode, Pending, Process } from '../api/types'
 
 export type DrawerProps = {
@@ -175,6 +176,40 @@ export function DetailDrawer(props: DrawerProps) {
               <IcomRow label="خروجی‌ها" items={a.icom.outputs} kind="output" />
               <IcomRow label="مکانیزم‌ها" items={a.icom.mechanisms} kind="mech" />
             </div>
+            {props.conflicts.length > 0 && (
+              <div className="mt-5">
+                <div className="flex items-center gap-[6px] text-[11px] font-bold text-[#E23D35] mb-2">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" /></svg>
+                  تعارض‌های این باکس ({props.conflicts.length})
+                </div>
+                {props.conflicts.map((c) => (
+                  <div key={c.index} className="bg-white border border-[#FDD9D6] rounded-[12px] p-3 mb-[10px]">
+                    <div className="flex items-center justify-between mb-[9px]">
+                      <span className="text-[11.5px] font-bold text-[#2A1D5E]">{fieldFa(c.pending.field)}</span>
+                      <span className="text-[10px] text-[#a99fc4]">{c.pending.source}</span>
+                    </div>
+                    <div className="bg-[#F6F3FB] border border-[#EDE5F5] rounded-[9px] px-[10px] py-2 mb-[7px]">
+                      <div className="text-[9.5px] text-[#a99fc4] mb-[3px]">مقدار فعلی</div>
+                      <div className="text-[12px] text-[#5a5175] leading-relaxed">{String(c.pending.current)}</div>
+                    </div>
+                    <div className="bg-[#FFF3F2] border border-[#FDD9D6] rounded-[9px] px-[10px] py-2 mb-[10px]">
+                      <div className="text-[9.5px] text-[#E23D35] mb-[3px]">پیشنهاد جدید</div>
+                      <div className="text-[12px] text-[#8a2b26] leading-relaxed font-semibold">{String(c.pending.proposed)}</div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => props.onAccept(c.index)}
+                        className="flex-1 py-2 border-none rounded-[9px] bg-[#1F8A5B] text-white font-bold text-[12px] cursor-pointer"
+                      >پذیرش</button>
+                      <button
+                        onClick={() => props.onReject(c.index)}
+                        className="flex-1 py-2 border-[1.5px] border-[#E3D8F5] bg-white text-[#8a7db0] font-semibold text-[12px] cursor-pointer rounded-[9px]"
+                      >رد</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
             <div className="text-[10.5px] text-[#c3bad6] mt-5 border-t border-dashed border-[#EDE5F5] pt-3" dir="ltr">source: {a.source.created_by}</div>
           </>
         ) : (

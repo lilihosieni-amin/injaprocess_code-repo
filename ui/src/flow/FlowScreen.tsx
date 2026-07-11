@@ -1,7 +1,7 @@
 import { useNavigate, useParams } from 'react-router-dom'
 import { useState } from 'react'
 import { ReactFlowProvider, type Connection } from '@xyflow/react'
-import { useProcess, usePutProcess, useRelayout, useCreateProcess } from '../api/hooks'
+import { useProcess, usePutProcess, useRelayout, useCreateProcess, useResolvePending } from '../api/hooks'
 import { useFlowEditor } from './useFlowEditor'
 import { toFlowNodes, toFlowEdges } from './adapt'
 import { Canvas } from './Canvas'
@@ -19,6 +19,7 @@ export function FlowScreen() {
   const put = usePutProcess(pid)
   const relayout = useRelayout(pid)
   const createProcess = useCreateProcess()
+  const resolve = useResolvePending(pid)
   const [pendingDel, setPendingDel] = useState<string | null>(null)
   const [detailId, setDetailId] = useState<string | null>(null)
   if (!ed.doc) return <div className="flex-1 bg-bg" />
@@ -108,12 +109,12 @@ export function FlowScreen() {
           <DetailDrawer
             node={detailNode}
             editing={editing}
-            conflicts={[]}
+            conflicts={(proc.pending ?? []).map((pending, index) => ({ pending, index })).filter((x) => x.pending.status === 'open' && x.pending.node === detailId)}
             process={proc}
             onClose={() => setDetailId(null)}
             onEdit={() => {}}
-            onAccept={() => {}}
-            onReject={() => {}}
+            onAccept={(index) => resolve.mutate({ index, decision: 'accept' })}
+            onReject={(index) => resolve.mutate({ index, decision: 'reject' })}
             onOpenSub={(sub) => nav(`/processes/${sub}/flow`)}
             onPatch={(patch) => ed.patchActivity(detailId, patch as Partial<Pick<ActivityNode, 'label' | 'actor' | 'description'>>)}
             onLinkSub={(s) => ed.linkSub(detailId, s)}
