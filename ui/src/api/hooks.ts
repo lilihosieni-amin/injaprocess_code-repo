@@ -37,3 +37,41 @@ export function useLogout() {
     onSuccess: () => qc.clear(),
   })
 }
+
+export function usePutProcess(pid: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (doc: Process) => fetchJson<Process>(`/api/processes/${pid}`, { method: 'PUT', body: JSON.stringify(doc) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['process', pid] })
+      qc.invalidateQueries({ queryKey: ['processes'] })
+    },
+  })
+}
+
+export function useRelayout(pid: string) {
+  return useMutation({
+    mutationFn: (doc: Process) => fetchJson<Process>(`/api/processes/${pid}/relayout`, { method: 'POST', body: JSON.stringify(doc) }),
+  })
+}
+
+export function useResolvePending(pid: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ index, decision }: { index: number; decision: 'accept' | 'reject' }) =>
+      fetchJson<Process>(`/api/processes/${pid}/pending/${index}`, { method: 'POST', body: JSON.stringify({ decision }) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['process', pid] })
+      qc.invalidateQueries({ queryKey: ['pending'] })
+    },
+  })
+}
+
+export function useCreateProcess() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { department: string; name?: string; parent?: { process: string; node: string } }) =>
+      fetchJson<Process>('/api/processes', { method: 'POST', body: JSON.stringify(body) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['processes'] }),
+  })
+}
