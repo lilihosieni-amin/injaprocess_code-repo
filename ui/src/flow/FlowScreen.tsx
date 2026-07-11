@@ -1,4 +1,5 @@
 import { useNavigate, useParams } from 'react-router-dom'
+import { useState } from 'react'
 import { ReactFlowProvider, type Connection } from '@xyflow/react'
 import { useProcess, usePutProcess, useRelayout } from '../api/hooks'
 import { useFlowEditor } from './useFlowEditor'
@@ -6,6 +7,7 @@ import { toFlowNodes, toFlowEdges } from './adapt'
 import { Canvas } from './Canvas'
 import { Button } from '../ui/Button'
 import { IdBadge } from '../ui/IdBadge'
+import { DeleteNodeConfirm } from './DeleteNodeConfirm'
 import type { ActivityNode } from '../api/types'
 
 export function FlowScreen() {
@@ -15,6 +17,7 @@ export function FlowScreen() {
   const ed = useFlowEditor(server)
   const put = usePutProcess(pid)
   const relayout = useRelayout(pid)
+  const [pendingDel, setPendingDel] = useState<string | null>(null)
   if (!ed.doc) return <div className="flex-1 bg-bg" />
   const proc = ed.doc
   const editing = ed.editing
@@ -60,7 +63,7 @@ export function FlowScreen() {
               <Button variant="ghost" onClick={() => ed.addActivity()} className="px-3 py-2 text-[12.5px]">فعالیت</Button>
               <Button variant="ghost" onClick={() => ed.addJunction()} className="px-3 py-2 text-[12.5px]">اتصال</Button>
               <Button variant="ghost" onClick={onRelayout} disabled={relayout.isPending} className="px-3 py-2 text-[12.5px]">چیدمان</Button>
-              <Button variant="ghost" onClick={() => ed.selected && ed.deleteNode(ed.selected)} className="px-3 py-2 text-[12.5px]">حذف</Button>
+              <Button variant="ghost" onClick={() => ed.selected && setPendingDel(ed.selected)} className="px-3 py-2 text-[12.5px]">حذف</Button>
               <Button variant="ghost" onClick={ed.cancel} className="px-3 py-2 text-[12.5px]">انصراف</Button>
               <Button variant="green" onClick={onSave} disabled={put.isPending} className="px-4 py-2 text-[13px]" data-testid="save">ذخیره</Button>
             </>
@@ -88,6 +91,11 @@ export function FlowScreen() {
           <span className="flex items-center gap-1"><span className="w-[11px] h-[11px] bg-[#E8A33D] rotate-45 inline-block" />OR</span>
         </div>
       </div>
+      {pendingDel && (() => {
+        const n = proc.nodes.find((x) => x.id === pendingDel)
+        const label = n && 'label' in n ? (n as { label: string }).label : pendingDel
+        return <DeleteNodeConfirm label={label} onCancel={() => setPendingDel(null)} onConfirm={() => { ed.deleteNode(pendingDel); setPendingDel(null) }} />
+      })()}
     </div>
   )
 }
