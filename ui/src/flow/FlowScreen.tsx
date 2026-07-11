@@ -1,6 +1,6 @@
 import { useNavigate, useParams } from 'react-router-dom'
 import { ReactFlowProvider, type Connection } from '@xyflow/react'
-import { useProcess } from '../api/hooks'
+import { useProcess, usePutProcess } from '../api/hooks'
 import { useFlowEditor } from './useFlowEditor'
 import { toFlowNodes, toFlowEdges } from './adapt'
 import { Canvas } from './Canvas'
@@ -13,9 +13,14 @@ export function FlowScreen() {
   const nav = useNavigate()
   const { data: server } = useProcess(pid)
   const ed = useFlowEditor(server)
+  const put = usePutProcess(pid)
   if (!ed.doc) return <div className="flex-1 bg-bg" />
   const proc = ed.doc
   const editing = ed.editing
+
+  function onSave() {
+    put.mutate(proc, { onSuccess: (saved) => { ed.adopt(saved); ed.cancel() } })
+  }
 
   const nodes = toFlowNodes(proc)
   const edges = toFlowEdges(proc).map((e) => ({
@@ -53,7 +58,7 @@ export function FlowScreen() {
               <Button variant="ghost" onClick={() => ed.addJunction()} className="px-3 py-2 text-[12.5px]">اتصال</Button>
               <Button variant="ghost" onClick={() => ed.selected && ed.deleteNode(ed.selected)} className="px-3 py-2 text-[12.5px]">حذف</Button>
               <Button variant="ghost" onClick={ed.cancel} className="px-3 py-2 text-[12.5px]">انصراف</Button>
-              <Button variant="green" className="px-4 py-2 text-[13px]" data-testid="save">ذخیره</Button>
+              <Button variant="green" onClick={onSave} disabled={put.isPending} className="px-4 py-2 text-[13px]" data-testid="save">ذخیره</Button>
             </>
           )}
         </div>
