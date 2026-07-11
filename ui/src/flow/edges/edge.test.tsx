@@ -3,6 +3,20 @@ import { render, screen, fireEvent } from '@testing-library/react'
 import { ReactFlowProvider, type EdgeProps } from '@xyflow/react'
 import { LabeledEdge } from './LabeledEdge'
 
+// Stub EdgeLabelRenderer: in jsdom tests the portal target
+// (.react-flow__edgelabel-renderer) does not exist without a full <ReactFlow>
+// mount, so EdgeLabelRenderer returns null. Replace it with a passthrough so
+// edge label/button children are visible to @testing-library queries.
+vi.mock('@xyflow/react', async (importOriginal) => {
+  const React = await import('react')
+  const mod = await importOriginal<typeof import('@xyflow/react')>()
+  return {
+    ...mod,
+    EdgeLabelRenderer: ({ children }: { children: React.ReactNode }) =>
+      React.createElement(React.Fragment, null, children),
+  }
+})
+
 function wrap(ui: React.ReactNode) {
   return render(<ReactFlowProvider><svg>{ui}</svg></ReactFlowProvider>)
 }
