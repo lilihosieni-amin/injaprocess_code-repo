@@ -18,9 +18,22 @@ def test_branch_keeps_predecessors_before_successors():
     assert order.index("j") < order.index("y") < order.index("e")
 
 
-def test_deterministic_tiebreak_uses_input_order():
-    nodes = [{"id": "b"}, {"id": "a"}]  # two roots, no edges
-    assert topo_order(nodes, []) == ["b", "a"]
+def test_deterministic_tiebreak_uses_id_order():
+    nodes = [{"id": "b"}, {"id": "a"}]  # two roots, scrambled array order
+    assert topo_order(nodes, []) == ["a", "b"]
+
+
+def test_tiebreak_is_numeric_not_lexicographic():
+    nodes = [{"id": "n010"}, {"id": "n002"}]  # lexicographic would keep n010 first
+    assert topo_order(nodes, []) == ["n002", "n010"]
+
+
+def test_edges_beat_id_order():
+    # a late-allocated id spliced mid-flow: edges decide the order, not the id.
+    # n008 must NOT be pushed after n003 just because 8 > 3.
+    nodes = [{"id": "n002"}, {"id": "n003"}, {"id": "n008"}]
+    edges = [{"from": "n002", "to": "n008"}, {"from": "n008", "to": "n003"}]
+    assert topo_order(nodes, edges) == ["n002", "n008", "n003"]
 
 
 def test_cycle_nodes_appended_not_dropped():

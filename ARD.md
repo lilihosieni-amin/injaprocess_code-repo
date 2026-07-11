@@ -418,7 +418,7 @@ In `code-repo/engine/`, installed as **pinned** CLIs on the server's PATH; outsi
 |---|---|
 | `allocate-id` | deterministic ID generation ("max + 1") for process/box/junction |
 | `merge` | apply delta, assign IDs, preserve id/position, record pending, mark removed |
-| `layout` | deterministic serpentine layout (Section 9) |
+| `layout` | deterministic layered layout (Section 9) |
 | `transcribe` | Gemini-on-Vertex call + idempotency pre-check |
 | `validate` | check a JSON artifact against a named schema (exit 2 on mismatch); guards the classify/summarize/playbook outputs (`segments`/`overview`/`meta`) that no other CLI validates |
 
@@ -429,8 +429,10 @@ The skills/prompts/IDEF rules stay in `data-repo/.claude` (intentionally easy to
 ## 9. Layout Algorithm (FR-D9)
 
 - Direction: horizontal, left-to-right (LTR).
-- **Serpentine (boustrophedon):** row 1 left→right, row 2 right→left, and so on; the inter-row connector is just one step down.
-- Input: the graph's topological order. Each row is filled up to the page width, then wraps.
+- **Layered:** x = the node's depth (longest path from the flow's sources), one column per depth; y = branch lane. A node inherits its predecessors' mean lane; when a column collides (e.g. the two branches of a junction), the later sibling is pushed to the lane below.
+- **Edges always dominate placement**: a node sits after everything its incoming edges require and before everything its outgoing edges feed, regardless of its id (a late-allocated `n008` spliced in as `n002 → n008 → n003` lands between n002 and n003). Node-id sequence (`n001 < n002 < …`, numeric order — the narrative order ids were allocated in) only breaks genuine ties the edges leave ambiguous: multiple sources, siblings in one column. Never array position.
+- Small node types (junction, start, end) are nudged toward the column/lane center so edges meet activity-card middles.
+- **Serpentine band wrap (page-width cap, FR-D9):** flows deeper than `MAX_COLS` (5) columns wrap into a new band of lanes below; bands alternate direction (band 1 left→right, band 2 right→left, …) so the chart never exceeds the page width.
 - Branches (after a junction) are laid out near the junction; the automatic layout is a "good starting point," not perfect — and since position is saved and editable, the user tidies it with a few moves and it sticks.
 - Deterministic and LLM-free; runs in `merge` (for nodes without a position, or an explicit `re-layout`).
 
