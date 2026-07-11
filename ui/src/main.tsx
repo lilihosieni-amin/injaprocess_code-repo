@@ -5,6 +5,7 @@ import { RouterProvider, createBrowserRouter } from 'react-router-dom'
 import '@fontsource-variable/vazirmatn'
 import './index.css'
 import { appRoutes } from './routes'
+import { ToastProvider } from './write/ToastProvider'
 
 const queryClient = new QueryClient()
 const router = createBrowserRouter(appRoutes)
@@ -12,7 +13,9 @@ const router = createBrowserRouter(appRoutes)
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
+      <ToastProvider>
+        <RouterProvider router={router} />
+      </ToastProvider>
     </QueryClientProvider>
   </StrictMode>,
 )
