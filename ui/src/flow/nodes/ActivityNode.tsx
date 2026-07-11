@@ -10,11 +10,15 @@ export function ActivityNode({ data }: NodeProps<Node<FlowNodeData>>) {
       <Handle type="target" position={Position.Left} className="!w-2 !h-2 !bg-[#9B86D9] !border-0" />
       <button
         onClick={(e) => { e.stopPropagation(); (data as { onOpenDetail?: (id: string) => void }).onOpenDetail?.(n.id) }}
-        className="absolute top-1 start-1 w-[17px] h-[17px] flex items-center justify-center rounded text-muted text-[10px] hover:bg-tile-v2"
+        className="absolute top-1 end-1 w-[17px] h-[17px] flex items-center justify-center rounded text-muted text-[10px] hover:bg-tile-v2"
         title="جزئیات"
       >⋯</button>
       {data.conflicts > 0 && (
-        <div className="absolute top-1 right-1 min-w-[17px] h-[17px] px-1 flex items-center justify-center bg-coral text-white rounded-full text-[9.5px] font-extrabold">! <span>{toFa(data.conflicts)}</span></div>
+        <button
+          onClick={(e) => { e.stopPropagation(); (data as { onOpenDetail?: (id: string) => void }).onOpenDetail?.(n.id) }}
+          title="تعارض‌ها"
+          className="absolute top-1 right-1 min-w-[17px] h-[17px] px-1 flex items-center justify-center bg-coral text-white rounded-full text-[9.5px] font-extrabold cursor-pointer"
+        >! <span>{toFa(data.conflicts)}</span></button>
       )}
       <span className="id-badge bg-tile-v2 text-muted" dir="ltr">{n.id}</span>
       <div className="font-bold text-[12.5px] text-ink leading-tight mt-1 break-words">{n.label}</div>

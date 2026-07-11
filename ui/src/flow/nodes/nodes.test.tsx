@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { describe, it, expect, vi } from 'vitest'
+import { render, screen, fireEvent } from '@testing-library/react'
 import { ReactFlowProvider } from '@xyflow/react'
 import { ActivityNode } from './ActivityNode'
 import { JunctionNode } from './JunctionNode'
@@ -20,6 +20,12 @@ describe('custom nodes', () => {
     expect(screen.getByText('cooking-001-n010')).toBeInTheDocument()
     expect(screen.getByText('۲')).toBeInTheDocument()            // conflict count, Persian
     expect(screen.getByText(/زیرفرآیند/)).toBeInTheDocument()
+  })
+  it('clicking the conflict badge opens the detail drawer', () => {
+    const onOpenDetail = vi.fn()
+    wrap(<ActivityNode id="cooking-001-n010" data={{ node: act, conflicts: 2, hasSub: false, onOpenDetail }} selected={false} type="activity" dragging={false} zIndex={0} isConnectable positionAbsoluteX={0} positionAbsoluteY={0} deletable draggable selectable /> as never)
+    fireEvent.click(screen.getByTitle('تعارض‌ها'))
+    expect(onOpenDetail).toHaveBeenCalledWith('cooking-001-n010')
   })
   it('JunctionNode shows its type label', () => {
     const j: ProcNode = { id: 'cooking-001-j1', type: 'junction', junctionType: 'XOR', direction: 'split', position: { x: 0, y: 0 }, layout: 'auto' } as ProcNode

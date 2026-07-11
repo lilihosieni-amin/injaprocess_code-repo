@@ -2,7 +2,7 @@ import { MarkerType } from '@xyflow/react'
 import type { Node, Edge } from '@xyflow/react'
 import type { Process, ProcNode } from '../api/types'
 
-export type FlowNodeData = { node: ProcNode; conflicts: number; hasSub: boolean }
+export type FlowNodeData = { node: ProcNode; conflicts: number; hasSub: boolean; onOpenDetail?: (id: string) => void }
 
 const REAL_ACTIVITY = /^[a-z]+-[0-9]{3}-n[0-9]{3}$/
 const REAL_JUNCTION = /^[a-z]+-[0-9]{3}-j[0-9]+$/
