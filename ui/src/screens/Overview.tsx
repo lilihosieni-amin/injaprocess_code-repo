@@ -1,15 +1,40 @@
+import { useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { useOverview } from '../api/hooks'
+import { useOverview, usePutOverview } from '../api/hooks'
 import { deptMeta } from '../lib/departments'
 import { jalali } from '../lib/format'
 import { Card } from '../ui/Card'
 import { Button } from '../ui/Button'
+import { useToast } from '../write/ToastProvider'
+import type { Overview as OverviewT } from '../api/types'
+
+type Draft = { sub_units: { name: string; description: string }[]; personnel: { role: string; duties: string }[] }
 
 export function Overview() {
   const { code = '' } = useParams()
   const { data } = useOverview(code)
+  const put = usePutOverview(code)
+  const toast = useToast()
   const m = deptMeta(code)
+  const [draft, setDraft] = useState<Draft | null>(null)
   if (!data) return <div className="flex-1 bg-bg" />
+
+  function enter() {
+    setDraft({
+      sub_units: data!.sub_units.map((s) => ({ ...s })),
+      personnel: data!.personnel.map((p) => ({ role: p.role, duties: p.duties.join('\n') })),
+    })
+  }
+  function save() {
+    const d = draft!
+    const doc: OverviewT = {
+      ...data!,
+      sub_units: d.sub_units,
+      personnel: d.personnel.map((p) => ({ role: p.role, duties: p.duties.split('\n').map((x) => x.trim()).filter(Boolean) })),
+    }
+    put.mutate(doc, { onSuccess: () => { setDraft(null); toast.show('اطلاعات دپارتمان ذخیره شد') } })
+  }
+  const editing = draft !== null
 
   return (
     <div className="flex-1 overflow-auto py-[30px] px-10">
@@ -24,40 +49,99 @@ export function Overview() {
               <div className="text-xs text-faint mt-1">آخرین به‌روزرسانی: {jalali(data.updated_at)}</div>
             </div>
           </div>
-          <Button variant="violet" className="px-4 py-2.5 text-[13px]">ویرایش</Button>
+          {!editing ? (
+            <Button variant="violet" onClick={enter} className="px-4 py-2.5 text-[13px]">ویرایش</Button>
+          ) : (
+            <div className="flex gap-2.5">
+              <Button variant="ghost" onClick={() => setDraft(null)} className="px-4 py-2.5 text-[13px]">انصراف</Button>
+              <Button variant="green" onClick={save} disabled={put.isPending} className="px-4 py-2.5 text-[13px]">ذخیره</Button>
+            </div>
+          )}
         </div>
 
-        <section className="mb-7">
-          <div className="font-extrabold text-[15px] text-ink mb-3">واحدهای زیرمجموعه</div>
-          {data.sub_units.length === 0 && <div className="text-[12.5px] text-faint px-0.5 py-1.5">واحدی ثبت نشده است.</div>}
-          <div className="grid grid-cols-2 gap-3">
-            {data.sub_units.map((s, i) => (
-              <Card key={i} className="px-[17px] py-[15px]">
-                <div className="font-bold text-sm text-ink">{s.name}</div>
-                <div className="text-[12.5px] text-muted mt-1.5 leading-relaxed">{s.description}</div>
-              </Card>
-            ))}
-          </div>
-        </section>
+        <Section title="واحدهای زیرمجموعه"
+          onAdd={editing ? () => setDraft({ ...draft!, sub_units: [...draft!.sub_units, { name: '', description: '' }] }) : undefined}>
+          {!editing ? (
+            <div className="grid grid-cols-2 gap-3">
+              {data.sub_units.length === 0 && <div className="text-[12.5px] text-faint px-0.5 py-1.5">واحدی ثبت نشده است.</div>}
+              {data.sub_units.map((s, i) => (
+                <Card key={i} className="px-[17px] py-[15px]">
+                  <div className="font-bold text-sm text-ink">{s.name}</div>
+                  <div className="text-[12.5px] text-muted mt-1.5 leading-relaxed">{s.description}</div>
+                </Card>
+              ))}
+            </div>
+          ) : (
+            <div className="flex flex-col gap-3">
+              {draft!.sub_units.map((s, i) => (
+                <Card key={i} className="p-3.5 flex gap-3 items-start">
+                  <div className="flex-1 flex flex-col gap-2">
+                    <input value={s.name} onChange={(e) => patch('sub_units', i, { name: e.target.value })} placeholder="نام واحد"
+                      className="w-full px-3 py-2 border-[1.5px] border-line rounded-[10px] text-[13px] font-bold text-ink outline-none focus:border-coral" />
+                    <textarea value={s.description} onChange={(e) => patch('sub_units', i, { description: e.target.value })} rows={2} placeholder="شرح واحد"
+                      className="w-full px-3 py-2 border-[1.5px] border-line rounded-[10px] text-[12.5px] text-ink outline-none focus:border-coral resize-y" />
+                  </div>
+                  <button onClick={() => del('sub_units', i)} title="حذف واحد" className="w-8 h-8 shrink-0 border-[1.5px] border-[#FADAD8] rounded-[9px] text-conflict flex items-center justify-center">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" /></svg>
+                  </button>
+                </Card>
+              ))}
+            </div>
+          )}
+        </Section>
 
-        <section>
-          <div className="font-extrabold text-[15px] text-ink mb-3">پرسنل و شرح وظایف</div>
-          {data.personnel.length === 0 && <div className="text-[12.5px] text-faint px-0.5 py-1.5">پرسنلی ثبت نشده است.</div>}
-          <div className="flex flex-col gap-3">
-            {data.personnel.map((pr, i) => (
-              <Card key={i} className="px-[18px] py-4">
-                <div className="font-bold text-sm text-ink mb-2.5">{pr.role}</div>
-                <div className="flex flex-wrap gap-1.5">
-                  {pr.duties.length === 0 && <div className="text-[11.5px] text-faint">وظیفه‌ای ثبت نشده است.</div>}
-                  {pr.duties.map((d, j) => (
-                    <span key={j} className="text-[11.5px] text-violet bg-tile-v2 px-2.5 py-1 rounded-full">{d}</span>
-                  ))}
-                </div>
-              </Card>
-            ))}
-          </div>
-        </section>
+        <Section title="پرسنل و شرح وظایف"
+          onAdd={editing ? () => setDraft({ ...draft!, personnel: [...draft!.personnel, { role: '', duties: '' }] }) : undefined}>
+          {!editing ? (
+            <div className="flex flex-col gap-3">
+              {data.personnel.length === 0 && <div className="text-[12.5px] text-faint px-0.5 py-1.5">پرسنلی ثبت نشده است.</div>}
+              {data.personnel.map((pr, i) => (
+                <Card key={i} className="px-[18px] py-4">
+                  <div className="font-bold text-sm text-ink mb-2.5">{pr.role}</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {pr.duties.map((d, j) => <span key={j} className="text-[11.5px] text-violet bg-tile-v2 px-2.5 py-1 rounded-full">{d}</span>)}
+                  </div>
+                </Card>
+              ))}
+            </div>
+          ) : (
+            <div className="flex flex-col gap-3">
+              {draft!.personnel.map((pr, i) => (
+                <Card key={i} className="p-3.5 flex gap-3 items-start">
+                  <div className="flex-1 flex flex-col gap-2">
+                    <input value={pr.role} onChange={(e) => patch('personnel', i, { role: e.target.value })} placeholder="عنوان شغلی"
+                      className="w-full px-3 py-2 border-[1.5px] border-line rounded-[10px] text-[13px] font-bold text-ink outline-none focus:border-coral" />
+                    <textarea value={pr.duties} onChange={(e) => patch('personnel', i, { duties: e.target.value })} rows={3} placeholder="هر وظیفه در یک خط…"
+                      className="w-full px-3 py-2 border-[1.5px] border-line rounded-[10px] text-[12.5px] text-ink outline-none focus:border-coral resize-y" />
+                  </div>
+                  <button onClick={() => del('personnel', i)} title="حذف نفر" className="w-8 h-8 shrink-0 border-[1.5px] border-[#FADAD8] rounded-[9px] text-conflict flex items-center justify-center">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" /></svg>
+                  </button>
+                </Card>
+              ))}
+            </div>
+          )}
+        </Section>
       </div>
     </div>
+  )
+
+  function patch<K extends keyof Draft>(key: K, i: number, p: Partial<Draft[K][number]>) {
+    setDraft((d) => d && ({ ...d, [key]: d[key].map((row, k) => (k === i ? { ...row, ...p } : row)) }))
+  }
+  function del<K extends keyof Draft>(key: K, i: number) {
+    setDraft((d) => d && ({ ...d, [key]: d[key].filter((_, k) => k !== i) }))
+  }
+}
+
+function Section({ title, onAdd, children }: { title: string; onAdd?: () => void; children: React.ReactNode }) {
+  return (
+    <section className="mb-7">
+      <div className="flex items-center justify-between mb-3">
+        <div className="font-extrabold text-[15px] text-ink">{title}</div>
+        {onAdd && <button onClick={onAdd} className="text-[12px] font-semibold text-violet border-[1.5px] border-dashed border-[#C9B8EC] rounded-[10px] px-3 py-1.5">افزودن</button>}
+      </div>
+      {children}
+    </section>
   )
 }
