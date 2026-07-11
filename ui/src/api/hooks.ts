@@ -11,8 +11,12 @@ export const useProcesses = (code: string) =>
 export const useOverview = (code: string) =>
   useQuery({ queryKey: ['overview', code], queryFn: () => fetchJson<Overview>(`/api/departments/${code}/overview`) })
 
-export const useProcess = (pid: string) =>
-  useQuery({ queryKey: ['process', pid], queryFn: () => fetchJson<Process>(`/api/processes/${pid}`) })
+export const useProcess = (pid: string, opts?: { enabled?: boolean }) =>
+  useQuery({
+    queryKey: ['process', pid],
+    queryFn: () => fetchJson<Process>(`/api/processes/${pid}`),
+    enabled: opts?.enabled ?? true,
+  })
 
 export const useMe = () =>
   useQuery({ queryKey: ['me'], queryFn: () => fetchJson<Me>('/api/auth/me'), retry: false })

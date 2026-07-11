@@ -5,7 +5,7 @@ export function Breadcrumb() {
   const loc = useLocation()
   const { code, pid } = useParams()
   const { data: depts = [] } = useDepartments()
-  const { data: proc } = useProcess(pid ?? '')
+  const { data: proc } = useProcess(pid ?? '', { enabled: !!pid })
 
   const crumbs: { label: string; to: string }[] = [{ label: 'دپارتمان‌ها', to: '/departments' }]
   const deptCode = code ?? proc?.department

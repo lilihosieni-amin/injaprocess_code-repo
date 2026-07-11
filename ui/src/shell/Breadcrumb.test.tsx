@@ -18,4 +18,18 @@ describe('Breadcrumb', () => {
     expect(await screen.findByText('پخت')).toBeInTheDocument()
     expect(await screen.findByText('خرید')).toBeInTheDocument()
   })
+
+  it('does not fetch a process URL when there is no pid (non-process route)', async () => {
+    const requestedUrls: string[] = []
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input)
+      requestedUrls.push(url)
+      if (url.endsWith('/api/departments')) return Promise.resolve(new Response(JSON.stringify([{ code: 'cooking', name: 'پخت', count: 1 }]), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+      return Promise.resolve(new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } }))
+    })
+    renderAt('/departments/:code', <Breadcrumb />, '/departments/cooking')
+    expect(await screen.findByText('پخت')).toBeInTheDocument()
+    const processUrls = requestedUrls.filter((u) => u.includes('/api/processes/'))
+    expect(processUrls).toHaveLength(0)
+  })
 })
