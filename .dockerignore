@@ -1,0 +1,16 @@
+# Build context is the code-repo root (deploy/*.Dockerfile). Keep it lean and
+# keep dev artifacts out of the images. None of these are COPY'd by any Dockerfile.
+.git/
+.venv/
+**/.venv/
+**/__pycache__/
+**/*.py[cod]
+**/*.egg-info/
+node_modules/
+**/node_modules/
+ui/dist/
+.superpowers/
+.pytest_cache/
+**/.pytest_cache/
+.ruff_cache/
+**/.ruff_cache/
