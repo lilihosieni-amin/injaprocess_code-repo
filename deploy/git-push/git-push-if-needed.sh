@@ -15,7 +15,12 @@ UNPUSHED="$(git rev-list --count "origin/${BRANCH}..${BRANCH}" 2>/dev/null || ec
 
 if [ "$UNPUSHED" -gt 0 ]; then
     echo "pushing ${UNPUSHED} commit(s)"
-    git push origin "$BRANCH"
+    if git push origin "$BRANCH"; then
+        echo "push ok"
+    else
+        echo "push failed" >&2
+        exit 1
+    fi
 else
     echo "nothing to push"
 fi
