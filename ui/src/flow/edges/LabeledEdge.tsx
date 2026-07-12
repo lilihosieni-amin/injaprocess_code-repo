@@ -40,9 +40,9 @@ export function LabeledEdge({ id, source, target, sourceX, sourceY, targetX, tar
               <button title="حذف خط" onClick={d.onDelete} className="w-5 h-5 shrink-0 rounded-full bg-white border border-conflict text-conflict text-xs leading-none">×</button>
             </div>
           </div>
-        ) : d.label ? (
+        ) : text ? (
           <div style={{ position: 'absolute', transform: `translate(-50%,-50%) translate(${labelX}px,${labelY}px)` }}
-            className="bg-white/90 text-ink text-[11px] px-2 py-0.5 rounded-md pointer-events-none">{d.label}</div>
+            className="bg-white/90 text-ink text-[11px] px-2 py-0.5 rounded-md pointer-events-none">{text}</div>
         ) : null}
       </EdgeLabelRenderer>
     </>

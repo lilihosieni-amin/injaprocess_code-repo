@@ -39,4 +39,13 @@ describe('LabeledEdge', () => {
     fireEvent.click(screen.getByTitle('حذف خط'))
     expect(onDelete).toHaveBeenCalled()
   })
+  it('keeps the typed label visible after deselecting (read-only uses local text, not the stale seed)', () => {
+    const data = { label: 'بله', editing: true, onSetLabel: () => {}, onDelete: () => {} }
+    const { rerender } = wrap(<LabeledEdge {...base} selected data={data} />)
+    fireEvent.change(screen.getByDisplayValue('بله'), { target: { value: 'خیر' } })
+    // deselect (same seeded label prop): the read-only label must reflect the typed text
+    rerender(<ReactFlowProvider><svg><LabeledEdge {...base} selected={false} data={data} /></svg></ReactFlowProvider>)
+    expect(screen.getByText('خیر')).toBeInTheDocument()
+    expect(screen.queryByText('بله')).not.toBeInTheDocument()
+  })
 })
