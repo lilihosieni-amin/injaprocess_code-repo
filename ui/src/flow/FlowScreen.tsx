@@ -74,16 +74,37 @@ function FlowEditor() {
             <Button variant="violet" onClick={ed.enter} className="px-4 py-2 text-[13px]" data-testid="enter-edit">ویرایش</Button>
           ) : (
             <>
-              <div className="flex items-center gap-0.5 bg-tile-v2 rounded-xl p-1">
-                <button disabled={!ed.canUndo} onClick={ed.undo} title="واگرد" className="px-2 py-1 rounded-lg disabled:opacity-40 text-violet">↶</button>
-                <button disabled={!ed.canRedo} onClick={ed.redo} title="ازنو" className="px-2 py-1 rounded-lg disabled:opacity-40 text-violet">↷</button>
+              {/* undo / redo */}
+              <div className="flex items-center gap-[3px] bg-tile-v2 rounded-xl p-[5px]">
+                <button disabled={!ed.canUndo} onClick={ed.undo} title="واگرد" className="w-[34px] h-[34px] flex items-center justify-center rounded-[9px] bg-white text-violet disabled:text-[#cfc7e0] disabled:cursor-default">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 14L4 9l5-5" /><path d="M4 9h11a5 5 0 0 1 0 10h-1" /></svg>
+                </button>
+                <button disabled={!ed.canRedo} onClick={ed.redo} title="ازنو" className="w-[34px] h-[34px] flex items-center justify-center rounded-[9px] bg-white text-violet disabled:text-[#cfc7e0] disabled:cursor-default">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 14l5-5-5-5" /><path d="M20 9H9a5 5 0 0 0 0 10h1" /></svg>
+                </button>
               </div>
-              <Button variant="ghost" onClick={() => ed.addActivity(centerPos())} className="px-3 py-2 text-[12.5px]">فعالیت</Button>
-              <Button variant="ghost" onClick={() => ed.addJunction(centerPos())} className="px-3 py-2 text-[12.5px]">اتصال</Button>
-              <Button variant="ghost" onClick={onRelayout} disabled={relayout.isPending} className="px-3 py-2 text-[12.5px]">چیدمان</Button>
-              <Button variant="ghost" onClick={() => ed.selected && setPendingDel(ed.selected)} className="px-3 py-2 text-[12.5px]">حذف</Button>
-              <Button variant="ghost" onClick={ed.cancel} className="px-3 py-2 text-[12.5px]">انصراف</Button>
-              <Button variant="green" onClick={onSave} disabled={put.isPending} className="px-4 py-2 text-[13px]" data-testid="save">ذخیره</Button>
+              {/* relayout / delete */}
+              <div className="flex items-center gap-[7px] bg-tile-v2 rounded-xl p-[5px]">
+                <button onClick={onRelayout} disabled={relayout.isPending} className="flex items-center gap-1.5 px-[11px] py-[7px] rounded-[9px] bg-white text-[12px] font-semibold text-violet disabled:opacity-50">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 2v6h-6M3 12a9 9 0 0 1 15-6.7L21 8M3 22v-6h6M21 12a9 9 0 0 1-15 6.7L3 16" /></svg>چیدمان
+                </button>
+                <button onClick={() => ed.selected && setPendingDel(ed.selected)} className="flex items-center gap-1.5 px-[11px] py-[7px] rounded-[9px] bg-white text-[12px] font-semibold text-conflict">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" /></svg>حذف
+                </button>
+              </div>
+              {/* add activity / junction */}
+              <div className="flex items-center gap-[7px] bg-tile-v2 rounded-xl p-[5px]">
+                <button onClick={() => ed.addActivity(centerPos())} className="flex items-center gap-1.5 px-[11px] py-[7px] rounded-[9px] bg-white text-[12px] font-semibold text-violet">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="4" y="7" width="16" height="10" rx="2" /><path d="M12 10v4M10 12h4" strokeWidth="2.2" /></svg>فعالیت
+                </button>
+                <button onClick={() => ed.addJunction(centerPos())} className="flex items-center gap-1.5 px-[11px] py-[7px] rounded-[9px] bg-white text-[12px] font-semibold text-violet">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"><path d="M12 3l9 9-9 9-9-9z" /></svg>اتصال
+                </button>
+              </div>
+              <button onClick={ed.cancel} className="px-3.5 py-[9px] border-[1.5px] border-line bg-white rounded-[11px] font-semibold text-[12.5px] text-muted hover:bg-[#F4EFFB]">انصراف</button>
+              <button onClick={onSave} disabled={put.isPending} data-testid="save" className="flex items-center gap-1.5 px-[18px] py-[9px] rounded-[11px] bg-green text-white font-bold text-[13px] shadow-green hover:brightness-105">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>ذخیره
+              </button>
             </>
           )}
         </div>
