@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useDepartments, useProcesses } from '../api/hooks'
 import { deptMeta } from '../lib/departments'
@@ -29,8 +29,20 @@ export function ProcessList() {
   const list = procs.filter((p) => !query || p.name.includes(query) || p.id.includes(query))
   const activityCount = (p: Process) => p.nodes.filter((n) => n.type === 'activity' && !('removed' in n && n.removed)).length
 
+  // Preserve the list's scroll position across visiting a process and coming back.
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const restored = useRef(false)
+  const scrollKey = `plist-scroll-${code}`
+  useEffect(() => {
+    const el = scrollRef.current
+    if (el && procs.length && !restored.current) {
+      el.scrollTop = Number(sessionStorage.getItem(scrollKey) ?? 0)
+      restored.current = true
+    }
+  }, [procs, scrollKey])
+
   return (
-    <div className="flex-1 overflow-auto py-[30px] px-10">
+    <div ref={scrollRef} onScroll={(e) => sessionStorage.setItem(scrollKey, String(e.currentTarget.scrollTop))} className="flex-1 overflow-auto py-[30px] px-10">
       <div className="max-w-[920px] mx-auto">
         <div className="flex items-end justify-between gap-4 mb-[22px]">
           <div>
