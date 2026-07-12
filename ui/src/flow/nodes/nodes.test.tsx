@@ -27,6 +27,12 @@ describe('custom nodes', () => {
     fireEvent.click(screen.getByTitle('تعارض‌ها'))
     expect(onOpenDetail).toHaveBeenCalledWith('cooking-001-n010')
   })
+  it('ActivityNode shows a highlight ring when data.highlighted is set (edge selected)', () => {
+    const { container, rerender } = wrap(<ActivityNode id="cooking-001-n010" data={{ node: act, conflicts: 0, hasSub: false }} selected={false} type="activity" dragging={false} zIndex={0} isConnectable positionAbsoluteX={0} positionAbsoluteY={0} deletable draggable selectable /> as never)
+    expect(container.querySelector('.ring-violet')).toBeNull()
+    rerender(<ReactFlowProvider><ActivityNode id="cooking-001-n010" data={{ node: act, conflicts: 0, hasSub: false, highlighted: true }} selected={false} type="activity" dragging={false} zIndex={0} isConnectable positionAbsoluteX={0} positionAbsoluteY={0} deletable draggable selectable /></ReactFlowProvider> as never)
+    expect(container.querySelector('.ring-violet')).not.toBeNull()
+  })
   it('JunctionNode shows its type label', () => {
     const j: ProcNode = { id: 'cooking-001-j1', type: 'junction', junctionType: 'XOR', direction: 'split', position: { x: 0, y: 0 }, layout: 'auto' } as ProcNode
     wrap(<JunctionNode id="cooking-001-j1" data={{ node: j, conflicts: 0, hasSub: false }} selected={false} type="junction" dragging={false} zIndex={0} isConnectable positionAbsoluteX={0} positionAbsoluteY={0} deletable draggable selectable /> as never)

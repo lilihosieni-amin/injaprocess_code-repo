@@ -39,6 +39,16 @@ export function Canvas({ docNodes, docEdges, revision, editing, mode = 'pan', on
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [revision, editing])
 
+  // Highlight the two nodes joined by the selected edge, so it's clear which
+  // way the edge runs. Driven off selection (not a re-seed) to preserve positions.
+  const onSelectionChange = useCallback(({ edges: sel }: { edges: Edge[] }) => {
+    const ends = new Set(sel.flatMap((e) => [e.source, e.target]))
+    setNodes((nds) => nds.map((n) => {
+      const hl = ends.has(n.id)
+      return n.data.highlighted === hl ? n : { ...n, data: { ...n.data, highlighted: hl } }
+    }))
+  }, [setNodes])
+
   const commitMoved = useCallback(() => {
     const moved = nodes
       .filter((n) => { const s = seeded.current.get(n.id); return s && (s.x !== n.position.x || s.y !== n.position.y) })
@@ -53,6 +63,7 @@ export function Canvas({ docNodes, docEdges, revision, editing, mode = 'pan', on
         onNodesChange={onNodesChange} onEdgesChange={onEdgesChange}
         onConnect={editing ? onConnect : undefined}
         onNodeClick={(_, n) => onNodeClick?.(n.id)}
+        onSelectionChange={onSelectionChange}
         onNodeDragStop={commitMoved}
         nodesConnectable={editing}
         selectionOnDrag={editing && mode === 'select'}
