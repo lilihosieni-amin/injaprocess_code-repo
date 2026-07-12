@@ -2,13 +2,13 @@ import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useOverview, usePutOverview } from '../api/hooks'
 import { deptMeta } from '../lib/departments'
-import { jalali } from '../lib/format'
+import { jalali, toFa } from '../lib/format'
 import { Card } from '../ui/Card'
 import { Button } from '../ui/Button'
 import { useToast } from '../write/ToastProvider'
 import type { Overview as OverviewT } from '../api/types'
 
-type Draft = { sub_units: { name: string; description: string }[]; personnel: { role: string; duties: string }[] }
+type Draft = { sub_units: { name: string; description: string }[]; personnel: { role: string; duties: string[] }[] }
 
 export function Overview() {
   const { code = '' } = useParams()
@@ -17,12 +17,13 @@ export function Overview() {
   const toast = useToast()
   const m = deptMeta(code)
   const [draft, setDraft] = useState<Draft | null>(null)
+  const [openRoles, setOpenRoles] = useState<Set<number>>(new Set())  // read view: which categories are expanded (collapsed by default)
   if (!data) return <div className="flex-1 bg-bg" />
 
   function enter() {
     setDraft({
       sub_units: data!.sub_units.map((s) => ({ ...s })),
-      personnel: data!.personnel.map((p) => ({ role: p.role, duties: p.duties.join('\n') })),
+      personnel: data!.personnel.map((p) => ({ role: p.role, duties: [...p.duties] })),
     })
   }
   function save() {
@@ -30,7 +31,7 @@ export function Overview() {
     const doc: OverviewT = {
       ...data!,
       sub_units: d.sub_units,
-      personnel: d.personnel.map((p) => ({ role: p.role, duties: p.duties.split('\n').map((x) => x.trim()).filter(Boolean) })),
+      personnel: d.personnel.map((p) => ({ role: p.role, duties: p.duties.map((x) => x.trim()).filter(Boolean) })),
     }
     put.mutate(doc, { onSuccess: () => { setDraft(null); toast.show('اطلاعات دپارتمان ذخیره شد') } })
   }
@@ -91,32 +92,56 @@ export function Overview() {
         </Section>
 
         <Section title="پرسنل و شرح وظایف"
-          onAdd={editing ? () => setDraft({ ...draft!, personnel: [...draft!.personnel, { role: '', duties: '' }] }) : undefined}>
+          onAdd={editing ? () => setDraft({ ...draft!, personnel: [...draft!.personnel, { role: '', duties: [] }] }) : undefined}>
           {!editing ? (
             <div className="flex flex-col gap-3">
               {data.personnel.length === 0 && <div className="text-[12.5px] text-faint px-0.5 py-1.5">پرسنلی ثبت نشده است.</div>}
-              {data.personnel.map((pr, i) => (
-                <Card key={i} className="px-[18px] py-4">
-                  <div className="font-bold text-sm text-ink mb-2.5">{pr.role}</div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {pr.duties.map((d, j) => <span key={j} className="text-[11.5px] text-violet bg-tile-v2 px-2.5 py-1 rounded-full">{d}</span>)}
-                  </div>
-                </Card>
-              ))}
+              {data.personnel.map((pr, i) => {
+                const open = openRoles.has(i)
+                return (
+                  <Card key={i} className="px-[18px] py-4">
+                    <button onClick={() => toggleRole(i)} className="w-full flex items-center justify-between gap-3 text-right" aria-expanded={open}>
+                      <span className="font-bold text-sm text-ink">{pr.role}</span>
+                      <span className="flex items-center gap-2 shrink-0 text-muted">
+                        <span className="text-[11px] font-semibold">{toFa(pr.duties.length)} وظیفه</span>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className={`transition-transform ${open ? 'rotate-180' : ''}`}><path d="M6 9l6 6 6-6" /></svg>
+                      </span>
+                    </button>
+                    {open && (
+                      <>
+                        <div className="flex flex-wrap gap-1.5 mt-3">
+                          {pr.duties.map((d, j) => <span key={j} className="text-[11.5px] text-violet bg-tile-v2 px-2.5 py-1 rounded-full">{d}</span>)}
+                        </div>
+                        <button onClick={() => toggleRole(i)} className="mt-3 flex items-center gap-1 text-[11px] font-semibold text-muted hover:text-ink">
+                          بستن <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M18 15l-6-6-6 6" /></svg>
+                        </button>
+                      </>
+                    )}
+                  </Card>
+                )
+              })}
             </div>
           ) : (
             <div className="flex flex-col gap-3">
               {draft!.personnel.map((pr, i) => (
-                <Card key={i} className="p-3.5 flex gap-3 items-start">
-                  <div className="flex-1 flex flex-col gap-2">
+                <Card key={i} className="p-3.5">
+                  <div className="flex gap-3 items-center">
                     <input value={pr.role} onChange={(e) => patch('personnel', i, { role: e.target.value })} placeholder="عنوان شغلی"
-                      className="w-full px-3 py-2 border-[1.5px] border-line rounded-[10px] text-[13px] font-bold text-ink outline-none focus:border-coral" />
-                    <textarea value={pr.duties} onChange={(e) => patch('personnel', i, { duties: e.target.value })} rows={3} placeholder="هر وظیفه در یک خط…"
-                      className="w-full px-3 py-2 border-[1.5px] border-line rounded-[10px] text-[12.5px] text-ink outline-none focus:border-coral resize-y" />
+                      className="flex-1 px-3 py-2 border-[1.5px] border-line rounded-[10px] text-[13px] font-bold text-ink outline-none focus:border-coral" />
+                    <button onClick={() => del('personnel', i)} title="حذف نفر" className="w-8 h-8 shrink-0 border-[1.5px] border-[#FADAD8] rounded-[9px] text-conflict flex items-center justify-center">
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" /></svg>
+                    </button>
                   </div>
-                  <button onClick={() => del('personnel', i)} title="حذف نفر" className="w-8 h-8 shrink-0 border-[1.5px] border-[#FADAD8] rounded-[9px] text-conflict flex items-center justify-center">
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" /></svg>
-                  </button>
+                  <div className="flex flex-col gap-2 mt-2.5">
+                    {pr.duties.map((d, j) => (
+                      <div key={j} className="flex gap-2 items-center">
+                        <input value={d} onChange={(e) => setDuty(i, j, e.target.value)} placeholder="شرح وظیفه…"
+                          className="flex-1 px-3 py-2 border-[1.5px] border-line rounded-[10px] text-[12.5px] text-ink outline-none focus:border-coral" />
+                        <button onClick={() => removeDuty(i, j)} title="حذف وظیفه" className="w-8 h-8 shrink-0 border-[1.5px] border-[#FADAD8] rounded-[9px] text-conflict flex items-center justify-center text-lg leading-none">×</button>
+                      </div>
+                    ))}
+                    <button onClick={() => addDuty(i)} className="self-start text-[12px] font-semibold text-violet border-[1.5px] border-dashed border-[#C9B8EC] rounded-[10px] px-3 py-1.5">افزودن وظیفه</button>
+                  </div>
                 </Card>
               ))}
             </div>
@@ -131,6 +156,15 @@ export function Overview() {
   }
   function del<K extends keyof Draft>(key: K, i: number) {
     setDraft((d) => d && ({ ...d, [key]: d[key].filter((_, k) => k !== i) }))
+  }
+  function patchDuties(i: number, next: (duties: string[]) => string[]) {
+    setDraft((d) => d && ({ ...d, personnel: d.personnel.map((p, k) => (k === i ? { ...p, duties: next(p.duties) } : p)) }))
+  }
+  function setDuty(i: number, j: number, val: string) { patchDuties(i, (duties) => duties.map((x, m) => (m === j ? val : x))) }
+  function addDuty(i: number) { patchDuties(i, (duties) => [...duties, '']) }
+  function removeDuty(i: number, j: number) { patchDuties(i, (duties) => duties.filter((_, m) => m !== j)) }
+  function toggleRole(i: number) {
+    setOpenRoles((s) => { const next = new Set(s); next.has(i) ? next.delete(i) : next.add(i); return next })
   }
 }
 
