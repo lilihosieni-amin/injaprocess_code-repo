@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { BaseEdge, EdgeLabelRenderer, getBezierPath, useInternalNode, type EdgeProps } from '@xyflow/react'
 import { getEdgeParams, type Geom } from './floating'
 
@@ -18,6 +19,11 @@ export function LabeledEdge({ id, source, target, sourceX, sourceY, targetX, tar
   const [path, labelX, labelY] = getBezierPath({ sourceX: sx, sourceY: sy, targetX: tx, targetY: ty, sourcePosition: sPos, targetPosition: tPos })
   const d = (data ?? {}) as Data
   const active = selected && d.editing
+  // Local input state: the seeded `d.label` only refreshes on a re-seed (structural
+  // change), and setEdgeLabel intentionally doesn't re-seed — so controlling the input
+  // by `d.label` would freeze it. Drive it locally, re-syncing when `d.label` changes.
+  const [text, setText] = useState(d.label ?? '')
+  useEffect(() => { setText(d.label ?? '') }, [d.label])
   return (
     <>
       <BaseEdge id={id} path={path} markerEnd={markerEnd} style={{ stroke: '#9B86D9', strokeWidth: selected ? 2.6 : 2 }} />
@@ -28,7 +34,7 @@ export function LabeledEdge({ id, source, target, sourceX, sourceY, targetX, tar
           <div className="nodrag nopan" style={{ position: 'absolute', transform: `translate(-50%,-50%) translate(${labelX}px,${labelY}px)`, pointerEvents: 'all' }}>
             <div className="flex items-center gap-1.5">
               <input
-                value={d.label ?? ''} onChange={(e) => d.onSetLabel?.(e.target.value)} placeholder="متن روی خط…"
+                value={text} onChange={(e) => { setText(e.target.value); d.onSetLabel?.(e.target.value) }} placeholder="متن روی خط…"
                 className="w-[130px] text-[11px] text-ink bg-white border-[1.5px] border-coral rounded-md px-2 py-0.5 outline-none text-center"
               />
               <button title="حذف خط" onClick={d.onDelete} className="w-5 h-5 shrink-0 rounded-full bg-white border border-conflict text-conflict text-xs leading-none">×</button>

@@ -35,6 +35,7 @@ describe('LabeledEdge', () => {
     const input = screen.getByDisplayValue('بله')
     fireEvent.change(input, { target: { value: 'خیر' } })
     expect(onSetLabel).toHaveBeenCalledWith('خیر')
+    expect(screen.getByDisplayValue('خیر')).toBe(input)   // input not frozen: local state updates
     fireEvent.click(screen.getByTitle('حذف خط'))
     expect(onDelete).toHaveBeenCalled()
   })
