@@ -21,7 +21,7 @@ def _discard_staged(ctx):
 def _guard(config):
     def ok(update):
         u = update.effective_user
-        return u is not None and is_allowed(u.id, config.allowed_user_id)
+        return u is not None and is_allowed(u.id, config.allowed_user_ids)
     return ok
 
 
