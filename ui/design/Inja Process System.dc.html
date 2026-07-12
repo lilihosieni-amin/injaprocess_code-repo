@@ -7,10 +7,10 @@
 </head>
 <body>
 <x-dc>
-<helmet data-dc-atomics>
+<helmet data-dc-atomics="">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800&amp;display=swap" rel="stylesheet">
 <style>
   *{box-sizing:border-box}
   html,body{margin:0;height:100%}
@@ -82,7 +82,7 @@
 
     <!-- ---------- DEPARTMENTS ---------- -->
     <sc-if value="{{ isDepartments }}" hint-placeholder-val="{{ true }}">
-      <div style="flex:1;overflow:auto;padding:38px 40px 48px;background:#FBF7F1">
+      <div style="flex: 1; overflow: auto; padding: 38px 40px 48px; background-color: #2A1D5E">
         <div style="max-width:1120px;margin:0 auto">
 
           <!-- header -->
@@ -92,19 +92,19 @@
                 <span style="width:22px;height:2px;background:#FA5A52;border-radius:2px"></span>
                 <span style="font-size:11.5px;font-weight:700;letter-spacing:.14em;color:#B79FE6">INJA FOOD · مستندسازی فرآیند</span>
               </div>
-              <div style="font-weight:800;font-size:34px;color:#2A1D5E;letter-spacing:-.01em">دپارتمان‌ها</div>
-              <div style="font-size:14px;color:#8a7db0;margin-top:8px;max-width:440px;line-height:1.7">نقشهٔ فرآیندهای مجموعه به تفکیک واحد. یک دپارتمان را برای مرور فرآیندهای مستندشده، کارت خلاصه و فلوچارت انتخاب کنید.</div>
+              <div style="font-weight: 800; font-size: 34px; color: #FBF7F1; letter-spacing: -.01em">دپارتمان‌ها</div>
+              <div style="font-size:14px;color:#B7A6E0;margin-top:8px;max-width:440px;line-height:1.7">نقشهٔ فرآیندهای مجموعه به تفکیک واحد. یک دپارتمان را برای مرور فرآیندهای مستندشده، کارت خلاصه و فلوچارت انتخاب کنید.</div>
             </div>
             <div style="display:flex;gap:12px;flex:none">
-              <div style="background:#fff;border:1px solid #EFE7DC;border-radius:16px;padding:14px 20px;min-width:96px;box-shadow:0 4px 16px -10px rgba(74,37,169,.25)">
+              <div style="background:#FBF7F1;border:1px solid #EFE7DC;border-radius:16px;padding:14px 20px;min-width:96px;box-shadow:0 8px 22px -12px rgba(0,0,0,.4)">
                 <div style="font-weight:800;font-size:27px;color:#4A25A9;line-height:1">{{ deptTotalProcFa }}</div>
                 <div style="font-size:11.5px;color:#8a7db0;margin-top:5px;font-weight:600">فرآیند مستند</div>
               </div>
-              <div style="background:#fff;border:1px solid #EFE7DC;border-radius:16px;padding:14px 20px;min-width:96px;box-shadow:0 4px 16px -10px rgba(74,37,169,.25)">
+              <div style="background:#FBF7F1;border:1px solid #EFE7DC;border-radius:16px;padding:14px 20px;min-width:96px;box-shadow:0 8px 22px -12px rgba(0,0,0,.4)">
                 <div style="font-weight:800;font-size:27px;color:#2A1D5E;line-height:1">{{ deptCountFa }}</div>
                 <div style="font-size:11.5px;color:#8a7db0;margin-top:5px;font-weight:600">دپارتمان</div>
               </div>
-              <div style="background:#fff;border:1px solid #EFE7DC;border-radius:16px;padding:14px 20px;min-width:96px;box-shadow:0 4px 16px -10px rgba(74,37,169,.25)">
+              <div style="background:#FBF7F1;border:1px solid #EFE7DC;border-radius:16px;padding:14px 20px;min-width:96px;box-shadow:0 8px 22px -12px rgba(0,0,0,.4)">
                 <div style="display:flex;align-items:center;gap:7px">
                   <span style="font-weight:800;font-size:27px;line-height:1;color:{{ conflictTotalColor }}">{{ deptTotalConflictsFa }}</span>
                   <sc-if value="{{ deptHasConflicts }}" hint-placeholder-val="{{ false }}"><span style="width:8px;height:8px;border-radius:50%;background:#FA5A52;box-shadow:0 0 0 3px #FFE4E1"></span></sc-if>
@@ -117,7 +117,7 @@
           <!-- grid -->
           <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:18px">
             <sc-for list="{{ departments }}" as="d" hint-placeholder-count="9">
-              <div onClick="{{ d.open }}" style="position:relative;overflow:hidden;background:#fff;border:1px solid #EFE7DC;border-radius:20px;padding:22px;cursor:pointer;box-shadow:0 4px 20px -12px rgba(74,37,169,.28);transition:transform .16s,box-shadow .16s" style-hover="{{ cardHover }}">
+              <div onClick="{{ d.open }}" style="position: relative; overflow: hidden; border: 1px solid #EFE7DC; border-radius: 20px; padding: 22px; cursor: pointer; box-shadow: 0 10px 26px -14px rgba(0,0,0,.45); transition: transform .16s,box-shadow .16s; background-color: #FBF7F1" style-hover="{{ cardHover }}">
                 <div style="position:absolute;top:0;right:0;left:0;height:4px;background:{{ d.accent }}"></div>
                 <div style="position:absolute;top:14px;left:20px;font-size:46px;font-weight:800;line-height:1;color:{{ d.accentSoft }};pointer-events:none">{{ d.idx }}</div>
                 <div style="{{ d.tileStyle }}"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="{{ d.icon }}"></path></svg></div>

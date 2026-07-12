@@ -12,7 +12,7 @@ export function Departments() {
   const hasConflicts = totalConflicts > 0
 
   return (
-    <div className="flex-1 overflow-auto pt-[38px] pb-12 px-10 bg-bg">
+    <div className="flex-1 overflow-auto pt-[38px] pb-12 px-10 bg-ink">
       <div className="max-w-[1120px] mx-auto">
 
         {/* header */}
@@ -22,13 +22,13 @@ export function Departments() {
               <span className="w-[22px] h-0.5 bg-coral rounded-[2px]" />
               <span className="text-[11.5px] font-bold tracking-[.14em] text-[#B79FE6]">INJA FOOD · مستندسازی فرآیند</span>
             </div>
-            <div className="font-extrabold text-[34px] text-ink tracking-[-.01em]">دپارتمان‌ها</div>
-            <div className="text-[14px] text-muted mt-2 max-w-[440px] leading-[1.7]">نقشهٔ فرآیندهای مجموعه به تفکیک واحد. یک دپارتمان را برای مرور فرآیندهای مستندشده، کارت خلاصه و فلوچارت انتخاب کنید.</div>
+            <div className="font-extrabold text-[34px] text-bg tracking-[-.01em]">دپارتمان‌ها</div>
+            <div className="text-[14px] text-[#B7A6E0] mt-2 max-w-[440px] leading-[1.7]">نقشهٔ فرآیندهای مجموعه به تفکیک واحد. یک دپارتمان را برای مرور فرآیندهای مستندشده، کارت خلاصه و فلوچارت انتخاب کنید.</div>
           </div>
           <div className="flex gap-3 flex-none">
             <Stat value={toFa(totalProc)} label="فرآیند مستند" valueClass="text-violet" />
             <Stat value={toFa(data.length)} label="دپارتمان" valueClass="text-ink" />
-            <div className="bg-white border border-warm rounded-2xl px-5 py-3.5 min-w-[96px] shadow-[0_4px_16px_-10px_rgba(74,37,169,.25)]">
+            <div className="bg-bg border border-warm rounded-2xl px-5 py-3.5 min-w-[96px] shadow-[0_8px_22px_-12px_rgba(0,0,0,.4)]">
               <div className="flex items-center gap-[7px]">
                 <span className={`font-extrabold text-[27px] leading-none ${hasConflicts ? 'text-conflict' : 'text-green'}`}>{toFa(totalConflicts)}</span>
                 {hasConflicts && <span className="w-2 h-2 rounded-full bg-coral shadow-[0_0_0_3px_#FFE4E1]" />}
@@ -46,7 +46,7 @@ export function Departments() {
             const accentText = isC ? 'text-conflict' : 'text-violet'
             return (
               <div key={d.code} onClick={() => nav(`/departments/${d.code}`)}
-                className="relative overflow-hidden bg-white border border-warm rounded-[20px] p-[22px] cursor-pointer shadow-[0_4px_20px_-12px_rgba(74,37,169,.28)] hover:-translate-y-0.5 hover:shadow-card-hover transition">
+                className="relative overflow-hidden bg-bg border border-warm rounded-[20px] p-[22px] cursor-pointer shadow-[0_10px_26px_-14px_rgba(0,0,0,.45)] hover:-translate-y-0.5 hover:shadow-card-hover transition">
                 <div className={`absolute top-0 inset-x-0 h-1 ${isC ? 'bg-conflict' : 'bg-violet'}`} />
                 <div className={`absolute top-3.5 left-5 text-[46px] font-extrabold leading-none pointer-events-none ${isC ? 'text-[#FBE4E1]' : 'text-[#EDE4FA]'}`}>{toFa(String(i + 1).padStart(2, '0'))}</div>
                 <div className={`w-12 h-12 rounded-[14px] flex items-center justify-center shrink-0 ${m.tileClass}`}>
@@ -78,7 +78,7 @@ export function Departments() {
 
 function Stat({ value, label, valueClass }: { value: string; label: string; valueClass: string }) {
   return (
-    <div className="bg-white border border-warm rounded-2xl px-5 py-3.5 min-w-[96px] shadow-[0_4px_16px_-10px_rgba(74,37,169,.25)]">
+    <div className="bg-bg border border-warm rounded-2xl px-5 py-3.5 min-w-[96px] shadow-[0_8px_22px_-12px_rgba(0,0,0,.4)]">
       <div className={`font-extrabold text-[27px] leading-none ${valueClass}`}>{value}</div>
       <div className="text-[11.5px] text-muted mt-[5px] font-semibold">{label}</div>
     </div>
