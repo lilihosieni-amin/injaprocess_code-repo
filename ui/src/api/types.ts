@@ -1,4 +1,4 @@
-export interface Department { code: string; name: string; count: number }
+export interface Department { code: string; name: string; count: number; subs: number; conflicts: number }
 
 export interface Icom { inputs: string[]; controls: string[]; outputs: string[]; mechanisms: string[] }
 export interface Kpi { name: string; definition?: string; target?: string; unit?: string }

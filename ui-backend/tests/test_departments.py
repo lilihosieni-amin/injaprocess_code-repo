@@ -19,6 +19,10 @@ def test_departments_list_has_nine_with_counts(data_root):
     assert len(rows) == 9
     cooking = next(r for r in rows if r["code"] == "cooking")
     assert cooking["count"] == 1 and cooking["name"]
+    # cooking-001 has no parent (0 sub-processes) and one open pending (1 conflict)
+    assert cooking["subs"] == 0 and cooking["conflicts"] == 1
+    empty = next(r for r in rows if r["code"] == "logistics")
+    assert empty["count"] == 0 and empty["subs"] == 0 and empty["conflicts"] == 0
 
 
 def test_get_overview(data_root):

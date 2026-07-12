@@ -20,8 +20,17 @@ def list_departments(request: Request, _: str = Depends(require_session)):
     reg = storage.read_json(storage.registry_path(cfg.data_root))
     out = []
     for d in reg["departments"]:
+        files = storage.list_process_files(cfg.data_root, d["code"])
+        subs = 0
+        conflicts = 0
+        for path in files:
+            proc = storage.read_json(path)
+            if proc.get("parent"):
+                subs += 1
+            conflicts += sum(1 for p in proc.get("pending", [])
+                             if p.get("status") == "open")
         out.append({"code": d["code"], "name": d["name"],
-                    "count": len(storage.list_process_files(cfg.data_root, d["code"]))})
+                    "count": len(files), "subs": subs, "conflicts": conflicts})
     return out
 
 
