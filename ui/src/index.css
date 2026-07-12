@@ -16,7 +16,7 @@
   .btn-violet { @apply bg-violet text-white shadow-violet hover:brightness-110; }
   .btn-green  { @apply bg-green  text-white shadow-green  hover:brightness-105; }
   .btn-ghost  { @apply bg-white text-violet border-[1.5px] border-line hover:bg-[#F4EFFB]; }
-  .chip { @apply text-[11px] px-[9px] py-[3px] rounded-[7px] whitespace-nowrap; }
+  .chip { @apply text-[12.5px] px-[10px] py-[4px] rounded-[7px] whitespace-nowrap; }
   .chip-input   { @apply chip text-[#1F6FB2] bg-[#E7F1FB]; }
   .chip-control { @apply chip text-[#8A5A00] bg-[#FBF0DA]; }
   .chip-output  { @apply chip text-[#1F8A5B] bg-[#E4F6EC]; }

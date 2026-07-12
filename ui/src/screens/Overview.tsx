@@ -68,7 +68,7 @@ export function Overview() {
               {data.sub_units.map((s, i) => (
                 <Card key={i} className="px-[17px] py-[15px]">
                   <div className="font-bold text-sm text-ink">{s.name}</div>
-                  <div className="text-[12.5px] text-muted mt-1.5 leading-relaxed">{s.description}</div>
+                  <div className="text-[14px] text-muted mt-1.5 leading-relaxed">{s.description}</div>
                 </Card>
               ))}
             </div>
@@ -110,7 +110,7 @@ export function Overview() {
                     {open && (
                       <>
                         <div className="flex flex-wrap gap-1.5 mt-3">
-                          {pr.duties.map((d, j) => <span key={j} className="text-[11.5px] text-violet bg-tile-v2 px-2.5 py-1 rounded-full">{d}</span>)}
+                          {pr.duties.map((d, j) => <span key={j} className="text-[13px] text-violet bg-tile-v2 px-3 py-1.5 rounded-full leading-relaxed">{d}</span>)}
                         </div>
                         <button onClick={() => toggleRole(i)} className="mt-3 flex items-center gap-1 text-[11px] font-semibold text-muted hover:text-ink">
                           بستن <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M18 15l-6-6-6 6" /></svg>

@@ -59,7 +59,7 @@ export function Summary() {
             {!editing ? (
               <>
                 <div className="font-extrabold text-[23px] text-ink">{proc.name}</div>
-                <div className="text-[13.5px] text-muted mt-2 max-w-[640px] leading-relaxed">{proc.summary}</div>
+                <div className="text-[15px] text-muted mt-2 max-w-[640px] leading-relaxed">{proc.summary}</div>
               </>
             ) : (
               <>
@@ -124,7 +124,7 @@ export function Summary() {
                       <div className="font-bold text-sm text-ink">{k.name}</div>
                       {k.target && <div className="text-xs font-bold text-conflict bg-[#FFE9E7] px-2.5 py-0.5 rounded-lg">{k.target}</div>}
                     </div>
-                    <div className="text-xs text-muted mt-2 leading-normal">{k.definition}</div>
+                    <div className="text-[13.5px] text-muted mt-2 leading-relaxed">{k.definition}</div>
                   </div>
                 ))}
               </div>
