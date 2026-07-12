@@ -24,7 +24,7 @@ operable.
 | UI TLS | **IP-only, Caddy internal TLS** | Caddy serves HTTPS with a self-signed/internal cert on the IP. One-time browser trust warning. Swap to a real domain later by editing one line in the `Caddyfile`. |
 | Anthropic auth | **Claude subscription login** | The Claude Code CLI (control-bot + pipeline subagents) authenticates with a subscription credential persisted in a named volume. No `ANTHROPIC_API_KEY` set (it would override subscription). **Note:** pipeline Opus subagents consume subscription quota; can switch to API key later without design change. |
 | CI/CD | **None** | No GitHub Actions. Images are built on the server (or locally) from the checked-out `code-repo` via `docker compose build`, then run. Build + deploy are documented manual runbook steps. |
-| Bot / UI users | **Multiple allowed users** | Both bots accept more than one Telegram user. control-bot's `ALLOWED_USERS` is already comma-separated; **upload-bot** gains a comma-separated `ALLOWED_USER_IDS`. The UI stays single-user. A runbook explains changing the allowed Telegram users and the UI user. |
+| Bot / UI users | **Multiple users everywhere** | Both bots accept more than one Telegram user (control-bot's `ALLOWED_USERS` already plural; **upload-bot** gains `ALLOWED_USER_IDS`). The **UI is also multi-user** via a JSON map file (`UI_USERS_FILE` → `{username: argon2_hash}`); single-user `UI_USERNAME`/`UI_PASSWORD_HASH` remains a fallback. A runbook covers changing bot and UI users. |
 
 ## 3. Architecture — the stack
 
@@ -107,11 +107,15 @@ On the server:
   membership check. Update `config.py`, `auth.py`, `config/upload-bot.env.example`,
   and the auth/config tests. (Back-compat: accept the old singular
   `ALLOWED_USER_ID` if `ALLOWED_USER_IDS` is unset.)
-- **UI:** stays single-user (NFR-3) — `UI_USERNAME` + `UI_PASSWORD_HASH` (argon2)
-  + `SESSION_SIGNING_KEY`.
+- **UI:** multi-user via `UI_USERS_FILE` — a JSON file `{username: argon2_hash}`
+  mounted as a secret (argon2 hashes contain `$`/`,`/`=`, so a file beats an env
+  list). Login looks the username up in the map and verifies its hash; the session
+  cookie already carries the username (`{"u": username}`). Single-user
+  `UI_USERNAME`+`UI_PASSWORD_HASH` stays as a fallback. `SESSION_SIGNING_KEY` signs
+  the cookie (NFR-3).
 - A runbook (`docs/runbooks/`) is the "hint file": how to add/remove allowed
-  Telegram users for each bot and how to change the UI user (username + new argon2
-  hash + restart), including how to get a user's numeric Telegram ID.
+  Telegram users for each bot and how to add/remove UI users (edit the JSON map +
+  new argon2 hash + restart), including how to get a user's numeric Telegram ID.
 
 ## 7. Scheduled push & backup (ARD §15, NFR-7)
 
@@ -161,7 +165,8 @@ Numbered, task-focused Markdown:
 - CI / GitHub Actions / image registry (build on the server; manual deploy).
 - A registered domain / public Let's Encrypt cert (IP + internal TLS for now).
 - Multi-arch images (server is `linux/amd64`).
-- Multi-user UI (Telegram is multi-user; the UI stays single-user per NFR-3).
+- UI user self-service / roles (users are managed by editing the JSON map file;
+  all UI users have the same access — NFR-3 only requires authentication).
 
 ## 11. Invariants touched
 

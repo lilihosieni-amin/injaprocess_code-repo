@@ -675,11 +675,13 @@ services:
       dockerfile: deploy/ui-backend.Dockerfile
     image: inja-ui-backend
     restart: unless-stopped
-    env_file: [/opt/inja/secrets/ui-backend.env]         # UI_USERNAME, UI_PASSWORD_HASH, SESSION_SIGNING_KEY
+    env_file: [/opt/inja/secrets/ui-backend.env]         # SESSION_SIGNING_KEY, UI_USERS_FILE
     environment:
       DATA_ROOT: /data
+      UI_USERS_FILE: /run/secrets/ui-users.json
     volumes:
       - /opt/inja/data-repo:/data
+      - /opt/inja/secrets/ui-users.json:/run/secrets/ui-users.json:ro
 
   proxy:
     image: caddy:2
@@ -756,14 +758,15 @@ Note: cloning both repos needs an SSH key on the server with read access (GitHub
 Create the three env files under `/opt/inja/secrets/` (chmod 600), from the `config/*.env.example` and `control-bot/runtime.env.example` templates:
 - `upload-bot.env` — `TELEGRAM_BOT_TOKEN`, `ALLOWED_USER_IDS`
 - `control-bot.env` — the full `control-bot/runtime.env.example` profile: `TELEGRAM_BOT_TOKEN`, `ALLOWED_USERS`, `APPROVED_DIRECTORY=/data`, `USE_SDK=true`, budgets; **leave `ANTHROPIC_API_KEY` blank** (subscription auth)
-- `ui-backend.env` — `UI_USERNAME`, `UI_PASSWORD_HASH` (argon2), `SESSION_SIGNING_KEY`, `SCHEMA_DIR=/app/schemas`
+- `ui-backend.env` — `SESSION_SIGNING_KEY`, `UI_USERS_FILE=/run/secrets/ui-users.json`
+- `ui-users.json` — the UI users map `{ "alice": "<argon2 hash>", "bob": "<argon2 hash>" }` (chmod 600)
 - `telegram-bot-api.env` — `TELEGRAM_API_ID`, `TELEGRAM_API_HASH` (from https://my.telegram.org)
 
-Generate the UI password hash:
+Generate `SESSION_SIGNING_KEY` and one argon2 hash per UI user (paste each hash into `ui-users.json`):
 ```bash
+python -c "import secrets; print(secrets.token_urlsafe(48))"    # SESSION_SIGNING_KEY
 docker run --rm inja-ui-backend python -c \
- "from argon2 import PasswordHasher; print(PasswordHasher().hash('YOUR-UI-PASSWORD'))"
-python -c "import secrets; print(secrets.token_urlsafe(48))"   # SESSION_SIGNING_KEY
+ "from argon2 import PasswordHasher; print(PasswordHasher().hash('THIS-USERS-PASSWORD'))"
 ```
 
 data-repo deploy key (for git-push, write access) — generate, add the **public** key as a deploy key with write access on `injaprocess_data-repo`:
@@ -812,7 +815,7 @@ Backup: git-push is the off-site baseline (data-repo minus audio). For raw audio
 - **Find a numeric Telegram ID:** have the person message `@userinfobot` (or read it from `upload-bot` logs when they try).
 - **upload-bot users:** edit `ALLOWED_USER_IDS` (comma-separated) in `/opt/inja/secrets/upload-bot.env`, then `docker compose up -d upload-bot`.
 - **control-bot users:** edit `ALLOWED_USERS` (comma-separated) in `/opt/inja/secrets/control-bot.env`, then `docker compose up -d control-bot`.
-- **UI user:** regenerate `UI_PASSWORD_HASH` (argon2 command in `02`), set `UI_USERNAME`/`UI_PASSWORD_HASH` in `ui-backend.env`, then `docker compose up -d ui-backend`. The UI is single-user by design (NFR-3).
+- **UI users:** edit `/opt/inja/secrets/ui-users.json` — add or remove a `"username": "<argon2 hash>"` entry (generate the hash with the argon2 command in `02`), then `docker compose up -d ui-backend`. All UI users share the same access (NFR-3 requires only authentication).
 
 - [ ] **Step 8: Commit**
 
@@ -823,7 +826,215 @@ git commit -m "docs(runbooks): server setup, secrets/auth, deploy, transcription
 
 ---
 
-### Task 11: Deploy to the server & verify exit criteria
+### Task 11: UI backend multi-user login (JSON file)
+
+Support multiple UI users via a JSON map file (`{username: argon2_hash}`), pointed to by `UI_USERS_FILE`, with the single-user env vars kept as a fallback.
+
+**Files:**
+- Modify: `ui-backend/inja_ui_backend/config.py`
+- Modify: `ui-backend/inja_ui_backend/auth.py`
+- Modify: `ui-backend/inja_ui_backend/routers/auth.py`
+- Modify: `ui-backend/inja_ui_backend/tests_helpers.py`
+- Modify: `config/ui-backend.env.example`
+- Create: `config/ui-users.example.json`
+- Test: `ui-backend/tests/test_config.py`, `ui-backend/tests/test_auth.py`
+
+**Interfaces:**
+- Produces: `Settings.users: dict[str, str]` (username → argon2 hash); `authenticate(cfg, username, password) -> bool`; `verify_hash(password_hash, password) -> bool`.
+- Consumes: existing `Settings`, `issue_cookie`, `require_session` (unchanged).
+
+- [ ] **Step 1: Write failing config tests**
+
+Append to `ui-backend/tests/test_config.py`:
+
+```python
+import json
+
+
+def test_users_file_loads_multiple(tmp_path):
+    env = _valid_env(tmp_path)
+    del env["UI_USERNAME"]; del env["UI_PASSWORD_HASH"]
+    users = {"alice": "$argon2id$h1", "bob": "$argon2id$h2"}
+    p = tmp_path / "ui-users.json"
+    p.write_text(json.dumps(users))
+    env["UI_USERS_FILE"] = str(p)
+    s = load_settings(env)
+    assert s.users == users
+
+
+def test_single_user_env_populates_users_map(tmp_path):
+    s = load_settings(_valid_env(tmp_path))
+    assert s.users == {"analyst": "$argon2id$dummy"}
+
+
+def test_no_auth_source_raises(tmp_path):
+    env = _valid_env(tmp_path)
+    del env["UI_USERNAME"]; del env["UI_PASSWORD_HASH"]
+    with pytest.raises(RuntimeError, match="UI_USERS_FILE|UI_USERNAME"):
+        load_settings(env)
+```
+
+- [ ] **Step 2: Run to verify they fail**
+
+Run: `cd ui-backend && python -m pytest tests/test_config.py -q`
+Expected: FAIL (`Settings` has no `users`; no `UI_USERS_FILE` handling).
+
+- [ ] **Step 3: Implement the config change**
+
+In `ui-backend/inja_ui_backend/config.py`: add `import json`; add a `users` field; drop `UI_USERNAME`/`UI_PASSWORD_HASH` from the always-required tuple; build the users map.
+
+```python
+_REQUIRED = ("DATA_ROOT", "SCHEMA_DIR", "SESSION_SIGNING_KEY")
+```
+
+Add the field to the dataclass (after `session_ttl` is fine):
+
+```python
+    users: dict[str, str]
+```
+
+In `load_settings`, after the `schema_dir` checks and before building `static`, resolve the users map:
+
+```python
+    users_file = env.get("UI_USERS_FILE")
+    if users_file:
+        with open(users_file, encoding="utf-8") as fh:
+            users = json.load(fh)
+        if not isinstance(users, dict) or not users:
+            raise RuntimeError("UI_USERS_FILE must be a non-empty JSON object of username->hash")
+        ui_username = ""
+        ui_password_hash = ""
+    else:
+        ui_username = env.get("UI_USERNAME")
+        ui_password_hash = env.get("UI_PASSWORD_HASH")
+        if not ui_username or not ui_password_hash:
+            raise RuntimeError("set UI_USERS_FILE, or both UI_USERNAME and UI_PASSWORD_HASH")
+        users = {ui_username: ui_password_hash}
+```
+
+Then pass `users=users`, and change the `ui_username`/`ui_password_hash` args in the `Settings(...)` construction to use the locals above instead of `env[...]`:
+
+```python
+        ui_username=ui_username,
+        ui_password_hash=ui_password_hash,
+        ...
+        users=users,
+```
+
+- [ ] **Step 4: Update `tests_helpers.cfg_for` (still single-user path — no change needed to its env), then run config tests**
+
+`cfg_for` uses `UI_USERNAME`/`UI_PASSWORD_HASH`, so `load_settings` now also fills `users={"analyst": "$argon2id$dummy"}` automatically — no edit required. Verify:
+
+Run: `cd ui-backend && python -m pytest tests/test_config.py -q`
+Expected: PASS (existing + 3 new).
+
+- [ ] **Step 5: Write failing multi-user auth tests**
+
+In `ui-backend/tests/test_auth.py`, update `_client` to also set the `users` map, and add multi-user cases:
+
+```python
+def _client(data_root, password="pw"):
+    cfg = cfg_for(data_root)
+    real = argon2.PasswordHasher().hash(password)
+    cfg = cfg.__class__(**{**cfg.__dict__, "ui_password_hash": real,
+                           "ui_username": "analyst", "users": {"analyst": real}})
+    return TestClient(create_app(cfg))
+
+
+def _multi_client(data_root):
+    cfg = cfg_for(data_root)
+    ph = argon2.PasswordHasher()
+    users = {"alice": ph.hash("apw"), "bob": ph.hash("bpw")}
+    cfg = cfg.__class__(**{**cfg.__dict__, "users": users,
+                           "ui_username": "", "ui_password_hash": ""})
+    return TestClient(create_app(cfg))
+
+
+def test_multiple_users_can_log_in(data_root):
+    assert _multi_client(data_root).post(
+        "/api/auth/login", json={"username": "bob", "password": "bpw"}).status_code == 200
+    assert _multi_client(data_root).post(
+        "/api/auth/login", json={"username": "alice", "password": "apw"}).status_code == 200
+
+
+def test_multi_unknown_user_or_wrong_password_401(data_root):
+    c = _multi_client(data_root)
+    assert c.post("/api/auth/login", json={"username": "bob", "password": "apw"}).status_code == 401
+    assert c.post("/api/auth/login", json={"username": "carol", "password": "x"}).status_code == 401
+```
+
+- [ ] **Step 6: Run to verify they fail**
+
+Run: `cd ui-backend && python -m pytest tests/test_auth.py -q`
+Expected: FAIL (login still checks `cfg.ui_username`, not the map).
+
+- [ ] **Step 7: Implement the auth change**
+
+Replace the `verify_password` function in `ui-backend/inja_ui_backend/auth.py` with a hash-taking verifier + an authenticate helper:
+
+```python
+def verify_hash(password_hash: str, password: str) -> bool:
+    try:
+        return _ph.verify(password_hash, password)
+    except VerifyMismatchError:
+        return False
+    except Exception:
+        return False
+
+
+def authenticate(cfg: Settings, username: str, password: str) -> bool:
+    h = cfg.users.get(username)
+    return bool(h) and verify_hash(h, password)
+```
+
+In `ui-backend/inja_ui_backend/routers/auth.py`, import `authenticate` instead of `verify_password` and change the login check:
+
+```python
+from ..auth import COOKIE_NAME, issue_cookie, require_session, authenticate
+...
+    if not authenticate(cfg, body.username, body.password):
+        raise HTTPException(status_code=401, detail="invalid credentials")
+    response.set_cookie(COOKIE_NAME, issue_cookie(cfg, body.username),
+                        httponly=True, samesite="lax", max_age=cfg.session_ttl)
+    return {"username": body.username}
+```
+
+- [ ] **Step 8: Run the whole ui-backend suite**
+
+Run: `cd ui-backend && python -m pytest -q`
+Expected: PASS (all tests, including the untouched process/department/pending suites).
+
+- [ ] **Step 9: Update the env example + add an example users file**
+
+In `config/ui-backend.env.example`, add below the single-user lines:
+
+```bash
+# Multiple UI users: path to a JSON file {username: argon2_hash} (real file OUTSIDE git).
+# If set, it takes precedence over UI_USERNAME/UI_PASSWORD_HASH above.
+UI_USERS_FILE=
+```
+
+Create `config/ui-users.example.json`:
+
+```json
+{
+  "analyst": "$argon2id$v=19$m=65536,t=3,p=4$REPLACE_WITH_REAL_ARGON2_HASH",
+  "manager": "$argon2id$v=19$m=65536,t=3,p=4$REPLACE_WITH_REAL_ARGON2_HASH"
+}
+```
+
+- [ ] **Step 10: Commit**
+
+```bash
+git add ui-backend/inja_ui_backend/config.py ui-backend/inja_ui_backend/auth.py \
+        ui-backend/inja_ui_backend/routers/auth.py ui-backend/tests/test_config.py \
+        ui-backend/tests/test_auth.py config/ui-backend.env.example config/ui-users.example.json
+git commit -m "feat(ui-backend): multi-user login via UI_USERS_FILE JSON map (single-user env fallback)"
+```
+
+---
+
+### Task 12: Deploy to the server & verify exit criteria
 
 Execute the runbooks on `91.107.147.127` and confirm the PLAN.md §9 exit criteria. **These commands run on the server (`ssh inja`).**
 
@@ -836,7 +1047,7 @@ Expected: all 6 services `running`. **Exit criterion 1 (NFR-9).**
 
 - [ ] **Step 3: Verify the UI**
 
-Browse `https://91.107.147.127`, accept the cert, log in with the UI user. Expected: the app loads and authenticates.
+Browse `https://91.107.147.127`, accept the cert, log in as a UI user from `ui-users.json`. Expected: the app loads and authenticates.
 
 - [ ] **Step 4: Verify AC-7 (runtime can't change code/CLIs)**
 
@@ -866,12 +1077,13 @@ Append a short "deployed YYYY-MM-DD, exit criteria 1–3 met" note to `docs/runb
 - §2 Anthropic subscription auth → Task 7 (`/root/.claude` volume), Task 9, Task 10 step 3. ✅
 - §2 No CI (build on server) → Tasks 4–9 build steps, Task 10 step 4. ✅
 - §2/§6 Multi-user bots → Task 1 (upload-bot code), Task 10 step 7 (control-bot doc). ✅
+- §2/§6 Multi-user UI → Task 11 (UI_USERS_FILE JSON map), Task 9 (compose mount), Task 10 steps 3 & 7 (runbook). ✅
 - §3 Six services + patch step → Tasks 4–9; patches in Task 7. ✅
 - §4 Server layout + audio dir on clone → Task 2, Task 10 steps 1–2. ✅
 - §5 Networking (local bot-api for upload; direct for control) → Task 9 env. ✅
 - §7 Scheduled push + audio-not-in-git backup → Tasks 3–4, Task 10 step 6. ✅
 - §8 Runbooks 00–06 → Task 10. ✅
-- §9 Exit criteria → Task 11. ✅
+- §9 Exit criteria → Task 12. ✅
 
 **Placeholder scan:** No TBD/TODO; every code/config step shows full content; runbook steps give exact commands. ✅
 
