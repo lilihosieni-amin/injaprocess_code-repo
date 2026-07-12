@@ -85,6 +85,10 @@ On the server:
 - This scheduled push is the **off-site backup baseline**. Runbook notes an
   optional server snapshot as belt-and-suspenders. (Only `data-repo` changes at
   runtime; `code-repo` is the built artifact and is not runtime-pushed.)
+- **Audio is excluded from git** (`meetings/audio/` is gitignored; transcripts are
+  the source of record). The git-push backup therefore does **not** cover raw
+  audio — if off-site audio backup is wanted, it needs a separate mechanism
+  (rsync/object-store/snapshot), documented in `05-operations.md`.
 
 ## 7. Runbooks (`docs/runbooks/`)
 
