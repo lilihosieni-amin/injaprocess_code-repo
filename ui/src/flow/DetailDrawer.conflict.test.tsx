@@ -15,7 +15,7 @@ describe('DetailDrawer conflicts', () => {
     const onAccept = vi.fn()
     render(<DetailDrawer node={n} editing={false} conflicts={[{ pending, index: 3 }]} process={{ nodes: [] } as never}
       onClose={() => {}} onEdit={() => {}} onAccept={onAccept} onReject={() => {}} onOpenSub={() => {}}
-      onPatch={() => {}} onLinkSub={() => {}} onSetJunction={() => {}} onCreateSub={() => {}} />)
+      onPatch={() => {}} onLinkSub={() => {}} onSetJunction={() => {}} onCreateSub={() => {}} onDeleteNode={() => {}} />)
     expect(screen.getByText('مدیر رستوران')).toBeInTheDocument()
     expect(screen.getByText('معاون مدیر')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'پذیرش' }))

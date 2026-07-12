@@ -30,6 +30,7 @@ function FlowEditor() {
   const resolve = useResolvePending(pid)
   const [pendingDel, setPendingDel] = useState<string | null>(null)
   const [detailId, setDetailId] = useState<string | null>(null)
+  const [mode, setMode] = useState<'pan' | 'select'>('pan')
   const rf = useReactFlow()
   const wrapRef = useRef<HTMLDivElement>(null)
 
@@ -83,13 +84,19 @@ function FlowEditor() {
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 14l5-5-5-5" /><path d="M20 9H9a5 5 0 0 0 0 10h1" /></svg>
                 </button>
               </div>
-              {/* relayout / delete */}
+              {/* mouse mode: move (pan) vs select */}
+              <div className="flex items-center gap-[3px] bg-tile-v2 rounded-xl p-[5px]">
+                <button onClick={() => setMode('pan')} title="حالت جابه‌جایی" className={`w-[34px] h-[34px] flex items-center justify-center rounded-[9px] ${mode === 'pan' ? 'bg-violet text-white' : 'bg-white text-violet'}`}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 9l-3 3 3 3M9 5l3-3 3 3M15 19l-3 3-3-3M19 9l3 3-3 3M2 12h20M12 2v20" /></svg>
+                </button>
+                <button onClick={() => setMode('select')} title="حالت انتخاب" className={`w-[34px] h-[34px] flex items-center justify-center rounded-[9px] ${mode === 'select' ? 'bg-violet text-white' : 'bg-white text-violet'}`}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3l7.07 17 2.51-7.39L20 10.07z" /></svg>
+                </button>
+              </div>
+              {/* relayout */}
               <div className="flex items-center gap-[7px] bg-tile-v2 rounded-xl p-[5px]">
                 <button onClick={onRelayout} disabled={relayout.isPending} className="flex items-center gap-1.5 px-[11px] py-[7px] rounded-[9px] bg-white text-[12px] font-semibold text-violet disabled:opacity-50">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 2v6h-6M3 12a9 9 0 0 1 15-6.7L21 8M3 22v-6h6M21 12a9 9 0 0 1-15 6.7L3 16" /></svg>چیدمان
-                </button>
-                <button onClick={() => ed.selected && setPendingDel(ed.selected)} className="flex items-center gap-1.5 px-[11px] py-[7px] rounded-[9px] bg-white text-[12px] font-semibold text-conflict">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" /></svg>حذف
                 </button>
               </div>
               {/* add activity / junction */}
@@ -112,7 +119,7 @@ function FlowEditor() {
 
       <div ref={wrapRef} className="flex-1 min-h-0 relative">
         <Canvas
-          docNodes={toFlowNodes(proc)} docEdges={toFlowEdges(proc)} revision={ed.revision} editing={editing}
+          docNodes={toFlowNodes(proc)} docEdges={toFlowEdges(proc)} revision={ed.revision} editing={editing} mode={mode}
           onNodeClick={onNodeClick}
           onConnect={(c: Connection) => c.source && c.target && ed.connect(c.source, c.target)}
           onOpenDetail={setDetailId}
@@ -120,11 +127,6 @@ function FlowEditor() {
           onSetEdgeLabel={(f, t, v) => ed.setEdgeLabel(f, t, v)}
           onDeleteEdge={(f, t) => ed.deleteEdge(f, t)}
         />
-        {editing && (
-          <div className="absolute top-3.5 left-1/2 -translate-x-1/2 bg-ink text-white text-[11.5px] px-4 py-2 rounded-full pointer-events-none z-10">
-            از نقطهٔ مرجانیِ کنار هر گره بکشید تا خط بسازید · روی یک خط کلیک کنید تا نام‌گذاری یا حذف شود
-          </div>
-        )}
         <div className="absolute bottom-4 right-4 flex gap-3.5 bg-white border border-warm rounded-xl px-3.5 py-2 text-[11px] text-muted">
           <span className="flex items-center gap-1"><span className="w-[11px] h-[11px] bg-coral rotate-45 inline-block" />XOR</span>
           <span className="flex items-center gap-1"><span className="w-[11px] h-[11px] bg-violet rotate-45 inline-block" />AND</span>
@@ -148,6 +150,7 @@ function FlowEditor() {
               onPatch={(patch) => ed.patchActivity(detailId, patch as Partial<Pick<ActivityNode, 'label' | 'actor' | 'description'>>)}
               onLinkSub={(s) => ed.linkSub(detailId, s)}
               onSetJunction={(t) => ed.setJunction(detailId, t)}
+              onDeleteNode={() => { setPendingDel(detailId); setDetailId(null) }}
               onCreateSub={() => {
                 createProcess.mutate(
                   { department: proc.department, name: 'زیرفرآیند جدید', parent: { process: proc.id, node: detailId! } },

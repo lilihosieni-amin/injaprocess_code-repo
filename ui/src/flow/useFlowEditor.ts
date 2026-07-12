@@ -14,6 +14,21 @@ export function useFlowEditor(server: Process | undefined) {
   const tmp = useRef(0)
   const [revision, setRevision] = useState(0)
 
+  // Navigating to a DIFFERENT process (id change) always resets — even mid-edit —
+  // so the canvas loads the new process instead of keeping the old edit session.
+  // (Fixes create-sub-and-enter, which navigates while editing.)
+  const curId = useRef<string | undefined>(server?.id)
+  useEffect(() => {
+    if (server && server.id !== curId.current) {
+      curId.current = server.id
+      past.current = []
+      future.current = []
+      setEditing(false)
+      setDoc(server)
+      setRevision((r) => r + 1)
+    }
+  }, [server])
+
   // Keep the working copy in sync with the server doc while NOT editing.
   useEffect(() => {
     if (!editing && server) { setDoc(server); setRevision((r) => r + 1) }

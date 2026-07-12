@@ -51,6 +51,15 @@ describe('useFlowEditor', () => {
     act(() => { result.current.enter(); result.current.connect('cooking-001-n010', 'start') })
     expect(result.current.doc.edges).toContainEqual(expect.objectContaining({ from: 'cooking-001-n010', to: 'start' }))
   })
+  it('resets (exits edit + loads the new doc) when navigating to a different process id', () => {
+    const other = { ...server, id: 'cooking-999', name: 'sub' } as Process
+    const { result, rerender } = renderHook(({ s }) => useFlowEditor(s), { initialProps: { s: server } })
+    act(() => result.current.enter())
+    expect(result.current.editing).toBe(true)
+    rerender({ s: other })                       // navigate to another process WHILE editing
+    expect(result.current.editing).toBe(false)   // edit session reset
+    expect(result.current.doc.id).toBe('cooking-999')
+  })
   it('cancel resets to the server doc', () => {
     const { result } = renderHook(() => useFlowEditor(server))
     act(() => { result.current.enter(); result.current.setName('X'); result.current.cancel() })

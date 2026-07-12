@@ -12,7 +12,7 @@ describe('DetailDrawer junction edit', () => {
     const onSetJunction = vi.fn()
     render(<DetailDrawer node={j} editing conflicts={[]} process={{ nodes: [] } as never}
       onClose={() => {}} onEdit={() => {}} onAccept={() => {}} onReject={() => {}} onOpenSub={() => {}}
-      onPatch={() => {}} onLinkSub={() => {}} onSetJunction={onSetJunction} onCreateSub={() => {}} />)
+      onPatch={() => {}} onLinkSub={() => {}} onSetJunction={onSetJunction} onCreateSub={() => {}} onDeleteNode={() => {}} />)
     fireEvent.click(screen.getByRole('button', { name: 'AND' }))
     expect(onSetJunction).toHaveBeenCalledWith('AND')
   })

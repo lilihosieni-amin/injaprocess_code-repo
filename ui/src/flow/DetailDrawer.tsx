@@ -19,6 +19,7 @@ export type DrawerProps = {
   onLinkSub: (subId: string | null) => void
   onSetJunction: (type: 'AND' | 'OR' | 'XOR') => void
   onCreateSub: () => void
+  onDeleteNode: () => void
 }
 
 export function DetailDrawer(props: DrawerProps) {
@@ -217,6 +218,14 @@ export function DetailDrawer(props: DrawerProps) {
           <div className="font-extrabold text-[16px] text-ink">{'label' in node ? (node as { label: string }).label : (node as { id: string }).id}</div>
         )}
       </div>
+      {props.editing && (
+        <div className="px-[18px] py-3 border-t border-[#F0E9FB]">
+          <button onClick={props.onDeleteNode} className="w-full flex items-center justify-center gap-2 py-2.5 rounded-[11px] border-[1.5px] border-[#FDD9D6] bg-[#FFF3F2] text-conflict font-bold text-[12.5px] hover:bg-[#FDE7E5]">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" /></svg>
+            حذف این گره
+          </button>
+        </div>
+      )}
     </div>
   )
 }

@@ -14,8 +14,8 @@ const nodeTypes = { activity: ActivityNode, start: StartNode, end: EndNode, junc
 const edgeTypes = { labeled: LabeledEdge }
 type Pos = { x: number; y: number }
 
-export function Canvas({ docNodes, docEdges, revision, editing, onConnect, onNodeClick, onOpenDetail, onCommitPositions, onSetEdgeLabel, onDeleteEdge }: {
-  docNodes: Node[]; docEdges: Edge[]; revision: number; editing: boolean
+export function Canvas({ docNodes, docEdges, revision, editing, mode = 'pan', onConnect, onNodeClick, onOpenDetail, onCommitPositions, onSetEdgeLabel, onDeleteEdge }: {
+  docNodes: Node[]; docEdges: Edge[]; revision: number; editing: boolean; mode?: 'pan' | 'select'
   onConnect?: (c: Connection) => void
   onNodeClick?: (id: string) => void
   onOpenDetail?: (id: string) => void
@@ -55,8 +55,8 @@ export function Canvas({ docNodes, docEdges, revision, editing, onConnect, onNod
         onNodeClick={(_, n) => onNodeClick?.(n.id)}
         onNodeDragStop={commitMoved}
         nodesConnectable={editing}
-        selectionOnDrag={editing}
-        panOnDrag={editing ? [1, 2] : true}
+        selectionOnDrag={editing && mode === 'select'}
+        panOnDrag={editing && mode === 'select' ? [1, 2] : true}
         fitView proOptions={{ hideAttribution: true }}
       >
         <Background />

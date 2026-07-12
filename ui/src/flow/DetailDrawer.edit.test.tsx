@@ -14,7 +14,7 @@ describe('DetailDrawer edit', () => {
     const onPatch = vi.fn()
     render(<DetailDrawer node={n} editing conflicts={[]} process={{ department: 'cooking', nodes: [] } as never}
       onClose={() => {}} onEdit={() => {}} onAccept={() => {}} onReject={() => {}} onOpenSub={() => {}}
-      onPatch={onPatch} onLinkSub={() => {}} onSetJunction={() => {}} onCreateSub={() => {}} />)
+      onPatch={onPatch} onLinkSub={() => {}} onSetJunction={() => {}} onCreateSub={() => {}} onDeleteNode={() => {}} />)
     fireEvent.change(screen.getByLabelText('عنوان'), { target: { value: 'B' } })
     expect(onPatch).toHaveBeenCalledWith({ label: 'B' })
   })

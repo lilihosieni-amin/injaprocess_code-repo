@@ -21,6 +21,8 @@ export function LabeledEdge({ id, source, target, sourceX, sourceY, targetX, tar
   return (
     <>
       <BaseEdge id={id} path={path} markerEnd={markerEnd} style={{ stroke: '#9B86D9', strokeWidth: selected ? 2.6 : 2 }} />
+      {/* exit marker: a small white nub at the edge's exit point on the source node */}
+      <circle cx={sx} cy={sy} r={4} fill="#fff" stroke="#9B86D9" strokeWidth={1.5} className="pointer-events-none" />
       <EdgeLabelRenderer>
         {active ? (
           <div className="nodrag nopan" style={{ position: 'absolute', transform: `translate(-50%,-50%) translate(${labelX}px,${labelY}px)`, pointerEvents: 'all' }}>

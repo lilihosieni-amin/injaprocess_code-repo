@@ -22,12 +22,14 @@ describe('FlowScreen junction', () => {
     expect(await screen.findByRole('button', { name: 'AND' })).toBeInTheDocument()
   })
 
-  it('a junction click in edit mode also selects it so the toolbar can delete it', async () => {
+  it('a node is deleted from its detail drawer (not a toolbar button)', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify(proc), { status: 200, headers: { 'Content-Type': 'application/json' } }))
     renderAt('/processes/:pid/flow', <FlowScreen />, '/processes/cooking-001/flow')
     fireEvent.click(await screen.findByTestId('enter-edit'))
-    fireEvent.click(screen.getAllByText('XOR')[0])            // select + open drawer
-    fireEvent.click(screen.getByRole('button', { name: 'حذف' }))  // toolbar delete
-    expect(await screen.findByRole('button', { name: /حذف کامل/ })).toBeInTheDocument()  // confirm modal for the selected junction
+    // delete now lives in the node's detail drawer, not the toolbar
+    expect(screen.queryByRole('button', { name: 'حذف' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getAllByText('XOR')[0])                      // open the junction's drawer
+    fireEvent.click(await screen.findByRole('button', { name: /حذف این گره/ }))  // drawer delete
+    expect(await screen.findByRole('button', { name: /حذف کامل/ })).toBeInTheDocument()  // confirm modal
   })
 })
