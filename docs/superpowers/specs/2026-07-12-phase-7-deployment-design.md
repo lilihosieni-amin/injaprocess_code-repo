@@ -4,7 +4,7 @@
 |---|---|
 | **Status** | Approved (design); ready for implementation plan |
 | **Date** | 2026-07-12 |
-| **Repo** | `code-repo/deploy/`, `code-repo/docs/runbooks/`, `code-repo/.github/` |
+| **Repo** | `code-repo/deploy/`, `code-repo/docs/runbooks/` |
 | **Spec authority** | PRD (NFR-7, NFR-9, AC-7), ARD §15 (versioning/push), ARD §16 (Docker), PLAN.md §9 |
 
 ## 1. Goal
@@ -13,8 +13,8 @@ Bring the whole system up on the server (`91.107.147.127`, user `root`, alias
 `ssh inja`) as **one durable `docker compose up -d` stack** — running-only, no
 Superpowers and no coding inside containers (ARD §16, INV-2). Deliver the
 Dockerfiles, a complete `docker-compose.yml`, Caddy proxy config, a `git-push`
-scheduler, operator runbooks, and a CI pipeline. On completion the project is
-deployed and operable.
+scheduler, and operator runbooks. On completion the project is deployed and
+operable.
 
 ## 2. Decisions (locked)
 
@@ -23,22 +23,41 @@ deployed and operable.
 | Transcription (no Vertex) | **Manual transcript drop** | Deploy with `transcribe` unconfigured. A transcript at `meetings/transcripts/{name}.txt` makes `transcribe` a no-op (idempotency skip) and the pipeline runs from there. Vertex env seam (`VERTEX_PROJECT/LOCATION`, `GEMINI_MODEL`, `GOOGLE_APPLICATION_CREDENTIALS`) stays ready to switch on later. |
 | UI TLS | **IP-only, Caddy internal TLS** | Caddy serves HTTPS with a self-signed/internal cert on the IP. One-time browser trust warning. Swap to a real domain later by editing one line in the `Caddyfile`. |
 | Anthropic auth | **Claude subscription login** | The Claude Code CLI (control-bot + pipeline subagents) authenticates with a subscription credential persisted in a named volume. No `ANTHROPIC_API_KEY` set (it would override subscription). **Note:** pipeline Opus subagents consume subscription quota; can switch to API key later without design change. |
-| CI/CD | **CI tests + GHCR image build; manual deploy** | GitHub Actions runs tests/lint/UI build on push+PR, and on a `v*` tag builds+pushes the custom images to GHCR. Deployment to the server is a documented manual runbook step. No SSH secrets in CI. |
+| CI/CD | **None** | No GitHub Actions. Images are built on the server (or locally) from the checked-out `code-repo` via `docker compose build`, then run. Build + deploy are documented manual runbook steps. |
+| Bot / UI users | **Multiple allowed users** | Both bots accept more than one Telegram user. control-bot's `ALLOWED_USERS` is already comma-separated; **upload-bot** gains a comma-separated `ALLOWED_USER_IDS`. The UI stays single-user. A runbook explains changing the allowed Telegram users and the UI user. |
 
 ## 3. Architecture — the stack
 
 ARD §16 mandates multi-service Compose (not a single supervisord container).
 `code-repo` is baked into images; `data-repo` is **never** baked — it is the
-single shared bind-mount, "the only point of connection."
+single shared bind-mount, "the only point of connection." **All custom images are
+built on the server** from the checked-out `code-repo` (no registry).
 
 | Service | Image | Role / key contents | Mounts | Published |
 |---|---|---|---|---|
 | `telegram-bot-api` | upstream `tdlib/telegram-bot-api` | local Bot API server, 2 GB cap (NFR-2) for upload-bot's large voices | own data volume | no |
 | `upload-bot` | **build** `deploy/upload-bot.Dockerfile` | Bot 1 (Python). `python:3.11-slim` + `pip install -e upload-bot` | data-repo @ `DATA_ROOT` | no |
-| `control-bot` | **build** `deploy/control-bot.Dockerfile` (heavy) | Bot 2. `python:3.11` + Node + **Claude Code CLI** + `pip install -e engine` (CLIs on PATH) + git + `claude-code-telegram@v1.6.0` with both `patches/` applied | data-repo @ `APPROVED_DIRECTORY`; `claude-credentials` volume @ CLI config dir | no |
+| `control-bot` | **build** `deploy/control-bot.Dockerfile` (heavy) | Bot 2. `python:3.11` + Node + **Claude Code CLI** + `pip install -e engine` (CLIs on PATH) + git + `claude-code-telegram@v1.6.0` **with both `patches/` applied in the build** | data-repo @ `APPROVED_DIRECTORY`; `claude-credentials` volume @ CLI config dir | no |
 | `ui-backend` | **build** `deploy/ui-backend.Dockerfile` (2-stage) | stage 1 node builds `ui/dist`; stage 2 `python` FastAPI + engine CLIs + git, serves `ui/dist` | data-repo @ `DATA_ROOT` | no (behind proxy) |
 | `proxy` | upstream `caddy` + `deploy/Caddyfile` | reverse proxy + **internal TLS** to `ui-backend` | `caddy-data` volume | **443** |
 | `git-push` | **build** `deploy/git-push.Dockerfile` | scheduled push (git + tiny cron/loop) at 11:00 & 23:00, only if unpushed commits (ARD §15, NFR-7) | data-repo + deploy key (ro) | no |
+
+**control-bot patch step (critical).** claude-code-telegram v1.6.0 is used
+unforked; two required source patches live in `control-bot/patches/` and fix
+behavior v1.6.0 exposes no config flag for. The Dockerfile installs the bot at
+the pinned tag, then applies both patches into the installed package's
+site-packages (`patch -p1 -d "$SITE" < control-bot/patches/0001-…` and `…0002-…`;
+`$SITE` resolution + verification in `control-bot/patches/README.md`):
+
+- `0001-disable-conversation-enhancer` — stops the "What would you like to do
+  next?" buttons appended after every reply.
+- `0002-throttle-progress-updates` — dedupes/rate-limits progress edits so long
+  pipeline runs don't freeze the Telegram progress bar.
+
+Because patches live on an installed dependency, any reinstall/upgrade wipes them
+— applying them **in the image build** is what makes them durable. Build-time
+verification: startup log shows `enabled_features` without "conversation", and a
+long run no longer floods "Failed to update progress message" warnings.
 
 **AC-7 (deployed):** engine CLIs and code are baked into read-only image layers
 outside `APPROVED_DIRECTORY`; the Phase-3 runtime hooks are active in-container.
@@ -51,7 +70,7 @@ On the server:
 
 ```
 /opt/inja/
-  code-repo/            # git checkout: deploy/ compose + Caddyfile (+ build context)
+  code-repo/            # git checkout: build context + deploy/ compose + Caddyfile
   data-repo/            # git checkout — BIND-MOUNTED into upload-bot/control-bot/ui-backend
                         #   and host-accessible so dev sessions 1/2 can reach it (ARD §16)
   secrets/              # env files OUTSIDE git:
@@ -63,12 +82,13 @@ On the server:
 `docker-compose.yml` completes the existing skeleton:
 
 - Every service `restart: unless-stopped`.
+- Custom services use a **`build:` context** (built on the server); no registry.
 - Secrets via `env_file:` → `/opt/inja/secrets/*.env`. Never in repo, never in image.
 - `data-repo` is a **host bind-mount** (not an anonymous volume) so it stays
   reachable on the host (ARD §16).
 - Subscription credential persists in the `claude-credentials` named volume.
-- Compose references **GHCR image tags** for the custom services (CI builds them);
-  a `build:` context stays available as a fallback for build-on-server.
+- `meetings/audio/` won't exist on a fresh data-repo clone (gitignored); the
+  upload-bot / deploy ensures the directory exists before writing voices.
 
 ## 5. Networking
 
@@ -77,7 +97,23 @@ On the server:
 - **proxy** is the only published port (443). Both bots are outbound-only.
 - Runbook documents the proven SOCKS-proxy fallback if `api.telegram.org` is blocked from the host.
 
-## 6. Scheduled push & backup (ARD §15, NFR-7)
+## 6. Users & access (multi-user)
+
+- **control-bot (Telegram):** `ALLOWED_USERS` is already a comma-separated list of
+  numeric Telegram IDs — fill it with one or more IDs. No code change.
+- **upload-bot (Telegram):** small code change — replace singular
+  `ALLOWED_USER_ID: int` with `ALLOWED_USER_IDS` parsed to a `frozenset[int]`
+  from a comma-separated env value; `is_allowed(user_id, allowed_ids)` becomes a
+  membership check. Update `config.py`, `auth.py`, `config/upload-bot.env.example`,
+  and the auth/config tests. (Back-compat: accept the old singular
+  `ALLOWED_USER_ID` if `ALLOWED_USER_IDS` is unset.)
+- **UI:** stays single-user (NFR-3) — `UI_USERNAME` + `UI_PASSWORD_HASH` (argon2)
+  + `SESSION_SIGNING_KEY`.
+- A runbook (`docs/runbooks/`) is the "hint file": how to add/remove allowed
+  Telegram users for each bot and how to change the UI user (username + new argon2
+  hash + restart), including how to get a user's numeric Telegram ID.
+
+## 7. Scheduled push & backup (ARD §15, NFR-7)
 
 - Commits are always local/immediate on the VPS (full history).
 - `git-push` pushes **data-repo → GitHub** (`injaprocess_data-repo`) at **11:00
@@ -90,7 +126,7 @@ On the server:
   audio — if off-site audio backup is wanted, it needs a separate mechanism
   (rsync/object-store/snapshot), documented in `05-operations.md`.
 
-## 7. Runbooks (`docs/runbooks/`)
+## 8. Runbooks (`docs/runbooks/`)
 
 Numbered, task-focused Markdown:
 
@@ -100,25 +136,15 @@ Numbered, task-focused Markdown:
 - `02-secrets-and-auth.md` — fill the three env files; **Claude subscription
   login** into the persisted volume
   (`docker compose run --rm -it control-bot claude auth login`, paste code);
-  data-repo deploy key; GHCR login
-- `03-deploy.md` — first deploy + routine update (pull GHCR tags →
-  `docker compose up -d`); accepting Caddy's self-signed cert
+  data-repo deploy key
+- `03-deploy.md` — build images on the server + first `docker compose up -d`;
+  routine rebuild/update; accepting Caddy's self-signed cert
 - `04-transcription.md` — no-Vertex workflow (drop `meetings/transcripts/{name}.txt`)
   and the one env-block change to enable Vertex later
 - `05-operations.md` — logs, restart, health checks, verifying the 11:00/23:00
-  push, **AC-7 verification** command, backup/restore
-- `06-ci-cd.md` — how the Actions pipeline works and how to cut a release tag
-
-## 8. CI/CD (`.github/workflows/`, in `code-repo`)
-
-- `ci.yml` — push + PR: `make test` (engine + backend pytest vs Phase-0
-  fixtures), `ruff` lint, `ui` typecheck/build. Safety net.
-- `release.yml` — on tag `v*`: build the custom images (`upload-bot`,
-  `control-bot`, `ui-backend`, `git-push`) for `linux/amd64` and push to **GHCR**.
-  Server pulls those tags. No SSH secrets in CI; deploy is manual (runbook).
-
-CI lives only in `code-repo` (all buildable code is here). `data-repo` needs only
-the deploy key for scheduled push — no CI.
+  push, **AC-7 verification** command, backup/restore (incl. audio-not-in-git note)
+- `06-changing-users.md` — **the hint file**: add/remove allowed Telegram users
+  for each bot; change the UI user; how to find a numeric Telegram ID
 
 ## 9. Exit criteria (PLAN.md §9)
 
@@ -126,16 +152,16 @@ the deploy key for scheduled push — no CI.
 2. **AC-7 (deployed):** in the running `control-bot` container, runtime cannot
    edit the engine CLIs or code, and the hooks block forbidden writes.
 3. Scheduled push runs only when there are unpushed commits; a backup is produced.
-4. Runbooks let an operator provision, deploy, authenticate, and operate the
-   stack end-to-end.
-5. CI is green on `main`; a `v*` tag publishes pullable GHCR images.
+4. Runbooks let an operator provision, build, deploy, authenticate, operate, and
+   change users end-to-end.
 
 ## 10. Out of scope
 
 - Real Vertex/STT integration (env seam only; manual transcript drop for now).
-- Full CD / auto-deploy on merge (manual deploy chosen).
+- CI / GitHub Actions / image registry (build on the server; manual deploy).
 - A registered domain / public Let's Encrypt cert (IP + internal TLS for now).
 - Multi-arch images (server is `linux/amd64`).
+- Multi-user UI (Telegram is multi-user; the UI stays single-user per NFR-3).
 
 ## 11. Invariants touched
 
