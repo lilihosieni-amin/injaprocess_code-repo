@@ -805,8 +805,9 @@ docker compose logs -f control-bot            # or any service
 docker compose restart ui-backend
 # verify scheduled push logic on demand:
 docker compose exec git-push /usr/local/bin/git-push-if-needed.sh
-# AC-7: hooks confine the agent to /data; read_only: true makes the baked CLIs unwritable
-docker compose exec control-bot sh -c 'echo x >> /usr/local/bin/merge 2>&1; echo RC=$?' # must FAIL (read-only FS)
+# AC-7: hooks + can_use_tool callback confine the agent to /data; CLIs are baked outside it
+docker compose exec control-bot sh -c 'command -v merge allocate-id; ls -d /data/.claude'
+docker compose logs control-bot | grep -i "can_use_tool denied"  # any out-of-bounds write attempt is denied
 ```
 Backup: git-push is the off-site baseline (data-repo minus audio). For raw audio, add a separate rsync/snapshot of `/opt/inja/data-repo/meetings/audio/`. Restore = re-clone data-repo + restore audio from the snapshot.
 
@@ -1051,9 +1052,9 @@ Browse `https://91.107.147.127`, accept the cert, log in as a UI user from `ui-u
 
 - [ ] **Step 4: Verify AC-7 (runtime can't change code/CLIs)**
 
-Primary mechanism: the Phase-3 in-container hooks confine the agent to `APPROVED_DIRECTORY=/data`, so it cannot reach the engine CLIs/code baked outside `/data` (`/usr/local/bin` + `/opt/engine`). Filesystem defense-in-depth: `control-bot` runs `read_only: true`.
-Run: `docker compose exec control-bot sh -c 'echo x >> /usr/local/bin/merge 2>&1; echo RC=$?'`
-Expected: a read-only-filesystem error and non-zero RC — the baked CLI cannot be mutated (writable-upper-layer notwithstanding, because the root FS is read-only). **Exit criterion 2 (AC-7).**
+Mechanism: the Phase-3 in-container hooks (`setting_sources=["project"]` → `/data/.claude`) **and** the bot's `can_use_tool` callback (`approved_directory=/data`) confine the agent's file operations to `/data`, so it cannot reach the engine CLIs/code baked outside `/data` (`/usr/local/bin` + `/opt/engine`). (`read_only: true` was attempted for filesystem defence-in-depth but dropped — the Claude CLI's persistent SDK client needs a writable `~/.claude.json` in the root home, unisolable without shadowing the baked bot at `/root/.local`.)
+Run: `docker compose exec control-bot sh -c 'command -v merge allocate-id; ls -d /data/.claude'`
+Expected: the CLIs resolve under `/usr/local/bin` (outside `/data`) and `/data/.claude` (the hooks) is present. Full proof is functional: in a pipeline run, an agent write outside `/data` is denied (`docker compose logs control-bot | grep "can_use_tool denied"`). **Exit criterion 2 (AC-7).**
 
 - [ ] **Step 5: Verify scheduled push logic**
 

@@ -34,18 +34,18 @@ services:
     env_file: [/opt/inja/secrets/control-bot.env]        # TELEGRAM_BOT_TOKEN, ALLOWED_USERS, budgets…
     environment:
       APPROVED_DIRECTORY: /data
-    # AC-7 defense-in-depth: read-only root FS so the in-container agent cannot
-    # mutate the baked engine CLIs/code (which live OUTSIDE /data). Everything the
-    # container legitimately writes to is a tmpfs or a named volume below.
-    read_only: true
-    tmpfs:
-      - /tmp                 # git / python / claude scratch
-      - /root/.cache         # claude-code CLI cache
-      - /root/.config        # claude-code CLI config scratch
+    # AC-7 is enforced by the Phase-3 in-container hooks + the bot's can_use_tool
+    # callback (setting_sources=["project"], approved_directory=/data): the agent's
+    # file operations are confined to /data, and the engine CLIs/code are baked
+    # OUTSIDE it (/usr/local/bin, /opt). NOTE: `read_only: true` was attempted for
+    # extra defense-in-depth but the Claude CLI's persistent SDK client needs a
+    # writable ~/.claude.json in the root home, which cannot be isolated as writable
+    # without shadowing the baked bot at /root/.local — so it is intentionally NOT
+    # set; the hook + callback confinement is the real guarantee.
     volumes:
       - /opt/inja/data-repo:/data
       - claude-credentials:/root/.claude   # subscription credential (rw)
-      - control-bot-state:/state           # bot SQLite state — set DATABASE_URL=sqlite:////state/bot.db
+      - control-bot-state:/state           # bot SQLite state — DATABASE_URL=sqlite:////state/bot.db
 
   ui-backend:
     build:

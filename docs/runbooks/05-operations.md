@@ -34,30 +34,35 @@ prints `push ok`; otherwise it prints `nothing to push`.
 
 ## AC-7: runtime cannot edit the baked code/CLIs
 
-**Primary guarantee (hooks).** The engine CLIs are baked into the `control-bot`
-image at `/opt/engine` (installed onto `/usr/local/bin`) — **outside** the
-session's `APPROVED_DIRECTORY` (`/data`). The Phase-3 in-container Claude hooks
-(active because `USE_SDK=true` and the project settings are loaded) confine the
-agent's Write/Edit/Bash to `/data`, so the runtime agent cannot reach the CLIs or
-code in the first place. That confinement is the real AC-7 enforcement.
+**The guarantee (hooks + can_use_tool callback).** The engine CLIs are baked into
+the `control-bot` image at `/opt/engine` (installed onto `/usr/local/bin`) —
+**outside** the session's `APPROVED_DIRECTORY` (`/data`). The Phase-3 in-container
+Claude hooks (active because `USE_SDK=true` and `setting_sources=["project"]` load
+`/data/.claude`) **and** the bot's `can_use_tool` callback (built with
+`approved_directory=/data`) confine the agent's Write/Edit/Bash to `/data`, so the
+runtime agent cannot reach the CLIs or code in the first place. That confinement —
+at the agent/tool layer — is the AC-7 enforcement.
 
-**Filesystem defense-in-depth.** The `control-bot` service also runs with
-`read_only: true`, so its root FS is not writable even by root — only `/data`,
-`/root/.claude`, `/state`, and the declared `tmpfs` mounts are writable. Verify
-that the baked CLIs cannot be written:
+> A Docker container has a writable upper layer, so "baked into an image layer" is
+> *not* by itself a filesystem write barrier (a raw root shell in the container
+> *can* write `/usr/local/bin` — but that is an operator with `docker exec`, not
+> the confined agent, and is outside the AC-7 threat model). `read_only: true` was
+> attempted for extra filesystem defence but had to be dropped: the Claude CLI's
+> persistent SDK client needs a writable `~/.claude.json` in the root home, which
+> can't be isolated as writable without shadowing the baked bot at `/root/.local`.
+
+**Verify the agent confinement is active:**
 
 ```bash
-# AC-7: the baked CLIs live on the read-only root FS — writing must fail
-docker compose exec control-bot sh -c 'echo x >> /usr/local/bin/merge 2>&1; echo RC=$?'
+# 1) engine CLIs live OUTSIDE the agent's approved dir (/data):
+docker compose exec control-bot sh -c 'command -v merge allocate-id; echo "approved=/data"; ls -d /data/.claude'
+# 2) during/after a pipeline run, any out-of-bounds write attempt is denied — grep the log:
+docker compose logs control-bot | grep -i "can_use_tool denied"
 ```
 
-Expected: a `Read-only file system` error and a **non-zero** `RC`. A success
-(RC=0) would mean the root FS is writable — check that `read_only: true` is still
-set on `control-bot` and investigate immediately.
-
-> Note: a Docker container has a writable upper layer, so "baked into an image
-> layer" is *not* by itself a write barrier — `read_only: true` is what supplies
-> this filesystem check, and the hooks supply the primary agent confinement.
+Expected: the CLIs resolve under `/usr/local/bin` (not under `/data`), `/data/.claude`
+exists (the hooks are present), and any denied file operation appears in the log if
+the agent ever tries to write outside `/data`.
 
 ## Backup & restore
 

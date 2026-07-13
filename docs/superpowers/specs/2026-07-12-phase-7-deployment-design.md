@@ -59,18 +59,20 @@ Because patches live on an installed dependency, any reinstall/upgrade wipes the
 verification: startup log shows `enabled_features` without "conversation", and a
 long run no longer floods "Failed to update progress message" warnings.
 
-**AC-7 (deployed).** The primary guarantee is the **Phase-3 in-container Claude
-hooks**: with `USE_SDK=true` and the project settings active, they confine the
-agent's Write/Edit/Bash to `APPROVED_DIRECTORY=/data`, so it cannot edit the
+**AC-7 (deployed).** The guarantee is the **Phase-3 in-container Claude hooks +
+the bot's `can_use_tool` callback**: with `USE_SDK=true`, `setting_sources=
+["project"]`, and `approved_directory=/data`, the agent's Write/Edit/Bash file
+operations are confined to `APPROVED_DIRECTORY=/data`, so it cannot edit the
 engine CLIs or code — which are baked **outside** `/data` (`/usr/local/bin` +
-`/opt/engine`), with no dev tooling in the image. Filesystem enforcement is
-layered on top: the `control-bot` service runs with `read_only: true`, so its
-root FS (including the baked CLIs) is not writable even by root — only the
-explicit `tmpfs`/volume mounts (`/tmp`, `/root/.cache`, `/root/.config`,
-`/root/.claude`, `/state`) and the `/data` bind are writable. (A container's
-writable upper layer means "baked into an image layer" is **not** by itself a
-write barrier — `read_only: true` is what supplies the filesystem guarantee.)
-Verified by a runbook step.
+`/opt/engine`), with no dev tooling in the image. (A container's writable upper
+layer means "baked into an image layer" is **not** by itself a write barrier, so
+the confinement is enforced at the agent/tool layer, not the filesystem.)
+**Note:** `read_only: true` was attempted for extra filesystem defence-in-depth
+but had to be dropped — the Claude CLI's persistent SDK client needs a writable
+`~/.claude.json` in the root home, which cannot be made writable in isolation
+without shadowing the baked bot install at `/root/.local`. Verified live by a
+runbook step (agent write outside `/data` is denied) and by confirming the
+engine CLIs run from `/usr/local/bin`, outside the agent's writable root.
 
 ## 4. Server layout & compose
 
