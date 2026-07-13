@@ -406,6 +406,15 @@ stack (NFR-9), running-only (no Superpowers, no coding inside containers — ARD
 - **Stack services** (ARD §16): `telegram-bot-api`, `upload-bot`, `control-bot` (the heavy
   image: Python + Node + Claude Code CLI + engine CLIs on PATH + git), `ui-backend`,
   `proxy` (TLS), `git-push`.
+- **control-bot source patches** (`control-bot/patches/`): the `control-bot` image installs
+  `claude-code-telegram@v1.6.0` (pinned tag — **not** forked) and then, as a mandatory
+  Dockerfile step, applies the vendored patches on top: `0001` stops the ConversationEnhancer
+  from appending "What would you like to do next?" buttons after every reply, and `0002`
+  dedupes + rate-limits the progress-message edits so long pipeline runs don't freeze the
+  Telegram progress bar. v1.6.0 exposes **no config flag** for either, and the edits are to an
+  installed dependency (wiped by any reinstall), so the patch-apply must live in the image
+  build. Verify in the startup log: `enabled_features` without `"conversation"`, and no flood
+  of "Failed to update progress message" on a long run. (See `control-bot/patches/README.md`.)
 - **Shared volume:** `data-repo` mounted on `upload-bot`/`control-bot`/`ui-backend` — the
   only point of connection — and reachable on the host for dev sessions 1/2. `code-repo` is
   baked into images; `data-repo` **never** is (INV-2).
