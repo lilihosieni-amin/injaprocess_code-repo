@@ -125,8 +125,8 @@ Key point: whether a session is "development" or "runtime" is determined by **ho
 **Runtime profile (session 3):**
 - `APPROVED_DIRECTORY = data-repo` — cannot reach the code. (INV-2)
 - `AGENTIC_MODE=false` — classic mode (13-command interface: `/new`, `/continue`, `/end`, `/status`, `/cd`, `/ls`, `/pwd`, `/projects`, `/export`, `/actions`, `/git`, …).
-- Tool allowlist via `CLAUDE_ALLOWED_TOOLS`, minimum: `Read, Write, Edit, Bash, Glob, Grep, Task` (Bash for calling the CLIs and git; Task for parallel subagents).
-- Execution path: SDK first, **CLI as fallback** — if the SDK path doesn't pick up the skills, it automatically switches to the CLI (this bot supports both).
+- Tool allowlist via `CLAUDE_ALLOWED_TOOLS`, minimum: `Read, Write, Edit, Bash, Glob, Grep, Task` (Bash for calling the CLIs and git; Task for subagents — dispatched **serially**, see §5.4 / ADR 0003).
+- Execution path: **SDK only** — this pinned version (`v1.6.0`) has **no CLI fallback** (the `USE_SDK` flag is not read by the code); every run goes through the `claude_agent_sdk` bridge, which required the ADR 0004–0007 hardening.
 - No plugins loaded (so Superpowers doesn't leak in). `ENABLE_FILE_UPLOADS=false` (uploads only via Bot 1).
 - Budget and time: `CLAUDE_TIMEOUT_SECONDS`, `CLAUDE_MAX_TURNS` high; `CLAUDE_MAX_COST_PER_USER`, `CLAUDE_MAX_COST_PER_REQUEST` sized for Opus.
 - Runtime hooks active (Section 7).
@@ -253,7 +253,7 @@ Five stages; three LLM subagents (Opus 4.8), two deterministic CLIs.
      │
   ── human checkpoint (Telegram) ──   confirm/correct the process list
      │
-[extract]     subagent×N parallel(Opus) → runs/{name}/candidates/*.json
+[extract]     subagent×N serial (Opus)  → runs/{name}/candidates/*.json
      │
 [merge]       deterministic CLI     → departments/{dept}/processes/{id}.json (+ pending)
      │
@@ -301,9 +301,9 @@ The playbook shows the list in Telegram, in three categories: "A (new)", "B (upd
 
 For confirmed "unchanged" processes, the process file stays untouched and only a lightweight record is added to `source.touched_by` (this voice referenced the process but added nothing) so the coverage history stays complete.
 
-### 5.4 extract (subagent×N parallel) — FR-P5, FR-D5
+### 5.4 extract (subagent×N, serial — one at a time) — FR-P5, FR-D5
 
-- Each process runs in a separate subagent with its own window, reading only its own segment (context control — NFR-6). Parallel execution with `Task`.
+- Each process runs in a separate subagent with its own window, reading only its own segment (context control — NFR-6). Dispatched **serially** — one `Task`, awaited before the next — because the control-bot's Claude SDK bridge drops a parallel `Task` batch mid-run; the context-isolation benefit is kept, parallel throughput is traded for reliability (ADR 0003).
 - The `idef-extraction` skill (IDEF0/IDEF3 knowledge + schema + the "no fabrication" rule) is preloaded at the subagent's startup.
 - Output: a candidate graph with **temporary keys** for nodes (e.g. `n1`, `n2`); **no final IDs are created by the LLM**. For an "update" process, the output is a delta (Section 6).
 
@@ -443,7 +443,7 @@ The skills/prompts/IDEF rules stay in `data-repo/.claude` (intentionally easy to
 - All extraction subagents (`classify`, `extract`, `summarize`) run on **Opus 4.8**, even simple tasks (NFR-4). Change point: a single `model` line in that subagent's frontmatter.
 - `transcribe`: Gemini on Vertex (model configurable).
 - `merge`, `allocate-id`, `layout`: no model (deterministic).
-- Budgets (NFR-5) are set to match Opus on parallel runs; since extract is parallel and multi-process, the cost per run can be high.
+- Budgets (NFR-5) are sized for Opus multi-stage runs; since extract is **serial** and multi-process, a run is long (~15–25 min on the 2-CPU host) and its cost accrues across many serial subagents.
 
 ---
 
