@@ -49,6 +49,26 @@ def test_users_file_loads_multiple(tmp_path):
     assert s.users == users
 
 
+def test_users_file_non_dict_raises(tmp_path):
+    env = _valid_env(tmp_path)
+    del env["UI_USERNAME"]; del env["UI_PASSWORD_HASH"]
+    p = tmp_path / "ui-users.json"
+    p.write_text(json.dumps(["not", "a", "map"]))
+    env["UI_USERS_FILE"] = str(p)
+    with pytest.raises(RuntimeError):
+        load_settings(env)
+
+
+def test_users_file_empty_object_raises(tmp_path):
+    env = _valid_env(tmp_path)
+    del env["UI_USERNAME"]; del env["UI_PASSWORD_HASH"]
+    p = tmp_path / "ui-users.json"
+    p.write_text("{}")
+    env["UI_USERS_FILE"] = str(p)
+    with pytest.raises(RuntimeError):
+        load_settings(env)
+
+
 def test_single_user_env_populates_users_map(tmp_path):
     s = load_settings(_valid_env(tmp_path))
     assert s.users == {"analyst": "$argon2id$dummy"}

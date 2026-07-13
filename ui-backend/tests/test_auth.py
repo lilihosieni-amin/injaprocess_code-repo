@@ -59,6 +59,13 @@ def test_multiple_users_can_log_in(data_root):
         "/api/auth/login", json={"username": "alice", "password": "apw"}).status_code == 200
 
 
+def test_multi_user_mode_rejects_blank_and_unknown(data_root):
+    c = _multi_client(data_root)
+    assert c.post("/api/auth/login", json={"username": "", "password": ""}).status_code == 401
+    assert c.post("/api/auth/login", json={"username": "", "password": "apw"}).status_code == 401
+    assert c.post("/api/auth/login", json={"username": "root", "password": "apw"}).status_code == 401
+
+
 def test_multi_unknown_user_or_wrong_password_401(data_root):
     c = _multi_client(data_root)
     assert c.post("/api/auth/login", json={"username": "bob", "password": "apw"}).status_code == 401
