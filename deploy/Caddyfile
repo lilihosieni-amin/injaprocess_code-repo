@@ -1,0 +1,12 @@
+# UI reverse proxy with internal (self-signed) TLS on the server IP (NFR-3).
+# To use a real domain later: replace the site address with the domain and
+# delete the `tls internal` line — Caddy then auto-provisions Let's Encrypt.
+{
+	# global options; local CA only
+	auto_https disable_redirects
+}
+
+https://91.107.147.127 {
+	tls internal
+	reverse_proxy ui-backend:8000
+}
