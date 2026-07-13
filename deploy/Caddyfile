@@ -4,6 +4,10 @@
 {
 	# global options; local CA only
 	auto_https disable_redirects
+	# A bare IP site has no SNI (clients don't send SNI for an IP address),
+	# so tell Caddy which internal cert to present by default. When you move
+	# to a real domain, drop this line and change the site address below.
+	default_sni 91.107.147.127
 }
 
 https://91.107.147.127 {
