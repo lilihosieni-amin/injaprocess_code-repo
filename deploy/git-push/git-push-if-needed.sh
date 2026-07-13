@@ -10,7 +10,9 @@ if [ -f "$KEY" ]; then
 fi
 
 cd "$REPO"
-git fetch -q origin "$BRANCH" 2>/dev/null || true
+if ! git fetch -q origin "$BRANCH" 2>/dev/null; then
+    echo "warning: git fetch failed (check deploy key / network)" >&2
+fi
 UNPUSHED="$(git rev-list --count "origin/${BRANCH}..${BRANCH}" 2>/dev/null || echo 0)"
 
 if [ "$UNPUSHED" -gt 0 ]; then

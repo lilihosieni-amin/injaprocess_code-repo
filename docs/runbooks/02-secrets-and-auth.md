@@ -34,6 +34,8 @@ TELEGRAM_BOT_TOKEN=      # Bot 2 token from @BotFather
 ALLOWED_USERS=           # comma-separated numeric Telegram IDs
 APPROVED_DIRECTORY=/data # the data-repo bind mount — the ONLY dir the session can reach
 USE_SDK=true             # SDK path so data-repo hooks fire
+DATABASE_URL=sqlite:////state/bot.db  # bot SQLite state on the writable control-bot-state volume
+                                      # (control-bot runs read_only: true — /state is the writable path)
 # ...plus the budgets (CLAUDE_MAX_TURNS / _TIMEOUT_SECONDS / _MAX_COST_PER_*) and
 #    the disable-everything-else flags from the template.
 ANTHROPIC_API_KEY=       # LEAVE BLANK — we use subscription auth (see step 3)

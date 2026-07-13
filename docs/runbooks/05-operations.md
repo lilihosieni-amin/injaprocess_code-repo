@@ -34,19 +34,30 @@ prints `push ok`; otherwise it prints `nothing to push`.
 
 ## AC-7: runtime cannot edit the baked code/CLIs
 
-The engine CLIs are baked into the `control-bot` image at `/opt/engine`
-(installed onto `/usr/local/bin`) as a read-only image layer, outside the
-session's `APPROVED_DIRECTORY` (`/data`). The runtime must not be able to modify
-them. Verify:
+**Primary guarantee (hooks).** The engine CLIs are baked into the `control-bot`
+image at `/opt/engine` (installed onto `/usr/local/bin`) — **outside** the
+session's `APPROVED_DIRECTORY` (`/data`). The Phase-3 in-container Claude hooks
+(active because `USE_SDK=true` and the project settings are loaded) confine the
+agent's Write/Edit/Bash to `/data`, so the runtime agent cannot reach the CLIs or
+code in the first place. That confinement is the real AC-7 enforcement.
+
+**Filesystem defense-in-depth.** The `control-bot` service also runs with
+`read_only: true`, so its root FS is not writable even by root — only `/data`,
+`/root/.claude`, `/state`, and the declared `tmpfs` mounts are writable. Verify
+that the baked CLIs cannot be written:
 
 ```bash
-# AC-7: runtime cannot edit code/CLIs inside control-bot
-docker compose exec control-bot sh -c 'echo x >> /opt/engine/merge/cli.py' # must FAIL (read-only layer)
+# AC-7: the baked CLIs live on the read-only root FS — writing must fail
+docker compose exec control-bot sh -c 'echo x >> /usr/local/bin/merge 2>&1; echo RC=$?'
 ```
 
-This command **must fail** (non-zero exit / permission or read-only error). A
-success would mean the runtime can mutate the baked pipeline code — investigate
-immediately.
+Expected: a `Read-only file system` error and a **non-zero** `RC`. A success
+(RC=0) would mean the root FS is writable — check that `read_only: true` is still
+set on `control-bot` and investigate immediately.
+
+> Note: a Docker container has a writable upper layer, so "baked into an image
+> layer" is *not* by itself a write barrier — `read_only: true` is what supplies
+> this filesystem check, and the hooks supply the primary agent confinement.
 
 ## Backup & restore
 

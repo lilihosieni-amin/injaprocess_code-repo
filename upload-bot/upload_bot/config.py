@@ -24,7 +24,10 @@ class Config:
         raw = env.get("ALLOWED_USER_IDS") or env.get("ALLOWED_USER_ID")
         if not raw:
             raise SystemExit("ALLOWED_USER_IDS is not set")
-        ids = frozenset(int(p) for p in raw.split(",") if p.strip())
+        try:
+            ids = frozenset(int(p) for p in raw.split(",") if p.strip())
+        except ValueError:
+            raise SystemExit(f"ALLOWED_USER_IDS contains a non-numeric id: {raw!r}")
         if not ids:
             raise SystemExit("ALLOWED_USER_IDS has no valid ids")
 

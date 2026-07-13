@@ -11,12 +11,42 @@ has been completed.
 
 ## First deploy
 
+**Preflight — the secret files must already exist and be regular files.** If any
+`/opt/inja/secrets/*.env` or `ui-users.json` is missing when `up -d` runs, Docker
+creates a **directory** at the mount path and the affected service crash-loops
+(e.g. ui-backend tries to open `ui-users.json` and finds a dir). Check first:
+
+```bash
+for f in upload-bot control-bot ui-backend telegram-bot-api; do
+  test -f "/opt/inja/secrets/$f.env" || echo "MISSING /opt/inja/secrets/$f.env — create it first (runbook 02)"
+done
+test -f /opt/inja/secrets/ui-users.json || echo "MISSING ui-users.json — create it first (runbook 02)"
+```
+
+Only proceed when the loop prints nothing.
+
 ```bash
 cd /opt/inja/code-repo/deploy
 docker compose build                 # builds all custom images on the server
 docker compose up -d
 docker compose ps                    # all services "running"
 ```
+
+**Confirm control-bot did not crash-loop on a read-only path.** `control-bot`
+runs with `read_only: true` (AC-7 defense-in-depth), with `/tmp`,
+`/root/.cache`, `/root/.config`, `/root/.claude`, and `/state` made writable. If
+the claude-code CLI or the bot needs some other writable path, it will crash on
+first start:
+
+```bash
+docker compose logs control-bot      # look for "Read-only file system" errors
+```
+
+If you see a read-only-filesystem error on a path not already covered, add that
+path to the service's `tmpfs:` list (or a named volume) in `docker-compose.yml`
+and `docker compose up -d` again. Also ensure `control-bot.env` sets
+`DATABASE_URL=sqlite:////state/bot.db` so the bot's SQLite state lands on the
+writable `control-bot-state` volume (runbook 02).
 
 Then check the UI:
 

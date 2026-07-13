@@ -805,8 +805,8 @@ docker compose logs -f control-bot            # or any service
 docker compose restart ui-backend
 # verify scheduled push logic on demand:
 docker compose exec git-push /usr/local/bin/git-push-if-needed.sh
-# AC-7: runtime cannot edit code/CLIs inside control-bot
-docker compose exec control-bot sh -c 'echo x >> /opt/engine/merge/cli.py' # must FAIL (read-only layer)
+# AC-7: hooks confine the agent to /data; read_only: true makes the baked CLIs unwritable
+docker compose exec control-bot sh -c 'echo x >> /usr/local/bin/merge 2>&1; echo RC=$?' # must FAIL (read-only FS)
 ```
 Backup: git-push is the off-site baseline (data-repo minus audio). For raw audio, add a separate rsync/snapshot of `/opt/inja/data-repo/meetings/audio/`. Restore = re-clone data-repo + restore audio from the snapshot.
 
@@ -1051,8 +1051,9 @@ Browse `https://91.107.147.127`, accept the cert, log in as a UI user from `ui-u
 
 - [ ] **Step 4: Verify AC-7 (runtime can't change code/CLIs)**
 
-Run: `docker compose exec control-bot sh -c 'echo x >> /opt/engine/merge/cli.py; echo RC=$?'`
-Expected: a read-only-filesystem error and non-zero RC — the engine CLI cannot be mutated. **Exit criterion 2 (AC-7).**
+Primary mechanism: the Phase-3 in-container hooks confine the agent to `APPROVED_DIRECTORY=/data`, so it cannot reach the engine CLIs/code baked outside `/data` (`/usr/local/bin` + `/opt/engine`). Filesystem defense-in-depth: `control-bot` runs `read_only: true`.
+Run: `docker compose exec control-bot sh -c 'echo x >> /usr/local/bin/merge 2>&1; echo RC=$?'`
+Expected: a read-only-filesystem error and non-zero RC — the baked CLI cannot be mutated (writable-upper-layer notwithstanding, because the root FS is read-only). **Exit criterion 2 (AC-7).**
 
 - [ ] **Step 5: Verify scheduled push logic**
 

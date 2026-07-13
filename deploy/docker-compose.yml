@@ -34,9 +34,18 @@ services:
     env_file: [/opt/inja/secrets/control-bot.env]        # TELEGRAM_BOT_TOKEN, ALLOWED_USERS, budgets…
     environment:
       APPROVED_DIRECTORY: /data
+    # AC-7 defense-in-depth: read-only root FS so the in-container agent cannot
+    # mutate the baked engine CLIs/code (which live OUTSIDE /data). Everything the
+    # container legitimately writes to is a tmpfs or a named volume below.
+    read_only: true
+    tmpfs:
+      - /tmp                 # git / python / claude scratch
+      - /root/.cache         # claude-code CLI cache
+      - /root/.config        # claude-code CLI config scratch
     volumes:
       - /opt/inja/data-repo:/data
-      - claude-credentials:/root/.claude
+      - claude-credentials:/root/.claude   # subscription credential (rw)
+      - control-bot-state:/state           # bot SQLite state — set DATABASE_URL=sqlite:////state/bot.db
 
   ui-backend:
     build:
@@ -69,6 +78,9 @@ services:
       dockerfile: deploy/git-push.Dockerfile
     image: inja-git-push
     restart: unless-stopped
+    # These must match the script defaults in git-push-if-needed.sh: busybox crond
+    # does not pass container env into cron jobs, so the script relies on its own
+    # defaults (DATA_REPO=/data, GIT_BRANCH=main, DEPLOY_KEY=/keys/id_deploy).
     environment:
       DATA_REPO: /data
       GIT_BRANCH: main
@@ -80,4 +92,5 @@ services:
 volumes:
   telegram-bot-api-data:
   claude-credentials:
+  control-bot-state:
   caddy-data:

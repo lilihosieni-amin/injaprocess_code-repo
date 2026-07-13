@@ -59,10 +59,18 @@ Because patches live on an installed dependency, any reinstall/upgrade wipes the
 verification: startup log shows `enabled_features` without "conversation", and a
 long run no longer floods "Failed to update progress message" warnings.
 
-**AC-7 (deployed):** engine CLIs and code are baked into read-only image layers
-outside `APPROVED_DIRECTORY`; the Phase-3 runtime hooks are active in-container.
-In the running `control-bot`, runtime cannot edit the CLIs or code, and hooks
-block forbidden writes. Verified by a runbook step.
+**AC-7 (deployed).** The primary guarantee is the **Phase-3 in-container Claude
+hooks**: with `USE_SDK=true` and the project settings active, they confine the
+agent's Write/Edit/Bash to `APPROVED_DIRECTORY=/data`, so it cannot edit the
+engine CLIs or code — which are baked **outside** `/data` (`/usr/local/bin` +
+`/opt/engine`), with no dev tooling in the image. Filesystem enforcement is
+layered on top: the `control-bot` service runs with `read_only: true`, so its
+root FS (including the baked CLIs) is not writable even by root — only the
+explicit `tmpfs`/volume mounts (`/tmp`, `/root/.cache`, `/root/.config`,
+`/root/.claude`, `/state`) and the `/data` bind are writable. (A container's
+writable upper layer means "baked into an image layer" is **not** by itself a
+write barrier — `read_only: true` is what supplies the filesystem guarantee.)
+Verified by a runbook step.
 
 ## 4. Server layout & compose
 
@@ -153,8 +161,10 @@ Numbered, task-focused Markdown:
 ## 9. Exit criteria (PLAN.md §9)
 
 1. `docker compose up -d` brings both bots + UI up as durable services (NFR-9).
-2. **AC-7 (deployed):** in the running `control-bot` container, runtime cannot
-   edit the engine CLIs or code, and the hooks block forbidden writes.
+2. **AC-7 (deployed):** in the running `control-bot` container, the Phase-3 hooks
+   confine the agent to `APPROVED_DIRECTORY=/data`, so it cannot edit the engine
+   CLIs or code (baked outside `/data` at `/usr/local/bin` + `/opt/engine`);
+   `read_only: true` reinforces this by making the root FS unwritable.
 3. Scheduled push runs only when there are unpushed commits; a backup is produced.
 4. Runbooks let an operator provision, build, deploy, authenticate, operate, and
    change users end-to-end.
@@ -170,8 +180,9 @@ Numbered, task-focused Markdown:
 
 ## 11. Invariants touched
 
-- **INV-2** (runtime can't change code/config): baked read-only image layers +
-  CLIs outside `APPROVED_DIRECTORY` + in-container hooks → AC-7.
+- **INV-2** (runtime can't change code/config): in-container hooks confine the
+  agent to `APPROVED_DIRECTORY=/data` + CLIs baked outside `/data` + `read_only:
+  true` on control-bot → AC-7.
 - **NFR-7** (off-site backup): scheduled `git-push` of data-repo.
 - **NFR-9** (durable service): Compose stack + `restart: unless-stopped`.
 - **NFR-3** (UI auth over TLS): Caddy TLS in front of the authenticated backend.

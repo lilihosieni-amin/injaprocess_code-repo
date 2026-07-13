@@ -35,3 +35,9 @@ def test_proxy_url_from_env(data_root):
 def test_missing_allowlist_raises(data_root):
     with pytest.raises(SystemExit):
         Config.from_env({"TELEGRAM_BOT_TOKEN": "t", "DATA_ROOT": str(data_root)})
+
+
+def test_non_numeric_id_raises_systemexit(data_root):
+    with pytest.raises(SystemExit):
+        Config.from_env({"TELEGRAM_BOT_TOKEN": "t", "ALLOWED_USER_IDS": "1,abc",
+                         "DATA_ROOT": str(data_root)})
