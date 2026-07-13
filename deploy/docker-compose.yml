@@ -1,40 +1,83 @@
-# Deployment stack skeleton (ARD §16) — services declared, images/builds TODO.
-# data-repo is a shared volume: the "only point of connection" between services.
-# code-repo is baked into images; data-repo NEVER is (INV-2).
-# Secrets via env files outside the repo / Docker secrets — never baked in.
-
+# Full stack (ARD §16). `docker compose up -d` from /opt/inja/code-repo/deploy.
+# Build context is the code-repo root (..). data-repo + secrets + keys are host paths.
 name: inja-food-process
 
 services:
   telegram-bot-api:
-    image: tdlib/telegram-bot-api   # local Bot API server, 2 GB cap (NFR-2)
+    image: tdlib/telegram-bot-api
     restart: unless-stopped
-    # TODO: TELEGRAM_API_ID / TELEGRAM_API_HASH env, port, data volume
+    env_file: [/opt/inja/secrets/telegram-bot-api.env]   # TELEGRAM_API_ID / TELEGRAM_API_HASH
+    command: ["--local", "--http-port=8081"]
+    volumes:
+      - telegram-bot-api-data:/var/lib/telegram-bot-api
 
   upload-bot:
-    # TODO: build ../upload-bot
+    build:
+      context: ..
+      dockerfile: deploy/upload-bot.Dockerfile
+    image: inja-upload-bot
     restart: unless-stopped
-    # volumes: data-repo mount (DATA_ROOT)
+    depends_on: [telegram-bot-api]
+    env_file: [/opt/inja/secrets/upload-bot.env]         # TELEGRAM_BOT_TOKEN, ALLOWED_USER_IDS
+    environment:
+      DATA_ROOT: /data
+      TELEGRAM_API_BASE_URL: http://telegram-bot-api:8081
+    volumes:
+      - /opt/inja/data-repo:/data
 
   control-bot:
-    # TODO: custom image — Python + Node + Claude Code CLI + engine CLIs + git (ARD §16)
+    build:
+      context: ..
+      dockerfile: deploy/control-bot.Dockerfile
+    image: inja-control-bot
     restart: unless-stopped
-    # volumes: data-repo mount (APPROVED_DIRECTORY)
+    env_file: [/opt/inja/secrets/control-bot.env]        # TELEGRAM_BOT_TOKEN, ALLOWED_USERS, budgets…
+    environment:
+      APPROVED_DIRECTORY: /data
+    volumes:
+      - /opt/inja/data-repo:/data
+      - claude-credentials:/root/.claude
 
   ui-backend:
-    # TODO: build ../ui-backend, serves built frontend from ../ui/dist
+    build:
+      context: ..
+      dockerfile: deploy/ui-backend.Dockerfile
+    image: inja-ui-backend
     restart: unless-stopped
-    # volumes: data-repo mount; calls engine CLIs + git
+    env_file: [/opt/inja/secrets/ui-backend.env]         # SESSION_SIGNING_KEY, UI_USERS_FILE
+    environment:
+      DATA_ROOT: /data
+      UI_USERS_FILE: /run/secrets/ui-users.json
+    volumes:
+      - /opt/inja/data-repo:/data
+      - /opt/inja/secrets/ui-users.json:/run/secrets/ui-users.json:ro
 
   proxy:
-    # TODO: nginx or Caddy — TLS for the UI only
+    image: caddy:2
     restart: unless-stopped
+    depends_on: [ui-backend]
+    ports:
+      - "443:443"
+    volumes:
+      - /opt/inja/code-repo/deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+    # note: Caddy's own state lives in the caddy-data volume; distinct from data-repo
 
   git-push:
-    # TODO: cron 11:00 & 23:00, push only if unpushed commits exist (NFR-7, ARD §15)
+    build:
+      context: ..
+      dockerfile: deploy/git-push.Dockerfile
+    image: inja-git-push
     restart: unless-stopped
-    # volumes: data-repo mount + deploy key
+    environment:
+      DATA_REPO: /data
+      GIT_BRANCH: main
+      DEPLOY_KEY: /keys/id_deploy
+    volumes:
+      - /opt/inja/data-repo:/data
+      - /opt/inja/keys:/keys:ro
 
 volumes:
-  data-repo:
-    # TODO: bind-mount the host data-repo path so dev sessions can also reach it
+  telegram-bot-api-data:
+  claude-credentials:
+  caddy-data:
