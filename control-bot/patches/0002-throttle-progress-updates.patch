@@ -16,6 +16,8 @@ Apply during the Phase-7 image build, at the site-packages root:
 Verify: a long run's progress bar advances through stages without a flood of
 "Failed to update progress message" warnings.
 
+Regenerated 2026-07-12 against the installed claude-code-telegram@v1.6.0 source tree (context/line-numbers corrected; the -/+ transformation is unchanged).
+
 --- a/src/bot/handlers/message.py
 +++ b/src/bot/handlers/message.py
 @@ -358,7 +358,12 @@

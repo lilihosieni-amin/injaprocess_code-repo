@@ -13,7 +13,7 @@ RUN npm install -g @anthropic-ai/claude-code
 # script host is not reachable from the build network); uv lands on the default
 # PATH at /usr/local/bin. /root/.local/bin is where `uv tool install` puts the
 # bot's console script (claude-telegram-bot), so it must be on PATH too.
-RUN pip install --no-cache-dir uv
+RUN pip install --no-cache-dir uv==0.11.28
 ENV PATH="/root/.local/bin:${PATH}"
 
 # Engine CLIs on PATH — baked, outside APPROVED_DIRECTORY (INV-1/INV-2)
@@ -35,7 +35,8 @@ RUN set -eux; \
        print(os.path.abspath(os.path.join(os.path.dirname(r.__file__), "..", "..", "..")))')"; \
     patch -p1 --forward -d "$SITE" < /opt/patches/0001-disable-conversation-enhancer.patch; \
     patch -p1 --forward -d "$SITE" < /opt/patches/0002-throttle-progress-updates.patch; \
-    grep -q "at most once per 2s\|rate-limit" "$SITE/src/bot/handlers/message.py"
+    grep -q "at most once per 2s\|rate-limit" "$SITE/src/bot/handlers/message.py"; \
+    grep -q "if False and not self.config.agentic_mode" "$SITE/src/bot/features/registry.py"
 
 # Runtime: APPROVED_DIRECTORY (data-repo) bind-mounted; env_file supplies the profile;
 # claude-credentials volume mounted at /root/.claude for subscription auth.
