@@ -26,7 +26,7 @@ ENV SCHEMA_DIR=/opt/schemas
 RUN uv tool install --with socksio \
       "git+https://github.com/RichardAtCT/claude-code-telegram@v1.6.0"
 
-# Apply the two required source patches into the tool's site-packages.
+# Apply the three required source patches into the tool's site-packages.
 # The diffs target a/src/...; -p1 at the site-packages root resolves them.
 COPY control-bot/patches/ /opt/patches/
 RUN set -eux; \
@@ -35,8 +35,10 @@ RUN set -eux; \
        print(os.path.abspath(os.path.join(os.path.dirname(r.__file__), "..", "..", "..")))')"; \
     patch -p1 --forward -d "$SITE" < /opt/patches/0001-disable-conversation-enhancer.patch; \
     patch -p1 --forward -d "$SITE" < /opt/patches/0002-throttle-progress-updates.patch; \
+    patch -p1 --forward -d "$SITE" < /opt/patches/0003-preset-append-system-prompt.patch; \
     grep -q "at most once per 2s\|rate-limit" "$SITE/src/bot/handlers/message.py"; \
-    grep -q "if False and not self.config.agentic_mode" "$SITE/src/bot/features/registry.py"
+    grep -q "if False and not self.config.agentic_mode" "$SITE/src/bot/features/registry.py"; \
+    grep -q '"preset": "claude_code"' "$SITE/src/claude/sdk_integration.py"
 
 # Runtime: APPROVED_DIRECTORY (data-repo) bind-mounted; env_file supplies the profile;
 # claude-credentials volume mounted at /root/.claude for subscription auth.

@@ -1,0 +1,53 @@
+Subject: [control-bot] Append to the Claude Code preset instead of replacing it
+
+claude-code-telegram v1.6.0 builds `system_prompt` as a plain string
+(src/claude/sdk_integration.py: `system_prompt=base_prompt`, where base_prompt is
+"All file operations must stay within {dir}. Use relative paths." + the working-dir
+CLAUDE.md). In claude-agent-sdk >=0.1.x a **string** system_prompt is emitted as
+`--system-prompt`, which REPLACES Claude Code's built-in agentic system prompt entirely.
+Without that default harness the model reverts to conversational behaviour and ends its
+turn after a visible milestone — in our pipeline, right after the Stage-5 extract
+subagents return — so the SDK emits a clean ResultMessage (is_error=false, num_turns well
+under max_turns) and the bot reports "✅ Task completed" while the run is actually frozen
+at Stage 5 (meta.json finished_at:null, processes:[]). The same skill run through the
+interactive `claude` CLI (default preset intact) drives straight through
+merge → summarize → finish, proving the flow is correct and the wrapper is at fault.
+
+This patch switches to the preset+append form
+(`{"type":"preset","preset":"claude_code","append": base_prompt}`), which the SDK emits as
+`--append-system-prompt`: Claude Code's default agentic prompt is kept AND our
+directory/CLAUDE.md guidance is appended.
+
+Note: this bot version is SDK-only — there is no CLI-subprocess fallback and the `USE_SDK`
+env var is not read by the code, so every run goes through this path.
+
+Apply during the Phase-7 image build, at the site-packages root:
+  patch -p1 --forward -d "$SITE" < control-bot/patches/0003-preset-append-system-prompt.patch
+Verify: the options block passes the preset dict, i.e.
+  grep -q '"preset": "claude_code"' "$SITE/src/claude/sdk_integration.py"
+and a real /process-voice run through the bot completes extract → merge → summarize →
+finish with meta.json finished_at set (no manual "ادامه بده" nudges).
+
+Generated 2026-07-13 against the installed claude-code-telegram@v1.6.0 source tree
+(diff produced from the real file; applies cleanly at -p1 with no fuzz/offset).
+
+--- a/src/claude/sdk_integration.py
++++ b/src/claude/sdk_integration.py
+@@ -333,7 +333,16 @@
+                     "autoAllowBashIfSandboxed": True,
+                     "excludedCommands": self.config.sandbox_excluded_commands or [],
+                 },
+-                system_prompt=base_prompt,
++                # control-bot patch 0003: append to the Claude Code preset instead of
++                # REPLACING it. A bare string emits --system-prompt, discarding Claude
++                # Code's built-in agentic harness so the model stops mid-pipeline after
++                # subagents return. The preset+append form emits --append-system-prompt,
++                # keeping the default behavior AND our directory/CLAUDE.md guidance.
++                system_prompt={
++                    "type": "preset",
++                    "preset": "claude_code",
++                    "append": base_prompt,
++                },
+                 setting_sources=["project"],
+                 stderr=_stderr_callback,
+             )
