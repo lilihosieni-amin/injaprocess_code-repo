@@ -39,6 +39,13 @@ services:
     env_file: [/opt/inja/secrets/control-bot.env]        # TELEGRAM_BOT_TOKEN, ALLOWED_USERS, budgets…
     environment:
       APPROVED_DIRECTORY: /data
+      # Disable Claude Code's auto-backgrounding/deferral of Task subagents. On this
+      # 2-CPU host the extract subagents run 60–110s; Claude Code was deferring the
+      # long ones (interrupted_turn → injected "Continue from where you left off." →
+      # "No response requested." stop_sequence), stalling /process-voice mid-extract
+      # and forcing manual "ادامه بده" nudges. The pipeline wants agents to run
+      # synchronously to completion, so background-tasking is pure downside here.
+      CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1"
     # AC-7 is enforced by the Phase-3 in-container hooks + the bot's can_use_tool
     # callback (setting_sources=["project"], approved_directory=/data): the agent's
     # file operations are confined to /data, and the engine CLIs/code are baked
