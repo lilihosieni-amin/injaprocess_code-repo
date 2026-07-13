@@ -19,8 +19,9 @@ Verify: a long run's progress bar advances through stages without a flood of
 --- a/src/bot/handlers/message.py
 +++ b/src/bot/handlers/message.py
 @@ -358,7 +358,12 @@
+         # MCP image collection via stream intercept
          mcp_images: list[ImageAttachment] = []
-
+ 
 -        # Enhanced stream updates handler with progress tracking
 +        # Enhanced stream updates handler with progress tracking.
 +        # Throttled (control-bot patch 0002): skip unchanged text (avoids Telegram
@@ -31,7 +32,8 @@ Verify: a long run's progress bar advances through stages without a flood of
          async def stream_handler(update_obj):
              # Intercept send_image_to_user MCP tool calls.
              # The SDK namespaces MCP tools as "mcp__<server>__<tool>".
-@@ -378,10 +383,13 @@
+@@ -379,8 +384,12 @@
+ 
              try:
                  progress_text = await _format_progress_update(update_obj)
 -                if progress_text:
@@ -44,3 +46,4 @@ Verify: a long run's progress bar advances through stages without a flood of
 +                        _progress_state["at"] = now
              except Exception as e:
                  logger.warning("Failed to update progress message", error=str(e))
+ 

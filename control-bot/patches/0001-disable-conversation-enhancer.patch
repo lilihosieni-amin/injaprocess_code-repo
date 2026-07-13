@@ -18,9 +18,10 @@ the startup log must show `enabled_features` WITHOUT "conversation".)
 
 --- a/src/bot/features/registry.py
 +++ b/src/bot/features/registry.py
-@@ -91,9 +91,12 @@ class FeatureRegistry:
-                 logger.error("Failed to initialize image handler", error=str(e))
-
+@@ -91,8 +91,11 @@
+             except Exception as e:
+                 logger.error("Failed to initialize voice handler", error=str(e))
+ 
 -        # Conversation enhancements - skip in agentic mode
 -        if not self.config.agentic_mode:
 +        # Conversation enhancements - DISABLED for the locked control-bot profile.
@@ -31,5 +32,3 @@ the startup log must show `enabled_features` WITHOUT "conversation".)
              try:
                  self.features["conversation"] = ConversationEnhancer()
                  logger.info("Conversation enhancer feature enabled")
-             except Exception as e:
-                 logger.error("Failed to initialize conversation enhancer", error=str(e))
