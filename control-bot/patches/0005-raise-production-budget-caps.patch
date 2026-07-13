@@ -1,0 +1,39 @@
+Subject: [control-bot] Raise ProductionConfig SDK budget caps (was $2/request, $5/user)
+
+claude-code-telegram v1.6.0 applies environment-profile overrides (loader.py
+`_apply_environment_overrides`) that **clobber env vars**: with ENVIRONMENT=production,
+`ProductionConfig` hardcodes `claude_max_cost_per_request = 2.0` and
+`claude_max_cost_per_user = 5.0`, silently overriding CLAUDE_MAX_COST_PER_REQUEST=50 /
+CLAUDE_MAX_COST_PER_USER=100 from the container env.
+
+`claude_max_cost_per_request` is passed to the SDK as `ClaudeAgentOptions.max_budget_usd`
+— a **per-turn** cost cap. A single /process-voice pipeline turn costs ~$2, so Claude Code
+injects a `budget_usd` warning ({"used":1.97,"total":2,"remaining":0.02}) and the model
+stops mid-extract with «بودجهٔ این اجرا در حال اتمام است». On the next message the budget
+resets to $2 and it stops again — so the run needs repeated manual "ادامه بده" nudges.
+
+This patch raises both caps to 100.0 so a full multi-stage run fits in one turn.
+`claude_max_cost_per_user` is effectively inert in this version (actual Claude cost is
+never fed back into the per-user tracker — only tiny pre-run estimates accumulate, reset
+daily), so raising it is harmless and matches the intended env value.
+
+Apply during the Phase-7 image build, at the site-packages root:
+  patch -p1 --forward -d "$SITE" < control-bot/patches/0005-raise-production-budget-caps.patch
+Verify:
+  grep -q "float = 100.0  # control-bot patch 0005" "$SITE/src/config/environments.py"
+and a real /process-voice run completes extract -> merge -> summarize -> finish in one turn
+without a «بودجه» stop.
+
+Generated 2026-07-13 against the installed claude-code-telegram@v1.6.0 source tree.
+
+--- a/src/config/environments.py
++++ b/src/config/environments.py
+@@ -58,8 +58,8 @@
+     enable_telemetry: bool = True
+     # Use stricter defaults for production
+-    claude_max_cost_per_user: float = 5.0  # Lower cost limit
+-    claude_max_cost_per_request: float = 2.0  # Per-request SDK cap
++    claude_max_cost_per_user: float = 100.0  # control-bot patch 0005: raised from 5.0
++    claude_max_cost_per_request: float = 100.0  # control-bot patch 0005: raised from 2.0 (per-turn SDK max_budget_usd; $2 stalled /process-voice mid-run)
+     rate_limit_requests: int = 5  # Stricter rate limiting
+     session_timeout_hours: int = 12  # Shorter session timeout

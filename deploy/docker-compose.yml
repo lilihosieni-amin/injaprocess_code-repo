@@ -46,6 +46,13 @@ services:
       # and forcing manual "ادامه بده" nudges. The pipeline wants agents to run
       # synchronously to completion, so background-tasking is pure downside here.
       CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1"
+      # Headroom for the long single-turn pipeline (audit: 200 vs ~100–150 real turns
+      # is a thin margin on bigger voices). Overrides CLAUDE_MAX_TURNS from the env_file.
+      CLAUDE_MAX_TURNS: "300"
+      # Per-Bash-command timeout: default is 120s, but `transcribe` on a fresh long
+      # audio (Vertex) can exceed 2 min and would otherwise be killed mid-command.
+      BASH_DEFAULT_TIMEOUT_MS: "600000"
+      BASH_MAX_TIMEOUT_MS: "600000"
     # AC-7 is enforced by the Phase-3 in-container hooks + the bot's can_use_tool
     # callback (setting_sources=["project"], approved_directory=/data): the agent's
     # file operations are confined to /data, and the engine CLIs/code are baked
