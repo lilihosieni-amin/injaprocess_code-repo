@@ -11,13 +11,25 @@ COOKIE_NAME = "inja_session"
 _ph = PasswordHasher()
 
 
-def verify_password(cfg: Settings, password: str) -> bool:
+def verify_hash(password_hash: str, password: str) -> bool:
     try:
-        return _ph.verify(cfg.ui_password_hash, password)
+        return _ph.verify(password_hash, password)
     except VerifyMismatchError:
         return False
     except Exception:
         return False
+
+
+def authenticate(cfg: Settings, username: str, password: str) -> bool:
+    h = cfg.users.get(username)
+    if h and verify_hash(h, password):
+        return True
+    # Single-user env fallback (UI_USERNAME/UI_PASSWORD_HASH). Disabled in
+    # multi-user mode, where load_settings leaves these blank ("") so the
+    # guard below is falsy and cannot authenticate an empty username.
+    if cfg.ui_username and cfg.ui_password_hash and username == cfg.ui_username:
+        return verify_hash(cfg.ui_password_hash, password)
+    return False
 
 
 def _serializer(cfg: Settings) -> URLSafeTimedSerializer:

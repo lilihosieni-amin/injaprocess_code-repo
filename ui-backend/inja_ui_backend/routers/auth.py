@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Request, Response
 
-from ..auth import COOKIE_NAME, issue_cookie, require_session, verify_password
+from ..auth import COOKIE_NAME, issue_cookie, require_session, authenticate
 from ..models import LoginBody
 
 router = APIRouter(prefix="/api/auth")
@@ -9,7 +9,7 @@ router = APIRouter(prefix="/api/auth")
 @router.post("/login")
 def login(body: LoginBody, request: Request, response: Response):
     cfg = request.app.state.cfg
-    if body.username != cfg.ui_username or not verify_password(cfg, body.password):
+    if not authenticate(cfg, body.username, body.password):
         raise HTTPException(status_code=401, detail="invalid credentials")
     response.set_cookie(COOKIE_NAME, issue_cookie(cfg, body.username),
                         httponly=True, samesite="lax", max_age=cfg.session_ttl)

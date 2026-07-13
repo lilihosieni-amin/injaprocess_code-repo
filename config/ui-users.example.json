@@ -1,0 +1,4 @@
+{
+  "analyst": "$argon2id$v=19$m=65536,t=3,p=4$REPLACE_WITH_REAL_ARGON2_HASH",
+  "manager": "$argon2id$v=19$m=65536,t=3,p=4$REPLACE_WITH_REAL_ARGON2_HASH"
+}
