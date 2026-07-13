@@ -32,7 +32,15 @@ def build_application(config):
         builder = builder.proxy(config.proxy_url).get_updates_proxy(config.proxy_url)
     if config.api_base_url:
         base = config.api_base_url.rstrip("/")
-        builder = builder.base_url(f"{base}/bot").base_file_url(f"{base}/file/bot")
+        # local_mode(True): a --local Bot API server returns an absolute local
+        # file path from getFile (not an HTTP URL), so PTB must read the file
+        # from disk. That path lives in the Bot API server's data dir, which must
+        # be mounted into this container (see deploy/docker-compose.yml).
+        builder = (
+            builder.base_url(f"{base}/bot")
+            .base_file_url(f"{base}/file/bot")
+            .local_mode(True)
+        )
     app = builder.build()
     h = build_handlers(config)
     conv = ConversationHandler(

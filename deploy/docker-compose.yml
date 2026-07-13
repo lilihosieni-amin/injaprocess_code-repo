@@ -25,6 +25,10 @@ services:
       TELEGRAM_API_BASE_URL: http://telegram-bot-api:8081
     volumes:
       - /opt/inja/data-repo:/data
+      # local-mode Bot API downloads land in the bot-api server's data dir and
+      # getFile returns an absolute path there — mount it (ro) so upload-bot can
+      # read the file at that path.
+      - telegram-bot-api-data:/var/lib/telegram-bot-api:ro
 
   control-bot:
     build:
