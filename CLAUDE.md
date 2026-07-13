@@ -7,7 +7,7 @@ brain — extraction rules live in the separate `data-repo` (INV-2: code/data se
 
 | Path | Role |
 |---|---|
-| `upload-bot/` | Bot 1: raw voice/file intake from Telegram (Python); `pip install -e upload-bot`; env vars: `TELEGRAM_BOT_TOKEN`, `ALLOWED_USER_ID`, `DATA_ROOT`, `TELEGRAM_API_BASE_URL` (optional); run: `upload-bot` or `python -m upload_bot` |
+| `upload-bot/` | Bot 1: raw voice/file intake from Telegram (Python); `pip install -e upload-bot`; env vars: `TELEGRAM_BOT_TOKEN`, `ALLOWED_USER_IDS`, `DATA_ROOT`, `TELEGRAM_API_BASE_URL` (optional); run: `upload-bot` or `python -m upload_bot` |
 | `control-bot/` | Config & launch profile for `claude-code-telegram` (no custom code) |
 | `engine/` | Deterministic CLIs: `allocate-id`, `merge`, `layout`, `transcribe`, `validate`; installed via `pip install -e engine`; `SCHEMA_DIR` locates schemas at runtime |
 | `ui/` | React + TypeScript + Vite + @xyflow/react frontend |
