@@ -1,13 +1,11 @@
 import os
 
-import pytest
 from extract_attachment import (
-    docx_to_text,
     find_docx,
-    needs_conversion,
     run_extract_attachment,
     text_dir,
 )
+from extract_attachment.cli import main as cli_main
 
 
 def _mk_attachments(root, dept):
@@ -105,3 +103,26 @@ def test_find_docx_sorted_and_skips_text_dir(data_root):
     (adir / ".text" / "old.docx").write_bytes(b"x")   # must NOT be picked up
     names = [p.name for p in find_docx(data_root, "dining")]
     assert names == ["a.docx", "b.docx"]
+
+
+def test_cli_prints_ok_paths_and_exits_zero(data_root, capsys):
+    adir = _mk_attachments(data_root, "dining")
+    _write_docx(adir / "host.docx", ["شرح شغل"])
+    rc = cli_main(["dining"])
+    out = capsys.readouterr()
+    assert rc == 0
+    assert out.out.strip() == "departments/dining/attachments/.text/host.txt"
+
+
+def test_cli_reports_errors_and_exits_nonzero(data_root, capsys, monkeypatch):
+    adir = _mk_attachments(data_root, "dining")
+    (adir / "bad.docx").write_bytes(b"nope")
+
+    def boom(path):
+        raise ValueError("bad zip")
+
+    monkeypatch.setattr("extract_attachment.cli.docx_to_text", boom, raising=False)
+    rc = cli_main(["dining"])
+    err = capsys.readouterr().err
+    assert rc == 1
+    assert "bad.docx" in err
