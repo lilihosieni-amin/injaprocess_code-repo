@@ -1,13 +1,13 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "run-meta.schema.json",
-  "title": "Per-run metadata (ARD §2.2 runs/{voice}/meta.json)",
+  "title": "Per-run metadata (ARD §2.2 runs/{department}/{stamp}/meta.json)",
   "type": "object",
   "additionalProperties": false,
-  "required": ["voice", "departments", "started_at", "attempt", "processes"],
+  "required": ["department", "transcripts", "started_at", "attempt", "processes"],
   "properties": {
-    "voice": { "type": "string" },
-    "departments": { "type": "array", "items": { "type": "string", "pattern": "^[a-z]+$" } },
+    "department": { "type": "string", "pattern": "^[a-z]+$" },
+    "transcripts": { "type": "array", "items": { "type": "string" } },
     "started_at": { "type": "string", "format": "date-time", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?Z$" },
     "finished_at": { "type": ["string", "null"], "format": "date-time", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?Z$" },
     "attempt": { "type": "integer", "minimum": 1 },
@@ -18,8 +18,10 @@
         "required": ["id", "status"],
         "properties": {
           "id": { "type": "string", "pattern": "^[a-z]+-[0-9]{3}$" },
-          "status": { "enum": ["new", "update", "unchanged"] },
-          "auto_subprocess_of": { "type": "string", "pattern": "^[a-z]+-[0-9]{3}$" }
+          "status": { "enum": ["new", "update", "unchanged", "merge", "split", "attach", "tombstone"] },
+          "auto_subprocess_of": { "type": "string", "pattern": "^[a-z]+-[0-9]{3}$" },
+          "superseded": { "type": "array", "items": { "type": "string", "pattern": "^[a-z]+-[0-9]{3}$" } },
+          "heir_of": { "type": "array", "items": { "type": "string", "pattern": "^[a-z]+-[0-9]{3}$" } }
         }
       }
     }
