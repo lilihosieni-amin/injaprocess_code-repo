@@ -222,6 +222,37 @@ def remove_process(process, now):
     return tombstone(process, [], now)
 
 
+def attach_subprocess(parent_process, node_id, child_process, run, now):
+    byid = {n["id"]: n for n in parent_process["nodes"]}
+    node = byid.get(node_id)
+    if node is None or node.get("type") != "activity":
+        raise ValueError(f"attach target '{node_id}' is not an activity node in "
+                         f"{parent_process['id']}")
+    if node.get("subprocess") is not None:
+        raise ValueError(f"node {node_id} already has subprocess {node['subprocess']}")
+    # cycle guard: child must not be an ancestor of parent
+    cur, seen = parent_process.get("parent"), set()
+    while cur is not None:
+        ppid = cur["process"]
+        if ppid == child_process["id"]:
+            raise ValueError(
+                f"attach would create a cycle: {child_process['id']} is an ancestor "
+                f"of {parent_process['id']}")
+        if ppid in seen:
+            break
+        seen.add(ppid)
+        cur = read_json(_proc_file(ppid)).get("parent") if _proc_file(ppid).is_file() else None
+    child_process["parent"] = {"process": parent_process["id"], "node": node_id}
+    node["subprocess"] = child_process["id"]
+    _sync_icom(node, child_process["idef0"], run)
+    _touch(node, run)
+    parent_process["updated_at"] = now
+    child_process["updated_at"] = now
+    validate("process.schema.json", parent_process)
+    validate("process.schema.json", child_process)
+    return parent_process, child_process
+
+
 def restructure(plan, run, now, root=None):
     validate("restructure.schema.json", plan)
     dept = plan["department"]

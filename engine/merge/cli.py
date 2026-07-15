@@ -3,8 +3,8 @@ import sys
 from datetime import datetime, timezone
 
 from engine_common import data_root, read_json, write_json_atomic
-from merge import (build_new, build_update, remove_process, resolve_pending,
-                   restructure)
+from merge import (attach_subprocess, build_new, build_update, remove_process,
+                   resolve_pending, restructure)
 
 
 def _now(v):
@@ -48,6 +48,12 @@ def main(argv=None):
     rs.add_argument("--plan", required=True)
     rs.add_argument("--run", required=True)
     rs.add_argument("--now")
+    at = sub.add_parser("attach-subprocess")
+    at.add_argument("--parent-process", required=True)
+    at.add_argument("--node", required=True)
+    at.add_argument("--child", required=True)
+    at.add_argument("--run", required=True)
+    at.add_argument("--now")
     args = ap.parse_args(argv)
 
     try:
@@ -91,6 +97,16 @@ def main(argv=None):
                 for n in h["nodes"]:
                     if n.get("type") == "activity" and n.get("subprocess"):
                         print(f"subprocess {n['subprocess']} node {n['id']}")
+        elif args.cmd == "attach-subprocess":
+            pp = _proc_path(args.parent_process)
+            cp = _proc_path(args.child)
+            _require(pp.is_file(), f"parent process {args.parent_process} must exist")
+            _require(cp.is_file(), f"child process {args.child} must exist")
+            parent, child = attach_subprocess(read_json(pp), args.node, read_json(cp),
+                                              args.run, _now(args.now))
+            write_json_atomic(pp, parent)
+            write_json_atomic(cp, child)
+            print(f"subprocess {child['id']} node {args.node}")
         else:  # accept | reject
             path = _proc_path(args.process)
             _require(path.is_file(), f"process {args.process} must exist")
