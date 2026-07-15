@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useDepartments, useProcesses } from '../api/hooks'
 import { deptMeta } from '../lib/departments'
 import { deriveTag, toFa } from '../lib/format'
@@ -12,6 +12,7 @@ import type { Process } from '../api/types'
 const TAG_CLS: Record<string, string> = {
   sub: 'text-[#B4690E] bg-[#FBEEDC]', conflict: 'text-conflict bg-[#FFE9E7]',
   kpi: 'text-violet bg-tile-v', plain: 'text-violet bg-tile-v',
+  tombstone: 'text-muted bg-[#EDEAF3]',
 }
 
 export function ProcessList() {
@@ -71,8 +72,9 @@ export function ProcessList() {
           )}
           {list.map((p) => {
             const tag = deriveTag(p)
+            const tombstoned = !!p.tombstoned
             return (
-              <div key={p.id} className="bg-white border border-warm rounded-2xl px-[19px] py-[17px] flex items-center gap-4 shadow-card">
+              <div key={p.id} className={`bg-white border border-warm rounded-2xl px-[19px] py-[17px] flex items-center gap-4 shadow-card ${tombstoned ? 'opacity-60' : ''}`}>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2.5">
                     <IdBadge>{p.id}</IdBadge>
@@ -80,6 +82,14 @@ export function ProcessList() {
                     <span className={`text-[10.5px] px-2 py-0.5 rounded-full font-semibold ${TAG_CLS[tag.kind]}`}>{tag.label}</span>
                   </div>
                   <div className="text-[12.5px] text-muted mt-1.5 leading-normal">{p.summary}</div>
+                  {tombstoned && (p.superseded_by ?? []).length > 0 && (
+                    <div className="text-[12px] text-muted mt-1.5 flex flex-wrap gap-2 items-center">
+                      <span>جانشین:</span>
+                      {(p.superseded_by ?? []).map((h) => (
+                        <Link key={h} to={`/processes/${h}`} className="font-mono text-violet underline decoration-dotted">{h}</Link>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <div className="text-center shrink-0 min-w-[52px]">
                   <div className="font-extrabold text-[17px] text-violet">{toFa(activityCount(p))}</div>
@@ -87,8 +97,10 @@ export function ProcessList() {
                 </div>
                 <div className="flex gap-2 shrink-0">
                   <Button variant="ghost" onClick={() => nav(`/processes/${p.id}`)} className="px-3.5 py-[9px] text-[12.5px]">اطلاعات کلی</Button>
-                  <Button variant="violet" onClick={() => nav(`/processes/${p.id}/flow`)} className="px-3.5 py-[9px] text-[12.5px]">فلوچارت</Button>
-                  <button onClick={() => setDelTarget({ pid: p.id, name: p.name })} title="حذف فرآیند"
+                  {!tombstoned && (
+                    <Button variant="violet" onClick={() => nav(`/processes/${p.id}/flow`)} className="px-3.5 py-[9px] text-[12.5px]">فلوچارت</Button>
+                  )}
+                  <button onClick={() => setDelTarget({ pid: p.id, name: p.name })} title={tombstoned ? 'حذف دائمی فرآیند' : 'حذف فرآیند'}
                     className="flex items-center justify-center w-[38px] shrink-0 border-[1.5px] border-[#FDD9D6] bg-[#FFF3F2] rounded-[11px] text-conflict">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M10 11v6M14 11v6" /></svg>
                   </button>
