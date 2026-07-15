@@ -147,6 +147,12 @@ def build_update(process, delta, run, now, root=None):
                 process["pending"].append(
                     {"node": en["id"], "field": field, "current": cur,
                      "proposed": val, "source": run, "status": "open"})
+    removed_any_edge = False
+    drop = {(e["from"], e["to"]) for e in delta.get("remove_edges", [])}
+    if drop:
+        kept = [e for e in process["edges"] if (e["from"], e["to"]) not in drop]
+        removed_any_edge = len(kept) != len(process["edges"])
+        process["edges"] = kept
     for fr in delta["flag_removed"]:
         n = byid.get(fr["id"])
         if n is not None:
@@ -157,6 +163,8 @@ def build_update(process, delta, run, now, root=None):
     if new_ids:
         order = topo_order(process["nodes"], process["edges"])
         local_relayout(process, min(order.index(i) for i in new_ids))
+    elif removed_any_edge:
+        local_relayout(process, 0)      # re-flow; manual positions are preserved
     process["updated_at"] = now
     validate("process.schema.json", process)
     for c in children:

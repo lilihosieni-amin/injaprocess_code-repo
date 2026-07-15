@@ -38,3 +38,37 @@ def test_remove_edges_rejects_extra_key():
 def test_revise_nodes_requires_id_and_set():
     with pytest.raises(ValueError):
         validate("delta.schema.json", _empty_delta(revise_nodes=[{"id": "x"}]))
+
+
+from merge import apply_delta
+
+
+def test_remove_edges_drops_only_matching_edge():
+    p = _proc()
+    before = len(p["edges"])
+    delta = _empty_delta(remove_edges=[{"from": "cooking-001-n010", "to": "cooking-001-j1"}])
+    apply_delta(p, delta, RUN, NOW)
+    assert len(p["edges"]) == before - 1
+    assert not any(e["from"] == "cooking-001-n010" and e["to"] == "cooking-001-j1"
+                   for e in p["edges"])
+    # a non-matching edge survives
+    assert any(e["from"] == "start" and e["to"] == "cooking-001-n010" for e in p["edges"])
+
+
+def test_remove_edges_noop_when_absent():
+    p = _proc()
+    before = len(p["edges"])
+    apply_delta(p, _empty_delta(remove_edges=[{"from": "no", "to": "such"}]), RUN, NOW)
+    assert len(p["edges"]) == before
+
+
+def test_remove_edges_preserves_manual_position():
+    p = _proc()
+    manual = next(n for n in p["nodes"] if n.get("layout") == "manual")  # cooking-001-n060
+    pos = dict(manual["position"])
+    apply_delta(p, _empty_delta(
+        remove_edges=[{"from": "cooking-001-n010", "to": "cooking-001-j1"}]), RUN, NOW)
+    manual2 = next(n for n in p["nodes"] if n["id"] == manual["id"])
+    assert manual2["position"] == pos
+    validate("process.schema.json", p)
+    assert p["updated_at"] == NOW
