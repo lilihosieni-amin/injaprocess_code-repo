@@ -50,4 +50,8 @@ describe('deriveTag', () => {
   it('falls back to documented', () => {
     expect(deriveTag(base as never)).toEqual({ label: 'مستند', kind: 'plain' })
   })
+  it('labels a tombstoned process باطل‌شده, outranking sub/conflict/kpi', () => {
+    const p = { ...base, tombstoned: true, parent: { process: 'a', node: 'n' }, kpis: [{ name: 'k' }] }
+    expect(deriveTag(p as never)).toEqual({ label: 'باطل‌شده', kind: 'tombstone' })
+  })
 })

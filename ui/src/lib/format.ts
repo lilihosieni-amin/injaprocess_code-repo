@@ -62,9 +62,10 @@ export function formatConflictValue(v: unknown): string {
   return String(v)
 }
 
-export type TagKind = 'sub' | 'conflict' | 'kpi' | 'plain'
+export type TagKind = 'sub' | 'conflict' | 'kpi' | 'plain' | 'tombstone'
 
 export function deriveTag(p: Process): { label: string; kind: TagKind } {
+  if (p.tombstoned) return { label: 'باطل‌شده', kind: 'tombstone' }
   if (p.parent) return { label: 'زیرفرآیند', kind: 'sub' }
   if (p.pending && p.pending.length) return { label: `${toFa(p.pending.length)} تعارض`, kind: 'conflict' }
   if (p.kpis && p.kpis.length) return { label: 'دارای KPI', kind: 'kpi' }
