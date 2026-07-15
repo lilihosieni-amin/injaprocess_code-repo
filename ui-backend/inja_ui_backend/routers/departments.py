@@ -21,16 +21,20 @@ def list_departments(request: Request, _: str = Depends(require_session)):
     out = []
     for d in reg["departments"]:
         files = storage.list_process_files(cfg.data_root, d["code"])
+        count = 0
         subs = 0
         conflicts = 0
         for path in files:
             proc = storage.read_json(path)
+            if proc.get("tombstoned"):
+                continue  # tombstones are off the active board (§4.7)
+            count += 1
             if proc.get("parent"):
                 subs += 1
             conflicts += sum(1 for p in proc.get("pending", [])
                              if p.get("status") == "open")
         out.append({"code": d["code"], "name": d["name"],
-                    "count": len(files), "subs": subs, "conflicts": conflicts})
+                    "count": count, "subs": subs, "conflicts": conflicts})
     return out
 
 

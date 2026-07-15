@@ -1,3 +1,5 @@
+import json
+
 import argon2
 from fastapi.testclient import TestClient
 from inja_ui_backend.app import create_app
@@ -70,3 +72,34 @@ def test_next_id_previews_allocation(data_root):
 def test_next_id_unknown_department_404(data_root):
     c = _auth_client(data_root)
     assert c.get("/api/departments/nope/next-id").status_code == 404
+
+
+def _write_tombstone(data_root, pid="cooking-002"):
+    # Minimal tombstoned doc placed straight on disk (not through the write route,
+    # which would schema-validate). Copies the golden process, flips the flag.
+    src = data_root / "departments" / "cooking" / "processes" / "cooking-001.json"
+    doc = json.loads(src.read_text(encoding="utf-8"))
+    doc["id"] = pid
+    doc["tombstoned"] = True
+    doc["superseded_by"] = ["cooking-050"]
+    dst = data_root / "departments" / "cooking" / "processes" / f"{pid}.json"
+    dst.write_text(json.dumps(doc, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def test_tombstoned_process_excluded_from_counts(data_root):
+    _write_tombstone(data_root)
+    c = _auth_client(data_root)
+    rows = c.get("/api/departments").json()
+    cooking = next(r for r in rows if r["code"] == "cooking")
+    # only the active cooking-001 counts; the tombstone (which also carries the
+    # golden's open pending) must not inflate count or conflicts
+    assert cooking["count"] == 1
+    assert cooking["conflicts"] == 1
+
+
+def test_tombstoned_process_still_listed(data_root):
+    _write_tombstone(data_root)
+    c = _auth_client(data_root)
+    procs = c.get("/api/departments/cooking/processes").json()
+    tomb = next(p for p in procs if p["id"] == "cooking-002")
+    assert tomb["tombstoned"] is True and tomb["superseded_by"] == ["cooking-050"]
