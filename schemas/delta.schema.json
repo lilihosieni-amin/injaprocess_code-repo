@@ -74,6 +74,22 @@
           "process": { "$ref": "#/$defs/candidateNoSub" }
         }
       }
+    },
+    "remove_edges": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["from", "to"],
+        "properties": { "from": { "type": "string" }, "to": { "type": "string" } }
+      }
+    },
+    "revise_nodes": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "set"],
+        "properties": { "id": { "type": "string" }, "set": { "type": "object" } }
+      }
     }
   },
   "$defs": {
