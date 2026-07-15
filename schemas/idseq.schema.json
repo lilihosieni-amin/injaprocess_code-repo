@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "idseq.schema.json",
+  "title": "Per-department id ledger (design §4.8)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["process"],
+  "properties": {
+    "process": { "type": "integer", "minimum": 0 }
+  }
+}

@@ -36,7 +36,12 @@
     "kpis": { "type": "array", "items": { "$ref": "#/$defs/kpi" } },
     "nodes": { "type": "array", "items": { "$ref": "#/$defs/node" } },
     "edges": { "type": "array", "items": { "$ref": "#/$defs/edge" } },
-    "pending": { "type": "array", "items": { "$ref": "#/$defs/pending" } }
+    "pending": { "type": "array", "items": { "$ref": "#/$defs/pending" } },
+    "tombstoned": { "type": "boolean" },
+    "superseded_by": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^[a-z]+-[0-9]{3}$" }
+    }
   },
   "$defs": {
     "icom": {
