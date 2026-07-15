@@ -3,7 +3,7 @@ import sys
 from datetime import datetime, timezone
 
 from engine_common import data_root, read_json, write_json_atomic
-from merge import build_new, build_update, resolve_pending
+from merge import build_new, build_update, remove_process, resolve_pending
 
 
 def _now(v):
@@ -39,6 +39,10 @@ def main(argv=None):
         r.add_argument("--process", required=True)
         r.add_argument("--index", type=int, required=True)
         r.add_argument("--now")
+    rm = sub.add_parser("remove")
+    rm.add_argument("--process", required=True)
+    rm.add_argument("--run", required=True)
+    rm.add_argument("--now")
     args = ap.parse_args(argv)
 
     try:
@@ -63,6 +67,12 @@ def main(argv=None):
                 write_json_atomic(_proc_path(c["id"]), c)
             for c in children:
                 print(f"subprocess {c['id']} node {c['parent']['node']}")
+        elif args.cmd == "remove":
+            path = _proc_path(args.process)
+            _require(path.is_file(), f"process {args.process} must exist")
+            proc = remove_process(read_json(path), _now(args.now))
+            write_json_atomic(path, proc)
+            print(f"tombstoned {args.process}")
         else:  # accept | reject
             path = _proc_path(args.process)
             _require(path.is_file(), f"process {args.process} must exist")

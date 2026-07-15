@@ -201,3 +201,15 @@ def resolve_pending(process, index, decision, now):
     process["updated_at"] = now
     validate("process.schema.json", process)
     return process
+
+
+def tombstone(process, heir_ids, now):
+    process["tombstoned"] = True
+    process["superseded_by"] = list(heir_ids)
+    process["updated_at"] = now
+    validate("process.schema.json", process)
+    return process
+
+
+def remove_process(process, now):
+    return tombstone(process, [], now)
