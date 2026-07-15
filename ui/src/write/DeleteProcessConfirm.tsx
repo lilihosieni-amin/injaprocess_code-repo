@@ -14,7 +14,7 @@ export function DeleteProcessConfirm({ pid, name, onClose }: { pid: string; name
         <div className="p-6 pb-5 text-center">
           <div className="font-extrabold text-[17px] text-ink mb-2">حذف کامل فرآیند «{name}»؟</div>
           <div className="mb-2.5"><IdBadge>{pid}</IdBadge></div>
-          <div className="text-[13px] text-muted leading-loose">کل فرآیند همراه با فلوچارت، گره‌ها، KPIها و تعارض‌هایش برای همیشه حذف می‌شود و از فهرست خارج می‌گردد. این کار قابل بازگردانی نیست.</div>
+          <div className="text-[13px] text-muted leading-loose">کل فرآیند همراه با فلوچارت، گره‌ها، KPIها و تعارض‌هایش <b>برای همیشه و بدون امکان بازیابی</b> حذف می‌شود و از فهرست خارج می‌گردد. شناسهٔ این فرآیند نیز دیگر هرگز دوباره استفاده نمی‌شود.</div>
         </div>
         <div className="flex gap-2.5 px-[22px] pb-[22px]">
           <button onClick={onClose} className="flex-1 py-3 border-[1.5px] border-line bg-white rounded-xl text-sm font-bold text-[#6B5CA5]">انصراف</button>

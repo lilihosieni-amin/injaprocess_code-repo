@@ -20,4 +20,11 @@ describe('DeleteProcessConfirm', () => {
     await waitFor(() => expect(spy).toHaveBeenCalledWith('/api/processes/cooking-002', expect.objectContaining({ method: 'DELETE' })))
     await waitFor(() => expect(onClose).toHaveBeenCalled())
   })
+
+  it('spells out that deletion is permanent and the id is never reused', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ deleted: 'cooking-002' }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+    wrap(<DeleteProcessConfirm pid="cooking-002" name="پخت" onClose={vi.fn()} />)
+    expect(screen.getByText(/برای همیشه و بدون امکان بازیابی/)).toBeInTheDocument()
+    expect(screen.getByText(/شناسه.*دوباره.*استفاده نمی‌شود/)).toBeInTheDocument()
+  })
 })
