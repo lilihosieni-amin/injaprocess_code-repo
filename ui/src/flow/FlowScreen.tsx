@@ -43,9 +43,11 @@ function FlowEditor() {
 
   if (!ed.doc) return <div className="flex-1 bg-bg" />
   const proc = ed.doc
+  const tombstoned = !!proc.tombstoned
   const editing = ed.editing
 
   function onSave() {
+    if (tombstoned) return
     put.mutate(proc, { onSuccess: (saved) => { ed.adopt(saved); ed.exitEdit() } })
   }
 
@@ -71,7 +73,7 @@ function FlowEditor() {
             : <input value={proc.name} onChange={(e) => ed.setName(e.target.value)} className="font-bold text-[15px] text-ink border-[1.5px] border-line rounded-lg px-2.5 py-1 outline-none focus:border-coral w-[280px]" />}
         </div>
         <div className="ms-auto flex items-center gap-2">
-          {!editing ? (
+          {tombstoned ? null : !editing ? (
             <Button variant="violet" onClick={ed.enter} className="px-4 py-2 text-[13px]" data-testid="enter-edit">ویرایش</Button>
           ) : (
             <>
