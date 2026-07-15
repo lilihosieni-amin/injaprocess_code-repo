@@ -94,3 +94,92 @@ def test_cli_restructure_writes_all(data_root):
     t1 = json.loads((data_root / "departments/cooking/processes/cooking-001.json")
                     .read_text(encoding="utf-8"))
     assert t1["tombstoned"] is True and t1["superseded_by"] == ["cooking-003"]
+
+
+def _committed_with_child(root, parent_pid, child_pid, box_key="n1"):
+    """A parent process whose box already points at child_pid, and the child."""
+    parent = copy.deepcopy(load_fixture("process.cooking-001.json"))
+    parent["id"] = parent_pid
+    parent["parent"] = None
+    parent["pending"] = []
+    box = next(n for n in parent["nodes"] if n["id"] == "cooking-001-n060")
+    box["id"] = f"{parent_pid}-n060"
+    box["subprocess"] = child_pid
+    parent["nodes"] = [n for n in parent["nodes"]
+                       if n["id"] in ("start", "end", box["id"])
+                       or n["id"].startswith(f"{parent_pid}-")]
+    for n in parent["nodes"]:
+        for pat in ("cooking-001-n010", "cooking-001-j1"):
+            if n["id"] == pat:
+                n["id"] = pat.replace("cooking-001", parent_pid)
+    parent["edges"] = []
+    (root / "departments/cooking/processes" / f"{parent_pid}.json").write_text(
+        json.dumps(parent, ensure_ascii=False), encoding="utf-8")
+
+    child = copy.deepcopy(load_fixture("process.cooking-001.json"))
+    child["id"] = child_pid
+    child["parent"] = {"process": parent_pid, "node": box["id"]}
+    child["pending"] = []
+    child["nodes"] = [n for n in child["nodes"] if n["id"] in ("start", "end")]
+    child["edges"] = []
+    (root / "departments/cooking/processes" / f"{child_pid}.json").write_text(
+        json.dumps(child, ensure_ascii=False), encoding="utf-8")
+    return parent, child
+
+
+def test_subprocess_links_reparent_existing_child(data_root):
+    # cooking-001 (has box -> cooking-050 child); split cooking-001 into a heir that
+    # re-adopts cooking-050 under its own new box (temp key "n1").
+    _committed_with_child(data_root, "cooking-001", "cooking-050")
+    plan = {"department": "cooking",
+            "heirs": [{"candidate": _cand("heir-adopts"),
+                       "supersedes": ["cooking-001"],
+                       "subprocess_links": [{"parent_key": "n1", "child": "cooking-050"}]}]}
+    heirs, tombstoned = restructure(plan, RUN, NOW, root=data_root)
+    heir = next(h for h in heirs if h["parent"] is None)
+    box = next(n for n in heir["nodes"] if n.get("subprocess") == "cooking-050")
+    assert box is not None
+    # the child, returned in heirs, now points at the heir
+    child = next(h for h in heirs if h["id"] == "cooking-050")
+    assert child["parent"] == {"process": heir["id"], "node": box["id"]}
+    assert box["icom"] == child["idef0"]           # icom synced
+
+
+def test_dangling_child_link_is_refused(data_root):
+    _committed(data_root, "cooking-001")
+    plan = {"department": "cooking",
+            "heirs": [{"candidate": _cand("h"), "supersedes": ["cooking-001"],
+                       "subprocess_links": [{"parent_key": "n1", "child": "cooking-999"}]}]}
+    with pytest.raises(ValueError, match="cooking-999"):
+        restructure(plan, RUN, NOW, root=data_root)
+
+
+def test_superseded_child_retargets_parent_box(data_root):
+    # cooking-001 is a parent; cooking-050 is its child. We supersede the CHILD
+    # (cooking-050) with a new heir; the parent box must retarget to the heir.
+    _committed_with_child(data_root, "cooking-001", "cooking-050")
+    plan = {"department": "cooking",
+            "heirs": [{"candidate": _cand("new-child"), "supersedes": ["cooking-050"],
+                       "subprocess_links": []}]}
+    heirs, tombstoned = restructure(plan, RUN, NOW, root=data_root)
+    heir_id = heirs[0]["id"]
+    # the parent process on disk (or in the returned set) has its box retargeted
+    parent = next((h for h in heirs if h["id"] == "cooking-001"), None)
+    if parent is None:
+        parent = json.loads(
+            (data_root / "departments/cooking/processes/cooking-001.json")
+            .read_text(encoding="utf-8"))
+    box = next(n for n in parent["nodes"] if n.get("type") == "activity"
+               and n.get("subprocess") == heir_id)
+    assert box is not None
+    assert heirs[0]["parent"]["process"] == "cooking-001"
+
+
+def test_cycle_link_rejected(data_root):
+    # a heir whose declared child is actually the heir's own ancestor -> cycle
+    _committed_with_child(data_root, "cooking-001", "cooking-050")
+    plan = {"department": "cooking",
+            "heirs": [{"candidate": _cand("h"), "supersedes": ["cooking-050"],
+                       "subprocess_links": [{"parent_key": "n1", "child": "cooking-001"}]}]}
+    with pytest.raises(ValueError, match="cycle|ancestor"):
+        restructure(plan, RUN, NOW, root=data_root)

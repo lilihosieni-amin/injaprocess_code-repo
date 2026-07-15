@@ -249,13 +249,84 @@ def restructure(plan, run, now, root=None):
         tombstone(orig, heir_ids, now)
         tombstoned.append(orig)
 
-    # 3) HIERARCHY REDIRECT — Task 8 fills this in (subprocess_links, retarget,
-    #    closure + cycle validation). For now, a declared link is not yet supported.
-    for h in heirs:
-        if h["spec"]["subprocess_links"]:
-            raise ValueError("subprocess_links not yet supported")
+    # 3) HIERARCHY REDIRECT (design §4.5)
+    known = set(heir_pids) | set(superseders)          # in-plan pids
+    tomb_by_id = {t["id"]: t for t in tombstoned}
+    heir_by_id = {h["process"]["id"]: h["process"] for h in heirs}  # in-memory heirs
+    extra = {}                                         # neighbours mutated in place
 
-    result_heirs = [h["process"] for h in heirs]
+    def _load(pid):
+        if pid in heir_by_id:
+            return heir_by_id[pid]
+        if pid in tomb_by_id:
+            return tomb_by_id[pid]
+        if pid in extra:
+            return extra[pid]
+        path = _proc_file(pid, root)
+        if not path.is_file():
+            raise ValueError(f"restructure references missing process {pid}")
+        obj = read_json(path)
+        extra[pid] = obj
+        return obj
+
+    def _is_ancestor(anc_pid, node_pid):
+        # walk node_pid's parent chain; True if anc_pid is reached (would form a cycle)
+        seen, cur = set(), node_pid
+        while cur is not None and cur not in seen:
+            seen.add(cur)
+            if cur == anc_pid:
+                return True
+            obj = _load(cur) if cur != anc_pid else None
+            par = (obj or {}).get("parent")
+            cur = par["process"] if par else None
+        return False
+
+    # 3a) a superseded process that IS a child: retarget its parent box to the heir.
+    #     Runs first so each heir inherits the parent chain of the box it replaces —
+    #     the declared-link cycle check (3b) can then see the full ancestry.
+    for pid, heir_ids in superseders.items():
+        orig = tomb_by_id[pid]
+        par = orig.get("parent")
+        if not par:
+            continue
+        if len(heir_ids) != 1:
+            raise ValueError(
+                f"cannot retarget parent of {pid}: it is superseded by "
+                f"{heir_ids} (expected exactly one heir)")
+        heir_id = heir_ids[0]
+        parent_proc = _load(par["process"])           # raises + names if dangling
+        pbyid = {n["id"]: n for n in parent_proc["nodes"]}
+        pnode = pbyid.get(par["node"])
+        if pnode is not None and pnode.get("subprocess") == pid:
+            pnode["subprocess"] = heir_id
+            heir = next(x["process"] for x in heirs if x["process"]["id"] == heir_id)
+            heir["parent"] = {"process": parent_proc["id"], "node": pnode["id"]}
+            _sync_icom(pnode, heir["idef0"], run)
+
+    # 3b) declared subprocess_links: heir temp box adopts an existing child pid
+    for h in heirs:
+        heir, keymap = h["process"], h["keymap"]
+        byid = {n["id"]: n for n in heir["nodes"]}
+        for link in h["spec"]["subprocess_links"]:
+            node_id = keymap.get(link["parent_key"], link["parent_key"])
+            node = byid.get(node_id)
+            if node is None or node.get("type") != "activity":
+                raise ValueError(
+                    f"subprocess_links parent_key '{link['parent_key']}' is not an "
+                    f"activity node in heir {heir['id']}")
+            child = _load(link["child"])              # raises + names if dangling
+            if _is_ancestor(child["id"], heir["id"]):
+                raise ValueError(
+                    f"subprocess_links would create a cycle: {child['id']} is an "
+                    f"ancestor of heir {heir['id']}")
+            node["subprocess"] = child["id"]
+            child["parent"] = {"process": heir["id"], "node": node_id}
+            _sync_icom(node, child["idef0"], run)
+
+    # neighbours we touched but did not tombstone travel back with the heirs
+    side_effects = [o for pid, o in extra.items() if pid not in tomb_by_id]
+
+    result_heirs = [h["process"] for h in heirs] + side_effects
     for p in result_heirs:
         validate("process.schema.json", p)
     for t in tombstoned:
