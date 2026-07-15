@@ -36,6 +36,8 @@ export interface Process {
   parent: { process: string; node: string } | null
   created_at: string; updated_at: string
   idef0: Icom; kpis: Kpi[]; nodes: ProcNode[]; edges: Edge[]; pending: Pending[]
+  superseded_by?: string[]
+  tombstoned?: boolean
 }
 
 export interface Overview {
