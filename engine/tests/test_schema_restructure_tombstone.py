@@ -1,8 +1,9 @@
 import copy
 
 import pytest
-from conftest import load_fixture
 from engine_common import validate
+
+from conftest import load_fixture
 
 
 def _proc():
@@ -43,3 +44,30 @@ def test_idseq_schema_rejects_negative_and_extra():
         validate("idseq.schema.json", {"process": -1})
     with pytest.raises(ValueError):
         validate("idseq.schema.json", {"process": 1, "extra": True})
+
+
+def _cand():
+    return copy.deepcopy(load_fixture("candidate.json"))
+
+
+def test_restructure_schema_accepts_minimal_merge_plan():
+    validate("restructure.schema.json", {
+        "department": "cooking",
+        "heirs": [{"candidate": _cand(), "supersedes": ["cooking-001", "cooking-002"],
+                   "subprocess_links": []}],
+    })
+
+
+def test_restructure_schema_requires_heirs_and_department():
+    with pytest.raises(ValueError):
+        validate("restructure.schema.json", {"heirs": []})     # no department
+    with pytest.raises(ValueError):
+        validate("restructure.schema.json", {"department": "cooking"})  # no heirs
+
+
+def test_restructure_schema_rejects_unknown_heir_key():
+    with pytest.raises(ValueError):
+        validate("restructure.schema.json", {
+            "department": "cooking",
+            "heirs": [{"candidate": _cand(), "supersedes": [], "subprocess_links": [],
+                       "oops": 1}]})

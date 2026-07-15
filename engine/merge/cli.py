@@ -3,7 +3,8 @@ import sys
 from datetime import datetime, timezone
 
 from engine_common import data_root, read_json, write_json_atomic
-from merge import build_new, build_update, remove_process, resolve_pending
+from merge import (build_new, build_update, remove_process, resolve_pending,
+                   restructure)
 
 
 def _now(v):
@@ -43,6 +44,10 @@ def main(argv=None):
     rm.add_argument("--process", required=True)
     rm.add_argument("--run", required=True)
     rm.add_argument("--now")
+    rs = sub.add_parser("restructure")
+    rs.add_argument("--plan", required=True)
+    rs.add_argument("--run", required=True)
+    rs.add_argument("--now")
     args = ap.parse_args(argv)
 
     try:
@@ -73,6 +78,19 @@ def main(argv=None):
             proc = remove_process(read_json(path), _now(args.now))
             write_json_atomic(path, proc)
             print(f"tombstoned {args.process}")
+        elif args.cmd == "restructure":
+            _require(pathlib_exists(args.plan), "plan file must exist")
+            heirs, tombstoned = restructure(read_json(args.plan), args.run, _now(args.now))
+            for h in heirs:
+                write_json_atomic(_proc_path(h["id"]), h)
+                print(f"heir {h['id']}")
+            for t in tombstoned:
+                write_json_atomic(_proc_path(t["id"]), t)
+                print(f"tombstoned {t['id']}")
+            for h in heirs:
+                for n in h["nodes"]:
+                    if n.get("type") == "activity" and n.get("subprocess"):
+                        print(f"subprocess {n['subprocess']} node {n['id']}")
         else:  # accept | reject
             path = _proc_path(args.process)
             _require(path.is_file(), f"process {args.process} must exist")

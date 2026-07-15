@@ -1,8 +1,15 @@
 import re
 
 from allocate_id import next_box_id, next_junction_id, next_process_id
-from engine_common import is_empty, validate
+from engine_common import is_empty, read_json, validate
 from layout import full_relayout, local_relayout, topo_order
+
+
+def _proc_file(pid, root=None):
+    from engine_common import data_root
+    base = root or data_root()
+    dept = pid.rsplit("-", 1)[0]
+    return base / "departments" / dept / "processes" / f"{pid}.json"
 
 
 def _new_node(cand_node, nid, run):
@@ -213,3 +220,44 @@ def tombstone(process, heir_ids, now):
 
 def remove_process(process, now):
     return tombstone(process, [], now)
+
+
+def restructure(plan, run, now, root=None):
+    validate("restructure.schema.json", plan)
+    dept = plan["department"]
+    heirs, alloc = [], set()
+    # 1) build every heir with a fresh, ledger-durable pid
+    for h in plan["heirs"]:
+        pid = next_process_id(dept, root, reserved=alloc)
+        alloc.add(pid)
+        heir, keymap = _build_process(h["candidate"], dept, pid, run, now,
+                                      parent=None, source_type="voice")
+        heirs.append({"process": heir, "keymap": keymap, "spec": h})
+    heir_pids = [h["process"]["id"] for h in heirs]
+
+    # 2) tombstone every superseded original with the heirs that supersede it
+    superseders = {}  # pid -> [heir ids]
+    for h in heirs:
+        for sup in h["spec"]["supersedes"]:
+            superseders.setdefault(sup, []).append(h["process"]["id"])
+    tombstoned = []
+    for pid, heir_ids in superseders.items():
+        path = _proc_file(pid, root)
+        if not path.is_file():
+            raise ValueError(f"restructure supersedes missing process {pid}")
+        orig = read_json(path)
+        tombstone(orig, heir_ids, now)
+        tombstoned.append(orig)
+
+    # 3) HIERARCHY REDIRECT — Task 8 fills this in (subprocess_links, retarget,
+    #    closure + cycle validation). For now, a declared link is not yet supported.
+    for h in heirs:
+        if h["spec"]["subprocess_links"]:
+            raise ValueError("subprocess_links not yet supported")
+
+    result_heirs = [h["process"] for h in heirs]
+    for p in result_heirs:
+        validate("process.schema.json", p)
+    for t in tombstoned:
+        validate("process.schema.json", t)
+    return result_heirs, tombstoned
