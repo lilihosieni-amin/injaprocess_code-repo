@@ -32,3 +32,24 @@ describe('Summary', () => {
     expect(await screen.findByText(/سامانه اطلاعات را نمی‌سازد/)).toBeInTheDocument()
   })
 })
+
+const TOMB = {
+  id: 'cooking-002', department: 'cooking', name: 'فرآیند قدیمی', summary: 's',
+  source: { type: 'voice', ref: null, run: null }, parent: null,
+  created_at: '2026-07-01T00:00:00Z', updated_at: '2026-07-01T00:00:00Z',
+  idef0: { inputs: [], controls: [], outputs: [], mechanisms: [] },
+  kpis: [], nodes: [], edges: [], pending: [],
+  tombstoned: true, superseded_by: ['cooking-050'],
+}
+
+describe('Summary — tombstoned', () => {
+  it('shows a tombstone banner + heir link and hides edit/flowchart', async () => {
+    mock(TOMB)
+    renderAt('/processes/:pid', <Summary />, '/processes/cooking-002')
+    expect(await screen.findAllByText('فرآیند قدیمی')).not.toHaveLength(0)
+    expect(screen.getByText(/باطل شده/)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /cooking-050/ })).toHaveAttribute('href', '/processes/cooking-050')
+    expect(screen.queryByRole('button', { name: 'ویرایش اطلاعات' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'مشاهدهٔ فلوچارت' })).not.toBeInTheDocument()
+  })
+})

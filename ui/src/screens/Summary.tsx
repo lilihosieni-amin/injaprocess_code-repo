@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useProcess, usePutProcess } from '../api/hooks'
 import { useToast } from '../write/ToastProvider'
 import type { Process, Icom, Kpi } from '../api/types'
@@ -39,7 +39,11 @@ export function Summary() {
   if (!p) return <div className="flex-1 bg-bg" />
 
   const proc: Process = p
-  function enter() { setDraft({ name: proc.name, summary: proc.summary, idef0: { ...proc.idef0 }, kpis: proc.kpis.map((k) => ({ ...k })) }) }
+  const tombstoned = !!proc.tombstoned
+  function enter() {
+    if (tombstoned) return
+    setDraft({ name: proc.name, summary: proc.summary, idef0: { ...proc.idef0 }, kpis: proc.kpis.map((k) => ({ ...k })) })
+  }
   function save() {
     const doc: Process = { ...proc, name: draft!.name, summary: draft!.summary, idef0: draft!.idef0, kpis: draft!.kpis }
     put.mutate(doc, { onSuccess: () => { setDraft(null); toast.show('اطلاعات فرآیند ذخیره شد') } })
@@ -56,6 +60,19 @@ export function Summary() {
               <IdBadge tone="violet">{proc.id}</IdBadge>
               {proc.parent && <span className="text-[11px] text-violet bg-tile-v px-2.5 py-1 rounded-md font-semibold">زیرفرآیند</span>}
             </div>
+            {tombstoned && (
+              <div className="mb-3 rounded-xl border border-[#E4DEF0] bg-[#EDEAF3] px-4 py-3 text-[13px] text-muted">
+                <div className="font-bold text-ink mb-1">این فرآیند باطل شده است.</div>
+                {(proc.superseded_by ?? []).length > 0 && (
+                  <div className="flex flex-wrap gap-2 items-center">
+                    <span>جانشین:</span>
+                    {(proc.superseded_by ?? []).map((h) => (
+                      <Link key={h} to={`/processes/${h}`} className="font-mono text-violet underline decoration-dotted">{h}</Link>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
             {!editing ? (
               <>
                 <div className="font-extrabold text-[23px] text-ink">{proc.name}</div>
@@ -72,10 +89,12 @@ export function Summary() {
           </div>
           <div className="flex gap-2.5 shrink-0">
             {!editing ? (
-              <>
-                <Button variant="ghost" onClick={enter} className="px-4 py-3 text-[13px]">ویرایش اطلاعات</Button>
-                <Button variant="coral" onClick={() => nav(`/processes/${proc.id}/flow`)} className="px-[18px] py-3 text-[13.5px]">مشاهدهٔ فلوچارت</Button>
-              </>
+              tombstoned ? null : (
+                <>
+                  <Button variant="ghost" onClick={enter} className="px-4 py-3 text-[13px]">ویرایش اطلاعات</Button>
+                  <Button variant="coral" onClick={() => nav(`/processes/${proc.id}/flow`)} className="px-[18px] py-3 text-[13.5px]">مشاهدهٔ فلوچارت</Button>
+                </>
+              )
             ) : (
               <>
                 <Button variant="ghost" onClick={() => setDraft(null)} className="px-4 py-3 text-[13px]">انصراف</Button>
