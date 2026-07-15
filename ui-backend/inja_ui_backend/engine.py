@@ -44,6 +44,11 @@ def allocate_process_id(cfg: Settings, department: str) -> str:
     return _run(cfg, ["allocate-id", "process", department]).strip()
 
 
+def peek_process_id(cfg: Settings, department: str) -> str:
+    """Preview the next process id without advancing/persisting the ledger."""
+    return _run(cfg, ["allocate-id", "process", department, "--peek"]).strip()
+
+
 def allocate_box_id(cfg: Settings, working_doc: dict) -> str:
     tmp = _tmp_doc(working_doc)
     try:

@@ -1,6 +1,6 @@
 import json
 
-from allocate_id import next_box_id, next_junction_id, next_process_id
+from allocate_id import next_box_id, next_junction_id, next_process_id, peek_process_id
 from conftest import load_fixture
 
 
@@ -34,10 +34,10 @@ def test_removed_nodes_still_hold_their_id():
 
 def test_reserved_ids_bump_the_counter(data_root):
     # nothing on disk; reserving cooking-001 forces the next to be 002
-    assert next_process_id("cooking", data_root, reserved={"cooking-001"}) == "cooking-002"
+    assert peek_process_id("cooking", data_root, reserved={"cooking-001"}) == "cooking-002"
     assert (
-        next_process_id("cooking", data_root, reserved={"cooking-001", "cooking-002"})
+        peek_process_id("cooking", data_root, reserved={"cooking-001", "cooking-002"})
         == "cooking-003"
     )
     # other dept ignored
-    assert next_process_id("cooking", data_root, reserved={"dining-009"}) == "cooking-001"
+    assert peek_process_id("cooking", data_root, reserved={"dining-009"}) == "cooking-001"

@@ -72,4 +72,4 @@ def next_id(code: str, request: Request, _: str = Depends(require_session)):
     reg = storage.read_json(storage.registry_path(cfg.data_root))
     if code not in {d["code"] for d in reg["departments"]}:
         raise HTTPException(status_code=404, detail="unknown department")
-    return {"next_id": engine.allocate_process_id(cfg, code)}
+    return {"next_id": engine.peek_process_id(cfg, code)}
