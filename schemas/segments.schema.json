@@ -1,26 +1,67 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "segments.schema.json",
-  "title": "Classify output — process segments (ARD §5.2)",
+  "title": "Classify output — process segments over a department set (ARD §5.2)",
   "type": "object",
   "additionalProperties": false,
-  "required": ["voice", "segments"],
+  "required": ["department", "transcripts", "segments"],
   "properties": {
-    "voice": { "type": "string" },
+    "department": { "type": "string", "pattern": "^[a-z]+$" },
+    "transcripts": { "type": "array", "items": { "type": "string" } },
     "segments": {
       "type": "array",
       "items": {
         "type": "object", "additionalProperties": false,
-        "required": ["department", "process_name", "transcript_excerpt", "status", "match"],
+        "required": ["department", "process_name", "evidence", "status", "supersedes"],
         "properties": {
           "department": { "type": "string", "pattern": "^[a-z]+$" },
           "process_name": { "type": "string" },
-          "transcript_excerpt": { "type": "string" },
-          "status": { "enum": ["new", "update", "unchanged"] },
-          "match": {
-            "type": "object", "additionalProperties": false,
-            "required": ["existing_id"],
-            "properties": { "existing_id": { "type": ["string", "null"] } }
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "object", "additionalProperties": false,
+              "required": ["transcript", "text"],
+              "properties": {
+                "transcript": { "type": "string" },
+                "text": { "type": "string" }
+              }
+            }
+          },
+          "status": { "enum": ["new", "update", "unchanged", "merge", "split", "attach", "tombstone"] },
+          "supersedes": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "tombstone": { "type": "array", "items": { "type": "string" } },
+    "attach_subprocess": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["parent_process", "parent_node", "child"],
+        "properties": {
+          "parent_process": { "type": "string" },
+          "parent_node": { "type": "string" },
+          "child": { "type": "string" }
+        }
+      }
+    },
+    "contradictions": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["process_name", "accounts"],
+        "properties": {
+          "process_name": { "type": "string" },
+          "accounts": {
+            "type": "array",
+            "items": {
+              "type": "object", "additionalProperties": false,
+              "required": ["transcript", "text"],
+              "properties": {
+                "transcript": { "type": "string" },
+                "text": { "type": "string" }
+              }
+            }
           }
         }
       }
