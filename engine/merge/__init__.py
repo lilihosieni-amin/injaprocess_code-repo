@@ -147,6 +147,13 @@ def build_update(process, delta, run, now, root=None):
                 process["pending"].append(
                     {"node": en["id"], "field": field, "current": cur,
                      "proposed": val, "source": run, "status": "open"})
+    for rn in delta.get("revise_nodes", []):
+        n = byid.get(rn["id"])
+        if n is None:
+            continue
+        for field, val in rn["set"].items():
+            n[field] = val
+        _touch(n, run)
     removed_any_edge = False
     drop = {(e["from"], e["to"]) for e in delta.get("remove_edges", [])}
     if drop:

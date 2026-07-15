@@ -72,3 +72,34 @@ def test_remove_edges_preserves_manual_position():
     assert manual2["position"] == pos
     validate("process.schema.json", p)
     assert p["updated_at"] == NOW
+
+
+def test_revise_nodes_overwrites_filled_field():
+    p = _proc()
+    p["pending"] = []
+    n = next(x for x in p["nodes"] if x["id"] == "cooking-001-n010")
+    assert n["actor"] == "کارپرداز"                 # filled
+    apply_delta(p, _empty_delta(
+        revise_nodes=[{"id": "cooking-001-n010", "set": {"actor": "انباردار"}}]), RUN, NOW)
+    n2 = next(x for x in p["nodes"] if x["id"] == "cooking-001-n010")
+    assert n2["actor"] == "انباردار"                # OVERWRITTEN (not a pending row)
+    assert not any(r["node"] == "cooking-001-n010" and r["field"] == "actor"
+                   for r in p["pending"])
+    assert RUN in n2["source"]["touched_by"]
+
+
+def test_revise_nodes_overwrites_multiple_fields():
+    p = _proc()
+    apply_delta(p, _empty_delta(revise_nodes=[
+        {"id": "cooking-001-n010", "set": {"label": "دریافت", "description": "بازنویسی"}}]),
+        RUN, NOW)
+    n = next(x for x in p["nodes"] if x["id"] == "cooking-001-n010")
+    assert n["label"] == "دریافت" and n["description"] == "بازنویسی"
+    validate("process.schema.json", p)
+
+
+def test_revise_nodes_unknown_id_is_skipped():
+    p = _proc()
+    apply_delta(p, _empty_delta(revise_nodes=[{"id": "ghost", "set": {"label": "x"}}]),
+                RUN, NOW)
+    validate("process.schema.json", p)             # no crash, no change
