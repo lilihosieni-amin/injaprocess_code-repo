@@ -82,6 +82,7 @@ data-repo/
 │   ├── skills/
 │   │   ├── process-voice/        # orchestration playbook (slash command)
 │   │   ├── idef-extraction/      # IDEF0/IDEF3 knowledge + schema (preloaded in extract)
+│   │   ├── edit-process/         # direct conversational edits (no voice) → merge verbs
 │   │   └── ...
 │   └── agents/
 │       ├── classify.md
@@ -91,6 +92,7 @@ data-repo/
 │   ├── registry.json             # official list of departments
 │   └── {dept}/
 │       ├── overview.json         # sub-units, personnel, duties
+│       ├── .id-seq.json          # durable per-department id high-water ledger (committed)
 │       ├── processes/
 │       │   └── {process-id}.json
 │       └── attachments/          # uploaded documents
@@ -98,10 +100,11 @@ data-repo/
 │   ├── audio/                    # raw voice files
 │   └── transcripts/              # transcription output, same name as the voice
 ├── runs/                         # per-run intermediate artifacts (permanent)
-│   └── {voice-basename}/
+│   └── {department}/{stamp}/      # stamp = UTC YYYYMMDD-HHMMSS (the attempt key; no attempt-NN)
 │       ├── segments.json
 │       ├── candidates/            # candidate graphs
 │       ├── deltas/                # extract deltas (input to merge)
+│       ├── restructure/           # restructure plans (merge/split heirs)
 │       ├── conflicts.json
 │       └── meta.json
 ├── .staging/                     # upload buffer until confirmation (in .gitignore)
@@ -143,7 +146,7 @@ Superpowers is installed only in `code-repo` and **project-scoped** (not global)
 - Box: `{process-id}-n{NNN}` — e.g. `cooking-001-n010`
 - Junction: `{process-id}-j{N}` — e.g. `cooking-001-j1`
 
-Rule: "highest existing number + 1" (scan the disk, no separate/corruptible counter file). Deleted IDs are not reused. Generation only via a single `allocate-id` CLI, for all three paths (pipeline, chat, UI).
+Rule: monotonic "next number", backed by a **durable per-department `.id-seq.json` high-water ledger** (committed to git, one integer per department). Ids are **never reused — even after a permanent delete** — because the ledger's high-water mark only ever advances; the old "scan the disk, max+1" rule is superseded (a tombstoned or deleted process no longer frees its number). Two functions: `next_process_id` **mints** an id and persists the ledger; `peek_process_id` is a **stateless preview** (used by the UI `/next-id`) so merely rendering a creation form never burns an id. Generation only via a single `allocate-id` CLI, for all three paths (pipeline, chat, UI).
 
 ### 4.2 Voice filename (FR-U4)
 
@@ -161,6 +164,9 @@ Rule: "highest existing number + 1" (scan the disk, no separate/corruptible coun
   "parent": null,                         // sub-process: { "process": "...", "node": "..." }
   "created_at": "2026-07-06T10:00:00Z",
   "updated_at": "2026-07-06T10:00:00Z",
+
+  "tombstoned": true,                     // optional; set only by a restructure/remove
+  "superseded_by": ["cooking-003"],       // optional; the heir id(s) that replaced this process
 
   "idef0": {                              // the whole process as one A-0 box
     "inputs": [], "controls": [], "outputs": [], "mechanisms": []
@@ -205,6 +211,8 @@ Rule: "highest existing number + 1" (scan the disk, no separate/corruptible coun
 }
 ```
 
+> `tombstoned`/`superseded_by` are set **only** by a restructure (merge/split) or a `remove` — never by a normal update. A tombstoned process is excluded from `classify` matching and is shown **view-only** in the UI, with links to its heirs (§13). The engine only tombstones; the sole place a process is truly deleted is a user-initiated permanent delete in the UI (INV-4).
+
 ### 4.4 `overview.json` (per department, FR-P6)
 
 ```jsonc
@@ -244,22 +252,37 @@ Rule: "highest existing number + 1" (scan the disk, no separate/corruptible coun
 
 ## 5. Extraction Pipeline
 
-Five stages; three LLM subagents (Opus 4.8), two deterministic CLIs.
+**Set-based:** the unit of work is a **department transcript SET**, not one voice. Every run re-reads all the raw transcripts in full (no distillation) and reconciles them against the committed processes, so a later meeting can restructure an early one (ADR 0009). A run is scoped to **one department**.
+
+Invocation:
+- `/process-voice <department>` — the whole department set (all its recordings), or
+- `/process-voice <t1> <t2> …` — an explicit transcript list (the department is inferred).
+
+Three LLM subagents (Opus 4.8), the deterministic CLIs, and **two human gates**:
 
 ```
-[transcribe]  CLI + Vertex/Gemini + Claude check  → meetings/transcripts/{name}.txt
+[resolve set]  playbook  → the department's transcript set (explicit list → infer dept)
      │
-[classify]    subagent (Opus)       → runs/{name}/segments.json
+  ── Gate A (Telegram) ──  confirm the recording SET, before transcription
+     │                     (an explicit list discloses what it leaves out)
      │
-  ── human checkpoint (Telegram) ──   confirm/correct the process list
+[transcribe]   CLI + Vertex/Gemini + Claude check  → meetings/transcripts/*.txt
+     │                     (idempotent, per file — reconcile the missing ones only)
      │
-[extract]     subagent×N serial (Opus)  → runs/{name}/candidates/*.json
+[classify]     subagent (Opus)  reads the WHOLE set → runs/{dept}/{stamp}/segments.json
      │
-[merge]       deterministic CLI     → departments/{dept}/processes/{id}.json (+ pending)
+  ── Gate B (Telegram) ──  segmentation/restructure checkpoint: proposed process set
+     │                     with op labels (new/update/unchanged/merge/split/attach/remove),
+     │                     attributed evidence, contradictions
      │
-[summarize]   subagent (Opus)       → departments/{dept}/overview.json
+[extract]      subagent×N serial (Opus)  → runs/{dept}/{stamp}/candidates|deltas|restructure/
      │
-   git commit
+[merge]        deterministic CLI  per artifact: new | update | restructure |
+     │                            attach-subprocess | remove → departments/{dept}/processes/*.json
+     │
+[summarize]    subagent (Opus)  over the set → departments/{dept}/overview.json
+     │
+   git commit → report
 ```
 
 ### 5.1 transcribe (CLI + Vertex/Gemini) — FR-P1, FR-P2
@@ -290,22 +313,33 @@ Five stages; three LLM subagents (Opus 4.8), two deterministic CLIs.
 
 ### 5.2 classify (subagent) — FR-P3
 
-- Input: the path to the text + the tagged departments. **The content does not enter the main session**; the subagent reads the file itself.
-- Work: split the text into segments (each segment = one process); match each process against the existing `processes/` and label it with one of three states: **new** / **update** / **unchanged** (already-covered — the segment has nothing beyond what's in the existing process).
+- Input: the paths to the **whole set** of transcripts. **The content does not enter the main session**; the subagent reads the files itself.
+- Work: read all the raw transcripts together and assemble each desired process from **all its mentions across sessions** (attributed `evidence: [{transcript, text}]`); where sessions disagree, **later sessions supersede earlier** ones, and irreconcilable accounts are surfaced as `contradictions`. Segment boundaries are proposed fresh, not aligned to the committed set (the ADR 0008 Step-4 alignment bridge is removed) — committed boundaries are provisional.
+- Reconcile each desired process against the committed processes via a **`supersedes: [id…]` relation** (which replaces the old scalar `match.existing_id`): `[]` → **new**; `[X]` → **update** (or **unchanged**); `[X, Y]` → **merge**; two desired segments each carrying `[X]` → **split**. The per-segment `status` is a strict function of `supersedes`. **Tombstoned processes are excluded** from matching.
 - "Unchanged" processes are **not sent to `extract`** (cost savings, especially with Opus); their files stay untouched and they are only reported at the checkpoint.
-- Output: `runs/{name}/segments.json` — a list of `{department, process_name, transcript_excerpt, status: "new"|"update"|"unchanged", match: {existing_id|null}}`.
+- Output: `runs/{dept}/{stamp}/segments.json`, shaped
+  `{department, transcripts[], segments[{department, process_name, evidence[{transcript, text}], status, supersedes[]}], tombstone[], attach_subprocess[], contradictions[]}`.
 
-### 5.3 Human checkpoint — FR-P4, INV-5
+### 5.3 Human gates — FR-P4, INV-5
 
-The playbook shows the list in Telegram, in three categories: "A (new)", "B (update to cooking-003)", "D (unchanged — already covered)", plus any reported automatic sub-processes. The user confirms or corrects. **Override:** if the user doubts an "unchanged" item ("I think it gave more detail this time"), they can move it to "update" right there so it goes to `extract`. On any correction, only `classify` (or, for an override, `extract` of that one process) is re-run; since nothing has been built yet, no ID/file is touched (a cheap loop).
+There are now **two gates**:
 
-For confirmed "unchanged" processes, the process file stays untouched and only a lightweight record is added to `source.touched_by` (this voice referenced the process but added nothing) so the coverage history stays complete.
+**Gate A — confirm the recording set (before transcription).** The playbook shows the department's transcript set in Telegram and asks the user to confirm it. When the run was invoked with an *explicit* list, this gate also **discloses what the list leaves out** (other recordings tagged to that department) so an omission is deliberate, not silent. Transcription only runs on the confirmed set.
+
+**Gate B — the segmentation/restructure checkpoint (the former single checkpoint).** The playbook shows the proposed process set with an **op label** per item — new / update / unchanged / **merge** / **split** / **attach** / **remove** — plus each item's **attributed evidence** (`{transcript, text}`) and any **contradictions**. The user confirms or corrects. **Override:** if the user doubts an "unchanged" item, they can move it to "update" so it goes to `extract`. On any correction, only `classify` (or, for an override, `extract` of that one process) is re-run; since nothing has been built yet, no ID/file is touched (a cheap loop).
+
+For confirmed "unchanged" processes, the process file stays untouched and only a lightweight record is added to `source.touched_by` (this run referenced the process but added nothing) so the coverage history stays complete.
 
 ### 5.4 extract (subagent×N, serial — one at a time) — FR-P5, FR-D5
 
-- Each process runs in a separate subagent with its own window, reading only its own segment (context control — NFR-6). Dispatched **serially** — one `Task`, awaited before the next — because the control-bot's Claude SDK bridge drops a parallel `Task` batch mid-run; the context-isolation benefit is kept, parallel throughput is traded for reliability (ADR 0003).
+- Each desired process runs in a separate subagent with its own window (context control — NFR-6). Inputs are now the **set of transcript paths** + this process's attributed `evidence` + any superseded/target `process.json`(s) named by its `supersedes`. Dispatched **serially** — one `Task`, awaited before the next — because the control-bot's Claude SDK bridge drops a parallel `Task` batch mid-run; the context-isolation benefit is kept, parallel throughput is traded for reliability (ADR 0003).
 - The `idef-extraction` skill (IDEF0/IDEF3 knowledge + schema + the "no fabrication" rule) is preloaded at the subagent's startup.
-- Output: a candidate graph with **temporary keys** for nodes (e.g. `n1`, `n2`); **no final IDs are created by the LLM**. For an "update" process, the output is a delta (Section 6).
+- Output depends on the op:
+  - **new** → a candidate graph with **temporary keys** for nodes (e.g. `n1`); **no final IDs are created by the LLM**.
+  - **update** → a delta (Section 6) that may carry `revise_nodes` (overwrite a committed field on supersession) and `remove_edges` (edge hygiene), alongside `add_*`/`enrich_nodes`/`flag_removed`.
+  - **merge/split** → a restructure plan: `heirs[{candidate, supersedes[], subprocess_links[]}]` (heirs get fresh ids at merge; superseded originals are tombstoned).
+  - **attach** → attach linkage (re-parent an existing process under a node) via `attach_subprocess`.
+- The **one-to-one test**: any change that keeps a process **1:1 with a single committed process** is an in-place `update` (a delta — ids, manual edits and layout are preserved), **however large the change**. Tombstone-and-mint (fresh heir ids) is used **only** for an identity change — a merge, split, or remove.
 
 ### 5.5 merge (deterministic CLI) — FR-P5, FR-M2, INV-1
 
@@ -319,13 +353,13 @@ Builds/updates the department's `overview.json` from this run's processes + the 
 
 `git commit` with a message referencing the voice and the affected departments/processes. Then the playbook reports this run's list of **`pending` conflicts** in Telegram; the user can resolve them right there in chat (which applies the same accept/reject to disk), or later in the UI review inbox.
 
-### 5.8 Multi-department voice — FR-P8
+### 5.8 Multi-department material — FR-P8
 
-`classify` separates the segments per department; the extract/merge/summarize stages run separately for each department.
+The unit of work is a **department transcript set**, and a run commits **one department**. `classify` still assigns each segment its *true* department, but cross-department material found in a run is **not** fanned out and committed here — it is picked up by **that department's own run** (over its own set). This replaces the old "extract/merge/summarize run separately for each department" fan-out (ADR 0009).
 
 ### 5.9 Re-run — FR-P9
 
-Each run stays in `runs/{voice-basename}/`; a re-run goes to `runs/{voice-basename}/attempt-02/`. This is a free evaluation corpus for improving the agents.
+Each run lives at `runs/{department}/{stamp}/` where `stamp` is the UTC `YYYYMMDD-HHMMSS` timestamp — the timestamp **is** the attempt key, so a re-run is simply a new stamped directory (the old `runs/{voice}/attempt-02/` scheme is dropped). This is a free evaluation corpus for improving the agents.
 
 ### 5.10 Required Agents & Skills (build checklist)
 
@@ -343,8 +377,9 @@ This list states only **what must be built**; the full prompt/skill text and the
 
 | Name | Type | Role |
 |---|---|---|
-| `process-voice` | playbook (slash command) | orchestrate the whole pipeline + own the checkpoint and conflict report |
+| `process-voice` | playbook (slash command) | orchestrate the whole set-based pipeline + own the two gates and the conflict report |
 | `idef-extraction` | knowledge (preloaded in `extract`) | IDEF0/IDEF3 rules + the `process.json` schema + the "no fabrication" rule |
+| `edit-process` | skill (chat-triggered, no voice) | direct conversational edits — read the target process, build the matching engine artifact (delta/restructure), run the right `merge` verb (never a direct write), commit with `source.type:"chat"` |
 
 **Non-agent (part of the engine, not `.claude`):** `transcribe`, `merge`, `allocate-id`, `layout`, `validate` — all deterministic CLIs in `code-repo/engine` (Section 8). This list is updated here whenever a new agent/skill is added.
 
@@ -388,6 +423,23 @@ For an "update", the existing `process.json` is given to extract, and the output
 
 Each node keeps `source.created_by` and `source.touched_by[]` (references into `runs/`).
 
+### 6.6 Restructuring & the id ledger (ADR 0009)
+
+The op for each item is driven by the `supersedes` relation from `classify` (§5.2), and `merge` gains the verbs that realise identity changes:
+
+- **`merge restructure` (merge / split).** The heirs get **fresh ids** from the ledger; every superseded original is **tombstoned** (`tombstoned:true` + `superseded_by:[heir ids]`), never deleted. The engine performs a **full hierarchy redirect** — every `subprocess`/`parent` pointer that referenced an original is repointed to its heir. The plan is **hierarchy-closed**: the engine **refuses (by name)** any plan that would leave a dangling subprocess/parent reference.
+- **`merge attach-subprocess`.** Re-parent an *existing* process under a node of another process; the child **keeps its id** (no tombstone, no mint).
+- **`merge remove`.** Tombstone the process (INV-4) — the engine never deletes it.
+
+Two delta ops distinguish supersession from enrichment:
+
+- **`revise_nodes`** — **overwrite** a committed field when a later session supersedes it (distinct from `enrich_nodes`, which only fills empty/`pending` fields). Overwrites of a filled field on a *non*-superseding update still go through `pending` (§6.3).
+- **`remove_edges`** — edge hygiene: **hard-delete** an edge made redundant by a re-route. Edges are structure, not INV-4-protected content, so they may be removed outright (unlike nodes, which are only flagged).
+
+**Durable id ledger.** Ids come from the per-department `.id-seq.json` high-water mark (§4.1) — monotonic and **never reused** across tombstone, restructure, or permanent delete.
+
+**INV-4 preserved:** the engine only tombstones; the sole permanent deletion of a process is a user action in the UI (§13).
+
 ---
 
 ## 7. Orchestration & Reliability
@@ -416,11 +468,13 @@ In `code-repo/engine/`, installed as **pinned** CLIs on the server's PATH; outsi
 
 | CLI | Job |
 |---|---|
-| `allocate-id` | deterministic ID generation ("max + 1") for process/box/junction |
-| `merge` | apply delta, assign IDs, preserve id/position, record pending, mark removed |
+| `allocate-id` | deterministic ID generation for process/box/junction; process ids come from the durable per-department `.id-seq.json` ledger (`mint`/`peek`, never reused — §4.1) |
+| `merge` | verbs `new` / `update` / `restructure` / `attach-subprocess` / `remove` / `accept` / `reject`: apply delta or restructure plan, mint/assign IDs, preserve id/position/manual layout, record pending, flag-remove nodes, hard-delete edges, tombstone + hierarchy-redirect on restructure/remove |
 | `layout` | deterministic layered layout (Section 9) |
 | `transcribe` | Gemini-on-Vertex call + idempotency pre-check |
-| `validate` | check a JSON artifact against a named schema (exit 2 on mismatch); guards the classify/summarize/playbook outputs (`segments`/`overview`/`meta`) that no other CLI validates |
+| `validate` | check a JSON artifact against a named schema (exit 2 on mismatch); guards the classify/summarize/playbook outputs (`segments`/`overview`/`meta`/`restructure`) that no other CLI validates |
+
+Schemas `validate` gained/changed for this round: `segments` and `run-meta` were **reshaped** (set-based, `supersedes`); `process` gained `superseded_by`/`tombstoned`; `delta` gained `remove_edges`/`revise_nodes`; and two new schemas were added — `restructure.schema.json` (merge/split heir plan) and `idseq.schema.json` (the per-department id ledger).
 
 The skills/prompts/IDEF rules stay in `data-repo/.claude` (intentionally easy to edit, since they are meant to improve over time). Two separate improvement activities: extraction quality → edit skills in `data-repo`; the deterministic engine → edit CLIs in `code-repo`.
 
@@ -468,6 +522,7 @@ The `RichardAtCT/claude-code-telegram` project (Python 3.11+, MIT). Latest tagge
 - Other required variables: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`, `APPROVED_DIRECTORY=data-repo`. Auth via the CLI (`claude auth`) or `ANTHROPIC_API_KEY`.
 - Clarifying questions raised as conversational turns (FR-C3).
 - No custom logic: it passes the message transparently to Claude Code; locating/validating the file is Claude Code's job (the transcribe stage), not the bot's. (FR-C1)
+- **Chat edits are a real path.** The `edit-process` skill (§5.10) lets the user edit committed work by chat with no voice ("change node X's label in process Y"); it goes through the same `merge` verbs (never a direct write) and is committed as `chat-edit(...)` with `source.type:"chat"` (§15).
 - **Built-in features of this bot that we do NOT use:** its built-in voice transcription (Whisper/Voxtral) — our transcription is Gemini/Vertex in the pipeline; and file upload/extraction — disabled with `ENABLE_FILE_UPLOADS=false`, since every upload is via Bot 1 only (FR-U8).
 
 **References (to read during implementation):**
@@ -502,7 +557,8 @@ The `RichardAtCT/claude-code-telegram` project (Python 3.11+, MIT). Latest tagge
 - Maps `nodes` (including junctions) and `edges` directly to the graph. Summary card from `idef0`+`kpis`. Navigation department→process→sub-process→box. (FR-I2)
 - **Default mode is view-only (read-only):** the user sees the process and flowchart but nothing is movable/editable. Only by pressing the **"Edit"** button does the editor open and the user enters edit mode (preventing accidental changes).
 - **Save is manual, not automatic:** changes (edit/delete/add/reposition) are held in UI memory until the user presses **"Save"**; then the backend writes the JSON at once and makes **one commit** (Section 15). This prevents tiny, numerous commits.
-- Backend jobs: read/write JSON, apply edit/delete (flag)/add, reposition (recording `layout: manual`), the `pending` review inbox, and manual process creation (`allocate-id` — FR-I5, FR-D2).
+- Backend jobs: read/write JSON, apply edit/delete (flag)/add, reposition (recording `layout: manual`), the `pending` review inbox, and manual process creation (`allocate-id` — FR-I5, FR-D2). The backend **excludes tombstones from department counts**.
+- **Tombstoned processes** (`tombstoned:true`) are shown labelled **«باطل‌شده»** and are **view-only everywhere** (list, summary, flowchart) — never editable — with links to their heirs (`superseded_by`). The UI offers a user-initiated **permanent delete**: this is the **only** place a process is truly deleted (the single allowed exception to INV-4's "never delete"; automatic deletion never happens). The durable id ledger (§4.1) guarantees a deleted process's id is still never reused.
 - Auth (NFR-3): the plaintext password is not stored; the hash and signing key are **outside `data-repo`** (stack details in 13.1). Alternative auth: Basic Auth on the reverse proxy.
 - The edit loop is independent of both bots, working directly from the JSON on disk.
 
@@ -530,7 +586,7 @@ No change goes uncommitted; each path commits with a distinct author/message so 
 | Path | When | Example message |
 |---|---|---|
 | Pipeline | one commit at the end of each run (FR-P7) | `pipeline(cooking): 2 processes from cooking-2026-07-06` |
-| Chat edit (Claude Code) | after applying each edit | `chat-edit(cooking-001): update actor of n020` |
+| Chat edit (Claude Code) | after applying each edit — implemented via the `edit-process` skill (§5.10), `source.type:"chat"` | `chat-edit(cooking-001): update actor of n020` |
 | UI edit | when the user presses "Save" (one commit for that whole save) | `ui-edit(cooking-001): move nodes` |
 
 Note: in the UI, saving is manual (not autosave on each click), so each "Save" = one JSON write + one commit. (Section 13)
@@ -588,6 +644,5 @@ Key Docker notes:
 ## 18. Open Items
 
 - The exact Gemini-on-Vertex model and how large files are passed (inline vs. GCS) — to be finalized during implementation.
-- The exact threshold for automatic sub-process creation (number of sub-steps) — to be tuned based on `runs/`.
 - The audio format produced by Telegram and any conversions needed before Vertex.
 - The backup strategy for the data repository on the VPS.
