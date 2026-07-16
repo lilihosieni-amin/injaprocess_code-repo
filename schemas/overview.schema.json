@@ -4,10 +4,11 @@
   "title": "Department overview (ARD §4.4)",
   "type": "object",
   "additionalProperties": false,
-  "required": ["department", "name", "sub_units", "personnel", "updated_at"],
+  "required": ["department", "name", "description", "sub_units", "personnel", "updated_at"],
   "properties": {
     "department": { "type": "string", "pattern": "^[a-z]+$" },
     "name": { "type": "string" },
+    "description": { "type": "string" },
     "sub_units": {
       "type": "array",
       "items": {

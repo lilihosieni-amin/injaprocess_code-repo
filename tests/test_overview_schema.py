@@ -13,3 +13,15 @@ def test_person_requires_role(validate):
     o = copy.deepcopy(load_fixture("overview.cooking.json"))
     del o["personnel"][0]["role"]
     assert validate(SCHEMA, o) != []
+
+
+def test_overview_requires_description(validate):
+    o = copy.deepcopy(load_fixture("overview.cooking.json"))
+    del o["description"]
+    assert validate(SCHEMA, o) != []
+
+
+def test_overview_allows_empty_description(validate):
+    o = copy.deepcopy(load_fixture("overview.cooking.json"))
+    o["description"] = ""
+    assert validate(SCHEMA, o) == []
