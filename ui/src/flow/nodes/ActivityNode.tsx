@@ -6,7 +6,7 @@ import { toFa } from '../../lib/format'
 export function ActivityNode({ data }: NodeProps<Node<FlowNodeData>>) {
   const n = data.node as ActivityNodeT
   return (
-    <div dir="rtl" className={`relative bg-white border border-warm rounded-xl shadow-card px-3 py-2 w-[170px] text-center transition-shadow ${data.highlighted ? 'ring-2 ring-violet ring-offset-2 ring-offset-bg' : ''}`}>
+    <div dir="rtl" className={`relative border rounded-xl shadow-card px-3 py-2 w-[170px] text-center transition-shadow ${data.hasSub ? 'bg-[#F3EEFC] border-line' : 'bg-white border-warm'} ${data.highlighted ? 'ring-2 ring-violet ring-offset-2 ring-offset-bg' : ''}`}>
       <Handle type="target" position={Position.Left} className="!w-2 !h-2 !bg-[#9B86D9] !border-0" />
       <button
         onClick={(e) => { e.stopPropagation(); (data as { onOpenDetail?: (id: string) => void }).onOpenDetail?.(n.id) }}
@@ -29,7 +29,10 @@ export function ActivityNode({ data }: NodeProps<Node<FlowNodeData>>) {
         </div>
       )}
       {data.hasSub && (
-        <div className="flex items-center justify-center gap-1 mt-1.5 text-[9px] text-conflict bg-[#FFE9E7] px-2 py-0.5 rounded-full font-semibold">زیرفرآیند — برای ورود کلیک کنید</div>
+        <div className="flex items-center justify-center gap-1 mt-1.5 text-[9px] text-green bg-[#E4F6EC] px-2 py-0.5 rounded-full font-semibold">
+          <span aria-hidden dir="ltr" className="text-[10px] leading-none">‹</span>
+          زیرفرآیند — برای ورود کلیک کنید
+        </div>
       )}
       <Handle type="source" position={Position.Right} className="!w-3 !h-3 !bg-coral !border-2 !border-white" />
     </div>
