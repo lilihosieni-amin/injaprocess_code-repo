@@ -7,6 +7,7 @@ afterEach(() => vi.restoreAllMocks())
 
 const OV = {
   department: 'cooking', name: 'دپارتمان پخت', updated_at: '2026-07-06T10:00:00Z',
+  description: 'واحد پخت غذاهای گرم رستوران است.',
   sub_units: [{ name: 'آشپزخانهٔ گرم', description: 'غذاهای گرم' }],
   personnel: [{ role: 'سرآشپز', duties: ['مدیریت آشپزخانه', 'کنترل کیفیت'] }],
 }
@@ -16,6 +17,7 @@ describe('Overview', () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify(OV), { status: 200, headers: { 'Content-Type': 'application/json' } }))
     renderAt('/departments/:code/overview', <Overview />, '/departments/cooking/overview')
     expect(await screen.findByText('دپارتمان پخت')).toBeInTheDocument()
+    expect(screen.getByText('واحد پخت غذاهای گرم رستوران است.')).toBeInTheDocument()
     expect(screen.getByText('آشپزخانهٔ گرم')).toBeInTheDocument()
     expect(screen.getByText('سرآشپز')).toBeInTheDocument()
     expect(screen.getByText(/۱۴۰۵\/۰۴\/۱۵/)).toBeInTheDocument()

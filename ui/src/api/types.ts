@@ -42,6 +42,7 @@ export interface Process {
 
 export interface Overview {
   department: string; name: string
+  description: string
   sub_units: { name: string; description: string }[]
   personnel: { role: string; duties: string[] }[]
   updated_at: string

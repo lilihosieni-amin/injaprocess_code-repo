@@ -8,7 +8,8 @@ import { Button } from '../ui/Button'
 import { useToast } from '../write/ToastProvider'
 import type { Overview as OverviewT } from '../api/types'
 
-type Draft = { sub_units: { name: string; description: string }[]; personnel: { role: string; duties: string[] }[] }
+type Draft = { description: string; sub_units: { name: string; description: string }[]; personnel: { role: string; duties: string[] }[] }
+type ArrayKey = { [K in keyof Draft]: Draft[K] extends unknown[] ? K : never }[keyof Draft]
 
 export function Overview() {
   const { code = '' } = useParams()
@@ -22,6 +23,7 @@ export function Overview() {
 
   function enter() {
     setDraft({
+      description: data!.description,
       sub_units: data!.sub_units.map((s) => ({ ...s })),
       personnel: data!.personnel.map((p) => ({ role: p.role, duties: [...p.duties] })),
     })
@@ -30,6 +32,7 @@ export function Overview() {
     const d = draft!
     const doc: OverviewT = {
       ...data!,
+      description: d.description.trim(),
       sub_units: d.sub_units,
       personnel: d.personnel.map((p) => ({ role: p.role, duties: p.duties.map((x) => x.trim()).filter(Boolean) })),
     }
@@ -59,6 +62,23 @@ export function Overview() {
             </div>
           )}
         </div>
+
+        <section className="mb-7">
+          <div className="font-extrabold text-[15px] text-ink mb-3">معرفی دپارتمان</div>
+          {!editing ? (
+            data.description.trim() ? (
+              <Card className="px-[18px] py-4">
+                <div className="text-[14px] text-muted leading-relaxed whitespace-pre-line">{data.description}</div>
+              </Card>
+            ) : (
+              <div className="text-[12.5px] text-faint px-0.5 py-1.5">شرحی ثبت نشده است.</div>
+            )
+          ) : (
+            <textarea value={draft!.description} onChange={(e) => setDraft({ ...draft!, description: e.target.value })} rows={5}
+              placeholder="شرح کوتاه دپارتمان (یک تا دو پاراگراف)"
+              className="w-full px-3 py-2.5 border-[1.5px] border-line rounded-[10px] text-[13px] text-ink outline-none focus:border-coral resize-y leading-relaxed" />
+          )}
+        </section>
 
         <Section title="واحدهای زیرمجموعه"
           onAdd={editing ? () => setDraft({ ...draft!, sub_units: [...draft!.sub_units, { name: '', description: '' }] }) : undefined}>
@@ -151,10 +171,10 @@ export function Overview() {
     </div>
   )
 
-  function patch<K extends keyof Draft>(key: K, i: number, p: Partial<Draft[K][number]>) {
+  function patch<K extends ArrayKey>(key: K, i: number, p: Partial<Draft[K][number]>) {
     setDraft((d) => d && ({ ...d, [key]: d[key].map((row, k) => (k === i ? { ...row, ...p } : row)) }))
   }
-  function del<K extends keyof Draft>(key: K, i: number) {
+  function del<K extends ArrayKey>(key: K, i: number) {
     setDraft((d) => d && ({ ...d, [key]: d[key].filter((_, k) => k !== i) }))
   }
   function patchDuties(i: number, next: (duties: string[]) => string[]) {
