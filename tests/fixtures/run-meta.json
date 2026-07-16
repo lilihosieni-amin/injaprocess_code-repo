@@ -1,12 +1,12 @@
 {
-  "voice": "cooking-2026-07-06",
-  "departments": ["cooking"],
+  "department": "dining",
+  "transcripts": ["dining-2026-07-06", "dining-2026-07-08"],
   "started_at": "2026-07-06T10:00:00Z",
   "finished_at": "2026-07-06T10:12:00Z",
   "attempt": 1,
   "processes": [
-    { "id": "cooking-001", "status": "new" },
-    { "id": "cooking-002", "status": "update" },
-    { "id": "cooking-003", "status": "unchanged" }
+    { "id": "dining-001", "status": "new" },
+    { "id": "dining-002", "status": "update", "superseded": ["dining-002"] },
+    { "id": "dining-003", "status": "unchanged" }
   ]
 }

@@ -1,26 +1,34 @@
 {
-  "voice": "cooking-2026-07-06",
+  "department": "dining",
+  "transcripts": ["dining-2026-07-06", "dining-2026-07-08"],
   "segments": [
     {
-      "department": "cooking",
-      "process_name": "خرید و پرداخت هزینه",
-      "transcript_excerpt": "… وقتی درخواست خرید می‌رسد …",
+      "department": "dining",
+      "process_name": "پذیرش و نشستن مهمان",
+      "evidence": [
+        { "transcript": "dining-2026-07-06", "text": "… وقتی مهمان وارد می‌شود، میزبان او را به میز راهنمایی می‌کند …" }
+      ],
       "status": "new",
-      "match": { "existing_id": null }
+      "supersedes": []
     },
     {
-      "department": "cooking",
-      "process_name": "پخت غذای روز",
-      "transcript_excerpt": "… سفارش‌های روز جمع می‌شود …",
+      "department": "dining",
+      "process_name": "ثبت سفارش و ارسال به آشپزخانه",
+      "evidence": [
+        { "transcript": "dining-2026-07-06", "text": "… گارسون سفارش را می‌گیرد …" },
+        { "transcript": "dining-2026-07-08", "text": "… حالا سفارش از طریق تبلت به آشپزخانه ارسال می‌شود …" }
+      ],
       "status": "update",
-      "match": { "existing_id": "cooking-002" }
+      "supersedes": ["dining-002"]
     },
     {
-      "department": "cooking",
-      "process_name": "کنترل موجودی مواد اولیه",
-      "transcript_excerpt": "… چیز جدیدی گفته نشد …",
+      "department": "dining",
+      "process_name": "تسویه حساب مهمان",
+      "evidence": [
+        { "transcript": "dining-2026-07-08", "text": "… چیز جدیدی درباره صورتحساب گفته نشد …" }
+      ],
       "status": "unchanged",
-      "match": { "existing_id": "cooking-003" }
+      "supersedes": ["dining-003"]
     }
   ]
 }

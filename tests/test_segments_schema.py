@@ -15,8 +15,8 @@ def test_status_enum_enforced(validate):
     assert validate(SCHEMA, s) != []
 
 
-def test_update_match_id_may_be_null_for_new(validate):
+def test_new_segment_supersedes_nothing(validate):
     s = copy.deepcopy(load_fixture("segments.json"))
-    # a 'new' segment carries match.existing_id = null
-    assert any(seg["status"] == "new" and seg["match"]["existing_id"] is None
+    # a 'new' segment references no existing process, i.e. supersedes == []
+    assert any(seg["status"] == "new" and seg["supersedes"] == []
                for seg in s["segments"])
