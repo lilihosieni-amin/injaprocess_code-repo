@@ -66,7 +66,10 @@ Make process ids monotonic and never reused, even after a file is deleted, by pe
 
 **Interfaces:**
 - **Consumes:** `engine_common.data_root`; `departments/{dept}/.id-seq.json` = `{"process": <int>}` (may be absent).
-- **Produces:** `next_process_id(dept, root=None, reserved=()) -> str` — `next = max(file_scan_max, ledger_value, reserved_max) + 1`; **persist** `{"process": next}` to `departments/{dept}/.id-seq.json`; ledger only ever increases. Signature and node/junction functions unchanged.
+- **Produces (peek/mint split — resolves the preview-vs-mint conflict):**
+  - `next_process_id(dept, root=None, reserved=()) -> str` — the **minter**. `next = max(file_scan_max, ledger_value, reserved_max) + 1`; **persist** `{"process": next}` to `departments/{dept}/.id-seq.json`; ledger only ever increases. `merge` already calls this, so real mints advance the high-water automatically. Signature unchanged; node/junction functions unchanged.
+  - `peek_process_id(dept, root=None, reserved=()) -> str` — **stateless preview**. Same `max(file_scan_max, ledger_value, reserved_max) + 1` computation but **does NOT write** the ledger (repeatable). Used by `ui-backend`'s `/next-id` route and any "what id would be next" preview.
+- **Cross-phase consumer fix (in scope for this task):** `ui-backend/inja_ui_backend/routers/departments.py`'s `/next-id` route must call `peek_process_id` (not `next_process_id`), so rendering the create form never burns an id. The pre-existing `engine/tests/test_allocate_id.py::test_reserved_ids_bump_the_counter` (which asserts stateless behaviour) moves to `peek_process_id`; `ui-backend/tests/test_departments.py::test_next_id_previews_allocation` passes once the route uses peek.
 
 Steps:
 
@@ -128,7 +131,22 @@ def test_reserved_still_bumps_in_batch(data_root):
 - [ ] **Run it — expect failure.** `cd code-repo && python -m pytest engine/tests/test_id_ledger.py -q`
   Expected: FAILS. `test_ledger_bootstraps_from_file_scan` fails at the ledger read with `FileNotFoundError` (no `.id-seq.json` is written yet); the monotonic/delete tests fail with `AssertionError` because today's scan reuses `cooking-001` after deletion.
 
-- [ ] **Implement minimally.** Edit `code-repo/engine/allocate_id/__init__.py`. Add `import json` at the top and replace `next_process_id`:
+- [ ] **Add a peek (stateless) test.** In `test_id_ledger.py`, add:
+```python
+from allocate_id import peek_process_id
+
+
+def test_peek_is_stateless_and_repeatable(data_root):
+    _write_proc(data_root, "cooking-001")
+    assert peek_process_id("cooking", data_root) == "cooking-002"
+    assert peek_process_id("cooking", data_root) == "cooking-002"      # no advance
+    assert not _ledger_path(data_root, "cooking").is_file()            # no ledger written
+    # peek honours reserved without persisting
+    assert peek_process_id("cooking", data_root, reserved={"cooking-002"}) == "cooking-003"
+```
+  Move the stateless `reserved` expectation off the minter: in `engine/tests/test_allocate_id.py`, change `test_reserved_ids_bump_the_counter` to import and call `peek_process_id` (not `next_process_id`) so it keeps asserting stateless behaviour.
+
+- [ ] **Implement minimally.** Edit `code-repo/engine/allocate_id/__init__.py`. Add `import json`, a shared computation, a persisting `next_process_id`, and a stateless `peek_process_id`:
 ```python
 import json
 import re
@@ -149,8 +167,7 @@ def _read_ledger(path):
     return 0
 
 
-def next_process_id(dept, root=None, reserved=()):
-    root = root or data_root()
+def _next_ordinal(dept, root, reserved):
     d = root / "departments" / dept / "processes"
     rx = re.compile(rf"^{re.escape(dept)}-(\d{{3}})$")
     mx = 0
@@ -163,21 +180,39 @@ def next_process_id(dept, root=None, reserved=()):
         m = rx.match(rid)
         if m:
             mx = max(mx, int(m.group(1)))
+    return max(mx, _read_ledger(_id_seq_path(root, dept))) + 1
+
+
+def peek_process_id(dept, root=None, reserved=()):
+    """Stateless preview — does NOT persist the ledger."""
+    root = root or data_root()
+    return f"{dept}-{_next_ordinal(dept, root, reserved):03d}"
+
+
+def next_process_id(dept, root=None, reserved=()):
+    """Minter — allocates and persists the ledger high-water mark."""
+    root = root or data_root()
+    nxt = _next_ordinal(dept, root, reserved)
     ledger_path = _id_seq_path(root, dept)
-    nxt = max(mx, _read_ledger(ledger_path)) + 1
     ledger_path.parent.mkdir(parents=True, exist_ok=True)
     ledger_path.write_text(json.dumps({"process": nxt}) + "\n", encoding="utf-8")
     return f"{dept}-{nxt:03d}"
 ```
   (`_max_suffix` / `next_box_id` / `next_junction_id` stay exactly as they are.)
 
-- [ ] **Run it — expect pass.** `cd code-repo && python -m pytest engine/tests/test_id_ledger.py engine/tests/test_allocate_id.py -q`
-  Expected: all pass (new file + the pre-existing `test_allocate_id.py`, whose `reserved`/scan behaviour is preserved).
+- [ ] **Point the preview consumer at peek.** In `code-repo/ui-backend/inja_ui_backend/routers/departments.py`, the `/next-id` route currently calls `next_process_id`; change that call to `peek_process_id` (and update the import). This keeps the create-form preview from burning an id on every render. Do not change anything else in that file.
+
+- [ ] **Run it — expect pass.** `cd code-repo && python -m pytest engine/tests/test_id_ledger.py engine/tests/test_allocate_id.py ui-backend/tests/test_departments.py -q`
+  Expected: all pass — the ledger + peek tests, the (now peek-based) stateless reserved test, and the ui-backend `/next-id` preview test.
 
 - [ ] **Commit.**
 ```
-git add engine/allocate_id/__init__.py engine/tests/test_id_ledger.py
-git commit -m "feat(engine): durable per-department id ledger — ids never reused
+git add engine/allocate_id/__init__.py engine/tests/test_id_ledger.py engine/tests/test_allocate_id.py ui-backend/inja_ui_backend/routers/departments.py
+git commit -m "feat(engine): durable id ledger (mint) + peek_process_id (preview)
+
+next_process_id persists a per-department high-water mark so process ids are
+never reused, even after permanent delete. peek_process_id previews without
+advancing; ui-backend /next-id uses peek so rendering the form burns no id.
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ```
