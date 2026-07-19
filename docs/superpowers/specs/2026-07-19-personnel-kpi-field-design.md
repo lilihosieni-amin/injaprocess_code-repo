@@ -76,9 +76,10 @@ Change the personnel shape to `{ role: string; duties: string[]; kpi: string[] }
 - **`Draft` type + `enter()`/`save()`:** the personnel draft gains `kpi: string[]`.
   `enter()` seeds it from `p.kpi` (`kpi: [...p.kpi]`); `save()` maps it through
   `kpi: p.kpi.map((x) => x.trim()).filter(Boolean)`, mirroring the existing duties lines.
-- **Read view:** under each role, render its KPIs as a collapsible list beside/below the
-  duties list (same `toFa(count)`-labeled, pill-style treatment as duties, e.g. a
-  «… شاخص» count). Empty → render nothing (or a faint placeholder, consistent with duties).
+- **Read view:** under each role, render its KPIs as a collapsible list **below the duties
+  pills** (same `toFa(count)`-labeled, pill-style treatment as duties, e.g. a «… شاخص»
+  count). Empty → a faint placeholder (e.g. «شاخصی ثبت نشده است.»), consistent with the
+  description field's empty state.
 - **Edit view:** add/remove/edit KPI lines using the same helpers pattern as
   `patchDuties`/`setDuty` (add a `patchKpi`/`setKpi` pair). An «افزودن شاخص» control adds a
   blank line; blanks are dropped on save by the `.filter(Boolean)` above.

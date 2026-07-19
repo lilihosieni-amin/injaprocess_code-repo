@@ -17,6 +17,7 @@ __pycache__/
 *service-account*.json
 # Real UI users map lives outside the repo (server secrets); only the .example is tracked
 config/ui-users.json
+deploy/local/ui-users.json
 
 # Editor / OS
 .vscode/
