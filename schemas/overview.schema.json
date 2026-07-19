@@ -21,10 +21,11 @@
       "type": "array",
       "items": {
         "type": "object", "additionalProperties": false,
-        "required": ["role", "duties"],
+        "required": ["role", "duties", "kpi"],
         "properties": {
           "role": { "type": "string" },
-          "duties": { "type": "array", "items": { "type": "string" } }
+          "duties": { "type": "array", "items": { "type": "string" } },
+          "kpi": { "type": "array", "items": { "type": "string" } }
         }
       }
     },

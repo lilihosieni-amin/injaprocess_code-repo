@@ -25,3 +25,21 @@ def test_overview_allows_empty_description(validate):
     o = copy.deepcopy(load_fixture("overview.cooking.json"))
     o["description"] = ""
     assert validate(SCHEMA, o) == []
+
+
+def test_person_requires_kpi(validate):
+    o = copy.deepcopy(load_fixture("overview.cooking.json"))
+    del o["personnel"][0]["kpi"]
+    assert validate(SCHEMA, o) != []
+
+
+def test_kpi_allows_empty(validate):
+    o = copy.deepcopy(load_fixture("overview.cooking.json"))
+    o["personnel"][0]["kpi"] = []
+    assert validate(SCHEMA, o) == []
+
+
+def test_kpi_must_be_string_array(validate):
+    o = copy.deepcopy(load_fixture("overview.cooking.json"))
+    o["personnel"][0]["kpi"] = [123]
+    assert validate(SCHEMA, o) != []
