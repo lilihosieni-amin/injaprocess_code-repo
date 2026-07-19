@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "consolidation.schema.json",
+  "title": "Consolidation review — numbered merge/attach suggestions over a department (design §4.3)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["department", "generated_from", "suggestions"],
+  "properties": {
+    "department": { "type": "string", "pattern": "^[a-z]+$" },
+    "generated_from": { "type": "string" },
+    "suggestions": {
+      "type": "array",
+      "items": { "oneOf": [ { "$ref": "#/$defs/mergeSuggestion" },
+                            { "$ref": "#/$defs/attachSuggestion" } ] }
+    }
+  },
+  "$defs": {
+    "procId": { "type": "string", "pattern": "^[a-z]+-[0-9]{3}$" },
+    "nodeId": { "type": "string", "pattern": "^[a-z]+-[0-9]{3}-[a-z0-9]+$" },
+    "status": { "enum": ["pending", "approved", "rejected", "applied"] },
+    "shape": { "enum": ["flat", "mother_subprocess"] },
+    "evidenceItem": {
+      "oneOf": [
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["node", "label"],
+          "properties": {
+            "node": { "$ref": "#/$defs/nodeId" },
+            "label": { "type": "string" },
+            "also_in": { "type": "array", "items": { "$ref": "#/$defs/nodeId" } }
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["transcript", "text"],
+          "properties": {
+            "transcript": { "type": "string" },
+            "text": { "type": "string" }
+          }
+        }
+      ]
+    },
+    "repair": {
+      "type": "object", "additionalProperties": false,
+      "required": ["op", "process", "detail"],
+      "properties": {
+        "op": { "enum": ["add_nodes", "add_edges", "remove_edges",
+                          "revise_nodes", "enrich_nodes", "flag_removed"] },
+        "process": { "$ref": "#/$defs/procId" },
+        "detail": { "type": "string" }
+      }
+    },
+    "mergeSuggestion": {
+      "type": "object", "additionalProperties": false,
+      "required": ["n", "kind", "status", "problem", "action",
+                    "recommended_shape", "chosen_shape", "processes", "evidence", "repairs"],
+      "properties": {
+        "n": { "type": "integer", "minimum": 1 },
+        "kind": { "const": "merge" },
+        "status": { "$ref": "#/$defs/status" },
+        "problem": { "type": "string" },
+        "action": { "type": "string" },
+        "recommended_shape": { "$ref": "#/$defs/shape" },
+        "chosen_shape": { "oneOf": [ { "$ref": "#/$defs/shape" }, { "type": "null" } ] },
+        "processes": {
+          "type": "array", "minItems": 2,
+          "items": { "$ref": "#/$defs/procId" }
+        },
+        "evidence": { "type": "array", "minItems": 1,
+                      "items": { "$ref": "#/$defs/evidenceItem" } },
+        "repairs": { "type": "array", "items": { "$ref": "#/$defs/repair" } }
+      }
+    },
+    "attachSuggestion": {
+      "type": "object", "additionalProperties": false,
+      "required": ["n", "kind", "status", "problem", "action",
+                    "child", "parent_process", "parent_node", "evidence", "repairs"],
+      "properties": {
+        "n": { "type": "integer", "minimum": 1 },
+        "kind": { "const": "attach" },
+        "status": { "$ref": "#/$defs/status" },
+        "problem": { "type": "string" },
+        "action": { "type": "string" },
+        "child": { "$ref": "#/$defs/procId" },
+        "parent_process": { "$ref": "#/$defs/procId" },
+        "parent_node": { "$ref": "#/$defs/nodeId" },
+        "evidence": { "type": "array", "minItems": 1,
+                      "items": { "$ref": "#/$defs/evidenceItem" } },
+        "repairs": { "type": "array", "items": { "$ref": "#/$defs/repair" } }
+      }
+    }
+  }
+}

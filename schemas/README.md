@@ -14,6 +14,7 @@ these); kept in `code-repo` so runtime (INV-2) cannot weaken validation.
 | `segments.schema.json` | classify output (ARD §5.2) | classify agent | checkpoint |
 | `run-meta.schema.json` | per-run metadata (ARD §2.2) | process-voice | audit |
 | `conflicts.schema.json` | per-run conflicts (ARD §2.2) | merge | Telegram report, UI inbox |
+| `consolidation.schema.json` | consolidation review suggestions (design §4.3) | consolidate agent | process-voice Stage 10 |
 
 Golden fixtures conforming to each live in `../tests/fixtures/`. Run `make test`
 to validate every fixture against its schema.
