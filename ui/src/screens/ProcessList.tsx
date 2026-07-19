@@ -97,9 +97,7 @@ export function ProcessList() {
                 </div>
                 <div className="flex gap-2 shrink-0">
                   <Button variant="ghost" onClick={() => nav(`/processes/${p.id}`)} className="px-3.5 py-[9px] text-[12.5px]">اطلاعات کلی</Button>
-                  {!tombstoned && (
-                    <Button variant="violet" onClick={() => nav(`/processes/${p.id}/flow`)} className="px-3.5 py-[9px] text-[12.5px]">فلوچارت</Button>
-                  )}
+                  <Button variant="violet" onClick={() => nav(`/processes/${p.id}/flow`)} className="px-3.5 py-[9px] text-[12.5px]">فلوچارت</Button>
                   <button onClick={() => setDelTarget({ pid: p.id, name: p.name })} title={tombstoned ? 'حذف دائمی فرآیند' : 'حذف فرآیند'}
                     className="flex items-center justify-center w-[38px] shrink-0 border-[1.5px] border-[#FDD9D6] bg-[#FFF3F2] rounded-[11px] text-conflict">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M10 11v6M14 11v6" /></svg>

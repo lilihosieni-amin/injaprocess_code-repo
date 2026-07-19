@@ -89,12 +89,12 @@ export function Summary() {
           </div>
           <div className="flex gap-2.5 shrink-0">
             {!editing ? (
-              tombstoned ? null : (
-                <>
+              <>
+                {!tombstoned && (
                   <Button variant="ghost" onClick={enter} className="px-4 py-3 text-[13px]">ویرایش اطلاعات</Button>
-                  <Button variant="coral" onClick={() => nav(`/processes/${proc.id}/flow`)} className="px-[18px] py-3 text-[13.5px]">مشاهدهٔ فلوچارت</Button>
-                </>
-              )
+                )}
+                <Button variant="coral" onClick={() => nav(`/processes/${proc.id}/flow`)} className="px-[18px] py-3 text-[13.5px]">مشاهدهٔ فلوچارت</Button>
+              </>
             ) : (
               <>
                 <Button variant="ghost" onClick={() => setDraft(null)} className="px-4 py-3 text-[13px]">انصراف</Button>

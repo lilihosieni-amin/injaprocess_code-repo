@@ -1,4 +1,4 @@
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, Link } from 'react-router-dom'
 import { useState, useRef } from 'react'
 import { ReactFlowProvider, useReactFlow, type Connection } from '@xyflow/react'
 import { useProcess, usePutProcess, useRelayout, useCreateProcess, useResolvePending } from '../api/hooks'
@@ -118,6 +118,20 @@ function FlowEditor() {
           )}
         </div>
       </div>
+
+      {tombstoned && (
+        <div className="shrink-0 border-b border-warm bg-[#EDEAF3] px-[22px] py-2.5 text-[13px] text-muted flex flex-wrap items-center gap-2">
+          <span className="font-bold text-ink">این فرآیند باطل شده است.</span>
+          {(proc.superseded_by ?? []).length > 0 && (
+            <>
+              <span>جانشین:</span>
+              {(proc.superseded_by ?? []).map((h) => (
+                <Link key={h} to={`/processes/${h}`} className="font-mono text-violet underline decoration-dotted">{h}</Link>
+              ))}
+            </>
+          )}
+        </div>
+      )}
 
       <div ref={wrapRef} className="flex-1 min-h-0 relative">
         <Canvas
