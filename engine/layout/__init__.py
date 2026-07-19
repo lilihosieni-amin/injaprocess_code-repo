@@ -38,13 +38,15 @@ def topo_order(nodes, edges):
             out.append(i)
     return out
 
-# Layered layout with serpentine band wrap (ARD Section 9, FR-D9):
+# Layered ("Sugiyama") layout with serpentine band wrap (ARD Section 9, FR-D9):
 # x = longest-path depth from the flow's sources ("layer", one column each),
-# y = branch lane. A node inherits its predecessors' mean lane; when a column
-# collides (e.g. two branches of a junction), the later-id sibling is pushed
-# to the lane below. Flows deeper than MAX_COLS wrap into a new band of lanes
-# below, alternating direction (band 1 left->right, band 2 right->left, ...)
-# so the chart never exceeds the page width.
+# y = branch lane. The pipeline is: (1) break rework loops so we layer a DAG,
+# (2) assign layers by longest path, (3) reduce edge crossings by ordering nodes
+# within each layer toward their neighbours' average lane, (4) pack lanes with a
+# fixed gap so a junction's branches spread symmetrically (one up, one down).
+# Flows deeper than MAX_COLS wrap into a new band of lanes below, alternating
+# direction (band 1 left->right, band 2 right->left, ...) so the chart never
+# exceeds the page width.
 SX, SY = 40, 90     # canvas origin
 GX, GY = 260, 175   # column / lane pitch (activity card is 170px wide)
 MAX_COLS = 5        # columns per band; deeper flows wrap (page-width cap)
@@ -62,58 +64,180 @@ def _center(ntype):
     return (_SIZES["activity"][0] - w) // 2, (_SIZES["activity"][1] - h) // 2
 
 
+def _dag_edges(nodes, edges):
+    """Edges with rework back-edges removed (Sugiyama step 1: cycle removal).
+
+    A single back-edge (e.g. a "send it back for re-review" loop) makes the
+    whole flow cyclic; layering a cycle collapses every downstream node onto a
+    couple of columns. We drop back-edges *for placement only* (the UI still
+    draws them). Classification is a deterministic DFS in node-id order, so the
+    same edge is always the one treated as the loop-closer.
+    """
+    ids = {n["id"] for n in nodes}
+    succ = defaultdict(list)
+    indeg = {i: 0 for i in ids}
+    for e in edges:
+        if e["from"] in ids and e["to"] in ids:
+            succ[e["from"]].append(e["to"])
+            indeg[e["to"]] += 1
+    # Root the DFS at real sources (in-degree 0) first, then any remaining
+    # (cycle-only) nodes, all in id order. Rooting at a source means the edge we
+    # classify as the loop-closer is the one pointing *against* the flow (the
+    # rework "send it back" edge) rather than the junction's real feeder.
+    roots = sorted((i for i in ids if indeg[i] == 0), key=_id_key) \
+        + sorted((i for i in ids if indeg[i] != 0), key=_id_key)
+    state = {}  # unvisited (absent) -> 1 on-stack -> 2 done
+    back = set()
+    for root in roots:
+        if root in state:
+            continue
+        stack = [(root, iter(sorted(set(succ[root]), key=_id_key)))]
+        state[root] = 1
+        while stack:
+            u, it = stack[-1]
+            for v in it:
+                if state.get(v) == 1:          # v is an ancestor -> back-edge
+                    back.add((u, v))
+                elif v not in state:
+                    state[v] = 1
+                    stack.append((v, iter(sorted(set(succ[v]), key=_id_key))))
+                    break
+            else:
+                state[u] = 2
+                stack.pop()
+    return [e for e in edges
+            if e["from"] in ids and e["to"] in ids
+            and (e["from"], e["to"]) not in back]
+
+
+def _pack(ids, desired, lane):
+    """Place ``ids`` at their ``desired`` lanes, then spread any that sit closer
+    than one lane apart while keeping the group centred on its mean desire.
+
+    Two siblings that both want their parent's lane end up at parent-0.5 and
+    parent+0.5 — a symmetric one-up/one-down split. Three end up at -1, 0, +1."""
+    ordered = sorted(ids, key=lambda i: (desired[i], _id_key(i)))
+    placed, last = {}, None
+    for nid in ordered:
+        r = desired[nid]
+        if last is not None and r < last + 1.0:
+            r = last + 1.0
+        placed[nid] = r
+        last = r
+    shift = (sum(desired[i] for i in ids) - sum(placed[i] for i in ids)) / len(ids)
+    for nid in ids:
+        lane[nid] = placed[nid] + shift
+
+
 def grid_positions(nodes, edges):
     """Deterministic {node_id: {"x", "y"}} for the layered layout."""
-    order = topo_order(nodes, edges)
-    known = set(order)
-    preds = defaultdict(list)
+    dedges = _dag_edges(nodes, edges)          # rework loops broken for placement
+    all_ids = [n["id"] for n in nodes]
+    idset = set(all_ids)
+    ntype = {n["id"]: n.get("type") for n in nodes}
+
+    # Isolated nodes (in no edge) don't belong in the flow: laying them out as
+    # extra "sources" widens the first band and shoves the real flow down the
+    # page. Park them in a column below everything instead.
+    wired = set()
     for e in edges:
-        if e["from"] in known and e["to"] in known:
+        if e["from"] in idset and e["to"] in idset:
+            wired.add(e["from"])
+            wired.add(e["to"])
+    isolated = [i for i in all_ids if i not in wired]
+
+    order = topo_order([n for n in nodes if n["id"] in wired], dedges)
+    preds, succs = defaultdict(list), defaultdict(list)
+    for e in dedges:
+        if e["from"] in wired and e["to"] in wired:
             preds[e["to"]].append(e["from"])
+            succs[e["from"]].append(e["to"])
 
     layer = {}  # longest path from a source
     for nid in order:
         layer[nid] = max((layer[p] + 1 for p in preds[nid] if p in layer), default=0)
-    by_layer = defaultdict(list)
-    for nid in order:
-        by_layer[layer[nid]].append(nid)
 
-    row = {}
-    for lv in sorted(by_layer):
-        # a node wants the mean lane of its predecessors (0 for sources);
-        # collisions within a column push later-id siblings to lanes below
-        desired = {}
-        for nid in by_layer[lv]:
-            lanes = [row[p] for p in preds[nid] if p in row]
-            desired[nid] = sum(lanes) / len(lanes) if lanes else 0.0
-        used = set()
-        for nid in sorted(by_layer[lv], key=lambda i: (desired[i], _id_key(i))):
-            r = round(desired[nid])
-            while r in used:
-                r += 1
-            row[nid] = r
-            used.add(r)
+    # Dummy nodes: an edge spanning more than one layer is routed through a chain
+    # of placeholders, one per skipped layer. They claim lane space so a straight
+    # bypass edge (e.g. junction -> junction over an optional step) no longer
+    # runs through the real node sitting in that skipped layer.
+    aug_preds, aug_succs = defaultdict(list), defaultdict(list)
+    aug_layer = dict(layer)
+    dummies = 0
+    for e in sorted(dedges, key=lambda e: (layer.get(e["from"], 0),
+                                           _id_key(e["from"]), _id_key(e["to"]))):
+        u, v = e["from"], e["to"]
+        if u not in layer or v not in layer:
+            continue
+        prev = u
+        for lv in range(layer[u] + 1, layer[v]):     # nothing if span == 1
+            d = f"__dummy{dummies}"
+            dummies += 1
+            aug_layer[d] = lv
+            aug_succs[prev].append(d)
+            aug_preds[d].append(prev)
+            prev = d
+        aug_succs[prev].append(v)
+        aug_preds[v].append(prev)
+
+    by_layer = defaultdict(list)
+    for nid in sorted(aug_layer, key=_id_key):
+        by_layer[aug_layer[nid]].append(nid)
+    levels = sorted(by_layer)
+
+    # Lane (y) assignment. First pass, left to right: each node aims for the mean
+    # lane of its predecessors (sources keep their id-order lane). Then a few
+    # up/down sweeps nudge every node toward its neighbours' average lane, which
+    # reduces edge crossings; _pack keeps a one-lane gap so nothing overlaps.
+    lane = {}
+    for k, nid in enumerate(by_layer[0]):
+        lane[nid] = float(k)
+    for lv in levels[1:]:
+        desired = {nid: sum(lane[p] for p in aug_preds[nid] if p in lane)
+                        / max(1, len([p for p in aug_preds[nid] if p in lane]))
+                   for nid in by_layer[lv]}
+        _pack(by_layer[lv], desired, lane)
+    for sweep in range(4):
+        seq = levels if sweep % 2 == 0 else levels[::-1]
+        for lv in seq:
+            nbr = aug_preds if sweep % 2 == 0 else aug_succs
+            desired = {}
+            for nid in by_layer[lv]:
+                near = [lane[x] for x in nbr[nid] if x in lane]
+                desired[nid] = sum(near) / len(near) if near else lane[nid]
+            _pack(by_layer[lv], desired, lane)
+
+    # normalise each band's lanes to start at 0 so band heights stay correct and
+    # the serpentine bands never overlap (a symmetric split can go negative)
+    band_of = {nid: aug_layer[nid] // MAX_COLS for nid in aug_layer}
+    bands = defaultdict(list)
+    for nid in aug_layer:
+        bands[band_of[nid]].append(nid)
+    for members in bands.values():
+        base = min(lane[nid] for nid in members)
+        for nid in members:
+            lane[nid] -= base
 
     # serpentine band wrap: band b starts below the previous band's lanes;
     # odd bands run right-to-left so the wrap connector stays short
     band_top, top = {}, 0
-    for nid in order:
-        b = layer[nid] // MAX_COLS
-        band_top.setdefault(b, None)
-    for b in sorted(band_top):
+    for b in sorted(bands):
         band_top[b] = top
-        lanes = max(row[nid] for nid in order if layer[nid] // MAX_COLS == b) + 1
-        top += lanes * GY
+        top += (max(lane[nid] for nid in bands[b]) + 1) * GY
 
-    ntype = {n["id"]: n.get("type") for n in nodes}
     out = {}
-    for nid in order:
+    for nid in order:                              # real flow nodes only (no dummies)
         dx, dy = _center(ntype.get(nid))
         b, col = divmod(layer[nid], MAX_COLS)
         if b % 2 == 1:
             col = MAX_COLS - 1 - col
         out[nid] = {"x": SX + col * GX + dx,
-                    "y": SY + band_top[b] + row[nid] * GY + dy}
+                    "y": SY + band_top[b] + lane[nid] * GY + dy}
+
+    # park the isolated nodes in a column below the flow, in id order
+    for k, nid in enumerate(sorted(isolated, key=_id_key)):
+        dx, dy = _center(ntype.get(nid))
+        out[nid] = {"x": SX + dx, "y": SY + top + k * GY + dy}
     return out
 
 

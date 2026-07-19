@@ -56,7 +56,12 @@ def test_branch_fans_out_vertically_after_junction():
     pos = grid_positions(nodes, edges)
     assert pos["b"]["x"] == pos["c"]["x"]          # siblings share a column
     assert pos["b"]["y"] != pos["c"]["y"]          # ...on different lanes
-    assert pos["b"]["y"] == pos["a"]["y"]          # lower-id sibling keeps the main lane
+    # the two branches spread symmetrically around the junction lane (one up,
+    # one down) instead of one branch keeping the main lane. Compare centers:
+    # the junction pill is nudged down so its center aligns with card centers.
+    jc = pos["j"]["y"] + 44 / 2
+    bc, cc = pos["b"]["y"] + 76 / 2, pos["c"]["y"] + 76 / 2
+    assert abs((bc + cc) / 2 - jc) < 1e-6
     assert pos["d"]["y"] == pos["b"]["y"]          # chain continues on its lane
     assert pos["d"]["x"] > pos["b"]["x"]           # and keeps moving right
 
