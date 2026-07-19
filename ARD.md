@@ -482,13 +482,16 @@ The skills/prompts/IDEF rules stay in `data-repo/.claude` (intentionally easy to
 
 ## 9. Layout Algorithm (FR-D9)
 
-- Direction: horizontal, left-to-right (LTR).
-- **Layered:** x = the node's depth (longest path from the flow's sources), one column per depth; y = branch lane. A node inherits its predecessors' mean lane; when a column collides (e.g. the two branches of a junction), the later sibling is pushed to the lane below.
+- Direction: horizontal, left-to-right (LTR). Deterministic and LLM-free; runs in `merge` (for nodes without a position, or an explicit `re-layout`) and behind the UI `/relayout` endpoint.
+- A layered ("Sugiyama") pipeline (ADR 0010):
+  1. **Cycle removal.** Rework loops (a back-edge, e.g. a "send it back for re-review" edge) are broken into a DAG **for placement only** — a deterministic DFS rooted at the real sources (in-degree 0, id order) classifies the loop-closing edge and drops it; the UI still draws it. Without this, one back-edge collapses every downstream node's layer.
+  2. **Layer assignment.** x = the node's depth (longest path from the flow's sources) on that DAG, one column per depth.
+  3. **Dummy nodes for long edges.** An edge spanning more than one layer (e.g. a junction's straight "skip"/bypass over an optional step) is routed through one placeholder per skipped layer, so the edge reserves its own lane and no real node in that layer sits on top of it. Placeholders take a lane but emit no position.
+  4. **Coordinate assignment.** y = branch lane: each node is placed near its neighbours' mean lane with a **one-lane minimum gap**, so a junction's branches **straddle it (one up, one down)** rather than both dropping below. A few barycenter up/down sweeps reduce edge crossings. Small node types (junction/start/end) are nudged toward the lane centre so edges meet activity-card middles.
 - **Edges always dominate placement**: a node sits after everything its incoming edges require and before everything its outgoing edges feed, regardless of its id (a late-allocated `n008` spliced in as `n002 → n008 → n003` lands between n002 and n003). Node-id sequence (`n001 < n002 < …`, numeric order — the narrative order ids were allocated in) only breaks genuine ties the edges leave ambiguous: multiple sources, siblings in one column. Never array position.
-- Small node types (junction, start, end) are nudged toward the column/lane center so edges meet activity-card middles.
-- **Serpentine band wrap (page-width cap, FR-D9):** flows deeper than `MAX_COLS` (5) columns wrap into a new band of lanes below; bands alternate direction (band 1 left→right, band 2 right→left, …) so the chart never exceeds the page width.
+- **Orphan nodes.** Nodes that appear in no edge are parked in a column **below** the flow, not treated as first-band sources (which would widen the first band and stretch the wrap connector into the flow). Wiring them into the flow is a data edit, not the layout's job (ADR 0010).
+- **Serpentine band wrap (page-width cap, FR-D9):** flows deeper than `MAX_COLS` (5) columns wrap into a new band of lanes below; bands alternate direction (band 1 left→right, band 2 right→left, …) so the chart never exceeds the page width. *Known limitation:* when a junction falls at a band boundary its branches can wrap into the next band and a child can land on the fan-out edge; a junction-aware wrap was prototyped and reverted (ADR 0010).
 - Branches (after a junction) are laid out near the junction; the automatic layout is a "good starting point," not perfect — and since position is saved and editable, the user tidies it with a few moves and it sticks.
-- Deterministic and LLM-free; runs in `merge` (for nodes without a position, or an explicit `re-layout`).
 
 ---
 
