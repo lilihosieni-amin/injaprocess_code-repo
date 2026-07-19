@@ -44,7 +44,7 @@ export interface Overview {
   department: string; name: string
   description: string
   sub_units: { name: string; description: string }[]
-  personnel: { role: string; duties: string[] }[]
+  personnel: { role: string; duties: string[]; kpi: string[] }[]
   updated_at: string
 }
 

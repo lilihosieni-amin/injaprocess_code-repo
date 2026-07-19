@@ -7,7 +7,7 @@ afterEach(() => vi.restoreAllMocks())
 const OV = { department: 'cooking', name: 'دپارتمان پخت', updated_at: '2026-07-06T10:00:00Z',
   description: 'شرح اولیه',
   sub_units: [{ name: 'آشپزخانهٔ گرم', description: 'غذاهای گرم' }],
-  personnel: [{ role: 'سرآشپز', duties: ['مدیریت'] }] }
+  personnel: [{ role: 'سرآشپز', duties: ['مدیریت'], kpi: ['شاخص اولیه'] }] }
 
 describe('Overview edit', () => {
   it('enters edit, changes a sub-unit name, and PUTs on save', async () => {
@@ -40,6 +40,25 @@ describe('Overview edit', () => {
     fireEvent.click(screen.getByRole('button', { name: 'ذخیره' }))
     await waitFor(() => expect(spy).toHaveBeenCalledWith('/api/departments/cooking/overview', expect.objectContaining({ method: 'PUT' })))
     expect((putBody as { personnel: { duties: string[] }[] }).personnel[0].duties).toEqual(['مدیریت', 'کنترل انبار'])
+  })
+
+  it('edits KPIs as per-line inputs: add one, and PUTs them as an array', async () => {
+    let putBody: unknown = null
+    const spy = vi.spyOn(globalThis, 'fetch').mockImplementation((_input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === 'PUT') { putBody = JSON.parse(init.body as string); return Promise.resolve(new Response(JSON.stringify(OV), { status: 200, headers: { 'Content-Type': 'application/json' } })) }
+      return Promise.resolve(new Response(JSON.stringify(OV), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+    })
+    renderAt('/departments/:code/overview', <Overview />, '/departments/cooking/overview')
+    fireEvent.click(await screen.findByRole('button', { name: 'ویرایش' }))
+    // the existing KPI appears as its own input
+    expect(screen.getByDisplayValue('شاخص اولیه')).toBeInTheDocument()
+    // add a new KPI line and fill it
+    fireEvent.click(screen.getByRole('button', { name: 'افزودن شاخص' }))
+    const inputs = screen.getAllByPlaceholderText('شرح شاخص…')
+    fireEvent.change(inputs[inputs.length - 1], { target: { value: 'کاهش خطا به زیر ۲٪' } })
+    fireEvent.click(screen.getByRole('button', { name: 'ذخیره' }))
+    await waitFor(() => expect(spy).toHaveBeenCalledWith('/api/departments/cooking/overview', expect.objectContaining({ method: 'PUT' })))
+    expect((putBody as { personnel: { kpi: string[] }[] }).personnel[0].kpi).toEqual(['شاخص اولیه', 'کاهش خطا به زیر ۲٪'])
   })
 
   it('edits the department description and PUTs the trimmed value', async () => {

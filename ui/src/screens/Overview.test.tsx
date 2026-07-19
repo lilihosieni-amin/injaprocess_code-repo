@@ -9,7 +9,7 @@ const OV = {
   department: 'cooking', name: 'دپارتمان پخت', updated_at: '2026-07-06T10:00:00Z',
   description: 'واحد پخت غذاهای گرم رستوران است.',
   sub_units: [{ name: 'آشپزخانهٔ گرم', description: 'غذاهای گرم' }],
-  personnel: [{ role: 'سرآشپز', duties: ['مدیریت آشپزخانه', 'کنترل کیفیت'] }],
+  personnel: [{ role: 'سرآشپز', duties: ['مدیریت آشپزخانه', 'کنترل کیفیت'], kpi: ['کاهش ضایعات به زیر ۵٪'] }],
 }
 
 describe('Overview', () => {
@@ -27,6 +27,8 @@ describe('Overview', () => {
     // expand the category → duties appear
     fireEvent.click(screen.getByText('سرآشپز'))
     expect(screen.getByText('کنترل کیفیت')).toBeInTheDocument()
+    // KPIs render below the duties once expanded
+    expect(screen.getByText('کاهش ضایعات به زیر ۵٪')).toBeInTheDocument()
     // close from the bottom control
     fireEvent.click(screen.getByRole('button', { name: /بستن/ }))
     expect(screen.queryByText('کنترل کیفیت')).not.toBeInTheDocument()

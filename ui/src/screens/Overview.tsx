@@ -8,7 +8,7 @@ import { Button } from '../ui/Button'
 import { useToast } from '../write/ToastProvider'
 import type { Overview as OverviewT } from '../api/types'
 
-type Draft = { description: string; sub_units: { name: string; description: string }[]; personnel: { role: string; duties: string[] }[] }
+type Draft = { description: string; sub_units: { name: string; description: string }[]; personnel: { role: string; duties: string[]; kpi: string[] }[] }
 type ArrayKey = { [K in keyof Draft]: Draft[K] extends unknown[] ? K : never }[keyof Draft]
 
 export function Overview() {
@@ -25,7 +25,7 @@ export function Overview() {
     setDraft({
       description: data!.description,
       sub_units: data!.sub_units.map((s) => ({ ...s })),
-      personnel: data!.personnel.map((p) => ({ role: p.role, duties: [...p.duties] })),
+      personnel: data!.personnel.map((p) => ({ role: p.role, duties: [...p.duties], kpi: [...p.kpi] })),
     })
   }
   function save() {
@@ -34,7 +34,7 @@ export function Overview() {
       ...data!,
       description: d.description.trim(),
       sub_units: d.sub_units,
-      personnel: d.personnel.map((p) => ({ role: p.role, duties: p.duties.map((x) => x.trim()).filter(Boolean) })),
+      personnel: d.personnel.map((p) => ({ role: p.role, duties: p.duties.map((x) => x.trim()).filter(Boolean), kpi: p.kpi.map((x) => x.trim()).filter(Boolean) })),
     }
     put.mutate(doc, { onSuccess: () => { setDraft(null); toast.show('اطلاعات دپارتمان ذخیره شد') } })
   }
@@ -112,7 +112,7 @@ export function Overview() {
         </Section>
 
         <Section title="پرسنل و شرح وظایف"
-          onAdd={editing ? () => setDraft({ ...draft!, personnel: [...draft!.personnel, { role: '', duties: [] }] }) : undefined}>
+          onAdd={editing ? () => setDraft({ ...draft!, personnel: [...draft!.personnel, { role: '', duties: [], kpi: [] }] }) : undefined}>
           {!editing ? (
             <div className="flex flex-col gap-3">
               {data.personnel.length === 0 && <div className="text-[12.5px] text-faint px-0.5 py-1.5">پرسنلی ثبت نشده است.</div>}
@@ -123,7 +123,7 @@ export function Overview() {
                     <button onClick={() => toggleRole(i)} className="w-full flex items-center justify-between gap-3 text-right" aria-expanded={open}>
                       <span className="font-bold text-sm text-ink">{pr.role}</span>
                       <span className="flex items-center gap-2 shrink-0 text-muted">
-                        <span className="text-[11px] font-semibold">{toFa(pr.duties.length)} وظیفه</span>
+                        <span className="text-[11px] font-semibold">{toFa(pr.duties.length)} وظیفه · {toFa(pr.kpi.length)} شاخص</span>
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className={`transition-transform ${open ? 'rotate-180' : ''}`}><path d="M6 9l6 6 6-6" /></svg>
                       </span>
                     </button>
@@ -132,6 +132,14 @@ export function Overview() {
                         <div className="flex flex-wrap gap-1.5 mt-3">
                           {pr.duties.map((d, j) => <span key={j} className="text-[13px] text-violet bg-tile-v2 px-3 py-1.5 rounded-full leading-relaxed">{d}</span>)}
                         </div>
+                        <div className="text-[11px] font-semibold text-muted mt-3.5 mb-1.5">شاخص‌های کلیدی عملکرد</div>
+                        {pr.kpi.length > 0 ? (
+                          <div className="flex flex-wrap gap-1.5">
+                            {pr.kpi.map((k, j) => <span key={j} className="text-[13px] text-violet bg-tile-v2 px-3 py-1.5 rounded-full leading-relaxed">{k}</span>)}
+                          </div>
+                        ) : (
+                          <div className="text-[12.5px] text-faint px-0.5 py-1">شاخصی ثبت نشده است.</div>
+                        )}
                         <button onClick={() => toggleRole(i)} className="mt-3 flex items-center gap-1 text-[11px] font-semibold text-muted hover:text-ink">
                           بستن <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M18 15l-6-6-6 6" /></svg>
                         </button>
@@ -162,6 +170,16 @@ export function Overview() {
                     ))}
                     <button onClick={() => addDuty(i)} className="self-start text-[12px] font-semibold text-violet border-[1.5px] border-dashed border-[#C9B8EC] rounded-[10px] px-3 py-1.5">افزودن وظیفه</button>
                   </div>
+                  <div className="flex flex-col gap-2 mt-2.5">
+                    {pr.kpi.map((k, j) => (
+                      <div key={j} className="flex gap-2 items-center">
+                        <input value={k} onChange={(e) => setKpi(i, j, e.target.value)} placeholder="شرح شاخص…"
+                          className="flex-1 px-3 py-2 border-[1.5px] border-line rounded-[10px] text-[12.5px] text-ink outline-none focus:border-coral" />
+                        <button onClick={() => removeKpi(i, j)} title="حذف شاخص" className="w-8 h-8 shrink-0 border-[1.5px] border-[#FADAD8] rounded-[9px] text-conflict flex items-center justify-center text-lg leading-none">×</button>
+                      </div>
+                    ))}
+                    <button onClick={() => addKpi(i)} className="self-start text-[12px] font-semibold text-violet border-[1.5px] border-dashed border-[#C9B8EC] rounded-[10px] px-3 py-1.5">افزودن شاخص</button>
+                  </div>
                 </Card>
               ))}
             </div>
@@ -183,6 +201,12 @@ export function Overview() {
   function setDuty(i: number, j: number, val: string) { patchDuties(i, (duties) => duties.map((x, m) => (m === j ? val : x))) }
   function addDuty(i: number) { patchDuties(i, (duties) => [...duties, '']) }
   function removeDuty(i: number, j: number) { patchDuties(i, (duties) => duties.filter((_, m) => m !== j)) }
+  function patchKpi(i: number, next: (kpi: string[]) => string[]) {
+    setDraft((d) => d && ({ ...d, personnel: d.personnel.map((p, k) => (k === i ? { ...p, kpi: next(p.kpi) } : p)) }))
+  }
+  function setKpi(i: number, j: number, val: string) { patchKpi(i, (kpi) => kpi.map((x, m) => (m === j ? val : x))) }
+  function addKpi(i: number) { patchKpi(i, (kpi) => [...kpi, '']) }
+  function removeKpi(i: number, j: number) { patchKpi(i, (kpi) => kpi.filter((_, m) => m !== j)) }
   function toggleRole(i: number) {
     setOpenRoles((s) => { const next = new Set(s); next.has(i) ? next.delete(i) : next.add(i); return next })
   }
