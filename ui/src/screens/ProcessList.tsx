@@ -43,8 +43,8 @@ export function ProcessList() {
   }, [procs, scrollKey])
 
   return (
-    <div ref={scrollRef} onScroll={(e) => sessionStorage.setItem(scrollKey, String(e.currentTarget.scrollTop))} className="flex-1 overflow-auto py-[30px] px-10">
-      <div className="max-w-[920px] mx-auto">
+    <div dir="ltr" ref={scrollRef} onScroll={(e) => sessionStorage.setItem(scrollKey, String(e.currentTarget.scrollTop))} className="flex-1 overflow-auto py-[30px] px-10">
+      <div dir="rtl" className="max-w-[920px] mx-auto">
         <div className="flex items-end justify-between gap-4 mb-[22px]">
           <div>
             <div className="flex items-center gap-3">

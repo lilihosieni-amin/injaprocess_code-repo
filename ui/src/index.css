@@ -3,11 +3,13 @@
 @tailwind utilities;
 
 @layer base {
-  html { direction: rtl; }
+  html { direction: rtl; scrollbar-color: #7A52D0 transparent; }
   body { margin: 0; }
   ::selection { background: #FA5A52; color: #fff; }
-  ::-webkit-scrollbar { width: 10px; height: 10px; }
-  ::-webkit-scrollbar-thumb { background: #DFD6EE; border-radius: 8px; border: 2px solid transparent; background-clip: content-box; }
+  ::-webkit-scrollbar { width: 12px; height: 12px; }
+  ::-webkit-scrollbar-track { background: #F0E9FB; border-radius: 8px; }
+  ::-webkit-scrollbar-thumb { background: #7A52D0; border-radius: 8px; border: 2px solid transparent; background-clip: content-box; }
+  ::-webkit-scrollbar-thumb:hover { background: #4A25A9; }
 }
 
 @layer components {
