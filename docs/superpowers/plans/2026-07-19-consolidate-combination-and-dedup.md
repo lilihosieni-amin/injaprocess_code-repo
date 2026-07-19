@@ -25,7 +25,8 @@
 
 | File | Change |
 |---|---|
-| `data-repo/.claude/agents/consolidate.md` | review-mode step 3 → generalised "find the combination point" (Part A); review-mode step 5 attach bullet → decomposition cue (Part A); apply-mode `mother_subprocess` bullet → cross-member dedup (Part B); soundness pass → post-combination dedup block citing idef §7/§2 (Part B) |
+| `data-repo/.claude/agents/consolidate.md` | review-mode step 3 → generalised "find the combination point" (Part A); review-mode step 5 attach bullet → decomposition cue (Part A); apply-mode `mother_subprocess` bullet → cross-member dedup (Part B); soundness pass → post-combination dedup block citing idef §7/§2 (Part B); review-mode step 4 → completeness + three-tier silence; step 7 → «کم‌اهمیت‌تر» return list (Part C) |
+| `data-repo/.claude/skills/process-voice/SKILL.md` | Stage 10b/10c → render the agent's «موارد کم‌اهمیت‌تر» list + pursue-flow (Part C) |
 
 ---
 
@@ -189,6 +190,28 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 Confirm with `git show --stat HEAD` that only `.claude/agents/consolidate.md` changed and nothing under `departments/**` was staged.
 
 ---
+
+## Task 2: Part C — completeness + «کم‌اهمیت‌تر» tier (added after first live test)
+
+**Files:**
+- Modify: `data-repo/.claude/agents/consolidate.md` (review-mode step 4 "silence rule"; step 7 "return to caller")
+- Modify: `data-repo/.claude/skills/process-voice/SKILL.md` (Stage 10b, 10c)
+
+**Why:** first live runs surfaced only ~2 suggestions and under-reported (run 1 missed `001+002`). No cap in the prompt — the cause was no completeness mandate + the binary silence rule dropping every uncertain case. Fix per spec §3.3.
+
+- [ ] **Step 1: consolidate.md — replace the binary silence rule (step 4) with completeness + three tiers.** Compare **every** pair; **confident** (all three citations) → full `suggestions[]` entry, report every one (complete list); **plausible but uncertain** → a one-line note in the `less_important` part of the return summary (step 7), NOT a suggestion; **baseless** → nothing. Empty `suggestions: []` (± «کم‌اهمیت‌تر» notes) remains a success.
+
+- [ ] **Step 2: consolidate.md — extend "return to caller" (step 7)** to also return, only if any, a short «موارد کم‌اهمیت‌تر» list (ids + one-line reason per case); omit when none.
+
+- [ ] **Step 3: process-voice Stage 10b/10c — render the tier.** 10c: after the numbered list, append the agent's «موارد کم‌اهمیت‌تر» list under a «— موارد کم‌اهمیت‌تر —» heading (brief FYI); if the user asks to pursue one, re-dispatch `consolidate` (review). 10b: if the confident list is empty but «کم‌اهمیت‌تر» notes exist, present those and ask; only fully-empty → "no consolidation needed".
+
+- [ ] **Step 4: grep-verify + commit** — `grep -c "three silence tiers" ... consolidate.md`, `grep -c "less_important" ... consolidate.md`, `grep -c "موارد کم‌اهمیت‌تر" ...` in both files each return 1. Commit only the two prompt files.
+
+- [ ] **Step 5: N-way clustering (from 2nd test).** In `consolidate.md` step 4, replace the "compare every **pair**" framing with "review **all** processes together; a combination may join **two or more**; **group transitively** — A~B~C is one merge `[A,B,C]`, not separate pairwise merges."
+
+- [ ] **Step 6: Rich report detail (from 2nd test).** In `process-voice` Stage 10c, build the message **from `consolidation.json`** and render each confident suggestion's **full `problem`+`action` verbatim** (never summarised) + ids + recommended shape, then the file path, a "no process file changed yet" note, the brief «موارد کم‌اهمیت‌تر» list, and the closing question. (The data was already detailed; the message was collapsing it.)
+
+*(Task 2 executed inline in-session; edits are live via the `/data` mount, pending commit.)*
 
 ## Acceptance (scenario re-run — judgment gate, after Task 1)
 

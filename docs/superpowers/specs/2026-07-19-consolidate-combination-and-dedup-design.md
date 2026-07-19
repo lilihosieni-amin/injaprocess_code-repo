@@ -60,6 +60,9 @@ propose the logically-correct shape.** Two combinable relationships:
 - **Attach / mother+subprocess — decomposition.** Signal: a node `N` in process `Y` whose
   label *names or abstracts* process `X`'s procedure, and `X` reads as `N`'s steps — **no
   node duplication required**. Propose attaching `X` under `Y.N`. (P2.)
+- **N-way clustering.** A combination may join **two or more** processes, not just a pair.
+  Cluster **transitively**: if `A`~`B` and `B`~`C` are one continuous procedure, emit **one**
+  merge `[A, B, C]`, not separate pairwise merges. (Attach stays one child under one node.)
 
 **Relatedness + logic gate (requirement #1).** Combine **only** when the two are genuinely
 related **and** the combination is logically sound — a real shared boundary or a real
@@ -90,14 +93,48 @@ both `extract` (at build) and `consolidate` (at combine).
 This upgrades the §4.7 soundness pass from *seam-check* to *seam-check **+** cross-level/flat
 dedup*, and cites the extract rules by name so the two stay in sync.
 
+### 3.3 Part C — Completeness + the «کم‌اهمیت‌تر» (less-important) tier
+
+Observed in the first live runs: the reviewer surfaced only ~2 suggestions per run and
+under-reported (run 1 missed `001+002`, which run 2 later caught). Cause: no explicit
+completeness mandate, plus the silence rule dropped every uncertain case entirely. Fix by
+replacing the binary silence rule with **completeness + three tiers**, prompt-only:
+
+- **Completeness.** Compare **every** pair of active processes; emit **every** confident
+  over-cut as a full suggestion — the main list must be complete, not a sample. Do not stop
+  at the first one or two.
+- **Three tiers (replaces "uncertain → say nothing"):**
+  - **Confident** (all three citations: ids + node id/label + transcript span) → a full
+    `suggestions[]` entry (the actionable, numbered list).
+  - **Plausible but uncertain** (real-looking overlap, can't fully cite / unclear boundary)
+    → **not** a suggestion; a brief one-line note in the agent's **return summary** under a
+    «موارد کم‌اهمیت‌تر» list, so the user stays aware and can ask to pursue it. **Brief FYI,
+    prompt-only — not stored in `consolidation.json`.**
+  - **Baseless** (no citable connection) → nothing (no hallucination — unchanged).
+- **Presentation (process-voice Stage 10).** Stage 10c builds the report **from
+  `consolidation.json`** (not the agent's short return) and renders **each confident
+  suggestion's full `problem`+`action` verbatim** (never summarised) with its ids and
+  recommended shape, then the output path, a "no process file changed yet" note, the
+  «موارد کم‌اهمیت‌تر» brief list (if any), and the closing apply question. This is the
+  detailed report format the domain expert expects; only the «کم‌اهمیت‌تر» items are brief.
+  Stage 10b: if the confident list is empty but «کم‌اهمیت‌تر» notes exist, present those and
+  ask; only fully-empty → "no consolidation needed". If the user asks to pursue a
+  «کم‌اهمیت‌تر» item, re-dispatch `consolidate` (review) — it either promotes it to a full
+  suggestion or explains why it still can't be cited.
+
+This keeps precision (only citable cases are actionable; baseless still silent) while adding
+recall (every confident case in one pass) and awareness (borderline cases surfaced, not
+dropped).
+
 ## 4. Files touched
 
 | File | Change |
 |---|---|
-| `data-repo/.claude/agents/consolidate.md` | review-mode: generalise detection to the two combination relationships + the relatedness/logic gate (Part A); apply-mode + §4.7 soundness: mandatory post-combination dedup (mother/child + flat), cross-referencing the `idef-extraction` §7/§2 rules (Part B) |
+| `data-repo/.claude/agents/consolidate.md` | review-mode: generalise detection to the two combination relationships + the relatedness/logic gate (Part A); **completeness + three-tier silence** with the «کم‌اهمیت‌تر» return-summary list (Part C); apply-mode + §4.7 soundness: mandatory post-combination dedup (mother/child + flat), cross-referencing the `idef-extraction` §7/§2 rules (Part B) |
+| `data-repo/.claude/skills/process-voice/SKILL.md` | Stage 10b/10c: render the agent's «موارد کم‌اهمیت‌تر» list at the end of the report; pursue-flow re-dispatch (Part C) |
 
-No change to `classify`, `extract`, `idef-extraction`, `process-voice`, `merge`,
-`allocate-id`, schemas, or UI.
+No change to `classify`, `extract`, `idef-extraction`, `merge`, `allocate-id`, schemas, or
+UI.
 
 ## 5. Verification
 
@@ -115,3 +152,6 @@ Prompt-only → grep/inspection + consistency re-read, plus a scenario re-run:
   attach under `dining-005-n009`; and applying the `010/011` mother merge yields a `021`
   whose nodes do **not** duplicate child `010`'s steps (decision lives in one place; the
   child's redundant front is trimmed).
+- **Completeness + tier (Part C):** a single review now lists **all** confident over-cuts at
+  once (not ~2 per run), and borderline cases appear under a «موارد کم‌اهمیت‌تر» heading at
+  the end rather than being dropped; baseless cases still produce nothing.
