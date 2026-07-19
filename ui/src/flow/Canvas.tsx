@@ -27,13 +27,20 @@ export function Canvas({ docNodes, docEdges, revision, editing, mode = 'pan', on
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
   const seeded = useRef<Map<string, Pos>>(new Map())
 
+  // Edge action handlers are baked into edge `data` at re-seed time (below). A drag
+  // updates the doc WITHOUT re-seeding, so a seed-time closure would delete/label
+  // against the pre-drag doc and wipe unsaved positions. Route through refs kept
+  // current every render so the handlers always act on the latest doc.
+  const onSetEdgeLabelRef = useRef(onSetEdgeLabel); onSetEdgeLabelRef.current = onSetEdgeLabel
+  const onDeleteEdgeRef = useRef(onDeleteEdge); onDeleteEdgeRef.current = onDeleteEdge
+
   // Re-seed from the doc ONLY when structure changes (revision) or the edit flag flips.
   // moveNodes/setEdgeLabel don't bump revision, so a drag/type won't snap back.
   useEffect(() => {
     setNodes(docNodes.map((n) => ({ ...n, data: { ...n.data, onOpenDetail }, draggable: editing, selectable: editing })))
     setEdges(docEdges.map((e) => ({
       ...e, selectable: editing,
-      data: { ...(e.data as object), editing, onSetLabel: (v: string) => onSetEdgeLabel(e.source, e.target, v), onDelete: () => onDeleteEdge(e.source, e.target) },
+      data: { ...(e.data as object), editing, onSetLabel: (v: string) => onSetEdgeLabelRef.current(e.source, e.target, v), onDelete: () => onDeleteEdgeRef.current(e.source, e.target) },
     })))
     seeded.current = new Map(docNodes.map((n) => [n.id, n.position]))
     // eslint-disable-next-line react-hooks/exhaustive-deps
