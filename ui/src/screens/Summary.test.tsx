@@ -43,13 +43,13 @@ const TOMB = {
 }
 
 describe('Summary — tombstoned', () => {
-  it('shows a tombstone banner + heir link and hides edit/flowchart', async () => {
+  it('shows a tombstone banner + heir link, hides edit, but keeps the (read-only) flowchart button', async () => {
     mock(TOMB)
     renderAt('/processes/:pid', <Summary />, '/processes/cooking-002')
     expect(await screen.findAllByText('فرآیند قدیمی')).not.toHaveLength(0)
     expect(screen.getByText(/باطل شده/)).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /cooking-050/ })).toHaveAttribute('href', '/processes/cooking-050')
     expect(screen.queryByRole('button', { name: 'ویرایش اطلاعات' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'مشاهدهٔ فلوچارت' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'مشاهدهٔ فلوچارت' })).toBeInTheDocument()
   })
 })

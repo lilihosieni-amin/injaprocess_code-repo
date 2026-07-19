@@ -38,7 +38,7 @@ describe('ProcessList', () => {
     expect(screen.getByText('پرداخت هزینه')).toBeInTheDocument()
   })
 
-  it('shows a tombstoned process labelled باطل‌شده with an heir link and no flowchart button', async () => {
+  it('shows a tombstoned process labelled باطل‌شده with an heir link and a (read-only) flowchart button', async () => {
     mock()
     renderAt('/departments/:code', <ProcessList />, '/departments/cooking')
     expect(await screen.findByText('فرآیند قدیمی')).toBeInTheDocument()
@@ -46,10 +46,10 @@ describe('ProcessList', () => {
     // heir link present, points at the heir process
     const heir = screen.getByRole('link', { name: /cooking-050/ })
     expect(heir).toHaveAttribute('href', '/processes/cooking-050')
-    // the tombstoned row has no flowchart button (its own name is on the row)
+    // the tombstoned row still exposes the flowchart button (view is read-only)
     const row = screen.getByText('فرآیند قدیمی').closest('div[class*="rounded-2xl"]') as HTMLElement
     expect(row).toBeTruthy()
-    expect(within(row).queryByRole('button', { name: 'فلوچارت' })).not.toBeInTheDocument()
+    expect(within(row).getByRole('button', { name: 'فلوچارت' })).toBeInTheDocument()
     // permanent delete stays available
     expect(within(row).getByTitle('حذف دائمی فرآیند')).toBeInTheDocument()
   })
