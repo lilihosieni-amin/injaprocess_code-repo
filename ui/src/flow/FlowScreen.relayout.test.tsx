@@ -16,6 +16,7 @@ describe('FlowScreen relayout', () => {
     const spy = vi.spyOn(globalThis, 'fetch').mockImplementation((input: RequestInfo | URL) => {
       const url = String(input)
       if (url.endsWith('/relayout')) return Promise.resolve(new Response(JSON.stringify(relaid), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+      if (url.endsWith('/processes')) return Promise.resolve(new Response(JSON.stringify([proc]), { status: 200, headers: { 'Content-Type': 'application/json' } }))
       return Promise.resolve(new Response(JSON.stringify(proc), { status: 200, headers: { 'Content-Type': 'application/json' } }))
     })
     renderAt('/processes/:pid/flow', <FlowScreen />, '/processes/cooking-001/flow')

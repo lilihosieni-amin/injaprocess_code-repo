@@ -11,8 +11,10 @@ const proc = { id: 'cooking-001', department: 'cooking', name: 'p', summary: '',
 
 describe('FlowScreen save', () => {
   it('PUTs the edited doc and returns to view mode on success', async () => {
-    const spy = vi.spyOn(globalThis, 'fetch').mockImplementation((_input: RequestInfo | URL, init?: RequestInit) => {
+    const spy = vi.spyOn(globalThis, 'fetch').mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
       if (init?.method === 'PUT') return Promise.resolve(new Response(JSON.stringify({ ...proc, name: 'renamed' }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+      if (url.endsWith('/processes')) return Promise.resolve(new Response(JSON.stringify([proc]), { status: 200, headers: { 'Content-Type': 'application/json' } }))
       return Promise.resolve(new Response(JSON.stringify(proc), { status: 200, headers: { 'Content-Type': 'application/json' } }))
     })
     renderAt('/processes/:pid/flow', <FlowScreen />, '/processes/cooking-001/flow')

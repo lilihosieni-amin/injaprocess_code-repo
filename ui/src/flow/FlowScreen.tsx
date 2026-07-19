@@ -1,8 +1,9 @@
 import { useNavigate, useParams, Link } from 'react-router-dom'
 import { useState, useRef } from 'react'
 import { ReactFlowProvider, useReactFlow, type Connection } from '@xyflow/react'
-import { useProcess, usePutProcess, useRelayout, useCreateProcess, useResolvePending } from '../api/hooks'
+import { useProcess, useProcesses, usePutProcess, useRelayout, useCreateProcess, useResolvePending } from '../api/hooks'
 import { useFlowEditor } from './useFlowEditor'
+import { neighborProcess } from '../lib/process-nav'
 import { toFlowNodes, toFlowEdges } from './adapt'
 import { Canvas } from './Canvas'
 import { Button } from '../ui/Button'
@@ -23,6 +24,7 @@ function FlowEditor() {
   const { pid = '' } = useParams()
   const nav = useNavigate()
   const { data: server } = useProcess(pid)
+  const { data: siblings = [] } = useProcesses(server?.department ?? '', { enabled: !!server?.department })
   const ed = useFlowEditor(server)
   const put = usePutProcess(pid)
   const relayout = useRelayout(pid)
@@ -45,6 +47,8 @@ function FlowEditor() {
   const proc = ed.doc
   const tombstoned = !!proc.tombstoned
   const editing = ed.editing
+  const prevProc = neighborProcess(siblings, proc.id, -1)
+  const nextProc = neighborProcess(siblings, proc.id, 1)
 
   function onSave() {
     if (tombstoned) return
@@ -63,6 +67,23 @@ function FlowEditor() {
   return (
     <div className="flex-1 flex flex-col min-h-0">
       <div className="flex items-center gap-3 px-[22px] py-[11px] bg-white border-b border-warm shrink-0">
+        {!editing && (prevProc || nextProc) && (
+          <div className="flex items-center gap-[3px] bg-tile-v2 rounded-xl p-[5px]">
+            {/* next process — sits on the right in RTL (first in DOM), '>' icon */}
+            <button onClick={() => nextProc && nav(`/processes/${nextProc.id}/flow`)} disabled={!nextProc}
+              title={nextProc ? `فرآیند بعدی: ${nextProc.name}` : undefined} aria-label={nextProc ? `فرآیند بعدی: ${nextProc.name}` : undefined}
+              className="w-[34px] h-[34px] flex items-center justify-center rounded-[9px] bg-white text-violet disabled:text-[#cfc7e0] disabled:cursor-default">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M9 6l6 6-6 6" /></svg>
+            </button>
+            <div className="w-px h-[18px] bg-[#D9CEF0]" />
+            {/* previous process — on the left, '<' icon */}
+            <button onClick={() => prevProc && nav(`/processes/${prevProc.id}/flow`)} disabled={!prevProc}
+              title={prevProc ? `فرآیند قبلی: ${prevProc.name}` : undefined} aria-label={prevProc ? `فرآیند قبلی: ${prevProc.name}` : undefined}
+              className="w-[34px] h-[34px] flex items-center justify-center rounded-[9px] bg-white text-violet disabled:text-[#cfc7e0] disabled:cursor-default">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M15 6l-6 6 6 6" /></svg>
+            </button>
+          </div>
+        )}
         {proc.parent && !editing && (
           <Button variant="ghost" onClick={() => nav(`/processes/${proc.parent!.process}/flow`)} className="px-3 py-[7px] text-[12px]">فرآیند والد</Button>
         )}

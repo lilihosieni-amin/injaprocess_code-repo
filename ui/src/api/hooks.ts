@@ -5,8 +5,12 @@ import type { Department, Me, Overview, PendingItem, Process } from './types'
 export const useDepartments = () =>
   useQuery({ queryKey: ['departments'], queryFn: () => fetchJson<Department[]>('/api/departments') })
 
-export const useProcesses = (code: string) =>
-  useQuery({ queryKey: ['processes', code], queryFn: () => fetchJson<Process[]>(`/api/departments/${code}/processes`) })
+export const useProcesses = (code: string, opts?: { enabled?: boolean }) =>
+  useQuery({
+    queryKey: ['processes', code],
+    queryFn: () => fetchJson<Process[]>(`/api/departments/${code}/processes`),
+    enabled: opts?.enabled ?? true,
+  })
 
 export const useOverview = (code: string) =>
   useQuery({ queryKey: ['overview', code], queryFn: () => fetchJson<Overview>(`/api/departments/${code}/overview`) })
