@@ -87,7 +87,8 @@ data-repo/
 │   └── agents/
 │       ├── classify.md
 │       ├── extract.md
-│       └── summarize.md
+│       ├── summarize.md
+│       └── consolidate.md      # post-run consolidation review (§5.11, ADR 0012)
 ├── departments/
 │   ├── registry.json             # official list of departments
 │   └── {dept}/
@@ -258,7 +259,7 @@ Invocation:
 - `/process-voice <department>` — the whole department set (all its recordings), or
 - `/process-voice <t1> <t2> …` — an explicit transcript list (the department is inferred).
 
-Three LLM subagents (Opus 4.8), the deterministic CLIs, and **two human gates**:
+Four LLM subagents (Opus 4.8: `classify`, `extract`, `summarize`, `consolidate`), the deterministic CLIs, and **three human gates** (A, B mid-run; C post-run — §5.3):
 
 ```
 [resolve set]  playbook  → the department's transcript set (explicit list → infer dept)
@@ -282,7 +283,13 @@ Three LLM subagents (Opus 4.8), the deterministic CLIs, and **two human gates**:
      │
 [summarize]    subagent (Opus)  over the set → departments/{dept}/overview.json
      │
-   git commit → report
+   git commit → conflict report
+     │
+[consolidate]  subagent (Opus)  reads the WHOLE department → runs/{dept}/{stamp}/consolidation.json
+     │
+  ── Gate C (Telegram) ──  consolidation review (post-run): numbered merge/attach
+                           suggestions to fix over-cutting/duplication; user approves each,
+                           then apply via existing merge verbs + soundness dedup (ADR 0012)
 ```
 
 ### 5.1 transcribe (CLI + Vertex/Gemini) — FR-P1, FR-P2
@@ -322,11 +329,13 @@ Three LLM subagents (Opus 4.8), the deterministic CLIs, and **two human gates**:
 
 ### 5.3 Human gates — FR-P4, INV-5
 
-There are now **two gates**:
+There are now **three gates** (A and B mid-run, C post-run):
 
 **Gate A — confirm the recording set (before transcription).** The playbook shows the department's transcript set in Telegram and asks the user to confirm it. When the run was invoked with an *explicit* list, this gate also **discloses what the list leaves out** (other recordings tagged to that department) so an omission is deliberate, not silent. Transcription only runs on the confirmed set.
 
 **Gate B — the segmentation/restructure checkpoint (the former single checkpoint).** The playbook shows the proposed process set with an **op label** per item — new / update / unchanged / **merge** / **split** / **attach** / **remove** — plus each item's **attributed evidence** (`{transcript, text}`) and any **contradictions**. The user confirms or corrects. **Override:** if the user doubts an "unchanged" item, they can move it to "update" so it goes to `extract`. On any correction, only `classify` (or, for an override, `extract` of that one process) is re-run; since nothing has been built yet, no ID/file is touched (a cheap loop).
+
+**Gate C — the consolidation review (post-run).** After the run has built, committed, and reported, the `consolidate` agent reviews the **whole department** and proposes a numbered list of **merge**/**attach** suggestions to undo over-cutting/duplication, with a briefer letter-labelled «موارد کم‌اهمیت‌تر» tier for uncertain cases (§5.11). The user approves **each item individually**; an approved item is applied via the existing `merge` verbs plus a soundness/dedup pass, and the finished process is shown back. Unlike A/B (which touch nothing, since nothing is built yet), C is *post-build*, so applying an item allocates/restructures real ids — INV-5 is honoured **per-item** (one approval authorizes that item's edits, including overwrites of already-filled values). (ADR 0012.)
 
 For confirmed "unchanged" processes, the process file stays untouched and only a lightweight record is added to `source.touched_by` (this run referenced the process but added nothing) so the coverage history stays complete.
 
@@ -334,6 +343,7 @@ For confirmed "unchanged" processes, the process file stays untouched and only a
 
 - Each desired process runs in a separate subagent with its own window (context control — NFR-6). Inputs are now the **set of transcript paths** + this process's attributed `evidence` + any superseded/target `process.json`(s) named by its `supersedes`. Dispatched **serially** — one `Task`, awaited before the next — because the control-bot's Claude SDK bridge drops a parallel `Task` batch mid-run; the context-isolation benefit is kept, parallel throughput is traded for reliability (ADR 0003).
 - The `idef-extraction` skill (IDEF0/IDEF3 knowledge + schema + the "no fabrication" rule) is preloaded at the subagent's startup.
+- **No duplicate nodes (ADR 0013):** when a box is decomposed into a subprocess, the box's steps live in the **child only** (never also as flat nodes in the parent); each task is a single node and a revisit is a loop-back edge, not a copy. The container box vs. the child's first node are different abstraction levels — not a duplicate. The same doctrine is reused by `consolidate`'s soundness pass (§5.11).
 - Output depends on the op:
   - **new** → a candidate graph with **temporary keys** for nodes (e.g. `n1`); **no final IDs are created by the LLM**.
   - **update** → a delta (Section 6) that may carry `revise_nodes` (overwrite a committed field on supersession) and `remove_edges` (edge hygiene), alongside `add_*`/`enrich_nodes`/`flag_removed`.
@@ -372,16 +382,27 @@ This list states only **what must be built**; the full prompt/skill text and the
 | `classify` | segment the text into processes + label new/update/unchanged | text path → `segments.json` | Opus 4.8 |
 | `extract` | extract each process's IDEF0/IDEF3 graph (or delta) | one segment → candidate graph/delta | Opus 4.8 |
 | `summarize` | build/update the department overview file | run's processes + text → `overview.json` | Opus 4.8 |
+| `consolidate` | post-run **consolidation review** — find over-cutting/duplication across the whole department and propose merge/attach fixes (ADR 0012) | review: whole department → `consolidation.json`; apply: one approved item → restructure plan / repair delta | Opus 4.8 |
 
 **Skills (`data-repo/.claude/skills/`):**
 
 | Name | Type | Role |
 |---|---|---|
-| `process-voice` | playbook (slash command) | orchestrate the whole set-based pipeline + own the two gates and the conflict report |
+| `process-voice` | playbook (slash command) | orchestrate the whole set-based pipeline + own the three gates (A set, B segmentation, C post-run consolidation review — §5.3/§5.11) and the conflict report |
 | `idef-extraction` | knowledge (preloaded in `extract`) | IDEF0/IDEF3 rules + the `process.json` schema + the "no fabrication" rule |
 | `edit-process` | skill (chat-triggered, no voice) | direct conversational edits — read the target process, build the matching engine artifact (delta/restructure), run the right `merge` verb (never a direct write), commit with `source.type:"chat"` |
 
 **Non-agent (part of the engine, not `.claude`):** `transcribe`, `merge`, `allocate-id`, `layout`, `validate` — all deterministic CLIs in `code-repo/engine` (Section 8). This list is updated here whenever a new agent/skill is added.
+
+### 5.11 consolidate — post-run consolidation review (ADR 0012)
+
+Runs as the **final stage** of every `/process-voice` run (after `summarize`/commit). Because `classify` deliberately segments **fine** (for node detail — ADR 0008/0009), a shift gets over-cut into many peer processes and tasks recur across them; `consolidate` fixes this **after** the build, restructuring **without discarding any node**. `classify`/`extract`/`merge` are unchanged.
+
+- **review mode** — reads the **whole department** (all transcripts + all non-tombstoned processes + attachments), judges overlap **semantically** (no mechanical detector — rejected as brittle against Persian free-text), and writes `runs/{dept}/{stamp}/consolidation.json`: a numbered, **evidence-cited** list, or an empty list. Two kinds — **merge** (several processes are one continuous procedure — may be an **N-way** cluster; the user picks *flat* or *mother + subprocess*) and **attach** (one process is the decomposition of a single node of another). **Completeness + three tiers:** every confident over-cut is listed (numbered ۱،۲،۳…); plausible-but-uncertain cases go under a letter-labelled «موارد کم‌اهمیت‌تر» heading (الف،ب،پ…); baseless → nothing (silence bias, ADR 0008).
+- **Gate C** (§5.3) presents the numbered report and takes **per-item** approval.
+- **apply mode** — an approved item becomes a `restructure` plan (merge) or is re-parented (`attach-subprocess`), then a **soundness pass** repairs the seam and removes any cross-level/flat duplicate nodes (no-duplicate doctrine, ADR 0013). Uses **only existing `merge` verbs** — no new engine CLI. The artifact is validated by `consolidation.schema.json` (§8).
+
+Its apply commits (and Stage-8's pipeline commit) stage `departments`/`runs` **only** — never `git add -A`, which once swept uncommitted `.claude` prompt edits into a data commit.
 
 ---
 
@@ -472,9 +493,9 @@ In `code-repo/engine/`, installed as **pinned** CLIs on the server's PATH; outsi
 | `merge` | verbs `new` / `update` / `restructure` / `attach-subprocess` / `remove` / `accept` / `reject`: apply delta or restructure plan, mint/assign IDs, preserve id/position/manual layout, record pending, flag-remove nodes, hard-delete edges, tombstone + hierarchy-redirect on restructure/remove |
 | `layout` | deterministic layered layout (Section 9) |
 | `transcribe` | Gemini-on-Vertex call + idempotency pre-check |
-| `validate` | check a JSON artifact against a named schema (exit 2 on mismatch); guards the classify/summarize/playbook outputs (`segments`/`overview`/`meta`/`restructure`) that no other CLI validates |
+| `validate` | check a JSON artifact against a named schema (exit 2 on mismatch); guards the classify/summarize/consolidate/playbook outputs (`segments`/`overview`/`meta`/`restructure`/`consolidation`) that no other CLI validates |
 
-Schemas `validate` gained/changed for this round: `segments` and `run-meta` were **reshaped** (set-based, `supersedes`); `process` gained `superseded_by`/`tombstoned`; `delta` gained `remove_edges`/`revise_nodes`; and two new schemas were added — `restructure.schema.json` (merge/split heir plan) and `idseq.schema.json` (the per-department id ledger).
+Schemas `validate` gained/changed for this round: `segments` and `run-meta` were **reshaped** (set-based, `supersedes`); `process` gained `superseded_by`/`tombstoned`; `delta` gained `remove_edges`/`revise_nodes`; and two new schemas were added — `restructure.schema.json` (merge/split heir plan) and `idseq.schema.json` (the per-department id ledger). The consolidation-review round (ADR 0012) added a further schema — `consolidation.schema.json` (the review's numbered merge/attach suggestions; an evidence-free suggestion is schema-invalid).
 
 The skills/prompts/IDEF rules stay in `data-repo/.claude` (intentionally easy to edit, since they are meant to improve over time). Two separate improvement activities: extraction quality → edit skills in `data-repo`; the deterministic engine → edit CLIs in `code-repo`.
 
