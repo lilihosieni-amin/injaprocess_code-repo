@@ -34,8 +34,10 @@ restore.
   left as a *possible* follow-up, considered only if batch-of-4 passes cleanly.
 - **No change to the 0005/0006/0007 mitigations.** They stay exactly as deployed; the only
   behavioral change under test is Stage 5's dispatch pattern.
-- Tests run through the **test** control-bot (`@aiprocessTestinjabo`), never the production
-  bot; and against the **already-empty** dining department, so no live data is at risk.
+- Tests run on the **server** through its deployed control-bot, against the **already-empty**
+  dining department, so no live data is at risk. (The local `@aiprocessTestinjabo` test bot is
+  a laptop-only concern; on the 2-CPU server the deployed bot is the faithful target — the
+  emptiness of dining is what makes running through it safe.)
 
 ## The change under test
 
