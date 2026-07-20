@@ -111,11 +111,11 @@ export function Summary() {
                 <span className="w-2 h-2 bg-coral rounded-full" />نمای IDEF0 سطح فرآیند (A-0)
               </div>
               <div className="grid grid-cols-[1fr_1.4fr_1fr] gap-3.5 items-center">
-                <div className="col-start-2 row-start-1 text-center">
+                <div className="col-start-2 row-start-1 text-center min-w-0">
                   <div className="text-[11px] text-muted mb-1.5">کنترل‌ها ↓</div>
                   <div className="flex flex-wrap gap-1.5 justify-center">{proc.idef0.controls.map((t, i) => <Chip key={i} kind="control">{t}</Chip>)}</div>
                 </div>
-                <div className="col-start-3 row-start-2 text-center">
+                <div className="col-start-3 row-start-2 text-center min-w-0">
                   <div className="text-[11px] text-muted mb-1.5">ورودی‌ها →</div>
                   <div className="flex flex-col gap-1.5 items-center">{proc.idef0.inputs.map((t, i) => <Chip key={i} kind="input">{t}</Chip>)}</div>
                 </div>
@@ -123,11 +123,11 @@ export function Summary() {
                   <div className="font-bold text-[15px]">{proc.name}</div>
                   <div className="font-mono text-[11px] text-[#C9BEEE] mt-1.5" dir="ltr">A-0 · {proc.id}</div>
                 </div>
-                <div className="col-start-1 row-start-2 text-center">
+                <div className="col-start-1 row-start-2 text-center min-w-0">
                   <div className="text-[11px] text-muted mb-1.5">← خروجی‌ها</div>
                   <div className="flex flex-col gap-1.5 items-center">{proc.idef0.outputs.map((t, i) => <Chip key={i} kind="output">{t}</Chip>)}</div>
                 </div>
-                <div className="col-start-2 row-start-3 text-center">
+                <div className="col-start-2 row-start-3 text-center min-w-0">
                   <div className="flex flex-wrap gap-1.5 justify-center">{proc.idef0.mechanisms.map((t, i) => <Chip key={i} kind="mech">{t}</Chip>)}</div>
                   <div className="text-[11px] text-muted mt-1.5">↑ مکانیزم‌ها</div>
                 </div>
