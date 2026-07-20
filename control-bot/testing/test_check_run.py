@@ -77,3 +77,26 @@ def test_stop_sequence_fails_clean_transcript(tmp_path):
     passed, checks = evaluate_run(str(run), str(t))
     assert passed is False
     assert any(name == "clean_transcript" and not ok for name, ok, _ in checks)
+
+def test_benign_stop_sequence_null_passes_clean_transcript(tmp_path):
+    # Regression: Claude's Messages API attaches "stop_sequence": null to EVERY
+    # assistant message. That benign field must NOT trip clean_transcript. The real
+    # stall signature is the stop_reason VALUE being "stop_sequence".
+    run = _clean_run(tmp_path)
+    t = tmp_path / "session.jsonl"
+    t.write_text(
+        '{"type":"assistant","message":{"stop_reason":"tool_use","stop_sequence":null}}\n'
+        '{"type":"assistant","message":{"stop_reason":"end_turn","stop_sequence":null}}\n'
+        '{"type":"result","subtype":"success"}\n'
+    )
+    passed, checks = evaluate_run(str(run), str(t))
+    assert passed is True, checks
+    assert any(name == "clean_transcript" and ok for name, ok, _ in checks)
+
+def test_tool_result_missing_fails_clean_transcript(tmp_path):
+    run = _clean_run(tmp_path)
+    t = tmp_path / "session.jsonl"
+    t.write_text('{"type":"user","message":{"content":"[Tool result missing due to internal error]"}}\n')
+    passed, checks = evaluate_run(str(run), str(t))
+    assert passed is False
+    assert any(name == "clean_transcript" and not ok for name, ok, _ in checks)

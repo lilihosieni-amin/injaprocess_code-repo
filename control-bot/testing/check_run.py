@@ -10,11 +10,20 @@ Verdict = all three criteria pass:
 import glob
 import json
 import os
+import re
 import sys
 
 EXTRACT_STATUSES = {"new", "update", "merge", "split"}
 RESUME_INJECTION = "Continue from where you left off."
-STALL_TOKENS = ("No response requested.", "Auto-resuming deferred tool", "stop_sequence")
+# Plain-substring stall signatures (drop chain).
+STALL_TOKENS = (
+    "No response requested.",
+    "Auto-resuming deferred tool",
+    "[Tool result missing due to internal error]",
+)
+# The real stall signature is the stop_reason VALUE being "stop_sequence" — NOT the
+# benign "stop_sequence": null field the Messages API attaches to every message.
+STALL_STOP_REASON_RE = re.compile(r'"stop_reason"\s*:\s*"stop_sequence"')
 
 
 def _load_json(path):
@@ -55,6 +64,8 @@ def _check_single_turn(transcript_text):
 
 def _check_clean_transcript(transcript_text):
     hits = [tok for tok in STALL_TOKENS if tok in transcript_text]
+    if STALL_STOP_REASON_RE.search(transcript_text):
+        hits.append('"stop_reason":"stop_sequence"')
     if hits:
         return ("clean_transcript", False, f"stall signatures: {hits}")
     return ("clean_transcript", True, "no stall signatures")
