@@ -5,7 +5,7 @@ import { Button } from '../ui/Button'
 import logo from '../assets/inja-logo.jpg'
 
 export function Login() {
-  const [username, setUsername] = useState('analyst')
+  const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [err, setErr] = useState(false)
   const login = useLogin()
