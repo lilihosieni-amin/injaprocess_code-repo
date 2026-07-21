@@ -7,6 +7,16 @@
 | **Area** | `data-repo` new agent `.claude/agents/consolidate.md` + `process-voice/SKILL.md` (new Stage 10); `code-repo` new `schemas/consolidation.schema.json` |
 | **Related** | [0008](0008-segmentation-node-visibility-semantic-subprocess.md), [0009](0009-set-based-extraction-and-restructuring.md), [0013](0013-no-duplicate-nodes-doctrine.md) |
 | **Specs/plans** | `docs/superpowers/specs/2026-07-19-consolidation-reviewer-design.md`, `…/2026-07-19-consolidate-combination-and-dedup-design.md` (+ matching plans) |
+| **Refined by** | `docs/superpowers/specs/2026-07-21-merge-via-extract-delegation-design.md` (apply path) |
+
+> **Update (2026-07-21) — apply path.** Consolidation *review* is unchanged, but the merge
+> *build* no longer happens in `consolidate`'s apply-mode. Live testing showed the inline
+> heir-builder produced **out-of-order and duplicated** merges and, pushed to "rebuild from
+> scratch," made the run improvise an `Agent` subagent dispatch that **stalled** the
+> control-bot. Merges are now built by **`extract` (restructure mode)** — the hardened,
+> `idef-extraction`-backed builder that already builds classify-driven merges — dispatched by
+> Stage 10 (and by `edit-process` for chat merges); `consolidate` apply-mode is now
+> **soundness verification only**. See the 2026-07-21 design.
 
 ## Context
 
