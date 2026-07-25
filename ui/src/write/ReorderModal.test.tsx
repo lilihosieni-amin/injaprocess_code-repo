@@ -87,12 +87,25 @@ describe('ReorderModal', () => {
     expect(spy).not.toHaveBeenCalled()
   })
 
-  it('shows the drift notice on a 409', async () => {
+  it('shows the drift notice and closes the modal on a 409', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(JSON.stringify({ detail: 'set mismatch: missing=cooking-009 stale=-' }),
         { status: 409, headers: { 'Content-Type': 'application/json' } }))
-    wrap(<ReorderModal department="cooking" departmentName="پخت" processes={PROCS} onClose={() => {}} />)
+    const onClose = vi.fn()
+    wrap(<ReorderModal department="cooking" departmentName="پخت" processes={PROCS} onClose={onClose} />)
     fireEvent.click(screen.getByRole('button', { name: /ذخیره/ }))
     expect(await screen.findByText(/ترتیب تغییر کرده/)).toBeInTheDocument()
+    expect(onClose).toHaveBeenCalled()
+  })
+
+  it('shows a generic failure message and keeps the modal open on a non-409 error', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ detail: 'internal error' }),
+        { status: 500, headers: { 'Content-Type': 'application/json' } }))
+    const onClose = vi.fn()
+    wrap(<ReorderModal department="cooking" departmentName="پخت" processes={PROCS} onClose={onClose} />)
+    fireEvent.click(screen.getByRole('button', { name: /ذخیره/ }))
+    expect(await screen.findByText('ذخیرهٔ ترتیب انجام نشد')).toBeInTheDocument()
+    expect(onClose).not.toHaveBeenCalled()
   })
 })

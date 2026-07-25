@@ -2641,13 +2641,26 @@ describe('ReorderModal', () => {
     expect(spy).not.toHaveBeenCalled()
   })
 
-  it('shows the drift notice on a 409', async () => {
+  it('shows the drift notice and closes the modal on a 409', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(JSON.stringify({ detail: 'set mismatch: missing=cooking-009 stale=-' }),
         { status: 409, headers: { 'Content-Type': 'application/json' } }))
-    wrap(<ReorderModal department="cooking" departmentName="پخت" processes={PROCS} onClose={() => {}} />)
+    const onClose = vi.fn()
+    wrap(<ReorderModal department="cooking" departmentName="پخت" processes={PROCS} onClose={onClose} />)
     fireEvent.click(screen.getByRole('button', { name: /ذخیره/ }))
     expect(await screen.findByText(/ترتیب تغییر کرده/)).toBeInTheDocument()
+    expect(onClose).toHaveBeenCalled()
+  })
+
+  it('shows a generic failure message and keeps the modal open on a non-409 error', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ detail: 'internal error' }),
+        { status: 500, headers: { 'Content-Type': 'application/json' } }))
+    const onClose = vi.fn()
+    wrap(<ReorderModal department="cooking" departmentName="پخت" processes={PROCS} onClose={onClose} />)
+    fireEvent.click(screen.getByRole('button', { name: /ذخیره/ }))
+    expect(await screen.findByText('ذخیرهٔ ترتیب انجام نشد')).toBeInTheDocument()
+    expect(onClose).not.toHaveBeenCalled()
   })
 })
 ```
@@ -2696,10 +2709,14 @@ export function ReorderModal({ department, departmentName, processes, onClose }:
   function doSave() {
     save.mutate({ order: seq.map((p) => p.id) }, {
       onSuccess: () => { toast.show('ترتیب فرآیندها ذخیره شد'); onClose() },
-      onError: (e) => toast.show(
-        e instanceof ApiError && e.status === 409
-          ? 'ترتیب تغییر کرده است؛ فهرست به‌روزرسانی شد. دوباره تلاش کنید.'
-          : 'ذخیرهٔ ترتیب انجام نشد'),
+      onError: (e) => {
+        if (e instanceof ApiError && e.status === 409) {
+          toast.show('ترتیب تغییر کرده است؛ فهرست به‌روزرسانی شد. پنجرهٔ ترتیب‌دهی را دوباره باز کنید.')
+          onClose()
+        } else {
+          toast.show('ذخیرهٔ ترتیب انجام نشد')
+        }
+      },
     })
   }
 
@@ -2757,7 +2774,7 @@ export function ReorderModal({ department, departmentName, processes, onClose }:
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `cd ui && npx vitest run src/write/ReorderModal.test.tsx`
-Expected: PASS, 8 passed.
+Expected: PASS, 9 passed.
 
 If the `Process` type in the test's `proc()` helper does not compile, read `ui/src/api/types.ts` and match its actual `Process` shape rather than casting more aggressively.
 

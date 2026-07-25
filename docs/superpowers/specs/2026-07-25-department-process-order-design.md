@@ -234,7 +234,7 @@ silently drop the new process out of the order.
   §13.2). Native HTML5 drag events **plus ↑/↓ buttons** — no new dependency (the UI has six
   runtime deps and none does drag-and-drop; these rows are far simpler than what `@dnd-kit`
   addresses), and the arrows cover keyboard and touch, which raw HTML5 DnD does not.
-  On a 409 it shows a Persian «ترتیب تغییر کرده» notice and refetches.
+  On a 409 it shows a Persian «ترتیب تغییر کرده» notice, refetches, and closes the modal so the user reopens the panel on fresh data.
 - **`ui/src/screens/ProcessList.tsx`** — a «ترتیب فرآیندها» ghost button beside «فرآیند جدید»; a
   position number (via the existing `toFa` helper) on each active card; no client-side sort, since
   the endpoint is already ordered. Tombstones show no number.

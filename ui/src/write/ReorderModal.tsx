@@ -32,10 +32,14 @@ export function ReorderModal({ department, departmentName, processes, onClose }:
   function doSave() {
     save.mutate({ order: seq.map((p) => p.id) }, {
       onSuccess: () => { toast.show('ترتیب فرآیندها ذخیره شد'); onClose() },
-      onError: (e) => toast.show(
-        e instanceof ApiError && e.status === 409
-          ? 'ترتیب تغییر کرده است؛ فهرست به‌روزرسانی شد. دوباره تلاش کنید.'
-          : 'ذخیرهٔ ترتیب انجام نشد'),
+      onError: (e) => {
+        if (e instanceof ApiError && e.status === 409) {
+          toast.show('ترتیب تغییر کرده است؛ فهرست به‌روزرسانی شد. پنجرهٔ ترتیب‌دهی را دوباره باز کنید.')
+          onClose()
+        } else {
+          toast.show('ذخیرهٔ ترتیب انجام نشد')
+        }
+      },
     })
   }
 
