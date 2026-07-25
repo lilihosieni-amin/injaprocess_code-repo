@@ -19,7 +19,19 @@
 - **Schema style:** draft 2020-12, `additionalProperties: false`, `$id` = bare filename.
 - **UI copy is Persian.** Reuse the existing `toFa` helper for digits. Match `CreateProcessModal.tsx` for modal shape and Tailwind tokens.
 - **No new runtime dependencies.** The reorder UI uses native HTML5 drag events plus ↑/↓ buttons.
-- **Run `make test` from `code-repo` root** for Python; `npm test` in `ui/` for the frontend.
+- **Test commands (verified — use exactly these):**
+  - Whole Python suite: `cd <code-repo> && make test` (or `.venv/bin/python -m pytest -q`).
+  - A single **engine** test file needs `PYTHONPATH=engine/tests`, because `engine/tests/*` do
+    `from conftest import load_fixture` and a bare explicit path fails with
+    `ModuleNotFoundError: No module named 'conftest'`:
+    `PYTHONPATH=engine/tests .venv/bin/python -m pytest engine/tests/test_x.py -q`
+  - A single **ui-backend** test file needs no prefix: `.venv/bin/pytest ui-backend/tests/test_x.py -q`
+  - Frontend: `cd ui && npx vitest run src/path/file.test.tsx`; whole suite `npm test`.
+  - `data-repo` hook tests: the system python has no pytest — use the code-repo venv:
+    `cd <data-repo> && <code-repo>/.venv/bin/python -m pytest .claude/hooks/test_guard.py -q`
+- **Do not stage, commit, or revert these pre-existing untracked leftovers** in `code-repo`:
+  `control-bot/chathistorylog.txt`, `deploy/docker-compose.local.yml`, `deploy/local/`. They belong
+  to the user's local testing setup. Stage only the files your task's commit step names.
 
 ---
 
@@ -287,7 +299,7 @@ def test_non_utc_timestamp_rejected():
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `make test 2>&1 | tail -20` (or `.venv/bin/pytest engine/tests/test_schema_order.py -q`)
+Run: `make test 2>&1 | tail -20` (or `PYTHONPATH=engine/tests .venv/bin/python -m pytest engine/tests/test_schema_order.py -q`)
 Expected: FAIL — every test errors with `FileNotFoundError` for `order.schema.json`.
 
 - [ ] **Step 3: Write the schema**
@@ -320,7 +332,7 @@ Create `schemas/order.schema.json`:
 
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `.venv/bin/pytest engine/tests/test_schema_order.py -q`
+Run: `PYTHONPATH=engine/tests .venv/bin/python -m pytest engine/tests/test_schema_order.py -q`
 Expected: PASS, 8 passed.
 
 - [ ] **Step 5: Add the schema to the schemas README**
@@ -550,7 +562,7 @@ def test_departments_come_from_the_registry(data_root):
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `.venv/bin/pytest engine/tests/test_order.py -q`
+Run: `PYTHONPATH=engine/tests .venv/bin/python -m pytest engine/tests/test_order.py -q`
 Expected: FAIL — collection error, `ModuleNotFoundError: No module named 'order'`.
 
 - [ ] **Step 3: Write the module**
@@ -707,7 +719,7 @@ Then reinstall so the new package is importable:
 
 - [ ] **Step 5: Run the test to verify it passes**
 
-Run: `.venv/bin/pytest engine/tests/test_order.py -q`
+Run: `PYTHONPATH=engine/tests .venv/bin/python -m pytest engine/tests/test_order.py -q`
 Expected: PASS, 19 passed.
 
 - [ ] **Step 6: Commit**
@@ -849,7 +861,7 @@ def test_hints_do_not_stop_unhinted_ids_from_appending(data_root):
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `.venv/bin/pytest engine/tests/test_order_hints.py -q`
+Run: `PYTHONPATH=engine/tests .venv/bin/python -m pytest engine/tests/test_order_hints.py -q`
 Expected: FAIL — the hint tests fail because `reconcile` currently appends everything; e.g. `test_heir_takes_its_predecessors_position` gets `['cooking-001', 'cooking-003', 'cooking-004']`.
 
 - [ ] **Step 3: Implement the hint passes**
@@ -909,7 +921,7 @@ with:
 
 - [ ] **Step 4: Run both order test files to verify they pass**
 
-Run: `.venv/bin/pytest engine/tests/test_order.py engine/tests/test_order_hints.py -q`
+Run: `PYTHONPATH=engine/tests .venv/bin/python -m pytest engine/tests/test_order.py engine/tests/test_order_hints.py -q`
 Expected: PASS, 28 passed. (Task 3's tests must still pass — hints default to `None`, so the no-hint path is unchanged.)
 
 - [ ] **Step 5: Commit**
@@ -1073,7 +1085,7 @@ def test_sync_without_department_or_all_exits_2(data_root):
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `.venv/bin/pytest engine/tests/test_order_cli.py -q`
+Run: `PYTHONPATH=engine/tests .venv/bin/python -m pytest engine/tests/test_order_cli.py -q`
 Expected: FAIL — collection error, `ModuleNotFoundError: No module named 'order.cli'`.
 
 - [ ] **Step 3: Write the CLI**
@@ -1188,7 +1200,7 @@ Then reinstall so the `order` command appears on PATH:
 
 - [ ] **Step 5: Run the test to verify it passes**
 
-Run: `.venv/bin/pytest engine/tests/test_order_cli.py -q`
+Run: `PYTHONPATH=engine/tests .venv/bin/python -m pytest engine/tests/test_order_cli.py -q`
 Expected: PASS, 12 passed.
 
 - [ ] **Step 6: Verify the console script works end to end**
@@ -1353,7 +1365,7 @@ def test_restructure_split_puts_both_heirs_at_the_predecessors_position(data_roo
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `.venv/bin/pytest engine/tests/test_merge_order.py -q`
+Run: `PYTHONPATH=engine/tests .venv/bin/python -m pytest engine/tests/test_merge_order.py -q`
 Expected: FAIL — `read_order` returns `[]` because `merge` does not touch `order.json` yet.
 
 - [ ] **Step 3: Add the hook to `merge/cli.py`**
@@ -1426,7 +1438,7 @@ Then, inside the `try:` block, add a sync call at the end of each verb's branch.
 
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `.venv/bin/pytest engine/tests/test_merge_order.py -q`
+Run: `PYTHONPATH=engine/tests .venv/bin/python -m pytest engine/tests/test_merge_order.py -q`
 Expected: PASS, 6 passed.
 
 - [ ] **Step 5: Run the whole Python suite for regressions**
@@ -2348,7 +2360,7 @@ def test_allow_order_cli_bash(tmp_path):
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `python -m pytest .claude/hooks/test_guard.py -q`
+Run: `<code-repo>/.venv/bin/python -m pytest .claude/hooks/test_guard.py -q` (system python has no pytest)
 Expected: FAIL — the four `test_block_order_*` tests return 0 instead of 2.
 
 - [ ] **Step 3: Add the guard rules**
@@ -2384,7 +2396,7 @@ Also update the module docstring's numbered list — item 1 becomes:
 
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `python -m pytest .claude/hooks/test_guard.py -q`
+Run: `<code-repo>/.venv/bin/python -m pytest .claude/hooks/test_guard.py -q` (system python has no pytest)
 Expected: PASS — including the pre-existing `test_allow_overview_write`, which must still return 0.
 
 - [ ] **Step 5: Add the hard rule to `CLAUDE.md`**
@@ -2492,7 +2504,7 @@ Run before declaring the feature done:
 ```bash
 cd <code-repo> && make test && make lint
 cd <code-repo>/ui && npm test && npx tsc --noEmit && npx eslint src
-cd <data-repo> && python -m pytest .claude/hooks/test_guard.py -q
+cd <data-repo> && <code-repo>/.venv/bin/python -m pytest .claude/hooks/test_guard.py -q
 cd <code-repo> && DATA_ROOT=<data-repo> .venv/bin/order check --all
 ```
 
