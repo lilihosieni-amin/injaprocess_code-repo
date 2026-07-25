@@ -16,6 +16,7 @@ allocate-id = "allocate_id.cli:main"
 extract-attachment = "extract_attachment.cli:main"
 layout = "layout.cli:main"
 merge = "merge.cli:main"
+order = "order.cli:main"
 transcribe = "transcribe.cli:main"
 validate = "validate.cli:main"
 
