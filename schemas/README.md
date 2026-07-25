@@ -11,7 +11,7 @@ these); kept in `code-repo` so runtime (INV-2) cannot weaken validation.
 | `candidate.schema.json` | new-process extract graph (ARD §5.4) | extract agent | merge |
 | `delta.schema.json` | update delta (ARD §6.2) | extract agent | merge |
 | `overview.schema.json` | department overview (ARD §4.4) | summarize agent | UI |
-| `order.schema.json` | department process display order (ARD §4.6) | order CLI | UI backend, department export |
+| `order.schema.json` | department process display order (ARD §4.6) | order CLI | UI backend (and the *planned* department export — PRD §12) |
 | `segments.schema.json` | classify output (ARD §5.2) | classify agent | checkpoint |
 | `run-meta.schema.json` | per-run metadata (ARD §2.2) | process-voice | audit |
 | `conflicts.schema.json` | per-run conflicts (ARD §2.2) | merge | Telegram report, UI inbox |

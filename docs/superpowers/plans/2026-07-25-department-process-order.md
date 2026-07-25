@@ -3180,3 +3180,27 @@ cd <code-repo> && DATA_ROOT=<data-repo> .venv/bin/order check --all
 ```
 
 All four must pass, the last with exit 0.
+
+---
+
+## Post-review fix wave
+
+The final whole-branch review found nine defects (four IMPORTANT, five MINOR), all reproduced with
+probes. They were fixed on this branch after Task 13; the design record carries the details in
+**§12 Post-review amendments** of
+`docs/superpowers/specs/2026-07-25-department-process-order-design.md`, and the accepted divergence
+for UI-created sub-processes is now decision **D10** in that spec's §1.
+
+Summary of what moved away from the plan as written above:
+
+| Where | Change |
+|---|---|
+| Task 8 / `routers/processes.py` | `_sync_order` catches `(EngineError, OSError)` — the engine is a subprocess, so a missing `order` script raises `FileNotFoundError` and half-applied the create |
+| Task 7 / `routers/departments.py` | `put_order` widens the same catch (500 on an unrunnable CLI) and validates ids against `^[a-z]+-[0-9]{3}$` → 422, because the CLI's `--sequence` is comma-delimited |
+| Task 8 / `routers/departments.py` | the `order.json` **read** in `list_processes` falls back to id order on a corrupt file instead of 500-ing the whole department |
+| Task 8 / `storage.py` | `list_process_files` is department-anchored, matching `order.active_ids`, so a misfiled process cannot 409 the department forever |
+| Task 3 / `order/__init__.py` | `set_order` honours lazy creation, like `reconcile` |
+| Task 5 / `order/cli.py` | `--all` continues past a failing department and exits 2 at the end; `sync`'s error message carries merge's "derived state, safe to delete" advice |
+| Task 10 / `ReorderModal.tsx` | save is disabled with zero rows |
+| Task 12 / `guard.py` | also blocks Bash `order set` / `order move`; `show`/`sync`/`check` stay allowed |
+| Docs | `engine/README.md` count, ADR 0016 Area + consequences, ARD §4.6/§7/§13.2/§14/§15, PRD FR-D12, `schemas/README.md`, data-repo `CLAUDE.md` CLI table |

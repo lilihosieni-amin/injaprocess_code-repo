@@ -261,14 +261,15 @@ Rule: monotonic "next number", backed by a **durable per-department `.id-seq.jso
 }
 ```
 
-The department's **curated display order** — a human-chosen table of contents for the UI list and for the department export. It carries no claim that one process happens before another in the real world; that information lives in the flows themselves.
+The department's **curated display order** — a human-chosen table of contents for the UI list, and for the *planned* department export (PRD §12 Open Items & Future), which is why the order is recorded explicitly now rather than later. Today the UI backend is its only consumer. It carries no claim that one process happens before another in the real world; that information lives in the flows themselves.
 
 - **One flat list per department**, covering root *and* sub-processes, each exactly once. A consumer that wants nesting reads each process's `parent`.
 - **Position is the array index.** There are no rank fields to drift.
 - **The file equals the active set.** A newly created process is appended; a tombstoned or permanently deleted one is dropped. Tombstones therefore hold no position — the UI shows them after the ordered processes, in id order.
 - **A missing `order.json` means "no curated order yet"** and readers fall back to id order. The file is created lazily on the first append, so departments with no processes have no file.
 - **Restructure preserves curation:** a heir takes the position of the earliest process it supersedes (lowest index in the existing order), rather than being appended. A new sub-process created by an update is inserted directly after its parent. Anything unplaced goes to the end in id order.
-- **Written only by the `order` CLI** (§8) — hook-enforced against the runtime, exactly like `processes/*.json` (INV-1). `merge` calls the same code in-process after every verb, so the pipeline needs no stage of its own. (ADR 0016)
+- **Written only by the `order` CLI** (§8) — hook-guarded against the runtime, exactly like `processes/*.json`, and with the same honest limits (INV-1; §7). `merge` calls the same code in-process after every verb, so the pipeline needs no stage of its own. (ADR 0016)
+- **Lazy in both writers.** A department with no processes and no file yet gets none — `reconcile` and `set` both decline to create one, so the rule cannot be defeated by saving an empty reorder panel.
 
 ---
 
@@ -497,7 +498,9 @@ The four-layer ladder (weak → strong):
 
 **Runtime hooks:**
 - Block direct writes to `departments/**/processes/*.json` except via the `merge` CLI. (INV-1, AC-7)
-- Block direct writes to `departments/**/order.json` except via the `order` CLI — the curated order is human-owned, never model-written. (INV-1, §4.6)
+- Block direct writes to `departments/**/order.json` except via the `order` CLI, **and** block the two curating verbs `order set` / `order move` — the sequence itself is the human's, chosen in the UI; the runtime may only run `order show` / `order sync` / `order check`. (INV-1, §4.6)
+
+**How hard the guarantee is.** For the `Write`/`Edit` tools the block is exact: the hook resolves the target path and refuses. For `Bash` it is a deliberately conservative heuristic — it refuses a command that both mutates *and* names a protected path, and (for the order CLI) a command whose argv spells `order set` / `order move`. That covers every realistic way the runtime would reach these files, but it is pattern matching on a shell string, not a filesystem-level lock; the same caveat has always applied to `processes/*.json`. The layered defences of this section (precondition gating, the playbook, `CLAUDE.md`) are what make the residue negligible.
 - Block writes/edits to `data-repo/.claude/**` and `data-repo/CLAUDE.md` at runtime. (INV-2, AC-7)
 - Block any write outside `data-repo`. (An extra defensive layer on the code/data separation.)
 
@@ -605,7 +608,7 @@ The `RichardAtCT/claude-code-telegram` project (Python 3.11+, MIT). Latest tagge
 - **Default mode is view-only (read-only):** the user sees the process and flowchart but nothing is movable/editable. Only by pressing the **"Edit"** button does the editor open and the user enters edit mode (preventing accidental changes).
 - **Save is manual, not automatic:** changes (edit/delete/add/reposition) are held in UI memory until the user presses **"Save"**; then the backend writes the JSON at once and makes **one commit** (Section 15). This prevents tiny, numerous commits.
 - Backend jobs: read/write JSON, apply edit/delete (flag)/add, reposition (recording `layout: manual`), the `pending` review inbox, and manual process creation (`allocate-id` — FR-I5, FR-D2). The backend **excludes tombstones from department counts**.
-- **Process order (FR-D12, FR-I7):** `GET /api/departments/{code}/processes` returns processes **already ordered** — the curated order first, then tombstones by id — so the frontend never sorts. Reordering happens in a dedicated compact panel (one short row per process, drag plus ↑/↓ buttons) rather than by dragging the list cards, because a department can hold dozens of processes. Saving `PUT`s the whole sequence; the backend refuses a sequence that is not exactly the active set with **409**, which is what happens when a pipeline run or a second tab added a process while the panel was open. The user is told and the list refreshes.
+- **Process order (FR-D12, FR-I7):** `GET /api/departments/{code}/processes` returns processes **already ordered** — the curated order first, then tombstones by id — so the frontend never sorts. Reordering happens in a dedicated compact panel (one short row per process, drag plus ↑/↓ buttons) rather than by dragging the list cards, because a department can hold dozens of processes. Saving `PUT`s the whole sequence as `{"order": [...]}` and gets the stored sequence back in the same shape. The endpoint answers: **404** for an unknown department code; **422** for a body that is not a list of well-formed process ids (`^[a-z]+-[0-9]{3}$` — the CLI takes the sequence comma-joined, so an id carrying a comma or an empty entry would silently store something else); and **409** for a sequence that is not exactly the department's active set, which is what happens when a pipeline run or a second tab added a process while the panel was open. On the 409 the user is told and the list refreshes. The save button is disabled when the department has no processes, so an empty department keeps its fileless state (§4.6).
 - **Tombstoned processes** (`tombstoned:true`) are shown labelled **«باطل‌شده»** and are **view-only everywhere** (list, summary, flowchart) — never editable — with links to their heirs (`superseded_by`). The UI offers a user-initiated **permanent delete**: this is the **only** place a process is truly deleted (the single allowed exception to INV-4's "never delete"; automatic deletion never happens). The durable id ledger (§4.1) guarantees a deleted process's id is still never reused.
 - Auth (NFR-3): the plaintext password is not stored; the hash and signing key are **outside `data-repo`** (stack details in 13.1). Alternative auth: Basic Auth on the reverse proxy.
 - The edit loop is independent of both bots, working directly from the JSON on disk.
@@ -617,7 +620,7 @@ The `RichardAtCT/claude-code-telegram` project (Python 3.11+, MIT). Latest tagge
 - Both bots restricted to allowed Telegram IDs (control bot: `ALLOWED_USERS`; upload bot: its own code's allowlist) (NFR-1); an unauthorized ID is rejected without a reply (AC-8).
 - The UI with username/password (NFR-3, AC-8).
 - Secrets (Vertex service account, password hash, signing key, bot tokens) are all outside `data-repo` and outside Git.
-- The Section 7 hooks enforce invariants INV-1/INV-2 at the file level (AC-7): the runtime cannot write `departments/**/processes/*.json` (only `merge`), cannot write `departments/**/order.json` (only `order`), and cannot touch `.claude/**` or `CLAUDE.md`.
+- The Section 7 hooks enforce invariants INV-1/INV-2 at the file level (AC-7): the runtime does not write `departments/**/processes/*.json` (only `merge`), does not write `departments/**/order.json` nor run the curating `order set` / `order move` (the sequence is the user's, chosen in the UI), and does not touch `.claude/**` or `CLAUDE.md`. Exact for the `Write`/`Edit` tools; for `Bash` a conservative pattern guard rather than an absolute one — see §7.
 
 ---
 
@@ -639,7 +642,7 @@ No change goes uncommitted; each path commits with a distinct author/message so 
 
 Note: in the UI, saving is manual (not autosave on each click), so each "Save" = one JSON write + one commit. (Section 13)
 
-`order.json` is never committed on its own: it rides in the **same commit** as the action that changed it — the pipeline's run commit, the chat edit's commit (any `edit-process` action that changes the department's active process set reconciles it too), or the UI's create/delete/reorder commit.
+`order.json` almost never travels alone: when the **set** of processes changed, it rides in the **same commit** as the action that changed it — the pipeline's run commit, the chat edit's commit (any `edit-process` action that changes the department's active process set reconciles it too), or the UI's create/delete commit. The one exception is a pure reorder: the UI's `PUT /api/departments/{code}/order` changes nothing else, so it commits `order.json` by itself as `ui-edit(<dept>): update process order`. Note that this is also the only `ui-edit(…)` message whose subject is a **department code** rather than a process id — the whole point of the action is that it belongs to no single process.
 
 ### When it pushes — scheduled (NFR-7)
 

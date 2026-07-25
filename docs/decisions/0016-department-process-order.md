@@ -4,7 +4,7 @@
 |---|---|
 | **Status** | Accepted |
 | **Date** | 2026-07-25 |
-| **Area** | `code-repo`: new `schemas/order.schema.json`, new engine CLI `order`, a `reconcile` hook in `merge`, `ui-backend` ordered list + reorder endpoint, `ui` reorder panel; `data-repo` hook guard |
+| **Area** | `code-repo`: new `schemas/order.schema.json`, new engine CLI `order`, a `reconcile` hook in `merge`, `ui-backend` ordered list + reorder endpoint, `ui` reorder panel; `data-repo`: hook guard **and agent instructions** (`CLAUDE.md`, `process-voice` and `edit-process` SKILLs) |
 | **Related** | [0009](0009-set-based-extraction-and-restructuring.md), [0012](0012-consolidation-review-stage.md) |
 | **Specs/plans** | `docs/superpowers/specs/2026-07-25-department-process-order-design.md` |
 | **Requirements** | PRD FR-D12 / FR-I7 / AC-11, INV-1; ARD §4.6 |
@@ -43,9 +43,14 @@ ever sees the whole sequence at once.
 
 ## Consequences
 
-- One new schema, one new CLI, one new hook in `merge`; no new pipeline stage and no new agent
-  instruction, because `merge` maintains the file during the existing Stage 6 and the existing
-  Stage 8 `git add departments` commits it.
+- One new schema, one new CLI, one new hook in `merge`; **no new pipeline stage**, because `merge`
+  maintains the file during the existing Stage 6 and the existing Stage 8 `git add departments`
+  commits it. It does need agent instructions, though — three, all of them read-only rules rather
+  than steps: the `CLAUDE.md` hard rule plus a note in each of the `process-voice` and
+  `edit-process` SKILLs, telling the runtime the file exists, is human-owned, and needs nothing
+  from it. The hook is what enforces them (it blocks writes to the file *and* the curating
+  `order set` / `order move` verbs); the prose is there so the model does not try in the first
+  place.
 - A restructure heir inherits its predecessor's position, so curation survives merge/split
   (ADR 0009 makes restructuring a normal event, not a rare one).
 - Existing data needs a one-time `order sync --all` backfill.
