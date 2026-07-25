@@ -28,3 +28,4 @@ deploy/local/ui-users.json
 .pytest_cache/
 .ruff_cache/
 *.log
+.superpowers/
