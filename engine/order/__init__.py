@@ -76,6 +76,11 @@ def _write(dept, sequence, now, root):
     return doc["order"]
 
 
+def _lowest_index(work, candidates):
+    idxs = [work.index(c) for c in candidates if c in work]
+    return min(idxs) if idxs else None
+
+
 def reconcile(dept, now, root=None, heir_hints=None, child_hints=None):
     """Bring order.json in line with disk. Returns (appended, dropped).
 
@@ -91,9 +96,38 @@ def reconcile(dept, now, root=None, heir_hints=None, child_hints=None):
     stored = _dedup(raw)
     was = set(stored)
 
+    # Insertions happen on `work`, which still holds the ids about to be dropped,
+    # so a heir can be placed at its predecessor's index before that id leaves.
     work = list(stored)
     present = set(work)
     missing = [pid for pid in actives if pid not in present]
+
+    # Pass 1 — a heir inherits the lowest index held by anything it supersedes.
+    # Sorted by heir id so several heirs of one predecessor land consecutively and
+    # deterministically: each insert shifts the predecessor right, so the next
+    # heir lands just after the previous one.
+    for heir in sorted(heir_hints or {}):
+        if heir not in missing:
+            continue
+        at = _lowest_index(work, heir_hints[heir])
+        if at is None:
+            continue
+        work.insert(at, heir)
+        missing.remove(heir)
+
+    # Pass 2 — a new sub-process sits directly after its parent.
+    for parent in sorted(child_hints or {}):
+        if parent not in work:
+            continue
+        at = work.index(parent) + 1
+        for child in sorted(child_hints[parent]):
+            if child not in missing:
+                continue
+            work.insert(at, child)
+            at += 1
+            missing.remove(child)
+
+    # Pass 3 — anything still unplaced goes to the end, in id order.
     work.extend(missing)
 
     seq = [pid for pid in work if pid in known]
