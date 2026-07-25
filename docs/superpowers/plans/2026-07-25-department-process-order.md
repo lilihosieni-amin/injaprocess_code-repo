@@ -714,7 +714,7 @@ include = ["engine_common*", "allocate_id*", "extract_attachment*", "layout*", "
 Then reinstall so the new package is importable:
 
 ```bash
-.venv/bin/python -m pip install -q -e ./engine
+uv pip install -q --python .venv/bin/python -e ./engine
 ```
 
 - [ ] **Step 5: Run the test to verify it passes**
@@ -1195,7 +1195,7 @@ order = "order.cli:main"
 Then reinstall so the `order` command appears on PATH:
 
 ```bash
-.venv/bin/python -m pip install -q -e ./engine
+uv pip install -q --python .venv/bin/python -e ./engine
 ```
 
 - [ ] **Step 5: Run the test to verify it passes**
