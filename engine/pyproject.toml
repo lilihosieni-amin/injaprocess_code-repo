@@ -20,4 +20,4 @@ transcribe = "transcribe.cli:main"
 validate = "validate.cli:main"
 
 [tool.setuptools.packages.find]
-include = ["engine_common*", "allocate_id*", "extract_attachment*", "layout*", "merge*", "transcribe*", "validate*"]
+include = ["engine_common*", "allocate_id*", "extract_attachment*", "layout*", "merge*", "order*", "transcribe*", "validate*"]
