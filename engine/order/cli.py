@@ -14,6 +14,18 @@ def _targets(args):
     return departments() if args.all else [args.department]
 
 
+def _explain(dept, e):
+    """A per-department failure, with merge's recovery advice attached.
+
+    `merge`'s own warning tells the operator that deleting an unreadable
+    order.json is safe because it is derived state; the CLI that rebuilds it
+    should not be the one place that omits that.
+    """
+    return (f"order: {dept}: {e}\n"
+            f"order: `order sync {dept}` rebuilds it from disk; order.json is "
+            f"derived state, so deleting an unreadable one first is safe")
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="order")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -57,12 +69,26 @@ def main(argv=None):
             for pid in read_order(args.department):
                 print(pid)
         elif args.cmd == "sync":
+            # A sweep must not stop silently at the first corrupt department —
+            # this is the ops tool the backfill/migration depends on. Report the
+            # fault, carry on, and still exit 2 at the end. A single-department
+            # invocation keeps its "one department, one verdict" behaviour.
+            failed = False
             for dept in _targets(args):
-                appended, dropped = reconcile(dept, _now(args.now))
+                try:
+                    appended, dropped = reconcile(dept, _now(args.now))
+                except (ValueError, OSError) as e:
+                    print(_explain(dept, e), file=sys.stderr)
+                    if not args.all:
+                        raise SystemExit(2)
+                    failed = True
+                    continue
                 for pid in appended:
                     print(f"+{pid}")
                 for pid in dropped:
                     print(f"-{pid}")
+            if failed:
+                raise SystemExit(2)
         elif args.cmd == "set":
             seq = [s for s in args.sequence.split(",") if s]
             set_order(args.department, seq, _now(args.now))
@@ -71,7 +97,14 @@ def main(argv=None):
         else:  # check
             drifted = False
             for dept in _targets(args):
-                missing, stale = check(dept)
+                try:
+                    missing, stale = check(dept)
+                except (ValueError, OSError) as e:
+                    print(_explain(dept, e), file=sys.stderr)
+                    if not args.all:
+                        raise SystemExit(2)
+                    drifted = True
+                    continue
                 if missing or stale:
                     drifted = True
                     print(f"{dept} missing: {','.join(missing) or '-'} "

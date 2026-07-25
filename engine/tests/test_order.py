@@ -262,3 +262,23 @@ def test_departments_rejects_a_malformed_registry(data_root):
         json.dumps({"departments": [{"name": "x"}]}), encoding="utf-8")
     with pytest.raises(ValueError):
         departments(data_root)
+
+
+def test_set_order_of_nothing_leaves_an_empty_department_fileless(data_root):
+    """Lazy creation (ARD §4.6) — `reconcile` honours it, so `set_order` must too.
+
+    Reachable in one click: the reorder panel's save button on an empty
+    department. And the no-churn guard would then preserve the `{"order": []}`
+    file forever, so the rule would be defeated permanently.
+    """
+    assert set_order("cooking", [], NOW, data_root) == []
+    assert not _order_file(data_root, "cooking").is_file()
+
+
+def test_set_order_of_nothing_still_empties_an_existing_file(data_root):
+    """The lazy guard must not swallow a real emptying of an existing file."""
+    _proc(data_root, "cooking-001")
+    reconcile("cooking", NOW, data_root)
+    _proc(data_root, "cooking-001", tombstoned=True)
+    assert set_order("cooking", [], NOW, data_root) == []
+    assert _stored(data_root, "cooking")["order"] == []

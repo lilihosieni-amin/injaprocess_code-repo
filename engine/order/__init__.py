@@ -161,6 +161,11 @@ def set_order(dept, sequence, now, root=None):
         raise OrderMismatch(
             f"set mismatch: missing={','.join(missing) or '-'} "
             f"stale={','.join(stale) or '-'}")
+    # Lazy, exactly as in `reconcile`: a department with no processes and no file
+    # yet stays fileless (ARD §4.6). Without this, saving the empty reorder panel
+    # writes `{"order": []}` and reconcile's no-churn guard then keeps it forever.
+    if not given and not actives and not _order_path(root, dept).is_file():
+        return []
     return _write(dept, given, now, root)
 
 

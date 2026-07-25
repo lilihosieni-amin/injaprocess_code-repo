@@ -158,3 +158,58 @@ def test_sync_with_both_department_and_all_exits_2(data_root, capsys):
     assert e.value.code == 2
     err = capsys.readouterr().err
     assert "mutually exclusive" in err
+
+
+def _corrupt_order(root, dept):
+    p = root / "departments" / dept / "order.json"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text("{ not json", encoding="utf-8")
+
+
+def test_sync_all_continues_past_a_corrupt_department(data_root, capsys):
+    """A sweep the migration depends on must not stop silently at the first fault."""
+    _registry(data_root, ["cooking", "dining", "logistics"])
+    for pid in ("cooking-001", "dining-001", "logistics-001"):
+        _proc(data_root, pid)
+    _corrupt_order(data_root, "dining")
+    with pytest.raises(SystemExit) as e:
+        main(["sync", "--all", "--now", NOW])
+    assert e.value.code == 2
+    assert _order(data_root, "cooking") == ["cooking-001"]
+    # the department *after* the failing one was still swept
+    assert _order(data_root, "logistics") == ["logistics-001"]
+    assert "dining" in capsys.readouterr().err
+
+
+def test_check_all_continues_past_a_corrupt_department(data_root, capsys):
+    _registry(data_root, ["cooking", "dining", "logistics"])
+    for pid in ("cooking-001", "dining-001", "logistics-001"):
+        _proc(data_root, pid)
+    main(["sync", "--all", "--now", NOW])
+    _corrupt_order(data_root, "dining")
+    _proc(data_root, "logistics-002")
+    with pytest.raises(SystemExit) as e:
+        main(["check", "--all"])
+    assert e.value.code == 2
+    err = capsys.readouterr().err
+    assert "dining" in err
+    assert "logistics missing: logistics-002" in err
+
+
+def test_sync_of_one_department_still_stops_at_2(data_root):
+    _proc(data_root, "cooking-001")
+    _corrupt_order(data_root, "cooking")
+    with pytest.raises(SystemExit) as e:
+        main(["sync", "cooking", "--now", NOW])
+    assert e.value.code == 2
+
+
+def test_sync_says_a_corrupt_order_file_is_safe_to_delete(data_root, capsys):
+    """merge's warning carries this advice; `order sync`'s own must too."""
+    _proc(data_root, "cooking-001")
+    _corrupt_order(data_root, "cooking")
+    with pytest.raises(SystemExit):
+        main(["sync", "cooking", "--now", NOW])
+    err = capsys.readouterr().err
+    assert "derived state" in err
+    assert "order sync cooking" in err
