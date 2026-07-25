@@ -249,6 +249,25 @@ Rule: monotonic "next number", backed by a **durable per-department `.id-seq.jso
 
 *(The `code` values are the English department keys; the `name` values are the Persian display names shown to the user.)*
 
+### 4.6 `order.json` (per department, FR-D12)
+
+```jsonc
+{
+  "department": "dining",
+  "order": ["dining-007", "dining-006", "dining-008"],
+  "updated_at": "2026-07-25T12:00:00Z"
+}
+```
+
+The department's **curated display order** — a human-chosen table of contents for the UI list and for the department export. It carries no claim that one process happens before another in the real world; that information lives in the flows themselves.
+
+- **One flat list per department**, covering root *and* sub-processes, each exactly once. A consumer that wants nesting reads each process's `parent`.
+- **Position is the array index.** There are no rank fields to drift.
+- **The file equals the active set.** A newly created process is appended; a tombstoned or permanently deleted one is dropped. Tombstones therefore hold no position — the UI shows them after the ordered processes, in id order.
+- **A missing `order.json` means "no curated order yet"** and readers fall back to id order. The file is created lazily on the first append, so departments with no processes have no file.
+- **Restructure preserves curation:** a heir takes the position of the earliest process it supersedes (lowest index in the existing order), rather than being appended. A new sub-process created by an update is inserted directly after its parent. Anything unplaced goes to the end in id order.
+- **Written only by the `order` CLI** (§8) — hook-enforced against the runtime, exactly like `processes/*.json` (INV-1). `merge` calls the same code in-process after every verb, so the pipeline needs no stage of its own. (ADR 0016)
+
 ---
 
 ## 5. Extraction Pipeline
@@ -491,11 +510,12 @@ In `code-repo/engine/`, installed as **pinned** CLIs on the server's PATH; outsi
 |---|---|
 | `allocate-id` | deterministic ID generation for process/box/junction; process ids come from the durable per-department `.id-seq.json` ledger (`mint`/`peek`, never reused — §4.1) |
 | `merge` | verbs `new` / `update` / `restructure` / `attach-subprocess` / `remove` / `accept` / `reject`: apply delta or restructure plan, mint/assign IDs, preserve id/position/manual layout, record pending, flag-remove nodes, hard-delete edges, tombstone + hierarchy-redirect on restructure/remove |
+| `order` | verbs `show` / `sync` / `set` / `move` / `check`: maintain a department's curated process order (§4.6) — append new, drop tombstoned, heirs inherit their predecessor's position; `set` refuses a sequence that is not exactly the active set |
 | `layout` | deterministic layered layout (Section 9) |
 | `transcribe` | Gemini-on-Vertex call + idempotency pre-check |
 | `validate` | check a JSON artifact against a named schema (exit 2 on mismatch); guards the classify/summarize/consolidate/playbook outputs (`segments`/`overview`/`meta`/`restructure`/`consolidation`) that no other CLI validates |
 
-Schemas `validate` gained/changed for this round: `segments` and `run-meta` were **reshaped** (set-based, `supersedes`); `process` gained `superseded_by`/`tombstoned`; `delta` gained `remove_edges`/`revise_nodes`; and two new schemas were added — `restructure.schema.json` (merge/split heir plan) and `idseq.schema.json` (the per-department id ledger). The consolidation-review round (ADR 0012) added a further schema — `consolidation.schema.json` (the review's numbered merge/attach suggestions; an evidence-free suggestion is schema-invalid).
+Schemas `validate` gained/changed for this round: `segments` and `run-meta` were **reshaped** (set-based, `supersedes`); `process` gained `superseded_by`/`tombstoned`; `delta` gained `remove_edges`/`revise_nodes`; and two new schemas were added — `restructure.schema.json` (merge/split heir plan) and `idseq.schema.json` (the per-department id ledger). The consolidation-review round (ADR 0012) added a further schema — `consolidation.schema.json` (the review's numbered merge/attach suggestions; an evidence-free suggestion is schema-invalid). The process-order feature adds one further schema — `order.schema.json` (§4.6; a duplicate id or an unknown-shaped entry is schema-invalid).
 
 The skills/prompts/IDEF rules stay in `data-repo/.claude` (intentionally easy to edit, since they are meant to improve over time). Two separate improvement activities: extraction quality → edit skills in `data-repo`; the deterministic engine → edit CLIs in `code-repo`.
 
@@ -582,6 +602,7 @@ The `RichardAtCT/claude-code-telegram` project (Python 3.11+, MIT). Latest tagge
 - **Default mode is view-only (read-only):** the user sees the process and flowchart but nothing is movable/editable. Only by pressing the **"Edit"** button does the editor open and the user enters edit mode (preventing accidental changes).
 - **Save is manual, not automatic:** changes (edit/delete/add/reposition) are held in UI memory until the user presses **"Save"**; then the backend writes the JSON at once and makes **one commit** (Section 15). This prevents tiny, numerous commits.
 - Backend jobs: read/write JSON, apply edit/delete (flag)/add, reposition (recording `layout: manual`), the `pending` review inbox, and manual process creation (`allocate-id` — FR-I5, FR-D2). The backend **excludes tombstones from department counts**.
+- **Process order (FR-D12, FR-I7):** `GET /api/departments/{code}/processes` returns processes **already ordered** — the curated order first, then tombstones by id — so the frontend never sorts. Reordering happens in a dedicated compact panel (one short row per process, drag plus ↑/↓ buttons) rather than by dragging the list cards, because a department can hold dozens of processes. Saving `PUT`s the whole sequence; the backend refuses a sequence that is not exactly the active set with **409**, which is what happens when a pipeline run or a second tab added a process while the panel was open. The user is told and the list refreshes.
 - **Tombstoned processes** (`tombstoned:true`) are shown labelled **«باطل‌شده»** and are **view-only everywhere** (list, summary, flowchart) — never editable — with links to their heirs (`superseded_by`). The UI offers a user-initiated **permanent delete**: this is the **only** place a process is truly deleted (the single allowed exception to INV-4's "never delete"; automatic deletion never happens). The durable id ledger (§4.1) guarantees a deleted process's id is still never reused.
 - Auth (NFR-3): the plaintext password is not stored; the hash and signing key are **outside `data-repo`** (stack details in 13.1). Alternative auth: Basic Auth on the reverse proxy.
 - The edit loop is independent of both bots, working directly from the JSON on disk.
@@ -593,7 +614,7 @@ The `RichardAtCT/claude-code-telegram` project (Python 3.11+, MIT). Latest tagge
 - Both bots restricted to allowed Telegram IDs (control bot: `ALLOWED_USERS`; upload bot: its own code's allowlist) (NFR-1); an unauthorized ID is rejected without a reply (AC-8).
 - The UI with username/password (NFR-3, AC-8).
 - Secrets (Vertex service account, password hash, signing key, bot tokens) are all outside `data-repo` and outside Git.
-- The Section 7 hooks enforce invariants INV-1/INV-2 at the file level (AC-7).
+- The Section 7 hooks enforce invariants INV-1/INV-2 at the file level (AC-7): the runtime cannot write `departments/**/processes/*.json` (only `merge`), cannot write `departments/**/order.json` (only `order`), and cannot touch `.claude/**` or `CLAUDE.md`.
 
 ---
 
@@ -614,6 +635,8 @@ No change goes uncommitted; each path commits with a distinct author/message so 
 | UI edit | when the user presses "Save" (one commit for that whole save) | `ui-edit(cooking-001): move nodes` |
 
 Note: in the UI, saving is manual (not autosave on each click), so each "Save" = one JSON write + one commit. (Section 13)
+
+`order.json` is never committed on its own: it rides in the **same commit** as the action that changed it — the pipeline's run commit, or the UI's create/delete/reorder commit.
 
 ### When it pushes — scheduled (NFR-7)
 
@@ -659,6 +682,7 @@ Key Docker notes:
 | FR-P4 (checkpoint) | 5.3 + the `/process-voice` skill |
 | FR-M3 (conflict) | 6.3 (`pending`) + 13 (review inbox) |
 | FR-D9/10 (layout) | 9 + 6.4 |
+| FR-D12 | §4.6 `order.json`, §8 `order` CLI, §13.2 reorder panel |
 | NFR-2 (large file) | 11 (local Bot API server) + 5.1 (Vertex file upload) |
 | NFR-6 (context) | 7 (content on disk, isolated subagents) |
 | NFR-3 (UI auth) | 13 + 14 |
