@@ -92,3 +92,75 @@ def test_put_order_requires_auth(data_root):
     c = TestClient(create_app(cfg_for(data_root)))
     assert c.put("/api/departments/cooking/order",
                  json={"order": []}).status_code == 401
+
+
+def _tombstone(data_root, pid):
+    p = data_root / "departments" / "cooking" / "processes" / f"{pid}.json"
+    doc = json.loads(p.read_text(encoding="utf-8"))
+    doc["tombstoned"] = True
+    doc["superseded_by"] = []
+    p.write_text(json.dumps(doc, ensure_ascii=False, indent=2) + "\n",
+                 encoding="utf-8")
+
+
+def test_processes_follow_the_curated_order(data_root):
+    _clone(data_root, "cooking-002")
+    _clone(data_root, "cooking-003")
+    c = _auth_client(data_root)
+    c.put("/api/departments/cooking/order",
+          json={"order": ["cooking-003", "cooking-001", "cooking-002"]})
+    ids = [p["id"] for p in c.get("/api/departments/cooking/processes").json()]
+    assert ids == ["cooking-003", "cooking-001", "cooking-002"]
+
+
+def test_processes_fall_back_to_id_order_without_a_file(data_root):
+    _clone(data_root, "cooking-002")
+    c = _auth_client(data_root)
+    ids = [p["id"] for p in c.get("/api/departments/cooking/processes").json()]
+    assert ids == ["cooking-001", "cooking-002"]
+
+
+def test_unordered_actives_land_after_the_ordered_ones(data_root):
+    _clone(data_root, "cooking-002")
+    c = _auth_client(data_root)
+    c.put("/api/departments/cooking/order",
+          json={"order": ["cooking-002", "cooking-001"]})
+    _clone(data_root, "cooking-003")  # created behind the backend's back
+    ids = [p["id"] for p in c.get("/api/departments/cooking/processes").json()]
+    assert ids == ["cooking-002", "cooking-001", "cooking-003"]
+
+
+def test_tombstones_come_last_in_id_order(data_root):
+    _clone(data_root, "cooking-002")
+    _clone(data_root, "cooking-003")
+    c = _auth_client(data_root)
+    c.put("/api/departments/cooking/order",
+          json={"order": ["cooking-003", "cooking-001", "cooking-002"]})
+    _tombstone(data_root, "cooking-003")
+    ids = [p["id"] for p in c.get("/api/departments/cooking/processes").json()]
+    assert ids == ["cooking-001", "cooking-002", "cooking-003"]
+
+
+def test_create_appends_to_the_order_in_one_commit(data_root):
+    c = _auth_client(data_root)
+    c.put("/api/departments/cooking/order", json={"order": ["cooking-001"]})
+    r = c.post("/api/processes", json={"department": "cooking", "name": "نو"})
+    assert r.status_code == 201
+    new_id = r.json()["id"]
+    assert _order_on_disk(data_root) == ["cooking-001", new_id]
+    log = subprocess.run(["git", "-C", str(data_root), "show", "--stat", "--oneline",
+                          "HEAD"], capture_output=True, text=True).stdout
+    assert "departments/cooking/order.json" in log
+    assert log.count("create process") == 1
+
+
+def test_delete_drops_from_the_order_in_one_commit(data_root):
+    _clone(data_root, "cooking-002")
+    c = _auth_client(data_root)
+    c.put("/api/departments/cooking/order",
+          json={"order": ["cooking-002", "cooking-001"]})
+    assert c.delete("/api/processes/cooking-002").status_code == 200
+    assert _order_on_disk(data_root) == ["cooking-001"]
+    log = subprocess.run(["git", "-C", str(data_root), "show", "--stat", "--oneline",
+                          "HEAD"], capture_output=True, text=True).stdout
+    assert "departments/cooking/order.json" in log

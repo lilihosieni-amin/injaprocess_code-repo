@@ -86,6 +86,10 @@ async def create_process(body: CreateProcessBody, request: Request, response: Re
             engine.validate_doc(cfg, "process.schema.json", pdoc)
             storage.write_json_atomic(ppath, pdoc)
             written.append(ppath)
+        # keep the department's order.json equal to its active set (ARD §4.6),
+        # in the same commit as the creation itself
+        engine.order_sync(cfg, body.department)
+        written.append(storage.order_path(cfg.data_root, body.department))
         action = (f"create sub-process of {body.parent['process']}"
                   if body.parent else "create process")
         gitcommit.commit(cfg, written, pid, action)
@@ -118,6 +122,10 @@ async def delete_process(pid: str, request: Request, _: str = Depends(require_se
                 doc["updated_at"] = _now()
                 storage.write_json_atomic(fp, doc)
                 written.append(fp)
+    # a permanently deleted process leaves the order (ARD §4.6)
+    dept = storage.dept_of(pid)
+    engine.order_sync(cfg, dept)
+    written.append(storage.order_path(cfg.data_root, dept))
     gitcommit.commit(cfg, written, pid, "delete process")
     return {"deleted": pid}
 

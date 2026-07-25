@@ -89,8 +89,30 @@ async def put_order(code: str, body: dict, request: Request,
 
 @router.get("/{code}/processes")
 def list_processes(code: str, request: Request, _: str = Depends(require_session)):
+    """Processes in curated order (ARD §4.6), tombstones last in id order.
+
+    The only implementation of the fallback rule: ids the order does not know
+    are appended in id order, and ids it names but disk does not have are
+    skipped. In a consistent data-repo the fallback contributes nothing — it is
+    here so a hand-edited or not-yet-migrated repo degrades instead of hiding
+    processes.
+    """
     cfg = request.app.state.cfg
-    return [storage.read_json(p) for p in storage.list_process_files(cfg.data_root, code)]
+    docs = {p.stem: storage.read_json(p)
+            for p in storage.list_process_files(cfg.data_root, code)}
+    actives = sorted(pid for pid, d in docs.items() if not d.get("tombstoned"))
+    tombs = sorted(pid for pid, d in docs.items() if d.get("tombstoned"))
+
+    order = []
+    opath = storage.order_path(cfg.data_root, code)
+    if opath.is_file():
+        order = storage.read_json(opath).get("order", [])
+
+    known = set(actives)
+    seq = [pid for pid in order if pid in known]
+    placed = set(seq)
+    seq += [pid for pid in actives if pid not in placed]
+    return [docs[pid] for pid in seq + tombs]
 
 
 @router.get("/{code}/next-id")
