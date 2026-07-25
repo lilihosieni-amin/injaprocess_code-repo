@@ -91,7 +91,9 @@ def test_check_is_silent_and_zero_when_consistent(data_root, capsys):
     main(["sync", "cooking", "--now", NOW])
     capsys.readouterr()
     assert main(["check", "cooking"]) == 0
-    assert capsys.readouterr().err == ""
+    out_err = capsys.readouterr()
+    assert out_err.out == ""
+    assert out_err.err == ""
 
 
 def test_check_exits_2_and_reports_drift(data_root, capsys):
@@ -130,3 +132,29 @@ def test_sync_without_department_or_all_exits_2(data_root):
     with pytest.raises(SystemExit) as e:
         main(["sync"])
     assert e.value.code == 2
+
+
+def test_sync_all_exits_2_on_missing_registry(data_root, capsys):
+    with pytest.raises(SystemExit) as e:
+        main(["sync", "--all"])
+    assert e.value.code == 2
+    err = capsys.readouterr().err
+    assert "registry" in err
+    assert "registry.json" in err
+
+
+def test_check_all_exits_2_on_missing_registry(data_root, capsys):
+    with pytest.raises(SystemExit) as e:
+        main(["check", "--all"])
+    assert e.value.code == 2
+    err = capsys.readouterr().err
+    assert "registry" in err
+    assert "registry.json" in err
+
+
+def test_sync_with_both_department_and_all_exits_2(data_root, capsys):
+    with pytest.raises(SystemExit) as e:
+        main(["sync", "cooking", "--all"])
+    assert e.value.code == 2
+    err = capsys.readouterr().err
+    assert "mutually exclusive" in err

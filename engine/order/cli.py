@@ -43,9 +43,14 @@ def main(argv=None):
     ck.add_argument("--all", action="store_true")
 
     args = ap.parse_args(argv)
-    if args.cmd in ("sync", "check") and not args.all and not args.department:
-        print("order: give a department or --all", file=sys.stderr)
-        raise SystemExit(2)
+    if args.cmd in ("sync", "check"):
+        if args.all and args.department:
+            print("order: --all and a department name are mutually exclusive",
+                  file=sys.stderr)
+            raise SystemExit(2)
+        if not args.all and not args.department:
+            print("order: give a department or --all", file=sys.stderr)
+            raise SystemExit(2)
 
     try:
         if args.cmd == "show":
@@ -76,6 +81,9 @@ def main(argv=None):
     except OrderMismatch as e:
         # message already starts with "set mismatch:" — the UI backend keys on it
         print(str(e), file=sys.stderr)
+        raise SystemExit(2)
+    except FileNotFoundError as e:
+        print(f"order: registry not found: {e.filename}", file=sys.stderr)
         raise SystemExit(2)
     except ValueError as e:
         print(f"order: {e}", file=sys.stderr)

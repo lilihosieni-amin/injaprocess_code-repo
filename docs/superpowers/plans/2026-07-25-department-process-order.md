@@ -1163,7 +1163,9 @@ def test_check_is_silent_and_zero_when_consistent(data_root, capsys):
     main(["sync", "cooking", "--now", NOW])
     capsys.readouterr()
     assert main(["check", "cooking"]) == 0
-    assert capsys.readouterr().err == ""
+    out_err = capsys.readouterr()
+    assert out_err.out == ""
+    assert out_err.err == ""
 
 
 def test_check_exits_2_and_reports_drift(data_root, capsys):
@@ -1202,6 +1204,32 @@ def test_sync_without_department_or_all_exits_2(data_root):
     with pytest.raises(SystemExit) as e:
         main(["sync"])
     assert e.value.code == 2
+
+
+def test_sync_all_exits_2_on_missing_registry(data_root, capsys):
+    with pytest.raises(SystemExit) as e:
+        main(["sync", "--all"])
+    assert e.value.code == 2
+    err = capsys.readouterr().err
+    assert "registry" in err
+    assert "registry.json" in err
+
+
+def test_check_all_exits_2_on_missing_registry(data_root, capsys):
+    with pytest.raises(SystemExit) as e:
+        main(["check", "--all"])
+    assert e.value.code == 2
+    err = capsys.readouterr().err
+    assert "registry" in err
+    assert "registry.json" in err
+
+
+def test_sync_with_both_department_and_all_exits_2(data_root, capsys):
+    with pytest.raises(SystemExit) as e:
+        main(["sync", "cooking", "--all"])
+    assert e.value.code == 2
+    err = capsys.readouterr().err
+    assert "mutually exclusive" in err
 ```
 
 - [ ] **Step 2: Run the test to verify it fails**
@@ -1259,9 +1287,14 @@ def main(argv=None):
     ck.add_argument("--all", action="store_true")
 
     args = ap.parse_args(argv)
-    if args.cmd in ("sync", "check") and not args.all and not args.department:
-        print("order: give a department or --all", file=sys.stderr)
-        raise SystemExit(2)
+    if args.cmd in ("sync", "check"):
+        if args.all and args.department:
+            print("order: --all and a department name are mutually exclusive",
+                  file=sys.stderr)
+            raise SystemExit(2)
+        if not args.all and not args.department:
+            print("order: give a department or --all", file=sys.stderr)
+            raise SystemExit(2)
 
     try:
         if args.cmd == "show":
@@ -1293,6 +1326,9 @@ def main(argv=None):
         # message already starts with "set mismatch:" — the UI backend keys on it
         print(str(e), file=sys.stderr)
         raise SystemExit(2)
+    except FileNotFoundError as e:
+        print(f"order: registry not found: {e.filename}", file=sys.stderr)
+        raise SystemExit(2)
     except ValueError as e:
         print(f"order: {e}", file=sys.stderr)
         raise SystemExit(2)
@@ -1303,7 +1339,7 @@ if __name__ == "__main__":
     sys.exit(main())
 ```
 
-Note: `OrderMismatch` subclasses `ValueError`, so its `except` clause must come first.
+Note: `OrderMismatch` subclasses `ValueError`, so its `except` clause must come first. `FileNotFoundError` is an `OSError`, unrelated to `ValueError`, so its position relative to the other two `except` clauses does not matter.
 
 - [ ] **Step 4: Register the console script**
 
@@ -1322,7 +1358,7 @@ uv pip install -q --python .venv/bin/python -e ./engine
 - [ ] **Step 5: Run the test to verify it passes**
 
 Run: `PYTHONPATH=engine/tests .venv/bin/python -m pytest engine/tests/test_order_cli.py -q`
-Expected: PASS, 12 passed.
+Expected: PASS, 15 passed.
 
 - [ ] **Step 6: Verify the console script works end to end**
 
