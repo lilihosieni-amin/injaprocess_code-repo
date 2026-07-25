@@ -64,6 +64,29 @@ async def put_overview(code: str, body: dict, request: Request,
     return body
 
 
+@router.put("/{code}/order")
+async def put_order(code: str, body: dict, request: Request,
+                    _: str = Depends(require_session)):
+    cfg = request.app.state.cfg
+    reg = storage.read_json(storage.registry_path(cfg.data_root))
+    if code not in {d["code"] for d in reg["departments"]}:
+        raise HTTPException(status_code=404, detail="unknown department")
+    sequence = body.get("order")
+    if not isinstance(sequence, list) or not all(isinstance(s, str) for s in sequence):
+        raise HTTPException(status_code=422,
+                            detail="order must be a list of process ids")
+    path = storage.order_path(cfg.data_root, code)
+    async with storage.file_lock(path):
+        try:
+            engine.order_set(cfg, code, sequence)
+        except engine.EngineError as e:
+            # a drifted active set is a conflict, not a bad request
+            status = 409 if e.message.startswith("set mismatch") else 422
+            raise HTTPException(status_code=status, detail=e.message)
+        gitcommit.commit(cfg, [path], code, "update process order")
+    return {"order": sequence}
+
+
 @router.get("/{code}/processes")
 def list_processes(code: str, request: Request, _: str = Depends(require_session)):
     cfg = request.app.state.cfg

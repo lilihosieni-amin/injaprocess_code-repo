@@ -48,6 +48,10 @@ def overview_path(root: Path, code: str) -> Path:
     return Path(root) / "departments" / code / "overview.json"
 
 
+def order_path(root: Path, code: str) -> Path:
+    return Path(root) / "departments" / code / "order.json"
+
+
 def registry_path(root: Path) -> Path:
     return Path(root) / "departments" / "registry.json"
 
