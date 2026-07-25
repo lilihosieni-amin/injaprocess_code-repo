@@ -85,7 +85,9 @@ export function ReorderModal({ department, departmentName, processes, onClose }:
         </div>
 
         <div className="px-[22px] py-4 bg-white border-t border-warm flex gap-2.5 shrink-0">
-          <Button variant="coral" onClick={doSave} disabled={save.isPending} className="flex-1 py-2.5 text-[13px]">ذخیرهٔ ترتیب</Button>
+          {/* nothing to order: saving would write an `order.json` for a department
+              that ARD §4.6 keeps fileless until its first process */}
+          <Button variant="coral" onClick={doSave} disabled={save.isPending || seq.length === 0} className="flex-1 py-2.5 text-[13px]">ذخیرهٔ ترتیب</Button>
           <Button variant="ghost" onClick={onClose} className="flex-1 py-2.5 text-[13px]">انصراف</Button>
         </div>
       </div>

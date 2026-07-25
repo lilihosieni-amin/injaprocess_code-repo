@@ -98,6 +98,17 @@ describe('ReorderModal', () => {
     expect(onClose).toHaveBeenCalled()
   })
 
+  it('cannot save an empty department', () => {
+    // Saving nothing would write `{"order": []}` for a department that ARD §4.6
+    // says should stay fileless, and the no-churn guard then keeps it forever.
+    const spy = vi.spyOn(globalThis, 'fetch')
+    wrap(<ReorderModal department="cooking" departmentName="پخت" processes={[]} onClose={() => {}} />)
+    const save = screen.getByRole('button', { name: /ذخیره/ })
+    expect(save).toBeDisabled()
+    fireEvent.click(save)
+    expect(spy).not.toHaveBeenCalled()
+  })
+
   it('shows a generic failure message and keeps the modal open on a non-409 error', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(JSON.stringify({ detail: 'internal error' }),
