@@ -6,8 +6,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       git curl ca-certificates patch nodejs npm \
     && rm -rf /var/lib/apt/lists/*
 
-# Claude Code CLI (the pipeline runs inside this container)
-RUN npm install -g @anthropic-ai/claude-code
+# Claude Code CLI (the pipeline runs inside this container). PINNED on purpose:
+# unpinned, Docker reuses the cached layer forever (a rebuild silently kept 2.1.209
+# while 2.1.220 was current, capping claude-opus-5 output at 32K instead of 64K),
+# and an auto-upgrading CLI underneath the pipeline is the failure class behind
+# ADRs 0002-0007. Bump this version deliberately, then rebuild + re-verify.
+RUN npm install -g @anthropic-ai/claude-code@2.1.220
 
 # uv, for the pinned tool install. Installed from PyPI (the astral.sh install
 # script host is not reachable from the build network); uv lands on the default
