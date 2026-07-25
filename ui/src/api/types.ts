@@ -49,3 +49,5 @@ export interface Overview {
 }
 
 export interface Me { username: string }
+
+export type DepartmentOrder = { order: string[] }
