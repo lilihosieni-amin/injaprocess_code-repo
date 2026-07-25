@@ -639,7 +639,7 @@ No change goes uncommitted; each path commits with a distinct author/message so 
 
 Note: in the UI, saving is manual (not autosave on each click), so each "Save" = one JSON write + one commit. (Section 13)
 
-`order.json` is never committed on its own: it rides in the **same commit** as the action that changed it — the pipeline's run commit, the chat edit's commit (an `edit-process` verb that creates or retires a process reconciles it too), or the UI's create/delete/reorder commit.
+`order.json` is never committed on its own: it rides in the **same commit** as the action that changed it — the pipeline's run commit, the chat edit's commit (any `edit-process` action that changes the department's active process set reconciles it too), or the UI's create/delete/reorder commit.
 
 ### When it pushes — scheduled (NFR-7)
 

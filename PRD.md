@@ -189,7 +189,7 @@ Non-negotiable rules that must always hold:
 - **AC-8:** An unauthorized Telegram ID cannot use the bots, and the UI does not open without the correct username/password.
 - **AC-9:** A wrong or over-fragmented baseline from an earlier run is **correctable by a later run**: two processes that should be one are merged, and one that is really two is split, rather than the mistake being locked in.
 - **AC-10:** A retired process is **tombstoned** (not deleted), shown as retired with links to what replaced it, and can be **permanently deleted by the user**, after which its id is never reused.
-- **AC-11:** After the user rearranges a department's processes in the UI, that order is what the list shows when reopened, it survives a later processing run, and a process created afterwards appears at the end of the order rather than in an arbitrary position.
+- **AC-11:** After the user rearranges a department's processes in the UI, that order is what the list shows when reopened, it survives a later processing run, and a new top-level process created afterwards appears at the end of the order rather than in an arbitrary position; a sub-process or restructure heir is positioned per ARD §4.6.
 
 ---
 
