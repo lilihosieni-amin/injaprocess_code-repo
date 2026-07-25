@@ -1991,7 +1991,11 @@ git commit -m "feat(ui-backend): PUT /departments/{code}/order with 409 on set d
 **Files:**
 - Modify: `ui-backend/inja_ui_backend/routers/departments.py` (`list_processes`)
 - Modify: `ui-backend/inja_ui_backend/routers/processes.py` (`create_process`, `delete_process`)
+- Modify: `ui-backend/inja_ui_backend/gitcommit.py` (`commit` skips a path that is
+  absent from disk *and* untracked — the department that drops to zero actives
+  without an `order.json` produces exactly that, see Step 6)
 - Test: `ui-backend/tests/test_order.py` (append)
+- Test: `ui-backend/tests/test_gitcommit.py` (append)
 
 **Interfaces:**
 - Consumes: `storage.order_path`, `engine.order_sync` (Task 7).
@@ -1999,9 +2003,41 @@ git commit -m "feat(ui-backend): PUT /departments/{code}/order with 409 on set d
 
 - [ ] **Step 1: Write the failing test**
 
-Append to `ui-backend/tests/test_order.py`:
+Append to `ui-backend/tests/test_order.py` (and add `import logging` to its imports):
 
 ```python
+def _write_order_by_hand(data_root, sequence):
+    """An order.json the API would refuse to write — what the fallback rule is for."""
+    p = data_root / "departments" / "cooking" / "order.json"
+    p.write_text(json.dumps({"department": "cooking", "order": sequence,
+                             "updated_at": "2026-07-25T00:00:00Z"},
+                            ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def _corrupt(path):
+    path.write_text("{ not json", encoding="utf-8")
+
+
+def _track(data_root):
+    """Commit what is on disk, so a later deletion of it is a real staged change.
+
+    `_clone` writes straight to disk, outside the git-backed write path.
+    """
+    subprocess.run(["git", "-C", str(data_root), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(data_root), "-c", "user.name=t",
+                    "-c", "user.email=t@t", "commit", "-q", "-m", "clone"], check=True)
+
+
+def _commit_count(data_root):
+    return int(subprocess.run(["git", "-C", str(data_root), "rev-list", "--count",
+                               "HEAD"], capture_output=True, text=True).stdout)
+
+
+def _head(data_root):
+    return subprocess.run(["git", "-C", str(data_root), "show", "--stat", "--oneline",
+                           "HEAD"], capture_output=True, text=True).stdout
+
+
 def _tombstone(data_root, pid):
     p = data_root / "departments" / "cooking" / "processes" / f"{pid}.json"
     doc = json.loads(p.read_text(encoding="utf-8"))
@@ -2028,36 +2064,65 @@ def test_processes_fall_back_to_id_order_without_a_file(data_root):
     assert ids == ["cooking-001", "cooking-002"]
 
 
+def test_processes_skip_an_id_the_disk_does_not_have(data_root):
+    """PUT 409s on drift, so only a hand-edited file can carry a stale id."""
+    _clone(data_root, "cooking-002")
+    _write_order_by_hand(data_root, ["cooking-002", "cooking-404", "cooking-001"])
+    c = _auth_client(data_root)
+    r = c.get("/api/departments/cooking/processes")
+    assert r.status_code == 200
+    assert [p["id"] for p in r.json()] == ["cooking-002", "cooking-001"]
+
+
+def test_processes_keep_a_repeated_order_entry_once(data_root):
+    """A hand-edited duplicate must not list the same process twice."""
+    _clone(data_root, "cooking-002")
+    _write_order_by_hand(data_root, ["cooking-002", "cooking-001", "cooking-002"])
+    c = _auth_client(data_root)
+    ids = [p["id"] for p in c.get("/api/departments/cooking/processes").json()]
+    assert ids == ["cooking-002", "cooking-001"]
+
+
 def test_unordered_actives_land_after_the_ordered_ones(data_root):
     _clone(data_root, "cooking-002")
     c = _auth_client(data_root)
     c.put("/api/departments/cooking/order",
           json={"order": ["cooking-002", "cooking-001"]})
-    _clone(data_root, "cooking-003")  # created behind the backend's back
+    # two unplaced ones, cloned in reverse id order, so the tail proves id order
+    # rather than creation order
+    _clone(data_root, "cooking-004")  # created behind the backend's back
+    _clone(data_root, "cooking-003")
     ids = [p["id"] for p in c.get("/api/departments/cooking/processes").json()]
-    assert ids == ["cooking-002", "cooking-001", "cooking-003"]
+    assert ids == ["cooking-002", "cooking-001", "cooking-003", "cooking-004"]
 
 
 def test_tombstones_come_last_in_id_order(data_root):
     _clone(data_root, "cooking-002")
     _clone(data_root, "cooking-003")
+    _clone(data_root, "cooking-004")
     c = _auth_client(data_root)
     c.put("/api/departments/cooking/order",
-          json={"order": ["cooking-003", "cooking-001", "cooking-002"]})
-    _tombstone(data_root, "cooking-003")
+          json={"order": ["cooking-004", "cooking-001",
+                          "cooking-002", "cooking-003"]})
+    # two of them, tombstoned in the opposite order to their ids
+    _tombstone(data_root, "cooking-004")
+    _tombstone(data_root, "cooking-002")
     ids = [p["id"] for p in c.get("/api/departments/cooking/processes").json()]
-    assert ids == ["cooking-001", "cooking-002", "cooking-003"]
+    assert ids == ["cooking-001", "cooking-003", "cooking-002", "cooking-004"]
 
 
 def test_create_appends_to_the_order_in_one_commit(data_root):
     c = _auth_client(data_root)
     c.put("/api/departments/cooking/order", json={"order": ["cooking-001"]})
+    before = _commit_count(data_root)
     r = c.post("/api/processes", json={"department": "cooking", "name": "نو"})
     assert r.status_code == 201
     new_id = r.json()["id"]
     assert _order_on_disk(data_root) == ["cooking-001", new_id]
-    log = subprocess.run(["git", "-C", str(data_root), "show", "--stat", "--oneline",
-                          "HEAD"], capture_output=True, text=True).stdout
+    # exactly one commit — the process and the order cannot have been committed
+    # separately under the same action string
+    assert _commit_count(data_root) - before == 1
+    log = _head(data_root)
     assert "departments/cooking/order.json" in log
     assert log.count("create process") == 1
 
@@ -2067,11 +2132,68 @@ def test_delete_drops_from_the_order_in_one_commit(data_root):
     c = _auth_client(data_root)
     c.put("/api/departments/cooking/order",
           json={"order": ["cooking-002", "cooking-001"]})
+    before = _commit_count(data_root)
     assert c.delete("/api/processes/cooking-002").status_code == 200
     assert _order_on_disk(data_root) == ["cooking-001"]
-    log = subprocess.run(["git", "-C", str(data_root), "show", "--stat", "--oneline",
-                          "HEAD"], capture_output=True, text=True).stdout
-    assert "departments/cooking/order.json" in log
+    assert _commit_count(data_root) - before == 1
+    assert "departments/cooking/order.json" in _head(data_root)
+
+
+def test_create_survives_a_failed_order_sync(data_root, caplog):
+    """A corrupt sibling poisons `order sync`; the creation must still stand.
+
+    `reconcile` reads every process file in the department, so unguarded this
+    500s *after* the new file is on disk and the id ledger has advanced — and
+    the retry would then mint the next id and orphan the first.
+    """
+    _corrupt(data_root / "departments" / "cooking" / "processes" / "cooking-009.json")
+    c = _auth_client(data_root)
+    before = _commit_count(data_root)
+    with caplog.at_level(logging.WARNING):
+        r = c.post("/api/processes", json={"department": "cooking", "name": "نو"})
+    assert r.status_code == 201
+    new_id = r.json()["id"]
+    assert _commit_count(data_root) - before == 1
+    log = _head(data_root)
+    assert f"ui-edit({new_id}): create process" in log
+    assert f"{new_id}.json" in log
+    assert _order_on_disk(data_root) is None          # unsynced, so uncommitted
+    assert "cooking's order.json could not be synced" in caplog.text
+
+
+def test_delete_survives_a_failed_order_sync(data_root, caplog):
+    """The same guard on the delete path, reached through a corrupt order.json.
+
+    A corrupt sibling *process* file cannot exercise it here: `delete_process`
+    reads every sibling itself to unlink references, well before the sync.
+    """
+    _clone(data_root, "cooking-002")
+    _track(data_root)
+    _corrupt(data_root / "departments" / "cooking" / "order.json")
+    c = _auth_client(data_root)
+    before = _commit_count(data_root)
+    with caplog.at_level(logging.WARNING):
+        assert c.delete("/api/processes/cooking-002").status_code == 200
+    assert _commit_count(data_root) - before == 1
+    log = _head(data_root)
+    assert "ui-edit(cooking-002): delete process" in log
+    assert "cooking-002.json" in log
+    assert "cooking's order.json could not be synced" in caplog.text
+
+
+def test_delete_of_the_last_process_needs_no_order_file(data_root):
+    """The lazy-file case gitcommit's skip exists for (ARD §4.6).
+
+    cooking-001 is the department's only process and there is no order.json; the
+    order module writes none for a department that drops to zero actives without
+    one, so the path handed to git is absent *and* untracked.
+    """
+    c = _auth_client(data_root)
+    before = _commit_count(data_root)
+    assert c.delete("/api/processes/cooking-001").status_code == 200
+    assert _order_on_disk(data_root) is None
+    assert _commit_count(data_root) - before == 1
+    assert "ui-edit(cooking-001): delete process" in _head(data_root)
 ```
 
 - [ ] **Step 2: Run the test to verify it fails**
@@ -2089,10 +2211,10 @@ def list_processes(code: str, request: Request, _: str = Depends(require_session
     """Processes in curated order (ARD §4.6), tombstones last in id order.
 
     The only implementation of the fallback rule: ids the order does not know
-    are appended in id order, and ids it names but disk does not have are
-    skipped. In a consistent data-repo the fallback contributes nothing — it is
-    here so a hand-edited or not-yet-migrated repo degrades instead of hiding
-    processes.
+    are appended in id order, ids it names but disk does not have are skipped,
+    and a repeated id is kept once. In a consistent data-repo the fallback
+    contributes nothing — it is here so a hand-edited or not-yet-migrated repo
+    degrades instead of hiding (or doubling) processes.
     """
     cfg = request.app.state.cfg
     docs = {p.stem: storage.read_json(p)
@@ -2106,7 +2228,8 @@ def list_processes(code: str, request: Request, _: str = Depends(require_session
         order = storage.read_json(opath).get("order", [])
 
     known = set(actives)
-    seq = [pid for pid in order if pid in known]
+    # dict.fromkeys keeps the first occurrence of a hand-edited duplicate, in place
+    seq = list(dict.fromkeys(pid for pid in order if pid in known))
     placed = set(seq)
     seq += [pid for pid in actives if pid not in placed]
     return [docs[pid] for pid in seq + tombs]
@@ -2114,7 +2237,39 @@ def list_processes(code: str, request: Request, _: str = Depends(require_session
 
 - [ ] **Step 4: Sync the order on create**
 
-In `ui-backend/inja_ui_backend/routers/processes.py`, inside `create_process`, replace this block:
+`order.json` is derived state, so a failed sync must never cost the caller the
+write that is already on disk. Add `import logging` and a module-level
+`logger = logging.getLogger(__name__)` to
+`ui-backend/inja_ui_backend/routers/processes.py`, and the shared guard both
+verbs use — the same reasoning as merge's `_sync_order` (`engine/merge/cli.py`,
+commit 43d1397):
+
+```python
+def _sync_order(cfg, dept: str, written: list) -> None:
+    """Reconcile `dept`'s order.json (ARD §4.6) and stage it — best effort.
+
+    Mirrors merge's `_sync_order` (engine/merge/cli.py) and for the same reason.
+    By the time a caller reaches this point the process file is already written
+    or already unlinked and the id ledger has advanced, so letting the
+    EngineError out would answer a *fully applied* change with a 500 and commit
+    nothing: the user's retry mints the next id and orphans the first. And
+    `reconcile` reads **every** process file in the department, so without this
+    one unreadable sibling would poison every create and delete there.
+
+    order.json is derived state — `order sync <dept>` rebuilds it from disk, and
+    an unreadable one can simply be deleted first — so warning and leaving the
+    file out of `written` still leaves a complete recovery path.
+    """
+    try:
+        engine.order_sync(cfg, dept)
+    except engine.EngineError as e:
+        logger.warning("the change is applied but %s's order.json could not be "
+                       "synced: %s", dept, e.message)
+        return
+    written.append(storage.order_path(cfg.data_root, dept))
+```
+
+Then, inside `create_process`, replace this block:
 
 ```python
         action = (f"create sub-process of {body.parent['process']}"
@@ -2127,8 +2282,7 @@ with:
 ```python
         # keep the department's order.json equal to its active set (ARD §4.6),
         # in the same commit as the creation itself
-        engine.order_sync(cfg, body.department)
-        written.append(storage.order_path(cfg.data_root, body.department))
+        _sync_order(cfg, body.department, written)
         action = (f"create sub-process of {body.parent['process']}"
                   if body.parent else "create process")
         gitcommit.commit(cfg, written, pid, action)
@@ -2146,27 +2300,117 @@ with:
 
 ```python
     # a permanently deleted process leaves the order (ARD §4.6)
-    dept = storage.dept_of(pid)
-    engine.order_sync(cfg, dept)
-    written.append(storage.order_path(cfg.data_root, dept))
+    _sync_order(cfg, storage.dept_of(pid), written)
     gitcommit.commit(cfg, written, pid, "delete process")
 ```
 
-- [ ] **Step 6: Run the test to verify it passes**
+- [ ] **Step 6: Let `gitcommit` skip a path git cannot stage**
 
-Run: `.venv/bin/pytest ui-backend/tests/test_order.py -q`
-Expected: PASS, 13 passed.
+`delete_process` names the department's `order.json` unconditionally, and the
+order module deliberately writes no file for a department that drops to zero
+actives without one (Task 3's lazy creation). Deleting the last process in such
+a department therefore hands `commit` a path that is absent from disk *and*
+never tracked: it matches no pathspec, `git add` aborts on it, and the whole
+commit fails — HTTP 500 *after* the process file is already unlinked. Skip
+those paths, and name them in a warning so the diagnostic is not lost.
 
-- [ ] **Step 7: Run the whole Python suite for regressions**
+In `ui-backend/inja_ui_backend/gitcommit.py` add `import logging` and a
+module-level `logger = logging.getLogger(__name__)`, then replace `commit` with:
+
+```python
+def commit(cfg: Settings, paths: list[Path], pid: str, action: str) -> None:
+    # A path git can't stage — absent from disk *and* never tracked — has no
+    # pathspec `git add` can match, and would abort the whole add, failing a
+    # commit for the paths that *do* have something to record. It happens on a
+    # real path: `delete_process` always names the department's order.json, and
+    # the order module deliberately writes no file for a department that drops
+    # to zero actives without one (ARD §4.6) — so deleting the last process in
+    # such a department reaches here with an absent, untracked order.json, after
+    # the process file is already unlinked. Skip those, and say which.
+    stageable, skipped = [], []
+    for p in paths:
+        (stageable if p.exists() or _tracked(cfg, p) else skipped).append(p)
+    if skipped:
+        logger.warning("git: nothing to stage for %s — absent and untracked",
+                       ", ".join(str(p) for p in skipped))
+    if stageable:
+        r = _git(cfg, "add", "--", *[str(p) for p in stageable])
+        if r.returncode != 0:
+            raise RuntimeError(f"git add failed: {(r.stderr or r.stdout).strip()}")
+    # nothing staged -> genuine no-op (not an error)
+    if _git(cfg, "diff", "--cached", "--quiet").returncode == 0:
+        return
+    msg = f"ui-edit({pid}): {action}"
+    r = _git(cfg, "-c", f"user.name={cfg.git_author_name}",
+             "-c", f"user.email={cfg.git_author_email}",
+             "commit", "-q", "-m", msg)
+    if r.returncode != 0:
+        raise RuntimeError(f"git commit failed: {(r.stderr or r.stdout).strip()}")
+```
+
+Append to `ui-backend/tests/test_gitcommit.py`, before
+`test_commit_raises_on_git_failure` (which must keep passing unchanged — genuine
+git failures still raise):
+
+```python
+def _status(root):
+    """The name-status lines of HEAD, e.g. ["M\tdepartments/.../x.json"]."""
+    out = subprocess.run(["git", "-C", str(root), "show", "--name-status",
+                          "--format=", "HEAD"], capture_output=True, text=True).stdout
+    return [ln for ln in out.splitlines() if ln.strip()]
+
+
+def _names(root):
+    return [ln.split("\t", 1)[1] for ln in _status(root)]
+```
+
+```python
+def test_commit_skips_an_absent_untracked_path(data_root):
+    """The production case: delete's order.json for a department that has none.
+
+    The absent, never-tracked path has no pathspec `git add` can match; it must
+    be skipped, and the paths beside it in the same call must still commit.
+    """
+    cfg = cfg_for(data_root)
+    p = storage.proc_path(data_root, "cooking-001")
+    doc = storage.read_json(p)
+    doc["name"] = "نام تازه"
+    storage.write_json_atomic(p, doc)
+    ghost = storage.order_path(data_root, "cooking")   # never written, never tracked
+    assert not ghost.exists()
+    gitcommit.commit(cfg, [p, ghost], "cooking-001", "save")
+    assert "ui-edit(cooking-001): save" in _log(data_root).splitlines()[0]
+    assert _names(data_root) == ["departments/cooking/processes/cooking-001.json"]
+    assert not ghost.exists()
+
+
+def test_commit_stages_the_deletion_of_a_tracked_path(data_root):
+    """Absent from disk but tracked is not "nothing to stage" — it is a deletion."""
+    cfg = cfg_for(data_root)
+    p = storage.proc_path(data_root, "cooking-001")
+    p.unlink()
+    gitcommit.commit(cfg, [p], "cooking-001", "delete process")
+    assert "ui-edit(cooking-001): delete process" in _log(data_root).splitlines()[0]
+    assert _status(data_root) == ["D\tdepartments/cooking/processes/cooking-001.json"]
+```
+
+- [ ] **Step 7: Run the tests to verify they pass**
+
+Run: `.venv/bin/pytest ui-backend/tests/test_order.py ui-backend/tests/test_gitcommit.py -q`
+Expected: PASS, 24 passed (18 in `test_order.py`, 6 in `test_gitcommit.py`).
+
+- [ ] **Step 8: Run the whole Python suite for regressions**
 
 Run: `make test`
 Expected: PASS. `ui-backend/tests/test_processes_read.py` and `test_departments.py` assert on the process list — if one breaks it is because it assumed filename order, which is now curated order. With no `order.json` in the fixture the two coincide, so any failure is a real bug, not a stale assumption.
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
 git add ui-backend/inja_ui_backend/routers/departments.py \
-        ui-backend/inja_ui_backend/routers/processes.py ui-backend/tests/test_order.py
+        ui-backend/inja_ui_backend/routers/processes.py \
+        ui-backend/inja_ui_backend/gitcommit.py \
+        ui-backend/tests/test_order.py ui-backend/tests/test_gitcommit.py
 git commit -m "feat(ui-backend): ordered process list; create/delete keep order in sync"
 ```
 

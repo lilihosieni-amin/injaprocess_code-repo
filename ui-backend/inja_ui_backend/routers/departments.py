@@ -92,10 +92,10 @@ def list_processes(code: str, request: Request, _: str = Depends(require_session
     """Processes in curated order (ARD §4.6), tombstones last in id order.
 
     The only implementation of the fallback rule: ids the order does not know
-    are appended in id order, and ids it names but disk does not have are
-    skipped. In a consistent data-repo the fallback contributes nothing — it is
-    here so a hand-edited or not-yet-migrated repo degrades instead of hiding
-    processes.
+    are appended in id order, ids it names but disk does not have are skipped,
+    and a repeated id is kept once. In a consistent data-repo the fallback
+    contributes nothing — it is here so a hand-edited or not-yet-migrated repo
+    degrades instead of hiding (or doubling) processes.
     """
     cfg = request.app.state.cfg
     docs = {p.stem: storage.read_json(p)
@@ -109,7 +109,8 @@ def list_processes(code: str, request: Request, _: str = Depends(require_session
         order = storage.read_json(opath).get("order", [])
 
     known = set(actives)
-    seq = [pid for pid in order if pid in known]
+    # dict.fromkeys keeps the first occurrence of a hand-edited duplicate, in place
+    seq = list(dict.fromkeys(pid for pid in order if pid in known))
     placed = set(seq)
     seq += [pid for pid in actives if pid not in placed]
     return [docs[pid] for pid in seq + tombs]

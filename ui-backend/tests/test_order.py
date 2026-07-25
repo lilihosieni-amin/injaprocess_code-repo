@@ -1,4 +1,5 @@
 import json
+import logging
 import subprocess
 
 import argon2
@@ -94,6 +95,38 @@ def test_put_order_requires_auth(data_root):
                  json={"order": []}).status_code == 401
 
 
+def _write_order_by_hand(data_root, sequence):
+    """An order.json the API would refuse to write — what the fallback rule is for."""
+    p = data_root / "departments" / "cooking" / "order.json"
+    p.write_text(json.dumps({"department": "cooking", "order": sequence,
+                             "updated_at": "2026-07-25T00:00:00Z"},
+                            ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def _corrupt(path):
+    path.write_text("{ not json", encoding="utf-8")
+
+
+def _track(data_root):
+    """Commit what is on disk, so a later deletion of it is a real staged change.
+
+    `_clone` writes straight to disk, outside the git-backed write path.
+    """
+    subprocess.run(["git", "-C", str(data_root), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(data_root), "-c", "user.name=t",
+                    "-c", "user.email=t@t", "commit", "-q", "-m", "clone"], check=True)
+
+
+def _commit_count(data_root):
+    return int(subprocess.run(["git", "-C", str(data_root), "rev-list", "--count",
+                               "HEAD"], capture_output=True, text=True).stdout)
+
+
+def _head(data_root):
+    return subprocess.run(["git", "-C", str(data_root), "show", "--stat", "--oneline",
+                           "HEAD"], capture_output=True, text=True).stdout
+
+
 def _tombstone(data_root, pid):
     p = data_root / "departments" / "cooking" / "processes" / f"{pid}.json"
     doc = json.loads(p.read_text(encoding="utf-8"))
@@ -120,36 +153,65 @@ def test_processes_fall_back_to_id_order_without_a_file(data_root):
     assert ids == ["cooking-001", "cooking-002"]
 
 
+def test_processes_skip_an_id_the_disk_does_not_have(data_root):
+    """PUT 409s on drift, so only a hand-edited file can carry a stale id."""
+    _clone(data_root, "cooking-002")
+    _write_order_by_hand(data_root, ["cooking-002", "cooking-404", "cooking-001"])
+    c = _auth_client(data_root)
+    r = c.get("/api/departments/cooking/processes")
+    assert r.status_code == 200
+    assert [p["id"] for p in r.json()] == ["cooking-002", "cooking-001"]
+
+
+def test_processes_keep_a_repeated_order_entry_once(data_root):
+    """A hand-edited duplicate must not list the same process twice."""
+    _clone(data_root, "cooking-002")
+    _write_order_by_hand(data_root, ["cooking-002", "cooking-001", "cooking-002"])
+    c = _auth_client(data_root)
+    ids = [p["id"] for p in c.get("/api/departments/cooking/processes").json()]
+    assert ids == ["cooking-002", "cooking-001"]
+
+
 def test_unordered_actives_land_after_the_ordered_ones(data_root):
     _clone(data_root, "cooking-002")
     c = _auth_client(data_root)
     c.put("/api/departments/cooking/order",
           json={"order": ["cooking-002", "cooking-001"]})
-    _clone(data_root, "cooking-003")  # created behind the backend's back
+    # two unplaced ones, cloned in reverse id order, so the tail proves id order
+    # rather than creation order
+    _clone(data_root, "cooking-004")  # created behind the backend's back
+    _clone(data_root, "cooking-003")
     ids = [p["id"] for p in c.get("/api/departments/cooking/processes").json()]
-    assert ids == ["cooking-002", "cooking-001", "cooking-003"]
+    assert ids == ["cooking-002", "cooking-001", "cooking-003", "cooking-004"]
 
 
 def test_tombstones_come_last_in_id_order(data_root):
     _clone(data_root, "cooking-002")
     _clone(data_root, "cooking-003")
+    _clone(data_root, "cooking-004")
     c = _auth_client(data_root)
     c.put("/api/departments/cooking/order",
-          json={"order": ["cooking-003", "cooking-001", "cooking-002"]})
-    _tombstone(data_root, "cooking-003")
+          json={"order": ["cooking-004", "cooking-001",
+                          "cooking-002", "cooking-003"]})
+    # two of them, tombstoned in the opposite order to their ids
+    _tombstone(data_root, "cooking-004")
+    _tombstone(data_root, "cooking-002")
     ids = [p["id"] for p in c.get("/api/departments/cooking/processes").json()]
-    assert ids == ["cooking-001", "cooking-002", "cooking-003"]
+    assert ids == ["cooking-001", "cooking-003", "cooking-002", "cooking-004"]
 
 
 def test_create_appends_to_the_order_in_one_commit(data_root):
     c = _auth_client(data_root)
     c.put("/api/departments/cooking/order", json={"order": ["cooking-001"]})
+    before = _commit_count(data_root)
     r = c.post("/api/processes", json={"department": "cooking", "name": "نو"})
     assert r.status_code == 201
     new_id = r.json()["id"]
     assert _order_on_disk(data_root) == ["cooking-001", new_id]
-    log = subprocess.run(["git", "-C", str(data_root), "show", "--stat", "--oneline",
-                          "HEAD"], capture_output=True, text=True).stdout
+    # exactly one commit — the process and the order cannot have been committed
+    # separately under the same action string
+    assert _commit_count(data_root) - before == 1
+    log = _head(data_root)
     assert "departments/cooking/order.json" in log
     assert log.count("create process") == 1
 
@@ -159,8 +221,65 @@ def test_delete_drops_from_the_order_in_one_commit(data_root):
     c = _auth_client(data_root)
     c.put("/api/departments/cooking/order",
           json={"order": ["cooking-002", "cooking-001"]})
+    before = _commit_count(data_root)
     assert c.delete("/api/processes/cooking-002").status_code == 200
     assert _order_on_disk(data_root) == ["cooking-001"]
-    log = subprocess.run(["git", "-C", str(data_root), "show", "--stat", "--oneline",
-                          "HEAD"], capture_output=True, text=True).stdout
-    assert "departments/cooking/order.json" in log
+    assert _commit_count(data_root) - before == 1
+    assert "departments/cooking/order.json" in _head(data_root)
+
+
+def test_create_survives_a_failed_order_sync(data_root, caplog):
+    """A corrupt sibling poisons `order sync`; the creation must still stand.
+
+    `reconcile` reads every process file in the department, so unguarded this
+    500s *after* the new file is on disk and the id ledger has advanced — and
+    the retry would then mint the next id and orphan the first.
+    """
+    _corrupt(data_root / "departments" / "cooking" / "processes" / "cooking-009.json")
+    c = _auth_client(data_root)
+    before = _commit_count(data_root)
+    with caplog.at_level(logging.WARNING):
+        r = c.post("/api/processes", json={"department": "cooking", "name": "نو"})
+    assert r.status_code == 201
+    new_id = r.json()["id"]
+    assert _commit_count(data_root) - before == 1
+    log = _head(data_root)
+    assert f"ui-edit({new_id}): create process" in log
+    assert f"{new_id}.json" in log
+    assert _order_on_disk(data_root) is None          # unsynced, so uncommitted
+    assert "cooking's order.json could not be synced" in caplog.text
+
+
+def test_delete_survives_a_failed_order_sync(data_root, caplog):
+    """The same guard on the delete path, reached through a corrupt order.json.
+
+    A corrupt sibling *process* file cannot exercise it here: `delete_process`
+    reads every sibling itself to unlink references, well before the sync.
+    """
+    _clone(data_root, "cooking-002")
+    _track(data_root)
+    _corrupt(data_root / "departments" / "cooking" / "order.json")
+    c = _auth_client(data_root)
+    before = _commit_count(data_root)
+    with caplog.at_level(logging.WARNING):
+        assert c.delete("/api/processes/cooking-002").status_code == 200
+    assert _commit_count(data_root) - before == 1
+    log = _head(data_root)
+    assert "ui-edit(cooking-002): delete process" in log
+    assert "cooking-002.json" in log
+    assert "cooking's order.json could not be synced" in caplog.text
+
+
+def test_delete_of_the_last_process_needs_no_order_file(data_root):
+    """The lazy-file case gitcommit's skip exists for (ARD §4.6).
+
+    cooking-001 is the department's only process and there is no order.json; the
+    order module writes none for a department that drops to zero actives without
+    one, so the path handed to git is absent *and* untracked.
+    """
+    c = _auth_client(data_root)
+    before = _commit_count(data_root)
+    assert c.delete("/api/processes/cooking-001").status_code == 200
+    assert _order_on_disk(data_root) is None
+    assert _commit_count(data_root) - before == 1
+    assert "ui-edit(cooking-001): delete process" in _head(data_root)

@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import logging
 import subprocess
 from pathlib import Path
 
 from .config import Settings
+
+logger = logging.getLogger(__name__)
 
 
 def _git(cfg: Settings, *args: str) -> subprocess.CompletedProcess:
@@ -17,11 +20,19 @@ def _tracked(cfg: Settings, path: Path) -> bool:
 
 def commit(cfg: Settings, paths: list[Path], pid: str, action: str) -> None:
     # A path git can't stage — absent from disk *and* never tracked — has no
-    # pathspec `git add` can match, and would abort the whole add. That only
-    # happens to a file created outside the git-backed write path (e.g. a
-    # test fixture written directly to disk); skip it rather than fail the
-    # commit for paths git genuinely has nothing to record.
-    stageable = [p for p in paths if p.exists() or _tracked(cfg, p)]
+    # pathspec `git add` can match, and would abort the whole add, failing a
+    # commit for the paths that *do* have something to record. It happens on a
+    # real path: `delete_process` always names the department's order.json, and
+    # the order module deliberately writes no file for a department that drops
+    # to zero actives without one (ARD §4.6) — so deleting the last process in
+    # such a department reaches here with an absent, untracked order.json, after
+    # the process file is already unlinked. Skip those, and say which.
+    stageable, skipped = [], []
+    for p in paths:
+        (stageable if p.exists() or _tracked(cfg, p) else skipped).append(p)
+    if skipped:
+        logger.warning("git: nothing to stage for %s — absent and untracked",
+                       ", ".join(str(p) for p in skipped))
     if stageable:
         r = _git(cfg, "add", "--", *[str(p) for p in stageable])
         if r.returncode != 0:
