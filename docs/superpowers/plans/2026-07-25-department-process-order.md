@@ -361,20 +361,33 @@ git commit -m "feat(schemas): order.schema.json — department process display o
 **Interfaces:**
 - Consumes: `engine_common.data_root`, `read_json`, `write_json_atomic`, `validate`; schema `order.schema.json` from Task 2.
 - Produces, all with `root=None` defaulting to `data_root()`:
-  - `read_order(dept, root=None) -> list[str]`
-  - `active_ids(dept, root=None) -> list[str]` (id order)
-  - `reconcile(dept, now, root=None, heir_hints=None, child_hints=None) -> tuple[list[str], list[str]]` returning `(appended, dropped)`
+  - `read_order(dept, root=None) -> list[str]` — raises `ValueError` when `order` is present but is not a list of strings (never coerces corrupt input)
+  - `active_ids(dept, root=None) -> list[str]` (id order; only ids matching `^<dept>-\d{3}$`, so a stray foreign-department file is ignored)
+  - `reconcile(dept, now, root=None, heir_hints=None, child_hints=None) -> tuple[list[str], list[str]]` returning `(appended, dropped)`. Writes nothing — and creates no directory — for a department with no processes and no file yet (lazy creation, ARD §4.6), and does not rewrite the file when the sequence is already exactly right (no `updated_at` churn). An existing file whose processes have all been tombstoned *is* rewritten to `"order": []`.
   - `set_order(dept, sequence, now, root=None) -> list[str]`, raising `OrderMismatch`
   - `move(dept, pid, to, now, root=None) -> list[str]` (1-based `to`)
   - `check(dept, root=None) -> tuple[list[str], list[str]]` returning `(missing, stale)`
-  - `departments(root=None) -> list[str]`
+  - `departments(root=None) -> list[str]` (registry order, never sorted; raises `ValueError` on a malformed registry so the CLI can map it to exit 2)
   - `OrderMismatch(ValueError)` — its message always starts with `set mismatch:`
 
 Hints are implemented in Task 4; this task lands the signature with them accepted and ignored.
 
 - [ ] **Step 1: Write the failing test**
 
-Create `engine/tests/test_order.py`:
+Create `engine/tests/test_order.py` — 29 tests. Beyond the happy paths they pin the
+loud-failure and lazy-creation contract: `test_read_order_without_the_order_key_is_empty`,
+`test_read_order_rejects_a_non_list_order`, `test_read_order_rejects_a_string_order`,
+`test_active_ids_ignores_a_foreign_department_file`,
+`test_reconcile_writes_nothing_for_a_processless_department`,
+`test_reconcile_creates_no_directory_for_a_processless_department`,
+`test_reconcile_empties_an_existing_file_when_all_are_tombstoned`,
+`test_reconcile_does_not_rewrite_when_nothing_changed`,
+`test_reconcile_validates_before_writing` and
+`test_departments_rejects_a_malformed_registry`. Note that
+`test_reconcile_is_idempotent`, `test_reconcile_heals_a_duplicated_hand_edit` and
+`test_departments_come_from_the_registry` are deliberately written so they fail if
+`reconcile` re-sorts the sequence, if `_dedup` keeps the last occurrence instead of the
+first, or if `departments()` sorts.
 
 ```python
 import json
@@ -408,11 +421,40 @@ def test_read_order_of_missing_file_is_empty(data_root):
     assert read_order("cooking", data_root) == []
 
 
+def test_read_order_without_the_order_key_is_empty(data_root):
+    _order_file(data_root, "cooking").write_text(
+        json.dumps({"department": "cooking", "updated_at": NOW}), encoding="utf-8")
+    assert read_order("cooking", data_root) == []
+
+
+def test_read_order_rejects_a_non_list_order(data_root):
+    _order_file(data_root, "cooking").write_text(json.dumps(
+        {"department": "cooking", "order": 5, "updated_at": NOW}), encoding="utf-8")
+    with pytest.raises(ValueError):
+        read_order("cooking", data_root)
+
+
+def test_read_order_rejects_a_string_order(data_root):
+    # A bare string must not be silently exploded into single characters.
+    _order_file(data_root, "cooking").write_text(json.dumps(
+        {"department": "cooking", "order": "cooking-001", "updated_at": NOW}),
+        encoding="utf-8")
+    with pytest.raises(ValueError):
+        read_order("cooking", data_root)
+
+
 def test_active_ids_skips_tombstones_and_sorts(data_root):
     _proc(data_root, "cooking-003")
     _proc(data_root, "cooking-001")
     _proc(data_root, "cooking-002", tombstoned=True)
     assert active_ids("cooking", data_root) == ["cooking-001", "cooking-003"]
+
+
+def test_active_ids_ignores_a_foreign_department_file(data_root):
+    _proc(data_root, "cooking-001")
+    (data_root / "departments" / "cooking" / "processes" / "dining-007.json").write_text(
+        json.dumps({"id": "dining-007", "department": "dining"}), encoding="utf-8")
+    assert active_ids("cooking", data_root) == ["cooking-001"]
 
 
 def test_reconcile_creates_the_file_lazily(data_root):
@@ -423,6 +465,47 @@ def test_reconcile_creates_the_file_lazily(data_root):
     doc = _stored(data_root, "cooking")
     assert doc == {"department": "cooking", "order": ["cooking-001"],
                    "updated_at": NOW}
+
+
+def test_reconcile_writes_nothing_for_a_processless_department(data_root):
+    # The processes/ dir exists but is empty: no file, per ARD §4.6 lazy creation.
+    assert (data_root / "departments" / "cooking" / "processes").is_dir()
+    assert reconcile("cooking", NOW, root=data_root) == ([], [])
+    assert not _order_file(data_root, "cooking").is_file()
+
+
+def test_reconcile_creates_no_directory_for_a_processless_department(data_root):
+    assert reconcile("logistics", NOW, root=data_root) == ([], [])
+    assert not (data_root / "departments" / "logistics").exists()
+    assert not _order_file(data_root, "logistics").is_file()
+
+
+def test_reconcile_empties_an_existing_file_when_all_are_tombstoned(data_root):
+    _proc(data_root, "cooking-001")
+    _proc(data_root, "cooking-002")
+    reconcile("cooking", NOW, root=data_root)
+    _proc(data_root, "cooking-001", tombstoned=True)
+    _proc(data_root, "cooking-002", tombstoned=True)
+    # The lazy guard must not swallow this: the file exists, so it gets emptied
+    # rather than left stale, otherwise `check` would report permanent drift.
+    appended, dropped = reconcile("cooking", NOW, root=data_root)
+    assert appended == [] and dropped == ["cooking-001", "cooking-002"]
+    assert _stored(data_root, "cooking")["order"] == []
+    assert check("cooking", data_root) == ([], [])
+
+
+def test_reconcile_does_not_rewrite_when_nothing_changed(data_root):
+    _proc(data_root, "cooking-001")
+    reconcile("cooking", NOW, root=data_root)
+    reconcile("cooking", "2026-07-26T09:30:00Z", root=data_root)
+    assert _stored(data_root, "cooking")["updated_at"] == NOW
+
+
+def test_reconcile_validates_before_writing(data_root):
+    _proc(data_root, "cooking-001")
+    with pytest.raises(ValueError):
+        reconcile("cooking", "25/07/2026", root=data_root)
+    assert not _order_file(data_root, "cooking").is_file()
 
 
 def test_reconcile_appends_new_in_id_order_keeping_curation(data_root):
@@ -460,22 +543,27 @@ def test_reconcile_drops_deleted_file(data_root):
 
 def test_reconcile_is_idempotent(data_root):
     _proc(data_root, "cooking-001")
+    _proc(data_root, "cooking-002")
     reconcile("cooking", NOW, root=data_root)
-    first = read_order("cooking", data_root)
-    appended, dropped = reconcile("cooking", NOW, root=data_root)
-    assert appended == [] and dropped == []
-    assert read_order("cooking", data_root) == first
+    curated = ["cooking-002", "cooking-001"]
+    set_order("cooking", curated, NOW, root=data_root)
+    # A curated, non-id order must survive reconcile untouched, twice over.
+    assert reconcile("cooking", NOW, root=data_root) == ([], [])
+    assert read_order("cooking", data_root) == curated
+    assert reconcile("cooking", NOW, root=data_root) == ([], [])
+    assert read_order("cooking", data_root) == curated
 
 
 def test_reconcile_heals_a_duplicated_hand_edit(data_root):
     _proc(data_root, "cooking-001")
     _proc(data_root, "cooking-002")
+    # The first occurrence wins, so the duplicate collapses forward, not back.
     _order_file(data_root, "cooking").write_text(json.dumps(
         {"department": "cooking",
-         "order": ["cooking-002", "cooking-002", "cooking-001"],
+         "order": ["cooking-001", "cooking-002", "cooking-001"],
          "updated_at": NOW}), encoding="utf-8")
-    reconcile("cooking", NOW, root=data_root)
-    assert read_order("cooking", data_root) == ["cooking-002", "cooking-001"]
+    assert reconcile("cooking", NOW, root=data_root) == ([], [])
+    assert read_order("cooking", data_root) == ["cooking-001", "cooking-002"]
 
 
 def test_set_order_replaces_the_sequence(data_root):
@@ -554,10 +642,18 @@ def test_check_is_clean_after_reconcile(data_root):
 
 
 def test_departments_come_from_the_registry(data_root):
+    # Deliberately not alphabetical: registry order is the contract, not sorting.
     (data_root / "departments" / "registry.json").write_text(json.dumps(
-        {"departments": [{"code": "cooking", "name": "پخت"},
-                         {"code": "dining", "name": "سالن"}]}), encoding="utf-8")
-    assert departments(data_root) == ["cooking", "dining"]
+        {"departments": [{"code": "dining", "name": "سالن"},
+                         {"code": "cooking", "name": "پخت"}]}), encoding="utf-8")
+    assert departments(data_root) == ["dining", "cooking"]
+
+
+def test_departments_rejects_a_malformed_registry(data_root):
+    (data_root / "departments" / "registry.json").write_text(
+        json.dumps({"departments": [{"name": "x"}]}), encoding="utf-8")
+    with pytest.raises(ValueError):
+        departments(data_root)
 ```
 
 - [ ] **Step 2: Run the test to verify it fails**
@@ -581,8 +677,6 @@ import re
 
 from engine_common import data_root, read_json, validate, write_json_atomic
 
-_PID_RE = re.compile(r"^[a-z]+-\d{3}$")
-
 
 class OrderMismatch(ValueError):
     """A given sequence is not exactly the department's active set.
@@ -602,7 +696,13 @@ def read_order(dept, root=None):
     path = _order_path(root, dept)
     if not path.is_file():
         return []
-    return list(read_json(path).get("order", []))
+    doc = read_json(path)
+    if "order" not in doc:
+        return []
+    seq = doc["order"]
+    if not isinstance(seq, list) or not all(isinstance(p, str) for p in seq):
+        raise ValueError(f"{path}: 'order' must be a list of process id strings")
+    return list(seq)
 
 
 def active_ids(dept, root=None):
@@ -611,9 +711,10 @@ def active_ids(dept, root=None):
     d = root / "departments" / dept / "processes"
     if not d.is_dir():
         return []
+    rx = re.compile(rf"^{re.escape(dept)}-\d{{3}}$")
     out = []
     for f in sorted(d.glob("*.json")):
-        if not _PID_RE.match(f.stem):
+        if not rx.match(f.stem):
             continue
         if read_json(f).get("tombstoned"):
             continue
@@ -625,7 +726,10 @@ def departments(root=None):
     """The department codes, in registry order."""
     root = root or data_root()
     reg = read_json(root / "departments" / "registry.json")
-    return [d["code"] for d in reg["departments"]]
+    try:
+        return [d["code"] for d in reg["departments"]]
+    except (KeyError, TypeError) as e:
+        raise ValueError(f"malformed registry.json: {e}") from e
 
 
 def _dedup(seq):
@@ -651,16 +755,27 @@ def reconcile(dept, now, root=None, heir_hints=None, child_hints=None):
     root = root or data_root()
     actives = active_ids(dept, root)
     known = set(actives)
-    stored = _dedup(read_order(dept, root))
+    raw = read_order(dept, root)
+    stored = _dedup(raw)
+    was = set(stored)
 
     work = list(stored)
-    missing = [pid for pid in actives if pid not in set(work)]
+    present = set(work)
+    missing = [pid for pid in actives if pid not in present]
     work.extend(missing)
 
     seq = [pid for pid in work if pid in known]
     dropped = [pid for pid in stored if pid not in known]
-    was = set(stored)
     appended = [pid for pid in seq if pid not in was]
+
+    path = _order_path(root, dept)
+    # Lazy: a department with no processes and no file yet stays fileless (ARD §4.6).
+    if not seq and not path.is_file():
+        return [], []
+    # Don't churn updated_at when nothing changed. Compared against the RAW file
+    # contents, not the de-duplicated view, so a hand-edited duplicate still heals.
+    if seq == raw and path.is_file():
+        return [], []
     _write(dept, seq, now, root)
     return appended, dropped
 
@@ -670,10 +785,12 @@ def set_order(dept, sequence, now, root=None):
     root = root or data_root()
     actives = active_ids(dept, root)
     given = list(sequence)
-    if len(set(given)) != len(given):
+    seen = set(given)
+    if len(seen) != len(given):
         raise OrderMismatch("set mismatch: duplicate ids in sequence")
-    missing = [p for p in actives if p not in set(given)]
-    stale = [p for p in given if p not in set(actives)]
+    known = set(actives)
+    missing = [p for p in actives if p not in seen]
+    stale = [p for p in given if p not in known]
     if missing or stale:
         raise OrderMismatch(
             f"set mismatch: missing={','.join(missing) or '-'} "
@@ -699,8 +816,10 @@ def check(dept, root=None):
     root = root or data_root()
     actives = active_ids(dept, root)
     stored = read_order(dept, root)
-    return ([p for p in actives if p not in set(stored)],
-            [p for p in stored if p not in set(actives)])
+    have = set(stored)
+    known = set(actives)
+    return ([p for p in actives if p not in have],
+            [p for p in stored if p not in known])
 ```
 
 - [ ] **Step 4: Register the package so imports resolve**
@@ -714,13 +833,13 @@ include = ["engine_common*", "allocate_id*", "extract_attachment*", "layout*", "
 Then reinstall so the new package is importable:
 
 ```bash
-.venv/bin/python -m pip install -q -e ./engine
+uv pip install -q --python .venv/bin/python -e ./engine
 ```
 
 - [ ] **Step 5: Run the test to verify it passes**
 
 Run: `PYTHONPATH=engine/tests .venv/bin/python -m pytest engine/tests/test_order.py -q`
-Expected: PASS, 19 passed.
+Expected: PASS, 29 passed.
 
 - [ ] **Step 6: Commit**
 
@@ -874,11 +993,12 @@ def _lowest_index(work, candidates):
     return min(idxs) if idxs else None
 ```
 
-Then replace these three lines in `reconcile`:
+Then replace these four lines in `reconcile`:
 
 ```python
     work = list(stored)
-    missing = [pid for pid in actives if pid not in set(work)]
+    present = set(work)
+    missing = [pid for pid in actives if pid not in present]
     work.extend(missing)
 ```
 
@@ -888,7 +1008,8 @@ with:
     # Insertions happen on `work`, which still holds the ids about to be dropped,
     # so a heir can be placed at its predecessor's index before that id leaves.
     work = list(stored)
-    missing = [pid for pid in actives if pid not in set(work)]
+    present = set(work)
+    missing = [pid for pid in actives if pid not in present]
 
     # Pass 1 — a heir inherits the lowest index held by anything it supersedes.
     # Sorted by heir id so several heirs of one predecessor land consecutively and
@@ -922,7 +1043,7 @@ with:
 - [ ] **Step 4: Run both order test files to verify they pass**
 
 Run: `PYTHONPATH=engine/tests .venv/bin/python -m pytest engine/tests/test_order.py engine/tests/test_order_hints.py -q`
-Expected: PASS, 28 passed. (Task 3's tests must still pass — hints default to `None`, so the no-hint path is unchanged.)
+Expected: PASS, 38 passed (29 from Task 3 + 9 hint tests). (Task 3's tests must still pass — hints default to `None`, so the no-hint path is unchanged.)
 
 - [ ] **Step 5: Commit**
 
@@ -1042,7 +1163,9 @@ def test_check_is_silent_and_zero_when_consistent(data_root, capsys):
     main(["sync", "cooking", "--now", NOW])
     capsys.readouterr()
     assert main(["check", "cooking"]) == 0
-    assert capsys.readouterr().err == ""
+    out_err = capsys.readouterr()
+    assert out_err.out == ""
+    assert out_err.err == ""
 
 
 def test_check_exits_2_and_reports_drift(data_root, capsys):
@@ -1081,6 +1204,32 @@ def test_sync_without_department_or_all_exits_2(data_root):
     with pytest.raises(SystemExit) as e:
         main(["sync"])
     assert e.value.code == 2
+
+
+def test_sync_all_exits_2_on_missing_registry(data_root, capsys):
+    with pytest.raises(SystemExit) as e:
+        main(["sync", "--all"])
+    assert e.value.code == 2
+    err = capsys.readouterr().err
+    assert "registry" in err
+    assert "registry.json" in err
+
+
+def test_check_all_exits_2_on_missing_registry(data_root, capsys):
+    with pytest.raises(SystemExit) as e:
+        main(["check", "--all"])
+    assert e.value.code == 2
+    err = capsys.readouterr().err
+    assert "registry" in err
+    assert "registry.json" in err
+
+
+def test_sync_with_both_department_and_all_exits_2(data_root, capsys):
+    with pytest.raises(SystemExit) as e:
+        main(["sync", "cooking", "--all"])
+    assert e.value.code == 2
+    err = capsys.readouterr().err
+    assert "mutually exclusive" in err
 ```
 
 - [ ] **Step 2: Run the test to verify it fails**
@@ -1138,9 +1287,14 @@ def main(argv=None):
     ck.add_argument("--all", action="store_true")
 
     args = ap.parse_args(argv)
-    if args.cmd in ("sync", "check") and not args.all and not args.department:
-        print("order: give a department or --all", file=sys.stderr)
-        raise SystemExit(2)
+    if args.cmd in ("sync", "check"):
+        if args.all and args.department:
+            print("order: --all and a department name are mutually exclusive",
+                  file=sys.stderr)
+            raise SystemExit(2)
+        if not args.all and not args.department:
+            print("order: give a department or --all", file=sys.stderr)
+            raise SystemExit(2)
 
     try:
         if args.cmd == "show":
@@ -1172,6 +1326,9 @@ def main(argv=None):
         # message already starts with "set mismatch:" — the UI backend keys on it
         print(str(e), file=sys.stderr)
         raise SystemExit(2)
+    except FileNotFoundError as e:
+        print(f"order: registry not found: {e.filename}", file=sys.stderr)
+        raise SystemExit(2)
     except ValueError as e:
         print(f"order: {e}", file=sys.stderr)
         raise SystemExit(2)
@@ -1182,7 +1339,7 @@ if __name__ == "__main__":
     sys.exit(main())
 ```
 
-Note: `OrderMismatch` subclasses `ValueError`, so its `except` clause must come first.
+Note: `OrderMismatch` subclasses `ValueError`, so its `except` clause must come first. `FileNotFoundError` is an `OSError`, unrelated to `ValueError`, so its position relative to the other two `except` clauses does not matter.
 
 - [ ] **Step 4: Register the console script**
 
@@ -1195,13 +1352,13 @@ order = "order.cli:main"
 Then reinstall so the `order` command appears on PATH:
 
 ```bash
-.venv/bin/python -m pip install -q -e ./engine
+uv pip install -q --python .venv/bin/python -e ./engine
 ```
 
 - [ ] **Step 5: Run the test to verify it passes**
 
 Run: `PYTHONPATH=engine/tests .venv/bin/python -m pytest engine/tests/test_order_cli.py -q`
-Expected: PASS, 12 passed.
+Expected: PASS, 15 passed.
 
 - [ ] **Step 6: Verify the console script works end to end**
 
@@ -1237,8 +1394,11 @@ Note on `new`: the parent and its auto-created children are all absent from the 
 
 Create `engine/tests/test_merge_order.py`. The `_cand`/`_committed` helpers mirror
 `engine/tests/test_merge_restructure.py`, and `tests/fixtures/candidate.json` carries no
-`subprocesses` (and `delta.json` no new sub-processes), so no auto-created children muddy these
-assertions:
+`subprocesses`, so no auto-created child muddies an assertion that did not ask for one.
+Deltas are built inline by `_delta`, grounded in the nodes `_committed` actually leaves on
+disk — `tests/fixtures/delta.json` is a *schema* fixture whose node ids belong to no
+process on disk, and `build_update` skips unknown ids silently, so reusing it would let an
+"order unchanged" assertion pass for the wrong reason:
 
 ```python
 import copy
@@ -1265,13 +1425,16 @@ def _cand_file(tmp_path, name, seq=1):
 
 
 def _proc_path(root, pid):
-    return root / "departments" / "cooking" / "processes" / f"{pid}.json"
+    return (root / "departments" / pid.rsplit("-", 1)[0] / "processes"
+            / f"{pid}.json")
 
 
-def _committed(root, pid):
+def _committed(root, pid, pending=False):
     """An existing standalone process on disk, copied from the golden fixture."""
+    dept = pid.rsplit("-", 1)[0]
     p = copy.deepcopy(load_fixture("process.cooking-001.json"))
     p["id"] = pid
+    p["department"] = dept
     p["parent"] = None
     p["nodes"] = [n for n in p["nodes"] if n["id"] != "cooking-001-n060"]
     for n in p["nodes"]:
@@ -1282,9 +1445,48 @@ def _committed(root, pid):
     for e in p["edges"]:
         e["from"] = e["from"].replace("cooking-001", pid)
         e["to"] = e["to"].replace("cooking-001", pid)
-    p["pending"] = []
-    _proc_path(root, pid).write_text(json.dumps(p, ensure_ascii=False), encoding="utf-8")
+    p["pending"] = [{"node": f"{pid}-n010", "field": "actor",
+                     "current": "کارپرداز", "proposed": "انباردار",
+                     "source": RUN, "status": "open"}] if pending else []
+    _proc_path(root, pid).write_text(json.dumps(p, ensure_ascii=False),
+                                     encoding="utf-8")
     return p
+
+
+def _delta(pid):
+    """A minimal update grounded in what `_committed` actually leaves on disk.
+
+    Built inline rather than from `tests/fixtures/delta.json`: that fixture is a
+    schema fixture whose node ids are not grounded in any process, and
+    `build_update` skips unknown ids silently, so a shared fixture would make an
+    "order unchanged" assertion pass for the wrong reason.
+    """
+    return {
+        "add_nodes": [
+            {"key": "n1", "type": "activity", "label": "کنترل کیفیت",
+             "description": "", "actor": "انباردار",
+             "icom": {"inputs": [], "controls": [], "outputs": [],
+                      "mechanisms": []},
+             "subprocess": None},
+        ],
+        "add_edges": [{"from": f"{pid}-n010", "to": "n1", "label": ""}],
+        "enrich_nodes": [],
+        "flag_removed": [],
+    }
+
+
+def _delta_file(tmp_path, doc):
+    p = tmp_path / "delta.json"
+    p.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
+    return str(p)
+
+
+def _write_order(root, dept, ids):
+    """A curated order.json placed directly on disk, bypassing the order API."""
+    path = root / "departments" / dept / "order.json"
+    path.write_text(json.dumps({"department": dept, "order": list(ids),
+                                "updated_at": NOW}, ensure_ascii=False),
+                    encoding="utf-8")
 
 
 def test_new_appends_the_process(data_root, tmp_path):
@@ -1315,12 +1517,60 @@ def test_update_leaves_the_order_untouched(data_root, tmp_path):
     _committed(data_root, "cooking-001")
     reconcile("cooking", NOW, root=data_root)
     before = read_order("cooking", data_root)
-    delta = tmp_path / "delta.json"
-    delta.write_text(json.dumps(load_fixture("delta.json"), ensure_ascii=False),
-                     encoding="utf-8")
-    assert main(["update", "--process", "cooking-001", "--delta", str(delta),
+    delta = _delta_file(tmp_path, _delta("cooking-001"))
+    assert main(["update", "--process", "cooking-001", "--delta", delta,
                  "--run", RUN, "--now", NOW]) == 0
+    # a plain update creates no sub-process, so the active set is what it was
     assert read_order("cooking", data_root) == before
+
+
+def test_update_puts_a_new_subprocess_right_after_its_parent(data_root, tmp_path):
+    for pid in ("cooking-001", "cooking-002", "cooking-003"):
+        _committed(data_root, pid)
+    reconcile("cooking", NOW, root=data_root)
+
+    d = _delta("cooking-001")
+    d["add_subprocesses"] = [{"parent": "cooking-001-n010",
+                              "process": _cand("child")}]
+    assert main(["update", "--process", "cooking-001",
+                 "--delta", _delta_file(tmp_path, d),
+                 "--run", RUN, "--now", NOW]) == 0
+
+    # the child follows its parent instead of landing at the end, which is only
+    # possible because `update` passes child_hints to the sync
+    assert read_order("cooking", data_root) == [
+        "cooking-001", "cooking-004", "cooking-002", "cooking-003"]
+
+
+def test_attach_subprocess_reconciles_without_reordering(data_root):
+    for pid in ("cooking-001", "cooking-002", "cooking-003"):
+        _committed(data_root, pid)
+    # a curated order: 002 deliberately ahead of 001, and 003 not listed yet
+    _write_order(data_root, "cooking", ["cooking-002", "cooking-001"])
+
+    assert main(["attach-subprocess", "--parent-process", "cooking-001",
+                 "--node", "cooking-001-n010", "--child", "cooking-002",
+                 "--run", RUN, "--now", NOW]) == 0
+
+    # both ids were already active, so neither moves — 002 stays ahead of the
+    # parent it just became a child of — and the sync only appends the unlisted 003
+    assert read_order("cooking", data_root) == [
+        "cooking-002", "cooking-001", "cooking-003"]
+
+
+def test_accept_reconciles_without_reordering(data_root):
+    for pid in ("cooking-001", "cooking-002", "cooking-003"):
+        _committed(data_root, pid, pending=(pid == "cooking-001"))
+    # same curated order, same drift: 003 is active on disk but unlisted
+    _write_order(data_root, "cooking", ["cooking-002", "cooking-001"])
+
+    assert main(["accept", "--process", "cooking-001", "--index", "0",
+                 "--now", NOW]) == 0
+
+    # resolving a pending row changes no process's active state, so the curated
+    # positions survive; only the unlisted 003 is appended by the sync
+    assert read_order("cooking", data_root) == [
+        "cooking-002", "cooking-001", "cooking-003"]
 
 
 def test_restructure_heir_takes_the_predecessors_position(data_root, tmp_path):
@@ -1338,8 +1588,9 @@ def test_restructure_heir_takes_the_predecessors_position(data_root, tmp_path):
                     "subprocess_links": []}]}, ensure_ascii=False), encoding="utf-8")
     assert main(["restructure", "--plan", str(plan), "--run", RUN, "--now", NOW]) == 0
 
-    # cooking-004 is the fresh heir id (past the ledger high-water of 003) and it
-    # must sit where its predecessor cooking-002 was, not at the end
+    # cooking-004 is the fresh heir id — this fixture has no .id-seq.json, so
+    # allocate_id._next_ordinal derives it from the process directory scan — and
+    # it must sit where its predecessor cooking-002 was, not at the end
     assert read_order("cooking", data_root) == [
         "cooking-001", "cooking-004", "cooking-003"]
 
@@ -1361,6 +1612,43 @@ def test_restructure_split_puts_both_heirs_at_the_predecessors_position(data_roo
     # both heirs land consecutively where cooking-002 was, in id order
     assert read_order("cooking", data_root) == [
         "cooking-001", "cooking-004", "cooking-005", "cooking-003"]
+
+
+def test_restructure_across_departments_reconciles_both(data_root, tmp_path):
+    (data_root / "departments" / "prep" / "processes").mkdir(parents=True)
+    _committed(data_root, "cooking-001")
+    _committed(data_root, "prep-001")
+    reconcile("cooking", NOW, root=data_root)
+    reconcile("prep", NOW, root=data_root)
+    assert read_order("prep", data_root) == ["prep-001"]
+
+    plan = tmp_path / "plan.json"
+    plan.write_text(json.dumps(
+        {"department": "cooking",
+         "heirs": [{"candidate": _cand("merged"),
+                    "supersedes": ["prep-001"],
+                    "subprocess_links": []}]}, ensure_ascii=False), encoding="utf-8")
+    assert main(["restructure", "--plan", str(plan), "--run", RUN, "--now", NOW]) == 0
+
+    # the heir's position hint names a predecessor in another department, which is
+    # a safe no-op: cooking appends the heir at the end...
+    assert read_order("cooking", data_root) == ["cooking-001", "cooking-002"]
+    # ...while prep, the other touched department, drops the superseded id
+    assert read_order("prep", data_root) == []
+
+
+def test_a_corrupt_order_file_never_fails_the_merge(data_root, tmp_path, capsys):
+    """Exit 2 means "nothing happened"; a written merge must never report it."""
+    (data_root / "departments" / "cooking" / "order.json").write_text(
+        "{ this is not json", encoding="utf-8")
+
+    assert main(["new", "--candidate", _cand_file(tmp_path, "الف"),
+                 "--department", "cooking", "--run", RUN, "--now", NOW]) == 0
+
+    assert _proc_path(data_root, "cooking-001").is_file()
+    cap = capsys.readouterr()
+    assert cap.out.splitlines()[0] == "cooking-001"
+    assert "cooking" in cap.err and "order sync cooking" in cap.err
 ```
 
 - [ ] **Step 2: Run the test to verify it fails**
@@ -1376,38 +1664,87 @@ Add to the imports at the top:
 from order import reconcile as reconcile_order
 ```
 
-Add these helpers next to the existing `_proc_path`:
+`_proc_path` re-implemented the department derivation inline; give it a name and reuse it,
+then add the sync helper below. Replace the existing `_proc_path` with:
 
 ```python
 def _dept_of(pid):
     return pid.rsplit("-", 1)[0]
 
 
+def _proc_path(pid):
+    return data_root() / "departments" / _dept_of(pid) / "processes" / f"{pid}.json"
+
+
 def _sync_order(depts, now, heir_hints=None, child_hints=None):
-    """Keep each touched department's order.json equal to its active set (§4.6)."""
+    """Keep each touched department's order.json equal to its active set (§4.6).
+
+    A failure here warns on stderr and lets the merge stand; it must never
+    propagate. By the time we reach the sync the process files are written and
+    the id ledger has advanced, so raising would let the `except ValueError` in
+    `main` report a *fully applied* merge as exit 2 — this CLI's "precondition
+    failed, nothing happened" code (see `_require`). A pipeline that retries on
+    exit 2 would then re-run the verb and mint a duplicate process. Every
+    realistic failure lands there: a corrupt order.json (`json.JSONDecodeError`
+    is a `ValueError`), `read_order`'s malformed-shape `ValueError`, and
+    `validate`'s.
+
+    order.json is derived state — `order sync <dept>` rebuilds it from disk, and
+    an unreadable one can simply be deleted first — so a warning still leaves a
+    complete recovery path. It has to, because the hook widened merge's read
+    surface: `active_ids` reads *every* process file in the department, so
+    without this one corrupt sibling would make every merge verb in that
+    department fatal.
+    """
     for dept in sorted(depts):
-        reconcile_order(dept, now, heir_hints=heir_hints, child_hints=child_hints)
+        try:
+            reconcile_order(dept, now, heir_hints=heir_hints, child_hints=child_hints)
+        except (ValueError, OSError) as e:
+            print(f"merge: warning: the merge is applied but {dept}'s order.json "
+                  f"could not be synced: {e}\n"
+                  f"merge: run `order sync {dept}` to rebuild it; order.json is "
+                  f"derived state, so deleting an unreadable one first is safe",
+                  file=sys.stderr)
 ```
 
-Then, inside the `try:` block, add a sync call at the end of each verb's branch.
+The helper deliberately swallows its own failures. By the time it runs the process files
+are written and the id ledger has advanced, so letting a `ValueError` reach `main`'s
+handler would report a *fully applied* merge as exit 2 — this CLI's "precondition failed,
+nothing happened" code — and a caller that retries on exit 2 would mint a duplicate
+process. `order.json` is derived state, so a warning is a complete recovery path.
+
+Hoist the clock so the process files and `order.json` cannot land a second apart when
+`--now` is omitted. Immediately after `args = ap.parse_args(argv)`:
+
+```python
+    # One clock for the whole invocation: the process files and order.json must
+    # not land a second apart when --now is omitted.
+    now = _now(args.now)
+```
+
+Then, inside the `try:` block, replace every remaining `_now(args.now)` with `now` and add
+a sync call at the end of each verb's branch.
 
 `new` — after the existing `for c in children: print(...)` loop:
 
 ```python
-            _sync_order({args.department}, _now(args.now))
+            _sync_order({args.department}, now)
 ```
 
-`update` — after its `for c in children: print(...)` loop:
+`update` — after its `for c in children: print(...)` loop. The departments and the child
+hint come from the ids actually written, not from the CLI argument:
 
 ```python
-            _sync_order({_dept_of(args.process)}, _now(args.now),
-                        child_hints={args.process: [c["id"] for c in children]})
+            depts = ({_dept_of(parent["id"])}
+                     | {_dept_of(c["id"]) for c in children})
+            _sync_order(depts, now,
+                        child_hints={parent["id"]: [c["id"] for c in children]})
 ```
 
 `remove` — after `print(f"tombstoned {args.process}")`:
 
 ```python
-            _sync_order({_dept_of(args.process)}, _now(args.now))
+            _sync_order({_dept_of(args.process)}, now)
 ```
 
 `restructure` — after the final `for h in heirs:` loop:
@@ -1420,26 +1757,25 @@ Then, inside the `try:` block, add a sync call at the end of each verb's branch.
                     heir_hints.setdefault(heir, []).append(t["id"])
             depts = ({_dept_of(h["id"]) for h in heirs}
                      | {_dept_of(t["id"]) for t in tombstoned})
-            _sync_order(depts, _now(args.now), heir_hints=heir_hints)
+            _sync_order(depts, now, heir_hints=heir_hints)
 ```
 
 `attach-subprocess` — after `print(f"subprocess {child['id']} node {args.node}")`:
 
 ```python
-            _sync_order({_dept_of(args.parent_process), _dept_of(args.child)},
-                        _now(args.now))
+            _sync_order({_dept_of(args.parent_process), _dept_of(args.child)}, now)
 ```
 
 `accept | reject` — after `write_json_atomic(path, proc)`:
 
 ```python
-            _sync_order({_dept_of(args.process)}, _now(args.now))
+            _sync_order({_dept_of(args.process)}, now)
 ```
 
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `PYTHONPATH=engine/tests .venv/bin/python -m pytest engine/tests/test_merge_order.py -q`
-Expected: PASS, 6 passed.
+Expected: PASS, 11 passed.
 
 - [ ] **Step 5: Run the whole Python suite for regressions**
 
@@ -1655,7 +1991,11 @@ git commit -m "feat(ui-backend): PUT /departments/{code}/order with 409 on set d
 **Files:**
 - Modify: `ui-backend/inja_ui_backend/routers/departments.py` (`list_processes`)
 - Modify: `ui-backend/inja_ui_backend/routers/processes.py` (`create_process`, `delete_process`)
+- Modify: `ui-backend/inja_ui_backend/gitcommit.py` (`commit` skips a path that is
+  absent from disk *and* untracked — the department that drops to zero actives
+  without an `order.json` produces exactly that, see Step 6)
 - Test: `ui-backend/tests/test_order.py` (append)
+- Test: `ui-backend/tests/test_gitcommit.py` (append)
 
 **Interfaces:**
 - Consumes: `storage.order_path`, `engine.order_sync` (Task 7).
@@ -1663,9 +2003,41 @@ git commit -m "feat(ui-backend): PUT /departments/{code}/order with 409 on set d
 
 - [ ] **Step 1: Write the failing test**
 
-Append to `ui-backend/tests/test_order.py`:
+Append to `ui-backend/tests/test_order.py` (and add `import logging` to its imports):
 
 ```python
+def _write_order_by_hand(data_root, sequence):
+    """An order.json the API would refuse to write — what the fallback rule is for."""
+    p = data_root / "departments" / "cooking" / "order.json"
+    p.write_text(json.dumps({"department": "cooking", "order": sequence,
+                             "updated_at": "2026-07-25T00:00:00Z"},
+                            ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def _corrupt(path):
+    path.write_text("{ not json", encoding="utf-8")
+
+
+def _track(data_root):
+    """Commit what is on disk, so a later deletion of it is a real staged change.
+
+    `_clone` writes straight to disk, outside the git-backed write path.
+    """
+    subprocess.run(["git", "-C", str(data_root), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(data_root), "-c", "user.name=t",
+                    "-c", "user.email=t@t", "commit", "-q", "-m", "clone"], check=True)
+
+
+def _commit_count(data_root):
+    return int(subprocess.run(["git", "-C", str(data_root), "rev-list", "--count",
+                               "HEAD"], capture_output=True, text=True).stdout)
+
+
+def _head(data_root):
+    return subprocess.run(["git", "-C", str(data_root), "show", "--stat", "--oneline",
+                           "HEAD"], capture_output=True, text=True).stdout
+
+
 def _tombstone(data_root, pid):
     p = data_root / "departments" / "cooking" / "processes" / f"{pid}.json"
     doc = json.loads(p.read_text(encoding="utf-8"))
@@ -1692,36 +2064,65 @@ def test_processes_fall_back_to_id_order_without_a_file(data_root):
     assert ids == ["cooking-001", "cooking-002"]
 
 
+def test_processes_skip_an_id_the_disk_does_not_have(data_root):
+    """PUT 409s on drift, so only a hand-edited file can carry a stale id."""
+    _clone(data_root, "cooking-002")
+    _write_order_by_hand(data_root, ["cooking-002", "cooking-404", "cooking-001"])
+    c = _auth_client(data_root)
+    r = c.get("/api/departments/cooking/processes")
+    assert r.status_code == 200
+    assert [p["id"] for p in r.json()] == ["cooking-002", "cooking-001"]
+
+
+def test_processes_keep_a_repeated_order_entry_once(data_root):
+    """A hand-edited duplicate must not list the same process twice."""
+    _clone(data_root, "cooking-002")
+    _write_order_by_hand(data_root, ["cooking-002", "cooking-001", "cooking-002"])
+    c = _auth_client(data_root)
+    ids = [p["id"] for p in c.get("/api/departments/cooking/processes").json()]
+    assert ids == ["cooking-002", "cooking-001"]
+
+
 def test_unordered_actives_land_after_the_ordered_ones(data_root):
     _clone(data_root, "cooking-002")
     c = _auth_client(data_root)
     c.put("/api/departments/cooking/order",
           json={"order": ["cooking-002", "cooking-001"]})
-    _clone(data_root, "cooking-003")  # created behind the backend's back
+    # two unplaced ones, cloned in reverse id order, so the tail proves id order
+    # rather than creation order
+    _clone(data_root, "cooking-004")  # created behind the backend's back
+    _clone(data_root, "cooking-003")
     ids = [p["id"] for p in c.get("/api/departments/cooking/processes").json()]
-    assert ids == ["cooking-002", "cooking-001", "cooking-003"]
+    assert ids == ["cooking-002", "cooking-001", "cooking-003", "cooking-004"]
 
 
 def test_tombstones_come_last_in_id_order(data_root):
     _clone(data_root, "cooking-002")
     _clone(data_root, "cooking-003")
+    _clone(data_root, "cooking-004")
     c = _auth_client(data_root)
     c.put("/api/departments/cooking/order",
-          json={"order": ["cooking-003", "cooking-001", "cooking-002"]})
-    _tombstone(data_root, "cooking-003")
+          json={"order": ["cooking-004", "cooking-001",
+                          "cooking-002", "cooking-003"]})
+    # two of them, tombstoned in the opposite order to their ids
+    _tombstone(data_root, "cooking-004")
+    _tombstone(data_root, "cooking-002")
     ids = [p["id"] for p in c.get("/api/departments/cooking/processes").json()]
-    assert ids == ["cooking-001", "cooking-002", "cooking-003"]
+    assert ids == ["cooking-001", "cooking-003", "cooking-002", "cooking-004"]
 
 
 def test_create_appends_to_the_order_in_one_commit(data_root):
     c = _auth_client(data_root)
     c.put("/api/departments/cooking/order", json={"order": ["cooking-001"]})
+    before = _commit_count(data_root)
     r = c.post("/api/processes", json={"department": "cooking", "name": "نو"})
     assert r.status_code == 201
     new_id = r.json()["id"]
     assert _order_on_disk(data_root) == ["cooking-001", new_id]
-    log = subprocess.run(["git", "-C", str(data_root), "show", "--stat", "--oneline",
-                          "HEAD"], capture_output=True, text=True).stdout
+    # exactly one commit — the process and the order cannot have been committed
+    # separately under the same action string
+    assert _commit_count(data_root) - before == 1
+    log = _head(data_root)
     assert "departments/cooking/order.json" in log
     assert log.count("create process") == 1
 
@@ -1731,11 +2132,68 @@ def test_delete_drops_from_the_order_in_one_commit(data_root):
     c = _auth_client(data_root)
     c.put("/api/departments/cooking/order",
           json={"order": ["cooking-002", "cooking-001"]})
+    before = _commit_count(data_root)
     assert c.delete("/api/processes/cooking-002").status_code == 200
     assert _order_on_disk(data_root) == ["cooking-001"]
-    log = subprocess.run(["git", "-C", str(data_root), "show", "--stat", "--oneline",
-                          "HEAD"], capture_output=True, text=True).stdout
-    assert "departments/cooking/order.json" in log
+    assert _commit_count(data_root) - before == 1
+    assert "departments/cooking/order.json" in _head(data_root)
+
+
+def test_create_survives_a_failed_order_sync(data_root, caplog):
+    """A corrupt sibling poisons `order sync`; the creation must still stand.
+
+    `reconcile` reads every process file in the department, so unguarded this
+    500s *after* the new file is on disk and the id ledger has advanced — and
+    the retry would then mint the next id and orphan the first.
+    """
+    _corrupt(data_root / "departments" / "cooking" / "processes" / "cooking-009.json")
+    c = _auth_client(data_root)
+    before = _commit_count(data_root)
+    with caplog.at_level(logging.WARNING):
+        r = c.post("/api/processes", json={"department": "cooking", "name": "نو"})
+    assert r.status_code == 201
+    new_id = r.json()["id"]
+    assert _commit_count(data_root) - before == 1
+    log = _head(data_root)
+    assert f"ui-edit({new_id}): create process" in log
+    assert f"{new_id}.json" in log
+    assert _order_on_disk(data_root) is None          # unsynced, so uncommitted
+    assert "cooking's order.json could not be synced" in caplog.text
+
+
+def test_delete_survives_a_failed_order_sync(data_root, caplog):
+    """The same guard on the delete path, reached through a corrupt order.json.
+
+    A corrupt sibling *process* file cannot exercise it here: `delete_process`
+    reads every sibling itself to unlink references, well before the sync.
+    """
+    _clone(data_root, "cooking-002")
+    _track(data_root)
+    _corrupt(data_root / "departments" / "cooking" / "order.json")
+    c = _auth_client(data_root)
+    before = _commit_count(data_root)
+    with caplog.at_level(logging.WARNING):
+        assert c.delete("/api/processes/cooking-002").status_code == 200
+    assert _commit_count(data_root) - before == 1
+    log = _head(data_root)
+    assert "ui-edit(cooking-002): delete process" in log
+    assert "cooking-002.json" in log
+    assert "cooking's order.json could not be synced" in caplog.text
+
+
+def test_delete_of_the_last_process_needs_no_order_file(data_root):
+    """The lazy-file case gitcommit's skip exists for (ARD §4.6).
+
+    cooking-001 is the department's only process and there is no order.json; the
+    order module writes none for a department that drops to zero actives without
+    one, so the path handed to git is absent *and* untracked.
+    """
+    c = _auth_client(data_root)
+    before = _commit_count(data_root)
+    assert c.delete("/api/processes/cooking-001").status_code == 200
+    assert _order_on_disk(data_root) is None
+    assert _commit_count(data_root) - before == 1
+    assert "ui-edit(cooking-001): delete process" in _head(data_root)
 ```
 
 - [ ] **Step 2: Run the test to verify it fails**
@@ -1753,10 +2211,10 @@ def list_processes(code: str, request: Request, _: str = Depends(require_session
     """Processes in curated order (ARD §4.6), tombstones last in id order.
 
     The only implementation of the fallback rule: ids the order does not know
-    are appended in id order, and ids it names but disk does not have are
-    skipped. In a consistent data-repo the fallback contributes nothing — it is
-    here so a hand-edited or not-yet-migrated repo degrades instead of hiding
-    processes.
+    are appended in id order, ids it names but disk does not have are skipped,
+    and a repeated id is kept once. In a consistent data-repo the fallback
+    contributes nothing — it is here so a hand-edited or not-yet-migrated repo
+    degrades instead of hiding (or doubling) processes.
     """
     cfg = request.app.state.cfg
     docs = {p.stem: storage.read_json(p)
@@ -1770,7 +2228,8 @@ def list_processes(code: str, request: Request, _: str = Depends(require_session
         order = storage.read_json(opath).get("order", [])
 
     known = set(actives)
-    seq = [pid for pid in order if pid in known]
+    # dict.fromkeys keeps the first occurrence of a hand-edited duplicate, in place
+    seq = list(dict.fromkeys(pid for pid in order if pid in known))
     placed = set(seq)
     seq += [pid for pid in actives if pid not in placed]
     return [docs[pid] for pid in seq + tombs]
@@ -1778,7 +2237,39 @@ def list_processes(code: str, request: Request, _: str = Depends(require_session
 
 - [ ] **Step 4: Sync the order on create**
 
-In `ui-backend/inja_ui_backend/routers/processes.py`, inside `create_process`, replace this block:
+`order.json` is derived state, so a failed sync must never cost the caller the
+write that is already on disk. Add `import logging` and a module-level
+`logger = logging.getLogger(__name__)` to
+`ui-backend/inja_ui_backend/routers/processes.py`, and the shared guard both
+verbs use — the same reasoning as merge's `_sync_order` (`engine/merge/cli.py`,
+commit 43d1397):
+
+```python
+def _sync_order(cfg, dept: str, written: list) -> None:
+    """Reconcile `dept`'s order.json (ARD §4.6) and stage it — best effort.
+
+    Mirrors merge's `_sync_order` (engine/merge/cli.py) and for the same reason.
+    By the time a caller reaches this point the process file is already written
+    or already unlinked and the id ledger has advanced, so letting the
+    EngineError out would answer a *fully applied* change with a 500 and commit
+    nothing: the user's retry mints the next id and orphans the first. And
+    `reconcile` reads **every** process file in the department, so without this
+    one unreadable sibling would poison every create and delete there.
+
+    order.json is derived state — `order sync <dept>` rebuilds it from disk, and
+    an unreadable one can simply be deleted first — so warning and leaving the
+    file out of `written` still leaves a complete recovery path.
+    """
+    try:
+        engine.order_sync(cfg, dept)
+    except engine.EngineError as e:
+        logger.warning("the change is applied but %s's order.json could not be "
+                       "synced: %s", dept, e.message)
+        return
+    written.append(storage.order_path(cfg.data_root, dept))
+```
+
+Then, inside `create_process`, replace this block:
 
 ```python
         action = (f"create sub-process of {body.parent['process']}"
@@ -1791,8 +2282,7 @@ with:
 ```python
         # keep the department's order.json equal to its active set (ARD §4.6),
         # in the same commit as the creation itself
-        engine.order_sync(cfg, body.department)
-        written.append(storage.order_path(cfg.data_root, body.department))
+        _sync_order(cfg, body.department, written)
         action = (f"create sub-process of {body.parent['process']}"
                   if body.parent else "create process")
         gitcommit.commit(cfg, written, pid, action)
@@ -1810,27 +2300,117 @@ with:
 
 ```python
     # a permanently deleted process leaves the order (ARD §4.6)
-    dept = storage.dept_of(pid)
-    engine.order_sync(cfg, dept)
-    written.append(storage.order_path(cfg.data_root, dept))
+    _sync_order(cfg, storage.dept_of(pid), written)
     gitcommit.commit(cfg, written, pid, "delete process")
 ```
 
-- [ ] **Step 6: Run the test to verify it passes**
+- [ ] **Step 6: Let `gitcommit` skip a path git cannot stage**
 
-Run: `.venv/bin/pytest ui-backend/tests/test_order.py -q`
-Expected: PASS, 13 passed.
+`delete_process` names the department's `order.json` unconditionally, and the
+order module deliberately writes no file for a department that drops to zero
+actives without one (Task 3's lazy creation). Deleting the last process in such
+a department therefore hands `commit` a path that is absent from disk *and*
+never tracked: it matches no pathspec, `git add` aborts on it, and the whole
+commit fails — HTTP 500 *after* the process file is already unlinked. Skip
+those paths, and name them in a warning so the diagnostic is not lost.
 
-- [ ] **Step 7: Run the whole Python suite for regressions**
+In `ui-backend/inja_ui_backend/gitcommit.py` add `import logging` and a
+module-level `logger = logging.getLogger(__name__)`, then replace `commit` with:
+
+```python
+def commit(cfg: Settings, paths: list[Path], pid: str, action: str) -> None:
+    # A path git can't stage — absent from disk *and* never tracked — has no
+    # pathspec `git add` can match, and would abort the whole add, failing a
+    # commit for the paths that *do* have something to record. It happens on a
+    # real path: `delete_process` always names the department's order.json, and
+    # the order module deliberately writes no file for a department that drops
+    # to zero actives without one (ARD §4.6) — so deleting the last process in
+    # such a department reaches here with an absent, untracked order.json, after
+    # the process file is already unlinked. Skip those, and say which.
+    stageable, skipped = [], []
+    for p in paths:
+        (stageable if p.exists() or _tracked(cfg, p) else skipped).append(p)
+    if skipped:
+        logger.warning("git: nothing to stage for %s — absent and untracked",
+                       ", ".join(str(p) for p in skipped))
+    if stageable:
+        r = _git(cfg, "add", "--", *[str(p) for p in stageable])
+        if r.returncode != 0:
+            raise RuntimeError(f"git add failed: {(r.stderr or r.stdout).strip()}")
+    # nothing staged -> genuine no-op (not an error)
+    if _git(cfg, "diff", "--cached", "--quiet").returncode == 0:
+        return
+    msg = f"ui-edit({pid}): {action}"
+    r = _git(cfg, "-c", f"user.name={cfg.git_author_name}",
+             "-c", f"user.email={cfg.git_author_email}",
+             "commit", "-q", "-m", msg)
+    if r.returncode != 0:
+        raise RuntimeError(f"git commit failed: {(r.stderr or r.stdout).strip()}")
+```
+
+Append to `ui-backend/tests/test_gitcommit.py`, before
+`test_commit_raises_on_git_failure` (which must keep passing unchanged — genuine
+git failures still raise):
+
+```python
+def _status(root):
+    """The name-status lines of HEAD, e.g. ["M\tdepartments/.../x.json"]."""
+    out = subprocess.run(["git", "-C", str(root), "show", "--name-status",
+                          "--format=", "HEAD"], capture_output=True, text=True).stdout
+    return [ln for ln in out.splitlines() if ln.strip()]
+
+
+def _names(root):
+    return [ln.split("\t", 1)[1] for ln in _status(root)]
+```
+
+```python
+def test_commit_skips_an_absent_untracked_path(data_root):
+    """The production case: delete's order.json for a department that has none.
+
+    The absent, never-tracked path has no pathspec `git add` can match; it must
+    be skipped, and the paths beside it in the same call must still commit.
+    """
+    cfg = cfg_for(data_root)
+    p = storage.proc_path(data_root, "cooking-001")
+    doc = storage.read_json(p)
+    doc["name"] = "نام تازه"
+    storage.write_json_atomic(p, doc)
+    ghost = storage.order_path(data_root, "cooking")   # never written, never tracked
+    assert not ghost.exists()
+    gitcommit.commit(cfg, [p, ghost], "cooking-001", "save")
+    assert "ui-edit(cooking-001): save" in _log(data_root).splitlines()[0]
+    assert _names(data_root) == ["departments/cooking/processes/cooking-001.json"]
+    assert not ghost.exists()
+
+
+def test_commit_stages_the_deletion_of_a_tracked_path(data_root):
+    """Absent from disk but tracked is not "nothing to stage" — it is a deletion."""
+    cfg = cfg_for(data_root)
+    p = storage.proc_path(data_root, "cooking-001")
+    p.unlink()
+    gitcommit.commit(cfg, [p], "cooking-001", "delete process")
+    assert "ui-edit(cooking-001): delete process" in _log(data_root).splitlines()[0]
+    assert _status(data_root) == ["D\tdepartments/cooking/processes/cooking-001.json"]
+```
+
+- [ ] **Step 7: Run the tests to verify they pass**
+
+Run: `.venv/bin/pytest ui-backend/tests/test_order.py ui-backend/tests/test_gitcommit.py -q`
+Expected: PASS, 24 passed (18 in `test_order.py`, 6 in `test_gitcommit.py`).
+
+- [ ] **Step 8: Run the whole Python suite for regressions**
 
 Run: `make test`
 Expected: PASS. `ui-backend/tests/test_processes_read.py` and `test_departments.py` assert on the process list — if one breaks it is because it assumed filename order, which is now curated order. With no `order.json` in the fixture the two coincide, so any failure is a real bug, not a stale assumption.
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
 git add ui-backend/inja_ui_backend/routers/departments.py \
-        ui-backend/inja_ui_backend/routers/processes.py ui-backend/tests/test_order.py
+        ui-backend/inja_ui_backend/routers/processes.py \
+        ui-backend/inja_ui_backend/gitcommit.py \
+        ui-backend/tests/test_order.py ui-backend/tests/test_gitcommit.py
 git commit -m "feat(ui-backend): ordered process list; create/delete keep order in sync"
 ```
 
@@ -1858,6 +2438,7 @@ Create `ui/src/api/hooks.order.test.tsx`:
 ```tsx
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { renderHook, waitFor } from '@testing-library/react'
+import { QueryClient } from '@tanstack/react-query'
 import { createWrapper } from '../test/utils'
 import { useSaveOrder } from './hooks'
 import { ApiError } from './client'
@@ -1876,6 +2457,17 @@ describe('useSaveOrder', () => {
       expect.objectContaining({ method: 'PUT', body: JSON.stringify({ order: ['cooking-002', 'cooking-001'] }) }))
   })
 
+  it('invalidates the processes query after a 200', async () => {
+    const invalidateSpy = vi.spyOn(QueryClient.prototype, 'invalidateQueries')
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ order: ['cooking-002', 'cooking-001'] }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }))
+    const { result } = renderHook(() => useSaveOrder('cooking'), { wrapper: createWrapper() })
+    result.current.mutate({ order: ['cooking-002', 'cooking-001'] })
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['processes', 'cooking'] })
+  })
+
   it('surfaces a 409 as an ApiError with that status', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(JSON.stringify({ detail: 'set mismatch: missing=cooking-003 stale=-' }),
@@ -1886,6 +2478,17 @@ describe('useSaveOrder', () => {
     const err = result.current.error as ApiError
     expect(err).toBeInstanceOf(ApiError)
     expect(err.status).toBe(409)
+  })
+
+  it('invalidates the processes query after a 409 too, because it settles on onSettled not onSuccess', async () => {
+    const invalidateSpy = vi.spyOn(QueryClient.prototype, 'invalidateQueries')
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ detail: 'set mismatch: missing=cooking-003 stale=-' }),
+        { status: 409, headers: { 'Content-Type': 'application/json' } }))
+    const { result } = renderHook(() => useSaveOrder('cooking'), { wrapper: createWrapper() })
+    result.current.mutate({ order: ['cooking-001'] })
+    await waitFor(() => expect(result.current.isError).toBe(true))
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['processes', 'cooking'] })
   })
 })
 ```
@@ -1923,7 +2526,7 @@ export function useSaveOrder(code: string) {
 - [ ] **Step 5: Run the test to verify it passes**
 
 Run: `cd ui && npx vitest run src/api/hooks.order.test.tsx`
-Expected: PASS, 2 passed.
+Expected: PASS, 4 passed.
 
 - [ ] **Step 6: Commit**
 
@@ -2038,13 +2641,26 @@ describe('ReorderModal', () => {
     expect(spy).not.toHaveBeenCalled()
   })
 
-  it('shows the drift notice on a 409', async () => {
+  it('shows the drift notice and closes the modal on a 409', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(JSON.stringify({ detail: 'set mismatch: missing=cooking-009 stale=-' }),
         { status: 409, headers: { 'Content-Type': 'application/json' } }))
-    wrap(<ReorderModal department="cooking" departmentName="پخت" processes={PROCS} onClose={() => {}} />)
+    const onClose = vi.fn()
+    wrap(<ReorderModal department="cooking" departmentName="پخت" processes={PROCS} onClose={onClose} />)
     fireEvent.click(screen.getByRole('button', { name: /ذخیره/ }))
     expect(await screen.findByText(/ترتیب تغییر کرده/)).toBeInTheDocument()
+    expect(onClose).toHaveBeenCalled()
+  })
+
+  it('shows a generic failure message and keeps the modal open on a non-409 error', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ detail: 'internal error' }),
+        { status: 500, headers: { 'Content-Type': 'application/json' } }))
+    const onClose = vi.fn()
+    wrap(<ReorderModal department="cooking" departmentName="پخت" processes={PROCS} onClose={onClose} />)
+    fireEvent.click(screen.getByRole('button', { name: /ذخیره/ }))
+    expect(await screen.findByText('ذخیرهٔ ترتیب انجام نشد')).toBeInTheDocument()
+    expect(onClose).not.toHaveBeenCalled()
   })
 })
 ```
@@ -2093,10 +2709,14 @@ export function ReorderModal({ department, departmentName, processes, onClose }:
   function doSave() {
     save.mutate({ order: seq.map((p) => p.id) }, {
       onSuccess: () => { toast.show('ترتیب فرآیندها ذخیره شد'); onClose() },
-      onError: (e) => toast.show(
-        e instanceof ApiError && e.status === 409
-          ? 'ترتیب تغییر کرده است؛ فهرست به‌روزرسانی شد. دوباره تلاش کنید.'
-          : 'ذخیرهٔ ترتیب انجام نشد'),
+      onError: (e) => {
+        if (e instanceof ApiError && e.status === 409) {
+          toast.show('ترتیب تغییر کرده است؛ فهرست به‌روزرسانی شد. پنجرهٔ ترتیب‌دهی را دوباره باز کنید.')
+          onClose()
+        } else {
+          toast.show('ذخیرهٔ ترتیب انجام نشد')
+        }
+      },
     })
   }
 
@@ -2154,7 +2774,7 @@ export function ReorderModal({ department, departmentName, processes, onClose }:
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `cd ui && npx vitest run src/write/ReorderModal.test.tsx`
-Expected: PASS, 8 passed.
+Expected: PASS, 9 passed.
 
 If the `Process` type in the test's `proc()` helper does not compile, read `ui/src/api/types.ts` and match its actual `Process` shape rather than casting more aggressively.
 
@@ -2171,19 +2791,51 @@ git commit -m "feat(ui): ReorderModal — compact drag/arrow panel for process o
 
 **Files:**
 - Modify: `ui/src/screens/ProcessList.tsx`
-- Test: `ui/src/screens/ProcessList.test.tsx` (append)
+- Test: `ui/src/screens/ProcessList.test.tsx` (append, plus a fixture-order + selector fix — see Step 1)
 
 **Interfaces:**
 - Consumes: `ReorderModal` (Task 10); the already-ordered `useProcesses(code)`.
-- Produces: no new exports — a «ترتیب فرآیندها» button and a position number per active card.
+- Produces: no new exports — a «ترتیب فرآیندها» button, a position number per active card, and a
+  `data-testid={\`activity-count-${p.id}\`}` on the activity-count element.
 
 - [ ] **Step 1: Write the failing test**
 
-The existing `ui/src/screens/ProcessList.test.tsx` already defines a `PROCS` array (`cooking-001`,
-`cooking-014`, and the tombstoned `cooking-002`, in that order) and a `mock()` helper that serves it
-from any `/processes` URL. Reuse both — the backend returns the list already ordered, so `PROCS`
-order *is* the curated order. Add `ToastProvider` to the render because `ReorderModal` uses
-`useToast`.
+The existing `ui/src/screens/ProcessList.test.tsx` already defines a `PROCS` array and a `mock()`
+helper that serves it from any `/processes` URL. Reuse both — the backend returns the list already
+ordered, so `PROCS` order *is* the curated order. Add `ToastProvider` to the render because
+`ReorderModal` uses `useToast`.
+
+Reorder `PROCS` so the curated order **diverges** from id order — `cooking-014` (active) before
+`cooking-001` (active), then the tombstoned `cooking-002`. If the numbering ever started sorting by
+id, the position assertions below would flip and fail; with the two active ids already in id order,
+that regression would ship green (closes review finding A on this task). Give `cooking-014` one
+activity node so its position badge (`۱`, first in curated order) and its activity count are both
+`۱` on the same card — a genuine text collision the existing `renders cards…` test must disambiguate
+without keying off a cosmetic font-size class (closes review finding B: use the `activity-count-*`
+testid added in Step 6a, not `div[class*="text-[17px]"]`):
+
+```tsx
+// Curated order deliberately diverges from id order (cooking-014 before cooking-001):
+// if ProcessList ever started sorting by id before numbering, the position assertions
+// below would flip and fail. See finding A in the Task 11 review.
+const PROCS = [
+  { id: 'cooking-014', department: 'cooking', name: 'پرداخت هزینه', summary: 's2', parent: { process: 'cooking-001', node: 'n' }, kpis: [], pending: [], nodes: [{ type: 'activity' }] },
+  { id: 'cooking-001', department: 'cooking', name: 'خرید و پرداخت', summary: 's1', parent: null, kpis: [{ name: 'k' }], pending: [], nodes: [{ type: 'activity' }, { type: 'start' }] },
+  { id: 'cooking-002', department: 'cooking', name: 'فرآیند قدیمی', summary: 's3', parent: null, kpis: [], pending: [], nodes: [], tombstoned: true, superseded_by: ['cooking-050'] },
+]
+```
+
+Update the existing `renders cards with derived tags and activity counts` test's assertion (it no
+longer needs a `closest()`/`querySelector()` walk now that the activity-count element carries its
+own testid):
+
+```tsx
+    // cooking-014 has 1 activity node, and its position badge is also ۱ (it's first
+    // in curated order) — the same ۱ text appears twice on its card. Disambiguate via
+    // the activity-count testid rather than a cosmetic font-size selector.
+    expect(screen.getByTestId('activity-count-cooking-014')).toHaveTextContent('۱')
+    expect(screen.getByTestId('activity-count-cooking-001')).toHaveTextContent('۱')
+```
 
 Append to the imports at the top of the file:
 
@@ -2197,8 +2849,8 @@ Then append these tests inside the existing `describe('ProcessList', …)` block
   it('numbers active processes in the order the API returned', async () => {
     mock()
     renderAt('/departments/:code', <ProcessList />, '/departments/cooking')
-    expect(await screen.findByTestId('pos-cooking-001')).toHaveTextContent('۱')
-    expect(screen.getByTestId('pos-cooking-014')).toHaveTextContent('۲')
+    expect(await screen.findByTestId('pos-cooking-014')).toHaveTextContent('۱')
+    expect(screen.getByTestId('pos-cooking-001')).toHaveTextContent('۲')
   })
 
   it('gives a tombstoned process no position number', async () => {
@@ -2212,9 +2864,10 @@ Then append these tests inside the existing `describe('ProcessList', …)` block
     mock()
     renderAt('/departments/:code', <ProcessList />, '/departments/cooking')
     await screen.findByText('خرید و پرداخت')
-    fireEvent.change(screen.getByPlaceholderText('جست‌وجو براساس نام یا شناسهٔ فرآیند…'), { target: { value: 'cooking-014' } })
-    // cooking-014 keeps position ۲ even though it is now the only visible row
-    expect(screen.getByTestId('pos-cooking-014')).toHaveTextContent('۲')
+    fireEvent.change(screen.getByPlaceholderText('جست‌وجو براساس نام یا شناسهٔ فرآیند…'), { target: { value: 'cooking-001' } })
+    // cooking-001 keeps position ۲ even though it is now the only visible row — if
+    // positions were ever recomputed from the filtered list it would show ۱ instead.
+    expect(screen.getByTestId('pos-cooking-001')).toHaveTextContent('۲')
   })
 
   // the modal calls useToast, so this one test wraps the screen in ToastProvider
@@ -2224,7 +2877,7 @@ Then append these tests inside the existing `describe('ProcessList', …)` block
     fireEvent.click(await screen.findByRole('button', { name: 'ترتیب فرآیندها' }))
     expect(await screen.findByText(/ترتیب فرآیندهای/)).toBeInTheDocument()
     expect(screen.getAllByTestId('reorder-row').map((r) => r.getAttribute('data-pid')))
-      .toEqual(['cooking-001', 'cooking-014'])
+      .toEqual(['cooking-014', 'cooking-001'])
   })
 ```
 
@@ -2283,6 +2936,24 @@ with:
                     <IdBadge>{p.id}</IdBadge>
 ```
 
+- [ ] **Step 6a: Give the activity-count element a stable testid**
+
+The new position badge can legitimately show the same Persian digit as the card's activity count
+(e.g. cooking-014: position ۱, 1 activity). Tests need a handle that isn't the count element's
+Tailwind font-size class — a purely cosmetic restyle would break that with no connection to any real
+regression (review finding B). Add a semantic testid instead. Replace this line further down the
+card:
+
+```tsx
+                  <div className="font-extrabold text-[17px] text-violet">{toFa(activityCount(p))}</div>
+```
+
+with:
+
+```tsx
+                  <div data-testid={`activity-count-${p.id}`} className="font-extrabold text-[17px] text-violet">{toFa(activityCount(p))}</div>
+```
+
 - [ ] **Step 7: Render the modal**
 
 Beside the existing `{creating && …}` line, add:
@@ -2294,7 +2965,7 @@ Beside the existing `{creating && …}` line, add:
 - [ ] **Step 8: Run the test to verify it passes**
 
 Run: `cd ui && npx vitest run src/screens/ProcessList.test.tsx`
-Expected: PASS.
+Expected: PASS, 7 passed.
 
 - [ ] **Step 9: Run the full frontend suite and the linter**
 
@@ -2509,3 +3180,27 @@ cd <code-repo> && DATA_ROOT=<data-repo> .venv/bin/order check --all
 ```
 
 All four must pass, the last with exit 0.
+
+---
+
+## Post-review fix wave
+
+The final whole-branch review found nine defects (four IMPORTANT, five MINOR), all reproduced with
+probes. They were fixed on this branch after Task 13; the design record carries the details in
+**§12 Post-review amendments** of
+`docs/superpowers/specs/2026-07-25-department-process-order-design.md`, and the accepted divergence
+for UI-created sub-processes is now decision **D10** in that spec's §1.
+
+Summary of what moved away from the plan as written above:
+
+| Where | Change |
+|---|---|
+| Task 8 / `routers/processes.py` | `_sync_order` catches `(EngineError, OSError)` — the engine is a subprocess, so a missing `order` script raises `FileNotFoundError` and half-applied the create |
+| Task 7 / `routers/departments.py` | `put_order` widens the same catch (500 on an unrunnable CLI) and validates ids against `^[a-z]+-[0-9]{3}$` → 422, because the CLI's `--sequence` is comma-delimited |
+| Task 8 / `routers/departments.py` | the `order.json` **read** in `list_processes` falls back to id order on a corrupt file instead of 500-ing the whole department |
+| Task 8 / `storage.py` | `list_process_files` is department-anchored, matching `order.active_ids`, so a misfiled process cannot 409 the department forever |
+| Task 3 / `order/__init__.py` | `set_order` honours lazy creation, like `reconcile` |
+| Task 5 / `order/cli.py` | `--all` continues past a failing department and exits 2 at the end; `sync`'s error message carries merge's "derived state, safe to delete" advice |
+| Task 10 / `ReorderModal.tsx` | save is disabled with zero rows |
+| Task 12 / `guard.py` | also blocks Bash `order set` / `order move`; `show`/`sync`/`check` stay allowed |
+| Docs | `engine/README.md` count, ADR 0016 Area + consequences, ARD §4.6/§7/§13.2/§14/§15, PRD FR-D12, `schemas/README.md`, data-repo `CLAUDE.md` CLI table |

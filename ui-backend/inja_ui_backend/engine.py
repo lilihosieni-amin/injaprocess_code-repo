@@ -49,6 +49,20 @@ def peek_process_id(cfg: Settings, department: str) -> str:
     return _run(cfg, ["allocate-id", "process", department, "--peek"]).strip()
 
 
+def order_set(cfg: Settings, code: str, sequence: list[str]) -> None:
+    """Replace a department's process order (ARD §4.6).
+
+    Raises EngineError; its `.message` starts with "set mismatch:" when the
+    given sequence is not exactly the department's active set.
+    """
+    _run(cfg, ["order", "set", code, "--sequence", ",".join(sequence)])
+
+
+def order_sync(cfg: Settings, code: str) -> None:
+    """Reconcile a department's order.json with what is on disk."""
+    _run(cfg, ["order", "sync", code])
+
+
 def allocate_box_id(cfg: Settings, working_doc: dict) -> str:
     tmp = _tmp_doc(working_doc)
     try:

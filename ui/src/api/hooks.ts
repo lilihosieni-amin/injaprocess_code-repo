@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { fetchJson } from './client'
-import type { Department, Me, Overview, PendingItem, Process } from './types'
+import type { Department, DepartmentOrder, Me, Overview, PendingItem, Process } from './types'
 
 export const useDepartments = () =>
   useQuery({ queryKey: ['departments'], queryFn: () => fetchJson<Department[]>('/api/departments') })
@@ -118,5 +118,16 @@ export function useResolveInboxPending() {
       qc.invalidateQueries({ queryKey: ['pending'] })
       qc.invalidateQueries({ queryKey: ['process', v.pid] })
     },
+  })
+}
+
+export function useSaveOrder(code: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body: DepartmentOrder) =>
+      fetchJson<DepartmentOrder>(`/api/departments/${code}/order`, { method: 'PUT', body: JSON.stringify(body) }),
+    // onSettled, not onSuccess: a 409 means the active set moved, so the list
+    // must refresh on failure too
+    onSettled: () => qc.invalidateQueries({ queryKey: ['processes', code] }),
   })
 }

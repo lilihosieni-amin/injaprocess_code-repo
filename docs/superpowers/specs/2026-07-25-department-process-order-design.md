@@ -31,6 +31,7 @@ different parts of the system.
 | D7 | A **restructure heir inherits the position** of the earliest process it supersedes, so curation survives merge/split. |
 | D8 | A **new sub-process created by `merge update` is inserted directly after its parent**, not appended — same locality logic as D7. |
 | D9 | Reordering happens in a **dedicated compact modal**, not inline on the process list. |
+| D10 | A sub-process created **through the UI is appended**, not placed after its parent — D8 covers `merge update` only, and the divergence is accepted. `merge update` can mint several sub-processes in one verb, so locality is the only thing that keeps them findable; the UI user creates exactly one, watches it appear, and can drag it in the same panel. Giving `POST /api/processes` an `--after`/child-hint path would add a second placement rule to keep in step with the first for almost no gain. (Added by the final whole-branch review.) |
 
 ---
 
@@ -234,7 +235,7 @@ silently drop the new process out of the order.
   §13.2). Native HTML5 drag events **plus ↑/↓ buttons** — no new dependency (the UI has six
   runtime deps and none does drag-and-drop; these rows are far simpler than what `@dnd-kit`
   addresses), and the arrows cover keyboard and touch, which raw HTML5 DnD does not.
-  On a 409 it shows a Persian «ترتیب تغییر کرده» notice and refetches.
+  On a 409 it shows a Persian «ترتیب تغییر کرده» notice, refetches, and closes the modal so the user reopens the panel on fresh data.
 - **`ui/src/screens/ProcessList.tsx`** — a «ترتیب فرآیندها» ghost button beside «فرآیند جدید»; a
   position number (via the existing `toFa` helper) on each active card; no client-side sort, since
   the endpoint is already ordered. Tombstones show no number.
@@ -348,3 +349,59 @@ and the file would quietly rot. The export needs a sequence it can trust without
 every insertion either renumbers many files (many git diffs, many commits) or leaves gaps that
 accumulate, and `process.json` is written by `merge` per-process, so no single writer sees the whole
 sequence at once.
+
+---
+
+## 12. Post-review amendments
+
+The final whole-branch review found nine defects, each reproduced with a probe. What changed
+against the design above:
+
+**§5 `ui-backend`.**
+- Both engine call sites now catch `(EngineError, OSError)`, not `EngineError` alone. The engine is
+  a **subprocess**, so an `order` console script missing from PATH — a brand-new script, so a
+  partial deploy or a checkout that skipped `pip install -e engine` hits it — raises
+  `FileNotFoundError`, which is an `OSError`. In `create_process`/`delete_process` that escaped as a
+  500 *after* the process file was written and the id ledger had advanced, half-applying the change;
+  the guard is now as strong as merge's `(ValueError, OSError)`. In `put_order` nothing is written
+  yet, so the widening only buys a logged, legible refusal (**500**, "the order CLI could not be
+  run") instead of an unhandled exception.
+- `GET /{code}/processes` now guards the `order.json` **read** as well as the writes: an unreadable
+  or wrongly-shaped file logs a warning and falls back to id order (§2.1's existing fallback)
+  instead of 500-ing. A 500 there also blocked the only in-UI repair, since the reorder `PUT` heals
+  the file but the panel cannot be opened on a list that never loads.
+- `storage.list_process_files` is **anchored on the department** (`^{code}-\d{3}$`), matching
+  `order.active_ids`. A bare `*.json` glob let a misfiled `dining-007.json` under
+  `cooking/processes/` into the list and into the modal's `PUT`, which the CLI then rejected as
+  `409 set mismatch: stale=dining-007` — permanently, because reopening the panel rebuilt the same
+  list. Its other callers (department counts, the pending inbox, delete's reference sweep) all want
+  the same anchored set.
+- `put_order` validates every id against `^[a-z]+-[0-9]{3}$` and returns **422** otherwise. The
+  backend joins the sequence with commas and the CLI splits on them, so `["cooking-001,cooking-002"]`
+  stored a *different, longer* sequence than requested and an empty entry was dropped — in both
+  cases with the response echoing the request rather than what was stored.
+
+**§3 The `order` CLI.**
+- `sync --all` and `check --all` now continue past a department whose `order.json` cannot be read,
+  report it on stderr, and exit 2 at the end. They used to stop at the first fault, silently
+  half-running the ops tool the migration depends on. Single-department invocations still stop at
+  the first (and only) failure.
+- `order sync`'s failure message now carries merge's advice — that `order.json` is derived state, so
+  deleting an unreadable one and re-running the sync is safe — instead of printing the bare JSON
+  error.
+
+**§2 Data contract.** `set_order` honours lazy creation the way `reconcile` already did: an empty
+sequence for a department with no actives and no existing file writes nothing. Otherwise
+`PUT {"order": []}` created `{"order": []}` and the no-churn guard preserved it forever.
+
+**§6 UI.** The modal's save button is disabled when there are zero rows, so the empty state cannot
+reach that `PUT` in the first place.
+
+**§7 Agent awareness.** The guard now also blocks the Bash commands `order set` and `order move`,
+matched on the order CLI's own argv — the mirror of the existing "merge's argv never spells the
+path" reasoning. Blocking the file alone left the sanctioned writer as an open door, and a
+model-authored permutation is invisible afterwards: `order check` compares **sets**, and
+`reconcile` is a fixed point for any permutation of the correct set. `order show` / `order sync` /
+`order check` stay allowed. As with `processes/*.json`, the Bash half of the guard is a
+conservative heuristic, not an absolute guarantee; ARD §7 and §14 now say so rather than promising
+one.

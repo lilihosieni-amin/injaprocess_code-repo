@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 
@@ -10,6 +11,8 @@ from ..auth import require_session
 from ..models import CreateProcessBody, PendingDecision
 
 router = APIRouter(prefix="/api/processes")
+
+logger = logging.getLogger(__name__)
 
 
 def _now() -> str:
@@ -21,6 +24,37 @@ def _load(cfg, pid):
     if not path.is_file():
         raise HTTPException(status_code=404, detail="process not found")
     return path, storage.read_json(path)
+
+
+def _sync_order(cfg, dept: str, written: list) -> None:
+    """Reconcile `dept`'s order.json (ARD §4.6) and stage it — best effort.
+
+    Mirrors merge's `_sync_order` (engine/merge/cli.py) and for the same reason.
+    By the time a caller reaches this point the process file is already written
+    or already unlinked and the id ledger has advanced, so letting the failure
+    out would answer a *fully applied* change with a 500 and commit nothing:
+    the user's retry mints the next id and orphans the first. And `reconcile`
+    reads **every** process file in the department, so without this one
+    unreadable sibling would poison every create and delete there.
+
+    The catch is as wide as merge's `(ValueError, OSError)`, because the engine
+    runs as a **subprocess**: a `order` console script that is missing from
+    PATH — a partial deploy, or a checkout that skipped the editable reinstall —
+    makes `subprocess.run` raise `FileNotFoundError`, an `OSError` and not an
+    `EngineError`. Catching only `EngineError` would leave exactly the
+    half-applied create this guard exists to prevent.
+
+    order.json is derived state — `order sync <dept>` rebuilds it from disk, and
+    an unreadable one can simply be deleted first — so warning and leaving the
+    file out of `written` still leaves a complete recovery path.
+    """
+    try:
+        engine.order_sync(cfg, dept)
+    except (engine.EngineError, OSError) as e:
+        logger.warning("the change is applied but %s's order.json could not be "
+                       "synced: %s", dept, getattr(e, "message", None) or e)
+        return
+    written.append(storage.order_path(cfg.data_root, dept))
 
 
 @router.get("/{pid}")
@@ -86,6 +120,9 @@ async def create_process(body: CreateProcessBody, request: Request, response: Re
             engine.validate_doc(cfg, "process.schema.json", pdoc)
             storage.write_json_atomic(ppath, pdoc)
             written.append(ppath)
+        # keep the department's order.json equal to its active set (ARD §4.6),
+        # in the same commit as the creation itself
+        _sync_order(cfg, body.department, written)
         action = (f"create sub-process of {body.parent['process']}"
                   if body.parent else "create process")
         gitcommit.commit(cfg, written, pid, action)
@@ -118,6 +155,8 @@ async def delete_process(pid: str, request: Request, _: str = Depends(require_se
                 doc["updated_at"] = _now()
                 storage.write_json_atomic(fp, doc)
                 written.append(fp)
+    # a permanently deleted process leaves the order (ARD §4.6)
+    _sync_order(cfg, storage.dept_of(pid), written)
     gitcommit.commit(cfg, written, pid, "delete process")
     return {"deleted": pid}
 
