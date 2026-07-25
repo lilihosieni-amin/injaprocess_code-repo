@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from engine_common import data_root, read_json, write_json_atomic
 from merge import (attach_subprocess, build_new, build_update, remove_process,
                    resolve_pending, restructure)
+from order import reconcile as reconcile_order
 
 
 def _now(v):
@@ -14,6 +15,16 @@ def _now(v):
 def _proc_path(pid):
     dept = pid.rsplit("-", 1)[0]
     return data_root() / "departments" / dept / "processes" / f"{pid}.json"
+
+
+def _dept_of(pid):
+    return pid.rsplit("-", 1)[0]
+
+
+def _sync_order(depts, now, heir_hints=None, child_hints=None):
+    """Keep each touched department's order.json equal to its active set (§4.6)."""
+    for dept in sorted(depts):
+        reconcile_order(dept, now, heir_hints=heir_hints, child_hints=child_hints)
 
 
 def _require(cond, msg):
@@ -67,6 +78,7 @@ def main(argv=None):
             print(parent["id"])
             for c in children:
                 print(f"subprocess {c['id']} node {c['parent']['node']}")
+            _sync_order({args.department}, _now(args.now))
         elif args.cmd == "update":
             path = _proc_path(args.process)
             _require(path.is_file(), f"target process {args.process} must exist")
@@ -78,12 +90,15 @@ def main(argv=None):
                 write_json_atomic(_proc_path(c["id"]), c)
             for c in children:
                 print(f"subprocess {c['id']} node {c['parent']['node']}")
+            _sync_order({_dept_of(args.process)}, _now(args.now),
+                        child_hints={args.process: [c["id"] for c in children]})
         elif args.cmd == "remove":
             path = _proc_path(args.process)
             _require(path.is_file(), f"process {args.process} must exist")
             proc = remove_process(read_json(path), _now(args.now))
             write_json_atomic(path, proc)
             print(f"tombstoned {args.process}")
+            _sync_order({_dept_of(args.process)}, _now(args.now))
         elif args.cmd == "restructure":
             _require(pathlib_exists(args.plan), "plan file must exist")
             heirs, tombstoned = restructure(read_json(args.plan), args.run, _now(args.now))
@@ -97,6 +112,14 @@ def main(argv=None):
                 for n in h["nodes"]:
                     if n.get("type") == "activity" and n.get("subprocess"):
                         print(f"subprocess {n['subprocess']} node {n['id']}")
+            # a heir inherits the position of the earliest process it supersedes
+            heir_hints = {}
+            for t in tombstoned:
+                for heir in t.get("superseded_by", []):
+                    heir_hints.setdefault(heir, []).append(t["id"])
+            depts = ({_dept_of(h["id"]) for h in heirs}
+                     | {_dept_of(t["id"]) for t in tombstoned})
+            _sync_order(depts, _now(args.now), heir_hints=heir_hints)
         elif args.cmd == "attach-subprocess":
             pp = _proc_path(args.parent_process)
             cp = _proc_path(args.child)
@@ -107,11 +130,14 @@ def main(argv=None):
             write_json_atomic(pp, parent)
             write_json_atomic(cp, child)
             print(f"subprocess {child['id']} node {args.node}")
+            _sync_order({_dept_of(args.parent_process), _dept_of(args.child)},
+                        _now(args.now))
         else:  # accept | reject
             path = _proc_path(args.process)
             _require(path.is_file(), f"process {args.process} must exist")
             proc = resolve_pending(read_json(path), args.index, args.cmd, _now(args.now))
             write_json_atomic(path, proc)
+            _sync_order({_dept_of(args.process)}, _now(args.now))
     except ValueError as e:
         print(f"merge: {e}", file=sys.stderr)
         raise SystemExit(2)
