@@ -7,6 +7,7 @@ import { IdBadge } from '../ui/IdBadge'
 import { Button } from '../ui/Button'
 import { CreateProcessModal } from '../write/CreateProcessModal'
 import { DeleteProcessConfirm } from '../write/DeleteProcessConfirm'
+import { ReorderModal } from '../write/ReorderModal'
 import type { Process } from '../api/types'
 
 const TAG_CLS: Record<string, string> = {
@@ -20,6 +21,7 @@ export function ProcessList() {
   const nav = useNavigate()
   const [q, setQ] = useState('')
   const [creating, setCreating] = useState(false)
+  const [reordering, setReordering] = useState(false)
   const [delTarget, setDelTarget] = useState<{ pid: string; name: string } | null>(null)
   const { data: procs = [] } = useProcesses(code)
   const { data: depts = [] } = useDepartments()
@@ -29,6 +31,11 @@ export function ProcessList() {
   const query = q.trim()
   const list = procs.filter((p) => !query || p.name.includes(query) || p.id.includes(query))
   const activityCount = (p: Process) => p.nodes.filter((n) => n.type === 'activity' && !('removed' in n && n.removed)).length
+
+  // Positions come from the full ordered list, not the filtered one, so searching
+  // never renumbers. Tombstones hold no position (ARD §4.6).
+  const orderPos = new Map<string, number>()
+  procs.filter((p) => !p.tombstoned).forEach((p, i) => orderPos.set(p.id, i + 1))
 
   // Preserve the list's scroll position across visiting a process and coming back.
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -56,6 +63,7 @@ export function ProcessList() {
             <div className="text-[13px] text-muted mt-2">{toFa(dept?.count ?? procs.length)} فرآیند مستندشده · برای مشاهدهٔ کارت خلاصه و فلوچارت روی هر فرآیند بزنید.</div>
           </div>
           <div className="flex items-center gap-2.5 shrink-0">
+            <Button variant="ghost" onClick={() => setReordering(true)} className="px-4 py-[11px] text-[13px]">ترتیب فرآیندها</Button>
             <Button variant="ghost" onClick={() => nav(`/departments/${code}/overview`)} className="px-4 py-[11px] text-[13px]">اطلاعات دپارتمان</Button>
             <Button variant="coral" onClick={() => setCreating(true)} className="px-4 py-[11px] text-[13px]">فرآیند جدید</Button>
           </div>
@@ -77,6 +85,9 @@ export function ProcessList() {
               <div key={p.id} className={`bg-white border border-warm rounded-2xl px-[19px] py-[17px] flex items-center gap-4 shadow-card ${tombstoned ? 'opacity-60' : ''}`}>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2.5">
+                    {orderPos.has(p.id) && (
+                      <span data-testid={`pos-${p.id}`} className="font-extrabold text-[12px] text-violet min-w-[18px] text-center shrink-0">{toFa(orderPos.get(p.id)!)}</span>
+                    )}
                     <IdBadge>{p.id}</IdBadge>
                     <span className="font-bold text-[15px] text-ink">{p.name}</span>
                     <span className={`text-[10.5px] px-2 py-0.5 rounded-full font-semibold ${TAG_CLS[tag.kind]}`}>{tag.label}</span>
@@ -109,6 +120,7 @@ export function ProcessList() {
         </div>
       </div>
       {creating && <CreateProcessModal department={code} departmentName={dept?.name ?? ''} onClose={() => setCreating(false)} />}
+      {reordering && <ReorderModal department={code} departmentName={dept?.name ?? ''} processes={procs} onClose={() => setReordering(false)} />}
       {delTarget && <DeleteProcessConfirm pid={delTarget.pid} name={delTarget.name} onClose={() => setDelTarget(null)} />}
     </div>
   )
