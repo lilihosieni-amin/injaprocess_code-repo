@@ -38,11 +38,13 @@ RUN set -eux; \
     patch -p1 --forward -d "$SITE" < /opt/patches/0003-preset-append-system-prompt.patch; \
     patch -p1 --forward -d "$SITE" < /opt/patches/0004-disable-partial-message-streaming.patch; \
     patch -p1 --forward -d "$SITE" < /opt/patches/0005-raise-production-budget-caps.patch; \
+    patch -p1 --forward -d "$SITE" < /opt/patches/0006-disable-input-security-filter.patch; \
     grep -q "at most once per 2s\|rate-limit" "$SITE/src/bot/handlers/message.py"; \
     grep -q "if False and not self.config.agentic_mode" "$SITE/src/bot/features/registry.py"; \
     grep -q '"preset": "claude_code"' "$SITE/src/claude/sdk_integration.py"; \
     grep -q "control-bot patch 0004" "$SITE/src/claude/sdk_integration.py"; \
-    grep -q "float = 100.0  # control-bot patch 0005" "$SITE/src/config/environments.py"
+    grep -q "float = 100.0  # control-bot patch 0005" "$SITE/src/config/environments.py"; \
+    grep -q "control-bot patch 0006" "$SITE/src/bot/middleware/security.py"
 
 # Runtime: APPROVED_DIRECTORY (data-repo) bind-mounted; env_file supplies the profile;
 # claude-credentials volume mounted at /root/.claude for subscription auth.

@@ -1,0 +1,27 @@
+Subject: [PATCH] control-bot 0006 - disable the incoming-message security filter
+
+The security_middleware pre-screens every incoming Telegram message and blocks
+it when >50% of the characters get stripped by sanitize_command_input (which
+removes ` $ ; | & < > # and all control chars, then collapses whitespace). For
+a single trusted operator this false-positives constantly on short or formatted
+Persian messages -- a markdown table row, a few blank lines, or a symbol-heavy
+snippet all trip it ("Content contains too many dangerous characters").
+
+The filter is not the real safety boundary: AGENTIC_MODE already bypasses it by
+design ("user text is a prompt to Claude -- not a command"), and the actual
+confinement is the Phase-3 hooks + approved_directory callback (ADR 0001), which
+this patch does not touch. auth_middleware (ALLOWED_USERS) and rate-limiting are
+also unaffected. So we short-circuit security_middleware to a pass-through.
+--- a/src/bot/middleware/security.py
++++ b/src/bot/middleware/security.py
+@@ -20,6 +20,10 @@
+     3. Detects potential attacks
+     4. Logs security violations
+     """
++    # control-bot patch 0006 - input security filter disabled. Single trusted user
++    # (ALLOWED_USERS still enforced by auth_middleware); the real confinement is the
++    # Phase-3 hooks + approved_directory (ADR 0001), not this pre-filter.
++    return await handler(event, data)
+     user_id = event.effective_user.id if event.effective_user else None
+     username = (
+         getattr(event.effective_user, "username", None)
