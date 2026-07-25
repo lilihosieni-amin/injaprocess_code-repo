@@ -88,7 +88,10 @@ append rather than committing nine near-empty files.
 
 ### 2.1 The one ordering rule
 
-Defined once and used by the backend today and the export later:
+Implemented in exactly one place — `ui-backend`'s `list_processes` (§5). The engine keeps the file
+*exact*, so `reconcile` never needs this fallback, and the export will read an already-exact file.
+Putting it in the engine as a shared helper would mean the backend either imports engine modules
+(which it deliberately never does — it only shells out to the CLIs) or carries a second copy:
 
 ```
 ordered(actives, order) = [id for id in order if id in actives]
