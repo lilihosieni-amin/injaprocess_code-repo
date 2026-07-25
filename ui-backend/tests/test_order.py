@@ -283,3 +283,164 @@ def test_delete_of_the_last_process_needs_no_order_file(data_root):
     assert _order_on_disk(data_root) is None
     assert _commit_count(data_root) - before == 1
     assert "ui-edit(cooking-001): delete process" in _head(data_root)
+
+
+# --- the engine runs as a subprocess: an unrunnable CLI raises OSError ---------
+
+def _order_cli_missing(monkeypatch, name):
+    """Make one engine helper raise what a missing console script really raises.
+
+    `order` is brand-new in this branch, so a partial deploy or a checkout that
+    skipped the editable reinstall leaves it off PATH and `subprocess.run`
+    raises `FileNotFoundError` — an `OSError`, never an `EngineError`.
+    """
+    from inja_ui_backend import engine as engine_mod
+
+    def boom(*a, **kw):
+        raise FileNotFoundError(2, "No such file or directory", "order")
+
+    monkeypatch.setattr(engine_mod, name, boom)
+
+
+def test_create_survives_an_unrunnable_order_cli(data_root, caplog, monkeypatch):
+    """The half-apply this branch already fixed twice, reached through OSError.
+
+    Unguarded the 500 lands *after* the process file is written and the id
+    ledger has advanced, so the user's retry mints the next id and orphans the
+    first.
+    """
+    _order_cli_missing(monkeypatch, "order_sync")
+    c = _auth_client(data_root)
+    before = _commit_count(data_root)
+    with caplog.at_level(logging.WARNING):
+        r = c.post("/api/processes", json={"department": "cooking", "name": "نو"})
+    assert r.status_code == 201
+    new_id = r.json()["id"]
+    assert _commit_count(data_root) - before == 1
+    log = _head(data_root)
+    assert f"ui-edit({new_id}): create process" in log
+    assert f"{new_id}.json" in log
+    assert _order_on_disk(data_root) is None
+    assert "cooking's order.json could not be synced" in caplog.text
+
+
+def test_delete_survives_an_unrunnable_order_cli(data_root, caplog, monkeypatch):
+    _clone(data_root, "cooking-002")
+    _track(data_root)
+    _order_cli_missing(monkeypatch, "order_sync")
+    c = _auth_client(data_root)
+    before = _commit_count(data_root)
+    with caplog.at_level(logging.WARNING):
+        assert c.delete("/api/processes/cooking-002").status_code == 200
+    assert _commit_count(data_root) - before == 1
+    assert "ui-edit(cooking-002): delete process" in _head(data_root)
+    assert "cooking's order.json could not be synced" in caplog.text
+
+
+def test_put_order_with_an_unrunnable_order_cli_is_a_clean_500(data_root, monkeypatch):
+    """Nothing is written here, so the job is only to refuse legibly."""
+    _order_cli_missing(monkeypatch, "order_set")
+    c = _auth_client(data_root)
+    r = c.put("/api/departments/cooking/order", json={"order": ["cooking-001"]})
+    assert r.status_code == 500
+    assert "order" in r.json()["detail"]
+    assert _order_on_disk(data_root) is None
+
+
+# --- the order.json READ path ------------------------------------------------
+
+def test_processes_survive_a_corrupt_order_file(data_root, caplog):
+    """A corrupt order.json must not take the whole department's list down.
+
+    A 500 here also blocks the only in-UI repair: the reorder PUT rewrites the
+    file, but the modal cannot be opened on a list that never loads.
+    """
+    _clone(data_root, "cooking-002")
+    _corrupt(data_root / "departments" / "cooking" / "order.json")
+    c = _auth_client(data_root)
+    with caplog.at_level(logging.WARNING):
+        r = c.get("/api/departments/cooking/processes")
+    assert r.status_code == 200
+    assert [p["id"] for p in r.json()] == ["cooking-001", "cooking-002"]
+    assert "order.json" in caplog.text
+    # and the modal's PUT still heals the file
+    assert c.put("/api/departments/cooking/order",
+                 json={"order": ["cooking-002", "cooking-001"]}).status_code == 200
+
+
+def test_processes_survive_an_order_file_of_the_wrong_shape(data_root, caplog):
+    p = data_root / "departments" / "cooking" / "order.json"
+    p.write_text(json.dumps(["cooking-001"]), encoding="utf-8")
+    c = _auth_client(data_root)
+    with caplog.at_level(logging.WARNING):
+        r = c.get("/api/departments/cooking/processes")
+    assert r.status_code == 200
+    assert [x["id"] for x in r.json()] == ["cooking-001"]
+
+
+# --- backend and engine must agree about the department's process set ---------
+
+def _misfile(data_root, dept, pid):
+    """Drop a foreign-department process file into `dept`'s processes/ dir."""
+    src = data_root / "departments" / "cooking" / "processes" / "cooking-001.json"
+    doc = json.loads(src.read_text(encoding="utf-8"))
+    doc["id"] = pid
+    doc["department"] = pid.rsplit("-", 1)[0]
+    doc["nodes"] = []
+    doc["edges"] = []
+    doc["pending"] = []
+    (data_root / "departments" / dept / "processes" / f"{pid}.json").write_text(
+        json.dumps(doc, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def test_a_misfiled_process_is_not_in_the_department_list(data_root):
+    """`active_ids` anchors ids on the department; the backend must agree.
+
+    Otherwise the list offers an id the `order` CLI calls stale, and the
+    department is stuck behind `409 set mismatch` — reopening the modal
+    produces the same rejected list.
+    """
+    _clone(data_root, "cooking-002")
+    _misfile(data_root, "cooking", "dining-007")
+    c = _auth_client(data_root)
+    ids = [p["id"] for p in c.get("/api/departments/cooking/processes").json()]
+    assert ids == ["cooking-001", "cooking-002"]
+    # the sequence the modal would send is exactly the CLI's active set
+    assert c.put("/api/departments/cooking/order",
+                 json={"order": ids}).status_code == 200
+
+
+def test_a_misfiled_process_is_not_counted_on_the_board(data_root):
+    _misfile(data_root, "cooking", "dining-007")
+    c = _auth_client(data_root)
+    counts = {d["code"]: d["count"] for d in c.get("/api/departments").json()}
+    assert counts["cooking"] == 1
+
+
+# --- the --sequence wire format ----------------------------------------------
+
+def test_put_order_rejects_an_id_holding_a_comma(data_root):
+    """The backend joins on commas and the CLI splits on them: a comma inside an
+    id would silently store a *different* sequence than the one requested."""
+    _clone(data_root, "cooking-002")
+    c = _auth_client(data_root)
+    r = c.put("/api/departments/cooking/order",
+              json={"order": ["cooking-001,cooking-002"]})
+    assert r.status_code == 422
+    assert _order_on_disk(data_root) is None
+
+
+def test_put_order_rejects_an_empty_id(data_root):
+    """The CLI drops empty splits, so this would store a shorter sequence."""
+    c = _auth_client(data_root)
+    r = c.put("/api/departments/cooking/order", json={"order": ["cooking-001", ""]})
+    assert r.status_code == 422
+    assert _order_on_disk(data_root) is None
+
+
+def test_put_order_rejects_a_malformed_id(data_root):
+    c = _auth_client(data_root)
+    assert c.put("/api/departments/cooking/order",
+                 json={"order": ["Cooking-1"]}).status_code == 422
+    assert c.put("/api/departments/cooking/order",
+                 json={"order": ["../../etc/passwd"]}).status_code == 422

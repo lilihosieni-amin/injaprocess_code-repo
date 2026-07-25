@@ -31,11 +31,18 @@ def _sync_order(cfg, dept: str, written: list) -> None:
 
     Mirrors merge's `_sync_order` (engine/merge/cli.py) and for the same reason.
     By the time a caller reaches this point the process file is already written
-    or already unlinked and the id ledger has advanced, so letting the
-    EngineError out would answer a *fully applied* change with a 500 and commit
-    nothing: the user's retry mints the next id and orphans the first. And
-    `reconcile` reads **every** process file in the department, so without this
-    one unreadable sibling would poison every create and delete there.
+    or already unlinked and the id ledger has advanced, so letting the failure
+    out would answer a *fully applied* change with a 500 and commit nothing:
+    the user's retry mints the next id and orphans the first. And `reconcile`
+    reads **every** process file in the department, so without this one
+    unreadable sibling would poison every create and delete there.
+
+    The catch is as wide as merge's `(ValueError, OSError)`, because the engine
+    runs as a **subprocess**: a `order` console script that is missing from
+    PATH — a partial deploy, or a checkout that skipped the editable reinstall —
+    makes `subprocess.run` raise `FileNotFoundError`, an `OSError` and not an
+    `EngineError`. Catching only `EngineError` would leave exactly the
+    half-applied create this guard exists to prevent.
 
     order.json is derived state — `order sync <dept>` rebuilds it from disk, and
     an unreadable one can simply be deleted first — so warning and leaving the
@@ -43,9 +50,9 @@ def _sync_order(cfg, dept: str, written: list) -> None:
     """
     try:
         engine.order_sync(cfg, dept)
-    except engine.EngineError as e:
+    except (engine.EngineError, OSError) as e:
         logger.warning("the change is applied but %s's order.json could not be "
-                       "synced: %s", dept, e.message)
+                       "synced: %s", dept, getattr(e, "message", None) or e)
         return
     written.append(storage.order_path(cfg.data_root, dept))
 

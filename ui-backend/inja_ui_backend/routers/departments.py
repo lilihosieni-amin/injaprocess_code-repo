@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import datetime
+import logging
+import re
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
@@ -8,6 +10,14 @@ from .. import engine, gitcommit, storage
 from ..auth import require_session
 
 router = APIRouter(prefix="/api/departments")
+
+logger = logging.getLogger(__name__)
+
+# The `order` CLI takes its sequence as one comma-joined `--sequence` argument
+# and splits it back on commas, dropping empty parts. An id carrying a comma or
+# an empty entry would therefore store a *different* sequence than the request
+# asked for, so the wire format is enforced here rather than trusted.
+PROCESS_ID_RE = re.compile(r"^[a-z]+-[0-9]{3}$")
 
 
 def _now() -> str:
@@ -75,14 +85,28 @@ async def put_order(code: str, body: dict, request: Request,
     if not isinstance(sequence, list) or not all(isinstance(s, str) for s in sequence):
         raise HTTPException(status_code=422,
                             detail="order must be a list of process ids")
+    bad = [s for s in sequence if not PROCESS_ID_RE.match(s)]
+    if bad:
+        raise HTTPException(status_code=422,
+                            detail=f"not a process id: {','.join(repr(b) for b in bad)}")
     path = storage.order_path(cfg.data_root, code)
     async with storage.file_lock(path):
         try:
             engine.order_set(cfg, code, sequence)
-        except engine.EngineError as e:
-            # a drifted active set is a conflict, not a bad request
-            status = 409 if e.message.startswith("set mismatch") else 422
-            raise HTTPException(status_code=status, detail=e.message)
+        except (engine.EngineError, OSError) as e:
+            if isinstance(e, engine.EngineError):
+                # a drifted active set is a conflict, not a bad request
+                status = 409 if e.message.startswith("set mismatch") else 422
+                detail = e.message
+            else:
+                # The engine runs as a subprocess, so a missing `order` console
+                # script raises OSError, not EngineError. Nothing has been
+                # written yet — unlike the create/delete paths, which must let
+                # the change stand — so the only job is to refuse legibly
+                # instead of letting the OSError escape unhandled.
+                logger.warning("%s: could not run the order CLI: %s", code, e)
+                status, detail = 500, f"the order CLI could not be run: {e}"
+            raise HTTPException(status_code=status, detail=detail)
         gitcommit.commit(cfg, [path], code, "update process order")
     return {"order": sequence}
 
@@ -106,7 +130,17 @@ def list_processes(code: str, request: Request, _: str = Depends(require_session
     order = []
     opath = storage.order_path(cfg.data_root, code)
     if opath.is_file():
-        order = storage.read_json(opath).get("order", [])
+        try:
+            order = [pid for pid in storage.read_json(opath)["order"]
+                     if isinstance(pid, str)]
+        except (ValueError, OSError, TypeError, KeyError) as e:
+            # An unreadable order.json must not take the whole department's list
+            # down with it: a 500 here also blocks the only in-UI repair, since
+            # the reorder PUT *does* heal the file but the panel cannot be
+            # opened on a list that never loads. Fall through to id order.
+            logger.warning("%s: falling back to id order — %s is unreadable: %s",
+                           code, opath, e)
+            order = []
 
     known = set(actives)
     # dict.fromkeys keeps the first occurrence of a hand-edited duplicate, in place
