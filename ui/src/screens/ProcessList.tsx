@@ -103,7 +103,7 @@ export function ProcessList() {
                   )}
                 </div>
                 <div className="text-center shrink-0 min-w-[52px]">
-                  <div className="font-extrabold text-[17px] text-violet">{toFa(activityCount(p))}</div>
+                  <div data-testid={`activity-count-${p.id}`} className="font-extrabold text-[17px] text-violet">{toFa(activityCount(p))}</div>
                   <div className="text-[10px] text-faint">فعالیت</div>
                 </div>
                 <div className="flex gap-2 shrink-0">

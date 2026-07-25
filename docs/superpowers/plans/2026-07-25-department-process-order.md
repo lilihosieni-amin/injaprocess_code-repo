@@ -2791,19 +2791,51 @@ git commit -m "feat(ui): ReorderModal — compact drag/arrow panel for process o
 
 **Files:**
 - Modify: `ui/src/screens/ProcessList.tsx`
-- Test: `ui/src/screens/ProcessList.test.tsx` (append)
+- Test: `ui/src/screens/ProcessList.test.tsx` (append, plus a fixture-order + selector fix — see Step 1)
 
 **Interfaces:**
 - Consumes: `ReorderModal` (Task 10); the already-ordered `useProcesses(code)`.
-- Produces: no new exports — a «ترتیب فرآیندها» button and a position number per active card.
+- Produces: no new exports — a «ترتیب فرآیندها» button, a position number per active card, and a
+  `data-testid={\`activity-count-${p.id}\`}` on the activity-count element.
 
 - [ ] **Step 1: Write the failing test**
 
-The existing `ui/src/screens/ProcessList.test.tsx` already defines a `PROCS` array (`cooking-001`,
-`cooking-014`, and the tombstoned `cooking-002`, in that order) and a `mock()` helper that serves it
-from any `/processes` URL. Reuse both — the backend returns the list already ordered, so `PROCS`
-order *is* the curated order. Add `ToastProvider` to the render because `ReorderModal` uses
-`useToast`.
+The existing `ui/src/screens/ProcessList.test.tsx` already defines a `PROCS` array and a `mock()`
+helper that serves it from any `/processes` URL. Reuse both — the backend returns the list already
+ordered, so `PROCS` order *is* the curated order. Add `ToastProvider` to the render because
+`ReorderModal` uses `useToast`.
+
+Reorder `PROCS` so the curated order **diverges** from id order — `cooking-014` (active) before
+`cooking-001` (active), then the tombstoned `cooking-002`. If the numbering ever started sorting by
+id, the position assertions below would flip and fail; with the two active ids already in id order,
+that regression would ship green (closes review finding A on this task). Give `cooking-014` one
+activity node so its position badge (`۱`, first in curated order) and its activity count are both
+`۱` on the same card — a genuine text collision the existing `renders cards…` test must disambiguate
+without keying off a cosmetic font-size class (closes review finding B: use the `activity-count-*`
+testid added in Step 6a, not `div[class*="text-[17px]"]`):
+
+```tsx
+// Curated order deliberately diverges from id order (cooking-014 before cooking-001):
+// if ProcessList ever started sorting by id before numbering, the position assertions
+// below would flip and fail. See finding A in the Task 11 review.
+const PROCS = [
+  { id: 'cooking-014', department: 'cooking', name: 'پرداخت هزینه', summary: 's2', parent: { process: 'cooking-001', node: 'n' }, kpis: [], pending: [], nodes: [{ type: 'activity' }] },
+  { id: 'cooking-001', department: 'cooking', name: 'خرید و پرداخت', summary: 's1', parent: null, kpis: [{ name: 'k' }], pending: [], nodes: [{ type: 'activity' }, { type: 'start' }] },
+  { id: 'cooking-002', department: 'cooking', name: 'فرآیند قدیمی', summary: 's3', parent: null, kpis: [], pending: [], nodes: [], tombstoned: true, superseded_by: ['cooking-050'] },
+]
+```
+
+Update the existing `renders cards with derived tags and activity counts` test's assertion (it no
+longer needs a `closest()`/`querySelector()` walk now that the activity-count element carries its
+own testid):
+
+```tsx
+    // cooking-014 has 1 activity node, and its position badge is also ۱ (it's first
+    // in curated order) — the same ۱ text appears twice on its card. Disambiguate via
+    // the activity-count testid rather than a cosmetic font-size selector.
+    expect(screen.getByTestId('activity-count-cooking-014')).toHaveTextContent('۱')
+    expect(screen.getByTestId('activity-count-cooking-001')).toHaveTextContent('۱')
+```
 
 Append to the imports at the top of the file:
 
@@ -2817,8 +2849,8 @@ Then append these tests inside the existing `describe('ProcessList', …)` block
   it('numbers active processes in the order the API returned', async () => {
     mock()
     renderAt('/departments/:code', <ProcessList />, '/departments/cooking')
-    expect(await screen.findByTestId('pos-cooking-001')).toHaveTextContent('۱')
-    expect(screen.getByTestId('pos-cooking-014')).toHaveTextContent('۲')
+    expect(await screen.findByTestId('pos-cooking-014')).toHaveTextContent('۱')
+    expect(screen.getByTestId('pos-cooking-001')).toHaveTextContent('۲')
   })
 
   it('gives a tombstoned process no position number', async () => {
@@ -2832,9 +2864,10 @@ Then append these tests inside the existing `describe('ProcessList', …)` block
     mock()
     renderAt('/departments/:code', <ProcessList />, '/departments/cooking')
     await screen.findByText('خرید و پرداخت')
-    fireEvent.change(screen.getByPlaceholderText('جست‌وجو براساس نام یا شناسهٔ فرآیند…'), { target: { value: 'cooking-014' } })
-    // cooking-014 keeps position ۲ even though it is now the only visible row
-    expect(screen.getByTestId('pos-cooking-014')).toHaveTextContent('۲')
+    fireEvent.change(screen.getByPlaceholderText('جست‌وجو براساس نام یا شناسهٔ فرآیند…'), { target: { value: 'cooking-001' } })
+    // cooking-001 keeps position ۲ even though it is now the only visible row — if
+    // positions were ever recomputed from the filtered list it would show ۱ instead.
+    expect(screen.getByTestId('pos-cooking-001')).toHaveTextContent('۲')
   })
 
   // the modal calls useToast, so this one test wraps the screen in ToastProvider
@@ -2844,7 +2877,7 @@ Then append these tests inside the existing `describe('ProcessList', …)` block
     fireEvent.click(await screen.findByRole('button', { name: 'ترتیب فرآیندها' }))
     expect(await screen.findByText(/ترتیب فرآیندهای/)).toBeInTheDocument()
     expect(screen.getAllByTestId('reorder-row').map((r) => r.getAttribute('data-pid')))
-      .toEqual(['cooking-001', 'cooking-014'])
+      .toEqual(['cooking-014', 'cooking-001'])
   })
 ```
 
@@ -2903,6 +2936,24 @@ with:
                     <IdBadge>{p.id}</IdBadge>
 ```
 
+- [ ] **Step 6a: Give the activity-count element a stable testid**
+
+The new position badge can legitimately show the same Persian digit as the card's activity count
+(e.g. cooking-014: position ۱, 1 activity). Tests need a handle that isn't the count element's
+Tailwind font-size class — a purely cosmetic restyle would break that with no connection to any real
+regression (review finding B). Add a semantic testid instead. Replace this line further down the
+card:
+
+```tsx
+                  <div className="font-extrabold text-[17px] text-violet">{toFa(activityCount(p))}</div>
+```
+
+with:
+
+```tsx
+                  <div data-testid={`activity-count-${p.id}`} className="font-extrabold text-[17px] text-violet">{toFa(activityCount(p))}</div>
+```
+
 - [ ] **Step 7: Render the modal**
 
 Beside the existing `{creating && …}` line, add:
@@ -2914,7 +2965,7 @@ Beside the existing `{creating && …}` line, add:
 - [ ] **Step 8: Run the test to verify it passes**
 
 Run: `cd ui && npx vitest run src/screens/ProcessList.test.tsx`
-Expected: PASS.
+Expected: PASS, 7 passed.
 
 - [ ] **Step 9: Run the full frontend suite and the linter**
 

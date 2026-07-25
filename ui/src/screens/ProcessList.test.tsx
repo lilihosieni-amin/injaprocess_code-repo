@@ -6,9 +6,12 @@ import { ToastProvider } from '../write/ToastProvider'
 
 afterEach(() => vi.restoreAllMocks())
 
+// Curated order deliberately diverges from id order (cooking-014 before cooking-001):
+// if ProcessList ever started sorting by id before numbering, the position assertions
+// below would flip and fail. See finding A in the Task 11 review.
 const PROCS = [
+  { id: 'cooking-014', department: 'cooking', name: 'پرداخت هزینه', summary: 's2', parent: { process: 'cooking-001', node: 'n' }, kpis: [], pending: [], nodes: [{ type: 'activity' }] },
   { id: 'cooking-001', department: 'cooking', name: 'خرید و پرداخت', summary: 's1', parent: null, kpis: [{ name: 'k' }], pending: [], nodes: [{ type: 'activity' }, { type: 'start' }] },
-  { id: 'cooking-014', department: 'cooking', name: 'پرداخت هزینه', summary: 's2', parent: { process: 'cooking-001', node: 'n' }, kpis: [], pending: [], nodes: [] },
   { id: 'cooking-002', department: 'cooking', name: 'فرآیند قدیمی', summary: 's3', parent: null, kpis: [], pending: [], nodes: [], tombstoned: true, superseded_by: ['cooking-050'] },
 ]
 
@@ -27,10 +30,11 @@ describe('ProcessList', () => {
     expect(await screen.findByText('خرید و پرداخت')).toBeInTheDocument()
     expect(screen.getByText('دارای KPI')).toBeInTheDocument()   // cooking-001
     expect(screen.getByText('زیرفرآیند')).toBeInTheDocument()   // cooking-014
-    // 1 activity node on cooking-001; scoped to the activity-count element since the
-    // new position badge is also ۱ for this row (both cooking-001's count and position are 1)
-    const row001 = screen.getByText('cooking-001').closest('div[class*="rounded-2xl"]') as HTMLElement
-    expect(row001.querySelector('div[class*="text-[17px]"]')).toHaveTextContent('۱')
+    // cooking-014 has 1 activity node, and its position badge is also ۱ (it's first
+    // in curated order) — the same ۱ text appears twice on its card. Disambiguate via
+    // the activity-count testid rather than a cosmetic font-size selector.
+    expect(screen.getByTestId('activity-count-cooking-014')).toHaveTextContent('۱')
+    expect(screen.getByTestId('activity-count-cooking-001')).toHaveTextContent('۱')
   })
 
   it('filters by id', async () => {
@@ -61,8 +65,8 @@ describe('ProcessList', () => {
   it('numbers active processes in the order the API returned', async () => {
     mock()
     renderAt('/departments/:code', <ProcessList />, '/departments/cooking')
-    expect(await screen.findByTestId('pos-cooking-001')).toHaveTextContent('۱')
-    expect(screen.getByTestId('pos-cooking-014')).toHaveTextContent('۲')
+    expect(await screen.findByTestId('pos-cooking-014')).toHaveTextContent('۱')
+    expect(screen.getByTestId('pos-cooking-001')).toHaveTextContent('۲')
   })
 
   it('gives a tombstoned process no position number', async () => {
@@ -76,9 +80,10 @@ describe('ProcessList', () => {
     mock()
     renderAt('/departments/:code', <ProcessList />, '/departments/cooking')
     await screen.findByText('خرید و پرداخت')
-    fireEvent.change(screen.getByPlaceholderText('جست‌وجو براساس نام یا شناسهٔ فرآیند…'), { target: { value: 'cooking-014' } })
-    // cooking-014 keeps position ۲ even though it is now the only visible row
-    expect(screen.getByTestId('pos-cooking-014')).toHaveTextContent('۲')
+    fireEvent.change(screen.getByPlaceholderText('جست‌وجو براساس نام یا شناسهٔ فرآیند…'), { target: { value: 'cooking-001' } })
+    // cooking-001 keeps position ۲ even though it is now the only visible row — if
+    // positions were ever recomputed from the filtered list it would show ۱ instead.
+    expect(screen.getByTestId('pos-cooking-001')).toHaveTextContent('۲')
   })
 
   // the modal calls useToast, so this one test wraps the screen in ToastProvider
@@ -88,6 +93,6 @@ describe('ProcessList', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'ترتیب فرآیندها' }))
     expect(await screen.findByText(/ترتیب فرآیندهای/)).toBeInTheDocument()
     expect(screen.getAllByTestId('reorder-row').map((r) => r.getAttribute('data-pid')))
-      .toEqual(['cooking-001', 'cooking-014'])
+      .toEqual(['cooking-014', 'cooking-001'])
   })
 })
