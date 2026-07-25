@@ -1394,8 +1394,11 @@ Note on `new`: the parent and its auto-created children are all absent from the 
 
 Create `engine/tests/test_merge_order.py`. The `_cand`/`_committed` helpers mirror
 `engine/tests/test_merge_restructure.py`, and `tests/fixtures/candidate.json` carries no
-`subprocesses` (and `delta.json` no new sub-processes), so no auto-created children muddy these
-assertions:
+`subprocesses`, so no auto-created child muddies an assertion that did not ask for one.
+Deltas are built inline by `_delta`, grounded in the nodes `_committed` actually leaves on
+disk — `tests/fixtures/delta.json` is a *schema* fixture whose node ids belong to no
+process on disk, and `build_update` skips unknown ids silently, so reusing it would let an
+"order unchanged" assertion pass for the wrong reason:
 
 ```python
 import copy
@@ -1422,13 +1425,16 @@ def _cand_file(tmp_path, name, seq=1):
 
 
 def _proc_path(root, pid):
-    return root / "departments" / "cooking" / "processes" / f"{pid}.json"
+    return (root / "departments" / pid.rsplit("-", 1)[0] / "processes"
+            / f"{pid}.json")
 
 
-def _committed(root, pid):
+def _committed(root, pid, pending=False):
     """An existing standalone process on disk, copied from the golden fixture."""
+    dept = pid.rsplit("-", 1)[0]
     p = copy.deepcopy(load_fixture("process.cooking-001.json"))
     p["id"] = pid
+    p["department"] = dept
     p["parent"] = None
     p["nodes"] = [n for n in p["nodes"] if n["id"] != "cooking-001-n060"]
     for n in p["nodes"]:
@@ -1439,9 +1445,48 @@ def _committed(root, pid):
     for e in p["edges"]:
         e["from"] = e["from"].replace("cooking-001", pid)
         e["to"] = e["to"].replace("cooking-001", pid)
-    p["pending"] = []
-    _proc_path(root, pid).write_text(json.dumps(p, ensure_ascii=False), encoding="utf-8")
+    p["pending"] = [{"node": f"{pid}-n010", "field": "actor",
+                     "current": "کارپرداز", "proposed": "انباردار",
+                     "source": RUN, "status": "open"}] if pending else []
+    _proc_path(root, pid).write_text(json.dumps(p, ensure_ascii=False),
+                                     encoding="utf-8")
     return p
+
+
+def _delta(pid):
+    """A minimal update grounded in what `_committed` actually leaves on disk.
+
+    Built inline rather than from `tests/fixtures/delta.json`: that fixture is a
+    schema fixture whose node ids are not grounded in any process, and
+    `build_update` skips unknown ids silently, so a shared fixture would make an
+    "order unchanged" assertion pass for the wrong reason.
+    """
+    return {
+        "add_nodes": [
+            {"key": "n1", "type": "activity", "label": "کنترل کیفیت",
+             "description": "", "actor": "انباردار",
+             "icom": {"inputs": [], "controls": [], "outputs": [],
+                      "mechanisms": []},
+             "subprocess": None},
+        ],
+        "add_edges": [{"from": f"{pid}-n010", "to": "n1", "label": ""}],
+        "enrich_nodes": [],
+        "flag_removed": [],
+    }
+
+
+def _delta_file(tmp_path, doc):
+    p = tmp_path / "delta.json"
+    p.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
+    return str(p)
+
+
+def _write_order(root, dept, ids):
+    """A curated order.json placed directly on disk, bypassing the order API."""
+    path = root / "departments" / dept / "order.json"
+    path.write_text(json.dumps({"department": dept, "order": list(ids),
+                                "updated_at": NOW}, ensure_ascii=False),
+                    encoding="utf-8")
 
 
 def test_new_appends_the_process(data_root, tmp_path):
@@ -1472,12 +1517,60 @@ def test_update_leaves_the_order_untouched(data_root, tmp_path):
     _committed(data_root, "cooking-001")
     reconcile("cooking", NOW, root=data_root)
     before = read_order("cooking", data_root)
-    delta = tmp_path / "delta.json"
-    delta.write_text(json.dumps(load_fixture("delta.json"), ensure_ascii=False),
-                     encoding="utf-8")
-    assert main(["update", "--process", "cooking-001", "--delta", str(delta),
+    delta = _delta_file(tmp_path, _delta("cooking-001"))
+    assert main(["update", "--process", "cooking-001", "--delta", delta,
                  "--run", RUN, "--now", NOW]) == 0
+    # a plain update creates no sub-process, so the active set is what it was
     assert read_order("cooking", data_root) == before
+
+
+def test_update_puts_a_new_subprocess_right_after_its_parent(data_root, tmp_path):
+    for pid in ("cooking-001", "cooking-002", "cooking-003"):
+        _committed(data_root, pid)
+    reconcile("cooking", NOW, root=data_root)
+
+    d = _delta("cooking-001")
+    d["add_subprocesses"] = [{"parent": "cooking-001-n010",
+                              "process": _cand("child")}]
+    assert main(["update", "--process", "cooking-001",
+                 "--delta", _delta_file(tmp_path, d),
+                 "--run", RUN, "--now", NOW]) == 0
+
+    # the child follows its parent instead of landing at the end, which is only
+    # possible because `update` passes child_hints to the sync
+    assert read_order("cooking", data_root) == [
+        "cooking-001", "cooking-004", "cooking-002", "cooking-003"]
+
+
+def test_attach_subprocess_reconciles_without_reordering(data_root):
+    for pid in ("cooking-001", "cooking-002", "cooking-003"):
+        _committed(data_root, pid)
+    # a curated order: 002 deliberately ahead of 001, and 003 not listed yet
+    _write_order(data_root, "cooking", ["cooking-002", "cooking-001"])
+
+    assert main(["attach-subprocess", "--parent-process", "cooking-001",
+                 "--node", "cooking-001-n010", "--child", "cooking-002",
+                 "--run", RUN, "--now", NOW]) == 0
+
+    # both ids were already active, so neither moves — 002 stays ahead of the
+    # parent it just became a child of — and the sync only appends the unlisted 003
+    assert read_order("cooking", data_root) == [
+        "cooking-002", "cooking-001", "cooking-003"]
+
+
+def test_accept_reconciles_without_reordering(data_root):
+    for pid in ("cooking-001", "cooking-002", "cooking-003"):
+        _committed(data_root, pid, pending=(pid == "cooking-001"))
+    # same curated order, same drift: 003 is active on disk but unlisted
+    _write_order(data_root, "cooking", ["cooking-002", "cooking-001"])
+
+    assert main(["accept", "--process", "cooking-001", "--index", "0",
+                 "--now", NOW]) == 0
+
+    # resolving a pending row changes no process's active state, so the curated
+    # positions survive; only the unlisted 003 is appended by the sync
+    assert read_order("cooking", data_root) == [
+        "cooking-002", "cooking-001", "cooking-003"]
 
 
 def test_restructure_heir_takes_the_predecessors_position(data_root, tmp_path):
@@ -1495,8 +1588,9 @@ def test_restructure_heir_takes_the_predecessors_position(data_root, tmp_path):
                     "subprocess_links": []}]}, ensure_ascii=False), encoding="utf-8")
     assert main(["restructure", "--plan", str(plan), "--run", RUN, "--now", NOW]) == 0
 
-    # cooking-004 is the fresh heir id (past the ledger high-water of 003) and it
-    # must sit where its predecessor cooking-002 was, not at the end
+    # cooking-004 is the fresh heir id — this fixture has no .id-seq.json, so
+    # allocate_id._next_ordinal derives it from the process directory scan — and
+    # it must sit where its predecessor cooking-002 was, not at the end
     assert read_order("cooking", data_root) == [
         "cooking-001", "cooking-004", "cooking-003"]
 
@@ -1518,6 +1612,43 @@ def test_restructure_split_puts_both_heirs_at_the_predecessors_position(data_roo
     # both heirs land consecutively where cooking-002 was, in id order
     assert read_order("cooking", data_root) == [
         "cooking-001", "cooking-004", "cooking-005", "cooking-003"]
+
+
+def test_restructure_across_departments_reconciles_both(data_root, tmp_path):
+    (data_root / "departments" / "prep" / "processes").mkdir(parents=True)
+    _committed(data_root, "cooking-001")
+    _committed(data_root, "prep-001")
+    reconcile("cooking", NOW, root=data_root)
+    reconcile("prep", NOW, root=data_root)
+    assert read_order("prep", data_root) == ["prep-001"]
+
+    plan = tmp_path / "plan.json"
+    plan.write_text(json.dumps(
+        {"department": "cooking",
+         "heirs": [{"candidate": _cand("merged"),
+                    "supersedes": ["prep-001"],
+                    "subprocess_links": []}]}, ensure_ascii=False), encoding="utf-8")
+    assert main(["restructure", "--plan", str(plan), "--run", RUN, "--now", NOW]) == 0
+
+    # the heir's position hint names a predecessor in another department, which is
+    # a safe no-op: cooking appends the heir at the end...
+    assert read_order("cooking", data_root) == ["cooking-001", "cooking-002"]
+    # ...while prep, the other touched department, drops the superseded id
+    assert read_order("prep", data_root) == []
+
+
+def test_a_corrupt_order_file_never_fails_the_merge(data_root, tmp_path, capsys):
+    """Exit 2 means "nothing happened"; a written merge must never report it."""
+    (data_root / "departments" / "cooking" / "order.json").write_text(
+        "{ this is not json", encoding="utf-8")
+
+    assert main(["new", "--candidate", _cand_file(tmp_path, "الف"),
+                 "--department", "cooking", "--run", RUN, "--now", NOW]) == 0
+
+    assert _proc_path(data_root, "cooking-001").is_file()
+    cap = capsys.readouterr()
+    assert cap.out.splitlines()[0] == "cooking-001"
+    assert "cooking" in cap.err and "order sync cooking" in cap.err
 ```
 
 - [ ] **Step 2: Run the test to verify it fails**
@@ -1533,38 +1664,87 @@ Add to the imports at the top:
 from order import reconcile as reconcile_order
 ```
 
-Add these helpers next to the existing `_proc_path`:
+`_proc_path` re-implemented the department derivation inline; give it a name and reuse it,
+then add the sync helper below. Replace the existing `_proc_path` with:
 
 ```python
 def _dept_of(pid):
     return pid.rsplit("-", 1)[0]
 
 
+def _proc_path(pid):
+    return data_root() / "departments" / _dept_of(pid) / "processes" / f"{pid}.json"
+
+
 def _sync_order(depts, now, heir_hints=None, child_hints=None):
-    """Keep each touched department's order.json equal to its active set (§4.6)."""
+    """Keep each touched department's order.json equal to its active set (§4.6).
+
+    A failure here warns on stderr and lets the merge stand; it must never
+    propagate. By the time we reach the sync the process files are written and
+    the id ledger has advanced, so raising would let the `except ValueError` in
+    `main` report a *fully applied* merge as exit 2 — this CLI's "precondition
+    failed, nothing happened" code (see `_require`). A pipeline that retries on
+    exit 2 would then re-run the verb and mint a duplicate process. Every
+    realistic failure lands there: a corrupt order.json (`json.JSONDecodeError`
+    is a `ValueError`), `read_order`'s malformed-shape `ValueError`, and
+    `validate`'s.
+
+    order.json is derived state — `order sync <dept>` rebuilds it from disk, and
+    an unreadable one can simply be deleted first — so a warning still leaves a
+    complete recovery path. It has to, because the hook widened merge's read
+    surface: `active_ids` reads *every* process file in the department, so
+    without this one corrupt sibling would make every merge verb in that
+    department fatal.
+    """
     for dept in sorted(depts):
-        reconcile_order(dept, now, heir_hints=heir_hints, child_hints=child_hints)
+        try:
+            reconcile_order(dept, now, heir_hints=heir_hints, child_hints=child_hints)
+        except (ValueError, OSError) as e:
+            print(f"merge: warning: the merge is applied but {dept}'s order.json "
+                  f"could not be synced: {e}\n"
+                  f"merge: run `order sync {dept}` to rebuild it; order.json is "
+                  f"derived state, so deleting an unreadable one first is safe",
+                  file=sys.stderr)
 ```
 
-Then, inside the `try:` block, add a sync call at the end of each verb's branch.
+The helper deliberately swallows its own failures. By the time it runs the process files
+are written and the id ledger has advanced, so letting a `ValueError` reach `main`'s
+handler would report a *fully applied* merge as exit 2 — this CLI's "precondition failed,
+nothing happened" code — and a caller that retries on exit 2 would mint a duplicate
+process. `order.json` is derived state, so a warning is a complete recovery path.
+
+Hoist the clock so the process files and `order.json` cannot land a second apart when
+`--now` is omitted. Immediately after `args = ap.parse_args(argv)`:
+
+```python
+    # One clock for the whole invocation: the process files and order.json must
+    # not land a second apart when --now is omitted.
+    now = _now(args.now)
+```
+
+Then, inside the `try:` block, replace every remaining `_now(args.now)` with `now` and add
+a sync call at the end of each verb's branch.
 
 `new` — after the existing `for c in children: print(...)` loop:
 
 ```python
-            _sync_order({args.department}, _now(args.now))
+            _sync_order({args.department}, now)
 ```
 
-`update` — after its `for c in children: print(...)` loop:
+`update` — after its `for c in children: print(...)` loop. The departments and the child
+hint come from the ids actually written, not from the CLI argument:
 
 ```python
-            _sync_order({_dept_of(args.process)}, _now(args.now),
-                        child_hints={args.process: [c["id"] for c in children]})
+            depts = ({_dept_of(parent["id"])}
+                     | {_dept_of(c["id"]) for c in children})
+            _sync_order(depts, now,
+                        child_hints={parent["id"]: [c["id"] for c in children]})
 ```
 
 `remove` — after `print(f"tombstoned {args.process}")`:
 
 ```python
-            _sync_order({_dept_of(args.process)}, _now(args.now))
+            _sync_order({_dept_of(args.process)}, now)
 ```
 
 `restructure` — after the final `for h in heirs:` loop:
@@ -1577,26 +1757,25 @@ Then, inside the `try:` block, add a sync call at the end of each verb's branch.
                     heir_hints.setdefault(heir, []).append(t["id"])
             depts = ({_dept_of(h["id"]) for h in heirs}
                      | {_dept_of(t["id"]) for t in tombstoned})
-            _sync_order(depts, _now(args.now), heir_hints=heir_hints)
+            _sync_order(depts, now, heir_hints=heir_hints)
 ```
 
 `attach-subprocess` — after `print(f"subprocess {child['id']} node {args.node}")`:
 
 ```python
-            _sync_order({_dept_of(args.parent_process), _dept_of(args.child)},
-                        _now(args.now))
+            _sync_order({_dept_of(args.parent_process), _dept_of(args.child)}, now)
 ```
 
 `accept | reject` — after `write_json_atomic(path, proc)`:
 
 ```python
-            _sync_order({_dept_of(args.process)}, _now(args.now))
+            _sync_order({_dept_of(args.process)}, now)
 ```
 
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `PYTHONPATH=engine/tests .venv/bin/python -m pytest engine/tests/test_merge_order.py -q`
-Expected: PASS, 6 passed.
+Expected: PASS, 11 passed.
 
 - [ ] **Step 5: Run the whole Python suite for regressions**
 
