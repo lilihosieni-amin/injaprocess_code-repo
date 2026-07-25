@@ -361,20 +361,33 @@ git commit -m "feat(schemas): order.schema.json — department process display o
 **Interfaces:**
 - Consumes: `engine_common.data_root`, `read_json`, `write_json_atomic`, `validate`; schema `order.schema.json` from Task 2.
 - Produces, all with `root=None` defaulting to `data_root()`:
-  - `read_order(dept, root=None) -> list[str]`
-  - `active_ids(dept, root=None) -> list[str]` (id order)
-  - `reconcile(dept, now, root=None, heir_hints=None, child_hints=None) -> tuple[list[str], list[str]]` returning `(appended, dropped)`
+  - `read_order(dept, root=None) -> list[str]` — raises `ValueError` when `order` is present but is not a list of strings (never coerces corrupt input)
+  - `active_ids(dept, root=None) -> list[str]` (id order; only ids matching `^<dept>-\d{3}$`, so a stray foreign-department file is ignored)
+  - `reconcile(dept, now, root=None, heir_hints=None, child_hints=None) -> tuple[list[str], list[str]]` returning `(appended, dropped)`. Writes nothing — and creates no directory — for a department with no processes and no file yet (lazy creation, ARD §4.6), and does not rewrite the file when the sequence is already exactly right (no `updated_at` churn). An existing file whose processes have all been tombstoned *is* rewritten to `"order": []`.
   - `set_order(dept, sequence, now, root=None) -> list[str]`, raising `OrderMismatch`
   - `move(dept, pid, to, now, root=None) -> list[str]` (1-based `to`)
   - `check(dept, root=None) -> tuple[list[str], list[str]]` returning `(missing, stale)`
-  - `departments(root=None) -> list[str]`
+  - `departments(root=None) -> list[str]` (registry order, never sorted; raises `ValueError` on a malformed registry so the CLI can map it to exit 2)
   - `OrderMismatch(ValueError)` — its message always starts with `set mismatch:`
 
 Hints are implemented in Task 4; this task lands the signature with them accepted and ignored.
 
 - [ ] **Step 1: Write the failing test**
 
-Create `engine/tests/test_order.py`:
+Create `engine/tests/test_order.py` — 29 tests. Beyond the happy paths they pin the
+loud-failure and lazy-creation contract: `test_read_order_without_the_order_key_is_empty`,
+`test_read_order_rejects_a_non_list_order`, `test_read_order_rejects_a_string_order`,
+`test_active_ids_ignores_a_foreign_department_file`,
+`test_reconcile_writes_nothing_for_a_processless_department`,
+`test_reconcile_creates_no_directory_for_a_processless_department`,
+`test_reconcile_empties_an_existing_file_when_all_are_tombstoned`,
+`test_reconcile_does_not_rewrite_when_nothing_changed`,
+`test_reconcile_validates_before_writing` and
+`test_departments_rejects_a_malformed_registry`. Note that
+`test_reconcile_is_idempotent`, `test_reconcile_heals_a_duplicated_hand_edit` and
+`test_departments_come_from_the_registry` are deliberately written so they fail if
+`reconcile` re-sorts the sequence, if `_dedup` keeps the last occurrence instead of the
+first, or if `departments()` sorts.
 
 ```python
 import json
@@ -408,11 +421,40 @@ def test_read_order_of_missing_file_is_empty(data_root):
     assert read_order("cooking", data_root) == []
 
 
+def test_read_order_without_the_order_key_is_empty(data_root):
+    _order_file(data_root, "cooking").write_text(
+        json.dumps({"department": "cooking", "updated_at": NOW}), encoding="utf-8")
+    assert read_order("cooking", data_root) == []
+
+
+def test_read_order_rejects_a_non_list_order(data_root):
+    _order_file(data_root, "cooking").write_text(json.dumps(
+        {"department": "cooking", "order": 5, "updated_at": NOW}), encoding="utf-8")
+    with pytest.raises(ValueError):
+        read_order("cooking", data_root)
+
+
+def test_read_order_rejects_a_string_order(data_root):
+    # A bare string must not be silently exploded into single characters.
+    _order_file(data_root, "cooking").write_text(json.dumps(
+        {"department": "cooking", "order": "cooking-001", "updated_at": NOW}),
+        encoding="utf-8")
+    with pytest.raises(ValueError):
+        read_order("cooking", data_root)
+
+
 def test_active_ids_skips_tombstones_and_sorts(data_root):
     _proc(data_root, "cooking-003")
     _proc(data_root, "cooking-001")
     _proc(data_root, "cooking-002", tombstoned=True)
     assert active_ids("cooking", data_root) == ["cooking-001", "cooking-003"]
+
+
+def test_active_ids_ignores_a_foreign_department_file(data_root):
+    _proc(data_root, "cooking-001")
+    (data_root / "departments" / "cooking" / "processes" / "dining-007.json").write_text(
+        json.dumps({"id": "dining-007", "department": "dining"}), encoding="utf-8")
+    assert active_ids("cooking", data_root) == ["cooking-001"]
 
 
 def test_reconcile_creates_the_file_lazily(data_root):
@@ -423,6 +465,47 @@ def test_reconcile_creates_the_file_lazily(data_root):
     doc = _stored(data_root, "cooking")
     assert doc == {"department": "cooking", "order": ["cooking-001"],
                    "updated_at": NOW}
+
+
+def test_reconcile_writes_nothing_for_a_processless_department(data_root):
+    # The processes/ dir exists but is empty: no file, per ARD §4.6 lazy creation.
+    assert (data_root / "departments" / "cooking" / "processes").is_dir()
+    assert reconcile("cooking", NOW, root=data_root) == ([], [])
+    assert not _order_file(data_root, "cooking").is_file()
+
+
+def test_reconcile_creates_no_directory_for_a_processless_department(data_root):
+    assert reconcile("logistics", NOW, root=data_root) == ([], [])
+    assert not (data_root / "departments" / "logistics").exists()
+    assert not _order_file(data_root, "logistics").is_file()
+
+
+def test_reconcile_empties_an_existing_file_when_all_are_tombstoned(data_root):
+    _proc(data_root, "cooking-001")
+    _proc(data_root, "cooking-002")
+    reconcile("cooking", NOW, root=data_root)
+    _proc(data_root, "cooking-001", tombstoned=True)
+    _proc(data_root, "cooking-002", tombstoned=True)
+    # The lazy guard must not swallow this: the file exists, so it gets emptied
+    # rather than left stale, otherwise `check` would report permanent drift.
+    appended, dropped = reconcile("cooking", NOW, root=data_root)
+    assert appended == [] and dropped == ["cooking-001", "cooking-002"]
+    assert _stored(data_root, "cooking")["order"] == []
+    assert check("cooking", data_root) == ([], [])
+
+
+def test_reconcile_does_not_rewrite_when_nothing_changed(data_root):
+    _proc(data_root, "cooking-001")
+    reconcile("cooking", NOW, root=data_root)
+    reconcile("cooking", "2026-07-26T09:30:00Z", root=data_root)
+    assert _stored(data_root, "cooking")["updated_at"] == NOW
+
+
+def test_reconcile_validates_before_writing(data_root):
+    _proc(data_root, "cooking-001")
+    with pytest.raises(ValueError):
+        reconcile("cooking", "25/07/2026", root=data_root)
+    assert not _order_file(data_root, "cooking").is_file()
 
 
 def test_reconcile_appends_new_in_id_order_keeping_curation(data_root):
@@ -460,22 +543,27 @@ def test_reconcile_drops_deleted_file(data_root):
 
 def test_reconcile_is_idempotent(data_root):
     _proc(data_root, "cooking-001")
+    _proc(data_root, "cooking-002")
     reconcile("cooking", NOW, root=data_root)
-    first = read_order("cooking", data_root)
-    appended, dropped = reconcile("cooking", NOW, root=data_root)
-    assert appended == [] and dropped == []
-    assert read_order("cooking", data_root) == first
+    curated = ["cooking-002", "cooking-001"]
+    set_order("cooking", curated, NOW, root=data_root)
+    # A curated, non-id order must survive reconcile untouched, twice over.
+    assert reconcile("cooking", NOW, root=data_root) == ([], [])
+    assert read_order("cooking", data_root) == curated
+    assert reconcile("cooking", NOW, root=data_root) == ([], [])
+    assert read_order("cooking", data_root) == curated
 
 
 def test_reconcile_heals_a_duplicated_hand_edit(data_root):
     _proc(data_root, "cooking-001")
     _proc(data_root, "cooking-002")
+    # The first occurrence wins, so the duplicate collapses forward, not back.
     _order_file(data_root, "cooking").write_text(json.dumps(
         {"department": "cooking",
-         "order": ["cooking-002", "cooking-002", "cooking-001"],
+         "order": ["cooking-001", "cooking-002", "cooking-001"],
          "updated_at": NOW}), encoding="utf-8")
-    reconcile("cooking", NOW, root=data_root)
-    assert read_order("cooking", data_root) == ["cooking-002", "cooking-001"]
+    assert reconcile("cooking", NOW, root=data_root) == ([], [])
+    assert read_order("cooking", data_root) == ["cooking-001", "cooking-002"]
 
 
 def test_set_order_replaces_the_sequence(data_root):
@@ -554,10 +642,18 @@ def test_check_is_clean_after_reconcile(data_root):
 
 
 def test_departments_come_from_the_registry(data_root):
+    # Deliberately not alphabetical: registry order is the contract, not sorting.
     (data_root / "departments" / "registry.json").write_text(json.dumps(
-        {"departments": [{"code": "cooking", "name": "پخت"},
-                         {"code": "dining", "name": "سالن"}]}), encoding="utf-8")
-    assert departments(data_root) == ["cooking", "dining"]
+        {"departments": [{"code": "dining", "name": "سالن"},
+                         {"code": "cooking", "name": "پخت"}]}), encoding="utf-8")
+    assert departments(data_root) == ["dining", "cooking"]
+
+
+def test_departments_rejects_a_malformed_registry(data_root):
+    (data_root / "departments" / "registry.json").write_text(
+        json.dumps({"departments": [{"name": "x"}]}), encoding="utf-8")
+    with pytest.raises(ValueError):
+        departments(data_root)
 ```
 
 - [ ] **Step 2: Run the test to verify it fails**
@@ -581,8 +677,6 @@ import re
 
 from engine_common import data_root, read_json, validate, write_json_atomic
 
-_PID_RE = re.compile(r"^[a-z]+-\d{3}$")
-
 
 class OrderMismatch(ValueError):
     """A given sequence is not exactly the department's active set.
@@ -602,7 +696,13 @@ def read_order(dept, root=None):
     path = _order_path(root, dept)
     if not path.is_file():
         return []
-    return list(read_json(path).get("order", []))
+    doc = read_json(path)
+    if "order" not in doc:
+        return []
+    seq = doc["order"]
+    if not isinstance(seq, list) or not all(isinstance(p, str) for p in seq):
+        raise ValueError(f"{path}: 'order' must be a list of process id strings")
+    return list(seq)
 
 
 def active_ids(dept, root=None):
@@ -611,9 +711,10 @@ def active_ids(dept, root=None):
     d = root / "departments" / dept / "processes"
     if not d.is_dir():
         return []
+    rx = re.compile(rf"^{re.escape(dept)}-\d{{3}}$")
     out = []
     for f in sorted(d.glob("*.json")):
-        if not _PID_RE.match(f.stem):
+        if not rx.match(f.stem):
             continue
         if read_json(f).get("tombstoned"):
             continue
@@ -625,7 +726,10 @@ def departments(root=None):
     """The department codes, in registry order."""
     root = root or data_root()
     reg = read_json(root / "departments" / "registry.json")
-    return [d["code"] for d in reg["departments"]]
+    try:
+        return [d["code"] for d in reg["departments"]]
+    except (KeyError, TypeError) as e:
+        raise ValueError(f"malformed registry.json: {e}") from e
 
 
 def _dedup(seq):
@@ -651,16 +755,27 @@ def reconcile(dept, now, root=None, heir_hints=None, child_hints=None):
     root = root or data_root()
     actives = active_ids(dept, root)
     known = set(actives)
-    stored = _dedup(read_order(dept, root))
+    raw = read_order(dept, root)
+    stored = _dedup(raw)
+    was = set(stored)
 
     work = list(stored)
-    missing = [pid for pid in actives if pid not in set(work)]
+    present = set(work)
+    missing = [pid for pid in actives if pid not in present]
     work.extend(missing)
 
     seq = [pid for pid in work if pid in known]
     dropped = [pid for pid in stored if pid not in known]
-    was = set(stored)
     appended = [pid for pid in seq if pid not in was]
+
+    path = _order_path(root, dept)
+    # Lazy: a department with no processes and no file yet stays fileless (ARD §4.6).
+    if not seq and not path.is_file():
+        return [], []
+    # Don't churn updated_at when nothing changed. Compared against the RAW file
+    # contents, not the de-duplicated view, so a hand-edited duplicate still heals.
+    if seq == raw and path.is_file():
+        return [], []
     _write(dept, seq, now, root)
     return appended, dropped
 
@@ -670,10 +785,12 @@ def set_order(dept, sequence, now, root=None):
     root = root or data_root()
     actives = active_ids(dept, root)
     given = list(sequence)
-    if len(set(given)) != len(given):
+    seen = set(given)
+    if len(seen) != len(given):
         raise OrderMismatch("set mismatch: duplicate ids in sequence")
-    missing = [p for p in actives if p not in set(given)]
-    stale = [p for p in given if p not in set(actives)]
+    known = set(actives)
+    missing = [p for p in actives if p not in seen]
+    stale = [p for p in given if p not in known]
     if missing or stale:
         raise OrderMismatch(
             f"set mismatch: missing={','.join(missing) or '-'} "
@@ -699,8 +816,10 @@ def check(dept, root=None):
     root = root or data_root()
     actives = active_ids(dept, root)
     stored = read_order(dept, root)
-    return ([p for p in actives if p not in set(stored)],
-            [p for p in stored if p not in set(actives)])
+    have = set(stored)
+    known = set(actives)
+    return ([p for p in actives if p not in have],
+            [p for p in stored if p not in known])
 ```
 
 - [ ] **Step 4: Register the package so imports resolve**
@@ -720,7 +839,7 @@ uv pip install -q --python .venv/bin/python -e ./engine
 - [ ] **Step 5: Run the test to verify it passes**
 
 Run: `PYTHONPATH=engine/tests .venv/bin/python -m pytest engine/tests/test_order.py -q`
-Expected: PASS, 19 passed.
+Expected: PASS, 29 passed.
 
 - [ ] **Step 6: Commit**
 
@@ -874,11 +993,12 @@ def _lowest_index(work, candidates):
     return min(idxs) if idxs else None
 ```
 
-Then replace these three lines in `reconcile`:
+Then replace these four lines in `reconcile`:
 
 ```python
     work = list(stored)
-    missing = [pid for pid in actives if pid not in set(work)]
+    present = set(work)
+    missing = [pid for pid in actives if pid not in present]
     work.extend(missing)
 ```
 
@@ -888,7 +1008,8 @@ with:
     # Insertions happen on `work`, which still holds the ids about to be dropped,
     # so a heir can be placed at its predecessor's index before that id leaves.
     work = list(stored)
-    missing = [pid for pid in actives if pid not in set(work)]
+    present = set(work)
+    missing = [pid for pid in actives if pid not in present]
 
     # Pass 1 — a heir inherits the lowest index held by anything it supersedes.
     # Sorted by heir id so several heirs of one predecessor land consecutively and
@@ -922,7 +1043,7 @@ with:
 - [ ] **Step 4: Run both order test files to verify they pass**
 
 Run: `PYTHONPATH=engine/tests .venv/bin/python -m pytest engine/tests/test_order.py engine/tests/test_order_hints.py -q`
-Expected: PASS, 28 passed. (Task 3's tests must still pass — hints default to `None`, so the no-hint path is unchanged.)
+Expected: PASS, 38 passed (29 from Task 3 + 9 hint tests). (Task 3's tests must still pass — hints default to `None`, so the no-hint path is unchanged.)
 
 - [ ] **Step 5: Commit**
 

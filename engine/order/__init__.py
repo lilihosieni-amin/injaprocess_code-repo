@@ -9,8 +9,6 @@ import re
 
 from engine_common import data_root, read_json, validate, write_json_atomic
 
-_PID_RE = re.compile(r"^[a-z]+-\d{3}$")
-
 
 class OrderMismatch(ValueError):
     """A given sequence is not exactly the department's active set.
@@ -30,7 +28,13 @@ def read_order(dept, root=None):
     path = _order_path(root, dept)
     if not path.is_file():
         return []
-    return list(read_json(path).get("order", []))
+    doc = read_json(path)
+    if "order" not in doc:
+        return []
+    seq = doc["order"]
+    if not isinstance(seq, list) or not all(isinstance(p, str) for p in seq):
+        raise ValueError(f"{path}: 'order' must be a list of process id strings")
+    return list(seq)
 
 
 def active_ids(dept, root=None):
@@ -39,9 +43,10 @@ def active_ids(dept, root=None):
     d = root / "departments" / dept / "processes"
     if not d.is_dir():
         return []
+    rx = re.compile(rf"^{re.escape(dept)}-\d{{3}}$")
     out = []
     for f in sorted(d.glob("*.json")):
-        if not _PID_RE.match(f.stem):
+        if not rx.match(f.stem):
             continue
         if read_json(f).get("tombstoned"):
             continue
@@ -53,7 +58,10 @@ def departments(root=None):
     """The department codes, in registry order."""
     root = root or data_root()
     reg = read_json(root / "departments" / "registry.json")
-    return [d["code"] for d in reg["departments"]]
+    try:
+        return [d["code"] for d in reg["departments"]]
+    except (KeyError, TypeError) as e:
+        raise ValueError(f"malformed registry.json: {e}") from e
 
 
 def _dedup(seq):
@@ -79,16 +87,27 @@ def reconcile(dept, now, root=None, heir_hints=None, child_hints=None):
     root = root or data_root()
     actives = active_ids(dept, root)
     known = set(actives)
-    stored = _dedup(read_order(dept, root))
+    raw = read_order(dept, root)
+    stored = _dedup(raw)
+    was = set(stored)
 
     work = list(stored)
-    missing = [pid for pid in actives if pid not in set(work)]
+    present = set(work)
+    missing = [pid for pid in actives if pid not in present]
     work.extend(missing)
 
     seq = [pid for pid in work if pid in known]
     dropped = [pid for pid in stored if pid not in known]
-    was = set(stored)
     appended = [pid for pid in seq if pid not in was]
+
+    path = _order_path(root, dept)
+    # Lazy: a department with no processes and no file yet stays fileless (ARD §4.6).
+    if not seq and not path.is_file():
+        return [], []
+    # Don't churn updated_at when nothing changed. Compared against the RAW file
+    # contents, not the de-duplicated view, so a hand-edited duplicate still heals.
+    if seq == raw and path.is_file():
+        return [], []
     _write(dept, seq, now, root)
     return appended, dropped
 
@@ -98,10 +117,12 @@ def set_order(dept, sequence, now, root=None):
     root = root or data_root()
     actives = active_ids(dept, root)
     given = list(sequence)
-    if len(set(given)) != len(given):
+    seen = set(given)
+    if len(seen) != len(given):
         raise OrderMismatch("set mismatch: duplicate ids in sequence")
-    missing = [p for p in actives if p not in set(given)]
-    stale = [p for p in given if p not in set(actives)]
+    known = set(actives)
+    missing = [p for p in actives if p not in seen]
+    stale = [p for p in given if p not in known]
     if missing or stale:
         raise OrderMismatch(
             f"set mismatch: missing={','.join(missing) or '-'} "
@@ -127,5 +148,7 @@ def check(dept, root=None):
     root = root or data_root()
     actives = active_ids(dept, root)
     stored = read_order(dept, root)
-    return ([p for p in actives if p not in set(stored)],
-            [p for p in stored if p not in set(actives)])
+    have = set(stored)
+    known = set(actives)
+    return ([p for p in actives if p not in have],
+            [p for p in stored if p not in known])
