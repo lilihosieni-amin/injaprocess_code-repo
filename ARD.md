@@ -58,10 +58,11 @@ code-repo/
 ├── .claude/                      # dev agents/skills (optional)
 ├── upload-bot/                   # Bot 1 (custom code)
 ├── control-bot/                  # config & launch profile for claude-code-telegram
-├── engine/                       # deterministic CLIs (allocate-id, merge, layout, transcribe, validate)
+├── engine/                       # deterministic CLIs (allocate-id, merge, layout, order, transcribe, validate)
 │   ├── allocate_id/
 │   ├── merge/
 │   ├── layout/
+│   ├── order/                    # curated per-department process order (§4.6)
 │   ├── transcribe/               # Gemini-on-Vertex call
 │   └── validate/                 # JSON-vs-schema gate for LLM-written artifacts
 ├── ui/                           # React + React Flow (frontend)
@@ -93,6 +94,7 @@ data-repo/
 │   ├── registry.json             # official list of departments
 │   └── {dept}/
 │       ├── overview.json         # sub-units, personnel, duties
+│       ├── order.json            # curated process display order (§4.6; order CLI only)
 │       ├── .id-seq.json          # durable per-department id high-water ledger (committed)
 │       ├── processes/
 │       │   └── {process-id}.json
@@ -495,6 +497,7 @@ The four-layer ladder (weak → strong):
 
 **Runtime hooks:**
 - Block direct writes to `departments/**/processes/*.json` except via the `merge` CLI. (INV-1, AC-7)
+- Block direct writes to `departments/**/order.json` except via the `order` CLI — the curated order is human-owned, never model-written. (INV-1, §4.6)
 - Block writes/edits to `data-repo/.claude/**` and `data-repo/CLAUDE.md` at runtime. (INV-2, AC-7)
 - Block any write outside `data-repo`. (An extra defensive layer on the code/data separation.)
 
@@ -636,7 +639,7 @@ No change goes uncommitted; each path commits with a distinct author/message so 
 
 Note: in the UI, saving is manual (not autosave on each click), so each "Save" = one JSON write + one commit. (Section 13)
 
-`order.json` is never committed on its own: it rides in the **same commit** as the action that changed it — the pipeline's run commit, or the UI's create/delete/reorder commit.
+`order.json` is never committed on its own: it rides in the **same commit** as the action that changed it — the pipeline's run commit, the chat edit's commit (an `edit-process` verb that creates or retires a process reconciles it too), or the UI's create/delete/reorder commit.
 
 ### When it pushes — scheduled (NFR-7)
 
