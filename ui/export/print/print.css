@@ -26,6 +26,18 @@
  *     lives on the wrapper, not inside it.
  */
 
+/* Both the host that measures the nodes and the bands that paint them sit inside
+   `.doc-root`, whose `line-height:1.75` is the document's own leading — the site
+   uses Tailwind preflight's 1.5, and `ActivityNode`'s id badge, actor row and
+   subprocess pill declare no leading of their own. Left inheriting, every printed
+   node comes out ~5% taller than the same node on the site (measured: 121 px vs
+   115, 137 vs 130), which is exactly the drift `doc-base.css` scoped the document
+   typography to avoid. Restoring the site's leading here — and in *both* contexts,
+   because a box measured at 1.5 and painted at 1.75 would overflow the space the
+   band reserved for it — makes the printed node the site's node. It changes no
+   text the document itself renders: `.doc-root` still carries 1.75 for the sheets. */
+.pf-measure, .pf-band { line-height: 1.5; }
+
 /* offscreen measuring host: laid out so node boxes get real sizes, but never
    painted, never printed, and never inside a display:none subtree */
 .pf-measure {
