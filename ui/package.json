@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && npm run build:export",
+    "build:export": "INJA_EXPORT_ENTRY=flowchart vite build -c vite.config.export.ts && INJA_EXPORT_ENTRY=steps vite build -c vite.config.export.ts",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",
@@ -38,6 +39,7 @@
     "typescript": "~5.8.3",
     "typescript-eslint": "^8.30.1",
     "vite": "^6.3.5",
+    "vite-plugin-singlefile": "^2.3.3",
     "vitest": "^3.2.7"
   }
 }
