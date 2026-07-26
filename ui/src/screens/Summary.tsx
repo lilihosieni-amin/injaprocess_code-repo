@@ -98,7 +98,7 @@ export function Summary() {
             ) : (
               <>
                 <Button variant="ghost" onClick={() => setDraft(null)} className="px-4 py-3 text-[13px]">انصراف</Button>
-                <Button variant="green" onClick={save} disabled={put.isPending} className="px-[18px] py-3 text-[13.5px]">ذخیره</Button>
+                <Button variant="green" onClick={save} loading={put.isPending} loadingLabel="در حال ذخیره…" className="px-[18px] py-3 text-[13.5px]">ذخیره</Button>
               </>
             )}
           </div>

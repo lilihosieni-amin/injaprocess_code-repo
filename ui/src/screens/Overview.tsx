@@ -58,7 +58,7 @@ export function Overview() {
           ) : (
             <div className="flex gap-2.5">
               <Button variant="ghost" onClick={() => setDraft(null)} className="px-4 py-2.5 text-[13px]">انصراف</Button>
-              <Button variant="green" onClick={save} disabled={put.isPending} className="px-4 py-2.5 text-[13px]">ذخیره</Button>
+              <Button variant="green" onClick={save} loading={put.isPending} loadingLabel="در حال ذخیره…" className="px-4 py-2.5 text-[13px]">ذخیره</Button>
             </div>
           )}
         </div>

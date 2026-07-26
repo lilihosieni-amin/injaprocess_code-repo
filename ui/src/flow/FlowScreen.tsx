@@ -6,7 +6,7 @@ import { useFlowEditor } from './useFlowEditor'
 import { neighborProcess } from '../lib/process-nav'
 import { toFlowNodes, toFlowEdges } from './adapt'
 import { Canvas } from './Canvas'
-import { Button } from '../ui/Button'
+import { Button, Spinner } from '../ui/Button'
 import { IdBadge } from '../ui/IdBadge'
 import { DeleteNodeConfirm } from './DeleteNodeConfirm'
 import { DetailDrawer } from './DetailDrawer'
@@ -132,8 +132,11 @@ function FlowEditor() {
                 </button>
               </div>
               <button onClick={ed.cancel} className="px-3.5 py-[9px] border-[1.5px] border-line bg-white rounded-[11px] font-semibold text-[12.5px] text-muted hover:bg-[#F4EFFB]">انصراف</button>
-              <button onClick={onSave} disabled={put.isPending} data-testid="save" className="flex items-center gap-1.5 px-[18px] py-[9px] rounded-[11px] bg-green text-white font-bold text-[13px] shadow-green hover:brightness-105">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>ذخیره
+              <button onClick={onSave} disabled={put.isPending} aria-busy={put.isPending || undefined} data-testid="save" className={`flex items-center gap-1.5 px-[18px] py-[9px] rounded-[11px] bg-green text-white font-bold text-[13px] shadow-green hover:brightness-105 ${put.isPending ? 'cursor-progress' : ''}`}>
+                {put.isPending
+                  ? <Spinner />
+                  : <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>}
+                {put.isPending ? 'در حال ذخیره…' : 'ذخیره'}
               </button>
             </>
           )}

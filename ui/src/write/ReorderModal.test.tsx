@@ -115,6 +115,20 @@ describe('ReorderModal', () => {
     expect(spy).not.toHaveBeenCalled()
   })
 
+  it('shows a busy save button while the request is in flight', async () => {
+    // saving on the server takes a noticeable moment; the button must look busy
+    // rather than frozen, and must not accept a second click meanwhile
+    let release: (r: Response) => void = () => {}
+    vi.spyOn(globalThis, 'fetch').mockReturnValue(new Promise<Response>((res) => { release = res }))
+    wrap(<ReorderModal department="cooking" departmentName="پخت" processes={PROCS} onClose={() => {}} />)
+    const save = screen.getByRole('button', { name: /ذخیره/ })
+    fireEvent.click(save)
+    const busy = await screen.findByRole('button', { name: /در حال ذخیره/ })
+    expect(busy).toBeDisabled()
+    expect(busy).toHaveAttribute('aria-busy', 'true')
+    release(new Response(JSON.stringify({ order: [] }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+  })
+
   it('shows the drift notice and closes the modal on a 409', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(JSON.stringify({ detail: 'set mismatch: missing=cooking-009 stale=-' }),
