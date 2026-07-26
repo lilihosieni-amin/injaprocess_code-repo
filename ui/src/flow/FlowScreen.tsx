@@ -10,6 +10,7 @@ import { Button, Spinner } from '../ui/Button'
 import { IdBadge } from '../ui/IdBadge'
 import { DeleteNodeConfirm } from './DeleteNodeConfirm'
 import { DetailDrawer } from './DetailDrawer'
+import { JunctionLegend } from './JunctionLegend'
 import type { ActivityNode } from '../api/types'
 
 export function FlowScreen() {
@@ -167,11 +168,7 @@ function FlowEditor() {
           onSetEdgeLabel={(f, t, v) => ed.setEdgeLabel(f, t, v)}
           onDeleteEdge={(f, t) => ed.deleteEdge(f, t)}
         />
-        <div className="absolute bottom-4 right-4 flex gap-3.5 bg-white border border-warm rounded-xl px-3.5 py-2 text-[11px] text-muted">
-          <span className="flex items-center gap-1"><span className="w-[11px] h-[11px] bg-coral rotate-45 inline-block" />XOR</span>
-          <span className="flex items-center gap-1"><span className="w-[11px] h-[11px] bg-violet rotate-45 inline-block" />AND</span>
-          <span className="flex items-center gap-1"><span className="w-[11px] h-[11px] bg-[#E8A33D] rotate-45 inline-block" />OR</span>
-        </div>
+        <JunctionLegend />
         {(() => {
           if (!detailId) return null
           const detailNode = proc.nodes.find((x) => x.id === detailId)

@@ -3,6 +3,7 @@ import { ReactFlowProvider } from '@xyflow/react'
 import { Canvas } from '../../src/flow/Canvas'
 import { toFlowNodes, toFlowEdges } from '../../src/flow/adapt'
 import { DetailDrawer } from '../../src/flow/DetailDrawer'
+import { JunctionLegend } from '../../src/flow/JunctionLegend'
 import { IdBadge } from '../../src/ui/IdBadge'
 import type { ActivityNode, Process } from '../../src/api/types'
 
@@ -95,12 +96,8 @@ export function FlowViewer({ processes, startId, onClose }: {
           />
         </ReactFlowProvider>
 
-        {/* identical to FlowScreen's legend box */}
-        <div className="absolute bottom-4 right-4 flex gap-3.5 bg-white border border-warm rounded-xl px-3.5 py-2 text-[11px] text-muted">
-          <span className="flex items-center gap-1"><span className="w-[11px] h-[11px] bg-coral rotate-45 inline-block" />XOR</span>
-          <span className="flex items-center gap-1"><span className="w-[11px] h-[11px] bg-violet rotate-45 inline-block" />AND</span>
-          <span className="flex items-center gap-1"><span className="w-[11px] h-[11px] bg-[#E8A33D] rotate-45 inline-block" />OR</span>
-        </div>
+        {/* the app's own legend component — same markup, same colour map as the diamonds */}
+        <JunctionLegend />
 
         {detailNode && (
           <DetailDrawer
