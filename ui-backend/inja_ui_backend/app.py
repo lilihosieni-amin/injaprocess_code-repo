@@ -9,6 +9,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from .config import Settings, load_settings
 from .routers import auth as auth_router
 from .routers import departments as departments_router
+from .routers import exports as exports_router
 from .routers import pending as pending_router
 from .routers import processes as processes_router
 
@@ -41,8 +42,16 @@ def create_app(cfg: Settings | None = None) -> FastAPI:
     app.state.cfg = cfg
     app.include_router(auth_router.router)
     app.include_router(departments_router.router)
+    app.include_router(exports_router.router)
     app.include_router(pending_router.router)
     app.include_router(processes_router.router)
+    # Mounted ahead of the SPA catch-all: a mount at "/" swallows everything
+    # registered after it, and its 404 fallback would answer /exports/... with
+    # index.html. Deliberately unauthenticated — the token in the filename is
+    # the only guard (D6).
+    if cfg.export_dir:
+        cfg.export_dir.mkdir(parents=True, exist_ok=True)
+        app.mount("/exports", StaticFiles(directory=str(cfg.export_dir)), name="exports")
     if cfg.static_dir and cfg.static_dir.is_dir():
         app.mount("/", SPAStaticFiles(directory=str(cfg.static_dir), html=True), name="static")
     return app
