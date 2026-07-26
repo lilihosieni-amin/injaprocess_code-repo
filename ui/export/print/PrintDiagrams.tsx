@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { RefObject } from 'react'
 import {
   ReactFlow, ReactFlowProvider, useNodesInitialized, useStoreApi, getBezierPath,
@@ -15,6 +15,18 @@ import type { ExportPayload } from '../shared/payload'
 import type { Process } from '../../src/api/types'
 
 const nodeTypes = { activity: ActivityNode, start: StartNode, end: EndNode, junction: JunctionNode }
+
+/** A process id made safe for an SVG `id`, without ever mapping two ids onto one.
+ *
+ *  Every marker in the document shares one id space, so two processes that
+ *  slugged the same would have the second's arrowheads resolve to the first's
+ *  `<marker>`. Dropping the offending characters (`dining-001` → `dining001`)
+ *  collides with a genuine `dining001`; escaping them to `_<code>` cannot,
+ *  because `_` is itself escaped. Real ids are `[a-z]+-[0-9]{3}` and pass
+ *  through untouched. */
+function slug(id: string): string {
+  return id.replace(/[^a-zA-Z0-9-]/g, (c) => `_${c.charCodeAt(0).toString(36)}`)
+}
 
 /** Read the laid-out flow: node boxes with their real markup, edges with the
  *  same bezier `LabeledEdge` draws. Geometry comes from React Flow's own
@@ -57,7 +69,7 @@ function capture(proc: Process, store: ReturnType<typeof useStoreApi>, host: HTM
       ? { x: labelX - Math.min(240, e.label.length * 7.2 + 16) / 2, y: labelY - 11,
           w: Math.min(240, e.label.length * 7.2 + 16), h: 22, text: e.label }
       : undefined
-    edges.push({ d, sx: p.sx, sy: p.sy, label })
+    edges.push({ d, sx: p.sx, sy: p.sy, tx: p.tx, ty: p.ty, label })
   }
   return { boxes, edges }
 }
@@ -78,11 +90,29 @@ function Capture({ proc, host, onReady }: { proc: Process; host: RefObject<HTMLD
  *  The host is laid out but never painted — `left:-99999px`, not `display:none`,
  *  because a `display:none` subtree measures as zero and every box would come
  *  back the wrong size.
+ *
+ *  Exactly one process is mounted at a time and the index only advances once its
+ *  slot is written, so the queue is strictly sequential — which is also why a
+ *  process that could never finish would strand every process behind it.
  */
 export function PrintDiagrams({ payload }: { payload: ExportPayload }) {
   const [index, setIndex] = useState(0)
   const host = useRef<HTMLDivElement>(null)
   const proc = payload.processes[index]
+  const nodes = useMemo(
+    () => (proc ? toFlowNodes(proc).map((n) => ({ ...n, draggable: false, selectable: false })) : []),
+    [proc],
+  )
+
+  // A process can render no nodes at all — the schema puts no minimum on `nodes`,
+  // and `toFlowNodes` drops soft-deleted ones on top of that. Such a flow never
+  // initialises: `nodesInitialized` is seeded `nodes.length > 0` and is only ever
+  // set again inside the store's `setNodes`, so `Capture` would never fire, `emit`
+  // would never advance the index, and EVERY LATER process's slot would stay empty
+  // too. Skip it without mounting a flow.
+  useEffect(() => {
+    if (proc && !nodes.length) setIndex(index + 1)
+  }, [proc, nodes.length, index])
 
   function emit(g: DiagramGeom) {
     const slot = document.querySelector<HTMLElement>(`[data-pf="${CSS.escape(proc.id)}"]`)
@@ -96,19 +126,20 @@ export function PrintDiagrams({ payload }: { payload: ExportPayload }) {
       // heading height at print width: title + id strip + meta row, measured live
       const sheet = slot.closest('[data-testid^="sheet-"]')
       const head = sheet?.querySelector('h2')?.getBoundingClientRect()
-      const meta = sheet?.querySelectorAll('span')
-      const headH = head && meta ? Math.ceil(head.height + 90) + PRINT.HEADGAP : 130
+      const headH = head ? Math.ceil(head.height + 90) + PRINT.HEADGAP : 130
       const plan = planBands(minY, minY + height, width, cuts, headH)
       slot.classList.toggle('own-page', plan.ownPage)
-      const uid = proc.id.replace(/[^a-z0-9]/gi, '')
       slot.innerHTML = plan.bands
-        .map((band, i) => bandSvg(g, band, { minX, width }, plan.scale, `pfah-${uid}-${i}`))
+        .map((band, i) => bandSvg(g, band, { minX, width }, plan.scale, `pfah-${slug(proc.id)}-${i}`))
         .join('')
     }
-    if (index + 1 < payload.processes.length) setIndex(index + 1)
+    setIndex(index + 1)
   }
 
-  if (!proc) return null
+  // Nothing to measure: either past the last process — take the host down rather
+  // than leave an idle flow in the document — or this process renders no nodes,
+  // in which case the effect above is already moving on to the next one.
+  if (!proc || !nodes.length) return null
   // `defaultNodes`/`defaultEdges`, not `nodes`/`edges`: a *controlled* flow
   // forwards its measurements out through `onNodesChange`, and with no handler
   // to apply them the nodes never gain a measured size — `useNodesInitialized`
@@ -119,7 +150,7 @@ export function PrintDiagrams({ payload }: { payload: ExportPayload }) {
     <div className="pf-measure" aria-hidden ref={host} style={{ width: 4000, height: 900 }}>
       <ReactFlowProvider key={proc.id}>
         <ReactFlow
-          defaultNodes={toFlowNodes(proc).map((n) => ({ ...n, draggable: false, selectable: false }))}
+          defaultNodes={nodes}
           defaultEdges={toFlowEdges(proc)}
           nodeTypes={nodeTypes}
           nodesDraggable={false} nodesConnectable={false} elementsSelectable={false}

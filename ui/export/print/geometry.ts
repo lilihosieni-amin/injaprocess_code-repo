@@ -1,20 +1,40 @@
 import type { Span } from './bands'
+import {
+  EDGE_STROKE, EDGE_WIDTH, EDGE_NUB, EDGE_ARROW, EDGE_LABEL_CLASS,
+} from '../../src/flow/edges/edge-style'
 
 export type NodeBox = { id: string; x: number; y: number; w: number; h: number; html: string }
 export type EdgeGeom = {
   d: string
+  /** the edge's exit point on the source node — where the nub is drawn */
   sx: number
   sy: number
+  /** the edge's entry point on the target node — where the arrowhead lands */
+  tx: number
+  ty: number
   label?: { x: number; y: number; w: number; h: number; text: string }
 }
 export type DiagramGeom = { boxes: NodeBox[]; edges: EdgeGeom[] }
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 
-/** Painted spans: node boxes and edge labels. A page break may not fall in one. */
+/** Paint that escapes a node's *measured* box, and so has to be kept clear of a
+ *  page break just as the box itself is.
+ *
+ *  Two sources: the edge's exit nub is a circle centred on the node border, so it
+ *  reaches its radius plus half its stroke beyond; and `shadow-card`
+ *  (`0 3px 14px -8px`) reaches roughly offset+blur+spread below the box.
+ *  `PRINT.GAP`, the clearance kept above a cut, is only 6 — so without this a cut
+ *  lands close enough to shave either. */
+const NUB_REACH = EDGE_NUB.r + EDGE_NUB.strokeWidth / 2
+const SHADOW_REACH = 3 + 14 - 8
+export const NODE_OVERHANG = Math.max(NUB_REACH, SHADOW_REACH)
+
+/** Painted spans: node boxes (with their overhang) and edge labels. A page break
+ *  may not fall in one. */
 export function geomBlocks(g: DiagramGeom): Span[] {
   return [
-    ...g.boxes.map((b) => [b.y, b.y + b.h] as Span),
+    ...g.boxes.map((b) => [b.y - NODE_OVERHANG, b.y + b.h + NODE_OVERHANG] as Span),
     ...g.edges.filter((e) => e.label).map((e) => [e.label!.y, e.label!.y + e.label!.h] as Span),
   ]
 }
@@ -30,8 +50,20 @@ export function geomBounds(g: DiagramGeom) {
     minX = Math.min(minX, e.label.x); minY = Math.min(minY, e.label.y)
     maxX = Math.max(maxX, e.label.x + e.label.w); maxY = Math.max(maxY, e.label.y + e.label.h)
   })
+  // nothing painted: a degenerate box, never infinities — every caller pads and
+  // divides by these, and an infinite width poisons the scale and the band split
+  if (!Number.isFinite(minX)) return { minX: 0, minY: 0, maxX: 0, maxY: 0 }
   return { minX, minY, maxX, maxY }
 }
+
+/** React Flow's own `ArrowClosed` arrowhead, transcribed.
+ *
+ *  `adapt.ts` asks for `MarkerType.ArrowClosed`, so this is the head drawn on
+ *  screen and the print has to draw the same one. React Flow exports neither the
+ *  symbol nor its `<marker>` frame (`ArrowClosedSymbol` / `Marker`, both module
+ *  private), so the numbers are copied — and `edge-parity.test.tsx` renders a
+ *  real flow and asserts these are still exactly what it puts in the DOM. */
+export const ARROW_SPEC = { viewBox: '-10 -10 20 20', points: '-5,-4 0,0 -5,4 -5,-4', strokeWidth: 1, orient: 'auto-start-reverse' }
 
 /** One band as a single atomic `<svg>`.
  *
@@ -52,21 +84,30 @@ export function bandSvg(g: DiagramGeom, band: Span, box: { minX: number; width: 
       + `</foreignObject>`)
     .join('')
 
-  // an edge is drawn whenever either end is on this band; the viewBox clips the rest
+  // An edge is drawn whenever any part of it can reach this band: either end, or
+  // its label. Both ends matter — an unlabelled edge whose source is pages above
+  // still lands its arrowhead here. The extra band of slack covers a bezier that
+  // bows outside its own endpoints. This is only an optimisation; the viewBox is
+  // what actually clips, so being generous costs nothing but bytes.
   const edges = g.edges
     .filter((e) => {
-      const ys = [e.sy, e.label ? e.label.y : e.sy]
+      const ys = [e.sy, e.ty]
+      if (e.label) ys.push(e.label.y, e.label.y + e.label.h)
       return Math.max(...ys) >= y0 - h && Math.min(...ys) <= y1 + h
     })
     .map((e) => {
-      let out = `<path d="${e.d}" fill="none" stroke="#9B86D9" stroke-width="2" marker-end="url(#${markerId})"/>`
+      let out = `<path d="${e.d}" fill="none" stroke="${EDGE_STROKE}" stroke-width="${EDGE_WIDTH}" marker-end="url(#${markerId})"/>`
       // the white exit nub LabeledEdge draws at the source end
-      out += `<circle cx="${e.sx}" cy="${e.sy}" r="4" fill="#fff" stroke="#9B86D9" stroke-width="1.5"/>`
+      out += `<circle cx="${e.sx}" cy="${e.sy}" r="${EDGE_NUB.r}" fill="${EDGE_NUB.fill}" stroke="${EDGE_STROKE}" stroke-width="${EDGE_NUB.strokeWidth}"/>`
       if (e.label) {
+        // The label's box is centred on the bezier's midpoint, and the pill has to
+        // sit in the middle of it — on screen `LabeledEdge` centres exactly, with a
+        // translate(-50%,-50%). A pill that shrinks to its text does not centre
+        // itself, so the foreignObject carries a flex box that centres it.
         out += `<foreignObject x="${e.label.x}" y="${e.label.y}" width="${e.label.w}" height="${e.label.h}">`
-          + `<div xmlns="http://www.w3.org/1999/xhtml" style="font-size:11px;color:#2A1D5E;text-align:center;`
-          + `font-family:'Vazirmatn Variable',sans-serif;background:rgba(255,255,255,.9);border-radius:6px;padding:2px 8px;display:inline-block">`
-          + `${esc(e.label.text)}</div></foreignObject>`
+          + `<div xmlns="http://www.w3.org/1999/xhtml"`
+          + ` style="width:100%;height:100%;display:flex;align-items:center;justify-content:center">`
+          + `<div class="${EDGE_LABEL_CLASS}">${esc(e.label.text)}</div></div></foreignObject>`
       }
       return out
     })
@@ -74,7 +115,9 @@ export function bandSvg(g: DiagramGeom, band: Span, box: { minX: number; width: 
 
   return `<div class="pf-band"><svg xmlns="http://www.w3.org/2000/svg" viewBox="${box.minX} ${y0} ${box.width} ${h}"`
     + ` width="${Math.round(box.width * scale)}" height="${Math.round(h * scale)}">`
-    + `<defs><marker id="${markerId}" markerWidth="18" markerHeight="18" refX="9" refY="4.5" orient="auto">`
-    + `<path d="M0 0L9 4.5L0 9z" fill="#9B86D9"/></marker></defs>`
+    + `<defs><marker id="${markerId}" markerWidth="${EDGE_ARROW.width}" markerHeight="${EDGE_ARROW.height}"`
+    + ` viewBox="${ARROW_SPEC.viewBox}" markerUnits="strokeWidth" orient="${ARROW_SPEC.orient}" refX="0" refY="0">`
+    + `<polyline points="${ARROW_SPEC.points}" stroke="${EDGE_STROKE}" fill="${EDGE_STROKE}"`
+    + ` stroke-width="${ARROW_SPEC.strokeWidth}" stroke-linecap="round" stroke-linejoin="round"/></marker></defs>`
     + edges + boxes + `</svg></div>`
 }

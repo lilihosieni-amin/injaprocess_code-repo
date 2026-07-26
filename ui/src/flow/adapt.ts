@@ -1,6 +1,7 @@
 import { MarkerType } from '@xyflow/react'
 import type { Node, Edge } from '@xyflow/react'
 import type { Process, ProcNode } from '../api/types'
+import { EDGE_STROKE, EDGE_ARROW } from './edges/edge-style'
 
 export type FlowNodeData = { node: ProcNode; conflicts: number; hasSub: boolean; highlighted?: boolean; onOpenDetail?: (id: string) => void }
 
@@ -49,7 +50,7 @@ export function toFlowEdges(proc: Process): Edge[] {
     source: e.from,
     target: e.to,
     type: 'labeled',
-    markerEnd: { type: MarkerType.ArrowClosed, color: '#9B86D9', width: 18, height: 18 },
+    markerEnd: { type: MarkerType.ArrowClosed, color: EDGE_STROKE, width: EDGE_ARROW.width, height: EDGE_ARROW.height },
     data: { label: e.label ?? '' },
   }))
 }
