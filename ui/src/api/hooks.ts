@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { fetchJson } from './client'
-import type { Department, DepartmentOrder, Me, Overview, PendingItem, Process } from './types'
+import type { Department, DepartmentOrder, ExportKind, ExportResult, Me, Overview, PendingItem, Process } from './types'
 
 export const useDepartments = () =>
   useQuery({ queryKey: ['departments'], queryFn: () => fetchJson<Department[]>('/api/departments') })
@@ -129,5 +129,13 @@ export function useSaveOrder(code: string) {
     // onSettled, not onSuccess: a 409 means the active set moved, so the list
     // must refresh on failure too
     onSettled: () => qc.invalidateQueries({ queryKey: ['processes', code] }),
+  })
+}
+
+export function useCreateExport(code: string) {
+  // No invalidation: an export reads the department, it changes nothing.
+  return useMutation({
+    mutationFn: (kind: ExportKind) =>
+      fetchJson<ExportResult>(`/api/departments/${code}/exports/${kind}`, { method: 'POST' }),
   })
 }
