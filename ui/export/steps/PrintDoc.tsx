@@ -2,8 +2,34 @@ import { linearize, countSteps, groupTitle } from './linearize'
 import type { Block } from './linearize'
 import { toFa } from '../../src/lib/format'
 import type { ExportPayload } from '../shared/payload'
-import type { Process } from '../../src/api/types'
+import type { ActivityNode, Process } from '../../src/api/types'
 import p from './print.module.css'
+
+/** The activity that opens `x`, for its «این بخش مربوط به چیست؟» note.
+ *
+ *  Soft-deleted nodes are skipped, exactly as `linearize` skips them: a removed
+ *  activity is no longer a step anywhere, so the on-screen guide — which takes
+ *  this note from the step the reader tapped — can never show it. Quoting one
+ *  here would put text in the PDF for a step that does not exist and make the
+ *  paper disagree with the screen.
+ *
+ *  A subprocess can be called from more than one place, and the printed section
+ *  has room for one note. `parent` records the call the merge engine wired, so
+ *  that one wins; failing that the callers are ordered by process and node id.
+ *  Either way the answer is a property of the data, never of the order the
+ *  payload happens to list processes or nodes in. */
+function callerOf(processes: Process[], x: Process): ActivityNode | null {
+  const callers: { proc: string; node: ActivityNode }[] = []
+  processes.forEach((o) => o.nodes.forEach((n) => {
+    if (n.type === 'activity' && n.subprocess === x.id && !n.removed) callers.push({ proc: o.id, node: n })
+  }))
+  if (!callers.length) return null
+  const rec = x.parent
+  const owned = rec && callers.find((c) => c.proc === rec.process && c.node.id === rec.node)
+  if (owned) return owned.node
+  callers.sort((a, b) => a.proc.localeCompare(b.proc) || a.node.id.localeCompare(b.node.id))
+  return callers[0].node
+}
 
 export function PrintDoc({ payload }: { payload: ExportPayload }) {
   const byId = new Map(payload.processes.map((x) => [x.id, x]))
@@ -26,15 +52,13 @@ export function PrintDoc({ payload }: { payload: ExportPayload }) {
       </section>
 
       {payload.processes.map((x) => {
-        // the parent node that links here, for the "what is this about?" note
-        const via = payload.processes
-          .flatMap((o) => o.nodes)
-          .find((n) => n.type === 'activity' && n.subprocess === x.id)
+        // the live parent node that links here, for the "what is this about?" note
+        const via = callerOf(payload.processes, x)
         return (
           <section key={x.id} className={p.psec} data-testid={`print-section-${x.id}`}>
             <h2>{x.name}</h2>
             <div className={`${p.ptype} ${x.parent ? p.sub : ''}`}>{x.parent ? 'زیرفرآیند' : 'فرآیند'}</div>
-            {via && 'description' in via && via.description && (
+            {via && via.description && (
               <div className={p.psum}><b>این بخش مربوط به چیست؟</b>{via.description}</div>
             )}
             <PrintBlocks blocks={model.get(x.id) ?? []} byId={byId} />
