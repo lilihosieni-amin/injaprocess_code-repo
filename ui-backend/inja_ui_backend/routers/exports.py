@@ -28,10 +28,15 @@ def create_export(code: str, kind: str, request: Request,
     if code not in {d["code"] for d in reg["departments"]}:
         raise HTTPException(status_code=404, detail="unknown department")
 
+    # Both settings are deployment faults: no retry and no user action fixes an
+    # unset environment variable, so each answers 503 *and* leaves a log line.
+    # Without the log an operator watching a misconfigured service sees nothing.
     if not cfg.export_dir:
+        logger.error("%s/%s: EXPORT_DIR is not configured", code, kind)
         raise HTTPException(status_code=503,
                             detail="خروجی‌گیری پیکربندی نشده است (EXPORT_DIR)")
     if not cfg.export_template_dir:
+        logger.error("%s/%s: UI_EXPORT_TEMPLATE_DIR is not configured", code, kind)
         raise HTTPException(status_code=503,
                             detail="خروجی‌گیری پیکربندی نشده است (UI_EXPORT_TEMPLATE_DIR)")
 
@@ -66,19 +71,24 @@ def create_export(code: str, kind: str, request: Request,
     except exports.ExportUnavailable as e:
         # A template that exists but carries no data slot was built wrong: a
         # deployment fault, not a data one. Retrying cannot fix it, so it joins
-        # the other "export is not configured" 503s — and it is logged, because
-        # only an operator can see the difference.
+        # the other "export is not configured" 503s. The operator-facing English
+        # goes to the log, where only an operator reads it; the client gets the
+        # same user-facing Persian as every other detail on this handler.
         logger.error("%s/%s: the export template is unusable: %s", code, kind, e)
-        raise HTTPException(status_code=503, detail=str(e)) from e
+        raise HTTPException(status_code=503, detail="قالب خروجی نامعتبر است") from e
 
     token = exports.export_token(cfg.session_signing_key, code, kind)
     try:
         written = exports.write_export(cfg.export_dir, code, kind, token, html)
     except OSError as e:
+        # `str(OSError)` carries the filename, so the underlying error is logged
+        # and the response says only that the write failed: a full server path in
+        # a client-visible detail is disclosure, and the client cannot act on it.
+        logger.error("%s/%s: the export file could not be written: %s", code, kind, e)
         raise HTTPException(status_code=500,
-                            detail=f"نوشتن فایل خروجی انجام نشد: {e}") from e
+                            detail="نوشتن فایل خروجی انجام نشد") from e
 
-    # The name comes from the path that was actually written, so the served URL
-    # and the file on disk cannot drift apart.
-    return {"url": f"/exports/{code}/{written.name}",
+    # Both segments come from the path that was actually written, resolved against
+    # the mount root, so the served URL cannot drift from the layout on disk.
+    return {"url": f"/exports/{written.relative_to(cfg.export_dir).as_posix()}",
             "generated_at": generated_at}

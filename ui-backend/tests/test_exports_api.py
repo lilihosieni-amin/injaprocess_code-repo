@@ -46,7 +46,9 @@ def test_export_writes_a_file_and_returns_its_url(data_root, tmp_path):
     assert r.status_code == 200
     url = r.json()["url"]
     assert url.startswith("/exports/cooking/flowchart-") and url.endswith(".html")
-    written = cfg.export_dir / "cooking" / url.rsplit("/", 1)[1]
+    # resolved against the mount root, not by re-deriving the layout: the URL has
+    # to be the file's own path under EXPORT_DIR or the mount cannot serve it
+    written = cfg.export_dir / url[len("/exports/"):]
     assert written.is_file()
     assert "__INJA_EXPORT_DATA__" not in written.read_text(encoding="utf-8")
 
@@ -69,24 +71,36 @@ def test_unknown_kind_is_404(data_root, tmp_path):
 
 
 def test_department_without_an_overview_is_404(data_root, tmp_path):
+    """A registered department with no `overview.json` is a *data* fault.
+
+    The detail is asserted, not just the status: three different guards on this
+    handler answer 404 (unknown kind, unknown department, no overview) and only
+    the detail says which one spoke.
+    """
     c = _client(_cfg(data_root, tmp_path))
     r = c.post("/api/departments/dining/exports/flowchart")
     assert r.status_code == 404
+    assert "overview" in r.json()["detail"]
 
 
-def test_missing_export_dir_is_503(data_root, tmp_path):
+def test_missing_export_dir_is_503(data_root, tmp_path, caplog):
+    """EXPORT_DIR was never set: a deployment fault, so it is logged as well as 503."""
     c = _client(_cfg(data_root, tmp_path, exports=False))
-    r = c.post("/api/departments/cooking/exports/flowchart")
+    with caplog.at_level("WARNING"):
+        r = c.post("/api/departments/cooking/exports/flowchart")
     assert r.status_code == 503
     assert "EXPORT_DIR" in r.json()["detail"]
+    assert any("EXPORT_DIR" in m for m in _guard_logs(caplog))
 
 
-def test_unconfigured_template_dir_is_503(data_root, tmp_path):
+def test_unconfigured_template_dir_is_503(data_root, tmp_path, caplog):
     """UI_EXPORT_TEMPLATE_DIR was never set — the setting itself is missing."""
     c = _client(_cfg(data_root, tmp_path, template_dir=False))
-    r = c.post("/api/departments/cooking/exports/flowchart")
+    with caplog.at_level("WARNING"):
+        r = c.post("/api/departments/cooking/exports/flowchart")
     assert r.status_code == 503
     assert "UI_EXPORT_TEMPLATE_DIR" in r.json()["detail"]
+    assert any("UI_EXPORT_TEMPLATE_DIR" in m for m in _guard_logs(caplog))
 
 
 def test_template_file_absent_from_a_configured_dir_is_503(data_root, tmp_path, caplog):
@@ -152,7 +166,30 @@ def test_template_without_a_data_slot_is_503(data_root, tmp_path, caplog):
     with caplog.at_level("WARNING"):
         r = _client(cfg).post("/api/departments/cooking/exports/flowchart")
     assert r.status_code == 503
+    # the operator-facing English goes to the log; the client gets Persian
+    assert r.json()["detail"] == "قالب خروجی نامعتبر است"
     assert any("template" in m and "__INJA_EXPORT_DATA__" in m
+               for m in _guard_logs(caplog))
+
+
+def test_unwritable_export_dir_is_logged_and_leaks_no_path(data_root, tmp_path, caplog):
+    """A disk-full or permissions fault on the write is operator-actionable.
+
+    `str(OSError)` carries the offending absolute path, so it belongs in the log
+    and never in the response body.
+    """
+    cfg = _cfg(data_root, tmp_path)
+    c = _client(cfg)
+    # the department folder the write needs is occupied by a file: the
+    # `mkdir(parents=True, exist_ok=True)` inside the atomic write raises OSError
+    (cfg.export_dir / "cooking").write_text("not a directory", encoding="utf-8")
+    with caplog.at_level("WARNING"):
+        r = c.post("/api/departments/cooking/exports/flowchart")
+    assert r.status_code == 500
+    detail = r.json()["detail"]
+    assert detail == "نوشتن فایل خروجی انجام نشد"
+    assert str(cfg.export_dir) not in detail and "cooking" not in detail
+    assert any("could not be written" in m and str(cfg.export_dir) in m
                for m in _guard_logs(caplog))
 
 
@@ -179,6 +216,26 @@ def test_exports_mount_does_not_shadow_api_404s(data_root, tmp_path):
     assert c.get("/api/does-not-exist").status_code == 404
     assert "inja" not in c.get("/api/does-not-exist").text
     assert c.get("/exports/cooking/nope.html").status_code == 404
+
+
+def test_a_real_export_is_served_while_the_spa_is_mounted(data_root, tmp_path):
+    """The ordering test above proves it with a *missing* file; this one with a real one.
+
+    A mount registered after the SPA catch-all would answer this with the shell
+    and a 200, which a status-only assertion could not tell from success.
+    """
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    (dist / "index.html").write_text("<!doctype html><title>inja</title>", encoding="utf-8")
+    cfg = _cfg(data_root, tmp_path)
+    cfg = cfg.__class__(**{**cfg.__dict__, "static_dir": dist})
+    c = _client(cfg)
+    url = c.post("/api/departments/cooking/exports/flowchart").json()["url"]
+
+    r = c.get(url)
+    assert r.status_code == 200
+    assert "inja-export-data" in r.text          # the export itself…
+    assert "<title>inja</title>" not in r.text   # …not the SPA shell
 
 
 def test_payload_in_the_written_file_has_no_pending(data_root, tmp_path):
