@@ -21,7 +21,11 @@
 - **The token is** `HMAC-SHA256(session_signing_key, "export:{code}:{kind}")` hex-digested and truncated to **16 characters** (D7).
 - **Tests run from the repo root:** `make test` (pytest, whole repo) and `npm --prefix ui test` (vitest). Individual runs are given per task.
 - **Commit after every task.** Conventional-commit prefixes, matching the repo's history: `feat:`, `fix:`, `test:`, `docs:`, `build:`, `chore:`.
-- **Python style:** `from __future__ import annotations` at the top of every new module; `ruff` clean (`make lint`).
+- **Python style:** `from __future__ import annotations` at the top of every new module.
+- **Lint is scoped to the files you touch.** `make lint` fails at HEAD with 38 pre-existing
+  errors: `requirements-dev.txt` pins `ruff~=0.6` but the venv resolves 0.16, which flags rules the
+  repo was clean under. That is a separate chore — do NOT fix it here, and do not treat it as your
+  regression. Lint only the files your task changed, and leave them clean.
 - **TypeScript style:** `verbatimModuleSyntax` is on — type-only imports must use `import type { … }`.
 
 ---
@@ -528,8 +532,9 @@ Expected: PASS, 8 tests.
 
 - [ ] **Step 5: Lint**
 
-Run: `.venv/bin/ruff check ui-backend`
-Expected: `All checks passed!`
+Run: `.venv/bin/ruff check ui-backend/inja_ui_backend/exports.py ui-backend/tests/test_exports.py`
+Expected: `All checks passed!` — scoped to this task's files; see Global Constraints on the
+pre-existing repo-wide lint failure.
 
 - [ ] **Step 6: Commit**
 
@@ -768,8 +773,8 @@ Expected: PASS, 10 tests.
 
 - [ ] **Step 6: Run the whole backend suite and lint**
 
-Run: `.venv/bin/pytest ui-backend -q && .venv/bin/ruff check ui-backend`
-Expected: all pass, `All checks passed!`
+Run: `.venv/bin/pytest ui-backend -q && .venv/bin/ruff check ui-backend/inja_ui_backend/routers/exports.py ui-backend/inja_ui_backend/app.py ui-backend/tests/test_exports_api.py`
+Expected: tests pass; lint clean for these files (see Global Constraints).
 
 - [ ] **Step 7: Commit**
 
@@ -4204,8 +4209,9 @@ git commit -m "feat(export): vector-band printing for the flowchart document"
 
 - [ ] **Run everything**
 
-Run: `make test && make lint && npm --prefix ui test && npm --prefix ui run lint && npm --prefix ui run build`
-Expected: all green.
+Run: `make test && npm --prefix ui test && npm --prefix ui run lint && npm --prefix ui run build`
+Expected: all green. (`make lint` is deliberately absent — see Global Constraints. Instead run
+`.venv/bin/ruff check` over the Python files this branch added, which must be clean.)
 
 - [ ] **Record the work**
 
