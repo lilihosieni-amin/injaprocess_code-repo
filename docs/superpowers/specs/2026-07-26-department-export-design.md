@@ -36,6 +36,7 @@ pipeline or the data contract. No schema changes.
 | D13 | The department header **keeps** ترتیب فرآیندها as its own button; the ⋯ menu holds only the two exports. |
 | D14 | A **loading state is shown from the click until the link is handed back**, in the same modal that later shows the link. |
 | D15 | Tombstoned processes are excluded from both exports. |
+| D16 | The endpoint returns a **relative** path; the modal displays and copies it as an **absolute** URL built from `window.location.origin`. No base-URL setting to keep in step with the deployment. |
 
 ---
 
@@ -308,20 +309,41 @@ than inheriting it.
 
 ### 6.2 Export modal
 
-Choosing an item closes the dropdown and opens the export modal immediately (D14). One surface,
-three states:
+Designed in `ui/design/Inja Responsive.dc.html` (the `hasExportReady` block). Choosing a menu item
+closes the dropdown and opens the modal immediately (D14). One surface, three states — the ready
+state is the mockup verbatim; pending and failed reuse its frame.
 
-- **pending** — indeterminate spinner and the name of the export being built, «در حال آماده‌سازی
-  خروجی…». No progress bar: the backend has nothing honest to report a percentage from.
-- **ready** — the URL in a read-only LTR field, **بازکردن** (new tab, `rel="noopener"`) and
-  **کپی لینک**, with a line stating the link is permanent, replaced by the next export, and openable
-  without login.
-- **failed** — the backend's message plus **تلاش دوباره**, re-firing the same request in place.
+Frame, in all three states: 520px wide, `#FBF7F1`, 20px radius, `shadow-modal`, on an
+`rgba(36,17,82,.45)` backdrop with a 3px blur. A white header strip carries a 40px status tile, a
+title, and the export's name as a subtitle — «خروجی مستندات کامل — سند رسمی» or «راهنمای گام‌به‌گام
+کار — برای پرسنل».
+
+- **pending** — violet tile with an indeterminate spinner, «در حال آماده‌سازی خروجی…». No progress
+  bar: the backend has nothing honest to report a percentage from.
+- **ready** — green tile (`#E4F6EC` / `#1F8A5B`) with a check, «خروجی آماده شد». Body: the label
+  «لینک فایل HTML خروجی:», the URL in a read-only `dir="ltr"` monospace field, and a **کپی لینک**
+  button that flips to «کپی شد» for 1.8s (`navigator.clipboard`, falling back to a hidden textarea
+  and `execCommand('copy')` for non-secure contexts). Beneath it: «این فایل کاملاً مستقل است و بدون
+  اینترنت هم باز می‌شود.» and a second line noting the link opens without login and is replaced by
+  the next export — D6 is a deliberate trade-off and the person about to share the link should know
+  it. Footer: **بستن** (ghost) and **باز کردن خروجی** (violet anchor, `target="_blank"`,
+  `rel="noopener"`).
+- **failed** — coral tile, the backend's message, and **تلاش دوباره** re-firing the same request in
+  place.
+
+**The URL is absolute.** The endpoint returns a relative path; the modal displays
+`window.location.origin + url`, which is what makes the field worth copying and stays correct on the
+IP host today and on a real domain later, with no server-side base-URL config.
 
 While the mutation is in flight the ⋯ button and both menu items are disabled, so a second click
 cannot start a competing export — which matters, since both writes target the same filename. The
-modal is not dismissible by outside click while pending; Esc closes it, and the server-side write is
-left to finish, because a half-written file would be worse than an unwanted one.
+modal is dismissible by outside click and Esc in the ready and failed states (as the mockup has it);
+while pending, only Esc closes it, and the server-side write is left to finish, because a
+half-written file would be worse than an unwanted one.
+
+The mockup's `runExport` shows the wait as a toast. That is superseded by the pending state above:
+`ToastProvider` auto-dismisses after 2.6s and always draws a green check, so on a slow export the
+message would disappear mid-wait while claiming success for something that had not succeeded.
 
 ---
 
@@ -341,7 +363,9 @@ left to finish, because a half-written file would be worse than an unwanted one.
 - ⋯ menu opens, closes on outside click and Esc
 - each item posts the right kind
 - the modal appears in pending state on click and the menu is disabled during the request
-- the modal transitions to ready and shows/copies the returned URL
+- the modal transitions to ready and shows the URL as an absolute link (origin prepended)
+- کپی لینک copies and flips to «کپی شد», then back
+- outside click is ignored while pending and closes the modal once ready
 - failure shows the message and تلاش دوباره re-fires
 
 **Pure functions:** `linearize` (§4.1) and the band splitter (§5.3).
