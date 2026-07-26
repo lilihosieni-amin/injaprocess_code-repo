@@ -35,33 +35,50 @@ def create_export(code: str, kind: str, request: Request,
         raise HTTPException(status_code=503,
                             detail="خروجی‌گیری پیکربندی نشده است (UI_EXPORT_TEMPLATE_DIR)")
 
+    # The template dir is configured but the build never put `{kind}.html` in it:
+    # a deployment fault, so it is logged like the other 503s below.
     template_path = cfg.export_template_dir / f"{kind}.html"
     if not template_path.is_file():
+        logger.error("%s/%s: the export template is missing: %s", code, kind, template_path)
         raise HTTPException(status_code=503,
                             detail=f"قالب خروجی یافت نشد: {template_path.name}")
+
+    # Read outside the render guard below: a permissions error, or a deletion
+    # racing the `is_file()` check above, is a deployment fault too and must not
+    # escape as a bare 500 with nothing in the log.
+    try:
+        template = template_path.read_text(encoding="utf-8")
+    except OSError as e:
+        logger.error("%s/%s: the export template could not be read: %s: %s",
+                     code, kind, template_path, e)
+        raise HTTPException(status_code=503,
+                            detail=f"قالب خروجی خوانده نشد: {template_path.name}") from e
 
     generated_at = _now()
     try:
         payload = exports.build_payload(cfg.data_root, code, generated_at)
     except exports.ExportUnavailable as e:
         # a department with no overview.json has nothing to document yet
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=404, detail=str(e)) from e
 
     try:
-        html = exports.render(template_path.read_text(encoding="utf-8"), payload)
+        html = exports.render(template, payload)
     except exports.ExportUnavailable as e:
         # A template that exists but carries no data slot was built wrong: a
         # deployment fault, not a data one. Retrying cannot fix it, so it joins
         # the other "export is not configured" 503s — and it is logged, because
         # only an operator can see the difference.
         logger.error("%s/%s: the export template is unusable: %s", code, kind, e)
-        raise HTTPException(status_code=503, detail=str(e))
+        raise HTTPException(status_code=503, detail=str(e)) from e
 
     token = exports.export_token(cfg.session_signing_key, code, kind)
     try:
-        exports.write_export(cfg.export_dir, code, kind, token, html)
+        written = exports.write_export(cfg.export_dir, code, kind, token, html)
     except OSError as e:
-        raise HTTPException(status_code=500, detail=f"نوشتن فایل خروجی انجام نشد: {e}")
+        raise HTTPException(status_code=500,
+                            detail=f"نوشتن فایل خروجی انجام نشد: {e}") from e
 
-    return {"url": f"/exports/{code}/{kind}-{token}.html",
+    # The name comes from the path that was actually written, so the served URL
+    # and the file on disk cannot drift apart.
+    return {"url": f"/exports/{code}/{written.name}",
             "generated_at": generated_at}

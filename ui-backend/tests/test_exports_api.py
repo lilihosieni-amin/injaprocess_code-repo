@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 from fastapi.testclient import TestClient
 from inja_ui_backend.app import create_app
@@ -8,16 +9,29 @@ from inja_ui_backend.tests_helpers import cfg_for
 TEMPLATE = '<!doctype html><script id="inja-export-data">__INJA_EXPORT_DATA__</script>'
 
 
-def _cfg(data_root, tmp_path, *, templates=True, exports=True):
+def _cfg(data_root, tmp_path, *, template_dir=True, template_files=True, exports=True):
+    """`template_dir` is the *setting*; `template_files` is what the build left in it.
+
+    They are separate because they fail for different reasons: an unset
+    UI_EXPORT_TEMPLATE_DIR is a missing setting, while a configured directory with
+    no `{kind}.html` in it is a build that never ran. Both answer 503, but only
+    keeping them apart exercises both guards.
+    """
     cfg = cfg_for(data_root)
     tdir = tmp_path / "templates"
-    if templates:
+    if template_dir:
         tdir.mkdir(exist_ok=True)
-        (tdir / "flowchart.html").write_text(TEMPLATE, encoding="utf-8")
-        (tdir / "steps.html").write_text(TEMPLATE, encoding="utf-8")
+        if template_files:
+            (tdir / "flowchart.html").write_text(TEMPLATE, encoding="utf-8")
+            (tdir / "steps.html").write_text(TEMPLATE, encoding="utf-8")
     return cfg.__class__(**{**cfg.__dict__,
                            "export_dir": (tmp_path / "exports") if exports else None,
-                           "export_template_dir": tdir if templates else None})
+                           "export_template_dir": tdir if template_dir else None})
+
+
+def _guard_logs(caplog):
+    return [r.getMessage() for r in caplog.records
+            if r.name == "inja_ui_backend.routers.exports"]
 
 
 def _client(cfg):
@@ -67,9 +81,62 @@ def test_missing_export_dir_is_503(data_root, tmp_path):
     assert "EXPORT_DIR" in r.json()["detail"]
 
 
-def test_missing_template_is_503(data_root, tmp_path):
-    c = _client(_cfg(data_root, tmp_path, templates=False))
-    assert c.post("/api/departments/cooking/exports/flowchart").status_code == 503
+def test_unconfigured_template_dir_is_503(data_root, tmp_path):
+    """UI_EXPORT_TEMPLATE_DIR was never set — the setting itself is missing."""
+    c = _client(_cfg(data_root, tmp_path, template_dir=False))
+    r = c.post("/api/departments/cooking/exports/flowchart")
+    assert r.status_code == 503
+    assert "UI_EXPORT_TEMPLATE_DIR" in r.json()["detail"]
+
+
+def test_template_file_absent_from_a_configured_dir_is_503(data_root, tmp_path, caplog):
+    """The directory is configured and real, but `flowchart.html` was never built.
+
+    Distinct from the unset-directory case above: here the request reaches the
+    `is_file()` guard. The assertions name that guard's own answer — "not found",
+    not the read fallback's "could not be read" — so deleting the guard and letting
+    the read's OSError handler cover for it does not keep this test green.
+    """
+    cfg = _cfg(data_root, tmp_path, template_files=False)
+    assert cfg.export_template_dir.is_dir()
+    assert not (cfg.export_template_dir / "flowchart.html").exists()
+    with caplog.at_level("WARNING"):
+        r = _client(cfg).post("/api/departments/cooking/exports/flowchart")
+    assert r.status_code == 503
+    assert r.json()["detail"] == "قالب خروجی یافت نشد: flowchart.html"
+    assert any("the export template is missing" in m and "flowchart.html" in m
+               for m in _guard_logs(caplog))
+
+
+def test_unreadable_template_is_503(data_root, tmp_path, caplog, monkeypatch):
+    """The file passes `is_file()` and then the read fails anyway.
+
+    A permissions error, or a deletion racing the check, is still a deployment
+    fault: it must not escape as an unlogged 500.
+    """
+    cfg = _cfg(data_root, tmp_path)
+    target = cfg.export_template_dir / "flowchart.html"
+    real_read_text = Path.read_text
+
+    def boom(self, *a, **kw):
+        if self == target:
+            raise PermissionError(13, "Permission denied")
+        return real_read_text(self, *a, **kw)
+
+    monkeypatch.setattr(Path, "read_text", boom)
+    with caplog.at_level("WARNING"):
+        r = _client(cfg).post("/api/departments/cooking/exports/flowchart")
+    assert r.status_code == 503
+    assert any("could not be read" in m and "flowchart.html" in m
+               for m in _guard_logs(caplog))
+
+
+def test_unknown_department_is_404(data_root, tmp_path):
+    """The registry guard runs before any path is built from the URL's `code`."""
+    c = _client(_cfg(data_root, tmp_path))
+    r = c.post("/api/departments/marketing/exports/flowchart")
+    assert r.status_code == 404
+    assert r.json()["detail"] == "unknown department"
 
 
 def test_template_without_a_data_slot_is_503(data_root, tmp_path, caplog):
@@ -85,7 +152,8 @@ def test_template_without_a_data_slot_is_503(data_root, tmp_path, caplog):
     with caplog.at_level("WARNING"):
         r = _client(cfg).post("/api/departments/cooking/exports/flowchart")
     assert r.status_code == 503
-    assert caplog.records
+    assert any("template" in m and "__INJA_EXPORT_DATA__" in m
+               for m in _guard_logs(caplog))
 
 
 def test_written_export_is_served_without_a_session(data_root, tmp_path):
