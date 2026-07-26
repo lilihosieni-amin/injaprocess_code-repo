@@ -16,6 +16,19 @@
  * that package registers the family as 'Vazirmatn Variable'. Naming only
  * 'Vazirmatn' here would leave the inlined webfont unused and fall the document
  * back to system-ui.
+ *
+ * The mockup's `body` declarations are split in two, and this is load-bearing.
+ * `margin`/`background` paint the page and stay on `body`. The *inherited*
+ * typography — font, colour, line-height — moves onto `.doc-root`, the wrapper
+ * `Document.tsx` puts around the top bar and the sheets. `FlowViewer` mounts
+ * outside that wrapper, so the canvas inherits the app's own metrics instead.
+ * Left on `body` these rules reach into the diagram: Tailwind's preflight sets
+ * `html{line-height:1.5}` + `body{line-height:inherit}` unlayered, this file is
+ * imported after `src/index.css`, and an equally specific later `body` rule
+ * wins — so every node whose text does not carry an explicit `leading-*` (the
+ * id badge, the actor row, the subprocess pill) would render taller here than
+ * on the site. Stage 4 measures this DOM to lay out the printed diagrams, so
+ * the drift would be baked into the geometry too. `parity.test.tsx` pins it.
  */
 :root{
   --violet:#4A25A9; --ink:#2A1D5E; --deep:#2E1668; --coral:#FA5A52; --coral-ink:#E23D35;
@@ -29,6 +42,7 @@
 }
 *{box-sizing:border-box}
 html{scroll-behavior:smooth}
-body{margin:0;font-family:'Vazirmatn Variable','Vazirmatn',system-ui,sans-serif;background:var(--desk);color:var(--ink);line-height:1.75}
+body{margin:0;background:var(--desk)}
+.doc-root{font-family:'Vazirmatn Variable','Vazirmatn',system-ui,sans-serif;color:var(--ink);line-height:1.75}
 ::selection{background:var(--coral);color:#fff}
 a{color:var(--violet);text-decoration:none}a:hover{color:var(--coral)}

@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useDepartments, useProcesses } from '../api/hooks'
 import { deptMeta } from '../lib/departments'
 import { deriveTag, toFa } from '../lib/format'
+import { countActivities } from '../lib/counts'
 import { IdBadge } from '../ui/IdBadge'
 import { Button } from '../ui/Button'
 import { CreateProcessModal } from '../write/CreateProcessModal'
@@ -31,7 +32,7 @@ export function ProcessList() {
 
   const query = q.trim()
   const list = procs.filter((p) => !query || p.name.includes(query) || p.id.includes(query))
-  const activityCount = (p: Process) => p.nodes.filter((n) => n.type === 'activity' && !('removed' in n && n.removed)).length
+  const activityCount = (p: Process) => countActivities(p.nodes)
 
   // Positions come from the full ordered list, not the filtered one, so searching
   // never renumbers. Tombstones hold no position (ARD §4.6).

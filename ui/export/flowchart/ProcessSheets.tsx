@@ -1,17 +1,21 @@
-import { toFa } from '../../src/lib/format'
+import { pad2, toFa } from '../../src/lib/format'
+import { countActivities, countJunctions } from '../../src/lib/counts'
 import type { ExportPayload } from '../shared/payload'
 import d from './document.module.css'
 
 /** One print-only page per process. On screen the flow viewer opens instead, so
  *  these sheets are hidden; Stage 4 fills each `.pf-wrap` with the SVG bands.
- *  Content is exactly the mockup's (D12): name, id, counts, diagram. */
+ *  Content is exactly the mockup's (D12): name, id, counts, diagram.
+ *
+ *  The counts come from `src/lib/counts`, the same definition the process list
+ *  and the table of contents use — a sheet that counted soft-deleted nodes
+ *  would print a number the diagram beside it contradicts. */
 export function ProcessSheets({ payload }: { payload: ExportPayload }) {
-  const pad2 = (i: number) => toFa(String(i).padStart(2, '0'))
   return (
     <>
       {payload.processes.map((p, i) => {
-        const activities = p.nodes.filter((n) => n.type !== 'junction').length
-        const junctions = p.nodes.filter((n) => n.type === 'junction').length
+        const activities = countActivities(p.nodes)
+        const junctions = countJunctions(p.nodes)
         return (
           <div key={p.id} className={`${d.view} ${d['print-only']}`} data-testid={`sheet-${p.id}`}>
             <div className={d.sheet}>

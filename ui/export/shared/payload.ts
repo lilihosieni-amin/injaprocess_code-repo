@@ -35,17 +35,3 @@ export function readPayload(): ExportPayload {
   }
   return JSON.parse(raw) as ExportPayload
 }
-
-/** The mockup's cover reads a `fullName` the overview schema does not have,
- *  so it is derived here rather than added to a frozen contract.
- *
- *  It derives to the stored `name` verbatim. The mockup's sample data used a
- *  bare department («سالن») and prepended «دپارتمان» in the view, but real
- *  `overview.json` stores the *complete* label — the dining department's `name`
- *  is «دپارتمان سالن». Prefixing that again reads «دپارتمان دپارتمان سالن».
- *  (`registry.json` does keep the bare form, but the exports read
- *  `overview.json`.) Treat the stored name as the finished label: any heading
- *  that wants the department renders `dept.name` with nothing in front of it. */
-export function deptFullName(dept: Overview): string {
-  return dept.name
-}
