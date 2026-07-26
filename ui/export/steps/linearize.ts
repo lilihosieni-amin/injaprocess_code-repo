@@ -2,8 +2,10 @@ import type { ActivityNode, Process, ProcNode } from '../../src/api/types'
 
 export type Junction = 'AND' | 'OR' | 'XOR'
 /** One "go back to step N" edge. `num` is absent when the target is not a
- *  numbered step — a junction, or a removed node — so a renderer can never
- *  pair a label with someone else's number. */
+ *  numbered step — a junction or a terminal — so a renderer can never pair a
+ *  label with someone else's number. Render the badge only when `num` is set.
+ *  A removed node never appears here at all: its edges are dropped when the
+ *  graph is wired, before back-edges are detected. */
 export type BackRef = { to: string; label: string; num?: number }
 export type StepBlock = {
   kind: 'step'
