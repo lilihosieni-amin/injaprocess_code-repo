@@ -117,9 +117,10 @@ so the link never serves a truncated document. Before renaming into place the wr
 other `{kind}-*.html` in that department folder, which handles both regeneration (D5) and orphans
 left behind if the session signing key is ever rotated.
 
-`EXPORT_DIR` is optional. Unset, the endpoint returns 503 and the ⋯ menu items are disabled with a
-tooltip; in development it defaults to a temp directory with a startup warning. In deployment it is
-a named `ui-exports` volume mounted at `/exports`.
+`EXPORT_DIR` is optional. Unset, the feature is simply off: the endpoint returns 503 and the modal
+shows that message in its failed state. There is no capability-probe endpoint and no pre-disabled
+menu — one fewer mechanism to keep in step, and the failure is legible at the moment it matters. In
+deployment it is a named `ui-exports` volume mounted at `/exports`.
 
 ### 2.4 Serving
 
