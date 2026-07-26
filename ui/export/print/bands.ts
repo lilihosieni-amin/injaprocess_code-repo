@@ -40,12 +40,23 @@ export function maxChunk(top: number, bottom: number, cuts: Span[]): number {
 
 /** Slice [top, bottom] into bands no taller than each band's budget, breaking
  *  only inside a free gap so no node or label is ever cut in half. Returns null
- *  when a band cannot be closed — the caller then scales down and retries. */
+ *  when a band cannot be closed — the caller then scales down and retries.
+ *
+ *  **Precondition:** `cuts` must be sorted ascending by start and non-overlapping,
+ *  as `freeCuts` returns them. The scan stops at the first gap starting past the
+ *  budget limit, so an unsorted or overlapping list can hide a legal cut and make
+ *  this return null where the sorted equivalent succeeds — a wrong answer, not an
+ *  error. The result always covers the whole of [top, bottom] or is null; a
+ *  partial split is never returned.
+ */
 export function bandSplit(top: number, bottom: number, cuts: Span[], budgetFor: (i: number) => number): Span[] | null {
   const bands: Span[] = []
   let start = top
   let guard = 0
-  while (start < bottom - 0.5 && guard++ < 200) {
+  while (start < bottom - 0.5) {
+    // pathological input (a cut every few px under a tiny budget) would inch
+    // along forever; bail with the failure signal rather than a partial list
+    if (guard++ >= 200) return null
     const limit = start + budgetFor(bands.length)
     if (limit >= bottom - 0.5) { bands.push([start, bottom]); return bands }
     let cut = -1
@@ -57,7 +68,20 @@ export function bandSplit(top: number, bottom: number, cuts: Span[], budgetFor: 
     bands.push([start, cut])
     start = cut
   }
+  // the loop never ran: [top, bottom] is degenerate, so one degenerate band
   return bands.length ? bands : [[top, bottom]]
+}
+
+/** How one diagram should be drawn: at what scale, sliced where, on whose page. */
+export interface BandPlan {
+  /** uniform factor the diagram is drawn at; never above 1, never so large that
+   *  `scale * width` exceeds `PRINT.W` */
+  scale: number
+  /** the y-ranges to emit, in order, covering the whole of [top, bottom] */
+  bands: Span[]
+  /** true when the diagram needs a page to itself rather than sharing the
+   *  page that carries its heading */
+  ownPage: boolean
 }
 
 /** Choose a scale and a band split for one diagram.
@@ -66,15 +90,19 @@ export function bandSplit(top: number, bottom: number, cuts: Span[], budgetFor: 
  *  otherwise keep it at full page width and break it across pages instead — a
  *  readable diagram over two pages beats a complete but tiny one.
  */
-export function planBands(top: number, bottom: number, width: number, cuts: Span[], headHeight: number) {
+export function planBands(top: number, bottom: number, width: number, cuts: Span[], headHeight: number): BandPlan {
   const H = bottom - top
   const firstH = Math.max(220, PRINT.H - headHeight)
   const scW = Math.min(1, PRINT.W / width)
   const scOne = Math.min(scW, firstH / H)
 
-  if (scOne >= scW * 0.8) return { scale: scOne, bands: [[top, bottom]] as Span[], ownPage: false }
+  if (scOne >= scW * 0.8) return { scale: scOne, bands: [[top, bottom]], ownPage: false }
 
-  const scale = Math.max(PRINT.MINSC, Math.min(scW, PRINT.H / maxChunk(top, bottom, cuts)))
+  // MINSC is a *height* policy — "band rather than shrink further" — so the
+  // floor is applied to the height-derived scale only, and the width constraint
+  // is taken last. Ordering these the other way lets the floor raise the scale
+  // back above scW on a very wide diagram, printing content off the page edge.
+  const scale = Math.min(scW, Math.max(PRINT.MINSC, PRINT.H / maxChunk(top, bottom, cuts)))
   let bands = bandSplit(top, bottom, cuts, (k) => (k === 0 ? firstH : PRINT.H) / scale)
   if (bands) return { scale, bands, ownPage: false }
 
@@ -83,5 +111,5 @@ export function planBands(top: number, bottom: number, width: number, cuts: Span
   bands = bandSplit(top, bottom, cuts, () => PRINT.H / scale)
   if (bands) return { scale, bands, ownPage: true }
 
-  return { scale: Math.min(scW, firstH / H), bands: [[top, bottom]] as Span[], ownPage: false }
+  return { scale: scOne, bands: [[top, bottom]], ownPage: false }
 }
