@@ -35,3 +35,12 @@ button{font-family:inherit}
 @media(max-width:560px){
   body{font-size:16px}
 }
+
+/* The mockup hid its interactive SPA when printing with `.topbar,#app`
+ * (`dining-steps.html:109`). This bundle renders no `#app`, so `main.tsx`
+ * wraps the interactive tree — top bar included — in this global class and the
+ * print stylesheet hides that instead. Global rather than a module class
+ * because the wrapper is written by hand in `main.tsx`, outside `StepsApp`. */
+@media print{
+  .app-screen{display:none!important}
+}
