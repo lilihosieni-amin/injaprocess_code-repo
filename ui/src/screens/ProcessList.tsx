@@ -8,6 +8,7 @@ import { Button } from '../ui/Button'
 import { CreateProcessModal } from '../write/CreateProcessModal'
 import { DeleteProcessConfirm } from '../write/DeleteProcessConfirm'
 import { ReorderModal } from '../write/ReorderModal'
+import { ExportMenu } from '../write/ExportMenu'
 import type { Process } from '../api/types'
 
 const TAG_CLS: Record<string, string> = {
@@ -66,6 +67,7 @@ export function ProcessList() {
             <Button variant="ghost" onClick={() => setReordering(true)} className="px-4 py-[11px] text-[13px]">ترتیب فرآیندها</Button>
             <Button variant="ghost" onClick={() => nav(`/departments/${code}/overview`)} className="px-4 py-[11px] text-[13px]">اطلاعات دپارتمان</Button>
             <Button variant="coral" onClick={() => setCreating(true)} className="px-4 py-[11px] text-[13px]">فرآیند جدید</Button>
+            <ExportMenu department={code} />
           </div>
         </div>
 
