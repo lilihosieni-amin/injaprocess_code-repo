@@ -12,6 +12,10 @@
 
 ## Global Constraints
 
+- **Department names already contain «دپارتمان».** `overview.json` stores `name` as e.g.
+  «دپارتمان سالن» (unlike `registry.json`, which stores the bare «سالن»). The exports read
+  `overview.name`, so headings must NOT prepend «واحد» or «دپارتمان» — that yields
+  «واحد دپارتمان سالن». Use the stored name as the complete label.
 - **All UI copy is Persian.** Exact strings are given in each task; copy them character-for-character, including ZWNJ (`‌`) inside words like `گام‌به‌گام`.
 - **Never generate ids in application code** (INV-1). The export is read-only and mints no ids.
 - **Components communicate only through the filesystem** (ARD §1). The export endpoint reads `DATA_ROOT` and writes `EXPORT_DIR`; it makes no network calls.
@@ -828,10 +832,11 @@ export function readPayload(): ExportPayload {
   return JSON.parse(el.textContent) as ExportPayload
 }
 
-/** The mockup's cover reads a `fullName` the overview schema does not have,
- *  so it is derived here rather than added to a frozen contract. */
+/** The mockup's cover reads a `fullName` the overview schema does not have.
+ *  overview.json's `name` already carries the word «دپارتمان» (e.g. «دپارتمان سالن»),
+ *  so it IS the full label — prefixing it again would read «دپارتمان دپارتمان سالن». */
 export function deptFullName(dept: Overview): string {
-  return `دپارتمان ${dept.name}`
+  return dept.name
 }
 ```
 
@@ -2200,7 +2205,7 @@ export function StepsApp({ payload }: { payload: ExportPayload }) {
       <Shell onHome={() => setTrail([])}>
         <div className={s['home-head']}>
           <h1>راهنمای گام‌به‌گام کار</h1>
-          <p>واحد {payload.dept.name} — روی نام هر کار بزنید تا مرحله‌به‌مرحله ببینید.</p>
+          <p>{payload.dept.name} — روی نام هر کار بزنید تا مرحله‌به‌مرحله ببینید.</p>
         </div>
         <div className={s.plist}>
           {payload.processes.map((p) => (
@@ -2507,7 +2512,7 @@ export function PrintDoc({ payload }: { payload: ExportPayload }) {
   return (
     <div className={p.printdoc}>
       <section className={`${p.psec} ${p.pindex}`} data-testid="print-index">
-        <h2>راهنمای گام‌به‌گام کار — واحد {payload.dept.name}</h2>
+        <h2>راهنمای گام‌به‌گام کار — {payload.dept.name}</h2>
         <div className={p.ptype}>فهرست کارها</div>
         <ol className={p['plist-print']}>
           {payload.processes.map((x) => (
@@ -3140,8 +3145,7 @@ const renderDoc = () => render(
 describe('Document', () => {
   it('opens on a cover and a table of contents', () => {
     renderDoc()
-    expect(screen.getByText('واحد سالن')).toBeInTheDocument()
-    expect(screen.getByText('دپارتمان سالن')).toBeInTheDocument()
+    expect(screen.getAllByText('دپارتمان سالن').length).toBeGreaterThan(0)
     expect(screen.getByText('فهرست مطالب')).toBeInTheDocument()
     expect(screen.getByText('پذیرایی')).toBeInTheDocument()
     expect(screen.getByText('۱ فرآیند')).toBeInTheDocument()
@@ -3219,7 +3223,7 @@ export function Document({ payload }: { payload: ExportPayload }) {
   return (
     <>
       <div className={d.topbar}>
-        <div className={d.tt}>مستند فرآیندهای واحد {dept.name}</div>
+        <div className={d.tt}>مستند فرآیندهای {dept.name}</div>
         <div className={d.sp} />
         {view !== 'home' && <button className={d.tbtn} onClick={() => setView('home')}>فهرست</button>}
         <button className={`${d.tbtn} ${d.solid}`} onClick={() => window.print()}>چاپ / PDF</button>
@@ -3233,7 +3237,7 @@ export function Document({ payload }: { payload: ExportPayload }) {
                 <div className={d['cover-kicker']}>
                   <span className={d.bar} /><span>INJA FOOD · PROCESS DOCUMENTATION</span>
                 </div>
-                <h1>مستند فرآیندهای<br />واحد {dept.name}</h1>
+                <h1>مستند فرآیندهای<br />{dept.name}</h1>
                 <div className={d.sub}>{deptFullName(dept)} — مرجع رسمی نقش‌ها، اهداف عملکردی و فرآیندهای عملیاتی واحد.</div>
                 <div className={d['cover-foot']}>
                   <div className={d.cf}>مجموعه<b>اینجا فست‌فود</b></div>
@@ -3285,7 +3289,7 @@ export function Document({ payload }: { payload: ExportPayload }) {
               <button className={d.backbtn} onClick={() => setView('home')}>بازگشت به فهرست</button>
             </div>
             <div className={d.sheet}>
-              <div className={d['sheet-head']}><span className={d['sec-num']}>۰۱</span><h2>معرفی واحد {dept.name}</h2></div>
+              <div className={d['sheet-head']}><span className={d['sec-num']}>۰۱</span><h2>معرفی {dept.name}</h2></div>
               <div className={d.rule} />
               {dept.description.split(/\n+/).filter((x) => x.trim()).map((par, i) => (
                 <div key={i} className={d.prose}>{par}</div>
@@ -3293,7 +3297,7 @@ export function Document({ payload }: { payload: ExportPayload }) {
               {dept.sub_units.length > 0 && (
                 <>
                   <div className={d['block-label']} style={{ marginTop: 30 }}>
-                    <span className={d.sq} style={{ background: 'var(--coral)' }} />واحدها و زون‌های سالن
+                    <span className={d.sq} style={{ background: 'var(--coral)' }} />واحدها و زون‌ها
                   </div>
                   <div className={`${d.grid} ${d.g2}`}>
                     {dept.sub_units.map((u) => (
@@ -3309,7 +3313,7 @@ export function Document({ payload }: { payload: ExportPayload }) {
 
             <div className={d.sheet}>
               <div className={d['sheet-head']}><span className={d['sec-num']}>۰۲</span><h2>موجودیت‌ها و نقش‌ها</h2></div>
-              <div className={d['sheet-lead']}>نقش‌های عملیاتی واحد {dept.name} و وظایف کلیدی هر یک.</div>
+              <div className={d['sheet-lead']}>نقش‌های عملیاتی {dept.name} و وظایف کلیدی هر یک.</div>
               <div className={d.rule} />
               {dept.personnel.map((pr) => (
                 <div key={pr.role} className={d.role}>
