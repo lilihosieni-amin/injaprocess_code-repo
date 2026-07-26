@@ -18,6 +18,8 @@ class Settings:
     session_signing_key: str
     session_ttl: int
     static_dir: Optional[Path]
+    export_dir: Optional[Path]
+    export_template_dir: Optional[Path]
     git_author_name: str
     git_author_email: str
     users: dict[str, str]
@@ -52,6 +54,8 @@ def load_settings(env: Optional[Mapping[str, str]] = None) -> Settings:
         users = {ui_username: ui_password_hash}
 
     static = env.get("UI_STATIC_DIR")
+    export_dir = env.get("EXPORT_DIR")
+    export_templates = env.get("UI_EXPORT_TEMPLATE_DIR")
     return Settings(
         data_root=data_root,
         schema_dir=schema_dir,
@@ -60,6 +64,8 @@ def load_settings(env: Optional[Mapping[str, str]] = None) -> Settings:
         session_signing_key=env["SESSION_SIGNING_KEY"],
         session_ttl=int(env.get("SESSION_TTL", "86400")),
         static_dir=Path(static) if static else None,
+        export_dir=Path(export_dir) if export_dir else None,
+        export_template_dir=Path(export_templates) if export_templates else None,
         git_author_name=env.get("GIT_AUTHOR_NAME", "ui-edit"),
         git_author_email=env.get("GIT_AUTHOR_EMAIL", "ui-edit@inja.local"),
         users=users,

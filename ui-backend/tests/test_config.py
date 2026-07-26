@@ -79,3 +79,18 @@ def test_no_auth_source_raises(tmp_path):
     del env["UI_USERNAME"]; del env["UI_PASSWORD_HASH"]
     with pytest.raises(RuntimeError, match="UI_USERS_FILE|UI_USERNAME"):
         load_settings(env)
+
+
+def test_export_dirs_default_to_none(tmp_path):
+    s = load_settings(_valid_env(tmp_path))
+    assert s.export_dir is None
+    assert s.export_template_dir is None
+
+
+def test_export_dirs_read_from_env(tmp_path):
+    env = _valid_env(tmp_path)
+    env["EXPORT_DIR"] = str(tmp_path / "exports")
+    env["UI_EXPORT_TEMPLATE_DIR"] = str(tmp_path / "templates")
+    s = load_settings(env)
+    assert s.export_dir == (tmp_path / "exports")
+    assert s.export_template_dir == (tmp_path / "templates")
