@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { linearize, countSteps, groupTitle } from './linearize'
 import type { Block } from './linearize'
 import { toFa } from '../../src/lib/format'
@@ -7,6 +7,9 @@ import type { ActivityNode, Process } from '../../src/api/types'
 import s from './steps.module.css'
 
 type Crumb = { pid: string; via: ActivityNode | null }
+/** One "jump to step N" request. `seq` makes every tap a fresh value, so
+ *  jumping twice to the same step still re-triggers the effect. */
+type Jump = { num: number; seq: number }
 
 const icon = (d: string, size = 20, w = 2) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -14,22 +17,36 @@ const icon = (d: string, size = 20, w = 2) => (
 )
 const CHEV = '<path d="M9 18l6-6-6-6"/>'
 const CHEV_L = '<path d="M15 18l-6-6 6-6"/>'
+// the mockup draws both chevrons at stroke-width 2.6, everything else at 2
+const icoChev = icon(CHEV, 20, 2.6)
+const icoChevL = icon(CHEV_L, 20, 2.6)
+const icoBack = icon('<path d="M9 14l-4-4 4-4"/><path d="M5 10h9a4 4 0 0 1 0 8h-1"/>', 16)
+const icoUser = icon('<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>', 19)
 
 export function StepsApp({ payload }: { payload: ExportPayload }) {
   const [trail, setTrail] = useState<Crumb[]>([])
+  const [jump, setJump] = useState<Jump | null>(null)
   const byId = new Map(payload.processes.map((p) => [p.id, p]))
   const model = new Map(payload.processes.map((p) => [p.id, linearize(p)]))
 
+  // every navigation lands at the top of the new page, as the mockup does —
+  // otherwise a step tapped near the bottom opens its subprocess mid-page
+  useEffect(() => { window.scrollTo(0, 0) }, [trail])
+
+  /** Every navigation goes through here: a pending jump belongs to the page it
+   *  was tapped on, never to the one we are about to show. */
+  const go = (next: Crumb[]) => { setJump(null); setTrail(next) }
+
   if (!trail.length) {
     return (
-      <Shell onHome={() => setTrail([])}>
+      <Shell onHome={() => go([])}>
         <div className={s['home-head']}>
           <h1>راهنمای گام‌به‌گام کار</h1>
           <p>واحد {payload.dept.name} — روی نام هر کار بزنید تا مرحله‌به‌مرحله ببینید.</p>
         </div>
         <div className={s.plist}>
           {payload.processes.map((p) => (
-            <button key={p.id} className={s.pbtn} onClick={() => setTrail([{ pid: p.id, via: null }])}>
+            <button key={p.id} className={s.pbtn} onClick={() => go([{ pid: p.id, via: null }])}>
               <span className={`${s.pn} ${p.parent ? s.sub : ''}`}>
                 {icon(p.parent ? '<path d="M4 4v7a4 4 0 0 0 4 4h9"/><path d="M14 11l4 4-4 4"/>' : '<rect x="3" y="3" width="18" height="18" rx="4"/><path d="M8 9h8M8 13h5"/>')}
               </span>
@@ -38,7 +55,7 @@ export function StepsApp({ payload }: { payload: ExportPayload }) {
                 <span className={`${s.ptag} ${p.parent ? s.sub : ''}`}>{p.parent ? 'زیرفرآیند' : 'فرآیند'}</span>
               </span>
               <span className={s.pc}>{toFa(countSteps(model.get(p.id) ?? []))} مرحله</span>
-              <span className={s.pg}>{icon(CHEV_L)}</span>
+              <span className={s.pg}>{icoChevL}</span>
             </button>
           ))}
         </div>
@@ -48,18 +65,18 @@ export function StepsApp({ payload }: { payload: ExportPayload }) {
 
   const cur = trail[trail.length - 1]
   const proc = byId.get(cur.pid)
-  if (!proc) return <Shell onHome={() => setTrail([])}><div /></Shell>
+  if (!proc) return <Shell onHome={() => go([])}><div /></Shell>
 
   return (
-    <Shell onHome={() => setTrail([])}>
-      <button className={s.backbtn} onClick={() => setTrail(trail.slice(0, -1))}>
-        {icon(CHEV)}{trail.length > 1 ? 'بازگشت' : 'بازگشت به فهرست کارها'}
+    <Shell onHome={() => go([])}>
+      <button className={s.backbtn} onClick={() => go(trail.slice(0, -1))}>
+        {icoChev}{trail.length > 1 ? 'بازگشت' : 'بازگشت به فهرست کارها'}
       </button>
       {trail.length > 1 && (
         <div className={s.crumbs}>
           {trail.slice(0, -1).map((t, i) => (
             <span key={t.pid + i}>
-              <span style={{ cursor: 'pointer' }} onClick={() => setTrail(trail.slice(0, i + 1))}>{byId.get(t.pid)?.name}</span>
+              <span style={{ cursor: 'pointer' }} onClick={() => go(trail.slice(0, i + 1))}>{byId.get(t.pid)?.name}</span>
               <span className={s.sep}>›</span>
             </span>
           ))}
@@ -76,8 +93,9 @@ export function StepsApp({ payload }: { payload: ExportPayload }) {
         {icon('<path d="M9 11V6a2 2 0 1 1 4 0v9"/><path d="M13 12h3a3 3 0 0 1 3 3v3a3 3 0 0 1-3 3h-4l-4-4-2-4a1.5 1.5 0 0 1 2.4-1.8L9 13"/>')}
         روی هر مرحله بزنید تا توضیح کامل و مسئول آن را ببینید.
       </div>
-      <Blocks blocks={model.get(proc.id) ?? []} proc={proc} byId={byId}
-        onEnter={(sub, via) => setTrail([...trail, { pid: sub, via }])} />
+      <Blocks blocks={model.get(proc.id) ?? []} byId={byId} jump={jump}
+        onEnter={(sub, via) => go([...trail, { pid: sub, via }])}
+        onJump={(num) => setJump((j) => ({ num, seq: (j?.seq ?? 0) + 1 }))} />
       <div className={s.endmark}>
         <span className={s.ei}>{icon('<path d="M20 6L9 17l-5-5"/>', 20, 3)}</span>کار تمام شد
       </div>
@@ -99,11 +117,12 @@ function Shell({ children, onHome }: { children: React.ReactNode; onHome: () => 
   )
 }
 
-function Blocks({ blocks, proc, byId, onEnter }: {
+function Blocks({ blocks, byId, jump, onEnter, onJump }: {
   blocks: Block[]
-  proc: Process
   byId: Map<string, Process>
+  jump: Jump | null
   onEnter: (sub: string, via: ActivityNode) => void
+  onJump: (num: number) => void
 }) {
   return (
     <div className={s.steps}>
@@ -120,28 +139,49 @@ function Blocks({ blocks, proc, byId, onEnter }: {
                 {br.label ? `اگر: ${br.label}` : `حالت ${toFa(j + 1)}`}
               </div>
               {br.blocks.length
-                ? <Blocks blocks={br.blocks} proc={proc} byId={byId} onEnter={onEnter} />
+                ? <Blocks blocks={br.blocks} byId={byId} jump={jump} onEnter={onEnter} onJump={onJump} />
                 : <div className={s.nothing}>کاری لازم نیست</div>}
             </div>
           ))}
         </div>
       ) : (
-        <Step key={b.node.id} block={b} byId={byId} onEnter={onEnter} />
+        <Step key={b.node.id} block={b} byId={byId} jump={jump} onEnter={onEnter} onJump={onJump} />
       ))}
     </div>
   )
 }
 
-function Step({ block, byId, onEnter }: {
+function Step({ block, byId, jump, onEnter, onJump }: {
   block: Extract<Block, { kind: 'step' }>
   byId: Map<string, Process>
+  jump: Jump | null
   onEnter: (sub: string, via: ActivityNode) => void
+  onJump: (num: number) => void
 }) {
   const [open, setOpen] = useState(false)
+  const [flash, setFlash] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
   const n = block.node
   const sub = n.subprocess && byId.has(n.subprocess) ? n.subprocess : null
+
+  // a back-reference badge opens *this* card through React state, so the next
+  // tap on it really toggles — a class added straight to the DOM would not
+  useEffect(() => {
+    if (jump?.num !== block.num) { setFlash(false); return }
+    setOpen(true)
+    setFlash(true)
+    const el = ref.current
+    if (el) {
+      const y = el.getBoundingClientRect().top + window.scrollY - 90
+      window.scrollTo({ top: y < 0 ? 0 : y, behavior: 'smooth' })
+    }
+    const t = setTimeout(() => setFlash(false), 1600)
+    return () => clearTimeout(t)
+  }, [jump, block.num])
+
   return (
-    <div id={`stp-${block.num}`} className={`${s.step} ${sub ? s['has-sub'] : ''} ${open ? s.open : ''}`}>
+    <div ref={ref} id={`stp-${block.num}`}
+      className={`${s.step} ${sub ? s['has-sub'] : ''} ${open ? s.open : ''} ${flash ? s.flash : ''}`}>
       <button className={s['step-row']} onClick={() => sub ? onEnter(sub, n) : setOpen((v) => !v)}>
         <span className={s.sn}>{toFa(block.num)}</span>
         <span className={s.st}>
@@ -151,24 +191,24 @@ function Step({ block, byId, onEnter }: {
               {block.cond && <span className={`${s.bdg} ${s.cond}`}>اگر: {block.cond}</span>}
               {/* only back-edges that resolved to a numbered step get a badge — a
                   back-edge to a junction carries a label but no number */}
-              {block.back.filter((r) => r.num).map((r) => (
-                <span key={r.to} className={`${s.bdg} ${s.back}`} role="button" tabIndex={0}
-                  onClick={(e) => { e.stopPropagation(); jumpStep(r.num!) }}>
-                  برگرد به مرحلهٔ {toFa(r.num!)}
+              {block.back.filter((r) => r.num).map((r, i) => (
+                <span key={`${r.to}-${i}`} className={`${s.bdg} ${s.back}`} role="button" tabIndex={0}
+                  onClick={(e) => { e.stopPropagation(); onJump(r.num!) }}>
+                  {icoBack} برگرد به مرحلهٔ {toFa(r.num!)}
                 </span>
               ))}
-              {sub && <span className={`${s.bdg} ${s.sub}`}>مراحل این کار را ببین</span>}
+              {sub && <span className={`${s.bdg} ${s.sub}`}>{icoChev} مراحل این کار را ببین</span>}
             </span>
           )}
         </span>
-        <span className={s.chev}>{icon(CHEV_L)}</span>
+        <span className={s.chev}>{icoChevL}</span>
       </button>
       {!sub && (
         <div className={s['step-body']}>
           {n.actor && (
             <div className={s.fld}>
               <span className={s.k}>این کار را چه کسی انجام می‌دهد؟</span>
-              <span className={s.actor}>{n.actor}</span>
+              <span className={s.actor}>{icoUser}{n.actor}</span>
             </div>
           )}
           {n.description && (
@@ -181,14 +221,4 @@ function Step({ block, byId, onEnter }: {
       )}
     </div>
   )
-}
-
-/** Scroll to a back-reference target and flash it. */
-function jumpStep(num: number) {
-  const el = document.getElementById(`stp-${num}`)
-  if (!el) return
-  el.classList.add(s.open, s.flash)
-  const y = el.getBoundingClientRect().top + window.scrollY - 90
-  window.scrollTo({ top: y < 0 ? 0 : y, behavior: 'smooth' })
-  setTimeout(() => el.classList.remove(s.flash), 1600)
 }
