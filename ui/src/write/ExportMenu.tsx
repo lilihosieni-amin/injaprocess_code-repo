@@ -86,7 +86,13 @@ export function ExportMenu({ department }: { department: string }) {
           url={create.data ? `${window.location.origin}${create.data.url}` : undefined}
           error={create.error?.message}
           onRetry={() => create.mutate(kind)}
-          onClose={() => { setKind(null); create.reset() }}
+          // Closing only dismisses the modal. Resetting a still-pending
+          // mutation would flip isPending to false and re-enable the trigger
+          // mid-flight — nothing aborts the POST (D-abort), so a second export
+          // would race the first for the same deterministic filename and the
+          // older write could land last. The observer is left alone until the
+          // request settles; the next run() replaces its state anyway.
+          onClose={() => { setKind(null); if (!create.isPending) create.reset() }}
         />
       )}
     </div>
