@@ -18,18 +18,28 @@ def read_json(path: Path) -> dict:
     return json.loads(Path(path).read_text(encoding="utf-8"))
 
 
-def write_json_atomic(path: Path, doc: dict) -> None:
+def write_text_atomic(path: Path, text: str) -> None:
+    """Write `text` so a reader sees either the old file or the whole new one.
+
+    The single implementation of the write-temp-then-`os.replace` dance, shared by
+    `write_json_atomic` and the department export. The temp file is created beside
+    the target so the rename stays on one filesystem and is therefore atomic; the
+    `finally` clears it on the failure path, where `os.replace` never ran.
+    """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            json.dump(doc, fh, ensure_ascii=False, indent=2)
-            fh.write("\n")
+            fh.write(text)
         os.replace(tmp, path)
     finally:
         with contextlib.suppress(FileNotFoundError):
             os.unlink(tmp)
+
+
+def write_json_atomic(path: Path, doc: dict) -> None:
+    write_text_atomic(path, json.dumps(doc, ensure_ascii=False, indent=2) + "\n")
 
 
 @contextlib.asynccontextmanager

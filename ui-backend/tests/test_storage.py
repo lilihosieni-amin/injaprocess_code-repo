@@ -19,6 +19,13 @@ def test_atomic_write_leaves_no_tmp(tmp_path):
     assert [q.name for q in tmp_path.iterdir()] == ["x.json"]
 
 
+def test_write_text_atomic_creates_parents_and_leaves_no_tmp(tmp_path):
+    p = tmp_path / "dining" / "flowchart-0123456789abcdef.html"
+    storage.write_text_atomic(p, "<html>سالن</html>")
+    assert p.read_text(encoding="utf-8") == "<html>سالن</html>"
+    assert [q.name for q in p.parent.iterdir()] == [p.name]
+
+
 def test_dept_of_and_paths(tmp_path):
     assert storage.dept_of("cooking-001") == "cooking"
     assert storage.proc_path(tmp_path, "cooking-001").name == "cooking-001.json"

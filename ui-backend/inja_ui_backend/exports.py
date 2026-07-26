@@ -1,19 +1,24 @@
 from __future__ import annotations
 
-import contextlib
 import hashlib
 import hmac
 import json
-import os
-import tempfile
+import logging
+import time
 from pathlib import Path
 
 from . import storage
+
+logger = logging.getLogger(__name__)
 
 EXPORT_KINDS: tuple[str, ...] = ("flowchart", "steps")
 
 #: The literal the built template carries where its data belongs.
 DATA_SLOT = "__INJA_EXPORT_DATA__"
+
+#: How long an orphan `.tmp` is left alone before the sweep claims it. Long enough
+#: that a concurrent write in flight is never yanked out from under its writer.
+TMP_SWEEP_AGE_S = 3600
 
 
 class ExportUnavailable(Exception):
@@ -60,9 +65,23 @@ def render(template: str, payload: dict) -> str:
     Every `<` becomes its JSON escape, so no summary or description containing
     `</script>` can close the data block and inject markup. `JSON.parse` turns
     the escape back into `<`, so rendered text is unaffected.
+
+    A missing slot raises rather than passing the template through untouched: the
+    literal is a cross-task contract with the export build, and a silent no-op
+    here would publish a permanent link to a blank page with nothing logged.
     """
+    if DATA_SLOT not in template:
+        raise ExportUnavailable(f"the export template carries no {DATA_SLOT} slot")
     body = json.dumps(payload, ensure_ascii=False).replace("<", "\\u003c")
     return template.replace(DATA_SLOT, body)
+
+
+def _older_than(path: Path, cutoff: float) -> bool:
+    """True if `path` was last written before `cutoff`; False if it is already gone."""
+    try:
+        return path.stat().st_mtime < cutoff
+    except OSError:
+        return False
 
 
 def write_export(export_dir: Path, code: str, kind: str, token: str, html: str) -> Path:
@@ -70,23 +89,22 @@ def write_export(export_dir: Path, code: str, kind: str, token: str, html: str) 
 
     Atomic because the link is permanent and public: a reader must never catch a
     half-written document. Pruning keeps one file per department+kind (D5) and
-    clears orphans left by a rotated signing key.
+    clears orphans left by a rotated signing key — after a rotation the stale
+    sibling *is* the revoked export, so a prune that fails is worth a log line.
+    The sweep also collects `.tmp` files a killed process left behind: they sit in
+    the publicly mounted folder and the `.html` glob cannot match them.
     """
     folder = Path(export_dir) / code
-    folder.mkdir(parents=True, exist_ok=True)
     path = folder / f"{kind}-{token}.html"
+    storage.write_text_atomic(path, html)
 
-    fd, tmp = tempfile.mkstemp(dir=folder, suffix=".tmp")
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            fh.write(html)
-        os.replace(tmp, path)
-    finally:
-        with contextlib.suppress(FileNotFoundError):
-            os.unlink(tmp)
-
-    for stale in folder.glob(f"{kind}-*.html"):
-        if stale != path:
-            with contextlib.suppress(OSError):
-                stale.unlink()
+    cutoff = time.time() - TMP_SWEEP_AGE_S
+    stale = [p for p in folder.glob(f"{kind}-*.html") if p != path]
+    stale += [p for p in folder.glob("*.tmp") if _older_than(p, cutoff)]
+    for old in stale:
+        try:
+            old.unlink()
+        except OSError as e:
+            logger.warning("%s/%s: %s survives the prune and stays publicly served: %s",
+                           code, kind, old, e)
     return path
