@@ -51,8 +51,9 @@ export default defineConfig({
   plugins: [react(), viteSingleFile(), flattenHtmlOutput()],
   build: {
     outDir: 'dist-export',
-    // only the first document may clear the directory, or it would delete the other
-    emptyOutDir: entry === ENTRIES[0],
+    // never: a build must not delete the sibling document it cannot rebuild.
+    // `build:export` clears the directory once, up front (scripts/export-dist.mjs).
+    emptyOutDir: false,
     // fold every referenced asset (the font in particular) into the CSS as a
     // data: URI — singlefile inlines JS and CSS but not font files
     assetsInlineLimit: Number.MAX_SAFE_INTEGER,

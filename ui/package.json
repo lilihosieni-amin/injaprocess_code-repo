@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build && npm run build:export",
-    "build:export": "INJA_EXPORT_ENTRY=flowchart vite build -c vite.config.export.ts && INJA_EXPORT_ENTRY=steps vite build -c vite.config.export.ts",
+    "build:export": "node scripts/export-dist.mjs clean && INJA_EXPORT_ENTRY=flowchart vite build -c vite.config.export.ts && INJA_EXPORT_ENTRY=steps vite build -c vite.config.export.ts && node scripts/export-dist.mjs check",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",
