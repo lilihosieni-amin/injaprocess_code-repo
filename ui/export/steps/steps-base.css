@@ -1,0 +1,37 @@
+/* Document-wide rules for the step-by-step staff guide.
+ *
+ * Ported from the mockup `ui/design/export/dining-steps.html:11-22`. These are
+ * global by nature — custom properties on `:root`, the box-sizing reset, `html`,
+ * `body`, `::selection`, `button` — so they cannot live in `steps.module.css`,
+ * whose selectors are all hashed. Everything else the guide styles is in that
+ * module.
+ *
+ * The bundle deliberately does not import `src/index.css`: the guide uses none
+ * of Tailwind, and skipping it keeps the single-file export small.
+ *
+ * The one deviation from the mockup is the font stack. The mockup pulled
+ * 'Vazirmatn' from Google Fonts over the network, which an offline export
+ * cannot do; `main.tsx` inlines `@fontsource-variable/vazirmatn` instead, and
+ * that package registers the family as 'Vazirmatn Variable'. Naming only
+ * 'Vazirmatn' here would leave the inlined webfont unused and fall the document
+ * back to system-ui.
+ */
+:root{
+  --violet:#4A25A9; --ink:#2A1D5E; --deep:#2E1668; --coral:#FA5A52; --coral-ink:#E23D35;
+  --app:#FBF7F1; --card:#fff; --v-soft:#F0E9FB; --v-softer:#F5F1FB; --c-soft:#FFE9E7;
+  --bd:#EFE7DC; --bd-v:#E3D8F5; --hair:#F2ECE3;
+  --muted:#8a7db0; --faint:#a99fc4; --body:#4A3F6B;
+  --ok:#1F8A5B; --ok-s:#E4F6EC; --warn:#B4690E; --warn-s:#FBEEDC;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;font-family:'Vazirmatn Variable','Vazirmatn',system-ui,sans-serif;background:var(--app);color:var(--ink);line-height:1.9;font-size:17px}
+::selection{background:var(--coral);color:#fff}
+button{font-family:inherit}
+
+/* The phone breakpoint (`dining-steps.html:147-153`) lives in
+ * `steps.module.css` with the rest of the layout; only its `body` rule is
+ * global, and it belongs next to the `body` rule it overrides. */
+@media(max-width:560px){
+  body{font-size:16px}
+}

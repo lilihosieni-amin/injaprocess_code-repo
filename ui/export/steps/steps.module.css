@@ -1,0 +1,105 @@
+/* The step-by-step staff guide, ported from the mockup
+ * `ui/design/export/dining-steps.html` — the top bar (`:24-29`), the on-screen
+ * document (`:31-104`) and the phone breakpoint (`:147-153`).
+ *
+ * A CSS module, so every class name here is hashed at build time and cannot
+ * collide with the flowchart export or with anything in the admin app.
+ *
+ * Deliberately not ported:
+ *   - `.topbar img` — the mockup's bar carries a logo file. An export is one
+ *     self-contained document opened by double-click, so it has no image to
+ *     point at, and `scripts/export-dist.mjs check` fails the build on any
+ *     external reference.
+ *   - `#printdoc` and the whole `@media print` block — the print document is
+ *     Task 12.
+ *
+ * The mockup is a hand-written SPA that toggles `.view.active`; React swaps the
+ * views instead, so `.view` is carried over for completeness but unused.
+ */
+
+.topbar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:12px;padding:12px 22px;background:var(--deep);color:#fff}
+.topbar .tt{font-weight:800;font-size:16px}
+.topbar .sp{flex:1}
+.tbtn{display:inline-flex;align-items:center;gap:7px;font-weight:700;font-size:14px;border-radius:11px;padding:9px 15px;cursor:pointer;border:1px solid rgba(255,255,255,.3);background:rgba(255,255,255,.1);color:#fff}
+.tbtn:hover{background:rgba(255,255,255,.22)}
+
+.wrap{max-width:860px;margin:0 auto;padding:26px 20px 90px}
+.view{display:none}
+.view.active{display:block}
+
+/* ---- home ---- */
+.home-head{text-align:center;padding:18px 0 26px}
+.home-head h1{font-size:32px;font-weight:800;margin:0 0 10px}
+.home-head p{font-size:17px;color:var(--muted);margin:0}
+.plist{display:flex;flex-direction:column;gap:12px}
+.pbtn{display:flex;align-items:center;gap:16px;width:100%;text-align:right;background:#fff;border:2px solid var(--bd);border-radius:18px;padding:18px 20px;cursor:pointer;transition:border-color .15s,box-shadow .15s}
+.pbtn:hover{border-color:var(--violet);box-shadow:0 12px 28px -16px rgba(74,37,169,.5)}
+.pbtn .pn{width:46px;height:46px;flex:none;border-radius:14px;background:var(--v-soft);color:var(--violet);display:flex;align-items:center;justify-content:center}
+.pbtn .pn.sub{background:var(--warn-s);color:var(--warn)}
+.ptag{display:inline-block;font-size:12.5px;font-weight:700;border-radius:20px;padding:2px 10px;margin-inline-start:9px;vertical-align:middle;color:var(--violet);background:var(--v-soft)}
+.ptag.sub{color:var(--warn);background:var(--warn-s)}
+.pbtn .pt{flex:1;min-width:0;font-weight:700;font-size:19px;line-height:1.7}
+.pbtn .pc{font-size:14px;color:var(--muted);font-weight:600;flex:none}
+.pbtn .pg{color:var(--violet);flex:none;display:flex}
+
+/* ---- step page ---- */
+.backbtn{display:inline-flex;align-items:center;gap:8px;font-weight:700;font-size:15px;border-radius:12px;padding:10px 16px;cursor:pointer;border:2px solid var(--bd-v);background:#fff;color:var(--violet);margin-bottom:18px}
+.backbtn:hover{background:var(--v-softer)}
+.crumbs{font-size:14px;color:var(--muted);margin-bottom:12px;line-height:2}
+.crumbs b{color:var(--ink)}
+.crumbs span.sep{opacity:.5;margin:0 5px}
+.page-title{font-size:27px;font-weight:800;margin:0 0 12px;line-height:1.6}
+.page-sum{background:#fff;border:2px solid var(--bd);border-radius:16px;padding:18px 20px;font-size:16px;color:var(--body);line-height:2.1;margin-bottom:8px}
+.page-sum .sl{display:block;font-size:13px;font-weight:800;color:var(--muted);margin-bottom:8px}
+.howto{display:flex;align-items:center;gap:10px;background:var(--v-softer);border-radius:14px;padding:12px 16px;font-size:14.5px;color:var(--body);margin:16px 0 22px}
+.howto svg{color:var(--violet);flex:none}
+
+.steps{display:flex;flex-direction:column;gap:10px}
+.step{background:#fff;border:2px solid var(--bd);border-radius:16px;overflow:hidden}
+.step.open{border-color:var(--violet)}
+.step.has-sub{background:#FDF3E4;border-color:#EBD3A8}
+.step.has-sub .step-row:hover{background:#FBE9CF}
+.step.has-sub .sn{background:var(--warn)}
+.step-row{display:flex;align-items:flex-start;gap:15px;width:100%;text-align:right;background:none;border:none;padding:16px 18px;cursor:pointer}
+.step-row:hover{background:var(--v-softer)}
+.sn{width:42px;height:42px;flex:none;border-radius:12px;background:var(--violet);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:18px;margin-top:1px}
+.st{flex:1;min-width:0}
+.st .label{font-weight:700;font-size:18px;line-height:1.8;color:var(--ink)}
+.badges{display:flex;flex-wrap:wrap;gap:7px;margin-top:9px}
+.bdg{display:inline-flex;align-items:center;gap:5px;font-size:13.5px;font-weight:700;border-radius:20px;padding:4px 12px}
+.bdg.cond{color:var(--warn);background:var(--warn-s)}
+.bdg.back{color:var(--coral-ink);background:var(--c-soft);cursor:pointer;border:1.5px solid transparent}
+.bdg.back:hover{border-color:var(--coral);background:#FFD9D5}
+.step.flash{border-color:var(--coral);box-shadow:0 0 0 4px rgba(250,90,82,.22)}
+.bdg.sub{color:#fff;background:var(--violet)}
+.chev{flex:none;color:var(--violet);display:flex;margin-top:9px;transition:transform .18s}
+.step.open .chev{transform:rotate(-90deg)}
+.step-body{display:none;padding:0 18px 18px 18px;border-top:2px dashed var(--hair);margin:0 18px 0;padding-top:15px}
+.step.open .step-body{display:block}
+.fld{margin-bottom:14px}
+.fld:last-child{margin-bottom:0}
+.fld .k{display:block;font-size:13px;font-weight:800;color:var(--muted);margin-bottom:5px}
+.fld .v{font-size:16px;color:var(--body);line-height:2.1}
+.actor{display:inline-flex;align-items:center;gap:8px;font-size:16px;font-weight:700;color:var(--violet);background:var(--v-soft);border-radius:12px;padding:8px 14px}
+
+/* branch group */
+.grp{border:2px solid #F5CFCB;border-radius:18px;background:#FFF4F3;padding:16px}
+.grp-h{display:flex;align-items:center;gap:11px;font-weight:800;font-size:17px;color:var(--coral-ink);margin-bottom:14px}
+.grp-h .gi{width:34px;height:34px;flex:none;border-radius:11px;background:var(--coral);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px}
+.branch{background:#fff;border:2px solid var(--bd);border-radius:14px;padding:14px;margin-bottom:10px}
+.branch:last-child{margin-bottom:0}
+.branch-h{display:flex;align-items:flex-start;gap:9px;font-size:16px;font-weight:700;color:var(--ink);margin-bottom:12px;line-height:1.8}
+.branch-h .bl{width:26px;height:26px;flex:none;border-radius:8px;background:var(--warn-s);color:var(--warn);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;margin-top:3px}
+.branch .steps{gap:8px}
+.branch .step{border-width:1.5px}
+.nothing{font-size:16px;color:var(--ok);background:var(--ok-s);border-radius:12px;padding:11px 15px;font-weight:700}
+
+.endmark{display:flex;align-items:center;gap:13px;background:var(--ok-s);border:2px solid #C4E7D3;border-radius:16px;padding:16px 18px;font-size:18px;font-weight:800;color:var(--ok);margin-top:14px}
+.endmark .ei{width:38px;height:38px;flex:none;border-radius:50%;background:var(--ok);color:#fff;display:flex;align-items:center;justify-content:center}
+
+@media(max-width:560px){
+  .wrap{padding:18px 14px 70px}
+  .home-head h1{font-size:26px}
+  .page-title{font-size:22px}
+  .st .label{font-size:17px}
+}
