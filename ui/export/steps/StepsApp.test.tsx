@@ -32,7 +32,9 @@ function makeProc(id: string, name: string, nodes: ProcNode[], edges: { from: st
 }
 
 const PAYLOAD = {
-  dept: { department: 'dining', name: 'سالن', description: 'd', sub_units: [], personnel: [], updated_at: '2026-07-26T09:00:00Z' },
+  // the *stored* form: overview.json already carries «دپارتمان» inside `name`,
+  // so a heading that prefixes «واحد» or «دپارتمان» reads doubled on real data
+  dept: { department: 'dining', name: 'دپارتمان سالن', description: 'd', sub_units: [], personnel: [], updated_at: '2026-07-26T09:00:00Z' },
   processes: [
     makeProc('dining-001', 'پذیرایی از مشتری',
       [act('n1', 'خوشامدگویی'), act('n2', 'راهنمایی به کیوسک', { subprocess: 'dining-002' })],
@@ -68,6 +70,12 @@ describe('StepsApp', () => {
     expect(screen.getByText('پذیرایی از مشتری')).toBeInTheDocument()
     expect(screen.getByText('ثبت سفارش در کیوسک')).toBeInTheDocument()
     expect(screen.getByText('۲ مرحله')).toBeInTheDocument()
+  })
+
+  it('shows the stored department name as-is, with no واحد prefix', () => {
+    render(<StepsApp payload={PAYLOAD} />)
+    expect(screen.getByText('دپارتمان سالن — روی نام هر کار بزنید تا مرحله‌به‌مرحله ببینید.')).toBeInTheDocument()
+    expect(screen.queryByText(/واحد دپارتمان سالن/)).not.toBeInTheDocument()
   })
 
   it('opens a process and reveals a step description on click', () => {

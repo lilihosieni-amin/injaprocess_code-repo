@@ -12,7 +12,7 @@ export function PrintDoc({ payload }: { payload: ExportPayload }) {
   return (
     <div className={p.printdoc}>
       <section className={`${p.psec} ${p.pindex}`} data-testid="print-index">
-        <h2>راهنمای گام‌به‌گام کار — واحد {payload.dept.name}</h2>
+        <h2>راهنمای گام‌به‌گام کار — {payload.dept.name}</h2>
         <div className={p.ptype}>فهرست کارها</div>
         <ol className={p['plist-print']}>
           {payload.processes.map((x) => (
@@ -73,7 +73,9 @@ function PrintBlocks({ blocks, byId }: { blocks: Block[]; byId: Map<string, Proc
                 {(b.cond || b.back.some((r) => r.num) || sub) && (
                   <div className={p.tags}>
                     {b.cond && <span className={`${p.tg} ${p.cond}`}>اگر: {b.cond}</span>}
-                    {b.back.filter((r) => r.num).map((r) => <span key={r.to} className={`${p.tg} ${p.back}`}>برگرد به مرحلهٔ {toFa(r.num!)}</span>)}
+                    {/* keyed by target *and* index, as StepsApp is: one step can
+                        carry two back-edges to the same target */}
+                    {b.back.filter((r) => r.num).map((r, k) => <span key={`${r.to}-${k}`} className={`${p.tg} ${p.back}`}>برگرد به مرحلهٔ {toFa(r.num!)}</span>)}
                     {sub && <span className={`${p.tg} ${p.sub}`}>مراحل این کار: بخش «{sub.name}»</span>}
                   </div>
                 )}

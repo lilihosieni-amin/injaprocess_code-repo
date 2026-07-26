@@ -42,7 +42,7 @@ export function StepsApp({ payload }: { payload: ExportPayload }) {
       <Shell onHome={() => go([])}>
         <div className={s['home-head']}>
           <h1>راهنمای گام‌به‌گام کار</h1>
-          <p>واحد {payload.dept.name} — روی نام هر کار بزنید تا مرحله‌به‌مرحله ببینید.</p>
+          <p>{payload.dept.name} — روی نام هر کار بزنید تا مرحله‌به‌مرحله ببینید.</p>
         </div>
         <div className={s.plist}>
           {payload.processes.map((p) => (
