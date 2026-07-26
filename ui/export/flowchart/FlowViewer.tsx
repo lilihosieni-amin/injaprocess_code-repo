@@ -51,8 +51,11 @@ export function FlowViewer({ processes, startId, onClose }: {
 
   const detailNode = detailId ? proc.nodes.find((x) => x.id === detailId) : null
 
+  // `print:hidden` on the wrapper — an open viewer is a fixed, full-screen
+  // overlay; without it a reader who presses Ctrl+P with a flow open prints the
+  // overlay instead of the document.
   return (
-    <div dir="rtl" className="fixed inset-0 z-[100] bg-bg flex flex-col font-sans text-ink">
+    <div dir="rtl" className="fixed inset-0 z-[100] bg-bg flex flex-col font-sans text-ink print:hidden">
       <div className="flex items-center gap-3 px-[22px] py-[11px] bg-white border-b border-warm shrink-0">
         <div className="flex items-center gap-[3px] bg-tile-v2 rounded-xl p-[5px]">
           <button onClick={() => step(1)} disabled={!next}

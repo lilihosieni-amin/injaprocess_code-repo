@@ -13,7 +13,8 @@
  * Deliberately not ported (`:196-288`):
  *   - the mockup's hand-rolled flow-screen overlay — the real viewer is
  *     `FlowViewer.tsx`, which renders through the app's own Canvas (D2);
- *   - the print-diagram rules and the `@media print` block — Stage 4's.
+ *   - the `.pf-*` print-diagram rules, which are global and live in
+ *     `../print/print.css`.
  *
  * The range is transcribed whole, including rules the React document has no
  * element for (`.topbar img` and `.cover-logo`/`.cover-blob`, which point at a
@@ -192,3 +193,43 @@ ul.kpis li::before{content:'';position:absolute;inset-inline-start:12px;top:13px
 .divider-sheet .dk{font-size:12px;font-weight:700;letter-spacing:.16em;color:#C9BBEE;direction:ltr;margin-bottom:14px}
 .divider-sheet h2{font-size:34px;font-weight:900;margin:0;color:#fff}
 .divider-sheet p{font-size:14px;color:#C9BBEE;margin-top:14px;max-width:520px;margin-inline:auto;line-height:1.9}
+
+/* The mockup's document print rules (`:290-324`), transcribed. On paper the
+ * screen chrome goes away, every sheet flattens onto its own page, and the
+ * per-process sheets — hidden on screen, where the flow viewer opens instead —
+ * are what the reader gets.
+ *
+ * Not transcribed here, because they are global and `../print/print.css` owns
+ * them: `@page` (`:291`), `body{background:#fff}` (`:292`), the universal
+ * `print-color-adjust` rule (`:300`) and every `.pf-*` rule (`:297`, `:308`,
+ * `:311-312`, `:315`). A CSS module hashes class names, and the SVG bands are
+ * injected as raw HTML that no hash can reach. `.flowscreen` (half of `:293`)
+ * is dropped with the rest of the mockup's hand-rolled viewer.
+ *
+ * `html` and `body` below are element selectors, which a CSS module leaves
+ * alone — they stay global, as `:317` intends. They set no inherited
+ * typography, so `parity.test.tsx`'s rule about the canvas still holds.
+ */
+@media print{
+  .topbar{display:none!important}
+  .doc{padding:0}
+  .view.print-only{break-before:page}
+  .view.print-only>.sheet{break-before:auto}
+  .sheet{box-shadow:none;border-radius:0;margin:0;max-width:none;padding:0;break-before:page}
+  .sheet:first-child{break-before:auto}
+  .cover-sheet{min-height:auto;padding:0;break-before:auto}
+  .cover-inner{padding:40px 10px}
+  .divider-sheet{padding:60px 20px}
+  .role,.kpi-role,.card,.kpi-card,.a0{break-inside:avoid}
+  .flowbtn{display:none!important}
+  .view,.view.print-only{display:block!important}
+  .backbar{display:none!important}
+
+  html,body{width:auto;overflow:visible}
+  .doc,.layout,.sheet,.view{width:auto!important;max-width:100%!important;margin-inline:0!important}
+  .a0{grid-template-columns:1fr minmax(200px,320px) 1fr;padding:16px 14px;gap:14px}
+  .view.print-only .sheet-head h2{font-size:18px!important}
+  .view.print-only .proc-meta{margin-top:8px!important}
+  .view.print-only .proc-num-strip{margin-bottom:6px!important}
+  .grid.g2,.grid.g3{grid-template-columns:1fr 1fr}
+}

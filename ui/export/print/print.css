@@ -1,0 +1,58 @@
+/* The printed flowchart: the page box, the offscreen measuring host, and the
+ * SVG bands.
+ *
+ * A *global* stylesheet, not a CSS module, and that is load-bearing. The bands
+ * are written into the `[data-pf]` slots with `innerHTML` as raw SVG markup
+ * (`print/geometry.ts`), which no build step rewrites — a hashed `.pf-band`
+ * would never match it. The same goes for `.pf-measure`, `.pf-wrap` and the
+ * `@page` box, which belong to the document rather than to any component.
+ *
+ * Ported from the mockup `ui/design/export/dining-export-v2.html`: the `.pf-*`
+ * rules at `:275-283`, and from its `@media print` block (`:290-324`) the
+ * `@page`, `body`, `print-color-adjust`, `.pf-measure`, `.pf-wrap`, `.pf-band`
+ * and `.pf-wrap.own-page` rules. Everything else in that block styles the
+ * document's own sheets and lives in `document.module.css`, whose class names
+ * are hashed to match the elements React renders.
+ *
+ * Two deliberate departures from the mockup:
+ *   - `.pf-measure` drops the mockup's `width:4000px;height:0`. `PrintDiagrams`
+ *     sizes the host inline (4000x900) because a zero-height host gives React
+ *     Flow no viewport to lay a flow out in, and an unmeasured node is exactly
+ *     the wrong box.
+ *   - `.pf-band .fnode,.fjunc,.fterm{position:static}` (`:284`) is not ported.
+ *     Those are the mockup's own hand-rolled node classes; here the bands carry
+ *     the app's real node markup (D2), which is not absolutely positioned —
+ *     `capture()` reads the wrapper's `innerHTML`, and React Flow's transform
+ *     lives on the wrapper, not inside it.
+ */
+
+/* offscreen measuring host: laid out so node boxes get real sizes, but never
+   painted, never printed, and never inside a display:none subtree */
+.pf-measure {
+  position: absolute;
+  left: -99999px;
+  top: 0;
+  visibility: hidden;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.pf-wrap { display: none; }
+.pf-band { margin: 0 auto; width: max-content; max-width: 100%; }
+/* must clip to its viewBox — otherwise every band paints the whole diagram */
+.pf-band svg { display: block; overflow: hidden; }
+
+@media print {
+  @page { margin: 14mm 13mm; size: landscape; }
+  body { background: #fff; }
+  * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+
+  .pf-measure { display: none !important; }
+  .pf-wrap { display: block !important; margin-top: 14px; }
+  /* a band is an atomic <svg>: never fragmented, so no node can be halved */
+  .pf-band { break-inside: avoid; }
+  .pf-band + .pf-band { break-before: page; }
+  /* only when the first unbreakable run is taller than the room under the
+     heading — rare, and it buys a much larger diagram */
+  .pf-wrap.own-page { break-before: page; }
+}

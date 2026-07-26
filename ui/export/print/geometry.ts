@@ -79,7 +79,7 @@ export function bandSvg(g: DiagramGeom, band: Span, box: { minX: number; width: 
   const boxes = g.boxes
     .filter((b) => !(b.y >= y1 || b.y + b.h <= y0))
     .map((b) =>
-      `<foreignObject x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" style="overflow:visible">`
+      `<foreignObject x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" style="overflow:visible" data-id="${b.id}">`
       + `<div xmlns="http://www.w3.org/1999/xhtml" style="width:${b.w}px;height:${b.h}px">${b.html}</div>`
       + `</foreignObject>`)
     .join('')

@@ -1,9 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { pad2, toFa } from '../../src/lib/format'
 import { countActivities } from '../../src/lib/counts'
 import type { ExportPayload } from '../shared/payload'
 import { FlowViewer } from './FlowViewer'
 import { ProcessSheets } from './ProcessSheets'
+import { PrintDiagrams } from '../print/PrintDiagrams'
+import { diagramsComplete } from '../print/complete'
 import d from './document.module.css'
 
 type View = 'home' | 'doc' | 'legend'
@@ -23,6 +25,31 @@ export function Document({ payload }: { payload: ExportPayload }) {
   const [view, setView] = useState<View>('home')
   const [flowId, setFlowId] = useState<string | null>(null)
   const { dept, processes } = payload
+
+  // Persian glyph metrics decide how node labels wrap, so a build that ran
+  // before Vazirmatn landed can be wrong. Rebuild on the font, on load, and
+  // before printing — and retry while the completeness invariant fails.
+  const [rebuild, setRebuild] = useState(0)
+  useEffect(() => {
+    const again = () => setRebuild((n) => n + 1)
+    const onBeforePrint = () => { if (!diagramsComplete(payload)) again() }
+    document.fonts?.ready.then(again)
+    window.addEventListener('load', again)
+    window.addEventListener('beforeprint', onBeforePrint)
+    const t = setInterval(() => {
+      if (diagramsComplete(payload)) { clearInterval(t); return }
+      again()
+    }, 350)
+    // four attempts, then stop trying — a permanent failure must not spin
+    const stop = setTimeout(() => clearInterval(t), 1400)
+    return () => {
+      clearInterval(t)
+      clearTimeout(stop)
+      window.removeEventListener('load', again)
+      window.removeEventListener('beforeprint', onBeforePrint)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   return (
     <>
@@ -180,6 +207,12 @@ export function Document({ payload }: { payload: ExportPayload }) {
           )}
 
           <ProcessSheets payload={payload} />
+          {/* Inside `.doc-root` on purpose: the bands are *painted* inside these
+              sheets, so they have to be *measured* in the same typographic
+              context. Measuring outside it would size every box to the site's
+              line-height and then paint it at the document's, and the content
+              would overflow the box the band reserved for it. */}
+          <PrintDiagrams payload={payload} key={rebuild} />
         </div>
       </div>
 

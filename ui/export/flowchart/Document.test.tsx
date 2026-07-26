@@ -107,10 +107,17 @@ describe('Document', () => {
     expect(screen.getByText('همهٔ مسیرها انجام می‌شوند')).toBeInTheDocument()
   })
 
+  // `PrintDiagrams` mounts each process's flow a second time, in the offscreen
+  // measuring host, so every node label is now in the DOM twice — once in the
+  // viewer, once where nothing is painted. `ignore` drops the measured copy;
+  // testing-library matches it against each candidate itself, and
+  // `.pf-measure *` matches every descendant of the host.
+  const OFFSCREEN = { ignore: '.pf-measure, .pf-measure *' }
+
   it('opens the flow viewer from a table-of-contents entry', async () => {
     renderDoc()
     fireEvent.click(screen.getByText('پذیرایی', { selector: 'span' }))
-    expect(await screen.findByText('خوشامدگویی')).toBeInTheDocument()
+    expect(await screen.findByText('خوشامدگویی', OFFSCREEN)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'بستن' }))
     expect(screen.getByText('فهرست مطالب')).toBeInTheDocument()
   })
