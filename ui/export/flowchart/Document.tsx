@@ -23,6 +23,14 @@ const JSYM = [
  *  «دپارتمان دپارتمان سالن». */
 export function Document({ payload }: { payload: ExportPayload }) {
   const [view, setView] = useState<View>('home')
+  /** The mockup's view mechanism, ported whole: every section stays mounted and
+   *  only the open one carries `active`, because `document.module.css` hides the
+   *  rest with `.view{display:none}` and — this is the part that matters —
+   *  reveals *all* of them again with `.view,.view.print-only{display:block
+   *  !important}` under `@media print`. Rendering the sections conditionally
+   *  instead would put only the open one in the PDF, and the reader prints from
+   *  the landing view, where that is the cover and the contents alone. */
+  const cls = (v: View) => `${d.view}${view === v ? ` ${d.active}` : ''}`
   const [flowId, setFlowId] = useState<string | null>(null)
   const { dept, processes } = payload
 
@@ -66,145 +74,139 @@ export function Document({ payload }: { payload: ExportPayload }) {
         </div>
 
         <div className={d.doc}>
-          {view === 'home' && (
-            <>
-              <div className={`${d.sheet} ${d['cover-sheet']}`}>
-                <div className={d['cover-inner']}>
-                  <div className={d['cover-kicker']}>
-                    <span className={d.bar} /><span>INJA FOOD · PROCESS DOCUMENTATION</span>
-                  </div>
-                  <h1>مستند فرآیندهای<br />{dept.name}</h1>
-                  <div className={d.sub}>مرجع رسمی نقش‌ها، اهداف عملکردی و فرآیندهای عملیاتی این دپارتمان.</div>
-                  <div className={d['cover-foot']}>
-                    <div className={d.cf}>مجموعه<b>اینجا فست‌فود</b></div>
-                    <div className={d.cf}>تعداد فرآیند<b>{toFa(processes.length)} فرآیند</b></div>
-                  </div>
+          <div className={cls('home')} data-view="home">
+            <div className={`${d.sheet} ${d['cover-sheet']}`}>
+              <div className={d['cover-inner']}>
+                <div className={d['cover-kicker']}>
+                  <span className={d.bar} /><span>INJA FOOD · PROCESS DOCUMENTATION</span>
+                </div>
+                <h1>مستند فرآیندهای<br />{dept.name}</h1>
+                <div className={d.sub}>مرجع رسمی نقش‌ها، اهداف عملکردی و فرآیندهای عملیاتی این دپارتمان.</div>
+                <div className={d['cover-foot']}>
+                  <div className={d.cf}>مجموعه<b>اینجا فست‌فود</b></div>
+                  <div className={d.cf}>تعداد فرآیند<b>{toFa(processes.length)} فرآیند</b></div>
                 </div>
               </div>
+            </div>
 
-              <div className={d.sheet}>
-                <div className={d['sheet-head']}><h2>فهرست مطالب</h2></div>
-                <div className={d['sheet-lead']}>روی عنوان هر بخش کلیک کنید تا همان بخش باز شود.</div>
-                <ul className={d.toc}>
-                  <li onClick={() => setView('doc')}>
-                    <span className={d['toc-n']}>۰۱</span>
-                    <span className={d['toc-t']}>معرفی واحد، نقش‌ها و KPIها
-                      <span className={d['toc-s']}>معرفی واحد · موجودیت‌ها و نقش‌ها · اهداف عملکردی</span>
+            <div className={d.sheet}>
+              <div className={d['sheet-head']}><h2>فهرست مطالب</h2></div>
+              <div className={d['sheet-lead']}>روی عنوان هر بخش کلیک کنید تا همان بخش باز شود.</div>
+              <ul className={d.toc}>
+                <li onClick={() => setView('doc')}>
+                  <span className={d['toc-n']}>۰۱</span>
+                  <span className={d['toc-t']}>معرفی واحد، نقش‌ها و KPIها
+                    <span className={d['toc-s']}>معرفی واحد · موجودیت‌ها و نقش‌ها · اهداف عملکردی</span>
+                  </span>
+                  <span className={d['toc-lead']} />
+                </li>
+                <li onClick={() => setView('legend')}>
+                  <span className={d['toc-n']}>۰۲</span>
+                  <span className={d['toc-t']}>راهنمای نمادهای فلوچارت
+                    <span className={d['toc-s']}>X / O / &amp; — انواع انشعاب</span>
+                  </span>
+                  <span className={d['toc-lead']} />
+                </li>
+              </ul>
+              <div className={d['toc-group']}>فرآیندها ({toFa(processes.length)})</div>
+              <ul className={d.toc}>
+                {processes.map((p, i) => (
+                  <li key={p.id} onClick={() => setFlowId(p.id)}>
+                    <span className={d['toc-n']}>{pad2(i + 1)}</span>
+                    <span className={d['toc-t']}>{p.name}
+                      <span className={d['toc-s']}>
+                        {toFa(countActivities(p.nodes))} فعالیت · <span dir="ltr">{p.id}</span>{p.parent ? ' · زیرفرآیند' : ''}
+                      </span>
                     </span>
                     <span className={d['toc-lead']} />
                   </li>
-                  <li onClick={() => setView('legend')}>
-                    <span className={d['toc-n']}>۰۲</span>
-                    <span className={d['toc-t']}>راهنمای نمادهای فلوچارت
-                      <span className={d['toc-s']}>X / O / &amp; — انواع انشعاب</span>
-                    </span>
-                    <span className={d['toc-lead']} />
-                  </li>
-                </ul>
-                <div className={d['toc-group']}>فرآیندها ({toFa(processes.length)})</div>
-                <ul className={d.toc}>
-                  {processes.map((p, i) => (
-                    <li key={p.id} onClick={() => setFlowId(p.id)}>
-                      <span className={d['toc-n']}>{pad2(i + 1)}</span>
-                      <span className={d['toc-t']}>{p.name}
-                        <span className={d['toc-s']}>
-                          {toFa(countActivities(p.nodes))} فعالیت · <span dir="ltr">{p.id}</span>{p.parent ? ' · زیرفرآیند' : ''}
-                        </span>
-                      </span>
-                      <span className={d['toc-lead']} />
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </>
-          )}
-
-          {view === 'doc' && (
-            <>
-              <div className={d.backbar}>
-                <button className={d.backbtn} onClick={() => setView('home')}>بازگشت به فهرست</button>
-              </div>
-              <div className={d.sheet}>
-                <div className={d['sheet-head']}><span className={d['sec-num']}>۰۱</span><h2>معرفی {dept.name}</h2></div>
-                <div className={d.rule} />
-                {dept.description.split(/\n+/).filter((x) => x.trim()).map((par, i) => (
-                  <div key={i} className={d.prose}>{par}</div>
                 ))}
-                {dept.sub_units.length > 0 && (
-                  <>
-                    <div className={d['block-label']} style={{ marginTop: 30 }}>
-                      <span className={d.sq} style={{ background: 'var(--coral)' }} />واحدها و زون‌ها
-                    </div>
-                    <div className={`${d.grid} ${d.g2}`}>
-                      {dept.sub_units.map((u) => (
-                        <div key={u.name} className={`${d.card} ${d.unit}`}>
-                          <div className={d['u-name']}>{u.name}</div>
-                          <div className={d['u-desc']}>{u.description}</div>
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                )}
-              </div>
+              </ul>
+            </div>
+          </div>
 
-              <div className={d.sheet}>
-                <div className={d['sheet-head']}><span className={d['sec-num']}>۰۲</span><h2>موجودیت‌ها و نقش‌ها</h2></div>
-                <div className={d['sheet-lead']}>نقش‌های عملیاتی {dept.name} و وظایف کلیدی هر یک.</div>
-                <div className={d.rule} />
-                {dept.personnel.map((pr) => (
-                  <div key={pr.role} className={d.role}>
-                    <div className={d['role-head']}>
-                      <span className={d['role-name']}>{pr.role}</span>
-                      <span className={d['role-tag']}>{toFa(pr.duties.length)} وظیفه · {toFa(pr.kpi.length)} KPI</span>
-                    </div>
-                    <div className={d['role-body']}>
-                      <ul className={d.duties}>{pr.duties.map((x, i) => <li key={i}>{x}</li>)}</ul>
-                    </div>
+          <div className={cls('doc')} data-view="doc">
+            <div className={d.backbar}>
+              <button className={d.backbtn} onClick={() => setView('home')}>بازگشت به فهرست</button>
+            </div>
+            <div className={d.sheet}>
+              <div className={d['sheet-head']}><span className={d['sec-num']}>۰۱</span><h2>معرفی {dept.name}</h2></div>
+              <div className={d.rule} />
+              {dept.description.split(/\n+/).filter((x) => x.trim()).map((par, i) => (
+                <div key={i} className={d.prose}>{par}</div>
+              ))}
+              {dept.sub_units.length > 0 && (
+                <>
+                  <div className={d['block-label']} style={{ marginTop: 30 }}>
+                    <span className={d.sq} style={{ background: 'var(--coral)' }} />واحدها و زون‌ها
                   </div>
-                ))}
-              </div>
-
-              <div className={d.sheet}>
-                <div className={d['sheet-head']}><span className={d['sec-num']}>۰۳</span><h2>اهداف عملکردی (KPI)</h2></div>
-                <div className={d['sheet-lead']}>شاخص‌های کلیدی عملکرد به تفکیک هر نقش سازمانی.</div>
-                <div className={d.rule} />
-                {dept.personnel.map((pr) => (
-                  <div key={pr.role} className={d['kpi-role']}>
-                    <div className={d['kr-h']}><span className={d['kr-name']}>{pr.role}</span></div>
-                    {pr.kpi.length
-                      ? <ul className={d.kpis}>{pr.kpi.map((x, i) => <li key={i}>{x}</li>)}</ul>
-                      : <div className={d['kpi-none']}>برای این نقش شاخص عملکردی ثبت نشده است.</div>}
+                  <div className={`${d.grid} ${d.g2}`}>
+                    {dept.sub_units.map((u) => (
+                      <div key={u.name} className={`${d.card} ${d.unit}`}>
+                        <div className={d['u-name']}>{u.name}</div>
+                        <div className={d['u-desc']}>{u.description}</div>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            </>
-          )}
+                </>
+              )}
+            </div>
 
-          {view === 'legend' && (
-            <>
-              <div className={d.backbar}>
-                <button className={d.backbtn} onClick={() => setView('home')}>بازگشت به فهرست</button>
-              </div>
-              <div className={`${d.sheet} ${d['pad-sm']}`}>
-                <div className={d['sheet-head']}><span className={d['sec-num']}>۰۲</span><h2>راهنمای نمادهای فلوچارت</h2></div>
-                <div className={d['sheet-lead']}>در نقاط انشعاب فرآیندها، این نمادها نوع مسیر را مشخص می‌کنند.</div>
-                <div className={d['legend-box']}>
-                  {JSYM.map((j) => (
-                    <div key={j.t} className={d['legend-row']}>
-                      <span className={d['lg-sym']}>
-                        <span className={d.sq} style={{ background: j.c, borderColor: j.c }} />
-                        <span className={d.t} style={{ color: '#fff' }}>{j.s}</span>
-                      </span>
-                      <span className={d['lg-txt']}>
-                        <span className={d.n}>{j.s} — {j.t}</span>
-                        <span className={d.d}>{j.text}</span>
-                      </span>
-                    </div>
-                  ))}
+            <div className={d.sheet}>
+              <div className={d['sheet-head']}><span className={d['sec-num']}>۰۲</span><h2>موجودیت‌ها و نقش‌ها</h2></div>
+              <div className={d['sheet-lead']}>نقش‌های عملیاتی {dept.name} و وظایف کلیدی هر یک.</div>
+              <div className={d.rule} />
+              {dept.personnel.map((pr) => (
+                <div key={pr.role} className={d.role}>
+                  <div className={d['role-head']}>
+                    <span className={d['role-name']}>{pr.role}</span>
+                    <span className={d['role-tag']}>{toFa(pr.duties.length)} وظیفه · {toFa(pr.kpi.length)} KPI</span>
+                  </div>
+                  <div className={d['role-body']}>
+                    <ul className={d.duties}>{pr.duties.map((x, i) => <li key={i}>{x}</li>)}</ul>
+                  </div>
                 </div>
+              ))}
+            </div>
+
+            <div className={d.sheet}>
+              <div className={d['sheet-head']}><span className={d['sec-num']}>۰۳</span><h2>اهداف عملکردی (KPI)</h2></div>
+              <div className={d['sheet-lead']}>شاخص‌های کلیدی عملکرد به تفکیک هر نقش سازمانی.</div>
+              <div className={d.rule} />
+              {dept.personnel.map((pr) => (
+                <div key={pr.role} className={d['kpi-role']}>
+                  <div className={d['kr-h']}><span className={d['kr-name']}>{pr.role}</span></div>
+                  {pr.kpi.length
+                    ? <ul className={d.kpis}>{pr.kpi.map((x, i) => <li key={i}>{x}</li>)}</ul>
+                    : <div className={d['kpi-none']}>برای این نقش شاخص عملکردی ثبت نشده است.</div>}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className={cls('legend')} data-view="legend">
+            <div className={d.backbar}>
+              <button className={d.backbtn} onClick={() => setView('home')}>بازگشت به فهرست</button>
+            </div>
+            <div className={`${d.sheet} ${d['pad-sm']}`}>
+              <div className={d['sheet-head']}><span className={d['sec-num']}>۰۲</span><h2>راهنمای نمادهای فلوچارت</h2></div>
+              <div className={d['sheet-lead']}>در نقاط انشعاب فرآیندها، این نمادها نوع مسیر را مشخص می‌کنند.</div>
+              <div className={d['legend-box']}>
+                {JSYM.map((j) => (
+                  <div key={j.t} className={d['legend-row']}>
+                    <span className={d['lg-sym']}>
+                      <span className={d.sq} style={{ background: j.c, borderColor: j.c }} />
+                      <span className={d.t} style={{ color: '#fff' }}>{j.s}</span>
+                    </span>
+                    <span className={d['lg-txt']}>
+                      <span className={d.n}>{j.s} — {j.t}</span>
+                      <span className={d.d}>{j.text}</span>
+                    </span>
+                  </div>
+                ))}
               </div>
-            </>
-          )}
+            </div>
+          </div>
 
           <ProcessSheets payload={payload} />
           {/* Inside `.doc-root` on purpose: the bands are *painted* inside these

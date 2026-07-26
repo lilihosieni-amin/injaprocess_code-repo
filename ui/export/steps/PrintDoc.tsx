@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { linearize, countSteps, groupTitle } from './linearize'
 import type { Block } from './linearize'
 import { toFa } from '../../src/lib/format'
@@ -32,8 +33,10 @@ function callerOf(processes: Process[], x: Process): ActivityNode | null {
 }
 
 export function PrintDoc({ payload }: { payload: ExportPayload }) {
-  const byId = new Map(payload.processes.map((x) => [x.id, x]))
-  const model = new Map(payload.processes.map((x) => [x.id, linearize(x)]))
+  // As in `StepsApp`: a pure function of the payload, so it is built once
+  // rather than on every render of the guide this document sits beside.
+  const byId = useMemo(() => new Map(payload.processes.map((x) => [x.id, x])), [payload])
+  const model = useMemo(() => new Map(payload.processes.map((x) => [x.id, linearize(x)])), [payload])
 
   return (
     <div className={p.printdoc}>

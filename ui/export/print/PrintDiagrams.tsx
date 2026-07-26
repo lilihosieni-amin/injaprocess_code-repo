@@ -16,6 +16,44 @@ import type { Process } from '../../src/api/types'
 
 const nodeTypes = { activity: ActivityNode, start: StartNode, end: EndNode, junction: JunctionNode }
 
+/** Height in CSS px of a process sheet's heading block on paper — the title
+ *  row, the id strip and the meta row, from the top of the sheet down to the
+ *  top of `.pf-wrap`'s margin.
+ *
+ *  **Derived from the print stylesheet, not measured.** It cannot be measured:
+ *  the block lives inside `ProcessSheets`' `.view.print-only` container, which
+ *  is `display:none` on screen, and `emit()` only ever runs on screen — a rect
+ *  taken there is all zeroes, which is exactly the bug this replaced (a
+ *  `getBoundingClientRect().height` that was always 0 and made this constant a
+ *  constant while looking like a measurement).
+ *
+ *  Every number below is declared in a stylesheet, and `head-height.test.ts`
+ *  re-derives this sum from those declarations so the two cannot drift:
+ *
+ *    18   × 1.75  = 31.5    title row   `.view.print-only .sheet-head h2` at
+ *                                       18px, leading 1.75 from `.doc-root`
+ *      +   8      =  8      `.sheet-head{margin-bottom:8px}`
+ *    11.5 × 1.75
+ *         + 2 × 3 = 26.125  id strip    `.id-badge` 11.5px + 3px padding
+ *      +  max(6,8)=  8      `.proc-num-strip{margin-bottom:6px}` collapsing
+ *                           against `.proc-meta{margin-top:8px}` (print values)
+ *    12   × 1.75  = 21      meta row    `.pm` at 12px
+ *                  ───────
+ *                   94.625
+ *
+ *  `.pf-wrap`'s own printed `margin-top:14px` is deliberately *not* included:
+ *  `PRINT.HEADGAP` already stands for it plus a little slack.
+ *
+ *  Assumes the title fits on one line, as every stored process name does at
+ *  ~950px of print width. A name that wrapped would make the real heading one
+ *  line taller; the band would then not fit beside it and `break-inside:avoid`
+ *  would move it to the next page — the same graceful outcome as before, never
+ *  a halved node. */
+export const PRINT_HEAD_BLOCK = 18 * 1.75 + 8 + (11.5 * 1.75 + 2 * 3) + Math.max(6, 8) + 12 * 1.75
+
+/** What `planBands` is told the heading costs it. */
+export const HEAD_H = Math.ceil(PRINT_HEAD_BLOCK) + PRINT.HEADGAP
+
 /** A process id made safe for an SVG `id`, without ever mapping two ids onto one.
  *
  *  Every marker in the document shares one id space, so two processes that
@@ -123,11 +161,7 @@ export function PrintDiagrams({ payload }: { payload: ExportPayload }) {
       const width = (b.maxX + PRINT.PAD) - minX
       const height = (b.maxY + PRINT.PAD) - minY
       const cuts = freeCuts(geomBlocks(g), minY, minY + height)
-      // heading height at print width: title + id strip + meta row, measured live
-      const sheet = slot.closest('[data-testid^="sheet-"]')
-      const head = sheet?.querySelector('h2')?.getBoundingClientRect()
-      const headH = head ? Math.ceil(head.height + 90) + PRINT.HEADGAP : 130
-      const plan = planBands(minY, minY + height, width, cuts, headH)
+      const plan = planBands(minY, minY + height, width, cuts, HEAD_H)
       slot.classList.toggle('own-page', plan.ownPage)
       slot.innerHTML = plan.bands
         .map((band, i) => bandSvg(g, band, { minX, width }, plan.scale, `pfah-${slug(proc.id)}-${i}`))

@@ -5,6 +5,7 @@ import { Document } from './Document'
 import { createSeededClient } from '../shared/seed'
 import type { ExportPayload } from '../shared/payload'
 import type { ProcNode } from '../../src/api/types'
+import d from './document.module.css'
 
 const act = (id: string, label: string, removed = false): ProcNode => ({
   id, type: 'activity', label, description: '', actor: '',
@@ -54,6 +55,13 @@ const renderDoc = (payload: ExportPayload = PAYLOAD) => render(
   </QueryClientProvider>,
 )
 
+/** The document's own sections, in DOM order. `data-view` names them; the class
+ *  list is what the print rule acts on, so both are asserted below. */
+const sections = () => [...document.querySelectorAll<HTMLElement>('[data-view]')]
+/** Which section is showing on screen — the one carrying the module's `active`. */
+const openView = () =>
+  sections().find((el) => el.classList.contains(d.active))?.dataset.view
+
 // A miniature of the real shape that made the export disagree with the site.
 // `dining-027` holds 24 nodes that are not junctions but only 20 activities the
 // site counts — four are soft-deleted — and 7 junction nodes of which 2 are
@@ -90,6 +98,7 @@ describe('Document', () => {
   it('opens the unit section with its paragraphs, sub-units, roles and KPIs', () => {
     renderDoc()
     fireEvent.click(screen.getByText('معرفی واحد، نقش‌ها و KPIها'))
+    expect(openView()).toBe('doc')
     expect(screen.getByText('دپارتمان سالن مسئول پذیرایی است.')).toBeInTheDocument()
     expect(screen.getByText('سالن به چند باکس تقسیم می‌شود.')).toBeInTheDocument()
     expect(screen.getByText('حیاط')).toBeInTheDocument()
@@ -101,7 +110,10 @@ describe('Document', () => {
 
   it('opens the symbol legend', () => {
     renderDoc()
-    fireEvent.click(screen.getByText('راهنمای نمادهای فلوچارت'))
+    // `selector` picks the contents entry: the legend section is always mounted
+    // (see the print suite below) and renders the same words in an <h2>.
+    fireEvent.click(screen.getByText('راهنمای نمادهای فلوچارت', { selector: 'span' }))
+    expect(openView()).toBe('legend')
     expect(screen.getByText('فقط یکی از مسیرها انجام می‌شود')).toBeInTheDocument()
     expect(screen.getByText('یک یا چند مسیر انجام می‌شود')).toBeInTheDocument()
     expect(screen.getByText('همهٔ مسیرها انجام می‌شوند')).toBeInTheDocument()
@@ -149,6 +161,56 @@ describe('the counts the document prints', () => {
     const sheet = screen.getByTestId('sheet-dining-027')
     const count = (el: HTMLElement) => el.textContent?.match(/([۰-۹]+) فعالیت/)?.[1]
     expect(count(entry)).toBe(count(sheet))
+  })
+})
+
+// The printed PDF is whatever is in the DOM: `@media print` reveals every
+// `.view`, but a section React never rendered cannot be revealed. Rendering the
+// sections conditionally lost four of the seven the table of contents lists —
+// «معرفی واحد»/«واحدها و زون‌ها», «موجودیت‌ها و نقش‌ها», «اهداف عملکردی (KPI)»
+// and «راهنمای نمادهای فلوچارت» — from a PDF printed on the landing view, which
+// is the state every reader starts in and the only one carrying the cover.
+describe('every document section stays mounted, so the PDF carries them all', () => {
+  it('renders the unit, role, KPI and legend sections while the contents is showing', () => {
+    renderDoc()
+    expect(openView()).toBe('home')
+    expect(screen.getByRole('heading', { name: 'فهرست مطالب' })).toBeInTheDocument()
+    // `hidden` is the point: `.view{display:none}` keeps these off the screen
+    // and out of the accessibility tree, but they are in the DOM, which is all
+    // the print rule needs to put them on paper.
+    for (const name of ['معرفی دپارتمان سالن', 'موجودیت‌ها و نقش‌ها',
+      'اهداف عملکردی (KPI)', 'راهنمای نمادهای فلوچارت']) {
+      expect(screen.getByRole('heading', { name, hidden: true })).toBeInTheDocument()
+    }
+    // the section bodies too, not just their headings
+    expect(screen.getByText('واحدها و زون‌ها')).toBeInTheDocument()
+    expect(screen.getByText('نظارت بر نظافت')).toBeInTheDocument()
+    expect(screen.getByText('رضایت مشتری')).toBeInTheDocument()
+    expect(screen.getByText('فقط یکی از مسیرها انجام می‌شود')).toBeInTheDocument()
+  })
+
+  it('orders the sections as the table of contents lists them', () => {
+    renderDoc()
+    expect(sections().map((el) => el.dataset.view)).toEqual(['home', 'doc', 'legend'])
+    // …and the print-only process sheets come after all three
+    const sheet = screen.getByTestId('sheet-dining-001')
+    const legend = sections()[2]
+    expect(legend.compareDocumentPosition(sheet) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  // `document.module.css` carries the mockup's `.view{display:none}` /
+  // `.view.active{display:block}` and its print rule
+  // `.view,.view.print-only{display:block!important}`. That rule is what puts
+  // every section on paper, and it only matches elements that carry `view`.
+  it('wraps each section in the module’s `view` class, with `active` on the open one', () => {
+    renderDoc()
+    expect(sections()).toHaveLength(3)
+    for (const el of sections()) expect(el.classList.contains(d.view)).toBe(true)
+    expect(sections().filter((el) => el.classList.contains(d.active))).toHaveLength(1)
+
+    fireEvent.click(screen.getByText('راهنمای نمادهای فلوچارت', { selector: 'span' }))
+    expect(openView()).toBe('legend')
+    expect(sections().filter((el) => el.classList.contains(d.active))).toHaveLength(1)
   })
 })
 

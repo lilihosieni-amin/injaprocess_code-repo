@@ -34,6 +34,16 @@ def _guard_logs(caplog):
             if r.name == "inja_ui_backend.routers.exports"]
 
 
+def _ascii_letters(text):
+    """The Latin letters in `text` — a client-facing detail must have none.
+
+    Digits, punctuation and the parenthesised setting names the 503s carry are
+    not letters, so this catches prose ("unknown department") without banning
+    «(EXPORT_DIR)»-style identifiers where they belong.
+    """
+    return [c for c in text if "a" <= c.lower() <= "z"]
+
+
 def _client(cfg):
     c = TestClient(create_app(cfg))
     c.cookies.set(COOKIE_NAME, issue_cookie(cfg, "analyst"))
@@ -65,22 +75,52 @@ def test_export_requires_a_session(data_root, tmp_path):
     assert c.post("/api/departments/cooking/exports/steps").status_code == 401
 
 
-def test_unknown_kind_is_404(data_root, tmp_path):
-    c = _client(_cfg(data_root, tmp_path))
-    assert c.post("/api/departments/cooking/exports/poster").status_code == 404
+def test_unknown_kind_is_404(data_root, tmp_path, caplog):
+    """Persian to the client, the English name of the offending kind to the log.
 
-
-def test_department_without_an_overview_is_404(data_root, tmp_path):
-    """A registered department with no `overview.json` is a *data* fault.
-
-    The detail is asserted, not just the status: three different guards on this
-    handler answer 404 (unknown kind, unknown department, no overview) and only
-    the detail says which one spoke.
+    `ExportModal` renders `detail` verbatim inside an otherwise Persian dialog,
+    so no 404 on this handler may answer in English — the same split the 503
+    branches already make.
     """
     c = _client(_cfg(data_root, tmp_path))
-    r = c.post("/api/departments/dining/exports/flowchart")
+    with caplog.at_level("INFO"):
+        r = c.post("/api/departments/cooking/exports/poster")
     assert r.status_code == 404
-    assert "overview" in r.json()["detail"]
+    assert r.json()["detail"] == "نوع خروجی نامعتبر است"
+    assert not _ascii_letters(r.json()["detail"])
+    assert any("unknown export kind" in m and "poster" in m for m in _guard_logs(caplog))
+
+
+def test_department_without_an_overview_is_404(data_root, tmp_path, caplog):
+    """A registered department with no `overview.json` is a *data* fault.
+
+    This is the likeliest failure of the lot — only two departments have an
+    `overview.json` today — so it is also the one a Persian-speaking user is
+    most likely to read. The exception keeps its English message for the log.
+    """
+    c = _client(_cfg(data_root, tmp_path))
+    with caplog.at_level("WARNING"):
+        r = c.post("/api/departments/dining/exports/flowchart")
+    assert r.status_code == 404
+    assert r.json()["detail"] == (
+        "اطلاعات معرفی این دپارتمان هنوز ثبت نشده است؛ ابتدا معرفی واحد را کامل کنید.")
+    assert not _ascii_letters(r.json()["detail"])
+    assert any("overview.json" in m and "dining" in m for m in _guard_logs(caplog))
+
+
+def test_no_404_detail_on_this_handler_reaches_the_user_in_english(data_root, tmp_path):
+    """One assertion covering all three 404 guards at once.
+
+    A fourth guard added later in English would pass every test above and still
+    put English in a Persian dialog; this one catches it.
+    """
+    c = _client(_cfg(data_root, tmp_path))
+    for path in ("/api/departments/cooking/exports/poster",
+                 "/api/departments/marketing/exports/flowchart",
+                 "/api/departments/dining/exports/flowchart"):
+        r = c.post(path)
+        assert r.status_code == 404, path
+        assert not _ascii_letters(r.json()["detail"]), path
 
 
 def test_missing_export_dir_is_503(data_root, tmp_path, caplog):
@@ -145,12 +185,15 @@ def test_unreadable_template_is_503(data_root, tmp_path, caplog, monkeypatch):
                for m in _guard_logs(caplog))
 
 
-def test_unknown_department_is_404(data_root, tmp_path):
+def test_unknown_department_is_404(data_root, tmp_path, caplog):
     """The registry guard runs before any path is built from the URL's `code`."""
     c = _client(_cfg(data_root, tmp_path))
-    r = c.post("/api/departments/marketing/exports/flowchart")
+    with caplog.at_level("INFO"):
+        r = c.post("/api/departments/marketing/exports/flowchart")
     assert r.status_code == 404
-    assert r.json()["detail"] == "unknown department"
+    assert r.json()["detail"] == "دپارتمان یافت نشد"
+    assert not _ascii_letters(r.json()["detail"])
+    assert any("unknown department" in m and "marketing" in m for m in _guard_logs(caplog))
 
 
 def test_template_without_a_data_slot_is_503(data_root, tmp_path, caplog):
@@ -236,6 +279,64 @@ def test_a_real_export_is_served_while_the_spa_is_mounted(data_root, tmp_path):
     assert r.status_code == 200
     assert "inja-export-data" in r.text          # the export itself…
     assert "<title>inja</title>" not in r.text   # …not the SPA shell
+
+
+def _with_spa(cfg, tmp_path):
+    dist = tmp_path / "dist"
+    dist.mkdir(exist_ok=True)
+    (dist / "index.html").write_text("<!doctype html><title>inja</title>", encoding="utf-8")
+    return cfg.__class__(**{**cfg.__dict__, "static_dir": dist})
+
+
+def _app_logs(caplog):
+    return [r.getMessage() for r in caplog.records if r.name == "inja_ui_backend.app"]
+
+
+def test_a_misconfigured_export_dir_costs_only_the_export_feature(data_root, tmp_path, caplog):
+    """EXPORT_DIR points at a path that is really a regular file.
+
+    `mkdir(parents=True, exist_ok=True)` raises on that, and unguarded it would
+    take `create_app` — and with it the entire UI — down at startup. The export
+    feature must turn itself off instead, and say so in the log.
+    """
+    blocker = tmp_path / "not-a-directory"
+    blocker.write_text("x", encoding="utf-8")
+    cfg = _cfg(data_root, tmp_path)
+    cfg = _with_spa(cfg.__class__(**{**cfg.__dict__, "export_dir": blocker}), tmp_path)
+
+    with caplog.at_level("ERROR"):
+        app = create_app(cfg)                       # must not raise
+    c = TestClient(app)
+    c.cookies.set(COOKIE_NAME, issue_cookie(cfg, "analyst"))
+
+    # the rest of the UI is up
+    assert c.get("/api/auth/me").status_code == 200
+    assert "inja" in c.get("/departments").text
+    # the export feature answers exactly as it does when EXPORT_DIR is unset
+    r = c.post("/api/departments/cooking/exports/flowchart")
+    assert r.status_code == 503
+    assert "EXPORT_DIR" in r.json()["detail"]
+    # …and an old link is a 404, not the admin shell
+    assert c.get("/exports/cooking/flowchart-abc.html").status_code == 404
+    assert any("EXPORT_DIR" in m and str(blocker) in m for m in _app_logs(caplog))
+
+
+def test_export_links_are_404_when_exports_are_off(data_root, tmp_path):
+    """A bookmarked export link must not turn into the admin login page.
+
+    With no EXPORT_DIR the `/exports` mount is skipped, so the path falls through
+    to the SPA catch-all — which would answer the HTML shell with a 200 and leave
+    a staff member staring at a login form instead of a plain "gone".
+    """
+    cfg = _with_spa(_cfg(data_root, tmp_path, exports=False), tmp_path)
+    c = TestClient(create_app(cfg))
+    # SPA deep links still work…
+    assert "inja" in c.get("/departments").text
+    # …but nothing under /exports pretends to
+    for path in ("/exports/cooking/flowchart-abc.html", "/exports/", "/exports/cooking/"):
+        r = c.get(path)
+        assert r.status_code == 404, path
+        assert "inja" not in r.text, path
 
 
 def test_payload_in_the_written_file_has_no_pending(data_root, tmp_path):

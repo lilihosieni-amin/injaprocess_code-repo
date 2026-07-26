@@ -21,12 +21,19 @@ def _now() -> str:
 def create_export(code: str, kind: str, request: Request,
                   _: str = Depends(require_session)):
     cfg = request.app.state.cfg
+    # Every detail this handler returns is rendered verbatim by `ExportModal`,
+    # inside an otherwise Persian dialog — so the 404s make the same split the
+    # 503s below do: Persian to the client, English (with the offending value)
+    # to the log. A malformed request is nobody's to act on, so it is logged at
+    # INFO; the missing overview below is a real data gap and gets a warning.
     if kind not in exports.EXPORT_KINDS:
-        raise HTTPException(status_code=404, detail=f"unknown export kind: {kind}")
+        logger.info("%s/%s: unknown export kind: %s", code, kind, kind)
+        raise HTTPException(status_code=404, detail="نوع خروجی نامعتبر است")
 
     reg = storage.read_json(storage.registry_path(cfg.data_root))
     if code not in {d["code"] for d in reg["departments"]}:
-        raise HTTPException(status_code=404, detail="unknown department")
+        logger.info("%s/%s: unknown department: %s", code, kind, code)
+        raise HTTPException(status_code=404, detail="دپارتمان یافت نشد")
 
     # Both settings are deployment faults: no retry and no user action fixes an
     # unset environment variable, so each answers 503 *and* leaves a log line.
@@ -63,8 +70,16 @@ def create_export(code: str, kind: str, request: Request,
     try:
         payload = exports.build_payload(cfg.data_root, code, generated_at)
     except exports.ExportUnavailable as e:
-        # a department with no overview.json has nothing to document yet
-        raise HTTPException(status_code=404, detail=str(e)) from e
+        # A department with no overview.json has nothing to document yet. This is
+        # the likeliest failure on the whole handler — most departments have no
+        # overview yet — so it is also the message most users will read: Persian,
+        # and naming the thing they can go and fill in. `str(e)` stays English
+        # and goes to the log, where only an operator reads it.
+        logger.warning("%s/%s: %s", code, kind, e)
+        raise HTTPException(
+            status_code=404,
+            detail="اطلاعات معرفی این دپارتمان هنوز ثبت نشده است؛ ابتدا معرفی واحد را کامل کنید.",
+        ) from e
 
     try:
         html = exports.render(template, payload)

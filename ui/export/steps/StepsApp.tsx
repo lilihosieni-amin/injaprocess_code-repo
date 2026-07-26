@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { linearize, countSteps, groupTitle } from './linearize'
 import type { Block } from './linearize'
 import { toFa } from '../../src/lib/format'
@@ -26,8 +26,12 @@ const icoUser = icon('<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circ
 export function StepsApp({ payload }: { payload: ExportPayload }) {
   const [trail, setTrail] = useState<Crumb[]>([])
   const [jump, setJump] = useState<Jump | null>(null)
-  const byId = new Map(payload.processes.map((p) => [p.id, p]))
-  const model = new Map(payload.processes.map((p) => [p.id, linearize(p)]))
+  // Both maps are a pure function of the payload, and the payload of a
+  // standalone export never changes — but every step tap, every navigation and
+  // every jump re-renders this component, and `linearize` walks every node and
+  // edge of every process. Memoised, that work happens once.
+  const byId = useMemo(() => new Map(payload.processes.map((p) => [p.id, p])), [payload])
+  const model = useMemo(() => new Map(payload.processes.map((p) => [p.id, linearize(p)])), [payload])
 
   // every navigation lands at the top of the new page, as the mockup does —
   // otherwise a step tapped near the bottom opens its subprocess mid-page
