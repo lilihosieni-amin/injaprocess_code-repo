@@ -10,21 +10,21 @@ export type ExportModalProps = {
   onClose: () => void
 }
 
-/** Clipboard write with a fallback for non-secure contexts, where
- *  navigator.clipboard is undefined (the app is reachable over plain http
- *  locally, and the modal must still copy there). */
-async function copy(text: string) {
-  try {
-    if (navigator.clipboard?.writeText) { await navigator.clipboard.writeText(text); return }
-  } catch { /* fall through to the textarea */ }
+/** Clipboard write for non-secure contexts, where navigator.clipboard is
+ *  undefined (the app is reachable over plain http locally, and the modal must
+ *  still copy there). Returns whether the copy actually happened, so the button
+ *  never claims success the browser refused. */
+function copyViaTextarea(text: string): boolean {
   const t = document.createElement('textarea')
   t.value = text
   t.style.position = 'fixed'
   t.style.opacity = '0'
   document.body.appendChild(t)
   t.select()
-  document.execCommand('copy')
+  let ok = false
+  try { ok = document.execCommand('copy') } catch { ok = false }
   document.body.removeChild(t)
+  return ok
 }
 
 export function ExportModal({ title, status, url, error, onRetry, onClose }: ExportModalProps) {
@@ -39,21 +39,37 @@ export function ExportModal({ title, status, url, error, onRetry, onClose }: Exp
 
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current) }, [])
 
-  function onCopy() {
-    if (!url) return
-    void copy(url)
+  function flip() {
     setCopied(true)
     if (timer.current) clearTimeout(timer.current)
     timer.current = setTimeout(() => setCopied(false), 1800)
   }
 
+  function onCopy() {
+    if (!url) return
+    const clipboard = navigator.clipboard
+    if (clipboard?.writeText) {
+      try {
+        // settles after this tick; a rejection (permission, blurred document)
+        // still gets the link across through the textarea.
+        clipboard.writeText(url).catch(() => { copyViaTextarea(url) })
+        flip()
+        return
+      } catch { /* fall through to the textarea */ }
+    }
+    if (copyViaTextarea(url)) flip()
+  }
+
+  // A ready export with no link is nothing the user can act on, so it degrades
+  // to the failure state — a success header over an empty body would lie.
+  const state = status === 'ready' && !url ? 'failed' : status
   const tile =
-    status === 'ready' ? 'bg-[#E4F6EC] text-green'
-      : status === 'failed' ? 'bg-tile-c text-conflict'
+    state === 'ready' ? 'bg-[#E4F6EC] text-green'
+      : state === 'failed' ? 'bg-tile-c text-conflict'
         : 'bg-tile-v text-violet'
   const heading =
-    status === 'ready' ? 'خروجی آماده شد'
-      : status === 'failed' ? 'خروجی گرفته نشد'
+    state === 'ready' ? 'خروجی آماده شد'
+      : state === 'failed' ? 'خروجی گرفته نشد'
         : 'در حال آماده‌سازی خروجی…'
 
   return (
@@ -68,7 +84,7 @@ export function ExportModal({ title, status, url, error, onRetry, onClose }: Exp
       <div onClick={(e) => e.stopPropagation()} className="w-[520px] max-w-full bg-bg rounded-[20px] overflow-hidden shadow-modal">
         <div className="px-6 py-[22px] bg-white border-b border-warm flex items-center gap-3">
           <span className={`w-10 h-10 shrink-0 rounded-xl flex items-center justify-center ${tile}`}>
-            {status === 'pending' ? <Spinner className="w-5 h-5" /> : status === 'ready' ? (
+            {state === 'pending' ? <Spinner className="w-5 h-5" /> : state === 'ready' ? (
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
             ) : (
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M12 8v5M12 17h.01" /><circle cx="12" cy="12" r="9" /></svg>
@@ -78,16 +94,19 @@ export function ExportModal({ title, status, url, error, onRetry, onClose }: Exp
             <div className="font-extrabold text-[16px] text-ink">{heading}</div>
             <div className="text-[12px] text-muted mt-0.5">{title}</div>
           </div>
+          {/* The only exit while pending — outside click is deliberately suppressed
+              there, and Escape alone leaves a touch device with no way out. */}
+          <button onClick={onClose} aria-label="بستن پنجره" className="w-8 h-8 shrink-0 bg-tile-v2 rounded-[9px] text-muted text-lg">×</button>
         </div>
 
         <div className="px-6 py-[22px]">
-          {status === 'pending' && (
+          {state === 'pending' && (
             <div className="text-[13px] text-muted leading-loose">فایل خروجی در حال ساخته‌شدن است؛ این پنجره به‌محض آماده‌شدن، لینک را نشان می‌دهد.</div>
           )}
 
-          {status === 'failed' && (
+          {state === 'failed' && (
             <>
-              <div className="text-[13px] text-ink leading-loose">{error}</div>
+              <div className="text-[13px] text-ink leading-loose">{error || 'دلیل خطا مشخص نیست؛ دوباره تلاش کنید.'}</div>
               <div className="flex gap-2.5 mt-5">
                 <button onClick={onClose} className="flex-1 py-3 border-[1.5px] border-line bg-white rounded-xl font-bold text-[14px] text-[#6B5CA5]">بستن</button>
                 <button onClick={onRetry} className="btn btn-violet flex-1 py-3 text-[14px]">تلاش دوباره</button>
@@ -95,7 +114,7 @@ export function ExportModal({ title, status, url, error, onRetry, onClose }: Exp
             </>
           )}
 
-          {status === 'ready' && url && (
+          {state === 'ready' && url && (
             <>
               <div className="text-[12.5px] text-muted mb-2.5">لینک فایل HTML خروجی:</div>
               <div className="flex gap-2.5 items-center">
