@@ -19,9 +19,11 @@ export function Canvas({ docNodes, docEdges, revision, editing, mode = 'pan', on
   onConnect?: (c: Connection) => void
   onNodeClick?: (id: string) => void
   onOpenDetail?: (id: string) => void
-  onCommitPositions: (updates: { id: string; pos: Pos }[]) => void
-  onSetEdgeLabel: (from: string, to: string, label: string) => void
-  onDeleteEdge: (from: string, to: string) => void
+  // Optional so a read-only consumer — the export document — can mount the very
+  // same canvas without inventing handlers for edits it will never make.
+  onCommitPositions?: (updates: { id: string; pos: Pos }[]) => void
+  onSetEdgeLabel?: (from: string, to: string, label: string) => void
+  onDeleteEdge?: (from: string, to: string) => void
 }) {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
@@ -40,7 +42,7 @@ export function Canvas({ docNodes, docEdges, revision, editing, mode = 'pan', on
     setNodes(docNodes.map((n) => ({ ...n, data: { ...n.data, onOpenDetail }, draggable: editing, selectable: editing })))
     setEdges(docEdges.map((e) => ({
       ...e, selectable: editing,
-      data: { ...(e.data as object), editing, onSetLabel: (v: string) => onSetEdgeLabelRef.current(e.source, e.target, v), onDelete: () => onDeleteEdgeRef.current(e.source, e.target) },
+      data: { ...(e.data as object), editing, onSetLabel: (v: string) => onSetEdgeLabelRef.current?.(e.source, e.target, v), onDelete: () => onDeleteEdgeRef.current?.(e.source, e.target) },
     })))
     seeded.current = new Map(docNodes.map((n) => [n.id, n.position]))
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -60,7 +62,7 @@ export function Canvas({ docNodes, docEdges, revision, editing, mode = 'pan', on
     const moved = nodes
       .filter((n) => { const s = seeded.current.get(n.id); return s && (s.x !== n.position.x || s.y !== n.position.y) })
       .map((n) => ({ id: n.id, pos: n.position }))
-    if (moved.length) { onCommitPositions(moved); for (const m of moved) seeded.current.set(m.id, m.pos) }
+    if (moved.length && onCommitPositions) { onCommitPositions(moved); for (const m of moved) seeded.current.set(m.id, m.pos) }
   }, [nodes, onCommitPositions])
 
   return (
