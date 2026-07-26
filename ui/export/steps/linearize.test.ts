@@ -20,6 +20,9 @@ const term = (id: 'start' | 'end'): ProcNode => ({
   position: { x: 0, y: 0 }, layout: 'auto',
 } as ProcNode)
 
+/** Soft-deleted: still in the document, must never reach the guide. */
+const gone = (n: ProcNode): ProcNode => ({ ...n, removed: true })
+
 function proc(nodes: ProcNode[], edges: { from: string; to: string; label?: string }[]): Process {
   return {
     id: 'dining-001', department: 'dining', name: 'p', summary: '',
@@ -104,7 +107,29 @@ describe('linearize', () => {
     )
     const bs = linearize(p)
     const b = steps(bs).find((s) => s.node.id === 'b')!
-    expect(b.backNums).toEqual([1])       // back to step 1, which is `a`
+    // back to step 1, which is `a` — number and label travel together
+    expect(b.back).toEqual([{ to: 'a', label: 'اگر تأیید نشد', num: 1 }])
+  })
+
+  it('keeps every back-reference label attached to its own number', () => {
+    // `b` loops twice: once to a junction (never numbered) and once to an
+    // activity. A renderer must not pair «دوباره» with `a`'s number.
+    const p = proc(
+      [term('start'), act('a'), junc('j1', 'XOR'), act('b'), act('c')],
+      [
+        { from: 'start', to: 'a' }, { from: 'a', to: 'j1' },
+        { from: 'j1', to: 'b' }, { from: 'j1', to: 'c' },
+        { from: 'b', to: 'j1', label: 'دوباره' },
+        { from: 'b', to: 'a', label: 'از اول' },
+      ],
+    )
+    const g = groups(linearize(p))[0]
+    const b = steps(g.branches[0].blocks)[0]
+    expect(b.node.id).toBe('b')
+    expect(b.back).toEqual([
+      { to: 'j1', label: 'دوباره' },                 // unnumbered: no `num`
+      { to: 'a', label: 'از اول', num: 1 },
+    ])
   })
 
   it('renders a branch with no merge point without losing its steps', () => {
@@ -124,16 +149,69 @@ describe('linearize', () => {
     expect(steps(linearize(p)).map((s) => s.node.id)).toEqual(['a', 'orphan'])
   })
 
-  it('is deterministic — same input, identical output', () => {
+  it('enters at the first node with no in-edges when no start node exists', () => {
+    // nodes deliberately out of flow order: the walk must follow the edges,
+    // not the array
+    const p = proc([act('b'), act('a')], [{ from: 'a', to: 'b' }])
+    expect(steps(linearize(p)).map((s) => [s.num, s.node.id])).toEqual([[1, 'a'], [2, 'b']])
+  })
+
+  it('enters past a removed start node instead of walking from mid-chain', () => {
     const p = proc(
-      [term('start'), act('a'), junc('j1', 'OR'), act('b'), act('c'), act('z')],
+      [gone(term('start')), act('b'), act('a')],
+      [{ from: 'start', to: 'a' }, { from: 'a', to: 'b' }],
+    )
+    expect(steps(linearize(p)).map((s) => [s.num, s.node.id])).toEqual([[1, 'a'], [2, 'b']])
+  })
+
+  it('never lists a removed activity as a step', () => {
+    const p = proc(
+      [term('start'), act('a'), gone(act('حذف‌شده')), act('b'), term('end')],
       [
-        { from: 'start', to: 'a' }, { from: 'a', to: 'j1' },
-        { from: 'j1', to: 'b' }, { from: 'j1', to: 'c' },
-        { from: 'b', to: 'z' }, { from: 'c', to: 'z' },
+        { from: 'start', to: 'a' }, { from: 'a', to: 'حذف‌شده' },
+        { from: 'حذف‌شده', to: 'b' }, { from: 'b', to: 'end' },
       ],
     )
-    expect(JSON.stringify(linearize(p))).toBe(JSON.stringify(linearize(p)))
+    const bs = linearize(p)
+    expect(steps(bs).map((s) => s.node.id)).toEqual(['a', 'b'])
+    expect(countSteps(bs)).toBe(2)
+  })
+
+  it('never resolves a removed node as a back-reference target', () => {
+    const p = proc(
+      [term('start'), gone(act('حذف‌شده')), act('a'), act('b')],
+      [
+        { from: 'start', to: 'حذف‌شده' }, { from: 'حذف‌شده', to: 'a' },
+        { from: 'a', to: 'b' },
+        { from: 'b', to: 'حذف‌شده', label: 'برگرد' },
+      ],
+    )
+    const bs = linearize(p)
+    expect(steps(bs).map((s) => s.node.id)).toEqual(['a', 'b'])
+    expect(steps(bs).find((s) => s.node.id === 'b')!.back).toEqual([])
+  })
+
+  it('is deterministic — same graph, different insertion order, identical output', () => {
+    const edges = [
+      { from: 'start', to: 'a' }, { from: 'a', to: 'j1' },
+      { from: 'j1', to: 'b' }, { from: 'j1', to: 'c' },
+      { from: 'b', to: 'z' }, { from: 'c', to: 'z' },
+      { from: 'z', to: 'a', label: 'تکرار' },
+    ]
+    const one = proc(
+      [term('start'), act('a'), junc('j1', 'OR'), act('b'), act('c'), act('z')],
+      edges,
+    )
+    // same logical graph; nodes reversed, edges rotated (a junction's own
+    // out-edges keep their relative order — that order *is* the branch order)
+    const other = proc(
+      [act('z'), act('c'), act('b'), junc('j1', 'OR'), act('a'), term('start')],
+      [...edges.slice(4), ...edges.slice(0, 4)],
+    )
+    expect(JSON.stringify(linearize(other))).toBe(JSON.stringify(linearize(one)))
+    // and the output being compared is not trivially empty
+    expect(countSteps(linearize(one))).toBe(4)
+    expect(groups(linearize(one))[0].branches.map((br) => br.blocks.length)).toEqual([1, 1])
   })
 })
 

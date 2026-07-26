@@ -1,13 +1,16 @@
 import type { ActivityNode, Process, ProcNode } from '../../src/api/types'
 
 export type Junction = 'AND' | 'OR' | 'XOR'
+/** One "go back to step N" edge. `num` is absent when the target is not a
+ *  numbered step — a junction, or a removed node — so a renderer can never
+ *  pair a label with someone else's number. */
+export type BackRef = { to: string; label: string; num?: number }
 export type StepBlock = {
   kind: 'step'
   node: ActivityNode
   cond: string
-  back: { to: string; label: string }[]
+  back: BackRef[]
   num: number
-  backNums: number[]
 }
 export type GroupBlock = {
   kind: 'group'
@@ -78,7 +81,7 @@ function graphOf(p: Process) {
   }
   nodes.forEach((n) => { if (rank.get(n.id) == null) rank.set(n.id, r++) })
 
-  return { nodes, byId, fwdOut, backOut, rank }
+  return { nodes, byId, start, fwdOut, backOut, rank }
 }
 
 type Graph = ReturnType<typeof graphOf>
@@ -110,7 +113,7 @@ const GROUP_TITLE: Record<Junction, string> = {
 
 export function groupTitle(type: Junction, count: number): string {
   if (type === 'AND') return count > 2 ? 'همهٔ این‌ها با هم انجام می‌شوند' : GROUP_TITLE.AND
-  return GROUP_TITLE[type] ?? GROUP_TITLE.XOR
+  return GROUP_TITLE[type]
 }
 
 export function countSteps(blocks: Block[]): number {
@@ -140,9 +143,9 @@ export function linearize(p: Process): Block[] {
       if (node.type === 'activity') {
         visited.add(cur)
         blocks.push({
-          kind: 'step', node: node as ActivityNode, cond: pending,
+          kind: 'step', node, cond: pending,
           back: g.backOut(cur).map((e) => ({ to: e.to, label: e.label })),
-          num: 0, backNums: [],
+          num: 0,
         })
         pending = ''
       }
@@ -162,7 +165,7 @@ export function linearize(p: Process): Block[] {
     return blocks
   }
 
-  const blocks = walk(g.nodes.find((n) => n.type === 'start')?.id ?? g.nodes[0]?.id ?? null, null, '')
+  const blocks = walk(g.start?.id ?? null, null, '')
 
   // graphs can have disconnected pieces — append them in stable node order
   g.nodes.forEach((n) => {
@@ -179,7 +182,7 @@ export function linearize(p: Process): Block[] {
   })
   num(blocks)
   const resolve = (bs: Block[]) => bs.forEach((b) => {
-    if (b.kind === 'step') b.backNums = b.back.map((x) => numOf.get(x.to)).filter((x): x is number => !!x)
+    if (b.kind === 'step') b.back.forEach((x) => { const n = numOf.get(x.to); if (n) x.num = n })
     else b.branches.forEach((br) => resolve(br.blocks))
   })
   resolve(blocks)
