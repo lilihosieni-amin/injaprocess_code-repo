@@ -2795,40 +2795,53 @@ git commit -m "feat(export): read-only Canvas props and an offline query cache"
 
 - [ ] **Step 1: Write the failing tests**
 
-Create `ui/export/flowchart/parity.test.tsx` — the guard that makes D2 enforceable:
+Create `ui/export/flowchart/parity.test.tsx` — the guard that makes D2 enforceable.
+
+It is a **source scan**, not a render comparison. A render comparison of the same component against itself can only ever pass; what has to be caught is someone forking a node component into `ui/export/`, and only reading the source catches that.
 
 ```tsx
 import { describe, it, expect } from 'vitest'
-import { render } from '@testing-library/react'
-import { ReactFlowProvider } from '@xyflow/react'
-import { ActivityNode } from '../../src/flow/nodes/ActivityNode'
-import type { FlowNodeData } from '../../src/flow/adapt'
-import type { NodeProps, Node } from '@xyflow/react'
+import { readdirSync, readFileSync, statSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
-// The export must never grow its own node styling. If someone forks
-// ActivityNode into ui/export/, this test is what catches it: the export
-// bundle and the app must resolve the *same* module.
-describe('node parity between app and export', () => {
-  it('the export imports the app’s ActivityNode, not a copy', async () => {
-    const fromExportSide = (await import('../../src/flow/nodes/ActivityNode')).ActivityNode
-    expect(fromExportSide).toBe(ActivityNode)
+// ui/export — this file lives at ui/export/flowchart/parity.test.tsx
+const EXPORT_DIR = dirname(dirname(fileURLToPath(import.meta.url)))
+
+function sourceFiles(dir: string): string[] {
+  return readdirSync(dir).flatMap((name) => {
+    const full = join(dir, name)
+    if (statSync(full).isDirectory()) return sourceFiles(full)
+    return /\.tsx?$/.test(name) && !/\.test\.tsx?$/.test(name) ? [full] : []
+  })
+}
+
+// Defining any of these inside ui/export/ means the export has forked the
+// app's flow rendering — the one thing D2 forbids.
+const FORBIDDEN: { rx: RegExp; what: string }[] = [
+  { rx: /\b(?:function|const)\s+(?:Activity|Start|End|Junction)Node\b/, what: 'a node component' },
+  { rx: /\bfunction\s+LabeledEdge\b/, what: 'an edge component' },
+  { rx: /react-flow__node\s*\{/, what: 'node styling' },
+]
+
+describe('the export never forks the app’s flow components', () => {
+  it('defines no node or edge component of its own', () => {
+    const offenders = sourceFiles(EXPORT_DIR).flatMap((file) => {
+      const src = readFileSync(file, 'utf8')
+      return FORBIDDEN.filter((f) => f.rx.test(src)).map((f) => `${file} defines ${f.what}`)
+    })
+    expect(offenders).toEqual([])
   })
 
-  it('renders identical markup on both sides', () => {
-    const data = {
-      node: { id: 'dining-001-n001', type: 'activity', label: 'خوشامدگویی', actor: 'کیوسک‌من', description: '', icom: { inputs: [], controls: [], outputs: [], mechanisms: [] }, subprocess: null, position: { x: 0, y: 0 }, layout: 'auto', source: { created_by: 't', touched_by: [] } },
-      conflicts: 0, hasSub: false,
-    } as unknown as FlowNodeData
-    const props = { data } as unknown as NodeProps<Node<FlowNodeData>>
-
-    const a = render(<ReactFlowProvider><ActivityNode {...props} /></ReactFlowProvider>)
-    const first = a.container.innerHTML
-    a.unmount()
-    const b = render(<ReactFlowProvider><ActivityNode {...props} /></ReactFlowProvider>)
-    expect(b.container.innerHTML).toBe(first)
+  it('the flow viewer renders through the app’s Canvas', () => {
+    const src = readFileSync(join(EXPORT_DIR, 'flowchart/FlowViewer.tsx'), 'utf8')
+    expect(src).toMatch(/import \{ Canvas \} from '\.\.\/\.\.\/src\/flow\/Canvas'/)
+    expect(src).toMatch(/import \{ toFlowNodes, toFlowEdges \} from '\.\.\/\.\.\/src\/flow\/adapt'/)
   })
 })
 ```
+
+Task 17 later imports the node components directly in `PrintDiagrams.tsx`. That stays legal — the scan forbids *defining* them, not importing them.
 
 Create `ui/export/flowchart/FlowViewer.test.tsx`:
 
@@ -2915,7 +2928,7 @@ describe('FlowViewer', () => {
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `npm --prefix ui test -- FlowViewer parity`
-Expected: `parity` passes already (it guards, it does not drive); `FlowViewer` fails — module unresolved.
+Expected: both fail — `parity`'s second test cannot read the not-yet-written FlowViewer.tsx, and `FlowViewer` is unresolved.
 
 - [ ] **Step 3: Write the viewer**
 
