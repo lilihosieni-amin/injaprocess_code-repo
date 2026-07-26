@@ -79,7 +79,7 @@ services:
     env_file: [./local/ui-backend.env]     # SESSION_SIGNING_KEY (local, gitignored)
     environment:
       DATA_ROOT: /data
-      UI_USERS_FILE: /run/secrets/ui-users.json   # local users map (admin/admin), gitignored
+      UI_USERS_FILE: /run/secrets/ui-users.json   # local {username: argon2_hash} map, gitignored
       EXPORT_DIR: /exports
       # SCHEMA_DIR + UI_STATIC_DIR are baked into the image; the schemas dir is
       # overlaid with the live ../schemas volume below (no rebuild on schema edits).
