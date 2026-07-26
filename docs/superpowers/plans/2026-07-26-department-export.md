@@ -894,13 +894,13 @@ const payload = readPayload()
 
 createRoot(document.getElementById('root')!).render(
   <div className="p-10 font-sans text-ink">
-    <h1 className="font-extrabold text-2xl">مستند فرآیندهای واحد {payload.dept.name}</h1>
+    <h1 className="font-extrabold text-2xl">مستند فرآیندهای {payload.dept.name}</h1>
     <p className="text-muted mt-2">{payload.processes.length} فرآیند</p>
   </div>,
 )
 ```
 
-Create `ui/export/steps/main.tsx` with the same body but the heading `راهنمای گام‌به‌گام کار — واحد {payload.dept.name}`.
+Create `ui/export/steps/main.tsx` with the same body but the heading `راهنمای گام‌به‌گام کار — {payload.dept.name}`.
 
 - [ ] **Step 5: Write the export Vite config**
 
@@ -3145,7 +3145,7 @@ const renderDoc = () => render(
 describe('Document', () => {
   it('opens on a cover and a table of contents', () => {
     renderDoc()
-    expect(screen.getAllByText('دپارتمان سالن').length).toBeGreaterThan(0)
+    expect(screen.getByRole('heading', { name: /مستند فرآیندهای/ })).toHaveTextContent('دپارتمان سالن')
     expect(screen.getByText('فهرست مطالب')).toBeInTheDocument()
     expect(screen.getByText('پذیرایی')).toBeInTheDocument()
     expect(screen.getByText('۱ فرآیند')).toBeInTheDocument()
@@ -3196,7 +3196,6 @@ Create `ui/export/flowchart/Document.tsx`:
 ```tsx
 import { useState } from 'react'
 import { toFa } from '../../src/lib/format'
-import { deptFullName } from '../shared/payload'
 import type { ExportPayload } from '../shared/payload'
 import { FlowViewer } from './FlowViewer'
 import { ProcessSheets } from './ProcessSheets'
@@ -3238,7 +3237,7 @@ export function Document({ payload }: { payload: ExportPayload }) {
                   <span className={d.bar} /><span>INJA FOOD · PROCESS DOCUMENTATION</span>
                 </div>
                 <h1>مستند فرآیندهای<br />{dept.name}</h1>
-                <div className={d.sub}>{deptFullName(dept)} — مرجع رسمی نقش‌ها، اهداف عملکردی و فرآیندهای عملیاتی واحد.</div>
+                <div className={d.sub}>مرجع رسمی نقش‌ها، اهداف عملکردی و فرآیندهای عملیاتی این دپارتمان.</div>
                 <div className={d['cover-foot']}>
                   <div className={d.cf}>مجموعه<b>اینجا فست‌فود</b></div>
                   <div className={d.cf}>تعداد فرآیند<b>{toFa(processes.length)} فرآیند</b></div>
