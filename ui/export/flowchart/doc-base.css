@@ -1,0 +1,34 @@
+/* Document-wide rules for the flowchart document.
+ *
+ * Ported from the mockup `ui/design/export/dining-export-v2.html:11-25`: the
+ * `:root` custom properties (`:11-20`) and the reset (`:21-25`). These are
+ * global by nature — they style `:root`, `*`, `html`, `body`, `::selection` and
+ * `a` — so they cannot live in `document.module.css`, whose selectors are all
+ * hashed.
+ *
+ * This bundle also loads `src/index.css`, whose own `body` and `::selection`
+ * rules sit inside `@layer base`; the unlayered rules below therefore win, as
+ * the mockup intends.
+ *
+ * The one deviation from the mockup is the font stack. The mockup pulled
+ * 'Vazirmatn' from Google Fonts over the network, which an offline export
+ * cannot do; `main.tsx` inlines `@fontsource-variable/vazirmatn` instead, and
+ * that package registers the family as 'Vazirmatn Variable'. Naming only
+ * 'Vazirmatn' here would leave the inlined webfont unused and fall the document
+ * back to system-ui.
+ */
+:root{
+  --violet:#4A25A9; --ink:#2A1D5E; --deep:#2E1668; --coral:#FA5A52; --coral-ink:#E23D35;
+  --app:#FBF7F1; --desk:#E7E1F2; --card:#fff; --v-soft:#F0E9FB; --v-softer:#F5F1FB; --c-soft:#FFE9E7;
+  --bd:#EFE7DC; --bd-v:#E3D8F5; --hair:#F2ECE3;
+  --muted:#8a7db0; --faint:#a99fc4; --body:#4A3F6B;
+  --ok:#1F8A5B; --ok-s:#E4F6EC; --warn:#B4690E; --warn-s:#FBEEDC; --info:#1F6FB2; --info-s:#E7F1FB;
+  --in-fg:#1F6FB2; --in-bg:#E7F1FB; --ctl-fg:#8A5A00; --ctl-bg:#FBF0DA;
+  --out-fg:#1F8A5B; --out-bg:#E4F6EC; --mech-fg:#4A25A9; --mech-bg:#F0E9FB;
+  --mono:ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;font-family:'Vazirmatn Variable','Vazirmatn',system-ui,sans-serif;background:var(--desk);color:var(--ink);line-height:1.75}
+::selection{background:var(--coral);color:#fff}
+a{color:var(--violet);text-decoration:none}a:hover{color:var(--coral)}
