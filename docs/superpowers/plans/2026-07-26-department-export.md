@@ -1691,7 +1691,8 @@ A port of `ui/design/export/dining-steps.html:181-281` into typed, tested code. 
 - Produces:
 
 ```ts
-export type StepBlock = { kind: 'step'; node: ActivityNode; cond: string; back: { to: string; label: string }[]; num: number; backNums: number[] }
+export type BackRef = { to: string; label: string; num?: number }
+export type StepBlock = { kind: 'step'; node: ActivityNode; cond: string; back: BackRef[]; num: number }
 export type GroupBlock = { kind: 'group'; type: 'AND' | 'OR' | 'XOR'; branches: { label: string; blocks: Block[] }[] }
 export type Block = StepBlock | GroupBlock
 export function linearize(p: Process): Block[]
@@ -1810,7 +1811,7 @@ describe('linearize', () => {
     )
     const bs = linearize(p)
     const b = steps(bs).find((s) => s.node.id === 'b')!
-    expect(b.backNums).toEqual([1])       // back to step 1, which is `a`
+    expect(b.back.map((r) => r.num)).toEqual([1])   // back to step 1, which is `a`
   })
 
   it('renders a branch with no merge point without losing its steps', () => {
@@ -1872,7 +1873,6 @@ export type StepBlock = {
   cond: string
   back: { to: string; label: string }[]
   num: number
-  backNums: number[]
 }
 export type GroupBlock = {
   kind: 'group'
@@ -2007,7 +2007,7 @@ export function linearize(p: Process): Block[] {
         blocks.push({
           kind: 'step', node: node as ActivityNode, cond: pending,
           back: g.backOut(cur).map((e) => ({ to: e.to, label: e.label })),
-          num: 0, backNums: [],
+          num: 0,
         })
         pending = ''
       }
@@ -2044,7 +2044,7 @@ export function linearize(p: Process): Block[] {
   })
   num(blocks)
   const resolve = (bs: Block[]) => bs.forEach((b) => {
-    if (b.kind === 'step') b.backNums = b.back.map((x) => numOf.get(x.to)).filter((x): x is number => !!x)
+    if (b.kind === 'step') b.back.forEach((r) => { r.num = numOf.get(r.to) })
     else b.branches.forEach((br) => resolve(br.blocks))
   })
   resolve(blocks)
@@ -2321,13 +2321,15 @@ function Step({ block, byId, onEnter }: {
         <span className={s.sn}>{toFa(block.num)}</span>
         <span className={s.st}>
           <span className={s.label}>{n.label}</span>
-          {(block.cond || block.backNums.length || sub) && (
+          {(block.cond || block.back.some((r) => r.num) || sub) && (
             <span className={s.badges}>
               {block.cond && <span className={`${s.bdg} ${s.cond}`}>اگر: {block.cond}</span>}
-              {block.backNums.map((x) => (
-                <span key={x} className={`${s.bdg} ${s.back}`} role="button" tabIndex={0}
-                  onClick={(e) => { e.stopPropagation(); jumpStep(x) }}>
-                  برگرد به مرحلهٔ {toFa(x)}
+              {/* only back-edges that resolved to a numbered step get a badge — a
+                  back-edge to a junction carries a label but no number */}
+              {block.back.filter((r) => r.num).map((r) => (
+                <span key={r.to} className={`${s.bdg} ${s.back}`} role="button" tabIndex={0}
+                  onClick={(e) => { e.stopPropagation(); jumpStep(r.num!) }}>
+                  برگرد به مرحلهٔ {toFa(r.num!)}
                 </span>
               ))}
               {sub && <span className={`${s.bdg} ${s.sub}`}>مراحل این کار را ببین</span>}
@@ -2563,10 +2565,10 @@ function PrintBlocks({ blocks, byId }: { blocks: Block[]; byId: Map<string, Proc
                 <span className={p.l}>{n.label}</span>
                 {n.actor && <div className={p.m}>مجری: {n.actor}</div>}
                 {n.description && <div className={p.d}>{n.description}</div>}
-                {(b.cond || b.backNums.length || sub) && (
+                {(b.cond || b.back.some((r) => r.num) || sub) && (
                   <div className={p.tags}>
                     {b.cond && <span className={`${p.tg} ${p.cond}`}>اگر: {b.cond}</span>}
-                    {b.backNums.map((x) => <span key={x} className={`${p.tg} ${p.back}`}>برگرد به مرحلهٔ {toFa(x)}</span>)}
+                    {b.back.filter((r) => r.num).map((r) => <span key={r.to} className={`${p.tg} ${p.back}`}>برگرد به مرحلهٔ {toFa(r.num!)}</span>)}
                     {sub && <span className={`${p.tg} ${p.sub}`}>مراحل این کار: بخش «{sub.name}»</span>}
                   </div>
                 )}
