@@ -27,6 +27,15 @@ function wrap(ui: React.ReactNode) {
 }
 
 describe('ReorderModal', () => {
+  // ProcessList's scroll container is dir="ltr" (scrollbar placement) and the modals
+  // render inside it, so the modal must re-establish its own direction — the same
+  // thing ActivityNode does inside the dir="ltr" Canvas.
+  it('renders right-to-left even when mounted inside an LTR container', () => {
+    wrap(<div dir="ltr"><ReorderModal department="cooking" departmentName="پخت" processes={PROCS} onClose={() => {}} /></div>)
+    const row = screen.getAllByTestId('reorder-row')[0]
+    expect(row.closest('[dir]')?.getAttribute('dir')).toBe('rtl')
+  })
+
   it('lists active processes in the given order and excludes tombstones', () => {
     wrap(<ReorderModal department="cooking" departmentName="پخت" processes={PROCS} onClose={() => {}} />)
     const rows = screen.getAllByTestId('reorder-row')
@@ -34,24 +43,41 @@ describe('ReorderModal', () => {
     expect(screen.queryByText('دو')).not.toBeInTheDocument()
   })
 
-  it('moves a row up with the up button', () => {
+  it('has no per-row arrow buttons — rows are reordered by dragging', () => {
     wrap(<ReorderModal department="cooking" departmentName="پخت" processes={PROCS} onClose={() => {}} />)
-    fireEvent.click(screen.getAllByRole('button', { name: 'انتقال به بالا' })[1])
-    expect(screen.getAllByTestId('reorder-row').map((r) => r.getAttribute('data-pid')))
-      .toEqual(['cooking-001', 'cooking-003'])
+    expect(screen.queryByRole('button', { name: 'انتقال به بالا' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'انتقال به پایین' })).not.toBeInTheDocument()
   })
 
-  it('moves a row down with the down button', () => {
+  it('marks the gap the row would drop into when dragging upward', () => {
     wrap(<ReorderModal department="cooking" departmentName="پخت" processes={PROCS} onClose={() => {}} />)
-    fireEvent.click(screen.getAllByRole('button', { name: 'انتقال به پایین' })[0])
-    expect(screen.getAllByTestId('reorder-row').map((r) => r.getAttribute('data-pid')))
-      .toEqual(['cooking-001', 'cooking-003'])
+    const rows = screen.getAllByTestId('reorder-row')
+    expect(screen.queryByTestId('drop-indicator')).not.toBeInTheDocument()
+    fireEvent.dragStart(rows[1])
+    fireEvent.dragOver(rows[0])
+    // dragging up onto row 0 lands the row above it, so the gap is marked before row 0
+    expect(screen.getByTestId('drop-indicator').nextElementSibling).toBe(rows[0])
   })
 
-  it('does not move the first row up or the last row down', () => {
+  it('marks the gap the row would drop into when dragging downward', () => {
     wrap(<ReorderModal department="cooking" departmentName="پخت" processes={PROCS} onClose={() => {}} />)
-    expect(screen.getAllByRole('button', { name: 'انتقال به بالا' })[0]).toBeDisabled()
-    expect(screen.getAllByRole('button', { name: 'انتقال به پایین' })[1]).toBeDisabled()
+    const rows = screen.getAllByTestId('reorder-row')
+    fireEvent.dragStart(rows[0])
+    fireEvent.dragOver(rows[1])
+    // dragging down onto row 1 lands the row below it, so the gap is marked after row 1
+    expect(screen.getByTestId('drop-indicator').previousElementSibling).toBe(rows[1])
+  })
+
+  it('shows no gap marker over the row being dragged, and clears it when the drag ends', () => {
+    wrap(<ReorderModal department="cooking" departmentName="پخت" processes={PROCS} onClose={() => {}} />)
+    const rows = screen.getAllByTestId('reorder-row')
+    fireEvent.dragStart(rows[0])
+    fireEvent.dragOver(rows[0])
+    expect(screen.queryByTestId('drop-indicator')).not.toBeInTheDocument()
+    fireEvent.dragOver(rows[1])
+    expect(screen.getByTestId('drop-indicator')).toBeInTheDocument()
+    fireEvent.dragEnd(rows[0])
+    expect(screen.queryByTestId('drop-indicator')).not.toBeInTheDocument()
   })
 
   it('reorders by drag and drop', () => {
@@ -70,7 +96,8 @@ describe('ReorderModal', () => {
         { status: 200, headers: { 'Content-Type': 'application/json' } }))
     const onClose = vi.fn()
     wrap(<ReorderModal department="cooking" departmentName="پخت" processes={PROCS} onClose={onClose} />)
-    fireEvent.click(screen.getAllByRole('button', { name: 'انتقال به بالا' })[1])
+    const rows = screen.getAllByTestId('reorder-row')
+    fireEvent.dragStart(rows[1]); fireEvent.dragOver(rows[0]); fireEvent.drop(rows[0])
     fireEvent.click(screen.getByRole('button', { name: /ذخیره/ }))
     await waitFor(() => expect(onClose).toHaveBeenCalled())
     expect(spy).toHaveBeenCalledWith('/api/departments/cooking/order',
@@ -81,7 +108,8 @@ describe('ReorderModal', () => {
     const spy = vi.spyOn(globalThis, 'fetch')
     const onClose = vi.fn()
     wrap(<ReorderModal department="cooking" departmentName="پخت" processes={PROCS} onClose={onClose} />)
-    fireEvent.click(screen.getAllByRole('button', { name: 'انتقال به بالا' })[1])
+    const rows = screen.getAllByTestId('reorder-row')
+    fireEvent.dragStart(rows[1]); fireEvent.dragOver(rows[0]); fireEvent.drop(rows[0])
     fireEvent.click(screen.getByRole('button', { name: 'انصراف' }))
     expect(onClose).toHaveBeenCalled()
     expect(spy).not.toHaveBeenCalled()

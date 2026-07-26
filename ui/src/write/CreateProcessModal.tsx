@@ -18,7 +18,8 @@ export function CreateProcessModal({ department, departmentName, onClose }: { de
   }
 
   return (
-    <div onClick={onClose} className="fixed inset-0 bg-[rgba(36,17,82,.45)] flex items-center justify-center z-50 p-6">
+    // dir is pinned: ProcessList mounts this inside its dir="ltr" scroll container.
+    <div dir="rtl" onClick={onClose} className="fixed inset-0 bg-[rgba(36,17,82,.45)] flex items-center justify-center z-50 p-6">
       <div onClick={(e) => e.stopPropagation()} className="w-[440px] max-w-full bg-bg rounded-3xl overflow-hidden shadow-modal">
         <div className="px-[22px] py-5 bg-white border-b border-warm">
           <div className="font-extrabold text-[17px] text-ink">ایجاد فرآیند جدید</div>

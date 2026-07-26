@@ -9,7 +9,8 @@ export function DeleteProcessConfirm({ pid, name, onClose }: { pid: string; name
     del.mutate(pid, { onSuccess: () => { toast.show('فرآیند حذف شد'); onClose() } })
   }
   return (
-    <div onClick={onClose} className="fixed inset-0 bg-[rgba(36,17,82,.45)] flex items-center justify-center z-[72] p-6">
+    // dir is pinned: ProcessList mounts this inside its dir="ltr" scroll container.
+    <div dir="rtl" onClick={onClose} className="fixed inset-0 bg-[rgba(36,17,82,.45)] flex items-center justify-center z-[72] p-6">
       <div onClick={(e) => e.stopPropagation()} className="w-[440px] max-w-full bg-bg rounded-3xl overflow-hidden shadow-modal">
         <div className="p-6 pb-5 text-center">
           <div className="font-extrabold text-[17px] text-ink mb-2">حذف کامل فرآیند «{name}»؟</div>
