@@ -76,9 +76,13 @@ services:
     environment:
       DATA_ROOT: /data
       UI_USERS_FILE: /run/secrets/ui-users.json
+      EXPORT_DIR: /exports
     volumes:
       - /opt/inja/data-repo:/data
       - /opt/inja/secrets/ui-users.json:/run/secrets/ui-users.json:ro
+      # generated export documents — build artifacts, deliberately outside the
+      # data-repo so they never appear in its working tree (D8)
+      - ui-exports:/exports
 
   proxy:
     image: caddy:2
@@ -113,3 +117,4 @@ volumes:
   claude-credentials:
   control-bot-state:
   caddy-data:
+  ui-exports:

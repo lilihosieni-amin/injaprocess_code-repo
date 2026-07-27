@@ -20,6 +20,22 @@
   ::-webkit-scrollbar{width:10px;height:10px}
   ::-webkit-scrollbar-thumb{background:#DFD6EE;border-radius:8px;border:2px solid transparent;background-clip:content-box}
   a{color:#4A25A9}a:hover{color:#FA5A52}
+  @media (max-width:640px){
+    [data-r-pad]{padding:18px 14px !important}
+    [data-r-deptgrid]{grid-template-columns:repeat(2,1fr) !important;gap:12px !important}
+    [data-r-2col]{grid-template-columns:1fr !important}
+    [data-r-idef0]{display:flex !important;flex-direction:column !important;gap:12px !important}
+    [data-r-idef0] > div{grid-column:auto !important;grid-row:auto !important}
+    [data-r-stack]{flex-direction:column !important;align-items:stretch !important;gap:12px !important}
+    [data-r-stack] > div:last-child{display:flex !important;flex-wrap:wrap !important;gap:10px}
+    [data-r-topbar]{flex-wrap:wrap !important;row-gap:8px !important;padding:9px 12px !important}
+    [data-r-prow]{flex-wrap:wrap !important;align-items:flex-start !important;gap:12px !important}
+    [data-r-prow] > div:first-child{flex:1 1 100% !important}
+    [data-r-count]{text-align:start !important;min-width:0 !important;display:flex !important;align-items:baseline !important;gap:5px}
+    [data-r-pactions]{flex:1 1 100% !important}
+    [data-r-pactions] > button:not([title]){flex:1 1 0}
+    [data-r-drawer]{width:100% !important;top:auto !important;height:76% !important;border-radius:22px 22px 0 0 !important;border-inline-end:none !important;box-shadow:0 -20px 50px -20px rgba(42,29,94,.5) !important}
+  }
 </style>
 </helmet>
 
@@ -52,7 +68,7 @@
   <sc-if value="{{ isApp }}" hint-placeholder-val="{{ true }}">
 
     <!-- Top bar -->
-    <div style="display:flex;align-items:center;gap:14px;padding:12px 22px;background:#fff;border-bottom:1px solid #EFE7DC;flex:none;z-index:20">
+    <div data-r-topbar style="display:flex;align-items:center;gap:14px;padding:12px 22px;background:#fff;border-bottom:1px solid #EFE7DC;flex:none;z-index:20">
       <div onClick="{{ goHome }}" style="display:flex;align-items:center;gap:10px;cursor:pointer">
         <img src="assets/inja-logo.jpg" alt="" style="width:38px;height:38px;border-radius:11px;object-fit:cover">
         <div style="line-height:1.2"><div style="font-weight:700;font-size:14px;color:#2A1D5E">اینجا فست‌فود</div><div style="font-size:10.5px;color:#8a7db0">سامانهٔ فرآیندها</div></div>
@@ -82,7 +98,7 @@
 
     <!-- ---------- DEPARTMENTS ---------- -->
     <sc-if value="{{ isDepartments }}" hint-placeholder-val="{{ true }}">
-      <div style="flex: 1; overflow: auto; padding: 38px 40px 48px; background-color: #2A1D5E">
+      <div style="flex: 1; overflow: auto; padding: 38px 40px 48px; background-color: #FBF7F1">
         <div style="max-width:1120px;margin:0 auto">
 
           <!-- header -->
@@ -92,19 +108,19 @@
                 <span style="width:22px;height:2px;background:#FA5A52;border-radius:2px"></span>
                 <span style="font-size:11.5px;font-weight:700;letter-spacing:.14em;color:#B79FE6">INJA FOOD · مستندسازی فرآیند</span>
               </div>
-              <div style="font-weight: 800; font-size: 34px; color: #FBF7F1; letter-spacing: -.01em">دپارتمان‌ها</div>
-              <div style="font-size:14px;color:#B7A6E0;margin-top:8px;max-width:440px;line-height:1.7">نقشهٔ فرآیندهای مجموعه به تفکیک واحد. یک دپارتمان را برای مرور فرآیندهای مستندشده، کارت خلاصه و فلوچارت انتخاب کنید.</div>
+              <div style="font-weight: 800; font-size: 34px; color: #2A1D5E; letter-spacing: -.01em">دپارتمان‌ها</div>
+              <div style="font-size:14px;color:#8a7db0;margin-top:8px;max-width:440px;line-height:1.7">نقشهٔ فرآیندهای مجموعه به تفکیک واحد. یک دپارتمان را برای مرور فرآیندهای مستندشده، کارت خلاصه و فلوچارت انتخاب کنید.</div>
             </div>
             <div style="display:flex;gap:12px;flex:none">
-              <div style="background:#FBF7F1;border:1px solid #EFE7DC;border-radius:16px;padding:14px 20px;min-width:96px;box-shadow:0 8px 22px -12px rgba(0,0,0,.4)">
+              <div style="background:#fff;border:1px solid #EFE7DC;border-radius:16px;padding:14px 20px;min-width:96px;box-shadow:0 4px 16px -10px rgba(74,37,169,.25)">
                 <div style="font-weight:800;font-size:27px;color:#4A25A9;line-height:1">{{ deptTotalProcFa }}</div>
                 <div style="font-size:11.5px;color:#8a7db0;margin-top:5px;font-weight:600">فرآیند مستند</div>
               </div>
-              <div style="background:#FBF7F1;border:1px solid #EFE7DC;border-radius:16px;padding:14px 20px;min-width:96px;box-shadow:0 8px 22px -12px rgba(0,0,0,.4)">
+              <div style="background:#fff;border:1px solid #EFE7DC;border-radius:16px;padding:14px 20px;min-width:96px;box-shadow:0 4px 16px -10px rgba(74,37,169,.25)">
                 <div style="font-weight:800;font-size:27px;color:#2A1D5E;line-height:1">{{ deptCountFa }}</div>
                 <div style="font-size:11.5px;color:#8a7db0;margin-top:5px;font-weight:600">دپارتمان</div>
               </div>
-              <div style="background:#FBF7F1;border:1px solid #EFE7DC;border-radius:16px;padding:14px 20px;min-width:96px;box-shadow:0 8px 22px -12px rgba(0,0,0,.4)">
+              <div style="background:#fff;border:1px solid #EFE7DC;border-radius:16px;padding:14px 20px;min-width:96px;box-shadow:0 4px 16px -10px rgba(74,37,169,.25)">
                 <div style="display:flex;align-items:center;gap:7px">
                   <span style="font-weight:800;font-size:27px;line-height:1;color:{{ conflictTotalColor }}">{{ deptTotalConflictsFa }}</span>
                   <sc-if value="{{ deptHasConflicts }}" hint-placeholder-val="{{ false }}"><span style="width:8px;height:8px;border-radius:50%;background:#FA5A52;box-shadow:0 0 0 3px #FFE4E1"></span></sc-if>
@@ -115,7 +131,7 @@
           </div>
 
           <!-- grid -->
-          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:18px">
+          <div data-r-deptgrid style="display:grid;grid-template-columns:repeat(3,1fr);gap:18px">
             <sc-for list="{{ departments }}" as="d" hint-placeholder-count="9">
               <div onClick="{{ d.open }}" style="position: relative; overflow: hidden; border: 1px solid #EFE7DC; border-radius: 20px; padding: 22px; cursor: pointer; box-shadow: 0 10px 26px -14px rgba(0,0,0,.45); transition: transform .16s,box-shadow .16s; background-color: #FBF7F1" style-hover="{{ cardHover }}">
                 <div style="position:absolute;top:0;right:0;left:0;height:4px;background:{{ d.accent }}"></div>
@@ -144,9 +160,9 @@
 
     <!-- ---------- PROCESS LIST ---------- -->
     <sc-if value="{{ isProcessList }}" hint-placeholder-val="{{ true }}">
-      <div ref="{{ listScrollRef }}" style="flex:1;overflow:auto;padding:30px 40px">
+      <div ref="{{ listScrollRef }}" style="flex:1;overflow:auto;padding:30px 40px" data-r-pad>
         <div style="max-width:920px;margin:0 auto">
-          <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:22px">
+          <div data-r-stack style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:22px">
             <div>
               <div style="display:flex;align-items:center;gap:12px">
                 <div style="{{ deptObj.tileStyle }}"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="{{ deptObj.icon }}"></path></svg></div>
@@ -163,6 +179,33 @@
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>
                 فرآیند جدید
               </button>
+              <div style="position:relative">
+                <button onClick="{{ toggleExportMenu }}" title="خروجی‌ها" style="display:flex;align-items:center;justify-content:center;width:42px;height:42px;border:1.5px solid #E3D8F5;background:#fff;color:#4A25A9;font-family:inherit;cursor:pointer;border-radius:12px" style-hover="{{ ghostHover }}">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8"></circle><circle cx="12" cy="12" r="1.8"></circle><circle cx="19" cy="12" r="1.8"></circle></svg>
+                </button>
+                <sc-if value="{{ exportMenuOpen }}" hint-placeholder-val="{{ false }}">
+                  <div style="position:absolute;top:calc(100% + 8px);inset-inline-end:0;width:288px;background:#fff;border:1px solid #E3D8F5;border-radius:14px;box-shadow:0 18px 40px -16px rgba(74,37,169,.5);z-index:40;padding:7px">
+                    <button onClick="{{ exportDoc }}" style="display:flex;align-items:flex-start;gap:11px;width:100%;text-align:right;padding:11px 12px;border:none;background:none;border-radius:10px;font-family:inherit;cursor:pointer" style-hover="{{ ghostHover }}">
+                      <span style="width:34px;height:34px;flex:none;border-radius:10px;background:#F0E9FB;color:#4A25A9;display:flex;align-items:center;justify-content:center">
+                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6M8 13h8M8 17h5"></path></svg>
+                      </span>
+                      <span style="flex:1;min-width:0">
+                        <span style="display:block;font-weight:700;font-size:13.5px;color:#2A1D5E">خروجی مستندات کامل</span>
+                        <span style="display:block;font-size:11.5px;color:#8a7db0;margin-top:3px;line-height:1.7">سند رسمی با فلوچارت تعاملی</span>
+                      </span>
+                    </button>
+                    <button onClick="{{ exportSteps }}" style="display:flex;align-items:flex-start;gap:11px;width:100%;text-align:right;padding:11px 12px;border:none;background:none;border-radius:10px;font-family:inherit;cursor:pointer" style-hover="{{ ghostHover }}">
+                      <span style="width:34px;height:34px;flex:none;border-radius:10px;background:#FBEEDC;color:#B4690E;display:flex;align-items:center;justify-content:center">
+                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6h11M9 12h11M9 18h11"></path><circle cx="4.5" cy="6" r="1.4"></circle><circle cx="4.5" cy="12" r="1.4"></circle><circle cx="4.5" cy="18" r="1.4"></circle></svg>
+                      </span>
+                      <span style="flex:1;min-width:0">
+                        <span style="display:block;font-weight:700;font-size:13.5px;color:#2A1D5E">خروجی راهنمای گام‌به‌گام</span>
+                        <span style="display:block;font-size:11.5px;color:#8a7db0;margin-top:3px;line-height:1.7">فهرست ساده و خوانا برای پرسنل</span>
+                      </span>
+                    </button>
+                  </div>
+                </sc-if>
+              </div>
             </div>
           </div>
           <div style="position:relative;margin-bottom:16px">
@@ -180,7 +223,7 @@
               </div>
             </sc-if>
             <sc-for list="{{ processList }}" as="p" hint-placeholder-count="4">
-              <div style="background:#fff;border:1px solid #EFE7DC;border-radius:16px;padding:17px 19px;display:flex;align-items:center;gap:16px;box-shadow:0 3px 14px -9px rgba(74,37,169,.25)">
+              <div data-r-prow style="background:#fff;border:1px solid #EFE7DC;border-radius:16px;padding:17px 19px;display:flex;align-items:center;gap:16px;box-shadow:0 3px 14px -9px rgba(74,37,169,.25)">
                 <div style="flex:1;min-width:0">
                   <div style="display:flex;align-items:center;gap:9px">
                     <span style="font-family:ui-monospace,Menlo,monospace;font-size:11px;color:#8a7db0;background:#F4EFFB;padding:2px 8px;border-radius:6px" dir="ltr">{{ p.id }}</span>
@@ -189,11 +232,11 @@
                   </div>
                   <div style="font-size:12.5px;color:#8a7db0;margin-top:6px;line-height:1.5">{{ p.summary }}</div>
                 </div>
-                <div style="text-align:center;flex:none;min-width:52px">
+                <div data-r-count style="text-align:center;flex:none;min-width:52px">
                   <div style="font-weight:800;font-size:17px;color:#4A25A9">{{ p.nodeCountFa }}</div>
                   <div style="font-size:10px;color:#a99fc4">فعالیت</div>
                 </div>
-                <div style="display:flex;gap:8px;flex:none">
+                <div data-r-pactions style="display:flex;gap:8px;flex:none">
                   <button onClick="{{ p.openSummary }}" style="display:flex;align-items:center;gap:6px;padding:9px 14px;border:1.5px solid #E3D8F5;background:#fff;border-radius:11px;font-family:inherit;font-size:12.5px;font-weight:600;color:#4A25A9;cursor:pointer" style-hover="{{ ghostHover }}">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 16v-4M12 8h.01"></path></svg>
                     اطلاعات کلی
@@ -215,9 +258,9 @@
 
     <!-- ---------- DEPARTMENT OVERVIEW ---------- -->
     <sc-if value="{{ isOverview }}" hint-placeholder-val="{{ false }}">
-      <div style="flex:1;overflow:auto;padding:30px 40px">
+      <div style="flex:1;overflow:auto;padding:30px 40px" data-r-pad>
         <div style="max-width:920px;margin:0 auto">
-          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:24px">
+          <div data-r-stack style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:24px">
             <div>
               <div style="display:flex;align-items:center;gap:12px">
                 <div style="{{ deptObj.tileStyle }}"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="{{ deptObj.icon }}"></path></svg></div>
@@ -250,7 +293,7 @@
               </sc-if>
             </div>
             <sc-if value="{{ ovIsView }}" hint-placeholder-val="{{ true }}">
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+              <div data-r-2col style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
                 <sc-for list="{{ ovSubs }}" as="s" hint-placeholder-count="2">
                   <div style="background:#fff;border:1px solid #EFE7DC;border-radius:14px;padding:15px 17px;box-shadow:0 3px 14px -9px rgba(74,37,169,.25)">
                     <div style="font-weight:700;font-size:14px;color:#2A1D5E">{{ s.name }}</div>
@@ -325,9 +368,9 @@
 
     <!-- ---------- SUMMARY CARD ---------- -->
     <sc-if value="{{ isSummary }}" hint-placeholder-val="{{ true }}">
-      <div style="flex:1;overflow:auto;padding:30px 40px">
+      <div style="flex:1;overflow:auto;padding:30px 40px" data-r-pad>
         <div style="max-width:960px;margin:0 auto">
-          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:22px">
+          <div data-r-stack style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:22px">
             <div>
               <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
                 <span style="font-family:ui-monospace,Menlo,monospace;font-size:12px;color:#fff;background:#4A25A9;padding:3px 9px;border-radius:7px" dir="ltr">{{ procObj.id }}</span>
@@ -361,7 +404,7 @@
           <sc-if value="{{ summaryView }}" hint-placeholder-val="{{ true }}">
           <div style="background:#fff;border:1px solid #EFE7DC;border-radius:18px;padding:24px;margin-bottom:20px;box-shadow:0 3px 16px -10px rgba(74,37,169,.25)">
             <div style="font-weight:700;font-size:14px;color:#4A25A9;margin-bottom:18px;display:flex;align-items:center;gap:8px"><span style="width:8px;height:8px;background:#FA5A52;border-radius:50%"></span>نمای IDEF0 سطح فرآیند (A-0)</div>
-            <div style="display:grid;grid-template-columns:1fr 1.4fr 1fr;grid-template-rows:auto auto auto;gap:14px;align-items:center">
+            <div data-r-idef0 style="display:grid;grid-template-columns:1fr 1.4fr 1fr;grid-template-rows:auto auto auto;gap:14px;align-items:center">
               <!-- controls top -->
               <div style="grid-column:2;grid-row:1;text-align:center">
                 <div style="font-size:11px;color:#8a7db0;margin-bottom:6px">کنترل‌ها ↓</div>
@@ -395,7 +438,7 @@
           <sc-if value="{{ summaryEdit }}" hint-placeholder-val="{{ false }}">
             <div style="background:#fff;border:1px solid #EFE7DC;border-radius:18px;padding:22px;margin-bottom:20px;box-shadow:0 3px 16px -10px rgba(74,37,169,.25)">
               <div style="font-weight:700;font-size:14px;color:#4A25A9;margin-bottom:16px;display:flex;align-items:center;gap:8px"><span style="width:8px;height:8px;background:#FA5A52;border-radius:50%"></span>ویرایش اطلاعات IDEF0 (A-0)</div>
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+              <div data-r-2col style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
                 <sc-for list="{{ icomGroups }}" as="g" hint-placeholder-count="4">
                   <div>
                     <div style="font-size:12px;font-weight:700;color:#2A1D5E;margin-bottom:8px">{{ g.label }}</div>
@@ -434,7 +477,7 @@
             </div>
           </sc-if>
           <sc-if value="{{ kpiViewHas }}" hint-placeholder-val="{{ true }}">
-            <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:14px">
+            <div data-r-2col style="display:grid;grid-template-columns:repeat(2,1fr);gap:14px">
               <sc-for list="{{ kpis }}" as="k" hint-placeholder-count="2">
                 <div style="background:#fff;border:1px solid #EFE7DC;border-radius:14px;padding:16px 18px">
                   <div style="display:flex;align-items:center;justify-content:space-between"><div style="font-weight:700;font-size:14px;color:#2A1D5E">{{ k.name }}</div><div style="font-size:12px;font-weight:700;color:#E23D35;background:#FFE9E7;padding:3px 10px;border-radius:8px">{{ k.target }}</div></div>
@@ -608,7 +651,7 @@
 
           <!-- detail drawer -->
           <sc-if value="{{ detailOpen }}" hint-placeholder-val="{{ false }}">
-            <div style="position:absolute;top:0;bottom:0;left:0;width:340px;background:#fff;border-inline-end:1px solid #EFE7DC;box-shadow:20px 0 50px -30px rgba(74,37,169,.5);display:flex;flex-direction:column;z-index:15">
+            <div data-r-drawer style="position:absolute;top:0;bottom:0;left:0;width:340px;background:#fff;border-inline-end:1px solid #EFE7DC;box-shadow:20px 0 50px -30px rgba(74,37,169,.5);display:flex;flex-direction:column;z-index:15">
               <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 18px;border-bottom:1px solid #F0E9FB">
                 <button onClick="{{ copyDetailId }}" title="کپی شناسه" style="display:flex;align-items:center;gap:6px;font-family:ui-monospace,Menlo,monospace;font-size:11px;color:#fff;background:#4A25A9;padding:4px 9px;border-radius:6px;border:none;cursor:pointer" style-hover="{{ violetHover }}" dir="ltr"><span>{{ detail.id }}</span><sc-if value="{{ detail.idCopied }}" hint-placeholder-val="{{ false }}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#7BE0A8" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg></sc-if><sc-if value="{{ detail.idNotCopied }}" hint-placeholder-val="{{ true }}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg></sc-if></button>
                 <button onClick="{{ closeDetail }}" style="width:28px;height:28px;border:none;background:#F4EFFB;border-radius:8px;cursor:pointer;color:#8a7db0;font-size:16px" style-hover="{{ ghostHover }}">×</button>
@@ -725,7 +768,7 @@
                     <span style="font-size:10.5px;color:#a99fc4">{{ c.source }}</span>
                     <button onClick="{{ c.goTo }}" style="margin-inline-start:auto;display:flex;align-items:center;gap:5px;padding:5px 10px;border:1.5px solid #E3D8F5;background:#fff;border-radius:8px;font-family:inherit;font-size:11px;font-weight:600;color:#4A25A9;cursor:pointer;flex:none" style-hover="{{ ghostHover }}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="5" rx="1"></rect><rect x="14" y="9" width="7" height="5" rx="1"></rect><rect x="3" y="16" width="7" height="5" rx="1"></rect><path d="M10 5.5h2a2 2 0 0 1 2 2V11M10 18.5h2a2 2 0 0 0 2-2V14"></path></svg>مشاهده در فلوچارت</button>
                   </div>
-                  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+                  <div data-r-2col style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
                     <div style="background:#F6F3FB;border:1px solid #EDE5F5;border-radius:10px;padding:11px 13px"><div style="font-size:10px;color:#a99fc4;margin-bottom:5px">مقدار فعلی</div><div style="font-size:12.5px;color:#5a5175;line-height:1.5">{{ c.current }}</div></div>
                     <div style="background:#FFF3F2;border:1px solid #FDD9D6;border-radius:10px;padding:11px 13px"><div style="font-size:10px;color:#E23D35;margin-bottom:5px">پیشنهاد جدید</div><div style="font-size:12.5px;color:#8a2b26;line-height:1.5;font-weight:600">{{ c.proposed }}</div></div>
                   </div>
@@ -789,6 +832,41 @@
     </div>
   </sc-if>
 
+  <!-- ============================ EXPORT READY ============================ -->
+  <sc-if value="{{ hasExportReady }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closeExportReady }}" style="position:fixed;inset:0;background:rgba(36,17,82,.45);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;z-index:74;padding:24px">
+      <div onClick="{{ stop }}" style="width:520px;max-width:100%;background:#FBF7F1;border-radius:20px;overflow:hidden;box-shadow:0 40px 90px -30px rgba(0,0,0,.6)">
+        <div style="padding:22px 24px;background:#fff;border-bottom:1px solid #EFE7DC;display:flex;align-items:center;gap:12px">
+          <span style="width:40px;height:40px;flex:none;border-radius:12px;background:#E4F6EC;color:#1F8A5B;display:flex;align-items:center;justify-content:center">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg>
+          </span>
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:800;font-size:16px;color:#2A1D5E">خروجی آماده شد</div>
+            <div style="font-size:12px;color:#8a7db0;margin-top:2px">{{ exportReadyTitle }}</div>
+          </div>
+        </div>
+        <div style="padding:22px 24px">
+          <div style="font-size:12.5px;color:#8a7db0;margin-bottom:9px">لینک فایل HTML خروجی:</div>
+          <div style="display:flex;gap:9px;align-items:center">
+            <input value="{{ exportReadyUrl }}" readOnly="{{ true }}" dir="ltr" style="flex:1;min-width:0;box-sizing:border-box;padding:12px 14px;border:1.5px solid #E3D8F5;border-radius:12px;font-family:ui-monospace,Menlo,monospace;font-size:12px;color:#2A1D5E;background:#fff;outline:none" style-focus="{{ inputFocus }}">
+            <button onClick="{{ copyExportUrl }}" style="flex:none;display:flex;align-items:center;gap:7px;padding:12px 15px;border:1.5px solid #E3D8F5;background:#fff;color:#4A25A9;font-family:inherit;font-weight:700;font-size:13px;cursor:pointer;border-radius:12px" style-hover="{{ ghostHover }}">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+              {{ copyLabel }}
+            </button>
+          </div>
+          <div style="font-size:11.5px;color:#a99fc4;margin-top:11px;line-height:1.8">این فایل کاملاً مستقل است و بدون اینترنت هم باز می‌شود.</div>
+          <div style="display:flex;gap:10px;margin-top:20px">
+            <button onClick="{{ closeExportReady }}" style="flex:1;padding:12px;border:1.5px solid #E3D8F5;background:#fff;border-radius:12px;font-family:inherit;font-size:14px;font-weight:700;color:#6B5CA5;cursor:pointer" style-hover="{{ ghostHover }}">بستن</button>
+            <a href="{{ exportReadyUrl }}" target="_blank" style="flex:1;display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;border:none;background:#4A25A9;border-radius:12px;font-family:inherit;font-size:14px;font-weight:700;color:#fff;cursor:pointer;text-decoration:none" style-hover="{{ violetHover }}">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><path d="M15 3h6v6M10 14L21 3"></path></svg>
+              باز کردن خروجی
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
   <!-- ============================ CONFIRM DELETE PROCESS ============================ -->
   <sc-if value="{{ hasConfirmDelProc }}" hint-placeholder-val="{{ false }}">
     <div onClick="{{ cancelDeleteProc }}" style="position:fixed;inset:0;background:rgba(36,17,82,.45);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;z-index:72;padding:24px">
@@ -832,7 +910,7 @@ class Component extends DCLogic {
       ovEdit:false, ovDraft:null,
       editMode:false, selectedNode:null, detailNode:null,
       view:{tx:40,ty:24,scale:0.92},
-      showInbox:false, showCreate:false, createName:'', toast:null, listSearch:'', confirmDel:null, confirmDelProc:null, subQuery:'', subDropOpen:false, parentQuery:'', parentDropOpen:false, copiedId:null,
+      showInbox:false, showCreate:false, exportMenuOpen:false, exportReady:null, exportCopied:false, createName:'', toast:null, listSearch:'', confirmDel:null, confirmDelProc:null, subQuery:'', subDropOpen:false, parentQuery:'', parentDropOpen:false, copiedId:null,
       linkFrom:null, linkPos:null, selectedEdge:null,
       histIdx:0, histLen:1,
       summaryEdit:false,
@@ -1397,6 +1475,22 @@ class Component extends DCLogic {
     let mx=0; Object.values(this.state.processes).forEach(p=>{ const m=new RegExp('^'+dept+'-(\\d+)$').exec(p.id); if(m)mx=Math.max(mx,+m[1]); });
     return dept+'-'+String(mx+1).padStart(3,'0');
   }
+  runExport(kind){
+    const dept=this.state.currentDept||'dept';
+    const cfg=kind==='steps'
+      ? {title:'راهنمای گام‌به‌گام کار — برای پرسنل',file:dept+'-steps.html'}
+      : {title:'خروجی مستندات کامل — سند رسمی',file:dept+'-export.html'};
+    this.setState({exportMenuOpen:false});
+    this.setToast('در حال آماده‌سازی خروجی…');
+    setTimeout(()=>this.setState({exportReady:{title:cfg.title,url:'https://docs.injafood.ir/exports/'+cfg.file},exportCopied:false}),450);
+  }
+  copyExportUrl(){
+    const u=this.state.exportReady&&this.state.exportReady.url; if(!u)return;
+    try{ if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(u);
+      else { const t=document.createElement('textarea'); t.value=u; t.style.position='fixed'; t.style.opacity='0'; document.body.appendChild(t); t.select(); document.execCommand('copy'); document.body.removeChild(t); } }catch(e){}
+    this.setState({exportCopied:true});
+    clearTimeout(this._cpT); this._cpT=setTimeout(()=>this.setState({exportCopied:false}),1800);
+  }
   doCreate(){
     const dept=this.state.currentDept; const id=this.nextIdFor(dept);
     const name=this.state.createName.trim()||'فرآیند جدید';
@@ -1483,6 +1577,16 @@ class Component extends DCLogic {
       confirmDeleteNode:()=>this.confirmDeleteNode(), cancelDelete:()=>this.cancelDelete(),
       hasConfirmDelProc:!!S.confirmDelProc, confirmDelProcName:S.confirmDelProc?S.confirmDelProc.name:'', confirmDelProcId:S.confirmDelProc?S.confirmDelProc.id:'',
       confirmDeleteProcess:()=>this.confirmDeleteProcess(), cancelDeleteProc:()=>this.cancelDeleteProc(),
+      exportMenuOpen:S.exportMenuOpen,
+      toggleExportMenu:()=>this.setState({exportMenuOpen:!this.state.exportMenuOpen}),
+      exportDoc:()=>this.runExport('doc'),
+      exportSteps:()=>this.runExport('steps'),
+      hasExportReady:!!S.exportReady,
+      exportReadyTitle:S.exportReady?S.exportReady.title:'',
+      exportReadyUrl:S.exportReady?S.exportReady.url:'',
+      copyLabel:S.exportCopied?'کپی شد':'کپی لینک',
+      copyExportUrl:()=>this.copyExportUrl(),
+      closeExportReady:()=>this.setState({exportReady:null,exportCopied:false}),
       openCreate:()=>this.setState({showCreate:true,createName:''}),
       closeCreate:()=>this.setState({showCreate:false}),
       onCreateName:(e)=>this.setState({createName:e.target.value}),

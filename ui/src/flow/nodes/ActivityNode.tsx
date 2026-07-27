@@ -28,12 +28,18 @@ export function ActivityNode({ data }: NodeProps<Node<FlowNodeData>>) {
           <span className="text-[10.5px] text-muted break-words">{n.actor}</span>
         </div>
       )}
-      {data.hasSub && (
-        <div className="flex items-center justify-center gap-1 mt-1.5 text-[9px] text-green bg-[#E4F6EC] px-2 py-0.5 rounded-full font-semibold">
+      {/* Two pills, one per medium, so nothing has to be rewritten after the print
+          emitter has copied this markup. On screen the reader gets the affordance;
+          on paper there is nothing to click, so the export's print stylesheet swaps
+          in the id of the process to turn to. `hidden` keeps the print variant out
+          of the flow everywhere else — in the app and in the export's own viewer. */}
+      {data.hasSub && (<>
+        <div data-subprocess-cta="" className="flex items-center justify-center gap-1 mt-1.5 text-[9px] text-green bg-[#E4F6EC] px-2 py-0.5 rounded-full font-semibold">
           <span aria-hidden dir="ltr" className="text-[10px] leading-none">‹</span>
           زیرفرآیند — برای ورود کلیک کنید
         </div>
-      )}
+        <div data-subprocess-id="" dir="ltr" className="hidden items-center justify-center gap-1 mt-1.5 text-[9px] text-green bg-[#E4F6EC] px-2 py-0.5 rounded-full font-semibold">{n.subprocess}</div>
+      </>)}
       <Handle type="source" position={Position.Right} className="!w-3 !h-3 !bg-coral !border-2 !border-white" />
     </div>
   )

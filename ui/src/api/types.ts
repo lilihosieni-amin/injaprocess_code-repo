@@ -51,3 +51,6 @@ export interface Overview {
 export interface Me { username: string }
 
 export type DepartmentOrder = { order: string[] }
+
+export type ExportKind = 'flowchart' | 'steps'
+export interface ExportResult { url: string; generated_at: string }

@@ -495,3 +495,23 @@ independent of Phase 1 except for `registry.json` and can move earlier if conven
 Expand a phase into a concrete implementation plan (file-by-file, test-by-test) with the
 `writing-plans` skill when you're ready to build it — start with Phase 0, since it unblocks
 everything else.
+
+---
+
+## 12. Post-v1 — Department export
+
+**Repos:** `code-repo/ui-backend/` (payload + permanent link), `code-repo/ui/export/` (two
+self-contained documents), `code-repo/deploy/` (the served folder). **Goal:** hand a
+department's processes to someone who has no account, no network and no application —
+a single HTML file that opens offline and prints.
+
+**Shape.** One `⋯ → export` action per department mints a stable, unguessable link
+(HMAC of the signing key, department and kind — no stored state, one file per
+department+kind) to a pre-rendered document. Two kinds: a **steps guide** that linearizes
+each flow into readable prose, and a **flowchart document** that renders the site's own
+node and edge components (D2 — never a fork, pinned by `ui/export/flowchart/parity.test.tsx`)
+and, for print, measures each laid-out flow offscreen and emits it as page-sized SVG bands
+that break only where nothing is painted, so no node is ever halved by a page boundary.
+
+**Spec:** `docs/superpowers/plans/2026-07-26-department-export.md` (18 tasks, ledger in
+`.superpowers/sdd/progress.md`).

@@ -1,0 +1,29 @@
+/* Inja Food — Spacing & radii. */
+:root {
+  --space-1: 4px;
+  --space-2: 6px;
+  --space-3: 8px;
+  --space-4: 10px;
+  --space-5: 12px;
+  --space-6: 14px;
+  --space-7: 16px;
+  --space-8: 18px;
+  --space-9: 22px;
+  --space-10: 30px;
+  --space-12: 40px;
+
+  /* gutters used for full screens */
+  --pad-screen-x: 40px;
+  --pad-screen-y: 30px;
+
+  /* radii */
+  --radius-chip: 7px;      /* ICOM chips */
+  --radius-control: 10px;  /* buttons, inputs, selects */
+  --radius-control-lg: 12px;
+  --radius-tile: 14px;     /* department icon tile */
+  --radius-card: 16px;     /* rows, small cards */
+  --radius-card-lg: 20px;  /* feature cards */
+  --radius-panel: 24px;    /* login card, sheets */
+  --radius-pill: 20px;     /* status pills */
+  --radius-round: 50%;
+}

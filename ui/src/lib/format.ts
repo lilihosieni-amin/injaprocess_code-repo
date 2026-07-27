@@ -6,6 +6,12 @@ export function toFa(x: string | number): string {
   return String(x).replace(/[0-9]/g, (d) => FA[Number(d)])
 }
 
+/** Persian digits, zero-padded to two — «۰۱», «۱۲», «۱۰۰». Section and sheet
+ *  numbers in the exported documents are all written this way. */
+export function pad2(n: number | string): string {
+  return toFa(String(n).padStart(2, '0'))
+}
+
 // Gregorian → Jalali (proleptic). Adapted from the standard jalaali algorithm.
 function toJalali(gy: number, gm: number, gd: number): [number, number, number] {
   const gdm = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334]
@@ -29,8 +35,7 @@ function toJalali(gy: number, gm: number, gd: number): [number, number, number] 
 export function jalali(iso: string): string {
   const d = new Date(iso)
   const [jy, jm, jd] = toJalali(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate())
-  const p = (n: number) => toFa(String(n).padStart(2, '0'))
-  return `${toFa(jy)}/${p(jm)}/${p(jd)}`
+  return `${toFa(jy)}/${pad2(jm)}/${pad2(jd)}`
 }
 
 const ICOM_LABELS: Record<string, string> = {

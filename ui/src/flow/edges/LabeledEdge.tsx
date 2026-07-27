@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { BaseEdge, EdgeLabelRenderer, getBezierPath, useInternalNode, type EdgeProps } from '@xyflow/react'
 import { getEdgeParams, type Geom } from './floating'
+import { EDGE_STROKE, EDGE_WIDTH, EDGE_WIDTH_SELECTED, EDGE_NUB, EDGE_LABEL_CLASS } from './edge-style'
 
 type Data = { label?: string; editing?: boolean; onSetLabel?: (v: string) => void; onDelete?: () => void }
 
@@ -26,9 +27,9 @@ export function LabeledEdge({ id, source, target, sourceX, sourceY, targetX, tar
   useEffect(() => { setText(d.label ?? '') }, [d.label])
   return (
     <>
-      <BaseEdge id={id} path={path} markerEnd={markerEnd} style={{ stroke: '#9B86D9', strokeWidth: selected ? 2.6 : 2 }} />
+      <BaseEdge id={id} path={path} markerEnd={markerEnd} style={{ stroke: EDGE_STROKE, strokeWidth: selected ? EDGE_WIDTH_SELECTED : EDGE_WIDTH }} />
       {/* exit marker: a small white nub at the edge's exit point on the source node */}
-      <circle cx={sx} cy={sy} r={4} fill="#fff" stroke="#9B86D9" strokeWidth={1.5} className="pointer-events-none" />
+      <circle cx={sx} cy={sy} r={EDGE_NUB.r} fill={EDGE_NUB.fill} stroke={EDGE_STROKE} strokeWidth={EDGE_NUB.strokeWidth} className="pointer-events-none" />
       <EdgeLabelRenderer>
         {active ? (
           <div className="nodrag nopan" style={{ position: 'absolute', transform: `translate(-50%,-50%) translate(${labelX}px,${labelY}px)`, pointerEvents: 'all' }}>
@@ -42,7 +43,7 @@ export function LabeledEdge({ id, source, target, sourceX, sourceY, targetX, tar
           </div>
         ) : text ? (
           <div style={{ position: 'absolute', transform: `translate(-50%,-50%) translate(${labelX}px,${labelY}px)` }}
-            className="bg-white/90 text-ink text-[11px] px-2 py-0.5 rounded-md pointer-events-none">{text}</div>
+            className={`${EDGE_LABEL_CLASS} pointer-events-none`}>{text}</div>
         ) : null}
       </EdgeLabelRenderer>
     </>

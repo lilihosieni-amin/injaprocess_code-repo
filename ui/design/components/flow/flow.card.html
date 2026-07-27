@@ -1,0 +1,27 @@
+<!-- @dsCard group="Components" viewport="700x230" name="Flowchart" -->
+<!DOCTYPE html><html><head><meta charset="utf-8"><link rel="stylesheet" href="../../styles.css">
+<style>body{margin:0;font-family:var(--font-sans);background:var(--surface-app);padding:22px;direction:rtl;color:var(--text-strong)}
+.row{display:flex;gap:26px;align-items:center;justify-content:center}
+.term{display:inline-flex;align-items:center;justify-content:center;min-width:78px;padding:12px 20px;border-radius:20px;font-weight:700;font-size:13px}
+.node{position:relative;width:150px;background:#fff;border:2px solid #EFE7DC;border-radius:16px;padding:13px;text-align:center;box-shadow:var(--shadow-row)}
+.node.sel{border-color:#FA5A52;box-shadow:0 10px 26px -12px rgba(250,90,82,.55)}
+.actor{font-size:11px;color:#8a7db0;margin-top:6px}
+.dia{position:relative;width:46px;height:46px}
+.dia .sq{position:absolute;inset:0;transform:rotate(45deg);border-radius:8px;background:#fff;border:2.5px solid #FA5A52;box-shadow:var(--shadow-row)}
+.dia .t{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10.5px;font-weight:800;color:#FA5A52;direction:ltr}
+.chips{display:flex;gap:7px;justify-content:center;margin-top:16px}
+.chip{font-size:11px;padding:3px 9px;border-radius:7px}</style></head>
+<body>
+  <div class="row">
+    <span class="term" style="background:#F0E9FB;color:#4A25A9;border:1.5px solid #D9C9F5">شروع</span>
+    <div class="node sel"><div style="font-weight:700;font-size:13px">کنترل کالای دریافتی</div><div class="actor">انباردار</div></div>
+    <div class="dia"><span class="sq"></span><span class="t">XOR</span></div>
+    <span class="term" style="background:#FFE9E7;color:#E23D35;border:1.5px solid #F5C9C5">پایان</span>
+  </div>
+  <div class="chips">
+    <span class="chip" style="color:#1F6FB2;background:#E7F1FB">ورودی: فاکتور خرید</span>
+    <span class="chip" style="color:#8A5A00;background:#FBF0DA">کنترل: چک‌لیست کیفیت</span>
+    <span class="chip" style="color:#1F8A5B;background:#E4F6EC">خروجی: رسید انبار</span>
+    <span class="chip" style="color:#4A25A9;background:#F0E9FB">مکانیزم: انباردار</span>
+  </div>
+</body></html>

@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && npm run build:export",
+    "build:export": "node scripts/export-dist.mjs clean && INJA_EXPORT_ENTRY=flowchart vite build -c vite.config.export.ts && INJA_EXPORT_ENTRY=steps vite build -c vite.config.export.ts && node scripts/export-dist.mjs check",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",
@@ -24,6 +25,7 @@
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
+    "@types/node": "^20.19.43",
     "@types/react": "^19.1.2",
     "@types/react-dom": "^19.1.2",
     "@vitejs/plugin-react": "^4.4.1",
@@ -38,6 +40,7 @@
     "typescript": "~5.8.3",
     "typescript-eslint": "^8.30.1",
     "vite": "^6.3.5",
+    "vite-plugin-singlefile": "^2.3.3",
     "vitest": "^3.2.7"
   }
 }

@@ -115,39 +115,11 @@ async def put_order(code: str, body: dict, request: Request,
 def list_processes(code: str, request: Request, _: str = Depends(require_session)):
     """Processes in curated order (ARD §4.6), tombstones last in id order.
 
-    The only implementation of the fallback rule: ids the order does not know
-    are appended in id order, ids it names but disk does not have are skipped,
-    and a repeated id is kept once. In a consistent data-repo the fallback
-    contributes nothing — it is here so a hand-edited or not-yet-migrated repo
-    degrades instead of hiding (or doubling) processes.
+    The ordering rule itself lives in `storage.ordered_processes` so the export
+    and this endpoint cannot disagree about a department's sequence.
     """
     cfg = request.app.state.cfg
-    docs = {p.stem: storage.read_json(p)
-            for p in storage.list_process_files(cfg.data_root, code)}
-    actives = sorted(pid for pid, d in docs.items() if not d.get("tombstoned"))
-    tombs = sorted(pid for pid, d in docs.items() if d.get("tombstoned"))
-
-    order = []
-    opath = storage.order_path(cfg.data_root, code)
-    if opath.is_file():
-        try:
-            order = [pid for pid in storage.read_json(opath)["order"]
-                     if isinstance(pid, str)]
-        except (ValueError, OSError, TypeError, KeyError) as e:
-            # An unreadable order.json must not take the whole department's list
-            # down with it: a 500 here also blocks the only in-UI repair, since
-            # the reorder PUT *does* heal the file but the panel cannot be
-            # opened on a list that never loads. Fall through to id order.
-            logger.warning("%s: falling back to id order — %s is unreadable: %s",
-                           code, opath, e)
-            order = []
-
-    known = set(actives)
-    # dict.fromkeys keeps the first occurrence of a hand-edited duplicate, in place
-    seq = list(dict.fromkeys(pid for pid in order if pid in known))
-    placed = set(seq)
-    seq += [pid for pid in actives if pid not in placed]
-    return [docs[pid] for pid in seq + tombs]
+    return storage.ordered_processes(cfg.data_root, code)
 
 
 @router.get("/{code}/next-id")

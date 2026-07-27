@@ -5,7 +5,7 @@ WORKDIR /ui
 COPY ui/package.json ui/package-lock.json /ui/
 RUN npm ci
 COPY ui/ /ui/
-RUN npm run build          # emits /ui/dist
+RUN npm run build          # emits /ui/dist and /ui/dist-export (the export templates)
 
 # --- stage 2: backend runtime ---
 FROM python:3.11-slim
@@ -17,8 +17,10 @@ COPY engine/ /app/engine/
 COPY schemas/ /app/schemas/
 RUN pip install --no-cache-dir /app/ui-backend /app/engine
 COPY --from=ui-build /ui/dist /app/ui-static
+COPY --from=ui-build /ui/dist-export /app/ui-export-templates
 ENV UI_STATIC_DIR=/app/ui-static \
-    SCHEMA_DIR=/app/schemas
+    SCHEMA_DIR=/app/schemas \
+    UI_EXPORT_TEMPLATE_DIR=/app/ui-export-templates
 EXPOSE 8000
 # DATA_ROOT + UI_* secrets via env_file; app:app builds only when DATA_ROOT is set
 CMD ["uvicorn", "inja_ui_backend.app:app", "--host", "0.0.0.0", "--port", "8000"]

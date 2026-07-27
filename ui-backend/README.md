@@ -32,6 +32,8 @@ Copy `config/ui-backend.env.example` and fill in the blanks:
 | `SESSION_SIGNING_KEY` | yes | Secret used to sign the session cookie |
 | `SESSION_TTL` | no | Session lifetime in seconds (default `86400`) |
 | `UI_STATIC_DIR` | no | Built frontend directory (`ui/dist`); may be absent until Phase 6 |
+| `EXPORT_DIR` | no | Directory the generated export documents are written to, and served from at `/exports`. **Unset = the department export feature is off**: the export endpoint answers `503` and the UI says exporting is unavailable. In Docker the compose file supplies `/exports` (a named volume, deliberately outside the data-repo). |
+| `UI_EXPORT_TEMPLATE_DIR` | no | Directory holding the pre-built export templates (`flowchart.html`, `steps.html`). The image bakes these in and sets this variable itself; set it only for a host run, to `ui/dist-export` after `npm --prefix ui run build`. Unset (or missing templates) = the export endpoint answers `503`. |
 | `GIT_AUTHOR_NAME` | no | Git author name for ui-edit commits (default `ui-edit`) |
 | `GIT_AUTHOR_EMAIL` | no | Git author email for ui-edit commits (default `ui-edit@inja.local`) |
 

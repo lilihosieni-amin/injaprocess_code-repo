@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics="">
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;background:#e9e6ef;font-family:'Vazirmatn',system-ui,sans-serif}
+  .dv-turn{padding:44px 48px 40px}
+  .dv-thd{display:flex;align-items:baseline;gap:10px;margin:0 0 6px}
+  .dv-tid{font:600 10px ui-monospace,Menlo,monospace;padding:3px 7px;background:#2E1668;color:#fff;border-radius:4px;text-decoration:none}
+  .dv-tname{font:700 15px/1.2 'Vazirmatn',sans-serif;color:#2E1668}
+  .dv-sub{margin:0 0 26px;font:400 13px/1.6 'Vazirmatn',sans-serif;color:#6b6486;max-width:720px}
+  .dv-opts{display:flex;flex-wrap:wrap;gap:26px;align-items:flex-start}
+  .dv-opt{flex:none;display:flex;flex-direction:column;gap:10px;scroll-margin-top:16px}
+  .dv-olabel{display:flex;align-items:center;gap:8px;font:500 12px/1.3 'Vazirmatn',sans-serif;color:#6b6486}
+  .dv-oid{font:600 10.5px ui-monospace,Menlo,monospace;padding:3px 7px;background:rgba(46,22,104,.1);color:#2E1668;border-radius:5px;text-decoration:none}
+  .dv-opt:target .dv-oid{background:#FA5A52;color:#fff}
+  .dv-desc{font:400 11.5px/1.55 'Vazirmatn',sans-serif;color:#8a83a3;max-width:380px;margin:2px 0 0}
+  .dv-next{margin:30px 0 0;font:400 12px/1.6 'Vazirmatn',sans-serif;color:#8a83a3}
+  .sw{display:flex;gap:0;border-radius:8px;overflow:hidden;border:1px solid rgba(0,0,0,.06)}
+  .sw span{width:46px;height:26px;display:block}
+  .flow{display:flex;align-items:center;gap:0;direction:ltr}
+  .fbox{flex:1;min-width:0;padding:7px 9px;border-radius:8px;font-size:10.5px;line-height:1.35}
+  .fline{height:2px;width:14px;flex:none}
+  .fdia{width:26px;height:26px;flex:none;transform:rotate(45deg);display:flex;align-items:center;justify-content:center}
+  .fdia b{transform:rotate(-45deg);font-size:9px;font-weight:700}
+</style>
+</helmet>
+
+<section class="dv-turn" id="t1">
+  <div class="dv-thd"><a class="dv-tid" href="#t1">1</a><span class="dv-tname">جهت‌های رنگ و سبک — سامانه فرآیندهای اینجا فست‌فود</span></div>
+  <p class="dv-sub">چهار جهت کامل بر پایه‌ی رنگ‌های برند (بنفش ‎#4A25A9‎ و مرجانی ‎#FA5A52‎). هر کارت یک تکه‌ی واقعی از رابط را نشان می‌دهد: سربرگ، کارت دپارتمان، یک گره‌ی فرآیند و دکمه‌ها. یکی را انتخاب کنید تا کامل ساخته شود.</p>
+
+  <div class="dv-opts">
+
+    <!-- ============ 1a Aubergine (dark, brand-forward) ============ -->
+    <div class="dv-opt" id="1a">
+      <div class="dv-olabel"><a class="dv-oid" href="#1a">1a</a>بادمجانی — تیره و برند‌محور</div>
+      <div dir="rtl" style="width:380px;padding:22px;border-radius:20px;background:linear-gradient(160deg,#3A1D85,#241152);box-shadow:0 20px 44px -20px rgba(36,17,82,.7)">
+        <div style="display:flex;align-items:center;gap:11px;margin-bottom:16px">
+          <img src="assets/inja-logo.jpg" alt="" style="width:42px;height:42px;border-radius:12px;object-fit:cover">
+          <div style="line-height:1.25"><div style="font-weight:700;font-size:15px;color:#fff">اینجا فست‌فود</div><div style="font-size:11px;color:#B9A9EE">سامانهٔ مستندسازی فرآیندها</div></div>
+          <div style="margin-inline-start:auto;width:34px;height:34px;border-radius:10px;background:rgba(255,255,255,.08);display:flex;align-items:center;justify-content:center;color:#C9BEEE;font-size:15px">۹</div>
+        </div>
+        <div class="sw" style="margin-bottom:16px"><span style="background:#241152"></span><span style="background:#4A25A9"></span><span style="background:#7B5BD6"></span><span style="background:#FA5A52"></span><span style="background:#FFB3AE"></span></div>
+        <div style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:13px 14px;margin-bottom:14px">
+          <div style="display:flex;align-items:center;justify-content:space-between"><div style="font-weight:600;font-size:13px;color:#fff">دپارتمان پخت</div><div style="font-size:10.5px;color:#241152;background:#FA5A52;padding:2px 8px;border-radius:20px;font-weight:600">۶ فرآیند</div></div>
+          <div style="font-size:11px;color:#B9A9EE;margin-top:5px">فرآیند خرید و پرداخت هزینه</div>
+        </div>
+        <div class="flow" style="margin-bottom:16px">
+          <div class="fbox" style="background:#EDE9FB;color:#241152;font-weight:600">دریافت درخواست خرید</div>
+          <div class="fline" style="background:#7B5BD6"></div>
+          <div class="fdia" style="background:#FA5A52"><b style="color:#fff">XOR</b></div>
+          <div class="fline" style="background:#7B5BD6"></div>
+          <div class="fbox" style="background:#EDE9FB;color:#241152;font-weight:600">تأیید مدیر</div>
+        </div>
+        <div style="display:flex;gap:9px">
+          <div style="flex:1;text-align:center;background:#FA5A52;color:#fff;font-weight:600;font-size:12.5px;padding:9px;border-radius:11px">ویرایش</div>
+          <div style="flex:1;text-align:center;background:rgba(255,255,255,.1);color:#fff;font-weight:500;font-size:12.5px;padding:9px;border-radius:11px">ذخیره</div>
+        </div>
+      </div>
+      <p class="dv-desc">فضای بنفش عمیق و همه‌جانبه، مرجانی برای کنش‌ها. پرانرژی و کاملاً هم‌خوان با برند؛ برای ابزاری متمرکز و تک‌کاربره.</p>
+    </div>
+
+    <!-- ============ 1b Warm Paper (light friendly) ============ -->
+    <div class="dv-opt" id="1b">
+      <div class="dv-olabel"><a class="dv-oid" href="#1b">1b</a>کاغذ گرم — روشن و صمیمی <span style="background:#FA5A52;color:#fff;font-size:9px;padding:2px 7px;border-radius:20px;font-weight:600">پیشنهادی</span></div>
+      <div dir="rtl" style="width:380px;padding:22px;border-radius:20px;background:#FBF7F1;border:1px solid #ECE6DE;box-shadow:0 18px 40px -22px rgba(74,37,169,.35)">
+        <div style="display:flex;align-items:center;gap:11px;margin-bottom:16px">
+          <img src="assets/inja-logo.jpg" alt="" style="width:42px;height:42px;border-radius:12px;object-fit:cover">
+          <div style="line-height:1.25"><div style="font-weight:700;font-size:15px;color:#2A1D5E">اینجا فست‌فود</div><div style="font-size:11px;color:#8a7db0">سامانهٔ مستندسازی فرآیندها</div></div>
+          <div style="margin-inline-start:auto;width:34px;height:34px;border-radius:10px;background:#F0E9FB;display:flex;align-items:center;justify-content:center;color:#4A25A9;font-size:15px;font-weight:600">۹</div>
+        </div>
+        <div class="sw" style="margin-bottom:16px"><span style="background:#FBF7F1"></span><span style="background:#F0E9FB"></span><span style="background:#4A25A9"></span><span style="background:#FA5A52"></span><span style="background:#2A1D5E"></span></div>
+        <div style="background:#fff;border:1px solid #EFE7DC;border-radius:14px;padding:13px 14px;margin-bottom:14px;box-shadow:0 2px 10px -6px rgba(74,37,169,.2)">
+          <div style="display:flex;align-items:center;justify-content:space-between"><div style="font-weight:600;font-size:13px;color:#2A1D5E">دپارتمان پخت</div><div style="font-size:10.5px;color:#fff;background:#FA5A52;padding:2px 8px;border-radius:20px;font-weight:600">۶ فرآیند</div></div>
+          <div style="font-size:11px;color:#8a7db0;margin-top:5px">فرآیند خرید و پرداخت هزینه</div>
+        </div>
+        <div class="flow" style="margin-bottom:16px">
+          <div class="fbox" style="background:#fff;color:#2A1D5E;font-weight:600;border:1.5px solid #E3D8F5">دریافت درخواست خرید</div>
+          <div class="fline" style="background:#C9B8EC"></div>
+          <div class="fdia" style="background:#F0E9FB;border:1.5px solid #FA5A52"><b style="color:#E23D35">XOR</b></div>
+          <div class="fline" style="background:#C9B8EC"></div>
+          <div class="fbox" style="background: #fff; color: #2A1D5E; font-weight: 600; border: 1.5px solid #E3D8F5; width: 151px; height: 30px">تأیید مدیر</div>
+        </div>
+        <div style="display:flex;gap:9px">
+          <div style="flex:1;text-align:center;background:#FA5A52;color:#fff;font-weight:600;font-size:12.5px;padding:9px;border-radius:11px">ویرایش</div>
+          <div style="flex:1;text-align:center;background:#4A25A9;color:#fff;font-weight:500;font-size:12.5px;padding:9px;border-radius:11px">ذخیره</div>
+        </div>
+      </div>
+      <p class="dv-desc">پس‌زمینهٔ کرم گرم، کارت‌های سفید، جوهر بنفش و کنش مرجانی. خوانا و آرام برای جلسات طولانی روی فلوچارت — با پاسخ «صمیمی و دلپذیر» شما هم‌خوان است.</p>
+    </div>
+
+    <!-- ============ 1c Lavender Mist (cool soft dashboard) ============ -->
+    <div class="dv-opt" id="1c">
+      <div class="dv-olabel"><a class="dv-oid" href="#1c">1c</a>مه یاسی — داشبوردی و خنک</div>
+      <div dir="rtl" style="width:380px;padding:22px;border-radius:16px;background:#F3F1FA;border:1px solid #E4DFF3;box-shadow:0 16px 36px -24px rgba(74,37,169,.4)">
+        <div style="display:flex;align-items:center;gap:11px;margin-bottom:15px">
+          <img src="assets/inja-logo.jpg" alt="" style="width:40px;height:40px;border-radius:10px;object-fit:cover">
+          <div style="line-height:1.25"><div style="font-weight:700;font-size:14.5px;color:#2E1668">اینجا فست‌فود</div><div style="font-size:10.5px;color:#8079a3">سامانهٔ فرآیندها</div></div>
+          <div style="margin-inline-start:auto;font-size:10.5px;color:#4A25A9;background:#E7E1F7;padding:4px 10px;border-radius:8px;font-weight:600">۹ دپارتمان</div>
+        </div>
+        <div class="sw" style="margin-bottom:15px"><span style="background:#F3F1FA"></span><span style="background:#E7E1F7"></span><span style="background:#4A25A9"></span><span style="background:#FA5A52"></span><span style="background:#2E1668"></span></div>
+        <div style="background:#fff;border:1px solid #E4DFF3;border-radius:10px;padding:12px 13px;margin-bottom:13px">
+          <div style="display:flex;align-items:center;justify-content:space-between"><div style="font-weight:600;font-size:12.5px;color:#2E1668">دپارتمان پخت</div><div style="font-size:10px;color:#4A25A9;background:#E7E1F7;padding:2px 8px;border-radius:6px;font-weight:600">۶ فرآیند</div></div>
+          <div style="font-size:10.5px;color:#8079a3;margin-top:4px">فرآیند خرید و پرداخت هزینه</div>
+        </div>
+        <div class="flow" style="margin-bottom:15px">
+          <div class="fbox" style="background:#EEEBFA;color:#2E1668;font-weight:600;border:1px solid #D9D0F0">دریافت درخواست خرید</div>
+          <div class="fline" style="background:#B9A9E4"></div>
+          <div class="fdia" style="background:#fff;border:1.5px solid #4A25A9"><b style="color:#4A25A9">XOR</b></div>
+          <div class="fline" style="background:#B9A9E4"></div>
+          <div class="fbox" style="background:#EEEBFA;color:#2E1668;font-weight:600;border:1px solid #D9D0F0">تأیید مدیر</div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <div style="flex:1;text-align:center;background:#4A25A9;color:#fff;font-weight:600;font-size:12px;padding:8px;border-radius:9px">ویرایش</div>
+          <div style="flex:1;text-align:center;background:#fff;color:#4A25A9;font-weight:600;font-size:12px;padding:8px;border-radius:9px;border:1px solid #D9D0F0">ذخیره</div>
+        </div>
+      </div>
+      <p class="dv-desc">خنثی‌های یاسی روشن، بنفش به‌عنوان رنگ اصلی و مرجانی برای تأکید. متراکم‌تر و مرزبندی‌شده — حرفه‌ای اما ملایم، مناسب صفحه‌های پرمحتوا.</p>
+    </div>
+
+    <!-- ============ 1d Ink & Coral (minimal high-contrast) ============ -->
+    <div class="dv-opt" id="1d">
+      <div class="dv-olabel"><a class="dv-oid" href="#1d">1d</a>جوهر و مرجان — کمینه و پرکنتراست</div>
+      <div dir="rtl" style="width:380px;padding:22px;border-radius:14px;background:#FFFFFF;border:1px solid #E9E7EE">
+        <div style="display:flex;align-items:center;gap:11px;margin-bottom:18px">
+          <img src="assets/inja-logo.jpg" alt="" style="width:40px;height:40px;border-radius:10px;object-fit:cover">
+          <div style="line-height:1.3"><div style="font-weight:700;font-size:14.5px;color:#191225">اینجا فست‌فود</div><div style="font-size:10.5px;color:#9a95a8">سامانهٔ فرآیندها</div></div>
+          <div style="margin-inline-start:auto;font-size:11px;color:#191225;font-weight:700">۰۹</div>
+        </div>
+        <div class="sw" style="margin-bottom:18px"><span style="background:#FFFFFF;box-shadow:inset 0 0 0 1px #eee"></span><span style="background:#F4F3F6"></span><span style="background:#191225"></span><span style="background:#FA5A52"></span><span style="background:#4A25A9"></span></div>
+        <div style="border:1px solid #EAE8EF;border-radius:12px;padding:13px 14px;margin-bottom:16px">
+          <div style="display:flex;align-items:center;justify-content:space-between"><div style="font-weight:700;font-size:13px;color:#191225">دپارتمان پخت</div><div style="font-size:10.5px;color:#9a95a8;font-weight:500">۶ فرآیند</div></div>
+          <div style="font-size:11px;color:#9a95a8;margin-top:5px">فرآیند خرید و پرداخت هزینه</div>
+        </div>
+        <div class="flow" style="margin-bottom:18px">
+          <div class="fbox" style="background:#fff;color:#191225;font-weight:600;border:1.5px solid #191225">دریافت درخواست خرید</div>
+          <div class="fline" style="background:#191225"></div>
+          <div class="fdia" style="background:#fff;border:1.5px solid #191225"><b style="color:#191225">XOR</b></div>
+          <div class="fline" style="background:#191225"></div>
+          <div class="fbox" style="background:#fff;color:#191225;font-weight:600;border:1.5px solid #191225">تأیید مدیر</div>
+        </div>
+        <div style="display:flex;gap:9px;align-items:center">
+          <div style="flex:1;text-align:center;background:#FA5A52;color:#fff;font-weight:600;font-size:12.5px;padding:9px;border-radius:9px">ویرایش</div>
+          <div style="flex:1;text-align:center;background:#fff;color:#191225;font-weight:600;font-size:12.5px;padding:9px;border-radius:9px;border:1.5px solid #191225">ذخیره</div>
+        </div>
+      </div>
+      <p class="dv-desc">سفید خالص با جوهر بنفش‌ـ‌مشکی و یک تأکید مرجانی. آرام، فضای زیاد، مرزهای مویی. ویرایشی و کم‌رنگ — تمرکز کامل روی فلوچارت.</p>
+    </div>
+
+  </div>
+
+  <p class="dv-next">قدم بعد: مثلاً «‏1b را کامل بساز» · «‏1b ولی تیره‌تر مثل 1a» · «‏1c با گوشه‌های نرم‌تر» · «یک جهت تیره‌ی دیگر بده».</p>
+</section>
+
+</x-dc>
+</body>
+</html>

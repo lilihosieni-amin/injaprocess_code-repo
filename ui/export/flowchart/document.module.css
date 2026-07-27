@@ -1,0 +1,398 @@
+/* The flowchart document, ported from the mockup
+ * `ui/design/export/dining-export-v2.html:27-194` — the top bar, the sheets,
+ * the cover, the section headings, the table of contents, the symbol legend,
+ * the unit/role/KPI cards, the per-process blocks and the divider sheet.
+ *
+ * A CSS module, so every class name here is hashed at build time. That is not
+ * cosmetic: this bundle also loads `src/index.css` for the flow viewer's
+ * Tailwind, and the two stylesheets collide — the mockup defines `.chip`,
+ * `.card` and `.id-badge`, and `index.css` defines `.chip` and `.id-badge`
+ * differently under `@layer components`. Hashed names make the collision
+ * impossible.
+ *
+ * Deliberately not ported (`:196-288`):
+ *   - the mockup's hand-rolled flow-screen overlay — the real viewer is
+ *     `FlowViewer.tsx`, which renders through the app's own Canvas (D2);
+ *   - the `.pf-*` print-diagram rules, which are global and live in
+ *     `../print/print.css`.
+ *
+ * The range is transcribed whole, including rules the React document has no
+ * element for (`.topbar img` and `.cover-logo`/`.cover-blob`, which point at a
+ * logo an offline single-file export cannot carry; `.stats`/`.stat`,
+ * `.toc-sub`, `.a0*`, `.chips`/`.chip`, `.kpi-card`, `.subchip`, `.flowbtn`
+ * and `.divider-sheet`, which belong to the mockup's fuller per-process
+ * sheets). Keeping them costs nothing — every selector is hashed and unused
+ * ones simply never match — and keeps this file checkable against its source
+ * line by line.
+ */
+/* top bar */
+.topbar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:12px;padding:11px 24px;background:rgba(46,22,104,.96);backdrop-filter:blur(8px);color:#fff}
+.topbar img{width:30px;height:30px;border-radius:8px;object-fit:cover}
+.topbar .tt{font-weight:800;font-size:14px}
+.topbar .sp{flex:1}
+.topbar .updated{font-size:11.5px;color:#C9BBEE}
+.tbtn{display:inline-flex;align-items:center;gap:7px;font-weight:700;font-size:12.5px;border-radius:10px;padding:8px 13px;cursor:pointer;border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.08);color:#fff;font-family:inherit}
+.tbtn:hover{background:rgba(255,255,255,.18)}
+.tbtn.solid{background:#fff;color:var(--violet);border-color:#fff}
+
+.view{display:none}
+.view.print-only{display:none!important}
+.view.active{display:block}
+.toc-s{display:block;font-size:11.5px;font-weight:500;color:var(--muted);margin-top:2px}
+.toc-group{font-size:11px;font-weight:800;letter-spacing:.06em;color:var(--faint);margin:22px 0 6px;padding-top:14px;border-top:1px solid var(--hair)}
+.toc li{align-items:flex-start!important}
+.toc .toc-t{flex:1}
+.toc .toc-lead{display:none}
+.backbar{display:flex;align-items:center;gap:10px;max-width:940px;margin:0 auto 14px}
+.backbtn{display:inline-flex;align-items:center;gap:7px;font-weight:700;font-size:13px;border-radius:11px;padding:9px 15px;cursor:pointer;border:1.5px solid var(--bd-v);background:#fff;color:var(--violet);font-family:inherit;box-shadow:0 3px 12px -8px rgba(74,37,169,.5)}
+.backbtn:hover{background:var(--v-softer);border-color:var(--violet)}
+.doc{padding:30px 20px 80px}
+.sheet{background:#fff;width:100%;max-width:940px;margin:0 auto 26px;border-radius:18px;box-shadow:0 14px 48px -26px rgba(46,22,104,.5);padding:52px 58px;position:relative}
+.sheet.pad-sm{padding:40px 46px}
+
+/* cover */
+.cover-sheet{background:var(--deep);color:#fff;overflow:hidden;min-height:600px;display:flex;flex-direction:column;justify-content:center;padding:0}
+.cover-inner{position:relative;z-index:2;padding:64px 60px;text-align:center}
+.cover-blob{position:absolute;border-radius:50%;background:#3A1D85;opacity:.5}
+.cover-logo{width:96px;height:96px;border-radius:24px;object-fit:cover;box-shadow:0 20px 50px -18px rgba(0,0,0,.7);margin-bottom:30px}
+.cover-kicker{display:flex;align-items:center;justify-content:center;gap:9px;margin-bottom:18px}
+.cover-kicker .bar{width:26px;height:2px;background:var(--coral);border-radius:2px}
+.cover-kicker span{font-size:12px;font-weight:700;letter-spacing:.16em;color:#B9A6EA;direction:ltr}
+.cover-sheet h1{font-size:46px;font-weight:900;line-height:1.25;margin:0;letter-spacing:-.01em}
+.cover-sheet .sub{font-size:17px;color:#C9BBEE;margin-top:16px;max-width:560px;margin-inline:auto;line-height:1.9}
+.cover-foot{display:flex;gap:30px;flex-wrap:wrap;justify-content:center;margin-top:40px;padding-top:26px;border-top:1px solid rgba(255,255,255,.16)}
+.cover-foot .cf{font-size:12.5px;color:#B9A6EA}
+.cover-foot .cf b{display:block;color:#fff;font-size:15px;font-weight:800;margin-top:4px}
+
+/* section heading */
+.sec-num{font-family:var(--mono);font-size:13px;color:var(--coral);font-weight:700;direction:ltr}
+.sheet-head{display:flex;align-items:center;gap:13px;margin-bottom:8px}
+.sheet-head h2{font-size:27px;font-weight:800;margin:0}
+.sheet-head .hn{width:38px;height:38px;border-radius:11px;background:var(--v-soft);color:var(--violet);display:flex;align-items:center;justify-content:center;font-weight:800;font-family:var(--mono);font-size:14px;flex:none}
+.sheet-lead{font-size:13px;color:var(--muted);margin:0 0 26px 51px}
+.rule{height:1px;background:var(--hair);margin:22px 0}
+
+.prose{font-size:14px;color:var(--body);line-height:2.1;text-align:justify}
+.prose+.prose{margin-top:14px}
+
+.stats{display:flex;gap:12px;flex-wrap:wrap;margin-top:28px}
+.stat{flex:1;min-width:120px;background:var(--v-softer);border:1px solid var(--bd-v);border-radius:16px;padding:16px 18px}
+.stat .n{font-weight:900;font-size:28px;color:var(--violet);line-height:1}
+.stat .l{font-size:12px;color:var(--muted);margin-top:7px;font-weight:600}
+
+/* TOC */
+.toc{list-style:none;margin:0;padding:0}
+.toc li{display:flex;align-items:baseline;gap:10px;padding:11px 4px;border-bottom:1px dashed var(--hair);cursor:pointer}
+.toc li:hover .toc-t{color:var(--coral)}
+.toc .toc-n{font-family:var(--mono);font-size:12px;color:var(--violet);font-weight:700;flex:none;width:26px}
+.toc .toc-t{font-size:14.5px;font-weight:700;color:var(--ink);flex:none;transition:color .14s}
+.toc .toc-lead{flex:1;border-bottom:2px dotted #D9CFEA;transform:translateY(-4px)}
+.toc .toc-pg{font-family:var(--mono);font-size:12px;color:var(--faint);flex:none}
+.toc-sub{margin-inline-start:36px}
+.toc-sub li{padding:8px 4px}
+.toc-sub .toc-t{font-weight:600;font-size:13px;color:var(--body)}
+
+/* legend */
+.legend-box{background:var(--v-softer);border:1px solid var(--bd-v);border-radius:16px;padding:20px 22px;margin-top:8px}
+.legend-box .lh{font-weight:800;font-size:14px;margin-bottom:14px;display:flex;align-items:center;gap:8px}
+.legend-row{display:flex;align-items:center;gap:22px;padding:14px 0;border-bottom:1px solid var(--hair)}
+.legend-row:last-child{border-bottom:none}
+.lg-sym{width:44px;height:44px;position:relative;flex:none;margin-inline-end:4px}
+.lg-sym .sq{position:absolute;inset:0;transform:rotate(45deg);border-radius:8px;background:#fff;border:2.5px solid}
+.lg-sym .t{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:800}
+.lg-txt .n{font-weight:800;font-size:14px;display:block;margin-bottom:4px}
+.lg-txt .d{font-size:12.5px;color:var(--muted);display:block}
+
+.grid{display:grid;gap:14px}.g2{grid-template-columns:repeat(2,1fr)}.g3{grid-template-columns:repeat(3,1fr)}
+@media(max-width:760px){.g2,.g3{grid-template-columns:1fr}}
+
+.unit .u-name{font-weight:700;font-size:14px;display:flex;align-items:center;gap:8px}
+.card{background:#fff;border:1px solid var(--bd);border-radius:14px;padding:16px;box-shadow:0 3px 14px -10px rgba(74,37,169,.3)}
+.u-ic{width:30px;height:30px;border-radius:9px;background:var(--v-soft);color:var(--violet);display:flex;align-items:center;justify-content:center;flex:none}
+.u-desc{font-size:12.5px;color:var(--muted);margin-top:8px;line-height:1.9}
+
+/* role cards */
+.role{border:1px solid var(--bd);border-radius:18px;padding:0;box-shadow:0 4px 18px -12px rgba(74,37,169,.35);margin-bottom:16px;overflow:hidden;break-inside:avoid}
+.role-head{display:flex;align-items:center;gap:12px;padding:16px 20px;background:var(--v-softer);border-bottom:1px solid var(--bd-v)}
+.role-av{width:40px;height:40px;border-radius:11px;background:var(--violet);color:#fff;display:flex;align-items:center;justify-content:center;flex:none}
+.role-name{font-weight:800;font-size:16px}
+.role-tag{margin-inline-start:auto;font-size:11px;font-weight:700;color:var(--violet);background:#fff;border:1px solid var(--bd-v);border-radius:20px;padding:4px 10px}
+.role-body{padding:16px 20px}
+ul.duties{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:9px}
+ul.duties li{font-size:12.5px;color:var(--body);line-height:1.85;padding-inline-start:22px;position:relative}
+ul.duties li::before{content:'▪';position:absolute;inset-inline-start:2px;top:-1px;color:var(--coral);font-size:13px}
+
+/* KPI */
+.kpi-role{border:1px solid var(--bd);border-radius:16px;padding:18px 20px;margin-bottom:14px;background:#fff;break-inside:avoid}
+.kpi-role .kr-h{display:flex;align-items:center;gap:10px;margin-bottom:13px}
+.kpi-role .kr-av{width:32px;height:32px;border-radius:9px;background:var(--ok-s);color:var(--ok);display:flex;align-items:center;justify-content:center;flex:none}
+.kpi-role .kr-name{font-weight:800;font-size:15px}
+ul.kpis{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:9px}
+ul.kpis li{font-size:12.5px;color:var(--body);background:var(--ok-s);border-radius:10px;padding:10px 13px;line-height:1.8;position:relative;padding-inline-start:30px}
+ul.kpis li::before{content:'';position:absolute;inset-inline-start:12px;top:13px;width:9px;height:9px;border-radius:2px;background:var(--ok)}
+.kpi-none{font-size:12px;color:var(--faint);font-style:normal}
+
+/* process */
+.proc-num-strip{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+.id-badge{font-family:var(--mono);font-size:11.5px;color:#fff;background:var(--violet);padding:3px 9px;border-radius:6px;direction:ltr}
+.sub-badge{font-size:11px;font-weight:700;color:var(--warn);background:var(--warn-s);padding:3px 9px;border-radius:20px}
+.proc-summary{font-size:13.5px;color:var(--body);line-height:2.05;text-align:justify}
+.proc-meta{display:flex;gap:16px;flex-wrap:wrap;margin-top:16px}
+.pm{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
+.pm b{color:var(--violet);font-weight:800}
+.block-label{font-size:12.5px;font-weight:800;color:var(--ink);margin:0 0 12px;display:flex;align-items:center;gap:8px}
+.block-label .sq{width:14px;height:14px;border-radius:4px;flex:none}
+
+/* IDEF0 A-0 diagram */
+.a0{display:grid;grid-template-columns:1fr minmax(260px,360px) 1fr;grid-template-rows:auto auto auto;gap:18px 20px;align-items:center;background:#fff;border:1px solid var(--bd);border-radius:16px;padding:24px 22px;box-shadow:0 3px 14px -10px rgba(74,37,169,.3)}
+.a0-ctl{grid-column:1/-1;grid-row:1;text-align:center}
+.a0-out{grid-column:1;grid-row:2}
+.a0-box{grid-column:2;grid-row:2;background:var(--violet);border-radius:16px;padding:20px 24px;text-align:center;box-shadow:0 14px 30px -16px rgba(74,37,169,.8)}
+.a0-in{grid-column:3;grid-row:2}
+.a0-mech{grid-column:1/-1;grid-row:3;text-align:center}
+.a0-title{font-weight:800;font-size:15px;color:#fff;line-height:1.7}
+.a0-id{font-family:var(--mono);font-size:11px;color:#C9BBEE;margin-top:8px}
+.a0-lab{font-size:11px;font-weight:700;color:var(--muted);margin-bottom:8px}
+.a0-mech .a0-lab{margin:8px 0 0}
+.a0-out .a0-lab{text-align:left}
+.a0-chips{display:flex;flex-wrap:wrap;gap:7px}
+.a0-chips.ctr{justify-content:center}
+.a0-chips.end{justify-content:flex-start}
+.a0-chips.start{justify-content:flex-end}
+.chip.in{background:var(--in-bg);color:var(--in-fg)}
+.chip.ctl{background:var(--ctl-bg);color:var(--ctl-fg)}
+.chip.out{background:var(--out-bg);color:var(--out-fg)}
+.chip.mech{background:var(--mech-bg);color:var(--mech-fg)}
+@media(max-width:760px){
+  .a0{grid-template-columns:1fr;gap:14px}
+  .a0-ctl,.a0-out,.a0-box,.a0-in,.a0-mech{grid-column:1;grid-row:auto}
+  .a0-chips{justify-content:flex-start!important}
+}
+
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{font-size:11.5px;padding:4px 10px;border-radius:8px;line-height:1.6}
+.kpi-card{border:1px solid var(--bd);border-radius:14px;padding:15px 16px;background:#fff}
+.kpi-card .k-name{font-weight:800;font-size:13.5px;color:var(--ink);display:flex;align-items:flex-start;gap:8px}
+.kpi-card .k-def{font-size:12px;color:var(--muted);margin-top:8px;line-height:1.8}
+.kpi-card .k-target{display:inline-flex;align-items:baseline;gap:5px;margin-top:12px;background:var(--v-soft);color:var(--violet);border-radius:9px;padding:6px 12px}
+.kpi-card .k-target b{font-size:18px;font-weight:800}.kpi-card .k-target .u{font-size:11px;font-weight:600;opacity:.8}
+.k-ic{width:26px;height:26px;border-radius:8px;background:var(--v-soft);color:var(--violet);display:flex;align-items:center;justify-content:center;flex:none;margin-top:-1px}
+
+.subchip{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;color:var(--warn);background:var(--warn-s);border-radius:20px;padding:5px 11px;margin:4px 6px 0 0;cursor:pointer}
+.subchip:hover{filter:brightness(.97)}
+
+.flowbtn{display:flex;align-items:center;justify-content:space-between;gap:14px;width:100%;margin-top:24px;padding:16px 20px;border:1.5px solid var(--bd-v);background:#FAF7FF;border-radius:16px;cursor:pointer;font-family:inherit;transition:border-color .16s,box-shadow .16s;text-align:right}
+.flowbtn:hover{border-color:var(--violet);box-shadow:0 12px 28px -14px rgba(74,37,169,.5)}
+.flowbtn .fb-l{display:flex;align-items:center;gap:14px}
+.flowbtn .fb-ic{width:46px;height:46px;border-radius:13px;background:var(--violet);color:#fff;display:flex;align-items:center;justify-content:center;flex:none}
+.flowbtn .fb-t{font-weight:800;font-size:15px;color:var(--ink)}
+.flowbtn .fb-s{font-size:12px;color:var(--muted);margin-top:3px}
+.flowbtn .fb-go{width:38px;height:38px;border-radius:50%;background:var(--v-soft);color:var(--violet);display:flex;align-items:center;justify-content:center;flex:none}
+
+.divider-sheet{background:var(--violet);color:#fff;text-align:center;padding:70px 40px}
+.divider-sheet .dk{font-size:12px;font-weight:700;letter-spacing:.16em;color:#C9BBEE;direction:ltr;margin-bottom:14px}
+.divider-sheet h2{font-size:34px;font-weight:900;margin:0;color:#fff}
+.divider-sheet p{font-size:14px;color:#C9BBEE;margin-top:14px;max-width:520px;margin-inline:auto;line-height:1.9}
+
+/* The mockup's document print rules (`:290-324`), transcribed. On paper the
+ * screen chrome goes away, every sheet flattens onto its own page, and the
+ * per-process sheets — hidden on screen, where the flow viewer opens instead —
+ * are what the reader gets.
+ *
+ * Not transcribed here, because they are global and `../print/print.css` owns
+ * them: `@page` (`:291`), `body{background:#fff}` (`:292`), the universal
+ * `print-color-adjust` rule (`:300`) and every `.pf-*` rule (`:297`, `:308`,
+ * `:311-312`, `:315`). A CSS module hashes class names, and the SVG bands are
+ * injected as raw HTML that no hash can reach. `.flowscreen` (half of `:293`)
+ * is dropped with the rest of the mockup's hand-rolled viewer.
+ *
+ * `html` and `body` below are element selectors, which a CSS module leaves
+ * alone — they stay global, as `:317` intends. They set no inherited
+ * typography, so `parity.test.tsx`'s rule about the canvas still holds.
+ */
+@media print{
+  .topbar{display:none!important}
+  .doc{padding:0}
+  .view.print-only{break-before:page}
+  .view.print-only>.sheet{break-before:auto}
+  .sheet{box-shadow:none;border-radius:0;margin:0;max-width:none;padding:0;break-before:page}
+  .sheet:first-child{break-before:auto}
+  .cover-sheet{min-height:auto;padding:0;break-before:auto}
+  .cover-inner{padding:40px 10px}
+  .divider-sheet{padding:60px 20px}
+  .role,.kpi-role,.card,.kpi-card,.a0{break-inside:avoid}
+  .flowbtn{display:none!important}
+  .view,.view.print-only{display:block!important}
+  .backbar{display:none!important}
+
+  html,body{width:auto;overflow:visible}
+  .doc,.layout,.sheet,.view{width:auto!important;max-width:100%!important;margin-inline:0!important}
+  .a0{grid-template-columns:1fr minmax(200px,320px) 1fr;padding:16px 14px;gap:14px}
+  .view.print-only .sheet-head h2{font-size:18px!important}
+  .view.print-only .proc-meta{margin-top:8px!important}
+  .view.print-only .proc-num-strip{margin-bottom:6px!important}
+  .grid.g2,.grid.g3{grid-template-columns:1fr 1fr}
+}
+
+/* ─── added after the port: corrections and the phone ─────────────────────
+ * Everything above is `dining-export-v2.html:27-194` + `:290-324`, declaration
+ * for declaration, and stays that way — nothing in it is edited here. This
+ * block is new: first the corrections to ported declarations that are simply
+ * wrong at any width, then the phone, for which the mockup was never drawn.
+ *
+ * Every rule below names its medium, and that is load-bearing rather than tidy:
+ * the two PDFs are verified page by page (page counts, no node box or step row
+ * straddling a break, no browser chrome, exact `@page` margins), and a bare rule
+ * — or a bare `@media (max-width: …)`, which Chrome evaluates against the page
+ * box as well as the window — would apply to the *paper* too and silently
+ * re-typeset a document that was signed off. Everything the phone needs is
+ * therefore `@media screen and (…)`. The one correction that *must* reach paper
+ * says `@media print` and says so alone, on one selector, with both PDFs
+ * re-verified around it. `responsive.test.ts` pins that: no width condition may
+ * omit `screen`, and the print block may carry nothing but the contents row.
+ *
+ * The phone rules use one breakpoint, which the mockup already uses for its
+ * grids: 560px, where the sheet has to give its padding back to the text.
+ */
+
+/* ── correction: the contents row, at every width ──
+ * Corrects the ported `.toc .toc-t{…;flex:none;…}` (`:88`).
+ *
+ * The mockup declares `.toc .toc-t` twice — `flex:1` at `:44`, then `flex:none`
+ * at `:88` — at equal specificity, so source order hands the row to `flex:none`
+ * and the earlier `flex:1` never applies. A contents row is
+ * `.toc-n` (fixed 26px) + `.toc-t` + `.toc-lead` (`display:none` here), so with
+ * `flex:none` the title takes its full max-content width, cannot shrink, and —
+ * with no `min-width:0` either — cannot wrap inside the flex row. It just hangs
+ * off the sheet, and because the document is RTL it hangs off the *scroll
+ * origin*, pushing a horizontal scrollbar onto the page.
+ *
+ * Measured in Chrome 150 on the real cashier document, whose longest title is
+ * 166 characters: `.toc-t` laid out 1145px wide in an 824px row — 325.1px past
+ * its `<li>`, 263.1px past the white sheet, onto the lavender field — and
+ * `documentElement.scrollWidth` came back 1453 at a 1440px viewport, 1245 at
+ * 1024 and 1223 at 800. The dining document's longest title is 82 characters
+ * and fits, which is why the mockup never showed the bug.
+ *
+ * A first pass fixed this inside `@media screen and (max-width:760px)` only, so
+ * it still overflowed at every width above the tablet fold. The correction
+ * belongs to the *rule*, not to a breakpoint: this block is `@media screen`
+ * with no width condition, and it subsumes that earlier phone-only rule.
+ *
+ * `flex:1` is the mockup's own first declaration, restored; `min-width:0`
+ * removes the automatic minimum size that would otherwise keep a flex item at
+ * its min-content width; `overflow-wrap:anywhere` is the backstop for a title
+ * with no break opportunity at all (a single 200-character token), which the
+ * other two cannot help. None of the three moves a title that already fits:
+ * the row has nothing after `.toc-t` to take the slack, and the text is
+ * start-aligned — verified pixel-identical on the dining document at 1920,
+ * 1440, 1280, 1024 and 800px.
+ *
+ * Paper needs the same three declarations and gets them from the block below,
+ * which is deliberately separate: this one must never reach the PDF on its own
+ * terms, and that one was verified against the printed page count. */
+@media screen{
+  .toc .toc-t{flex:1;min-width:0;overflow-wrap:anywhere}
+}
+
+/* ── the same correction, on paper ──
+ * Corrects the same ported `.toc .toc-t{…;flex:none;…}` (`:88`), in the medium
+ * the block above deliberately excludes.
+ *
+ * The screen correction was scoped to `@media screen` because the PDFs were
+ * verified page by page and print was out of scope; the printed contents page
+ * therefore kept the defect. It is a *narrower* page than any screen — the
+ * `@page` box is letter less `8mm 13mm`, so a contents row gets 717.7 CSS px,
+ * against 824px inside the 940px sheet on a desk — so paper is where the ported
+ * declaration bites hardest.
+ *
+ * Measured in Chrome 150 under `print` emulation at that exact 718px page area,
+ * on the real cashier document: `.toc .toc-t` resolved to `flex:0 0 auto`,
+ * `min-width:auto`, `overflow-wrap:normal`, and **8 of its 17 process rows** ran
+ * off the paper, the worst by 427.1px. Read back out of the printed PDF, those
+ * eight titles lost 169 letters between them — up to 50 letters, 39% of a
+ * 128-letter name, cut mid-word at the paper's edge («… تحویل به لجستیک، تحویل
+ * حضوری یا اختصاص»). The dining document lost nothing: its longest title is 82
+ * characters and fits even a 718px row, which is why only one department shows
+ * it. The steps guide's printed index does *not* have this defect — its
+ * `.pindex .il` is `flex:1` and already wraps — and is left alone.
+ *
+ * The three declarations do the same three jobs as on screen: `flex:1` is the
+ * mockup's own first declaration (`:44`) restored over its own second one,
+ * `min-width:0` removes the automatic minimum size that pins a flex item at its
+ * min-content width, and `overflow-wrap:anywhere` is the backstop for a title
+ * with no break opportunity at all. A title that already fits does not move: the
+ * row has nothing after `.toc-t` to take the slack and the text is
+ * start-aligned — the dining PDF is byte-identical for it, page count included.
+ *
+ * A wrapped title is taller than a truncated one, so the cashier contents sheet
+ * gains lines and the document gains a page. That is the correction, not a
+ * side effect of it, and the new page count is re-verified in
+ * `.superpowers/sdd/print-toc-report.md`. */
+@media print{
+  .toc .toc-t{flex:1;min-width:0;overflow-wrap:anywhere}
+}
+
+@media screen and (max-width:560px){
+  /* top bar — the two controls stay reachable and become 40px tall targets */
+  .topbar{gap:8px;padding:8px 12px}
+  .topbar .tt{font-size:13.5px;min-width:0}
+  .topbar .sp{flex:1 1 0}
+  .tbtn{font-size:13px;padding:10px 13px;min-height:40px;white-space:nowrap}
+
+  /* the sheet gives its 58px of padding back to the text */
+  .doc{padding:14px 10px 56px}
+  .sheet{border-radius:14px;padding:24px 16px;margin-bottom:16px}
+  .sheet.pad-sm{padding:20px 14px}
+  .backbar{margin-bottom:10px}
+  .backbtn{font-size:14px;padding:11px 15px;min-height:40px;white-space:nowrap}
+
+  /* cover — 46px of headline is about 5 characters per line at this width */
+  .cover-sheet{min-height:0}
+  .cover-inner{padding:38px 18px}
+  .cover-sheet h1{font-size:26px;line-height:1.45}
+  .cover-sheet .sub{font-size:14.5px;margin-top:12px;line-height:1.85}
+  .cover-kicker{gap:7px;margin-bottom:14px}
+  .cover-kicker span{font-size:12px;letter-spacing:.06em}
+  .cover-kicker .bar{width:18px}
+  .cover-foot{gap:16px;margin-top:26px;padding-top:20px}
+  .cover-foot .cf{font-size:13px}
+  .cover-foot .cf b{font-size:15px}
+
+  /* headings and prose */
+  .sheet-head{gap:10px;margin-bottom:6px}
+  .sheet-head h2{font-size:21px}
+  .sheet-head .hn{width:32px;height:32px}
+  .sheet-lead{font-size:13px;margin:0 0 18px}
+  .rule{margin:16px 0}
+  .block-label{font-size:13px}
+  /* justified Persian in a ~300px column opens rivers of white between words */
+  .prose{font-size:14px;line-height:2;text-align:start}
+
+  /* contents */
+  .toc li{gap:8px;padding:12px 2px}
+  .toc .toc-n{width:24px;font-size:13px}
+  .toc .toc-t{font-size:14.5px}
+  .toc-s{font-size:13px}
+  .toc-group{font-size:13px;margin:18px 0 4px}
+
+  /* symbol legend */
+  .legend-box{padding:16px 14px}
+  .legend-row{gap:14px;padding:12px 0}
+  .lg-sym{width:38px;height:38px}
+  .lg-txt .n{font-size:14px}
+  .lg-txt .d{font-size:13px}
+
+  /* unit cards, role cards, KPI cards */
+  .u-name{font-size:14.5px}
+  .u-desc{font-size:13px;line-height:1.85}
+  .role-head{padding:13px 15px;gap:10px;flex-wrap:wrap}
+  .role-name{font-size:15px}
+  .role-tag{font-size:13px;margin-inline-start:0}
+  .role-body{padding:14px 15px}
+  ul.duties li{font-size:13.5px;padding-inline-start:19px}
+  .kpi-role{padding:15px 14px}
+  .kpi-role .kr-name{font-size:14.5px}
+  ul.kpis li{font-size:13.5px;padding:10px 12px;padding-inline-start:28px}
+  .kpi-none{font-size:13px}
+}

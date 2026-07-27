@@ -1,0 +1,30 @@
+/* Inja Food — Typography. Vazirmatn (Persian/RTL) loaded via Google Fonts in styles.css.
+   Mono uses the system UI-mono stack for latin process ids. */
+:root {
+  --font-sans: 'Vazirmatn', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+
+  /* weights actually used across the app */
+  --fw-regular: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+  --fw-bold: 700;
+  --fw-heavy: 800;
+
+  /* type scale (px values observed in the product) */
+  --fs-display: 34px;   /* page title (departments) */
+  --fs-h1: 24px;        /* screen heading */
+  --fs-h2: 19px;        /* card / dialog title */
+  --fs-h3: 17px;        /* section heading */
+  --fs-lg: 15px;        /* emphasised body */
+  --fs-body: 13.5px;    /* default body */
+  --fs-sm: 12.5px;      /* controls, secondary */
+  --fs-xs: 11.5px;      /* captions, chip labels */
+  --fs-xxs: 10.5px;     /* micro labels, tags */
+
+  --lh-tight: 1.2;
+  --lh-normal: 1.6;
+  --lh-relaxed: 1.8;    /* Persian long-form reads best loose */
+
+  --tracking-label: .14em;  /* eyebrow / uppercase latin labels */
+}

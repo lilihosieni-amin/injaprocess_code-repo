@@ -9,6 +9,10 @@ export type DrawerProps = {
   node: ProcNode
   editing: boolean
   conflicts: { pending: Pending; index: number }[]
+  /** Show the ICOM block in the read-only activity view. Defaults to true — the
+   *  editing app maintains ICOM, so it stays. The exported document opts out:
+   *  its readers want the activity and who does it, not the data contract. */
+  showIcom?: boolean
   process: Process
   onClose: () => void
   onEdit: () => void
@@ -43,10 +47,19 @@ export function DetailDrawer(props: DrawerProps) {
   const linkedProcess = (deptProcesses ?? []).find((p) => p.id === (isActivity ? a.subprocess : null))
 
   return (
-    <div className="absolute top-0 bottom-0 left-0 w-[340px] bg-white border-e border-warm shadow-[20px_0_50px_-30px_rgba(74,37,169,.5)] flex flex-col z-[15]">
-      <div className="flex items-center justify-between px-[18px] py-4 border-b border-[#F0E9FB]">
+    /* A 340px side panel is most of a phone: opened at 360px it left 20px of
+       diagram, so the reader saw the node's detail and nothing of where the node
+       sits. Below 560px the same panel becomes a bottom sheet — full width, the
+       lower 58% of the canvas — so the diagram stays visible above it and the
+       sheet is dismissed with the same × as before, at a 40px target instead of
+       28px. Every declaration above the breakpoint is unchanged, so the editing
+       app's flow page and the exported viewer look exactly as they did on a desk.
+       `drawer.responsive.test.tsx` pins both halves. */
+    <div data-drawer className="absolute top-0 bottom-0 left-0 w-[340px] bg-white border-e border-warm shadow-[20px_0_50px_-30px_rgba(74,37,169,.5)] flex flex-col z-[15]
+      max-[560px]:top-auto max-[560px]:right-0 max-[560px]:w-auto max-[560px]:h-[58%] max-[560px]:border-e-0 max-[560px]:border-t max-[560px]:rounded-t-2xl max-[560px]:shadow-[0_-18px_45px_-28px_rgba(74,37,169,.55)]">
+      <div className="flex items-center justify-between px-[18px] py-4 max-[560px]:py-3 border-b border-[#F0E9FB]">
         <span className="id-badge bg-violet text-white" dir="ltr">{node.id}</span>
-        <button onClick={onClose} title="بستن" className="w-7 h-7 bg-tile-v2 rounded-lg text-muted text-lg">×</button>
+        <button onClick={onClose} title="بستن" aria-label="بستن" className="w-7 h-7 max-[560px]:w-10 max-[560px]:h-10 bg-tile-v2 rounded-lg text-muted text-lg">×</button>
       </div>
       <div className="flex-1 overflow-auto p-[18px]">
         {props.editing && node.type === 'junction' ? (
@@ -171,13 +184,17 @@ export function DetailDrawer(props: DrawerProps) {
             </div>
             <div className="text-[11px] font-bold text-muted mt-[18px] mb-1.5">توضیحات</div>
             <div className="text-[12.5px] text-[#5a5175] leading-relaxed">{a.description}</div>
-            <div className="text-[11px] font-bold text-muted mt-[18px] mb-2">اطلاعات ICOM</div>
-            <div className="flex flex-col gap-2.5">
-              <IcomRow label="ورودی‌ها" items={a.icom.inputs} kind="input" />
-              <IcomRow label="کنترل‌ها" items={a.icom.controls} kind="control" />
-              <IcomRow label="خروجی‌ها" items={a.icom.outputs} kind="output" />
-              <IcomRow label="مکانیزم‌ها" items={a.icom.mechanisms} kind="mech" />
-            </div>
+            {(props.showIcom ?? true) && (
+              <>
+                <div className="text-[11px] font-bold text-muted mt-[18px] mb-2">اطلاعات ICOM</div>
+                <div className="flex flex-col gap-2.5">
+                  <IcomRow label="ورودی‌ها" items={a.icom.inputs} kind="input" />
+                  <IcomRow label="کنترل‌ها" items={a.icom.controls} kind="control" />
+                  <IcomRow label="خروجی‌ها" items={a.icom.outputs} kind="output" />
+                  <IcomRow label="مکانیزم‌ها" items={a.icom.mechanisms} kind="mech" />
+                </div>
+              </>
+            )}
             {props.conflicts.length > 0 && (
               <div className="mt-5">
                 <div className="flex items-center gap-[6px] text-[11px] font-bold text-[#E23D35] mb-2">

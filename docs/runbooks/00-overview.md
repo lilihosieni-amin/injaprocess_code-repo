@@ -17,7 +17,7 @@ Six services (from the Task 9 compose stack). Only the `proxy` publishes a port.
 | `telegram-bot-api` | Local Telegram Bot API server (tdlib) — lets bots fetch voice files larger than 20 MB | `tdlib/telegram-bot-api` | `telegram-bot-api-data` volume → `/var/lib/telegram-bot-api` | — |
 | `upload-bot` | Bot 1: raw voice/file intake from Telegram, writes into data-repo | `inja-upload-bot` (built) | `/opt/inja/data-repo` → `/data` | — |
 | `control-bot` | Bot 2: `claude-code-telegram`, runs the extraction pipeline against data-repo | `inja-control-bot` (built) | `/opt/inja/data-repo` → `/data`; `claude-credentials` volume → `/root/.claude` | — |
-| `ui-backend` | Thin FastAPI backend: JSON read/write + auth, serves the built frontend | `inja-ui-backend` (built) | `/opt/inja/data-repo` → `/data`; `/opt/inja/secrets/ui-users.json` → `/run/secrets/ui-users.json` (ro) | — |
+| `ui-backend` | Thin FastAPI backend: JSON read/write + auth, serves the built frontend | `inja-ui-backend` (built) | `/opt/inja/data-repo` → `/data`; `/opt/inja/secrets/ui-users.json` → `/run/secrets/ui-users.json` (ro); `ui-exports` volume → `/exports` | — |
 | `proxy` | Caddy reverse proxy with internal (self-signed) TLS in front of ui-backend | `caddy:2` | `/opt/inja/code-repo/deploy/Caddyfile` → `/etc/caddy/Caddyfile` (ro); `caddy-data` volume → `/data` | **443** |
 | `git-push` | Scheduled off-site backup of data-repo (minus audio) to GitHub | `inja-git-push` (built) | `/opt/inja/data-repo` → `/data`; `/opt/inja/keys` → `/keys` (ro) | — |
 
@@ -62,9 +62,12 @@ upload-bot → data-repo ← control-bot pipeline → data-repo ← ui-backend
     └── id_deploy(.pub)   # ed25519 deploy key for git-push write access
 ```
 
-Compose also manages three named volumes not shown above:
-`telegram-bot-api-data`, `claude-credentials` (holds the Claude subscription
-login), and `caddy-data` (Caddy's internal CA + TLS state).
+Compose also manages five named volumes not shown above:
+`telegram-bot-api-data` (files the local Bot API server downloads),
+`claude-credentials` (holds the Claude subscription login), `control-bot-state`
+(the control bot's SQLite state at `/state/bot.db`), `caddy-data` (Caddy's
+internal CA + TLS state), and `ui-exports` (generated export documents — kept
+out of the data-repo so 2 MB artifacts never land in its working tree).
 
 ## Next steps
 

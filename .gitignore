@@ -1,6 +1,10 @@
 # Node / frontend
 node_modules/
 ui/dist/
+ui/dist-export/
+
+# Claude Code worktrees (isolated workspaces for in-progress work)
+.claude/worktrees/
 
 # Python
 __pycache__/

@@ -12,6 +12,10 @@
 
 ## Global Constraints
 
+- **Department names already contain «دپارتمان».** `overview.json` stores `name` as e.g.
+  «دپارتمان سالن» (unlike `registry.json`, which stores the bare «سالن»). The exports read
+  `overview.name`, so headings must NOT prepend «واحد» or «دپارتمان» — that yields
+  «واحد دپارتمان سالن». Use the stored name as the complete label.
 - **All UI copy is Persian.** Exact strings are given in each task; copy them character-for-character, including ZWNJ (`‌`) inside words like `گام‌به‌گام`.
 - **Never generate ids in application code** (INV-1). The export is read-only and mints no ids.
 - **Components communicate only through the filesystem** (ARD §1). The export endpoint reads `DATA_ROOT` and writes `EXPORT_DIR`; it makes no network calls.
@@ -21,7 +25,11 @@
 - **The token is** `HMAC-SHA256(session_signing_key, "export:{code}:{kind}")` hex-digested and truncated to **16 characters** (D7).
 - **Tests run from the repo root:** `make test` (pytest, whole repo) and `npm --prefix ui test` (vitest). Individual runs are given per task.
 - **Commit after every task.** Conventional-commit prefixes, matching the repo's history: `feat:`, `fix:`, `test:`, `docs:`, `build:`, `chore:`.
-- **Python style:** `from __future__ import annotations` at the top of every new module; `ruff` clean (`make lint`).
+- **Python style:** `from __future__ import annotations` at the top of every new module.
+- **Lint is scoped to the files you touch.** `make lint` fails at HEAD with 38 pre-existing
+  errors: `requirements-dev.txt` pins `ruff~=0.6` but the venv resolves 0.16, which flags rules the
+  repo was clean under. That is a separate chore — do NOT fix it here, and do not treat it as your
+  regression. Lint only the files your task changed, and leave them clean.
 - **TypeScript style:** `verbatimModuleSyntax` is on — type-only imports must use `import type { … }`.
 
 ---
@@ -528,8 +536,9 @@ Expected: PASS, 8 tests.
 
 - [ ] **Step 5: Lint**
 
-Run: `.venv/bin/ruff check ui-backend`
-Expected: `All checks passed!`
+Run: `.venv/bin/ruff check ui-backend/inja_ui_backend/exports.py ui-backend/tests/test_exports.py`
+Expected: `All checks passed!` — scoped to this task's files; see Global Constraints on the
+pre-existing repo-wide lint failure.
 
 - [ ] **Step 6: Commit**
 
@@ -768,8 +777,8 @@ Expected: PASS, 10 tests.
 
 - [ ] **Step 6: Run the whole backend suite and lint**
 
-Run: `.venv/bin/pytest ui-backend -q && .venv/bin/ruff check ui-backend`
-Expected: all pass, `All checks passed!`
+Run: `.venv/bin/pytest ui-backend -q && .venv/bin/ruff check ui-backend/inja_ui_backend/routers/exports.py ui-backend/inja_ui_backend/app.py ui-backend/tests/test_exports_api.py`
+Expected: tests pass; lint clean for these files (see Global Constraints).
 
 - [ ] **Step 7: Commit**
 
@@ -823,10 +832,11 @@ export function readPayload(): ExportPayload {
   return JSON.parse(el.textContent) as ExportPayload
 }
 
-/** The mockup's cover reads a `fullName` the overview schema does not have,
- *  so it is derived here rather than added to a frozen contract. */
+/** The mockup's cover reads a `fullName` the overview schema does not have.
+ *  overview.json's `name` already carries the word «دپارتمان» (e.g. «دپارتمان سالن»),
+ *  so it IS the full label — prefixing it again would read «دپارتمان دپارتمان سالن». */
 export function deptFullName(dept: Overview): string {
-  return `دپارتمان ${dept.name}`
+  return dept.name
 }
 ```
 
@@ -884,13 +894,13 @@ const payload = readPayload()
 
 createRoot(document.getElementById('root')!).render(
   <div className="p-10 font-sans text-ink">
-    <h1 className="font-extrabold text-2xl">مستند فرآیندهای واحد {payload.dept.name}</h1>
+    <h1 className="font-extrabold text-2xl">مستند فرآیندهای {payload.dept.name}</h1>
     <p className="text-muted mt-2">{payload.processes.length} فرآیند</p>
   </div>,
 )
 ```
 
-Create `ui/export/steps/main.tsx` with the same body but the heading `راهنمای گام‌به‌گام کار — واحد {payload.dept.name}`.
+Create `ui/export/steps/main.tsx` with the same body but the heading `راهنمای گام‌به‌گام کار — {payload.dept.name}`.
 
 - [ ] **Step 5: Write the export Vite config**
 
@@ -1686,7 +1696,8 @@ A port of `ui/design/export/dining-steps.html:181-281` into typed, tested code. 
 - Produces:
 
 ```ts
-export type StepBlock = { kind: 'step'; node: ActivityNode; cond: string; back: { to: string; label: string }[]; num: number; backNums: number[] }
+export type BackRef = { to: string; label: string; num?: number }
+export type StepBlock = { kind: 'step'; node: ActivityNode; cond: string; back: BackRef[]; num: number }
 export type GroupBlock = { kind: 'group'; type: 'AND' | 'OR' | 'XOR'; branches: { label: string; blocks: Block[] }[] }
 export type Block = StepBlock | GroupBlock
 export function linearize(p: Process): Block[]
@@ -1805,7 +1816,7 @@ describe('linearize', () => {
     )
     const bs = linearize(p)
     const b = steps(bs).find((s) => s.node.id === 'b')!
-    expect(b.backNums).toEqual([1])       // back to step 1, which is `a`
+    expect(b.back.map((r) => r.num)).toEqual([1])   // back to step 1, which is `a`
   })
 
   it('renders a branch with no merge point without losing its steps', () => {
@@ -1867,7 +1878,6 @@ export type StepBlock = {
   cond: string
   back: { to: string; label: string }[]
   num: number
-  backNums: number[]
 }
 export type GroupBlock = {
   kind: 'group'
@@ -2002,7 +2012,7 @@ export function linearize(p: Process): Block[] {
         blocks.push({
           kind: 'step', node: node as ActivityNode, cond: pending,
           back: g.backOut(cur).map((e) => ({ to: e.to, label: e.label })),
-          num: 0, backNums: [],
+          num: 0,
         })
         pending = ''
       }
@@ -2039,7 +2049,7 @@ export function linearize(p: Process): Block[] {
   })
   num(blocks)
   const resolve = (bs: Block[]) => bs.forEach((b) => {
-    if (b.kind === 'step') b.backNums = b.back.map((x) => numOf.get(x.to)).filter((x): x is number => !!x)
+    if (b.kind === 'step') b.back.forEach((r) => { r.num = numOf.get(r.to) })
     else b.branches.forEach((br) => resolve(br.blocks))
   })
   resolve(blocks)
@@ -2195,7 +2205,7 @@ export function StepsApp({ payload }: { payload: ExportPayload }) {
       <Shell onHome={() => setTrail([])}>
         <div className={s['home-head']}>
           <h1>راهنمای گام‌به‌گام کار</h1>
-          <p>واحد {payload.dept.name} — روی نام هر کار بزنید تا مرحله‌به‌مرحله ببینید.</p>
+          <p>{payload.dept.name} — روی نام هر کار بزنید تا مرحله‌به‌مرحله ببینید.</p>
         </div>
         <div className={s.plist}>
           {payload.processes.map((p) => (
@@ -2316,13 +2326,15 @@ function Step({ block, byId, onEnter }: {
         <span className={s.sn}>{toFa(block.num)}</span>
         <span className={s.st}>
           <span className={s.label}>{n.label}</span>
-          {(block.cond || block.backNums.length || sub) && (
+          {(block.cond || block.back.some((r) => r.num) || sub) && (
             <span className={s.badges}>
               {block.cond && <span className={`${s.bdg} ${s.cond}`}>اگر: {block.cond}</span>}
-              {block.backNums.map((x) => (
-                <span key={x} className={`${s.bdg} ${s.back}`} role="button" tabIndex={0}
-                  onClick={(e) => { e.stopPropagation(); jumpStep(x) }}>
-                  برگرد به مرحلهٔ {toFa(x)}
+              {/* only back-edges that resolved to a numbered step get a badge — a
+                  back-edge to a junction carries a label but no number */}
+              {block.back.filter((r) => r.num).map((r) => (
+                <span key={r.to} className={`${s.bdg} ${s.back}`} role="button" tabIndex={0}
+                  onClick={(e) => { e.stopPropagation(); jumpStep(r.num!) }}>
+                  برگرد به مرحلهٔ {toFa(r.num!)}
                 </span>
               ))}
               {sub && <span className={`${s.bdg} ${s.sub}`}>مراحل این کار را ببین</span>}
@@ -2500,7 +2512,7 @@ export function PrintDoc({ payload }: { payload: ExportPayload }) {
   return (
     <div className={p.printdoc}>
       <section className={`${p.psec} ${p.pindex}`} data-testid="print-index">
-        <h2>راهنمای گام‌به‌گام کار — واحد {payload.dept.name}</h2>
+        <h2>راهنمای گام‌به‌گام کار — {payload.dept.name}</h2>
         <div className={p.ptype}>فهرست کارها</div>
         <ol className={p['plist-print']}>
           {payload.processes.map((x) => (
@@ -2558,10 +2570,10 @@ function PrintBlocks({ blocks, byId }: { blocks: Block[]; byId: Map<string, Proc
                 <span className={p.l}>{n.label}</span>
                 {n.actor && <div className={p.m}>مجری: {n.actor}</div>}
                 {n.description && <div className={p.d}>{n.description}</div>}
-                {(b.cond || b.backNums.length || sub) && (
+                {(b.cond || b.back.some((r) => r.num) || sub) && (
                   <div className={p.tags}>
                     {b.cond && <span className={`${p.tg} ${p.cond}`}>اگر: {b.cond}</span>}
-                    {b.backNums.map((x) => <span key={x} className={`${p.tg} ${p.back}`}>برگرد به مرحلهٔ {toFa(x)}</span>)}
+                    {b.back.filter((r) => r.num).map((r) => <span key={r.to} className={`${p.tg} ${p.back}`}>برگرد به مرحلهٔ {toFa(r.num!)}</span>)}
                     {sub && <span className={`${p.tg} ${p.sub}`}>مراحل این کار: بخش «{sub.name}»</span>}
                   </div>
                 )}
@@ -2795,40 +2807,53 @@ git commit -m "feat(export): read-only Canvas props and an offline query cache"
 
 - [ ] **Step 1: Write the failing tests**
 
-Create `ui/export/flowchart/parity.test.tsx` — the guard that makes D2 enforceable:
+Create `ui/export/flowchart/parity.test.tsx` — the guard that makes D2 enforceable.
+
+It is a **source scan**, not a render comparison. A render comparison of the same component against itself can only ever pass; what has to be caught is someone forking a node component into `ui/export/`, and only reading the source catches that.
 
 ```tsx
 import { describe, it, expect } from 'vitest'
-import { render } from '@testing-library/react'
-import { ReactFlowProvider } from '@xyflow/react'
-import { ActivityNode } from '../../src/flow/nodes/ActivityNode'
-import type { FlowNodeData } from '../../src/flow/adapt'
-import type { NodeProps, Node } from '@xyflow/react'
+import { readdirSync, readFileSync, statSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
-// The export must never grow its own node styling. If someone forks
-// ActivityNode into ui/export/, this test is what catches it: the export
-// bundle and the app must resolve the *same* module.
-describe('node parity between app and export', () => {
-  it('the export imports the app’s ActivityNode, not a copy', async () => {
-    const fromExportSide = (await import('../../src/flow/nodes/ActivityNode')).ActivityNode
-    expect(fromExportSide).toBe(ActivityNode)
+// ui/export — this file lives at ui/export/flowchart/parity.test.tsx
+const EXPORT_DIR = dirname(dirname(fileURLToPath(import.meta.url)))
+
+function sourceFiles(dir: string): string[] {
+  return readdirSync(dir).flatMap((name) => {
+    const full = join(dir, name)
+    if (statSync(full).isDirectory()) return sourceFiles(full)
+    return /\.tsx?$/.test(name) && !/\.test\.tsx?$/.test(name) ? [full] : []
+  })
+}
+
+// Defining any of these inside ui/export/ means the export has forked the
+// app's flow rendering — the one thing D2 forbids.
+const FORBIDDEN: { rx: RegExp; what: string }[] = [
+  { rx: /\b(?:function|const)\s+(?:Activity|Start|End|Junction)Node\b/, what: 'a node component' },
+  { rx: /\bfunction\s+LabeledEdge\b/, what: 'an edge component' },
+  { rx: /react-flow__node\s*\{/, what: 'node styling' },
+]
+
+describe('the export never forks the app’s flow components', () => {
+  it('defines no node or edge component of its own', () => {
+    const offenders = sourceFiles(EXPORT_DIR).flatMap((file) => {
+      const src = readFileSync(file, 'utf8')
+      return FORBIDDEN.filter((f) => f.rx.test(src)).map((f) => `${file} defines ${f.what}`)
+    })
+    expect(offenders).toEqual([])
   })
 
-  it('renders identical markup on both sides', () => {
-    const data = {
-      node: { id: 'dining-001-n001', type: 'activity', label: 'خوشامدگویی', actor: 'کیوسک‌من', description: '', icom: { inputs: [], controls: [], outputs: [], mechanisms: [] }, subprocess: null, position: { x: 0, y: 0 }, layout: 'auto', source: { created_by: 't', touched_by: [] } },
-      conflicts: 0, hasSub: false,
-    } as unknown as FlowNodeData
-    const props = { data } as unknown as NodeProps<Node<FlowNodeData>>
-
-    const a = render(<ReactFlowProvider><ActivityNode {...props} /></ReactFlowProvider>)
-    const first = a.container.innerHTML
-    a.unmount()
-    const b = render(<ReactFlowProvider><ActivityNode {...props} /></ReactFlowProvider>)
-    expect(b.container.innerHTML).toBe(first)
+  it('the flow viewer renders through the app’s Canvas', () => {
+    const src = readFileSync(join(EXPORT_DIR, 'flowchart/FlowViewer.tsx'), 'utf8')
+    expect(src).toMatch(/import \{ Canvas \} from '\.\.\/\.\.\/src\/flow\/Canvas'/)
+    expect(src).toMatch(/import \{ toFlowNodes, toFlowEdges \} from '\.\.\/\.\.\/src\/flow\/adapt'/)
   })
 })
 ```
+
+Task 17 later imports the node components directly in `PrintDiagrams.tsx`. That stays legal — the scan forbids *defining* them, not importing them.
 
 Create `ui/export/flowchart/FlowViewer.test.tsx`:
 
@@ -2915,7 +2940,7 @@ describe('FlowViewer', () => {
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `npm --prefix ui test -- FlowViewer parity`
-Expected: `parity` passes already (it guards, it does not drive); `FlowViewer` fails — module unresolved.
+Expected: both fail — `parity`'s second test cannot read the not-yet-written FlowViewer.tsx, and `FlowViewer` is unresolved.
 
 - [ ] **Step 3: Write the viewer**
 
@@ -3120,8 +3145,7 @@ const renderDoc = () => render(
 describe('Document', () => {
   it('opens on a cover and a table of contents', () => {
     renderDoc()
-    expect(screen.getByText('واحد سالن')).toBeInTheDocument()
-    expect(screen.getByText('دپارتمان سالن')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /مستند فرآیندهای/ })).toHaveTextContent('دپارتمان سالن')
     expect(screen.getByText('فهرست مطالب')).toBeInTheDocument()
     expect(screen.getByText('پذیرایی')).toBeInTheDocument()
     expect(screen.getByText('۱ فرآیند')).toBeInTheDocument()
@@ -3172,7 +3196,6 @@ Create `ui/export/flowchart/Document.tsx`:
 ```tsx
 import { useState } from 'react'
 import { toFa } from '../../src/lib/format'
-import { deptFullName } from '../shared/payload'
 import type { ExportPayload } from '../shared/payload'
 import { FlowViewer } from './FlowViewer'
 import { ProcessSheets } from './ProcessSheets'
@@ -3199,7 +3222,7 @@ export function Document({ payload }: { payload: ExportPayload }) {
   return (
     <>
       <div className={d.topbar}>
-        <div className={d.tt}>مستند فرآیندهای واحد {dept.name}</div>
+        <div className={d.tt}>مستند فرآیندهای {dept.name}</div>
         <div className={d.sp} />
         {view !== 'home' && <button className={d.tbtn} onClick={() => setView('home')}>فهرست</button>}
         <button className={`${d.tbtn} ${d.solid}`} onClick={() => window.print()}>چاپ / PDF</button>
@@ -3213,8 +3236,8 @@ export function Document({ payload }: { payload: ExportPayload }) {
                 <div className={d['cover-kicker']}>
                   <span className={d.bar} /><span>INJA FOOD · PROCESS DOCUMENTATION</span>
                 </div>
-                <h1>مستند فرآیندهای<br />واحد {dept.name}</h1>
-                <div className={d.sub}>{deptFullName(dept)} — مرجع رسمی نقش‌ها، اهداف عملکردی و فرآیندهای عملیاتی واحد.</div>
+                <h1>مستند فرآیندهای<br />{dept.name}</h1>
+                <div className={d.sub}>مرجع رسمی نقش‌ها، اهداف عملکردی و فرآیندهای عملیاتی این دپارتمان.</div>
                 <div className={d['cover-foot']}>
                   <div className={d.cf}>مجموعه<b>اینجا فست‌فود</b></div>
                   <div className={d.cf}>تعداد فرآیند<b>{toFa(processes.length)} فرآیند</b></div>
@@ -3265,7 +3288,7 @@ export function Document({ payload }: { payload: ExportPayload }) {
               <button className={d.backbtn} onClick={() => setView('home')}>بازگشت به فهرست</button>
             </div>
             <div className={d.sheet}>
-              <div className={d['sheet-head']}><span className={d['sec-num']}>۰۱</span><h2>معرفی واحد {dept.name}</h2></div>
+              <div className={d['sheet-head']}><span className={d['sec-num']}>۰۱</span><h2>معرفی {dept.name}</h2></div>
               <div className={d.rule} />
               {dept.description.split(/\n+/).filter((x) => x.trim()).map((par, i) => (
                 <div key={i} className={d.prose}>{par}</div>
@@ -3273,7 +3296,7 @@ export function Document({ payload }: { payload: ExportPayload }) {
               {dept.sub_units.length > 0 && (
                 <>
                   <div className={d['block-label']} style={{ marginTop: 30 }}>
-                    <span className={d.sq} style={{ background: 'var(--coral)' }} />واحدها و زون‌های سالن
+                    <span className={d.sq} style={{ background: 'var(--coral)' }} />واحدها و زون‌ها
                   </div>
                   <div className={`${d.grid} ${d.g2}`}>
                     {dept.sub_units.map((u) => (
@@ -3289,7 +3312,7 @@ export function Document({ payload }: { payload: ExportPayload }) {
 
             <div className={d.sheet}>
               <div className={d['sheet-head']}><span className={d['sec-num']}>۰۲</span><h2>موجودیت‌ها و نقش‌ها</h2></div>
-              <div className={d['sheet-lead']}>نقش‌های عملیاتی واحد {dept.name} و وظایف کلیدی هر یک.</div>
+              <div className={d['sheet-lead']}>نقش‌های عملیاتی {dept.name} و وظایف کلیدی هر یک.</div>
               <div className={d.rule} />
               {dept.personnel.map((pr) => (
                 <div key={pr.role} className={d.role}>
@@ -4191,8 +4214,9 @@ git commit -m "feat(export): vector-band printing for the flowchart document"
 
 - [ ] **Run everything**
 
-Run: `make test && make lint && npm --prefix ui test && npm --prefix ui run lint && npm --prefix ui run build`
-Expected: all green.
+Run: `make test && npm --prefix ui test && npm --prefix ui run lint && npm --prefix ui run build`
+Expected: all green. (`make lint` is deliberately absent — see Global Constraints. Instead run
+`.venv/bin/ruff check` over the Python files this branch added, which must be clean.)
 
 - [ ] **Record the work**
 

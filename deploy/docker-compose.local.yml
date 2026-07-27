@@ -1,0 +1,111 @@
+# LOCAL TESTING stack — run from code-repo/deploy:
+#   docker compose -f docker-compose.local.yml up -d --build upload-bot
+#   docker compose -f docker-compose.local.yml up -d --build control-bot
+#   docker compose -f docker-compose.local.yml up -d --build ui-backend   # UI at http://localhost:8000
+#
+# Fully isolated from the server stack (deploy/docker-compose.yml):
+#   - distinct project name + its own local volumes
+#   - local ./local/*.env (test bot tokens, gitignored) instead of /opt/inja/secrets
+#   - the sibling ../../data-repo mounted at /data (no /opt/inja paths)
+#   - public Telegram Bot API (<=20MB); no telegram-bot-api, git-push
+#   - ui-backend served over plain HTTP on :8000 (no Caddy/TLS proxy — the login
+#     cookie has no Secure flag, so http://localhost works for local testing)
+# Nothing here touches the server host or the production bots.
+name: inja-food-process-local
+
+services:
+  upload-bot:
+    build:
+      context: ..
+      dockerfile: deploy/upload-bot.Dockerfile
+    image: inja-upload-bot-local
+    restart: unless-stopped
+    # Reach the host SOCKS proxy (Telegram is blocked locally). Docker Desktop maps the
+    # host to host.docker.internal; TELEGRAM_PROXY points there.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    env_file: [./local/upload-bot.env]     # test token @uploadtestinjsbot
+    environment:
+      DATA_ROOT: /data
+      # (No TELEGRAM_API_BASE_URL -> uses public api.telegram.org, 20MB file cap.)
+    volumes:
+      - "../../data-repo:/data"
+
+  control-bot:
+    build:
+      context: ..
+      dockerfile: deploy/control-bot.Dockerfile
+    image: inja-control-bot-local
+    restart: unless-stopped
+    # Reach the host SOCKS proxy for Telegram (blocked locally); Anthropic stays direct.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    env_file: [./local/control-bot.env]    # test token @aiprocessTestinjabo
+    environment:
+      APPROVED_DIRECTORY: /data
+      CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1"
+      CLAUDE_MAX_TURNS: "300"
+      BASH_DEFAULT_TIMEOUT_MS: "600000"
+      BASH_MAX_TIMEOUT_MS: "600000"
+      # Telegram (python httpx bot) goes through the host SOCKS proxy; Claude Code
+      # reaches *.anthropic.com DIRECTLY (not blocked) via NO_PROXY. (control-bot/README.md)
+      ALL_PROXY: "socks5h://host.docker.internal:2080"
+      HTTPS_PROXY: "socks5h://host.docker.internal:2080"
+      NO_PROXY: "api.anthropic.com,.anthropic.com,localhost,127.0.0.1"
+    volumes:
+      - "../../data-repo:/data"
+      # Live schemas overlay the image-baked /opt/schemas so the engine `validate`
+      # CLI (run by the summarize/process-voice pipeline) picks up schema edits on
+      # restart — no image rebuild needed for local iteration.
+      - "../schemas:/opt/schemas:ro"
+      - local-claude-credentials:/root/.claude   # seeded from host ~/.claude (see setup)
+      - local-control-bot-state:/state
+
+  ui-backend:
+    # The server-shipped ui-backend.Dockerfile builds FROM node:20-slim. Docker Hub is
+    # unreachable from this local machine, so before building here, alias the cached
+    # node:18 base to that tag once (Vite 6 supports Node 18) — a local-only docker
+    # tag, nothing in the repo changes:
+    #   docker tag node:18-bookworm-slim node:20-slim
+    build:
+      context: ..
+      dockerfile: deploy/ui-backend.Dockerfile
+    image: inja-ui-backend-local
+    restart: unless-stopped
+    # Plain HTTP for local testing — browse http://localhost:8000. No Caddy/TLS:
+    # the session cookie has no Secure flag, so http://localhost keeps you logged in.
+    ports:
+      - "8000:8000"
+    env_file: [./local/ui-backend.env]     # SESSION_SIGNING_KEY (local, gitignored)
+    environment:
+      DATA_ROOT: /data
+      UI_USERS_FILE: /run/secrets/ui-users.json   # local {username: argon2_hash} map, gitignored
+      EXPORT_DIR: /exports
+      # SCHEMA_DIR + UI_STATIC_DIR are baked into the image; the schemas dir is
+      # overlaid with the live ../schemas volume below (no rebuild on schema edits).
+      # UI edits git-commit into the mounted data-repo, which is owned by the host
+      # user; tell git this root-container checkout is safe (avoids "dubious ownership").
+      GIT_CONFIG_COUNT: "1"
+      GIT_CONFIG_KEY_0: safe.directory
+      GIT_CONFIG_VALUE_0: /data
+    volumes:
+      - "../../data-repo:/data"
+      - "./local/ui-users.json:/run/secrets/ui-users.json:ro"
+      # Live schemas overlay the image-baked /app/schemas (backend validates PUTs
+      # against these) — schema edits take effect on restart, no rebuild.
+      - "../schemas:/app/schemas:ro"
+      # Serve the host-built frontend instead of the image-baked bundle, so UI
+      # changes show after `npm --prefix ../ui run build` + restart (no image
+      # rebuild). Rebuild the image if you'd rather bake the frontend in.
+      - "../ui/dist:/app/ui-static:ro"
+      # Serve host-built export templates too, so export changes show after
+      # `npm --prefix ../ui run build` + restart (no image rebuild).
+      - "../ui/dist-export:/app/ui-export-templates:ro"
+      # generated export documents — build artifacts, deliberately outside the
+      # data-repo so they never appear in its working tree (D8)
+      - local-ui-exports:/exports
+
+volumes:
+  local-claude-credentials:
+  local-control-bot-state:
+  local-ui-exports:

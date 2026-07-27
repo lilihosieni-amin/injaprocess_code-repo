@@ -1,0 +1,175 @@
+/* The printed flowchart: the page box, the offscreen measuring host, and the
+ * SVG bands.
+ *
+ * A *global* stylesheet, not a CSS module, and that is load-bearing. The bands
+ * are written into the `[data-pf]` slots with `innerHTML` as raw SVG markup
+ * (`print/geometry.ts`), which no build step rewrites — a hashed `.pf-band`
+ * would never match it. The same goes for `.pf-measure`, `.pf-wrap` and the
+ * `@page` box, which belong to the document rather than to any component.
+ *
+ * Ported from the mockup `ui/design/export/dining-export-v2.html`: the `.pf-*`
+ * rules at `:275-283`, and from its `@media print` block (`:290-324`) the
+ * `@page`, `body`, `print-color-adjust`, `.pf-measure`, `.pf-wrap`, `.pf-band`
+ * and `.pf-wrap.own-page` rules. Everything else in that block styles the
+ * document's own sheets and lives in `document.module.css`, whose class names
+ * are hashed to match the elements React renders.
+ *
+ * Two deliberate departures from the mockup:
+ *   - `.pf-measure` drops the mockup's `width:4000px;height:0`. `PrintDiagrams`
+ *     sizes the host inline (4000x900) because a zero-height host gives React
+ *     Flow no viewport to lay a flow out in, and an unmeasured node is exactly
+ *     the wrong box.
+ *   - `.pf-band .fnode,.fjunc,.fterm{position:static}` (`:284`) is not ported.
+ *     Those are the mockup's own hand-rolled node classes; here the bands carry
+ *     the app's real node markup (D2), which is not absolutely positioned —
+ *     `capture()` reads the wrapper's `innerHTML`, and React Flow's transform
+ *     lives on the wrapper, not inside it.
+ */
+
+/* Both the host that measures the nodes and the bands that paint them sit inside
+   `.doc-root`, whose `line-height:1.75` is the document's own leading — the site
+   uses Tailwind preflight's 1.5, and `ActivityNode`'s id badge, actor row and
+   subprocess pill declare no leading of their own. Left inheriting, every printed
+   node comes out ~5% taller than the same node on the site (measured: 121 px vs
+   115, 137 vs 130), which is exactly the drift `doc-base.css` scoped the document
+   typography to avoid. Restoring the site's leading here — and in *both* contexts,
+   because a box measured at 1.5 and painted at 1.75 would overflow the space the
+   band reserved for it — makes the printed node the site's node. It changes no
+   text the document itself renders: `.doc-root` still carries 1.75 for the sheets. */
+.pf-measure, .pf-band { line-height: 1.5; }
+
+/* offscreen measuring host: laid out so node boxes get real sizes, but never
+   painted, never printed, and never inside a display:none subtree */
+.pf-measure {
+  position: absolute;
+  left: -99999px;
+  top: 0;
+  visibility: hidden;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.pf-wrap { display: none; }
+.pf-band { margin: 0 auto; width: max-content; max-width: 100%; }
+/* must clip to its viewBox — otherwise every band paints the whole diagram */
+.pf-band svg { display: block; overflow: hidden; }
+
+/* A node linked to a subprocess shows «زیرفرآیند — برای ورود کلیک کنید» on screen;
+   on paper there is nothing to click, and the reader needs to know *which* process
+   to turn to. `ActivityNode` renders both variants and the medium picks one.
+   `.pf-measure` is the host that fixes each node's printed box, and it is laid out
+   under *screen* media — so the swap has to happen here, outside the print block,
+   as well as in the band below. Measured around the click wording and painted
+   around the short id, every subprocess node would reserve more height than it
+   paints and its edges would land off the card's centre. */
+.pf-measure [data-subprocess-cta] { display: none; }
+.pf-measure [data-subprocess-id] { display: flex; }
+
+@media print {
+  /* The vertical margin is deliberately under 8.8mm.
+     Chrome draws the date/title/URL/page-number chrome itself and no page can turn
+     it off from script or CSS — but it does not draw what does not fit. Measured in
+     Chrome 150 with `displayHeaderFooter` on (the flag the print dialog's "Headers
+     and footers" checkbox sets): a vertical `@page` margin of 8.8mm or less prints
+     neither header nor footer, 8.9mm and above prints both, and the content lays
+     out identically either way. The chrome is a horizontal band, so the side margin
+     is free of it and stays at the 13mm `bands.ts` derived `PRINT.W` from.
+     `margin:0` would suppress it too, but `.doc` and `.sheet` are `padding:0` in
+     print, and padding on a container spaces only the first and last page of a
+     flow — the roles and KPI sheets run to three pages each and their interior
+     pages would print hard against the paper edge. 8mm keeps every page off it.
+     Narrowing the vertical margin only gives a band *more* room than `PRINT.H`
+     assumes, so the frozen budget stays valid. `page-box.test.ts` pins all of it.
+
+     `size` is `portrait`, matching the steps guide — the two documents print from
+     the same department onto the same paper, and a reader who prints one after
+     the other should not have to turn the stack. The margins are untouched by
+     that change; only the sheet's proportions are, and `bands.ts` re-derives
+     `PRINT.W`/`PRINT.H` from this same box. One consequence is worth naming: the
+     page box is now ~695px wide rather than ~958px, so the mockup's own ported
+     `@media (max-width:760px)` — a bare width query, therefore evaluated against
+     the *page box* too — matches on paper for the first time. The only rule it
+     carries that the document renders is `.g2{grid-template-columns:1fr}`, and
+     the print block's `.grid.g2` (0,2,0) still outranks it, so the sub-unit cards
+     stay two-up. `page-box.test.ts` pins that. */
+  @page { margin: 8mm 13mm; size: portrait; }
+  body { background: #fff; }
+  * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+
+  .pf-measure { display: none !important; }
+  .pf-wrap { display: block !important; margin-top: 14px; }
+  /* a band is an atomic <svg>: never fragmented, so no node can be halved */
+  .pf-band { break-inside: avoid; }
+  .pf-band + .pf-band { break-before: page; }
+  /* only when the first unbreakable run is taller than the room under the
+     heading — rare, and it buys a much larger diagram */
+  .pf-wrap.own-page { break-before: page; }
+
+  /* The two print-only deviations, both sanctioned. They are reached through
+     `data-` hooks — never through a `react-flow__` selector, which
+     `parity.test.tsx` bans and which would restyle the diagram rather than
+     annotate it.
+
+     The edge label: the condition on a connector («بله», «خیر», …) is the
+     smallest type on the page, and it is unreadable once the planner shrinks a
+     diagram towards `PRINT.MINSC` (0.34) — on screen it sits on `bg-white/90`,
+     which is no separation at all from the white paper around it. `bg-tile-v2`
+     (#F4EFFB), the app's own tile and the same one behind a node's id badge,
+     gives the pill an outline the eye can find at 34%. The ink stays `text-ink`
+     (#2A1D5E): 12.9:1 on this tile against 14.6:1 on white, so it clears AAA
+     with room to spare and nothing about the text has to move.
+
+     Background only, and that is load-bearing: the label's rectangle is one of
+     the blocks `geomBlocks` hands the page-break planner, and it is fixed in
+     `PrintDiagrams` from the text length (`w = min(240, len*7.2+16)`, `h = 22`)
+     before any of this applies. A rule that added padding, a border or a font
+     here would paint a pill wider than the box the planner reserved and routed
+     the cut around. `rounded-md` is already in `EDGE_LABEL_CLASS`; nothing here
+     needs to restate it.
+
+     `edge-parity.test.tsx` binds the printed edge to the drawn one — stroke,
+     width, arrowhead, and the shared class list — and this background is the one
+     narrow exemption from that binding, pinned there as exactly one property on
+     exactly one selector, inside this block so it can never reach the screen. */
+  .pf-band [data-edge-label] { background: #F4EFFB; }
+
+  /* The subprocess pill: the id, not the invitation to click. */
+  .pf-band [data-subprocess-cta] { display: none; }
+  .pf-band [data-subprocess-id] { display: flex; }
+}
+
+/* ─── added after the port ────────────────────────────────────────────────
+ * Everything above is the mockup's, rule for rule (with the two departures its
+ * header records); this block is not in the mockup and is kept separate so that
+ * property stays checkable by eye. No ported declaration is edited — `.pf-clip`
+ * is new, and `.pf-clip > .pf-measure` (0,2,0) simply outranks the ported
+ * `.pf-measure` (0,1,0) on the one declaration it has to win.
+ *
+ * The measuring host is 4000px wide and was parked at `left:-99999px`. The
+ * document is RTL, so that is 100 000px of *scrollable* overflow to the inline
+ * end: while any diagram was being measured `document.documentElement.scrollWidth`
+ * read 100389 on a 390px phone, and Chrome sized the layout viewport to fit the
+ * content it saw (measured: `innerWidth` 1560, then a sticky 654). The reader
+ * opened the export scrolled off its own cover, at ~60% scale, with the flow
+ * viewer's close button past the right edge of the screen.
+ *
+ * A 0×0 `overflow:hidden` clipper fixes it at the source. It is `position:
+ * absolute`, so it is the containing block for the host inside it; the host keeps
+ * its full 4000×900 layout — every node box is measured exactly as before, and
+ * `bands.ts` sees the same geometry — but its overflow is clipped at the clipper
+ * and never reaches the document's scrollable area. `left:0` on the host is then
+ * only tidiness: nothing escapes the clipper either way.
+ *
+ * Not `@media screen`: the host must be out of the document's way in *both*
+ * media, and in print `.pf-measure` is `display:none` anyway. */
+.pf-clip {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+  pointer-events: none;
+}
+.pf-clip > .pf-measure { left: 0; }
