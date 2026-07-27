@@ -20,7 +20,12 @@
 .topbar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:12px;padding:12px 22px;background:var(--deep);color:#fff}
 .topbar .tt{font-weight:800;font-size:16px}
 .topbar .sp{flex:1}
-.tbtn{display:inline-flex;align-items:center;gap:7px;font-weight:700;font-size:14px;border-radius:11px;padding:9px 15px;cursor:pointer;border:1px solid rgba(255,255,255,.3);background:rgba(255,255,255,.1);color:#fff}
+/* `text-decoration:none` is not in the mockup, which only ever had `<button>`
+ * here. When the guide is served, «چاپ» becomes an `<a>` to the PDF the server
+ * printed (`shared/pdfLink`), and this bundle loads no reset that would strip
+ * the UA's underline — without it the two forms of the same control would not
+ * look the same. A no-op for every `<button>` carrying the class. */
+.tbtn{display:inline-flex;align-items:center;gap:7px;font-weight:700;font-size:14px;border-radius:11px;padding:9px 15px;cursor:pointer;border:1px solid rgba(255,255,255,.3);background:rgba(255,255,255,.1);color:#fff;text-decoration:none}
 .tbtn:hover{background:rgba(255,255,255,.22)}
 
 .wrap{max-width:860px;margin:0 auto;padding:26px 20px 90px}

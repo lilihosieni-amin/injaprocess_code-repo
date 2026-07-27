@@ -7,6 +7,7 @@ import { ProcessSheets } from './ProcessSheets'
 import { PrintDiagrams } from '../print/PrintDiagrams'
 import { diagramsComplete } from '../print/complete'
 import { markPrintReady } from '../shared/ready'
+import { pdfHref } from '../shared/pdfLink'
 import d from './document.module.css'
 
 type View = 'home' | 'doc' | 'legend'
@@ -34,6 +35,11 @@ export function Document({ payload }: { payload: ExportPayload }) {
   const cls = (v: View) => `${d.view}${view === v ? ` ${d.active}` : ''}`
   const [flowId, setFlowId] = useState<string | null>(null)
   const { dept, processes } = payload
+  /** The server's PDF when this document is being served, `null` when it was
+   *  opened from a file — see `pdfLink`. Read once: a document's location does
+   *  not change under it, and re-deciding on every keystroke of state would
+   *  invite the two branches to disagree mid-session. */
+  const [pdf] = useState(pdfHref)
 
   // Persian glyph metrics decide how node labels wrap, so a build that ran
   // before Vazirmatn landed can be wrong. Rebuild on the font, on load, and
@@ -87,7 +93,15 @@ export function Document({ payload }: { payload: ExportPayload }) {
           <div className={d.tt}>مستند فرآیندهای {dept.name}</div>
           <div className={d.sp} />
           {view !== 'home' && <button className={d.tbtn} onClick={() => setView('home')}>فهرست</button>}
-          <button className={`${d.tbtn} ${d.solid}`} onClick={() => window.print()}>چاپ / PDF</button>
+          {/* Served: hand over the PDF the server printed, because printing this
+              document from the browser is broken on iOS Safari (see `pdfLink`).
+              Opened from a file: print in place, exactly as before — there is no
+              server beside a copy on a phone, so a link would go nowhere. In a
+              new tab, so a reader who taps it does not lose the document: coming
+              back would rebuild every band from scratch. */}
+          {pdf
+            ? <a className={`${d.tbtn} ${d.solid}`} href={pdf} target="_blank" rel="noopener">چاپ / PDF</a>
+            : <button className={`${d.tbtn} ${d.solid}`} onClick={() => window.print()}>چاپ / PDF</button>}
         </div>
 
         <div className={d.doc}>

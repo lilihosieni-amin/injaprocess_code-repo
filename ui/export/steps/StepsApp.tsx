@@ -5,6 +5,7 @@ import { toFa } from '../../src/lib/format'
 import type { ExportPayload } from '../shared/payload'
 import type { ActivityNode, ReadableProcess } from '../../src/api/types'
 import { markPrintReady } from '../shared/ready'
+import { pdfHref } from '../shared/pdfLink'
 import s from './steps.module.css'
 
 type Crumb = { pid: string; via: ActivityNode | null }
@@ -144,13 +145,23 @@ export function StepsApp({ payload }: { payload: ExportPayload }) {
 }
 
 function Shell({ children, onHome }: { children: React.ReactNode; onHome: () => void }) {
+  /** The server's PDF when this guide is being served, `null` when it was opened
+   *  from a file — the same one rule the flowchart document uses (`pdfLink`).
+   *  Read once, not per navigation: the location does not change under a page
+   *  that never navigates. */
+  const [pdf] = useState(pdfHref)
   return (
     <>
       <div className={s.topbar}>
         <div className={s.tt}>راهنمای گام‌به‌گام کار</div>
         <div className={s.sp} />
         <button className={s.tbtn} onClick={onHome}>فهرست کارها</button>
-        <button className={s.tbtn} onClick={() => window.print()}>چاپ</button>
+        {/* Served: the PDF the server printed. Opened from a file: print in
+            place, as before. In a new tab so the reader keeps their place in the
+            guide — they may be several subprocesses deep. */}
+        {pdf
+          ? <a className={s.tbtn} href={pdf} target="_blank" rel="noopener">چاپ</a>
+          : <button className={s.tbtn} onClick={() => window.print()}>چاپ</button>}
       </div>
       <div className={s.wrap}>{children}</div>
     </>

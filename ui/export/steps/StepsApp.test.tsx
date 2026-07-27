@@ -253,3 +253,53 @@ describe('the signal a headless renderer waits on', () => {
     expect(window.__INJA_PRINT_READY__).toBe(true)
   })
 })
+
+// The same rule as the flowchart document's, out of the same helper: the server
+// leaves a PDF beside the HTML, so the button hands that over when there is a
+// server, and prints in place when the file was opened by double-click.
+describe('the «چاپ» button', () => {
+  const REAL_LOCATION = Object.getOwnPropertyDescriptor(window, 'location')!
+  const LABEL = 'چاپ'
+  let scrollTo: ReturnType<typeof vi.spyOn>
+
+  const openedAt = (url: string) => Object.defineProperty(window, 'location', {
+    configurable: true, enumerable: true, writable: true, value: new URL(url),
+  })
+
+  beforeEach(() => { scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(() => {}) })
+  afterEach(() => {
+    scrollTo.mockRestore()
+    Object.defineProperty(window, 'location', REAL_LOCATION)
+  })
+
+  it('links to the PDF beside the guide when the guide is being served', () => {
+    openedAt('https://inja.example.com/exports/dining/steps-0011aabb22cc33dd.html')
+    render(<StepsApp payload={PAYLOAD} />)
+    const link = screen.getByRole('link', { name: LABEL })
+    expect(link).toHaveAttribute('href', '/exports/dining/steps-0011aabb22cc33dd.pdf')
+    expect(link.className).toBe(s.tbtn)
+  })
+
+  it('prints in place, and renders no dead link, when opened from a file', () => {
+    openedAt('file:///home/staff/Downloads/steps-0011aabb22cc33dd.html')
+    const print = vi.spyOn(window, 'print').mockImplementation(() => {})
+    render(<StepsApp payload={PAYLOAD} />)
+    expect(screen.queryByRole('link', { name: LABEL })).toBeNull()
+    expect(document.querySelectorAll(`.${s.topbar} a`)).toHaveLength(0)
+
+    fireEvent.click(screen.getByRole('button', { name: LABEL }))
+    expect(print).toHaveBeenCalledTimes(1)
+    print.mockRestore()
+  })
+
+  // The link replaces the button on every page of the guide, not only its
+  // landing page — `Shell` wraps them all, and a reader deep in a subprocess is
+  // exactly who reaches for it.
+  it('is the same link once the reader has opened a task', () => {
+    openedAt('https://inja.example.com/exports/dining/steps-0011aabb22cc33dd.html')
+    render(<StepsApp payload={PAYLOAD} />)
+    fireEvent.click(screen.getByText('پذیرایی از مشتری'))
+    expect(screen.getByRole('link', { name: LABEL }))
+      .toHaveAttribute('href', '/exports/dining/steps-0011aabb22cc33dd.pdf')
+  })
+})

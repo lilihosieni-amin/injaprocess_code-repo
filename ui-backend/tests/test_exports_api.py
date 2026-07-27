@@ -416,6 +416,39 @@ def test_export_succeeds_when_the_render_fails(data_root, tmp_path, caplog, monk
                for m in _guard_logs(caplog))
 
 
+def test_an_unexpected_error_from_the_renderer_still_publishes_the_export(
+        data_root, tmp_path, caplog, monkeypatch):
+    """D21 may not rest on a type discipline nothing enforces.
+
+    `render_pdf` drives a subprocess, a socket and a JSON protocol; every layer of
+    that can raise something nobody wrote down — a `RuntimeError` from the CDP
+    plumbing, a `ValueError` from a malformed frame, a `binascii.Error` from a
+    truncated base64 body. Catching only the two types the module *means* to raise
+    turns any such surprise into a 500 on an export whose HTML was already written
+    and is already being served. The guard is about the export surviving, not about
+    which exception the browser layer happens to pick, so it catches all of them —
+    and names the type in the log, so a surprise is still diagnosable.
+    """
+    cfg = _with_chromium(_cfg(data_root, tmp_path), tmp_path)
+    stale = _plant_a_previous_pdf(cfg)
+
+    def boom(*a, **kw):
+        raise RuntimeError("the CDP socket closed mid-frame")
+
+    monkeypatch.setattr(pdf_mod, "render_pdf", boom)
+    with caplog.at_level("WARNING"):
+        r = _client(cfg).post("/api/departments/cooking/exports/flowchart")
+    assert r.status_code == 200
+    assert set(r.json()) == {"url", "generated_at"}
+    assert (cfg.export_dir / "cooking" / Path(r.json()["url"]).name).is_file()
+    # the same stale-PDF rule as every other failed render: no PDF at all beats a
+    # PDF that disagrees with the document beside it
+    assert not stale.exists()
+    assert not list((cfg.export_dir / "cooking").glob("*.pdf"))
+    assert any("cooking" in m and "flowchart" in m and "RuntimeError" in m
+               for m in _guard_logs(caplog))
+
+
 def test_a_failed_render_removes_the_previous_pdf(data_root, tmp_path, monkeypatch):
     """The sharpest edge in the whole change.
 

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { Document } from './Document'
@@ -271,5 +271,44 @@ describe('the print sheets', () => {
     expect(wrap).not.toBeNull()
     expect(wrap!.className).toBe('pf-wrap')
     expect(wrap).toHaveAttribute('data-pf', 'dining-027')
+  })
+})
+
+// Printing this document from the browser is broken on iOS Safari: each printed
+// node is the app's real DOM lifted into a `<foreignObject>`, and WebKit
+// mis-resolves its position and clipping inside a viewBox-scaled `<svg>`. The
+// server prints a correct PDF at export time and leaves it beside the HTML, so
+// the button hands that over — but only when there is a server to hand it over.
+describe('the «چاپ / PDF» button', () => {
+  const REAL_LOCATION = Object.getOwnPropertyDescriptor(window, 'location')!
+  const LABEL = 'چاپ / PDF'
+
+  const openedAt = (url: string) => Object.defineProperty(window, 'location', {
+    configurable: true, enumerable: true, writable: true, value: new URL(url),
+  })
+
+  afterEach(() => { Object.defineProperty(window, 'location', REAL_LOCATION) })
+
+  it('links to the PDF beside the document when the document is being served', () => {
+    openedAt('https://inja.example.com/exports/dining/flowchart-9f2c8a11d4e6b070.html')
+    renderDoc()
+    const link = screen.getByRole('link', { name: LABEL })
+    expect(link).toHaveAttribute('href', '/exports/dining/flowchart-9f2c8a11d4e6b070.pdf')
+    expect(link.className).toBe(`${d.tbtn} ${d.solid}`)
+  })
+
+  // An export is deliberately standalone and gets emailed to staff who have no
+  // account. Opened by double-click there is no server beside it, so the only
+  // honest button is the one that has always been there.
+  it('prints in place, and renders no dead link, when opened from a file', () => {
+    openedAt('file:///home/staff/Downloads/flowchart-9f2c8a11d4e6b070.html')
+    const print = vi.spyOn(window, 'print').mockImplementation(() => {})
+    renderDoc()
+    expect(screen.queryByRole('link', { name: LABEL })).toBeNull()
+    expect(document.querySelectorAll(`.${d.topbar} a`)).toHaveLength(0)
+
+    fireEvent.click(screen.getByRole('button', { name: LABEL }))
+    expect(print).toHaveBeenCalledTimes(1)
+    print.mockRestore()
   })
 })

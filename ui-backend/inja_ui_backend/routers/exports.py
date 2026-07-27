@@ -65,9 +65,24 @@ def _render_pdf_beside(cfg, code: str, kind: str, token: str, html_path: Path) -
         return
     try:
         pdf.render_pdf(cfg.chromium_path, html_path, pdf_path)
-    except (pdf.PdfRenderError, OSError) as e:
+    except Exception as e:  # noqa: BLE001
+        # Deliberately every exception, not the two the renderer means to raise.
+        # D21 is a promise about the *export*, and narrowing this to
+        # `(PdfRenderError, OSError)` would rest that promise on a type
+        # discipline inside `pdf.py` that nothing enforces: it drives a
+        # subprocess, a socket and a JSON protocol, so a `RuntimeError` from the
+        # CDP plumbing or a decode error on a truncated frame is entirely
+        # possible — and would 500 an export whose HTML is already written and
+        # already being served. `BaseException` is not caught: a
+        # `KeyboardInterrupt` or a cancellation is the process being taken down,
+        # not a render that went wrong.
+        #
+        # The type is named in the log precisely because this is now a catch-all:
+        # a surprise must still be diagnosable, and "PdfRenderError" versus
+        # "RuntimeError" is the difference between a known failure mode and a bug.
         logger.warning("%s/%s: the export's PDF could not be rendered; the document "
-                       "itself is published: %s", code, kind, e)
+                       "itself is published: %s: %s",
+                       code, kind, type(e).__name__, e)
         _drop_stale_pdf(pdf_path, code, kind)
 
 
