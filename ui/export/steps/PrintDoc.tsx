@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { linearize, countSteps, groupTitle } from './linearize'
+import { linearize, groupTitle } from './linearize'
 import type { Block } from './linearize'
 import { toFa } from '../../src/lib/format'
 import type { ExportPayload } from '../shared/payload'
@@ -48,7 +48,11 @@ export function PrintDoc({ payload }: { payload: ExportPayload }) {
             <li key={x.id} className={x.parent ? p.sub : ''}>
               <span className={p.il}>{x.name}</span>
               <span className={`${p.it} ${x.parent ? p.sub : ''}`}>{x.parent ? 'زیرفرآیند' : 'فرآیند'}</span>
-              <span className={p.ic}>{toFa(countSteps(model.get(x.id) ?? []))} مرحله</span>
+              {/* the id, where the step count used to sit: on paper the reader
+                  cannot tap a row, so what they need from the index is the name
+                  of the section to turn to. Latin inside an RTL document, so
+                  `dir` is pinned, as the flowchart document's id badges are. */}
+              <span className={p.ic} dir="ltr">{x.id}</span>
             </li>
           ))}
         </ol>
@@ -61,6 +65,9 @@ export function PrintDoc({ payload }: { payload: ExportPayload }) {
           <section key={x.id} className={p.psec} data-testid={`print-section-${x.id}`}>
             <h2>{x.name}</h2>
             <div className={`${p.ptype} ${x.parent ? p.sub : ''}`}>{x.parent ? 'زیرفرآیند' : 'فرآیند'}</div>
+            {/* the id beside the type tag, in the tag's own weight — this is
+                the section the index and every subprocess tag point at */}
+            <span className={`${p.ptype} ${p.pid}`} dir="ltr">{x.id}</span>
             {via && via.description && (
               <div className={p.psum}><b>این بخش مربوط به چیست؟</b>{via.description}</div>
             )}
@@ -103,7 +110,9 @@ function PrintBlocks({ blocks, byId }: { blocks: Block[]; byId: Map<string, Proc
                     {/* keyed by target *and* index, as StepsApp is: one step can
                         carry two back-edges to the same target */}
                     {b.back.filter((r) => r.num).map((r, k) => <span key={`${r.to}-${k}`} className={`${p.tg} ${p.back}`}>برگرد به مرحلهٔ {toFa(r.num!)}</span>)}
-                    {sub && <span className={`${p.tg} ${p.sub}`}>مراحل این کار: بخش «{sub.name}»</span>}
+                    {/* the section's id rides along: on paper «بخش X» is a
+                        pointer to a section the reader has to find by hand */}
+                    {sub && <span className={`${p.tg} ${p.sub}`}>مراحل این کار: بخش «{sub.name}» · <span dir="ltr">{sub.id}</span></span>}
                   </div>
                 )}
               </span>

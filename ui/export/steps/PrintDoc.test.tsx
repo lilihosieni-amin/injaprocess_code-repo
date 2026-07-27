@@ -6,6 +6,8 @@ import type { Edge, ProcNode, Process } from '../../src/api/types'
 // the stylesheets as *source text*: jsdom applies no CSS module, so the rules
 // that keep the two documents apart can only be asserted by reading them
 import printCss from './print.module.css?raw'
+// and as a module, to name the classes the id badges are expected to reuse
+import p from './print.module.css'
 import baseCss from './steps-base.css?raw'
 
 const act = (id: string, label: string): ProcNode => ({
@@ -122,7 +124,6 @@ describe('PrintDoc', () => {
     render(<PrintDoc payload={PAYLOAD} />)
     const index = screen.getByTestId('print-index')
     expect(within(index).getByText('پذیرایی')).toBeInTheDocument()
-    expect(within(index).getByText('۱ مرحله')).toBeInTheDocument()
 
     const section = screen.getByTestId('print-section-dining-001')
     expect(within(section).getByText('خوشامدگویی')).toBeInTheDocument()
@@ -157,10 +158,38 @@ describe('PrintDoc', () => {
     expect(within(section).getByText('۴')).toBeInTheDocument()
     // the condition tag carried onto the first step
     expect(within(section).getByText('اگر: رستوران باز است')).toBeInTheDocument()
-    // the subprocess tag on the merge step
-    expect(within(section).getByText('مراحل این کار: بخش «آماده‌سازی غذا»')).toBeInTheDocument()
-    // every step in the group counts towards the index
-    expect(within(screen.getByTestId('print-index')).getByText('۴ مرحله')).toBeInTheDocument()
+    // the subprocess tag on the merge step, now carrying the section's id
+    const tag = within(section).getByText(/مراحل این کار: بخش/)
+    expect(tag).toHaveTextContent('مراحل این کار: بخش «آماده‌سازی غذا» · dining-003')
+    expect(within(tag).getByText('dining-003')).toHaveAttribute('dir', 'ltr')
+  })
+
+  it('indexes each process by its id, not by a step count', () => {
+    render(<PrintDoc payload={GROUP_PAYLOAD} />)
+    const index = screen.getByTestId('print-index')
+
+    for (const id of ['dining-002', 'dining-003']) {
+      const cell = within(index).getByText(id)
+      expect(cell).toHaveAttribute('dir', 'ltr')
+      // the row's existing trailing-metadata slot, not a style of its own
+      expect(cell.className.split(' ')).toContain(p.ic)
+    }
+    // the step count is gone from paper — the on-screen list still carries it
+    expect(within(index).queryByText(/مرحله/)).not.toBeInTheDocument()
+  })
+
+  it('heads each section with the process id beside its type tag', () => {
+    render(<PrintDoc payload={GROUP_PAYLOAD} />)
+
+    for (const [id, kind] of [['dining-002', 'فرآیند'], ['dining-003', 'زیرفرآیند']]) {
+      const section = screen.getByTestId(`print-section-${id}`)
+      const badge = within(section).getByText(id)
+      expect(badge).toHaveAttribute('dir', 'ltr')
+      // the tag's own weight, not a style of its own
+      expect(badge.className.split(' ')).toContain(p.ptype)
+      // and it joins the type tag rather than replacing it
+      expect(within(section).getByText(kind)).toBeInTheDocument()
+    }
   })
 
   it('notes what a subprocess section is about, from the activity that calls it', () => {

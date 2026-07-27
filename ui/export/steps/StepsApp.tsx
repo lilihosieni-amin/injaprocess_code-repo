@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useLayoutEffect, useEffect, useMemo, useRef, useState } from 'react'
 import { linearize, countSteps, groupTitle } from './linearize'
 import type { Block } from './linearize'
 import { toFa } from '../../src/lib/format'
@@ -10,6 +10,15 @@ type Crumb = { pid: string; via: ActivityNode | null }
 /** One "jump to step N" request. `seq` makes every tap a fresh value, so
  *  jumping twice to the same step still re-triggers the effect. */
 type Jump = { num: number; seq: number }
+/** Which way a navigation goes. Forward opens something new and lands at the
+ *  top; back returns to a page the reader has already read, and lands where
+ *  they left it. */
+type Nav = 'forward' | 'back'
+
+/** The identity of a page, for the remembered scroll offsets: the whole path,
+ *  not its depth. One subprocess opened from two different parents is two
+ *  pages, and neither may restore against the other's offset. */
+const pageKey = (trail: Crumb[]) => trail.map((c) => c.pid).join('/')
 
 const icon = (d: string, size = 20, w = 2) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -33,17 +42,34 @@ export function StepsApp({ payload }: { payload: ExportPayload }) {
   const byId = useMemo(() => new Map(payload.processes.map((p) => [p.id, p])), [payload])
   const model = useMemo(() => new Map(payload.processes.map((p) => [p.id, linearize(p)])), [payload])
 
-  // every navigation lands at the top of the new page, as the mockup does —
-  // otherwise a step tapped near the bottom opens its subprocess mid-page
-  useEffect(() => { window.scrollTo(0, 0) }, [trail])
+  // where each page stood when it was last left, by `pageKey`
+  const seen = useRef(new Map<string, number>())
+  // where the page about to be rendered must land — set by `go` on the way out
+  const land = useRef(0)
+
+  // Going forward lands at the top of the new page, as the mockup does —
+  // otherwise a step tapped near the bottom opens its subprocess mid-page.
+  // Going back lands where the reader left that page.
+  //
+  // A layout effect, not an effect: it runs once React has put the new page in
+  // the DOM — so the document is already as tall as the offset assumes — but
+  // still before the browser paints, so the reader never sees the top of the
+  // page flash past on the way to their place.
+  useLayoutEffect(() => { window.scrollTo(0, land.current) }, [trail])
 
   /** Every navigation goes through here: a pending jump belongs to the page it
-   *  was tapped on, never to the one we are about to show. */
-  const go = (next: Crumb[]) => { setJump(null); setTrail(next) }
+   *  was tapped on, never to the one we are about to show — and the outgoing
+   *  page's offset is read *now*, while its own layout is still on screen. */
+  const go = (next: Crumb[], nav: Nav = 'forward') => {
+    seen.current.set(pageKey(trail), window.scrollY)
+    land.current = nav === 'back' ? seen.current.get(pageKey(next)) ?? 0 : 0
+    setJump(null)
+    setTrail(next)
+  }
 
   if (!trail.length) {
     return (
-      <Shell onHome={() => go([])}>
+      <Shell onHome={() => go([], 'back')}>
         <div className={s['home-head']}>
           <h1>راهنمای گام‌به‌گام کار</h1>
           <p>{payload.dept.name} — روی نام هر کار بزنید تا مرحله‌به‌مرحله ببینید.</p>
@@ -69,18 +95,18 @@ export function StepsApp({ payload }: { payload: ExportPayload }) {
 
   const cur = trail[trail.length - 1]
   const proc = byId.get(cur.pid)
-  if (!proc) return <Shell onHome={() => go([])}><div /></Shell>
+  if (!proc) return <Shell onHome={() => go([], 'back')}><div /></Shell>
 
   return (
-    <Shell onHome={() => go([])}>
-      <button className={s.backbtn} onClick={() => go(trail.slice(0, -1))}>
+    <Shell onHome={() => go([], 'back')}>
+      <button className={s.backbtn} onClick={() => go(trail.slice(0, -1), 'back')}>
         {icoChev}{trail.length > 1 ? 'بازگشت' : 'بازگشت به فهرست کارها'}
       </button>
       {trail.length > 1 && (
         <div className={s.crumbs}>
           {trail.slice(0, -1).map((t, i) => (
             <span key={t.pid + i}>
-              <span style={{ cursor: 'pointer' }} onClick={() => go(trail.slice(0, i + 1))}>{byId.get(t.pid)?.name}</span>
+              <span style={{ cursor: 'pointer' }} onClick={() => go(trail.slice(0, i + 1), 'back')}>{byId.get(t.pid)?.name}</span>
               <span className={s.sep}>›</span>
             </span>
           ))}

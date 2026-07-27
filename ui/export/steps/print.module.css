@@ -76,3 +76,19 @@
   .pnone{font-size:10pt;font-weight:700;color:var(--ok);background:var(--ok-s);border-radius:8px;padding:7px 11px}
   .pend{font-size:11pt;font-weight:800;color:var(--ok);background:var(--ok-s);border:1.5px solid #C4E7D3;border-radius:10px;padding:9px 13px;margin-top:10px;break-inside:avoid}
 }
+
+/* ─── added after the port ────────────────────────────────────────────────
+ * Everything above is the mockup's `@media print` block, declaration for
+ * declaration; this block is not in the mockup and is kept separate so that
+ * property stays checkable by eye.
+ *
+ * The printed sections now carry their process id, so a reader can find the
+ * section the index and the «مراحل این کار» tags point at. The id reuses the
+ * weight already there rather than inventing one: in the index it is the `.ic`
+ * slot the step count used to fill, on a section heading it is a second
+ * `.ptype` pill. Only the gap between those two adjacent pills is new — the
+ * elements sit side by side with no whitespace text node between them, and no
+ * ported declaration was touched to make room. */
+@media print{
+  .psec .ptype.pid{margin-inline-start:6px}
+}
