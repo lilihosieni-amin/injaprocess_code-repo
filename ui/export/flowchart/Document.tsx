@@ -12,6 +12,30 @@ import d from './document.module.css'
 
 type View = 'home' | 'doc' | 'legend'
 
+/** How long the document keeps *rebuilding* its bands while they are incomplete.
+ *  Four ticks of the loop below. This is the window the retry exists for: a
+ *  build that ran before Vazirmatn landed measured the wrong glyphs, and a
+ *  rebuild on `document.fonts.ready` fixes it. */
+const REBUILD_MS = 1400
+/** How long it keeps *looking* after it has stopped rebuilding.
+ *
+ *  These are two different questions and used to share one answer, which is the
+ *  bug this constant exists to fix. A rebuild remounts `PrintDiagrams`, whose
+ *  sweep mounts, measures and slices **one process at a time** — so a tick that
+ *  fires mid-sweep throws the work away and restarts at the first process, and
+ *  the last sweep to start lands well after the retry window has closed. When
+ *  the document stopped checking at the same moment it stopped rebuilding, that
+ *  landing was never observed and the readiness flag never rose *at all*.
+ *
+ *  Measured on the production host — two cores, shared with two Telegram bots —
+ *  the dining department's 15 diagrams finished at **3.1 s**, and every
+ *  server-side flowchart render timed out at 90 s with no PDF written. Not a
+ *  premature flag: silence.
+ *
+ *  Bounded all the same. A document that genuinely cannot complete must not poll
+ *  forever in a reader's phone, and the renderer gives up at 90 s regardless. */
+const WATCH_MS = 60_000
+
 const JSYM = [
   { t: 'XOR', s: 'X', c: '#E23D35', text: 'فقط یکی از مسیرها انجام می‌شود' },
   { t: 'OR', s: 'O', c: '#E8A33D', text: 'یک یا چند مسیر انجام می‌شود' },
@@ -73,17 +97,21 @@ export function Document({ payload }: { payload: ExportPayload }) {
     document.fonts?.ready.then(again)
     window.addEventListener('load', again)
     window.addEventListener('beforeprint', onBeforePrint)
+    const startedAt = Date.now()
     const t = setInterval(() => {
       if (settle()) { clearInterval(t); return }
-      again()
+      // Four attempts at *rebuilding*, then stop — but keep looking. Past
+      // `REBUILD_MS` another `again()` could only throw away a sweep that is
+      // already running and start it over, which on a slow machine is how a
+      // document that would have finished never finishes at all.
+      if (Date.now() - startedAt < REBUILD_MS) again()
     }, 350)
-    // four attempts, then stop trying — a permanent failure must not spin.
     // One last look on the way out: the tick that would have seen the final
     // rebuild land is the one this cancels, and a document that *is* complete
     // must say so rather than leave the renderer to time out. `settle` is the
     // same check either way, so this can only ever announce a finished
     // document — never hurry an unfinished one.
-    const stop = setTimeout(() => { clearInterval(t); settle() }, 1400)
+    const stop = setTimeout(() => { clearInterval(t); settle() }, WATCH_MS)
     return () => {
       clearInterval(t)
       clearTimeout(stop)

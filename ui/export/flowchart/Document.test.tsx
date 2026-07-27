@@ -258,6 +258,27 @@ describe('the signal a headless renderer waits on', () => {
     await new Promise((r) => setTimeout(r, 1600))
     expect(window.__INJA_PRINT_READY__).toBeUndefined()
   })
+
+  // The sweep that builds the bands is asynchronous and strictly sequential —
+  // one process mounted, measured and sliced at a time — and every retry tick
+  // *remounts* it (`PrintDiagrams` is keyed on `rebuild`), restarting at the
+  // first process. So on a slow machine the last sweep lands after the rebuild
+  // window has closed, and if the document stops looking when it stops
+  // rebuilding, the flag never rises at all.
+  //
+  // This is not hypothetical. On the production host — two cores, shared with
+  // two Telegram bots — the dining department's 32 processes could not finish a
+  // sweep inside 1400 ms, the flag never appeared, and every flowchart export
+  // timed out at 90 s and published its HTML with no PDF beside it.
+  it('still raises it when the bands land after the rebuild window has closed', async () => {
+    invariant.force = false
+    renderDoc()
+    await new Promise((r) => setTimeout(r, 1800))
+    expect(window.__INJA_PRINT_READY__).toBeUndefined()
+
+    invariant.force = true
+    await waitFor(() => expect(window.__INJA_PRINT_READY__).toBe(true), { timeout: 2500 })
+  })
 })
 
 describe('the print sheets', () => {
