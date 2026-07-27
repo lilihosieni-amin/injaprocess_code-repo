@@ -417,3 +417,54 @@ Four stages, each ending somewhere usable:
    completeness invariant, print stylesheets. End state: PDF matches the screen.
 
 Stage 1 also settles the `vite-plugin-singlefile` risk in §9 before anything is built on top of it.
+
+---
+
+## 11. Addendum (2026-07-27): the PDF is rendered on the server
+
+### Why this reverses §1's rejection of approach B
+
+§1 rejected "headless Chromium on the server" because, as framed then, it meant the backend driving
+the live SPA — reproducing auth, app state and navigation — to snapshot a page. That judgement stands
+for that design. It does not describe what is now needed.
+
+Two things changed:
+
+1. **The input is no longer the SPA.** The standalone export HTML already exists on disk. Rendering
+   it means opening a local file, not reproducing the application.
+2. **The client-side print path is unreachable for the audience it was built for.** Each printed node
+   is the app's real DOM lifted into a `<foreignObject>` — the mechanism that makes the printed
+   diagram identical to the site's (D2). WebKit mis-resolves `foreignObject` position and clipping
+   inside a `viewBox`-scaled `<svg>`, so on iOS Safari nodes land away from their edges or vanish,
+   while the native SVG paths render correctly. §5.5 recorded this as a known limit ("a Chrome
+   path… Firefox and Safari are less reliable and are not verified"); field use on staff phones has
+   turned it from a limit into a defect. The staff guide is unaffected — it has no `foreignObject`.
+
+Reproducing the diagram without a browser is not an option: the bands do not exist until JavaScript
+runs. A non-executing renderer (WeasyPrint) emits blank diagram pages; a primitives library
+(ReportLab) means a second implementation of the node renderer, which is what the parity guard exists
+to prevent. Computing bands server-side needs measured node heights, and Persian glyph metrics decide
+those — which needs a layout engine. The circle only breaks with a browser.
+
+### Decisions
+
+| # | Decision |
+|---|---|
+| D17 | The PDF is rendered **on the server by headless Chromium**, from the already-written export HTML. Approach B is adopted for this narrow job only; the backend still does not drive the SPA. |
+| D18 | The PDF link is **not surfaced in the app**. The export modal keeps showing exactly one link, the HTML. The PDF is reached from the **«چاپ / PDF» button inside the exported document**. |
+| D19 | The PDF is rendered **at export time**, beside the HTML and sharing its name (`<kind>-<token>.pdf`). Not on demand: a reader must not wait 10–30s, and concurrent renders must not stack browsers on a 3.7 GB host. Storage stays bounded because exports overwrite in place. |
+| D20 | When the document is opened from `file://` — a downloaded or emailed copy — the button **falls back to `window.print()`**. D3 (standalone, opens offline) is preserved; the served copy gets the good PDF. |
+| D21 | A failed PDF render **must not fail the export**. The HTML is the product; the PDF is an enhancement. The endpoint returns success with the HTML link and logs the render failure. |
+| D22 | Renders are **serialised** — one at a time, process-wide. Peak memory per render is 300–400 MB against 3.7 GB shared with the bots. |
+| D23 | The server's print parameters must **match the in-page `@page` box exactly** (portrait, 13 mm sides, 8 mm top/bottom). `bands.ts`'s budget (`PRINT.W 675`, `PRINT.H 965`) is derived from it, and the bands are planned in-page before the server prints. A different paper box silently mis-slices every diagram. |
+| D24 | `displayHeaderFooter: false` and `printBackground: true` are set explicitly. The 8 mm margin heuristic that suppresses Chrome's header/footer stays for the in-browser path, but server-side the setting is stated outright. |
+
+### What the browser is, and is not
+
+`chromium-headless-shell`, not full Chrome, and driven as a **subprocess over CDP** — no Playwright or
+Puppeteer, which would pull a Node runtime and its dependency tree into a Python image. This keeps the
+shape `ui-backend` already has: it shells out to the engine CLIs, and now to one more binary.
+
+The render must wait for the page's own completeness signal, not the load event: the bands are built
+after `document.fonts.ready` and re-verified against the invariant that every node appears in some
+band (§5.4). Printing on load would capture empty or half-built diagrams.
