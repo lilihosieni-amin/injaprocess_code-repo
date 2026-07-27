@@ -9,6 +9,10 @@ export type DrawerProps = {
   node: ProcNode
   editing: boolean
   conflicts: { pending: Pending; index: number }[]
+  /** Show the ICOM block in the read-only activity view. Defaults to true — the
+   *  editing app maintains ICOM, so it stays. The exported document opts out:
+   *  its readers want the activity and who does it, not the data contract. */
+  showIcom?: boolean
   process: Process
   onClose: () => void
   onEdit: () => void
@@ -171,13 +175,17 @@ export function DetailDrawer(props: DrawerProps) {
             </div>
             <div className="text-[11px] font-bold text-muted mt-[18px] mb-1.5">توضیحات</div>
             <div className="text-[12.5px] text-[#5a5175] leading-relaxed">{a.description}</div>
-            <div className="text-[11px] font-bold text-muted mt-[18px] mb-2">اطلاعات ICOM</div>
-            <div className="flex flex-col gap-2.5">
-              <IcomRow label="ورودی‌ها" items={a.icom.inputs} kind="input" />
-              <IcomRow label="کنترل‌ها" items={a.icom.controls} kind="control" />
-              <IcomRow label="خروجی‌ها" items={a.icom.outputs} kind="output" />
-              <IcomRow label="مکانیزم‌ها" items={a.icom.mechanisms} kind="mech" />
-            </div>
+            {(props.showIcom ?? true) && (
+              <>
+                <div className="text-[11px] font-bold text-muted mt-[18px] mb-2">اطلاعات ICOM</div>
+                <div className="flex flex-col gap-2.5">
+                  <IcomRow label="ورودی‌ها" items={a.icom.inputs} kind="input" />
+                  <IcomRow label="کنترل‌ها" items={a.icom.controls} kind="control" />
+                  <IcomRow label="خروجی‌ها" items={a.icom.outputs} kind="output" />
+                  <IcomRow label="مکانیزم‌ها" items={a.icom.mechanisms} kind="mech" />
+                </div>
+              </>
+            )}
             {props.conflicts.length > 0 && (
               <div className="mt-5">
                 <div className="flex items-center gap-[6px] text-[11px] font-bold text-[#E23D35] mb-2">

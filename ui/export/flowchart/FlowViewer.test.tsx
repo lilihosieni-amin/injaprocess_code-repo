@@ -110,6 +110,29 @@ describe('FlowViewer', () => {
     expect(screen.queryByRole('button', { name: 'رد' })).not.toBeInTheDocument()
   })
 
+  // showIcom={false}: a document's reader wants the activity and who performs it.
+  // ICOM is the data contract the editing app maintains, and it stays there —
+  // DetailDrawer defaults showIcom to true, so this is an export-only opt-out.
+  it('shows only the description and the actor — no ICOM block', async () => {
+    renderViewer()
+    // Node cards already render the actor, so count them before opening the
+    // drawer and assert the drawer adds one. A bare presence check would pass on
+    // the node cards alone, and a fixed count would break when the fixture grows.
+    const onCards = (await screen.findAllByText('مهماندار')).length
+    fireEvent.click(await screen.findByText('تحویل غذا'))
+
+    // what a reader keeps
+    expect(await screen.findByText('شرح تحویل غذا')).toBeInTheDocument()
+    expect(screen.getByText('توضیحات')).toBeInTheDocument()
+    expect(screen.getAllByText('مهماندار')).toHaveLength(onCards + 1)
+
+    // what the document drops
+    expect(screen.queryByText('اطلاعات ICOM')).not.toBeInTheDocument()
+    for (const row of ['ورودی‌ها', 'کنترل‌ها', 'خروجی‌ها', 'مکانیزم‌ها']) {
+      expect(screen.queryByText(row)).not.toBeInTheDocument()
+    }
+  })
+
   it('opens the drawer on a junction instead of navigating', async () => {
     renderViewer('dining-002')
     await screen.findByText('ثبت سفارش')
