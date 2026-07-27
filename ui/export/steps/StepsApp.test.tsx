@@ -234,3 +234,22 @@ describe('StepsApp', () => {
     expect(stepCard(1).classList.contains(s.open)).toBe(false)
   })
 })
+
+// The server waits on one signal for both exports. The steps guide builds no
+// diagrams — nothing is measured, nothing is retried — so it is finished the
+// moment React has put it in the document. If it stayed silent, every steps
+// render would sit out the renderer's timeout for no reason.
+describe('the signal a headless renderer waits on', () => {
+  let scrollTo: ReturnType<typeof vi.spyOn>
+
+  beforeEach(() => {
+    scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(() => {})
+    delete window.__INJA_PRINT_READY__
+  })
+  afterEach(() => { scrollTo.mockRestore() })
+
+  it('is raised as soon as the guide has mounted', () => {
+    render(<StepsApp payload={PAYLOAD} />)
+    expect(window.__INJA_PRINT_READY__).toBe(true)
+  })
+})

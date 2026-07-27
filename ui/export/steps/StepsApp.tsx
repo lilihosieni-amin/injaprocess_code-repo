@@ -4,6 +4,7 @@ import type { Block } from './linearize'
 import { toFa } from '../../src/lib/format'
 import type { ExportPayload } from '../shared/payload'
 import type { ActivityNode, ReadableProcess } from '../../src/api/types'
+import { markPrintReady } from '../shared/ready'
 import s from './steps.module.css'
 
 type Crumb = { pid: string; via: ActivityNode | null }
@@ -56,6 +57,15 @@ export function StepsApp({ payload }: { payload: ExportPayload }) {
   // still before the browser paints, so the reader never sees the top of the
   // page flash past on the way to their place.
   useLayoutEffect(() => { window.scrollTo(0, land.current) }, [trail])
+
+  // This guide builds no diagrams: nothing is measured offscreen, nothing is
+  // sliced into bands, nothing is retried — what React commits is what prints.
+  // So it has settled the moment it is mounted, and it says so on the same
+  // signal the flowchart raises, because the renderer waits on one flag for
+  // both documents. Staying silent here would cost every steps render its
+  // full timeout. `PrintDoc` is committed in the same pass, so by the time
+  // this effect runs the printed half is in the document too.
+  useEffect(() => { markPrintReady() }, [])
 
   /** Every navigation goes through here: a pending jump belongs to the page it
    *  was tapped on, never to the one we are about to show — and the outgoing

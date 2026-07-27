@@ -6,6 +6,7 @@ import { FlowViewer } from './FlowViewer'
 import { ProcessSheets } from './ProcessSheets'
 import { PrintDiagrams } from '../print/PrintDiagrams'
 import { diagramsComplete } from '../print/complete'
+import { markPrintReady } from '../shared/ready'
 import d from './document.module.css'
 
 type View = 'home' | 'doc' | 'legend'
@@ -40,16 +41,32 @@ export function Document({ payload }: { payload: ExportPayload }) {
   const [rebuild, setRebuild] = useState(0)
   useEffect(() => {
     const again = () => setRebuild((n) => n + 1)
-    const onBeforePrint = () => { if (!diagramsComplete(payload)) again() }
+    /** The one place `__INJA_PRINT_READY__` is raised, and it is raised behind
+     *  the very predicate this loop already retries on. A headless renderer
+     *  waits on that flag instead of `load`, which fires long before any band
+     *  exists; a second, looser notion of "done" here would hand it a blank
+     *  diagram page. Returns whether the document has settled, so the callers
+     *  below can keep reading exactly as they did. */
+    const settle = () => {
+      if (!diagramsComplete(payload)) return false
+      markPrintReady()
+      return true
+    }
+    const onBeforePrint = () => { if (!settle()) again() }
     document.fonts?.ready.then(again)
     window.addEventListener('load', again)
     window.addEventListener('beforeprint', onBeforePrint)
     const t = setInterval(() => {
-      if (diagramsComplete(payload)) { clearInterval(t); return }
+      if (settle()) { clearInterval(t); return }
       again()
     }, 350)
-    // four attempts, then stop trying — a permanent failure must not spin
-    const stop = setTimeout(() => clearInterval(t), 1400)
+    // four attempts, then stop trying — a permanent failure must not spin.
+    // One last look on the way out: the tick that would have seen the final
+    // rebuild land is the one this cancels, and a document that *is* complete
+    // must say so rather than leave the renderer to time out. `settle` is the
+    // same check either way, so this can only ever announce a finished
+    // document — never hurry an unfinished one.
+    const stop = setTimeout(() => { clearInterval(t); settle() }, 1400)
     return () => {
       clearInterval(t)
       clearTimeout(stop)

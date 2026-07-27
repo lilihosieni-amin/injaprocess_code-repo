@@ -1,11 +1,22 @@
-import { describe, it, expect } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { Document } from './Document'
 import { createSeededClient } from '../shared/seed'
 import type { ExportPayload } from '../shared/payload'
 import type { ProcNode } from '../../src/api/types'
 import d from './document.module.css'
+
+/** Lets one test below hold the completeness invariant at `false` without
+ *  redefining it: `force` stays `null` everywhere else, so every other test in
+ *  this file — and the document itself — runs the real `diagramsComplete`. The
+ *  point of the test that uses it is that there is no *other* route to the
+ *  ready flag: hold this one predicate down and the flag must never appear. */
+const invariant = vi.hoisted(() => ({ force: null as boolean | null }))
+vi.mock('../print/complete', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../print/complete')>()
+  return { diagramsComplete: (p: ExportPayload) => invariant.force ?? real.diagramsComplete(p) }
+})
 
 const act = (id: string, label: string, removed = false): ProcNode => ({
   id, type: 'activity', label, description: '', actor: '',
@@ -211,6 +222,41 @@ describe('every document section stays mounted, so the PDF carries them all', ()
     fireEvent.click(screen.getByText('راهنمای نمادهای فلوچارت', { selector: 'span' }))
     expect(openView()).toBe('legend')
     expect(sections().filter((el) => el.classList.contains(d.active))).toHaveLength(1)
+  })
+})
+
+// A headless renderer has nothing to print on but the `load` event, which fires
+// long before the bands exist — it would capture blank diagram pages. So the
+// document says when it has settled, and it says it in exactly one place: the
+// point where the rebuild loop's own `diagramsComplete` first holds.
+describe('the signal a headless renderer waits on', () => {
+  const slot = () => document.querySelector('[data-pf="dining-001"]')!
+
+  beforeEach(() => {
+    invariant.force = null
+    delete window.__INJA_PRINT_READY__
+  })
+
+  it('is unset on first render, while the bands are still being built', () => {
+    renderDoc()
+    expect(window.__INJA_PRINT_READY__).toBeUndefined()
+  })
+
+  it('turns true once every node of every process is inside a band', async () => {
+    renderDoc()
+    await waitFor(() => expect(slot().querySelector('svg')).not.toBeNull())
+    await waitFor(() => expect(window.__INJA_PRINT_READY__).toBe(true), { timeout: 2500 })
+  })
+
+  // The failure this whole signal exists to prevent is a *blank* diagram page,
+  // and that is what an early flag ships. Held at incomplete, the document must
+  // stay silent for the whole retry window and past its end — a renderer that
+  // then times out has lost a document; one told "ready" has lost the diagrams.
+  it('never raises it while a node is still missing from every band', async () => {
+    invariant.force = false
+    renderDoc()
+    await new Promise((r) => setTimeout(r, 1600))
+    expect(window.__INJA_PRINT_READY__).toBeUndefined()
   })
 })
 
