@@ -110,9 +110,9 @@ describe('FlowViewer', () => {
     expect(screen.queryByRole('button', { name: 'رد' })).not.toBeInTheDocument()
   })
 
-  // showIcom={false}: a document's reader wants the activity and who performs it.
+  // showInternals={false}: a document's reader wants the activity and who performs it.
   // ICOM is the data contract the editing app maintains, and it stays there —
-  // DetailDrawer defaults showIcom to true, so this is an export-only opt-out.
+  // DetailDrawer defaults showInternals to true, so this is an export-only opt-out.
   it('shows only the description and the actor — no ICOM block', async () => {
     renderViewer()
     // Node cards already render the actor, so count them before opening the
@@ -126,7 +126,11 @@ describe('FlowViewer', () => {
     expect(screen.getByText('توضیحات')).toBeInTheDocument()
     expect(screen.getAllByText('مهماندار')).toHaveLength(onCards + 1)
 
-    // what the document drops
+    // what the document drops. `source:` is node provenance — it names the
+    // meeting/run that produced the node, which means nothing outside the
+    // system and rides on an unauthenticated link; the payload no longer
+    // carries it either, so rendering it would print an empty label.
+    expect(screen.queryByText(/^source:/)).not.toBeInTheDocument()
     expect(screen.queryByText('اطلاعات ICOM')).not.toBeInTheDocument()
     for (const row of ['ورودی‌ها', 'کنترل‌ها', 'خروجی‌ها', 'مکانیزم‌ها']) {
       expect(screen.queryByText(row)).not.toBeInTheDocument()

@@ -110,7 +110,7 @@ export function FlowViewer({ processes, startId, onClose }: {
 
         {detailNode && (
           <DetailDrawer
-            node={detailNode} editing={false} conflicts={[]} showIcom={false} process={proc}
+            node={detailNode} editing={false} conflicts={[]} showInternals={false} process={proc}
             onClose={() => setDetailId(null)}
             onEdit={() => {}} onAccept={() => {}} onReject={() => {}}
             onOpenSub={(sub) => { if (byId.has(sub)) { setTrail([...trail, sub]); setDetailId(null) } }}

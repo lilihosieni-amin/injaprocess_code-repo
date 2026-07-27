@@ -9,10 +9,14 @@ export type DrawerProps = {
   node: ProcNode
   editing: boolean
   conflicts: { pending: Pending; index: number }[]
-  /** Show the ICOM block in the read-only activity view. Defaults to true — the
-   *  editing app maintains ICOM, so it stays. The exported document opts out:
-   *  its readers want the activity and who does it, not the data contract. */
-  showIcom?: boolean
+  /** Show the internal metadata in the read-only activity view: the ICOM block
+   *  and the `source:` provenance footer. Defaults to true — the editing app
+   *  maintains both. The exported document opts out: its readers want the
+   *  activity and who performs it, not the data contract, and provenance names
+   *  meetings and runs that mean nothing outside the system. The export's
+   *  payload no longer carries either value, so rendering them would print
+   *  empty labels. */
+  showInternals?: boolean
   /** Only `department` and `id` are read — see `ReadableProcess`: an export's
    *  process is not a whole `Process`, and this prop must not claim it is. */
   process: ReadableProcess
@@ -186,7 +190,7 @@ export function DetailDrawer(props: DrawerProps) {
             </div>
             <div className="text-[11px] font-bold text-muted mt-[18px] mb-1.5">توضیحات</div>
             <div className="text-[12.5px] text-[#5a5175] leading-relaxed">{a.description}</div>
-            {(props.showIcom ?? true) && (
+            {(props.showInternals ?? true) && (
               <>
                 <div className="text-[11px] font-bold text-muted mt-[18px] mb-2">اطلاعات ICOM</div>
                 <div className="flex flex-col gap-2.5">
@@ -231,7 +235,9 @@ export function DetailDrawer(props: DrawerProps) {
                 ))}
               </div>
             )}
-            <div className="text-[10.5px] text-[#c3bad6] mt-5 border-t border-dashed border-[#EDE5F5] pt-3" dir="ltr">source: {a.source.created_by}</div>
+            {(props.showInternals ?? true) && (
+              <div className="text-[10.5px] text-[#c3bad6] mt-5 border-t border-dashed border-[#EDE5F5] pt-3" dir="ltr">source: {a.source.created_by}</div>
+            )}
           </>
         ) : (
           <div className="font-extrabold text-[16px] text-ink">{'label' in node ? (node as { label: string }).label : (node as { id: string }).id}</div>

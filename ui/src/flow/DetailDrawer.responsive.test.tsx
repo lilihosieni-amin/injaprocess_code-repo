@@ -27,7 +27,7 @@ const node: ActivityNode = {
 
 function renderDrawer() {
   render(
-    <DetailDrawer node={node} editing={false} conflicts={[]} showIcom={false}
+    <DetailDrawer node={node} editing={false} conflicts={[]} showInternals={false}
       process={{ nodes: [] } as never} onClose={vi.fn()} onEdit={vi.fn()}
       onAccept={vi.fn()} onReject={vi.fn()} onOpenSub={vi.fn()} onPatch={vi.fn()}
       onLinkSub={vi.fn()} onSetJunction={vi.fn()} onCreateSub={vi.fn()} onDeleteNode={vi.fn()} />,
