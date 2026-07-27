@@ -69,16 +69,51 @@ describe('the @page box keeps Chrome’s header and footer off the paper', () =>
     expect(m.right).toBe(13)
     expect(m.top).toBeLessThanOrEqual(14)
     expect(m.bottom).toBeLessThanOrEqual(14)
-    // Letter landscape is 1056 CSS px wide; the usable width must still exceed the
-    // budget, or a diagram drawn at PRINT.W would run off the sheet.
     const PX_PER_MM = 96 / 25.4
-    expect(1056 - (m.left + m.right) * PX_PER_MM).toBeGreaterThan(PRINT.W)
-    // A4 landscape is 794 CSS px tall — the smaller of the two page heights.
-    expect(794 - (m.top + m.bottom) * PX_PER_MM).toBeGreaterThan(PRINT.H)
+    // A4 portrait is 793.7 CSS px wide — the narrower of the two sheets, so the
+    // one the width budget must satisfy. A diagram drawn at PRINT.W would
+    // otherwise run off the edge of an A4 print.
+    expect(210 * PX_PER_MM - (m.left + m.right) * PX_PER_MM).toBeGreaterThan(PRINT.W)
+    // Letter portrait is 1056 CSS px tall — the shorter of the two page heights.
+    expect(1056 - (m.top + m.bottom) * PX_PER_MM).toBeGreaterThan(PRINT.H)
+    // and the budget is kept a few per cent under the true usable box, not at it
+    expect(PRINT.W).toBeLessThan(210 * PX_PER_MM - (m.left + m.right) * PX_PER_MM - 10)
+    expect(PRINT.H).toBeLessThan(1056 - (m.top + m.bottom) * PX_PER_MM - 10)
   })
 
-  it('keeps the landscape page size', () => {
-    expect(PRINT_CSS).toMatch(/@page\s*\{[^}]*size:\s*landscape/)
+  it('keeps the portrait page size', () => {
+    expect(PRINT_CSS).toMatch(/@page\s*\{[^}]*size:\s*portrait/)
+  })
+})
+
+/** A portrait page box is ~695px wide, and the mockup's own ported breakpoints
+ *  are *bare* width queries — no medium — so they are evaluated against the page
+ *  box as well as the window. Under the landscape box (~958px) none of them could
+ *  ever match on paper; under portrait, `(max-width:760px)` does.
+ *
+ *  Only one rule inside it reaches an element this document renders: `.g2`, the
+ *  sub-unit card grid. The print block re-declares it through `.grid.g2` — one
+ *  class more specific — so the cards stay two-up on paper, which is what the
+ *  ported print rules intend. This is the check that the orientation change did
+ *  not quietly hand that decision to a phone breakpoint. */
+describe('the ported phone breakpoints do not re-typeset the portrait page', () => {
+  const DOC_CSS = readFileSync(join(HERE, '../flowchart/document.module.css'), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+
+  it('collapses .g2 only through a selector the print block outranks', () => {
+    // the ported breakpoint really is bare — that is why this test has to exist
+    expect(DOC_CSS).toMatch(/@media\s*\(\s*max-width:\s*760px\s*\)\s*\{[^}]*\.g2[^}]*grid-template-columns:\s*1fr\b/)
+    // and the print block wins it back at (0,2,0) against the breakpoint's (0,1,0)
+    const printBlock = DOC_CSS.slice(DOC_CSS.indexOf('@media print'))
+    expect(printBlock).toMatch(/\.grid\.g2\s*,\s*\.grid\.g3\s*\{\s*grid-template-columns:\s*1fr 1fr/)
+  })
+
+  it('has no element for the other rule the breakpoint carries', () => {
+    // `.a0*` is transcribed but never rendered (`document.module.css` header, and
+    // `Document.tsx` uses only `.grid.g2`). If an A-0 diagram is ever added, the
+    // breakpoint's `.a0-*{grid-column:1}` would fire on paper and flatten it.
+    const doc = readFileSync(join(HERE, '../flowchart/Document.tsx'), 'utf8')
+    expect(doc).not.toMatch(/\ba0\b/)
   })
 })
 

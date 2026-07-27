@@ -52,6 +52,17 @@ describe('bandSplit', () => {
     expect(bandSplit(0, 600, [], () => 200)).toBeNull()
   })
 
+  // A diagram's coordinates come from React Flow's `positionAbsolute` and are not
+  // guaranteed positive — the live cashier-030 starts at y ≈ -36. The old "none
+  // found" sentinel was -1, which compares as a *legal* cut for any band starting
+  // below -21, closing the band at y = -1: a boundary picked without reference to
+  // any gap, and so free to fall straight through a node box.
+  it('reports failure, not a cut at y = -1, when the range starts below zero', () => {
+    expect(bandSplit(-900, -300, [], () => 200)).toBeNull()
+    // and a real cut in negative space is still found and still used
+    expect(bandSplit(-900, -300, [[-700, -650]], () => 400)).toEqual([[-900, -650], [-650, -300]])
+  })
+
   it('returns one degenerate band for a zero-height range', () => {
     expect(bandSplit(100, 100, [], () => 500)).toEqual([[100, 100]])
   })
@@ -97,15 +108,15 @@ describe('planBands', () => {
   // --- the MINSC floor: a height policy that must never beat the width constraint
 
   it('stops shrinking at the MINSC floor and bands instead', () => {
-    // one unbreakable run of 2000px (1300 → 3300). PRINT.H / 2000 = 0.31 is
+    // one unbreakable run of 3000px (1400 → 4400). PRINT.H / 3000 = 0.32 is
     // below the floor, and the width scale is 1, so the floor alone decides.
-    const cuts: Span[] = [[1300, 1500], [2900, 3300]]
-    expect(maxChunk(0, 4000, cuts)).toBe(2000)
-    expect(PRINT.H / 2000).toBeLessThan(PRINT.MINSC)
+    const cuts: Span[] = [[1400, 1500], [4300, 4400]]
+    expect(maxChunk(0, 6000, cuts)).toBe(3000)
+    expect(PRINT.H / 3000).toBeLessThan(PRINT.MINSC)
 
-    const plan = planBands(0, 4000, 600, cuts, 130)
+    const plan = planBands(0, 6000, 600, cuts, 130)
     expect(plan.scale).toBe(PRINT.MINSC)
-    expect(plan.scale).toBeGreaterThan(PRINT.H / 2000) // the floor is what bit
+    expect(plan.scale).toBeGreaterThan(PRINT.H / 3000) // the floor is what bit
     expect(plan.bands.length).toBeGreaterThan(1)
     // and at this floor the first run still fits under the heading, so the
     // diagram shares its heading's page — a higher floor would forfeit that
@@ -113,7 +124,7 @@ describe('planBands', () => {
   })
 
   it('never draws wider than the page, even when the width scale is under MINSC', () => {
-    // 4000px wide → scW = 0.2325, below MINSC. The height floor must not raise
+    // 4000px wide → scW = 0.169, below MINSC. The height floor must not raise
     // the scale back above it, or the drawing runs off the page edge.
     const cuts: Span[] = [[1300, 1500], [2000, 2200]]
     const plan = planBands(0, 3000, 4000, cuts, 130)
@@ -123,7 +134,7 @@ describe('planBands', () => {
 
   it('keeps the drawn width inside the page budget at every width', () => {
     const cuts: Span[] = [[1300, 1500], [2000, 2200]]
-    for (const width of [1, 200, 600, 930, 1290, 2735, 3000, 4000, 8000]) {
+    for (const width of [1, 200, 600, 675, 930, 1290, 2735, 3000, 4000, 8000]) {
       const plan = planBands(0, 3000, width, cuts, 130)
       expect(plan.scale * width).toBeLessThanOrEqual(PRINT.W + 1e-9)
     }
@@ -132,18 +143,18 @@ describe('planBands', () => {
   // --- the one-page threshold, pinned either side
 
   it('bands when one page costs just more than the threshold allows', () => {
-    // firstH 490 / H 620 = 0.7903 of scW = 1 — just under the 0.8 tipping point
-    const plan = planBands(0, 620, 600, [[300, 340]], 130)
+    // firstH 835 / H 1050 = 0.7952 of scW = 1 — just under the 0.8 tipping point
+    const plan = planBands(0, 1050, 600, [[500, 540]], 130)
     expect(plan.bands.length).toBeGreaterThan(1)
     expect(plan.ownPage).toBe(false)
   })
 
   it('keeps one page when it costs just less than the threshold allows', () => {
-    // firstH 490 / H 605 = 0.8099 of scW = 1 — just over the 0.8 tipping point
-    const plan = planBands(0, 605, 600, [[300, 340]], 130)
-    expect(plan.bands).toEqual([[0, 605]])
+    // firstH 835 / H 1030 = 0.8107 of scW = 1 — just over the 0.8 tipping point
+    const plan = planBands(0, 1030, 600, [[500, 540]], 130)
+    expect(plan.bands).toEqual([[0, 1030]])
     expect(plan.ownPage).toBe(false)
-    expect(plan.scale).toBeCloseTo(490 / 605, 10)
+    expect(plan.scale).toBeCloseTo(835 / 1030, 10)
   })
 
   // --- degenerate inputs
@@ -153,7 +164,7 @@ describe('planBands', () => {
     const plan = planBands(0, 4000, 600, [], 130)
     expect(plan.bands).toEqual([[0, 4000]])
     expect(plan.ownPage).toBe(false)
-    expect(plan.scale).toBeCloseTo(490 / 4000, 10)
+    expect(plan.scale).toBeCloseTo(835 / 4000, 10)
   })
 
   it('handles a zero-height diagram', () => {

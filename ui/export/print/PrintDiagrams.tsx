@@ -44,11 +44,28 @@ const nodeTypes = { activity: ActivityNode, start: StartNode, end: EndNode, junc
  *  `.pf-wrap`'s own printed `margin-top:14px` is deliberately *not* included:
  *  `PRINT.HEADGAP` already stands for it plus a little slack.
  *
- *  Assumes the title fits on one line, as every stored process name does at
- *  ~950px of print width. A name that wrapped would make the real heading one
- *  line taller; the band would then not fit beside it and `break-inside:avoid`
- *  would move it to the next page — the same graceful outcome as before, never
- *  a halved node. */
+ *  Assumes the title fits on one line, and under portrait it often does not.
+ *  Re-measured in Chrome 150 at the 695px portrait page box (it used to be
+ *  ~958px), across the live dining and cashier documents: 20 of 32 titles lay
+ *  out on one line, 11 on two, and cashier-031 on three. So this constant is a
+ *  *lower bound* on the real heading, deliberately.
+ *
+ *  What that costs is bounded, and it is bounded by `break-inside:avoid` rather
+ *  than by the arithmetic. The room the page really leaves beside the heading is
+ *  996px (the measured usable height) minus the heading itself, so the first
+ *  band fits whenever `PRINT.H - HEAD_H` (854) is no more than that:
+ *
+ *    1 line  heading 108.6 → 887 of room, 854 asked for   fits
+ *    2 lines heading 140.1 → 856 of room, 854 asked for   fits, barely
+ *    3 lines heading 171.6 → 824 of room, 854 asked for   does not fit
+ *
+ *  In the third case Chrome moves the whole band to the next page — an `<svg>`
+ *  with `break-inside:avoid` and 854px of height on a 996px page is never
+ *  fragmented — so the reader loses a page to a nearly empty heading and never
+ *  sees a halved node. Measured on the real documents: exactly one process
+ *  (cashier-031) is in that case today. Raising `HEAD_H` to cover three lines
+ *  would take those 63px off the first band of all 32 processes to save one page
+ *  on one of them, which is the worse trade. */
 export const PRINT_HEAD_BLOCK = 18 * 1.75 + 8 + (11.5 * 1.75 + 2 * 3) + Math.max(6, 8) + 12 * 1.75
 
 /** What `planBands` is told the heading costs it. */

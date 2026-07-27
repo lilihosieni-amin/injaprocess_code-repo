@@ -1,14 +1,32 @@
 export type Span = [number, number]
 
-/** Page budget in CSS px for a landscape page, taken as the smaller of A4 and
- *  Letter so one build prints correctly on both. A4 landscape is 210mm ≈ 794px
- *  tall; subtract the 18mm top+bottom .doc padding (136px) and the 4mm .sheet
- *  padding (30px) for ≈627px of usable height. Width: Letter landscape
- *  279.4mm ≈ 1056px minus 14mm side padding (106px) ≈ 950px. Both are kept a
- *  little under the true figure so a band never lands a hair over the page. */
+/** Page budget in CSS px for a **portrait** page, taken as the smaller of A4 and
+ *  Letter in each direction so one build prints correctly on both.
+ *
+ *  The usable box is the `@page` margin box and nothing else: `print.css`
+ *  declares `margin: 8mm 13mm`, and `document.module.css` puts both `.doc` and
+ *  `.sheet` at `padding:0` under `@media print`, so no container takes a further
+ *  bite. At 96dpi 1mm = 96/25.4 ≈ 3.7795px, so the side margins cost 2×13mm =
+ *  98.3px and the vertical ones 2×8mm = 60.5px.
+ *
+ *    width   A4 portrait is the narrower sheet — 210mm = 793.7px,
+ *            less 98.3px  ≈ 695.4px usable   (measured in Chrome 150: 697px)
+ *    height  Letter portrait is the shorter sheet — 11in = 1056px,
+ *            less 60.5px  ≈ 995.5px usable   (measured in Chrome 150: 996px —
+ *            a 996px block prints on one page, 997px spills onto a second)
+ *
+ *  Both are then kept ~3% under the true figure so a band never lands a hair
+ *  over the page: 675 of 695, 965 of 995. `page-box.test.ts` re-derives both
+ *  from the margins the stylesheet actually declares.
+ *
+ *  Portrait is what the reader asked for. It costs width — 675px against the
+ *  930px a landscape sheet gave — and the width constraint always wins over
+ *  `MINSC` (content off the page edge is worse than a small diagram), so a wide
+ *  diagram is now drawn smaller rather than overflowing. It buys height: 965px
+ *  against 620px, which is what keeps the page count from rising with it. */
 export const PRINT = {
-  W: 930,
-  H: 620,
+  W: 675,
+  H: 965,
   PAD: 20,       // breathing room around the diagram
   HEADGAP: 16,   // .pf-wrap margin-top in print, plus a little slack
   GAP: 6,        // clearance kept above a cut
@@ -59,7 +77,18 @@ export function bandSplit(top: number, bottom: number, cuts: Span[], budgetFor: 
     if (guard++ >= 200) return null
     const limit = start + budgetFor(bands.length)
     if (limit >= bottom - 0.5) { bands.push([start, bottom]); return bands }
-    let cut = -1
+    // `-Infinity`, not `-1`: this is the "no legal cut found" sentinel, and a
+    // diagram's coordinates are not guaranteed positive — `emit()` takes them
+    // from React Flow's `positionAbsolute`, and the live cashier-030 already
+    // starts at y ≈ -36. With `-1` the guard below reads `-1 > start + 20`,
+    // which is *true* for any band starting under -21, so the sentinel was
+    // accepted as a cut and the band was closed at y = -1: a boundary chosen
+    // without reference to any gap, and therefore free to fall through a node.
+    // No real diagram has reached it (every process in dining and cashier finds
+    // a legal cut first), but nothing stopped it. A sentinel that cannot be
+    // mistaken for a coordinate closes the hole; on every input where a cut does
+    // exist, or where the band starts at or above -21, the result is unchanged.
+    let cut = -Infinity
     for (const [a, b] of cuts) {
       if (a > limit) break
       if (b > start + 20) cut = Math.max(cut, Math.min(b, limit))

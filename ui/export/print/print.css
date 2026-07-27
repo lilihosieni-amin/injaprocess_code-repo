@@ -79,8 +79,20 @@
      flow — the roles and KPI sheets run to three pages each and their interior
      pages would print hard against the paper edge. 8mm keeps every page off it.
      Narrowing the vertical margin only gives a band *more* room than `PRINT.H`
-     assumes, so the frozen budget stays valid. `page-box.test.ts` pins all of it. */
-  @page { margin: 8mm 13mm; size: landscape; }
+     assumes, so the frozen budget stays valid. `page-box.test.ts` pins all of it.
+
+     `size` is `portrait`, matching the steps guide — the two documents print from
+     the same department onto the same paper, and a reader who prints one after
+     the other should not have to turn the stack. The margins are untouched by
+     that change; only the sheet's proportions are, and `bands.ts` re-derives
+     `PRINT.W`/`PRINT.H` from this same box. One consequence is worth naming: the
+     page box is now ~695px wide rather than ~958px, so the mockup's own ported
+     `@media (max-width:760px)` — a bare width query, therefore evaluated against
+     the *page box* too — matches on paper for the first time. The only rule it
+     carries that the document renders is `.g2{grid-template-columns:1fr}`, and
+     the print block's `.grid.g2` (0,2,0) still outranks it, so the sub-unit cards
+     stay two-up. `page-box.test.ts` pins that. */
+  @page { margin: 8mm 13mm; size: portrait; }
   body { background: #fff; }
   * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
 
