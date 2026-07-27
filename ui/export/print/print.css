@@ -125,3 +125,39 @@
   .pf-band [data-subprocess-cta] { display: none; }
   .pf-band [data-subprocess-id] { display: flex; }
 }
+
+/* ─── added after the port ────────────────────────────────────────────────
+ * Everything above is the mockup's, rule for rule (with the two departures its
+ * header records); this block is not in the mockup and is kept separate so that
+ * property stays checkable by eye. No ported declaration is edited — `.pf-clip`
+ * is new, and `.pf-clip > .pf-measure` (0,2,0) simply outranks the ported
+ * `.pf-measure` (0,1,0) on the one declaration it has to win.
+ *
+ * The measuring host is 4000px wide and was parked at `left:-99999px`. The
+ * document is RTL, so that is 100 000px of *scrollable* overflow to the inline
+ * end: while any diagram was being measured `document.documentElement.scrollWidth`
+ * read 100389 on a 390px phone, and Chrome sized the layout viewport to fit the
+ * content it saw (measured: `innerWidth` 1560, then a sticky 654). The reader
+ * opened the export scrolled off its own cover, at ~60% scale, with the flow
+ * viewer's close button past the right edge of the screen.
+ *
+ * A 0×0 `overflow:hidden` clipper fixes it at the source. It is `position:
+ * absolute`, so it is the containing block for the host inside it; the host keeps
+ * its full 4000×900 layout — every node box is measured exactly as before, and
+ * `bands.ts` sees the same geometry — but its overflow is clipped at the clipper
+ * and never reaches the document's scrollable area. `left:0` on the host is then
+ * only tidiness: nothing escapes the clipper either way.
+ *
+ * Not `@media screen`: the host must be out of the document's way in *both*
+ * media, and in print `.pf-measure` is `display:none` anyway. */
+.pf-clip {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+  pointer-events: none;
+}
+.pf-clip > .pf-measure { left: 0; }

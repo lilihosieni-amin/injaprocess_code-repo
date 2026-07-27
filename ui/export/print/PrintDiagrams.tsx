@@ -180,20 +180,30 @@ export function PrintDiagrams({ payload }: { payload: ExportPayload }) {
   // stays false forever and nothing is ever captured. An uncontrolled flow
   // applies its own measurements, which is what a one-shot measuring host wants.
   // The keyed provider gives each process a fresh store, so these are read once.
+  // `.pf-clip` is a 0×0 `overflow:hidden` box around the host. The host is 4000px
+  // wide and used to sit at `left:-99999px`; in an RTL document that is 100 000px
+  // of *scrollable* overflow, so while a diagram was being measured the document
+  // reported `scrollWidth: 100389` and Chrome sized the phone's layout viewport to
+  // fit it — the reader landed on the flowchart export scrolled away from its own
+  // cover. A clipper establishes the containing block for the host and swallows
+  // its overflow, so the host lays out at its full 4000×900 (the boxes it measures
+  // are unchanged) while the document stays exactly as wide as the viewport.
   return (
-    <div className="pf-measure" aria-hidden ref={host} style={{ width: 4000, height: 900 }}>
-      <ReactFlowProvider key={proc.id}>
-        <ReactFlow
-          defaultNodes={nodes}
-          defaultEdges={toFlowEdges(proc)}
-          nodeTypes={nodeTypes}
-          nodesDraggable={false} nodesConnectable={false} elementsSelectable={false}
-          panOnDrag={false} zoomOnScroll={false} preventScrolling={false}
-          proOptions={{ hideAttribution: true }}
-        >
-          <Capture proc={proc} host={host} onReady={emit} />
-        </ReactFlow>
-      </ReactFlowProvider>
+    <div className="pf-clip" aria-hidden>
+      <div className="pf-measure" ref={host} style={{ width: 4000, height: 900 }}>
+        <ReactFlowProvider key={proc.id}>
+          <ReactFlow
+            defaultNodes={nodes}
+            defaultEdges={toFlowEdges(proc)}
+            nodeTypes={nodeTypes}
+            nodesDraggable={false} nodesConnectable={false} elementsSelectable={false}
+            panOnDrag={false} zoomOnScroll={false} preventScrolling={false}
+            proOptions={{ hideAttribution: true }}
+          >
+            <Capture proc={proc} host={host} onReady={emit} />
+          </ReactFlow>
+        </ReactFlowProvider>
+      </div>
     </div>
   )
 }

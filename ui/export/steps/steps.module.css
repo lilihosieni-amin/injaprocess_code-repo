@@ -103,3 +103,60 @@
   .page-title{font-size:22px}
   .st .label{font-size:17px}
 }
+
+/* ─── added after the port: the phone ─────────────────────────────────────
+ * Everything above is `dining-steps.html:24-104` + `:147-153`, declaration for
+ * declaration, and stays that way — the mockup's own `@media(max-width:560px)`
+ * block is not edited here either. This block is new.
+ *
+ * `@media screen`, and that is load-bearing rather than tidy: this document's
+ * PDF was verified row by row (45 pages, no step row split across a break, no
+ * browser chrome, `@page{margin:8mm 13mm}`), and a bare `@media (max-width: …)`
+ * would be evaluated against the *page box* too. `responsive.test.ts` pins it.
+ *
+ * The guide was already the phone-first of the two exports — 17px base type,
+ * one column, wide cards. What it did not have was room: at 360px the process
+ * list gave a title 115px of column and wrapped «آماده‌سازی و شروع شیفت سالن…»
+ * over seven lines, and the one tappable badge inside a step («برگرد به مرحلهٔ
+ * ۱۵») was 31px tall. */
+@media screen and (max-width:560px){
+  /* top bar: 44px targets, and «فهرست کارها» on one line */
+  .topbar{padding:10px 14px;gap:9px}
+  .topbar .tt{font-size:15px;min-width:0}
+  .tbtn{font-size:13.5px;padding:10px 13px;min-height:40px;white-space:nowrap}
+
+  /* process list: the step count moves under the title instead of competing
+     with it for a 360px row, and the chevron keeps its place at the end */
+  .home-head{padding:12px 0 20px}
+  .pbtn{gap:12px;padding:15px 14px;flex-wrap:wrap}
+  .pbtn .pn{width:40px;height:40px;border-radius:12px}
+  .pbtn .pt{font-size:18px}
+  /* `padding`, not `margin`: `*{box-sizing:border-box}` keeps padding inside the
+     100% basis, where a 52px margin would push the row 52px past the sheet. */
+  .pbtn .pc{order:3;flex:1 0 100%;padding-inline-start:52px;font-size:13.5px}
+  .ptag{font-size:13px}
+
+  /* step page */
+  .backbtn{font-size:14px;padding:11px 14px;min-height:40px;margin-bottom:14px}
+  .crumbs{font-size:13.5px;margin-bottom:10px}
+  .page-sum{padding:15px 16px;font-size:15px}
+  .howto{padding:11px 13px;font-size:14px;gap:9px}
+
+  .step-row{padding:14px 14px;gap:12px}
+  .sn{width:40px;height:40px;font-size:17px}
+  .step-body{padding:0 14px 14px 14px;margin:0 14px 0;padding-top:13px}
+  .fld .v{font-size:15px}
+  .actor{font-size:15px}
+  /* the only badge a reader taps needs a target, not a label */
+  .bdg{font-size:13px}
+  .bdg.back{padding:9px 12px;min-height:40px}
+
+  /* branch groups: three levels of nesting each took 16-18px off both sides */
+  .grp{padding:12px;border-radius:15px}
+  .grp-h{font-size:16px;gap:9px;margin-bottom:11px}
+  .grp-h .gi{width:32px;height:32px}
+  .branch{padding:11px;border-radius:12px}
+  .branch-h{font-size:15px;gap:8px;margin-bottom:10px}
+  .nothing{font-size:15px}
+  .endmark{font-size:16px;padding:14px 15px;gap:11px}
+}

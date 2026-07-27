@@ -233,3 +233,101 @@ ul.kpis li::before{content:'';position:absolute;inset-inline-start:12px;top:13px
   .view.print-only .proc-num-strip{margin-bottom:6px!important}
   .grid.g2,.grid.g3{grid-template-columns:1fr 1fr}
 }
+
+/* ─── added after the port: the phone ─────────────────────────────────────
+ * Everything above is `dining-export-v2.html:27-194` + `:290-324`, declaration
+ * for declaration, and stays that way — nothing in it is edited here. This
+ * block is new. The mockup was drawn for a desk; the exported document is
+ * opened from a link, on a staff member's own phone, more often than not.
+ *
+ * Every rule below is inside `@media screen`, and that is load-bearing rather
+ * than tidy: the two PDFs were verified page by page (page counts, no node box
+ * or step row straddling a break, no browser chrome, exact `@page` margins), and
+ * a bare `@media (max-width: …)` would apply to the *paper* too — Chrome
+ * evaluates width queries against the page box, and a narrower page box or a
+ * future `@page` size would silently re-typeset the document that was signed
+ * off. `responsive.test.ts` pins every rule here to `screen`.
+ *
+ * Two breakpoints, both of which the mockup already uses for the grids:
+ *   760px — the tablet fold, where the mockup already collapses `.g2`/`.g3`
+ *           and the A-0 diagram to one column;
+ *   560px — the phone, where the sheet has to give its padding back to the text.
+ */
+
+/* A contents row is `.toc-n` (fixed) + `.toc-t` + `.toc-lead`. The ported TOC
+ * block sets `.toc .toc-t{flex:none}`, which re-declares — and wins over — the
+ * `.toc .toc-t{flex:1}` above it at equal specificity, so the title takes its
+ * full max-content width and simply hangs off the sheet. Measured on the real
+ * dining document at 390px: «سرویس‌دهی به مشتری در سالن…» laid out 536px wide in
+ * a 350px sheet, `document.documentElement.scrollWidth` came back 654 against a
+ * 390px viewport, and because the document is RTL that overflow is at the *scroll
+ * origin* — Chrome opened the export 264px away from its own cover, on a blank
+ * lavender field, at ~60% scale. Letting the title wrap is the whole fix.
+ * `.toc-lead` is `display:none` here, so nothing else wants the row's slack. */
+@media screen and (max-width:760px){
+  .toc .toc-t{flex:1;min-width:0}
+}
+
+@media screen and (max-width:560px){
+  /* top bar — the two controls stay reachable and become 40px tall targets */
+  .topbar{gap:8px;padding:8px 12px}
+  .topbar .tt{font-size:13.5px;min-width:0}
+  .topbar .sp{flex:1 1 0}
+  .tbtn{font-size:13px;padding:10px 13px;min-height:40px;white-space:nowrap}
+
+  /* the sheet gives its 58px of padding back to the text */
+  .doc{padding:14px 10px 56px}
+  .sheet{border-radius:14px;padding:24px 16px;margin-bottom:16px}
+  .sheet.pad-sm{padding:20px 14px}
+  .backbar{margin-bottom:10px}
+  .backbtn{font-size:14px;padding:11px 15px;min-height:40px;white-space:nowrap}
+
+  /* cover — 46px of headline is about 5 characters per line at this width */
+  .cover-sheet{min-height:0}
+  .cover-inner{padding:38px 18px}
+  .cover-sheet h1{font-size:26px;line-height:1.45}
+  .cover-sheet .sub{font-size:14.5px;margin-top:12px;line-height:1.85}
+  .cover-kicker{gap:7px;margin-bottom:14px}
+  .cover-kicker span{font-size:12px;letter-spacing:.06em}
+  .cover-kicker .bar{width:18px}
+  .cover-foot{gap:16px;margin-top:26px;padding-top:20px}
+  .cover-foot .cf{font-size:13px}
+  .cover-foot .cf b{font-size:15px}
+
+  /* headings and prose */
+  .sheet-head{gap:10px;margin-bottom:6px}
+  .sheet-head h2{font-size:21px}
+  .sheet-head .hn{width:32px;height:32px}
+  .sheet-lead{font-size:13px;margin:0 0 18px}
+  .rule{margin:16px 0}
+  .block-label{font-size:13px}
+  /* justified Persian in a ~300px column opens rivers of white between words */
+  .prose{font-size:14px;line-height:2;text-align:start}
+
+  /* contents */
+  .toc li{gap:8px;padding:12px 2px}
+  .toc .toc-n{width:24px;font-size:13px}
+  .toc .toc-t{font-size:14.5px}
+  .toc-s{font-size:13px}
+  .toc-group{font-size:13px;margin:18px 0 4px}
+
+  /* symbol legend */
+  .legend-box{padding:16px 14px}
+  .legend-row{gap:14px;padding:12px 0}
+  .lg-sym{width:38px;height:38px}
+  .lg-txt .n{font-size:14px}
+  .lg-txt .d{font-size:13px}
+
+  /* unit cards, role cards, KPI cards */
+  .u-name{font-size:14.5px}
+  .u-desc{font-size:13px;line-height:1.85}
+  .role-head{padding:13px 15px;gap:10px;flex-wrap:wrap}
+  .role-name{font-size:15px}
+  .role-tag{font-size:13px;margin-inline-start:0}
+  .role-body{padding:14px 15px}
+  ul.duties li{font-size:13.5px;padding-inline-start:19px}
+  .kpi-role{padding:15px 14px}
+  .kpi-role .kr-name{font-size:14.5px}
+  ul.kpis li{font-size:13.5px;padding:10px 12px;padding-inline-start:28px}
+  .kpi-none{font-size:13px}
+}
