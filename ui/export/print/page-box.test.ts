@@ -5,11 +5,15 @@ import { fileURLToPath } from 'node:url'
 import { PRINT } from './bands'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
-const PRINT_CSS = readFileSync(join(HERE, 'print.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
+const read = (p: string) => readFileSync(join(HERE, p), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
+/** the flowchart document */
+const PRINT_CSS = read('print.css')
+/** the step-by-step staff guide — a separate document, its own portrait page */
+const STEPS_CSS = read('../steps/print.module.css')
 
 /** The `@page` box, as four millimetre figures. */
-function pageMargins(): { top: number; right: number; bottom: number; left: number } {
-  const m = PRINT_CSS.match(/@page\s*\{([^}]*)\}/)
+function pageMargins(css: string = PRINT_CSS): { top: number; right: number; bottom: number; left: number } {
+  const m = css.match(/@page\s*\{([^}]*)\}/)
   expect(m, 'print.css declares an @page box').not.toBeNull()
   const decl = m![1].split(';').map((d) => d.split(':').map((s) => s.trim()))
     .find(([p]) => p.toLowerCase() === 'margin')
@@ -75,5 +79,39 @@ describe('the @page box keeps Chrome’s header and footer off the paper', () =>
 
   it('keeps the landscape page size', () => {
     expect(PRINT_CSS).toMatch(/@page\s*\{[^}]*size:\s*landscape/)
+  })
+})
+
+// The steps guide is a second, independent document: portrait, and flowing text
+// rather than planned bands, so it has no page budget to invalidate — a narrower
+// vertical margin only gives its flow more usable height. The suppression ceiling
+// is the same number, and was re-measured on the portrait document rather than
+// carried over: at 8.8mm neither header nor footer prints, at 8.9mm the header
+// returns and at 9mm both do, on all 46 pages of the real dining guide.
+describe('the steps guide’s @page box keeps the chrome off the paper too', () => {
+  it('leaves the top and bottom margin too small for the chrome to fit', () => {
+    const m = pageMargins(STEPS_CSS)
+    expect(m.top).toBeLessThanOrEqual(HF_SUPPRESSION_CEILING_MM)
+    expect(m.bottom).toBeLessThanOrEqual(HF_SUPPRESSION_CEILING_MM)
+  })
+
+  // Its `.printdoc` is `padding:0` in print and the guide runs to dozens of pages,
+  // so `@page{margin:0}` would print every interior page against the paper edge.
+  it('still keeps every page off the paper edge, interior pages included', () => {
+    const m = pageMargins(STEPS_CSS)
+    expect(m.top).toBeGreaterThan(0)
+    expect(m.bottom).toBeGreaterThan(0)
+    expect(m.left).toBeGreaterThan(0)
+    expect(m.right).toBeGreaterThan(0)
+  })
+
+  // Both exported documents print from the same department on the same paper; a
+  // reader who prints one after the other must not get two different page boxes.
+  it('carries the flowchart document’s margins exactly', () => {
+    expect(pageMargins(STEPS_CSS)).toEqual(pageMargins(PRINT_CSS))
+  })
+
+  it('keeps the portrait page size', () => {
+    expect(STEPS_CSS).toMatch(/@page\s*\{[^}]*size:\s*portrait/)
   })
 })

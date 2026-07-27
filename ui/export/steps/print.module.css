@@ -19,11 +19,25 @@
  *     global `app-screen` class and `steps-base.css` hides that instead. The
  *     top bar lives inside that wrapper, so it goes with it.
  * Everything else is the mockup's block, declaration for declaration.
+ *
+ * One declaration deliberately differs from the mockup and must stay differing:
+ * the `@page` margin is `8mm 13mm` where `dining-steps.html:107` says
+ * `14mm 13mm`. Chrome draws the date/title/URL/page-number chrome itself and no
+ * page can turn it off from script or CSS — but it does not draw what does not
+ * fit. Measured on this very document in Chrome 150 (`Page.printToPDF` with
+ * `displayHeaderFooter:true`, the flag the print dialog's "Headers and footers"
+ * checkbox sets): a vertical margin of 8.8mm or less prints neither header nor
+ * footer, 8.9mm prints the header, and 9mm prints both. The flowchart document's
+ * `print.css` carries the same 8mm for the same reason, and the sides stay at
+ * 13mm to match it. `page-box.test.ts` pins both. Not `margin:0`, which suppresses
+ * the chrome just as well: `.printdoc` is `padding:0` in print and padding spaces
+ * only the first and the last page of a flow, so every interior page — 44 of the
+ * 46 here — would print hard against the paper edge.
  */
 
 .printdoc{display:none}
 @media print{
-  @page{margin:14mm 13mm;size:portrait}
+  @page{margin:8mm 13mm;size:portrait}
   html,body{background:#fff;font-size:12.5pt}
   .printdoc{display:block;padding:0}
   *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
