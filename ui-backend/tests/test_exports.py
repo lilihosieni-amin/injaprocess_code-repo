@@ -351,3 +351,40 @@ def test_write_export_failure_leaves_no_tmp_and_spares_the_existing_file(tmp_pat
 def test_build_payload_raises_for_a_department_without_an_overview(data_root):
     with pytest.raises(exports.ExportUnavailable):
         exports.build_payload(data_root, "dining", "2026-07-26T09:00:00Z")
+
+
+def test_export_pdf_path_sits_beside_the_html(tmp_path):
+    """Same folder, same stem, `.pdf` — the document's own print button builds
+    its href by swapping the extension, so the two names cannot drift apart."""
+    d = tmp_path / "exports"
+    html = exports.write_export(d, "dining", "flowchart", "0123456789abcdef", "<html>x</html>")
+    pdf = exports.export_pdf_path(d, "dining", "flowchart", "0123456789abcdef")
+    assert pdf == html.with_suffix(".pdf")
+    assert pdf.parent == html.parent
+    assert pdf.name == "flowchart-0123456789abcdef.pdf"
+
+
+def test_write_export_prunes_stale_pdf_siblings(tmp_path):
+    """A rotated signing key orphans a `.pdf` exactly as it orphans a `.html`.
+
+    Without this the old PDF stays in the publicly served folder forever, still
+    reachable by anyone holding the revoked link — the very thing the `.html`
+    prune exists to prevent.
+    """
+    d = tmp_path / "exports"
+    folder = d / "dining"
+    folder.mkdir(parents=True)
+    (folder / "flowchart-deadbeefdeadbeef.html").write_text("old", encoding="utf-8")
+    (folder / "flowchart-deadbeefdeadbeef.pdf").write_bytes(b"%PDF-old")
+    (folder / "steps-cafecafecafecafe.pdf").write_bytes(b"%PDF-other-kind")
+    current_pdf = folder / "flowchart-0123456789abcdef.pdf"
+    current_pdf.write_bytes(b"%PDF-current-token")
+
+    exports.write_export(d, "dining", "flowchart", "0123456789abcdef", "<html>new</html>")
+
+    assert not (folder / "flowchart-deadbeefdeadbeef.pdf").exists()   # pruned
+    assert (folder / "steps-cafecafecafecafe.pdf").exists()           # other kind untouched
+    # The current token's PDF is the render's business, not the prune's: the
+    # endpoint either overwrites it or unlinks it, and pruning it here would hide
+    # a failed render behind a file that was already gone.
+    assert current_pdf.read_bytes() == b"%PDF-current-token"

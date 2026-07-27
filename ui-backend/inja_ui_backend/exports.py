@@ -152,6 +152,22 @@ def render(template: str, payload: dict) -> str:
     return template.replace(DATA_SLOT, body)
 
 
+def export_html_path(export_dir: Path, code: str, kind: str, token: str) -> Path:
+    """Where `write_export` puts the document. The one place the layout is spelled."""
+    return Path(export_dir) / code / f"{kind}-{token}.html"
+
+
+def export_pdf_path(export_dir: Path, code: str, kind: str, token: str) -> Path:
+    """The server-rendered PDF, beside its HTML with the same stem (spec §11).
+
+    Same stem is a contract with the document itself, not a convenience: the
+    «چاپ / PDF» button inside the exported page builds its href by swapping its
+    own `.html` for `.pdf`, having no other way to learn the name. Move one and
+    the button in every already-published document points at nothing.
+    """
+    return export_html_path(export_dir, code, kind, token).with_suffix(".pdf")
+
+
 def _older_than(path: Path, cutoff: float) -> bool:
     """True if `path` was last written before `cutoff`; False if it is already gone."""
     try:
@@ -169,13 +185,21 @@ def write_export(export_dir: Path, code: str, kind: str, token: str, html: str) 
     sibling *is* the revoked export, so a prune that fails is worth a log line.
     The sweep also collects `.tmp` files a killed process left behind: they sit in
     the publicly mounted folder and the `.html` glob cannot match them.
+
+    The `.pdf` siblings are pruned on the same terms and for the same reason: a
+    rotated key orphans the rendered PDF exactly as it orphans the document, and an
+    orphan PDF is every bit as public as the HTML it was printed from. The *current*
+    token's PDF is deliberately spared here — it is the render's to overwrite or,
+    when the render fails, the endpoint's to unlink (D21).
     """
     folder = Path(export_dir) / code
-    path = folder / f"{kind}-{token}.html"
+    path = export_html_path(export_dir, code, kind, token)
     storage.write_text_atomic(path, html)
 
     cutoff = time.time() - TMP_SWEEP_AGE_S
+    pdf = path.with_suffix(".pdf")
     stale = [p for p in folder.glob(f"{kind}-*.html") if p != path]
+    stale += [p for p in folder.glob(f"{kind}-*.pdf") if p != pdf]
     stale += [p for p in folder.glob("*.tmp") if _older_than(p, cutoff)]
     for old in stale:
         try:

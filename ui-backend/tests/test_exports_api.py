@@ -1,7 +1,10 @@
+import asyncio
 import json
 from pathlib import Path
 
 from fastapi.testclient import TestClient
+from inja_ui_backend import exports as exports_mod
+from inja_ui_backend import pdf as pdf_mod
 from inja_ui_backend.app import create_app
 from inja_ui_backend.auth import COOKIE_NAME, issue_cookie
 from inja_ui_backend.tests_helpers import cfg_for
@@ -346,3 +349,206 @@ def test_payload_in_the_written_file_has_no_pending(data_root, tmp_path):
     body = html[html.index(">", html.index("inja-export-data")) + 1: html.rindex("</script>")]
     payload = json.loads(body)
     assert all(p["pending"] == [] for p in payload["processes"])
+
+
+# --------------------------------------------------------------------------- #
+# the PDF rendered beside the HTML (D18, D21)
+# --------------------------------------------------------------------------- #
+
+def _with_chromium(cfg, tmp_path):
+    """A configured `CHROMIUM_PATH`. The binary is never really run — every test
+    below replaces `render_pdf`, which is the only thing that would use it."""
+    browser = tmp_path / "chromium-headless-shell"
+    browser.write_text("#!/bin/sh\n", encoding="utf-8")
+    return cfg.__class__(**{**cfg.__dict__, "chromium_path": browser})
+
+
+def _pdf_path(cfg, code="cooking", kind="flowchart"):
+    token = exports_mod.export_token(cfg.session_signing_key, code, kind)
+    return exports_mod.export_pdf_path(cfg.export_dir, code, kind, token)
+
+
+def _plant_a_previous_pdf(cfg, code="cooking", kind="flowchart"):
+    """A PDF from an earlier, successful export of the same department+kind.
+
+    The token is derived, not stored, so this is the *exact* path the next export
+    will use — which is what makes a stale file possible at all.
+    """
+    path = _pdf_path(cfg, code, kind)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"%PDF-1.4 the document as it looked two edits ago")
+    return path
+
+
+def test_export_succeeds_with_no_chromium_configured(data_root, tmp_path, caplog):
+    """No browser in the image is a supported deployment, not an error (D21).
+
+    The HTML is the product; the PDF is an enhancement. The response is the same
+    shape it has always been — one HTML link, no PDF field (D18).
+    """
+    cfg = _cfg(data_root, tmp_path)
+    assert cfg.chromium_path is None
+    with caplog.at_level("WARNING"):
+        r = _client(cfg).post("/api/departments/cooking/exports/flowchart")
+    assert r.status_code == 200
+    assert set(r.json()) == {"url", "generated_at"}
+    assert r.json()["url"].endswith(".html")
+    assert not list((cfg.export_dir / "cooking").glob("*.pdf"))
+    assert any("cooking" in m and "flowchart" in m and "CHROMIUM_PATH" in m
+               for m in _guard_logs(caplog))
+
+
+def test_export_succeeds_when_the_render_fails(data_root, tmp_path, caplog, monkeypatch):
+    """A browser that dies, times out, or prints nothing must not cost the export."""
+    cfg = _with_chromium(_cfg(data_root, tmp_path), tmp_path)
+
+    def boom(*a, **kw):
+        raise pdf_mod.PdfRenderError("the page never set window.__INJA_PRINT_READY__")
+
+    monkeypatch.setattr(pdf_mod, "render_pdf", boom)
+    with caplog.at_level("WARNING"):
+        r = _client(cfg).post("/api/departments/cooking/exports/flowchart")
+    assert r.status_code == 200
+    assert set(r.json()) == {"url", "generated_at"}
+    assert (cfg.export_dir / "cooking" / Path(r.json()["url"]).name).is_file()
+    assert not list((cfg.export_dir / "cooking").glob("*.pdf"))
+    assert any("cooking" in m and "flowchart" in m and "READY" in m
+               for m in _guard_logs(caplog))
+
+
+def test_a_failed_render_removes_the_previous_pdf(data_root, tmp_path, monkeypatch):
+    """The sharpest edge in the whole change.
+
+    The token is stable, so the PDF's path never changes between exports. A failed
+    render therefore leaves the *previous* PDF sitting beside a *freshly written*
+    HTML, and a reader who taps «چاپ / PDF» downloads a document that no longer
+    matches the one on their screen — silently, and worse than having no PDF.
+    """
+    cfg = _with_chromium(_cfg(data_root, tmp_path), tmp_path)
+    stale = _plant_a_previous_pdf(cfg)
+    before = stale.read_bytes()
+
+    monkeypatch.setattr(pdf_mod, "render_pdf",
+                        lambda *a, **kw: (_ for _ in ()).throw(
+                            pdf_mod.PdfRenderError("the browser printed nothing")))
+    r = _client(cfg).post("/api/departments/cooking/exports/flowchart")
+
+    assert r.status_code == 200
+    # not "a new one was not written" — the *old* one must be gone
+    assert not stale.exists(), (
+        f"a stale PDF survived a failed render: {stale.read_bytes()[:40]!r} "
+        f"(planted {before[:40]!r}) now sits beside a freshly written HTML")
+
+
+def test_an_unconfigured_chromium_removes_the_previous_pdf(data_root, tmp_path):
+    """Same hazard by a different route: the browser was removed from the image.
+
+    Every later export writes fresh HTML next to a PDF nothing will ever refresh.
+    """
+    cfg = _cfg(data_root, tmp_path)
+    stale = _plant_a_previous_pdf(cfg)
+    r = _client(cfg).post("/api/departments/cooking/exports/flowchart")
+    assert r.status_code == 200
+    assert not stale.exists()
+
+
+def test_a_pdf_that_cannot_be_unlinked_is_logged_as_an_error(data_root, tmp_path,
+                                                             caplog, monkeypatch):
+    """The one case the endpoint cannot fix, so it must not pass in silence.
+
+    If the unlink itself fails — a read-only mount, a permissions change — the
+    mismatched PDF stays publicly served and only a human can clear it. That is an
+    ERROR, not the render's "never mind" warning, and the export still succeeds.
+    """
+    cfg = _with_chromium(_cfg(data_root, tmp_path), tmp_path)
+    stale = _plant_a_previous_pdf(cfg)
+    real_unlink = Path.unlink
+
+    def refuse(self, *a, **kw):
+        if self.name == stale.name:
+            raise PermissionError(13, "Permission denied")
+        return real_unlink(self, *a, **kw)
+
+    monkeypatch.setattr(pdf_mod, "render_pdf",
+                        lambda *a, **kw: (_ for _ in ()).throw(
+                            pdf_mod.PdfRenderError("the browser died")))
+    monkeypatch.setattr(Path, "unlink", refuse)
+    with caplog.at_level("WARNING"):
+        r = _client(cfg).post("/api/departments/cooking/exports/flowchart")
+
+    assert r.status_code == 200
+    assert stale.exists()
+    errors = [rec.getMessage() for rec in caplog.records
+              if rec.name == "inja_ui_backend.routers.exports" and rec.levelname == "ERROR"]
+    assert any(stale.name in m and "disagrees" in m for m in errors)
+
+
+def test_a_successful_render_puts_the_pdf_beside_the_html(data_root, tmp_path, monkeypatch):
+    cfg = _with_chromium(_cfg(data_root, tmp_path), tmp_path)
+    seen = {}
+
+    def fake_render(chromium, html_path, out_path, **kw):
+        seen["chromium"] = chromium
+        seen["html"] = Path(html_path)
+        Path(out_path).parent.mkdir(parents=True, exist_ok=True)
+        Path(out_path).write_bytes(b"%PDF-1.4 rendered")
+
+    monkeypatch.setattr(pdf_mod, "render_pdf", fake_render)
+    r = _client(cfg).post("/api/departments/cooking/exports/flowchart")
+
+    assert r.status_code == 200
+    html = cfg.export_dir / r.json()["url"][len("/exports/"):]
+    pdf = html.with_suffix(".pdf")
+    assert pdf.is_file() and pdf.read_bytes() == b"%PDF-1.4 rendered"
+    # printed from the document that was just written, not from some other file
+    assert seen["html"] == html
+    assert seen["chromium"] == cfg.chromium_path
+    # …and the response says nothing about it (D18)
+    assert set(r.json()) == {"url", "generated_at"}
+    assert ".pdf" not in json.dumps(r.json())
+
+
+def test_regenerating_prunes_the_previous_pdf(data_root, tmp_path, monkeypatch):
+    """An orphan from a rotated signing key is as public as the HTML beside it."""
+    cfg = _with_chromium(_cfg(data_root, tmp_path), tmp_path)
+    folder = cfg.export_dir / "cooking"
+    folder.mkdir(parents=True, exist_ok=True)
+    orphan_html = folder / "flowchart-deadbeefdeadbeef.html"
+    orphan_pdf = folder / "flowchart-deadbeefdeadbeef.pdf"
+    orphan_html.write_text("revoked", encoding="utf-8")
+    orphan_pdf.write_bytes(b"%PDF-revoked")
+
+    monkeypatch.setattr(pdf_mod, "render_pdf",
+                        lambda c, h, o, **kw: Path(o).write_bytes(b"%PDF-fresh"))
+    r = _client(cfg).post("/api/departments/cooking/exports/flowchart")
+
+    assert r.status_code == 200
+    assert not orphan_html.exists()
+    assert not orphan_pdf.exists()
+    assert len(list(folder.glob("flowchart-*.pdf"))) == 1
+
+
+def test_the_render_does_not_run_on_the_event_loop(data_root, tmp_path, monkeypatch):
+    """`render_pdf` blocks for seconds to tens of seconds.
+
+    Run on the event loop it would freeze every other request in the process for
+    the whole render — including the other bots' traffic. `asyncio.get_running_loop`
+    is the exact discriminator: it succeeds only on a thread that *is* running the
+    loop, and raises `RuntimeError` in a worker thread.
+    """
+    cfg = _with_chromium(_cfg(data_root, tmp_path), tmp_path)
+    where = {}
+
+    def fake_render(chromium, html_path, out_path, **kw):
+        try:
+            asyncio.get_running_loop()
+            where["on_the_loop"] = True
+        except RuntimeError:
+            where["on_the_loop"] = False
+        Path(out_path).write_bytes(b"%PDF-1.4 rendered")
+
+    monkeypatch.setattr(pdf_mod, "render_pdf", fake_render)
+    r = _client(cfg).post("/api/departments/cooking/exports/flowchart")
+
+    assert r.status_code == 200
+    assert where["on_the_loop"] is False

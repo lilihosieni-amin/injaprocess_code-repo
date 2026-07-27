@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import datetime
 import logging
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
-from .. import exports, storage
+from .. import exports, pdf, storage
 from ..auth import require_session
 
 router = APIRouter(prefix="/api/departments")
@@ -15,6 +16,59 @@ logger = logging.getLogger(__name__)
 
 def _now() -> str:
     return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _drop_stale_pdf(path: Path, code: str, kind: str) -> None:
+    """Remove the PDF left over from an earlier export of this department+kind.
+
+    The token is derived, not stored (`export_token`), so the PDF's path is the
+    same on every export. Whenever a render does not produce a new one, whatever
+    is sitting at that path was printed from an *older* version of the document
+    that has just been overwritten — and it is served from the same public folder,
+    one extension away from a link people share. A reader tapping «چاپ / PDF»
+    would silently download a document that disagrees with the one on their
+    screen, which is strictly worse than no PDF at all.
+    """
+    try:
+        path.unlink(missing_ok=True)
+    except OSError as e:
+        # Not the render's "never mind" warning: this one means a mismatched PDF
+        # is still being served and only a human can clear it.
+        logger.error("%s/%s: the stale PDF could not be removed and now disagrees "
+                     "with the document beside it: %s: %s", code, kind, path, e)
+
+
+def _render_pdf_beside(cfg, code: str, kind: str, token: str, html_path: Path) -> None:
+    """Print the freshly written document to a PDF next to it — best effort (D21).
+
+    The HTML is the product and the PDF an enhancement, so nothing in here may
+    raise: a browser that is missing, crashes, times out, or prints nothing costs
+    the reader the PDF button and nothing else. The response is unchanged either
+    way — the link is never surfaced by the app, only by the document's own button
+    (D18).
+
+    This runs inside a *sync* path operation, which FastAPI dispatches to its
+    worker threadpool. That is deliberate and load-bearing: `pdf.render_pdf`
+    blocks for seconds to tens of seconds while it drives a browser, and on the
+    event loop it would freeze every other request this process serves. Making
+    this handler `async def` without moving the call off the loop reintroduces
+    exactly that — `test_the_render_does_not_run_on_the_event_loop` pins it.
+    """
+    pdf_path = exports.export_pdf_path(cfg.export_dir, code, kind, token)
+    if not cfg.chromium_path:
+        # A supported deployment, not a fault — but it is worth one line, because
+        # an operator who expected PDFs and has none needs to be told which knob
+        # is unset rather than left guessing at the browser.
+        logger.warning("%s/%s: CHROMIUM_PATH is not configured, so the export has "
+                       "no PDF", code, kind)
+        _drop_stale_pdf(pdf_path, code, kind)
+        return
+    try:
+        pdf.render_pdf(cfg.chromium_path, html_path, pdf_path)
+    except (pdf.PdfRenderError, OSError) as e:
+        logger.warning("%s/%s: the export's PDF could not be rendered; the document "
+                       "itself is published: %s", code, kind, e)
+        _drop_stale_pdf(pdf_path, code, kind)
 
 
 @router.post("/{code}/exports/{kind}")
@@ -102,6 +156,10 @@ def create_export(code: str, kind: str, request: Request,
         logger.error("%s/%s: the export file could not be written: %s", code, kind, e)
         raise HTTPException(status_code=500,
                             detail="نوشتن فایل خروجی انجام نشد") from e
+
+    # After the document is on disk and before the link goes out, so a reader who
+    # follows it straight away finds the PDF already there. Never raises (D21).
+    _render_pdf_beside(cfg, code, kind, token, written)
 
     # Both segments come from the path that was actually written, resolved against
     # the mount root, so the served URL cannot drift from the layout on disk.
