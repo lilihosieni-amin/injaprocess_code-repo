@@ -104,10 +104,17 @@ export function bandSvg(g: DiagramGeom, band: Span, box: { minX: number; width: 
         // sit in the middle of it — on screen `LabeledEdge` centres exactly, with a
         // translate(-50%,-50%). A pill that shrinks to its text does not centre
         // itself, so the foreignObject carries a flex box that centres it.
+        //
+        // `data-edge-label` is a hook, not a style. The pill wears the app's own
+        // `EDGE_LABEL_CLASS` — the same list, from the same constant, as the label
+        // `LabeledEdge` draws — and `print.css` uses this attribute to repaint its
+        // background, and only its background, under `@media print`: at print
+        // scale the app's `bg-white/90` is indistinguishable from the paper.
+        // Everything else about the pill, this box included, stays the drawn one's.
         out += `<foreignObject x="${e.label.x}" y="${e.label.y}" width="${e.label.w}" height="${e.label.h}">`
           + `<div xmlns="http://www.w3.org/1999/xhtml"`
           + ` style="width:100%;height:100%;display:flex;align-items:center;justify-content:center">`
-          + `<div class="${EDGE_LABEL_CLASS}">${esc(e.label.text)}</div></div></foreignObject>`
+          + `<div data-edge-label="" class="${EDGE_LABEL_CLASS}">${esc(e.label.text)}</div></div></foreignObject>`
       }
       return out
     })

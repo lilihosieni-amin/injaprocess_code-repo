@@ -8,9 +8,7 @@ import { ActivityNode } from '../../src/flow/nodes/ActivityNode'
 import type { ProcNode } from '../../src/api/types'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
-const UI = dirname(dirname(HERE))
 const PRINT_CSS = readFileSync(join(HERE, 'print.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
-const TAILWIND = readFileSync(join(UI, 'tailwind.config.js'), 'utf8')
 
 /** The wording the reader sees on screen, byte for byte. A print rule that leaked
  *  onto the screen, or a component that started rendering the id everywhere, would
@@ -41,14 +39,17 @@ function node(hasSub: boolean) {
 // node has to be reachable from that markup — which means a stable hook on the
 // element, not a guess at which Tailwind utility happens to be on it today.
 describe('the app’s node carries the hooks the print stylesheet targets', () => {
-  it('marks the label with an appearance-neutral attribute', () => {
-    const label = node(false).querySelector('[data-node-label]') as HTMLElement
-    expect(label).not.toBeNull()
-    expect(label.textContent).toBe('ثبت درخواست')
-    // appearance-neutral: the hook adds no colour, no box and no inline style, so
-    // the same element renders identically on screen before and after it was added
-    expect(label.getAttribute('style')).toBeNull()
-    expect(label.className).not.toMatch(/\bbg-|\brounded|\bp[xy]?-|\bborder/)
+  it('leaves the label itself untouched — print restyles no part of the node', () => {
+    // The printed node is meant to be pixel-identical to the node on the site.
+    // A print-only background once lived on this label; it was the wrong element
+    // (the *edge* label is the one that is unreadable at print scale) and it was
+    // reverted. Nothing may reach into the node's own text again without the
+    // hook set below being widened deliberately.
+    const c = node(false)
+    expect(c.querySelector('[data-node-label]')).toBeNull()
+    const label = [...c.querySelectorAll('div')].find((d) => d.textContent === 'ثبت درخواست')
+    expect(label, 'the node still renders its label').toBeDefined()
+    expect(label!.getAttributeNames().sort()).toEqual(['class'])
   })
 
   it('renders the subprocess id beside the click wording, not instead of it', () => {
@@ -105,16 +106,21 @@ const PRINT_BLOCK = PRINT_CSS.slice(PRINT_CSS.indexOf('@media print'))
 const SCREEN_BLOCK = PRINT_CSS.slice(0, PRINT_CSS.indexOf('@media print'))
 
 describe('the print stylesheet’s two sanctioned deviations', () => {
-  it('gives the label the app’s own tile colour, and no box of its own', () => {
-    const tile = TAILWIND.match(/'tile-v2':\s*'(#[0-9A-Fa-f]{6})'/)
-    expect(tile, 'tailwind defines the tile-v2 token').not.toBeNull()
-    const rule = ruleFor(PRINT_BLOCK, '.pf-band [data-node-label]')
-    expect(rule).toBeDefined()
-    expect(rule!.background?.toUpperCase()).toBe(tile![1].toUpperCase())
-    // The node's box is measured under screen media, where this rule does not
-    // apply. Anything that changed the label's size here — padding, a border, a
-    // font — would paint a card larger than the band reserved space for.
-    expect(Object.keys(rule!).sort()).toEqual(['background', 'border-radius'])
+  it('restyles nothing inside the printed node’s own card', () => {
+    // The whole point of copying the app's node markup into the band is that the
+    // printed node *is* the site's node. The subprocess pill swap below is a swap
+    // between two elements the component already renders, not a restyling; apart
+    // from it, `.pf-band` may not paint, size or space anything within the card.
+    // every selector that descends *into* a band (`.pf-band + .pf-band` is a
+    // sibling combinator, not a descendant, and frames the band itself)
+    const inside = [...PRINT_BLOCK.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+      .flatMap((m) => m[1].split(',').map((s) => s.trim()))
+      .filter((s) => /^\.pf-band\s+(?![+>~])/.test(s))
+    expect([...new Set(inside)].sort()).toEqual([
+      '.pf-band [data-edge-label]',
+      '.pf-band [data-subprocess-cta]',
+      '.pf-band [data-subprocess-id]',
+    ])
   })
 
   it('swaps the pill for the id in the band, and in the host that measures it', () => {
@@ -129,13 +135,17 @@ describe('the print stylesheet’s two sanctioned deviations', () => {
     expect(ruleFor(SCREEN_BLOCK, '.pf-measure [data-subprocess-id]')!.display).toBe('flex')
   })
 
-  it('deviates from the app’s node in exactly these two places and no other', () => {
+  it('targets exactly these hooks and no other', () => {
     // `parity.test.tsx` bans a `react-flow__` selector outright; these `data-`
-    // hooks are the sanctioned way in, so the set of them is pinned here. A third
+    // hooks are the sanctioned way in, so the set of them is pinned here. A fourth
     // one appearing is a restyling nobody asked for.
+    //
+    // `data-node-label` was one of them and is gone: it painted the *node* label,
+    // which was the wrong element — the node must print exactly as it renders on
+    // the site — and its background moved to `data-edge-label`.
     const hooks = [...PRINT_CSS.matchAll(/\[data-[a-z-]+\]/g)].map((m) => m[0])
     expect([...new Set(hooks)].sort()).toEqual(
-      ['[data-node-label]', '[data-subprocess-cta]', '[data-subprocess-id]'],
+      ['[data-edge-label]', '[data-subprocess-cta]', '[data-subprocess-id]'],
     )
   })
 })

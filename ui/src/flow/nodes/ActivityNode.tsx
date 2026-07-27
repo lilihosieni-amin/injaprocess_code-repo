@@ -21,11 +21,7 @@ export function ActivityNode({ data }: NodeProps<Node<FlowNodeData>>) {
         >! <span>{toFa(data.conflicts)}</span></button>
       )}
       <span className="id-badge bg-tile-v2 text-muted" dir="ltr">{n.id}</span>
-      {/* `data-node-label` is a hook, not a style: the export's print stylesheet
-          paints this row on the app's own tile colour so the label stays legible
-          when a dense diagram is printed at ~34%. It declares nothing itself, so
-          the node renders identically on screen with it and without it. */}
-      <div data-node-label="" className="font-bold text-[12.5px] text-ink leading-tight mt-1 break-words">{n.label}</div>
+      <div className="font-bold text-[12.5px] text-ink leading-tight mt-1 break-words">{n.label}</div>
       {n.actor && (
         <div className="flex items-center justify-center gap-1.5 mt-1.5">
           <span className="w-[15px] h-[15px] rounded-full bg-tile-v text-violet text-[8px] flex items-center justify-center font-bold">۰</span>

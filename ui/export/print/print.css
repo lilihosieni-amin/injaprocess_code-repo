@@ -93,19 +93,33 @@
      heading — rare, and it buys a much larger diagram */
   .pf-wrap.own-page { break-before: page; }
 
-  /* The two print-only deviations from the app's node, both sanctioned.
-     They reach the printed node through `data-` hooks `ActivityNode` declares —
-     never through a `react-flow__` selector, which `parity.test.tsx` bans and
-     which would restyle the diagram rather than annotate it.
+  /* The two print-only deviations, both sanctioned. They are reached through
+     `data-` hooks — never through a `react-flow__` selector, which
+     `parity.test.tsx` bans and which would restyle the diagram rather than
+     annotate it.
 
-     The label: dark ink on white is hard to read once the planner shrinks a
-     diagram towards `PRINT.MINSC` (0.34). Sitting it on `bg-tile-v2` (#F4EFFB) —
-     the app's own tile, the one the id badge above it already uses — separates
-     the line from the card without turning a dense page into a wall of blocks.
-     Background and radius only: this node's box was measured under screen media,
-     where this rule does not apply, so a rule that changed the label's *size*
-     here would paint a card larger than the band reserved space for. */
-  .pf-band [data-node-label] { background: #F4EFFB; border-radius: 4px; }
+     The edge label: the condition on a connector («بله», «خیر», …) is the
+     smallest type on the page, and it is unreadable once the planner shrinks a
+     diagram towards `PRINT.MINSC` (0.34) — on screen it sits on `bg-white/90`,
+     which is no separation at all from the white paper around it. `bg-tile-v2`
+     (#F4EFFB), the app's own tile and the same one behind a node's id badge,
+     gives the pill an outline the eye can find at 34%. The ink stays `text-ink`
+     (#2A1D5E): 12.9:1 on this tile against 14.6:1 on white, so it clears AAA
+     with room to spare and nothing about the text has to move.
+
+     Background only, and that is load-bearing: the label's rectangle is one of
+     the blocks `geomBlocks` hands the page-break planner, and it is fixed in
+     `PrintDiagrams` from the text length (`w = min(240, len*7.2+16)`, `h = 22`)
+     before any of this applies. A rule that added padding, a border or a font
+     here would paint a pill wider than the box the planner reserved and routed
+     the cut around. `rounded-md` is already in `EDGE_LABEL_CLASS`; nothing here
+     needs to restate it.
+
+     `edge-parity.test.tsx` binds the printed edge to the drawn one — stroke,
+     width, arrowhead, and the shared class list — and this background is the one
+     narrow exemption from that binding, pinned there as exactly one property on
+     exactly one selector, inside this block so it can never reach the screen. */
+  .pf-band [data-edge-label] { background: #F4EFFB; }
 
   /* The subprocess pill: the id, not the invitation to click. */
   .pf-band [data-subprocess-cta] { display: none; }
