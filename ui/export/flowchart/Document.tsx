@@ -7,7 +7,7 @@ import { ProcessSheets } from './ProcessSheets'
 import { PrintDiagrams } from '../print/PrintDiagrams'
 import { diagramsComplete } from '../print/complete'
 import { markPrintReady } from '../shared/ready'
-import { pdfHref } from '../shared/pdfLink'
+import { servedPdfHref } from '../shared/pdfLink'
 import d from './document.module.css'
 
 type View = 'home' | 'doc' | 'legend'
@@ -35,11 +35,22 @@ export function Document({ payload }: { payload: ExportPayload }) {
   const cls = (v: View) => `${d.view}${view === v ? ` ${d.active}` : ''}`
   const [flowId, setFlowId] = useState<string | null>(null)
   const { dept, processes } = payload
-  /** The server's PDF when this document is being served, `null` when it was
-   *  opened from a file — see `pdfLink`. Read once: a document's location does
-   *  not change under it, and re-deciding on every keystroke of state would
-   *  invite the two branches to disagree mid-session. */
-  const [pdf] = useState(pdfHref)
+  /** The server's PDF when this document is being served *and* the server really
+   *  printed one; `null` when it was opened from a file, or when the render did
+   *  not happen — see `pdfLink`. Starts `null`, so the control is the button that
+   *  has always worked until there is evidence for the link: the wrong way round
+   *  would show a link that 404s for the moment it takes to find out, on the
+   *  document's primary action.
+   *
+   *  Decided once. A document's location does not change under it, and
+   *  re-probing on every keystroke of state would invite the two branches to
+   *  disagree mid-session — and put a request behind each of them. */
+  const [pdf, setPdf] = useState<string | null>(null)
+  useEffect(() => {
+    let live = true
+    servedPdfHref().then((href) => { if (live) setPdf(href) })
+    return () => { live = false }
+  }, [])
 
   // Persian glyph metrics decide how node labels wrap, so a build that ran
   // before Vazirmatn landed can be wrong. Rebuild on the font, on load, and
@@ -93,12 +104,13 @@ export function Document({ payload }: { payload: ExportPayload }) {
           <div className={d.tt}>مستند فرآیندهای {dept.name}</div>
           <div className={d.sp} />
           {view !== 'home' && <button className={d.tbtn} onClick={() => setView('home')}>فهرست</button>}
-          {/* Served: hand over the PDF the server printed, because printing this
-              document from the browser is broken on iOS Safari (see `pdfLink`).
-              Opened from a file: print in place, exactly as before — there is no
-              server beside a copy on a phone, so a link would go nowhere. In a
-              new tab, so a reader who taps it does not lose the document: coming
-              back would rebuild every band from scratch. */}
+          {/* Served, and the PDF is on the server: hand it over, because printing
+              this document from the browser is broken on iOS Safari (see
+              `pdfLink`). Opened from a file, or the render did not produce one:
+              print in place, exactly as before — there is no server beside a copy
+              on a phone, and no link to a file that is not there. In a new tab,
+              so a reader who taps it does not lose the document: coming back
+              would rebuild every band from scratch. */}
           {pdf
             ? <a className={`${d.tbtn} ${d.solid}`} href={pdf} target="_blank" rel="noopener">چاپ / PDF</a>
             : <button className={`${d.tbtn} ${d.solid}`} onClick={() => window.print()}>چاپ / PDF</button>}

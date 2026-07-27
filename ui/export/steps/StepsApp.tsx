@@ -5,7 +5,7 @@ import { toFa } from '../../src/lib/format'
 import type { ExportPayload } from '../shared/payload'
 import type { ActivityNode, ReadableProcess } from '../../src/api/types'
 import { markPrintReady } from '../shared/ready'
-import { pdfHref } from '../shared/pdfLink'
+import { servedPdfHref } from '../shared/pdfLink'
 import s from './steps.module.css'
 
 type Crumb = { pid: string; via: ActivityNode | null }
@@ -145,20 +145,30 @@ export function StepsApp({ payload }: { payload: ExportPayload }) {
 }
 
 function Shell({ children, onHome }: { children: React.ReactNode; onHome: () => void }) {
-  /** The server's PDF when this guide is being served, `null` when it was opened
-   *  from a file — the same one rule the flowchart document uses (`pdfLink`).
-   *  Read once, not per navigation: the location does not change under a page
-   *  that never navigates. */
-  const [pdf] = useState(pdfHref)
+  /** The server's PDF when this guide is being served *and* the server printed
+   *  one; `null` when it was opened from a file or the render did not happen —
+   *  the same one rule the flowchart document uses (`pdfLink`).
+   *
+   *  Probed once, not per navigation. `StepsApp` returns a `Shell` from every
+   *  branch, at the same position in its tree, so React keeps this one instance
+   *  across every page of the guide and the answer is not re-fetched — nor does
+   *  the control flicker back to a button when a reader opens a task. */
+  const [pdf, setPdf] = useState<string | null>(null)
+  useEffect(() => {
+    let live = true
+    servedPdfHref().then((href) => { if (live) setPdf(href) })
+    return () => { live = false }
+  }, [])
   return (
     <>
       <div className={s.topbar}>
         <div className={s.tt}>راهنمای گام‌به‌گام کار</div>
         <div className={s.sp} />
         <button className={s.tbtn} onClick={onHome}>فهرست کارها</button>
-        {/* Served: the PDF the server printed. Opened from a file: print in
-            place, as before. In a new tab so the reader keeps their place in the
-            guide — they may be several subprocesses deep. */}
+        {/* Served, and the PDF is there: hand it over. Opened from a file, or no
+            PDF was produced: print in place, as before. In a new tab so the
+            reader keeps their place in the guide — they may be several
+            subprocesses deep. */}
         {pdf
           ? <a className={s.tbtn} href={pdf} target="_blank" rel="noopener">چاپ</a>
           : <button className={s.tbtn} onClick={() => window.print()}>چاپ</button>}

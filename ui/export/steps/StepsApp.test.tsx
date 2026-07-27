@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { StepsApp } from './StepsApp'
 import s from './steps.module.css'
 import type { ExportPayload } from '../shared/payload'
@@ -259,33 +259,57 @@ describe('the signal a headless renderer waits on', () => {
 // server, and prints in place when the file was opened by double-click.
 describe('the «چاپ» button', () => {
   const REAL_LOCATION = Object.getOwnPropertyDescriptor(window, 'location')!
+  const REAL_FETCH = globalThis.fetch
   const LABEL = 'چاپ'
   let scrollTo: ReturnType<typeof vi.spyOn>
 
   const openedAt = (url: string) => Object.defineProperty(window, 'location', {
     configurable: true, enumerable: true, writable: true, value: new URL(url),
   })
+  const serverHasThePdf = (ok: boolean) => {
+    globalThis.fetch = vi.fn(() => Promise.resolve({ ok } as Response)) as unknown as typeof fetch
+  }
 
   beforeEach(() => { scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(() => {}) })
   afterEach(() => {
     scrollTo.mockRestore()
     Object.defineProperty(window, 'location', REAL_LOCATION)
+    globalThis.fetch = REAL_FETCH
   })
 
-  it('links to the PDF beside the guide when the guide is being served', () => {
+  it('links to the PDF beside the guide when the server has one', async () => {
     openedAt('https://inja.example.com/exports/dining/steps-0011aabb22cc33dd.html')
+    serverHasThePdf(true)
     render(<StepsApp payload={PAYLOAD} />)
-    const link = screen.getByRole('link', { name: LABEL })
+    const link = await screen.findByRole('link', { name: LABEL })
     expect(link).toHaveAttribute('href', '/exports/dining/steps-0011aabb22cc33dd.pdf')
     expect(link.className).toBe(s.tbtn)
   })
 
+  // Same rule as the flowchart document's: a render is best-effort (D21), so a
+  // published guide may have no PDF beside it and the link would 404.
+  it('prints in place when the server has no PDF beside the guide', async () => {
+    openedAt('https://inja.example.com/exports/dining/steps-0011aabb22cc33dd.html')
+    serverHasThePdf(false)
+    const print = vi.spyOn(window, 'print').mockImplementation(() => {})
+    render(<StepsApp payload={PAYLOAD} />)
+    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalled())
+    expect(screen.queryByRole('link', { name: LABEL })).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: LABEL }))
+    expect(print).toHaveBeenCalledTimes(1)
+    print.mockRestore()
+  })
+
   it('prints in place, and renders no dead link, when opened from a file', () => {
     openedAt('file:///home/staff/Downloads/steps-0011aabb22cc33dd.html')
+    const probe = vi.fn()
+    globalThis.fetch = probe as unknown as typeof fetch
     const print = vi.spyOn(window, 'print').mockImplementation(() => {})
     render(<StepsApp payload={PAYLOAD} />)
     expect(screen.queryByRole('link', { name: LABEL })).toBeNull()
     expect(document.querySelectorAll(`.${s.topbar} a`)).toHaveLength(0)
+    expect(probe).not.toHaveBeenCalled()
 
     fireEvent.click(screen.getByRole('button', { name: LABEL }))
     expect(print).toHaveBeenCalledTimes(1)
@@ -295,9 +319,11 @@ describe('the «چاپ» button', () => {
   // The link replaces the button on every page of the guide, not only its
   // landing page — `Shell` wraps them all, and a reader deep in a subprocess is
   // exactly who reaches for it.
-  it('is the same link once the reader has opened a task', () => {
+  it('is the same link once the reader has opened a task', async () => {
     openedAt('https://inja.example.com/exports/dining/steps-0011aabb22cc33dd.html')
+    serverHasThePdf(true)
     render(<StepsApp payload={PAYLOAD} />)
+    await screen.findByRole('link', { name: LABEL })
     fireEvent.click(screen.getByText('پذیرایی از مشتری'))
     expect(screen.getByRole('link', { name: LABEL }))
       .toHaveAttribute('href', '/exports/dining/steps-0011aabb22cc33dd.pdf')

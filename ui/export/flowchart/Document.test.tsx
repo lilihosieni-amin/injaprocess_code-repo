@@ -281,20 +281,45 @@ describe('the print sheets', () => {
 // the button hands that over — but only when there is a server to hand it over.
 describe('the «چاپ / PDF» button', () => {
   const REAL_LOCATION = Object.getOwnPropertyDescriptor(window, 'location')!
+  const REAL_FETCH = globalThis.fetch
   const LABEL = 'چاپ / PDF'
 
   const openedAt = (url: string) => Object.defineProperty(window, 'location', {
     configurable: true, enumerable: true, writable: true, value: new URL(url),
   })
+  const serverHasThePdf = (ok: boolean) => {
+    globalThis.fetch = vi.fn(() => Promise.resolve({ ok } as Response)) as unknown as typeof fetch
+  }
 
-  afterEach(() => { Object.defineProperty(window, 'location', REAL_LOCATION) })
+  afterEach(() => {
+    Object.defineProperty(window, 'location', REAL_LOCATION)
+    globalThis.fetch = REAL_FETCH
+  })
 
-  it('links to the PDF beside the document when the document is being served', () => {
+  it('links to the PDF beside the document when the server has one', async () => {
     openedAt('https://inja.example.com/exports/dining/flowchart-9f2c8a11d4e6b070.html')
+    serverHasThePdf(true)
     renderDoc()
-    const link = screen.getByRole('link', { name: LABEL })
+    const link = await screen.findByRole('link', { name: LABEL })
     expect(link).toHaveAttribute('href', '/exports/dining/flowchart-9f2c8a11d4e6b070.pdf')
     expect(link.className).toBe(`${d.tbtn} ${d.solid}`)
+  })
+
+  // A render is best-effort (D21): it may have failed, or the deployment may have
+  // no browser at all, and then the HTML is published with nothing beside it. The
+  // href would still be *correct* — and still 404, on the document's primary
+  // action. So the button asks before it offers.
+  it('prints in place when the server has no PDF beside the document', async () => {
+    openedAt('https://inja.example.com/exports/dining/flowchart-9f2c8a11d4e6b070.html')
+    serverHasThePdf(false)
+    const print = vi.spyOn(window, 'print').mockImplementation(() => {})
+    renderDoc()
+    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalled())
+    expect(screen.queryByRole('link', { name: LABEL })).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: LABEL }))
+    expect(print).toHaveBeenCalledTimes(1)
+    print.mockRestore()
   })
 
   // An export is deliberately standalone and gets emailed to staff who have no
@@ -302,10 +327,13 @@ describe('the «چاپ / PDF» button', () => {
   // honest button is the one that has always been there.
   it('prints in place, and renders no dead link, when opened from a file', () => {
     openedAt('file:///home/staff/Downloads/flowchart-9f2c8a11d4e6b070.html')
+    const probe = vi.fn()
+    globalThis.fetch = probe as unknown as typeof fetch
     const print = vi.spyOn(window, 'print').mockImplementation(() => {})
     renderDoc()
     expect(screen.queryByRole('link', { name: LABEL })).toBeNull()
     expect(document.querySelectorAll(`.${d.topbar} a`)).toHaveLength(0)
+    expect(probe).not.toHaveBeenCalled()
 
     fireEvent.click(screen.getByRole('button', { name: LABEL }))
     expect(print).toHaveBeenCalledTimes(1)
