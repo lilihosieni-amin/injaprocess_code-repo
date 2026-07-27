@@ -401,3 +401,101 @@ ul.kpis li::before{content:'';position:absolute;inset-inline-start:12px;top:13px
   ul.kpis li{font-size:13.5px;padding:10px 12px;padding-inline-start:28px}
   .kpi-none{font-size:13px}
 }
+
+/* ── on paper, colour only where colour carries meaning ──
+ * Corrects the ported background declarations named against each rule below, in
+ * print alone.
+ *
+ * The server prints with `printBackground: true` and it must
+ * (`pdf.print_params`): without it *every* colour in the document vanishes,
+ * including the junction diamonds whose hue the printed legend maps to a
+ * meaning. Turning it on is also the first time the mockup's decorative washes
+ * have ever reached paper — Chrome's own print dialog leaves "Background
+ * graphics" unchecked, so a PDF made from a laptop silently dropped them — and
+ * across 25 pages they are the majority of the ink.
+ *
+ * Measured on the real dining flowchart (25 pages, rasterised at 100 dpi, area
+ * covered per page summed over the document, so 25 pages = 2500%):
+ *
+ *   ul.kpis li      #E4F6EC   43.10   (31.5% of one page, 11.5% of the next)
+ *   .legend-box     #F5F1FB   17.45   (one page, the symbol key)
+ *   .role-head      #F5F1FB   21.70   (two pages)
+ *   ------------------------------------------------------------------
+ *   the three                 82.25   of 194.76 total non-white — 42% of all
+ *                                     the ink in the document, and 50% of it
+ *                                     once the cover is set aside
+ *
+ * None of the three distinguishes anything: every KPI row is the same green,
+ * every role head the same lavender. They are a wash behind text that is
+ * already inside a bordered box. What *is* distinguishing stays exactly as it
+ * was and is deliberately absent from this block:
+ *
+ *   - the junction diamonds (`.lg-sym .sq`, painted from `JUNCTION_COLOR` via
+ *     an inline style) — coral/violet/amber is the legend's whole subject;
+ *   - the ICOM chips (`.chip.in/.ctl/.out/.mech`) — the four roles are told
+ *     apart by colour and nothing else;
+ *   - the subprocess tint and the edge-label pill inside `.pf-band`, which
+ *     `../print/print.css` owns and this file must never reach into;
+ *   - `.id-badge` and `.sub-badge` — one is white type on violet, which
+ *     flattening would erase outright; the other is how a printed sheet says
+ *     "this is a subprocess";
+ *   - `.cover-sheet` — one page, and it is the document's identity.
+ *
+ * **Layout-neutral by construction, and that is the point.** `bands.ts` slices
+ * every diagram against a frozen page budget and both PDFs are verified page by
+ * page, so a rule here that moved a box by a pixel could re-paginate a signed-off
+ * document. Every declaration below is either `background`/`box-shadow` (which
+ * affect no layout at all) or a border paid for out of the element's own padding:
+ * `*{box-sizing:border-box}` is in force, so a 1px border on a fixed-size tile
+ * changes nothing, and on the two elements sized by their padding the padding is
+ * reduced by exactly the 1px the border adds. The printed page count is
+ * unchanged (25 before, 25 after) and re-verified.
+ *
+ * Borders, where an element has none, because a tile that is only a wash *is*
+ * the wash — flattened and left bare, `.hn`, `.u-ic`, `.k-ic`, `.kr-av` and a
+ * KPI row would stop being objects on the page. `.role-head`, `.legend-box` and
+ * `.stat` already carry one and need nothing.
+ *
+ * `@media print` and nothing else: the two documents on screen are byte-identical
+ * ports of their mockups and must stay pixel-identical, which
+ * `print-colour.test.ts` pins declaration by declaration and a screenshot
+ * comparison confirms. */
+@media print{
+  /* Corrects `.role-head{…background:var(--v-softer)…}` (`:121`),
+     `.legend-box{…background:var(--v-softer)…}` (`:101`) and
+     `.stat{…background:var(--v-softer)…}` (`:84`). All three keep their own
+     `1px solid var(--bd-v)` border, which is what was separating them anyway. */
+  .role-head,.legend-box,.stat{background:#fff}
+
+  /* Corrects `.sheet-head .hn{…background:var(--v-soft)…}` (`:76`),
+     `.u-ic{…background:var(--v-soft)…}` (`:116`) and
+     `.k-ic{…background:var(--v-soft)…}` (`:184`). Fixed-size tiles under
+     `box-sizing:border-box`, so the border costs no layout. */
+  .sheet-head .hn,.u-ic,.k-ic{background:#fff;border:1px solid var(--bd-v)}
+
+  /* Corrects `.kpi-card .k-target{…background:var(--v-soft)…}` (`:182`). Sized by
+     its padding, so the 1px border is taken back out of it: 6px 12px → 5px 11px
+     leaves the border box exactly where the port put it. */
+  .kpi-card .k-target{background:#fff;border:1px solid var(--bd-v);padding:5px 11px}
+
+  /* Corrects `.kpi-role .kr-av{…background:var(--ok-s)…}` (`:133`). Same shape as
+     the violet tiles above, in the KPI section's own green; the glyph inside it
+     stays `var(--ok)`. */
+  .kpi-role .kr-av{background:#fff;border:1px solid var(--bd)}
+
+  /* Corrects `ul.kpis li{…background:var(--ok-s)…}` (`:136`) — the single
+     heaviest wash in the document, 31.5% of one printed page. The `::before`
+     marker keeps `background:var(--ok)`: a 9px green square is what a KPI row
+     is now recognised by, and it is the one place the colour says something.
+     Padding pays for the border again — 10px 13px / 30px start becomes
+     9px 12px / 29px, so the row's border box and its height are untouched and
+     the KPI section still breaks where it broke. */
+  ul.kpis li{background:#fff;border:1px solid var(--bd);padding:9px 12px;padding-inline-start:29px}
+
+  /* Corrects the shadows on `.card` (`:115`), `.role` (`:120`), `.kpi-role`
+     (`:131`) and `.a0` (`:152`). The ported print block already drops
+     `.sheet`'s (`:223`); these four were missed and print as a violet haze
+     around every card on every page. A drop shadow is depth, and paper has
+     none. No layout: `box-shadow` is outside the box model. */
+  .card,.role,.kpi-role,.a0{box-shadow:none}
+}

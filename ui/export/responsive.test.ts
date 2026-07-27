@@ -59,10 +59,27 @@ function addedBlock(css: string): string {
 const mediaQueries = (css: string) =>
   [...css.matchAll(/@media([^{]*)\{/g)].map((m) => m[1].trim())
 
-/** The only selector any added `@media print` block is allowed to carry. Adding
+/** The only selectors any added `@media print` block is allowed to carry. Adding
  *  to this list means re-verifying both PDFs page by page; that is the point of
- *  the list. */
-const PRINT_CORRECTIONS = ['.toc .toc-t']
+ *  the list.
+ *
+ *  The first is the contents row. The rest are the print-colour pass: the server
+ *  prints with `printBackground: true`, which it must or every colour vanishes,
+ *  and that put the mockup's decorative washes on paper for the first time. They
+ *  are flattened there and only there — what the colour *means* something on
+ *  (the junction diamonds, the ICOM chips, `.id-badge`, `.sub-badge`, the cover,
+ *  and everything inside `.pf-band`) is deliberately not in this list.
+ *  `flowchart/print-colour.test.ts` pins which is which; this list only pins that
+ *  nothing else reached the printed page unnoticed. */
+const PRINT_CORRECTIONS = [
+  '.toc .toc-t',
+  '.role-head,.legend-box,.stat',
+  '.sheet-head .hn,.u-ic,.k-ic',
+  '.kpi-card .k-target',
+  '.kpi-role .kr-av',
+  'ul.kpis li',
+  '.card,.role,.kpi-role,.a0',
+]
 
 describe('the mobile rules can never reach the printed page', () => {
   for (const sheet of SHEETS) {
