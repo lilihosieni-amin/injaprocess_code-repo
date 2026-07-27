@@ -25,7 +25,7 @@ const read = (p: string) => readFileSync(join(HERE, p), 'utf8')
 
 /** The marker that opens the block this pass added. Everything before it is the
  *  byte-identical port of the mockup and is deliberately left alone. */
-const MARKER = '─── added after the port: the phone ───'
+const MARKER = '─── added after the port'
 
 const SHEETS = [
   { name: 'flowchart/document.module.css', css: read('flowchart/document.module.css') },
@@ -57,7 +57,12 @@ describe('the mobile rules can never reach the printed page', () => {
       const added = addedBlock(sheet.css)
       const queries = mediaQueries(added)
       expect(queries.length, 'the added block declares at least one media query').toBeGreaterThan(0)
-      for (const q of queries) expect(q).toMatch(/^screen and \(/)
+      // The *medium* is the invariant, not the width condition. A correction to
+      // a ported rule that is wrong at every width — the contents row is one —
+      // must not be shut inside a `max-width` query, or it fixes the phone and
+      // leaves the desk broken. `screen` on its own is therefore allowed, and
+      // `screen and (…)` still is; anything that could reach paper is not.
+      for (const q of queries) expect(q).toMatch(/^screen(?: and \(|$)/)
     })
 
     it(`${sheet.name} adds no rule outside a media query`, () => {
@@ -82,17 +87,17 @@ describe('the mobile rules can never reach the printed page', () => {
   }
 })
 
-describe('the flowchart document’s contents page fits a phone', () => {
+describe('the flowchart document’s contents page fits its sheet', () => {
   const css = bare(read('flowchart/document.module.css'))
 
   it('lets a long process name wrap instead of pushing the page sideways', () => {
     // The ported TOC block sets `.toc .toc-t{…flex:none…}`, which re-declares —
     // and, at equal specificity and later in the file, beats — the `.toc .toc-t
-    // {flex:1}` above it. Measured on the real dining document at 390px, the
-    // longest process name laid out 536px wide in a 350px sheet and
-    // `documentElement.scrollWidth` came back 654: because the document is RTL
-    // that overflow sits at the scroll origin, so the export *opened* 264px away
-    // from its own cover.
+    // {flex:1}` above it. Measured on the real cashier document, whose longest
+    // title is 166 characters: `.toc-t` laid out 1145px wide in an 824px row,
+    // 263px past the white sheet, and `documentElement.scrollWidth` came back
+    // 1453 against a 1440px viewport — the document is RTL, so that overflow
+    // sits at the scroll origin.
     const added = addedBlock(read('flowchart/document.module.css'))
     const rule = added.match(/\.toc \.toc-t\s*\{([^}]*)\}/)
     expect(rule, 'the added block re-declares .toc .toc-t').not.toBeNull()
@@ -100,6 +105,19 @@ describe('the flowchart document’s contents page fits a phone', () => {
     expect(rule![1]).toMatch(/min-width\s*:\s*0/)
     // and it must be the last word on the property
     expect(css.lastIndexOf('flex:1;min-width:0')).toBeGreaterThan(css.lastIndexOf('flex:none'))
+  })
+
+  it('applies that correction at every width, not only on a phone', () => {
+    // The first pass put it inside `@media screen and (max-width:760px)`, which
+    // fixed the phone and left every desktop width overflowing. The rule is a
+    // correction to a ported declaration that is wrong at any width, so the
+    // block carrying it must not carry a width condition at all.
+    const added = addedBlock(read('flowchart/document.module.css'))
+    const at = added.indexOf('.toc .toc-t')
+    const open = added.lastIndexOf('@media', at)
+    expect(open, 'the correction sits inside a media block').toBeGreaterThan(-1)
+    const query = added.slice(open + 6, added.indexOf('{', open)).trim()
+    expect(query).toBe('screen')
   })
 })
 
