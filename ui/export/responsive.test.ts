@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url'
  *  control) are measured in Chrome and recorded in `.superpowers/sdd/`.
  *
  *  The single most important invariant here is the *medium*. Both documents'
- *  PDFs were verified page by page — page counts, no node box or edge label
+ *  PDFs are verified page by page — page counts, no node box or edge label
  *  straddling a band boundary, no step row split across a break, no browser
  *  header or footer, exact `@page` margins — and a width query with no medium
  *  is evaluated against the **page box** as well as the window. A bare
@@ -18,6 +18,14 @@ import { fileURLToPath } from 'node:url'
  *  from silently re-typesetting a signed-off document. Every rule added by the
  *  mobile pass is `@media screen and (…)`, and the tests below refuse anything
  *  else.
+ *
+ *  One rule does reach paper on purpose: the contents-row correction, which was
+ *  scoped to `screen` when print was out of scope and left the printed contents
+ *  page truncating 8 of the cashier department's 17 titles. It is `@media print`
+ *  with **no width condition and one selector**, and the tests below hold it to
+ *  exactly that — an accidental print rule, or a width-conditioned one, still
+ *  fails. Whether the correction actually keeps a long title unclipped is a
+ *  different question, decided against the real markup in `overflow.test.tsx`.
  */
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -51,18 +59,25 @@ function addedBlock(css: string): string {
 const mediaQueries = (css: string) =>
   [...css.matchAll(/@media([^{]*)\{/g)].map((m) => m[1].trim())
 
+/** The only selector any added `@media print` block is allowed to carry. Adding
+ *  to this list means re-verifying both PDFs page by page; that is the point of
+ *  the list. */
+const PRINT_CORRECTIONS = ['.toc .toc-t']
+
 describe('the mobile rules can never reach the printed page', () => {
   for (const sheet of SHEETS) {
-    it(`${sheet.name} declares every added rule under @media screen`, () => {
+    it(`${sheet.name} names a medium on every added rule`, () => {
       const added = addedBlock(sheet.css)
       const queries = mediaQueries(added)
       expect(queries.length, 'the added block declares at least one media query').toBeGreaterThan(0)
-      // The *medium* is the invariant, not the width condition. A correction to
-      // a ported rule that is wrong at every width — the contents row is one —
-      // must not be shut inside a `max-width` query, or it fixes the phone and
-      // leaves the desk broken. `screen` on its own is therefore allowed, and
-      // `screen and (…)` still is; anything that could reach paper is not.
-      for (const q of queries) expect(q).toMatch(/^screen(?: and \(|$)/)
+      // The *medium* is the invariant. A correction to a ported rule that is
+      // wrong at every width — the contents row is one — must not be shut inside
+      // a `max-width` query, or it fixes the phone and leaves the desk broken;
+      // `screen` on its own is therefore allowed, and `screen and (…)` still is.
+      // Bare `print` is allowed too, for a correction that is meant to reach
+      // paper, but nothing else: a query with no medium at all is evaluated
+      // against the page box as well as the window.
+      for (const q of queries) expect(q).toMatch(/^(screen(?: and \(.*\))?|print)$/)
     })
 
     it(`${sheet.name} adds no rule outside a media query`, () => {
@@ -73,8 +88,24 @@ describe('the mobile rules can never reach the printed page', () => {
       expect(topLevel.trim().replace(/─+/g, '')).not.toMatch(/\{/)
     })
 
-    it(`${sheet.name} names no print medium in the added block`, () => {
-      expect(mediaQueries(addedBlock(sheet.css)).join(' ')).not.toMatch(/print/)
+    it(`${sheet.name} never conditions a print rule on a width`, () => {
+      // Chrome evaluates a width query in print against the page box, so
+      // `print and (max-width: …)` is a rule that changes with the paper size —
+      // the one thing a verified PDF cannot tolerate.
+      for (const q of mediaQueries(addedBlock(sheet.css))) {
+        if (/\bprint\b/.test(q)) expect(q).toBe('print')
+      }
+    })
+
+    it(`${sheet.name} adds nothing to print but the pinned corrections`, () => {
+      // Every declaration that reaches the PDF is enumerated here, because each
+      // one costs a page-by-page re-verification of both documents.
+      const added = addedBlock(sheet.css)
+      for (const m of added.matchAll(/@media\s*print\s*\{((?:[^{}]*\{[^{}]*\})*)[^{}]*\}/g)) {
+        const selectors = [...m[1].matchAll(/([^{}]+)\{/g)].map((s) => s[1].trim())
+        expect(selectors.length, 'an added print block declares something').toBeGreaterThan(0)
+        for (const sel of selectors) expect(PRINT_CORRECTIONS).toContain(sel)
+      }
     })
 
     it(`${sheet.name} leaves the ported breakpoints alone`, () => {
@@ -118,6 +149,25 @@ describe('the flowchart document’s contents page fits its sheet', () => {
     expect(open, 'the correction sits inside a media block').toBeGreaterThan(-1)
     const query = added.slice(open + 6, added.indexOf('{', open)).trim()
     expect(query).toBe('screen')
+  })
+
+  it('makes the same correction on paper, where the row is narrowest', () => {
+    // The `@page` box is letter less `8mm 13mm`, so a printed contents row gets
+    // 717.7 CSS px against the 824px it has inside the 940px sheet on a desk —
+    // paper is where `flex:none` bites hardest. Measured in Chrome 150 under
+    // print emulation at that exact width, on the real cashier document: 8 of
+    // its 17 process rows ran off the paper, the worst by 427.1px, and the
+    // printed PDF lost 169 letters across those eight titles.
+    const added = addedBlock(read('flowchart/document.module.css'))
+    const print = added.match(/@media\s*print\s*\{([\s\S]*?)\n\}/)
+    expect(print, 'the added block corrects the contents row for print too').not.toBeNull()
+    const rule = print![1].match(/\.toc \.toc-t\s*\{([^}]*)\}/)
+    expect(rule, 'the print block re-declares .toc .toc-t').not.toBeNull()
+    expect(rule![1]).toMatch(/flex\s*:\s*1/)
+    expect(rule![1]).toMatch(/min-width\s*:\s*0/)
+    expect(rule![1]).toMatch(/overflow-wrap\s*:\s*anywhere/)
+    // and it must outrank the ported `@media print` block, which is earlier
+    expect(css.lastIndexOf('@media print')).toBeGreaterThan(css.indexOf('@media print'))
   })
 })
 

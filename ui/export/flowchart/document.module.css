@@ -240,13 +240,16 @@ ul.kpis li::before{content:'';position:absolute;inset-inline-start:12px;top:13px
  * block is new: first the corrections to ported declarations that are simply
  * wrong at any width, then the phone, for which the mockup was never drawn.
  *
- * Every rule below is inside `@media screen`, and that is load-bearing rather
- * than tidy: the two PDFs were verified page by page (page counts, no node box
- * or step row straddling a break, no browser chrome, exact `@page` margins), and
- * a bare rule — or a bare `@media (max-width: …)`, which Chrome evaluates
- * against the page box as well as the window — would apply to the *paper* too
- * and silently re-typeset a document that was signed off.
- * `responsive.test.ts` pins every rule here to the `screen` medium.
+ * Every rule below names its medium, and that is load-bearing rather than tidy:
+ * the two PDFs are verified page by page (page counts, no node box or step row
+ * straddling a break, no browser chrome, exact `@page` margins), and a bare rule
+ * — or a bare `@media (max-width: …)`, which Chrome evaluates against the page
+ * box as well as the window — would apply to the *paper* too and silently
+ * re-typeset a document that was signed off. Everything the phone needs is
+ * therefore `@media screen and (…)`. The one correction that *must* reach paper
+ * says `@media print` and says so alone, on one selector, with both PDFs
+ * re-verified around it. `responsive.test.ts` pins that: no width condition may
+ * omit `screen`, and the print block may carry nothing but the contents row.
  *
  * The phone rules use one breakpoint, which the mockup already uses for its
  * grids: 560px, where the sheet has to give its padding back to the text.
@@ -283,8 +286,50 @@ ul.kpis li::before{content:'';position:absolute;inset-inline-start:12px;top:13px
  * other two cannot help. None of the three moves a title that already fits:
  * the row has nothing after `.toc-t` to take the slack, and the text is
  * start-aligned — verified pixel-identical on the dining document at 1920,
- * 1440, 1280, 1024 and 800px. */
+ * 1440, 1280, 1024 and 800px.
+ *
+ * Paper needs the same three declarations and gets them from the block below,
+ * which is deliberately separate: this one must never reach the PDF on its own
+ * terms, and that one was verified against the printed page count. */
 @media screen{
+  .toc .toc-t{flex:1;min-width:0;overflow-wrap:anywhere}
+}
+
+/* ── the same correction, on paper ──
+ * Corrects the same ported `.toc .toc-t{…;flex:none;…}` (`:88`), in the medium
+ * the block above deliberately excludes.
+ *
+ * The screen correction was scoped to `@media screen` because the PDFs were
+ * verified page by page and print was out of scope; the printed contents page
+ * therefore kept the defect. It is a *narrower* page than any screen — the
+ * `@page` box is letter less `8mm 13mm`, so a contents row gets 717.7 CSS px,
+ * against 824px inside the 940px sheet on a desk — so paper is where the ported
+ * declaration bites hardest.
+ *
+ * Measured in Chrome 150 under `print` emulation at that exact 718px page area,
+ * on the real cashier document: `.toc .toc-t` resolved to `flex:0 0 auto`,
+ * `min-width:auto`, `overflow-wrap:normal`, and **8 of its 17 process rows** ran
+ * off the paper, the worst by 427.1px. Read back out of the printed PDF, those
+ * eight titles lost 169 letters between them — up to 50 letters, 39% of a
+ * 128-letter name, cut mid-word at the paper's edge («… تحویل به لجستیک، تحویل
+ * حضوری یا اختصاص»). The dining document lost nothing: its longest title is 82
+ * characters and fits even a 718px row, which is why only one department shows
+ * it. The steps guide's printed index does *not* have this defect — its
+ * `.pindex .il` is `flex:1` and already wraps — and is left alone.
+ *
+ * The three declarations do the same three jobs as on screen: `flex:1` is the
+ * mockup's own first declaration (`:44`) restored over its own second one,
+ * `min-width:0` removes the automatic minimum size that pins a flex item at its
+ * min-content width, and `overflow-wrap:anywhere` is the backstop for a title
+ * with no break opportunity at all. A title that already fits does not move: the
+ * row has nothing after `.toc-t` to take the slack and the text is
+ * start-aligned — the dining PDF is byte-identical for it, page count included.
+ *
+ * A wrapped title is taller than a truncated one, so the cashier contents sheet
+ * gains lines and the document gains a page. That is the correction, not a
+ * side effect of it, and the new page count is re-verified in
+ * `.superpowers/sdd/print-toc-report.md`. */
+@media print{
   .toc .toc-t{flex:1;min-width:0;overflow-wrap:anywhere}
 }
 
