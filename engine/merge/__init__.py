@@ -179,6 +179,13 @@ def build_update(process, delta, run, now, root=None):
         local_relayout(process, min(order.index(i) for i in new_ids))
     elif removed_any_edge:
         local_relayout(process, 0)      # re-flow; manual positions are preserved
+    # process-level identity fields (name/summary/idef0/kpis). Overwrite, like
+    # revise_nodes and unlike enrich_nodes: a conflict cannot become a `pending`
+    # row because that schema requires a `node`. INV-5 is therefore enforced one
+    # level up — edit-process must get the user's approval per field before it
+    # ever writes a set_process delta.
+    for field, val in delta.get("set_process", {}).items():
+        process[field] = val
     process["updated_at"] = now
     validate("process.schema.json", process)
     for c in children:

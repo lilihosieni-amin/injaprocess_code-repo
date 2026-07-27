@@ -90,6 +90,15 @@
         "required": ["id", "set"],
         "properties": { "id": { "type": "string" }, "set": { "type": "object" } }
       }
+    },
+    "set_process": {
+      "type": "object", "additionalProperties": false, "minProperties": 1,
+      "properties": {
+        "name": { "type": "string" },
+        "summary": { "type": "string" },
+        "idef0": { "$ref": "#/$defs/icom" },
+        "kpis": { "type": "array", "items": { "$ref": "#/$defs/kpi" } }
+      }
     }
   },
   "$defs": {

@@ -40,6 +40,27 @@ def test_revise_nodes_requires_id_and_set():
         validate("delta.schema.json", _empty_delta(revise_nodes=[{"id": "x"}]))
 
 
+def test_delta_accepts_set_process():
+    validate("delta.schema.json", _empty_delta(
+        set_process={"name": "خرید و تدارکات", "summary": "خلاصهٔ تازه."}))
+
+
+def test_set_process_rejects_unknown_field():
+    with pytest.raises(ValueError):
+        validate("delta.schema.json", _empty_delta(set_process={"title": "x"}))
+
+
+def test_set_process_rejects_empty_object():
+    with pytest.raises(ValueError):
+        validate("delta.schema.json", _empty_delta(set_process={}))
+
+
+def test_set_process_rejects_malformed_idef0():
+    # icom requires all four lists
+    with pytest.raises(ValueError):
+        validate("delta.schema.json", _empty_delta(set_process={"idef0": {"inputs": []}}))
+
+
 from merge import apply_delta
 
 
@@ -103,3 +124,48 @@ def test_revise_nodes_unknown_id_is_skipped():
     apply_delta(p, _empty_delta(revise_nodes=[{"id": "ghost", "set": {"label": "x"}}]),
                 RUN, NOW)
     validate("process.schema.json", p)             # no crash, no change
+
+
+def test_set_process_overwrites_name_and_summary():
+    p = _proc()
+    assert p["name"] == "خرید و پرداخت هزینه"       # filled
+    apply_delta(p, _empty_delta(set_process={
+        "name": "خرید و تدارکات", "summary": "خلاصهٔ بازنویسی‌شده."}), RUN, NOW)
+    assert p["name"] == "خرید و تدارکات"
+    assert p["summary"] == "خلاصهٔ بازنویسی‌شده."
+    validate("process.schema.json", p)
+    assert p["updated_at"] == NOW
+
+
+def test_set_process_replaces_idef0_and_kpis():
+    p = _proc()
+    icom = {"inputs": ["درخواست"], "controls": [], "outputs": ["کالا"], "mechanisms": []}
+    kpis = [{"name": "زمان چرخه", "target": "۲ روز"}]
+    apply_delta(p, _empty_delta(set_process={"idef0": icom, "kpis": kpis}), RUN, NOW)
+    assert p["idef0"] == icom
+    assert p["kpis"] == kpis
+    validate("process.schema.json", p)
+
+
+def test_set_process_absent_leaves_process_fields_untouched():
+    p = _proc()
+    before = (p["name"], p["summary"],
+              copy.deepcopy(p["idef0"]), copy.deepcopy(p["kpis"]))
+    apply_delta(p, _empty_delta(), RUN, NOW)
+    assert (p["name"], p["summary"], p["idef0"], p["kpis"]) == before
+
+
+def test_set_process_does_not_create_pending_rows():
+    p = _proc()
+    p["pending"] = []
+    apply_delta(p, _empty_delta(set_process={"name": "نام تازه"}), RUN, NOW)
+    assert p["pending"] == []          # overwrite semantics, never a pending row
+
+
+def test_set_process_leaves_nodes_and_edges_alone():
+    p = _proc()
+    nodes_before = copy.deepcopy(p["nodes"])
+    edges_before = copy.deepcopy(p["edges"])
+    apply_delta(p, _empty_delta(set_process={"name": "نام تازه"}), RUN, NOW)
+    assert p["nodes"] == nodes_before
+    assert p["edges"] == edges_before
