@@ -20,6 +20,11 @@ class Settings:
     static_dir: Optional[Path]
     export_dir: Optional[Path]
     export_template_dir: Optional[Path]
+    #: The headless browser that prints an export to PDF. Optional, and unset means
+    #: exports simply carry no PDF — the same shape as `export_dir` being unset
+    #: meaning no export at all. A deployment without the browser in its image must
+    #: keep working, so this is never required.
+    chromium_path: Optional[Path]
     git_author_name: str
     git_author_email: str
     users: dict[str, str]
@@ -56,6 +61,7 @@ def load_settings(env: Optional[Mapping[str, str]] = None) -> Settings:
     static = env.get("UI_STATIC_DIR")
     export_dir = env.get("EXPORT_DIR")
     export_templates = env.get("UI_EXPORT_TEMPLATE_DIR")
+    chromium = env.get("CHROMIUM_PATH")
     return Settings(
         data_root=data_root,
         schema_dir=schema_dir,
@@ -66,6 +72,7 @@ def load_settings(env: Optional[Mapping[str, str]] = None) -> Settings:
         static_dir=Path(static) if static else None,
         export_dir=Path(export_dir) if export_dir else None,
         export_template_dir=Path(export_templates) if export_templates else None,
+        chromium_path=Path(chromium) if chromium else None,
         git_author_name=env.get("GIT_AUTHOR_NAME", "ui-edit"),
         git_author_email=env.get("GIT_AUTHOR_EMAIL", "ui-edit@inja.local"),
         users=users,

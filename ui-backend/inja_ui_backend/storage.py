@@ -18,24 +18,37 @@ def read_json(path: Path) -> dict:
     return json.loads(Path(path).read_text(encoding="utf-8"))
 
 
-def write_text_atomic(path: Path, text: str) -> None:
-    """Write `text` so a reader sees either the old file or the whole new one.
+def _write_atomic(path: Path, payload: str | bytes, mode: str,
+                  encoding: str | None) -> None:
+    """Write `payload` so a reader sees either the old file or the whole new one.
 
     The single implementation of the write-temp-then-`os.replace` dance, shared by
-    `write_json_atomic` and the department export. The temp file is created beside
-    the target so the rename stays on one filesystem and is therefore atomic; the
-    `finally` clears it on the failure path, where `os.replace` never ran.
+    `write_json_atomic` and the department export's HTML through
+    `write_text_atomic`, and by the export's rendered PDF through
+    `write_bytes_atomic`. The temp file is created beside the target so the rename
+    stays on one filesystem and is therefore atomic; the `finally` clears it on the
+    failure path, where `os.replace` never ran. The `.tmp` suffix is what
+    `exports.write_export`'s orphan sweep looks for.
     """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            fh.write(text)
+        with os.fdopen(fd, mode, encoding=encoding) as fh:
+            fh.write(payload)
         os.replace(tmp, path)
     finally:
         with contextlib.suppress(FileNotFoundError):
             os.unlink(tmp)
+
+
+def write_text_atomic(path: Path, text: str) -> None:
+    _write_atomic(path, text, "w", "utf-8")
+
+
+def write_bytes_atomic(path: Path, data: bytes) -> None:
+    """The same guarantee for a binary payload — the export's rendered PDF."""
+    _write_atomic(path, data, "wb", None)
 
 
 def write_json_atomic(path: Path, doc: dict) -> None:

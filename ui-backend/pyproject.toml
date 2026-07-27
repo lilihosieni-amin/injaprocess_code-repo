@@ -7,6 +7,11 @@ dependencies = [
     "uvicorn[standard]~=0.35",
     "argon2-cffi~=25.1",
     "itsdangerous~=2.2",
+    # Already installed as `uvicorn[standard]`'s WebSocket implementation, so this
+    # adds nothing to the image; declared because `pdf.py` imports it directly to
+    # talk CDP to headless Chromium, and a transitive extra is not something to
+    # build on. `>=13` is where the blocking `websockets.sync` client arrived.
+    "websockets>=13",
 ]
 
 [build-system]

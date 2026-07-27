@@ -26,6 +26,15 @@ def test_write_text_atomic_creates_parents_and_leaves_no_tmp(tmp_path):
     assert [q.name for q in p.parent.iterdir()] == [p.name]
 
 
+def test_write_bytes_atomic_keeps_a_binary_payload_byte_for_byte(tmp_path):
+    """A PDF is not text: bytes 0x80-0xff decode as nothing and must survive anyway."""
+    p = tmp_path / "dining" / "flowchart-0123456789abcdef.pdf"
+    blob = b"%PDF-1.4\n\x80\xff\x00stream\r\n"
+    storage.write_bytes_atomic(p, blob)
+    assert p.read_bytes() == blob
+    assert [q.name for q in p.parent.iterdir()] == [p.name]
+
+
 def test_dept_of_and_paths(tmp_path):
     assert storage.dept_of("cooking-001") == "cooking"
     assert storage.proc_path(tmp_path, "cooking-001").name == "cooking-001.json"

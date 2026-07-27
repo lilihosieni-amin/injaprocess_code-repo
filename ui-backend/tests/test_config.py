@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 import pytest
 from inja_ui_backend.config import load_settings
@@ -85,6 +86,17 @@ def test_export_dirs_default_to_none(tmp_path):
     s = load_settings(_valid_env(tmp_path))
     assert s.export_dir is None
     assert s.export_template_dir is None
+
+
+def test_chromium_path_defaults_to_none(tmp_path):
+    """Unset means "no PDF", exactly as an unset EXPORT_DIR means "no export"."""
+    assert load_settings(_valid_env(tmp_path)).chromium_path is None
+
+
+def test_chromium_path_read_from_env(tmp_path):
+    env = _valid_env(tmp_path)
+    env["CHROMIUM_PATH"] = "/usr/bin/chromium-headless-shell"
+    assert load_settings(env).chromium_path == Path("/usr/bin/chromium-headless-shell")
 
 
 def test_export_dirs_read_from_env(tmp_path):
