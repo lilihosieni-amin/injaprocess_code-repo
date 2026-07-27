@@ -54,8 +54,33 @@
 /* must clip to its viewBox — otherwise every band paints the whole diagram */
 .pf-band svg { display: block; overflow: hidden; }
 
+/* A node linked to a subprocess shows «زیرفرآیند — برای ورود کلیک کنید» on screen;
+   on paper there is nothing to click, and the reader needs to know *which* process
+   to turn to. `ActivityNode` renders both variants and the medium picks one.
+   `.pf-measure` is the host that fixes each node's printed box, and it is laid out
+   under *screen* media — so the swap has to happen here, outside the print block,
+   as well as in the band below. Measured around the click wording and painted
+   around the short id, every subprocess node would reserve more height than it
+   paints and its edges would land off the card's centre. */
+.pf-measure [data-subprocess-cta] { display: none; }
+.pf-measure [data-subprocess-id] { display: flex; }
+
 @media print {
-  @page { margin: 14mm 13mm; size: landscape; }
+  /* The vertical margin is deliberately under 8.8mm.
+     Chrome draws the date/title/URL/page-number chrome itself and no page can turn
+     it off from script or CSS — but it does not draw what does not fit. Measured in
+     Chrome 150 with `displayHeaderFooter` on (the flag the print dialog's "Headers
+     and footers" checkbox sets): a vertical `@page` margin of 8.8mm or less prints
+     neither header nor footer, 8.9mm and above prints both, and the content lays
+     out identically either way. The chrome is a horizontal band, so the side margin
+     is free of it and stays at the 13mm `bands.ts` derived `PRINT.W` from.
+     `margin:0` would suppress it too, but `.doc` and `.sheet` are `padding:0` in
+     print, and padding on a container spaces only the first and last page of a
+     flow — the roles and KPI sheets run to three pages each and their interior
+     pages would print hard against the paper edge. 8mm keeps every page off it.
+     Narrowing the vertical margin only gives a band *more* room than `PRINT.H`
+     assumes, so the frozen budget stays valid. `page-box.test.ts` pins all of it. */
+  @page { margin: 8mm 13mm; size: landscape; }
   body { background: #fff; }
   * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
 
@@ -67,4 +92,22 @@
   /* only when the first unbreakable run is taller than the room under the
      heading — rare, and it buys a much larger diagram */
   .pf-wrap.own-page { break-before: page; }
+
+  /* The two print-only deviations from the app's node, both sanctioned.
+     They reach the printed node through `data-` hooks `ActivityNode` declares —
+     never through a `react-flow__` selector, which `parity.test.tsx` bans and
+     which would restyle the diagram rather than annotate it.
+
+     The label: dark ink on white is hard to read once the planner shrinks a
+     diagram towards `PRINT.MINSC` (0.34). Sitting it on `bg-tile-v2` (#F4EFFB) —
+     the app's own tile, the one the id badge above it already uses — separates
+     the line from the card without turning a dense page into a wall of blocks.
+     Background and radius only: this node's box was measured under screen media,
+     where this rule does not apply, so a rule that changed the label's *size*
+     here would paint a card larger than the band reserved space for. */
+  .pf-band [data-node-label] { background: #F4EFFB; border-radius: 4px; }
+
+  /* The subprocess pill: the id, not the invitation to click. */
+  .pf-band [data-subprocess-cta] { display: none; }
+  .pf-band [data-subprocess-id] { display: flex; }
 }
