@@ -1,4 +1,4 @@
-import type { ActivityNode, Process, ProcNode } from '../../src/api/types'
+import type { ActivityNode, ProcNode, ReadableProcess } from '../../src/api/types'
 
 export type Junction = 'AND' | 'OR' | 'XOR'
 /** One "go back to step N" edge. `num` is absent when the target is not a
@@ -28,7 +28,7 @@ type IndexedEdge = { from: string; to: string; label: string; i: number }
  *  Every traversal breaks ties on the node's original index, so the same
  *  process always linearises the same way — the export is a pure transform.
  */
-function graphOf(p: Process) {
+function graphOf(p: ReadableProcess) {
   const nodes = p.nodes.filter((n) => !('removed' in n && n.removed))
   const edges: IndexedEdge[] = p.edges.map((e, i) => ({ from: e.from, to: e.to, label: e.label ?? '', i }))
   const byId = new Map<string, { n: ProcNode; i: number }>()
@@ -128,7 +128,7 @@ export function countSteps(blocks: Block[]): number {
 }
 
 /** Pure: process JSON -> ordered block tree. */
-export function linearize(p: Process): Block[] {
+export function linearize(p: ReadableProcess): Block[] {
   const g = graphOf(p)
   const visited = new Set<string>()
 

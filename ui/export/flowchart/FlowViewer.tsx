@@ -5,7 +5,7 @@ import { toFlowNodes, toFlowEdges } from '../../src/flow/adapt'
 import { DetailDrawer } from '../../src/flow/DetailDrawer'
 import { JunctionLegend } from '../../src/flow/JunctionLegend'
 import { IdBadge } from '../../src/ui/IdBadge'
-import type { ActivityNode, Process } from '../../src/api/types'
+import type { ActivityNode, ReadableProcess } from '../../src/api/types'
 
 /** The site's flow page, minus the app chrome that has no meaning in a document.
  *
@@ -16,7 +16,7 @@ import type { ActivityNode, Process } from '../../src/api/types'
  *  app, not to an exported document.
  */
 export function FlowViewer({ processes, startId, onClose }: {
-  processes: Process[]
+  processes: ReadableProcess[]
   startId: string
   onClose: () => void
 }) {

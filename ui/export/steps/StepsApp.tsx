@@ -3,7 +3,7 @@ import { linearize, countSteps, groupTitle } from './linearize'
 import type { Block } from './linearize'
 import { toFa } from '../../src/lib/format'
 import type { ExportPayload } from '../shared/payload'
-import type { ActivityNode, Process } from '../../src/api/types'
+import type { ActivityNode, ReadableProcess } from '../../src/api/types'
 import s from './steps.module.css'
 
 type Crumb = { pid: string; via: ActivityNode | null }
@@ -149,7 +149,7 @@ function Shell({ children, onHome }: { children: React.ReactNode; onHome: () => 
 
 function Blocks({ blocks, byId, jump, onEnter, onJump }: {
   blocks: Block[]
-  byId: Map<string, Process>
+  byId: Map<string, ReadableProcess>
   jump: Jump | null
   onEnter: (sub: string, via: ActivityNode) => void
   onJump: (num: number) => void
@@ -183,7 +183,7 @@ function Blocks({ blocks, byId, jump, onEnter, onJump }: {
 
 function Step({ block, byId, jump, onEnter, onJump }: {
   block: Extract<Block, { kind: 'step' }>
-  byId: Map<string, Process>
+  byId: Map<string, ReadableProcess>
   jump: Jump | null
   onEnter: (sub: string, via: ActivityNode) => void
   onJump: (num: number) => void

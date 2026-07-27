@@ -12,7 +12,7 @@ import { getEdgeParams, type Geom } from '../../src/flow/edges/floating'
 import { freeCuts, planBands, PRINT } from './bands'
 import { bandSvg, geomBlocks, geomBounds, type DiagramGeom, type EdgeGeom, type NodeBox } from './geometry'
 import type { ExportPayload } from '../shared/payload'
-import type { Process } from '../../src/api/types'
+import type { ReadableProcess } from '../../src/api/types'
 
 const nodeTypes = { activity: ActivityNode, start: StartNode, end: EndNode, junction: JunctionNode }
 
@@ -94,7 +94,7 @@ function slug(id: string): string {
  *  the app's rather than a local restyling. The id is unambiguous inside the
  *  host — edge groups carry `from->to` and handles carry a compound id, neither
  *  of which can equal a node id. */
-function capture(proc: Process, store: ReturnType<typeof useStoreApi>, host: HTMLElement | null): DiagramGeom {
+function capture(proc: ReadableProcess, store: ReturnType<typeof useStoreApi>, host: HTMLElement | null): DiagramGeom {
   const lookup = store.getState().nodeLookup
   const boxes: NodeBox[] = []
   for (const [id, internal] of lookup) {
@@ -129,7 +129,7 @@ function capture(proc: Process, store: ReturnType<typeof useStoreApi>, host: HTM
   return { boxes, edges }
 }
 
-function Capture({ proc, host, onReady }: { proc: Process; host: RefObject<HTMLDivElement | null>; onReady: (g: DiagramGeom) => void }) {
+function Capture({ proc, host, onReady }: { proc: ReadableProcess; host: RefObject<HTMLDivElement | null>; onReady: (g: DiagramGeom) => void }) {
   const initialized = useNodesInitialized()
   const store = useStoreApi()
   useEffect(() => {

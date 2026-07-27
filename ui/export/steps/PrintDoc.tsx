@@ -3,7 +3,7 @@ import { linearize, groupTitle } from './linearize'
 import type { Block } from './linearize'
 import { toFa } from '../../src/lib/format'
 import type { ExportPayload } from '../shared/payload'
-import type { ActivityNode, Process } from '../../src/api/types'
+import type { ActivityNode, ReadableProcess } from '../../src/api/types'
 import p from './print.module.css'
 
 /** The activity that opens `x`, for its «این بخش مربوط به چیست؟» note.
@@ -19,7 +19,7 @@ import p from './print.module.css'
  *  that one wins; failing that the callers are ordered by process and node id.
  *  Either way the answer is a property of the data, never of the order the
  *  payload happens to list processes or nodes in. */
-function callerOf(processes: Process[], x: Process): ActivityNode | null {
+function callerOf(processes: ReadableProcess[], x: ReadableProcess): ActivityNode | null {
   const callers: { proc: string; node: ActivityNode }[] = []
   processes.forEach((o) => o.nodes.forEach((n) => {
     if (n.type === 'activity' && n.subprocess === x.id && !n.removed) callers.push({ proc: o.id, node: n })
@@ -80,7 +80,7 @@ export function PrintDoc({ payload }: { payload: ExportPayload }) {
   )
 }
 
-function PrintBlocks({ blocks, byId }: { blocks: Block[]; byId: Map<string, Process> }) {
+function PrintBlocks({ blocks, byId }: { blocks: Block[]; byId: Map<string, ReadableProcess> }) {
   return (
     <>
       {blocks.map((b, i) => b.kind === 'group' ? (

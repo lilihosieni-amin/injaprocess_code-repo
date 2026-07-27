@@ -1,6 +1,6 @@
 import { MarkerType } from '@xyflow/react'
 import type { Node, Edge } from '@xyflow/react'
-import type { Process, ProcNode } from '../api/types'
+import type { ProcNode, ReadableProcess } from '../api/types'
 import { EDGE_STROKE, EDGE_ARROW } from './edges/edge-style'
 
 export type FlowNodeData = { node: ProcNode; conflicts: number; hasSub: boolean; highlighted?: boolean; onOpenDetail?: (id: string) => void }
@@ -25,7 +25,7 @@ export function fieldFa(field: string): string {
   return FIELD_FA[field] ?? field
 }
 
-export function toFlowNodes(proc: Process): Node<FlowNodeData>[] {
+export function toFlowNodes(proc: ReadableProcess): Node<FlowNodeData>[] {
   const openByNode = new Map<string, number>()
   for (const p of proc.pending) {
     if (p.status === 'open') openByNode.set(p.node, (openByNode.get(p.node) ?? 0) + 1)
@@ -44,7 +44,7 @@ export function toFlowNodes(proc: Process): Node<FlowNodeData>[] {
     }))
 }
 
-export function toFlowEdges(proc: Process): Edge[] {
+export function toFlowEdges(proc: ReadableProcess): Edge[] {
   return proc.edges.map((e) => ({
     id: `${e.from}->${e.to}`,
     source: e.from,

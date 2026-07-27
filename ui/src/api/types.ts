@@ -40,6 +40,29 @@ export interface Process {
   tombstoned?: boolean
 }
 
+/** A process with only the fields a *read-only* view of it needs.
+ *
+ *  This is exactly what an export ships. The exported file is served from an
+ *  unauthenticated link, so `inja_ui_backend/exports.py` withholds every process
+ *  field neither document renders — `summary`, `source`, `created_at`,
+ *  `updated_at`, `idef0`, `kpis` — and this type says so, instead of letting
+ *  `Process` promise fields that are not in the file.
+ *
+ *  `Process` is assignable to it (it has strictly more), so every function typed
+ *  against it still takes the editing app's own documents unchanged. Functions
+ *  the export and the app share — `toFlowNodes`, `DetailDrawer`, `linearize` —
+ *  are typed with this one; anything that genuinely needs a whole process (the
+ *  Summary screen, `usePutProcess`) keeps `Process`.
+ *
+ *  Nodes stay `ProcNode`: the export blanks a node's `icom` and `source` rather
+ *  than dropping them, because the app's own node components and drawer
+ *  dereference both. */
+export type ReadableProcess = Omit<
+  Process,
+  'summary' | 'source' | 'created_at' | 'updated_at' | 'idef0' | 'kpis'
+  | 'superseded_by' | 'tombstoned'
+>
+
 export interface Overview {
   department: string; name: string
   description: string

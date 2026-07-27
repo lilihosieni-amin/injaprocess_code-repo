@@ -20,8 +20,17 @@ export function createSeededClient(payload: ExportPayload): QueryClient {
       },
     },
   })
+  // `dept.department` is the key, not a label: `useProcesses(code)` builds
+  // `['processes', code]` from the *process's* own `department`, so the two have
+  // to be the same string or the drawer's query misses this cache and the
+  // throwing default queryFn fires.
   const code = payload.dept.department
   qc.setQueryData(['overview', code], payload.dept)
+  // `useProcesses` is typed `Process[]` while an export ships `ReadableProcess[]`.
+  // The only reader is `DetailDrawer`'s subprocess picker, which lives in the
+  // edit branch the export never enters (`editing={false}`) and reads nothing
+  // but `id` and `name`. `setQueryData` is untyped, so nothing here asserts the
+  // wider type — the entry is seeded so the query resolves offline at all.
   qc.setQueryData(['processes', code], payload.processes)
   payload.processes.forEach((p) => qc.setQueryData(['process', p.id], p))
   return qc

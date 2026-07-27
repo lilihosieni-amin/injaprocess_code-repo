@@ -1,8 +1,14 @@
-import type { Overview, Process } from '../../src/api/types'
+import type { Overview, ReadableProcess } from '../../src/api/types'
 
+/** Everything the file carries — and, because the link is unauthenticated,
+ *  everything a reader can see through View Source. `ReadableProcess`, not
+ *  `Process`: `inja_ui_backend/exports.py` withholds the process fields neither
+ *  document renders, and this type has to say so rather than promise fields the
+ *  file does not contain. A node's `icom` and `source` are present but blanked
+ *  there, so `ProcNode` stays true of what arrives. */
 export type ExportPayload = {
   dept: Overview
-  processes: Process[]
+  processes: ReadableProcess[]
   generated_at: string
 }
 

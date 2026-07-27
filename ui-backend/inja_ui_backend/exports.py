@@ -38,11 +38,87 @@ def export_token(signing_key: str, code: str, kind: str) -> str:
     return mac.hexdigest()[:16]
 
 
+#: The only process keys either document reads, and therefore the only ones a
+#: public file carries. A **whitelist**, not a blacklist: the exported link is
+#: unauthenticated, so a field added to `process.schema.json` later must have to
+#: be let in deliberately rather than start shipping the day it is written.
+#:
+#: `pending` and `nodes` are added by `_public_process` after this copy — the
+#: first emptied, the second rewritten node by node.
+PUBLIC_PROCESS_KEYS: tuple[str, ...] = ("id", "department", "name", "parent", "edges")
+
+
+def _empty_icom() -> dict:
+    """A fresh, structurally valid but empty ICOM record."""
+    return {"inputs": [], "controls": [], "outputs": [], "mechanisms": []}
+
+
+def _empty_node_source() -> dict:
+    """A fresh, structurally valid but empty node provenance record."""
+    return {"created_by": "", "touched_by": []}
+
+
+def _public_node(node: dict) -> dict:
+    """One node with its two sensitive values blanked, its shape untouched.
+
+    `icom` and `source` are *emptied* rather than dropped because the frontend
+    reads both through `ActivityNode`, whose contract says they are always
+    there: the drawer's ICOM block indexes `icom.inputs` (behind `showIcom`,
+    which the export turns off — but that is one JSX prop, not a guarantee), and
+    its footer renders `source.created_by` with no guard at all. Dropping either
+    key turns a reader's click into a `TypeError` inside a document that has
+    already been handed out; blanking the value cannot.
+    """
+    out = dict(node)
+    if "icom" in out:
+        out["icom"] = _empty_icom()
+    if "source" in out:
+        out["source"] = _empty_node_source()
+    return out
+
+
+def _public_process(doc: dict) -> dict:
+    """One process reduced to what the two documents actually render."""
+    out = {k: doc[k] for k in PUBLIC_PROCESS_KEYS if k in doc}
+    out["nodes"] = [_public_node(n) for n in doc.get("nodes", [])]
+    out["pending"] = []
+    return out
+
+
 def build_payload(data_root: Path, code: str, generated_at: str) -> dict:
     """What the template renders: the overview, the processes, the timestamp.
 
-    `pending` is emptied here rather than hidden in the template — an
-    unauthenticated link (D6) must not carry unreviewed internal disagreements.
+    Trimmed here rather than hidden in the template, because the template hides
+    nothing: an export is served from a deliberately unauthenticated link (D6)
+    whose filename token is its only guard, so every byte of this payload is
+    readable by anyone holding that link, through View Source. Whatever no
+    document renders must therefore not be in it.
+
+    **Withheld entirely** (whitelisted out by `PUBLIC_PROCESS_KEYS`):
+
+    * `pending` — unreviewed internal disagreements. Emptied rather than
+      dropped: `toFlowNodes` iterates it to count each node's conflicts, so the
+      key has to be there; the *contents* must not travel.
+    * `summary`, `idef0`, `kpis` — the process's own summary and IDEF0/KPI
+      records. Maintained by the editing app's Summary screen, which is not part
+      of either export bundle; no exported view reads them.
+    * `source` (`type`/`ref`/`run`) and `created_at`/`updated_at` — where the
+      process came from and when it was last touched. `source.ref` and
+      `source.run` name a meeting recording and a pipeline run.
+    * `tombstoned`/`superseded_by` — a tombstoned process is dropped below, so
+      these can only ever describe a process nobody outside sees.
+
+    **Blanked in place** (`_public_node`): every node's `source` — real
+    provenance, e.g. `runs/chat/20260722-050015` plus who edited it — and its
+    `icom`. Both keys stay because the frontend's `ProcNode` type says they are
+    always present and the drawer dereferences them; see `_public_node`.
+
+    **Kept, and load-bearing in ways that are not obvious:** `dept.department`
+    keys the export's offline react-query cache; `process.department` is what
+    `DetailDrawer` passes to `useProcesses`; `parent` decides the «زیرفرآیند»
+    tags and the printed guide's "what is this about?" note; node `position` is
+    the whole diagram geometry; node `removed` is what keeps a soft-deleted node
+    out of the counts, the bands and the steps.
     """
     overview = storage.overview_path(data_root, code)
     if not overview.is_file():
@@ -51,7 +127,7 @@ def build_payload(data_root: Path, code: str, generated_at: str) -> dict:
     for doc in storage.ordered_processes(data_root, code):
         if doc.get("tombstoned"):
             continue
-        procs.append({**doc, "pending": []})
+        procs.append(_public_process(doc))
     return {
         "dept": storage.read_json(overview),
         "processes": procs,

@@ -3,7 +3,7 @@ import { Chip } from '../ui/Chip'
 import { useProcesses } from '../api/hooks'
 import { fieldFa } from './adapt'
 import { toFa, formatConflictValue } from '../lib/format'
-import type { ProcNode, ActivityNode, JunctionNode, Pending, Process } from '../api/types'
+import type { ProcNode, ActivityNode, JunctionNode, Pending, ReadableProcess } from '../api/types'
 
 export type DrawerProps = {
   node: ProcNode
@@ -13,7 +13,9 @@ export type DrawerProps = {
    *  editing app maintains ICOM, so it stays. The exported document opts out:
    *  its readers want the activity and who does it, not the data contract. */
   showIcom?: boolean
-  process: Process
+  /** Only `department` and `id` are read — see `ReadableProcess`: an export's
+   *  process is not a whole `Process`, and this prop must not claim it is. */
+  process: ReadableProcess
   onClose: () => void
   onEdit: () => void
   onAccept: (index: number) => void
