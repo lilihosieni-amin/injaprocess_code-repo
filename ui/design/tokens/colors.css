@@ -1,0 +1,54 @@
+/* Inja Food — Color system.
+   Sampled from the brand logo (violet + coral) and the running app. */
+:root {
+  /* ---- Brand ---- */
+  --inja-violet: #4A25A9;        /* primary brand violet (logo) */
+  --inja-violet-ink: #2A1D5E;    /* deep violet, primary text/headings */
+  --inja-violet-deep: #2E1668;   /* login backdrop */
+  --inja-coral: #FA5A52;         /* brand coral accent */
+  --inja-coral-ink: #E23D35;     /* stronger coral, destructive */
+
+  /* ---- Surfaces ---- */
+  --surface-app: #FBF7F1;        /* warm cream page background */
+  --surface-card: #FFFFFF;       /* card / panel */
+  --surface-violet-soft: #F0E9FB;/* violet tint (icon tiles, mech chips) */
+  --surface-violet-softer: #F5F1FB;
+  --surface-coral-soft: #FFE9E7; /* coral tint (icon tiles, conflict pill) */
+
+  /* ---- Borders ---- */
+  --border-warm: #EFE7DC;        /* default card border (warm) */
+  --border-violet: #E3D8F5;      /* input / control border (violet-tinted) */
+  --border-hairline: #F2ECE3;    /* subtle internal divider */
+
+  /* ---- Text ---- */
+  --text-strong: #2A1D5E;        /* headings, key values */
+  --text-body: #4A3F6B;          /* body copy */
+  --text-muted: #8a7db0;         /* secondary / captions */
+  --text-faint: #a99fc4;         /* tertiary / monospace ids */
+  --text-on-violet: #FBF7F1;     /* text over deep violet */
+
+  /* ---- Semantic ---- */
+  --ok: #1F8A5B;     --ok-soft: #E4F6EC;      /* success / outputs */
+  --danger: #E23D35; --danger-soft: #FDE7E5;  /* delete / errors */
+  --warn: #B4690E;   --warn-soft: #FBEEDC;    /* sub-process / warnings */
+  --info: #1F6FB2;   --info-soft: #E7F1FB;    /* inputs */
+
+  /* ---- IDEF0 / ICOM chip roles ---- */
+  --icom-input-fg: #1F6FB2;    --icom-input-bg: #E7F1FB;
+  --icom-control-fg: #8A5A00;  --icom-control-bg: #FBF0DA;
+  --icom-output-fg: #1F8A5B;   --icom-output-bg: #E4F6EC;
+  --icom-mech-fg: #4A25A9;     --icom-mech-bg: #F0E9FB;
+
+  /* ---- Flowchart junctions ---- */
+  --junction-xor: #FA5A52;
+  --junction-and: #4A25A9;
+  --junction-or:  #E8A33D;
+
+  /* ---- Semantic aliases ---- */
+  --color-primary: var(--inja-violet);
+  --color-accent: var(--inja-coral);
+  --text-heading: var(--text-strong);
+  --link: var(--inja-violet);
+  --link-hover: var(--inja-coral);
+  --selection-bg: var(--inja-coral);
+}

@@ -1,0 +1,15 @@
+/* Inja Food — Shadows, transitions. All shadows are violet-tinted and soft. */
+:root {
+  --shadow-row: 0 3px 14px -9px rgba(74,37,169,.25);    /* list rows, chips */
+  --shadow-card: 0 4px 16px -10px rgba(74,37,169,.25);  /* stat cards */
+  --shadow-card-lg: 0 4px 20px -12px rgba(74,37,169,.28);
+  --shadow-hover: 0 14px 30px -14px rgba(74,37,169,.45);/* card hover lift */
+  --shadow-drawer: 20px 0 50px -30px rgba(74,37,169,.5);/* side drawer */
+  --shadow-modal: 0 40px 90px -30px rgba(0,0,0,.6);     /* dialogs, login */
+  --shadow-pop: 0 18px 40px -16px rgba(74,37,169,.5);   /* dropdown menus */
+  --shadow-coral: 0 10px 24px -10px rgba(226,61,53,.9); /* destructive btn */
+
+  --hover-lift: translateY(-2px);
+  --ease: .16s;                 /* standard transition duration */
+  --ease-fast: .12s;
+}
