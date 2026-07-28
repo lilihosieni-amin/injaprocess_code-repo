@@ -744,6 +744,93 @@ def test_a_range_request_still_needs_a_session(data_root, tmp_path, monkeypatch)
     assert PDF_BYTES[:20] not in r.content
 
 
+# --- conditional requests: the second visit does not re-download ------------- #
+
+def test_a_served_export_carries_validators(data_root, tmp_path, monkeypatch):
+    """Without an `ETag` and a `Last-Modified` a client has nothing to revalidate
+    with, so every later request is a full download by construction."""
+    cfg, html_url, pdf_url = _publish(data_root, tmp_path, monkeypatch)
+    c = _reader(cfg, export_auth.EXPORT_COOKIE, export_auth.issue_cookie(cfg))
+    for url in (html_url, pdf_url):
+        r = c.get(url)
+        assert r.headers.get("etag"), url
+        assert r.headers.get("last-modified"), url
+
+
+def test_an_unchanged_export_is_304_for_if_none_match(data_root, tmp_path, monkeypatch):
+    """The regression the mount's removal introduced, pinned.
+
+    Export URLs are stable across regenerations, so a reader who reopens a
+    department asks for the same ~2 MB file again. `StaticFiles` answered 304;
+    on a staff phone over a weak connection that difference is the feature.
+    """
+    cfg, html_url, pdf_url = _publish(data_root, tmp_path, monkeypatch)
+    c = _reader(cfg, export_auth.EXPORT_COOKIE, export_auth.issue_cookie(cfg))
+    for url in (html_url, pdf_url):
+        etag = c.get(url).headers["etag"]
+        again = c.get(url, headers={"If-None-Match": etag})
+        assert again.status_code == 304, url
+        assert again.content == b"", url
+        assert again.headers["etag"] == etag, url
+
+
+def test_an_unchanged_export_is_304_for_if_modified_since(data_root, tmp_path,
+                                                          monkeypatch):
+    """The other validator, and the one an old client is likelier to send."""
+    cfg, html_url, _ = _publish(data_root, tmp_path, monkeypatch)
+    c = _reader(cfg, export_auth.EXPORT_COOKIE, export_auth.issue_cookie(cfg))
+    last_modified = c.get(html_url).headers["last-modified"]
+
+    again = c.get(html_url, headers={"If-Modified-Since": last_modified})
+    assert again.status_code == 304
+    assert again.content == b""
+
+
+def test_a_changed_export_is_sent_again(data_root, tmp_path, monkeypatch):
+    """A 304 keyed on a validator that no longer describes the file would serve a
+    reader the previous department documentation out of their own cache."""
+    cfg, html_url, _ = _publish(data_root, tmp_path, monkeypatch)
+    c = _reader(cfg, export_auth.EXPORT_COOKIE, export_auth.issue_cookie(cfg))
+    stale = c.get(html_url).headers["etag"]
+
+    on_disk = cfg.export_dir / html_url[len("/exports/"):]
+    on_disk.write_text("<!doctype html>the next export", encoding="utf-8")
+    r = c.get(html_url, headers={"If-None-Match": stale})
+    assert r.status_code == 200
+    assert "the next export" in r.text
+
+
+def test_a_range_request_survives_a_stale_validator(data_root, tmp_path, monkeypatch):
+    """Revalidation must not cost the iOS viewer its byte ranges.
+
+    A PDF viewer resuming a document sends both headers together; answering that
+    with a 200 or an empty 304 is how a working viewer breaks.
+    """
+    cfg, _, pdf_url = _publish(data_root, tmp_path, monkeypatch)
+    c = _reader(cfg, export_auth.EXPORT_COOKIE, export_auth.issue_cookie(cfg))
+
+    r = c.get(pdf_url, headers={"Range": "bytes=0-99", "If-None-Match": '"not-the-etag"'})
+    assert r.status_code == 206
+    assert len(r.content) == 100
+    assert r.content == PDF_BYTES[:100]
+
+
+def test_a_conditional_request_still_needs_a_session(data_root, tmp_path, monkeypatch):
+    """401 beats 304: the gate is not something a validator can talk past.
+
+    A 304 to a stranger is a smaller leak than the file, but it is still an
+    answer about a file they may not read — and the etag comes from the document.
+    """
+    cfg, html_url, pdf_url = _publish(data_root, tmp_path, monkeypatch)
+    known = _reader(cfg, export_auth.EXPORT_COOKIE, export_auth.issue_cookie(cfg))
+    anon = _reader(cfg)
+    for url in (html_url, pdf_url):
+        r = known.get(url)
+        headers = {"If-None-Match": r.headers["etag"],
+                   "If-Modified-Since": r.headers["last-modified"]}
+        assert anon.get(url, headers=headers).status_code == 401, url
+
+
 def test_head_still_answers_for_a_published_file(data_root, tmp_path, monkeypatch):
     """`StaticFiles` answered HEAD; a bare `@router.get` would 405 it.
 
