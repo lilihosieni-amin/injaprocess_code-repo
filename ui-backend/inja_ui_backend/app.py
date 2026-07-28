@@ -132,7 +132,20 @@ def create_app(cfg: Settings | None = None) -> FastAPI:
     _configure_logging()
     if cfg is None:
         cfg = load_settings()
-    app = FastAPI(title="inja-ui-backend")
+    # No `/docs`, no `/redoc`, no `/openapi.json` — deliberate, not an oversight.
+    #
+    # FastAPI serves all three by default and serves them *unauthenticated*: the
+    # session in this service is a cookie checked inside each handler, not a global
+    # dependency, so nothing stands in front of them. Left on, they publish every
+    # admin route's path, method, request body and response shape to anyone who
+    # asks — and `deploy/Caddyfile` puts this process on the public internet. There
+    # are no third-party API consumers here (the only client is the SPA in `ui/`,
+    # written against the same repo), so the schema buys nothing and costs that.
+    #
+    # If you want Swagger back, put it behind the session rather than deleting
+    # these three arguments.
+    app = FastAPI(title="inja-ui-backend", docs_url=None, redoc_url=None,
+                  openapi_url=None)
     # before `app.state.cfg`: the handlers must see the settings the directory
     # preparation actually succeeded with, not the ones the environment asked for
     cfg = _prepare_exports(cfg)
