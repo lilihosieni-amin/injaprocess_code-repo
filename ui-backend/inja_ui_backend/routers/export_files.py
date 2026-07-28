@@ -260,12 +260,16 @@ def _login_page(next_path: str, *, error: bool = False,
     `X-Frame-Options: DENY` because this is the one page in the system that
     collects a password: framed invisibly over something the reader already
     trusts, it collects the shared credential with the real form's own pixels.
+    `frame-ancestors 'none'` says the same thing in the spelling that replaces
+    it — X-Frame-Options is honoured by every current browser and is not going
+    anywhere, but only `frame-ancestors` is standards-track, so both go out.
     """
     page = _PAGE.replace("__INJA_ERROR__", _ERROR if error else "")
     page = page.replace("__INJA_NEXT__", html.escape(next_path, quote=True))
     return HTMLResponse(page, status_code=status_code,
                         headers={"Cache-Control": "no-store",
-                                 "X-Frame-Options": "DENY"})
+                                 "X-Frame-Options": "DENY",
+                                 "Content-Security-Policy": "frame-ancestors 'none'"})
 
 
 def _sign_in_page(request: Request) -> HTMLResponse | None:

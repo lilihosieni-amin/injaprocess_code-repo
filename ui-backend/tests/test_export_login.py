@@ -137,16 +137,22 @@ def test_the_login_page_cannot_be_framed(data_root, tmp_path):
     already trusts collects the shared credential with the real form's own pixels.
     Asserted on the error re-render too, because that is a login page as much as
     the first one is.
+
+    Both spellings: `X-Frame-Options` is what every current browser honours, and
+    `frame-ancestors` is the standards-track one that replaces it.
     """
     cfg = _cfg(data_root, tmp_path)
     html_url, _ = _publish(cfg)
     c = _reader(cfg)
-    assert c.get(html_url).headers["x-frame-options"] == "DENY"
+    first = c.get(html_url)
+    assert first.headers["x-frame-options"] == "DENY"
+    assert first.headers["content-security-policy"] == "frame-ancestors 'none'"
     refused = c.post("/api/exports/login",
                      data={"username": "guest", "password": "wrong", "next": html_url},
                      follow_redirects=False)
     assert refused.status_code == 401
     assert refused.headers["x-frame-options"] == "DENY"
+    assert refused.headers["content-security-policy"] == "frame-ancestors 'none'"
 
 
 def test_unset_credentials_answer_401_and_never_the_page(data_root, tmp_path):
