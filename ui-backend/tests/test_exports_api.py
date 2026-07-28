@@ -889,19 +889,25 @@ def test_path_traversal_is_refused(data_root, tmp_path, monkeypatch):
         assert "not for readers" not in r.text, url
 
 
-def test_a_null_byte_in_the_path_is_404(data_root, tmp_path, monkeypatch):
-    """`Path.resolve()` raises `ValueError: embedded null byte`, not `OSError`.
+def test_a_malformed_path_is_404(data_root, tmp_path, monkeypatch):
+    """Turning untrusted text into a path fails in more ways than "no such file".
 
-    `StaticFiles` answered 404 for this; an unhandled `ValueError` in the one
-    function whose job is to resolve untrusted input safely is a 500 and a
-    traceback in the log. Both shapes are asserted — a lone NUL and one smuggled
-    into an otherwise ordinary filename — because they take different routes
-    through the join.
+    `StaticFiles` answered 404 for all of these; unhandled, each is a 500 and a
+    traceback for a request anyone can send. Both exception types are covered on
+    purpose, because catching one is not catching the other:
+
+    * a NUL — `%00` in the URL — makes `resolve()` raise **`ValueError`**, and it
+      is asserted alone and smuggled into an otherwise ordinary filename, which
+      take different routes through the join;
+    * an over-long segment resolves fine and then makes `is_file()` raise
+      **`OSError`** (`ENAMETOOLONG`). `is_file()` does *not* swallow that:
+      `pathlib._ignore_error` covers only ENOENT, ENOTDIR, EBADF and ELOOP.
     """
     cfg, _, _ = _publish(data_root, tmp_path, monkeypatch)
     c = _reader(cfg, export_auth.EXPORT_COOKIE, export_auth.issue_cookie(cfg))
-    for url in ("/exports/%00", "/exports/ok%00.txt", "/exports/cooking/%00.pdf"):
-        assert c.get(url).status_code == 404, url
+    for url in ("/exports/%00", "/exports/ok%00.txt", "/exports/cooking/%00.pdf",
+                "/exports/" + "z" * 400 + ".html"):
+        assert c.get(url).status_code == 404, url[:40]
 
 
 def test_the_route_refuses_when_the_export_dir_is_unset(data_root, tmp_path, monkeypatch):
