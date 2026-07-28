@@ -76,7 +76,10 @@ services:
     # the session cookie has no Secure flag, so http://localhost keeps you logged in.
     ports:
       - "8000:8000"
-    env_file: [./local/ui-backend.env]     # SESSION_SIGNING_KEY (local, gitignored)
+    # SESSION_SIGNING_KEY, plus EXPORT_USERNAME + EXPORT_PASSWORD_HASH (argon2) if you
+    # want to exercise the export login locally. Omit both and /exports answers 401
+    # to everyone but a signed-in UI user; nothing else changes. (local, gitignored)
+    env_file: [./local/ui-backend.env]
     environment:
       DATA_ROOT: /data
       UI_USERS_FILE: /run/secrets/ui-users.json   # local {username: argon2_hash} map, gitignored

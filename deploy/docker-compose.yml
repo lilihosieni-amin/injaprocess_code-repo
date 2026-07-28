@@ -72,7 +72,12 @@ services:
       dockerfile: deploy/ui-backend.Dockerfile
     image: inja-ui-backend
     restart: unless-stopped
-    env_file: [/opt/inja/secrets/ui-backend.env]         # SESSION_SIGNING_KEY, UI_USERS_FILE
+    # SESSION_SIGNING_KEY, UI_USERS_FILE, and the export credential
+    # EXPORT_USERNAME + EXPORT_PASSWORD_HASH (argon2, see docs/runbooks/02-secrets-and-auth.md).
+    # The export pair is optional: absent, /exports answers 401 to everyone but a
+    # signed-in UI user, and the rest of the UI is unaffected — an unset credential
+    # closes the gate, it never opens it and never blocks startup.
+    env_file: [/opt/inja/secrets/ui-backend.env]
     environment:
       DATA_ROOT: /data
       UI_USERS_FILE: /run/secrets/ui-users.json

@@ -49,7 +49,21 @@ ANTHROPIC_API_KEY=       # LEAVE BLANK — we use subscription auth (see step 3)
 ```
 SESSION_SIGNING_KEY=                     # generate — see below
 UI_USERS_FILE=/run/secrets/ui-users.json # where compose mounts the users map
+EXPORT_USERNAME=                         # the one shared login for published exports
+EXPORT_PASSWORD_HASH=                    # its argon2 hash — see step 2 (never the plaintext)
 ```
+
+`EXPORT_USERNAME` / `EXPORT_PASSWORD_HASH` are the single credential that opens a
+published department export (`/exports/…html` and the `.pdf` beside it). It is
+deliberately separate from the UI users above: an export login opens exports and
+nothing else, and it is shared by everyone you hand an export link to.
+
+Leaving both blank is safe and is the default: with no credential configured the
+export URLs answer `401` to everyone except a signed-in UI user (who already sees
+everything), and no login form is offered. There is no fallback to open access —
+an unset credential closes the gate, it never opens it. The rest of the UI starts
+and serves normally either way, so these two are optional in exactly the way
+`EXPORT_DIR` is.
 
 ### `ui-users.json` (the UI users map — `chmod 600`)
 
@@ -94,6 +108,20 @@ docker run --rm inja-ui-backend python -c \
 
 Replace `THIS-USERS-PASSWORD` with the user's real password (never store the
 plaintext — only the hash goes into `ui-users.json`).
+
+The export credential uses the **same** recipe — one more run of the same
+command, for the password you will hand out with the export links:
+
+```bash
+docker run --rm inja-ui-backend python -c \
+ "from argon2 import PasswordHasher; print(PasswordHasher().hash('THE-EXPORT-PASSWORD'))"
+```
+
+Paste that output as `EXPORT_PASSWORD_HASH` in `ui-backend.env`, and the chosen
+username as `EXPORT_USERNAME`. `EXPORT_PASSWORD_HASH` holds an argon2 hash, never
+a plaintext password — same rule as `ui-users.json`. Both values live only in
+`/opt/inja/secrets/ui-backend.env` on the server, outside the code-repo and the
+data-repo; nothing about this credential is ever committed to either repo.
 
 ## 3. data-repo deploy key (for `git-push` write access)
 

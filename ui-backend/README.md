@@ -35,6 +35,8 @@ Copy `config/ui-backend.env.example` and fill in the blanks:
 | `EXPORT_DIR` | no | Directory the generated export documents are written to, and served from at `/exports`. **Unset = the department export feature is off**: the export endpoint answers `503` and the UI says exporting is unavailable. In Docker the compose file supplies `/exports` (a named volume, deliberately outside the data-repo). |
 | `UI_EXPORT_TEMPLATE_DIR` | no | Directory holding the pre-built export templates (`flowchart.html`, `steps.html`). The image bakes these in and sets this variable itself; set it only for a host run, to `ui/dist-export` after `npm --prefix ui run build`. Unset (or missing templates) = the export endpoint answers `503`. |
 | `CHROMIUM_PATH` | no | Absolute path to a Chromium binary that supports the CDP `Page.printToPDF` command. Set, the export endpoint prints each generated document to a `.pdf` beside its `.html`, and the document's «چاپ / PDF» button hands that over — the only way the flowchart prints correctly on iOS Safari. **Unset = no PDFs**: exports publish exactly as before and the button falls back to `window.print()` (D21/D20 — a missing renderer never fails an export). The Docker image installs Debian `chromium` and sets this to `/usr/lib/chromium/chromium` itself; set it only for a host run. Debian's smaller `chromium-shell` does **not** work — it is a content_shell build with no printing compiled in and answers `Page.printToPDF` with `-32601 … wasn't found`. |
+| `EXPORT_USERNAME` | no | Username of the one shared credential that opens a published export (`/exports/…`). Deliberately not one of the UI users: an export session opens exports only, never `/api/*`. |
+| `EXPORT_PASSWORD_HASH` | no | argon2 hash of that export password (never plaintext) — generated the same way as `UI_PASSWORD_HASH`, below. **Both unset = the gate is closed**: `/exports` answers `401` to everyone except a signed-in UI user (D29 — an admin already sees everything), and no login form is offered. An unset credential never falls back to open access, and never blocks startup — the rest of the UI serves normally. |
 | `GIT_AUTHOR_NAME` | no | Git author name for ui-edit commits (default `ui-edit`) |
 | `GIT_AUTHOR_EMAIL` | no | Git author email for ui-edit commits (default `ui-edit@inja.local`) |
 
@@ -44,7 +46,9 @@ Copy `config/ui-backend.env.example` and fill in the blanks:
 python -c "import argon2,sys;print(argon2.PasswordHasher().hash(sys.argv[1]))" mypassword
 ```
 
-Paste the output as `UI_PASSWORD_HASH` — never commit the plaintext password.
+Paste the output as `UI_PASSWORD_HASH` — never commit the plaintext password. The
+same command produces `EXPORT_PASSWORD_HASH`; in a deployment both live in the
+server's secrets env file, outside this repo (`docs/runbooks/02-secrets-and-auth.md`).
 
 ---
 
