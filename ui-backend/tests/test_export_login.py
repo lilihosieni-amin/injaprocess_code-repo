@@ -67,8 +67,24 @@ def _with_spa(cfg, tmp_path):
     return cfg.__class__(**{**cfg.__dict__, "static_dir": dist})
 
 
+#: `https://`, not `TestClient`'s `http://testserver` default.
+#:
+#: The export cookie is `Secure`, and this client drives a real `http.cookiejar`,
+#: whose `return_ok_secure` refuses to send a `Secure` cookie on a request that is
+#: not over a secure scheme. Measured on the installed httpx 0.28.1: over `http://`
+#: the cookie is still *stored* — `dict(client.cookies)` shows it — but the server
+#: sees no `Cookie` header at all, so every "…and the cookie really opens the
+#: document" assertion below would fail.
+#:
+#: Changed here rather than in the assertions on purpose: a jar that behaves like a
+#: browser is exactly what makes `test_the_cookie_is_scoped_to_the_export_path`
+#: worth having, and `deploy/Caddyfile` publishes 443 and nothing else, so `https`
+#: is the scheme a reader really arrives on.
+BASE_URL = "https://testserver"
+
+
 def _reader(cfg):
-    return TestClient(create_app(cfg))
+    return TestClient(create_app(cfg), base_url=BASE_URL)
 
 
 # --- the page a reader without a session is shown ---------------------------- #
@@ -243,6 +259,9 @@ def test_the_cookie_is_scoped_to_the_export_path(data_root, tmp_path):
     assert "path=/exports" in raw
     assert "httponly" in raw
     assert "samesite=lax" in raw
+    # …and never over a cleartext hop: this is the credential a whole kitchen
+    # shares, so the browser must refuse to send it rather than trust the deploy.
+    assert "; secure" in raw
     assert f"max-age={cfg.session_ttl}" in raw
     assert COOKIE_NAME not in r.headers["set-cookie"]
     # …and the property that scoping exists for, exercised through a real cookie jar
@@ -531,8 +550,15 @@ def test_logout_clears_the_session(data_root, tmp_path):
 
     out = c.post("/api/exports/logout")
     assert out.status_code == 200
-    # cleared at the path it was set on, or the browser keeps the one that counts
-    assert "path=/exports" in out.headers["set-cookie"].lower()
+    # cleared exactly as it was set, or the browser keeps the one that counts.
+    # `path` is the part of the identity a user agent matches on (RFC 6265 §5.3);
+    # `secure` is here because starlette's `delete_cookie` re-sends every attribute
+    # it is not given at its default — False for `secure` — and a non-secure
+    # Set-Cookie is the one shape that may fail to overwrite a secure cookie.
+    cleared = out.headers["set-cookie"].lower()
+    assert "path=/exports" in cleared
+    assert "; secure" in cleared
+    assert "max-age=0" in cleared
     after = c.get(html_url)
     assert "inja-export-data" not in after.text
     assert TITLE in after.text

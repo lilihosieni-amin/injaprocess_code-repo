@@ -383,15 +383,29 @@ async def login(request: Request):
         return _login_page(target, error=True, status_code=401)
     # 303, so the browser turns this POST into a GET of the document.
     response = RedirectResponse(target, status_code=303)
+    # `secure`: one shared credential handed to a whole kitchen, carried on the
+    # widest-distributed link in the system, is the last thing that may cross a
+    # cleartext hop. Production is HTTPS-only (`deploy/Caddyfile` publishes 443 and
+    # nothing else) and `http://localhost` counts as a potentially trustworthy
+    # origin, so neither the server nor the local stack notices this — a LAN IP
+    # over plain HTTP would, which is the case it is here for.
     response.set_cookie(EXPORT_COOKIE, export_auth.issue_cookie(cfg),
                         path=COOKIE_PATH, httponly=True, samesite="lax",
-                        max_age=cfg.session_ttl)
+                        secure=True, max_age=cfg.session_ttl)
     return response
 
 
 @login_router.post("/logout")
 def logout(response: Response):
     """Drop the export session — scoped exactly as it was set, or the browser
-    keeps the only cookie that matters."""
-    response.delete_cookie(EXPORT_COOKIE, path=COOKIE_PATH)
+    keeps the only cookie that matters.
+
+    starlette's `delete_cookie` forwards `path`/`domain`/`secure`/`httponly`/
+    `samesite` to `set_cookie` with `max_age=0`, so an attribute not passed here is
+    re-sent at its default — False, for `secure`. `path` is what identity is matched
+    on; `secure` is passed because a non-secure Set-Cookie is not allowed to
+    overwrite a secure cookie over an insecure channel, and a clear that mirrors the
+    set is the only version that stays correct without re-deriving this each time.
+    """
+    response.delete_cookie(EXPORT_COOKIE, path=COOKIE_PATH, secure=True)
     return {"ok": True}

@@ -9,7 +9,9 @@ def _c(data_root):
     cfg = cfg_for(data_root)
     cfg = cfg.__class__(**{**cfg.__dict__,
                            "ui_password_hash": argon2.PasswordHasher().hash("pw")})
-    c = TestClient(create_app(cfg))
+    # `https://`: the session cookie is `Secure`, and the real cookie jar behind
+    # `TestClient` will not send one over `http://`. See `test_auth.py`.
+    c = TestClient(create_app(cfg), base_url="https://testserver")
     c.post("/api/auth/login", json={"username": "analyst", "password": "pw"})
     return c
 

@@ -268,6 +268,27 @@ reach Hub with `docker save` / `docker load`.
 
 - **UI:** http://localhost:8000 — log in with the credentials from
   `ui-users.json` (default `admin` / `admin`).
+
+> **Why plain HTTP still logs you in.** Both session cookies — `inja_session` for
+> the admin panel and `inja_export_session` for `/exports` — are set with the
+> `Secure` attribute, which normally means "only ever sent over HTTPS". Login works
+> here anyway because `localhost` is special: the W3C *Secure Contexts* algorithm
+> "Is origin potentially trustworthy?" returns **Potentially Trustworthy** for a
+> host that is `localhost`, falls within `localhost`, or matches `127.0.0.0/8` or
+> `::1/128`, and Chrome and Firefox use that definition when deciding whether a
+> `Secure` cookie may be set and sent. MDN states it directly: *"Insecure sites
+> (`http:`) cannot set cookies with the `Secure` attribute. The `https:`
+> requirements are ignored when the `Secure` attribute is set by localhost."*
+> RFC 6265bis itself leaves "secure protocol" up to the user agent, so this is a
+> browser convention rather than a guarantee — **Safari does not follow it** and
+> refuses `Secure` cookies from `http://localhost`.
+>
+> The practical consequence: **the moment you reach this stack at anything other
+> than `localhost` over plain HTTP — a LAN IP like `http://192.168.1.20:8000`, a
+> `.local` name, a colleague's machine — login silently stops working.** The POST
+> to `/api/auth/login` returns 200, the browser drops the cookie, and the next
+> request is a 401 with nothing in the logs to explain it. Put TLS in front of it
+> (the server stack does this with Caddy) or stay on `localhost`.
 - **Bots:** message the **test** bots on Telegram —
   `@aiprocessTestinjabo` (control) and `@uploadtestinjsbot` (upload) — from a
   whitelisted account (`ALLOWED_USER(S)` in the env files).
@@ -379,6 +400,10 @@ succeeded — you have a Node base but no Python one, which is Case B.
   step 3). Watch for `UI_USERS_FILE must be a non-empty JSON object`.
 - If the container won't start, check `ui-backend` logs for missing env
   (`SESSION_SIGNING_KEY`) or `DATA_ROOT is not a directory`.
+- **Login returns 200 and the next request is still 401?** You are almost
+  certainly not on `localhost` — see [Access](#access): the session cookies are
+  `Secure`, and outside a potentially trustworthy origin the browser throws them
+  away without saying so.
 
 ---
 
