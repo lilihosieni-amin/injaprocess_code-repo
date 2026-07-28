@@ -99,6 +99,31 @@ def test_chromium_path_read_from_env(tmp_path):
     assert load_settings(env).chromium_path == Path("/usr/bin/chromium-headless-shell")
 
 
+def test_export_credential_defaults_to_none(tmp_path):
+    """Unset means nobody can open an export -- never that everybody can."""
+    s = load_settings(_valid_env(tmp_path))
+    assert s.export_username is None
+    assert s.export_password_hash is None
+
+
+def test_export_credential_read_from_env(tmp_path):
+    env = _valid_env(tmp_path)
+    env["EXPORT_USERNAME"] = "guest"
+    env["EXPORT_PASSWORD_HASH"] = "$argon2id$export-dummy"
+    s = load_settings(env)
+    assert s.export_username == "guest"
+    assert s.export_password_hash == "$argon2id$export-dummy"
+
+
+def test_export_credential_stays_out_of_the_users_map(tmp_path):
+    """It must never become an admin login (D25)."""
+    env = _valid_env(tmp_path)
+    env["EXPORT_USERNAME"] = "guest"
+    env["EXPORT_PASSWORD_HASH"] = "$argon2id$export-dummy"
+    s = load_settings(env)
+    assert s.users == {"analyst": "$argon2id$dummy"}
+
+
 def test_export_dirs_read_from_env(tmp_path):
     env = _valid_env(tmp_path)
     env["EXPORT_DIR"] = str(tmp_path / "exports")
