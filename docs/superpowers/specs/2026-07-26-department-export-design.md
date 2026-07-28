@@ -393,7 +393,7 @@ is the exact failure D2 exists to prevent.
 
 | Risk | Handling |
 |---|---|
-| An unauthenticated link leaks a department's processes to anyone who obtains the URL. | Accepted per D6 — the alternative blocks the staff audience the steps export exists for. Mitigated by an unguessable token and by stripping `pending` so unreviewed internal notes never ride along. |
+| An unauthenticated link leaks a department's processes to anyone who obtains the URL. | **No longer accepted — superseded by §12 (D25).** Was: accepted per D6 — the alternative blocks the staff audience the steps export exists for. Mitigated by an unguessable token and by stripping `pending` so unreviewed internal notes never ride along. |
 | `vite-plugin-singlefile` with two entries is unverified in this repo. | Verified early in implementation. Fallback: a ~40-line Node post-build script that inlines the referenced assets, with no new dependency. |
 | `foreignObject` print fidelity outside Chrome. | Documented limit (§5.5); Chrome is the supported PDF path. |
 | A 2 MB file feels heavy on a phone over a weak connection. | Only the flowchart export is large; the staff-facing steps export is ~200 KB. Served over HTTP it is gzipped. |

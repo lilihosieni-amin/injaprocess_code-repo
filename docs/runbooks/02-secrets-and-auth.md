@@ -136,6 +136,28 @@ a plaintext password — same rule as `ui-users.json`. Both values live only in
 `/opt/inja/secrets/ui-backend.env` on the server, outside the code-repo and the
 data-repo; nothing about this credential is ever committed to either repo.
 
+### Signing out of an export, and what that means on a shared phone
+
+There is **no sign-out button** on the export documents or on their login page,
+and this is deliberate — the readers are kitchen staff, and a button whose only
+effect is to make them type the password again is a support call, not a feature.
+`POST /api/exports/logout` exists and clears the session, but it is
+operator/API-only: nothing in the UI links to it, so it is reached with a tool
+(`curl -X POST https://<host>/api/exports/logout`) from the browser that holds
+the session, not by the reader.
+
+The practical consequence: on a **shared device** — the kitchen's own phone or
+tablet — whoever signs in leaves the export session in that browser for the full
+`SESSION_TTL` (24 hours by default), and anyone who picks the device up opens
+those documents without typing anything. That is usually fine, since the
+documents are for that kitchen anyway. Where it is not:
+
+- shorten `SESSION_TTL` in `ui-backend.env` (it applies to the UI session too), or
+- rotate the export password, which invalidates nothing on its own — sessions are
+  signed with `SESSION_SIGNING_KEY`, not with the password. **Rotating
+  `SESSION_SIGNING_KEY` is what ends every live session**, export and UI alike,
+  and it forces every admin to sign in again.
+
 ## 3. data-repo deploy key (for `git-push` write access)
 
 `git-push` needs **write** access to push data-repo backups. Generate a

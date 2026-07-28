@@ -256,11 +256,16 @@ def _login_page(next_path: str, *, error: bool = False,
 
     `no-store` because a cache holding this 200 would hand the form to the next
     reader in place of the document they asked for.
+
+    `X-Frame-Options: DENY` because this is the one page in the system that
+    collects a password: framed invisibly over something the reader already
+    trusts, it collects the shared credential with the real form's own pixels.
     """
     page = _PAGE.replace("__INJA_ERROR__", _ERROR if error else "")
     page = page.replace("__INJA_NEXT__", html.escape(next_path, quote=True))
     return HTMLResponse(page, status_code=status_code,
-                        headers={"Cache-Control": "no-store"})
+                        headers={"Cache-Control": "no-store",
+                                 "X-Frame-Options": "DENY"})
 
 
 def _sign_in_page(request: Request) -> HTMLResponse | None:

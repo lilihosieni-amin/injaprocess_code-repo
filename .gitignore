@@ -23,6 +23,13 @@ __pycache__/
 config/ui-users.json
 deploy/local/ui-users.json
 
+# Deliberately local-only working files. Untracked and unignored is one
+# `git add -A` away from being committed by accident: the chat log is a
+# transcript of local bot sessions, and the offline Dockerfile is a recipe for
+# building without a registry on this machine — neither is how the server builds.
+control-bot/chathistorylog.txt
+deploy/ui-backend.offline.Dockerfile
+
 # Editor / OS
 .vscode/
 .idea/

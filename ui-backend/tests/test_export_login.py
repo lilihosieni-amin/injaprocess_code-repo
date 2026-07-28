@@ -129,6 +129,26 @@ def test_the_login_page_is_never_stored(data_root, tmp_path):
     assert _reader(cfg).get(html_url).headers["cache-control"] == "no-store"
 
 
+def test_the_login_page_cannot_be_framed(data_root, tmp_path):
+    """The one page in the system that collects a password is the one page that
+    must not load inside someone else's.
+
+    Framed, it is a clickjacking target: an invisible copy over a page the reader
+    already trusts collects the shared credential with the real form's own pixels.
+    Asserted on the error re-render too, because that is a login page as much as
+    the first one is.
+    """
+    cfg = _cfg(data_root, tmp_path)
+    html_url, _ = _publish(cfg)
+    c = _reader(cfg)
+    assert c.get(html_url).headers["x-frame-options"] == "DENY"
+    refused = c.post("/api/exports/login",
+                     data={"username": "guest", "password": "wrong", "next": html_url},
+                     follow_redirects=False)
+    assert refused.status_code == 401
+    assert refused.headers["x-frame-options"] == "DENY"
+
+
 def test_unset_credentials_answer_401_and_never_the_page(data_root, tmp_path):
     """D30: with no credential configured there is nothing to type, so a login
     page would be a lie. The gate stays shut and says so."""
