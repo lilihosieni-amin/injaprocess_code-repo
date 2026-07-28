@@ -24,13 +24,17 @@ EXPORT_COOKIE = "inja_export_session"
 _SALT = "inja-export-session"
 
 
-def _configured(cfg: Settings) -> bool:
-    """Whether an export credential exists at all. Unset closes the gate."""
+def configured(cfg: Settings) -> bool:
+    """Whether an export credential exists at all. Unset closes the gate.
+
+    Public because the login page needs the same question answered (D30): with
+    nothing to type, a form would be a lie, so the router keeps answering 401.
+    """
     return bool(cfg.export_username and cfg.export_password_hash)
 
 
 def authenticate(cfg: Settings, username: str, password: str) -> bool:
-    if not _configured(cfg):
+    if not configured(cfg):
         return False
     if username != cfg.export_username:
         return False
@@ -48,7 +52,7 @@ def issue_cookie(cfg: Settings) -> str:
 def read_cookie(cfg: Settings, token: str) -> bool:
     """True only for a token this server signed, still inside its TTL, while an
     export credential is configured."""
-    if not _configured(cfg):
+    if not configured(cfg):
         return False
     try:
         data = _serializer(cfg).loads(token, max_age=cfg.session_ttl)

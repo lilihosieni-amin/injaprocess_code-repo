@@ -641,6 +641,10 @@ EXPORT_PASSWORD = "throwaway-export-pw"
 EXPORT_HASH = argon2.PasswordHasher().hash(EXPORT_PASSWORD)
 #: Long enough that a 100-byte range is a genuine slice of it.
 PDF_BYTES = b"%PDF-1.4 " + b"r" * 500
+#: The login page a reader without a session is handed instead of the file (D31).
+#: The page itself is tested in `test_export_login.py`; here it is only the answer
+#: these tests must tell apart from a served document.
+LOGIN_TITLE = "ورود به مستندات فرآیندها"
 
 
 def _gated(cfg):
@@ -676,13 +680,18 @@ def _reader(cfg, cookie=None, value=None):
     return c
 
 
-def test_an_export_without_a_session_is_401(data_root, tmp_path, monkeypatch):
-    """D25 reverses D6: the link alone is no longer enough for either file."""
+def test_an_export_without_a_session_serves_no_file(data_root, tmp_path, monkeypatch):
+    """D25 reverses D6: the link alone is no longer enough for either file.
+
+    What the reader gets instead is the login page (D31) — asserted here only as
+    "the page, and none of the document"; its contents are `test_export_login.py`'s.
+    """
     cfg, html_url, pdf_url = _publish(data_root, tmp_path, monkeypatch)
     anon = _reader(cfg)
     for url in (html_url, pdf_url):
         r = anon.get(url)
-        assert r.status_code == 401, url
+        assert r.status_code == 200, url
+        assert LOGIN_TITLE in r.text, url
         assert "inja-export-data" not in r.text, url
         assert PDF_BYTES[:20] not in r.content, url
 
@@ -744,10 +753,17 @@ def test_a_range_request_is_served_as_206(data_root, tmp_path, monkeypatch):
 
 
 def test_a_range_request_still_needs_a_session(data_root, tmp_path, monkeypatch):
-    """The range path must not become a way around the gate it runs behind."""
+    """The range path must not become a way around the gate it runs behind.
+
+    A 206 here would be the gate handing out the first 100 bytes of a document to
+    someone who has not signed in, so the assertion is on the *absence* of a
+    partial answer as much as on the login page being what arrives.
+    """
     cfg, _, pdf_url = _publish(data_root, tmp_path, monkeypatch)
     r = _reader(cfg).get(pdf_url, headers={"Range": "bytes=0-99"})
-    assert r.status_code == 401
+    assert r.status_code == 200
+    assert "content-range" not in r.headers
+    assert LOGIN_TITLE in r.text
     assert PDF_BYTES[:20] not in r.content
 
 
@@ -837,10 +853,11 @@ def test_a_range_request_survives_a_stale_validator(data_root, tmp_path, monkeyp
 
 
 def test_a_conditional_request_still_needs_a_session(data_root, tmp_path, monkeypatch):
-    """401 beats 304: the gate is not something a validator can talk past.
+    """The gate beats 304: it is not something a validator can talk past.
 
     A 304 to a stranger is a smaller leak than the file, but it is still an
     answer about a file they may not read — and the etag comes from the document.
+    So a stranger holding one gets the login page, exactly as one holding nothing.
     """
     cfg, html_url, pdf_url = _publish(data_root, tmp_path, monkeypatch)
     known = _reader(cfg, export_auth.EXPORT_COOKIE, export_auth.issue_cookie(cfg))
@@ -849,7 +866,10 @@ def test_a_conditional_request_still_needs_a_session(data_root, tmp_path, monkey
         r = known.get(url)
         headers = {"If-None-Match": r.headers["etag"],
                    "If-Modified-Since": r.headers["last-modified"]}
-        assert anon.get(url, headers=headers).status_code == 401, url
+        stranger = anon.get(url, headers=headers)
+        assert stranger.status_code == 200, url
+        assert LOGIN_TITLE in stranger.text, url
+        assert stranger.headers.get("etag") is None, url
 
 
 def test_head_still_answers_for_a_published_file(data_root, tmp_path, monkeypatch):
@@ -865,8 +885,11 @@ def test_head_still_answers_for_a_published_file(data_root, tmp_path, monkeypatc
     assert r.status_code == 200
     assert r.headers["content-length"] == str(len(PDF_BYTES))
     assert r.content == b""
-    # …and it is gated exactly like the GET beside it
-    assert _reader(cfg).head(pdf_url).status_code == 401
+    # …and it is gated exactly like the GET beside it: without a session the probe
+    # is answered by the login page, so nothing about the file is disclosed
+    anon = _reader(cfg).head(pdf_url)
+    assert anon.headers["content-type"].startswith("text/html")
+    assert anon.headers["content-length"] != str(len(PDF_BYTES))
 
 
 def test_path_traversal_is_refused(data_root, tmp_path, monkeypatch):

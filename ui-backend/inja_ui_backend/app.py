@@ -87,6 +87,10 @@ def create_app(cfg: Settings | None = None) -> FastAPI:
         # /exports/... with index.html. Skipped entirely when the feature is off,
         # so an old link falls through to that catch-all's plain 404.
         app.include_router(export_files_router.router)
+        # The way in, on the same switch: with nothing published there is nothing
+        # to sign in to, and a login endpoint answering 401 forever would only be
+        # somewhere to guess the shared password at.
+        app.include_router(export_files_router.login_router)
     if cfg.static_dir and cfg.static_dir.is_dir():
         app.mount("/", SPAStaticFiles(directory=str(cfg.static_dir), html=True), name="static")
     return app

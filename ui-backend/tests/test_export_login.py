@@ -1,0 +1,332 @@
+"""The Persian login page in front of the published exports (D27, D30, D31).
+
+A separate file from `test_exports_api.py` — that one is already ~940 lines and
+is about *serving* the files; this one is about the page a reader without a
+session is shown instead, and the two endpoints behind it.
+
+The Persian strings are written out here rather than imported from the router on
+purpose: a test that asserts `router.TITLE in page` passes whatever the copy is
+turned into, which is exactly the mistake to avoid on a page no reviewer of this
+repo can proof-read from the code alone.
+"""
+import argon2
+from fastapi.testclient import TestClient
+from inja_ui_backend import export_auth
+from inja_ui_backend.app import create_app
+from inja_ui_backend.auth import COOKIE_NAME, issue_cookie
+from inja_ui_backend.tests_helpers import cfg_for
+
+EXPORT_PASSWORD = "throwaway-export-pw"
+#: Hashed once for the module: argon2 is deliberately slow. Never a real credential.
+EXPORT_HASH = argon2.PasswordHasher().hash(EXPORT_PASSWORD)
+
+DOCUMENT = '<!doctype html><script id="inja-export-data">{}</script>'
+PDF_BYTES = b"%PDF-1.4 " + b"r" * 500
+
+# The copy, byte for byte.
+TITLE = "ورود به مستندات فرآیندها"
+#: The browser tab, shaped like the SPA's own `index.html` title. The brand carries
+#: a ZWNJ (U+200C) inside «فست‌فود», which is where this page needs one.
+DOCUMENT_TITLE = TITLE + " — اینجا فست‌فود"
+USERNAME_LABEL = "نام کاربری"
+PASSWORD_LABEL = "گذرواژه"
+SUBMIT = "ورود"
+WRONG_CREDENTIAL = "نام کاربری یا گذرواژه نادرست است"
+
+
+def _cfg(data_root, tmp_path, *, credential=True):
+    cfg = cfg_for(data_root)
+    fields = {**cfg.__dict__, "export_dir": tmp_path / "exports"}
+    if credential:
+        fields.update(export_username="guest", export_password_hash=EXPORT_HASH)
+    return cfg.__class__(**fields)
+
+
+def _publish(cfg):
+    """A document and the PDF beside it, at the shape of path the exporter writes."""
+    folder = cfg.export_dir / "cooking"
+    folder.mkdir(parents=True, exist_ok=True)
+    html = folder / "flowchart-abc123def456.html"
+    html.write_text(DOCUMENT, encoding="utf-8")
+    html.with_suffix(".pdf").write_bytes(PDF_BYTES)
+    return f"/exports/cooking/{html.name}", f"/exports/cooking/{html.stem}.pdf"
+
+
+def _with_spa(cfg, tmp_path):
+    dist = tmp_path / "dist"
+    dist.mkdir(exist_ok=True)
+    (dist / "index.html").write_text(
+        '<!doctype html><title>inja</title><div id="root"></div>', encoding="utf-8")
+    return cfg.__class__(**{**cfg.__dict__, "static_dir": dist})
+
+
+def _reader(cfg):
+    return TestClient(create_app(cfg))
+
+
+# --- the page a reader without a session is shown ---------------------------- #
+
+def test_an_unauthenticated_export_answers_the_login_page(data_root, tmp_path):
+    """D31: a staff member following a link is owed a form, not a bare JSON 401.
+
+    Both files, because the PDF is one keystroke from the HTML and a gate that
+    only knows about documents is not a gate.
+    """
+    cfg = _cfg(data_root, tmp_path)
+    html_url, pdf_url = _publish(cfg)
+    anon = _reader(cfg)
+    for url in (html_url, pdf_url):
+        r = anon.get(url)
+        assert r.status_code == 200, url
+        assert r.headers["content-type"].startswith("text/html"), url
+        assert TITLE in r.text, url
+        assert USERNAME_LABEL in r.text and PASSWORD_LABEL in r.text, url
+        assert f"<button type=\"submit\">{SUBMIT}</button>" in r.text, url
+        assert f"<title>{DOCUMENT_TITLE}</title>" in r.text, url
+        assert "‌" in r.text, url          # the ZWNJ survives the round trip
+        assert '<html lang="fa" dir="rtl">' in r.text, url
+        # …and none of the document it is standing in front of
+        assert "inja-export-data" not in r.text, url
+        assert PDF_BYTES[:20] not in r.content, url
+
+
+def test_the_login_page_is_not_the_spa(data_root, tmp_path):
+    """D31 again, with the admin application actually mounted.
+
+    The SPA is the admin panel; a kitchen staff member must never be handed it.
+    """
+    cfg = _with_spa(_cfg(data_root, tmp_path), tmp_path)
+    html_url, _ = _publish(cfg)
+    r = _reader(cfg).get(html_url)
+    assert r.status_code == 200
+    assert TITLE in r.text
+    assert "<title>inja</title>" not in r.text
+    assert 'id="root"' not in r.text
+
+
+def test_the_login_page_is_self_contained(data_root, tmp_path):
+    """No CDN font, no external stylesheet, no script — the rest of this feature
+    is strict about standalone output and the login page is not the exception."""
+    cfg = _cfg(data_root, tmp_path)
+    html_url, _ = _publish(cfg)
+    page = _reader(cfg).get(html_url).text
+    for forbidden in ("http://", "https://", "<script", "<link", "<img"):
+        assert forbidden not in page, forbidden
+
+
+def test_the_login_page_is_never_stored(data_root, tmp_path):
+    """A cache holding this 200 would serve the form in place of the document to
+    the very next reader, who by then has a session."""
+    cfg = _cfg(data_root, tmp_path)
+    html_url, _ = _publish(cfg)
+    assert _reader(cfg).get(html_url).headers["cache-control"] == "no-store"
+
+
+def test_unset_credentials_answer_401_and_never_the_page(data_root, tmp_path):
+    """D30: with no credential configured there is nothing to type, so a login
+    page would be a lie. The gate stays shut and says so."""
+    cfg = _cfg(data_root, tmp_path, credential=False)
+    assert cfg.export_username is None and cfg.export_password_hash is None
+    html_url, pdf_url = _publish(cfg)
+    anon = _reader(cfg)
+    for url in (html_url, pdf_url):
+        r = anon.get(url)
+        assert r.status_code == 401, url
+        assert TITLE not in r.text, url
+    posted = anon.post("/api/exports/login",
+                       data={"username": "guest", "password": EXPORT_PASSWORD,
+                             "next": html_url})
+    assert posted.status_code == 401
+    assert "set-cookie" not in posted.headers
+
+
+def test_an_admin_session_never_sees_the_login_page(data_root, tmp_path):
+    """D29: an admin already sees everything, credential or no credential."""
+    cfg = _cfg(data_root, tmp_path)
+    html_url, _ = _publish(cfg)
+    c = _reader(cfg)
+    c.cookies.set(COOKIE_NAME, issue_cookie(cfg, "analyst"))
+    r = c.get(html_url)
+    assert r.status_code == 200
+    assert "inja-export-data" in r.text
+    assert TITLE not in r.text
+
+
+# --- the requested path travels through the form ----------------------------- #
+
+def test_the_form_carries_the_requested_path(data_root, tmp_path):
+    """Login must land the reader on the document they tapped, not a generic page."""
+    cfg = _cfg(data_root, tmp_path)
+    html_url, pdf_url = _publish(cfg)
+    anon = _reader(cfg)
+    for url in (html_url, pdf_url):
+        assert f'name="next" value="{url}"' in anon.get(url).text, url
+
+
+def test_the_requested_path_is_escaped(data_root, tmp_path):
+    """Everything from the request that reaches the page is attacker-supplied.
+
+    Unescaped, the carried path is a reflected-XSS hole on a page whose whole job
+    is to collect a password.
+    """
+    cfg = _cfg(data_root, tmp_path)
+    _publish(cfg)
+    r = _reader(cfg).get('/exports/cooking/x"><script>alert(1)</script>.html')
+    assert r.status_code == 200
+    assert "<script>alert(1)</script>" not in r.text
+    assert '"><script' not in r.text
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in r.text
+    assert "&quot;" in r.text
+
+
+# --- POST /api/exports/login -------------------------------------------------- #
+
+def test_the_right_credential_opens_the_document_it_was_asked_for(data_root, tmp_path):
+    cfg = _cfg(data_root, tmp_path)
+    html_url, _ = _publish(cfg)
+    c = _reader(cfg)
+    r = c.post("/api/exports/login",
+               data={"username": "guest", "password": EXPORT_PASSWORD, "next": html_url},
+               follow_redirects=False)
+    assert r.status_code == 303
+    assert r.headers["location"] == html_url
+    # the cookie the browser now holds really does open the document
+    served = c.get(html_url)
+    assert served.status_code == 200
+    assert "inja-export-data" in served.text
+
+
+def test_the_cookie_is_scoped_to_the_export_path(data_root, tmp_path):
+    """D27, and half of why this credential can never reach the admin panel: the
+    browser does not transmit the cookie to `/api/...` at all."""
+    cfg = _cfg(data_root, tmp_path)
+    html_url, _ = _publish(cfg)
+    c = _reader(cfg)
+    r = c.post("/api/exports/login",
+               data={"username": "guest", "password": EXPORT_PASSWORD, "next": html_url},
+               follow_redirects=False)
+    raw = r.headers["set-cookie"].lower()
+    assert raw.startswith(export_auth.EXPORT_COOKIE.lower() + "=")
+    assert "path=/exports" in raw
+    assert "httponly" in raw
+    assert "samesite=lax" in raw
+    assert f"max-age={cfg.session_ttl}" in raw
+    assert COOKIE_NAME not in r.headers["set-cookie"]
+    # …and the property that scoping exists for, exercised through a real cookie jar
+    assert c.get(html_url).status_code == 200
+    assert c.get("/api/auth/me").status_code == 401
+
+
+def test_the_pdf_is_reached_the_same_way(data_root, tmp_path):
+    """One path, two extensions: the login round trip must land on either."""
+    cfg = _cfg(data_root, tmp_path)
+    _, pdf_url = _publish(cfg)
+    c = _reader(cfg)
+    r = c.post("/api/exports/login",
+               data={"username": "guest", "password": EXPORT_PASSWORD, "next": pdf_url},
+               follow_redirects=False)
+    assert r.status_code == 303
+    assert r.headers["location"] == pdf_url
+    served = c.get(pdf_url)
+    assert served.status_code == 200
+    assert served.content == PDF_BYTES
+
+
+def test_a_wrong_password_re_renders_with_a_persian_error_and_no_cookie(data_root, tmp_path):
+    cfg = _cfg(data_root, tmp_path)
+    html_url, _ = _publish(cfg)
+    c = _reader(cfg)
+    r = c.post("/api/exports/login",
+               data={"username": "guest", "password": "not-the-password", "next": html_url},
+               follow_redirects=False)
+    assert r.status_code == 401
+    assert WRONG_CREDENTIAL in r.text
+    assert "set-cookie" not in r.headers
+    # the reader keeps their place: the form still points at the document
+    assert f'name="next" value="{html_url}"' in r.text
+    # and nothing was let through
+    assert c.get(html_url).status_code == 200
+    assert "inja-export-data" not in c.get(html_url).text
+
+
+def test_a_wrong_username_is_refused_the_same_way(data_root, tmp_path):
+    """The username is not a hint: the same answer, so neither field is an oracle."""
+    cfg = _cfg(data_root, tmp_path)
+    html_url, _ = _publish(cfg)
+    r = _reader(cfg).post(
+        "/api/exports/login",
+        data={"username": "analyst", "password": EXPORT_PASSWORD, "next": html_url},
+        follow_redirects=False)
+    assert r.status_code == 401
+    assert WRONG_CREDENTIAL in r.text
+    assert "set-cookie" not in r.headers
+
+
+def test_a_hostile_next_is_not_followed(data_root, tmp_path):
+    """Without this the form is an open redirect wearing a login page.
+
+    Every one of these is answered with the export root instead — refused, not
+    followed — and none of them ever appears in a `Location`.
+    """
+    cfg = _cfg(data_root, tmp_path)
+    _publish(cfg)
+    c = _reader(cfg)
+    for hostile in ("https://evil.example/x",
+                    "//evil.example/x",
+                    "http:/evil.example",
+                    "/api/auth/me",
+                    "/exportsevil/x.html",
+                    "/exports/../../etc/passwd",
+                    "/exports/x.html\r\nSet-Cookie: a=b"):
+        r = c.post("/api/exports/login",
+                   data={"username": "guest", "password": EXPORT_PASSWORD, "next": hostile},
+                   follow_redirects=False)
+        assert r.status_code == 303, hostile
+        assert r.headers["location"] == "/exports/", hostile
+        assert "evil.example" not in r.headers["location"], hostile
+    # …and where they are sent instead is a plain "nothing is published here",
+    # which is the whole reason that default is under the gate rather than at `/`
+    assert c.get("/exports/").status_code == 404
+
+
+def test_a_missing_next_still_logs_the_reader_in(data_root, tmp_path):
+    """A form posted without the field is a bug, not a reason to refuse a password."""
+    cfg = _cfg(data_root, tmp_path)
+    html_url, _ = _publish(cfg)
+    c = _reader(cfg)
+    r = c.post("/api/exports/login",
+               data={"username": "guest", "password": EXPORT_PASSWORD},
+               follow_redirects=False)
+    assert r.status_code == 303
+    assert r.headers["location"] == "/exports/"
+    assert c.get(html_url).status_code == 200
+
+
+def test_a_malformed_body_is_refused_without_a_traceback(data_root, tmp_path):
+    """Anyone can post anything at this endpoint; nothing there may be a 500."""
+    cfg = _cfg(data_root, tmp_path)
+    _publish(cfg)
+    r = _reader(cfg).post("/api/exports/login", content=b"\xff\xfe not a form",
+                          headers={"Content-Type": "application/x-www-form-urlencoded"})
+    assert r.status_code == 401
+    assert "set-cookie" not in r.headers
+
+
+# --- POST /api/exports/logout -------------------------------------------------- #
+
+def test_logout_clears_the_session(data_root, tmp_path):
+    cfg = _cfg(data_root, tmp_path)
+    html_url, _ = _publish(cfg)
+    c = _reader(cfg)
+    c.post("/api/exports/login",
+           data={"username": "guest", "password": EXPORT_PASSWORD, "next": html_url},
+           follow_redirects=False)
+    assert "inja-export-data" in c.get(html_url).text
+
+    out = c.post("/api/exports/logout")
+    assert out.status_code == 200
+    # cleared at the path it was set on, or the browser keeps the one that counts
+    assert "path=/exports" in out.headers["set-cookie"].lower()
+    after = c.get(html_url)
+    assert "inja-export-data" not in after.text
+    assert TITLE in after.text
