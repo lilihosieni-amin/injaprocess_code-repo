@@ -28,11 +28,13 @@ exists for.
 from __future__ import annotations
 
 import html
+import posixpath
 import re
-from urllib.parse import parse_qsl
+from urllib.parse import parse_qsl, unquote
 
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
+from starlette.concurrency import run_in_threadpool
 from starlette.staticfiles import NotModifiedResponse, StaticFiles
 
 from .. import export_auth
@@ -185,15 +187,22 @@ def _safe_next(raw: str | None) -> str:
     they carried cannot be trusted.
 
     Only a path *under* `/exports/` is accepted. An absolute URL, a scheme-relative
-    `//host/...` and a look-alike `/exportsevil/...` all fail the prefix test; `..`
-    fails separately, because a target the browser normalises back above `/exports/`
-    is not the containment this promises. Without the check the form is an open
-    redirect: it is reachable unauthenticated, and the value is a stranger's choice
-    of where a browser goes next.
+    `//host/...` and a look-alike `/exportsevil/...` all fail the prefix test.
+    Without it the form is an open redirect: it is reachable unauthenticated, and
+    the value is a stranger's choice of where a browser goes next.
+
+    The prefix is then re-checked against where the browser will *really* go, which
+    is not the text it was handed: `%2e` is `.` under RFC 3986, so a browser decodes
+    it and removes the dot segments before it asks. `/exports/%2e%2e/api/auth/me`
+    contains no literal `..` and passes any check that reads the string as-is —
+    then lands on `/api/auth/me`. Same-origin, so not the open redirect above, but
+    it walks straight out of the containment this function is the only guard for,
+    so the decoded and normalised form has to clear the prefix as well.
     """
-    if not raw or not raw.startswith(_EXPORTS_ROOT):
+    if not raw or not raw.startswith(_EXPORTS_ROOT) or _UNSAFE_NEXT.search(raw):
         return _EXPORTS_ROOT
-    if ".." in raw or _UNSAFE_NEXT.search(raw):
+    landing = posixpath.normpath(unquote(raw))
+    if not landing.startswith(_EXPORTS_ROOT) or _UNSAFE_NEXT.search(landing):
         return _EXPORTS_ROOT
     return raw
 
@@ -260,8 +269,16 @@ async def login(request: Request):
         raise HTTPException(status_code=401, detail="authentication required")
     fields = _form_fields(await request.body())
     target = _safe_next(fields.get("next"))
-    if not export_auth.authenticate(cfg, fields.get("username", ""),
-                                    fields.get("password", "")):
+    # Off the event loop: argon2 is deliberately ~50-100 ms of CPU, and this
+    # handler is `async` (it awaits the body), so verifying inline would freeze
+    # every other request in the process for that long — the other bots, the admin
+    # panel, a reader mid-download. On an unauthenticated endpoint that is a denial
+    # of service, not just a slow login. `routers/auth.py` is a plain `def`, which
+    # FastAPI already runs in a threadpool for exactly this reason; this is the
+    # same property, arranged by hand because the handler cannot be sync.
+    if not await run_in_threadpool(export_auth.authenticate, cfg,
+                                   fields.get("username", ""),
+                                   fields.get("password", "")):
         # No cookie, and the reader keeps their place: the form still points at
         # the document, so a mistyped password costs one retry and not the link.
         return _login_page(target, error=True, status_code=401)

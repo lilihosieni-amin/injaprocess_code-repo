@@ -888,6 +888,7 @@ def test_head_still_answers_for_a_published_file(data_root, tmp_path, monkeypatc
     # …and it is gated exactly like the GET beside it: without a session the probe
     # is answered by the login page, so nothing about the file is disclosed
     anon = _reader(cfg).head(pdf_url)
+    assert anon.status_code == 200
     assert anon.headers["content-type"].startswith("text/html")
     assert anon.headers["content-length"] != str(len(PDF_BYTES))
 

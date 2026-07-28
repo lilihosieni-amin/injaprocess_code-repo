@@ -9,6 +9,8 @@ purpose: a test that asserts `router.TITLE in page` passes whatever the copy is
 turned into, which is exactly the mistake to avoid on a page no reviewer of this
 repo can proof-read from the code alone.
 """
+import asyncio
+
 import argon2
 from fastapi.testclient import TestClient
 from inja_ui_backend import export_auth
@@ -250,7 +252,13 @@ def test_a_wrong_password_re_renders_with_a_persian_error_and_no_cookie(data_roo
 
 
 def test_a_wrong_username_is_refused_the_same_way(data_root, tmp_path):
-    """The username is not a hint: the same answer, so neither field is an oracle."""
+    """A wrong username is refused with the same page, status and empty headers as
+    a wrong password: the *body* names neither field.
+
+    Only that. `export_auth.authenticate` returns on a username mismatch before it
+    reaches argon2, so the two cases differ in response *time* — a separate
+    question, in Task 1's module, which this test does not speak to.
+    """
     cfg = _cfg(data_root, tmp_path)
     html_url, _ = _publish(cfg)
     r = _reader(cfg).post(
@@ -277,6 +285,12 @@ def test_a_hostile_next_is_not_followed(data_root, tmp_path):
                     "/api/auth/me",
                     "/exportsevil/x.html",
                     "/exports/../../etc/passwd",
+                    # percent-encoded dot segments: the browser decodes `%2e` back
+                    # to `.` and removes the segments before it asks, so a check
+                    # that only looks at the literal text is one decode behind it.
+                    # (On the wire these arrive as `%252e`, one encoding up.)
+                    "/exports/%2e%2e/api/auth/me",
+                    "/exports/%2E%2E/%2e%2e/etc/passwd",
                     "/exports/x.html\r\nSet-Cookie: a=b"):
         r = c.post("/api/exports/login",
                    data={"username": "guest", "password": EXPORT_PASSWORD, "next": hostile},
@@ -287,6 +301,42 @@ def test_a_hostile_next_is_not_followed(data_root, tmp_path):
     # …and where they are sent instead is a plain "nothing is published here",
     # which is the whole reason that default is under the gate rather than at `/`
     assert c.get("/exports/").status_code == 404
+
+
+def test_the_password_check_does_not_run_on_the_event_loop(data_root, tmp_path,
+                                                           monkeypatch):
+    """argon2 is deliberately slow — ~50-100 ms of CPU, by design.
+
+    Run on the event loop that is not one slow request, it is every other request
+    in the process frozen for the duration: the other bots' traffic, the admin
+    panel, a reader mid-download. And this endpoint is unauthenticated, so a
+    handful of concurrent POSTs would be a denial of service written in one line.
+
+    `asyncio.get_running_loop` is the exact discriminator the PDF render already
+    uses for the same reason (`test_the_render_does_not_run_on_the_event_loop`):
+    it succeeds only on the thread running the loop and raises in a worker.
+    """
+    cfg = _cfg(data_root, tmp_path)
+    html_url, _ = _publish(cfg)
+    real_authenticate = export_auth.authenticate
+    where = {}
+
+    def watched(*args, **kwargs):
+        try:
+            asyncio.get_running_loop()
+            where["on_the_loop"] = True
+        except RuntimeError:
+            where["on_the_loop"] = False
+        return real_authenticate(*args, **kwargs)
+
+    monkeypatch.setattr(export_auth, "authenticate", watched)
+    r = _reader(cfg).post(
+        "/api/exports/login",
+        data={"username": "guest", "password": EXPORT_PASSWORD, "next": html_url},
+        follow_redirects=False)
+
+    assert r.status_code == 303          # the check really ran, and passed
+    assert where["on_the_loop"] is False
 
 
 def test_a_missing_next_still_logs_the_reader_in(data_root, tmp_path):
