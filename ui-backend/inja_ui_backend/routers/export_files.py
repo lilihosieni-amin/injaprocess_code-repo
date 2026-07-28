@@ -50,22 +50,48 @@ def serve_export(file_path: str, request: Request,
     and whether a given token exists is not something to tell a stranger.
     """
     cfg = request.app.state.cfg
+    if not cfg.export_dir:
+        # `create_app` registers this router only when EXPORT_DIR is usable, so
+        # this cannot happen today. Stated here anyway: the alternative is a
+        # precondition held up entirely by one `if` in another module, and losing
+        # it would turn every export request into an AttributeError 500 rather
+        # than the "nothing is published here" the SPA catch-all would have given.
+        raise HTTPException(status_code=404)
     root = cfg.export_dir.resolve()
     # `resolve()` on both sides, so a `..` segment that survived URL decoding and
     # a symlink pointing out of the directory are refused by the same check.
-    target = (root / file_path).resolve()
-    if not target.is_relative_to(root) or not target.is_file():
+    #
+    # Both calls are inside the guard because this is the one place untrusted
+    # input becomes a filesystem path, and it fails in more ways than a missing
+    # file: `resolve()` raises ValueError on an embedded NUL (which a URL can
+    # carry as %00), and `stat()` raises OSError if the file is unlinked between
+    # the check and the read. `StaticFiles` answered 404 to all of it; an escaping
+    # exception here would be a 500 and a traceback for a malformed request.
+    #
+    # `stat_result` is taken here rather than left to `FileResponse` because
+    # otherwise the validators do not exist until the body is streaming, and the
+    # conditional check below needs them.
+    try:
+        target = (root / file_path).resolve()
+        publishable = target.is_relative_to(root) and target.is_file()
+        stat_result = target.stat() if publishable else None
+    except (ValueError, OSError):
+        publishable = False
+    if not publishable:
         # Deliberately the same bare 404 the mount used to give: a reader who
         # followed a replaced link is owed "gone", and nothing more.
         raise HTTPException(status_code=404)
 
-    # `stat_result` up front so the validators exist before the response is sent
-    # and can be compared here; without it `FileResponse` only stats while
-    # streaming. This is `StaticFiles.file_response` verbatim in shape, including
+    # `private`: the file is behind a session now, so a shared cache must never
+    # keep a copy to hand to the next person. It still lets the reader's own
+    # browser hold one and revalidate it, which is the whole point of the etag.
+    #
+    # The rest is `StaticFiles.file_response` verbatim in shape, including
     # answering a conditional request that also carries a `Range` with the 304 —
     # a validator that still matches means the client's copy is whole, so there
     # is nothing to send it a slice of.
-    response = FileResponse(target, stat_result=target.stat())
+    response = FileResponse(target, stat_result=stat_result,
+                            headers={"Cache-Control": "private"})
     if _conditional.is_not_modified(response.headers, request.headers):
         return NotModifiedResponse(response.headers)
     return response

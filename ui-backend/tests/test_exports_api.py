@@ -259,6 +259,13 @@ def test_the_export_route_does_not_shadow_api_404s(data_root, tmp_path):
     nope = c.get("/exports/cooking/nope.html")
     assert nope.status_code == 401
     assert "inja" not in nope.text
+    # …and past the gate it is still the route answering, not the catch-all: a
+    # reader with a session who follows a replaced link is owed a plain 404, and
+    # this is the only place that pins it *while the SPA is mounted*.
+    c.cookies.set(COOKIE_NAME, issue_cookie(cfg, "analyst"))
+    gone = c.get("/exports/cooking/nope.html")
+    assert gone.status_code == 404
+    assert "inja" not in gone.text
 
 
 def test_a_real_export_is_served_while_the_spa_is_mounted(data_root, tmp_path):
@@ -757,6 +764,20 @@ def test_a_served_export_carries_validators(data_root, tmp_path, monkeypatch):
         assert r.headers.get("last-modified"), url
 
 
+def test_a_served_export_is_private_to_the_reader(data_root, tmp_path, monkeypatch):
+    """The file is behind a session now, so no shared cache may hold a copy.
+
+    Nothing in `deploy/` puts a caching proxy in front of this today, so this is
+    prevention rather than a hole being closed — but a response with validators
+    and no `Cache-Control` is one a shared cache is free to store and hand to the
+    next person. `private` keeps the browser revalidation above and forbids that.
+    """
+    cfg, html_url, pdf_url = _publish(data_root, tmp_path, monkeypatch)
+    c = _reader(cfg, export_auth.EXPORT_COOKIE, export_auth.issue_cookie(cfg))
+    for url in (html_url, pdf_url):
+        assert c.get(url).headers["cache-control"] == "private", url
+
+
 def test_an_unchanged_export_is_304_for_if_none_match(data_root, tmp_path, monkeypatch):
     """The regression the mount's removal introduced, pinned.
 
@@ -866,6 +887,38 @@ def test_path_traversal_is_refused(data_root, tmp_path, monkeypatch):
         r = c.get(url)
         assert r.status_code == 404, url
         assert "not for readers" not in r.text, url
+
+
+def test_a_null_byte_in_the_path_is_404(data_root, tmp_path, monkeypatch):
+    """`Path.resolve()` raises `ValueError: embedded null byte`, not `OSError`.
+
+    `StaticFiles` answered 404 for this; an unhandled `ValueError` in the one
+    function whose job is to resolve untrusted input safely is a 500 and a
+    traceback in the log. Both shapes are asserted — a lone NUL and one smuggled
+    into an otherwise ordinary filename — because they take different routes
+    through the join.
+    """
+    cfg, _, _ = _publish(data_root, tmp_path, monkeypatch)
+    c = _reader(cfg, export_auth.EXPORT_COOKIE, export_auth.issue_cookie(cfg))
+    for url in ("/exports/%00", "/exports/ok%00.txt", "/exports/cooking/%00.pdf"):
+        assert c.get(url).status_code == 404, url
+
+
+def test_the_route_refuses_when_the_export_dir_is_unset(data_root, tmp_path, monkeypatch):
+    """The handler states its own precondition instead of inheriting it.
+
+    `create_app` registers this router only when EXPORT_DIR is usable, so today
+    the handler cannot run without it. That safety lives in another module, one
+    unconditional `include_router` away from an `AttributeError` 500 on every
+    export request — and the correct answer, "the feature is off, so nothing is
+    published here", is the same 404 the SPA catch-all gives in that state.
+    """
+    cfg, html_url, _ = _publish(data_root, tmp_path, monkeypatch)
+    app = create_app(cfg)
+    app.state.cfg = cfg.__class__(**{**cfg.__dict__, "export_dir": None})
+    c = TestClient(app)
+    c.cookies.set(export_auth.EXPORT_COOKIE, export_auth.issue_cookie(cfg))
+    assert c.get(html_url).status_code == 404
 
 
 def test_a_missing_export_is_404_for_a_reader_with_a_session(data_root, tmp_path,
