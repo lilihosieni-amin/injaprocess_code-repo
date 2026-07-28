@@ -377,14 +377,66 @@ def test_write_export_prunes_stale_pdf_siblings(tmp_path):
     (folder / "flowchart-deadbeefdeadbeef.html").write_text("old", encoding="utf-8")
     (folder / "flowchart-deadbeefdeadbeef.pdf").write_bytes(b"%PDF-old")
     (folder / "steps-cafecafecafecafe.pdf").write_bytes(b"%PDF-other-kind")
-    current_pdf = folder / "flowchart-0123456789abcdef.pdf"
-    current_pdf.write_bytes(b"%PDF-current-token")
 
     exports.write_export(d, "dining", "flowchart", "0123456789abcdef", "<html>new</html>")
 
     assert not (folder / "flowchart-deadbeefdeadbeef.pdf").exists()   # pruned
     assert (folder / "steps-cafecafecafecafe.pdf").exists()           # other kind untouched
-    # The current token's PDF is the render's business, not the prune's: the
-    # endpoint either overwrites it or unlinks it, and pruning it here would hide
-    # a failed render behind a file that was already gone.
-    assert current_pdf.read_bytes() == b"%PDF-current-token"
+
+
+def test_write_export_removes_the_current_tokens_pdf(tmp_path):
+    """The PDF at *this* token's path goes too, and that is the point of it.
+
+    The token is derived, not stored, so that path is the same on every export.
+    Whatever sits there when this function is called was printed from the document
+    this call is overwriting: from the moment the new HTML lands it is a PDF that
+    disagrees with the page beside it, and both are served from the same public
+    folder one extension apart.
+
+    Nothing else clears it in time. The render that refreshes it runs *after* this
+    returns and takes seconds (~5 s measured), and the endpoint's own unlink (D21)
+    runs later still — so a container restart or the OOM killer anywhere in that
+    window used to make the mismatch permanent, until someone re-exported that
+    department by hand. Removing it here costs those seconds with no PDF, during
+    which the document's «چاپ / PDF» button falls back to `window.print()`: a
+    missing PDF degrades visibly, a wrong one does not.
+    """
+    d = tmp_path / "exports"
+    folder = d / "dining"
+    folder.mkdir(parents=True)
+    previous = folder / "flowchart-0123456789abcdef.pdf"
+    previous.write_bytes(b"%PDF-the document as it looked last week")
+
+    exports.write_export(d, "dining", "flowchart", "0123456789abcdef", "<html>new</html>")
+
+    assert not previous.exists()
+    assert not list(folder.glob("*.pdf"))
+
+
+def test_the_previous_pdf_is_gone_before_the_new_html_lands(tmp_path, monkeypatch):
+    """Ordering, not just the end state — that is the whole finding.
+
+    A crash is only dangerous in the gap between the two writes, so the invariant
+    has to hold at every instant, not merely once `write_export` returns. The HTML
+    is what a reader loads and the PDF is one extension away from it, so the PDF
+    must go first: the worst state reachable at any point is then "old document,
+    no PDF", never "new document, old PDF".
+    """
+    d = tmp_path / "exports"
+    folder = d / "dining"
+    folder.mkdir(parents=True)
+    previous = folder / "flowchart-0123456789abcdef.pdf"
+    previous.write_bytes(b"%PDF-last week")
+
+    seen = {}
+    real = exports.storage.write_text_atomic
+
+    def observe(path, text):
+        seen["pdf_still_there"] = previous.exists()
+        return real(path, text)
+
+    monkeypatch.setattr(exports.storage, "write_text_atomic", observe)
+    exports.write_export(d, "dining", "flowchart", "0123456789abcdef", "<html>new</html>")
+
+    assert seen["pdf_still_there"] is False, (
+        "the previous export's PDF was still on disk when the new HTML was written")

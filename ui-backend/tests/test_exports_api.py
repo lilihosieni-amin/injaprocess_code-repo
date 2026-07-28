@@ -541,6 +541,46 @@ def test_a_successful_render_puts_the_pdf_beside_the_html(data_root, tmp_path, m
     assert ".pdf" not in json.dumps(r.json())
 
 
+def test_no_pdf_is_served_beside_the_new_html_while_the_render_is_still_running(
+        data_root, tmp_path, monkeypatch):
+    """The crash window, pinned — this is the ordering the whole fix is about.
+
+    `render_pdf` is entered with the fresh HTML already published and the new PDF
+    not yet written; the real thing spends ~5 s in there driving a browser. Both
+    files are served from an unauthenticated mount the whole time, so whatever this
+    fake observes is exactly what a reader would get — and, if the container
+    restarts or the OOM killer fires here, what they would keep getting until
+    someone re-exported the department by hand.
+
+    So: at that instant the folder must hold the *new* document and no `.pdf` at
+    all. Asserted from inside the render rather than after the response, because
+    after the response the mismatch has already been cleaned up and the window this
+    guards is invisible.
+    """
+    cfg = _with_chromium(_cfg(data_root, tmp_path), tmp_path)
+    stale = _plant_a_previous_pdf(cfg)
+    stale_bytes = stale.read_bytes()
+    mid_render = {}
+
+    def fake_render(chromium, html_path, out_path, **kw):
+        folder = Path(out_path).parent
+        mid_render["pdfs"] = sorted(p.name for p in folder.glob("*.pdf"))
+        mid_render["html"] = Path(html_path).read_text(encoding="utf-8")
+        Path(out_path).write_bytes(b"%PDF-1.4 printed from this very document")
+
+    monkeypatch.setattr(pdf_mod, "render_pdf", fake_render)
+    r = _client(cfg).post("/api/departments/cooking/exports/flowchart")
+
+    assert r.status_code == 200
+    assert mid_render["pdfs"] == [], (
+        f"a PDF was still publicly served beside the new HTML mid-render: "
+        f"{mid_render['pdfs']} (planted {stale_bytes[:40]!r})")
+    # …and the HTML it is printing from really is the new one, so the window being
+    # asserted is the render's and not some moment before the document was written
+    assert exports_mod.DATA_SLOT not in mid_render["html"]
+    assert stale.read_bytes() == b"%PDF-1.4 printed from this very document"
+
+
 def test_regenerating_prunes_the_previous_pdf(data_root, tmp_path, monkeypatch):
     """An orphan from a rotated signing key is as public as the HTML beside it."""
     cfg = _with_chromium(_cfg(data_root, tmp_path), tmp_path)

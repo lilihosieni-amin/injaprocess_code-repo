@@ -176,8 +176,23 @@ def _older_than(path: Path, cutoff: float) -> bool:
         return False
 
 
+def _prune(paths: list[Path], code: str, kind: str) -> None:
+    """Unlink each path, logging the ones that refuse rather than raising.
+
+    A prune that fails is never fatal to the export — the document itself is
+    already written — but it is never silent either: what survives is a file still
+    being served from a public folder, and only a human can clear it.
+    """
+    for old in paths:
+        try:
+            old.unlink(missing_ok=True)
+        except OSError as e:
+            logger.warning("%s/%s: %s survives the prune and stays publicly served: %s",
+                           code, kind, old, e)
+
+
 def write_export(export_dir: Path, code: str, kind: str, token: str, html: str) -> Path:
-    """Write atomically, then drop any older file of the same kind.
+    """Drop this export's previous PDF, write the document, then prune the rest.
 
     Atomic because the link is permanent and public: a reader must never catch a
     half-written document. Pruning keeps one file per department+kind (D5) and
@@ -186,25 +201,37 @@ def write_export(export_dir: Path, code: str, kind: str, token: str, html: str) 
     The sweep also collects `.tmp` files a killed process left behind: they sit in
     the publicly mounted folder and the `.html` glob cannot match them.
 
-    The `.pdf` siblings are pruned on the same terms and for the same reason: a
-    rotated key orphans the rendered PDF exactly as it orphans the document, and an
-    orphan PDF is every bit as public as the HTML it was printed from. The *current*
-    token's PDF is deliberately spared here — it is the render's to overwrite or,
-    when the render fails, the endpoint's to unlink (D21).
+    The `.pdf` siblings go on the same terms and for the same reason: a rotated key
+    orphans the rendered PDF exactly as it orphans the document, and an orphan PDF
+    is every bit as public as the HTML it was printed from.
+
+    **The current token's PDF goes first, before the HTML is written**, and that
+    ordering is the point rather than an accident. The token is derived, so that
+    path is identical on every export: whatever sits there was printed from the
+    document about to be overwritten. The render that would replace it runs *after*
+    this returns and takes seconds (~5 s measured), and the endpoint's own unlink
+    (D21) runs later still — so the folder used to hold new HTML beside the previous
+    export's PDF for that whole window, both publicly served, and a container
+    restart or the OOM killer inside it made the mismatch permanent: a reader taps
+    «چاپ / PDF», the file is there, and they silently download last week's flowchart
+    under this week's document.
+
+    Clearing it here means the worst state reachable at any instant is "old document,
+    no PDF" or "new document, no PDF yet" — never a PDF that disagrees with the page
+    beside it. The cost is those few seconds with no PDF on every successful
+    regeneration, during which the document's button falls back to `window.print()`.
+    That is the trade deliberately taken: a missing PDF degrades visibly, and a
+    wrong one does not.
     """
     folder = Path(export_dir) / code
     path = export_html_path(export_dir, code, kind, token)
+    _prune([path.with_suffix(".pdf")], code, kind)
+
     storage.write_text_atomic(path, html)
 
     cutoff = time.time() - TMP_SWEEP_AGE_S
-    pdf = path.with_suffix(".pdf")
     stale = [p for p in folder.glob(f"{kind}-*.html") if p != path]
-    stale += [p for p in folder.glob(f"{kind}-*.pdf") if p != pdf]
+    stale += list(folder.glob(f"{kind}-*.pdf"))
     stale += [p for p in folder.glob("*.tmp") if _older_than(p, cutoff)]
-    for old in stale:
-        try:
-            old.unlink()
-        except OSError as e:
-            logger.warning("%s/%s: %s survives the prune and stays publicly served: %s",
-                           code, kind, old, e)
+    _prune(stale, code, kind)
     return path

@@ -5,6 +5,8 @@ failure paths, the readiness wait and the serialisation. The one thing only a re
 Chromium can prove — that the resulting PDF is right — is verified by hand in this
 task's report and on the server in Task 5.
 """
+import inspect
+import io
 import pathlib
 import re
 import threading
@@ -20,6 +22,11 @@ MM_PER_IN = 25.4
 # a paper box that drifts from these mis-slices every diagram without erroring (D23).
 PRINT_CSS = (REPO / "ui" / "export" / "print" / "print.css")
 BANDS_TS = (REPO / "ui" / "export" / "print" / "bands.ts")
+#: The other half of the readiness handshake: the document decides how long it
+#: keeps watching for its own bands, this module decides how long it waits to be
+#: told. The two are coupled and live in different languages, so they are pinned
+#: against each other here rather than trusted to stay in step.
+DOCUMENT_TSX = (REPO / "ui" / "export" / "flowchart" / "Document.tsx")
 
 
 def _strip_comments(css: str) -> str:
@@ -48,6 +55,19 @@ def _band_budget_px() -> dict[str, float]:
     assert body, "bands.ts exports a PRINT budget"
     got = dict(re.findall(r"(\w+)\s*:\s*([\d.]+)", body.group(1)))
     return {"W": float(got["W"]), "H": float(got["H"])}
+
+
+def _watch_ms() -> float:
+    """`WATCH_MS` from `Document.tsx` — how long the document keeps looking."""
+    ts = _strip_comments(DOCUMENT_TSX.read_text(encoding="utf-8"))
+    m = re.search(r"const WATCH_MS\s*=\s*([\d_]+)", ts)
+    assert m, "Document.tsx declares a WATCH_MS watch window"
+    return float(m.group(1).replace("_", ""))
+
+
+def _render_timeout_s() -> float:
+    """`render_pdf`'s default `timeout_s` — how long the renderer keeps waiting."""
+    return inspect.signature(pdf.render_pdf).parameters["timeout_s"].default
 
 
 class _FakeSession:
@@ -118,6 +138,31 @@ def test_no_browser_chrome_and_colours_are_printed():
     p = pdf.print_params()
     assert p["displayHeaderFooter"] is False
     assert p["printBackground"] is True
+
+
+# --------------------------------------------------------------------------- #
+# the readiness handshake's two clocks
+# --------------------------------------------------------------------------- #
+
+def test_the_document_watches_for_longer_than_the_renderer_waits():
+    """The only ordering of these two constants that is not a waste of time.
+
+    `_await_ready` blocks until the page sets `__INJA_PRINT_READY__`, and the page
+    only sets it while its own watch window is open. If the document stops looking
+    first, every document that settles in the gap is one the renderer can never be
+    told about: it burns the rest of its timeout and publishes an HTML with no PDF,
+    for a document that had actually finished. With the watch window the longer of
+    the two, a settling document is always still able to say so, and the timeout
+    means what it is meant to mean — the page never finished at all.
+
+    Both directions are then covered: a document that genuinely cannot complete is
+    still bounded, by the renderer's own deadline rather than by the page's.
+    """
+    watch_s = _watch_ms() / 1000
+    timeout_s = _render_timeout_s()
+    assert watch_s > timeout_s, (
+        f"the document stops watching at {watch_s}s but the renderer waits "
+        f"{timeout_s}s — a document settling in between is never heard")
 
 
 # --------------------------------------------------------------------------- #
@@ -196,3 +241,148 @@ def test_two_renders_never_overlap(tmp_path, monkeypatch):
     assert first[1] <= second[0], "the second render began before the first ended"
     assert (tmp_path / "0.pdf").read_bytes() == b"%PDF-1.4\n"
     assert (tmp_path / "1.pdf").read_bytes() == b"%PDF-1.4\n"
+
+
+def test_the_pdf_is_written_while_the_render_slot_is_still_held(tmp_path, monkeypatch):
+    """The write belongs inside the lock, not after it.
+
+    Nothing serialises exports per department, so two exports of the same one can
+    be in flight at once — and they aim at the *same* output path, because the
+    token is derived. With the write outside the lock, the second render can fail
+    fast, hand back to the endpoint and unlink that path in the gap between the
+    first render finishing and its bytes landing; the first then writes a PDF that
+    the export it belongs to has already given up on, and it survives as a stale
+    file nothing will clear.
+    """
+    held = {}
+
+    def observe(path, data):
+        held["locked"] = pdf._RENDER_LOCK.locked()
+        pathlib.Path(path).write_bytes(data)
+
+    monkeypatch.setattr(pdf, "_render", lambda *a, **kw: b"%PDF-1.4\n")
+    monkeypatch.setattr(pdf.storage, "write_bytes_atomic", observe)
+    html = tmp_path / "flowchart-abc.html"
+    html.write_text("<!doctype html><title>x</title>", encoding="utf-8")
+
+    pdf.render_pdf(tmp_path / "chromium", html, tmp_path / "out.pdf")
+
+    assert held["locked"] is True
+    # and it is genuinely released afterwards — a lock held past the call would
+    # serialise every later export against a render that is long finished
+    assert pdf._RENDER_LOCK.locked() is False
+
+
+# --------------------------------------------------------------------------- #
+# the browser's stderr
+# --------------------------------------------------------------------------- #
+
+class _FakeProc:
+    """Just enough of a `Popen` for `_Browser`: a stderr to drain and an exit code."""
+
+    def __init__(self, stderr, returncode=0):
+        self.stderr = stderr
+        self.returncode = returncode
+
+    def poll(self):
+        return self.returncode
+
+
+class _Chatty:
+    """A stderr that never stops talking and never announces DevTools.
+
+    Exactly what a Chromium crash-looping on startup produces, which is the case
+    `_devtools_port`'s deadline exists for.
+    """
+
+    def __init__(self, n: int):
+        self.n = n
+        self.closed = False
+        self.stop = False
+        self.read_after_close = False
+
+    def __iter__(self):
+        for i in range(self.n):
+            time.sleep(0.005)
+            if self.closed:
+                # what the real pipe raises, and what used to reach the log as an
+                # unhandled-thread traceback
+                self.read_after_close = True
+                raise ValueError("readline of closed file")
+            if self.stop:
+                return
+            yield b"[0728/104500.1] some chromium noise %d\n" % i
+
+    def close(self):
+        self.closed = True
+
+
+def _drained(browser, timeout=5):
+    browser._reader.join(timeout=timeout)
+    assert not browser._reader.is_alive(), "the stderr reader never finished"
+
+
+def test_next_line_honours_the_deadline_even_with_lines_already_queued(tmp_path):
+    """A queued line is not a reason to overrun.
+
+    `next_line` used to answer from the queue without looking at the clock, so a
+    caller looping over a chatty stderr kept being handed lines long past its
+    deadline — measured at 0.89 s against a 0.5 s one, taken while holding the
+    render lock.
+    """
+    browser = pdf._Browser(_FakeProc(io.BytesIO(b"one\ntwo\nthree\n")), tmp_path / "p1")
+    _drained(browser)
+    assert browser._new, "the fixture queued lines to be ignored"
+    assert browser.next_line(time.monotonic() - 1) is None
+
+
+def test_next_line_still_returns_a_queued_line_inside_the_deadline(tmp_path):
+    """The deadline check must not cost the ordinary path its answer."""
+    browser = pdf._Browser(_FakeProc(io.BytesIO(b"one\ntwo\n")), tmp_path / "p2")
+    _drained(browser)
+    assert browser.next_line(time.monotonic() + 10) == "one"
+    assert browser.next_line(time.monotonic() + 10) == "two"
+
+
+def test_devtools_port_gives_up_at_its_deadline_against_a_chatty_browser(tmp_path):
+    """The realistic launch failure: it talks, it never announces, it holds the lock.
+
+    Bounded by lines consumed rather than by seconds, so the assertion says what it
+    means on a loaded machine: past the deadline the loop must stop reading, not
+    grind through a backlog first. The backlog is what makes the overrun — with an
+    empty queue even the old code returned promptly, which is why this plants one.
+    """
+    chatty = _Chatty(4000)
+    browser = pdf._Browser(_FakeProc(chatty), tmp_path / "p3")
+    try:
+        time.sleep(0.1)   # let a backlog build up, as a crash-looping browser would
+        with browser._got:
+            assert browser._new, "the fixture built a backlog"
+            queued = browser._new[0]
+
+        with pytest.raises(pdf.PdfRenderError, match="never announced a DevTools endpoint"):
+            pdf._devtools_port(browser, time.monotonic() - 1)
+
+        with browser._got:
+            assert browser._new[0] == queued, (
+                "it worked through the backlog after its deadline had already passed")
+    finally:
+        chatty.stop = True
+        browser._reader.join(timeout=5)
+
+
+def test_closing_the_browser_joins_its_reader_before_closing_the_pipe(tmp_path):
+    """Otherwise the drain thread dies in `readline` on a pipe just closed under it.
+
+    It is a daemon thread, so the render still returns the right answer — but it
+    prints an unhandled-thread traceback into the container log, which reads like a
+    renderer bug to whoever is diagnosing a real one.
+    """
+    chatty = _Chatty(8)
+    browser = pdf._Browser(_FakeProc(chatty), tmp_path / "p4")
+
+    browser.close()
+
+    assert not browser._reader.is_alive(), "close() returned with the reader still running"
+    assert chatty.read_after_close is False, (
+        "the stderr pipe was closed under the live reader thread")

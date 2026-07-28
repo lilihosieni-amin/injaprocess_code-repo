@@ -28,6 +28,13 @@ def _drop_stale_pdf(path: Path, code: str, kind: str) -> None:
     one extension away from a link people share. A reader tapping «چاپ / PDF»
     would silently download a document that disagrees with the one on their
     screen, which is strictly worse than no PDF at all.
+
+    `exports.write_export` now clears that path *before* it writes the HTML, so on
+    every normal path this finds nothing and does nothing. It stays as the second
+    line of defence, and it is not redundant: it is the only thing standing between
+    a reader and a mismatch if a future caller ever renders over a document it did
+    not write through `write_export`, and the error below is how that would be
+    noticed rather than served.
     """
     try:
         path.unlink(missing_ok=True)

@@ -32,9 +32,21 @@ const REBUILD_MS = 1400
  *  server-side flowchart render timed out at 90 s with no PDF written. Not a
  *  premature flag: silence.
  *
- *  Bounded all the same. A document that genuinely cannot complete must not poll
- *  forever in a reader's phone, and the renderer gives up at 90 s regardless. */
-const WATCH_MS = 60_000
+ *  Bounded all the same — a document that genuinely cannot complete must not poll
+ *  forever in a reader's phone — but bounded **above** the server renderer's own
+ *  wait, which is `render_pdf`'s `timeout_s` in `ui-backend/inja_ui_backend/pdf.py`
+ *  and is 90 s. The two are one handshake and have to be changed together: the
+ *  renderer blocks until this document raises `__INJA_PRINT_READY__`, and this
+ *  document only raises it while the window below is open. Whichever gives up
+ *  first decides the outcome, and it must be the renderer — a document that
+ *  settles at 70 s with the window already shut is one the renderer can never be
+ *  told about, so it waits out the rest of its 90 s and publishes an HTML with no
+ *  PDF beside a document that had in fact finished.
+ *
+ *  Measured worst case is 5.4 s, so the margin here is enormous either way; the
+ *  ordering is what matters, and `ui-backend/tests/test_pdf.py` reads this
+ *  constant and pins it against that default so neither can drift alone. */
+const WATCH_MS = 120_000
 
 const JSYM = [
   { t: 'XOR', s: 'X', c: '#E23D35', text: 'فقط یکی از مسیرها انجام می‌شود' },

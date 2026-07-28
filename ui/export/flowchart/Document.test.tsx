@@ -18,6 +18,17 @@ vi.mock('../print/complete', async (importOriginal) => {
   return { diagramsComplete: (p: ExportPayload) => invariant.force ?? real.diagramsComplete(p) }
 })
 
+// File-scope, not inside the one `describe` that forces the flag. That describe's
+// last test leaves `force` at `true` and vitest runs the suites in file order, so
+// a describe-scoped reset let the forced invariant leak into every test below it —
+// which then ran against a `diagramsComplete` that can only answer yes. It changed
+// no assertion the day it was noticed, and that is exactly the problem: the next
+// test added down there would have silently proved nothing.
+beforeEach(() => {
+  invariant.force = null
+  delete window.__INJA_PRINT_READY__
+})
+
 const act = (id: string, label: string, removed = false): ProcNode => ({
   id, type: 'activity', label, description: '', actor: '',
   icom: { inputs: [], controls: [], outputs: [], mechanisms: [] },
@@ -231,11 +242,6 @@ describe('every document section stays mounted, so the PDF carries them all', ()
 // point where the rebuild loop's own `diagramsComplete` first holds.
 describe('the signal a headless renderer waits on', () => {
   const slot = () => document.querySelector('[data-pf="dining-001"]')!
-
-  beforeEach(() => {
-    invariant.force = null
-    delete window.__INJA_PRINT_READY__
-  })
 
   it('is unset on first render, while the bands are still being built', () => {
     renderDoc()

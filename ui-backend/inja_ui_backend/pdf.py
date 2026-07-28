@@ -149,16 +149,36 @@ def render_pdf(chromium: Path, html_path: Path, out_path: Path,
     on purpose — the page rebuilds its bands on a retry tick and a failed internal
     check restarts the whole per-process sweep, so a large department is slow rather
     than broken.
+
+    It is also **coupled to `WATCH_MS` in `ui/export/flowchart/Document.tsx`**, and
+    must stay below it. That constant is how long the document keeps looking for its
+    own completed bands, and the flag this waits on is only ever raised while that
+    window is open — so if the document stops watching first, a document that
+    settles in the gap can never say so and this call burns the remainder of its
+    timeout for nothing. `tests/test_pdf.py` reads both and pins the ordering; raise
+    this past `WATCH_MS` and that test fails rather than the exports quietly losing
+    their PDFs.
     """
     html_path, out_path = Path(html_path), Path(out_path)
     if not html_path.is_file():
         raise PdfRenderError(f"there is no export document to print at {html_path}")
     with _RENDER_LOCK:
         data = _render(Path(chromium), html_path, timeout_s)
-    # Atomic, and only after a complete render: the PDF sits in a publicly served
-    # folder beside its HTML, so a reader must never catch a truncated one — and a
-    # failure must leave no file at all rather than a plausible-looking short one.
-    storage.write_bytes_atomic(out_path, data)
+        # Atomic, and only after a complete render: the PDF sits in a publicly
+        # served folder beside its HTML, so a reader must never catch a truncated
+        # one — and a failure must leave no file at all rather than a
+        # plausible-looking short one.
+        #
+        # Inside the lock, not after it. Nothing serialises exports per department,
+        # so two exports of the same one can be in flight at once — and they aim at
+        # the *same* `out_path`, because the token is derived. Writing outside the
+        # lock leaves a gap in which the second render can fail fast, return to the
+        # endpoint and unlink that path (D21) before the first render's bytes land;
+        # the first would then write a PDF its own export has already given up on,
+        # and it would sit there stale with nothing left to clear it. Holding the
+        # slot across the write costs milliseconds — the render it queues behind
+        # takes seconds.
+        storage.write_bytes_atomic(out_path, data)
 
 
 # --------------------------------------------------------------------------- #
@@ -185,25 +205,42 @@ class _Browser:
 
     def _drain(self) -> None:
         assert self.proc.stderr is not None
-        for raw in self.proc.stderr:
-            line = raw.decode("utf-8", "replace").rstrip()
-            with self._got:
-                self.lines.append(line)
-                self._new.append(line)
-                self._got.notify_all()
+        # `ValueError` is the pipe being closed under this thread. `close()` joins
+        # first precisely so that cannot happen, but that join is bounded — a
+        # renderer child that outlived its parent can hold the write end open past
+        # it — and on that one path the thread must end quietly rather than print an
+        # unhandled-thread traceback into the container log, where it would read
+        # like a renderer bug to whoever is diagnosing a real one.
+        with contextlib.suppress(ValueError):
+            for raw in self.proc.stderr:
+                line = raw.decode("utf-8", "replace").rstrip()
+                with self._got:
+                    self.lines.append(line)
+                    self._new.append(line)
+                    self._got.notify_all()
         with self._got:
             self._got.notify_all()
 
     def next_line(self, deadline: float) -> Optional[str]:
-        """The next unread stderr line, or None once the browser has closed it."""
+        """The next unread stderr line, or None once the deadline or the pipe is out.
+
+        The deadline is checked *before* the queue, not only when the queue is
+        empty. A browser crash-looping on startup is both the case this is waiting
+        on and the case that spews stderr fastest, so the caller could be handed
+        queued line after queued line long past the moment it should have given up
+        — measured at 0.89 s against a 0.5 s deadline, and taken while holding the
+        render lock. Answering from a backlog is not a reason to overrun.
+        """
         with self._got:
             while True:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    return None
                 if self._new:
                     return self._new.popleft()
                 if not self._reader.is_alive():
                     return None
-                remaining = deadline - time.monotonic()
-                if remaining <= 0 or not self._got.wait(timeout=remaining):
+                if not self._got.wait(timeout=remaining):
                     return None
 
     def tail(self) -> str:
@@ -226,6 +263,18 @@ class _Browser:
                     with contextlib.suppress(subprocess.TimeoutExpired):
                         self.proc.wait(timeout=5)
         finally:
+            # Join before closing. The drain thread is blocked in `readline` on
+            # this very pipe, and closing it under the thread races: when the close
+            # wins, the thread dies with `ValueError: readline of closed file` and
+            # prints an unhandled-thread traceback into the container log — noise
+            # that reads like a renderer bug to whoever is diagnosing a real one.
+            #
+            # The wait is bounded by the process above being dead: its pipe is then
+            # at EOF and the loop ends on its own. The timeout covers the one case
+            # that is not — a renderer child that inherited stderr and outlived its
+            # parent keeps the write end open — and `_drain` swallows the
+            # `ValueError` on that path, so the close below is still safe.
+            self._reader.join(timeout=5)
             if self.proc.stderr is not None:
                 with contextlib.suppress(OSError):
                     self.proc.stderr.close()
