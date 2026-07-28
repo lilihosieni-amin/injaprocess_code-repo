@@ -46,6 +46,33 @@ class SPAStaticFiles(StaticFiles):
             raise
 
 
+def _configure_logging() -> None:
+    """Give this package's own log records somewhere to go.
+
+    Uvicorn's default `LOGGING_CONFIG` configures the `uvicorn*` loggers and
+    nothing else, so it leaves the **root** logger with no handlers. Every record
+    from `inja_ui_backend.*` then falls through to `logging.lastResort`, whose
+    level is WARNING — which silently drops `_log_export_gate`'s startup INFO
+    line altogether (verified out of process: `grep -c "export gate"` over real
+    uvicorn stderr returned 0), and prints the WARNING lines that do survive with
+    no timestamp, no level and no logger name. `export login failed:
+    username='staff' from 127.0.0.1` is the only signal an operator has that
+    someone is guessing the shared export password, and undated it cannot be
+    correlated with anything.
+
+    Guarded, because the point is to configure a root logger nobody else has:
+    under pytest, or under a host that ships its own `--log-config`, the existing
+    handlers win and this is a no-op. `basicConfig` is itself a no-op when root
+    already has handlers; the explicit check keeps that contract visible and
+    keeps the `level=` from being read as something that could override a host's
+    choice.
+    """
+    if not logging.getLogger().handlers:
+        logging.basicConfig(
+            level=logging.INFO,
+            format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+
+
 def _prepare_exports(cfg: Settings) -> Settings:
     """Prepare EXPORT_DIR, or turn the export feature off.
 
@@ -99,6 +126,10 @@ def _log_export_gate(cfg: Settings) -> None:
 
 
 def create_app(cfg: Settings | None = None) -> FastAPI:
+    # before anything that logs: `_prepare_exports` and `_log_export_gate` below
+    # are the first records this service emits, and they are the ones that were
+    # being thrown away.
+    _configure_logging()
     if cfg is None:
         cfg = load_settings()
     app = FastAPI(title="inja-ui-backend")

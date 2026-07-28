@@ -126,15 +126,54 @@ docker run --rm inja-ui-backend python -c \
 > at most two checks running at once — which makes guessing slow, not impossible.
 > One shared password protects a whole department's documentation for everyone,
 > so use a long passphrase (four or more unrelated words, or 20+ random
-> characters), never a word plus a number. Failed attempts are logged at
-> `WARNING` as `export login failed`; `docker compose logs ui-backend | grep
-> "export login failed"` is how you see someone trying.
+> characters), never a word plus a number.
 
-Paste that output as `EXPORT_PASSWORD_HASH` in `ui-backend.env`, and the chosen
-username as `EXPORT_USERNAME`. `EXPORT_PASSWORD_HASH` holds an argon2 hash, never
+Paste the hash from step 2 as `EXPORT_PASSWORD_HASH` in `ui-backend.env`, and the
+chosen username as `EXPORT_USERNAME`. `EXPORT_PASSWORD_HASH` holds an argon2 hash, never
 a plaintext password — same rule as `ui-users.json`. Both values live only in
 `/opt/inja/secrets/ui-backend.env` on the server, outside the code-repo and the
 data-repo; nothing about this credential is ever committed to either repo.
+
+### Seeing someone guess
+
+Failed attempts are logged at `WARNING`, one line each:
+
+```
+2026-07-28 16:42:24,808 WARNING inja_ui_backend.routers.export_files: export login failed: username='staff' from 127.0.0.1
+```
+
+`docker compose logs ui-backend | grep "export login failed"` is how you see
+someone trying. The date, level and logger name come from the service itself;
+`docker compose logs` adds the service-name prefix, and `-t` would add Docker's
+own timestamp on top of the one already in the line.
+
+Three things that grep does **not** show you:
+
+- **A successful login.** Only failures are logged, so there is no line marking
+  the moment guessing stops being guessing.
+- **Anything at all on an unconfigured deployment.** With `EXPORT_USERNAME` /
+  `EXPORT_PASSWORD_HASH` unset, `POST /api/exports/login` answers `401` before it
+  reaches the logging, so no amount of hammering produces a line. Silence here
+  means "no credential configured" at least as often as it means "nobody is
+  trying" — check the startup line below to tell the two apart.
+- **History.** Container logs are capped at 30 MB per service (`x-logging` in
+  `deploy/docker-compose.yml`, see [`01-server-setup.md`](01-server-setup.md)),
+  which is deliberate — uncapped, a sustained flood against this public endpoint
+  would fill the host's disk. It does mean the grep is a live signal, not an
+  archive: under a fast attempt rate the older lines rotate away.
+
+At startup the service says which state the gate is in, so you can confirm the
+credential was actually picked up rather than inferring it from a 401:
+
+```bash
+docker compose logs ui-backend | grep "export gate"
+# export gate: a shared export credential is configured, so /exports opens for it and for a signed-in UI user
+# — or —
+# export gate: no export credential configured, so /exports answers 401 to everyone but a signed-in UI user
+```
+
+Setting only one of the two variables logs a `WARNING` naming the missing half.
+Neither the username's value nor the hash ever appears in any of these lines.
 
 ### Signing out of an export, and what that means on a shared phone
 

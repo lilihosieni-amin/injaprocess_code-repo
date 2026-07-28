@@ -4,7 +4,9 @@ The point of this module is separation: an export session must be structurally
 incapable of reaching the admin panel, and the admin session must not be
 mistakable for an export one. Both directions are tested explicitly.
 """
+import contextlib
 import logging
+import re
 from types import SimpleNamespace
 
 import argon2
@@ -229,3 +231,64 @@ def test_no_credential_at_all_says_the_gate_is_closed(data_root, caplog):
     assert len(infos) == 1, infos
     assert "export gate" in infos[0] and "401" in infos[0]
     assert _app_lines(caplog, logging.WARNING) == []
+
+
+# --- …and whether it can reach the operator at all ----------------------------
+#
+# The three tests above pass through `caplog`, which installs its own root
+# handler and lowers the root level — so they pin the *message*, and cannot see
+# whether the message ever leaves the process. It does not, by default: uvicorn's
+# LOGGING_CONFIG configures the `uvicorn*` loggers only and leaves root with no
+# handlers, so every `inja_ui_backend.*` record falls through to
+# `logging.lastResort` (a WARNING-level stderr handler with no formatter). The
+# real evidence for these two is the out-of-process uvicorn run in
+# docs/runbooks/02-secrets-and-auth.md's commit; these pin the mechanism.
+
+@contextlib.contextmanager
+def _bare_root_logger(*handlers):
+    """Root as uvicorn really leaves it, for the body of the `with`.
+
+    A fixture cannot do this: pytest's logging plugin re-adds its own
+    `LogCaptureHandler` to root at the *start of the call phase*, i.e. after
+    fixture setup has finished, so anything stripped in a fixture is back before
+    the first statement of the test runs.
+    """
+    root = logging.getLogger()
+    saved, saved_level = root.handlers[:], root.level
+    root.handlers[:] = list(handlers)
+    root.setLevel(logging.WARNING)
+    try:
+        yield root
+    finally:
+        for h in root.handlers:
+            if h not in saved and h not in handlers:
+                h.close()
+        root.handlers[:] = saved
+        root.setLevel(saved_level)
+
+
+def test_a_bare_root_logger_gets_a_dated_handler(data_root):
+    """Without this, the startup INFO line is dropped outright and the
+    `export login failed` WARNING prints bare — no date to correlate it with."""
+    with _bare_root_logger() as root:
+        create_app(_cfg(data_root))
+        assert len(root.handlers) == 1, root.handlers
+        assert root.getEffectiveLevel() <= logging.INFO
+        record = logging.LogRecord("inja_ui_backend.app", logging.INFO,
+                                   __file__, 1, "export gate: open", None, None)
+        line = root.handlers[0].format(record)
+    assert re.match(
+        r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3} "
+        r"INFO inja_ui_backend\.app: export gate: open$", line), line
+
+
+def test_a_root_logger_someone_else_configured_is_left_alone(data_root):
+    """A host with its own `--log-config` — and pytest, which is why the three
+    caplog tests above still see what they expect — must win."""
+    existing = logging.NullHandler()
+    with _bare_root_logger(existing) as root:
+        root.setLevel(logging.ERROR)
+        create_app(_cfg(data_root))
+        handlers, level = root.handlers[:], root.level
+    assert handlers == [existing]
+    assert level == logging.ERROR
