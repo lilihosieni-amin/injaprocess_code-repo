@@ -85,8 +85,11 @@ services:
     image: inja-ui-backend-local
     restart: unless-stopped
     logging: *default-logging
-    # Plain HTTP for local testing — browse http://localhost:8000. No Caddy/TLS:
-    # the session cookie has no Secure flag, so http://localhost keeps you logged in.
+    # Plain HTTP for local testing — browse http://localhost:8000. No Caddy/TLS.
+    # Both session cookies DO carry `Secure`; login works here only because
+    # `localhost` is a potentially trustworthy origin. Reach this stack at a LAN IP
+    # over plain HTTP instead and login silently stops working — 200 on the POST,
+    # 401 on everything after. See deploy/local/README.md § Access.
     ports:
       - "8000:8000"
     # SESSION_SIGNING_KEY, plus EXPORT_USERNAME + EXPORT_PASSWORD_HASH (argon2) if you
