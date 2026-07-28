@@ -13,6 +13,16 @@
 # Nothing here touches the server host or the production bots.
 name: inja-food-process-local
 
+# Same cap as the server stack (docker-compose.yml) — json-file is unbounded by
+# default, and a local ui-backend serves the same unauthenticated
+# /api/exports/login that logs a WARNING per failed attempt. Kept identical so a
+# local run is not quietly a different deployment from the server one.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   upload-bot:
     build:
@@ -20,6 +30,7 @@ services:
       dockerfile: deploy/upload-bot.Dockerfile
     image: inja-upload-bot-local
     restart: unless-stopped
+    logging: *default-logging
     # Reach the host SOCKS proxy (Telegram is blocked locally). Docker Desktop maps the
     # host to host.docker.internal; TELEGRAM_PROXY points there.
     extra_hosts:
@@ -37,6 +48,7 @@ services:
       dockerfile: deploy/control-bot.Dockerfile
     image: inja-control-bot-local
     restart: unless-stopped
+    logging: *default-logging
     # Reach the host SOCKS proxy for Telegram (blocked locally); Anthropic stays direct.
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -72,6 +84,7 @@ services:
       dockerfile: deploy/ui-backend.Dockerfile
     image: inja-ui-backend-local
     restart: unless-stopped
+    logging: *default-logging
     # Plain HTTP for local testing — browse http://localhost:8000. No Caddy/TLS:
     # the session cookie has no Secure flag, so http://localhost keeps you logged in.
     ports:

@@ -2,10 +2,26 @@
 # Build context is the code-repo root (..). data-repo + secrets + keys are host paths.
 name: inja-food-process
 
+# Docker's default json-file driver is unbounded, and this host has 3.7 GB of
+# disk to lose. `POST /api/exports/login` is unauthenticated and public and logs
+# every failed attempt at WARNING; sustained guessing at the rate limiter's own
+# ceiling (2 concurrent argon2 checks x ~60 ms = ~33 attempts/s) is ~2.8 M lines
+# ≈ 430 MB a day, indefinitely, from outside. 02-secrets-and-auth.md tells the
+# operator to read those lines, so they have to survive — 30 MB of them does.
+# Every service here writes logs and the cap is per-service, so it goes on all of
+# them; singling out ui-backend would only mean the next unbounded writer is a
+# different container.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   telegram-bot-api:
     image: aiogram/telegram-bot-api:latest   # community image; entrypoint builds the args from env
     restart: unless-stopped
+    logging: *default-logging
     env_file: [/opt/inja/secrets/telegram-bot-api.env]   # TELEGRAM_API_ID / TELEGRAM_API_HASH
     environment:
       TELEGRAM_LOCAL: "1"          # --local mode (up to 2 GB files); serves on :8081
@@ -18,6 +34,7 @@ services:
       dockerfile: deploy/upload-bot.Dockerfile
     image: inja-upload-bot
     restart: unless-stopped
+    logging: *default-logging
     depends_on: [telegram-bot-api]
     env_file: [/opt/inja/secrets/upload-bot.env]         # TELEGRAM_BOT_TOKEN, ALLOWED_USER_IDS
     environment:
@@ -36,6 +53,7 @@ services:
       dockerfile: deploy/control-bot.Dockerfile
     image: inja-control-bot
     restart: unless-stopped
+    logging: *default-logging
     env_file: [/opt/inja/secrets/control-bot.env]        # TELEGRAM_BOT_TOKEN, ALLOWED_USERS, budgets…
     environment:
       APPROVED_DIRECTORY: /data
@@ -72,6 +90,7 @@ services:
       dockerfile: deploy/ui-backend.Dockerfile
     image: inja-ui-backend
     restart: unless-stopped
+    logging: *default-logging
     # Defence in depth, not a tuned figure. Worst case in one process is the
     # steady Python service (~150 MB) + one PDF render, which is serialised
     # process-wide and peaks at 300-400 MB (D22), + the export-login argon2
@@ -101,6 +120,7 @@ services:
   proxy:
     image: caddy:2
     restart: unless-stopped
+    logging: *default-logging
     depends_on: [ui-backend]
     ports:
       - "443:443"
@@ -115,6 +135,7 @@ services:
       dockerfile: deploy/git-push.Dockerfile
     image: inja-git-push
     restart: unless-stopped
+    logging: *default-logging
     # These must match the script defaults in git-push-if-needed.sh: busybox crond
     # does not pass container env into cron jobs, so the script relies on its own
     # defaults (DATA_REPO=/data, GIT_BRANCH=main, DEPLOY_KEY=/keys/id_deploy).
