@@ -12,5 +12,15 @@
 
 https://91.107.147.127 {
 	tls internal
+	# Nothing this service accepts is large: the biggest request is a process
+	# document being saved, a few hundred KB of JSON. The reason for the cap is
+	# POST /api/exports/login, which is unauthenticated and advertised to every
+	# staff member with an export link — without a ceiling, one caller can stream
+	# as much as they like into the backend's memory on a 3.7 GB host. Caddy
+	# answers 413 above the limit. The handler enforces its own, much smaller
+	# ceiling as well, because this proxy is not in front of the local stack.
+	request_body {
+		max_size 1MB
+	}
 	reverse_proxy ui-backend:8000
 }

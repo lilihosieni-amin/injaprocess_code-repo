@@ -10,8 +10,13 @@ turned into, which is exactly the mistake to avoid on a page no reviewer of this
 repo can proof-read from the code alone.
 """
 import asyncio
+import logging
+import threading
+import time
 
+import anyio
 import argon2
+import httpx
 from fastapi.testclient import TestClient
 from inja_ui_backend import export_auth
 from inja_ui_backend.app import create_app
@@ -337,6 +342,131 @@ def test_the_password_check_does_not_run_on_the_event_loop(data_root, tmp_path,
 
     assert r.status_code == 303          # the check really ran, and passed
     assert where["on_the_loop"] is False
+
+
+def test_concurrent_password_checks_are_capped(data_root, tmp_path, monkeypatch):
+    """The cost of this endpoint has a ceiling, and the ceiling is small.
+
+    One argon2 verify is 64 MiB of scratch memory and ~60 ms of CPU (measured on
+    this machine: `time_cost=3, memory_cost=65536 KiB, parallelism=4`, 61 ms). It
+    is unauthenticated and it is the URL handed to the widest audience in the
+    system, on a 3.7 GB host shared with the two bots and with no rate limiting in
+    front of it.
+
+    Off the event loop is not enough on its own: AnyIO's default thread limiter
+    allows 40, which would be ~2.5 GB of argon2 scratch — and it is the *same*
+    limiter Starlette gives every sync route handler, file serving included, so
+    saturating it stalls the downloads this gate exists to protect. Hence a
+    limiter of this endpoint's own.
+
+    Driven through `httpx.ASGITransport` rather than `TestClient`, which is
+    synchronous and cannot have two requests in flight at once.
+    """
+    cfg = _cfg(data_root, tmp_path)
+    _publish(cfg)
+    app = create_app(cfg)
+    real_authenticate = export_auth.authenticate
+    seen = {"now": 0, "peak": 0}
+    counter = threading.Lock()
+
+    def watched(*args, **kwargs):
+        with counter:
+            seen["now"] += 1
+            seen["peak"] = max(seen["peak"], seen["now"])
+        try:
+            time.sleep(0.05)     # long enough that a burst really overlaps
+            return real_authenticate(*args, **kwargs)
+        finally:
+            with counter:
+                seen["now"] -= 1
+
+    monkeypatch.setattr(export_auth, "authenticate", watched)
+
+    async def burst():
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),
+                                     base_url="http://export.test") as c:
+            await asyncio.gather(*[
+                c.post("/api/exports/login",
+                       data={"username": "guest", "password": "wrong"})
+                for _ in range(6)])
+
+    anyio.run(burst)
+    assert seen["peak"] >= 1, "the checks never ran, so nothing was measured"
+    assert seen["peak"] <= 2, seen["peak"]
+
+
+def test_a_failed_login_is_logged_as_a_warning(data_root, tmp_path, caplog):
+    """One shared, human-memorable password, no lockout, and a link handed to a
+    whole kitchen: guessing is the attack, and an operator who is never told about
+    a single failure cannot notice it happening.
+
+    The attempted username is in the line on purpose — it is not a secret, it is
+    handed out with the link, and it is what separates a mistyped password from
+    someone walking the namespace. The attempted *password* is never in the line,
+    and neither field may forge a second one: both are attacker-supplied, so the
+    username is repr'd and truncated.
+    """
+    cfg = _cfg(data_root, tmp_path)
+    html_url, _ = _publish(cfg)
+    with caplog.at_level(logging.INFO):
+        r = _reader(cfg).post(
+            "/api/exports/login",
+            data={"username": "guest\nfake log line", "password": "not-the-password",
+                  "next": html_url},
+            follow_redirects=False)
+    assert r.status_code == 401
+    warnings = [rec for rec in caplog.records if rec.levelno == logging.WARNING]
+    assert len(warnings) == 1, [rec.getMessage() for rec in warnings]
+    line = warnings[0].getMessage()
+    assert "export login failed" in line
+    assert "guest" in line
+    assert "not-the-password" not in line
+    assert "\n" not in line
+
+
+def test_a_successful_login_is_not_logged_as_a_warning(data_root, tmp_path, caplog):
+    """Or the signal the test above pins is buried in the normal case."""
+    cfg = _cfg(data_root, tmp_path)
+    html_url, _ = _publish(cfg)
+    with caplog.at_level(logging.INFO):
+        r = _reader(cfg).post(
+            "/api/exports/login",
+            data={"username": "guest", "password": EXPORT_PASSWORD, "next": html_url},
+            follow_redirects=False)
+    assert r.status_code == 303
+    assert [rec.getMessage() for rec in caplog.records
+            if rec.levelno >= logging.WARNING] == []
+
+
+def test_an_oversized_body_is_refused(data_root, tmp_path):
+    """Unauthenticated and reads a body, so the body needs a ceiling.
+
+    The three fields of this form are a few hundred bytes; anything approaching a
+    megabyte is someone spending the service's memory, not someone signing in.
+    Caddy caps the request at 1 MB in front of this in production, but Caddy is
+    not in the loop for the local stack, so the handler holds its own line.
+    """
+    cfg = _cfg(data_root, tmp_path)
+    _publish(cfg)
+    r = _reader(cfg).post(
+        "/api/exports/login",
+        content=b"username=guest&password=" + b"a" * 200_000,
+        headers={"Content-Type": "application/x-www-form-urlencoded"})
+    assert r.status_code == 413
+    assert "set-cookie" not in r.headers
+
+
+def test_a_body_at_the_normal_size_still_signs_in(data_root, tmp_path):
+    """The ceiling must sit far above any real form. A `next` at the longest shape
+    the exporter produces, and the credential, still get through."""
+    cfg = _cfg(data_root, tmp_path)
+    html_url, _ = _publish(cfg)
+    c = _reader(cfg)
+    r = c.post("/api/exports/login",
+               data={"username": "guest", "password": EXPORT_PASSWORD, "next": html_url},
+               follow_redirects=False)
+    assert r.status_code == 303
+    assert len(f"username=guest&password={EXPORT_PASSWORD}&next={html_url}") < 512
 
 
 def test_a_missing_next_still_logs_the_reader_in(data_root, tmp_path):

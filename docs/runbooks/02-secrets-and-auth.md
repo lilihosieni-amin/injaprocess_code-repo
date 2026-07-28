@@ -117,6 +117,19 @@ docker run --rm inja-ui-backend python -c \
  "from argon2 import PasswordHasher; print(PasswordHasher().hash('THE-EXPORT-PASSWORD'))"
 ```
 
+> **Make the export password long — this is the only thing that stops guessing.**
+> Nothing else does. There is no lockout, no attempt counter and no rate limit in
+> front of `POST /api/exports/login`; the endpoint is unauthenticated by
+> definition, and the URL it belongs to is handed to every member of staff who
+> gets an export link, so it is the most widely advertised address in the system.
+> What the server does have is a cost ceiling — argon2 (~60 ms per attempt) with
+> at most two checks running at once — which makes guessing slow, not impossible.
+> One shared password protects a whole department's documentation for everyone,
+> so use a long passphrase (four or more unrelated words, or 20+ random
+> characters), never a word plus a number. Failed attempts are logged at
+> `WARNING` as `export login failed`; `docker compose logs ui-backend | grep
+> "export login failed"` is how you see someone trying.
+
 Paste that output as `EXPORT_PASSWORD_HASH` in `ui-backend.env`, and the chosen
 username as `EXPORT_USERNAME`. `EXPORT_PASSWORD_HASH` holds an argon2 hash, never
 a plaintext password — same rule as `ui-users.json`. Both values live only in

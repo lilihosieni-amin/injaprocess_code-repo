@@ -72,6 +72,15 @@ services:
       dockerfile: deploy/ui-backend.Dockerfile
     image: inja-ui-backend
     restart: unless-stopped
+    # Defence in depth, not a tuned figure. Worst case in one process is the
+    # steady Python service (~150 MB) + one PDF render, which is serialised
+    # process-wide and peaks at 300-400 MB (D22), + the export-login argon2
+    # ceiling of 2 x 64 MiB (routers/export_files.py) — roughly 700 MB. 1 GiB
+    # leaves headroom above that and still leaves ~2.7 GB of this 3.7 GB host for
+    # the two bots and everything else. The point is the ceiling: /exports/login
+    # is unauthenticated and public, and without a limit a runaway there takes the
+    # bots down with it rather than only itself.
+    mem_limit: 1g
     # SESSION_SIGNING_KEY, UI_USERS_FILE, and the export credential
     # EXPORT_USERNAME + EXPORT_PASSWORD_HASH (argon2, see docs/runbooks/02-secrets-and-auth.md).
     # The export pair is optional: absent, /exports answers 401 to everyone but a

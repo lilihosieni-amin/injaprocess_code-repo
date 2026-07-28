@@ -27,18 +27,23 @@ exists for.
 """
 from __future__ import annotations
 
+import functools
 import html
+import logging
 import posixpath
 import re
 from urllib.parse import parse_qsl, unquote
 
+import anyio
+import anyio.to_thread
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
-from starlette.concurrency import run_in_threadpool
 from starlette.staticfiles import NotModifiedResponse, StaticFiles
 
 from .. import export_auth
 from ..export_auth import EXPORT_COOKIE, require_export_access
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/exports")
 
@@ -189,6 +194,31 @@ __INJA_ERROR__<input type="hidden" name="next" value="__INJA_NEXT__">
 #: becomes an oracle for the other.
 _ERROR = '<p class="error">نام کاربری یا گذرواژه نادرست است</p>\n'
 
+#: How many password checks may be in flight at once.
+#:
+#: Two, because each one is 64 MiB of argon2 scratch memory — the hashes here are
+#: made with argon2-cffi's defaults, `time_cost=3, memory_cost=65536 KiB,
+#: parallelism=4`, measured at ~60 ms per verify on this hardware — and this
+#: endpoint is unauthenticated, unthrottled, and printed on the link handed to the
+#: widest audience in the system. Two caps the burst at ~128 MiB on a 3.7 GB host
+#: shared with two bots and a Chromium that peaks at 300-400 MB (D22).
+#:
+#: A limiter of its own, not the default one: AnyIO's default allows 40 threads,
+#: and it is the same limiter Starlette uses to run *every* sync route handler,
+#: which here includes serving the export files. Left on the default, a burst of
+#: logins would both allocate ~2.5 GB and stall the downloads this gate exists to
+#: protect. A queued login waits; a reader mid-document does not.
+_VERIFY_LIMITER = anyio.CapacityLimiter(2)
+
+#: The ceiling on a login body, in bytes. The form is three short fields — the
+#: longest, `next`, is a path under `/exports/` — so a real submission is a few
+#: hundred bytes and 4 KiB is already generous. Without a ceiling, an
+#: unauthenticated caller can stream as much as they like into this process's
+#: memory. `deploy/Caddyfile` caps the whole request at 1 MB in front of this; that
+#: is the outer layer, and it is one config edit and one local stack away from not
+#: being there, so the handler keeps its own.
+_MAX_BODY = 4096
+
 
 def _safe_next(raw: str | None) -> str:
     """The path to send a reader to after login, or the export root if the value
@@ -268,6 +298,47 @@ def _form_fields(body: bytes) -> dict[str, str]:
     return dict(parse_qsl(body.decode("utf-8", "replace"), keep_blank_values=True))
 
 
+async def _bounded_body(request: Request) -> bytes:
+    """The request body, or a 413 if the caller sent more than `_MAX_BODY`.
+
+    Read as a stream rather than through `request.body()`, which buffers whatever
+    arrives before anyone can object. The declared length is checked first so an
+    honest client is refused in one comparison, and the running total is checked
+    as well, because `Content-Length` is absent on a chunked body and is in any
+    case the caller's own claim about themselves.
+    """
+    declared = request.headers.get("content-length", "")
+    if declared.isdigit() and int(declared) > _MAX_BODY:
+        raise HTTPException(status_code=413, detail="request body too large")
+    chunks: list[bytes] = []
+    size = 0
+    async for chunk in request.stream():
+        size += len(chunk)
+        if size > _MAX_BODY:
+            raise HTTPException(status_code=413, detail="request body too large")
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
+def _log_failed_login(request: Request, username: str) -> None:
+    """Leave a trace an operator can find, and nothing they must not keep.
+
+    There is one shared, human-memorable password, no lockout and no rate limit in
+    front of this endpoint, so guessing is the attack against it — and an operator
+    who is never told about a failure has no way to see it happening. This line is
+    the only signal there is.
+
+    The username is included: it is not a secret (it is handed out with the link),
+    and it is what distinguishes a member of staff mistyping from someone walking a
+    namespace. The password never is. Both fields are attacker-supplied, so the
+    username is truncated and `%r`-quoted — otherwise a newline in it writes a log
+    line of the attacker's choosing.
+    """
+    client = request.client.host if request.client else "?"
+    logger.warning("export login failed: username=%r from %s",
+                   username[:64], client)
+
+
 @login_router.post("/login")
 async def login(request: Request):
     """Check the one shared credential and, if it holds, put the session in the
@@ -275,18 +346,29 @@ async def login(request: Request):
     cfg = request.app.state.cfg
     if not export_auth.configured(cfg):
         raise HTTPException(status_code=401, detail="authentication required")
-    fields = _form_fields(await request.body())
+    fields = _form_fields(await _bounded_body(request))
     target = _safe_next(fields.get("next"))
-    # Off the event loop: argon2 is deliberately ~50-100 ms of CPU, and this
-    # handler is `async` (it awaits the body), so verifying inline would freeze
-    # every other request in the process for that long — the other bots, the admin
-    # panel, a reader mid-download. On an unauthenticated endpoint that is a denial
-    # of service, not just a slow login. `routers/auth.py` is a plain `def`, which
-    # FastAPI already runs in a threadpool for exactly this reason; this is the
-    # same property, arranged by hand because the handler cannot be sync.
-    if not await run_in_threadpool(export_auth.authenticate, cfg,
-                                   fields.get("username", ""),
-                                   fields.get("password", "")):
+    username = fields.get("username", "")
+    # Off the event loop, and no more than `_VERIFY_LIMITER` at a time: argon2 is
+    # deliberately ~60 ms of CPU and 64 MiB of memory, and this handler is `async`
+    # (it awaits the body), so verifying inline would freeze every other request in
+    # the process for that long — the other bots, the admin panel, a reader
+    # mid-download. On an unauthenticated endpoint that is a denial of service, not
+    # just a slow login. `routers/auth.py` is a plain `def`, which FastAPI already
+    # runs in a threadpool for exactly this reason; this is the same property,
+    # arranged by hand because the handler cannot be sync — plus the ceiling that a
+    # sync handler could not have had either.
+    #
+    # `anyio.to_thread.run_sync` rather than Starlette's `run_in_threadpool`: that
+    # wrapper forwards its keyword arguments to the function being called (checked
+    # in the installed starlette 1.3.1), so a `limiter=` cannot travel through it.
+    # This is what the wrapper does, with the limiter added.
+    verified = await anyio.to_thread.run_sync(
+        functools.partial(export_auth.authenticate, cfg, username,
+                          fields.get("password", "")),
+        limiter=_VERIFY_LIMITER)
+    if not verified:
+        _log_failed_login(request, username)
         # No cookie, and the reader keeps their place: the form still points at
         # the document, so a mistyped password costs one retry and not the link.
         return _login_page(target, error=True, status_code=401)
