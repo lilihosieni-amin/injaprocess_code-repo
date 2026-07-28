@@ -92,7 +92,12 @@ services:
     # SESSION_SIGNING_KEY, plus EXPORT_USERNAME + EXPORT_PASSWORD_HASH (argon2) if you
     # want to exercise the export login locally. Omit both and /exports answers 401
     # to everyone but a signed-in UI user; nothing else changes. (local, gitignored)
-    env_file: [./local/ui-backend.env]
+    # `format: raw` for the same reason as the production stack: Compose
+    # interpolates env_file values, and every `$` in an argon2 hash would read as
+    # a variable reference and silently truncate it. See deploy/docker-compose.yml.
+    env_file:
+      - path: ./local/ui-backend.env
+        format: raw
     environment:
       DATA_ROOT: /data
       UI_USERS_FILE: /run/secrets/ui-users.json   # local {username: argon2_hash} map, gitignored

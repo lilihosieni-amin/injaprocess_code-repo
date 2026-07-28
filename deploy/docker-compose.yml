@@ -105,7 +105,15 @@ services:
     # The export pair is optional: absent, /exports answers 401 to everyone but a
     # signed-in UI user, and the rest of the UI is unaffected — an unset credential
     # closes the gate, it never opens it and never blocks startup.
-    env_file: [/opt/inja/secrets/ui-backend.env]
+    # `format: raw` is load-bearing, not tidiness. Compose interpolates env_file
+    # values by default, and an argon2 hash is `$argon2id$v=19$m=...$salt$hash` —
+    # every `$` reads as a variable reference, so the hash arrives in the container
+    # truncated to whatever precedes the first `$` and the password can never
+    # verify. It fails closed (401 for everyone but a signed-in UI user) and looks
+    # exactly like "the credential isn't set", which is the worst kind of quiet.
+    env_file:
+      - path: /opt/inja/secrets/ui-backend.env
+        format: raw
     environment:
       DATA_ROOT: /data
       UI_USERS_FILE: /run/secrets/ui-users.json

@@ -134,6 +134,21 @@ a plaintext password — same rule as `ui-users.json`. Both values live only in
 `/opt/inja/secrets/ui-backend.env` on the server, outside the code-repo and the
 data-repo; nothing about this credential is ever committed to either repo.
 
+Paste the hash **exactly as printed**, `$` signs and all, and do not quote or escape
+it. Compose normally interpolates `env_file` values, which would read every `$` in
+`$argon2id$v=19$m=...` as a variable reference and hand the container a truncated
+hash — a password that can never verify, failing closed in a way indistinguishable
+from "the credential isn't set". `docker-compose.yml` therefore reads this file with
+`format: raw`, which switches interpolation off. If you ever move the credential to
+another service's env file, carry that `format: raw` with it.
+
+To confirm the container really got it, after `up -d`:
+
+```bash
+docker compose exec ui-backend python -c \
+  "import os; h=os.environ.get('EXPORT_PASSWORD_HASH',''); print('ok' if h.startswith('\$argon2id\$') else 'MANGLED')"
+```
+
 ### Seeing someone guess
 
 Failed attempts are logged at `WARNING`, one line each:
