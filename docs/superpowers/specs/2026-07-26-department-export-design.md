@@ -468,3 +468,42 @@ shape `ui-backend` already has: it shells out to the engine CLIs, and now to one
 The render must wait for the page's own completeness signal, not the load event: the bands are built
 after `document.fonts.ready` and re-verified against the invariant that every node appears in some
 band (§5.4). Printing on load would capture empty or half-built diagrams.
+
+---
+
+## 12. Addendum (2026-07-28): exports sit behind a shared password
+
+### Why this reverses D6
+
+D6 made the export link unauthenticated because *staff have no accounts*, and the 16-hex-char token
+in the filename was the only guard. The trade was recorded and accepted at the time. In use, the
+concern that actually matters is a forwarded link: anyone who obtains a URL reads that department's
+whole process set, and there is no way to withdraw it short of rotating the signing key.
+
+The requirement now is that the link alone is not enough.
+
+**What this cannot do, and is not meant to:** an export is a standalone file (D3). A copy someone has
+already downloaded opens forever, offline, with no server involved. This closes *"someone forwards
+the link"*, not *"someone forwards the file"*.
+
+### Decisions
+
+| # | Decision |
+|---|---|
+| D25 | `/exports` is served **behind authentication**. The filename token stays as a second layer — it costs nothing and it keeps the URL unguessable even to someone holding a valid session. |
+| D26 | Authentication is **one shared credential for the whole export system**, not per-person accounts. There is no attribution requirement, and per-person accounts would mean an ops burden and a role system this does not otherwise need. |
+| D27 | That credential **cannot reach the main panel**, and this is structural rather than a check that can be forgotten: the export session is signed with a **different salt** from the admin session, so neither token can ever verify as the other, and its cookie is scoped to `path=/exports` so it is not even transmitted to the API. |
+| D28 | The credential lives in its own settings (`EXPORT_USERNAME`, `EXPORT_PASSWORD_HASH`, argon2 as `ui-users.json` already uses), **separate from `cfg.users`**, so it structurally cannot authenticate against any admin endpoint. |
+| D29 | An **admin session also opens exports**. Admins should not have to know the shared password to view what they just generated. The reverse is never true. |
+| D30 | Unset export credentials mean the gate is **closed, not open** — `/exports` returns 401 rather than falling back to the pre-D25 open behaviour. A misconfiguration must not silently republish every department. |
+| D31 | The login surface is a **small server-rendered page**, not the SPA. The SPA is the admin application; the staff entry point should not load it, and a Persian form on a standalone page is a few lines. |
+
+### What must not break
+
+- **Range requests.** `StaticFiles` supports them today and iOS Safari's PDF viewer relies on them.
+  A hand-rolled file handler that ignores `Range` will break PDF viewing on exactly the device this
+  feature exists for. `FileResponse` handles it; a naive `Response(body)` does not.
+- **The PDF is at the same path** and must be gated identically, or `.html` → `.pdf` walks past the gate.
+- **Mount ordering** (§2.4) stays load-bearing, and its existing test must keep passing.
+- **The in-document «چاپ / PDF» button** navigates same-origin, so the cookie rides along automatically —
+  provided the cookie's `path` covers the PDF as well as the HTML.
