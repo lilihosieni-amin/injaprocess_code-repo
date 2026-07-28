@@ -780,18 +780,29 @@ def test_a_served_export_carries_validators(data_root, tmp_path, monkeypatch):
         assert r.headers.get("last-modified"), url
 
 
-def test_a_served_export_is_private_to_the_reader(data_root, tmp_path, monkeypatch):
-    """The file is behind a session now, so no shared cache may hold a copy.
+def test_a_served_export_is_private_and_always_revalidated(data_root, tmp_path,
+                                                           monkeypatch):
+    """Two properties, and the second one is why `private` alone is not enough.
 
-    Nothing in `deploy/` puts a caching proxy in front of this today, so this is
-    prevention rather than a hole being closed — but a response with validators
-    and no `Cache-Control` is one a shared cache is free to store and hand to the
-    next person. `private` keeps the browser revalidation above and forbids that.
+    `private`: the file is behind a session now, so no shared cache may hold a
+    copy. Nothing in `deploy/` puts a caching proxy in front of this today, so
+    that half is prevention rather than a hole being closed — but a response with
+    validators and no `Cache-Control` is one a shared cache is free to store and
+    hand to the next person.
+
+    `no-cache`: the reader's *own* browser must ask before reusing its copy. With
+    neither `max-age` nor `no-cache`, a response carrying `Last-Modified` is one
+    caches may assign heuristic freshness to (RFC 9111 §4.2.2) and reuse without
+    asking. `test_export_url_is_stable_across_calls` above pins that regenerating a
+    department reuses the same URL and rewrites the file in place, so a heuristic
+    hold means a staff member reading a corrected process from cache, unaware. The
+    revalidation is cheap — `test_an_unchanged_export_is_304_for_if_none_match`
+    below is the 304 that answers it.
     """
     cfg, html_url, pdf_url = _publish(data_root, tmp_path, monkeypatch)
     c = _reader(cfg, export_auth.EXPORT_COOKIE, export_auth.issue_cookie(cfg))
     for url in (html_url, pdf_url):
-        assert c.get(url).headers["cache-control"] == "private", url
+        assert c.get(url).headers["cache-control"] == "private, no-cache", url
 
 
 def test_an_unchanged_export_is_304_for_if_none_match(data_root, tmp_path, monkeypatch):

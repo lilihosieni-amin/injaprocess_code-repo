@@ -113,15 +113,23 @@ def serve_export(file_path: str, request: Request):
         raise HTTPException(status_code=404)
 
     # `private`: the file is behind a session now, so a shared cache must never
-    # keep a copy to hand to the next person. It still lets the reader's own
-    # browser hold one and revalidate it, which is the whole point of the etag.
+    # keep a copy to hand to the next person.
+    #
+    # `no-cache`: the reader's own browser may keep a copy, but it must ask before
+    # reusing it. Without this — no `max-age`, no `no-cache` — a response carrying
+    # `Last-Modified` is one a cache may assign *heuristic* freshness to and reuse
+    # without asking at all (RFC 9111 §4.2.2). An export URL is stable across
+    # regenerations and the file is rewritten in place, so that would mean a staff
+    # member reading yesterday's process after it was corrected, with no way to
+    # tell. Guaranteeing "ask every time" is what makes the etag mean something;
+    # the ask is cheap, because the 304 below answers it without a body.
     #
     # The rest is `StaticFiles.file_response` verbatim in shape, including
     # answering a conditional request that also carries a `Range` with the 304 —
     # a validator that still matches means the client's copy is whole, so there
     # is nothing to send it a slice of.
     response = FileResponse(target, stat_result=stat_result,
-                            headers={"Cache-Control": "private"})
+                            headers={"Cache-Control": "private, no-cache"})
     if _conditional.is_not_modified(response.headers, request.headers):
         return NotModifiedResponse(response.headers)
     return response
