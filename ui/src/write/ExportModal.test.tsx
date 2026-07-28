@@ -77,8 +77,10 @@ describe('ExportModal', () => {
     expect(screen.getByText('این فایل کاملاً مستقل است و بدون اینترنت هم باز می‌شود.')).toBeInTheDocument()
     // The admin decides here who to send the link to, so this line must state the
     // gate the recipient will actually meet (D25) — it said the opposite until the
-    // export password landed.
-    expect(screen.getByText('این لینک تنها با نام کاربری و گذرواژهٔ مشترک خروجی‌ها باز می‌شود و با خروجی بعدی جایگزین می‌گردد.')).toBeInTheDocument()
+    // export password landed. It is about the *recipient* because the admin reading
+    // it has a session that opens exports without a prompt (D29), so "this link only
+    // opens with a password" would be contradicted by the button right below.
+    expect(screen.getByText('گیرندهٔ این لینک برای باز کردن آن به نام کاربری و گذرواژهٔ مشترک خروجی‌ها نیاز دارد و این لینک با خروجی بعدی جایگزین می‌گردد.')).toBeInTheDocument()
   })
 
   it('copies the link and flips the button label back after 1.8s', () => {
