@@ -68,6 +68,36 @@ def _prepare_exports(cfg: Settings) -> Settings:
     return cfg
 
 
+def _log_export_gate(cfg: Settings) -> None:
+    """Say once, at startup, which state the export gate is in — and shout if it
+    is in that state by accident.
+
+    `EXPORT_PASSWORD_HAS=` is one keystroke, and it produces the same silence an
+    unset pair does: `configured()` is False, every reader gets 401, and nothing
+    anywhere says why. It fails safe, which is right, but not *visibly*, and this
+    is the first deployment where anyone types these two variables by hand — a 401
+    nobody can explain is a long evening.
+
+    Names only. The hash is a secret and the username is not far off, so neither
+    value is ever in a log line.
+    """
+    has_username = bool(cfg.export_username)
+    has_hash = bool(cfg.export_password_hash)
+    if has_username != has_hash:
+        logger.warning(
+            "half-configured export credential: %s is set but %s is not, so the "
+            "export gate stays shut to everyone but a signed-in UI user — set "
+            "both, or neither",
+            "EXPORT_USERNAME" if has_username else "EXPORT_PASSWORD_HASH",
+            "EXPORT_PASSWORD_HASH" if has_username else "EXPORT_USERNAME")
+    if has_username and has_hash:
+        logger.info("export gate: a shared export credential is configured, so "
+                    "/exports opens for it and for a signed-in UI user")
+    else:
+        logger.info("export gate: no export credential configured, so /exports "
+                    "answers 401 to everyone but a signed-in UI user")
+
+
 def create_app(cfg: Settings | None = None) -> FastAPI:
     if cfg is None:
         cfg = load_settings()
@@ -75,6 +105,7 @@ def create_app(cfg: Settings | None = None) -> FastAPI:
     # before `app.state.cfg`: the handlers must see the settings the directory
     # preparation actually succeeded with, not the ones the environment asked for
     cfg = _prepare_exports(cfg)
+    _log_export_gate(cfg)
     app.state.cfg = cfg
     app.include_router(auth_router.router)
     app.include_router(departments_router.router)

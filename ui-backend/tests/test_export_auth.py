@@ -4,12 +4,14 @@ The point of this module is separation: an export session must be structurally
 incapable of reaching the admin panel, and the admin session must not be
 mistakable for an export one. Both directions are tested explicitly.
 """
+import logging
 from types import SimpleNamespace
 
 import argon2
 import pytest
 from fastapi import HTTPException
 from inja_ui_backend import auth, export_auth
+from inja_ui_backend.app import create_app
 from inja_ui_backend.tests_helpers import cfg_for
 from starlette.requests import Request
 
@@ -172,3 +174,58 @@ def test_unset_credential_is_401_even_with_a_signed_cookie(data_root):
     with pytest.raises(HTTPException) as e:
         export_auth.require_export_access(req)
     assert e.value.status_code == 401
+
+
+# --- what the operator is told at startup ------------------------------------
+
+def _app_lines(caplog, level):
+    return [r.getMessage() for r in caplog.records
+            if r.name == "inja_ui_backend.app" and r.levelno == level]
+
+
+def test_a_half_configured_credential_warns_at_startup(data_root, caplog):
+    """`EXPORT_PASSWORD_HAS=` (one keystroke) closes the gate to everyone and looks
+    exactly like "the feature is off on purpose".
+
+    It fails safe, which is right, but not *visibly*, and this is the first deploy
+    where anyone types these two variables by hand. The warning names which half
+    arrived, and neither the password hash nor the username's value is a thing the
+    line is allowed to leak beyond the name of the setting.
+    """
+    cfg = _cfg(data_root)
+    both = (cfg.export_username, cfg.export_password_hash)
+    only_username = cfg.__class__(**{**cfg.__dict__, "export_password_hash": None})
+    only_hash = cfg.__class__(**{**cfg.__dict__, "export_username": None})
+    for broken, present, absent in ((only_username, "EXPORT_USERNAME", "EXPORT_PASSWORD_HASH"),
+                                    (only_hash, "EXPORT_PASSWORD_HASH", "EXPORT_USERNAME")):
+        caplog.clear()
+        with caplog.at_level(logging.INFO):
+            create_app(broken)
+        warnings = _app_lines(caplog, logging.WARNING)
+        assert len(warnings) == 1, warnings
+        assert present in warnings[0] and absent in warnings[0]
+        assert both[1] not in caplog.text     # the hash is never in a log line
+        # …and the gate really is shut, which is what the warning is about
+        assert export_auth.configured(broken) is False
+
+
+def test_a_configured_credential_says_the_gate_is_open(data_root, caplog):
+    cfg = _cfg(data_root)
+    with caplog.at_level(logging.INFO):
+        create_app(cfg)
+    infos = _app_lines(caplog, logging.INFO)
+    assert len(infos) == 1, infos
+    assert "export gate" in infos[0] and "configured" in infos[0]
+    assert _app_lines(caplog, logging.WARNING) == []
+    assert cfg.export_password_hash not in caplog.text
+
+
+def test_no_credential_at_all_says_the_gate_is_closed(data_root, caplog):
+    """The intended default, and it must be as legible as the broken one."""
+    cfg = _cfg_without_credential(data_root)
+    with caplog.at_level(logging.INFO):
+        create_app(cfg)
+    infos = _app_lines(caplog, logging.INFO)
+    assert len(infos) == 1, infos
+    assert "export gate" in infos[0] and "401" in infos[0]
+    assert _app_lines(caplog, logging.WARNING) == []
