@@ -133,6 +133,25 @@ def test_admin_session_grants_access(data_root):
     export_auth.require_export_access(req)  # does not raise
 
 
+def test_an_admin_session_grants_access_with_no_export_credential(data_root):
+    """D29 ∩ D30: the gate being shut for readers must not shut out the admin.
+
+    The two decisions meet in one branch and nothing else covers it. `configured()`
+    appears twice in this module — in `authenticate` and in `read_cookie` — and the
+    obvious "harden it" edit is to hoist that check to the top of
+    `require_export_access`, which reads as strictly safer and would silently
+    revoke the admin's access with a green suite.
+
+    It is the branch that matters first: the code ships before anyone sets
+    `EXPORT_*`, so an unset credential is very likely the first production state of
+    this feature, and in it the admin's own "let me look at what I just generated"
+    is the only way anything under /exports opens at all.
+    """
+    cfg = _cfg_without_credential(data_root)
+    req = _request(cfg, **{auth.COOKIE_NAME: auth.issue_cookie(cfg, "analyst")})
+    export_auth.require_export_access(req)  # does not raise
+
+
 def test_no_session_is_401(data_root):
     with pytest.raises(HTTPException) as e:
         export_auth.require_export_access(_request(_cfg(data_root)))
