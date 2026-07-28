@@ -75,7 +75,10 @@ describe('ExportModal', () => {
     expect(open).toHaveAttribute('href', url)
     expect(open).toHaveAttribute('target', '_blank')
     expect(screen.getByText('این فایل کاملاً مستقل است و بدون اینترنت هم باز می‌شود.')).toBeInTheDocument()
-    expect(screen.getByText('این لینک بدون ورود به سامانه باز می‌شود و با خروجی بعدی جایگزین می‌گردد.')).toBeInTheDocument()
+    // The admin decides here who to send the link to, so this line must state the
+    // gate the recipient will actually meet (D25) — it said the opposite until the
+    // export password landed.
+    expect(screen.getByText('این لینک تنها با نام کاربری و گذرواژهٔ مشترک خروجی‌ها باز می‌شود و با خروجی بعدی جایگزین می‌گردد.')).toBeInTheDocument()
   })
 
   it('copies the link and flips the button label back after 1.8s', () => {

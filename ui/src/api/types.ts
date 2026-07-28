@@ -42,11 +42,13 @@ export interface Process {
 
 /** A process with only the fields a *read-only* view of it needs.
  *
- *  This is exactly what an export ships. The exported file is served from an
- *  unauthenticated link, so `inja_ui_backend/exports.py` withholds every process
- *  field neither document renders — `summary`, `source`, `created_at`,
- *  `updated_at`, `idef0`, `kpis` — and this type says so, instead of letting
- *  `Process` promise fields that are not in the file.
+ *  This is exactly what an export ships. The exported file is a standalone
+ *  document that travels beyond the panel — behind the shared export credential
+ *  (D25), but forwardable as a file once downloaded — so
+ *  `inja_ui_backend/exports.py` withholds every process field neither document
+ *  renders — `summary`, `source`, `created_at`, `updated_at`, `idef0`, `kpis` —
+ *  and this type says so, instead of letting `Process` promise fields that are
+ *  not in the file.
  *
  *  `Process` is assignable to it (it has strictly more), so every function typed
  *  against it still takes the editing app's own documents unchanged. Functions

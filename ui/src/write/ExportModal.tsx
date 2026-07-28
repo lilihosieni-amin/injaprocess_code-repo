@@ -126,7 +126,10 @@ export function ExportModal({ title, status, url, error, onRetry, onClose }: Exp
                 </button>
               </div>
               <div className="text-[11.5px] text-faint mt-3 leading-loose">این فایل کاملاً مستقل است و بدون اینترنت هم باز می‌شود.</div>
-              <div className="text-[11.5px] text-faint leading-loose">این لینک بدون ورود به سامانه باز می‌شود و با خروجی بعدی جایگزین می‌گردد.</div>
+              {/* The screen where the admin decides who to hand the link to, so it
+                  states the gate the recipient will really meet (D25): the shared
+                  export credential, which is not the panel's own login. */}
+              <div className="text-[11.5px] text-faint leading-loose">این لینک تنها با نام کاربری و گذرواژهٔ مشترک خروجی‌ها باز می‌شود و با خروجی بعدی جایگزین می‌گردد.</div>
               <div className="flex gap-2.5 mt-5">
                 <button onClick={onClose} className="flex-1 py-3 border-[1.5px] border-line bg-white rounded-xl font-bold text-[14px] text-[#6B5CA5]">بستن</button>
                 <a href={url} target="_blank" rel="noopener" className="btn btn-violet flex-1 py-3 text-[14px] no-underline">
