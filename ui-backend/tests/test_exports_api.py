@@ -2,7 +2,9 @@ import asyncio
 import json
 from pathlib import Path
 
+import argon2
 from fastapi.testclient import TestClient
+from inja_ui_backend import export_auth
 from inja_ui_backend import exports as exports_mod
 from inja_ui_backend import pdf as pdf_mod
 from inja_ui_backend.app import create_app
@@ -239,17 +241,7 @@ def test_unwritable_export_dir_is_logged_and_leaks_no_path(data_root, tmp_path, 
                for m in _guard_logs(caplog))
 
 
-def test_written_export_is_served_without_a_session(data_root, tmp_path):
-    cfg = _cfg(data_root, tmp_path)
-    url = _client(cfg).post("/api/departments/cooking/exports/flowchart").json()["url"]
-
-    anon = TestClient(create_app(cfg))          # deliberately no cookie — D6
-    r = anon.get(url)
-    assert r.status_code == 200
-    assert "inja-export-data" in r.text
-
-
-def test_exports_mount_does_not_shadow_api_404s(data_root, tmp_path):
+def test_the_export_route_does_not_shadow_api_404s(data_root, tmp_path):
     dist = tmp_path / "dist"
     dist.mkdir()
     (dist / "index.html").write_text("<!doctype html><title>inja</title>", encoding="utf-8")
@@ -258,10 +250,15 @@ def test_exports_mount_does_not_shadow_api_404s(data_root, tmp_path):
     c = TestClient(create_app(cfg))
     # the SPA shell answers deep links…
     assert "inja" in c.get("/departments").text
-    # …but an unknown API path stays a JSON 404, and an unknown export a plain 404
+    # …but an unknown API path stays a JSON 404…
     assert c.get("/api/does-not-exist").status_code == 404
     assert "inja" not in c.get("/api/does-not-exist").text
-    assert c.get("/exports/cooking/nope.html").status_code == 404
+    # …and an export path is answered by the gate, never by the shell. The
+    # session is checked before the file is looked for, so this is 401 rather
+    # than 404: whether a given token exists is not something to tell a stranger.
+    nope = c.get("/exports/cooking/nope.html")
+    assert nope.status_code == 401
+    assert "inja" not in nope.text
 
 
 def test_a_real_export_is_served_while_the_spa_is_mounted(data_root, tmp_path):
@@ -625,3 +622,171 @@ def test_the_render_does_not_run_on_the_event_loop(data_root, tmp_path, monkeypa
 
     assert r.status_code == 200
     assert where["on_the_loop"] is False
+
+
+# --------------------------------------------------------------------------- #
+# the gate in front of the published files (D25–D30)
+# --------------------------------------------------------------------------- #
+
+EXPORT_PASSWORD = "throwaway-export-pw"
+#: Hashed once for the module: argon2 is deliberately slow, and every test below
+#: only needs the setting to be *present*. Never a real credential.
+EXPORT_HASH = argon2.PasswordHasher().hash(EXPORT_PASSWORD)
+#: Long enough that a 100-byte range is a genuine slice of it.
+PDF_BYTES = b"%PDF-1.4 " + b"r" * 500
+
+
+def _gated(cfg):
+    """The deployed shape: an export credential is configured (D28)."""
+    return cfg.__class__(**{**cfg.__dict__,
+                            "export_username": "guest",
+                            "export_password_hash": EXPORT_HASH})
+
+
+def _publish(data_root, tmp_path, monkeypatch, *, credential=True):
+    """Really export cooking/flowchart, PDF included; return the cfg and both URLs.
+
+    The PDF sits at the HTML's path with one extension swapped, which is the whole
+    reason the gate has to cover both: `.html` → `.pdf` is a single keystroke past
+    a guard that only knows about documents.
+    """
+    cfg = _with_chromium(_cfg(data_root, tmp_path), tmp_path)
+    if credential:
+        cfg = _gated(cfg)
+    monkeypatch.setattr(pdf_mod, "render_pdf",
+                        lambda c, h, o, **kw: Path(o).write_bytes(PDF_BYTES))
+    url = _client(cfg).post("/api/departments/cooking/exports/flowchart").json()["url"]
+    assert url.endswith(".html")
+    pdf_url = url[: -len("html")] + "pdf"
+    assert (cfg.export_dir / pdf_url[len("/exports/"):]).is_file()
+    return cfg, url, pdf_url
+
+
+def _reader(cfg, cookie=None, value=None):
+    c = TestClient(create_app(cfg))
+    if cookie:
+        c.cookies.set(cookie, value)
+    return c
+
+
+def test_an_export_without_a_session_is_401(data_root, tmp_path, monkeypatch):
+    """D25 reverses D6: the link alone is no longer enough for either file."""
+    cfg, html_url, pdf_url = _publish(data_root, tmp_path, monkeypatch)
+    anon = _reader(cfg)
+    for url in (html_url, pdf_url):
+        r = anon.get(url)
+        assert r.status_code == 401, url
+        assert "inja-export-data" not in r.text, url
+        assert PDF_BYTES[:20] not in r.content, url
+
+
+def test_an_export_session_opens_both_files(data_root, tmp_path, monkeypatch):
+    cfg, html_url, pdf_url = _publish(data_root, tmp_path, monkeypatch)
+    c = _reader(cfg, export_auth.EXPORT_COOKIE, export_auth.issue_cookie(cfg))
+
+    doc = c.get(html_url)
+    assert doc.status_code == 200
+    assert "inja-export-data" in doc.text
+    assert doc.headers["content-type"].startswith("text/html")
+
+    pdf = c.get(pdf_url)
+    assert pdf.status_code == 200
+    assert pdf.content == PDF_BYTES
+    # iOS opens the PDF from this header, not from the extension
+    assert pdf.headers["content-type"] == "application/pdf"
+
+
+def test_an_admin_session_opens_both_files(data_root, tmp_path, monkeypatch):
+    """D29: an admin should not need the shared password to read what they made."""
+    cfg, html_url, pdf_url = _publish(data_root, tmp_path, monkeypatch)
+    c = _reader(cfg, COOKIE_NAME, issue_cookie(cfg, "analyst"))
+    assert c.get(html_url).status_code == 200
+    assert c.get(pdf_url).status_code == 200
+
+
+def test_unset_export_credentials_close_the_gate(data_root, tmp_path, monkeypatch):
+    """D30: a missing setting must not republish every department.
+
+    Asserted with a *correctly signed* export cookie as well as with none at all,
+    because the failure this guards against is the gate falling open — and a
+    cookie this very server minted is the friendliest input it could get.
+    """
+    cfg, html_url, pdf_url = _publish(data_root, tmp_path, monkeypatch, credential=False)
+    assert cfg.export_username is None and cfg.export_password_hash is None
+    for client in (_reader(cfg),
+                   _reader(cfg, export_auth.EXPORT_COOKIE, export_auth.issue_cookie(cfg))):
+        for url in (html_url, pdf_url):
+            assert client.get(url).status_code == 401, url
+
+
+def test_a_range_request_is_served_as_206(data_root, tmp_path, monkeypatch):
+    """The iOS PDF viewer's path, and the one a hand-rolled handler silently drops.
+
+    `StaticFiles` answered ranges; a `Response(body)` would answer 200 with the
+    whole file and Safari would show a blank document on the exact device the
+    server-rendered PDF exists for.
+    """
+    cfg, _, pdf_url = _publish(data_root, tmp_path, monkeypatch)
+    c = _reader(cfg, export_auth.EXPORT_COOKIE, export_auth.issue_cookie(cfg))
+
+    r = c.get(pdf_url, headers={"Range": "bytes=0-99"})
+    assert r.status_code == 206
+    assert len(r.content) == 100
+    assert r.content == PDF_BYTES[:100]
+    assert r.headers["content-range"] == f"bytes 0-99/{len(PDF_BYTES)}"
+
+
+def test_a_range_request_still_needs_a_session(data_root, tmp_path, monkeypatch):
+    """The range path must not become a way around the gate it runs behind."""
+    cfg, _, pdf_url = _publish(data_root, tmp_path, monkeypatch)
+    r = _reader(cfg).get(pdf_url, headers={"Range": "bytes=0-99"})
+    assert r.status_code == 401
+    assert PDF_BYTES[:20] not in r.content
+
+
+def test_head_still_answers_for_a_published_file(data_root, tmp_path, monkeypatch):
+    """`StaticFiles` answered HEAD; a bare `@router.get` would 405 it.
+
+    Clients probe a large download's size and type before fetching it, and a 405
+    where a 200 used to be is a regression the gate has no reason to introduce.
+    """
+    cfg, _, pdf_url = _publish(data_root, tmp_path, monkeypatch)
+    c = _reader(cfg, export_auth.EXPORT_COOKIE, export_auth.issue_cookie(cfg))
+
+    r = c.head(pdf_url)
+    assert r.status_code == 200
+    assert r.headers["content-length"] == str(len(PDF_BYTES))
+    assert r.content == b""
+    # …and it is gated exactly like the GET beside it
+    assert _reader(cfg).head(pdf_url).status_code == 401
+
+
+def test_path_traversal_is_refused(data_root, tmp_path, monkeypatch):
+    """`StaticFiles` owned this; the route owns it now.
+
+    httpx normalises a literal `../` out of the URL before it is ever sent, so the
+    traversal that actually reaches a server is percent-encoded — Starlette decodes
+    it back into the path parameter, and the handler is what has to refuse it.
+    """
+    cfg, _, _ = _publish(data_root, tmp_path, monkeypatch)
+    secret = tmp_path / "secret.txt"
+    secret.write_text("not for readers", encoding="utf-8")
+    assert secret.resolve().parent == cfg.export_dir.resolve().parent
+
+    c = _reader(cfg, export_auth.EXPORT_COOKIE, export_auth.issue_cookie(cfg))
+    for url in ("/exports/%2e%2e/secret.txt",
+                "/exports/cooking/%2e%2e/%2e%2e/secret.txt"):
+        r = c.get(url)
+        assert r.status_code == 404, url
+        assert "not for readers" not in r.text, url
+
+
+def test_a_missing_export_is_404_for_a_reader_with_a_session(data_root, tmp_path,
+                                                             monkeypatch):
+    """An expired link is "gone", not "broken" — and not the SPA shell either."""
+    cfg, _, _ = _publish(data_root, tmp_path, monkeypatch)
+    c = _reader(cfg, export_auth.EXPORT_COOKIE, export_auth.issue_cookie(cfg))
+    assert c.get("/exports/cooking/flowchart-deadbeefdeadbeef.html").status_code == 404
+    assert c.get("/exports/cooking/flowchart-deadbeefdeadbeef.pdf").status_code == 404
+    # a directory is not a document
+    assert c.get("/exports/cooking").status_code == 404
