@@ -84,7 +84,7 @@ cp control-bot/runtime.env.example     deploy/local/control-bot.env
 `control-bot.env` must **not** set `ANTHROPIC_API_KEY` — auth comes from the
 subscription credentials in step 4.
 
-### 2. UI backend env (session key)
+### 2. UI backend env (session key, and optionally the export credential)
 
 ```bash
 python3 -c "import secrets; print('SESSION_SIGNING_KEY=' + secrets.token_urlsafe(48))" \
@@ -93,12 +93,22 @@ echo "SESSION_TTL=86400" >> deploy/local/ui-backend.env
 ```
 
 Optionally add the export credential — the one shared login that opens a
-published export (`/exports/…`), separate from the UI users in step 3:
+published export (`/exports/…`), separate from the UI users in step 3. Print a
+hash for the password you want (build the image first — see
+[Build & run](#build--run)); this prints one bare hash, nothing else:
+
+```bash
+docker run --rm inja-ui-backend-local python -c \
+ "from argon2 import PasswordHasher; print(PasswordHasher().hash('THE-EXPORT-PASSWORD'))"
+```
+
+Then append the pair, pasting that hash — the whole `$argon2id$…` line and
+nothing around it:
 
 ```bash
 cat >> deploy/local/ui-backend.env <<'EOF'
 EXPORT_USERNAME=<pick any local username>
-EXPORT_PASSWORD_HASH=<argon2 hash — same recipe as step 3 below; ../../docs/runbooks/02-secrets-and-auth.md>
+EXPORT_PASSWORD_HASH=<paste the hash printed above>
 EOF
 ```
 
