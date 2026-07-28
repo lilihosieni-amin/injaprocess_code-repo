@@ -2,9 +2,9 @@
 
 | | |
 |---|---|
-| **Version** | 0.3 (draft, no technical detail) |
-| **Date** | 2026-07-16 |
-| **Status** | Ready for final review, before the ARD |
+| **Version** | 0.4 (draft, no technical detail) |
+| **Date** | 2026-07-28 |
+| **Status** | Live; amended after the department export shipped |
 | **Product owner** | Dev team (single person) |
 | **End user** | Process analyst (non-technical) |
 | **Companion document** | ARD (architecture & technical design) — follows this document |
@@ -45,18 +45,20 @@ The user — who has no technical background — must be able to upload voice no
 - Processing voice into IDEF0/IDEF3 processes, which the user starts and steers via Telegram.
 - An interactive UI for viewing/editing processes and sub-processes (developed alongside the rest).
 - Full history of the output preserved.
+- **A shareable department document** the analyst can hand to staff who will never open the editor (§7.7).
 
 **Non-Goals (v1):**
-- Multi-user support, role management, or advanced authentication.
-- PDF/Word output (the final output is intentionally interactive, not a static document).
+- Multi-user support or role management. Authentication stays deliberately small: one analyst credential for the editor, and — since the export shipped — **one shared credential for the exported documents** (NFR-11). Neither is a user system, and there is no per-person account, attribution, or role anywhere.
 - Automatic KPI generation or statistical analysis over processes.
 - Support for other languages/restaurants.
+
+> **Reversed in v0.4.** Through v0.3 this section read *"PDF/Word output — the final output is intentionally interactive, not a static document."* That was rejecting a **replacement** for the interactive product, and it still is. What shipped is different in kind: a **derived, read-only document generated from the same data**, for the audience that will never log in (kitchen staff on a phone). The interactive UI remains the product and the only place anything is edited; an export is a build artifact that can be regenerated or thrown away at any time (INV-6). Word output remains out of scope.
 
 ---
 
 ## 5. v1 Scope
 
-**In scope:** upload bot, control bot, process-extraction pipeline, the process/department content model, and the interactive UI — all four together.
+**In scope:** upload bot, control bot, process-extraction pipeline, the process/department content model, the interactive UI, and the department export — all five together.
 
 **Out of scope:** anything under "Non-Goals"; and cost optimization (for now the strongest model is used for everything on purpose — see NFR).
 
@@ -64,13 +66,14 @@ The user — who has no technical background — must be able to upload voice no
 
 ## 6. System Overview
 
-The system consists of five components that communicate **only through the shared data on the server**. Each one's role:
+The system consists of six components that communicate **only through the shared data on the server**. Each one's role:
 
 1. **Upload bot:** raw intake of voice/documents from the user and storing them on the server. No processing.
 2. **Control bot:** the user starts processing and manages sessions via Telegram, with no technical work on the server.
 3. **Extraction processing:** turns the voice into IDEF0/IDEF3 processes.
 4. **Central data:** the system's source of truth; the output of every stage lives here and its history is preserved.
 5. **Interactive UI:** viewing and editing processes, independent of the bots.
+6. **Department export:** on request, produces a self-contained document of a department's processes for staff who never open the editor. It only ever *reads* the central data; its output is a build artifact kept **outside** the central data, and it is the one part of the system with an audience beyond the analyst (§7.7).
 
 ---
 
@@ -139,6 +142,21 @@ The system consists of five components that communicate **only through the share
 - **FR-I5 (manual creation):** The user can manually create a new process for a department; the system assigns an ID and the process is built with the standard structure from the start.
 - **FR-I6 (retired processes):** Retired (tombstoned) processes are still **shown** in the UI, clearly labelled as retired and **view-only** (they cannot be edited), with links to the process or processes that **replaced** them. From here the user can trigger a **permanent delete** of a retired process (the one allowed manual deletion; see INV-4).
 - **FR-I7 (reordering processes):** The user can rearrange a department's process order in the UI through a dedicated reorder view, and the change is saved only when they confirm it — like every other edit (see FR-I3). Retired processes take no part in the order and are shown after the ordered ones.
+- **FR-I8 (requesting an export):** The user requests either export for a department from the UI. From the click until the link is handed back, a **loading state is shown**, so a run that takes tens of seconds never looks like a frozen screen. The link is then displayed ready to copy, together with a statement of what the recipient will need in order to open it (FR-E7).
+
+### 7.7 Department Export
+
+The audience here is **not the analyst**. It is the department's own staff — a cook, a cashier, a waiter — reading on a phone, who have no account and will never open the editor.
+
+- **FR-E1 (two kinds):** A department can be exported in two forms: a **flowchart document** (the official record: each process's diagram, in the department's curated order) and a **step-by-step guide** (the same processes rewritten as ordered steps for someone doing the job). They are separate documents, requested separately.
+- **FR-E2 (fidelity):** The flowchart in the export must be **the same flowchart the system shows on screen** — not a redrawing that can drift from it. What the analyst approves in the UI is what the staff member reads.
+- **FR-E3 (self-contained):** An export is a **single file that opens on its own** — no server, no network, no installation. Downloaded, emailed, or opened from a phone's storage months later, it still works. It carries no live link back to the system.
+- **FR-E4 (permanent link, no history):** Each department+kind has **one document at one permanent link**. Re-exporting replaces it in place; the link never changes and there is no archive of past exports. An export is a snapshot of the data at the moment it was made, and the way to refresh it is to make it again.
+- **FR-E5 (printable):** Each export can be turned into a **PDF suitable for printing and posting on a wall**, with no diagram, label, or step ever cut in half across a page boundary. Producing the PDF must work on a phone, not only on a laptop.
+- **FR-E6 (read-only and clean):** An export carries no editing affordances and no half-finished internal state — no edit/undo/layout/save controls, and no pending-conflict markers. Retired processes are excluded. A reader sees the settled picture.
+- **FR-E7 (access):** The exported documents are **behind a login**. There is **one shared username and password for the whole export system**, given to staff; it opens the documents and **nothing else** — in particular it can never reach the editor, the processes, or any other part of the system. The analyst's own login also opens the documents, so they never need the shared password to check their own work. If the shared credential has not been configured, the documents are **closed**, never open.
+- **FR-E8 (the login the staff member sees):** Someone following an export link who is not signed in is shown a **small Persian sign-in page for the exports** — not the analyst's application — and is returned to the document they were trying to open once they sign in.
+- **FR-E9 (a forwarded file is not recoverable):** The login protects the *link*. A copy of the file that someone has already downloaded opens forever, offline, with no server involved. This is inherent to FR-E3 and is stated so it is never mistaken for something the password prevents.
 
 ---
 
@@ -162,6 +180,9 @@ The system consists of five components that communicate **only through the share
 - **NFR-8 (extensibility):** Adding a new department must be simple and must not change the system's logic.
 - **NFR-9 (service durability):** The bots must run as permanent, durable services on the server.
 - **NFR-10 (output integrity):** Every structured output the system produces conforms to the system's fixed data contract; a nonconforming output is detected and corrected before anything relies on it.
+- **NFR-11 (export access is separate by construction):** The shared export credential and the analyst credential are **separate mechanisms**, not the same mechanism with different permissions. It must not be possible for the export credential to reach the editor even if someone later forgets to write a check — the separation has to hold structurally. A missing or half-configured export credential closes the documents rather than opening them.
+- **NFR-12 (an export contains only what it shows):** An export carries the department's process content and nothing else — no internal bookkeeping, no unresolved proposals, no record of which recording something came from. Anyone who opens the file, now or in five years, sees exactly what the document displays.
+- **NFR-13 (a failed export never costs the document):** Producing the printable form is an enhancement. If it fails, the export still succeeds and the document is still published; the failure is recorded for the operator rather than shown to the user as a broken export.
 
 ---
 
@@ -174,6 +195,7 @@ Non-negotiable rules that must always hold:
 - **INV-3 (no fabrication):** Extraction information is filled only from the actual content of the voice.
 - **INV-4 (no automatic deletion):** The system **never deletes automatically** — it only flags a process as retired and tombstones it, keeping it on record. The single allowed deletion is a **user-initiated permanent delete** of a process that is already retired (tombstoned); once deleted, its id is never reused.
 - **INV-5 (human approval):** The list of processes is confirmed by a human before creation, and existing values are not changed without human approval.
+- **INV-6 (an export is derived, never a source):** An exported document is a **read-only artifact built from the central data**. It is never edited, never read back in, and never becomes the record of anything. Deleting every export must cost the system nothing but the effort of regenerating them, and no part of the system may depend on one existing.
 
 ---
 
@@ -190,6 +212,10 @@ Non-negotiable rules that must always hold:
 - **AC-9:** A wrong or over-fragmented baseline from an earlier run is **correctable by a later run**: two processes that should be one are merged, and one that is really two is split, rather than the mistake being locked in.
 - **AC-10:** A retired process is **tombstoned** (not deleted), shown as retired with links to what replaced it, and can be **permanently deleted by the user**, after which its id is never reused.
 - **AC-11:** After the user rearranges a department's processes in the UI, that order is what the list shows when reopened, it survives a later processing run, and a new top-level process created afterwards appears at the end of the order rather than in an arbitrary position; a sub-process or restructure heir is positioned per ARD §4.6.
+- **AC-12:** Both exports of a department can be produced from the UI, each returns a permanent link, and re-exporting replaces the document at that same link. The flowchart in the export matches the one the UI shows for the same process.
+- **AC-13:** An exported file opened with **no network at all** — double-clicked from a downloads folder — renders completely: diagrams, Persian text, and layout.
+- **AC-14:** Following an export link without signing in shows the export sign-in page (not the analyst's application); the shared credential opens the document; the **same credential is refused by every part of the editor**; and the analyst's own session opens the document without the shared password. With no export credential configured, the document is refused rather than served.
+- **AC-15:** The printable form of a flowchart export contains no diagram, node label, or step split across a page boundary, and can be produced from a phone.
 
 ---
 
@@ -198,7 +224,9 @@ Non-negotiable rules that must always hold:
 - Adding new departments (QC, etc.) — the mechanism is ready, each department's content comes later.
 - Cost optimization with cheaper models for lightweight stages (for now, all Opus 4.8 on purpose).
 - Filling in KPIs (which are usually not stated in a process-description interview) via a separate question or manual entry.
-- Department process export (a per-department document of all its processes) — it follows the process order of FR-D12, which is why the order is recorded explicitly.
+- ~~Department process export~~ — **shipped** in v0.4 (§7.7). It follows the process order of FR-D12, which is why that order was recorded explicitly before the export existed.
+- **Export follow-ups, deliberately not done.** Changing the shared export password does not sign out anyone already signed in (their session lasts out its normal life); making it immediate is possible but was judged not worth the added machinery. There is also no per-recipient link and no way to revoke one — a consequence of FR-E7's single shared credential and FR-E9's standalone file, and the point at which per-person accounts would become the honest answer.
+- Word/Office output — still out of scope. The two exports plus print cover the need.
 
 ---
 

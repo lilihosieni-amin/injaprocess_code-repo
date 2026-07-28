@@ -2,10 +2,10 @@
 
 | | |
 |---|---|
-| **Version** | 0.1 (technical draft) |
-| **Date** | 2026-07-07 |
-| **Status** | Architecture draft, based on locked decisions |
-| **Basis document** | PRD v0.2 (references the FR/NFR/INV/AC IDs) |
+| **Version** | 0.2 (technical draft) |
+| **Date** | 2026-07-28 |
+| **Status** | Live; amended after the department export shipped (§13.3–§13.5) |
+| **Basis document** | PRD v0.4 (references the FR/NFR/INV/AC IDs) |
 | **Audience** | Dev team |
 
 > This document defines the "how": topology, paths, schemas, pipeline, execution mechanism, and deployment. The "what/why" requirements live in the PRD.
@@ -65,12 +65,22 @@ code-repo/
 │   ├── order/                    # curated per-department process order (§4.6)
 │   ├── transcribe/               # Gemini-on-Vertex call
 │   └── validate/                 # JSON-vs-schema gate for LLM-written artifacts
+├── schemas/                      # frozen JSON data contract (draft 2020-12), validated by `make test`
 ├── ui/                           # React + React Flow (frontend)
+│   ├── src/                      # the SPA (the editor)
+│   ├── export/                   # the two export bundles — separate Vite entries (§13.3)
+│   │   ├── flowchart/            #   the official document (Document, ProcessSheets, FlowViewer)
+│   │   ├── steps/                #   the staff guide (linearize.ts, StepsApp, PrintDoc, README.md)
+│   │   ├── print/                #   SVG band printing shared by both (bands, geometry, complete)
+│   │   └── shared/               #   payload/seed/ready/pdfLink — the seam to the backend
 │   └── design/                   # visual design reference (source of truth for look) + support.js
-├── ui-backend/                   # thin UI backend (read/write JSON + auth)
+├── ui-backend/                   # thin UI backend (read/write JSON + auth + export + PDF)
+├── docs/                         # runbooks, specs, plans, ADRs
 ├── deploy/                       # docker-compose.yml, Dockerfiles, proxy config
 └── config/                       # sample env, no real secrets
 ```
+
+Exports are **not** in either repo: they are build artifacts written to `EXPORT_DIR`, a Docker volume outside both working trees (§13.4, PRD INV-6).
 
 ### 2.2 `data-repo` — data and the extraction "brain"
 
@@ -584,7 +594,7 @@ The `RichardAtCT/claude-code-telegram` project (Python 3.11+, MIT). Latest tagge
 
 ---
 
-## 13. UI — Stack, Backend & Frontend
+## 13. UI — Stack, Backend, Frontend & Department Export
 
 ### 13.1 Tech Stack
 
@@ -612,6 +622,72 @@ The `RichardAtCT/claude-code-telegram` project (Python 3.11+, MIT). Latest tagge
 - **Tombstoned processes** (`tombstoned:true`) are shown labelled **«باطل‌شده»** and are **view-only everywhere** (list, summary, flowchart) — never editable — with links to their heirs (`superseded_by`). The UI offers a user-initiated **permanent delete**: this is the **only** place a process is truly deleted (the single allowed exception to INV-4's "never delete"; automatic deletion never happens). The durable id ledger (§4.1) guarantees a deleted process's id is still never reused.
 - Auth (NFR-3): the plaintext password is not stored; the hash and signing key are **outside `data-repo`** (stack details in 13.1). Alternative auth: Basic Auth on the reverse proxy.
 - The edit loop is independent of both bots, working directly from the JSON on disk.
+- **Export menu (FR-I8):** the department header keeps ترتیب فرآیندها as its own button; the ⋯ menu holds only the two exports. The modal shows a pending state from the click until the link is handed back — a run takes tens of seconds because it renders a PDF — then the copyable absolute URL.
+
+### 13.3 Department Export — build (FR-E1…E3)
+
+> Authoritative design: `docs/superpowers/specs/2026-07-26-department-export-design.md`, decisions **D1–D31**. This section states the architecture; the spec states why each decision was taken and what was rejected.
+
+Two separate Vite entries under `ui/export/`, built to `ui/dist-export/` alongside the SPA's `ui/dist/`:
+
+| Entry | Document | Source |
+|---|---|---|
+| `flowchart.html` | the official record — one sheet per process, in the department's curated order (§4.6) | `ui/export/flowchart/` |
+| `steps.html` | the staff guide — the same processes linearised into ordered steps | `ui/export/steps/`, `linearize.ts` |
+
+- **Single-file output (D3, FR-E3).** `vite-plugin-singlefile` inlines JS, CSS, the Vazirmatn woff2 **and** the department's data into one HTML file. A build-time checker fails on any external reference, and the standalone claim is verified in headless Chrome with DNS blackholed — not merely asserted.
+- **Structural fidelity (D2, FR-E2).** The flowchart export renders **the app's own React Flow node and edge components**. There is no second implementation to drift. `ui/export/flowchart/parity.test.tsx` is a source scan that fails the build on a forked node/edge component, or on a `react-flow__node`/`react-flow__edge` selector anywhere under `ui/export/` — the two ways a lookalike would creep back in.
+- **Data slot.** The built template carries one placeholder that the backend substitutes at export time; `ui/export/shared/payload.ts` and `seed.ts` are the only code that touches it.
+
+### 13.4 Department Export — endpoint, storage and print
+
+**Endpoint.** `POST /api/departments/{code}/exports/{kind}`, `kind ∈ {flowchart, steps}`, behind the admin session like every other API route. It reads the department, builds the payload, substitutes it into the built template, writes the file, renders the PDF, and returns a **relative** path. The modal makes it absolute from `window.location.origin`, so there is no base-URL setting to keep in step with the deployment (D16).
+
+**Payload (NFR-12).** Trimmed server-side to what the documents actually render: `pending` conflicts, per-node `source` provenance and empty ICOM blocks are stripped, and tombstoned processes are excluded (D11, D15). The strip happens in `exports.py`, not in CSS — a reader with dev tools finds nothing hidden.
+
+**Storage and the link (D4, D5, D7, D8 — FR-E4).**
+
+```
+EXPORT_DIR/{dept}/{kind}-{token}.html     # the document
+EXPORT_DIR/{dept}/{kind}-{token}.pdf      # its printable form, same stem
+```
+
+- `token = HMAC-SHA256(SESSION_SIGNING_KEY, "export:{code}:{kind}")` truncated to 16 hex chars — **derived, never stored**, so it is stable across restarts with no state to back up, and rotating the signing key rotates every link at once.
+- **One file per department+kind, overwritten in place.** No history. Regeneration prunes stale siblings, and a stale `.pdf` is unlinked *before* the new HTML is written, so a crash mid-render can never strand a PDF that disagrees with its document.
+- `EXPORT_DIR` is a Docker volume **outside `data-repo`**: exports are build artifacts, and must not appear in the working tree the control-bot agent operates in (INV-6).
+
+**Print (D10, D23 — FR-E5).** For print, each diagram is re-emitted as atomic SVG bands cut **only through empty space**, so no node or edge label is ever halved across a page (`ui/export/print/bands.ts`). The band budget (`PRINT.W 675`, `PRINT.H 965`) is derived from the in-page `@page` box — portrait, 13 mm sides, 8 mm top/bottom — and the bands are planned **in-page, before** the server prints. A different paper box silently mis-slices every diagram, which is why D23 pins the two together.
+
+**Server-side PDF (D17–D24 — FR-E5, NFR-13).** The client-side print path uses `foreignObject`, which WebKit mis-renders, so the flowchart PDF was broken in iOS Safari — the exact device the feature exists for. `ui-backend/inja_ui_backend/pdf.py` therefore drives headless `chromium` as a subprocess over CDP (`websockets.sync`; no Playwright/Puppeteer, which would pull a Node runtime into a Python image):
+
+- It waits on the page's own completeness signal, **`window.__INJA_PRINT_READY__`**, not the load event. This is load-bearing and was measured: waiting yields 166/250 node ids in the PDF, printing on load yields 20 or 0 — **at the same page count**, so the failure is silent.
+- `displayHeaderFooter: false`, `printBackground: true`, paper box exactly matching `@page` (D23, D24).
+- Renders are **serialised process-wide** by a module lock (D22); peak 300–400 MB against a 3.7 GB host shared with the bots.
+- **A failed render never fails the export** (D21, NFR-13): the endpoint catches broadly, logs, and returns success with the HTML link. The HTML is the product.
+- Opened from `file://`, the document's «چاپ / PDF» button falls back to `window.print()` (D20) — the standalone copy keeps working, the served copy gets the good PDF. `ui/export/shared/pdfLink.ts` is the one place that decides.
+
+### 13.5 Department Export — access (D25–D31, FR-E7, FR-E8, NFR-11)
+
+`/exports` is **not** a `StaticFiles` mount. It is an authenticated route, `ui-backend/inja_ui_backend/routers/export_files.py`, registered **before** the SPA catch-all mount at `/` — a mount at `/` swallows everything registered after it, and its 404 fallback would answer `/exports/…` with `index.html`. That ordering is pinned by a test.
+
+**The credential** (`export_auth.py`): `EXPORT_USERNAME` / `EXPORT_PASSWORD_HASH` (argon2, as `ui-users.json` already uses), held in their own `Settings` fields and deliberately **not merged into `cfg.users`** — so no admin endpoint can authenticate it, structurally rather than by a check someone must remember (D28).
+
+**The separation is cryptographic, not conventional** (D27, NFR-11). Three independent mechanisms, any one of which would suffice:
+
+| | admin session | export session |
+|---|---|---|
+| cookie | `inja_session` | `inja_export_session` |
+| itsdangerous salt | `inja-session` | `inja-export-session` |
+| cookie path | `/` | `/exports` |
+
+Same `SESSION_SIGNING_KEY`, different salt ⇒ **neither token can ever verify as the other**, and the `path` scoping means the export cookie is not even transmitted to `/api/…`. Both directions are pinned by tests, and verified end-to-end on the server: an export session gets **401** from `/api/departments`.
+
+- **D29** — an admin session also opens exports (the analyst should not need the shared password to check their own work). The reverse is never true.
+- **D30 — unset credentials close the gate.** `read_cookie` refuses even a validly signed token when the credential is unset, so removing the env var revokes live sessions rather than leaving them working. A misconfiguration must not silently republish every department. Startup logs whether the gate is open, and warns when exactly one of the pair is set.
+- **D31 — the login surface is a small server-rendered Persian page**, not the SPA, carrying the requested path so sign-in lands the reader on the document they clicked. The `next` value is validated against `/exports/` after `unquote` + `normpath` (a raw prefix check alone is defeated by `%2e%2e`) and HTML-escaped.
+- **Serving parity.** Replacing `StaticFiles` meant re-earning what it gave: `FileResponse` with `Range` (206 — **iOS Safari's PDF viewer depends on it**), conditional revalidation (304), HEAD, `Cache-Control: private, no-cache`, and path containment that catches both `ValueError` (embedded NUL) and `OSError` (`ENAMETOOLONG`).
+- **Cost ceiling on an unauthenticated endpoint.** `POST /api/exports/login` runs argon2 (~58 ms) under an `anyio.CapacityLimiter(2)` passed to `to_thread.run_sync`, which *replaces* the default 40-thread limiter rather than nesting inside it — so password checks cannot starve file serving (measured: an export download during a 20-login flood took 2 ms). The request body is capped, Caddy caps it again at 1 MB, and failed logins are logged at `WARNING` with the username `%r`-quoted so a newline cannot forge a log line.
+- **What this does not do (FR-E9).** It closes *"someone forwards the link"*, not *"someone forwards the file"*. A downloaded copy opens forever, offline — that is D3 working as designed.
 
 ---
 
@@ -619,7 +695,9 @@ The `RichardAtCT/claude-code-telegram` project (Python 3.11+, MIT). Latest tagge
 
 - Both bots restricted to allowed Telegram IDs (control bot: `ALLOWED_USERS`; upload bot: its own code's allowlist) (NFR-1); an unauthorized ID is rejected without a reply (AC-8).
 - The UI with username/password (NFR-3, AC-8).
-- Secrets (Vertex service account, password hash, signing key, bot tokens) are all outside `data-repo` and outside Git.
+- **The exported documents with a second, separate credential** (NFR-11, AC-14) — one shared login for all staff, structurally unable to reach the API (§13.5). Both session cookies carry `HttpOnly`, `SameSite=lax` and **`Secure`**; the local stack still logs in because `localhost` is a potentially trustworthy origin, and `deploy/local/README.md` records what breaks the moment the stack is reached at a LAN IP over plain HTTP.
+- **No interactive API docs.** `create_app` passes `docs_url=None, redoc_url=None, openapi_url=None`. FastAPI serves all three unauthenticated by default — the session here is a cookie checked inside each handler, not a global dependency, so nothing stood in front of them, and they published every admin route's path, method and body shape to anyone who asked. There are no third-party API consumers; the only client is the SPA in the same repo. Restoring them means putting them behind the session, not deleting the three arguments.
+- Secrets (Vertex service account, password hashes, signing key, bot tokens) are all outside `data-repo` and outside Git.
 - The Section 7 hooks enforce invariants INV-1/INV-2 at the file level (AC-7): the runtime does not write `departments/**/processes/*.json` (only `merge`), does not write `departments/**/order.json` nor run the curating `order set` / `order move` (the sequence is the user's, chosen in the UI), and does not touch `.claude/**` or `CLAUDE.md`. Exact for the `Write`/`Edit` tools; for `Bash` a conservative pattern guard rather than an absolute one — see §7.
 
 ---
@@ -663,7 +741,7 @@ Stack services:
 | `telegram-bot-api` | local Bot API server (2 GB cap) | `tdlib/telegram-bot-api` image |
 | `upload-bot` | Bot 1 (Python) | mounts `data-repo` |
 | `control-bot` | Bot 2 (claude-code-telegram) | custom image: Python + **Node/Claude Code CLI** + engine CLIs + git; mounts `data-repo` (as `APPROVED_DIRECTORY`) |
-| `ui-backend` | FastAPI backend + serving the built frontend | mounts `data-repo`; calls engine CLIs + git |
+| `ui-backend` | FastAPI backend + serving the built frontend + the department export | mounts `data-repo` and the `ui-exports` volume; calls engine CLIs + git; image carries **chromium** for the PDF (§13.4) |
 | `proxy` | reverse proxy + TLS for the UI | `nginx`/`Caddy` |
 | `git-push` | scheduled push to GitHub | cron at 11:00 and 23:00, conditional on new commits (Section 15); mounts `data-repo` + deploy key |
 
@@ -673,6 +751,13 @@ Key Docker notes:
 - The `control-bot` image is the heaviest: it must have Node and the **Claude Code CLI** and the engine CLIs (on PATH) and git, because Claude Code runs the pipeline and spawns subagents inside this container.
 - **`code-repo` is baked into the images, but `data-repo` never is** — so runtime only has access to the data volume (INV-2). The Section 7 hooks are still active inside the container.
 - Secrets (bot tokens, Vertex service account, `ANTHROPIC_API_KEY`, UI hash/key) are injected via Docker secrets or an `.env` file outside the repo, not baked into the image.
+- **Export-specific deployment facts:**
+  - `EXPORT_DIR=/exports`, backed by the named volume `ui-exports` — deliberately **not** under `data-repo`, so exports never enter the working tree or Git (§13.4, INV-6).
+  - `CHROMIUM_PATH` is baked into the `ui-backend` image. **Unset means "no PDF"**, and the export still succeeds (D21) — a deployment without the browser keeps working.
+  - `EXPORT_USERNAME` / `EXPORT_PASSWORD_HASH` come from the server's secrets env file (`docs/runbooks/02-secrets-and-auth.md`); the plaintext never enters either repo. Both unset ⇒ `/exports` is closed to everyone but a signed-in UI user (D30).
+  - **`env_file` is read with `format: raw`.** Compose interpolates env-file values by default, so every `$` in `$argon2id$v=19$m=…` reads as a variable reference and the container receives the hash truncated at the first `$`. The password then can never verify — failing *closed*, and indistinguishable from the credential simply being unset. Found on the first real deploy; both stacks now pin `format: raw`, and carrying the credential to another service's env file means carrying that with it.
+  - `mem_limit: 1g` on `ui-backend`: ~150 MB Python + ≤400 MB for one Chromium (bounded by the render lock, D22) + ~128 MB argon2 (bounded by the capacity limiter) ≈ 680 MB, with headroom. The ceiling matters because `/api/exports/login` is unauthenticated and public; without it a runaway there takes the bots down with it rather than only itself.
+  - **Log rotation on every service** (`json-file`, `max-size: 10m`, `max-file: 3`). Docker's default is unbounded, and this feature adds an attacker-driven log line on an unauthenticated endpoint.
 - **This stack is for running only, not development.** Building the system (sessions 1 and 2 + Superpowers) is done in your own dev environment; after that a tagged Docker image is built and deployed to the server. That is, inside the containers there is no Superpowers and no coding — only the finished product runs. (Another guarantee of INV-2.)
 
 > If a "single container" is preferred over multiple services, these processes could be gathered into one image with a process manager (e.g. `supervisord`); but multi-service Compose is cleaner for isolation and independent restarts.
@@ -692,6 +777,14 @@ Key Docker notes:
 | NFR-2 (large file) | 11 (local Bot API server) + 5.1 (Vertex file upload) |
 | NFR-6 (context) | 7 (content on disk, isolated subagents) |
 | NFR-3 (UI auth) | 13 + 14 |
+| FR-E1…E3 (two exports, fidelity, standalone) | §13.3 — two Vite entries, the app's own flow components, `parity.test.tsx`, single-file build |
+| FR-E4 (permanent link, no history) | §13.4 — derived HMAC token, one file per department+kind, overwritten in place |
+| FR-E5 / AC-15 (printable, nothing cut) | §13.4 — SVG bands cut only through empty space + server-side Chromium over CDP |
+| FR-E6 / NFR-12 (read-only, only what it shows) | §13.4 — payload trimmed server-side, tombstones excluded |
+| FR-E7 / NFR-11 / AC-14 (separate export credential) | §13.5 — own settings, own salt, `path=/exports`; §14 |
+| FR-E8 (staff sign-in page) | §13.5 — server-rendered Persian page, validated `next` |
+| NFR-13 (a failed PDF never costs the document) | §13.4 (D21) |
+| INV-6 (an export is derived, never a source) | §13.4 `EXPORT_DIR` outside `data-repo`; §16 `ui-exports` volume |
 
 ---
 
@@ -700,3 +793,6 @@ Key Docker notes:
 - The exact Gemini-on-Vertex model and how large files are passed (inline vs. GCS) — to be finalized during implementation.
 - The audio format produced by Telegram and any conversions needed before Vertex.
 - The backup strategy for the data repository on the VPS.
+- **Export session lifetime vs. password rotation.** Rotating `EXPORT_PASSWORD_HASH` does not end sessions already issued — the cookie is signed by `SESSION_SIGNING_KEY` under a fixed salt and carries no reference to the password. Rotating the signing key does end them at once, but also logs out every UI user **and changes every export URL** (the token derives from it), so every document would need re-exporting. Signing a fingerprint of the hash into the cookie would make rotation immediate; deliberately deferred (PRD §12). Documented in `docs/runbooks/06-changing-users.md`.
+- **Rate limiting on `POST /api/exports/login`.** The concurrency ceiling bounds the *cost* of guessing, not the *rate*. There is no lockout, and one shared human-memorable password is the only barrier — hence the runbook's insistence on a long passphrase. A throttle at the proxy is the natural next step if the endpoint is ever seen under load.
+- **Serpentine wrap at a junction boundary** (§9's known limitation) shows up in the exports too, since they print the same layout.
