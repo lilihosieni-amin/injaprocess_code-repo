@@ -56,7 +56,7 @@ All gitignored. Create them once (below).
 |---|---|---|
 | `upload-bot.env` | `TELEGRAM_BOT_TOKEN` (test), `ALLOWED_USER_IDS`, `DATA_ROOT`, `TELEGRAM_PROXY` | `*.env` |
 | `control-bot.env` | `TELEGRAM_BOT_TOKEN` (test), `ALLOWED_USERS`, budgets, feature flags, `DATABASE_URL`, … | `*.env` |
-| `ui-backend.env` | `SESSION_SIGNING_KEY`, `SESSION_TTL` | `*.env` |
+| `ui-backend.env` | `SESSION_SIGNING_KEY`, `SESSION_TTL`, and optionally `EXPORT_USERNAME` + `EXPORT_PASSWORD_HASH` | `*.env` |
 | `ui-users.json` | `{username: argon2-hash}` for the UI login | `deploy/local/ui-users.json` rule |
 
 Schemas for the env files live in `../../config/*.env.example` and the server
@@ -91,6 +91,20 @@ python3 -c "import secrets; print('SESSION_SIGNING_KEY=' + secrets.token_urlsafe
   > deploy/local/ui-backend.env
 echo "SESSION_TTL=86400" >> deploy/local/ui-backend.env
 ```
+
+Optionally add the export credential — the one shared login that opens a
+published export (`/exports/…`), separate from the UI users in step 3:
+
+```bash
+cat >> deploy/local/ui-backend.env <<'EOF'
+EXPORT_USERNAME=<pick any local username>
+EXPORT_PASSWORD_HASH=<argon2 hash — same recipe as step 3 below; ../../docs/runbooks/02-secrets-and-auth.md>
+EOF
+```
+
+Skip both if you are not testing the export login: unset, `/exports` answers
+`401` to everyone except a signed-in UI user, no login form is offered, and
+nothing else about the stack changes.
 
 ### 3. UI users file (login)
 
