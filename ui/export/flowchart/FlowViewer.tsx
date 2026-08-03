@@ -88,6 +88,24 @@ export function FlowViewer({ processes, startId, onClose }: {
           ))}
           <IdBadge tone="violet">{proc.id}</IdBadge>
           <span className="font-bold text-[15px] max-[560px]:text-[13.5px] text-ink">{proc.name}</span>
+          {/* Only when the process IS one — a «فرآیند» pill on every other page is
+              noise in a viewer that shows one process at a time.
+
+              `deriveTag` in `src/lib/format` looks like the helper for this and is
+              not: it falls through to «باطل‌شده», «دارای KPI» and a conflict count,
+              none of which a document's reader is shown.
+
+              `proc` is the tail of `trail`, so this follows the canvas rather than
+              the process the viewer was opened at. The amber is the editor's own
+              subprocess pill (`ReorderModal.tsx`, `Departments.tsx`), so the
+              document and the app say it the same way. `shrink-0` keeps a long
+              process name from squeezing it; the group wraps, so on a phone this
+              drops to a second line instead of pushing the close button off. */}
+          {proc.parent && (
+            <span className="text-[11px] font-semibold text-[#B4690E] bg-[#FBEEDC] px-2 py-[2px] rounded-full shrink-0">
+              زیرفرآیند
+            </span>
+          )}
         </div>
 
         <button onClick={onClose} aria-label="بستن" title="بستن"

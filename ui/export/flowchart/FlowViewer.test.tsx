@@ -19,9 +19,15 @@ const junc = (id: string): ProcNode => ({
   position: { x: 0, y: 0 }, layout: 'auto',
 } as ProcNode)
 
-const mk = (id: string, name: string, nodes: ProcNode[], pending: Pending[] = []) => ({
+const mk = (
+  id: string,
+  name: string,
+  nodes: ProcNode[],
+  pending: Pending[] = [],
+  parent: { process: string; node: string } | null = null,
+) => ({
   id, department: 'dining', name, summary: '',
-  source: { type: 'manual', ref: null, run: null }, parent: null,
+  source: { type: 'manual', ref: null, run: null }, parent,
   created_at: '', updated_at: '',
   idef0: { inputs: [], controls: [], outputs: [], mechanisms: [] },
   kpis: [], nodes, edges: [], pending,
@@ -42,7 +48,11 @@ const PAYLOAD = {
       act('dining-001-n001', 'خوشامدگویی', 'dining-002'),
       act('dining-001-n002', 'تحویل غذا'),
     ], [CONFLICT]),
-    mk('dining-002', 'ثبت سفارش', [act('dining-002-n001', 'انتخاب غذا'), junc('dining-002-j1')]),
+    // dining-001-n001 opens this process, so it is a subprocess and its recorded
+    // parent says so. The fixture used to claim `parent: null` here, which made a
+    // subprocess marker untestable.
+    mk('dining-002', 'ثبت سفارش', [act('dining-002-n001', 'انتخاب غذا'), junc('dining-002-j1')], [],
+      { process: 'dining-001', node: 'dining-001-n001' }),
   ],
   generated_at: '',
 } as unknown as ExportPayload
@@ -150,5 +160,38 @@ describe('FlowViewer', () => {
     expect(await screen.findByText('ثبت سفارش')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'بستن' }))
     expect(onClose).toHaveBeenCalled()
+  })
+
+  // `ActivityNode` prints «زیرفرآیند — برای ورود کلیک کنید» on every node that opens
+  // one, and dining-001-n001 is such a node on the dining-001 canvas. Every assertion
+  // below therefore matches the header pill's text EXACTLY — a /زیرفرآیند/ regex would
+  // find the node's call to action instead, and the negative cases could never fail.
+  it('leaves the header unmarked for a top-level process', async () => {
+    renderViewer()
+    await screen.findByText('پذیرایی')
+    expect(screen.queryByText('زیرفرآیند')).not.toBeInTheDocument()
+  })
+
+  it('marks the header of a process that is a subprocess', async () => {
+    renderViewer('dining-002')
+    await screen.findByText('ثبت سفارش')
+    expect(screen.getByText('زیرفرآیند')).toBeInTheDocument()
+  })
+
+  // The pill reads the process on the canvas — the tail of `trail` — and not the
+  // one the viewer was opened at. Walking in and back out is the only thing that
+  // tells those two apart.
+  it('marks and unmarks as the reader walks in and back out', async () => {
+    renderViewer()
+    await screen.findByText('پذیرایی')
+    expect(screen.queryByText('زیرفرآیند')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByText('خوشامدگویی'))
+    await screen.findByText('ثبت سفارش')
+    expect(screen.getByText('زیرفرآیند')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'پذیرایی' }))
+    await screen.findByText('پذیرایی')
+    expect(screen.queryByText('زیرفرآیند')).not.toBeInTheDocument()
   })
 })
