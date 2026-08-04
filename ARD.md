@@ -2,10 +2,10 @@
 
 | | |
 |---|---|
-| **Version** | 0.2 (technical draft) |
-| **Date** | 2026-07-28 |
-| **Status** | Live; amended after the department export shipped (§13.3–§13.5) |
-| **Basis document** | PRD v0.4 (references the FR/NFR/INV/AC IDs) |
+| **Version** | 0.3 (technical draft) |
+| **Date** | 2026-08-04 |
+| **Status** | Live; amended for the multi-user architecture (§13.1, §13.5, §14, §16, §19) |
+| **Basis document** | PRD v0.5 (references the FR/NFR/INV/AC IDs) |
 | **Audience** | Dev team |
 
 > This document defines the "how": topology, paths, schemas, pipeline, execution mechanism, and deployment. The "what/why" requirements live in the PRD.
@@ -74,7 +74,7 @@ code-repo/
 │   │   ├── print/                #   SVG band printing shared by both (bands, geometry, complete)
 │   │   └── shared/               #   payload/seed/ready/pdfLink — the seam to the backend
 │   └── design/                   # visual design reference (source of truth for look) + support.js
-├── ui-backend/                   # thin UI backend (read/write JSON + auth + export + PDF)
+├── ui-backend/                   # thin UI backend (read/write JSON + identity/access + reports + PDF)
 ├── docs/                         # runbooks, specs, plans, ADRs
 ├── deploy/                       # docker-compose.yml, Dockerfiles, proxy config
 └── config/                       # sample env, no real secrets
@@ -271,7 +271,7 @@ Rule: monotonic "next number", backed by a **durable per-department `.id-seq.jso
 }
 ```
 
-The department's **curated display order** — a human-chosen table of contents for the UI list, and for the *planned* department export (PRD §12 Open Items & Future), which is why the order is recorded explicitly now rather than later. Today the UI backend is its only consumer. It carries no claim that one process happens before another in the real world; that information lives in the flows themselves.
+The department's **curated display order** — a human-chosen table of contents for the UI list and for the department reports, which is why the order was recorded explicitly before those reports existed. Its consumers are the UI backend and the report renderers. It carries no claim that one process happens before another in the real world; that information lives in the flows themselves.
 
 - **One flat list per department**, covering root *and* sub-processes, each exactly once. A consumer that wants nesting reads each process's `parent`.
 - **Position is the array index.** There are no rank fields to drift.
@@ -594,7 +594,7 @@ The `RichardAtCT/claude-code-telegram` project (Python 3.11+, MIT). Latest tagge
 
 ---
 
-## 13. UI — Stack, Backend, Frontend & Department Export
+## 13. UI — Stack, Backend, Frontend & Department Reports
 
 ### 13.1 Tech Stack
 
@@ -607,9 +607,10 @@ The `RichardAtCT/claude-code-telegram` project (Python 3.11+, MIT). Latest tagge
 
 **Backend (thin service)**
 - **FastAPI** on **Uvicorn** (Python 3.11+; same family as the upload bot).
-- **No ORM/database**: direct access to the JSON on `DATA_ROOT` with **atomic writes** (temp file + `os.replace`) and a **lightweight per-file lock** so concurrent writes to one process don't clash.
+- **No ORM/database for process content**: direct access to the JSON on `DATA_ROOT` with **atomic writes** (temp file + `os.replace`) and a **lightweight per-file lock** so concurrent writes to one process don't clash.
+  > **Amended in v0.3.** Through v0.2 this read simply *"No ORM/database"*. It now applies to **process content only**. Operational state — users, roles, grants, sessions, the activity record, and comments — lives in **SQLite** (§19). Process content stays on the filesystem in Git because it must be diffable, reviewable and restorable; sessions, audit rows and a mutable user list are none of those things, and committing a page-view per row would destroy the history that makes the first rule worth having. No process content moves into a database.
 - Calls the engine CLIs (`allocate-id` for manual creation) and `git commit` after each "Save".
-- Auth: password hashing with **argon2** (`argon2-cffi`); a **signed** session cookie (JWT or `itsdangerous`) with a secret in env.
+- Auth: password hashing with **argon2** (`argon2-cffi`); a **server-side session** identified by an opaque, signed cookie, so access can be revoked at once (§19.3).
 - Serving the frontend: FastAPI also serves the Vite-built files (no separate `ui-web` service needed); the proxy only provides TLS.
 
 ### 13.2 Behavior
@@ -620,13 +621,18 @@ The `RichardAtCT/claude-code-telegram` project (Python 3.11+, MIT). Latest tagge
 - Backend jobs: read/write JSON, apply edit/delete (flag)/add, reposition (recording `layout: manual`), the `pending` review inbox, and manual process creation (`allocate-id` — FR-I5, FR-D2). The backend **excludes tombstones from department counts**.
 - **Process order (FR-D12, FR-I7):** `GET /api/departments/{code}/processes` returns processes **already ordered** — the curated order first, then tombstones by id — so the frontend never sorts. Reordering happens in a dedicated compact panel (one short row per process, drag plus ↑/↓ buttons) rather than by dragging the list cards, because a department can hold dozens of processes. Saving `PUT`s the whole sequence as `{"order": [...]}` and gets the stored sequence back in the same shape. The endpoint answers: **404** for an unknown department code; **422** for a body that is not a list of well-formed process ids (`^[a-z]+-[0-9]{3}$` — the CLI takes the sequence comma-joined, so an id carrying a comma or an empty entry would silently store something else); and **409** for a sequence that is not exactly the department's active set, which is what happens when a pipeline run or a second tab added a process while the panel was open. On the 409 the user is told and the list refreshes. The save button is disabled when the department has no processes, so an empty department keeps its fileless state (§4.6).
 - **Tombstoned processes** (`tombstoned:true`) are shown labelled **«باطل‌شده»** and are **view-only everywhere** (list, summary, flowchart) — never editable — with links to their heirs (`superseded_by`). The UI offers a user-initiated **permanent delete**: this is the **only** place a process is truly deleted (the single allowed exception to INV-4's "never delete"; automatic deletion never happens). The durable id ledger (§4.1) guarantees a deleted process's id is still never reused.
-- Auth (NFR-3): the plaintext password is not stored; the hash and signing key are **outside `data-repo`** (stack details in 13.1). Alternative auth: Basic Auth on the reverse proxy.
+- Auth (NFR-3): the plaintext password is not stored; hashes, sessions and grants live in `app.db` and the signing key stays in env, all **outside `data-repo`** (§19). Basic Auth on the reverse proxy is no longer an alternative — it cannot express per-person permissions.
+- **Every response is permission-filtered (FR-V5, FR-V6, NFR-12).** The content-visibility strip that used to live in `exports.py` and apply only to exports is now a single filter over every response the API sends, driven by the global policy plus the caller's capabilities (§19.4). One implementation, one place to be wrong, one place tests pin.
+- **Writes are attributed.** Every handler that mutates records the acting user, in the activity record and in the commit trailer. Previously the session user was bound and discarded, and every commit was authored `ui-edit` regardless of who acted (§15).
 - The edit loop is independent of both bots, working directly from the JSON on disk.
-- **Export menu (FR-I8):** the department header keeps ترتیب فرآیندها as its own button; the ⋯ menu holds only the two exports. The modal shows a pending state from the click until the link is handed back — a run takes tens of seconds because it renders a PDF — then the copyable absolute URL.
+- **Reports (FR-I8):** the department header keeps ترتیب فرآیندها as its own button. Reports are read in the application; a user holding `export_pdf` can download one, and a pending state is shown only when the artifact must actually be produced rather than served from the fingerprint cache (§13.4).
+- **Screens are not specified here.** Which pages exist per role, and what a reader's navigation looks like, is a design question answered in its own phase (PRD §12). This section fixes only that there is one application, that affordances derive from the session descriptor, and that the server decides independently of what was drawn (§19.5).
 
-### 13.3 Department Export — build (FR-E1…E3)
+### 13.3 Department Reports — build (FR-E1…E3)
 
-> Authoritative design: `docs/superpowers/specs/2026-07-26-department-export-design.md`, decisions **D1–D31**. This section states the architecture; the spec states why each decision was taken and what was rejected.
+> Authoritative design: `docs/superpowers/specs/2026-07-26-department-export-design.md`, decisions **D1–D31**, as amended by `docs/superpowers/specs/2026-08-04-multi-user-rbac-design.md`, decisions **D24–D29** — which retire the separate export access system and withdraw D25–D31. This section states the architecture; the specs state why each decision was taken and what was rejected.
+
+> **Terminology, v0.3.** What these documents called an *export* is now a **report**. The build machinery below is unchanged and keeps its file and directory names; what changed is that a report is read in the application by a signed-in user, and the built single file is a **download** rather than a published document.
 
 Two separate Vite entries under `ui/export/`, built to `ui/dist-export/` alongside the SPA's `ui/dist/`:
 
@@ -639,22 +645,25 @@ Two separate Vite entries under `ui/export/`, built to `ui/dist-export/` alongsi
 - **Structural fidelity (D2, FR-E2).** The flowchart export renders **the app's own React Flow node and edge components**. There is no second implementation to drift. `ui/export/flowchart/parity.test.tsx` is a source scan that fails the build on a forked node/edge component, or on a `react-flow__node`/`react-flow__edge` selector anywhere under `ui/export/` — the two ways a lookalike would creep back in.
 - **Data slot.** The built template carries one placeholder that the backend substitutes at export time; `ui/export/shared/payload.ts` and `seed.ts` are the only code that touches it.
 
-### 13.4 Department Export — endpoint, storage and print
+### 13.4 Department Reports — registry, endpoint, storage and print
 
-**Endpoint.** `POST /api/departments/{code}/exports/{kind}`, `kind ∈ {flowchart, steps}`, behind the admin session like every other API route. It reads the department, builds the payload, substitutes it into the built template, writes the file, renders the PDF, and returns a **relative** path. The modal makes it absolute from `window.location.origin`, so there is no base-URL setting to keep in step with the deployment (D16).
+**Registry (FR-E1).** The report kinds are a **backend registry** served to the frontend, replacing the two hand-synchronised lists that existed before (`EXPORT_KINDS` in `exports.py` and `KINDS` in `ExportMenu.tsx`). Grants reference registry ids (`dept:{code}/report:{kind}`, §19.2), so adding a report is one registry entry plus its renderer and it appears in the permission UI with no further change.
 
-**Payload (NFR-12).** Trimmed server-side to what the documents actually render: `pending` conflicts, per-node `source` provenance and empty ICOM blocks are stripped, and tombstoned processes are excluded (D11, D15). The strip happens in `exports.py`, not in CSS — a reader with dev tools finds nothing hidden.
+**Endpoint.** Reading a report is a `GET` behind the session, authorised by `view` on `dept:{code}` or on `dept:{code}/report:{kind}`. Downloading it is authorised by `export_pdf` on the same target. Both re-derive permission from the session row; neither trusts the client (§19.5).
 
-**Storage and the link (D4, D5, D7, D8 — FR-E4).**
+**Payload (NFR-12, FR-V4…V6).** Built by the **single content-visibility filter** (§19.4), not by export-specific code. On top of the policy: tombstoned processes are excluded (D11, D15), and so is anything without a valid confirmation (FR-V4). The strip happens in the payload, not in CSS — a reader with dev tools finds nothing hidden.
+
+**Storage — a fingerprint-keyed cache (amends D4, D5, D7, D8; FR-E4 withdrawn).**
 
 ```
-EXPORT_DIR/{dept}/{kind}-{token}.html     # the document
-EXPORT_DIR/{dept}/{kind}-{token}.pdf      # its printable form, same stem
+EXPORT_DIR/{dept}/{kind}-{fingerprint}.html     # the built single file
+EXPORT_DIR/{dept}/{kind}-{fingerprint}.pdf      # its printable form, same stem
 ```
 
-- `token = HMAC-SHA256(SESSION_SIGNING_KEY, "export:{code}:{kind}")` truncated to 16 hex chars — **derived, never stored**, so it is stable across restarts with no state to back up, and rotating the signing key rotates every link at once.
-- **One file per department+kind, overwritten in place.** No history. Regeneration prunes stale siblings, and a stale `.pdf` is unlinked *before* the new HTML is written, so a crash mid-render can never strand a PDF that disagrees with its document.
-- `EXPORT_DIR` is a Docker volume **outside `data-repo`**: exports are build artifacts, and must not appear in the working tree the control-bot agent operates in (INV-6).
+- The key is the **content fingerprint** of the department's report input (§19.6), not an HMAC of a stable name. A render happens once per version and is reused until the content changes; stale entries are pruned.
+- This matters because a chromium render takes tens of seconds and is **serialised process-wide** by a module lock (D22). Without the cache, ten simultaneous downloads is a ten-minute queue — a problem that did not exist while exports were generated by one analyst on demand.
+- **There is no permanent public link.** `token = HMAC-SHA256(SESSION_SIGNING_KEY, …)` and the one-file-per-department+kind rule are withdrawn along with FR-E4: a stable public URL per department is exactly what should not exist once access is per-person.
+- `EXPORT_DIR` is a Docker volume **outside `data-repo`**: these are build artifacts and must not appear in the working tree the control-bot agent operates in (INV-6). Being a pure cache, it can be deleted at any time at no cost but regeneration.
 
 **Print (D10, D23 — FR-E5).** For print, each diagram is re-emitted as atomic SVG bands cut **only through empty space**, so no node or edge label is ever halved across a page (`ui/export/print/bands.ts`). The band budget (`PRINT.W 675`, `PRINT.H 965`) is derived from the in-page `@page` box — portrait, 13 mm sides, 8 mm top/bottom — and the bands are planned **in-page, before** the server prints. A different paper box silently mis-slices every diagram, which is why D23 pins the two together.
 
@@ -663,39 +672,31 @@ EXPORT_DIR/{dept}/{kind}-{token}.pdf      # its printable form, same stem
 - It waits on the page's own completeness signal, **`window.__INJA_PRINT_READY__`**, not the load event. This is load-bearing and was measured: waiting yields 166/250 node ids in the PDF, printing on load yields 20 or 0 — **at the same page count**, so the failure is silent.
 - `displayHeaderFooter: false`, `printBackground: true`, paper box exactly matching `@page` (D23, D24).
 - Renders are **serialised process-wide** by a module lock (D22); peak 300–400 MB against a 3.7 GB host shared with the bots.
-- **A failed render never fails the export** (D21, NFR-13): the endpoint catches broadly, logs, and returns success with the HTML link. The HTML is the product.
+- **A failed render never costs the report** (D21, NFR-13): the download path catches broadly, logs, and falls back to the standalone HTML. The report itself is read in the application and is unaffected either way.
 - Opened from `file://`, the document's «چاپ / PDF» button falls back to `window.print()` (D20) — the standalone copy keeps working, the served copy gets the good PDF. `ui/export/shared/pdfLink.ts` is the one place that decides.
 
-### 13.5 Department Export — access (D25–D31, FR-E7, FR-E8, NFR-11)
+### 13.5 Department Reports — access (amends D25–D31; FR-E7; NFR-11 withdrawn)
 
-`/exports` is **not** a `StaticFiles` mount. It is an authenticated route, `ui-backend/inja_ui_backend/routers/export_files.py`, registered **before** the SPA catch-all mount at `/` — a mount at `/` swallows everything registered after it, and its 404 fallback would answer `/exports/…` with `index.html`. That ordering is pinned by a test.
+> **Reversed in v0.3.** Through v0.2 this section described a **second, structurally separate credential system** for exports: `EXPORT_USERNAME` / `EXPORT_PASSWORD_HASH` held in their own `Settings` fields and deliberately not merged into `cfg.users`; a distinct cookie (`inja_export_session`), a distinct itsdangerous salt (`inja-export-session`) and `path=/exports` scoping, so that *"neither token can ever verify as the other"*; a fail-closed gate when the credential was unset (D30); and a small server-rendered Persian sign-in page separate from the SPA (D31). **All of it is retired.** That design existed because report readers had no accounts — the separation had to be cryptographic precisely because there was no identity to attach a permission to. Readers now have accounts, so the property NFR-11 protected ("a report reader can never reach the editor") is expressed as that person's permissions, and one credential system replaces two.
 
-**The credential** (`export_auth.py`): `EXPORT_USERNAME` / `EXPORT_PASSWORD_HASH` (argon2, as `ui-users.json` already uses), held in their own `Settings` fields and deliberately **not merged into `cfg.users`** — so no admin endpoint can authenticate it, structurally rather than by a check someone must remember (D28).
+**Removed:** `EXPORT_USERNAME`, `EXPORT_PASSWORD_HASH`, `export_auth.py`, the `inja_export_session` cookie, the server-rendered login page, the `/exports` route and its `POST /api/exports/login` / `logout` endpoints.
 
-**The separation is cryptographic, not conventional** (D27, NFR-11). Three independent mechanisms, any one of which would suffice:
+**Retained from the old design, because they were never about the credential:**
 
-| | admin session | export session |
-|---|---|---|
-| cookie | `inja_session` | `inja_export_session` |
-| itsdangerous salt | `inja-session` | `inja-export-session` |
-| cookie path | `/` | `/exports` |
-
-Same `SESSION_SIGNING_KEY`, different salt ⇒ **neither token can ever verify as the other**, and the `path` scoping means the export cookie is not even transmitted to `/api/…`. Both directions are pinned by tests, and verified end-to-end on the server: an export session gets **401** from `/api/departments`.
-
-- **D29** — an admin session also opens exports (the analyst should not need the shared password to check their own work). The reverse is never true.
-- **D30 — unset credentials close the gate.** `read_cookie` refuses even a validly signed token when the credential is unset, so removing the env var revokes live sessions rather than leaving them working. A misconfiguration must not silently republish every department. Startup logs whether the gate is open, and warns when exactly one of the pair is set.
-- **D31 — the login surface is a small server-rendered Persian page**, not the SPA, carrying the requested path so sign-in lands the reader on the document they clicked. The `next` value is validated against `/exports/` after `unquote` + `normpath` (a raw prefix check alone is defeated by `%2e%2e`) and HTML-escaped.
-- **Serving parity.** Replacing `StaticFiles` meant re-earning what it gave: `FileResponse` with `Range` (206 — **iOS Safari's PDF viewer depends on it**), conditional revalidation (304), HEAD, `Cache-Control: private, no-cache`, and path containment that catches both `ValueError` (embedded NUL) and `OSError` (`ENAMETOOLONG`).
-- **Cost ceiling on an unauthenticated endpoint.** `POST /api/exports/login` runs argon2 (~58 ms) under an `anyio.CapacityLimiter(2)` passed to `to_thread.run_sync`, which *replaces* the default 40-thread limiter rather than nesting inside it — so password checks cannot starve file serving (measured: an export download during a 20-login flood took 2 ms). The request body is capped, Caddy caps it again at 1 MB, and failed logins are logged at `WARNING` with the username `%r`-quoted so a newline cannot forge a log line.
-- **What this does not do (FR-E9).** It closes *"someone forwards the link"*, not *"someone forwards the file"*. A downloaded copy opens forever, offline — that is D3 working as designed.
+- **Route ordering is still load-bearing.** The SPA catch-all mount at `/` swallows everything registered after it and answers unknown paths with `index.html`. Any new prefix — report routes, admin, comments, audit — must be registered **before** it, and the existing test pinning that ordering is extended to cover them.
+- **Serving parity.** Downloads still need `FileResponse` with `Range` (206 — **iOS Safari's PDF viewer depends on it**), conditional revalidation (304), HEAD, `Cache-Control: private, no-cache`, and path containment catching both `ValueError` (embedded NUL) and `OSError` (`ENAMETOOLONG`).
+- **A cost ceiling on the sign-in endpoint.** `POST /api/auth/login` is the only unauthenticated endpoint left and it runs argon2 (~58 ms). It keeps the `anyio.CapacityLimiter(2)` passed to `to_thread.run_sync`, which *replaces* the default 40-thread limiter rather than nesting inside it, so password checks cannot starve everything else (measured: a download during a 20-login flood took 2 ms). The body is capped, Caddy caps it again at 1 MB, and failed sign-ins are logged with the username `%r`-quoted so a newline cannot forge a log line — now for **every** sign-in, not only the export one, and successes are logged too (§19.7).
+- **What access control does not do (FR-E9).** It closes *"someone opens a report they should not see"*, not *"someone forwards a file they legitimately downloaded"*. A downloaded copy opens forever, offline, and does not change when the process does — that is D3 working as designed.
 
 ---
 
 ## 14. Security & Access
 
 - Both bots restricted to allowed Telegram IDs (control bot: `ALLOWED_USERS`; upload bot: its own code's allowlist) (NFR-1); an unauthorized ID is rejected without a reply (AC-8).
-- The UI with username/password (NFR-3, AC-8).
-- **The exported documents with a second, separate credential** (NFR-11, AC-14) — one shared login for all staff, structurally unable to reach the API (§13.5). Both session cookies carry `HttpOnly`, `SameSite=lax` and **`Secure`**; the local stack still logs in because `localhost` is a potentially trustworthy origin, and `deploy/local/README.md` records what breaks the moment the stack is reached at a LAN IP over plain HTTP.
+- **One credential system for the whole application** (NFR-3, AC-8). Every user signs in with their own username and password; there is no second mechanism and no shared credential (§13.5). The session cookie carries `HttpOnly`, `SameSite=lax` and **`Secure`**; the local stack still logs in because `localhost` is a potentially trustworthy origin, and `deploy/local/README.md` records what breaks the moment the stack is reached at a LAN IP over plain HTTP.
+- **Authorisation is per request, not per screen** (AC-14). Every endpoint re-derives the caller's capabilities from the session row and the grant model (§19.2, §19.5). What the frontend draws is a convenience; a report reader issuing a request directly for another department's process gets the same refusal as one who never saw a button.
+- **Delegation cannot escalate** (AC-16). A user may only confer capabilities and scopes they hold, so `edit` can only ever originate from a level-0 user, and level-crossing is bounded by `manage_peers` (§19.2).
+- **The activity record is unreachable from the runtime** (NFR-14). `app.db` is mounted only into `ui-backend`; the Telegram runtime reaches comments through a CLI over a separate file (§19.8). This is a mount boundary rather than a convention, because the control-bot image ships Python and therefore `sqlite3` — a CLI-only rule is not enforceable from inside that container, the same reasoning that makes §7's hooks defend INV-1 at the file level rather than trusting the sanctioned CLI alone.
 - **No interactive API docs.** `create_app` passes `docs_url=None, redoc_url=None, openapi_url=None`. FastAPI serves all three unauthenticated by default — the session here is a cookie checked inside each handler, not a global dependency, so nothing stood in front of them, and they published every admin route's path, method and body shape to anyone who asked. There are no third-party API consumers; the only client is the SPA in the same repo. Restoring them means putting them behind the session, not deleting the three arguments.
 - Secrets (Vertex service account, password hashes, signing key, bot tokens) are all outside `data-repo` and outside Git.
 - The Section 7 hooks enforce invariants INV-1/INV-2 at the file level (AC-7): the runtime does not write `departments/**/processes/*.json` (only `merge`), does not write `departments/**/order.json` nor run the curating `order set` / `order move` (the sequence is the user's, chosen in the UI), and does not touch `.claude/**` or `CLAUDE.md`. Exact for the `Write`/`Edit` tools; for `Bash` a conservative pattern guard rather than an absolute one — see §7.
@@ -720,12 +721,14 @@ No change goes uncommitted; each path commits with a distinct author/message so 
 
 Note: in the UI, saving is manual (not autosave on each click), so each "Save" = one JSON write + one commit. (Section 13)
 
+**Attribution (v0.3).** The author identity stays `ui-edit` so `git log` keeps showing the *origin* of a change at a glance, but the commit now carries the acting user in a trailer, and the same action is recorded in the activity log with the session it came from (§19.7). Before this, the signed-in username was available at every write handler and discarded; a UI edit could be attributed to the interface but never to a person.
+
 `order.json` almost never travels alone: when the **set** of processes changed, it rides in the **same commit** as the action that changed it — the pipeline's run commit, the chat edit's commit (any `edit-process` action that changes the department's active process set reconciles it too), or the UI's create/delete commit. The one exception is a pure reorder: the UI's `PUT /api/departments/{code}/order` changes nothing else, so it commits `order.json` by itself as `ui-edit(<dept>): update process order`. Note that this is also the only `ui-edit(…)` message whose subject is a **department code** rather than a process id — the whole point of the action is that it belongs to no single process.
 
 ### When it pushes — scheduled (NFR-7)
 
 - Commits are always **local and immediate** (full history on the VPS).
-- Push to GitHub **twice a day**, at **11:00** and **23:00**, and **only if there are unpushed commits** (otherwise no push). This serves as an off-site backup; since the system is single-user, the remote does not need to be up to date to the minute.
+- Push to GitHub **twice a day**, at **11:00** and **23:00**, and **only if there are unpushed commits** (otherwise no push). This serves as an off-site backup. Editing is still the editor's alone, so the remote does not need to be up to date to the minute even though the system now has many users — nobody else's work is at risk between pushes. The same schedule carries the `state-backup` job for `app.db` and `comments.db` (§16, NFR-16), which is where a lag *would* cost other people's work.
 - Implementation: a scheduled job (cron inside a container or a separate service in the stack) that runs `git push` conditional on new commits existing. Optional: a "Push now" button in the UI for an immediate manual push.
 
 ---
@@ -740,10 +743,11 @@ Stack services:
 |---|---|---|
 | `telegram-bot-api` | local Bot API server (2 GB cap) | `tdlib/telegram-bot-api` image |
 | `upload-bot` | Bot 1 (Python) | mounts `data-repo` |
-| `control-bot` | Bot 2 (claude-code-telegram) | custom image: Python + **Node/Claude Code CLI** + engine CLIs + git; mounts `data-repo` (as `APPROVED_DIRECTORY`) |
-| `ui-backend` | FastAPI backend + serving the built frontend + the department export | mounts `data-repo` and the `ui-exports` volume; calls engine CLIs + git; image carries **chromium** for the PDF (§13.4) |
+| `control-bot` | Bot 2 (claude-code-telegram) | custom image: Python + **Node/Claude Code CLI** + engine CLIs + git; mounts `data-repo` (as `APPROVED_DIRECTORY`) **and `ui-comments` read-write**, for the `comments` CLI (§19.8). It does **not** mount `ui-state` |
+| `ui-backend` | FastAPI backend + serving the built frontend + the department reports | mounts `data-repo`, `ui-state` (`app.db`), `ui-comments` (`comments.db`) and the `ui-exports` cache; calls engine CLIs + git; image carries **chromium** for the PDF (§13.4) |
 | `proxy` | reverse proxy + TLS for the UI | `nginx`/`Caddy` |
 | `git-push` | scheduled push to GitHub | cron at 11:00 and 23:00, conditional on new commits (Section 15); mounts `data-repo` + deploy key |
+| `state-backup` | scheduled backup of `app.db` and `comments.db` (NFR-16) | same schedule as `git-push`; `sqlite3 .backup` off-site. `git-push` covers `data-repo` only, so without this NFR-7's promise is simply false for users, permissions, comments and the activity record |
 
 Key Docker notes:
 
@@ -751,12 +755,16 @@ Key Docker notes:
 - The `control-bot` image is the heaviest: it must have Node and the **Claude Code CLI** and the engine CLIs (on PATH) and git, because Claude Code runs the pipeline and spawns subagents inside this container.
 - **`code-repo` is baked into the images, but `data-repo` never is** — so runtime only has access to the data volume (INV-2). The Section 7 hooks are still active inside the container.
 - Secrets (bot tokens, Vertex service account, `ANTHROPIC_API_KEY`, UI hash/key) are injected via Docker secrets or an `.env` file outside the repo, not baked into the image.
-- **Export-specific deployment facts:**
-  - `EXPORT_DIR=/exports`, backed by the named volume `ui-exports` — deliberately **not** under `data-repo`, so exports never enter the working tree or Git (§13.4, INV-6).
-  - `CHROMIUM_PATH` is baked into the `ui-backend` image. **Unset means "no PDF"**, and the export still succeeds (D21) — a deployment without the browser keeps working.
-  - `EXPORT_USERNAME` / `EXPORT_PASSWORD_HASH` come from the server's secrets env file (`docs/runbooks/02-secrets-and-auth.md`); the plaintext never enters either repo. Both unset ⇒ `/exports` is closed to everyone but a signed-in UI user (D30).
-  - **`env_file` is read with `format: raw`.** Compose interpolates env-file values by default, so every `$` in `$argon2id$v=19$m=…` reads as a variable reference and the container receives the hash truncated at the first `$`. The password then can never verify — failing *closed*, and indistinguishable from the credential simply being unset. Found on the first real deploy; both stacks now pin `format: raw`, and carrying the credential to another service's env file means carrying that with it.
-  - `mem_limit: 1g` on `ui-backend`: ~150 MB Python + ≤400 MB for one Chromium (bounded by the render lock, D22) + ~128 MB argon2 (bounded by the capacity limiter) ≈ 680 MB, with headroom. The ceiling matters because `/api/exports/login` is unauthenticated and public; without it a runaway there takes the bots down with it rather than only itself.
+- **Report and state deployment facts:**
+  - `EXPORT_DIR=/exports`, backed by the named volume `ui-exports` — deliberately **not** under `data-repo`, so built artifacts never enter the working tree or Git (§13.4, INV-6). It is now a **cache**, and may be emptied at any time.
+  - `ui-state` holds `app.db` (users, roles, grants, sessions, confirmations, visibility policy, activity record) and is mounted **only** on `ui-backend` (§14, §19.1).
+  - `ui-comments` holds `comments.db` and is mounted on `ui-backend` **and** on `control-bot` read-write, so the `comments` CLI can read an approved comment and mark it addressed (§19.8). SQLite runs in WAL mode with a busy timeout; the file sees a handful of writes a day.
+  - `CHROMIUM_PATH` is baked into the `ui-backend` image. **Unset means "no PDF"**, and the report is still readable (D21, NFR-13) — a deployment without the browser keeps working.
+  - `UI_USERS_FILE` and the `ui-users.json` read-only secret mount are **retired**: users live in `app.db` and must be writable, since every user changes their own password (FR-A1). The file is read once at migration to seed the table (§19.9).
+  - `EXPORT_USERNAME` / `EXPORT_PASSWORD_HASH` are **removed** (§13.5).
+  - **`env_file` is read with `format: raw`.** Compose interpolates env-file values by default, so every `$` in `$argon2id$v=19$m=…` reads as a variable reference and the container receives the hash truncated at the first `$`. The password then can never verify — failing *closed*, and indistinguishable from the credential simply being unset. Found on the first real deploy; both stacks pin `format: raw`. Fewer hashes now live in env files, but `SESSION_SIGNING_KEY` still does.
+  - `mem_limit: 1g` on `ui-backend`: ~150 MB Python + ≤400 MB for one Chromium (bounded by the render lock, D22) + ~128 MB argon2 (bounded by the capacity limiter) ≈ 680 MB, with headroom. The ceiling matters because `POST /api/auth/login` is unauthenticated and public; without it a runaway there takes the bots down with it rather than only itself.
+  - **SQLite rather than a server database** is a deliberate choice for this host, not an oversight: 3.7 GB and 2 CPUs already run the Bot API server, two bots (one a full Claude Code runtime), FastAPI and chromium. The workload — nine departments, dozens of users, a few hundred views a day — is a rounding error of SQLite's capacity in WAL mode. Revisit if `ui-backend` ever needs more than one worker; it is single-process today and `storage.py`'s locks are already in-memory and per-process, so nothing is lost. PostgreSQL would be preferred over MySQL at that point.
   - **Log rotation on every service** (`json-file`, `max-size: 10m`, `max-file: 3`). Docker's default is unbounded, and this feature adds an attacker-driven log line on an unauthenticated endpoint.
 - **This stack is for running only, not development.** Building the system (sessions 1 and 2 + Superpowers) is done in your own dev environment; after that a tagged Docker image is built and deployed to the server. That is, inside the containers there is no Superpowers and no coding — only the finished product runs. (Another guarantee of INV-2.)
 
@@ -776,15 +784,22 @@ Key Docker notes:
 | FR-D12 | §4.6 `order.json`, §8 `order` CLI, §13.2 reorder panel |
 | NFR-2 (large file) | 11 (local Bot API server) + 5.1 (Vertex file upload) |
 | NFR-6 (context) | 7 (content on disk, isolated subagents) |
-| NFR-3 (UI auth) | 13 + 14 |
-| FR-E1…E3 (two exports, fidelity, standalone) | §13.3 — two Vite entries, the app's own flow components, `parity.test.tsx`, single-file build |
-| FR-E4 (permanent link, no history) | §13.4 — derived HMAC token, one file per department+kind, overwritten in place |
+| NFR-3 (authentication, revocable sessions) | §13.1 + §19.3 + §14 |
+| FR-E1…E3 (two reports, fidelity, standalone download) | §13.3 — two Vite entries, the app's own flow components, `parity.test.tsx`, single-file build; §13.4 registry |
+| ~~FR-E4 (permanent link)~~ — **withdrawn** | §13.4 — replaced by a fingerprint-keyed cache with no public link |
 | FR-E5 / AC-15 (printable, nothing cut) | §13.4 — SVG bands cut only through empty space + server-side Chromium over CDP |
-| FR-E6 / NFR-12 (read-only, only what it shows) | §13.4 — payload trimmed server-side, tombstones excluded |
-| FR-E7 / NFR-11 / AC-14 (separate export credential) | §13.5 — own settings, own salt, `path=/exports`; §14 |
-| FR-E8 (staff sign-in page) | §13.5 — server-rendered Persian page, validated `next` |
-| NFR-13 (a failed PDF never costs the document) | §13.4 (D21) |
-| INV-6 (an export is derived, never a source) | §13.4 `EXPORT_DIR` outside `data-repo`; §16 `ui-exports` volume |
+| FR-E6 / NFR-12 (read-only, only what it shows) | §19.4 — one content filter over every response; §13.4 tombstones and unconfirmed excluded |
+| FR-E7 / AC-14 (report access) | §19.2 grants + §19.5 per-request enforcement; §14 |
+| ~~FR-E8 / NFR-11 (separate export credential and sign-in page)~~ — **withdrawn** | §13.5 — one credential system |
+| NFR-13 (a failed PDF never costs the report) | §13.4 (D21) |
+| INV-6 (a report is derived, never a source) | §13.4 `EXPORT_DIR` outside `data-repo` and now a pure cache; §16 `ui-exports` volume |
+| FR-A1…A10 (users, roles, scopes, delegation) | §19.1–§19.3, §19.5 |
+| FR-V1…V4 / AC-18 (confirmation bound to a version) | §19.6 — content fingerprint, not a boolean field |
+| FR-V5, FR-V6 / AC-21 (content visibility) | §19.4 — one global policy, level-0 only, one filter |
+| FR-K1…K11 / AC-19, AC-20 (comments and the chain) | §19.8 |
+| FR-L1…L6 / NFR-14 / AC-22 (activity record) | §19.7 + §14 (mount boundary) |
+| NFR-15 (usable on a phone) | §13.2 — a requirement here; the design is a separate phase |
+| NFR-16 (people-data backup) | §16 `state-backup` service |
 
 ---
 
@@ -793,6 +808,117 @@ Key Docker notes:
 - The exact Gemini-on-Vertex model and how large files are passed (inline vs. GCS) — to be finalized during implementation.
 - The audio format produced by Telegram and any conversions needed before Vertex.
 - The backup strategy for the data repository on the VPS.
-- **Export session lifetime vs. password rotation.** Rotating `EXPORT_PASSWORD_HASH` does not end sessions already issued — the cookie is signed by `SESSION_SIGNING_KEY` under a fixed salt and carries no reference to the password. Rotating the signing key does end them at once, but also logs out every UI user **and changes every export URL** (the token derives from it), so every document would need re-exporting. Signing a fingerprint of the hash into the cookie would make rotation immediate; deliberately deferred (PRD §12). Documented in `docs/runbooks/06-changing-users.md`.
-- **Rate limiting on `POST /api/exports/login`.** The concurrency ceiling bounds the *cost* of guessing, not the *rate*. There is no lockout, and one shared human-memorable password is the only barrier — hence the runbook's insistence on a long passphrase. A throttle at the proxy is the natural next step if the endpoint is ever seen under load.
-- **Serpentine wrap at a junction boundary** (§9's known limitation) shows up in the exports too, since they print the same layout.
+- ~~**Export session lifetime vs. password rotation.**~~ — **resolved in v0.3.** Sessions are server-side rows (§19.3); revoking one, or all of a user's, is immediate and independent of the signing key. The shared export password it concerned no longer exists.
+- **Rate limiting on `POST /api/auth/login`.** The concurrency ceiling bounds the *cost* of guessing, not the *rate*. There is still no lockout and no attempt throttle, and the endpoint is now the single door to the whole system rather than to a set of read-only documents — so the gap matters more than it did. Failed attempts are recorded per username and per IP (§19.7), which makes guessing *visible*; stopping it is a throttle at the proxy or a lockout policy, neither specified. Related open item: the password policy itself (PRD §12).
+- **Comment anchors and restructuring.** `merge restructure` mints new process **and** node ids and tombstones the originals with no node-level mapping, so a comment's anchor can be orphaned by a legitimate pipeline run. Snapshots (§19.8) keep an orphaned comment readable and it is surfaced as such, but nothing re-points it. Automatic re-anchoring would require the restructure path to emit an old-node → new-node mapping, which it does not today.
+- **Serpentine wrap at a junction boundary** (§9's known limitation) shows up in the reports too, since they print the same layout.
+
+---
+
+## 19. Identity, Access, Comments & the Activity Record
+
+> Authoritative design: `docs/superpowers/specs/2026-08-04-multi-user-rbac-design.md`, decisions **D1–D49**. This section states the architecture; the spec states why each decision was taken and what was rejected. Implementation is split across five sub-projects (P0–P4) in that spec, each with its own plan.
+
+### 19.1 Three stores, one job each
+
+| Store | Holds | Written by |
+|---|---|---|
+| `data-repo` (Git, unchanged) | departments, processes, overviews, order, transcripts, runs | the engine CLIs only |
+| `app.db` (SQLite, volume `ui-state`) | users, roles, grants, overrides, supervisor edges, sessions, visibility policy, confirmations, activity record | `ui-backend` only |
+| `comments.db` (SQLite, volume `ui-comments`) | comments and their approval workflow | `ui-backend` and the `comments` CLI |
+
+`data-repo` gains **no fields, no new files under `departments/`, and no schema changes**. `process.json` is untouched, and `merge`, `layout`, `order`, `validate` and `allocate-id` are unchanged. INV-1 through INV-6 hold as written.
+
+**§1's "the filesystem is the only point of connection" holds.** `ui-backend` and `control-bot` still never call each other; they share a file, exactly as they already share `data-repo`. That is why the runtime reaches comments through a CLI (§19.8) rather than through an HTTP endpoint.
+
+**Two files, not one.** `app.db` is never mounted outside `ui-backend`, so the activity record is unreachable from the runtime by any means rather than by convention — see §14 for why a convention would not hold. The split also keeps the high-frequency audit writer out of the one file with two cross-container writers.
+
+### 19.2 The permission model
+
+**Capabilities** — eight grantable, one structural:
+
+`view` · `comment` · `edit` · `confirm` · `export_pdf` · `manage_users` · `manage_peers` · `view_audit` — and `set_visibility`, which is **not grantable** and belongs to level 0 alone (§19.4).
+
+Approving a comment is not a capability: it is inherent to being someone's supervisor.
+
+**Scopes** — three shapes, strictly nested:
+
+```
+*  ⊃  dept:{code}  ⊃  dept:{code}/report:{kind}
+```
+
+A grant on `dept:x` **includes reports added later**; a grant on `dept:x/report:k` **never widens**. There is deliberately no `process:{id}` scope.
+
+**Roles** are rows in a table, not `if` statements — a level, a capability set, and a scope shape:
+
+| L | Role | Capabilities | Supervisor |
+|:-:|---|---|:-:|
+| 0 | Editor | all eight + `set_visibility` | not required |
+| 1 | Overseer | `view` `comment` `export_pdf` `manage_users` `manage_peers` `view_audit` | not required |
+| 2 | Department head | `view` `comment` `export_pdf` `manage_users` | required |
+| 3 | Department viewer | `view` `comment` `export_pdf` | required |
+| 4 | Report reader | `view` `comment` `export_pdf` | required |
+
+No role but Editor holds `edit` or `confirm`, and delegation can only confer what the delegator holds — so the ability to change content originates only at level 0.
+
+**Resolution.** `grants = role.capabilities × user.scopes`, plus an ordered list of `(±, capability, scope)` overrides. `allows(user, capability, target)` succeeds when some grant's scope contains the target and no revocation's scope contains it. **Revocation always wins.** `export_pdf` is granted by default in every role; removing it is an explicit override.
+
+**Delegation, three rules (FR-A6, A7, A8):** confer only what you hold; create only below your level unless you hold `manage_peers`; a supervisor is mandatory except for users with `view` on `*`, must have scope covering the new user's, and cycles are rejected.
+
+**Disabling (FR-A9)** is immediate and revokes sessions. It does not cascade and does not require reorganising subordinates first; a subordinate left under a disabled supervisor is surfaced for reassignment rather than silently repointed.
+
+### 19.3 Sessions
+
+A session is a row — id, user, issued-at, last-seen, IP, user agent, revoked-at — identified by an opaque signed cookie. Previously the cookie *was* the session (a signed `{"u": username}` blob), which could not be revoked, could not answer "who is here now", and could not measure presence. Disabling a user or reducing their access takes effect on their next request.
+
+### 19.4 Content visibility — one global policy
+
+Which fields of a process a non-editor sees is a **single system-wide setting**, editable only at level 0, applied identically to every non-editor. It is deliberately **not** a grant: if it were, any holder of `manage_users` could confer it, and internal content would leave the system without a level-0 user deciding. What varies per person is which departments and reports they reach, never which fields.
+
+Defaults reproduce exactly what the export published before, so nothing new becomes visible at migration: node label, description, actor, edges and subprocess links visible; process summary, process IDEF0, KPIs and per-node ICOM hidden but switchable. `source`/`created_by`/`touched_by`, `pending`, `created_at`/`updated_at` and tombstoned processes are **never** shown and are not switchable by anyone, including the editor (NFR-12).
+
+The filter is applied server-side to **every** response, not only to reports (§13.2). Every policy change is an audited event.
+
+### 19.5 Enforcement
+
+`GET /api/auth/me` returns a session descriptor — user, role, level, scopes, effective capabilities, supervisor, pending-approval count — from which the frontend derives affordances. **The server re-derives permission from the session row on every request.** A hidden button is a nicety; the check behind it is the security (FR-A10, AC-14).
+
+### 19.6 Confirmation is a fingerprint, not a boolean
+
+Stored as `(target, fingerprint, confirmed_by, confirmed_at)` where target is a process id or a department code, and displayed as confirmed only while the target's **current** fingerprint matches. The fingerprint is the whole document minus `updated_at` — so node positions count (FR-V3), and the re-layout button un-confirms.
+
+A boolean field would have to be cleared correctly by all three write paths of §15 — UI Save, chat edit, pipeline `merge` — and missing one would leave the mark vouching for something stale, the exact failure the mark exists to prevent. A fingerprint self-invalidates for every path, including any added later, with no change to `merge` and no field on `process.json`.
+
+Content without a valid confirmation is invisible to non-editors and excluded from reports (FR-V4). **The system starts dark:** nothing is bulk-confirmed at migration, so all existing processes begin unconfirmed.
+
+### 19.7 The activity record
+
+One append-only table in `app.db`: `at`, `actor`, `session`, `action`, `target`, `ip`, `user_agent`, `outcome`. Events cover access (including **successful** sign-ins, which were never logged before), content reads and downloads, edits and confirmations, and every governance action. Presence is derived from `last_seen` heartbeats accumulated as intervals of real activity, so a closed laptop lid does not read as eight hours present.
+
+The reports are `GROUP BY` queries filtered by `view_audit` scope. Note that `view_audit` follows **content scope**, unlike comment visibility which follows the supervisor tree (§19.8) — audit is an operational record, comments are routed private communications.
+
+**There is no endpoint to delete or alter a row, for any role including level 0** (NFR-14, AC-22). Retention is indefinite by default with a configurable purge, since "who read what" is information about people.
+
+### 19.8 Comments
+
+**Anchor:** `department` code, `process` id, or `node` id, optionally narrowed to a field — the node being the finest durably addressable unit in the data model (§4.1). Every anchor carries a **snapshot** of the department name, process name and node label taken at comment time, because `merge restructure` re-ids everything it touches (§6.6) and would otherwise leave a dangling id. Anchors are never re-pointed automatically.
+
+**Identity:** `CMT-{n}`, monotonic from `comments.db`, never reused — INV-1's principle on a different ledger, because comments are not `data-repo` content.
+
+**Lifecycle:** `draft` → `awaiting` (one named approver at a time) → `approved` → `addressed`, with `rejected` and `withdrawn` as terminal-until-revised states. Nothing is hard-deleted, matching INV-4's doctrine: a supervisor's refusal must leave a trace.
+
+**Routing** climbs the supervisor edges and becomes `approved` when the next hop would hold `edit` — an editor does not approve their own inbox. Disabled hops are skipped and recorded as skipped; a chain with no live approver above reaches the editors rather than sticking. An approver may approve, reject with a reason, or amend and approve — an amendment keeps both texts.
+
+**The author controls the comment exactly while it carries no approvals.** After the first approval it can be neither edited nor withdrawn: an approval vouches for specific words, and letting them change afterwards would make every signature above worthless. The escape hatch is that any approver may reject, which returns it to the author and leaves a record.
+
+**Visibility follows the supervisor tree, not content scope:** author, every supervisor above them at any stage, and holders of `edit` once it has cleared. An Overseer with `view` on `*` still reads only their own branch. Resolution and rejection are visible to that whole audience, with who, when, why, and the commit reference if one exists.
+
+**The CLI (D4).** `comments list|show|resolve`, added to `engine/` and baked into the control-bot image alongside the existing CLIs — outside `APPROVED_DIRECTORY`, exactly as §8 and §16 already require. It reads `comments.db` directly, returns only `approved` and `addressed` comments, and serves author and approval-trail names from denormalised columns so it never touches a users table and cannot enumerate people. This is what makes *«برو مشکل کامنت CMT-42 رو درست کن»* work: the AI reads the anchor, edits through `merge`, commits, and marks the comment addressed with the commit id.
+
+Notification is in-app only — a badge plus a "waiting longest" list, so a blocked chain is visible without a delivery path that does not exist (FR-K11).
+
+### 19.9 Migration
+
+`ui-users.json` seeds `app.db` once; the current analyst becomes the Editor at level 0 with scope `*`, and any other entry becomes a user requiring a role and supervisor before it can sign in. The shared export credential is removed, so anyone reading exports today needs an account. Nothing is confirmed (§19.6).
+
+Because `data-repo` is untouched and the two SQLite files are additive, **rollback is redeploying the previous image**.

@@ -2,11 +2,11 @@
 
 | | |
 |---|---|
-| **Version** | 0.4 (draft, no technical detail) |
-| **Date** | 2026-07-28 |
-| **Status** | Live; amended after the department export shipped |
+| **Version** | 0.5 (draft, no technical detail) |
+| **Date** | 2026-08-04 |
+| **Status** | Live; amended for the multi-user architecture (§7.8–§7.11) |
 | **Product owner** | Dev team (single person) |
-| **End user** | Process analyst (non-technical) |
+| **End user** | Process analyst (editor) and the restaurant's staff, by role |
 | **Companion document** | ARD (architecture & technical design) — follows this document |
 
 > This document defines only the "what and why." All the "where and how" (paths, names, data structures, tools, deployment) lives in the ARD.
@@ -17,7 +17,9 @@
 
 The inja food restaurant is made up of several departments, and each department's work processes today exist only in staff members' heads and in in-person interviews. The goal of this system is to turn those interviews (audio) and their accompanying documents into a set of **structured, machine-readable processes** based on the **IDEF0 / IDEF3** standards, viewable and editable interactively.
 
-The user — who has no technical background — must be able to upload voice notes and files, start processing, and view and correct the output, all without touching the server. The whole system is single-user and runs on a server.
+The user — who has no technical background — must be able to upload voice notes and files, start processing, and view and correct the output, all without touching the server. Everything runs on a server.
+
+The system is **multi-user**: one application, one login, and one permission system, in which each person sees and does exactly what their role allows. Only the editor changes anything; everyone else reads what has been confirmed for them, and raises comments that travel up their own chain of command.
 
 ---
 
@@ -31,9 +33,13 @@ The user — who has no technical background — must be able to upload voice no
 
 ## 3. Users & Context
 
-- **Primary user (process analyst):** conducts in-person interviews with department staff, records voice notes, and collects related documents. Non-technical; interacts only through Telegram and the UI.
+- **Editor (process analyst):** conducts in-person interviews with department staff, records voice notes, and collects related documents. Non-technical; interacts through Telegram and the UI. **The only role that changes anything** — the sole source of edits, confirmations, and of the content-visibility policy.
+- **Overseer:** sees every department and comments, but edits nothing. May appoint other Overseers and any role beneath them, and reads the activity reports.
+- **Department head:** sees one or more whole departments, comments, downloads, and appoints the readers beneath them.
+- **Department viewer / report reader:** sees a whole department, or only one report of one department. Reads, downloads and comments.
 - **Developer user:** the developer, who builds the system and gradually improves the extraction logic.
-- **Context:** single-user, runs on a server, with full change history preserved. No need to "keep the user's device on," since everything is server-side.
+- **Context:** multi-user, runs on a server, with full change history preserved and every action attributed to the person who took it. No need to "keep the user's device on," since everything is server-side.
+- **Every user has a supervisor**, except those who read everything. That chain is what comments travel up, and what bounds who may appoint whom.
 - **Current departments (9):** management, accounting, warehouse, procurement, cooking, preparation, dining, cashier, logistics. The system must be **extensible** so that new departments (e.g. QC) can be added easily in the future.
 
 ---
@@ -45,20 +51,25 @@ The user — who has no technical background — must be able to upload voice no
 - Processing voice into IDEF0/IDEF3 processes, which the user starts and steers via Telegram.
 - An interactive UI for viewing/editing processes and sub-processes (developed alongside the rest).
 - Full history of the output preserved.
-- **A shareable department document** the analyst can hand to staff who will never open the editor (§7.7).
+- **Department reports** the staff of a department can read for themselves, and take away as a printable file (§7.7).
+- **Multiple users with roles and per-person access** (§7.8), so each person reaches only what they should.
+- **A comment channel** from the people doing the work to the editor, routed up the chain of command (§7.10).
+- **A record of who did what** — logins, readership, downloads, and time in the system (§7.11).
 
 **Non-Goals (v1):**
-- Multi-user support or role management. Authentication stays deliberately small: one analyst credential for the editor, and — since the export shipped — **one shared credential for the exported documents** (NFR-11). Neither is a user system, and there is no per-person account, attribution, or role anywhere.
 - Automatic KPI generation or statistical analysis over processes.
 - Support for other languages/restaurants.
+- Self-registration. Accounts are created inside the system by someone who already has one; there is no sign-up.
 
 > **Reversed in v0.4.** Through v0.3 this section read *"PDF/Word output — the final output is intentionally interactive, not a static document."* That was rejecting a **replacement** for the interactive product, and it still is. What shipped is different in kind: a **derived, read-only document generated from the same data**, for the audience that will never log in (kitchen staff on a phone). The interactive UI remains the product and the only place anything is edited; an export is a build artifact that can be regenerated or thrown away at any time (INV-6). Word output remains out of scope.
+
+> **Reversed in v0.5.** Through v0.4 the first Non-Goal read *"Multi-user support or role management … there is no per-person account, attribution, or role anywhere."* That is now the opposite of the product's direction, and it is withdrawn rather than edited, so the reversal stays visible. The reasoning that produced it — that a user system was an ops burden the product did not need — held only while the sole audience was one analyst plus anonymous readers behind a shared password. Once readers must be told apart, comment, and be held to a chain of approval, per-person accounts became the honest answer, exactly as §12 anticipated. **NFR-11 is withdrawn with it**: the structural separation between the export credential and the analyst credential existed because export readers had no accounts, and one permission system now replaces two credential systems (§7.7, §7.8).
 
 ---
 
 ## 5. v1 Scope
 
-**In scope:** upload bot, control bot, process-extraction pipeline, the process/department content model, the interactive UI, and the department export — all five together.
+**In scope:** upload bot, control bot, process-extraction pipeline, the process/department content model, the interactive UI, the department reports, and the access, comment and activity-logging system — all together.
 
 **Out of scope:** anything under "Non-Goals"; and cost optimization (for now the strongest model is used for everything on purpose — see NFR).
 
@@ -66,14 +77,15 @@ The user — who has no technical background — must be able to upload voice no
 
 ## 6. System Overview
 
-The system consists of six components that communicate **only through the shared data on the server**. Each one's role:
+The system consists of seven components that communicate **only through shared storage on the server**. Each one's role:
 
 1. **Upload bot:** raw intake of voice/documents from the user and storing them on the server. No processing.
 2. **Control bot:** the user starts processing and manages sessions via Telegram, with no technical work on the server.
 3. **Extraction processing:** turns the voice into IDEF0/IDEF3 processes.
 4. **Central data:** the system's source of truth; the output of every stage lives here and its history is preserved.
-5. **Interactive UI:** viewing and editing processes, independent of the bots.
-6. **Department export:** on request, produces a self-contained document of a department's processes for staff who never open the editor. It only ever *reads* the central data; its output is a build artifact kept **outside** the central data, and it is the one part of the system with an audience beyond the analyst (§7.7).
+5. **Interactive UI:** one application for everyone. What each person sees and may do is decided by their role; the editor edits, everyone else reads, downloads and comments.
+6. **Department reports:** derived read-only documents of a department's processes, read in the application and downloadable as a printable file. They only ever *read* the central data, and are build artifacts kept **outside** it (§7.7).
+7. **Access, comments and activity record:** who each person is, what they may reach, what they have said about a process, and what they have done in the system. This is the only part of the system that is *about people* rather than about processes, and it is kept separately from the process data (§7.8–§7.11).
 
 ---
 
@@ -137,26 +149,74 @@ The system consists of six components that communicate **only through the shared
 
 - **FR-I1:** The UI is independent of the bots and works from the same central system data.
 - **FR-I2 (navigation):** Clicking a department name → the list of its processes; clicking a process → its flowchart; clicking a sub-process → the sub-process flowchart; clicking a box → its further details; and a process summary card (overall info and KPIs) before entering the boxes.
-- **FR-I3 (view & edit):** The UI's default mode is **view-only**; the user sees processes and flowcharts without anything being accidentally changeable. Only by pressing the **"Edit"** button does the editor open and the user can edit/delete/add and reposition parts. Changes are written only when the user presses **"Save"** (not automatically on every change).
+- **FR-I3 (view & edit):** The UI's default mode is **view-only**; the user sees processes and flowcharts without anything being accidentally changeable. Only by pressing the **"Edit"** button does the editor open and the user can edit/delete/add and reposition parts. Changes are written only when the user presses **"Save"** (not automatically on every change). For a user without edit permission the button does not exist at all, and the permission is enforced by the system independently of whether the button was drawn (§7.8).
 - **FR-I4 (review inbox):** Conflicts are shown with a diff and accept/reject buttons, and the user's decision is saved.
 - **FR-I5 (manual creation):** The user can manually create a new process for a department; the system assigns an ID and the process is built with the standard structure from the start.
 - **FR-I6 (retired processes):** Retired (tombstoned) processes are still **shown** in the UI, clearly labelled as retired and **view-only** (they cannot be edited), with links to the process or processes that **replaced** them. From here the user can trigger a **permanent delete** of a retired process (the one allowed manual deletion; see INV-4).
 - **FR-I7 (reordering processes):** The user can rearrange a department's process order in the UI through a dedicated reorder view, and the change is saved only when they confirm it — like every other edit (see FR-I3). Retired processes take no part in the order and are shown after the ordered ones.
-- **FR-I8 (requesting an export):** The user requests either export for a department from the UI. From the click until the link is handed back, a **loading state is shown**, so a run that takes tens of seconds never looks like a frozen screen. The link is then displayed ready to copy, together with a statement of what the recipient will need in order to open it (FR-E7).
+- **FR-I8 (downloading a report):** A user with download permission can take away any report they can read, as a printable file. When the file has to be produced rather than reused, a **loading state is shown**, so a wait of tens of seconds never looks like a frozen screen.
+  > **Reversed in v0.5.** Through v0.4 this requirement was *"requesting an export"* — the user generated a document and was handed a permanent link to pass on, together with a note about the shared password the recipient would need. Reports are now read in the application by people who have their own accounts, so there is nothing to hand out and no second credential to explain.
 
-### 7.7 Department Export
+### 7.7 Department Reports
 
-The audience here is **not the analyst**. It is the department's own staff — a cook, a cashier, a waiter — reading on a phone, who have no account and will never open the editor.
+The audience here is **not only the analyst**. It is the department's own staff — a cook, a cashier, a waiter — reading on a phone. They now have their own accounts and reach a report by signing in, not by following a link someone forwarded them.
 
-- **FR-E1 (two kinds):** A department can be exported in two forms: a **flowchart document** (the official record: each process's diagram, in the department's curated order) and a **step-by-step guide** (the same processes rewritten as ordered steps for someone doing the job). They are separate documents, requested separately.
-- **FR-E2 (fidelity):** The flowchart in the export must be **the same flowchart the system shows on screen** — not a redrawing that can drift from it. What the analyst approves in the UI is what the staff member reads.
-- **FR-E3 (self-contained):** An export is a **single file that opens on its own** — no server, no network, no installation. Downloaded, emailed, or opened from a phone's storage months later, it still works. It carries no live link back to the system.
-- **FR-E4 (permanent link, no history):** Each department+kind has **one document at one permanent link**. Re-exporting replaces it in place; the link never changes and there is no archive of past exports. An export is a snapshot of the data at the moment it was made, and the way to refresh it is to make it again.
-- **FR-E5 (printable):** Each export can be turned into a **PDF suitable for printing and posting on a wall**, with no diagram, label, or step ever cut in half across a page boundary. Producing the PDF must work on a phone, not only on a laptop.
-- **FR-E6 (read-only and clean):** An export carries no editing affordances and no half-finished internal state — no edit/undo/layout/save controls, and no pending-conflict markers. Retired processes are excluded. A reader sees the settled picture.
-- **FR-E7 (access):** The exported documents are **behind a login**. There is **one shared username and password for the whole export system**, given to staff; it opens the documents and **nothing else** — in particular it can never reach the editor, the processes, or any other part of the system. The analyst's own login also opens the documents, so they never need the shared password to check their own work. If the shared credential has not been configured, the documents are **closed**, never open.
-- **FR-E8 (the login the staff member sees):** Someone following an export link who is not signed in is shown a **small Persian sign-in page for the exports** — not the analyst's application — and is returned to the document they were trying to open once they sign in.
-- **FR-E9 (a forwarded file is not recoverable):** The login protects the *link*. A copy of the file that someone has already downloaded opens forever, offline, with no server involved. This is inherent to FR-E3 and is stated so it is never mistaken for something the password prevents.
+- **FR-E1 (two kinds, extensible):** A department can be reported in two forms: a **flowchart document** (the official record: each process's diagram, in the department's curated order) and a **step-by-step guide** (the same processes rewritten as ordered steps for someone doing the job). They are separate reports, reached separately. **More report kinds will be added**, and adding one must not require changing how permissions are expressed — access can be granted to a specific report of a specific department.
+- **FR-E2 (fidelity):** The flowchart in a report must be **the same flowchart the system shows on screen** — not a redrawing that can drift from it. What the editor confirms is what the staff member reads.
+- **FR-E3 (the downloaded file is self-contained):** A downloaded report is a **single file that opens on its own** — no server, no network, no installation. Emailed, or opened from a phone's storage months later, it still works. It carries no live link back to the system.
+- **FR-E4 (a report is always current):** A report shows the department as it stands now. There is no snapshot to refresh and no archive of past versions. A downloaded copy is a snapshot by nature (FR-E9); the report itself is not.
+  > **Reversed in v0.5.** Through v0.4 this read *"Each department+kind has one document at one permanent link. Re-exporting replaces it in place."* The permanent link existed so a document could be forwarded to people with no accounts. They have accounts now, and a stable public URL per department is exactly what should not exist once access is per-person.
+- **FR-E5 (printable):** Each report can be turned into a **file suitable for printing and posting on a wall**, with no diagram, label, or step ever cut in half across a page boundary. Producing it must work on a phone, not only on a laptop.
+- **FR-E6 (read-only and clean):** A report carries no editing affordances and no half-finished internal state — no edit/undo/layout/save controls, and no pending-conflict markers. Retired processes are excluded, and so is anything not yet confirmed (FR-V4). A reader sees the settled picture.
+- **FR-E7 (access is the system's own permissions):** Reports are reached with the reader's own account, under the same permission system as everything else (§7.8). Access may be granted to a whole department or to one report of one department, and the ability to download may be withheld from a person who may still read.
+  > **Reversed in v0.5.** Through v0.4 this read *"one shared username and password for the whole export system … it opens the documents and nothing else."* That shared credential, its separate sign-in page (former FR-E8), and NFR-11's requirement that the two mechanisms be structurally separate are all **withdrawn**. They existed because readers had no accounts; the separation they enforced is now expressed as permissions on real people, which is also the only way to revoke one person's access without changing everyone's password.
+- **FR-E8 (withdrawn in v0.5):** *Was: a separate Persian sign-in page for exports.* There is one sign-in page for the whole system.
+- **FR-E9 (a downloaded file is not recoverable):** A copy of a report that someone has already downloaded opens forever, offline, with no server involved, and does not change when the process changes. This is inherent to FR-E3 and is stated so it is never mistaken for something permissions prevent.
+
+### 7.8 Users, Roles & Access
+
+- **FR-A1 (accounts are created in-system):** Usernames and passwords are defined inside the system by someone who already has an account. There is no self-registration. Every user can change their own password from their own panel, and no one else's.
+- **FR-A2 (roles):** Access is granted by **role** — a named bundle of what a person may do — combined with the **scope** it applies to. A role can be granted afresh to a new kind of user without changing how the system works.
+- **FR-A3 (what a person may do):** The things a person may be permitted are: see content, comment on it, edit it, confirm it, download reports, create and manage users, and read the activity reports. Editing and confirming belong to the editor alone.
+- **FR-A4 (what a person may reach):** Scope is the whole system, a whole department (one person may hold several), or a single report of a single department. A grant on a whole department includes reports added later; a grant on one report never widens to include a new one.
+- **FR-A5 (exceptions per person):** Any single permission can be added to or taken away from one person without inventing a new role — for example, removing the ability to download from someone who may still read everything.
+- **FR-A6 (delegation is bounded by what you hold):** A user may only give others permissions and scopes they hold themselves. The ability to edit can therefore only ever originate from the editor.
+- **FR-A7 (who may appoint whom):** A user may create users below their own level. Creating a user at one's *own* level is a separate permission, held by the editor and by Overseers, and withheld from department heads — so a department head builds out their own branch but cannot appoint another department head. That permission can be granted or withheld per person.
+- **FR-A8 (every user has a supervisor):** A supervisor is required for everyone except users who read everything. The supervisor is chosen when the user is created, may be changed afterwards, and must be someone whose own access covers the new user's.
+- **FR-A9 (disabling a user):** A user can be disabled at any time; their access ends immediately, including any session already open. Disabling never requires reorganising their subordinates first and never cascades to them. Where a disabled person is left as someone's supervisor, the system says so and offers to reassign.
+- **FR-A10 (permissions are enforced by the system, not by the screen):** What a person sees drawn on screen is a convenience. Whether the system will actually give them something is decided independently, every time they ask for it.
+
+### 7.9 Confirmation & Content Visibility
+
+- **FR-V1 (confirmation):** The editor can mark a flowchart, or a department's general information, as **confirmed** — a statement to everyone else that it has been reviewed and is to be trusted.
+- **FR-V2 (a confirmation applies to a version, not a name):** If the thing changes in any way after being confirmed — by an edit in the UI, by a chat instruction, or by a processing run — the confirmation is **no longer valid** and the editor must confirm it again. A confirmation must never be able to vouch for something that has since changed.
+- **FR-V3 (positions count):** Moving parts of a flowchart changes the document as the reader experiences it, so it also invalidates the confirmation.
+- **FR-V4 (unconfirmed content is not shown):** Anything without a valid confirmation is invisible to everyone except the editor, and is left out of reports.
+- **FR-V5 (what is shown of a process is one global decision):** Which parts of a process are shown to non-editors — its summary, its IDEF0 information, its KPIs, and for each step its description, its performer and its IDEF0 information — is a **single setting that applies identically to every non-editor**, and only the editor may change it. A step's name, the connections between steps, and the links to sub-processes are always shown; without them there is no flowchart to read. It is deliberately not a per-person permission: if it were, anyone who can create users could expose it without the editor ever deciding to. What differs between people is *which departments and reports they reach*, never *which fields*.
+- **FR-V6 (internal bookkeeping is never shown):** Which recording something came from, unresolved proposals, and internal timestamps are never shown to anyone but the editor and cannot be switched on by anyone, including the editor. This is NFR-12, now applying everywhere rather than only to a downloaded file.
+
+### 7.10 Comments
+
+- **FR-K1 (who comments, and on what):** A user with permission may leave a comment on a **department's general information**, on a **whole flowchart**, or on **one step of a flowchart**.
+- **FR-K2 (comments travel up the chain):** A comment does not go straight to the editor. It goes to the author's supervisor, and on approval to *their* supervisor, until the chain reaches the editor. Only then is it shown to the editor.
+- **FR-K3 (what a supervisor may do):** Approve, reject with a reason, or amend the wording and approve. An amendment never overwrites the author's original words — both are kept, so a change made on someone's behalf can always be seen.
+- **FR-K4 (rejection returns it):** A rejected comment goes back to its author with the reason. They may revise it, which starts the chain again from the beginning.
+- **FR-K5 (the author's control ends at the first approval):** The author may edit or withdraw their comment only while no one has approved it. Once someone has, the words are fixed — an approval vouches for what was actually written, and must not be able to be changed underneath the person who gave it. Stopping an approved-in-progress comment requires an approver to reject it, which leaves a record.
+- **FR-K6 (nothing is deleted):** Withdrawn and rejected comments remain on record. A supervisor's refusal to pass something on must leave a trace.
+- **FR-K7 (who can see a comment):** Its author; every supervisor above the author, at any stage; and the editor once it has cleared the chain. Seeing every department does not by itself mean seeing that department's comments.
+- **FR-K8 (a comment survives its subject):** A comment records enough about what it was written on — the department, the process, the wording of the step — that it still makes sense if that process is later restructured or retired. It is never silently re-pointed at something else.
+- **FR-K9 (an approved comment can be acted on by instruction):** Every comment has a short identifier, so the editor can tell the system in Telegram to go and address a specific one. Only comments that have cleared the whole chain can be reached this way.
+- **FR-K10 (everyone who saw it sees how it ended):** When a comment is resolved or rejected, everyone who could see it sees who did so, when, and why — along with a reference to the change, if one was made.
+- **FR-K11 (nobody is notified out of band):** A person with a comment waiting on them sees it when they open the system, and the longest-waiting comments are surfaced so a blocked chain is visible. There is no notification outside the application.
+
+### 7.11 Activity Record
+
+- **FR-L1 (what is recorded):** Every sign-in and failed sign-in, sign-out, password change, permission and role change, user creation and disabling, comment action, edit, and confirmation.
+- **FR-L2 (readership is recorded):** Which reports and departments each person opened, when, and what they downloaded.
+- **FR-L3 (time in the system):** How long each person was actually present — measured as real activity, not as the time between signing in and closing a laptop.
+- **FR-L4 (reports over the record):** The record can be read as reports: activity per person, readership per report, access per department, failed sign-in attempts, the history of every permission change and who made it, and how comments are flowing.
+- **FR-L5 (who may read it):** Only users granted that permission.
+- **FR-L6 (the record cannot be edited):** No user, including the editor, can delete or alter an entry through the system. A record the top user can rewrite records nothing.
 
 ---
 
@@ -166,13 +226,16 @@ The audience here is **not the analyst**. It is the department's own staff — a
 
 **Secondary flow (manual creation & direct edits):** The user creates a new process for a department in the UI (or via chat); the system assigns an ID; the next recording that touches that same process is linked to this existing process. The user can also edit committed work — including structural changes — by a chat instruction alone, with the change recorded in the history.
 
+**Reader flow (a staff member raises a problem):** A waiter signs in ← sees only the dining step-by-step guide, and only the processes the editor has confirmed ← finds a step that does not match how the work is really done ← leaves a comment on that step ← the comment goes to the dining head, who amends the wording and approves it ← it goes to the deputy manager, who approves ← the editor now sees it, and tells the system in Telegram to address that comment by its identifier ← the system fixes the process and records the change, which invalidates the flowchart's confirmation ← the editor reviews and confirms it again, and it becomes visible to the waiter once more, who sees that their comment was resolved and by whom.
+
 ---
 
 ## 9. Non-Functional Requirements (NFR)
 
 - **NFR-1 (Telegram access):** Only registered Telegram IDs (for now, only the primary user) are allowed to use either bot; others are silently rejected.
 - **NFR-2 (large audio files):** The system must be able to receive and process large meeting audio files (which are usually large) without issue.
-- **NFR-3 (UI auth without a database):** UI login is protected by a username and password, with no database required. The password is stored securely, not in plaintext.
+- **NFR-3 (authentication):** Every user signs in with their own username and password. Passwords are stored securely, never in plaintext, and a user can change only their own. Sessions can be ended by the system at once — disabling a user or reducing their access takes effect immediately, not whenever their session happens to expire.
+  > **Amended in v0.5.** Through v0.4 this read *"UI login is protected by a username and password, with no database required."* The "no database" clause was a constraint on the single-user design; it cannot survive a mutable user list, revocable sessions, or an activity record, and is withdrawn. Process content is unaffected — it stays where it is, in the versioned central data (ARD §13.1).
 - **NFR-4 (model):** All processing uses the strongest model (Opus 4.8), even for simple tasks. This is a quality-driven choice and can be changed later.
 - **NFR-5 (time & budget):** The time and cost budget for processing must be set to match the multi-stage, high-cost nature of each run.
 - **NFR-6 (robustness on large voices):** Processing must not fail due to the model's memory limits on long voices; the system must handle large voices without data loss.
@@ -180,9 +243,12 @@ The audience here is **not the analyst**. It is the department's own staff — a
 - **NFR-8 (extensibility):** Adding a new department must be simple and must not change the system's logic.
 - **NFR-9 (service durability):** The bots must run as permanent, durable services on the server.
 - **NFR-10 (output integrity):** Every structured output the system produces conforms to the system's fixed data contract; a nonconforming output is detected and corrected before anything relies on it.
-- **NFR-11 (export access is separate by construction):** The shared export credential and the analyst credential are **separate mechanisms**, not the same mechanism with different permissions. It must not be possible for the export credential to reach the editor even if someone later forgets to write a check — the separation has to hold structurally. A missing or half-configured export credential closes the documents rather than opening them.
-- **NFR-12 (an export contains only what it shows):** An export carries the department's process content and nothing else — no internal bookkeeping, no unresolved proposals, no record of which recording something came from. Anyone who opens the file, now or in five years, sees exactly what the document displays.
-- **NFR-13 (a failed export never costs the document):** Producing the printable form is an enhancement. If it fails, the export still succeeds and the document is still published; the failure is recorded for the operator rather than shown to the user as a broken export.
+- **NFR-11 (withdrawn in v0.5):** *Was: the shared export credential and the analyst credential must be separate mechanisms, structurally unable to reach each other.* There is now one credential system and one set of permissions. The property this protected — that a report reader can never reach the editor — is now a consequence of that person's permissions rather than of two isolated mechanisms, and is asserted by AC-14.
+- **NFR-12 (nothing carries more than it shows):** What the system hands to a person carries the content they are permitted to see and nothing else — no internal bookkeeping, no unresolved proposals, no record of which recording something came from. This holds for what appears on screen as much as for a downloaded file: what is withheld is never merely hidden from view.
+- **NFR-13 (a failed printable form never costs the report):** Producing the printable form is an enhancement. If it fails, the report is still readable; the failure is recorded for the operator rather than shown to the user as a broken report.
+- **NFR-14 (the activity record is complete and tamper-resistant):** Every action listed in §7.11 is recorded, with the person who took it. The record is kept where no automated part of the system can reach it, and there is no path — for any role — to alter or delete an entry.
+- **NFR-15 (usable on a phone):** The application works on the devices its users actually have. Staff read and comment on phones; the interface must be built for that rather than adapted to it.
+- **NFR-16 (people-data is backed up too):** Users, permissions, comments and the activity record are backed up on the same schedule as the process data. The existing history mechanism does not cover them, so NFR-7's promise is met for them by a separate path or not at all.
 
 ---
 
@@ -208,14 +274,21 @@ Non-negotiable rules that must always hold:
 - **AC-5:** Repositioning flowchart parts in the UI is preserved after reopening, and the next voice does not break the user's manual layout.
 - **AC-6:** A value conflict is recorded as a "pending proposal" and is resolvable in the UI review inbox with accept/reject, without the original value being changed automatically.
 - **AC-7:** At runtime, the extraction logic cannot change the code or its own configuration.
-- **AC-8:** An unauthorized Telegram ID cannot use the bots, and the UI does not open without the correct username/password.
+- **AC-8:** An unauthorized Telegram ID cannot use the bots, and the UI does not open without a correct username/password belonging to an enabled user.
 - **AC-9:** A wrong or over-fragmented baseline from an earlier run is **correctable by a later run**: two processes that should be one are merged, and one that is really two is split, rather than the mistake being locked in.
 - **AC-10:** A retired process is **tombstoned** (not deleted), shown as retired with links to what replaced it, and can be **permanently deleted by the user**, after which its id is never reused.
 - **AC-11:** After the user rearranges a department's processes in the UI, that order is what the list shows when reopened, it survives a later processing run, and a new top-level process created afterwards appears at the end of the order rather than in an arbitrary position; a sub-process or restructure heir is positioned per ARD §4.6.
-- **AC-12:** Both exports of a department can be produced from the UI, each returns a permanent link, and re-exporting replaces the document at that same link. The flowchart in the export matches the one the UI shows for the same process.
-- **AC-13:** An exported file opened with **no network at all** — double-clicked from a downloads folder — renders completely: diagrams, Persian text, and layout.
-- **AC-14:** Following an export link without signing in shows the export sign-in page (not the analyst's application); the shared credential opens the document; the **same credential is refused by every part of the editor**; and the analyst's own session opens the document without the shared password. With no export credential configured, the document is refused rather than served.
-- **AC-15:** The printable form of a flowchart export contains no diagram, node label, or step split across a page boundary, and can be produced from a phone.
+- **AC-12:** Both reports of a department can be read in the application by a user permitted to see them, and reflect the department as it currently stands. The flowchart in a report matches the one the UI shows for the same process.
+- **AC-13:** A downloaded report opened with **no network at all** — double-clicked from a downloads folder — renders completely: diagrams, Persian text, and layout.
+- **AC-14:** A user whose only permission is one report of one department can open that report and nothing else: not the other report, not another department, not any process, and not any editing action — and this holds when the request is made directly, not only when the buttons are absent.
+- **AC-15:** The printable form of a flowchart report contains no diagram, node label, or step split across a page boundary, and can be produced from a phone.
+- **AC-16:** A user cannot grant anyone a permission or a scope they do not hold themselves; a department head cannot create another department head; and an Overseer can create another Overseer but cannot create anyone able to edit.
+- **AC-17:** Disabling a user ends their access immediately, including a session already open, without requiring their subordinates to be reorganised first.
+- **AC-18:** A confirmed flowchart becomes invisible to non-editors the moment it is changed by any path — an edit in the UI, a chat instruction, a processing run, or a change to the positions of its parts — and becomes visible again only when confirmed anew.
+- **AC-19:** A comment left by a report reader reaches the editor only after every supervisor in the chain has approved it; a rejection returns it to its author with the reason; and once anyone has approved it, its author can neither change nor withdraw it.
+- **AC-20:** The editor can tell the system in Telegram to address a comment by its identifier, and the system can read that comment and mark it resolved. A comment that has not cleared the chain cannot be read this way.
+- **AC-21:** Turning off the visibility of a field hides it from every non-editor at once, and it cannot be turned back on by anyone other than the editor — including by a user who can create other users.
+- **AC-22:** The activity record shows who signed in, who opened which report, who downloaded what, and how long each person was present; and no user, at any permission level, can delete an entry through the system.
 
 ---
 
@@ -225,11 +298,16 @@ Non-negotiable rules that must always hold:
 - Cost optimization with cheaper models for lightweight stages (for now, all Opus 4.8 on purpose).
 - Filling in KPIs (which are usually not stated in a process-description interview) via a separate question or manual entry.
 - ~~Department process export~~ — **shipped** in v0.4 (§7.7). It follows the process order of FR-D12, which is why that order was recorded explicitly before the export existed.
-- **Export follow-ups, deliberately not done.** Changing the shared export password does not sign out anyone already signed in (their session lasts out its normal life); making it immediate is possible but was judged not worth the added machinery. There is also no per-recipient link and no way to revoke one — a consequence of FR-E7's single shared credential and FR-E9's standalone file, and the point at which per-person accounts would become the honest answer.
-- Word/Office output — still out of scope. The two exports plus print cover the need.
+- ~~**Export follow-ups, deliberately not done.**~~ — **resolved** in v0.5. That item ended *"the point at which per-person accounts would become the honest answer."* That point arrived. Revoking one person's access no longer requires changing a password everyone shares, and a session can be ended at once.
+- Word/Office output — still out of scope. The two reports plus print cover the need.
+- **Telegram notification of comments** — a person with a comment waiting on them learns of it when they next open the system (FR-K11). Notifying them in Telegram would need a Telegram identity on every user and a delivery path that does not exist; deliberately deferred.
+- **Password policy** — minimum strength, forced change on first sign-in, and lock-out after repeated failed attempts are not yet specified. Note that no attempt-rate limit exists on any sign-in today.
+- **How long the activity record is kept** — indefinitely for now. "Who read what" is information about people, and keeping it forever should be a decision rather than a default.
+- **Further report kinds** — the system is built so a new report is a new entry that permissions can already address (FR-E1, FR-A4); none are specified yet.
+- **What each role's screens look like** — deliberately not decided in this document or in the architecture. Whether a reader gets the editor's pages, a document, or something built for them is a design question, answered after this document and the ARD are settled.
 
 ---
 
 ## 13. Deferred to the ARD
 
-These technical topics are intentionally excluded from the PRD and appear in the ARD: folder structure and naming; the exact process data structure; the design of the processing and its technical components; how the ordering of stages is guaranteed; the separation of the code and data environments and how development is done; the layout algorithm; the authentication and access mechanism; and how the services are deployed on the server.
+These technical topics are intentionally excluded from the PRD and appear in the ARD: folder structure and naming; the exact process data structure; the design of the processing and its technical components; how the ordering of stages is guaranteed; the separation of the code and data environments and how development is done; the layout algorithm; the authentication and access mechanism; where users, permissions, comments and the activity record are stored and how they are kept apart from the process data; how a confirmation is bound to a version; how the Telegram runtime reaches an approved comment; and how the services are deployed on the server.
