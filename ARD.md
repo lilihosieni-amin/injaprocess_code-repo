@@ -799,6 +799,8 @@ Key Docker notes:
 | FR-A7 / AC-16 (who may appoint whom) | §19.2 — strict-subset plus `manage_peers`, scope containment, self-edit ban |
 | FR-A8 / AC-23 (supervisor and `can_supervise`) | §19.2 eligibility rules; §19.8 routing |
 | FR-A11 / AC-24 (readers see no user administration) | §19.2; §19.8 for the comment-name exception |
+| FR-K2a (the editor receives comments, never writes them) | §19.2 — derived from routing, not a permission |
+| NFR-12 / AC-25 (withheld data is never sent) | §19.4a — records, counts, existence, 404-not-403, response-body scan |
 | FR-V1…V4 / AC-18 (confirmation bound to a version) | §19.6 — content fingerprint, not a boolean field |
 | FR-V5, FR-V6 / AC-21 (content visibility) | §19.4 — one global policy, level-0 only, one filter |
 | FR-K1…K11 / AC-19, AC-20 (comments and the chain) | §19.8 |
@@ -822,7 +824,7 @@ Key Docker notes:
 
 ## 19. Identity, Access, Comments & the Activity Record
 
-> Authoritative design: `docs/superpowers/specs/2026-08-04-multi-user-rbac-design.md`, decisions **D1–D55** (the access model revised 2026-08-05: D9–D15 rewritten, D50–D55 added). This section states the architecture; the spec states why each decision was taken and what was rejected. Implementation is split across five sub-projects (P0–P4) in that spec, each with its own plan.
+> Authoritative design: `docs/superpowers/specs/2026-08-04-multi-user-rbac-design.md`, decisions **D1–D56** (the access model revised 2026-08-05: D9–D15 rewritten, D50–D56 added). This section states the architecture; the spec states why each decision was taken and what was rejected. Implementation is split across five sub-projects (P0–P4) in that spec, each with its own plan.
 
 ### 19.1 Three stores, one job each
 
@@ -877,6 +879,8 @@ The intended deployment is: the analyst as **Editor** + `*`; a deputy as **Admin
 
 A department head is therefore a Reader: they read, comment, download and approve their branch's comments, but hold no `manage_users` and no `view_audit`. **All user administration is centralised at `*` scope**, and no role but Editor can edit or confirm.
 
+**The Editor holds `comment` but is offered no composer.** The roles are strictly nested, and delegation requires a created user's set to be a subset of the creator's — so removing `comment` from Editor would make `Reader ⊄ Editor` and leave the Editor unable to create any user at all. It is also meaningless rather than forbidden: routing climbs to the first holder of `edit` (§19.8), so an Editor's own comment would be approved on creation and land in their own inbox. The UI therefore offers no composer to any holder of `edit` — a rule derived from routing, not a permission (spec D11).
+
 **Resolution.**
 
 ```
@@ -917,6 +921,23 @@ Defaults reproduce exactly what the export published before, so nothing new beco
 **The policy governs `process.json` only.** The department overview (`description`, `sub_units`, `personnel` with `duties` and `kpi`) is served **in full**, with no per-field switches — see spec D55. Access to it is decided by scope and by confirmation (§19.6), not by field visibility; `overview.updated_at` is stripped with every other timestamp. Note also that **nodes carry no KPI field** (`$defs.activityNode` in `schemas/process.schema.json`): the two KPI fields in the model are `process.kpis[]` on the summary card and `overview.personnel[].kpi[]` on the department page. A node carries `icom`, which is IDEF0 information — a separate switch.
 
 The filter is applied server-side to **every** response, not only to reports (§13.2). Every policy change is an audited event.
+
+### 19.4a Withheld data is never sent (spec D56, NFR-12, AC-25)
+
+The field-level strip above is the narrow case. The general rule: **if a caller may not see it, it is not in the response.** Not sent and hidden, not sent and collapsed, not sent and filtered by the client.
+
+| Surface | Rule |
+|---|---|
+| Whole records | Unconfirmed (§19.6) and tombstoned processes are excluded **in the query**, never client-side |
+| Derived signals | No count, badge or flag implying withheld content — a `pending` count on a node leaks unresolved proposals as surely as the proposals do |
+| Existence | A resource outside the caller's scope answers **404**, not 403 |
+| Comments | §19.8's subtree rule is a query filter, including the author and approver names carried with each row |
+| Downloads | Scope is re-derived per request; that a cached artifact exists (§13.4) is not authorisation to serve it |
+| Search and lists | Scope belongs in the `WHERE`, not in a post-filter |
+
+**403 is reserved for actions on resources the caller can already see** — a Reader hitting an edit endpoint on their own department. Out-of-scope *resources* are 404, so the boundary cannot be mapped by probing. This is the discipline §13.5 already records for the export, where the sign-in page renders before the requested path is examined because *"whether a given token exists is not something to tell a stranger"*; D56 generalises it to every endpoint.
+
+Pinned by a **response-body scan per role** (spec §11.8a): every endpoint exercised as each role, asserting the serialised body contains no denylisted key, no out-of-scope id, no unconfirmed or tombstoned process id — at any depth. A scan rather than per-field assertions, because the next leak will be in a field nobody thought to assert on.
 
 ### 19.5 Enforcement
 

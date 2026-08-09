@@ -25,7 +25,15 @@ telling the editor** (comments routed up a supervisor chain).
 
 This spec fixes architecture, data model and rules. It does **not** decide page
 layouts, navigation structure, or which visual surface each role gets. That work
-is a separate phase, run after `PRD.md` and `ARD.md` are amended (§11.6).
+is a separate phase with its own spec.
+
+Its input exists: `ui/design/Inja Panel.dc.html` (editor and admin) and
+`ui/design/Inja Reader.dc.html` (everyone else), which settle the shape — two
+shells over one component set, the reader at a larger type scale and a lighter
+information density. They are **visual mockups only**: no code is taken from
+them, they carry no accessibility layer, no loading or error states, and their
+data model still contains withdrawn concepts (`level`, per-user `minus`
+overrides). Where they disagree with this spec, this spec wins.
 
 ### 1.2 Scope decomposition
 
@@ -151,7 +159,7 @@ schedule, shipped alongside the existing push.
 
 ## 3. Identity, roles and access control
 
-> **Revised 2026-08-05 (D9–D15 rewritten; D50–D55 added).** The first version of
+> **Revised 2026-08-05 (D9–D15 rewritten; D50–D56 added).** The first version of
 > this section used five preset roles carrying a numeric `level` and a typical
 > scope, plus per-user capability overrides. All three are withdrawn. A level is
 > an ordinal *proxy* for "has less authority", maintained by hand, and it can
@@ -276,6 +284,21 @@ they cannot see activity reports even for their own branch.
 
 Scoped Admins (`Admin` + `dept:dining`) are legal in the model and absent from
 the intended deployment.
+
+**The Editor holds `comment` but is never offered a composer.** The roles are
+strictly nested — Reader ⊂ Admin ⊂ Editor — and D13 requires a created user's
+capability set to be a subset of the creator's. `comment` is in Reader and Admin,
+so removing it from Editor would make `Reader ⊄ Editor` and **the Editor could no
+longer create any user at all**.
+
+It is also meaningless rather than forbidden: routing (D34) climbs the supervisor
+chain until the next hop holds `edit`, and the Editor holds `edit`, so a comment
+they authored would be `approved` on creation and land in their own inbox. The
+Editor is the *destination* of the chain, not a participant in it.
+
+So: **no composer is offered to any holder of `edit`.** This is a UI rule derived
+from the routing rule, not a permission — recorded here so that a later tidy-up
+of the capability table does not silently break user creation.
 
 ### D12 — Resolution
 
@@ -534,6 +557,37 @@ finds nothing hidden.
 ### D19 — Every policy change is an audited event
 
 `visibility.policy.changed`, with the actor, the field, and both values.
+
+### D56 — Withheld data is never sent
+
+D18 states this for **fields**. It is hereby the rule for everything: **if a user
+may not see it, it does not appear in any response to them.** Not sent and
+hidden, not sent and collapsed, not sent and filtered by the client. The leaks
+that matter are not fields, so the rule has to be broader than fields.
+
+| Surface | Rule |
+|---|---|
+| **Whole records** | Unconfirmed processes (D22) and tombstoned ones (D17) are absent from the response body, filtered in the query. Never client-side. |
+| **Derived signals** | No count, badge or flag that implies withheld content. A `pending` **count** on a node leaks the existence of unresolved proposals as surely as the proposals do, and `pending` is on the never-show list. |
+| **Existence** | A resource outside the caller's scope answers **404, not 403**. A 403 teaches the caller that the thing exists. |
+| **Comments** | D37's subtree rule is a query filter, not a post-filter — including the author and approver names carried with each comment. |
+| **Downloads** | The download endpoint re-derives scope on every request. That the cached artifact exists (D27) is not authorisation to serve it. |
+| **Search and lists** | Scope belongs in the query. A list endpoint never returns rows it then declines to render. |
+
+**403 is reserved for actions on resources the caller can already see** — a
+Reader hitting an edit endpoint on their own department. Out-of-scope *resources*
+are 404. The trade is a slightly worse message for a confused user against a
+scope boundary that cannot be mapped by probing.
+
+This is the discipline the export already follows: `_sign_in_page` is called
+before the requested path is examined, because *"whether a given token exists is
+not something to tell a stranger."* D56 generalises it to every endpoint.
+
+**Consequence for the frontend.** Client-side capability checks decide what to
+**draw** and nothing else (D48). The prototypes hide content with `sc-if` and
+filter with a client-side `visibleIn` — that is a mockup convenience and must not
+be reproduced. If a Reader's response contains something the UI declines to
+render, the bug is in the backend, not the component.
 
 ---
 
@@ -846,6 +900,14 @@ activity by user (logins, active time, sessions, last seen); report readership
 username and IP; permission history with the actor of every change; comment
 throughput and where comments sit longest.
 
+**Failed logins are their own report, not a section of a user's page.** A failed
+attempt against a username that does not exist belongs to no user — and that is
+precisely the signal worth having, since someone trying `admin`, `root` and
+`manager` in turn produces nothing on any real account's history. Folding the
+report into per-user activity would lose exactly the rows that matter. It also
+remains the only detection surface there is: no rate limit and no lockout exist
+(§13, ARD §18).
+
 **`view_audit` follows content scope, not the supervisor tree** — unlike comment
 visibility (D37). Comments are private communications that were deliberately
 routed; audit is an operational record. An Admin scoped `*` therefore sees
@@ -956,6 +1018,17 @@ and the process data never diverged.
    payloads a Reader is entitled to still carry author and resolver names.
 8. **Content filter** — no denylisted field ever appears in any response to a
    non-editor, asserted over every endpoint, not only reports.
+8a. **Response-body scan (D56)** — the load-bearing one. For **each role**,
+    exercise every endpoint and assert that the serialised body contains **no
+    denylisted key, no out-of-scope id, no unconfirmed process id, and no
+    tombstoned process id — anywhere in the body, at any depth.** A scan rather
+    than per-field assertions, because the next leak will be in a field nobody
+    thought to assert on. Includes: no `pending` count or conflict badge data
+    reaches a non-editor; comment lists carry no author outside the caller's
+    subtree.
+8b. **404 versus 403 (D56)** — a resource outside the caller's scope returns
+    **404**; an action refused on a resource they can see returns **403**. Both
+    pinned, because the natural implementation returns 403 for both.
 9. **Comment routing** — disabled hops, all-disabled chains, rejection restart,
    freeze-on-first-approval, orphaned anchors after a simulated `restructure`.
 9a. **Anchors (D30)** — all four kinds round-trip through create → approve →
