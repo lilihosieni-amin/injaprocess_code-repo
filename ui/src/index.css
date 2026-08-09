@@ -1,27 +1,17 @@
+@import './styles/tokens.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-@layer base {
-  html { direction: rtl; scrollbar-color: #7A52D0 transparent; }
-  body { margin: 0; }
-  ::selection { background: #FA5A52; color: #fff; }
-  ::-webkit-scrollbar { width: 12px; height: 12px; }
-  ::-webkit-scrollbar-track { background: #F0E9FB; border-radius: 8px; }
-  ::-webkit-scrollbar-thumb { background: #7A52D0; border-radius: 8px; border: 2px solid transparent; background-clip: content-box; }
-  ::-webkit-scrollbar-thumb:hover { background: #4A25A9; }
-}
+@import './styles/base.css';
 
 @layer components {
-  .btn { @apply inline-flex items-center justify-center gap-2 rounded-xl font-bold cursor-pointer border-0; }
-  .btn-coral  { @apply bg-coral  text-white shadow-coral  hover:brightness-105; }
-  .btn-violet { @apply bg-violet text-white shadow-violet hover:brightness-110; }
-  .btn-green  { @apply bg-green  text-white shadow-green  hover:brightness-105; }
-  .btn-ghost  { @apply bg-white text-violet border-[1.5px] border-line hover:bg-[#F4EFFB]; }
-  .chip { @apply text-[12.5px] px-[10px] py-[4px] rounded-[7px] break-words min-w-0 max-w-full; }
-  .chip-input   { @apply chip text-[#1F6FB2] bg-[#E7F1FB]; }
-  .chip-control { @apply chip text-[#8A5A00] bg-[#FBF0DA]; }
-  .chip-output  { @apply chip text-[#1F8A5B] bg-[#E4F6EC]; }
-  .chip-mech    { @apply chip text-[#4A25A9] bg-[#F0E9FB]; }
-  .id-badge { @apply font-mono text-[11px] px-2 py-[2px] rounded-md; }
+  .id-badge {
+    font-family: var(--font-mono);
+    font-size: var(--fs-xxs);
+    padding-inline: var(--space-4);
+    padding-block: var(--space-1);
+    border-radius: var(--radius-badge);
+  }
 }

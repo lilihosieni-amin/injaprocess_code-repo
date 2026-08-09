@@ -1,0 +1,49 @@
+/* The ONLY file in src/ that may contain literal values.
+   The four imports are the frozen design-system token set; everything after
+   them is a deliberate reconciliation recorded in the frontend spec (F7, F8). */
+@import '../../design/_ds/inja-food-design-system-1ef55d80-2e17-482f-b420-9d004eaa22de/tokens/colors.css';
+@import '../../design/_ds/inja-food-design-system-1ef55d80-2e17-482f-b420-9d004eaa22de/tokens/spacing.css';
+@import '../../design/_ds/inja-food-design-system-1ef55d80-2e17-482f-b420-9d004eaa22de/tokens/typography.css';
+@import '../../design/_ds/inja-food-design-system-1ef55d80-2e17-482f-b420-9d004eaa22de/tokens/effects.css';
+
+:root {
+  /* F7 — the card shadow is the prototypes' two-layer neutral-dark, replacing
+     the violet-tinted value in effects.css. Not both: one card shadow. */
+  --shadow-card: 0 1px 2px rgba(16, 10, 40, .16), 0 14px 30px -16px rgba(16, 10, 40, .55);
+  --shadow-card-hover: 0 3px 6px rgba(16, 10, 40, .2), 0 26px 52px -22px rgba(16, 10, 40, .6);
+
+  /* F7 — the mono stack drops JetBrains Mono, which the prototypes name and
+     never load. */
+  --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+
+  /* F11 — the smallest interactive box. */
+  --size-touch: 44px;
+
+  /* F8 — semantic type roles. The shell overrides these; the panel scale is
+     the default so anything rendered outside a shell is still legible. */
+  --fs-role-body: var(--fs-body);
+  --fs-role-caption: var(--fs-sm2);
+  --fs-role-title: var(--fs-h2);
+  --fs-role-subtitle: var(--fs-lg);
+  --lh-role-body: var(--lh-snug);
+  --lh-role-prose: var(--lh-normal);
+}
+
+/* F8 — density is a property of the shell, never a prop a caller passes. */
+[data-shell='panel'] {
+  --fs-role-body: var(--fs-body);        /* 14px */
+  --fs-role-caption: var(--fs-sm2);      /* 12.5px */
+  --fs-role-title: var(--fs-h2);         /* 22px */
+  --fs-role-subtitle: var(--fs-lg);      /* 15px */
+  --lh-role-body: var(--lh-snug);        /* 1.6 */
+  --lh-role-prose: var(--lh-normal);     /* 1.7 */
+}
+
+[data-shell='reader'] {
+  --fs-role-body: var(--fs-lg);          /* 15px */
+  --fs-role-caption: var(--fs-sm);       /* 13px */
+  --fs-role-title: var(--fs-doc-title);  /* 27px */
+  --fs-role-subtitle: var(--fs-h5);      /* 16px */
+  --lh-role-body: var(--lh-loose);       /* 1.9 */
+  --lh-role-prose: var(--lh-looser);     /* 2.1 */
+}
