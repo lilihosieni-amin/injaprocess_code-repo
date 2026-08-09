@@ -12,6 +12,13 @@ export default {
         'tile-ok': 'var(--tile-ok)', 'tile-warn': 'var(--tile-warn)', 'tile-dead': 'var(--tile-dead)',
         'login-bg': 'var(--login-bg)', 'login-orb': 'var(--login-orb)',
         scrim: 'var(--scrim)',
+        warn: 'var(--warn)', info: 'var(--info)', 'tile-info': 'var(--tile-info)',
+        'icom-input': 'var(--icom-input-bg)', 'icom-control': 'var(--icom-control-bg)',
+        'icom-output': 'var(--icom-output-bg)', 'icom-mech': 'var(--icom-mech-bg)',
+      },
+      textColor: {
+        'icom-input': 'var(--icom-input-fg)', 'icom-control': 'var(--icom-control-fg)',
+        'icom-output': 'var(--icom-output-fg)', 'icom-mech': 'var(--icom-mech-fg)',
       },
       fontFamily: { sans: 'var(--font-sans)', mono: 'var(--font-mono)' },
       fontSize: {
