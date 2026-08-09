@@ -896,6 +896,15 @@ purpose**. Toggling `can_supervise` reshapes who is *eligible* to supervise —
 altering the org chart — without any user's supervisor field changing, so a
 single combined event would miss it entirely.
 
+**Not every event is written by an endpoint.** Three arrive by other routes, and
+each needs a writer that exists:
+
+| Event | Written by |
+|---|---|
+| `comment.addressed` | the `comments` CLI, via the outbox (D59) |
+| `process.edited` from a pipeline run or chat edit | git projection (D60) |
+| `confirmation.invalidated` | git projection (D60) — nothing else can notice it |
+
 ### D43 — Presence is active time, not time since sign-in
 
 Derived from the session row's `last_seen`, refreshed by a lightweight heartbeat
@@ -926,6 +935,76 @@ people's comments.
 Note who does *not* hold it: `view_audit` is an Admin and Editor capability, so a
 department head — a Reader (D11) — sees no activity report even for their own
 branch.
+
+### D59 — Events that cross the container boundary use an outbox
+
+`comments resolve` runs inside control-bot, which sees `comments.db` and never
+`app.db` (D5). Without a bridge it changes a comment's state and records nothing
+— so the loop D39 exists for, where the agent fixes a process and closes the
+comment, would leave no trace in the activity record and make NFR-14 false for
+the one path the system advertises most.
+
+**Mechanism.** An append-only `outbox` table inside `comments.db` — the one file
+both containers share. The CLI appends; `ui-backend` drains into the activity
+record. The agent still never touches `app.db`, so D5 holds exactly.
+
+Four rules decide whether it actually holds:
+
+1. **The drain stamps the actor. It never reads one from the payload.** The
+   outbox sits in a file the agent can write by other means — that is D5's own
+   argument about `python -c "import sqlite3"`. A trusted `actor` field would let
+   a confused or hostile agent write audit rows in the Editor's name, which is
+   worse than the gap being fixed. The row carries kind, target and payload;
+   `ui-backend` assigns `actor = agent:control-bot` unconditionally.
+2. **Replay is a no-op.** Two SQLite files means insert-into-`app.db` and
+   mark-drained-in-`comments.db` cannot be one transaction, so a crash between
+   them re-drains. The outbox row's monotonic id is carried into the activity row
+   as a unique key.
+3. **The event keeps its own timestamp.** The drained row uses the outbox row's
+   `at`, not the drain time — otherwise the record shows a comment resolved at
+   whatever moment someone next opened the UI.
+4. **Drained on a timer and before any activity-report query**, so a report never
+   reads a stale record.
+
+**The tempting wrong answer** is to move the activity table into `comments.db`,
+since both containers see it. That destroys D5: the point of two files is that
+the record is unreachable from the runtime. The outbox is right because it moves
+*data the agent is allowed to write* across the boundary, never write access to
+the record.
+
+Its only consumer is `comment.addressed`, plus any future comment action the CLI
+grows. Content events do not use it — see D60.
+
+### D60 — Content events are projected from git, not emitted by the engine
+
+`process.edited` is emitted by `ui-backend` on save, but a pipeline `merge` run
+or a chat edit changes content with `ui-backend` uninvolved. Git records those
+(ARD §15's three write paths, each with a distinct author and message), so NFR-7
+holds — but FR-L1 lists edits among what the activity record carries, and the
+record would be empty for every change the analyst makes through Telegram.
+
+**Routing `merge` through the outbox is the wrong fix.** `merge` is a
+deterministic engine CLI governed by INV-1 and INV-2, used by the pipeline, by
+chat edits and indirectly by the UI. Giving it a dependency on `comments.db`
+couples the data engine to the comment system for a reason that has nothing to do
+with either.
+
+Instead, `ui-backend` **projects** content events from the record that already
+exists: it walks `git log` in `data-repo` from its last recorded sha, and emits
+one event per commit touching `departments/**`. The actor comes from the commit —
+`ui-edit` commits carry the acting user in their trailer (§15), `pipeline(…)` and
+`chat-edit(…)` commits map to the run. The timestamp is the commit's. Idempotency
+is the stored sha marker. Git stays the authoritative record of *what* changed;
+the activity record gains *that it changed, by whom, when*.
+
+**This is also the only writer of `confirmation.invalidated`.** Nothing
+"invalidates" a confirmation under D20 — the fingerprint simply stops matching,
+and no code path notices. Since a commit touching a process is exactly what stops
+it matching, the projection pass checks each touched process against its stored
+confirmation and emits the event once, marking the confirmation row stale so it
+cannot re-emit. Without this the event in D42 is unwritable, and the *"which
+flowcharts went dark and were never re-confirmed"* report (§13) has nothing to
+read.
 
 ### D45 — Rows cannot be deleted through the UI
 
@@ -1049,8 +1128,25 @@ and the process data never diverged.
     freeze-on-first-approval, orphaned anchors after a simulated `restructure`.
 15. **Fingerprints** — what does and does not invalidate a confirmation; position
     changes must invalidate (D21).
-16. **Audit completeness** — every state-changing endpoint emits an event, with
+16. **Audit completeness** — every state-changing **path, endpoint or CLI**,
+    emits an event. Endpoints and CLIs both, because the original phrasing said
+    "endpoint" and `comments resolve` is not one, which is exactly how
+    `comment.addressed` came to be unwritable. Named explicitly: **`comments
+    resolve` produces a `comment.addressed` row in the activity record.** Plus
     `supervisor.changed` and `supervisor_flag.changed` asserted separately.
+16a. **The outbox preserves D5 (D59)** — three assertions, the last being the one
+    that matters:
+    - the drain is **idempotent**: replaying an undrained batch after a simulated
+      crash produces no duplicate activity rows;
+    - the drained event carries the **outbox row's timestamp**, not the drain
+      time;
+    - **an `actor` supplied in an outbox payload is ignored** and the row is
+      recorded as `agent:control-bot`. If this test can be made to fail, the
+      runtime can write audit rows in the Editor's name and D5 is decorative.
+16b. **Git projection (D60)** — a pipeline `merge` run and a chat edit each
+    produce a content event with the actor taken from the commit; re-running the
+    projection emits nothing further; and a commit touching a confirmed process
+    emits exactly one `confirmation.invalidated`, not one per projection pass.
 17. **Route ordering** — the existing test pinning that the SPA catch-all mount
     cannot swallow API routes extends to every new prefix.
 
