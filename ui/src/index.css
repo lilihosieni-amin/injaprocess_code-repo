@@ -1,17 +1,64 @@
 @import './styles/tokens.css';
+@import './styles/base.css';
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-@import './styles/base.css';
 
 @layer components {
   .id-badge {
     font-family: var(--font-mono);
     font-size: var(--fs-xxs);
     padding-inline: var(--space-4);
-    padding-block: var(--space-1);
+    padding-block: var(--space-half);
     border-radius: var(--radius-badge);
+  }
+
+  /* Compatibility layer: call sites that still use these as raw class strings.
+     Button.tsx and Chip.tsx no longer need them — the components carry their own
+     styling — but these consumers do, and each is removed by the plan that
+     rebuilds it:
+       src/shell/BackButton.tsx, src/shell/TopBar.tsx  — Task 11 of this plan
+       src/write/ExportModal.tsx                        — a later plan (P2)
+     Delete a rule only when its last consumer is gone. */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl font-bold cursor-pointer border-0;
+  }
+  .btn-coral {
+    @apply bg-coral text-card shadow-coral hover:brightness-105;
+  }
+  .btn-violet {
+    @apply bg-violet text-card shadow-violet hover:brightness-110;
+  }
+  .btn-green {
+    @apply bg-green text-card shadow-green hover:brightness-105;
+  }
+  .btn-ghost {
+    @apply bg-card text-violet hover:bg-tile-v2;
+    border: 1.5px solid var(--line);
+  }
+
+  .chip {
+    @apply break-words min-w-0 max-w-full;
+    font-size: var(--fs-sm2);
+    padding-block: var(--space-1);
+    padding-inline: var(--space-5);
+    border-radius: var(--radius-chip);
+  }
+  .chip-input {
+    color: var(--icom-input-fg);
+    background: var(--icom-input-bg);
+  }
+  .chip-control {
+    color: var(--icom-control-fg);
+    background: var(--icom-control-bg);
+  }
+  .chip-output {
+    color: var(--icom-output-fg);
+    background: var(--icom-output-bg);
+  }
+  .chip-mech {
+    color: var(--icom-mech-fg);
+    background: var(--icom-mech-bg);
   }
 }

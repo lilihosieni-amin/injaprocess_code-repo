@@ -54,4 +54,24 @@ describe('F6 — tokens are the only source of values', () => {
     )
     expect(hits.map((h) => `${h.rel}:${h.n} ${h.line.trim()}`)).toEqual([])
   })
+
+  it('is actually scanning files, not vacuously passing over an empty list', () => {
+    // Both assertions above compare a derived list to `[]`, so a scan that
+    // finds nothing "passes" for the wrong reason — e.g. if PENDING_REBUILD
+    // ever grew a line broad enough to exclude everything (even 'src/' itself)
+    // the two tests above would go green while policing zero files. This test
+    // has no such blind spot: it asserts the scan is over a real, sizeable set
+    // that includes a file none of the PENDING_REBUILD entries can exclude.
+    const scanned = files()
+    expect(
+      scanned.length,
+      `files() returned only ${scanned.length} entries — the guard above would pass ` +
+        `vacuously with a list this small. Check PENDING_REBUILD hasn't grown broad ` +
+        `enough to exclude nearly everything under src/.`,
+    ).toBeGreaterThan(15)
+    expect(
+      scanned.map((f) => f.rel),
+      "files() did not include src/ui/Button.tsx — the scan isn't looking at the files it should be.",
+    ).toContain('src/ui/Button.tsx')
+  })
 })

@@ -17,7 +17,7 @@ export function installReactFlowMocks() {
   ;(globalThis as unknown as { ResizeObserver: unknown }).ResizeObserver = RO
   ;(globalThis as unknown as { DOMMatrixReadOnly: unknown }).DOMMatrixReadOnly = class {
     m22 = 1
-    constructor(_t?: string) {}
+    constructor() {}
   }
   if (!HTMLElement.prototype.getBoundingClientRect.toString().includes('mock')) {
     HTMLElement.prototype.getBoundingClientRect = function mock() {

@@ -15,7 +15,6 @@
   :focus-visible {
     outline: 3px solid var(--coral);
     outline-offset: 2px;
-    border-radius: var(--radius-sm);
   }
 
   ::-webkit-scrollbar { width: 12px; height: 12px; }

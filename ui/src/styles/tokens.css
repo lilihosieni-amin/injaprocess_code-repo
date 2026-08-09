@@ -12,9 +12,8 @@
   --shadow-card: 0 1px 2px rgba(16, 10, 40, .16), 0 14px 30px -16px rgba(16, 10, 40, .55);
   --shadow-card-hover: 0 3px 6px rgba(16, 10, 40, .2), 0 26px 52px -22px rgba(16, 10, 40, .6);
 
-  /* F7 — the mono stack drops JetBrains Mono, which the prototypes name and
-     never load. */
-  --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  /* spacing — a reconciliation the frozen scale in spacing.css doesn't cover. */
+  --space-half: 2px; /* the id badge's original vertical padding, half of --space-1 */
 
   /* F11 — the smallest interactive box. */
   --size-touch: 44px;

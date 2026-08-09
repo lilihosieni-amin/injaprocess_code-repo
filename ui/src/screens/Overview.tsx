@@ -208,7 +208,12 @@ export function Overview() {
   function addKpi(i: number) { patchKpi(i, (kpi) => [...kpi, '']) }
   function removeKpi(i: number, j: number) { patchKpi(i, (kpi) => kpi.filter((_, m) => m !== j)) }
   function toggleRole(i: number) {
-    setOpenRoles((s) => { const next = new Set(s); next.has(i) ? next.delete(i) : next.add(i); return next })
+    setOpenRoles((s) => {
+      const next = new Set(s)
+      if (next.has(i)) next.delete(i)
+      else next.add(i)
+      return next
+    })
   }
 }
 
