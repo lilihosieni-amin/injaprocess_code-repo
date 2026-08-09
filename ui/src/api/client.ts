@@ -26,7 +26,12 @@ export async function fetchJson<T>(path: string, init?: RequestInit): Promise<T>
     headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
   })
   if (!res.ok) {
-    if (res.status === 401) unauthorizedHandler()
+    // FIX 2 — the backend also answers 401 for a wrong password on the login
+    // endpoint itself (ui-backend/inja_ui_backend/auth.py); that is "those
+    // credentials are wrong," not "your session ended," so it must not fire the
+    // same redirect a stale session would. Everywhere else, 401 only ever means
+    // the latter.
+    if (res.status === 401 && path !== '/api/auth/login') unauthorizedHandler()
     let detail = res.statusText
     try {
       const body = await res.json()

@@ -18,11 +18,17 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     setItems((xs) => [...xs, { id: Date.now() + Math.random(), message, tone }])
   }, [])
 
+  // FIX 1 — keyed on the head item's id, not the array itself: a later push
+  // changes `items` but not `items[0]`, so it must not restart the dwell timer
+  // already running for the toast on screen. Depending on the whole array made
+  // every push in a stream re-arm the same 2.6s timer, so nothing ever dismissed.
+  const headId = items[0]?.id
+
   useEffect(() => {
-    if (items.length === 0) return
+    if (headId === undefined) return
     const t = setTimeout(() => setItems((xs) => xs.slice(1)), 2600)
     return () => clearTimeout(t)
-  }, [items])
+  }, [headId])
 
   return (
     <Ctx.Provider value={push}>

@@ -5,9 +5,10 @@ import { LoadingState, EmptyState, ErrorState, DeniedState, NotFoundState } from
 
 describe('states', () => {
   it('LoadingState announces itself and renders skeleton rows', () => {
-    render(<LoadingState rows={3} />)
+    // FIX 6 — 5, not the default of 3, so a hardcoded `{ length: 3 }` can't pass.
+    render(<LoadingState rows={5} />)
     expect(screen.getByRole('status')).toHaveAttribute('aria-busy', 'true')
-    expect(screen.getAllByTestId('skeleton-row')).toHaveLength(3)
+    expect(screen.getAllByTestId('skeleton-row')).toHaveLength(5)
   })
 
   it('EmptyState states what is not there', () => {
@@ -21,7 +22,9 @@ describe('states', () => {
     render(<ErrorState message="اطلاعات بارگذاری نشد." onRetry={onRetry} />)
     await userEvent.click(screen.getByRole('button', { name: 'تلاش دوباره' }))
     expect(onRetry).toHaveBeenCalledOnce()
-    expect(screen.queryByText(/50\d|40\d/)).not.toBeInTheDocument()
+    // FIX 3 — ASCII-only would pass «کد ۵۰۳», in an app whose whole Task 8 was
+    // Persian digit normalisation. Match either digit set.
+    expect(screen.queryByText(/[0-9۰-۹]{3}/)).not.toBeInTheDocument()
   })
 
   it('DeniedState names the action refused', () => {
@@ -34,7 +37,10 @@ describe('states', () => {
     // which is the whole reason D56 answers 404 instead of 403.
     render(<NotFoundState />)
     expect(screen.getByText('چیزی اینجا نیست')).toBeInTheDocument()
+    // FIX 4 — widened past the original four words: the reviewer's mutation
+    // «شاید این مورد وجود داشته باشد ولی برای شما قابل مشاهده نیست» passed the
+    // old list untouched. Checked against the whole rendered text.
     const text = document.body.textContent ?? ''
-    expect(text).not.toMatch(/دسترسی|مدیر|اجازه|محدود/)
+    expect(text).not.toMatch(/دسترسی|مدیر|اجازه|محدود|وجود|قابل مشاهده|سرپرست/)
   })
 })

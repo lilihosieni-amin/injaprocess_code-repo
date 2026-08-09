@@ -37,7 +37,7 @@ describe('fetchJson', () => {
   })
 })
 
-afterEach(() => onUnauthorized(() => {}))
+afterEach(() => { onUnauthorized(() => {}); vi.unstubAllGlobals() })
 
 function mockFetch(status: number, body: unknown = {}) {
   vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(body), {
@@ -75,5 +75,24 @@ describe('fetchJson', () => {
     mockFetch(404, { detail: 'not found' })
     await expect(fetchJson('/api/x')).rejects.toBeInstanceOf(ApiError)
     expect(handler).not.toHaveBeenCalled()
+  })
+
+  it('does not call the unauthorized handler on a 401 from the login endpoint', async () => {
+    // FIX 2 — the backend answers 401 for a wrong password on /api/auth/login
+    // itself; that must surface inline as "wrong password," not fire the
+    // session-expiry redirect.
+    const handler = vi.fn()
+    onUnauthorized(handler)
+    mockFetch(401, { detail: 'invalid credentials' })
+    await expect(fetchJson('/api/auth/login')).rejects.toBeInstanceOf(ApiError)
+    expect(handler).not.toHaveBeenCalled()
+  })
+
+  it('still calls the unauthorized handler on a 401 from any other path', async () => {
+    const handler = vi.fn()
+    onUnauthorized(handler)
+    mockFetch(401, { detail: 'authentication required' })
+    await expect(fetchJson('/api/processes')).rejects.toBeInstanceOf(ApiError)
+    expect(handler).toHaveBeenCalledOnce()
   })
 })
