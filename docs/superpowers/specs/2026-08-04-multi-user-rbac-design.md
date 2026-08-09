@@ -4,7 +4,7 @@
 |---|---|
 | **Date** | 2026-08-04 |
 | **Status** | Approved. `PRD.md` v0.6 and `ARD.md` v0.4 state the same rules. |
-| **Supersedes** | PRD §4's multi-user non-goal, NFR-11, FR-E4, FR-E8; `2026-07-26-department-export-design.md` D25–D31 |
+| **Supersedes** | PRD §4's multi-user non-goal, NFR-11, FR-E8; `2026-07-26-department-export-design.md` D25–D31 |
 | **Companion specs** | `2026-08-05-frontend-system-design.md` — tokens, shells, components, states |
 
 ---
@@ -106,8 +106,8 @@ The split also keeps the high-frequency activity writer out of the one file with
 two cross-container writers.
 
 **Accepted consequence:** in-flight and rejected comments live in `comments.db`,
-which *is* mounted into the bot container. The CLI returns approved comments only
-(D39), but that filter is a convention. The worst realistic case is a confused
+which *is* mounted into the bot container. The CLI returns only `approved` and
+`addressed` comments (D39), but that filter is a convention. The worst realistic case is a confused
 agent surfacing a draft to an editor — who sits at the top of every chain and is
 the authorised destination for approved comments anyway.
 
@@ -137,6 +137,23 @@ The cookie carries an opaque session id and nothing else.
 A signed blob carrying the username cannot be revoked, cannot answer "who is in
 the system now", and cannot measure presence. Disabling a user or changing their
 permissions takes effect on their next request.
+
+**Lifetime is absolute, not sliding: 24 hours from `issued_at`** (the existing
+`SESSION_TTL` default). Sliding expiry keyed on `last_seen` would mean a session
+with an open tab never ends, and the heartbeat of D43 runs while a *tab* is open,
+not while a person is present — so sliding would make "signed in" unbounded for
+anyone who leaves the app open on a back-office screen.
+
+**Changing a password revokes every other session of that user**, and an
+administrator setting someone's password (D15) revokes **all** of theirs. Without
+this, *"we think this account is compromised, change the password"* accomplishes
+nothing, since the attacker's session outlives the credential it came from.
+
+**`ip` is the client address, not the proxy's.** Caddy sits in front of
+`ui-backend` (ARD §16), so the recorded value comes from `X-Forwarded-For` with
+the proxy trusted. Recorded naively, every row in the failed-sign-in report —
+D44's *"only detection surface there is"* — reads `172.18.0.1` and the report is
+worthless.
 
 ### D8 — Both SQLite files need a backup path
 
@@ -192,8 +209,14 @@ screen, and no endpoint that writes the role table.
 A role can never be deleted, because every user holds exactly one and a deleted
 role would leave them with no capability set at all.
 
-Adding a fourth role — **Reader (no download)** = `view` + `comment` is the
-likely first — is a change to the seed and a deploy, not a form someone fills in.
+**Four roles are seeded**, not three: Reader, Admin, Editor, and **Reader (no
+download)** = `view` + `comment`. The fourth exists from day one because FR-E7
+promises the ability to download *"may be withheld from a person who may still
+read"*, and with no per-user overrides (D12) a role is the only way to express
+it. A promise that requires a deploy before it can be kept is not kept.
+
+Any further role is a change to the seed and a deploy, not a form someone fills
+in.
 
 **`delegable: false` stays on `edit`, `confirm` and `set_visibility`** even
 though no API path creates roles at all, so the guard cannot be lost if role
@@ -264,8 +287,11 @@ the deployment.
 **The Editor holds `comment` and is offered no composer.** The roles are strictly
 nested — Reader ⊂ Admin ⊂ Editor — and D13 requires a created user's capability
 set to be a subset of the creator's. `comment` is in Reader and Admin, so an
-Editor without it would satisfy `Reader ⊄ Editor` and **could no longer create
-any user at all**. It is meaningless rather than forbidden anyway: routing (D34)
+Editor without it would satisfy `Reader ⊄ Editor` and `Admin ⊄ Editor` — and
+**could no longer create a Reader or an Admin**, which is every user the system
+actually has. (It could still create Editors, by `manage_peers` equality, which
+makes the failure worse rather than better: the only account it could mint would
+be another full Editor.) It is meaningless rather than forbidden anyway: routing (D34)
 climbs to the first holder of `edit`, so an Editor's own comment would be
 approved on creation and land in their own inbox. **No composer is offered to any
 holder of `edit`** — a UI rule derived from the routing rule, not a permission,
@@ -385,6 +411,19 @@ Disabling does not cascade, and the disabled user's own in-flight comments
 continue up the chain — a valid complaint does not become invalid because the
 person who raised it left.
 
+**Re-enabling exists and is bound by the same two checks as any modification
+(D13).** Both verbs change a user's access, so an Admin can neither disable nor
+re-enable an Editor — otherwise an Admin could restore capabilities they do not
+hold, which is precisely the escalation D13 exists to prevent. Re-enabling
+restores the account and nothing else: sessions revoked at disable stay revoked,
+and the supervisor edge is whatever it was.
+
+**At least one active Editor must always exist**, for the same reason D53 pins at
+least one active `*` holder — and it needs its own guard, because D53 does not
+imply it. An Admin scoped `*` satisfies D53 while the system has no `edit`,
+`confirm` or `set_visibility` at all, and D50 makes the seed the only way back.
+Disabling or re-roling the last Editor is therefore refused.
+
 ### D15 — Credentials and password setting
 
 Usernames and passwords are created in-system by whoever creates the user.
@@ -433,7 +472,7 @@ Eligible = **active**, **and** their scope covers the new user's scope, **and**
 |---|---|
 | `dept:dining` | `can_supervise` users on dining, plus all `*` holders |
 | `dept:dining/report:steps` | same |
-| `dept:dining` + `dept:cashier` | `*` holders only — nobody else covers both |
+| `dept:dining` + `dept:cashier` | anyone whose scopes cover **both** — in the current deployment that is `*` holders only, but a `can_supervise` user holding both departments qualifies by the same rule |
 | `*` | `*` holders only |
 
 Default to the creator when eligible. Reject self, disabled users, anyone whose
@@ -603,11 +642,51 @@ would leave the mark vouching for something stale, the exact failure the mark
 exists to prevent. A fingerprint self-invalidates for every path, including paths
 added later, with no change to `merge` and no field on `process.json`.
 
-### D21 — The fingerprint is the whole document minus `updated_at`
+### D61 — Confirming and un-confirming are both actions
 
-Node positions count, so moving a node or running the re-layout un-confirms the
-process: the diagram's appearance is part of the document. Nothing to enumerate,
-nothing to argue about later.
+The `confirm` capability permits **setting** a confirmation and **withdrawing**
+one. Withdrawing is deliberate and emits `confirmation.revoked`; it is not the
+same as `confirmation.invalidated`, which is what happens when content changes
+and the fingerprint stops matching (D60). Same visible outcome, different fact,
+and the record must be able to tell them apart — *"the editor decided this was
+wrong"* and *"a pipeline run touched it"* are not the same event.
+
+Both apply to either target: a process id or a department code. The events are
+therefore `confirmation.set` and `confirmation.revoked`, each naming its target
+— **not** `process.confirmed`, which cannot describe confirming a department
+overview (D20, D55).
+
+### D21 — The fingerprint is a canonical form of what a reader can see
+
+The fingerprint is a SHA-256 over the **canonical JSON serialisation** of the
+process document — keys sorted, no insignificant whitespace, `ensure_ascii=false`
+with Persian text NFC-normalised — with four fields excluded:
+
+```
+updated_at · source (including touched_by) · pending · tombstoned
+```
+
+Node positions **count**, so moving a node or running the re-layout un-confirms
+the process: the diagram's appearance is part of the document.
+
+**Why canonical rather than raw bytes.** Two writers produce these files —
+`ui-backend`'s `storage.py` and the `merge` CLI in `engine/` — and any difference
+in indent, key order or float formatting would silently un-confirm every process
+the pipeline touches. Hashing bytes would make the confirmation depend on which
+program last wrote the file.
+
+**Why those four exclusions, and not "everything but `updated_at`".** The line is
+principled rather than arbitrary: **the fingerprint covers exactly what a
+non-editor can see** (D17's never-shown list is the same four). Without it:
+
+- ARD §5.3 adds a record to `source.touched_by` for processes a run decided were
+  **unchanged**, so every pipeline run would un-confirm the entire department
+  including the processes it deliberately left alone;
+- accepting or rejecting a `pending` conflict would un-confirm a flowchart
+  without changing one visible byte of it.
+
+Both would be invisible to whoever was surprised by them. A confirmation vouches
+for what a reader sees, so it is invalidated by changes a reader could notice.
 
 ### D22 — Unconfirmed content is invisible to non-editors
 
@@ -658,12 +737,25 @@ Retained from that design, because none of it was about the credential:
   and failed sign-ins are logged with the username `%r`-quoted so a newline
   cannot forge a log line.
 
-### D25 — Downloads are a permission
+### D25 — Reading and downloading are different responses
 
-`export_pdf` produces the PDF and the standalone single-file HTML, both of which
-already exist and are tested. FR-E3 (opens with no server), FR-E5 (printable,
-nothing cut across a page boundary) and FR-E9 (a downloaded copy opens forever)
-remain true of the downloaded artifact.
+**Reading** a report renders it in the application from a JSON payload, using the
+same components as the download (D29 — one renderer, `parity.test.tsx`). It is
+authorised by `view`.
+
+**Downloading** returns the built single-file artifact — PDF or standalone HTML.
+It is authorised by `export_pdf`.
+
+They must not be the same response. The single-file build inlines the entire
+department's data into one document (ARD §13.3), so serving it on the *read* path
+hands a reader without `export_pdf` the complete artifact and a Ctrl-S — making
+FR-E7's *"the ability to download may be withheld from a person who may still
+read"* decorative, and passing every test that checks status codes rather than
+bytes.
+
+FR-E3 (opens with no server), FR-E5 (printable, nothing cut across a page
+boundary) and FR-E9 (a downloaded copy opens forever) remain true of the
+downloaded artifact.
 
 ### D26 — Reports come from a backend registry
 
@@ -676,14 +768,38 @@ automatically.
 ### D27 — Generated artifacts are a fingerprint-keyed cache
 
 ```
-EXPORT_DIR/{dept}/{kind}-{fingerprint}.html
-EXPORT_DIR/{dept}/{kind}-{fingerprint}.pdf
+EXPORT_DIR/{dept}/{kind}-{key}.html
+EXPORT_DIR/{dept}/{kind}-{key}.pdf
 ```
 
-Keyed by the content fingerprint of the report's input (D20), so a render happens
-once per version and is reused until content changes. A chromium render takes
-tens of seconds and is serialised process-wide by a module lock; without the
-cache, ten simultaneous downloads is a ten-minute queue.
+A render happens once per version and is reused until something in the key
+changes. A chromium render takes tens of seconds and is serialised process-wide
+by a module lock; without the cache, ten simultaneous downloads is a ten-minute
+queue.
+
+**The key is not just the content.** It is a digest over three things:
+
+1. the fingerprints (D21) of every **confirmed** process in the department, **in
+   curated order** — order is part of the key because `order.json` is the
+   document's table of contents and a reorder changes what the reader receives,
+   while changing no process;
+2. the department overview's fingerprint;
+3. **the version of the content-visibility policy** (D16).
+
+The third is not optional. The payload is built by the visibility filter (D18),
+so an Editor switching off "node actor" must change what every cached artifact
+contains. Keyed on content alone, every already-rendered report keeps serving the
+actor field and AC-21's *"hides it from every non-editor at once"* is false — a
+cache that survives a policy change is a content leak, not a stale page.
+
+**The artifact is the same for every caller.** Reports render the non-editor view
+(D17 defaults plus the policy), never a per-caller variant, so one cached file is
+correct for everyone permitted to have it. Permission decides *whether* it is
+served (D56), never *what* it contains.
+
+Stale entries are pruned on write: after a successful render, sibling files for
+the same `{dept}/{kind}` with a different key are removed, so the directory holds
+one version per department and kind.
 
 `EXPORT_DIR` is a Docker volume outside `data-repo` — build artifacts must not
 appear in the working tree the control-bot agent operates in (INV-6). Being a
@@ -720,7 +836,7 @@ component. That guarantee extends to every surface a flowchart appears on.
 prose written by someone who is not editing, and making them first choose which
 field they mean is friction that buys nothing — an editor reading *"this step
 names the wrong person"* can see which part it is about. It also keeps the anchor
-set closed, so every comment points at something with a durable id (D31). The
+set closed, so every comment points at something with an id. The
 node is the finest durably addressable unit in the data model anyway: node ids
 embed their process id, are never reused, and are globally unique.
 
@@ -789,6 +905,24 @@ Nothing is hard-deleted. `withdrawn` and `rejected` are states, not row removals
 — INV-4's doctrine, and necessary because a supervisor rejecting a complaint must
 leave a trace.
 
+**Drafts are not persisted.** A comment exists when it is submitted;
+`comment.created` fires then. `draft` is the composer's local state, so there is
+no half-written text sitting in the database and no separate submit event.
+
+**The ordinary limits**, so two implementations do not differ:
+
+- Comment text is **capped at 2,000 characters** and must be non-empty after
+  trimming. It travels into a Telegram message via `comments show` and into an
+  approval trail; unbounded prose serves nobody.
+- An author may hold **one open comment per anchor** — a second attempt on a step
+  they already have an `awaiting` comment on is refused, pointing at the existing
+  one. Ten identical comments on the same node cost the editor, not the author.
+- **A rejection reason is required** and non-empty; an amendment's text is
+  required too.
+- **Amendments do not chain.** A second amender replaces the first amendment, and
+  the trail records both acts. The author's original is never touched by either —
+  that is the invariant D35 protects, and it holds however many hops amend.
+
 ### D34 — Routing climbs the supervisor tree
 
 A comment moves from the author up the supervisor edges. It becomes `approved`
@@ -800,6 +934,31 @@ Disabled users are skipped and the trail records *"hop skipped — supervisor
 disabled"*. Comments already sitting with a disabled user move up automatically.
 If every hop above is disabled the comment reaches the editors: a comment nobody
 can approve is better delivered than stuck.
+
+**The next hop is computed at each hop, from the tree as it stands.** The comment
+stores only its *current* approver, never a precomputed route. So a supervisor
+reassigned mid-chain takes effect from the next approval onward, and the trail
+records where the comment actually went rather than where it was once expected
+to. Approvals already given are never re-attributed — they are snapshots (D31),
+and the person who approved a comment approved it whatever the org chart does
+afterwards.
+
+Two consequences of computing live:
+
+- **Approval is strictly sequential.** Only the named current approver may act,
+  even though supervisors further up can see the comment at any stage (D37). A
+  skip-level approval would leave a hop with no record of a decision it was
+  supposed to make.
+- **Routing is cycle-safe.** D52 rejects a cycle at assignment, but two
+  independent edits can still create one (A→B checked before B→C existed, then
+  C→A). Routing therefore tracks the hops it has visited and, on revisiting one,
+  delivers to the editors and records *"chain broken — cycle"*. It never loops.
+
+**An author who has lost sight of their comment still gets its outcome.** D37
+says a report reader who loses a department stops seeing their in-flight comment;
+the resolution or rejection notice (D38) is still delivered to them, because a
+decision about something you said is owed to you regardless of what you can
+currently browse.
 
 ### D35 — Approve, reject, or amend and approve
 
@@ -891,8 +1050,20 @@ Columns: `at`, `actor`, `session`, `action`, `target`, `ip`, `user_agent`,
 `session.revoked`, `password.changed`, `access.denied`.
 
 **Content** — `department.viewed`, `process.viewed`, `report.viewed`,
-`report.downloaded` (with format), `process.edited`, `process.confirmed`,
+`report.downloaded` (with format), `process.edited`, `confirmation.set`,
 `confirmation.revoked`, `confirmation.invalidated`.
+
+The three confirmation events each name their target, which may be a process id
+**or** a department code (D20, D61). There is no `process.confirmed`: it could
+not describe confirming a department overview, which is equally confirmable and
+equally invisible until it is.
+
+**View events are emitted on navigation and deduplicated per session per target
+within 30 minutes.** The SPA uses TanStack Query, which refetches on window focus
+and on remount, so an event per fetch would make D44's *"how often"* a measure of
+tab-switching. A reader who opens the dining steps guide, alt-tabs six times and
+comes back has opened it once. Serving a report from the cache still counts as a
+view — the reader read it.
 
 **Governance** — `user.created`, `user.modified`, `user.disabled`,
 `user.enabled`, `password.set_by_admin`, `role.assigned`, `scope.granted`,
@@ -910,9 +1081,10 @@ Four of these are worth their own justification:
   essentially cannot occur in normal use, so it is near-zero volume and near-pure
   signal. **404s are deliberately not recorded** — they would bury the 403s.
 - **`confirmation.revoked` is not `confirmation.invalidated`.** The first is an
-  editor deliberately withdrawing a confirmation; the second is a fingerprint
-  ceasing to match because content changed (D60). Same visible outcome, entirely
-  different fact.
+  editor deliberately withdrawing a confirmation (D61); the second is a
+  fingerprint ceasing to match because content changed (D60). Same visible
+  outcome, entirely different fact — *"the editor decided this was wrong"* and
+  *"a pipeline run touched it"* must not arrive as the same row.
 - **`comment.amended` is not `comment.approved`.** Changing someone else's words
   on their behalf is a distinct act from endorsing them, and D35 keeps both texts
   precisely so it stays inspectable.
@@ -947,10 +1119,22 @@ each needs a writer that exists:
 
 ### D43 — Presence is active time, not time since sign-in
 
-Derived from the session row's `last_seen`, refreshed by a lightweight heartbeat
-while a tab is open, and accumulated as intervals of continuous activity with a
-timeout. Closing a laptop lid ends an interval rather than recording eight hours
-of presence. The reported figure is honest.
+Presence is accumulated into **activity intervals** — a small table of
+`(session, started_at, ended_at)` rows, because a single `last_seen` scalar
+cannot reconstruct past intervals and the reports need them.
+
+Concretely: **a heartbeat every 60 seconds while the tab is visible**, and an
+interval closes after **5 minutes** with no heartbeat and no request. Backdated
+to the last heartbeat, not to the moment the gap was noticed.
+
+**The heartbeat pauses when the tab is hidden.** This is the whole mechanism: a
+heartbeat that runs regardless of visibility would record a screen left open in a
+back office as eight hours of presence, which is exactly the dishonesty D43
+exists to prevent. Closing a laptop lid, switching tabs and walking away all stop
+it; returning starts a new interval.
+
+Interval rows are not audit events — one per user per working session, not one
+per minute — so this does not disturb D45's volume estimate.
 
 ### D44 — The reports
 
@@ -1011,8 +1195,9 @@ Four rules decide whether it actually holds:
 3. **The event keeps its own timestamp.** The drained row uses the outbox row's
    `at`, not the drain time — otherwise the record shows a comment resolved at
    whatever moment someone next opened the UI.
-4. **Drained on a timer and before any activity-report query**, so a report never
-   reads a stale record.
+4. **Drained every 30 seconds and before any activity-report query**, so a report
+   never reads a stale record and a comment closed by the agent shows as closed
+   within a minute.
 
 **The tempting wrong answer** is to move the activity table into `comments.db`,
 since both containers see it. That destroys D5: the point of two files is that
@@ -1038,12 +1223,43 @@ couples the data engine to the comment system for a reason that has nothing to d
 with either.
 
 Instead, `ui-backend` **projects** content events from the record that already
-exists: it walks `git log` in `data-repo` from its last recorded sha, and emits
-one event per commit touching `departments/**`. The actor comes from the commit —
-`ui-edit` commits carry the acting user in their trailer (§15), `pipeline(…)` and
-`chat-edit(…)` commits map to the run. The timestamp is the commit's. Idempotency
-is the stored sha marker. Git stays the authoritative record of *what* changed;
-the activity record gains *that it changed, by whom, when*.
+exists: it walks `git log` in `data-repo` from its last recorded sha and emits
+one event **per process touched per commit** — a commit rewriting twelve
+processes produces twelve rows, because the readership and edit reports count
+processes, not commits. The timestamp is the commit's. Git stays the
+authoritative record of *what* changed; the activity record gains *that it
+changed, by whom, when*.
+
+Four details, each of which an implementation gets wrong by default:
+
+- **The projection skips `ui-edit` commits.** Those were already recorded by the
+  endpoint that made them, with a real user attached; projecting them too would
+  double every UI save.
+- **The actor** for a `pipeline(…)` commit is `run:{department}/{stamp}`, and for
+  `chat-edit(…)` it is `agent:control-bot` — the same actor D59 stamps, since it
+  is the same agent. Neither is a person, and neither pretends to be.
+- **The marker is seeded at `HEAD` during migration.** Unseeded, the first run
+  would project months of existing history into the activity record, backdated,
+  as though it had been watching all along.
+- **The marker is a sha, and history is not always linear.** If the stored sha is
+  not an ancestor of `HEAD` — after a revert, a rebase or a force-push — the
+  projection does not guess: it records the discontinuity, re-seeds at `HEAD`,
+  and emits nothing for the gap. A wrong guess would either duplicate or silently
+  skip.
+
+**This is also the only writer of `confirmation.invalidated`.** Nothing
+"invalidates" a confirmation under D20 — the fingerprint simply stops matching,
+and no code path notices. Since a commit touching a process is exactly what stops
+it matching, the projection checks each touched process against its stored
+confirmation and emits the event once.
+
+**The event is a notification, not the state.** Whether something displays as
+confirmed is always the live fingerprint comparison of D20, never a flag. The
+projection records `emitted_for_sha` on the confirmation row purely so the same
+transition is not announced twice; if the change is later reverted and the
+fingerprint matches again, the confirmation **is valid again**, because it is
+still vouching for exactly the document it vouched for. A stale boolean would
+reintroduce the field D20 chose a fingerprint to avoid.
 
 **This is also the only writer of `confirmation.invalidated`.** Nothing
 "invalidates" a confirmation under D20 — the fingerprint simply stops matching,
@@ -1101,12 +1317,22 @@ Recorded as an NFR. Every screen is rebuilt regardless of design direction, sinc
 
 ## 10. Migration and rollout
 
-**Seeding.** The seed process creates the three preset roles — including
-`Editor`, which holds the three non-delegable capabilities and which **no API
-path can recreate** (D50) — and makes the current analyst an Editor scoped `*`.
-`ui-users.json` is read once for its remaining entries, each becoming a user that
-needs a role, a scope and a supervisor before it can sign in. Existing usernames
-must be replaced with mobile numbers (D57).
+**Seeding.** The seed process creates the four roles (D50) — including `Editor`,
+which holds the three non-delegable capabilities and which **no API path can
+recreate** — and creates **one** user: the analyst, as Editor scoped `*`, with a
+mobile number and password supplied to the seed as parameters.
+
+**`ui-users.json` is not migrated.** Its entries are bare names (`analyst`,
+`manager`) with argon2 hashes, and D57 admits no username that is not a mobile
+number. Inventing placeholder numbers would permanently occupy real numbers in a
+uniqueness space that spans disabled accounts, and carrying the old hashes would
+silently preserve credentials chosen under a different regime. Every other user
+is created through the UI, by a person, with a real number. There are two of
+them; this is a five-minute task, not a migration.
+
+This also avoids inventing a "provisioned but unusable" account state that the
+model does not have — `allows()` dereferences a role, and every user has exactly
+one.
 
 Because the seed is the only origin of `edit`, `confirm` and `set_visibility`, it
 is also the only recovery path if every Editor account is lost. That belongs in
@@ -1115,7 +1341,23 @@ is also the only recovery path if every Editor account is lost. That belongs in
 **Export readers.** The shared export credential is removed; anyone reading
 exports today needs an account.
 
-**Confirmation.** Nothing is confirmed at start (D23).
+**`EXPORT_DIR` is emptied at cutover.** Its current contents are
+`{kind}-{token}.html` where the token is an HMAC — hex strings of the same shape
+as the new cache keys, in the same directories. Left in place, a lookup written
+as *"find the `{kind}-*.html` in this folder"* — which is what today's code in
+that very file does — would serve a **pre-migration document**: built before
+confirmation existed, before the visibility filter existed, containing every
+unconfirmed process. It is a cache; emptying it costs one regeneration.
+
+**Confirmation.** Nothing is confirmed at start (D23) — no process and no
+department overview. On day one every report is therefore empty, and an empty
+report renders the empty state (F12) rather than 404: the reader is permitted to
+see the report, and there is genuinely nothing in it yet. The wording says
+nothing about *why* it is empty, which would be a derived signal about withheld
+content (D56).
+
+**The projection marker** is seeded at `HEAD` (D60), so no historical commit is
+projected into the activity record.
 
 **`data-repo` is untouched.** No schema change, no field added to `process.json`,
 no change to `merge`, `layout`, `order`, `validate` or `allocate-id`. The only
@@ -1137,16 +1379,28 @@ and the process data never diverged.
    by the same checks against the resulting user, and self-edit rejection with
    own-password change as the sole exception.
 3. **Supervisor candidate list (D52)** — one case per row of the eligibility
-   table, plus cycle rejection, disabled-user exclusion, and the multi-department
-   case resolving to `*` holders only.
-4. **`delegable: false` (D50)** — **no API path creates a role holding `edit`,
-   `confirm` or `set_visibility`**, asserted against every role-creating and
-   role-editing endpoint with the acting user an Editor. If an Editor can make
-   this test pass, the guarantee is gone.
+   table, plus cycle rejection and disabled-user exclusion. The multi-department
+   case asserts the **rule** — candidates are those whose scopes cover every one
+   of the new user's — not the deployment's incidental answer that only `*`
+   holders qualify; a `can_supervise` user holding both departments must appear.
+3a. **Disable, re-enable and the last Editor (D14)** — disabling revokes the
+   user's sessions immediately and does not cascade; an Admin can neither disable
+   nor re-enable an Editor; and disabling or re-roling the **last active Editor**
+   is refused, since D53's `*`-holder invariant does not imply one.
+4. **`delegable: false` (D50)** — asserted at the **data layer**, not against
+   endpoints: the role-writing function refuses a role containing `edit`,
+   `confirm` or `set_visibility` unless invoked by the seed. Testing it against
+   "every role-writing endpoint" would iterate an empty set (test 17) and pass
+   unconditionally. The point is that the guard survives someone later adding
+   such an endpoint.
 5. **The `*`-holder invariant (D53)** — no sequence of disable, scope-narrowing
    or role-change operations reduces the system to zero active `*`-scoped users.
 6. **Negative tests per capability per endpoint** — a role lacking the capability
-   gets 401/403, pinned in both directions.
+   is refused, pinned in both directions, with the **status taken from D56**:
+   403 for a refused action on a resource the caller can see, 404 for anything
+   out of scope. Not "401/403" — 401 is the unauthenticated case and belongs to
+   neither, and an alternation here invites exactly the confusion test 10 exists
+   to prevent.
 7. **A Reader is served no user-administration surface (D54)** — user list, user
    detail and supervisor-picker endpoints all refuse, while comment payloads a
    Reader is entitled to still carry author and resolver names.
@@ -1157,8 +1411,16 @@ and the process data never diverged.
    denylisted key, no out-of-scope id, no unconfirmed process id, and no
    tombstoned process id — anywhere in the body, at any depth.** A scan rather
    than per-field assertions, because the next leak will be in a field nobody
-   thought to assert on. Includes: no `pending` count reaches a non-editor;
-   comment lists carry no author outside the caller's subtree.
+   thought to assert on. Includes: no `pending` count reaches a non-editor.
+
+   **One exemption, and it is deliberate: comment anchor snapshots (D31).** A
+   comment legitimately carries the id and label of a process that has since been
+   tombstoned — that is the entire point of the snapshot, and D31's worked
+   example is *"refers to a process since replaced by cashier-028"*. It may also
+   carry an id outside the reader's scope, since a supervisor sees comments from
+   a subtree whose members may hold scopes they do not. The scan therefore
+   exempts the snapshot fields specifically, and asserts the exemption is narrow:
+   the snapshot carries the recorded name and id and never live content.
 10. **404 versus 403 (D56)** — a resource outside scope returns **404**; a
     refused action on a visible resource returns **403**. Both pinned, because
     the natural implementation returns 403 for both.
@@ -1211,6 +1473,42 @@ and the process data never diverged.
     this is what makes the capability table a fixed artefact.
 18. **Route ordering** — the existing test pinning that the SPA catch-all mount
     cannot swallow API routes extends to every new prefix.
+19. **The activity record is append-only (D45, NFR-14)** — no endpoint deletes or
+    alters a row, asserted with the acting user an **Editor**. D45 calls itself
+    *"the only thing that makes the record mean anything"* and had no test; this
+    is the same shape as tests 4 and 17.
+20. **`app.db` is mounted only into `ui-backend` (D5)** — asserted against the
+    compose files, both stacks. Test 16a covers what the outbox does with an
+    actor; only this covers the boundary the outbox exists to preserve.
+21. **Password floor and session revocation (D58, D7)** — five characters are
+    refused, six accepted; changing a password revokes the user's other sessions;
+    an admin setting a password revokes all of that user's sessions.
+22. **The report cache key (D27)** — changing the visibility policy changes the
+    key, so a cached artifact is never served under a policy it was not built
+    under; reordering a department changes the key; confirming a process changes
+    it. The first of these is a content leak if it fails, not a stale page.
+23. **Reading is not downloading (D25)** — a role holding `view` without
+    `export_pdf` receives the rendered payload and **never the single-file
+    artifact's bytes**, asserted on the body rather than the status code.
+24. **Amendment retention (D35)** — the author's original text survives an
+    amendment, a second amendment replaces the first rather than chaining, and
+    both acts appear in the trail.
+25. **Comment limits (D33)** — 2,000-character cap, empty text refused, a second
+    open comment on the same anchor by the same author refused, rejection without
+    a reason refused.
+26. **Live routing (D34)** — reassigning a supervisor mid-chain sends the next
+    hop to the new one while approvals already given keep their original
+    attribution; a cycle created by two independent edits delivers to the editors
+    rather than looping.
+27. **Presence honesty (D43)** — a hidden tab stops accumulating; an interval
+    closes 5 minutes after the last heartbeat and is backdated to it, not to the
+    moment the gap was noticed.
+28. **Audit scope (D44)** — a scoped `view_audit` holder sees content events for
+    their departments and **no** access or governance events; a `*` holder sees
+    both.
+29. **Backups cover both files (D8)** — the backup job produces a restorable copy
+    of `app.db` **and** `comments.db`. Without it NFR-7 is false and nothing else
+    would notice.
 
 ---
 
@@ -1246,7 +1544,7 @@ and the process data never diverged.
   detail purged after N months — preserves the management value without the
   residue, at the cost of a rollup job.
 - **A content-and-confirmation-history report.** `process.edited`,
-  `process.confirmed`, `confirmation.invalidated` and `password.changed` are
+  `confirmation.set`, `confirmation.invalidated` and `password.changed` are
   recorded (D42) but no report in D44 surfaces them. The most useful missing
   question is *"which departments have flowcharts that went dark and have not
   been re-confirmed"*, since unconfirmed content is invisible to everyone (D22).

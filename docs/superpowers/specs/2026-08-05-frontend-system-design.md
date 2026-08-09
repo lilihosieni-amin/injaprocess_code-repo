@@ -49,8 +49,8 @@ Panel  ⟺  the user holds any of: edit · confirm · set_visibility ·
 Reader ⟺  otherwise
 ```
 
-Derived from capabilities so that a role composed later (D50 permits new roles
-from the six delegable capabilities) lands in the right shell without anyone
+Derived from capabilities so that a role added to the seed later (D50 — roles
+come from the seed, never from the UI) lands in the right shell without anyone
 updating a list of role names. In the current deployment this resolves to: Editor
 and Admin get the Panel, every Reader gets the Reader — including a department
 head, whose `can_supervise` flag grants nothing (D51).
@@ -85,7 +85,8 @@ pass inconsistently.
 transform) · Toast · SearchField · Menu · Accordion · Tabs · FAB ·
 DepartmentCard · ProcessRow · FlowCanvas · NodeDetail · StepList · StepCard ·
 GateGroup · ProcessSummaryCard · DepartmentInfo · CommentCard · CommentComposer ·
-ApprovalTrail · EmptyState · LoadingState · ErrorState · DeniedState
+ApprovalTrail · EmptyState · LoadingState · ErrorState · DeniedState ·
+NotFoundState
 
 **Panel only** — DataTable · FilterBar · JalaliDatePicker · UserRow · UserDetail
 · RolePicker · ScopePicker · SupervisorPicker · PolicyToggleRow · ConfirmChip ·
@@ -205,14 +206,21 @@ labels, no focus ring.
 
 ## 6. States
 
-### F12 — Every surface has four states, and they are designed, not improvised
+### F12 — Every surface has five states, and they are designed, not improvised
 
 | State | Rule |
 |---|---|
 | **Loading** | Skeletons shaped like the content, not spinners, so nothing shifts when data lands. Operations that genuinely take tens of seconds — a cold PDF render (D27) — get explicit progress and a sentence saying why. |
 | **Empty** | A sentence of fact, in plain Persian, saying what is not there and what would put something there. The mockups do this well throughout and it carries over verbatim. |
 | **Error** | What failed, in one sentence, plus a retry. Never a raw status code. |
-| **Denied** | Rarer than expected — see F13. |
+| **Denied** | A refused action on a resource the user can see. Rarer than expected — see F13. |
+| **Not found** | Everything out of scope, and genuine typos, indistinguishably — see F13. |
+
+The empty state carries real weight on day one: nothing is confirmed at start
+(D23), so **every report in the system is empty until the editor works through
+85 processes**. Its wording says what is not there without saying why, since
+*"these exist but are unconfirmed"* would be a derived signal about withheld
+content (D56).
 
 Neither prototype has a loading or an error state anywhere. Real requests fail
 and real renders are slow.
@@ -288,8 +296,10 @@ PDF re-verification.
 
 1. **No literals** — `ui/src/**` contains no hex colour and no arbitrary
    Tailwind size or radius value (F6).
-2. **Shell selection** — each preset role and a composed role resolve to the
-   expected shell by capability, not by name (F2).
+2. **Shell selection** — each of the four seeded roles resolves to the expected
+   shell **by capability, not by name** (F2), asserted by constructing a role
+   with an unrecognised name and the Admin capability set and checking it gets
+   the Panel.
 3. **Overlay transform** — `Sheet` and `Dialog` render as bottom sheets below the
    breakpoint and as panel/modal above it (F5).
 4. **No horizontal body scroll** at 320px on every screen; wide content scrolls
@@ -303,8 +313,18 @@ PDF re-verification.
    user to the attempted location afterwards (F14).
 8. **Persian input normalisation** — Persian and Arabic-Indic digits typed into
    the sign-in field reach the API as ASCII (F10, D57).
-9. **Flow parity** — `parity.test.tsx` continues to pass, and the export's PDFs
-   are re-verified after any change to a shared component (F16, §8).
+9. **Flow parity** — `parity.test.tsx` continues to pass (F16). Re-verifying the
+   export's PDFs after a change to a shared component is a **release-checklist
+   step, not an assertion** — no suite can run it — and it belongs in the plan
+   that changes such a component (§8).
+10. **Density comes from the shell (F4, F8)** — no shared component accepts a
+    density or size prop, and no component names a type size; both asserted by
+    the same grep shape as test 1.
+11. **Logical properties only (F10)** — no `margin-left`/`right`,
+    `padding-left`/`right`, `text-align: left`/`right`, or `dir=` attribute in
+    any component outside the declared `dir="ltr"` island components.
+12. **Overlays trap and restore focus (F11)** — `Esc` closes, focus is trapped
+    while open and returns to the trigger on close.
 
 ---
 

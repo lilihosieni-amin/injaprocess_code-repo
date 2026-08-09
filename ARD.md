@@ -73,7 +73,7 @@ code-repo/
 │   │   ├── steps/                #   the staff guide (linearize.ts, StepsApp, PrintDoc, README.md)
 │   │   ├── print/                #   SVG band printing shared by both (bands, geometry, complete)
 │   │   └── shared/               #   payload/seed/ready/pdfLink — the seam to the backend
-│   └── design/                   # visual design reference (source of truth for look) + support.js
+│   └── design/                   # visual mockups (input, not source) + _ds token set (§13.1)
 ├── ui-backend/                   # thin UI backend (read/write JSON + identity/access + reports + PDF)
 ├── docs/                         # runbooks, specs, plans, ADRs
 ├── deploy/                       # docker-compose.yml, Dockerfiles, proxy config
@@ -232,8 +232,9 @@ Rule: monotonic "next number", backed by a **durable per-department `.id-seq.jso
 {
   "department": "cooking",
   "name": "Cooking department",
+  "description": "...",
   "sub_units": [ { "name": "...", "description": "..." } ],
-  "personnel": [ { "role": "...", "duties": ["..."] } ],
+  "personnel": [ { "role": "...", "duties": ["..."], "kpi": ["..."] } ],
   "updated_at": "..."
 }
 ```
@@ -554,7 +555,7 @@ The skills/prompts/IDEF rules stay in `data-repo/.claude` (intentionally easy to
 
 ## 10. Models & Cost
 
-- All extraction subagents (`classify`, `extract`, `summarize`) run on **Opus 4.8**, even simple tasks (NFR-4). Change point: a single `model` line in that subagent's frontmatter.
+- All extraction subagents (`classify`, `extract`, `summarize`, `consolidate`) run on **Opus 4.8**, even simple tasks (NFR-4). Change point: a single `model` line in that subagent's frontmatter.
 - `transcribe`: Gemini on Vertex (model configurable).
 - `merge`, `allocate-id`, `layout`: no model (deterministic).
 - Budgets (NFR-5) are sized for Opus multi-stage runs; since extract is **serial** and multi-process, a run is long (~15–25 min on the 2-CPU host) and its cost accrues across many serial subagents.
@@ -599,7 +600,7 @@ The `RichardAtCT/claude-code-telegram` project (Python 3.11+, MIT). Latest tagge
 ### 13.1 Tech Stack
 
 **Frontend**
-- **Visual design reference (mandatory):** the frontend's look must **exactly** match the reference design at `code-repo/ui/design/Palette_Directions_dc.html` (palette, typography with the Vazirmatn font, and component shapes). This file is the single source of truth for the look; palette/font details are not repeated here to avoid divergence. (The file depends on `./support.js`; keep it alongside.)
+- **Visual design:** `docs/superpowers/specs/2026-08-05-frontend-system-design.md` is authoritative. The **token set** at `ui/design/_ds/…/tokens/` is the single source of values (F6), and `ui/design/Inja Panel.dc.html` / `Inja Reader.dc.html` are **visual input, not source** — F7 overrules them on shadow, radius ladder and mono stack. No component carries a literal colour or size (F6), which a test enforces.
 - **React + TypeScript**, built with **Vite**.
 - Diagram with **`@xyflow/react`** (the new generation of React Flow) for processes/sub-processes/junctions.
 - Server data with **TanStack Query** (fetch/cache/refresh); local edit state with React's own state.
@@ -803,7 +804,9 @@ Key Docker notes:
 | FR-K2a (the editor receives comments, never writes them) | §19.2 — derived from routing, not a permission |
 | NFR-12 / AC-25 (withheld data is never sent) | §19.4a — records, counts, existence, 404-not-403, response-body scan |
 | FR-V1…V4 / AC-18 (confirmation bound to a version) | §19.6 — content fingerprint, not a boolean field |
-| FR-V5, FR-V6 / AC-21 (content visibility) | §19.4 — one global policy, level-0 only, one filter |
+| FR-V5, FR-V6 / AC-21 (content visibility) | §19.4 — one global policy guarded by `set_visibility`, one filter |
+| FR-V7 (department page shown in full) | §19.4 — policy governs `process.json` only; spec D55 |
+| NFR-16 (people-data backup) | §16 `state-backup` service |
 | FR-K1…K11 / AC-19, AC-20 (comments and the chain) | §19.8 |
 | FR-L1…L6 / NFR-14 / AC-22 (activity record) | §19.7 + §14 (mount boundary) |
 | NFR-15 (usable on a phone) | §13.2 + `2026-08-05-frontend-system-design.md` F9 (mobile-first), F11 (touch targets) |
@@ -825,7 +828,7 @@ Key Docker notes:
 
 ## 19. Identity, Access, Comments & the Activity Record
 
-> Authoritative design: `docs/superpowers/specs/2026-08-04-multi-user-rbac-design.md`, decisions **D1–D60**, with `docs/superpowers/specs/2026-08-05-frontend-system-design.md` (**F1–F16**) for the frontend system. This section states the architecture; the specs state why each decision was taken and what was rejected. Implementation is split into **F** (frontend system) followed by **P0–P4**, and each of those plans covers both the backend and the frontend of its own slice — the acceptance criteria are end-to-end statements that no backend-only plan can satisfy.
+> Authoritative design: `docs/superpowers/specs/2026-08-04-multi-user-rbac-design.md`, decisions **D1–D61**, with `docs/superpowers/specs/2026-08-05-frontend-system-design.md` (**F1–F16**) for the frontend system. This section states the architecture; the specs state why each decision was taken and what was rejected. Implementation is split into **F** (frontend system) followed by **P0–P4**, and each of those plans covers both the backend and the frontend of its own slice — the acceptance criteria are end-to-end statements that no backend-only plan can satisfy.
 
 ### 19.1 Three stores, one job each
 
@@ -851,12 +854,14 @@ Key Docker notes:
 
 | | delegable | |
 |---|:-:|---|
-| `view` `comment` `export_pdf` `manage_users` `manage_peers` `view_audit` | ✅ | freely composable into new roles |
+| `view` `comment` `export_pdf` `manage_users` `manage_peers` `view_audit` | ✅ | what a **seeded** role may be composed from |
 | `edit` `confirm` `set_visibility` | ❌ | **only the seed process can create a role holding these** |
 
 Approving a comment is not a capability: it is inherent to being someone's supervisor.
 
 **Roles come from the seed. No API path creates, edits or deletes one** (spec D50). The role table is fixed at deploy time: users are created through the system, roles are not. There is no role builder and no capability matrix on any screen, and a role can never be deleted, since every user holds exactly one. Adding a fourth — `Reader (no download)` = `view` + `comment` is the likely first — is a seed change and a deploy.
+
+The six delegable capabilities are what a *seeded* role may be composed from; nothing composes a role at runtime.
 
 **`delegable: false` stays on `edit`, `confirm` and `set_visibility`** even though no endpoint writes the role table, so the guard cannot be lost if role editing is ever introduced. It is a property of the capability row rather than a check on a username: an identity check rots the moment an administrator is added, renamed or migrated, whereas a data property has a one-line test and depends on no account's existence. The cost is that the seed is the only recovery path if every Editor account is lost — a runbook item, and the price of the guarantee.
 
@@ -901,7 +906,7 @@ That is the whole rule. There is no override table, no per-user capability list 
 | Admin | ✅ | ✅ | – |
 | Editor | ✅ | ✅ | ✅ |
 
-A Reader's row is empty because they lack `manage_users`, not because of the subset rule. Modification is bound by the same checks against the **resulting** user. **Nobody may edit their own record**, save changing their own password. Setting *another* user's password is a direct action bound by the same two checks: the actor chooses the value and hands it over, with no token and no round-trip. The consequence — anyone holding `manage_users` can then sign in as that user — is accepted deliberately, made visible by the `password.set_by_admin` event (§19.7), and bounded by `manage_users` living only with Editors and `*`-scoped Admins. Editing a role definition obeys the same subset rule and can never add a non-delegable capability.
+A Reader's row is empty because they lack `manage_users`, not because of the subset rule. Modification is bound by the same checks against the **resulting** user. **Nobody may edit their own record**, save changing their own password. Setting *another* user's password is a direct action bound by the same two checks: the actor chooses the value and hands it over, with no token and no round-trip. The consequence — anyone holding `manage_users` can then sign in as that user — is accepted deliberately, made visible by the `password.set_by_admin` event (§19.7), and bounded by `manage_users` living only with Editors and `*`-scoped Admins. **Disabling and re-enabling are bound by the same two checks** — they are modifications of a user's access, so an Admin can never disable or re-enable an Editor. Roles themselves are not editable at all (§19.2), so delegation governs only which existing role a user may be given.
 
 **Supervisor (FR-A8) and `can_supervise`.** Mandatory except for users scoped `*`. A separate boolean marks a user as *eligible to be chosen* as a supervisor and grants nothing — with the level concept gone there is nothing left to infer org position from, so it is asserted rather than derived. Eligible candidates = active **and** scope covers the new user's scope **and** (`can_supervise` **or** scope `*`). A user with two departments can therefore only be supervised by a `*` holder. Default to the creator when eligible; reject self, disabled users, non-covering scopes and cycles. Candidates are shown with their scope beside their name, since past thirty users the reason someone appears is otherwise invisible.
 
@@ -961,7 +966,7 @@ Pinned by a **response-body scan per role** (spec §11.8a): every endpoint exerc
 
 ### 19.5 Enforcement
 
-`GET /api/auth/me` returns a session descriptor — user, role, level, scopes, effective capabilities, supervisor, pending-approval count — from which the frontend derives affordances. **The server re-derives permission from the session row on every request.** A hidden button is a nicety; the check behind it is the security (FR-A10, AC-14).
+`GET /api/auth/me` returns a session descriptor — user, role, capabilities, scopes, supervisor, `can_supervise`, pending-approval count — from which the frontend derives affordances and picks its shell (F2). No level: there is none (§19.2). Capabilities come from the role and from nowhere else, so there is nothing "effective" to compute. **The server re-derives permission from the session row on every request.** A hidden button is a nicety; the check behind it is the security (FR-A10, AC-14).
 
 ### 19.6 Confirmation is a fingerprint, not a boolean
 
