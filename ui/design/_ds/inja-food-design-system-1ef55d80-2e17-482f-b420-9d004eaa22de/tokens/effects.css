@@ -1,0 +1,24 @@
+/* Inja Food — shadows, motion, scrims. Shadows are violet- or coral-tinted;
+   only dialogs go neutral-dark. */
+:root{
+  --shadow-card:0 3px 14px -8px rgba(74,37,169,.25);       /* every white card / row */
+  --shadow-card-hover:0 14px 30px -14px rgba(74,37,169,.45);
+  --shadow-violet:0 10px 22px -13px rgba(74,37,169,.9);    /* violet button */
+  --shadow-coral:0 12px 26px -12px rgba(250,90,82,.9);     /* coral button */
+  --shadow-green:0 10px 22px -13px rgba(31,138,91,.9);     /* save button */
+  --shadow-modal:0 40px 90px -30px rgba(0,0,0,.6);         /* dialogs, login card */
+  --shadow-pop:0 18px 40px -16px rgba(74,37,169,.5);       /* dropdown menus */
+  --shadow-drawer:20px 0 50px -30px rgba(74,37,169,.5);    /* side drawer */
+  --shadow-sheet:0 -18px 45px -28px rgba(74,37,169,.55);   /* drawer as bottom sheet */
+  --shadow-card-dark:0 10px 26px -14px rgba(0,0,0,.45);    /* cream card on the dark screen */
+  --shadow-stat-dark:0 8px 22px -12px rgba(0,0,0,.4);
+  --shadow-guide-hover:0 12px 28px -16px rgba(74,37,169,.5);/* staff-guide row hover */
+  --ring-flash:0 0 0 4px rgba(250,90,82,.22);              /* jumped-to step */
+  --ring-conflict-dot:0 0 0 3px #FFE4E1;                   /* open-conflict dot */
+
+  --hover-lift:translateY(-2px); /* @kind other */
+  --duration:.16s; /* @kind other */        /* default transition */
+  --duration-fast:.12s; /* @kind other */
+  --duration-chev:.18s; /* @kind other */
+  --blur-scrim:blur(3px); /* @kind other */ /* export dialog only */
+}

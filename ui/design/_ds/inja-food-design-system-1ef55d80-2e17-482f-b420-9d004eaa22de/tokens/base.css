@@ -1,0 +1,15 @@
+/* Inja Food — the few global rules the app itself sets (ui/src/index.css).
+   Everything else is component-level. */
+html{direction:rtl;scrollbar-color:var(--violet-mid) transparent}
+body{margin:0;font-family:var(--font-sans);background:var(--bg);color:var(--ink)}
+::selection{background:var(--coral);color:#fff}
+::-webkit-scrollbar{width:12px;height:12px}
+::-webkit-scrollbar-track{background:var(--tile-v);border-radius:8px}
+::-webkit-scrollbar-thumb{background:var(--violet-mid);border-radius:8px;border:2px solid transparent;background-clip:content-box}
+::-webkit-scrollbar-thumb:hover{background:var(--violet)}
+a{color:var(--link);text-decoration:none}
+a:hover{color:var(--link-hover)}
+
+/* motion used by components (Button's spinner, toast entry) */
+@keyframes inja-spin{to{transform:rotate(360deg)}}
+@keyframes inja-toast-in{from{opacity:0;transform:translate(-50%,10px)}to{opacity:1;transform:translate(-50%,0)}}

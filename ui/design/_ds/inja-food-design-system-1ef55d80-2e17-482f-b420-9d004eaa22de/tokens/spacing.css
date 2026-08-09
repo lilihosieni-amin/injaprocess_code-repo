@@ -1,0 +1,42 @@
+/* Inja Food — spacing, radii, sizes. */
+:root{
+  --space-1:4px;  --space-2:5px;  --space-3:6px;  --space-4:8px;
+  --space-5:10px; --space-6:12px; --space-7:14px; --space-8:16px;
+  --space-9:18px; --space-10:22px; --space-11:26px; --space-12:30px;
+  --space-14:38px; --space-16:40px;
+
+  /* screen gutters: py-[30px] px-10, and pt-[38px] on the dark departments screen */
+  --pad-screen-x:40px;
+  --pad-screen-y:30px;
+  --pad-topbar:22px;
+
+  /* content widths, as capped per screen */
+  --width-departments:1120px;
+  --width-list:920px;
+  --width-summary:960px;
+  --width-doc:860px;
+  --width-drawer:340px;
+
+  /* radii */
+  --radius-badge:6px;      /* id badge (rounded-md) */
+  --radius-chip:7px;       /* ICOM chips */
+  --radius-sm:9px;         /* small inputs, tool buttons */
+  --radius-control:10px;
+  --radius-input:11px;     /* logo tile, danger icon button */
+  --radius-md:12px;
+  --radius-lg:13px;        /* search field */
+  --radius-tile:14px;      /* department icon tile, kpi card */
+  --radius-card:16px;      /* rows, list cards */
+  --radius-doc:18px;       /* summary card, staff-guide cards */
+  --radius-card-lg:20px;   /* feature cards, wide modals */
+  --radius-panel:24px;     /* login card, dialogs (rounded-3xl) */
+  --radius-pill:20px;
+  --radius-round:50%;
+
+  /* recurring sizes */
+  --size-tile:48px;        /* department icon tile */
+  --size-tool:34px;        /* toolbar icon button */
+  --size-avatar:34px;
+  --size-logo-bar:38px;
+  --size-logo-login:76px;
+}

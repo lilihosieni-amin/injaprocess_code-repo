@@ -1,0 +1,100 @@
+/* Inja Food — colour system.
+   Values are lifted verbatim from ui/tailwind.config.js, ui/src/index.css and the
+   screen components; the export documents repeat the same set in doc-base.css /
+   steps-base.css. Nothing here is rounded or re-derived. */
+:root{
+  /* ---- brand ---- */
+  --violet:#4A25A9;          /* primary brand violet (from the logo) */
+  --ink:#2A1D5E;             /* deep violet ink: headings, dark screens */
+  --coral:#FA5A52;           /* brand coral accent (logo wordmark) */
+  --conflict:#E23D35;        /* stronger coral: destructive + conflicts */
+  --green:#1F8A5B;           /* save / success / outputs */
+  --login-bg:#2E1668;        /* login field */
+  --login-orb:#3A1D85;       /* login bokeh circles */
+  --violet-mid:#7A52D0;      /* scrollbar thumb */
+  --violet-edge:#9B86D9;     /* flow edge stroke + target handles */
+  --violet-on-dark:#B79FE6;  /* eyebrow label on the dark screen */
+  --violet-on-dark-body:#B7A6E0; /* body copy on the dark screen */
+  --violet-on-violet:#C9BEEE;/* mono id inside a violet box */
+
+  /* ---- surfaces ---- */
+  --bg:#FBF7F1;              /* warm cream app background */
+  --card:#FFFFFF;
+  --desk:#E7E1F2;            /* export document desk behind the sheets */
+  --tile-v:#F0E9FB;          /* violet icon tile */
+  --tile-v2:#F4EFFB;         /* violet tile, lighter: id badges, tool groups */
+  --tile-v3:#F5F1FB;         /* violet tint: count chips */
+  --tile-v4:#F8F4FE;         /* violet tint: hover rows, actor pill */
+  --tile-c:#FFE9E7;          /* coral tile */
+  --tile-c2:#FFF3F2;         /* coral tint: destructive ghost surfaces */
+  --tile-warn:#FBEEDC;       /* amber tint: sub-process tags */
+  --tile-ctl:#FBF0DA;        /* amber tint: ICOM control chips */
+  --tile-ok:#E4F6EC;
+  --tile-info:#E7F1FB;
+  --tile-dead:#EDEAF3;       /* tombstoned process */
+  --value-current:#F6F3FB;   /* conflict "current value" box */
+
+  /* ---- borders ---- */
+  --warm:#EFE7DC;            /* default card border (warm) */
+  --line:#E3D8F5;            /* control / input border (violet-tinted) */
+  --hair:#F2ECE3;            /* internal divider */
+  --line-soft:#F0E9FB;       /* drawer dividers */
+  --line-dashed:#C9B8EC;     /* dashed "add" affordances */
+  --border-danger:#FDD9D6;
+  --border-dead:#E4DEF0;
+  --border-current:#EDE5F5;
+  --border-ok:#C4E7D3;
+
+  /* ---- text ---- */
+  --text-strong:#2A1D5E;     /* = --ink; headings, values */
+  --text-body:#4A3F6B;
+  --text-muted:#8a7db0;
+  --text-faint:#a99fc4;
+  --text-ghost:#c3bad6;      /* provenance footer */
+  --text-dialog-ghost:#6B5CA5; /* ghost button label inside dialogs */
+  --text-current:#5a5175;    /* conflict current value */
+  --text-proposed:#8a2b26;   /* conflict proposed value */
+  --text-on-dark:#FBF7F1;
+  --text-disabled:#cfc7e0;   /* disabled tool button glyph */
+
+  /* ---- semantic ---- */
+  --warn:#B4690E;   --warn-soft:var(--tile-warn);
+  --info:#1F6FB2;   --info-soft:var(--tile-info);
+  --ok:#1F8A5B;     --ok-soft:var(--tile-ok);
+  --danger:#E23D35; --danger-soft:var(--tile-c2);
+  --toast-check:#7BE0A8;
+
+  /* ---- IDEF0 / ICOM chip roles ---- */
+  --icom-input-fg:#1F6FB2;   --icom-input-bg:#E7F1FB;
+  --icom-control-fg:#8A5A00; --icom-control-bg:#FBF0DA;
+  --icom-output-fg:#1F8A5B;  --icom-output-bg:#E4F6EC;
+  --icom-mech-fg:#4A25A9;    --icom-mech-bg:#F0E9FB;
+
+  /* ---- IDEF3 junction palette (ui/src/flow/nodes/junction-colors.ts) ---- */
+  --junction-xor:#FA5A52;
+  --junction-and:#4A25A9;
+  --junction-or:#E8A33D;
+
+  /* ---- department accents (ui/src/lib/departments.ts) ---- */
+  --dept-violet-tile:var(--tile-v);   --dept-violet-fg:var(--violet);
+  --dept-coral-tile:var(--tile-c);    --dept-coral-fg:var(--conflict);
+  --dept-numeral-violet:#EDE4FA;      /* ghosted index numeral on a card */
+  --dept-numeral-coral:#FBE4E1;
+
+  /* ---- staff-guide document accents (ui/export/steps) ---- */
+  --steps-sub-bg:#FDF3E4;   --steps-sub-border:#EBD3A8;  --steps-sub-hover:#FBE9CF;
+  --steps-group-bg:#FFF4F3; --steps-group-border:#F5CFCB;
+
+  /* ---- scrims ---- */
+  --scrim:rgba(36,17,82,.45);
+
+  /* ---- aliases ---- */
+  --color-primary:var(--violet);
+  --color-accent:var(--coral);
+  --surface-app:var(--bg);
+  --surface-card:var(--card);
+  --text-heading:var(--ink);
+  --link:var(--violet);
+  --link-hover:var(--coral);
+  --selection-bg:var(--coral);
+}

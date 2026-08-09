@@ -1,0 +1,44 @@
+/* Inja Food — typography. Vazirmatn only; Persian-first, RTL.
+   Sizes are the literal px values used in the app — many are half-pixel (13.5px,
+   12.5px, 11.5px, 10.5px). Do NOT snap them to a scale. */
+:root{
+  --font-sans:'Vazirmatn Variable','Vazirmatn',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --font-mono:ui-monospace,'SF Mono',Menlo,Consolas,monospace; /* latin process ids only */
+
+  --fw-regular:400; /* @kind font */
+  --fw-semibold:600; /* @kind font */
+  --fw-bold:700; /* @kind font */
+  --fw-extrabold:800; /* @kind font */   /* every heading in the app */
+
+  /* ---- panel scale (the admin app) ---- */
+  --fs-display:34px;    /* dark departments title */
+  --fs-h1:23px;         /* process summary title */
+  --fs-h2:22px;         /* department heading */
+  --fs-h3:19px;         /* login brand line */
+  --fs-h4:17px;         /* dialog title */
+  --fs-h5:16px;         /* drawer title */
+  --fs-lg:15px;         /* row title, section heading */
+  --fs-body:14px;
+  --fs-sm:13px;         /* buttons, list body */
+  --fs-sm2:12.5px;      /* controls, chips, breadcrumb */
+  --fs-xs:11.5px;       /* stat captions, eyebrow */
+  --fs-xxs:11px;        /* micro labels, id badge */
+  --fs-micro:10.5px;    /* tags, tiny meta */
+
+  /* ---- staff-guide document scale (bigger; read on a phone on the floor) ---- */
+  --fs-doc-base:17px;
+  --fs-doc-h1:32px;
+  --fs-doc-title:27px;
+  --fs-doc-step:18px;
+  --fs-doc-body:16px;
+
+  --lh-tight:1.2; /* @kind font */
+  --lh-snug:1.6; /* @kind font */
+  --lh-normal:1.7; /* @kind font */
+  --lh-relaxed:1.75; /* @kind font */
+  --lh-loose:1.9; /* @kind font */       /* staff guide body */
+  --lh-looser:2.1; /* @kind font */      /* staff-guide long prose */
+
+  --tracking-eyebrow:.14em; /* @kind font */  /* INJA FOOD · مستندسازی فرآیند */
+  --tracking-display:-.01em; /* @kind font */
+}

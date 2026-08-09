@@ -1,0 +1,22 @@
+/* Inja Food — webfont.
+   The app installs @fontsource-variable/vazirmatn and inlines it into offline
+   exports; that package registers the family as 'Vazirmatn Variable'. No font
+   binaries ship in the source repo, so this design system pulls the same family
+   from Google Fonts and aliases both names in --font-sans (see typography.css).
+   SUBSTITUTION: swap this @import for self-hosted @font-face rules if you have
+   the .woff2 files. */
+@import url("https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800;900&display=swap");
+
+/* The app's own family name is 'Vazirmatn Variable' (that is what
+   @fontsource-variable registers), so --font-sans names it first and every
+   consumer stays byte-compatible with the product. Until the real .woff2 files
+   are supplied, this face only resolves against an installed copy; otherwise
+   the stack falls straight through to 'Vazirmatn' above, which the CDN serves.
+   Replace the src with the self-hosted files when they arrive. */
+@font-face {
+  font-family: 'Vazirmatn Variable';
+  src: local('Vazirmatn Variable'), local('Vazirmatn');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
