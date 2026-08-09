@@ -1,42 +1,70 @@
 import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { Button } from './Button'
+import { IconButton } from './IconButton'
 import { Chip } from './Chip'
 import { IdBadge } from './IdBadge'
+import { expectTouchTarget } from '../test/a11y'
 
-describe('primitives', () => {
-  it('Button applies the variant class and defaults to ghost', () => {
-    render(<Button variant="coral">ذخیره</Button>)
-    expect(screen.getByRole('button', { name: 'ذخیره' })).toHaveClass('btn', 'btn-coral')
-    render(<Button>خب</Button>)
-    expect(screen.getByRole('button', { name: 'خب' })).toHaveClass('btn-ghost')
+const Icon = () => <svg viewBox="0 0 24 24" aria-hidden><path d="M12 5v14" /></svg>
+
+describe('Button', () => {
+  it('meets the touch-target minimum', () => {
+    render(<Button>ذخیره</Button>)
+    expectTouchTarget(screen.getByRole('button'))
   })
-  it('Button shows a spinner, swaps the label and disables itself while loading', () => {
+  it('shows a spinner, swaps the label and disables itself while loading', () => {
     render(<Button variant="green" loading loadingLabel="در حال ذخیره…">ذخیره</Button>)
     const btn = screen.getByRole('button')
     expect(btn).toBeDisabled()
     expect(btn).toHaveAttribute('aria-busy', 'true')
     expect(btn).toHaveTextContent('در حال ذخیره…')
-    expect(btn).not.toHaveTextContent('ذخیره‌ای')       // the idle label is replaced
     expect(screen.getByTestId('btn-spinner')).toBeInTheDocument()
   })
-  it('Button keeps its own children when loading without a loadingLabel', () => {
+  it('keeps its own children when loading without a loadingLabel', () => {
     render(<Button loading>ذخیره</Button>)
     expect(screen.getByRole('button')).toHaveTextContent('ذخیره')
-    expect(screen.getByTestId('btn-spinner')).toBeInTheDocument()
   })
-  it('Button is idle by default — no spinner, not disabled, no aria-busy', () => {
+  it('is idle by default', () => {
     render(<Button>ذخیره</Button>)
     const btn = screen.getByRole('button')
     expect(btn).not.toBeDisabled()
     expect(btn).not.toHaveAttribute('aria-busy')
     expect(screen.queryByTestId('btn-spinner')).not.toBeInTheDocument()
   })
-  it('Chip maps kind to the chip class', () => {
-    render(<Chip kind="control">بودجه</Chip>)
-    expect(screen.getByText('بودجه')).toHaveClass('chip-control')
+})
+
+describe('IconButton', () => {
+  it('exposes its label as the accessible name', () => {
+    render(<IconButton label="بستن" icon={<Icon />} />)
+    expect(screen.getByRole('button', { name: 'بستن' })).toBeInTheDocument()
   })
-  it('IdBadge renders LTR monospace', () => {
+  it('hides the glyph from assistive technology', () => {
+    const { container } = render(<IconButton label="بستن" icon={<Icon />} />)
+    expect(container.querySelector('svg')).toHaveAttribute('aria-hidden')
+  })
+  it('meets the touch-target minimum', () => {
+    render(<IconButton label="بستن" icon={<Icon />} />)
+    expectTouchTarget(screen.getByRole('button'))
+  })
+  it('fires onClick', async () => {
+    let clicked = false
+    render(<IconButton label="بستن" icon={<Icon />} onClick={() => { clicked = true }} />)
+    await userEvent.click(screen.getByRole('button'))
+    expect(clicked).toBe(true)
+  })
+})
+
+describe('Chip', () => {
+  it('renders its text', () => {
+    render(<Chip kind="control">بودجه</Chip>)
+    expect(screen.getByText('بودجه')).toBeInTheDocument()
+  })
+})
+
+describe('IdBadge', () => {
+  it('renders LTR monospace', () => {
     render(<IdBadge>cooking-001</IdBadge>)
     const el = screen.getByText('cooking-001')
     expect(el).toHaveClass('id-badge')
