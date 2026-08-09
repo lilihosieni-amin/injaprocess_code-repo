@@ -11,11 +11,10 @@ const ALLOWED = ['src/styles/tokens.css']
  * Directories this guard does not police yet, each with the plan that clears it.
  * The list only ever shrinks: whoever rebuilds a directory deletes its line.
  *   src/flow/    — F16 keeps the flowchart implementation as-is. Permanent for F.
- *   src/shell/   — rebuilt by Task 11 of this plan, which removes this line.
  *   src/screens/ — rebuilt by P0–P4 as each screen is redone.
  *   src/write/   — rebuilt by P1–P4 with the write flows.
  */
-const PENDING_REBUILD = ['src/flow/', 'src/shell/', 'src/screens/', 'src/write/']
+const PENDING_REBUILD = ['src/flow/', 'src/screens/', 'src/write/']
 
 /**
  * Task 12 decides which arbitrary Tailwind values are legitimate and tightens
@@ -81,5 +80,48 @@ describe('F6 — tokens are the only source of values', () => {
       scanned.some((f) => f.rel.startsWith('src/ui/')),
       "files() did not include anything under src/ui/ — the scan isn't looking at the files it should be.",
     ).toBe(true)
+  })
+})
+
+describe('F10 — RTL is structural', () => {
+  it('no component uses a physical direction property', () => {
+    const BAD = /(margin|padding)-(left|right)|text-align:\s*(left|right)|\b(ml|mr|pl|pr|left|right)-\d/
+    const hits = files().flatMap((f) =>
+      readFileSync(f.path, 'utf8')
+        .split('\n')
+        .map((line, i) => ({ rel: f.rel, n: i + 1, line }))
+        .filter(({ line }) => BAD.test(line)),
+    )
+    expect(hits.map((h) => `${h.rel}:${h.n} ${h.line.trim()}`)).toEqual([])
+  })
+
+  it('only the declared islands pin dir', () => {
+    // IdBadge is the sole dir="ltr" island in this sub-project; P0 adds the
+    // phone-number and IP fields to this list as it builds them.
+    const ISLANDS = ['src/ui/IdBadge.tsx']
+    const hits = files()
+      .filter((f) => !ISLANDS.includes(f.rel))
+      .flatMap((f) =>
+        readFileSync(f.path, 'utf8')
+          .split('\n')
+          .map((line, i) => ({ rel: f.rel, n: i + 1, line }))
+          .filter(({ line }) => /\bdir=/.test(line)),
+      )
+    expect(hits.map((h) => `${h.rel}:${h.n} ${h.line.trim()}`)).toEqual([])
+  })
+})
+
+describe('F4/F8 — density comes from the shell', () => {
+  it('no shared component accepts a density or size prop', () => {
+    const BAD = /\b(density|size|scale)\??:\s*('|"|[A-Za-z])/
+    const hits = files()
+      .filter((f) => f.rel.startsWith('src/ui/'))
+      .flatMap((f) =>
+        readFileSync(f.path, 'utf8')
+          .split('\n')
+          .map((line, i) => ({ rel: f.rel, n: i + 1, line }))
+          .filter(({ line }) => BAD.test(line)),
+      )
+    expect(hits.map((h) => `${h.rel}:${h.n} ${h.line.trim()}`)).toEqual([])
   })
 })
