@@ -15,12 +15,12 @@
   }
 
   /* Compatibility layer for call sites that use these as raw class strings.
-     Button.tsx and Chip.tsx no longer emit them — the remaining consumers are:
-       src/shell/BackButton.tsx, src/shell/TopBar.tsx  — Task 11 of this plan
-       src/write/ExportModal.tsx                        — a later plan (P2)
-     Delete a rule only when its last consumer is gone. */
+     Button.tsx and Chip.tsx no longer emit them — the remaining consumer is:
+       src/write/ExportModal.tsx  — a later plan (P2)
+     (BackButton.tsx and TopBar.tsx, once listed here, were deleted on this
+     branch.) Delete a rule only when its last consumer is gone. */
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl font-bold cursor-pointer border-0;
+    @apply inline-flex items-center justify-center gap-2 rounded-button font-bold cursor-pointer border-0;
   }
   .btn-coral {
     @apply bg-coral text-card shadow-coral hover:brightness-105;

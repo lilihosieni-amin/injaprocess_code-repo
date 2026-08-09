@@ -2,6 +2,10 @@ import type { ButtonHTMLAttributes, ReactNode } from 'react'
 
 type Variant = 'coral' | 'violet' | 'green' | 'ghost'
 
+// I5 — deliberately no horizontal padding or type size here: nineteen legacy
+// call sites set their own via className, and BASE forcing one would double up
+// against theirs. Call sites own horizontal padding and type size until those
+// screens are rebuilt; don't put either back on BASE before then.
 const BASE =
   'inline-flex items-center justify-center gap-2 min-h-touch min-w-touch ' +
   'rounded-button font-bold cursor-pointer border-0 transition-[filter,transform]'

@@ -1,5 +1,12 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { IconButton } from './IconButton'
+// I7 — the dismissible stack Menu.tsx also joins. Kept in its own module
+// (rather than defined and exported directly here) so this file's exports stay
+// components-only — a named non-component export from a component file trips
+// react-refresh/only-export-components, which the same rule already flags on
+// the two hooks-beside-a-provider files (Toast.tsx, write/ToastProvider.tsx);
+// this file doesn't need to grow a third instance of that warning.
+import { pushDismissible, popDismissible, isTopDismissible } from './dismissibleStack'
 
 const CloseIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" width="20" height="20">
@@ -13,7 +20,9 @@ const FOCUSABLE =
 // FIX 2 — a module-level stack of open overlays. Escape only acts on the topmost;
 // depth (index in the stack) drives z-index so later overlays paint above earlier
 // ones. FIX 8 piggybacks on the same stack to lock body scroll only while at least
-// one overlay is open, and unlock only once the last one closes.
+// one overlay is open, and unlock only once the last one closes. Scoped to Overlay
+// instances only — a Menu opening must not lock page scroll or shift another
+// Overlay's z-index depth.
 let openOverlays: symbol[] = []
 let savedBodyOverflow: string | null = null
 
@@ -43,11 +52,13 @@ function Overlay({ open, onClose, title, children, presentation = 'dialog' }: Ov
     }
     setDepth(openOverlays.length)
     openOverlays = [...openOverlays, identity]
+    pushDismissible(identity)
 
     box.current?.querySelector<HTMLElement>(FOCUSABLE)?.focus()
 
     return () => {
       openOverlays = openOverlays.filter((id) => id !== identity)
+      popDismissible(identity)
       if (openOverlays.length === 0) {
         document.body.style.overflow = savedBodyOverflow ?? ''
       }
@@ -63,8 +74,11 @@ function Overlay({ open, onClose, title, children, presentation = 'dialog' }: Ov
   useEffect(() => {
     if (!open) return
     function onKey(e: KeyboardEvent) {
-      // FIX 2 — with overlays stacked, only the topmost responds.
-      if (openOverlays[openOverlays.length - 1] !== identity) return
+      // FIX 2 / I7 — with dismissibles stacked (Overlay or Menu), only the
+      // topmost responds. Checked against the shared stack, not the
+      // Overlay-only one, so a Menu opened on top of this Dialog is correctly
+      // seen as topmost and this Dialog defers to it.
+      if (!isTopDismissible(identity)) return
 
       if (e.key === 'Escape') { onClose(); return }
       if (e.key !== 'Tab' || !box.current) return

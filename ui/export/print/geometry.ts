@@ -22,12 +22,16 @@ const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replac
  *  page break just as the box itself is.
  *
  *  Two sources: the edge's exit nub is a circle centred on the node border, so it
- *  reaches its radius plus half its stroke beyond; and `shadow-card`
- *  (`0 3px 14px -8px`) reaches roughly offset+blur+spread below the box.
- *  `PRINT.GAP`, the clearance kept above a cut, is only 6 — so without this a cut
- *  lands close enough to shave either. */
+ *  reaches its radius plus half its stroke beyond; and `--shadow-card`'s outer
+ *  layer (`0 14px 30px -16px`, src/styles/tokens.css) reaches roughly
+ *  offset+blur+spread below the box. `PRINT.GAP`, the clearance kept above a cut,
+ *  is only 6 — so without this a cut lands close enough to shave either.
+ *
+ *  SHADOW_REACH transcribes that token by hand — it is not read from CSS at
+ *  build time — so changing `--shadow-card` requires changing this line too, or
+ *  NODE_OVERHANG silently under-reserves again. */
 const NUB_REACH = EDGE_NUB.r + EDGE_NUB.strokeWidth / 2
-const SHADOW_REACH = 3 + 14 - 8
+const SHADOW_REACH = 14 + 30 - 16
 export const NODE_OVERHANG = Math.max(NUB_REACH, SHADOW_REACH)
 
 /** Painted spans: node boxes (with their overhang) and edge labels. A page break

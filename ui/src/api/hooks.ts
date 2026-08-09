@@ -106,8 +106,12 @@ export function useDeleteProcess() {
 export const useNextId = (code: string) =>
   useQuery({ queryKey: ['next-id', code], queryFn: () => fetchJson<{ next_id: string }>(`/api/departments/${code}/next-id`) })
 
-export const usePending = () =>
-  useQuery({ queryKey: ['pending'], queryFn: () => fetchJson<PendingItem[]>('/api/pending') })
+export const usePending = (opts?: { enabled?: boolean }) =>
+  useQuery({
+    queryKey: ['pending'],
+    queryFn: () => fetchJson<PendingItem[]>('/api/pending'),
+    enabled: opts?.enabled ?? true,
+  })
 
 export function useResolveInboxPending() {
   const qc = useQueryClient()

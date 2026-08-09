@@ -62,6 +62,24 @@ describe('F6 — tokens are the only source of values', () => {
     expect(hits.map((h) => `${h.rel}:${h.n} ${h.line.trim()}`)).toEqual([])
   })
 
+  it('catches Tailwind\'s own built-in palette, type scale and radii, not just arbitrary values', () => {
+    // I1 — everything above lives under theme.extend, so bg-sky-600, text-lg and
+    // rounded-lg all compile and violate F6/F8 while the two checks above stay
+    // silent (they only catch arbitrary `[...]` values and hex literals). This
+    // scans the same policed set for Tailwind's shipped defaults instead.
+    const PALETTE = /\b(bg|text|border|ring|from|to|via)-(slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|emerald|teal|cyan|sky|blue|indigo|purple|fuchsia|pink|rose)-\d{2,3}\b/
+    const TYPE_SCALE = /\btext-(xs|sm|base|lg|xl|[2-9]xl)\b/
+    const RADII = /\brounded(-[tblrse]{1,2})?-(sm|md|lg|xl|2xl|3xl|full)\b/
+    const BAD = new RegExp([PALETTE.source, TYPE_SCALE.source, RADII.source].join('|'))
+    const hits = files().flatMap((f) =>
+      readFileSync(f.path, 'utf8')
+        .split('\n')
+        .map((line, i) => ({ rel: f.rel, n: i + 1, line }))
+        .filter(({ line }) => BAD.test(line)),
+    )
+    expect(hits.map((h) => `${h.rel}:${h.n} ${h.line.trim()}`)).toEqual([])
+  })
+
   it('is actually scanning files, not vacuously passing over an empty list', () => {
     // Both assertions above compare a derived list to `[]`, so a scan that
     // finds nothing "passes" for the wrong reason — e.g. if PENDING_REBUILD
@@ -85,7 +103,13 @@ describe('F6 — tokens are the only source of values', () => {
 
 describe('F10 — RTL is structural', () => {
   it('no component uses a physical direction property', () => {
-    const BAD = /(margin|padding)-(left|right)|text-align:\s*(left|right)|\b(ml|mr|pl|pr|left|right)-\d/
+    // I2 — widened past the original four cases: it needed a CSS colon or a
+    // trailing digit, so text-right (the commonest physical-direction mistake)
+    // matched nothing. Now also catches the bare left/right text-align utility,
+    // ml/mr/pl/pr-auto, physical border/rounded corners, float, and the inline
+    // JS style properties (margin/paddingLeft/Right).
+    const BAD =
+      /(margin|padding)-(left|right)|text-align:\s*(left|right)|\b(ml|mr|pl|pr|left|right)-\d|\btext-(left|right)\b|\b(ml|mr|pl|pr)-(auto|\d)|\bborder-[lr]\b|\brounded-[lr]-|\bfloat-(left|right)\b|margin(Left|Right)|padding(Left|Right)/
     const hits = files().flatMap((f) =>
       readFileSync(f.path, 'utf8')
         .split('\n')
@@ -113,9 +137,22 @@ describe('F10 — RTL is structural', () => {
 
 describe('F4/F8 — density comes from the shell', () => {
   it('no shared component accepts a density or size prop', () => {
-    const BAD = /\b(density|size|scale)\??:\s*('|"|[A-Za-z])/
+    // I3 — was three literal names scoped to src/ui/ alone. Broadened to the
+    // names an actual density prop is likely to be spelled (compact/dense/roomy
+    // join size/scale/density; variant covers a style-variant prop smuggling a
+    // density choice) and to every policed directory, not just src/ui/.
+    // (?<!-) keeps kebab-case CSS declarations like `font-size:` out of a scan
+    // that broadened past src/ui/ into src/styles/ — a TS/JSX prop name is never
+    // preceded by a hyphen, so this excludes only the false positive.
+    const BAD = /(?<!-)\b(density|size|scale|compact|dense|roomy|variant)\??:\s*('|"|[A-Za-z])/
+    // Button's own `variant` selects a colour theme (coral/violet/green/ghost) —
+    // a real, load-bearing axis distinct from density, not a size in disguise.
+    // Allowlisted by file, the same pattern F10 below uses for IdBadge's
+    // dir="ltr": one named, commented exception rather than loosening the
+    // pattern (and so this guard's ability to catch a real one) for everyone.
+    const EXCEPTIONS = ['src/ui/Button.tsx']
     const hits = files()
-      .filter((f) => f.rel.startsWith('src/ui/'))
+      .filter((f) => !EXCEPTIONS.includes(f.rel))
       .flatMap((f) =>
         readFileSync(f.path, 'utf8')
           .split('\n')

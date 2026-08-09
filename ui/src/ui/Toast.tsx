@@ -11,6 +11,10 @@ export function useToast() {
   return push
 }
 
+// I4 — two toast systems are mounted at once: main.tsx mounts write/ToastProvider
+// (every current call site's useToast resolves there) and AppShell mounts this
+// one inside it, so nothing calls this provider's useToast yet. Consolidating
+// them belongs to the plan that rebuilds src/write/, not here.
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<Toast[]>([])
 
@@ -33,7 +37,12 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <Ctx.Provider value={push}>
       {children}
-      <div className="fixed start-0 end-0 bottom-6 flex flex-col items-center gap-2 pointer-events-none z-[60]">
+      {/* M3 — Overlay stacks its scrims at `50 + depth * 10` (ui/Overlay.tsx), so a
+          static z-[60] falls behind the topmost scrim once three overlays are open.
+          100 stays above any depth this app plausibly stacks; set as an inline
+          style, not a class, so it reads next to that comment rather than as an
+          arbitrary Tailwind value elsewhere in the file. */}
+      <div style={{ zIndex: 100 }} className="fixed start-0 end-0 bottom-6 flex flex-col items-center gap-2 pointer-events-none">
         {items.map((t) => (
           <div
             key={t.id}

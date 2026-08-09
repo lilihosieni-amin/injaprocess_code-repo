@@ -1,5 +1,13 @@
 import { Outlet } from 'react-router-dom'
 import type { SessionDescriptor } from '../auth/session'
+import { useLogout } from '../api/hooks'
+
+const LogoutIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" width="20" height="20" aria-hidden focusable="false">
+    <path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M10 16l-4-4 4-4M6 12h10" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+)
 
 /**
  * Roomier density, one screen at a time. The badge for comments awaiting you
@@ -7,17 +15,35 @@ import type { SessionDescriptor } from '../auth/session'
  * notification as the only channel that placement is the whole signal (F15).
  */
 export function ReaderShell({ session }: { session: SessionDescriptor }) {
+  const logout = useLogout()
+
   return (
-    <div data-shell="reader" className="min-h-screen bg-ink text-card">
+    <div data-shell="reader" className="h-screen flex flex-col overflow-hidden bg-ink text-card">
       <header className="flex items-center gap-3 px-4 py-3">
-        <h1 className="text-title font-extrabold m-0 flex-1">اینجا فست‌فود</h1>
+        {/* I6 — the shell takes no h1 of its own; the routed screen owns it. */}
+        <div className="text-title font-extrabold flex-1">اینجا فست‌فود</div>
         {session.pendingApprovals > 0 && (
           <span className="min-h-touch min-w-touch inline-flex items-center justify-center rounded-control bg-coral text-card font-bold">
             {session.pendingApprovals}
           </span>
         )}
+        <button
+          type="button"
+          onClick={() => logout.mutate()}
+          aria-label="خروج"
+          className="min-h-touch min-w-touch inline-flex items-center justify-center rounded-control bg-transparent text-card border-0 cursor-pointer hover:bg-tile-v2"
+        >
+          <LogoutIcon />
+        </button>
       </header>
-      <main className="px-4 pb-8"><Outlet /></main>
+      {/* C1 — screens depend on this being a direct flex child of a flex-column
+          ancestor with min-h-0: FlowScreen's own root is `flex-1 flex flex-col
+          min-h-0`, and its canvas resolves `h-full` against this chain. Adding
+          padding here re-breaks the flow canvas (it renders at zero height) —
+          screens own their own padding instead. */}
+      <main className="flex-1 min-h-0 flex flex-col">
+        <Outlet />
+      </main>
     </div>
   )
 }

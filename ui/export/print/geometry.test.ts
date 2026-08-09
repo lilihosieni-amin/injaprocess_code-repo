@@ -30,9 +30,14 @@ describe('geomBlocks', () => {
     expect(geomBlocks(G)).toEqual([[0 - o, 60 + o], [200 - o, 260 + o], [120, 140]])
   })
 
-  it('keeps enough overhang for the exit nub and the card shadow', () => {
+  it('keeps exactly the overhang the card shadow and exit nub need', () => {
+    // C3 — 14 + 30 - 16 = 28, the outer layer of --shadow-card (tokens.css).
+    // Pinned to the exact value, not just ">6" (PRINT.GAP): a bound that only
+    // checks "enough" passed silently when the token changed underneath it and
+    // NODE_OVERHANG under-reserved by ~19px. An exact assertion instead fails
+    // loudly the next time --shadow-card moves.
+    expect(NODE_OVERHANG).toBe(28)
     expect(NODE_OVERHANG).toBeGreaterThanOrEqual(EDGE_NUB.r + EDGE_NUB.strokeWidth / 2)
-    expect(NODE_OVERHANG).toBeGreaterThan(6)   // PRINT.GAP
   })
 })
 

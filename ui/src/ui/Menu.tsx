@@ -1,24 +1,33 @@
 import { useEffect, useRef, useState } from 'react'
+import { pushDismissible, popDismissible, isTopDismissible } from './dismissibleStack'
 
 export interface MenuItem { id: string; label: string; onSelect: () => void; tone?: 'danger' }
 
 export function Menu({ label, items }: { label: string; items: MenuItem[] }) {
   const [open, setOpen] = useState(false)
   const box = useRef<HTMLDivElement>(null)
+  const identity = useRef(Symbol('menu')).current
 
   useEffect(() => {
     if (!open) return
-    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') setOpen(false) }
+    pushDismissible(identity)
+    function onKey(e: KeyboardEvent) {
+      // I7 — joins Overlay's dismissible stack so only the topmost of either
+      // answers Escape. Previously a bare `document` listener, which meant a
+      // Menu opened inside a Dialog closed both on one Escape.
+      if (e.key === 'Escape' && isTopDismissible(identity)) setOpen(false)
+    }
     function onDown(e: MouseEvent) {
       if (box.current && !box.current.contains(e.target as Node)) setOpen(false)
     }
     document.addEventListener('keydown', onKey)
     document.addEventListener('mousedown', onDown)
     return () => {
+      popDismissible(identity)
       document.removeEventListener('keydown', onKey)
       document.removeEventListener('mousedown', onDown)
     }
-  }, [open])
+  }, [open, identity])
 
   return (
     <div ref={box} className="relative inline-block">

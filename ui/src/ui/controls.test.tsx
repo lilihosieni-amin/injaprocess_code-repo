@@ -5,6 +5,7 @@ import { SearchField } from './SearchField'
 import { Tabs } from './Tabs'
 import { Accordion } from './Accordion'
 import { Menu } from './Menu'
+import { Dialog } from './Overlay'
 
 describe('SearchField', () => {
   it('binds a real label to the input', () => {
@@ -62,5 +63,19 @@ describe('Menu', () => {
     expect(screen.getByRole('menu')).toBeInTheDocument()
     await userEvent.keyboard('{Escape}')
     expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+  })
+
+  it('closes only itself, not an enclosing dialog, on Escape (I7)', async () => {
+    const onDialogClose = vi.fn()
+    render(
+      <Dialog open onClose={onDialogClose} title="پنجره">
+        <Menu label="ابزارها" items={[{ id: 'del', label: 'حذف', onSelect: () => {} }]} />
+      </Dialog>,
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'ابزارها' }))
+    expect(screen.getByRole('menu')).toBeInTheDocument()
+    await userEvent.keyboard('{Escape}')
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+    expect(onDialogClose).not.toHaveBeenCalled()
   })
 })
