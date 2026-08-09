@@ -14,6 +14,7 @@
 
   /* spacing — a reconciliation the frozen scale in spacing.css doesn't cover. */
   --space-half: 2px; /* the id badge's original vertical padding, half of --space-1 */
+  --border-hairline: 1.5px; /* the ghost-button border weight */
 
   /* F11 — the smallest interactive box. */
   --size-touch: 44px;

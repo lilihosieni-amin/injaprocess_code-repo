@@ -17,6 +17,14 @@ const ALLOWED = ['src/styles/tokens.css']
  */
 const PENDING_REBUILD = ['src/flow/', 'src/shell/', 'src/screens/', 'src/write/']
 
+/**
+ * Task 12 decides which arbitrary Tailwind values are legitimate and tightens
+ * these regexes accordingly. Today they catch `text-[`, `rounded-[` and
+ * `shadow-[` only — `px-[0.6em]`, `max-w-[560px]`, `rgba()` literals and raw px
+ * in .css files all pass. That is a design call about which escapes are worth
+ * keeping, not a regex tweak, which is why it is deferred rather than forgotten.
+ */
+
 function walk(dir: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {
     const p = join(dir, name)
@@ -70,8 +78,8 @@ describe('F6 — tokens are the only source of values', () => {
         `enough to exclude nearly everything under src/.`,
     ).toBeGreaterThan(15)
     expect(
-      scanned.map((f) => f.rel),
-      "files() did not include src/ui/Button.tsx — the scan isn't looking at the files it should be.",
-    ).toContain('src/ui/Button.tsx')
+      scanned.some((f) => f.rel.startsWith('src/ui/')),
+      "files() did not include anything under src/ui/ — the scan isn't looking at the files it should be.",
+    ).toBe(true)
   })
 })

@@ -35,10 +35,14 @@
   }
   .btn-ghost {
     @apply bg-card text-violet hover:bg-tile-v2;
-    border: 1.5px solid var(--line);
+    border: var(--border-hairline) solid var(--line);
   }
 
-  .chip {
+  .chip,
+  .chip-input,
+  .chip-control,
+  .chip-output,
+  .chip-mech {
     @apply break-words min-w-0 max-w-full;
     font-size: var(--fs-sm2);
     padding-block: var(--space-1);
