@@ -40,7 +40,7 @@ export default {
         modal: 'var(--shadow-modal)', pop: 'var(--shadow-pop)', sheet: 'var(--shadow-sheet)',
       },
       minHeight: { touch: 'var(--size-touch)' },
-      minWidth: { touch: 'var(--size-touch)' },
+      minWidth: { touch: 'var(--size-touch)', menu: '220px' },
       // The `s` prefix keeps this dense _ds scale (4, 5, 6, 8, 10px…) from shadowing
       // Tailwind's own numeric spacing keys, which are a sparser rem scale (4, 8, 12, 16, 20px…).
       spacing: {
