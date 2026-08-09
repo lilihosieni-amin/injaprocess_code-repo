@@ -32,11 +32,13 @@ export default {
       },
       minHeight: { touch: 'var(--size-touch)' },
       minWidth: { touch: 'var(--size-touch)' },
+      // The `s` prefix keeps this dense _ds scale (4, 5, 6, 8, 10px…) from shadowing
+      // Tailwind's own numeric spacing keys, which are a sparser rem scale (4, 8, 12, 16, 20px…).
       spacing: {
-        1: 'var(--space-1)', 2: 'var(--space-2)', 3: 'var(--space-3)', 4: 'var(--space-4)',
-        5: 'var(--space-5)', 6: 'var(--space-6)', 7: 'var(--space-7)', 8: 'var(--space-8)',
-        9: 'var(--space-9)', 10: 'var(--space-10)', 11: 'var(--space-11)', 12: 'var(--space-12)',
-        14: 'var(--space-14)', 16: 'var(--space-16)',
+        s1: 'var(--space-1)', s2: 'var(--space-2)', s3: 'var(--space-3)', s4: 'var(--space-4)',
+        s5: 'var(--space-5)', s6: 'var(--space-6)', s7: 'var(--space-7)', s8: 'var(--space-8)',
+        s9: 'var(--space-9)', s10: 'var(--space-10)', s11: 'var(--space-11)', s12: 'var(--space-12)',
+        s14: 'var(--space-14)', s16: 'var(--space-16)',
       },
       maxWidth: {
         departments: 'var(--width-departments)', list: 'var(--width-list)',
