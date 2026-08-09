@@ -5,6 +5,6 @@ import { expect } from 'vitest'
  * class contract that produces the size rather than a computed box.
  */
 export function expectTouchTarget(el: HTMLElement) {
-  expect(el.className).toMatch(/min-h-touch/)
-  expect(el.className).toMatch(/min-w-touch/)
+  expect(el.className).toMatch(/\bmin-h-touch\b/)
+  expect(el.className).toMatch(/\bmin-w-touch\b/)
 }

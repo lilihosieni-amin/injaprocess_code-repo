@@ -15,9 +15,7 @@
   }
 
   /* Compatibility layer for call sites that use these as raw class strings.
-     Button.tsx and Chip.tsx still emit them too, until Tasks 3-4 give those
-     components their own styling. Each consumer is removed by the plan that
-     rebuilds it:
+     Button.tsx and Chip.tsx no longer emit them — the remaining consumers are:
        src/shell/BackButton.tsx, src/shell/TopBar.tsx  — Task 11 of this plan
        src/write/ExportModal.tsx                        — a later plan (P2)
      Delete a rule only when its last consumer is gone. */

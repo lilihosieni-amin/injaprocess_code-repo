@@ -11,7 +11,7 @@ const K: Record<Kind, string> = {
 
 export function Chip({ kind, children }: { kind: Kind; children: ReactNode }) {
   return (
-    <span className={`inline-block px-[0.6em] py-[0.25em] rounded-chip text-caption break-words min-w-0 max-w-full ${K[kind]}`}>
+    <span className={`inline-block px-s5 py-s1 rounded-chip text-caption break-words min-w-0 max-w-full ${K[kind]}`}>
       {children}
     </span>
   )

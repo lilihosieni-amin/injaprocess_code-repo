@@ -3,14 +3,14 @@ import type { ButtonHTMLAttributes, ReactNode } from 'react'
 type Variant = 'coral' | 'violet' | 'green' | 'ghost'
 
 const BASE =
-  'inline-flex items-center justify-center gap-2 min-h-touch min-w-touch px-4 ' +
-  'rounded-control font-bold text-body cursor-pointer border-0 transition-[filter,transform]'
+  'inline-flex items-center justify-center gap-2 min-h-touch min-w-touch ' +
+  'rounded-button font-bold cursor-pointer border-0 transition-[filter,transform]'
 
 const V: Record<Variant, string> = {
   coral: 'bg-coral text-card shadow-coral hover:brightness-105',
   violet: 'bg-violet text-card shadow-violet hover:brightness-110',
   green: 'bg-green text-card shadow-green hover:brightness-105',
-  ghost: 'bg-card text-violet border border-line hover:bg-tile-v2',
+  ghost: 'bg-card text-violet border-hairline border-line hover:bg-tile-v2',
 }
 
 /** Inline "work in progress" ring. Sized in em so it tracks the button's text. */

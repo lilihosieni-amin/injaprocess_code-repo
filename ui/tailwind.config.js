@@ -31,7 +31,9 @@ export default {
       borderRadius: {
         badge: 'var(--radius-badge)', chip: 'var(--radius-chip)', control: 'var(--radius-control)',
         card: 'var(--radius-card)', doc: 'var(--radius-doc)', panel: 'var(--radius-panel)',
+        button: 'var(--radius-md)',
       },
+      borderWidth: { hairline: 'var(--border-hairline)' },
       boxShadow: {
         card: 'var(--shadow-card)', 'card-hover': 'var(--shadow-card-hover)',
         coral: 'var(--shadow-coral)', violet: 'var(--shadow-violet)', green: 'var(--shadow-green)',

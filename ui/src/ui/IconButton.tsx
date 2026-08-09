@@ -8,19 +8,19 @@ import { cloneElement } from 'react'
  */
 export function IconButton({
   label, icon, className = '', ...props
-}: ButtonHTMLAttributes<HTMLButtonElement> & { label: string; icon: ReactElement }) {
+}: ButtonHTMLAttributes<HTMLButtonElement> & { label: string; icon: ReactElement<Record<string, unknown>> }) {
   return (
     <button
       type="button"
-      aria-label={label}
-      title={label}
       className={
         'inline-flex items-center justify-center min-h-touch min-w-touch ' +
         `rounded-control bg-transparent text-violet border-0 cursor-pointer hover:bg-tile-v2 ${className}`
       }
       {...props}
+      aria-label={label}
+      title={label}
     >
-      {cloneElement(icon, { 'aria-hidden': true, focusable: 'false' } as Record<string, unknown>)}
+      {cloneElement(icon, { 'aria-hidden': true, focusable: 'false' })}
     </button>
   )
 }
