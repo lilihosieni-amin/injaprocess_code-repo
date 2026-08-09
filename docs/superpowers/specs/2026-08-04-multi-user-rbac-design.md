@@ -151,7 +151,7 @@ schedule, shipped alongside the existing push.
 
 ## 3. Identity, roles and access control
 
-> **Revised 2026-08-05 (D9–D15 rewritten; D50–D54 added).** The first version of
+> **Revised 2026-08-05 (D9–D15 rewritten; D50–D55 added).** The first version of
 > this section used five preset roles carrying a numeric `level` and a typical
 > scope, plus per-user capability overrides. All three are withdrawn. A level is
 > an ordinal *proxy* for "has less authority", maintained by hand, and it can
@@ -461,6 +461,9 @@ never *which fields*.
 Derived from `exports.py` `PUBLIC_PROCESS_KEYS` and `_public_node`, so nothing
 becomes visible on migration day that is not visible today.
 
+**The policy governs process content only.** Every field below belongs to
+`process.json`; the department overview is not subject to it (D55).
+
 | Field | Non-editor default | Switchable |
 |---|:-:|:-:|
 | Process name; edges and labels; subprocess links | visible | always |
@@ -479,6 +482,43 @@ becomes visible on migration day that is not visible today.
 The bottom four are internal bookkeeping, not content. NFR-12 already forbids
 them leaving the system; that rule now governs every API response rather than
 only exports.
+
+**Note that a node has no KPIs.** `$defs.activityNode` carries `id`, `type`,
+`label`, `description`, `actor`, `icom`, `subprocess`, `position`, `layout`,
+`source` and `removed` — nothing else. The two KPI fields in the data model are
+`process.kpis[]` (structured `{name, definition?, target?, unit?}`, shown on the
+process summary card) and `overview.personnel[].kpi[]` (plain strings, on the
+department page, and governed by D55 rather than by this table). What a node
+carries is ICOM, which is IDEF0 information, not a performance indicator. The
+two are separate switches, so hiding a node's ICOM while showing a process's
+KPIs is the default configuration plus one toggle.
+
+### D55 — The department information page is shown in full
+
+The department overview — `description`, `sub_units`, and `personnel` with their
+`duties` and `kpi` — is shown **in its entirety**, with no per-field switches.
+There is no policy table for it and none is planned.
+
+This was previously unstated, which meant the documents decided it by omission;
+an implementer could reasonably have guessed either way, and "the whole page is
+always visible" is too consequential to arrive at by accident. It is now a
+decision: the overview is *about* a department rather than being the mechanics
+of a process, and every part of it — what the department does, its sub-units,
+who works there and what each role is measured on — is exactly what a staff
+member should be able to read.
+
+Two gates still apply, and they are not field visibility:
+
+- **Scope.** You must hold `view` on that department. A report reader scoped to
+  `dept:x/report:steps` never reaches the page at all.
+- **Confirmation.** An overview with no valid confirmation is invisible to every
+  non-editor (D22), the same as an unconfirmed flowchart.
+
+One exception survives from the denylist: `overview.updated_at` is stripped like
+every other timestamp (D17). That is bookkeeping, not content.
+
+If a reason to hide part of the overview ever appears — personnel KPIs being the
+likely candidate — it becomes new rows in D17's table, not a new mechanism.
 
 ### D18 — One filter, applied server-side to every response
 

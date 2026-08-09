@@ -822,7 +822,7 @@ Key Docker notes:
 
 ## 19. Identity, Access, Comments & the Activity Record
 
-> Authoritative design: `docs/superpowers/specs/2026-08-04-multi-user-rbac-design.md`, decisions **D1–D54** (the access model revised 2026-08-05: D9–D15 rewritten, D50–D54 added). This section states the architecture; the spec states why each decision was taken and what was rejected. Implementation is split across five sub-projects (P0–P4) in that spec, each with its own plan.
+> Authoritative design: `docs/superpowers/specs/2026-08-04-multi-user-rbac-design.md`, decisions **D1–D55** (the access model revised 2026-08-05: D9–D15 rewritten, D50–D55 added). This section states the architecture; the spec states why each decision was taken and what was rejected. Implementation is split across five sub-projects (P0–P4) in that spec, each with its own plan.
 
 ### 19.1 Three stores, one job each
 
@@ -913,6 +913,8 @@ A session is a row — id, user, issued-at, last-seen, IP, user agent, revoked-a
 Which fields of a process a non-editor sees is a **single system-wide setting**, guarded by `set_visibility` and applied identically to every non-editor. It is deliberately **not** an ordinary capability: if it were, any holder of `manage_users` could confer it, and internal content would leave the system without an Editor deciding. Instead `set_visibility` is `delegable: false` (§19.2), so no role holding it can be created through any API path. What varies per person is which departments and reports they reach, never which fields.
 
 Defaults reproduce exactly what the export published before, so nothing new becomes visible at migration: node label, description, actor, edges and subprocess links visible; process summary, process IDEF0, KPIs and per-node ICOM hidden but switchable. `source`/`created_by`/`touched_by`, `pending`, `created_at`/`updated_at` and tombstoned processes are **never** shown and are not switchable by anyone, including the editor (NFR-12).
+
+**The policy governs `process.json` only.** The department overview (`description`, `sub_units`, `personnel` with `duties` and `kpi`) is served **in full**, with no per-field switches — see spec D55. Access to it is decided by scope and by confirmation (§19.6), not by field visibility; `overview.updated_at` is stripped with every other timestamp. Note also that **nodes carry no KPI field** (`$defs.activityNode` in `schemas/process.schema.json`): the two KPI fields in the model are `process.kpis[]` on the summary card and `overview.personnel[].kpi[]` on the department page. A node carries `icom`, which is IDEF0 information — a separate switch.
 
 The filter is applied server-side to **every** response, not only to reports (§13.2). Every policy change is an audited event.
 
