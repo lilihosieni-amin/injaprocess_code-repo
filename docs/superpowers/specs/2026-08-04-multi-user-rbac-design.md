@@ -2,8 +2,8 @@
 
 | | |
 |---|---|
-| **Date** | 2026-08-04 |
-| **Status** | Approved design; `PRD.md` v0.5 and `ARD.md` v0.3 amended to match; implementation split across P0–P4, each needing its own plan |
+| **Date** | 2026-08-04, access model revised 2026-08-05 |
+| **Status** | Approved design; `PRD.md` v0.6 and `ARD.md` v0.4 amended to match; implementation split across P0–P4, each needing its own plan |
 | **Supersedes** | PRD §4 (multi-user non-goal), NFR-11, `2026-07-26-department-export-design.md` D25–D31 |
 | **Companion** | `PRD.md`, `ARD.md` |
 
@@ -51,7 +51,7 @@ Frontend design and the responsive build run as their own track against these.
 | Store | Holds | Written by |
 |---|---|---|
 | `data-repo` (git, unchanged) | Departments, processes, overviews, order, transcripts, runs | engine CLIs only |
-| `app.db` (new, SQLite) | Users, roles, grants, overrides, supervisor edges, sessions, visibility policy, confirmations, audit log | `ui-backend` only |
+| `app.db` (new, SQLite) | Users, roles, capabilities, user scopes, supervisor edges and `can_supervise`, sessions, visibility policy, confirmations, audit log | `ui-backend` only |
 | `comments.db` (new, SQLite) | Comments and their approval workflow | `ui-backend` and the `comments` CLI |
 
 `data-repo` remains the source of truth for **what the processes are**. It gains
@@ -151,24 +151,72 @@ schedule, shipped alongside the existing push.
 
 ## 3. Identity, roles and access control
 
+> **Revised 2026-08-05 (D9–D15 rewritten; D50–D54 added).** The first version of
+> this section used five preset roles carrying a numeric `level` and a typical
+> scope, plus per-user capability overrides. All three are withdrawn. A level is
+> an ordinal *proxy* for "has less authority", maintained by hand, and it can
+> disagree with the truth — which is why the first version needed `manage_peers`
+> as a patch the moment an Overseer had to create an Overseer. Comparing
+> capability sets computes the property directly, so it cannot drift. Scope moved
+> off the role because a role that carries one folds two independent things into
+> one column, and "head of two departments" was a special case as a result.
+> Overrides are gone because they were a second, invisible permission system
+> *and* because the subset comparison below is only well-defined when a user's
+> capabilities come from exactly one place.
+>
+> Old → new: Overseer = **Admin** + `*`. Department head = **Reader** +
+> `dept:x` + `can_supervise`. Department viewer = **Reader** + `dept:x`. Report
+> reader = **Reader** + `dept:x/report:k`.
+
+**Three independent axes. None is ever folded into another.**
+
+1. **Role** = a set of capabilities. No scope, not even a default. No level.
+2. **User** = one role + one or more scopes. Scope lives here and nowhere else.
+3. **Supervisor** = an org-chart fact. It routes comments and grants nothing.
+
 ### D9 — Capabilities
 
-Eight grantable verbs, one structural.
+Nine. Three of them carry `delegable: false`.
 
-| Capability | Permits | Scope-aware | Grantable |
+| Capability | Permits | Scope-aware | Delegable |
 |---|---|:-:|:-:|
 | `view` | See a department, its processes, flowcharts and reports within scope | ✅ | ✅ |
 | `comment` | Create comments on a department, process or node within scope | ✅ | ✅ |
-| `edit` | Modify process content, department overview, process order | ✅ | ✅ |
-| `confirm` | Set the confirmation mark on a flowchart or department overview | ✅ | ✅ |
-| `export_pdf` | Download a report as PDF or standalone HTML | ✅ | ✅ |
-| `manage_users` | Create, modify and disable users **below** own level | ❌ | ✅ |
-| `manage_peers` | Additionally create users **at** own level | ❌ | ✅ |
-| `view_audit` | Read the activity and logging reports | ✅ | ✅ |
-| `set_visibility` | Change the global content-visibility policy | — | ❌ level 0 only |
+| `export_pdf` | Download a report as PDF or standalone single-file HTML | ✅ | ✅ |
+| `manage_users` | Create, modify and disable users | ❌ | ✅ |
+| `manage_peers` | Additionally create users whose capability set equals one's own | ❌ | ✅ |
+| `view_audit` | Read the activity and logging reports, within scope | ✅ | ✅ |
+| `edit` | Modify process content, department overview, process order | ✅ | ❌ |
+| `confirm` | Confirm a flowchart or department overview | ✅ | ❌ |
+| `set_visibility` | Change the global content-visibility policy | — | ❌ |
 
 Approving a comment is **not** a capability. It is inherent to being someone's
 supervisor — nothing to grant, nothing to forget to grant.
+
+**Deliberately absent: `upload` and `run_pipeline`.** Sending voice notes and
+starting a processing run happen in Telegram, where both bots authenticate by
+**numeric Telegram ID against a static allowlist** (NFR-1) — no session, no user
+record, and no route to `app.db`, which D5 mounts only into `ui-backend` on
+purpose. A capability that appears in the permission UI and enforces nothing is
+worse than one that does not exist, so Telegram intake stays gated exactly as it
+is today. Adding them later means first giving users a Telegram identity and the
+bots a way to resolve it.
+
+### D50 — `delegable: false` is a property of the capability row
+
+Only the seed process may create a role holding a non-delegable capability. **No
+API path creates one, for anyone, including an Editor.**
+
+This deliberately replaces an earlier recommendation that role definitions be
+"level-0 only". That was an identity check, and identity checks rot: add a second
+administrator, rename a user in a migration, and the guarantee evaporates
+silently. As a property of the capability, "no UI path can ever mint a role that
+edits content" is a data invariant with a one-line test and no privileged
+username anywhere in the code.
+
+New roles may be freely composed from the six delegable capabilities. Two likely
+additions, not built now: **Contributor** and **Reader (no download)** =
+`view` + `comment`.
 
 ### D10 — Scope grammar
 
@@ -183,6 +231,9 @@ deliberately no `process:{id}` scope: department- and report-level access covers
 the stated need, and process-level would multiply the permission UI for a case
 that has not arisen.
 
+**A user may hold several scopes.** A head of two departments is one user with
+`dept:dining` and `dept:cashier` — not a special case.
+
 **Propagation:**
 
 - A grant on `dept:x` **includes reports added later**. Scope is the department.
@@ -191,59 +242,147 @@ that has not arisen.
 
 ### D11 — Preset roles
 
-| L | Role | Capabilities | Typical scope | Supervisor |
-|:-:|---|---|---|:-:|
-| **0** | Editor | all eight + `set_visibility` | `*` | not required |
-| **1** | Overseer | `view` `comment` `export_pdf` `manage_users` `manage_peers` `view_audit` | `*` | not required |
-| **2** | Department head | `view` `comment` `export_pdf` `manage_users` | `dept:a`, `dept:b`, … | required |
-| **3** | Department viewer | `view` `comment` `export_pdf` | `dept:a` | required |
-| **4** | Report reader | `view` `comment` `export_pdf` | `dept:a/report:steps` | required |
+Roles are rows in a table, not `if` statements. Three presets; a fourth is a form
+fill.
 
-Roles are rows in a table, not `if` statements. A fifth role or a level 5 is a
-form fill. Levels 3 and 4 are where further hierarchy is expressed.
+| Capability | Reader | Admin | Editor |
+|---|:-:|:-:|:-:|
+| `view` | ✅ | ✅ | ✅ |
+| `comment` | ✅ | ✅ | ✅ |
+| `export_pdf` | ✅ | ✅ | ✅ |
+| `manage_users` | – | ✅ | ✅ |
+| `manage_peers` | – | ✅ | ✅ |
+| `view_audit` | – | ✅ | ✅ |
+| `edit` | – | – | ✅ |
+| `confirm` | – | – | ✅ |
+| `set_visibility` | – | – | ✅ |
 
-**No role except Editor holds `edit` or `confirm`.** Because delegation can only
-confer what the delegator holds (D13), the ability to edit content can only ever
-originate from a level-0 user.
+The intended deployment:
 
-A department head with two departments is one user with two grants; nothing
-special.
+| Person | Role | Scope | `can_supervise` |
+|---|---|---|:-:|
+| The analyst | Editor | `*` | — |
+| Deputy manager | Admin | `*` | — |
+| Department head | **Reader** | `dept:dining` (+ others) | **✅** |
+| Department viewer | Reader | `dept:dining` | – |
+| Report reader | Reader | `dept:dining/report:steps` | – |
 
-### D12 — Grant resolution
+**A department head is a Reader carrying the supervisor tag.** They read,
+comment, download and approve their people's comments — and they create no users
+and see no user-administration surface at all (D54). This reverses an earlier
+requirement that department heads appoint their own subordinates: **all user
+administration is centralised at `*` scope.** They also hold no `view_audit`, so
+they cannot see activity reports even for their own branch.
+
+Scoped Admins (`Admin` + `dept:dining`) are legal in the model and absent from
+the intended deployment.
+
+### D12 — Resolution
 
 ```
-grants    = role.capabilities × user.scopes
-overrides = ordered list of (±, capability, scope)
+allows(user, capability, target)
+  ⟺  user.role.capabilities ∋ capability
+  ∧  ∃ s ∈ user.scopes : s contains target
 ```
 
-`allows(user, capability, target)` succeeds when **some grant's scope contains the
-target** and **no revocation's scope contains the target**. Revocation always
-wins.
+That is the whole rule. **There are no per-user overrides** — no override table,
+no per-user capability list, no deny list. An exception becomes a new role.
 
-| Configuration | Result |
+The cost is a handful more roles; the gain is that "why can Ali download?" has
+exactly one answer in exactly one place, and that the subset comparison in D13 is
+computable at all.
+
+### D13 — Delegation
+
+`manage_users` is required to create, modify or disable anyone. Beyond that, two
+independent checks, both of which must pass:
+
+1. **Capabilities** — the new user's set is a **strict subset** of the creator's,
+   unless the creator holds `manage_peers`, which also permits **equality**.
+2. **Scope** — every scope of the new user is **contained by** some scope of the
+   creator. Containment, not membership: a creator holding `dept:dining` may
+   create a user scoped `dept:dining/report:steps`.
+
+| Creator | → Reader | → Admin | → Editor |
+|---|:-:|:-:|:-:|
+| Reader | – | – | – |
+| Admin | ✅ | ✅ | – |
+| Editor | ✅ | ✅ | ✅ |
+
+A Reader's row is empty because they lack `manage_users` entirely, not because of
+the subset rule. An Admin may create an Admin because `manage_peers` permits
+equality; an Admin may never create an Editor because `Editor ⊄ Admin`.
+
+**Modification** is bound by the same two checks against the **resulting** user,
+so nobody can escalate an existing account past their own.
+
+**Nobody may edit their own record.** Changing one's own password from the
+profile page is the only exception. Resetting another user's password issues a
+**short-lived single-use token** and never sets a password the resetter knows.
+
+**Editing a role definition** is bound by the same subset rule as creating one,
+and non-delegable capabilities can never be added (D50). A holder of
+`manage_users` can therefore never raise a role above their own authority. They
+*can* narrow a role held by users outside their scope — a downgrade with a blast
+radius wider than their own reach. That is accepted and named rather than
+designed around; the alternative is per-role ownership, which is machinery this
+does not need.
+
+### D51 — Supervisor is an independent axis
+
+Every user has a supervisor, **except users scoped `*`**, for whom it is
+optional. The supervisor determines comment approval routing (D34) and nothing
+else.
+
+A separate boolean, **`can_supervise`**, marks a user as eligible to be chosen as
+someone's supervisor. It is set by a holder of `manage_users` and **grants no
+permissions**. It exists because with the level concept gone there is nothing
+left from which to infer that someone sits above their department — org position
+is a fact asserted about a person, not something derivable from their
+permissions. A Reader may supervise a Reader.
+
+### D52 — Supervisor eligibility
+
+Eligible = **active**, **and** their scope covers the new user's scope, **and**
+(`can_supervise` **or** scope `*`).
+
+| New user's scope | Candidates |
 |---|---|
-| `dept:dining` + `− view on dept:dining/report:steps` | Whole dining department except the steps report |
-| `*` + `− export_pdf on *` | Sees everything, can never download anything |
-| `dept:dining` + `dept:cashier` | One department head over two departments |
+| `dept:dining` | `can_supervise` users on dining, plus all `*` holders |
+| `dept:dining/report:steps` | same |
+| `dept:dining` + `dept:cashier` | `*` holders only — nobody else covers both |
+| `*` | `*` holders only |
 
-`export_pdf` is in every preset role's default set; removing it is an explicit
-override.
+Default to the creator when eligible. Reject: self, disabled users, anyone whose
+scope does not cover, and any choice creating a cycle.
 
-### D13 — Delegation, three rules
+Candidates are displayed **with their scope beside their name** — "Ali Rezaei —
+dining", "Maryam Ahmadi — all departments". Past thirty users, the reason someone
+appears in the list is otherwise invisible.
 
-1. **Confer only what you hold** — capabilities *and* scopes. A dining head can
-   never produce a cashier user, and can never confer `edit`.
-2. **Create only below your level**, unless you hold `manage_peers`, which also
-   permits your own level. Editors and Overseers hold it; department heads do
-   not. Granting it to one department head is a permission change, not a code
-   change.
-3. **Supervisor mandatory except for users with `view` on `*`.** Freely chosen by
-   the creator, must have scope covering the new user's scope, cycles rejected.
+### D53 — At least one active `*` holder always exists
 
-This yields exactly: an Overseer may create another Overseer; an Overseer may not
-create an Editor; a department head may not create a department head; a
-department head may not create a user in a department they do not hold; an Editor
-may create anyone.
+The candidate list is never empty because at least one active `*`-scoped user
+always survives. That is true, but only *emergently*: it holds because **nobody
+may edit their own record** (D13), so the last actor standing cannot remove
+themselves, narrow their own scope, or disable their own account.
+
+Two rules that look unrelated, one holding the other up. It is written here as an
+**explicit invariant with its own test** so that a later "delete user" endpoint,
+or any relaxation of the self-edit ban, fails a test rather than silently locking
+everyone out of user administration.
+
+### D54 — A Reader sees no user-administration surface
+
+No user list, no user detail, no admin screens, no supervisor picker — a Reader
+holds no `manage_users` and is served nothing about anyone else's account.
+
+**The exception, which is not one:** names that appear *inside a comment the
+Reader is entitled to read*. A department head approving their branch's comments
+necessarily sees the author (D37), and everyone who could see a comment sees who
+resolved or rejected it and why (D38). Without that the comment system is
+unreadable. The boundary is the **user-administration surface**, not the
+appearance of a name in content already routed to them.
 
 ### D14 — Disabling a user never blocks and never cascades
 
@@ -264,22 +403,29 @@ because the person who raised it left.
 
 Usernames and passwords are created in-system by whoever creates the user.
 Passwords are argon2-hashed as today (`argon2-cffi`), stored in `app.db`, and
-every user can change their own from their profile. The read-only-mounted
-`ui-users.json` is retired — it cannot support self-service change.
+every user can change their own from their profile — the sole exception to the
+self-edit ban (D13). The read-only-mounted `ui-users.json` is retired: it cannot
+support self-service change.
+
+**Resetting someone else's password issues a short-lived single-use token.** It
+never sets a password the resetter knows, so an administrator cannot sign in as
+the user they just reset and leave the audit log attributing it to that person.
 
 ---
 
 ## 4. Content visibility
 
-### D16 — One global policy, editable only at level 0
+### D16 — One global policy, editable only by `set_visibility`
 
 What is shown of a process applies **identically to every non-editor**. It is not
 a grant, not per-role, not per-department.
 
-The reason is structural: if field visibility were grantable, anyone holding
-`manage_users` could confer it, and internal content would leave the system
-without a level-0 user ever deciding it. Making it a global policy puts the
-decision only in the hands that should hold it.
+The reason is structural: if field visibility were an ordinary capability,
+anyone holding `manage_users` could confer it, and internal content would leave
+the system without an Editor ever deciding. Instead `set_visibility` is
+`delegable: false` (D50), so no role holding it can be created through any API
+path — a stronger guarantee than restricting the action to a privileged account,
+because it depends on no account's identity.
 
 What varies between users is *which departments and reports they can reach* —
 never *which fields*.
@@ -511,9 +657,8 @@ and leaves a record.
 | a holder of `edit` | every comment that completed the chain, regardless of subtree |
 | anyone else | nothing |
 
-An Overseer with `view` on `*` still reads only their own branch's comments.
-Seeing every department is not the same as reading every department's internal
-complaints.
+An Admin scoped `*` still reads only their own branch's comments. Seeing every
+department is not the same as reading every department's internal complaints.
 
 A comment can outlive its author's access: if a report reader loses a department,
 their in-flight comment stays in the chain and they simply stop seeing it.
@@ -573,9 +718,16 @@ marking the moment guessing stops being guessing."* That gap closes here.
 `report.downloaded` (with format), `process.edited`, `process.confirmed`,
 `confirmation.invalidated`.
 
-**Governance** — `user.created`, `user.disabled`, `role.changed`, `grant.added`,
-`grant.revoked`, `supervisor.changed`, `visibility.policy.changed`,
-`comment.created`, `comment.approved`, `comment.rejected`, `comment.addressed`.
+**Governance** — `user.created`, `user.modified`, `user.disabled`,
+`password.reset_issued`, `role.assigned`, `role.created`, `role.changed`,
+`scope.granted`, `scope.revoked`, `supervisor.changed`,
+`supervisor_flag.changed`, `visibility.policy.changed`, `comment.created`,
+`comment.approved`, `comment.rejected`, `comment.addressed`.
+
+`supervisor.changed` and `supervisor_flag.changed` are **separate events on
+purpose**. Toggling `can_supervise` reshapes who is *eligible* to supervise —
+altering the org chart — without any user's supervisor field changing, so a
+single combined event would miss it entirely.
 
 ### D43 — Presence is measured as active time, not time since login
 
@@ -592,17 +744,21 @@ activity by user (logins, active time, sessions, last seen); report readership
 username and IP; permission history with the actor of every change; comment
 throughput and where comments sit longest.
 
-**`view_audit` follows content scope, not the subtree** — unlike comment
+**`view_audit` follows content scope, not the supervisor tree** — unlike comment
 visibility (D37). Comments are private communications that were deliberately
-routed; audit is an operational record. An Overseer with `view_audit` on `*`
-therefore sees activity across the whole company while being unable to read those
-people's comments.
+routed; audit is an operational record. An Admin scoped `*` therefore sees
+activity across the whole company while being unable to read those people's
+comments.
+
+Note who does *not* hold it: `view_audit` is an Admin and Editor capability, so a
+department head — a Reader (D11) — cannot see activity reports even for their own
+branch.
 
 ### D45 — Audit rows cannot be deleted through the UI
 
-No endpoint exists to delete them, for any role including level 0. Given that the
-Editor sits at the top of every hierarchy, this is the only thing that makes the
-log mean anything.
+No endpoint exists to delete them, for any role including Editor. Given that the
+Editor is the only source of `edit`, `confirm` and `set_visibility`, this is the
+only thing that makes the log mean anything.
 
 Retention is indefinite by default — the volume is trivial at this scale — with a
 configurable purge older than N months, because "who read what" is personal data
@@ -621,8 +777,9 @@ No second application and no second credential.
 
 ### D47 — `GET /api/auth/me` returns a session descriptor
 
-User, role, level, scopes, effective capabilities, supervisor, pending-approval
-count. The client derives affordances from it.
+User, role, capabilities, scopes, supervisor, `can_supervise`, and
+pending-approval count. The client derives affordances from it. No level — there
+isn't one (D11).
 
 ### D48 — The server enforces independently of the client
 
@@ -643,9 +800,15 @@ which design direction is chosen.
 
 ## 10. Migration and rollout
 
-**Seeding.** `ui-users.json` seeds `app.db`. The current analyst becomes the
-Editor at level 0 with scope `*`. Other entries become users requiring a role and
-supervisor before they can sign in.
+**Seeding.** The seed process creates the three preset roles — including the
+`Editor` role, which holds the three non-delegable capabilities and which **no
+API path can ever recreate** (D50) — and makes the current analyst an Editor
+scoped `*`. Any other `ui-users.json` entry becomes a user requiring a role,
+scope and supervisor before it can sign in.
+
+Because the seed is the only origin of `edit`, `confirm` and `set_visibility`, it
+is also the only recovery path if every Editor account is lost. That is a
+deliberate trade and belongs in the runbook.
 
 **Export readers.** The shared export credential is removed; anyone reading
 exports today needs an account.
@@ -663,23 +826,42 @@ and the process data never diverged.
 
 ## 11. Testing
 
-1. **Permission resolution** — table-driven over grants, overrides and scope
-   containment, including every row of D12.
-2. **Negative tests per capability per endpoint** — rebuilding for capabilities
-   the discipline the current suite applies to export-vs-admin session isolation
-   (an export session getting 401 from `/api/departments`, pinned in both
-   directions).
-3. **Content filter** — no denylisted field ever appears in any response to a
+1. **Permission resolution** — table-driven over roles, scopes and scope
+   containment (D12), including that `dept:x` covers `dept:x/report:k` and that
+   `dept:x/report:k` covers neither the department nor a second report.
+2. **The delegation matrix (D13) in both directions** — every cell of the
+   creator → creatable table asserted as permitted *and* every excluded
+   combination asserted as refused. Plus: the scope-containment constraint, the
+   strict-subset rule versus `manage_peers` equality, modification bound by the
+   same checks against the resulting user, and self-edit rejection with
+   own-password change as the sole exception.
+3. **Supervisor candidate list (D52)** — one case per row of the eligibility
+   table, plus cycle rejection, disabled-user exclusion, and the
+   multi-department case resolving to `*` holders only.
+4. **`delegable: false` (D50)** — **no API path creates a role holding `edit`,
+   `confirm` or `set_visibility`**, asserted against every role-creating and
+   role-editing endpoint, with the acting user an Editor. If this test can be
+   made to pass by an Editor, the guarantee is gone.
+5. **The `*`-holder invariant (D53)** — no sequence of disable, scope-narrowing
+   or role-change operations can reduce the system to zero active `*`-scoped
+   users, given that nobody may edit their own record.
+6. **Negative tests per capability per endpoint** — a role lacking the capability
+   gets 401/403, pinned in both directions. This rebuilds for capabilities the
+   discipline the current suite applies to export-vs-admin session isolation (an
+   export session getting 401 from `/api/departments`).
+7. **A Reader is served no user-administration surface (D54)** — user list,
+   user detail and supervisor-picker endpoints all refuse, while comment
+   payloads a Reader is entitled to still carry author and resolver names.
+8. **Content filter** — no denylisted field ever appears in any response to a
    non-editor, asserted over every endpoint, not only reports.
-4. **Delegation** — each of the six D13 outcomes, plus cycle rejection and the
-   scope-covering constraint on supervisors.
-5. **Comment routing** — disabled hops, all-disabled chains, rejection restart,
+9. **Comment routing** — disabled hops, all-disabled chains, rejection restart,
    freeze-on-first-approval, orphaned anchors after a simulated `restructure`.
-6. **Fingerprints** — what does and does not invalidate a confirmation; position
-   changes must invalidate (D21).
-7. **Audit completeness** — every state-changing endpoint emits an event.
-8. **Route ordering** — the existing test pinning that the SPA catch-all mount
-   cannot swallow API routes must be extended to any new prefix.
+10. **Fingerprints** — what does and does not invalidate a confirmation; position
+    changes must invalidate (D21).
+11. **Audit completeness** — every state-changing endpoint emits an event, with
+    `supervisor.changed` and `supervisor_flag.changed` asserted separately.
+12. **Route ordering** — the existing test pinning that the SPA catch-all mount
+    cannot swallow API routes must be extended to any new prefix.
 
 ---
 
@@ -693,6 +875,8 @@ and the process data never diverged.
 | Two SQLite files outside `git-push` | D8 backup path is not optional — without it NFR-7 is false |
 | Host is 3.7 GB / 2 CPUs, already running a Claude Code runtime and chromium | D6 chooses SQLite partly for this reason |
 | In-flight comments readable from the bot container | Accepted (D5); bounded blast radius |
+| Losing every Editor account means `edit`, `confirm` and `set_visibility` cannot be recreated through any API path (D50) | Deliberate. Recovery is the seed process; it belongs in the runbook, and it is the price of a guarantee that depends on no account's identity |
+| All user administration is centralised at `*` scope (D11), so every account for every department is created by two or three people | Accepted on instruction. The load is small at this size; if it stops being small, a scoped Admin role already exists in the model |
 
 ---
 
@@ -707,15 +891,24 @@ and the process data never diverged.
   be set once real volume is known.
 - **Report registry contents beyond `flowchart` and `steps`** — the mechanism is
   designed for more; none are specified.
+- **`upload` and `run_pipeline` as capabilities** — dropped from v1 (D9). Adding
+  them means giving users a Telegram identity and giving the bots a way to
+  resolve it without breaking D5's mount boundary.
+- **A content-and-confirmation-history report** — `process.edited`,
+  `process.confirmed`, `confirmation.invalidated` and `password.changed` are
+  recorded (D42) but no report in D44 surfaces them. The most useful missing
+  question is *"which departments have flowcharts that went dark and have not
+  been re-confirmed"*, since unconfirmed content is invisible to everyone (D22).
 
 ---
 
 ## 14. Document impact
 
-All of the following are **applied** — `PRD.md` is at v0.5 and `ARD.md` at v0.3.
+All of the following are **applied** — `PRD.md` is at v0.6 and `ARD.md` at v0.4.
 
 | Document | Change |
 |---|---|
+| **v0.6 / v0.4 — access model revision** | `PRD.md` §3 and §7.8 and AC-16 rewritten for roles-without-scope, no levels and no overrides; `ARD.md` §19.2 replaced; §14 and §17 updated |
 | `PRD.md` §4 | Multi-user and role management move from Non-Goals to Goals, with a dated reversal note |
 | `PRD.md` §3 | Users section rewritten: multiple roles, not one analyst |
 | `PRD.md` §7 | New subsections for access control, comments, confirmation, and activity reporting; §7.7 rewritten from "export" to "reports" |

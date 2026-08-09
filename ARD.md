@@ -2,10 +2,10 @@
 
 | | |
 |---|---|
-| **Version** | 0.3 (technical draft) |
-| **Date** | 2026-08-04 |
-| **Status** | Live; amended for the multi-user architecture (§13.1, §13.5, §14, §16, §19) |
-| **Basis document** | PRD v0.5 (references the FR/NFR/INV/AC IDs) |
+| **Version** | 0.4 (technical draft) |
+| **Date** | 2026-08-05 |
+| **Status** | Live; amended for the multi-user architecture (§13.1, §13.5, §14, §16, §19); access model revised in v0.4 (§19.2) |
+| **Basis document** | PRD v0.6 (references the FR/NFR/INV/AC IDs) |
 | **Audience** | Dev team |
 
 > This document defines the "how": topology, paths, schemas, pipeline, execution mechanism, and deployment. The "what/why" requirements live in the PRD.
@@ -695,7 +695,7 @@ EXPORT_DIR/{dept}/{kind}-{fingerprint}.pdf      # its printable form, same stem
 - Both bots restricted to allowed Telegram IDs (control bot: `ALLOWED_USERS`; upload bot: its own code's allowlist) (NFR-1); an unauthorized ID is rejected without a reply (AC-8).
 - **One credential system for the whole application** (NFR-3, AC-8). Every user signs in with their own username and password; there is no second mechanism and no shared credential (§13.5). The session cookie carries `HttpOnly`, `SameSite=lax` and **`Secure`**; the local stack still logs in because `localhost` is a potentially trustworthy origin, and `deploy/local/README.md` records what breaks the moment the stack is reached at a LAN IP over plain HTTP.
 - **Authorisation is per request, not per screen** (AC-14). Every endpoint re-derives the caller's capabilities from the session row and the grant model (§19.2, §19.5). What the frontend draws is a convenience; a report reader issuing a request directly for another department's process gets the same refusal as one who never saw a button.
-- **Delegation cannot escalate** (AC-16). A user may only confer capabilities and scopes they hold, so `edit` can only ever originate from a level-0 user, and level-crossing is bounded by `manage_peers` (§19.2).
+- **Delegation cannot escalate** (AC-16). A created or modified user's capability set must be a strict subset of the actor's — equality only with `manage_peers` — and their scopes must be contained by the actor's. Nobody may edit their own record. Separately, `edit`, `confirm` and `set_visibility` are `delegable: false`, so **no API path creates a role holding them**, for anyone, including an Editor (§19.2).
 - **The activity record is unreachable from the runtime** (NFR-14). `app.db` is mounted only into `ui-backend`; the Telegram runtime reaches comments through a CLI over a separate file (§19.8). This is a mount boundary rather than a convention, because the control-bot image ships Python and therefore `sqlite3` — a CLI-only rule is not enforceable from inside that container, the same reasoning that makes §7's hooks defend INV-1 at the file level rather than trusting the sanctioned CLI alone.
 - **No interactive API docs.** `create_app` passes `docs_url=None, redoc_url=None, openapi_url=None`. FastAPI serves all three unauthenticated by default — the session here is a cookie checked inside each handler, not a global dependency, so nothing stood in front of them, and they published every admin route's path, method and body shape to anyone who asked. There are no third-party API consumers; the only client is the SPA in the same repo. Restoring them means putting them behind the session, not deleting the three arguments.
 - Secrets (Vertex service account, password hashes, signing key, bot tokens) are all outside `data-repo` and outside Git.
@@ -793,7 +793,12 @@ Key Docker notes:
 | ~~FR-E8 / NFR-11 (separate export credential and sign-in page)~~ — **withdrawn** | §13.5 — one credential system |
 | NFR-13 (a failed PDF never costs the report) | §13.4 (D21) |
 | INV-6 (a report is derived, never a source) | §13.4 `EXPORT_DIR` outside `data-repo` and now a pure cache; §16 `ui-exports` volume |
-| FR-A1…A10 (users, roles, scopes, delegation) | §19.1–§19.3, §19.5 |
+| FR-A1…A4, A9, A10 (accounts, roles, scopes, disabling, enforcement) | §19.1–§19.3, §19.5 |
+| FR-A5 (the three permissions no role can be built with) | §19.2 — `delegable: false` on the capability row |
+| FR-A6 (no per-person exceptions) | §19.2 — one resolution rule, no override table |
+| FR-A7 / AC-16 (who may appoint whom) | §19.2 — strict-subset plus `manage_peers`, scope containment, self-edit ban |
+| FR-A8 / AC-23 (supervisor and `can_supervise`) | §19.2 eligibility rules; §19.8 routing |
+| FR-A11 / AC-24 (readers see no user administration) | §19.2; §19.8 for the comment-name exception |
 | FR-V1…V4 / AC-18 (confirmation bound to a version) | §19.6 — content fingerprint, not a boolean field |
 | FR-V5, FR-V6 / AC-21 (content visibility) | §19.4 — one global policy, level-0 only, one filter |
 | FR-K1…K11 / AC-19, AC-20 (comments and the chain) | §19.8 |
@@ -817,14 +822,14 @@ Key Docker notes:
 
 ## 19. Identity, Access, Comments & the Activity Record
 
-> Authoritative design: `docs/superpowers/specs/2026-08-04-multi-user-rbac-design.md`, decisions **D1–D49**. This section states the architecture; the spec states why each decision was taken and what was rejected. Implementation is split across five sub-projects (P0–P4) in that spec, each with its own plan.
+> Authoritative design: `docs/superpowers/specs/2026-08-04-multi-user-rbac-design.md`, decisions **D1–D54** (the access model revised 2026-08-05: D9–D15 rewritten, D50–D54 added). This section states the architecture; the spec states why each decision was taken and what was rejected. Implementation is split across five sub-projects (P0–P4) in that spec, each with its own plan.
 
 ### 19.1 Three stores, one job each
 
 | Store | Holds | Written by |
 |---|---|---|
 | `data-repo` (Git, unchanged) | departments, processes, overviews, order, transcripts, runs | the engine CLIs only |
-| `app.db` (SQLite, volume `ui-state`) | users, roles, grants, overrides, supervisor edges, sessions, visibility policy, confirmations, activity record | `ui-backend` only |
+| `app.db` (SQLite, volume `ui-state`) | users, roles, capabilities, user scopes, supervisor edges and `can_supervise`, sessions, visibility policy, confirmations, activity record | `ui-backend` only |
 | `comments.db` (SQLite, volume `ui-comments`) | comments and their approval workflow | `ui-backend` and the `comments` CLI |
 
 `data-repo` gains **no fields, no new files under `departments/`, and no schema changes**. `process.json` is untouched, and `merge`, `layout`, `order`, `validate` and `allocate-id` are unchanged. INV-1 through INV-6 hold as written.
@@ -835,35 +840,67 @@ Key Docker notes:
 
 ### 19.2 The permission model
 
-**Capabilities** — eight grantable, one structural:
+> **Revised in v0.4.** Through v0.3 this section gave each of five preset roles a numeric `level` and a scope shape, and allowed per-user `(±, capability, scope)` overrides. All three are withdrawn. A level is an ordinal proxy for "has less authority", maintained by hand and able to disagree with the truth — which is why v0.3 needed `manage_peers` as a patch the moment an Overseer had to create an Overseer. Comparing capability sets computes the property directly and cannot drift. Scope moved off the role because a role carrying one folds two independent things into a single column. Overrides are gone because they were a second, invisible permission system *and* because the subset comparison below is only well-defined when a user's capabilities come from exactly one place. Old → new: Overseer = **Admin** + `*`; Department head = **Reader** + `dept:x` + `can_supervise`; Department viewer = **Reader** + `dept:x`; Report reader = **Reader** + `dept:x/report:k`.
 
-`view` · `comment` · `edit` · `confirm` · `export_pdf` · `manage_users` · `manage_peers` · `view_audit` — and `set_visibility`, which is **not grantable** and belongs to level 0 alone (§19.4).
+**Three independent axes, never folded into one another:** a **role** is a set of capabilities and nothing else; a **user** is one role plus one or more scopes; a **supervisor** is an org-chart fact that routes comments (§19.8) and grants nothing.
+
+**Capabilities** — nine, three of them non-delegable:
+
+| | delegable | |
+|---|:-:|---|
+| `view` `comment` `export_pdf` `manage_users` `manage_peers` `view_audit` | ✅ | freely composable into new roles |
+| `edit` `confirm` `set_visibility` | ❌ | **only the seed process can create a role holding these** |
 
 Approving a comment is not a capability: it is inherent to being someone's supervisor.
 
-**Scopes** — three shapes, strictly nested:
+**`delegable: false` is a property of the capability row**, not a check on a level or a username. No API path creates a role holding one of the three, for anyone, including an Editor. This replaces v0.3's "level 0 only": an identity check rots the moment an administrator is added, renamed or migrated, whereas a data property has a one-line test and depends on no account's existence. The cost is that the seed is the only recovery path if every Editor account is lost — a runbook item, and the price of the guarantee.
+
+**Deliberately absent: `upload` and `run_pipeline`.** Telegram intake and pipeline runs authenticate by numeric Telegram ID against a static allowlist (§14, NFR-1) — no session, no user record, and no route to `app.db`, which §19.1 mounts only into `ui-backend` on purpose. A capability that appears in the permission UI and enforces nothing is worse than one that does not exist.
+
+**Scopes** — three shapes, strictly nested, held by the **user**:
 
 ```
 *  ⊃  dept:{code}  ⊃  dept:{code}/report:{kind}
 ```
 
-A grant on `dept:x` **includes reports added later**; a grant on `dept:x/report:k` **never widens**. There is deliberately no `process:{id}` scope.
+A scope covering `dept:x` **includes reports added later**; one covering `dept:x/report:k` **never widens**. There is deliberately no `process:{id}` scope. A user may hold several scopes — a head of two departments is one user with two, not a special case.
 
-**Roles** are rows in a table, not `if` statements — a level, a capability set, and a scope shape:
+**Roles** are rows in a table, not `if` statements. Three presets:
 
-| L | Role | Capabilities | Supervisor |
-|:-:|---|---|:-:|
-| 0 | Editor | all eight + `set_visibility` | not required |
-| 1 | Overseer | `view` `comment` `export_pdf` `manage_users` `manage_peers` `view_audit` | not required |
-| 2 | Department head | `view` `comment` `export_pdf` `manage_users` | required |
-| 3 | Department viewer | `view` `comment` `export_pdf` | required |
-| 4 | Report reader | `view` `comment` `export_pdf` | required |
+| Capability | Reader | Admin | Editor |
+|---|:-:|:-:|:-:|
+| `view` `comment` `export_pdf` | ✅ | ✅ | ✅ |
+| `manage_users` `manage_peers` `view_audit` | – | ✅ | ✅ |
+| `edit` `confirm` `set_visibility` | – | – | ✅ |
 
-No role but Editor holds `edit` or `confirm`, and delegation can only confer what the delegator holds — so the ability to change content originates only at level 0.
+The intended deployment is: the analyst as **Editor** + `*`; a deputy as **Admin** + `*`; a department head as **Reader** + `dept:x` + `can_supervise`; viewers and report readers as **Reader** at narrower scopes. Scoped Admins are legal in the model and absent in practice.
 
-**Resolution.** `grants = role.capabilities × user.scopes`, plus an ordered list of `(±, capability, scope)` overrides. `allows(user, capability, target)` succeeds when some grant's scope contains the target and no revocation's scope contains it. **Revocation always wins.** `export_pdf` is granted by default in every role; removing it is an explicit override.
+A department head is therefore a Reader: they read, comment, download and approve their branch's comments, but hold no `manage_users` and no `view_audit`. **All user administration is centralised at `*` scope**, and no role but Editor can edit or confirm.
 
-**Delegation, three rules (FR-A6, A7, A8):** confer only what you hold; create only below your level unless you hold `manage_peers`; a supervisor is mandatory except for users with `view` on `*`, must have scope covering the new user's, and cycles are rejected.
+**Resolution.**
+
+```
+allows(user, capability, target)
+  ⟺  user.role.capabilities ∋ capability  ∧  ∃ s ∈ user.scopes : s contains target
+```
+
+That is the whole rule. There is no override table, no per-user capability list and no deny list; an exception becomes a new role.
+
+**Delegation (FR-A7).** `manage_users` is required at all. Beyond it, two independent checks: the new user's capability set is a **strict subset** of the creator's — unless the creator holds `manage_peers`, which permits **equality** — and every scope of the new user is **contained by** some scope of the creator (containment, not membership, so `dept:dining` covers `dept:dining/report:steps`).
+
+| Creator | → Reader | → Admin | → Editor |
+|---|:-:|:-:|:-:|
+| Reader | – | – | – |
+| Admin | ✅ | ✅ | – |
+| Editor | ✅ | ✅ | ✅ |
+
+A Reader's row is empty because they lack `manage_users`, not because of the subset rule. Modification is bound by the same checks against the **resulting** user. **Nobody may edit their own record**, save changing their own password; resetting another user's password issues a short-lived single-use token and never sets a known one. Editing a role definition obeys the same subset rule and can never add a non-delegable capability.
+
+**Supervisor (FR-A8) and `can_supervise`.** Mandatory except for users scoped `*`. A separate boolean marks a user as *eligible to be chosen* as a supervisor and grants nothing — with the level concept gone there is nothing left to infer org position from, so it is asserted rather than derived. Eligible candidates = active **and** scope covers the new user's scope **and** (`can_supervise` **or** scope `*`). A user with two departments can therefore only be supervised by a `*` holder. Default to the creator when eligible; reject self, disabled users, non-covering scopes and cycles. Candidates are shown with their scope beside their name, since past thirty users the reason someone appears is otherwise invisible.
+
+**At least one active `*` holder always exists** — but only *emergently*, because nobody may edit their own record, so the last actor standing cannot disable themselves or narrow their own scope. Two rules that look unrelated, one holding the other up; pinned by its own test so a later "delete user" path fails a test rather than locking everyone out.
+
+**Readers see no user-administration surface (FR-A11).** No user list, no user detail, no supervisor picker. The one place another person's name reaches a Reader is inside a comment they are entitled to read — its author, and whoever approved, rejected or resolved it (§19.8). The boundary is the administration surface, not a name in content already routed to them.
 
 **Disabling (FR-A9)** is immediate and revokes sessions. It does not cascade and does not require reorganising subordinates first; a subordinate left under a disabled supervisor is surfaced for reassignment rather than silently repointed.
 
@@ -873,7 +910,7 @@ A session is a row — id, user, issued-at, last-seen, IP, user agent, revoked-a
 
 ### 19.4 Content visibility — one global policy
 
-Which fields of a process a non-editor sees is a **single system-wide setting**, editable only at level 0, applied identically to every non-editor. It is deliberately **not** a grant: if it were, any holder of `manage_users` could confer it, and internal content would leave the system without a level-0 user deciding. What varies per person is which departments and reports they reach, never which fields.
+Which fields of a process a non-editor sees is a **single system-wide setting**, guarded by `set_visibility` and applied identically to every non-editor. It is deliberately **not** an ordinary capability: if it were, any holder of `manage_users` could confer it, and internal content would leave the system without an Editor deciding. Instead `set_visibility` is `delegable: false` (§19.2), so no role holding it can be created through any API path. What varies per person is which departments and reports they reach, never which fields.
 
 Defaults reproduce exactly what the export published before, so nothing new becomes visible at migration: node label, description, actor, edges and subprocess links visible; process summary, process IDEF0, KPIs and per-node ICOM hidden but switchable. `source`/`created_by`/`touched_by`, `pending`, `created_at`/`updated_at` and tombstoned processes are **never** shown and are not switchable by anyone, including the editor (NFR-12).
 
@@ -897,7 +934,9 @@ One append-only table in `app.db`: `at`, `actor`, `session`, `action`, `target`,
 
 The reports are `GROUP BY` queries filtered by `view_audit` scope. Note that `view_audit` follows **content scope**, unlike comment visibility which follows the supervisor tree (§19.8) — audit is an operational record, comments are routed private communications.
 
-**There is no endpoint to delete or alter a row, for any role including level 0** (NFR-14, AC-22). Retention is indefinite by default with a configurable purge, since "who read what" is information about people.
+**There is no endpoint to delete or alter a row, for any role including Editor** (NFR-14, AC-22). Retention is indefinite by default with a configurable purge, since "who read what" is information about people.
+
+Note who does *not* hold `view_audit`: it is an Admin and Editor capability, so a department head — a Reader (§19.2) — sees no activity report, not even for their own branch.
 
 ### 19.8 Comments
 
@@ -911,7 +950,7 @@ The reports are `GROUP BY` queries filtered by `view_audit` scope. Note that `vi
 
 **The author controls the comment exactly while it carries no approvals.** After the first approval it can be neither edited nor withdrawn: an approval vouches for specific words, and letting them change afterwards would make every signature above worthless. The escape hatch is that any approver may reject, which returns it to the author and leaves a record.
 
-**Visibility follows the supervisor tree, not content scope:** author, every supervisor above them at any stage, and holders of `edit` once it has cleared. An Overseer with `view` on `*` still reads only their own branch. Resolution and rejection are visible to that whole audience, with who, when, why, and the commit reference if one exists.
+**Visibility follows the supervisor tree, not content scope:** author, every supervisor above them at any stage, and holders of `edit` once it has cleared. An Admin scoped `*` still reads only their own branch. Resolution and rejection are visible to that whole audience, with who, when, why, and the commit reference if one exists. These names are the sole exception to FR-A11's rule that a Reader sees nothing about other users (§19.2).
 
 **The CLI (D4).** `comments list|show|resolve`, added to `engine/` and baked into the control-bot image alongside the existing CLIs — outside `APPROVED_DIRECTORY`, exactly as §8 and §16 already require. It reads `comments.db` directly, returns only `approved` and `addressed` comments, and serves author and approval-trail names from denormalised columns so it never touches a users table and cannot enumerate people. This is what makes *«برو مشکل کامنت CMT-42 رو درست کن»* work: the AI reads the anchor, edits through `merge`, commits, and marks the comment addressed with the commit id.
 
@@ -919,6 +958,8 @@ Notification is in-app only — a badge plus a "waiting longest" list, so a bloc
 
 ### 19.9 Migration
 
-`ui-users.json` seeds `app.db` once; the current analyst becomes the Editor at level 0 with scope `*`, and any other entry becomes a user requiring a role and supervisor before it can sign in. The shared export credential is removed, so anyone reading exports today needs an account. Nothing is confirmed (§19.6).
+The seed process creates the three preset roles — including `Editor`, which holds the three non-delegable capabilities and which **no API path can ever recreate** (§19.2) — and makes the current analyst an Editor scoped `*`. `ui-users.json` is read once for its remaining entries, each becoming a user that needs a role, a scope and a supervisor before it can sign in. The shared export credential is removed, so anyone reading exports today needs an account. Nothing is confirmed (§19.6).
+
+Because the seed is the only origin of `edit`, `confirm` and `set_visibility`, it is also the only recovery path if every Editor account is lost. That belongs in `docs/runbooks/06-changing-users.md`.
 
 Because `data-repo` is untouched and the two SQLite files are additive, **rollback is redeploying the previous image**.

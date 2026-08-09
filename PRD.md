@@ -2,9 +2,9 @@
 
 | | |
 |---|---|
-| **Version** | 0.5 (draft, no technical detail) |
-| **Date** | 2026-08-04 |
-| **Status** | Live; amended for the multi-user architecture (§7.8–§7.11) |
+| **Version** | 0.6 (draft, no technical detail) |
+| **Date** | 2026-08-05 |
+| **Status** | Live; amended for the multi-user architecture (§7.8–§7.11), access model revised in v0.6 |
 | **Product owner** | Dev team (single person) |
 | **End user** | Process analyst (editor) and the restaurant's staff, by role |
 | **Companion document** | ARD (architecture & technical design) — follows this document |
@@ -33,13 +33,28 @@ The system is **multi-user**: one application, one login, and one permission sys
 
 ## 3. Users & Context
 
-- **Editor (process analyst):** conducts in-person interviews with department staff, records voice notes, and collects related documents. Non-technical; interacts through Telegram and the UI. **The only role that changes anything** — the sole source of edits, confirmations, and of the content-visibility policy.
-- **Overseer:** sees every department and comments, but edits nothing. May appoint other Overseers and any role beneath them, and reads the activity reports.
-- **Department head:** sees one or more whole departments, comments, downloads, and appoints the readers beneath them.
-- **Department viewer / report reader:** sees a whole department, or only one report of one department. Reads, downloads and comments.
+A person's access is made of **two independent things**: a **role**, which says what they may do, and a **scope**, which says where they may do it. A third thing, their **supervisor**, is an org-chart fact that routes their comments and grants them nothing.
+
+Three roles:
+
+- **Editor** — the process analyst. Conducts in-person interviews with department staff, records voice notes, collects documents. Non-technical; interacts through Telegram and the UI. **The only role that changes anything** — the sole source of edits, confirmations, and of the content-visibility policy.
+- **Admin** — sees and comments, manages users, reads the activity reports. Edits nothing.
+- **Reader** — sees, comments and downloads. Manages nothing and sees nothing about any other user's account.
+
+The people:
+
+| Person | Role | Sees | Supervises |
+|---|---|---|:-:|
+| The analyst | Editor | everything | — |
+| Deputy manager | Admin | everything | — |
+| Department head | **Reader** | one or more whole departments | **✓** |
+| Department viewer | Reader | one whole department | – |
+| Report reader | Reader | one report of one department | – |
+
+- **A department head is a Reader carrying the supervisor tag.** They read, comment, download and approve their people's comments. They create no users and read no activity reports — **all user administration is done by the Editor and by Admins who see everything.**
 - **Developer user:** the developer, who builds the system and gradually improves the extraction logic.
 - **Context:** multi-user, runs on a server, with full change history preserved and every action attributed to the person who took it. No need to "keep the user's device on," since everything is server-side.
-- **Every user has a supervisor**, except those who read everything. That chain is what comments travel up, and what bounds who may appoint whom.
+- **Every user has a supervisor**, except those who see everything, for whom it is optional. That chain is what comments travel up. It is *not* what bounds who may appoint whom — that is decided by role and scope alone.
 - **Current departments (9):** management, accounting, warehouse, procurement, cooking, preparation, dining, cashier, logistics. The system must be **extensible** so that new departments (e.g. QC) can be added easily in the future.
 
 ---
@@ -175,16 +190,19 @@ The audience here is **not only the analyst**. It is the department's own staff 
 
 ### 7.8 Users, Roles & Access
 
-- **FR-A1 (accounts are created in-system):** Usernames and passwords are defined inside the system by someone who already has an account. There is no self-registration. Every user can change their own password from their own panel, and no one else's.
-- **FR-A2 (roles):** Access is granted by **role** — a named bundle of what a person may do — combined with the **scope** it applies to. A role can be granted afresh to a new kind of user without changing how the system works.
-- **FR-A3 (what a person may do):** The things a person may be permitted are: see content, comment on it, edit it, confirm it, download reports, create and manage users, and read the activity reports. Editing and confirming belong to the editor alone.
-- **FR-A4 (what a person may reach):** Scope is the whole system, a whole department (one person may hold several), or a single report of a single department. A grant on a whole department includes reports added later; a grant on one report never widens to include a new one.
-- **FR-A5 (exceptions per person):** Any single permission can be added to or taken away from one person without inventing a new role — for example, removing the ability to download from someone who may still read everything.
-- **FR-A6 (delegation is bounded by what you hold):** A user may only give others permissions and scopes they hold themselves. The ability to edit can therefore only ever originate from the editor.
-- **FR-A7 (who may appoint whom):** A user may create users below their own level. Creating a user at one's *own* level is a separate permission, held by the editor and by Overseers, and withheld from department heads — so a department head builds out their own branch but cannot appoint another department head. That permission can be granted or withheld per person.
-- **FR-A8 (every user has a supervisor):** A supervisor is required for everyone except users who read everything. The supervisor is chosen when the user is created, may be changed afterwards, and must be someone whose own access covers the new user's.
+> **Revised in v0.6.** Through v0.5 this section described five ranked roles, each carrying a level number and a scope of its own, and allowed any single permission to be added to or removed from one person. Ranks, role-owned scope, and per-person exceptions are all withdrawn. A rank is a hand-maintained stand-in for "has less authority" that can disagree with the truth; comparing what two people may actually do settles the same question from the facts. And a permission attached to one person is a second, invisible rulebook — the answer to *"why can this person download?"* must live in exactly one place.
+
+- **FR-A1 (accounts are created in-system):** Usernames and passwords are defined inside the system by someone who already has an account. There is no self-registration. Every user can change their own password from their own panel, and no one else's. Resetting someone else's password gives them a single-use link that expires; it never sets a password the person resetting it knows.
+- **FR-A2 (a role says what, a scope says where):** A **role** is a named set of things a person may do, and carries no scope of its own. A **scope** is attached to the person. One user holds one role and one or more scopes. A head of two departments is one person with two scopes, not a special kind of user.
+- **FR-A3 (what a person may be permitted):** See content, comment on it, download reports, manage users, appoint someone with the same permissions as oneself, read the activity reports, edit content, confirm content, and set the content-visibility policy.
+- **FR-A4 (what a person may reach):** Scope is the whole system, a whole department, or a single report of a single department. A scope covering a whole department includes reports added later; one covering a single report never widens to include a new one.
+- **FR-A5 (the last three permissions can never be created):** Editing, confirming, and setting the content-visibility policy can only exist in roles established when the system is first set up. **No user, including the editor, can build a new role that contains them** — not by any screen and not by any request. This is a property of those permissions themselves, not a restriction on a particular account, so it cannot be lost by renaming, adding, or replacing an administrator.
+- **FR-A6 (no exceptions for individuals):** There is no way to add or remove a single permission for a single person. If an exception is genuinely needed, it becomes a new role — and new roles can be freely composed from the six permissions that are not covered by FR-A5.
+- **FR-A7 (who may appoint whom):** Managing users requires the permission to do so, which readers do not have. Beyond that, one rule: **the person being created must be able to do strictly less than their creator, and reach no further.** Appointing someone with exactly one's own permissions is a separate permission of its own, held by editors and administrators. So an administrator may appoint another administrator but never an editor; an editor may appoint anyone; and a reader — including a department head — appoints nobody. The same rule governs changing an existing user, judged on what they would become. **Nobody may edit their own record**, apart from changing their own password.
+- **FR-A8 (every user has a supervisor):** Required for everyone except users who see everything, for whom it is optional. The supervisor routes comments and grants nothing else. Anyone may be a supervisor, including a reader — being one is a separate mark set on a person, not something their permissions imply. The candidates offered are the people whose own access covers the new user's, and the system refuses a choice that would create a loop.
 - **FR-A9 (disabling a user):** A user can be disabled at any time; their access ends immediately, including any session already open. Disabling never requires reorganising their subordinates first and never cascades to them. Where a disabled person is left as someone's supervisor, the system says so and offers to reassign.
 - **FR-A10 (permissions are enforced by the system, not by the screen):** What a person sees drawn on screen is a convenience. Whether the system will actually give them something is decided independently, every time they ask for it.
+- **FR-A11 (readers see nothing about other users):** A reader is shown no list of users, no user's details, and no part of the user-administration screens. The one place another person's name reaches them is inside a comment they are already entitled to read — its author, and whoever approved, rejected or resolved it (FR-K7, FR-K10). Without that the comment system would be unreadable.
 
 ### 7.9 Confirmation & Content Visibility
 
@@ -282,7 +300,9 @@ Non-negotiable rules that must always hold:
 - **AC-13:** A downloaded report opened with **no network at all** — double-clicked from a downloads folder — renders completely: diagrams, Persian text, and layout.
 - **AC-14:** A user whose only permission is one report of one department can open that report and nothing else: not the other report, not another department, not any process, and not any editing action — and this holds when the request is made directly, not only when the buttons are absent.
 - **AC-15:** The printable form of a flowchart report contains no diagram, node label, or step split across a page boundary, and can be produced from a phone.
-- **AC-16:** A user cannot grant anyone a permission or a scope they do not hold themselves; a department head cannot create another department head; and an Overseer can create another Overseer but cannot create anyone able to edit.
+- **AC-16:** A user cannot create or modify anyone who would be able to do more than they can, or reach further than they can. An administrator can create another administrator but never an editor; a reader — including a department head — creates nobody; nobody can edit their own record; and no request of any kind, made by anyone including the editor, produces a role that can edit, confirm, or change the content-visibility policy.
+- **AC-23:** The supervisor offered for a new user is only ever someone whose own access covers that user's, a choice that would create a loop is refused, and a person given two departments can only be supervised by someone who sees everything.
+- **AC-24:** A reader who requests the user list, another user's details, or the supervisor picker is refused — while the comments they are entitled to read still show who wrote them and who acted on them.
 - **AC-17:** Disabling a user ends their access immediately, including a session already open, without requiring their subordinates to be reorganised first.
 - **AC-18:** A confirmed flowchart becomes invisible to non-editors the moment it is changed by any path — an edit in the UI, a chat instruction, a processing run, or a change to the positions of its parts — and becomes visible again only when confirmed anew.
 - **AC-19:** A comment left by a report reader reaches the editor only after every supervisor in the chain has approved it; a rejection returns it to its author with the reason; and once anyone has approved it, its author can neither change nor withdraw it.
