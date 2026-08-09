@@ -71,7 +71,19 @@ import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 
 const SRC = join(process.cwd(), 'src')
+
+/** The only file allowed to hold literal values. */
 const ALLOWED = ['src/styles/tokens.css']
+
+/**
+ * Directories this guard does not police yet, each with the plan that clears it.
+ * The list only ever shrinks: whoever rebuilds a directory deletes its line.
+ *   src/flow/    — F16 keeps the flowchart implementation as-is. Permanent for F.
+ *   src/shell/   — rebuilt by Task 11 of this plan, which removes this line.
+ *   src/screens/ — rebuilt by P0–P4 as each screen is redone.
+ *   src/write/   — rebuilt by P1–P4 with the write flows.
+ */
+const PENDING_REBUILD = ['src/flow/', 'src/shell/', 'src/screens/', 'src/write/']
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {
@@ -86,7 +98,7 @@ function files() {
   return walk(SRC)
     .map((p) => ({ path: p, rel: p.slice(p.indexOf('src/')) }))
     .filter((f) => !ALLOWED.includes(f.rel))
-    .filter((f) => !/\/flow\//.test(f.rel))          // F16: flow is untouched
+    .filter((f) => !PENDING_REBUILD.some((d) => f.rel.startsWith(d)))
     .filter((f) => !/\.test\.tsx?$/.test(f.rel))
 }
 
@@ -282,17 +294,47 @@ export default {
 }
 ```
 
-- [ ] **Step 7: Run the guard test**
+- [ ] **Step 7: Repoint the export parity test at the token file**
+
+`ui/export/print/edge-parity.test.tsx:165` reads `tailwind.config.js` as **text** and greps it for a literal:
+
+```ts
+const tile = TAILWIND.match(/'tile-v2':\s*'(#[0-9A-Fa-f]{6})'/)
+```
+
+Step 6 replaces that literal with `var(--tile-v2)`, so the match returns null and the test fails. The colour itself does not change — `#F4EFFB` moves from the Tailwind config to the token file, which is now its source of truth.
+
+This is the one place F touches `ui/export/**`, and it is a **test**, never the render path: no component, no CSS that reaches a PDF, and the asserted value is byte-identical. The parity guarantee the test exists for is preserved, now pointed at the file that actually defines the colour.
+
+At the top of the file, alongside the existing `TAILWIND` constant (line 32), add:
+
+```ts
+const TOKENS = readFileSync(
+  join(HERE, '../../design/_ds/inja-food-design-system-1ef55d80-2e17-482f-b420-9d004eaa22de/tokens/colors.css'),
+  'utf8',
+)
+```
+
+and change the match at line 165 to read the token instead:
+
+```ts
+    const tile = TOKENS.match(/--tile-v2:\s*(#[0-9A-Fa-f]{6})/)
+    expect(tile, 'the token set defines tile-v2').not.toBeNull()
+```
+
+Leave the rest of the test — including how the captured hex is compared against `print.css` — untouched.
+
+- [ ] **Step 8: Run the guard test**
 
 Run: `cd ui && npx vitest run src/test/guards.test.ts`
-Expected: PASS — both assertions return empty arrays. If `src/ui/*.tsx` still reports hits, they are fixed in Tasks 4–5; temporarily add those exact paths to `ALLOWED` **only if** the test would otherwise block this commit, and remove them in the task that fixes them.
+Expected: PASS — both assertions return empty arrays. `src/ui`, `src/api`, `src/lib` and `src/auth` contain no hex literals today, and `PENDING_REBUILD` covers the four directories F does not rebuild. **Do not widen `ALLOWED`.** If a file under a policed directory reports a hit, stop and report it rather than adding an allowance.
 
-- [ ] **Step 8: Verify nothing else broke**
+- [ ] **Step 9: Verify nothing else broke**
 
 Run: `cd ui && npx vitest run && npx tsc -b`
 Expected: existing suites pass; TypeScript clean. Component tests that assert on `.btn`/`.chip` classes will fail — those are `src/ui/primitives.test.tsx`, fixed in Tasks 4–5. Note the failures and continue.
 
-- [ ] **Step 9: Commit**
+- [ ] **Step 10: Commit**
 
 ```bash
 git add ui/src/styles ui/src/index.css ui/tailwind.config.js ui/src/test/guards.test.ts
