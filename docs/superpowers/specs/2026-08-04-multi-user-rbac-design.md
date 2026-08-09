@@ -183,23 +183,28 @@ capability that appears in the permission UI and enforces nothing is worse than
 one that does not exist. Adding them means first giving users a Telegram identity
 and the bots a way to resolve it.
 
-### D50 — `delegable: false` is a property of the capability row
+### D50 — Roles come from the seed. No API path creates, edits or deletes one.
 
-Only the seed process creates a role holding a non-delegable capability. **No API
-path creates one, for anyone, including an Editor.**
+The set of roles is fixed at deploy time. **Users are created through the
+system; roles are not.** There is no role builder, no capability matrix on any
+screen, and no endpoint that writes the role table.
 
-It is a property of the capability rather than a check on an account, because an
-account check rots: add a second administrator, rename a user in a migration, and
-the guarantee evaporates silently. As a data property, *"no UI path can ever mint
-a role that edits content"* is an invariant with a one-line test and no
-privileged username anywhere in the code.
+A role can never be deleted, because every user holds exactly one and a deleted
+role would leave them with no capability set at all.
+
+Adding a fourth role — **Reader (no download)** = `view` + `comment` is the
+likely first — is a change to the seed and a deploy, not a form someone fills in.
+
+**`delegable: false` stays on `edit`, `confirm` and `set_visibility`** even
+though no API path creates roles at all, so the guard cannot be lost if role
+editing is ever introduced. It is a property of the capability rather than a
+check on an account, because an account check rots: add a second administrator,
+rename a user in a migration, and the guarantee evaporates silently. As a data
+property, *"no UI path can ever mint a role that edits content"* is an invariant
+with a one-line test and no privileged username anywhere in the code.
 
 Its price is that the seed is the only recovery path if every Editor account is
 lost — a runbook item (§10).
-
-New roles compose freely from the six delegable capabilities. Two likely
-additions, not built: **Contributor**, and **Reader (no download)** =
-`view` + `comment`.
 
 ### D10 — Scope grammar
 
@@ -222,7 +227,8 @@ process-level would multiply the permission UI for a case that has not arisen.
 
 ### D11 — Roles
 
-Rows in a table, not `if` statements. Three presets; a fourth is a form fill.
+Rows in a table, not `if` statements — so a fourth is a seed change rather than
+new code. Three exist (D50).
 
 | Capability | Reader | Admin | Editor |
 |---|:-:|:-:|:-:|
@@ -275,11 +281,16 @@ allows(user, capability, target)
 ```
 
 That is the whole rule. **There are no per-user overrides** — no override table,
-no per-user capability list, no deny list. An exception becomes a new role.
+no per-user capability list, no deny list.
 
 Two reasons. *"Why can this person download?"* must have one answer in one place;
 and the subset comparison in D13 is only well-defined when a user's capabilities
-come from exactly one source. The cost is a handful more roles.
+come from exactly one source.
+
+An exception is therefore a **new role in the seed** (D50), which means a deploy
+rather than a form. Taking `export_pdf` from one person is assigning them a
+`Reader (no download)` role that someone added at deploy time — not a switch on
+their user record.
 
 ### D13 — Delegation
 
@@ -308,12 +319,9 @@ so no one can escalate an existing account past their own.
 **Nobody may edit their own record.** Changing one's own password from the
 profile page is the only exception.
 
-**Editing a role definition** obeys the same subset rule, and no non-delegable
-capability can be added (D50). A holder of `manage_users` can therefore never
-raise a role above their own authority. They *can* narrow a role held by users
-outside their scope — a downgrade with a blast radius wider than their reach.
-Accepted and named rather than designed around; the alternative is per-role
-ownership, which this does not need.
+**Roles are not editable through the system at all** (D50), so delegation governs
+only which existing role a user may be given. There is no path by which a holder
+of `manage_users` changes what a role means for everyone holding it.
 
 ### D57 — The username is a mobile number
 
@@ -878,18 +886,50 @@ Columns: `at`, `actor`, `session`, `action`, `target`, `ip`, `user_agent`,
 
 ### D42 — Event catalogue
 
-**Access** — `login.success`, `login.failure` (with attempted username),
-`logout`, `session.expired`, `session.revoked`, `password.changed`.
+**Access** — `login.success`, `login.failure` (with attempted username and a
+`reason` of `bad_password` / `no_such_user` / `disabled`), `logout`,
+`session.revoked`, `password.changed`, `access.denied`.
 
 **Content** — `department.viewed`, `process.viewed`, `report.viewed`,
 `report.downloaded` (with format), `process.edited`, `process.confirmed`,
-`confirmation.invalidated`.
+`confirmation.revoked`, `confirmation.invalidated`.
 
 **Governance** — `user.created`, `user.modified`, `user.disabled`,
-`password.set_by_admin`, `role.assigned`, `role.created`, `role.changed`,
-`scope.granted`, `scope.revoked`, `supervisor.changed`,
-`supervisor_flag.changed`, `visibility.policy.changed`, `comment.created`,
-`comment.approved`, `comment.rejected`, `comment.addressed`.
+`user.enabled`, `password.set_by_admin`, `role.assigned`, `scope.granted`,
+`scope.revoked`, `supervisor.changed`, `supervisor_flag.changed`,
+`visibility.policy.changed`, `comment.created`, `comment.edited`,
+`comment.withdrawn`, `comment.approved`, `comment.amended`, `comment.rejected`,
+`comment.addressed`.
+
+Four of these are worth their own justification:
+
+- **`access.denied` is the highest-signal event in the catalogue.** Under D56 an
+  out-of-scope *resource* answers 404, which is indistinguishable from a typo and
+  would be pure noise if recorded. A **403** is different: it means someone acted
+  on a resource they *can* see, through a control the UI never drew for them. It
+  essentially cannot occur in normal use, so it is near-zero volume and near-pure
+  signal. **404s are deliberately not recorded** — they would bury the 403s.
+- **`confirmation.revoked` is not `confirmation.invalidated`.** The first is an
+  editor deliberately withdrawing a confirmation; the second is a fingerprint
+  ceasing to match because content changed (D60). Same visible outcome, entirely
+  different fact.
+- **`comment.amended` is not `comment.approved`.** Changing someone else's words
+  on their behalf is a distinct act from endorsing them, and D35 keeps both texts
+  precisely so it stays inspectable.
+- **`login.failure` carries a reason but the response does not.** A disabled
+  user's valid credentials look exactly like a wrong password to the caller —
+  D56 requires that — while the record distinguishes them, because an ex-employee
+  trying to get back in is worth being able to see.
+
+**There is no `session.expired`.** Nothing performs it: a session ends by the
+passage of time, so a lazy check fires only if the user returns and a session
+abandoned forever would silently have no ending. The session row carries
+`issued_at`, `last_seen` and `revoked_at` (D7), and `SESSION_TTL` gives expiry, so
+the report **derives** the ending. Deriving beats emitting for something nobody
+does.
+
+**There are no `role.created`, `role.changed` or `role.deleted` events**, because
+no such actions exist (D50). Roles are seeded.
 
 `supervisor.changed` and `supervisor_flag.changed` are **separate events on
 purpose**. Toggling `can_supervise` reshapes who is *eligible* to supervise —
@@ -931,6 +971,14 @@ visibility (D37). Comments are private communications that were deliberately
 routed; the activity record is an operational record. An Admin scoped `*`
 therefore sees activity across the whole company while being unable to read those
 people's comments.
+
+**Events that belong to no department are visible only at `*` scope.** A content
+event names a department and filters by it; `login.success`, `access.denied`,
+`user.created` and `visibility.policy.changed` name no department, so scoping
+them is meaningless. They are shown to `view_audit` holders scoped `*` and to
+nobody else. Moot in the current deployment — every `view_audit` holder is
+`*`-scoped — but the model permits a scoped Admin, and a rule that only works by
+accident is not a rule.
 
 Note who does *not* hold it: `view_audit` is an Admin and Editor capability, so a
 department head — a Reader (D11) — sees no activity report even for their own
@@ -1147,7 +1195,21 @@ and the process data never diverged.
     produce a content event with the actor taken from the commit; re-running the
     projection emits nothing further; and a commit touching a confirmed process
     emits exactly one `confirmation.invalidated`, not one per projection pass.
-17. **Route ordering** — the existing test pinning that the SPA catch-all mount
+16c. **Every catalogued event has a writer (D42)** — the inverse of 16. Walk the
+    catalogue and assert each event is produced by exercising some path. An event
+    named in the spec that no code can emit is the failure this catches, and it
+    has already occurred three times.
+16d. **`access.denied` fires on 403 and never on 404 (D42, D56)** — a Reader
+    hitting an edit endpoint on their own department records one; the same Reader
+    requesting another department's process records nothing, because that is a
+    404 and 404s would bury the signal.
+16e. **`login.failure` carries a reason that the response does not** — wrong
+    password, unknown number and disabled account produce three distinct
+    `reason` values and one identical response.
+17. **Roles are immutable through the API (D50)** — no endpoint creates, edits or
+    deletes a role, asserted with the acting user an Editor. Combined with test 4,
+    this is what makes the capability table a fixed artefact.
+18. **Route ordering** — the existing test pinning that the SPA catch-all mount
     cannot swallow API routes extends to every new prefix.
 
 ---

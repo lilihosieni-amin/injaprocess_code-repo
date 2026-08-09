@@ -856,7 +856,9 @@ Key Docker notes:
 
 Approving a comment is not a capability: it is inherent to being someone's supervisor.
 
-**`delegable: false` is a property of the capability row**, not a check on a level or a username. No API path creates a role holding one of the three, for anyone, including an Editor. This replaces v0.3's "level 0 only": an identity check rots the moment an administrator is added, renamed or migrated, whereas a data property has a one-line test and depends on no account's existence. The cost is that the seed is the only recovery path if every Editor account is lost — a runbook item, and the price of the guarantee.
+**Roles come from the seed. No API path creates, edits or deletes one** (spec D50). The role table is fixed at deploy time: users are created through the system, roles are not. There is no role builder and no capability matrix on any screen, and a role can never be deleted, since every user holds exactly one. Adding a fourth — `Reader (no download)` = `view` + `comment` is the likely first — is a seed change and a deploy.
+
+**`delegable: false` stays on `edit`, `confirm` and `set_visibility`** even though no endpoint writes the role table, so the guard cannot be lost if role editing is ever introduced. It is a property of the capability row rather than a check on a username: an identity check rots the moment an administrator is added, renamed or migrated, whereas a data property has a one-line test and depends on no account's existence. The cost is that the seed is the only recovery path if every Editor account is lost — a runbook item, and the price of the guarantee.
 
 **Deliberately absent: `upload` and `run_pipeline`.** Telegram intake and pipeline runs authenticate by numeric Telegram ID against a static allowlist (§14, NFR-1) — no session, no user record, and no route to `app.db`, which §19.1 mounts only into `ui-backend` on purpose. A capability that appears in the permission UI and enforces nothing is worse than one that does not exist.
 
@@ -889,7 +891,7 @@ allows(user, capability, target)
   ⟺  user.role.capabilities ∋ capability  ∧  ∃ s ∈ user.scopes : s contains target
 ```
 
-That is the whole rule. There is no override table, no per-user capability list and no deny list; an exception becomes a new role.
+That is the whole rule. There is no override table, no per-user capability list and no deny list; an exception is a further seeded role, given to whoever needs it.
 
 **Delegation (FR-A7).** `manage_users` is required at all. Beyond it, two independent checks: the new user's capability set is a **strict subset** of the creator's — unless the creator holds `manage_peers`, which permits **equality** — and every scope of the new user is **contained by** some scope of the creator (containment, not membership, so `dept:dining` covers `dept:dining/report:steps`).
 
