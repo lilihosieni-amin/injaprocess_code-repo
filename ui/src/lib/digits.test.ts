@@ -30,4 +30,20 @@ describe('normalisePhone', () => {
   it('leaves an already-canonical number unchanged', () => {
     expect(normalisePhone('09123456789')).toBe('09123456789')
   })
+  it('handles a country code prepended to a number that kept its leading zero', () => {
+    expect(normalisePhone('+98 0912 345 6789')).toBe('09123456789')
+    expect(normalisePhone('0098 0912 345 6789')).toBe('09123456789')
+    expect(normalisePhone('98 0912 345 6789')).toBe('09123456789')
+  })
+  it('handles that same shape in Persian digits', () => {
+    expect(normalisePhone('+۹۸۰۹۱۲۳۴۵۶۷۸۹')).toBe('09123456789')
+  })
+  it('does not mistake a subscriber number beginning 98 for a country code', () => {
+    // 09891234567 is a legitimate number; the 98 is part of the subscriber digits.
+    expect(normalisePhone('09891234567')).toBe('09891234567')
+  })
+  it('returns an empty string for empty input rather than a bare zero', () => {
+    expect(normalisePhone('')).toBe('')
+    expect(normalisePhone('  ')).toBe('')
+  })
 })

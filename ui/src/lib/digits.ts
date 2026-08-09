@@ -16,9 +16,12 @@ export function toLatinDigits(s: string): string {
 
 /** Canonical Iranian mobile: `^09\d{9}$` (spec D57). */
 export function normalisePhone(input: string): string {
-  let s = toLatinDigits(input).replace(/[\s\-()]/g, '')
-  if (s.startsWith('+98')) s = '0' + s.slice(3)
-  else if (s.startsWith('0098')) s = '0' + s.slice(4)
-  else if (s.startsWith('98') && s.length === 12) s = '0' + s.slice(2)
-  return s
+  const digits = toLatinDigits(input).replace(/[\s\-()]/g, '')
+  if (digits === '') return ''
+  // Strip a country code however it was written, then any trunk zeros it was
+  // prepended to, then restore exactly one. "+98 0912…" and "0912…" and
+  // "+98 912…" all have to land on the same string, or one person occupies two
+  // accounts (spec D57).
+  const national = digits.replace(/^(?:\+98|0098|98)/, '').replace(/^0+/, '')
+  return national === '' ? '' : '0' + national
 }
