@@ -940,7 +940,11 @@ Note who does *not* hold `view_audit`: it is an Admin and Editor capability, so 
 
 ### 19.8 Comments
 
-**Anchor:** `department` code, `process` id, or `node` id, optionally narrowed to a field — the node being the finest durably addressable unit in the data model (§4.1). Every anchor carries a **snapshot** of the department name, process name and node label taken at comment time, because `merge restructure` re-ids everything it touches (§6.6) and would otherwise leave a dangling id. Anchors are never re-pointed automatically.
+**Anchor — four kinds, no field narrowing:** `node` id, `process` id, `process_list` (department code), and `department` (department code). The last two carry the same target and stay distinct kinds because "a process is missing from this list" and "this description is wrong" are different subjects. A node is the finest anchor there is — also the finest durably addressable unit in the data model (§4.1).
+
+**Node anchoring works from both surfaces.** The step-by-step report linearises a process into ordered steps, each derived from exactly one node; `ui/export/steps/linearize.ts` already holds that mapping and must carry it through to the rendered report, so a comment on step 4 anchors to **the node behind it** rather than to the step's ordinal — ordinals shift whenever the process changes, node ids do not (§4.1). This is the one piece of new plumbing the anchor model needs. `process_list` and `department` anchors are reachable only at department scope; a report reader comments at `node` and `process` level.
+
+Every anchor carries a **snapshot** taken at comment time — department name, plus process name for `process` and `node`, plus node label for `node`, plus the ordered process list as it stood for `process_list`. It exists because `merge restructure` re-ids everything it touches (§6.6) and would otherwise leave a dangling id, and because a claim about a list is only checkable against the list its author saw. Anchors are never re-pointed automatically.
 
 **Identity:** `CMT-{n}`, monotonic from `comments.db`, never reused — INV-1's principle on a different ledger, because comments are not `data-repo` content.
 

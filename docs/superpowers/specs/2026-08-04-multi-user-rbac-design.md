@@ -590,19 +590,50 @@ edge component. That guarantee extends to every surface a flowchart appears on.
 
 ### D30 — Anchors
 
-| Kind | Target | Example |
-|---|---|---|
-| `department` | department code | `dining` — its general information |
-| `process` | process id | `cashier-013` — the flowchart as a whole |
-| `node` | node id | `cashier-013-n002` — one step or junction |
+**Four kinds. No field narrowing.**
 
-Optionally narrowed to a named field. The node is the finest durably addressable
-unit in the data model: node ids embed their process id, are never reused, and
-are globally unique.
+| Kind | Target | Reached from |
+|---|---|---|
+| `node` | node id | a step or junction — in the flowchart **or** in the step-by-step report |
+| `process` | process id | the flowchart page **or** the step-by-step report |
+| `process_list` | department code | the department's process list page |
+| `department` | department code | the department information page |
+
+**A node is the finest anchor there is.** There is deliberately no field-level
+narrowing: a comment is prose written by someone who is not editing, and making
+them first choose which field they mean is friction that buys nothing — an
+editor reading *"this step names the wrong person"* can see which part it is
+about. It also keeps the anchor set closed, so every comment points at something
+with a durable id (D31). The node is the finest durably addressable unit in the
+data model anyway: node ids embed their process id, are never reused, and are
+globally unique.
+
+**`process_list` and `department` carry the same target and are still distinct
+kinds.** Same department, different subject. *"A process is missing from this
+list"* and *"this description is wrong"* must not arrive at the editor as the
+same kind of thing, so they are separate kinds rather than one kind with a flag.
+
+**Node anchoring works identically from both surfaces.** The step-by-step report
+linearises a process into ordered steps, each derived from exactly one node. That
+mapping lives in `ui/export/steps/linearize.ts` and must be carried through to
+the rendered report, so a comment on step 4 anchors to **the node behind it** and
+never to the step's ordinal — ordinals shift whenever a process changes, node ids
+do not. This is the one piece of new plumbing the anchor model requires.
+
+**Scope note.** `process_list` and `department` anchors are reachable only by
+users with department scope. A report reader scoped to `dept:x/report:steps` sees
+neither page and comments at `node` and `process` level.
 
 ### D31 — Every anchor carries a snapshot
 
-Captured at comment time: department name, process name, node label text.
+Captured at comment time, per kind:
+
+| Kind | Snapshot |
+|---|---|
+| `node` | department name, process name, node label text |
+| `process` | department name, process name |
+| `process_list` | department name, and the ordered list of process ids and names as it stood |
+| `department` | department name |
 
 This exists because **`merge restructure` mints brand-new process *and* node
 ids**, tombstones the originals with `superseded_by`, and records no node-level
@@ -610,6 +641,11 @@ mapping between old and new. That path runs in production regularly. Without a
 snapshot a comment decays into a dangling id; with one it still reads as a
 coherent statement, and a comment on a tombstoned process surfaces as *"refers to
 a process since replaced by cashier-028"* rather than vanishing.
+
+The `process_list` snapshot earns its place for the same reason in a different
+way: *"the stock-check process is missing from this list"* is only checkable
+against the list the author was actually looking at, and the department's process
+set changes with every pipeline run (§4.6, `order.json`).
 
 Anchors are never repointed automatically. Orphaning is surfaced, not guessed at.
 
@@ -882,6 +918,11 @@ and the process data never diverged.
    non-editor, asserted over every endpoint, not only reports.
 9. **Comment routing** — disabled hops, all-disabled chains, rejection restart,
    freeze-on-first-approval, orphaned anchors after a simulated `restructure`.
+9a. **Anchors (D30)** — all four kinds round-trip through create → approve →
+    `comments show`; **a comment on step *n* of the step-by-step report resolves
+    to the same node id as a comment on that node in the flowchart**; no API
+    path accepts a field narrowing; and `process_list` and `department` on the
+    same department remain distinguishable.
 10. **Fingerprints** — what does and does not invalidate a confirmation; position
     changes must invalidate (D21).
 11. **Audit completeness** — every state-changing endpoint emits an event, with

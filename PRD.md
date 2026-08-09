@@ -215,7 +215,8 @@ The audience here is **not only the analyst**. It is the department's own staff 
 
 ### 7.10 Comments
 
-- **FR-K1 (who comments, and on what):** A user with permission may leave a comment on a **department's general information**, on a **whole flowchart**, or on **one step of a flowchart**.
+- **FR-K1 (where a comment can be left — four places, and no more):** A user with permission may comment on **one step of a process**, on **a whole process**, on **a department's list of processes**, or on **a department's information page**. Nothing finer than a step: they write what is wrong in their own words and are never asked to say which field they mean. A comment on a process's list is about the set and its order — that something is missing, or in the wrong place — and is a different thing from a comment on the department's information, even though both concern the same department.
+- **FR-K1a (the same comment from either view):** Processes can be read as a flowchart or as a step-by-step guide, and both offer the same two targets: the process, and one specific step of it. A staff member reading the guide can say *which step* is wrong — they are not reduced to reporting that the process as a whole has a problem — and what reaches the editor is identical either way.
 - **FR-K2 (comments travel up the chain):** A comment does not go straight to the editor. It goes to the author's supervisor, and on approval to *their* supervisor, until the chain reaches the editor. Only then is it shown to the editor.
 - **FR-K3 (what a supervisor may do):** Approve, reject with a reason, or amend the wording and approve. An amendment never overwrites the author's original words — both are kept, so a change made on someone's behalf can always be seen.
 - **FR-K4 (rejection returns it):** A rejected comment goes back to its author with the reason. They may revise it, which starts the chain again from the beginning.
