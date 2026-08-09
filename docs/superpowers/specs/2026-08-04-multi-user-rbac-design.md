@@ -317,8 +317,8 @@ equality; an Admin may never create an Editor because `Editor ⊄ Admin`.
 so nobody can escalate an existing account past their own.
 
 **Nobody may edit their own record.** Changing one's own password from the
-profile page is the only exception. Resetting another user's password issues a
-**short-lived single-use token** and never sets a password the resetter knows.
+profile page is the only exception. Setting another user's password is a direct
+action bound by the same two checks — see D15.
 
 **Editing a role definition** is bound by the same subset rule as creating one,
 and non-delegable capabilities can never be added (D50). A holder of
@@ -407,9 +407,35 @@ every user can change their own from their profile — the sole exception to the
 self-edit ban (D13). The read-only-mounted `ui-users.json` is retired: it cannot
 support self-service change.
 
-**Resetting someone else's password issues a short-lived single-use token.** It
-never sets a password the resetter knows, so an administrator cannot sign in as
-the user they just reset and leave the audit log attributing it to that person.
+**A holder of `manage_users` sets another user's password directly**, choosing
+the value themselves, bound by the same two checks as any other modification
+(D13). No token, no expiring link, no round-trip — the administrator types the
+new password and tells the person what it is.
+
+This was specified as a single-use token first, on the reasoning that an
+administrator who knows a password can sign in as that user and leave the audit
+log attributing their actions to that person. **Overruled deliberately, and the
+reasoning did not survive contact with the deployment:** there is no out-of-band
+delivery channel here — no email addresses on user records, no SMS, and Telegram
+notification deferred (D40) — so the administrator issuing a token would be the
+one handing it over, and could consume it themselves. The token bought
+detection, not prevention, at the cost of a round-trip for a deputy manager
+standing next to a waiter.
+
+What remains is the honest guarantee, and it is recorded rather than dressed up:
+
+- **The fact is always on record.** `password.set_by_admin` names the actor and
+  the target (D42), so a password set by someone else is never invisible, and a
+  sign-in shortly afterwards from the setter's own address is a visible pattern.
+- **Impersonation is detectable, not prevented.** Anyone holding `manage_users`
+  can set a password and then sign in as that user. That is inherent to the
+  workflow chosen, and it is why `manage_users` is confined to Editors and
+  Admins scoped `*` (D11).
+
+Closing it properly would mean putting a Telegram id on the user record and
+delivering credentials through the bot — which shares its plumbing with D40's
+deferred approver notifications, and is the natural moment to revisit this
+(§13).
 
 ---
 
@@ -719,7 +745,7 @@ marking the moment guessing stops being guessing."* That gap closes here.
 `confirmation.invalidated`.
 
 **Governance** — `user.created`, `user.modified`, `user.disabled`,
-`password.reset_issued`, `role.assigned`, `role.created`, `role.changed`,
+`password.set_by_admin`, `role.assigned`, `role.created`, `role.changed`,
 `scope.granted`, `scope.revoked`, `supervisor.changed`,
 `supervisor_flag.changed`, `visibility.policy.changed`, `comment.created`,
 `comment.approved`, `comment.rejected`, `comment.addressed`.
