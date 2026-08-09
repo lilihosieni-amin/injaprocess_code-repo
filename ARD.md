@@ -824,7 +824,7 @@ Key Docker notes:
 
 ## 19. Identity, Access, Comments & the Activity Record
 
-> Authoritative design: `docs/superpowers/specs/2026-08-04-multi-user-rbac-design.md`, decisions **D1–D56** (the access model revised 2026-08-05: D9–D15 rewritten, D50–D56 added). This section states the architecture; the spec states why each decision was taken and what was rejected. Implementation is split across five sub-projects (P0–P4) in that spec, each with its own plan.
+> Authoritative design: `docs/superpowers/specs/2026-08-04-multi-user-rbac-design.md`, decisions **D1–D58** (the access model revised 2026-08-05: D9–D15 rewritten, D50–D58 added). This section states the architecture; the spec states why each decision was taken and what was rejected. Implementation is split across five sub-projects (P0–P4) in that spec, each with its own plan.
 
 ### 19.1 Three stores, one job each
 
@@ -907,6 +907,23 @@ A Reader's row is empty because they lack `manage_users`, not because of the sub
 **Readers see no user-administration surface (FR-A11).** No user list, no user detail, no supervisor picker. The one place another person's name reaches a Reader is inside a comment they are entitled to read — its author, and whoever approved, rejected or resolved it (§19.8). The boundary is the administration surface, not a name in content already routed to them.
 
 **Disabling (FR-A9)** is immediate and revokes sessions. It does not cascade and does not require reorganising subordinates first; a subordinate left under a disabled supervisor is surfaced for reassignment rather than silently repointed.
+
+### 19.2a Credentials — username format and password rule (FR-A1a, FR-A1b; spec D57, D58)
+
+**Username = `^09\d{9}$`.** Canonical Iranian mobile, eleven digits, no separators, no alternative username type.
+
+Input is **normalised before storage and before comparison**: Persian and Arabic-Indic digits (`۰۹…`, `٠٩…`) folded to ASCII — non-optional in a Persian-language UI, since that is what ordinary keyboards emit — separators stripped, and a leading `+98` / `0098` / bare `98` rewritten to `0`. Only the canonical form is persisted, so one person cannot occupy two accounts written two ways. The field is `type="tel" inputmode="numeric" dir="ltr" maxlength="11"`.
+
+Uniqueness spans **every** account including disabled ones, so a recycled line cannot inherit a former employee's identity; freeing a number means editing the disabled account first. The number is an **identifier, not a verified channel** — nothing sends to it and nothing proves ownership, so any future SMS or Telegram delivery (D40) needs verification built first.
+
+**Password: minimum six characters, no other rule** — no character classes, no expiry, no reuse check, no forced first-login change.
+
+**Consequences to carry into implementation:**
+
+- `authenticate()` must run argon2 against a **dummy hash** when no user matches. Today it returns instantly for an unknown username and after ~58 ms for a known one; with usernames being phone numbers, that timing oracle answers *"does this person work here?"* — the same disclosure D56 closes with 404-not-403 (§19.4a).
+- Sign-in returns one message for both wrong-number and wrong-password.
+- `POST /api/auth/login` still has **no rate limit and no lockout** (§18). With a six-character floor and a username anyone can guess from a phone number, the `CapacityLimiter(2)` bounds guessing to roughly 30 attempts/second — enough to walk a common-password list. Failed attempts are recorded and reported (§19.7), so guessing is visible; nothing makes it slow.
+- A failed sign-in against a number with no account is now more often a typo than an attack, which shifts how that report reads.
 
 ### 19.3 Sessions
 

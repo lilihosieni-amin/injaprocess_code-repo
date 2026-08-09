@@ -159,7 +159,7 @@ schedule, shipped alongside the existing push.
 
 ## 3. Identity, roles and access control
 
-> **Revised 2026-08-05 (D9–D15 rewritten; D50–D56 added).** The first version of
+> **Revised 2026-08-05 (D9–D15 rewritten; D50–D58 added).** The first version of
 > this section used five preset roles carrying a numeric `level` and a typical
 > scope, plus per-user capability overrides. All three are withdrawn. A level is
 > an ordinal *proxy* for "has less authority", maintained by hand, and it can
@@ -422,6 +422,55 @@ Disabling does not cascade to subordinates, and the disabled user's own in-fligh
 comments continue up the chain — a valid complaint does not become invalid
 because the person who raised it left.
 
+### D57 — The username is a mobile number
+
+Every username is an Iranian mobile number in canonical form: **`^09\d{9}$`** —
+`09123456789`, eleven digits, no separators. There is no other username.
+
+Staff cannot forget it, it is naturally unique, and it is the identifier they
+would need anyway if credentials or approver notifications ever move to SMS or
+Telegram (D40, §13).
+
+**Input is normalised before it is stored or compared.** This is Persian-language
+software, so the field will receive Persian and Arabic-Indic digits
+(`۰۹۱۲۳۴۵۶۷۸۹`, `٠٩١٢٣٤٥٦٧٨٩`) from ordinary keyboards. Normalisation folds those
+to ASCII, strips spaces, dashes and parentheses, and rewrites a leading `+98`,
+`0098` or bare `98` to `0`. Only the canonical form is persisted, so two people
+cannot end up with the same number written two ways. The sign-in field is
+`type="tel" inputmode="numeric" dir="ltr" maxlength="11"`.
+
+**Usernames are unique across every account, including disabled ones.** A
+disabled user keeps their number, so it cannot be handed to a new employee who
+inherited the same line. Freeing a number means an administrator editing the
+disabled account first — deliberate, because silently reassigning an identity
+would attach one person's history to another.
+
+**A phone number here is an identifier, not a verified channel.** Nothing sends
+to it and nothing proves the person holds the line. Any future use of it for
+delivering credentials or notifications needs verification built first; the
+number being on file is not that.
+
+Changing a username is an ordinary modification bound by D13 and audited as
+`user.modified`.
+
+### D58 — Passwords: six characters, no other rule
+
+Minimum length six. No complexity requirement, no character-class rule, no
+expiry, no reuse check, no forced change on first sign-in.
+
+The users are kitchen and floor staff, and every rule beyond a length floor
+trades a real cost in people writing passwords down against a benefit that
+research has not supported for a decade. The floor exists so that an empty or
+one-character password is impossible.
+
+**What this costs, stated plainly:** `123456` is a legal password, usernames are
+guessable by construction (D57 — anyone who knows a staff member's phone number
+knows their username), and there is still no rate limit or lockout on
+`POST /api/auth/login`. Argon2 under the existing `CapacityLimiter(2)` bounds
+online guessing to roughly thirty attempts a second, which is enough to walk a
+common-password list. Failed attempts are recorded and reportable (D44), so
+guessing is **visible**; nothing yet makes it **slow**. See §13.
+
 ### D15 — Credentials
 
 Usernames and passwords are created in-system by whoever creates the user.
@@ -573,6 +622,7 @@ that matter are not fields, so the rule has to be broader than fields.
 | **Comments** | D37's subtree rule is a query filter, not a post-filter — including the author and approver names carried with each comment. |
 | **Downloads** | The download endpoint re-derives scope on every request. That the cached artifact exists (D27) is not authorisation to serve it. |
 | **Search and lists** | Scope belongs in the query. A list endpoint never returns rows it then declines to render. |
+| **Whether an account exists** | Sign-in takes the same time and returns the same message whether or not the username exists. Today `authenticate()` returns instantly for an unknown user and after ~58 ms of argon2 for a known one — a timing oracle. With usernames being phone numbers (D57) that oracle answers *"does this person work here?"*, so the fix is to verify against a dummy hash when no user matches. |
 
 **403 is reserved for actions on resources the caller can already see** — a
 Reader hitting an edit endpoint on their own department. Out-of-scope *resources*
@@ -1064,9 +1114,16 @@ and the process data never diverged.
 
 - **Telegram notification to approvers** — deferred (D40). Needs a Telegram id
   per user and a delivery path.
-- **Password policy** — minimum length, forced change on first login, and lockout
-  after repeated failures are unspecified. Note that no rate limiting exists
-  today on any login endpoint (ARD §18).
+- **Lock-out after repeated failed sign-ins.** The password rule itself is
+  settled (D57, D58) and this is what remains of that item — a sign-in policy,
+  not a password one. It matters more than it did: usernames are now guessable by
+  construction, the password floor is six characters with no complexity rule, and
+  no rate limit or lockout exists on any endpoint (ARD §18). The
+  `CapacityLimiter(2)` bounds the *cost* of guessing at roughly thirty attempts a
+  second; it does not bound the *rate*. Failed attempts are recorded and
+  reportable (D44), so guessing is visible but not slow. The cheapest fixes are a
+  lockout after N failures per username, a throttle at the proxy, or a deny-list
+  of the most common passwords — none of which changes what a user has to type.
 - **Audit retention default** — indefinite is chosen now; a purge period should
   be set once real volume is known.
 - **Report registry contents beyond `flowchart` and `steps`** — the mechanism is
