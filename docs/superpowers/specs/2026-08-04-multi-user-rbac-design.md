@@ -2,53 +2,49 @@
 
 | | |
 |---|---|
-| **Date** | 2026-08-04, access model revised 2026-08-05 |
-| **Status** | Approved design; `PRD.md` v0.6 and `ARD.md` v0.4 amended to match; implementation split across P0–P4, each needing its own plan |
-| **Supersedes** | PRD §4 (multi-user non-goal), NFR-11, `2026-07-26-department-export-design.md` D25–D31 |
-| **Companion** | `PRD.md`, `ARD.md` |
+| **Date** | 2026-08-04 |
+| **Status** | Approved. `PRD.md` v0.6 and `ARD.md` v0.4 state the same rules. |
+| **Supersedes** | PRD §4's multi-user non-goal, NFR-11, FR-E4, FR-E8; `2026-07-26-department-export-design.md` D25–D31 |
+| **Companion specs** | `2026-08-05-frontend-system-design.md` — tokens, shells, components, states |
 
 ---
 
 ## 1. Summary
 
-The system becomes multi-user. One login, one UI, one permission system. The
-separate "export" surface — its own credential, its own cookie, its own login
-page, its own permanent links — is retired and replaced by **reports** inside the
-application, reachable according to what each user is allowed to see.
+The system is multi-user. One login, one application, one permission system.
+Department documents are **reports** inside that application, reachable according
+to what each person is allowed to see; there is no separate export surface with
+its own credential.
 
-Four capabilities are added that the system has never had: **who is acting**
-(every write attributed), **what each person may reach** (role- and
-scope-based permissions), **what happened** (an audit log), and **what people are
-telling the editor** (comments routed up a supervisor chain).
+Four things the system has never had: **who is acting** (every write attributed),
+**what each person may reach** (roles and scopes), **what happened** (an activity
+record), and **what people are telling the editor** (comments routed up a
+supervisor chain).
 
-### 1.1 What this is not
+### 1.1 What this spec does not decide
 
-This spec fixes architecture, data model and rules. It does **not** decide page
-layouts, navigation structure, or which visual surface each role gets. That work
-is a separate phase with its own spec.
+Layout, navigation structure, component design, tokens and visual states belong
+to `2026-08-05-frontend-system-design.md`. This document fixes architecture, data
+model and rules — including the frontend rules that are security-relevant (§9).
 
-Its input exists: `ui/design/Inja Panel.dc.html` (editor and admin) and
-`ui/design/Inja Reader.dc.html` (everyone else), which settle the shape — two
-shells over one component set, the reader at a larger type scale and a lighter
-information density. They are **visual mockups only**: no code is taken from
-them, they carry no accessibility layer, no loading or error states, and their
-data model still contains withdrawn concepts (`level`, per-user `minus`
-overrides). Where they disagree with this spec, this spec wins.
+### 1.2 Decomposition
 
-### 1.2 Scope decomposition
-
-The work is too large for one implementation plan. Each row below gets its own
-spec and plan.
+Too large for one plan. Each row is its own plan, and **each plan covers both the
+backend and the frontend of its own slice** — a routing engine with no composer
+is not a comment system, and the acceptance criteria in the PRD are end-to-end
+statements that no backend-only plan can satisfy.
 
 | | Sub-project | Depends on |
 |---|---|---|
-| **P0** | Identity & access foundation — users, roles, grants, sessions, delegation, password self-service, capability-aware endpoints, attributed writes | — |
-| **P1** | Content-visibility filter + confirmation fingerprints | P0 |
-| **P2** | Reports unification, download permission, export-access retirement | P0, P1 |
-| **P3** | Audit logging and activity reports | P0 |
+| **F** | Frontend system — tokens, the two shells, shared components, states | — |
+| **P0** | Identity & access — users, roles, scopes, sessions, delegation, sign-in and user administration screens, capability-aware endpoints, attributed writes | F |
+| **P1** | Content-visibility filter and confirmation fingerprints | P0 |
+| **P2** | Reports, download permission, retirement of the export credential | P0, P1 |
+| **P3** | Activity record and its reports | P0 |
 | **P4** | Comments, approval chain, `comments` CLI | P0, P3 |
 
-Frontend design and the responsive build run as their own track against these.
+**F comes first** because P0 builds the sign-in screen and the user-administration
+screens, and those need the tokens and shell decisions to exist.
 
 ---
 
@@ -58,133 +54,111 @@ Frontend design and the responsive build run as their own track against these.
 
 | Store | Holds | Written by |
 |---|---|---|
-| `data-repo` (git, unchanged) | Departments, processes, overviews, order, transcripts, runs | engine CLIs only |
-| `app.db` (new, SQLite) | Users, roles, capabilities, user scopes, supervisor edges and `can_supervise`, sessions, visibility policy, confirmations, audit log | `ui-backend` only |
-| `comments.db` (new, SQLite) | Comments and their approval workflow | `ui-backend` and the `comments` CLI |
+| `data-repo` (git) | Departments, processes, overviews, order, transcripts, runs | engine CLIs only |
+| `app.db` (SQLite) | Users, roles, capabilities, user scopes, supervisor edges and `can_supervise`, sessions, visibility policy, confirmations, activity record | `ui-backend` only |
+| `comments.db` (SQLite) | Comments and their approval workflow | `ui-backend` and the `comments` CLI |
 
-`data-repo` remains the source of truth for **what the processes are**. It gains
-no fields, no new files under `departments/`, and no schema changes. INV-1
-through INV-6 survive untouched.
+`data-repo` is the source of truth for **what the processes are**. It gains no
+fields, no new files under `departments/`, and no schema changes. INV-1 through
+INV-6 hold as written.
 
-### D2 — ARD §13.1's "No ORM/database" is amended, deliberately and narrowly
+### D2 — The database holds operational state only
 
-Process content stays on the filesystem in git because it must be diffable,
-reviewable and restorable. Sessions, audit events and a mutable user list are
-none of those things. A page-view committed per row would destroy the history
+Process content lives on the filesystem in git because it must be diffable,
+reviewable and restorable. Sessions, activity events and a mutable user list are
+none of those things, and a page-view committed per row would destroy the history
 that makes the first rule worth having.
 
-The amendment covers operational state only. No process content moves into a
-database.
+No process content is in a database. (ARD §13.1 records the same boundary.)
 
-### D3 — ARD §1's "the filesystem is the only point of connection" survives
+### D3 — The filesystem stays the only point of connection
 
-`ui-backend` and `control-bot` still never call each other over the network. They
-share a file, exactly as they already share `data-repo`. This is why the CLI
-approach (D4) was chosen over exposing an HTTP endpoint for the runtime to call.
+`ui-backend` and `control-bot` never call each other over the network. They share
+a file, exactly as they already share `data-repo`. This is why the runtime
+reaches comments through a CLI (D4) rather than an HTTP endpoint.
 
-### D4 — The Telegram runtime reaches comments through a CLI, not the database
+### D4 — The Telegram runtime reaches comments through a CLI
 
-A new deterministic CLI, `comments`, is added to `engine/` and baked into the
+A deterministic CLI, `comments`, lives in `engine/` and is baked into the
 `control-bot` image alongside the existing CLIs — outside `APPROVED_DIRECTORY`,
 matching `deploy/control-bot.Dockerfile:24-26`. `comments.db` is mounted into
 that container; `app.db` is not.
 
-Verified preconditions: `engine/` is already `pip install`ed into the control-bot
+Preconditions verified: `engine/` is already `pip install`ed into the control-bot
 image and on `PATH`; `data-repo/.claude/hooks/guard.py` blocks only writes outside
 `data-repo` and Bash commands that *both* mutate and reference a protected path,
-so a `comments` invocation passes; SQLite is already used in this stack
+so a `comments` invocation passes; SQLite is already in this stack
 (`control-bot-state:/state`).
 
 ### D5 — Two database files, not one
 
-`app.db` is never mounted into any container but `ui-backend`. The audit log is
-therefore unreachable from the runtime by any means, rather than protected by a
-convention.
+`app.db` is never mounted into any container but `ui-backend`, so the activity
+record is unreachable from the runtime by any means rather than by convention.
 
-This matters because "everything goes through the CLI" is not enforceable from
-inside the container: the control-bot image is `FROM python:3.11-slim`, so
-`python -c "import sqlite3; …"` reaches any mounted file directly, and `guard.py`'s
-mutation heuristic does not match it. The repo's own doctrine already accepts
-this — ARD §7 states the Bash guard is *"a deliberately conservative heuristic …
-pattern matching on a shell string, not a filesystem-level lock"*, which is why
+A convention would not hold. The control-bot image is `FROM python:3.11-slim`, so
+`python -c "import sqlite3; …"` reaches any mounted file directly, and
+`guard.py`'s mutation heuristic does not match it. This is the repo's own
+doctrine: ARD §7 states the Bash guard is *"a deliberately conservative heuristic
+… pattern matching on a shell string, not a filesystem-level lock"*, which is why
 INV-1 is defended at the file level and not only by the sanctioned CLI.
 
-The split also keeps the high-frequency audit writer out of the one file that has
+The split also keeps the high-frequency activity writer out of the one file with
 two cross-container writers.
 
 **Accepted consequence:** in-flight and rejected comments live in `comments.db`,
-which *is* mounted into the bot container. The CLI filters to approved-only
-(D37), but that filter is a convention. The worst realistic case is a confused
+which *is* mounted into the bot container. The CLI returns approved comments only
+(D39), but that filter is a convention. The worst realistic case is a confused
 agent surfacing a draft to an editor — who sits at the top of every chain and is
 the authorised destination for approved comments anyway.
 
 ### D6 — SQLite, not a server database
 
-Evaluated against MySQL/PostgreSQL and rejected on this host and this workload:
-3.7 GB RAM and 2 CPUs already running the Telegram Bot API server, two bots (one
-a full Claude Code runtime), FastAPI, and headless chromium peaking at 300–400 MB
-per PDF render, with `ui-backend` capped at 1 GB for that reason. Nine
+The host is 3.7 GB and 2 CPUs, already running the Telegram Bot API server, two
+bots (one a full Claude Code runtime), FastAPI, and headless chromium peaking at
+300–400 MB per PDF render, with `ui-backend` capped at 1 GB for that reason. Nine
 departments, dozens of users, a few hundred page views a day and a handful of
 comments a week is a rounding error of SQLite's capacity in WAL mode.
 
-A server database's real advantage is `GRANT`-level isolation — enforced by the
-engine on every statement rather than by a compose file. That was weighed against
-~400 MB, a container, and a mysqldump-plus-credential backup path, and declined.
+A server database's real advantage is `GRANT`-level isolation, enforced by the
+engine on every statement rather than by a compose file. Weighed against ~400 MB,
+a container, and a dump-plus-credential backup path, and declined.
 
-**Revisit when:** `ui-backend` needs more than one worker process. It is
+**Revisit when** `ui-backend` needs more than one worker process. It is
 single-process `uvicorn` today and `storage.py`'s locks are already in-memory and
-per-process, so SQLite costs nothing at present. If that changes, PostgreSQL is
-preferred over MySQL for stricter typing, better JSON handling for grant and
-anchor structures, and better constraint support.
+per-process, so SQLite costs nothing at present. PostgreSQL is then preferred
+over MySQL for stricter typing, better JSON handling for scope and anchor
+structures, and better constraint support.
 
-### D7 — Sessions move server-side
+### D7 — Sessions are server-side rows
 
-The cookie today *is* the session: a signed `{"u": username}` blob with nothing
-to revoke. That cannot support immediate access removal, "who is in the system
-now", or presence measurement.
+A session is a row: id, user, issued-at, last-seen, IP, user agent, revoked-at.
+The cookie carries an opaque session id and nothing else.
 
-A session becomes a row: id, user, issued-at, last-seen, IP, user agent,
-revoked-at. The cookie carries an opaque session id. Disabling a user or changing
-their permissions takes effect on the next request.
+A signed blob carrying the username cannot be revoked, cannot answer "who is in
+the system now", and cannot measure presence. Disabling a user or changing their
+permissions takes effect on their next request.
 
-### D8 — A new backup path is required
+### D8 — Both SQLite files need a backup path
 
-`git-push` covers `data-repo` twice daily and will not touch either SQLite file.
-NFR-7 promises *"no change goes unrecorded"* and an off-site backup twice a day;
-without a second mechanism that promise becomes false for users, permissions and
-the entire audit log. Implemented as `sqlite3 .backup` of both files on the same
-schedule, shipped alongside the existing push.
+`git-push` covers `data-repo` twice daily and touches neither file. NFR-7
+promises that no change goes unrecorded and an off-site backup twice a day;
+without a second mechanism that promise is false for users, permissions, comments
+and the entire activity record. Implemented as `sqlite3 .backup` of both files on
+the same schedule.
 
 ---
 
-## 3. Identity, roles and access control
+## 3. Identity, roles and access
 
-> **Revised 2026-08-05 (D9–D15 rewritten; D50–D58 added).** The first version of
-> this section used five preset roles carrying a numeric `level` and a typical
-> scope, plus per-user capability overrides. All three are withdrawn. A level is
-> an ordinal *proxy* for "has less authority", maintained by hand, and it can
-> disagree with the truth — which is why the first version needed `manage_peers`
-> as a patch the moment an Overseer had to create an Overseer. Comparing
-> capability sets computes the property directly, so it cannot drift. Scope moved
-> off the role because a role that carries one folds two independent things into
-> one column, and "head of two departments" was a special case as a result.
-> Overrides are gone because they were a second, invisible permission system
-> *and* because the subset comparison below is only well-defined when a user's
-> capabilities come from exactly one place.
->
-> Old → new: Overseer = **Admin** + `*`. Department head = **Reader** +
-> `dept:x` + `can_supervise`. Department viewer = **Reader** + `dept:x`. Report
-> reader = **Reader** + `dept:x/report:k`.
+**Three independent axes. None is folded into another.**
 
-**Three independent axes. None is ever folded into another.**
-
-1. **Role** = a set of capabilities. No scope, not even a default. No level.
-2. **User** = one role + one or more scopes. Scope lives here and nowhere else.
-3. **Supervisor** = an org-chart fact. It routes comments and grants nothing.
+1. **Role** — a set of capabilities. No scope, not even a default. No rank.
+2. **User** — one role plus one or more scopes. Scope lives here and nowhere else.
+3. **Supervisor** — an org-chart fact. It routes comments and grants nothing.
 
 ### D9 — Capabilities
 
-Nine. Three of them carry `delegable: false`.
+Nine. Three carry `delegable: false`.
 
 | Capability | Permits | Scope-aware | Delegable |
 |---|---|:-:|:-:|
@@ -193,37 +167,38 @@ Nine. Three of them carry `delegable: false`.
 | `export_pdf` | Download a report as PDF or standalone single-file HTML | ✅ | ✅ |
 | `manage_users` | Create, modify and disable users | ❌ | ✅ |
 | `manage_peers` | Additionally create users whose capability set equals one's own | ❌ | ✅ |
-| `view_audit` | Read the activity and logging reports, within scope | ✅ | ✅ |
+| `view_audit` | Read the activity reports, within scope | ✅ | ✅ |
 | `edit` | Modify process content, department overview, process order | ✅ | ❌ |
 | `confirm` | Confirm a flowchart or department overview | ✅ | ❌ |
 | `set_visibility` | Change the global content-visibility policy | — | ❌ |
 
-Approving a comment is **not** a capability. It is inherent to being someone's
-supervisor — nothing to grant, nothing to forget to grant.
+Approving a comment is **not** a capability — it is inherent to being someone's
+supervisor. Nothing to grant, nothing to forget to grant.
 
-**Deliberately absent: `upload` and `run_pipeline`.** Sending voice notes and
-starting a processing run happen in Telegram, where both bots authenticate by
-**numeric Telegram ID against a static allowlist** (NFR-1) — no session, no user
-record, and no route to `app.db`, which D5 mounts only into `ui-backend` on
-purpose. A capability that appears in the permission UI and enforces nothing is
-worse than one that does not exist, so Telegram intake stays gated exactly as it
-is today. Adding them later means first giving users a Telegram identity and the
-bots a way to resolve it.
+**There is no `upload` or `run_pipeline`.** Sending voice notes and starting a
+processing run happen in Telegram, where both bots authenticate by numeric
+Telegram ID against a static allowlist (NFR-1) — no session, no user record, and
+no route to `app.db`, which D5 mounts only into `ui-backend` on purpose. A
+capability that appears in the permission UI and enforces nothing is worse than
+one that does not exist. Adding them means first giving users a Telegram identity
+and the bots a way to resolve it.
 
 ### D50 — `delegable: false` is a property of the capability row
 
-Only the seed process may create a role holding a non-delegable capability. **No
-API path creates one, for anyone, including an Editor.**
+Only the seed process creates a role holding a non-delegable capability. **No API
+path creates one, for anyone, including an Editor.**
 
-This deliberately replaces an earlier recommendation that role definitions be
-"level-0 only". That was an identity check, and identity checks rot: add a second
-administrator, rename a user in a migration, and the guarantee evaporates
-silently. As a property of the capability, "no UI path can ever mint a role that
-edits content" is a data invariant with a one-line test and no privileged
-username anywhere in the code.
+It is a property of the capability rather than a check on an account, because an
+account check rots: add a second administrator, rename a user in a migration, and
+the guarantee evaporates silently. As a data property, *"no UI path can ever mint
+a role that edits content"* is an invariant with a one-line test and no
+privileged username anywhere in the code.
 
-New roles may be freely composed from the six delegable capabilities. Two likely
-additions, not built now: **Contributor** and **Reader (no download)** =
+Its price is that the seed is the only recovery path if every Editor account is
+lost — a runbook item (§10).
+
+New roles compose freely from the six delegable capabilities. Two likely
+additions, not built: **Contributor**, and **Reader (no download)** =
 `view` + `comment`.
 
 ### D10 — Scope grammar
@@ -234,24 +209,20 @@ Three shapes, strictly nested:
 *  ⊃  dept:{code}  ⊃  dept:{code}/report:{kind}
 ```
 
-`report:{kind}` names an entry in the backend report registry (D26). There is
-deliberately no `process:{id}` scope: department- and report-level access covers
-the stated need, and process-level would multiply the permission UI for a case
-that has not arisen.
+`report:{kind}` names an entry in the report registry (D26). There is no
+`process:{id}` scope: department- and report-level access covers the need, and
+process-level would multiply the permission UI for a case that has not arisen.
 
 **A user may hold several scopes.** A head of two departments is one user with
 `dept:dining` and `dept:cashier` — not a special case.
 
-**Propagation:**
+- A scope covering `dept:x` **includes reports added later**.
+- A scope covering `dept:x/report:k` **never widens**. A new report is invisible
+  until granted.
 
-- A grant on `dept:x` **includes reports added later**. Scope is the department.
-- A grant on `dept:x/report:k` **never widens**. A new report is invisible until
-  granted.
+### D11 — Roles
 
-### D11 — Preset roles
-
-Roles are rows in a table, not `if` statements. Three presets; a fourth is a form
-fill.
+Rows in a table, not `if` statements. Three presets; a fourth is a form fill.
 
 | Capability | Reader | Admin | Editor |
 |---|:-:|:-:|:-:|
@@ -265,7 +236,7 @@ fill.
 | `confirm` | – | – | ✅ |
 | `set_visibility` | – | – | ✅ |
 
-The intended deployment:
+The deployment:
 
 | Person | Role | Scope | `can_supervise` |
 |---|---|---|:-:|
@@ -276,29 +247,24 @@ The intended deployment:
 | Report reader | Reader | `dept:dining/report:steps` | – |
 
 **A department head is a Reader carrying the supervisor tag.** They read,
-comment, download and approve their people's comments — and they create no users
-and see no user-administration surface at all (D54). This reverses an earlier
-requirement that department heads appoint their own subordinates: **all user
-administration is centralised at `*` scope.** They also hold no `view_audit`, so
-they cannot see activity reports even for their own branch.
+comment, download and approve their branch's comments; they hold no
+`manage_users` and no `view_audit`, so they create no users, see no
+user-administration surface (D54), and read no activity report — not even for
+their own branch. **All user administration is at `*` scope.**
 
 Scoped Admins (`Admin` + `dept:dining`) are legal in the model and absent from
-the intended deployment.
+the deployment.
 
-**The Editor holds `comment` but is never offered a composer.** The roles are
-strictly nested — Reader ⊂ Admin ⊂ Editor — and D13 requires a created user's
-capability set to be a subset of the creator's. `comment` is in Reader and Admin,
-so removing it from Editor would make `Reader ⊄ Editor` and **the Editor could no
-longer create any user at all**.
-
-It is also meaningless rather than forbidden: routing (D34) climbs the supervisor
-chain until the next hop holds `edit`, and the Editor holds `edit`, so a comment
-they authored would be `approved` on creation and land in their own inbox. The
-Editor is the *destination* of the chain, not a participant in it.
-
-So: **no composer is offered to any holder of `edit`.** This is a UI rule derived
-from the routing rule, not a permission — recorded here so that a later tidy-up
-of the capability table does not silently break user creation.
+**The Editor holds `comment` and is offered no composer.** The roles are strictly
+nested — Reader ⊂ Admin ⊂ Editor — and D13 requires a created user's capability
+set to be a subset of the creator's. `comment` is in Reader and Admin, so an
+Editor without it would satisfy `Reader ⊄ Editor` and **could no longer create
+any user at all**. It is meaningless rather than forbidden anyway: routing (D34)
+climbs to the first holder of `edit`, so an Editor's own comment would be
+approved on creation and land in their own inbox. **No composer is offered to any
+holder of `edit`** — a UI rule derived from the routing rule, not a permission,
+recorded here so that tidying the capability table cannot silently break user
+creation.
 
 ### D12 — Resolution
 
@@ -311,9 +277,9 @@ allows(user, capability, target)
 That is the whole rule. **There are no per-user overrides** — no override table,
 no per-user capability list, no deny list. An exception becomes a new role.
 
-The cost is a handful more roles; the gain is that "why can Ali download?" has
-exactly one answer in exactly one place, and that the subset comparison in D13 is
-computable at all.
+Two reasons. *"Why can this person download?"* must have one answer in one place;
+and the subset comparison in D13 is only well-defined when a user's capabilities
+come from exactly one source. The cost is a handful more roles.
 
 ### D13 — Delegation
 
@@ -337,19 +303,106 @@ the subset rule. An Admin may create an Admin because `manage_peers` permits
 equality; an Admin may never create an Editor because `Editor ⊄ Admin`.
 
 **Modification** is bound by the same two checks against the **resulting** user,
-so nobody can escalate an existing account past their own.
+so no one can escalate an existing account past their own.
 
 **Nobody may edit their own record.** Changing one's own password from the
-profile page is the only exception. Setting another user's password is a direct
-action bound by the same two checks — see D15.
+profile page is the only exception.
 
-**Editing a role definition** is bound by the same subset rule as creating one,
-and non-delegable capabilities can never be added (D50). A holder of
-`manage_users` can therefore never raise a role above their own authority. They
-*can* narrow a role held by users outside their scope — a downgrade with a blast
-radius wider than their own reach. That is accepted and named rather than
-designed around; the alternative is per-role ownership, which is machinery this
-does not need.
+**Editing a role definition** obeys the same subset rule, and no non-delegable
+capability can be added (D50). A holder of `manage_users` can therefore never
+raise a role above their own authority. They *can* narrow a role held by users
+outside their scope — a downgrade with a blast radius wider than their reach.
+Accepted and named rather than designed around; the alternative is per-role
+ownership, which this does not need.
+
+### D57 — The username is a mobile number
+
+Every username is an Iranian mobile number in canonical form: **`^09\d{9}$`** —
+`09123456789`, eleven digits, no separators. There is no other username.
+
+Staff cannot forget it, it is naturally unique, and it is the identifier needed
+anyway if credentials or approver notifications ever move to SMS or Telegram
+(D40, §13).
+
+**Input is normalised before storage and before comparison.** This is
+Persian-language software, so the field receives Persian and Arabic-Indic digits
+(`۰۹۱۲۳۴۵۶۷۸۹`, `٠٩١٢٣٤٥٦٧٨٩`) from ordinary keyboards. Normalisation folds those
+to ASCII, strips spaces, dashes and parentheses, and rewrites a leading `+98`,
+`0098` or bare `98` to `0`. Only the canonical form is persisted, so one person
+cannot occupy two accounts written two ways.
+
+**Usernames are unique across every account, including disabled ones.** A
+disabled user keeps their number, so it cannot be handed to a new employee who
+inherited the same line. Freeing a number means an administrator editing the
+disabled account first — deliberate, because silently reassigning an identity
+attaches one person's history to another.
+
+**A phone number here is an identifier, not a verified channel.** Nothing sends
+to it and nothing proves the person holds the line. Any future use of it for
+delivering credentials or notifications needs verification built first.
+
+Changing a username is an ordinary modification bound by D13, audited as
+`user.modified`.
+
+### D58 — Passwords: six characters, no other rule
+
+Minimum length six. No complexity requirement, no character-class rule, no
+expiry, no reuse check, no forced change on first sign-in.
+
+The users are kitchen and floor staff, and every rule beyond a length floor
+trades a real cost in passwords written down against a benefit the evidence has
+not supported for a decade. The floor makes an empty or one-character password
+impossible.
+
+**What this costs, stated plainly:** `123456` is a legal password, usernames are
+guessable by construction (D57 — anyone who knows a staff member's phone number
+knows their username), and no rate limit or lockout exists on
+`POST /api/auth/login`. Argon2 under the existing `CapacityLimiter(2)` bounds
+online guessing to roughly thirty attempts a second, enough to walk a
+common-password list. Failed attempts are recorded and reportable (D44), so
+guessing is **visible**; nothing yet makes it **slow** (§13).
+
+### D14 — Disabling never blocks and never cascades
+
+Disabling is immediate and revokes the user's sessions at once. It does not
+require reassigning their subordinates first — removing access quickly is the
+point.
+
+Subordinates keep pointing at the disabled supervisor in the record, because
+rewriting history to claim someone always reported elsewhere is a lie. The user
+administration screen surfaces *"N users report to a disabled supervisor"* with a
+reassign action, so the gap is visible rather than found later.
+
+Disabling does not cascade, and the disabled user's own in-flight comments
+continue up the chain — a valid complaint does not become invalid because the
+person who raised it left.
+
+### D15 — Credentials and password setting
+
+Usernames and passwords are created in-system by whoever creates the user.
+Passwords are argon2-hashed (`argon2-cffi`) and stored in `app.db`. Every user
+changes their own from their profile — the sole exception to the self-edit ban
+(D13). There is no read-only mounted user file; self-service change requires a
+writable store.
+
+**A holder of `manage_users` sets another user's password directly**, choosing
+the value, bound by the same two checks as any other modification. No token, no
+expiring link, no round-trip: the administrator types the new password and tells
+the person what it is.
+
+The honest guarantee, recorded rather than dressed up:
+
+- **The fact is always on record.** `password.set_by_admin` names the actor and
+  the target (D42), so a password set by someone else is never invisible, and a
+  sign-in shortly afterwards from the setter's address is a visible pattern.
+- **Impersonation is detectable, not prevented.** Anyone holding `manage_users`
+  can set a password and then sign in as that user. This is inherent to the
+  workflow and is why `manage_users` sits only with Editors and `*`-scoped
+  Admins (D11).
+
+An out-of-band channel would close it — a Telegram identity per user, sharing
+plumbing with D40's deferred approver notifications, and the natural moment to
+revisit this (§13).
 
 ### D51 — Supervisor is an independent axis
 
@@ -359,10 +412,9 @@ else.
 
 A separate boolean, **`can_supervise`**, marks a user as eligible to be chosen as
 someone's supervisor. It is set by a holder of `manage_users` and **grants no
-permissions**. It exists because with the level concept gone there is nothing
-left from which to infer that someone sits above their department — org position
-is a fact asserted about a person, not something derivable from their
-permissions. A Reader may supervise a Reader.
+permissions**. It is asserted rather than derived because org position is a fact
+about a person, not something their permissions imply. A Reader may supervise a
+Reader.
 
 ### D52 — Supervisor eligibility
 
@@ -376,165 +428,61 @@ Eligible = **active**, **and** their scope covers the new user's scope, **and**
 | `dept:dining` + `dept:cashier` | `*` holders only — nobody else covers both |
 | `*` | `*` holders only |
 
-Default to the creator when eligible. Reject: self, disabled users, anyone whose
+Default to the creator when eligible. Reject self, disabled users, anyone whose
 scope does not cover, and any choice creating a cycle.
 
 Candidates are displayed **with their scope beside their name** — "Ali Rezaei —
-dining", "Maryam Ahmadi — all departments". Past thirty users, the reason someone
+dining", "Maryam Ahmadi — all departments". Past thirty users the reason someone
 appears in the list is otherwise invisible.
 
 ### D53 — At least one active `*` holder always exists
 
 The candidate list is never empty because at least one active `*`-scoped user
-always survives. That is true, but only *emergently*: it holds because **nobody
-may edit their own record** (D13), so the last actor standing cannot remove
-themselves, narrow their own scope, or disable their own account.
+always survives — and that holds **only** because nobody may edit their own
+record (D13), so the last actor standing cannot remove themselves, narrow their
+own scope, or disable their own account.
 
-Two rules that look unrelated, one holding the other up. It is written here as an
-**explicit invariant with its own test** so that a later "delete user" endpoint,
-or any relaxation of the self-edit ban, fails a test rather than silently locking
-everyone out of user administration.
+Two rules that look unrelated, one holding the other up. It carries **its own
+test**, so that a later "delete user" endpoint, or any relaxation of the
+self-edit ban, fails a test rather than silently locking everyone out of user
+administration.
 
 ### D54 — A Reader sees no user-administration surface
 
-No user list, no user detail, no admin screens, no supervisor picker — a Reader
-holds no `manage_users` and is served nothing about anyone else's account.
+No user list, no user detail, no administration screens, no supervisor picker. A
+Reader holds no `manage_users` and is served nothing about anyone else's account.
 
-**The exception, which is not one:** names that appear *inside a comment the
-Reader is entitled to read*. A department head approving their branch's comments
-necessarily sees the author (D37), and everyone who could see a comment sees who
-resolved or rejected it and why (D38). Without that the comment system is
-unreadable. The boundary is the **user-administration surface**, not the
-appearance of a name in content already routed to them.
-
-### D14 — Disabling a user never blocks and never cascades
-
-Disabling is immediate and revokes their sessions at once. It does not require
-reassigning their subordinates first — being able to remove access quickly is the
-point.
-
-Subordinates keep pointing at the disabled supervisor in the record, because
-rewriting history to claim someone always reported elsewhere is a lie. The user
-admin screen surfaces *"N users report to a disabled supervisor"* with a reassign
-action, so the gap is visible rather than discovered later.
-
-Disabling does not cascade to subordinates, and the disabled user's own in-flight
-comments continue up the chain — a valid complaint does not become invalid
-because the person who raised it left.
-
-### D57 — The username is a mobile number
-
-Every username is an Iranian mobile number in canonical form: **`^09\d{9}$`** —
-`09123456789`, eleven digits, no separators. There is no other username.
-
-Staff cannot forget it, it is naturally unique, and it is the identifier they
-would need anyway if credentials or approver notifications ever move to SMS or
-Telegram (D40, §13).
-
-**Input is normalised before it is stored or compared.** This is Persian-language
-software, so the field will receive Persian and Arabic-Indic digits
-(`۰۹۱۲۳۴۵۶۷۸۹`, `٠٩١٢٣٤٥٦٧٨٩`) from ordinary keyboards. Normalisation folds those
-to ASCII, strips spaces, dashes and parentheses, and rewrites a leading `+98`,
-`0098` or bare `98` to `0`. Only the canonical form is persisted, so two people
-cannot end up with the same number written two ways. The sign-in field is
-`type="tel" inputmode="numeric" dir="ltr" maxlength="11"`.
-
-**Usernames are unique across every account, including disabled ones.** A
-disabled user keeps their number, so it cannot be handed to a new employee who
-inherited the same line. Freeing a number means an administrator editing the
-disabled account first — deliberate, because silently reassigning an identity
-would attach one person's history to another.
-
-**A phone number here is an identifier, not a verified channel.** Nothing sends
-to it and nothing proves the person holds the line. Any future use of it for
-delivering credentials or notifications needs verification built first; the
-number being on file is not that.
-
-Changing a username is an ordinary modification bound by D13 and audited as
-`user.modified`.
-
-### D58 — Passwords: six characters, no other rule
-
-Minimum length six. No complexity requirement, no character-class rule, no
-expiry, no reuse check, no forced change on first sign-in.
-
-The users are kitchen and floor staff, and every rule beyond a length floor
-trades a real cost in people writing passwords down against a benefit that
-research has not supported for a decade. The floor exists so that an empty or
-one-character password is impossible.
-
-**What this costs, stated plainly:** `123456` is a legal password, usernames are
-guessable by construction (D57 — anyone who knows a staff member's phone number
-knows their username), and there is still no rate limit or lockout on
-`POST /api/auth/login`. Argon2 under the existing `CapacityLimiter(2)` bounds
-online guessing to roughly thirty attempts a second, which is enough to walk a
-common-password list. Failed attempts are recorded and reportable (D44), so
-guessing is **visible**; nothing yet makes it **slow**. See §13.
-
-### D15 — Credentials
-
-Usernames and passwords are created in-system by whoever creates the user.
-Passwords are argon2-hashed as today (`argon2-cffi`), stored in `app.db`, and
-every user can change their own from their profile — the sole exception to the
-self-edit ban (D13). The read-only-mounted `ui-users.json` is retired: it cannot
-support self-service change.
-
-**A holder of `manage_users` sets another user's password directly**, choosing
-the value themselves, bound by the same two checks as any other modification
-(D13). No token, no expiring link, no round-trip — the administrator types the
-new password and tells the person what it is.
-
-This was specified as a single-use token first, on the reasoning that an
-administrator who knows a password can sign in as that user and leave the audit
-log attributing their actions to that person. **Overruled deliberately, and the
-reasoning did not survive contact with the deployment:** there is no out-of-band
-delivery channel here — no email addresses on user records, no SMS, and Telegram
-notification deferred (D40) — so the administrator issuing a token would be the
-one handing it over, and could consume it themselves. The token bought
-detection, not prevention, at the cost of a round-trip for a deputy manager
-standing next to a waiter.
-
-What remains is the honest guarantee, and it is recorded rather than dressed up:
-
-- **The fact is always on record.** `password.set_by_admin` names the actor and
-  the target (D42), so a password set by someone else is never invisible, and a
-  sign-in shortly afterwards from the setter's own address is a visible pattern.
-- **Impersonation is detectable, not prevented.** Anyone holding `manage_users`
-  can set a password and then sign in as that user. That is inherent to the
-  workflow chosen, and it is why `manage_users` is confined to Editors and
-  Admins scoped `*` (D11).
-
-Closing it properly would mean putting a Telegram id on the user record and
-delivering credentials through the bot — which shares its plumbing with D40's
-deferred approver notifications, and is the natural moment to revisit this
-(§13).
+**The one exception, which is not one:** names inside a comment the Reader is
+entitled to read. A department head approving their branch's comments necessarily
+sees the author (D37), and everyone who could see a comment sees who resolved or
+rejected it and why (D38). Without that the comment system is unreadable. The
+boundary is the **administration surface**, not the appearance of a name in
+content already routed to them.
 
 ---
 
 ## 4. Content visibility
 
-### D16 — One global policy, editable only by `set_visibility`
+### D16 — One global policy, guarded by `set_visibility`
 
 What is shown of a process applies **identically to every non-editor**. It is not
 a grant, not per-role, not per-department.
 
-The reason is structural: if field visibility were an ordinary capability,
-anyone holding `manage_users` could confer it, and internal content would leave
-the system without an Editor ever deciding. Instead `set_visibility` is
-`delegable: false` (D50), so no role holding it can be created through any API
-path — a stronger guarantee than restricting the action to a privileged account,
-because it depends on no account's identity.
+The reason is structural: if field visibility were an ordinary capability, anyone
+holding `manage_users` could confer it, and internal content would leave the
+system without an Editor deciding. `set_visibility` is `delegable: false` (D50),
+so no role holding it can be created through any API path — stronger than
+restricting the action to a privileged account, because it depends on no
+account's identity.
 
 What varies between users is *which departments and reports they can reach* —
 never *which fields*.
 
-### D17 — Policy defaults reproduce today's export exactly
+### D17 — Policy fields and defaults
 
-Derived from `exports.py` `PUBLIC_PROCESS_KEYS` and `_public_node`, so nothing
-becomes visible on migration day that is not visible today.
-
-**The policy governs process content only.** Every field below belongs to
-`process.json`; the department overview is not subject to it (D55).
+The policy governs **process content only**; the department overview is not
+subject to it (D55). Defaults match what the export publishes, so nothing becomes
+visible at migration that is not visible today.
 
 | Field | Non-editor default | Switchable |
 |---|:-:|:-:|
@@ -551,19 +499,17 @@ becomes visible on migration day that is not visible today.
 | `created_at` / `updated_at` | **hidden** | ❌ never |
 | Tombstoned processes | **excluded entirely** | ❌ never |
 
-The bottom four are internal bookkeeping, not content. NFR-12 already forbids
-them leaving the system; that rule now governs every API response rather than
-only exports.
+The bottom four are internal bookkeeping, not content. NFR-12 forbids them
+leaving the system, and that governs every API response, not only reports.
 
-**Note that a node has no KPIs.** `$defs.activityNode` carries `id`, `type`,
-`label`, `description`, `actor`, `icom`, `subprocess`, `position`, `layout`,
-`source` and `removed` — nothing else. The two KPI fields in the data model are
-`process.kpis[]` (structured `{name, definition?, target?, unit?}`, shown on the
-process summary card) and `overview.personnel[].kpi[]` (plain strings, on the
-department page, and governed by D55 rather than by this table). What a node
-carries is ICOM, which is IDEF0 information, not a performance indicator. The
-two are separate switches, so hiding a node's ICOM while showing a process's
-KPIs is the default configuration plus one toggle.
+**A node has no KPIs.** `$defs.activityNode` carries `id`, `type`, `label`,
+`description`, `actor`, `icom`, `subprocess`, `position`, `layout`, `source` and
+`removed` — nothing else. The two KPI fields in the data model are
+`process.kpis[]` (structured `{name, definition?, target?, unit?}`, on the process
+summary card) and `overview.personnel[].kpi[]` (plain strings, on the department
+page, governed by D55). What a node carries is ICOM, which is IDEF0 information,
+not a performance indicator. They are separate switches, so hiding a node's ICOM
+while showing a process's KPIs is the default plus one toggle.
 
 ### D55 — The department information page is shown in full
 
@@ -571,58 +517,50 @@ The department overview — `description`, `sub_units`, and `personnel` with the
 `duties` and `kpi` — is shown **in its entirety**, with no per-field switches.
 There is no policy table for it and none is planned.
 
-This was previously unstated, which meant the documents decided it by omission;
-an implementer could reasonably have guessed either way, and "the whole page is
-always visible" is too consequential to arrive at by accident. It is now a
-decision: the overview is *about* a department rather than being the mechanics
-of a process, and every part of it — what the department does, its sub-units,
-who works there and what each role is measured on — is exactly what a staff
-member should be able to read.
+The overview is *about* a department rather than being the mechanics of a
+process, and every part of it — what the department does, its sub-units, who
+works there and what each role is measured on — is what a staff member should be
+able to read.
 
-Two gates still apply, and they are not field visibility:
+Two gates still apply, and neither is field visibility:
 
 - **Scope.** You must hold `view` on that department. A report reader scoped to
-  `dept:x/report:steps` never reaches the page at all.
+  `dept:x/report:steps` never reaches the page.
 - **Confirmation.** An overview with no valid confirmation is invisible to every
   non-editor (D22), the same as an unconfirmed flowchart.
 
-One exception survives from the denylist: `overview.updated_at` is stripped like
-every other timestamp (D17). That is bookkeeping, not content.
+`overview.updated_at` is stripped like every other timestamp (D17) — bookkeeping,
+not content.
 
-If a reason to hide part of the overview ever appears — personnel KPIs being the
+If a reason to hide part of the overview appears — personnel KPIs being the
 likely candidate — it becomes new rows in D17's table, not a new mechanism.
 
 ### D18 — One filter, applied server-side to every response
 
-The visibility strip moves out of `exports.py` and becomes a single filter over
-every response the API sends, driven by the policy plus the caller's
-capabilities. Reports, the flow canvas, the detail drawer and the department
-overview all read through it.
+A single filter over every response the API sends, driven by the policy plus the
+caller's capabilities. Reports, the flow canvas, the detail drawer and the
+department overview all read through it. One implementation means one place to be
+wrong and one place tests can pin.
 
-One implementation means one place to be wrong and one place tests can pin. As
-today, the strip happens in the payload, not in CSS — a reader with dev tools
-finds nothing hidden.
-
-### D19 — Every policy change is an audited event
-
-`visibility.policy.changed`, with the actor, the field, and both values.
+The strip happens in the payload, not in CSS — a reader with dev tools finds
+nothing hidden.
 
 ### D56 — Withheld data is never sent
 
-D18 states this for **fields**. It is hereby the rule for everything: **if a user
-may not see it, it does not appear in any response to them.** Not sent and
-hidden, not sent and collapsed, not sent and filtered by the client. The leaks
-that matter are not fields, so the rule has to be broader than fields.
+D18 states this for **fields**. It is the rule for everything: **if a user may
+not see it, it does not appear in any response to them.** Not sent and hidden,
+not sent and collapsed, not sent and filtered by the client. The leaks that
+matter are not fields, so the rule is broader than fields.
 
 | Surface | Rule |
 |---|---|
 | **Whole records** | Unconfirmed processes (D22) and tombstoned ones (D17) are absent from the response body, filtered in the query. Never client-side. |
 | **Derived signals** | No count, badge or flag that implies withheld content. A `pending` **count** on a node leaks the existence of unresolved proposals as surely as the proposals do, and `pending` is on the never-show list. |
 | **Existence** | A resource outside the caller's scope answers **404, not 403**. A 403 teaches the caller that the thing exists. |
+| **Whether an account exists** | Sign-in takes the same time and returns the same message whether or not the username exists. `authenticate()` must verify against a dummy hash on the miss path; returning instantly for an unknown username and after ~58 ms for a known one is a timing oracle, and with usernames being phone numbers (D57) it answers *"does this person work here?"* |
 | **Comments** | D37's subtree rule is a query filter, not a post-filter — including the author and approver names carried with each comment. |
 | **Downloads** | The download endpoint re-derives scope on every request. That the cached artifact exists (D27) is not authorisation to serve it. |
 | **Search and lists** | Scope belongs in the query. A list endpoint never returns rows it then declines to render. |
-| **Whether an account exists** | Sign-in takes the same time and returns the same message whether or not the username exists. Today `authenticate()` returns instantly for an unknown user and after ~58 ms of argon2 for a known one — a timing oracle. With usernames being phone numbers (D57) that oracle answers *"does this person work here?"*, so the fix is to verify against a dummy hash when no user matches. |
 
 **403 is reserved for actions on resources the caller can already see** — a
 Reader hitting an edit endpoint on their own department. Out-of-scope *resources*
@@ -634,10 +572,12 @@ before the requested path is examined, because *"whether a given token exists is
 not something to tell a stranger."* D56 generalises it to every endpoint.
 
 **Consequence for the frontend.** Client-side capability checks decide what to
-**draw** and nothing else (D48). The prototypes hide content with `sc-if` and
-filter with a client-side `visibleIn` — that is a mockup convenience and must not
-be reproduced. If a Reader's response contains something the UI declines to
-render, the bug is in the backend, not the component.
+**draw** and nothing else (D48). If a Reader's response contains something the UI
+declines to render, the bug is in the backend.
+
+### D19 — Every policy change is audited
+
+`visibility.policy.changed`, with the actor, the field, and both values.
 
 ---
 
@@ -647,24 +587,25 @@ render, the bug is in the backend, not the component.
 
 Stored in `app.db` as `(target, fingerprint, confirmed_by, confirmed_at)` where
 target is a process id or a department code. The target displays as confirmed
-only while its *current* fingerprint matches the stored one.
+only while its **current** fingerprint matches the stored one.
 
 A boolean field would have to be cleared correctly by all three write paths — the
-UI's Save, a chat-edit via Telegram, and a pipeline `merge` run — and missing one
-would leave the mark attesting to something stale, which is the exact failure the
-mark exists to prevent. A fingerprint self-invalidates for every path, including
-paths added later, with no change to `merge` and no field on `process.json`.
+UI's Save, a chat edit via Telegram, and a pipeline `merge` run — and missing one
+would leave the mark vouching for something stale, the exact failure the mark
+exists to prevent. A fingerprint self-invalidates for every path, including paths
+added later, with no change to `merge` and no field on `process.json`.
 
 ### D21 — The fingerprint is the whole document minus `updated_at`
 
-Node positions count. Moving a node, or running the re-layout, un-confirms the
-process — the diagram's appearance is part of the document. Nothing to enumerate
-and nothing to argue about later.
+Node positions count, so moving a node or running the re-layout un-confirms the
+process: the diagram's appearance is part of the document. Nothing to enumerate,
+nothing to argue about later.
 
 ### D22 — Unconfirmed content is invisible to non-editors
 
-A process or department overview that carries no valid confirmation does not
-appear for any user without `edit`. Reports render only confirmed processes.
+A process or department overview carrying no valid confirmation does not appear
+for any user without `edit`, and reports render only confirmed processes.
+Enforced server-side (D56), never by the client.
 
 ### D23 — The system starts dark
 
@@ -672,27 +613,44 @@ No bulk confirmation at migration. All 85 existing processes (21 dining, 26
 logistics, 38 cashier) start unconfirmed, so non-editors see an empty system
 until each is reviewed and confirmed.
 
-**Accepted consequence:** because a confirmation is invalidated by any edit, a
-pipeline run makes a department head's flowcharts disappear until re-confirmed.
-Every voice run therefore creates re-confirmation work.
+**Accepted consequence:** because any edit invalidates a confirmation, a pipeline
+run makes a department head's flowcharts disappear until re-confirmed. Every
+voice run creates re-confirmation work.
 
 ---
 
-## 6. Reports and the retirement of "export"
+## 6. Reports
 
-### D24 — "Export" as a separate system is retired
+### D24 — Reports are read in the application, under one permission system
 
-Removed: `EXPORT_USERNAME` / `EXPORT_PASSWORD_HASH`, the `inja_export_session`
-cookie, `export_auth.py`, the server-rendered Persian login page, the `/exports`
-route and its permanent per-department links.
+There is no separate export credential, no `inja_export_session` cookie, no
+`export_auth.py`, no server-rendered sign-in page, and no `/exports` route with
+permanent per-department links.
 
-This reverses **NFR-11** and export-design decisions **D25–D31**, which required
-the separation to be structural rather than a check. That requirement existed
-because export readers had no accounts. They now do, and one permission system
-replaces two credential systems. Recorded in the ARD as a dated reversal in the
-style §7 and PRD §4 already use.
+That separation existed because report readers had no accounts and there was no
+identity to attach a permission to. They have accounts now, and one permission
+system replaces two credential systems. (This supersedes NFR-11 and D25–D31 of
+`2026-07-26-department-export-design.md`, which the front matter records, because
+those documents still describe the old surface.)
 
-### D25 — Downloads survive as a permission
+Retained from that design, because none of it was about the credential:
+
+- **Route ordering is load-bearing.** The SPA catch-all mount at `/` swallows
+  everything registered after it. Any new prefix registers **before** it, and the
+  existing test pinning that ordering extends to cover them.
+- **Serving parity.** Downloads need `FileResponse` with `Range` (206 — iOS
+  Safari's PDF viewer depends on it), conditional revalidation (304), HEAD,
+  `Cache-Control: private, no-cache`, and path containment catching both
+  `ValueError` (embedded NUL) and `OSError` (`ENAMETOOLONG`).
+- **A cost ceiling on sign-in.** `POST /api/auth/login` is the only
+  unauthenticated endpoint and runs argon2 (~58 ms). It keeps the
+  `anyio.CapacityLimiter(2)` passed to `to_thread.run_sync`, which *replaces* the
+  default 40-thread limiter rather than nesting inside it, so password checks
+  cannot starve everything else. The body is capped, Caddy caps it again at 1 MB,
+  and failed sign-ins are logged with the username `%r`-quoted so a newline
+  cannot forge a log line.
+
+### D25 — Downloads are a permission
 
 `export_pdf` produces the PDF and the standalone single-file HTML, both of which
 already exist and are tested. FR-E3 (opens with no server), FR-E5 (printable,
@@ -701,32 +659,39 @@ remain true of the downloaded artifact.
 
 ### D26 — Reports come from a backend registry
 
-Today `EXPORT_KINDS` in the backend and `KINDS` in `ExportMenu.tsx` are two lists
-kept in sync by hand. They are replaced by one registry served to the frontend.
-Adding a report is one registry entry plus its renderer, and it appears in the
-permission UI automatically.
+One registry served to the frontend, replacing the two hand-synchronised lists
+(`EXPORT_KINDS` in `exports.py`, `KINDS` in `ExportMenu.tsx`). Scopes reference
+registry ids (`dept:{code}/report:{kind}`, D10), so adding a report is one
+registry entry plus its renderer, and it appears in the permission UI
+automatically.
 
 ### D27 — Generated artifacts are a fingerprint-keyed cache
 
-`EXPORT_DIR` remains, but as a cache keyed by `(department, report, content
-fingerprint)` rather than a published permanent path. A chromium render happens
-once per version and is reused until content changes.
+```
+EXPORT_DIR/{dept}/{kind}-{fingerprint}.html
+EXPORT_DIR/{dept}/{kind}-{fingerprint}.pdf
+```
 
-This matters because a render takes tens of seconds and is serialised
-process-wide by a module lock (D22 of the export spec); without caching, ten
-simultaneous downloads is a ten-minute queue.
+Keyed by the content fingerprint of the report's input (D20), so a render happens
+once per version and is reused until content changes. A chromium render takes
+tens of seconds and is serialised process-wide by a module lock; without the
+cache, ten simultaneous downloads is a ten-minute queue.
 
-INV-6 still holds: derived, disposable, regenerable, never read back in.
+`EXPORT_DIR` is a Docker volume outside `data-repo` — build artifacts must not
+appear in the working tree the control-bot agent operates in (INV-6). Being a
+pure cache, it can be deleted at any time at the cost of regeneration.
 
-### D28 — FR-E4's permanent link is withdrawn
+### D28 — A report is always current; there is no permanent link
 
-There is no longer a stable public URL per department+kind. A report is reached
-by navigating to it as a signed-in user, and downloaded on demand.
+A report shows the department as it stands. There is no snapshot to refresh, no
+archive, and no stable public URL per department — a stable public URL is exactly
+what should not exist once access is per-person. A downloaded copy is a snapshot
+by nature (D25). This supersedes FR-E4.
 
 ### D29 — One flowchart renderer
 
-`ui/export/flowchart/parity.test.tsx` already fails the build on a forked node or
-edge component. That guarantee extends to every surface a flowchart appears on.
+`ui/export/flowchart/parity.test.tsx` fails the build on a forked node or edge
+component. That guarantee extends to every surface a flowchart appears on.
 
 ---
 
@@ -743,19 +708,18 @@ edge component. That guarantee extends to every surface a flowchart appears on.
 | `process_list` | department code | the department's process list page |
 | `department` | department code | the department information page |
 
-**A node is the finest anchor there is.** There is deliberately no field-level
-narrowing: a comment is prose written by someone who is not editing, and making
-them first choose which field they mean is friction that buys nothing — an
-editor reading *"this step names the wrong person"* can see which part it is
-about. It also keeps the anchor set closed, so every comment points at something
-with a durable id (D31). The node is the finest durably addressable unit in the
-data model anyway: node ids embed their process id, are never reused, and are
-globally unique.
+**A node is the finest anchor there is.** No field-level narrowing: a comment is
+prose written by someone who is not editing, and making them first choose which
+field they mean is friction that buys nothing — an editor reading *"this step
+names the wrong person"* can see which part it is about. It also keeps the anchor
+set closed, so every comment points at something with a durable id (D31). The
+node is the finest durably addressable unit in the data model anyway: node ids
+embed their process id, are never reused, and are globally unique.
 
-**`process_list` and `department` carry the same target and are still distinct
-kinds.** Same department, different subject. *"A process is missing from this
-list"* and *"this description is wrong"* must not arrive at the editor as the
-same kind of thing, so they are separate kinds rather than one kind with a flag.
+**`process_list` and `department` carry the same target and are distinct kinds.**
+Same department, different subject. *"A process is missing from this list"* and
+*"this description is wrong"* must not arrive at the editor as the same kind of
+thing, so they are separate kinds rather than one kind with a flag.
 
 **Node anchoring works identically from both surfaces.** The step-by-step report
 linearises a process into ordered steps, each derived from exactly one node. That
@@ -764,9 +728,12 @@ the rendered report, so a comment on step 4 anchors to **the node behind it** an
 never to the step's ordinal — ordinals shift whenever a process changes, node ids
 do not. This is the one piece of new plumbing the anchor model requires.
 
-**Scope note.** `process_list` and `department` anchors are reachable only by
-users with department scope. A report reader scoped to `dept:x/report:steps` sees
-neither page and comments at `node` and `process` level.
+A step nested inside an XOR/AND branch is not a comment target; comments there go
+to the process.
+
+**Scope.** `process_list` and `department` anchors are reachable only at
+department scope. A report reader scoped to `dept:x/report:steps` comments at
+`node` and `process` level.
 
 ### D31 — Every anchor carries a snapshot
 
@@ -779,25 +746,25 @@ Captured at comment time, per kind:
 | `process_list` | department name, and the ordered list of process ids and names as it stood |
 | `department` | department name |
 
-This exists because **`merge restructure` mints brand-new process *and* node
-ids**, tombstones the originals with `superseded_by`, and records no node-level
-mapping between old and new. That path runs in production regularly. Without a
-snapshot a comment decays into a dangling id; with one it still reads as a
-coherent statement, and a comment on a tombstoned process surfaces as *"refers to
-a process since replaced by cashier-028"* rather than vanishing.
+**`merge restructure` mints brand-new process *and* node ids**, tombstones the
+originals with `superseded_by`, and records no node-level mapping between old and
+new. That path runs in production regularly. Without a snapshot a comment decays
+into a dangling id; with one it still reads as a coherent statement, and a
+comment on a tombstoned process surfaces as *"refers to a process since replaced
+by cashier-028"* rather than vanishing.
 
 The `process_list` snapshot earns its place for the same reason in a different
 way: *"the stock-check process is missing from this list"* is only checkable
-against the list the author was actually looking at, and the department's process
-set changes with every pipeline run (§4.6, `order.json`).
+against the list the author was looking at, and the department's process set
+changes with every pipeline run.
 
 Anchors are never repointed automatically. Orphaning is surfaced, not guessed at.
 
 ### D32 — Identity: `CMT-{n}`
 
-A monotonic integer from `comments.db`, never reused. Same principle as INV-1 —
-one deterministic source, never an LLM — with a different ledger, because
-comments are not `data-repo` content. Short enough to quote in Telegram.
+A monotonic integer from `comments.db`, never reused. INV-1's principle on a
+different ledger, because comments are not `data-repo` content. Short enough to
+quote in Telegram.
 
 ### D33 — Lifecycle
 
@@ -810,27 +777,27 @@ comments are not `data-repo` content. Short enough to quote in Telegram.
 | `rejected` | returned to the author with a reason |
 | `withdrawn` | pulled back by the author before any approval |
 
-Nothing is ever hard-deleted. `withdrawn` and `rejected` are states, not row
-removals — the same doctrine as INV-4, and necessary because a supervisor
-rejecting a complaint must leave a trace.
+Nothing is hard-deleted. `withdrawn` and `rejected` are states, not row removals
+— INV-4's doctrine, and necessary because a supervisor rejecting a complaint must
+leave a trace.
 
 ### D34 — Routing climbs the supervisor tree
 
-The comment moves from the author up the supervisor edges. It becomes `approved`
+A comment moves from the author up the supervisor edges. It becomes `approved`
 the moment the next hop would be a user holding `edit` — an editor does not
 approve their own inbox. If the chain reaches a root with no editor above it, it
 becomes `approved` there and goes to all editors.
 
-Disabled users are skipped, and the trail records *"hop skipped — supervisor
+Disabled users are skipped and the trail records *"hop skipped — supervisor
 disabled"*. Comments already sitting with a disabled user move up automatically.
 If every hop above is disabled the comment reaches the editors: a comment nobody
 can approve is better delivered than stuck.
 
-### D35 — An approver may approve, reject, or edit-then-approve
+### D35 — Approve, reject, or amend and approve
 
-Approve-with-edit keeps both texts. The author's original words are never
-overwritten; the edited version travels onward and the difference stays in the
-record, because *"my supervisor changed what I said"* must be inspectable.
+Amending keeps both texts. The author's original words are never overwritten; the
+amended version travels onward and the difference stays in the record, because
+*"my supervisor changed what I said"* must be inspectable.
 
 Rejection returns the comment to the author with a reason. Revising restarts the
 chain at hop one.
@@ -850,9 +817,9 @@ afterwards, every signature above it would be worthless. Withdrawal is barred on
 the same boundary and for the same reason: it would let an author erase a
 supervisor's endorsement unilaterally, and make raise-then-retract untraceable.
 
-The escape hatch is that **any approver in the chain may reject**, returning it to
-the author. Stopping an in-progress comment requires someone accountable to act
-and leaves a record.
+The escape hatch is that **any approver may reject**, returning it to the author.
+Stopping an in-progress comment requires someone accountable to act and leaves a
+record.
 
 ### D37 — Comment visibility follows the tree, not content scope
 
@@ -867,15 +834,14 @@ An Admin scoped `*` still reads only their own branch's comments. Seeing every
 department is not the same as reading every department's internal complaints.
 
 A comment can outlive its author's access: if a report reader loses a department,
-their in-flight comment stays in the chain and they simply stop seeing it.
+their in-flight comment stays in the chain and they stop seeing it.
 
-### D38 — Resolution and rejection are visible to everyone who saw the comment
+### D38 — Everyone who saw a comment sees how it ended
 
 When a comment becomes `addressed`, its whole audience — author, every supervisor
 in the chain, and editors — sees who closed it, when, the note, and the commit
 link if the AI closed it. The author is badged. Rejections are equally visible,
-with the rejecting supervisor's name and reason. If you can see the comment, you
-can see what happened to it.
+with the rejecting supervisor's name and reason.
 
 ### D39 — The `comments` CLI
 
@@ -890,21 +856,20 @@ and the full approval trail — from denormalised columns, so the CLI never read
 users table and cannot enumerate people. It returns only `approved` and
 `addressed` comments.
 
-This makes the intended loop real: *«برو مشکل کامنت CMT-42 رو درست کن»* → the AI
-reads the anchor, edits through `merge`, commits, and marks the comment addressed
-with the commit id attached.
+This makes the loop real: *«برو مشکل کامنت CMT-42 رو درست کن»* → the AI reads the
+anchor, edits through `merge`, commits, and marks the comment addressed with the
+commit id.
 
 ### D40 — Notification is in-app only
 
 A badge for the approver, plus a **"waiting longest"** list on the approver's
-screen and on the editor's, so a department head sitting on their branch for a
-week is visible without any notification system. Telegram notification to
-approvers is deliberately deferred; it would require a Telegram id on every user
-record and a delivery path that does not exist.
+screen and on the editor's, so a blocked chain is visible without a delivery path
+that does not exist. Telegram notification would require a Telegram id on every
+user record (§13).
 
 ---
 
-## 8. Audit and activity reporting
+## 8. The activity record
 
 ### D41 — One append-only table
 
@@ -915,10 +880,6 @@ Columns: `at`, `actor`, `session`, `action`, `target`, `ip`, `user_agent`,
 
 **Access** — `login.success`, `login.failure` (with attempted username),
 `logout`, `session.expired`, `session.revoked`, `password.changed`.
-
-Today successful logins are never logged, and only *export* login failures are;
-`docs/runbooks/02-secrets-and-auth.md` states it plainly: *"there is no line
-marking the moment guessing stops being guessing."* That gap closes here.
 
 **Content** — `department.viewed`, `process.viewed`, `report.viewed`,
 `report.downloaded` (with format), `process.edited`, `process.confirmed`,
@@ -935,7 +896,7 @@ purpose**. Toggling `can_supervise` reshapes who is *eligible* to supervise —
 altering the org chart — without any user's supervisor field changing, so a
 single combined event would miss it entirely.
 
-### D43 — Presence is measured as active time, not time since login
+### D43 — Presence is active time, not time since sign-in
 
 Derived from the session row's `last_seen`, refreshed by a lightweight heartbeat
 while a tab is open, and accumulated as intervals of continuous activity with a
@@ -944,56 +905,55 @@ of presence. The reported figure is honest.
 
 ### D44 — The reports
 
-All `GROUP BY` queries over the one table, filtered by `view_audit` scope:
-activity by user (logins, active time, sessions, last seen); report readership
-(who opened what, how often, who downloaded); department access; failed logins by
+`GROUP BY` queries over the one table, filtered by `view_audit` scope: activity
+by user (sign-ins, active time, sessions, last seen); report readership (who
+opened what, how often, who downloaded); department access; failed sign-ins by
 username and IP; permission history with the actor of every change; comment
 throughput and where comments sit longest.
 
-**Failed logins are their own report, not a section of a user's page.** A failed
+**Failed sign-ins are their own report, not a section of a user's page.** An
 attempt against a username that does not exist belongs to no user — and that is
-precisely the signal worth having, since someone trying `admin`, `root` and
-`manager` in turn produces nothing on any real account's history. Folding the
-report into per-user activity would lose exactly the rows that matter. It also
-remains the only detection surface there is: no rate limit and no lockout exist
-(§13, ARD §18).
+the signal worth having, since someone trying `09120000000`, `09121111111` and
+`09122222222` in turn produces nothing on any real account's history. It is also
+the only detection surface there is: no rate limit and no lockout exist (§13).
 
 **`view_audit` follows content scope, not the supervisor tree** — unlike comment
 visibility (D37). Comments are private communications that were deliberately
-routed; audit is an operational record. An Admin scoped `*` therefore sees
-activity across the whole company while being unable to read those people's
-comments.
+routed; the activity record is an operational record. An Admin scoped `*`
+therefore sees activity across the whole company while being unable to read those
+people's comments.
 
 Note who does *not* hold it: `view_audit` is an Admin and Editor capability, so a
-department head — a Reader (D11) — cannot see activity reports even for their own
+department head — a Reader (D11) — sees no activity report even for their own
 branch.
 
-### D45 — Audit rows cannot be deleted through the UI
+### D45 — Rows cannot be deleted through the UI
 
-No endpoint exists to delete them, for any role including Editor. Given that the
+No endpoint deletes or alters them, for any role including Editor. Given the
 Editor is the only source of `edit`, `confirm` and `set_visibility`, this is the
-only thing that makes the log mean anything.
+only thing that makes the record mean anything.
 
-Retention is indefinite by default — the volume is trivial at this scale — with a
-configurable purge older than N months, because "who read what" is personal data
-and keeping it forever should be a choice.
+Retention is indefinite by default with a configurable purge, since "who read
+what" is information about people. Any purge is a **scheduled server job, never a
+button** — a screen that clears old rows would undo this decision. Purging the
+live database does not purge the backups (D8), so backup retention must match.
 
 ---
 
-## 9. Frontend architecture
+## 9. Frontend rules that are part of the contract
 
-Layout, navigation and visual design are **out of scope for this spec** and are
-decided in a later phase (§11.6). What is fixed here:
+Layout, components, tokens and states are in
+`2026-08-05-frontend-system-design.md`. These four are here because they are
+security- or architecture-relevant.
 
-### D46 — One SPA, one login, one permission system
+### D46 — One application, one sign-in, one permission system
 
 No second application and no second credential.
 
 ### D47 — `GET /api/auth/me` returns a session descriptor
 
 User, role, capabilities, scopes, supervisor, `can_supervise`, and
-pending-approval count. The client derives affordances from it. No level — there
-isn't one (D11).
+pending-approval count. The client derives affordances from it.
 
 ### D48 — The server enforces independently of the client
 
@@ -1001,28 +961,29 @@ Client-side capability checks decide what to **draw** and nothing about what the
 API **returns**. Every endpoint re-derives permission from the session row. A
 hidden button is a nicety; the check behind it is the security.
 
-Related: every write endpoint currently binds the session user to `_` and
-discards it, and every commit is authored `ui-edit`. Writes become attributed.
+Every write endpoint records the acting user, in the activity record and in the
+commit trailer.
 
 ### D49 — Responsive is a requirement
 
-Recorded as an NFR. `ui/src` currently contains no `@media` query, no Tailwind
-breakpoint prefix and no `matchMedia` call; every screen is rebuilt regardless of
-which design direction is chosen.
+Recorded as an NFR. Every screen is rebuilt regardless of design direction, since
+`ui/src` contains no `@media` query, no Tailwind breakpoint prefix and no
+`matchMedia` call.
 
 ---
 
 ## 10. Migration and rollout
 
-**Seeding.** The seed process creates the three preset roles — including the
-`Editor` role, which holds the three non-delegable capabilities and which **no
-API path can ever recreate** (D50) — and makes the current analyst an Editor
-scoped `*`. Any other `ui-users.json` entry becomes a user requiring a role,
-scope and supervisor before it can sign in.
+**Seeding.** The seed process creates the three preset roles — including
+`Editor`, which holds the three non-delegable capabilities and which **no API
+path can recreate** (D50) — and makes the current analyst an Editor scoped `*`.
+`ui-users.json` is read once for its remaining entries, each becoming a user that
+needs a role, a scope and a supervisor before it can sign in. Existing usernames
+must be replaced with mobile numbers (D57).
 
 Because the seed is the only origin of `edit`, `confirm` and `set_visibility`, it
-is also the only recovery path if every Editor account is lost. That is a
-deliberate trade and belongs in the runbook.
+is also the only recovery path if every Editor account is lost. That belongs in
+`docs/runbooks/06-changing-users.md`.
 
 **Export readers.** The shared export credential is removed; anyone reading
 exports today needs an account.
@@ -1043,55 +1004,55 @@ and the process data never diverged.
 1. **Permission resolution** — table-driven over roles, scopes and scope
    containment (D12), including that `dept:x` covers `dept:x/report:k` and that
    `dept:x/report:k` covers neither the department nor a second report.
-2. **The delegation matrix (D13) in both directions** — every cell of the
-   creator → creatable table asserted as permitted *and* every excluded
-   combination asserted as refused. Plus: the scope-containment constraint, the
-   strict-subset rule versus `manage_peers` equality, modification bound by the
-   same checks against the resulting user, and self-edit rejection with
+2. **The delegation matrix (D13) in both directions** — every cell asserted as
+   permitted *and* every excluded combination asserted as refused. Plus scope
+   containment, strict-subset versus `manage_peers` equality, modification bound
+   by the same checks against the resulting user, and self-edit rejection with
    own-password change as the sole exception.
 3. **Supervisor candidate list (D52)** — one case per row of the eligibility
-   table, plus cycle rejection, disabled-user exclusion, and the
-   multi-department case resolving to `*` holders only.
+   table, plus cycle rejection, disabled-user exclusion, and the multi-department
+   case resolving to `*` holders only.
 4. **`delegable: false` (D50)** — **no API path creates a role holding `edit`,
    `confirm` or `set_visibility`**, asserted against every role-creating and
-   role-editing endpoint, with the acting user an Editor. If this test can be
-   made to pass by an Editor, the guarantee is gone.
+   role-editing endpoint with the acting user an Editor. If an Editor can make
+   this test pass, the guarantee is gone.
 5. **The `*`-holder invariant (D53)** — no sequence of disable, scope-narrowing
-   or role-change operations can reduce the system to zero active `*`-scoped
-   users, given that nobody may edit their own record.
+   or role-change operations reduces the system to zero active `*`-scoped users.
 6. **Negative tests per capability per endpoint** — a role lacking the capability
-   gets 401/403, pinned in both directions. This rebuilds for capabilities the
-   discipline the current suite applies to export-vs-admin session isolation (an
-   export session getting 401 from `/api/departments`).
-7. **A Reader is served no user-administration surface (D54)** — user list,
-   user detail and supervisor-picker endpoints all refuse, while comment
-   payloads a Reader is entitled to still carry author and resolver names.
-8. **Content filter** — no denylisted field ever appears in any response to a
-   non-editor, asserted over every endpoint, not only reports.
-8a. **Response-body scan (D56)** — the load-bearing one. For **each role**,
-    exercise every endpoint and assert that the serialised body contains **no
-    denylisted key, no out-of-scope id, no unconfirmed process id, and no
-    tombstoned process id — anywhere in the body, at any depth.** A scan rather
-    than per-field assertions, because the next leak will be in a field nobody
-    thought to assert on. Includes: no `pending` count or conflict badge data
-    reaches a non-editor; comment lists carry no author outside the caller's
-    subtree.
-8b. **404 versus 403 (D56)** — a resource outside the caller's scope returns
-    **404**; an action refused on a resource they can see returns **403**. Both
-    pinned, because the natural implementation returns 403 for both.
-9. **Comment routing** — disabled hops, all-disabled chains, rejection restart,
-   freeze-on-first-approval, orphaned anchors after a simulated `restructure`.
-9a. **Anchors (D30)** — all four kinds round-trip through create → approve →
+   gets 401/403, pinned in both directions.
+7. **A Reader is served no user-administration surface (D54)** — user list, user
+   detail and supervisor-picker endpoints all refuse, while comment payloads a
+   Reader is entitled to still carry author and resolver names.
+8. **Content filter** — no denylisted field appears in any response to a
+   non-editor, over every endpoint.
+9. **Response-body scan (D56)** — the load-bearing one. For **each role**,
+   exercise every endpoint and assert the serialised body contains **no
+   denylisted key, no out-of-scope id, no unconfirmed process id, and no
+   tombstoned process id — anywhere in the body, at any depth.** A scan rather
+   than per-field assertions, because the next leak will be in a field nobody
+   thought to assert on. Includes: no `pending` count reaches a non-editor;
+   comment lists carry no author outside the caller's subtree.
+10. **404 versus 403 (D56)** — a resource outside scope returns **404**; a
+    refused action on a visible resource returns **403**. Both pinned, because
+    the natural implementation returns 403 for both.
+11. **Constant-time sign-in (D56)** — an unknown username takes the same time and
+    returns the same message as a wrong password.
+12. **Username normalisation (D57)** — Persian and Arabic-Indic digits, `+98`,
+    `0098` and separator forms all resolve to one canonical account; uniqueness
+    holds against disabled accounts.
+13. **Anchors (D30)** — all four kinds round-trip through create → approve →
     `comments show`; **a comment on step *n* of the step-by-step report resolves
-    to the same node id as a comment on that node in the flowchart**; no API
-    path accepts a field narrowing; and `process_list` and `department` on the
-    same department remain distinguishable.
-10. **Fingerprints** — what does and does not invalidate a confirmation; position
+    to the same node id as a comment on that node in the flowchart**; no API path
+    accepts a field narrowing; `process_list` and `department` on the same
+    department remain distinguishable.
+14. **Comment routing** — disabled hops, all-disabled chains, rejection restart,
+    freeze-on-first-approval, orphaned anchors after a simulated `restructure`.
+15. **Fingerprints** — what does and does not invalidate a confirmation; position
     changes must invalidate (D21).
-11. **Audit completeness** — every state-changing endpoint emits an event, with
+16. **Audit completeness** — every state-changing endpoint emits an event, with
     `supervisor.changed` and `supervisor_flag.changed` asserted separately.
-12. **Route ordering** — the existing test pinning that the SPA catch-all mount
-    cannot swallow API routes must be extended to any new prefix.
+17. **Route ordering** — the existing test pinning that the SPA catch-all mount
+    cannot swallow API routes extends to every new prefix.
 
 ---
 
@@ -1100,60 +1061,40 @@ and the process data never diverged.
 | Risk | Mitigation |
 |---|---|
 | `ui/export/` imports eight modules from `ui/src/`, and its output is verified page-by-page against signed-off PDFs plus tests asserting on CSS source text | Freeze the shared surface behind an adapter, or budget full PDF re-verification |
-| `merge restructure` orphans comment anchors | Snapshots (D31) make orphans readable; they are surfaced, never silently repointed |
+| `merge restructure` orphans comment anchors | Snapshots (D31) keep orphans readable; they are surfaced, never silently repointed |
 | Start-dark rollout means an empty system on day one | Deliberate (D23); 85 processes to confirm |
-| Two SQLite files outside `git-push` | D8 backup path is not optional — without it NFR-7 is false |
+| Two SQLite files outside `git-push` | D8's backup path is not optional — without it NFR-7 is false |
 | Host is 3.7 GB / 2 CPUs, already running a Claude Code runtime and chromium | D6 chooses SQLite partly for this reason |
 | In-flight comments readable from the bot container | Accepted (D5); bounded blast radius |
-| Losing every Editor account means `edit`, `confirm` and `set_visibility` cannot be recreated through any API path (D50) | Deliberate. Recovery is the seed process; it belongs in the runbook, and it is the price of a guarantee that depends on no account's identity |
-| All user administration is centralised at `*` scope (D11), so every account for every department is created by two or three people | Accepted on instruction. The load is small at this size; if it stops being small, a scoped Admin role already exists in the model |
+| Losing every Editor account means the three non-delegable capabilities cannot be recreated through any API path (D50) | Deliberate. Recovery is the seed process; a runbook item, and the price of a guarantee that depends on no account's identity |
+| All user administration is at `*` scope (D11), so every account is created by two or three people | Accepted. The load is small at this size; a scoped Admin role already exists in the model if it stops being small |
+| Six-character passwords, guessable usernames, no lockout (D58) | Guessing is visible via D44; making it slow is the open item in §13 |
 
 ---
 
 ## 13. Open items
 
-- **Telegram notification to approvers** — deferred (D40). Needs a Telegram id
-  per user and a delivery path.
-- **Lock-out after repeated failed sign-ins.** The password rule itself is
-  settled (D57, D58) and this is what remains of that item — a sign-in policy,
-  not a password one. It matters more than it did: usernames are now guessable by
-  construction, the password floor is six characters with no complexity rule, and
-  no rate limit or lockout exists on any endpoint (ARD §18). The
-  `CapacityLimiter(2)` bounds the *cost* of guessing at roughly thirty attempts a
-  second; it does not bound the *rate*. Failed attempts are recorded and
-  reportable (D44), so guessing is visible but not slow. The cheapest fixes are a
-  lockout after N failures per username, a throttle at the proxy, or a deny-list
-  of the most common passwords — none of which changes what a user has to type.
-- **Audit retention default** — indefinite is chosen now; a purge period should
-  be set once real volume is known.
-- **Report registry contents beyond `flowchart` and `steps`** — the mechanism is
-  designed for more; none are specified.
-- **`upload` and `run_pipeline` as capabilities** — dropped from v1 (D9). Adding
-  them means giving users a Telegram identity and giving the bots a way to
-  resolve it without breaking D5's mount boundary.
-- **A content-and-confirmation-history report** — `process.edited`,
+- **Lock-out after repeated failed sign-ins.** A sign-in policy, not a password
+  one, and it matters more than it did: usernames are guessable by construction
+  (D57), the password floor is six characters with no complexity rule, and no
+  rate limit or lockout exists (ARD §18). The `CapacityLimiter(2)` bounds the
+  *cost* of guessing at roughly thirty attempts a second; it does not bound the
+  *rate*. The cheapest fixes — a lockout after N failures per username, a
+  throttle at the proxy, or a deny-list of the most common passwords — change
+  nothing about what a user types.
+- **Activity-record retention.** Indefinite is chosen now (D45). At roughly
+  15,000 rows a month this is a decision about holding a behavioural record of
+  staff, not about storage. A two-tier scheme — monthly aggregates kept, row
+  detail purged after N months — preserves the management value without the
+  residue, at the cost of a rollup job.
+- **A content-and-confirmation-history report.** `process.edited`,
   `process.confirmed`, `confirmation.invalidated` and `password.changed` are
   recorded (D42) but no report in D44 surfaces them. The most useful missing
   question is *"which departments have flowcharts that went dark and have not
   been re-confirmed"*, since unconfirmed content is invisible to everyone (D22).
-
----
-
-## 14. Document impact
-
-All of the following are **applied** — `PRD.md` is at v0.6 and `ARD.md` at v0.4.
-
-| Document | Change |
-|---|---|
-| **v0.6 / v0.4 — access model revision** | `PRD.md` §3 and §7.8 and AC-16 rewritten for roles-without-scope, no levels and no overrides; `ARD.md` §19.2 replaced; §14 and §17 updated |
-| `PRD.md` §4 | Multi-user and role management move from Non-Goals to Goals, with a dated reversal note |
-| `PRD.md` §3 | Users section rewritten: multiple roles, not one analyst |
-| `PRD.md` §7 | New subsections for access control, comments, confirmation, and activity reporting; §7.7 rewritten from "export" to "reports" |
-| `PRD.md` §9 | NFR-3 rewritten; NFR-11 withdrawn; new NFRs for audit, responsiveness and backup |
-| `PRD.md` §10 | INV-1…INV-6 unchanged |
-| `PRD.md` §11 | AC-8 and AC-14 rewritten; new criteria for delegation, comment routing and audit |
-| `ARD.md` §13.1 | "No ORM/database" amended (D2) |
-| `ARD.md` §13.5 | Export access section replaced by the report access model |
-| `ARD.md` §14 | Security & Access rewritten around one credential system |
-| `ARD.md` §16 | New volumes, new backup job, removed export env vars |
-| `ARD.md` new §19 | Identity, RBAC, comments and audit — the architecture |
+- **Telegram identity per user.** Would unblock three things at once: approver
+  notification (D40), out-of-band credential delivery (D15), and `upload` /
+  `run_pipeline` as real capabilities (D9). Needs verification of number
+  ownership, which D57 explicitly does not provide.
+- **Further report kinds.** The registry (D26) is built for more; none are
+  specified.

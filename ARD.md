@@ -626,7 +626,8 @@ The `RichardAtCT/claude-code-telegram` project (Python 3.11+, MIT). Latest tagge
 - **Writes are attributed.** Every handler that mutates records the acting user, in the activity record and in the commit trailer. Previously the session user was bound and discarded, and every commit was authored `ui-edit` regardless of who acted (§15).
 - The edit loop is independent of both bots, working directly from the JSON on disk.
 - **Reports (FR-I8):** the department header keeps ترتیب فرآیندها as its own button. Reports are read in the application; a user holding `export_pdf` can download one, and a pending state is shown only when the artifact must actually be produced rather than served from the fingerprint cache (§13.4).
-- **Screens are not specified here.** Which pages exist per role, and what a reader's navigation looks like, is a design question answered in its own phase (PRD §12). This section fixes only that there is one application, that affordances derive from the session descriptor, and that the server decides independently of what was drawn (§19.5).
+- **Two shells over one component set.** `docs/superpowers/specs/2026-08-05-frontend-system-design.md` is authoritative for the frontend system — tokens, the shell split, shared components, responsiveness, RTL, the accessibility baseline and the loading/empty/error/denied states. One Vite build; the shell is selected at runtime **by capability** (F2): holders of `edit`, `confirm`, `set_visibility`, `manage_users` or `view_audit` get the Panel, everyone else the Reader. Individual screens belong to whichever sub-project owns their feature. This section fixes only that there is one application, that affordances derive from the session descriptor, and that the server decides independently of what was drawn (§19.5).
+- **The flowchart implementation does not change.** `ui/src/flow/` is used as-is in both shells and in the reports, which preserves `parity.test.tsx` (§13.3) and keeps one renderer across panel, report and printed PDF.
 
 ### 13.3 Department Reports — build (FR-E1…E3)
 
@@ -805,7 +806,7 @@ Key Docker notes:
 | FR-V5, FR-V6 / AC-21 (content visibility) | §19.4 — one global policy, level-0 only, one filter |
 | FR-K1…K11 / AC-19, AC-20 (comments and the chain) | §19.8 |
 | FR-L1…L6 / NFR-14 / AC-22 (activity record) | §19.7 + §14 (mount boundary) |
-| NFR-15 (usable on a phone) | §13.2 — a requirement here; the design is a separate phase |
+| NFR-15 (usable on a phone) | §13.2 + `2026-08-05-frontend-system-design.md` F9 (mobile-first), F11 (touch targets) |
 | NFR-16 (people-data backup) | §16 `state-backup` service |
 
 ---
@@ -824,7 +825,7 @@ Key Docker notes:
 
 ## 19. Identity, Access, Comments & the Activity Record
 
-> Authoritative design: `docs/superpowers/specs/2026-08-04-multi-user-rbac-design.md`, decisions **D1–D58** (the access model revised 2026-08-05: D9–D15 rewritten, D50–D58 added). This section states the architecture; the spec states why each decision was taken and what was rejected. Implementation is split across five sub-projects (P0–P4) in that spec, each with its own plan.
+> Authoritative design: `docs/superpowers/specs/2026-08-04-multi-user-rbac-design.md`, decisions **D1–D58**, with `docs/superpowers/specs/2026-08-05-frontend-system-design.md` (**F1–F16**) for the frontend system. This section states the architecture; the specs state why each decision was taken and what was rejected. Implementation is split into **F** (frontend system) followed by **P0–P4**, and each of those plans covers both the backend and the frontend of its own slice — the acceptance criteria are end-to-end statements that no backend-only plan can satisfy.
 
 ### 19.1 Three stores, one job each
 

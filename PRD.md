@@ -330,7 +330,7 @@ Non-negotiable rules that must always hold:
 - ~~**Password policy**~~ — **settled** (FR-A1a, FR-A1b): the username is a mobile number, the password needs six characters, and nothing else is required. What remains open from that item is **lock-out after repeated failed attempts**, which is not a password rule but a sign-in one — and it matters more now that usernames are guessable by construction. No attempt-rate limit exists today.
 - **How long the activity record is kept** — indefinitely for now. "Who read what" is information about people, and keeping it forever should be a decision rather than a default.
 - **Further report kinds** — the system is built so a new report is a new entry that permissions can already address (FR-E1, FR-A4); none are specified yet.
-- **What each role's screens look like** — deliberately not decided in this document or in the architecture. Whether a reader gets the editor's pages, a document, or something built for them is a design question, answered after this document and the ARD are settled.
+- ~~**What each role's screens look like**~~ — **settled.** Two surfaces over one set of parts: a denser one for the people who edit and administer, and a roomier one for everyone who reads and comments, chosen automatically from what each person is allowed to do. Individual screens are decided alongside the feature they belong to.
 
 ---
 
