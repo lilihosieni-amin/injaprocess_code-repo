@@ -1369,7 +1369,7 @@ anything."
 
 **Files:**
 - Modify: `ui/src/api/client.ts`
-- Create: `ui/src/api/client.test.ts`
+- Modify: `ui/src/api/client.test.ts` — **this file already exists with three passing tests** (parsed JSON + credentials, `ApiError` on non-2xx, header merging). **Append** the new `describe` block; do not replace the file. Note the existing non-2xx test uses a **401** response, so once the interceptor lands it will invoke the handler — harmless, since the default is a no-op, but do not be surprised by it.
 
 **Interfaces:**
 - Consumes: nothing.
@@ -1377,7 +1377,7 @@ anything."
 
 - [ ] **Step 1: Write the failing test**
 
-Create `ui/src/api/client.test.ts`:
+**Append** to `ui/src/api/client.test.ts`, leaving the existing `describe('fetchJson', …)` block untouched. Add `onUnauthorized` to the existing import from `./client`, and add a second `afterEach` that resets the handler:
 
 ```ts
 import { describe, it, expect, vi, afterEach } from 'vitest'
