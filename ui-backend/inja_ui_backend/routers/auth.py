@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 
 from ..auth import (
     COOKIE_NAME,
+    apply_password_change,
     attempted_actor,
     authenticate,
     current_user,
@@ -16,7 +17,7 @@ from ..auth import (
     request_origin,
     require_session,
 )
-from ..models import LoginBody
+from ..models import LoginBody, PasswordBody
 from ..store import sessions
 
 router = APIRouter(prefix="/api/auth")
@@ -111,3 +112,33 @@ def logout(request: Request, response: Response):
 @router.get("/me")
 def me(request: Request, user=Depends(require_session)):
     return descriptor(get_conn(request), user)
+
+
+@router.post("/password", status_code=204)
+def change_password(body: PasswordBody, request: Request,
+                    user=Depends(require_session)):
+    """Change your own password, and end every other session you hold (D7, D15).
+
+    The rules — re-verify the current password, the six-character floor, which
+    sessions die and in what order — are `auth.apply_password_change`'s. This
+    turns its answer into a status code and writes the record.
+
+    A plain `def`, so it runs on Starlette's default threadpool rather than under
+    `_VERIFY_LIMITER`. That limiter is a memory ceiling on the one endpoint any
+    stranger can reach (spec §13); this one needs a session first. Worth knowing
+    that the ceiling here is therefore the default 40, and that this handler runs
+    *two* argon2 operations (a verify and a hash, ~64 MiB each) rather than one,
+    so a signed-in caller can reserve considerably more of the host than a
+    signed-out one — an open item, not an oversight.
+    """
+    problem = apply_password_change(
+        get_conn(request), user, body.current, body.next,
+        now=int(time.time()), keep_session=request.state.session_id)
+    if problem:
+        # One status for both refusals. They are not the same message — the
+        # person needs to know which of the two fields to correct — but neither
+        # is a 401: the caller's session is fine, the body is not.
+        raise HTTPException(status_code=400, detail=problem)
+    record(request, "password.changed", actor=user["username"],
+           session_id=request.state.session_id)
+    return Response(status_code=204)

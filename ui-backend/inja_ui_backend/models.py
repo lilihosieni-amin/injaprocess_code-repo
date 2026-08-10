@@ -6,6 +6,11 @@ class LoginBody(BaseModel):
     password: str
 
 
+class PasswordBody(BaseModel):
+    current: str
+    next: str
+
+
 class CreateProcessBody(BaseModel):
     department: str
     name: str | None = None

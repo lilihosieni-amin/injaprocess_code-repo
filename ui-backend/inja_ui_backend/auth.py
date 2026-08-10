@@ -80,6 +80,54 @@ def authenticate(conn: sqlite3.Connection, username: str,
     return row, "ok"
 
 
+def apply_password_change(conn: sqlite3.Connection, user: sqlite3.Row,
+                          current: str, new_password: str, *, now: int,
+                          keep_session: str) -> str | None:
+    """Change a person's own password (D7, D15, D58).
+
+    Returns a message when it is refused, None when it was done — the caller maps
+    that to HTTP, because the rules belong here and the status codes do not.
+
+    Self-service only: the row changed is the one the caller is signed in as. An
+    administrator setting *someone else's* password is a different operation with
+    a different event and a different revocation rule (all sessions, not all but
+    one), and it is a later sub-project (D15).
+
+    The current password is re-verified even though the caller already holds a
+    session, because a session left open on a shared back-office screen is
+    exactly what this endpoint is meant to be able to end, and without the check
+    whoever walks up to that screen can lock the owner out instead.
+
+    **Both writes go to the shared connection with no transaction around them**,
+    and that is deliberate: see the invariant in `db.connect`, which names this
+    very operation. The revoke runs FIRST, and the order is the whole of what
+    makes the missing transaction safe to live with:
+
+    * revoke-then-set: if the second write fails, the password is unchanged and
+      the other sessions are ended. Nothing is claimed that is not true, and the
+      caller can simply try again with the same current password.
+    * set-then-revoke: if the second write fails, the password has changed and
+      the other sessions are still live — precisely the state D7 exists to
+      forbid — and a retry is refused, because the current password the caller
+      would type is no longer current. They would be told the change did not
+      happen while it had.
+
+    Neither order needs the two to be atomic; this one degrades toward "not yet
+    done" instead of toward "done, but not the part that mattered".
+    """
+    if not verify_hash(user["password_hash"], current):
+        return "گذرواژهٔ فعلی درست نیست"
+    problem = validate_password(new_password)
+    if problem:
+        return problem
+    # Every OTHER session of this user: a changed password has to end the
+    # attacker's access, but signing you out of the tab you secured the account
+    # in is just an annoyance (D7).
+    sessions.revoke_all_for_user(conn, user["id"], now, except_session=keep_session)
+    users.set_password(conn, user["id"], hash_password(new_password))
+    return None
+
+
 def attempted_actor(username: str) -> str:
     """Who a failed sign-in is recorded against.
 
