@@ -82,6 +82,13 @@ def allows(conn: sqlite3.Connection, user: sqlite3.Row, capability: str,
 
     A user with no scope rows reaches nothing: `any(())` is `False`, which is
     the honest answer and the fail-closed one.
+
+    This checks capability first and `requires` checks scope first. That is not
+    an inconsistency to tidy away: here the two halves meet in a `bool`, where
+    order cannot matter, while there they choose between 403 and 404, where it
+    is the whole point. Rewriting `requires`' scope arm to call this function
+    reintroduces the existence disclosure — the tests kill it, and this note is
+    so nobody has to learn that from a red suite.
     """
     if capability not in capabilities_of(conn, user):
         return False

@@ -57,6 +57,11 @@ def test_out_of_scope_is_404_and_refused_action_is_403(data_root, tmp_path, monk
     def edit_here(_=Depends(requires("edit", "dept:dining"))):
         return {"ok": True}
 
+    # A target that is not a scope at all — the "typo" side of the body check.
+    @app.get("/nonsense-department")
+    def nonsense(_=Depends(requires("view", "dept:nosuchplace"))):
+        return {"ok": True}
+
     client = TestClient(app, base_url="https://testserver")
 
     # Unauthenticated is 401 — neither of the other two.
@@ -71,6 +76,18 @@ def test_out_of_scope_is_404_and_refused_action_is_403(data_root, tmp_path, monk
     assert client.get("/other-department").status_code == 404
     # Refused action on something they CAN see.
     assert client.get("/edit-here").status_code == 403
+
+    # The BODY has to be uniform too, not just the status. A 404 that says
+    # "outside your scope" for a real department and something else for a
+    # typo re-opens by prose exactly what the status code closed. Every
+    # out-of-scope refusal must be byte-identical, whatever the target was.
+    real = client.get("/other-department")
+    typo = client.get("/nonsense-department")
+    assert typo.status_code == 404
+    assert real.json() == typo.json(), (
+        "the 404 body distinguishes a real out-of-scope department from a"
+        " target that is not a scope at all — the status matched and the"
+        " prose leaked")
 
 
 # Everything below drives the same three-line fixture: one database, one user
@@ -305,15 +322,24 @@ def test_one_users_scope_is_never_anothers(tmp_path):
         assert client.get("/everything").status_code == 404
 
 
+# All nine of D9, not six. `confirm` is the one that most needed adding: D11
+# gives it to the Editor alone and D50 marks it `delegable: false`, so the row
+# that matters is an Admin — who holds every capability but the last three —
+# being refused it through the gate.
 ROLE_TABLE = {
     "reader": {"view": 200, "comment": 200, "export_pdf": 200,
-               "manage_users": 403, "edit": 403, "set_visibility": 403},
+               "manage_users": 403, "manage_peers": 403, "view_audit": 403,
+               "edit": 403, "confirm": 403, "set_visibility": 403},
     "reader_no_download": {"view": 200, "comment": 200, "export_pdf": 403,
-                           "manage_users": 403, "edit": 403, "set_visibility": 403},
+                           "manage_users": 403, "manage_peers": 403,
+                           "view_audit": 403, "edit": 403, "confirm": 403,
+                           "set_visibility": 403},
     "admin": {"view": 200, "comment": 200, "export_pdf": 200,
-              "manage_users": 200, "edit": 403, "set_visibility": 403},
+              "manage_users": 200, "manage_peers": 200, "view_audit": 200,
+              "edit": 403, "confirm": 403, "set_visibility": 403},
     "editor": {"view": 200, "comment": 200, "export_pdf": 200,
-               "manage_users": 200, "edit": 200, "set_visibility": 200},
+               "manage_users": 200, "manage_peers": 200, "view_audit": 200,
+               "edit": 200, "confirm": 200, "set_visibility": 200},
 }
 
 
