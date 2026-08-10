@@ -13,21 +13,24 @@ from __future__ import annotations
 import json
 import sqlite3
 
-from .phone import USERNAME_RE
+from .phone import USERNAME_RE, normalise_phone
 from .store import users
 
 NON_DELEGABLE = frozenset({"edit", "confirm", "set_visibility"})
 
-_READER = ["view", "comment", "export_pdf"]
-_ADMIN = _READER + ["manage_users", "manage_peers", "view_audit"]
-_EDITOR = _ADMIN + ["edit", "confirm", "set_visibility"]
+# Tuples, not lists: ROLES is the access model, and handing a caller the very
+# object the module holds would let `ROLES["admin"].append("edit")` rewrite it
+# for the whole process. The stored form is unchanged — json.dumps(sorted(...)).
+_READER = ("view", "comment", "export_pdf")
+_ADMIN = _READER + ("manage_users", "manage_peers", "view_audit")
+_EDITOR = _ADMIN + ("edit", "confirm", "set_visibility")
 
-ROLES: dict[str, list[str]] = {
+ROLES: dict[str, tuple[str, ...]] = {
     "reader": _READER,
     # Exists from day one because FR-E7 promises download can be withheld from
     # someone who may still read, and with no per-user overrides a role is the
     # only way to say it. A promise that needs a deploy first is not kept.
-    "reader_no_download": ["view", "comment"],
+    "reader_no_download": ("view", "comment"),
     "admin": _ADMIN,
     "editor": _EDITOR,
 }
@@ -35,7 +38,12 @@ ROLES: dict[str, list[str]] = {
 
 def seed(conn: sqlite3.Connection, *, editor_username: str,
          editor_display_name: str, editor_password_hash: str) -> None:
-    if not USERNAME_RE.fullmatch(editor_username):
+    # Validate the normalised form, not the raw input (D57). `users.create`
+    # stores `normalise_phone(username)`, so validating anything else would
+    # check a string the database never sees — and would refuse ۰۹۱۲… and
+    # `+98 912 …`, both of which the login path accepts.
+    username = normalise_phone(editor_username)
+    if not USERNAME_RE.fullmatch(username):
         raise ValueError(
             f"editor username must be a canonical mobile number, got {editor_username!r}")
 
@@ -46,14 +54,29 @@ def seed(conn: sqlite3.Connection, *, editor_username: str,
             (name, json.dumps(sorted(caps))),
         )
 
-    if users.by_username(conn, editor_username) is not None:
+    if users.by_username(conn, username) is not None:
         return
     if conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] > 0:
         return
 
     role_id = conn.execute(
         "SELECT id FROM roles WHERE name = 'editor'").fetchone()[0]
-    uid = users.create(conn, username=editor_username,
-                       display_name=editor_display_name,
-                       password_hash=editor_password_hash, role_id=role_id)
-    conn.execute("INSERT INTO user_scopes (user_id, scope) VALUES (?, '*')", (uid,))
+    # The account and its scope must land together or not at all. The connection
+    # is in autocommit mode (db.connect, isolation_level=None), so as two bare
+    # statements a crash in between leaves an Editor with no scope — and the
+    # guard above then makes every later re-seed a no-op, so the row is never
+    # repaired. The role inserts self-heal via ON CONFLICT; this pair cannot.
+    # Same reasoning, and the same wrapper, as db.migrate().
+    conn.execute("BEGIN")
+    try:
+        uid = users.create(conn, username=username,
+                           display_name=editor_display_name,
+                           password_hash=editor_password_hash, role_id=role_id)
+        conn.execute("INSERT INTO user_scopes (user_id, scope) VALUES (?, '*')",
+                     (uid,))
+        conn.execute("COMMIT")
+    except Exception:
+        # Leave the caller a database it can re-seed against, not a wedged one.
+        if conn.in_transaction:
+            conn.rollback()
+        raise
