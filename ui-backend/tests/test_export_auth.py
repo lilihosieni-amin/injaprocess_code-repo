@@ -12,9 +12,10 @@ from types import SimpleNamespace
 import argon2
 import pytest
 from fastapi import HTTPException
-from inja_ui_backend import auth, export_auth
+from inja_ui_backend import auth, db, export_auth
 from inja_ui_backend.app import create_app
-from inja_ui_backend.tests_helpers import cfg_for
+from inja_ui_backend.store import users
+from inja_ui_backend.tests_helpers import cfg_for, seed_editor, seeded_session
 from starlette.requests import Request
 
 EXPORT_PASSWORD = "throwaway-export-pw"
@@ -35,12 +36,28 @@ def _cfg_without_credential(data_root):
     return cfg_for(data_root)
 
 
-def _request(cfg, **cookies):
+@pytest.fixture
+def app_db(data_root):
+    """The account and session store, on a connection the test owns and closes.
+
+    `require_export_access` reaches `auth.current_user`, which reads the admin
+    session out of `request.app.state.db` — the admin session is a row now, not a
+    signed blob, so a fabricated request needs a real store behind it.
+    """
+    conn = db.connect(cfg_for(data_root).app_db)
+    db.migrate(conn)
+    try:
+        yield conn
+    finally:
+        conn.close()
+
+
+def _request(cfg, conn, **cookies):
     header = "; ".join(f"{k}={v}" for k, v in cookies.items())
     return Request({
         "type": "http",
         "headers": [(b"cookie", header.encode())] if header else [],
-        "app": SimpleNamespace(state=SimpleNamespace(cfg=cfg)),
+        "app": SimpleNamespace(state=SimpleNamespace(cfg=cfg, db=conn)),
     })
 
 
@@ -68,14 +85,22 @@ def test_unset_credential_never_authenticates(data_root):
 
 # --- the two sessions cannot be confused for one another --------------------
 
-def test_export_token_is_rejected_by_the_admin_session(data_root):
+def test_export_token_is_rejected_by_the_admin_session(data_root, app_db):
+    """The admin session reads a row id, so a signed export token names nothing.
+
+    Asked through `current_user` rather than a `read_cookie` that no longer
+    exists: the question is the same one — does this token open the admin API —
+    and it is now the session store that answers it.
+    """
     cfg = _cfg(data_root)
-    assert auth.read_cookie(cfg, export_auth.issue_cookie(cfg)) is None
+    req = _request(cfg, app_db, **{auth.COOKIE_NAME: export_auth.issue_cookie(cfg)})
+    assert auth.current_user(req) is None
 
 
 def test_admin_token_is_rejected_by_the_export_session(data_root):
+    """…and a live admin session id is not an export cookie either."""
     cfg = _cfg(data_root)
-    assert export_auth.read_cookie(cfg, auth.issue_cookie(cfg, "analyst")) is False
+    assert export_auth.read_cookie(cfg, seeded_session(cfg)) is False
 
 
 def test_the_two_cookies_have_different_names(data_root):
@@ -84,18 +109,27 @@ def test_the_two_cookies_have_different_names(data_root):
 
 # --- the credential stays out of the admin credential store -----------------
 
-def test_export_credential_is_absent_from_the_users_map(data_root):
+def test_export_credential_is_absent_from_the_users_map(data_root, app_db):
+    """The admin credential store is the `users` table now, not `cfg.users` — and
+    the export credential is no more a row in it than it was an entry in that map."""
     cfg = _cfg(data_root)
-    assert "guest" not in cfg.users
-    assert cfg.export_password_hash not in cfg.users.values()
+    seed_editor(cfg)
+    rows = list(app_db.execute("SELECT username, password_hash FROM users"))
+    assert rows, "nothing was seeded, so absence would prove nothing"
+    assert users.by_username(app_db, "guest") is None
+    assert cfg.export_password_hash not in [r["password_hash"] for r in rows]
 
 
-def test_admin_authenticate_rejects_the_export_credential(data_root):
-    """Neither cfg.users nor the single-user env fallback may accept it."""
+def test_admin_authenticate_rejects_the_export_credential(data_root, app_db):
+    """No account may accept it, and no account may share either half of it."""
     cfg = _cfg(data_root)
-    assert auth.authenticate(cfg, "guest", EXPORT_PASSWORD) is False
-    assert cfg.ui_username != cfg.export_username
-    assert cfg.ui_password_hash != cfg.export_password_hash
+    seed_editor(cfg)
+    assert auth.authenticate(app_db, "guest", EXPORT_PASSWORD)[0] is None
+    rows = list(app_db.execute("SELECT username, password_hash FROM users"))
+    assert rows, "nothing was seeded, so absence would prove nothing"
+    for row in rows:
+        assert row["username"] != cfg.export_username
+        assert row["password_hash"] != cfg.export_password_hash
 
 
 # --- the export session cookie ----------------------------------------------
@@ -124,20 +158,21 @@ def test_cookie_is_no_way_in_when_the_credential_is_unset(data_root):
 
 # --- require_export_access ---------------------------------------------------
 
-def test_export_session_grants_access(data_root):
+def test_export_session_grants_access(data_root, app_db):
     cfg = _cfg(data_root)
-    req = _request(cfg, **{export_auth.EXPORT_COOKIE: export_auth.issue_cookie(cfg)})
+    req = _request(cfg, app_db,
+                   **{export_auth.EXPORT_COOKIE: export_auth.issue_cookie(cfg)})
     export_auth.require_export_access(req)  # does not raise
 
 
-def test_admin_session_grants_access(data_root):
+def test_admin_session_grants_access(data_root, app_db):
     """D29: an admin already sees everything."""
     cfg = _cfg(data_root)
-    req = _request(cfg, **{auth.COOKIE_NAME: auth.issue_cookie(cfg, "analyst")})
+    req = _request(cfg, app_db, **{auth.COOKIE_NAME: seeded_session(cfg)})
     export_auth.require_export_access(req)  # does not raise
 
 
-def test_an_admin_session_grants_access_with_no_export_credential(data_root):
+def test_an_admin_session_grants_access_with_no_export_credential(data_root, app_db):
     """D29 ∩ D30: the gate being shut for readers must not shut out the admin.
 
     The two decisions meet in one branch and nothing else covers it. `configured()`
@@ -152,27 +187,29 @@ def test_an_admin_session_grants_access_with_no_export_credential(data_root):
     is the only way anything under /exports opens at all.
     """
     cfg = _cfg_without_credential(data_root)
-    req = _request(cfg, **{auth.COOKIE_NAME: auth.issue_cookie(cfg, "analyst")})
+    req = _request(cfg, app_db, **{auth.COOKIE_NAME: seeded_session(cfg)})
     export_auth.require_export_access(req)  # does not raise
 
 
-def test_no_session_is_401(data_root):
+def test_no_session_is_401(data_root, app_db):
     with pytest.raises(HTTPException) as e:
-        export_auth.require_export_access(_request(_cfg(data_root)))
+        export_auth.require_export_access(_request(_cfg(data_root), app_db))
     assert e.value.status_code == 401
 
 
-def test_forged_cookies_are_401(data_root):
+def test_forged_cookies_are_401(data_root, app_db):
     cfg = _cfg(data_root)
-    req = _request(cfg, **{export_auth.EXPORT_COOKIE: "forged", auth.COOKIE_NAME: "forged"})
+    req = _request(cfg, app_db,
+                   **{export_auth.EXPORT_COOKIE: "forged", auth.COOKIE_NAME: "forged"})
     with pytest.raises(HTTPException) as e:
         export_auth.require_export_access(req)
     assert e.value.status_code == 401
 
 
-def test_unset_credential_is_401_even_with_a_signed_cookie(data_root):
+def test_unset_credential_is_401_even_with_a_signed_cookie(data_root, app_db):
     cfg = _cfg_without_credential(data_root)
-    req = _request(cfg, **{export_auth.EXPORT_COOKIE: export_auth.issue_cookie(cfg)})
+    req = _request(cfg, app_db,
+                   **{export_auth.EXPORT_COOKIE: export_auth.issue_cookie(cfg)})
     with pytest.raises(HTTPException) as e:
         export_auth.require_export_access(req)
     assert e.value.status_code == 401

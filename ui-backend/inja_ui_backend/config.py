@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -17,8 +16,6 @@ class Settings:
     #: DATA_ROOT rather than inside it — it is operational state and must never
     #: appear in the data-repo working tree.
     app_db: Path
-    ui_username: str
-    ui_password_hash: str
     session_signing_key: str
     session_ttl: int
     #: How many reverse proxies stand in front of this process, and therefore how
@@ -39,13 +36,13 @@ class Settings:
     #: keep working, so this is never required.
     chromium_path: Optional[Path]
     #: The one shared credential that opens a published export, and nothing else.
-    #: Deliberately kept out of `users` so `auth.authenticate` cannot accept it.
+    #: Deliberately kept out of the user store so `auth.authenticate` cannot accept
+    #: it — `authenticate` reads rows from `app_db`, and this pair is never one.
     #: Both unset means no one can open an export — never that everyone can.
     export_username: Optional[str]
     export_password_hash: Optional[str]
     git_author_name: str
     git_author_email: str
-    users: dict[str, str]
 
 
 def load_settings(env: Optional[Mapping[str, str]] = None) -> Settings:
@@ -61,21 +58,11 @@ def load_settings(env: Optional[Mapping[str, str]] = None) -> Settings:
     if not schema_dir.is_dir():
         raise RuntimeError(f"SCHEMA_DIR is not a directory: {schema_dir}")
 
-    users_file = env.get("UI_USERS_FILE")
-    if users_file:
-        with open(users_file, encoding="utf-8") as fh:
-            users = json.load(fh)
-        if not isinstance(users, dict) or not users:
-            raise RuntimeError("UI_USERS_FILE must be a non-empty JSON object of username->hash")
-        ui_username = ""
-        ui_password_hash = ""
-    else:
-        ui_username = env.get("UI_USERNAME")
-        ui_password_hash = env.get("UI_PASSWORD_HASH")
-        if not ui_username or not ui_password_hash:
-            raise RuntimeError("set UI_USERS_FILE, or both UI_USERNAME and UI_PASSWORD_HASH")
-        users = {ui_username: ui_password_hash}
-
+    # No UI_USERS_FILE, no UI_USERNAME/UI_PASSWORD_HASH: people are rows in
+    # `app_db` now (D1), created by `inja-seed` and by the user administration
+    # that follows it. A credential in the environment would be a second, unrevocable
+    # way in that no session store, no `disabled_at` and no activity record can see,
+    # so the fields are gone from `Settings` rather than merely unread.
     static = env.get("UI_STATIC_DIR")
     export_dir = env.get("EXPORT_DIR")
     export_templates = env.get("UI_EXPORT_TEMPLATE_DIR")
@@ -85,8 +72,6 @@ def load_settings(env: Optional[Mapping[str, str]] = None) -> Settings:
         data_root=data_root,
         schema_dir=schema_dir,
         app_db=app_db,
-        ui_username=ui_username,
-        ui_password_hash=ui_password_hash,
         session_signing_key=env["SESSION_SIGNING_KEY"],
         session_ttl=int(env.get("SESSION_TTL", "86400")),
         trusted_proxy_hops=int(env.get("TRUSTED_PROXY_HOPS", "0")),
@@ -98,5 +83,4 @@ def load_settings(env: Optional[Mapping[str, str]] = None) -> Settings:
         export_password_hash=env.get("EXPORT_PASSWORD_HASH") or None,
         git_author_name=env.get("GIT_AUTHOR_NAME", "ui-edit"),
         git_author_email=env.get("GIT_AUTHOR_EMAIL", "ui-edit@inja.local"),
-        users=users,
     )

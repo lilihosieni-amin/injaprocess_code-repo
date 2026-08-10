@@ -99,3 +99,58 @@ def seed(conn: sqlite3.Connection, *, editor_username: str,
         if conn.in_transaction:
             conn.rollback()
         raise
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Create the store and its first Editor. The only origin of `edit`.
+
+    Three exit codes, because `seed()` has three outcomes and an operator running
+    the documented recovery must never read "nothing happened" as success:
+
+    * 0 — the Editor was created.
+    * 1 — an active Editor already existed, so nothing was created. Not an error;
+      it is the healthy system saying the recovery was not needed. Distinguished
+      from 0 by counting rows rather than by asking `seed()`, which returns None
+      for both and is not this module's to change.
+    * 2 — refused before anything was written: the password is too short, or the
+      username belongs to an account that is not an active Editor.
+    """
+    import argparse
+    from pathlib import Path
+
+    from . import db as _db
+    from .auth import hash_password, validate_password
+
+    p = argparse.ArgumentParser(prog="inja-seed")
+    p.add_argument("--db", required=True)
+    p.add_argument("--username", required=True, help="mobile number, e.g. 09123456789")
+    p.add_argument("--name", required=True)
+    p.add_argument("--password", required=True)
+    args = p.parse_args(argv)
+
+    problem = validate_password(args.password)
+    if problem:
+        print(problem)
+        return 2
+
+    # Its own connection, never the app's: `seed()` opens an explicit transaction,
+    # and the shared connection may not carry one (see db.connect's invariant).
+    conn = _db.connect(Path(args.db))
+    try:
+        _db.migrate(conn)
+        before = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+        try:
+            seed(conn, editor_username=args.username, editor_display_name=args.name,
+                 editor_password_hash=hash_password(args.password))
+        except ValueError as exc:
+            print(str(exc))
+            return 2
+        after = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+    finally:
+        conn.close()
+
+    if after == before:
+        print("an active Editor already exists, so nothing was created")
+        return 1
+    print(f"created the Editor {normalise_phone(args.username)}")
+    return 0

@@ -1,4 +1,3 @@
-import json
 from pathlib import Path
 
 import pytest
@@ -11,15 +10,12 @@ def _valid_env(tmp_path):
     return {
         "DATA_ROOT": str(tmp_path / "data"),
         "SCHEMA_DIR": str(tmp_path / "schemas"),
-        "UI_USERNAME": "analyst",
-        "UI_PASSWORD_HASH": "$argon2id$dummy",
         "SESSION_SIGNING_KEY": "s3cr3t",
     }
 
 
 def test_load_settings_reads_all_fields(tmp_path):
     s = load_settings(_valid_env(tmp_path))
-    assert s.ui_username == "analyst"
     assert s.data_root == (tmp_path / "data")
     assert s.session_ttl == 86400  # default one day
     assert s.static_dir is None      # not provided
@@ -39,47 +35,21 @@ def test_missing_data_root_dir_raises(tmp_path):
         load_settings(env)
 
 
-def test_users_file_loads_multiple(tmp_path):
+def test_no_credential_is_read_from_the_environment(tmp_path):
+    """The single-credential and UI_USERS_FILE branches are gone (D1).
+
+    A username and hash in the environment would be a second way in that the
+    session store, `disabled_at` and the activity record cannot see, so it is not
+    enough that nothing reads them: `Settings` must have nowhere to put them.
+    """
     env = _valid_env(tmp_path)
-    del env["UI_USERNAME"]; del env["UI_PASSWORD_HASH"]
-    users = {"alice": "$argon2id$h1", "bob": "$argon2id$h2"}
-    p = tmp_path / "ui-users.json"
-    p.write_text(json.dumps(users))
-    env["UI_USERS_FILE"] = str(p)
-    s = load_settings(env)
-    assert s.users == users
-
-
-def test_users_file_non_dict_raises(tmp_path):
-    env = _valid_env(tmp_path)
-    del env["UI_USERNAME"]; del env["UI_PASSWORD_HASH"]
-    p = tmp_path / "ui-users.json"
-    p.write_text(json.dumps(["not", "a", "map"]))
-    env["UI_USERS_FILE"] = str(p)
-    with pytest.raises(RuntimeError):
-        load_settings(env)
-
-
-def test_users_file_empty_object_raises(tmp_path):
-    env = _valid_env(tmp_path)
-    del env["UI_USERNAME"]; del env["UI_PASSWORD_HASH"]
-    p = tmp_path / "ui-users.json"
-    p.write_text("{}")
-    env["UI_USERS_FILE"] = str(p)
-    with pytest.raises(RuntimeError):
-        load_settings(env)
-
-
-def test_single_user_env_populates_users_map(tmp_path):
-    s = load_settings(_valid_env(tmp_path))
-    assert s.users == {"analyst": "$argon2id$dummy"}
-
-
-def test_no_auth_source_raises(tmp_path):
-    env = _valid_env(tmp_path)
-    del env["UI_USERNAME"]; del env["UI_PASSWORD_HASH"]
-    with pytest.raises(RuntimeError, match="UI_USERS_FILE|UI_USERNAME"):
-        load_settings(env)
+    env["UI_USERNAME"] = "analyst"
+    env["UI_PASSWORD_HASH"] = "$argon2id$dummy"
+    env["UI_USERS_FILE"] = str(tmp_path / "ui-users.json")   # not even read
+    s = load_settings(env)                                   # and never required
+    assert not hasattr(s, "users")
+    assert not hasattr(s, "ui_username")
+    assert not hasattr(s, "ui_password_hash")
 
 
 def test_export_dirs_default_to_none(tmp_path):
@@ -113,15 +83,6 @@ def test_export_credential_read_from_env(tmp_path):
     s = load_settings(env)
     assert s.export_username == "guest"
     assert s.export_password_hash == "$argon2id$export-dummy"
-
-
-def test_export_credential_stays_out_of_the_users_map(tmp_path):
-    """It must never become an admin login (D25)."""
-    env = _valid_env(tmp_path)
-    env["EXPORT_USERNAME"] = "guest"
-    env["EXPORT_PASSWORD_HASH"] = "$argon2id$export-dummy"
-    s = load_settings(env)
-    assert s.users == {"analyst": "$argon2id$dummy"}
 
 
 def test_export_dirs_read_from_env(tmp_path):

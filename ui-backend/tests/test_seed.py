@@ -469,3 +469,48 @@ def test_the_capability_table_cannot_be_edited_through_what_it_hands_out():
     # the process would silently redefine what may never be delegated.
     with pytest.raises(AttributeError):
         seed.NON_DELEGABLE.add("view")  # type: ignore[attr-defined]
+
+
+def test_the_cli_seeds_and_refuses_a_weak_password(tmp_path, capsys):
+    from inja_ui_backend.seed import main
+    dbp = tmp_path / "app.db"
+    assert main(["--db", str(dbp), "--username", "09120000000",
+                 "--name", "تحلیل‌گر", "--password", "sixchr"]) == 0
+    conn = db.connect(dbp)
+    assert conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 1
+
+    assert main(["--db", str(tmp_path / "b.db"), "--username", "09120000001",
+                 "--name", "x", "--password", "five5"]) == 2
+
+
+def test_the_cli_does_not_report_success_when_nothing_was_created(tmp_path, capsys):
+    """`seed()` returns None both when it created the Editor and when it skipped.
+
+    An operator reaches for this command when they believe they are locked out,
+    so a silent 0 over a no-op is the one answer that must not be possible.
+    """
+    from inja_ui_backend.seed import main
+    dbp = tmp_path / "app.db"
+    argv = ["--db", str(dbp), "--username", "09120000000",
+            "--name", "تحلیل‌گر", "--password", "sixchr"]
+    assert main(argv) == 0
+    capsys.readouterr()
+
+    assert main(argv) != 0
+    assert "nothing was created" in capsys.readouterr().out
+    conn = db.connect(dbp)
+    assert conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 1
+
+
+def test_the_cli_refuses_a_username_that_is_already_taken(tmp_path, capsys):
+    """The number comes out of the environment; a stale one must not be promoted."""
+    from inja_ui_backend.seed import main
+    conn = _conn(tmp_path)
+    _roles_only(conn)
+    users.create(conn, username="09120000002", display_name="خواننده",
+                 password_hash="r", role_id=_role_id(conn, "reader"))
+    conn.close()
+
+    assert main(["--db", str(tmp_path / "app.db"), "--username", "09120000002",
+                 "--name", "x", "--password", "sixchr"]) == 2
+    assert "already exists" in capsys.readouterr().out

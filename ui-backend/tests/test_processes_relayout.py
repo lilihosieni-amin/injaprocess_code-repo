@@ -1,17 +1,11 @@
-import argon2
-from fastapi.testclient import TestClient
-from inja_ui_backend.app import create_app
-from inja_ui_backend.tests_helpers import cfg_for
+from inja_ui_backend.tests_helpers import signed_in_client
 
 
 def _c(data_root):
-    cfg = cfg_for(data_root)
-    cfg = cfg.__class__(**{**cfg.__dict__,
-                           "ui_password_hash": argon2.PasswordHasher().hash("pw")})
-    # `https://`: the session cookie is `Secure`, and the real cookie jar behind
-    # `TestClient` will not send one over `http://`. See `test_auth.py`.
-    c = TestClient(create_app(cfg), base_url="https://testserver")
-    c.post("/api/auth/login", json={"username": "analyst", "password": "pw"})
+    # A real sign-in against a seeded Editor. `signed_in_client` uses
+    # `https://testserver`, which is load-bearing: the session cookie is `Secure`
+    # and the real cookie jar behind `TestClient` will not send one over `http://`.
+    c, _ = signed_in_client(data_root, data_root.parent / "app.db")
     return c
 
 

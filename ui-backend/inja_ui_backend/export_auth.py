@@ -1,8 +1,8 @@
 """The one shared credential that opens a published export.
 
 It is a sibling of `auth`, never a part of it. The export credential lives in its
-own two settings instead of in `cfg.users`, so `auth.authenticate` has no path to
-it, and its session is signed under a different salt against the same signing
+own two settings instead of in the `users` table, so `auth.authenticate` has no
+path to it, and its session is signed under a different salt against the same signing
 key, so neither token verifies as the other. The separation is therefore
 cryptographic, not merely conventional: an export session can never open the
 admin API. The reverse is allowed — an admin already sees everything.
