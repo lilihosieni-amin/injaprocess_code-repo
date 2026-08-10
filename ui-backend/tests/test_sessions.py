@@ -89,6 +89,10 @@ def test_revoked_session_stops_resolving(tmp_path):
     sid = sessions.issue(conn, _user(conn), ip="", user_agent="", now=1000)
     sessions.revoke(conn, sid, now=1100)
     assert sessions.resolve(conn, sid, ttl=TTL, now=1101) is None
+    # The heartbeat has to sit AFTER the rejection guards. Hoisted above them it
+    # would mark revoked, disabled and expired sessions as freshly present —
+    # corrupting the one question the row exists to answer.
+    assert conn.execute("SELECT last_seen FROM sessions").fetchone()[0] == 1000
 
 
 def test_disabling_a_user_kills_their_live_sessions(tmp_path):
@@ -121,6 +125,10 @@ def test_revoke_all_leaves_other_peoples_sessions_alone(tmp_path):
     assert sessions.revoke_all_for_user(conn, mine, now=1100) == 1
     assert sessions.resolve(conn, my_sid, ttl=TTL, now=1101) is None
     assert sessions.resolve(conn, their_sid, ttl=TTL, now=1101) is not None
+    # WHEN access was taken away, not merely that it was: any non-NULL value
+    # ends the session, so the timestamp itself is unbound unless asserted.
+    assert conn.execute("SELECT revoked_at FROM sessions WHERE id = ?",
+                        (my_sid,)).fetchone()[0] == 1100
 
 
 def test_revoke_ends_only_the_session_it_names(tmp_path):
@@ -178,6 +186,10 @@ def test_audit_detail_is_sql_null_when_there_is_nothing_to_say(tmp_path):
     assert conn.execute("SELECT detail FROM audit_events").fetchone()[0] is None
     assert conn.execute(
         "SELECT COUNT(*) FROM audit_events WHERE detail IS NULL").fetchone()[0] == 1
+    # The DEFAULT outcome, not the one a caller passes. Every login success and
+    # logout omits the argument; a default of "fail" would write the whole
+    # activity record as failures and no test that passes one would notice.
+    assert conn.execute("SELECT outcome FROM audit_events").fetchone()[0] == "ok"
 
 
 def test_audit_detail_stores_persian_as_persian(tmp_path):
@@ -259,12 +271,14 @@ def test_create_records_the_supervisor_graph(tmp_path):
     assert boss_row["can_supervise"] == 1
     assert boss_row["supervisor_id"] is None
     assert boss_row["display_name"] == "مدیر"
+    assert boss_row["password_hash"] == "h1"
     assert boss_row["role_id"] == rid
 
     staff_row = users.by_id(conn, staff)
     assert staff_row["can_supervise"] == 0
     assert staff_row["supervisor_id"] == boss
     assert staff_row["display_name"] == "کارمند"
+    assert staff_row["password_hash"] == "h2"
     assert staff_row["role_id"] == rid
 
 
