@@ -7,11 +7,26 @@ import re
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from .. import engine, gitcommit, storage
+from ..access import NOT_FOUND, reachable_departments, requires
 from ..auth import require_session
 
 router = APIRouter(prefix="/api/departments")
 
 logger = logging.getLogger(__name__)
+
+
+def _dept_target(request: Request) -> str:
+    """`dept:{code}`, read from the path and from nothing else (D56).
+
+    Purely lexical, and that is the whole reason it is a two-line function:
+    the moment a target is derived by *resolving* something — a registry lookup,
+    a stat of the department's directory — the gate can no longer run first, and
+    a status chosen after the resource is known is a status chosen by existence
+    rather than by scope. `code` is then handed to `contains`, which refuses
+    anything the grammar does not accept, so nothing is validated here either.
+    """
+    return f"dept:{request.path_params['code']}"
+
 
 # The `order` CLI takes its sequence as one comma-joined `--sequence` argument
 # and splits it back on commas, dropping empty parts. An id carrying a comma or
@@ -25,11 +40,28 @@ def _now() -> str:
 
 
 @router.get("")
-def list_departments(request: Request, _: str = Depends(require_session)):
+def list_departments(request: Request, user=Depends(require_session)):
+    """The board, filtered rather than gated.
+
+    This route spans every department, so there is no one target to gate it on;
+    refusing it outright would take the whole screen away from a two-department
+    head over a third they cannot reach. A department outside the caller's scope
+    is **absent** from the list instead — not present and greyed, and not
+    present with its counts zeroed, both of which would still say it exists
+    (D56: no derived signal may imply withheld content).
+
+    `None` is every department and `set()` is none of them. They are opposites
+    and both falsy, so the test is `is None` — `if not reachable:` would read a
+    wildcard holder as reaching nothing, or an unscoped account as reaching
+    everything, depending on which way it fell.
+    """
     cfg = request.app.state.cfg
+    reachable = reachable_departments(request.app.state.db, user, "view")
     reg = storage.read_json(storage.registry_path(cfg.data_root))
     out = []
     for d in reg["departments"]:
+        if reachable is not None and d["code"] not in reachable:
+            continue
         files = storage.list_process_files(cfg.data_root, d["code"])
         count = 0
         subs = 0
@@ -49,17 +81,18 @@ def list_departments(request: Request, _: str = Depends(require_session)):
 
 
 @router.get("/{code}/overview")
-def get_overview(code: str, request: Request, _: str = Depends(require_session)):
+def get_overview(code: str, request: Request,
+                 _=Depends(requires("view", _dept_target))):
     cfg = request.app.state.cfg
     path = storage.overview_path(cfg.data_root, code)
     if not path.is_file():
-        raise HTTPException(status_code=404, detail="overview not found")
+        raise HTTPException(status_code=404, detail=NOT_FOUND)
     return storage.read_json(path)
 
 
 @router.put("/{code}/overview")
 async def put_overview(code: str, body: dict, request: Request,
-                       _: str = Depends(require_session)):
+                       _=Depends(requires("edit", _dept_target))):
     cfg = request.app.state.cfg
     body["department"] = code
     body["updated_at"] = _now()
@@ -76,11 +109,11 @@ async def put_overview(code: str, body: dict, request: Request,
 
 @router.put("/{code}/order")
 async def put_order(code: str, body: dict, request: Request,
-                    _: str = Depends(require_session)):
+                    _=Depends(requires("edit", _dept_target))):
     cfg = request.app.state.cfg
     reg = storage.read_json(storage.registry_path(cfg.data_root))
     if code not in {d["code"] for d in reg["departments"]}:
-        raise HTTPException(status_code=404, detail="unknown department")
+        raise HTTPException(status_code=404, detail=NOT_FOUND)
     sequence = body.get("order")
     if not isinstance(sequence, list) or not all(isinstance(s, str) for s in sequence):
         raise HTTPException(status_code=422,
@@ -112,7 +145,8 @@ async def put_order(code: str, body: dict, request: Request,
 
 
 @router.get("/{code}/processes")
-def list_processes(code: str, request: Request, _: str = Depends(require_session)):
+def list_processes(code: str, request: Request,
+                   _=Depends(requires("view", _dept_target))):
     """Processes in curated order (ARD §4.6), tombstones last in id order.
 
     The ordering rule itself lives in `storage.ordered_processes` so the export
@@ -123,9 +157,10 @@ def list_processes(code: str, request: Request, _: str = Depends(require_session
 
 
 @router.get("/{code}/next-id")
-def next_id(code: str, request: Request, _: str = Depends(require_session)):
+def next_id(code: str, request: Request,
+            _=Depends(requires("edit", _dept_target))):
     cfg = request.app.state.cfg
     reg = storage.read_json(storage.registry_path(cfg.data_root))
     if code not in {d["code"] for d in reg["departments"]}:
-        raise HTTPException(status_code=404, detail="unknown department")
+        raise HTTPException(status_code=404, detail=NOT_FOUND)
     return {"next_id": engine.peek_process_id(cfg, code)}

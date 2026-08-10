@@ -7,11 +7,32 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from .. import exports, pdf, storage
-from ..auth import require_session
+from ..access import NOT_FOUND, requires
 
 router = APIRouter(prefix="/api/departments")
 
 logger = logging.getLogger(__name__)
+
+
+def _report_target(request: Request) -> str:
+    """`dept:{code}/report:{kind}` — both segments, each from its own path slot.
+
+    The narrower of the two shapes D10 allows, because that is what this route
+    actually acts on: a reader granted `dept:cooking/report:steps` must reach the
+    steps export of cooking and no other kind, while a `dept:cooking` holder
+    reaches every kind in it — including kinds added after the grant, which is
+    exactly what `contains` gives for free and a list of known kinds would not.
+
+    Lexical, like every other target: `kind` is not checked against
+    `EXPORT_KINDS` here. Doing so would put a lookup in front of the gate and
+    hand an out-of-scope caller a different answer for a real kind than for an
+    invented one. An unknown kind is still a well-formed scope, so it passes the
+    gate for whoever holds the department and is refused by the handler below;
+    a kind the *grammar* refuses reaches nothing under `contains` and is a 404
+    for everyone, wildcard holders included.
+    """
+    return (f"dept:{request.path_params['code']}"
+            f"/report:{request.path_params['kind']}")
 
 
 def _now() -> str:
@@ -95,21 +116,31 @@ def _render_pdf_beside(cfg, code: str, kind: str, token: str, html_path: Path) -
 
 @router.post("/{code}/exports/{kind}")
 def create_export(code: str, kind: str, request: Request,
-                  _: str = Depends(require_session)):
+                  _=Depends(requires("export_pdf", _report_target))):
     cfg = request.app.state.cfg
     # Every detail this handler returns is rendered verbatim by `ExportModal`,
-    # inside an otherwise Persian dialog — so the 404s make the same split the
-    # 503s below do: Persian to the client, English (with the offending value)
-    # to the log. A malformed request is nobody's to act on, so it is logged at
-    # INFO; the missing overview below is a real data gap and gets a warning.
+    # inside an otherwise Persian dialog, so all of them are Persian and the
+    # English (with the offending value) goes to the log. A malformed request is
+    # nobody's to act on, so it is logged at INFO; the missing overview below is
+    # a real data gap and gets a warning.
+    #
+    # The three 404s below no longer say *which* thing was not found, and that
+    # is the point rather than a regression. The gate above answers 404 for a
+    # report outside the caller's scope; if these said "unknown kind" or "no
+    # overview yet" they would tell a prober which of their guesses landed
+    # inside their own scope and which did not, which is the boundary the status
+    # code was just made uniform to hide. `NOT_FOUND` is the one body every 404
+    # in this service carries. The 503s are unaffected: a deployment fault is
+    # nothing to hide, and telling an operator which variable is unset costs no
+    # disclosure at all.
     if kind not in exports.EXPORT_KINDS:
         logger.info("%s/%s: unknown export kind: %s", code, kind, kind)
-        raise HTTPException(status_code=404, detail="نوع خروجی نامعتبر است")
+        raise HTTPException(status_code=404, detail=NOT_FOUND)
 
     reg = storage.read_json(storage.registry_path(cfg.data_root))
     if code not in {d["code"] for d in reg["departments"]}:
         logger.info("%s/%s: unknown department: %s", code, kind, code)
-        raise HTTPException(status_code=404, detail="دپارتمان یافت نشد")
+        raise HTTPException(status_code=404, detail=NOT_FOUND)
 
     # Both settings are deployment faults: no retry and no user action fixes an
     # unset environment variable, so each answers 503 *and* leaves a log line.
@@ -148,14 +179,12 @@ def create_export(code: str, kind: str, request: Request,
     except exports.ExportUnavailable as e:
         # A department with no overview.json has nothing to document yet. This is
         # the likeliest failure on the whole handler — most departments have no
-        # overview yet — so it is also the message most users will read: Persian,
-        # and naming the thing they can go and fill in. `str(e)` stays English
-        # and goes to the log, where only an operator reads it.
+        # overview yet — and it used to name the thing the user could go and fill
+        # in. It no longer can: it is a 404, and a 404 that describes itself
+        # describes the caller's scope boundary. `str(e)` still goes to the log
+        # at WARNING, where an operator can see which department is missing one.
         logger.warning("%s/%s: %s", code, kind, e)
-        raise HTTPException(
-            status_code=404,
-            detail="اطلاعات معرفی این دپارتمان هنوز ثبت نشده است؛ ابتدا معرفی واحد را کامل کنید.",
-        ) from e
+        raise HTTPException(status_code=404, detail=NOT_FOUND) from e
 
     try:
         html = exports.render(template, payload)

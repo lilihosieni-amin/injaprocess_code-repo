@@ -15,7 +15,9 @@ row the grammar refuses, a capability no role holds — is a `False` rather than
 exception. A crash is a denial of service; a `False` fails closed.
 
 The 404-versus-403 split (D56) is `requires` at the foot of this module, and that
-is the only place in this file where HTTP exists. It is here rather than in its
+is the only *decision* in this file that knows HTTP exists — `NOT_FOUND` below is
+the body it and every router answer 404 with, and it lives beside the rule that
+chooses the status for the same reason. It is here rather than in its
 own module because it is a two-line reading of the very rule above it, and a
 status code chosen a file away from the rule it encodes is a status code that
 drifts from it. The direction of the dependency is one-way: `requires` calls the
@@ -41,6 +43,22 @@ from fastapi import Depends, HTTPException, Request
 
 from .auth import require_session
 from .scopes import SCOPE_RE, contains, dept_of
+
+#: The body of **every** 404 this service answers with — the gate's and every
+#: router's alike.
+#:
+#: A constant rather than a literal repeated in five files, because the status
+#: code was only half the job. `requires` answers 404 for "outside your scope"
+#: and a router answers 404 for "inside your scope but missing"; if the two carry
+#: different prose then the caller's own scope boundary is legible in the words
+#: after being made illegible in the number, and D56's existence rule is back
+#: where it started. One name, so the two cannot drift apart one router at a
+#: time.
+#:
+#: It is deliberately unhelpful. A 404 here is indistinguishable from a typo by
+#: design, and any wording that narrows it — "department", "process", "not yours"
+#: — narrows it for the prober too.
+NOT_FOUND = "یافت نشد"
 
 
 def capabilities_of(conn: sqlite3.Connection, user: sqlite3.Row) -> frozenset[str]:
@@ -184,7 +202,7 @@ def requires(capability: str, target: str | Callable[[Request], str]):
         conn = request.app.state.db
         resolved = target(request) if callable(target) else target
         if not any(contains(s, resolved) for s in scopes_of(conn, user)):
-            raise HTTPException(status_code=404, detail="یافت نشد")
+            raise HTTPException(status_code=404, detail=NOT_FOUND)
         if capability not in capabilities_of(conn, user):
             raise HTTPException(status_code=403, detail="اجازهٔ این کار را ندارید")
         request.state.user = user

@@ -7,12 +7,51 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 
 from .. import engine, gitcommit, storage
 from .. import save as save_mod
+from ..access import NOT_FOUND, requires
 from ..auth import require_session
 from ..models import CreateProcessBody, PendingDecision
 
 router = APIRouter(prefix="/api/processes")
 
 logger = logging.getLogger(__name__)
+
+
+def _pid_target(request: Request) -> str:
+    """`dept:{department}` for the process in the path — from the id, never the file.
+
+    `storage.dept_of` is `pid.rsplit("-", 1)[0]`: pure string arithmetic, no
+    filesystem, no registry. That is what lets the gate run *before* the process
+    is loaded, and it is the whole of D56's existence rule on these five routes.
+    Read the department out of the stored document instead and the resource has
+    to be resolved to decide the status — at which point an out-of-scope caller
+    gets one answer for a process that exists and another for one that does not,
+    and can map every department by asking.
+
+    An id that is no id (`cooking-001-x`, `Cooking-001`) yields a target the
+    grammar refuses, which `contains` answers `False` for even to a `*` holder,
+    so it is a 404 like anything else out of scope rather than a 500.
+    """
+    return f"dept:{storage.dept_of(request.path_params['pid'])}"
+
+
+def _create_target(body: CreateProcessBody, request: Request,
+                   user=Depends(require_session)) -> CreateProcessBody:
+    """The one target that is not in the path: `POST /api/processes` names its
+    department in the body.
+
+    Still lexical — `body.department` is the caller's own text, checked against
+    their scopes and against nothing on disk — but it cannot be a plain
+    `requires(...)` dependency, because the body is not a `Request` attribute a
+    sync callable can reach. So the gate is wrapped in a dependency that *does*
+    take the body, and the handler takes its body from here rather than
+    declaring it a second time: two body parameters of the same name would make
+    FastAPI embed the body under a key and change the wire format.
+
+    Returning the body keeps the resolution order visible in the signature —
+    `create_process` cannot run before this has.
+    """
+    requires("edit", f"dept:{body.department}")(request, user)
+    return body
 
 
 def _now() -> str:
@@ -22,7 +61,7 @@ def _now() -> str:
 def _load(cfg, pid):
     path = storage.proc_path(cfg.data_root, pid)
     if not path.is_file():
-        raise HTTPException(status_code=404, detail="process not found")
+        raise HTTPException(status_code=404, detail=NOT_FOUND)
     return path, storage.read_json(path)
 
 
@@ -58,7 +97,8 @@ def _sync_order(cfg, dept: str, written: list) -> None:
 
 
 @router.get("/{pid}")
-def get_process(pid: str, request: Request, _: str = Depends(require_session)):
+def get_process(pid: str, request: Request,
+                _=Depends(requires("view", _pid_target))):
     _, doc = _load(request.app.state.cfg, pid)
     return doc
 
@@ -83,8 +123,8 @@ def _skeleton(pid: str, department: str, name: str, parent: dict | None) -> dict
 
 
 @router.post("", status_code=201)
-async def create_process(body: CreateProcessBody, request: Request, response: Response,
-                         _: str = Depends(require_session)):
+async def create_process(request: Request, response: Response,
+                         body: CreateProcessBody = Depends(_create_target)):
     cfg = request.app.state.cfg
     reg = storage.read_json(storage.registry_path(cfg.data_root))
     if body.department not in {d["code"] for d in reg["departments"]}:
@@ -97,7 +137,7 @@ async def create_process(body: CreateProcessBody, request: Request, response: Re
         ppath, pdoc = _load(cfg, body.parent["process"])          # 404 if parent missing
         pnode = next((n for n in pdoc["nodes"] if n["id"] == body.parent["node"]), None)
         if pnode is None:
-            raise HTTPException(status_code=404, detail="parent node not found")
+            raise HTTPException(status_code=404, detail=NOT_FOUND)
         if pnode.get("type") != "activity":
             raise HTTPException(status_code=400, detail="parent node must be an activity")
         if pnode.get("subprocess") is not None:
@@ -130,11 +170,12 @@ async def create_process(body: CreateProcessBody, request: Request, response: Re
 
 
 @router.delete("/{pid}")
-async def delete_process(pid: str, request: Request, _: str = Depends(require_session)):
+async def delete_process(pid: str, request: Request,
+                         _=Depends(requires("edit", _pid_target))):
     cfg = request.app.state.cfg
     path = storage.proc_path(cfg.data_root, pid)
     if not path.is_file():
-        raise HTTPException(status_code=404, detail="process not found")
+        raise HTTPException(status_code=404, detail=NOT_FOUND)
 
     reg = storage.read_json(storage.registry_path(cfg.data_root))
     written = []
@@ -162,7 +203,8 @@ async def delete_process(pid: str, request: Request, _: str = Depends(require_se
 
 
 @router.post("/{pid}/relayout")
-def relayout(pid: str, body: dict, request: Request, _: str = Depends(require_session)):
+def relayout(pid: str, body: dict, request: Request,
+             _=Depends(requires("edit", _pid_target))):
     cfg = request.app.state.cfg
     body["id"] = pid
     body["department"] = storage.dept_of(pid)
@@ -177,7 +219,7 @@ def relayout(pid: str, body: dict, request: Request, _: str = Depends(require_se
 
 @router.put("/{pid}")
 async def save_process(pid: str, body: dict, request: Request,
-                       _: str = Depends(require_session)):
+                       _=Depends(requires("edit", _pid_target))):
     cfg = request.app.state.cfg
     path = storage.proc_path(cfg.data_root, pid)
     async with storage.file_lock(path):
@@ -194,13 +236,13 @@ async def save_process(pid: str, body: dict, request: Request,
 
 @router.post("/{pid}/pending/{index}")
 async def resolve(pid: str, index: int, body: PendingDecision, request: Request,
-                  _: str = Depends(require_session)):
+                  _=Depends(requires("edit", _pid_target))):
     cfg = request.app.state.cfg
     if body.decision not in ("accept", "reject"):
         raise HTTPException(status_code=400, detail="decision must be accept|reject")
     path = storage.proc_path(cfg.data_root, pid)
     if not path.is_file():
-        raise HTTPException(status_code=404, detail="process not found")
+        raise HTTPException(status_code=404, detail=NOT_FOUND)
     async with storage.file_lock(path):
         try:
             engine.resolve_pending(cfg, pid, index, body.decision)
