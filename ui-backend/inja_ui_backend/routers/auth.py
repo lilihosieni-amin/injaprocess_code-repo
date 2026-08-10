@@ -22,20 +22,34 @@ from ..store import sessions
 
 router = APIRouter(prefix="/api/auth")
 
-#: How many password checks may be in flight at once (ARD §19.2).
+#: How many argon2 operations may be in flight at once in this router (ARD §19.2).
 #:
 #: Two, for the same reason `routers/export_files.py` holds a limiter of two: one
-#: argon2 verify is 64 MiB of scratch memory and ~61 ms of CPU (argon2-cffi's
+#: argon2 operation is 64 MiB of scratch memory and ~61 ms of CPU (argon2-cffi's
 #: defaults, `time_cost=3, memory_cost=65536 KiB, parallelism=4`, measured on this
-#: venv), and this endpoint is unauthenticated. Starlette's default threadpool
-#: allows 40, so 40 concurrent POSTs from anyone at all would reserve ~2.5 GB on a
-#: 3.7 GB host shared with two bots and a Chromium (D22); two caps the burst at
-#: ~128 MiB.
+#: venv). Starlette's default threadpool allows 40, so 40 concurrent calls would
+#: reserve ~2.5 GB on a 3.7 GB host shared with two bots and a Chromium (D22); two
+#: caps the burst at ~128 MiB.
 #:
 #: A limiter of its own, so it *replaces* the default rather than nesting inside
 #: it: the default limiter is the one Starlette runs every sync route handler on,
 #: which here includes serving the export downloads. A queued sign-in waits; a
 #: reader mid-document does not.
+#:
+#: **Shared by sign-in and password change, not one limiter each**, and that is a
+#: decision rather than an accident. What is being bounded is host memory, and
+#: host memory is one budget: two limiters of two is a ceiling of four (~256 MiB),
+#: and it would double again for every argon2 endpoint added later — D15's
+#: administrator password-set is the next one. The number in the paragraph above
+#: only means anything if there is one of it.
+#:
+#: What sharing costs is that a burst of password changes can make a sign-in
+#: queue. That cost is bounded and small: a slot is held for the length of the
+#: work, so even 40 password changes queued at once drain in ~2.4 s (two argon2
+#: operations each, two at a time), and neither operation is a throughput path —
+#: a sign-in happens about once per person per shift, a password change a handful
+#: of times a year. On this host, latency is much the cheaper thing to spend than
+#: memory.
 #:
 #: This is a memory bound on a deliberately expensive operation, and it is not a
 #: rate limit: there is no attempt counting, no lockout and no backoff (D13 —
@@ -115,25 +129,35 @@ def me(request: Request, user=Depends(require_session)):
 
 
 @router.post("/password", status_code=204)
-def change_password(body: PasswordBody, request: Request,
-                    user=Depends(require_session)):
+async def change_password(body: PasswordBody, request: Request,
+                          user=Depends(require_session)):
     """Change your own password, and end every other session you hold (D7, D15).
 
     The rules — re-verify the current password, the six-character floor, which
     sessions die and in what order — are `auth.apply_password_change`'s. This
     turns its answer into a status code and writes the record.
 
-    A plain `def`, so it runs on Starlette's default threadpool rather than under
-    `_VERIFY_LIMITER`. That limiter is a memory ceiling on the one endpoint any
-    stranger can reach (spec §13); this one needs a session first. Worth knowing
-    that the ceiling here is therefore the default 40, and that this handler runs
-    *two* argon2 operations (a verify and a hash, ~64 MiB each) rather than one,
-    so a signed-in caller can reserve considerably more of the host than a
-    signed-out one — an open item, not an oversight.
+    `async` + `to_thread.run_sync` under `_VERIFY_LIMITER`, the same shape as
+    `login` above and for a stronger reason: this handler runs *two* argon2
+    operations, a verify and a hash, ~64 MiB and ~61 ms each. Needing a session
+    first buys nothing — every member of staff has one — and as a plain `def` this
+    would be worse than the endpoint the ceiling was built against, in two ways.
+    It would allow 40 concurrent arenas (~2.5 GB on a 3.7 GB host, D22) rather
+    than two; and because a limiter *replaces* the default pool rather than
+    nesting inside it, those 40 would sit on the very pool the sign-in limiter
+    exists to keep clear, stalling every sync route in the app — the export
+    downloads included.
+
+    The whole policy call goes across, not only the two argon2 calls. That keeps
+    `apply_password_change`'s seam intact (a connection, a row, two strings; a
+    message or None), and what travels with it is two `UPDATE`s against a local
+    sqlite file — microseconds beside the ~122 ms the slot is held for anyway.
     """
-    problem = apply_password_change(
-        get_conn(request), user, body.current, body.next,
-        now=int(time.time()), keep_session=request.state.session_id)
+    problem = await anyio.to_thread.run_sync(
+        functools.partial(apply_password_change, get_conn(request), user,
+                          body.current, body.next, now=int(time.time()),
+                          keep_session=request.state.session_id),
+        limiter=_VERIFY_LIMITER)
     if problem:
         # One status for both refusals. They are not the same message — the
         # person needs to know which of the two fields to correct — but neither

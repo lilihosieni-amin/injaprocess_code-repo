@@ -100,20 +100,30 @@ def apply_password_change(conn: sqlite3.Connection, user: sqlite3.Row,
 
     **Both writes go to the shared connection with no transaction around them**,
     and that is deliberate: see the invariant in `db.connect`, which names this
-    very operation. The revoke runs FIRST, and the order is the whole of what
-    makes the missing transaction safe to live with:
+    very operation. The revoke runs FIRST, and that order is a bet rather than a
+    dominant choice — both orders give something up:
 
-    * revoke-then-set: if the second write fails, the password is unchanged and
-      the other sessions are ended. Nothing is claimed that is not true, and the
-      caller can simply try again with the same current password.
-    * set-then-revoke: if the second write fails, the password has changed and
-      the other sessions are still live — precisely the state D7 exists to
-      forbid — and a retry is refused, because the current password the caller
-      would type is no longer current. They would be told the change did not
-      happen while it had.
+    * revoke-then-set (what runs here): if the second write fails, the password is
+      unchanged and the other sessions are ended. Nothing is claimed that is not
+      true, and the caller can simply try again with the same current password.
+      What it costs is a window. The old password stays valid for as long as
+      `hash_password` takes — ~61 ms of argon2 — so somebody who already knows it
+      can sign in inside that window and come away with a session the revoke has
+      already swept past, which then lives until the TTL.
+    * set-then-revoke: closes the credential first, so there is no such window.
+      But if the second write fails, the password has changed and the other
+      sessions are still live — precisely the state D7 exists to forbid — and a
+      retry is refused, because the current password the caller would type is no
+      longer current. They would be told the change did not happen while it had,
+      and the sessions that mattered would run out the TTL.
 
-    Neither order needs the two to be atomic; this one degrades toward "not yet
-    done" instead of toward "done, but not the part that mattered".
+    So the trade is: a ~61 ms race against somebody who already has the old
+    password, versus an unrecoverable half-state whenever the second write fails.
+    This order is the bet because the loser of the race still needs the old
+    password — which they could have used a second earlier anyway — while the
+    half-state needs nothing but bad luck and cannot be cleared by the person it
+    happens to. Neither order needs the two to be atomic; this one degrades toward
+    "not yet done" instead of toward "done, but not the part that mattered".
     """
     if not verify_hash(user["password_hash"], current):
         return "گذرواژهٔ فعلی درست نیست"

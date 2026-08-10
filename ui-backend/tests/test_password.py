@@ -1,12 +1,23 @@
+import asyncio
+import time
+
 from fastapi.testclient import TestClient
 
+from inja_ui_backend import auth as auth_module
 from inja_ui_backend import db
 from inja_ui_backend.app import create_app
 from inja_ui_backend.auth import hash_password
+from inja_ui_backend.routers import auth as auth_router
 from inja_ui_backend.store import users
 from inja_ui_backend.tests_helpers import signed_in_client
 
 PW = "test-password"
+
+#: The two refusal messages, written out rather than imported. Importing them
+#: would bind nothing: `detail == auth.SOME_CONSTANT` is true of any text at all,
+#: including the same text for both refusals.
+WRONG_CURRENT = "گذرواژهٔ فعلی درست نیست"
+TOO_SHORT = "گذرواژه باید دست‌کم 6 نویسه باشد"
 
 
 def test_changing_your_password_needs_the_current_one(data_root, tmp_path):
@@ -199,3 +210,99 @@ def test_the_two_writes_run_without_opening_a_transaction(data_root, tmp_path):
                                                "SAVEPOINT", "RELEASE"))]
     assert opened == []
     assert conn.in_transaction is False
+
+
+def test_the_two_refusals_do_not_say_the_same_thing(data_root, tmp_path):
+    """Both refusals answer 400, so the status code cannot tell them apart — the
+    message is the only thing that says which of the two fields to correct.
+
+    Unasserted, the two could collapse into one text, or into `"no"`, and every
+    other test in this file stays green.
+    """
+    client, _ = signed_in_client(data_root, tmp_path / "app.db")
+    wrong = client.post("/api/auth/password",
+                        json={"current": "wrong1", "next": "brandnew"})
+    short = client.post("/api/auth/password",
+                        json={"current": PW, "next": "five5"})
+    assert wrong.status_code == 400 and short.status_code == 400
+    assert wrong.json()["detail"] == WRONG_CURRENT
+    assert short.json()["detail"] == TOO_SHORT
+    # Stated separately from the two above, because it is the property the
+    # comment in the route claims and it must not depend on reading both
+    # literals correctly.
+    assert wrong.json()["detail"] != short.json()["detail"]
+
+
+def test_the_revocation_records_when_it_happened(data_root, tmp_path):
+    """`revoked_at` has to be the instant, not merely non-NULL.
+
+    `sessions.resolve` only asks `revoked_at is not None`, so passing `now=0` — or
+    any wrong constant — down to `revoke_all_for_user` signs the other devices out
+    exactly as expected and every other test here passes. The column is what
+    answers "when was this person's access taken away", which is the question an
+    activity record exists for.
+    """
+    app_db = tmp_path / "app.db"
+    first, cfg = signed_in_client(data_root, app_db)
+    second, _ = signed_in_client(data_root, app_db)
+    kept = first.cookies.get("inja_session")
+    revoked = second.cookies.get("inja_session")
+    assert kept != revoked
+
+    before = int(time.time())
+    assert first.post("/api/auth/password",
+                      json={"current": PW, "next": "brandnew"}).status_code == 204
+    after = int(time.time())
+
+    stamps = {r["id"]: r["revoked_at"]
+              for r in _rows(cfg, "SELECT id, revoked_at FROM sessions")}
+    assert stamps[kept] is None
+    assert stamps[revoked] is not None
+    assert before <= stamps[revoked] <= after
+
+
+def test_both_argon2_calls_run_off_the_loop_and_under_the_limiter(
+        data_root, tmp_path, monkeypatch):
+    """Where the expensive work runs, proven rather than assumed.
+
+    Two ways to get this wrong that no other test can see. A plain `def` handler
+    runs the verify and the hash on Starlette's *default* 40-slot threadpool — the
+    pool every other sync route shares — so ~2.5 GB of argon2 arenas and stalled
+    export downloads. An `async def` that simply calls them runs 122 ms of argon2
+    **on the event loop**, blocking the whole server per request. Both answer 204
+    and pass everything else in this file.
+
+    So: assert that at the moment each argon2 call happens there is no running
+    event loop in this thread (it is a worker), and that `_VERIFY_LIMITER` — that
+    object, not the default limiter — has a token borrowed. The first fails if the
+    work moves onto the loop; the second fails if it moves onto the default pool,
+    where the borrow count stays 0.
+    """
+    client, _ = signed_in_client(data_root, tmp_path / "app.db")
+    seen: list[tuple[str, bool, int]] = []
+
+    def watching(name, real):
+        def spy(*args, **kw):
+            try:
+                asyncio.get_running_loop()
+                on_loop = True
+            except RuntimeError:
+                on_loop = False
+            seen.append((name, on_loop, auth_router._VERIFY_LIMITER.borrowed_tokens))
+            return real(*args, **kw)
+        return spy
+
+    # Patched after sign-in, so what is recorded is this endpoint's work only.
+    monkeypatch.setattr(auth_module, "verify_hash",
+                        watching("verify", auth_module.verify_hash))
+    monkeypatch.setattr(auth_module, "hash_password",
+                        watching("hash", auth_module.hash_password))
+
+    assert client.post("/api/auth/password",
+                       json={"current": PW, "next": "brandnew"}).status_code == 204
+
+    # Both of them, in this order — the verify gates the hash.
+    assert [name for name, _, _ in seen] == ["verify", "hash"]
+    for name, on_loop, borrowed in seen:
+        assert on_loop is False, f"the {name} ran on the event loop"
+        assert borrowed == 1, f"the {name} ran outside _VERIFY_LIMITER"
