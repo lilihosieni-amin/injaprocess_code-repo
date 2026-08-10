@@ -67,7 +67,9 @@ def require_export_access(request: Request) -> None:
     export_token = request.cookies.get(EXPORT_COOKIE)
     if export_token and read_cookie(cfg, export_token):
         return
-    admin_token = request.cookies.get(auth.COOKIE_NAME)
-    if admin_token and auth.read_cookie(cfg, admin_token):
+    # The admin session is a row now, not a signed blob (D7), so this asks the
+    # session store rather than a signature — which is also what makes a revoked
+    # or disabled account lose its way into the exports.
+    if auth.current_user(request) is not None:
         return
     raise HTTPException(status_code=401, detail="authentication required")

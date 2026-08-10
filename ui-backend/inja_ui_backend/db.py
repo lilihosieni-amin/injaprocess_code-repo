@@ -71,7 +71,16 @@ SCHEMA_VERSION = MIGRATIONS[-1][0]
 
 def connect(path: Path) -> sqlite3.Connection:
     path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(path), isolation_level=None)
+    # `check_same_thread=False`: the app opens one connection at startup, on the
+    # main thread, and every request handler then runs in one of FastAPI's
+    # threadpool workers -- the routers are plain `def`, deliberately, so argon2
+    # does not block the event loop. Without this the first request dies with
+    # "SQLite objects created in a thread can only be used in that same thread".
+    # Safe because CPython's sqlite3 reports `threadsafety == 3` here (SQLite
+    # built in serialized mode), so the library serializes concurrent use of one
+    # connection itself.
+    conn = sqlite3.connect(str(path), isolation_level=None,
+                           check_same_thread=False)
     conn.row_factory = sqlite3.Row
     # WAL so a reader never blocks the writer; foreign keys are off by default in
     # sqlite and the session/user relationship depends on them.

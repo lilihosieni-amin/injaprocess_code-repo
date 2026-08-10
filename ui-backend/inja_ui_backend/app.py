@@ -8,6 +8,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from . import db
 from .config import Settings, load_settings
 from .routers import auth as auth_router
 from .routers import departments as departments_router
@@ -151,6 +152,13 @@ def create_app(cfg: Settings | None = None) -> FastAPI:
     cfg = _prepare_exports(cfg)
     _log_export_gate(cfg)
     app.state.cfg = cfg
+    # The operational store: accounts, sessions and the activity record. Migrated
+    # on every start, so the same code path creates a fresh database and upgrades
+    # an existing one. Not seeded here — the first Editor is created by an
+    # operator with a password, never by application startup.
+    conn = db.connect(cfg.app_db)
+    db.migrate(conn)
+    app.state.db = conn
     app.include_router(auth_router.router)
     app.include_router(departments_router.router)
     app.include_router(exports_router.router)
