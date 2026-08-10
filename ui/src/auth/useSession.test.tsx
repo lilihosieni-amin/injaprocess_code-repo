@@ -147,11 +147,11 @@ describe('useSession', () => {
   })
 
   it('is dropped from the cache when someone signs in', async () => {
-    // useLogin's invalidation names the key useSession holds. If the two ever
-    // disagree, the descriptor cached under the OLD session — the one whose 401
-    // sent this person to sign-in — is what the shell is chosen from after they
-    // get back in, i.e. the previous occupant of the browser decides what the
-    // next one sees.
+    // Asserted as GONE, not as invalidated. Invalidation leaves the data in
+    // place and refetches behind it, so the previous occupant's descriptor is
+    // still what the shell is chosen from until the round-trip lands — which is
+    // the very thing this test exists to prevent, and `isInvalidated === true`
+    // is satisfied while it happens.
     vi.stubGlobal('fetch', vi.fn(async () => new Response(
       JSON.stringify({ username: '09123456789' }),
       { status: 200, headers: { 'Content-Type': 'application/json' } })))
@@ -161,6 +161,30 @@ describe('useSession', () => {
       <QueryClientProvider client={client}>{children}</QueryClientProvider>
     const { result } = renderHook(() => useLogin(), { wrapper })
     await act(async () => { await result.current.mutateAsync({ username: '09123456789', password: 'hunter22' }) })
-    expect(client.getQueryState(['session'])?.isInvalidated).toBe(true)
+    expect(client.getQueryData(['session'])).toBeUndefined()
+  })
+
+  it('does not retry, so an unauthenticated visitor is not left staring at nothing', async () => {
+    // Every QueryClient in this file sets retry:false as a default, so the line
+    // in useSession is invisible to them. The real app's client (main.tsx) is
+    // bare — three retries with backoff — and dropping that line would give a
+    // signed-out visitor about seven seconds of blank page before the redirect.
+    const fetchMock = vi.fn(async () => new Response('{}', { status: 401 }))
+    vi.stubGlobal('fetch', fetchMock)
+    const client = new QueryClient()   // deliberately NOT retry:false
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={['/']}>
+          <Routes>
+            <Route element={<RequireAuth />}>
+              <Route path="/" element={<p>محتوا</p>} />
+            </Route>
+            <Route path="/login" element={<p>صفحهٔ ورود</p>} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+    expect(await screen.findByText('صفحهٔ ورود')).toBeInTheDocument()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 })

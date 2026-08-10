@@ -30,10 +30,13 @@ export function useLogin() {
   return useMutation({
     mutationFn: (body: { username: string; password: string }) =>
       fetchJson<Me>('/api/auth/login', { method: 'POST', body: JSON.stringify(body) }),
-    // The key useSession holds. A stale descriptor cached under it — from the
-    // 401 that sent this person to sign-in in the first place — would otherwise
-    // still be the answer the shell is chosen from after they get back in.
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['session'] }),
+    // Remove, not invalidate. The key useSession holds may still carry the
+    // PREVIOUS occupant's descriptor — cached before the 401 that sent them to
+    // sign-in. invalidateQueries keeps that data and refetches behind it, so the
+    // next person's first paint is the last person's name and the last person's
+    // shell until the round-trip lands. Removing it makes the query pending
+    // instead, which renders nothing and is the honest answer.
+    onSuccess: () => qc.removeQueries({ queryKey: ['session'] }),
   })
 }
 
