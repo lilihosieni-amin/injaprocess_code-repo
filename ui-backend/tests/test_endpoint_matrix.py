@@ -49,14 +49,52 @@ GATED = [
 #: no single target to gate them on.
 FILTERED = ["/api/departments", "/api/pending"]
 
-#: A seeded role that does NOT hold each capability, for the refusal direction.
-#: `view` has no entry because all four seeded roles hold it (D11) — the only
-#: thing that can be asserted about a `view` route is that a Reader reaches it,
-#: which is the other half of the pair.
-WITHOUT = {"edit": "reader", "export_pdf": "reader_no_download"}
+#: The seeded roles that do NOT hold each capability, for the refusal direction.
+#: A tuple, because more than one real role can lack one and each is worth its
+#: own pass: the Admin lacking `edit` is D50's promise that an administrator
+#: cannot edit content, and it is a different promise from the Reader's.
+#:
+#: `view` is empty because all four seeded roles hold it (D11), so no real role
+#: can be refused it — see `SEEDED_ROLES_CANNOT_TELL` below for the full list of
+#: what the four roles cannot distinguish, and for what closes it.
+WITHOUT = {"view": (), "edit": ("reader", "admin"),
+           "export_pdf": ("reader_no_download",)}
 
-#: A seeded role that DOES hold each capability, for the non-refusal direction.
-WITH = {"view": "reader", "export_pdf": "reader", "edit": "editor"}
+#: The seeded role used for the non-refusal direction — the *narrowest* one that
+#: holds the capability, so that the pair says as much as four roles can.
+#: `view` is `reader_no_download` rather than `reader` on purpose: a Reader holds
+#: `export_pdf` too, so a `view` route mis-gated on `export_pdf` would sail
+#: through this half and be refused by nothing.
+WITH = {"view": "reader_no_download", "export_pdf": "reader", "edit": "editor"}
+
+#: Every capability there is: the Editor's set, which is the union of the four
+#: (`seed.ROLES` is the access model, and `_EDITOR` is built from `_ADMIN` from
+#: `_READER`).
+ALL_CAPABILITIES = frozenset(seed.ROLES["editor"])
+
+#: What the four seeded roles, on their own, cannot distinguish — written down
+#: rather than left for the next reader to rediscover from a surviving mutant.
+#:
+#: A capability is only pinned by a pair of roles that differ *on it*. Among the
+#: four:
+#:
+#:   * `edit`, `confirm` and `set_visibility` are held by the Editor and by
+#:     nobody else (D50: non-delegable), so they are held by exactly the same
+#:     set of accounts and no seeded role can tell one from another. A route
+#:     gated on `confirm` where it should be `edit` behaves identically for
+#:     every account that can exist today.
+#:   * `view` and `comment` are held by all four, so neither can be told from
+#:     the other, and neither can be refused at all.
+#:   * `manage_users`, `manage_peers` and `view_audit` are held by the Admin and
+#:     the Editor together, so they cannot be told apart either.
+#:
+#: `test_a_role_holding_every_other_capability_is_403` closes all of it with a
+#: role built for the test — see its docstring for why that is legitimate.
+SEEDED_ROLES_CANNOT_TELL = (
+    ("edit", "confirm", "set_visibility"),
+    ("view", "comment"),
+    ("manage_users", "manage_peers", "view_audit"),
+)
 
 #: Statuses that mean "the gate refused". Everything else means it let the
 #: request through to the handler, whatever the handler then made of it.
@@ -70,13 +108,18 @@ def _ids(routes):
 _accounts = itertools.count()
 
 
-def _client_as(data_root, tmp_path, role, *scopes):
+def _client_as(data_root, tmp_path, role, *scopes, capabilities=None):
     """A signed-in client for a fresh account with `role` and `scopes`.
 
     Its own `app.db` each time, because several tests below compare two callers
     over one `data_root` and a shared store would collide on the username. The
     seeded Editor is created too (`seed.seed` insists on one), but nothing here
     ever signs in as it: every assertion is about the second account.
+
+    `capabilities` inserts `role` as a **new** role holding exactly those, for
+    the one test that needs a capability set the four seeded roles do not
+    provide. It is a probe, not a fixture: it writes straight to the table
+    `seed` owns, and nothing but that one test may use it.
     """
     n = next(_accounts)
     cfg = cfg_for(data_root, tmp_path / f"app-{n}.db")
@@ -86,6 +129,9 @@ def _client_as(data_root, tmp_path, role, *scopes):
         db.migrate(conn)
         seed.seed(conn, editor_username="09190000000", editor_display_name="e",
                   editor_password_hash=hash_password(PW))
+        if capabilities is not None:
+            conn.execute("INSERT INTO roles (name, capabilities) VALUES (?, ?)",
+                         (role, json.dumps(sorted(capabilities))))
         rid = conn.execute("SELECT id FROM roles WHERE name = ?", (role,)).fetchone()[0]
         uid = users.create(conn, username=username, display_name="u",
                            password_hash=hash_password(PW), role_id=rid)
@@ -111,15 +157,80 @@ def _call(client, method, path, body):
 @pytest.mark.parametrize("method,path,body,capability", GATED, ids=_ids(GATED))
 def test_a_role_without_the_capability_is_403_on_a_visible_target(
         data_root, tmp_path, method, path, body, capability):
-    """403, not 404: the department is in scope, so only the action is refused."""
-    role = WITHOUT.get(capability)
-    if role is None:
-        pytest.skip(f"no seeded role lacks {capability}")
-    client = _client_as(data_root, tmp_path, role, "dept:cooking")
+    """403, not 404: the department is in scope, so only the action is refused.
+
+    Every *seeded* role that lacks the capability, not just one — the Admin is
+    the interesting half on the `edit` routes, because an administrator who
+    could edit content is the failure D50 is written to prevent and a Reader
+    passing does not test it.
+    """
+    roles = WITHOUT[capability]
+    if not roles:
+        pytest.skip(f"no seeded role lacks {capability}; the route is pinned by"
+                    f" test_a_role_holding_every_other_capability_is_403")
+    for role in roles:
+        client = _client_as(data_root, tmp_path, role, "dept:cooking")
+        r = _call(client, method, path, body)
+        assert r.status_code == 403, (
+            f"{method} {path} answered {r.status_code} to a {role} in scope; it"
+            f" is supposed to need {capability}, which no {role} holds")
+
+
+@pytest.mark.parametrize("method,path,body,capability", GATED, ids=_ids(GATED))
+def test_a_role_holding_every_other_capability_is_403(
+        data_root, tmp_path, method, path, body, capability):
+    """*Which* capability — the pair of seeded-role tests can only say "one of".
+
+    `WITH` names a role that holds far more than the capability under test and
+    `WITHOUT` one that lacks far more, so together they pin no more than "some
+    capability in the first minus the second". Three real mis-gatings survive
+    that: `GET /api/departments/{code}/processes` on `export_pdf` instead of
+    `view` (which locks every `reader_no_download` holder out of *reading*),
+    `GET /api/processes/{pid}` on `comment`, and `PUT /api/processes/{pid}` on
+    `confirm`. `SEEDED_ROLES_CANNOT_TELL` above is the full account of why: the
+    four roles hold these capabilities in blocks, and a capability is only
+    pinned by two roles that differ on exactly it.
+
+    So this test builds the role that differs on exactly it — everything except
+    the one under test. Any substitution then passes the gate and the 403 does
+    not arrive. It is a probe rather than a claim about a shipping role: no such
+    role exists or can be created through any API (D11, D50), and this is not
+    asserting one should. What it asserts is that the *gate* names the
+    capability the route needs and no other — which is what the route's own
+    docstring and the mapping claim, and what stops a fifth role added later
+    from silently opening a route it should not.
+    """
+    client = _client_as(data_root, tmp_path, "all-but-this", "dept:cooking",
+                        capabilities=ALL_CAPABILITIES - {capability})
     r = _call(client, method, path, body)
     assert r.status_code == 403, (
-        f"{method} {path} answered {r.status_code} to a {role} in scope; it is"
-        f" supposed to need {capability}, which no {role} holds")
+        f"{method} {path} answered {r.status_code} to a caller in scope holding"
+        f" every capability except {capability}: it is gated on something else")
+
+
+def test_the_seeded_roles_still_cannot_tell_these_capabilities_apart():
+    """The premise of the probe test above, checked rather than asserted in prose.
+
+    If a fifth role ever separates `edit` from `confirm`, or `view` from
+    `comment`, then the seeded-role pair *can* pin those routes and should — and
+    this failing is how anyone finds out, instead of the note above quietly
+    going stale. It reads `seed.ROLES`, which is the access model itself.
+    """
+    # `ALL_CAPABILITIES` is the Editor's set because today it is the union of
+    # all four. A role holding something the Editor does not would leave the
+    # probe above holding less than "everything but one" and quietly weaken it.
+    union = {c for caps in seed.ROLES.values() for c in caps}
+    assert union == ALL_CAPABILITIES, (
+        f"ALL_CAPABILITIES is no longer every capability: {union ^ ALL_CAPABILITIES}")
+
+    for group in SEEDED_ROLES_CANNOT_TELL:
+        for caps in seed.ROLES.values():
+            held = {c for c in group if c in caps}
+            assert held in (set(), set(group)), (
+                f"a seeded role holds {sorted(held)} out of {list(group)}, so"
+                f" those capabilities are no longer indistinguishable to the"
+                f" seeded-role tests: tighten WITH/WITHOUT and update"
+                f" SEEDED_ROLES_CANNOT_TELL")
 
 
 @pytest.mark.parametrize("method,path,body,capability", GATED, ids=_ids(GATED))
@@ -238,6 +349,168 @@ def test_the_create_target_is_the_department_in_the_body(data_root, tmp_path):
     # gives an in-scope caller who names an unregistered department.
     assert client.post("/api/processes",
                        json={"department": "No-Such"}).status_code == 404
+
+
+def _plant_process(data_root, pid, dept, *, stored_department=None):
+    """A second real process, copied from the fixture with its ids rewritten.
+
+    The conftest `data_root` has exactly one process, in `cooking`, which is why
+    every earlier test on `POST /api/processes` could only ever reach a parent
+    inside the caller's own scope. `stored_department` writes a `department`
+    field that disagrees with the id, for the lexical-derivation test.
+    """
+    src = data_root / "departments" / "cooking" / "processes" / "cooking-001.json"
+    doc = json.loads(src.read_text(encoding="utf-8").replace("cooking-001", pid))
+    doc["department"] = stored_department or dept
+    doc["pending"] = []
+    (data_root / "departments" / dept / "processes" / f"{pid}.json").write_text(
+        json.dumps(doc, ensure_ascii=False), encoding="utf-8")
+
+
+def _activity(pid):
+    """An activity node with no sub-process yet — the one a parent link may use."""
+    return f"{pid}-n010"
+
+
+def test_a_sub_process_cannot_be_hung_on_a_parent_outside_the_callers_scope(
+        data_root, tmp_path):
+    """`POST /api/processes` writes to *two* documents, so it needs two targets.
+
+    With `parent` set the handler loads that parent from anywhere on disk and
+    sets `node.subprocess` on it. Gated on `body.department` alone, an Editor
+    holding one department can therefore write into every other one — the whole
+    partition, from a route that looks like it only creates.
+    """
+    _plant_process(data_root, "dining-002", "dining")
+    parent = data_root / "departments" / "dining" / "processes" / "dining-002.json"
+    before = parent.read_text(encoding="utf-8")
+    cooking = data_root / "departments" / "cooking" / "processes"
+    files_before = sorted(p.name for p in cooking.iterdir())
+
+    client = _client_as(data_root, tmp_path, "editor", "dept:cooking")
+    r = client.post("/api/processes", json={
+        "department": "cooking", "name": "زیرفرآیند",
+        "parent": {"process": "dining-002", "node": _activity("dining-002")}})
+
+    assert r.status_code == 404, (
+        f"a cooking-scoped Editor got {r.status_code} writing into dining")
+    assert parent.read_text(encoding="utf-8") == before, (
+        "the out-of-scope parent was mutated")
+    # …and no orphan child was minted in the department they *do* hold.
+    assert sorted(p.name for p in cooking.iterdir()) == files_before
+
+
+def test_the_parent_link_is_not_an_existence_oracle(data_root, tmp_path):
+    """A parent outside the caller's scope answers the same whether it is there.
+
+    This is the sharper half of the leak. Un-gated, the handler answers 400 for
+    a real node of the wrong type, 409 for one that already links a sub-process,
+    201 for a good one, and 404 only for a parent that is not there — so a
+    caller who may create *anywhere at all* could map every process id in all
+    nine departments, and via "no such node" versus "not an activity" every node
+    id too. That is exactly D56's Existence row.
+
+    Status **and** body: a 404 that said "parent node not found" for one and
+    something else for another would put the oracle straight back.
+    """
+    _plant_process(data_root, "dining-002", "dining")
+    client = _client_as(data_root, tmp_path, "editor", "dept:cooking")
+    probes = {
+        "a real activity node":      {"process": "dining-002",
+                                      "node": _activity("dining-002")},
+        "a real node, wrong type":   {"process": "dining-002", "node": "start"},
+        "a real process, no node":   {"process": "dining-002", "node": "nope"},
+        "no such process":           {"process": "dining-777",
+                                      "node": _activity("dining-777")},
+        "no such department":        {"process": "nosuchplace-001",
+                                      "node": "nosuchplace-001-n010"},
+    }
+    answers = {}
+    for label, parent in probes.items():
+        r = client.post("/api/processes", json={"department": "cooking",
+                                                "name": "x", "parent": parent})
+        answers[label] = (r.status_code, r.text)
+    assert {v[0] for v in answers.values()} == {404}, answers
+    assert len({v[1] for v in answers.values()}) == 1, answers
+
+
+def test_an_in_scope_parent_still_takes_a_sub_process(data_root, tmp_path):
+    """The other half of the pair: the gate must not have closed the feature.
+
+    A second gate that refused every parent, or that asked for the wrong target,
+    passes both tests above and breaks sub-processes for everyone. Both shapes
+    are here — the parent in another department the caller *also* holds, and the
+    everyday one where parent and child share the caller's single department.
+    """
+    _plant_process(data_root, "dining-002", "dining")
+    node = _activity("dining-002")
+    both = _client_as(data_root, tmp_path, "editor", "dept:cooking", "dept:dining")
+    r = both.post("/api/processes", json={
+        "department": "cooking", "name": "زیرفرآیند",
+        "parent": {"process": "dining-002", "node": node}})
+    assert r.status_code == 201, r.text
+    child = r.json()
+    assert child["parent"] == {"process": "dining-002", "node": node}
+    doc = json.loads((data_root / "departments" / "dining" / "processes"
+                      / "dining-002.json").read_text(encoding="utf-8"))
+    assert next(n for n in doc["nodes"] if n["id"] == node)["subprocess"] == child["id"]
+
+    one = _client_as(data_root, tmp_path, "editor", "dept:cooking")
+    assert one.post("/api/processes", json={
+        "department": "cooking",
+        "parent": {"process": "cooking-001",
+                   "node": _activity("cooking-001")}}).status_code == 201
+
+
+def test_the_parent_target_is_the_id_prefix_and_not_the_stored_department(
+        data_root, tmp_path):
+    """The second gate is lexical too, or it is not a gate at all.
+
+    A target read out of the parent *document* has to open the file to decide,
+    and a status chosen after the resource is resolved is a status chosen by
+    existence — the very oracle the gate was added to close. The two are told
+    apart by a parent whose stored `department` says `cooking` while its id says
+    `dining`: lexically it is out of a cooking-scoped caller's reach, and a
+    file-reading gate would wave them through.
+    """
+    _plant_process(data_root, "dining-002", "dining", stored_department="cooking")
+    client = _client_as(data_root, tmp_path, "editor", "dept:cooking")
+    r = client.post("/api/processes", json={
+        "department": "cooking", "name": "x",
+        "parent": {"process": "dining-002", "node": _activity("dining-002")}})
+    assert r.status_code == 404, (
+        "the parent gate read the department out of the file instead of the id")
+
+
+def test_a_parent_that_names_no_process_reaches_nothing_wildcard_included(
+        data_root, tmp_path):
+    """`parent` is a free-form dict on the wire, so the target may be underivable.
+
+    It must fail closed — a 404 like any other unreachable target — and never a
+    500 or, worse, a skipped gate. Each of these is truthy, so each is a `parent`
+    the handler would go on to dereference.
+
+    **The wildcard holder is the half that means anything.** "Reaches nothing"
+    has to include `*`, exactly as `contains` promises: a fallback target of `*`
+    instead of an unreachable one is invisible to a department-scoped caller —
+    `contains("dept:cooking", "*")` is `False`, so they get their 404 either way
+    — and hands the one account that holds `*` an ungated call straight into the
+    handler's dereference. Only the `*` client can tell the two apart.
+    """
+    scoped = _client_as(data_root, tmp_path, "editor", "dept:cooking")
+    wildcard = _client_as(data_root, tmp_path, "editor", "*")
+    for parent in ({"node": "x"}, {"process": None, "node": "x"},
+                   {"process": 7, "node": "x"}, {"process": "", "node": "x"}):
+        for who, client in (("scoped", scoped), ("wildcard", wildcard)):
+            r = client.post("/api/processes",
+                            json={"department": "cooking", "parent": parent})
+            assert r.status_code == 404, f"{who} {parent} answered {r.status_code}"
+
+    # `{}` is the boundary: falsy, so the handler dereferences nothing and there
+    # is no cross-scope write to gate. It is refused by the schema instead, and
+    # refusing it at the gate would 404 a caller inside their own department.
+    empty = scoped.post("/api/processes", json={"department": "cooking", "parent": {}})
+    assert empty.status_code == 422, empty.text
 
 
 def test_the_process_target_is_the_id_prefix_and_not_the_stored_department(
@@ -434,6 +707,36 @@ def test_pending_is_filtered_by_edit_and_answers_an_empty_list(data_root, tmp_pa
     # An Editor with no scope row at all: `set()`, not `None`.
     nowhere = _client_as(data_root, tmp_path, "editor")
     assert nowhere.get("/api/pending").json() == []
+
+
+def test_a_report_scope_is_not_served_a_departments_conflicts(data_root, tmp_path):
+    """The two list routes filter on different things, and this is the caller
+    that shows why.
+
+    `dept:x/report:k` is "somewhere within x": `reachable_departments` names x,
+    which is right for the board — the holder has to find x there to navigate to
+    the one report they were granted — and wrong for `/api/pending`, where there
+    is nothing to navigate to. Every row would name a process they cannot open,
+    carry its `node`, `field`, `current` and `proposed`, and then 404 on the
+    endpoint that resolves it. D56: a list endpoint never returns rows it then
+    declines to render.
+
+    An Editor holding only a report scope is model-legal — nothing in D10 or D11
+    ties report scopes to Readers — which is what makes this a check and not a
+    note.
+    """
+    _plant_pending(data_root, "dining-009", "dining")
+    client = _client_as(data_root, tmp_path, "editor", "dept:dining/report:steps")
+
+    r = client.get("/api/pending")
+    assert r.status_code == 200
+    assert r.json() == [], "a report scope was served the department's conflicts"
+    # …and it would have been a row this caller is then refused.
+    assert client.post("/api/processes/dining-009/pending/0",
+                       json={"decision": "reject"}).status_code == 404
+    # The board is deliberately the other way: without dining in the list there
+    # is no way to reach the report they hold.
+    assert _codes(client) == {"dining"}
 
 
 def test_the_lists_never_name_a_process_outside_the_callers_scope(data_root, tmp_path):

@@ -34,6 +34,31 @@ def _pid_target(request: Request) -> str:
     return f"dept:{storage.dept_of(request.path_params['pid'])}"
 
 
+#: A target no scope covers, `*` included — `contains` refuses anything the
+#: grammar does not accept. Used where a request names a parent this module
+#: cannot read a department out of, so the answer is the same 404 as any other
+#: unreachable target rather than a 500 or, worse, an ungated write.
+_UNREACHABLE = ""
+
+
+def _parent_target(parent: dict) -> str:
+    """`dept:{department}` for the process a new sub-process is hung under.
+
+    Lexical, exactly like `_pid_target` and for exactly the same reason: this
+    runs *before* the parent is loaded, so it cannot ask the filesystem whether
+    the parent is there. Read the department out of the stored document and the
+    status code is decided by existence again — which is the disclosure this
+    second gate exists to close.
+
+    A `parent` that does not carry a string `process` names nothing this can
+    resolve, so it reaches nothing: fail closed, and let the uniform 404 answer.
+    """
+    pid = parent.get("process")
+    if not isinstance(pid, str):
+        return _UNREACHABLE
+    return f"dept:{storage.dept_of(pid)}"
+
+
 def _create_target(body: CreateProcessBody, request: Request,
                    user=Depends(require_session)) -> CreateProcessBody:
     """The one target that is not in the path: `POST /api/processes` names its
@@ -49,8 +74,30 @@ def _create_target(body: CreateProcessBody, request: Request,
 
     Returning the body keeps the resolution order visible in the signature —
     `create_process` cannot run before this has.
+
+    **Two targets, because this route writes to two places.** With `parent` set,
+    the handler loads that parent — from anywhere on disk — and mutates it, so a
+    gate on `body.department` alone lets an Editor scoped to one department write
+    a `subprocess` link into every other. It is also an existence oracle across
+    the whole partition: the handler answers 400 for a real parent node of the
+    wrong type, 409 for one that already links a sub-process, 201 for a good one
+    and 404 for a parent that is not there, so a caller who may create anywhere
+    at all could map every process id — and, via "no such node" versus "not an
+    activity", every node id — in all nine departments. Gating the parent makes
+    all four answers the one 404 for anyone outside it.
+
+    This is a second target on a route the plan's mapping gives one, taken under
+    the plan's own "where anything here disagrees, the spec wins": D56's
+    existence rule is unambiguous and a one-target gate cannot keep it.
     """
     requires("edit", f"dept:{body.department}")(request, user)
+    # `if body.parent:` and not `is not None:` — the condition has to be the
+    # handler's own, or the two disagree about what is being gated. An empty
+    # dict is falsy there, so nothing is loaded and nothing is written, and
+    # refusing it here would 404 a caller inside their own department over a
+    # malformed body their schema check is already going to answer.
+    if body.parent:
+        requires("edit", _parent_target(body.parent))(request, user)
     return body
 
 
@@ -181,6 +228,29 @@ async def delete_process(pid: str, request: Request,
     written = []
     path.unlink()
     written.append(path)
+    # This sweep is a **dereference, deliberately exempt from the caller's
+    # scope** — the one cross-scope write in this service, and a decided one
+    # rather than an oversight.
+    #
+    # It walks all nine departments because a link to a deleted process may be
+    # anywhere: another department's node pointing at it as a `subprocess`, or a
+    # child of it sitting elsewhere. Refusing to clear the ones outside the
+    # caller's scope would leave dangling links — a node claiming a sub-process
+    # that no longer exists, a child claiming a parent that does not — which is
+    # strictly worse than the write, and worse for the very departments the
+    # scope is protecting.
+    #
+    # It discloses nothing, which is why it is allowed to be exempt: the
+    # response is `{"deleted": pid}` whatever was swept, the count and the
+    # departments touched never reach the caller, and the timing is the same
+    # walk over every department on every delete. And the only documents it
+    # touches are ones that *pointed at a process the caller was entitled to
+    # delete* — the deletion itself was already gated on `dept:{dept_of(pid)}`
+    # above, so nothing here is reachable without that permission first.
+    #
+    # Contrast `POST /api/processes`, whose parent link is gated: there the
+    # caller chooses the out-of-scope document and learns from the answer
+    # whether it exists. Here they choose nothing and learn nothing.
     for d in reg["departments"]:
         for fp in storage.list_process_files(cfg.data_root, d["code"]):
             doc = storage.read_json(fp)

@@ -124,15 +124,16 @@ def create_export(code: str, kind: str, request: Request,
     # nobody's to act on, so it is logged at INFO; the missing overview below is
     # a real data gap and gets a warning.
     #
-    # The three 404s below no longer say *which* thing was not found, and that
-    # is the point rather than a regression. The gate above answers 404 for a
-    # report outside the caller's scope; if these said "unknown kind" or "no
-    # overview yet" they would tell a prober which of their guesses landed
-    # inside their own scope and which did not, which is the boundary the status
-    # code was just made uniform to hide. `NOT_FOUND` is the one body every 404
-    # in this service carries. The 503s are unaffected: a deployment fault is
-    # nothing to hide, and telling an operator which variable is unset costs no
-    # disclosure at all.
+    # The two 404s below no longer say *which* thing was not found, and that is
+    # the point rather than a regression. The gate above answers 404 for a
+    # report outside the caller's scope; if these said "unknown kind" or
+    # "unknown department" they would tell a prober which of their guesses
+    # landed inside their own scope and which did not, which is the boundary the
+    # status code was just made uniform to hide. `NOT_FOUND` is the one body
+    # every 404 in this service carries. The missing overview further down is
+    # not one of them — it is a 409 and keeps its guidance; see there. The 503s
+    # are unaffected: a deployment fault is nothing to hide, and telling an
+    # operator which variable is unset costs no disclosure at all.
     if kind not in exports.EXPORT_KINDS:
         logger.info("%s/%s: unknown export kind: %s", code, kind, kind)
         raise HTTPException(status_code=404, detail=NOT_FOUND)
@@ -177,14 +178,31 @@ def create_export(code: str, kind: str, request: Request,
     try:
         payload = exports.build_payload(cfg.data_root, code, generated_at)
     except exports.ExportUnavailable as e:
-        # A department with no overview.json has nothing to document yet. This is
-        # the likeliest failure on the whole handler — most departments have no
-        # overview yet — and it used to name the thing the user could go and fill
-        # in. It no longer can: it is a 404, and a 404 that describes itself
-        # describes the caller's scope boundary. `str(e)` still goes to the log
-        # at WARNING, where an operator can see which department is missing one.
+        # A department with no overview.json has nothing to document yet: the
+        # likeliest failure on the whole handler, and the only one that tells a
+        # user what to go and do.
+        #
+        # **409, not 404, and that is what lets it keep saying so.** The uniform
+        # `NOT_FOUND` body exists because a self-describing 404 describes the
+        # caller's scope boundary — an `export_pdf` holder scoped
+        # `dept:{code}/report:{kind}` passes the gate above without holding
+        # `view` on the department, so "this department has no introduction yet"
+        # in a *404* would separate "not there" from "not yours" for them. A 409
+        # is not in that partition at all: it says the department is reachable —
+        # which the caller already knows, because the gate let them through, and
+        # which it says identically for every kind and every caller who gets
+        # here — but is not in a state that can be exported. Nothing about which
+        # of their guesses landed is legible in it, because reaching this line
+        # at all already required being inside.
+        #
+        # Everything narrower stays 404: an unknown kind and an unknown
+        # department above are both "there is no such thing", answered in the one
+        # body every 404 here carries.
         logger.warning("%s/%s: %s", code, kind, e)
-        raise HTTPException(status_code=404, detail=NOT_FOUND) from e
+        raise HTTPException(
+            status_code=409,
+            detail="اطلاعات معرفی این دپارتمان هنوز ثبت نشده است؛"
+                   " ابتدا معرفی واحد را کامل کنید.") from e
 
     try:
         html = exports.render(template, payload)

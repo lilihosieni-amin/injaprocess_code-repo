@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Request
 
 from .. import storage
-from ..access import reachable_departments
+from ..access import allows
 from ..auth import require_session
 
 router = APIRouter(prefix="/api/pending")
@@ -25,15 +25,28 @@ def list_pending(request: Request, user=Depends(require_session)):
     caller who may edit nowhere gets `[]` and a 200 — not a 403, which would be
     a claim about resources rather than about the list itself.
 
-    `is None` is every department; `set()` is none of them. Both are falsy and
-    they are opposites, so neither may be tested for truth.
+    **`allows(…, "edit", "dept:{code}")` per department, and deliberately not
+    `reachable_departments`.** The two differ on exactly one holder and it
+    matters here: `reachable_departments` is "somewhere within", so it names `x`
+    for a `dept:x/report:k` holder — right for the department board, where the
+    holder must find `x` in the list to navigate to the one report they were
+    granted, and wrong here, because on this route there is nothing to navigate
+    to. Every row it would serve them names a process they cannot open, carries
+    that process's `node`, `field`, `current` and `proposed`, and then 404s on
+    the endpoint that resolves it. D56: a list endpoint never returns rows it
+    then declines to render. A `dept:x/report:k` scope is model-legal on an
+    Editor — nothing in D10 or D11 forbids it — so this is a check, not a note.
+
+    This is a decision per department rather than a set to test against, which
+    is also why the `None`-is-everything / `set()`-is-nothing trap that the
+    department board has to carry is not here: `allows` answers a plain bool.
     """
     cfg = request.app.state.cfg
-    reachable = reachable_departments(request.app.state.db, user, "edit")
+    conn = request.app.state.db
     reg = storage.read_json(storage.registry_path(cfg.data_root))
     out = []
     for d in reg["departments"]:
-        if reachable is not None and d["code"] not in reachable:
+        if not allows(conn, user, "edit", f"dept:{d['code']}"):
             continue
         for fp in storage.list_process_files(cfg.data_root, d["code"]):
             doc = storage.read_json(fp)

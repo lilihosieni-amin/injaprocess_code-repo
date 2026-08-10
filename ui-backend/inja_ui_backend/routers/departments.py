@@ -54,6 +54,15 @@ def list_departments(request: Request, user=Depends(require_session)):
     and both falsy, so the test is `is None` — `if not reachable:` would read a
     wildcard holder as reaching nothing, or an unscoped account as reaching
     everything, depending on which way it fell.
+
+    This is the **only** caller of `reachable_departments` in the service, and
+    therefore the only place that invariant has to be got right. `/api/pending`
+    used to carry the same two lines and the same paragraph explaining them —
+    two homes for one subtlety, one of which could drift to `if not reachable:`
+    while the other's tests stayed green. It now decides per department with
+    `allows`, which is a bool and has no trap, for a reason of its own (see
+    `routers/pending.py`). If a second caller of `reachable_departments` ever
+    appears, this filter is what to extract rather than to copy.
     """
     cfg = request.app.state.cfg
     reachable = reachable_departments(request.app.state.db, user, "view")
