@@ -96,6 +96,10 @@ def test_a_department_scope_reaches_its_reports_and_nothing_else_below():
     assert not contains("dept:dining", "dept:dining/")
     assert not contains("dept:dining", "dept:dining/process:7")
     assert not contains("dept:dining", "dept:dining/reports:steps")
+    # `/anything` proves the least of any suffix here: it is the one shape the
+    # tail arm's `+ "/report:"` already refuses, so it stayed green while the
+    # `/report:`-shaped fourth level below was being granted. The rows in
+    # test_no_scope_widens_to_a_fourth_level are the ones that bind this.
     assert not contains("dept:dining/report:steps", "dept:dining/report:steps/anything")
 
 
@@ -141,6 +145,93 @@ def test_malformed_input_answers_false(scope, target):
     assert not contains(scope, target)
 
 
+@pytest.mark.parametrize("scope,target", [
+    # The grammar is three levels and has no fourth (D10). The tail arm grants
+    # a target that starts with `scope + "/report:"`, so the suffix that can
+    # actually reach it is a `/report:`-shaped one — these rows, not the
+    # `/anything` row above, are what forbid a report scope widening.
+    ("dept:dining/report:steps", "dept:dining/report:steps/report:flowchart"),
+    ("dept:dining/report:steps", "dept:dining/report:steps/report:steps"),
+    # ...and the same shape one level up: a department scope reaches its own
+    # reports, but nothing hanging off one of them.
+    ("dept:dining", "dept:dining/report:steps/report:flowchart"),
+    ("dept:dining", "dept:dining/report:steps/extra"),
+    # A fourth-level string is not a scope, so held as one it covers nothing —
+    # not even itself. `user_scopes.scope` has no CHECK constraint, so such a
+    # row is storable today, and the identity arm granted this one before the
+    # gate.
+    ("dept:dining/report:steps/report:flowchart",
+     "dept:dining/report:steps/report:flowchart"),
+    # These two answered False already, via the tail arm; they are here to
+    # document that a fourth-level scope confers nothing upward either, and
+    # they do NOT bind the finding-1 regression — the rows above do.
+    ("dept:dining/report:steps/report:flowchart", "dept:dining/report:steps"),
+    ("dept:dining/report:steps/report:flowchart", "dept:dining"),
+])
+def test_no_scope_widens_to_a_fourth_level(scope, target):
+    assert not contains(scope, target)
+
+
+@pytest.mark.parametrize("scope,target", [
+    # Every row here answered True before the SCOPE_RE gate: the first three
+    # through the tail arm (target starts with scope + "/report:" when scope is
+    # a truncated nonsense string), the rest through the identity arm, which
+    # grants any string that equals itself however malformed.
+    ("", "/report:steps"),
+    ("dept:", "dept:/report:steps"),
+    ("dept:dining/report:", "dept:dining/report:/report:steps"),
+    ("", ""),
+    (" ", " "),
+    ("\n", "\n"),
+    ("nonsense", "nonsense"),
+    ("dept:", "dept:"),
+    ("/report:steps", "/report:steps"),
+    ("*/report:steps", "*/report:steps"),
+    ("**", "**"),
+    ("dept:dining/", "dept:dining/"),
+    # Identity does not rescue a case fold or a stray space either.
+    ("dept:Dining", "dept:Dining"),
+    ("DEPT:dining", "DEPT:dining"),
+    ("dept:dining ", "dept:dining "),
+    (" dept:dining", " dept:dining"),
+])
+def test_a_malformed_argument_is_never_granted(scope, target):
+    # A `False` fails closed; a `True` here opens a department off a bad row.
+    assert not contains(scope, target)
+
+
+@pytest.mark.parametrize("target", [
+    "", " ", "\n", "nonsense", "dept:", "dept:/report:steps", "/report:steps",
+    "dept:Dining", "dept:dining ", "dept:dining-annex", "dept:dining/",
+    "dept:dining/report:steps/report:flowchart", "**", "*/report:steps",
+])
+def test_the_wildcard_reaches_everything_that_is_a_scope_and_nothing_else(target):
+    # The decision: a `*` holder is refused a malformed target like everyone
+    # else. There is no resource behind a string that is not a scope, so there
+    # is nothing for the wildcard to reach; and once the layer above maps
+    # `False` to 404, a uniform answer stops the status code distinguishing the
+    # wildcard holder from anyone else.
+    assert not contains("*", target)
+
+
+@pytest.mark.parametrize("target", ["*", "dept:dining", "dept:dining/report:steps",
+                                    "dept:cashier/report:inventedlater"])
+def test_the_wildcard_still_reaches_every_well_formed_target(target):
+    assert contains("*", target)
+
+
+def test_the_gate_refuses_nothing_that_is_legal():
+    # The guard must not have bought fail-closed behaviour by narrowing a real
+    # grant. Every legal containment still holds, including the one that
+    # matters most: reports invented later stay covered by a department grant,
+    # because the gate tests the *shape* of a report kind, not a list of kinds.
+    assert contains("dept:dining", "dept:dining/report:inventedlater")
+    assert contains("dept:dining", "dept:dining/report:z")
+    assert contains("dept:dining", "dept:dining")
+    assert contains("dept:dining/report:steps", "dept:dining/report:steps")
+    assert contains("*", "*")
+
+
 def test_dept_of_on_malformed_input():
     for nonsense in ["", " ", "nonsense", "report:steps", "*", "**",
                      "department:dining",
@@ -150,6 +241,16 @@ def test_dept_of_on_malformed_input():
                      # ...and it is case-sensitive.
                      "DEPT:dining", "Dept:dining"]:
         assert dept_of(nonsense) is None, nonsense
+
+
+def test_dept_of_returns_none_not_empty_string_for_an_empty_code():
+    # `is None`, not just falsy. The annotation is `str | None`, and a caller
+    # written as `if dept_of(t) is not None:` must not be handed `""` — an
+    # empty department is not a department, and `"dept:"` is a string SCOPE_RE
+    # rejects but the database will store.
+    assert dept_of("dept:") is None
+    assert dept_of("dept:/report:steps") is None
+    assert dept_of("dept:/") is None
 
 
 def test_dept_of_strips_nothing():
@@ -167,8 +268,13 @@ def test_scope_regex_is_anchored_at_both_ends():
     # and `match` so that each anchor has an assertion that dies without it.
     assert SCOPE_RE.search("xdept:dining") is None       # dies without `^`
     assert SCOPE_RE.search("dept:x*") is None            # dies without `^`
-    assert SCOPE_RE.match("dept:diningX") is None        # dies without `$`
-    assert SCOPE_RE.match("dept:dining/extra") is None   # dies without `$`
+    assert SCOPE_RE.match("dept:diningX") is None        # dies without `\Z`
+    assert SCOPE_RE.match("dept:dining/extra") is None   # dies without `\Z`
+    # The end anchor is `\Z`, not `$`: `$` also matches immediately before a
+    # trailing newline, so under `$` these two would match and a caller using
+    # `.match` would accept a scope with a newline glued to it.
+    assert SCOPE_RE.match("dept:dining\n") is None       # dies under `$`
+    assert SCOPE_RE.match("*\n") is None                 # dies under `$`
 
 
 def test_scope_regex_accepts_only_the_three_shapes():
