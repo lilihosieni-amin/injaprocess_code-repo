@@ -81,7 +81,9 @@ def contains(scope: str, target: str) -> bool:
     # of its own reports — including report kinds invented later, which is why
     # this is a shape test and not a list of known kinds.
     #
-    # Weakening `"/report:"` to `"/"` here is a third unkillable mutant: the
+    # Weakening `"/report:"` to `"/"` here is the fourth unkillable mutant in
+    # this function — the others being the gate's `scope` half, the `*`-target
+    # arm, and `fullmatch` -> `search` in the gate. The reason is the same: the
     # gate has already reduced `target` to three shapes, so the two agree on
     # every input. Kept at the stricter form so this line is still correct on
     # its own if the gate above ever moves or the grammar grows a level.

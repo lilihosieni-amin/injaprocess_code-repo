@@ -93,6 +93,14 @@ def test_a_department_scope_reaches_its_reports_and_nothing_else_below():
     # after a slash". The grammar has three levels and no fourth (D10), so a
     # target of an unrecognised shape is refused rather than granted by
     # proximity to one the holder does own.
+    #
+    # Read what this now binds, not what it once did: since the gate, every
+    # target below is a NON-scope and is refused there, before the tail arm is
+    # reached. So this pins the gate, and the tail's `+ "/report:"` is left
+    # unbindable — weakening it to `+ "/"` is an equivalent mutant precisely
+    # because the gate has already reduced `target` to three legal shapes. The
+    # stricter form is kept so the line stays correct on its own if the gate
+    # ever moves; no test can hold it there.
     assert not contains("dept:dining", "dept:dining/")
     assert not contains("dept:dining", "dept:dining/process:7")
     assert not contains("dept:dining", "dept:dining/reports:steps")
@@ -263,7 +271,7 @@ def test_dept_of_strips_nothing():
 
 def test_scope_regex_is_anchored_at_both_ends():
     # Every assertion in test_scope_regex_rejects_malformed_scopes uses
-    # `fullmatch`, which is anchored by itself — under it both `^` and `$` can
+    # `fullmatch`, which is anchored by itself — under it both `^` and `\Z` can
     # be deleted from SCOPE_RE with the suite still green. These use `search`
     # and `match` so that each anchor has an assertion that dies without it.
     assert SCOPE_RE.search("xdept:dining") is None       # dies without `^`
