@@ -15,6 +15,13 @@ question — a role row that resolves to nothing, a scope row the grammar refuse
 a capability no role holds — is a `False` rather than an exception. A crash is a
 denial of service; a `False` fails closed.
 
+One exception to that, stated rather than hidden: the `json.loads` of a role's
+capability list will raise on a malformed row. It is left to raise because the
+seed is the only writer and D50 gives no API path that could produce one, so a
+malformed row means the database has been edited by hand — a case where failing
+loudly beats resolving every capability to absent and quietly locking the
+restaurant out.
+
 Containment is never decided here: `scopes.contains` is the sole authority, and
 re-deciding any part of it in this module is how the two would come to disagree.
 """
@@ -77,6 +84,12 @@ def reachable_departments(conn: sqlite3.Connection, user: sqlite3.Row,
 
     None means "every department" — the caller must not turn that into a list,
     because a department added tomorrow is inside a `*` scope today.
+
+    Test it with `is None`, never for truth. `None` and `set()` are both falsy,
+    and they are opposites: `None` is every department, `set()` is none of them.
+    A caller writing `if not depts:` reads a wildcard holder as holding nothing,
+    or — worse, depending on which way the branch falls — reads someone with no
+    departments at all as holding every one.
 
     "Somewhere within", not "on": a `dept:dining/report:steps` holder is named
     `dining` here and still fails `allows(…, "dept:dining")`, because they must
