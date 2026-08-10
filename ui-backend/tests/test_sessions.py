@@ -1,4 +1,5 @@
 import json
+import time
 
 from inja_ui_backend import db
 from inja_ui_backend.store import audit, sessions, users
@@ -303,3 +304,55 @@ def test_set_disabled_false_restores_access(tmp_path):
     assert users.by_id(conn, uid)["disabled_at"] is None
     sid = sessions.issue(conn, uid, ip="", user_agent="", now=1000)
     assert sessions.resolve(conn, sid, ttl=TTL, now=1001) is not None
+
+
+def test_set_disabled_stores_the_instant_it_was_given(tmp_path):
+    # Every other write in these stores takes its instant from the caller. This
+    # one read the wall clock, which made the single timestamp deciding whether a
+    # person can sign in the one timestamp no test could pin — and guaranteed the
+    # `user.disabled` activity event named a different instant than the row.
+    conn = _conn(tmp_path)
+    uid = _user(conn)
+    users.set_disabled(conn, uid, True, 1234567)
+    assert users.by_id(conn, uid)["disabled_at"] == 1234567
+
+
+def test_set_disabled_falls_back_to_the_wall_clock(tmp_path):
+    # The branch a default is only ever bound by. Asserted against the REAL
+    # clock, never against a value a mock handed back: a default of None, 0 or a
+    # constant would satisfy any test that reads back what it injected, and
+    # `disabled_at = 0` is a falsy-but-present timestamp — an account disabled in
+    # 1970 that every "is it None" check still reads as disabled, and every
+    # "when" reads as absurd.
+    conn = _conn(tmp_path)
+    uid = _user(conn)
+    before = int(time.time())
+    users.set_disabled(conn, uid, True)
+    after = int(time.time())
+    stored = users.by_id(conn, uid)["disabled_at"]
+    assert isinstance(stored, int)
+    assert before <= stored <= after
+
+
+def test_re_enabling_writes_null_even_when_an_instant_is_supplied(tmp_path):
+    # `now` says WHEN access was taken away. Re-enabling takes nothing away, so
+    # the column must go back to NULL — resolve() joins on `disabled_at IS NULL`,
+    # and any non-NULL value there keeps the person locked out forever.
+    conn = _conn(tmp_path)
+    uid = _user(conn)
+    users.set_disabled(conn, uid, True, 1000)
+    users.set_disabled(conn, uid, False, 2000)
+    assert users.by_id(conn, uid)["disabled_at"] is None
+    sid = sessions.issue(conn, uid, ip="", user_agent="", now=3000)
+    assert sessions.resolve(conn, sid, ttl=TTL, now=3001) is not None
+
+
+def test_set_disabled_with_an_instant_still_touches_only_one_person(tmp_path):
+    # The unscoped UPDATE that would disable the whole restaurant, on the new
+    # four-argument path as well as the old three-argument one.
+    conn = _conn(tmp_path)
+    gone = _user(conn, username="09120000001")
+    stays = _user(conn, username="09120000002")
+    users.set_disabled(conn, gone, True, 1000)
+    assert users.by_id(conn, gone)["disabled_at"] == 1000
+    assert users.by_id(conn, stays)["disabled_at"] is None

@@ -37,9 +37,16 @@ def set_password(conn: sqlite3.Connection, user_id: int, password_hash: str) -> 
                  (password_hash, user_id))
 
 
-def set_disabled(conn: sqlite3.Connection, user_id: int, disabled: bool) -> None:
+def set_disabled(conn: sqlite3.Connection, user_id: int, disabled: bool,
+                 now: int | None = None) -> None:
+    # `now` is optional and fourth, so the three-argument calls already written
+    # against this signature keep working. It exists because every other write in
+    # these stores takes its instant from the caller: without it, the one
+    # timestamp that decides whether a person can sign in is the one timestamp no
+    # test can control, and the `user.disabled` activity event would always name a
+    # different instant than the row it describes.
     conn.execute("UPDATE users SET disabled_at = ? WHERE id = ?",
-                 (_now() if disabled else None, user_id))
+                 ((_now() if now is None else now) if disabled else None, user_id))
 
 
 def _now() -> int:

@@ -277,6 +277,181 @@ def test_the_seeded_account_survives_the_connection_that_wrote_it(tmp_path):
         reopened.close()
 
 
+# --- the guard: an ACTIVE EDITOR, not "anybody at all" --------------------
+#
+# The three non-delegable capabilities have no origin but this module (D50), so
+# re-seeding is the documented — and only — way back in when every Editor is
+# lost. A COUNT(*) > 0 guard defeats that in exactly the realistic case: the
+# Editor disabled while readers and admins live on. The operator follows the
+# runbook, the CLI wrapping this exits 0, and there is still no Editor.
+
+def _roles_only(conn):
+    """The four roles and no users at all — a database mid-life, not fresh."""
+    for name, caps in D11.items():
+        conn.execute("INSERT INTO roles (name, capabilities) VALUES (?, ?)",
+                     (name, json.dumps(sorted(caps))))
+
+
+def _role_id(conn, name):
+    return conn.execute("SELECT id FROM roles WHERE name = ?", (name,)).fetchone()[0]
+
+
+def _counts(conn):
+    return tuple(conn.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
+                 for t in ("users", "user_scopes", "roles"))
+
+
+def test_a_healthy_re_seed_changes_nothing_and_says_so(tmp_path):
+    conn = _conn(tmp_path)
+    _seed(conn)
+    before = _counts(conn)
+    assert _seed(conn) is None
+    assert _counts(conn) == before
+    row = users.by_username(conn, "09120000000")
+    assert row["password_hash"] == "h" and row["disabled_at"] is None
+
+
+def test_a_database_with_no_active_editor_gains_one(tmp_path):
+    # THE POINT. Readers and admins are alive, so COUNT(*) > 0 is true and the
+    # old guard skipped — leaving a restaurant that can read and administer
+    # itself and can never again edit, confirm or publish anything.
+    conn = _conn(tmp_path)
+    _roles_only(conn)
+    users.create(conn, username="09120000002", display_name="خواننده",
+                 password_hash="r", role_id=_role_id(conn, "reader"))
+    users.create(conn, username="09120000003", display_name="مدیر",
+                 password_hash="a", role_id=_role_id(conn, "admin"))
+
+    assert _seed(conn) is None
+
+    row = users.by_username(conn, "09120000000")
+    assert row is not None, "no active Editor existed; the re-seed had to create one"
+    assert row["disabled_at"] is None
+    assert conn.execute("SELECT name FROM roles WHERE id = ?",
+                        (row["role_id"],)).fetchone()[0] == "editor"
+    assert [r[0] for r in conn.execute(
+        "SELECT scope FROM user_scopes WHERE user_id = ?", (row["id"],))] == ["*"]
+    assert conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 3
+
+
+def test_a_disabled_editor_does_not_count_as_an_editor(tmp_path):
+    # Same as above, but the corpse of the old Editor is still in the table —
+    # the shape a guard that forgets `disabled_at IS NULL` reads as healthy.
+    conn = _conn(tmp_path)
+    _roles_only(conn)
+    dead = users.create(conn, username="09120000009", display_name="رفته",
+                        password_hash="x", role_id=_role_id(conn, "editor"))
+    users.set_disabled(conn, dead, True, 1000)
+
+    _seed(conn)
+
+    row = users.by_username(conn, "09120000000")
+    assert row is not None and row["disabled_at"] is None
+    assert conn.execute("SELECT name FROM roles WHERE id = ?",
+                        (row["role_id"],)).fetchone()[0] == "editor"
+    assert [r[0] for r in conn.execute(
+        "SELECT scope FROM user_scopes WHERE user_id = ?", (row["id"],))] == ["*"]
+    # The disabled account is left exactly as it was; recovery adds, never revives.
+    assert users.by_id(conn, dead)["disabled_at"] == 1000
+
+
+def test_re_seeding_onto_the_disabled_editors_own_number_refuses(tmp_path):
+    # The seed reads its username from the environment. Re-enabling or re-roling
+    # whoever already holds it would turn a stale variable into an escalation
+    # path, so this is a hand decision — stated loudly, not performed quietly.
+    conn = _conn(tmp_path)
+    _seed(conn)
+    editor = users.by_username(conn, "09120000000")
+    users.set_disabled(conn, editor["id"], True, 1000)
+    before = _counts(conn)
+
+    with pytest.raises(ValueError, match="already exists but is not an active Editor"):
+        _seed(conn)
+
+    assert _counts(conn) == before
+    again = users.by_username(conn, "09120000000")
+    assert again["disabled_at"] == 1000      # not silently re-enabled
+    assert again["password_hash"] == "h"     # nor re-credentialled
+    assert not conn.in_transaction
+
+
+def test_re_seeding_onto_a_readers_number_refuses(tmp_path):
+    # No Editor at all, so recovery is warranted — but the number asked for
+    # belongs to somebody else. Promoting them would hand a reader `edit`,
+    # `confirm` and `set_visibility` on a restart.
+    conn = _conn(tmp_path)
+    _roles_only(conn)
+    reader = users.create(conn, username="09120000000", display_name="خواننده",
+                          password_hash="r", role_id=_role_id(conn, "reader"))
+    before = _counts(conn)
+
+    with pytest.raises(ValueError, match="already exists but is not an active Editor"):
+        _seed(conn)
+
+    assert _counts(conn) == before
+    row = users.by_id(conn, reader)
+    assert conn.execute("SELECT name FROM roles WHERE id = ?",
+                        (row["role_id"],)).fetchone()[0] == "reader"
+    assert row["password_hash"] == "r"
+
+
+def test_the_refusal_names_the_number_it_refused(tmp_path):
+    # An operator recovering at 3am needs to know WHICH account is in the way,
+    # and that the fix is theirs to make by hand.
+    conn = _conn(tmp_path)
+    _roles_only(conn)
+    users.create(conn, username="09120000000", display_name="خواننده",
+                 password_hash="r", role_id=_role_id(conn, "reader"))
+    with pytest.raises(ValueError) as excinfo:
+        seed.seed(conn, editor_username="۰۹۱۲۰۰۰۰۰۰۰",  # normalised in the message
+                  editor_display_name="x", editor_password_hash="h")
+    assert "09120000000" in str(excinfo.value)
+    assert "by hand" in str(excinfo.value)
+
+
+def test_a_disabled_editor_and_a_free_number_gets_a_second_editor(tmp_path):
+    # The sanctioned recovery: create a new Editor, leave the old row alone.
+    conn = _conn(tmp_path)
+    _seed(conn)
+    old = users.by_username(conn, "09120000000")
+    users.set_disabled(conn, old["id"], True, 1000)
+
+    seed.seed(conn, editor_username="09120000001",
+              editor_display_name="جدید", editor_password_hash="h2")
+
+    fresh = users.by_username(conn, "09120000001")
+    assert fresh is not None and fresh["disabled_at"] is None
+    assert conn.execute("SELECT name FROM roles WHERE id = ?",
+                        (fresh["role_id"],)).fetchone()[0] == "editor"
+    assert [r[0] for r in conn.execute(
+        "SELECT scope FROM user_scopes WHERE user_id = ?", (fresh["id"],))] == ["*"]
+    assert users.by_id(conn, old["id"])["disabled_at"] == 1000
+    # ...and once there is an active Editor again, the guard is back on duty.
+    assert seed.seed(conn, editor_username="09120000002",
+                     editor_display_name="z", editor_password_hash="h3") is None
+    assert users.by_username(conn, "09120000002") is None
+
+
+def test_recovery_survives_the_connection_that_wrote_it(tmp_path):
+    # The same unwrapped-BEGIN trap as the first seed, on the path an operator
+    # only ever walks once, in an emergency, and cannot walk twice.
+    conn = _conn(tmp_path)
+    _roles_only(conn)
+    users.create(conn, username="09120000002", display_name="خواننده",
+                 password_hash="r", role_id=_role_id(conn, "reader"))
+    _seed(conn)
+    conn.close()
+
+    reopened = db.connect(tmp_path / "app.db")
+    try:
+        row = users.by_username(reopened, "09120000000")
+        assert row is not None
+        assert [r[0] for r in reopened.execute(
+            "SELECT scope FROM user_scopes WHERE user_id = ?", (row["id"],))] == ["*"]
+    finally:
+        reopened.close()
+
+
 def test_the_capability_table_cannot_be_edited_through_what_it_hands_out():
     # ROLES is the access model. A consumer that got the module's own list back
     # could rewrite it for the whole process with one append.

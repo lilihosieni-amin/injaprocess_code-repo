@@ -54,10 +54,29 @@ def seed(conn: sqlite3.Connection, *, editor_username: str,
             (name, json.dumps(sorted(caps))),
         )
 
+    # The guard is "is there an active Editor", not "is there anybody at all".
+    # `edit`, `confirm` and `set_visibility` have no other origin (D50), so this
+    # module is the only way back in when every Editor is lost — and the realistic
+    # loss is the Editor disabled while readers and admins live on, which a
+    # COUNT(*) > 0 guard reads as a healthy system and skips. Reading roles.name
+    # here decides whether to seed; it never decides what a request may do.
+    active_editor = conn.execute(
+        "SELECT 1 FROM users JOIN roles ON roles.id = users.role_id"
+        " WHERE roles.name = 'editor' AND users.disabled_at IS NULL"
+        " LIMIT 1").fetchone()
+    if active_editor is not None:
+        # Quiet: with this guard a skip only ever happens on a healthy system.
+        return None
+
     if users.by_username(conn, username) is not None:
-        return
-    if conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] > 0:
-        return
+        # Recovery mints a NEW Editor; it never promotes or re-enables an existing
+        # account. The username comes out of the environment, so silently mutating
+        # whoever already holds it would turn a stale variable into a privilege
+        # escalation. An operator decides this one by hand.
+        raise ValueError(
+            f"{username} already exists but is not an active Editor: no Editor"
+            " can be seeded onto an account that is already taken — re-enable or"
+            " re-role that account by hand, or seed a different number")
 
     role_id = conn.execute(
         "SELECT id FROM roles WHERE name = 'editor'").fetchone()[0]
