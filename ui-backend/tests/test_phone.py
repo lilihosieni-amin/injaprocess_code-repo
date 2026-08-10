@@ -49,5 +49,19 @@ def test_username_regex_accepts_only_the_canonical_form():
     assert not USERNAME_RE.fullmatch("091234567890")   # too long
     assert not USERNAME_RE.fullmatch("08123456789")    # not a mobile prefix
     # The pattern anchors both ends itself, so a caller reaching for .match()
-    # instead of .fullmatch() cannot accidentally admit a longer string.
+    # or .search() instead of .fullmatch() cannot accidentally admit a longer
+    # string on either side.
     assert not USERNAME_RE.match("091234567890")
+    assert not USERNAME_RE.search("x09123456789")
+
+
+@pytest.mark.parametrize("raw", [
+    "09123456789",
+    "+98 0912 345 6789",
+    "+۹۸۰۹۱۲۳۴۵۶۷۸۹",
+    "0912-345-6789",
+])
+def test_normalising_a_real_number_yields_a_valid_username(raw):
+    # Binds the two exports together: whatever the normaliser emits for a real
+    # number has to be something USERNAME_RE will accept, or every login fails.
+    assert USERNAME_RE.fullmatch(normalise_phone(raw))

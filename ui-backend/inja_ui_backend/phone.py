@@ -15,6 +15,11 @@ _ARABIC = "٠١٢٣٤٥٦٧٨٩"
 _DIGIT_MAP = {ord(c): str(i) for i, c in enumerate(_PERSIAN)}
 _DIGIT_MAP.update({ord(c): str(i) for i, c in enumerate(_ARABIC)})
 
+# `\s` is not the same class in Python and in JavaScript: JS strips U+FEFF and
+# Python does not, Python strips U+0085 and U+001C-U+001F and JS does not. The
+# twins therefore diverge on those five characters and nowhere else. Harmless —
+# in every divergent case one side yields a string USERNAME_RE rejects, so the
+# worst outcome is a refused login, never two identities for one number.
 _SEPARATORS = re.compile(r"[\s\-()]")
 _COUNTRY_CODE = re.compile(r"^(?:\+98|0098|98)")
 
