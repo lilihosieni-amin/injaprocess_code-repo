@@ -28,11 +28,41 @@ def test_issue_then_resolve_returns_the_user(tmp_path):
     assert row is not None and row["user_id"] == uid
 
 
+def test_issue_records_who_is_here_and_from_where(tmp_path):
+    # These two columns are the whole answer to "who is signed in, from where",
+    # which is the first question a security review asks. Swapped, they answer
+    # it backwards, and the browser string would be read as an address.
+    conn = _conn(tmp_path)
+    uid = _user(conn)
+    sid = sessions.issue(conn, uid, ip="1.2.3.4", user_agent="Firefox/1", now=1000)
+    row = conn.execute("SELECT * FROM sessions WHERE id = ?", (sid,)).fetchone()
+    assert row["ip"] == "1.2.3.4"
+    assert row["user_agent"] == "Firefox/1"
+    # A session starts its life having just been seen.
+    assert row["issued_at"] == 1000
+    assert row["last_seen"] == 1000
+    assert row["revoked_at"] is None
+
+
 def test_resolve_touches_last_seen(tmp_path):
     conn = _conn(tmp_path)
     sid = sessions.issue(conn, _user(conn), ip="", user_agent="", now=1000)
     sessions.resolve(conn, sid, ttl=TTL, now=1500)
     assert conn.execute("SELECT last_seen FROM sessions").fetchone()[0] == 1500
+
+
+def test_resolve_touches_only_the_session_it_resolved(tmp_path):
+    # One open tab must not make every other device look present; presence is
+    # measured per session, not per person.
+    conn = _conn(tmp_path)
+    uid = _user(conn)
+    here = sessions.issue(conn, uid, ip="", user_agent="", now=1000)
+    idle = sessions.issue(conn, uid, ip="", user_agent="", now=1000)
+    sessions.resolve(conn, here, ttl=TTL, now=1500)
+    seen = dict(conn.execute(
+        "SELECT id, last_seen FROM sessions").fetchall())
+    assert seen[here] == 1500
+    assert seen[idle] == 1000
 
 
 def test_expiry_is_absolute_from_issue_not_sliding_from_last_seen(tmp_path):
@@ -43,6 +73,15 @@ def test_expiry_is_absolute_from_issue_not_sliding_from_last_seen(tmp_path):
     sid = sessions.issue(conn, _user(conn), ip="", user_agent="", now=1000)
     assert sessions.resolve(conn, sid, ttl=TTL, now=1000 + TTL - 1) is not None
     assert sessions.resolve(conn, sid, ttl=TTL, now=1000 + TTL + 1) is None
+
+
+def test_a_session_is_dead_at_exactly_ttl_seconds_old(tmp_path):
+    # The boundary is stated, not accidental: TTL is how long a session lasts,
+    # so the moment it is TTL old it is over. Probing only TTL-1 and TTL+1
+    # leaves the one instant that decides '>=' from '>' unsaid.
+    conn = _conn(tmp_path)
+    sid = sessions.issue(conn, _user(conn), ip="", user_agent="", now=1000)
+    assert sessions.resolve(conn, sid, ttl=TTL, now=1000 + TTL) is None
 
 
 def test_revoked_session_stops_resolving(tmp_path):
@@ -131,6 +170,46 @@ def test_audit_detail_round_trips_as_json(tmp_path):
     assert json.loads(got) == {"reason": "no_such_user"}
 
 
+def test_audit_detail_is_sql_null_when_there_is_nothing_to_say(tmp_path):
+    # Not the JSON text "null". An event with no detail must be findable with
+    # `WHERE detail IS NULL`, which the string would silently exclude.
+    conn = _conn(tmp_path)
+    audit.record(conn, actor="09120000001", action="logout", now=1000)
+    assert conn.execute("SELECT detail FROM audit_events").fetchone()[0] is None
+    assert conn.execute(
+        "SELECT COUNT(*) FROM audit_events WHERE detail IS NULL").fetchone()[0] == 1
+
+
+def test_audit_detail_stores_persian_as_persian(tmp_path):
+    # Asserted on the RAW stored text, not the parsed value: \uXXXX escapes
+    # round-trip through json.loads perfectly well and would leave the activity
+    # record unreadable and ungreppable in a Persian-language product.
+    conn = _conn(tmp_path)
+    audit.record(conn, actor="09120000001", action="user.disable", now=1000,
+                 detail={"reason": "کارمند رفت"})
+    got = conn.execute("SELECT detail FROM audit_events").fetchone()[0]
+    assert "کارمند رفت" in got
+    assert "\\u" not in got
+
+
+def test_audit_records_every_column_it_was_given(tmp_path):
+    # The activity record answers who did what to whom, from where, and how it
+    # went. A column silently dropped or transposed answers a different question.
+    conn = _conn(tmp_path)
+    audit.record(conn, actor="09120000001", action="user.disable", now=1234,
+                 session_id="sess-1", target="09120000002", ip="10.0.0.9",
+                 user_agent="Firefox/1", outcome="denied")
+    row = conn.execute("SELECT * FROM audit_events").fetchone()
+    assert row["at"] == 1234
+    assert row["actor"] == "09120000001"
+    assert row["session_id"] == "sess-1"
+    assert row["action"] == "user.disable"
+    assert row["target"] == "09120000002"
+    assert row["ip"] == "10.0.0.9"
+    assert row["user_agent"] == "Firefox/1"
+    assert row["outcome"] == "denied"
+
+
 # --- the user store -------------------------------------------------------
 
 def test_create_stores_the_canonical_username(tmp_path):
@@ -163,6 +242,43 @@ def test_set_password_replaces_only_that_users_hash(tmp_path):
     users.set_password(conn, one, "new-hash")
     assert users.by_id(conn, one)["password_hash"] == "new-hash"
     assert users.by_id(conn, two)["password_hash"] == "h"
+
+
+def test_create_records_the_supervisor_graph(tmp_path):
+    # supervisor_id and can_supervise ARE the delegation graph P0c reads. An
+    # inverted flag makes every dishwasher a supervisor; a dropped supervisor_id
+    # makes nobody anyone's report. Neither is visible from a default-args user.
+    conn = _conn(tmp_path)
+    rid = conn.execute("SELECT id FROM roles").fetchone()[0]
+    boss = users.create(conn, username="09120000001", display_name="مدیر",
+                        password_hash="h1", role_id=rid, can_supervise=True)
+    staff = users.create(conn, username="09120000002", display_name="کارمند",
+                         password_hash="h2", role_id=rid, supervisor_id=boss)
+
+    boss_row = users.by_id(conn, boss)
+    assert boss_row["can_supervise"] == 1
+    assert boss_row["supervisor_id"] is None
+    assert boss_row["display_name"] == "مدیر"
+    assert boss_row["role_id"] == rid
+
+    staff_row = users.by_id(conn, staff)
+    assert staff_row["can_supervise"] == 0
+    assert staff_row["supervisor_id"] == boss
+    assert staff_row["display_name"] == "کارمند"
+    assert staff_row["role_id"] == rid
+
+
+def test_disabling_one_person_leaves_everyone_else_signed_in(tmp_path):
+    # Firing one cook must not sign out the restaurant. resolve() joins on
+    # disabled_at, so an unscoped disable would end every live session at once.
+    conn = _conn(tmp_path)
+    gone = _user(conn, username="09120000001")
+    stays = _user(conn, username="09120000002")
+    stays_sid = sessions.issue(conn, stays, ip="", user_agent="", now=1000)
+    users.set_disabled(conn, gone, True)
+    assert users.by_id(conn, gone)["disabled_at"] is not None
+    assert users.by_id(conn, stays)["disabled_at"] is None
+    assert sessions.resolve(conn, stays_sid, ttl=TTL, now=1001) is not None
 
 
 def test_set_disabled_false_restores_access(tmp_path):

@@ -28,6 +28,12 @@ def resolve(conn: sqlite3.Connection, session_id: str, *, ttl: int,
     heartbeat runs while a tab is open, not while a person is present, so a
     sliding window would make 'signed in' unbounded for anyone who leaves the
     app open.
+
+    Two things about the returned row. It is the row as it was read, *before*
+    the `last_seen` write, so `row["last_seen"]` is the previous heartbeat, not
+    `now` — do not report it as "last seen" without re-reading. And it carries
+    an extra `user_disabled_at` column from the join: it is a session row, not
+    a user row.
     """
     row = conn.execute(
         "SELECT s.*, u.disabled_at AS user_disabled_at FROM sessions s"

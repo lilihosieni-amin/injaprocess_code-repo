@@ -1,4 +1,4 @@
-"""The activity record (spec D41, D45).
+"""The activity record (spec D41, D42).
 
 Append-only by construction: this module offers no update and no delete, and no
 endpoint anywhere exposes one. A record the top user can rewrite records nothing.
