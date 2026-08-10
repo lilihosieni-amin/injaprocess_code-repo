@@ -7,7 +7,7 @@ import re
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from .. import engine, gitcommit, storage
-from ..access import NOT_FOUND, reachable_departments, requires
+from ..access import NOT_FOUND, allows, reachable_departments, requires
 from ..auth import require_session
 
 router = APIRouter(prefix="/api/departments")
@@ -63,9 +63,32 @@ def list_departments(request: Request, user=Depends(require_session)):
     `allows`, which is a bool and has no trap, for a reason of its own (see
     `routers/pending.py`). If a second caller of `reachable_departments` ever
     appears, this filter is what to extract rather than to copy.
+
+    **`conflicts` is served only to someone who may `edit` that department**, and
+    is absent — not zeroed — for everyone else. It is the same rule `/api/pending`
+    is gated by, applied to the *count* of the same thing: D17 puts `pending`
+    (unresolved conflicts) in the never-shown block with no switch, and D56's
+    derived-signals row names a `pending` **count** in as many words, because a
+    badge saying "two conflicts" leaks the existence of withheld proposals as
+    surely as the proposals do. §11 test 9 says it plainly — *no pending count
+    reaches a non-editor* — and until now this route handed every Reader the very
+    number the endpoint next door refuses them.
+
+    Absent rather than zero because D56 is "not sent", not "sent harmless": a `0`
+    still answers *"how many unresolved proposals does this department have"*,
+    and it answers it wrongly, which is worse than not answering.
+
+    `allows(…, "edit", "dept:{code}")` per department rather than one capability
+    check for the whole board, and the difference is a real caller: a
+    `dept:x/report:k` holder is named by `reachable_departments` — that is what
+    puts x in this list at all — and `allows` refuses them on x itself, so a
+    check that asked only whether the *role* holds `edit` would serve them a
+    count for a department they cannot open. The two lists disagree on exactly
+    that holder; see `routers/pending.py`.
     """
     cfg = request.app.state.cfg
-    reachable = reachable_departments(request.app.state.db, user, "view")
+    conn = request.app.state.db
+    reachable = reachable_departments(conn, user, "view")
     reg = storage.read_json(storage.registry_path(cfg.data_root))
     out = []
     for d in reg["departments"]:
@@ -84,8 +107,10 @@ def list_departments(request: Request, user=Depends(require_session)):
                 subs += 1
             conflicts += sum(1 for p in proc.get("pending", [])
                              if p.get("status") == "open")
-        out.append({"code": d["code"], "name": d["name"],
-                    "count": count, "subs": subs, "conflicts": conflicts})
+        row = {"code": d["code"], "name": d["name"], "count": count, "subs": subs}
+        if allows(conn, user, "edit", f"dept:{d['code']}"):
+            row["conflicts"] = conflicts
+        out.append(row)
     return out
 
 
