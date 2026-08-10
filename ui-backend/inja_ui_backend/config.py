@@ -13,6 +13,10 @@ _REQUIRED = ("DATA_ROOT", "SCHEMA_DIR", "SESSION_SIGNING_KEY")
 class Settings:
     data_root: Path
     schema_dir: Path
+    #: The operational store (accounts, sessions, audit). Defaults to beside
+    #: DATA_ROOT rather than inside it — it is operational state and must never
+    #: appear in the data-repo working tree.
+    app_db: Path
     ui_username: str
     ui_password_hash: str
     session_signing_key: str
@@ -67,9 +71,11 @@ def load_settings(env: Optional[Mapping[str, str]] = None) -> Settings:
     export_dir = env.get("EXPORT_DIR")
     export_templates = env.get("UI_EXPORT_TEMPLATE_DIR")
     chromium = env.get("CHROMIUM_PATH")
+    app_db = Path(env["APP_DB"]) if env.get("APP_DB") else data_root.parent / "app.db"
     return Settings(
         data_root=data_root,
         schema_dir=schema_dir,
+        app_db=app_db,
         ui_username=ui_username,
         ui_password_hash=ui_password_hash,
         session_signing_key=env["SESSION_SIGNING_KEY"],
