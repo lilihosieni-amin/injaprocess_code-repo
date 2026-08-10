@@ -2,7 +2,7 @@ import { Navigate, type RouteObject } from 'react-router-dom'
 import { RequireAuth } from './auth/RequireAuth'
 import { AppShell } from './shell/AppShell'
 import type { SessionDescriptor } from './auth/session'
-import { Login } from './screens/Login'
+import { SignIn } from './screens/SignIn'
 import { Departments } from './screens/Departments'
 import { ProcessList } from './screens/ProcessList'
 import { Overview } from './screens/Overview'
@@ -25,7 +25,7 @@ const placeholderSession: SessionDescriptor = {
 }
 
 export const appRoutes: RouteObject[] = [
-  { path: '/login', element: <Login /> },
+  { path: '/login', element: <SignIn /> },
   {
     element: <RequireAuth />,
     children: [

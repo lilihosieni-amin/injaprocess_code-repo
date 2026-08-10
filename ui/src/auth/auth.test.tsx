@@ -1,8 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
 import { RequireAuth } from './RequireAuth'
-import { Login } from '../screens/Login'
-import { renderAt } from '../test/utils'
 
 afterEach(() => vi.restoreAllMocks())
 
@@ -36,17 +34,6 @@ describe('RequireAuth', () => {
   })
 })
 
-describe('Login', () => {
-  it('renders the brand + submits credentials', async () => {
-    const calls: string[] = []
-    mockFetch((url) => {
-      calls.push(url)
-      if (url.endsWith('/api/auth/login')) return new Response(JSON.stringify({ username: 'analyst' }), { status: 200, headers: { 'Content-Type': 'application/json' } })
-      return new Response('unauthorized', { status: 401 })
-    })
-    const { container } = renderAt('/login', <Login />, '/login')
-    ;(screen.getByPlaceholderText('analyst') as HTMLInputElement).value = 'analyst'
-    container.querySelector('form')!.requestSubmit()
-    await waitFor(() => expect(calls.some((u) => u.endsWith('/api/auth/login'))).toBe(true))
-  })
-})
+// The sign-in screen's own tests live in src/screens/SignIn.test.tsx: the
+// credential-submitting case that used to sit here exercised Login's username
+// field, which no longer exists.

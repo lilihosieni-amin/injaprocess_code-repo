@@ -22,7 +22,9 @@ function boot(initial: string, authed: boolean) {
 describe('routing', () => {
   it('redirects an unauthenticated visit to /login', async () => {
     boot('/departments', false)
-    await waitFor(() => expect(screen.getByPlaceholderText('analyst')).toBeInTheDocument())
+    // The sign-in screen's own field, not a placeholder: /login renders SignIn,
+    // which asks for a mobile number rather than a username.
+    await waitFor(() => expect(screen.getByLabelText('شمارهٔ موبایل')).toBeInTheDocument())
   })
   it('shows the departments grid when authenticated', async () => {
     boot('/departments', true)
