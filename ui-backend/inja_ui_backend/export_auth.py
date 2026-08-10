@@ -1,11 +1,16 @@
 """The one shared credential that opens a published export.
 
 It is a sibling of `auth`, never a part of it. The export credential lives in its
-own two settings instead of in the `users` table, so `auth.authenticate` has no
-path to it, and its session is signed under a different salt against the same signing
-key, so neither token verifies as the other. The separation is therefore
-cryptographic, not merely conventional: an export session can never open the
-admin API. The reverse is allowed — an admin already sees everything.
+own two settings instead of in `app_db`, so `auth.authenticate` — which reads rows
+from that database — has no path to it.
+
+The two session kinds are now different in kind rather than in salt: an export
+session is a signed itsdangerous token carrying its own claims, while an admin
+session is an opaque id looked up in the `sessions` table. So an export token
+opens the admin API only if it happens to equal a live session id, which it
+cannot: one is signed and structured, the other is 32 bytes from `secrets`. The
+separation is structural. The reverse is allowed — an admin already sees
+everything.
 """
 from __future__ import annotations
 

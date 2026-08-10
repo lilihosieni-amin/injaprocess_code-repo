@@ -114,8 +114,13 @@ def main(argv: list[str] | None = None) -> int:
       for both and is not this module's to change.
     * 2 — refused before anything was written: the password is too short, or the
       username belongs to an account that is not an active Editor.
+
+    Both refusals go to stderr, so `inja-seed … > /dev/null` still shows the
+    reason. An unhandled exception also leaves 1, but with a traceback on stderr
+    and no message on stdout, which is how a crash is told from a healthy no-op.
     """
     import argparse
+    import sys
     from pathlib import Path
 
     from . import db as _db
@@ -130,7 +135,7 @@ def main(argv: list[str] | None = None) -> int:
 
     problem = validate_password(args.password)
     if problem:
-        print(problem)
+        print(problem, file=sys.stderr)
         return 2
 
     # Its own connection, never the app's: `seed()` opens an explicit transaction,
@@ -143,7 +148,7 @@ def main(argv: list[str] | None = None) -> int:
             seed(conn, editor_username=args.username, editor_display_name=args.name,
                  editor_password_hash=hash_password(args.password))
         except ValueError as exc:
-            print(str(exc))
+            print(str(exc), file=sys.stderr)
             return 2
         after = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
     finally:

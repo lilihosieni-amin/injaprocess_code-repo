@@ -478,9 +478,17 @@ def test_the_cli_seeds_and_refuses_a_weak_password(tmp_path, capsys):
                  "--name", "تحلیل‌گر", "--password", "sixchr"]) == 0
     conn = db.connect(dbp)
     assert conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 1
+    conn.close()
 
-    assert main(["--db", str(tmp_path / "b.db"), "--username", "09120000001",
+    other = tmp_path / "b.db"
+    assert main(["--db", str(other), "--username", "09120000001",
                  "--name", "x", "--password", "five5"]) == 2
+    # The operator has to be told WHY, and on stderr, so a redirected stdout
+    # does not swallow the only explanation they get.
+    err = capsys.readouterr().err
+    assert "6" in err
+    # Refused before the database was so much as opened: the file never appears.
+    assert not other.exists()
 
 
 def test_the_cli_does_not_report_success_when_nothing_was_created(tmp_path, capsys):
@@ -496,7 +504,10 @@ def test_the_cli_does_not_report_success_when_nothing_was_created(tmp_path, caps
     assert main(argv) == 0
     capsys.readouterr()
 
-    assert main(argv) != 0
+    # Exactly 1, not merely non-zero. 1 and 2 mean different things to an
+    # operator tooling script — "the system was already healthy, stand down"
+    # versus "refused, nothing was written, act" — and `!= 0` holds neither.
+    assert main(argv) == 1
     assert "nothing was created" in capsys.readouterr().out
     conn = db.connect(dbp)
     assert conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 1
@@ -513,4 +524,5 @@ def test_the_cli_refuses_a_username_that_is_already_taken(tmp_path, capsys):
 
     assert main(["--db", str(tmp_path / "app.db"), "--username", "09120000002",
                  "--name", "x", "--password", "sixchr"]) == 2
-    assert "already exists" in capsys.readouterr().out
+    # stderr, not stdout: a refusal must survive `inja-seed … > /dev/null`.
+    assert "already exists" in capsys.readouterr().err
