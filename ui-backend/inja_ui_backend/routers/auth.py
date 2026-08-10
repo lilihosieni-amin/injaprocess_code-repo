@@ -1,5 +1,8 @@
+import functools
 import time
 
+import anyio
+import anyio.to_thread
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 
 from ..auth import (
@@ -18,15 +21,45 @@ from ..store import sessions
 
 router = APIRouter(prefix="/api/auth")
 
+#: How many password checks may be in flight at once (ARD §19.2).
+#:
+#: Two, for the same reason `routers/export_files.py` holds a limiter of two: one
+#: argon2 verify is 64 MiB of scratch memory and ~61 ms of CPU (argon2-cffi's
+#: defaults, `time_cost=3, memory_cost=65536 KiB, parallelism=4`, measured on this
+#: venv), and this endpoint is unauthenticated. Starlette's default threadpool
+#: allows 40, so 40 concurrent POSTs from anyone at all would reserve ~2.5 GB on a
+#: 3.7 GB host shared with two bots and a Chromium (D22); two caps the burst at
+#: ~128 MiB.
+#:
+#: A limiter of its own, so it *replaces* the default rather than nesting inside
+#: it: the default limiter is the one Starlette runs every sync route handler on,
+#: which here includes serving the export downloads. A queued sign-in waits; a
+#: reader mid-document does not.
+#:
+#: This is a memory bound on a deliberately expensive operation, and it is not a
+#: rate limit: there is no attempt counting, no lockout and no backoff (D13 —
+#: guessing is made visible by the record, not slow).
+_VERIFY_LIMITER = anyio.CapacityLimiter(2)
+
 
 @router.post("/login")
-def login(body: LoginBody, request: Request, response: Response):
-    # A plain `def`, so FastAPI runs it in a threadpool: argon2 is deliberately
-    # ~58 ms of CPU, and verifying on the event loop would freeze every other
-    # request in the process for that long.
+async def login(body: LoginBody, request: Request, response: Response):
     cfg = request.app.state.cfg
     conn = get_conn(request)
-    user, reason = authenticate(conn, body.username, body.password)
+    # Off the event loop and no more than `_VERIFY_LIMITER` at a time. `async` +
+    # `to_thread.run_sync` rather than the plain `def` FastAPI would put in the
+    # default threadpool for us, because only this form can carry a limiter of its
+    # own — and the ceiling is the point. `anyio.to_thread.run_sync` rather than
+    # Starlette's `run_in_threadpool`: that wrapper forwards its keyword arguments
+    # to the function being called, so a `limiter=` cannot travel through it.
+    #
+    # The whole of `authenticate` goes across, not just the verify: the miss path's
+    # dummy-hash verify is inside it, and it is what makes an unknown number cost
+    # what a wrong password costs (D56). Splitting the lookup from the verify would
+    # put the miss path outside the ceiling.
+    user, reason = await anyio.to_thread.run_sync(
+        functools.partial(authenticate, conn, body.username, body.password),
+        limiter=_VERIFY_LIMITER)
     if user is None:
         # One response for a wrong password, an unknown number and a disabled
         # account (D56); three reasons in the record (D42), because an

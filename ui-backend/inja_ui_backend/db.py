@@ -79,6 +79,22 @@ def connect(path: Path) -> sqlite3.Connection:
     # Safe because CPython's sqlite3 reports `threadsafety == 3` here (SQLite
     # built in serialized mode), so the library serializes concurrent use of one
     # connection itself.
+    #
+    # INVARIANT, and it is the whole of what makes the sharing safe: **no request
+    # handler may open an explicit transaction on the shared connection.** A
+    # transaction is connection state, not statement state, so serialization does
+    # not help with one: with `isolation_level=None` Python opens none implicitly,
+    # and today every handler is a single autocommitted statement, so there is
+    # nothing to interleave. The moment a handler wraps writes in `BEGIN...COMMIT`
+    # -- creating a user and their scopes together, or revoking every other session
+    # when a password changes -- two concurrent requests share one transaction:
+    # the second `BEGIN` raises "cannot start a transaction within a transaction",
+    # or, worse, one thread's `COMMIT` commits the other thread's half-written
+    # work. Anything needing atomicity across statements must therefore open its
+    # own connection (`db.connect`) and use it on that one thread. The only
+    # explicit transactions in the package are `migrate` below, which runs once at
+    # startup before any request, and `seed.py`, which is an operator CLI on its
+    # own connection.
     conn = sqlite3.connect(str(path), isolation_level=None,
                            check_same_thread=False)
     conn.row_factory = sqlite3.Row

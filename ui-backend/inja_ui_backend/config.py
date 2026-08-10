@@ -21,6 +21,15 @@ class Settings:
     ui_password_hash: str
     session_signing_key: str
     session_ttl: int
+    #: How many reverse proxies stand in front of this process, and therefore how
+    #: many trailing `X-Forwarded-For` entries were written by something other than
+    #: the caller (D7). 0 — the default — records the TCP peer and ignores the
+    #: header entirely, which is correct for the tests, a local run and any direct
+    #: exposure. The deployed stack behind `deploy/Caddyfile` sets 1. See
+    #: `auth.client_ip`: too high a number here does not forge anything, but too
+    #: high on a *directly* reachable process would let a client dictate the
+    #: address recorded against it.
+    trusted_proxy_hops: int
     static_dir: Optional[Path]
     export_dir: Optional[Path]
     export_template_dir: Optional[Path]
@@ -80,6 +89,7 @@ def load_settings(env: Optional[Mapping[str, str]] = None) -> Settings:
         ui_password_hash=ui_password_hash,
         session_signing_key=env["SESSION_SIGNING_KEY"],
         session_ttl=int(env.get("SESSION_TTL", "86400")),
+        trusted_proxy_hops=int(env.get("TRUSTED_PROXY_HOPS", "0")),
         static_dir=Path(static) if static else None,
         export_dir=Path(export_dir) if export_dir else None,
         export_template_dir=Path(export_templates) if export_templates else None,

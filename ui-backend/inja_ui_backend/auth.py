@@ -11,7 +11,7 @@ import sqlite3
 import time
 
 from argon2 import PasswordHasher
-from argon2.exceptions import VerifyMismatchError
+from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
 from fastapi import HTTPException, Request
 
 from .phone import USERNAME_RE, normalise_phone
@@ -37,9 +37,16 @@ def verify_hash(password_hash: str, password: str) -> bool:
         return _ph.verify(password_hash, password)
     except VerifyMismatchError:
         return False
-    except Exception:
+    except (InvalidHashError, VerificationError):
         # A stored value argon2 cannot even parse is not a password anyone got
         # right; refusing beats a 500 that says the account is special.
+        #
+        # These three and nothing wider. A bare `except Exception` here also
+        # swallows the caller's own bugs -- a `None` where a hash belongs comes
+        # back as a clean `False`, i.e. as "wrong password", and the bug looks
+        # exactly like a member of staff mistyping. `VerifyMismatchError` is a
+        # `VerificationError` and is caught above only for the comment; the pair
+        # kept here is every failure argon2 raises about the *data* it was given.
         return False
 
 
@@ -88,15 +95,53 @@ def attempted_actor(username: str) -> str:
     return username[:64]
 
 
+def client_ip(request: Request) -> str:
+    """The address to record for this request — the caller's, not the proxy's (D7).
+
+    `request.client.host` is the peer of the TCP connection. Behind
+    `deploy/Caddyfile` that peer is always Caddy, so recorded naively every row
+    in the failed-sign-in report reads `172.18.0.1` and the report — D44's only
+    detection surface — says nothing about who was guessing.
+
+    `X-Forwarded-For` is the header that carries the answer, and it is also a
+    header any client can simply write. Trusting it unconditionally is worse than
+    the useless-but-honest bridge address: it lets a stranger choose what the
+    audit record says about them, and an audit record an attacker can author is
+    not evidence. So the header is read only as far as there are proxies actually
+    in front of this process, and `TRUSTED_PROXY_HOPS` is how many that is.
+
+    Caddy *appends* the peer it really saw to whatever the client sent, so with
+    one trusted proxy the **last** entry is the one the proxy vouched for and
+    every earlier entry is the client's own writing. With N trusted proxies it is
+    the Nth from the end, by the same argument applied N times.
+
+    Default 0 — the header is ignored and the peer is recorded. That is the right
+    answer wherever no proxy exists: the tests, a local `uvicorn`, a stack reached
+    directly on the LAN. A deployment that puts this behind a proxy sets the
+    number to match its own topology; guessing on its behalf is what would make a
+    direct client's forged header authoritative.
+
+    A chain shorter than the configured hop count means the header did not come
+    through the expected proxies (or came without one adding to it), so it cannot
+    be read positionally and the peer is recorded instead.
+    """
+    peer = request.client.host if request.client else ""
+    hops = request.app.state.cfg.trusted_proxy_hops
+    if hops < 1:
+        return peer
+    chain = [part.strip() for part in
+             request.headers.get("x-forwarded-for", "").split(",") if part.strip()]
+    if len(chain) < hops:
+        return peer
+    return chain[-hops]
+
+
 def request_origin(request: Request) -> tuple[str, str]:
     """(ip, user_agent) for the session row and the activity record.
 
-    One function so the two never disagree, and one place to start trusting
-    `X-Forwarded-For` when the proxy in front of this service is configured to
-    set it (D7).
+    One function so the two never disagree.
     """
-    return ((request.client.host if request.client else ""),
-            request.headers.get("user-agent", ""))
+    return client_ip(request), request.headers.get("user-agent", "")
 
 
 def get_conn(request: Request) -> sqlite3.Connection:
