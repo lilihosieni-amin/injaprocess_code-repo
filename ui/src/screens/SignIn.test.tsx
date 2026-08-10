@@ -143,4 +143,19 @@ describe('SignIn', () => {
     expect(screen.getByRole('button')).toBeDisabled()
     release(new Response('{}', { status: 200 }))
   })
+
+  it('does not cap the number field short enough to mangle a valid spelling', () => {
+    // Asserted on the attribute, not on typing, because jsdom does not enforce
+    // maxLength at all — a browser would truncate where every test we can run
+    // stays green. And truncation here does not reject the input, it quietly
+    // makes a different phone number: '+98 0912 345 6789' is 18 characters, and
+    // a cap of 13 turns it into an account nobody owns. D56 then answers with
+    // the same 401 it gives a wrong password, so the person is told nothing
+    // while looking at a number they typed correctly.
+    const Wrapper = createWrapper()
+    render(<Wrapper><SignIn /></Wrapper>)
+    const field = screen.getByLabelText('شمارهٔ موبایل')
+    const cap = field.getAttribute('maxLength')
+    expect(cap === null || Number(cap) >= 18).toBe(true)
+  })
 })

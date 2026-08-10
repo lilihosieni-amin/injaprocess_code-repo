@@ -49,7 +49,13 @@ export function SignIn() {
               type="tel"
               inputMode="numeric"
               dir="ltr"
-              maxLength={13}
+              // No maxLength. normalisePhone accepts nine spellings — five of
+              // them, including '+98 0912 345 6789' and '(0912) 3456789', are
+              // longer than a canonical number. Truncating one does not reject
+              // it, it silently makes a DIFFERENT number, and D56's identical
+              // 401 then tells the person only that something was wrong while
+              // they look at a correctly-typed phone. USERNAME_RE is what says
+              // no, after normalisation, where the answer can be honest.
               value={number}
               onChange={(e) => setNumber(e.target.value)}
               className="min-h-touch px-4 rounded-control border border-line bg-card text-body text-ink"
