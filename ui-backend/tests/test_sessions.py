@@ -334,6 +334,17 @@ def test_set_disabled_falls_back_to_the_wall_clock(tmp_path):
     assert before <= stored <= after
 
 
+def test_an_instant_of_zero_is_honoured_not_treated_as_absent(tmp_path):
+    # The falsy-timestamp trap the test above argues against, actually pinned:
+    # `now or _now()` reads 0 as "not supplied" and silently substitutes today,
+    # so the one value that proves the caller's instant is used is the one value
+    # no other test passes.
+    conn = _conn(tmp_path)
+    uid = _user(conn)
+    users.set_disabled(conn, uid, True, 0)
+    assert users.by_id(conn, uid)["disabled_at"] == 0
+
+
 def test_re_enabling_writes_null_even_when_an_instant_is_supplied(tmp_path):
     # `now` says WHEN access was taken away. Re-enabling takes nothing away, so
     # the column must go back to NULL — resolve() joins on `disabled_at IS NULL`,

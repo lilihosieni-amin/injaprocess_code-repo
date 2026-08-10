@@ -114,8 +114,9 @@ def test_seeding_twice_changes_nothing(tmp_path):
     _seed(conn)
     assert conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 1
     assert conn.execute("SELECT COUNT(*) FROM roles").fetchone()[0] == 4
-    # user_scopes is the one table here whose duplicate row is a real failure
-    # mode: it has no UNIQUE the roles table's ON CONFLICT leans on.
+    # user_scopes is the one table here the roles table's ON CONFLICT does not
+    # cover: a duplicate insert raises IntegrityError against its composite
+    # PRIMARY KEY (user_id, scope), so a second seed must not reach it at all.
     assert conn.execute("SELECT COUNT(*) FROM user_scopes").fetchone()[0] == 1
 
 
@@ -124,7 +125,7 @@ def test_seeding_twice_changes_nothing(tmp_path):
     "cashier",
     "",                       # normalises to '' — no account at all
     "0912000000",             # ten digits
-    "091200000000",           # twelve: `match` would accept the 11-digit prefix
+    "091200000000",           # twelve digits
     "02112345678",            # a landline is not a mobile number
 ])
 def test_rejects_a_username_that_is_not_a_mobile_number(tmp_path, bad):
@@ -421,6 +422,10 @@ def test_a_disabled_editor_and_a_free_number_gets_a_second_editor(tmp_path):
 
     fresh = users.by_username(conn, "09120000001")
     assert fresh is not None and fresh["disabled_at"] is None
+    # The credential of the only account that can recover the system. Bound to a
+    # value no fixture shares, or a hardcoded hash passes unnoticed.
+    assert fresh["password_hash"] == "h2"
+    assert fresh["display_name"] == "جدید"
     assert conn.execute("SELECT name FROM roles WHERE id = ?",
                         (fresh["role_id"],)).fetchone()[0] == "editor"
     assert [r[0] for r in conn.execute(
@@ -459,3 +464,8 @@ def test_the_capability_table_cannot_be_edited_through_what_it_hands_out():
         with pytest.raises(AttributeError):
             caps.append("edit")  # type: ignore[attr-defined]
         assert set(caps) == D11[name]
+    # NON_DELEGABLE carries the same risk for the same reason: it names the three
+    # capabilities the seed is the only origin of, and one `.add` elsewhere in
+    # the process would silently redefine what may never be delegated.
+    with pytest.raises(AttributeError):
+        seed.NON_DELEGABLE.add("view")  # type: ignore[attr-defined]
