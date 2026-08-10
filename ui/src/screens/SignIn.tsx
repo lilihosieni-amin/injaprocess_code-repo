@@ -4,8 +4,15 @@ import { Button } from '../ui/Button'
 import { Card } from '../ui/Card'
 import { normalisePhone } from '../lib/digits'
 import { useLogin } from '../api/hooks'
+import { ApiError } from '../api/client'
 
 const MIN_PASSWORD = 6
+// The server's twin of this is phone.USERNAME_RE. Checked here as well because
+// D56 makes the server's refusal deliberately uninformative: it cannot tell you
+// your number was malformed without also telling an attacker which numbers
+// exist. A local check leaks nothing — it never consults the account list — so
+// it is the only place a person can be told the actual problem.
+const CANONICAL_NUMBER = /^09\d{9}$/
 
 export function SignIn() {
   const numberId = useId()
@@ -19,18 +26,28 @@ export function SignIn() {
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
     setError(null)
+    const username = normalisePhone(number)
+    if (!CANONICAL_NUMBER.test(username)) {
+      setError('شمارهٔ موبایل معتبر نیست.')
+      return
+    }
     if (password.length < MIN_PASSWORD) {
       setError(`گذرواژه باید دست‌کم ${MIN_PASSWORD} نویسه باشد.`)
       return
     }
     try {
-      await login.mutateAsync({ username: normalisePhone(number), password })
+      await login.mutateAsync({ username, password })
       navigate('/departments', { replace: true })
-    } catch {
-      // One message for every refusal. The server deliberately does not tell
+    } catch (e) {
+      // One message for every REFUSAL: the server deliberately does not tell
       // wrong-password from unknown-number apart, and copy that guessed would
-      // undo that.
-      setError('شماره یا گذرواژه درست نیست.')
+      // undo that. But a 500 or a dropped connection is not a refusal, and
+      // saying "your password is wrong" during an outage sends people to reset
+      // a password that was always correct. D56 governs 401 and nothing else.
+      const refused = e instanceof ApiError && e.status === 401
+      setError(refused
+        ? 'شماره یا گذرواژه درست نیست.'
+        : 'ارتباط با سامانه برقرار نشد. دوباره تلاش کنید.')
     }
   }
 
@@ -48,6 +65,7 @@ export function SignIn() {
               id={numberId}
               type="tel"
               inputMode="numeric"
+              autoComplete="username"
               dir="ltr"
               // No maxLength. normalisePhone accepts nine spellings — five of
               // them, including '+98 0912 345 6789' and '(0912) 3456789', are
@@ -69,6 +87,7 @@ export function SignIn() {
             <input
               id={passwordId}
               type="password"
+              autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="min-h-touch px-4 rounded-control border border-line bg-card text-body text-ink"

@@ -27,6 +27,46 @@ describe('SignIn', () => {
     expect(field).toHaveAttribute('type', 'tel')
     expect(field).toHaveAttribute('inputMode', 'numeric')
     expect(field).toHaveAttribute('dir', 'ltr')
+    expect(field).toHaveAttribute('autoComplete', 'username')
+  })
+
+  it('masks the password', () => {
+    // type="text" here puts someone's password on screen in a shared kitchen,
+    // and nothing else in the suite would notice: every other assertion in this
+    // file reads the field by its label, which works the same either way.
+    const Wrapper = createWrapper()
+    render(<Wrapper><SignIn /></Wrapper>)
+    const field = screen.getByLabelText('گذرواژه')
+    expect(field).toHaveAttribute('type', 'password')
+    expect(field).toHaveAttribute('autoComplete', 'current-password')
+  })
+
+  it('refuses a malformed number locally, and says so', async () => {
+    // The one thing the server cannot tell you. Under D56 its refusal is
+    // deliberately identical for an unknown number and a wrong password, so
+    // "your number is not a number" has to be said here or not at all.
+    const spy = mockFetch(200, {})
+    const Wrapper = createWrapper()
+    render(<Wrapper><SignIn /></Wrapper>)
+    await userEvent.type(screen.getByLabelText('شمارهٔ موبایل'), '0912')
+    await userEvent.type(screen.getByLabelText('گذرواژه'), 'sixchars')
+    await userEvent.click(screen.getByRole('button', { name: 'ورود' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('شمارهٔ موبایل معتبر نیست.')
+    expect(spy).not.toHaveBeenCalled()
+  })
+
+  it('does not blame the credentials when the server fails', async () => {
+    // A 500 is not a refusal. Reporting it as one sends a person off to reset a
+    // password that was always correct, during an outage. D56 governs 401.
+    mockFetch(500, { detail: 'boom' })
+    const Wrapper = createWrapper()
+    render(<Wrapper><SignIn /></Wrapper>)
+    await userEvent.type(screen.getByLabelText('شمارهٔ موبایل'), '09123456789')
+    await userEvent.type(screen.getByLabelText('گذرواژه'), 'sixchars')
+    await userEvent.click(screen.getByRole('button', { name: 'ورود' }))
+    const alert = await screen.findByRole('alert')
+    expect(alert).not.toHaveTextContent('گذرواژه درست نیست')
+    expect(alert).toHaveTextContent('ارتباط با سامانه برقرار نشد. دوباره تلاش کنید.')
   })
 
   it('sends the number in canonical form however it was typed', async () => {
