@@ -59,10 +59,14 @@ EXPORT_PASSWORD_HASH=    # its argon2 hash — see step 2 (never the plaintext)
 ```
 
 `DATA_ROOT`, `EXPORT_DIR`, `APP_DB` and `TRUSTED_PROXY_HOPS` are set by compose,
-so they do not belong in this file. `APP_DB=/state/app.db` in particular is the
-compose file's to own: it puts the account store on the `ui-state` volume, and
-anything you write here that disagreed with it would move the store somewhere
-that does not survive a redeploy.
+so they do not belong in this file. Compose resolves the conflict the other way
+round from what people expect: **`environment:` in the compose file wins over
+`env_file`**, so a line you add here for one of those four is not an override, it
+is a line that silently does nothing. That is the worse failure of the two —
+you would change `APP_DB` here, restart, see no change, and go looking for the
+reason in the wrong place. Change them in `deploy/docker-compose.yml`, where
+`APP_DB=/state/app.db` puts the account store on the `ui-state` volume that
+survives a redeploy.
 
 No user credential goes in this file. `UI_USERNAME`, `UI_PASSWORD_HASH` and
 `UI_USERS_FILE` are gone from the code — a password in the environment would be a

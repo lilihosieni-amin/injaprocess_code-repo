@@ -28,8 +28,10 @@ Nothing here touches the server host or the production bots.
 | `control-bot` | `inja-control-bot-local` | Bot 2 — runs the `/process-voice` pipeline (Claude Code) | Telegram `@aiprocessTestinjabo` |
 | `ui-backend` | `inja-ui-backend-local` | FastAPI + built frontend | http://localhost:8000 |
 
-The UI is served over **plain HTTP** on `:8000` — no Caddy/TLS locally, because
-the login cookie has no `Secure` flag, so `http://localhost` keeps you logged in.
+The UI is served over **plain HTTP** on `:8000` — no Caddy/TLS locally. The login
+cookie **is** `Secure` (it always is), and login still works because `localhost`
+counts as a potentially trustworthy origin; reach the stack at anything else over
+plain HTTP and it stops. See [Access](#access).
 
 ---
 

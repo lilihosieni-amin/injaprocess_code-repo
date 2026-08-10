@@ -29,7 +29,7 @@ Copy `config/ui-backend.env.example` and fill in the blanks:
 | `DATA_ROOT` | yes | Absolute path to the data-repo root directory |
 | `SCHEMA_DIR` | yes | Absolute path to `code-repo/schemas` (frozen JSON schemas) |
 | `SESSION_SIGNING_KEY` | yes | Secret signing the **export** session cookie and the export URL tokens. The UI session cookie carries an opaque session id and is not signed with it. |
-| `APP_DB` | no | The operational store — accounts, roles, scopes, sessions, activity record. Opened and migrated at startup. Default: `DATA_ROOT/../app.db`. Point it **outside `DATA_ROOT`**: inside, the store would be committed and pushed by `git-push`, password hashes and all. Under Docker the compose files set `/state/app.db` on the `ui-state` volume — unset there, the default resolves to `/app.db` in the container's throwaway layer and every account vanishes on the next recreate. |
+| `APP_DB` | no | The operational store — accounts, roles, scopes, sessions, activity record. Opened and migrated at startup. Default: `DATA_ROOT/../app.db`. Point it **outside `DATA_ROOT`** — startup **refuses** an `APP_DB` inside it, naming both paths: inside, the store would be committed and pushed by `git-push`, password hashes and all, and would be readable by the pipeline runtime that has `DATA_ROOT` bind-mounted. Under Docker the compose files set `/state/app.db` on the `ui-state` volume — unset there, the default resolves to `/app.db` in the container's throwaway layer and every account vanishes on the next recreate. |
 | `SESSION_TTL` | no | Session lifetime in seconds (default `86400`). Absolute from issue, never sliding. |
 | `TRUSTED_PROXY_HOPS` | no | How many reverse proxies stand in front of this process (default `0`). Decides which `X-Forwarded-For` entry is recorded as the client address on the session row and every activity row. `0` ignores the header and records the TCP peer — right for a direct host run, and wrong behind a proxy, where it records the bridge address for everyone. The deployed stack has one (Caddy) and sets `1`. Too high a value on a directly reachable process lets a caller dictate the address recorded against them. |
 | `UI_STATIC_DIR` | no | Built frontend directory (`ui/dist`); may be absent until Phase 6 |
@@ -103,3 +103,20 @@ The module-level `app` is built lazily: it is `None` when `DATA_ROOT` is not set
 
 Static files (built frontend) are served at `/` when `UI_STATIC_DIR` is set and
 the directory exists. The `/api/*` routes always take precedence.
+
+### `POST /api/auth/password`
+
+The only way to change a password in this release — there is no screen for it
+yet, so the request is made by hand with the person's own session cookie. Two
+fields, and they are `current` and `next` (`models.PasswordBody`):
+
+```json
+{"current": "the-current-password", "next": "the-new-password"}
+```
+
+`204` and an empty body on success, and it **ends every other session that person
+holds**, keeping the one that made the call. `400` with a Persian `detail` when
+the current password is wrong or the new one is under the six-character floor;
+`401` when the session is not valid. It is self-service only: the row it changes
+is the one the cookie is signed in as, so it cannot set anybody else's password.
+See `docs/runbooks/06-changing-users.md` for a copy-pasteable call.

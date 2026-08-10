@@ -106,3 +106,83 @@ def test_app_db_read_from_env(tmp_path):
     env = _valid_env(tmp_path)
     env["APP_DB"] = str(tmp_path / "elsewhere" / "app.db")
     assert load_settings(env).app_db == (tmp_path / "elsewhere" / "app.db")
+
+
+def test_app_db_inside_data_root_refuses_to_start(tmp_path):
+    """`APP_DB: /data/app.db` is a natural-looking consolidation and a disaster.
+
+    DATA_ROOT is bind-mounted read-write into `control-bot`, whose hooks block
+    writes and not reads, so the store there hands the pipeline agent every argon2
+    hash and every live `sessions.id` — and a session id in an `inja_session`
+    cookie authenticates as that person. It is also a git working tree that is
+    pushed. Prose in four documents is not enough; startup must refuse.
+    """
+    env = _valid_env(tmp_path)
+    env["APP_DB"] = str(tmp_path / "data" / "app.db")
+    with pytest.raises(RuntimeError) as exc:
+        load_settings(env)
+    message = str(exc.value)
+    assert "APP_DB" in message and "DATA_ROOT" in message
+    assert str(tmp_path / "data" / "app.db") in message   # names both paths
+    assert str(tmp_path / "data") in message
+
+
+def test_app_db_deeper_inside_data_root_also_refuses(tmp_path):
+    """Containment, not a parent-directory equality check."""
+    env = _valid_env(tmp_path)
+    (tmp_path / "data" / "state").mkdir()
+    env["APP_DB"] = str(tmp_path / "data" / "state" / "app.db")
+    with pytest.raises(RuntimeError, match="APP_DB"):
+        load_settings(env)
+
+
+def test_app_db_traversing_back_into_data_root_refuses(tmp_path):
+    """Resolved on both sides, so `..` cannot walk around the guard.
+
+    `Path.parents` is pure lexical splitting: it never collapses `..`, so a path
+    that leaves by one directory and re-enters DATA_ROOT by another has DATA_ROOT
+    nowhere among its parents while still landing squarely inside it. Only
+    resolving both sides catches this one.
+    """
+    env = _valid_env(tmp_path)
+    (tmp_path / "state").mkdir()
+    env["APP_DB"] = str(tmp_path / "state" / ".." / "data" / "app.db")
+    with pytest.raises(RuntimeError, match="APP_DB"):
+        load_settings(env)
+
+
+def test_app_db_outside_data_root_is_accepted(tmp_path):
+    """The guard must not refuse the paths the deployment actually uses."""
+    env = _valid_env(tmp_path)
+    env["APP_DB"] = str(tmp_path / "state" / "app.db")
+    assert load_settings(env).app_db == (tmp_path / "state" / "app.db")
+
+
+def test_default_app_db_survives_the_guard(tmp_path):
+    """The default is DATA_ROOT's *parent*; a guard that rejected it would make
+    every host run and every test unstartable."""
+    assert load_settings(_valid_env(tmp_path)).app_db == (tmp_path / "app.db")
+
+
+def test_blank_trusted_proxy_hops_means_unset(tmp_path):
+    """`config/ui-backend.env.example` leaves settings blank on purpose, so a blank
+    line must not be a bare `int('')` ValueError at startup."""
+    env = _valid_env(tmp_path)
+    env["TRUSTED_PROXY_HOPS"] = ""
+    assert load_settings(env).trusted_proxy_hops == 0
+
+
+def test_blank_session_ttl_means_unset(tmp_path):
+    env = _valid_env(tmp_path)
+    env["SESSION_TTL"] = ""
+    assert load_settings(env).session_ttl == 86400
+
+
+def test_set_trusted_proxy_hops_and_session_ttl_still_read(tmp_path):
+    """Blank-is-unset must not swallow a real value."""
+    env = _valid_env(tmp_path)
+    env["TRUSTED_PROXY_HOPS"] = "1"
+    env["SESSION_TTL"] = "3600"
+    s = load_settings(env)
+    assert s.trusted_proxy_hops == 1
+    assert s.session_ttl == 3600

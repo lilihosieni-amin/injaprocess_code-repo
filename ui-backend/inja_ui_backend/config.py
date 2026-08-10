@@ -68,13 +68,39 @@ def load_settings(env: Optional[Mapping[str, str]] = None) -> Settings:
     export_templates = env.get("UI_EXPORT_TEMPLATE_DIR")
     chromium = env.get("CHROMIUM_PATH")
     app_db = Path(env["APP_DB"]) if env.get("APP_DB") else data_root.parent / "app.db"
+    # Refuse to start rather than trust prose. Four documents warn against putting
+    # the store inside DATA_ROOT and §16 states it as an architectural property, but
+    # `APP_DB: /data/app.db` is a natural-looking consolidation — /data is the only
+    # other path this service is configured with — and the app would migrate there
+    # happily. DATA_ROOT is bind-mounted read-write into `control-bot`, whose Claude
+    # Code runtime is confined by hooks that block *writes*, not reads: from that
+    # moment the pipeline agent can read every argon2 hash and every live
+    # `sessions.id`, and a session id pasted into an `inja_session` cookie
+    # authenticates as that person with no further check. It would also enter the
+    # data-repo working tree and be committed and pushed. Resolved on both sides so
+    # `/data/../data/app.db` and a symlinked DATA_ROOT cannot walk around it.
+    resolved_db = app_db.resolve()
+    resolved_root = data_root.resolve()
+    if resolved_db == resolved_root or resolved_root in resolved_db.parents:
+        raise RuntimeError(
+            f"APP_DB must not be inside DATA_ROOT: {resolved_db} is inside"
+            f" {resolved_root}. The store holds every password hash and every live"
+            " session id; DATA_ROOT is readable by the pipeline runtime and is a"
+            " git working tree that gets pushed. Put it on its own volume"
+            " (the deployed stack uses /state/app.db).")
     return Settings(
         data_root=data_root,
         schema_dir=schema_dir,
         app_db=app_db,
         session_signing_key=env["SESSION_SIGNING_KEY"],
-        session_ttl=int(env.get("SESSION_TTL", "86400")),
-        trusted_proxy_hops=int(env.get("TRUSTED_PROXY_HOPS", "0")),
+        # `or` and not a default argument: `config/ui-backend.env.example` leaves
+        # EXPORT_USERNAME, EXPORT_DIR and UI_STATIC_DIR blank on purpose, so "clear
+        # the ones you do not need" is the file's own idiom — and a blank line here
+        # reached `int("")`, which is a bare ValueError at startup with no mention of
+        # which variable caused it. Blank means unset, as it does everywhere else in
+        # this function.
+        session_ttl=int(env.get("SESSION_TTL") or "86400"),
+        trusted_proxy_hops=int(env.get("TRUSTED_PROXY_HOPS") or "0"),
         static_dir=Path(static) if static else None,
         export_dir=Path(export_dir) if export_dir else None,
         export_template_dir=Path(export_templates) if export_templates else None,

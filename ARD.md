@@ -759,10 +759,10 @@ Key Docker notes:
 - Secrets (bot tokens, Vertex service account, `ANTHROPIC_API_KEY`, UI hash/key) are injected via Docker secrets or an `.env` file outside the repo, not baked into the image.
 - **Report and state deployment facts:**
   - `EXPORT_DIR=/exports`, backed by the named volume `ui-exports` — deliberately **not** under `data-repo`, so built artifacts never enter the working tree or Git (§13.4, INV-6). It is now a **cache**, and may be emptied at any time.
-  - `ui-state` holds `app.db` (users, roles, grants, sessions, confirmations, visibility policy, activity record) and is mounted **only** on `ui-backend` (§14, §19.1).
+  - `ui-state` holds `app.db` (users, roles, grants, sessions, confirmations, visibility policy, activity record) and is mounted **only** on `ui-backend` (§14, §19.1). `config.load_settings` **refuses to start** when `APP_DB` resolves inside `DATA_ROOT`, so the boundary is enforced by the app and not only by the compose file: inside, the store would enter the pushed working tree *and* become readable by `control-bot`, whose hooks block writes and not reads — and a live `sessions.id` is a bearer credential.
   - `ui-comments` holds `comments.db` and is mounted on `ui-backend` **and** on `control-bot` read-write, so the `comments` CLI can read an approved comment and mark it addressed (§19.8). SQLite runs in WAL mode with a busy timeout; the file sees a handful of writes a day.
   - `CHROMIUM_PATH` is baked into the `ui-backend` image. **Unset means "no PDF"**, and the report is still readable (D21, NFR-13) — a deployment without the browser keeps working.
-  - `UI_USERS_FILE` and the `ui-users.json` read-only secret mount are **retired**: users live in `app.db` and must be writable, since every user changes their own password (FR-A1). The file is read once at migration to seed the table (§19.9).
+  - `UI_USERS_FILE` and the `ui-users.json` read-only secret mount are **retired**: users live in `app.db` and must be writable, since every user changes their own password (FR-A1). The file is **not** migrated and is read by nothing — delete it (§19.9).
   - `EXPORT_USERNAME` / `EXPORT_PASSWORD_HASH` are **removed** (§13.5).
   - **`env_file` is read with `format: raw`.** Compose interpolates env-file values by default, so every `$` in `$argon2id$v=19$m=…` reads as a variable reference and the container receives the hash truncated at the first `$`. The password then can never verify — failing *closed*, and indistinguishable from the credential simply being unset. Found on the first real deploy; both stacks pin `format: raw`. Fewer hashes now live in env files, but `SESSION_SIGNING_KEY` still does.
   - `mem_limit: 1g` on `ui-backend`: ~150 MB Python + ≤400 MB for one Chromium (bounded by the render lock, D22) + ~128 MB argon2 (bounded by the capacity limiter) ≈ 680 MB, with headroom. The ceiling matters because `POST /api/auth/login` is unauthenticated and public; without it a runaway there takes the bots down with it rather than only itself.
@@ -859,7 +859,7 @@ Key Docker notes:
 
 Approving a comment is not a capability: it is inherent to being someone's supervisor.
 
-**Roles come from the seed. No API path creates, edits or deletes one** (spec D50). The role table is fixed at deploy time: users are created through the system, roles are not. There is no role builder and no capability matrix on any screen, and a role can never be deleted, since every user holds exactly one. Adding a fourth — `Reader (no download)` = `view` + `comment` is the likely first — is a seed change and a deploy.
+**Roles come from the seed. No API path creates, edits or deletes one** (spec D50). The role table is fixed at deploy time: users are created through the system, roles are not. There is no role builder and no capability matrix on any screen, and a role can never be deleted, since every user holds exactly one. The seed creates **four** — `Reader (no download)` = `view` + `comment` is there from day one, because FR-E7 promises download can be withheld from someone who may still read and, with no per-user overrides, a role is the only way to say it. A **fifth** is a seed change and a deploy, not a form someone fills in.
 
 The six delegable capabilities are what a *seeded* role may be composed from; nothing composes a role at runtime.
 
@@ -875,13 +875,14 @@ The six delegable capabilities are what a *seeded* role may be composed from; no
 
 A scope covering `dept:x` **includes reports added later**; one covering `dept:x/report:k` **never widens**. There is deliberately no `process:{id}` scope. A user may hold several scopes — a head of two departments is one user with two, not a special case.
 
-**Roles** are rows in a table, not `if` statements. Three presets:
+**Roles** are rows in a table, not `if` statements. Four presets (`seed.ROLES`):
 
-| Capability | Reader | Admin | Editor |
-|---|:-:|:-:|:-:|
-| `view` `comment` `export_pdf` | ✅ | ✅ | ✅ |
-| `manage_users` `manage_peers` `view_audit` | – | ✅ | ✅ |
-| `edit` `confirm` `set_visibility` | – | – | ✅ |
+| Capability | Reader (no download) | Reader | Admin | Editor |
+|---|:-:|:-:|:-:|:-:|
+| `view` `comment` | ✅ | ✅ | ✅ | ✅ |
+| `export_pdf` | – | ✅ | ✅ | ✅ |
+| `manage_users` `manage_peers` `view_audit` | – | – | ✅ | ✅ |
+| `edit` `confirm` `set_visibility` | – | – | – | ✅ |
 
 The intended deployment is: the analyst as **Editor** + `*`; a deputy as **Admin** + `*`; a department head as **Reader** + `dept:x` + `can_supervise`; viewers and report readers as **Reader** at narrower scopes. Scoped Admins are legal in the model and absent in practice.
 
@@ -1015,7 +1016,7 @@ Notification is in-app only — a badge plus a "waiting longest" list, so a bloc
 
 ### 19.9 Migration
 
-The seed process creates the three preset roles — including `Editor`, which holds the three non-delegable capabilities and which **no API path can ever recreate** (§19.2) — and makes the current analyst an Editor scoped `*`. `ui-users.json` is read once for its remaining entries, each becoming a user that needs a role, a scope and a supervisor before it can sign in. The shared export credential is removed, so anyone reading exports today needs an account. Nothing is confirmed (§19.6).
+The seed process creates the four preset roles (§19.2) — including `Editor`, which holds the three non-delegable capabilities and which **no API path can ever recreate** — and creates exactly **one** user: the current analyst, as Editor scoped `*`, from a mobile number and password given to the seed as parameters. **`ui-users.json` is not migrated** (spec D50/§10): its entries are bare names (`analyst`, `manager`) and a username is now a mobile number, so importing them would mean inventing placeholder numbers — permanently occupying real numbers in a uniqueness space that deliberately spans disabled accounts — and would carry forward hashes chosen under a different regime. There are two of them; every other user is created through the UI, by a person, with a real number. This also avoids a "provisioned but unusable" account state the model does not have. The shared export credential is removed, so anyone reading exports today needs an account. Nothing is confirmed (§19.6).
 
 Because the seed is the only origin of `edit`, `confirm` and `set_visibility`, it is also the only recovery path if every Editor account is lost. That belongs in `docs/runbooks/06-changing-users.md`.
 

@@ -133,7 +133,7 @@ Editor is:
 
 ```bash
 cd /opt/inja/code-repo/deploy
-docker compose exec ui-backend python - <<'PY'
+docker compose exec -T ui-backend python - <<'PY'
 import sqlite3
 conn = sqlite3.connect("file:/state/app.db?mode=ro", uri=True)
 rows = conn.execute(
@@ -147,6 +147,11 @@ PY
 
 `0 account(s)` means an empty store — go to the next section. It prints no
 password hashes, so it is safe to paste into a chat while asking for help.
+
+`-T` is not decoration: `docker compose exec` allocates a TTY by default, and
+older Compose builds answer *"the input device is not a TTY"* the moment stdin is
+a heredoc rather than your keyboard. Every `exec … python - <<'PY'` in this
+runbook carries it.
 
 If `docker compose exec` fails with "service not running", the container is
 down — `docker compose ps`, then `docker compose up -d ui-backend` — and that,
@@ -206,7 +211,9 @@ a throwaway container that shares the volume and removes itself.
 There is **no supported way to add an ordinary user yet.** The account screens —
 creating people, setting their role and scope, and an administrator setting
 someone's password — are the next sub-project. Until then the deployment has the
-accounts the seed made, and each person changes their own password from the UI.
+accounts the seed made, and the only way to change a password is the API call
+below — **there is no password screen in this release**, so do not tell anyone to
+"change it in the UI".
 
 Do not hand-insert rows into `app.db` to get ahead of it: an account needs a role
 and at least one scope row to be usable, and one written wrongly is an account
@@ -216,12 +223,32 @@ What does work today, per person:
 
 - **Signing in and signing out**, from the UI. Signing out ends that one session
   immediately and leaves the person's other sessions alone.
-- **Changing your own password**, via `POST /api/auth/password` with the current
-  and the new password. There is **no screen for it yet** — it arrives with the
-  account screens — so today it is an API call made with the caller's own session
-  cookie. When it succeeds it re-verifies the current password and **ends every
-  other session that person holds**, keeping the one that made the call. That is
-  the answer to "someone used my laptop", and it is per-person: an administrator
+- **Changing your own password**, via `POST /api/auth/password`. There is **no
+  screen for it yet** — it arrives with the account screens — so today it is an
+  API call the person makes with their own session cookie. The body has exactly
+  two fields, `current` and `next`:
+
+  ```js
+  // from the person's own browser, on the site they are signed in to:
+  // DevTools → Console. The session cookie rides along with `credentials`.
+  fetch("/api/auth/password", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    credentials: "same-origin",
+    body: JSON.stringify({current: "their-current-password",
+                          next:    "their-new-password"})
+  }).then(r => console.log(r.status))
+  ```
+
+  `204` means it is done. `400` means the body was refused and the reply says
+  which field in Persian — the current password was wrong, or the new one is
+  under the six-character floor. `401` means the session is not valid; sign in
+  again. Nobody else can make this call for them: the row it changes is the one
+  the cookie is signed in as.
+
+  When it succeeds it re-verifies the current password and **ends every other
+  session that person holds**, keeping the one that made the call. That is the
+  answer to "someone used my laptop", and it is per-person: an administrator
   cannot set someone else's password yet.
 
 ### Cutting someone off right now
@@ -237,7 +264,7 @@ next click, they cannot sign in again, and no restart is needed.
 
 ```bash
 cd /opt/inja/code-repo/deploy
-docker compose exec ui-backend python - <<'PY'
+docker compose exec -T ui-backend python - <<'PY'
 import sqlite3, time
 conn = sqlite3.connect("/state/app.db", isolation_level=None)
 conn.execute("PRAGMA busy_timeout=5000")

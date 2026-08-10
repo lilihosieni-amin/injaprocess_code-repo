@@ -126,7 +126,12 @@ services:
       # not fail loudly; it silently rebuilds an empty store and every account,
       # session and audit row from the previous run is gone. Beside DATA_ROOT and
       # never inside it, so the operational store never enters the data-repo
-      # working tree (ARD §16, §19.1).
+      # working tree (ARD §16, §19.1). `/data/app.db` looks like a tidy
+      # consolidation and is the one edit that would hand the pipeline runtime
+      # every password hash and every live session id — /data is bind-mounted
+      # read-write into control-bot, whose hooks block writes and not reads.
+      # `config.load_settings` now REFUSES to start on an APP_DB inside DATA_ROOT,
+      # so this is enforced and not merely commented.
       APP_DB: /state/app.db
       # Exactly one reverse proxy stands in front of this process: the `proxy`
       # service (deploy/Caddyfile). The client address recorded in the session row
