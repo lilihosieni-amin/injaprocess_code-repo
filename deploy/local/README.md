@@ -57,7 +57,10 @@ All gitignored. Create them once (below).
 | `upload-bot.env` | `TELEGRAM_BOT_TOKEN` (test), `ALLOWED_USER_IDS`, `DATA_ROOT`, `TELEGRAM_PROXY` | `*.env` |
 | `control-bot.env` | `TELEGRAM_BOT_TOKEN` (test), `ALLOWED_USERS`, budgets, feature flags, `DATABASE_URL`, … | `*.env` |
 | `ui-backend.env` | `SESSION_SIGNING_KEY`, `SESSION_TTL`, and optionally `EXPORT_USERNAME` + `EXPORT_PASSWORD_HASH` | `*.env` |
-| `ui-users.json` | `{username: argon2-hash}` for the UI login | `deploy/local/ui-users.json` rule |
+
+There is no `ui-users.json` any more. The UI login is an account in `app.db` on
+the `local-ui-state` volume, created with `inja-seed` (step 3). If an old
+`local/ui-users.json` is still here, nothing reads it — delete it.
 
 Schemas for the env files live in `../../config/*.env.example` and the server
 runbooks (`../../docs/runbooks/02-secrets-and-auth.md`) — the local files use the
@@ -116,22 +119,33 @@ Skip both if you are not testing the export login: unset, `/exports` answers
 `401` to everyone except a signed-in UI user, no login form is offered, and
 nothing else about the stack changes.
 
-### 3. UI users file (login)
+### 3. Seed a local account (login)
 
-The UI login is defined by `deploy/local/ui-users.json` (username → argon2 hash).
-Generate it with the built `ui-backend` image (build it first — see
-[Build & run](#build--run)). This example creates the `admin` / `admin` login:
+The UI login is an account row in `app.db` on the `local-ui-state` volume, not a
+file. Build the image first (see [Build & run](#build--run)), then seed one
+Editor. The username **is** a mobile number — `09` plus nine digits, nothing else
+is accepted — and the password floor is six characters:
 
 ```bash
 # from deploy/
-docker run --rm inja-ui-backend-local python -c \
- "import json; from argon2 import PasswordHasher; \
-  print(json.dumps({'admin': PasswordHasher().hash('admin')}))" \
-  > local/ui-users.json
+docker compose -f docker-compose.local.yml run --rm ui-backend \
+  inja-seed --db /state/app.db --username 09123456789 \
+            --name "Local Editor" --password 'local-test-pw'
 ```
 
-Change `'admin'` (the password) to whatever you like; add more `username: hash`
-pairs for more users.
+`created the Editor 09123456789` and exit `0` means you can sign in with
+`09123456789` / `local-test-pw`.
+
+Re-running it prints `an active Editor already exists, so nothing was created`
+and exits **1** — the volume kept your account, which is the point. To start over
+with a clean store, remove just that volume:
+
+```bash
+docker compose -f docker-compose.local.yml rm -sf ui-backend
+docker volume rm inja-food-process-local_local-ui-state
+```
+
+Full exit-code table and the recovery path: `../../docs/runbooks/06-changing-users.md`.
 
 ### 4. Seed Claude credentials (control-bot)
 
@@ -266,8 +280,8 @@ reach Hub with `docker save` / `docker load`.
 
 ## Access
 
-- **UI:** http://localhost:8000 — log in with the credentials from
-  `ui-users.json` (default `admin` / `admin`).
+- **UI:** http://localhost:8000 — log in with the mobile number and password you
+  seeded in [step 3](#3-seed-a-local-account-login).
 
 > **Why plain HTTP still logs you in.** Both session cookies — `inja_session` for
 > the admin panel and `inja_export_session` for `/exports` — are set with the
@@ -396,8 +410,11 @@ succeeded — you have a Node base but no Python one, which is Case B.
 
 ### UI login fails
 
-- `ui-users.json` must be valid JSON with an **argon2** hash (regenerate via
-  step 3). Watch for `UI_USERS_FILE must be a non-empty JSON object`.
+- **Every password rejected, including the right one?** The store probably has no
+  account. Re-run step 3: exit `0` means one was just created, exit `1` means one
+  already existed and you have the wrong number or password. Remember the
+  username is the canonical mobile number (`09` + nine digits); Persian digits
+  and a `+98` prefix are folded to it, anything else is not an account.
 - If the container won't start, check `ui-backend` logs for missing env
   (`SESSION_SIGNING_KEY`) or `DATA_ROOT is not a directory`.
 - **Login returns 200 and the next request is still 401?** You are almost

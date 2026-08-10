@@ -66,14 +66,31 @@ the agent ever tries to write outside `/data`.
 
 ## Backup & restore
 
+Three separate things need backing up, and `git-push` covers only the first.
+
 - **Off-site baseline:** `git-push` is the off-site baseline — it backs up
   data-repo **minus audio** (raw audio under `meetings/audio/` is gitignored and
   never leaves the server).
 - **Raw audio:** because audio is excluded from git, add a **separate**
   rsync/snapshot of `/opt/inja/data-repo/meetings/audio/` if you need to keep the
   raw voices.
-- **Restore:** re-clone data-repo from GitHub, then restore
-  `meetings/audio/` from the audio snapshot.
+- **`app.db` — not covered by anything yet.** It lives on the `ui-state` Docker
+  volume, outside the data-repo, and holds every account, every password hash,
+  every session and the whole activity record. `git-push` never sees it, so
+  today **nothing off-site holds any of it** and NFR-7 is simply false for
+  users, sessions and the activity record until this is set up. The
+  `state-backup` service that closes the gap (ARD §16, NFR-16 — `sqlite3 .backup`
+  off-site on the same 11:00/23:00 schedule) is not built yet; take the backup by
+  hand meanwhile, with the `.backup` recipe in
+  [`02-secrets-and-auth.md`](02-secrets-and-auth.md) § 5. Use `.backup`, not
+  `cp`: the file is in WAL mode and a plain copy taken mid-write can be torn.
+  Treat the result as a secret — it is a file of password hashes.
+- **Restore:** re-clone data-repo from GitHub, then restore `meetings/audio/`
+  from the audio snapshot, and copy the newest `app.db` backup onto the
+  `ui-state` volume with the service stopped. With no `app.db` backup to restore,
+  the accounts are gone and the way back in is `inja-seed`
+  ([`06-changing-users.md`](06-changing-users.md)) — a new first Editor, and
+  everyone else re-created by hand.
 
 ## Next
 

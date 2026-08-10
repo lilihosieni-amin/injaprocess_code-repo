@@ -103,7 +103,19 @@ services:
         format: raw
     environment:
       DATA_ROOT: /data
-      UI_USERS_FILE: /run/secrets/ui-users.json   # local {username: argon2_hash} map, gitignored
+      # Same reason as the server stack: unset, config.py would put app.db at
+      # /app.db in the container's own layer and every local account, session and
+      # audit row would vanish on the next `up`. Seed the first Editor with
+      #   docker compose -f docker-compose.local.yml run --rm ui-backend \
+      #     inja-seed --db /state/app.db --username 09123456789 \
+      #               --name "…" --password "…"
+      APP_DB: /state/app.db
+      # 0, and deliberately: this stack has NO proxy — ui-backend publishes 8000
+      # itself, so there is no X-Forwarded-For entry the caller could not have
+      # written, and the TCP peer is the honest answer. The server stack sets 1
+      # because Caddy sits in front of it there. Stated rather than left to the
+      # default so a copy of this file to a proxied host is an obvious edit.
+      TRUSTED_PROXY_HOPS: "0"
       EXPORT_DIR: /exports
       # SCHEMA_DIR + UI_STATIC_DIR are baked into the image; the schemas dir is
       # overlaid with the live ../schemas volume below (no rebuild on schema edits).
@@ -114,7 +126,9 @@ services:
       GIT_CONFIG_VALUE_0: /data
     volumes:
       - "../../data-repo:/data"
-      - "./local/ui-users.json:/run/secrets/ui-users.json:ro"
+      # app.db (accounts, sessions, activity record) — a named volume, so it
+      # survives `up -d --build` and never lands in the mounted data-repo.
+      - local-ui-state:/state
       # Live schemas overlay the image-baked /app/schemas (backend validates PUTs
       # against these) — schema edits take effect on restart, no rebuild.
       - "../schemas:/app/schemas:ro"
@@ -133,3 +147,4 @@ volumes:
   local-claude-credentials:
   local-control-bot-state:
   local-ui-exports:
+  local-ui-state:

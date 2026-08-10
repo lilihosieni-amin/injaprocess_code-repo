@@ -11,8 +11,14 @@ Every file created here is secret: `chmod 600` each one.
 
 ## 1. The secret env files under `/opt/inja/secrets/`
 
-Create these five files. Fill the blanks with real values; keep them at
+Create these four files. Fill the blanks with real values; keep them at
 `chmod 600`.
+
+> **There is no users file.** UI accounts are rows in `app.db` on the `ui-state`
+> volume, not a secret on disk — see step 5. The retired `ui-users.json` and its
+> `UI_USERS_FILE` variable are read by nothing; if the file is still on this
+> server from an earlier deploy, delete it
+> ([`06-changing-users.md`](06-changing-users.md)).
 
 ### `upload-bot.env` (from `config/upload-bot.env.example`)
 
@@ -47,11 +53,20 @@ ANTHROPIC_API_KEY=       # LEAVE BLANK — we use subscription auth (see step 3)
 ### `ui-backend.env` (from `config/ui-backend.env.example`)
 
 ```
-SESSION_SIGNING_KEY=                     # generate — see below
-UI_USERS_FILE=/run/secrets/ui-users.json # where compose mounts the users map
-EXPORT_USERNAME=                         # the one shared login for published exports
-EXPORT_PASSWORD_HASH=                    # its argon2 hash — see step 2 (never the plaintext)
+SESSION_SIGNING_KEY=     # generate — see below
+EXPORT_USERNAME=         # the one shared login for published exports
+EXPORT_PASSWORD_HASH=    # its argon2 hash — see step 2 (never the plaintext)
 ```
+
+`DATA_ROOT`, `EXPORT_DIR`, `APP_DB` and `TRUSTED_PROXY_HOPS` are set by compose,
+so they do not belong in this file. `APP_DB=/state/app.db` in particular is the
+compose file's to own: it puts the account store on the `ui-state` volume, and
+anything you write here that disagreed with it would move the store somewhere
+that does not survive a redeploy.
+
+No user credential goes in this file. `UI_USERNAME`, `UI_PASSWORD_HASH` and
+`UI_USERS_FILE` are gone from the code — a password in the environment would be a
+second way in that no session, no disabled flag and no activity record can see.
 
 `EXPORT_USERNAME` / `EXPORT_PASSWORD_HASH` are the single credential that opens a
 published department export (`/exports/…html` and the `.pdf` beside it). It is
@@ -65,20 +80,6 @@ an unset credential closes the gate, it never opens it. The rest of the UI start
 and serves normally either way, so these two are optional in exactly the way
 `EXPORT_DIR` is.
 
-### `ui-users.json` (the UI users map — `chmod 600`)
-
-A JSON object mapping each username to its argon2 password hash:
-
-```json
-{
-  "alice": "<argon2 hash>",
-  "bob": "<argon2 hash>"
-}
-```
-
-Generate one hash per user (step 2) and paste it in. All UI users share the same
-access — NFR-3 requires only authentication, not per-user roles.
-
 ### `telegram-bot-api.env`
 
 Credentials for the local Telegram Bot API server, from
@@ -89,7 +90,7 @@ TELEGRAM_API_ID=
 TELEGRAM_API_HASH=
 ```
 
-## 2. Generate the session key and the argon2 hashes
+## 2. Generate the session key and the export password hash
 
 Generate `SESSION_SIGNING_KEY`:
 
@@ -97,20 +98,16 @@ Generate `SESSION_SIGNING_KEY`:
 python -c "import secrets; print(secrets.token_urlsafe(48))"    # SESSION_SIGNING_KEY
 ```
 
-Generate one argon2 hash per UI user, and paste each hash into `ui-users.json`.
-This uses the built `inja-ui-backend` image, which already has the `argon2`
-library (build it first if needed — see [`03-deploy.md`](03-deploy.md)):
+> **There is no argon2 hash to generate for a UI user, and no file to paste it
+> into.** UI accounts are created by `inja-seed`, which takes the password as an
+> argument and does the hashing itself — see step 5 and
+> [`06-changing-users.md`](06-changing-users.md). The recipe below is for the
+> **export** credential only, which is a single shared password and not an
+> account.
 
-```bash
-docker run --rm inja-ui-backend python -c \
- "from argon2 import PasswordHasher; print(PasswordHasher().hash('THIS-USERS-PASSWORD'))"
-```
-
-Replace `THIS-USERS-PASSWORD` with the user's real password (never store the
-plaintext — only the hash goes into `ui-users.json`).
-
-The export credential uses the **same** recipe — one more run of the same
-command, for the password you will hand out with the export links:
+The export credential still needs a hash by hand. This uses the built
+`inja-ui-backend` image, which already has the `argon2` library (build it first
+if needed — see [`03-deploy.md`](03-deploy.md)):
 
 ```bash
 docker run --rm inja-ui-backend python -c \
@@ -129,8 +126,8 @@ docker run --rm inja-ui-backend python -c \
 > characters), never a word plus a number.
 
 Paste the hash from step 2 as `EXPORT_PASSWORD_HASH` in `ui-backend.env`, and the
-chosen username as `EXPORT_USERNAME`. `EXPORT_PASSWORD_HASH` holds an argon2 hash, never
-a plaintext password — same rule as `ui-users.json`. Both values live only in
+chosen username as `EXPORT_USERNAME`. `EXPORT_PASSWORD_HASH` holds an argon2 hash,
+never a plaintext password. Both values live only in
 `/opt/inja/secrets/ui-backend.env` on the server, outside the code-repo and the
 data-repo; nothing about this credential is ever committed to either repo.
 
@@ -207,10 +204,16 @@ those documents without typing anything. That is usually fine, since the
 documents are for that kitchen anyway. Where it is not:
 
 - shorten `SESSION_TTL` in `ui-backend.env` (it applies to the UI session too), or
-- rotate the export password, which invalidates nothing on its own — sessions are
-  signed with `SESSION_SIGNING_KEY`, not with the password. **Rotating
-  `SESSION_SIGNING_KEY` is what ends every live session**, export and UI alike,
-  and it forces every admin to sign in again.
+- rotate the export password, which invalidates nothing on its own — an export
+  session is signed with `SESSION_SIGNING_KEY`, not with the password.
+  **Rotating `SESSION_SIGNING_KEY` is what ends every live export session** — and
+  it changes every export URL with it, so each department has to be exported
+  again.
+
+Note the asymmetry, because it is easy to get backwards: rotating
+`SESSION_SIGNING_KEY` does **not** sign anyone out of the UI. A UI session is a
+row in `app.db` reached by an opaque cookie, so ending one means the database —
+see [`06-changing-users.md`](06-changing-users.md).
 
 ## 3. data-repo deploy key (for `git-push` write access)
 
@@ -242,6 +245,55 @@ The `-it` flags give you the interactive terminal the login flow needs: it print
 a URL — open it, authorize, and paste the code back. Because credentials live in
 the volume, you do **not** need to repeat this on every deploy, and you do **not**
 set `ANTHROPIC_API_KEY`.
+
+## 5. The first Editor (and why `app.db` is not a secret file)
+
+Every UI account — username, argon2 hash, role, scope, sessions, and the activity
+record — is a row in **`app.db`**, the SQLite file on the `ui-state` volume,
+mounted into `ui-backend` at `/state/app.db`. It is not under
+`/opt/inja/secrets/`, it is not in git, and it is deliberately not inside
+`data-repo`: `git-push` pushes the data-repo to GitHub, and password hashes and
+sessions must never travel with it.
+
+Creating the first account is a step of the **first deploy**, not of this
+runbook, because it needs the image built and the volume to exist. It is one
+command, and [`03-deploy.md`](03-deploy.md) runs it in place:
+
+```bash
+docker compose run --rm ui-backend \
+  inja-seed --db /state/app.db --username 09123456789 \
+            --name "نام و نام خانوادگی" --password 'CHOOSE-A-REAL-PASSWORD-HERE'
+```
+
+`inja-seed` hashes the password itself, so there is no hash to generate and
+nowhere to paste one. Its exit codes, what it refuses and why, and the recovery
+path when every Editor is lost are all in
+[`06-changing-users.md`](06-changing-users.md) — read that one before running it
+a second time.
+
+### `app.db` needs its own backup job — `git-push` does not cover it
+
+`git-push` backs up the **data-repo** and nothing else. `app.db` lives on a
+Docker volume outside it, so as things stand **nothing off-site holds the
+accounts, the sessions or the activity record**: lose the host and NFR-7's
+promise is simply false for all three, however healthy the GitHub mirror looks.
+
+The `state-backup` service that closes this (ARD §16, NFR-16 — `sqlite3 .backup`
+off-site on the same 11:00/23:00 schedule as `git-push`) is **not built yet**.
+Until it is, take the backup by hand and keep it off the host. `.backup` rather
+than `cp`, because the file is in WAL mode and a copy taken while the service is
+writing can be torn:
+
+```bash
+cd /opt/inja/code-repo/deploy
+docker compose exec ui-backend python -c \
+  "import sqlite3; s=sqlite3.connect('/state/app.db'); d=sqlite3.connect('/state/app-backup.db'); s.backup(d); d.close(); s.close()"
+docker compose cp ui-backend:/state/app-backup.db "./app-$(date +%F).db"
+docker compose exec ui-backend rm -f /state/app-backup.db
+```
+
+Then move `app-<date>.db` off the server — it holds every password hash, so treat
+it as a secret: `chmod 600`, never into either git repo.
 
 ## Next
 
