@@ -124,6 +124,15 @@ def test_export_credential_stays_out_of_the_users_map(tmp_path):
     assert s.users == {"analyst": "$argon2id$dummy"}
 
 
+def test_export_dirs_read_from_env(tmp_path):
+    env = _valid_env(tmp_path)
+    env["EXPORT_DIR"] = str(tmp_path / "exports")
+    env["UI_EXPORT_TEMPLATE_DIR"] = str(tmp_path / "templates")
+    s = load_settings(env)
+    assert s.export_dir == (tmp_path / "exports")
+    assert s.export_template_dir == (tmp_path / "templates")
+
+
 def test_app_db_defaults_beside_data_root_not_inside_it(tmp_path):
     """The store is operational state; inside DATA_ROOT it would land in the
     data-repo working tree and get committed."""
@@ -136,12 +145,3 @@ def test_app_db_read_from_env(tmp_path):
     env = _valid_env(tmp_path)
     env["APP_DB"] = str(tmp_path / "elsewhere" / "app.db")
     assert load_settings(env).app_db == (tmp_path / "elsewhere" / "app.db")
-
-
-def test_export_dirs_read_from_env(tmp_path):
-    env = _valid_env(tmp_path)
-    env["EXPORT_DIR"] = str(tmp_path / "exports")
-    env["UI_EXPORT_TEMPLATE_DIR"] = str(tmp_path / "templates")
-    s = load_settings(env)
-    assert s.export_dir == (tmp_path / "exports")
-    assert s.export_template_dir == (tmp_path / "templates")

@@ -96,8 +96,27 @@ def migrate(conn: sqlite3.Connection) -> int:
     for target, sql in MIGRATIONS:
         if target <= version:
             continue
-        conn.executescript(sql)
-        conn.execute("DELETE FROM schema_version")
-        conn.execute("INSERT INTO schema_version (version) VALUES (?)", (target,))
+        # The DDL and the version bump must land together or not at all. The
+        # connection is in autocommit mode and executescript adds no transaction
+        # of its own, so without this wrapper a crash between the CREATEs and the
+        # version row would leave schema_version present but empty -- and every
+        # later start would re-run migration 1 and die on "table already exists".
+        # Wrapping happens here rather than in the migration text so the author of
+        # migration 2 cannot forget it.
+        try:
+            conn.executescript(
+                "BEGIN;\n"
+                f"{sql}\n"
+                "DELETE FROM schema_version;\n"
+                f"INSERT INTO schema_version (version) VALUES ({int(target)});\n"
+                "COMMIT;"
+            )
+        except Exception:
+            # A failed statement stops the script before COMMIT, leaving the
+            # transaction open on this connection. Undo it so the caller is left
+            # with a database it can retry against rather than a wedged one.
+            if conn.in_transaction:
+                conn.rollback()
+            raise
         version = target
     return version
