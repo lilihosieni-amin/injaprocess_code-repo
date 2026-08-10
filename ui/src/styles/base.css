@@ -1,0 +1,29 @@
+@layer base {
+  html {
+    direction: rtl;
+    scrollbar-color: var(--violet-mid) transparent;
+  }
+  body {
+    margin: 0;
+    font-family: var(--font-sans);
+    background: var(--bg);
+    color: var(--text-strong);
+  }
+  ::selection { background: var(--selection-bg); color: var(--card); }
+
+  /* F11 — a visible focus ring on everything focusable, buttons included. */
+  :focus-visible {
+    outline: 3px solid var(--coral);
+    outline-offset: 2px;
+  }
+
+  ::-webkit-scrollbar { width: 12px; height: 12px; }
+  ::-webkit-scrollbar-track { background: var(--tile-v); border-radius: var(--radius-sm); }
+  ::-webkit-scrollbar-thumb {
+    background: var(--violet-mid);
+    border-radius: var(--radius-sm);
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-thumb:hover { background: var(--violet); }
+}

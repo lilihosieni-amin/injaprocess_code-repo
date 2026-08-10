@@ -19,7 +19,14 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     <Ctx.Provider value={{ show }}>
       {children}
       {message && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-ink text-white px-5 py-3 rounded-xl text-[13px] font-semibold shadow-modal z-[60] flex items-center gap-2.5">
+        // I4 — this is the toast provider every current call site actually uses
+        // (main.tsx mounts it; src/ui/Toast.tsx is mounted alongside it inside
+        // AppShell but nothing calls its useToast yet). It had neither role nor
+        // aria-live, so every toast today is announced to nobody. This API has
+        // no tone/danger variant (every call site is a plain confirmation), so
+        // role="status"/aria-live="polite" covers it; add tone-based alert
+        // handling here if this provider ever grows one.
+        <div role="status" aria-live="polite" className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-ink text-white px-5 py-3 rounded-xl text-[13px] font-semibold shadow-modal z-[60] flex items-center gap-2.5">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#7BE0A8" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
           {message}
         </div>

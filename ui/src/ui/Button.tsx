@@ -1,14 +1,27 @@
 import type { ButtonHTMLAttributes, ReactNode } from 'react'
 
 type Variant = 'coral' | 'violet' | 'green' | 'ghost'
+
+// I5 — deliberately no horizontal padding or type size here: nineteen legacy
+// call sites set their own via className, and BASE forcing one would double up
+// against theirs. Call sites own horizontal padding and type size until those
+// screens are rebuilt; don't put either back on BASE before then.
+const BASE =
+  'inline-flex items-center justify-center gap-2 min-h-touch min-w-touch ' +
+  'rounded-button font-bold cursor-pointer border-0 transition-[filter,transform]'
+
 const V: Record<Variant, string> = {
-  coral: 'btn-coral', violet: 'btn-violet', green: 'btn-green', ghost: 'btn-ghost',
+  coral: 'bg-coral text-card shadow-coral hover:brightness-105',
+  violet: 'bg-violet text-card shadow-violet hover:brightness-110',
+  green: 'bg-green text-card shadow-green hover:brightness-105',
+  ghost: 'bg-card text-violet border-hairline border-line hover:bg-tile-v2',
 }
 
 /** Inline "work in progress" ring. Sized in em so it tracks the button's text. */
 export function Spinner({ className = '' }: { className?: string }) {
   return (
-    <svg data-testid="btn-spinner" aria-hidden className={`animate-spin w-[1.05em] h-[1.05em] shrink-0 ${className}`}
+    <svg data-testid="btn-spinner" aria-hidden
+      className={`animate-spin w-[1.05em] h-[1.05em] shrink-0 ${className}`}
       viewBox="0 0 24 24" fill="none">
       <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="3" opacity=".25" />
       <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
@@ -16,13 +29,16 @@ export function Spinner({ className = '' }: { className?: string }) {
   )
 }
 
-export function Button({ variant = 'ghost', className = '', loading = false, loadingLabel, children, disabled, ...props }:
-  ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant; loading?: boolean; loadingLabel?: ReactNode }) {
+export function Button({
+  variant = 'ghost', className = '', loading = false, loadingLabel, children, disabled, ...props
+}: ButtonHTMLAttributes<HTMLButtonElement> & {
+  variant?: Variant; loading?: boolean; loadingLabel?: ReactNode
+}) {
   return (
     // a slow save must look busy, not frozen: the spinner is the feedback and the
     // forced `disabled` is what stops a second submit while the first is in flight
     <button
-      className={`btn ${V[variant]} ${className} ${loading ? 'inline-flex items-center justify-center gap-2 cursor-progress' : ''}`}
+      className={`${BASE} ${V[variant]} ${loading ? 'cursor-progress' : ''} ${className}`}
       disabled={disabled || loading}
       aria-busy={loading || undefined}
       {...props}

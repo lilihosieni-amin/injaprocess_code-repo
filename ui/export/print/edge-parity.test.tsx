@@ -29,7 +29,10 @@ const HERE = dirname(fileURLToPath(import.meta.url))
 const PRINT_CSS = readFileSync(join(HERE, 'print.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
 const PRINT_BLOCK = PRINT_CSS.slice(PRINT_CSS.indexOf('@media print'))
 const SCREEN_BLOCK = PRINT_CSS.slice(0, PRINT_CSS.indexOf('@media print'))
-const TAILWIND = readFileSync(join(HERE, '../../tailwind.config.js'), 'utf8')
+const TOKENS = readFileSync(
+  join(HERE, '../../design/_ds/inja-food-design-system-1ef55d80-2e17-482f-b420-9d004eaa22de/tokens/colors.css'),
+  'utf8',
+)
 
 const PROC = { edges: [{ from: 'a', to: 'b' }] } as unknown as Process
 
@@ -162,8 +165,8 @@ describe('the printed edge label’s background is the only exemption', () => {
   it('repaints it with the app’s own tile token, and changes nothing else', () => {
     const rule = ruleFor(PRINT_BLOCK, '.pf-band [data-edge-label]')
     expect(rule, 'print.css repaints the printed edge label').toBeDefined()
-    const tile = TAILWIND.match(/'tile-v2':\s*'(#[0-9A-Fa-f]{6})'/)
-    expect(tile, 'tailwind defines the tile-v2 token').not.toBeNull()
+    const tile = TOKENS.match(/--tile-v2:\s*(#[0-9A-Fa-f]{6})/)
+    expect(tile, 'the token set defines tile-v2').not.toBeNull()
     expect(rule!.background?.toUpperCase()).toBe(tile![1].toUpperCase())
     // Background *only*. The label's rectangle is one of the blocks `geomBlocks`
     // hands the page-break planner, and it is fixed in `PrintDiagrams` from the
