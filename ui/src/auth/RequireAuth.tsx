@@ -1,9 +1,12 @@
-import { Navigate, Outlet } from 'react-router-dom'
-import { useMe } from '../api/hooks'
+import { Navigate } from 'react-router-dom'
+import { useSession } from './useSession'
+import { AppShell } from '../shell/AppShell'
 
 export function RequireAuth() {
-  const { data, isLoading, isError } = useMe()
-  if (isLoading) return <div className="min-h-screen bg-bg" />
+  const { data, isPending, isError } = useSession()
+  // A blank frame rather than a spinner: this resolves in one request and a
+  // flash of loading chrome on every navigation is worse than nothing.
+  if (isPending) return <div />
   if (isError || !data) return <Navigate to="/login" replace />
-  return <Outlet />
+  return <AppShell session={data} />
 }

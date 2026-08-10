@@ -1,0 +1,109 @@
+import { useId, useState, type FormEvent } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { Button } from '../ui/Button'
+import { Card } from '../ui/Card'
+import { normalisePhone } from '../lib/digits'
+import { useLogin } from '../api/hooks'
+import { ApiError } from '../api/client'
+
+const MIN_PASSWORD = 6
+// The server's twin of this is phone.USERNAME_RE. Checked here as well because
+// D56 makes the server's refusal deliberately uninformative: it cannot tell you
+// your number was malformed without also telling an attacker which numbers
+// exist. A local check leaks nothing — it never consults the account list — so
+// it is the only place a person can be told the actual problem.
+const CANONICAL_NUMBER = /^09\d{9}$/
+
+export function SignIn() {
+  const numberId = useId()
+  const passwordId = useId()
+  const [number, setNumber] = useState('')
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const login = useLogin()
+  const navigate = useNavigate()
+
+  async function onSubmit(e: FormEvent) {
+    e.preventDefault()
+    setError(null)
+    const username = normalisePhone(number)
+    if (!CANONICAL_NUMBER.test(username)) {
+      setError('شمارهٔ موبایل معتبر نیست.')
+      return
+    }
+    if (password.length < MIN_PASSWORD) {
+      setError(`گذرواژه باید دست‌کم ${MIN_PASSWORD} نویسه باشد.`)
+      return
+    }
+    try {
+      await login.mutateAsync({ username, password })
+      navigate('/departments', { replace: true })
+    } catch (e) {
+      // One message for every REFUSAL: the server deliberately does not tell
+      // wrong-password from unknown-number apart, and copy that guessed would
+      // undo that. But a 500 or a dropped connection is not a refusal, and
+      // saying "your password is wrong" during an outage sends people to reset
+      // a password that was always correct. D56 governs 401 and nothing else.
+      const refused = e instanceof ApiError && e.status === 401
+      setError(refused
+        ? 'شماره یا گذرواژه درست نیست.'
+        : 'ارتباط با سامانه برقرار نشد. دوباره تلاش کنید.')
+    }
+  }
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-login-bg p-6">
+      <Card className="w-full max-w-list p-8">
+        <h1 className="text-title font-extrabold text-ink m-0">ورود به سامانه</h1>
+
+        <form onSubmit={onSubmit} className="mt-6 flex flex-col gap-4">
+          <div className="flex flex-col gap-1">
+            <label htmlFor={numberId} className="text-caption font-bold text-muted">
+              شمارهٔ موبایل
+            </label>
+            <input
+              id={numberId}
+              type="tel"
+              inputMode="numeric"
+              autoComplete="username"
+              dir="ltr"
+              // No maxLength. normalisePhone accepts nine spellings — five of
+              // them, including '+98 0912 345 6789' and '(0912) 3456789', are
+              // longer than a canonical number. Truncating one does not reject
+              // it, it silently makes a DIFFERENT number, and D56's identical
+              // 401 then tells the person only that something was wrong while
+              // they look at a correctly-typed phone. USERNAME_RE is what says
+              // no, after normalisation, where the answer can be honest.
+              value={number}
+              onChange={(e) => setNumber(e.target.value)}
+              className="min-h-touch px-4 rounded-control border border-line bg-card text-body text-ink"
+            />
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label htmlFor={passwordId} className="text-caption font-bold text-muted">
+              گذرواژه
+            </label>
+            <input
+              id={passwordId}
+              type="password"
+              autoComplete="current-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="min-h-touch px-4 rounded-control border border-line bg-card text-body text-ink"
+            />
+          </div>
+
+          {error && (
+            <p role="alert" className="text-body text-conflict m-0">{error}</p>
+          )}
+
+          <Button type="submit" variant="violet" className="px-4"
+                  loading={login.isPending} loadingLabel="در حال ورود…">
+            ورود
+          </Button>
+        </form>
+      </Card>
+    </div>
+  )
+}

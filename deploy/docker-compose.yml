@@ -100,8 +100,10 @@ services:
     # is unauthenticated and public, and without a limit a runaway there takes the
     # bots down with it rather than only itself.
     mem_limit: 1g
-    # SESSION_SIGNING_KEY, UI_USERS_FILE, and the export credential
+    # SESSION_SIGNING_KEY and the export credential
     # EXPORT_USERNAME + EXPORT_PASSWORD_HASH (argon2, see docs/runbooks/02-secrets-and-auth.md).
+    # No user credential lives here any more: people are rows in app.db on the
+    # ui-state volume, created by `inja-seed` (docs/runbooks/06-changing-users.md).
     # The export pair is optional: absent, /exports answers 401 to everyone but a
     # signed-in UI user, and the rest of the UI is unaffected — an unset credential
     # closes the gate, it never opens it and never blocks startup.
@@ -116,11 +118,36 @@ services:
         format: raw
     environment:
       DATA_ROOT: /data
-      UI_USERS_FILE: /run/secrets/ui-users.json
+      # The operational store: accounts, sessions and the whole activity record.
+      # It MUST be an explicit path on a mounted volume. Unset, config.py falls
+      # back to `DATA_ROOT.parent / "app.db"` = /app.db — the container's own
+      # writable layer, which `docker compose up` throws away on every recreate.
+      # The app opens and migrates this path at startup, so an unset APP_DB does
+      # not fail loudly; it silently rebuilds an empty store and every account,
+      # session and audit row from the previous run is gone. Beside DATA_ROOT and
+      # never inside it, so the operational store never enters the data-repo
+      # working tree (ARD §16, §19.1). `/data/app.db` looks like a tidy
+      # consolidation and is the one edit that would hand the pipeline runtime
+      # every password hash and every live session id — /data is bind-mounted
+      # read-write into control-bot, whose hooks block writes and not reads.
+      # `config.load_settings` now REFUSES to start on an APP_DB inside DATA_ROOT,
+      # so this is enforced and not merely commented.
+      APP_DB: /state/app.db
+      # Exactly one reverse proxy stands in front of this process: the `proxy`
+      # service (deploy/Caddyfile). The client address recorded in the session row
+      # and in every activity row is the last X-Forwarded-For entry — the one Caddy
+      # appended and therefore the only one a caller cannot write. Left at the
+      # default 0 the app records the TCP peer, which here is the Docker bridge:
+      # every row in the failed-sign-in report would read 172.18.0.1 and the report
+      # would be worthless (spec D7).
+      TRUSTED_PROXY_HOPS: "1"
       EXPORT_DIR: /exports
     volumes:
       - /opt/inja/data-repo:/data
-      - /opt/inja/secrets/ui-users.json:/run/secrets/ui-users.json:ro
+      # app.db — mounted ONLY here (ARD §16): the activity record must be
+      # unreachable from the Telegram runtime by a mount boundary, not by
+      # convention. NOT covered by git-push; see docs/runbooks/05-operations.md.
+      - ui-state:/state
       # generated export documents — build artifacts, deliberately outside the
       # data-repo so they never appear in its working tree (D8)
       - ui-exports:/exports
@@ -161,3 +188,7 @@ volumes:
   control-bot-state:
   caddy-data:
   ui-exports:
+  # app.db: users, roles, scopes, sessions and the activity record. Unlike
+  # ui-exports this is NOT a cache — emptying it deletes every account, and
+  # `inja-seed` is the only way to make a first Editor again.
+  ui-state:

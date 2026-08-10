@@ -20,8 +20,8 @@ import httpx
 from fastapi.testclient import TestClient
 from inja_ui_backend import export_auth
 from inja_ui_backend.app import create_app
-from inja_ui_backend.auth import COOKIE_NAME, issue_cookie
-from inja_ui_backend.tests_helpers import cfg_for
+from inja_ui_backend.auth import COOKIE_NAME
+from inja_ui_backend.tests_helpers import cfg_for, seeded_session
 
 EXPORT_PASSWORD = "throwaway-export-pw"
 #: Hashed once for the module: argon2 is deliberately slow. Never a real credential.
@@ -194,7 +194,7 @@ def test_an_admin_session_never_sees_the_login_page(data_root, tmp_path):
     cfg = _cfg(data_root, tmp_path)
     html_url, _ = _publish(cfg)
     c = _reader(cfg)
-    c.cookies.set(COOKIE_NAME, issue_cookie(cfg, "analyst"))
+    c.cookies.set(COOKIE_NAME, seeded_session(cfg))
     r = c.get(html_url)
     assert r.status_code == 200
     assert "inja-export-data" in r.text

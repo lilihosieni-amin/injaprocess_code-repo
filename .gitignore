@@ -19,7 +19,10 @@ __pycache__/
 !.env.example
 *.key
 *service-account*.json
-# Real UI users map lives outside the repo (server secrets); only the .example is tracked
+# ui-users.json is retired — nothing reads it and the .example is deleted. These
+# two rules stay anyway: a leftover file from before the switch still holds argon2
+# hashes, and un-ignoring it would put it one `git add -A` away from being
+# committed. Accounts now live in app.db (docs/runbooks/06-changing-users.md).
 config/ui-users.json
 deploy/local/ui-users.json
 

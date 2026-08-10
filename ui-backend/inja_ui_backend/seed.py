@@ -1,0 +1,161 @@
+"""The four seeded roles and the first Editor (spec D11, D50).
+
+Roles come from here and from nowhere else. No API path creates, edits or
+deletes one — which is why 'no UI can ever mint a role that edits content' is a
+property of the data rather than a check on an account, and cannot be lost by
+renaming or replacing an administrator.
+
+The price is that this module is the only recovery path if every Editor account
+is lost. That belongs in docs/runbooks/06-changing-users.md.
+"""
+from __future__ import annotations
+
+import json
+import sqlite3
+
+from .phone import USERNAME_RE, normalise_phone
+from .store import users
+
+NON_DELEGABLE = frozenset({"edit", "confirm", "set_visibility"})
+
+# Tuples, not lists: ROLES is the access model, and handing a caller the very
+# object the module holds would let `ROLES["admin"].append("edit")` rewrite it
+# for the whole process. The stored form is unchanged — json.dumps(sorted(...)).
+_READER = ("view", "comment", "export_pdf")
+_ADMIN = _READER + ("manage_users", "manage_peers", "view_audit")
+_EDITOR = _ADMIN + ("edit", "confirm", "set_visibility")
+
+ROLES: dict[str, tuple[str, ...]] = {
+    "reader": _READER,
+    # Exists from day one because FR-E7 promises download can be withheld from
+    # someone who may still read, and with no per-user overrides a role is the
+    # only way to say it. A promise that needs a deploy first is not kept.
+    "reader_no_download": ("view", "comment"),
+    "admin": _ADMIN,
+    "editor": _EDITOR,
+}
+
+
+def seed(conn: sqlite3.Connection, *, editor_username: str,
+         editor_display_name: str, editor_password_hash: str) -> None:
+    # Validate the normalised form, not the raw input (D57). `users.create`
+    # stores `normalise_phone(username)`, so validating anything else would
+    # check a string the database never sees — and would refuse ۰۹۱۲… and
+    # `+98 912 …`, both of which the login path accepts.
+    username = normalise_phone(editor_username)
+    if not USERNAME_RE.fullmatch(username):
+        raise ValueError(
+            f"editor username must be a canonical mobile number, got {editor_username!r}")
+
+    for name, caps in ROLES.items():
+        conn.execute(
+            "INSERT INTO roles (name, capabilities) VALUES (?, ?)"
+            " ON CONFLICT(name) DO NOTHING",
+            (name, json.dumps(sorted(caps))),
+        )
+
+    # The guard is "is there an active Editor", not "is there anybody at all".
+    # `edit`, `confirm` and `set_visibility` have no other origin (D50), so this
+    # module is the only way back in when every Editor is lost — and the realistic
+    # loss is the Editor disabled while readers and admins live on, which a
+    # COUNT(*) > 0 guard reads as a healthy system and skips. Reading roles.name
+    # here decides whether to seed; it never decides what a request may do.
+    active_editor = conn.execute(
+        "SELECT 1 FROM users JOIN roles ON roles.id = users.role_id"
+        " WHERE roles.name = 'editor' AND users.disabled_at IS NULL"
+        " LIMIT 1").fetchone()
+    if active_editor is not None:
+        # Quiet: with this guard a skip only ever happens on a healthy system.
+        return None
+
+    if users.by_username(conn, username) is not None:
+        # Recovery mints a NEW Editor; it never promotes or re-enables an existing
+        # account. The username comes out of the environment, so silently mutating
+        # whoever already holds it would turn a stale variable into a privilege
+        # escalation. An operator decides this one by hand.
+        raise ValueError(
+            f"{username} already exists but is not an active Editor: no Editor"
+            " can be seeded onto an account that is already taken — re-enable or"
+            " re-role that account by hand, or seed a different number")
+
+    role_id = conn.execute(
+        "SELECT id FROM roles WHERE name = 'editor'").fetchone()[0]
+    # The account and its scope must land together or not at all. The connection
+    # is in autocommit mode (db.connect, isolation_level=None), so as two bare
+    # statements a crash in between leaves an Editor with no scope — and the
+    # guard above then makes every later re-seed a no-op, so the row is never
+    # repaired. The role inserts self-heal via ON CONFLICT; this pair cannot.
+    # Same reasoning, and the same wrapper, as db.migrate().
+    conn.execute("BEGIN")
+    try:
+        uid = users.create(conn, username=username,
+                           display_name=editor_display_name,
+                           password_hash=editor_password_hash, role_id=role_id)
+        conn.execute("INSERT INTO user_scopes (user_id, scope) VALUES (?, '*')",
+                     (uid,))
+        conn.execute("COMMIT")
+    except Exception:
+        # Leave the caller a database it can re-seed against, not a wedged one.
+        if conn.in_transaction:
+            conn.rollback()
+        raise
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Create the store and its first Editor. The only origin of `edit`.
+
+    Three exit codes, because `seed()` has three outcomes and an operator running
+    the documented recovery must never read "nothing happened" as success:
+
+    * 0 — the Editor was created.
+    * 1 — an active Editor already existed, so nothing was created. Not an error;
+      it is the healthy system saying the recovery was not needed. Distinguished
+      from 0 by counting rows rather than by asking `seed()`, which returns None
+      for both and is not this module's to change.
+    * 2 — refused before anything was written: the password is too short, or the
+      username belongs to an account that is not an active Editor.
+
+    Both refusals go to stderr, so `inja-seed … > /dev/null` still shows the
+    reason. An unhandled exception also leaves 1, but with a traceback on stderr
+    and no message on stdout, which is how a crash is told from a healthy no-op.
+    """
+    import argparse
+    import sys
+    from pathlib import Path
+
+    from . import db as _db
+    from .auth import hash_password, validate_password
+
+    p = argparse.ArgumentParser(prog="inja-seed")
+    p.add_argument("--db", required=True)
+    p.add_argument("--username", required=True, help="mobile number, e.g. 09123456789")
+    p.add_argument("--name", required=True)
+    p.add_argument("--password", required=True)
+    args = p.parse_args(argv)
+
+    problem = validate_password(args.password)
+    if problem:
+        print(problem, file=sys.stderr)
+        return 2
+
+    # Its own connection, never the app's: `seed()` opens an explicit transaction,
+    # and the shared connection may not carry one (see db.connect's invariant).
+    conn = _db.connect(Path(args.db))
+    try:
+        _db.migrate(conn)
+        before = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+        try:
+            seed(conn, editor_username=args.username, editor_display_name=args.name,
+                 editor_password_hash=hash_password(args.password))
+        except ValueError as exc:
+            print(str(exc), file=sys.stderr)
+            return 2
+        after = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+    finally:
+        conn.close()
+
+    if after == before:
+        print("an active Editor already exists, so nothing was created")
+        return 1
+    print(f"created the Editor {normalise_phone(args.username)}")
+    return 0

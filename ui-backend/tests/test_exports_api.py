@@ -8,8 +8,8 @@ from inja_ui_backend import export_auth
 from inja_ui_backend import exports as exports_mod
 from inja_ui_backend import pdf as pdf_mod
 from inja_ui_backend.app import create_app
-from inja_ui_backend.auth import COOKIE_NAME, issue_cookie
-from inja_ui_backend.tests_helpers import cfg_for
+from inja_ui_backend.auth import COOKIE_NAME
+from inja_ui_backend.tests_helpers import cfg_for, seeded_session
 
 TEMPLATE = '<!doctype html><script id="inja-export-data">__INJA_EXPORT_DATA__</script>'
 
@@ -51,7 +51,7 @@ def _ascii_letters(text):
 
 def _client(cfg):
     c = TestClient(create_app(cfg))
-    c.cookies.set(COOKIE_NAME, issue_cookie(cfg, "analyst"))
+    c.cookies.set(COOKIE_NAME, seeded_session(cfg))
     return c
 
 
@@ -262,7 +262,7 @@ def test_the_export_route_does_not_shadow_api_404s(data_root, tmp_path):
     # …and past the gate it is still the route answering, not the catch-all: a
     # reader with a session who follows a replaced link is owed a plain 404, and
     # this is the only place that pins it *while the SPA is mounted*.
-    c.cookies.set(COOKIE_NAME, issue_cookie(cfg, "analyst"))
+    c.cookies.set(COOKIE_NAME, seeded_session(cfg))
     gone = c.get("/exports/cooking/nope.html")
     assert gone.status_code == 404
     assert "inja" not in gone.text
@@ -314,7 +314,7 @@ def test_a_misconfigured_export_dir_costs_only_the_export_feature(data_root, tmp
     with caplog.at_level("ERROR"):
         app = create_app(cfg)                       # must not raise
     c = TestClient(app)
-    c.cookies.set(COOKIE_NAME, issue_cookie(cfg, "analyst"))
+    c.cookies.set(COOKIE_NAME, seeded_session(cfg))
 
     # the rest of the UI is up
     assert c.get("/api/auth/me").status_code == 200
@@ -713,11 +713,22 @@ def test_an_export_session_opens_both_files(data_root, tmp_path, monkeypatch):
 
 
 def test_an_admin_session_opens_both_files(data_root, tmp_path, monkeypatch):
-    """D29: an admin should not need the shared password to read what they made."""
+    """D29: an admin should not need the shared password to read what they made.
+
+    The bodies, not just the statuses. A reader the gate turns away is handed the
+    login page (D31) and that page is itself a 200, so `status_code == 200` alone
+    is satisfied by the exact failure this test exists to catch — verified: with
+    the admin branch of `require_export_access` removed, the status-only version
+    of this test still passed.
+    """
     cfg, html_url, pdf_url = _publish(data_root, tmp_path, monkeypatch)
-    c = _reader(cfg, COOKIE_NAME, issue_cookie(cfg, "analyst"))
-    assert c.get(html_url).status_code == 200
-    assert c.get(pdf_url).status_code == 200
+    c = _reader(cfg, COOKIE_NAME, seeded_session(cfg))
+    doc = c.get(html_url)
+    assert doc.status_code == 200
+    assert "inja-export-data" in doc.text and LOGIN_TITLE not in doc.text
+    pdf = c.get(pdf_url)
+    assert pdf.status_code == 200
+    assert pdf.content == PDF_BYTES
 
 
 def test_unset_export_credentials_close_the_gate(data_root, tmp_path, monkeypatch):

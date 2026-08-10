@@ -17,7 +17,7 @@ Six services (from the Task 9 compose stack). Only the `proxy` publishes a port.
 | `telegram-bot-api` | Local Telegram Bot API server (tdlib) — lets bots fetch voice files larger than 20 MB | `tdlib/telegram-bot-api` | `telegram-bot-api-data` volume → `/var/lib/telegram-bot-api` | — |
 | `upload-bot` | Bot 1: raw voice/file intake from Telegram, writes into data-repo | `inja-upload-bot` (built) | `/opt/inja/data-repo` → `/data` | — |
 | `control-bot` | Bot 2: `claude-code-telegram`, runs the extraction pipeline against data-repo | `inja-control-bot` (built) | `/opt/inja/data-repo` → `/data`; `claude-credentials` volume → `/root/.claude` | — |
-| `ui-backend` | Thin FastAPI backend: JSON read/write + auth, serves the built frontend, and prints each export to PDF with the Chromium baked into its image | `inja-ui-backend` (built) | `/opt/inja/data-repo` → `/data`; `/opt/inja/secrets/ui-users.json` → `/run/secrets/ui-users.json` (ro); `ui-exports` volume → `/exports` | — |
+| `ui-backend` | Thin FastAPI backend: JSON read/write + auth, serves the built frontend, and prints each export to PDF with the Chromium baked into its image | `inja-ui-backend` (built) | `/opt/inja/data-repo` → `/data`; `ui-state` volume → `/state` (`app.db`); `ui-exports` volume → `/exports` | — |
 | `proxy` | Caddy reverse proxy with internal (self-signed) TLS in front of ui-backend | `caddy:2` | `/opt/inja/code-repo/deploy/Caddyfile` → `/etc/caddy/Caddyfile` (ro); `caddy-data` volume → `/data` | **443** |
 | `git-push` | Scheduled off-site backup of data-repo (minus audio) to GitHub | `inja-git-push` (built) | `/opt/inja/data-repo` → `/data`; `/opt/inja/keys` → `/keys` (ro) | — |
 
@@ -83,22 +83,31 @@ upload-bot → data-repo ← control-bot pipeline → data-repo ← ui-backend
 │   └── meetings/
 │       ├── audio/        # raw voices — gitignored, NOT pushed to GitHub
 │       └── transcripts/  # {name}.txt transcripts — the source of record
-├── secrets/              # env files + ui-users.json (chmod 600, never in git)
+├── secrets/              # env files (chmod 600, never in git)
 │   ├── upload-bot.env
 │   ├── control-bot.env
 │   ├── ui-backend.env
-│   ├── telegram-bot-api.env
-│   └── ui-users.json
+│   └── telegram-bot-api.env
 └── keys/
     └── id_deploy(.pub)   # ed25519 deploy key for git-push write access
 ```
 
-Compose also manages five named volumes not shown above:
+There is **no `ui-users.json`**: UI accounts are rows in `app.db` on the
+`ui-state` volume, created with `inja-seed`
+([`06-changing-users.md`](06-changing-users.md)). If an old `ui-users.json` is
+still sitting in `secrets/`, nothing reads it — delete it.
+
+Compose also manages six named volumes not shown above:
 `telegram-bot-api-data` (files the local Bot API server downloads),
 `claude-credentials` (holds the Claude subscription login), `control-bot-state`
 (the control bot's SQLite state at `/state/bot.db`), `caddy-data` (Caddy's
-internal CA + TLS state), and `ui-exports` (generated export documents — kept
-out of the data-repo so 2 MB artifacts never land in its working tree).
+internal CA + TLS state), `ui-exports` (generated export documents — kept out of
+the data-repo so 2 MB artifacts never land in its working tree), and `ui-state`
+(`app.db`: accounts, sessions and the activity record).
+
+`ui-state` is the one volume that is **not** reconstructible. `ui-exports` is a
+cache and the data-repo has GitHub behind it; `app.db` has neither, so it needs
+its own backup — see [`05-operations.md`](05-operations.md).
 
 ## Next steps
 
