@@ -14,7 +14,8 @@ task is the scope half plus one explicit inclusion: **no pending count reaches a
 non-editor**, which `test_the_board_serves_no_conflict_count_to_anyone_who_cannot_edit`
 below pins.
 
-**Two things a scan of this shape can quietly stop testing, and what holds them:**
+**Three things a scan of this shape can quietly stop testing, and what holds
+them:**
 
 * *Scanning nothing.* A caller whose in-scope corpus is empty passes every
   assertion here while the backend leaks freely.
@@ -24,7 +25,19 @@ below pins.
   that was never planted, fails loudly instead of passing silently.
 * *Scanning fewer endpoints than exist.* `test_the_scan_exercises_every_api_route`
   compares the table below against the app's own route table, so a fifteenth
-  endpoint added later fails this file rather than slipping past it.
+  endpoint added later fails this file rather than slipping past it. What it does
+  not sweep it names, in `NOT_SWEPT`, with the reason written out.
+* *Scanning only error envelopes.* An endpoint sent a request body that cannot
+  pass validation answers 422 to everybody, and a 422 is not the body that
+  endpoint serves. Every `Route` therefore records the status it answers an
+  Editor inside their own department, and
+  `test_the_sweep_reaches_the_body_each_route_really_serves` checks it — so a
+  sweep that has stopped producing real bodies fails instead of scanning
+  `{"detail": …}` eighteen times.
+
+Two token sets are checked, and they are checked in opposite directions.
+`FORBIDDEN` is about one caller's scope, so the `*` holder must **find** all of
+it; `_server_paths` is about the host, so nobody may see any of it.
 
 A third guard is `test_the_in_scope_corpus_carries_no_forbidden_token`: it makes
 "the scoped caller found nothing" mean "nothing leaked" rather than "the token
@@ -34,12 +47,14 @@ from __future__ import annotations
 
 import itertools
 import json
-from typing import NamedTuple
+import sys
+from typing import Callable, NamedTuple
 
 import pytest
 from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 from inja_ui_backend import db, seed
+from inja_ui_backend.access import NOT_FOUND
 from inja_ui_backend.app import create_app
 from inja_ui_backend.auth import hash_password
 from inja_ui_backend.store import users
@@ -76,6 +91,38 @@ FORBIDDEN: tuple[tuple[str, str], ...] = (
     ("LEAKACTOR", "a node actor from a process outside the caller's scope"),
     ("LEAKPROPOSED", "an unresolved proposal from outside the caller's scope"),
 )
+
+
+def _server_paths(data_root) -> tuple[tuple[str, str], ...]:
+    """A second class of leak the scan was blind to: **the server's own layout.**
+
+    Everything in `FORBIDDEN` is about one caller's scope, so it is checked for
+    the scoped callers and deliberately *found* for the `*` holder. An absolute
+    path on the host is not like that. It belongs to no department, no role and
+    no scope; it is forbidden to everybody, wildcard holder included, and it is
+    NFR-12's "internal bookkeeping never leaves the system" at the infrastructure
+    layer rather than the content one.
+
+    These are computed rather than listed because both are per-run: the data root
+    is under `tmp_path` and `sys.prefix` is whichever virtualenv is executing.
+    That is the same reason they cannot live in `FORBIDDEN` — a module constant
+    cannot see the fixture.
+
+    What put them here: `POST /api/processes/{pid}/relayout` answers a failed
+    layout with `engine.EngineError.message`, which is the CLI's **stderr** — a
+    full Python traceback naming `<venv>/bin/layout` and the absolute path of
+    every module on the way down, served to any Editor. The old sweep sent that
+    route `{}`, hit exactly that path, and walked past it because a server path
+    was in no token list. It sends a real document now (see `_a_saved_document`),
+    so the 422 is no longer on the swept path — **the endpoint's behaviour is
+    unchanged and the traceback is still what a genuine layout failure returns.**
+    That is a live finding against `relayout`, not something this file fixed; the
+    sentinel below is what makes the whole class visible from here.
+    """
+    return (
+        (str(data_root), "an absolute path to the server's data root"),
+        (sys.prefix, "an absolute path to the server's Python environment"),
+    )
 
 
 # --------------------------------------------------------------------------
@@ -260,56 +307,128 @@ def _client_as(data_root, tmp_path, role, *scopes):
 class Route(NamedTuple):
     method: str
     path: str          # `{d}` is the department, `{u}` the caller's username
-    body: dict | None
+    #: The request body: a literal (with `{d}`/`{u}` filled in), `None`, or a
+    #: callable of the department for the ones that have to carry a whole
+    #: document. A callable rather than a `{d}`-templated literal because
+    #: `str.format` over a process document would have to walk into lists and
+    #: would then choke on the first Persian string somebody writes a brace into.
+    body: dict | Callable[[str], dict] | None
     template: str      # the FastAPI path this exercises — see the coverage test
+    #: **The status this route answers an Editor acting inside their own
+    #: department** — i.e. what it looks like when it *works*.
+    #:
+    #: Recorded per route, and asserted by
+    #: `test_the_sweep_reaches_the_body_each_route_really_serves`, because the
+    #: sweep's whole value is the bodies it walks and a request body that fails
+    #: validation produces no body to walk. Five of these routes used to be sent
+    #: `{}` or `{"order": []}` and answered 422/409/400 to every caller, so the
+    #: created process, the saved document and the resolved conflict this file's
+    #: docstring claims to scan were never once produced. An expected status is
+    #: what makes that impossible to reintroduce quietly: an all-422 sweep now
+    #: fails loudly instead of scanning error envelopes.
+    #:
+    #: It is deliberately the *Editor's* status and not a per-role table. Every
+    #: other role's refusal (403 for a Reader who may not write, 404 for anything
+    #: out of scope) is asserted by shape rather than by number —
+    #: `test_every_department_route_refuses_a_department_out_of_scope` for the
+    #: 404s, `test_endpoint_matrix.py` for the capability half.
+    expect: int
 
 
 #: Read routes that span every department, so they are swept once rather than
 #: once per department.
 GLOBAL_READS = (
-    Route("GET", "/api/auth/me", None, "/api/auth/me"),
-    Route("GET", "/api/departments", None, "/api/departments"),
-    Route("GET", "/api/pending", None, "/api/pending"),
+    Route("GET", "/api/auth/me", None, "/api/auth/me", 200),
+    Route("GET", "/api/departments", None, "/api/departments", 200),
+    Route("GET", "/api/pending", None, "/api/pending", 200),
 )
 
 #: Read routes that name a department. Swept for the caller's own department and
 #: for one they cannot reach: the answer to *asking* must leak nothing either.
 DEPT_READS = (
     Route("GET", "/api/departments/{d}/overview", None,
-          "/api/departments/{code}/overview"),
+          "/api/departments/{code}/overview", 200),
     Route("GET", "/api/departments/{d}/processes", None,
-          "/api/departments/{code}/processes"),
+          "/api/departments/{code}/processes", 200),
     Route("GET", "/api/departments/{d}/next-id", None,
-          "/api/departments/{code}/next-id"),
-    Route("GET", "/api/processes/{d}-001", None, "/api/processes/{pid}"),
+          "/api/departments/{code}/next-id", 200),
+    Route("GET", "/api/processes/{d}-001", None, "/api/processes/{pid}", 200),
 )
+
+
+def _an_overview(d: str) -> dict:
+    """A valid overview document, so `PUT …/overview` saves instead of 422ing."""
+    return _overview(d, "دپارتمان")
+
+
+def _the_whole_order(d: str) -> dict:
+    """`MINE`'s active set, in order — the only sequence `order set` accepts.
+
+    `{"order": []}` is a guaranteed 409 (`set mismatch`), which is an error
+    envelope and not the `{"order": [...]}` this route really serves.
+
+    **Only `MINE` really has this set**: `corpus` plants `dining-001` and
+    `dining-002`, and nothing plants the same pair anywhere else. That is why
+    `Route.expect` is asserted for `MINE` alone — for any other department this
+    is a well-formed request that legitimately conflicts, which is a fine thing
+    to scan and not a success body.
+    """
+    return {"order": [f"{d}-001", f"{d}-002"]}
+
+
+def _a_saved_document(d: str) -> dict:
+    """What the editor round-trips back on Save.
+
+    For `MINE` this is byte-for-byte the document `corpus` planted at
+    `{d}-001`, which is what a Save really carries: the client sends back what
+    it loaded. For any other department it is a well-formed process document
+    that is simply not the one on disk — harmless, because every route naming
+    another department is refused before the body is looked at.
+
+    `{}` fails `process.schema.json` on every required property, so `PUT
+    /api/processes/{pid}` answered 422 to everyone and its success body — which
+    is the largest body this service returns, and the one most likely to carry a
+    neighbouring department's id — was never scanned.
+    """
+    return _process(f"{d}-001", d, name="پذیرایی از مهمان", label="خوش‌آمدگویی",
+                    actor="میزبان", proposed="پیشخدمت")
+
 
 #: The writes, swept after every read so that what the reads see is the planted
 #: corpus rather than whatever a write left behind. The delete is last for the
 #: same reason.
 DEPT_WRITES = (
     Route("POST", "/api/departments/{d}/exports/steps", None,
-          "/api/departments/{code}/exports/{kind}"),
-    Route("PUT", "/api/departments/{d}/overview", {}, "/api/departments/{code}/overview"),
-    Route("PUT", "/api/departments/{d}/order", {"order": []},
-          "/api/departments/{code}/order"),
-    Route("POST", "/api/processes", {"department": "{d}"}, "/api/processes"),
-    Route("POST", "/api/processes/{d}-001/relayout", {},
-          "/api/processes/{pid}/relayout"),
-    Route("PUT", "/api/processes/{d}-001", {}, "/api/processes/{pid}"),
+          "/api/departments/{code}/exports/{kind}", 200),
+    Route("PUT", "/api/departments/{d}/overview", _an_overview,
+          "/api/departments/{code}/overview", 200),
+    Route("PUT", "/api/departments/{d}/order", _the_whole_order,
+          "/api/departments/{code}/order", 200),
+    Route("POST", "/api/processes", {"department": "{d}"}, "/api/processes", 201),
+    Route("POST", "/api/processes/{d}-001/relayout", _a_saved_document,
+          "/api/processes/{pid}/relayout", 200),
+    Route("PUT", "/api/processes/{d}-001", _a_saved_document,
+          "/api/processes/{pid}", 200),
     Route("POST", "/api/processes/{d}-001/pending/0", {"decision": "reject"},
-          "/api/processes/{pid}/pending/{index}"),
-    Route("DELETE", "/api/processes/{d}-001", None, "/api/processes/{pid}"),
+          "/api/processes/{pid}/pending/{index}", 200),
+    Route("DELETE", "/api/processes/{d}-001", None, "/api/processes/{pid}", 200),
 )
 
+#: A password long enough to be accepted (`validate_password`'s six-character
+#: floor). A one-character `next` answered 400 to every caller, so the sweep
+#: never once reached this endpoint's real answer.
+NEXT_PW = "test-password-2"
+
 #: The session routes. `logout` is last in the sweep — it ends the session every
-#: route before it needed.
+#: route before it needed. `password` is after `login` and before `logout` on
+#: purpose: it really does change the password now, so anything re-authenticating
+#: with `PW` has to have already run.
 GLOBAL_WRITES = (
     Route("POST", "/api/auth/login", {"username": "{u}", "password": PW},
-          "/api/auth/login"),
-    Route("POST", "/api/auth/password", {"current": PW, "next": "x"},
-          "/api/auth/password"),
-    Route("POST", "/api/auth/logout", None, "/api/auth/logout"),
+          "/api/auth/login", 200),
+    Route("POST", "/api/auth/password", {"current": PW, "next": NEXT_PW},
+          "/api/auth/password", 204),
+    Route("POST", "/api/auth/logout", None, "/api/auth/logout", 200),
 )
 
 EVERY_ROUTE = GLOBAL_READS + DEPT_READS + DEPT_WRITES + GLOBAL_WRITES
@@ -326,8 +445,9 @@ def _fill_value(value, **kw):
 def _fill(route: Route, **kw) -> Route:
     """`{d}` → the department, `{u}` → the caller's own username."""
     kw.setdefault("d", "")
-    return route._replace(path=_fill_value(route.path, **kw),
-                          body=_fill_value(route.body, **kw))
+    body = (route.body(kw["d"]) if callable(route.body)
+            else _fill_value(route.body, **kw))
+    return route._replace(path=_fill_value(route.path, **kw), body=body)
 
 
 def _sweep(client, departments=(MINE, THEIRS)):
@@ -414,10 +534,12 @@ def test_no_role_is_served_anything_outside_its_scope_anywhere_in_any_body(
     All four, not the three that read: an Editor scoped to one department holds
     every capability in the model, so scope is the only thing that can refuse
     them — and the write routes' bodies (a created process, a saved document, a
-    409's message) are bodies nobody thinks to check.
+    resolved conflict) are bodies nobody thinks to check. Those bodies are only
+    really produced for the Editor; that they *are* produced is
+    `test_the_sweep_reaches_the_body_each_route_really_serves`'s job.
     """
     client = _client_as(corpus, tmp_path, role, f"dept:{MINE}")
-    leaks = _leaks(client)
+    leaks = _leaks(client, forbidden=FORBIDDEN + _server_paths(corpus))
     assert leaks == [], "\n".join(f"  as a {role}: {leak}" for leak in leaks)
 
 
@@ -430,7 +552,7 @@ def test_a_report_scope_is_served_nothing_of_the_department_either(corpus, tmp_p
     refused would be the leak.
     """
     client = _client_as(corpus, tmp_path, "reader", f"dept:{MINE}/report:steps")
-    leaks = _leaks(client)
+    leaks = _leaks(client, forbidden=FORBIDDEN + _server_paths(corpus))
     assert leaks == [], "\n".join(f"  as a report reader: {leak}" for leak in leaks)
 
 
@@ -443,14 +565,82 @@ def test_the_scan_finds_every_token_when_the_caller_is_in_scope(corpus, tmp_path
     assertion about nothing. This is what stops the file above from passing
     because the corpus was never planted, because a route table went stale, or
     because a fixture rename silently emptied a department.
+
+    The server paths are checked here in the other direction, and this is the
+    strongest place to check them: a `*` holder is the only caller who reaches
+    every route's success body, and a host path is forbidden to them too.
     """
+    paths = _server_paths(corpus)
     client = _client_as(corpus, tmp_path, "editor", "*")
-    seen = {leak.token for leak in _leaks(client)}
+    leaks = _leaks(client, forbidden=FORBIDDEN + paths)
+
+    seen = {leak.token for leak in leaks}
     missing = {token for token, _ in FORBIDDEN} - seen
     assert not missing, (
         f"no endpoint serves {sorted(missing)} even to a caller entitled to"
         f" everything, so asserting a scoped caller never sees them tests"
         f" nothing: fix the corpus or the route table")
+
+    on_host = [leak for leak in leaks if leak.token in {t for t, _ in paths}]
+    assert on_host == [], "\n".join(
+        f"  as a wildcard holder: {leak}" for leak in on_host)
+
+
+def test_the_sweep_reaches_the_body_each_route_really_serves(corpus, tmp_path):
+    """A scan that only ever walked error envelopes is a scan of nothing.
+
+    The sweep's docstrings claim it checks *a created process, a saved document,
+    a resolved conflict*. For five of the eighteen routes that was false: the
+    table sent `{}`, `{"order": []}` and a one-character password — bodies that
+    cannot pass validation — so `PUT …/overview`, `PUT …/order`,
+    `POST …/relayout`, `PUT /api/processes/{pid}` and `POST /api/auth/password`
+    answered 422, 409, 422, 422 and 400 to *every* role and their success bodies
+    were never once produced. A leak planted in `PUT /api/processes/{pid}`'s
+    return value survived the entire suite.
+
+    So the expected status is part of the table, and it is checked here for the
+    one caller who should reach all of them: an Editor inside their own
+    department. `test_the_scan_exercises_every_api_route` pins that the table
+    lists every route; this pins that every listed route was actually *served*.
+    """
+    client = _client_as(corpus, tmp_path, "editor", f"dept:{MINE}")
+    wrong = []
+    for route in _sweep(client, departments=(MINE,)):
+        r = client.request(route.method, route.path, json=route.body)
+        if r.status_code != route.expect:
+            wrong.append(f"  {route.method} {route.path}: expected"
+                         f" {route.expect}, got {r.status_code} — {r.text[:200]}")
+    assert not wrong, (
+        "these routes never produced the body the sweep exists to walk:\n"
+        + "\n".join(wrong))
+
+
+def test_every_department_route_refuses_a_department_out_of_scope(corpus, tmp_path):
+    """The other half of the sweep, and the reason its bodies are all identical.
+
+    For the out-of-scope department every route must answer the one 404 (D56):
+    not 403, which would confirm the department exists, and not a 500, which
+    would mean the gate ran after something that could fail. Asserted as a status
+    rather than only scanned, because `_leaks` finding nothing in a 502's body is
+    not evidence of anything.
+
+    `THEIRS` really is there — an overview, two processes, an open conflict, a
+    next id — which is what stops these 404s from being the honest answer they
+    would be for a department that did not exist.
+    `test_the_scan_finds_every_token_when_the_caller_is_in_scope` is the pairing:
+    the same routes, for a `*` holder, must serve all of it.
+    """
+    client = _client_as(corpus, tmp_path, "editor", f"dept:{MINE}")
+    wrong = []
+    for route in DEPT_READS + DEPT_WRITES:
+        filled = _fill(route, d=THEIRS, u=client.username)
+        r = client.request(filled.method, filled.path, json=filled.body)
+        if (r.status_code, r.json()) != (404, {"detail": NOT_FOUND}):
+            wrong.append(f"  {filled.method} {filled.path}: {r.status_code}"
+                         f" {r.text[:200]}")
+    assert not wrong, (
+        "these routes answered a caller outside the department with something"
+        " other than the uniform 404:\n" + "\n".join(wrong))
 
 
 def _api_routes(app):
@@ -475,25 +665,56 @@ def _api_routes(app):
     return out
 
 
+#: Routes this file does **not** sweep, each named with the reason, because a
+#: silent filter is how an endpoint stops being tested without anybody deciding
+#: that it should.
+#:
+#: The previous shape of this test filtered on `path.startswith("/api/")` and
+#: then subtracted `/api/exports/`. The subtraction was at least visible; the
+#: prefix filter was not, and it dropped `GET /exports/{file_path:path}` —
+#: the one endpoint D56 writes a row about — without a word.
+NOT_SWEPT: dict[tuple[str, str], str] = {
+    ("POST", "/api/exports/login"): (
+        "the way in to the shared export credential (D25): not a session, no "
+        "role and no scope, so there is nothing here for a role-parametrised "
+        "scan to say. Covered by test_export_login.py."),
+    ("POST", "/api/exports/logout"): (
+        "the same credential's way out; test_export_login.py."),
+    ("GET", "/exports/{file_path:path}"): (
+        "**UNRESOLVED, and left unresolved deliberately — do not delete this "
+        "entry without reading D56's Downloads row.** The download is gated by "
+        "the shared export credential alone, and that credential derives no "
+        "department scope, so this endpoint serves any published artifact to "
+        "anyone holding it. D56 says: 'The download endpoint re-derives scope on "
+        "every request. That the cached artifact exists is not authorisation to "
+        "serve it.' The old reason given for skipping it — that it is 'behind "
+        "that credential' — is the argument that row rejects. It is excluded "
+        "here because it is pre-existing and outside this sub-project's diff, "
+        "not because it is settled. Whoever closes it: the sweep in this file is "
+        "where it comes back."),
+}
+
+
 def test_the_scan_exercises_every_api_route(corpus, tmp_path):
     """Every endpoint, not the ones somebody listed.
 
     Compared against the app's own route table, so a fifteenth endpoint fails
-    here on the day it is added rather than being quietly unscanned.
-
-    `/api/exports/...` is out: those two routes belong to the export reader's
-    separate credential (D25), which is not a session, holds no role and no
-    scope, and has its own tests in `test_export_auth.py`. The `/exports/...`
-    download itself is likewise not an API response — it serves a published file
-    behind that credential.
+    here on the day it is added rather than being quietly unscanned. What is left
+    out is left out by name, in `NOT_SWEPT`, with the reason attached — and every
+    exclusion is asserted to still exist, so one that is deleted or renamed fails
+    here instead of quietly widening the hole.
     """
     app = create_app(_cfg(corpus, tmp_path, next(_seq)))
-    live = {(m, route.path) for route in _api_routes(app)
-            for m in route.methods if m not in ("HEAD", "OPTIONS")
-            if route.path.startswith("/api/")
-            and not route.path.startswith("/api/exports/")}
-    assert live, ("no routes were found to compare against: this app no longer"
-                  " keeps its endpoints where _api_routes looks")
+    every = {(m, route.path) for route in _api_routes(app)
+             for m in route.methods if m not in ("HEAD", "OPTIONS")}
+    assert every, ("no routes were found to compare against: this app no longer"
+                   " keeps its endpoints where _api_routes looks")
+    stale = set(NOT_SWEPT) - every
+    assert not stale, (
+        f"these routes are excluded from the sweep but no longer exist:"
+        f" {sorted(stale)} — an exclusion that names nothing hides nothing, and"
+        f" the reason attached to it needs re-reading, not deleting")
+    live = every - set(NOT_SWEPT)
     scanned = {(r.method, r.template) for r in EVERY_ROUTE}
     assert scanned == live, (
         f"unscanned routes: {sorted(live - scanned)};"
@@ -550,6 +771,57 @@ def test_the_board_serves_no_conflict_count_to_anyone_who_cannot_edit(corpus,
     mine = next(row for row in _board(editor) if row["code"] == MINE)
     assert mine["conflicts"] == 2, (
         "the person who can resolve a conflict is no longer told there is one")
+
+
+def _open_conflicts(root, dept: str) -> int:
+    """Open conflicts in `dept`, counted from disk rather than from the endpoint
+    under test."""
+    return sum(
+        1
+        for path in sorted((root / "departments" / dept / "processes").glob("*.json"))
+        for p in json.loads(path.read_text(encoding="utf-8")).get("pending", [])
+        if p.get("status") == "open")
+
+
+def test_the_conflict_count_is_decided_per_department_not_per_caller(corpus,
+                                                                    tmp_path):
+    """One caller, two departments, two different answers.
+
+    Every other caller in this file holds exactly one scope, and for a
+    one-department caller "may edit **this** department" and "may edit
+    **somewhere**" are the same question — so the whole file passes, unchanged,
+    against a board that asks the per-caller one:
+
+        if any(may_edit(f"dept:{x['code']}") for x in reg["departments"]):
+
+    That regression is a real leak with a real holder behind it. An Editor listed
+    for `dining` (whole) and for `cooking/report:steps` (one report) appears on
+    both rows of the board — `reachable_departments` is "somewhere within" — and
+    may edit only the first. Under the per-caller check they would be served
+    cooking's pending count: §11 test 9's *no pending count reaches a non-editor*,
+    for a department they cannot open a single process in.
+
+    Both directions, in one caller, so neither can be satisfied by a board that
+    withholds the field from everybody or serves it to everybody.
+    """
+    # The count cooking would leak has to exist, or a regression could serve
+    # `conflicts: 0` and the absence assertion below would be about nothing.
+    assert _open_conflicts(corpus, THEIRS) > 0, (
+        f"{THEIRS} carries no open conflict, so there is no count for a"
+        f" per-caller filter to leak and this test proves nothing")
+
+    mixed = _client_as(corpus, tmp_path, "editor",
+                       f"dept:{MINE}", f"dept:{THEIRS}/report:steps")
+    rows = {row["code"]: row for row in _board(mixed)}
+    assert set(rows) == {MINE, THEIRS}, (
+        f"the premise is gone: this caller must be listed for both {MINE} and"
+        f" {THEIRS}, or the two rows cannot disagree — got {sorted(rows)}")
+    assert rows[MINE]["conflicts"] == 2, (
+        "the department this caller may edit stopped carrying its count")
+    assert "conflicts" not in rows[THEIRS], (
+        f"the board served a count for {THEIRS}, which this caller may not edit:"
+        f" {rows[THEIRS]} — the `edit` question is being asked about the caller"
+        f" rather than about the department")
 
 
 def test_pending_is_empty_rather_than_forbidden_for_someone_without_edit(corpus,

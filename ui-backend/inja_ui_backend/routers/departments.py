@@ -7,7 +7,7 @@ import re
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from .. import engine, gitcommit, storage
-from ..access import NOT_FOUND, allows, reachable_departments, requires
+from ..access import NOT_FOUND, permits, reachable_departments, requires
 from ..auth import require_session
 
 router = APIRouter(prefix="/api/departments")
@@ -60,7 +60,7 @@ def list_departments(request: Request, user=Depends(require_session)):
     used to carry the same two lines and the same paragraph explaining them —
     two homes for one subtlety, one of which could drift to `if not reachable:`
     while the other's tests stayed green. It now decides per department with
-    `allows`, which is a bool and has no trap, for a reason of its own (see
+    `permits`, which is a bool and has no trap, for a reason of its own (see
     `routers/pending.py`). If a second caller of `reachable_departments` ever
     appears, this filter is what to extract rather than to copy.
 
@@ -78,17 +78,27 @@ def list_departments(request: Request, user=Depends(require_session)):
     still answers *"how many unresolved proposals does this department have"*,
     and it answers it wrongly, which is worse than not answering.
 
-    `allows(…, "edit", "dept:{code}")` per department rather than one capability
-    check for the whole board, and the difference is a real caller: a
-    `dept:x/report:k` holder is named by `reachable_departments` — that is what
-    puts x in this list at all — and `allows` refuses them on x itself, so a
-    check that asked only whether the *role* holds `edit` would serve them a
-    count for a department they cannot open. The two lists disagree on exactly
-    that holder; see `routers/pending.py`.
+    **The `edit` question is asked per department and never per caller.** It is
+    `may_edit(f"dept:{code}")` inside the loop, and two model-legal holders make
+    the difference visible:
+
+    * `dept:x/report:k` alone is named by `reachable_departments` — that is what
+      puts x in this list at all — while `allows` refuses them on x itself, so a
+      check that asked only whether the *role* holds `edit` would serve them a
+      count for a department they cannot open;
+    * `dept:a` **and** `dept:b/report:k` together is listed for both, may edit a
+      and not b, and a check of the form "may this caller edit *somewhere*?"
+      would hand them b's count. That caller is the one a per-caller regression
+      passes every other test with; `test_body_scan.py` holds them.
+
+    `permits` resolves the capability set and the scope rows once for the whole
+    board rather than once per department — the same decision, eighteen fewer
+    reads. See `routers/pending.py` for the same per-department shape.
     """
     cfg = request.app.state.cfg
     conn = request.app.state.db
     reachable = reachable_departments(conn, user, "view")
+    may_edit = permits(conn, user, "edit")
     reg = storage.read_json(storage.registry_path(cfg.data_root))
     out = []
     for d in reg["departments"]:
@@ -108,7 +118,7 @@ def list_departments(request: Request, user=Depends(require_session)):
             conflicts += sum(1 for p in proc.get("pending", [])
                              if p.get("status") == "open")
         row = {"code": d["code"], "name": d["name"], "count": count, "subs": subs}
-        if allows(conn, user, "edit", f"dept:{d['code']}"):
+        if may_edit(f"dept:{d['code']}"):
             row["conflicts"] = conflicts
         out.append(row)
     return out

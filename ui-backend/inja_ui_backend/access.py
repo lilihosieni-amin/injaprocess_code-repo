@@ -94,6 +94,31 @@ def scopes_of(conn: sqlite3.Connection, user: sqlite3.Row) -> tuple[str, ...]:
     return tuple(r["scope"] for r in rows)
 
 
+def permits(conn: sqlite3.Connection, user: sqlite3.Row,
+            capability: str) -> Callable[[str], bool]:
+    """`allows` with the two lookups done once, for a caller asking about many
+    targets.
+
+    The board and `/api/pending` both decide **per department**, so a nine-row
+    registry costs eighteen queries per request through `allows` — correct, and
+    needlessly so, since neither the role's capabilities nor the user's scopes
+    can change inside one request. This resolves both once and returns a
+    predicate over targets.
+
+    It is the only implementation of D12's conjunction; `allows` below is this
+    function applied to one target, so there is no second copy of the rule to
+    drift. **The predicate decides one target at a time and that is the point** —
+    a caller who collapses it to "may this person edit anywhere?" has replaced a
+    per-department decision with a per-caller one, which is right for nobody and
+    wrong for a two-scope holder (`dept:a` plus `dept:b/report:k`) in exactly the
+    direction that leaks.
+    """
+    if capability not in capabilities_of(conn, user):
+        return lambda target: False
+    scopes = scopes_of(conn, user)
+    return lambda target: any(contains(s, target) for s in scopes)
+
+
 def allows(conn: sqlite3.Connection, user: sqlite3.Row, capability: str,
            target: str) -> bool:
     """Both halves of D12, and nothing else. Membership is exact, never a prefix.
@@ -108,9 +133,7 @@ def allows(conn: sqlite3.Connection, user: sqlite3.Row, capability: str,
     reintroduces the existence disclosure — the tests kill it, and this note is
     so nobody has to learn that from a red suite.
     """
-    if capability not in capabilities_of(conn, user):
-        return False
-    return any(contains(s, target) for s in scopes_of(conn, user))
+    return permits(conn, user, capability)(target)
 
 
 def reachable_departments(conn: sqlite3.Connection, user: sqlite3.Row,
