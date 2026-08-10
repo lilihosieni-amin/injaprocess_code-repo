@@ -9,11 +9,17 @@ per-user capability list, no deny list. "Why can this person download?" must
 have one answer in one place, and the subset comparison delegation depends on
 (P0c) is only well-defined when capabilities come from exactly one source.
 
-This module reads; it decides no HTTP. The 404-versus-403 split (D56) belongs to
-the dependency above it, so nothing here raises, and every unanswerable
-question — a role row that resolves to nothing, a scope row the grammar refuses,
-a capability no role holds — is a `False` rather than an exception. A crash is a
-denial of service; a `False` fails closed.
+The resolution functions read; they decide no HTTP. Nothing among them raises,
+and every unanswerable question — a role row that resolves to nothing, a scope
+row the grammar refuses, a capability no role holds — is a `False` rather than an
+exception. A crash is a denial of service; a `False` fails closed.
+
+The 404-versus-403 split (D56) is `requires` at the foot of this module, and that
+is the only place in this file where HTTP exists. It is here rather than in its
+own module because it is a two-line reading of the very rule above it, and a
+status code chosen a file away from the rule it encodes is a status code that
+drifts from it. The direction of the dependency is one-way: `requires` calls the
+functions above, and none of them knows a status code exists.
 
 One exception to that, stated rather than hidden: the `json.loads` of a role's
 capability list will raise on a malformed row. It is left to raise because the
@@ -29,7 +35,11 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from typing import Callable
 
+from fastapi import Depends, HTTPException, Request
+
+from .auth import require_session
 from .scopes import SCOPE_RE, contains, dept_of
 
 
@@ -118,3 +128,58 @@ def reachable_departments(conn: sqlite3.Connection, user: sqlite3.Row,
         if code:
             codes.add(code)
     return codes
+
+
+def requires(capability: str, target: str | Callable[[Request], str]):
+    """A dependency that gates an endpoint on one capability at one target.
+
+    The status partition is the point (D56):
+
+      401  no session at all
+      404  the target is outside the caller's scope — they must not learn it
+           exists, so this is deliberately indistinguishable from a typo
+      403  the caller can see the target but may not do this to it
+
+    The natural implementation returns 403 for both refusal cases, which is why
+    both directions are pinned by tests.
+
+    **Scope is checked before capability, and the order is the whole point.**
+    Reversed, a Reader asking to edit another department's process is refused for
+    the capability first and answers 403 — which says "this exists, but not for
+    you" about a department they were never to learn of. The disclosure is exactly
+    what the 404 is there to refuse, and it is invisible to any test whose
+    out-of-scope case happens to use a capability the caller does hold, because
+    both orders answer 404 for that one.
+
+    `target` is either a fixed scope string or a function of the request, for the
+    endpoints whose target is in the path. It is resolved once, here, so that the
+    string the scope check runs on is the string the endpoint was gated on.
+
+    A `target` the grammar refuses reaches nothing under `contains` — including
+    for a `*` holder — so it answers 404 like anything else out of scope. That
+    keeps a wildcard holder on the same path as everyone else: who holds `*` must
+    not be readable from which status a nonsense target comes back as.
+
+    401 is not decided here. `require_session` is a sub-dependency, so FastAPI
+    resolves it before this body runs and an unauthenticated caller never reaches
+    the partition at all — which is why a stranger cannot use these two codes to
+    map anything.
+
+    Read-only, and no explicit transaction: this runs on the connection shared
+    across the threadpool (see `db.connect`).
+
+    `access.denied` (D42) is not recorded yet. When it arrives it belongs on the
+    403 branch below and never on the 404 — 404s are unrecorded by design,
+    because a boundary that is indistinguishable from a typo produces typo-volume
+    noise that would bury the 403s.
+    """
+    def dependency(request: Request, user=Depends(require_session)):
+        conn = request.app.state.db
+        resolved = target(request) if callable(target) else target
+        if not any(contains(s, resolved) for s in scopes_of(conn, user)):
+            raise HTTPException(status_code=404, detail="یافت نشد")
+        if capability not in capabilities_of(conn, user):
+            raise HTTPException(status_code=403, detail="اجازهٔ این کار را ندارید")
+        request.state.user = user
+        return user
+    return dependency
