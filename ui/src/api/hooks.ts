@@ -22,15 +22,18 @@ export const useProcess = (pid: string, opts?: { enabled?: boolean }) =>
     enabled: opts?.enabled ?? true,
   })
 
-export const useMe = () =>
-  useQuery({ queryKey: ['me'], queryFn: () => fetchJson<Me>('/api/auth/me'), retry: false })
-
+// GET /api/auth/me has no hook here: it is the session descriptor, and it lives
+// with the thing that reads it (`src/auth/useSession.ts`) rather than among the
+// document hooks.
 export function useLogin() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (body: { username: string; password: string }) =>
       fetchJson<Me>('/api/auth/login', { method: 'POST', body: JSON.stringify(body) }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['me'] }),
+    // The key useSession holds. A stale descriptor cached under it — from the
+    // 401 that sent this person to sign-in in the first place — would otherwise
+    // still be the answer the shell is chosen from after they get back in.
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['session'] }),
   })
 }
 

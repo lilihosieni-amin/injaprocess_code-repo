@@ -73,6 +73,12 @@ export interface Overview {
   updated_at: string
 }
 
+/** What POST /api/auth/login answers with — and all it answers with.
+ *
+ *  Not the signed-in person: that is `SessionDescriptor` in
+ *  `src/auth/session.ts`, which `GET /api/auth/me` returns and `useSession`
+ *  reads. Login says only which account the new cookie names; the descriptor is
+ *  fetched afterwards like any other. */
 export interface Me { username: string }
 
 export type DepartmentOrder = { order: string[] }
