@@ -92,6 +92,31 @@ FORBIDDEN: tuple[tuple[str, str], ...] = (
     ("LEAKPROPOSED", "an unresolved proposal from outside the caller's scope"),
 )
 
+#: The tombstoned process planted **inside** the caller's own department.
+TOMBSTONED = f"{MINE}-003"
+
+#: What must never appear in a body served to someone who cannot `edit` this
+#: department — and what an Editor must still be served.
+#:
+#: A second token list rather than four more rows of `FORBIDDEN`, because the two
+#: are checked against different callers. `FORBIDDEN` is about *scope*: nobody
+#: outside `cooking` may see it and the `*` holder must find all of it. This list
+#: is about *capability* at one department both callers hold: an Editor scoped to
+#: `dining` sees every one of these legitimately (D17 excludes tombstones from the
+#: **non-editor** default and gives no switch), so putting them in `FORBIDDEN`
+#: would fail `test_no_role_is_served_anything_outside_its_scope_anywhere_in_any_body`
+#: for the `editor` parameter over content that role is entitled to.
+#:
+#: ASCII sentinels for the same reason as the `LEAK…` ones — a failure naming
+#: `TOMBACTOR` says what leaked, and none of them can be a substring of Persian
+#: content anybody is entitled to.
+TOMBSTONE_TOKENS: tuple[tuple[str, str], ...] = (
+    (TOMBSTONED, "the id of a tombstoned process (D17: excluded entirely)"),
+    ("TOMBNAME", "the name of a tombstoned process"),
+    ("TOMBLABEL", "a node label from a tombstoned process"),
+    ("TOMBACTOR", "a node actor from a tombstoned process"),
+)
+
 
 def _server_paths(data_root) -> tuple[tuple[str, str], ...]:
     """A second class of leak the scan was blind to: **the server's own layout.**
@@ -167,6 +192,24 @@ def _process(pid: str, dept: str, *, name: str, label: str, actor: str,
     }
 
 
+def _tombstone(pid: str, dept: str) -> dict:
+    """A retained-but-deleted process, shaped the way `merge.tombstone` leaves one.
+
+    `pending` is emptied deliberately: `/api/pending` is gated on `edit` and does
+    not itself skip tombstones, so a conflict left here would show up in the
+    Editor's `/api/pending` and quietly change what
+    `test_pending_is_empty_rather_than_forbidden_for_someone_without_edit`
+    asserts — a fixture changing another test's premise, which is exactly the
+    failure this file's docstring is about.
+    """
+    doc = _process(pid, dept, name="TOMBNAME", label="TOMBLABEL",
+                   actor="TOMBACTOR", proposed="TOMBPROPOSED")
+    doc["tombstoned"] = True
+    doc["superseded_by"] = []
+    doc["pending"] = []
+    return doc
+
+
 def _overview(dept: str, name: str) -> dict:
     return {
         "department": dept, "name": name,
@@ -193,6 +236,13 @@ def corpus(data_root):
     instead of `edit` would answer `[]` to a Reader and the test asserting `[]`
     would pass on the wrong implementation.
 
+    Also in scope and **tombstoned**: `dining-003`, carrying this file's
+    `TOMB…` sentinels. It sits beside two *active* dining processes on purpose —
+    a filter that dropped the whole department would satisfy "the reader never
+    saw the tombstone" while serving nothing at all, so
+    `test_a_tombstoned_process_is_withheld_from_a_reader_and_kept_for_the_editor`
+    asserts the two actives are still there.
+
     Out of scope: the fixture's `cooking-001`, a second `cooking-777` carrying
     this file's four sentinels, and a `logistics` process so the board has a
     second department to leak.
@@ -204,6 +254,8 @@ def corpus(data_root):
     _write(data_root, MINE, "processes/dining-002.json",
            _process("dining-002", MINE, name="ترخیص میز",
                     label="تسویه", actor="میزبان", proposed="پیشخدمت"))
+    _write(data_root, MINE, f"processes/{TOMBSTONED}.json",
+           _tombstone(TOMBSTONED, MINE))
     _write(data_root, THEIRS, "processes/cooking-777.json",
            _process("cooking-777", THEIRS, name="LEAKNAME", label="LEAKLABEL",
                     actor="LEAKACTOR", proposed="LEAKPROPOSED"))
@@ -353,6 +405,16 @@ DEPT_READS = (
     Route("GET", "/api/departments/{d}/next-id", None,
           "/api/departments/{code}/next-id", 200),
     Route("GET", "/api/processes/{d}-001", None, "/api/processes/{pid}", 200),
+    #: The same route again, on the **tombstoned** id. A second entry on one
+    #: template rather than a sweep of its own: `test_the_scan_exercises_every_api_route`
+    #: compares sets of (method, template), so the duplicate collapses there and
+    #: costs nothing, while every scan in this file walks the body a
+    #: `/api/processes/{pid}` request for a retained-but-deleted record returns.
+    #: Without it the listing could be filtered and this endpoint could still hand
+    #: any reader the whole document (D17, D56) — the door shut and the window
+    #: open. `200` is the Editor's answer: they are the one caller a tombstone is
+    #: retained *for*.
+    Route("GET", "/api/processes/{d}-003", None, "/api/processes/{pid}", 200),
 )
 
 
@@ -822,6 +884,90 @@ def test_the_conflict_count_is_decided_per_department_not_per_caller(corpus,
         f"the board served a count for {THEIRS}, which this caller may not edit:"
         f" {rows[THEIRS]} — the `edit` question is being asked about the caller"
         f" rather than about the department")
+
+
+#: Every role in `ROLES` that does not hold `edit`. Spelled as a subtraction of
+#: the real capability rather than as a hand-written list, so a role added to
+#: `ROLES` later joins the tombstone scan instead of quietly skipping it.
+NON_EDITORS = tuple(r for r in ROLES if r != "editor")
+
+
+@pytest.mark.parametrize("role", NON_EDITORS)
+def test_no_tombstoned_process_reaches_a_role_that_cannot_edit(corpus, tmp_path,
+                                                               role):
+    """§11 test 9's last clause: **no tombstoned process id**, anywhere in any body.
+
+    D17 puts "Tombstoned processes" in the never-shown block — *excluded
+    entirely*, switchable ❌ never — and D56's Whole-records row says how:
+    *"absent from the response body, filtered in the query. Never client-side."*
+
+    The caller here is **inside** `dining` and entitled to the department: scope
+    is not what refuses them, which is what makes this different from every other
+    sweep in this file. The tombstone sits between two active dining processes
+    they do receive, so "the body was empty" cannot be why nothing was found —
+    `test_a_tombstoned_process_is_withheld_from_a_reader_and_kept_for_the_editor`
+    pins the actives explicitly.
+    """
+    client = _client_as(corpus, tmp_path, role, f"dept:{MINE}")
+    leaks = _leaks(client, forbidden=TOMBSTONE_TOKENS)
+    assert leaks == [], "\n".join(f"  as a {role}: {leak}" for leak in leaks)
+
+
+def test_the_tombstone_scan_finds_every_token_for_someone_who_may_edit(corpus,
+                                                                      tmp_path):
+    """The tombstone tokens, proved to bite — the pairing for the scan above.
+
+    The same sweep as an Editor scoped to `dining`, who is entitled to all of it.
+    Every `TOMBSTONE_TOKENS` entry must turn up somewhere: one that does not is a
+    token no endpoint ever serves, and asserting a Reader never sees it is an
+    assertion about nothing. This is what stops the scan above from passing
+    because the tombstone was never planted, because the route table stopped
+    reading it, or because a filter was applied to *everybody* — which would take
+    the record away from the only person who can permanently clear it.
+    """
+    client = _client_as(corpus, tmp_path, "editor", f"dept:{MINE}")
+    leaks = _leaks(client, forbidden=TOMBSTONE_TOKENS)
+    missing = {token for token, _ in TOMBSTONE_TOKENS} - {leak.token for leak in leaks}
+    assert not missing, (
+        f"no endpoint serves {sorted(missing)} even to an Editor of {MINE}, who a"
+        f" tombstone is retained for: the fixture, the route table or the filter"
+        f" is wrong, and asserting a non-editor never sees them tests nothing")
+
+
+def test_a_tombstoned_process_is_withheld_from_a_reader_and_kept_for_the_editor(
+        corpus, tmp_path):
+    """Both directions on the two endpoints that serve a process document.
+
+    A tombstone is a *retained* record, not a deletion, so the filter cannot be
+    unconditional: the editing app draws it greyed with the only permanent-delete
+    affordance there is. Withheld from a Reader, served to an Editor, and the
+    department's **active** processes served to both — the third assertion is
+    what stops a filter that emptied the list from passing the scan above.
+    """
+    on_disk = json.loads(
+        (corpus / "departments" / MINE / "processes" / f"{TOMBSTONED}.json")
+        .read_text(encoding="utf-8"))
+    assert on_disk.get("tombstoned") is True, (
+        f"{TOMBSTONED} is not tombstoned on disk, so nothing below is about a"
+        f" tombstone")
+
+    reader = _client_as(corpus, tmp_path, "reader", f"dept:{MINE}")
+    listed = reader.get(f"/api/departments/{MINE}/processes")
+    assert listed.status_code == 200, listed.text
+    assert [p["id"] for p in listed.json()] == [f"{MINE}-001", f"{MINE}-002"], (
+        "the reader must still receive the department's active processes — a"
+        " filter that drops everything passes a scan and serves nobody")
+    assert reader.get(f"/api/processes/{TOMBSTONED}").status_code == 404, (
+        "404 and not 403 (D56's Existence row): a non-editor must not learn that"
+        " this id was ever a process")
+
+    editor = _client_as(corpus, tmp_path, "editor", f"dept:{MINE}")
+    assert [p["id"] for p in editor.get(f"/api/departments/{MINE}/processes").json()] == [
+        f"{MINE}-001", f"{MINE}-002", TOMBSTONED], (
+        "the editor lost the tombstone: it is retained for them, last in id"
+        " order (ARD §4.6)")
+    got = editor.get(f"/api/processes/{TOMBSTONED}")
+    assert (got.status_code, got.json()["tombstoned"]) == (200, True)
 
 
 def test_pending_is_empty_rather_than_forbidden_for_someone_without_edit(corpus,

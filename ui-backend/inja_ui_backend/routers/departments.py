@@ -7,7 +7,7 @@ import re
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from .. import engine, gitcommit, storage
-from ..access import NOT_FOUND, permits, reachable_departments, requires
+from ..access import NOT_FOUND, allows, permits, reachable_departments, requires
 from ..auth import require_session
 
 router = APIRouter(prefix="/api/departments")
@@ -190,14 +190,43 @@ async def put_order(code: str, body: dict, request: Request,
 
 @router.get("/{code}/processes")
 def list_processes(code: str, request: Request,
-                   _=Depends(requires("view", _dept_target))):
-    """Processes in curated order (ARD §4.6), tombstones last in id order.
+                   user=Depends(requires("view", _dept_target))):
+    """Processes in curated order (ARD §4.6), tombstones last — for an editor only.
 
     The ordering rule itself lives in `storage.ordered_processes` so the export
     and this endpoint cannot disagree about a department's sequence.
+
+    **A tombstoned process is absent from a non-editor's body** (D17, D56). D17
+    puts "Tombstoned processes" in the never-shown block — *excluded entirely*,
+    switchable ❌ never — and D56's Whole-records row says how: *absent from the
+    response body, filtered in the query. Never client-side.* §11 test 9 names
+    "no tombstoned process id" among what the body scan must pin, and
+    `test_body_scan.py` holds it in both directions.
+
+    **Filtered here rather than in `storage.ordered_processes`.** A tombstone is
+    a *retained* record, not a deletion, and the editor needs it: the process
+    list draws it greyed with «باطل‌شده» and carries the only permanent-delete
+    affordance there is, and the flow and summary screens show its banner and its
+    `superseded_by` heirs. Filtering in storage would take the record away from
+    the person whose job it is to clear it — and `ordered_processes` is also the
+    one statement of "this department's sequence" that the export agrees with, so
+    a caller-blind function is what keeps the two from disagreeing. The export is
+    the other consumer, it never wants tombstones, and it already drops them
+    itself (`exports.department_payload`). The rule therefore lives at each
+    boundary that serves a *reader* — which is what D56 means by "filtered in the
+    query".
+
+    The `edit` question is asked about **this department**, never about the
+    caller — `allows(…, "edit", f"dept:{code}")`, the same shape as the board's
+    conflict count next door and for the same reason: a caller holding `dept:a`
+    plus `dept:b/report:k` may edit a and not b, and "may this caller edit
+    somewhere?" would hand them b's tombstones.
     """
     cfg = request.app.state.cfg
-    return storage.ordered_processes(cfg.data_root, code)
+    docs = storage.ordered_processes(cfg.data_root, code)
+    if not allows(request.app.state.db, user, "edit", f"dept:{code}"):
+        docs = [d for d in docs if not d.get("tombstoned")]
+    return docs
 
 
 @router.get("/{code}/next-id")

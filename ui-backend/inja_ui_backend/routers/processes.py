@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 
 from .. import engine, gitcommit, storage
 from .. import save as save_mod
-from ..access import NOT_FOUND, requires
+from ..access import NOT_FOUND, allows, requires
 from ..auth import require_session
 from ..models import CreateProcessBody, PendingDecision
 
@@ -145,8 +145,30 @@ def _sync_order(cfg, dept: str, written: list) -> None:
 
 @router.get("/{pid}")
 def get_process(pid: str, request: Request,
-                _=Depends(requires("view", _pid_target))):
+                user=Depends(requires("view", _pid_target))):
+    """One process — and **not** a tombstoned one, unless the caller may edit it.
+
+    The department listing is the endpoint the finding named, but filtering only
+    there would close the door and leave the window open: a non-editor who knows
+    or guesses an id reads the whole retained document from here. D17 excludes
+    tombstoned processes *entirely* with no switch, and D56 is "if a user may not
+    see it, it does not appear in **any** response to them" — the two together
+    make this the same clause, not a second one.
+
+    **404, not 403** (D56's Existence row). For a non-editor the record is not a
+    resource they may not act on; it is one they must not learn exists, so the
+    answer is the same `NOT_FOUND` a missing file gives. A 403 here would let a
+    reader enumerate which ids used to be processes.
+
+    The check runs *after* `_load`, which is safe because the scope gate has
+    already run in the dependency: nobody outside `dept:{dept_of(pid)}` reaches
+    this line at all, so the file read discloses nothing and the extra 404 is
+    only ever served to someone already inside the department.
+    """
     _, doc = _load(request.app.state.cfg, pid)
+    if doc.get("tombstoned") and not allows(request.app.state.db, user, "edit",
+                                            _pid_target(request)):
+        raise HTTPException(status_code=404, detail=NOT_FOUND)
     return doc
 
 
