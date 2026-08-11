@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useProcess, usePutProcess } from '../api/hooks'
+import { useSession } from '../auth/useSession'
+import { useCan } from '../auth/can'
 import { useToast } from '../write/ToastProvider'
 import type { Process, Icom, Kpi } from '../api/types'
 import { Chip } from '../ui/Chip'
@@ -31,6 +33,7 @@ export function Summary() {
   const { data: p } = useProcess(pid)
   const put = usePutProcess(pid)
   const toast = useToast()
+  const can = useCan(useSession().data)
 
   type Draft = { name: string; summary: string; idef0: Icom; kpis: Kpi[] }
   const [draft, setDraft] = useState<Draft | null>(null)
@@ -40,6 +43,10 @@ export function Summary() {
 
   const proc: Process = p
   const tombstoned = !!proc.tombstoned
+  // Cosmetic only: PUT /api/processes/{pid} re-derives `edit` from the session
+  // row and refuses regardless. Asked about the process's own department, which
+  // is the department the endpoint gates on too.
+  const mayEdit = can('edit', `dept:${proc.department}`)
   function enter() {
     if (tombstoned) return
     setDraft({ name: proc.name, summary: proc.summary, idef0: { ...proc.idef0 }, kpis: proc.kpis.map((k) => ({ ...k })) })
@@ -90,7 +97,7 @@ export function Summary() {
           <div className="flex gap-2.5 shrink-0">
             {!editing ? (
               <>
-                {!tombstoned && (
+                {mayEdit && !tombstoned && (
                   <Button variant="ghost" onClick={enter} className="px-4 py-3 text-[13px]">ویرایش اطلاعات</Button>
                 )}
                 <Button variant="coral" onClick={() => nav(`/processes/${proc.id}/flow`)} className="px-[18px] py-3 text-[13.5px]">مشاهدهٔ فلوچارت</Button>

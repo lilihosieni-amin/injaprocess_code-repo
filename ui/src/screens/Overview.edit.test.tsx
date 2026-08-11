@@ -2,8 +2,17 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { screen, fireEvent, waitFor } from '@testing-library/react'
 import { Overview } from './Overview'
 import { renderAt } from '../test/utils'
+import type { SessionDescriptor } from '../auth/session'
 
 afterEach(() => vi.restoreAllMocks())
+
+/** The edit flows below are an editor's; the screen draws none of them without
+ *  a session that holds `edit` over this department. */
+const EDITOR: SessionDescriptor = {
+  username: '09120000001', displayName: 'مدیر', role: 'editor',
+  capabilities: ['view', 'comment', 'export_pdf', 'edit'], scopes: ['dept:cooking'],
+  supervisor: null, canSupervise: false, pendingApprovals: 0,
+}
 const OV = { department: 'cooking', name: 'دپارتمان پخت', updated_at: '2026-07-06T10:00:00Z',
   description: 'شرح اولیه',
   sub_units: [{ name: 'آشپزخانهٔ گرم', description: 'غذاهای گرم' }],
@@ -15,7 +24,7 @@ describe('Overview edit', () => {
       if (init?.method === 'PUT') return Promise.resolve(new Response(JSON.stringify(OV), { status: 200, headers: { 'Content-Type': 'application/json' } }))
       return Promise.resolve(new Response(JSON.stringify(OV), { status: 200, headers: { 'Content-Type': 'application/json' } }))
     })
-    renderAt('/departments/:code/overview', <Overview />, '/departments/cooking/overview')
+    renderAt('/departments/:code/overview', <Overview />, '/departments/cooking/overview', EDITOR)
     fireEvent.click(await screen.findByRole('button', { name: 'ویرایش' }))
     const nameInput = screen.getByDisplayValue('آشپزخانهٔ گرم')
     fireEvent.change(nameInput, { target: { value: 'آشپزخانهٔ سرد' } })
@@ -29,7 +38,7 @@ describe('Overview edit', () => {
       if (init?.method === 'PUT') { putBody = JSON.parse(init.body as string); return Promise.resolve(new Response(JSON.stringify(OV), { status: 200, headers: { 'Content-Type': 'application/json' } })) }
       return Promise.resolve(new Response(JSON.stringify(OV), { status: 200, headers: { 'Content-Type': 'application/json' } }))
     })
-    renderAt('/departments/:code/overview', <Overview />, '/departments/cooking/overview')
+    renderAt('/departments/:code/overview', <Overview />, '/departments/cooking/overview', EDITOR)
     fireEvent.click(await screen.findByRole('button', { name: 'ویرایش' }))
     // existing single duty appears as its own input (not a textarea)
     expect(screen.getByDisplayValue('مدیریت')).toBeInTheDocument()
@@ -48,7 +57,7 @@ describe('Overview edit', () => {
       if (init?.method === 'PUT') { putBody = JSON.parse(init.body as string); return Promise.resolve(new Response(JSON.stringify(OV), { status: 200, headers: { 'Content-Type': 'application/json' } })) }
       return Promise.resolve(new Response(JSON.stringify(OV), { status: 200, headers: { 'Content-Type': 'application/json' } }))
     })
-    renderAt('/departments/:code/overview', <Overview />, '/departments/cooking/overview')
+    renderAt('/departments/:code/overview', <Overview />, '/departments/cooking/overview', EDITOR)
     fireEvent.click(await screen.findByRole('button', { name: 'ویرایش' }))
     // the existing KPI appears as its own input
     expect(screen.getByDisplayValue('شاخص اولیه')).toBeInTheDocument()
@@ -67,7 +76,7 @@ describe('Overview edit', () => {
       if (init?.method === 'PUT') { putBody = JSON.parse(init.body as string); return Promise.resolve(new Response(JSON.stringify(OV), { status: 200, headers: { 'Content-Type': 'application/json' } })) }
       return Promise.resolve(new Response(JSON.stringify(OV), { status: 200, headers: { 'Content-Type': 'application/json' } }))
     })
-    renderAt('/departments/:code/overview', <Overview />, '/departments/cooking/overview')
+    renderAt('/departments/:code/overview', <Overview />, '/departments/cooking/overview', EDITOR)
     fireEvent.click(await screen.findByRole('button', { name: 'ویرایش' }))
     const descInput = screen.getByDisplayValue('شرح اولیه')
     fireEvent.change(descInput, { target: { value: '  شرح تازه  ' } })

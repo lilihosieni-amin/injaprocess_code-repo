@@ -2,6 +2,7 @@ import type { ReactElement, ReactNode } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { render } from '@testing-library/react'
+import type { SessionDescriptor } from '../auth/session'
 
 // Router as well as QueryClient: a screen that navigates on success (SignIn) is
 // rendered through this wrapper too, and useNavigate throws outside a Router.
@@ -19,8 +20,18 @@ export function createWrapper() {
 }
 
 // Render `element` at route `path`, with the browser location at `initialUrl`.
-export function renderAt(path: string, element: ReactElement, initialUrl: string) {
+//
+// `session` seeds the ['session'] key useSession reads, which is how a screen
+// under RequireAuth always finds it in the real app: the descriptor is already
+// in cache before any screen mounts. Seeding rather than mocking GET
+// /api/auth/me is deliberate — a screen whose edit controls depend on the
+// session must not be asserted against while that request is still in flight,
+// or "the button is absent" passes for the wrong reason. Omit it for a screen
+// that renders no capability-dependent control; a screen that does renders none
+// of them without it.
+export function renderAt(path: string, element: ReactElement, initialUrl: string, session?: SessionDescriptor) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  if (session) client.setQueryData(['session'], session)
   return render(
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={[initialUrl]}>

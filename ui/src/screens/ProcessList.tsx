@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useDepartments, useProcesses } from '../api/hooks'
+import { useSession } from '../auth/useSession'
+import { useCan } from '../auth/can'
 import { deptMeta } from '../lib/departments'
 import { deriveTag, toFa } from '../lib/format'
 import { countActivities } from '../lib/counts'
@@ -29,6 +31,11 @@ export function ProcessList() {
   const { data: depts = [] } = useDepartments()
   const dept = depts.find((d) => d.code === code)
   const m = deptMeta(code)
+  // Cosmetic only: PUT/POST/DELETE on this department re-derive `edit` from the
+  // session row themselves and refuse regardless of what is drawn here. Asked
+  // about THIS department rather than about the person, so a head of another
+  // department is not offered controls this one's endpoints would refuse.
+  const mayEdit = useCan(useSession().data)('edit', `dept:${code}`)
 
   const query = q.trim()
   const list = procs.filter((p) => !query || p.name.includes(query) || p.id.includes(query))
@@ -65,9 +72,9 @@ export function ProcessList() {
             <div className="text-[13px] text-muted mt-2">{toFa(dept?.count ?? procs.length)} فرآیند مستندشده · برای مشاهدهٔ کارت خلاصه و فلوچارت روی هر فرآیند بزنید.</div>
           </div>
           <div className="flex items-center gap-2.5 shrink-0">
-            <Button variant="ghost" onClick={() => setReordering(true)} className="px-4 py-[11px] text-[13px]">ترتیب فرآیندها</Button>
+            {mayEdit && <Button variant="ghost" onClick={() => setReordering(true)} className="px-4 py-[11px] text-[13px]">ترتیب فرآیندها</Button>}
             <Button variant="ghost" onClick={() => nav(`/departments/${code}/overview`)} className="px-4 py-[11px] text-[13px]">اطلاعات دپارتمان</Button>
-            <Button variant="coral" onClick={() => setCreating(true)} className="px-4 py-[11px] text-[13px]">فرآیند جدید</Button>
+            {mayEdit && <Button variant="coral" onClick={() => setCreating(true)} className="px-4 py-[11px] text-[13px]">فرآیند جدید</Button>}
             <ExportMenu department={code} />
           </div>
         </div>
@@ -112,10 +119,12 @@ export function ProcessList() {
                 <div className="flex gap-2 shrink-0">
                   <Button variant="ghost" onClick={() => nav(`/processes/${p.id}`)} className="px-3.5 py-[9px] text-[12.5px]">اطلاعات کلی</Button>
                   <Button variant="violet" onClick={() => nav(`/processes/${p.id}/flow`)} className="px-3.5 py-[9px] text-[12.5px]">فلوچارت</Button>
-                  <button onClick={() => setDelTarget({ pid: p.id, name: p.name })} title={tombstoned ? 'حذف دائمی فرآیند' : 'حذف فرآیند'}
-                    className="flex items-center justify-center w-[38px] shrink-0 border-[1.5px] border-[#FDD9D6] bg-[#FFF3F2] rounded-[11px] text-conflict">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M10 11v6M14 11v6" /></svg>
-                  </button>
+                  {mayEdit && (
+                    <button onClick={() => setDelTarget({ pid: p.id, name: p.name })} title={tombstoned ? 'حذف دائمی فرآیند' : 'حذف فرآیند'}
+                      className="flex items-center justify-center w-[38px] shrink-0 border-[1.5px] border-[#FDD9D6] bg-[#FFF3F2] rounded-[11px] text-conflict">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M10 11v6M14 11v6" /></svg>
+                    </button>
+                  )}
                 </div>
               </div>
             )

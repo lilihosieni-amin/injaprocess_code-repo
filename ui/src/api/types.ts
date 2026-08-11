@@ -1,4 +1,9 @@
-export interface Department { code: string; name: string; count: number; subs: number; conflicts: number }
+/** `conflicts` is optional because the server sends it only to someone who may
+ *  `edit` that department, and sends it **absent rather than zero** for everyone
+ *  else: a `0` still answers "how many unresolved proposals are there", and
+ *  answers it wrongly. `?: number` is what makes a reader of this type deal with
+ *  "I was not told" as its own case instead of collapsing it into "none". */
+export interface Department { code: string; name: string; count: number; subs: number; conflicts?: number }
 
 export interface Icom { inputs: string[]; controls: string[]; outputs: string[]; mechanisms: string[] }
 export interface Kpi { name: string; definition?: string; target?: string; unit?: string }
