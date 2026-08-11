@@ -2,11 +2,36 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ExportMenu } from './ExportMenu'
+import type { SessionDescriptor } from '../auth/session'
 
 afterEach(() => vi.restoreAllMocks())
 
-function renderMenu() {
+// The four descriptors below differ from EXPORTER one field at a time, so an
+// assertion that separates any two of them can only be separating them on that
+// field.
+/** The seeded `reader`: holds `export_pdf` over the whole department shown. */
+const EXPORTER: SessionDescriptor = {
+  username: '09120000001', displayName: 'کاربر', role: 'reader',
+  capabilities: ['view', 'comment', 'export_pdf'], scopes: ['dept:dining'],
+  supervisor: null, canSupervise: false, pendingApprovals: 0,
+}
+/** The seeded `reader_no_download`: `reader` minus `export_pdf` and nothing else
+ *  (ui-backend/inja_ui_backend/seed.py). Withholding download is the entire
+ *  reason that role exists, so its holder must not be offered the menu at all. */
+const NO_DOWNLOAD: SessionDescriptor = {
+  ...EXPORTER, role: 'reader_no_download', capabilities: ['view', 'comment'],
+}
+/** Holds `export_pdf` — but over another department. Separates "may this person
+ *  export anything?" from "may they export THIS department?". */
+const OTHER_DEPT: SessionDescriptor = { ...EXPORTER, scopes: ['dept:cooking'] }
+/** Holds `export_pdf` for one report kind of this department — the narrower of
+ *  the two shapes D10 allows, and the target the export route actually gates on
+ *  (`dept:{code}/report:{kind}` in routers/exports.py). */
+const STEPS_ONLY: SessionDescriptor = { ...EXPORTER, scopes: ['dept:dining/report:steps'] }
+
+function renderMenu(session: SessionDescriptor = EXPORTER) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
+  client.setQueryData(['session'], session)
   return render(<QueryClientProvider client={client}><ExportMenu department="dining" /></QueryClientProvider>)
 }
 
@@ -30,6 +55,34 @@ function inFlight() {
     settle: (url = '/exports/dining/flowchart-0123456789abcdef.html') => release(body(url)),
   }
 }
+
+describe('ExportMenu — who is offered an export at all', () => {
+  it('offers every kind to a holder of export_pdf over the department', () => {
+    // The over-hiding guard: a department-wide grant covers every report kind,
+    // including kinds added later, so neither item may go missing.
+    renderMenu(EXPORTER)
+    fireEvent.click(screen.getByRole('button', { name: 'خروجی‌ها' }))
+    expect(screen.getByText('خروجی مستندات کامل')).toBeInTheDocument()
+    expect(screen.getByText('خروجی راهنمای گام‌به‌گام')).toBeInTheDocument()
+  })
+
+  it('draws nothing for a reader_no_download holder', () => {
+    renderMenu(NO_DOWNLOAD)
+    expect(screen.queryByRole('button', { name: 'خروجی‌ها' })).not.toBeInTheDocument()
+  })
+
+  it('draws nothing for an export_pdf holder scoped to another department', () => {
+    renderMenu(OTHER_DEPT)
+    expect(screen.queryByRole('button', { name: 'خروجی‌ها' })).not.toBeInTheDocument()
+  })
+
+  it('offers only the kind a report-scoped grant covers', () => {
+    renderMenu(STEPS_ONLY)
+    fireEvent.click(screen.getByRole('button', { name: 'خروجی‌ها' }))
+    expect(screen.getByText('خروجی راهنمای گام‌به‌گام')).toBeInTheDocument()
+    expect(screen.queryByText('خروجی مستندات کامل')).not.toBeInTheDocument()
+  })
+})
 
 describe('ExportMenu', () => {
   it('opens and closes the dropdown', () => {

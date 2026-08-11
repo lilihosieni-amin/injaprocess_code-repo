@@ -8,7 +8,13 @@ export function Departments() {
   const { data = [] } = useDepartments()
 
   const totalProc = data.reduce((a, d) => a + (d.count ?? 0), 0)
+  // The open-conflict count is served only for a department the viewer may edit,
+  // and is absent — not zero — for the rest. So the tile is drawn only when at
+  // least one department carried the key, and sums only those: a reader who was
+  // told nothing is shown nothing, rather than a green ۰ asserting "no open
+  // conflicts" on their behalf. Absence of a claim, not a claim of absence.
   const totalConflicts = data.reduce((a, d) => a + (d.conflicts ?? 0), 0)
+  const knowsConflicts = data.some((d) => d.conflicts !== undefined)
   const hasConflicts = totalConflicts > 0
 
   return (
@@ -28,13 +34,15 @@ export function Departments() {
           <div className="flex gap-3 flex-none">
             <Stat value={toFa(totalProc)} label="فرآیند مستند" valueClass="text-violet" />
             <Stat value={toFa(data.length)} label="دپارتمان" valueClass="text-ink" />
-            <div className="bg-bg border border-warm rounded-2xl px-5 py-3.5 min-w-[96px] shadow-[0_8px_22px_-12px_rgba(0,0,0,.4)]">
-              <div className="flex items-center gap-[7px]">
-                <span className={`font-extrabold text-[27px] leading-none ${hasConflicts ? 'text-conflict' : 'text-green'}`}>{toFa(totalConflicts)}</span>
-                {hasConflicts && <span className="w-2 h-2 rounded-full bg-coral shadow-[0_0_0_3px_#FFE4E1]" />}
+            {knowsConflicts && (
+              <div className="bg-bg border border-warm rounded-2xl px-5 py-3.5 min-w-[96px] shadow-[0_8px_22px_-12px_rgba(0,0,0,.4)]">
+                <div className="flex items-center gap-[7px]">
+                  <span className={`font-extrabold text-[27px] leading-none ${hasConflicts ? 'text-conflict' : 'text-green'}`}>{toFa(totalConflicts)}</span>
+                  {hasConflicts && <span className="w-2 h-2 rounded-full bg-coral shadow-[0_0_0_3px_#FFE4E1]" />}
+                </div>
+                <div className="text-[11.5px] text-muted mt-[5px] font-semibold">تعارض باز</div>
               </div>
-              <div className="text-[11.5px] text-muted mt-[5px] font-semibold">تعارض باز</div>
-            </div>
+            )}
           </div>
         </div>
 
@@ -59,7 +67,7 @@ export function Departments() {
                     {toFa(d.count)} فرآیند
                   </span>
                   {(d.subs ?? 0) > 0 && <span className="text-[11px] font-semibold text-[#B4690E] bg-[#FBEEDC] px-[9px] py-1 rounded-[20px]">{toFa(d.subs)} زیرفرآیند</span>}
-                  {(d.conflicts ?? 0) > 0 && <span className="inline-flex items-center gap-1 text-[11px] font-bold text-conflict bg-tile-c px-[9px] py-1 rounded-[20px]"><span className="w-1.5 h-1.5 rounded-full bg-coral" />{toFa(d.conflicts)} تعارض</span>}
+                  {d.conflicts !== undefined && d.conflicts > 0 && <span className="inline-flex items-center gap-1 text-[11px] font-bold text-conflict bg-tile-c px-[9px] py-1 rounded-[20px]"><span className="w-1.5 h-1.5 rounded-full bg-coral" />{toFa(d.conflicts)} تعارض</span>}
                 </div>
                 <div className="flex items-center justify-between gap-2.5 mt-4 pt-[15px] border-t border-[#F2ECE3]">
                   <span className={`text-[12.5px] font-bold ${accentText}`}>مشاهدهٔ فرآیندها</span>

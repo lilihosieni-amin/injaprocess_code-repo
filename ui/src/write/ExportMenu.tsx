@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useCreateExport } from '../api/hooks'
+import { useSession } from '../auth/useSession'
+import { useCan } from '../auth/can'
 import { ExportModal } from './ExportModal'
 import type { ExportKind } from '../api/types'
 
@@ -32,6 +34,7 @@ export function ExportMenu({ department }: { department: string }) {
   const [kind, setKind] = useState<ExportKind | null>(null)
   const wrap = useRef<HTMLDivElement>(null)
   const create = useCreateExport(department)
+  const can = useCan(useSession().data)
 
   useEffect(() => {
     if (!open) return
@@ -50,6 +53,18 @@ export function ExportMenu({ department }: { department: string }) {
 
   const status = create.isPending ? 'pending' : create.isError ? 'failed' : create.isSuccess ? 'ready' : 'pending'
 
+  // Cosmetic only: POST /api/departments/{code}/exports/{kind} re-derives
+  // `export_pdf` from the session row and refuses regardless of what is drawn.
+  // Asked per kind, with the same target the route gates on
+  // (`dept:{code}/report:{kind}` — see `_report_target` in routers/exports.py):
+  // a department-wide grant covers every kind, while a report-scoped one covers
+  // exactly its own, so asking about the bare department instead would hide a
+  // steps export from someone the server would happily serve it to.
+  // `reader_no_download` holds no `export_pdf` at all and gets no menu — which
+  // is the whole purpose of that role, and the one affordance it must never see.
+  const kinds = KINDS.filter((k) => can('export_pdf', `dept:${department}/report:${k.kind}`))
+  if (kinds.length === 0) return null
+
   return (
     <div dir="rtl" ref={wrap} className="relative shrink-0">
       <button
@@ -63,7 +78,7 @@ export function ExportMenu({ department }: { department: string }) {
 
       {open && (
         <div role="menu" className="absolute top-[calc(100%+8px)] end-0 w-[288px] bg-white border border-line rounded-[14px] shadow-modal z-40 p-[7px]">
-          {KINDS.map((k) => (
+          {kinds.map((k) => (
             <button key={k.kind} role="menuitem" onClick={() => run(k.kind)}
               className="flex items-start gap-[11px] w-full text-right px-3 py-[11px] rounded-[10px] hover:bg-tile-v2">
               <span className={`w-[34px] h-[34px] shrink-0 rounded-[10px] flex items-center justify-center ${k.tile}`}>

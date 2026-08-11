@@ -1,11 +1,15 @@
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useOverview, usePutOverview } from '../api/hooks'
+import { useSession } from '../auth/useSession'
+import { useCan } from '../auth/can'
 import { deptMeta } from '../lib/departments'
 import { jalali, toFa } from '../lib/format'
 import { Card } from '../ui/Card'
 import { Button } from '../ui/Button'
 import { useToast } from '../write/ToastProvider'
+import { refusalStatus } from '../api/client'
+import { RefusalScreen } from './Refusal'
 import type { Overview as OverviewT } from '../api/types'
 
 type Draft = { description: string; sub_units: { name: string; description: string }[]; personnel: { role: string; duties: string[]; kpi: string[] }[] }
@@ -13,12 +17,19 @@ type ArrayKey = { [K in keyof Draft]: Draft[K] extends unknown[] ? K : never }[k
 
 export function Overview() {
   const { code = '' } = useParams()
-  const { data } = useOverview(code)
+  const { data, error } = useOverview(code)
   const put = usePutOverview(code)
   const toast = useToast()
   const m = deptMeta(code)
+  // Cosmetic only: PUT /api/departments/{code}/overview re-derives `edit` from
+  // the session row and refuses regardless of what is drawn here.
+  const mayEdit = useCan(useSession().data)('edit', `dept:${code}`)
   const [draft, setDraft] = useState<Draft | null>(null)
   const [openRoles, setOpenRoles] = useState<Set<number>>(new Set())  // read view: which categories are expanded (collapsed by default)
+  // A department outside this person's scope is a 404, never a "you may not see
+  // this" — the screen must not say which of the two it is.
+  const refused = refusalStatus(error)
+  if (refused) return <RefusalScreen status={refused} />
   if (!data) return <div className="flex-1 bg-bg" />
 
   function enter() {
@@ -54,7 +65,7 @@ export function Overview() {
             </div>
           </div>
           {!editing ? (
-            <Button variant="violet" onClick={enter} className="px-4 py-2.5 text-[13px]">ویرایش</Button>
+            mayEdit && <Button variant="violet" onClick={enter} className="px-4 py-2.5 text-[13px]">ویرایش</Button>
           ) : (
             <div className="flex gap-2.5">
               <Button variant="ghost" onClick={() => setDraft(null)} className="px-4 py-2.5 text-[13px]">انصراف</Button>

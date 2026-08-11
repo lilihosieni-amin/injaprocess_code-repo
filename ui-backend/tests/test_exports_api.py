@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 from inja_ui_backend import export_auth
 from inja_ui_backend import exports as exports_mod
 from inja_ui_backend import pdf as pdf_mod
+from inja_ui_backend.access import NOT_FOUND
 from inja_ui_backend.app import create_app
 from inja_ui_backend.auth import COOKIE_NAME
 from inja_ui_backend.tests_helpers import cfg_for, seeded_session
@@ -86,46 +87,78 @@ def test_unknown_kind_is_404(data_root, tmp_path, caplog):
     `ExportModal` renders `detail` verbatim inside an otherwise Persian dialog,
     so no 404 on this handler may answer in English — the same split the 503
     branches already make.
+
+    The detail no longer names the kind. Every 404 in this service carries
+    `access.NOT_FOUND` and nothing else (D56): the permission gate in front of
+    this handler answers 404 for a report outside the caller's scope, and a
+    handler 404 that said "unknown kind" would tell a prober that this one WAS
+    inside their scope. The offending kind is still in the log, where only an
+    operator reads it.
     """
     c = _client(_cfg(data_root, tmp_path))
     with caplog.at_level("INFO"):
         r = c.post("/api/departments/cooking/exports/poster")
     assert r.status_code == 404
-    assert r.json()["detail"] == "نوع خروجی نامعتبر است"
+    assert r.json()["detail"] == NOT_FOUND
     assert not _ascii_letters(r.json()["detail"])
     assert any("unknown export kind" in m and "poster" in m for m in _guard_logs(caplog))
 
 
-def test_department_without_an_overview_is_404(data_root, tmp_path, caplog):
-    """A registered department with no `overview.json` is a *data* fault.
+def test_department_without_an_overview_is_409_and_still_says_what_to_do(
+        data_root, tmp_path, caplog):
+    """A registered department with no `overview.json` is a *data* fault, not a
+    missing resource — so it is a 409 and keeps its guidance.
 
-    This is the likeliest failure of the lot — only two departments have an
-    `overview.json` today — so it is also the one a Persian-speaking user is
-    most likely to read. The exception keeps its English message for the log.
+    This is the likeliest failure of the lot: only one department has an
+    `overview.json` today. It is the only message on the handler that tells a
+    user what to go and fill in, and the uniform-404 rule would have cost it —
+    a 404 that describes itself describes the caller's scope boundary (D56).
+    A 409 is outside that partition: reaching this line at all means the gate
+    already admitted the caller, so "reachable, but not in a state that can be
+    exported" tells them nothing they were not already told by being let in.
+    Still Persian, because `ExportModal` renders it verbatim.
     """
     c = _client(_cfg(data_root, tmp_path))
     with caplog.at_level("WARNING"):
         r = c.post("/api/departments/dining/exports/flowchart")
-    assert r.status_code == 404
-    assert r.json()["detail"] == (
-        "اطلاعات معرفی این دپارتمان هنوز ثبت نشده است؛ ابتدا معرفی واحد را کامل کنید.")
+    assert r.status_code == 409
+    assert r.json()["detail"] != NOT_FOUND, (
+        "the guidance was folded back into the uniform 404 body")
+    assert "معرفی" in r.json()["detail"]
     assert not _ascii_letters(r.json()["detail"])
     assert any("overview.json" in m and "dining" in m for m in _guard_logs(caplog))
 
 
-def test_no_404_detail_on_this_handler_reaches_the_user_in_english(data_root, tmp_path):
-    """One assertion covering all three 404 guards at once.
+def test_every_404_on_this_handler_is_the_same_404(data_root, tmp_path):
+    """One assertion covering both 404 guards at once.
 
-    A fourth guard added later in English would pass every test above and still
-    put English in a Persian dialog; this one catches it.
+    A third guard added later would pass every test above — it would have its
+    own name and its own message — and would still re-open by prose what the
+    status code closes: which of two guesses landed inside the caller's scope.
+    Byte-identical bodies, and no English in either of them, is the property
+    that survives a guard nobody has written yet.
+
+    The department with no overview is deliberately **not** in that set, and the
+    last two assertions are what stop it drifting back in: it is a 409, so it is
+    not in the 404 partition and its self-describing body costs nothing. Folding
+    it back to 404 while keeping its prose would put the disclosure back, and a
+    test that only compared the 404 bodies it happened to list would not see it.
     """
     c = _client(_cfg(data_root, tmp_path))
-    for path in ("/api/departments/cooking/exports/poster",
-                 "/api/departments/marketing/exports/flowchart",
-                 "/api/departments/dining/exports/flowchart"):
+    bodies = set()
+    for path in ("/api/departments/cooking/exports/poster",       # unknown kind
+                 "/api/departments/marketing/exports/flowchart"):  # unknown department
         r = c.post(path)
         assert r.status_code == 404, path
         assert not _ascii_letters(r.json()["detail"]), path
+        bodies.add(r.text)
+    assert len(bodies) == 1, f"the 404s can be told apart: {bodies}"
+
+    no_overview = c.post("/api/departments/dining/exports/flowchart")
+    assert no_overview.status_code != 404, (
+        "the missing overview is back in the 404 partition, where its wording"
+        " separates 'not there' from 'not yours'")
+    assert no_overview.text not in bodies
 
 
 def test_missing_export_dir_is_503(data_root, tmp_path, caplog):
@@ -196,7 +229,7 @@ def test_unknown_department_is_404(data_root, tmp_path, caplog):
     with caplog.at_level("INFO"):
         r = c.post("/api/departments/marketing/exports/flowchart")
     assert r.status_code == 404
-    assert r.json()["detail"] == "دپارتمان یافت نشد"
+    assert r.json()["detail"] == NOT_FOUND
     assert not _ascii_letters(r.json()["detail"])
     assert any("unknown department" in m and "marketing" in m for m in _guard_logs(caplog))
 

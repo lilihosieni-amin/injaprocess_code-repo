@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { fetchJson, onUnauthorized, ApiError } from './client'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { fetchJson, onUnauthorized, ApiError, retryQuery, MAX_RETRIES } from './client'
 
 afterEach(() => vi.restoreAllMocks())
 
@@ -94,5 +96,51 @@ describe('fetchJson', () => {
     mockFetch(401, { detail: 'authentication required' })
     await expect(fetchJson('/api/processes')).rejects.toBeInstanceOf(ApiError)
     expect(handler).toHaveBeenCalledOnce()
+  })
+})
+
+describe('retryQuery — the app-wide retry policy', () => {
+  // TanStack Query's default is `retry: 3` with exponential backoff. Applied to
+  // a refusal that meant about seven seconds of blank page before the 403/404
+  // screen appeared, and four identical refusals at the server per navigation.
+  // Every test of those surfaces builds its client with `retry: false`, so all
+  // of them showed the screen instantly and passed — which is why this policy is
+  // asserted here, on the function itself, rather than through a screen.
+  it('never retries a refusal', () => {
+    for (const status of [403, 404]) {
+      expect(retryQuery(0, new ApiError(status, 'no'))).toBe(false)
+    }
+  })
+
+  it('never retries any other 4xx either', () => {
+    // 401 is the session ending and the shell is already redirecting; 422 is a
+    // body the server will never accept. Neither changes by being asked again.
+    for (const status of [400, 401, 422, 429]) {
+      expect(retryQuery(0, new ApiError(status, 'no'))).toBe(false)
+    }
+  })
+
+  it('retries a server error and a network failure, up to the cap', () => {
+    expect(retryQuery(0, new ApiError(500, 'boom'))).toBe(true)
+    expect(retryQuery(MAX_RETRIES - 1, new ApiError(503, 'boom'))).toBe(true)
+    expect(retryQuery(MAX_RETRIES, new ApiError(500, 'boom'))).toBe(false)
+    // Not an ApiError at all: DNS, a dropped connection, a body that would not
+    // parse. Transient, and the one case a status cannot describe.
+    expect(retryQuery(0, new TypeError('Failed to fetch'))).toBe(true)
+    expect(retryQuery(MAX_RETRIES, new TypeError('Failed to fetch'))).toBe(false)
+  })
+})
+
+describe('the retry policy is the one the app is actually built with', () => {
+  // A policy nothing wires up is a policy nothing has. `main.tsx` cannot be
+  // imported here — it calls createRoot on a document this suite does not have —
+  // so the wiring is read from the source, the same way src/test/guards.test.ts
+  // reads the components it polices. Brittle to a rename on purpose: a rename is
+  // exactly the change that would silently restore TanStack's `retry: 3` and put
+  // the seven-second blank page back in front of every refusal.
+  it('main.tsx hands retryQuery to the QueryClient as the default for queries', () => {
+    const main = readFileSync(join(process.cwd(), 'src/main.tsx'), 'utf8')
+    expect(main).toMatch(/defaultOptions:\s*{\s*queries:\s*{\s*retry:\s*retryQuery\s*}/)
+    expect(main).toMatch(/import\s*{\s*retryQuery\s*}\s*from\s*'\.\/api\/client'/)
   })
 })

@@ -1,11 +1,15 @@
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useProcess, usePutProcess } from '../api/hooks'
+import { useSession } from '../auth/useSession'
+import { useCan } from '../auth/can'
 import { useToast } from '../write/ToastProvider'
 import type { Process, Icom, Kpi } from '../api/types'
 import { Chip } from '../ui/Chip'
 import { IdBadge } from '../ui/IdBadge'
 import { Button } from '../ui/Button'
+import { refusalStatus } from '../api/client'
+import { RefusalScreen } from './Refusal'
 
 function ListEditor({ label, items, onChange }: { label: string; items: string[]; onChange: (v: string[]) => void }) {
   return (
@@ -28,18 +32,28 @@ function ListEditor({ label, items, onChange }: { label: string; items: string[]
 export function Summary() {
   const { pid = '' } = useParams()
   const nav = useNavigate()
-  const { data: p } = useProcess(pid)
+  const { data: p, error } = useProcess(pid)
   const put = usePutProcess(pid)
   const toast = useToast()
+  const can = useCan(useSession().data)
 
   type Draft = { name: string; summary: string; idef0: Icom; kpis: Kpi[] }
   const [draft, setDraft] = useState<Draft | null>(null)
   const editing = draft !== null
 
+  // A process outside this reader's scope is a 404 — and so is a tombstoned one
+  // to anyone without `edit`, so a link from a heir list lands here too. Both
+  // get the same screen, which is the whole point of the status being uniform.
+  const refused = refusalStatus(error)
+  if (refused) return <RefusalScreen status={refused} />
   if (!p) return <div className="flex-1 bg-bg" />
 
   const proc: Process = p
   const tombstoned = !!proc.tombstoned
+  // Cosmetic only: PUT /api/processes/{pid} re-derives `edit` from the session
+  // row and refuses regardless. Asked about the process's own department, which
+  // is the department the endpoint gates on too.
+  const mayEdit = can('edit', `dept:${proc.department}`)
   function enter() {
     if (tombstoned) return
     setDraft({ name: proc.name, summary: proc.summary, idef0: { ...proc.idef0 }, kpis: proc.kpis.map((k) => ({ ...k })) })
@@ -90,7 +104,7 @@ export function Summary() {
           <div className="flex gap-2.5 shrink-0">
             {!editing ? (
               <>
-                {!tombstoned && (
+                {mayEdit && !tombstoned && (
                   <Button variant="ghost" onClick={enter} className="px-4 py-3 text-[13px]">ویرایش اطلاعات</Button>
                 )}
                 <Button variant="coral" onClick={() => nav(`/processes/${proc.id}/flow`)} className="px-[18px] py-3 text-[13.5px]">مشاهدهٔ فلوچارت</Button>
