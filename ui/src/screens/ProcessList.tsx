@@ -12,6 +12,8 @@ import { CreateProcessModal } from '../write/CreateProcessModal'
 import { DeleteProcessConfirm } from '../write/DeleteProcessConfirm'
 import { ReorderModal } from '../write/ReorderModal'
 import { ExportMenu } from '../write/ExportMenu'
+import { refusalStatus } from '../api/client'
+import { RefusalScreen } from './Refusal'
 import type { Process } from '../api/types'
 
 const TAG_CLS: Record<string, string> = {
@@ -27,7 +29,7 @@ export function ProcessList() {
   const [creating, setCreating] = useState(false)
   const [reordering, setReordering] = useState(false)
   const [delTarget, setDelTarget] = useState<{ pid: string; name: string } | null>(null)
-  const { data: procs = [] } = useProcesses(code)
+  const { data: procs = [], error } = useProcesses(code)
   const { data: depts = [] } = useDepartments()
   const dept = depts.find((d) => d.code === code)
   const m = deptMeta(code)
@@ -57,6 +59,11 @@ export function ProcessList() {
       restored.current = true
     }
   }, [procs, scrollKey])
+
+  // A department outside this person's scope answers 404 for its process list.
+  // Placed after every hook above, so the early return never changes hook order.
+  const refused = refusalStatus(error)
+  if (refused) return <RefusalScreen status={refused} />
 
   return (
     <div dir="ltr" ref={scrollRef} onScroll={(e) => sessionStorage.setItem(scrollKey, String(e.currentTarget.scrollTop))} className="flex-1 overflow-auto py-[30px] px-10">

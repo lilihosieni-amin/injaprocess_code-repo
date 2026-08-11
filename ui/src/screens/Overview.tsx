@@ -8,6 +8,8 @@ import { jalali, toFa } from '../lib/format'
 import { Card } from '../ui/Card'
 import { Button } from '../ui/Button'
 import { useToast } from '../write/ToastProvider'
+import { refusalStatus } from '../api/client'
+import { RefusalScreen } from './Refusal'
 import type { Overview as OverviewT } from '../api/types'
 
 type Draft = { description: string; sub_units: { name: string; description: string }[]; personnel: { role: string; duties: string[]; kpi: string[] }[] }
@@ -15,7 +17,7 @@ type ArrayKey = { [K in keyof Draft]: Draft[K] extends unknown[] ? K : never }[k
 
 export function Overview() {
   const { code = '' } = useParams()
-  const { data } = useOverview(code)
+  const { data, error } = useOverview(code)
   const put = usePutOverview(code)
   const toast = useToast()
   const m = deptMeta(code)
@@ -24,6 +26,10 @@ export function Overview() {
   const mayEdit = useCan(useSession().data)('edit', `dept:${code}`)
   const [draft, setDraft] = useState<Draft | null>(null)
   const [openRoles, setOpenRoles] = useState<Set<number>>(new Set())  // read view: which categories are expanded (collapsed by default)
+  // A department outside this person's scope is a 404, never a "you may not see
+  // this" — the screen must not say which of the two it is.
+  const refused = refusalStatus(error)
+  if (refused) return <RefusalScreen status={refused} />
   if (!data) return <div className="flex-1 bg-bg" />
 
   function enter() {

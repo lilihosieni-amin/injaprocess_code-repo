@@ -7,6 +7,23 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * The two statuses a screen has a surface of its own for (D56).
+ *
+ * 404 is everything outside the caller's scope, and the server made both its
+ * status and its body uniform precisely so that "no such thing" and "not yours"
+ * are the same answer — a tombstoned process reaching a non-editor included.
+ * 403 is a refused *action* on something the caller can already see. Nothing
+ * else maps here: a 401 is the session ending and is the shell's business
+ * (`onUnauthorized` below), and a 5xx is not a refusal at all.
+ */
+export function refusalStatus(error: unknown): 403 | 404 | undefined {
+  if (!(error instanceof ApiError)) return undefined
+  if (error.status === 403) return 403
+  if (error.status === 404) return 404
+  return undefined
+}
+
 let unauthorizedHandler: () => void = () => {}
 
 /**

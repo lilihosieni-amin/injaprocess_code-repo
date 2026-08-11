@@ -8,6 +8,8 @@ import type { Process, Icom, Kpi } from '../api/types'
 import { Chip } from '../ui/Chip'
 import { IdBadge } from '../ui/IdBadge'
 import { Button } from '../ui/Button'
+import { refusalStatus } from '../api/client'
+import { RefusalScreen } from './Refusal'
 
 function ListEditor({ label, items, onChange }: { label: string; items: string[]; onChange: (v: string[]) => void }) {
   return (
@@ -30,7 +32,7 @@ function ListEditor({ label, items, onChange }: { label: string; items: string[]
 export function Summary() {
   const { pid = '' } = useParams()
   const nav = useNavigate()
-  const { data: p } = useProcess(pid)
+  const { data: p, error } = useProcess(pid)
   const put = usePutProcess(pid)
   const toast = useToast()
   const can = useCan(useSession().data)
@@ -39,6 +41,11 @@ export function Summary() {
   const [draft, setDraft] = useState<Draft | null>(null)
   const editing = draft !== null
 
+  // A process outside this reader's scope is a 404 — and so is a tombstoned one
+  // to anyone without `edit`, so a link from a heir list lands here too. Both
+  // get the same screen, which is the whole point of the status being uniform.
+  const refused = refusalStatus(error)
+  if (refused) return <RefusalScreen status={refused} />
   if (!p) return <div className="flex-1 bg-bg" />
 
   const proc: Process = p
