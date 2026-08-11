@@ -572,6 +572,13 @@ IN_SCOPE_MISSES = [
      {"department": "cooking", "parent": {"process": "cooking-999", "node": "n"}}),
     ("POST", "/api/processes",
      {"department": "cooking", "parent": {"process": "cooking-001", "node": "nope"}}),
+    # A parent that names no node at all: the same answer as one that names a
+    # node which is not there. This raised KeyError and answered 500.
+    ("POST", "/api/processes",
+     {"department": "cooking", "parent": {"process": "cooking-001"}}),
+    # The registry guard, which used to answer `400 "unknown department"` in
+    # English — the one branch here that a prober could read a department out of.
+    ("POST", "/api/processes", {"department": "nosuchplace"}),
     ("GET", "/api/departments/logistics/overview", None),
     ("PUT", "/api/departments/nosuchplace/order", {"order": []}),
     ("GET", "/api/departments/nosuchplace/next-id", None),

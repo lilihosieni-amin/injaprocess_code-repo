@@ -60,6 +60,34 @@ describe('useCan', () => {
     expect(result.current('edit', 'dept:dining/report:steps')).toBe(true)
   })
 
+  it('refuses a target the scope grammar refuses, wildcard holder included', () => {
+    // The server's `contains` gates BOTH arguments on SCOPE_RE and answers
+    // `false` for anything else, `*` included: a malformed target names no
+    // resource, so there is nothing to reach and nothing to refuse. Without the
+    // same gate this twin answered `true` for every one of these — strictly
+    // more permissive than the original it is a twin of. Cosmetic by
+    // construction (D48: this decides what to draw, and every endpoint
+    // re-derives), but a twin that answers what the original refuses is a twin
+    // that will one day be trusted for the wrong question.
+    const { result } = renderHook(() => useCan(WILDCARD))
+    for (const target of ['', 'dept:', 'dept:Dining', 'dept:dining/', 'nonsense',
+      'dept:dining/report:steps/report:x', 'dept:dining ', 'report:steps']) {
+      expect(result.current('edit', target)).toBe(false)
+    }
+    // …and the three legal shapes still answer `true` for the same holder, or
+    // the gate above has simply switched the wildcard off.
+    expect(result.current('edit', '*')).toBe(true)
+    expect(result.current('edit', 'dept:dining')).toBe(true)
+    expect(result.current('edit', 'dept:dining/report:steps')).toBe(true)
+  })
+
+  it('does not let a malformed scope row reach a well-formed target', () => {
+    // `user_scopes.scope` is TEXT with no CHECK constraint, so a row that is not
+    // a scope is storable and arrives here through GET /api/auth/me.
+    const broken: SessionDescriptor = { ...EDITOR, scopes: ['dept:dining/', 'DEPT:dining'] }
+    expect(renderHook(() => useCan(broken)).result.current('edit', 'dept:dining')).toBe(false)
+  })
+
   it('answers no while there is no session yet', () => {
     // useSession().data is undefined until GET /api/auth/me lands. Drawing
     // nothing in that window is the fail-closed answer, and the honest one:

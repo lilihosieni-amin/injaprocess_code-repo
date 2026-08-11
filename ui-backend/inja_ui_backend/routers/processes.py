@@ -7,8 +7,9 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 
 from .. import engine, gitcommit, storage
 from .. import save as save_mod
-from ..access import NOT_FOUND, allows, requires
+from ..access import NOT_FOUND, requires
 from ..auth import require_session
+from ..disclosure import Disclosure
 from ..models import CreateProcessBody, PendingDecision
 
 router = APIRouter(prefix="/api/processes")
@@ -164,12 +165,21 @@ def get_process(pid: str, request: Request,
     already run in the dependency: nobody outside `dept:{dept_of(pid)}` reaches
     this line at all, so the file read discloses nothing and the extra 404 is
     only ever served to someone already inside the department.
+
+    **And the document is redacted on the way out** (`disclosure.Disclosure`).
+    Whether it is served and what is in it are two decisions, and the gate above
+    only makes the first: the stored document may name a process, a node and a
+    department this caller is 404'd out of, through `parent` or a node's
+    `subprocess`, and it carries the department's unresolved proposals — which
+    the board's count and `/api/pending` both withhold from a non-editor three
+    lines away. See `disclosure.py` for both rules.
     """
     _, doc = _load(request.app.state.cfg, pid)
-    if doc.get("tombstoned") and not allows(request.app.state.db, user, "edit",
-                                            _pid_target(request)):
+    shown = Disclosure(request.app.state.db, user)
+    dept = storage.dept_of(pid)
+    if doc.get("tombstoned") and not shown.edits(dept):
         raise HTTPException(status_code=404, detail=NOT_FOUND)
-    return doc
+    return shown.redact(doc, dept)
 
 
 def _skeleton(pid: str, department: str, name: str, parent: dict | None) -> dict:
@@ -193,18 +203,30 @@ def _skeleton(pid: str, department: str, name: str, parent: dict | None) -> dict
 
 @router.post("", status_code=201)
 async def create_process(request: Request, response: Response,
-                         body: CreateProcessBody = Depends(_create_target)):
+                         body: CreateProcessBody = Depends(_create_target),
+                         user=Depends(require_session)):
     cfg = request.app.state.cfg
     reg = storage.read_json(storage.registry_path(cfg.data_root))
     if body.department not in {d["code"] for d in reg["departments"]}:
-        raise HTTPException(status_code=400, detail="unknown department")
+        # The uniform 404, not a 400 naming the condition in English. The two
+        # sibling routes with the same registry guard (`put_order`, `next_id`)
+        # already answer this way, and the reason is D56's: a caller holding
+        # `dept:nosuchplace` — legal under the grammar, so the gate lets it by —
+        # could otherwise tell "no such department" from "not yours" by the
+        # status alone, which is the boundary the uniform code just hid.
+        raise HTTPException(status_code=404, detail=NOT_FOUND)
 
     # Guard the parent link BEFORE allocating anything, mirroring merge's guards,
     # so a rejected request never leaves an orphan child file.
     ppath = pdoc = pnode = None
     if body.parent:
         ppath, pdoc = _load(cfg, body.parent["process"])          # 404 if parent missing
-        pnode = next((n for n in pdoc["nodes"] if n["id"] == body.parent["node"]), None)
+        # `.get("node")`, the same treatment `_parent_target` gives a missing
+        # `process`: a `parent` without one names no node, so it matches none
+        # and takes the uniform 404 below. `body.parent["node"]` raised a
+        # KeyError here and answered 500 to a well-gated caller.
+        pnode = next((n for n in pdoc["nodes"] if n["id"] == body.parent.get("node")),
+                     None)
         if pnode is None:
             raise HTTPException(status_code=404, detail=NOT_FOUND)
         if pnode.get("type") != "activity":
@@ -235,7 +257,13 @@ async def create_process(request: Request, response: Response,
         action = (f"create sub-process of {body.parent['process']}"
                   if body.parent else "create process")
         gitcommit.commit(cfg, written, pid, action)
-    return child
+    # Redacted like every other body that carries a process document, though
+    # this is the one route where it can change nothing: the caller named the
+    # parent themselves and was gated on `edit` at its department, and every
+    # seeded role holding `edit` holds `view`. Applied anyway, because "every
+    # boundary that returns a process runs the same rule" is a property a reader
+    # can check, and "the four we reasoned about" is not.
+    return Disclosure(request.app.state.db, user).redact(child, body.department)
 
 
 @router.delete("/{pid}")
@@ -296,7 +324,7 @@ async def delete_process(pid: str, request: Request,
 
 @router.post("/{pid}/relayout")
 def relayout(pid: str, body: dict, request: Request,
-             _=Depends(requires("edit", _pid_target))):
+             user=Depends(requires("edit", _pid_target))):
     cfg = request.app.state.cfg
     body["id"] = pid
     body["department"] = storage.dept_of(pid)
@@ -304,31 +332,49 @@ def relayout(pid: str, body: dict, request: Request,
     # nothing is written; these real ids ride back to the editor and are kept at Save.
     doc, _remap = save_mod.allocate_new_node_ids(cfg, body)
     try:
-        return engine.run_layout(cfg, doc)
+        laid_out = engine.run_layout(cfg, doc)
     except engine.EngineError as e:
         raise HTTPException(status_code=422, detail=e.message)
+    # An echo of what the caller sent, so redaction can disclose nothing new
+    # here — and it runs anyway, so that the one boundary nobody has to think
+    # about is not the one that stops matching the others.
+    return Disclosure(request.app.state.db, user).redact(laid_out,
+                                                         storage.dept_of(pid))
 
 
 @router.put("/{pid}")
 async def save_process(pid: str, body: dict, request: Request,
-                       _=Depends(requires("edit", _pid_target))):
+                       user=Depends(requires("edit", _pid_target))):
+    """Save, with the links this caller was never shown put back first.
+
+    The editor's client round-trips what it loaded, and what it loaded had every
+    cross-department `parent` and `subprocess` blanked (`disclosure.redact`). A
+    plain save would therefore erase, on disk, links their author never knew
+    existed — and erase them from the neighbouring department that the scope
+    boundary exists to protect. `restore` is the other half of the redaction:
+    a link that is withheld is a link that cannot be edited.
+
+    The response is redacted like every other, so the restored link is invisible
+    to the caller who just preserved it.
+    """
     cfg = request.app.state.cfg
+    shown = Disclosure(request.app.state.db, user)
     path = storage.proc_path(cfg.data_root, pid)
     async with storage.file_lock(path):
         on_disk = storage.read_json(path) if path.is_file() else None
-        doc = save_mod.prepare_save(cfg, pid, body, on_disk)
+        doc = shown.restore(save_mod.prepare_save(cfg, pid, body, on_disk), on_disk)
         try:
             engine.validate_doc(cfg, "process.schema.json", doc)
         except engine.EngineError as e:
             raise HTTPException(status_code=422, detail=e.message)
         storage.write_json_atomic(path, doc)
         gitcommit.commit(cfg, [path], pid, "save")
-    return doc
+    return shown.redact(doc, storage.dept_of(pid))
 
 
 @router.post("/{pid}/pending/{index}")
 async def resolve(pid: str, index: int, body: PendingDecision, request: Request,
-                  _=Depends(requires("edit", _pid_target))):
+                  user=Depends(requires("edit", _pid_target))):
     cfg = request.app.state.cfg
     if body.decision not in ("accept", "reject"):
         raise HTTPException(status_code=400, detail="decision must be accept|reject")
@@ -341,4 +387,8 @@ async def resolve(pid: str, index: int, body: PendingDecision, request: Request,
         except engine.EngineError as e:
             raise HTTPException(status_code=409, detail=e.message)
         gitcommit.commit(cfg, [path], pid, f"{body.decision} pending #{index}")
-        return storage.read_json(path)
+        # The whole stored document, so it carries the same cross-department
+        # links `GET /api/processes/{pid}` does — an Editor of this department
+        # is not thereby an Editor of the one its parent lives in.
+        return Disclosure(request.app.state.db, user).redact(
+            storage.read_json(path), storage.dept_of(pid))

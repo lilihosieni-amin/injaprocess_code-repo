@@ -4,6 +4,15 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { render } from '@testing-library/react'
 import type { SessionDescriptor } from '../auth/session'
 
+// `retry: false` here and `retryQuery` in the real app (`main.tsx`), which is a
+// difference worth stating rather than leaving to be discovered: it keeps an
+// error case deterministic and instant instead of waiting out a backoff. It is
+// also how the seven-second blank page hid — every screen test showed the
+// refusal immediately, because the client under test retried nothing while the
+// production client retried three times. The policy itself is therefore pinned
+// on the function, in `src/api/client.test.ts`, where no client can be
+// substituted for it.
+//
 // Router as well as QueryClient: a screen that navigates on success (SignIn) is
 // rendered through this wrapper too, and useNavigate throws outside a Router.
 // Safe for the renderHook callers — none of them provide a Router of their own,

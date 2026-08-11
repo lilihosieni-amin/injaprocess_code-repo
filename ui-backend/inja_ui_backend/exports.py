@@ -113,6 +113,19 @@ def build_payload(data_root: Path, code: str, generated_at: str) -> dict:
     `icom`. Both keys stay because the frontend's `ProcNode` type says they are
     always present and the drawer dereferences them; see `_public_node`.
 
+    **Open, and deliberately left open: `parent` and node `subprocess` may name
+    a process in another department.** The API withholds exactly those two links
+    from a caller who cannot view the department they name
+    (`disclosure.Disclosure`), and this payload does not — so a published steps
+    or flowchart bundle can carry a neighbouring department's process id and node
+    id to anyone holding the link. It is not fixed here because this artifact is
+    *cached and shared*: making its contents depend on which Editor pressed
+    Export would give one link two different bodies, which is a different design
+    and not a filter. It belongs with the other half of the same question — D56's
+    Downloads row, that `GET /exports/{file_path:path}` derives no department
+    scope at all — and `tests/test_body_scan.py`'s `NOT_SWEPT` is where that one
+    is written down.
+
     **Kept, and load-bearing in ways that are not obvious:** `dept.department`
     keys the export's offline react-query cache; `process.department` is what
     `DetailDrawer` passes to `useProcesses`; `parent` decides the «زیرفرآیند»

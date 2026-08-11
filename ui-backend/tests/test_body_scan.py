@@ -90,7 +90,38 @@ FORBIDDEN: tuple[tuple[str, str], ...] = (
     ("LEAKLABEL", "a node label from a process outside the caller's scope"),
     ("LEAKACTOR", "a node actor from a process outside the caller's scope"),
     ("LEAKPROPOSED", "an unresolved proposal from outside the caller's scope"),
+    ("cooking-777-n010",
+     "a node id from a process outside the caller's scope, named by a link"),
+    ("cooking-888",
+     "the id of a process outside the caller's scope that is named ONLY by a"
+     " link from inside it — no route serves this document at all"),
 )
+
+#: The cross-department link, planted **inside** the caller's own department.
+#:
+#: The corpus used to have none, and that single omission is why the whole class
+#: survived to the final review: every process it planted was an island, so the
+#: scan could not tell a backend that redacts links from one that hands them out.
+#: They are a first-class fact here — `routers/processes.delete_process` sweeps
+#: all nine departments precisely because another department's node may name a
+#: process as its `subprocess`, or a child may sit elsewhere — so an island
+#: corpus is not the shape production is.
+#:
+#: `FOREIGN_CHILD` deliberately names a document that **does not exist**. What is
+#: withheld is the id, not the file: derive the department by loading the
+#: referenced process and a caller learns which of their guesses are real from
+#: which links survive, which is the disclosure the redaction exists to close.
+FOREIGN_PARENT = f"{THEIRS}-777"
+FOREIGN_PARENT_NODE = f"{FOREIGN_PARENT}-n010"
+FOREIGN_CHILD = f"{THEIRS}-888"
+
+#: The in-department link, planted beside it on `dining-002`.
+#:
+#: Without it a filter that blanked **every** link would pass every assertion
+#: below while quietly taking the sub-process graph away from the people it is
+#: for. What is under test is the department an id names, never the presence of
+#: a link.
+LOCAL_CHILD = f"{MINE}-001"
 
 #: The tombstoned process planted **inside** the caller's own department.
 TOMBSTONED = f"{MINE}-003"
@@ -115,6 +146,29 @@ TOMBSTONE_TOKENS: tuple[tuple[str, str], ...] = (
     ("TOMBNAME", "the name of a tombstoned process"),
     ("TOMBLABEL", "a node label from a tombstoned process"),
     ("TOMBACTOR", "a node actor from a tombstoned process"),
+)
+
+#: The contents of an unresolved proposal on a process **inside** the caller's
+#: own department — checked against capability, exactly like `TOMBSTONE_TOKENS`
+#: and for a reason of the same shape.
+#:
+#: D17 puts `pending` in the never-shown block with no switch, and D56 puts even
+#: its *count* in the derived-signals row: `/api/pending` answers `[]` to a
+#: non-editor and the board omits the `conflicts` key for them — while the two
+#: document endpoints served those same callers the proposals themselves. A
+#: withheld count beside a served proposal is not a policy, it is an oversight
+#: with a test.
+#:
+#: One sentinel covers both the `proposed` value and the `source` it came from,
+#: because `_process` derives the second from the first; a leak of either names
+#: it. `current` and `field` are the caller's own actor and the string `actor`,
+#: which are legitimate content elsewhere in the same document and so cannot be
+#: sentinels — the emptiness of the array is what
+#: `test_pending_is_emptied_rather_than_dropped_for_a_non_editor` pins directly.
+PENDING_TOKENS: tuple[tuple[str, str], ...] = (
+    ("MINEPROPOSED",
+     "the proposed value, and the run it came from, of an unresolved proposal"
+     " (D17: never shown; D56: not even its count)"),
 )
 
 
@@ -157,20 +211,30 @@ def _server_paths(data_root) -> tuple[tuple[str, str], ...]:
 # --------------------------------------------------------------------------
 
 def _process(pid: str, dept: str, *, name: str, label: str, actor: str,
-             proposed: str) -> dict:
+             proposed: str, parent: dict | None = None,
+             subprocess: str | None = None) -> dict:
     """A process of the fixture's shape, with every string under this file's control.
 
     Authored rather than copied from `tests/fixtures/process.cooking-001.json`:
     that document contains «انبار» and «حسابداری», which are two departments'
     display names, so a copy of it planted in `dining` would trip this file's own
     token list and read as a backend leak.
+
+    `parent` and `subprocess` are the two links a process can carry, and both are
+    parameters rather than constants because a corpus that hard-codes them to
+    `None` — which this one did — cannot tell a backend that withholds a
+    cross-department link from one that serves it.
+
+    The proposal's `source` is derived from `proposed` so that one sentinel names
+    both: a `pending` entry leaks its origin as readily as its value, and two
+    tokens for one array would only mean two ways to forget one.
     """
     node = f"{pid}-n010"
     return {
         "id": pid, "department": dept, "name": name,
         "summary": f"{name} — شرح کوتاه",
         "source": {"type": "manual", "ref": None, "run": None},
-        "parent": None,
+        "parent": parent,
         "created_at": "2026-07-06T10:00:00Z", "updated_at": "2026-07-06T10:00:00Z",
         "idef0": {"inputs": [], "controls": [], "outputs": [], "mechanisms": []},
         "kpis": [],
@@ -178,7 +242,7 @@ def _process(pid: str, dept: str, *, name: str, label: str, actor: str,
             {"id": "start", "type": "start", "label": "شروع",
              "position": {"x": 30, "y": 100}, "layout": "auto"},
             {"id": node, "type": "activity", "label": label, "actor": actor,
-             "description": f"{label} — توضیح", "subprocess": None,
+             "description": f"{label} — توضیح", "subprocess": subprocess,
              "icom": {"inputs": [], "controls": [], "outputs": [], "mechanisms": []},
              "position": {"x": 160, "y": 90}, "layout": "auto",
              "source": {"created_by": "runs/x", "touched_by": []}},
@@ -188,8 +252,54 @@ def _process(pid: str, dept: str, *, name: str, label: str, actor: str,
         "edges": [{"from": "start", "to": node, "label": ""},
                   {"from": node, "to": "end", "label": ""}],
         "pending": [{"node": node, "field": "actor", "current": actor,
-                     "proposed": proposed, "source": "runs/x", "status": "open"}],
+                     "proposed": proposed, "source": f"runs/{proposed}",
+                     "status": "open"}],
     }
+
+
+#: The three things this corpus plants inside `MINE` that a `MINE` caller is
+#: nonetheless not entitled to: the two cross-department links and the contents
+#: of an unresolved proposal.
+WITHHELD_IN_SCOPE = ("parent", "nodes[].subprocess", "pending")
+
+
+def _entitled(doc: dict) -> dict:
+    """`doc` reduced to what a `MINE` reader may legitimately read.
+
+    The premise test below serialises the in-scope corpus and asserts no
+    forbidden token is in it, so that a scan finding one proves a leak rather
+    than a substring. That premise used to be free, because everything planted
+    in `dining` was content a dining caller could have. It is not free any more:
+    the corpus now deliberately plants withheld content **inside** the caller's
+    own department — the very thing C1 and C2 were about — so `dining-001.json`
+    on disk really does contain `cooking-777`.
+
+    `WITHHELD_IN_SCOPE` is exactly what the backend must blank, so removing it
+    here is not special-casing an inconvenience: what is left is the caller's
+    entitlement, and a forbidden token found in *that* would still mean the scans
+    below prove nothing. The premise test asserts this function did not simply
+    empty the document, which is the way this could go quietly wrong.
+
+    A link is dropped only when it names a department other than `MINE` —
+    written independently of the implementation, and by the same lexical rule:
+    the department is the id's own prefix, and nothing is opened to find out.
+    An in-department link is content this caller *is* entitled to, and keeping
+    it here is what lets the premise test notice a `_entitled` that has quietly
+    become "strip everything".
+    """
+    def foreign(ref) -> bool:
+        return not (isinstance(ref, str) and ref.rsplit("-", 1)[0] == MINE)
+
+    out = {k: v for k, v in doc.items() if k != "pending"}
+    if isinstance(doc.get("parent"), dict) and foreign(doc["parent"].get("process")):
+        out["parent"] = None
+    out["nodes"] = [
+        {**n, "subprocess": None}
+        if isinstance(n, dict) and n.get("subprocess") is not None
+        and foreign(n["subprocess"]) else n
+        for n in doc.get("nodes", [])
+    ]
+    return out
 
 
 def _tombstone(pid: str, dept: str) -> dict:
@@ -230,11 +340,26 @@ def _write(root, dept: str, filename: str, doc: dict) -> None:
 def corpus(data_root):
     """`data_root` with something real on both sides of the scope boundary.
 
-    In scope: a dining overview and two dining processes, one of them carrying an
+    In scope: a dining overview and two dining processes, each carrying an
     **open** conflict. The conflict is what makes `/api/pending` and the board's
     count say anything at all — without it, a `/api/pending` filtered on `view`
     instead of `edit` would answer `[]` to a Reader and the test asserting `[]`
-    would pass on the wrong implementation.
+    would pass on the wrong implementation. `dining-001`'s proposal carries the
+    `MINEPROPOSED` sentinel, because the proposal is served by two *document*
+    endpoints as well as counted by a third, and the contents were reaching a
+    Reader from both while the count was withheld three lines away.
+
+    Also in scope and **linked out of the department**: `dining-001` hangs under
+    a node of `cooking-777` and one of its own nodes names `cooking-888` as a
+    sub-process. Those are the only reason C1's whole class is testable from
+    here; a corpus of islands is what let it survive to the final review.
+    `dining-002` carries an in-department link to `dining-001` beside it, so a
+    filter that blanked every link fails instead of passing.
+
+    The two links are deliberately **not** each other's mirror — `dining-001`'s
+    parent is in cooking while `dining-002` claims it as a sub-process — because
+    what is under test is the department each id names, not the consistency of
+    the graph, and nothing in this service reads one link to validate the other.
 
     Also in scope and **tombstoned**: `dining-003`, carrying this file's
     `TOMB…` sentinels. It sits beside two *active* dining processes on purpose —
@@ -250,10 +375,13 @@ def corpus(data_root):
     _write(data_root, MINE, "overview.json", _overview(MINE, "دپارتمان سالن"))
     _write(data_root, MINE, "processes/dining-001.json",
            _process("dining-001", MINE, name="پذیرایی از مهمان",
-                    label="خوش‌آمدگویی", actor="میزبان", proposed="پیشخدمت"))
+                    label="خوش‌آمدگویی", actor="میزبان", proposed="MINEPROPOSED",
+                    parent={"process": FOREIGN_PARENT, "node": FOREIGN_PARENT_NODE},
+                    subprocess=FOREIGN_CHILD))
     _write(data_root, MINE, "processes/dining-002.json",
            _process("dining-002", MINE, name="ترخیص میز",
-                    label="تسویه", actor="میزبان", proposed="پیشخدمت"))
+                    label="تسویه", actor="میزبان", proposed="پیشخدمت",
+                    subprocess=LOCAL_CHILD))
     _write(data_root, MINE, f"processes/{TOMBSTONED}.json",
            _tombstone(TOMBSTONED, MINE))
     _write(data_root, THEIRS, "processes/cooking-777.json",
@@ -272,22 +400,36 @@ def test_the_in_scope_corpus_carries_no_forbidden_token(corpus):
     — a department display name inside a Persian word, an id inside a summary —
     the scans would fail for a reason that has nothing to do with the backend.
     This is where that is diagnosed, in one line, instead of in a false alarm.
+
+    "Entitled to read" is `_entitled`, not the raw file: the corpus now plants
+    withheld content inside the caller's own department on purpose, so
+    `dining-001.json` really does hold `cooking-777` and `MINEPROPOSED`. The
+    second assertion is what keeps that from becoming a way to pass — a
+    `_entitled` that returned `{}` would satisfy every token check here and
+    silence the premise entirely.
     """
     registry = json.loads(
         (corpus / "departments" / "registry.json").read_text(encoding="utf-8"))
     served = json.dumps(
-        [json.loads(p.read_text(encoding="utf-8"))
+        [_entitled(json.loads(p.read_text(encoding="utf-8")))
          for p in sorted((corpus / "departments" / MINE).rglob("*.json"))]
         # …and the caller's own row of the registry, read rather than restated:
         # the board serves the department's display name, and a copy of it here
         # would stop checking the real one the day the registry changed.
         + [d for d in registry["departments"] if d["code"] == MINE],
         ensure_ascii=False)
-    for token, why in FORBIDDEN:
+    for token, why in FORBIDDEN + PENDING_TOKENS:
         assert token not in served, (
             f"{token!r} ({why}) is part of what a {MINE} caller may legitimately"
             f" read, so a scan finding it proves nothing: pick another token or"
             f" change the fixture")
+
+    for kept in ("dining-001", "dining-002", "پذیرایی از مهمان", "خوش‌آمدگویی",
+                 LOCAL_CHILD, "دپارتمان سالن"):
+        assert kept in served, (
+            f"{kept!r} is gone from the entitled corpus: `_entitled` is stripping"
+            f" more than {list(WITHHELD_IN_SCOPE)}, so the absence of every token"
+            f" above says nothing about anything")
 
 
 # --------------------------------------------------------------------------
@@ -441,11 +583,17 @@ def _the_whole_order(d: str) -> dict:
 def _a_saved_document(d: str) -> dict:
     """What the editor round-trips back on Save.
 
-    For `MINE` this is byte-for-byte the document `corpus` planted at
-    `{d}-001`, which is what a Save really carries: the client sends back what
-    it loaded. For any other department it is a well-formed process document
-    that is simply not the one on disk — harmless, because every route naming
-    another department is refused before the body is looked at.
+    For `MINE` this is byte-for-byte what `GET /api/processes/{d}-001` **served
+    them** — which is the planted document with its cross-department `parent`
+    and `subprocess` blanked, because that is all the client was ever given. A
+    Save really does carry exactly this and no more, and saving it is what would
+    erase those two links on disk if the server did not put back what it
+    withheld (`disclosure.Disclosure.restore`;
+    `test_a_link_the_editor_never_saw_survives_their_save` pins it).
+
+    For any other department it is a well-formed process document that is simply
+    not the one on disk — harmless, because every route naming another
+    department is refused before the body is looked at.
 
     `{}` fails `process.schema.json` on every required property, so `PUT
     /api/processes/{pid}` answered 422 to everyone and its success body — which
@@ -453,7 +601,7 @@ def _a_saved_document(d: str) -> dict:
     neighbouring department's id — was never scanned.
     """
     return _process(f"{d}-001", d, name="پذیرایی از مهمان", label="خوش‌آمدگویی",
-                    actor="میزبان", proposed="پیشخدمت")
+                    actor="میزبان", proposed="MINEPROPOSED")
 
 
 #: The writes, swept after every read so that what the reads see is the planted
@@ -984,6 +1132,253 @@ def test_pending_is_empty_rather_than_forbidden_for_someone_without_edit(corpus,
     editor = _client_as(corpus, tmp_path, "editor", f"dept:{MINE}")
     assert {row["process"] for row in editor.get("/api/pending").json()} == {
         "dining-001", "dining-002"}
+
+
+# --------------------------------------------------------------------------
+# What is *inside* a document the caller may have (C1, C2)
+# --------------------------------------------------------------------------
+
+def _both_boundaries(client, pid: str) -> dict[str, dict]:
+    """One process, as each of the two endpoints that serve a document gives it.
+
+    Always as a pair, because the gate is not what is being tested here: both
+    routes are ones this caller may have, and a rule applied to one of them is
+    the door shut with the window open. That is precisely how the tombstone
+    finding arrived — the listing was filtered and the same document stayed
+    readable by id.
+
+    Keyed by route so a failure names which of the two disagreed.
+    """
+    one = client.get(f"/api/processes/{pid}")
+    assert one.status_code == 200, one.text
+    listed = client.get(f"/api/departments/{MINE}/processes")
+    assert listed.status_code == 200, listed.text
+    rows = [p for p in listed.json() if p["id"] == pid]
+    assert len(rows) == 1, f"{pid} is not in the department listing: {listed.text[:200]}"
+    return {"GET /api/processes/{pid}": one.json(),
+            "GET /api/departments/{code}/processes": rows[0]}
+
+
+def _activity(doc: dict) -> dict:
+    """The one activity node `_process` plants, which is where `subprocess` is."""
+    return next(n for n in doc["nodes"] if n["id"] == f"{doc['id']}-n010")
+
+
+def test_a_cross_department_link_is_withheld_from_a_reader_and_kept_for_the_wildcard(
+        corpus, tmp_path):
+    """C1: the gate decides *whether* a document is served, never what is in it.
+
+    `dining-001` is a process this reader is entitled to, served 200 from both
+    endpoints — and it names `cooking-777`, one of its nodes, and `cooking-888`
+    through links. Unmodified, it tells a caller who is 404'd out of `cooking` a
+    process id, a node id and a department code, out of a response the gate was
+    right to allow. D56 is "if a user may not see it, it does not appear in
+    **any** response to them", and a link is a response.
+
+    Three assertions, and each of them is load-bearing:
+
+    * the links are gone for the reader — the finding itself;
+    * the rest of the document is **untouched**, so a fix that blanked the whole
+      record, or emptied the department, fails here rather than passing a scan;
+    * the *in-department* link on `dining-002` survives, so does a fix that
+      simply removed every link.
+
+    And the same document, for a caller entitled to `cooking`, still carries all
+    of it — or the filter is unconditional and the sub-process graph is gone for
+    the people it is for.
+    """
+    reader = _client_as(corpus, tmp_path, "reader", f"dept:{MINE}")
+    for route, doc in _both_boundaries(reader, f"{MINE}-001").items():
+        assert doc["parent"] is None, (
+            f"{route} served a reader a parent in another department:"
+            f" {doc['parent']}")
+        assert _activity(doc)["subprocess"] is None, (
+            f"{route} served a reader a sub-process link into another"
+            f" department: {_activity(doc)['subprocess']}")
+        # …and nothing else moved.
+        assert doc["name"] == "پذیرایی از مهمان"
+        assert (_activity(doc)["label"], _activity(doc)["actor"]) == (
+            "خوش‌آمدگویی", "میزبان"), (
+            f"{route} blanked more than the link: a redaction that empties the"
+            f" document passes every scan and serves nobody")
+
+    for route, doc in _both_boundaries(reader, f"{MINE}-002").items():
+        assert _activity(doc)["subprocess"] == LOCAL_CHILD, (
+            f"{route} dropped an in-department sub-process link: what is"
+            f" withheld is the department an id names, not the link itself")
+
+    # The pairing that gives the withholding its meaning: the id really is one
+    # this caller cannot reach.
+    assert reader.get(f"/api/processes/{FOREIGN_PARENT}").status_code == 404
+
+    wild = _client_as(corpus, tmp_path, "editor", "*")
+    for route, doc in _both_boundaries(wild, f"{MINE}-001").items():
+        assert doc["parent"] == {"process": FOREIGN_PARENT,
+                                 "node": FOREIGN_PARENT_NODE}, (
+            f"{route} withheld a link from a caller entitled to both"
+            f" departments: {doc['parent']}")
+        assert _activity(doc)["subprocess"] == FOREIGN_CHILD, (
+            f"{route} withheld a sub-process link from a caller entitled to it")
+
+
+def test_the_board_counts_no_sub_process_the_caller_cannot_see(corpus, tmp_path):
+    """The same withheld link, in the badge derived from it (D56).
+
+    `subs` is «۱ زیرفرآیند» on the department card. For a caller who cannot see
+    `cooking`, a `1` says *one of your processes hangs under something you may
+    not know about* — the derived-signals row, the same clause the `conflicts`
+    count next to it is withheld under, and the same reason: the count leaks the
+    existence of the withheld thing as surely as the thing does.
+
+    `count` is asserted beside it because a board that had simply stopped
+    reading the department would report `subs: 0` too.
+    """
+    for role in ROLES:
+        client = _client_as(corpus, tmp_path, role, f"dept:{MINE}")
+        row = next(r for r in _board(client) if r["code"] == MINE)
+        assert row["count"] == 2, (
+            f"the premise is gone for a {role}: {MINE} must still report its two"
+            f" active processes, or `subs: 0` means the board stopped reading it")
+        assert row["subs"] == 0, (
+            f"the board told a {role} that a {MINE} process hangs under"
+            f" something in a department they are 404'd out of: {row}")
+
+    wild = _client_as(corpus, tmp_path, "editor", "*")
+    assert next(r for r in _board(wild) if r["code"] == MINE)["subs"] == 1, (
+        "the caller entitled to both departments lost the badge: what is"
+        " withheld is the link they cannot see, not the count itself")
+
+
+@pytest.mark.parametrize("role", NON_EDITORS)
+def test_no_unresolved_proposal_reaches_a_role_that_cannot_edit(corpus, tmp_path,
+                                                                role):
+    """C2: the whole `pending` array, swept for everyone who cannot resolve one.
+
+    D17 puts `pending` in the never-shown block with no switch. This branch had
+    already settled the *count*: `/api/pending` answers these callers `[]` and
+    the board omits `conflicts` for them, on the argument — written into
+    `routers/departments.py` — that a badge saying "two conflicts" leaks the
+    existence of withheld proposals as surely as the proposals do. And then two
+    document endpoints served them the proposals: `field`, `current`, `proposed`
+    and `source`.
+
+    The caller here is **inside** `dining` and entitled to the department, like
+    the tombstone scan above and unlike everything else in this file: scope is
+    not what refuses them.
+    """
+    client = _client_as(corpus, tmp_path, role, f"dept:{MINE}")
+    leaks = _leaks(client, forbidden=PENDING_TOKENS)
+    assert leaks == [], "\n".join(f"  as a {role}: {leak}" for leak in leaks)
+
+
+def test_the_proposal_scan_finds_every_token_for_someone_who_may_edit(corpus,
+                                                                      tmp_path):
+    """The proposal tokens, proved to bite — the pairing for the scan above.
+
+    The same sweep as an Editor of `dining`, who is the person a proposal is
+    kept for. A token no endpoint serves even to them is a token whose absence
+    proves nothing, and this is what would catch the corpus losing its conflict,
+    the route table losing the endpoint, or the filter being applied to
+    everybody.
+    """
+    client = _client_as(corpus, tmp_path, "editor", f"dept:{MINE}")
+    leaks = _leaks(client, forbidden=PENDING_TOKENS)
+    missing = {token for token, _ in PENDING_TOKENS} - {leak.token for leak in leaks}
+    assert not missing, (
+        f"no endpoint serves {sorted(missing)} even to an Editor of {MINE}, who"
+        f" an unresolved proposal is kept for: the fixture, the route table or"
+        f" the filter is wrong, and asserting a reader never sees them tests"
+        f" nothing")
+
+
+def test_pending_is_emptied_rather_than_dropped_for_a_non_editor(corpus, tmp_path):
+    """Emptied, and the key kept — the shape `exports._public_process` uses.
+
+    Not a detail: `ui/src/flow/adapt.ts` iterates `pending` to count each node's
+    conflicts with no guard, so dropping the key turns a withheld proposal into
+    a `TypeError` in the reader's browser. The API and the published export now
+    say the same thing about the same field, which is the point of following the
+    export's shape rather than inventing a second one.
+    """
+    reader = _client_as(corpus, tmp_path, "reader", f"dept:{MINE}")
+    for route, doc in _both_boundaries(reader, f"{MINE}-001").items():
+        assert "pending" in doc, f"{route} dropped the pending key entirely"
+        assert doc["pending"] == [], f"{route} served a reader {doc['pending']}"
+
+    editor = _client_as(corpus, tmp_path, "editor", f"dept:{MINE}")
+    for route, doc in _both_boundaries(editor, f"{MINE}-001").items():
+        assert [p["proposed"] for p in doc["pending"]] == ["MINEPROPOSED"], (
+            f"{route} took the proposal away from the person who can resolve"
+            f" it: {doc['pending']}")
+
+
+def _on_disk(corpus, pid: str) -> dict:
+    return json.loads(
+        (corpus / "departments" / MINE / "processes" / f"{pid}.json")
+        .read_text(encoding="utf-8"))
+
+
+def test_a_link_the_editor_never_saw_survives_their_save(corpus, tmp_path):
+    """The other half of the redaction: what is withheld cannot be edited away.
+
+    An Editor of `dining` who cannot see `cooking` now loads `dining-001` with
+    its cooking parent and sub-process already blanked — and the client saves
+    back what it loaded. Without `Disclosure.restore` the very first Save erases
+    both links on disk, silently, by someone who never knew they were there, and
+    the department the scope boundary exists to protect is the one that loses
+    them.
+
+    Paired in the other direction, or "restore everything" would pass: the
+    in-department link on `dining-002` is one this caller **can** see, and
+    clearing it must really clear it.
+    """
+    editor = _client_as(corpus, tmp_path, "editor", f"dept:{MINE}")
+    loaded = editor.get(f"/api/processes/{MINE}-001").json()
+    assert loaded["parent"] is None and _activity(loaded)["subprocess"] is None, (
+        "the premise is gone: this Editor was served the links, so a Save that"
+        " preserves them proves nothing")
+
+    saved = editor.put(f"/api/processes/{MINE}-001", json=loaded)
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["parent"] is None, (
+        "the save handed back the link it had withheld from the same caller a"
+        " moment earlier")
+
+    kept = _on_disk(corpus, f"{MINE}-001")
+    assert kept["parent"] == {"process": FOREIGN_PARENT,
+                              "node": FOREIGN_PARENT_NODE}, (
+        f"a Save by someone who was never shown the parent erased it:"
+        f" {kept['parent']}")
+    assert _activity(kept)["subprocess"] == FOREIGN_CHILD, (
+        "a Save by someone who was never shown the sub-process link erased it")
+
+    two = editor.get(f"/api/processes/{MINE}-002").json()
+    assert _activity(two)["subprocess"] == LOCAL_CHILD  # premise
+    _activity(two)["subprocess"] = None
+    assert editor.put(f"/api/processes/{MINE}-002", json=two).status_code == 200
+    assert _activity(_on_disk(corpus, f"{MINE}-002"))["subprocess"] is None, (
+        "an in-department link the caller could see was restored anyway: a"
+        " blanket restore takes editing links away from everyone")
+
+    # The same, for `parent`, and it takes two saves: a restore has nothing to
+    # put back until the link is on disk, so the first save plants an
+    # in-department parent and the second clears it. Asserting only the
+    # sub-process half left "restore every stored parent, seen or not" alive.
+    local_parent = {"process": f"{MINE}-001", "node": f"{MINE}-001-n010"}
+    two = editor.get(f"/api/processes/{MINE}-002").json()
+    two["parent"] = local_parent
+    assert editor.put(f"/api/processes/{MINE}-002", json=two).status_code == 200
+    assert _on_disk(corpus, f"{MINE}-002")["parent"] == local_parent
+
+    two = editor.get(f"/api/processes/{MINE}-002").json()
+    assert two["parent"] == local_parent, (
+        "a parent inside the caller's own department was withheld from them:"
+        " what is withheld is the department an id names, not the link")
+    two["parent"] = None
+    assert editor.put(f"/api/processes/{MINE}-002", json=two).status_code == 200
+    assert _on_disk(corpus, f"{MINE}-002")["parent"] is None, (
+        "a parent the caller could see was restored anyway: a blanket restore"
+        " takes editing links away from everyone")
 
 
 def test_a_report_scoped_reader_sees_no_department_body_at_all(corpus, tmp_path):

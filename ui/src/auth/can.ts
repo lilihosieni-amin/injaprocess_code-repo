@@ -1,8 +1,29 @@
 import { useCallback } from 'react'
 import type { Capability, SessionDescriptor } from './session'
 
-/** Does `scope` cover `target`? The twin of the server's scopes.contains. */
+/**
+ * The scope grammar (spec D10), the twin of the server's `scopes.SCOPE_RE`:
+ *
+ *     *  ⊃  dept:{code}  ⊃  dept:{code}/report:{kind}
+ *
+ * No `m` flag, so `$` is the end of the string and not the end of a line.
+ */
+const SCOPE_RE = /^(?:\*|dept:[a-z]+(?:\/report:[a-z]+)?)$/
+
+/**
+ * Does `scope` cover `target`? The twin of the server's `scopes.contains`.
+ *
+ * Anything the grammar refuses answers `false`, `*` holders included — exactly
+ * as the server does, and for the reason it gives: a malformed argument names
+ * no resource, so there is nothing to reach and nothing to refuse. Without the
+ * gate `scopeContains('*', <anything at all>)` was `true` where the server said
+ * `false`, which made this twin strictly the more permissive of the two. That
+ * is cosmetic-only by construction — every endpoint re-derives permission, and
+ * this decides what to draw (D48) — but a twin that answers a question the
+ * original refuses is a twin that will be trusted for the wrong one.
+ */
 export function scopeContains(scope: string, target: string): boolean {
+  if (!SCOPE_RE.test(scope) || !SCOPE_RE.test(target)) return false
   if (scope === '*') return true
   if (target === '*') return false
   if (scope === target) return true

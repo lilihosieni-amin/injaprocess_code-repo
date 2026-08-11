@@ -7,8 +7,9 @@ import re
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from .. import engine, gitcommit, storage
-from ..access import NOT_FOUND, allows, permits, reachable_departments, requires
+from ..access import NOT_FOUND, permits, reachable_departments, requires
 from ..auth import require_session
+from ..disclosure import Disclosure
 
 router = APIRouter(prefix="/api/departments")
 
@@ -91,14 +92,26 @@ def list_departments(request: Request, user=Depends(require_session)):
       would hand them b's count. That caller is the one a per-caller regression
       passes every other test with; `test_body_scan.py` holds them.
 
+    **`subs` counts only a parent the caller may see**, for the same reason and
+    by the same rule as the two document endpoints (`disclosure.py`). The badge
+    is derived from a link, and when that link points into a department the
+    caller is 404'd out of, a `1` says *one of your processes hangs under
+    something you may not know about* — D56's derived-signals row, the same
+    clause the conflict count above is withheld under. A sub-process whose
+    parent is in the caller's own scope still counts, so the badge keeps meaning
+    what it says for the people it is for.
+
     `permits` resolves the capability set and the scope rows once for the whole
     board rather than once per department — the same decision, eighteen fewer
-    reads. See `routers/pending.py` for the same per-department shape.
+    reads. `Disclosure` holds two of those resolutions, which is why the
+    per-parent question below costs no query at all. See `routers/pending.py`
+    for the same per-department shape.
     """
     cfg = request.app.state.cfg
     conn = request.app.state.db
     reachable = reachable_departments(conn, user, "view")
     may_edit = permits(conn, user, "edit")
+    shown = Disclosure(conn, user)
     reg = storage.read_json(storage.registry_path(cfg.data_root))
     out = []
     for d in reg["departments"]:
@@ -113,7 +126,8 @@ def list_departments(request: Request, user=Depends(require_session)):
             if proc.get("tombstoned"):
                 continue  # tombstones are off the active board (§4.7)
             count += 1
-            if proc.get("parent"):
+            parent = proc.get("parent")
+            if isinstance(parent, dict) and shown.sees(parent.get("process")):
                 subs += 1
             conflicts += sum(1 for p in proc.get("pending", [])
                              if p.get("status") == "open")
@@ -217,16 +231,26 @@ def list_processes(code: str, request: Request,
     query".
 
     The `edit` question is asked about **this department**, never about the
-    caller — `allows(…, "edit", f"dept:{code}")`, the same shape as the board's
-    conflict count next door and for the same reason: a caller holding `dept:a`
-    plus `dept:b/report:k` may edit a and not b, and "may this caller edit
-    somewhere?" would hand them b's tombstones.
+    caller — `Disclosure.edits(code)`, which is `allows(…, "edit",
+    f"dept:{code}")` with the lookups hoisted out of the loop. Same shape as the
+    board's conflict count next door and for the same reason: a caller holding
+    `dept:a` plus `dept:b/report:k` may edit a and not b, and "may this caller
+    edit somewhere?" would hand them b's tombstones.
+
+    **And each document is redacted** (`disclosure.py`), which is the half a
+    whole-record filter cannot do: every process here is one this caller may
+    have, and each may still name a process, a node and a department outside
+    their scope through `parent` or a node's `subprocess`, and carry the
+    unresolved proposals whose *count* the board withholds from this very
+    caller. Same two rules, same module, as `GET /api/processes/{pid}` — the
+    door and the window.
     """
     cfg = request.app.state.cfg
+    shown = Disclosure(request.app.state.db, user)
     docs = storage.ordered_processes(cfg.data_root, code)
-    if not allows(request.app.state.db, user, "edit", f"dept:{code}"):
+    if not shown.edits(code):
         docs = [d for d in docs if not d.get("tombstoned")]
-    return docs
+    return [shown.redact(d, code) for d in docs]
 
 
 @router.get("/{code}/next-id")
