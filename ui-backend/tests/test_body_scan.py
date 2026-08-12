@@ -1846,6 +1846,131 @@ def test_a_reader_is_served_the_confirmed_processes(corpus, tmp_path):
     assert client.get(f"/api/processes/{TOMBSTONED}").status_code == 404
 
 
+# --------------------------------------------------------------------------
+# The published bundle — the one body in this file that is not a response
+# --------------------------------------------------------------------------
+
+#: The targets `_client_as` vouches for, and therefore the ones a test has to
+#: withdraw to make this department unpublishable.
+CONFIRMED_TARGETS = (MINE, f"{MINE}-001", f"{MINE}-002")
+
+
+def _published(client, kind="steps") -> str:
+    """`MINE`'s exported document, read off disk as text.
+
+    **The sweep above cannot reach this.** `POST …/exports/{kind}` answers
+    `{"url": …, "generated_at": …}`, so `_leaks` walks a URL and a timestamp and
+    learns nothing whatever about what was published — while the file it names is
+    the largest body this service produces and is served from a mount that
+    derives no department scope at all (`NOT_SWEPT`). That gap is how the export
+    came to be the one boundary handing a reader an unconfirmed process: every
+    scan in this file was green throughout.
+    """
+    r = client.post(f"/api/departments/{MINE}/exports/{kind}")
+    assert r.status_code == 200, r.text
+    return (client.cfg.export_dir / r.json()["url"][len("/exports/"):]).read_text(
+        encoding="utf-8")
+
+
+def test_the_published_bundle_carries_nothing_a_reader_may_not_have(corpus, tmp_path):
+    """Every token list in this file, checked against the artifact itself.
+
+    The bundle is built for *this department and nothing else* (D27) and for a
+    non-editor, so all four lists apply to it at once — the scope tokens because
+    `dining-001` links out of the department, the tombstone and proposal tokens
+    because it is not an Editor's document, the hidden-field tokens because D17's
+    defaults decide what a published file carries exactly as they decide what a
+    response does.
+
+    The caller is a plain `reader`: `export_pdf` is in the default reader role,
+    so this is not an Editor's privilege being exercised — it is the route as
+    anybody in the restaurant reaches it.
+
+    Paired, and the pairing is the load-bearing half: an empty document satisfies
+    every absence above, and this file has been hollowed exactly that way three
+    times.
+    """
+    client = _client_as(corpus, tmp_path, "reader", f"dept:{MINE}")
+    text = _published(client)
+
+    forbidden = (FORBIDDEN + TOMBSTONE_TOKENS + PENDING_TOKENS
+                 + HIDDEN_FIELD_TOKENS + _server_paths(corpus))
+    leaked = [f"{token} ({why})" for token, why in forbidden if token in text]
+    assert leaked == [], "the published bundle carries: " + "; ".join(leaked)
+
+    # …and it is a real document, not an empty one.
+    for kept, why in (("dining-001", "the department's first process"),
+                      ("dining-002", "its second"),
+                      ("پذیرایی از مهمان", "a process name"),
+                      ("خوش‌آمدگویی", "a node label"),
+                      ("میزبان", "a node actor (D17: shown by default)"),
+                      ("MINEADESC", "a node description (D17: shown by default)"),
+                      ("MINEBDESC", "the other one"),
+                      (LOCAL_CHILD, "an in-department sub-process link"),
+                      ("دپارتمان سالن", "the department overview")):
+        assert kept in text, (
+            f"{kept!r} ({why}) is not in the published bundle: the absences above"
+            f" are about a document that carries nothing")
+
+
+def test_the_export_publishes_nothing_for_a_department_the_gated_routes_refuse(
+        corpus, tmp_path):
+    """The record gate, asked of the export in the same breath as of the three
+    boundaries that already had it.
+
+    This is the finding written down: a `reader` scoped to `dining` over an
+    unconfirmed corpus is answered 404 / 404 / `[]` by the overview, the document
+    and the listing — and `POST …/exports/steps` used to answer **200** and put
+    the process name, every node label and the overview into a file served from a
+    publicly mounted folder. The gate decided *whether* the export ran and
+    nothing decided what went into it.
+
+    Both directions over one corpus: restoring the marks publishes the department
+    again, so the refusal is a decision about confirmation rather than a bundle
+    that never contains anything.
+    """
+    client = _client_as(corpus, tmp_path, "reader", f"dept:{MINE}")
+    docs = {t: json.loads(
+        (corpus / "departments" / MINE / ("overview.json" if t == MINE
+                                          else f"processes/{t}.json"))
+        .read_text(encoding="utf-8")) for t in CONFIRMED_TARGETS}
+
+    conn = db.connect(client.cfg.app_db)
+    try:
+        for target in CONFIRMED_TARGETS:
+            assert confirmations.revoke(conn, target) is True, (
+                f"{target} was not confirmed to begin with, so withdrawing it"
+                f" changes nothing and this test is about nothing")
+    finally:
+        conn.close()
+
+    # the three gated boundaries, exactly as the finding recorded them
+    assert client.get(f"/api/departments/{MINE}/overview").status_code == 404
+    assert client.get(f"/api/processes/{MINE}-001").status_code == 404
+    assert client.get(f"/api/departments/{MINE}/processes").json() == []
+
+    # …and now the fourth
+    r = client.post(f"/api/departments/{MINE}/exports/steps")
+    assert r.status_code == 409, (
+        f"the export published a department every other boundary refuses:"
+        f" {r.status_code} {r.text[:200]}")
+    published = list(client.cfg.export_dir.rglob("*.html"))
+    assert published == [], (
+        f"a refused export left a document in the public folder: {published}")
+
+    conn = db.connect(client.cfg.app_db)
+    try:
+        for target, doc in docs.items():
+            confirmations.set_confirmation(conn, target=target,
+                                           fingerprint=fingerprint(doc),
+                                           by="09190000000", at=1770000000)
+    finally:
+        conn.close()
+    assert "پذیرایی از مهمان" in _published(client), (
+        "confirming the department did not publish it: the refusal above is not"
+        " about the confirmation")
+
+
 def test_the_three_confirmation_routes_really_produce_a_body_on_this_sweep(
         corpus, tmp_path):
     """The positive control for the three rows added to the tables above.

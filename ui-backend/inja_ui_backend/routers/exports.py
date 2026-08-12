@@ -8,10 +8,36 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 
 from .. import exports, pdf, storage
 from ..access import NOT_FOUND, requires
+from ..fingerprint import fingerprint
+from ..store import confirmations, policy
 
 router = APIRouter(prefix="/api/departments")
 
 logger = logging.getLogger(__name__)
+
+#: The one answer this handler gives for *"there is nothing here to publish"* —
+#: whichever of the two reasons it is.
+#:
+#: **One body, because two would be an existence oracle.** The two states are «no
+#: `overview.json` at all» and «an `overview.json` nobody has confirmed», and the
+#: gated read of the same document refuses to tell them apart: `GET
+#: /api/departments/{code}/overview` answers `NOT_FOUND` for both (a missing file
+#: and a record the gate withholds), precisely so that a caller cannot use it to
+#: map what exists. This endpoint is reachable by a plain `reader` — `export_pdf`
+#: is in the default reader role — and by an `export_pdf` holder scoped
+#: `dept:{code}/report:{kind}`, who holds no `view` on the department at all. Two
+#: different sentences here would hand exactly those callers the distinction the
+#: read endpoint refuses them, out of the one route that never asks `view`.
+#:
+#: It still says what to go and do, which is why it is a 409 rather than a
+#: fourth `NOT_FOUND`: the gate already admitted this caller, so "reachable, and
+#: not in a publishable state" tells them nothing that reaching this line did not
+#: — and it is the only message on the handler an Editor can act on. It names
+#: both halves of the requirement (complete the introduction, then confirm it)
+#: because the union of the two is true in either state and the difference
+#: between them is not this response's to disclose.
+NOT_PUBLISHABLE = ("معرفی این دپارتمان هنوز کامل و تأیید نشده است؛"
+                   " ابتدا آن را ثبت و سپس تأیید کنید.")
 
 
 def _report_target(request: Request) -> str:
@@ -42,8 +68,9 @@ def _now() -> str:
 def _drop_stale_pdf(path: Path, code: str, kind: str) -> None:
     """Remove the PDF left over from an earlier export of this department+kind.
 
-    The token is derived, not stored (`export_token`), so the PDF's path is the
-    same on every export. Whenever a render does not produce a new one, whatever
+    The token is derived from the department's content (`exports.report_key`) and
+    not stored, so re-exporting a department nothing has changed writes to that
+    same path again. Whenever a render does not produce a new one, whatever
     is sitting at that path was printed from an *older* version of the document
     that has just been overwritten — and it is served from the same public folder,
     one extension away from a link people share. A reader tapping «چاپ / PDF»
@@ -174,9 +201,32 @@ def create_export(code: str, kind: str, request: Request,
         raise HTTPException(status_code=503,
                             detail=f"قالب خروجی خوانده نشد: {template_path.name}") from e
 
+    conn = request.app.state.db
+    active = [doc for doc in storage.ordered_processes(cfg.data_root, code)
+              if not doc.get("tombstoned")]
+    # One statement for the whole department (D56: filtered in the query), and
+    # the department's own code alongside its processes, because the overview is
+    # a confirmable target too (D20, D55).
+    stored = confirmations.stored_for(conn, [code] + [d["id"] for d in active])
+    current_policy = policy.current(conn)
+
     generated_at = _now()
     try:
-        payload = exports.build_payload(cfg.data_root, code, generated_at)
+        payload = exports.build_payload(cfg.data_root, code, generated_at,
+                                        policy=current_policy, confirmed=stored)
+    except exports.Unconfirmed as e:
+        # The department's introduction exists and nobody has vouched for it
+        # (D22). INFO rather than the WARNING below: this is the ordinary state
+        # of a department somebody is still working on, not a data gap.
+        #
+        # **Caught first, and it must stay first:** it is a subclass of
+        # `ExportUnavailable`, and a reversed order would send every unconfirmed
+        # department down the branch below. The two answer the client
+        # identically — see `NOT_PUBLISHABLE`, which is the whole point — so what
+        # a reversal would cost is the operator's log line, which is the one
+        # place the two states may be told apart.
+        logger.info("%s/%s: %s", code, kind, e)
+        raise HTTPException(status_code=409, detail=NOT_PUBLISHABLE) from e
     except exports.ExportUnavailable as e:
         # A department with no overview.json has nothing to document yet: the
         # likeliest failure on the whole handler, and the only one that tells a
@@ -195,14 +245,15 @@ def create_export(code: str, kind: str, request: Request,
         # of their guesses landed is legible in it, because reaching this line
         # at all already required being inside.
         #
+        # The *body* is the same one the unconfirmed branch above answers with,
+        # and that is the second half of the same rule: same status and same
+        # bytes, or the prose re-opens the existence question the status closed.
+        #
         # Everything narrower stays 404: an unknown kind and an unknown
         # department above are both "there is no such thing", answered in the one
         # body every 404 here carries.
         logger.warning("%s/%s: %s", code, kind, e)
-        raise HTTPException(
-            status_code=409,
-            detail="اطلاعات معرفی این دپارتمان هنوز ثبت نشده است؛"
-                   " ابتدا معرفی واحد را کامل کنید.") from e
+        raise HTTPException(status_code=409, detail=NOT_PUBLISHABLE) from e
 
     try:
         html = exports.render(template, payload)
@@ -215,7 +266,18 @@ def create_export(code: str, kind: str, request: Request,
         logger.error("%s/%s: the export template is unusable: %s", code, kind, e)
         raise HTTPException(status_code=503, detail="قالب خروجی نامعتبر است") from e
 
-    token = exports.export_token(cfg.session_signing_key, code, kind)
+    # The key is the content, not the department (D27): the fingerprints of the
+    # confirmed processes in curated order, the overview's, and the policy
+    # version. `build_payload` published exactly the processes below, so the two
+    # cannot disagree about what this file contains.
+    published = [fingerprint(doc) for doc in active
+                 if stored.get(doc["id"]) == fingerprint(doc)]
+    token = exports.report_key(
+        cfg.session_signing_key, code, kind,
+        process_fingerprints=published,
+        overview_fingerprint=fingerprint(storage.read_json(
+            storage.overview_path(cfg.data_root, code))),
+        policy_version=policy.version(conn))
     try:
         written = exports.write_export(cfg.export_dir, code, kind, token, html)
     except OSError as e:

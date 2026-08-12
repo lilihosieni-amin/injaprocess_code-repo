@@ -15,6 +15,38 @@ from inja_ui_backend.tests_helpers import cfg_for, seeded_session
 TEMPLATE = '<!doctype html><script id="inja-export-data">__INJA_EXPORT_DATA__</script>'
 
 
+def confirm_everything(cfg, code: str) -> None:
+    """Vouch for every active process and the overview of `code`.
+
+    D22 — the bundle publishes only confirmed content, so without this every
+    export test here would assert things about an empty document, and the ones
+    checking a 200 would get a 409. Written straight to the store on its own
+    connection: what these tests are about is the export, not the confirmation
+    endpoint (`test_confirmations_api.py` owns that).
+    """
+    from inja_ui_backend import db, storage
+    from inja_ui_backend.fingerprint import fingerprint
+    from inja_ui_backend.store import confirmations
+
+    conn = db.connect(cfg.app_db)
+    try:
+        db.migrate(conn)
+        ov = storage.overview_path(cfg.data_root, code)
+        if ov.is_file():
+            confirmations.set_confirmation(
+                conn, target=code, fingerprint=fingerprint(storage.read_json(ov)),
+                by="09120000000", at=1770000000)
+        for path in storage.list_process_files(cfg.data_root, code):
+            doc = storage.read_json(path)
+            if doc.get("tombstoned"):
+                continue
+            confirmations.set_confirmation(
+                conn, target=doc["id"], fingerprint=fingerprint(doc),
+                by="09120000000", at=1770000000)
+    finally:
+        conn.close()
+
+
 def _cfg(data_root, tmp_path, *, template_dir=True, template_files=True, exports=True):
     """`template_dir` is the *setting*; `template_files` is what the build left in it.
 
@@ -58,6 +90,7 @@ def _client(cfg):
 
 def test_export_writes_a_file_and_returns_its_url(data_root, tmp_path):
     cfg = _cfg(data_root, tmp_path)
+    confirm_everything(cfg, "cooking")
     r = _client(cfg).post("/api/departments/cooking/exports/flowchart")
     assert r.status_code == 200
     url = r.json()["url"]
@@ -70,7 +103,9 @@ def test_export_writes_a_file_and_returns_its_url(data_root, tmp_path):
 
 
 def test_export_url_is_stable_across_calls(data_root, tmp_path):
-    c = _client(_cfg(data_root, tmp_path))
+    cfg = _cfg(data_root, tmp_path)
+    confirm_everything(cfg, "cooking")
+    c = _client(cfg)
     first = c.post("/api/departments/cooking/exports/steps").json()["url"]
     second = c.post("/api/departments/cooking/exports/steps").json()["url"]
     assert first == second
@@ -242,6 +277,7 @@ def test_template_without_a_data_slot_is_503(data_root, tmp_path, caplog):
     operator can act on.
     """
     cfg = _cfg(data_root, tmp_path)
+    confirm_everything(cfg, "cooking")
     (cfg.export_template_dir / "flowchart.html").write_text(
         "<!doctype html><title>no slot here</title>", encoding="utf-8")
     with caplog.at_level("WARNING"):
@@ -260,6 +296,7 @@ def test_unwritable_export_dir_is_logged_and_leaks_no_path(data_root, tmp_path, 
     and never in the response body.
     """
     cfg = _cfg(data_root, tmp_path)
+    confirm_everything(cfg, "cooking")
     c = _client(cfg)
     # the department folder the write needs is occupied by a file: the
     # `mkdir(parents=True, exist_ok=True)` inside the atomic write raises OSError
@@ -312,6 +349,7 @@ def test_a_real_export_is_served_while_the_spa_is_mounted(data_root, tmp_path):
     (dist / "index.html").write_text("<!doctype html><title>inja</title>", encoding="utf-8")
     cfg = _cfg(data_root, tmp_path)
     cfg = cfg.__class__(**{**cfg.__dict__, "static_dir": dist})
+    confirm_everything(cfg, "cooking")
     c = _client(cfg)
     url = c.post("/api/departments/cooking/exports/flowchart").json()["url"]
 
@@ -379,13 +417,233 @@ def test_export_links_are_404_when_exports_are_off(data_root, tmp_path):
         assert "inja" not in r.text, path
 
 
+def _written(cfg, url: str) -> str:
+    """The document the export actually put on disk, as text.
+
+    The file and not the response is where every assertion about *content*
+    belongs on this endpoint: the response carries a URL and a timestamp, so a
+    scan of it says nothing at all about what was published. That gap is how the
+    export came to be the one boundary serving a reader an unconfirmed process.
+    """
+    return (cfg.export_dir / url[len("/exports/"):]).read_text(encoding="utf-8")
+
+
+def _payload_of(cfg, url: str) -> dict:
+    html = _written(cfg, url)
+    body = html[html.index(">", html.index("inja-export-data")) + 1: html.rindex("</script>")]
+    return json.loads(body)
+
+
 def test_payload_in_the_written_file_has_no_pending(data_root, tmp_path):
     cfg = _cfg(data_root, tmp_path)
+    confirm_everything(cfg, "cooking")
     url = _client(cfg).post("/api/departments/cooking/exports/flowchart").json()["url"]
-    html = (cfg.export_dir / "cooking" / url.rsplit("/", 1)[1]).read_text(encoding="utf-8")
-    body = html[html.index(">", html.index("inja-export-data")) + 1: html.rindex("</script>")]
-    payload = json.loads(body)
+    payload = _payload_of(cfg, url)
+    assert payload["processes"], "nothing was published, so this asserts nothing"
     assert all(p["pending"] == [] for p in payload["processes"])
+
+
+def test_an_unconfirmed_process_is_absent_from_the_published_file(data_root, tmp_path):
+    """The record gate, on the artifact rather than on the listing.
+
+    Both halves, over one corpus, because a gate applied to one and not the other
+    is the door shut and the window open — which is exactly the shape this
+    endpoint was found in: the three gated boundaries refused an unconfirmed
+    `cooking`, and the export published it.
+    """
+    cfg = _cfg(data_root, tmp_path)
+    c = _client(cfg)
+
+    # only the overview vouched for: the department is publishable, its one
+    # process is not
+    from inja_ui_backend import db, storage
+    from inja_ui_backend.fingerprint import fingerprint
+    from inja_ui_backend.store import confirmations
+    conn = db.connect(cfg.app_db)
+    try:
+        confirmations.set_confirmation(
+            conn, target="cooking",
+            fingerprint=fingerprint(storage.read_json(
+                storage.overview_path(cfg.data_root, "cooking"))),
+            by="09120000000", at=1770000000)
+    finally:
+        conn.close()
+
+    r = c.post("/api/departments/cooking/exports/steps")
+    assert r.status_code == 200, r.text
+    assert _payload_of(cfg, r.json()["url"])["processes"] == []
+    assert "cooking-001" not in _written(cfg, r.json()["url"])
+    assert "خرید و پرداخت هزینه" not in _written(cfg, r.json()["url"])
+
+    # …and the same request once an Editor has vouched for it publishes it, or
+    # the absence above is a bundle that never carries anything.
+    confirm_everything(cfg, "cooking")
+    again = c.post("/api/departments/cooking/exports/steps")
+    assert again.status_code == 200, again.text
+    assert [p["id"] for p in _payload_of(cfg, again.json()["url"])["processes"]] == [
+        "cooking-001"]
+    # …and the key moved with the payload. It has to: the key is what decides
+    # whether an already-rendered file may be reused, so a key that listed a
+    # process the bundle does not publish (or omitted one it does) would keep
+    # serving the document from before the Editor vouched for anything.
+    assert again.json()["url"] != r.json()["url"], (
+        "confirming a process changed what the bundle contains and not its key")
+
+
+def test_a_tombstoned_process_is_absent_from_the_published_file(data_root, tmp_path):
+    """D17 excludes a tombstone entirely, and the mark is not a way back in.
+
+    Confirmed on purpose: the confirmation endpoint refuses a tombstoned target,
+    but a row left behind by a process tombstoned *after* it was vouched for is
+    the ordinary way one exists — so "it happens to be unconfirmed" must not be
+    what keeps it out of a permanent public file.
+    """
+    from inja_ui_backend import db, storage
+    from inja_ui_backend.fingerprint import fingerprint
+    from inja_ui_backend.store import confirmations
+
+    cfg = _cfg(data_root, tmp_path)
+    path = storage.proc_path(cfg.data_root, "cooking-001")
+    doc = json.loads(path.read_text(encoding="utf-8"))
+    doc["tombstoned"] = True
+    doc["superseded_by"] = []
+    path.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
+
+    conn = db.connect(cfg.app_db)
+    try:
+        db.migrate(conn)
+        confirmations.set_confirmation(
+            conn, target="cooking",
+            fingerprint=fingerprint(storage.read_json(
+                storage.overview_path(cfg.data_root, "cooking"))),
+            by="09120000000", at=1770000000)
+        confirmations.set_confirmation(conn, target="cooking-001",
+                                       fingerprint=fingerprint(doc),
+                                       by="09120000000", at=1770000000)
+    finally:
+        conn.close()
+
+    r = _client(cfg).post("/api/departments/cooking/exports/steps")
+    assert r.status_code == 200, r.text
+    assert _payload_of(cfg, r.json()["url"])["processes"] == []
+    assert "خرید و پرداخت هزینه" not in _written(cfg, r.json()["url"])
+
+
+def test_a_department_with_nothing_confirmed_cannot_be_exported(data_root, tmp_path):
+    """D22/D23 — an unconfirmed department has nothing to publish, and the answer
+    says what to go and do rather than hiding behind the uniform 404."""
+    cfg = _cfg(data_root, tmp_path)
+    r = _client(cfg).post("/api/departments/cooking/exports/steps")
+    assert r.status_code == 409
+    assert "تأیید" in r.json()["detail"]
+    assert not list(cfg.export_dir.rglob("*.html")), (
+        "a refused export still wrote a document into the public folder")
+
+
+def test_the_refusal_cannot_tell_a_missing_overview_from_an_unconfirmed_one(
+        data_root, tmp_path, caplog):
+    """The existence oracle this endpoint would otherwise be.
+
+    `cooking` has an `overview.json` and nobody has confirmed it; `dining` has
+    none at all. `GET /api/departments/{code}/overview` — the gated read of the
+    very same document — answers `NOT_FOUND` for both, precisely so that a caller
+    cannot use it to map what exists. This endpoint asks for no `view` at all: an
+    `export_pdf` holder scoped `dept:{code}/report:{kind}` reaches it, and so does
+    a plain `reader`, whose default role carries `export_pdf`. Two different
+    answers here would hand exactly those callers the distinction the read
+    endpoint refuses them.
+
+    Status **and** body, byte for byte: the uniform-404 rule next door exists
+    because prose re-opens what a status code closes, and a 409 is no different.
+
+    The operator's log is where the two are still told apart, and the last two
+    assertions are what stop that from quietly becoming one message: an operator
+    reading it must still know which state they are looking at.
+    """
+    cfg = _cfg(data_root, tmp_path)
+    c = _client(cfg)
+    with caplog.at_level("INFO"):
+        unconfirmed = c.post("/api/departments/cooking/exports/steps")
+        missing = c.post("/api/departments/dining/exports/steps")
+
+    assert unconfirmed.status_code == missing.status_code == 409
+    assert unconfirmed.text == missing.text, (
+        "the export separates a department whose introduction exists from one"
+        " whose does not, out of the one route that never asks for `view`")
+    assert not _ascii_letters(unconfirmed.json()["detail"])
+
+    logs = _guard_logs(caplog)
+    assert any("cooking" in m and "confirmation" in m for m in logs), logs
+    assert any("dining" in m and "overview.json" in m for m in logs), logs
+
+
+def test_moving_a_visibility_switch_changes_the_export_url(data_root, tmp_path):
+    """§11 test 22, end to end. If this fails, the already-rendered document keeps
+    serving the field the Editor just switched off — a content leak, not a stale
+    page."""
+    cfg = _cfg(data_root, tmp_path)
+    confirm_everything(cfg, "cooking")
+    c = _client(cfg)
+    first = c.post("/api/departments/cooking/exports/steps").json()["url"]
+    assert c.put("/api/visibility/process_summary",
+                 json={"visible": True}).status_code == 200
+    second = c.post("/api/departments/cooking/exports/steps").json()["url"]
+    assert first != second
+
+
+def test_a_flipped_switch_changes_what_the_published_file_contains(data_root, tmp_path):
+    """The other half of the test above, and the one that makes it matter.
+
+    A key that moved is only interesting because the *document* moved. This is
+    also the one assertion that fails for a `build_payload` reading
+    `store.policy.DEFAULTS` instead of `current`: the URL would still change,
+    because `policy.version` is read separately, while every reader kept getting
+    D17's defaults for ever.
+    """
+    cfg = _cfg(data_root, tmp_path)
+    confirm_everything(cfg, "cooking")
+    c = _client(cfg)
+    summary = "از دریافت درخواست خرید"      # the fixture's own `summary`, in part
+
+    hidden = c.post("/api/departments/cooking/exports/steps").json()["url"]
+    assert summary not in _written(cfg, hidden)
+
+    assert c.put("/api/visibility/process_summary",
+                 json={"visible": True}).status_code == 200
+    shown = c.post("/api/departments/cooking/exports/steps").json()["url"]
+    assert summary in _written(cfg, shown), (
+        "an Editor switched a field on and the published document did not change:"
+        " the payload is being built from D17's defaults rather than the policy")
+    # …and the old document is gone from the public folder rather than sitting
+    # there under its old name still carrying the other version.
+    assert not (cfg.export_dir / hidden[len("/exports/"):]).exists()
+
+
+def test_editing_a_process_changes_the_export_url_and_the_file(data_root, tmp_path):
+    """The content half of D27's key.
+
+    A key that ignored the content would serve the previous document from the
+    previous URL for ever — the same failure as the policy clause, reached by the
+    likelier route.
+    """
+    from inja_ui_backend import storage
+
+    cfg = _cfg(data_root, tmp_path)
+    confirm_everything(cfg, "cooking")
+    c = _client(cfg)
+    first = c.post("/api/departments/cooking/exports/steps").json()["url"]
+    assert "EDITEDNAME" not in _written(cfg, first)
+
+    path = storage.proc_path(cfg.data_root, "cooking-001")
+    doc = json.loads(path.read_text(encoding="utf-8"))
+    doc["name"] = "EDITEDNAME"
+    path.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
+    confirm_everything(cfg, "cooking")          # the Editor vouches for it again
+
+    second = c.post("/api/departments/cooking/exports/steps").json()["url"]
+    assert second != first
+    assert "EDITEDNAME" in _written(cfg, second)
+    assert not (cfg.export_dir / first[len("/exports/"):]).exists()
 
 
 # --------------------------------------------------------------------------- #
@@ -400,18 +658,26 @@ def _with_chromium(cfg, tmp_path):
     return cfg.__class__(**{**cfg.__dict__, "chromium_path": browser})
 
 
-def _pdf_path(cfg, code="cooking", kind="flowchart"):
-    token = exports_mod.export_token(cfg.session_signing_key, code, kind)
-    return exports_mod.export_pdf_path(cfg.export_dir, code, kind, token)
-
-
 def _plant_a_previous_pdf(cfg, code="cooking", kind="flowchart"):
     """A PDF from an earlier, successful export of the same department+kind.
 
-    The token is derived, not stored, so this is the *exact* path the next export
-    will use — which is what makes a stale file possible at all.
+    Planted by really exporting once — with the browser switched off, so nothing
+    drives a subprocess — and writing the bytes beside the document that export
+    left. Really exporting is now the only way to know the path: the filename is
+    D27's key over the department's content and the policy
+    (`exports.report_key`), so computing it here would mean restating every
+    fingerprint in the department in a test, and a test that restated them would
+    go green the day the two spellings drifted.
+
+    Re-exporting content nothing has changed lands on that same key, which is
+    what makes a stale PDF possible at all — and is exactly the production
+    sequence it comes from.
     """
-    path = _pdf_path(cfg, code, kind)
+    confirm_everything(cfg, code)
+    quiet = cfg.__class__(**{**cfg.__dict__, "chromium_path": None})
+    r = _client(quiet).post(f"/api/departments/{code}/exports/{kind}")
+    assert r.status_code == 200, r.text
+    path = (cfg.export_dir / r.json()["url"][len("/exports/"):]).with_suffix(".pdf")
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(b"%PDF-1.4 the document as it looked two edits ago")
     return path
@@ -424,6 +690,7 @@ def test_export_succeeds_with_no_chromium_configured(data_root, tmp_path, caplog
     shape it has always been — one HTML link, no PDF field (D18).
     """
     cfg = _cfg(data_root, tmp_path)
+    confirm_everything(cfg, "cooking")
     assert cfg.chromium_path is None
     with caplog.at_level("WARNING"):
         r = _client(cfg).post("/api/departments/cooking/exports/flowchart")
@@ -438,6 +705,7 @@ def test_export_succeeds_with_no_chromium_configured(data_root, tmp_path, caplog
 def test_export_succeeds_when_the_render_fails(data_root, tmp_path, caplog, monkeypatch):
     """A browser that dies, times out, or prints nothing must not cost the export."""
     cfg = _with_chromium(_cfg(data_root, tmp_path), tmp_path)
+    confirm_everything(cfg, "cooking")
 
     def boom(*a, **kw):
         raise pdf_mod.PdfRenderError("the page never set window.__INJA_PRINT_READY__")
@@ -555,6 +823,7 @@ def test_a_pdf_that_cannot_be_unlinked_is_logged_as_an_error(data_root, tmp_path
 
 def test_a_successful_render_puts_the_pdf_beside_the_html(data_root, tmp_path, monkeypatch):
     cfg = _with_chromium(_cfg(data_root, tmp_path), tmp_path)
+    confirm_everything(cfg, "cooking")
     seen = {}
 
     def fake_render(chromium, html_path, out_path, **kw):
@@ -621,6 +890,7 @@ def test_no_pdf_is_served_beside_the_new_html_while_the_render_is_still_running(
 def test_regenerating_prunes_the_previous_pdf(data_root, tmp_path, monkeypatch):
     """An orphan from a rotated signing key is as public as the HTML beside it."""
     cfg = _with_chromium(_cfg(data_root, tmp_path), tmp_path)
+    confirm_everything(cfg, "cooking")
     folder = cfg.export_dir / "cooking"
     folder.mkdir(parents=True, exist_ok=True)
     orphan_html = folder / "flowchart-deadbeefdeadbeef.html"
@@ -647,6 +917,7 @@ def test_the_render_does_not_run_on_the_event_loop(data_root, tmp_path, monkeypa
     loop, and raises `RuntimeError` in a worker thread.
     """
     cfg = _with_chromium(_cfg(data_root, tmp_path), tmp_path)
+    confirm_everything(cfg, "cooking")
     where = {}
 
     def fake_render(chromium, html_path, out_path, **kw):
@@ -697,6 +968,7 @@ def _publish(data_root, tmp_path, monkeypatch, *, credential=True):
     cfg = _with_chromium(_cfg(data_root, tmp_path), tmp_path)
     if credential:
         cfg = _gated(cfg)
+    confirm_everything(cfg, "cooking")
     monkeypatch.setattr(pdf_mod, "render_pdf",
                         lambda c, h, o, **kw: Path(o).write_bytes(PDF_BYTES))
     url = _client(cfg).post("/api/departments/cooking/exports/flowchart").json()["url"]
