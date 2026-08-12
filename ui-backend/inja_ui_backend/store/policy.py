@@ -99,8 +99,10 @@ def version(conn: sqlite3.Connection) -> str:
 
     Derived from `current`, so it covers exactly the declared fields and a stray
     row cannot move it. `sort_keys=True` pins the digest to the *value* of the
-    policy rather than to `FIELDS`' iteration order, which is what keeps two
-    processes' digests equal for the same policy.
+    policy rather than to `FIELDS`' iteration order — cheap defence that costs
+    nothing and is redundant today only because `current` always builds this
+    dict from the fixed `FIELDS` tuple; it stops being redundant the moment
+    anything builds that dict by another route.
     """
     body = json.dumps(current(conn), sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(body.encode("utf-8")).hexdigest()[:16]

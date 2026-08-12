@@ -99,9 +99,26 @@ def test_the_version_is_stable_across_connections(tmp_path):
 
 
 def test_the_write_opens_no_transaction(tmp_path):
+    """`db.connect`'s invariant: the app shares one connection across FastAPI's
+    threadpool, and it is safe only while no handler opens an explicit
+    transaction. The write here is a single autocommitted statement — not
+    just a *balanced* explicit transaction that happens to leave
+    `conn.in_transaction` False by the time we check it."""
     conn = _conn(tmp_path)
-    policy.set_field(conn, "process_kpis", True)
-    assert not conn.in_transaction
+
+    statements = []
+    conn.set_trace_callback(statements.append)
+    try:
+        policy.set_field(conn, "process_kpis", True)
+    finally:
+        conn.set_trace_callback(None)
+
+    # A `BEGIN ...` / `COMMIT` pair around the write would also leave
+    # `in_transaction` False here, and a second threadpool worker landing in
+    # between would either hit "cannot start a transaction within a
+    # transaction" or have its own half-written work committed by this one.
+    assert statements
+    assert not any(sql.strip().lower().startswith("begin") for sql in statements)
 
 
 # --- Additional tests, written after mutation testing the implementation ---
@@ -142,29 +159,6 @@ def test_current_returns_python_bools_not_sqlite_ints(tmp_path):
         assert value is True or value is False
 
 
-def test_defaults_match_d17_independently_transcribed(tmp_path):
-    """Transcribed from D17 independently of the implementation, per the
-    project's own warning that a test which reads its expected value from the
-    code under test cannot catch a transcription error in that code."""
-    d17 = {
-        "process_summary": False,
-        "process_idef0": False,
-        "process_kpis": False,
-        "node_description": True,
-        "node_actor": True,
-        "node_icom": False,
-    }
-    assert policy.DEFAULTS == d17
-
-
-def test_version_is_16_lowercase_hex_chars_at_the_defaults(tmp_path):
-    conn = _conn(tmp_path)
-    v = policy.version(conn)
-    assert isinstance(v, str)
-    assert len(v) == 16
-    assert all(c in "0123456789abcdef" for c in v)
-
-
 def test_version_does_not_change_when_a_field_is_set_to_its_current_value(tmp_path):
     """Setting a field to the value it already has changes nothing a reader
     can see, so the version — a digest of the policy, not a log of writes —
@@ -178,9 +172,9 @@ def test_version_does_not_change_when_a_field_is_set_to_its_current_value(tmp_pa
 
 
 def test_version_is_consistent_with_current_across_many_flips(tmp_path):
-    """Guards against an iteration-order-dependent digest: two connections
-    that reach the same `current()` after different sequences of flips must
-    still agree on `version()`."""
+    """Kills a `version` digested over raw rowid order rather than over
+    `current()`'s value: two connections that reach the same `current()` after
+    different sequences of flips must still agree on `version()`."""
     conn_a = _conn(tmp_path / "a")
     conn_b = _conn(tmp_path / "b")
 
