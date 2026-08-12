@@ -361,10 +361,17 @@ def test_out_of_scope_is_404_never_403(data_root, tmp_path, method, path, body,
     `test_a_department_scoped_editor_cannot_change_the_global_policy` in
     `test_visibility_api.py`.
     """
+    if path in GLOBAL_TARGET:
+        pytest.skip(f"{path} is gated on `*`, not a department: a dept:dining"
+                    " caller is 404'd out of it for a reason that has nothing"
+                    " to do with `cooking`, and asserting 404 here would pass"
+                    " for the wrong reason. Their scope refusal is pinned by"
+                    " test_out_of_scope_and_without_the_capability_is_still_404"
+                    " below and by test_visibility_api.py::"
+                    "test_a_department_scoped_editor_cannot_change_the_global_policy.")
     client = _client_as(data_root, tmp_path, "editor", "dept:dining")
     r = _call(client, method, path, body)
-    if path not in GLOBAL_TARGET:
-        assert r.status_code == 404, f"{method} {path} answered {r.status_code}"
+    assert r.status_code == 404, f"{method} {path} answered {r.status_code}"
 
 
 @pytest.mark.parametrize("method,path,body,capability", GATED, ids=_ids(GATED))
@@ -394,9 +401,10 @@ ALL_ROUTES = GATED + [("GET", p, None, None) for p in FILTERED]
                          ids=_ids(ALL_ROUTES))
 def test_a_stranger_still_gets_401_everywhere(data_root, tmp_path, method, path,
                                               body, capability):
-    """All seventeen, filtered ones included: 401 belongs to neither half of the
-    partition and must not be lost when the session gate becomes a capability
-    gate — nor may a filtered route quietly serve a stranger an empty list."""
+    """Every route in `ALL_ROUTES`, filtered ones included: 401 belongs to
+    neither half of the partition and must not be lost when the session gate
+    becomes a capability gate — nor may a filtered route quietly serve a
+    stranger an empty list."""
     cfg = cfg_for(data_root, tmp_path / "app.db")
     client = TestClient(create_app(cfg), base_url=BASE)
     assert _call(client, method, path, body).status_code == 401, f"{method} {path}"

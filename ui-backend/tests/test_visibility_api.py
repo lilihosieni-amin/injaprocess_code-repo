@@ -41,6 +41,20 @@ def _client_as(data_root, tmp_path, role, *scopes):
     return client
 
 
+def _every_department(data_root) -> list[str]:
+    """Every department code the registry knows, read where the router reads it.
+
+    `routers/departments.py` resolves the department list from
+    `storage.registry_path(cfg.data_root)` at request time, and `data_root`'s own
+    fixture seeds that exact file from `tests/fixtures/registry.json` — so this
+    is the live enumeration and not a second list, kept by hand, that could
+    silently stop matching it.
+    """
+    reg = json.loads((data_root / "departments" / "registry.json")
+                     .read_text(encoding="utf-8"))
+    return [d["code"] for d in reg["departments"]]
+
+
 def _events(client):
     conn = db.connect(client.app_db)
     try:
@@ -60,6 +74,16 @@ def test_the_policy_reads_back_d17s_defaults(data_root, tmp_path):
         "node_description": True, "node_actor": True, "node_icom": False,
     }
     assert len(body["version"]) == 16
+
+
+def test_reading_the_policy_writes_no_event(data_root, tmp_path):
+    """A GET is a read, and D19's record is for changes. An event written on
+    every read would fill the audit log with changes that never happened —
+    "someone changed the policy" for every screen that merely opened it."""
+    client = _client_as(data_root, tmp_path, "editor", "*")
+    assert client.get("/api/visibility").status_code == 200
+    assert client.get("/api/visibility").status_code == 200
+    assert _events(client) == []
 
 
 def test_changing_a_field_changes_the_policy_and_the_version(data_root, tmp_path):
@@ -122,8 +146,20 @@ def test_a_department_scoped_editor_cannot_change_the_global_policy(data_root,
                                                                     tmp_path):
     """404 — `*` is outside their scope, and one global policy means the answer
     cannot depend on which department they run. A gate on `dept:{code}` would let
-    the head of dining decide what cashier publishes."""
-    client = _client_as(data_root, tmp_path, "editor", "dept:dining")
+    that department's head decide what every other department publishes.
+
+    The caller holds **every** department there is, and not `*` — not one
+    department picked at random. A caller scoped to `dept:dining` alone would
+    still read 404 if the route were gated on `dept:cooking` instead of `*`: the
+    caller is outside that target too, for the wrong reason, and the test would
+    pass over a mutant it was written to catch. Holding every `dept:{code}`
+    scope closes that gap for all nine at once — whichever department a broken
+    gate names, this caller holds it, so only a gate that is truly `*` still
+    answers 404 here.
+    """
+    depts = _every_department(data_root)
+    client = _client_as(data_root, tmp_path, "editor",
+                        *(f"dept:{code}" for code in depts))
     r = client.put("/api/visibility/node_actor", json={"visible": False})
     assert (r.status_code, r.json()) == (404, {"detail": NOT_FOUND})
     assert client.get("/api/visibility").status_code == 404

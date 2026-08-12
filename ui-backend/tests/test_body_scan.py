@@ -1927,7 +1927,7 @@ def test_the_two_visibility_routes_really_produce_a_body_on_this_sweep(corpus,
     got = wild.get("/api/visibility")
     assert got.status_code == 200, got.text
     body = got.json()
-    assert set(body["fields"]) == set(policy.FIELDS), (
+    assert set(body.get("fields", ())) == set(policy.FIELDS), (
         "the policy route served the wildcard holder nothing to walk, so the two"
         " rows added to GLOBAL_READS/GLOBAL_WRITES contribute empty bodies to"
         f" every sweep in this file: {body}")
