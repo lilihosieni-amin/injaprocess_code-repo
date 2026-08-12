@@ -140,12 +140,28 @@ def list_departments(request: Request, user=Depends(require_session)):
 
 @router.get("/{code}/overview")
 def get_overview(code: str, request: Request,
-                 _=Depends(requires("view", _dept_target))):
+                 user=Depends(requires("view", _dept_target))):
+    """The department information page — in full (D55).
+
+    Shown in its entirety: no per-field switches, no policy table, and none
+    planned. What the department does, its sub-units, who works there and what
+    each role is measured on is what a staff member should be able to read, and
+    so is `updated_at` — a last-updated date says nothing about what the
+    department does, and `ui/src/screens/Overview.tsx` dereferences it with no
+    guard.
+
+    Redacted rather than returned raw, so that "every boundary runs the same
+    rule" stays a property a reader can check rather than a list of the ones
+    somebody remembered. The filter takes nothing away today; if a row of D55
+    ever becomes switchable it becomes a row in `store.policy.FIELDS`, and this
+    boundary already reads it.
+    """
     cfg = request.app.state.cfg
     path = storage.overview_path(cfg.data_root, code)
     if not path.is_file():
         raise HTTPException(status_code=404, detail=NOT_FOUND)
-    return storage.read_json(path)
+    shown = Disclosure(request.app.state.db, user)
+    return shown.redact_overview(storage.read_json(path), code)
 
 
 @router.put("/{code}/overview")

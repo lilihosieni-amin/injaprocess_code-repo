@@ -57,7 +57,8 @@ from inja_ui_backend import db, seed
 from inja_ui_backend.access import NOT_FOUND
 from inja_ui_backend.app import create_app
 from inja_ui_backend.auth import hash_password
-from inja_ui_backend.store import users
+from inja_ui_backend.disclosure import Disclosure
+from inja_ui_backend.store import policy, users
 from inja_ui_backend.tests_helpers import cfg_for
 
 PW = "test-password"
@@ -171,6 +172,35 @@ PENDING_TOKENS: tuple[tuple[str, str], ...] = (
      " (D17: never shown; D56: not even its count)"),
 )
 
+#: The fields D17 hides from a non-editor by default, planted inside the
+#: caller's own department.
+#:
+#: Checked against **capability**, exactly like `TOMBSTONE_TOKENS`, and never
+#: added to `FORBIDDEN`: an Editor of dining sees all of these legitimately, so
+#: `test_no_role_is_served_anything_outside_its_scope_anywhere_in_any_body`
+#: would fail for the `editor` parameter over content that role is entitled to.
+#:
+#: `MINEA` is `dining-001` and `MINEB` is `dining-002`, so a leak names the
+#: document as well as the switch.
+HIDDEN_FIELD_TOKENS: tuple[tuple[str, str], ...] = (
+    ("MINEASUMMARY", "the process summary of dining-001 (D17: hidden by default)"),
+    ("MINEAIDEF0", "the process IDEF0 record of dining-001 (D17: hidden)"),
+    ("MINEAKPI", "a process KPI of dining-001 (D17: hidden)"),
+    ("MINEAICOM", "a node's ICOM on dining-001 (D17: hidden)"),
+    ("MINEASOURCE", "a node's provenance on dining-001 (D17: never shown)"),
+    ("MINEBSUMMARY", "the process summary of dining-002"),
+)
+
+#: The two D17 shows by default, planted in the same documents.
+#:
+#: The other direction, and it is the half that stops the filter from becoming
+#: 'blank everything': a filter that took these away would satisfy every
+#: assertion above while emptying the flowchart for the people it is for.
+SHOWN_FIELD_TOKENS: tuple[tuple[str, str], ...] = (
+    ("MINEADESC", "a node's description on dining-001 (D17: visible by default)"),
+    ("MINEBDESC", "a node's description on dining-002"),
+)
+
 
 def _server_paths(data_root) -> tuple[tuple[str, str], ...]:
     """A second class of leak the scan was blind to: **the server's own layout.**
@@ -211,9 +241,13 @@ def _server_paths(data_root) -> tuple[tuple[str, str], ...]:
 # --------------------------------------------------------------------------
 
 def _process(pid: str, dept: str, *, name: str, label: str, actor: str,
-             proposed: str, parent: dict | None = None,
+             proposed: str, tag: str, parent: dict | None = None,
              subprocess: str | None = None) -> dict:
     """A process of the fixture's shape, with every string under this file's control.
+
+    `tag` is this document's field-sentinel prefix: every field the visibility
+    policy can hide carries `{tag}` plus the field's name, so a leak names both
+    the document it came from and the switch that should have stopped it.
 
     Authored rather than copied from `tests/fixtures/process.cooking-001.json`:
     that document contains «انبار» and «حسابداری», which are two departments'
@@ -232,20 +266,22 @@ def _process(pid: str, dept: str, *, name: str, label: str, actor: str,
     node = f"{pid}-n010"
     return {
         "id": pid, "department": dept, "name": name,
-        "summary": f"{name} — شرح کوتاه",
+        "summary": f"{tag}SUMMARY",
         "source": {"type": "manual", "ref": None, "run": None},
         "parent": parent,
         "created_at": "2026-07-06T10:00:00Z", "updated_at": "2026-07-06T10:00:00Z",
-        "idef0": {"inputs": [], "controls": [], "outputs": [], "mechanisms": []},
-        "kpis": [],
+        "idef0": {"inputs": [f"{tag}IDEF0"], "controls": [], "outputs": [],
+                  "mechanisms": []},
+        "kpis": [{"name": f"{tag}KPI"}],
         "nodes": [
             {"id": "start", "type": "start", "label": "شروع",
              "position": {"x": 30, "y": 100}, "layout": "auto"},
             {"id": node, "type": "activity", "label": label, "actor": actor,
-             "description": f"{label} — توضیح", "subprocess": subprocess,
-             "icom": {"inputs": [], "controls": [], "outputs": [], "mechanisms": []},
+             "description": f"{tag}DESC", "subprocess": subprocess,
+             "icom": {"inputs": [f"{tag}ICOM"], "controls": [], "outputs": [],
+                      "mechanisms": []},
              "position": {"x": 160, "y": 90}, "layout": "auto",
-             "source": {"created_by": "runs/x", "touched_by": []}},
+             "source": {"created_by": f"runs/{tag}SOURCE", "touched_by": []}},
             {"id": "end", "type": "end", "label": "پایان",
              "position": {"x": 320, "y": 100}, "layout": "auto"},
         ],
@@ -313,7 +349,7 @@ def _tombstone(pid: str, dept: str) -> dict:
     failure this file's docstring is about.
     """
     doc = _process(pid, dept, name="TOMBNAME", label="TOMBLABEL",
-                   actor="TOMBACTOR", proposed="TOMBPROPOSED")
+                   actor="TOMBACTOR", proposed="TOMBPROPOSED", tag="TOMB")
     doc["tombstoned"] = True
     doc["superseded_by"] = []
     doc["pending"] = []
@@ -376,20 +412,21 @@ def corpus(data_root):
     _write(data_root, MINE, "processes/dining-001.json",
            _process("dining-001", MINE, name="پذیرایی از مهمان",
                     label="خوش‌آمدگویی", actor="میزبان", proposed="MINEPROPOSED",
+                    tag="MINEA",
                     parent={"process": FOREIGN_PARENT, "node": FOREIGN_PARENT_NODE},
                     subprocess=FOREIGN_CHILD))
     _write(data_root, MINE, "processes/dining-002.json",
            _process("dining-002", MINE, name="ترخیص میز",
                     label="تسویه", actor="میزبان", proposed="پیشخدمت",
-                    subprocess=LOCAL_CHILD))
+                    tag="MINEB", subprocess=LOCAL_CHILD))
     _write(data_root, MINE, f"processes/{TOMBSTONED}.json",
            _tombstone(TOMBSTONED, MINE))
     _write(data_root, THEIRS, "processes/cooking-777.json",
            _process("cooking-777", THEIRS, name="LEAKNAME", label="LEAKLABEL",
-                    actor="LEAKACTOR", proposed="LEAKPROPOSED"))
+                    actor="LEAKACTOR", proposed="LEAKPROPOSED", tag="LEAKF"))
     _write(data_root, "logistics", "processes/logistics-005.json",
            _process("logistics-005", "logistics", name="بارگیری",
-                    label="تحویل", actor="راننده", proposed="پیک"))
+                    label="تحویل", actor="راننده", proposed="پیک", tag="LOGF"))
     return data_root
 
 
@@ -491,7 +528,40 @@ def _client_as(data_root, tmp_path, role, *scopes):
     r = client.post("/api/auth/login", json={"username": username, "password": PW})
     assert r.status_code == 200, r.text
     client.username = username
+    # …and its settings, so a test that has to reach round the back of this
+    # client — into the same `app.db` the running service reads — can find the
+    # file rather than reconstructing the name and hoping the two agree.
+    client.cfg = cfg
     return client
+
+
+def _disclosure_as(data_root, tmp_path, role, *scopes) -> Disclosure:
+    """A `Disclosure` for a real account, built without going through HTTP.
+
+    Everything else in this file is an end-to-end sweep, deliberately. This one
+    is not, because the question it asks cannot be posed over HTTP: the scope
+    grammar has no "may view but may not edit" form for a department, so no
+    route will ever hand a caller a document from a department they can see and
+    cannot edit. The distinction between `edits(dept)` and "may this caller edit
+    at all" is therefore invisible from outside — and it is the distinction the
+    whole field policy turns on, so it is asked here directly instead of not at
+    all.
+    """
+    n = next(_seq)
+    username = f"0912{n:07d}"
+    cfg = _cfg(data_root, tmp_path, n)
+    conn = db.connect(cfg.app_db)
+    db.migrate(conn)
+    seed.seed(conn, editor_username="09190000000", editor_display_name="e",
+              editor_password_hash=hash_password(PW))
+    rid = conn.execute("SELECT id FROM roles WHERE name = ?", (role,)).fetchone()[0]
+    uid = users.create(conn, username=username, display_name="u",
+                       password_hash=hash_password(PW), role_id=rid)
+    for s in scopes:
+        conn.execute("INSERT INTO user_scopes (user_id, scope) VALUES (?, ?)",
+                     (uid, s))
+    user = conn.execute("SELECT * FROM users WHERE id = ?", (uid,)).fetchone()
+    return Disclosure(conn, user)
 
 
 # --------------------------------------------------------------------------
@@ -601,7 +671,7 @@ def _a_saved_document(d: str) -> dict:
     neighbouring department's id — was never scanned.
     """
     return _process(f"{d}-001", d, name="پذیرایی از مهمان", label="خوش‌آمدگویی",
-                    actor="میزبان", proposed="MINEPROPOSED")
+                    actor="میزبان", proposed="MINEPROPOSED", tag="MINEA")
 
 
 #: The writes, swept after every read so that what the reads see is the planted
@@ -1398,3 +1468,301 @@ def test_a_report_scoped_reader_sees_no_department_body_at_all(corpus, tmp_path)
     assert whole.get(f"/api/departments/{MINE}/overview").status_code == 200
     assert [p["id"] for p in whole.get(f"/api/departments/{MINE}/processes").json()] == [
         "dining-001", "dining-002"]
+
+
+def _reader_bodies(client) -> str:
+    """Every read body this caller can obtain, serialised into one string."""
+    import json as _json
+    out = []
+    for route in [_fill(r, u=client.username) for r in GLOBAL_READS] + \
+                 [_fill(r, d=MINE, u=client.username) for r in DEPT_READS]:
+        r = client.request(route.method, route.path, json=route.body)
+        try:
+            out.append(_json.dumps(r.json(), ensure_ascii=False))
+        except ValueError:
+            out.append(r.text)
+    return "\n".join(out)
+
+
+@pytest.mark.parametrize("role", ["reader", "reader_no_download", "admin"])
+def test_no_hidden_field_reaches_a_caller_who_cannot_edit_the_department(
+        corpus, tmp_path, role):
+    """§11 test 8 — no denylisted field in any response to a non-editor.
+
+    All three non-editing roles, because an Admin holds `manage_users` and
+    `view_audit` and still holds no `edit`: the policy is about the capability at
+    this department, never about how senior the account is.
+    """
+    client = _client_as(corpus, tmp_path, role, f"dept:{MINE}")
+    body = _reader_bodies(client)
+    leaked = [f"{token} ({why})" for token, why in HIDDEN_FIELD_TOKENS
+              if token in body]
+    assert leaked == [], f"as a {role}: " + "; ".join(leaked)
+
+
+def test_an_editor_of_the_department_is_served_every_one_of_those_fields(
+        corpus, tmp_path):
+    """The pairing, over the **same corpus**.
+
+    Without it the test above passes against a backend that serves a scoped
+    Editor nothing at all — and against one that has quietly stopped planting the
+    tokens. Both halves read the same documents; only the caller differs.
+    """
+    client = _client_as(corpus, tmp_path, "editor", f"dept:{MINE}")
+    body = _reader_bodies(client)
+    missing = [f"{token} ({why})" for token, why in HIDDEN_FIELD_TOKENS
+               if token not in body]
+    assert missing == [], (
+        "an Editor of their own department was not served: " + "; ".join(missing)
+        + " — either the filter is stripping for editors too, or the corpus"
+          " stopped planting these")
+
+
+@pytest.mark.parametrize("role", ["reader", "reader_no_download", "admin", "editor"])
+def test_the_two_fields_d17_shows_by_default_reach_everyone(corpus, tmp_path, role):
+    """A filter that blanked everything would pass every assertion above."""
+    client = _client_as(corpus, tmp_path, role, f"dept:{MINE}")
+    body = _reader_bodies(client)
+    missing = [f"{token} ({why})" for token, why in SHOWN_FIELD_TOKENS
+               if token not in body]
+    assert missing == [], f"as a {role}, nothing carried: " + "; ".join(missing)
+
+
+def test_the_overview_reaches_a_reader_in_full(corpus, tmp_path):
+    """D55 — the department information page is shown in its entirety.
+
+    The plan had `updated_at` withheld from a non-editor and this test asserting
+    its absence. It is here instead, because the project owner overruled that
+    while the filter was being written (`visibility.public_overview`): a
+    last-updated date says nothing about what a department does, and
+    `ui/src/screens/Overview.tsx` dereferences it with no guard, so dropping it
+    was a `NaN/NaN/NaN` on a reader's screen rather than a withheld secret.
+
+    Asserted as two equalities — against the document on disk, and against the
+    Editor's own body — so "in full" cannot quietly become "in part": a future
+    switch on personnel KPIs would fail here and have to be a decision rather
+    than a diff.
+    """
+    on_disk = json.loads(
+        (corpus / "departments" / MINE / "overview.json").read_text(encoding="utf-8"))
+    reader = _client_as(corpus, tmp_path, "reader", f"dept:{MINE}")
+    editor = _client_as(corpus, tmp_path, "editor", f"dept:{MINE}")
+    theirs = editor.get(f"/api/departments/{MINE}/overview").json()
+    mine = reader.get(f"/api/departments/{MINE}/overview").json()
+    assert set(theirs) - set(mine) == set(), (
+        "the reader's overview lost a key the editor's carries")
+    assert mine == theirs
+    assert mine == on_disk, (
+        "a non-editor's copy of the overview is the document (D55) — the filter"
+        " takes nothing away, `updated_at` included")
+    # …and the thing D55 names as the likely future candidate is present today.
+    assert mine["personnel"][0]["kpi"] == ["رضایت مهمان"]
+
+
+#: Every route that returns a process document, by (method, FastAPI template).
+#:
+#: The list is short enough to read and that is the point: `Disclosure.redact`
+#: keeps its signature precisely so this stays six call sites rather than six
+#: reimplementations, and "every boundary runs the same rule" is only a property
+#: a reader can check if something checks it. Two of the six — `POST
+#: /api/processes` and `POST …/relayout` — can disclose nothing through the
+#: filter today (the created skeleton names only a parent the caller was gated
+#: on, and the relayout body is an echo of what the caller sent), so a bypass
+#: there is invisible to every scan in this file. They are exactly the two a
+#: refactor would drop.
+PROCESS_BOUNDARIES: frozenset[tuple[str, str]] = frozenset({
+    ("GET", "/api/processes/{pid}"),
+    ("POST", "/api/processes"),
+    ("POST", "/api/processes/{pid}/relayout"),
+    ("PUT", "/api/processes/{pid}"),
+    ("POST", "/api/processes/{pid}/pending/{index}"),
+    ("GET", "/api/departments/{code}/processes"),
+})
+
+#: And the one that returns a department overview (D55).
+OVERVIEW_BOUNDARY = ("GET", "/api/departments/{code}/overview")
+
+
+def test_every_boundary_that_serves_a_document_runs_the_one_filter(
+        corpus, tmp_path, monkeypatch):
+    """D18 — one filter, and every boundary reads it.
+
+    Asserted as an **equality** over the whole sweep, so it fails in both
+    directions: a boundary that stopped redacting is missing from `seen`, and a
+    route that started returning a raw document without joining the list is
+    absent from `PROCESS_BOUNDARIES` and fails as an extra. The sweep is an
+    Editor's, because an Editor is the only caller every one of these routes
+    serves a body to at all.
+
+    The premise is asserted first: a boundary that answered 4xx would call
+    nothing and pass this vacuously.
+    """
+    calls: dict[str, set[tuple[str, str]]] = {"redact": set(), "overview": set()}
+    here: list[tuple[str, str]] = []
+    redact, redact_overview = Disclosure.redact, Disclosure.redact_overview
+
+    def spy(name, original):
+        def wrapper(self, doc, dept):
+            calls[name].add(here[-1])
+            return original(self, doc, dept)
+        return wrapper
+
+    monkeypatch.setattr(Disclosure, "redact", spy("redact", redact))
+    monkeypatch.setattr(Disclosure, "redact_overview",
+                        spy("overview", redact_overview))
+
+    client = _client_as(corpus, tmp_path, "editor", f"dept:{MINE}")
+    served = set()
+    for route in _sweep(client, departments=(MINE,)):
+        here.append((route.method, route.template))
+        r = client.request(route.method, route.path, json=route.body)
+        here.pop()
+        if r.status_code == route.expect:
+            served.add((route.method, route.template))
+
+    assert PROCESS_BOUNDARIES | {OVERVIEW_BOUNDARY} <= served, (
+        "these routes never produced a body on this sweep, so what they did or"
+        " did not filter says nothing:"
+        f" {sorted((PROCESS_BOUNDARIES | {OVERVIEW_BOUNDARY}) - served)}")
+    assert calls["redact"] == PROCESS_BOUNDARIES, (
+        f"boundaries that served a process without the filter:"
+        f" {sorted(PROCESS_BOUNDARIES - calls['redact'])};"
+        f" routes that ran it and are not on the list:"
+        f" {sorted(calls['redact'] - PROCESS_BOUNDARIES)}")
+    assert calls["overview"] == {OVERVIEW_BOUNDARY}, calls["overview"]
+
+
+def test_the_field_stance_is_decided_per_department_not_per_caller(corpus, tmp_path):
+    """`edits(dept)`, and not "may this caller edit anywhere".
+
+    Every caller in this file holds one scope, and for a one-department caller
+    the two questions have the same answer — so the whole file passes, unchanged,
+    against a `redact` that asked `editor=bool(self._may_edit)` or hoisted one
+    department's answer out of a listing loop. That is the regression this
+    project has already shipped once, in the board's conflict count, and
+    `test_the_conflict_count_is_decided_per_department_not_per_caller` is what
+    caught it there.
+
+    Asked of `Disclosure` directly rather than over HTTP for the reason
+    `_disclosure_as` gives: no scope grants view without edit, so no route can
+    hand this caller `cooking-777` at all. The filter must still be right about
+    it — `exports.py` resolves the same two stances for a department the caller
+    never asked for, and Task 10 serves that shape from an unauthenticated link.
+
+    Both directions in **one** `Disclosure`: the same object, the same policy,
+    two departments, two answers.
+    """
+    shown = _disclosure_as(corpus, tmp_path, "editor", f"dept:{MINE}")
+    mine = json.loads((corpus / "departments" / MINE / "processes"
+                       / "dining-001.json").read_text(encoding="utf-8"))
+    theirs = json.loads((corpus / "departments" / THEIRS / "processes"
+                         / "cooking-777.json").read_text(encoding="utf-8"))
+
+    ours = shown.redact(mine, MINE)
+    assert ours["summary"] == "MINEASUMMARY", (
+        "the department this caller may edit lost its hidden fields: the stance"
+        " is being read off the caller rather than off the department")
+    assert [p["proposed"] for p in ours["pending"]] == ["MINEPROPOSED"]
+
+    other = shown.redact(theirs, THEIRS)
+    assert other["summary"] == "", (
+        "a document from a department this caller may NOT edit was served"
+        " unfiltered: `editor` is being answered per caller, not per department")
+    assert _activity(other)["icom"]["inputs"] == []
+    assert other["pending"] == []
+    # …and the two fields D17 shows by default survive on both, so neither half
+    # is satisfied by a filter that blanked everything.
+    assert _activity(ours)["description"] == "MINEADESC"
+    assert _activity(other)["description"] == "LEAKFDESC"
+
+
+def test_a_flipped_switch_reaches_the_very_next_response(corpus, tmp_path):
+    """The policy is resolved per request — once, and every time.
+
+    `Disclosure.__init__` reads it once so a listing does not re-read it per
+    process. The mutant on the other side of that is a module-level cache: the
+    policy resolved once per **process** rather than once per request, so an
+    Editor's flip changes nothing until the service is restarted. Nothing else
+    in the suite would notice, because every other test runs under one policy
+    from start to finish.
+
+    Written against `store.policy` directly because the endpoint that flips a
+    switch is Task 9's; the store is where the row lands either way, and this is
+    the same second connection the running service would see a real flip
+    through.
+    """
+    client = _client_as(corpus, tmp_path, "reader", f"dept:{MINE}")
+    before = client.get(f"/api/processes/{MINE}-001")
+    assert before.status_code == 200, before.text
+    assert before.json()["summary"] == "", (
+        "the premise is gone: `process_summary` is off by default (D17), so a"
+        " reader must start out without it")
+
+    conn = db.connect(client.cfg.app_db)
+    try:
+        assert policy.set_field(conn, "process_summary", True) is False
+    finally:
+        conn.close()
+
+    after = client.get(f"/api/processes/{MINE}-001")
+    assert after.json()["summary"] == "MINEASUMMARY", (
+        "a switch flipped while the service was running did not reach the next"
+        " response: the policy is being cached across requests")
+
+    # …and back, so this is a live read rather than a one-way latch.
+    conn = db.connect(client.cfg.app_db)
+    try:
+        assert policy.set_field(conn, "process_summary", False) is True
+    finally:
+        conn.close()
+    assert client.get(f"/api/processes/{MINE}-001").json()["summary"] == ""
+
+
+def test_the_defaults_are_not_what_the_filter_reads(corpus, tmp_path):
+    """`store.policy.current`, never `store.policy.DEFAULTS`.
+
+    The two agree until somebody flips a switch, which is every test but this
+    one and the one above — and a `Disclosure` reading `DEFAULTS` would serve
+    the same body forever while the policy screen reported the change it had
+    stored. Pinned on a field whose default is **on**, so it fails in the
+    direction the test above cannot: `node_description` off must actually blank
+    a description a reader was receiving a moment earlier.
+    """
+    client = _client_as(corpus, tmp_path, "reader", f"dept:{MINE}")
+    assert _activity(client.get(f"/api/processes/{MINE}-001").json())[
+        "description"] == "MINEADESC"
+
+    conn = db.connect(client.cfg.app_db)
+    try:
+        policy.set_field(conn, "node_description", False)
+    finally:
+        conn.close()
+
+    assert _activity(client.get(f"/api/processes/{MINE}-001").json())[
+        "description"] == "", (
+        "a switch turned off left the field in the body: the filter is reading"
+        " D17's defaults rather than the stored policy")
+
+
+def test_the_stance_is_read_from_the_request_path_not_from_the_document(corpus,
+                                                                        tmp_path):
+    """`dept` is `redact`'s argument, never `doc["department"]`.
+
+    The routers derive it from the request path, so it is the very string the
+    gate ran on. Nothing revalidates a stored document on read, so a hand-edited
+    or half-written file whose `department` disagrees with the directory it sits
+    in would otherwise be redacted against a department nobody was gated on —
+    the field policy decided by the file's own claim about itself, which is the
+    one input an attacker who can write a document controls.
+
+    Unreachable through the API today, and pinned anyway: `redact`'s docstring
+    states this in as many words, and a claim in a docstring that no test can
+    fail is a claim that stops being true without anyone noticing.
+    """
+    shown = _disclosure_as(corpus, tmp_path, "editor", f"dept:{MINE}")
+    lying = json.loads((corpus / "departments" / THEIRS / "processes"
+                        / "cooking-777.json").read_text(encoding="utf-8"))
+    lying["department"] = MINE  # the file claims dining; it lives in cooking
+    assert shown.redact(lying, THEIRS)["summary"] == "", (
+        "the document's own `department` decided the stance: a file that claims"
+        " a department the caller may edit is not thereby in it")
