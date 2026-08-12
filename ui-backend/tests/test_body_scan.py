@@ -433,6 +433,12 @@ def corpus(data_root):
     _write(data_root, "logistics", "processes/logistics-005.json",
            _process("logistics-005", "logistics", name="بارگیری",
                     label="تحویل", actor="راننده", proposed="پیک", tag="LOGF"))
+    PLANTED_FINGERPRINT.clear()
+    for d in (MINE, THEIRS):
+        path = data_root / "departments" / d / "processes" / f"{d}-001.json"
+        if path.is_file():
+            PLANTED_FINGERPRINT[d] = fingerprint(
+                json.loads(path.read_text(encoding="utf-8")))
     return data_root
 
 
@@ -647,6 +653,8 @@ DEPT_READS = (
     #: open. `200` is the Editor's answer: they are the one caller a tombstone is
     #: retained *for*.
     Route("GET", "/api/processes/{d}-003", None, "/api/processes/{pid}", 200),
+    Route("GET", "/api/confirmations?department={d}", None,
+          "/api/confirmations", 200),
 )
 
 
@@ -694,10 +702,35 @@ def _a_saved_document(d: str) -> dict:
                     actor="میزبان", proposed="MINEPROPOSED", tag="MINEA")
 
 
+#: Filled in by the `corpus` fixture: the fingerprint of `{d}-001` **as
+#: planted**, per department. The sweep cannot compute one — `Route.body` is a
+#: callable of the department alone and has no data root — and it must not
+#: hard-code one, because the fixture is where the document is decided.
+PLANTED_FINGERPRINT: dict[str, str] = {}
+
+
+def _the_planted_fingerprint(d: str) -> dict:
+    """The body `POST /api/confirmations/{d}-001` needs to succeed.
+
+    An empty string for a department the corpus never planted, which is exactly
+    right: every route naming another department is refused before the body is
+    looked at.
+    """
+    return {"fingerprint": PLANTED_FINGERPRINT.get(d, "")}
+
+
 #: The writes, swept after every read so that what the reads see is the planted
 #: corpus rather than whatever a write left behind. The delete is last for the
 #: same reason.
 DEPT_WRITES = (
+    #: First, deliberately: `POST /api/confirmations/{target}` must echo the
+    #: document's *current* fingerprint, and every route below this line rewrites
+    #: `{d}-001`. `PLANTED_FINGERPRINT` is what the corpus wrote, so it is only
+    #: correct while nothing has touched the file yet.
+    Route("POST", "/api/confirmations/{d}-001", _the_planted_fingerprint,
+          "/api/confirmations/{target}", 200),
+    Route("DELETE", "/api/confirmations/{d}-001", None,
+          "/api/confirmations/{target}", 200),
     Route("POST", "/api/departments/{d}/exports/steps", None,
           "/api/departments/{code}/exports/{kind}", 200),
     Route("PUT", "/api/departments/{d}/overview", _an_overview,
@@ -1802,3 +1835,51 @@ def test_a_reader_is_served_the_confirmed_processes(corpus, tmp_path):
     assert client.get(f"/api/departments/{MINE}/overview").status_code == 200
     # …and the tombstone is still withheld, for its own reason.
     assert client.get(f"/api/processes/{TOMBSTONED}").status_code == 404
+
+
+def test_the_three_confirmation_routes_really_produce_a_body_on_this_sweep(
+        corpus, tmp_path):
+    """The positive control for the three rows added to the tables above.
+
+    This file has already been hollowed once by exactly this shape: when the
+    record gate landed, nine leak assertions passed against a freely-leaking
+    backend because a scoped reader's every body had become empty, and an empty
+    body satisfies every leak assertion there is. Three more routes joined the
+    sweep here, and *their* contribution to it must not be three empty bodies
+    nobody notices.
+
+    So both sides are pinned, over the same corpus:
+
+    * the Editor's listing carries real rows — the department, its two active
+      processes, a 64-hex fingerprint each — so `_leaks` walking it is walking
+      something, and `test_the_scan_finds_every_token_when_the_caller_is_in_scope`
+      really does sweep this route for the wildcard holder;
+    * a non-editor is refused with **403 and not 404** (they hold `view` on
+      dining, so the resource is one they can see and only the action is
+      refused), which is what makes their empty result a decision rather than an
+      accident;
+    * the tombstone is absent from the listing (D17), so no Editor can vouch for
+      a document no reader will ever be served.
+    """
+    editor = _client_as(corpus, tmp_path, "editor", f"dept:{MINE}")
+    r = editor.get(f"/api/confirmations?department={MINE}")
+    assert r.status_code == 200, r.text
+    rows = r.json()
+    assert [row["target"] for row in rows] == [MINE, f"{MINE}-001", f"{MINE}-002"], (
+        "the confirmation listing served an Editor nothing to walk, so the three"
+        " rows added to DEPT_READS/DEPT_WRITES contribute empty bodies to every"
+        " sweep in this file")
+    assert TOMBSTONED not in {row["target"] for row in rows}, (
+        f"{TOMBSTONED} is confirmable: D17 excludes a tombstone entirely, so"
+        f" vouching for one vouches for a document no reader can be served")
+    assert all(len(row["fingerprint"]) == 64 for row in rows), rows
+
+    for role in NON_EDITORS:
+        other = _client_as(corpus, tmp_path, role, f"dept:{MINE}")
+        assert other.get(f"/api/confirmations?department={MINE}").status_code == 403, (
+            f"a {role} was not refused the confirmation listing with 403 — their"
+            f" empty contribution to the sweep is an accident, not a decision")
+        assert other.post(f"/api/confirmations/{MINE}-001",
+                          json={"fingerprint": PLANTED_FINGERPRINT[MINE]}
+                          ).status_code == 403
+        assert other.delete(f"/api/confirmations/{MINE}-001").status_code == 403

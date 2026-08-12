@@ -1,6 +1,6 @@
 """Every endpoint, read through the permission gate (spec D56, §11 tests 6 and 10).
 
-Fourteen routes. Twelve are gated on one capability at one target; two span
+Seventeen routes. Fifteen are gated on one capability at one target; two span
 departments and are filtered per row rather than gated, because a list that
 refuses outright would take a two-department head's whole screen away over one
 department they cannot reach.
@@ -27,11 +27,21 @@ from inja_ui_backend.tests_helpers import cfg_for
 PW = "test-password"
 BASE = "https://testserver"
 
-#: The twelve gated routes: (method, path, body, the capability each needs).
+#: The fifteen gated routes: (method, path, body, the capability each needs).
 #: `body` is what a well-formed request carries — a malformed one would be
 #: refused by validation on some routes and by the gate on others, and this
 #: table exists to compare gates, not validators.
 GATED = [
+    #: The confirmation routes' `department` is in the query string rather than
+    #: the path, and their target is derived lexically from it exactly as the
+    #: two path ones are — so all three belong in this table and not beside the
+    #: two that filter. `POST`'s body is well formed and deliberately *stale*:
+    #: this file compares gates, and a 409 from the handler is proof the gate
+    #: let the request through.
+    ("GET", "/api/confirmations?department=cooking", None, "confirm"),
+    ("POST", "/api/confirmations/cooking-001", {"fingerprint": "a" * 64},
+     "confirm"),
+    ("DELETE", "/api/confirmations/cooking-001", None, "confirm"),
     ("GET", "/api/departments/cooking/overview", None, "view"),
     ("PUT", "/api/departments/cooking/overview", {}, "edit"),
     ("PUT", "/api/departments/cooking/order", {"order": []}, "edit"),
@@ -59,6 +69,7 @@ FILTERED = ["/api/departments", "/api/pending"]
 #: can be refused it — see `SEEDED_ROLES_CANNOT_TELL` below for the full list of
 #: what the four roles cannot distinguish, and for what closes it.
 WITHOUT = {"view": (), "edit": ("reader", "admin"),
+           "confirm": ("reader", "admin"),
            "export_pdf": ("reader_no_download",)}
 
 #: The seeded role used for the non-refusal direction — the *narrowest* one that
@@ -66,7 +77,8 @@ WITHOUT = {"view": (), "edit": ("reader", "admin"),
 #: `view` is `reader_no_download` rather than `reader` on purpose: a Reader holds
 #: `export_pdf` too, so a `view` route mis-gated on `export_pdf` would sail
 #: through this half and be refused by nothing.
-WITH = {"view": "reader_no_download", "export_pdf": "reader", "edit": "editor"}
+WITH = {"view": "reader_no_download", "export_pdf": "reader", "edit": "editor",
+        "confirm": "editor"}
 
 #: Every capability there is: the Editor's set, which is the union of the four
 #: (`seed.ROLES` is the access model, and `_EDITOR` is built from `_ADMIN` from
@@ -325,14 +337,14 @@ def test_out_of_scope_and_without_the_capability_is_still_404(
     assert r.status_code == 404, f"{method} {path} answered {r.status_code}"
 
 
-ALL_FOURTEEN = GATED + [("GET", p, None, None) for p in FILTERED]
+ALL_ROUTES = GATED + [("GET", p, None, None) for p in FILTERED]
 
 
-@pytest.mark.parametrize("method,path,body,capability", ALL_FOURTEEN,
-                         ids=_ids(ALL_FOURTEEN))
+@pytest.mark.parametrize("method,path,body,capability", ALL_ROUTES,
+                         ids=_ids(ALL_ROUTES))
 def test_a_stranger_still_gets_401_everywhere(data_root, tmp_path, method, path,
                                               body, capability):
-    """All fourteen, filtered ones included: 401 belongs to neither half of the
+    """All seventeen, filtered ones included: 401 belongs to neither half of the
     partition and must not be lost when the session gate becomes a capability
     gate — nor may a filtered route quietly serve a stranger an empty list."""
     cfg = cfg_for(data_root, tmp_path / "app.db")
