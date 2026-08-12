@@ -1872,6 +1872,20 @@ def _published(client, kind="steps") -> str:
         encoding="utf-8")
 
 
+def _bundle(text: str) -> dict:
+    """The payload `exports.render` embedded in `text`, parsed back to a dict.
+
+    A structural read, for the one assertion a substring search cannot make
+    honestly: "this id is somewhere in the page" is satisfied by the id's own
+    `"id"` field on a *different* process, so proving a link really landed on
+    the node that carries it needs the parsed document, not `in text`.
+    """
+    marker = '<script id="inja-export-data">'
+    start = text.index(marker) + len(marker)
+    end = text.index("</script>", start)
+    return json.loads(text[start:end])
+
+
 def test_the_published_bundle_carries_nothing_a_reader_may_not_have(corpus, tmp_path):
     """Every token list in this file, checked against the artifact itself.
 
@@ -1904,13 +1918,22 @@ def test_the_published_bundle_carries_nothing_a_reader_may_not_have(corpus, tmp_
                       ("پذیرایی از مهمان", "a process name"),
                       ("خوش‌آمدگویی", "a node label"),
                       ("میزبان", "a node actor (D17: shown by default)"),
-                      ("MINEADESC", "a node description (D17: shown by default)"),
-                      ("MINEBDESC", "the other one"),
-                      (LOCAL_CHILD, "an in-department sub-process link"),
+                      *SHOWN_FIELD_TOKENS,
                       ("دپارتمان سالن", "the department overview")):
         assert kept in text, (
             f"{kept!r} ({why}) is not in the published bundle: the absences above"
             f" are about a document that carries nothing")
+
+    # `LOCAL_CHILD in text` alone proves nothing about a link: `dining-001` is
+    # in the bundle anyway as a published process's own `id`, so that substring
+    # check would still pass against a `sees` that blanks every subprocess.
+    # Structural, on the parsed payload: the link has to land on the actual
+    # node that carries it.
+    dining_002 = next(p for p in _bundle(text)["processes"] if p["id"] == "dining-002")
+    links = [n.get("subprocess") for n in dining_002["nodes"]]
+    assert LOCAL_CHILD in links, (
+        f"dining-002 does not genuinely carry a subprocess link to {LOCAL_CHILD}"
+        f" — an in-department link must survive the bundle: {links}")
 
 
 def test_the_export_publishes_nothing_for_a_department_the_gated_routes_refuse(

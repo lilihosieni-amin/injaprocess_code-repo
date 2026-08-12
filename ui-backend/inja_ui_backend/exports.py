@@ -126,9 +126,10 @@ def report_key(signing_key: str, code: str, kind: str, *,
     be one. Rotating the key rotates every link, and `write_export`'s prune
     clears the orphan that leaves behind.
 
-    Each part is length-delimited by a NUL prefix so that two different lists
-    cannot serialise to the same bytes. Hex digests contain no NUL, so the
-    delimiter is unambiguous.
+    Each part is NUL-separated — a NUL byte precedes every part — so that two
+    different lists cannot serialise to the same bytes: without it,
+    `["a"*64, "b"*64]` and `["a"*64 + "b"*64]` would concatenate identically.
+    Hex digests contain no NUL, so the delimiter is unambiguous.
     """
     mac = hmac.new(signing_key.encode("utf-8"), digestmod=hashlib.sha256)
     for part in (f"export:{code}:{kind}", overview_fingerprint, policy_version,

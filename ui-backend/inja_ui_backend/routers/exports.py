@@ -207,7 +207,7 @@ def create_export(code: str, kind: str, request: Request,
     # One statement for the whole department (D56: filtered in the query), and
     # the department's own code alongside its processes, because the overview is
     # a confirmable target too (D20, D55).
-    stored = confirmations.stored_for(conn, [code] + [d["id"] for d in active])
+    stored = confirmations.stored_for(conn, [code] + [d.get("id") for d in active])
     current_policy = policy.current(conn)
 
     generated_at = _now()
@@ -271,7 +271,7 @@ def create_export(code: str, kind: str, request: Request,
     # version. `build_payload` published exactly the processes below, so the two
     # cannot disagree about what this file contains.
     published = [fingerprint(doc) for doc in active
-                 if stored.get(doc["id"]) == fingerprint(doc)]
+                 if stored.get(doc.get("id")) == fingerprint(doc)]
     token = exports.report_key(
         cfg.session_signing_key, code, kind,
         process_fingerprints=published,

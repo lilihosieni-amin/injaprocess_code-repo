@@ -111,6 +111,30 @@ def test_export_url_is_stable_across_calls(data_root, tmp_path):
     assert first == second
 
 
+def test_a_stored_document_with_no_id_does_not_500_the_export(data_root, tmp_path):
+    """`build_payload` already tolerates this (`doc.get("id")`, never `doc["id"]`)
+    — it simply cannot confirm a document with no id and drops it. The handler's
+    own two reads of `active` used the bare key and would 500 a request the rest
+    of the pipeline handles cleanly.
+
+    `cooking-002.json` is a legal filename under `list_process_files`'s
+    `{code}-\\d{3}` pattern; what is missing is the `id` field inside it, which
+    is a separate thing from the name on disk.
+    """
+    cfg = _cfg(data_root, tmp_path)
+    confirm_everything(cfg, "cooking")
+    (cfg.data_root / "departments" / "cooking" / "processes" / "cooking-002.json"
+     ).write_text(json.dumps({"name": "NOIDDOC"}, ensure_ascii=False),
+                  encoding="utf-8")
+
+    r = _client(cfg).post("/api/departments/cooking/exports/steps")
+
+    assert r.status_code == 200, r.text
+    written = cfg.export_dir / r.json()["url"][len("/exports/"):]
+    # never confirmable with no id, so it must never reach the published file
+    assert "NOIDDOC" not in written.read_text(encoding="utf-8")
+
+
 def test_export_requires_a_session(data_root, tmp_path):
     c = TestClient(create_app(_cfg(data_root, tmp_path)))   # no cookie
     assert c.post("/api/departments/cooking/exports/steps").status_code == 401
@@ -575,6 +599,24 @@ def test_the_refusal_cannot_tell_a_missing_overview_from_an_unconfirmed_one(
     logs = _guard_logs(caplog)
     assert any("cooking" in m and "confirmation" in m for m in logs), logs
     assert any("dining" in m and "overview.json" in m for m in logs), logs
+
+    # The two bodies above are identical by design, so the level is the only
+    # place left where an operator can still tell the two states apart — and
+    # exchanging the two `except` blocks would leave every assertion above
+    # green while silently swapping which state logs at which level.
+    guard_records = [r for r in caplog.records
+                     if r.name == "inja_ui_backend.routers.exports"]
+    unconfirmed_record = next(r for r in guard_records
+                              if "cooking" in r.getMessage()
+                              and "confirmation" in r.getMessage())
+    missing_record = next(r for r in guard_records
+                          if "dining" in r.getMessage()
+                          and "overview.json" in r.getMessage())
+    assert unconfirmed_record.levelname == "INFO", (
+        "the unconfirmed-overview branch is the ordinary state of a department"
+        " still being worked on and must log at INFO")
+    assert missing_record.levelname == "WARNING", (
+        "the missing-overview branch is a real data gap and must log at WARNING")
 
 
 def test_moving_a_visibility_switch_changes_the_export_url(data_root, tmp_path):

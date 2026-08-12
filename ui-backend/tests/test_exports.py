@@ -508,6 +508,27 @@ def test_the_key_still_differs_by_department_kind_and_signing_key():
     assert base != exports.report_key("other", "dining", "flowchart", **KEY)
 
 
+def test_the_key_separates_a_split_fingerprint_list_from_its_merge():
+    """The NUL between parts, pinned with inputs that would actually collide.
+
+    Unreachable through every other test above — every part here is
+    fixed-length hex, so no real fingerprint list can ever equal another
+    part's bytes — but the property the delimiter buys is real: without it,
+    `mac.update` for `["a"*64, "b"*64]` and for `["a"*64 + "b"*64]` consume the
+    identical byte stream (`a`*64 immediately followed by `b`*64 either way),
+    and the two keys would collide.
+    """
+    split = exports.report_key("key", "dining", "flowchart",
+                               process_fingerprints=["a" * 64, "b" * 64],
+                               overview_fingerprint="c" * 64,
+                               policy_version="d" * 16)
+    merged = exports.report_key("key", "dining", "flowchart",
+                                process_fingerprints=["a" * 64 + "b" * 64],
+                                overview_fingerprint="c" * 64,
+                                policy_version="d" * 16)
+    assert split != merged
+
+
 def test_cross_task_contract_constants():
     # Tasks 4 and 5 bind to both of these; a typo surfaces downstream only as a blank export
     assert exports.EXPORT_KINDS == ("flowchart", "steps")
@@ -618,8 +639,18 @@ def test_write_export_failure_leaves_no_tmp_and_spares_the_existing_file(tmp_pat
 
 
 def test_build_payload_raises_for_a_department_without_an_overview(data_root):
-    with pytest.raises(exports.ExportUnavailable):
+    """Exactly `ExportUnavailable`, not its subclass `Unconfirmed`.
+
+    `pytest.raises(ExportUnavailable)` alone is satisfied by either: a mutant
+    that asks the confirmation question before the file-existence one would
+    raise `Unconfirmed` for a department with no `confirmed` entry — which
+    `dining` has none of either way — and this would still go green.
+    """
+    with pytest.raises(exports.ExportUnavailable) as excinfo:
         _payload(data_root, "dining")
+    assert type(excinfo.value) is exports.ExportUnavailable, (
+        f"raised {type(excinfo.value).__name__}, not ExportUnavailable itself —"
+        f" this is the missing-overview branch, not the unconfirmed one")
 
 
 def test_export_pdf_path_sits_beside_the_html(tmp_path):
