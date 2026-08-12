@@ -1,9 +1,16 @@
 """Every endpoint, read through the permission gate (spec D56, §11 tests 6 and 10).
 
-Seventeen routes. Fifteen are gated on one capability at one target; two span
+Nineteen routes. Seventeen are gated on one capability at one target; two span
 departments and are filtered per row rather than gated, because a list that
 refuses outright would take a two-department head's whole screen away over one
 department they cannot reach.
+
+Sixteen of the seventeen name a department, and the two visibility routes name
+`*` instead — there is one global policy (D16), so there is no department to
+gate them on. `_in_scope_for` is what keeps the in-scope half of every pair
+below honest about that: a `dept:cooking` caller is 404'd out of a `*` target
+before their capability is ever looked at, and a 404 arriving where a 403 was
+expected would read as a mis-gated capability rather than as the wrong scope.
 
 The tests come in pairs on purpose. One capability test alone pins nothing: a
 route gated on `view` that should be `edit` passes "an editor is not refused",
@@ -27,7 +34,7 @@ from inja_ui_backend.tests_helpers import cfg_for
 PW = "test-password"
 BASE = "https://testserver"
 
-#: The fifteen gated routes: (method, path, body, the capability each needs).
+#: The seventeen gated routes: (method, path, body, the capability each needs).
 #: `body` is what a well-formed request carries — a malformed one would be
 #: refused by validation on some routes and by the gate on others, and this
 #: table exists to compare gates, not validators.
@@ -54,7 +61,19 @@ GATED = [
     ("POST", "/api/processes/cooking-001/relayout", {}, "edit"),
     ("PUT", "/api/processes/cooking-001", {}, "edit"),
     ("POST", "/api/processes/cooking-001/pending/0", {"decision": "reject"}, "edit"),
+    #: The two whose target is `*` and not a department: one global policy (D16),
+    #: so a gate on `dept:{code}` would let the head of dining decide what
+    #: cashier publishes. `_in_scope_for` gives them a caller who holds `*`.
+    ("GET", "/api/visibility", None, "set_visibility"),
+    ("PUT", "/api/visibility/node_actor", {"visible": True}, "set_visibility"),
 ]
+
+#: The routes above whose target is not a department, so an in-scope caller for
+#: them holds `*` rather than `dept:cooking`. Named by path rather than by
+#: capability, because it is the *target* that differs and a second route gated
+#: on `set_visibility` at a department (there is none today) would belong on the
+#: department side of this line.
+GLOBAL_TARGET = ("/api/visibility", "/api/visibility/node_actor")
 
 #: The two that filter instead of gating. They span every department, so there is
 #: no single target to gate them on.
@@ -70,6 +89,7 @@ FILTERED = ["/api/departments", "/api/pending"]
 #: what the four roles cannot distinguish, and for what closes it.
 WITHOUT = {"view": (), "edit": ("reader", "admin"),
            "confirm": ("reader", "admin"),
+           "set_visibility": ("reader", "admin"),
            "export_pdf": ("reader_no_download",)}
 
 #: The seeded role used for the non-refusal direction — the *narrowest* one that
@@ -78,7 +98,20 @@ WITHOUT = {"view": (), "edit": ("reader", "admin"),
 #: `export_pdf` too, so a `view` route mis-gated on `export_pdf` would sail
 #: through this half and be refused by nothing.
 WITH = {"view": "reader_no_download", "export_pdf": "reader", "edit": "editor",
-        "confirm": "editor"}
+        "confirm": "editor", "set_visibility": "editor"}
+
+
+def _in_scope_for(path: str) -> str:
+    """The scope a caller must hold to be *inside* this route's target.
+
+    `dept:cooking` for the sixteen that name a department in their path, and `*`
+    for the two that name the global policy: `contains("dept:cooking", "*")` is
+    False, so a department-scoped caller is 404'd out of `/api/visibility` by
+    scope before their capability is consulted at all. Every in-scope test below
+    would then read that 404 as a statement about `set_visibility`, which it is
+    not.
+    """
+    return "*" if path in GLOBAL_TARGET else "dept:cooking"
 
 #: Every capability there is: the Editor's set, which is the union of the four
 #: (`seed.ROLES` is the access model, and `_EDITOR` is built from `_ADMIN` from
@@ -224,7 +257,7 @@ def test_a_role_without_the_capability_is_403_on_a_visible_target(
         pytest.skip(f"no seeded role lacks {capability}; the route is pinned by"
                     f" test_a_role_holding_every_other_capability_is_403")
     for role in roles:
-        client = _client_as(data_root, tmp_path, role, "dept:cooking")
+        client = _client_as(data_root, tmp_path, role, _in_scope_for(path))
         r = _call(client, method, path, body)
         assert r.status_code == 403, (
             f"{method} {path} answered {r.status_code} to a {role} in scope; it"
@@ -255,7 +288,7 @@ def test_a_role_holding_every_other_capability_is_403(
     docstring and the mapping claim, and what stops a fifth role added later
     from silently opening a route it should not.
     """
-    client = _client_as(data_root, tmp_path, "all-but-this", "dept:cooking",
+    client = _client_as(data_root, tmp_path, "all-but-this", _in_scope_for(path),
                         capabilities=ALL_CAPABILITIES - {capability})
     r = _call(client, method, path, body)
     assert r.status_code == 403, (
@@ -298,7 +331,8 @@ def test_a_role_with_the_capability_is_not_refused_in_scope(
     refusal. The handler's own answer is not asserted here (some 422, some 409,
     the export 503 for want of an EXPORT_DIR); only that the gate let it run.
     """
-    client = _client_as(data_root, tmp_path, WITH[capability], "dept:cooking")
+    client = _client_as(data_root, tmp_path, WITH[capability],
+                        _in_scope_for(path))
     r = _call(client, method, path, body)
     assert r.status_code not in REFUSALS, (
         f"{method} {path} answered {r.status_code} to a {WITH[capability]} in"
@@ -317,10 +351,20 @@ def test_out_of_scope_is_404_never_403(data_root, tmp_path, method, path, body,
 
     This is also the test that catches a route left on its bare session gate:
     an ungated route answers its handler's status here, never 404.
+
+    The two visibility routes are exempt, and the exemption is the point: they
+    are gated on `*`, which a `dept:dining` Editor also lacks — so they answer
+    404 for a reason that has nothing to do with `cooking`, and asserting it here
+    would pass for the wrong reason. Their scope refusal is pinned by
+    `test_out_of_scope_and_without_the_capability_is_still_404` below, whose
+    caller lacks `set_visibility` as well, and by
+    `test_a_department_scoped_editor_cannot_change_the_global_policy` in
+    `test_visibility_api.py`.
     """
     client = _client_as(data_root, tmp_path, "editor", "dept:dining")
     r = _call(client, method, path, body)
-    assert r.status_code == 404, f"{method} {path} answered {r.status_code}"
+    if path not in GLOBAL_TARGET:
+        assert r.status_code == 404, f"{method} {path} answered {r.status_code}"
 
 
 @pytest.mark.parametrize("method,path,body,capability", GATED, ids=_ids(GATED))
@@ -331,6 +375,12 @@ def test_out_of_scope_and_without_the_capability_is_still_404(
     A route that resolved its own permission with `allows` — one bool, one
     status — would answer 403 here and tell a Reader in `dining` that `cooking`
     exists.
+
+    This is the only one of the two out-of-scope tests that says anything about
+    the visibility routes, and it is the one that says the most about any route:
+    a caller who holds the capability and is merely out of scope is answered 404
+    whichever order the gate checks in, so only a caller refused by *both* halves
+    can show that scope wins.
     """
     client = _client_as(data_root, tmp_path, "reader", "dept:dining")
     r = _call(client, method, path, body)

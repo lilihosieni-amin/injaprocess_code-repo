@@ -631,6 +631,7 @@ GLOBAL_READS = (
     Route("GET", "/api/auth/me", None, "/api/auth/me", 200),
     Route("GET", "/api/departments", None, "/api/departments", 200),
     Route("GET", "/api/pending", None, "/api/pending", 200),
+    Route("GET", "/api/visibility", None, "/api/visibility", 200),
 )
 
 #: Read routes that name a department. Swept for the caller's own department and
@@ -759,6 +760,10 @@ NEXT_PW = "test-password-2"
 GLOBAL_WRITES = (
     Route("POST", "/api/auth/login", {"username": "{u}", "password": PW},
           "/api/auth/login", 200),
+    #: Left at its default value, so the sweep does not change what every other
+    #: test in this file is served. What is scanned is the response body.
+    Route("PUT", "/api/visibility/node_actor", {"visible": True},
+          "/api/visibility/{field}", 200),
     Route("POST", "/api/auth/password", {"current": PW, "next": NEXT_PW},
           "/api/auth/password", 204),
     Route("POST", "/api/auth/logout", None, "/api/auth/logout", 200),
@@ -936,7 +941,11 @@ def test_the_sweep_reaches_the_body_each_route_really_serves(corpus, tmp_path):
     department. `test_the_scan_exercises_every_api_route` pins that the table
     lists every route; this pins that every listed route was actually *served*.
     """
-    client = _client_as(corpus, tmp_path, "editor", f"dept:{MINE}")
+    # `*` as well as the department: the visibility policy is global (D16), so
+    # its two routes are gated on `*` and a department-scoped Editor is 404'd out
+    # of them. This test is about whether each route *can* produce its real body,
+    # and `test_visibility_api.py` is where the scope refusal is pinned.
+    client = _client_as(corpus, tmp_path, "editor", f"dept:{MINE}", "*")
     wrong = []
     for route in _sweep(client, departments=(MINE,)):
         r = client.request(route.method, route.path, json=route.body)
@@ -1883,3 +1892,67 @@ def test_the_three_confirmation_routes_really_produce_a_body_on_this_sweep(
                           json={"fingerprint": PLANTED_FINGERPRINT[MINE]}
                           ).status_code == 403
         assert other.delete(f"/api/confirmations/{MINE}-001").status_code == 403
+
+
+def test_the_two_visibility_routes_really_produce_a_body_on_this_sweep(corpus,
+                                                                       tmp_path):
+    """The positive control for the two rows added to the tables above.
+
+    This file has been hollowed once already by exactly this shape: an empty
+    body satisfies every leak assertion there is, so two routes that answered
+    every caller in this file a `{"detail": …}` would join the sweep, add
+    nothing to it, and nobody would notice. The visibility routes are the most
+    exposed case yet — they are gated on `*` (D16), which is a scope **no**
+    caller in the leak scans holds, so their contribution to those scans really
+    is a 404 body and it has to be one on purpose.
+
+    So all three legs are pinned, over the same corpus:
+
+    * the wildcard holder — the one caller `test_the_scan_finds_every_token…`
+      sweeps with — receives the whole policy: six switches at D17's defaults
+      and a 16-hex version, from both routes. That is a real body for `_leaks`
+      to walk;
+    * every department-scoped caller is refused **404 and not 403** on both,
+      because `*` is outside their scope and D56 says a target they cannot
+      reach must be indistinguishable from a typo. That is what makes their
+      empty contribution a decision;
+    * a non-editor who *does* hold `*` is refused **403**, so the 404 above is
+      about scope rather than about the capability.
+
+    And the sweep's own `PUT` leaves the policy where it found it: it sets
+    `node_actor` to the value D17 already gives it, so no other test in this
+    file is served a different document because this one ran.
+    """
+    wild = _client_as(corpus, tmp_path, "editor", "*")
+    got = wild.get("/api/visibility")
+    assert got.status_code == 200, got.text
+    body = got.json()
+    assert set(body["fields"]) == set(policy.FIELDS), (
+        "the policy route served the wildcard holder nothing to walk, so the two"
+        " rows added to GLOBAL_READS/GLOBAL_WRITES contribute empty bodies to"
+        f" every sweep in this file: {body}")
+    assert body["fields"] == policy.DEFAULTS
+    assert len(body["version"]) == 16
+
+    put = wild.put("/api/visibility/node_actor", json={"visible": True})
+    assert put.status_code == 200, put.text
+    assert put.json() == body, (
+        "the sweep's PUT changed the policy: every other test in this file would"
+        " then be served a different document depending on whether it ran")
+
+    for role in ROLES:
+        scoped = _client_as(corpus, tmp_path, role, f"dept:{MINE}")
+        for r in (scoped.get("/api/visibility"),
+                  scoped.put("/api/visibility/node_actor", json={"visible": True})):
+            assert (r.status_code, r.json()) == (404, {"detail": NOT_FOUND}), (
+                f"a {role} scoped to {MINE} was not 404'd out of the global"
+                f" policy — their empty contribution to the sweep is an accident,"
+                f" not a decision: {r.status_code} {r.text[:120]}")
+
+    for role in NON_EDITORS:
+        holder = _client_as(corpus, tmp_path, role, "*")
+        assert holder.get("/api/visibility").status_code == 403, (
+            f"a {role} holding `*` was not refused the policy with 403: the 404"
+            f" above would then be saying nothing about scope")
+        assert holder.put("/api/visibility/node_actor",
+                          json={"visible": True}).status_code == 403

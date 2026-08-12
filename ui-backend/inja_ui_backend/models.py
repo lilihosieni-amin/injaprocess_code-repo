@@ -30,3 +30,7 @@ class ConfirmBody(BaseModel):
     #: the concurrency check — an Editor confirming a document that moved under
     #: them is refused rather than left vouching for bytes they never read.
     fingerprint: str
+
+
+class VisibilityBody(BaseModel):
+    visible: bool
