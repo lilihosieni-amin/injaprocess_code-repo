@@ -236,6 +236,9 @@ def test_a_tombstoned_target_cannot_be_confirmed(corpus, tmp_path):
     read it whole from `GET /api/processes/dining-003`. What they may not do
     is vouch for it, which is "can see the target but may not do this to it" —
     403's definition in `access.py`'s partition, not 404's.
+
+    This is `POST` alone. `DELETE` on the same target is the opposite claim —
+    see `test_withdrawing_a_confirmation_on_a_tombstoned_target_succeeds`.
     """
     client = _client_as(corpus, tmp_path, "editor", "dept:dining")
     tomb = json.loads((corpus / "departments/dining/processes/dining-003.json")
@@ -244,9 +247,19 @@ def test_a_tombstoned_target_cannot_be_confirmed(corpus, tmp_path):
     r = client.post("/api/confirmations/dining-003", json={"fingerprint": fp})
     assert r.status_code == 403
     assert _events(client, "confirmation.set") == []
-    # Withdrawing agrees too: there is nothing on this target for an Editor to
-    # act on either way.
-    assert client.delete("/api/confirmations/dining-003").status_code == 403
+
+
+def test_tombstoning_a_process_does_not_move_its_fingerprint(corpus, tmp_path):
+    """This is what makes the stale-confirmation problem real, and it should be
+    a fact this suite checks rather than a reading of `fingerprint.EXCLUDED`:
+    `tombstoned` is one of the four excluded keys, so retiring a process is
+    invisible to the mark that vouches for it — a confirmation made before the
+    retirement neither matches nor stops matching when the flag is set.
+    """
+    doc = _proc("dining-999", "dining")
+    before = fingerprint(doc)
+    doc["tombstoned"] = True
+    assert fingerprint(doc) == before
 
 
 def test_a_live_document_is_still_confirmable(corpus, tmp_path):
@@ -293,6 +306,52 @@ def test_withdrawing_something_that_was_never_confirmed_records_nothing(corpus,
     client = _client_as(corpus, tmp_path, "editor", "dept:dining")
     assert client.delete("/api/confirmations/dining-002").status_code == 200
     assert _events(client, "confirmation.revoked") == []
+
+
+def test_withdrawing_a_confirmation_on_a_tombstoned_target_succeeds(corpus, tmp_path):
+    """`tombstoned` is in `fingerprint.EXCLUDED` (pinned above), so retiring a
+    process never moves its fingerprint: a confirmation made while it was live
+    survives the tombstone, inert only as long as the record gate withholds a
+    tombstoned document from non-editors. Restore the document and that mark
+    is instantly visible again on a fingerprint nobody re-affirmed — withdrawal
+    is the only tool that clears it first, so it must not share the `POST`
+    refusal above.
+
+    Confirm `dining-002` *before* tombstoning it, so the row this test deletes
+    genuinely exists — a `DELETE` against nothing would pass the same
+    assertions without proving anything.
+    """
+    client = _client_as(corpus, tmp_path, "editor", "dept:dining")
+    fp = _row(client, "dining-002")["fingerprint"]
+    client.post("/api/confirmations/dining-002", json={"fingerprint": fp})
+    assert _row(client, "dining-002")["confirmed"] is True
+
+    path = corpus / "departments/dining/processes/dining-002.json"
+    doc = json.loads(path.read_text(encoding="utf-8"))
+    doc["tombstoned"] = True
+    path.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
+
+    conn = db.connect(client.app_db)
+    try:
+        assert conn.execute("SELECT COUNT(*) FROM confirmations"
+                            " WHERE target='dining-002'").fetchone()[0] == 1
+    finally:
+        conn.close()
+
+    r = client.delete("/api/confirmations/dining-002")
+    assert r.status_code == 200
+    assert r.json()["confirmed"] is False
+
+    conn = db.connect(client.app_db)
+    try:
+        assert conn.execute("SELECT COUNT(*) FROM confirmations"
+                            " WHERE target='dining-002'").fetchone()[0] == 0
+    finally:
+        conn.close()
+
+    revoked = _events(client, "confirmation.revoked")
+    assert len(revoked) == 1
+    assert revoked[0]["target"] == "dining-002"
 
 
 # --- the gate ---
