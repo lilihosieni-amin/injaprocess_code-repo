@@ -6,6 +6,7 @@ import { ProcessList } from './screens/ProcessList'
 import { Overview } from './screens/Overview'
 import { Summary } from './screens/Summary'
 import { FlowScreen } from './flow/FlowScreen'
+import { Visibility } from './screens/Visibility'
 
 export const appRoutes: RouteObject[] = [
   { path: '/login', element: <SignIn /> },
@@ -21,6 +22,7 @@ export const appRoutes: RouteObject[] = [
       { path: '/departments/:code/overview', element: <Overview /> },
       { path: '/processes/:pid', element: <Summary /> },
       { path: '/processes/:pid/flow', element: <FlowScreen /> },
+      { path: '/visibility', element: <Visibility /> },
     ],
   },
   { path: '*', element: <Navigate to="/departments" replace /> },

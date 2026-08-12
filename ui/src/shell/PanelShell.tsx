@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Outlet } from 'react-router-dom'
+import { Link, Outlet } from 'react-router-dom'
 import { can, type SessionDescriptor } from '../auth/session'
 import { usePending, useLogout } from '../api/hooks'
 import { InboxModal } from '../write/InboxModal'
@@ -33,6 +33,21 @@ export function PanelShell({ session }: { session: SessionDescriptor }) {
       <header className="flex items-center gap-3 px-6 py-3 bg-ink text-card">
         <div className="text-title font-extrabold flex-1">اینجا فست‌فود</div>
         <span className="text-caption">{session.displayName}</span>
+        {/* `set_visibility` alone, with no target, exactly as `canEdit` above:
+            the capability is what decides whether the entry is drawn. An auditor
+            reaches this shell (selectShell counts view_audit) and holds none, so
+            a "is this a panel user?" check would draw them a control the server
+            answers 403 to. Cosmetic either way (D48) — both endpoints re-derive
+            the capability AND the `*` scope and refuse regardless. */}
+        {can(session, 'set_visibility') && (
+          <Link
+            to="/visibility"
+            aria-label="نمایش محتوا"
+            className="min-h-touch inline-flex items-center px-s6 rounded-control text-card text-caption no-underline hover:bg-tile-v2"
+          >
+            نمایش محتوا
+          </Link>
+        )}
         {canEdit && (
           <>
             <button

@@ -136,3 +136,17 @@ export type DepartmentOrder = { order: string[] }
 
 export type ExportKind = 'flowchart' | 'steps'
 export interface ExportResult { url: string; generated_at: string }
+
+/** The six switchable fields (spec D17). A node has no KPIs: `process_kpis` is
+ *  `process.kpis[]`, and what a node carries is ICOM. */
+export type PolicyField =
+  | 'process_summary' | 'process_idef0' | 'process_kpis'
+  | 'node_description' | 'node_actor' | 'node_icom'
+
+/** `version` is a digest of the policy, not a counter: it is what D27 keys the
+ *  report cache on, so an artifact built under a different one is a different
+ *  artifact. */
+export interface VisibilityPolicy {
+  fields: Record<PolicyField, boolean>
+  version: string
+}

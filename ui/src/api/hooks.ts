@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { fetchJson } from './client'
-import type { Confirmation, Department, DepartmentOrder, ExportKind, ExportResult, Me, Overview, PendingItem, Process } from './types'
+import type { Confirmation, Department, DepartmentOrder, ExportKind, ExportResult, Me, Overview, PendingItem, PolicyField, Process, VisibilityPolicy } from './types'
 
 export const useDepartments = () =>
   useQuery({ queryKey: ['departments'], queryFn: () => fetchJson<Department[]>('/api/departments') })
@@ -240,6 +240,48 @@ export function useRevokeConfirmation(code: string) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['confirmations', code] })
       qc.invalidateQueries({ queryKey: ['departments'] })
+    },
+  })
+}
+
+/**
+ * The one global content-visibility policy (D16), and its version (D27).
+ *
+ * Gated on the capability by the caller, the same way `useConfirmations` is:
+ * `GET /api/visibility` requires `set_visibility` at `*` and refuses everyone
+ * else, because knowing that a field is hidden already tells a reader the field
+ * exists (D56). The server decides; `enabled` only decides what to ask for.
+ */
+export const useVisibility = (opts?: { enabled?: boolean }) =>
+  useQuery({
+    queryKey: ['visibility'],
+    queryFn: () => fetchJson<VisibilityPolicy>('/api/visibility'),
+    enabled: opts?.enabled ?? true,
+  })
+
+/**
+ * Move one switch. One field per request, because that is what the endpoint
+ * takes and what D19's record is written against.
+ *
+ * The response is the **whole** resolved policy and the new version, so it is
+ * written straight into the cache rather than invalidated: the screen the flip
+ * was made on then shows the server's own answer without a second round-trip,
+ * and — this is the part a previous task got wrong — without a manual reload.
+ */
+export function useSetVisibilityField() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ field, visible }: { field: PolicyField; visible: boolean }) =>
+      fetchJson<VisibilityPolicy>(`/api/visibility/${field}`,
+        { method: 'PUT', body: JSON.stringify({ visible }) }),
+    // Every document body in the app changes with the policy, so the whole cache
+    // goes rather than one key: `process`, `processes` and the export URLs are
+    // all downstream of it, and an invalidation list would be a list to forget
+    // an entry from.
+    onSuccess: (data) => {
+      qc.setQueryData(['visibility'], data)
+      qc.invalidateQueries({ queryKey: ['process'] })
+      qc.invalidateQueries({ queryKey: ['processes'] })
     },
   })
 }
