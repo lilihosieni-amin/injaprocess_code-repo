@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { useDepartments, useProcesses } from '../api/hooks'
+import { useConfirmations, useDepartments, useProcesses } from '../api/hooks'
 import { useSession } from '../auth/useSession'
 import { useCan } from '../auth/can'
 import { deptMeta } from '../lib/departments'
@@ -12,6 +12,7 @@ import { CreateProcessModal } from '../write/CreateProcessModal'
 import { DeleteProcessConfirm } from '../write/DeleteProcessConfirm'
 import { ReorderModal } from '../write/ReorderModal'
 import { ExportMenu } from '../write/ExportMenu'
+import { ConfirmMark } from '../write/ConfirmMark'
 import { refusalStatus } from '../api/client'
 import { RefusalScreen } from './Refusal'
 import type { Process } from '../api/types'
@@ -37,7 +38,14 @@ export function ProcessList() {
   // session row themselves and refuse regardless of what is drawn here. Asked
   // about THIS department rather than about the person, so a head of another
   // department is not offered controls this one's endpoints would refuse.
-  const mayEdit = useCan(useSession().data)('edit', `dept:${code}`)
+  const can = useCan(useSession().data)
+  const mayEdit = can('edit', `dept:${code}`)
+  // Asked about THIS department for the same reason, and used to gate the query
+  // as well as the mark: GET /api/confirmations 403s anyone without `confirm`
+  // here, so asking anyway would put a refusal in the console on every load.
+  const mayConfirm = can('confirm', `dept:${code}`)
+  const { data: marks = [] } = useConfirmations(code, { enabled: mayConfirm })
+  const markOf = new Map(marks.map((m) => [m.target, m]))
 
   const query = q.trim()
   const list = procs.filter((p) => !query || p.name.includes(query) || p.id.includes(query))
@@ -108,6 +116,7 @@ export function ProcessList() {
                     <IdBadge>{p.id}</IdBadge>
                     <span className="font-bold text-[15px] text-ink">{p.name}</span>
                     <span className={`text-[10.5px] px-2 py-0.5 rounded-full font-semibold ${TAG_CLS[tag.kind]}`}>{tag.label}</span>
+                    <ConfirmMark row={markOf.get(p.id)} department={code} />
                   </div>
                   <div className="text-[12.5px] text-muted mt-1.5 leading-normal">{p.summary}</div>
                   {tombstoned && (p.superseded_by ?? []).length > 0 && (

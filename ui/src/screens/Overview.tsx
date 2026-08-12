@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { useOverview, usePutOverview } from '../api/hooks'
+import { useConfirmations, useOverview, usePutOverview } from '../api/hooks'
 import { useSession } from '../auth/useSession'
 import { useCan } from '../auth/can'
 import { deptMeta } from '../lib/departments'
@@ -8,6 +8,7 @@ import { jalali, toFa } from '../lib/format'
 import { Card } from '../ui/Card'
 import { Button } from '../ui/Button'
 import { useToast } from '../write/ToastProvider'
+import { ConfirmMark } from '../write/ConfirmMark'
 import { refusalStatus } from '../api/client'
 import { RefusalScreen } from './Refusal'
 import type { Overview as OverviewT } from '../api/types'
@@ -23,7 +24,14 @@ export function Overview() {
   const m = deptMeta(code)
   // Cosmetic only: PUT /api/departments/{code}/overview re-derives `edit` from
   // the session row and refuses regardless of what is drawn here.
-  const mayEdit = useCan(useSession().data)('edit', `dept:${code}`)
+  const can = useCan(useSession().data)
+  const mayEdit = can('edit', `dept:${code}`)
+  // The overview is a confirmable target in its own right — `dining` names the
+  // department document the same way `dining-001` names a process — so the
+  // listing this reads is the same one the process list reads, keyed on the
+  // department, and the row for the page itself is the one keyed on `code`.
+  const mayConfirm = can('confirm', `dept:${code}`)
+  const { data: marks = [] } = useConfirmations(code, { enabled: mayConfirm })
   const [draft, setDraft] = useState<Draft | null>(null)
   const [openRoles, setOpenRoles] = useState<Set<number>>(new Set())  // read view: which categories are expanded (collapsed by default)
   // A department outside this person's scope is a 404, never a "you may not see
@@ -60,7 +68,17 @@ export function Overview() {
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d={m.icon} /></svg>
             </div>
             <div>
-              <div className="font-extrabold text-[22px] text-ink">{data.name}</div>
+              <div className="flex items-center gap-2.5">
+                <div className="font-extrabold text-[22px] text-ink">{data.name}</div>
+                <ConfirmMark row={marks.find((m) => m.target === code)} department={code} />
+              </div>
+              {/* `updated_at` is unguarded on purpose. `visibility.public_overview`
+                  returns the department page unchanged for both stances (D55) —
+                  the field is required by `overview.schema.json` and arrives for
+                  every reader — so a guard here would be dead code standing in
+                  for a case the server cannot produce. The process's own
+                  timestamps are the ones that are dropped, and nothing renders
+                  those. */}
               <div className="text-xs text-faint mt-1">آخرین به‌روزرسانی: {jalali(data.updated_at)}</div>
             </div>
           </div>

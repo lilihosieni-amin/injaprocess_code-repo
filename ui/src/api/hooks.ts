@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { fetchJson } from './client'
-import type { Department, DepartmentOrder, ExportKind, ExportResult, Me, Overview, PendingItem, Process } from './types'
+import type { Confirmation, Department, DepartmentOrder, ExportKind, ExportResult, Me, Overview, PendingItem, Process } from './types'
 
 export const useDepartments = () =>
   useQuery({ queryKey: ['departments'], queryFn: () => fetchJson<Department[]>('/api/departments') })
@@ -139,6 +139,68 @@ export function useSaveOrder(code: string) {
     // onSettled, not onSuccess: a 409 means the active set moved, so the list
     // must refresh on failure too
     onSettled: () => qc.invalidateQueries({ queryKey: ['processes', code] }),
+  })
+}
+
+/**
+ * Every confirmable target in one department, each with its **current**
+ * fingerprint (D20).
+ *
+ * Gated on the capability by the caller: `GET /api/confirmations` requires
+ * `confirm` on the department and 403s everyone else, so firing it anyway would
+ * put a refusal in the console on every page load of every reader. That is the
+ * only reason `enabled` exists here — the server decides, this decides what to
+ * ask for.
+ */
+export const useConfirmations = (code: string, opts?: { enabled?: boolean }) =>
+  useQuery({
+    queryKey: ['confirmations', code],
+    queryFn: () => fetchJson<Confirmation[]>(`/api/confirmations?department=${code}`),
+    enabled: opts?.enabled ?? true,
+  })
+
+/**
+ * Vouch for one target at the fingerprint the caller was shown.
+ *
+ * `code` is the department whose listing to refresh, and is **not** the target:
+ * a process mark drawn on a department page confirms the process and refreshes
+ * the department's list.
+ */
+export function useSetConfirmation(code: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ target, fingerprint }: { target: string; fingerprint: string }) =>
+      fetchJson<Confirmation>(`/api/confirmations/${target}`,
+        { method: 'POST', body: JSON.stringify({ fingerprint }) }),
+    // The department board's counts move with a confirmation for every reader —
+    // but only when one actually happened, so this key stays on success.
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['departments'] }) },
+    // **onSettled, not onSuccess**, for the listing — the same rule
+    // `useSaveOrder` follows and for the same reason. The list is what carries
+    // every target's current fingerprint, and the one failure this endpoint has
+    // is a 409: the document moved, so the fingerprint on screen is stale
+    // *precisely* when the request failed. Refreshing only on success would
+    // leave the editor re-submitting the bytes that were already refused, with
+    // "look again" pointing at the same stale row forever.
+    onSettled: () => { qc.invalidateQueries({ queryKey: ['confirmations', code] }) },
+  })
+}
+
+/**
+ * Withdraw the mark (D61). No fingerprint: withdrawing says *"whatever is there
+ * is wrong"*, which does not depend on which version it was — and requiring one
+ * would refuse the withdrawal exactly when the document has drifted, which is
+ * when it is most likely to be needed.
+ */
+export function useRevokeConfirmation(code: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (target: string) =>
+      fetchJson<Confirmation>(`/api/confirmations/${target}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['confirmations', code] })
+      qc.invalidateQueries({ queryKey: ['departments'] })
+    },
   })
 }
 

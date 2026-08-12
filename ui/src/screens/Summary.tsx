@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { useProcess, usePutProcess } from '../api/hooks'
+import { useConfirmations, useProcess, usePutProcess } from '../api/hooks'
 import { useSession } from '../auth/useSession'
 import { useCan } from '../auth/can'
 import { useToast } from '../write/ToastProvider'
+import { ConfirmMark } from '../write/ConfirmMark'
 import type { Process, Icom, Kpi } from '../api/types'
 import { Chip } from '../ui/Chip'
 import { IdBadge } from '../ui/IdBadge'
@@ -41,6 +42,16 @@ export function Summary() {
   const [draft, setDraft] = useState<Draft | null>(null)
   const editing = draft !== null
 
+  // The department read **lexically off the id in the URL**, exactly as the
+  // server's `storage.dept_of` (`pid.rsplit("-", 1)[0]`) does, and hoisted above
+  // the early returns below so the hook order never changes between renders.
+  // Not `proc.department`: that is only available after those returns, and the
+  // server does not trust the stored field either — `_target_scope` gates on the
+  // id it was given, before anything is loaded.
+  const dept = pid.replace(/-[^-]*$/, '')
+  const mayConfirm = can('confirm', `dept:${dept}`)
+  const { data: marks = [] } = useConfirmations(dept, { enabled: mayConfirm })
+
   // A process outside this reader's scope is a 404 — and so is a tombstoned one
   // to anyone without `edit`, so a link from a heir list lands here too. Both
   // get the same screen, which is the whole point of the status being uniform.
@@ -73,6 +84,7 @@ export function Summary() {
             <div className="flex items-center gap-2.5 mb-2">
               <IdBadge tone="violet">{proc.id}</IdBadge>
               {proc.parent && <span className="text-[11px] text-violet bg-tile-v px-2.5 py-1 rounded-md font-semibold">زیرفرآیند</span>}
+              <ConfirmMark row={marks.find((m) => m.target === proc.id)} department={dept} />
             </div>
             {tombstoned && (
               <div className="mb-3 rounded-xl border border-[#E4DEF0] bg-[#EDEAF3] px-4 py-3 text-[13px] text-muted">
