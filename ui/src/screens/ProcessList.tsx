@@ -45,7 +45,8 @@ export function ProcessList() {
   // here, so asking anyway would put a refusal in the console on every load.
   const mayConfirm = can('confirm', `dept:${code}`)
   const { data: marks = [] } = useConfirmations(code, { enabled: mayConfirm })
-  const markOf = new Map(marks.map((m) => [m.target, m]))
+  // `mark`, not `m`: `m` is this department's tile metadata twelve lines up.
+  const markOf = new Map(marks.map((mark) => [mark.target, mark]))
 
   const query = q.trim()
   const list = procs.filter((p) => !query || p.name.includes(query) || p.id.includes(query))

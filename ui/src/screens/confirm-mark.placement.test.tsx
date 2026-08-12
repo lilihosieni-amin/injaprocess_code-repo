@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { screen, waitFor } from '@testing-library/react'
+import { screen, fireEvent, waitFor } from '@testing-library/react'
 import { Overview } from './Overview'
 import { ProcessList } from './ProcessList'
 import { Summary } from './Summary'
@@ -125,6 +125,28 @@ describe('the mark on the process list', () => {
     expect(await screen.findByText('پخت غذای روز')).toBeInTheDocument()
     expect(screen.queryByText('تأیید شده')).toBeNull()
     expect(calls.some((u) => u.startsWith('/api/confirmations'))).toBe(false)
+  })
+})
+
+describe('a save is what un-confirms the page, so a save must re-ask', () => {
+  it('re-asks the confirmations listing after the overview is saved', async () => {
+    // The whole claim the mark makes, end to end. `fingerprint.EXCLUDED` is only
+    // {updated_at, source, pending, tombstoned}, so editing the description
+    // genuinely moves the hash and the server reports `confirmed: false` from
+    // the instant the PUT lands — the page is gone for every reader. The query
+    // observer stays mounted across the save, so without an invalidation on the
+    // write path nothing refetches and the editor is told the page is still
+    // vouched for at the exact moment it stopped being. Counted, not merely
+    // "was asked": the mount already asks once, and `toContain` would pass on
+    // that first request alone.
+    const calls = mock()
+    renderAt('/departments/:code/overview', <Overview />, '/departments/cooking/overview', CONFIRMER)
+    fireEvent.click(await screen.findByRole('button', { name: 'ویرایش' }))
+    fireEvent.change(screen.getByPlaceholderText('شرح کوتاه دپارتمان (یک تا دو پاراگراف)'),
+      { target: { value: 'شرح تازه‌ای که اثر انگشت را جابه‌جا می‌کند' } })
+    fireEvent.click(screen.getByRole('button', { name: 'ذخیره' }))
+    await waitFor(() => expect(
+      calls.filter((u) => u.startsWith('/api/confirmations'))).toHaveLength(2))
   })
 })
 

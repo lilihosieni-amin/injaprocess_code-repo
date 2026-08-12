@@ -70,7 +70,10 @@ export function Overview() {
             <div>
               <div className="flex items-center gap-2.5">
                 <div className="font-extrabold text-[22px] text-ink">{data.name}</div>
-                <ConfirmMark row={marks.find((m) => m.target === code)} department={code} />
+                {/* `mark`, not `m`: `m` is the department's tile metadata three
+                    lines up, and two different `m`s in one JSX block is a
+                    rename waiting to go to the wrong one. */}
+                <ConfirmMark row={marks.find((mark) => mark.target === code)} department={code} />
               </div>
               {/* `updated_at` is unguarded on purpose. `visibility.public_overview`
                   returns the department page unchanged for both stances (D55) —

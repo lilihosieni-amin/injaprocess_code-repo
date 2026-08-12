@@ -62,6 +62,28 @@ function mockFetch(status: number, body: unknown) {
   return spy
 }
 
+/** A `fetch` double that never answers, so the request stays in flight for the
+ *  length of the test. The only way to observe the busy state at all: a resolved
+ *  promise flips `isPending` back before any assertion can run. */
+function stalledFetch() {
+  const spy = vi.fn<(url: string, init?: RequestInit) => Promise<Response>>(
+    () => new Promise<Response>(() => {}))
+  vi.stubGlobal('fetch', spy)
+  return spy
+}
+
+/** A client whose `invalidateQueries` calls are recorded, then run for real. */
+function recordingClient() {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const invalidated: unknown[][] = []
+  const real = qc.invalidateQueries.bind(qc)
+  vi.spyOn(qc, 'invalidateQueries').mockImplementation((filters) => {
+    invalidated.push((filters as { queryKey?: unknown[] } | undefined)?.queryKey ?? [])
+    return real(filters)
+  })
+  return { qc, invalidated }
+}
+
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks() })
 
 describe('ConfirmMark', () => {
@@ -150,7 +172,13 @@ describe('ConfirmMark — a 409 is not a failure, it is “look again”', () =>
     mount(UNCONFIRMED, EDITOR)
     fireEvent.click(screen.getByRole('button', { name: 'تأیید محتوا' }))
     await waitFor(() => expect(spy).toHaveBeenCalled())
-    expect(await screen.findByText(/تغییر کرده است/)).toBeInTheDocument()
+    // On the **role**, not on the text. A message that appears after the click
+    // that caused it reaches a screen reader only if it is announced, and
+    // `role="alert"` is the whole of that announcement — jsdom implements no
+    // live region, so deleting the attribute changes nothing a `findByText`
+    // could see and the one property this surface was chosen for would be
+    // asserted nowhere.
+    expect(await screen.findByRole('alert')).toHaveTextContent(/تغییر کرده است/)
     // The generic copy must be absent, not merely also present: 409 is the
     // server's settled answer that the document moved, and reporting it as
     // "it didn't work, try again" tells the editor to retry the very thing
@@ -164,13 +192,7 @@ describe('ConfirmMark — a 409 is not a failure, it is “look again”', () =>
     // again at exactly the bytes that were already refused, forever.
     const spy = mockFetch(409, { detail: 'تغییر کرده است' })
     session = EDITOR
-    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-    const invalidated: unknown[][] = []
-    const real = qc.invalidateQueries.bind(qc)
-    vi.spyOn(qc, 'invalidateQueries').mockImplementation((filters) => {
-      invalidated.push((filters as { queryKey?: unknown[] } | undefined)?.queryKey ?? [])
-      return real(filters)
-    })
+    const { qc, invalidated } = recordingClient()
     render(
       <QueryClientProvider client={qc}>
         <ConfirmMark row={UNCONFIRMED} department="dining" />
@@ -182,25 +204,89 @@ describe('ConfirmMark — a 409 is not a failure, it is “look again”', () =>
       expect(invalidated).toContainEqual(['confirmations', 'dining']))
   })
 
+  it('takes the “look again” message away once the fresh row arrives', async () => {
+    // `onSettled` refetches the listing, so a row with a *new* fingerprint lands
+    // moments after the 409 — and the complaint stops being true. Left standing
+    // it sits beside an up-to-date row telling the editor to look again at the
+    // very thing they are now looking at, cleared only by the next click.
+    const spy = mockFetch(409, { detail: 'تغییر کرده است' })
+    session = EDITOR
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const view = (row: Confirmation) => (
+      <QueryClientProvider client={qc}>
+        <ConfirmMark row={row} department="dining" />
+      </QueryClientProvider>
+    )
+    const { rerender } = render(view(UNCONFIRMED))
+    fireEvent.click(screen.getByRole('button', { name: 'تأیید محتوا' }))
+    await waitFor(() => expect(spy).toHaveBeenCalled())
+    expect(await screen.findByRole('alert')).toHaveTextContent(/تغییر کرده است/)
+    // What the refetch produces: the same target, a fingerprint that moved.
+    rerender(view({ ...UNCONFIRMED, fingerprint: 'f'.repeat(64) }))
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('keeps the message while the row on screen is still the one that was refused', async () => {
+    // The other half of the rule above, and the half a "just stop rendering it"
+    // fix would silently break: a re-render that does not carry a new
+    // fingerprint has not answered the 409, so the message must stay.
+    const spy = mockFetch(409, { detail: 'تغییر کرده است' })
+    session = EDITOR
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const view = (row: Confirmation) => (
+      <QueryClientProvider client={qc}>
+        <ConfirmMark row={row} department="dining" />
+      </QueryClientProvider>
+    )
+    const { rerender } = render(view(UNCONFIRMED))
+    fireEvent.click(screen.getByRole('button', { name: 'تأیید محتوا' }))
+    await waitFor(() => expect(spy).toHaveBeenCalled())
+    expect(await screen.findByRole('alert')).toHaveTextContent(/تغییر کرده است/)
+    rerender(view({ ...UNCONFIRMED }))
+    expect(screen.getByRole('alert')).toHaveTextContent(/تغییر کرده است/)
+  })
+
   it('reports anything that is not a 409 as a plain failure', async () => {
     const spy = mockFetch(500, { detail: 'boom' })
     mount(UNCONFIRMED, EDITOR)
     fireEvent.click(screen.getByRole('button', { name: 'تأیید محتوا' }))
     await waitFor(() => expect(spy).toHaveBeenCalled())
-    expect(await screen.findByText(/دوباره تلاش کنید/)).toBeInTheDocument()
+    expect(await screen.findByRole('alert')).toHaveTextContent(/دوباره تلاش کنید/)
+    expect(screen.queryByText(/تغییر کرده است/)).toBeNull()
+  })
+
+  it('says a failed withdrawal failed — the DELETE has an error surface of its own', async () => {
+    // Every case above clicks «تأیید محتوا», so `failure = set.error` alone
+    // passes all of them: a DELETE that 5xx'd would leave the editor watching a
+    // button that did nothing and said nothing about it.
+    const spy = mockFetch(500, { detail: 'boom' })
+    mount(CONFIRMED, EDITOR)
+    fireEvent.click(screen.getByRole('button', { name: 'لغو تأیید' }))
+    await waitFor(() => expect(spy).toHaveBeenCalled())
+    expect(await screen.findByRole('alert')).toHaveTextContent(/دوباره تلاش کنید/)
+  })
+
+  it('reports a 403 as settled too, not as something to try again', async () => {
+    // `set_confirmation` answers 403 for a tombstoned target, and `requires`
+    // answers it for a role that has stopped holding `confirm`. Both are the
+    // server's final word, and both used to arrive as «دوباره تلاش کنید» — the
+    // exact "settled refusal reported as retryable" the 409 branch exists to
+    // prevent. Reachable whenever the listing on screen predates the change: a
+    // pipeline `merge` run tombstones outside this app entirely, so no client
+    // invalidation can close it.
+    const spy = mockFetch(403, { detail: 'این فرآیند حذف شده و دیگر قابل تأیید نیست' })
+    mount(UNCONFIRMED, EDITOR)
+    fireEvent.click(screen.getByRole('button', { name: 'تأیید محتوا' }))
+    await waitFor(() => expect(spy).toHaveBeenCalled())
+    expect(await screen.findByRole('alert')).toHaveTextContent(/صفحه را تازه کنید/)
+    expect(screen.queryByText(/دوباره تلاش کنید/)).toBeNull()
     expect(screen.queryByText(/تغییر کرده است/)).toBeNull()
   })
 
   it('refetches the list after a confirmation lands, so the mark is not stale', async () => {
     const spy = mockFetch(200, { ...UNCONFIRMED, confirmed: true })
     session = EDITOR
-    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-    const invalidated: unknown[][] = []
-    const real = qc.invalidateQueries.bind(qc)
-    vi.spyOn(qc, 'invalidateQueries').mockImplementation((filters) => {
-      invalidated.push((filters as { queryKey?: unknown[] } | undefined)?.queryKey ?? [])
-      return real(filters)
-    })
+    const { qc, invalidated } = recordingClient()
     render(
       <QueryClientProvider client={qc}>
         <ConfirmMark row={UNCONFIRMED} department="dining" />
@@ -219,13 +305,7 @@ describe('ConfirmMark — a 409 is not a failure, it is “look again”', () =>
   it('refetches the list after a withdrawal too', async () => {
     const spy = mockFetch(200, UNCONFIRMED)
     session = EDITOR
-    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-    const invalidated: unknown[][] = []
-    const real = qc.invalidateQueries.bind(qc)
-    vi.spyOn(qc, 'invalidateQueries').mockImplementation((filters) => {
-      invalidated.push((filters as { queryKey?: unknown[] } | undefined)?.queryKey ?? [])
-      return real(filters)
-    })
+    const { qc, invalidated } = recordingClient()
     render(
       <QueryClientProvider client={qc}>
         <ConfirmMark row={CONFIRMED} department="dining" />
@@ -237,6 +317,57 @@ describe('ConfirmMark — a 409 is not a failure, it is “look again”', () =>
       expect(invalidated).toContainEqual(['confirmations', 'dining'])
       expect(invalidated).toContainEqual(['departments'])
     })
+  })
+})
+
+describe('ConfirmMark — a request in flight looks like one', () => {
+  it('goes busy while the confirmation is in flight, and refuses the second click', async () => {
+    // `Button` implements the disable-while-loading itself and `primitives.test`
+    // pins that. What is pinned here is that this call site *wires* it: strip
+    // `loading`/`loadingLabel` from both buttons and every other test in this
+    // file still passes, so the double-submit guard could be dropped invisibly.
+    const spy = stalledFetch()
+    mount(UNCONFIRMED, EDITOR)
+    fireEvent.click(screen.getByRole('button', { name: 'تأیید محتوا' }))
+    const busy = await screen.findByRole('button', { name: 'در حال تأیید…' })
+    expect(busy).toBeDisabled()
+    expect(busy).toHaveAttribute('aria-busy', 'true')
+    fireEvent.click(busy)
+    expect(spy).toHaveBeenCalledTimes(1)
+  })
+
+  it('goes busy while the withdrawal is in flight too', async () => {
+    const spy = stalledFetch()
+    mount(CONFIRMED, EDITOR)
+    fireEvent.click(screen.getByRole('button', { name: 'لغو تأیید' }))
+    const busy = await screen.findByRole('button', { name: 'در حال لغو…' })
+    expect(busy).toBeDisabled()
+    expect(busy).toHaveAttribute('aria-busy', 'true')
+    fireEvent.click(busy)
+    expect(spy).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('ConfirmMark — the two buttons are sized by their call site', () => {
+  // I5: `Button`'s BASE deliberately carries no horizontal padding and no type
+  // size, and every other non-test call site in src/ passes both. Without them
+  // these two render as 44 px touch boxes with the text against the edges, at
+  // inherited body size, inside a title line of 12.5 px chips. **jsdom lays
+  // nothing out**, so the class list is the only thing a test can see — the
+  // same reason an earlier task here had to assert `maxLength` as an attribute
+  // rather than by typing past it.
+  it('gives the confirm button horizontal padding and a type role', () => {
+    mount(UNCONFIRMED, EDITOR)
+    const cls = screen.getByRole('button', { name: 'تأیید محتوا' }).className
+    expect(cls).toMatch(/\bpx-\S+/)
+    expect(cls).toMatch(/\btext-caption\b/)
+  })
+
+  it('gives the withdraw button the same', () => {
+    mount(CONFIRMED, EDITOR)
+    const cls = screen.getByRole('button', { name: 'لغو تأیید' }).className
+    expect(cls).toMatch(/\bpx-\S+/)
+    expect(cls).toMatch(/\btext-caption\b/)
   })
 })
 

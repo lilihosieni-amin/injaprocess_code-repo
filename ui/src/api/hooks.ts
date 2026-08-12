@@ -48,6 +48,25 @@ export function useLogout() {
   })
 }
 
+/**
+ * **Every write that can move a fingerprint invalidates `['confirmations']`.**
+ *
+ * `fingerprint.EXCLUDED` is only `{updated_at, source, pending, tombstoned}`, so
+ * a changed description, a renamed process or a moved node all move the hash and
+ * the server reports `confirmed: false` from that instant — a save silently
+ * un-confirms, which is the whole reason a fingerprint is stored instead of a
+ * boolean (D20). `['confirmations', code]` is the only thing that carries that
+ * state, and the observer stays mounted across the save: without this the editor
+ * is told the page is still vouched for at the very moment every reader has just
+ * lost it, which is the one thing the mark exists to say.
+ *
+ * The **prefix** key rather than `['confirmations', code]`, everywhere the
+ * department is not already in hand: `usePutProcess` and `useResolvePending` are
+ * given a pid, and `useDeleteProcess`'s dereference sweep rewrites `subprocess`
+ * and `parent` links in **other** departments' documents
+ * (`routers/processes.delete_process`), moving fingerprints the caller's own
+ * department code could never name.
+ */
 export function usePutProcess(pid: string) {
   const qc = useQueryClient()
   return useMutation({
@@ -55,6 +74,7 @@ export function usePutProcess(pid: string) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['process', pid] })
       qc.invalidateQueries({ queryKey: ['processes'] })
+      qc.invalidateQueries({ queryKey: ['confirmations'] })
     },
   })
 }
@@ -73,6 +93,9 @@ export function useResolvePending(pid: string) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['process', pid] })
       qc.invalidateQueries({ queryKey: ['pending'] })
+      // `pending` is excluded from the fingerprint but an **accepted** conflict
+      // writes its content into the document, which is not.
+      qc.invalidateQueries({ queryKey: ['confirmations'] })
     },
   })
 }
@@ -85,6 +108,10 @@ export function useCreateProcess() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['processes'] })
       qc.invalidateQueries({ queryKey: ['next-id'] })
+      // Not a moved fingerprint but a new confirmable target: a process created
+      // while the list is open has no row in the cached listing, so its mark
+      // would draw nothing at all until something else happened to refresh it.
+      qc.invalidateQueries({ queryKey: ['confirmations'] })
     },
   })
 }
@@ -93,7 +120,12 @@ export function usePutOverview(code: string) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (doc: Overview) => fetchJson<Overview>(`/api/departments/${code}/overview`, { method: 'PUT', body: JSON.stringify(doc) }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['overview', code] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['overview', code] })
+      // The department document is a confirmable target in its own right, and
+      // this is the one write path that already knows which department it is.
+      qc.invalidateQueries({ queryKey: ['confirmations', code] })
+    },
   })
 }
 
@@ -105,6 +137,11 @@ export function useDeleteProcess() {
       qc.invalidateQueries({ queryKey: ['processes'] })
       qc.invalidateQueries({ queryKey: ['departments'] })
       qc.invalidateQueries({ queryKey: ['next-id'] })
+      // Two reasons, and the second is the one that is easy to miss: the deleted
+      // process leaves the listing, and the dereference sweep rewrites every
+      // document that linked to it — in any department — moving those documents'
+      // fingerprints and un-confirming them.
+      qc.invalidateQueries({ queryKey: ['confirmations'] })
     },
   })
 }
@@ -127,6 +164,9 @@ export function useResolveInboxPending() {
     onSuccess: (_r, v) => {
       qc.invalidateQueries({ queryKey: ['pending'] })
       qc.invalidateQueries({ queryKey: ['process', v.pid] })
+      // Same endpoint as `useResolvePending`, so the same rule: an accepted
+      // conflict writes content, and content is what the fingerprint is over.
+      qc.invalidateQueries({ queryKey: ['confirmations'] })
     },
   })
 }
