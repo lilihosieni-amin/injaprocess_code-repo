@@ -93,17 +93,35 @@ def _row(conn, target: str, doc: dict) -> dict:
 
 
 def _load(cfg, target: str) -> dict:
-    """The document `target` names, or the uniform 404.
+    """The document `target` names, or the uniform 404 — and not a tombstoned
+    one either.
 
     Safe to touch the filesystem here because the gate has already run: nobody
     outside `dept:{dept_of(target)}` reaches this line, so what is or is not on
     disk is only ever disclosed to someone already inside the department.
+
+    **403, not 404, for a tombstone** (access.py's partition, D56). The 404
+    above answers "not on disk at all" — indistinguishable from a typo, because
+    a caller inside the department learns nothing from it they could not have
+    guessed. A tombstoned process is neither: it *is* on disk and it *is* in
+    scope, and `confirm` is never granted without `edit` (`seed._EDITOR`), so
+    whoever reaches this line may already read this exact document from
+    `GET /api/processes/{pid}` — `get_process` serves a tombstone to anyone who
+    may edit here. What they may not do is vouch for it: `list_confirmations`
+    excludes tombstones from the listing for the reason its own comment gives —
+    confirming one would vouch for a document no reader can ever be served
+    (D17). That is "the caller can see the target but may not do this to it",
+    which is 403's definition and not 404's.
     """
     path = (storage.overview_path(cfg.data_root, target) if _kind(target) == "department"
             else storage.proc_path(cfg.data_root, target))
     if not path.is_file():
         raise HTTPException(status_code=404, detail=NOT_FOUND)
-    return storage.read_json(path)
+    doc = storage.read_json(path)
+    if doc.get("tombstoned"):
+        raise HTTPException(status_code=403,
+                            detail="این فرآیند حذف شده و دیگر قابل تأیید نیست")
+    return doc
 
 
 @router.get("")

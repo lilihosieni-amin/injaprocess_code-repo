@@ -1,6 +1,7 @@
 """Confirming and withdrawing (spec D20, D61, §11 test 16's shape)."""
 import itertools
 import json
+import time
 
 import pytest
 from fastapi.testclient import TestClient
@@ -82,8 +83,8 @@ def _events(client, action):
     conn = db.connect(client.app_db)
     try:
         return [dict(r) for r in conn.execute(
-            "SELECT actor, action, target, outcome, detail FROM audit_events"
-            " WHERE action = ? ORDER BY id", (action,))]
+            "SELECT actor, action, target, outcome, detail, session_id"
+            " FROM audit_events WHERE action = ? ORDER BY id", (action,))]
     finally:
         conn.close()
 
@@ -117,15 +118,41 @@ def test_the_listing_hands_out_the_documents_current_fingerprint(corpus, tmp_pat
     assert _row(client, "dining-001")["fingerprint"] == fingerprint(doc)
 
 
+def test_the_listing_survives_a_department_with_processes_and_no_overview(data_root,
+                                                                          tmp_path):
+    """`logistics` gets a process below but no `overview.json` — the same gap
+    `test_departments.py` pins for it directly. The department row is only
+    built `if overview.is_file()`; every other department this file ever asks
+    about (`dining`, `cooking`, via the `corpus` fixture) has one, so that
+    guard's absence would be invisible to the rest of the suite. Without it
+    this is an unhandled `FileNotFoundError` — a 500 from a route that is
+    already behind the `confirm` gate.
+    """
+    (data_root / "departments" / "logistics" / "processes" / "logistics-001.json"
+     ).write_text(json.dumps(_proc("logistics-001", "logistics"), ensure_ascii=False),
+                 encoding="utf-8")
+    client = _client_as(data_root, tmp_path, "editor", "dept:logistics")
+    r = client.get("/api/confirmations?department=logistics")
+    assert r.status_code == 200
+    assert [row["target"] for row in r.json()] == ["logistics-001"]
+
+
 # --- confirming ---
 
 def test_confirming_records_who_and_what(corpus, tmp_path):
     client = _client_as(corpus, tmp_path, "editor", "dept:dining")
     fp = _row(client, "dining-001")["fingerprint"]
+    before = time.time()
     r = client.post("/api/confirmations/dining-001", json={"fingerprint": fp})
+    after = time.time()
     assert r.status_code == 200
     assert r.json()["confirmed"] is True
     assert r.json()["confirmed_by"] == client.username
+    # `confirmed_at` is part of the row shape the brief specifies and a later
+    # task renders it; a stamp from the moment of the write, not `None` and not
+    # the epoch, is what makes it worth having.
+    assert r.json()["confirmed_at"] is not None
+    assert before - 1 <= r.json()["confirmed_at"] <= after + 1
     assert _row(client, "dining-001")["confirmed"] is True
 
     events = _events(client, "confirmation.set")
@@ -138,6 +165,10 @@ def test_confirming_records_who_and_what(corpus, tmp_path):
     # wrongly — and nothing else in the suite reads this column.
     assert events[0]["outcome"] == "ok"
     assert json.loads(events[0]["detail"])["fingerprint"] == fp
+    # These are the first content-mutating audit events in the service, and
+    # tying a confirmation to the session that made it is what the audit
+    # decisions buy — the same hole the `outcome` column was in one fix ago.
+    assert events[0]["session_id"] is not None
 
 
 def test_a_department_overview_is_confirmed_the_same_way(corpus, tmp_path):
@@ -148,7 +179,13 @@ def test_a_department_overview_is_confirmed_the_same_way(corpus, tmp_path):
     fp = _row(client, "dining")["fingerprint"]
     assert client.post("/api/confirmations/dining",
                        json={"fingerprint": fp}).status_code == 200
-    assert _events(client, "confirmation.set")[0]["target"] == "dining"
+    events = _events(client, "confirmation.set")
+    assert events[0]["target"] == "dining"
+    # `kind` in the detail has to come from the target's own shape
+    # (`_kind`), not a value that happens to be right for every process this
+    # file otherwise confirms — a department target is `"department"`, never
+    # `"process"`.
+    assert json.loads(events[0]["detail"])["kind"] == "department"
 
 
 def test_confirming_a_fingerprint_that_is_not_the_current_one_is_refused(corpus,
@@ -187,6 +224,40 @@ def test_re_confirming_after_an_edit_replaces_the_mark(corpus, tmp_path):
         conn.close()
 
 
+def test_a_tombstoned_target_cannot_be_confirmed(corpus, tmp_path):
+    """The listing excludes a tombstone (D17) precisely so nobody ever vouches
+    for a document no reader can be served — `list_confirmations`'s own
+    comment says so. The write side has to agree: an Editor who already knows
+    a tombstoned id (from an earlier listing, before it was retired) must not
+    be able to confirm what the listing was built to keep unconfirmable.
+
+    403, not 404: `dining-003` is on disk and in scope — `confirm` is never
+    granted without `edit` (`seed._EDITOR`), so this same Editor may already
+    read it whole from `GET /api/processes/dining-003`. What they may not do
+    is vouch for it, which is "can see the target but may not do this to it" —
+    403's definition in `access.py`'s partition, not 404's.
+    """
+    client = _client_as(corpus, tmp_path, "editor", "dept:dining")
+    tomb = json.loads((corpus / "departments/dining/processes/dining-003.json")
+                      .read_text(encoding="utf-8"))
+    fp = fingerprint(tomb)
+    r = client.post("/api/confirmations/dining-003", json={"fingerprint": fp})
+    assert r.status_code == 403
+    assert _events(client, "confirmation.set") == []
+    # Withdrawing agrees too: there is nothing on this target for an Editor to
+    # act on either way.
+    assert client.delete("/api/confirmations/dining-003").status_code == 403
+
+
+def test_a_live_document_is_still_confirmable(corpus, tmp_path):
+    """Regression pin for the fix above: the new 403 is for tombstones
+    specifically, and `_load` must not have grown a blanket refusal."""
+    client = _client_as(corpus, tmp_path, "editor", "dept:dining")
+    fp = _row(client, "dining-001")["fingerprint"]
+    assert client.post("/api/confirmations/dining-001",
+                       json={"fingerprint": fp}).status_code == 200
+
+
 # --- withdrawing (D61) ---
 
 def test_withdrawing_emits_revoked_and_not_invalidated(corpus, tmp_path):
@@ -208,6 +279,11 @@ def test_withdrawing_emits_revoked_and_not_invalidated(corpus, tmp_path):
     assert revoked[0]["actor"] == client.username
     assert revoked[0]["target"] == "dining-001"
     assert revoked[0]["outcome"] == "ok"
+    assert revoked[0]["session_id"] is not None
+    # `detail=` is not optional decoration: dropping it from the write leaves
+    # nothing here to notice, since every other assertion in this file about a
+    # `confirmation.revoked` row reads `target`, not `detail`.
+    assert json.loads(revoked[0]["detail"])["kind"] == "process"
     assert _events(client, "confirmation.invalidated") == []
 
 
@@ -279,3 +355,24 @@ def test_confirming_a_process_that_is_not_on_disk_is_the_uniform_404(corpus,
     client = _client_as(corpus, tmp_path, "editor", "dept:dining")
     r = client.post("/api/confirmations/dining-404", json={"fingerprint": "a" * 64})
     assert (r.status_code, r.json()) == (404, {"detail": NOT_FOUND})
+
+
+def test_a_duplicated_department_parameter_cannot_desync_the_gate_from_the_listing(
+        corpus, tmp_path):
+    """The gate (`_query_scope`) and the handler (`list_confirmations`) both
+    read `request.query_params.get("department", "")` — that is what keeps
+    them agreeing on which target was gated and which was listed. Starlette's
+    `QueryParams.get` keeps the *last* occurrence of a repeated key
+    (`ImmutableMultiDict` builds `self._dict` from `{k: v for k, v in items}`,
+    so a later `department=` simply overwrites an earlier one).
+
+    Put the department the caller is scoped to *last*, so the gate reads it
+    and passes. If the handler ever read a *different* occurrence — the first,
+    say, via `getlist("department")[0]` — it would list a department the gate
+    never checked: a caller scoped to `dept:dining` alone would gate on
+    `dining` and be handed `cooking`'s rows.
+    """
+    client = _client_as(corpus, tmp_path, "editor", "dept:dining")
+    r = client.get("/api/confirmations?department=cooking&department=dining")
+    assert r.status_code == 200
+    assert {row["target"] for row in r.json()} == {"dining", "dining-001", "dining-002"}
