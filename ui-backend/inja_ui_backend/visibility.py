@@ -180,7 +180,7 @@ def _public_node(node: dict, policy: dict[str, bool]) -> dict:
 
 
 def _soft_deleted(nodes: object) -> set[str]:
-    """The ids of the nodes a non-editor is not sent at all.
+    """The ids of the removed nodes that carry a usable id.
 
     Deleting a step in the editing app is a **soft** delete: the node stays in
     the file carrying `removed: true` so a later `merge` can tell «never
@@ -193,6 +193,16 @@ def _soft_deleted(nodes: object) -> set[str]:
     `n.get("removed")` and never `"removed" in n`: every node the editing app
     has ever written carries the key, and `false` is the answer for almost all
     of them.
+
+    **This set is used only to drop the edges naming a removed node** — an edge
+    names its endpoints by id, so an id-less removed node cannot appear in one
+    and need not be in this set. `_public_process` drops the node itself by
+    `removed` alone, with no `id` in the test, so a node this set cannot name is
+    not a node that survives: the schema requires `id` and every API write
+    validates it, but a stored document is never revalidated on read, and the
+    rule for a whole record somebody deleted must fail closed the way every
+    other guard in this module does, not open on the one shape nobody wrote by
+    hand yet.
     """
     if not isinstance(nodes, list):
         return set()
@@ -216,10 +226,18 @@ def _public_process(doc: dict, policy: dict[str, bool]) -> dict:
     # field. `removed` stays in `PUBLIC_NODE_KEYS` for the nodes that survive:
     # they carry `removed: false`, the frozen client reads it, and a key that
     # only ever arrives falsy is still a key it dereferences.
-    gone = _soft_deleted(out.get("nodes"))
-    if gone:
+    #
+    # The node filter tests `removed` directly rather than membership in
+    # `_soft_deleted`'s set — that set only names the removed nodes with a
+    # usable `id`, for the edge filter below, and a removed node with no usable
+    # `id` must be dropped exactly as completely as one with a normal id.
+    nodes = out.get("nodes")
+    any_removed = isinstance(nodes, list) and any(
+        isinstance(n, dict) and n.get("removed") for n in nodes)
+    if any_removed:
+        gone = _soft_deleted(nodes)
         out["nodes"] = [n for n in out["nodes"]
-                        if not (isinstance(n, dict) and n.get("id") in gone)]
+                        if not (isinstance(n, dict) and n.get("removed"))]
         if isinstance(out.get("edges"), list):
             out["edges"] = [e for e in out["edges"]
                             if not (isinstance(e, dict)

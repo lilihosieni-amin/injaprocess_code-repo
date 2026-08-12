@@ -203,6 +203,27 @@ def test_a_live_node_keeps_its_removed_flag_and_its_edges():
     assert len(out["edges"]) == 3
 
 
+def test_a_removed_node_with_no_usable_id_is_still_dropped():
+    """The off-schema shape the module fails open on if the node filter keys
+    off `_soft_deleted`'s id set rather than off `removed` itself.
+
+    `process.schema.json` requires a node `id` and every API write validates
+    it, so this document could only exist hand-edited on disk — reachable only
+    that way, and still in scope, because a stored document is never
+    revalidated on read and every other guard in this module fails closed.
+    """
+    doc = _doc()
+    doc["nodes"].append({"removed": True, "id": None,
+                         "label": "SECRET_NOID", "description": "SECRETDESC"})
+    out = visibility.filtered(doc, policy=_defaults(), sees=_sees, editor=False)
+    assert _ids(out) == ["start", f"{PID}-n010", "end"]
+    leaked = [t for t in ("SECRET_NOID", "SECRETDESC") if t in _text(out)]
+    assert leaked == [], (
+        f"a removed node with no usable id reached a reader: {leaked} — the"
+        f" node filter must drop it on `removed` alone, not on membership in"
+        f" the id-keyed set the edge filter uses")
+
+
 def test_dropping_a_node_does_not_touch_the_stored_document():
     """The stored document is what the writers and the export read."""
     doc = _doc()

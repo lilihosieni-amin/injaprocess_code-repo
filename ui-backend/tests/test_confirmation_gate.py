@@ -91,21 +91,32 @@ def _disclosure_as(data_root, tmp_path, role, *scopes):
 
     For the one question that cannot be posed over the wire: **how many queries**
     a department costs. Everything else in this file is end to end, deliberately.
+
+    The connection outlives this function — the caller still has to query
+    through it and close it — so, unlike `_client_as`'s throwaway setup
+    connection, this one cannot be closed unconditionally in a `finally`. What
+    it can do is not leak *during setup*: `db.migrate`, `seed.seed` and the two
+    inserts below run before anyone holds a reference to `conn` outside this
+    function, so an exception among them left nothing for any caller to close.
     """
     n = next(_seq)
     username = f"0913{n:07d}"
     cfg = cfg_for(data_root, tmp_path / f"gate-{n}.db")
     conn = db.connect(cfg.app_db)
-    db.migrate(conn)
-    seed.seed(conn, editor_username="09190000000", editor_display_name="e",
-              editor_password_hash=hash_password(PW))
-    rid = conn.execute("SELECT id FROM roles WHERE name = ?", (role,)).fetchone()[0]
-    uid = users.create(conn, username=username, display_name="u",
-                       password_hash=hash_password(PW), role_id=rid)
-    for s in scopes:
-        conn.execute("INSERT INTO user_scopes (user_id, scope) VALUES (?, ?)",
-                     (uid, s))
-    user = conn.execute("SELECT * FROM users WHERE id = ?", (uid,)).fetchone()
+    try:
+        db.migrate(conn)
+        seed.seed(conn, editor_username="09190000000", editor_display_name="e",
+                  editor_password_hash=hash_password(PW))
+        rid = conn.execute("SELECT id FROM roles WHERE name = ?", (role,)).fetchone()[0]
+        uid = users.create(conn, username=username, display_name="u",
+                           password_hash=hash_password(PW), role_id=rid)
+        for s in scopes:
+            conn.execute("INSERT INTO user_scopes (user_id, scope) VALUES (?, ?)",
+                         (uid, s))
+        user = conn.execute("SELECT * FROM users WHERE id = ?", (uid,)).fetchone()
+    except Exception:
+        conn.close()
+        raise
     return conn, Disclosure(conn, user)
 
 
@@ -248,6 +259,37 @@ def test_an_editors_board_still_counts_the_unconfirmed(corpus, tmp_path):
     assert row["count"] == 2
 
 
+def test_the_boards_subs_counts_only_what_the_caller_can_open(corpus, tmp_path):
+    """D56's derived-signals row, applied to `subs` rather than `count`.
+
+    No fixture before this one had an unconfirmed process whose *parent* is
+    visible, so `subs` — read over `active`, the already-gated set — and a
+    mutant reading it over every non-tombstoned document regardless of its own
+    confirmation both pass every other test in this file. This is the one that
+    tells them apart: a reader in a department where the parent is confirmed
+    and the child is not must be served a badge that counts neither the child
+    nor a sub-process they cannot open, while an editor's board counts it.
+    """
+    sub = _proc("dining-005", "dining", "زیرفرآیند")
+    sub["parent"] = {"process": "dining-001", "node": "dining-001-n010"}
+    (corpus / "departments/dining/processes/dining-005.json").write_text(
+        json.dumps(sub, ensure_ascii=False), encoding="utf-8")
+
+    client = _client_as(corpus, tmp_path, "reader", "dept:dining")
+    _confirm(client, "dining-001", P1)
+    row = next(d for d in client.get("/api/departments").json()
+               if d["code"] == "dining")
+    assert row["count"] == 1
+    # dining-005 is unconfirmed: the badge must not count it just because its
+    # parent, dining-001, is one this reader can open.
+    assert row["subs"] == 0
+
+    editor = _client_as(corpus, tmp_path, "editor", "dept:dining")
+    erow = next(d for d in editor.get("/api/departments").json()
+                if d["code"] == "dining")
+    assert erow["subs"] == 1
+
+
 # --- the fourth handed-down debt ---
 
 def test_pending_skips_a_tombstoned_process(corpus, tmp_path):
@@ -294,16 +336,31 @@ def test_a_whole_department_costs_one_confirmation_query(corpus, tmp_path):
     so a third way of asking the same question is caught too. The `Disclosure` is
     built before the callback is armed: `permits` and `policy.current` are the
     per-request reads Task 6 hoisted, and they are not what is under test here.
+
+    Half the eight are confirmed and half are not — `== []` alone is satisfied
+    by any `servable` that returns nothing, confirmed corpus or not, so the
+    assertion here is that batching returns exactly the four confirmed rows and
+    none of the other four, not merely that it costs one query to return
+    whatever it returns.
     """
     conn, shown = _disclosure_as(corpus, tmp_path, "reader", "dept:dining")
     docs = [_proc(f"dining-{i:03d}", "dining", f"ف{i}") for i in range(1, 9)]
+    confirmed = docs[::2]
+    for doc in confirmed:
+        confirmations.set_confirmation(conn, target=doc["id"],
+                                       fingerprint=fingerprint(doc),
+                                       by="09190000000", at=int(time.time()))
     statements = []
     conn.set_trace_callback(statements.append)
     try:
-        assert shown.servable(docs, "dining") == []
+        result = shown.servable(docs, "dining")
     finally:
         conn.set_trace_callback(None)
         conn.close()
+
+    assert [d["id"] for d in result] == [d["id"] for d in confirmed], (
+        "batching over a mixed corpus did not return exactly the confirmed"
+        " rows")
 
     asked = [s for s in statements if "confirmations" in s]
     assert len(asked) == 1, (
