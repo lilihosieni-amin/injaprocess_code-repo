@@ -20,7 +20,8 @@ from fastapi.testclient import TestClient
 from inja_ui_backend import db, seed
 from inja_ui_backend.app import create_app
 from inja_ui_backend.auth import hash_password
-from inja_ui_backend.store import users
+from inja_ui_backend.fingerprint import fingerprint
+from inja_ui_backend.store import confirmations, users
 from inja_ui_backend.tests_helpers import cfg_for
 
 PW = "test-password"
@@ -108,6 +109,47 @@ def _ids(routes):
 _accounts = itertools.count()
 
 
+def _confirm_the_whole_corpus(conn, data_root) -> None:
+    """Vouch for every document on disk, so this file keeps testing the *gate*.
+
+    D22 withholds an unconfirmed record from anyone without `edit`, and this
+    file's non-refusal direction is a **reader** — `WITH["view"]` is
+    `reader_no_download` on purpose. Left unconfirmed, every `view` route would
+    answer them 404 and
+    `test_a_role_with_the_capability_is_not_refused_in_scope` would read that as
+    over-gating, which is a diagnosis about the wrong thing entirely. Confirmed
+    here so the only reason a caller can be refused below is the one this file
+    is about: their capability and their scope.
+
+    Wholesale rather than a list of the three documents that matter today,
+    because a test that plants a fourth (`…_the_process_target_is_the_id_prefix…`
+    writes one) would otherwise have to remember this exists. The record gate
+    only ever *withholds*, so confirming everything cannot turn a refusal these
+    tests assert into a 200 — a caller outside the department is refused by the
+    scope gate before a confirmation is ever looked up.
+
+    The target is read **lexically**, from the file's own name and directory,
+    never from `id`/`department` inside it: that is what the routes do, and one
+    of the tests below deliberately plants a document whose stored department
+    disagrees with where it lives.
+    """
+    root = data_root / "departments"
+    for dept in sorted(p for p in root.iterdir() if p.is_dir()):
+        overview = dept / "overview.json"
+        if overview.is_file():
+            confirmations.set_confirmation(
+                conn, target=dept.name,
+                fingerprint=fingerprint(json.loads(
+                    overview.read_text(encoding="utf-8"))),
+                by="09190000000", at=1770000000)
+        for proc in sorted((dept / "processes").glob("*.json")):
+            confirmations.set_confirmation(
+                conn, target=proc.stem,
+                fingerprint=fingerprint(json.loads(
+                    proc.read_text(encoding="utf-8"))),
+                by="09190000000", at=1770000000)
+
+
 def _client_as(data_root, tmp_path, role, *scopes, capabilities=None):
     """A signed-in client for a fresh account with `role` and `scopes`.
 
@@ -138,6 +180,7 @@ def _client_as(data_root, tmp_path, role, *scopes, capabilities=None):
         for s in scopes:
             conn.execute("INSERT INTO user_scopes (user_id, scope) VALUES (?, ?)",
                          (uid, s))
+        _confirm_the_whole_corpus(conn, data_root)
     finally:
         conn.close()
     client = TestClient(create_app(cfg), base_url=BASE)

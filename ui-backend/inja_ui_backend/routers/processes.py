@@ -156,6 +156,11 @@ def get_process(pid: str, request: Request,
     see it, it does not appear in **any** response to them" — the two together
     make this the same clause, not a second one.
 
+    **Nor an unconfirmed one** (D22). A process carrying no valid confirmation
+    does not appear for any user without `edit`, and the same 404 answers it: the
+    two are one clause, because "this record is not for you" must have one answer
+    however it came to be true.
+
     **404, not 403** (D56's Existence row). For a non-editor the record is not a
     resource they may not act on; it is one they must not learn exists, so the
     answer is the same `NOT_FOUND` a missing file gives. A 403 here would let a
@@ -177,7 +182,11 @@ def get_process(pid: str, request: Request,
     _, doc = _load(request.app.state.cfg, pid)
     shown = Disclosure(request.app.state.db, user)
     dept = storage.dept_of(pid)
-    if doc.get("tombstoned") and not shown.edits(dept):
+    # Tombstoned (D17) or carrying no valid confirmation (D22) — one question,
+    # and 404 for both: for a non-editor these are not resources they may not act
+    # on, they are resources they must not learn exist. A 403 here would let a
+    # reader enumerate which ids are processes nobody has confirmed yet.
+    if not shown.may_serve(doc, dept, pid):
         raise HTTPException(status_code=404, detail=NOT_FOUND)
     return shown.redact(doc, dept)
 

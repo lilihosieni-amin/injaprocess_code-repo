@@ -23,6 +23,12 @@ read, and this shapes a copy on the way out.
   the caller in general. `dept:a` plus `dept:b/report:k` may edit a and not b,
   and "may this person edit somewhere?" is right for nobody.
 
+**Whole records are a third answer, and they are dropped.** A tombstoned
+process (`disclosure.may_serve`) and a soft-deleted **node** are records
+somebody deleted, not fields somebody may not read: they are absent, and
+anything that references them — an edge naming a dropped node — is absent with
+them, because a reference to nothing renders as a hole rather than as less.
+
 **Blanked or dropped, and the rule for choosing.** A field the client
 dereferences is blanked; a field nothing reads is dropped. `ui/src/flow/**` is
 frozen and dereferences a node's `description`, `actor`, `icom` and
@@ -77,8 +83,10 @@ PUBLIC_PROCESS_KEYS: tuple[str, ...] = (
 #: `direction` — and a test reads `process.schema.json` and fails when a kind
 #: gains one this tuple does not. **Nothing is dropped**, because
 #: `ui/src/flow/**` is frozen and no guard can be added there: `adapt.ts`
-#: dereferences `id`, `type` and `position` and filters on `removed` (drop it and
-#: a soft-deleted step reappears on a reader's canvas), `DetailDrawer.tsx` reads
+#: dereferences `id`, `type` and `position` and filters on `removed` — the node
+#: it would filter is now dropped from a non-editor's body before it is built
+#: (`_public_process`), so what the key does here is keep `removed: false` on the
+#: nodes that survive, which the same frozen filter reads. `DetailDrawer.tsx` reads
 #: `subprocess`, `junctionType` and `source.created_by` with no guard, the node
 #: components render `label` and `actor`, and `useFlowEditor.ts` writes `layout`
 #: and `direction` back on Save. What a reader may not have is *blanked*, by
@@ -171,12 +179,52 @@ def _public_node(node: dict, policy: dict[str, bool]) -> dict:
     return out
 
 
+def _soft_deleted(nodes: object) -> set[str]:
+    """The ids of the nodes a non-editor is not sent at all.
+
+    Deleting a step in the editing app is a **soft** delete: the node stays in
+    the file carrying `removed: true` so a later `merge` can tell «never
+    existed» from «taken out» (`ui/src/lib/counts.ts`). It is a whole record
+    somebody deleted, and D56's Whole-records row is *"absent from the response
+    body, filtered in the query. Never client-side"* — while `ui/src/flow/
+    adapt.ts` filtered on `removed` **in the browser**, so the deleted step's
+    label, description and actor were on the wire and merely not drawn.
+
+    `n.get("removed")` and never `"removed" in n`: every node the editing app
+    has ever written carries the key, and `false` is the answer for almost all
+    of them.
+    """
+    if not isinstance(nodes, list):
+        return set()
+    return {n["id"] for n in nodes
+            if isinstance(n, dict) and n.get("removed")
+            and isinstance(n.get("id"), str)}
+
+
 def _public_process(doc: dict, policy: dict[str, bool]) -> dict:
     """One process reduced to what a non-editor may read."""
     out = {k: doc[k] for k in PUBLIC_PROCESS_KEYS if k in doc}
     for key, (switch, blank) in _PROCESS_SWITCH.items():
         if key in out and not policy[switch]:
             out[key] = blank()
+    # A soft-deleted node is dropped, and **so are the edges naming it**. Those
+    # are one change, not two: `ui/src/flow/adapt.ts` maps every edge to a
+    # `source`/`target` pair with no guard and @xyflow resolves nothing for an
+    # endpoint that is not on the canvas, so dropping the node alone would trade
+    # a disclosure for a diagram with a hole in it — the failure the whole
+    # blank-versus-drop rule exists to avoid, asked of a record instead of a
+    # field. `removed` stays in `PUBLIC_NODE_KEYS` for the nodes that survive:
+    # they carry `removed: false`, the frozen client reads it, and a key that
+    # only ever arrives falsy is still a key it dereferences.
+    gone = _soft_deleted(out.get("nodes"))
+    if gone:
+        out["nodes"] = [n for n in out["nodes"]
+                        if not (isinstance(n, dict) and n.get("id") in gone)]
+        if isinstance(out.get("edges"), list):
+            out["edges"] = [e for e in out["edges"]
+                            if not (isinstance(e, dict)
+                                    and (e.get("from") in gone
+                                         or e.get("to") in gone))]
     # Read off `out` rather than `doc` so this function has one source, its own
     # whitelisted copy: a key `PUBLIC_PROCESS_KEYS` drops cannot return through
     # this line. It is *not* what keeps a withheld `subprocess` out of the body

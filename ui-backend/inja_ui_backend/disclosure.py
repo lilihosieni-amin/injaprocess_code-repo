@@ -29,6 +29,15 @@ which department they may edit, and which ids they may be told about. Everything
 that decides what a body contains lives in exactly one function, and this is the
 only module that resolves a request into its arguments.
 
+**And one rule that is not about a body's contents at all.** `may_serve` and
+`servable` answer *may this caller be told this **record** exists* — a tombstone
+(D17) or a document carrying no valid confirmation (D22) is absent from the
+query, not blanked inside the response. It lives here because it is resolved
+from the same two hoisted lookups and asked at the same boundaries; it is
+answered with a 404 rather than a 403 for the reason `sees` is lexical, which is
+D56's Existence row: a status that distinguishes "not for you" from "not there"
+is an oracle.
+
 **Every department here is derived lexically from an id** —
 `storage.dept_of(pid)` is `pid.rsplit("-", 1)[0]`, pure string arithmetic — and
 never by loading the referenced file. That is the same rule the routers' targets
@@ -52,7 +61,8 @@ import sqlite3
 
 from . import storage, visibility
 from .access import permits
-from .store import policy
+from .fingerprint import fingerprint
+from .store import confirmations, policy
 
 
 class Disclosure:
@@ -70,6 +80,7 @@ class Disclosure:
     """
 
     def __init__(self, conn: sqlite3.Connection, user: sqlite3.Row) -> None:
+        self._conn = conn
         self._may_view = permits(conn, user, "view")
         self._may_edit = permits(conn, user, "edit")
         # One read of the policy per request, for the same reason `permits`
@@ -94,6 +105,58 @@ class Disclosure:
         """May this caller edit `dept`? The question `pending` and tombstones
         both turn on."""
         return self._may_edit(f"dept:{dept}")
+
+    def may_serve(self, doc: dict, dept: str, target: str) -> bool:
+        """May this caller be told that this **record** exists at all?
+
+        Two clauses, one question (D17, D22, D56):
+
+        * a tombstoned process is *excluded entirely*, with no switch;
+        * a process or overview carrying no valid confirmation does not appear
+          for any user without `edit` on its department.
+
+        An Editor is exempt from both, and for the same reason: they are the
+        person a tombstone is retained for and the person who has to read an
+        unconfirmed document in order to confirm it.
+
+        `target` is passed in rather than read out of `doc` — a process id or a
+        department code — so the string the confirmation is looked up under is
+        the string the route was gated on, exactly as `dept` is in `redact`.
+
+        The comparison is `stored == fingerprint(doc)` and never `stored is not
+        None`: a mark that no longer matches its document is not a weaker mark,
+        it is a mark for a document that no longer exists.
+        """
+        if self.edits(dept):
+            return True
+        if doc.get("tombstoned"):
+            return False
+        row = confirmations.get(self._conn, target)
+        return row is not None and row["fingerprint"] == fingerprint(doc)
+
+    def servable(self, docs: list[dict], dept: str) -> list[dict]:
+        """`docs` reduced to the records this caller may be told exist.
+
+        The batch form of `may_serve`, and the reason it exists is D56's
+        *"filtered in the query. Never client-side"*: one statement resolves the
+        whole department rather than one per document inside a loop.
+
+        An editor gets the list back untouched — tombstones included, because the
+        process list draws them greyed and carries the only permanent-delete
+        affordance there is.
+
+        Fingerprinting every document in a department costs a SHA-256 over each
+        file's canonical form; the largest department is 38 processes, which is
+        under a millisecond of hashing beside the reads that produced the
+        documents in the first place.
+        """
+        if self.edits(dept):
+            return list(docs)
+        ids = [d["id"] for d in docs if isinstance(d.get("id"), str)]
+        stored = confirmations.stored_for(self._conn, ids)
+        return [d for d in docs
+                if not d.get("tombstoned")
+                and stored.get(d.get("id")) == fingerprint(d)]
 
     def redact(self, doc: dict, dept: str) -> dict:
         """`doc` as this caller may receive it. `dept` is the document's own.

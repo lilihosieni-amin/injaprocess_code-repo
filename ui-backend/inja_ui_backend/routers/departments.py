@@ -101,6 +101,20 @@ def list_departments(request: Request, user=Depends(require_session)):
     parent is in the caller's own scope still counts, so the badge keeps meaning
     what it says for the people it is for.
 
+    **`count` and `subs` are taken over the records the caller can actually
+    open** — `Disclosure.servable`, the same gate the process listing runs, so
+    the number beside a department equals the length of the list behind it. A
+    count of three beside a list of one answers *"how much is being withheld
+    from you"*, which is the derived-signals row again. `conflicts` is counted
+    before that gate and over the active set, exactly as it always was: it is
+    served only to someone who may `edit` here, and they are gated on nothing.
+
+    **The row itself stays even when the count is zero.** It comes from the
+    registry and from the caller's own scope grant, never from content: a reader
+    holding `dept:dining` already knows dining exists, so the row tells them
+    nothing — while removing it would take away the only place the system can
+    say *"nothing here has been confirmed yet"*.
+
     `permits` resolves the capability set and the scope rows once for the whole
     board rather than once per department — the same decision, eighteen fewer
     reads. `Disclosure` holds two of those resolutions, which is why the
@@ -117,21 +131,24 @@ def list_departments(request: Request, user=Depends(require_session)):
     for d in reg["departments"]:
         if reachable is not None and d["code"] not in reachable:
             continue
-        files = storage.list_process_files(cfg.data_root, d["code"])
-        count = 0
-        subs = 0
-        conflicts = 0
-        for path in files:
-            proc = storage.read_json(path)
-            if proc.get("tombstoned"):
-                continue  # tombstones are off the active board (§4.7)
-            count += 1
-            parent = proc.get("parent")
-            if isinstance(parent, dict) and shown.sees(parent.get("process")):
-                subs += 1
-            conflicts += sum(1 for p in proc.get("pending", [])
-                             if p.get("status") == "open")
-        row = {"code": d["code"], "name": d["name"], "count": count, "subs": subs}
+        docs = [storage.read_json(p)
+                for p in storage.list_process_files(cfg.data_root, d["code"])]
+        # Counted before the record gate, and only over the active set, exactly
+        # as before: this number is served only to someone who may `edit` here.
+        conflicts = sum(1 for doc in docs if not doc.get("tombstoned")
+                        for p in doc.get("pending", []) if p.get("status") == "open")
+        # `count` and `subs` are derived signals (D56): a count of three beside a
+        # list of one answers "how much is being withheld from you". They are
+        # therefore taken over exactly the records this caller may open —
+        # tombstones excluded for everyone, since they were never on the active
+        # board (§4.7).
+        active = [doc for doc in shown.servable(docs, d["code"])
+                  if not doc.get("tombstoned")]
+        subs = sum(1 for doc in active
+                   if isinstance(doc.get("parent"), dict)
+                   and shown.sees(doc["parent"].get("process")))
+        row = {"code": d["code"], "name": d["name"], "count": len(active),
+               "subs": subs}
         if may_edit(f"dept:{d['code']}"):
             row["conflicts"] = conflicts
         out.append(row)
@@ -150,6 +167,14 @@ def get_overview(code: str, request: Request,
     department does, and `ui/src/screens/Overview.tsx` dereferences it with no
     guard.
 
+    **Unless it carries no valid confirmation** (D22), which is the one gate
+    D55 does not exempt it from. The target is the **department code** and not a
+    process id (D20): confirming a flowchart says nothing about the page that
+    describes the department, and confirming that page says nothing about any
+    flowchart — `test_confirming_the_overview_is_a_separate_decision` pins both
+    directions. Refused with the same 404 a missing file gives, because a 403
+    would say the page exists and is being kept from them.
+
     Redacted rather than returned raw, so that "every boundary runs the same
     rule" stays a property a reader can check rather than a list of the ones
     somebody remembered. The filter takes nothing away today; if a row of D55
@@ -161,7 +186,13 @@ def get_overview(code: str, request: Request,
     if not path.is_file():
         raise HTTPException(status_code=404, detail=NOT_FOUND)
     shown = Disclosure(request.app.state.db, user)
-    return shown.redact_overview(storage.read_json(path), code)
+    doc = storage.read_json(path)
+    # D22 applies to the overview exactly as to a flowchart: an overview with no
+    # valid confirmation is invisible to every non-editor, and the target is the
+    # department code (D20).
+    if not shown.may_serve(doc, code, code):
+        raise HTTPException(status_code=404, detail=NOT_FOUND)
+    return shown.redact_overview(doc, code)
 
 
 @router.put("/{code}/overview")
@@ -226,6 +257,14 @@ def list_processes(code: str, request: Request,
     The ordering rule itself lives in `storage.ordered_processes` so the export
     and this endpoint cannot disagree about a department's sequence.
 
+    **And an unconfirmed process is absent too** (D22). `Disclosure.servable` is
+    one question over both clauses — tombstoned, or carrying no valid
+    confirmation — resolved for the whole department in a single statement
+    rather than once per document in a loop, which is what D56's *"filtered in
+    the query"* asks for. A department nobody has confirmed anything in is `[]`
+    to a reader and complete to an Editor; D23 is that the system starts that
+    way, because all 85 existing processes begin unconfirmed.
+
     **A tombstoned process is absent from a non-editor's body** (D17, D56). D17
     puts "Tombstoned processes" in the never-shown block — *excluded entirely*,
     switchable ❌ never — and D56's Whole-records row says how: *absent from the
@@ -263,9 +302,7 @@ def list_processes(code: str, request: Request,
     """
     cfg = request.app.state.cfg
     shown = Disclosure(request.app.state.db, user)
-    docs = storage.ordered_processes(cfg.data_root, code)
-    if not shown.edits(code):
-        docs = [d for d in docs if not d.get("tombstoned")]
+    docs = shown.servable(storage.ordered_processes(cfg.data_root, code), code)
     return [shown.redact(d, code) for d in docs]
 
 

@@ -22,7 +22,12 @@ them:**
   `test_the_scan_finds_every_token_when_the_caller_is_in_scope`
   runs the identical sweep as a `*` holder and asserts every token in
   `FORBIDDEN` **is** found — so a token no endpoint ever serves, or a fixture
-  that was never planted, fails loudly instead of passing silently.
+  that was never planted, fails loudly instead of passing silently. That guard
+  is about the wildcard holder; D22 opened the same hole for the **scoped**
+  ones, whose every body is empty until an Editor has confirmed something, so
+  `_client_as` confirms this corpus and
+  `test_a_reader_is_served_the_confirmed_processes` is where a corpus that
+  stopped being confirmed is diagnosed.
 * *Scanning fewer endpoints than exist.* `test_the_scan_exercises_every_api_route`
   compares the table below against the app's own route table, so a fifteenth
   endpoint added later fails this file rather than slipping past it. What it does
@@ -58,7 +63,8 @@ from inja_ui_backend.access import NOT_FOUND
 from inja_ui_backend.app import create_app
 from inja_ui_backend.auth import hash_password
 from inja_ui_backend.disclosure import Disclosure
-from inja_ui_backend.store import policy, users
+from inja_ui_backend.fingerprint import fingerprint
+from inja_ui_backend.store import confirmations, policy, users
 from inja_ui_backend.tests_helpers import cfg_for
 
 PW = "test-password"
@@ -522,6 +528,20 @@ def _client_as(data_root, tmp_path, role, *scopes):
         for s in scopes:
             conn.execute("INSERT INTO user_scopes (user_id, scope) VALUES (?, ?)",
                          (uid, s))
+        # D22 — without a confirmation every body a scoped reader gets is empty,
+        # and every leak assertion in this file would pass against a backend that
+        # leaks freely. `test_a_reader_is_served_the_confirmed_processes` below is
+        # what makes that impossible to reintroduce quietly.
+        for target, rel in ((MINE, "overview.json"),
+                            ("dining-001", "processes/dining-001.json"),
+                            ("dining-002", "processes/dining-002.json")):
+            path = data_root / "departments" / MINE / rel
+            if not path.is_file():
+                continue
+            doc = json.loads(path.read_text(encoding="utf-8"))
+            confirmations.set_confirmation(conn, target=target,
+                                           fingerprint=fingerprint(doc),
+                                           by="09190000000", at=1770000000)
     finally:
         conn.close()
     client = TestClient(create_app(cfg), base_url=BASE)
@@ -1766,3 +1786,19 @@ def test_the_stance_is_read_from_the_request_path_not_from_the_document(corpus,
     assert shown.redact(lying, THEIRS)["summary"] == "", (
         "the document's own `department` decided the stance: a file that claims"
         " a department the caller may edit is not thereby in it")
+
+
+def test_a_reader_is_served_the_confirmed_processes(corpus, tmp_path):
+    """The premise of every scoped sweep in this file.
+
+    D22 makes an unconfirmed department invisible, so a corpus that forgot to
+    confirm anything would give every scoped caller an empty body — and an empty
+    body passes every leak assertion here against a backend that leaks freely.
+    This is where that is diagnosed.
+    """
+    client = _client_as(corpus, tmp_path, "reader", f"dept:{MINE}")
+    listed = client.get(f"/api/departments/{MINE}/processes").json()
+    assert [p["id"] for p in listed] == ["dining-001", "dining-002"]
+    assert client.get(f"/api/departments/{MINE}/overview").status_code == 200
+    # …and the tombstone is still withheld, for its own reason.
+    assert client.get(f"/api/processes/{TOMBSTONED}").status_code == 404
