@@ -1,0 +1,182 @@
+"""What may be *inside* a body this service sends (spec D17, D18, D55, D56).
+
+**One filter, applied server-side to every response.** Reports, the flow canvas,
+the detail drawer and the department overview all read through it: one
+implementation means one place to be wrong and one place tests can pin. The
+strip happens in the payload, never in CSS — a reader with dev tools finds
+nothing hidden.
+
+Pure. No database, no filesystem, no caller. It takes the policy as a dict, the
+"may I be told about this id?" question as a predicate, and one boolean saying
+whether this view is an editor's; `disclosure.py` is what turns a request into
+those three, and `exports.py` is what turns a department into them. Nothing here
+mutates its argument: the stored document is what the writers and the export
+read, and this shapes a copy on the way out.
+
+**Two stances, and they are separate questions.**
+
+* `sees` is about **scope**: a `parent` or a node's `subprocess` may name a
+  process, a node and a department the caller is 404'd out of, and that is true
+  of an Editor of one department as much as of a Reader. So the link rule runs
+  for **both** stances.
+* `editor` is about **capability at this document's department** — never about
+  the caller in general. `dept:a` plus `dept:b/report:k` may edit a and not b,
+  and "may this person edit somewhere?" is right for nobody.
+
+**Blanked or dropped, and the rule for choosing.** A field the client
+dereferences is blanked; a field nothing reads is dropped. `ui/src/flow/**` is
+frozen and dereferences a node's `description`, `actor`, `icom` and
+`source.created_by` with no guard, `flow/adapt.ts` iterates `pending`, and
+`screens/Summary.tsx` indexes `idef0.controls` and maps `kpis` — dropping any of
+those turns a reader's click into a TypeError inside a document that has already
+been handed out. The process's own `source`/`created_at`/`updated_at` are read by
+nothing under `ui/src/`, and `source.type` is an enum with no honest blank, so
+they go.
+
+**A node has no KPIs.** `$defs.activityNode` carries `id`, `type`, `label`,
+`description`, `actor`, `icom`, `subprocess`, `position`, `layout`, `source` and
+`removed` — nothing else. What a node carries is ICOM, which is IDEF0
+information and not a performance indicator, so `node_icom` and `process_kpis`
+are separate switches.
+"""
+from __future__ import annotations
+
+from typing import Callable
+
+#: The exact top-level key set a non-editor's copy of a process carries.
+#:
+#: A **whitelist**, not a blacklist, and pinned by an equality in the tests: a
+#: field added to `process.schema.json` next month must have to be let in
+#: deliberately rather than start shipping to every reader the day it is written.
+PUBLIC_PROCESS_KEYS: tuple[str, ...] = (
+    "id", "department", "name", "parent", "edges",
+    "summary", "idef0", "kpis", "nodes", "pending",
+)
+
+#: Which switch governs which process key, and the blank it becomes when off.
+_PROCESS_SWITCH: dict[str, tuple[str, Callable[[], object]]] = {}
+
+#: The same for a node's three.
+_NODE_SWITCH: dict[str, tuple[str, Callable[[], object]]] = {}
+
+
+def _empty_icom() -> dict:
+    """A fresh, structurally valid but empty ICOM record."""
+    return {"inputs": [], "controls": [], "outputs": [], "mechanisms": []}
+
+
+def _empty_node_source() -> dict:
+    """A fresh, structurally valid but empty node provenance record."""
+    return {"created_by": "", "touched_by": []}
+
+
+_PROCESS_SWITCH.update({
+    "summary": ("process_summary", str),
+    "idef0": ("process_idef0", _empty_icom),
+    "kpis": ("process_kpis", list),
+})
+
+_NODE_SWITCH.update({
+    "description": ("node_description", str),
+    "actor": ("node_actor", str),
+    "icom": ("node_icom", _empty_icom),
+})
+
+
+def links_only(doc: dict, sees: Callable[[object], bool]) -> dict:
+    """`doc` with every link this view may not be told about blanked.
+
+    `parent` names another process **and one of its nodes**, so the whole record
+    goes rather than only its `process`: the `node` half is a node id in that
+    same department and is exactly as much of a disclosure. `None` is what the
+    schema says an unparented process carries, so what the caller receives is a
+    shape the client already handles rather than a hole in one.
+
+    The department of a referenced id is read **lexically**, by the caller's
+    `sees` predicate, and never by loading the referenced file: read it out of
+    the stored document and the answer depends on whether that document is there,
+    so a caller learns which of their guesses exist from which links survive.
+    """
+    out = dict(doc)
+    parent = out.get("parent")
+    if isinstance(parent, dict) and not sees(parent.get("process")):
+        out["parent"] = None
+    nodes = out.get("nodes")
+    if isinstance(nodes, list):
+        out["nodes"] = [
+            {**n, "subprocess": None}
+            if isinstance(n, dict) and n.get("subprocess") is not None
+            and not sees(n.get("subprocess"))
+            else n
+            for n in nodes
+        ]
+    return out
+
+
+def _public_node(node: dict, policy: dict[str, bool]) -> dict:
+    """One node reduced to what a non-editor may read.
+
+    `if key in out` and not an unconditional write: a junction or a terminal node
+    carries none of these three, `process.schema.json` sets
+    `additionalProperties: false`, and inventing an empty `actor` on a junction
+    would produce a document the validator refuses.
+    """
+    out = dict(node)
+    for key, (switch, blank) in _NODE_SWITCH.items():
+        if key in out and not policy[switch]:
+            out[key] = blank()
+    if "source" in out:
+        out["source"] = _empty_node_source()
+    return out
+
+
+def _public_process(doc: dict, policy: dict[str, bool]) -> dict:
+    """One process reduced to what a non-editor may read."""
+    out = {k: doc[k] for k in PUBLIC_PROCESS_KEYS if k in doc}
+    for key, (switch, blank) in _PROCESS_SWITCH.items():
+        if key in out and not policy[switch]:
+            out[key] = blank()
+    # `out["nodes"]`, not `doc["nodes"]` — `out` is already the link-filtered
+    # copy, and reading the nodes back off the original here would put every
+    # withheld `subprocess` straight back into the body.
+    out["nodes"] = [_public_node(n, policy) if isinstance(n, dict) else n
+                    for n in out.get("nodes", [])]
+    # Emptied, not dropped: `ui/src/flow/adapt.ts` iterates `pending` to count
+    # each node's conflicts with no guard, so the key has to be there; the
+    # *contents* must not travel. D17 puts it in the never-shown block with no
+    # switch, and D56 puts even its count in the derived-signals row.
+    out["pending"] = []
+    return out
+
+
+def filtered(doc: dict, *, policy: dict[str, bool],
+             sees: Callable[[object], bool], editor: bool) -> dict:
+    """**The** filter. Every body carrying a process document comes through here.
+
+    The link rule runs for both stances; the field rule runs for non-editors
+    only, because D17's column is headed "Non-editor default" and an Editor is
+    the person the hidden content is *for*.
+    """
+    out = links_only(doc, sees)
+    return out if editor else _public_process(out, policy)
+
+
+def public_overview(doc: dict, *, editor: bool) -> dict:
+    """The department information page — shown **in full** (D55).
+
+    No per-field switches, no policy table, and none planned. The overview is
+    *about* a department rather than being the mechanics of a process, and every
+    part of it — what the department does, its sub-units, who works there and
+    what each role is measured on — is what a staff member should be able to
+    read. Two gates still apply and neither is field visibility: scope, and
+    confirmation (both `disclosure.py`'s).
+
+    `updated_at` goes, like every other timestamp: bookkeeping, not content.
+
+    If a reason to hide part of the overview ever appears — personnel KPIs being
+    the likely candidate — it becomes a new row in `store.policy.FIELDS`, not a
+    second mechanism here.
+    """
+    if editor:
+        return doc
+    return {k: v for k, v in doc.items() if k != "updated_at"}
