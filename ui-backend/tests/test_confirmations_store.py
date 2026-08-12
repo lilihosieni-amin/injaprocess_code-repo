@@ -73,6 +73,11 @@ def test_a_process_and_a_department_are_separate_targets(tmp_path):
                                    by="09120000000", at=2)
     assert confirmations.get(conn, "dining")["fingerprint"] == "c" * 64
     assert confirmations.get(conn, "dining-001")["fingerprint"] == "d" * 64
+    # `stored_for` must be bound the same way `get` is above: a `LIKE ? || '%'`
+    # match would let the department target `dining` also pick up every
+    # `dining-0NN` row, which the exact-match `IN (...)` it should use will not.
+    assert confirmations.stored_for(conn, ["dining"]) == {"dining": "c" * 64}
+    assert confirmations.stored_for(conn, ["dining-001"]) == {"dining-001": "d" * 64}
 
 
 def test_stored_for_answers_many_targets_in_one_query(tmp_path):
@@ -86,22 +91,61 @@ def test_stored_for_answers_many_targets_in_one_query(tmp_path):
     # checked the ones it planted.
     confirmations.set_confirmation(conn, target="dining-009", fingerprint="z" * 64,
                                    by="u", at=1)
-    got = confirmations.stored_for(conn, ["dining-001", "dining-002", "dining-003"])
+
+    statements = []
+    conn.set_trace_callback(statements.append)
+    try:
+        got = confirmations.stored_for(
+            conn, ["dining-001", "dining-002", "dining-003"])
+    finally:
+        conn.set_trace_callback(None)
+
     assert got == {"dining-001": "a" * 64, "dining-003": "c" * 64}
+    # The name and the module docstring both promise "one query" for a
+    # many-target call, not a Python loop doing one `SELECT` per target.
+    assert len(statements) == 1
 
 
 def test_stored_for_asks_nothing_when_there_is_nothing_to_ask(tmp_path):
-    """An empty department must not build `... IN ()`, which is a syntax error."""
-    assert confirmations.stored_for(_conn(tmp_path), []) == {}
+    """An empty department must not build `IN ()` — not because sqlite rejects
+    it (it doesn't), but because a lookup with nothing to ask about should not
+    touch the database at all."""
+    conn = _conn(tmp_path)
+
+    statements = []
+    conn.set_trace_callback(statements.append)
+    try:
+        got = confirmations.stored_for(conn, [])
+    finally:
+        conn.set_trace_callback(None)
+
+    assert got == {}
+    # Removing the `if not ids` guard would still return `{}` for an empty
+    # `IN ()` on sqlite, but it would run a statement to get there.
+    assert statements == []
 
 
 def test_the_writes_open_no_transaction(tmp_path):
     """`db.connect`'s invariant: the app shares one connection across FastAPI's
     threadpool, and it is safe only while no handler opens an explicit
-    transaction. Both writes here are single autocommitted statements."""
+    transaction. Both writes here are single autocommitted statements — not
+    just a *balanced* explicit transaction that happens to leave
+    `conn.in_transaction` False by the time we check it."""
     conn = _conn(tmp_path)
-    confirmations.set_confirmation(conn, target="dining-001", fingerprint="a" * 64,
-                                   by="u", at=1)
-    assert not conn.in_transaction
-    confirmations.revoke(conn, "dining-001")
-    assert not conn.in_transaction
+
+    statements = []
+    conn.set_trace_callback(statements.append)
+    try:
+        confirmations.set_confirmation(conn, target="dining-001", fingerprint="a" * 64,
+                                       by="u", at=1)
+        assert not conn.in_transaction
+        confirmations.revoke(conn, "dining-001")
+        assert not conn.in_transaction
+    finally:
+        conn.set_trace_callback(None)
+
+    # A `BEGIN ...` / `COMMIT` pair around either write would also leave
+    # `in_transaction` False here, and a second threadpool worker landing in
+    # between would either hit "cannot start a transaction within a
+    # transaction" or have its own half-written work committed by this one.
+    assert not any(sql.strip().lower().startswith("begin") for sql in statements)

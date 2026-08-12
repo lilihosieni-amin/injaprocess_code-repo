@@ -71,7 +71,9 @@ def stored_for(conn: sqlite3.Connection,
     """
     ids = list(targets)
     if not ids:
-        # `... IN ()` is a syntax error, and an empty department is ordinary.
+        # `IN ()` runs fine on sqlite (zero rows), but an empty department is
+        # the common case and this skips a pointless round trip for it — and
+        # keeps the function portable to engines that do reject `IN ()`.
         return {}
     marks = ",".join("?" * len(ids))
     rows = conn.execute(
