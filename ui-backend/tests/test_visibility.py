@@ -7,10 +7,14 @@ begin with, and a test that asserts an editor still sees it proves nothing
 unless it is the same document.
 """
 import copy
+import json
+import pathlib
 
 import pytest
 from inja_ui_backend import visibility
 from inja_ui_backend.store import policy
+
+SCHEMAS = pathlib.Path(__file__).resolve().parents[2] / "schemas"
 
 #: Every switchable field carries a distinct ASCII sentinel, so a failure names
 #: what leaked at a glance and none of them can be a substring of anything else.
@@ -30,6 +34,12 @@ def _doc() -> dict:
     Every one of the six switches, every never-shown field, and a node whose
     `subprocess` points out of the department. A document with an empty
     `idef0` or no `pending` cannot tell a working filter from an absent one.
+
+    `tombstoned` and `superseded_by` are here for the same reason, and it is not
+    decoration: the top-level key set is pinned as a **set equality**, and a set
+    equality constrains only the keys the fixture actually carries. Absent from
+    here, a filter that copied both straight through would pass every assertion
+    in this file.
     """
     return {
         "id": "dining-001", "department": "dining", "name": "پذیرایی",
@@ -61,7 +71,29 @@ def _doc() -> dict:
         "pending": [{"node": "dining-001-n010", "field": "actor",
                      "current": SENTINELS["node_actor"], "proposed": "PENDINGVALUE",
                      "source": "runs/PENDINGRUN", "status": "open"}],
+        "tombstoned": False, "superseded_by": ["dining-009"],
     }
+
+
+def _doc_with_a_local_parent() -> dict:
+    """`_doc()`, but parented **inside** the caller's own department.
+
+    `_doc()`'s parent is a `cooking` one, so on its own it proves only the
+    withholding half of the link rule: every mutant of the `parent` test that
+    still blanks something passes against it. A process the caller may see the
+    parent of is what makes "kept" an assertion rather than a hope — and the
+    failure it guards is not a blank screen. `Disclosure.restore` puts back only
+    the links it would itself have hidden, so a `parent` this filter withholds
+    from an Editor of its own department is a `parent: null` written to disk by
+    their next Save.
+
+    `node` is a node id, and `storage.dept_of` of one names no department — so
+    the two halves of a `parent` are *not* interchangeable here even when the
+    parent is local, which is what makes reading the wrong half detectable.
+    """
+    doc = _doc()
+    doc["parent"] = {"process": "dining-002", "node": "dining-002-n010"}
+    return doc
 
 
 def _sees_dining(ref) -> bool:
@@ -70,7 +102,6 @@ def _sees_dining(ref) -> bool:
 
 
 def _text(doc) -> str:
-    import json
     return json.dumps(doc, ensure_ascii=False)
 
 
@@ -147,6 +178,36 @@ def test_the_top_level_key_set_is_pinned_as_an_equality():
     assert set(out) == set(visibility.PUBLIC_PROCESS_KEYS)
 
 
+def test_the_tombstone_pair_is_dropped_for_a_non_editor():
+    """`tombstoned` and `superseded_by` are the belt to Task 7's braces.
+
+    Task 7 keeps a tombstoned process out of a non-editor's query in the first
+    place; this keeps the two keys out of any body that reaches them anyway —
+    through a direct link, a stale client, or a route that forgets. Named here
+    rather than left to the key-set equality alone because the equality is only
+    as strong as the fixture: these two are in `_doc()` precisely so that both
+    tests are about a document that genuinely carried them.
+
+    `superseded_by` names other process ids — the successor a reader was not
+    told about — so its *value* must be gone from the body too, not merely its
+    key from the top level.
+    """
+    doc = _doc()
+    assert doc["tombstoned"] is False and doc["superseded_by"] == ["dining-009"]
+
+    out = visibility.filtered(doc, policy={f: True for f in policy.FIELDS},
+                              sees=_sees_dining, editor=False)
+    assert "tombstoned" not in out
+    assert "superseded_by" not in out
+    assert "dining-009" not in _text(out)
+
+    # The other direction, same document: an editor's copy *is* the document.
+    ed = visibility.filtered(doc, policy={f: False for f in policy.FIELDS},
+                             sees=_sees_dining, editor=True)
+    assert ed["tombstoned"] is False
+    assert ed["superseded_by"] == ["dining-009"]
+
+
 def test_a_hidden_field_is_blanked_and_never_dropped():
     """`ui/src/screens/Summary.tsx` dereferences `proc.idef0.controls` and
     `proc.kpis.map` with no guard, and `ui/src/flow/DetailDrawer.tsx` — which is
@@ -185,13 +246,28 @@ def test_a_cross_department_link_is_withheld_and_a_local_one_is_kept():
     """Both directions, because a filter that blanked *every* link would pass the
     first assertion while quietly taking the sub-process graph away from the
     people it is for. What is under test is the department an id names, never the
-    presence of a link."""
+    presence of a link.
+
+    Both halves of **both** keys: a `parent` and a `subprocess` are two separate
+    lines of the rule, and a kept `subprocess` says nothing about a kept
+    `parent`. The local-parent document is the one that fails when the `parent`
+    line reads the wrong half of the record, or the whole record, or the right
+    half of a mangled one — and the cost of that failure is an Editor's Save
+    writing `parent: null` over a link they were never shown.
+    """
+    local = {"process": "dining-002", "node": "dining-002-n010"}
     for editor in (False, True):
         out = visibility.filtered(_doc(), policy=_default(), sees=_sees_dining,
                                   editor=editor)
         assert out["parent"] is None, editor
         assert out["nodes"][0]["subprocess"] is None, editor
         assert out["nodes"][1]["subprocess"] == "dining-002", editor
+
+        kept = visibility.filtered(_doc_with_a_local_parent(),
+                                   policy=_default(), sees=_sees_dining,
+                                   editor=editor)
+        assert kept["parent"] == local, editor
+        assert kept["nodes"][1]["subprocess"] == "dining-002", editor
 
 
 def test_the_link_rule_applies_to_an_editor_too():
@@ -217,16 +293,100 @@ def test_it_does_not_mutate_the_stored_document():
 def test_a_junction_or_terminal_node_survives_untouched():
     """`_public_node` must not invent `description`/`actor`/`icom` on a node type
     that has none — `process.schema.json` sets `additionalProperties: false`, so
-    a filter that added them would produce a document the validator refuses."""
+    a filter that added them would produce a document the validator refuses.
+
+    A junction **and** a terminal, as the name says, and each carrying every
+    property its kind defines, `removed` included: between them they cover the
+    six keys of `PUBLIC_NODE_KEYS` no activity node exercises, so a whitelist
+    that quietly lost one fails here rather than only in its own pin.
+    """
     doc = _doc()
-    doc["nodes"].append({"id": "j1", "type": "junction", "junctionType": "XOR",
-                         "direction": "split", "position": {"x": 9, "y": 9},
-                         "layout": "auto"})
+    doc["nodes"].append({"id": "dining-001-j1", "type": "junction",
+                         "junctionType": "XOR", "direction": "split",
+                         "position": {"x": 9, "y": 9}, "layout": "auto",
+                         "removed": False})
+    doc["nodes"].append({"id": "end", "type": "end", "label": "پایان",
+                         "position": {"x": 400, "y": 90}, "layout": "manual",
+                         "removed": False})
     out = visibility.filtered(doc, policy={f: False for f in policy.FIELDS},
                               sees=_sees_dining, editor=False)
-    assert out["nodes"][-1] == {"id": "j1", "type": "junction",
+    assert out["nodes"][-2] == {"id": "dining-001-j1", "type": "junction",
                                 "junctionType": "XOR", "direction": "split",
-                                "position": {"x": 9, "y": 9}, "layout": "auto"}
+                                "position": {"x": 9, "y": 9}, "layout": "auto",
+                                "removed": False}
+    assert out["nodes"][-1] == {"id": "end", "type": "end", "label": "پایان",
+                                "position": {"x": 400, "y": 90},
+                                "layout": "manual", "removed": False}
+
+
+def test_a_node_key_nobody_whitelisted_is_not_on_the_wire():
+    """The node is a whitelist, not a blacklist — the departure from the brief
+    the project owner asked for, and this is the test that says so.
+
+    A blacklist copies the node and blanks the names it knows, so a key nobody
+    has heard of ships in full. That is not hypothetical: nothing revalidates a
+    stored document on read, the extraction pipeline writes these files, and a
+    field can be in a file before it is in `process.schema.json` — the node is
+    where the per-step content lives, and Task 10 serves this same shape from an
+    unauthenticated link. So the top level and the node are asserted together
+    here: two whitelists or the promise is only half kept.
+    """
+    doc = _doc()
+    doc["nodes"][0]["cost_per_unit"] = "NODESECRET"
+    doc["margin"] = "PROCSECRET"
+
+    out = visibility.filtered(doc, policy={f: False for f in policy.FIELDS},
+                              sees=_sees_dining, editor=False)
+    assert "cost_per_unit" not in out["nodes"][0]
+    assert "margin" not in out
+    assert "NODESECRET" not in _text(out) and "PROCSECRET" not in _text(out)
+
+    # The same document, the other stance: an editor's copy is the document, so
+    # this is the whitelist and not a filter that drops unknown keys for all.
+    ed = visibility.filtered(doc, policy={f: False for f in policy.FIELDS},
+                             sees=_sees_dining, editor=True)
+    assert ed["nodes"][0]["cost_per_unit"] == "NODESECRET"
+    assert ed["margin"] == "PROCSECRET"
+
+
+def test_the_public_node_tuple_is_pinned_against_an_independent_literal():
+    """Retyped here rather than compared with the module's own constant, for the
+    reason the process tuple is: a key set that only checks itself agrees with
+    itself whatever it gains or loses. Membership and count, not order."""
+    expected = ["id", "type", "label", "description", "actor", "icom",
+                "subprocess", "position", "layout", "source", "removed",
+                "junctionType", "direction"]
+    assert sorted(visibility.PUBLIC_NODE_KEYS) == sorted(expected)
+    assert len(visibility.PUBLIC_NODE_KEYS) == len(expected)
+
+
+def test_every_node_property_the_schema_defines_is_accounted_for():
+    """Read off `schemas/process.schema.json`, so a schema addition fails a test
+    instead of shipping.
+
+    The whole point of a whitelist is that a new field arrives withheld — but
+    withheld silently is its own failure: nobody notices the frontend has no
+    data until a reader does. This is the notice. A node kind that gains a
+    property fails here, and the fix is to decide, in `PUBLIC_NODE_KEYS`,
+    whether a reader may have it and whether the policy blanks it.
+
+    Both directions: a key the schema defines and the tuple omits is an unowned
+    decision, and a key the tuple names and the schema does not is a typo that
+    would silently whitelist nothing.
+    """
+    schema = json.loads((SCHEMAS / "process.schema.json").read_text(
+        encoding="utf-8"))
+    defs = schema["$defs"]
+    kinds = [ref["$ref"].rsplit("/", 1)[1] for ref in defs["node"]["oneOf"]]
+    assert {"activityNode", "terminalNode", "junctionNode"} <= set(kinds), kinds
+
+    defined = {k for kind in kinds for k in defs[kind]["properties"]}
+    whitelisted = set(visibility.PUBLIC_NODE_KEYS)
+    assert not defined - whitelisted, (
+        f"node properties nobody decided about: {sorted(defined - whitelisted)}")
+    assert not whitelisted - defined, (
+        f"whitelisted keys the schema does not define: "
+        f"{sorted(whitelisted - defined)}")
 
 
 def test_pending_and_a_nodes_provenance_are_unconditional_not_switchable():
@@ -344,6 +504,11 @@ def test_links_only_withholds_by_department_and_by_nothing_else():
     assert out["parent"] is None
     assert out["nodes"][0]["subprocess"] is None
     assert out["nodes"][1]["subprocess"] == "dining-002"
+    # The other direction of the same key, against a document that has a parent
+    # the caller may see: withholding *every* parent satisfies the line above.
+    local = visibility.links_only(_doc_with_a_local_parent(), _sees_dining)
+    assert local["parent"] == {"process": "dining-002",
+                               "node": "dining-002-n010"}
     # Everything else is the document, untouched: this function is the link
     # rule and not a second field filter.
     assert out["summary"] == SENTINELS["process_summary"]

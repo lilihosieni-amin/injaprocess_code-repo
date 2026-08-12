@@ -33,6 +33,14 @@ been handed out. The process's own `source`/`created_at`/`updated_at` are read b
 nothing under `ui/src/`, and `source.type` is an enum with no honest blank, so
 they go.
 
+**Two whitelists, and neither is a blacklist.** `PUBLIC_PROCESS_KEYS` names the
+top level, `PUBLIC_NODE_KEYS` names the node, and a key in neither is not in the
+body. A blacklist would have been the shorter code and the wrong shape: the node
+is where the per-step content lives, a stored document is never revalidated on
+read, and Task 10 serves the same shape from an unauthenticated link — so a
+field that appears in a file before anyone here has heard of it must arrive
+dropped rather than published.
+
 **A node has no KPIs.** `$defs.activityNode` carries `id`, `type`, `label`,
 `description`, `actor`, `icom`, `subprocess`, `position`, `layout`, `source` and
 `removed` — nothing else. What a node carries is ICOM, which is IDEF0
@@ -46,11 +54,36 @@ from typing import Callable
 #: The exact top-level key set a non-editor's copy of a process carries.
 #:
 #: A **whitelist**, not a blacklist, and pinned by an equality in the tests: a
-#: field added to `process.schema.json` next month must have to be let in
-#: deliberately rather than start shipping to every reader the day it is written.
+#: top-level field added to `process.schema.json` next month must have to be let
+#: in deliberately rather than start shipping to every reader the day it is
+#: written. `tombstoned` and `superseded_by` are the two the schema defines and
+#: this tuple does not name, so they are dropped — the belt to Task 7's braces,
+#: which withholds a tombstoned process from a non-editor's query altogether.
 PUBLIC_PROCESS_KEYS: tuple[str, ...] = (
     "id", "department", "name", "parent", "edges",
     "summary", "idef0", "kpis", "nodes", "pending",
+)
+
+#: The exact key set a non-editor's copy of a **node** carries.
+#:
+#: A whitelist for the same reason and a stronger one: the node is where the
+#: per-step content lives, so this is the tuple that decides what a reader is
+#: physically sent about each step of a process.
+#:
+#: Every property the schema's three node kinds define is named here —
+#: `activityNode`'s eleven, plus `junctionNode`'s `junctionType` and
+#: `direction` — and a test reads `process.schema.json` and fails when a kind
+#: gains one this tuple does not. **Nothing is dropped**, because
+#: `ui/src/flow/**` is frozen and no guard can be added there: `adapt.ts`
+#: dereferences `id`, `type` and `position` and filters on `removed` (drop it and
+#: a soft-deleted step reappears on a reader's canvas), `DetailDrawer.tsx` reads
+#: `subprocess`, `junctionType` and `source.created_by` with no guard, the node
+#: components render `label` and `actor`, and `useFlowEditor.ts` writes `layout`
+#: and `direction` back on Save. What a reader may not have is *blanked*, by
+#: `_NODE_SWITCH` and `_empty_node_source`.
+PUBLIC_NODE_KEYS: tuple[str, ...] = (
+    "id", "type", "label", "description", "actor", "icom", "subprocess",
+    "position", "layout", "source", "removed", "junctionType", "direction",
 )
 
 #: Which switch governs which process key, and the blank it becomes when off.
@@ -116,12 +149,18 @@ def links_only(doc: dict, sees: Callable[[object], bool]) -> dict:
 def _public_node(node: dict, policy: dict[str, bool]) -> dict:
     """One node reduced to what a non-editor may read.
 
+    A whitelist copy first and the blanks second, so the two questions stay
+    separate: `PUBLIC_NODE_KEYS` decides which keys exist at all, and the policy
+    decides which of them carry their value. `dict(node)` here instead would make
+    this a blacklist — every key nobody named would ship — and the node is the
+    part of the document a reader is *least* meant to have in full.
+
     `if key in out` and not an unconditional write: a junction or a terminal node
     carries none of these three, `process.schema.json` sets
     `additionalProperties: false`, and inventing an empty `actor` on a junction
     would produce a document the validator refuses.
     """
-    out = dict(node)
+    out = {k: node[k] for k in PUBLIC_NODE_KEYS if k in node}
     for key, (switch, blank) in _NODE_SWITCH.items():
         if key in out and not policy[switch]:
             out[key] = blank()
@@ -136,9 +175,16 @@ def _public_process(doc: dict, policy: dict[str, bool]) -> dict:
     for key, (switch, blank) in _PROCESS_SWITCH.items():
         if key in out and not policy[switch]:
             out[key] = blank()
-    # `out["nodes"]`, not `doc["nodes"]` — `out` is already the link-filtered
-    # copy, and reading the nodes back off the original here would put every
-    # withheld `subprocess` straight back into the body.
+    # Read off `out` rather than `doc` so this function has one source, its own
+    # whitelisted copy: a key `PUBLIC_PROCESS_KEYS` drops cannot return through
+    # this line. It is *not* what keeps a withheld `subprocess` out of the body
+    # — `links_only` is, it runs first for both stances, and `filtered` hands
+    # this function the copy it produced, so `doc["nodes"]` here would be the
+    # same nodes and the same bytes.
+    #
+    # Written unconditionally: `ui/src/flow/adapt.ts` calls `proc.nodes.filter`
+    # with no guard, so a half-built document that has no `nodes` must still go
+    # out carrying an empty one.
     out["nodes"] = [_public_node(n, policy) if isinstance(n, dict) else n
                     for n in out.get("nodes", [])]
     # Emptied, not dropped: `ui/src/flow/adapt.ts` iterates `pending` to count
