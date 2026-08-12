@@ -13,10 +13,11 @@ def _doc() -> dict:
     working exclusion list from a missing one — every assertion below would pass
     against a `fingerprint` that hashed the whole document.
 
-    Complete on purpose, which is a second and separate thing. The two sweeps
-    below claim to cover *every* hashed key, but they read their key set from
-    this document, so any property missing here is one the sweeps skip while
-    the assertion message says they did not. It used to omit `superseded_by`
+    Complete on purpose, which is a second and separate thing. The three sweeps
+    below — top-level keys, per-node keys, and the nested objects a third level
+    in — read their key set from this document, so any property missing here is
+    one the sweeps skip while their assertion messages say they did not, and
+    those messages are worded to claim only that. It used to omit `superseded_by`
     (present in 31 of the 80 live files), `removed` (14 files) and junction
     nodes entirely (71 files) — so dropping `junctionType` from the hash passed
     the whole suite, and a junction flipped from AND to XOR kept its
@@ -225,6 +226,108 @@ def test_every_node_field_outside_the_four_changes_the_fingerprint():
             assert fingerprint(base) != fingerprint(b), (kind, field)
 
 
+def _at(doc, path):
+    """The container `path` names — `("nodes", 0, "icom")` and so on."""
+    for step in path:
+        doc = doc[step]
+    return doc
+
+
+def _nested_dict_paths(value, path=()):
+    """Every path in `value` that reaches a dict the fingerprint hashes.
+
+    Read off the document, never off the schema, so what it yields is what
+    `_doc()` actually carries rather than what it was meant to carry — which is
+    the whole point of checking a hand-written container list against it.
+
+    Excluded keys are not descended into: nothing under `source` or `pending` is
+    hashed, so nothing there is a container a sweep owes an entry.
+    """
+    if isinstance(value, dict):
+        if path:
+            yield path
+        for key, sub in value.items():
+            if key not in EXCLUDED:
+                yield from _nested_dict_paths(sub, path + (key,))
+    elif isinstance(value, list):
+        for index, sub in enumerate(value):
+            yield from _nested_dict_paths(sub, path + (index,))
+
+
+def test_every_nested_field_outside_the_four_changes_the_fingerprint():
+    """The same sweep a *third* level down, which is where it used to stop.
+
+    The two sweeps above vary top-level keys and per-node keys. Everything one
+    step further in was hashed but never varied, so dropping edge `from`, edge
+    `to`, `kpi.unit`, `kpi.target`, `kpi.definition`, `icom.outputs` or
+    `icom.mechanisms` inside `canonical` passed the whole suite. Edge `to` is the
+    one that reads worst: a rerouted arrow keeps its confirmation while the
+    flowchart now draws a different path — the `junctionType` failure that
+    prompted the second sweep, one level deeper.
+
+    Each variant differs from its container in exactly the one named key —
+    asserted below before it is used — and in nothing else. A variant only has
+    to *differ*; it need not leave the document schema-valid.
+
+    **What this covers, exactly.** The container list is written out by hand,
+    but it is checked against the containers `_doc()` really carries, so a
+    nested object added to `_doc()` and forgotten here fails rather than passing
+    quietly. Repeats — a second edge, another node's `position` — are allowed
+    through only after their key set is shown to match one already swept.
+    `_doc()` in turn is meant to carry every property the schema defines, but
+    that is a claim about `_doc()` and not something this test can check, so the
+    reach here is exactly "every nested object in `_doc()`" and no wider.
+    """
+    base = _doc()
+    variants_by_container = {
+        ("parent",): {"process": "dining-002", "node": "dining-000-n030"},
+        ("idef0",): {"inputs": ["رزرو"], "controls": ["دستورالعمل"],
+                     "outputs": ["مهمان نشسته"], "mechanisms": ["میزبان"]},
+        ("kpis", 0): {"name": "زمان نشستن", "definition": "از ورود تا سفارش",
+                      "target": "۳ دقیقه", "unit": "ثانیه"},
+        ("edges", 0): {"from": "dining-001-j1", "to": "end", "label": "تأیید"},
+        ("nodes", 0, "icom"): {"inputs": ["سفارش"], "controls": ["دستورالعمل"],
+                               "outputs": ["مهمان راهنمایی‌شده"],
+                               "mechanisms": ["میزبان"]},
+        ("nodes", 0, "position"): {"x": 161, "y": 91},
+    }
+    swept = set(variants_by_container)
+    # The node objects themselves belong to the sweep above, not this one.
+    nodes_themselves = {("nodes", i) for i in range(len(base["nodes"]))}
+    for path in sorted(set(_nested_dict_paths(base)) - swept - nodes_themselves,
+                       key=str):
+        assert any(set(_at(base, path)) == set(_at(base, s)) for s in swept), \
+            f"{path} is a nested object of _doc() that no variant here reaches"
+
+    for path, variants in variants_by_container.items():
+        container = _at(base, path)
+        assert set(variants) == set(container) - EXCLUDED, \
+            f"covers every key _doc() gives {path} — not every key the schema " \
+            f"defines for it, which only _doc() can be responsible for"
+        for field, value in variants.items():
+            assert container[field] != value, (path, field)   # really a change
+            b = copy.deepcopy(base)
+            _at(b, path)[field] = value
+            assert fingerprint(base) != fingerprint(b), (path, field)
+
+    # `source` is the nested object that must *not* count — at either depth, and
+    # for every key it has, not only the `touched_by` a pipeline run appends.
+    excluded_containers = {
+        ("source",): {"type": "manual", "ref": "meetings/b.m4a",
+                      "run": "runs/chat/2"},
+        ("nodes", 0, "source"): {"created_by": "merge", "touched_by": ["merge"]},
+    }
+    for path, variants in excluded_containers.items():
+        container = _at(base, path)
+        assert set(variants) == set(container), \
+            f"covers every key _doc() gives {path}"
+        for field, value in variants.items():
+            assert container[field] != value, (path, field)   # really a change
+            b = copy.deepcopy(base)
+            _at(b, path)[field] = value
+            assert fingerprint(base) == fingerprint(b), (path, field)
+
+
 # --- the other half: a fingerprint that changes when it must not ---
 
 def test_a_pipeline_run_touching_provenance_does_not_change_it():
@@ -364,24 +467,58 @@ def test_the_digest_itself_is_pinned():
     * `sha256(...).hexdigest()` → `sha512(...).hexdigest()[:64]`
     * a version tag prefixed to the canonical text before hashing
 
-    So the digest is pinned, not just the text that feeds it. The input below is
-    deliberately small and deliberately awkward: keys out of order, a nested dict
-    also out of order, an excluded key one level down, Persian that
-    `ensure_ascii=True` would escape, and a `90.0` that must come out as `90`.
+    So the digest is pinned, not just the text that feeds it. And because this
+    is the acceptance test a second implementation is written *against*, the
+    document has to contain one of everything the contract decides — otherwise
+    an implementation that decides it differently reproduces the digest anyway
+    and passes. It used to be four keys of scalars, with no array, no `null`, no
+    boolean, no non-integral float and no character whose normal forms differ,
+    and a deliberately divergent implementation that sorted arrays, dropped
+    `null`-valued keys and normalised NFD reproduced the pinned digest exactly
+    while disagreeing with `fingerprint` on any real process file.
+
+    Every element below is load-bearing, and each kills a different wrong
+    implementation:
+
+    * keys out of order, and a nested dict also out of order — `sort_keys` has
+      to reach every depth;
+    * `updated_at` at the top and `source` one level down — the exclusion is by
+      key wherever the key occurs, not by position;
+    * `"\\u0622"` ALEF WITH MADDA ABOVE, written as an escape so no editor can
+      silently renormalise the file into agreement with whatever it is testing.
+      NFD spells it `\\u0627\\u0653` and gets a different digest, which is what
+      pins the normal form of a *value*: `"NFC"` → `"NFD"` in `canonical`'s
+      string branch alone survives every other assertion in this file;
+    * Persian at all, which `ensure_ascii=True` would turn into escapes;
+    * `"edges": ["start", "end"]`, an array whose order carries the meaning — an
+      implementation that sorted arrays would emit `["end","start"]`;
+    * `"subprocess": null` — an implementation that omitted `null`-valued keys
+      as "nothing there" would drop it;
+    * `"removed": false`, a boolean, which must not narrow to `0`;
+    * `"y": 90.0` beside `"x": 160`, an integral float and an int that have to
+      come out as the same text, and `"x": 320.5`, a non-integral float that has
+      to survive untouched.
 
     This hex string is the cross-program contract. Changing it re-confirms
     nothing — it silently un-confirms every process in the system, and an
     unconfirmed process is invisible to every non-editor. If a change here is
-    genuinely intended, every stored confirmation has to be re-issued with it.
+    genuinely intended, every stored confirmation has to be re-issued with it,
+    and the literal is recomputed by *running* `fingerprint`, never edited by
+    hand to match.
     """
-    doc = {"name": "\u0686\u0627\u06cc", "created_at": "2026-07-06T10:00:00Z",
-           "node": {"y": 90.0, "x": 160, "source": {"created_by": "ui"}},
+    doc = {"name": "\u0622\u0628", "created_at": "2026-07-06T10:00:00Z",
+           "edges": ["start", "end"],
+           "nodes": [{"y": 90.0, "x": 160, "subprocess": None, "removed": False,
+                      "source": {"created_by": "ui"}},
+                     {"y": 90, "x": 320.5}],
            "updated_at": "2026-08-11T09:00:00Z"}
     assert canonical_json(doc) == ('{"created_at":"2026-07-06T10:00:00Z",'
-                                   '"name":"\u0686\u0627\u06cc",'
-                                   '"node":{"x":160,"y":90}}')
+                                   '"edges":["start","end"],'
+                                   '"name":"\u0622\u0628",'
+                                   '"nodes":[{"removed":false,"subprocess":null,'
+                                   '"x":160,"y":90},{"x":320.5,"y":90}]}')
     assert fingerprint(doc) == \
-        "9d06585b56a094ba9da2f939afa1c7e05f2ed35092d1aaa6dfdd48d026435e01"
+        "2e96618f819919b537055da29a31c45ad3233b4066a427bae5ec6871216096d9"
 
 
 def test_persian_text_is_nfc_normalised():
