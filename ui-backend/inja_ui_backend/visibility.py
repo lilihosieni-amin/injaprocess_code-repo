@@ -56,9 +56,11 @@ from typing import Callable
 #: A **whitelist**, not a blacklist, and pinned by an equality in the tests: a
 #: top-level field added to `process.schema.json` next month must have to be let
 #: in deliberately rather than start shipping to every reader the day it is
-#: written. `tombstoned` and `superseded_by` are the two the schema defines and
-#: this tuple does not name, so they are dropped — the belt to Task 7's braces,
-#: which withholds a tombstoned process from a non-editor's query altogether.
+#: written. `process.schema.json` defines five top-level properties this tuple
+#: does not name — `created_at`, `source`, `superseded_by`, `tombstoned` and
+#: `updated_at` — so all five are dropped. `tombstoned` and `superseded_by` are
+#: also the belt to Task 7's braces, which withholds a tombstoned process from a
+#: non-editor's query altogether.
 PUBLIC_PROCESS_KEYS: tuple[str, ...] = (
     "id", "department", "name", "parent", "edges",
     "summary", "idef0", "kpis", "nodes", "pending",
@@ -212,12 +214,24 @@ def public_overview(doc: dict, *, editor: bool) -> dict:
 
     No per-field switches, no policy table, and none planned. The overview is
     *about* a department rather than being the mechanics of a process, and every
-    part of it — what the department does, its sub-units, who works there and
-    what each role is measured on — is what a staff member should be able to
-    read. Two gates still apply and neither is field visibility: scope, and
-    confirmation (both `disclosure.py`'s).
+    part of it — what the department does, its sub-units, who works there, what
+    each role is measured on, and when it was last updated — is what a staff
+    member should be able to read. Two gates still apply and neither is field
+    visibility: scope, and confirmation (both `disclosure.py`'s).
 
-    `updated_at` goes, like every other timestamp: bookkeeping, not content.
+    `updated_at` stays, unlike the process's own `created_at`/`updated_at`,
+    which `_public_process` drops because nothing under `ui/src/` reads them.
+    This one is read: `ui/src/screens/Overview.tsx` dereferences
+    `data.updated_at` with no guard, and `Overview` in `ui/src/api/types.ts`
+    declares it required — drop it here and a non-editor's page renders
+    "NaN/NaN/NaN" instead of a date. A last-updated timestamp is not content:
+    it says nothing about what the department does, so it is not the kind of
+    thing this filter withholds.
+
+    `overview.schema.json` sets `additionalProperties: false` and names exactly
+    six properties, every one required and every one dereferenced by
+    `ui/src/screens/Overview.tsx` — so there is nothing left for this function
+    to drop, and a non-editor's copy is the document.
 
     If a reason to hide part of the overview ever appears — personnel KPIs being
     the likely candidate — it becomes a new row in `store.policy.FIELDS`, not a
@@ -225,4 +239,4 @@ def public_overview(doc: dict, *, editor: bool) -> dict:
     """
     if editor:
         return doc
-    return {k: v for k, v in doc.items() if k != "updated_at"}
+    return dict(doc)

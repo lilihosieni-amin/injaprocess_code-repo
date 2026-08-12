@@ -178,6 +178,28 @@ def test_the_top_level_key_set_is_pinned_as_an_equality():
     assert set(out) == set(visibility.PUBLIC_PROCESS_KEYS)
 
 
+def test_a_missing_top_level_key_is_dropped_not_nulled():
+    """The mutant this pins: `{k: doc.get(k) for k in PUBLIC_PROCESS_KEYS}`
+    passes every other test in this file, because `filtered` is never otherwise
+    called with a document that has holes in it — `_doc()` is complete end to
+    end. A half-built process (the extraction pipeline can write one before
+    every field lands) must ship without a key it does not have, not with the
+    key present and `None`: `ui/src/screens/Summary.tsx` indexes
+    `proc.idef0.controls` and maps `proc.kpis` with no guard, so `idef0: None`
+    or `kpis: None` is a TypeError a missing key is not.
+
+    `nodes` and `pending` are excluded from the missing set on purpose:
+    `_public_process` writes both unconditionally (its own comments explain
+    why), so their presence here is not what this test is about.
+    """
+    doc = {"id": "dining-001", "department": "dining", "name": "پذیرایی"}
+    out = visibility.filtered(doc, policy=_default(), sees=_sees_dining,
+                              editor=False)
+    assert set(out) == {"id", "department", "name", "nodes", "pending"}
+    for key in ("summary", "idef0", "kpis", "parent", "edges"):
+        assert key not in out, key
+
+
 def test_the_tombstone_pair_is_dropped_for_a_non_editor():
     """`tombstoned` and `superseded_by` are the belt to Task 7's braces.
 
@@ -297,8 +319,9 @@ def test_a_junction_or_terminal_node_survives_untouched():
 
     A junction **and** a terminal, as the name says, and each carrying every
     property its kind defines, `removed` included: between them they cover the
-    six keys of `PUBLIC_NODE_KEYS` no activity node exercises, so a whitelist
-    that quietly lost one fails here rather than only in its own pin.
+    three keys of `PUBLIC_NODE_KEYS` — `removed`, `junctionType`, `direction` —
+    no activity node in `_doc()` exercises, so a whitelist that quietly lost one
+    fails here rather than only in its own pin.
     """
     doc = _doc()
     doc["nodes"].append({"id": "dining-001-j1", "type": "junction",
@@ -527,16 +550,24 @@ def test_links_only_does_not_mutate_its_argument():
 
 
 def test_the_overview_filter_survives_an_overview_without_a_timestamp():
-    """`updated_at` is the one key it removes, and a document that never had one
-    must come back whole rather than short a key or raising."""
+    """This function drops nothing, so a document that never had `updated_at` —
+    or has no keys at all — must come back whole rather than raising."""
     ov = {"department": "dining", "name": "سالن"}
     assert visibility.public_overview(ov, editor=False) == ov
     assert visibility.public_overview({}, editor=False) == {}
 
 
-def test_the_overview_is_shown_in_full_minus_its_timestamp():
+def test_the_overview_is_shown_in_full_including_its_timestamp():
     """D55 — no per-field switches and no policy table for the overview.
-    `updated_at` goes because it is bookkeeping (D17), and nothing else does."""
+
+    The project owner's ruling: `updated_at` stays for a non-editor too. It is
+    a last-updated date, not content — it says nothing about what the
+    department does — and `ui/src/screens/Overview.tsx` dereferences it with
+    no guard, so dropping it is a `NaN/NaN/NaN` on a non-editor's screen, not a
+    withheld secret. `overview.schema.json` defines exactly these six
+    properties, all required, all read by `Overview.tsx`, so nothing else is
+    dropped either: a non-editor's copy is the whole document.
+    """
     ov = {"department": "dining", "name": "سالن", "description": "شرح واحد",
           "sub_units": [{"name": "واحد یک", "description": "شرح"}],
           "personnel": [{"role": "میزبان", "duties": ["راهنمایی"],
@@ -544,10 +575,12 @@ def test_the_overview_is_shown_in_full_minus_its_timestamp():
           "updated_at": "2026-07-06T10:00:00Z"}
     out = visibility.public_overview(ov, editor=False)
     assert set(out) == {"department", "name", "description", "sub_units",
-                        "personnel"}
+                        "personnel", "updated_at"}
+    assert out["updated_at"] == "2026-07-06T10:00:00Z"
     # Personnel KPIs are D55's, not D17's: they are shown, and the day they are
     # not, that is a new row in policy.FIELDS rather than a new mechanism here.
     assert out["personnel"][0]["kpi"] == ["رضایت مهمان"]
+    assert out == ov
     assert visibility.public_overview(ov, editor=True) == ov
 
 
