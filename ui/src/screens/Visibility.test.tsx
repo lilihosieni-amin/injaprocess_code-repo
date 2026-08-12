@@ -74,6 +74,42 @@ describe('the visibility policy screen', () => {
     mount()
     expect(await screen.findByText(/0123456789abcdef/)).toBeInTheDocument()
   })
+
+  it('labels the version as a digest, not a counter, so flipping and flipping back does not read as growth', async () => {
+    // The version is a digest of the policy, not a count of changes — flipping a
+    // switch and flipping it back restores the earlier string. A label like
+    // «شمارهٔ ویرایش (هر تغییر یکی زیاد می‌شود)» would imply the opposite, and
+    // the substring match below is what a rewording like that breaks.
+    mount()
+    expect(await screen.findByText(/نسخهٔ تنظیم: 0123456789abcdef/)).toBeInTheDocument()
+  })
+
+  it('says the department introduction has no switch here and is always shown in full (D55)', async () => {
+    // The neighbouring line about the policy being the same for every non-editor
+    // is pinned above; this is the D55 sentence right below it, guarding the same
+    // way.
+    mount()
+    expect(await screen.findByText(
+      'معرفی دپارتمان همیشه به‌طور کامل نمایش داده می‌شود و تنظیمی ندارد.',
+    )).toBeInTheDocument()
+  })
+
+  it('draws the switches in the order the store lists them: the process record first, then the node', async () => {
+    mount()
+    const boxes = await screen.findAllByRole('checkbox')
+    expect(boxes.map((b) => b.getAttribute('aria-label'))).toEqual([
+      'خلاصهٔ فرآیند', 'نمای IDEF0 فرآیند', 'شاخص‌های کلیدی فرآیند',
+      'توضیح فعالیت', 'مسئول فعالیت', 'ICOM فعالیت',
+    ])
+  })
+
+  it('gives every switch an accessible description naming what it governs', async () => {
+    // The `aria-label` half of the accessible-name fix is already guarded by the
+    // name-based checkbox queries above; this is the `aria-describedby` half.
+    mount()
+    const box = await screen.findByRole('checkbox', { name: 'مسئول فعالیت' })
+    expect(box).toHaveAccessibleDescription('نقشی که انجام هر فعالیت بر عهدهٔ اوست.')
+  })
 })
 
 const JSON_HEAD = { 'Content-Type': 'application/json' }
@@ -186,7 +222,10 @@ describe('what a flip sends and what the screen then shows', () => {
     stubServer(DEFAULTS, { putStatus: 500 })
     mount()
     await userEvent.click(await screen.findByRole('checkbox', { name: 'مسئول فعالیت' }))
-    expect(await screen.findByRole('alert')).toBeInTheDocument()
+    // The text matters, not just the role: an alert that says the flip *saved*
+    // would still satisfy `findByRole('alert')` alone, and a live region is the
+    // one place an Editor whose flip just 500'd would actually be told.
+    expect(await screen.findByRole('alert')).toHaveTextContent('انجام نشد؛ دوباره تلاش کنید.')
     expect(screen.getByRole('checkbox', { name: 'مسئول فعالیت' })).toBeChecked()
     expect(screen.getByText(/0123456789abcdef/)).toBeInTheDocument()
   })
@@ -199,6 +238,49 @@ describe('what a flip sends and what the screen then shows', () => {
     await userEvent.click(await screen.findByRole('checkbox', { name: 'مسئول فعالیت' }))
     expect(await screen.findByText(/ffffffffffffffff/)).toBeInTheDocument()
     expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('disables every switch while a flip is in flight, so a second click cannot race it', async () => {
+    // One field per request is what the endpoint takes; nothing here stops a
+    // second click from firing a second one while the first is still in flight.
+    let resolvePut!: (r: Response) => void
+    const putPromise = new Promise<Response>((resolve) => { resolvePut = resolve })
+    vi.stubGlobal('fetch', vi.fn(async (path: string, init?: RequestInit) => {
+      if (init?.method === 'PUT') {
+        put = { path, body: JSON.parse(String(init.body)) }
+        return putPromise
+      }
+      return new Response(JSON.stringify({ fields: DEFAULTS, version: '0123456789abcdef' }),
+        { status: 200, headers: JSON_HEAD })
+    }))
+    mount()
+    const box = await screen.findByRole('checkbox', { name: 'مسئول فعالیت' })
+    await userEvent.click(box)
+    await waitFor(() => expect(put).not.toBeNull())
+    expect(box).toBeDisabled()
+    resolvePut(new Response(
+      JSON.stringify({ fields: { ...DEFAULTS, node_actor: false }, version: 'ffffffffffffffff' }),
+      { status: 200, headers: JSON_HEAD }))
+    await waitFor(() => expect(box).not.toBeDisabled())
+  })
+
+  it('invalidates the process and processes caches, since every document body is downstream of the policy', async () => {
+    // The fixture this matters for: a role holding `set_visibility` without
+    // `edit` (PanelShell.visibility.test.tsx) is a non-editor for the content
+    // filter and would otherwise keep reading pre-flip bodies from cache.
+    stubServer(DEFAULTS)
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const keys: unknown[][] = []
+    const real = qc.invalidateQueries.bind(qc)
+    vi.spyOn(qc, 'invalidateQueries').mockImplementation((filters) => {
+      keys.push((filters as { queryKey?: unknown[] } | undefined)?.queryKey ?? [])
+      return real(filters)
+    })
+    render(<QueryClientProvider client={qc}><Visibility /></QueryClientProvider>)
+    await userEvent.click(await screen.findByRole('checkbox', { name: 'مسئول فعالیت' }))
+    await waitFor(() => expect(put).not.toBeNull())
+    expect(keys).toContainEqual(['process'])
+    expect(keys).toContainEqual(['processes'])
   })
 })
 

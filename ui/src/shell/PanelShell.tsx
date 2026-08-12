@@ -42,7 +42,9 @@ export function PanelShell({ session }: { session: SessionDescriptor }) {
         {can(session, 'set_visibility') && (
           <Link
             to="/visibility"
-            aria-label="نمایش محتوا"
+            // No `aria-label`: the link's own text is the accessible name. A
+            // duplicate label here would silently win over a reworded visible
+            // text, which is worse than the redundancy it would have prevented.
             className="min-h-touch inline-flex items-center px-s6 rounded-control text-card text-caption no-underline hover:bg-tile-v2"
           >
             نمایش محتوا
