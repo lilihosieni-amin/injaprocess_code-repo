@@ -389,7 +389,7 @@ def may_disable(conn: sqlite3.Connection, actor: sqlite3.Row,
 
 
 def eligible_supervisors(conn: sqlite3.Connection, *, scopes: list[str],
-                         excluding: int | None = None) -> list[sqlite3.Row]:
+                         excluding: int | None) -> list[sqlite3.Row]:
     """Who may be offered as the supervisor of a user holding `scopes` (D52).
 
     Active, covering **every one** of those scopes, and either flagged
@@ -423,8 +423,13 @@ def eligible_supervisors(conn: sqlite3.Connection, *, scopes: list[str],
     the cycle rule here as well would give it two homes, and it has to live where
     the *choice* is judged: two independent edits can close a loop that no list
     ever showed (D34), so a filtered list could never be the authority anyway.
-    The create form has no id to pass, which is why this is optional rather than
-    required.
+    The create form has no id to pass — but that argues the parameter must
+    *accept* `None`, not that it should default to it. It is a required keyword
+    instead: a caller who forgets it gets a `TypeError` at the call site rather
+    than a picker that quietly offers the user being edited as their own
+    supervisor, which `supervisor_error` would then refuse as the only entry the
+    form made look reasonable. The create form pays for that with one explicit
+    `excluding=None`.
 
     Ordered by username, and the promise is determinism rather than presentation:
     an unordered `SELECT` is answered by sqlite in rowid order today and by
@@ -443,6 +448,15 @@ def eligible_supervisors(conn: sqlite3.Connection, *, scopes: list[str],
     for row in conn.execute(
             "SELECT * FROM users WHERE disabled_at IS NULL"
             " ORDER BY username").fetchall():
+        # `excluding is not None` cannot change an answer today, and the proof is
+        # one line: `row["id"]` is a `users.id` INTEGER PRIMARY KEY, never `None`,
+        # so `row["id"] == excluding` is already False whenever `excluding` is —
+        # dropping the guard is an equivalent mutant, not a wrong answer. No test
+        # can kill it. Kept because the tripwire is narrow and nameable, the same
+        # shape as the guard in `supervisor_error` below: the day a row can carry
+        # a `None` id — a caller reading an unsaved row before `INSERT` assigns
+        # one, say — it is this guard, not the equality alone, that keeps such a
+        # row from being silently excluded by a caller who never asked for it.
         if excluding is not None and row["id"] == excluding:
             continue
         their = scopes_of(conn, row)
@@ -472,14 +486,14 @@ def supervisor_error(conn: sqlite3.Connection, target_id: int | None,
     stand. An unflagged one would come back `not_eligible`, sending an
     administrator off to set a flag that changes nothing.
 
-    `eligible_supervisors` is called without `excluding=target_id`, and passing it
-    would be an equivalent mutant rather than a second lock: the only row it
-    removes is the target's, the self case has already returned above, and the
-    membership test below asks about `supervisor_id`, which is not the target on
-    any input that reaches here. It is left out because `excluding` is a picker's
-    argument — which rows to *offer* — and this function offers nothing. The list
-    and this check cannot disagree about eligibility, because this check is the
-    list.
+    `eligible_supervisors` is called with `excluding=None`, not `excluding=target_id`,
+    and the latter would be an equivalent mutant rather than a second lock: the
+    only row it removes is the target's, the self case has already returned
+    above, and the membership test below asks about `supervisor_id`, which is not
+    the target on any input that reaches here. `None` is passed rather than
+    `target_id` because `excluding` is a picker's argument — which rows to
+    *offer* — and this function offers nothing. The list and this check cannot
+    disagree about eligibility, because this check is the list.
     """
     if supervisor_id is None:
         # Optional only for someone who sees everything (D51).
@@ -495,7 +509,7 @@ def supervisor_error(conn: sqlite3.Connection, target_id: int | None,
     if target_id is not None and supervisor_id == target_id:
         return SUPERVISOR_SELF
     if not any(r["id"] == supervisor_id
-               for r in eligible_supervisors(conn, scopes=scopes)):
+               for r in eligible_supervisors(conn, scopes=scopes, excluding=None)):
         return NOT_ELIGIBLE
     # Walk up from the proposed supervisor; if we reach the target, this closes
     # a loop. Two independent edits can create one that neither saw.

@@ -24,6 +24,8 @@ this package:
 """
 from __future__ import annotations
 
+import sqlite3
+
 from inja_ui_backend import db, seed
 from inja_ui_backend.delegation import (
     CYCLE,
@@ -94,14 +96,14 @@ def test_a_department_user_may_be_supervised_by_a_head_or_a_star_holder(tmp_path
     head = _mk(conn, "09120000001", "reader", ["dept:dining"], can_supervise=True)
     _mk(conn, "09120000002", "reader", ["dept:dining"])          # no flag
     _mk(conn, "09120000003", "reader", ["dept:cashier"], can_supervise=True)
-    got = eligible_supervisors(conn, scopes=["dept:dining"])
+    got = eligible_supervisors(conn, scopes=["dept:dining"], excluding=None)
     assert _names(got) == {"09120000000", head["username"]}
 
 
 def test_a_report_scoped_user_has_the_same_candidates(tmp_path):
     conn = _conn(tmp_path)
     head = _mk(conn, "09120000001", "reader", ["dept:dining"], can_supervise=True)
-    got = eligible_supervisors(conn, scopes=["dept:dining/report:steps"])
+    got = eligible_supervisors(conn, scopes=["dept:dining/report:steps"], excluding=None)
     assert _names(got) == {"09120000000", head["username"]}
 
 
@@ -114,7 +116,7 @@ def test_a_report_scoped_head_does_not_cover_the_whole_department(tmp_path):
     """
     conn = _conn(tmp_path)
     _mk(conn, "09120000001", "reader", ["dept:dining/report:steps"], can_supervise=True)
-    got = eligible_supervisors(conn, scopes=["dept:dining"])
+    got = eligible_supervisors(conn, scopes=["dept:dining"], excluding=None)
     assert _names(got) == {"09120000000"}
 
 
@@ -125,7 +127,7 @@ def test_a_two_department_user_needs_someone_who_covers_both(tmp_path):
     _mk(conn, "09120000001", "reader", ["dept:dining"], can_supervise=True)
     both = _mk(conn, "09120000002", "reader", ["dept:dining", "dept:cashier"],
                can_supervise=True)
-    got = eligible_supervisors(conn, scopes=["dept:dining", "dept:cashier"])
+    got = eligible_supervisors(conn, scopes=["dept:dining", "dept:cashier"], excluding=None)
     assert _names(got) == {"09120000000", both["username"]}
 
 
@@ -139,7 +141,7 @@ def test_one_covered_scope_out_of_two_is_not_enough(tmp_path):
     """
     conn = _conn(tmp_path)
     dining_only = _mk(conn, "09120000001", "reader", ["dept:dining"], can_supervise=True)
-    got = eligible_supervisors(conn, scopes=["dept:dining", "dept:cashier"])
+    got = eligible_supervisors(conn, scopes=["dept:dining", "dept:cashier"], excluding=None)
     assert dining_only["username"] not in _names(got)
     assert _names(got) == {"09120000000"}
 
@@ -147,21 +149,22 @@ def test_one_covered_scope_out_of_two_is_not_enough(tmp_path):
 def test_a_candidates_own_scopes_are_a_union(tmp_path):
     """The inner `any`, which the multi-department case alone does not pin.
 
-    `both` covers `dept:cashier` with its second scope and not its first, so an
-    `all` written over the candidate's own scopes drops them from a list they
-    plainly belong in.
+    `both` holds `dept:dining` and `dept:cashier`; `access.scopes_of` orders by
+    scope, so `dept:cashier` is iterated *before* `dept:dining` and covers the
+    want on its own — an `all` written over the candidate's own scopes would
+    drop them from a list they plainly belong in.
     """
     conn = _conn(tmp_path)
     both = _mk(conn, "09120000001", "reader", ["dept:dining", "dept:cashier"],
                can_supervise=True)
-    got = eligible_supervisors(conn, scopes=["dept:cashier"])
+    got = eligible_supervisors(conn, scopes=["dept:cashier"], excluding=None)
     assert _names(got) == {"09120000000", both["username"]}
 
 
 def test_a_star_scoped_user_may_only_be_supervised_by_a_star_holder(tmp_path):
     conn = _conn(tmp_path)
     _mk(conn, "09120000001", "reader", ["dept:dining"], can_supervise=True)
-    got = eligible_supervisors(conn, scopes=["*"])
+    got = eligible_supervisors(conn, scopes=["*"], excluding=None)
     assert _names(got) == {"09120000000"}
 
 
@@ -173,7 +176,8 @@ def test_coverage_is_segment_wise_not_a_string_prefix(tmp_path):
     """
     conn = _conn(tmp_path)
     _mk(conn, "09120000001", "reader", ["dept:din"], can_supervise=True)
-    assert _names(eligible_supervisors(conn, scopes=["dept:dining"])) == {"09120000000"}
+    assert _names(eligible_supervisors(conn, scopes=["dept:dining"],
+                                       excluding=None)) == {"09120000000"}
 
 
 def test_a_scope_the_grammar_refuses_is_covered_by_nobody_not_even_a_star_holder(tmp_path):
@@ -185,7 +189,7 @@ def test_a_scope_the_grammar_refuses_is_covered_by_nobody_not_even_a_star_holder
     """
     conn = _conn(tmp_path)
     _mk(conn, "09120000001", "reader", ["dept:dining"], can_supervise=True)
-    assert eligible_supervisors(conn, scopes=["dept:Dining"]) == []
+    assert eligible_supervisors(conn, scopes=["dept:Dining"], excluding=None) == []
 
 
 def test_an_empty_scope_list_is_vacuously_covered(tmp_path):
@@ -196,8 +200,8 @@ def test_an_empty_scope_list_is_vacuously_covered(tmp_path):
     """
     conn = _conn(tmp_path)
     head = _mk(conn, "09120000001", "reader", ["dept:dining"], can_supervise=True)
-    assert _names(eligible_supervisors(conn, scopes=[])) == {"09120000000",
-                                                            head["username"]}
+    assert _names(eligible_supervisors(conn, scopes=[], excluding=None)) == {
+        "09120000000", head["username"]}
 
 
 # --------------------------------------------------------------------------
@@ -216,7 +220,7 @@ def test_eligibility_is_the_flag_and_never_the_role(tmp_path):
     _mk(conn, "09120000001", "admin", ["dept:dining"])
     junior = _mk(conn, "09120000002", "reader_no_download", ["dept:dining"],
                  can_supervise=True)
-    assert _names(eligible_supervisors(conn, scopes=["dept:dining"])) == {
+    assert _names(eligible_supervisors(conn, scopes=["dept:dining"], excluding=None)) == {
         "09120000000", junior["username"]}
 
 
@@ -231,7 +235,7 @@ def test_a_star_holder_is_a_candidate_without_the_flag(tmp_path):
     editor = _editor(conn)
     assert editor["can_supervise"] == 0
     starred = _mk(conn, "09120000001", "reader", ["*"])
-    assert _names(eligible_supervisors(conn, scopes=["dept:dining"])) == {
+    assert _names(eligible_supervisors(conn, scopes=["dept:dining"], excluding=None)) == {
         "09120000000", starred["username"]}
 
 
@@ -239,7 +243,8 @@ def test_disabled_users_are_never_eligible(tmp_path):
     conn = _conn(tmp_path)
     head = _mk(conn, "09120000001", "reader", ["dept:dining"], can_supervise=True)
     users.set_disabled(conn, head["id"], True)
-    assert _names(eligible_supervisors(conn, scopes=["dept:dining"])) == {"09120000000"}
+    assert _names(eligible_supervisors(conn, scopes=["dept:dining"],
+                                       excluding=None)) == {"09120000000"}
 
 
 # --------------------------------------------------------------------------
@@ -257,7 +262,8 @@ def test_the_candidate_order_is_stable_and_is_not_the_insertion_order(tmp_path):
     conn = _conn(tmp_path)
     for name in ("09120000003", "09120000001", "09120000002"):
         _mk(conn, name, "reader", ["dept:dining"], can_supervise=True)
-    got = [r["username"] for r in eligible_supervisors(conn, scopes=["dept:dining"])]
+    got = [r["username"] for r in eligible_supervisors(conn, scopes=["dept:dining"],
+                                                        excluding=None)]
     assert got == ["09120000000", "09120000001", "09120000002", "09120000003"]
 
 
@@ -271,7 +277,7 @@ def test_the_user_being_edited_is_left_out_when_they_are_named(tmp_path):
     conn = _conn(tmp_path)
     head = _mk(conn, "09120000001", "reader", ["dept:dining"], can_supervise=True)
     other = _mk(conn, "09120000002", "reader", ["dept:dining"], can_supervise=True)
-    assert _names(eligible_supervisors(conn, scopes=["dept:dining"])) == {
+    assert _names(eligible_supervisors(conn, scopes=["dept:dining"], excluding=None)) == {
         "09120000000", head["username"], other["username"]}
     assert _names(eligible_supervisors(conn, scopes=["dept:dining"],
                                        excluding=head["id"])) == {
@@ -291,7 +297,7 @@ def test_the_seeded_star_holder_covers_a_department_nobody_is_on(tmp_path):
     scope-narrowing tests in `test_invariants.py`.
     """
     conn = _conn(tmp_path)
-    assert _names(eligible_supervisors(conn, scopes=["dept:logistics"])) == {
+    assert _names(eligible_supervisors(conn, scopes=["dept:logistics"], excluding=None)) == {
         "09120000000"}
 
 
@@ -317,9 +323,17 @@ def test_no_sequence_of_permitted_edits_can_empty_the_candidate_list(tmp_path):
     local = _mk(conn, "09120000001", "editor", ["dept:dining"], can_supervise=True)
 
     def candidates():
-        return _names(eligible_supervisors(conn, scopes=["dept:dining"]))
+        return _names(eligible_supervisors(conn, scopes=["dept:dining"], excluding=None))
+
+    # The `["dept:dining"]` list stays non-empty throughout regardless of who
+    # holds `*` — `local` alone keeps it so. `["*"]` is the scope where D53 is
+    # actually load-bearing: only a `*` holder covers it, so this is the list
+    # that would go empty if the last one were ever removable.
+    def star_candidates():
+        return _names(eligible_supervisors(conn, scopes=["*"], excluding=None))
 
     assert candidates() == {"09120000000", "09120000001"}
+    assert star_candidates() == {"09120000000"}
 
     # The last `*` holder cannot stand down: not by disabling themselves, not by
     # narrowing their own scope.
@@ -338,6 +352,7 @@ def test_no_sequence_of_permitted_edits_can_empty_the_candidate_list(tmp_path):
     assert may_disable(conn, second, editor) is None
     users.set_disabled(conn, editor["id"], True, now=1770000000)
     assert candidates() == {"09120000001", "09120000002"}
+    assert star_candidates() == {"09120000002"}
 
     # …and the sequence has moved the lock rather than opened it: the survivor is
     # now the account nobody can reach.
@@ -438,6 +453,37 @@ def test_a_cycle_three_hops_up_is_refused_too(tmp_path):
     assert supervisor_error(conn, a["id"], c["id"], ["dept:dining"]) == CYCLE
 
 
+class _BudgetedConnection:
+    """A `.execute`-only proxy that refuses past a fixed number of queries.
+
+    `supervisor_error` (and `eligible_supervisors`, which it calls) touch `conn`
+    only through `.execute` — never `.executemany`, a context-manager commit, or
+    any other attribute — so proxying that single method is enough to observe
+    every query the walk makes without changing `delegation.py` or reading its
+    call count some other way.
+
+    This exists so that a mutant which deletes the `seen` set in
+    `supervisor_error`'s cycle walk is killed by a normal failing assertion
+    instead of by hanging the test process. `pytest-timeout` is not a
+    dependency of this repo, and a hang burns a CI job's whole timeout with no
+    failure message and, under `pytest-xdist`, wedges a worker rather than
+    reporting red — a dependency-free budget does what a wall-clock timeout
+    would, deterministically and without threads.
+    """
+
+    def __init__(self, conn: sqlite3.Connection, budget: int) -> None:
+        self._conn = conn
+        self._budget = budget
+        self.calls = 0
+
+    def execute(self, *args, **kwargs):
+        self.calls += 1
+        if self.calls > self._budget:
+            raise AssertionError(
+                f"the walk did not terminate within {self._budget} queries")
+        return self._conn.execute(*args, **kwargs)
+
+
 def test_a_cycle_already_in_the_data_terminates_the_walk(tmp_path):
     """Two independent edits can close a loop this function never saw (D34), so the
     walk has to survive one that is already there.
@@ -447,11 +493,16 @@ def test_a_cycle_already_in_the_data_terminates_the_walk(tmp_path):
     *because* assignment-time checks cannot catch every loop. `c` is outside the
     loop, so the honest answer is `None`.
 
-    Without the visited set this test does not go red, it **hangs** — an
-    unbounded walk over a graph that can contain a loop wedges the worker thread
-    handling the request rather than answering wrongly. That is the failure this
-    line exists to prevent, and it is why the assertion is the weaker-looking
-    `is None` rather than an error key.
+    Driven through `_BudgetedConnection` rather than `conn` directly, with a
+    budget of 50: against the real code this call costs exactly 7 queries (five
+    inside `eligible_supervisors` — one `SELECT` over four active users plus one
+    `scopes_of` per row — and two more walking `a -> b -> a` before the visited
+    set stops it), so 50 is comfortably above real cost and — because the
+    mutant's walk repeats the same two-row cycle forever, one query per step —
+    comfortably below what it takes to notice a hang is happening. Without the
+    visited set this test does not go red by hanging; it goes red on
+    `_BudgetedConnection`'s own `AssertionError`, naming the query count, in
+    well under a second.
     """
     conn = _conn(tmp_path)
     a = _mk(conn, "09120000001", "reader", ["dept:dining"], can_supervise=True)
@@ -459,4 +510,5 @@ def test_a_cycle_already_in_the_data_terminates_the_walk(tmp_path):
             supervisor=a["id"])
     conn.execute("UPDATE users SET supervisor_id = ? WHERE id = ?", (b["id"], a["id"]))
     c = _mk(conn, "09120000003", "reader", ["dept:dining"])
-    assert supervisor_error(conn, c["id"], a["id"], ["dept:dining"]) is None
+    budgeted = _BudgetedConnection(conn, 50)
+    assert supervisor_error(budgeted, c["id"], a["id"], ["dept:dining"]) is None
