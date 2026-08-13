@@ -106,6 +106,19 @@ describe('routing', () => {
       expect(screen.getByRole('heading', { name: 'نمایه' })).toBeInTheDocument())
   })
 
+  // `/profile` sits under RequireAuth's children in `routes.tsx`, same as
+  // every other screen — nothing else gates it, which is easy to mistake for
+  // "needs no auth wrapper at all" and hoist to a top-level route instead.
+  // Moved there, an unauthenticated visit renders `Profile` directly: its own
+  // guard is `if (!session) return <div className="flex-1 bg-bg" />`, a blank
+  // pane rather than a redirect — a dead end that looks like a working app.
+  // `Profile.test.tsx` cannot see this by itself; it mocks `useSession`
+  // directly and never goes near `RequireAuth` or the route tree.
+  it('redirects an unauthenticated visit to /profile to /login, same as every other screen', async () => {
+    boot('/profile', false)
+    await waitFor(() => expect(screen.getByLabelText('شمارهٔ موبایل')).toBeInTheDocument())
+  })
+
   it('routes /users/:id to one person\'s record', async () => {
     // A separate entry, and a separate assertion: `/users/7` matches no route at
     // all without it and lands on the departments grid, so every row of the list

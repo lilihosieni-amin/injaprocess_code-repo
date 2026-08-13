@@ -134,6 +134,19 @@ describe('the profile form', () => {
     expect(screen.getByLabelText(REPEAT)).toHaveAttribute('type', 'password')
   })
 
+  it('offers the current field to a password manager as the current one, not the new one', async () => {
+    // `autoComplete="current-password"` vs. `"new-password"` is what tells a
+    // password manager which value to offer where; jsdom does not act on it,
+    // so nothing but this assertion sees a mix-up — and the browser-only
+    // consequence is a manager offering to save the OLD password as the NEW
+    // one on the current field.
+    stubServer()
+    mountProfile()
+    expect(await screen.findByLabelText(CURRENT)).toHaveAttribute('autocomplete', 'current-password')
+    expect(screen.getByLabelText(NEXT)).toHaveAttribute('autocomplete', 'new-password')
+    expect(screen.getByLabelText(REPEAT)).toHaveAttribute('autocomplete', 'new-password')
+  })
+
   it('does not cap a field short enough to set a different password than was typed', async () => {
     // Asserted on the attribute, never by typing: jsdom does not enforce
     // `maxLength` at all, so a cap would truncate in a browser while every
@@ -156,6 +169,33 @@ describe('the profile form', () => {
     const button = await screen.findByRole('button', { name: SUBMIT })
     expect(button.className).toMatch(/(^|\s)px-/)
     expect(button.className).toMatch(/(^|\s)text-(caption|body|subtitle)\b/)
+  })
+
+  it('writes nothing but the password: no control here besides the three fields and the submit button', async () => {
+    // D13 forbids every other route to self-modification, and this screen's
+    // whole reason to exist is being the single exception for password only —
+    // name, number, role and scope are read-only prose above the form. A
+    // `<select>` or a second text input added beside them, wired to PATCH
+    // anything, would BE that second route, and nothing else in this file
+    // would notice: the read-only facts are found with `getByText`, which is
+    // blind to an extra *interactive* control sitting next to them. So this
+    // asserts the writable surface itself, positively and exhaustively,
+    // rather than the wording around it.
+    stubServer()
+    const { container } = mountProfile()
+    await screen.findByLabelText(CURRENT)
+    expect(screen.queryAllByRole('textbox')).toEqual([])
+    expect(screen.queryAllByRole('combobox')).toEqual([])
+    expect(screen.queryAllByRole('checkbox')).toEqual([])
+    expect(screen.queryAllByRole('radio')).toEqual([])
+    expect(screen.getAllByRole('button')).toHaveLength(1)
+    // Password inputs expose no ARIA role at all (confirmed empirically: an
+    // `<input type="password">` matches none of `getByRole('textbox')` and
+    // friends above), so the three fields have to be counted a different way
+    // — every form control in the DOM, positively enumerated and typed.
+    const controls = container.querySelectorAll('input, select, textarea')
+    expect(controls).toHaveLength(3)
+    for (const el of controls) expect(el).toHaveAttribute('type', 'password')
   })
 })
 
@@ -245,6 +285,24 @@ describe('changing your own password', () => {
     expect(seen.writes).toEqual([])
   })
 
+  it('leads with the empty-current refusal when the new password is also too short', async () => {
+    // Each of the three local rules above is exercised with an input that can
+    // trip only IT — which is exactly why none of them pins the order the
+    // code's own comments argue for ("length before the repeat, so that two
+    // identical short values are told the thing that is actually wrong with
+    // them" — and empty-current before that, so a request that cannot
+    // possibly be accepted never reaches the length check either). Only an
+    // input that trips two rules at once makes the order observable: current
+    // left blank AND the new password under the floor.
+    const seen = stubServer()
+    mountProfile()
+    const short = 'a'.repeat(MIN_PASSWORD - 1)
+    await fill('', short, short)
+    await submit()
+    expect(await screen.findByRole('alert')).toHaveTextContent('گذرواژهٔ فعلی خود را بنویسید')
+    expect(seen.writes).toEqual([])
+  })
+
   it('repeats the server\'s sentence when the current password is wrong, and claims no success', async () => {
     // The server's own words, because they name which of the two fields to
     // correct. «انجام نشد» in their place leaves somebody retyping the new
@@ -296,6 +354,28 @@ describe('changing your own password', () => {
     await submit()
     expect(await screen.findByText(/گذرواژهٔ شما عوض شد/)).toBeInTheDocument()
     expect(screen.getByRole('status')).toHaveTextContent('دستگاه‌های دیگر از این حساب بیرون آمدند')
+  })
+
+  it('drops the success confirmation the moment a later attempt is refused locally', async () => {
+    // `change.isSuccess` stays true after a successful mutation — react-query
+    // does not clear it just because a *later* submit never reaches
+    // `mutate` — so the confirmation's guard has to be `isSuccess && !problem`,
+    // not `isSuccess` alone, or a local refusal after a real success shows the
+    // green «گذرواژهٔ شما عوض شد» and the red complaint together, which is a
+    // lie about which of the two things actually happened last.
+    const seen = stubServer()
+    mountProfile()
+    await fill(OLD, NEW, NEW)
+    await submit()
+    await waitFor(() => expect(screen.getByRole('status')).toBeInTheDocument())
+    // Fields are emptied on success, so leaving `current` blank here trips the
+    // local refusal without a second request going out.
+    await fill('', NEW, NEW)
+    await submit()
+    expect(await screen.findByRole('alert')).toHaveTextContent('گذرواژهٔ فعلی خود را بنویسید')
+    expect(screen.queryByRole('status')).toBeNull()
+    expect(screen.queryByText(/گذرواژهٔ شما عوض شد/)).toBeNull()
+    expect(seen.writes).toHaveLength(1)
   })
 
   it('says nothing about success before anything has been submitted', async () => {
@@ -356,8 +436,10 @@ describe('changing your own password', () => {
   it('clears the previous complaint when a second attempt succeeds', async () => {
     // A refusal left over from the last try sits under the one now in flight
     // and reads as a fresh rejection of a value that was fine.
+    const bodies: unknown[] = []
     let status = 400
-    vi.stubGlobal('fetch', vi.fn(async () => {
+    vi.stubGlobal('fetch', vi.fn(async (_path: string, init?: RequestInit) => {
+      bodies.push(JSON.parse(String(init?.body)))
       if (status >= 400) { status = 204; return json({ detail: 'گذرواژهٔ فعلی درست نیست' }, 400) }
       return new Response(null, { status: 204 })
     }))
@@ -365,10 +447,19 @@ describe('changing your own password', () => {
     await fill(OLD, NEW, NEW)
     await submit()
     await screen.findByRole('alert')
+    // A failed attempt does NOT clear the fields (only a successful one does),
+    // so retyping without clearing first would make `userEvent.type` append
+    // onto what is already there — sending a doubled `current` the real
+    // server 400s, which is not the "second attempt" this test claims to be.
+    // See the sibling test below, which clears the one field it re-types.
+    await userEvent.clear(screen.getByLabelText(CURRENT))
+    await userEvent.clear(screen.getByLabelText(NEXT))
+    await userEvent.clear(screen.getByLabelText(REPEAT))
     await fill(OLD, NEW, NEW)
     await submit()
     await waitFor(() => expect(screen.getByRole('status')).toBeInTheDocument())
     expect(screen.queryByRole('alert')).toBeNull()
+    expect(bodies[1]).toEqual({ current: OLD, next: NEW })
   })
 
   it('clears a client-side complaint once the input it was about is corrected', async () => {
@@ -411,6 +502,17 @@ describe('what the profile screen says about itself', () => {
     mountProfile()
     expect(await screen.findByText('سحر بیات')).toBeInTheDocument()
     expect(screen.getByText('09121111111')).toBeInTheDocument()
+  })
+
+  it('pins the account number ltr inside the RTL prose beside the name', async () => {
+    // A latin-digit run inside RTL prose, declared as an island in
+    // `test/guards.test.ts`'s ISLANDS list precisely because `src/screens/`
+    // sits in PENDING_REBUILD and so is not scanned for a bare `dir=` at all
+    // — the declaration itself is unkillable there, and until now nothing
+    // asserted the attribute it declares either.
+    stubServer()
+    mountProfile()
+    expect(await screen.findByText('09121111111')).toHaveAttribute('dir', 'ltr')
   })
 })
 
