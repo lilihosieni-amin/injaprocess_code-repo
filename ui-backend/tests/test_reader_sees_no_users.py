@@ -94,7 +94,12 @@ FORBIDDEN: tuple[tuple[str, str], ...] = (
     (ADMIN_NAME, "that administrator's display name"),
     (HEAD_NAME, "the display name of the caller's own supervisor — the session"
                 " descriptor names a supervisor by number and nothing serves a"
-                " Reader anybody's display name"),
+                " Reader anybody's display name; if `auth.descriptor` ever"
+                " starts serving display names this correctly fails, and the"
+                " fix is to move this token beside SUPERVISOR_TOKEN rather"
+                " than delete it, since a supervisor's *number* legitimately"
+                " reaches their own supervisee (D47) while a display name"
+                " reaches nobody"),
     (STAR_READER, "the number of a Reader in another scope"),
     (STAR_READER_NAME, "that Reader's display name"),
 )
@@ -343,9 +348,19 @@ def test_neither_refused_reader_writes_anything(world):
     the sessions of the account the disable names are counted: `set_user_disabled`
     revokes every one of them, so a disable that half-happened is visible here
     and nowhere else.
+
+    `OTHER` signs in **before** `live` is captured, so the count this compares
+    against is genuinely non-zero. Nothing else in this file ever signs `OTHER`
+    in — without this, `live` is `0` because there is nothing to revoke, and
+    `live_sessions(world.other) == live` is `0 == 0`, which no disable, half-happened
+    or otherwise, can ever fail.
     """
+    world.sign_in(OTHER)
     before = world.rows()
     live = world.live_sessions(world.other)
+    assert live > 0, (
+        "OTHER holds no live session, so the count below cannot see a disable"
+        " that revoked it")
     for who in (READER, STAR_READER):
         client = world.sign_in(who)
         for method, path, body in _every_user_endpoint(world):
@@ -397,8 +412,11 @@ def _reader_surface(world: World) -> list[tuple[str, str, dict | None, int]]:
         ("GET", "/api/pending", None, 200),
         # Gated on `set_visibility` at `*`: out of scope, so 404.
         ("GET", "/api/visibility", None, 404),
-        # `export_pdf`, which a Reader does hold.
+        # `export_pdf`, which a Reader does hold. Both kinds: the fixture
+        # writes a template for each, and `flowchart` is a second, independent
+        # render of the same payload rather than a shape covered by `steps`.
         ("POST", f"/api/departments/{MINE}/exports/steps", None, 200),
+        ("POST", f"/api/departments/{MINE}/exports/flowchart", None, 200),
         # The writes they may attempt and be refused.
         ("PUT", f"/api/departments/{MINE}/overview", {}, 403),
         ("PUT", f"/api/processes/{MINE}-001", {}, 403),
@@ -519,9 +537,25 @@ def test_no_response_a_reader_can_reach_names_another_user(world):
     it away from this caller is that `GET /api/confirmations` is gated on
     `confirm`. `test_an_entitled_caller_finds_every_token` is the proof that the
     sweep would notice if it were not.
+
+    **Both Readers, not only the `dept:dining` one.** The `*`-scoped Reader is a
+    Reader too (D54's other half, pinned by `test_a_wildcard_reader_is_403_on_every_user_endpoint`),
+    and their refusal on the eight administration endpoints is a 403, not a 404
+    — a body a caller with no scope restriction still has to be handed
+    something for. A `_refuse` (or a gate) that started interpolating the
+    target's own display name into that detail would be a real leak — the
+    string is static Persian today, which is exactly why nothing would notice
+    if it stopped being static — and it is swept here rather than left to the
+    `dept:dining` Reader's sweep above, which never reaches these bodies at all
+    (theirs are 404s, refused on scope before capability is ever asked).
     """
     client = world.sign_in(READER)
     leaks = _leaks(client, _reader_surface(world), FORBIDDEN)
+    assert leaks == [], "\n".join(f"  {line}" for _, line in leaks)
+
+    star_client = world.sign_in(STAR_READER)
+    star_admin_calls = [(m, p, b, 403) for m, p, b in _every_user_endpoint(world)]
+    leaks = _leaks(star_client, star_admin_calls, FORBIDDEN)
     assert leaks == [], "\n".join(f"  {line}" for _, line in leaks)
 
 
@@ -533,17 +567,42 @@ def test_the_published_export_names_nobody_either(world):
     and scanned as text: it carries the department's confirmed documents, and
     "who confirmed them" is exactly the kind of provenance a builder adds to a
     footer without anyone thinking of it as a person's number.
+
+    Both kinds, not only `steps`: the fixture writes a template for `flowchart`
+    too, and a leak that only ever lands in one kind's payload would be invisible
+    to a sweep that never asks for the other.
+
+    The emptiness guard checks for a **token out of the payload**
+    (`f"{MINE}-001"`, the process id `build_payload` embeds), not a length. The
+    template's own unsubstituted literal is 74 characters — longer than the
+    50-odd of `'<!doctype html><script id="inja-export-data">'` a length
+    comparison used to check against — so a length guard passes on a page whose
+    `__INJA_EXPORT_DATA__` slot was never replaced at all; asserting the slot is
+    gone and a real payload token is present cannot be satisfied by that page.
+
+    Both Readers publish it, not only the `dept:dining` one: the artifact is
+    built caller-independently (`build_payload`'s own contract — "the same for
+    every caller"), so the two are expected to produce the same bytes, but a
+    Reader who never posts an export cannot be the file that notices if that
+    guarantee ever quietly grew a caller-specific branch.
     """
-    client = world.sign_in(READER)
-    r = client.post(f"/api/departments/{MINE}/exports/steps")
-    assert r.status_code == 200, r.text
-    url = r.json()["url"]
-    written = world.cfg.export_dir / url[len("/exports/"):]
-    page = written.read_text(encoding="utf-8")
-    assert len(page) > len('<!doctype html><script id="inja-export-data">'), (
-        "the published artifact is empty, so finding no name in it says nothing")
-    for token, why in FORBIDDEN + ((SUPERVISOR_TOKEN, "the caller's supervisor"),):
-        assert token not in page, f"the published export names {token!r} ({why})"
+    for who in (READER, STAR_READER):
+        client = world.sign_in(who)
+        for kind in ("steps", "flowchart"):
+            r = client.post(f"/api/departments/{MINE}/exports/{kind}")
+            assert r.status_code == 200, r.text
+            url = r.json()["url"]
+            written = world.cfg.export_dir / url[len("/exports/"):]
+            page = written.read_text(encoding="utf-8")
+            assert "__INJA_EXPORT_DATA__" not in page, (
+                f"the published {kind} artifact still carries the unsubstituted"
+                f" template slot")
+            assert f'"{MINE}-001"' in page, (
+                f"the published {kind} artifact carries no process id, so an"
+                f" empty payload would pass the checks below")
+            for token, why in FORBIDDEN + ((SUPERVISOR_TOKEN, "the caller's supervisor"),):
+                assert token not in page, (
+                    f"the published {kind} export names {token!r} ({why})")
 
 
 def test_an_entitled_caller_finds_every_token(world):
