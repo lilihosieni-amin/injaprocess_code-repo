@@ -127,10 +127,13 @@ describe('F10 — RTL is structural', () => {
     // that line is a one-line change and not a hunt for the islands nobody
     // wrote down. Both pin `ltr` on a latin-digit run inside RTL prose: the
     // mobile-number input, and the candidate's number beside their name.
+    // The third screen below is the profile: it pins `ltr` on the signed-in
+    // account's own mobile number, beside their name.
     const ISLANDS = [
       'src/ui/IdBadge.tsx',
       'src/screens/UserFields.tsx',
       'src/screens/SupervisorPicker.tsx',
+      'src/screens/Profile.tsx',
     ]
     const hits = files()
       .filter((f) => !ISLANDS.includes(f.rel))

@@ -95,6 +95,17 @@ describe('routing', () => {
       expect(screen.getByRole('heading', { name: 'کاربران' })).toBeInTheDocument())
   })
 
+  // The profile screen is the one surface every session reaches, so this runs
+  // as a Reader holding nothing but `view` and scoped to one department — the
+  // actor `/users` and `/visibility` above both refuse. Without the entry the
+  // catch-all sends them to the departments grid, which looks like a working
+  // app in which nobody can ever change their password.
+  it('routes /profile to the profile screen, for a caller with no administration right at all', async () => {
+    boot('/profile', true, ['view'], ['dept:cooking'])
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: 'نمایه' })).toBeInTheDocument())
+  })
+
   it('routes /users/:id to one person\'s record', async () => {
     // A separate entry, and a separate assertion: `/users/7` matches no route at
     // all without it and lands on the departments grid, so every row of the list

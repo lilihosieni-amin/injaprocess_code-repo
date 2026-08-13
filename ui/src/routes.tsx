@@ -9,6 +9,7 @@ import { FlowScreen } from './flow/FlowScreen'
 import { Visibility } from './screens/Visibility'
 import { Users } from './screens/Users'
 import { UserDetail } from './screens/UserDetail'
+import { Profile } from './screens/Profile'
 
 export const appRoutes: RouteObject[] = [
   { path: '/login', element: <SignIn /> },
@@ -33,6 +34,13 @@ export const appRoutes: RouteObject[] = [
       // silent redirect rather than a blank page, which looks exactly like a
       // working app.
       { path: '/users/:id', element: <UserDetail /> },
+      // Under RequireAuth with every other screen and gated by nothing else:
+      // the one act it offers changes the caller's own row and can change
+      // nobody else's, so there is no capability that could be checked here.
+      // It needs its own entry for the reason `/visibility` and `/users` do —
+      // the catch-all below sends every unknown path to /departments, so a
+      // missing route is a silent redirect and not a blank page.
+      { path: '/profile', element: <Profile /> },
     ],
   },
   { path: '*', element: <Navigate to="/departments" replace /> },

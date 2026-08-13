@@ -34,6 +34,17 @@ export function PanelShell({ session }: { session: SessionDescriptor }) {
       <header className="flex items-center gap-3 px-6 py-3 bg-ink text-card">
         <div className="text-title font-extrabold flex-1">اینجا فست‌فود</div>
         <span className="text-caption">{session.displayName}</span>
+        {/* Ungated, unlike the two entries below it — and that is the whole
+            difference. Both of those are capabilities somebody may not hold;
+            this one leads to the caller's own password, which everybody has.
+            A gate here would be a gate on the only screen in the app whose
+            endpoint cannot be pointed at anybody else's row. */}
+        <Link
+          to="/profile"
+          className="min-h-touch inline-flex items-center px-s6 rounded-control text-card text-caption no-underline hover:bg-tile-v2"
+        >
+          نمایه
+        </Link>
         {/* `set_visibility` alone, with no target, exactly as `canEdit` above:
             the capability is what decides whether the entry is drawn. An auditor
             reaches this shell (selectShell counts view_audit) and holds none, so
