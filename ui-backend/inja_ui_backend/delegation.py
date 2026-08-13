@@ -24,10 +24,15 @@ could confer a wider scope than their own would be an administrator of every
 department by way of a proxy, and one who could confer capabilities they lack
 would be an editor by the same route.
 
-Nothing here raises, nothing here knows HTTP, and every refusal is one of the
-four keys below rather than a bool — the caller has to say *why* in Persian, and
-a bool would leave it guessing between "you may not appoint at all" and "not
-this one".
+Nothing here knows HTTP, and every refusal is one of the four keys below rather
+than a bool — the caller has to say *why* in Persian, and a bool would leave it
+guessing between "you may not appoint at all" and "not this one".
+
+One exception, stated rather than hidden: `_role_capabilities`'s `json.loads`
+raises on a malformed role row, for the reason `access.py` gives at module
+level for the identical read — the seed is the only writer, so a malformed row
+means the database was edited by hand, and failing loudly beats resolving a
+role to no capabilities and quietly permitting its delegation.
 
 `seed.NON_DELEGABLE` is deliberately **not** consulted. `edit`, `confirm` and
 `set_visibility` are withheld by the subset rule itself — an Admin cannot confer
@@ -120,12 +125,22 @@ def may_delegate(conn: sqlite3.Connection, actor: sqlite3.Row, *, role_id: int,
     if target_caps is None:
         return UNKNOWN_ROLE
     # Reading `manage_peers` off `target_caps` instead is an equivalent mutant,
-    # and no test can kill it: `<=` and `<` differ only when the two sets are
-    # equal, and when they are equal the two reads are the same read. Kept on
-    # the actor because D13 is a statement about who is appointing — the day a
-    # capability is added that only one side holds, the target-side version
-    # stops being equivalent and starts being a way to be appointed by someone
-    # who was never allowed to.
+    # and no test can kill it — over every actor/target capability pair, on any
+    # capability model, not only today's. `<=` and `<` differ only when the two
+    # sets are equal, and on an equal pair `target_caps` and `actor_caps` are the
+    # same set, so the two reads necessarily agree there. On every *unequal*
+    # pair the two branches already compute the same thing — `<=` is `<` or
+    # `==`, and `==` is false — so which one is picked cannot matter, and the two
+    # reads are free to disagree without it showing. This is a theorem of the
+    # branch structure (`<` vs `<=`, chosen once), not a fact about
+    # `manage_peers` or about which capabilities exist: no capability, present
+    # or future, held by only one side can make the two readings diverge. Kept
+    # on the actor because D13 is a statement about who is appointing, not
+    # because the target-side read would ever score differently. What *would*
+    # break this: a third branch, or the `<`/`<=` pair being replaced by
+    # something that no longer collapses to one comparison on unequal sets —
+    # that is the change to re-check this comment against, not a new
+    # capability.
     if "manage_peers" in actor_caps:
         if not target_caps <= actor_caps:
             return NOT_A_SUBSET

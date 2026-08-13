@@ -66,6 +66,20 @@ def _mk(conn, username, role, *scopes):
     return users.by_id(conn, uid)
 
 
+def test_the_four_error_keys_are_pinned_strings():
+    """These values, not just the names bound to them, are a wire contract.
+
+    Every other test in this file imports the constant and never spells the
+    string, so renaming all four values leaves the rest of the suite green —
+    it would only surface downstream, where the endpoints task maps each key
+    to a Persian message by matching this exact string.
+    """
+    assert NO_MANAGE_USERS == "no_manage_users"
+    assert UNKNOWN_ROLE == "unknown_role"
+    assert NOT_A_SUBSET == "not_a_subset"
+    assert SCOPE_NOT_COVERED == "scope_not_covered"
+
+
 # (actor_role, target_role, allowed) — the matrix of D13, both directions.
 MATRIX = [
     ("reader", "reader", False),
@@ -166,9 +180,12 @@ def test_with_manage_peers_an_equal_is_allowed(tmp_path):
 def test_a_peer_holder_may_still_not_exceed_itself(tmp_path):
     """`manage_peers` relaxes `<` to `<=`, and not one step further.
 
-    The probe confers `view_audit`, which `reader` does not, so a `reader`
-    holding `manage_peers` faces a role that is neither its subset nor its
-    equal — the case that separates "equality is allowed" from "anything is".
+    The actor is `("view", "comment", "manage_users", "manage_peers")` — not
+    `reader` plus `manage_peers`: it also needs `manage_users` to reach this
+    branch at all, and it drops `export_pdf`, which the branch does not need.
+    The target adds `view_audit`, which the actor does not hold, so the actor
+    faces a role that is neither its subset nor its equal — the case that
+    separates "equality is allowed" from "anything is".
     """
     conn = _conn(tmp_path)
     _probe_role(conn, "peer_reader", ("view", "comment", "manage_users",
@@ -201,6 +218,38 @@ def test_an_unknown_role_does_not_leak_past_the_manage_users_check(tmp_path):
     reader = _mk(conn, "09120000001", "reader", "*")
     absent = conn.execute("SELECT MAX(id) + 1 FROM roles").fetchone()[0]
     assert may_delegate(conn, reader, role_id=absent, scopes=["*"]) == NO_MANAGE_USERS
+
+
+def test_an_unknown_role_is_reported_even_when_the_scope_would_also_fail(tmp_path):
+    """The role lookup runs before the scope loop, not after.
+
+    Both checks fail here — the role does not exist, and `dept:cashier` lies
+    outside the actor's `dept:dining` — so this is the one input that tells
+    the two orders apart. Hoisting the scope loop above `_role_capabilities`
+    (so it runs first) would answer `SCOPE_NOT_COVERED` instead; nothing else
+    in this suite pins which one is meant.
+    """
+    conn = _conn(tmp_path)
+    admin = _mk(conn, "09120000001", "admin", "dept:dining")
+    absent = conn.execute("SELECT MAX(id) + 1 FROM roles").fetchone()[0]
+    assert may_delegate(conn, admin, role_id=absent,
+                        scopes=["dept:cashier"]) == UNKNOWN_ROLE
+
+
+def test_a_failed_subset_check_is_reported_even_when_the_scope_would_also_fail(tmp_path):
+    """The subset check runs before the scope loop, not after.
+
+    `editor` is not a subset of `admin`, and `dept:cashier` lies outside the
+    actor's `dept:dining` — both checks fail, so the order between them is
+    observable. Hoisting the scope loop above the role lookup (and so above
+    this check too) would answer `SCOPE_NOT_COVERED` instead, which would
+    make a caller reading `NOT_A_SUBSET` elsewhere in this suite as
+    deliberate wrong about that.
+    """
+    conn = _conn(tmp_path)
+    admin = _mk(conn, "09120000001", "admin", "dept:dining")
+    assert may_delegate(conn, admin, role_id=_role(conn, "editor"),
+                        scopes=["dept:cashier"]) == NOT_A_SUBSET
 
 
 # --------------------------------------------------------------------------
