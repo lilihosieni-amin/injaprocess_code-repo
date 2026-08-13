@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 
 from ..auth import (
     COOKIE_NAME,
+    VERIFY_LIMITER,
     apply_password_change,
     attempted_actor,
     authenticate,
@@ -22,39 +23,11 @@ from ..store import sessions
 
 router = APIRouter(prefix="/api/auth")
 
-#: How many argon2 operations may be in flight at once in this router (ARD §19.2).
-#:
-#: Two, for the same reason `routers/export_files.py` holds a limiter of two: one
-#: argon2 operation is 64 MiB of scratch memory and ~61 ms of CPU (argon2-cffi's
-#: defaults, `time_cost=3, memory_cost=65536 KiB, parallelism=4`, measured on this
-#: venv). Starlette's default threadpool allows 40, so 40 concurrent calls would
-#: reserve ~2.5 GB on a 3.7 GB host shared with two bots and a Chromium (D22); two
-#: caps the burst at ~128 MiB.
-#:
-#: A limiter of its own, so it *replaces* the default rather than nesting inside
-#: it: the default limiter is the one Starlette runs every sync route handler on,
-#: which here includes serving the export downloads. A queued sign-in waits; a
-#: reader mid-document does not.
-#:
-#: **Shared by sign-in and password change, not one limiter each**, and that is a
-#: decision rather than an accident. What is being bounded is host memory, and
-#: host memory is one budget: two limiters of two is a ceiling of four (~256 MiB),
-#: and it would double again for every argon2 endpoint added later — D15's
-#: administrator password-set is the next one. The number in the paragraph above
-#: only means anything if there is one of it.
-#:
-#: What sharing costs is that a burst of password changes can make a sign-in
-#: queue. That cost is bounded and small: a slot is held for the length of the
-#: work, so even 40 password changes queued at once drain in ~2.4 s (two argon2
-#: operations each, two at a time), and neither operation is a throughput path —
-#: a sign-in happens about once per person per shift, a password change a handful
-#: of times a year. On this host, latency is much the cheaper thing to spend than
-#: memory.
-#:
-#: This is a memory bound on a deliberately expensive operation, and it is not a
-#: rate limit: there is no attempt counting, no lockout and no backoff (D13 —
-#: guessing is made visible by the record, not slow).
-_VERIFY_LIMITER = anyio.CapacityLimiter(2)
+#: The one argon2 ceiling, defined in `auth.py` beside the work it bounds and
+#: shared with `routers/users.py` (D15's administrator paths). Aliased under the
+#: old private name so the two call sites below still read as they did; see
+#: `auth.VERIFY_LIMITER` for why there is exactly one of it.
+_VERIFY_LIMITER = VERIFY_LIMITER
 
 
 @router.post("/login")

@@ -1,16 +1,19 @@
 """Every endpoint, read through the permission gate (spec D56, §11 tests 6 and 10).
 
-Nineteen routes. Seventeen are gated on one capability at one target; two span
-departments and are filtered per row rather than gated, because a list that
+Twenty-seven routes. Twenty-five are gated on one capability at one target; two
+span departments and are filtered per row rather than gated, because a list that
 refuses outright would take a two-department head's whole screen away over one
 department they cannot reach.
 
-Sixteen of the seventeen name a department, and the two visibility routes name
-`*` instead — there is one global policy (D16), so there is no department to
-gate them on. `_in_scope_for` is what keeps the in-scope half of every pair
-below honest about that: a `dept:cooking` caller is 404'd out of a `*` target
-before their capability is ever looked at, and a 404 arriving where a 403 was
-expected would read as a mis-gated capability rather than as the wrong scope.
+Fifteen of the twenty-five name a department. The other ten name `*`: the two
+visibility routes, because there is one global policy (D16) and so no department
+to gate them on, and the eight of the user-administration surface, because all
+user administration is at `*` scope (D11) and a department-scoped Admin is meant
+to learn nothing about it at all (D54). `_in_scope_for` is what keeps the
+in-scope half of every pair below honest about that: a `dept:cooking` caller is
+404'd out of a `*` target before their capability is ever looked at, and a 404
+arriving where a 403 was expected would read as a mis-gated capability rather
+than as the wrong scope.
 
 The tests come in pairs on purpose. One capability test alone pins nothing: a
 route gated on `view` that should be `edit` passes "an editor is not refused",
@@ -34,7 +37,17 @@ from inja_ui_backend.tests_helpers import cfg_for
 PW = "test-password"
 BASE = "https://testserver"
 
-#: The seventeen gated routes: (method, path, body, the capability each needs).
+#: The id of the third account `_client_as` plants — see its docstring.
+#:
+#: A constant rather than a lookup because the table below is static, and
+#: `_client_as` asserts the row it creates really lands on this id: the routes
+#: that act on a *person* would otherwise silently retarget the caller (a
+#: self-edit, refused 403 by D13) or the seeded Editor (refused 403 by the subset
+#: rule) the day somebody adds a row above it, and both refusals look exactly
+#: like the mis-gating this file exists to detect.
+VICTIM = 3
+
+#: The twenty-five gated routes: (method, path, body, the capability each needs).
 #: `body` is what a well-formed request carries — a malformed one would be
 #: refused by validation on some routes and by the gate on others, and this
 #: table exists to compare gates, not validators.
@@ -66,6 +79,28 @@ GATED = [
     #: cashier publishes. `_in_scope_for` gives them a caller who holds `*`.
     ("GET", "/api/visibility", None, "set_visibility"),
     ("PUT", "/api/visibility/node_actor", {"visible": True}, "set_visibility"),
+    #: The user-administration surface (D54), whose target is `*` for a different
+    #: reason: not one global object, but the rule that all user administration
+    #: is at `*` scope (D11), so a department Admin holding `manage_users` is
+    #: still outside it. The reads are gated as tightly as the writes because
+    #: D54's boundary is the surface itself — a Reader is served no list, not a
+    #: filtered one.
+    #:
+    #: `POST /api/users` carries `{}` deliberately: dependencies are solved
+    #: before the body is validated, so the gate still speaks first for every
+    #: refusal direction, while the in-scope Admin gets a 422 — which is the
+    #: handler answering, i.e. proof the gate let them through. A well-formed
+    #: body would have to name a role id and a supervisor, which is a fixture
+    #: this table cannot carry and a delegation refusal (403) waiting to be
+    #: misread as a mis-gating.
+    ("GET", "/api/users", None, "manage_users"),
+    ("GET", f"/api/users/{VICTIM}", None, "manage_users"),
+    ("GET", "/api/users/supervisor-candidates", None, "manage_users"),
+    ("GET", "/api/roles", None, "manage_users"),
+    ("POST", "/api/users", {}, "manage_users"),
+    ("PATCH", f"/api/users/{VICTIM}", {"displayName": "دستکاری"}, "manage_users"),
+    ("POST", f"/api/users/{VICTIM}/password", {"password": PW}, "manage_users"),
+    ("POST", f"/api/users/{VICTIM}/disabled", {"disabled": True}, "manage_users"),
 ]
 
 #: The routes above whose target is not a department, so an in-scope caller for
@@ -73,7 +108,10 @@ GATED = [
 #: capability, because it is the *target* that differs and a second route gated
 #: on `set_visibility` at a department (there is none today) would belong on the
 #: department side of this line.
-GLOBAL_TARGET = ("/api/visibility", "/api/visibility/node_actor")
+GLOBAL_TARGET = ("/api/visibility", "/api/visibility/node_actor",
+                 "/api/users", f"/api/users/{VICTIM}",
+                 "/api/users/supervisor-candidates", "/api/roles",
+                 f"/api/users/{VICTIM}/password", f"/api/users/{VICTIM}/disabled")
 
 #: The two that filter instead of gating. They span every department, so there is
 #: no single target to gate them on.
@@ -90,7 +128,11 @@ FILTERED = ["/api/departments", "/api/pending"]
 WITHOUT = {"view": (), "edit": ("reader", "admin"),
            "confirm": ("reader", "admin"),
            "set_visibility": ("reader", "admin"),
-           "export_pdf": ("reader_no_download",)}
+           "export_pdf": ("reader_no_download",),
+           #: Both Reader roles, because D54 is a promise about *Readers* and a
+           #: department head is one — the deployment's heads carry the
+           #: supervisor tag and no `manage_users` (D11).
+           "manage_users": ("reader", "reader_no_download")}
 
 #: The seeded role used for the non-refusal direction — the *narrowest* one that
 #: holds the capability, so that the pair says as much as four roles can.
@@ -98,7 +140,11 @@ WITHOUT = {"view": (), "edit": ("reader", "admin"),
 #: `export_pdf` too, so a `view` route mis-gated on `export_pdf` would sail
 #: through this half and be refused by nothing.
 WITH = {"view": "reader_no_download", "export_pdf": "reader", "edit": "editor",
-        "confirm": "editor", "set_visibility": "editor"}
+        "confirm": "editor", "set_visibility": "editor",
+        #: The Admin rather than the Editor: it is the narrowest seeded role
+        #: holding `manage_users`, and it is also the one that must be able to
+        #: act on `VICTIM` — a Reader — under D13's subset rule.
+        "manage_users": "admin"}
 
 
 def _in_scope_for(path: str) -> str:
@@ -207,6 +253,16 @@ def _client_as(data_root, tmp_path, role, *scopes, capabilities=None):
     the one test that needs a capability set the four seeded roles do not
     provide. It is a probe, not a fixture: it writes straight to the table
     `seed` owns, and nothing but that one test may use it.
+
+    A **third** account is planted every time, on `VICTIM`, because eight of the
+    gated routes act on a person rather than on a department. It cannot be the
+    caller (D13 bans editing your own record) and it cannot be the seeded Editor
+    (whose role no Admin may touch, by the subset rule); either substitution
+    answers 403 for a reason that has nothing to do with the gate, which is
+    precisely what `test_a_role_with_the_capability_is_not_refused_in_scope`
+    would then be reading. A Reader scoped to one department, so the Admin who
+    holds `manage_users` at `*` may act on it and the assertions stay about the
+    gate.
     """
     n = next(_accounts)
     cfg = cfg_for(data_root, tmp_path / f"app-{n}.db")
@@ -225,6 +281,16 @@ def _client_as(data_root, tmp_path, role, *scopes, capabilities=None):
         for s in scopes:
             conn.execute("INSERT INTO user_scopes (user_id, scope) VALUES (?, ?)",
                          (uid, s))
+        reader = conn.execute(
+            "SELECT id FROM roles WHERE name = 'reader'").fetchone()[0]
+        victim = users.create(conn, username="09330000000", display_name="سوژه",
+                              password_hash=hash_password(PW), role_id=reader)
+        assert victim == VICTIM, (
+            f"the planted account landed on id {victim}, not {VICTIM}: the"
+            f" user-administration rows of GATED name a person by id and would"
+            f" now be pointing at somebody else")
+        conn.execute("INSERT INTO user_scopes (user_id, scope) VALUES (?, ?)",
+                     (victim, "dept:cooking"))
         _confirm_the_whole_corpus(conn, data_root)
     finally:
         conn.close()

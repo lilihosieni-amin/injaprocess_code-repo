@@ -10,6 +10,7 @@ import json
 import sqlite3
 import time
 
+import anyio
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
 from fastapi import HTTPException, Request
@@ -19,6 +20,47 @@ from .store import audit, sessions, users
 
 COOKIE_NAME = "inja_session"
 MIN_PASSWORD_LENGTH = 6
+
+#: How many argon2 operations may be in flight anywhere in this service at once
+#: (ARD §19.2).
+#:
+#: Two. One argon2 operation is 64 MiB of scratch memory and ~61 ms of CPU
+#: (argon2-cffi's defaults, `time_cost=3, memory_cost=65536 KiB, parallelism=4`,
+#: measured on this venv). Starlette's default threadpool allows 40, so 40
+#: concurrent calls would reserve ~2.5 GB on a 3.7 GB host shared with two bots
+#: and a Chromium (D22); two caps the burst at ~128 MiB.
+#:
+#: A limiter of its own, so it *replaces* the default rather than nesting inside
+#: it: the default limiter is the one Starlette runs every sync route handler on,
+#: which here includes serving the export downloads. A queued sign-in waits; a
+#: reader mid-document does not.
+#:
+#: **One limiter for every argon2 endpoint there is**, and that is a decision
+#: rather than an accident. What is being bounded is host memory, and host memory
+#: is one budget: two limiters of two is a ceiling of four (~256 MiB), and it
+#: would double again for every argon2 endpoint added later. The number in the
+#: paragraph above only means anything if there is one of it. Today that is four
+#: endpoints — sign-in, the self-service password change (`routers/auth.py`), and
+#: D15's two administrator paths, creating a user and setting somebody else's
+#: password (`routers/users.py`).
+#:
+#: It lives here rather than in `routers/auth.py`, where it started, because it
+#: is a property of `hash_password`/`verify_hash` — of the work — and not of one
+#: router. A second router reaching across for a private name in the first is how
+#: "one of it" quietly becomes two.
+#:
+#: What sharing costs is that a burst of password changes can make a sign-in
+#: queue. That cost is bounded and small: a slot is held for the length of the
+#: work, so even 40 password changes queued at once drain in ~2.4 s (two argon2
+#: operations each, two at a time), and none of these is a throughput path — a
+#: sign-in happens about once per person per shift, a password change a handful
+#: of times a year, an account creation rarer still. On this host, latency is
+#: much the cheaper thing to spend than memory.
+#:
+#: This is a memory bound on a deliberately expensive operation, and it is not a
+#: rate limit: there is no attempt counting, no lockout and no backoff (D13 —
+#: guessing is made visible by the record, not slow).
+VERIFY_LIMITER = anyio.CapacityLimiter(2)
 
 _ph = PasswordHasher()
 
