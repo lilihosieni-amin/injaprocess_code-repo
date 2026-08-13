@@ -24,12 +24,17 @@ function draftOf(user: AdminUser): UserDraft {
  * Changing an existing account (D13, D14, D51, D57).
  *
  * **It sends the fields that moved and no others**, which is not a saving but a
- * requirement: the server re-validates the supervisor edge whenever the
- * supervisor or the scopes are part of the request, and D14 leaves a supervisor
- * who has since been disabled exactly where they are. A body restating every
- * field would therefore make it impossible to correct somebody's display name
- * until their supervisor had been replaced — and `PATCH` reads
- * `model_fields_set`, so an absent field really is "leave it alone".
+ * requirement — though not for the reason it looks like. The server's supervisor
+ * re-validation triggers on a *changed* value, not a present field
+ * (`supervisor_id != target["supervisor_id"] or scopes != before_scopes`), so a
+ * body restating an unchanged disabled supervisor would be accepted; what keeps
+ * D14's promise here is this form's own `supervisorMoved` gate below. What a
+ * full-record body would really cost is `_clean_scopes`: a present `scopes`
+ * field is validated entry by entry and 400s on anything the grammar refuses,
+ * and `user_scopes.scope` is `TEXT NOT NULL` with no CHECK, so an account
+ * holding a refused scope row could not have its display name corrected until
+ * those rows were mended. `PATCH` reads `model_fields_set`, so an absent field
+ * really is "leave it alone", and the field nobody edited is never asked about.
  *
  * The account as it stood when the dialog opened is frozen in `was` and is what
  * the diff is taken against. Re-reading it from the query would let a refetch
@@ -55,16 +60,27 @@ export function EditUserDialog({ user, open, onClose }: {
   const candidates = useSupervisorCandidates(draft.scopes, user.id)
   const modify = useModifyUser(String(user.id))
 
+  // Taken here rather than inside `submit` because the note the picker draws
+  // depends on it too: "this supervisor stays put" is only true of a save that
+  // sends neither the edge nor the scopes.
+  const patch = draftPatch(draft, was)
+  // The server's own trigger, restated: it re-judges the edge when the
+  // supervisor moved **or** when the scopes did, since an eligibility that held
+  // for one department says nothing about two. Asked on the supervisor alone,
+  // this check would let a widened scope list through and spend the round trip
+  // it exists to save. A display-name correction still moves neither field, so
+  // D14's unchanged — possibly disabled — supervisor is left alone as before.
+  const supervisorMoved = 'supervisorId' in patch || 'scopes' in patch
+
   function submit(e: FormEvent) {
     e.preventDefault()
     modify.reset()
-    const patch = draftPatch(draft, was)
     const found = draftProblem(draft, {
-      eligibleIds: (candidates.data ?? []).map((c) => c.id),
-      // Only when the edge is part of this request. An unchanged supervisor —
-      // including a disabled one the picker cannot offer — is D14's business
-      // and not this form's.
-      supervisorMoved: 'supervisorId' in patch,
+      // `undefined`, not `[]`, while the list is in flight: an empty list means
+      // "nobody is eligible" and would refuse — with no request at all — a
+      // supervisor the server would accept (D48).
+      eligibleIds: candidates.data?.map((c) => c.id),
+      supervisorMoved,
     })
     setProblem(found)
     if (found !== undefined) return
@@ -85,6 +101,10 @@ export function EditUserDialog({ user, open, onClose }: {
           roles={roles.data ?? []}
           candidates={candidates.data ?? []}
           candidatesPending={candidates.isPending}
+          // Only a save that touches neither the edge nor the scopes leaves an
+          // off-list supervisor where they are; anything else is re-judged, here
+          // and on the server.
+          supervisorStaysPut={!supervisorMoved}
         />
 
         {alert && (

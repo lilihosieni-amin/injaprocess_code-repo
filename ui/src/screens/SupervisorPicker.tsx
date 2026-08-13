@@ -12,7 +12,9 @@ export const NO_SUPERVISOR = 'بدون سرپرست'
 /** D14 leaves a disabled supervisor in place rather than repointing the people
  *  under them, so an edit form really does open on somebody the picker cannot
  *  offer. Drawn as "nothing chosen" that reads as "this user has no supervisor",
- *  and the administrator's next save would be the one that makes it true. */
+ *  and the administrator's next save would be the one that makes it true.
+ *
+ *  **Its promise is conditional and so is the note** — see `staysPut`. */
 export const SUPERVISOR_OFF_LIST =
   'سرپرست کنونی در این فهرست نیست؛ تا وقتی تغییرش ندهید همان‌جا می‌ماند.'
 
@@ -46,7 +48,7 @@ export const SUPERVISOR_OFF_LIST =
  * the org chart is the one thing on this form nobody re-reads afterwards.
  */
 export function SupervisorPicker({
-  candidates, value, onChange, allowNone, preferred, pending,
+  candidates, value, onChange, allowNone, staysPut, preferred, pending,
 }: {
   candidates: SupervisorCandidate[]
   value: number | null
@@ -54,6 +56,18 @@ export function SupervisorPicker({
   /** D51 — "no supervisor" is legal for a `*`-scoped account and for nobody
    *  else, so the choice is offered to exactly those. */
   allowNone: boolean
+  /**
+   * Whether an off-list `value` really would be left where it is by the save
+   * this form is about to make — **which is the whole content of
+   * `SUPERVISOR_OFF_LIST`**, and is true in exactly one case: an existing
+   * account whose supervisor and whose scopes are both unchanged (D14).
+   *
+   * It is false on the create form, where there is no account and nothing stays
+   * anywhere, and false on an edit that moves the scopes, where the edge is
+   * re-judged against the new ones and this save is refused rather than left
+   * alone. Drawn there, the sentence promises the opposite of what happens.
+   */
+  staysPut: boolean
   preferred?: string
   pending: boolean
 }) {
@@ -99,7 +113,7 @@ export function SupervisorPicker({
       <SearchField label="جست‌وجوی سرپرست" value={q} onChange={setQ}
         placeholder="نام یا شماره" />
 
-      {value !== null && !candidates.some((c) => c.id === value) && (
+      {staysPut && value !== null && !candidates.some((c) => c.id === value) && (
         <p className="text-caption text-warn font-bold m-0">{SUPERVISOR_OFF_LIST}</p>
       )}
 

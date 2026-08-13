@@ -53,9 +53,12 @@ export function NewUserDialog({ open, onClose }: { open: boolean; onClose: () =>
     const roleId = draft.roleId
     const found = draftProblem(draft, {
       password,
-      eligibleIds: (candidates.data ?? []).map((c) => c.id),
-      // Always: this form sends the field on every request, so there is no
-      // "unchanged edge" for it to leave alone.
+      // `undefined`, not `[]`, while the list is in flight: an empty list means
+      // "nobody is eligible" and would refuse — with no request at all — a
+      // supervisor the server would accept (D48).
+      eligibleIds: candidates.data?.map((c) => c.id),
+      // Always: this form sends the supervisor *and* the scopes on every
+      // request, so there is no "unchanged edge" for it to leave alone.
       supervisorMoved: true,
     })
     setProblem(found)
@@ -81,6 +84,11 @@ export function NewUserDialog({ open, onClose }: { open: boolean; onClose: () =>
           roles={roles.data ?? []}
           candidates={candidates.data ?? []}
           candidatesPending={candidates.isPending}
+          // There is no account yet, so there is no supervisor to stay put: a
+          // choice that has dropped off the list here is simply refused on
+          // submit, and «تا وقتی تغییرش ندهید همان‌جا می‌ماند» would be a
+          // sentence about an account that does not exist.
+          supervisorStaysPut={false}
           preferred={session?.username}
         />
 

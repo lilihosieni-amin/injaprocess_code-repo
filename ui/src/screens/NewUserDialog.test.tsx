@@ -90,6 +90,11 @@ interface Seen {
    * test whose input is not the shape its name claims.
    */
   setCandidates: (next: SupervisorCandidate[]) => void
+  /** Answer every later candidate request never. The scopes change, the query
+   *  key changes with them, and the new answer is `undefined` rather than an
+   *  empty list — which is the state a slow or hung request really leaves the
+   *  form in, and is not the same state as "nobody is eligible". */
+  stallCandidates: () => void
 }
 
 function stubServer(opts: {
@@ -103,8 +108,11 @@ function stubServer(opts: {
   const rows = [...(opts.users ?? [NADER])]
   const roles = opts.roles ?? ROLES
   let candidates = opts.candidates ?? [SAHAR, KAMRAN]
+  let stalled = false
   const seen: Seen = {
-    gets: [], writes: [], setCandidates: (next) => { candidates = next },
+    gets: [], writes: [],
+    setCandidates: (next) => { candidates = next },
+    stallCandidates: () => { stalled = true },
   }
   vi.stubGlobal('fetch', vi.fn(async (path: string, init?: RequestInit) => {
     if (init?.method && init.method !== 'GET') {
@@ -129,7 +137,10 @@ function stubServer(opts: {
     if (path === '/api/users') return json([...rows])
     if (path === '/api/roles') return json(roles)
     if (path === '/api/departments') return json(DEPARTMENTS)
-    if (path.startsWith('/api/users/supervisor-candidates')) return json(candidates)
+    if (path.startsWith('/api/users/supervisor-candidates')) {
+      if (stalled) return new Promise<Response>(() => {})
+      return json(candidates)
+    }
     throw new Error(`unexpected request: ${path}`)
   }))
   return seen
@@ -364,10 +375,40 @@ describe('the supervisor picker on the create form', () => {
     seen.setCandidates([KAMRAN])
     await userEvent.click(screen.getByRole('checkbox', { name: 'دپارتمان صندوق' }))
     await waitFor(() => expect(screen.queryByRole('radio', { name: /سحر بیات/ })).toBeNull())
+    // …and it does **not** say the chosen supervisor stays where they are. That
+    // note is for D14's edit case — an existing account whose edge nothing in
+    // this save touches — and there is no account here at all: it would promise
+    // that somebody remains the supervisor of a user who does not exist, on the
+    // very choice the submit below is about to refuse. This is the only path in
+    // this file that reaches an off-list value, so nothing else can catch it.
+    expect(screen.queryByText(/سرپرست کنونی در این فهرست نیست/)).toBeNull()
     await submit()
     expect(await screen.findByRole('alert'))
       .toHaveTextContent('این شخص نمی‌تواند سرپرست این کاربر باشد')
     expect(seen.writes).toEqual([])
+  })
+
+  it('refuses nobody while the list it would check against is still in flight', async () => {
+    // The same widening as the test above, except the new list never arrives.
+    // «not on the list» and «there is no list yet» are different facts, and the
+    // local check is a convenience (D48) that must never be a stricter gate than
+    // the server: read as an empty list, an outstanding request refuses every
+    // supervisor there is — Kamran, who holds `*`, included — and sends nothing,
+    // so the administrator is left with a form that will not submit and no
+    // sentence that explains it. The server decides this on every write anyway.
+    const seen = stubServer()
+    mountList()
+    await openDialog()
+    await fillValidForm()
+    await userEvent.click(await screen.findByRole('radio', { name: /سحر بیات/ }))
+    seen.stallCandidates()
+    await userEvent.click(screen.getByRole('checkbox', { name: 'دپارتمان صندوق' }))
+    await waitFor(() => expect(screen.queryByRole('radio', { name: /سحر بیات/ })).toBeNull())
+    await submit()
+    await waitFor(() => expect(seen.writes).toHaveLength(1))
+    expect(seen.writes[0].body.supervisorId).toBe(32)
+    expect(seen.writes[0].body.scopes).toEqual(['dept:dining', 'dept:cashier'])
+    expect(screen.queryByRole('alert')).toBeNull()
   })
 })
 

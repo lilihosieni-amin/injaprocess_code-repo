@@ -68,16 +68,21 @@ const KAVEH: SupervisorCandidate = {
   scopes: ['dept:cashier', 'dept:dining'], canSupervise: true,
 }
 
-function Harness({ candidates, allowNone = false, preferred, initial = null }: {
+/** `staysPut` defaults to true — the edit-form case the component was written
+ *  for, an existing account whose supervisor and scopes are both unchanged. The
+ *  one test below that passes `false` is what separates the note's guard from
+ *  its absence. */
+function Harness({ candidates, allowNone = false, staysPut = true, preferred, initial = null }: {
   candidates: SupervisorCandidate[]
   allowNone?: boolean
+  staysPut?: boolean
   preferred?: string
   initial?: number | null
 }) {
   const [value, setValue] = useState<number | null>(initial)
   return (
     <SupervisorPicker candidates={candidates} value={value} onChange={setValue}
-      allowNone={allowNone} preferred={preferred} pending={false} />
+      allowNone={allowNone} staysPut={staysPut} preferred={preferred} pending={false} />
   )
 }
 
@@ -207,7 +212,8 @@ describe('the supervisor picker', () => {
     // people under them, so an edit form really does open with a supervisor who
     // is not a candidate. Drawn as "nothing chosen" it reads as "this user has
     // no supervisor", and the administrator's next save would be the one that
-    // makes that true.
+    // makes that true. `staysPut` defaults true here, which is that save's
+    // shape: neither the edge nor the scopes moving.
     mount({ candidates: [SAHAR, KEYVAN], initial: 99 })
     await waitFor(() => expect(screen.getAllByRole('radio')).toHaveLength(2))
     expect(screen.getByText(/سرپرست کنونی در این فهرست نیست/)).toBeInTheDocument()
@@ -220,6 +226,19 @@ describe('the supervisor picker', () => {
     // reason.
     mount({ candidates: [SAHAR, KEYVAN], initial: SAHAR.id })
     await waitFor(() => expect(screen.getByRole('radio', { name: /سحر بیات/ })).toBeChecked())
+    expect(screen.queryByText(/سرپرست کنونی در این فهرست نیست/)).toBeNull()
+  })
+
+  it('says nothing of the kind when this save would not leave them where they are', async () => {
+    // **The input the guard exists for**, and the same off-list value as the
+    // test above: the note promises «تا وقتی تغییرش ندهید همان‌جا می‌ماند», and
+    // that is a lie in the two cases `staysPut` is false in — the create form,
+    // where there is no account for anyone to stay on, and an edit that moves
+    // the scopes, where the edge is re-judged against the new ones and the save
+    // is refused rather than left alone. Only the value off the list is drawn
+    // here, so an unguarded note passes every other test in this file.
+    mount({ candidates: [SAHAR, KEYVAN], initial: 99, staysPut: false })
+    await waitFor(() => expect(screen.getAllByRole('radio')).toHaveLength(2))
     expect(screen.queryByText(/سرپرست کنونی در این فهرست نیست/)).toBeNull()
   })
 

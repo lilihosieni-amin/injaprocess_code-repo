@@ -72,16 +72,28 @@ export const SUPERVISOR_NOT_ELIGIBLE = 'این شخص نمی‌تواند سرپ
  * the fields — setting somebody else's is its own endpoint with its own event
  * and its own revocation rule.
  *
- * `supervisorMoved` is what keeps D14's promise on the edit form. A supervisor
- * who has since been disabled is left where they are and the gap is surfaced,
- * so an unchanged edge must not be re-judged here: doing so would make it
- * impossible to correct somebody's display name until their supervisor had been
- * replaced. It is always `true` on the create form, where the field is always
- * part of the request.
+ * `supervisorMoved` **mirrors the server's own trigger**, which is
+ * `supervisor_id != target["supervisor_id"] or scopes != before_scopes`: the
+ * edge is re-judged when the supervisor moved *or* when the scopes did, because
+ * an eligibility that held for `dept:cooking` says nothing about `dept:cooking`
+ * plus `dept:cashier`. Asking on the supervisor alone would spend the very round
+ * trip this function exists to save — the widened scopes come back
+ * `NOT_ELIGIBLE`. It still keeps D14's promise, because a display-name
+ * correction moves neither field: a supervisor who has since been disabled is
+ * left where they are and the gap is surfaced, and re-judging that unchanged
+ * edge would make the name impossible to correct until they had been replaced.
+ * It is always `true` on the create form, where both fields are always part of
+ * the request.
+ *
+ * `eligibleIds` is `undefined` while the candidate list has not arrived — and
+ * then the membership clause is **not asked**. This is a convenience (D48): the
+ * server decides eligibility on every write regardless, so a local check that
+ * treated "not known yet" as "not on the list" would refuse a `*` holder the
+ * server would certainly accept, and refuse them without sending anything.
  */
 export function draftProblem(draft: UserDraft, opts: {
   password?: string
-  eligibleIds: number[]
+  eligibleIds: number[] | undefined
   supervisorMoved: boolean
 }): string | undefined {
   if (draft.displayName.trim() === '') return NO_DISPLAY_NAME
@@ -91,9 +103,13 @@ export function draftProblem(draft: UserDraft, opts: {
   if (!opts.supervisorMoved) return undefined
   if (draft.supervisorId === null) {
     // D51 — optional only for somebody who sees everything. `supervisor_error`
-    // is the authority and answers exactly this.
+    // is the authority and answers exactly this. Asked from the draft alone, so
+    // it stands whether or not the candidate list has arrived.
     return draft.scopes.includes('*') ? undefined : SUPERVISOR_REQUIRED
   }
+  // Nothing to check against yet — see above. The write goes out and the server
+  // answers, which is one round trip and never a refusal of somebody eligible.
+  if (opts.eligibleIds === undefined) return undefined
   return opts.eligibleIds.includes(draft.supervisorId) ? undefined : SUPERVISOR_NOT_ELIGIBLE
 }
 
@@ -112,10 +128,19 @@ function sameScopes(a: string[], b: string[]): boolean {
  *
  * Absent is not `null` on this endpoint — the handler reads `model_fields_set`
  * — so an unchanged field left out is "leave it alone" and is the whole reason
- * a display-name correction does not disturb an org-chart edge. Restating every
- * field instead would be accepted by the server and would re-validate the
- * supervisor against the submitted scopes on every save, which is exactly the
- * case D14 refuses to let block an edit.
+ * a display-name correction does not disturb an org-chart edge.
+ *
+ * **What a full-record body would actually cost is `_clean_scopes`.** Not the
+ * supervisor re-validation: the server's trigger is
+ * `supervisor_id != target["supervisor_id"] or scopes != before_scopes`, a
+ * comparison of *values*, and since `_clean_scopes` returns `sorted(set(raw))`
+ * against a `before_scopes` read `ORDER BY scope`, a body restating an unchanged
+ * scope list compares equal and re-validates nothing. What a present `scopes`
+ * field does do is run every entry through `_clean_scopes`, which 400s on
+ * anything the grammar refuses — and `user_scopes.scope` is `TEXT NOT NULL` with
+ * no CHECK, so a stored `''` is reachable today. Restating the field would make
+ * such an account's display name uncorrectable until its scope rows were mended;
+ * the diff never sends what nobody edited, so it never asks.
  *
  * `roleId` is written only when it is a number: `null` here means the select
  * has nothing chosen, which `draftProblem` has already refused, and it is a 400

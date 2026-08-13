@@ -120,9 +120,18 @@ describe('F10 — RTL is structural', () => {
   })
 
   it('only the declared islands pin dir', () => {
-    // IdBadge is the sole dir="ltr" island in this sub-project; P0 adds the
-    // phone-number and IP fields to this list as it builds them.
-    const ISLANDS = ['src/ui/IdBadge.tsx']
+    // IdBadge was the sole dir="ltr" island in this sub-project; P0 adds the
+    // phone-number and IP fields to this list as it builds them. The two
+    // screens below are declared here **before** the scan can see them —
+    // `src/screens/` is still in PENDING_REBUILD — precisely so that deleting
+    // that line is a one-line change and not a hunt for the islands nobody
+    // wrote down. Both pin `ltr` on a latin-digit run inside RTL prose: the
+    // mobile-number input, and the candidate's number beside their name.
+    const ISLANDS = [
+      'src/ui/IdBadge.tsx',
+      'src/screens/UserFields.tsx',
+      'src/screens/SupervisorPicker.tsx',
+    ]
     const hits = files()
       .filter((f) => !ISLANDS.includes(f.rel))
       .flatMap((f) =>

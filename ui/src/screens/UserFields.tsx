@@ -20,13 +20,18 @@ import type { UserDraft } from '../lib/userDraft'
  * second copy of a rule, and the copy is the one that gets it wrong.
  */
 export function UserFields({
-  draft, onChange, roles, candidates, candidatesPending, preferred,
+  draft, onChange, roles, candidates, candidatesPending, supervisorStaysPut,
+  preferred,
 }: {
   draft: UserDraft
   onChange: (next: UserDraft) => void
   roles: Role[]
   candidates: SupervisorCandidate[]
   candidatesPending: boolean
+  /** Whether this save would leave an off-list supervisor untouched — false on
+   *  the create form, and false on an edit that moves the edge or the scopes.
+   *  Passed straight down; the picker says what it means. */
+  supervisorStaysPut: boolean
   /** The username of the person filling the form in, on the create form only. */
   preferred?: string
 }) {
@@ -133,6 +138,7 @@ export function UserFields({
         onChange={(id) => onChange({ ...draft, supervisorId: id })}
         // D51 — "no supervisor" is a state only a `*`-scoped account may be in.
         allowNone={draft.scopes.includes('*')}
+        staysPut={supervisorStaysPut}
         preferred={preferred}
         pending={candidatesPending}
       />
