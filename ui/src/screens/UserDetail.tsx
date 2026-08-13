@@ -5,60 +5,16 @@ import { administrationRefusal } from '../auth/can'
 import {
   mayManage, useSetUserDisabled, useSetUserPassword, useUser,
 } from '../api/users'
-import { ApiError, refusalStatus } from '../api/client'
+import { refusalStatus } from '../api/client'
 import { jalali } from '../lib/format'
+import { refusalText } from '../lib/refusal'
+import { MIN_PASSWORD, TOO_SHORT } from '../lib/userDraft'
 import { Button } from '../ui/Button'
 import { Card } from '../ui/Card'
 import { StatusPill } from '../ui/StatusPill'
+import { EditUserDialog } from './EditUserDialog'
 import { RefusalScreen } from './Refusal'
 import { LoadFailedScreen, SUPERVISOR_GONE } from './Users'
-
-/** The server's floor (`auth.MIN_PASSWORD_LENGTH`, D58). Restated here so a
- *  value that cannot possibly be accepted never costs the ~61 ms argon2 hash the
- *  endpoint spends before it can say so — the refusal is not re-decided, it is
- *  answered earlier. */
-const MIN_PASSWORD = 6
-const TOO_SHORT = 'گذرواژه باید دست‌کم ۶ نویسه باشد.'
-
-/** Everything that is not the server's own considered refusal: a 5xx, a dropped
- *  connection, a body that would not parse. */
-const FAILED = 'انجام نشد؛ دوباره تلاش کنید.'
-
-/**
- * What a failed write says.
- *
- * **The server's own sentence, for every 4xx.** `routers/users.py` exists to
- * turn each of `delegation.py`'s error keys into a Persian sentence written for
- * whoever is holding this screen — «این تنها ویرایشگر فعال سامانه است…»,
- * «نمی‌توانید دسترسی‌ای بیشتر از دسترسی خودتان به کسی بدهید» — and each of them
- * names the thing to do next. Replacing them with one local «انجام نشد» throws
- * that away and leaves an administrator pressing the same button.
- *
- * This is the opposite call from `write/ConfirmMark`, and deliberately: there,
- * one status covers two causes the server cannot tell apart, so echoing it would
- * assert the wrong one. Here the mapping is one key to one sentence, and the
- * refusals are about the *actor's* rights rather than about somebody else's
- * document.
- *
- * **`detail`, not `message`, and that is the whole of the second condition.**
- * `message` is never empty: when the body carried no `detail` string,
- * `fetchJson` fills it with `res.statusText`, which is English. A 4xx is not a
- * guarantee that a Persian sentence was written — FastAPI answers 422 with
- * `detail` as a **list**, so `/api/users/abc` would put «Unprocessable Entity»
- * on this screen, and a proxy-generated 429 or 413 arrives with no JSON body at
- * all. `ApiError.detail` is `null` in exactly those cases, and this asks for it
- * by name rather than inferring from the status which 4xx the server wrote for.
- *
- * A 5xx is not a refusal at all, so it too gets the local retry line rather than
- * a framework's English `statusText`.
- */
-function refusalText(error: unknown): string {
-  if (error instanceof ApiError && error.status >= 400 && error.status < 500
-      && error.detail !== null) {
-    return error.detail
-  }
-  return FAILED
-}
 
 /**
  * One person's record, and the two acts an administrator performs on it
@@ -77,10 +33,11 @@ function refusalText(error: unknown): string {
  * the alert repeats the server's sentence rather than assuming the screen
  * predicted every answer.
  *
- * The supervisor is displayed and not editable here: choosing one needs the
- * candidate picker, which is the next task's. What this screen owes D14 is the
- * *warning*, since a disabled supervisor is left in place rather than quietly
- * repointed, and nothing else in the app would ever mention it.
+ * The facts below are read-only; changing any of them is `EditUserDialog`,
+ * which owns the candidate picker and the diff that decides what is sent. What
+ * this screen owes D14 is the *warning*, since a disabled supervisor is left in
+ * place rather than quietly repointed, and nothing else in the app would ever
+ * mention it.
  */
 export function UserDetail() {
   const { id = '' } = useParams()
@@ -93,6 +50,7 @@ export function UserDetail() {
   const setPassword = useSetUserPassword(id)
   const [password, setPasswordValue] = useState('')
   const [tooShort, setTooShort] = useState(false)
+  const [editing, setEditing] = useState(false)
 
   // Hooks first, then the early returns.
   if (!session) return <div className="flex-1 bg-bg" />
@@ -202,6 +160,27 @@ export function UserDetail() {
 
         {manageable ? (
           <div className="flex flex-col gap-s8 mt-s10">
+            <Card className="px-s9 py-s8">
+              <h2 className="text-subtitle font-bold text-ink">مشخصات</h2>
+              <p className="text-caption text-muted mt-s3">
+                نام، شماره، نقش، دامنهٔ دسترسی و سرپرست این حساب از اینجا عوض
+                می‌شود. تنها چیزهایی فرستاده می‌شود که واقعاً تغییر کرده باشند.
+              </p>
+              <div className="mt-s6">
+                <Button variant="violet" className="px-s8 text-caption"
+                  onClick={() => setEditing(true)}>
+                  ویرایش کاربر
+                </Button>
+              </div>
+            </Card>
+
+            {/* Mounted only while it is open: the roles and the candidate list
+                are not two requests on every visit to somebody's record, and a
+                second opening starts on the account as it now stands. */}
+            {editing && (
+              <EditUserDialog user={user} open onClose={() => setEditing(false)} />
+            )}
+
             <Card className="px-s9 py-s8">
               <h2 className="text-subtitle font-bold text-ink">وضعیت حساب</h2>
               <p className="text-caption text-muted mt-s3">

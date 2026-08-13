@@ -6,10 +6,12 @@ import { useUsers } from '../api/users'
 import { refusalStatus, retryQuery } from '../api/client'
 import { toLatinDigits } from '../lib/digits'
 import { toFa } from '../lib/format'
+import { Button } from '../ui/Button'
 import { Card } from '../ui/Card'
 import { SearchField } from '../ui/SearchField'
 import { StatusPill } from '../ui/StatusPill'
 import { EmptyState, ErrorState, LoadingState } from '../ui/states'
+import { NewUserDialog } from './NewUserDialog'
 import { RefusalScreen } from './Refusal'
 import type { AdminUser } from '../api/users'
 
@@ -77,6 +79,7 @@ export function Users() {
     enabled: !!session && refusal === undefined,
   })
   const [q, setQ] = useState('')
+  const [creating, setCreating] = useState(false)
 
   // Hooks first, then the early returns: an early return above them would change
   // hook order between renders the moment the session or the listing arrives.
@@ -107,11 +110,26 @@ export function Users() {
   return (
     <div className="flex-1 overflow-auto py-s12 px-s12">
       <div className="max-w-list mx-auto">
-        <h1 className="text-title font-extrabold text-ink">کاربران</h1>
+        <div className="flex items-center justify-between gap-s6 flex-wrap">
+          <h1 className="text-title font-extrabold text-ink">کاربران</h1>
+          {/* Below the gate, and that is the whole placement decision: a
+              department-scoped caller is answered «چیزی اینجا نیست» above and
+              never reaches this line, so the app never draws a control into a
+              wall it put up itself. */}
+          <Button variant="violet" className="px-s8 text-caption"
+            onClick={() => setCreating(true)}>
+            کاربر تازه
+          </Button>
+        </div>
         <p className="text-caption text-muted mt-s4">
           هر کاربر یک نقش دارد و یک یا چند دامنهٔ دسترسی. سرپرست جایگاهی در نمودار
           سازمانی است و هیچ دسترسی‌ای نمی‌دهد.
         </p>
+
+        {/* Mounted only while it is open, so the roles and the candidate list
+            are not three requests on every page view — and a second opening
+            starts blank rather than on the last attempt's half-filled form. */}
+        {creating && <NewUserDialog open onClose={() => setCreating(false)} />}
 
         <div className="mt-s8">
           <SearchField label="جست‌وجوی کاربر" value={q} onChange={setQ}
