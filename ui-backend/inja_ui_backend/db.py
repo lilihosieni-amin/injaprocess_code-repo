@@ -1,7 +1,7 @@
 """The operational store (spec D1, D6).
 
 stdlib sqlite3, no ORM. The project already refuses an ORM for process content;
-this store has five tables and no relational complexity that would justify a
+this store has seven tables and no relational complexity that would justify a
 dependency. Schema is a list of numbered migrations so the same code path
 creates a fresh database and upgrades an existing one.
 """
@@ -63,6 +63,37 @@ MIGRATIONS: list[tuple[int, str]] = [
         );
         CREATE INDEX audit_at ON audit_events (at);
         CREATE INDEX audit_actor ON audit_events (actor, at);
+    """),
+    (2, """
+        CREATE TABLE confirmations (
+            -- A process id ('dining-001') or a department code ('dining').
+            -- One column for both because the two namespaces are disjoint by
+            -- construction: a department code carries no '-', a process id
+            -- always does. D20 says the target is "a process id or a department
+            -- code"; splitting it into two tables would give the same question
+            -- two places to be answered and two places to forget one.
+            -- NOT NULL is not redundant beside PRIMARY KEY: sqlite keeps a
+            -- long-standing bug-compatibility quirk where a non-INTEGER primary
+            -- key still accepts NULL, and accepts it repeatedly since NULLs do
+            -- not equal each other. Without it a store bug could fill the table
+            -- with rows that vouch for nothing.
+            target       TEXT PRIMARY KEY NOT NULL,
+            -- The SHA-256 of the canonical form of what was confirmed (D21).
+            -- Never a boolean: a boolean would have to be cleared correctly by
+            -- the UI's Save, a chat edit and a `merge` run, and missing one
+            -- leaves the mark vouching for something stale.
+            fingerprint  TEXT NOT NULL,
+            confirmed_by TEXT NOT NULL,           -- username
+            confirmed_at INTEGER NOT NULL         -- unix seconds
+        );
+
+        CREATE TABLE visibility_policy (
+            -- One row per *changed* switch. An absent row reads as D17's
+            -- default (store/policy.py), so the defaults are stated once, in
+            -- Python, rather than once here and once there.
+            field   TEXT PRIMARY KEY NOT NULL,   -- see `target` above on NOT NULL
+            visible INTEGER NOT NULL CHECK (visible IN (0, 1))
+        );
     """),
 ]
 

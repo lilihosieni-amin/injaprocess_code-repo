@@ -6,6 +6,8 @@ from pathlib import Path
 
 import pytest
 from inja_ui_backend import exports
+from inja_ui_backend.fingerprint import fingerprint
+from inja_ui_backend.store import policy
 
 #: Values a public export must never carry. Every one is planted somewhere in
 #: `_seed_process`'s document, and `test_no_provenance_survives_anywhere` greps
@@ -71,19 +73,29 @@ def _seed_process(root, code, pid, tombstoned=False):
     (d / f"{pid}.json").write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
 
 
-def test_token_is_16_hex_chars_and_stable():
-    a = exports.export_token("key", "dining", "flowchart")
-    b = exports.export_token("key", "dining", "flowchart")
-    assert a == b
-    assert len(a) == 16
-    assert all(c in "0123456789abcdef" for c in a)
+def _all_confirmed(root, code: str) -> dict[str, str]:
+    """Every process and the overview of `code`, confirmed at what is on disk.
+
+    The bundle publishes only confirmed content (D22), so a payload test with no
+    confirmations would assert things about an empty list — and would pass
+    against a `build_payload` that had stopped filtering anything at all.
+    """
+    from inja_ui_backend import storage
+    out = {}
+    ov = storage.overview_path(root, code)
+    if ov.is_file():
+        out[code] = fingerprint(storage.read_json(ov))
+    for path in storage.list_process_files(root, code):
+        doc = storage.read_json(path)
+        out[doc["id"]] = fingerprint(doc)
+    return out
 
 
-def test_token_differs_by_kind_department_and_key():
-    base = exports.export_token("key", "dining", "flowchart")
-    assert base != exports.export_token("key", "dining", "steps")
-    assert base != exports.export_token("key", "cooking", "flowchart")
-    assert base != exports.export_token("other", "dining", "flowchart")
+def _payload(root, code="cooking", at="2026-07-26T09:00:00Z", pol=None, confirmed=None):
+    return exports.build_payload(
+        root, code, at,
+        policy=dict(policy.DEFAULTS) if pol is None else pol,
+        confirmed=_all_confirmed(root, code) if confirmed is None else confirmed)
 
 
 def test_build_payload_orders_processes_drops_tombstones_and_empties_pending(data_root):
@@ -94,7 +106,7 @@ def test_build_payload_orders_processes_drops_tombstones_and_empties_pending(dat
     _seed_process(data_root, "cooking", "cooking-002")
     _seed_process(data_root, "cooking", "cooking-009", tombstoned=True)
 
-    payload = exports.build_payload(data_root, "cooking", "2026-07-26T09:00:00Z")
+    payload = _payload(data_root)
     assert payload["dept"]["department"] == "cooking"
     assert payload["generated_at"] == "2026-07-26T09:00:00Z"
     ids = [p["id"] for p in payload["processes"]]
@@ -112,15 +124,50 @@ def test_build_payload_ships_exactly_the_keys_the_documents_render(data_root):
     `process.schema.json` next month and copied straight into a public file.
     This fails on that too, and the fix is to decide, here, whether a document
     renders it.
+
+    The set grew by three — `summary`, `idef0` and `kpis` — and that is the point
+    of P1 rather than a regression. They arrive **blanked** under D17's defaults
+    and populated the moment an Editor switches one on, which is exactly what
+    makes D27's policy-versioned cache key necessary: the same department, the
+    same content, a different document.
     """
     _seed_process(data_root, "cooking", "cooking-002")
 
-    payload = exports.build_payload(data_root, "cooking", "2026-07-26T09:00:00Z")
+    payload = _payload(data_root)
 
     assert payload["processes"]
     for proc in payload["processes"]:
-        assert set(proc) == {"id", "department", "name", "parent",
-                             "nodes", "edges", "pending"}, proc["id"]
+        assert set(proc) == {"id", "department", "name", "parent", "edges",
+                             "summary", "idef0", "kpis", "nodes", "pending"}, proc["id"]
+
+
+def test_the_bundle_carries_no_node_key_the_whitelist_does_not_name(data_root):
+    """The node whitelist, from the published side of it.
+
+    `exports` used to keep a **blacklist** here (`out = dict(node)`), so a node
+    key nobody had heard of shipped from an unauthenticated link on the day it
+    was written — while the API's copy of the same node, built by
+    `visibility.PUBLIC_NODE_KEYS`, dropped it. One filter now, and this is the
+    assertion that says so from the file's own end: an unlisted key planted on
+    disk must not reach the bundle.
+    """
+    from inja_ui_backend import visibility
+
+    _seed_process(data_root, "cooking", "cooking-002")
+    path = data_root / "departments" / "cooking" / "processes" / "cooking-002.json"
+    doc = json.loads(path.read_text(encoding="utf-8"))
+    doc["nodes"][0]["internal_note"] = "SHOULDNOTSHIP"
+    path.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
+
+    payload = _payload(data_root)
+
+    assert "SHOULDNOTSHIP" not in json.dumps(payload, ensure_ascii=False)
+    proc = next(p for p in payload["processes"] if p["id"] == "cooking-002")
+    for node in proc["nodes"]:
+        assert set(node) <= set(visibility.PUBLIC_NODE_KEYS), node
+    # …and the node it was planted on really is in the bundle, or the absence
+    # above is about a document that never travelled.
+    assert any(n["id"] == "cooking-002-n001" for n in proc["nodes"])
 
 
 def test_build_payload_blanks_node_provenance(data_root):
@@ -131,7 +178,7 @@ def test_build_payload_blanks_node_provenance(data_root):
     """
     _seed_process(data_root, "cooking", "cooking-002")
 
-    payload = exports.build_payload(data_root, "cooking", "2026-07-26T09:00:00Z")
+    payload = _payload(data_root)
 
     seen = 0
     for proc in payload["processes"]:
@@ -151,7 +198,7 @@ def test_build_payload_blanks_node_icom(data_root):
     """
     _seed_process(data_root, "cooking", "cooking-002")
 
-    payload = exports.build_payload(data_root, "cooking", "2026-07-26T09:00:00Z")
+    payload = _payload(data_root)
 
     for proc in payload["processes"]:
         for node in proc["nodes"]:
@@ -165,7 +212,7 @@ def test_no_provenance_survives_anywhere_in_the_payload(data_root):
     _seed_process(data_root, "cooking", "cooking-002")
     _seed_process(data_root, "cooking", "cooking-009", tombstoned=True)
 
-    payload = exports.build_payload(data_root, "cooking", "2026-07-26T09:00:00Z")
+    payload = _payload(data_root)
     body = json.dumps(payload, ensure_ascii=False)
 
     for secret in SECRETS:
@@ -177,13 +224,20 @@ def test_build_payload_keeps_what_the_documents_are_built_on(data_root):
 
     Each one is quiet when it breaks: a missing `department` makes the drawer's
     seeded query miss and throw; a missing `pending` makes `toFlowNodes` iterate
-    `undefined`; a missing `position` collapses the whole diagram onto one point;
-    a missing `removed` puts soft-deleted nodes back into the counts, the bands
-    and the printed steps.
+    `undefined`; a missing `position` collapses the whole diagram onto one point.
+
+    **The soft-deleted node itself no longer travels**, and that is the one line
+    of this test that changed with P1: `visibility.filtered` drops a removed node
+    for a non-editor (it is a record somebody deleted, D56's Whole-records row)
+    and drops every edge naming one with it. The export's three consumers —
+    `flow/adapt.ts`, `steps/linearize.ts` and `print/complete.ts` — each filtered
+    `removed` in the browser, so what changes for them is that their filter now
+    has nothing to do; what changes for a reader with dev tools is that the
+    deleted step's label is no longer in the file.
     """
     _seed_process(data_root, "cooking", "cooking-002")
 
-    payload = exports.build_payload(data_root, "cooking", "2026-07-26T09:00:00Z")
+    payload = _payload(data_root)
     proc = next(p for p in payload["processes"] if p["id"] == "cooking-002")
 
     # keys the export's react-query cache and the drawer agree on
@@ -194,16 +248,45 @@ def test_build_payload_keeps_what_the_documents_are_built_on(data_root):
     assert "parent" in proc
 
     by_id = {n["id"]: n for n in proc["nodes"]}
-    assert len(by_id) == 3, "every node still travels, soft-deleted ones included"
+    assert set(by_id) == {"cooking-002-n001", "cooking-002-j1"}, (
+        "the live nodes must all travel, and the soft-deleted one must not")
     activity = by_id["cooking-002-n001"]
     assert activity["position"] == {"x": 30, "y": 104}
     assert (activity["label"], activity["actor"], activity["description"]) \
         == ("برداشت", "انباردار", "شرح")
     assert activity["subprocess"] is None
-    assert by_id["cooking-002-n002"]["removed"] is True
     assert by_id["cooking-002-j1"]["junctionType"] == "XOR"
     assert proc["edges"] == [{"from": "cooking-002-n001", "to": "cooking-002-j1",
                               "label": "بعد"}]
+
+
+def test_a_soft_deleted_node_and_its_edges_do_not_reach_the_bundle(data_root):
+    """The whole-record rule, on the surface it matters most.
+
+    A published file is read by anyone holding the link, so a deleted step's
+    label sitting in it and merely not drawn is the same disclosure the API's
+    version of this rule closes. The edges go with the node: `flow/adapt.ts`
+    maps `e.from`/`e.to` with no guard and @xyflow resolves nothing for an
+    endpoint that is not on the canvas, so half a fix is a diagram with a hole.
+    """
+    _seed_process(data_root, "cooking", "cooking-002")
+    path = data_root / "departments" / "cooking" / "processes" / "cooking-002.json"
+    doc = json.loads(path.read_text(encoding="utf-8"))
+    doc["nodes"][1]["label"] = "GONESTEP"
+    doc["edges"].append({"from": "cooking-002-n002", "to": "cooking-002-j1",
+                         "label": "از حذف‌شده"})
+    path.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
+
+    payload = _payload(data_root)
+    proc = next(p for p in payload["processes"] if p["id"] == "cooking-002")
+
+    assert "GONESTEP" not in json.dumps(payload, ensure_ascii=False)
+    assert "cooking-002-n002" not in [n["id"] for n in proc["nodes"]]
+    assert all("cooking-002-n002" not in (e["from"], e["to"]) for e in proc["edges"])
+    # …and the edge between two live nodes is still there, or this is 'drop every
+    # edge' and the diagram is a row of unconnected boxes.
+    assert {"from": "cooking-002-n001", "to": "cooking-002-j1",
+            "label": "بعد"} in proc["edges"]
 
 
 def test_build_payload_does_not_mutate_the_source_documents(data_root, monkeypatch):
@@ -217,7 +300,11 @@ def test_build_payload_does_not_mutate_the_source_documents(data_root, monkeypat
     }]
     monkeypatch.setattr(exports.storage, "ordered_processes", lambda root, code: source)
 
-    payload = exports.build_payload(data_root, "cooking", "2026-07-26T09:00:00Z")
+    # Confirmed at the *stub's* bytes, not the fixture's: `ordered_processes` is
+    # what the payload reads, so a `confirmed` map built from disk would name a
+    # fingerprint this document does not have and publish nothing at all.
+    payload = _payload(data_root, confirmed={**_all_confirmed(data_root, "cooking"),
+                                             "cooking-001": fingerprint(source[0])})
 
     assert payload["processes"][0]["pending"] == []
     assert payload["processes"][0]["nodes"][0]["source"]["created_by"] == ""
@@ -232,11 +319,214 @@ def test_blanked_records_are_not_shared_between_nodes(data_root):
     """Each blanked value is its own object, so nothing can alias into another."""
     _seed_process(data_root, "cooking", "cooking-002")
 
-    payload = exports.build_payload(data_root, "cooking", "2026-07-26T09:00:00Z")
+    payload = _payload(data_root)
     nodes = [n for p in payload["processes"] for n in p["nodes"] if n["type"] == "activity"]
 
     assert len({id(n["source"]) for n in nodes}) == len(nodes)
     assert len({id(n["icom"]["inputs"]) for n in nodes}) == len(nodes)
+
+
+def test_the_bundle_carries_no_cross_department_link(data_root):
+    """The debt P0b handed over, closed.
+
+    The artifact is cached and shared (D27), so it cannot depend on which Editor
+    pressed Export. The rule is caller-independent instead: the bundle is built
+    for a reader who may see *this department and nothing else*, which costs
+    nothing — a link out of the bundle was never followable inside it.
+    """
+    _seed_process(data_root, "cooking", "cooking-002")
+    path = data_root / "departments" / "cooking" / "processes" / "cooking-002.json"
+    doc = json.loads(path.read_text(encoding="utf-8"))
+    doc["parent"] = {"process": "dining-777", "node": "dining-777-n010"}
+    doc["nodes"][0]["subprocess"] = "dining-888"
+    path.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
+
+    payload = _payload(data_root)
+    text = json.dumps(payload, ensure_ascii=False)
+    assert "dining-777" not in text and "dining-888" not in text
+    proc = next(p for p in payload["processes"] if p["id"] == "cooking-002")
+    assert proc["parent"] is None
+    assert proc["nodes"][0]["subprocess"] is None
+
+
+def test_an_in_department_sub_process_link_survives_the_bundle(data_root):
+    """The other direction, or the fix is 'blank every link', which takes the
+    sub-process graph away from the people it is for.
+
+    On a **live** node: the brief's version planted it on `nodes[1]`, which is
+    the soft-deleted one, so the link it asserted on would now be dropped with
+    its node and the test would be pinning the wrong rule — and would have gone
+    green again the day somebody blanked every link.
+    """
+    _seed_process(data_root, "cooking", "cooking-002")
+    path = data_root / "departments" / "cooking" / "processes" / "cooking-002.json"
+    doc = json.loads(path.read_text(encoding="utf-8"))
+    doc["nodes"][0]["subprocess"] = "cooking-001"
+    path.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
+
+    payload = _payload(data_root)
+    assert "cooking-001" in json.dumps(payload, ensure_ascii=False)
+    proc = next(p for p in payload["processes"] if p["id"] == "cooking-002")
+    assert proc["nodes"][0]["subprocess"] == "cooking-001"
+
+
+def test_the_bundle_publishes_only_confirmed_processes(data_root):
+    """D22 — reports render only confirmed processes."""
+    _seed_process(data_root, "cooking", "cooking-002")
+    confirmed = _all_confirmed(data_root, "cooking")
+    del confirmed["cooking-002"]
+    payload = _payload(data_root, confirmed=confirmed)
+    assert [p["id"] for p in payload["processes"]] == ["cooking-001"]
+
+
+def test_a_process_whose_content_moved_is_no_longer_published(data_root):
+    """The mark is a fingerprint, and the bundle is not a second opinion."""
+    confirmed = _all_confirmed(data_root, "cooking")
+    confirmed["cooking-001"] = "0" * 64
+    assert _payload(data_root, confirmed=confirmed)["processes"] == []
+
+
+def test_a_department_whose_overview_is_unconfirmed_cannot_be_published(data_root):
+    """The overview is confirmed like anything else (D20, D55), and a bundle that
+    published an unreviewed introduction would be the one page every reader opens
+    first."""
+    confirmed = _all_confirmed(data_root, "cooking")
+    del confirmed["cooking"]
+    with pytest.raises(exports.Unconfirmed):
+        _payload(data_root, confirmed=confirmed)
+
+
+def test_a_tombstone_is_absent_even_when_it_carries_a_valid_confirmation(data_root):
+    """The two record-gate clauses are separate, and the tombstone one has no
+    switch and no exemption (D17).
+
+    Confirming a tombstone is not reachable through the API — `POST
+    /api/confirmations/{target}` refuses one — but nothing revalidates the store
+    on read, and a mark left behind by a process that was tombstoned *after* it
+    was vouched for is the ordinary way this row exists. So the tombstone filter
+    may not be reachable only through "it happens to be unconfirmed".
+    """
+    _seed_process(data_root, "cooking", "cooking-009", tombstoned=True)
+    confirmed = _all_confirmed(data_root, "cooking")
+    assert "cooking-009" in confirmed, (
+        "the tombstone is not in the confirmed map, so this test is about the"
+        " confirmation filter rather than about the tombstone one")
+
+    payload = _payload(data_root, confirmed=confirmed)
+    assert [p["id"] for p in payload["processes"]] == ["cooking-001"]
+
+
+def test_the_policy_decides_what_the_bundle_carries(data_root):
+    """§11 test 8 for the artifact, and the reason the cache key needs the policy
+    version: the same department and the same content produce two documents.
+
+    `_seed_process` is what plants the summary — the conftest fixture's own
+    `cooking-001` carries different prose — so without it the `not in` above
+    would pass against a payload that had never had the field, which is this
+    project's recurring defect species and not a test.
+    """
+    _seed_process(data_root, "cooking", "cooking-002")
+    on_disk = json.loads(
+        (data_root / "departments" / "cooking" / "processes" / "cooking-002.json")
+        .read_text(encoding="utf-8"))
+    assert on_disk["summary"] == "خلاصهٔ داخلی این فرآیند", "the premise is gone"
+
+    hidden = _payload(data_root)
+    shown = _payload(data_root, pol={**policy.DEFAULTS, "process_summary": True})
+    assert "خلاصهٔ داخلی این فرآیند" not in json.dumps(hidden, ensure_ascii=False)
+    assert "خلاصهٔ داخلی این فرآیند" in json.dumps(shown, ensure_ascii=False)
+
+
+def test_the_overview_travels_in_full(data_root):
+    """D55 — the department information page is published in its entirety.
+
+    The plan had `updated_at` withheld here. It is not: the project owner
+    overruled that while `visibility.public_overview` was being written, and this
+    file follows the one filter rather than keeping a second opinion about the
+    overview — which is the whole point of the task.
+    """
+    from inja_ui_backend import storage
+
+    payload = _payload(data_root)
+    assert payload["dept"] == storage.read_json(
+        storage.overview_path(data_root, "cooking"))
+    assert payload["dept"]["description"]
+
+
+# --- the cache key (§11 test 22) ---
+
+KEY = dict(process_fingerprints=["a" * 64, "b" * 64],
+           overview_fingerprint="c" * 64, policy_version="d" * 16)
+
+
+def test_the_key_is_16_hex_chars_and_stable():
+    a = exports.report_key("key", "dining", "flowchart", **KEY)
+    assert a == exports.report_key("key", "dining", "flowchart", **KEY)
+    assert len(a) == 16 and all(c in "0123456789abcdef" for c in a)
+
+
+def test_the_key_changes_when_the_visibility_policy_changes():
+    """The clause that is a content leak if it fails, not a stale page: the
+    payload is built by the filter, so a cached artifact must not survive the
+    switch that changed what it contains."""
+    base = exports.report_key("key", "dining", "flowchart", **KEY)
+    assert base != exports.report_key("key", "dining", "flowchart",
+                                      **{**KEY, "policy_version": "e" * 16})
+
+
+def test_the_key_changes_when_a_process_is_confirmed_or_edited():
+    base = exports.report_key("key", "dining", "flowchart", **KEY)
+    assert base != exports.report_key(
+        "key", "dining", "flowchart",
+        **{**KEY, "process_fingerprints": ["a" * 64, "b" * 64, "f" * 64]})
+    assert base != exports.report_key(
+        "key", "dining", "flowchart",
+        **{**KEY, "process_fingerprints": ["a" * 64, "f" * 64]})
+
+
+def test_the_key_changes_when_the_department_is_reordered():
+    """order.json is the document's table of contents: a reorder changes what the
+    reader receives while changing no process."""
+    base = exports.report_key("key", "dining", "flowchart", **KEY)
+    assert base != exports.report_key(
+        "key", "dining", "flowchart",
+        **{**KEY, "process_fingerprints": ["b" * 64, "a" * 64]})
+
+
+def test_the_key_changes_when_the_overview_changes():
+    base = exports.report_key("key", "dining", "flowchart", **KEY)
+    assert base != exports.report_key("key", "dining", "flowchart",
+                                      **{**KEY, "overview_fingerprint": "e" * 64})
+
+
+def test_the_key_still_differs_by_department_kind_and_signing_key():
+    """The properties `export_token` had, kept: the folder is publicly mounted
+    and the filename is still a guard until D24 removes that surface."""
+    base = exports.report_key("key", "dining", "flowchart", **KEY)
+    assert base != exports.report_key("key", "dining", "steps", **KEY)
+    assert base != exports.report_key("key", "cooking", "flowchart", **KEY)
+    assert base != exports.report_key("other", "dining", "flowchart", **KEY)
+
+
+def test_the_key_separates_a_split_fingerprint_list_from_its_merge():
+    """The NUL between parts, pinned with inputs that would actually collide.
+
+    Unreachable through every other test above — every part here is
+    fixed-length hex, so no real fingerprint list can ever equal another
+    part's bytes — but the property the delimiter buys is real: without it,
+    `mac.update` for `["a"*64, "b"*64]` and for `["a"*64 + "b"*64]` consume the
+    identical byte stream (`a`*64 immediately followed by `b`*64 either way),
+    and the two keys would collide.
+    """
+    split = exports.report_key("key", "dining", "flowchart",
+                               process_fingerprints=["a" * 64, "b" * 64],
+                               overview_fingerprint="c" * 64,
+                               policy_version="d" * 16)
+    merged = exports.report_key("key", "dining", "flowchart",
+                                process_fingerprints=["a" * 64 + "b" * 64],
+                                overview_fingerprint="c" * 64,
+                                policy_version="d" * 16)
+    assert split != merged
 
 
 def test_cross_task_contract_constants():
@@ -349,8 +639,18 @@ def test_write_export_failure_leaves_no_tmp_and_spares_the_existing_file(tmp_pat
 
 
 def test_build_payload_raises_for_a_department_without_an_overview(data_root):
-    with pytest.raises(exports.ExportUnavailable):
-        exports.build_payload(data_root, "dining", "2026-07-26T09:00:00Z")
+    """Exactly `ExportUnavailable`, not its subclass `Unconfirmed`.
+
+    `pytest.raises(ExportUnavailable)` alone is satisfied by either: a mutant
+    that asks the confirmation question before the file-existence one would
+    raise `Unconfirmed` for a department with no `confirmed` entry — which
+    `dining` has none of either way — and this would still go green.
+    """
+    with pytest.raises(exports.ExportUnavailable) as excinfo:
+        _payload(data_root, "dining")
+    assert type(excinfo.value) is exports.ExportUnavailable, (
+        f"raised {type(excinfo.value).__name__}, not ExportUnavailable itself —"
+        f" this is the missing-overview branch, not the unconfirmed one")
 
 
 def test_export_pdf_path_sits_beside_the_html(tmp_path):

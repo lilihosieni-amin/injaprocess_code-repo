@@ -50,6 +50,12 @@ def list_pending(request: Request, user=Depends(require_session)):
             continue
         for fp in storage.list_process_files(cfg.data_root, d["code"]):
             doc = storage.read_json(fp)
+            if doc.get("tombstoned"):
+                # A retained-but-deleted record is excluded entirely (D17), so
+                # its unresolved proposals are proposals about a document nobody
+                # will read. Edit-gated, so this was never a disclosure — it was
+                # an Editor being handed work that cannot matter.
+                continue
             for i, p in enumerate(doc.get("pending", [])):
                 if p.get("status") == "open":
                     out.append({

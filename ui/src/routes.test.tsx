@@ -8,19 +8,28 @@ import { appRoutes } from './routes'
 afterEach(() => vi.restoreAllMocks())
 
 /** A real descriptor, because the shell is now chosen from one. */
-function descriptor(capabilities: string[]) {
+function descriptor(capabilities: string[], scopes = ['dept:cooking']) {
   return {
     username: '09123456789', displayName: 'سحر بیات', role: 'reader',
-    capabilities, scopes: ['dept:cooking'], supervisor: null,
+    capabilities, scopes, supervisor: null,
     canSupervise: false, pendingApprovals: 0,
   }
 }
 
-function boot(initial: string, authed: boolean, capabilities = ['view', 'comment', 'edit']) {
+const POLICY = {
+  fields: {
+    process_summary: false, process_idef0: false, process_kpis: false,
+    node_description: true, node_actor: true, node_icom: false,
+  },
+  version: '0123456789abcdef',
+}
+
+function boot(initial: string, authed: boolean, capabilities = ['view', 'comment', 'edit'], scopes?: string[]) {
   vi.spyOn(globalThis, 'fetch').mockImplementation((input: RequestInfo | URL) => {
     const url = String(input)
-    if (url.endsWith('/api/auth/me')) return Promise.resolve(new Response(authed ? JSON.stringify(descriptor(capabilities)) : 'x', { status: authed ? 200 : 401, headers: { 'Content-Type': 'application/json' } }))
+    if (url.endsWith('/api/auth/me')) return Promise.resolve(new Response(authed ? JSON.stringify(descriptor(capabilities, scopes)) : 'x', { status: authed ? 200 : 401, headers: { 'Content-Type': 'application/json' } }))
     if (url.endsWith('/api/departments')) return Promise.resolve(new Response(JSON.stringify([{ code: 'cooking', name: 'پخت', count: 1 }]), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+    if (url.endsWith('/api/visibility')) return Promise.resolve(new Response(JSON.stringify(POLICY), { status: 200, headers: { 'Content-Type': 'application/json' } }))
     return Promise.resolve(new Response('[]', { status: 200, headers: { 'Content-Type': 'application/json' } }))
   })
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -54,5 +63,15 @@ describe('routing', () => {
     const { container } = boot('/departments', true, ['view', 'comment', 'edit'])
     await waitFor(() => expect(container.querySelector('[data-shell="panel"]')).toBeInTheDocument())
     expect(container.querySelector('[data-shell="reader"]')).not.toBeInTheDocument()
+  })
+
+  // The policy screen is reachable only through the route tree, and the catch-all
+  // below it sends every unknown path to /departments — so a missing route entry
+  // is not a blank page but a silent redirect, which looks exactly like a working
+  // app. `heading`, not `text`: the header's own nav entry carries the same words.
+  it('routes /visibility to the policy screen for a global set_visibility holder', async () => {
+    boot('/visibility', true, ['view', 'edit', 'set_visibility'], ['*'])
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: 'نمایش محتوا' })).toBeInTheDocument())
   })
 })

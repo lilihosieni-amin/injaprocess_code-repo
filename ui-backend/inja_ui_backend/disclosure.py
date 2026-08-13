@@ -23,6 +23,21 @@ Two rules, one module, because they are the same rule at the same boundaries:
 returns a process document, so "we fixed the two we found" cannot be the shape
 of it.
 
+**Three rules now.** The third is D17's field policy, and it is not written here
+either: `visibility.py` holds the shape and this module holds the *caller* —
+which department they may edit, and which ids they may be told about. Everything
+that decides what a body contains lives in exactly one function, and this is the
+only module that resolves a request into its arguments.
+
+**And one rule that is not about a body's contents at all.** `may_serve` and
+`servable` answer *may this caller be told this **record** exists* — a tombstone
+(D17) or a document carrying no valid confirmation (D22) is absent from the
+query, not blanked inside the response. It lives here because it is resolved
+from the same two hoisted lookups and asked at the same boundaries; it is
+answered with a 404 rather than a 403 for the reason `sees` is lexical, which is
+D56's Existence row: a status that distinguishes "not for you" from "not there"
+is an oracle.
+
 **Every department here is derived lexically from an id** —
 `storage.dept_of(pid)` is `pid.rsplit("-", 1)[0]`, pure string arithmetic — and
 never by loading the referenced file. That is the same rule the routers' targets
@@ -44,8 +59,10 @@ from __future__ import annotations
 
 import sqlite3
 
-from . import storage
+from . import storage, visibility
 from .access import permits
+from .fingerprint import fingerprint
+from .store import confirmations, policy
 
 
 class Disclosure:
@@ -63,11 +80,28 @@ class Disclosure:
     """
 
     def __init__(self, conn: sqlite3.Connection, user: sqlite3.Row) -> None:
+        self._conn = conn
         self._may_view = permits(conn, user, "view")
         self._may_edit = permits(conn, user, "edit")
+        # One read of the policy per request, for the same reason `permits`
+        # hoists its two lookups: a listing runs the filter over every process
+        # in a department, and the policy cannot change inside one request.
+        self._policy = policy.current(conn)
 
     def sees(self, ref: object) -> bool:
-        """May this caller be told that a process named `ref` exists?
+        """Is `ref` inside this caller's scope? The link rule, and only that.
+
+        **It is deliberately not joined to the record gate below.** `may_serve`
+        answers a second question — tombstoned, or carrying no valid
+        confirmation — and a `parent` or a `subprocess` naming a record that gate
+        would 404 this caller out of still reaches them: the id travels, and
+        nothing of the record's content does. The project owner ruled on it in as
+        many words — *"if the content isn't shown to the user, it's fine. Leave
+        it as it is."* — so a future reader finding the asymmetry is looking at a
+        decision, not at the half of a rule somebody forgot. Joining the two
+        would also make a link an existence probe of a different kind: which of
+        an in-scope department's ids are confirmed today is not something a
+        neighbouring document's links should answer.
 
         `ref` is an id out of a link, so it is whatever the document holds:
         `None` for an absent link, and — since nothing revalidates a stored
@@ -84,6 +118,58 @@ class Disclosure:
         both turn on."""
         return self._may_edit(f"dept:{dept}")
 
+    def may_serve(self, doc: dict, dept: str, target: str) -> bool:
+        """May this caller be told that this **record** exists at all?
+
+        Two clauses, one question (D17, D22, D56):
+
+        * a tombstoned process is *excluded entirely*, with no switch;
+        * a process or overview carrying no valid confirmation does not appear
+          for any user without `edit` on its department.
+
+        An Editor is exempt from both, and for the same reason: they are the
+        person a tombstone is retained for and the person who has to read an
+        unconfirmed document in order to confirm it.
+
+        `target` is passed in rather than read out of `doc` — a process id or a
+        department code — so the string the confirmation is looked up under is
+        the string the route was gated on, exactly as `dept` is in `redact`.
+
+        The comparison is `stored == fingerprint(doc)` and never `stored is not
+        None`: a mark that no longer matches its document is not a weaker mark,
+        it is a mark for a document that no longer exists.
+        """
+        if self.edits(dept):
+            return True
+        if doc.get("tombstoned"):
+            return False
+        row = confirmations.get(self._conn, target)
+        return row is not None and row["fingerprint"] == fingerprint(doc)
+
+    def servable(self, docs: list[dict], dept: str) -> list[dict]:
+        """`docs` reduced to the records this caller may be told exist.
+
+        The batch form of `may_serve`, and the reason it exists is D56's
+        *"filtered in the query. Never client-side"*: one statement resolves the
+        whole department rather than one per document inside a loop.
+
+        An editor gets the list back untouched — tombstones included, because the
+        process list draws them greyed and carries the only permanent-delete
+        affordance there is.
+
+        Fingerprinting every document in a department costs a SHA-256 over each
+        file's canonical form; the largest department is 38 processes, which is
+        under a millisecond of hashing beside the reads that produced the
+        documents in the first place.
+        """
+        if self.edits(dept):
+            return list(docs)
+        ids = [d["id"] for d in docs if isinstance(d.get("id"), str)]
+        stored = confirmations.stored_for(self._conn, ids)
+        return [d for d in docs
+                if not d.get("tombstoned")
+                and stored.get(d.get("id")) == fingerprint(d)]
+
     def redact(self, doc: dict, dept: str) -> dict:
         """`doc` as this caller may receive it. `dept` is the document's own.
 
@@ -93,34 +179,31 @@ class Disclosure:
         hand-edited file whose `id` disagrees with its location would otherwise
         be redacted against a department nobody was gated on.
 
-        `pending` is **emptied, not dropped** — the key stays. That is the shape
-        `exports._public_process` already uses, so the API and the published
-        artifact agree, and it is what the frontend's `ProcNode`/`Process`
-        contract requires: `ui/src/flow/adapt.ts` iterates `pending` to count
-        each node's conflicts with no guard, so dropping the key turns a
-        withheld proposal into a `TypeError` in the reader's browser.
+        The shaping itself is `visibility.filtered` and nothing here — D18 wants
+        one filter over every response, and a second copy of the rule in this
+        module is how the API and the published bundle would come to disagree
+        about what a reader may have.
         """
-        out = dict(doc)
-        if not self.edits(dept):
-            out["pending"] = []
-        parent = out.get("parent")
-        if isinstance(parent, dict) and not self.sees(parent.get("process")):
-            # The whole record, not just its `process`: the `node` half is a
-            # node id in that same department and is exactly as much of a
-            # disclosure. `None` is what the schema says an unparented process
-            # carries, so what the caller receives is a shape the client
-            # already handles rather than a hole in one.
-            out["parent"] = None
-        nodes = out.get("nodes")
-        if isinstance(nodes, list):
-            out["nodes"] = [
-                {**n, "subprocess": None}
-                if isinstance(n, dict) and n.get("subprocess") is not None
-                and not self.sees(n.get("subprocess"))
-                else n
-                for n in nodes
-            ]
-        return out
+        return visibility.filtered(doc, policy=self._policy, sees=self.sees,
+                                   editor=self.edits(dept))
+
+    def redact_overview(self, doc: dict, dept: str) -> dict:
+        """The department information page as this caller may receive it (D55).
+
+        Shown in full. It carries no ids, so there is no link rule to run and
+        `sees` never enters — which is exactly why it is a separate two-line
+        method rather than a flag on `redact`: a shared entry point would have
+        to decide, per call, which of the two shapes it was looking at, from a
+        dict that says nothing about which it is.
+
+        `visibility.public_overview` drops nothing today, `updated_at`
+        included — the project owner's ruling, and `visibility.py` carries the
+        reasoning. That is not a reason to return the document raw: the stance
+        is passed anyway, so the day a row of D55 does become switchable this
+        boundary is already reading the one filter rather than being the one
+        that has to be remembered.
+        """
+        return visibility.public_overview(doc, editor=self.edits(dept))
 
     def restore(self, incoming: dict, on_disk: dict | None) -> dict:
         """Put back every link this caller was never shown.

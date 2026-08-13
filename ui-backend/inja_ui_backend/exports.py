@@ -7,7 +7,8 @@ import logging
 import time
 from pathlib import Path
 
-from . import storage
+from . import storage, visibility
+from .fingerprint import fingerprint
 
 logger = logging.getLogger(__name__)
 
@@ -25,127 +26,117 @@ class ExportUnavailable(Exception):
     """A directory or file the export needs is not there."""
 
 
-def export_token(signing_key: str, code: str, kind: str) -> str:
-    """Stable, unguessable per department+kind (D6, D7).
-
-    Derived rather than stored: no state to migrate, and the same link survives
-    a restart. Rotating SESSION_SIGNING_KEY rotates every link — `write_export`
-    prunes the orphan that leaves behind.
-    """
-    mac = hmac.new(signing_key.encode("utf-8"),
-                   f"export:{code}:{kind}".encode("utf-8"),
-                   hashlib.sha256)
-    return mac.hexdigest()[:16]
+class Unconfirmed(ExportUnavailable):
+    """The department has nothing an Editor has vouched for (D22, D23)."""
 
 
-#: The only process keys either document reads, and therefore the only ones a
-#: public file carries. A **whitelist**, not a blacklist: the exported link is
-#: unauthenticated, so a field added to `process.schema.json` later must have to
-#: be let in deliberately rather than start shipping the day it is written.
-#:
-#: `pending` and `nodes` are added by `_public_process` after this copy — the
-#: first emptied, the second rewritten node by node.
-PUBLIC_PROCESS_KEYS: tuple[str, ...] = ("id", "department", "name", "parent", "edges")
-
-
-def _empty_icom() -> dict:
-    """A fresh, structurally valid but empty ICOM record."""
-    return {"inputs": [], "controls": [], "outputs": [], "mechanisms": []}
-
-
-def _empty_node_source() -> dict:
-    """A fresh, structurally valid but empty node provenance record."""
-    return {"created_by": "", "touched_by": []}
-
-
-def _public_node(node: dict) -> dict:
-    """One node with its two sensitive values blanked, its shape untouched.
-
-    `icom` and `source` are *emptied* rather than dropped because the frontend
-    reads both through `ActivityNode`, whose contract says they are always
-    there: the drawer's ICOM block indexes `icom.inputs` (behind `showIcom`,
-    which the export turns off — but that is one JSX prop, not a guarantee), and
-    its footer renders `source.created_by` with no guard at all. Dropping either
-    key turns a reader's click into a `TypeError` inside a document that has
-    already been handed out; blanking the value cannot.
-    """
-    out = dict(node)
-    if "icom" in out:
-        out["icom"] = _empty_icom()
-    if "source" in out:
-        out["source"] = _empty_node_source()
-    return out
-
-
-def _public_process(doc: dict) -> dict:
-    """One process reduced to what the two documents actually render."""
-    out = {k: doc[k] for k in PUBLIC_PROCESS_KEYS if k in doc}
-    out["nodes"] = [_public_node(n) for n in doc.get("nodes", [])]
-    out["pending"] = []
-    return out
-
-
-def build_payload(data_root: Path, code: str, generated_at: str) -> dict:
+def build_payload(data_root: Path, code: str, generated_at: str, *,
+                  policy: dict[str, bool], confirmed: dict[str, str]) -> dict:
     """What the template renders: the overview, the processes, the timestamp.
 
-    Trimmed here rather than hidden in the template, because the template hides
-    nothing: an export is served from a deliberately unauthenticated link (D6)
-    whose filename token is its only guard, so every byte of this payload is
-    readable by anyone holding that link, through View Source. Whatever no
-    document renders must therefore not be in it.
+    **The same filter every API response goes through** (`visibility.filtered`,
+    D18). One implementation means the published artifact and the flow canvas
+    cannot disagree about what a reader may have — and it means an Editor moving
+    a switch changes both at once, which is what D27's policy-versioned cache key
+    exists to make safe. This module carries no whitelist of its own any more:
+    it used to keep a *blacklist* for the node (`out = dict(node)`), so a node
+    key nobody had heard of shipped from an unauthenticated link the day it was
+    written, while the API's copy of the same node dropped it.
 
-    **Withheld entirely** (whitelisted out by `PUBLIC_PROCESS_KEYS`):
+    **Built for a reader who may see this department and nothing else.** That is
+    the caller-independent stance D27 requires — *"the artifact is the same for
+    every caller… permission decides whether it is served, never what it
+    contains"* — and it is what closes the cross-department link that used to
+    travel in here. Making the contents depend on which Editor pressed Export
+    would give one link two different bodies, which is a different design and not
+    a filter; fixing it to *this department* costs nothing, because a bundle
+    contains only this department's processes and a link out of it was never
+    followable inside the file.
 
-    * `pending` — unreviewed internal disagreements. Emptied rather than
-      dropped: `toFlowNodes` iterates it to count each node's conflicts, so the
-      key has to be there; the *contents* must not travel.
-    * `summary`, `idef0`, `kpis` — the process's own summary and IDEF0/KPI
-      records. Maintained by the editing app's Summary screen, which is not part
-      of either export bundle; no exported view reads them.
-    * `source` (`type`/`ref`/`run`) and `created_at`/`updated_at` — where the
-      process came from and when it was last touched. `source.ref` and
-      `source.run` name a meeting recording and a pipeline run.
-    * `tombstoned`/`superseded_by` — a tombstoned process is dropped below, so
-      these can only ever describe a process nobody outside sees.
+    **Only confirmed content is published** (D22). `confirmed` maps a target — a
+    process id or this department's code — to the fingerprint an Editor vouched
+    for; a process whose current fingerprint differs is absent, and an
+    unconfirmed overview raises `Unconfirmed` rather than publishing an
+    introduction nobody has reviewed. The caller resolves `confirmed` because
+    this module has no database and is not about to grow one.
 
-    **Blanked in place** (`_public_node`): every node's `source` — real
-    provenance, e.g. `runs/chat/20260722-050015` plus who edited it — and its
-    `icom`. Both keys stay because the frontend's `ProcNode` type says they are
-    always present and the drawer dereferences them; see `_public_node`.
+    Tombstoned processes are dropped before the confirmation question is even
+    asked: they are excluded entirely (D17) and `storage.ordered_processes`
+    returns them last rather than dropping them.
 
-    **Open, and deliberately left open: `parent` and node `subprocess` may name
-    a process in another department.** The API withholds exactly those two links
-    from a caller who cannot view the department they name
-    (`disclosure.Disclosure`), and this payload does not — so a published steps
-    or flowchart bundle can carry a neighbouring department's process id and node
-    id to anyone holding the link. It is not fixed here because this artifact is
-    *cached and shared*: making its contents depend on which Editor pressed
-    Export would give one link two different bodies, which is a different design
-    and not a filter. It belongs with the other half of the same question — D56's
-    Downloads row, that `GET /exports/{file_path:path}` derives no department
-    scope at all — and `tests/test_body_scan.py`'s `NOT_SWEPT` is where that one
-    is written down.
-
-    **Kept, and load-bearing in ways that are not obvious:** `dept.department`
-    keys the export's offline react-query cache; `process.department` is what
-    `DetailDrawer` passes to `useProcesses`; `parent` decides the «زیرفرآیند»
-    tags and the printed guide's "what is this about?" note; node `position` is
-    the whole diagram geometry; node `removed` is what keeps a soft-deleted node
-    out of the counts, the bands and the steps.
+    **Those two clauses are the record gate** (`disclosure.may_serve`'s
+    non-editor branch), and they are here rather than imported because
+    `Disclosure` answers for *a caller* and this artifact must not: the file is
+    cached and served from one link, so a gate keyed on the caller would put one
+    reader's bundle in another reader's hands. Same rule, resolved
+    caller-independently — a tombstone is absent, and a document no Editor has
+    vouched for at its current bytes is absent, exactly as they are absent from
+    `GET /api/departments/{code}/processes`.
     """
     overview = storage.overview_path(data_root, code)
     if not overview.is_file():
         raise ExportUnavailable(f"department {code} has no overview.json")
+    ov = storage.read_json(overview)
+    if confirmed.get(code) != fingerprint(ov):
+        raise Unconfirmed(
+            f"department {code}'s overview carries no valid confirmation")
+
+    def sees(ref: object) -> bool:
+        """Lexical, like every other reachability question in this service: the
+        department is the id's own prefix and nothing is opened to find out."""
+        return isinstance(ref, str) and storage.dept_of(ref) == code
+
     procs = []
     for doc in storage.ordered_processes(data_root, code):
         if doc.get("tombstoned"):
             continue
-        procs.append(_public_process(doc))
+        if confirmed.get(doc.get("id")) != fingerprint(doc):
+            continue
+        procs.append(visibility.filtered(doc, policy=policy, sees=sees,
+                                         editor=False))
     return {
-        "dept": storage.read_json(overview),
+        "dept": visibility.public_overview(ov, editor=False),
         "processes": procs,
         "generated_at": generated_at,
     }
+
+
+def report_key(signing_key: str, code: str, kind: str, *,
+               process_fingerprints: list[str], overview_fingerprint: str,
+               policy_version: str) -> str:
+    """The artifact's identity (D27) — 16 hex chars, keyed by the signing key.
+
+    A digest over three things, and the third is not optional:
+
+    1. the fingerprints of every **confirmed** process in the department, **in
+       curated order** — order is part of the key because `order.json` is the
+       document's table of contents and a reorder changes what the reader
+       receives while changing no process;
+    2. the department overview's fingerprint;
+    3. the version of the content-visibility policy.
+
+    Without (3), an Editor switching off "node actor" leaves every
+    already-rendered report serving it: a cache that survives a policy change is
+    a content leak, not a stale page.
+
+    **HMAC on `SESSION_SIGNING_KEY` rather than a bare SHA-256**, which keeps
+    what the old derived token bought: `/exports/{path}` is served from a
+    publicly mounted folder whose filename is still a guard until D24 removes
+    that surface, and a name anyone can compute from guessable content would not
+    be one. Rotating the key rotates every link, and `write_export`'s prune
+    clears the orphan that leaves behind.
+
+    Each part is NUL-separated — a NUL byte precedes every part — so that two
+    different lists cannot serialise to the same bytes: without it,
+    `["a"*64, "b"*64]` and `["a"*64 + "b"*64]` would concatenate identically.
+    Hex digests contain no NUL, so the delimiter is unambiguous.
+    """
+    mac = hmac.new(signing_key.encode("utf-8"), digestmod=hashlib.sha256)
+    for part in (f"export:{code}:{kind}", overview_fingerprint, policy_version,
+                 *process_fingerprints):
+        mac.update(b"\x00")
+        mac.update(part.encode("utf-8"))
+    return mac.hexdigest()[:16]
 
 
 def render(template: str, payload: dict) -> str:
@@ -219,9 +210,13 @@ def write_export(export_dir: Path, code: str, kind: str, token: str, html: str) 
     is every bit as public as the HTML it was printed from.
 
     **The current token's PDF goes first, before the HTML is written**, and that
-    ordering is the point rather than an accident. The token is derived, so that
-    path is identical on every export: whatever sits there was printed from the
-    document about to be overwritten. The render that would replace it runs *after*
+    ordering is the point rather than an accident. The token is derived from the
+    department's content (`report_key`), so re-exporting a department nothing has
+    changed lands on that exact path again: whatever sits there was printed from
+    the document about to be overwritten. (When the content *has* moved the token
+    moves with it, and the previous pair is cleared by the sibling prune below —
+    but that is the easy half, and it is not the one a crash could strand.)
+    The render that would replace it runs *after*
     this returns and takes seconds (~5 s measured), and the endpoint's own unlink
     (D21) runs later still — so the folder used to hold new HTML beside the previous
     export's PDF for that whole window, both publicly served, and a container

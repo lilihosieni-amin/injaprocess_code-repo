@@ -576,8 +576,17 @@ Two gates still apply, and neither is field visibility:
 - **Confirmation.** An overview with no valid confirmation is invisible to every
   non-editor (D22), the same as an unconfirmed flowchart.
 
-`overview.updated_at` is stripped like every other timestamp (D17) — bookkeeping,
-not content.
+`overview.updated_at` **stays**, and it is the one part of this page that is not
+what the plan said. It was to be stripped like every other timestamp (D17); the
+project owner ruled otherwise while the filter was being written, and the code
+and its tests follow the ruling. A last-updated date says nothing about what a
+department does, so it is not the kind of thing this page withholds — and
+withholding it costs a reader the date rather than hiding anything from them:
+`ui/src/screens/Overview.tsx` renders it with no guard, and `overview.schema.json`
+requires it under `additionalProperties: false`, so a copy without it is a
+document the validator refuses and a «NaN/NaN/NaN» on the screen. The process's
+own `created_at`/`updated_at` are still dropped, for the reason D17 gives and one
+more: nothing under `ui/src/` reads them.
 
 If a reason to hide part of the overview appears — personnel KPIs being the
 likely candidate — it becomes new rows in D17's table, not a new mechanism.

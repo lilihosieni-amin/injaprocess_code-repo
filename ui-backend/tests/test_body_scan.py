@@ -22,7 +22,12 @@ them:**
   `test_the_scan_finds_every_token_when_the_caller_is_in_scope`
   runs the identical sweep as a `*` holder and asserts every token in
   `FORBIDDEN` **is** found — so a token no endpoint ever serves, or a fixture
-  that was never planted, fails loudly instead of passing silently.
+  that was never planted, fails loudly instead of passing silently. That guard
+  is about the wildcard holder; D22 opened the same hole for the **scoped**
+  ones, whose every body is empty until an Editor has confirmed something, so
+  `_client_as` confirms this corpus and
+  `test_a_reader_is_served_the_confirmed_processes` is where a corpus that
+  stopped being confirmed is diagnosed.
 * *Scanning fewer endpoints than exist.* `test_the_scan_exercises_every_api_route`
   compares the table below against the app's own route table, so a fifteenth
   endpoint added later fails this file rather than slipping past it. What it does
@@ -53,11 +58,13 @@ from typing import Callable, NamedTuple
 import pytest
 from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
-from inja_ui_backend import db, seed
+from inja_ui_backend import db, seed, visibility
 from inja_ui_backend.access import NOT_FOUND
 from inja_ui_backend.app import create_app
 from inja_ui_backend.auth import hash_password
-from inja_ui_backend.store import users
+from inja_ui_backend.disclosure import Disclosure
+from inja_ui_backend.fingerprint import fingerprint
+from inja_ui_backend.store import confirmations, policy, users
 from inja_ui_backend.tests_helpers import cfg_for
 
 PW = "test-password"
@@ -171,6 +178,35 @@ PENDING_TOKENS: tuple[tuple[str, str], ...] = (
      " (D17: never shown; D56: not even its count)"),
 )
 
+#: The fields D17 hides from a non-editor by default, planted inside the
+#: caller's own department.
+#:
+#: Checked against **capability**, exactly like `TOMBSTONE_TOKENS`, and never
+#: added to `FORBIDDEN`: an Editor of dining sees all of these legitimately, so
+#: `test_no_role_is_served_anything_outside_its_scope_anywhere_in_any_body`
+#: would fail for the `editor` parameter over content that role is entitled to.
+#:
+#: `MINEA` is `dining-001` and `MINEB` is `dining-002`, so a leak names the
+#: document as well as the switch.
+HIDDEN_FIELD_TOKENS: tuple[tuple[str, str], ...] = (
+    ("MINEASUMMARY", "the process summary of dining-001 (D17: hidden by default)"),
+    ("MINEAIDEF0", "the process IDEF0 record of dining-001 (D17: hidden)"),
+    ("MINEAKPI", "a process KPI of dining-001 (D17: hidden)"),
+    ("MINEAICOM", "a node's ICOM on dining-001 (D17: hidden)"),
+    ("MINEASOURCE", "a node's provenance on dining-001 (D17: never shown)"),
+    ("MINEBSUMMARY", "the process summary of dining-002"),
+)
+
+#: The two D17 shows by default, planted in the same documents.
+#:
+#: The other direction, and it is the half that stops the filter from becoming
+#: 'blank everything': a filter that took these away would satisfy every
+#: assertion above while emptying the flowchart for the people it is for.
+SHOWN_FIELD_TOKENS: tuple[tuple[str, str], ...] = (
+    ("MINEADESC", "a node's description on dining-001 (D17: visible by default)"),
+    ("MINEBDESC", "a node's description on dining-002"),
+)
+
 
 def _server_paths(data_root) -> tuple[tuple[str, str], ...]:
     """A second class of leak the scan was blind to: **the server's own layout.**
@@ -211,9 +247,13 @@ def _server_paths(data_root) -> tuple[tuple[str, str], ...]:
 # --------------------------------------------------------------------------
 
 def _process(pid: str, dept: str, *, name: str, label: str, actor: str,
-             proposed: str, parent: dict | None = None,
+             proposed: str, tag: str, parent: dict | None = None,
              subprocess: str | None = None) -> dict:
     """A process of the fixture's shape, with every string under this file's control.
+
+    `tag` is this document's field-sentinel prefix: every field the visibility
+    policy can hide carries `{tag}` plus the field's name, so a leak names both
+    the document it came from and the switch that should have stopped it.
 
     Authored rather than copied from `tests/fixtures/process.cooking-001.json`:
     that document contains «انبار» and «حسابداری», which are two departments'
@@ -232,20 +272,22 @@ def _process(pid: str, dept: str, *, name: str, label: str, actor: str,
     node = f"{pid}-n010"
     return {
         "id": pid, "department": dept, "name": name,
-        "summary": f"{name} — شرح کوتاه",
+        "summary": f"{tag}SUMMARY",
         "source": {"type": "manual", "ref": None, "run": None},
         "parent": parent,
         "created_at": "2026-07-06T10:00:00Z", "updated_at": "2026-07-06T10:00:00Z",
-        "idef0": {"inputs": [], "controls": [], "outputs": [], "mechanisms": []},
-        "kpis": [],
+        "idef0": {"inputs": [f"{tag}IDEF0"], "controls": [], "outputs": [],
+                  "mechanisms": []},
+        "kpis": [{"name": f"{tag}KPI"}],
         "nodes": [
             {"id": "start", "type": "start", "label": "شروع",
              "position": {"x": 30, "y": 100}, "layout": "auto"},
             {"id": node, "type": "activity", "label": label, "actor": actor,
-             "description": f"{label} — توضیح", "subprocess": subprocess,
-             "icom": {"inputs": [], "controls": [], "outputs": [], "mechanisms": []},
+             "description": f"{tag}DESC", "subprocess": subprocess,
+             "icom": {"inputs": [f"{tag}ICOM"], "controls": [], "outputs": [],
+                      "mechanisms": []},
              "position": {"x": 160, "y": 90}, "layout": "auto",
-             "source": {"created_by": "runs/x", "touched_by": []}},
+             "source": {"created_by": f"runs/{tag}SOURCE", "touched_by": []}},
             {"id": "end", "type": "end", "label": "پایان",
              "position": {"x": 320, "y": 100}, "layout": "auto"},
         ],
@@ -313,7 +355,7 @@ def _tombstone(pid: str, dept: str) -> dict:
     failure this file's docstring is about.
     """
     doc = _process(pid, dept, name="TOMBNAME", label="TOMBLABEL",
-                   actor="TOMBACTOR", proposed="TOMBPROPOSED")
+                   actor="TOMBACTOR", proposed="TOMBPROPOSED", tag="TOMB")
     doc["tombstoned"] = True
     doc["superseded_by"] = []
     doc["pending"] = []
@@ -366,7 +408,9 @@ def corpus(data_root):
     a filter that dropped the whole department would satisfy "the reader never
     saw the tombstone" while serving nothing at all, so
     `test_a_tombstoned_process_is_withheld_from_a_reader_and_kept_for_the_editor`
-    asserts the two actives are still there.
+    asserts the two actives are still there. `_client_as` vouches for it like
+    everything else in the department, so what withholds it from a reader is the
+    tombstone and not an absent confirmation.
 
     Out of scope: the fixture's `cooking-001`, a second `cooking-777` carrying
     this file's four sentinels, and a `logistics` process so the board has a
@@ -376,20 +420,27 @@ def corpus(data_root):
     _write(data_root, MINE, "processes/dining-001.json",
            _process("dining-001", MINE, name="پذیرایی از مهمان",
                     label="خوش‌آمدگویی", actor="میزبان", proposed="MINEPROPOSED",
+                    tag="MINEA",
                     parent={"process": FOREIGN_PARENT, "node": FOREIGN_PARENT_NODE},
                     subprocess=FOREIGN_CHILD))
     _write(data_root, MINE, "processes/dining-002.json",
            _process("dining-002", MINE, name="ترخیص میز",
                     label="تسویه", actor="میزبان", proposed="پیشخدمت",
-                    subprocess=LOCAL_CHILD))
+                    tag="MINEB", subprocess=LOCAL_CHILD))
     _write(data_root, MINE, f"processes/{TOMBSTONED}.json",
            _tombstone(TOMBSTONED, MINE))
     _write(data_root, THEIRS, "processes/cooking-777.json",
            _process("cooking-777", THEIRS, name="LEAKNAME", label="LEAKLABEL",
-                    actor="LEAKACTOR", proposed="LEAKPROPOSED"))
+                    actor="LEAKACTOR", proposed="LEAKPROPOSED", tag="LEAKF"))
     _write(data_root, "logistics", "processes/logistics-005.json",
            _process("logistics-005", "logistics", name="بارگیری",
-                    label="تحویل", actor="راننده", proposed="پیک"))
+                    label="تحویل", actor="راننده", proposed="پیک", tag="LOGF"))
+    PLANTED_FINGERPRINT.clear()
+    for d in (MINE, THEIRS):
+        path = data_root / "departments" / d / "processes" / f"{d}-001.json"
+        if path.is_file():
+            PLANTED_FINGERPRINT[d] = fingerprint(
+                json.loads(path.read_text(encoding="utf-8")))
     return data_root
 
 
@@ -485,13 +536,77 @@ def _client_as(data_root, tmp_path, role, *scopes):
         for s in scopes:
             conn.execute("INSERT INTO user_scopes (user_id, scope) VALUES (?, ?)",
                          (uid, s))
+        # D22 — without a confirmation every body a scoped reader gets is empty,
+        # and every leak assertion in this file would pass against a backend that
+        # leaks freely. `test_a_reader_is_served_the_confirmed_processes` below is
+        # what makes that impossible to reintroduce quietly.
+        #
+        # **The tombstone is confirmed too, and that is the load-bearing line.**
+        # `may_serve` and `servable` each hold two clauses — tombstoned, and
+        # unconfirmed — and while this loop skipped `dining-003` the record was
+        # withheld by the *second* one. Deleting the tombstone clause from either
+        # function changed nothing any of the 896 tests could see: every
+        # assertion about that id passed because nobody had vouched for it, not
+        # because it is a tombstone. `tombstoned` is in `fingerprint.EXCLUDED`,
+        # so a `merge` run retiring a process it had already confirmed leaves
+        # exactly this row behind — a valid mark under a tombstone — which is the
+        # ordinary way production reaches this state and is what the export side
+        # already pins
+        # (`test_exports.test_a_tombstone_is_absent_even_when_it_carries_a_valid_confirmation`).
+        # Written straight to the store because the API refuses it: `POST
+        # /api/confirmations/{target}` answers 403 for a tombstone, deliberately,
+        # so the store is the only place this shape can be built from.
+        for target, rel in ((MINE, "overview.json"),
+                            ("dining-001", "processes/dining-001.json"),
+                            ("dining-002", "processes/dining-002.json"),
+                            (TOMBSTONED, f"processes/{TOMBSTONED}.json")):
+            path = data_root / "departments" / MINE / rel
+            if not path.is_file():
+                continue
+            doc = json.loads(path.read_text(encoding="utf-8"))
+            confirmations.set_confirmation(conn, target=target,
+                                           fingerprint=fingerprint(doc),
+                                           by="09190000000", at=1770000000)
     finally:
         conn.close()
     client = TestClient(create_app(cfg), base_url=BASE)
     r = client.post("/api/auth/login", json={"username": username, "password": PW})
     assert r.status_code == 200, r.text
     client.username = username
+    # …and its settings, so a test that has to reach round the back of this
+    # client — into the same `app.db` the running service reads — can find the
+    # file rather than reconstructing the name and hoping the two agree.
+    client.cfg = cfg
     return client
+
+
+def _disclosure_as(data_root, tmp_path, role, *scopes) -> Disclosure:
+    """A `Disclosure` for a real account, built without going through HTTP.
+
+    Everything else in this file is an end-to-end sweep, deliberately. This one
+    is not, because the question it asks cannot be posed over HTTP: the scope
+    grammar has no "may view but may not edit" form for a department, so no
+    route will ever hand a caller a document from a department they can see and
+    cannot edit. The distinction between `edits(dept)` and "may this caller edit
+    at all" is therefore invisible from outside — and it is the distinction the
+    whole field policy turns on, so it is asked here directly instead of not at
+    all.
+    """
+    n = next(_seq)
+    username = f"0912{n:07d}"
+    cfg = _cfg(data_root, tmp_path, n)
+    conn = db.connect(cfg.app_db)
+    db.migrate(conn)
+    seed.seed(conn, editor_username="09190000000", editor_display_name="e",
+              editor_password_hash=hash_password(PW))
+    rid = conn.execute("SELECT id FROM roles WHERE name = ?", (role,)).fetchone()[0]
+    uid = users.create(conn, username=username, display_name="u",
+                       password_hash=hash_password(PW), role_id=rid)
+    for s in scopes:
+        conn.execute("INSERT INTO user_scopes (user_id, scope) VALUES (?, ?)",
+                     (uid, s))
+    user = conn.execute("SELECT * FROM users WHERE id = ?", (uid,)).fetchone()
+    return Disclosure(conn, user)
 
 
 # --------------------------------------------------------------------------
@@ -535,6 +650,7 @@ GLOBAL_READS = (
     Route("GET", "/api/auth/me", None, "/api/auth/me", 200),
     Route("GET", "/api/departments", None, "/api/departments", 200),
     Route("GET", "/api/pending", None, "/api/pending", 200),
+    Route("GET", "/api/visibility", None, "/api/visibility", 200),
 )
 
 #: Read routes that name a department. Swept for the caller's own department and
@@ -557,6 +673,8 @@ DEPT_READS = (
     #: open. `200` is the Editor's answer: they are the one caller a tombstone is
     #: retained *for*.
     Route("GET", "/api/processes/{d}-003", None, "/api/processes/{pid}", 200),
+    Route("GET", "/api/confirmations?department={d}", None,
+          "/api/confirmations", 200),
 )
 
 
@@ -601,13 +719,38 @@ def _a_saved_document(d: str) -> dict:
     neighbouring department's id — was never scanned.
     """
     return _process(f"{d}-001", d, name="پذیرایی از مهمان", label="خوش‌آمدگویی",
-                    actor="میزبان", proposed="MINEPROPOSED")
+                    actor="میزبان", proposed="MINEPROPOSED", tag="MINEA")
+
+
+#: Filled in by the `corpus` fixture: the fingerprint of `{d}-001` **as
+#: planted**, per department. The sweep cannot compute one — `Route.body` is a
+#: callable of the department alone and has no data root — and it must not
+#: hard-code one, because the fixture is where the document is decided.
+PLANTED_FINGERPRINT: dict[str, str] = {}
+
+
+def _the_planted_fingerprint(d: str) -> dict:
+    """The body `POST /api/confirmations/{d}-001` needs to succeed.
+
+    An empty string for a department the corpus never planted, which is exactly
+    right: every route naming another department is refused before the body is
+    looked at.
+    """
+    return {"fingerprint": PLANTED_FINGERPRINT.get(d, "")}
 
 
 #: The writes, swept after every read so that what the reads see is the planted
 #: corpus rather than whatever a write left behind. The delete is last for the
 #: same reason.
 DEPT_WRITES = (
+    #: First, deliberately: `POST /api/confirmations/{target}` must echo the
+    #: document's *current* fingerprint, and every route below this line rewrites
+    #: `{d}-001`. `PLANTED_FINGERPRINT` is what the corpus wrote, so it is only
+    #: correct while nothing has touched the file yet.
+    Route("POST", "/api/confirmations/{d}-001", _the_planted_fingerprint,
+          "/api/confirmations/{target}", 200),
+    Route("DELETE", "/api/confirmations/{d}-001", None,
+          "/api/confirmations/{target}", 200),
     Route("POST", "/api/departments/{d}/exports/steps", None,
           "/api/departments/{code}/exports/{kind}", 200),
     Route("PUT", "/api/departments/{d}/overview", _an_overview,
@@ -636,6 +779,10 @@ NEXT_PW = "test-password-2"
 GLOBAL_WRITES = (
     Route("POST", "/api/auth/login", {"username": "{u}", "password": PW},
           "/api/auth/login", 200),
+    #: Left at its default value, so the sweep does not change what every other
+    #: test in this file is served. What is scanned is the response body.
+    Route("PUT", "/api/visibility/node_actor", {"visible": True},
+          "/api/visibility/{field}", 200),
     Route("POST", "/api/auth/password", {"current": PW, "next": NEXT_PW},
           "/api/auth/password", 204),
     Route("POST", "/api/auth/logout", None, "/api/auth/logout", 200),
@@ -813,7 +960,11 @@ def test_the_sweep_reaches_the_body_each_route_really_serves(corpus, tmp_path):
     department. `test_the_scan_exercises_every_api_route` pins that the table
     lists every route; this pins that every listed route was actually *served*.
     """
-    client = _client_as(corpus, tmp_path, "editor", f"dept:{MINE}")
+    # `*` as well as the department: the visibility policy is global (D16), so
+    # its two routes are gated on `*` and a department-scoped Editor is 404'd out
+    # of them. This test is about whether each route *can* produce its real body,
+    # and `test_visibility_api.py` is where the scope refusal is pinned.
+    client = _client_as(corpus, tmp_path, "editor", f"dept:{MINE}", "*")
     wrong = []
     for route in _sweep(client, departments=(MINE,)):
         r = client.request(route.method, route.path, json=route.body)
@@ -1054,7 +1205,9 @@ def test_no_tombstoned_process_reaches_a_role_that_cannot_edit(corpus, tmp_path,
     sweep in this file. The tombstone sits between two active dining processes
     they do receive, so "the body was empty" cannot be why nothing was found —
     `test_a_tombstoned_process_is_withheld_from_a_reader_and_kept_for_the_editor`
-    pins the actives explicitly.
+    pins the actives explicitly, and pins the other way this scan can go quiet:
+    the record is confirmed (`_client_as`), so what withholds it here is the
+    tombstone rather than D22's second clause.
     """
     client = _client_as(corpus, tmp_path, role, f"dept:{MINE}")
     leaks = _leaks(client, forbidden=TOMBSTONE_TOKENS)
@@ -1082,6 +1235,21 @@ def test_the_tombstone_scan_finds_every_token_for_someone_who_may_edit(corpus,
         f" is wrong, and asserting a non-editor never sees them tests nothing")
 
 
+def _stored_mark(client, target: str):
+    """The confirmation row for `target`, read out of the store this client's
+    service is actually running on.
+
+    A second connection to `client.cfg.app_db`, which is the same file the app
+    holds open — the way every other test in this file reaches round the back of
+    a running service.
+    """
+    conn = db.connect(client.cfg.app_db)
+    try:
+        return confirmations.get(conn, target)
+    finally:
+        conn.close()
+
+
 def test_a_tombstoned_process_is_withheld_from_a_reader_and_kept_for_the_editor(
         corpus, tmp_path):
     """Both directions on the two endpoints that serve a process document.
@@ -1091,6 +1259,16 @@ def test_a_tombstoned_process_is_withheld_from_a_reader_and_kept_for_the_editor(
     affordance there is. Withheld from a Reader, served to an Editor, and the
     department's **active** processes served to both — the third assertion is
     what stops a filter that emptied the list from passing the scan above.
+
+    **And the tombstone carries a valid confirmation**, which is what makes this
+    a test about tombstones at all. `may_serve` and `servable` each refuse two
+    kinds of record — tombstoned, and unconfirmed — and while `_client_as` left
+    `dining-003` unvouched-for, deleting the tombstone clause from either of
+    them passed the whole suite: the second clause was doing the work and the
+    name of every test here said otherwise. The premise is asserted rather than
+    assumed for the same reason `test_the_in_scope_corpus_carries_no_forbidden_token`
+    exists — a fixture that quietly stops confirming this record takes both
+    assertions below down to vacuity, and this is where that is diagnosed.
     """
     on_disk = json.loads(
         (corpus / "departments" / MINE / "processes" / f"{TOMBSTONED}.json")
@@ -1100,6 +1278,12 @@ def test_a_tombstoned_process_is_withheld_from_a_reader_and_kept_for_the_editor(
         f" tombstone")
 
     reader = _client_as(corpus, tmp_path, "reader", f"dept:{MINE}")
+    mark = _stored_mark(reader, TOMBSTONED)
+    assert mark is not None and mark["fingerprint"] == fingerprint(on_disk), (
+        f"{TOMBSTONED} carries no valid confirmation, so everything below is"
+        f" satisfied by the *unconfirmed* half of the record gate and says"
+        f" nothing whatever about the tombstone half: {mark and dict(mark)}")
+
     listed = reader.get(f"/api/departments/{MINE}/processes")
     assert listed.status_code == 200, listed.text
     assert [p["id"] for p in listed.json()] == [f"{MINE}-001", f"{MINE}-002"], (
@@ -1398,3 +1582,624 @@ def test_a_report_scoped_reader_sees_no_department_body_at_all(corpus, tmp_path)
     assert whole.get(f"/api/departments/{MINE}/overview").status_code == 200
     assert [p["id"] for p in whole.get(f"/api/departments/{MINE}/processes").json()] == [
         "dining-001", "dining-002"]
+
+
+def _reader_bodies(client) -> str:
+    """Every read body this caller can obtain, serialised into one string."""
+    import json as _json
+    out = []
+    for route in [_fill(r, u=client.username) for r in GLOBAL_READS] + \
+                 [_fill(r, d=MINE, u=client.username) for r in DEPT_READS]:
+        r = client.request(route.method, route.path, json=route.body)
+        try:
+            out.append(_json.dumps(r.json(), ensure_ascii=False))
+        except ValueError:
+            out.append(r.text)
+    return "\n".join(out)
+
+
+@pytest.mark.parametrize("role", ["reader", "reader_no_download", "admin"])
+def test_no_hidden_field_reaches_a_caller_who_cannot_edit_the_department(
+        corpus, tmp_path, role):
+    """§11 test 8 — no denylisted field in any response to a non-editor.
+
+    All three non-editing roles, because an Admin holds `manage_users` and
+    `view_audit` and still holds no `edit`: the policy is about the capability at
+    this department, never about how senior the account is.
+    """
+    client = _client_as(corpus, tmp_path, role, f"dept:{MINE}")
+    body = _reader_bodies(client)
+    leaked = [f"{token} ({why})" for token, why in HIDDEN_FIELD_TOKENS
+              if token in body]
+    assert leaked == [], f"as a {role}: " + "; ".join(leaked)
+
+
+def test_an_editor_of_the_department_is_served_every_one_of_those_fields(
+        corpus, tmp_path):
+    """The pairing, over the **same corpus**.
+
+    Without it the test above passes against a backend that serves a scoped
+    Editor nothing at all — and against one that has quietly stopped planting the
+    tokens. Both halves read the same documents; only the caller differs.
+    """
+    client = _client_as(corpus, tmp_path, "editor", f"dept:{MINE}")
+    body = _reader_bodies(client)
+    missing = [f"{token} ({why})" for token, why in HIDDEN_FIELD_TOKENS
+               if token not in body]
+    assert missing == [], (
+        "an Editor of their own department was not served: " + "; ".join(missing)
+        + " — either the filter is stripping for editors too, or the corpus"
+          " stopped planting these")
+
+
+@pytest.mark.parametrize("role", ["reader", "reader_no_download", "admin", "editor"])
+def test_the_two_fields_d17_shows_by_default_reach_everyone(corpus, tmp_path, role):
+    """A filter that blanked everything would pass every assertion above."""
+    client = _client_as(corpus, tmp_path, role, f"dept:{MINE}")
+    body = _reader_bodies(client)
+    missing = [f"{token} ({why})" for token, why in SHOWN_FIELD_TOKENS
+               if token not in body]
+    assert missing == [], f"as a {role}, nothing carried: " + "; ".join(missing)
+
+
+def test_the_overview_reaches_a_reader_in_full(corpus, tmp_path):
+    """D55 — the department information page is shown in its entirety.
+
+    The plan had `updated_at` withheld from a non-editor and this test asserting
+    its absence. It is here instead, because the project owner overruled that
+    while the filter was being written (`visibility.public_overview`): a
+    last-updated date says nothing about what a department does, and
+    `ui/src/screens/Overview.tsx` dereferences it with no guard, so dropping it
+    was a `NaN/NaN/NaN` on a reader's screen rather than a withheld secret.
+
+    Asserted as two equalities — against the document on disk, and against the
+    Editor's own body — so "in full" cannot quietly become "in part": a future
+    switch on personnel KPIs would fail here and have to be a decision rather
+    than a diff.
+    """
+    on_disk = json.loads(
+        (corpus / "departments" / MINE / "overview.json").read_text(encoding="utf-8"))
+    reader = _client_as(corpus, tmp_path, "reader", f"dept:{MINE}")
+    editor = _client_as(corpus, tmp_path, "editor", f"dept:{MINE}")
+    theirs = editor.get(f"/api/departments/{MINE}/overview").json()
+    mine = reader.get(f"/api/departments/{MINE}/overview").json()
+    assert set(theirs) - set(mine) == set(), (
+        "the reader's overview lost a key the editor's carries")
+    assert mine == theirs
+    assert mine == on_disk, (
+        "a non-editor's copy of the overview is the document (D55) — the filter"
+        " takes nothing away, `updated_at` included")
+    # …and the thing D55 names as the likely future candidate is present today.
+    assert mine["personnel"][0]["kpi"] == ["رضایت مهمان"]
+
+
+def test_the_overview_boundary_passes_the_callers_own_stance(corpus, tmp_path,
+                                                             monkeypatch):
+    """`redact_overview` resolves `editor` per department — inert today, pinned
+    anyway.
+
+    `visibility.public_overview` returns the same document for both stances
+    (D55: shown in full), so every assertion in this file about an overview body
+    is satisfied by a `redact_overview` that passes the constant `True`. Inert is
+    not the same as absent: the moment D55 gains its first switch — personnel
+    KPIs are the candidate it names — that constant publishes it to every reader,
+    and nothing in the suite would be looking at the one boolean that decides it.
+
+    An **argument** spy, and deliberately not an assertion about the two bodies:
+    `public_overview` hands an editor the document itself and a non-editor a
+    copy, so `is`-comparing them would pin an implementation detail of the filter
+    rather than the stance this boundary is responsible for resolving. What
+    crosses the boundary is a boolean, so the boolean is what is read — with
+    `is`, because `0` and `False` compare equal and only one of them is what
+    `edits` returns.
+
+    Both directions, so neither constant survives.
+    """
+    seen: list[object] = []
+    real = visibility.public_overview
+
+    def spy(doc, *, editor):
+        seen.append(editor)
+        return real(doc, editor=editor)
+
+    monkeypatch.setattr(visibility, "public_overview", spy)
+
+    reader = _client_as(corpus, tmp_path, "reader", f"dept:{MINE}")
+    assert reader.get(f"/api/departments/{MINE}/overview").status_code == 200
+    assert seen and seen[-1] is False, (
+        f"the overview boundary told the filter a non-editor was an editor:"
+        f" {seen}")
+
+    editor = _client_as(corpus, tmp_path, "editor", f"dept:{MINE}")
+    assert editor.get(f"/api/departments/{MINE}/overview").status_code == 200
+    assert seen[-1] is True, (
+        f"the overview boundary told the filter an Editor of {MINE} was not one,"
+        f" so the stance is a constant in the other direction: {seen}")
+
+
+#: Every route that returns a process document, by (method, FastAPI template).
+#:
+#: The list is short enough to read and that is the point: `Disclosure.redact`
+#: keeps its signature precisely so this stays six call sites rather than six
+#: reimplementations, and "every boundary runs the same rule" is only a property
+#: a reader can check if something checks it. Two of the six — `POST
+#: /api/processes` and `POST …/relayout` — can disclose nothing through the
+#: filter today (the created skeleton names only a parent the caller was gated
+#: on, and the relayout body is an echo of what the caller sent), so a bypass
+#: there is invisible to every scan in this file. They are exactly the two a
+#: refactor would drop.
+PROCESS_BOUNDARIES: frozenset[tuple[str, str]] = frozenset({
+    ("GET", "/api/processes/{pid}"),
+    ("POST", "/api/processes"),
+    ("POST", "/api/processes/{pid}/relayout"),
+    ("PUT", "/api/processes/{pid}"),
+    ("POST", "/api/processes/{pid}/pending/{index}"),
+    ("GET", "/api/departments/{code}/processes"),
+})
+
+#: And the one that returns a department overview (D55).
+OVERVIEW_BOUNDARY = ("GET", "/api/departments/{code}/overview")
+
+
+def test_every_boundary_that_serves_a_document_runs_the_one_filter(
+        corpus, tmp_path, monkeypatch):
+    """D18 — one filter, and every boundary reads it.
+
+    Asserted as an **equality** over the whole sweep, so it fails in both
+    directions: a boundary that stopped redacting is missing from `seen`, and a
+    route that started returning a raw document without joining the list is
+    absent from `PROCESS_BOUNDARIES` and fails as an extra. The sweep is an
+    Editor's, because an Editor is the only caller every one of these routes
+    serves a body to at all.
+
+    The premise is asserted first: a boundary that answered 4xx would call
+    nothing and pass this vacuously.
+    """
+    calls: dict[str, set[tuple[str, str]]] = {"redact": set(), "overview": set()}
+    here: list[tuple[str, str]] = []
+    redact, redact_overview = Disclosure.redact, Disclosure.redact_overview
+
+    def spy(name, original):
+        def wrapper(self, doc, dept):
+            calls[name].add(here[-1])
+            return original(self, doc, dept)
+        return wrapper
+
+    monkeypatch.setattr(Disclosure, "redact", spy("redact", redact))
+    monkeypatch.setattr(Disclosure, "redact_overview",
+                        spy("overview", redact_overview))
+
+    client = _client_as(corpus, tmp_path, "editor", f"dept:{MINE}")
+    served = set()
+    for route in _sweep(client, departments=(MINE,)):
+        here.append((route.method, route.template))
+        r = client.request(route.method, route.path, json=route.body)
+        here.pop()
+        if r.status_code == route.expect:
+            served.add((route.method, route.template))
+
+    assert PROCESS_BOUNDARIES | {OVERVIEW_BOUNDARY} <= served, (
+        "these routes never produced a body on this sweep, so what they did or"
+        " did not filter says nothing:"
+        f" {sorted((PROCESS_BOUNDARIES | {OVERVIEW_BOUNDARY}) - served)}")
+    assert calls["redact"] == PROCESS_BOUNDARIES, (
+        f"boundaries that served a process without the filter:"
+        f" {sorted(PROCESS_BOUNDARIES - calls['redact'])};"
+        f" routes that ran it and are not on the list:"
+        f" {sorted(calls['redact'] - PROCESS_BOUNDARIES)}")
+    assert calls["overview"] == {OVERVIEW_BOUNDARY}, calls["overview"]
+
+
+def test_the_field_stance_is_decided_per_department_not_per_caller(corpus, tmp_path):
+    """`edits(dept)`, and not "may this caller edit anywhere".
+
+    Every caller in this file holds one scope, and for a one-department caller
+    the two questions have the same answer — so the whole file passes, unchanged,
+    against a `redact` that asked `editor=bool(self._may_edit)` or hoisted one
+    department's answer out of a listing loop. That is the regression this
+    project has already shipped once, in the board's conflict count, and
+    `test_the_conflict_count_is_decided_per_department_not_per_caller` is what
+    caught it there.
+
+    Asked of `Disclosure` directly rather than over HTTP for the reason
+    `_disclosure_as` gives: no scope grants view without edit, so no route can
+    hand this caller `cooking-777` at all. The filter must still be right about
+    it — `exports.py` resolves the same two stances for a department the caller
+    never asked for, and Task 10 serves that shape from an unauthenticated link.
+
+    Both directions in **one** `Disclosure`: the same object, the same policy,
+    two departments, two answers.
+    """
+    shown = _disclosure_as(corpus, tmp_path, "editor", f"dept:{MINE}")
+    mine = json.loads((corpus / "departments" / MINE / "processes"
+                       / "dining-001.json").read_text(encoding="utf-8"))
+    theirs = json.loads((corpus / "departments" / THEIRS / "processes"
+                         / "cooking-777.json").read_text(encoding="utf-8"))
+
+    ours = shown.redact(mine, MINE)
+    assert ours["summary"] == "MINEASUMMARY", (
+        "the department this caller may edit lost its hidden fields: the stance"
+        " is being read off the caller rather than off the department")
+    assert [p["proposed"] for p in ours["pending"]] == ["MINEPROPOSED"]
+
+    other = shown.redact(theirs, THEIRS)
+    assert other["summary"] == "", (
+        "a document from a department this caller may NOT edit was served"
+        " unfiltered: `editor` is being answered per caller, not per department")
+    assert _activity(other)["icom"]["inputs"] == []
+    assert other["pending"] == []
+    # …and the two fields D17 shows by default survive on both, so neither half
+    # is satisfied by a filter that blanked everything.
+    assert _activity(ours)["description"] == "MINEADESC"
+    assert _activity(other)["description"] == "LEAKFDESC"
+
+
+def test_a_flipped_switch_reaches_the_very_next_response(corpus, tmp_path):
+    """The policy is resolved per request — once, and every time.
+
+    `Disclosure.__init__` reads it once so a listing does not re-read it per
+    process. The mutant on the other side of that is a module-level cache: the
+    policy resolved once per **process** rather than once per request, so an
+    Editor's flip changes nothing until the service is restarted. Nothing else
+    in the suite would notice, because every other test runs under one policy
+    from start to finish.
+
+    Written against `store.policy` directly because the endpoint that flips a
+    switch is Task 9's; the store is where the row lands either way, and this is
+    the same second connection the running service would see a real flip
+    through.
+    """
+    client = _client_as(corpus, tmp_path, "reader", f"dept:{MINE}")
+    before = client.get(f"/api/processes/{MINE}-001")
+    assert before.status_code == 200, before.text
+    assert before.json()["summary"] == "", (
+        "the premise is gone: `process_summary` is off by default (D17), so a"
+        " reader must start out without it")
+
+    conn = db.connect(client.cfg.app_db)
+    try:
+        assert policy.set_field(conn, "process_summary", True) is False
+    finally:
+        conn.close()
+
+    after = client.get(f"/api/processes/{MINE}-001")
+    assert after.json()["summary"] == "MINEASUMMARY", (
+        "a switch flipped while the service was running did not reach the next"
+        " response: the policy is being cached across requests")
+
+    # …and back, so this is a live read rather than a one-way latch.
+    conn = db.connect(client.cfg.app_db)
+    try:
+        assert policy.set_field(conn, "process_summary", False) is True
+    finally:
+        conn.close()
+    assert client.get(f"/api/processes/{MINE}-001").json()["summary"] == ""
+
+
+def test_the_defaults_are_not_what_the_filter_reads(corpus, tmp_path):
+    """`store.policy.current`, never `store.policy.DEFAULTS`.
+
+    The two agree until somebody flips a switch, which is every test but this
+    one and the one above — and a `Disclosure` reading `DEFAULTS` would serve
+    the same body forever while the policy screen reported the change it had
+    stored. Pinned on a field whose default is **on**, so it fails in the
+    direction the test above cannot: `node_description` off must actually blank
+    a description a reader was receiving a moment earlier.
+    """
+    client = _client_as(corpus, tmp_path, "reader", f"dept:{MINE}")
+    assert _activity(client.get(f"/api/processes/{MINE}-001").json())[
+        "description"] == "MINEADESC"
+
+    conn = db.connect(client.cfg.app_db)
+    try:
+        policy.set_field(conn, "node_description", False)
+    finally:
+        conn.close()
+
+    assert _activity(client.get(f"/api/processes/{MINE}-001").json())[
+        "description"] == "", (
+        "a switch turned off left the field in the body: the filter is reading"
+        " D17's defaults rather than the stored policy")
+
+
+def test_the_stance_is_read_from_the_request_path_not_from_the_document(corpus,
+                                                                        tmp_path):
+    """`dept` is `redact`'s argument, never `doc["department"]`.
+
+    The routers derive it from the request path, so it is the very string the
+    gate ran on. Nothing revalidates a stored document on read, so a hand-edited
+    or half-written file whose `department` disagrees with the directory it sits
+    in would otherwise be redacted against a department nobody was gated on —
+    the field policy decided by the file's own claim about itself, which is the
+    one input an attacker who can write a document controls.
+
+    Unreachable through the API today, and pinned anyway: `redact`'s docstring
+    states this in as many words, and a claim in a docstring that no test can
+    fail is a claim that stops being true without anyone noticing.
+    """
+    shown = _disclosure_as(corpus, tmp_path, "editor", f"dept:{MINE}")
+    lying = json.loads((corpus / "departments" / THEIRS / "processes"
+                        / "cooking-777.json").read_text(encoding="utf-8"))
+    lying["department"] = MINE  # the file claims dining; it lives in cooking
+    assert shown.redact(lying, THEIRS)["summary"] == "", (
+        "the document's own `department` decided the stance: a file that claims"
+        " a department the caller may edit is not thereby in it")
+
+
+def test_a_reader_is_served_the_confirmed_processes(corpus, tmp_path):
+    """The premise of every scoped sweep in this file.
+
+    D22 makes an unconfirmed department invisible, so a corpus that forgot to
+    confirm anything would give every scoped caller an empty body — and an empty
+    body passes every leak assertion here against a backend that leaks freely.
+    This is where that is diagnosed.
+    """
+    client = _client_as(corpus, tmp_path, "reader", f"dept:{MINE}")
+    listed = client.get(f"/api/departments/{MINE}/processes").json()
+    assert [p["id"] for p in listed] == ["dining-001", "dining-002"]
+    assert client.get(f"/api/departments/{MINE}/overview").status_code == 200
+    # …and the tombstone is still withheld, for its own reason — which it really
+    # is: `_client_as` vouches for `dining-003` too, so the 404 below is the
+    # tombstone clause and not the confirmation one. The premise is asserted in
+    # `test_a_tombstoned_process_is_withheld_from_a_reader_and_kept_for_the_editor`.
+    assert client.get(f"/api/processes/{TOMBSTONED}").status_code == 404
+
+
+# --------------------------------------------------------------------------
+# The published bundle — the one body in this file that is not a response
+# --------------------------------------------------------------------------
+
+#: The targets `_client_as` vouches for, and therefore the ones a test has to
+#: withdraw to make this department unpublishable.
+CONFIRMED_TARGETS = (MINE, f"{MINE}-001", f"{MINE}-002")
+
+
+def _published(client, kind="steps") -> str:
+    """`MINE`'s exported document, read off disk as text.
+
+    **The sweep above cannot reach this.** `POST …/exports/{kind}` answers
+    `{"url": …, "generated_at": …}`, so `_leaks` walks a URL and a timestamp and
+    learns nothing whatever about what was published — while the file it names is
+    the largest body this service produces and is served from a mount that
+    derives no department scope at all (`NOT_SWEPT`). That gap is how the export
+    came to be the one boundary handing a reader an unconfirmed process: every
+    scan in this file was green throughout.
+    """
+    r = client.post(f"/api/departments/{MINE}/exports/{kind}")
+    assert r.status_code == 200, r.text
+    return (client.cfg.export_dir / r.json()["url"][len("/exports/"):]).read_text(
+        encoding="utf-8")
+
+
+def _bundle(text: str) -> dict:
+    """The payload `exports.render` embedded in `text`, parsed back to a dict.
+
+    A structural read, for the one assertion a substring search cannot make
+    honestly: "this id is somewhere in the page" is satisfied by the id's own
+    `"id"` field on a *different* process, so proving a link really landed on
+    the node that carries it needs the parsed document, not `in text`.
+    """
+    marker = '<script id="inja-export-data">'
+    start = text.index(marker) + len(marker)
+    end = text.index("</script>", start)
+    return json.loads(text[start:end])
+
+
+def test_the_published_bundle_carries_nothing_a_reader_may_not_have(corpus, tmp_path):
+    """Every token list in this file, checked against the artifact itself.
+
+    The bundle is built for *this department and nothing else* (D27) and for a
+    non-editor, so all four lists apply to it at once — the scope tokens because
+    `dining-001` links out of the department, the tombstone and proposal tokens
+    because it is not an Editor's document, the hidden-field tokens because D17's
+    defaults decide what a published file carries exactly as they decide what a
+    response does.
+
+    The caller is a plain `reader`: `export_pdf` is in the default reader role,
+    so this is not an Editor's privilege being exercised — it is the route as
+    anybody in the restaurant reaches it.
+
+    Paired, and the pairing is the load-bearing half: an empty document satisfies
+    every absence above, and this file has been hollowed exactly that way three
+    times.
+    """
+    client = _client_as(corpus, tmp_path, "reader", f"dept:{MINE}")
+    text = _published(client)
+
+    forbidden = (FORBIDDEN + TOMBSTONE_TOKENS + PENDING_TOKENS
+                 + HIDDEN_FIELD_TOKENS + _server_paths(corpus))
+    leaked = [f"{token} ({why})" for token, why in forbidden if token in text]
+    assert leaked == [], "the published bundle carries: " + "; ".join(leaked)
+
+    # …and it is a real document, not an empty one.
+    for kept, why in (("dining-001", "the department's first process"),
+                      ("dining-002", "its second"),
+                      ("پذیرایی از مهمان", "a process name"),
+                      ("خوش‌آمدگویی", "a node label"),
+                      ("میزبان", "a node actor (D17: shown by default)"),
+                      *SHOWN_FIELD_TOKENS,
+                      ("دپارتمان سالن", "the department overview")):
+        assert kept in text, (
+            f"{kept!r} ({why}) is not in the published bundle: the absences above"
+            f" are about a document that carries nothing")
+
+    # `LOCAL_CHILD in text` alone proves nothing about a link: `dining-001` is
+    # in the bundle anyway as a published process's own `id`, so that substring
+    # check would still pass against a `sees` that blanks every subprocess.
+    # Structural, on the parsed payload: the link has to land on the actual
+    # node that carries it.
+    dining_002 = next(p for p in _bundle(text)["processes"] if p["id"] == "dining-002")
+    links = [n.get("subprocess") for n in dining_002["nodes"]]
+    assert LOCAL_CHILD in links, (
+        f"dining-002 does not genuinely carry a subprocess link to {LOCAL_CHILD}"
+        f" — an in-department link must survive the bundle: {links}")
+
+
+def test_the_export_publishes_nothing_for_a_department_the_gated_routes_refuse(
+        corpus, tmp_path):
+    """The record gate, asked of the export in the same breath as of the three
+    boundaries that already had it.
+
+    This is the finding written down: a `reader` scoped to `dining` over an
+    unconfirmed corpus is answered 404 / 404 / `[]` by the overview, the document
+    and the listing — and `POST …/exports/steps` used to answer **200** and put
+    the process name, every node label and the overview into a file served from a
+    publicly mounted folder. The gate decided *whether* the export ran and
+    nothing decided what went into it.
+
+    Both directions over one corpus: restoring the marks publishes the department
+    again, so the refusal is a decision about confirmation rather than a bundle
+    that never contains anything.
+    """
+    client = _client_as(corpus, tmp_path, "reader", f"dept:{MINE}")
+    docs = {t: json.loads(
+        (corpus / "departments" / MINE / ("overview.json" if t == MINE
+                                          else f"processes/{t}.json"))
+        .read_text(encoding="utf-8")) for t in CONFIRMED_TARGETS}
+
+    conn = db.connect(client.cfg.app_db)
+    try:
+        for target in CONFIRMED_TARGETS:
+            assert confirmations.revoke(conn, target) is True, (
+                f"{target} was not confirmed to begin with, so withdrawing it"
+                f" changes nothing and this test is about nothing")
+    finally:
+        conn.close()
+
+    # the three gated boundaries, exactly as the finding recorded them
+    assert client.get(f"/api/departments/{MINE}/overview").status_code == 404
+    assert client.get(f"/api/processes/{MINE}-001").status_code == 404
+    assert client.get(f"/api/departments/{MINE}/processes").json() == []
+
+    # …and now the fourth
+    r = client.post(f"/api/departments/{MINE}/exports/steps")
+    assert r.status_code == 409, (
+        f"the export published a department every other boundary refuses:"
+        f" {r.status_code} {r.text[:200]}")
+    published = list(client.cfg.export_dir.rglob("*.html"))
+    assert published == [], (
+        f"a refused export left a document in the public folder: {published}")
+
+    conn = db.connect(client.cfg.app_db)
+    try:
+        for target, doc in docs.items():
+            confirmations.set_confirmation(conn, target=target,
+                                           fingerprint=fingerprint(doc),
+                                           by="09190000000", at=1770000000)
+    finally:
+        conn.close()
+    assert "پذیرایی از مهمان" in _published(client), (
+        "confirming the department did not publish it: the refusal above is not"
+        " about the confirmation")
+
+
+def test_the_three_confirmation_routes_really_produce_a_body_on_this_sweep(
+        corpus, tmp_path):
+    """The positive control for the three rows added to the tables above.
+
+    This file has already been hollowed once by exactly this shape: when the
+    record gate landed, nine leak assertions passed against a freely-leaking
+    backend because a scoped reader's every body had become empty, and an empty
+    body satisfies every leak assertion there is. Three more routes joined the
+    sweep here, and *their* contribution to it must not be three empty bodies
+    nobody notices.
+
+    So both sides are pinned, over the same corpus:
+
+    * the Editor's listing carries real rows — the department, its two active
+      processes, a 64-hex fingerprint each — so `_leaks` walking it is walking
+      something, and `test_the_scan_finds_every_token_when_the_caller_is_in_scope`
+      really does sweep this route for the wildcard holder;
+    * a non-editor is refused with **403 and not 404** (they hold `view` on
+      dining, so the resource is one they can see and only the action is
+      refused), which is what makes their empty result a decision rather than an
+      accident;
+    * the tombstone is absent from the listing (D17), so no Editor can vouch for
+      a document no reader will ever be served.
+    """
+    editor = _client_as(corpus, tmp_path, "editor", f"dept:{MINE}")
+    r = editor.get(f"/api/confirmations?department={MINE}")
+    assert r.status_code == 200, r.text
+    rows = r.json()
+    assert [row["target"] for row in rows] == [MINE, f"{MINE}-001", f"{MINE}-002"], (
+        "the confirmation listing served an Editor nothing to walk, so the three"
+        " rows added to DEPT_READS/DEPT_WRITES contribute empty bodies to every"
+        " sweep in this file")
+    assert TOMBSTONED not in {row["target"] for row in rows}, (
+        f"{TOMBSTONED} is confirmable: D17 excludes a tombstone entirely, so"
+        f" vouching for one vouches for a document no reader can be served")
+    assert all(len(row["fingerprint"]) == 64 for row in rows), rows
+
+    for role in NON_EDITORS:
+        other = _client_as(corpus, tmp_path, role, f"dept:{MINE}")
+        assert other.get(f"/api/confirmations?department={MINE}").status_code == 403, (
+            f"a {role} was not refused the confirmation listing with 403 — their"
+            f" empty contribution to the sweep is an accident, not a decision")
+        assert other.post(f"/api/confirmations/{MINE}-001",
+                          json={"fingerprint": PLANTED_FINGERPRINT[MINE]}
+                          ).status_code == 403
+        assert other.delete(f"/api/confirmations/{MINE}-001").status_code == 403
+
+
+def test_the_two_visibility_routes_really_produce_a_body_on_this_sweep(corpus,
+                                                                       tmp_path):
+    """The positive control for the two rows added to the tables above.
+
+    This file has been hollowed once already by exactly this shape: an empty
+    body satisfies every leak assertion there is, so two routes that answered
+    every caller in this file a `{"detail": …}` would join the sweep, add
+    nothing to it, and nobody would notice. The visibility routes are the most
+    exposed case yet — they are gated on `*` (D16), which is a scope **no**
+    caller in the leak scans holds, so their contribution to those scans really
+    is a 404 body and it has to be one on purpose.
+
+    So all three legs are pinned, over the same corpus:
+
+    * the wildcard holder — the one caller `test_the_scan_finds_every_token…`
+      sweeps with — receives the whole policy: six switches at D17's defaults
+      and a 16-hex version, from both routes. That is a real body for `_leaks`
+      to walk;
+    * every department-scoped caller is refused **404 and not 403** on both,
+      because `*` is outside their scope and D56 says a target they cannot
+      reach must be indistinguishable from a typo. That is what makes their
+      empty contribution a decision;
+    * a non-editor who *does* hold `*` is refused **403**, so the 404 above is
+      about scope rather than about the capability.
+
+    And the sweep's own `PUT` leaves the policy where it found it: it sets
+    `node_actor` to the value D17 already gives it, so no other test in this
+    file is served a different document because this one ran.
+    """
+    wild = _client_as(corpus, tmp_path, "editor", "*")
+    got = wild.get("/api/visibility")
+    assert got.status_code == 200, got.text
+    body = got.json()
+    assert set(body.get("fields", ())) == set(policy.FIELDS), (
+        "the policy route served the wildcard holder nothing to walk, so the two"
+        " rows added to GLOBAL_READS/GLOBAL_WRITES contribute empty bodies to"
+        f" every sweep in this file: {body}")
+    assert body["fields"] == policy.DEFAULTS
+    assert len(body["version"]) == 16
+
+    put = wild.put("/api/visibility/node_actor", json={"visible": True})
+    assert put.status_code == 200, put.text
+    assert put.json() == body, (
+        "the sweep's PUT changed the policy: every other test in this file would"
+        " then be served a different document depending on whether it ran")
+
+    for role in ROLES:
+        scoped = _client_as(corpus, tmp_path, role, f"dept:{MINE}")
+        for r in (scoped.get("/api/visibility"),
+                  scoped.put("/api/visibility/node_actor", json={"visible": True})):
+            assert (r.status_code, r.json()) == (404, {"detail": NOT_FOUND}), (
+                f"a {role} scoped to {MINE} was not 404'd out of the global"
+                f" policy — their empty contribution to the sweep is an accident,"
+                f" not a decision: {r.status_code} {r.text[:120]}")
+
+    for role in NON_EDITORS:
+        holder = _client_as(corpus, tmp_path, role, "*")
+        assert holder.get("/api/visibility").status_code == 403, (
+            f"a {role} holding `*` was not refused the policy with 403: the 404"
+            f" above would then be saying nothing about scope")
+        assert holder.put("/api/visibility/node_actor",
+                          json={"visible": True}).status_code == 403
