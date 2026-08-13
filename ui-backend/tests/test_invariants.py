@@ -179,9 +179,10 @@ def test_an_admin_may_not_promote_a_reader_to_editor(tmp_path):
 
     An Admin cannot *create* an Editor, and without this check they could reach
     the same account in two steps by creating a Reader and then promoting it.
-    Nothing else in this file exercises the first `may_delegate` call: on every
-    other input here the second one refuses first, or the request is a demotion
-    the actor is already entitled to confer.
+    This is the one place in the file where the first `may_delegate` call fails
+    with `NOT_A_SUBSET`. `test_the_resulting_user_is_judged_before_the_current_one`
+    below also exercises the first call — but on a scope failure, not a
+    capability one — and exists to pin the *order* of the two calls, not this key.
     """
     conn = _conn(tmp_path)
     admin = _mk(conn, "09120000001", "admin", "*")
@@ -351,10 +352,18 @@ def test_only_an_account_that_confers_edit_may_act_on_an_editor(tmp_path):
     """
     conn = _conn(tmp_path)
     editor_role = _role(conn, "editor")
+    passed = []
     for n, (name, caps) in enumerate(seed.ROLES.items()):
         actor = _mk(conn, f"091200000{n + 10}", name, "*")
         if may_delegate(conn, actor, role_id=editor_role, scopes=["*"]) is None:
+            passed.append(name)
             assert seed.NON_DELEGABLE <= frozenset(caps), name
+    # The loop above only asserts inside the `if`, so a change that makes
+    # `may_delegate` refuse the Editor role for every seeded role — including
+    # Editor itself — would leave it green while the premise it exists to state
+    # goes untested. Assert which roles actually passed, so "only an account
+    # that confers edit may act on one" cannot pass by never being checked.
+    assert passed == ["editor"], passed
 
 
 def test_an_admin_cannot_take_the_last_editor_away_by_either_verb(tmp_path):
@@ -462,3 +471,77 @@ def test_the_last_editor_guard_decides_every_case_it_is_written_for(tmp_path):
     editor = users.by_id(conn, editor["id"])
     _mk(conn, "09120000003", "editor", "*")
     assert _takes_the_last_editor_away(conn, editor, resulting_role_id=admin_role) is False
+
+
+def test_the_guard_is_the_second_lock_when_the_actors_row_is_stale(tmp_path):
+    """The belt-and-braces case: a stale actor row, used deliberately.
+
+    `may_delegate`'s docstring warns that `capabilities_of` reads `disabled_at`
+    off the row it is handed, not off the database, so a row captured before
+    the account was disabled still reports every capability. Both `may_modify`
+    and `may_disable` document themselves as depending on a caller who re-reads
+    the actor after any write — `auth.current_user` does this in production,
+    re-reading per request and refusing a disabled one — but neither function
+    can enforce that on its own, and this module deliberately does not know the
+    caller has that property.
+
+    So: capture a second Editor's row *before* disabling them (not a hand-built
+    dict — a row read straight from `users.by_id`, the way a caller who forgot
+    to re-read actually ends up holding one), disable that same account, and
+    then act with the stale row. `may_delegate` passes on the strength of the
+    stale row (it still says active), which is exactly why `LAST_EDITOR` is a
+    second lock and not a restatement of the subset rule: the count inside
+    `_takes_the_last_editor_away` reads the database, where the second Editor
+    really is gone, and the seeded Editor really is the only one left.
+    """
+    conn = _conn(tmp_path)
+    editor = _editor(conn)
+    editor_role = _role(conn, "editor")
+    admin_role = _role(conn, "admin")
+
+    second = _mk(conn, "09120000001", "editor", "*")
+    stale_second = second  # captured before the write below makes it stale
+    users.set_disabled(conn, second["id"], True, now=1770000000)
+    # `second` is now disabled in the database; `stale_second` still reports
+    # `disabled_at IS NULL`, because it is the same row object read before that
+    # write happened.
+
+    # Disabling the seeded Editor, argued for by a stale actor who (per the
+    # database) is no longer an Editor at all: the last active Editor would be
+    # taken away, and the guard is what stops it.
+    assert may_disable(conn, stale_second, editor) == LAST_EDITOR
+    # Demoting the seeded Editor to Admin, argued for by the same stale actor:
+    # same guard, the other caller.
+    assert may_modify(conn, stale_second, editor, role_id=admin_role,
+                      scopes=["*"]) == LAST_EDITOR
+    # Re-roling the seeded Editor to Editor — a change that keeps them an
+    # Editor — is not refused: `_takes_the_last_editor_away` must read the
+    # *submitted* `role_id` for the resulting check, not silently treat every
+    # call as a disable. (A `resulting_role_id=None` passed by mistake in
+    # `may_modify` cannot tell this case apart from the line above, since the
+    # count is zero either way — that mutant is caught here, not there.)
+    assert may_modify(conn, stale_second, editor, role_id=editor_role,
+                      scopes=["*"]) is None
+
+
+# --------------------------------------------------------------------------
+# Carried forward from spec test-plan item 5: no sequence of disable,
+# scope-narrowing or role-change may empty the `*` holders. Disabling and
+# self-edit are covered above; this is the scope-narrowing half, aimed at
+# someone else's last `*`.
+# --------------------------------------------------------------------------
+
+def test_the_last_star_holder_cannot_be_narrowed_by_a_narrower_account(tmp_path):
+    """D53 by scope-narrowing, not just by disabling.
+
+    Mirrors `test_the_last_star_holder_cannot_be_disabled_by_a_narrower_account`:
+    a full Editor scoped to one department cannot narrow the seeded Editor's `*`
+    down to that department either, and for the same reason — the current-user
+    check in `may_modify` requires the actor to already reach what the target
+    holds *now*, and `dept:dining` does not reach `*`.
+    """
+    conn = _conn(tmp_path)
+    local_editor = _mk(conn, "09120000001", "editor", "dept:dining")
+    editor_role = _role(conn, "editor")
+    assert may_modify(conn, local_editor, _editor(conn), role_id=editor_role,
+                      scopes=["dept:dining"]) == SCOPE_NOT_COVERED

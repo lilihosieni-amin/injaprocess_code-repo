@@ -247,30 +247,54 @@ def _takes_the_last_editor_away(conn: sqlite3.Connection, target: sqlite3.Row, *
     not one of the Editors being counted — the first line below, not the
     sentinel, is what tells the two directions apart.
 
-    **This never answers True on an input either caller reaches, and the proof
-    is four lines.** Both callers run `may_delegate` against the target's *own*
-    role before asking, and that passes only when the actor's capabilities are a
+    **On a freshly-read actor this never answers True, and the proof is four
+    lines.** Both callers run `may_delegate` against the target's *own* role
+    before asking, and that passes only when the actor's capabilities are a
     superset of the target's — so if the target confers `edit`, so does the
     actor. The actor is active, because `capabilities_of` resolves a disabled
-    account to the empty set and it would have been refused NO_MANAGE_USERS. And
-    the actor is not the target, because the self-edit ban is the first line of
-    both callers. That makes the actor an active Editor other than the target, so
-    the count below is at least one.
+    account to the empty set and it would have been refused NO_MANAGE_USERS —
+    **off the row `may_delegate` was handed**, not off the database. And the
+    actor is not the target, because the self-edit ban is the first line of both
+    callers. That makes the actor an active Editor other than the target *as far
+    as their own row says*, so the count below is at least one — provided the
+    row is telling the truth.
+
+    It need not be. `may_delegate`'s own docstring warns that a row captured
+    before a write still reports the capabilities the account used to have, and
+    neither caller here re-reads one for its actor. An actor whose account was
+    disabled *after* their row was captured clears every check above on the
+    strength of that stale row — `capabilities_of` reads `disabled_at` off it,
+    not off the database — while the count below queries the database directly
+    and finds them gone. That is not a gap in the four-line proof; it is the
+    proof's own precondition failing, and it is the guard's actual reachability
+    condition: a stale actor row, not an absent caller. The property that keeps
+    a *production* actor row fresh is `auth.current_user` (`auth.py`), which
+    re-reads the user on every request and refuses a disabled one — a fact about
+    the caller this module deliberately does not know, and the reason this
+    function cannot close the gap itself: it would have to decide, unasked,
+    that the row it was handed might be lying.
 
     Kept, and kept in load-bearing shape, for the reason `scopes.contains` keeps
     its own unkillable lines: D14 states this rule, a reader needs it stated
-    where the decision is made, and it stops being unreachable the moment its
-    premise moves. So `test_invariants.py` pins two things rather than pretending
-    to reach this from a caller — the premise itself ("only an account that
-    confers `edit` may act on one", asserted over the seeded roles), and this
-    predicate's own decision, called directly. Relax the subset rule and the
-    first goes red naming this guard; get the counting wrong and the second does,
-    on the day it starts to matter rather than years later.
+    where the decision is made, and — on a fresh row — it stops being vacuous the
+    moment the subset rule moves. So `test_invariants.py` pins three things
+    rather than pretending every path here starts from a fresh row — the fresh-row
+    premise itself ("only an account that confers `edit` may act on one",
+    asserted over the seeded roles), this predicate's own decision called
+    directly, and the stale-row case that reaches `LAST_EDITOR` through both
+    public callers on purpose, under a name that says so. Relax the subset rule
+    and the first goes red naming this guard; get the counting wrong and the
+    second does, on the day it starts to matter rather than years later; lose
+    the guard call entirely — in either caller — and the third does, today.
 
-    The two `if _takes_the_last_editor_away(...)` lines in the callers are the
-    one thing here no test can kill, and deleting either leaves the suite green.
-    That is the honest state of it, and the reason the rest is pinned as tightly
-    as it is.
+    The two `if _takes_the_last_editor_away(...)` lines in the callers are
+    reachable on exactly that stale-row input, and `test_invariants.py` has a
+    test built on one: an actor's row captured, that same account disabled
+    immediately after, and both `may_modify` and `may_disable` driven through
+    the stale row to `LAST_EDITOR`. Delete either guard call and that test goes
+    red. This is the guard in its belt-and-braces role, not a dead branch —
+    "second lock behind `auth.current_user`" is a claim about what protects a
+    live request, not a claim that nothing here can ever exercise it.
     """
     if target["disabled_at"] is not None or not _confers_edit(conn, target["role_id"]):
         return False        # the target is not one of the Editors being counted
