@@ -1,0 +1,143 @@
+import { useState } from 'react'
+import { Link } from 'react-router-dom'
+import { useSession } from '../auth/useSession'
+import { useUsers, administrationRefusal } from '../api/users'
+import { refusalStatus } from '../api/client'
+import { toLatinDigits } from '../lib/digits'
+import { toFa } from '../lib/format'
+import { Card } from '../ui/Card'
+import { SearchField } from '../ui/SearchField'
+import { StatusPill } from '../ui/StatusPill'
+import { EmptyState, LoadingState } from '../ui/states'
+import { RefusalScreen } from './Refusal'
+import type { AdminUser } from '../api/users'
+
+/** What D14 surfaces instead of repointing. Written once and used on both
+ *  screens, so the row and the record cannot come to word it differently. */
+export const SUPERVISOR_GONE = 'سرپرست این کاربر غیرفعال است'
+
+/**
+ * Every account in the installation, and the way into one of them (D13, D14).
+ *
+ * **Gated, and gated with the server's own partition.** `administrationRefusal`
+ * answers 404 for a department-scoped caller and 403 for a `*`-scoped one who
+ * lacks `manage_users`, because `access.requires` checks scope before capability
+ * and the two codes say different things (D56). The nav entry in `PanelShell` is
+ * the only link here, so the only way to this screen without the right is by
+ * typing the path — exactly the case a gate that lives in the header alone does
+ * not cover. Cosmetic either way: every endpoint re-derives both halves (D48).
+ *
+ * **The search is over what is on screen, and over the number as it is stored.**
+ * Ordinary Persian keyboards emit ۰۹…, the stored username is ASCII (D57), and
+ * an unfolded query matches nothing while looking exactly like "no such person".
+ *
+ * The order is the server's — by `username`, because display names are not
+ * unique and ordering by one would leave ties to the query plan and move rows
+ * between two identical requests. Nothing is re-sorted here.
+ */
+export function Users() {
+  const session = useSession().data
+  const refusal = administrationRefusal(session)
+  const { data, error, isPending } = useUsers({ enabled: !!session && refusal === undefined })
+  const [q, setQ] = useState('')
+
+  // Hooks first, then the early returns: an early return above them would change
+  // hook order between renders the moment the session or the listing arrives.
+  if (!session) return <div className="flex-1 bg-bg" />
+  if (refusal) return <RefusalScreen status={refusal} />
+  const refused = refusalStatus(error)
+  if (refused) return <RefusalScreen status={refused} />
+
+  const users = data ?? []
+  const query = q.trim()
+  const digits = toLatinDigits(query)
+  const list = users.filter((u) =>
+    !query
+    || u.displayName.includes(query)
+    || u.username.includes(digits)
+    || (u.role ?? '').includes(query))
+
+  return (
+    <div className="flex-1 overflow-auto py-s12 px-s12">
+      <div className="max-w-list mx-auto">
+        <h1 className="text-title font-extrabold text-ink">کاربران</h1>
+        <p className="text-caption text-muted mt-s4">
+          هر کاربر یک نقش دارد و یک یا چند دامنهٔ دسترسی. سرپرست جایگاهی در نمودار
+          سازمانی است و هیچ دسترسی‌ای نمی‌دهد.
+        </p>
+
+        <div className="mt-s8">
+          <SearchField label="جست‌وجوی کاربر" value={q} onChange={setQ}
+            placeholder="نام، شماره یا نقش" />
+        </div>
+
+        {isPending ? (
+          <div className="mt-s8"><LoadingState /></div>
+        ) : list.length === 0 ? (
+          <div className="mt-s8">
+            <EmptyState
+              title={users.length === 0 ? 'هنوز کاربری ثبت نشده است' : 'کاربری با این مشخصات پیدا نشد'}
+              hint={users.length === 0 ? undefined : 'بخشی از نام، شماره یا نقش را بنویسید.'} />
+          </div>
+        ) : (
+          <>
+            <p className="text-caption text-faint mt-s8">
+              {toFa(list.length)} کاربر از {toFa(users.length)}
+            </p>
+            {/* A list, and marked as one: these rows are a set of peers rather
+                than sections of a document, and a screen reader announcing
+                «فهرست، ۹ مورد» is what tells somebody how long it is before they
+                start down it. */}
+            <ul className="list-none p-0 m-0 flex flex-col gap-s5 mt-s5">
+              {list.map((u) => <UserRow key={u.id} user={u} />)}
+            </ul>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * One account's row.
+ *
+ * Its own component taking the whole `user`, deliberately: every field below is
+ * read off the one object the row was handed, so there is no second collection
+ * to index into and no way for this row to draw the next row's role. `key` is
+ * the account id and never the position — a filtered list re-keyed by index
+ * reuses the element that held somebody else.
+ */
+function UserRow({ user }: { user: AdminUser }) {
+  return (
+    <li>
+      <Link to={`/users/${user.id}`} className="block no-underline">
+        <Card className="px-s9 py-s8 hover:shadow-card-hover transition">
+          <div className="flex items-center gap-s6 flex-wrap">
+            <span className="text-subtitle font-bold text-ink">{user.displayName}</span>
+            <StatusPill tone={user.disabled ? 'neutral' : 'ok'}
+              label={user.disabled ? 'غیرفعال' : 'فعال'} />
+            {/* The number is a latin-digit run inside RTL prose. Pinned `ltr` so
+                a spelling that is not digits alone stays in the order it was
+                stored in. */}
+            <span dir="ltr" className="text-caption text-muted font-mono">{user.username}</span>
+          </div>
+          <div className="flex items-center gap-s6 flex-wrap mt-s4">
+            <span className="text-caption text-violet font-bold">{user.role ?? '—'}</span>
+            <span className="text-caption text-muted">
+              {user.supervisor
+                ? `سرپرست: ${user.supervisor.displayName}`
+                : 'بدون سرپرست'}
+            </span>
+          </div>
+          {user.supervisor?.disabled && (
+            // D14 does not repoint subordinates when a supervisor is disabled —
+            // the gap is surfaced instead — so this is the only place anybody
+            // learns that this person's comment approval routes to an account
+            // that can no longer sign in.
+            <p className="text-caption text-warn font-bold mt-s4">{SUPERVISOR_GONE}</p>
+          )}
+        </Card>
+      </Link>
+    </li>
+  )
+}

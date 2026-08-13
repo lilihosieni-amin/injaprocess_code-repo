@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link, Outlet } from 'react-router-dom'
 import { can, type SessionDescriptor } from '../auth/session'
+import { administrationRefusal } from '../api/users'
 import { usePending, useLogout } from '../api/hooks'
 import { InboxModal } from '../write/InboxModal'
 
@@ -48,6 +49,24 @@ export function PanelShell({ session }: { session: SessionDescriptor }) {
             className="min-h-touch inline-flex items-center px-s6 rounded-control text-card text-caption no-underline hover:bg-tile-v2"
           >
             نمایش محتوا
+          </Link>
+        )}
+        {/* Capability **and** the `*` scope, which is where this differs from the
+            line above — and the difference is not a tidy-up waiting to happen.
+            `access.requires` checks scope before capability (D56), so a holder
+            of `manage_users` scoped to one department is answered **404** on
+            every endpoint behind this link: «چیزی اینجا نیست», a wall the app
+            itself pointed them at. `set_visibility`'s entry has no such case to
+            avoid — a scoped holder of it is answered 403, which at least says
+            what happened. `administrationRefusal` is the same twin the screen
+            gates itself on, so the header and the screen cannot come to
+            disagree. Cosmetic either way (D48). */}
+        {administrationRefusal(session) === undefined && (
+          <Link
+            to="/users"
+            className="min-h-touch inline-flex items-center px-s6 rounded-control text-card text-caption no-underline hover:bg-tile-v2"
+          >
+            کاربران
           </Link>
         )}
         {canEdit && (

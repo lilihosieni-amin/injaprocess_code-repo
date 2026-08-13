@@ -24,12 +24,21 @@ const POLICY = {
   version: '0123456789abcdef',
 }
 
+/** One account, as `GET /api/users/{id}` reports it. */
+const ONE_USER = {
+  id: 7, username: '09121111111', displayName: 'سحر بیات',
+  roleId: 3, role: 'admin', capabilities: ['view', 'comment', 'manage_users'],
+  scopes: ['dept:cooking'], supervisor: null,
+  canSupervise: false, disabled: false, createdAt: 1700000000,
+}
+
 function boot(initial: string, authed: boolean, capabilities = ['view', 'comment', 'edit'], scopes?: string[]) {
   vi.spyOn(globalThis, 'fetch').mockImplementation((input: RequestInfo | URL) => {
     const url = String(input)
     if (url.endsWith('/api/auth/me')) return Promise.resolve(new Response(authed ? JSON.stringify(descriptor(capabilities, scopes)) : 'x', { status: authed ? 200 : 401, headers: { 'Content-Type': 'application/json' } }))
     if (url.endsWith('/api/departments')) return Promise.resolve(new Response(JSON.stringify([{ code: 'cooking', name: 'پخت', count: 1 }]), { status: 200, headers: { 'Content-Type': 'application/json' } }))
     if (url.endsWith('/api/visibility')) return Promise.resolve(new Response(JSON.stringify(POLICY), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+    if (url.endsWith('/api/users/7')) return Promise.resolve(new Response(JSON.stringify(ONE_USER), { status: 200, headers: { 'Content-Type': 'application/json' } }))
     return Promise.resolve(new Response('[]', { status: 200, headers: { 'Content-Type': 'application/json' } }))
   })
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -73,5 +82,25 @@ describe('routing', () => {
     boot('/visibility', true, ['view', 'edit', 'set_visibility'], ['*'])
     await waitFor(() =>
       expect(screen.getByRole('heading', { name: 'نمایش محتوا' })).toBeInTheDocument())
+  })
+
+  // Same trap as the entry above, and the same reason for pinning it in the real
+  // route tree: with no `/users` entry the catch-all redirects to /departments,
+  // which is a working-looking app whose administration surface simply cannot be
+  // reached. `heading`, not `text` — the header's own nav entry carries the same
+  // word.
+  it('routes /users to the user list for a global manage_users holder', async () => {
+    boot('/users', true, ['view', 'edit', 'manage_users'], ['*'])
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: 'کاربران' })).toBeInTheDocument())
+  })
+
+  it('routes /users/:id to one person\'s record', async () => {
+    // A separate entry, and a separate assertion: `/users/7` matches no route at
+    // all without it and lands on the departments grid, so every row of the list
+    // above would be a link into the wrong screen.
+    boot('/users/7', true, ['view', 'edit', 'manage_users'], ['*'])
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: 'سحر بیات' })).toBeInTheDocument())
   })
 })
