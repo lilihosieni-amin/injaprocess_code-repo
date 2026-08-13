@@ -1,4 +1,5 @@
-"""Who may appoint whom, and what may never be taken away (spec D13, D14).
+"""Who may appoint whom, who may supervise whom, and what may never be taken
+away (spec D13, D14, D51, D52).
 
     may_delegate(conn, actor, role_id=…, scopes=…)
       ⟺ actor.capabilities ∋ manage_users
@@ -16,6 +17,18 @@
       ⟺ actor ≠ target
       ∧ may_delegate(actor, target.role, target.scopes)
       ∧ ¬ disabling takes the last active Editor away
+
+    s ∈ eligible_supervisors(conn, scopes=…)
+      ⟺ s.disabled_at is NULL
+      ∧ ∀ w ∈ scopes : ∃ a ∈ s.scopes : a contains w
+      ∧ (s.can_supervise ∨ '*' ∈ s.scopes)
+
+The supervisor is a **third axis and not a rank** (D51). It routes comment
+approval (D34) and grants nothing whatever: `can_supervise` is one bit set by a
+holder of `manage_users`, it confers no capability, it widens no scope, and a
+Reader may supervise a Reader. It is asserted about a person rather than derived
+from what they may do because org position is a fact about the person — and
+because with no rank left in the model there is nothing to derive it from.
 
 Two independent checks over one role and one scope list, applied identically to
 creating a user and to changing one — a modification is judged against the
@@ -40,7 +53,7 @@ could confer a wider scope than their own would be an administrator of every
 department by way of a proxy, and one who could confer capabilities they lack
 would be an editor by the same route.
 
-Nothing here knows HTTP, and every refusal is one of the four keys below rather
+Nothing here knows HTTP, and every refusal is one of the named keys below rather
 than a bool — the caller has to say *why* in Persian, and a bool would leave it
 guessing between "you may not appoint at all" and "not this one".
 
@@ -99,6 +112,20 @@ SELF_EDIT = "self_edit"
 #: `edit`, `confirm` or `set_visibility` at all — and D50 makes the seed the only
 #: way back.
 LAST_EDITOR = "last_editor"
+#: No supervisor was named for a user who does not see everything (D51). The
+#: submitted value was `None`, which is a choice; an absent field is the request
+#: validator's business, not this module's.
+SUPERVISOR_REQUIRED = "required"
+#: Nobody supervises themselves. Its own key rather than CYCLE — a self-loop is
+#: a cycle, but "you have picked this very person" is what the form has to say.
+SUPERVISOR_SELF = "self"
+#: The named account is not in `eligible_supervisors` for these scopes: disabled,
+#: unflagged, or not covering. One key for all three on purpose — which of them
+#: it was is a fact about somebody else's account, and the caller may only be
+#: told that this choice is not available.
+NOT_ELIGIBLE = "not_eligible"
+#: The assignment would close a loop in the org chart.
+CYCLE = "cycle"
 
 
 def _role_capabilities(conn: sqlite3.Connection,
@@ -358,4 +385,141 @@ def may_disable(conn: sqlite3.Connection, actor: sqlite3.Row,
         return err
     if _takes_the_last_editor_away(conn, target, resulting_role_id=None):
         return LAST_EDITOR
+    return None
+
+
+def eligible_supervisors(conn: sqlite3.Connection, *, scopes: list[str],
+                         excluding: int | None = None) -> list[sqlite3.Row]:
+    """Who may be offered as the supervisor of a user holding `scopes` (D52).
+
+    Active, covering **every one** of those scopes, and either flagged
+    `can_supervise` or scoped to everything. The flag grants nothing — see the
+    module docstring — so nothing here reads a capability, and an Admin without
+    the flag is not a candidate while a `reader_no_download` with it is.
+
+    The two quantifiers point opposite ways and both matter. Over the wanted
+    scopes it is `all`: a user holding `dept:dining` *and* `dept:cashier` needs
+    somebody who reaches both, which in today's deployment means a `*` holder and
+    by the rule means anybody whose scopes cover both. Over the candidate's own
+    scopes it is `any`, because a person's scopes are a union. Swapping either is
+    a one-character edit, so both directions have a test whose fixture separates
+    them.
+
+    Containment is `scopes.contains(theirs, wanted)` and nothing else, in that
+    argument order: reversed, the head of one report would supervise the whole
+    department. A wanted scope the grammar refuses is covered by nobody, not even
+    a `*` holder, so the list comes back empty rather than open — the same
+    fail-closed reading as `may_delegate`, and not a counter-example to D53,
+    since no actor may confer such a scope in the first place.
+
+    `'*' in their` is exact membership rather than a `contains` call because
+    `contains(a, '*')` is true only for `a == '*'`; the two agree by the grammar,
+    and the membership test says what is meant.
+
+    `excluding` drops exactly one account: the user being edited, whom a picker
+    must not offer as their own supervisor. It removes one id and is **not** a
+    cycle filter — a candidate whose own chain runs back through the user is
+    still listed, and `supervisor_error` refuses that choice with CYCLE. Putting
+    the cycle rule here as well would give it two homes, and it has to live where
+    the *choice* is judged: two independent edits can close a loop that no list
+    ever showed (D34), so a filtered list could never be the authority anyway.
+    The create form has no id to pass, which is why this is optional rather than
+    required.
+
+    Ordered by username, and the promise is determinism rather than presentation:
+    an unordered `SELECT` is answered by sqlite in rowid order today and by
+    whatever the planner prefers tomorrow, which would move a picker's first
+    entry — its default — between two identical requests. By `username` rather
+    than by `display_name` because names are not unique, so ordering by one would
+    leave ties to the query plan and put back exactly what this removes. How the
+    list is *shown* is the UI's business (D52 asks for the scope beside the name).
+    """
+    out: list[sqlite3.Row] = []
+    # Liveness is a WHERE clause, i.e. read from the database — deliberately not
+    # `capabilities_of`, which reads `disabled_at` off a row it is handed and
+    # would report a candidate disabled two writes ago as live. It is also the
+    # wrong question: a disabled account is ineligible because it is disabled,
+    # not because of what its role confers.
+    for row in conn.execute(
+            "SELECT * FROM users WHERE disabled_at IS NULL"
+            " ORDER BY username").fetchall():
+        if excluding is not None and row["id"] == excluding:
+            continue
+        their = scopes_of(conn, row)
+        if not all(any(contains(s, want) for s in their) for want in scopes):
+            continue
+        # `can_supervise` is an INTEGER 0/1 column with a NOT NULL default, so
+        # truthiness is the whole test; `is not None` would answer True for
+        # every user in the table.
+        if not (row["can_supervise"] or "*" in their):
+            continue
+        out.append(row)
+    return out
+
+
+def supervisor_error(conn: sqlite3.Connection, target_id: int | None,
+                     supervisor_id: int | None, scopes: list[str]) -> str | None:
+    """Whether `supervisor_id` may be the supervisor of `target_id` (D51, D52).
+
+    `target_id` is `None` on the create form, where the user does not exist yet.
+    Self and cycles are then unaskable — there is no id to close a loop through —
+    and the eligibility half is unchanged, which is the whole reason one function
+    answers for both forms.
+
+    The self check comes **before** the eligibility one, and the order is
+    observable: a flagged user proposing themselves is in their own candidate
+    list, so without it the answer would be `None` and the assignment would
+    stand. An unflagged one would come back `not_eligible`, sending an
+    administrator off to set a flag that changes nothing.
+
+    `eligible_supervisors` is called without `excluding=target_id`, and passing it
+    would be an equivalent mutant rather than a second lock: the only row it
+    removes is the target's, the self case has already returned above, and the
+    membership test below asks about `supervisor_id`, which is not the target on
+    any input that reaches here. It is left out because `excluding` is a picker's
+    argument — which rows to *offer* — and this function offers nothing. The list
+    and this check cannot disagree about eligibility, because this check is the
+    list.
+    """
+    if supervisor_id is None:
+        # Optional only for someone who sees everything (D51).
+        return None if "*" in scopes else SUPERVISOR_REQUIRED
+    # `target_id is not None` cannot change an answer today, and the proof is one
+    # line: the branch above has already returned for `supervisor_id is None`, so
+    # `supervisor_id` is an int here and `None == int` is False anyway. No test
+    # can kill it. Kept because the tripwire is narrow and nameable — the day the
+    # `supervisor_id is None` branch stops returning unconditionally (a create
+    # form that names no supervisor for a `*`-scoped user reaches this line with
+    # both ids `None`), it is this guard that stops "nobody" being refused as
+    # "yourself".
+    if target_id is not None and supervisor_id == target_id:
+        return SUPERVISOR_SELF
+    if not any(r["id"] == supervisor_id
+               for r in eligible_supervisors(conn, scopes=scopes)):
+        return NOT_ELIGIBLE
+    # Walk up from the proposed supervisor; if we reach the target, this closes
+    # a loop. Two independent edits can create one that neither saw.
+    seen: set[int] = set()
+    cur = supervisor_id
+    # `cur not in seen` is what makes this terminate on a loop that is *already*
+    # in the data — reachable exactly as D34 describes (A→B checked before B→C
+    # existed, then C→A), and its absence is a hung worker rather than a wrong
+    # answer. `cur == target_id` cannot fire spuriously when `target_id` is
+    # None, because `cur` is never None inside the loop.
+    while cur is not None and cur not in seen:
+        if cur == target_id:
+            return CYCLE
+        seen.add(cur)
+        row = conn.execute("SELECT supervisor_id FROM users WHERE id = ?",
+                           (cur,)).fetchone()
+        # `row` is never None here, and the proof is two facts rather than an
+        # argument: the first `cur` was just found among the rows
+        # `eligible_supervisors` read, and every later one came out of a
+        # `supervisor_id` column declared `REFERENCES users(id)` with
+        # `PRAGMA foreign_keys=ON` set in `db.connect` — so a non-NULL value in
+        # it names a row that exists. Kept because the fall-through is the
+        # fail-closed one (an unwalkable chain closes no loop) and because the
+        # tripwire is narrow and nameable: a `DELETE FROM users` anywhere in this
+        # codebase, of which there is none today, or that pragma being dropped.
+        cur = row["supervisor_id"] if row else None
     return None
