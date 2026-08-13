@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, Outlet } from 'react-router-dom'
 import { can, type SessionDescriptor } from '../auth/session'
-import { administrationRefusal } from '../api/users'
+import { administrationRefusal } from '../auth/can'
 import { usePending, useLogout } from '../api/hooks'
 import { InboxModal } from '../write/InboxModal'
 

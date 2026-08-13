@@ -51,37 +51,6 @@ export interface AdminUser {
 }
 
 /**
- * What the server would answer this session on the administration surface, and
- * `undefined` when it would serve them — **the client twin of `access.requires`,
- * including its order** (D56).
- *
- * Scope is checked before capability, and the split is the whole point:
- *
- *   404  the caller is not scoped `*`. User administration is not scoped to a
- *        department (D11), so it is not a thing they may learn exists here, and
- *        the answer is deliberately indistinguishable from a typo.
- *   403  the caller holds `*` and not the capability. They can see the surface
- *        and merely may not act.
- *
- * Collapsing the two into one message undoes the existence rule on the screen
- * after the server took trouble to keep it on the wire. In one function because
- * two screens ask it and two copies would drift; `undefined` rather than a bool
- * because the caller has to render *which* refusal, not merely that there was
- * one.
- *
- * Cosmetic, like everything else in this file: the endpoints re-derive both
- * halves and answer the same two codes regardless (D48).
- */
-export function administrationRefusal(
-  session: SessionDescriptor | undefined,
-): 403 | 404 | undefined {
-  if (!session) return undefined
-  if (!session.scopes.some((held) => scopeContains(held, '*'))) return 404
-  if (!session.capabilities.includes('manage_users')) return 403
-  return undefined
-}
-
-/**
  * Every account, ordered by username. Unfiltered by the server, which is not an
  * oversight: the surface is gated on `manage_users` at `*`, so everybody who
  * reaches it reaches every department already.
@@ -176,10 +145,18 @@ export function useSetUserPassword(id: string) {
  * the screen has to render the server's sentence rather than assume it predicted
  * every answer.
  *
- * The scope clause is vacuous in today's deployment — this surface is reachable
- * only by a `*` holder, and `*` covers everything — and is written out anyway,
- * because it is the rule and because "vacuous today" is a fact about the gate
- * upstairs rather than about this function.
+ * The scope clause looks vacuous — this surface is reachable only by a `*`
+ * holder, and `*` covers everything — and it is not. `scopeContains` answers
+ * `false` for a **malformed** target even to a `*` holder, and `user_scopes.scope`
+ * is `TEXT NOT NULL` with no CHECK, so `''` is storable today. An account
+ * carrying a scope row the grammar refuses is therefore covered by nothing and
+ * is not modifiable from here — which is exactly what the server answers, and
+ * for the reason `delegation.may_delegate` states in as many words: such an
+ * entry "is covered by nothing … so it comes back SCOPE_NOT_COVERED rather than
+ * being conferred unchecked". That is the fixture that kills a `return true`
+ * here («an account whose stored scope the grammar refuses…» in
+ * `users.test.tsx`); without it the clause has no input that separates it from
+ * its absence.
  */
 export function mayManage(session: SessionDescriptor | undefined,
                           user: AdminUser): boolean {

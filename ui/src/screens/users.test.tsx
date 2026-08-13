@@ -12,11 +12,19 @@ import type { SessionDescriptor } from '../auth/session'
 let session: SessionDescriptor | undefined
 vi.mock('../auth/useSession', () => ({ useSession: () => ({ data: session }) }))
 
-afterEach(() => vi.restoreAllMocks())
+afterEach(() => {
+  vi.restoreAllMocks()
+  // `restoreAllMocks` does not undo `stubGlobal`, and `vite.config.ts` sets no
+  // `unstubGlobals`, so without this the `fetch` a `describe` installed stays
+  // installed for every block after it — and the header tests below, which
+  // stub nothing of their own, were running against whatever the last list
+  // test happened to leave behind.
+  vi.unstubAllGlobals()
+})
 
 const JSON_HEAD = { 'Content-Type': 'application/json' }
-const json = (body: unknown, status = 200) =>
-  new Response(JSON.stringify(body), { status, headers: JSON_HEAD })
+const json = (body: unknown, status = 200, statusText = '') =>
+  new Response(JSON.stringify(body), { status, statusText, headers: JSON_HEAD })
 
 /**
  * The actor: an Editor holding every capability, scoped `*`. Everything below
@@ -59,6 +67,29 @@ const NADER: AdminUser = {
   canSupervise: true, disabled: true, createdAt: 1600000000,
 }
 
+/**
+ * **The row that makes "the server's order" mean something.** Every value on it
+ * sits strictly *between* Sahar's and Nader's — the number, the display name
+ * («ش» falls between «س» and «ن»), the role name, the supervisor's name, the
+ * creation date — and outside their range on the id, where "between 7 and 8" is
+ * not available. Handed to the screen **first**, it is therefore in a position
+ * no sort can produce: ascending puts the smallest first and descending puts the
+ * largest first, and on every field this screen renders it is neither. The
+ * boolean fields (`disabled`, `canSupervise`) cannot be "between", so the
+ * fixture's three values are arranged so that a stable sort in either direction
+ * still moves somebody.
+ *
+ * Two rows could not do this: with two rows "not ascending" *is* "descending",
+ * and a reversed comparator — the commonest way to get a sort wrong — passed.
+ */
+const SHIRIN: AdminUser = {
+  id: 6, username: '09121500000', displayName: 'شیرین کاویان',
+  roleId: 2, role: 'auditor', capabilities: ['view', 'view_audit'],
+  scopes: ['dept:bar'],
+  supervisor: { id: 23, username: '09126666666', displayName: 'کیوان مرادی', disabled: false },
+  canSupervise: false, disabled: false, createdAt: 1650000000,
+}
+
 /** A target the Admin above may not touch: it confers `edit`, which they lack. */
 const EDITOR_ROW: AdminUser = {
   id: 9, username: '09125555555', displayName: 'هما نیک‌روش',
@@ -89,8 +120,22 @@ interface Seen {
  */
 function stubServer(rows: AdminUser[], opts: {
   readStatus?: number
+  /** The value at `detail` in a refused read's body. */
+  readDetail?: unknown
   writeStatus?: number
-  writeDetail?: string
+  /**
+   * The value at `detail` in a refused write's body.
+   *
+   * `unknown`, not `string`, because **the shape is the point**. A string is
+   * what `routers/users.py` writes for every refusal it decides itself. A
+   * **list** is what FastAPI's own validation layer sends for a 422, and it is
+   * not a shape `fetchJson` can read a sentence out of — which is how a Persian
+   * screen came to be able to render «Unprocessable Entity».
+   */
+  writeDetail?: unknown
+  /** What the browser exposes as `res.statusText` — the English the fallback
+   *  reaches for when the body carried no sentence. */
+  statusText?: string
 } = {}): Seen {
   const state = new Map(rows.map((r) => [String(r.id), { ...r }]))
   const seen: Seen = { gets: [], writes: [] }
@@ -99,7 +144,9 @@ function stubServer(rows: AdminUser[], opts: {
       const body = JSON.parse(String(init.body)) as Record<string, unknown>
       seen.writes.push({ path, body })
       const status = opts.writeStatus ?? 200
-      if (status >= 400) return json({ detail: opts.writeDetail ?? 'نه' }, status)
+      if (status >= 400) {
+        return json({ detail: opts.writeDetail ?? 'نه' }, status, opts.statusText)
+      }
       const id = path.split('/')[3]
       const row = state.get(id)
       if (row && path.endsWith('/disabled')) {
@@ -111,7 +158,7 @@ function stubServer(rows: AdminUser[], opts: {
     }
     seen.gets.push(path)
     const status = opts.readStatus ?? 200
-    if (status >= 400) return json({ detail: 'نه' }, status)
+    if (status >= 400) return json({ detail: opts.readDetail ?? 'نه' }, status, opts.statusText)
     if (path === '/api/users') return json([...state.values()])
     const row = state.get(path.slice('/api/users/'.length))
     return row ? json(row) : json({ detail: 'یافت نشد' }, 404)
@@ -133,7 +180,9 @@ function mountList() {
   )
 }
 
-function mountDetail(id: number) {
+/** `id` is a string as often as a number, and deliberately: `:id` matches any
+ *  string, so `/users/abc` is a route the app really has. */
+function mountDetail(id: number | string) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={qc}>
@@ -152,6 +201,23 @@ function rowOf(name: string): HTMLElement {
   const row = screen.getAllByRole('listitem').find((r) => r.textContent?.includes(name))
   if (!row) throw new Error(`no row for ${name}`)
   return row
+}
+
+/**
+ * The rendered rows named, in the order they are on screen.
+ *
+ * It throws on a row it cannot name rather than reporting a default, so a
+ * fixture that stops appearing is a failure here and not a silently shortened
+ * list. None of the three names is a substring of another, and no supervisor in
+ * any fixture is called any of them.
+ */
+const FIXTURE_NAMES = ['سحر بیات', 'نادر قاسمی', 'شیرین کاویان']
+function renderedNames(): string[] {
+  return screen.getAllByRole('listitem').map((r) => {
+    const name = FIXTURE_NAMES.find((n) => r.textContent!.includes(n))
+    if (!name) throw new Error(`row belongs to no fixture: ${r.textContent}`)
+    return name
+  })
 }
 
 beforeEach(() => { session = EDITOR })
@@ -187,30 +253,44 @@ describe('the user list', () => {
   })
 
   it('renders the accounts in the order the server sent them, re-sorting nothing', async () => {
-    // **Added after two surviving mutants, and the fixture order is the whole
-    // test.** Every other assertion in this block finds its row by the name
-    // inside it, so a screen that renders `list[i+1]` in `list[i]`'s place —
-    // swapping two rows wholesale — stays internally consistent and passes all
-    // of them.
+    // **Added after two surviving mutants, and rewritten after a third; the
+    // fixture order is the whole test.** Every other assertion in this block
+    // finds its row by the name inside it, so a screen that renders `list[i+1]`
+    // in `list[i]`'s place — swapping two rows wholesale — stays internally
+    // consistent and passes all of them.
     //
-    // The stub answers **Nader first**, which the real endpoint would not: it
-    // orders by `username`, and Nader's is the higher. That is deliberate. Any
-    // client-side sort — by name or by number — puts Sahar first and is caught
-    // here, where a fixture already in the server's own order could not tell a
-    // re-sorting screen from a faithful one. (It could not: `localeCompare` puts
-    // these two names in the same order their numbers are in, so the first
-    // version of this test passed against a screen that sorted by display name.)
+    // Three rows, and three is the minimum. With two, "the order the server
+    // sent" has exactly one alternative, so pinning *not-ascending* pins
+    // *descending* too — and a reversed comparator, which is the commonest way
+    // to get a sort wrong, passed the previous two-row version of this test.
+    //
+    // Shirin is sent **first** and is the middle value on every field this
+    // screen draws (see her fixture). A sort in either direction has to open
+    // with an extreme, so no `.sort()` on any rendered field — name, number,
+    // role, supervisor, date, id, or either flag — can reproduce this list. The
+    // server's own order is the only order that passes.
     //
     // Not cosmetic. The server orders by `username` precisely because display
     // names are not unique, and a list that re-sorts moves rows between two
     // identical requests — which is how an administrator disables the wrong
     // person's account.
-    stubServer([NADER, SAHAR])
+    stubServer([SHIRIN, NADER, SAHAR])
+    mountList()
+    await waitFor(() => expect(screen.getAllByRole('listitem')).toHaveLength(3))
+    expect(renderedNames()).toEqual(['شیرین کاویان', 'نادر قاسمی', 'سحر بیات'])
+  })
+
+  it('counts the matches against the whole installation, not against themselves', async () => {
+    // Two numbers that are equal until something is typed, which is why the
+    // filtered half is asserted as well: «۲ کاربر از ۲» is true of the screen
+    // and true of a screen that prints one of the two counts twice.
+    stubServer([SAHAR, NADER])
     mountList()
     await waitFor(() => expect(screen.getAllByRole('listitem')).toHaveLength(2))
-    const names = screen.getAllByRole('listitem')
-      .map((r) => (r.textContent!.includes('سحر بیات') ? 'سحر بیات' : 'نادر قاسمی'))
-    expect(names).toEqual(['نادر قاسمی', 'سحر بیات'])
+    expect(screen.getByText('۲ کاربر از ۲')).toBeInTheDocument()
+    await userEvent.type(screen.getByLabelText('جست‌وجوی کاربر'), 'نادر')
+    await waitFor(() => expect(screen.getAllByRole('listitem')).toHaveLength(1))
+    expect(screen.getByText('۱ کاربر از ۲')).toBeInTheDocument()
   })
 
   it('marks the disabled account disabled and the active one active — each on its own row', async () => {
@@ -269,6 +349,21 @@ describe('the user list', () => {
     expect(screen.getByText('سحر بیات')).toBeInTheDocument()
   })
 
+  it('filters by role, which is the third thing the placeholder promises', async () => {
+    // «نام، شماره یا نقش». The role clause is the one a screen can lose without
+    // any other assertion in this file noticing: the two clauses above it still
+    // answer every name and every number.
+    stubServer([SAHAR, NADER])
+    mountList()
+    await waitFor(() => expect(screen.getAllByRole('listitem')).toHaveLength(2))
+    expect(screen.getByLabelText('جست‌وجوی کاربر'))
+      .toHaveAttribute('placeholder', 'نام، شماره یا نقش')
+    await userEvent.type(screen.getByLabelText('جست‌وجوی کاربر'), 'reader')
+    await waitFor(() => expect(screen.getAllByRole('listitem')).toHaveLength(1))
+    expect(screen.getByText('نادر قاسمی')).toBeInTheDocument()
+    expect(screen.queryByText('سحر بیات')).toBeNull()
+  })
+
   it('says so when the search matches nobody, rather than showing a bare page', async () => {
     stubServer([SAHAR, NADER])
     mountList()
@@ -276,6 +371,22 @@ describe('the user list', () => {
     await userEvent.type(screen.getByLabelText('جست‌وجوی کاربر'), 'کسی')
     await waitFor(() => expect(screen.queryAllByRole('listitem')).toHaveLength(0))
     expect(screen.getByText('کاربری با این مشخصات پیدا نشد')).toBeInTheDocument()
+    expect(screen.getByText('بخشی از نام، شماره یا نقش را بنویسید.')).toBeInTheDocument()
+    // …and not the *other* empty state. Two accounts exist; a screen that says
+    // none are registered has contradicted the request it just read.
+    expect(screen.queryByText('هنوز کاربری ثبت نشده است')).toBeNull()
+  })
+
+  it('distinguishes an installation with no accounts from a search that matched none', async () => {
+    // The only fixture in this file that sends an empty list, and without it the
+    // empty-installation title has no input at all: every other test reaches the
+    // empty state through the search box, where the other title is correct.
+    stubServer([])
+    mountList()
+    expect(await screen.findByText('هنوز کاربری ثبت نشده است')).toBeInTheDocument()
+    expect(screen.queryByText('کاربری با این مشخصات پیدا نشد')).toBeNull()
+    // No search hint either: there is nothing to narrow.
+    expect(screen.queryByText('بخشی از نام، شماره یا نقش را بنویسید.')).toBeNull()
   })
 
   it('opens one person\'s record when their row is chosen', async () => {
@@ -354,9 +465,37 @@ describe('who the user list is drawn for', () => {
     expect(await screen.findByText('چیزی اینجا نیست')).toBeInTheDocument()
     expect(screen.queryByText('اجازهٔ این کار را ندارید')).toBeNull()
   })
+
+  it('says the read failed when the server 500s — never that nobody is registered', async () => {
+    // `refusalStatus` maps 403 and 404 and nothing else, so a 500 used to fall
+    // through to `data ?? []` and out the empty-installation branch: the screen
+    // told the one person who administers accounts that the installation has
+    // none, on no evidence whatever, at the moment the database was unreachable.
+    stubServer([SAHAR], { readStatus: 500 })
+    mountList()
+    expect(await screen.findByText('فهرست کاربران بارگذاری نشد.')).toBeInTheDocument()
+    expect(screen.queryByText('هنوز کاربری ثبت نشده است')).toBeNull()
+    expect(screen.queryAllByRole('listitem')).toHaveLength(0)
+    // And it is worth asking again, which is exactly what a 5xx is and a 4xx is
+    // not — decided by `retryQuery`, the same predicate the query itself uses.
+    expect(screen.getByRole('button', { name: 'تلاش دوباره' })).toBeInTheDocument()
+  })
+
+  it('re-reads on the retry rather than leaving the administrator to reload the page', async () => {
+    const seen = stubServer([SAHAR], { readStatus: 500 })
+    mountList()
+    await userEvent.click(await screen.findByRole('button', { name: 'تلاش دوباره' }))
+    await waitFor(() => expect(seen.gets.length).toBeGreaterThan(1))
+    expect(seen.gets.every((p) => p === '/api/users')).toBe(true)
+  })
 })
 
 function mountShell(descriptor: SessionDescriptor) {
+  // Its own server. `PanelShell` fires `usePending` for anybody holding `edit`,
+  // and these tests used to inherit whichever `fetch` the previous block had
+  // stubbed — which, once that leak is closed, becomes no `fetch` at all.
+  // Neither is an input this block chose.
+  stubServer([])
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={qc}>
@@ -492,6 +631,35 @@ describe('one person\'s record', () => {
     expect(await screen.findByText('اجازهٔ این کار را ندارید')).toBeInTheDocument()
     await waitFor(() => expect(seen.gets).toEqual([]))
   })
+
+  it('says the read failed when the server 500s, instead of a page that stays blank', async () => {
+    // `!user` was every failure that is not 403 or 404 *and* the moment before
+    // the read lands, so the two were drawn the same: nothing, for ever, with
+    // no way to tell which it was and nothing to press.
+    stubServer([SAHAR], { readStatus: 500 })
+    mountDetail(7)
+    expect(await screen.findByText('اطلاعات این کاربر بارگذاری نشد.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'تلاش دوباره' })).toBeInTheDocument()
+  })
+
+  it('says so for an id that is not a number, and does not offer to ask again', async () => {
+    // `:id` matches any string, so `/users/abc` is a route this app really has
+    // and is one typed URL away. `get_user(user_id: int)` answers it 422 — not
+    // 403, not 404 — with FastAPI's own validation body, whose `detail` is a
+    // list. Asking again cannot turn 'abc' into an integer, so there is no retry
+    // to offer: `retryQuery` refuses every 4xx and the button follows it.
+    stubServer([SAHAR], {
+      readStatus: 422,
+      readDetail: [{ type: 'int_parsing', loc: ['path', 'user_id'],
+                     msg: 'Input should be a valid integer, unable to parse string as an integer',
+                     input: 'abc' }],
+      statusText: 'Unprocessable Entity',
+    })
+    mountDetail('abc')
+    expect(await screen.findByText('اطلاعات این کاربر بارگذاری نشد.')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'تلاش دوباره' })).toBeNull()
+    expect(screen.queryByText(/Unprocessable Entity/)).toBeNull()
+  })
 })
 
 describe('the controls on one person\'s record', () => {
@@ -509,6 +677,9 @@ describe('the controls on one person\'s record', () => {
     stubServer([{ ...SAHAR, username: EDITOR.username }])
     mountDetail(7)
     expect(await screen.findByText(/گذرواژهٔ خودتان را از صفحهٔ نمایه عوض کنید/)).toBeInTheDocument()
+    // …and not the other reason. There are two, they send an administrator to
+    // two different places, and only one of them is true here.
+    expect(screen.queryByText(/دسترسی این حساب از دسترسی شما بیشتر است/)).toBeNull()
     expect(screen.queryByRole('button', { name: 'غیرفعال‌سازی حساب' })).toBeNull()
     expect(screen.queryByLabelText('گذرواژهٔ تازه')).toBeNull()
   })
@@ -523,6 +694,12 @@ describe('the controls on one person\'s record', () => {
     expect(await screen.findByRole('heading', { name: 'هما نیک‌روش' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'غیرفعال‌سازی حساب' })).toBeNull()
     expect(screen.queryByLabelText('گذرواژهٔ تازه')).toBeNull()
+    // **Which sentence, not merely that the controls are gone.** Told the self
+    // sentence here, an Admin reading somebody else's record is sent to their
+    // own profile page to change something that is not the problem — and the
+    // reason they were actually refused is never stated.
+    expect(screen.getByText(/دسترسی این حساب از دسترسی شما بیشتر است/)).toBeInTheDocument()
+    expect(screen.queryByText(/گذرواژهٔ خودتان را از صفحهٔ نمایه عوض کنید/)).toBeNull()
   })
 
   it('withholds them from an Admin looking at an equal, who has no manage_peers', async () => {
@@ -535,6 +712,29 @@ describe('the controls on one person\'s record', () => {
     mountDetail(7)
     expect(await screen.findByRole('heading', { name: 'سحر بیات' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'غیرفعال‌سازی حساب' })).toBeNull()
+    expect(screen.getByText(/دسترسی این حساب از دسترسی شما بیشتر است/)).toBeInTheDocument()
+    expect(screen.queryByText(/گذرواژهٔ خودتان را از صفحهٔ نمایه عوض کنید/)).toBeNull()
+  })
+
+  it('withholds them from an account whose stored scope the grammar refuses', async () => {
+    // **The one input that separates `mayManage`'s scope clause from its
+    // absence**, and it is not a contrived one: `user_scopes.scope` is `TEXT NOT
+    // NULL` with no CHECK, so `''` is storable today, and `scopeContains`
+    // answers `false` for a malformed target *even to a `*` holder*. Every other
+    // fixture that reaches `mayManage` is `*`-scoped — the gate upstairs
+    // guarantees it — and `*` covers every well-formed scope, so without this
+    // row the clause could be deleted outright and nothing would notice.
+    //
+    // The screen agrees with the server rather than guessing: `may_delegate`
+    // says such an entry "is covered by nothing … so it comes back
+    // SCOPE_NOT_COVERED rather than being conferred unchecked", so every write
+    // from here really would be refused, and drawing the controls would send an
+    // administrator to press them.
+    stubServer([{ ...SAHAR, scopes: [''] }])
+    mountDetail(7)
+    expect(await screen.findByRole('heading', { name: 'سحر بیات' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'غیرفعال‌سازی حساب' })).toBeNull()
+    expect(screen.queryByLabelText('گذرواژهٔ تازه')).toBeNull()
   })
 
   it('offers them to an Editor looking at an equal, who does have manage_peers', async () => {
@@ -604,6 +804,44 @@ describe('disabling and re-enabling an account', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'غیرفعال‌سازی حساب' }))
     expect(await screen.findByRole('alert'))
       .toHaveTextContent('این تنها ویرایشگر فعال سامانه است و دسترسی‌اش را نمی‌توان برداشت')
+    expect(screen.getByText('فعال')).toBeInTheDocument()
+  })
+
+  it('does not put a framework\'s English on a Persian screen when a 4xx carries no sentence', async () => {
+    // The server's own refusals are echoed because each is a Persian sentence
+    // naming something to do next — but "4xx" is not a promise that one was
+    // written. FastAPI's validation layer answers 422 with `detail` as a
+    // **list**, which `fetchJson` cannot read a sentence out of, so it falls
+    // back to `res.statusText`: «Unprocessable Entity», in English, in an alert,
+    // to a Persian-speaking administrator. Same for a proxy-generated 429 or 413
+    // with no JSON body at all.
+    stubServer([SAHAR], {
+      writeStatus: 422,
+      writeDetail: [{ type: 'bool_parsing', loc: ['body', 'disabled'],
+                      msg: 'Input should be a valid boolean' }],
+      statusText: 'Unprocessable Entity',
+    })
+    mountDetail(7)
+    await userEvent.click(await screen.findByRole('button', { name: 'غیرفعال‌سازی حساب' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('انجام نشد؛ دوباره تلاش کنید.')
+    expect(screen.queryByText(/Unprocessable Entity/)).toBeNull()
+    expect(screen.queryByText(/valid boolean/)).toBeNull()
+  })
+
+  it('says the same for a 5xx, whose detail is English by construction', async () => {
+    // An unhandled exception behind FastAPI answers `{"detail": "Internal Server
+    // Error"}` — a `detail` that *is* a string, and still not a sentence written
+    // for anybody. A 5xx is not a refusal at all, so it never speaks for the
+    // server; widening the echo to "any ApiError" puts this on the screen.
+    stubServer([SAHAR], {
+      writeStatus: 500, writeDetail: 'Internal Server Error',
+      statusText: 'Internal Server Error',
+    })
+    mountDetail(7)
+    await userEvent.click(await screen.findByRole('button', { name: 'غیرفعال‌سازی حساب' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('انجام نشد؛ دوباره تلاش کنید.')
+    expect(screen.queryByText(/Internal Server Error/)).toBeNull()
+    // The write did not land, so the stored state is what is still drawn.
     expect(screen.getByText('فعال')).toBeInTheDocument()
   })
 

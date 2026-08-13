@@ -1,8 +1,25 @@
 export class ApiError extends Error {
   status: number
-  constructor(status: number, message: string) {
+  /**
+   * The sentence the **server** wrote, or `null` when it wrote none.
+   *
+   * `message` is never null, because something has to be thrown with a string;
+   * when the body carried no `detail` string it falls back to `res.statusText`,
+   * which is a framework's English («Unprocessable Entity», «Payload Too
+   * Large») on an app whose every screen is Persian. FastAPI sends `detail` as
+   * a **list** for a 422, and a proxy-generated 429 or 413 sends no JSON at
+   * all, so this is not a hypothetical.
+   *
+   * A screen that echoes the server's own wording — `UserDetail`'s
+   * `refusalText` — needs to know which of the two it is holding, and the
+   * status cannot tell it: 403 and 422 are both 4xx, and only one of them
+   * carries a sentence written for the person reading it.
+   */
+  detail: string | null
+  constructor(status: number, message: string, detail: string | null = null) {
     super(message)
     this.status = status
+    this.detail = detail
     this.name = 'ApiError'
   }
 }
@@ -76,12 +93,14 @@ export async function fetchJson<T>(path: string, init?: RequestInit): Promise<T>
     // same redirect a stale session would. Everywhere else, 401 only ever means
     // the latter.
     if (res.status === 401 && path !== '/api/auth/login') unauthorizedHandler()
-    let detail = res.statusText
+    let detail: string | null = null
     try {
       const body = await res.json()
       if (body && typeof body.detail === 'string') detail = body.detail
     } catch { /* non-JSON error body */ }
-    throw new ApiError(res.status, detail)
+    // `statusText` only where the server wrote nothing — and `detail` stays
+    // null there, so a caller can tell the two apart (see `ApiError.detail`).
+    throw new ApiError(res.status, detail ?? res.statusText, detail)
   }
   if (res.status === 204) return undefined as T
   return (await res.json()) as T

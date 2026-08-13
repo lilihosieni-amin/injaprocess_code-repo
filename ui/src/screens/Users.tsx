@@ -1,20 +1,55 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useSession } from '../auth/useSession'
-import { useUsers, administrationRefusal } from '../api/users'
-import { refusalStatus } from '../api/client'
+import { administrationRefusal } from '../auth/can'
+import { useUsers } from '../api/users'
+import { refusalStatus, retryQuery } from '../api/client'
 import { toLatinDigits } from '../lib/digits'
 import { toFa } from '../lib/format'
 import { Card } from '../ui/Card'
 import { SearchField } from '../ui/SearchField'
 import { StatusPill } from '../ui/StatusPill'
-import { EmptyState, LoadingState } from '../ui/states'
+import { EmptyState, ErrorState, LoadingState } from '../ui/states'
 import { RefusalScreen } from './Refusal'
 import type { AdminUser } from '../api/users'
 
 /** What D14 surfaces instead of repointing. Written once and used on both
  *  screens, so the row and the record cannot come to word it differently. */
 export const SUPERVISOR_GONE = 'سرپرست این کاربر غیرفعال است'
+
+/**
+ * What either screen shows when the read produced neither data nor a refusal —
+ * a 5xx, a 422, a dropped connection, a body that would not parse.
+ *
+ * It exists because the alternative each screen had was a *claim*: the list said
+ * «هنوز کاربری ثبت نشده است» to an administrator whose `/api/users` had just
+ * 500'd, and the record drew a permanently blank page for `/users/abc` (which
+ * `get_user(user_id: int)` answers 422 to, and `:id` matches any string, so it
+ * is one typed URL away). Neither screen had any evidence for what it said, and
+ * the one person told is the one who would act on it.
+ *
+ * Whether to offer the retry is `retryQuery`'s decision and not a second copy of
+ * it: it is the same predicate the query itself uses to decide whether asking
+ * again could change the answer, so the button cannot come to disagree with the
+ * automatic retries about which failures are transient. No 4xx is — a 422 for a
+ * non-numeric id will be a 422 every time — and a button that re-runs a settled
+ * refusal is furniture that wastes the press.
+ *
+ * Laid out like `RefusalScreen`, because it stands in the same place.
+ */
+export function LoadFailedScreen({ message, error, onRetry }: {
+  message: string
+  error: unknown
+  onRetry: () => void
+}) {
+  return (
+    <div className="flex-1 overflow-auto py-s12 px-s12">
+      <div className="max-w-list mx-auto">
+        <ErrorState message={message} onRetry={retryQuery(0, error) ? onRetry : undefined} />
+      </div>
+    </div>
+  )
+}
 
 /**
  * Every account in the installation, and the way into one of them (D13, D14).
@@ -38,7 +73,9 @@ export const SUPERVISOR_GONE = 'سرپرست این کاربر غیرفعال ا
 export function Users() {
   const session = useSession().data
   const refusal = administrationRefusal(session)
-  const { data, error, isPending } = useUsers({ enabled: !!session && refusal === undefined })
+  const { data, error, isPending, refetch } = useUsers({
+    enabled: !!session && refusal === undefined,
+  })
   const [q, setQ] = useState('')
 
   // Hooks first, then the early returns: an early return above them would change
@@ -47,6 +84,16 @@ export function Users() {
   if (refusal) return <RefusalScreen status={refusal} />
   const refused = refusalStatus(error)
   if (refused) return <RefusalScreen status={refused} />
+  // Before `data ?? []`, and that order is the whole fix: a failed read leaves
+  // `data` undefined, and an empty array is indistinguishable from an
+  // installation with no accounts in it. `refusalStatus` maps 403 and 404 only,
+  // so every other failure — a 500 above all — fell through to the empty state
+  // and told an administrator a fact about their installation that nothing on
+  // this screen knew.
+  if (error) {
+    return <LoadFailedScreen message="فهرست کاربران بارگذاری نشد." error={error}
+      onRetry={() => { void refetch() }} />
+  }
 
   const users = data ?? []
   const query = q.trim()

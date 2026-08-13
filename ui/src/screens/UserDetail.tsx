@@ -1,8 +1,9 @@
 import { useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useSession } from '../auth/useSession'
+import { administrationRefusal } from '../auth/can'
 import {
-  administrationRefusal, mayManage, useSetUserDisabled, useSetUserPassword, useUser,
+  mayManage, useSetUserDisabled, useSetUserPassword, useUser,
 } from '../api/users'
 import { ApiError, refusalStatus } from '../api/client'
 import { jalali } from '../lib/format'
@@ -10,7 +11,7 @@ import { Button } from '../ui/Button'
 import { Card } from '../ui/Card'
 import { StatusPill } from '../ui/StatusPill'
 import { RefusalScreen } from './Refusal'
-import { SUPERVISOR_GONE } from './Users'
+import { LoadFailedScreen, SUPERVISOR_GONE } from './Users'
 
 /** The server's floor (`auth.MIN_PASSWORD_LENGTH`, D58). Restated here so a
  *  value that cannot possibly be accepted never costs the ~61 ms argon2 hash the
@@ -39,12 +40,22 @@ const FAILED = 'انجام نشد؛ دوباره تلاش کنید.'
  * refusals are about the *actor's* rights rather than about somebody else's
  * document.
  *
- * A 5xx is not a refusal at all, so it gets the local retry line rather than a
- * framework's English `statusText`.
+ * **`detail`, not `message`, and that is the whole of the second condition.**
+ * `message` is never empty: when the body carried no `detail` string,
+ * `fetchJson` fills it with `res.statusText`, which is English. A 4xx is not a
+ * guarantee that a Persian sentence was written — FastAPI answers 422 with
+ * `detail` as a **list**, so `/api/users/abc` would put «Unprocessable Entity»
+ * on this screen, and a proxy-generated 429 or 413 arrives with no JSON body at
+ * all. `ApiError.detail` is `null` in exactly those cases, and this asks for it
+ * by name rather than inferring from the status which 4xx the server wrote for.
+ *
+ * A 5xx is not a refusal at all, so it too gets the local retry line rather than
+ * a framework's English `statusText`.
  */
 function refusalText(error: unknown): string {
-  if (error instanceof ApiError && error.status >= 400 && error.status < 500) {
-    return error.message
+  if (error instanceof ApiError && error.status >= 400 && error.status < 500
+      && error.detail !== null) {
+    return error.detail
   }
   return FAILED
 }
@@ -75,7 +86,9 @@ export function UserDetail() {
   const { id = '' } = useParams()
   const session = useSession().data
   const refusal = administrationRefusal(session)
-  const { data: user, error } = useUser(id, { enabled: !!session && refusal === undefined })
+  const { data: user, error, refetch } = useUser(id, {
+    enabled: !!session && refusal === undefined,
+  })
   const setDisabled = useSetUserDisabled(id)
   const setPassword = useSetUserPassword(id)
   const [password, setPasswordValue] = useState('')
@@ -86,6 +99,16 @@ export function UserDetail() {
   if (refusal) return <RefusalScreen status={refusal} />
   const refused = refusalStatus(error)
   if (refused) return <RefusalScreen status={refused} />
+  // Ahead of the blank, and for the same reason the list checks it ahead of
+  // `data ?? []`: `!user` was every failure that is not 403 or 404 as well as
+  // the moment before the read lands, so a 500 — or the 422 that
+  // `get_user(user_id: int)` answers for `/users/abc`, one typed URL away since
+  // `:id` matches any string — was a page that stayed empty for ever with
+  // nothing on it to say so or to try again with.
+  if (error) {
+    return <LoadFailedScreen message="اطلاعات این کاربر بارگذاری نشد." error={error}
+      onRetry={() => { void refetch() }} />
+  }
   if (!user) return <div className="flex-1 bg-bg" />
 
   const mine = session.username === user.username
