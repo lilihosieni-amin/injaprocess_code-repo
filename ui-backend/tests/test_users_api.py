@@ -36,6 +36,7 @@ from fastapi.testclient import TestClient
 from inja_ui_backend import db, delegation, seed
 from inja_ui_backend.app import create_app
 from inja_ui_backend.auth import COOKIE_NAME, hash_password
+from inja_ui_backend.models import PatchUserBody
 from inja_ui_backend.routers import users as users_router
 from inja_ui_backend.store import users
 from inja_ui_backend.tests_helpers import cfg_for
@@ -495,6 +496,21 @@ def test_a_number_can_be_moved_off_a_disabled_account(world):
                                                  scopes=["*"]))
     assert r.status_code == 409, r.text
 
+    # The same refusal on the PATCH side, which is the half a POST-only test
+    # leaves open: the number now belongs to the new employee, and moving the
+    # disabled account onto it is refused with the same 409 and the same
+    # sentence. Unchecked here, `users.username` (`TEXT NOT NULL UNIQUE`) still
+    # refuses it — as a 500, on the administration surface, with the transaction
+    # rolled back and nothing said about why.
+    taken = client.patch(f"/api/users/{left}", json={"username": "09121110006"})
+    assert taken.status_code == 409, taken.text
+    assert taken.json()["detail"] == "این شماره از پیش ثبت شده است"
+    # …including when it is spelled in Persian digits, because the comparison is
+    # made on the canonical form and not on the string that was typed (D57).
+    persian = client.patch(f"/api/users/{left}", json={"username": "۰۹۱۲۱۱۱۰۰۰۶"})
+    assert persian.status_code == 409, persian.text
+    assert world.row(left)["username"] == "09121110007"
+
 
 def test_a_patch_that_changes_nothing_records_nothing(world):
     """A decision nobody made must not appear in the record."""
@@ -507,6 +523,57 @@ def test_a_patch_that_changes_nothing_records_nothing(world):
     r = client.patch(f"/api/users/{subject}", json={"displayName": "کاربر"})
     assert r.status_code == 200, r.text
     assert world.governance() == []
+
+
+def test_an_explicit_null_is_a_400_on_every_field_but_the_supervisor(world):
+    """`null` is a value the caller wrote, so it has to mean something.
+
+    `PatchUserBody` makes every field optional and the handler reads
+    `model_fields_set`, so `{"displayName": null}` is a field that *is* set —
+    absent and `null` are different requests. The rule is that `null` is accepted
+    on exactly the field where "no value" is a state an account can be in: D51
+    makes "no supervisor" legal for a `*`-scoped user, and `{"supervisorId":
+    null}` is how a screen clears one. Every other field names something a user
+    always has — a number, a name, a role, a scope list (the empty one is `[]`,
+    which is a list) and a yes/no flag — so `null` there is a form that lost its
+    value and earns the 400 that says which.
+
+    A screen that clears a field is precisely what sends these, and every one of
+    them used to be a way to get a 500 out of the administration write surface —
+    `.strip()` and a `for` loop on `None` — except `canSupervise`, which was worse:
+    `bool(None)` wrote `false` and said nothing.
+    """
+    world.add("09120000001", "admin", "*")
+    boss = world.add("09120000002", "reader", "*", can_supervise=True)
+    subject = world.add("09120000003", "reader", "*", supervisor_id=boss,
+                        can_supervise=True)
+    client = world.sign_in("09120000001")
+
+    # Every field of the model has a decision, or a field added later gets
+    # whatever `None` happens to do to it.
+    assert set(users_router.NULL_REFUSALS) | {"supervisorId"} == set(
+        PatchUserBody.model_fields), "a patchable field with no decision about null"
+
+    for field, message in users_router.NULL_REFUSALS.items():
+        r = client.patch(f"/api/users/{subject}", json={field: None})
+        assert r.status_code == 400, f"{{{field!r}: null}} answered {r.status_code}"
+        assert r.json()["detail"] == message, r.text
+
+    row = world.row(subject)
+    assert row["username"] == "09120000003"
+    assert row["display_name"] == "کاربر"
+    assert row["role_id"] == world.role_id("reader")
+    assert row["supervisor_id"] == boss
+    assert bool(row["can_supervise"]) is True, (
+        '{"canSupervise": null} was read as false and written')
+    assert world.scopes_of(subject) == ["*"]
+    assert world.governance() == [], "a refused body was recorded as a change"
+
+    # …and the one field where `null` is the protocol rather than a lost value.
+    r = client.patch(f"/api/users/{subject}", json={"supervisorId": None})
+    assert r.status_code == 200, r.text
+    assert r.json()["supervisor"] is None
+    assert world.row(subject)["supervisor_id"] is None
 
 
 # --------------------------------------------------------------------------
@@ -803,6 +870,41 @@ def test_the_candidates_path_is_not_shadowed_by_the_id_route(world):
     assert isinstance(r.json(), list)
 
 
+def test_the_user_routes_are_registered_before_the_spa_catch_all(world, tmp_path):
+    """§11 test 18. `app.mount("/")` swallows everything registered after it.
+
+    The mount is a catch-all, and for `/api/...` its fallback is a plain 404
+    (`app.NOT_SPA_ROUTES`) rather than the app shell — which is the *same* 404
+    `access.requires` gives a caller who may not learn this surface exists. So
+    user administration registered on the wrong side of the mount would not look
+    like an outage; it would look exactly like every administrator having been
+    quietly demoted, on every screen.
+
+    It takes an app with `static_dir` set to see any of that, and nothing else in
+    the suite configures one and then calls a user endpoint. The route table
+    cannot stand in for it either: it is compared as a set, and a set has no
+    order.
+    """
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    (dist / "index.html").write_text("<!doctype html><title>inja</title>",
+                                     encoding="utf-8")
+    cfg = world.cfg.__class__(**{**world.cfg.__dict__, "static_dir": dist})
+    client = TestClient(create_app(cfg), base_url=BASE)
+    assert client.post("/api/auth/login",
+                       json={"username": EDITOR, "password": PW}).status_code == 200
+    # The mount really is there and really is answering, or the rest proves
+    # nothing about the order of the two.
+    assert "inja" in client.get("/a-client-side-route").text
+
+    for path in ("/api/users", "/api/roles", "/api/users/supervisor-candidates"):
+        r = client.get(path)
+        assert r.status_code == 200, f"{path} answered {r.status_code}: the SPA"
+        assert isinstance(r.json(), list), f"{path} was answered by the mount"
+    created = client.post("/api/users", json=_new_user(world, scopes=["*"]))
+    assert created.status_code == 201, created.text
+
+
 def test_the_candidates_are_the_eligible_ones_with_their_scopes(world):
     """D52, over HTTP: active, covering every wanted scope, and flagged or `*`.
 
@@ -922,6 +1024,108 @@ def test_a_write_runs_in_one_transaction_on_a_connection_of_its_own(world):
             raise RuntimeError("a refusal, raised mid-write")
     assert name_seen_by_another_connection() == "اول", (
         "a refused write left its changes behind")
+
+
+def test_every_write_decides_from_an_actor_row_read_inside_its_transaction(world,
+                                                                          monkeypatch):
+    """The actor row the dependency handed over is not the row that may decide.
+
+    `access.capabilities_of` reads `disabled_at` off the row it is *given* rather
+    than from the database, so a row captured when the request arrived reports the
+    capabilities that account had then. Every write here therefore re-reads the
+    actor inside its own `BEGIN IMMEDIATE`, and no single-threaded end-to-end test
+    can see that it does: delete all four re-reads and the rest of this file
+    passes.
+
+    So this test is the second writer. `_write` is wrapped to disable the actor on
+    another connection immediately **before** the transaction opens — before,
+    because `BEGIN IMMEDIATE` takes the write lock and would shut that connection
+    out — which is exactly the interleaving `require_session` cannot rule out: an
+    account disabled while its own request is in flight. Re-read, the actor holds
+    nothing and every write is refused NO_MANAGE_USERS; taken from the dependency,
+    all four succeed and a disabled administrator has just created an account, set
+    somebody's password and disabled them.
+
+    The password path is the one this was found on. Its check used to run on the
+    shared connection outside any transaction and then hand off to a worker thread
+    that spent ~61 ms on argon2 before opening one — so the window was not a
+    theoretical instant but the length of a hash, and what fitted inside it was
+    a promotion of the very account whose password was being replaced.
+    """
+    world.add("09120000001", "admin", "*")
+    subject = world.add("09120000002", "reader", "dept:dining")
+    actor_id = world.id_of("09120000001")
+    client = world.sign_in("09120000001")
+    real_write = users_router._write
+
+    def disable_the_actor_then_write(request):
+        with world.conn() as other:
+            users.set_disabled(other, actor_id, True, now=1770000000)
+        return real_write(request)
+
+    monkeypatch.setattr(users_router, "_write", disable_the_actor_then_write)
+
+    message = users_router.REFUSALS[delegation.NO_MANAGE_USERS]
+    before = world.count_users()
+    for method, path, body in (
+            ("POST", "/api/users", _new_user(world, scopes=["*"])),
+            ("PATCH", f"/api/users/{subject}", {"displayName": "دستکاری"}),
+            ("POST", f"/api/users/{subject}/password", {"password": NEW_PW}),
+            ("POST", f"/api/users/{subject}/disabled", {"disabled": True})):
+        r = client.request(method, path, json=body)
+        assert r.status_code == 403, f"{method} {path} answered {r.status_code}"
+        assert r.json()["detail"] == message, f"{method} {path}: {r.text}"
+        # Put the actor back, or the next request is refused 401 by
+        # `require_session` and would pass this test without reaching a write.
+        with world.conn() as other:
+            users.set_disabled(other, actor_id, False)
+
+    assert world.count_users() == before, "a refused create still wrote a row"
+    row = world.row(subject)
+    assert row["display_name"] == "کاربر"
+    assert row["disabled_at"] is None
+    # …and the password was not replaced, which is the one refusal above that
+    # writes on a connection the response cannot show us.
+    world.sign_in("09120000002")
+    assert world.governance() == []
+
+
+def test_a_password_is_authorised_by_the_transaction_that_writes_it(world, monkeypatch):
+    """The other half of the same rule: the **target** must be read there too.
+
+    An Admin posts a password for a Reader, and while the argon2 hash is being
+    computed another administrator promotes that Reader to Editor. Decided before
+    the hash — on the shared connection, outside any transaction, which is where
+    this check used to live — the answer is "yes, a Reader", and the write lands
+    on an account the Admin was never permitted to touch: they now know an
+    Editor's password. Decided inside the `BEGIN IMMEDIATE` that writes, the
+    promotion is either already visible (refused) or waits behind the write lock.
+
+    `hash_password` is where the promotion is planted because the hash *is* the
+    window — ~61 ms of it, on a worker thread, between the two things that must
+    not be separated. Nothing shorter would be a fair test of a race that a real
+    one has 61 ms to win.
+    """
+    world.add("09120000001", "admin", "*")
+    subject = world.add("09120000002", "reader", "dept:dining")
+    client = world.sign_in("09120000001")
+    real_hash = users_router.hash_password
+
+    def promote_the_target_then_hash(password: str) -> str:
+        with world.conn() as other:
+            other.execute("UPDATE users SET role_id = ? WHERE id = ?",
+                          (world.role_id("editor"), subject))
+        return real_hash(password)
+
+    monkeypatch.setattr(users_router, "hash_password", promote_the_target_then_hash)
+
+    r = client.post(f"/api/users/{subject}/password", json={"password": NEW_PW})
+    assert r.status_code == 403, r.text
+    assert r.json()["detail"] == users_router.REFUSALS[delegation.NOT_A_SUBSET]
+    # …and the account keeps the password it had, rather than the one the Admin
+    # chose for somebody they may not act on.
+    world.sign_in("09120000002")
+    assert world.governance() == []
 
 
 def test_every_delegation_error_key_has_a_persian_message(world):
@@ -1069,3 +1273,70 @@ def test_the_created_users_scopes_and_supervisor_are_in_the_record(world):
     assert detail["role"] == "reader"
     assert detail["scopes"] == ["dept:dining"]
     assert detail["supervisor"] == boss
+
+
+def test_the_record_says_what_every_modification_moved(world):
+    """The other half of D44's permission history: what changed, not just that it did.
+
+    The creation above carries the shape of the account it made. These are the
+    modifications, and until this test every one of their details was written by
+    the router and read by nobody — `role.assigned` with its before and after
+    swapped, `supervisor.changed` naming ids nobody chose, and `user.modified`'s
+    whole `changed` map replaced by a constant all survived the suite. A record
+    that answers "who changed this person's role, and to what" with a fiction is
+    worse than one that does not answer.
+
+    **Two scopes move in each direction in a single request**, which is the other
+    thing a one-scope-at-a-time fixture cannot see: "one row per scope" and "one
+    row per request" are the same table until a request moves two.
+    """
+    world.add("09120000001", "admin", "*", display="مدیر")
+    boss = world.add("09120000002", "reader", "*", can_supervise=True)
+    head = world.add("09120000003", "reader", "*", can_supervise=True)
+    subject = world.add("09120000004", "reader", "dept:dining", supervisor_id=boss)
+    reader, admin_role = world.role_id("reader"), world.role_id("admin")
+    client = world.sign_in("09120000001")
+    seen = 0
+
+    def details(action: str) -> list[dict]:
+        return [json.loads(r["detail"]) for r in world.governance()[seen:]
+                if r["action"] == action]
+
+    r = client.patch(f"/api/users/{subject}",
+                     json={"roleId": admin_role, "displayName": "نام تازه"})
+    assert r.status_code == 200, r.text
+    assert details("user.modified") == [{"changed": {
+        "displayName": {"before": "کاربر", "after": "نام تازه"},
+        "roleId": {"before": reader, "after": admin_role}}}]
+    assert details("role.assigned") == [{"before": reader, "after": admin_role}]
+
+    seen = len(world.governance())
+    r = client.patch(f"/api/users/{subject}",
+                     json={"scopes": ["dept:cashier", "dept:cooking", "dept:dining"],
+                           "supervisorId": head})
+    assert r.status_code == 200, r.text
+    assert details("user.modified") == [{"changed": {
+        "supervisorId": {"before": boss, "after": head},
+        "scopes": {"before": ["dept:dining"],
+                   "after": ["dept:cashier", "dept:cooking", "dept:dining"]}}}]
+    assert details("supervisor.changed") == [{"before": boss, "after": head}]
+    # Two scopes, two rows, one request.
+    assert details("scope.granted") == [{"scope": "dept:cashier"},
+                                        {"scope": "dept:cooking"}]
+    assert details("scope.revoked") == []
+
+    seen = len(world.governance())
+    r = client.patch(f"/api/users/{subject}",
+                     json={"scopes": ["dept:cooking"], "canSupervise": True})
+    assert r.status_code == 200, r.text
+    assert details("user.modified") == [{"changed": {
+        "canSupervise": {"before": False, "after": True},
+        "scopes": {"before": ["dept:cashier", "dept:cooking", "dept:dining"],
+                   "after": ["dept:cooking"]}}}]
+    assert details("supervisor_flag.changed") == [{"before": False, "after": True}]
+    assert details("scope.revoked") == [{"scope": "dept:cashier"},
+                                        {"scope": "dept:dining"}]
+    assert details("scope.granted") == []
+    # The umbrella says what moved and the axis events say it again, separately —
+    # neither is a summary of the other (D42).
+    assert details("role.assigned") == []

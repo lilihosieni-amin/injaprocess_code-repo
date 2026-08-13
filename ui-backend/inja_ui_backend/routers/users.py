@@ -30,6 +30,16 @@ inside the transaction: `access.capabilities_of` reads `disabled_at` off the row
 it is handed rather than from the database, so a row captured before a write can
 report capabilities the account no longer has.
 
+**Its reading includes the delegation check, and that is the point of the shape.**
+A check made outside the transaction it authorises is a check that can be
+overtaken: read the target, decide the actor may touch them, and by the time the
+write lands somebody else has made them an Editor. So `_target`, `_actor` and the
+`delegation` call sit inside the same `BEGIN IMMEDIATE` as the statements they
+permit — on all four writes, the password one included, where the ~61 ms argon2
+hash used to sit between the check and the write and made that window the easiest
+one in this module to lose a race in. The hash is computed first, outside the
+transaction; nothing that *decides* is.
+
 **The record is written after the store write, never before.** A failed write
 must not leave a row claiming it succeeded, so `record` is called after the
 transaction has committed — the idiom `routers/confirmations.py` sets.
@@ -135,6 +145,46 @@ SUPERVISOR_REFUSALS: dict[str, str] = {
 #: `KeyError` because a 500 on a *refusal* would be a refusal that looks like an
 #: outage.
 GENERIC_REFUSAL = "اجازهٔ این کار را ندارید"
+
+#: The two sentences a bad *value* earns, shared by the cleaners below and by
+#: `NULL_REFUSALS`, so that clearing a field and mistyping it are answered with
+#: one sentence rather than two that drift apart.
+NOT_A_NUMBER = "نام کاربری باید یک شمارهٔ موبایل معتبر باشد؛ مثل ۰۹۱۲۳۴۵۶۷۸۹"
+NO_DISPLAY_NAME = "نام کاربر را بنویسید"
+
+#: What an explicit `null` means on `PATCH /api/users/{id}`, field by field.
+#:
+#: `null` is a value the caller wrote and not an absent field — the handler reads
+#: `model_fields_set`, so the two are told apart — which means it has to *mean*
+#: something, and the rule is one line: **`null` is accepted on exactly the field
+#: where "no value" is a state an account can be in.** That is `supervisorId`,
+#: which is why it is absent from this map: D51 makes "no supervisor" legal for a
+#: `*`-scoped user, `{"supervisorId": null}` is how a screen clears one, and
+#: `supervisor_error` is the authority on when that is allowed. Every other field
+#: names something a user always has — a number, a name, a role, a scope list
+#: (the empty one is `[]`, which is a list and not a `null`) and a yes/no flag —
+#: so a `null` there is a form that lost its value, and the answer is the 400 that
+#: says which one.
+#:
+#: Refused **before** the transaction opens, with the other value refusals: a body
+#: that cannot be acted on should not take sqlite's write lock to find that out.
+#:
+#: This is a decision, not a repair of one crash: three of these fields used to
+#: reach `.strip()` or a `for` loop on `None` and be answered 500 — an outage's
+#: answer to somebody who merely cleared a field — and `canSupervise` was quietly
+#: read as `False`, which is worse, because it wrote something nobody asked for.
+NULL_REFUSALS: dict[str, str] = {
+    "username": NOT_A_NUMBER,
+    "displayName": NO_DISPLAY_NAME,
+    # A 400 rather than the 403 `UNKNOWN_ROLE` an unknown *id* earns, and the
+    # difference is real: "no such role" and "not one of yours" are the same fact
+    # from where the caller stands and must not be told apart, while `null` is
+    # neither of them — it is no role id at all, so answering it 403 would tell
+    # somebody who submitted nothing that their permissions are what is wrong.
+    "roleId": "نقش کاربر را انتخاب کنید",
+    "scopes": "دامنه‌های دسترسی را مشخص کنید؛ «هیچ دامنه‌ای» یک فهرست خالی است",
+    "canSupervise": "مشخص کنید که این کاربر می‌تواند سرپرست باشد یا نه",
+}
 
 
 def _refuse(key: str) -> None:
@@ -312,17 +362,28 @@ def _clean_username(raw: str) -> str:
     """
     username = normalise_phone(raw)
     if not USERNAME_RE.fullmatch(username):
-        raise HTTPException(
-            status_code=400,
-            detail="نام کاربری باید یک شمارهٔ موبایل معتبر باشد؛ مثل ۰۹۱۲۳۴۵۶۷۸۹")
+        raise HTTPException(status_code=400, detail=NOT_A_NUMBER)
     return username
 
 
 def _clean_display_name(raw: str) -> str:
     display = raw.strip()
     if not display:
-        raise HTTPException(status_code=400, detail="نام کاربر را بنویسید")
+        raise HTTPException(status_code=400, detail=NO_DISPLAY_NAME)
     return display
+
+
+def _refuse_nulls(body: PatchUserBody) -> None:
+    """400 for every field on which an explicit `null` is not a value.
+
+    See `NULL_REFUSALS` for which fields those are and why `supervisorId` is not
+    among them. Only fields the caller actually wrote are looked at: every field
+    of `PatchUserBody` defaults to `None`, so reading the values alone would
+    refuse `{}` — the request that changes nothing — on five counts.
+    """
+    for field, message in NULL_REFUSALS.items():
+        if field in body.model_fields_set and getattr(body, field) is None:
+            raise HTTPException(status_code=400, detail=message)
 
 
 # --------------------------------------------------------------------------
@@ -513,11 +574,21 @@ def modify_user(user_id: int, body: PatchUserBody, request: Request,
     re-judged against the new ones, because an eligibility that held for
     `dept:dining` says nothing about `dept:dining` plus `dept:cashier`.
 
+    **An absent field and an explicit `null` are different requests**, which is
+    what `model_fields_set` is read for, and `NULL_REFUSALS` says what the second
+    of them means on each field: `{"supervisorId": null}` clears a supervisor and
+    every other `null` is a 400.
+
     No argon2 here, so this is a plain `def` on the default threadpool — the
     password is not one of the fields, and setting somebody else's is its own
     endpoint with its own event and its own revocation rule.
     """
     fields = body.model_fields_set
+    # Before the transaction: a value that cannot be acted on is not worth
+    # sqlite's write lock, and `_clean_scopes`/`_clean_username` below are
+    # answering the same class of question from inside it only because they need
+    # the row to compare against.
+    _refuse_nulls(body)
     with _write(request) as conn:
         actor = _actor(conn, user)
         target = _target(conn, user_id)
@@ -658,24 +729,52 @@ def set_user_disabled(user_id: int, body: DisabledBody, request: Request,
     return _user(conn, users.by_id(conn, user_id))
 
 
-def _set_password(request: Request, target_id: int, password: str,
-                  now: int) -> None:
-    """The two writes D15 requires, together, on a connection of this call's own.
+def _set_password(request: Request, actor_row: sqlite3.Row, user_id: int,
+                  password: str, now: int) -> sqlite3.Row:
+    """Everything `POST /api/users/{id}/password` does to the database, one thread.
 
-    Hashed first and outside the transaction — ~61 ms is a long time to hold
-    sqlite's write lock — then the revoke and the replacement land as one. Order
-    inside the transaction is not a decision, because there is no instant between
-    them at which either is visible: this is the atomicity that
-    `apply_password_change` cannot have (it runs on the shared connection, which
-    may carry no transaction) and has to trade a race against a half-state for.
+    `_create`'s shape, for `_create`'s reason and one more of its own. The argon2
+    hash is computed **before** the transaction opens: it is ~61 ms, and holding
+    sqlite's write lock for it would serialise every other write in the service
+    behind one password reset.
 
-    Every session of the target's, with no exception: the caller is somebody
-    else, so there is no session of theirs to keep.
+    **Everything that decides is inside the transaction, with the writes it
+    permits.** Read outside one, `may_modify` authorises the account as it was
+    rather than as it is: an Admin sets a Reader's password, another
+    administrator promotes that Reader to Editor while the hash is being
+    computed, and the write lands on an account the Admin may not touch — leaving
+    them holding an Editor's password. The hash *is* that window, so the check
+    cannot be on the far side of it. `BEGIN IMMEDIATE` takes the write lock
+    before the reads, so the promotion either happened before this check saw it
+    or waits until after this write.
+
+    The two writes D15 requires then land as one. Order between them is not a
+    decision, because there is no instant at which either is visible alone: this
+    is the atomicity `apply_password_change` cannot have (it runs on the shared
+    connection, which may carry no transaction) and has to trade a race against a
+    half-state for. Every session of the target's, with no exception — the
+    self-edit ban means the caller is somebody else, so there is no session of
+    theirs to keep.
+
+    Returns the target's row, as it was read here. The record names that person,
+    and reading them again afterwards would be a second, unserialised read of a
+    row this call has just written.
     """
     password_hash = hash_password(password)
     with _write(request) as conn:
-        sessions.revoke_all_for_user(conn, target_id, now)
-        users.set_password(conn, target_id, password_hash)
+        actor = _actor(conn, actor_row)
+        target = _target(conn, user_id)
+        # Against the target's **current** role and scopes: nothing about their
+        # access is changing, so the resulting user is the current one — and the
+        # check that fires first on a self-target is `SELF_EDIT`, which is what
+        # keeps this endpoint from being a way round the self-edit ban.
+        err = may_modify(conn, actor, target, role_id=target["role_id"],
+                         scopes=list(scopes_of(conn, target)))
+        if err:
+            _refuse(err)
+        sessions.revoke_all_for_user(conn, target["id"], now)
+        users.set_password(conn, target["id"], password_hash)
+    return target
 
 
 @router.post("/{user_id}/password", status_code=204)
@@ -698,26 +797,27 @@ async def set_user_password(user_id: int, body: SetPasswordBody, request: Reques
     closing it needs an out-of-band channel rather than a bigger check here.
 
     Bound by the same two checks as any other modification, via `may_modify`
-    against the target's **current** role and scopes: nothing about their access
-    is changing, so the resulting user is the current one — and the check that
-    fires first on the self-target is `SELF_EDIT`, which is what keeps this
-    endpoint from being a way round the self-edit ban. Changing your own password
-    is `POST /api/auth/password`, which re-verifies the current one; this path
-    does not, and must therefore never accept the caller as its own target.
+    against the target's **current** role and scopes — and bound by them *inside
+    the transaction that writes*, which is `_set_password`'s subject and this
+    module's rule for every write. Changing your own password is
+    `POST /api/auth/password`, which re-verifies the current one; this path does
+    not, and must therefore never accept the caller as its own target.
+
+    Only the password rule is answered before the thread is entered. It is the
+    one refusal here that needs no database at all, so it costs no argon2 slot;
+    the target's existence and the delegation check are deliberately *not*
+    hoisted out to join it, because out here they would be answered from an
+    unserialised read. The price is that a refused request has paid for a hash —
+    the same price `_create` pays, on a surface `*`-scoped holders of
+    `manage_users` are the only callers of.
     """
-    conn = request.app.state.db
-    target = _target(conn, user_id)
-    err = may_modify(conn, user, target, role_id=target["role_id"],
-                     scopes=list(scopes_of(conn, target)))
-    if err:
-        _refuse(err)
     problem = validate_password(body.password)
     if problem:
         raise HTTPException(status_code=400, detail=problem)
 
     now = int(time.time())
-    await anyio.to_thread.run_sync(
-        functools.partial(_set_password, request, target["id"], body.password, now),
+    target = await anyio.to_thread.run_sync(
+        functools.partial(_set_password, request, user, user_id, body.password, now),
         limiter=VERIFY_LIMITER)
 
     record(request, "password.set_by_admin", actor=user["username"],

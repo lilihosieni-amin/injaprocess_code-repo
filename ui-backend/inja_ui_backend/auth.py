@@ -35,14 +35,25 @@ MIN_PASSWORD_LENGTH = 6
 #: which here includes serving the export downloads. A queued sign-in waits; a
 #: reader mid-document does not.
 #:
-#: **One limiter for every argon2 endpoint there is**, and that is a decision
-#: rather than an accident. What is being bounded is host memory, and host memory
-#: is one budget: two limiters of two is a ceiling of four (~256 MiB), and it
-#: would double again for every argon2 endpoint added later. The number in the
-#: paragraph above only means anything if there is one of it. Today that is four
-#: endpoints — sign-in, the self-service password change (`routers/auth.py`), and
-#: D15's two administrator paths, creating a user and setting somebody else's
-#: password (`routers/users.py`).
+#: **One limiter for every argon2 endpoint that stands behind a session**, and
+#: that is a decision rather than an accident. What is being bounded is host
+#: memory, and host memory is one budget: two limiters of two is a ceiling of four
+#: (~256 MiB), and it would double again for every argon2 endpoint that minted a
+#: limiter of its own. The number in the paragraph above only means anything if
+#: there is one of it. Today that is four endpoints — sign-in, the self-service
+#: password change (`routers/auth.py`), and D15's two administrator paths,
+#: creating a user and setting somebody else's password (`routers/users.py`). A
+#: fifth added anywhere joins this one.
+#:
+#: **There is exactly one exception, and it makes the host's real ceiling four
+#: concurrent argon2 operations, ~256 MiB, not two.** `routers/export_files.py`
+#: holds its own `anyio.CapacityLimiter(2)` for the export-login verify, and says
+#: at its own definition why: that gate is unauthenticated, unthrottled, and
+#: printed on the link handed to the widest audience in the system, so a burst of
+#: guesses at it must not be able to queue every member of staff out of signing
+#: in. Two budgets is the price of that isolation, and it is the whole price —
+#: the arithmetic above is what keeps it visible, so a third limiter appearing
+#: anywhere is a change to this comment before it is a change to the code.
 #:
 #: It lives here rather than in `routers/auth.py`, where it started, because it
 #: is a property of `hash_password`/`verify_hash` — of the work — and not of one

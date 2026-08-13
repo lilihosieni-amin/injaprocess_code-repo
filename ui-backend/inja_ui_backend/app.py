@@ -170,7 +170,12 @@ def create_app(cfg: Settings | None = None) -> FastAPI:
     app.include_router(processes_router.router)
     # Both of `routers/users.py`'s routers, and unconditionally: user
     # administration is not behind a feature switch, and everything registered
-    # after the SPA mount below is swallowed by its catch-all.
+    # after the SPA mount below is swallowed by its catch-all — `/api/users`
+    # would answer the plain 404 `NOT_SPA_ROUTES` reserves for API paths, which
+    # is indistinguishable from the 404 the gate itself gives an out-of-scope
+    # caller. `test_users_api.py` builds an app with `static_dir` set and calls
+    # these routes through it, because a route table compared as a set cannot
+    # see order and no other test configures both.
     app.include_router(users_router.roles_router)
     app.include_router(users_router.router)
     app.include_router(visibility_router.router)
