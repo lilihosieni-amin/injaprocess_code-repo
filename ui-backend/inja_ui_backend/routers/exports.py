@@ -272,11 +272,25 @@ def create_export(code: str, kind: str, request: Request,
     # cannot disagree about what this file contains.
     published = [fingerprint(doc) for doc in active
                  if stored.get(doc.get("id")) == fingerprint(doc)]
+    # The overview's **second** read of the request. `build_payload` above read
+    # the same file and refused with `ExportUnavailable` if it was not there, so
+    # this only fails when it went away in between — a `merge` run, or an
+    # operator clearing a department while somebody exports it. Unguarded it was
+    # a `FileNotFoundError` escaping as a bare 500 with nothing in the log, in a
+    # handler written throughout to avoid exactly that. The answer is the one the
+    # missing-overview branch above already gives, body included: the department
+    # is reachable and not in a publishable state, and which of the two reasons
+    # it is stays out of the response (see `NOT_PUBLISHABLE`).
+    try:
+        overview = storage.read_json(storage.overview_path(cfg.data_root, code))
+    except OSError as e:
+        logger.warning("%s/%s: the department introduction was readable a moment "
+                       "ago and is not now, so the export is refused: %s", code, kind, e)
+        raise HTTPException(status_code=409, detail=NOT_PUBLISHABLE) from e
     token = exports.report_key(
         cfg.session_signing_key, code, kind,
         process_fingerprints=published,
-        overview_fingerprint=fingerprint(storage.read_json(
-            storage.overview_path(cfg.data_root, code))),
+        overview_fingerprint=fingerprint(overview),
         policy_version=policy.version(conn))
     try:
         written = exports.write_export(cfg.export_dir, code, kind, token, html)

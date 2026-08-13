@@ -89,7 +89,19 @@ class Disclosure:
         self._policy = policy.current(conn)
 
     def sees(self, ref: object) -> bool:
-        """May this caller be told that a process named `ref` exists?
+        """Is `ref` inside this caller's scope? The link rule, and only that.
+
+        **It is deliberately not joined to the record gate below.** `may_serve`
+        answers a second question — tombstoned, or carrying no valid
+        confirmation — and a `parent` or a `subprocess` naming a record that gate
+        would 404 this caller out of still reaches them: the id travels, and
+        nothing of the record's content does. The project owner ruled on it in as
+        many words — *"if the content isn't shown to the user, it's fine. Leave
+        it as it is."* — so a future reader finding the asymmetry is looking at a
+        decision, not at the half of a rule somebody forgot. Joining the two
+        would also make a link an existence probe of a different kind: which of
+        an in-scope department's ids are confirmed today is not something a
+        neighbouring document's links should answer.
 
         `ref` is an id out of a link, so it is whatever the document holds:
         `None` for an absent link, and — since nothing revalidates a stored

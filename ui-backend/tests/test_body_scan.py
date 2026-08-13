@@ -58,7 +58,7 @@ from typing import Callable, NamedTuple
 import pytest
 from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
-from inja_ui_backend import db, seed
+from inja_ui_backend import db, seed, visibility
 from inja_ui_backend.access import NOT_FOUND
 from inja_ui_backend.app import create_app
 from inja_ui_backend.auth import hash_password
@@ -408,7 +408,9 @@ def corpus(data_root):
     a filter that dropped the whole department would satisfy "the reader never
     saw the tombstone" while serving nothing at all, so
     `test_a_tombstoned_process_is_withheld_from_a_reader_and_kept_for_the_editor`
-    asserts the two actives are still there.
+    asserts the two actives are still there. `_client_as` vouches for it like
+    everything else in the department, so what withholds it from a reader is the
+    tombstone and not an absent confirmation.
 
     Out of scope: the fixture's `cooking-001`, a second `cooking-777` carrying
     this file's four sentinels, and a `logistics` process so the board has a
@@ -538,9 +540,26 @@ def _client_as(data_root, tmp_path, role, *scopes):
         # and every leak assertion in this file would pass against a backend that
         # leaks freely. `test_a_reader_is_served_the_confirmed_processes` below is
         # what makes that impossible to reintroduce quietly.
+        #
+        # **The tombstone is confirmed too, and that is the load-bearing line.**
+        # `may_serve` and `servable` each hold two clauses — tombstoned, and
+        # unconfirmed — and while this loop skipped `dining-003` the record was
+        # withheld by the *second* one. Deleting the tombstone clause from either
+        # function changed nothing any of the 896 tests could see: every
+        # assertion about that id passed because nobody had vouched for it, not
+        # because it is a tombstone. `tombstoned` is in `fingerprint.EXCLUDED`,
+        # so a `merge` run retiring a process it had already confirmed leaves
+        # exactly this row behind — a valid mark under a tombstone — which is the
+        # ordinary way production reaches this state and is what the export side
+        # already pins
+        # (`test_exports.test_a_tombstone_is_absent_even_when_it_carries_a_valid_confirmation`).
+        # Written straight to the store because the API refuses it: `POST
+        # /api/confirmations/{target}` answers 403 for a tombstone, deliberately,
+        # so the store is the only place this shape can be built from.
         for target, rel in ((MINE, "overview.json"),
                             ("dining-001", "processes/dining-001.json"),
-                            ("dining-002", "processes/dining-002.json")):
+                            ("dining-002", "processes/dining-002.json"),
+                            (TOMBSTONED, f"processes/{TOMBSTONED}.json")):
             path = data_root / "departments" / MINE / rel
             if not path.is_file():
                 continue
@@ -1186,7 +1205,9 @@ def test_no_tombstoned_process_reaches_a_role_that_cannot_edit(corpus, tmp_path,
     sweep in this file. The tombstone sits between two active dining processes
     they do receive, so "the body was empty" cannot be why nothing was found —
     `test_a_tombstoned_process_is_withheld_from_a_reader_and_kept_for_the_editor`
-    pins the actives explicitly.
+    pins the actives explicitly, and pins the other way this scan can go quiet:
+    the record is confirmed (`_client_as`), so what withholds it here is the
+    tombstone rather than D22's second clause.
     """
     client = _client_as(corpus, tmp_path, role, f"dept:{MINE}")
     leaks = _leaks(client, forbidden=TOMBSTONE_TOKENS)
@@ -1214,6 +1235,21 @@ def test_the_tombstone_scan_finds_every_token_for_someone_who_may_edit(corpus,
         f" is wrong, and asserting a non-editor never sees them tests nothing")
 
 
+def _stored_mark(client, target: str):
+    """The confirmation row for `target`, read out of the store this client's
+    service is actually running on.
+
+    A second connection to `client.cfg.app_db`, which is the same file the app
+    holds open — the way every other test in this file reaches round the back of
+    a running service.
+    """
+    conn = db.connect(client.cfg.app_db)
+    try:
+        return confirmations.get(conn, target)
+    finally:
+        conn.close()
+
+
 def test_a_tombstoned_process_is_withheld_from_a_reader_and_kept_for_the_editor(
         corpus, tmp_path):
     """Both directions on the two endpoints that serve a process document.
@@ -1223,6 +1259,16 @@ def test_a_tombstoned_process_is_withheld_from_a_reader_and_kept_for_the_editor(
     affordance there is. Withheld from a Reader, served to an Editor, and the
     department's **active** processes served to both — the third assertion is
     what stops a filter that emptied the list from passing the scan above.
+
+    **And the tombstone carries a valid confirmation**, which is what makes this
+    a test about tombstones at all. `may_serve` and `servable` each refuse two
+    kinds of record — tombstoned, and unconfirmed — and while `_client_as` left
+    `dining-003` unvouched-for, deleting the tombstone clause from either of
+    them passed the whole suite: the second clause was doing the work and the
+    name of every test here said otherwise. The premise is asserted rather than
+    assumed for the same reason `test_the_in_scope_corpus_carries_no_forbidden_token`
+    exists — a fixture that quietly stops confirming this record takes both
+    assertions below down to vacuity, and this is where that is diagnosed.
     """
     on_disk = json.loads(
         (corpus / "departments" / MINE / "processes" / f"{TOMBSTONED}.json")
@@ -1232,6 +1278,12 @@ def test_a_tombstoned_process_is_withheld_from_a_reader_and_kept_for_the_editor(
         f" tombstone")
 
     reader = _client_as(corpus, tmp_path, "reader", f"dept:{MINE}")
+    mark = _stored_mark(reader, TOMBSTONED)
+    assert mark is not None and mark["fingerprint"] == fingerprint(on_disk), (
+        f"{TOMBSTONED} carries no valid confirmation, so everything below is"
+        f" satisfied by the *unconfirmed* half of the record gate and says"
+        f" nothing whatever about the tombstone half: {mark and dict(mark)}")
+
     listed = reader.get(f"/api/departments/{MINE}/processes")
     assert listed.status_code == 200, listed.text
     assert [p["id"] for p in listed.json()] == [f"{MINE}-001", f"{MINE}-002"], (
@@ -1621,6 +1673,50 @@ def test_the_overview_reaches_a_reader_in_full(corpus, tmp_path):
     assert mine["personnel"][0]["kpi"] == ["رضایت مهمان"]
 
 
+def test_the_overview_boundary_passes_the_callers_own_stance(corpus, tmp_path,
+                                                             monkeypatch):
+    """`redact_overview` resolves `editor` per department — inert today, pinned
+    anyway.
+
+    `visibility.public_overview` returns the same document for both stances
+    (D55: shown in full), so every assertion in this file about an overview body
+    is satisfied by a `redact_overview` that passes the constant `True`. Inert is
+    not the same as absent: the moment D55 gains its first switch — personnel
+    KPIs are the candidate it names — that constant publishes it to every reader,
+    and nothing in the suite would be looking at the one boolean that decides it.
+
+    An **argument** spy, and deliberately not an assertion about the two bodies:
+    `public_overview` hands an editor the document itself and a non-editor a
+    copy, so `is`-comparing them would pin an implementation detail of the filter
+    rather than the stance this boundary is responsible for resolving. What
+    crosses the boundary is a boolean, so the boolean is what is read — with
+    `is`, because `0` and `False` compare equal and only one of them is what
+    `edits` returns.
+
+    Both directions, so neither constant survives.
+    """
+    seen: list[object] = []
+    real = visibility.public_overview
+
+    def spy(doc, *, editor):
+        seen.append(editor)
+        return real(doc, editor=editor)
+
+    monkeypatch.setattr(visibility, "public_overview", spy)
+
+    reader = _client_as(corpus, tmp_path, "reader", f"dept:{MINE}")
+    assert reader.get(f"/api/departments/{MINE}/overview").status_code == 200
+    assert seen and seen[-1] is False, (
+        f"the overview boundary told the filter a non-editor was an editor:"
+        f" {seen}")
+
+    editor = _client_as(corpus, tmp_path, "editor", f"dept:{MINE}")
+    assert editor.get(f"/api/departments/{MINE}/overview").status_code == 200
+    assert seen[-1] is True, (
+        f"the overview boundary told the filter an Editor of {MINE} was not one,"
+        f" so the stance is a constant in the other direction: {seen}")
+
+
 #: Every route that returns a process document, by (method, FastAPI template).
 #:
 #: The list is short enough to read and that is the point: `Disclosure.redact`
@@ -1842,7 +1938,10 @@ def test_a_reader_is_served_the_confirmed_processes(corpus, tmp_path):
     listed = client.get(f"/api/departments/{MINE}/processes").json()
     assert [p["id"] for p in listed] == ["dining-001", "dining-002"]
     assert client.get(f"/api/departments/{MINE}/overview").status_code == 200
-    # …and the tombstone is still withheld, for its own reason.
+    # …and the tombstone is still withheld, for its own reason — which it really
+    # is: `_client_as` vouches for `dining-003` too, so the 404 below is the
+    # tombstone clause and not the confirmation one. The premise is asserted in
+    # `test_a_tombstoned_process_is_withheld_from_a_reader_and_kept_for_the_editor`.
     assert client.get(f"/api/processes/{TOMBSTONED}").status_code == 404
 
 

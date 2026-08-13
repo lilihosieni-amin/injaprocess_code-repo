@@ -243,6 +243,14 @@ describe('what a flip sends and what the screen then shows', () => {
   it('disables every switch while a flip is in flight, so a second click cannot race it', async () => {
     // One field per request is what the endpoint takes; nothing here stops a
     // second click from firing a second one while the first is still in flight.
+    //
+    // **A second, untouched switch is what makes this "every".** Asserting only
+    // the clicked box passes against `disabled={set.isPending && set.variables
+    // ?.field === field}` — the other five stay live, two PUTs race, and
+    // `useSetVisibilityField` writes each answer into the cache with
+    // `setQueryData`, so the slower response wins and the screen settles on a
+    // `fields`/`version` pair that is not the last flip. The Editor is then
+    // looking at a policy nobody chose.
     let resolvePut!: (r: Response) => void
     const putPromise = new Promise<Response>((resolve) => { resolvePut = resolve })
     vi.stubGlobal('fetch', vi.fn(async (path: string, init?: RequestInit) => {
@@ -255,13 +263,18 @@ describe('what a flip sends and what the screen then shows', () => {
     }))
     mount()
     const box = await screen.findByRole('checkbox', { name: 'مسئول فعالیت' })
+    const other = screen.getByRole('checkbox', { name: 'خلاصهٔ فرآیند' })
     await userEvent.click(box)
     await waitFor(() => expect(put).not.toBeNull())
     expect(box).toBeDisabled()
+    expect(other).toBeDisabled()
     resolvePut(new Response(
       JSON.stringify({ fields: { ...DEFAULTS, node_actor: false }, version: 'ffffffffffffffff' }),
       { status: 200, headers: JSON_HEAD }))
     await waitFor(() => expect(box).not.toBeDisabled())
+    // …and the other one comes back with it: a guard that never lifts is a
+    // screen an Editor can flip exactly once.
+    expect(other).not.toBeDisabled()
   })
 
   it('invalidates the process and processes caches, since every document body is downstream of the policy', async () => {

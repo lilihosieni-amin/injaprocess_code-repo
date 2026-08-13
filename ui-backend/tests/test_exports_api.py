@@ -188,6 +188,56 @@ def test_department_without_an_overview_is_409_and_still_says_what_to_do(
     assert any("overview.json" in m and "dining" in m for m in _guard_logs(caplog))
 
 
+def test_an_overview_that_vanishes_mid_export_is_refused_rather_than_500(
+        data_root, tmp_path, caplog, monkeypatch):
+    """The handler reads the overview twice, and the second read had no guard.
+
+    Once to build the payload, once to key the file it is about to write. A
+    `merge` run or an operator clearing a department in between leaves the second
+    read looking at nothing — and it sat outside every `try` on a handler written
+    throughout to avoid exactly that, so it came back as a bare 500 with not one
+    line in the log.
+
+    It answers what the missing-overview branch answers and in the same bytes,
+    which is the same rule `NOT_PUBLISHABLE` states: the two reasons a department
+    cannot be published are not this response's to tell apart.
+
+    The **second** read specifically. A stub that failed on the first would be
+    caught by `build_payload`, answer the same 409, and pass this test with the
+    guard under it never once running — which is why the count is asserted.
+    """
+    cfg = _cfg(data_root, tmp_path)
+    confirm_everything(cfg, "cooking")
+    target = data_root / "departments" / "cooking" / "overview.json"
+    real_read_text = Path.read_text
+    reads = {"n": 0}
+
+    def vanish(self, *a, **kw):
+        if self == target:
+            reads["n"] += 1
+            if reads["n"] > 1:
+                raise FileNotFoundError(2, "No such file or directory", str(self))
+        return real_read_text(self, *a, **kw)
+
+    monkeypatch.setattr(Path, "read_text", vanish)
+    c = _client(cfg)
+    with caplog.at_level("WARNING"):
+        r = c.post("/api/departments/cooking/exports/flowchart")
+    assert reads["n"] > 1, (
+        "the handler read the overview once, so the second read this test is"
+        " about never happened and the guard under it was never exercised")
+    assert r.status_code == 409, r.text
+    assert not _ascii_letters(r.json()["detail"])
+    # …the very body a department with no overview at all is refused with: same
+    # status and same bytes, or the prose says which of the two states this is.
+    assert r.json()["detail"] == c.post(
+        "/api/departments/dining/exports/flowchart").json()["detail"]
+    assert any("cooking" in m and "flowchart" in m and "overview.json" in m
+               for m in _guard_logs(caplog)), _guard_logs(caplog)
+    assert list(cfg.export_dir.rglob("*.html")) == [], (
+        "a refused export left a document in the public folder")
+
+
 def test_every_404_on_this_handler_is_the_same_404(data_root, tmp_path):
     """One assertion covering both 404 guards at once.
 

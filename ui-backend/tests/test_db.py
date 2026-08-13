@@ -155,6 +155,75 @@ def test_a_blocked_writer_waits_rather_than_failing_at_once(tmp_path):
     conn.close()
 
 
+#: **Migration 1, frozen.** A byte-for-byte copy of the shipped `db.MIGRATIONS[0]`
+#: SQL, and the whole point is that it is a copy.
+#:
+#: `MIGRATIONS` carries one rule — *append only, never edit a shipped one* —
+#: because a database in the restaurant has already run migration 1 and will
+#: never run it again: an edit there changes what a **fresh** install gets and
+#: nothing else, so the two diverge silently and for good. The upgrade test below
+#: used to build its "version 1" database from `db.MIGRATIONS[0]` itself, which
+#: means an edit to migration 1 moved the test and the code together and the one
+#: test written to guard the rule could not see it broken.
+#:
+#: Frozen here, the rule enforces itself twice over: a v1 database in this file
+#: is the v1 database that shipped whatever `db.py` says today, and
+#: `test_migration_1_is_never_edited` fails the moment the two stop agreeing. A
+#: genuinely new column belongs in a migration 3.
+V1_SQL = """
+        CREATE TABLE schema_version (version INTEGER NOT NULL);
+
+        CREATE TABLE roles (
+            id           INTEGER PRIMARY KEY,
+            name         TEXT NOT NULL UNIQUE,
+            capabilities TEXT NOT NULL          -- JSON array of capability names
+        );
+
+        CREATE TABLE users (
+            id            INTEGER PRIMARY KEY,
+            username      TEXT NOT NULL UNIQUE, -- canonical ^09\\d{9}$ (D57)
+            display_name  TEXT NOT NULL,
+            password_hash TEXT NOT NULL,
+            role_id       INTEGER NOT NULL REFERENCES roles(id),
+            supervisor_id INTEGER REFERENCES users(id),
+            can_supervise INTEGER NOT NULL DEFAULT 0,
+            created_at    INTEGER NOT NULL DEFAULT (unixepoch()),
+            disabled_at   INTEGER
+        );
+
+        CREATE TABLE user_scopes (
+            user_id INTEGER NOT NULL REFERENCES users(id),
+            scope   TEXT NOT NULL,              -- '*' | 'dept:x' | 'dept:x/report:k'
+            PRIMARY KEY (user_id, scope)
+        );
+
+        CREATE TABLE sessions (
+            id         TEXT PRIMARY KEY,        -- opaque; the cookie carries only this
+            user_id    INTEGER NOT NULL REFERENCES users(id),
+            issued_at  INTEGER NOT NULL,
+            last_seen  INTEGER NOT NULL,
+            ip         TEXT NOT NULL,
+            user_agent TEXT NOT NULL,
+            revoked_at INTEGER
+        );
+
+        CREATE TABLE audit_events (
+            id         INTEGER PRIMARY KEY,
+            at         INTEGER NOT NULL,
+            actor      TEXT NOT NULL,           -- username, or 'agent:...' / 'run:...'
+            session_id TEXT,
+            action     TEXT NOT NULL,
+            target     TEXT,
+            ip         TEXT NOT NULL DEFAULT '',
+            user_agent TEXT NOT NULL DEFAULT '',
+            outcome    TEXT NOT NULL DEFAULT 'ok',
+            detail     TEXT                     -- JSON, for reason/before/after
+        );
+        CREATE INDEX audit_at ON audit_events (at);
+        CREATE INDEX audit_actor ON audit_events (actor, at);
+    """
+
+
 def test_migration_2_creates_the_confirmation_and_policy_tables(tmp_path):
     conn = db.connect(tmp_path / "app.db")
     assert db.migrate(conn) == 2
@@ -174,10 +243,13 @@ def test_a_database_at_version_1_upgrades_without_losing_its_rows(tmp_path):
     """
     path = tmp_path / "app.db"
     conn = db.connect(path)
-    # Migration 1 alone, as a database shipped before this sub-project.
-    version, sql = db.MIGRATIONS[0]
-    conn.executescript(f"BEGIN;\n{sql}\nINSERT INTO schema_version (version)"
-                       f" VALUES ({version});\nCOMMIT;")
+    # Migration 1 alone, as a database shipped before this sub-project — from
+    # `V1_SQL` and deliberately not from `db.MIGRATIONS[0]`. Read live, this
+    # builds "whatever migration 1 says now", which is the one thing a shipped
+    # database is guaranteed not to be: the restaurant's store ran migration 1
+    # once, years of edits ago in the worst case, and never runs it again.
+    conn.executescript(f"BEGIN;\n{V1_SQL}\nINSERT INTO schema_version (version)"
+                       " VALUES (1);\nCOMMIT;")
     conn.execute("INSERT INTO roles (name, capabilities) VALUES ('editor', '[]')")
     rid = conn.execute("SELECT id FROM roles WHERE name='editor'").fetchone()[0]
     conn.execute("INSERT INTO users (username, display_name, password_hash, role_id)"
@@ -186,6 +258,27 @@ def test_a_database_at_version_1_upgrades_without_losing_its_rows(tmp_path):
     assert db.migrate(conn) == 2
     assert conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 1
     assert conn.execute("SELECT COUNT(*) FROM confirmations").fetchone()[0] == 0
+
+
+def test_migration_1_is_never_edited():
+    """`MIGRATIONS` is append-only, and this is the only thing that can say so.
+
+    Every store already running has migration 1 behind it and will never execute
+    it again, so editing it changes what a *fresh* database gets and nothing
+    else: the deployed schema and the source stop agreeing, permanently, and no
+    test that builds its fixture from `db.MIGRATIONS[0]` can notice — the fixture
+    moves with the edit.
+
+    Byte-for-byte, comment text included, because a comment is not what makes
+    this fail: what makes it fail is that somebody touched a migration that has
+    shipped. A real change belongs in a new numbered migration; a genuine
+    re-freeze (a new baseline nobody has run) is a deliberate edit to `V1_SQL`
+    with a reason, not a green test.
+    """
+    assert db.MIGRATIONS[0] == (1, V1_SQL), (
+        "migration 1 has been edited. Every database in service has already run"
+        " the old text and will never run this one, so the change reaches"
+        " nothing but a fresh install: put it in a new migration.")
 
 
 def test_the_system_starts_dark(tmp_path):
@@ -319,12 +412,24 @@ def test_the_new_columns_hold_the_types_the_stores_read_back(tmp_path):
     """
     conn = db.connect(tmp_path / "app.db")
     db.migrate(conn)
-    # Values deliberately given in the *other* type, so only affinity converts them.
-    conn.execute("INSERT INTO confirmations VALUES ('dining-001', 'aa', 912, '1700000000')")
+    # Values deliberately given in the *other* type, so only affinity converts
+    # them — and now for all four columns. `target` and `fingerprint` used to be
+    # inserted as text, which stays text under TEXT affinity, under BLOB affinity
+    # (which has none) and under INTEGER affinity alike: the two assertions about
+    # them held for every declaration SQLite has, so `fingerprint TEXT` → INTEGER
+    # and `target TEXT` → BLOB were both invisible here. A number given to a TEXT
+    # column is the only value that tells them apart.
+    conn.execute("INSERT INTO confirmations VALUES (1, 2, 912, '1700000000')")
     row = conn.execute(
         "SELECT typeof(target) t, typeof(fingerprint) f, typeof(confirmed_by) b,"
-        " typeof(confirmed_at) a, confirmed_at FROM confirmations").fetchone()
+        " typeof(confirmed_at) a, target, fingerprint, confirmed_at"
+        " FROM confirmations").fetchone()
     assert (row["t"], row["f"], row["b"], row["a"]) == ("text", "text", "text", "integer")
+    # …and the converted values, not only their types: an id and a fingerprint
+    # are compared with `=` against strings the store hands in (`stored.get(pid)
+    # == fingerprint(doc)`), so a column that kept them as numbers would match
+    # nothing and withhold every record it was asked about.
+    assert (row["target"], row["fingerprint"]) == ("1", "2")
     assert row["confirmed_at"] == 1700000000
 
     conn.execute("INSERT INTO visibility_policy VALUES (1, '0')")
