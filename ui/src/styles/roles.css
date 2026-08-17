@@ -1,0 +1,128 @@
+/* The semantic table of R8 — one custom property per role.
+   This file is NORMATIVE. Every later task reads its value from here; no
+   screen, component or utility may use a value this file does not name.
+
+   Two rules govern it:
+     1. A role has one value. Where the deliverable showed two, the choice and
+        the count behind it are in docs/superpowers/ui-normalisation-ledger.md.
+     2. An action and a state share the role's HUE and never its TREATMENT.
+        An action fills the hue; a state tints it. See the ledger's
+        "Action versus state".
+
+   No literal values live here: every value is a var() into src/styles/tokens.css
+   (which is the only file in src/ allowed to hold one). Where a role's value is
+   a token whose recorded value the deliverable contradicts, Task 3 corrects the
+   token — not this file. Two roles instead point at a token whose *name* is
+   wrong but whose *value* is the design's (spec 9.9), so they resolve correctly
+   today and need nothing from Task 3: --role-ink-body and
+   --role-subtitle-on-field. Both are recorded in the ledger.
+
+   Section references are to .superpowers/sdd/ui-design-spec.md. Colour values
+   are deliberately not repeated in these comments — the token names carry them,
+   and a literal here would be a second place to keep in step. */
+
+:root {
+  /* ---- ground (6.0, 9.1) ---- */
+  --role-field: var(--ink);              /* the whole app sits on the deep violet field */
+  --role-canvas: var(--bg);              /* flow canvas ground, nothing else */
+  --role-surface: var(--card);           /* every card, row, table, panel */
+  --role-surface-sub: var(--tile-v4);    /* the sub-panel skin (SectionCard, dialog search);
+                                            nearest token today, Task 3 mints the exact one */
+  --role-surface-tint: var(--tile-v4);   /* hover row, actor pill */
+  --role-scrim: var(--scrim);
+
+  /* ---- ink (1.1, 9.9) ---- */
+  --role-ink-strong: var(--text-strong);
+  --role-ink-body: var(--text-current);  /* ledger L-35: the design's secondary body ink.
+                                            --text-body is named for this role and is dead */
+  --role-ink-muted: var(--text-muted);
+  --role-ink-faint: var(--text-faint);
+  --role-ink-ghost: var(--text-ghost);
+  --role-ink-disabled: var(--text-disabled);
+  --role-link-quiet: var(--violet-mid);  /* ledger L-06: the underlined text link */
+
+  /* ---- type on the violet field (6.0, 9.7k) ---- */
+  --role-title-on-field: var(--card);          /* white — ledger L-01 */
+  --role-subtitle-on-field: var(--violet-on-violet); /* ledger L-28 */
+  --role-eyebrow: var(--violet-on-dark);
+
+  /* ---- roles that carry meaning (R8's table) ---- */
+  --role-primary: var(--violet);
+  --role-primary-soft: var(--tile-v);
+  --role-primary-ink: var(--card);
+  --role-new: var(--coral);
+  --role-confirmed: var(--green);
+  --role-confirmed-soft: var(--tile-ok);
+  --role-confirmed-edge: var(--border-ok);   /* Task 3 corrects the token (9.8) */
+  --role-awaiting: var(--warn);              /* ledger L-05 */
+  --role-awaiting-soft: var(--tile-warn);
+  --role-danger: var(--conflict);
+  --role-danger-soft: var(--tile-c);
+  --role-danger-ghost: var(--tile-c2);
+  --role-danger-edge: var(--border-danger);
+  --role-info: var(--info);
+  --role-info-soft: var(--tile-info);
+  --role-dead: var(--text-muted);
+  --role-dead-soft: var(--tile-dead);
+  --role-dead-edge: var(--border-dead);
+
+  /* ---- borders (4.3) ---- */
+  --role-border-card: var(--warm);           /* ledger L-15: the 46-use card hairline.
+                                                Task 3 corrects the token (9.2) */
+  --role-border-control: var(--line);        /* 1.5px on every control */
+  --role-border-sub: var(--border-current);  /* the sub-panel border */
+  --role-border-hair: var(--hair);           /* a rule inside a card */
+  --role-border-pick: var(--line-dashed);    /* unchecked tick, active filter */
+  --role-border-warm: var(--warm);           /* top bar and drawer edges only */
+
+  /* ---- interaction (4.6) ---- */
+  --role-focus: var(--coral);                /* 15/15, no ring, no glow */
+  --role-hover-menu: var(--tile-v2);         /* 16/24 hover declarations */
+  --role-hover-danger: var(--tile-c2);
+  --role-lift: var(--hover-lift);
+  --role-duration: var(--duration);
+  --role-duration-chev: var(--duration-chev);
+
+  /* ---- shadows (4.2) ---- */
+  --role-shadow-card: var(--shadow-card);
+  --role-shadow-card-hover: var(--shadow-card-hover);  /* Task 3 corrects the last alpha */
+  --role-shadow-dialog: var(--shadow-modal);           /* Task 3 re-cuts it — ledger L-04 */
+  --role-shadow-pop: var(--shadow-pop);                /* Task 3 re-cuts it — ledger L-31 */
+  --role-shadow-drawer: var(--shadow-drawer);          /* ledger L-30 */
+  --role-shadow-primary: var(--shadow-violet);
+  --role-shadow-new: var(--shadow-coral);              /* ledger L-03: the -12px cut */
+  --role-shadow-confirm: var(--shadow-green);
+
+  /* ---- radii (4.4) ---- */
+  --role-radius-badge: var(--radius-badge);
+  --role-radius-chip: var(--radius-chip);
+  --role-radius-close: var(--radius-sm);       /* ledger L-23 */
+  --role-radius-control: var(--radius-md);
+  --role-radius-input: var(--radius-md);
+  --role-radius-search: var(--radius-lg);
+  --role-radius-tile: var(--radius-tile);
+  --role-radius-card: var(--radius-card);
+  --role-radius-dialog: var(--radius-panel);   /* ledger L-04: 24px, always */
+  --role-radius-pill: var(--radius-pill);      /* Task 3 corrects the token — ledger L-20 */
+  --role-radius-round: var(--radius-round);
+
+  /* ---- type roles (2) ---- */
+  --role-fs-hero: var(--fs-display);
+  --role-fs-title: var(--fs-h2);        /* ledger L-02: one screen title, 22px */
+  --role-fs-section: var(--fs-lg);
+  --role-fs-body: var(--fs-body);       /* ledger L-27: body copy */
+  --role-fs-dense: var(--fs-sm);        /* ledger L-27: list, table and hint copy */
+  --role-fs-control: var(--fs-sm2);     /* the most common step in the design */
+  --role-fs-eyebrow: var(--fs-xs);
+  --role-fs-badge: var(--fs-xxs);
+  --role-fs-micro: var(--fs-micro);
+  --role-fw-heading: var(--fw-extrabold);
+  --role-fw-strong: var(--fw-bold);
+  --role-fw-meta: var(--fw-semibold);
+  --role-lh-title: var(--lh-tight);
+  --role-lh-body: var(--lh-normal);
+  --role-lh-subcopy: var(--lh-relaxed); /* ledger L-17: Task 3 re-cuts it to 1.8 */
+  --role-lh-prose: var(--lh-loose);
+  --role-tracking-eyebrow: var(--tracking-eyebrow);
+  --role-tracking-display: var(--tracking-display);
+}
