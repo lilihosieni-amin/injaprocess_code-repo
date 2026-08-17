@@ -561,7 +561,7 @@ invent one:
 
 | Group | Utilities added |
 |---|---|
-| colour (44) | `violet-mid` `violet-edge` `violet-on-dark` `violet-on-dark-body` `violet-on-violet` `desk` `tile-v3` `tile-v4` `tile-c2` `tile-ctl` `value-current` `hair` `line-soft` `line-dashed` `border-danger` `border-dead` `border-current` `border-ok` `strong` `body-ink` `ghost` `dialog-ghost` `ink-current` `ink-proposed` `on-dark` `disabled` `ok` `danger` `warn-soft` `info-soft` `ok-soft` `danger-soft` `toast-check` `junction-xor` `junction-and` `junction-or` `dept-numeral-violet` `dept-numeral-coral` `steps-sub` `steps-sub-border` `steps-sub-hover` `steps-group` `steps-group-border` `link` — each usable as `bg-`, `text-`, `border-` |
+| colour (44) | `violet-mid` `violet-edge` `violet-on-dark` `violet-on-dark-body` `violet-on-violet` `desk` `tile-v3` `tile-v4` `tile-c2` `tile-ctl` `value-current` `hair` `line-soft` `line-dashed` `border-danger` `border-dead` `border-current` `border-ok` `strong` `body-ink` `ghost` `dialog-ghost` `ink-current` `ink-proposed` `on-dark` `disabled` `ok` `danger` `warn-soft` `info-soft` `ok-soft` `danger-soft` `toast-check` `junction-xor` `junction-and` `junction-or` `dept-numeral-violet` `dept-numeral-coral` `steps-sub` `steps-sub-border` `steps-sub-hover` `steps-group` `steps-group-border` `link` `border-card` — each usable as `bg-`, `text-`, `border-`, so the five whose own name starts with `border-` are written `border-border-danger`, `border-border-dead`, `border-border-current`, `border-border-ok`, `border-border-card`. The short `border-card` stays the white `--card`, drawn as a cut-out ring. |
 | font size (18) | `text-fs-display` `text-fs-h1` `text-fs-h2` `text-fs-h3` `text-fs-h4` `text-fs-h5` `text-fs-lg` `text-fs-body` `text-fs-sm` `text-fs-sm2` `text-fs-xs` `text-fs-xxs` `text-fs-micro` `text-fs-doc-base` `text-fs-doc-h1` `text-fs-doc-title` `text-fs-doc-step` `text-fs-doc-body` |
 | font weight (4) | `font-regular` `font-semibold` `font-bold` `font-extrabold` |
 | line height (6) | `leading-tight` `leading-snug` `leading-normal` `leading-relaxed` `leading-loose` `leading-looser` |
@@ -627,11 +627,17 @@ invent one:
       expect(mustReach.filter((t) => !referenced.has(t))).toEqual([])
     })
 
-    it('adds the design’s two breakpoints and no others', () => {
-      expect(theme.screens).toEqual({
-        max1080: { max: '1080px' },
-        max760: { max: '760px' },
-      })
+    it('registers the design’s two breakpoints and no others', () => {
+      // Asked of the plugin rather than of `theme.screens` — see Step 8, which
+      // may not use `screens` at all. A breakpoint nothing references emits
+      // nothing, so a third addVariant is invisible to any assertion made
+      // against compiled CSS; this is the only place it can be seen.
+      const got = []
+      for (const plugin of config.plugins ?? []) plugin({ addVariant: (n, d) => got.push([n, d]) })
+      expect(got).toEqual([
+        ['max1080', '@media (max-width: 1080px)'],
+        ['max760', '@media (max-width: 760px)'],
+      ])
     })
 
     it('makes a bare `transition` last .16s, not Tailwind’s 150ms', () => {
@@ -795,17 +801,29 @@ invent one:
       backdropBlur: { scrim: '3px' },
   ```
 
-- [ ] **Step 8: Add the two breakpoints.**
-  In `ui/tailwind.config.js`, as a new key of `theme.extend`:
+- [ ] **Step 8: Add the two breakpoints — as variants, never as `theme.screens`.**
+  Corrected after Task 2 built it both ways and diffed the CSS: a max-width
+  screen can only be written as an object, and one object anywhere in `screens`
+  makes Tailwind return `[]` for its whole `min-*`/`max-*` variant family, which
+  deletes `@media (max-width: 560px)` and the 30 shipped `max-[560px]:`
+  utilities carrying the phone layout of `src/flow/DetailDrawer.tsx` and
+  `export/flowchart/FlowViewer.tsx` — with the build still exiting 0.
+
+  Nothing changes at the call site: write `max1080:` and `max760:` as planned.
+  Emitted order is still widest-first (1080 → 760 → 560), so the narrower
+  breakpoint wins where both fire.
+
+  In `ui/tailwind.config.js`, as a top-level key beside `theme` — a bare
+  function is a valid Tailwind plugin, and `tailwindcss/plugin` has no ESM entry
+  in 3.4:
 
   ```js
-      // §6.16 — the design declares exactly two, both max-width. They go in
-      // `extend` so Tailwind's own min-width `sm…2xl` survive: `md:` is still
-      // load-bearing in ui/src/ui/Overlay.tsx.
-      screens: {
-        max1080: { max: '1080px' },
-        max760: { max: '760px' },
+    plugins: [
+      ({ addVariant }) => {
+        addVariant('max1080', '@media (max-width: 1080px)')
+        addVariant('max760', '@media (max-width: 760px)')
       },
+    ],
   ```
 
 - [ ] **Step 9: Create the probe and put it in the content set.**
@@ -1287,12 +1305,21 @@ Utilities added in the same task: `bg-tile-v5` `bg-line-divider`
   `src/test/roles.test.ts` and re-run; expected `Tests 8 passed` again.
 
 - [ ] **Step 10: Name the new tokens in the theme.**
+  `--border-card` is **not** in the list below: Task 2 already names it, on
+  `colors`, beside its four `--border-*` siblings. Every token whose own name
+  starts with `border-` lives on that one scale, so its class is
+  `border-border-<x>` — `border-border-card`, `border-border-pick`,
+  `border-border-danger`, `border-border-dead`, `border-border-current`,
+  `border-border-ok`. Long, but one rule with no exception, and it leaves the
+  short `border-card` free for the white `--card`, which §8's coral count badge
+  needs as a cut-out ring. Do not add a second, shorter name for any of them.
+
   In `ui/tailwind.config.js`, add to `theme.extend.colors`:
 
   ```js
         'tile-v5': 'var(--tile-v5)', 'line-divider': 'var(--line-divider)',
         'surface-sub': 'var(--surface-sub)', 'line-row': 'var(--line-row)',
-        'line-filter': 'var(--line-filter)', 'border-card': 'var(--border-card)',
+        'line-filter': 'var(--line-filter)',
         'border-pick': 'var(--border-pick)',
         'disc-coral': 'var(--disc-coral)', 'disc-violet': 'var(--disc-violet)',
   ```
@@ -6234,6 +6261,11 @@ export function PanelShell({ session }: { session: SessionDescriptor }) {
                 // design keeps. Round, 19px: audit S5 found this inheriting the
                 // 44px touch floor as a `<span aria-hidden>` that is not
                 // interactive, so it rendered as a coral square beside the button.
+                //
+                // `border-card` here is the WHITE `--card`, not the hairline:
+                // the ring cuts the badge out of whatever it overlaps. The
+                // hairline is `border-border-card` (`--border-card`), which at
+                // 7% alpha would be invisible here — and would still build.
                 <span
                   aria-hidden
                   className="absolute top-[-6px] left-[-6px] min-w-[19px] h-[19px] px-[4px] inline-flex items-center justify-center rounded-round bg-coral text-card text-10h font-bold border-2 border-card"
@@ -7134,11 +7166,14 @@ a reader, and a 760px viewport without changing what a person sees at desktop.
   ```
 
   Expected output when Tasks 2–3 are complete: nothing. Each `MISSING:` line is a theme
-  entry to add now. The mapping, token by token:
+  entry to add now. The loop greps for **theme keys**, not for class names: a token whose
+  own name begins with `border-` is keyed `border-<x>` on the colours scale and written
+  `border-border-<x>`. Add no second, shorter name for one of them — `border-card` is
+  already taken, by the white `--card`. The mapping, token by token:
 
   | utility | token | value |
   |---|---|---|
-  | `to1080:` / `to760:` | — | `screens: { to1080: { max: '1080px' }, to760: { max: '760px' } }` |
+  | `to1080:` / `to760:` | — | **Already shipped by Task 2, named `max1080:` / `max760:`.** Do not add these: read `to1080:`/`to760:` (and `r1080:`/`r760:`, and `narrow:`) below as those two names. Never put them in `theme.screens` — see Step 8 of Task 2: one max-width object there deletes Tailwind's whole `min-*`/`max-*` family and the 30 shipped `max-[560px]:` utilities with it, silently. |
   | `text-fs-display … text-fs-micro` | `--fs-display … --fs-micro` | 34/23/22/19/17/16/15/14/13/12.5/11.5/11/10.5px |
   | `text-fs-reader-h1` | `--fs-reader-h1` | `26px` (reader home) |
   | `text-fs-reader-list-h1` | `--fs-reader-list-h1` | `30px` (reader process list) |
@@ -7153,11 +7188,11 @@ a reader, and a 760px viewport without changing what a person sees at desktop.
   | `text-dialog-ghost` | `--text-dialog-ghost` | `#6B5CA5` |
   | `bg-tile-v3` `bg-tile-v4` `bg-tile-c2` | `--tile-v3/v4/c2` | `#F5F1FB` / `#F8F4FE` / `#FFF3F2` |
   | `bg-subpanel` | `--surface-subpanel` | `#FBF9FE` (S1 ×24, S3 has no token) |
-  | `border-card` | `--border-card` | `rgba(42,29,94,.07)` (S1 ×46 — the default card border) |
+  | `border-border-card` | `--border-card` | `rgba(42,29,94,.07)` (S1 ×46 — the default card border) |
   | `border-subpanel` | `--border-current` | `#EDE5F5` |
   | `border-hair` | `--hair` | `#F2ECE3` |
   | `border-lilac` | `--line-dashed` | `#C9B8EC` |
-  | `border-danger` | `--border-danger` | `#FDD9D6` |
+  | `border-border-danger` | `--border-danger` | `#FDD9D6` |
   | `shadow-feature` | `--shadow-feature` | `0 2px 4px rgba(16,10,40,.18), 0 22px 46px -20px rgba(16,10,40,.65)` |
   | `shadow-pop` | `--shadow-pop` | `0 20px 45px -20px rgba(74,37,169,.45)` |
   | `px-screen` `py-screen` | `--pad-screen-x/y` | 40 / 30 |
@@ -7555,7 +7590,7 @@ a reader, and a 760px viewport without changing what a person sees at desktop.
               return (
                 <Card key={d.code} hoverLift radius="feature"
                   onClick={() => nav(`/departments/${d.code}`)}
-                  className="relative overflow-hidden p-s10 cursor-pointer border-card shadow-feature hover:shadow-card-hover hover:border-lilac transition-[transform,box-shadow,border-color] duration-base ease-css">
+                  className="relative overflow-hidden p-s10 cursor-pointer border-border-card shadow-feature hover:shadow-card-hover hover:border-lilac transition-[transform,box-shadow,border-color] duration-base ease-css">
                   <span className={`absolute top-0 inset-x-0 h-1 ${m.accent === 'coral' ? 'bg-conflict' : 'bg-violet'}`} />
                   {/* `end-s10`, not `left-5`: in RTL the ghosted numeral sits on the
                       inline end. The physical spelling was one of the four mirror
@@ -7624,7 +7659,7 @@ a reader, and a 760px viewport without changing what a person sees at desktop.
            text-fs-display text-fs-reader-h1 text-fs-ghost text-on-dark text-violet-on-dark \
            text-violet-on-dark-body text-dialog-ghost bg-tile-v3 bg-cta-violet bg-cta-coral \
            rounded-bar rounded-pill rounded-round rounded-feature rounded-tile \
-           shadow-feature border-card border-hair border-lilac \
+           shadow-feature border-border-card border-hair border-lilac \
            pt-depts pb-depts px-reader pb-reader max-w-reader max-w-subtitle \
            w-tile-reader min-h-chiprow duration-base ease-css tracking-display; do
     grep -qF -- "$c" dist/assets/*.css || echo "NOT IN CSS: $c"
@@ -8024,7 +8059,7 @@ action bar with a `36×36` `⋯`.
             // Two states, two sentences (§6.2). The reader deliverable collapses
             // them into one and this app copied it: an empty department was told
             // its search had missed.
-            <div className="text-center py-s16 px-s5 text-faint text-fs-sm bg-card border border-card rounded-card">
+            <div className="text-center py-s16 px-s5 text-faint text-fs-sm bg-card border border-border-card rounded-card">
               {query ? 'فرآیندی با این نام پیدا نشد' : 'فرآیندی برای این دپارتمان ثبت نشده است.'}
             </div>
           )}
@@ -8034,7 +8069,7 @@ action bar with a `36×36` `⋯`.
             const mark = markOf.get(p.id)
             return (
               <div key={p.id} data-r-prow
-                className={`bg-card border border-card rounded-card px-s9 py-s9 flex items-center gap-s8 shadow-card
+                className={`bg-card border border-border-card rounded-card px-s9 py-s9 flex items-center gap-s8 shadow-card
                   hover:-translate-y-0.5 hover:shadow-card-hover hover:border-lilac
                   transition-[transform,box-shadow,border-color] duration-base ease-css
                   to760:flex-col to760:items-stretch to760:p-s7 to760:gap-s6
@@ -8127,7 +8162,7 @@ action bar with a `36×36` `⋯`.
   for c in to760\\:flex-col to760\\:items-stretch to760\\:p-s7 to760\\:gap-s6 to760\\:hidden \
            to760\\:inline-flex to760\\:flex-1 to760\\:py-s6 to760\\:w-full to760\\:px-s7 \
            text-fs-reader-list-h1 text-fs-h4 text-fs-sm2 text-violet-on-violet text-dialog-ghost \
-           bg-tile-v3 border-card border-lilac rounded-pill rounded-input w-menu-more min-w-pos \
+           bg-tile-v3 border-border-card border-lilac rounded-pill rounded-input w-menu-more min-w-pos \
            shadow-card-hover duration-base ease-css ps-s11; do
     grep -qF -- "$c" dist/assets/*.css || echo "NOT IN CSS: $c"
   done
@@ -8366,7 +8401,7 @@ blanked the field, which is a claim of absence standing in for an absence of a c
 
   ```tsx
   {!hasPublishedDetail(proc) ? (
-    <div className="bg-card border border-card rounded-doc px-s11 py-s10 shadow-card">
+    <div className="bg-card border border-border-card rounded-doc px-s11 py-s10 shadow-card">
       <div className="font-bold text-fs-body text-ink">خلاصه، نمای IDEF0 و شاخص‌ها نمایش داده نمی‌شوند</div>
       <p className="text-fs-sm text-muted leading-loose mt-s4 m-0">
         سیاست نمایش محتوای این دپارتمان تعیین می‌کند چه بخش‌هایی از یک فرآیند منتشر شود. فلوچارت و گام‌به‌گام این فرآیند در دسترس شماست.
@@ -8392,7 +8427,7 @@ blanked the field, which is a claim of absence standing in for an absence of a c
               <ConfirmMark row={mark} department={dept} />
             </div>
             {tombstoned && (
-              <div className="mb-s6 rounded-button border border-dead bg-tile-dead px-s8 py-s6 text-fs-sm text-muted">
+              <div className="mb-s6 rounded-button border border-border-dead bg-tile-dead px-s8 py-s6 text-fs-sm text-muted">
                 <div className="font-bold text-ink mb-s1">این فرآیند باطل شده است.</div>
                 {(proc.superseded_by ?? []).length > 0 && (
                   <div className="flex flex-wrap gap-s4 items-center">
@@ -8419,7 +8454,7 @@ blanked the field, which is a claim of absence standing in for an absence of a c
           </div>
         </div>
 
-        <div className="bg-card border border-card rounded-doc p-s11 mb-s9 shadow-card">
+        <div className="bg-card border border-border-card rounded-doc p-s11 mb-s9 shadow-card">
           <div className="font-bold text-fs-body text-violet mb-s9 flex items-center gap-s4">
             <span className="w-s4 h-s4 bg-coral rounded-round" />نمای IDEF0 سطح فرآیند (A-0)
           </div>
@@ -8451,7 +8486,7 @@ blanked the field, which is a claim of absence standing in for an absence of a c
         {proc.kpis.length > 0 ? (
           <div data-r-2col className="grid grid-cols-2 gap-s7 to760:grid-cols-1">
             {proc.kpis.map((k, i) => (
-              <div key={i} className="bg-card border border-card rounded-tile px-s9 py-s8">
+              <div key={i} className="bg-card border border-border-card rounded-tile px-s9 py-s8">
                 <div className="flex items-center justify-between gap-s4">
                   <div className="font-bold text-fs-body text-ink">{k.name}</div>
                   {k.target && <div className="text-fs-sm2 font-bold text-conflict bg-tile-c px-s5 py-s1 rounded-badge">{k.target}</div>}
@@ -8545,7 +8580,7 @@ blanked the field, which is a claim of absence standing in for an absence of a c
   cd ui && npx tsc -b && npx eslint . && npm run build
   for c in to760\\:flex-col to760\\:grid-cols-1 to760\\:gap-s6 to760\\:flex-wrap \
            text-fs-h1 text-fs-lg text-fs-sm2 text-fs-xxs text-on-dark text-violet-on-violet \
-           rounded-doc rounded-tile rounded-badge rounded-round border-card border-dead border-lilac \
+           rounded-doc rounded-tile rounded-badge rounded-round border-border-card border-border-dead border-lilac \
            bg-tile-dead bg-tile-v4 max-w-prose max-w-summary shadow-violet leading-loose leading-relaxed \
            grid-cols-\\[1fr_1.4fr_1fr\\]; do
     grep -qF -- "$c" dist/assets/*.css || echo "NOT IN CSS: $c"
@@ -8915,18 +8950,18 @@ consumer in Task 15.
         </div>
   ```
 
-  The three cards, each `bg-card border-card rounded-doc p-s10 mb-s7 shadow-card` opened
+  The three cards, each `bg-card border-border-card rounded-doc p-s10 mb-s7 shadow-card` opened
   by an `text-fs-xxs font-bold text-muted mb-s6` eyebrow:
 
   ```tsx
-        <section className="bg-card border border-card rounded-doc p-s10 mb-s7 shadow-card">
+        <section className="bg-card border border-border-card rounded-doc p-s10 mb-s7 shadow-card">
           <div className="text-fs-xxs font-bold text-muted mb-s6">شرح دپارتمان</div>
           {data.description.trim()
             ? <p className="text-fs-body text-ink leading-justify text-justify [text-wrap:pretty] m-0 whitespace-pre-line">{data.description}</p>
             : <p className="text-fs-sm2 text-faint m-0">شرحی ثبت نشده است.</p>}
         </section>
 
-        <section className="bg-card border border-card rounded-doc p-s10 mb-s7 shadow-card">
+        <section className="bg-card border border-border-card rounded-doc p-s10 mb-s7 shadow-card">
           <div className="text-fs-xxs font-bold text-muted mb-s6">زیربخش‌ها ({toFa(data.sub_units.length)})</div>
           {data.sub_units.length === 0
             ? <p className="text-fs-sm2 text-faint m-0">واحدی ثبت نشده است.</p>
@@ -8942,7 +8977,7 @@ consumer in Task 15.
             )}
         </section>
 
-        <section className="bg-card border border-card rounded-doc p-s10 mb-s7 shadow-card">
+        <section className="bg-card border border-border-card rounded-doc p-s10 mb-s7 shadow-card">
           <div className="text-fs-xxs font-bold text-muted mb-s7">نقش‌ها و شرح وظایف</div>
           {data.personnel.length === 0
             ? <p className="text-fs-sm2 text-faint m-0">پرسنلی ثبت نشده است.</p>
@@ -9015,7 +9050,7 @@ consumer in Task 15.
   ```bash
   cd ui && npx tsc -b && npx eslint . && npm run build
   for c in to760\\:grid-cols-1 text-fs-h2 text-fs-xxs text-fs-micro text-text-current \
-           text-violet-on-violet bg-subpanel border-subpanel border-hair border-card \
+           text-violet-on-violet bg-subpanel border-subpanel border-hair border-border-card \
            rounded-doc rounded-tile rounded-badge rounded-pill leading-justify leading-sub \
            duration-chev ease-css max-w-list; do
     grep -qF -- "$c" dist/assets/*.css || echo "NOT IN CSS: $c"
@@ -9648,7 +9683,7 @@ design is coral (`ui-audit-visual.md` §"`/users`"). Rebuilt to §6.7.
 `max-w-list` (920px) · `rounded-doc` (18px) · `rounded-tile` (14px) ·
 `rounded-input` (11px) · `bg-sub-panel` (`--sub-panel:#FBF9FE`) ·
 `border-row-sep` (`--row-sep:#F4F0FA`) · `border-filter-edge` (`--filter-edge:#E9E0F7`) ·
-`bg-tile-v2` (#F4EFFB) · `bg-tile-v4` (#F8F4FE) · `border-current` (#EDE5F5) ·
+`bg-tile-v2` (#F4EFFB) · `bg-tile-v4` (#F8F4FE) · `border-border-current` (#EDE5F5) ·
 `text-current` (#5a5175) · `text-violet-mid` (#7A52D0) · `w-dot h-dot` (9px) ·
 `w-chev h-chev` (30px) · `shadow-card` (S1's two-layer value) · `duration-ds` (.16s) ·
 `-translate-y-lift` · screens `mid` (`{max:'1080px'}`) and `narrow` (`{max:'760px'}`).
@@ -10300,7 +10335,7 @@ which R5 forbids outright.
 
 *Consumes* — `max-w-access` (820px) · `px-screen-x` · `py-screen-y` ·
 `rounded-card` (16px) · `rounded-control` (10px) · `rounded-input` (11px) ·
-`border-current` (#EDE5F5) · `border-danger` (#FDD9D6) · `bg-tile-c2` (#FFF3F2) ·
+`border-border-current` (#EDE5F5) · `border-border-danger` (#FDD9D6) · `bg-tile-c2` (#FFF3F2) ·
 `bg-tile-v2` (#F4EFFB) · `text-violet-on-violet` (#C9BEEE) · `border-hairline` (1.5px) ·
 `border-warm` (#EFE7DC) · `shadow-card` · screens `narrow`.
 
@@ -10601,7 +10636,7 @@ export function SectionCard(props: { eyebrow: string; tone?: 'tinted' | 'white'
                 makes the card readable as a boundary rather than a fourth
                 section. */}
             <div role="group" aria-label="غیرفعال‌سازی کاربر"
-              className="bg-card border border-danger rounded-card p-s9 mb-s7">
+              className="bg-card border border-border-danger rounded-card p-s9 mb-s7">
               <h2 className="text-sub font-extrabold text-conflict m-0">
                 {user.disabled ? 'فعال‌سازی کاربر' : 'غیرفعال‌سازی کاربر'}
               </h2>
@@ -10686,7 +10721,7 @@ export function SectionCard(props: { eyebrow: string; tone?: 'tinted' | 'white'
 
 - [ ] **Step 21: Grep the built CSS.**
   ```
-  cd ui && npm run build && for c in 'max-w-access' 'border-danger' 'bg-tile-c2' \
+  cd ui && npm run build && for c in 'max-w-access' 'border-border-danger' 'bg-tile-c2' \
     'text-violet-on-violet' 'rounded-input' 'duration-ds' 'narrow\:flex-col' \
     'narrow\:items-stretch' 'max-w-prose' 'leading-loose' ; do
       grep -qF "$c" dist/assets/*.css && echo "ok  $c" || echo "MISSING $c"; done
@@ -10779,7 +10814,7 @@ card inside a card, and it reads as a rendering fault (F34/F40).
 
 **Interfaces**
 
-*Consumes* — `bg-sub-panel` (#FBF9FE) · `border-current` (#EDE5F5) ·
+*Consumes* — `bg-sub-panel` (#FBF9FE) · `border-border-current` (#EDE5F5) ·
 `border-line-dashed` (#C9B8EC) · `bg-tile-v4` (#F8F4FE) · `bg-tile-v` (#F0E9FB) ·
 `border-warm` (#EFE7DC) · `rounded-panel` (24px) · `rounded-card` (16px) ·
 `rounded-button` (12px) · `rounded-tile` (14px) · `w-glyph h-glyph` (15px) ·
@@ -11582,7 +11617,7 @@ the change-password card and the divergence is written into the ledger.
 **Interfaces**
 
 *Consumes* — `max-w-profile` (700px) · `px-screen-x` · `py-screen-y` ·
-`bg-sub-panel` (#FBF9FE) · `border-current` (#EDE5F5) ·
+`bg-sub-panel` (#FBF9FE) · `border-border-current` (#EDE5F5) ·
 `bg-tile-warn` (#FBEEDC) · `border-warn-edge` (`#F0DDBB`) · `text-warn-fg` (#8A5A00) ·
 `text-violet-on-violet` (#C9BEEE) · `rounded-card` (16px) · `rounded-input` (11px) ·
 `rounded-control` (10px) · screens `narrow`.
@@ -12327,7 +12362,7 @@ export function ConfirmAction(props: { row: Confirmation | undefined; department
               className={`flex items-center justify-center w-tool h-tool rounded-button
                           border-hairline transition-colors duration-ds
                           ${confirming ? 'border-line text-violet hover:bg-tile-v2'
-                                       : 'border-danger text-conflict hover:bg-tile-c2'}`}>
+                                       : 'border-border-danger text-conflict hover:bg-tile-c2'}`}>
               <Icon name={confirming ? 'check' : 'check-off'}
                 className="w-s9 h-s9" strokeWidth={2.6} />
             </span>
@@ -12517,7 +12552,7 @@ export function ConfirmAction(props: { row: Confirmation | undefined; department
     // (Tailwind's 12px, not `--radius-md`), `text-sm` (14px, not `--fs-body`),
     // `text-white` (not `text-card`), `text-[#6B5CA5]` on its sibling — and none
     // of `Button`'s touch floor, focus handling or loading state.
-    expect(go).toHaveClass('bg-tile-c2', 'text-conflict', 'border-danger')
+    expect(go).toHaveClass('bg-tile-c2', 'text-conflict', 'border-border-danger')
     expect(go).toHaveClass('min-h-touch')
   })
 
@@ -12602,7 +12637,7 @@ export function ConfirmAction(props: { row: Confirmation | undefined; department
 
 - [ ] **Step 23: Grep the built CSS, and check `.btn` is really gone.**
   ```
-  cd ui && npm run build && for c in 'w-tool' 'h-tool' 'bg-tile-c2' 'border-danger' \
+  cd ui && npm run build && for c in 'w-tool' 'h-tool' 'bg-tile-c2' 'border-border-danger' \
     'rounded-tile' 'start-1/2' 'text-start' 'w-glyph-tile' 'duration-ds' ; do
       grep -qF "$c" dist/assets/*.css && echo "ok  $c" || echo "MISSING $c"; done
   grep -c '\.btn' dist/assets/*.css     # expect 0

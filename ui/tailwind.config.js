@@ -1,3 +1,55 @@
+import { readFileSync } from 'node:fs'
+import { dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+/* This file's own directory. Tailwind 3.4 loads a config through jiti, which
+   does not always give ESM's `import.meta.url` a value, so fall back to the cwd
+   — every entry point (vite, vitest, the postcss CLI) runs from `ui/`. */
+const here = (() => {
+  try {
+    return dirname(fileURLToPath(import.meta.url))
+  } catch {
+    return process.cwd()
+  }
+})()
+
+/**
+ * The value `src/styles/tokens.css` — or one of the four frozen `_ds` files it
+ * imports — declares for a custom property. Last declaration wins, as in CSS.
+ */
+function tokenValue(name) {
+  const entry = join(here, 'src/styles/tokens.css')
+  const src = readFileSync(entry, 'utf8')
+  const files = [
+    ...[...src.matchAll(/@import\s+'([^']+)'/g)].map((m) => resolve(dirname(entry), m[1])),
+    entry,
+  ]
+  let value
+  for (const f of files) {
+    for (const m of readFileSync(f, 'utf8').matchAll(new RegExp(`(?<![-\\w])${name}\\s*:\\s*([^;]+);`, 'g'))) {
+      value = m[1].trim()
+    }
+  }
+  if (value === undefined) throw new Error(`tailwind.config.js: ${name} is not declared in tokens.css or its imports`)
+  return value
+}
+
+/**
+ * The single length inside a one-argument CSS function — `translateY(-2px)` is
+ * `2px`, `blur(3px)` is `3px`. `--hover-lift` and `--blur-scrim` are whole
+ * functions, and Tailwind's `translate` / `backdropBlur` scales take a bare
+ * length, so the utility can only be named by the distance. Writing that
+ * distance out here would make this file a second, silent record of the token's
+ * value: edit `effects.css` and the utility would not move. It is read out of
+ * the declaration instead, so the token stays the only place it is written.
+ */
+function lengthIn(name) {
+  const value = tokenValue(name)
+  const m = value.match(/\(\s*-?([\d.]+[a-z%]*)\s*\)/)
+  if (!m) throw new Error(`tailwind.config.js: ${name} is \`${value}\`, not a one-length function`)
+  return m[1]
+}
+
 /** @type {import('tailwindcss').Config} */
 export default {
   content: [
@@ -30,8 +82,16 @@ export default {
         'value-current': 'var(--value-current)',
         hair: 'var(--hair)', 'line-soft': 'var(--line-soft)',
         'line-dashed': 'var(--line-dashed)',
+        // The five --border-* tokens live together on this one scale, so the
+        // class is always `border-border-<x>` — long, but one rule with no
+        // exception. `--border-card` was briefly named `card` on `borderColor`
+        // instead, which gave the fifth of the family a second, shorter name its
+        // four siblings did not have, and took the class `border-card` away from
+        // the white `--card` that §8's coral count badge needs for its cut-out
+        // ring. One token, one name; `border-card` is the white surface.
         'border-danger': 'var(--border-danger)', 'border-dead': 'var(--border-dead)',
         'border-current': 'var(--border-current)', 'border-ok': 'var(--border-ok)',
+        'border-card': 'var(--border-card)',
         // `ink-current`/`ink-proposed`, not `current`/`proposed`: `text-current`
         // is one of Tailwind's own built-ins (currentColor) and shadowing it
         // would make the commonest colour utility in the app mean two things.
@@ -108,12 +168,6 @@ export default {
         round: 'var(--radius-round)',
       },
       borderWidth: { hairline: 'var(--border-hairline)' },
-      // The design's most-used border (46 uses), minted by Task 1. Named `card`
-      // on the borderColor scale alone, which completes a set the theme already
-      // keeps: bg-card is the card's fill, rounded-card its radius, shadow-card
-      // its shadow — border-card is its edge. Nothing used `border-card` for the
-      // white --card before this, so no call site changes meaning.
-      borderColor: { card: 'var(--border-card)' },
       boxShadow: {
         card: 'var(--shadow-card)', 'card-hover': 'var(--shadow-card-hover)',
         coral: 'var(--shadow-coral)', violet: 'var(--shadow-violet)', green: 'var(--shadow-green)',
@@ -159,12 +213,13 @@ export default {
         DEFAULT: 'var(--duration)', fast: 'var(--duration-fast)',
         chev: 'var(--duration-chev)',
       },
-      // `--hover-lift` is the whole `translateY(-2px)` function, which Tailwind's
-      // translate scale cannot take; the distance is named here and the token
-      // stays the record of it. Written `-translate-y-lift`.
-      translate: { lift: '2px' },
-      // Likewise `--blur-scrim` is `blur(3px)`, a filter function, not a radius.
-      backdropBlur: { scrim: '3px' },
+      // `--hover-lift` is the whole `translateY(…)` function, which Tailwind's
+      // translate scale cannot take; the distance is named here — written
+      // `-translate-y-lift` — and read out of the token so there is still only
+      // one place the number is written. See lengthIn() above.
+      translate: { lift: lengthIn('--hover-lift') },
+      // Likewise `--blur-scrim` is `blur(…)`, a filter function, not a radius.
+      backdropBlur: { scrim: lengthIn('--blur-scrim') },
     },
   },
   // R7 / §6.16 — the design declares exactly two breakpoints, both max-width.
