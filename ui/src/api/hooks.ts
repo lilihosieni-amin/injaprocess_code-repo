@@ -49,6 +49,34 @@ export function useLogout() {
 }
 
 /**
+ * Change **your own** password (D7, D15, D58) — `POST /api/auth/password`.
+ *
+ * Not `POST /api/users/{id}/password`, which is a different endpoint under a
+ * different rule: that one is an administrator setting *somebody else's* value,
+ * it takes no `current` because the actor does not know it, and it revokes every
+ * session the target holds. This one re-verifies the caller's current password
+ * and keeps the calling session alive while ending all the others — which is why
+ * `current` is a field at all when the caller already holds a cookie: a session
+ * left open on a shared back-office screen is exactly what this endpoint exists
+ * to be able to end, and without the check whoever walks up to that screen locks
+ * the owner out instead.
+ *
+ * 204, so there is nothing to read back — and **nothing to invalidate either**.
+ * The session descriptor `GET /api/auth/me` returns carries a name, a role,
+ * capabilities and scopes, and a password change moves none of them; the sibling
+ * sessions this write destroys belong to other browsers, which this cache has
+ * never held. Clearing the cache here — the shape `useLogout` above takes — would
+ * empty the screen behind a successful change and look exactly like being signed
+ * out, which is the one thing the endpoint promises does not happen.
+ */
+export function useChangeOwnPassword() {
+  return useMutation({
+    mutationFn: (body: { current: string; next: string }) =>
+      fetchJson<void>('/api/auth/password', { method: 'POST', body: JSON.stringify(body) }),
+  })
+}
+
+/**
  * **Every write that can move a fingerprint invalidates `['confirmations']`.**
  *
  * `fingerprint.EXCLUDED` is only `{updated_at, source, pending, tombstoned}`, so

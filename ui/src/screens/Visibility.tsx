@@ -2,6 +2,7 @@ import { useSession } from '../auth/useSession'
 import { useCan } from '../auth/can'
 import { useVisibility, useSetVisibilityField } from '../api/hooks'
 import { refusalStatus } from '../api/client'
+import { LoadFailedScreen } from '../ui/states'
 import { RefusalScreen } from './Refusal'
 import type { PolicyField } from '../api/types'
 
@@ -68,7 +69,7 @@ export function Visibility() {
   // global scope, because one policy governs every department. Cosmetic either
   // way (D48) — this decides what to draw, the server decides what to answer.
   const allowed = can('set_visibility', '*')
-  const { data, error } = useVisibility({ enabled: allowed })
+  const { data, error, refetch } = useVisibility({ enabled: allowed })
   const set = useSetVisibilityField()
 
   // Hooks first, then the early returns: an early return above them would change
@@ -76,6 +77,15 @@ export function Visibility() {
   if (!allowed) return <RefusalScreen status={403} />
   const refused = refusalStatus(error)
   if (refused) return <RefusalScreen status={refused} />
+  // Ahead of the blank, and that order is the whole fix. `refusalStatus` maps
+  // 403 and 404 only, so every other failure — a 500 above all — fell through to
+  // `!data` and drew a page that stayed empty for ever, with nothing on it to
+  // say the policy had not loaded and nothing to try again with. There is no 422
+  // half here: this screen takes no path parameter.
+  if (error) {
+    return <LoadFailedScreen message="تنظیم نمایش محتوا بارگذاری نشد." error={error}
+      onRetry={() => { void refetch() }} />
+  }
   if (!data) return <div className="flex-1 bg-bg" />
 
   const fields = data.fields as Record<string, boolean>

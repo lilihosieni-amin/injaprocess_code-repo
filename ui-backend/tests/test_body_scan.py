@@ -651,6 +651,24 @@ GLOBAL_READS = (
     Route("GET", "/api/departments", None, "/api/departments", 200),
     Route("GET", "/api/pending", None, "/api/pending", 200),
     Route("GET", "/api/visibility", None, "/api/visibility", 200),
+    #: The user-administration reads (D54). Gated on `manage_users` at `*`, so
+    #: every department-scoped caller in this file is answered the uniform 404 —
+    #: which is exactly what makes them worth sweeping: these four are the only
+    #: endpoints in the service whose success body carries other people's *scope
+    #: strings*, and `dept:cooking` in a `dept:dining` reader's payload is the
+    #: shape of leak this file exists to find. The `*` holder in
+    #: `test_the_sweep_reaches_the_body_each_route_really_serves` is who produces
+    #: the real bodies.
+    Route("GET", "/api/users", None, "/api/users", 200),
+    #: **Id 1 is the seeded Editor**, and deliberately not the caller: `seed.seed`
+    #: writes the first `users` row and `_client_as` creates the second, in both
+    #: this file and `test_endpoint_matrix.py`. A detail route that 404'd here
+    #: would fail `test_the_sweep_reaches_the_body_each_route_really_serves`
+    #: rather than quietly scanning an error envelope.
+    Route("GET", "/api/users/1", None, "/api/users/{user_id}", 200),
+    Route("GET", "/api/users/supervisor-candidates", None,
+          "/api/users/supervisor-candidates", 200),
+    Route("GET", "/api/roles", None, "/api/roles", 200),
 )
 
 #: Read routes that name a department. Swept for the caller's own department and
@@ -1041,6 +1059,24 @@ NOT_SWEPT: dict[tuple[str, str], str] = {
         "scan to say. Covered by test_export_login.py."),
     ("POST", "/api/exports/logout"): (
         "the same credential's way out; test_export_login.py."),
+    ("POST", "/api/users"): (
+        "the four user-administration **writes** (D13, D14, D15). Excluded as a"
+        " group, and for a reason about this file rather than about them: each"
+        " one mutates the very `users` and `sessions` rows every other caller in"
+        " the sweep depends on — creating an account, re-roling one, replacing a"
+        " password, disabling somebody — so a sweep that ran them would be"
+        " asserting about a corpus it had just rewritten, and the disable would"
+        " revoke sessions mid-sequence. What they could leak they cannot: their"
+        " success bodies are the same `_user` projection the four reads above"
+        " sweep, built by the same function, and their department-scoped answer"
+        " is the same uniform 404. They are pinned end to end in"
+        " test_users_api.py — every endpoint for a `*` Reader (403), for a"
+        " department Reader (404), for a department Admin (404) and for a"
+        " stranger (401) — and their bodies are swept there for the stored"
+        " password hash, which is the leak a `SELECT *` row actually carries."),
+    ("PATCH", "/api/users/{user_id}"): "see POST /api/users above.",
+    ("POST", "/api/users/{user_id}/password"): "see POST /api/users above.",
+    ("POST", "/api/users/{user_id}/disabled"): "see POST /api/users above.",
     ("GET", "/exports/{file_path:path}"): (
         "**UNRESOLVED, and left unresolved deliberately — do not delete this "
         "entry without reading D56's Downloads row.** The download is gated by "

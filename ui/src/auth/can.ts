@@ -31,6 +31,41 @@ export function scopeContains(scope: string, target: string): boolean {
 }
 
 /**
+ * What the server would answer this session on the administration surface, and
+ * `undefined` when it would serve them — **the client twin of `access.requires`,
+ * including its order** (D56).
+ *
+ * Scope is checked before capability, and the split is the whole point:
+ *
+ *   404  the caller is not scoped `*`. User administration is not scoped to a
+ *        department (D11), so it is not a thing they may learn exists here, and
+ *        the answer is deliberately indistinguishable from a typo.
+ *   403  the caller holds `*` and not the capability. They can see the surface
+ *        and merely may not act.
+ *
+ * Collapsing the two into one message undoes the existence rule on the screen
+ * after the server took trouble to keep it on the wire. In one function because
+ * the header and two screens ask it and three copies would drift; `undefined`
+ * rather than a bool because the caller has to render *which* refusal, not
+ * merely that there was one.
+ *
+ * It lives here rather than beside the `/api/users` hooks because it reads
+ * nothing but the session — no fetch, no query, no cache — and a layout that
+ * gates a nav entry on it should not have to import a data module to do so.
+ *
+ * Cosmetic, like `useCan` below: the endpoints re-derive both halves and answer
+ * the same two codes regardless (D48).
+ */
+export function administrationRefusal(
+  session: SessionDescriptor | undefined,
+): 403 | 404 | undefined {
+  if (!session) return undefined
+  if (!session.scopes.some((held) => scopeContains(held, '*'))) return 404
+  if (!session.capabilities.includes('manage_users')) return 403
+  return undefined
+}
+
+/**
  * Decides what to DRAW and nothing else (spec D48). Every endpoint re-derives
  * permission from the session row, so a wrong answer here is a cosmetic bug and
  * never a security one — which is the only reason it is safe to have at all.

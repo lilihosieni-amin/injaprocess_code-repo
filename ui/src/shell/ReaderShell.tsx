@@ -1,4 +1,4 @@
-import { Outlet } from 'react-router-dom'
+import { Link, Outlet } from 'react-router-dom'
 import type { SessionDescriptor } from '../auth/session'
 import { useLogout } from '../api/hooks'
 
@@ -22,6 +22,17 @@ export function ReaderShell({ session }: { session: SessionDescriptor }) {
       <header className="flex items-center gap-3 px-4 py-3">
         {/* I6 — the shell takes no h1 of its own; the routed screen owns it. */}
         <div className="text-title font-extrabold flex-1">اینجا فست‌فود</div>
+        {/* The reader shell has no administration surface at all, so this is
+            the only entry it will ever carry — and leaving it out of this shell
+            would leave most of the staff with no way to change their password.
+            Same wording as the panel header's, because it goes to the same
+            screen. */}
+        <Link
+          to="/profile"
+          className="min-h-touch inline-flex items-center px-s6 rounded-control text-card text-caption no-underline hover:bg-tile-v2"
+        >
+          نمایه
+        </Link>
         {session.pendingApprovals > 0 && (
           <span className="min-h-touch min-w-touch inline-flex items-center justify-center rounded-control bg-coral text-card font-bold">
             {session.pendingApprovals}

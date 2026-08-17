@@ -1,3 +1,4 @@
+import { retryQuery } from '../../api/client'
 import { Button } from '../Button'
 import { Card } from '../Card'
 
@@ -32,6 +33,49 @@ export function ErrorState({ message, onRetry }: { message: string; onRetry?: ()
         </div>
       )}
     </Card>
+  )
+}
+
+/**
+ * What a screen shows when a read produced neither data nor a refusal — a 5xx,
+ * a 422, a dropped connection, a body that would not parse.
+ *
+ * It exists because the alternative each screen had was a *claim*: the user list
+ * said «هنوز کاربری ثبت نشده است» to an administrator whose `/api/users` had
+ * just 500'd; the record drew a permanently blank page for `/users/abc` (which
+ * `get_user(user_id: int)` answers 422 to, and `:id` matches any string, so it
+ * is one typed URL away); the visibility policy drew the same blank page for
+ * ever; and the two user dialogs — which pass `data ?? []` into a list of roles
+ * and a list of supervisor candidates — said «کسی نمی‌تواند سرپرست این کاربر
+ * باشد» and advised narrowing the account's scope, on no evidence whatever.
+ * None of those screens had anything to base what it said on, and the one
+ * person told is the one who would act on it.
+ *
+ * **It lives here, beside the other four states, rather than in the first screen
+ * that needed it.** It had five callers across three files while it was still
+ * exported from `screens/Users.tsx`, which made a user-list module an import
+ * dependency of the visibility screen.
+ *
+ * Whether to offer the retry is `retryQuery`'s decision and not a second copy of
+ * it: it is the same predicate every query uses to decide whether asking again
+ * could change the answer, so the button cannot come to disagree with the
+ * automatic retries about which failures are transient. No 4xx is — a 422 for a
+ * non-numeric id will be a 422 every time — and a button that re-runs a settled
+ * refusal is furniture that wastes the press.
+ *
+ * Laid out like `RefusalScreen`, because it stands in the same place.
+ */
+export function LoadFailedScreen({ message, error, onRetry }: {
+  message: string
+  error: unknown
+  onRetry: () => void
+}) {
+  return (
+    <div className="flex-1 overflow-auto py-s12 px-s12">
+      <div className="max-w-list mx-auto">
+        <ErrorState message={message} onRetry={retryQuery(0, error) ? onRetry : undefined} />
+      </div>
+    </div>
   )
 }
 
