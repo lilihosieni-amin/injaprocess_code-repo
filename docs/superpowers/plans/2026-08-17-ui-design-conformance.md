@@ -4636,7 +4636,7 @@ cd ui && node -e '
 const fs=require("fs");
 const css=fs.readdirSync("dist/assets").filter(f=>/\.css$/.test(f))
   .map(f=>fs.readFileSync("dist/assets/"+f,"utf8")).join("\n");
-const ok=/@media\s*\(max-width:\s*760px\)/.test(css) && /r760\\:hidden/.test(css);
+const ok=/@media\s*\(max-width:\s*760px\)/.test(css) && /max760\\:hidden/.test(css);
 console.log(ok?"OK r760 compiles to a max-width:760px query":"MISSING r760");
 process.exit(ok?0:1);'
 ```
@@ -6457,8 +6457,8 @@ cd ui && node -e '
 const fs=require("fs");
 const css=fs.readdirSync("dist/assets").filter(f=>/\.css$/.test(f))
   .map(f=>fs.readFileSync("dist/assets/"+f,"utf8")).join("\n");
-const a=/@media\s*\(max-width:\s*1080px\)/.test(css)&&/r1080\\:hidden/.test(css);
-const b=/@media\s*\(max-width:\s*760px\)/.test(css)&&/r760\\:hidden/.test(css);
+const a=/@media\s*\(max-width:\s*1080px\)/.test(css)&&/max1080\\:hidden/.test(css);
+const b=/@media\s*\(max-width:\s*760px\)/.test(css)&&/max760\\:hidden/.test(css);
 console.log(a&&b?"OK both breakpoints compiled":`MISSING r1080=${a} r760=${b}`);
 process.exit(a&&b?0:1);'
 ```
@@ -7173,7 +7173,7 @@ a reader, and a 760px viewport without changing what a person sees at desktop.
 
   | utility | token | value |
   |---|---|---|
-  | `max1080:` / `max760:` | — | **Already shipped by Task 2, named `max1080:` / `max760:`.** Do not add these: read `max1080:`/`max760:` (and `max1080:`/`max760:`, and `max760:`) below as those two names. Never put them in `theme.screens` — see Step 8 of Task 2: one max-width object there deletes Tailwind's whole `min-*`/`max-*` family and the 30 shipped `max-[560px]:` utilities with it, silently. |
+  | `max1080:` / `max760:` | — | **Already shipped by Task 2, named `max1080:` / `max760:`.** Do not add these: read them as `max1080:` / `max760:` — the plan once wrote four other spellings for these two variants and every one of them compiled to nothing. Never put them in `theme.screens` — see Step 8 of Task 2: one max-width object there deletes Tailwind's whole `min-*`/`max-*` family and the 30 shipped `max-[560px]:` utilities with it, silently. |
   | `text-fs-display … text-fs-micro` | `--fs-display … --fs-micro` | 34/23/22/19/17/16/15/14/13/12.5/11.5/11/10.5px |
   | `text-fs-reader-h1` | `--fs-reader-h1` | `26px` (reader home) |
   | `text-fs-reader-list-h1` | `--fs-reader-list-h1` | `30px` (reader process list) |
@@ -7655,7 +7655,7 @@ a reader, and a 760px viewport without changing what a person sees at desktop.
 
   ```bash
   cd ui && npm run build
-  for c in to1080\\:grid-cols-2 to760\\:grid-cols-1 to760\\:gap-s6 to760\\:hidden \
+  for c in max1080\\:grid-cols-2 max760\\:grid-cols-1 max760\\:gap-s6 max760\\:hidden \
            text-fs-display text-fs-reader-h1 text-fs-ghost text-on-dark text-violet-on-dark \
            text-violet-on-dark-body text-dialog-ghost bg-tile-v3 bg-cta-violet bg-cta-coral \
            rounded-bar rounded-pill rounded-round rounded-feature rounded-tile \
@@ -8159,8 +8159,8 @@ action bar with a `36×36` `⋯`.
 - [ ] **Step 13: Build, and grep the built CSS for every class this screen introduced.**
   ```bash
   cd ui && npm run build
-  for c in to760\\:flex-col to760\\:items-stretch to760\\:p-s7 to760\\:gap-s6 to760\\:hidden \
-           to760\\:inline-flex to760\\:flex-1 to760\\:py-s6 to760\\:w-full to760\\:px-s7 \
+  for c in max760\\:flex-col max760\\:items-stretch max760\\:p-s7 max760\\:gap-s6 max760\\:hidden \
+           max760\\:inline-flex max760\\:flex-1 max760\\:py-s6 max760\\:w-full max760\\:px-s7 \
            text-fs-reader-list-h1 text-fs-h4 text-fs-sm2 text-violet-on-violet text-dialog-ghost \
            bg-tile-v3 border-border-card border-lilac rounded-pill rounded-input w-menu-more min-w-pos \
            shadow-card-hover duration-base ease-css ps-s11; do
@@ -8578,7 +8578,7 @@ blanked the field, which is a claim of absence standing in for an absence of a c
 - [ ] **Step 10: Typecheck, lint, build, grep.**
   ```bash
   cd ui && npx tsc -b && npx eslint . && npm run build
-  for c in to760\\:flex-col to760\\:grid-cols-1 to760\\:gap-s6 to760\\:flex-wrap \
+  for c in max760\\:flex-col max760\\:grid-cols-1 max760\\:gap-s6 max760\\:flex-wrap \
            text-fs-h1 text-fs-lg text-fs-sm2 text-fs-xxs text-on-dark text-violet-on-violet \
            rounded-doc rounded-tile rounded-badge rounded-round border-border-card border-border-dead border-lilac \
            bg-tile-dead bg-tile-v4 max-w-prose max-w-summary shadow-violet leading-loose leading-relaxed \
@@ -9049,7 +9049,7 @@ consumer in Task 15.
 - [ ] **Step 11: Typecheck, lint, build, grep.**
   ```bash
   cd ui && npx tsc -b && npx eslint . && npm run build
-  for c in to760\\:grid-cols-1 text-fs-h2 text-fs-xxs text-fs-micro text-text-current \
+  for c in max760\\:grid-cols-1 text-fs-h2 text-fs-xxs text-fs-micro text-text-current \
            text-violet-on-violet bg-subpanel border-subpanel border-hair border-border-card \
            rounded-doc rounded-tile rounded-badge rounded-pill leading-justify leading-sub \
            duration-chev ease-css max-w-list; do
@@ -9520,7 +9520,7 @@ departments screen (§9.13). It is `ui_kits/panel/Login.jsx` inside
   cd ui && npm run build
   for c in bg-login-bg w-login rounded-panel rounded-feature w-logo-login h-logo-login \
            text-fs-h3 text-fs-sm2 text-fs-body shadow-modal py-screen px-screen max-w-list \
-           to760\\:px-s7 to760\\:py-s9; do
+           max760\\:px-s7 max760\\:py-s9; do
     grep -qF -- "$c" dist/assets/*.css || echo "NOT IN CSS: $c"
   done
   grep -q "login-orb-a" dist/assets/*.css || echo "NOT IN CSS: .login-orb-a"
@@ -10238,7 +10238,7 @@ export const ROLE_TONE: Record<string, string>   // token-backed utility pairs
   ```
   cd ui && npm run build && for c in 'py-screen-y' 'px-screen-x' 'rounded-tile' \
     'border-filter-edge' 'bg-tile-v2' 'text-violet-mid' 'w-dot' 'h-dot' 'w-chev' \
-    'h-chev' 'rounded-round' 'narrow\:grid-cols-2' 'narrow\:hidden' 'narrow\:px-s7' \
+    'h-chev' 'rounded-round' 'max760\:grid-cols-2' 'max760\:hidden' 'max760\:px-s7' \
     'col-span-full' 'underline-offset-4' ; do
       grep -qF "$c" dist/assets/*.css && echo "ok  $c" || echo "MISSING $c"; done
   ```
@@ -10722,8 +10722,8 @@ export function SectionCard(props: { eyebrow: string; tone?: 'tinted' | 'white'
 - [ ] **Step 21: Grep the built CSS.**
   ```
   cd ui && npm run build && for c in 'max-w-access' 'border-border-danger' 'bg-tile-c2' \
-    'text-violet-on-violet' 'rounded-input' 'duration-ds' 'narrow\:flex-col' \
-    'narrow\:items-stretch' 'max-w-prose' 'leading-loose' ; do
+    'text-violet-on-violet' 'rounded-input' 'duration-ds' 'max760\:flex-col' \
+    'max760\:items-stretch' 'max-w-prose' 'leading-loose' ; do
       grep -qF "$c" dist/assets/*.css && echo "ok  $c" || echo "MISSING $c"; done
   ```
   Expected: ten `ok` lines.
@@ -11521,7 +11521,7 @@ export const SUPERVISE_NOTE: string
   ```
   cd ui && npm run build && for c in 'rounded-panel' 'bg-sub-panel' 'border-line-dashed' \
     'bg-tile-v4' 'w-glyph' 'h-glyph' 'shadow-pop' 'z-nested' 'opacity-40' \
-    'pointer-events-none' 'narrow\:grid-cols-1' 'inset-inline-0' 'sr-only' ; do
+    'pointer-events-none' 'max760\:grid-cols-1' 'inset-inline-0' 'sr-only' ; do
       grep -qF "$c" dist/assets/*.css && echo "ok  $c" || echo "MISSING $c"; done
   ```
   Expected: thirteen `ok` lines. Then in `ui/e2e/_harness.ts`:
@@ -11808,7 +11808,7 @@ API type, hook or route path is added.
 - [ ] **Step 10: Grep the built CSS.**
   ```
   cd ui && npm run build && for c in 'max-w-profile' 'text-h1-profile' 'bg-tile-warn' \
-    'border-warn-edge' 'text-warn-fg' 'narrow\:grid-cols-1' ; do
+    'border-warn-edge' 'text-warn-fg' 'max760\:grid-cols-1' ; do
       grep -qF "$c" dist/assets/*.css && echo "ok  $c" || echo "MISSING $c"; done
   ```
   Expected: six `ok` lines.
@@ -12099,7 +12099,7 @@ export const STATE_OFF: string   // 'پنهان است'
   ```
   cd ui && npm run build && for c in 'max-w-access' 'max-w-intro' 'border-hair' \
     'last\:border-b-0' 'hover\:bg-tile-v4' 'transition-opacity' 'duration-ds' \
-    'opacity-60' 'text-violet-on-violet' 'narrow\:flex-wrap' ; do
+    'opacity-60' 'text-violet-on-violet' 'max760\:flex-wrap' ; do
       grep -qF "$c" dist/assets/*.css && echo "ok  $c" || echo "MISSING $c"; done
   ```
   Expected: ten `ok` lines.
