@@ -75,3 +75,59 @@ describe('R8 — one rule per role', () => {
     expect(roleDeclarations().length).toBeGreaterThan(0)
   })
 })
+
+const ledger = readFileSync(
+  join(UI, '..', 'docs/superpowers/ui-normalisation-ledger.md'),
+  'utf8',
+)
+
+describe('R8 — every normalisation is recorded', () => {
+  const rows = ledger
+    .split('\n')
+    .filter((l) => /^\| L-\d\d /.test(l))
+    .map((l) => l.split('|').slice(1, -1).map((c) => c.trim()))
+
+  it('records every contradiction R8 catalogued, and the ones found since', () => {
+    expect(rows.length).toBeGreaterThanOrEqual(24)
+  })
+
+  it('gives every row all five columns, none of them empty', () => {
+    const broken = rows.filter((r) => r.length !== 5 || r.some((c) => c === ''))
+    expect(broken.map((r) => r.join(' | '))).toEqual([])
+  })
+
+  it('rules on action versus state once, and says which', () => {
+    expect(ledger).toContain('## Action versus state')
+    expect(ledger).toContain('share the role’s hue and never its treatment')
+  })
+
+  it('names what it could not settle rather than choosing silently', () => {
+    expect(ledger).toContain('## Referred to the owner')
+  })
+
+  it('numbers its rows without a gap or a repeat, so none can be quietly dropped', () => {
+    // The row scan is a regex over markdown. A row whose id is mistyped, or a
+    // whole row deleted in an edit, drops out of `rows` silently and every
+    // assertion above still passes. Ids must therefore run L-01..L-nn exactly
+    // once each, which makes a dropped row a failure rather than a smaller list.
+    const ids = rows.map((r) => r[0])
+    const expected = ids.map((_, i) => `L-${String(i + 1).padStart(2, '0')}`)
+    expect(ids).toEqual(expected)
+  })
+
+  it('marks each row as decided or referred, and refers the ones it says it does', () => {
+    // Without this, "Chosen, and why" could be filled with a hedge on every row
+    // and the owner would have no way to see which rows are actually waiting on
+    // them. Every row declares one or the other, and a row marked for veto must
+    // also be named in the Referred section.
+    const MARK = /\*\*(Decided|Owner veto)/
+    const unmarked = rows.filter((r) => !MARK.test(r[4]))
+    expect(unmarked.map((r) => r[0])).toEqual([])
+
+    const referredSection = ledger.slice(ledger.indexOf('## Referred to the owner'))
+    const vetoed = rows.filter((r) => r[4].includes('**Owner veto')).map((r) => r[0])
+    expect(vetoed.length).toBeGreaterThan(0)
+    const missing = vetoed.filter((id) => !referredSection.includes(id))
+    expect(missing).toEqual([])
+  })
+})
