@@ -49,6 +49,10 @@ export default defineConfig({
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
   },
+  // These three widths are also written in `e2e/_harness.ts` as `WIDTHS`, which
+  // is what every per-breakpoint expectation is keyed by. Adding a project here
+  // without adding its width there is not a silent no-op: `atWidth` throws,
+  // naming the viewport, rather than letting a fourth project grade nothing.
   projects: [
     { name: 'w1440', use: { viewport: { width: 1440, height: 1000 } } },
     { name: 'w1080', use: { viewport: { width: 1080, height: 900 } } },

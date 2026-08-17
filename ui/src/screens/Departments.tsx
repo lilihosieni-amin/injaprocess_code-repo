@@ -47,7 +47,7 @@ export function Departments() {
         </div>
 
         {/* grid */}
-        <div className="grid grid-cols-3 gap-[18px]">
+        <div data-grid className="grid grid-cols-3 gap-[18px]">
           {data.map((d, i) => {
             const m = deptMeta(d.code)
             const isC = m.accent === 'coral'
