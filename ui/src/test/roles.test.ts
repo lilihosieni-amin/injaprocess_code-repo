@@ -67,6 +67,24 @@ function roleValue(name: string): string {
   return roleDeclarations().find((d) => d.name === name)?.value ?? ''
 }
 
+/**
+ * Every `--role-*` name, grouped by the selector block that declares it.
+ *
+ * R3 gives this file a second block: `[data-surface='reader']` overrides the
+ * thirteen scale roles the ruling's table lists, and the cascade is how it does
+ * it — so a name legitimately appears twice in the file, once per surface. A
+ * repeat *within* one block is still a defect, because the second declaration
+ * wins silently, so uniqueness is checked per block instead of over the file.
+ */
+function roleBlocks(): { selector: string; names: string[] }[] {
+  return [...roles.matchAll(/(?:^|\n)([^\n{}]+)\{([^{}]*)\}/g)]
+    .map((m) => ({
+      selector: m[1].trim(),
+      names: [...m[2].matchAll(/^\s*(--role-[a-z0-9-]+)\s*:/gm)].map((d) => d[1]),
+    }))
+    .filter((b) => b.names.length > 0)
+}
+
 /** Whitespace is not meaningful when comparing a CSS value to prose. */
 const squeeze = (s: string) => s.replace(/\s+/g, '')
 
@@ -75,7 +93,9 @@ describe('R8 — one rule per role', () => {
     // The floor is the file's real count, not the plan's stale prose. It was
     // `>= 62` against a file of 83, which left room to delete the whole type-role
     // block (17 declarations) and four more with every test still green.
-    expect(roleDeclarations().length).toBeGreaterThanOrEqual(88)
+    // Raised to 111 by R3's scale layer: ten new panel rows on :root and the
+    // thirteen the reader block overrides.
+    expect(roleDeclarations().length).toBeGreaterThanOrEqual(111)
   })
 
   it('keeps every group of roles the design has, so none can be deleted wholesale', () => {
@@ -111,9 +131,19 @@ describe('R8 — one rule per role', () => {
     expect(dangling.map((d) => `${d.name} -> ${d.token}`)).toEqual([])
   })
 
-  it('declares no role twice', () => {
-    const names = roleDeclarations().map((d) => d.name)
-    expect(names.length).toBe(new Set(names).size)
+  it('declares no role twice in the same block', () => {
+    const repeated = roleBlocks().flatMap((b) =>
+      b.names.filter((n, i) => b.names.indexOf(n) !== i).map((n) => `${b.selector} ${n}`),
+    )
+    expect(repeated).toEqual([])
+  })
+
+  it('holds exactly the two blocks R3 allows, so an override cannot hide in a third', () => {
+    // The check above is per block, so a role smuggled into some other selector
+    // would be "unique" there and never compared with anything. The file's shape
+    // is therefore pinned: the shared table on :root, and R3's one scale
+    // override. src/ui/surface.test.tsx pins what the second block may contain.
+    expect(roleBlocks().map((b) => b.selector)).toEqual([':root', "[data-surface='reader']"])
   })
 
   it('reads a real token set, so "points only at tokens that exist" can fail', () => {

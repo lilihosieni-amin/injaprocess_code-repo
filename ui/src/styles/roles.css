@@ -41,6 +41,20 @@
   --role-surface-tint: var(--tile-v4);   /* hover row, actor pill */
   --role-scrim: var(--scrim);
 
+  /* ---- the scale layer, R3: panel values. The reader overrides them in the
+     [data-surface='reader'] block below; every other role in this file is
+     shared and must NOT appear in that block. ---- */
+  --role-column: var(--width-list);        /* 920px */
+  --role-pad-x: var(--pad-screen-x);       /* 40px  */
+  --role-pad-y: var(--pad-screen-y);       /* 30px, and the reader's too */
+  --role-pad-bottom: var(--pad-screen-y);  /* 30px  */
+  --role-dept-gap: var(--space-9);         /* 18px, a 3-column grid */
+  --role-tile: var(--size-tile);           /* 48px */
+  --role-tile-radius: var(--radius-tile);  /* 14px */
+  --role-tile-glyph: var(--size-glyph);    /* 24px, half the tile */
+  --role-iconbtn: var(--size-iconbtn);     /* 40px */
+  --role-fab: var(--size-fab);             /* 52px */
+
   /* ---- ink (1.1, 9.9) ---- */
   --role-ink-strong: var(--text-strong);
   --role-ink-body: var(--text-current);  /* ledger L-35: the design's secondary body ink.
@@ -142,4 +156,36 @@
   --role-lh-prose: var(--lh-loose);
   --role-tracking-eyebrow: var(--tracking-eyebrow);
   --role-tracking-display: var(--tracking-display);
+}
+
+/* R3 — the reader is the same product read at a different size, not a second
+   theme. It shares the violet field, the two-layer card shadow, the card
+   hairline, the -2px lift over .16s, the coral focus border, the scrim, the
+   10px scrollbar and the flow canvas; only the geometry below differs. Nothing
+   colour-, shadow- or motion-shaped may be declared here — a value that appears
+   in both blocks is a value with two places to keep in step, which is exactly
+   the defect R8 exists to stop.
+
+   Specificity is deliberate: [data-surface='reader'] and :root both weigh
+   (0,1,0), so this block wins only by coming later in the file. Keep it last.
+
+   SurfaceProvider (src/ui/surface.tsx) puts the attribute on the same node as
+   the React context, so the geometry and the chrome can never disagree. */
+[data-surface='reader'] {
+  --role-column: var(--width-reader);          /* 720px */
+  --role-pad-x: var(--pad-reader-x);           /* 24px  */
+  --role-pad-bottom: var(--pad-reader-bottom); /* 60px  */
+  --role-dept-gap: var(--space-7);             /* 14px, a single column */
+  --role-tile: var(--size-tile-reader);        /* 54px */
+  --role-tile-radius: var(--radius-card);      /* 16px */
+  --role-tile-glyph: var(--size-glyph-reader); /* 26px */
+  --role-fs-title: var(--fs-h1-reader-list);   /* 30px */
+  --role-fs-hero: var(--fs-h1-reader-home);    /* 26px — see the ledger's
+                                                  "Referred to the owner", L-34:
+                                                  the hero is smaller than the
+                                                  titles beneath it. */
+  --role-fs-body: var(--fs-body-reader);       /* 15px */
+  --role-fs-dense: var(--fs-body-lead);        /* 14.5px */
+  --role-iconbtn: var(--size-iconbtn-reader);  /* 42px */
+  --role-fab: var(--size-fab-reader);          /* 56px */
 }

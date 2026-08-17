@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { selectShell, type SessionDescriptor } from '../auth/session'
 import { onUnauthorized } from '../api/client'
 import { ToastProvider } from '../ui/Toast'
+import { SurfaceProvider } from '../ui/surface'
 import { PanelShell } from './PanelShell'
 import { ReaderShell } from './ReaderShell'
 
@@ -21,6 +22,14 @@ export function AppShell({ session }: { session: SessionDescriptor }) {
     return () => onUnauthorized(() => {})
   }, [navigate, location.pathname])
 
-  const Shell = selectShell(session.capabilities) === 'panel' ? PanelShell : ReaderShell
-  return <ToastProvider><Shell session={session} /></ToastProvider>
+  // R3 — the surface is chosen exactly where the shell is, from the same
+  // descriptor, so the scale and the chrome can never disagree about which
+  // product this is.
+  const surface = selectShell(session.capabilities)
+  const Shell = surface === 'panel' ? PanelShell : ReaderShell
+  return (
+    <SurfaceProvider surface={surface}>
+      <ToastProvider><Shell session={session} /></ToastProvider>
+    </SurfaceProvider>
+  )
 }
