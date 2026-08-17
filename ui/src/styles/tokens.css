@@ -210,3 +210,18 @@
   --fs-h1-reader-dept: 24px;
   --fs-body-reader: 15px;
 }
+
+/* §5.2 — control geometry the design states outright and the spacing scale
+   (4·5·6·8·10·12·14·16·18·22·26·30·38·40) does not hold. Named here rather
+   than written as `p-[13px]` at four call sites. */
+:root {
+  --pad-modal: 24px;                 /* the scrim's inset around a dialog */
+  --pad-search-y: 13px;              /* the screen-level search field */
+  --pad-search-x: 44px;              /* both sides, as S1 writes it */
+  --pad-search-x-dialog: 42px;
+  --pad-search-y-menu: 9px;
+  --pad-search-x-menu: 34px;
+  --inset-search-icon-dialog: 14px;  /* --inset-search-icon (15px) is the large one */
+  --inset-search-icon-menu: 11px;
+  --size-search-glyph: 17px;
+}

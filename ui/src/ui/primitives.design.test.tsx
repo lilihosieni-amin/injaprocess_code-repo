@@ -1,10 +1,14 @@
 import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import { readFileSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
 import postcss from 'postcss'
 import tailwind from 'tailwindcss'
 import config from '../../tailwind.config.js'
 import { Button } from './Button'
 import { Card } from './Card'
+import { SearchField } from './SearchField'
+import { SurfaceProvider } from './surface'
 
 /* -------------------------------------------------------------------------
    Why this file compiles CSS instead of reading class names.
@@ -75,6 +79,40 @@ function winner(painted: Painted[], prop: string, state = '', media = ''): strin
     }
   }
   return value
+}
+
+/**
+ * What one `--role-*` property resolves to on each surface, read out of
+ * src/styles/roles.css and src/styles/tokens.css.
+ *
+ * A surface-scaled utility writes ONE class on both surfaces, so asserting the
+ * class name proves nothing about scaling. This is the half that does: the role
+ * behind the class must be two different numbers.
+ */
+function readerScaleOf(role: string): { panel: string; reader: string } {
+  const roles = readFileSync(resolve(process.cwd(), 'src/styles/roles.css'), 'utf8')
+  const block = (selector: string) =>
+    new RegExp(`${selector}\\s*\\{([^}]*)\\}`).exec(roles)?.[1] ?? ''
+  const target = (body: string) =>
+    new RegExp(`(?<![-\\w])${role}\\s*:\\s*var\\((--[a-z0-9-]+)\\)`).exec(body)?.[1] ?? ''
+
+  const entry = resolve(process.cwd(), 'src/styles/tokens.css')
+  const files = [
+    ...[...readFileSync(entry, 'utf8').matchAll(/@import\s+'([^']+)'/g)]
+      .map((m) => resolve(dirname(entry), m[1])),
+    entry,
+  ]
+  const values = new Map<string, string>()
+  for (const f of files) {
+    for (const m of readFileSync(f, 'utf8').matchAll(/(--[a-z0-9-]+)\s*:\s*([^;{}]+)/g)) {
+      values.set(m[1], m[2].trim())
+    }
+  }
+  const literal = (token: string) => values.get(token) ?? ''
+  return {
+    panel: literal(target(block(':root'))),
+    reader: literal(target(block("\\[data-surface='reader'\\]"))),
+  }
 }
 
 /** Every state a class string paints in, which is what proves a variant exists at all. */
@@ -241,5 +279,88 @@ describe('P4 — Card carries the design’s recipe, not four hand-rolled copies
       const r = await paint((container.firstElementChild as HTMLElement).className)
       expect(winner(r, 'padding'), padding).toBe(token)
     }
+  })
+})
+
+describe('P6 — the search field is the design’s search field', () => {
+  const noop = () => {}
+
+  it('has the 1.5px control border, the 13px radius and the coral focus', async () => {
+    render(<SearchField label="جست‌وجو" value="" onChange={noop} />)
+    const p = await paint(screen.getByLabelText('جست‌وجو').className)
+    // §4.3 — 1.5px on every control and input, not the 1px `border` default.
+    expect(winner(p, 'border-width')).toBe('var(--border-hairline)')
+    expect(winner(p, 'border-color')).toBe('var(--line)')
+    // 13px, not --radius-control's 10px.
+    expect(winner(p, 'border-radius')).toBe('var(--radius-lg)')
+    // §4.6 — focus is border-color and nothing else, 15 declarations out of 15.
+    expect(winner(p, 'border-color', ':focus')).toBe('var(--coral)')
+    // No glow, no ring, no outline: the border IS the focus.
+    expect(winner(p, 'outline')).toBe('2px solid transparent')
+    expect(winner(p, '--tw-shadow', ':focus')).toBe('')
+    expect(winner(p, '--tw-ring-color', ':focus')).toBe('')
+    expect(winner(p, '--tw-scale-x', ':focus')).toBe('')
+  })
+
+  it('scales with the surface, not with a prop', async () => {
+    const { container } = render(
+      <SurfaceProvider surface="reader">
+        <SearchField label="جست‌وجو" value="" onChange={noop} />
+      </SurfaceProvider>,
+    )
+    const cls = container.querySelector('input')!.className
+    const p = await paint(cls)
+    // The class is the same on both surfaces — that is the point of the layer —
+    // so asserting the class name would prove nothing at all. What must be true
+    // is that the size it resolves to is the ROLE and not a fixed step, and that
+    // the role really is two numbers.
+    expect(winner(p, 'font-size')).toBe('var(--role-fs-dense)')
+    expect(winner(p, 'font-size')).not.toBe('var(--fs-sm)')
+    expect(readerScaleOf('--role-fs-dense')).toEqual({ panel: '13px', reader: '14.5px' })
+    // …and the field really is inside a reader surface, so the second value is
+    // the one in force here.
+    expect(container.querySelector('[data-surface="reader"]')).not.toBeNull()
+  })
+
+  it('takes its place in the composition, and that is all `place` means', async () => {
+    const { rerender } = render(<SearchField label="ج" value="" onChange={noop} place="menu" />)
+    const menu = await paint(screen.getByLabelText('ج').className)
+    expect(winner(menu, 'padding-top')).toBe('var(--pad-search-y-menu)')
+    expect(winner(menu, 'padding-inline-start')).toBe('var(--pad-search-x-menu)')
+    expect(winner(menu, 'padding-inline-end')).toBe('var(--space-6)')
+    expect(winner(menu, 'border-radius')).toBe('var(--radius-control)')
+
+    rerender(<SearchField label="ج" value="" onChange={noop} place="dialog" />)
+    const dialog = await paint(screen.getByLabelText('ج').className)
+    expect(winner(dialog, 'padding-top')).toBe('var(--space-6)')
+    expect(winner(dialog, 'padding-left')).toBe('var(--pad-search-x-dialog)')
+    expect(winner(dialog, 'border-radius')).toBe('var(--radius-md)')
+
+    rerender(<SearchField label="ج" value="" onChange={noop} />)
+    const screenPlace = await paint(screen.getByLabelText('ج').className)
+    expect(winner(screenPlace, 'padding-top')).toBe('var(--pad-search-y)')
+    expect(winner(screenPlace, 'padding-left')).toBe('var(--pad-search-x)')
+    expect(winner(screenPlace, 'border-radius')).toBe('var(--radius-lg)')
+  })
+
+  it('pins the magnifier with a logical inset, at the size each place gives it', async () => {
+    const { container, rerender } = render(<SearchField label="ج" value="" onChange={noop} />)
+    const glyph = () => container.querySelector('svg')!.getAttribute('class') ?? ''
+    const big = await paint(glyph())
+    // §8 — inset-inline-start, so RTL is structural. A physical `right` would
+    // emit `right:` here and this goes red.
+    expect(winner(big, 'inset-inline-start')).toBe('var(--inset-search-icon)')
+    expect(winner(big, 'right')).toBe('')
+    expect(winner(big, 'width')).toBe('var(--size-search-glyph)')
+
+    rerender(<SearchField label="ج" value="" onChange={noop} place="dialog" />)
+    const mid = await paint(glyph())
+    expect(winner(mid, 'inset-inline-start')).toBe('var(--inset-search-icon-dialog)')
+    expect(winner(mid, 'width')).toBe('var(--space-8)')
+
+    rerender(<SearchField label="ج" value="" onChange={noop} place="menu" />)
+    const small = await paint(glyph())
+    expect(winner(small, 'inset-inline-start')).toBe('var(--inset-search-icon-menu)')
+    expect(winner(small, 'width')).toBe('var(--space-7)')
   })
 })

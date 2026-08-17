@@ -134,6 +134,25 @@ describe('R1 — the deliverable wins over the extracted token', () => {
     }
     for (const [name, value] of Object.entries(rest)) expect(token(name)).toBe(value)
   })
+
+  it('§5.2 — carries the control geometry the spacing scale has no rung for', () => {
+    // Same reason as the block above: a token no test reads is a token the next
+    // task can revert by accident. These nine are the dialog scrim's inset and
+    // the search field's three scales, none of which lands on the _ds ladder
+    // (4·5·6·8·10·12·14·16·18·22·26·30·38·40).
+    const control = {
+      '--pad-modal': '24px',
+      '--pad-search-y': '13px', '--pad-search-x': '44px',
+      '--pad-search-x-dialog': '42px',
+      '--pad-search-y-menu': '9px', '--pad-search-x-menu': '34px',
+      '--inset-search-icon-dialog': '14px', '--inset-search-icon-menu': '11px',
+      '--size-search-glyph': '17px',
+    }
+    for (const [name, value] of Object.entries(control)) expect(token(name)).toBe(value)
+    // …and none of them duplicates the large field's own inset, which already
+    // had a token: three insets, three different numbers.
+    expect(token('--inset-search-icon')).toBe('15px')
+  })
 })
 
 describe('R1 — a correction records what it overrode and why', () => {

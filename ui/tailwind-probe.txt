@@ -41,6 +41,8 @@ text-fs-stat-sm text-fs-body-lead text-fs-nano text-fs-badge-sm text-fs-tag
 text-fs-h1-reader-home text-fs-h1-reader-list text-fs-h1-reader-dept
 text-fs-body-reader
 text-body text-caption text-subtitle text-title text-prose
+# R3 — the four type roles that change with the surface.
+text-role-body text-role-dense text-role-title text-role-hero
 font-sans font-mono
 font-regular font-semibold font-bold font-extrabold
 leading-tight leading-snug leading-normal leading-relaxed leading-loose
@@ -65,9 +67,13 @@ w-close h-close
 max-w-departments max-w-list max-w-summary max-w-doc max-w-drawer
 max-w-reader max-w-profile max-w-steps max-w-access max-w-audit
 max-w-dialog-wide max-w-dialog-lg max-w-dialog max-w-dialog-sm max-w-dialog-xs
-# Logical, not physical: --inset-search-icon is on the `inset` scale so the
-# search icon is placed with inset-inline-start and RTL stays structural.
-start-search-icon
+# Logical, not physical: the three --inset-search-icon* tokens are on the
+# `inset` scale so the search icon is placed with inset-inline-start and RTL
+# stays structural.
+start-search-icon start-search-icon-dialog start-search-icon-menu
+# §5.2 — the six control paddings and the magnifier's own box.
+p-modal py-search-y px-search-x px-search-x-dialog py-search-y-menu
+ps-search-x-menu w-search-glyph h-search-glyph
 border-hairline
 transition duration-fast duration-chev
 -translate-y-lift

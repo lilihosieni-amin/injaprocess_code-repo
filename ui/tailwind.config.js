@@ -184,6 +184,14 @@ export default {
         'fs-h1-reader-list': 'var(--fs-h1-reader-list)', // 30px
         'fs-h1-reader-dept': 'var(--fs-h1-reader-dept)', // 24px
         'fs-body-reader': 'var(--fs-body-reader)',       // 15px
+        // R3 — the four type roles that CHANGE with the surface. Everything
+        // else on this scale is a fixed step; these four are the scale layer,
+        // and they are the only writable form the roles have: guards.test.ts
+        // bans `text-[…]`, so a role with no key here cannot be written at all.
+        'role-body': 'var(--role-fs-body)',    // 14px panel / 15px reader
+        'role-dense': 'var(--role-fs-dense)',  // 13px panel / 14.5px reader
+        'role-title': 'var(--role-fs-title)',  // 22px panel / 30px reader
+        'role-hero': 'var(--role-fs-hero)',    // 34px panel / 26px reader
       },
       fontWeight: {
         regular: 'var(--fw-regular)', semibold: 'var(--fw-semibold)',
@@ -247,6 +255,16 @@ export default {
         'reader-bottom': 'var(--pad-reader-bottom)',          // 60px
         'departments-top': 'var(--pad-departments-top)',      // 38px
         'departments-bottom': 'var(--pad-departments-bottom)',// 48px
+        // §5.2 — the six control paddings the design states and the _ds scale
+        // (4·5·6·8·10·12·14·16·18·22·26·30·38·40) has no rung for. One key per
+        // token, and the direction stays out of the key: `py-search-y` says
+        // which axis, `search-y` says which value.
+        modal: 'var(--pad-modal)',                            // 24px
+        'search-y': 'var(--pad-search-y)',                    // 13px
+        'search-x': 'var(--pad-search-x)',                    // 44px
+        'search-x-dialog': 'var(--pad-search-x-dialog)',      // 42px
+        'search-y-menu': 'var(--pad-search-y-menu)',          // 9px
+        'search-x-menu': 'var(--pad-search-x-menu)',          // 34px
       },
       maxWidth: {
         departments: 'var(--width-departments)', list: 'var(--width-list)',
@@ -273,40 +291,55 @@ export default {
       // and carried on both scales — `w-glyph`/`h-glyph` is one name on two
       // properties, the arrangement `tile`, `tool`, `avatar` and `touch` already
       // have, not a second name for one token.
+      //
+      // R3 — `tile`, `iconbtn` and `fab` read the ROLE, not the panel token, so
+      // one class is 48/40/52 in the panel and 54/42/56 in the reader without a
+      // single call site knowing which surface it is in. The panel and reader
+      // tokens behind each role keep their own `-reader` names below, so the two
+      // ends of the scale are still writable when a screen genuinely needs one.
       width: {
-        tile: 'var(--size-tile)', tool: 'var(--size-tool)', avatar: 'var(--size-avatar)',
+        tile: 'var(--role-tile)', tool: 'var(--size-tool)', avatar: 'var(--size-avatar)',
         'logo-bar': 'var(--size-logo-bar)', 'logo-login': 'var(--size-logo-login)',
         touch: 'var(--size-touch)',
         'tile-reader': 'var(--size-tile-reader)',       // 54px
         glyph: 'var(--size-glyph)',                     // 24px
         'glyph-reader': 'var(--size-glyph-reader)',     // 26px
-        iconbtn: 'var(--size-iconbtn)',                 // 40px
+        iconbtn: 'var(--role-iconbtn)',                 // 40px panel / 42px reader
         'iconbtn-reader': 'var(--size-iconbtn-reader)', // 42px
-        fab: 'var(--size-fab)',                         // 52px
+        fab: 'var(--role-fab)',                         // 52px panel / 56px reader
         'fab-reader': 'var(--size-fab-reader)',         // 56px
         tick: 'var(--size-tick)',                       // 19px — L-10, a tick in a row
         'tick-nested': 'var(--size-tick-nested)',       // 16px — L-10, a nested tick
         close: 'var(--size-close)',                     // 32px — L-23
+        'search-glyph': 'var(--size-search-glyph)',     // 17px — §5.2 SearchField
       },
       height: {
-        tile: 'var(--size-tile)', tool: 'var(--size-tool)', avatar: 'var(--size-avatar)',
+        tile: 'var(--role-tile)', tool: 'var(--size-tool)', avatar: 'var(--size-avatar)',
         'logo-bar': 'var(--size-logo-bar)', 'logo-login': 'var(--size-logo-login)',
         touch: 'var(--size-touch)',
         'tile-reader': 'var(--size-tile-reader)',
         glyph: 'var(--size-glyph)',
         'glyph-reader': 'var(--size-glyph-reader)',
-        iconbtn: 'var(--size-iconbtn)',
+        iconbtn: 'var(--role-iconbtn)',
         'iconbtn-reader': 'var(--size-iconbtn-reader)',
-        fab: 'var(--size-fab)',
+        fab: 'var(--role-fab)',
         'fab-reader': 'var(--size-fab-reader)',
         tick: 'var(--size-tick)',
         'tick-nested': 'var(--size-tick-nested)',
         close: 'var(--size-close)',
+        'search-glyph': 'var(--size-search-glyph)',
       },
       // §5.2 — the search field's icon sits `--inset-search-icon` from the edge.
       // It is an inset, not spacing: naming it here keeps `start-search-icon`
       // (inset-inline-start, so RTL is structural) out of the padding ladder.
-      inset: { 'search-icon': 'var(--inset-search-icon)' }, // 15px
+      // The dialog and menu fields pin theirs closer in; all three sit on this
+      // scale and not on `spacing`, for the reason above — an inset is not a
+      // padding, and `p-search-icon-menu` would be a class with no meaning.
+      inset: {
+        'search-icon': 'var(--inset-search-icon)',              // 15px
+        'search-icon-dialog': 'var(--inset-search-icon-dialog)', // 14px
+        'search-icon-menu': 'var(--inset-search-icon-menu)',     // 11px
+      },
       letterSpacing: { eyebrow: 'var(--tracking-eyebrow)', display: 'var(--tracking-display)' },
       // A bare `transition` is .16s from here on — the design's one duration.
       transitionDuration: {

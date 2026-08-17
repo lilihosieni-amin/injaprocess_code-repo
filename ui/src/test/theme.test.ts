@@ -67,13 +67,51 @@ function lengthIn(name: string): string {
   return m[1]
 }
 
+/**
+ * R3's scale layer — `src/styles/roles.css`, which src/index.css imports right
+ * after tokens.css.
+ *
+ * Every `--role-*` property, mapped to every token it points at across BOTH of
+ * that file's blocks (`:root` and `[data-surface='reader']`), because a role
+ * that resolves to two tokens is the entire point of the layer.
+ *
+ * This is a second declaration site, not a second token file: the four `_ds`
+ * imports and tokens.css still hold every literal, and `tokenFiles()` above is
+ * deliberately left alone so "a token must have a utility name" keeps asking
+ * about tokens and not about roles.
+ */
+function roleTargets(): Map<string, Set<string>> {
+  const css = readFileSync(resolve(process.cwd(), 'src/styles/roles.css'), 'utf8')
+  const map = new Map<string, Set<string>>()
+  for (const m of css.matchAll(/(--role-[a-z0-9-]+)\s*:\s*var\((--[a-z0-9-]+)\)/g)) {
+    if (!map.has(m[1])) map.set(m[1], new Set())
+    map.get(m[1])!.add(m[2])
+  }
+  return map
+}
+
 const declared = declaredTokens()
+const roles = roleTargets()
 
 /** Every custom property the theme reads, in order, one entry per var() site. */
 const referencedList = flat(theme).flatMap((v) =>
   [...v.matchAll(/var\((--[a-z0-9-]+)\)/g)].map((m) => m[1]),
 )
 const referenced = new Set(referencedList)
+
+/**
+ * Every token a utility reaches, directly or through one role.
+ *
+ * `w-tile` names `--role-tile`, which is `--size-tile` in the panel and
+ * `--size-tile-reader` in the reader — so both tokens have a utility name, and
+ * the chain that gives them one is token <- role <- utility. A role no utility
+ * names carries nothing here, which is what keeps this from being a way to
+ * launder an unreachable token.
+ */
+const reachable = new Set([
+  ...referenced,
+  ...[...referenced].flatMap((r) => [...(roles.get(r) ?? [])]),
+])
 
 /** The class names in tailwind-probe.txt, which is the theme's own inventory. */
 function probeClasses(): string[] {
@@ -268,6 +306,12 @@ const EXPECTED: Record<string, string | string[]> = {
   'text-fs-h1-reader-list': 'var(--fs-h1-reader-list)',
   'text-fs-h1-reader-dept': 'var(--fs-h1-reader-dept)',
   'text-fs-body-reader': 'var(--fs-body-reader)',
+  // R3's scale layer. These four are the ONLY utilities that name a --role-*
+  // property rather than a token, which is what makes one class two sizes.
+  'text-role-body': 'var(--role-fs-body)',
+  'text-role-dense': 'var(--role-fs-dense)',
+  'text-role-title': 'var(--role-fs-title)',
+  'text-role-hero': 'var(--role-fs-hero)',
   'text-body': ['var(--fs-role-body)', 'var(--lh-role-body)'],
   'text-caption': ['var(--fs-role-caption)', 'var(--lh-role-body)'],
   'text-subtitle': ['var(--fs-role-subtitle)', 'var(--lh-role-body)'],
@@ -349,8 +393,8 @@ const EXPECTED: Record<string, string | string[]> = {
   'p-s12': 'var(--space-12)',
   'p-s14': 'var(--space-14)',
   'p-s16': 'var(--space-16)',
-  'w-tile': 'var(--size-tile)',
-  'h-tile': 'var(--size-tile)',
+  'w-tile': 'var(--role-tile)',
+  'h-tile': 'var(--role-tile)',
   'w-tool': 'var(--size-tool)',
   'h-tool': 'var(--size-tool)',
   'w-avatar': 'var(--size-avatar)',
@@ -373,12 +417,12 @@ const EXPECTED: Record<string, string | string[]> = {
   'h-glyph': 'var(--size-glyph)',
   'w-glyph-reader': 'var(--size-glyph-reader)',
   'h-glyph-reader': 'var(--size-glyph-reader)',
-  'w-iconbtn': 'var(--size-iconbtn)',
-  'h-iconbtn': 'var(--size-iconbtn)',
+  'w-iconbtn': 'var(--role-iconbtn)',
+  'h-iconbtn': 'var(--role-iconbtn)',
   'w-iconbtn-reader': 'var(--size-iconbtn-reader)',
   'h-iconbtn-reader': 'var(--size-iconbtn-reader)',
-  'w-fab': 'var(--size-fab)',
-  'h-fab': 'var(--size-fab)',
+  'w-fab': 'var(--role-fab)',
+  'h-fab': 'var(--role-fab)',
   'w-fab-reader': 'var(--size-fab-reader)',
   'h-fab-reader': 'var(--size-fab-reader)',
   'w-tick': 'var(--size-tick)',
@@ -407,6 +451,16 @@ const EXPECTED: Record<string, string | string[]> = {
   // On the `inset` scale, so the class is logical (inset-inline-start) and RTL
   // needs no exception. On `spacing` it would only ever have been a padding.
   'start-search-icon': 'var(--inset-search-icon)',
+  'start-search-icon-dialog': 'var(--inset-search-icon-dialog)',
+  'start-search-icon-menu': 'var(--inset-search-icon-menu)',
+  'p-modal': 'var(--pad-modal)',
+  'py-search-y': 'var(--pad-search-y)',
+  'px-search-x': 'var(--pad-search-x)',
+  'px-search-x-dialog': 'var(--pad-search-x-dialog)',
+  'py-search-y-menu': 'var(--pad-search-y-menu)',
+  'ps-search-x-menu': 'var(--pad-search-x-menu)',
+  'w-search-glyph': 'var(--size-search-glyph)',
+  'h-search-glyph': 'var(--size-search-glyph)',
   'border-hairline': 'var(--border-hairline)',
   transition: 'var(--duration)',
   'duration-fast': 'var(--duration-fast)',
@@ -531,7 +585,33 @@ describe('R1 (structural) — every design token has a utility name', () => {
     // square `--size-*` boxes are read twice each, once on width and once on
     // height, which is one name on two properties, not two names.)
     expect(referencedList.length).toBeGreaterThanOrEqual(250)
-    expect([...referenced].filter((t) => !declared.has(t)).sort()).toEqual([])
+    // Two declaration sites, because the app has two: tokens.css holds every
+    // literal, and roles.css holds R3's scale layer, which is the only thing a
+    // utility may name that is not a token. Both are read from disk; neither is
+    // a list kept here.
+    expect(
+      [...referenced].filter((t) => !declared.has(t) && !roles.has(t)).sort(),
+    ).toEqual([])
+  })
+
+  it('reads a real role layer, so the line above cannot pass by knowing nothing', () => {
+    // `roles` is the escape hatch the assertion above leans on. If roleTargets()
+    // ever returned an empty map — a renamed file, a regex that stopped
+    // matching — the filter would go back to catching every --role-* and this
+    // file would fail loudly rather than quietly; but if it returned everything,
+    // it would launder any misspelling. This pins both ends: the layer is real,
+    // finite, and does NOT contain a name the config could plausibly mistype.
+    expect(roles.size).toBeGreaterThanOrEqual(111 - 13)
+    expect(roles.has('--role-tile')).toBe(true)
+    expect(roles.has('--role-nonesuch')).toBe(false)
+    expect(roles.has('--size-tile')).toBe(false)
+    // The four scale roles the theme now names must each resolve to TWO
+    // different tokens, or `text-role-dense` would be one size on both surfaces
+    // and the utility would be a lie.
+    for (const role of ['--role-fs-body', '--role-fs-dense', '--role-fs-title', '--role-fs-hero',
+      '--role-tile', '--role-iconbtn', '--role-fab']) {
+      expect([...(roles.get(role) ?? [])].length, role).toBe(2)
+    }
   })
 
   it('leaves no declared token without a utility name', () => {
@@ -558,8 +638,13 @@ describe('R1 (structural) — every design token has a utility name', () => {
       // two tests below, which assert exactly that.
       '--hover-lift', '--blur-scrim',
     ]
+    // `reachable`, not `referenced`: R3 re-pointed w-tile/w-iconbtn/w-fab at the
+    // roles, so --size-tile, --size-iconbtn and --size-fab are now named through
+    // one hop rather than directly. A hop through a role a utility names is
+    // still a utility name; a token behind an UNNAMED role is not, and still
+    // fails here.
     expect(
-      [...declared].filter((t) => !referenced.has(t) && !NAMED_ELSEWHERE.includes(t)).sort(),
+      [...declared].filter((t) => !reachable.has(t) && !NAMED_ELSEWHERE.includes(t)).sort(),
     ).toEqual([])
     // The list is the escape hatch, so it may not quietly grow to make the line
     // above pass. Twelve is what Task 2 justified, one by one, in its report.
