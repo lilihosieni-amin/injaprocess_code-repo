@@ -19,6 +19,19 @@
   /* F11 — the smallest interactive box. */
   --size-touch: 44px;
 
+  /* R8 — four values the normalisation ledger decides and no token holds.
+     They are minted here rather than deferred to Task 3 because the token
+     nearest each one already carries a role of its own, so "correct the nearest
+     token" would break that role instead:
+       --warm  #EFE7DC stays the top-bar, flow-bar and drawer edge (ledger L-15);
+       the panel scale keeps every step it already has (L-16, L-27, L-33).
+     Names match the plan's Task 3 list exactly, so nothing diverges when that
+     task appends the rest of the type scale. */
+  --border-card: rgba(42, 29, 94, .07); /* L-15 — the card hairline, 46 uses */
+  --fs-dialog: 18px;                    /* L-16 — dialog, drawer and pane titles, 11 uses */
+  --fs-menu: 13.5px;                    /* L-27 — menu, dropdown and dialog-button copy, 48 uses */
+  --fs-caption: 12px;                   /* L-33 — caption, table meta, calendar day, 38 uses */
+
   /* F8 — semantic type roles. The shell overrides these; the panel scale is
      the default so anything rendered outside a shell is still legible. */
   --fs-role-body: var(--fs-body);

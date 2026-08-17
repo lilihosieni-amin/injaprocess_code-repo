@@ -17,6 +17,16 @@
    today and need nothing from Task 3: --role-ink-body and
    --role-subtitle-on-field. Both are recorded in the ledger.
 
+   Correcting the nearest token is only ever right when that token has no other
+   role. Where it has one, the value is MINTED in tokens.css instead — four are,
+   by this task: --border-card, --fs-dialog, --fs-menu and --fs-caption. Task 3
+   must not re-value --warm or any panel type step to reach them.
+
+   Every value the ledger decides is named here. The one exception is deliberate
+   and recorded: --role-radius-control and --role-radius-input collapse 11px and
+   10px into 12px (ledger L-40, referred to the owner), so --radius-input and
+   --radius-control are named by no role while that veto is open.
+
    Section references are to .superpowers/sdd/ui-design-spec.md. Colour values
    are deliberately not repeated in these comments — the token names carry them,
    and a literal here would be a second place to keep in step. */
@@ -67,8 +77,10 @@
   --role-dead-edge: var(--border-dead);
 
   /* ---- borders (4.3) ---- */
-  --role-border-card: var(--warm);           /* ledger L-15: the 46-use card hairline.
-                                                Task 3 corrects the token (9.2) */
+  --role-border-card: var(--border-card);    /* ledger L-15: the 46-use card hairline.
+                                                Minted in tokens.css by this task —
+                                                --warm keeps its own role below, so
+                                                Task 3 must NOT re-value it (9.2) */
   --role-border-control: var(--line);        /* 1.5px on every control */
   --role-border-sub: var(--border-current);  /* the sub-panel border */
   --role-border-hair: var(--hair);           /* a rule inside a card */
@@ -96,12 +108,14 @@
   /* ---- radii (4.4) ---- */
   --role-radius-badge: var(--radius-badge);
   --role-radius-chip: var(--radius-chip);
-  --role-radius-close: var(--radius-sm);       /* ledger L-23 */
-  --role-radius-control: var(--radius-md);
-  --role-radius-input: var(--radius-md);
+  --role-radius-close: var(--radius-sm);       /* ledger L-23 — provisional, referred */
+  --role-radius-control: var(--radius-md);     /* ledger L-40 — 10px normalises here */
+  --role-radius-input: var(--radius-md);       /* ledger L-40 — 11px normalises here */
   --role-radius-search: var(--radius-lg);
   --role-radius-tile: var(--radius-tile);
   --role-radius-card: var(--radius-card);
+  --role-radius-doc: var(--radius-doc);        /* table shell, dept-info and summary card */
+  --role-radius-feature: var(--radius-card-lg); /* department card, wide modal, comments panes */
   --role-radius-dialog: var(--radius-panel);   /* ledger L-04: 24px, always */
   --role-radius-pill: var(--radius-pill);      /* Task 3 corrects the token — ledger L-20 */
   --role-radius-round: var(--radius-round);
@@ -109,10 +123,13 @@
   /* ---- type roles (2) ---- */
   --role-fs-hero: var(--fs-display);
   --role-fs-title: var(--fs-h2);        /* ledger L-02: one screen title, 22px */
+  --role-fs-dialog: var(--fs-dialog);   /* ledger L-16: every dialog, drawer and pane title */
   --role-fs-section: var(--fs-lg);
   --role-fs-body: var(--fs-body);       /* ledger L-27: body copy */
+  --role-fs-menu: var(--fs-menu);       /* ledger L-27: menu, dropdown and dialog-button copy */
   --role-fs-dense: var(--fs-sm);        /* ledger L-27: list, table and hint copy */
   --role-fs-control: var(--fs-sm2);     /* the most common step in the design */
+  --role-fs-caption: var(--fs-caption); /* ledger L-33: caption, table meta, calendar day */
   --role-fs-eyebrow: var(--fs-xs);
   --role-fs-badge: var(--fs-xxs);
   --role-fs-micro: var(--fs-micro);
