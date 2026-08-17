@@ -177,3 +177,69 @@ describe('P1 — a disabled button does not look or behave like a working one', 
     expect(screen.getByTestId('btn-spinner')).toBeTruthy()
   })
 })
+
+describe('P4 — Card carries the design’s recipe, not four hand-rolled copies of it', () => {
+  it('is #fff on the card border and the two-layer shadow (ledger L-14, L-15)', async () => {
+    const { container } = render(<Card>x</Card>)
+    const p = await paint((container.firstElementChild as HTMLElement).className)
+    expect(winner(p, 'background-color')).toBe('var(--card)')
+    // §4.3 — rgba(42,29,94,.07), 46 uses. `--warm` is the top-bar and drawer
+    // edge and is a different colour; this is the assertion that tells them
+    // apart, which `toContain('border-')` could not.
+    expect(winner(p, 'border-color')).toBe('var(--border-card)')
+    expect(winner(p, 'border-color')).not.toBe('var(--warm)')
+    // `card` is also a colour key, so --tw-shadow-colored is the layer that
+    // carries the value; see the coral note above.
+    expect(winner(p, '--tw-shadow-colored')).toBe('var(--shadow-card)')
+  })
+
+  it('lifts -2px over .16s and turns its border #C9B8EC, only when asked', async () => {
+    const { container, rerender } = render(<Card>x</Card>)
+    const plain = await paint((container.firstElementChild as HTMLElement).className)
+    expect(statesOf(plain)).toEqual([''])
+
+    rerender(<Card hoverLift>x</Card>)
+    const lifted = await paint((container.firstElementChild as HTMLElement).className)
+    // §4.6 — the one hover the design gives a surface. Asserted as the hover
+    // state's own values, and against the resting state, so a card that always
+    // sat 2px high with a lilac border could not pass.
+    expect(winner(lifted, '--tw-translate-y', ':hover')).toBe('-2px')
+    expect(winner(lifted, '--tw-translate-y')).toBe('')
+    expect(winner(lifted, '--tw-shadow-colored', ':hover')).toBe('var(--shadow-card-hover)')
+    expect(winner(lifted, 'border-color', ':hover')).toBe('var(--border-pick)')
+    expect(winner(lifted, 'border-color')).toBe('var(--border-card)')
+    // .16s, the design's one duration — and nothing scales or bounces.
+    expect(winner(lifted, 'transition-duration')).toBe('var(--duration)')
+    expect(winner(lifted, '--tw-scale-x', ':hover')).toBe('')
+  })
+
+  it('names its radius and padding instead of making every caller invent one', async () => {
+    const { container, rerender } = render(<Card radius="feature" padding="feature">x</Card>)
+    const feature = await paint((container.firstElementChild as HTMLElement).className)
+    expect(winner(feature, 'border-radius')).toBe('var(--radius-card-lg)')
+    expect(winner(feature, 'padding')).toBe('var(--space-10)')
+
+    // The default is the 16px row/list radius and no padding at all, so a card
+    // used as a shell does not have to unset one.
+    rerender(<Card>x</Card>)
+    const plain = await paint((container.firstElementChild as HTMLElement).className)
+    expect(winner(plain, 'border-radius')).toBe('var(--radius-card)')
+    expect(winner(plain, 'padding')).toBe('')
+
+    // Every other rung resolves too — an invented key would compile to nothing.
+    for (const [radius, token] of [
+      ['tile', 'var(--radius-tile)'], ['doc', 'var(--radius-doc)'], ['control', 'var(--radius-md)'],
+    ] as const) {
+      rerender(<Card radius={radius}>x</Card>)
+      const r = await paint((container.firstElementChild as HTMLElement).className)
+      expect(winner(r, 'border-radius'), radius).toBe(token)
+    }
+    for (const [padding, token] of [
+      ['tight', 'var(--space-8)'], ['card', 'var(--space-9)'],
+    ] as const) {
+      rerender(<Card padding={padding}>x</Card>)
+      const r = await paint((container.firstElementChild as HTMLElement).className)
+      expect(winner(r, 'padding'), padding).toBe(token)
+    }
+  })
+})

@@ -23,7 +23,8 @@ const V: Record<Variant, string> = {
   violet: 'bg-violet text-card shadow-violet enabled:hover:brightness-110 disabled:opacity-60',
   green: 'bg-green text-card shadow-green enabled:hover:brightness-105 disabled:opacity-60',
   ghost: 'bg-card text-violet border-hairline border-line enabled:hover:bg-tile-v2 disabled:text-disabled',
-  // §5.2 — the destructive ghost: #FFF3F2 / #E23D35 / 1.5px #FDD9D6. It is an
+  // §5.2 — the destructive ghost: --tile-c2 under --conflict behind a 1.5px
+  // --border-danger edge. Colours are named, never repeated as literals. It is an
   // action of lower commitment, told apart from the "conflict" *state* by
   // having a border (see the ledger's "Action versus state"). The design
   // declares no hover for it, so it has none.
