@@ -56,7 +56,7 @@ export const SUPERVISOR_REQUIRED =
 export const SUPERVISOR_NOT_ELIGIBLE = 'این شخص نمی‌تواند سرپرست این کاربر باشد'
 
 /**
- * The two reads both user dialogs are built on, when one of them did not
+ * The three reads both user dialogs are built on, when one of them did not
  * arrive.
  *
  * **A failed query is not an empty answer**, and in react-query v5 the two look
@@ -69,19 +69,33 @@ export const SUPERVISOR_NOT_ELIGIBLE = 'این شخص نمی‌تواند سرپ
  * *and* «سرپرست کنونی در این فهرست نیست» about somebody active and eligible: two
  * contradictory false sentences at once.
  *
- * The roles come first when both failed, because it is the field nearer the top
- * of the form and the one whose absence blocks the submit outright.
+ * **`/api/departments` is the third, and it was the same defect one read
+ * further out.** The scope fieldset draws one block per department and reads
+ * every scope's wording out of that registry, so with the read failed a form
+ * opened on an account holding `dept:cooking` and `dept:dining/report:steps`
+ * showed two checkboxes — «همهٔ دپارتمان‌ها» and «می‌تواند سرپرست دیگران باشد»
+ * — neither of them ticked and no notice of anything missing: an account with
+ * two grants drawn as an account with none, to the one person who acts on it.
+ * The supervisor picker reads the same registry for the scope beside each name.
+ *
+ * The order is the order of the form: the role select, then the scope fieldset,
+ * then the picker. Roles first also because their absence blocks the submit
+ * outright.
  */
 export const ROLES_UNREADABLE =
   'فهرست نقش‌ها بارگذاری نشد؛ تا نیامدن آن نمی‌توان نقش این حساب را انتخاب کرد.'
+export const DEPARTMENTS_UNREADABLE =
+  'فهرست دپارتمان‌ها بارگذاری نشد؛ تا نیامدن آن نمی‌توان دامنهٔ دسترسی این حساب را دید یا تغییر داد.'
 export const CANDIDATES_UNREADABLE =
   'فهرست سرپرست‌های ممکن بارگذاری نشد؛ تا نیامدن آن معلوم نیست چه کسی می‌تواند سرپرست این حساب باشد.'
 
 export interface ReadFailure { message: string; error: unknown }
 
 export function readFailure(roles: { error: unknown },
+                            departments: { error: unknown },
                             candidates: { error: unknown }): ReadFailure | undefined {
   if (roles.error) return { message: ROLES_UNREADABLE, error: roles.error }
+  if (departments.error) return { message: DEPARTMENTS_UNREADABLE, error: departments.error }
   if (candidates.error) return { message: CANDIDATES_UNREADABLE, error: candidates.error }
   return undefined
 }

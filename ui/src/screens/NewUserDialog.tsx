@@ -1,5 +1,6 @@
 import { useId, useState, type FormEvent } from 'react'
 import { useSession } from '../auth/useSession'
+import { useDepartments } from '../api/hooks'
 import { useCreateUser, useRoles, useSupervisorCandidates } from '../api/users'
 import { normalisePhone } from '../lib/digits'
 import { refusalText } from '../lib/refusal'
@@ -40,6 +41,10 @@ export function NewUserDialog({ open, onClose }: { open: boolean; onClose: () =>
   const [password, setPassword] = useState('')
   const [problem, setProblem] = useState<string | undefined>(undefined)
   const roles = useRoles()
+  // The registry the scope fieldset is drawn from, asked for here as well as
+  // inside `UserFields` so that a failure has somewhere to be reported. Same
+  // query key, so react-query answers both from one request.
+  const departments = useDepartments()
   // `undefined`, not the id of anybody: on this form the account does not exist
   // yet, so there is nobody to leave out (`eligible_supervisors`' `excluding`).
   const candidates = useSupervisorCandidates(draft.scopes, undefined)
@@ -77,17 +82,23 @@ export function NewUserDialog({ open, onClose }: { open: boolean; onClose: () =>
 
   const alert = problem ?? (create.error ? refusalText(create.error) : undefined)
 
-  // After every hook and before the form: this dialog is two lists and the
+  // After every hook and before the form: this dialog is three lists and the
   // fields that consume them, and a list that did not arrive is not an empty
-  // one. Drawn anyway, the form makes two false claims — no role may be chosen
-  // and nobody in the installation may supervise this account — and refuses
-  // every submit with a sentence about a field the administrator did fill in.
-  const failed = readFailure(roles, candidates)
+  // one. Drawn anyway, the form makes three false claims — no role may be
+  // chosen, this installation has no departments to grant, and nobody in it may
+  // supervise this account — and refuses every submit with a sentence about a
+  // field the administrator did fill in.
+  const failed = readFailure(roles, departments, candidates)
   if (failed) {
     return (
       <Dialog open={open} onClose={onClose} title="کاربر تازه">
         <LoadFailedScreen message={failed.message} error={failed.error}
-          onRetry={() => { void roles.refetch(); void candidates.refetch() }} />
+          onRetry={() => {
+            // All three, whichever one failed: a query in `error` refetches on
+            // nothing but being asked, so retrying only the two that were
+            // already fine would leave the same screen on the press.
+            void roles.refetch(); void departments.refetch(); void candidates.refetch()
+          }} />
       </Dialog>
     )
   }

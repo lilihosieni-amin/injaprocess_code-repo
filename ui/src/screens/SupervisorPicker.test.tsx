@@ -77,6 +77,24 @@ const RAHA: SupervisorCandidate = {
   scopes: ['dept:dining/report:steps'], canSupervise: true,
 }
 
+/**
+ * Somebody holding a scope **the grammar refuses**, which is a stored row and
+ * not a hypothesis: `user_scopes.scope` is `TEXT NOT NULL` with no CHECK, so
+ * `''`, `dept:Dining` and this — a bare `admin`, the shape a role name written
+ * into the scope column would take — are all reachable today.
+ *
+ * Distinct from `RAHA` above on the one axis that matters here. Hers is a
+ * *well-formed* scope carrying a kind this build has no wording for, so it
+ * exercises `reportLabel`; this one `parseScope` refuses outright, which is a
+ * different branch of `scopeLabel` and the one whose mutant is dangerous:
+ * rendered as `EVERY_DEPARTMENT`, an account covered by **nothing** is offered
+ * to an administrator as one that reaches **everything**.
+ */
+const MINA: SupervisorCandidate = {
+  id: 36, username: '09127777777', displayName: 'مینا دهقان',
+  scopes: ['admin'], canSupervise: true,
+}
+
 /** `staysPut` defaults to true — the edit-form case the component was written
  *  for, an existing account whose supervisor and scopes are both unchanged. The
  *  one test below that passes `false` is what separates the note's guard from
@@ -154,6 +172,24 @@ describe('the supervisor picker', () => {
       .toHaveAccessibleName(/سالن \(فقط راهنمای گام‌به‌گام\)/))
     // …and not as the whole department, which is more than she reaches.
     expect(screen.queryByRole('radio', { name: /رها فرجی\s*—\s*سالن$/ })).toBeNull()
+  })
+
+  it('quotes a scope the grammar refuses, rather than calling it everything', async () => {
+    // **The fourth shape, and the only one whose mutant is an escalation on
+    // screen.** `scopeLabel`'s refused branch returning `EVERY_DEPARTMENT`
+    // instead of the stored string left the whole frontend suite green while
+    // writing «مینا دهقان — همهٔ دپارتمان‌ها» beside somebody covered by
+    // nothing at all — in the one list an administrator picks an org-chart edge
+    // out of, where a `*` holder is exactly who they are looking for.
+    //
+    // The stored row really is reachable: `user_scopes.scope` is `TEXT NOT NULL`
+    // with no CHECK. Quoted verbatim it is legible and obviously wrong, which is
+    // the honest thing to draw; translated upward it is invisible and false.
+    mount({ candidates: [MINA] })
+    await waitFor(() => expect(screen.getByRole('radio', { name: /مینا دهقان/ }))
+      .toHaveAccessibleName(/—\s*admin/))
+    expect(screen.getByRole('radio', { name: /مینا دهقان/ }))
+      .not.toHaveAccessibleName(/همهٔ دپارتمان‌ها/)
   })
 
   it('keeps the server\'s order, re-sorting nothing', async () => {

@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react'
+import { useDepartments } from '../api/hooks'
 import { useModifyUser, useRoles, useSupervisorCandidates } from '../api/users'
 import { refusalText } from '../lib/refusal'
 import { draftPatch, draftProblem, readFailure, type UserDraft } from '../lib/userDraft'
@@ -55,6 +56,10 @@ export function EditUserDialog({ user, open, onClose }: {
   const [draft, setDraft] = useState<UserDraft>(was)
   const [problem, setProblem] = useState<string | undefined>(undefined)
   const roles = useRoles()
+  // The registry the scope fieldset is drawn from, asked for here as well as
+  // inside `UserFields` so that a failure has somewhere to be reported. Same
+  // query key, so react-query answers both from one request.
+  const departments = useDepartments()
   // This very account, excluded: nobody may be offered as their own supervisor,
   // and `eligible_supervisors` takes `excluding` as a required keyword so that
   // forgetting it is impossible rather than silent.
@@ -99,13 +104,20 @@ export function EditUserDialog({ user, open, onClose }: {
   // say «کسی نمی‌تواند سرپرست این کاربر باشد؛ دامنهٔ دسترسی را کم‌تر کنید…» —
   // advice to shrink an account, about an installation it had learned nothing
   // about — directly above «سرپرست کنونی در این فهرست نیست», said of an active,
-  // eligible supervisor who was simply not in a list that never arrived.
-  const failed = readFailure(roles, candidates)
+  // eligible supervisor who was simply not in a list that never arrived. With
+  // `/api/departments` answering 500 it drew an account holding two grants as an
+  // account holding none, and said nothing about the read at all.
+  const failed = readFailure(roles, departments, candidates)
   if (failed) {
     return (
       <Dialog open={open} onClose={onClose} title="ویرایش کاربر">
         <LoadFailedScreen message={failed.message} error={failed.error}
-          onRetry={() => { void roles.refetch(); void candidates.refetch() }} />
+          onRetry={() => {
+            // All three, whichever one failed: a query in `error` refetches on
+            // nothing but being asked, so retrying only the two that were
+            // already fine would leave the same screen on the press.
+            void roles.refetch(); void departments.refetch(); void candidates.refetch()
+          }} />
       </Dialog>
     )
   }

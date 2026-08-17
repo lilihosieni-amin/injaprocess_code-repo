@@ -3,7 +3,8 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
-import { CANDIDATES_UNREADABLE, ROLES_UNREADABLE } from '../lib/userDraft'
+import { CANDIDATES_UNREADABLE, DEPARTMENTS_UNREADABLE, ROLES_UNREADABLE } from '../lib/userDraft'
+import { EVERY_DEPARTMENT } from '../lib/scopes'
 import { UNDRAWABLE_SCOPES } from './UserFields'
 import { UserDetail } from './UserDetail'
 import type { AdminUser, Role, SupervisorCandidate } from '../api/users'
@@ -121,8 +122,46 @@ const RAHA_UNSCOPED: AdminUser = { ...RAHA, scopes: [] }
 
 /** A report kind this build has no wording for — the server may know one before
  *  the UI does, and `exports.EXPORT_KINDS` is where the two meet. The form draws
- *  no box for it, must not silently drop it, and must say it is there. */
+ *  no box for it, must not silently drop it, and must say it is there.
+ *
+ *  **Note what this fixture is not.** Its scope is *well formed*:
+ *  `parseScope` returns `{shape: 'report', code: 'dining', report: 'daily'}` and
+ *  it is `reportLabel` that has no wording. It therefore says nothing whatever
+ *  about the branch that handles a scope the grammar **refuses** — which is a
+ *  different clause in `UserFields` and a different branch in `scopeLabel`.
+ *  `RAHA_REFUSED` below is the fixture for that one. */
 const RAHA_UNKNOWN_KIND: AdminUser = { ...RAHA, scopes: ['dept:dining/report:daily'] }
+
+/**
+ * **There is deliberately no fixture here holding a scope the grammar refuses.**
+ * It would not reach this dialog: `mayManage`'s scope clause runs every one of
+ * the target's scopes through `scopeContains`, which answers `false` for a
+ * malformed argument even to a `*` holder — so such an account is covered by
+ * nobody, `UserDetail` draws no «ویرایش کاربر» button on it, and the server
+ * answers the same `SCOPE_NOT_COVERED`. A fixture written for it here fails on
+ * the *button*, before the fieldset it claims to be about is ever on screen.
+ *
+ * The fieldset's own promise about that row is pinned where the input can
+ * actually be supplied — `UserFields.test.tsx`, which renders the component
+ * directly — and the rendering half, which **is** reachable in the running app,
+ * is pinned in `SupervisorPicker.test.tsx`: `eligible_supervisors` reads
+ * containment, an account holding no scope row at all is vacuously covered by
+ * everybody, and so a candidate whose own stored scope the grammar refuses is
+ * really offered for one.
+ */
+
+/**
+ * Two grants of two different shapes — a whole department and one report of
+ * another. **The account the departments read failing is worst for**: with
+ * `/api/departments` answered 500 the fieldset had one block per department and
+ * therefore none, so both of these were drawn as nothing at all.
+ *
+ * Two shapes rather than two departments, so that the pair separates a form
+ * which lost the department blocks from one which merely mislaid a checkbox.
+ */
+const RAHA_TWO_GRANTS: AdminUser = {
+  ...RAHA, scopes: ['dept:cooking', 'dept:dining/report:steps'],
+}
 
 interface Seen {
   gets: string[]
@@ -172,6 +211,16 @@ function stubServer(user: AdminUser, opts: {
    *  `rolesStatus` because the two produce different false claims and each has
    *  to be reachable on its own. */
   candidatesStatus?: number
+  /**
+   * The same, for `GET /api/departments` — **the same defect one read further
+   * out**, and the one no option in this file could reach until now.
+   *
+   * The scope fieldset draws one block per department out of this registry, so
+   * a failure left it with `*` and nothing else: an account holding
+   * `dept:cooking` and `dept:dining/report:steps` opened with both grants drawn
+   * as no grant at all, and no notice that anything was missing.
+   */
+  departmentsStatus?: number
   writeStatus?: number
   writeDetail?: unknown
   statusText?: string
@@ -180,10 +229,11 @@ function stubServer(user: AdminUser, opts: {
   let candidates = opts.candidates ?? [KEYVAN, ARASH]
   let rolesStatus = opts.rolesStatus ?? 200
   let candidatesStatus = opts.candidatesStatus ?? 200
+  let departmentsStatus = opts.departmentsStatus ?? 200
   const seen: Seen = {
     gets: [], writes: [],
     setCandidates: (next) => { candidates = next },
-    healReads: () => { rolesStatus = 200; candidatesStatus = 200 },
+    healReads: () => { rolesStatus = 200; candidatesStatus = 200; departmentsStatus = 200 },
   }
   vi.stubGlobal('fetch', vi.fn(async (path: string, init?: RequestInit) => {
     if (init?.method && init.method !== 'GET') {
@@ -208,7 +258,9 @@ function stubServer(user: AdminUser, opts: {
     if (path === '/api/roles') {
       return rolesStatus === 200 ? json(ROLES) : json({ detail: 'نه' }, rolesStatus)
     }
-    if (path === '/api/departments') return json(DEPARTMENTS)
+    if (path === '/api/departments') {
+      return departmentsStatus === 200 ? json(DEPARTMENTS) : json({ detail: 'نه' }, departmentsStatus)
+    }
     if (path.startsWith('/api/users/supervisor-candidates')) {
       if (opts.stallCandidates) return new Promise<Response>(() => {})
       if (candidatesStatus !== 200) return json({ detail: 'نه' }, candidatesStatus)
@@ -547,6 +599,7 @@ describe('the scope fieldset', () => {
     await waitFor(() => expect(seen.writes).toHaveLength(1))
     expect(seen.writes[0].body.scopes).toEqual(['dept:dining/report:daily', 'dept:cashier'])
   })
+
 })
 
 describe('when one of the dialog\'s own reads fails', () => {
@@ -595,6 +648,44 @@ describe('when one of the dialog\'s own reads fails', () => {
     seen.healReads()
     await userEvent.click(screen.getByRole('button', { name: 'تلاش دوباره' }))
     expect(await screen.findByRole('radio', { name: /آرش تهرانی/ })).toBeChecked()
+  })
+
+  it('says the department registry did not load, instead of drawing two grants as none', async () => {
+    // **The third read, and the same defect one further out.** `/api/departments`
+    // is what the scope fieldset draws its blocks from, and the old code took
+    // `data` alone and gated the undrawable notice on `data === undefined` — so
+    // a 500 and a request still in flight were one state. Rendered, the form was
+    // «همهٔ دپارتمان‌ها», «می‌تواند سرپرست دیگران باشد», and nothing else:
+    // Raha's `dept:cooking` and `dept:dining/report:steps` both drawn as no
+    // grant at all, with no word about the read, to the one person who acts on
+    // it. It could write nothing wrong — `draftPatch` omits scopes nobody
+    // touched — which is exactly why nothing caught it.
+    stubServer(RAHA_TWO_GRANTS, { departmentsStatus: 500 })
+    mountDetail(11)
+    await openFailedDialog()
+    expect(await screen.findByText(DEPARTMENTS_UNREADABLE)).toBeInTheDocument()
+    // Not the fieldset with its two surviving boxes: «همهٔ دپارتمان‌ها»
+    // unticked, beside no departments whatever, is a picture of an account that
+    // reaches nothing, and this dialog has learned nothing about what she reaches.
+    expect(screen.queryByRole('checkbox', { name: EVERY_DEPARTMENT })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'ثبت تغییرات' })).toBeNull()
+  })
+
+  it('retries the department registry too, and draws both grants once it arrives', async () => {
+    // The retry has to refetch **the read that failed**: a query sitting in
+    // `error` refetches on nothing but being asked, so a handler that renewed
+    // only the two that were already fine would answer the press with the very
+    // same screen. And the grants are asserted, not merely the form: a fieldset
+    // that came back empty would be the original defect wearing a retry button.
+    const seen = stubServer(RAHA_TWO_GRANTS, { departmentsStatus: 500 })
+    mountDetail(11)
+    await openFailedDialog()
+    await screen.findByText(DEPARTMENTS_UNREADABLE)
+    seen.healReads()
+    await userEvent.click(screen.getByRole('button', { name: 'تلاش دوباره' }))
+    expect(await screen.findByRole('checkbox', { name: 'دپارتمان پخت' })).toBeChecked()
+    expect(screen.getByRole('checkbox', { name: DINING_STEPS })).toBeChecked()
+    expect(screen.getByRole('checkbox', { name: EVERY_DEPARTMENT })).not.toBeChecked()
   })
 })
 

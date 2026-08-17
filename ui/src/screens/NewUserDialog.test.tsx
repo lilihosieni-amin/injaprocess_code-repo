@@ -3,7 +3,8 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
-import { CANDIDATES_UNREADABLE, ROLES_UNREADABLE } from '../lib/userDraft'
+import { CANDIDATES_UNREADABLE, DEPARTMENTS_UNREADABLE, ROLES_UNREADABLE } from '../lib/userDraft'
+import { EVERY_DEPARTMENT } from '../lib/scopes'
 import { Users } from './Users'
 import type { AdminUser, Role, SupervisorCandidate } from '../api/users'
 import type { SessionDescriptor } from '../auth/session'
@@ -118,6 +119,15 @@ function stubServer(opts: {
   /** The same, for `GET /api/users/supervisor-candidates`. Separate, because the
    *  two produce different false claims. */
   candidatesStatus?: number
+  /**
+   * The same, for `GET /api/departments` — **the same defect one read further
+   * out**, and the one no option in this file could reach until now.
+   *
+   * The scope fieldset draws one block per department out of this registry, so
+   * a failure left the create form offering «همهٔ دپارتمان‌ها» and nothing
+   * narrower: the only reach an account could be given was everything.
+   */
+  departmentsStatus?: number
   createStatus?: number
   createDetail?: unknown
   statusText?: string
@@ -128,11 +138,12 @@ function stubServer(opts: {
   let stalled = false
   let rolesStatus = opts.rolesStatus ?? 200
   let candidatesStatus = opts.candidatesStatus ?? 200
+  let departmentsStatus = opts.departmentsStatus ?? 200
   const seen: Seen = {
     gets: [], writes: [],
     setCandidates: (next) => { candidates = next },
     stallCandidates: () => { stalled = true },
-    healReads: () => { rolesStatus = 200; candidatesStatus = 200 },
+    healReads: () => { rolesStatus = 200; candidatesStatus = 200; departmentsStatus = 200 },
   }
   vi.stubGlobal('fetch', vi.fn(async (path: string, init?: RequestInit) => {
     if (init?.method && init.method !== 'GET') {
@@ -158,7 +169,9 @@ function stubServer(opts: {
     if (path === '/api/roles') {
       return rolesStatus === 200 ? json(roles) : json({ detail: 'نه' }, rolesStatus)
     }
-    if (path === '/api/departments') return json(DEPARTMENTS)
+    if (path === '/api/departments') {
+      return departmentsStatus === 200 ? json(DEPARTMENTS) : json({ detail: 'نه' }, departmentsStatus)
+    }
     if (path.startsWith('/api/users/supervisor-candidates')) {
       if (stalled) return new Promise<Response>(() => {})
       if (candidatesStatus !== 200) return json({ detail: 'نه' }, candidatesStatus)
@@ -561,6 +574,37 @@ describe('when one of the create dialog\'s own reads fails', () => {
     seen.healReads()
     await userEvent.click(screen.getByRole('button', { name: 'تلاش دوباره' }))
     expect(await screen.findByRole('option', { name: 'خواننده' })).toBeInTheDocument()
+  })
+
+  it('says the department registry did not load, instead of offering «everything» as the only reach', async () => {
+    // **The third read, and the same defect one further out.** The fieldset
+    // draws one block per department out of `/api/departments`, so a 500 left
+    // exactly two boxes on the form — «همهٔ دپارتمان‌ها» and «می‌تواند سرپرست
+    // دیگران باشد» — and said nothing about why. On the create form that is not
+    // merely a wrong picture: the only reach an account could then be given was
+    // everything, and «همهٔ دپارتمان‌ها» is the one grant that also switches
+    // «بدون سرپرست» on (D51). An administrator who wanted a dining-room reader
+    // is offered the `*` box and no other way through the form.
+    stubServer({ departmentsStatus: 500 })
+    mountList()
+    await openFailedDialog()
+    expect(await screen.findByText(DEPARTMENTS_UNREADABLE)).toBeInTheDocument()
+    expect(screen.queryByRole('checkbox', { name: EVERY_DEPARTMENT })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'ساخت کاربر' })).toBeNull()
+  })
+
+  it('retries the department registry too, and draws its boxes once it arrives', async () => {
+    // The retry has to refetch the read that failed — a query sitting in `error`
+    // refetches on nothing but being asked — and the departments themselves are
+    // what has to come back, not merely the form around them.
+    const seen = stubServer({ departmentsStatus: 500 })
+    mountList()
+    await openFailedDialog()
+    await screen.findByText(DEPARTMENTS_UNREADABLE)
+    seen.healReads()
+    await userEvent.click(screen.getByRole('button', { name: 'تلاش دوباره' }))
+    expect(await screen.findByRole('checkbox', { name: 'دپارتمان سالن' })).toBeInTheDocument()
+    expect(screen.getByRole('checkbox', { name: DINING_STEPS })).toBeInTheDocument()
   })
 })
 

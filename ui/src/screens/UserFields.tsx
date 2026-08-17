@@ -56,7 +56,13 @@ export function UserFields({
   const nameId = useId()
   const numberId = useId()
   const roleId = useId()
-  const { data: departments } = useDepartments()
+  // The whole query, not `data` alone. A failed read and an empty registry are
+  // different facts and `data ?? []` renders them identically — which is the
+  // defect this fieldset's own notice exists to end, one read further out. Both
+  // dialogs stand a `LoadFailedScreen` in front of this component when this
+  // query errored (`readFailure`); the gate below is what keeps the component
+  // honest on its own.
+  const departments = useDepartments()
 
   function setScopes(next: string[]) {
     onChange({ ...draft, scopes: next })
@@ -119,11 +125,14 @@ export function UserFields({
     ])
   }
 
-  const names = Object.fromEntries((departments ?? []).map((d) => [d.code, d.name]))
-  // Only once the registry has arrived: while `/api/departments` is in flight
-  // every department scope is "one this form draws no box for", and the notice
-  // would flash on a perfectly ordinary account.
-  const undrawable = departments === undefined ? [] : draft.scopes.filter((s) => {
+  const names = Object.fromEntries((departments.data ?? []).map((d) => [d.code, d.name]))
+  // **`isPending`, not `data === undefined`.** Silence is right only while the
+  // registry is still on its way — in flight, every department scope is "one
+  // this form draws no box for" and the notice would flash on a perfectly
+  // ordinary account. A read that *failed* has the same undefined `data` and the
+  // opposite meaning: every scope really is undrawable, and saying nothing tells
+  // an administrator the account holds no departments when it holds two.
+  const undrawable = departments.isPending ? [] : draft.scopes.filter((s) => {
     const parsed = parseScope(s)
     if (parsed.shape === 'every') return false
     if (parsed.shape === 'refused') return true
@@ -201,7 +210,7 @@ export function UserFields({
             className="w-s8 h-s8 accent-violet" />
           <span className="text-body text-ink">{EVERY_DEPARTMENT}</span>
         </label>
-        {(departments ?? []).map((d) => (
+        {(departments.data ?? []).map((d) => (
           <div key={d.code}
             className="flex flex-col gap-s1 border border-line rounded-control px-s6 py-s3">
             <label className="flex items-center gap-s5 min-h-touch cursor-pointer">
