@@ -133,6 +133,56 @@ export function shadowOf(computed: string): string {
   return painted.length ? painted.join(', ') : 'none'
 }
 
+/** A colour that paints nothing: `rgba(r, g, b, 0)`, or the keyword. */
+function transparent(colour: string): boolean {
+  if (colour === 'transparent') return true
+  const alpha = /^rgba\(\s*[\d.]+\s*,\s*[\d.]+\s*,\s*[\d.]+\s*,\s*([\d.]+)\s*\)$/.exec(colour.trim())
+  return alpha !== null && Number(alpha[1]) === 0
+}
+
+/* ------------------------------------------------------------------ *
+ * grid track counting
+ * ------------------------------------------------------------------ */
+
+/**
+ * How many columns a computed `grid-template-columns` really draws.
+ *
+ * Not a whitespace-token count, which is what this used to be, and which is
+ * wrong twice — both measured in Chrome 150 on this repo:
+ *
+ * 1. **A grid that is not laid out reports its *specified* value.** Prepend
+ *    `<div data-grid class="hidden grid-cols-1">` inside `[data-col]` and Chrome
+ *    answers `repeat(1, minmax(0px, 1fr))` — three whitespace tokens, which a
+ *    naive count reads as "3 columns". A hidden one-column decoy then satisfies
+ *    a three-column assertion, silently. That is refused here rather than
+ *    counted: any `f(…)` in the value means the track list was never resolved,
+ *    so the element is `display:none` or inside something that is. (`hook()`
+ *    also requires the grid to be **visible**, so this is the second of two
+ *    independent kills.)
+ * 2. **Named grid lines are not tracks.** `[a] 545px [b] 545px` is a two-column
+ *    grid and counts four whitespace tokens. Only bare `px`/`fr` lengths count.
+ *
+ * A used value is always a plain length list — Chrome resolves `repeat()`,
+ * `minmax()`, `fit-content()`, `auto` and percentages to `px` for a grid that
+ * has layout. Measured on the departments grid at 1440: `361.328px 361.328px
+ * 361.344px` → 3.
+ */
+export function trackCount(computed: string): number {
+  const value = computed.trim()
+  if (value === '' || value === 'none') return 0
+  if (/[a-zA-Z-]+\(/.test(value)) {
+    throw new Error(
+      `_harness: \`grid-template-columns: ${value}\` is a **specified** value, not a used one. ` +
+      'Chrome only resolves a track list for a grid that is laid out, so this element is ' +
+      '`display:none` or inside something that is — measure a visible grid, or point ' +
+      '`grid.selector` at the twin that is on screen at this width. (Counting the whitespace ' +
+      'tokens of `repeat(1, minmax(0px, 1fr))` is how a hidden one-column decoy used to pass a ' +
+      'three-column assertion.)',
+    )
+  }
+  return value.split(/\s+/).filter((t) => /^-?[\d.]+(px|fr)$/.test(t)).length
+}
+
 /* ------------------------------------------------------------------ *
  * padding shorthand
  * ------------------------------------------------------------------ */
@@ -203,7 +253,12 @@ export interface ScreenDesign {
     border?: PerWidth<string>
     background?: PerWidth<string>
   }
-  /** A selector **inside the screen**; its border must turn coral on focus. */
+  /**
+   * A focusable selector **inside the screen**; focusing it must raise a coral
+   * indicator that was not there at rest. See `expectFocusIndicator` for the
+   * two idioms this codebase actually ships and why "a coral border" alone is
+   * not the assertion.
+   */
   focus?: string
   /** A selector **inside the screen**; its transform must become the -2px lift. */
   lift?: string
@@ -228,6 +283,15 @@ export const DESIGN = {
     column: '1120px',
     // 1440 − 80 of screen padding is capped by the 1120 column; 1080 and 760 are not.
     columnWidth: { 1440: '1120px', 1080: '1000px', 760: '680px' },
+    // §6.16 requires `[data-r-pad]{padding:18px 14px}` at ≤760px and the screen
+    // ships one padding at every width — `Departments.tsx` writes a bare
+    // `pt-[38px] pb-12 px-10` with no `max760:` variant, so the mobile viewport
+    // gets the desktop's 40px side padding. That is the same R7 defect the grid
+    // line below records, and the same task closes it: **Task 14 rewrites the
+    // line below as a per-width record — `{ 1440: '38px 40px 48px', 1080: '38px
+    // 40px 48px', 760: '18px 14px' }` — in the same commit that adds
+    // `max760:px-s7 max760:py-s9` to the screen.** Until then this states what
+    // the screen *does*, so the mutant that changes the padding dies today.
     padding: '38px 40px 48px',
     h1: { size: '34px', weight: '800', color: ON_FIELD },
     body: { size: '14px', color: ON_FIELD_MUTED },
@@ -339,6 +403,14 @@ export async function serve(page: Page, table: Record<string, unknown>) {
     if (!pathname.startsWith('/api/')) {
       throw new Error(`serve(): \`${key}\` is not an /api/ path; nothing else is intercepted`)
     }
+    if (s.table.has(pathname)) {
+      throw new Error(
+        `serve(): \`${pathname}\` is stubbed twice. A query string in a key is documentation, ` +
+        'not a discriminator — only the pathname is matched — so the second fixture would ' +
+        'silently replace the first and the request the first was written for would be ' +
+        'answered with the wrong body. Write one fixture per pathname.',
+      )
+    }
     s.table.set(pathname, JSON.stringify(value))
   }
 }
@@ -349,11 +421,29 @@ export async function serve(page: Page, table: Record<string, unknown>) {
  * Called by `expectDesign` and by `shot`. A screen that grows a new read and
  * forgets to stub it fails here, naming the pathname, instead of quietly
  * grading whatever the container on `:8000` happened to hold.
+ *
+ * **A spec that registered nothing fails hardest of all.** The empty-list form
+ * this used to take — `s ? [...s.unstubbed] : []` — reported a clean bill of
+ * health for the one case where *nothing at all* was intercepted: no
+ * `signedIn`, no `serve`, therefore no `page.route`, therefore every `/api/`
+ * request leaves the browser, is proxied by vite to the FastAPI container on
+ * `:8000`, and is answered by it. Measured on this repo: an unstubbed
+ * `GET /api/pending?department=cooking` came back `401
+ * {"detail":"authentication required"}` — a real response, from a real
+ * database, in a check whose whole premise is that it grades the working tree.
  */
 export async function expectEveryEndpointStubbed(page: Page) {
   const s = STUBS.get(page)
+  if (!s) {
+    throw new Error(
+      'this spec registered no stubs at all — call `signedIn(page)` and `serve(page, …)` ' +
+      'before `page.goto`. With no page.route installed nothing is intercepted: every /api/ ' +
+      'request reaches the vite proxy and the FastAPI container on :8000, which is listening ' +
+      'and answers, so the check would be grading a live database instead of the working tree.',
+    )
+  }
   expect(
-    s ? [...s.unstubbed].sort() : [],
+    [...s.unstubbed].sort(),
     'endpoints the spec never stubbed — add them to serve()',
   ).toEqual([])
 }
@@ -371,12 +461,150 @@ const css = (page: Page, selector: string, prop: string) =>
     prop,
   )
 
-/** Names a missing hook in ~5s instead of timing out for 30 inside `evaluate`. */
+/**
+ * Names a missing hook in ~5s instead of timing out for 30 inside `evaluate`,
+ * and refuses to measure one that is **not on screen**.
+ *
+ * Attached-only was not enough. Every read here is `.first()`, so the hook the
+ * harness grades is the first in document order — and twenty-one screens are
+ * about to carry `max760:hidden` twins, overlays and `display:none` scaffolding
+ * wearing the same attributes. A hidden element does not merely look wrong, it
+ * *reads* wrong: Chrome answers a `display:none` grid's `grid-template-columns`
+ * with its specified value (see `trackCount`), so a hidden one-column decoy
+ * satisfied a three-column assertion. Where a screen legitimately has two
+ * twins, point `grid.selector` at the one that is on screen at this width.
+ */
 async function hook(page: Page, selector: string, what: string) {
+  const el = page.locator(selector).first()
   await expect(
-    page.locator(selector).first(),
+    el,
     `missing measurement hook: ${what} — nothing matches \`${selector}\``,
   ).toBeAttached({ timeout: HOOK_TIMEOUT })
+  await expect(
+    el,
+    `hidden measurement hook: ${what} — \`${selector}\` resolves first to an element that is ` +
+    'not visible. A hidden twin is measured with the wrong values, not skipped; give the ' +
+    'visible one a distinct selector.',
+  ).toBeVisible({ timeout: HOOK_TIMEOUT })
+}
+
+/* ------------------------------------------------------------------ *
+ * focus
+ * ------------------------------------------------------------------ */
+
+/** Everything that can carry a focus indicator, read in one pass. */
+interface FocusState {
+  borderColor: string
+  borderWidth: string
+  outlineStyle: string
+  outlineColor: string
+  outlineWidth: string
+  shadow: string
+}
+
+const focusState = (page: Page, selector: string): Promise<FocusState> =>
+  page.locator(selector).first().evaluate((el) => {
+    const cs = getComputedStyle(el)
+    return {
+      borderColor: cs.getPropertyValue('border-top-color'),
+      borderWidth: cs.getPropertyValue('border-top-width'),
+      outlineStyle: cs.getPropertyValue('outline-style'),
+      outlineColor: cs.getPropertyValue('outline-color'),
+      outlineWidth: cs.getPropertyValue('outline-width'),
+      shadow: cs.getPropertyValue('box-shadow'),
+    }
+  })
+
+/** A border that is actually drawn, in the focus colour. */
+const coralBorder = (s: FocusState) =>
+  s.borderColor === FOCUS && parseFloat(s.borderWidth) > 0
+
+/** A ring that is actually drawn — `outline-none` is a *transparent* outline. */
+const paintsRing = (s: FocusState) =>
+  s.outlineStyle !== 'none' && parseFloat(s.outlineWidth) > 0 && !transparent(s.outlineColor)
+
+/**
+ * Focusing this control raises a coral indicator, and nothing else.
+ *
+ * **This is the assertion that had never run.** No `DESIGN` row set `focus` and
+ * no spec exercised it, so the branch was furniture — and measured against the
+ * two focus idioms that exist in `src/`, the version it replaced could not pass
+ * on either:
+ *
+ * | | `<input … outline-none focus:border-coral>` (21 sites) | `<button>` (`Button.tsx`, coral) |
+ * |---|---|---|
+ * | `border-top-color` on focus | `rgb(250, 90, 82)` ✓ | `rgb(229, 231, 235)` at **0px** — `border-0` ✗ |
+ * | `shadowOf(box-shadow)` | `none` ✓ | `rgba(250, 90, 82, 0.9) 0px 12px 26px -12px` (`shadow-coral`, at rest too) ✗ |
+ * | `outline` on focus | `solid 2px rgba(0, 0, 0, 0)` — Tailwind's `outline-none` beats `base.css` ✗ | `solid 3px rgb(250, 90, 82)` ✓ |
+ *
+ * A "coral border, no box-shadow, coral outline" rule goes red on every real
+ * control in the repo, and the cheap repair — weakening it — would have been
+ * enshrined twenty-one times. So the assertion is the guarantee that is
+ * genuinely true of both, and it is written as a **difference**, which is what
+ * makes it able to fail:
+ *
+ * 1. focus raises a coral indicator — the design's border (§4.6:
+ *    `border-color:#FA5A52`, 15 of 15 declarations) **or** the app-wide ring
+ *    `base.css` F11 adds for keyboard users (`outline: 3px solid var(--coral)`);
+ * 2. it was **not** there at rest, so a permanently coral control cannot pass;
+ * 3. nothing non-coral appears with it — no second focus idiom;
+ * 4. no glow is *added*: `shadowOf` must be unchanged, which holds a button's
+ *    resting `shadow-coral` harmless while still killing a `focus:shadow-…`.
+ *
+ * It then blurs, and requires the indicator to go away — otherwise `shot()`
+ * would photograph a focus ring the design does not draw, which is exactly the
+ * defect I5 fixed for hover.
+ */
+export async function expectFocusIndicator(page: Page, selector: string, label: string) {
+  const el = page.locator(selector).first()
+  const rest = await focusState(page, selector)
+
+  await el.focus()
+  await expect(el, `${label}: \`${selector}\` did not take focus — is it focusable?`).toBeFocused()
+  const held = await focusState(page, selector)
+
+  const seen = ` (at rest ${JSON.stringify(rest)}; focused ${JSON.stringify(held)})`
+  const borderChanged = held.borderColor !== rest.borderColor || held.borderWidth !== rest.borderWidth
+  const ringChanged = held.outlineColor !== rest.outlineColor ||
+    held.outlineStyle !== rest.outlineStyle || held.outlineWidth !== rest.outlineWidth
+
+  expect(
+    coralBorder(held) || (paintsRing(held) && held.outlineColor === FOCUS),
+    `${label}: focusing \`${selector}\` draws no coral indicator — §4.6's coral border, or the ` +
+    'coral ring base.css F11 adds, must appear. Note that Tailwind\'s `outline-none` is a ' +
+    'transparent 2px outline that beats the F11 rule, so a control wearing it must bring its ' +
+    'own `focus:border-coral`.' + seen,
+  ).toBe(true)
+
+  expect(
+    borderChanged || ringChanged,
+    `${label}: nothing changed when \`${selector}\` took focus — the indicator this asserts is ` +
+    'already there at rest, so the assertion cannot fail and is not an indicator.' + seen,
+  ).toBe(true)
+
+  if (borderChanged) {
+    expect(held.borderColor, `${label}: focus border colour`).toBe(FOCUS)
+  }
+  if (paintsRing(held)) {
+    expect(held.outlineColor, `${label}: focus ring colour`).toBe(FOCUS)
+  }
+  expect(
+    shadowOf(held.shadow),
+    `${label}: focus added a glow — §4.6 declares none (the resting shadow is allowed to stay)`,
+  ).toBe(shadowOf(rest.shadow))
+
+  // Leave the control as it was found: `shot()` runs after `expectDesign`, and
+  // a still-focused control would put a 3px coral ring in every reference image.
+  await el.blur()
+  await expect
+    .poll(async () => {
+      const after = await focusState(page, selector)
+      return coralBorder(after) || paintsRing(after)
+    }, {
+      message: `${label}: \`${selector}\` still shows a focus indicator after blur`,
+      timeout: HOOK_TIMEOUT,
+    })
+    .toBe(false)
 }
 
 /** Asserts the screen's computed values against the design's numbers. */
@@ -435,8 +663,7 @@ export async function expectDesign(page: Page, screen: keyof typeof DESIGN) {
     const grid = within(d.grid.selector ?? '[data-grid]')
     await hook(page, grid, d.grid.selector ?? 'data-grid')
     const tracks = await css(page, grid, 'grid-template-columns')
-    const count = tracks === 'none' ? 0 : tracks.trim().split(/\s+/).length
-    expect(count, `${screen}: grid columns at ${w}px (grid-template-columns: ${tracks})`)
+    expect(trackCount(tracks), `${screen}: grid columns at ${w}px (grid-template-columns: ${tracks})`)
       .toBe(atWidth(w, d.grid.columns))
   }
 
@@ -466,20 +693,7 @@ export async function expectDesign(page: Page, screen: keyof typeof DESIGN) {
   if (d.focus) {
     const target = within(d.focus)
     await hook(page, target, `focus target \`${d.focus}\``)
-    await page.locator(target).first().focus()
-    expect(await css(page, target, 'border-top-color'), `${screen}: focus border`).toBe(FOCUS)
-    // §4.6 — a coral border, and no glow. The design paints no ring either, but
-    // `src/styles/base.css` does: F11 sets `:focus-visible { outline: 3px solid
-    // var(--coral); outline-offset: 2px }` app-wide, deliberately, so that a
-    // keyboard user has an indicator the design forgot. Measured on a focused
-    // control here: `outline: solid 3px rgb(250, 90, 82)`. So the claim this
-    // asserts is the true one — no glow, and any ring that *is* drawn is the
-    // coral focus colour, never a second focus idiom — rather than the "no
-    // outline anywhere" the comment used to make while reading no outline at all.
-    expect(shadowOf(await css(page, target, 'box-shadow')), `${screen}: focus glow`).toBe('none')
-    if (await css(page, target, 'outline-style') !== 'none') {
-      expect(await css(page, target, 'outline-color'), `${screen}: focus ring colour`).toBe(FOCUS)
-    }
+    await expectFocusIndicator(page, target, `${screen}: focus`)
   }
 
   if (d.lift) {
@@ -491,6 +705,20 @@ export async function expectDesign(page: Page, screen: keyof typeof DESIGN) {
     await expect
       .poll(() => css(page, target, 'transform'), { message: `${screen}: transform on hover` })
       .toBe(LIFT)
+    // Put the pointer back where it was found. Two things depended on that and
+    // neither got it: a second `expectDesign` call on the same page read the
+    // inherited hover as the resting transform, and `shot()` — which parks the
+    // pointer itself but only after this ran — had to undo it. Polling the
+    // transform back to `none` rather than only moving the mouse also proves
+    // the lift is released, which a one-way check never did.
+    await page.mouse.move(0, 0)
+    await expect
+      .poll(() => css(page, target, 'transform'), {
+        message: `${screen}: the lift did not release when the pointer left. The pointer is ` +
+          'parked at (0, 0); a screen that reaches the top-left corner must park it elsewhere.',
+        timeout: HOOK_TIMEOUT,
+      })
+      .toBe('none')
   }
 
   await expectEveryEndpointStubbed(page)
@@ -521,14 +749,21 @@ export async function expectReducedMotion(page: Page) {
   ).toBe(true)
 }
 
-/** Anything inside a screen that changes appearance while the pointer is on it. */
-const HOVERABLE =
-  '[data-screen] [data-card]:hover, [data-screen] a:hover, [data-screen] button:hover, ' +
-  '[data-screen] [role="button"]:hover, [data-screen] input:hover, ' +
-  '[data-screen] select:hover, [data-screen] textarea:hover'
+/**
+ * Everything inside a screen that the pointer is currently over.
+ *
+ * A fixed tag list — `[data-card]`, `a`, `button`, `[role=button]`, `input`,
+ * `select`, `textarea` — was the wrong shape for this: the app's hover styles
+ * are Tailwind `hover:` utilities, and they go on whatever element the design
+ * needs, most often a `<div>`. A hovered `<div class="hover:bg-tile-v2">` sat
+ * under the shutter uncounted. Which element is hovered is not knowable from
+ * its tag, so nothing is enumerated — `:hover` is asked directly, and every
+ * descendant under the pointer answers.
+ */
+const HOVERED = '[data-screen] :hover'
 
 const hoveredCount = (page: Page) =>
-  page.evaluate((sel) => document.querySelectorAll(sel).length, HOVERABLE)
+  page.evaluate((sel) => document.querySelectorAll(sel).length, HOVERED)
 
 /** A screenshot at the running project's width, for comparison against ui/design/. */
 export async function shot(page: Page, name: string) {
@@ -538,11 +773,14 @@ export async function shot(page: Page, name: string) {
   // The camera's two preconditions, both of which the first cut of this file
   // stated and neither of which it obtained.
   //
-  // 1. Nothing is hovered. `expectDesign`'s `lift` check ends with the pointer
-  //    on card 1, and it was never moved — so every reference image the screen
-  //    tasks compare against `ui/design/` differed from the design by one
-  //    lifted, hover-shadowed tile. Measured: `{ hovered: true, transform:
+  // 1. Nothing is hovered. `expectDesign`'s `lift` check used to end with the
+  //    pointer on card 1 and never move it — so every reference image the
+  //    screen tasks compare against `ui/design/` differed from the design by
+  //    one lifted, hover-shadowed tile. Measured: `{ hovered: true, transform:
   //    matrix(1, 0, 0, 1, 0, -2) }` at the moment the shutter fired.
+  //    `expectDesign` now restores the pointer itself; this stays because
+  //    `shot()` may be called without it, and because the census below is a
+  //    stronger claim than "the mouse was moved".
   await page.mouse.move(0, 0)
   await expect
     .poll(() => hoveredCount(page), {
