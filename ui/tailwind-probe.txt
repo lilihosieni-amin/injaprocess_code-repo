@@ -1,0 +1,51 @@
+# Every utility this theme names. Listed here so Tailwind emits all of them and
+# the built CSS can be grepped for any class before a component uses it.
+# Add a line when you add a theme key; never delete one to "clean up".
+bg-bg bg-card bg-ink bg-violet bg-coral bg-green bg-conflict bg-muted bg-faint
+bg-warm bg-line bg-tile-v bg-tile-v2 bg-tile-c bg-tile-ok bg-tile-warn
+bg-tile-dead bg-login-bg bg-login-orb bg-scrim bg-warn bg-info bg-tile-info
+bg-icom-input bg-icom-control bg-icom-output bg-icom-mech
+bg-violet-mid bg-violet-edge bg-violet-on-dark bg-violet-on-dark-body
+bg-violet-on-violet bg-desk bg-tile-v3 bg-tile-v4 bg-tile-c2 bg-tile-ctl
+bg-value-current bg-hair bg-line-soft bg-line-dashed bg-border-danger
+bg-border-dead bg-border-current bg-border-ok bg-strong bg-body-ink bg-ghost
+bg-dialog-ghost bg-ink-current bg-ink-proposed bg-on-dark bg-disabled bg-ok
+bg-danger bg-warn-soft bg-info-soft bg-ok-soft bg-danger-soft bg-toast-check
+bg-junction-xor bg-junction-and bg-junction-or bg-dept-numeral-violet
+bg-dept-numeral-coral bg-steps-sub bg-steps-sub-border bg-steps-sub-hover
+bg-steps-group bg-steps-group-border bg-link bg-link-hover
+text-violet-on-dark text-violet-on-dark-body text-violet-on-violet text-strong
+text-body-ink text-ghost text-dialog-ghost text-ink-current text-ink-proposed
+text-on-dark text-disabled text-ok text-danger text-toast-check text-link
+text-link-hover text-icom-input text-icom-control text-icom-output text-icom-mech
+border-warm border-line border-line-soft border-line-dashed border-border-danger
+border-border-dead border-border-current border-border-ok border-hair
+border-steps-sub-border border-steps-group-border border-coral border-violet
+border-card
+text-fs-display text-fs-h1 text-fs-h2 text-fs-h3 text-fs-h4 text-fs-h5
+text-fs-lg text-fs-body text-fs-sm text-fs-sm2 text-fs-xs text-fs-xxs
+text-fs-micro text-fs-doc-base text-fs-doc-h1 text-fs-doc-title
+text-fs-doc-step text-fs-doc-body
+text-fs-dialog text-fs-menu text-fs-caption
+text-body text-caption text-subtitle text-title text-prose
+font-sans font-mono
+font-regular font-semibold font-bold font-extrabold
+leading-tight leading-snug leading-normal leading-relaxed leading-loose
+leading-looser
+tracking-eyebrow tracking-display
+rounded-badge rounded-chip rounded-control rounded-card rounded-doc
+rounded-panel rounded-button rounded-tool rounded-input rounded-search
+rounded-tile rounded-feature rounded-pill rounded-round
+shadow-card shadow-card-hover shadow-coral shadow-violet shadow-green
+shadow-modal shadow-pop shadow-sheet shadow-drawer shadow-card-dark
+shadow-stat-dark shadow-guide-hover shadow-ring-flash shadow-conflict-dot
+p-screen-x p-screen-y p-topbar p-half px-screen-x py-screen-y gap-topbar
+p-s1 p-s2 p-s3 p-s4 p-s5 p-s6 p-s7 p-s8 p-s9 p-s10 p-s11 p-s12 p-s14 p-s16
+w-tile h-tile w-tool h-tool w-avatar h-avatar w-logo-bar h-logo-bar
+w-logo-login h-logo-login w-touch h-touch min-h-touch min-w-touch min-w-menu
+max-w-departments max-w-list max-w-summary max-w-doc max-w-drawer
+border-hairline
+transition duration-fast duration-chev
+-translate-y-lift
+backdrop-blur-scrim
+max1080:hidden max760:hidden

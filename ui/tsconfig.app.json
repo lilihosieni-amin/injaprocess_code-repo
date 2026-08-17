@@ -14,6 +14,11 @@
     "moduleDetection": "force",
     "noEmit": true,
     "jsx": "react-jsx",
+    /* src/test/theme.test.ts imports tailwind.config.js — the theme is the
+       thing under test, so it is read, not re-declared. There is no other .js
+       under src/ or export/, and checkJs stays off, so this widens inference
+       to exactly that one file. */
+    "allowJs": true,
 
     /* Linting */
     "strict": true,
