@@ -1,5 +1,4 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
-import { IconButton } from './IconButton'
 // I7 — the dismissible stack Menu.tsx also joins. Kept in its own module
 // (rather than defined and exported directly here) so this file's exports stay
 // components-only — a named non-component export from a component file trips
@@ -7,12 +6,6 @@ import { IconButton } from './IconButton'
 // the two hooks-beside-a-provider files (Toast.tsx, write/ToastProvider.tsx);
 // this file doesn't need to grow a third instance of that warning.
 import { pushDismissible, popDismissible, isTopDismissible } from './dismissibleStack'
-
-const CloseIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" width="20" height="20">
-    <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />
-  </svg>
-)
 
 const FOCUSABLE =
   'a[href],button:not([disabled]),textarea:not([disabled]),input:not([disabled]),select:not([disabled]),[tabindex]:not([tabindex="-1"])'
@@ -26,16 +19,79 @@ const FOCUSABLE =
 let openOverlays: symbol[] = []
 let savedBodyOverflow: string | null = null
 
+
+/** §3.3 — the five dialog widths S1 uses. 520px is the standard dialog. */
+const WIDTH = {
+  wide: 'max-w-dialog-wide',  // 640 — conflict inbox
+  lg: 'max-w-dialog-lg',      // 540 — change supervisor
+  md: 'max-w-dialog',         // 520 — new user, views
+  sm: 'max-w-dialog-sm',      // 460 — confirm content
+  xs: 'max-w-dialog-xs',      // 440 — confirm comment
+} as const
+
+/**
+ * Ledger L-23 — the one close control: 32x32, --tile-v2, --radius-sm glyph in
+ * --text-muted.
+ *
+ * Written here rather than as `<IconButton className="bg-tile-v2 …"/>` because
+ * that does not work: IconButton's own `bg-transparent`, `text-violet` and
+ * `rounded-control` sort AFTER those three in Tailwind's output, and emitted
+ * order — not the order of the class string — decides which of two utilities on
+ * one property wins. The skin would have been written and never painted.
+ *
+ * It keeps IconButton's accessibility contract exactly: `label` is the
+ * accessible name (the mockups rely on `title`, which never reaches a keyboard
+ * user), and the glyph is hidden from assistive technology.
+ *
+ * The 32x32 the ledger draws is NOT set here. IconButton's `min-h-touch` is the
+ * app's current rule for every icon control and this one is no exception until
+ * the drawn-size / hit-area split ships with Task 11's Icon work; setting
+ * `w-close h-close` today would be a class that paints nothing, because
+ * `min-height` beats `height`.
+ */
+function CloseButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label="بستن"
+      title="بستن"
+      className={
+        'inline-flex items-center justify-center shrink-0 min-h-touch min-w-touch ' +
+        'border-0 cursor-pointer bg-tile-v2 rounded-tool text-muted transition hover:bg-tile-v'
+      }
+    >
+      <svg aria-hidden focusable="false" viewBox="0 0 24 24" fill="none"
+        stroke="currentColor" strokeWidth="2.2" width="20" height="20">
+        <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />
+      </svg>
+    </button>
+  )
+}
+
 interface OverlayProps {
   open: boolean
   onClose: () => void
   title: string
   children: ReactNode
+  /** §5.2 — 12.5px --text-muted at lh 1.8. Every screen and dialog explains itself. */
+  subtitle?: ReactNode
+  /** A leading node in the header — an inline SVG today, <Icon/> from Task 11. */
+  icon?: ReactNode
+  /** A pinned action bar. Its children go `flex:1`, as the design's do. */
+  footer?: ReactNode
+  /** §3.3 — one of the five widths. Ignored by `sheet`, which is --width-drawer. */
+  width?: keyof typeof WIDTH
+  /** §4.5 — `blur(3px)`. The export dialog is the only case in the design. */
+  blurScrim?: boolean
   /** 'dialog' centres above the breakpoint; 'sheet' anchors to the inline start. */
   presentation?: 'dialog' | 'sheet'
 }
 
-function Overlay({ open, onClose, title, children, presentation = 'dialog' }: OverlayProps) {
+function Overlay({
+  open, onClose, title, children, subtitle, icon, footer,
+  width = 'md', blurScrim = false, presentation = 'dialog',
+}: OverlayProps) {
   const box = useRef<HTMLDivElement>(null)
   const restoreTo = useRef<HTMLElement | null>(null)
   const identity = useRef(Symbol('overlay')).current
@@ -105,19 +161,22 @@ function Overlay({ open, onClose, title, children, presentation = 'dialog' }: Ov
 
   if (!open) return null
 
-  // F5 — bottom sheet below md, panel or centred dialog above it. Written once so
-  // no screen implements its own mobile variant and none can forget to.
-  // FIX 5 — only what differs between the two presentations lives here; the shared
-  // bottom-sheet shape (full width, top-rounded below md, panel-rounded above it)
-  // is on the box below so it can't be mistaken for something that distinguishes them.
+  // §5.2 — above 760px a centred dialog at one of five widths; at or below it,
+  // every modal in the design becomes a bottom sheet: the scrim loses its
+  // padding and aligns to the end, the box goes full width, 92vh tall, and
+  // rounds only its top corners. The breakpoint is the design's 760px, not
+  // Tailwind's md (768px), which is what this used before.
+  // FIX 5 — only what differs between the two presentations lives here; the
+  // shared shape (full width, the panel radius, flat-bottomed below 760px) is
+  // on the box below so it cannot be mistaken for something that tells them apart.
   const shape =
     presentation === 'sheet'
-      ? 'max-h-[88vh] md:w-[var(--width-drawer)] md:h-full md:max-h-none md:me-auto md:ms-0'
-      : 'max-h-[92vh] md:w-auto md:max-w-[560px] md:max-h-[85vh]'
+      ? 'md:w-[var(--width-drawer)] md:h-full md:max-h-none md:me-auto md:ms-0 max-h-[88vh]'
+      : `${WIDTH[width]} max-h-[86vh] max760:max-w-full max760:max-h-[92vh]`
 
   return (
     <div
-      className="fixed inset-0 flex items-end justify-center bg-scrim md:items-center"
+      className={`fixed inset-0 flex items-center justify-center bg-scrim p-modal max760:p-0 max760:items-end ${blurScrim ? 'backdrop-blur-scrim' : ''}`}
       style={{ zIndex: 50 + depth * 10 }}
       onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}
     >
@@ -126,13 +185,25 @@ function Overlay({ open, onClose, title, children, presentation = 'dialog' }: Ov
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className={`bg-card shadow-modal overflow-auto p-6 w-full rounded-t-panel md:rounded-panel ${shape}`}
+        className={`bg-card border border-border-card shadow-modal overflow-auto p-s11 w-full rounded-panel max760:rounded-b-none ${shape}`}
       >
-        <div className="flex items-center gap-3 mb-4">
-          <h2 id={titleId} className="text-title font-extrabold text-ink m-0 flex-1">{title}</h2>
-          <IconButton label="بستن" icon={<CloseIcon />} onClick={onClose} />
+        <div className="flex items-start gap-s6 mb-s8">
+          {icon}
+          <div className="flex-1 min-w-0">
+            {/* Ledger L-16 — 18px/800, the one dialog title size. */}
+            <h2 id={titleId} className="text-fs-dialog font-extrabold text-ink m-0">{title}</h2>
+            {subtitle && (
+              <p className="text-fs-sm2 text-muted leading-sub mt-half mb-0 [text-wrap:pretty]">{subtitle}</p>
+            )}
+          </div>
+          <CloseButton onClick={onClose} />
         </div>
         {children}
+        {footer && (
+          // §5.2 — "two equal buttons" is the footer's doing here, not every
+          // caller's: gap 10px, each child flex:1.
+          <div className="flex gap-s5 mt-s10 [&>*]:flex-1">{footer}</div>
+        )}
       </div>
     </div>
   )
@@ -142,6 +213,6 @@ export function Dialog(props: Omit<OverlayProps, 'presentation'>) {
   return <Overlay {...props} presentation="dialog" />
 }
 
-export function Sheet(props: Omit<OverlayProps, 'presentation'>) {
+export function Sheet(props: Omit<OverlayProps, 'presentation' | 'width'>) {
   return <Overlay {...props} presentation="sheet" />
 }
