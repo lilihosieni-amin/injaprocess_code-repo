@@ -3,6 +3,12 @@ node_modules/
 ui/dist/
 ui/dist-export/
 
+# Playwright — the browser check of R6. The specs and the harness are committed;
+# its screenshots and reports are working output.
+ui/e2e/__shots__/
+ui/test-results/
+ui/playwright-report/
+
 # Claude Code worktrees (isolated workspaces for in-progress work)
 .claude/worktrees/
 
