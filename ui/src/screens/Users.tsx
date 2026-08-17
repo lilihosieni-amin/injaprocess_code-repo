@@ -3,14 +3,15 @@ import { Link } from 'react-router-dom'
 import { useSession } from '../auth/useSession'
 import { administrationRefusal } from '../auth/can'
 import { useUsers } from '../api/users'
-import { refusalStatus, retryQuery } from '../api/client'
+import { refusalStatus } from '../api/client'
 import { toLatinDigits } from '../lib/digits'
 import { toFa } from '../lib/format'
+import { roleLabel } from '../lib/roles'
 import { Button } from '../ui/Button'
 import { Card } from '../ui/Card'
 import { SearchField } from '../ui/SearchField'
 import { StatusPill } from '../ui/StatusPill'
-import { EmptyState, ErrorState, LoadingState } from '../ui/states'
+import { EmptyState, LoadFailedScreen, LoadingState } from '../ui/states'
 import { NewUserDialog } from './NewUserDialog'
 import { RefusalScreen } from './Refusal'
 import type { AdminUser } from '../api/users'
@@ -18,40 +19,6 @@ import type { AdminUser } from '../api/users'
 /** What D14 surfaces instead of repointing. Written once and used on both
  *  screens, so the row and the record cannot come to word it differently. */
 export const SUPERVISOR_GONE = 'سرپرست این کاربر غیرفعال است'
-
-/**
- * What either screen shows when the read produced neither data nor a refusal —
- * a 5xx, a 422, a dropped connection, a body that would not parse.
- *
- * It exists because the alternative each screen had was a *claim*: the list said
- * «هنوز کاربری ثبت نشده است» to an administrator whose `/api/users` had just
- * 500'd, and the record drew a permanently blank page for `/users/abc` (which
- * `get_user(user_id: int)` answers 422 to, and `:id` matches any string, so it
- * is one typed URL away). Neither screen had any evidence for what it said, and
- * the one person told is the one who would act on it.
- *
- * Whether to offer the retry is `retryQuery`'s decision and not a second copy of
- * it: it is the same predicate the query itself uses to decide whether asking
- * again could change the answer, so the button cannot come to disagree with the
- * automatic retries about which failures are transient. No 4xx is — a 422 for a
- * non-numeric id will be a 422 every time — and a button that re-runs a settled
- * refusal is furniture that wastes the press.
- *
- * Laid out like `RefusalScreen`, because it stands in the same place.
- */
-export function LoadFailedScreen({ message, error, onRetry }: {
-  message: string
-  error: unknown
-  onRetry: () => void
-}) {
-  return (
-    <div className="flex-1 overflow-auto py-s12 px-s12">
-      <div className="max-w-list mx-auto">
-        <ErrorState message={message} onRetry={retryQuery(0, error) ? onRetry : undefined} />
-      </div>
-    </div>
-  )
-}
 
 /**
  * Every account in the installation, and the way into one of them (D13, D14).
@@ -101,11 +68,17 @@ export function Users() {
   const users = data ?? []
   const query = q.trim()
   const digits = toLatinDigits(query)
+  // The placeholder promises «نام، شماره یا نقش», and the role is now drawn in
+  // Persian — so both spellings match: the label somebody can read off the row,
+  // and the identifier an administrator who knows the seeded names would type.
+  // Dropping the identifier would break a search that used to work; dropping the
+  // label would promise a search over text nobody can find.
   const list = users.filter((u) =>
     !query
     || u.displayName.includes(query)
     || u.username.includes(digits)
-    || (u.role ?? '').includes(query))
+    || (u.role ?? '').includes(query)
+    || roleLabel(u.role).includes(query))
 
   return (
     <div className="flex-1 overflow-auto py-s12 px-s12">
@@ -187,7 +160,9 @@ function UserRow({ user }: { user: AdminUser }) {
             <span dir="ltr" className="text-caption text-muted font-mono">{user.username}</span>
           </div>
           <div className="flex items-center gap-s6 flex-wrap mt-s4">
-            <span className="text-caption text-violet font-bold">{user.role ?? '—'}</span>
+            {/* The role in Persian. It was the only English on the row, on a
+                screen whose search offers «نقش» as something to type. */}
+            <span className="text-caption text-violet font-bold">{roleLabel(user.role)}</span>
             <span className="text-caption text-muted">
               {user.supervisor
                 ? `سرپرست: ${user.supervisor.displayName}`

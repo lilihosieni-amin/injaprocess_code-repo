@@ -56,6 +56,37 @@ export const SUPERVISOR_REQUIRED =
 export const SUPERVISOR_NOT_ELIGIBLE = 'این شخص نمی‌تواند سرپرست این کاربر باشد'
 
 /**
+ * The two reads both user dialogs are built on, when one of them did not
+ * arrive.
+ *
+ * **A failed query is not an empty answer**, and in react-query v5 the two look
+ * identical to `data ?? []`: a failure is `status: 'error'` with `data`
+ * undefined, so both dialogs used to draw a role `<select>` holding only
+ * «انتخاب کنید» and a picker announcing «کسی نمی‌تواند سرپرست این کاربر باشد؛
+ * دامنهٔ دسترسی را کم‌تر کنید…» — a claim about the whole installation, made on
+ * no evidence, advising an administrator to shrink an account's access because
+ * a request 500'd. With a real off-list supervisor on the same form it said that
+ * *and* «سرپرست کنونی در این فهرست نیست» about somebody active and eligible: two
+ * contradictory false sentences at once.
+ *
+ * The roles come first when both failed, because it is the field nearer the top
+ * of the form and the one whose absence blocks the submit outright.
+ */
+export const ROLES_UNREADABLE =
+  'فهرست نقش‌ها بارگذاری نشد؛ تا نیامدن آن نمی‌توان نقش این حساب را انتخاب کرد.'
+export const CANDIDATES_UNREADABLE =
+  'فهرست سرپرست‌های ممکن بارگذاری نشد؛ تا نیامدن آن معلوم نیست چه کسی می‌تواند سرپرست این حساب باشد.'
+
+export interface ReadFailure { message: string; error: unknown }
+
+export function readFailure(roles: { error: unknown },
+                            candidates: { error: unknown }): ReadFailure | undefined {
+  if (roles.error) return { message: ROLES_UNREADABLE, error: roles.error }
+  if (candidates.error) return { message: CANDIDATES_UNREADABLE, error: candidates.error }
+  return undefined
+}
+
+/**
  * What is wrong with this draft, or `undefined` when nothing is.
  *
  * **Every answer here is one the server would give anyway.** None of it is a

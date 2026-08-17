@@ -186,6 +186,41 @@ describe('who the visibility policy screen is drawn for', () => {
     expect(await screen.findByText('اجازهٔ این کار را ندارید')).toBeInTheDocument()
     expect(screen.queryAllByRole('checkbox')).toHaveLength(0)
   })
+
+  it('says the policy did not load when the read fails, rather than a page that stays blank', async () => {
+    // `refusalStatus` maps 403 and 404 only, so every other failure — a 500
+    // above all — fell straight through to `!data` and drew an empty page with
+    // nothing on it to say so and nothing to try again with. There is no 422
+    // half here: this screen takes no path parameter. The refusal test directly
+    // above is the pair that keeps this from being written as "any error".
+    vi.stubGlobal('fetch', vi.fn(async () =>
+      new Response(JSON.stringify({ detail: 'boom' }), { status: 500, headers: JSON_HEAD })))
+    mount()
+    expect(await screen.findByText('تنظیم نمایش محتوا بارگذاری نشد.')).toBeInTheDocument()
+    expect(screen.queryAllByRole('checkbox')).toHaveLength(0)
+    // …and not the refusal surface: «اجازهٔ این کار را ندارید» would tell an
+    // Editor who holds `set_visibility` that they do not.
+    expect(screen.queryByText('اجازهٔ این کار را ندارید')).toBeNull()
+  })
+
+  it('offers a retry on that failure, and draws the switches when it succeeds', async () => {
+    // `retryQuery` decides whether the button is worth drawing, and a 5xx is the
+    // transient kind. Asserting the button alone would not show it is wired to
+    // anything, so the second answer is a good one and the six switches arrive.
+    let fail = true
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      if (fail) {
+        return new Response(JSON.stringify({ detail: 'boom' }), { status: 500, headers: JSON_HEAD })
+      }
+      return new Response(JSON.stringify({ fields: DEFAULTS, version: '0123456789abcdef' }),
+        { status: 200, headers: JSON_HEAD })
+    }))
+    mount()
+    await screen.findByText('تنظیم نمایش محتوا بارگذاری نشد.')
+    fail = false
+    await userEvent.click(screen.getByRole('button', { name: 'تلاش دوباره' }))
+    expect(await screen.findAllByRole('checkbox')).toHaveLength(6)
+  })
 })
 
 describe('what a flip sends and what the screen then shows', () => {

@@ -8,13 +8,15 @@ import {
 import { refusalStatus } from '../api/client'
 import { jalali } from '../lib/format'
 import { refusalText } from '../lib/refusal'
+import { roleLabel } from '../lib/roles'
 import { MIN_PASSWORD, TOO_SHORT } from '../lib/userDraft'
 import { Button } from '../ui/Button'
 import { Card } from '../ui/Card'
 import { StatusPill } from '../ui/StatusPill'
+import { LoadFailedScreen } from '../ui/states'
 import { EditUserDialog } from './EditUserDialog'
 import { RefusalScreen } from './Refusal'
-import { LoadFailedScreen, SUPERVISOR_GONE } from './Users'
+import { SUPERVISOR_GONE } from './Users'
 
 /**
  * One person's record, and the two acts an administrator performs on it
@@ -101,7 +103,11 @@ export function UserDetail() {
 
         <Card className="px-s9 py-s8 mt-s8 flex flex-col gap-s7">
           <Row label="نقش">
-            <span className="text-body text-ink">{user.role ?? '—'}</span>
+            {/* In Persian, like every other word on this record. `roleLabel`
+                keeps the identifier for a role seeded on the server ahead of
+                this build — quoted is legible, and «—» would say the account
+                has no role at all. */}
+            <span className="text-body text-ink">{roleLabel(user.role)}</span>
           </Row>
 
           <Row label="دامنهٔ دسترسی">

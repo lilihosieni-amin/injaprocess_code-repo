@@ -1,9 +1,10 @@
 import { useState, type FormEvent } from 'react'
 import { useModifyUser, useRoles, useSupervisorCandidates } from '../api/users'
 import { refusalText } from '../lib/refusal'
-import { draftPatch, draftProblem, type UserDraft } from '../lib/userDraft'
+import { draftPatch, draftProblem, readFailure, type UserDraft } from '../lib/userDraft'
 import { Button } from '../ui/Button'
 import { Dialog } from '../ui/Overlay'
+import { LoadFailedScreen } from '../ui/states'
 import { UserFields } from './UserFields'
 import type { AdminUser } from '../api/users'
 
@@ -92,6 +93,22 @@ export function EditUserDialog({ user, open, onClose }: {
   }
 
   const alert = problem ?? (modify.error ? refusalText(modify.error) : undefined)
+
+  // After every hook and before the form. A failed read is not an empty answer:
+  // with `/api/users/supervisor-candidates` answering 500 this dialog used to
+  // say «کسی نمی‌تواند سرپرست این کاربر باشد؛ دامنهٔ دسترسی را کم‌تر کنید…» —
+  // advice to shrink an account, about an installation it had learned nothing
+  // about — directly above «سرپرست کنونی در این فهرست نیست», said of an active,
+  // eligible supervisor who was simply not in a list that never arrived.
+  const failed = readFailure(roles, candidates)
+  if (failed) {
+    return (
+      <Dialog open={open} onClose={onClose} title="ویرایش کاربر">
+        <LoadFailedScreen message={failed.message} error={failed.error}
+          onRetry={() => { void roles.refetch(); void candidates.refetch() }} />
+      </Dialog>
+    )
+  }
 
   return (
     <Dialog open={open} onClose={onClose} title="ویرایش کاربر">

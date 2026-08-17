@@ -504,6 +504,30 @@ describe('what the profile screen says about itself', () => {
     expect(screen.getByText('09121111111')).toBeInTheDocument()
   })
 
+  it('names the role in Persian, on the one screen every account reaches', async () => {
+    // **The sharpest instance of the raw identifier.** A `reader_no_download`
+    // is a floor staffer who may read and take nothing away — the least
+    // technical account in the installation — and this page, which every
+    // account reaches and which is otherwise entirely Persian, printed that
+    // string beside their own name.
+    session = { ...READER, role: 'reader_no_download' }
+    stubServer()
+    mountProfile()
+    expect(await screen.findByText('خواننده بدون خروجی')).toBeInTheDocument()
+    expect(screen.queryByText('reader_no_download')).toBeNull()
+  })
+
+  it('leaves a role it has no wording for legible rather than blanking it', async () => {
+    // The other half. Roles are seeded and written nowhere (D50), so a name that
+    // is not in the map is one the server has ahead of this build — and «—», or
+    // an empty span, would say this account has no role at all. A mutant that
+    // returns the placeholder for anything unknown passes the test above.
+    session = { ...READER, role: 'auditor' }
+    stubServer()
+    mountProfile()
+    expect(await screen.findByText('auditor')).toBeInTheDocument()
+  })
+
   it('pins the account number ltr inside the RTL prose beside the name', async () => {
     // A latin-digit run inside RTL prose, declared as an island in
     // `test/guards.test.ts`'s ISLANDS list precisely because `src/screens/`

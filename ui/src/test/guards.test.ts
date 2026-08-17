@@ -121,19 +121,24 @@ describe('F10 — RTL is structural', () => {
 
   it('only the declared islands pin dir', () => {
     // IdBadge was the sole dir="ltr" island in this sub-project; P0 adds the
-    // phone-number and IP fields to this list as it builds them. The two
-    // screens below are declared here **before** the scan can see them —
+    // phone-number and IP fields to this list as it builds them. The screens
+    // below are declared here **before** the scan can see them —
     // `src/screens/` is still in PENDING_REBUILD — precisely so that deleting
     // that line is a one-line change and not a hunt for the islands nobody
-    // wrote down. Both pin `ltr` on a latin-digit run inside RTL prose: the
-    // mobile-number input, and the candidate's number beside their name.
-    // The third screen below is the profile: it pins `ltr` on the signed-in
-    // account's own mobile number, beside their name.
+    // wrote down. Every one of them pins `ltr` on the same thing: a latin-digit
+    // mobile number inside RTL prose. The form's input, the candidate's number
+    // beside their name in the picker, the signed-in account's own number on
+    // the profile, and — added when this list was found to be missing two of
+    // this branch's own files — the number on each row of the user list and on
+    // one person's record. Masked today by PENDING_REBUILD, those two would
+    // have turned this guard red on the day `src/screens/` left it.
     const ISLANDS = [
       'src/ui/IdBadge.tsx',
       'src/screens/UserFields.tsx',
       'src/screens/SupervisorPicker.tsx',
       'src/screens/Profile.tsx',
+      'src/screens/Users.tsx',
+      'src/screens/UserDetail.tsx',
     ]
     const hits = files()
       .filter((f) => !ISLANDS.includes(f.rel))

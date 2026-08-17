@@ -3,6 +3,8 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { CANDIDATES_UNREADABLE, ROLES_UNREADABLE } from '../lib/userDraft'
+import { UNDRAWABLE_SCOPES } from './UserFields'
 import { UserDetail } from './UserDetail'
 import type { AdminUser, Role, SupervisorCandidate } from '../api/users'
 import type { SessionDescriptor } from '../auth/session'
@@ -90,6 +92,38 @@ const SAHAR_UNDER_ARASH: AdminUser = {
   supervisor: { id: 31, username: '09121212121', displayName: 'آرش تهرانی', disabled: false },
 }
 
+/**
+ * **D11's «Report reader»** — a Reader holding one report of one department,
+ * which is the third shape of the scope grammar (`dept:{code}/report:{kind}`)
+ * and a real person in the deployment table.
+ *
+ * Her supervisor is Keyvan, who holds `*` and so covers anything she could be
+ * given: nothing below is about eligibility, so the edge is never what fails.
+ */
+const RAHA: AdminUser = {
+  id: 11, username: '09126666666', displayName: 'رها فرجی',
+  roleId: 4, role: 'reader', capabilities: ['view', 'comment', 'export_pdf'],
+  scopes: ['dept:dining/report:steps'],
+  supervisor: { id: 33, username: '09123333333', displayName: 'کیوان مرادی', disabled: false },
+  canSupervise: false, disabled: false, createdAt: 1700000000,
+}
+
+/**
+ * The same account with **no scope row at all** — and it is the whole reason the
+ * fixture above proves anything.
+ *
+ * The defect was that a report-scoped account rendered with every box blank,
+ * i.e. *identically to this one*. An assertion that only said «the department
+ * box is not ticked» is therefore true of both, and passes on the broken form;
+ * only a pair that separates them can fail on it.
+ */
+const RAHA_UNSCOPED: AdminUser = { ...RAHA, scopes: [] }
+
+/** A report kind this build has no wording for — the server may know one before
+ *  the UI does, and `exports.EXPORT_KINDS` is where the two meet. The form draws
+ *  no box for it, must not silently drop it, and must say it is there. */
+const RAHA_UNKNOWN_KIND: AdminUser = { ...RAHA, scopes: ['dept:dining/report:daily'] }
+
 interface Seen {
   gets: string[]
   writes: { path: string; method: string; body: Record<string, unknown> }[]
@@ -101,6 +135,14 @@ interface Seen {
    * test whose input is not the shape its name claims.
    */
   setCandidates: (next: SupervisorCandidate[]) => void
+  /**
+   * Stop failing whichever read `rolesStatus` / `candidatesStatus` was failing.
+   *
+   * The failure screen offers a retry, and a test that only asserted the button
+   * exists would not show it is wired to anything — so the outage ends and the
+   * form has to come back on the *second* answer.
+   */
+  healReads: () => void
 }
 
 /**
@@ -115,14 +157,33 @@ function stubServer(user: AdminUser, opts: {
    *  stays `undefined`, which is the state a slow or hung request really leaves
    *  the form in. */
   stallCandidates?: boolean
+  /**
+   * Answer `GET /api/roles` with this status instead of 200.
+   *
+   * **A failed read and an empty one are different facts**, and until this
+   * option existed no test in any of the three dialog suites set a non-200 on a
+   * read at all: making either of them fail outright left 785/785 green, because
+   * `data ?? []` renders a failure as a genuinely empty list — a role `<select>`
+   * with nothing in it, and a picker announcing that nobody in the installation
+   * may supervise this account.
+   */
+  rolesStatus?: number
+  /** The same, for `GET /api/users/supervisor-candidates`. Separate from
+   *  `rolesStatus` because the two produce different false claims and each has
+   *  to be reachable on its own. */
+  candidatesStatus?: number
   writeStatus?: number
   writeDetail?: unknown
   statusText?: string
 } = {}): Seen {
   let row = { ...user }
   let candidates = opts.candidates ?? [KEYVAN, ARASH]
+  let rolesStatus = opts.rolesStatus ?? 200
+  let candidatesStatus = opts.candidatesStatus ?? 200
   const seen: Seen = {
-    gets: [], writes: [], setCandidates: (next) => { candidates = next },
+    gets: [], writes: [],
+    setCandidates: (next) => { candidates = next },
+    healReads: () => { rolesStatus = 200; candidatesStatus = 200 },
   }
   vi.stubGlobal('fetch', vi.fn(async (path: string, init?: RequestInit) => {
     if (init?.method && init.method !== 'GET') {
@@ -144,10 +205,13 @@ function stubServer(user: AdminUser, opts: {
       return json(row)
     }
     seen.gets.push(path)
-    if (path === '/api/roles') return json(ROLES)
+    if (path === '/api/roles') {
+      return rolesStatus === 200 ? json(ROLES) : json({ detail: 'نه' }, rolesStatus)
+    }
     if (path === '/api/departments') return json(DEPARTMENTS)
     if (path.startsWith('/api/users/supervisor-candidates')) {
       if (opts.stallCandidates) return new Promise<Response>(() => {})
+      if (candidatesStatus !== 200) return json({ detail: 'نه' }, candidatesStatus)
       return json(candidates)
     }
     if (path === `/api/users/${row.id}`) return json(row)
@@ -170,7 +234,7 @@ function mountDetail(id: number) {
 async function openDialog() {
   await userEvent.click(await screen.findByRole('button', { name: 'ویرایش کاربر' }))
   await screen.findByRole('dialog')
-  await waitFor(() => expect(screen.getByRole('option', { name: 'reader' })).toBeInTheDocument())
+  await waitFor(() => expect(screen.getByRole('option', { name: 'خواننده' })).toBeInTheDocument())
 }
 
 function save() {
@@ -365,6 +429,175 @@ describe('the supervisor picker on the edit form', () => {
   })
 })
 
+/** The two report boxes under «دپارتمان سالن». Their accessible name carries the
+ *  department, because the same two kinds are drawn under every one of them and
+ *  nine identically-named controls are nine controls nobody can tell apart. */
+const DINING_STEPS = 'دپارتمان سالن — فقط راهنمای گام‌به‌گام'
+const DINING_FLOW = 'دپارتمان سالن — فقط مستندات کامل'
+const COOKING_STEPS = 'دپارتمان پخت — فقط راهنمای گام‌به‌گام'
+
+describe('the scope fieldset', () => {
+  it('draws a report-scoped account\'s own grant', async () => {
+    // The form offered `*` and one box per department and nothing else, so
+    // `dept:dining/report:steps` matched no box: a «Report reader» opened with
+    // every box blank — reading as "no departments at all" — while the record
+    // directly above the button showed her chip correctly. The two contradicted
+    // each other on one page.
+    stubServer(RAHA)
+    mountDetail(11)
+    await openDialog()
+    expect(screen.getByRole('checkbox', { name: DINING_STEPS })).toBeChecked()
+    // …and not as the whole department, which is what the obvious "repair" of a
+    // blank fieldset would have made her.
+    expect(screen.getByRole('checkbox', { name: 'دپارتمان سالن' })).not.toBeChecked()
+    expect(screen.getByRole('checkbox', { name: DINING_FLOW })).not.toBeChecked()
+    expect(screen.getByRole('checkbox', { name: 'همهٔ دپارتمان‌ها' })).not.toBeChecked()
+    expect(screen.queryByText(new RegExp(UNDRAWABLE_SCOPES))).toBeNull()
+  })
+
+  it('draws an account holding nothing as holding nothing, which is what makes that mean something', async () => {
+    // The separating fixture. Without it, "the department box is not ticked" is
+    // true of the broken form too, and the assertion above passes on the defect
+    // it was written for.
+    stubServer(RAHA_UNSCOPED)
+    mountDetail(11)
+    await openDialog()
+    for (const box of screen.getAllByRole('checkbox')) expect(box).not.toBeChecked()
+  })
+
+  it('asks for candidates covering the report scope itself, not the department around it', async () => {
+    // `eligible_supervisors` takes the scopes verbatim, and `dept:dining` is a
+    // *wider* question than `dept:dining/report:steps`: asked about the
+    // department, the server returns fewer people than may really supervise her.
+    const seen = stubServer(RAHA)
+    mountDetail(11)
+    await openDialog()
+    await waitFor(() =>
+      expect(candidateQuery(seen)).toContain('scope=dept%3Adining%2Freport%3Asteps'))
+  })
+
+  it('narrows a whole department to one report, dropping the department grant', async () => {
+    // The narrowing act. Holding both would store the same reach twice —
+    // `dept:x` already covers `dept:x/report:k` — and would leave an
+    // administrator who ticked one box believing they had taken something away.
+    const seen = stubServer(SAHAR_UNDER_ARASH)
+    mountDetail(7)
+    await openDialog()
+    expect(screen.getByRole('checkbox', { name: 'دپارتمان پخت' })).toBeChecked()
+    await userEvent.click(screen.getByRole('checkbox', { name: COOKING_STEPS }))
+    expect(screen.getByRole('checkbox', { name: 'دپارتمان پخت' })).not.toBeChecked()
+    await save()
+    await waitFor(() => expect(seen.writes).toHaveLength(1))
+    expect(seen.writes[0].body.scopes).toEqual(['dept:cooking/report:steps'])
+  })
+
+  it('widens a report scope to the whole department only when the department itself is ticked', async () => {
+    // The widening act, and it is one press on a box labelled with the whole
+    // department — never a side effect of clearing a narrower one.
+    const seen = stubServer(RAHA)
+    mountDetail(11)
+    await openDialog()
+    await userEvent.click(screen.getByRole('checkbox', { name: 'دپارتمان سالن' }))
+    expect(screen.getByRole('checkbox', { name: DINING_STEPS })).not.toBeChecked()
+    await save()
+    await waitFor(() => expect(seen.writes).toHaveLength(1))
+    expect(seen.writes[0].body.scopes).toEqual(['dept:dining'])
+  })
+
+  it('takes the last report away without handing back the department it belonged to', async () => {
+    // **The one that pins "a subtraction never widens".** A fieldset that read
+    // "no report ticked" as "the whole department" would answer this press by
+    // granting more than she had, silently, on the way out.
+    const seen = stubServer(RAHA)
+    mountDetail(11)
+    await openDialog()
+    await userEvent.click(screen.getByRole('checkbox', { name: DINING_STEPS }))
+    expect(screen.getByRole('checkbox', { name: 'دپارتمان سالن' })).not.toBeChecked()
+    await save()
+    await waitFor(() => expect(seen.writes).toHaveLength(1))
+    expect(seen.writes[0].body.scopes).toEqual([])
+  })
+
+  it('lets a narrowing be a set of reports rather than one', async () => {
+    // «or more» in the grammar: a second kind joins the first. A control that
+    // behaved like a radio would silently drop the report she already held.
+    const seen = stubServer(RAHA)
+    mountDetail(11)
+    await openDialog()
+    await userEvent.click(screen.getByRole('checkbox', { name: DINING_FLOW }))
+    expect(screen.getByRole('checkbox', { name: DINING_STEPS })).toBeChecked()
+    await save()
+    await waitFor(() => expect(seen.writes).toHaveLength(1))
+    expect([...(seen.writes[0].body.scopes as string[])].sort())
+      .toEqual(['dept:dining/report:flowchart', 'dept:dining/report:steps'])
+  })
+
+  it('names a scope it can draw no box for, and sends it back untouched', async () => {
+    // `user_scopes.scope` is `TEXT NOT NULL` with no CHECK and the server may
+    // learn a report kind before this build does, so a stored scope with no
+    // control on this form is reachable. Drawn as nothing it would be the same
+    // defect one level down; dropped from the request it would revoke access
+    // nobody decided to revoke.
+    const seen = stubServer(RAHA_UNKNOWN_KIND)
+    mountDetail(11)
+    await openDialog()
+    expect(await screen.findByText(/سالن\/report:daily/)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('checkbox', { name: 'دپارتمان صندوق' }))
+    await save()
+    await waitFor(() => expect(seen.writes).toHaveLength(1))
+    expect(seen.writes[0].body.scopes).toEqual(['dept:dining/report:daily', 'dept:cashier'])
+  })
+})
+
+describe('when one of the dialog\'s own reads fails', () => {
+  /** The dialog, opened without waiting for a role option — there is none to
+   *  wait for when the read this test is about is the one that failed. */
+  async function openFailedDialog() {
+    await userEvent.click(await screen.findByRole('button', { name: 'ویرایش کاربر' }))
+    await screen.findByRole('dialog')
+  }
+
+  it('says the supervisor list did not load, instead of announcing that nobody may supervise this account', async () => {
+    // **Two contradictory false sentences at once.** `candidates.data ?? []`
+    // turns a 500 into an empty list, so the picker said «کسی نمی‌تواند سرپرست
+    // این کاربر باشد؛ دامنهٔ دسترسی را کم‌تر کنید…» — advice to shrink this
+    // account, about an installation it had learned nothing about — and, of the
+    // same account, «سرپرست کنونی در این فهرست نیست», which is said of Arash:
+    // active, eligible, and simply absent from a list that never arrived.
+    stubServer(SAHAR_UNDER_ARASH, { candidatesStatus: 500 })
+    mountDetail(7)
+    await openFailedDialog()
+    expect(await screen.findByText(CANDIDATES_UNREADABLE)).toBeInTheDocument()
+    expect(screen.queryByText(/کسی نمی‌تواند سرپرست این کاربر باشد/)).toBeNull()
+    expect(screen.queryByText(/سرپرست کنونی در این فهرست نیست/)).toBeNull()
+  })
+
+  it('says the role list did not load, instead of a select nothing can be chosen from', async () => {
+    // The other read, and a different false claim: `/api/roles` failing left
+    // «انتخاب کنید» alone in the select and refused every submit with «نقش
+    // کاربر را انتخاب کنید» — about the one field nothing could be put into.
+    stubServer(SAHAR, { rolesStatus: 500 })
+    mountDetail(7)
+    await openFailedDialog()
+    expect(await screen.findByText(ROLES_UNREADABLE)).toBeInTheDocument()
+    expect(screen.queryByLabelText('نقش')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'ثبت تغییرات' })).toBeNull()
+  })
+
+  it('offers a retry, and draws the form once the read succeeds', async () => {
+    // A 5xx is the transient kind, so `retryQuery` says the button is worth
+    // drawing. Asserting the button alone would not show it is wired to
+    // anything — the outage ends, and the picker the failure replaced arrives.
+    const seen = stubServer(SAHAR_UNDER_ARASH, { candidatesStatus: 500 })
+    mountDetail(7)
+    await openFailedDialog()
+    await screen.findByText(CANDIDATES_UNREADABLE)
+    seen.healReads()
+    await userEvent.click(screen.getByRole('button', { name: 'تلاش دوباره' }))
+    expect(await screen.findByRole('radio', { name: /آرش تهرانی/ })).toBeChecked()
+  })
+})
+
 describe('what the edit form sends', () => {
   it('sends only what changed, and a PATCH to this account', async () => {
     // Judged against the *resulting* user on the server, so a body restating
@@ -460,7 +693,7 @@ describe('what the edit form sends', () => {
     await userEvent.click(screen.getByRole('checkbox', { name: 'می‌تواند سرپرست دیگران باشد' }))
     await userEvent.click(await screen.findByRole('radio', { name: 'بدون سرپرست' }))
     const select = screen.getByLabelText('نقش')
-    await userEvent.selectOptions(select, within(select).getByRole('option', { name: 'reader' }))
+    await userEvent.selectOptions(select, within(select).getByRole('option', { name: 'خواننده' }))
     await save()
     await waitFor(() => expect(seen.writes).toHaveLength(1))
     expect(seen.writes[0].body).toEqual({
@@ -480,7 +713,7 @@ describe('what the edit form sends', () => {
     await userEvent.click(screen.getByRole('checkbox', { name: 'می‌تواند سرپرست دیگران باشد' }))
     await userEvent.click(screen.getByRole('checkbox', { name: 'دپارتمان صندوق' }))
     const select = screen.getByLabelText('نقش')
-    await userEvent.selectOptions(select, within(select).getByRole('option', { name: 'admin' }))
+    await userEvent.selectOptions(select, within(select).getByRole('option', { name: 'مدیر' }))
     await userEvent.click(await screen.findByRole('radio', { name: /کیوان مرادی/ }))
     await save()
     await waitFor(() => expect(seen.writes).toHaveLength(1))

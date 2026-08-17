@@ -2,6 +2,7 @@ import { useId, useState, type FormEvent } from 'react'
 import { useSession } from '../auth/useSession'
 import { useChangeOwnPassword } from '../api/hooks'
 import { refusalText } from '../lib/refusal'
+import { roleLabel } from '../lib/roles'
 import { MIN_PASSWORD, TOO_SHORT } from '../lib/userDraft'
 import { Button } from '../ui/Button'
 import { Card } from '../ui/Card'
@@ -112,7 +113,11 @@ export function Profile() {
                 spelling that is not digits alone stays in the order it was
                 stored in. Declared in `test/guards.test.ts`'s ISLANDS. */}
             <span dir="ltr" className="text-caption text-muted font-mono">{session.username}</span>
-            <span className="text-caption text-violet font-bold">{session.role}</span>
+            {/* **The sharpest instance of the raw identifier.** Every account
+                reaches this page, including a floor staffer with no English at
+                all, and `reader_no_download` beside their own name was the only
+                latin text on it besides their number. */}
+            <span className="text-caption text-violet font-bold">{roleLabel(session.role)}</span>
           </div>
           {/* Read-only, every one of them, and the paragraph says why rather
               than leaving somebody hunting for an edit control that D13 will

@@ -620,15 +620,32 @@ def test_setting_a_password_revokes_all_of_that_users_sessions(world):
 
 def test_disabling_revokes_sessions_immediately(world):
     """D14: disabling is immediate. The session that was open a moment ago is
-    gone, and the account cannot sign in again."""
+    gone, and the account cannot sign in again — **and it does not cascade.**
+
+    The subordinate is here because §11 test 3a's other half was pinned only
+    against `users.set_disabled` on a test connection, which is the store and not
+    the endpoint: the handler is free to repoint subordinates, or to disable them
+    too, without a single test noticing. D14 says neither happens — the edge
+    stays and the screen surfaces the gap — so the account under this one must
+    come out of the request pointing exactly where it did, and still enabled.
+    """
     world.add("09120000001", "admin", "*")
-    subject = world.add("09120000002", "reader", "dept:dining")
+    subject = world.add("09120000002", "reader", "dept:dining", can_supervise=True)
+    under = world.add("09120000003", "reader", "dept:dining", supervisor_id=subject)
     theirs = world.sign_in("09120000002")
     admin = world.sign_in("09120000001")
 
     r = admin.post(f"/api/users/{subject}/disabled", json={"disabled": True})
     assert r.status_code == 200, r.text
     assert r.json()["disabled"] is True
+    assert world.row(under)["supervisor_id"] == subject, (
+        "the subordinate was repointed away from a supervisor D14 leaves in place")
+    assert world.row(under)["disabled_at"] is None, (
+        "disabling a supervisor disabled the person under them")
+    assert admin.get(f"/api/users/{under}").json()["supervisor"] == {
+        "id": subject, "username": "09120000002", "displayName": "کاربر",
+        "disabled": True,
+    }, "the payload does not carry the fact the screen has to surface"
     assert theirs.get("/api/auth/me").status_code == 401
     again = TestClient(world.app, base_url=BASE)
     assert again.post("/api/auth/login", json={"username": "09120000002",

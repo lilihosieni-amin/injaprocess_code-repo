@@ -3,9 +3,10 @@ import { useSession } from '../auth/useSession'
 import { useCreateUser, useRoles, useSupervisorCandidates } from '../api/users'
 import { normalisePhone } from '../lib/digits'
 import { refusalText } from '../lib/refusal'
-import { draftProblem, type UserDraft } from '../lib/userDraft'
+import { draftProblem, readFailure, type UserDraft } from '../lib/userDraft'
 import { Button } from '../ui/Button'
 import { Dialog } from '../ui/Overlay'
+import { LoadFailedScreen } from '../ui/states'
 import { UserFields } from './UserFields'
 
 const BLANK: UserDraft = {
@@ -75,6 +76,21 @@ export function NewUserDialog({ open, onClose }: { open: boolean; onClose: () =>
   }
 
   const alert = problem ?? (create.error ? refusalText(create.error) : undefined)
+
+  // After every hook and before the form: this dialog is two lists and the
+  // fields that consume them, and a list that did not arrive is not an empty
+  // one. Drawn anyway, the form makes two false claims — no role may be chosen
+  // and nobody in the installation may supervise this account — and refuses
+  // every submit with a sentence about a field the administrator did fill in.
+  const failed = readFailure(roles, candidates)
+  if (failed) {
+    return (
+      <Dialog open={open} onClose={onClose} title="کاربر تازه">
+        <LoadFailedScreen message={failed.message} error={failed.error}
+          onRetry={() => { void roles.refetch(); void candidates.refetch() }} />
+      </Dialog>
+    )
+  }
 
   return (
     <Dialog open={open} onClose={onClose} title="کاربر تازه">

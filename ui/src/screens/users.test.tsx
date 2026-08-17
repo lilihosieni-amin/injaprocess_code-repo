@@ -232,24 +232,45 @@ describe('the user list', () => {
   it('puts each account\'s own name, number, role and supervisor on its own row', async () => {
     // The index/key assertion. Both rows are on screen either way, so a lookup
     // that pairs one user's name with the next user's role passes every
-    // «getByText('admin')» in the file and fails only this.
+    // «getByText('مدیر')» in the file and fails only this.
     stubServer([SAHAR, NADER])
     mountList()
     await waitFor(() => expect(screen.getAllByRole('listitem')).toHaveLength(2))
 
     const sahar = within(rowOf('سحر بیات'))
     expect(sahar.getByText('09121111111')).toBeInTheDocument()
-    expect(sahar.getByText('admin')).toBeInTheDocument()
+    expect(sahar.getByText('مدیر')).toBeInTheDocument()
     expect(sahar.getByText(/مریم رستمی/)).toBeInTheDocument()
-    expect(sahar.queryByText('reader')).toBeNull()
+    expect(sahar.queryByText('خواننده')).toBeNull()
     expect(sahar.queryByText(/بابک آرام/)).toBeNull()
 
     const nader = within(rowOf('نادر قاسمی'))
     expect(nader.getByText('09122222222')).toBeInTheDocument()
-    expect(nader.getByText('reader')).toBeInTheDocument()
+    expect(nader.getByText('خواننده')).toBeInTheDocument()
     expect(nader.getByText(/بابک آرام/)).toBeInTheDocument()
-    expect(nader.queryByText('admin')).toBeNull()
+    expect(nader.queryByText('مدیر')).toBeNull()
     expect(nader.queryByText(/مریم رستمی/)).toBeNull()
+  })
+
+  it('names the role in Persian, and leaves a role it has no wording for legible', async () => {
+    // The identifiers reached the screen raw — `admin`, `reader`,
+    // `reader_no_download` — as the only latin text on a row whose search box
+    // offers «نقش» as something to type.
+    //
+    // **Both fixtures matter and neither alone is the test.** Sahar's `admin`
+    // is a seeded role and must be translated; Shirin's `auditor` is not seeded
+    // at all, and a map that answered «—» or a blank for the unknown would tell
+    // an administrator the account has no role — a different, false fact. A
+    // mutant that drops the fallback and renders nothing passes every assertion
+    // about Sahar.
+    stubServer([SAHAR, SHIRIN])
+    mountList()
+    await waitFor(() => expect(screen.getAllByRole('listitem')).toHaveLength(2))
+    expect(within(rowOf('سحر بیات')).getByText('مدیر')).toBeInTheDocument()
+    expect(within(rowOf('شیرین کاویان')).getByText('auditor')).toBeInTheDocument()
+    // …and the identifier of a role that *does* have wording is nowhere on the
+    // screen, which is what makes this a translation rather than an addition.
+    expect(screen.queryByText('admin')).toBeNull()
   })
 
   it('renders the accounts in the order the server sent them, re-sorting nothing', async () => {
@@ -359,6 +380,23 @@ describe('the user list', () => {
     expect(screen.getByLabelText('جست‌وجوی کاربر'))
       .toHaveAttribute('placeholder', 'نام، شماره یا نقش')
     await userEvent.type(screen.getByLabelText('جست‌وجوی کاربر'), 'reader')
+    await waitFor(() => expect(screen.getAllByRole('listitem')).toHaveLength(1))
+    expect(screen.getByText('نادر قاسمی')).toBeInTheDocument()
+    expect(screen.queryByText('سحر بیات')).toBeNull()
+  })
+
+  it('filters by the Persian role as well, which is the only spelling on the row', async () => {
+    // The pair of the test above, and the half that would otherwise be broken:
+    // the role is now drawn as «خواننده», so a search that matched only the
+    // stored `reader` promises «نقش» while answering nothing to the one word
+    // anybody can read off the screen. The identifier clause stays because an
+    // administrator who knows the seeded names should not lose a search that
+    // used to work — which is why both are asserted, in two tests, against the
+    // same two rows.
+    stubServer([SAHAR, NADER])
+    mountList()
+    await waitFor(() => expect(screen.getAllByRole('listitem')).toHaveLength(2))
+    await userEvent.type(screen.getByLabelText('جست‌وجوی کاربر'), 'خواننده')
     await waitFor(() => expect(screen.getAllByRole('listitem')).toHaveLength(1))
     expect(screen.getByText('نادر قاسمی')).toBeInTheDocument()
     expect(screen.queryByText('سحر بیات')).toBeNull()
@@ -553,7 +591,7 @@ describe('one person\'s record', () => {
     mountDetail(7)
     expect(await screen.findByRole('heading', { name: 'سحر بیات' })).toBeInTheDocument()
     expect(screen.getByText('09121111111')).toBeInTheDocument()
-    expect(screen.getByText('admin')).toBeInTheDocument()
+    expect(screen.getByText('مدیر')).toBeInTheDocument()
     expect(screen.getByText('dept:cooking')).toBeInTheDocument()
     expect(screen.getByText(/مریم رستمی/)).toBeInTheDocument()
     expect(screen.getByText('فعال')).toBeInTheDocument()

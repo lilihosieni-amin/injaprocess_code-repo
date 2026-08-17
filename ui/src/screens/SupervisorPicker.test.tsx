@@ -68,6 +68,15 @@ const KAVEH: SupervisorCandidate = {
   scopes: ['dept:cashier', 'dept:dining'], canSupervise: true,
 }
 
+/** Somebody scoped to **one report of one department** — the third shape of the
+ *  grammar. `eligible_supervisors` really can return one: containment is what
+ *  the rule asks, so a report-scoped account may supervise somebody holding the
+ *  same report. */
+const RAHA: SupervisorCandidate = {
+  id: 35, username: '09126666666', displayName: 'رها فرجی',
+  scopes: ['dept:dining/report:steps'], canSupervise: true,
+}
+
 /** `staysPut` defaults to true — the edit-form case the component was written
  *  for, an existing account whose supervisor and scopes are both unchanged. The
  *  one test below that passes `false` is what separates the note's guard from
@@ -127,6 +136,24 @@ describe('the supervisor picker', () => {
     mount({ candidates: [KAVEH] })
     await waitFor(() => expect(screen.getByRole('radio', { name: /صندوق/ })).toBeInTheDocument())
     expect(screen.getByRole('radio', { name: /کاوه سالاری/ })).toHaveAccessibleName(/سالن/)
+  })
+
+  it('names a report scope in Persian rather than quoting the stored string', async () => {
+    // The third shape of the grammar, and the only fixture in this file that
+    // reaches it: `scopeLabel` used to render `dept:dining/report:steps` as
+    // «سالن/report:steps» — the department translated and the report left in the
+    // stored spelling, half a sentence in each language beside somebody's name.
+    // Parenthesised, because `scopesLabel` joins with «، » and «سالن، فقط X»
+    // cannot be read back as one scope.
+    mount({ candidates: [RAHA] })
+    // Waited for the *label*, not merely for the row: `/api/departments` is this
+    // component's one request, and until it lands `scopeLabel` falls back to the
+    // code — «dining (فقط …)» — which is the honest thing to draw and not what
+    // this test is about.
+    await waitFor(() => expect(screen.getByRole('radio', { name: /رها فرجی/ }))
+      .toHaveAccessibleName(/سالن \(فقط راهنمای گام‌به‌گام\)/))
+    // …and not as the whole department, which is more than she reaches.
+    expect(screen.queryByRole('radio', { name: /رها فرجی\s*—\s*سالن$/ })).toBeNull()
   })
 
   it('keeps the server\'s order, re-sorting nothing', async () => {

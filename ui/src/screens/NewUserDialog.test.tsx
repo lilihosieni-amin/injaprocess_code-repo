@@ -3,6 +3,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { CANDIDATES_UNREADABLE, ROLES_UNREADABLE } from '../lib/userDraft'
 import { Users } from './Users'
 import type { AdminUser, Role, SupervisorCandidate } from '../api/users'
 import type { SessionDescriptor } from '../auth/session'
@@ -95,12 +96,28 @@ interface Seen {
    *  empty list — which is the state a slow or hung request really leaves the
    *  form in, and is not the same state as "nobody is eligible". */
   stallCandidates: () => void
+  /** Stop failing whichever read `rolesStatus` / `candidatesStatus` was failing,
+   *  so the retry the failure screen offers has something to succeed with. */
+  healReads: () => void
 }
 
 function stubServer(opts: {
   users?: AdminUser[]
   roles?: Role[]
   candidates?: SupervisorCandidate[]
+  /**
+   * Answer `GET /api/roles` with this status instead of 200.
+   *
+   * **A failed read is not an empty answer.** In react-query v5 a failure is
+   * `status: 'error'` with `data` undefined, so `data ?? []` renders it as a
+   * genuinely empty list — and no test in any dialog suite set a non-200 on a
+   * read until this option existed, which is why making either read always fail
+   * left the whole frontend suite green.
+   */
+  rolesStatus?: number
+  /** The same, for `GET /api/users/supervisor-candidates`. Separate, because the
+   *  two produce different false claims. */
+  candidatesStatus?: number
   createStatus?: number
   createDetail?: unknown
   statusText?: string
@@ -109,10 +126,13 @@ function stubServer(opts: {
   const roles = opts.roles ?? ROLES
   let candidates = opts.candidates ?? [SAHAR, KAMRAN]
   let stalled = false
+  let rolesStatus = opts.rolesStatus ?? 200
+  let candidatesStatus = opts.candidatesStatus ?? 200
   const seen: Seen = {
     gets: [], writes: [],
     setCandidates: (next) => { candidates = next },
     stallCandidates: () => { stalled = true },
+    healReads: () => { rolesStatus = 200; candidatesStatus = 200 },
   }
   vi.stubGlobal('fetch', vi.fn(async (path: string, init?: RequestInit) => {
     if (init?.method && init.method !== 'GET') {
@@ -135,10 +155,13 @@ function stubServer(opts: {
     }
     seen.gets.push(path)
     if (path === '/api/users') return json([...rows])
-    if (path === '/api/roles') return json(roles)
+    if (path === '/api/roles') {
+      return rolesStatus === 200 ? json(roles) : json({ detail: 'نه' }, rolesStatus)
+    }
     if (path === '/api/departments') return json(DEPARTMENTS)
     if (path.startsWith('/api/users/supervisor-candidates')) {
       if (stalled) return new Promise<Response>(() => {})
+      if (candidatesStatus !== 200) return json({ detail: 'نه' }, candidatesStatus)
       return json(candidates)
     }
     throw new Error(`unexpected request: ${path}`)
@@ -161,7 +184,7 @@ function mountList() {
 async function openDialog() {
   await userEvent.click(await screen.findByRole('button', { name: 'کاربر تازه' }))
   await screen.findByRole('dialog')
-  await waitFor(() => expect(screen.getByRole('option', { name: 'reader' })).toBeInTheDocument())
+  await waitFor(() => expect(screen.getByRole('option', { name: 'خواننده' })).toBeInTheDocument())
 }
 
 /** The one request the picker made, or a failure naming what was asked instead. */
@@ -177,7 +200,7 @@ async function fillValidForm() {
   await userEvent.type(screen.getByLabelText('نام و نام خانوادگی'), 'نگار سلیمی')
   await userEvent.type(screen.getByLabelText('شمارهٔ موبایل'), '09123456789')
   await userEvent.type(screen.getByLabelText('گذرواژه'), 'sixchars')
-  await chooseRole('reader')
+  await chooseRole('خواننده')
   await userEvent.click(screen.getByRole('checkbox', { name: 'دپارتمان سالن' }))
 }
 
@@ -230,7 +253,7 @@ describe('the role picker on the create form', () => {
     const offered = within(select).getAllByRole('option')
       .map((o) => o.textContent)
       .filter((t) => t !== 'انتخاب کنید')
-    expect(offered).toEqual(['admin', 'reader_no_download', 'reader'])
+    expect(offered).toEqual(['مدیر', 'خواننده بدون خروجی', 'خواننده'])
   })
 
   it('never offers a role the server left out', async () => {
@@ -239,6 +262,9 @@ describe('the role picker on the create form', () => {
     stubServer()
     mountList()
     await openDialog()
+    // Both spellings: the option is now drawn in Persian, so asking only about
+    // the identifier would pass on a screen that offered «تحلیل‌گر».
+    expect(screen.queryByRole('option', { name: 'تحلیل‌گر' })).toBeNull()
     expect(screen.queryByRole('option', { name: 'editor' })).toBeNull()
   })
 
@@ -329,7 +355,7 @@ describe('the supervisor picker on the create form', () => {
     await userEvent.type(screen.getByLabelText('نام و نام خانوادگی'), 'نگار سلیمی')
     await userEvent.type(screen.getByLabelText('شمارهٔ موبایل'), '09123456789')
     await userEvent.type(screen.getByLabelText('گذرواژه'), 'sixchars')
-    await chooseRole('reader')
+    await chooseRole('خواننده')
     await userEvent.click(screen.getByRole('checkbox', { name: 'همهٔ دپارتمان‌ها' }))
     await userEvent.click(await screen.findByRole('radio', { name: 'بدون سرپرست' }))
     await submit()
@@ -351,7 +377,7 @@ describe('the supervisor picker on the create form', () => {
     await userEvent.type(screen.getByLabelText('نام و نام خانوادگی'), 'نگار سلیمی')
     await userEvent.type(screen.getByLabelText('شمارهٔ موبایل'), '09123456789')
     await userEvent.type(screen.getByLabelText('گذرواژه'), 'sixchars')
-    await chooseRole('reader')
+    await chooseRole('خواننده')
     await userEvent.click(screen.getByRole('checkbox', { name: 'همهٔ دپارتمان‌ها' }))
     await waitFor(() => expect(screen.getByRole('radio', { name: /کامران راد/ })).toBeChecked())
     await userEvent.click(screen.getByRole('radio', { name: 'بدون سرپرست' }))
@@ -412,6 +438,132 @@ describe('the supervisor picker on the create form', () => {
   })
 })
 
+/** One report box under «دپارتمان سالن». The department is in the accessible
+ *  name because the same kinds are drawn under every department. */
+const DINING_STEPS = 'دپارتمان سالن — فقط راهنمای گام‌به‌گام'
+
+describe('the scope fieldset on the create form', () => {
+  it('creates D11\'s «Report reader»: a Reader holding one report of one department', async () => {
+    // **A real person in the deployment table who could not be created at all.**
+    // The API accepts `dept:{code}/report:{kind}` — `_clean_scopes` and
+    // `SCOPE_RE` have always taken it — and the four screens that reach it could
+    // not send one, because the fieldset offered `*` and one box per department
+    // and nothing narrower.
+    const seen = stubServer()
+    mountList()
+    await openDialog()
+    await userEvent.type(screen.getByLabelText('نام و نام خانوادگی'), 'رها فرجی')
+    await userEvent.type(screen.getByLabelText('شمارهٔ موبایل'), '09126666666')
+    await userEvent.type(screen.getByLabelText('گذرواژه'), 'sixchars')
+    await chooseRole('خواننده')
+    await userEvent.click(screen.getByRole('checkbox', { name: DINING_STEPS }))
+    await userEvent.click(await screen.findByRole('radio', { name: /سحر بیات/ }))
+    await submit()
+    await waitFor(() => expect(seen.writes).toHaveLength(1))
+    expect(seen.writes[0].body.scopes).toEqual(['dept:dining/report:steps'])
+  })
+
+  it('asks for candidates covering the report, which is a narrower question than the department', async () => {
+    // `eligible_supervisors` is asked the scopes verbatim, and somebody who
+    // covers only `dept:dining/report:steps` may supervise her while covering
+    // less than the department. Asking about `dept:dining` returns fewer people
+    // than really qualify.
+    const seen = stubServer()
+    mountList()
+    await openDialog()
+    await userEvent.click(screen.getByRole('checkbox', { name: DINING_STEPS }))
+    await waitFor(() =>
+      expect(candidateQuery(seen)).toContain('scope=dept%3Adining%2Freport%3Asteps'))
+  })
+
+  it('keeps «همهٔ دپارتمان‌ها» and a department mutually exclusive, in both directions', async () => {
+    // **The rule the comment above `toggleEverything` states and nothing
+    // tested.** Mutating it to `on ? [...draft.scopes, '*'] : draft.scopes` left
+    // 785/785 green while making the box impossible to untick and storing
+    // `['dept:dining', '*']` — no escalation, since the server checks coverage
+    // and `*` covers everything, but a dead control and a redundant row would
+    // have shipped in silence.
+    const seen = stubServer()
+    mountList()
+    await openDialog()
+    await userEvent.click(screen.getByRole('checkbox', { name: 'دپارتمان سالن' }))
+    await userEvent.click(screen.getByRole('checkbox', { name: 'همهٔ دپارتمان‌ها' }))
+    expect(screen.getByRole('checkbox', { name: 'همهٔ دپارتمان‌ها' })).toBeChecked()
+    expect(screen.getByRole('checkbox', { name: 'دپارتمان سالن' })).not.toBeChecked()
+    // …and it unticks again, which is the half the mutant above kills outright.
+    await userEvent.click(screen.getByRole('checkbox', { name: 'همهٔ دپارتمان‌ها' }))
+    expect(screen.getByRole('checkbox', { name: 'همهٔ دپارتمان‌ها' })).not.toBeChecked()
+    expect(screen.getByRole('checkbox', { name: 'دپارتمان سالن' })).not.toBeChecked()
+
+    // …and what reaches the wire is one scope, never two rows saying the same
+    // thing. The mutant's body would be `['dept:dining', '*']`.
+    await userEvent.type(screen.getByLabelText('نام و نام خانوادگی'), 'نگار سلیمی')
+    await userEvent.type(screen.getByLabelText('شمارهٔ موبایل'), '09123456789')
+    await userEvent.type(screen.getByLabelText('گذرواژه'), 'sixchars')
+    await chooseRole('خواننده')
+    await userEvent.click(screen.getByRole('checkbox', { name: 'دپارتمان سالن' }))
+    await userEvent.click(screen.getByRole('checkbox', { name: 'همهٔ دپارتمان‌ها' }))
+    await userEvent.click(await screen.findByRole('radio', { name: /کامران راد/ }))
+    await submit()
+    await waitFor(() => expect(seen.writes).toHaveLength(1))
+    expect(seen.writes[0].body.scopes).toEqual(['*'])
+  })
+
+  it('clears a report narrowing too when «همهٔ دپارتمان‌ها» is ticked', async () => {
+    // The same rule one level down: `*` covers `dept:x/report:k` as well, so a
+    // draft holding both would store the same reach twice.
+    stubServer()
+    mountList()
+    await openDialog()
+    await userEvent.click(screen.getByRole('checkbox', { name: DINING_STEPS }))
+    expect(screen.getByRole('checkbox', { name: DINING_STEPS })).toBeChecked()
+    await userEvent.click(screen.getByRole('checkbox', { name: 'همهٔ دپارتمان‌ها' }))
+    expect(screen.getByRole('checkbox', { name: DINING_STEPS })).not.toBeChecked()
+  })
+})
+
+describe('when one of the create dialog\'s own reads fails', () => {
+  /** Opened without waiting for a role option — when the failing read is
+   *  `/api/roles` there is none to wait for. */
+  async function openFailedDialog() {
+    await userEvent.click(await screen.findByRole('button', { name: 'کاربر تازه' }))
+    await screen.findByRole('dialog')
+  }
+
+  it('says the supervisor list did not load, instead of announcing that nobody may supervise this account', async () => {
+    // `candidates.data ?? []` turns a 500 into an empty list, and the picker
+    // then advises an administrator to narrow the scope of an account that does
+    // not exist yet — a claim about the installation with nothing behind it.
+    stubServer({ candidatesStatus: 500 })
+    mountList()
+    await openFailedDialog()
+    expect(await screen.findByText(CANDIDATES_UNREADABLE)).toBeInTheDocument()
+    expect(screen.queryByText(/کسی نمی‌تواند سرپرست این کاربر باشد/)).toBeNull()
+  })
+
+  it('says the role list did not load, instead of a form that refuses every submit', async () => {
+    // With `/api/roles` failing the select held «انتخاب کنید» alone and every
+    // press of «ساخت کاربر» came back «نقش کاربر را انتخاب کنید» — about the one
+    // field nothing could be put into, after a name, a number and a password.
+    stubServer({ rolesStatus: 500 })
+    mountList()
+    await openFailedDialog()
+    expect(await screen.findByText(ROLES_UNREADABLE)).toBeInTheDocument()
+    expect(screen.queryByLabelText('نقش')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'ساخت کاربر' })).toBeNull()
+  })
+
+  it('offers a retry, and draws the form once the read succeeds', async () => {
+    const seen = stubServer({ rolesStatus: 500 })
+    mountList()
+    await openFailedDialog()
+    await screen.findByText(ROLES_UNREADABLE)
+    seen.healReads()
+    await userEvent.click(screen.getByRole('button', { name: 'تلاش دوباره' }))
+    expect(await screen.findByRole('option', { name: 'خواننده' })).toBeInTheDocument()
+  })
+})
+
 describe('the number and the password on the create form', () => {
   it('is a numeric telephone field pinned to latin order', async () => {
     stubServer()
@@ -444,7 +596,7 @@ describe('the number and the password on the create form', () => {
     await userEvent.type(screen.getByLabelText('نام و نام خانوادگی'), 'نگار سلیمی')
     await userEvent.type(screen.getByLabelText('شمارهٔ موبایل'), '+98 ۰۹۱۲ 345 6789')
     await userEvent.type(screen.getByLabelText('گذرواژه'), 'sixchars')
-    await chooseRole('reader')
+    await chooseRole('خواننده')
     await userEvent.click(screen.getByRole('checkbox', { name: 'دپارتمان سالن' }))
     await userEvent.click(await screen.findByRole('radio', { name: /سحر بیات/ }))
     await submit()
@@ -459,7 +611,7 @@ describe('the number and the password on the create form', () => {
     await userEvent.type(screen.getByLabelText('نام و نام خانوادگی'), 'نگار سلیمی')
     await userEvent.type(screen.getByLabelText('شمارهٔ موبایل'), '021 88 99 77 66')
     await userEvent.type(screen.getByLabelText('گذرواژه'), 'sixchars')
-    await chooseRole('reader')
+    await chooseRole('خواننده')
     await submit()
     expect(await screen.findByRole('alert')).toHaveTextContent('شمارهٔ موبایل معتبر نیست')
     expect(seen.writes).toEqual([])
@@ -481,7 +633,7 @@ describe('the number and the password on the create form', () => {
     await userEvent.type(screen.getByLabelText('نام و نام خانوادگی'), 'نگار سلیمی')
     await userEvent.type(screen.getByLabelText('شمارهٔ موبایل'), '09123456789')
     await userEvent.type(screen.getByLabelText('گذرواژه'), 'five5')
-    await chooseRole('reader')
+    await chooseRole('خواننده')
     await userEvent.click(screen.getByRole('checkbox', { name: 'دپارتمان سالن' }))
     await userEvent.click(await screen.findByRole('radio', { name: /سحر بیات/ }))
     await submit()
@@ -495,7 +647,7 @@ describe('the number and the password on the create form', () => {
     await openDialog()
     await userEvent.type(screen.getByLabelText('شمارهٔ موبایل'), '09123456789')
     await userEvent.type(screen.getByLabelText('گذرواژه'), 'sixchars')
-    await chooseRole('reader')
+    await chooseRole('خواننده')
     await submit()
     expect(await screen.findByRole('alert')).toHaveTextContent('نام کاربر را بنویسید')
     expect(seen.writes).toEqual([])
