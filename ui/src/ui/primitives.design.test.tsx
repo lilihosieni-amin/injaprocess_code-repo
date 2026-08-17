@@ -9,6 +9,7 @@ import { Button } from './Button'
 import { Card } from './Card'
 import { SearchField } from './SearchField'
 import { SurfaceProvider } from './surface'
+import { EmptyState, LoadFailedScreen, LoadingState } from './states'
 
 /* -------------------------------------------------------------------------
    Why this file compiles CSS instead of reading class names.
@@ -362,5 +363,53 @@ describe('P6 — the search field is the design’s search field', () => {
     const small = await paint(glyph())
     expect(winner(small, 'inset-inline-start')).toBe('var(--inset-search-icon-menu)')
     expect(winner(small, 'width')).toBe('var(--space-7)')
+  })
+})
+
+describe('P7 — the state screens stand where they claim to', () => {
+  it('gives emptiness the three forms the design draws, and only the card is a card', async () => {
+    const { container, rerender } = render(<EmptyState title="چیزی نیست" />)
+    const root = () => container.firstElementChild as HTMLElement
+
+    // `card` is the default and really is a <Card>: the recipe, not a repaint.
+    const card = await paint(root().className)
+    expect(winner(card, 'background-color')).toBe('var(--card)')
+    expect(winner(card, 'border-color')).toBe('var(--border-card)')
+    expect(winner(card, 'padding')).toBe('var(--space-12)')
+
+    rerender(<EmptyState title="چیزی نیست" variant="dashed" />)
+    const dashed = await paint(root().className)
+    expect(winner(dashed, 'border-style')).toBe('dashed')
+    expect(winner(dashed, 'border-color')).toBe('var(--line)')
+    expect(winner(dashed, 'border-radius')).toBe('var(--radius-tile)')
+    expect(winner(dashed, 'padding')).toBe('var(--space-9)')
+    // A dashed block is not a card: it carries no shadow.
+    expect(winner(dashed, '--tw-shadow-colored')).toBe('')
+
+    rerender(<EmptyState title="چیزی نیست" variant="inline" />)
+    const inline = await paint(root().className)
+    expect(winner(inline, 'padding-top')).toBe('var(--space-16)')
+    expect(winner(inline, 'padding-left')).toBe('var(--space-10)')
+    expect(winner(inline, 'border-style')).toBe('')
+    expect(winner(inline, '--tw-shadow-colored')).toBe('')
+  })
+
+  it('stands the load-failure screen at the same gutter as the refusal beside it', async () => {
+    // Its own docstring says it is "laid out like RefusalScreen, because it
+    // stands in the same place", and until now it stood at 30px where the
+    // refusal stands at 40px. --pad-screen-x is what both mean.
+    const { container } = render(
+      <LoadFailedScreen message="بارگذاری نشد." error={new Error('x')} onRetry={() => {}} />,
+    )
+    const p = await paint((container.firstElementChild as HTMLElement).className)
+    expect(winner(p, 'padding-left')).toBe('var(--pad-screen-x)')
+    expect(winner(p, 'padding-top')).toBe('var(--pad-screen-y)')
+    expect(winner(p, 'padding-left')).not.toBe('var(--space-12)')
+  })
+
+  it('shapes the skeleton row at a step the scale actually has', async () => {
+    render(<LoadingState rows={1} />)
+    const p = await paint(screen.getAllByTestId('skeleton-row')[0].className)
+    expect(winner(p, 'height')).toBe('var(--space-16)')   // 40px, a rung; 64px is none
   })
 })

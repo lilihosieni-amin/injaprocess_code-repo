@@ -167,7 +167,11 @@ describe('F4/F8 — density comes from the shell', () => {
     // Allowlisted by file, the same pattern F10 below uses for IdBadge's
     // dir="ltr": one named, commented exception rather than loosening the
     // pattern (and so this guard's ability to catch a real one) for everyone.
-    const EXCEPTIONS = ['src/ui/Button.tsx']
+    // `variant` on EmptyState selects a *visual form* the design defines —
+    // a card, a dashed block, a line inside a table — not a density. Named here
+    // rather than loosening the pattern for every file, exactly as Button's
+    // colour `variant` is.
+    const EXCEPTIONS = ['src/ui/Button.tsx', 'src/ui/states/index.tsx']
     const hits = files()
       .filter((f) => !EXCEPTIONS.includes(f.rel))
       .flatMap((f) =>
@@ -177,5 +181,19 @@ describe('F4/F8 — density comes from the shell', () => {
           .filter(({ line }) => BAD.test(line)),
       )
     expect(hits.map((h) => `${h.rel}:${h.n} ${h.line.trim()}`)).toEqual([])
+
+    // The list is the only way past this guard, so it must not be able to grow
+    // quietly: an entry for a file that no longer trips the pattern (or no
+    // longer exists) is an exception nobody is paying for, and the next file
+    // added beside it inherits the same absence of scrutiny. Each entry has to
+    // earn its place by still matching.
+    const idle = EXCEPTIONS.filter((rel) => {
+      const f = files().find((x) => x.rel === rel)
+      return !f || !readFileSync(f.path, 'utf8').split('\n').some((line) => BAD.test(line))
+    })
+    expect(
+      idle,
+      'these files are excepted from F4/F8 but no longer trip it — delete the line',
+    ).toEqual([])
   })
 })
