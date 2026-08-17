@@ -48,6 +48,18 @@ function tokenValue(name: string): string {
   return value
 }
 
+/** The declaration block of one rule in src/styles/base.css, by selector.
+ *  Comments are stripped first: base.css explains L-08 by quoting the
+ *  deliverables' own `::-webkit-scrollbar{…}` block, and a matcher that reads
+ *  prose would assert against the quotation instead of the rule. */
+function baseRule(selector: string): string {
+  const css = readFileSync(resolve(process.cwd(), 'src/styles/base.css'), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+  const m = css.match(new RegExp(`${selector.replace(/[-[\]{}()*+?.,\\^$|#]/g, '\\$&')}\\s*\\{([^}]*)\\}`))
+  if (!m) throw new Error(`src/styles/base.css declares no \`${selector}\` rule`)
+  return m[1]
+}
+
 /** The single length inside a one-argument CSS function: translateY(-2px) → 2px. */
 function lengthIn(name: string): string {
   const m = tokenValue(name).match(/\(\s*-?([\d.]+[a-z%]*)\s*\)/)
@@ -203,6 +215,22 @@ const EXPECTED: Record<string, string | string[]> = {
   // red, because that ring would silently become a 7%-alpha violet hairline.
   'border-border-card': 'var(--border-card)',
   'border-card': 'var(--card)',
+  // Task 3's colours. `--border-pick` is the sixth of the --border-* family, so
+  // it takes the family's long form here too: name it `pick` on `borderColor`
+  // instead and `border-border-pick` emits nothing while `border-pick` starts
+  // painting a lilac hairline — the same split F2 undid for `--border-card`.
+  'bg-tile-v5': 'var(--tile-v5)',
+  'bg-surface-sub': 'var(--surface-sub)',
+  'bg-disc-coral': 'var(--disc-coral)',
+  'bg-disc-violet': 'var(--disc-violet)',
+  'bg-line-divider': 'var(--line-divider)',
+  'border-line-divider': 'var(--line-divider)',
+  'bg-line-row': 'var(--line-row)',
+  'border-line-row': 'var(--line-row)',
+  'bg-line-filter': 'var(--line-filter)',
+  'border-line-filter': 'var(--line-filter)',
+  'bg-border-pick': 'var(--border-pick)',
+  'border-border-pick': 'var(--border-pick)',
   'text-fs-display': ['var(--fs-display)', 'var(--lh-tight)'],
   'text-fs-h1': 'var(--fs-h1)',
   'text-fs-h2': 'var(--fs-h2)',
@@ -224,6 +252,22 @@ const EXPECTED: Record<string, string | string[]> = {
   'text-fs-dialog': 'var(--fs-dialog)',
   'text-fs-menu': 'var(--fs-menu)',
   'text-fs-caption': 'var(--fs-caption)',
+  // The nine panel steps Task 3 added, and R3's four reader steps. Each is a
+  // plain string, not a pair: unlike the five semantic roles below, a literal
+  // step sets a size and leaves the line-height to whatever the caller chose.
+  'text-fs-numeral': 'var(--fs-numeral)',
+  'text-fs-stat': 'var(--fs-stat)',
+  'text-fs-steps-title': 'var(--fs-steps-title)',
+  'text-fs-display-hand': 'var(--fs-display-hand)',
+  'text-fs-stat-sm': 'var(--fs-stat-sm)',
+  'text-fs-body-lead': 'var(--fs-body-lead)',
+  'text-fs-nano': 'var(--fs-nano)',
+  'text-fs-badge-sm': 'var(--fs-badge-sm)',
+  'text-fs-tag': 'var(--fs-tag)',
+  'text-fs-h1-reader-home': 'var(--fs-h1-reader-home)',
+  'text-fs-h1-reader-list': 'var(--fs-h1-reader-list)',
+  'text-fs-h1-reader-dept': 'var(--fs-h1-reader-dept)',
+  'text-fs-body-reader': 'var(--fs-body-reader)',
   'text-body': ['var(--fs-role-body)', 'var(--lh-role-body)'],
   'text-caption': ['var(--fs-role-caption)', 'var(--lh-role-body)'],
   'text-subtitle': ['var(--fs-role-subtitle)', 'var(--lh-role-body)'],
@@ -245,6 +289,8 @@ const EXPECTED: Record<string, string | string[]> = {
   'leading-relaxed': 'var(--lh-relaxed)',
   'leading-loose': 'var(--lh-loose)',
   'leading-looser': 'var(--lh-looser)',
+  // L-17's third prose value, 1.8 — sub-copy under a control.
+  'leading-sub': 'var(--lh-sub)',
   'tracking-eyebrow': 'var(--tracking-eyebrow)',
   'tracking-display': 'var(--tracking-display)',
   'rounded-badge': 'var(--radius-badge)',
@@ -275,6 +321,7 @@ const EXPECTED: Record<string, string | string[]> = {
   'shadow-guide-hover': 'var(--shadow-guide-hover)',
   'shadow-ring-flash': 'var(--ring-flash)',
   'shadow-conflict-dot': 'var(--ring-conflict-dot)',
+  'shadow-fab': 'var(--shadow-fab)',
   'p-screen-x': 'var(--pad-screen-x)',
   'p-screen-y': 'var(--pad-screen-y)',
   'p-topbar': 'var(--pad-topbar)',
@@ -282,6 +329,12 @@ const EXPECTED: Record<string, string | string[]> = {
   'px-screen-x': 'var(--pad-screen-x)',
   'py-screen-y': 'var(--pad-screen-y)',
   'gap-topbar': 'var(--pad-topbar)',
+  // R3's screen padding. `departments` needs both halves of its name because it
+  // is two different values, 38 at the top and 48 at the bottom.
+  'px-reader-x': 'var(--pad-reader-x)',
+  'pb-reader-bottom': 'var(--pad-reader-bottom)',
+  'pt-departments-top': 'var(--pad-departments-top)',
+  'pb-departments-bottom': 'var(--pad-departments-bottom)',
   'p-s1': 'var(--space-1)',
   'p-s2': 'var(--space-2)',
   'p-s3': 'var(--space-3)',
@@ -313,11 +366,47 @@ const EXPECTED: Record<string, string | string[]> = {
   // The one utility in the theme with no token behind it: the menu's minimum
   // width predates this branch and §6 gives it no name.
   'min-w-menu': '220px',
+  // R3's ten square control boxes, one name each carried on both scales.
+  'w-tile-reader': 'var(--size-tile-reader)',
+  'h-tile-reader': 'var(--size-tile-reader)',
+  'w-glyph': 'var(--size-glyph)',
+  'h-glyph': 'var(--size-glyph)',
+  'w-glyph-reader': 'var(--size-glyph-reader)',
+  'h-glyph-reader': 'var(--size-glyph-reader)',
+  'w-iconbtn': 'var(--size-iconbtn)',
+  'h-iconbtn': 'var(--size-iconbtn)',
+  'w-iconbtn-reader': 'var(--size-iconbtn-reader)',
+  'h-iconbtn-reader': 'var(--size-iconbtn-reader)',
+  'w-fab': 'var(--size-fab)',
+  'h-fab': 'var(--size-fab)',
+  'w-fab-reader': 'var(--size-fab-reader)',
+  'h-fab-reader': 'var(--size-fab-reader)',
+  'w-tick': 'var(--size-tick)',
+  'h-tick': 'var(--size-tick)',
+  'w-tick-nested': 'var(--size-tick-nested)',
+  'h-tick-nested': 'var(--size-tick-nested)',
+  'w-close': 'var(--size-close)',
+  'h-close': 'var(--size-close)',
   'max-w-departments': 'var(--width-departments)',
   'max-w-list': 'var(--width-list)',
   'max-w-summary': 'var(--width-summary)',
   'max-w-doc': 'var(--width-doc)',
   'max-w-drawer': 'var(--width-drawer)',
+  'max-w-reader': 'var(--width-reader)',
+  'max-w-profile': 'var(--width-profile)',
+  'max-w-steps': 'var(--width-steps)',
+  'max-w-access': 'var(--width-access)',
+  'max-w-audit': 'var(--width-audit)',
+  // The closing paren in every expectation is what keeps `var(--width-dialog)`
+  // from matching `var(--width-dialog-wide)` — five widths, one stem.
+  'max-w-dialog-wide': 'var(--width-dialog-wide)',
+  'max-w-dialog-lg': 'var(--width-dialog-lg)',
+  'max-w-dialog': 'var(--width-dialog)',
+  'max-w-dialog-sm': 'var(--width-dialog-sm)',
+  'max-w-dialog-xs': 'var(--width-dialog-xs)',
+  // On the `inset` scale, so the class is logical (inset-inline-start) and RTL
+  // needs no exception. On `spacing` it would only ever have been a padding.
+  'start-search-icon': 'var(--inset-search-icon)',
   'border-hairline': 'var(--border-hairline)',
   transition: 'var(--duration)',
   'duration-fast': 'var(--duration-fast)',
@@ -436,10 +525,46 @@ describe('R1 (structural) — every design token has a utility name', () => {
     // This checks the other direction — every var() the theme emits, including
     // the ones no list above covers — against the declared set.
     //
-    // 192 is what the theme reads today, not a floor with room under it: later
-    // tasks only add names, so a drop below it means keys were removed.
-    expect(referencedList.length).toBeGreaterThanOrEqual(192)
+    // 250 is what the theme reads today, not a floor with room under it: later
+    // tasks only add names, so a drop below it means keys were removed. (Was
+    // 192 before Task 3's 48 tokens were named, on 58 var() sites — the ten
+    // square `--size-*` boxes are read twice each, once on width and once on
+    // height, which is one name on two properties, not two names.)
+    expect(referencedList.length).toBeGreaterThanOrEqual(250)
     expect([...referenced].filter((t) => !declared.has(t)).sort()).toEqual([])
+  })
+
+  it('leaves no declared token without a utility name', () => {
+    // The structural defect this whole file exists to end, asked as a closure
+    // rather than as a list. Task 2 named 106 tokens the screens had been unable
+    // to reach; Task 3 then declared 48 more with no utility, reopening the same
+    // gap — and it is a real gap, not a tidiness one, because guards.test.ts
+    // bans `text-[…]`, `rounded-[…]` and `shadow-[…]` outright, so a token with
+    // no name cannot legally be written at all once src/screens/ leaves
+    // PENDING_REBUILD.
+    //
+    // A hand-kept list of those 48 would go stale the next time tokens.css
+    // grows. This asks the question the other way round, so the *next* unnamed
+    // token fails here on the day it is declared, whoever declares it.
+    const NAMED_ELSEWHERE = [
+      // The alias block at the foot of colors.css: each is `var()` of a token
+      // that already has a utility, so naming them would be a second word for
+      // something that has one. --selection-bg is consumed by ::selection in
+      // base.css and is never written as a class.
+      '--color-primary', '--color-accent', '--surface-app', '--surface-card',
+      '--text-heading', '--selection-bg',
+      '--dept-violet-tile', '--dept-violet-fg', '--dept-coral-tile', '--dept-coral-fg',
+      // The two whole CSS functions, named by the length inside them — see the
+      // two tests below, which assert exactly that.
+      '--hover-lift', '--blur-scrim',
+    ]
+    expect(
+      [...declared].filter((t) => !referenced.has(t) && !NAMED_ELSEWHERE.includes(t)).sort(),
+    ).toEqual([])
+    // The list is the escape hatch, so it may not quietly grow to make the line
+    // above pass. Twelve is what Task 2 justified, one by one, in its report.
+    expect(NAMED_ELSEWHERE.length).toBe(12)
+    expect(new Set(NAMED_ELSEWHERE).size).toBe(12)
   })
 
   // --hover-lift is `translateY(-2px)` — a whole transform function, not a
@@ -563,6 +688,46 @@ describe('R7 (§6.16) — the design’s two breakpoints', () => {
     const { emitted } = await build(['max-[560px]:w-10', 'md:h-full'])
     expect(emitted.get('max-[560px]:w-10')).toBe('@media (max-width: 560px)')
     expect(emitted.get('md:h-full')).toBe('@media (min-width: 768px)')
+  })
+})
+
+describe('Ledger L-08 — the scrollbar is 10px, and reads it from a token', () => {
+  // The one ledger row Task 3 was meant to close and could not: base.css was
+  // outside its file boundary, so `::-webkit-scrollbar` kept the token file's
+  // 12px against the 10px both deliverables' own style blocks write, which R3
+  // then lists among the foundations the panel and the reader share.
+  //
+  // base.css is NOT on guards.test.ts's literal allow-list — only tokens.css is
+  // — so the assertion is deliberately two-sided: the declaration must be a
+  // var(), and the token behind it must be worth 10px. Hard-coding `10px` gets
+  // the right pixels and fails here, which is the point; pointing at the wrong
+  // token compiles and fails here too.
+  it('sizes it from a token declared as the ledger’s 10px, not from a literal', () => {
+    const rule = baseRule('::-webkit-scrollbar')
+    for (const prop of ['width', 'height']) {
+      const m = rule.match(new RegExp(`\\b${prop}\\s*:\\s*var\\((--[a-z0-9-]+)\\)`))
+      expect(
+        m,
+        `base.css: ::-webkit-scrollbar sets no \`${prop}: var(--…)\` — got \`${rule.trim()}\``,
+      ).toBeTruthy()
+      expect(tokenValue(m![1]), `${prop} reads ${m![1]}, which is not the ledger’s 10px`).toBe('10px')
+    }
+  })
+
+  it('cuts the thumb with a token too, so no px literal is left in the block', () => {
+    const m = baseRule('::-webkit-scrollbar-thumb').match(/\bborder\s*:\s*var\((--[a-z0-9-]+)\)/)
+    expect(m, 'base.css: the thumb’s cut-out border is not a var()').toBeTruthy()
+    expect(tokenValue(m![1])).toBe('2px')
+  })
+
+  it('paints the track and thumb the two colours the deliverables write', () => {
+    // #F0E9FB and #7A52D0 in both deliverables' blocks; base.css reaches them
+    // through --tile-v and --violet-mid, so both halves are checked — the class
+    // that is written, and what that token is currently worth.
+    expect(baseRule('::-webkit-scrollbar-track')).toMatch(/background:\s*var\(--tile-v\)/)
+    expect(baseRule('::-webkit-scrollbar-thumb')).toMatch(/background:\s*var\(--violet-mid\)/)
+    expect(tokenValue('--tile-v')).toBe('#F0E9FB')
+    expect(tokenValue('--violet-mid')).toBe('#7A52D0')
   })
 })
 

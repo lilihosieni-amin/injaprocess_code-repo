@@ -17,12 +17,23 @@
     outline-offset: 2px;
   }
 
-  ::-webkit-scrollbar { width: 12px; height: 12px; }
+  /* Ledger L-08 — 10px, not the token file's 12px. Both deliverables' own style
+     blocks write `::-webkit-scrollbar{width:10px;height:10px}` against a single
+     `12px` in design/_ds/…/tokens/base.css, and R3 lists "the 10px scrollbar"
+     among the foundations the panel and the reader share. This file is not on
+     guards.test.ts's literal allow-list — only tokens.css is — so the number
+     comes from the token that already holds it, --space-5, rather than being
+     written here; the thumb's 2px cut-out likewise reads --space-half.
+     Not corrected: the deliverables draw the track and thumb at radius 8px and
+     this draws them at --radius-sm 9px. L-08 decides the width only, the radius
+     ladder has no 8px rung (--radius-badge 6, --radius-chip 7, --radius-sm 9),
+     and minting one is a tokens.css change. Recorded in this task's report. */
+  ::-webkit-scrollbar { width: var(--space-5); height: var(--space-5); }
   ::-webkit-scrollbar-track { background: var(--tile-v); border-radius: var(--radius-sm); }
   ::-webkit-scrollbar-thumb {
     background: var(--violet-mid);
     border-radius: var(--radius-sm);
-    border: 2px solid transparent;
+    border: var(--space-half) solid transparent;
     background-clip: content-box;
   }
   ::-webkit-scrollbar-thumb:hover { background: var(--violet); }

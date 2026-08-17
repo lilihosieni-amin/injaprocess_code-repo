@@ -25,16 +25,26 @@ border-steps-sub-border border-steps-group-border border-coral border-violet
 # (the fifth of the --border-* family), `border-card` is the white `--card`
 # surface, drawn as a cut-out ring round a badge that overlaps something.
 border-border-card border-card
+# Task 3's colours. `--border-pick` is the sixth of the --border-* family and
+# takes the family's long form, so `border-border-pick`; the three --line-*
+# tokens get both forms, as --line-soft and --line-dashed already do.
+bg-tile-v5 bg-surface-sub bg-disc-coral bg-disc-violet
+bg-line-divider border-line-divider bg-line-row border-line-row
+bg-line-filter border-line-filter bg-border-pick border-border-pick
 text-fs-display text-fs-h1 text-fs-h2 text-fs-h3 text-fs-h4 text-fs-h5
 text-fs-lg text-fs-body text-fs-sm text-fs-sm2 text-fs-xs text-fs-xxs
 text-fs-micro text-fs-doc-base text-fs-doc-h1 text-fs-doc-title
 text-fs-doc-step text-fs-doc-body
 text-fs-dialog text-fs-menu text-fs-caption
+text-fs-numeral text-fs-stat text-fs-steps-title text-fs-display-hand
+text-fs-stat-sm text-fs-body-lead text-fs-nano text-fs-badge-sm text-fs-tag
+text-fs-h1-reader-home text-fs-h1-reader-list text-fs-h1-reader-dept
+text-fs-body-reader
 text-body text-caption text-subtitle text-title text-prose
 font-sans font-mono
 font-regular font-semibold font-bold font-extrabold
 leading-tight leading-snug leading-normal leading-relaxed leading-loose
-leading-looser
+leading-looser leading-sub
 tracking-eyebrow tracking-display
 rounded-badge rounded-chip rounded-control rounded-card rounded-doc
 rounded-panel rounded-button rounded-tool rounded-input rounded-search
@@ -42,11 +52,22 @@ rounded-tile rounded-feature rounded-pill rounded-round
 shadow-card shadow-card-hover shadow-coral shadow-violet shadow-green
 shadow-modal shadow-pop shadow-sheet shadow-drawer shadow-card-dark
 shadow-stat-dark shadow-guide-hover shadow-ring-flash shadow-conflict-dot
+shadow-fab
 p-screen-x p-screen-y p-topbar p-half px-screen-x py-screen-y gap-topbar
+px-reader-x pb-reader-bottom pt-departments-top pb-departments-bottom
 p-s1 p-s2 p-s3 p-s4 p-s5 p-s6 p-s7 p-s8 p-s9 p-s10 p-s11 p-s12 p-s14 p-s16
 w-tile h-tile w-tool h-tool w-avatar h-avatar w-logo-bar h-logo-bar
 w-logo-login h-logo-login w-touch h-touch min-h-touch min-w-touch min-w-menu
+w-tile-reader h-tile-reader w-glyph h-glyph w-glyph-reader h-glyph-reader
+w-iconbtn h-iconbtn w-iconbtn-reader h-iconbtn-reader w-fab h-fab
+w-fab-reader h-fab-reader w-tick h-tick w-tick-nested h-tick-nested
+w-close h-close
 max-w-departments max-w-list max-w-summary max-w-doc max-w-drawer
+max-w-reader max-w-profile max-w-steps max-w-access max-w-audit
+max-w-dialog-wide max-w-dialog-lg max-w-dialog max-w-dialog-sm max-w-dialog-xs
+# Logical, not physical: --inset-search-icon is on the `inset` scale so the
+# search icon is placed with inset-inline-start and RTL stays structural.
+start-search-icon
 border-hairline
 transition duration-fast duration-chev
 -translate-y-lift

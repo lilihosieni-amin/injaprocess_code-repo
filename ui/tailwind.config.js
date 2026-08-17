@@ -113,6 +113,27 @@ export default {
         'steps-group': 'var(--steps-group-bg)',
         'steps-group-border': 'var(--steps-group-border)',
         link: 'var(--link)', 'link-hover': 'var(--link-hover)',
+        // Task 3's surfaces, lines and discs (§1.2, §4.3, §5.1.9, §9.8). The key
+        // is the token name with `--` stripped and nothing else, which is this
+        // scale's default: only a `--text-` prefix (rule 4) and a `-bg` suffix
+        // (rule 5) come off, and neither applies here. `--surface-sub` keeps its
+        // stem rather than becoming a bare `sub` — `--lh-sub` (sub-copy) and
+        // `--steps-sub-bg` (sub-process) already spend that word on two other
+        // things — and rather than `subpanel`, which the plan's Part 3 table
+        // already writes as `border-subpanel` meaning `--border-current`.
+        'tile-v5': 'var(--tile-v5)',
+        'surface-sub': 'var(--surface-sub)',
+        'line-divider': 'var(--line-divider)',
+        'line-row': 'var(--line-row)',
+        'line-filter': 'var(--line-filter)',
+        'disc-coral': 'var(--disc-coral)',
+        'disc-violet': 'var(--disc-violet)',
+        // The sixth `--border-*` token, and it joins its five siblings on this
+        // scale rather than on `borderColor`, so the class is the family's long
+        // `border-border-pick`. Naming it `pick` on `borderColor` would give one
+        // member of the family a shorter name the other five do not have — the
+        // exact split F2 undid for `--border-card`.
+        'border-pick': 'var(--border-pick)',
       },
       textColor: {
         'icom-input': 'var(--icom-input-fg)', 'icom-control': 'var(--icom-control-fg)',
@@ -143,6 +164,26 @@ export default {
         'fs-dialog': 'var(--fs-dialog)',   // 18px — dialog, drawer, pane titles
         'fs-menu': 'var(--fs-menu)',       // 13.5px — menu, dropdown, dialog buttons
         'fs-caption': 'var(--fs-caption)', // 12px — caption, table meta, calendar day
+        // Task 3 closed the panel scale (§2.4 / §9.4): nine steps S1 sets that
+        // the ladder had no rung for. Same `fs-` prefix, same reason — half-pixel
+        // sizes are not snapped to a neighbour, and `text-[…]` is banned.
+        'fs-numeral': 'var(--fs-numeral)',           // 46px — ghosted dept-card index
+        'fs-stat': 'var(--fs-stat)',                 // 27px — departments stat numeral
+        'fs-steps-title': 'var(--fs-steps-title)',   // 26px — step-view process title
+        'fs-display-hand': 'var(--fs-display-hand)', // 25px — [data-r-title] at <=760px
+        'fs-stat-sm': 'var(--fs-stat-sm)',           // 21px — activity stat numeral
+        'fs-body-lead': 'var(--fs-body-lead)',       // 14.5px — comment body, branch label
+        'fs-nano': 'var(--fs-nano)',                 // 10px — calendar weekday, comment id
+        'fs-badge-sm': 'var(--fs-badge-sm)',         // 9.5px — conflict badge on a node
+        'fs-tag': 'var(--fs-tag)',                   // 9px — process-row id badge, tag chip
+        // R3 — the reader is the same design at another scale, so its four type
+        // steps are named beside the panel's rather than overriding them. The
+        // home hero being smaller than the list title is ledger L-34, referred to
+        // the owner; naming both is what lets the owner see it in one place.
+        'fs-h1-reader-home': 'var(--fs-h1-reader-home)', // 26px
+        'fs-h1-reader-list': 'var(--fs-h1-reader-list)', // 30px
+        'fs-h1-reader-dept': 'var(--fs-h1-reader-dept)', // 24px
+        'fs-body-reader': 'var(--fs-body-reader)',       // 15px
       },
       fontWeight: {
         regular: 'var(--fw-regular)', semibold: 'var(--fw-semibold)',
@@ -152,6 +193,9 @@ export default {
         tight: 'var(--lh-tight)', snug: 'var(--lh-snug)',
         normal: 'var(--lh-normal)', relaxed: 'var(--lh-relaxed)',
         loose: 'var(--lh-loose)', looser: 'var(--lh-looser)',
+        // Ledger L-17's third prose role: explanatory sub-copy under a control,
+        // 1.8, 17 uses. `--lh-` comes off like every other key on this scale.
+        sub: 'var(--lh-sub)',
       },
       borderRadius: {
         badge: 'var(--radius-badge)', chip: 'var(--radius-chip)', control: 'var(--radius-control)',
@@ -178,6 +222,9 @@ export default {
         'guide-hover': 'var(--shadow-guide-hover)',
         'ring-flash': 'var(--ring-flash)',
         'conflict-dot': 'var(--ring-conflict-dot)',
+        // §4.2 — the comment FAB's own two-layer coral shadow. No other shadow
+        // token matches it, so `shadow-coral` is not a substitute.
+        fab: 'var(--shadow-fab)',
       },
       minHeight: { touch: 'var(--size-touch)' },
       minWidth: { touch: 'var(--size-touch)', menu: '220px' },
@@ -192,21 +239,74 @@ export default {
         'screen-y': 'var(--pad-screen-y)',  // 30px
         topbar: 'var(--pad-topbar)',        // 22px
         half: 'var(--space-half)',          // 2px
+        // R3 / §3.3 — the reader's own gutter and the two screens whose vertical
+        // padding is not `--pad-screen-y`. The direction stays in the key even
+        // though `pt-`/`pb-` repeat it, because `departments` alone cannot hold
+        // two values: 38px at the top, 48px at the bottom. One key per token.
+        'reader-x': 'var(--pad-reader-x)',                    // 24px
+        'reader-bottom': 'var(--pad-reader-bottom)',          // 60px
+        'departments-top': 'var(--pad-departments-top)',      // 38px
+        'departments-bottom': 'var(--pad-departments-bottom)',// 48px
       },
       maxWidth: {
         departments: 'var(--width-departments)', list: 'var(--width-list)',
         summary: 'var(--width-summary)', doc: 'var(--width-doc)', drawer: 'var(--width-drawer)',
+        // R3 / §3.3 — five more content columns and the five overlay widths.
+        // `--width-` comes off, as it does for the five above.
+        reader: 'var(--width-reader)',     // 720px
+        profile: 'var(--width-profile)',   // 700px
+        steps: 'var(--width-steps)',       // 760px
+        access: 'var(--width-access)',     // 820px
+        audit: 'var(--width-audit)',       // 980px
+        // These five keep the ruling's own size names. Rule 1 bans a t-shirt
+        // size where the design's ladder is roles — radii, type — and neither
+        // guard regex reaches `max-w-dialog-lg`. A dialog width is genuinely a
+        // size: the alternative is a role per screen (`…-conflict`,
+        // `…-supervisor`), which would pin a shared width to one caller.
+        'dialog-wide': 'var(--width-dialog-wide)', // 640px — conflict inbox
+        'dialog-lg': 'var(--width-dialog-lg)',     // 540px — change supervisor
+        dialog: 'var(--width-dialog)',             // 520px — new user, views
+        'dialog-sm': 'var(--width-dialog-sm)',     // 460px — confirm content
+        'dialog-xs': 'var(--width-dialog-xs)',     // 440px — confirm comment
       },
+      // The ten `--size-*` tokens R3 adds are square boxes, so each is named once
+      // and carried on both scales — `w-glyph`/`h-glyph` is one name on two
+      // properties, the arrangement `tile`, `tool`, `avatar` and `touch` already
+      // have, not a second name for one token.
       width: {
         tile: 'var(--size-tile)', tool: 'var(--size-tool)', avatar: 'var(--size-avatar)',
         'logo-bar': 'var(--size-logo-bar)', 'logo-login': 'var(--size-logo-login)',
         touch: 'var(--size-touch)',
+        'tile-reader': 'var(--size-tile-reader)',       // 54px
+        glyph: 'var(--size-glyph)',                     // 24px
+        'glyph-reader': 'var(--size-glyph-reader)',     // 26px
+        iconbtn: 'var(--size-iconbtn)',                 // 40px
+        'iconbtn-reader': 'var(--size-iconbtn-reader)', // 42px
+        fab: 'var(--size-fab)',                         // 52px
+        'fab-reader': 'var(--size-fab-reader)',         // 56px
+        tick: 'var(--size-tick)',                       // 19px — L-10, a tick in a row
+        'tick-nested': 'var(--size-tick-nested)',       // 16px — L-10, a nested tick
+        close: 'var(--size-close)',                     // 32px — L-23
       },
       height: {
         tile: 'var(--size-tile)', tool: 'var(--size-tool)', avatar: 'var(--size-avatar)',
         'logo-bar': 'var(--size-logo-bar)', 'logo-login': 'var(--size-logo-login)',
         touch: 'var(--size-touch)',
+        'tile-reader': 'var(--size-tile-reader)',
+        glyph: 'var(--size-glyph)',
+        'glyph-reader': 'var(--size-glyph-reader)',
+        iconbtn: 'var(--size-iconbtn)',
+        'iconbtn-reader': 'var(--size-iconbtn-reader)',
+        fab: 'var(--size-fab)',
+        'fab-reader': 'var(--size-fab-reader)',
+        tick: 'var(--size-tick)',
+        'tick-nested': 'var(--size-tick-nested)',
+        close: 'var(--size-close)',
       },
+      // §5.2 — the search field's icon sits `--inset-search-icon` from the edge.
+      // It is an inset, not spacing: naming it here keeps `start-search-icon`
+      // (inset-inline-start, so RTL is structural) out of the padding ladder.
+      inset: { 'search-icon': 'var(--inset-search-icon)' }, // 15px
       letterSpacing: { eyebrow: 'var(--tracking-eyebrow)', display: 'var(--tracking-display)' },
       // A bare `transition` is .16s from here on — the design's one duration.
       transitionDuration: {
