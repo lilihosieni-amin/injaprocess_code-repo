@@ -60,3 +60,153 @@
   --lh-role-body: var(--lh-loose);       /* 1.9 */
   --lh-role-prose: var(--lh-looser);     /* 2.1 */
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   R1 — where a deliverable contradicts the extracted `_ds` token set, the
+   deliverable wins. `ui/design/**` is read-only, so every correction is an
+   override here, carrying the value it replaced and the section of
+   `.superpowers/sdd/ui-design-spec.md` that proves it. A re-value with no
+   record is indistinguishable from a typo that happened to land on the
+   design's number, which is why each one below says what it overrode.
+
+   Four names this block would otherwise mint are already declared above, by
+   the F7/R8 pass: --border-card, --fs-dialog, --fs-menu and --fs-caption.
+   They are deliberately NOT repeated here — one declaration each.
+   ───────────────────────────────────────────────────────────────────────── */
+:root {
+  /* §9.8 — four values BOTH deliverables paint and the token file contradicts.
+     Two independent files drifting the same way is a moved design, not a typo.
+     Counts are panel + reader occurrences of the literal. */
+  --border-ok: #BFE5D0;           /* was #C4E7D3 — green ghost-button border, 5+6 */
+  --steps-group-bg: #FDF1F0;      /* was #FFF4F3 — junction-group card fill, 1+1 */
+  --steps-group-border: #F8DDDA;  /* was #F5CFCB — junction-group card border, 1+1 */
+  --tile-v5: #F3EEFC;             /* new — sub-process node fill, steps hint strip;
+                                     hard-coded identically in S1, S2 and the design
+                                     system's own ActivityNode. Nearest tokens are
+                                     tile-v2 #F4EFFB and tile-v3 #F5F1FB: close,
+                                     both already taken, neither this. */
+  --line-divider: #D9CEF0;        /* new — tool-group divider; same three sources */
+
+  /* §1.2 / §4.3 — three more S1 introduces that no token holds (24 / 4 / 1 uses).
+     The fourth of that set, --border-card, is declared once above. */
+  --surface-sub: #FBF9FE;         /* new — THE sub-panel surface */
+  --line-row: #F4F0FA;            /* new — table row separator */
+  --line-filter: #E9E0F7;         /* new — users filter bar */
+
+  /* §5.1.9 — the department card's two raw chevron discs, hard-coded in the
+     design system's own DepartmentCard and reached by no token. */
+  --disc-coral: #FFF0EE;          /* new */
+  --disc-violet: #F3EDFC;         /* new */
+
+  /* §9.9 — tokens named for a role they do not serve. The value the product
+     paints wins; the name keeps the role it actually has. */
+  --text-body: #5a5175;           /* was #4A3F6B, which neither deliverable paints
+                                     anywhere; #5a5175 carries all secondary body
+                                     copy, 27 uses in S1 and 14 in S2 */
+  --violet-on-dark-body: #C9BEEE; /* was #B7A6E0, one use in the whole product;
+                                     the other thirteen dark-field subtitles are
+                                     #C9BEEE (§9.7k, ledger L-28) */
+  --border-pick: #C9B8EC;         /* new — 13+11 uses (unchecked tick, active
+                                     filter, card hover border) and no token of
+                                     its own; --line-dashed holds the same value
+                                     for a different role (dashed "add"
+                                     affordances) and keeps it */
+
+  /* §9.2 / §4.2 — the shadows S1 actually paints. --shadow-card is corrected in
+     the F7 block above; these were not. */
+  --shadow-card-hover: 0 3px 6px rgba(16, 10, 40, .2), 0 26px 52px -22px rgba(16, 10, 40, .7);
+                                  /* was rgba(16, 10, 40, .6) in the final layer;
+                                     both deliverables end .7 */
+  --shadow-modal: 0 4px 10px rgba(16, 10, 40, .28), 0 44px 90px -30px rgba(16, 10, 40, .8);
+                                  /* was 0 40px 90px -30px rgba(0,0,0,.6) — one
+                                     layer, black; S1 paints two, neutral-dark,
+                                     on 5 of its 6 dialogs (ledger L-04) */
+  --shadow-pop: 0 20px 45px -20px rgba(74, 37, 169, .45);
+                                  /* was 0 18px 40px -16px rgba(74,37,169,.5) — a
+                                     third value the deliverable never paints;
+                                     13 uses say this one (ledger L-31) */
+  --shadow-fab: 0 6px 14px rgba(16, 10, 40, .22), 0 18px 40px -14px rgba(250, 90, 82, .9);
+                                  /* new — the comment FAB, §4.2 */
+
+  /* Ledger L-20 — neither deliverable ever writes 20px for a pill; they write
+     999px 20 times in S1 and 12 in S2. A 20px radius on a 24px-tall pill is
+     visibly not a pill. */
+  --radius-pill: 999px;           /* was 20px */
+}
+
+/* §2.4 / §9.4 — the panel scale is not closed. Of the twenty-five sizes S1 sets,
+   twelve have no step in the panel scale. Three of them are already minted above
+   (--fs-dialog 18px, --fs-menu 13.5px, --fs-caption 12px); the nine below are the
+   rest. Two the spec's §9.4 list omits are here because they are not outliers:
+   27px is the departments stat numeral, three uses, and exists today only as the
+   staff-guide's own --fs-doc-title; and 13.5px, forty-eight uses, is the second
+   densest size in the file. typography.css's own header instruction — "many are
+   half-pixel; do NOT snap them to a scale" — is why 14.5, 9.5 and 13.5 are named
+   rather than rounded into a neighbour. Naming a size is not the same as
+   assigning it a role: ledger L-33 normalises 21px to 22px for the *screen
+   title* role, and --fs-stat-sm exists for the stat numeral that is also 21px. */
+:root {
+  --fs-numeral: 46px;       /* ghosted two-digit index on a department card */
+  --fs-stat: 27px;          /* departments-header stat numeral */
+  --fs-steps-title: 26px;   /* step-view process title */
+  --fs-display-hand: 25px;  /* [data-r-title] at <=760px */
+  --fs-stat-sm: 21px;       /* activity stat numeral */
+  --fs-body-lead: 14.5px;   /* comment body, branch step label */
+  --fs-nano: 10px;          /* calendar weekday, comment-card id */
+  --fs-badge-sm: 9.5px;     /* conflict badge on a flow node */
+  --fs-tag: 9px;            /* process-row id badge, tag chip */
+
+  /* §2.5, ledger L-17 — sub-copy under a control, 17 uses and no token. 1.85
+     normalises here; 1.95 and 2.05 normalise to --lh-loose 1.9 for long-form
+     prose. */
+  --lh-sub: 1.8;
+}
+
+/* R3 — panel and reader are two surfaces at two scales, not two themes. These
+   are the values the ruling's own table gives, plus the recurring geometry §3.3
+   and §3.4 name and the token file does not. A later task binds them to
+   [data-surface]; nothing else may hard-code them. */
+:root {
+  /* content columns (§3.3), with department info normalised to 920 (ledger L-07) */
+  --width-reader: 720px;
+  --width-profile: 700px;
+  --width-steps: 760px;
+  --width-access: 820px;
+  --width-audit: 980px;
+
+  /* overlay widths (§3.3) */
+  --width-dialog-wide: 640px;   /* conflict inbox */
+  --width-dialog-lg: 540px;     /* change supervisor */
+  --width-dialog: 520px;        /* new user, views */
+  --width-dialog-sm: 460px;     /* confirm content */
+  --width-dialog-xs: 440px;     /* confirm comment */
+
+  /* screen padding (§3.3, R3) — the reader is `30px 24px 60px`, the departments
+     screen `38px 40px 48px`; the 30px/40px they share is --pad-screen-y/-x. */
+  --pad-reader-x: 24px;
+  --pad-reader-bottom: 60px;
+  --pad-departments-top: 38px;
+  --pad-departments-bottom: 48px;
+
+  /* recurring control geometry (§3.4, §5.2, R3) */
+  --size-tile-reader: 54px;     /* the panel's 48px is --size-tile */
+  --size-glyph: 24px;           /* half the 48px tile, rounded */
+  --size-glyph-reader: 26px;
+  --size-iconbtn: 40px;
+  --size-iconbtn-reader: 42px;
+  --size-fab: 52px;
+  --size-fab-reader: 56px;
+  --size-tick: 19px;            /* ledger L-10 — a tick in a list row */
+  --size-tick-nested: 16px;     /* ledger L-10 — a tick inside another option */
+  --size-close: 32px;           /* ledger L-23 */
+  --inset-search-icon: 15px;    /* §5.2 SearchField, the large field */
+
+  /* reader type (R3) — recorded as the ruling states it. The reader's home hero
+     (26px) is smaller than its own screen titles (30px), which inverts the
+     panel's 34-over-22 relationship; that is referred to the owner as ledger
+     L-34 rather than silently "fixed" here. */
+  --fs-h1-reader-home: 26px;
+  --fs-h1-reader-list: 30px;
+  --fs-h1-reader-dept: 24px;
+  --fs-body-reader: 15px;
+}
