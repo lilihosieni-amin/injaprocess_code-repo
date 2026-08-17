@@ -4247,7 +4247,7 @@ difference between one table and three; Task 19 consumes it for the users screen
 
 - Consumes:
   - `toFa` from `ui/src/lib/format.ts` (existing).
-  - Task 2's utilities: `rounded-18` `rounded-10` (18 / 10px) · `border-card-edge` `rgba(42,29,94,.07)` · `border-panel-edge` `#EDE5F5` (Task 1's role for `--border-current`, §4.3's sub-panel border) · `border-row-sep` `#F4F0FA` (Task 1's role `--row-sep` — §1.2's table row separator, 4 uses, no token) · `bg-panel-tint` `#FBF9FE` · `bg-tile-v4` `#F8F4FE` · `text-11h` `text-13` `text-12h` `text-12` · `text-secondary` `#5a5175` (Task 1's role for `--text-current`; §9.9 records that its declared role is wrong and its real one is all secondary body copy) · `text-disabled` `#cfc7e0` (`--text-disabled`) · `shadow-card` · `duration-base` · `r760:` (Task 2's `≤760px` max-width screen).
+  - Task 2's utilities: `rounded-18` `rounded-10` (18 / 10px) · `border-card-edge` `rgba(42,29,94,.07)` · `border-panel-edge` `#EDE5F5` (Task 1's role for `--border-current`, §4.3's sub-panel border) · `border-row-sep` `#F4F0FA` (Task 1's role `--row-sep` — §1.2's table row separator, 4 uses, no token) · `bg-panel-tint` `#FBF9FE` · `bg-tile-v4` `#F8F4FE` · `text-11h` `text-13` `text-12h` `text-12` · `text-secondary` `#5a5175` (Task 1's role for `--text-current`; §9.9 records that its declared role is wrong and its real one is all secondary body copy) · `text-disabled` `#cfc7e0` (`--text-disabled`) · `shadow-card` · `duration-base` · `max760:` (Task 2's `≤760px` max-width screen).
 - Produces:
   - `ui/src/ui/DataTable.tsx`
     - `interface DataColumn<Row> { key: string; head: string; track: string; cell: (row: Row) => ReactNode; mobile?: boolean }` — `track` is one CSS grid track (`'16px'`, `'1.4fr'`, `'34px'`); `mobile: false` drops the column at ≤760px.
@@ -4338,10 +4338,10 @@ describe('DataTable', () => {
       <DataTable label="کاربران" columns={COLUMNS} rows={ROWS} rowKey={(r) => r.id} empty="خالی" />,
     )
     const head = container.querySelector('[data-r-thead]') as HTMLElement
-    expect(head.className).toMatch(/\br760:hidden\b/)
+    expect(head.className).toMatch(/\bmax760:hidden\b/)
     const dropped = container.querySelectorAll('[data-col="sup"], [data-col="dept"]')
     expect(dropped).toHaveLength(2)
-    dropped.forEach((el) => expect(el.className).toMatch(/\br760:hidden\b/))
+    dropped.forEach((el) => expect(el.className).toMatch(/\bmax760:hidden\b/))
   })
 
   it('fills its head only when asked to', () => {
@@ -4467,7 +4467,7 @@ const SHELL = 'bg-card border border-card-edge rounded-18 overflow-hidden shadow
 
 // The head and every row are the same grid. At ≤760px both become flex lines and
 // the template stops applying, which is exactly how the design collapses them.
-const LINE = 'grid items-center gap-[12px] px-[18px] py-[13px] r760:flex r760:gap-[11px] r760:p-[14px]'
+const LINE = 'grid items-center gap-[12px] px-[18px] py-[13px] max760:flex max760:gap-[11px] max760:p-[14px]'
 
 export function DataTable<Row>({
   label, columns, rows, rowKey, empty, onOpen, rowLabel,
@@ -4486,7 +4486,7 @@ export function DataTable<Row>({
         data-r-thead
         role="row"
         style={template}
-        className={`${LINE} border-b border-panel-edge r760:hidden ${headFill ? 'bg-tile-v4' : ''}`}
+        className={`${LINE} border-b border-panel-edge max760:hidden ${headFill ? 'bg-tile-v4' : ''}`}
       >
         {columns.map((c) => (
           <span key={c.key} role="columnheader" className="text-11h font-bold text-muted">{c.head}</span>
@@ -4518,7 +4518,7 @@ export function DataTable<Row>({
                 key={c.key}
                 data-col={c.key}
                 role={openable ? 'gridcell' : 'cell'}
-                className={`min-w-0 ${c.mobile === false ? 'r760:hidden' : ''}`}
+                className={`min-w-0 ${c.mobile === false ? 'max760:hidden' : ''}`}
               >
                 {c.cell(row)}
               </div>
@@ -4629,7 +4629,7 @@ process.exit(miss.length?1:0);
 
 Expected: `OK 15 classes present`. Then confirm the two responsive rules actually
 compiled at the right width — a screen key that never reached the config would leave
-`r760:hidden` out of the CSS entirely:
+`max760:hidden` out of the CSS entirely:
 
 ```bash
 cd ui && node -e '
@@ -5829,7 +5829,7 @@ button in the right cluster, on the metrics §5.2 gives icon buttons. **Flagged 
   - `Icon` (Task 11), `Logo` (Task 11).
   - `useDepartments`, `usePending`, `useLogout` from `ui/src/api/hooks.ts`; `can` from `ui/src/auth/session.ts`; `administrationRefusal` from `ui/src/auth/can.ts`; `toFa` from `ui/src/lib/format.ts`; `DEPT_CODES` from `ui/src/lib/departments.ts` — all existing.
   - `expectDesign(page, screen)` and `shot(page, name)` from `ui/e2e/_harness.ts` (Task 4); the three widths are `playwright.config.ts`'s three projects, so one spec runs at 1440, 1080 and 760.
-  - Task 2's utilities: `text-14` `text-13h` `text-12h` `text-11h` `text-10h` · `rounded-16` `rounded-12` `rounded-11` `rounded-10` `rounded-9` `rounded-round` · `bg-card` `bg-tile-v2` `bg-violet` `bg-coral` `bg-ink` · `border-warm` `#EFE7DC` · `border-line` `#E3D8F5` · `border-card-edge` · `bg-panel-edge` `#EDE5F5` · `text-ink` `text-violet` `text-muted` `text-faint` `text-card` · `shadow-pop` · `r1080:` and `r760:` (Task 2's two max-width screens).
+  - Task 2's utilities: `text-14` `text-13h` `text-12h` `text-11h` `text-10h` · `rounded-16` `rounded-12` `rounded-11` `rounded-10` `rounded-9` `rounded-round` · `bg-card` `bg-tile-v2` `bg-violet` `bg-coral` `bg-ink` · `border-warm` `#EFE7DC` · `border-line` `#E3D8F5` · `border-card-edge` · `bg-panel-edge` `#EDE5F5` · `text-ink` `text-violet` `text-muted` `text-faint` `text-card` · `shadow-pop` · `max1080:` and `max760:` (Task 2's two max-width screens).
 - Produces:
   - `ui/src/shell/crumbs.ts` — `interface Crumb { label: string; to?: string; mono?: boolean }`; `function panelCrumbs(pathname: string, deptName: (code: string) => string): Crumb[]`
   - `ui/src/shell/PanelShell.tsx` — unchanged export `function PanelShell({ session }: { session: SessionDescriptor }): JSX.Element`, now wrapping its subtree in `<SurfaceProvider value="panel">`.
@@ -6105,11 +6105,11 @@ describe('PanelShell chrome', () => {
     // R7 — the shell holds zero responsive utilities today, and both breakpoints
     // are largely shell behaviour.
     const { container, unmount } = renderPanel(['view', 'edit'], '/departments')
-    expect(container.querySelector('[data-r-nav]')?.className).toMatch(/\br1080:hidden\b/)
-    expect(container.querySelector('[data-r-menu]')?.className).toMatch(/\bhidden\b.*\br1080:inline-flex\b/)
+    expect(container.querySelector('[data-r-nav]')?.className).toMatch(/\bmax1080:hidden\b/)
+    expect(container.querySelector('[data-r-menu]')?.className).toMatch(/\bhidden\b.*\bmax1080:inline-flex\b/)
     unmount()
     const inner = renderPanel(['view', 'edit'], '/departments/dining')
-    expect(inner.container.querySelector('[data-r-crumbs]')?.className).toMatch(/\br760:hidden\b/)
+    expect(inner.container.querySelector('[data-r-crumbs]')?.className).toMatch(/\bmax760:hidden\b/)
   })
 
   it('gives the outlet a growing, unpadded flex column ancestor on both chromes', () => {
@@ -6233,7 +6233,7 @@ export function PanelShell({ session }: { session: SessionDescriptor }) {
     return (
       <header
         data-r-topbar
-        className="flex items-center gap-[14px] px-[22px] py-[12px] bg-card border-b border-warm flex-none z-20 r760:px-[14px] r760:py-[10px] r760:gap-[10px]"
+        className="flex items-center gap-[14px] px-[22px] py-[12px] bg-card border-b border-warm flex-none z-20 max760:px-[14px] max760:py-[10px] max760:gap-[10px]"
       >
         <Link to="/departments" className="flex items-center gap-[10px] no-underline">
           <Logo px={38} />
@@ -6242,8 +6242,8 @@ export function PanelShell({ session }: { session: SessionDescriptor }) {
             <span className="block text-10h text-muted">سامانهٔ فرآیندها</span>
           </span>
         </Link>
-        <span aria-hidden className="w-[1px] h-[26px] mx-[4px] bg-panel-edge r1080:hidden" />
-        <nav data-r-nav aria-label="بخش‌های اصلی" className={`${TRAY} r1080:hidden`}>
+        <span aria-hidden className="w-[1px] h-[26px] mx-[4px] bg-panel-edge max1080:hidden" />
+        <nav data-r-nav aria-label="بخش‌های اصلی" className={`${TRAY} max1080:hidden`}>
           <Link to="/departments" className={`${TRAY_ITEM} bg-violet text-card`}>دپارتمان‌ها</Link>
           <AdminMenu />
         </nav>
@@ -6252,7 +6252,7 @@ export function PanelShell({ session }: { session: SessionDescriptor }) {
             <button
               type="button" onClick={() => setInboxOpen(true)}
               aria-label={openCount > 0 ? `صندوق بازبینی تعارض‌ها، ${toFa(openCount)} مورد در انتظار` : 'صندوق بازبینی تعارض‌ها'}
-              className={`${GHOST} relative gap-[7px] px-[13px] py-[8px] rounded-12 text-12h font-bold r760:hidden`}
+              className={`${GHOST} relative gap-[7px] px-[13px] py-[8px] rounded-12 text-12h font-bold max760:hidden`}
             >
               <Icon name="inbox" px={16} />
               صندوق تعارض‌ها
@@ -6285,7 +6285,7 @@ export function PanelShell({ session }: { session: SessionDescriptor }) {
           </button>
           <button
             data-r-menu type="button" onClick={() => setMenuOpen(true)} aria-label="فهرست"
-            className="hidden r1080:inline-flex items-center justify-center w-[40px] h-[40px] rounded-11 bg-tile-v2 text-violet border-hairline border-line cursor-pointer"
+            className="hidden max1080:inline-flex items-center justify-center w-[40px] h-[40px] rounded-11 bg-tile-v2 text-violet border-hairline border-line cursor-pointer"
           >
             <Icon name="menu" px={19} stroke={2.2} />
           </button>
@@ -6298,7 +6298,7 @@ export function PanelShell({ session }: { session: SessionDescriptor }) {
     return (
       <nav
         data-r-crumbbar aria-label="مسیر"
-        className="flex items-center gap-[10px] px-[22px] py-[9px] bg-tile-v2 border-b border-line flex-none r760:px-[14px] r760:py-[10px] r760:gap-[10px]"
+        className="flex items-center gap-[10px] px-[22px] py-[9px] bg-tile-v2 border-b border-line flex-none max760:px-[14px] max760:py-[10px] max760:gap-[10px]"
       >
         {back?.to !== undefined && (
           <Link to={back.to} className={`${GHOST} gap-[6px] px-[12px] py-[7px] rounded-11 text-12h font-bold`}>
@@ -6306,7 +6306,7 @@ export function PanelShell({ session }: { session: SessionDescriptor }) {
             بازگشت
           </Link>
         )}
-        <ol data-r-crumbs className="flex flex-wrap items-center gap-[6px] list-none m-0 p-0 text-12h r760:hidden">
+        <ol data-r-crumbs className="flex flex-wrap items-center gap-[6px] list-none m-0 p-0 text-12h max760:hidden">
           {crumbs.map((c, i) => (
             <li key={`${c.label}-${i}`} className="flex items-center gap-[6px]">
               {i > 0 && <span aria-hidden className="text-faint">/</span>}
@@ -6925,7 +6925,7 @@ export function ReaderShell({ session }: { session: SessionDescriptor }) {
         {onFlow ? null : atRoot ? (
           <header
             data-r-topbar
-            className="flex items-center gap-[14px] px-[24px] py-[12px] bg-card border-b border-warm flex-none z-20 r760:px-[14px] r760:py-[10px] r760:gap-[10px]"
+            className="flex items-center gap-[14px] px-[24px] py-[12px] bg-card border-b border-warm flex-none z-20 max760:px-[14px] max760:py-[10px] max760:gap-[10px]"
           >
             <Link to={root} className="flex items-center gap-[10px] no-underline">
               <Logo px={38} />
@@ -6960,7 +6960,7 @@ export function ReaderShell({ session }: { session: SessionDescriptor }) {
         ) : (
           <nav
             data-r-backbar aria-label="بازگشت"
-            className="flex items-center gap-[10px] px-[24px] py-[9px] bg-card border-b border-warm flex-none z-20 r760:px-[14px] r760:gap-[10px]"
+            className="flex items-center gap-[10px] px-[24px] py-[9px] bg-card border-b border-warm flex-none z-20 max760:px-[14px] max760:gap-[10px]"
           >
             {back !== undefined && (
               <Link to={back} className={`${GHOST} gap-[6px] px-[12px] py-[7px] rounded-11 text-13 font-bold`}>
@@ -7173,7 +7173,7 @@ a reader, and a 760px viewport without changing what a person sees at desktop.
 
   | utility | token | value |
   |---|---|---|
-  | `to1080:` / `to760:` | — | **Already shipped by Task 2, named `max1080:` / `max760:`.** Do not add these: read `to1080:`/`to760:` (and `r1080:`/`r760:`, and `narrow:`) below as those two names. Never put them in `theme.screens` — see Step 8 of Task 2: one max-width object there deletes Tailwind's whole `min-*`/`max-*` family and the 30 shipped `max-[560px]:` utilities with it, silently. |
+  | `max1080:` / `max760:` | — | **Already shipped by Task 2, named `max1080:` / `max760:`.** Do not add these: read `max1080:`/`max760:` (and `max1080:`/`max760:`, and `max760:`) below as those two names. Never put them in `theme.screens` — see Step 8 of Task 2: one max-width object there deletes Tailwind's whole `min-*`/`max-*` family and the 30 shipped `max-[560px]:` utilities with it, silently. |
   | `text-fs-display … text-fs-micro` | `--fs-display … --fs-micro` | 34/23/22/19/17/16/15/14/13/12.5/11.5/11/10.5px |
   | `text-fs-reader-h1` | `--fs-reader-h1` | `26px` (reader home) |
   | `text-fs-reader-list-h1` | `--fs-reader-list-h1` | `30px` (reader process list) |
@@ -7469,8 +7469,8 @@ a reader, and a 760px viewport without changing what a person sees at desktop.
       const grid = document.querySelector('[data-r-deptgrid]')!
       expect(grid).toBeInTheDocument()
       expect(grid.className).toContain('grid-cols-3')
-      expect(grid.className).toContain('to1080:grid-cols-2')
-      expect(grid.className).toContain('to760:grid-cols-1')
+      expect(grid.className).toContain('max1080:grid-cols-2')
+      expect(grid.className).toContain('max760:grid-cols-1')
       expect(grid.className).toContain('gap-s9')          // 18px
     })
 
@@ -7549,7 +7549,7 @@ a reader, and a 760px viewport without changing what a person sees at desktop.
     // about the field, and the browser check asserts the shell's, not this file's.
     const pad = reader
       ? 'pt-screen px-reader pb-reader'          // 30 / 24 / 60
-      : 'pt-depts px-screen pb-depts to760:px-s7 to760:py-s9'   // 38 / 40 / 48 → 14 / 18
+      : 'pt-depts px-screen pb-depts max760:px-s7 max760:py-s9'   // 38 / 40 / 48 → 14 / 18
 
     return (
       <div data-r-pad className={`flex-1 overflow-auto ${pad}`}>
@@ -7570,7 +7570,7 @@ a reader, and a 760px viewport without changing what a person sees at desktop.
                 carries no counters, only the list. R3 — a difference in
                 composition, not a difference in theme. */}
             {!reader && (
-              <div className="flex gap-s6 flex-none to760:hidden">
+              <div className="flex gap-s6 flex-none max760:hidden">
                 <StatTile value={toFa(totalProc)} label="فرآیند مستند" tone="violet" />
                 <StatTile value={toFa(data.length)} label="دپارتمان" tone="ink" />
                 {knowsConflicts && (
@@ -7584,7 +7584,7 @@ a reader, and a 760px viewport without changing what a person sees at desktop.
           <div data-r-deptgrid
             className={reader
               ? 'grid grid-cols-1 gap-s7'
-              : 'grid grid-cols-3 gap-s9 to1080:grid-cols-2 to760:grid-cols-1 to760:gap-s6'}>
+              : 'grid grid-cols-3 gap-s9 max1080:grid-cols-2 max760:grid-cols-1 max760:gap-s6'}>
             {data.map((d, i) => {
               const m = deptMeta(d.code)
               return (
@@ -7940,9 +7940,9 @@ action bar with a `36×36` `⋯`.
       await screen.findByText('خرید و پرداخت')
       const bar = document.querySelector('[data-r-plistactions]')!
       const more = document.querySelector('[data-r-plistmore]')!
-      expect(bar.className).toContain('to760:hidden')
+      expect(bar.className).toContain('max760:hidden')
       expect(more.className).toContain('hidden')
-      expect(more.className).toContain('to760:inline-flex')
+      expect(more.className).toContain('max760:inline-flex')
     })
 
     it('puts nothing in the ⋯ that the caller may not do', async () => {
@@ -8011,7 +8011,7 @@ action bar with a `36×36` `⋯`.
   return (
     <div data-r-pad ref={scrollRef}
       onScroll={(e) => sessionStorage.setItem(scrollKey, String(e.currentTarget.scrollTop))}
-      className="flex-1 overflow-auto py-screen px-screen to760:px-s7 to760:py-s9">
+      className="flex-1 overflow-auto py-screen px-screen max760:px-s7 max760:py-s9">
       <div className={`${reader ? 'max-w-reader' : 'max-w-list'} mx-auto`}>
         <div className="flex items-end justify-between gap-s8 mb-s10" data-r-stack>
           <div>
@@ -8024,7 +8024,7 @@ action bar with a `36×36` `⋯`.
                   replaces — the bar is gone at that width. `⋯` (U+22EF) is the
                   third sanctioned non-SVG glyph (§5.2 iconography). */}
               <Menu label="کارهای بیشتر" data-r-plistmore
-                className="hidden to760:inline-flex w-menu-more h-menu-more rounded-input border-hairline border-line bg-card text-violet text-fs-h5 font-bold"
+                className="hidden max760:inline-flex w-menu-more h-menu-more rounded-input border-hairline border-line bg-card text-violet text-fs-h5 font-bold"
                 items={actions.map((a) => ({ key: a.key, label: a.label, onSelect: a.run }))}>
                 ⋯
               </Menu>
@@ -8033,7 +8033,7 @@ action bar with a `36×36` `⋯`.
               {toFa(dept?.count ?? procs.length)} فرآیند مستندشده · برای مشاهدهٔ کارت خلاصه و فلوچارت روی هر فرآیند بزنید.
             </p>
           </div>
-          <div data-r-plistactions className="flex items-center gap-s5 shrink-0 to760:hidden">
+          <div data-r-plistactions className="flex items-center gap-s5 shrink-0 max760:hidden">
             {mayEdit && <Button variant="ghost" onClick={() => setReordering(true)} className="px-s8 py-s6 text-fs-sm">ترتیب فرآیندها</Button>}
             <Button variant="ghost" onClick={() => nav(`/departments/${code}/overview`)} className="px-s8 py-s6 text-fs-sm">اطلاعات دپارتمان</Button>
             {mayEdit && <Button variant="coral" onClick={() => setCreating(true)} className="px-s8 py-s6 text-fs-sm">فرآیند جدید</Button>}
@@ -8072,18 +8072,18 @@ action bar with a `36×36` `⋯`.
                 className={`bg-card border border-border-card rounded-card px-s9 py-s9 flex items-center gap-s8 shadow-card
                   hover:-translate-y-0.5 hover:shadow-card-hover hover:border-lilac
                   transition-[transform,box-shadow,border-color] duration-base ease-css
-                  to760:flex-col to760:items-stretch to760:p-s7 to760:gap-s6
+                  max760:flex-col max760:items-stretch max760:p-s7 max760:gap-s6
                   ${tombstoned ? 'opacity-60' : ''}`}>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-s5">
                     {orderPos.has(p.id) && (
-                      <span data-testid={`pos-${p.id}`} className="font-extrabold text-fs-body text-violet min-w-pos text-center shrink-0 to760:hidden">
+                      <span data-testid={`pos-${p.id}`} className="font-extrabold text-fs-body text-violet min-w-pos text-center shrink-0 max760:hidden">
                         {toFa(orderPos.get(p.id)!)}
                       </span>
                     )}
                     <span className="font-bold text-fs-h4 text-ink truncate">{p.name}</span>
                   </div>
-                  <div className="flex items-center gap-s4 flex-wrap mt-s4 ps-s11 to760:hidden">
+                  <div className="flex items-center gap-s4 flex-wrap mt-s4 ps-s11 max760:hidden">
                     <IdBadge>{p.id}</IdBadge>
                     <StatusPill tone={TAG_TONE[tag.kind]} label={tag.label} />
                     {mark && <StatusPill tone={mark.confirmed ? 'ok' : 'warn'}
@@ -8104,11 +8104,11 @@ action bar with a `36×36` `⋯`.
                     ))}
                   </div>
                 </div>
-                <div data-r-actions className="flex gap-s4 shrink-0 to760:w-full">
+                <div data-r-actions className="flex gap-s4 shrink-0 max760:w-full">
                   <Button variant="ghost" onClick={() => nav(`/processes/${p.id}`)}
-                    className="px-s7 py-s4 text-fs-sm2 to760:flex-1 to760:py-s6">اطلاعات کلی</Button>
+                    className="px-s7 py-s4 text-fs-sm2 max760:flex-1 max760:py-s6">اطلاعات کلی</Button>
                   <Button variant="violet" onClick={() => nav(`/processes/${p.id}/flow`)}
-                    className="px-s7 py-s4 text-fs-sm2 to760:flex-1 to760:py-s6">فلوچارت</Button>
+                    className="px-s7 py-s4 text-fs-sm2 max760:flex-1 max760:py-s6">فلوچارت</Button>
                   {mayEdit && (
                     <Button variant="danger" onClick={() => setDelTarget({ pid: p.id, name: p.name })}
                       title={tombstoned ? 'حذف دائمی فرآیند' : 'حذف فرآیند'}
@@ -8233,7 +8233,7 @@ action bar with a `36×36` `⋯`.
   ```bash
   cd ui && npx playwright test e2e/process-list.spec.ts --reporter=list
   ```
-  Expected first run: failures at 760 if the `to760:` variants did not compile (Step 13
+  Expected first run: failures at 760 if the `max760:` variants did not compile (Step 13
   would have caught that) or if `[data-r-plistmore]` is still `display:none` at every
   width — the reader deliverable's defect #2, which is exactly the trap to avoid.
   Expected final: `3 passed`, three screenshots.
@@ -8340,12 +8340,12 @@ blanked the field, which is a claim of absence standing in for an absence of a c
       renderAt('/processes/:pid', <Summary />, '/processes/cooking-001', EDITOR)
       await screen.findByText('نمای IDEF0 سطح فرآیند (A-0)')
       const idef0 = document.querySelector('[data-r-idef0]')!
-      expect(idef0.className).toContain('to760:flex')
-      expect(idef0.className).toContain('to760:flex-col')
-      expect(idef0.className).toContain('to760:gap-s6')
+      expect(idef0.className).toContain('max760:flex')
+      expect(idef0.className).toContain('max760:flex-col')
+      expect(idef0.className).toContain('max760:gap-s6')
       const twoCol = document.querySelector('[data-r-2col]')!
       expect(twoCol.className).toContain('grid-cols-2')
-      expect(twoCol.className).toContain('to760:grid-cols-1')
+      expect(twoCol.className).toContain('max760:grid-cols-1')
     })
 
     it('puts the title and the section heading on the dark field, in white', async () => {
@@ -8416,7 +8416,7 @@ blanked the field, which is a claim of absence standing in for an absence of a c
   Replace `:79-181` of `ui/src/screens/Summary.tsx` (the read branch):
 
   ```tsx
-    <div data-r-pad className="flex-1 overflow-auto py-screen px-screen to760:px-s7 to760:py-s9">
+    <div data-r-pad className="flex-1 overflow-auto py-screen px-screen max760:px-s7 max760:py-s9">
       <div className="max-w-summary mx-auto">
         <div className="flex items-start justify-between gap-s8 mb-s10" data-r-stack>
           <div>
@@ -8444,7 +8444,7 @@ blanked the field, which is a claim of absence standing in for an absence of a c
               <p className="text-fs-lg text-violet-on-violet mt-s4 max-w-prose leading-relaxed m-0">{proc.summary}</p>
             )}
           </div>
-          <div data-r-actions className="flex gap-s5 shrink-0 to760:flex-wrap">
+          <div data-r-actions className="flex gap-s5 shrink-0 max760:flex-wrap">
             {mayEdit && !tombstoned && (
               <Button variant="ghost" onClick={enter} className="px-s8 py-s6 text-fs-sm">ویرایش اطلاعات</Button>
             )}
@@ -8458,7 +8458,7 @@ blanked the field, which is a claim of absence standing in for an absence of a c
           <div className="font-bold text-fs-body text-violet mb-s9 flex items-center gap-s4">
             <span className="w-s4 h-s4 bg-coral rounded-round" />نمای IDEF0 سطح فرآیند (A-0)
           </div>
-          <div data-r-idef0 className="grid grid-cols-[1fr_1.4fr_1fr] gap-s7 items-center to760:flex to760:flex-col to760:gap-s6">
+          <div data-r-idef0 className="grid grid-cols-[1fr_1.4fr_1fr] gap-s7 items-center max760:flex max760:flex-col max760:gap-s6">
             <div className="col-start-2 row-start-1 text-center min-w-0">
               <div className="text-fs-xxs text-muted mb-s2">کنترل‌ها ↓</div>
               <div className="flex flex-wrap gap-s2 justify-center">{proc.idef0.controls.map((t, i) => <Chip key={i} kind="control">{t}</Chip>)}</div>
@@ -8484,7 +8484,7 @@ blanked the field, which is a claim of absence standing in for an absence of a c
 
         <h2 className="font-bold text-fs-lg text-on-dark mb-s6 m-0">شاخص‌های کلیدی عملکرد (KPI)</h2>
         {proc.kpis.length > 0 ? (
-          <div data-r-2col className="grid grid-cols-2 gap-s7 to760:grid-cols-1">
+          <div data-r-2col className="grid grid-cols-2 gap-s7 max760:grid-cols-1">
             {proc.kpis.map((k, i) => (
               <div key={i} className="bg-card border border-border-card rounded-tile px-s9 py-s8">
                 <div className="flex items-center justify-between gap-s4">
@@ -8546,7 +8546,7 @@ blanked the field, which is a claim of absence standing in for an absence of a c
 
   ```tsx
   <SectionCard skin="tinted" eyebrow="نمای IDEF0" className="mb-s9">
-    <div data-r-2col className="grid grid-cols-2 gap-s9 to760:grid-cols-1">
+    <div data-r-2col className="grid grid-cols-2 gap-s9 max760:grid-cols-1">
       <ListEditor label="ورودی‌ها" items={draft!.idef0.inputs} onChange={(v) => setIcom('inputs', v)} />
       <ListEditor label="کنترل‌ها" items={draft!.idef0.controls} onChange={(v) => setIcom('controls', v)} />
       <ListEditor label="خروجی‌ها" items={draft!.idef0.outputs} onChange={(v) => setIcom('outputs', v)} />
@@ -8676,7 +8676,7 @@ blanked the field, which is a claim of absence standing in for an absence of a c
   cd ui && npx playwright test e2e/summary.spec.ts --reporter=list
   ```
   Expected: `3 passed`, three screenshots. A failure on `backgroundColor` at 760 means
-  the `to760:flex` variant reordered the grid children out of their explicit
+  the `max760:flex` variant reordered the grid children out of their explicit
   `col-start`/`row-start` placement — that is correct behaviour (flex ignores them) and
   the assertion targets the box by its text, not its position, for exactly that reason.
 
@@ -8902,7 +8902,7 @@ consumer in Task 15.
       await screen.findByText('دپارتمان پخت')
       const grid = document.querySelector('[data-r-2col]')!
       expect(grid.className).toContain('grid-cols-2')
-      expect(grid.className).toContain('to760:grid-cols-1')
+      expect(grid.className).toContain('max760:grid-cols-1')
     })
 
     it('leaves no literal value, no physical direction and no near-miss border', () => {
@@ -8928,7 +8928,7 @@ consumer in Task 15.
   and `:146-183` (the personnel section) with §6.4's three stacked cards. The header:
 
   ```tsx
-    <div data-r-pad className="flex-1 overflow-auto py-screen px-screen to760:px-s7 to760:py-s9">
+    <div data-r-pad className="flex-1 overflow-auto py-screen px-screen max760:px-s7 max760:py-s9">
       <div className="max-w-list mx-auto">
         <div className="flex items-start justify-between gap-s8 mb-s9" data-r-stack>
           <div className="flex items-center gap-s6">
@@ -8966,7 +8966,7 @@ consumer in Task 15.
           {data.sub_units.length === 0
             ? <p className="text-fs-sm2 text-faint m-0">واحدی ثبت نشده است.</p>
             : (
-              <div data-r-2col className="grid grid-cols-2 gap-s6 to760:grid-cols-1">
+              <div data-r-2col className="grid grid-cols-2 gap-s6 max760:grid-cols-1">
                 {data.sub_units.map((s, i) => (
                   <div key={i} className="bg-subpanel border border-subpanel rounded-tile px-s7 py-s7 self-start">
                     <div className="font-bold text-fs-sm2 text-ink">{s.name}</div>
@@ -9483,7 +9483,7 @@ departments screen (§9.13). It is `ui_kits/panel/Login.jsx` inside
    */
   export function RefusalScreen({ status }: { status: 403 | 404 }) {
     return (
-      <div className="flex-1 overflow-auto py-screen px-screen to760:px-s7 to760:py-s9">
+      <div className="flex-1 overflow-auto py-screen px-screen max760:px-s7 max760:py-s9">
         <div className="max-w-list mx-auto">
           {status === 404 ? <NotFoundState /> : <DeniedState />}
         </div>
@@ -9497,7 +9497,7 @@ departments screen (§9.13). It is `ui_kits/panel/Login.jsx` inside
 
   ```tsx
     return (
-      <div className="flex-1 overflow-auto py-screen px-screen to760:px-s7 to760:py-s9">
+      <div className="flex-1 overflow-auto py-screen px-screen max760:px-s7 max760:py-s9">
         <div className="max-w-list mx-auto">
   ```
 
@@ -9686,7 +9686,7 @@ design is coral (`ui-audit-visual.md` §"`/users`"). Rebuilt to §6.7.
 `bg-tile-v2` (#F4EFFB) · `bg-tile-v4` (#F8F4FE) · `border-border-current` (#EDE5F5) ·
 `text-current` (#5a5175) · `text-violet-mid` (#7A52D0) · `w-dot h-dot` (9px) ·
 `w-chev h-chev` (30px) · `shadow-card` (S1's two-layer value) · `duration-ds` (.16s) ·
-`-translate-y-lift` · screens `mid` (`{max:'1080px'}`) and `narrow` (`{max:'760px'}`).
+`-translate-y-lift` · the breakpoint variants `max1080:` and `max760:`, registered by Task 2 via `addVariant` in `plugins` — **never** as `theme.screens` objects, which delete Tailwind's whole `min-*`/`max-*` family and the 30 shipped `max-[560px]:` utilities with it, silently and with a green build.
 
 From Tasks 6–11:
 ```ts
@@ -9739,10 +9739,10 @@ export const ROLE_TONE: Record<string, string>   // token-backed utility pairs
   Every value below is read from a Tailwind class; a name that differs by one
   character compiles to nothing and the build still exits 0. Run:
   ```
-  cd ui && node -e "const c=require('./tailwind.config.js').default;const t=c.theme.extend;const need={maxWidth:['access','profile'],borderRadius:['doc','tile','input','tool','feature'],colors:['sub-panel','row-sep','filter-edge','tick-off','tile-v3','tile-v4','tile-c2','border-current','hair','line-soft','line-dashed','border-danger','text-current','violet-mid','violet-on-violet'],width:['dot','glyph','chev','tool'],spacing:['screen-x','screen-y']};for(const[k,v]of Object.entries(need))for(const n of v)if(!(n in (t[k]||{})))console.log('MISSING',k,n);console.log('screens',JSON.stringify(c.theme.extend.screens||c.theme.screens))"
+  cd ui && node -e "const c=require('./tailwind.config.js').default;const t=c.theme.extend;const need={maxWidth:['access','profile'],borderRadius:['doc','tile','input','tool','feature'],colors:['sub-panel','row-sep','filter-edge','tick-off','tile-v3','tile-v4','tile-c2','border-current','hair','line-soft','line-dashed','border-danger','text-current','violet-mid','violet-on-violet'],width:['dot','glyph','chev','tool'],spacing:['screen-x','screen-y']};for(const[k,v]of Object.entries(need))for(const n of v)if(!(n in (t[k]||{})))console.log('MISSING',k,n);const v=[];for(const pl of (c.plugins||[]))pl({addVariant:(n)=>v.push(n)});console.log('variants',JSON.stringify(v))"
   ```
   Expected: no `MISSING` lines and
-  `screens {"mid":{"max":"1080px"},"narrow":{"max":"760px"}}`. Any `MISSING`
+  `max1080:` / `max760:` (addVariant, not `theme.screens`). Any `MISSING`
   line is a Task 2/3 naming difference — fix the name **in this task's steps**,
   not in the config, and note it at the top of the commit body.
 
@@ -10015,7 +10015,7 @@ export const ROLE_TONE: Record<string, string>   // token-backed utility pairs
     return (
       <div role="group" aria-label="فیلتر کاربران"
         className="grid grid-cols-4 items-center gap-s4 mb-s8 border border-filter-edge
-                   rounded-tile px-s6 py-s5 bg-tile-v2 narrow:grid-cols-2 narrow:p-s5">
+                   rounded-tile px-s6 py-s5 bg-tile-v2 max760:grid-cols-2 max760:p-s5">
         <div className="col-span-full flex items-center gap-s4">
           <span className="inline-flex items-center gap-s3 text-eyebrow font-bold text-violet">
             <Icon name="funnel" className="w-s7 h-s7" strokeWidth={2.2} />
@@ -10024,7 +10024,7 @@ export const ROLE_TONE: Record<string, string>   // token-backed utility pairs
           {/* The count the old screen carried as a free-floating line, in the
               shape §6.10 gives it: pushed to the inline end, gone at ≤760px
               where the bar is already two rows tall. */}
-          <span className="ms-auto text-small font-semibold text-muted narrow:hidden">
+          <span className="ms-auto text-small font-semibold text-muted max760:hidden">
             {toFa(count)} از {toFa(total)}
           </span>
         </div>
@@ -10104,7 +10104,7 @@ export const ROLE_TONE: Record<string, string>   // token-backed utility pairs
   (the screen's JSX plus the whole `UserRow` function) with:
   ```tsx
     return (
-      <div className="flex-1 overflow-auto py-screen-y px-screen-x narrow:px-s7 narrow:py-s9">
+      <div className="flex-1 overflow-auto py-screen-y px-screen-x max760:px-s7 max760:py-s9">
         <div className="max-w-list mx-auto">
           <div className="flex items-center justify-between gap-s6 flex-wrap">
             <h1 className="text-title font-extrabold text-on-dark">کاربران</h1>
@@ -10170,7 +10170,7 @@ export const ROLE_TONE: Record<string, string>   // token-backed utility pairs
       cell: (u) => (
         <span className={`inline-block truncate max-w-full px-s5 py-s1 rounded-control
                           text-control font-semibold ${roleTone(u.role)}
-                          narrow:max-w-[42%]`}>
+                          max760:max-w-[42%]`}>
           {roleLabel(u.role)}
         </span>
       ),
@@ -10438,7 +10438,7 @@ export function SectionCard(props: { eyebrow: string; tone?: 'tinted' | 'white'
             <div className="flex items-center gap-s6 flex-wrap">
               <Chip kind="scope">{roleLabel(user.role)}</Chip>
               <span aria-hidden
-                className="self-stretch w-px bg-warm narrow:hidden" />
+                className="self-stretch w-px bg-warm max760:hidden" />
               {user.scopes.length === 0
                 ? <span className="text-control text-muted">{NO_DEPARTMENT}</span>
                 : user.scopes.map((scope) => (
@@ -10599,8 +10599,8 @@ export function SectionCard(props: { eyebrow: string; tone?: 'tinted' | 'white'
                 بازیابی‌ای در کار نیست. با ثبت آن، همهٔ نشست‌های باز این کاربر بسته
                 می‌شود.
               </p>
-              <div className="flex items-end gap-s5 flex-wrap mt-s8 narrow:flex-col
-                              narrow:items-stretch">
+              <div className="flex items-end gap-s5 flex-wrap mt-s8 max760:flex-col
+                              max760:items-stretch">
                 <PasswordField id={passwordId} label="گذرواژهٔ تازه" value={password}
                   onChange={setPasswordValue} autoComplete="new-password"
                   className="flex-1 min-w-0"
@@ -10663,7 +10663,7 @@ export function SectionCard(props: { eyebrow: string; tone?: 'tinted' | 'white'
 - [ ] **Step 18: Rewrite the header and the frame.**
   Replace the screen's outer wrapper and title block:
   ```tsx
-      <div className="flex-1 overflow-auto py-screen-y px-screen-x narrow:px-s7 narrow:py-s9">
+      <div className="flex-1 overflow-auto py-screen-y px-screen-x max760:px-s7 max760:py-s9">
         <div className="max-w-access mx-auto">
           {/* back link — Step 3 */}
           <div className="flex items-start justify-between gap-s6 flex-wrap mt-s5">
@@ -11144,7 +11144,7 @@ export const SUPERVISE_NOTE: string
           label="کل سامانه" hint={EVERY_NOTE} />
 
         <div role="group" aria-label="دپارتمان" data-dimmed={every ? 'true' : 'false'}
-          className={`grid grid-cols-2 gap-s4 narrow:grid-cols-1
+          className={`grid grid-cols-2 gap-s4 max760:grid-cols-1
                       ${every ? 'opacity-40 pointer-events-none' : ''}`}>
           {list.map((d) => {
             const on = scopes.includes(`dept:${d.code}`)
@@ -11337,7 +11337,7 @@ export const SUPERVISE_NOTE: string
             they are answering. */}
         <SectionCard eyebrow="هویت و ورود" aria-label="هویت و ورود" className="p-s8">
           <div data-testid="two-up"
-            className="grid grid-cols-2 gap-s6 narrow:grid-cols-1">
+            className="grid grid-cols-2 gap-s6 max760:grid-cols-1">
             <TextField id={nameId} label="نام و نام خانوادگی" placeholder="مثلاً سحر بیات"
               value={draft.displayName}
               onChange={(v) => onChange({ ...draft, displayName: v })} />
@@ -11654,7 +11654,7 @@ API type, hook or route path is added.
 - [ ] **Step 3: Rewrite the header and drop the identity card.**
   In `ui/src/screens/Profile.tsx` replace the outer wrapper and the first `Card`:
   ```tsx
-      <div className="flex-1 overflow-auto py-screen-y px-screen-x narrow:px-s7 narrow:py-s9">
+      <div className="flex-1 overflow-auto py-screen-y px-screen-x max760:px-s7 max760:py-s9">
         <div className="max-w-profile mx-auto">
           {/* §6.13 — `21px/800 #fff` name, `12.5px #C9BEEE` role. The identity
               card this replaces was three lines of plain text plus a paragraph
@@ -11689,7 +11689,7 @@ API type, hook or route path is added.
     drawProfile(EDITOR)
     const card = await screen.findByRole('group', { name: 'تغییر گذرواژه' })
     const pair = within(card).getByTestId('password-pair')
-    expect(pair).toHaveClass('grid', 'grid-cols-2', 'narrow:grid-cols-1')
+    expect(pair).toHaveClass('grid', 'grid-cols-2', 'max760:grid-cols-1')
     expect(within(pair).getByLabelText('گذرواژهٔ تازه')).toBeInTheDocument()
     expect(within(pair).getByLabelText('تکرار گذرواژهٔ تازه')).toBeInTheDocument()
     // The current password is full width, above the pair.
@@ -11728,7 +11728,7 @@ API type, hook or route path is added.
               <PasswordField id={currentId} label="گذرواژهٔ فعلی" placeholder="••••••••"
                 autoComplete="current-password" value={current} onChange={setCurrent} />
               <div data-testid="password-pair"
-                className="grid grid-cols-2 gap-s6 narrow:grid-cols-1">
+                className="grid grid-cols-2 gap-s6 max760:grid-cols-1">
                 <PasswordField id={nextId} label="گذرواژهٔ تازه" placeholder="••••••••"
                   autoComplete="new-password" value={next} onChange={setNext} />
                 <PasswordField id={repeatId} label="تکرار گذرواژهٔ تازه" placeholder="••••••••"
@@ -11957,7 +11957,7 @@ export const STATE_OFF: string   // 'پنهان است'
   Replace everything from `return (` to the end of `ui/src/screens/Visibility.tsx`:
   ```tsx
     return (
-      <div className="flex-1 overflow-auto py-screen-y px-screen-x narrow:px-s7 narrow:py-s9">
+      <div className="flex-1 overflow-auto py-screen-y px-screen-x max760:px-s7 max760:py-s9">
         <div className="max-w-access mx-auto">
           <h1 className="text-title font-extrabold text-on-dark m-0">سیاست نمایش محتوا</h1>
           {/* §6.12 — the intro makes the framing explicit: a decision applied to
@@ -11985,7 +11985,7 @@ export const STATE_OFF: string   // 'پنهان است'
                     className="border-b border-hair last:border-b-0">
                     <label className="flex items-start gap-s6 py-s7 px-s1 cursor-pointer
                                       transition-colors duration-ds hover:bg-tile-v4
-                                      narrow:flex-wrap">
+                                      max760:flex-wrap">
                       {/* `aria-label` even though the label wraps the control:
                           the accessible name computed from a wrapping label is
                           its WHOLE subtree, so without this every row is
