@@ -3574,7 +3574,7 @@ check drawn at stroke 3.
 
 | The design shows | Chosen | Why |
 |---|---|---|
-| Tick box at 16 / 17 / 18 / 19px, radius 5 (at 16) or 6 (17–19) | **18×18, radius 6** | The ladder is keyed to nesting depth, not to what the element *is*. 17, 18 and 19 each serve two sites; 18 is the row-level size (the supervisor flag, «کل سامانه»). **Genuinely unsettled by the design — flagged to the owner.** |
+| Tick box at 16 / 17 / 18 / 19px, radius 5 (at 16) or 6 (17–19) | **19×19, radius 6 (`w-tick` / `rounded-tick`)** | **Not this task's choice — ledger L-10 already made it.** The ladder is keyed to nesting depth, not to what the element *is*, so two sizes by role replace four by screen: 19px for a tick in a list row, 16px for a tick nested inside another option (`w-tick-nested`), and 17 and 18 normalise up to 19. L-10 is an **Owner veto** row and is still open; the value it names is the one `tokens.css` declares, and no later task may use another. |
 | Row border off: `#E3D8F5` or `#EFE7DC` | **`#E3D8F5` (`--line`)** | §4.3 gives `1.5px #E3D8F5` to "every control, input, ghost button, secondary button". A checkbox row is a control. |
 | Row background on: `#F8F4FE` or `#F0E9FB` | **`#F8F4FE` (`--tile-v4`)** | Nine department scope tiles against one «کل سامانه» row. |
 | Unchecked tick border `#C9B8EC` except the policy rows' `#DCD3EC` | **`#C9B8EC` (`--line-dashed`)** | §9.7 b catalogues the policy row as the single exception. §9.9 records that the token's *name* is wrong for this role, not its value. |
@@ -3589,9 +3589,11 @@ check drawn at stroke 3.
   - `useSurface()` / `SurfaceProvider` from `ui/src/ui/surface.tsx` (Task 5).
   - `pushDismissible`, `popDismissible`, `isTopDismissible` from `ui/src/ui/dismissibleStack.ts` (existing).
   - Task 2's utilities: `text-fs-lg` `text-fs-menu` `text-fs-sm` `text-fs-sm2` `text-fs-xs` (15 / 13.5 / 13 / 12.5 / 11.5px) · `rounded-card` `rounded-tile` `rounded-button` `rounded-input` `rounded-control` `rounded-tick` `rounded-round` (16 / 14 / 12 / 11 / 10 / 6px / 50%) · `border-hairline` (1.5px) · `border-line` `#E3D8F5` · `border-line-dashed` `#C9B8EC` (`--line-dashed`) · `border-coral` `#FA5A52` · `border-violet` `#4A25A9` · `border-warm` `#EFE7DC` · `bg-violet` `bg-green` `bg-card` `bg-tile-v2` `bg-tile-v4` (`--tile-v4` `#F8F4FE`) · `border-border-card` `rgba(42,29,94,.07)` (`--border-card` — §4.3's default card border, 46 uses; the class is the family's long form, see Task 2) · `shadow-pop` (Task 3 corrects it to S1's `0 20px 45px -20px rgba(74,37,169,.45)`) · `text-ink` `text-card` `text-violet` `text-muted` `text-faint`.
+  - The geometry utilities the pre-flight minted for these three primitives (`.superpowers/sdd/ui-primitives-tokens-report.md`), which is why this task writes **no `[…]` arbitrary value at all**: `w-tick` `h-tick` (19px, ledger L-10) · `gap-tick-row` (11px) · `py-tick-nested-y` (11px) · `px-radio-x` (15px) · `gap-option` (9px) · `p-popover` (7px) · `max-h-popover` (280px) · `py-search-y-menu` (9px) · `ps-search-x-menu` (34px) · and the `_ds` ladder's own `s1` `half` `s3` `s4` `s5` `s6` `s7` rungs (4 / 2 / 6 / 8 / 10 / 12 / 14px), each of which is reachable as `p-` `m-` `gap-` `w-` `h-` `start-` `end-`. Map by ROLE, never by pixel value: 13px alone is `--pad-search-y`, `--pad-compose`, `--size-tick-glyph`, `--pad-tick-row-y`, `--pad-dropdown-x-filter` and `--pad-table-row-y`.
+  - `z-dropdown` — the anchored-popover rung of the z-index ladder (ledger **L-42/L-43**, Bootstrap 5's `$zindex-dropdown` 1000, token `--role-z-dropdown`). **It replaces the deliverable's `z-index:35`.** A dropdown opened inside a dialog needs no second rung: the popover is a DOM descendant of its anchor and the scrim carries a z-index, so the scrim forms a stacking context and this rung resolves locally inside the dialog — which is exactly why L-43 collapses the deliverable's 25/27/30/35/37/39/57 onto one value. If the ladder is not minted when this task starts, mint it first; do not fall back to a number.
 - Produces:
   - `ui/src/ui/Checkbox.tsx`
-    - `function TickBox({ on, tone, className }: { on: boolean; tone?: 'violet' | 'green'; className?: string }): JSX.Element` — the 18×18 square on its own, so `Dropdown`'s multi-select options and the flow bar's confirm toggle draw the same tick rather than a fourth copy of it.
+    - `function TickBox({ on, tone, className }: { on: boolean; tone?: 'violet' | 'green'; className?: string }): JSX.Element` — the 19×19 square on its own (`w-tick`, ledger L-10), so `Dropdown`'s multi-select options and the flow bar's confirm toggle draw the same tick rather than a fourth copy of it.
     - `interface CheckboxProps { label: string; checked: boolean; onChange: (next: boolean) => void; hint?: string; tone?: 'violet' | 'green'; disabled?: boolean; id?: string; className?: string }`
     - `function Checkbox(props: CheckboxProps): JSX.Element`
   - `ui/src/ui/Radio.tsx`
@@ -3728,10 +3730,13 @@ const TONE = {
  * The square tick on its own (§5.2), so the dropdown's multi-select options and
  * the flow bar's «تأییدشده» toggle draw this one rather than a fourth copy.
  *
- * 18×18 at radius 6. The design draws the same control at 16, 17, 18 and 19px
- * keyed to how deeply nested it is; R8 says the treatment comes from what the
- * element *is*, so there is one tick. The 12×12 check inside it is stroke 3,
- * which is what §"Iconography" gives for a check in a 12–13px box.
+ * 19×19 at radius 6 — `w-tick h-tick rounded-tick`, ledger L-10. The design
+ * draws the same control at 16, 17, 18 and 19px keyed to how deeply nested it
+ * is; R8 says the treatment comes from what the element *is*, so L-10 keeps two
+ * by role — 19 in a list row, 16 nested inside another option — and normalises
+ * 17 and 18 up to 19. The 13×13 check inside it (`w-tick-glyph h-tick-glyph`)
+ * is stroke 3, which is what §"Iconography" gives for a check in a 12–13px box
+ * and what the design draws inside its own 19px tick.
  */
 export function TickBox({ on, tone = 'violet', className = '' }: {
   on: boolean
@@ -3742,11 +3747,12 @@ export function TickBox({ on, tone = 'violet', className = '' }: {
     <span
       data-tick
       aria-hidden
-      className={`w-[18px] h-[18px] flex-none inline-flex items-center justify-center rounded-tick border-hairline text-card ${on ? TONE[tone] : 'bg-card border-line-dashed'} ${className}`}
+      className={`w-tick h-tick flex-none inline-flex items-center justify-center rounded-tick border-hairline text-card ${on ? TONE[tone] : 'bg-card border-line-dashed'} ${className}`}
     >
       {on && (
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-          strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" focusable="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" focusable="false"
+          className="w-tick-glyph h-tick-glyph">
           <path d="M20 6L9 17l-5-5" />
         </svg>
       )}
@@ -3778,7 +3784,7 @@ export function Checkbox({
   return (
     <label
       htmlFor={id}
-      className={`relative flex items-center gap-[11px] px-[12px] py-[11px] rounded-button border-hairline ${checked ? 'bg-tile-v4 border-line-dashed' : 'bg-card border-line'} ${disabled ? 'cursor-default opacity-60' : 'cursor-pointer'} ${className}`}
+      className={`relative flex items-center gap-tick-row px-s6 py-tick-nested-y rounded-button border-hairline ${checked ? 'bg-tile-v4 border-line-dashed' : 'bg-card border-line'} ${disabled ? 'cursor-default opacity-60' : 'cursor-pointer'} ${className}`}
     >
       {/* The native input keeps the role, the state and the keyboard; the span
           beside it is paint. `sr-only` rather than `display:none`, which would
@@ -3797,7 +3803,7 @@ export function Checkbox({
       <span className="min-w-0">
         <span className={`block font-bold text-ink ${text}`}>{label}</span>
         {hint !== undefined && (
-          <span id={hintId} className="block mt-[4px] text-fs-xs text-faint leading-[1.7]">{hint}</span>
+          <span id={hintId} className="block mt-s1 text-fs-xs text-faint leading-normal">{hint}</span>
         )}
       </span>
     </label>
@@ -3843,7 +3849,7 @@ export function Radio({
   return (
     <label
       htmlFor={id}
-      className={`relative flex items-start gap-[12px] px-[15px] py-[14px] rounded-tile border-hairline cursor-pointer ${checked ? 'bg-tile-v2 border-violet' : 'bg-card border-warm'} ${className}`}
+      className={`relative flex items-start gap-s6 px-radio-x py-s7 rounded-tile border-hairline cursor-pointer ${checked ? 'bg-tile-v2 border-violet' : 'bg-card border-warm'} ${className}`}
     >
       <input
         id={id} type="radio" name={name} value={value} checked={checked}
@@ -3852,14 +3858,14 @@ export function Radio({
       />
       <span
         aria-hidden
-        className={`w-[19px] h-[19px] mt-[2px] flex-none inline-flex items-center justify-center rounded-round border-hairline peer-focus-visible:border-coral ${checked ? 'bg-violet border-violet' : 'bg-card border-line-dashed'}`}
+        className={`w-tick h-tick mt-half flex-none inline-flex items-center justify-center rounded-round border-hairline peer-focus-visible:border-coral ${checked ? 'bg-violet border-violet' : 'bg-card border-line-dashed'}`}
       >
-        {checked && <span className="w-[8px] h-[8px] rounded-round bg-card" />}
+        {checked && <span className="w-s4 h-s4 rounded-round bg-card" />}
       </span>
       <span className="min-w-0">
         <span className={`block font-bold text-ink ${text}`}>{label}</span>
         {note !== undefined && (
-          <span className="block mt-[4px] text-fs-xs text-faint leading-[1.7]">{note}</span>
+          <span className="block mt-s1 text-fs-xs text-faint leading-normal">{note}</span>
         )}
       </span>
     </label>
@@ -4028,7 +4034,7 @@ export interface DropdownProps {
 }
 
 const OPTION =
-  'w-full flex items-center gap-[9px] px-[12px] py-[10px] rounded-input border-0 ' +
+  'w-full flex items-center gap-option px-s6 py-s5 rounded-input border-0 ' +
   'text-start text-fs-sm text-ink cursor-pointer hover:bg-tile-v2'
 
 export function Dropdown({
@@ -4096,7 +4102,7 @@ export function Dropdown({
     <div ref={box} data-dd className={`relative ${className}`}>
       <span
         id={`${id}-label`}
-        className={hideLabel ? 'sr-only' : `block font-semibold text-violet mb-[6px] text-fs-sm2`}
+        className={hideLabel ? 'sr-only' : `block font-semibold text-violet mb-s3 text-fs-sm2`}
       >
         {label}
       </span>
@@ -4110,7 +4116,7 @@ export function Dropdown({
         onKeyDown={(e) => {
           if (e.key === 'ArrowDown') { e.preventDefault(); setOpen(true); requestAnimationFrame(() => move('first')) }
         }}
-        className={`w-full flex items-center gap-[10px] px-[14px] py-[10px] rounded-button bg-card text-ink text-start cursor-pointer border-hairline ${open ? 'border-coral' : 'border-line'} ${text}`}
+        className={`w-full flex items-center gap-s5 px-s7 py-s5 rounded-button bg-card text-ink text-start cursor-pointer border-hairline ${open ? 'border-coral' : 'border-line'} ${text}`}
       >
         <span className={`flex-1 overflow-hidden text-ellipsis whitespace-nowrap ${chosen.length ? '' : 'text-faint'}`}>
           {chosen.length ? chosen.map((o) => o.label).join('، ') : placeholder}
@@ -4129,7 +4135,7 @@ export function Dropdown({
           aria-labelledby={`${id}-label`}
           aria-multiselectable={multiple || undefined}
           onKeyDown={onListKey}
-          className="absolute top-[calc(100%+6px)] start-0 end-0 z-[35] max-h-[280px] overflow-auto flex flex-col gap-[2px] p-[7px] bg-card border border-border-card rounded-card shadow-pop"
+          className="absolute top-full mt-s3 start-0 end-0 z-dropdown max-h-popover overflow-auto flex flex-col gap-half p-popover bg-card border border-border-card rounded-card shadow-pop"
         >
           {searchable && (
             <input
@@ -4138,11 +4144,11 @@ export function Dropdown({
               placeholder={searchPlaceholder}
               aria-label={searchPlaceholder}
               onChange={(e) => setQuery(e.target.value)}
-              className="w-full box-border ps-[12px] pe-[34px] py-[9px] mb-[4px] rounded-control text-fs-sm2 text-ink bg-card border-hairline border-line outline-none focus:border-coral"
+              className="w-full box-border ps-search-x-menu pe-s6 py-search-y-menu mb-s1 rounded-control text-fs-sm2 text-ink bg-card border-hairline border-line outline-none focus:border-coral"
             />
           )}
           {shown.length === 0 ? (
-            <p className="m-0 px-[12px] py-[14px] text-center text-fs-sm2 text-muted">{noHit}</p>
+            <p className="m-0 px-s6 py-s7 text-center text-fs-sm2 text-muted">{noHit}</p>
           ) : shown.map((o) => {
             const picked = multiple ? values.includes(o.value) : o.value === value
             return (
@@ -4166,12 +4172,12 @@ export function Dropdown({
                     <path d="M20 6L9 17l-5-5" />
                   </svg>
                 ) : (
-                  <span aria-hidden className="w-[14px] flex-none" />
+                  <span aria-hidden className="w-s7 flex-none" />
                 )}
                 <span className="min-w-0 flex-1">
                   <span className="block">{o.label}</span>
                   {o.note !== undefined && (
-                    <span className="block mt-[2px] text-fs-xs font-normal text-faint">{o.note}</span>
+                    <span className="block mt-half text-fs-xs font-normal text-faint">{o.note}</span>
                   )}
                 </span>
               </button>
@@ -4202,7 +4208,11 @@ Run: `cd ui && npx vitest run && npx tsc -b && npx eslint .`
 Expected: all three exit 0. `guards.test.ts` is the one to watch: `TickBox`'s `tone` and
 `Checkbox`'s `tone` are not on its banned prop list (`density|size|scale|compact|dense|roomy|variant`),
 and none of the three files contains a hex, a `text-[`, a `rounded-[`, a `shadow-[` or a
-physical direction property.
+physical direction property. Stronger than the guard asks, and deliberately: after the
+token sweep these three files contain **no `[…]` arbitrary value of any kind**. The guard
+only bans three prefixes, so `px-[12px]` and `z-[35]` would pass it while bypassing the
+token layer entirely — `grep -n '\[' src/ui/{Checkbox,Radio,Dropdown}.tsx` must return
+nothing but TypeScript array types and array indexing.
 
 - [ ] **Step 13: Build, and grep the built CSS**
 
@@ -4217,19 +4227,26 @@ console.log(miss.length?"MISSING "+miss.join(" "):"OK "+need.length+" classes pr
 process.exit(miss.length?1:0);
 ' rounded-card rounded-tile rounded-button rounded-input rounded-control rounded-tick rounded-round \
   border-line-dashed border-border-card border-warm border-violet bg-tile-v4 bg-green \
-  bg-violet shadow-pop text-fs-menu text-fs-sm text-fs-sm2 text-fs-xs text-fs-lg sr-only
+  bg-violet shadow-pop text-fs-menu text-fs-sm text-fs-sm2 text-fs-xs text-fs-lg sr-only \
+  w-tick h-tick gap-tick-row py-tick-nested-y px-radio-x gap-option p-popover max-h-popover \
+  py-search-y-menu ps-search-x-menu pe-s6 mt-half mt-s1 mt-s3 mb-s1 mb-s3 gap-half gap-s5 \
+  gap-s6 px-s6 px-s7 py-s5 py-s7 w-s4 h-s4 w-s7 top-full leading-normal z-dropdown \
+  w-tick-glyph h-tick-glyph
 ```
 
-Expected: `OK 21 classes present`.
+Expected: `OK 52 classes present`.
 
 - [ ] **Step 14: Commit the verification**
 
-Nothing new if green. If a utility was missing, fix it in `ui/tailwind.config.js` and:
+Nothing new if green.
 
-```
-git add ui/tailwind.config.js
-git commit -m "fix(ui): expose the tokens the choice primitives could not reach"
-```
+**If a utility is missing, do NOT add it to `ui/tailwind.config.js`.** That file, along with
+`ui/src/styles/tokens.css`, `ui/src/styles/roles.css` and `ui/tailwind-probe.txt`, is FROZEN
+for this task — every token these three primitives need was minted ahead of time so several
+primitives could be built in parallel without clobbering one another. A missing utility means
+either the class name is wrong (check it against the theme, mapping by ROLE and never by pixel
+value) or a genuine gap in the mint. **Stop and report it.** Minting here silently recreates
+the unreachable-token problem this whole rebuild exists to fix.
 
 ---
 
