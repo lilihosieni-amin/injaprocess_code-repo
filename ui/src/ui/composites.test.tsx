@@ -792,17 +792,24 @@ describe('every class these five composites write, in every branch', () => {
     // more in src/test/a11y.ts, which explains the same rule at greater length.
     //
     // Tailwind's scanner has no idea what a comment is. Neither does it know
-    // what a template literal or an error message is, which is why a11y.ts's
-    // `expect(...)` failure text counted too. So the rule for both files is the
-    // simplest one that can be checked: no line may contain a whole arbitrary
-    // class ANYWHERE in it, in any kind of text. The two files talk about these
-    // classes constantly — they write `before:-inset-` and give N in words, or
-    // assemble the literal from fragments.
+    // what a template literal, an error message or a test fixture is, which is
+    // why a11y.ts's `expect(...)` failure text counted, and why
+    // src/ui/table.test.tsx — which passes whole class strings to the shared
+    // helper to watch it REFUSE them — was minting four more. So the rule for
+    // all three files is the simplest one that can be checked: no line may
+    // contain a whole arbitrary class ANYWHERE in it, in any kind of text. All
+    // three talk about these classes constantly — they write `before:-inset-`
+    // and give N in words, or assemble the literal from fragments.
+    //
+    // The list is the set of files that TALK about these classes without
+    // rendering them. A component that writes one is a consumer, and a consumer
+    // is not a leak: `.p-\[7px\]` is still in the sheet, from four real
+    // screens, and that is correct.
     //
     // A regex source is not a spelling: `-inset-\[` has a backslash where a
     // class has a bracket, and Tailwind cannot mint from it either.
     const SPELLED = /(?<![\w$\\])[a-z0-9][\w:-]*-\[[^\]\n]*\]/
-    for (const file of ['src/ui/composites.test.tsx', 'src/test/a11y.ts']) {
+    for (const file of ['src/ui/composites.test.tsx', 'src/test/a11y.ts', 'src/ui/table.test.tsx']) {
       const hits = readFileSync(resolve(process.cwd(), file), 'utf8').split('\n')
         .map((line, i) => ({ n: i + 1, line: line.trim() }))
         .filter(({ line }) => SPELLED.test(line))

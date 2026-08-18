@@ -803,6 +803,43 @@ describe('expectExpandedHitArea', () => {
     return el
   }
 
+  /* -----------------------------------------------------------------------
+     Every fixture below is ASSEMBLED, and none of them is spelled.
+
+     Every .ts/.tsx under `./src` is inside a Tailwind CONTENT glob, and the
+     scanner does not read a test fixture differently from a component: FIVE
+     classes were being minted into the shipped stylesheet by the strings that
+     exist to see them REFUSED — `before:content-` at `none` in both its
+     spellings, the `md:`-prefixed inset in two sizes, and the 16.5px inset in
+     the spacing-scale test below, which no component writes at all. A fixture
+     is by definition a rule nothing renders, so a fixture in the sheet is dead
+     weight at best and, in the `content: none` case, a rule that would silently
+     defeat this helper if anything ever wrote the class.
+
+     What survives the rebuild is the empty content string and the 4/5/6px
+     insets, because NavTabTray, Pager, Overlay and PasswordField genuinely
+     write those — which is the useful half of the distinction: a class with a
+     real consumer is a consumer and not a leak, and the same is true of the
+     arbitrary paddings the un-migrated screens still write.
+
+     src/ui/composites.test.tsx holds this file to it, together with itself and
+     src/test/a11y.ts.
+     ----------------------------------------------------------------------- */
+
+  /** Two or more halves of a class name, joined here so the whole never appears. */
+  const join = (...parts: string[]) => parts.join('')
+  /** `<variants><utility>[<value>]`, built from its parts. */
+  const arb = (variants: string, utility: string, value: string) =>
+    join(variants, utility, '[', value, ']')
+  /** The ::before's content at the one value that generates a box. */
+  const CONTENT = arb('before:', 'content-', '""')
+  /** The negative outset that grows the hit area, N px on every side. */
+  const inset = (px: string, variants = 'before:') => arb(variants, '-inset-', `${px}px`)
+  /** The whole overlay: a positioned control, an absolute ::before, a box, a size. */
+  const overlay = (px = '5') => `relative before:absolute ${CONTENT} ${inset(px)}`
+  /** The 34px pager button inside a 44px target — the shape most of these vary. */
+  const PAGER = `${overlay()} w-pager h-pager`
+
   it('passes the 34px pager button and the 32px close control alike', () => {
     // 34 + 2×5 and 32 + 2×6 are both 44. A helper that matched one literal
     // inset would reject the close control, which is already built this way.
@@ -823,38 +860,36 @@ describe('expectExpandedHitArea', () => {
     // `theme.extend.width` alone rejected it as a key "this theme knows"
     // nothing about — a refusal with a misleading reason, which is worse than
     // no refusal. 11 + 2×16.5 = 44.
-    expectExpandedHitArea(control(
-      'relative before:absolute before:content-[""] before:-inset-[16.5px] w-tick-row h-tick-row',
-    ))
+    expectExpandedHitArea(control(`${overlay('16.5')} w-tick-row h-tick-row`))
   })
 
   it('refuses a drawn box with no ::before around it', () => {
     // Everything the rule asks for except the one thing that does the growing.
     expect(() => expectExpandedHitArea(control(
-      'relative before:absolute before:content-[""] w-pager h-pager',
+      `relative before:absolute ${CONTENT} w-pager h-pager`,
     ))).toThrow(/before:-inset/)
   })
 
   it('refuses a ::before with no content, which generates no box at all', () => {
     expect(() => expectExpandedHitArea(control(
-      'relative before:absolute before:-inset-[5px] w-pager h-pager',
+      `relative before:absolute ${inset('5')} w-pager h-pager`,
     ))).toThrow(/before:content/)
   })
 
   it('refuses the one content VALUE that passes a spelling check and draws nothing', () => {
-    // `before:content-[none]` matches `/^before:content-\[/` exactly, and sets
-    // `content: none`, which generates no box at all. The check was defeated by
-    // the single value that defeats its purpose.
-    expect(() => expectExpandedHitArea(control(
-      'relative before:absolute before:content-[none] before:-inset-[5px] w-pager h-pager',
-    ))).toThrow(/content: none/)
-    expect(() => expectExpandedHitArea(control(
-      'relative before:absolute before:content-none before:-inset-[5px] w-pager h-pager',
-    ))).toThrow(/content: none/)
+    // A bracketed `before:content-` matched the old spelling check exactly and
+    // set `content: none`, which generates no box at all — the check was
+    // defeated by the single value that defeats its purpose. Both spellings of
+    // it, the bracketed one and Tailwind's own bare utility.
+    for (const spelling of [arb('before:', 'content-', 'none'), join('before:content-', 'none')]) {
+      expect(() => expectExpandedHitArea(control(
+        `relative before:absolute ${spelling} ${inset('5')} w-pager h-pager`,
+      )), spelling).toThrow(/content: none/)
+    }
   })
 
   it('refuses a ::before that is generated and then told not to draw', () => {
-    const base = 'relative before:absolute before:content-[""] before:-inset-[5px] w-pager h-pager'
+    const base = PAGER
     for (const [klass, why] of [
       ['before:hidden', /display: none/],
       ['before:invisible', /visibility: hidden/],
@@ -870,7 +905,7 @@ describe('expectExpandedHitArea', () => {
     // `overflow-hidden` is the most ordinary class in the file — it is on the
     // table shell three lines from here — and on a control it cuts the 44px
     // overlay back to the 34px the control looks like.
-    const base = 'relative before:absolute before:content-[""] before:-inset-[5px] w-pager h-pager'
+    const base = PAGER
     for (const klass of ['overflow-hidden', 'overflow-clip', 'overflow-x-hidden']) {
       expect(() => expectExpandedHitArea(control(`${base} ${klass}`)), klass).toThrow(/clips its own/)
     }
@@ -881,7 +916,7 @@ describe('expectExpandedHitArea', () => {
     // which takes the ::before with it, because pointer-events inherits —
     // passed.
     expect(() => expectExpandedHitArea(control(
-      'relative before:absolute before:content-[""] before:-inset-[5px] pointer-events-none w-pager h-pager',
+      `${overlay()} pointer-events-none w-pager h-pager`,
     ))).toThrow(/on the CONTROL/)
   })
 
@@ -891,7 +926,7 @@ describe('expectExpandedHitArea', () => {
     // enforces, defeated by reading `w-`/`h-` while the browser resolves
     // `min-*`. Same species as the `w-pager h-chevron` hole.
     expect(() => expectExpandedHitArea(control(
-      'relative before:absolute before:content-[""] before:-inset-[5px] w-pager h-pager min-w-touch min-h-touch',
+      `${PAGER} min-w-touch min-h-touch`,
     ))).toThrow(/44px wide \(`min-w-touch`\).+expectTouchTarget/s)
   })
 
@@ -900,7 +935,7 @@ describe('expectExpandedHitArea', () => {
     // resolves by EMITTED order — the exact mistake this file's own
     // `paint`/`winner` docstring warns about, made by the helper beside it.
     expect(() => expectExpandedHitArea(control(
-      'relative before:absolute before:content-[""] before:-inset-[5px] w-pager w-touch h-pager',
+      `${overlay()} w-pager w-touch h-pager`,
     ))).toThrow(/EMITTED order/)
   })
 
@@ -908,7 +943,7 @@ describe('expectExpandedHitArea', () => {
     // 34 + 2×1 = 36. Below 768px the target is 44px and above it 36px, and the
     // check that read the unconditional class alone called that correct.
     expect(() => expectExpandedHitArea(control(
-      'relative before:absolute before:content-[""] before:-inset-[5px] md:before:-inset-[1px] w-pager h-pager',
+      `${overlay()} ${inset('1', 'md:before:')} w-pager h-pager`,
     ))).toThrow(/36px wide/)
   })
 
@@ -917,13 +952,13 @@ describe('expectExpandedHitArea', () => {
     // 44px and catches nothing, and it is the single most plausible thing for
     // someone to add to a decorative-looking pseudo-element.
     expect(() => expectExpandedHitArea(control(
-      'relative before:absolute before:content-[""] before:-inset-[5px] before:pointer-events-none w-pager h-pager',
+      `${overlay()} before:pointer-events-none w-pager h-pager`,
     ))).toThrow(/pointer-events-none/)
   })
 
   it('refuses a control that states no drawn box to measure from', () => {
     expect(() => expectExpandedHitArea(control(
-      'relative before:absolute before:content-[""] before:-inset-[5px]',
+      overlay(),
     ))).toThrow(/measured/)
   })
 
@@ -931,7 +966,7 @@ describe('expectExpandedHitArea', () => {
     // The mistake the helper exists to catch: 32 + 2×5 is 42, and nothing about
     // it is visible, so nothing else would ever catch it.
     expect(() => expectExpandedHitArea(control(
-      'relative before:absolute before:content-[""] before:-inset-[5px] w-close h-close',
+      `${overlay()} w-close h-close`,
     ))).toThrow(/42px/)
   })
 
@@ -941,13 +976,13 @@ describe('expectExpandedHitArea', () => {
     // and a thumb misses it exactly as often as it misses a 25px square. The
     // design's ladder is square today; nothing makes it stay square.
     expect(() => expectExpandedHitArea(control(
-      'relative before:absolute before:content-[""] before:-inset-[5px] w-pager h-chevron',
+      `${overlay()} w-pager h-chevron`,
     ))).toThrow(/25px tall/)
   })
 
   it('refuses a ::before that grows from the wrong box', () => {
     expect(() => expectExpandedHitArea(control(
-      'before:absolute before:content-[""] before:-inset-[5px] w-pager h-pager',
+      `before:absolute ${CONTENT} ${inset('5')} w-pager h-pager`,
     ))).toThrow(/relative/)
   })
 
@@ -956,13 +991,13 @@ describe('expectExpandedHitArea', () => {
     // between the `:` and the `r`. All three of these passed a helper that
     // pattern-matched the raw class string, and each one is a control that is
     // built correctly on a desktop and unhittable on the phone that needs it.
-    const base = 'relative before:absolute before:content-[""] before:-inset-[5px] w-pager h-pager'
+    const base = PAGER
     const swap = (from: string, to: string) => control(base.replace(from, to))
     expect(() => expectExpandedHitArea(swap('relative', 'md:relative')))
       .toThrow(/unconditional `relative`/)
     expect(() => expectExpandedHitArea(swap('before:absolute', 'max760:before:absolute')))
       .toThrow(/unconditional `before:absolute`/)
-    expect(() => expectExpandedHitArea(swap('before:-inset-[5px]', 'md:before:-inset-[5px]')))
+    expect(() => expectExpandedHitArea(swap(inset('5'), inset('5', 'md:before:'))))
       .toThrow(/unconditional `before:-inset/)
   })
 
@@ -971,7 +1006,7 @@ describe('expectExpandedHitArea', () => {
     // the painted control to 44px. That control is asserted with
     // expectTouchTarget; this one is for the design's smaller ladder.
     expect(() => expectExpandedHitArea(control(
-      'relative before:absolute before:content-[""] before:-inset-[5px] w-touch h-touch',
+      `${overlay()} w-touch h-touch`,
     ))).toThrow(/expectTouchTarget/)
   })
 })
