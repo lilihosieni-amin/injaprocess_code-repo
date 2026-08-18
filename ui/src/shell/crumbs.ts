@@ -75,3 +75,81 @@ export function panelCrumbs(pathname: string, deptName: (code: string) => string
   const flat = FLAT[parts[0] ?? '']
   return flat === undefined ? [{ label: HOME }] : [{ label: flat }]
 }
+
+/** `/a//b/` and `/a/b` are the same route; `pathname === root` is a string compare. */
+function normalise(path: string): string {
+  return `/${path.split('/').filter(Boolean).join('/')}`
+}
+
+/**
+ * Where the reader's back bar goes, and `undefined` when they are at their root.
+ *
+ * The reader's chrome off home is a back bar, not the panel's trail (§9.12), so
+ * this answers one path rather than a list. `root` is passed in because R4 makes
+ * it a property of the person: a reader who can reach exactly one department has
+ * that department's process list as their root, and a bar offering to take them
+ * "back" to a list they may never see would be a control leading nowhere.
+ *
+ * `/processes/{pid}` has no department segment, and the department is recovered
+ * from the id by the one thing `allocate-id` guarantees — `{dept}-{nnn}` — with
+ * the prefix checked against DEPT_CODES before it is trusted. A hand-typed id
+ * therefore falls back to the root rather than pointing at a department that
+ * does not exist, which is `panelCrumbs`'s own rule stated for one answer.
+ */
+export function readerBack(pathname: string, root: string): string | undefined {
+  const here = normalise(pathname)
+  const home = normalise(root)
+  if (here === home) return undefined
+  const parts = here.split('/').filter(Boolean)
+
+  if (parts[0] === 'departments' && parts[1] !== undefined) {
+    if (parts[2] === 'overview') return `/departments/${parts[1]}`
+    return '/departments'
+  }
+
+  if (parts[0] === 'processes' && parts[1] !== undefined) {
+    const pid = parts[1]
+    if (parts[2] === 'flow') return `/processes/${pid}`
+    const code = pid.slice(0, pid.lastIndexOf('-'))
+    return DEPT_CODES.includes(code) ? `/departments/${code}` : home
+  }
+
+  return home
+}
+
+/**
+ * What the reader's back bar calls the screen it is on — `hereTitle` in
+ * `Inja Reader.dc.html:2681`, which derives it from the route and nothing else.
+ *
+ * Two of the four screens name themselves outright; the other two are named
+ * after the DEPARTMENT, never a process, so this returns the code and the caller
+ * resolves it against the `useDepartments()` list it already holds. That is what
+ * keeps this function pure and testable beside `readerBack`, which it
+ * deliberately does not touch: one answers where back goes, this answers what
+ * here is called, and a screen can need either without the other.
+ *
+ * `/comments` is the one row of the deliverable's table this app has no route
+ * for — `src/routes.tsx` has no entry and the catch-all sends it to
+ * `/departments` — and it is transcribed here whole rather than dropped, so the
+ * table is not re-derived from the mockup the day the comments inbox lands.
+ */
+export function readerHere(pathname: string, root: string): {
+  title?: string; deptCode?: string; about?: boolean
+} {
+  const here = normalise(pathname)
+  if (here === normalise(root)) return {}
+  const parts = here.split('/').filter(Boolean)
+
+  if (parts[0] === 'comments') return { title: 'کامنت‌ها' }
+  if (parts[0] === 'profile') return { title: 'پروفایل من' }
+
+  if (parts[0] === 'departments' && parts[1] !== undefined) {
+    // `…/overview` is the department's own info screen — «دربارهٔ X»; the bare
+    // department route is its process list, which is just «X».
+    return parts[2] === 'overview'
+      ? { deptCode: parts[1], about: true }
+      : { deptCode: parts[1] }
+  }
+
+  return {}
+}

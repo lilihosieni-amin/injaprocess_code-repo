@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { panelCrumbs } from './crumbs'
+import { panelCrumbs, readerBack, readerHere } from './crumbs'
 
 const name = (code: string) => ({ dining: 'سالن', cooking: 'پخت' }[code] ?? code)
 
@@ -172,5 +172,228 @@ describe('panelCrumbs', () => {
     expect(panelCrumbs('//departments//dining', name)).toEqual(panelCrumbs('/departments/dining', name))
     expect(panelCrumbs('/departments/dining//overview', name))
       .toEqual(panelCrumbs('/departments/dining/overview', name))
+  })
+})
+
+/* ==================================================================== *
+ * The reader's chrome — Task 13
+ *
+ * The reader's non-home chrome is a BACK BAR, not the panel's trail (§9.12), so
+ * two questions have to be answered about a route rather than one: where does
+ * «بازگشت» go, and what does the bar call the screen it is on. They are two
+ * functions on purpose — `readerBack`'s answers must not move when the title
+ * table does — and they share only the route parsing.
+ *
+ * `root` is a parameter of both because R4 makes it a property of the PERSON: a
+ * reader who can reach exactly one department has that department's process
+ * list as their root, and a bar offering to take them "back" to a list they
+ * will never see is a control leading nowhere.
+ * ==================================================================== */
+
+describe('readerBack', () => {
+  it('gives a reader at their root nothing to go back to', () => {
+    // R4 — the landing list is their root, so it carries no back bar. Both
+    // shapes of root: the many-department list and the one-department list.
+    expect(readerBack('/departments', '/departments')).toBeUndefined()
+    expect(readerBack('/departments/dining', '/departments/dining')).toBeUndefined()
+  })
+
+  it('sends a many-department reader back up the list', () => {
+    expect(readerBack('/departments/dining', '/departments')).toBe('/departments')
+  })
+
+  it('sends the department summary back to its process list', () => {
+    expect(readerBack('/departments/dining/overview', '/departments/dining')).toBe('/departments/dining')
+    expect(readerBack('/departments/dining/overview', '/departments')).toBe('/departments/dining')
+  })
+
+  it('sends a process back to its department, recovered from the id', () => {
+    expect(readerBack('/processes/dining-003', '/departments')).toBe('/departments/dining')
+    expect(readerBack('/processes/dining-003', '/departments/dining')).toBe('/departments/dining')
+  })
+
+  it('sends the flowchart back to its own process', () => {
+    expect(readerBack('/processes/dining-003/flow', '/departments')).toBe('/processes/dining-003')
+  })
+
+  it('falls back to the root rather than nowhere for an id it cannot place', () => {
+    expect(readerBack('/processes/abc', '/departments/dining')).toBe('/departments/dining')
+    expect(readerBack('/profile', '/departments/dining')).toBe('/departments/dining')
+  })
+
+  /* ------------------------------------------------------------------ *
+   * Beyond the plan's six. Each was written because a mutant survived all
+   * six above; the mutation log is in this task's report.
+   * ------------------------------------------------------------------ */
+
+  it('reads a process id back from its LAST dash, so a suffixed id is not mis-placed', () => {
+    // `dining-003-v2` is not an id `allocate-id` issues and `:pid` matches it.
+    // Split on the FIRST dash it looks like a dining process and the bar offers
+    // «بازگشت» to a department the id does not belong to; split on the LAST,
+    // `dining-003` is not a department code and the bar falls back to the root.
+    // Same rule `panelCrumbs` keeps above — a shorter answer, never a wrong one
+    // — and the `lastIndexOf` -> `indexOf` mutant survives every other case in
+    // this block, because no other one uses an id with two dashes in it.
+    expect(readerBack('/processes/dining-003-v2', '/departments')).toBe('/departments')
+    expect(readerBack('/processes/dining-003-v2', '/departments/dining')).toBe('/departments/dining')
+  })
+
+  it('checks the recovered prefix against the real department list', () => {
+    // The `DEPT_CODES.includes(code)` guard, which the six above cannot see:
+    // every one of them uses `dining`, which is in the list, or `abc`, which has
+    // no dash at all. `notadept-001` has the SHAPE of an id and a prefix that is
+    // not a department, and it is one typed URL away.
+    expect(readerBack('/processes/notadept-001', '/departments')).toBe('/departments')
+    expect(readerBack('/processes/notadept-001', '/departments/dining')).toBe('/departments/dining')
+    // …and a second real code, so the answer is read off the id rather than
+    // hard-coded to the one department every other case in this file stands on.
+    expect(readerBack('/processes/cooking-012', '/departments')).toBe('/departments/cooking')
+  })
+
+  it('does not mistake a third segment it does not know for the flow leaf', () => {
+    // `/processes/:pid/*` matches one route today and the catch-all redirects
+    // the rest, but a bar that treated any third segment as the flowchart would
+    // send «بازگشت» to the process from a screen that is not under it. The twin
+    // of `panelCrumbs`'s own case above, and the mutant `parts[2] === 'flow'` ->
+    // `parts[2] !== undefined` survives every other case here.
+    expect(readerBack('/processes/dining-003/history', '/departments')).toBe('/departments/dining')
+  })
+
+  it('does not mistake a third segment it does not know for the summary', () => {
+    // The department twin. `parts[2] === 'overview'` -> `parts[2] !== undefined`
+    // survives all six of the plan's cases, because every one of them stands on
+    // either exactly two segments or exactly the one third segment the app has.
+    expect(readerBack('/departments/dining/settings', '/departments')).toBe('/departments')
+  })
+
+  it('reads an empty path segment as no segment at all, on BOTH arguments', () => {
+    // A trailing slash, and the doubled slash a concatenated `${base}/${x}`
+    // produces. This is not tidiness: `pathname === root` is the test that
+    // decides whether a reader is at their root, and it is a STRING compare on
+    // two values that arrive from different places — the router's location and
+    // a root this shell builds itself. `/departments/dining/` against
+    // `/departments/dining` is the R4 reader's own landing screen wearing a back
+    // bar that offers to take them to the list R4 exists to keep them out of.
+    expect(readerBack('/departments/dining/', '/departments/dining')).toBeUndefined()
+    expect(readerBack('/departments/dining', '/departments/dining/')).toBeUndefined()
+    expect(readerBack('//departments//dining', '/departments')).toBe('/departments')
+    expect(readerBack('/departments/dining//overview', '/departments')).toBe('/departments/dining')
+  })
+
+  it('never offers to take a reader to the screen they are already on', () => {
+    // A back control pointing at the current page is a control that does
+    // nothing, and every individual case above is satisfied by an answer that
+    // happens not to be the input. This says it about the whole route table, on
+    // both shapes of root.
+    const paths = [
+      '/departments', '/departments/dining', '/departments/dining/overview',
+      '/departments/cooking', '/processes/dining-003', '/processes/dining-003/flow',
+      '/processes/abc', '/profile', '/nowhere', '/',
+    ]
+    for (const root of ['/departments', '/departments/dining']) {
+      for (const p of paths) {
+        expect(readerBack(p, root), `${p} from ${root}`).not.toBe(p)
+      }
+    }
+  })
+
+  it('answers with an absolute path or with nothing, on every route the app has', () => {
+    // A relative answer would be resolved against the current URL by the router
+    // and land somewhere different on every screen. Nothing above says so: each
+    // one compares against a literal that happens to start with a slash.
+    for (const root of ['/departments', '/departments/dining']) {
+      for (const p of [
+        '/departments', '/departments/dining', '/departments/dining/overview',
+        '/processes/dining-003', '/processes/dining-003/flow', '/profile', '/',
+      ]) {
+        const to = readerBack(p, root)
+        if (to !== undefined) expect(to.startsWith('/'), `${p} from ${root} -> ${to}`).toBe(true)
+      }
+    }
+  })
+})
+
+describe('readerHere', () => {
+  // The design derives the bar's title from the route and nothing else
+  // (`hereTitle`, `Inja Reader.dc.html:2681`). Two screens name themselves; two
+  // are named after their DEPARTMENT — never a process — so this returns the
+  // code and `ReaderShell` resolves the name from the `useDepartments()` list
+  // it already holds, which is what keeps this function pure.
+
+  it('names the department’s process list after the department', () => {
+    expect(readerHere('/departments/dining', '/departments')).toEqual({ deptCode: 'dining' })
+    // …read off the segment, not hard-coded to the one department the rest of
+    // this file stands on.
+    expect(readerHere('/departments/cooking', '/departments')).toEqual({ deptCode: 'cooking' })
+  })
+
+  it('marks the department summary as being ABOUT the department', () => {
+    // `'دربارهٔ ' + dm.name` in the deliverable. The flag rather than the string,
+    // because the name is not in the route.
+    expect(readerHere('/departments/dining/overview', '/departments')).toEqual({
+      deptCode: 'dining', about: true,
+    })
+  })
+
+  it('does not mark a third segment it does not know as the summary', () => {
+    // The mutant `parts[2] === 'overview'` -> `parts[2] !== undefined` draws
+    // «دربارهٔ سالن» over a screen that is not the summary.
+    expect(readerHere('/departments/dining/settings', '/departments')).toEqual({ deptCode: 'dining' })
+  })
+
+  it('lets the two screens that name themselves do so', () => {
+    // `/profile` is a route this app has. `/comments` is NOT — `src/routes.tsx`
+    // has no entry for it and the catch-all sends it to `/departments` — and it
+    // is here because it is one of the four rows of the deliverable's own table
+    // and the one the app has not built. Recorded in this task's report rather
+    // than dropped silently, so the row is not re-derived from scratch the day
+    // the comments inbox lands.
+    expect(readerHere('/profile', '/departments')).toEqual({ title: 'پروفایل من' })
+    expect(readerHere('/comments', '/departments')).toEqual({ title: 'کامنت‌ها' })
+  })
+
+  it('names a process nothing at all, which is what the deliverable draws', () => {
+    // `screen === 'plist' ? dm.name : ''` — a process screen and its flowchart
+    // fall off the end of that chain. Not an oversight to be filled in here: a
+    // title invented for them would be the one string on the bar that no line
+    // of the design carries.
+    expect(readerHere('/processes/dining-003', '/departments')).toEqual({})
+    expect(readerHere('/processes/dining-003/flow', '/departments')).toEqual({})
+  })
+
+  it('names nothing on the reader’s own root, whichever root that is', () => {
+    expect(readerHere('/departments', '/departments')).toEqual({})
+    expect(readerHere('/departments/dining', '/departments/dining')).toEqual({})
+  })
+
+  it('names nothing on a route it does not know', () => {
+    expect(readerHere('/nowhere', '/departments')).toEqual({})
+    expect(readerHere('/', '/departments')).toEqual({})
+  })
+
+  it('reads an empty path segment as no segment at all, on BOTH arguments', () => {
+    expect(readerHere('/departments/dining/', '/departments/dining')).toEqual({})
+    expect(readerHere('/departments/dining', '/departments/dining/')).toEqual({})
+    expect(readerHere('//departments//dining', '/departments')).toEqual({ deptCode: 'dining' })
+    expect(readerHere('/departments/dining//overview', '/departments')).toEqual({
+      deptCode: 'dining', about: true,
+    })
+  })
+
+  it('never answers with both a title and a department', () => {
+    // The two halves are read by different branches of the caller — a title is
+    // used as it stands, a code is looked up — and an answer carrying both would
+    // silently take whichever the caller happens to read first. Nothing above
+    // says so: every case names one shape.
+    for (const p of [
+      '/departments', '/departments/dining', '/departments/dining/overview',
+      '/departments/dining/settings', '/processes/dining-003',
+      '/processes/dining-003/flow', '/profile', '/comments', '/nowhere', '/',
+    ]) {
+      const here = readerHere(p, '/departments')
+      expect(here.title !== undefined && here.deptCode !== undefined, p).toBe(false)
+      // …and `about` is a qualifier on a department, never a screen of its own.
+      if (here.about === true) expect(here.deptCode, p).toBeDefined()
+    }
   })
 })
