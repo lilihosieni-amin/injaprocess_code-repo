@@ -3122,20 +3122,22 @@ with the border carrying the whole state machine.
 
 - Consumes:
   - `useSurface(): 'panel' | 'reader'` and `SurfaceProvider` (props `{ value: 'panel' | 'reader'; children: ReactNode }`) from `ui/src/ui/surface.tsx` (Task 5).
-  - Task 2's utilities. Every colour utility is the design-system token name with the
-    `--` dropped; every type utility is the design's literal px (`h` = the half-pixel);
-    every radius utility is the design's literal px. The ones this task uses:
+  - Task 2's utilities. Every one is the theme key Task 2 registered, with its
+    Tailwind prefix — **named by role, never by size**. `tailwind.config.js` is frozen
+    and `guards.test.ts` bans `text-[`, `rounded-[` and the t-shirt names, so a class
+    invented from a pixel value compiles to nothing while the build still exits 0.
+    The ones this task uses:
 
     | utility | resolves to | source |
     |---|---|---|
-    | `text-15` `text-14` `text-13` `text-12h` `text-11h` | `15px` `14px` `13px` `12.5px` `11.5px` | `--fs-lg` `--fs-body` `--fs-sm` `--fs-sm2` `--fs-xs` |
-    | `rounded-12` `rounded-9` | `12px` `9px` | `--radius-md` `--radius-sm` |
+    | `text-fs-lg` `text-fs-body` `text-fs-sm` `text-fs-sm2` `text-fs-xs` | `15px` `14px` `13px` `12.5px` `11.5px` | `--fs-lg` `--fs-body` `--fs-sm` `--fs-sm2` `--fs-xs` |
+    | `rounded-button` `rounded-tool` | `12px` `9px` | `--radius-md` `--radius-sm` |
     | `border-hairline` | `1.5px` | `--border-hairline` (already in the theme) |
     | `border-line` `border-coral` `border-conflict` | `#E3D8F5` `#FA5A52` `#E23D35` | `--line` `--coral` `--conflict` |
     | `bg-card` `text-ink` `text-violet` `text-faint` `text-muted` `text-conflict` | `#FFFFFF` `#2A1D5E` `#4A25A9` `#a99fc4` `#8a7db0` `#E23D35` | already in the theme |
-    | `bg-panel-tint` | `#FBF9FE` | Task 1's role `--panel-tint` — §1.2's sub-panel surface, 24 uses in S1, no token exists |
+    | `bg-surface-sub` | `#FBF9FE` | `--surface-sub` — §1.2's sub-panel surface, 24 uses in S1 |
     | `bg-tile-v2` | `#F4EFFB` | `--tile-v2` |
-    | `duration-base` | `.16s` | `--duration` |
+    | `transition` `transition-[border-color]` | `.16s` | `--duration`, which Task 2 registers as `transitionDuration.DEFAULT`; every `transition-*` utility already carries it and there is no `duration-*` class for it |
 
 - Produces:
   - `ui/src/ui/fieldFrame.ts`
@@ -3210,10 +3212,10 @@ describe('TextField', () => {
   it('reads at 14px in the panel and 15px in the reader', () => {
     // R3 — the only thing that moves between the two surfaces is the type size.
     const { unmount } = on('panel', <TextField label="نام" value="" onChange={() => {}} />)
-    expect(screen.getByLabelText('نام')).toHaveClass('text-14')
+    expect(screen.getByLabelText('نام')).toHaveClass('text-fs-body')
     unmount()
     on('reader', <TextField label="نام" value="" onChange={() => {}} />)
-    expect(screen.getByLabelText('نام')).toHaveClass('text-15')
+    expect(screen.getByLabelText('نام')).toHaveClass('text-fs-lg')
   })
 
   it('renders a textarea on the tinted surface when multiline', () => {
@@ -3221,7 +3223,7 @@ describe('TextField', () => {
     const el = screen.getByLabelText('توضیح')
     expect(el.tagName).toBe('TEXTAREA')
     expect(el).toHaveAttribute('rows', '5')
-    expect(el).toHaveClass('bg-panel-tint', 'resize-y')
+    expect(el).toHaveClass('bg-surface-sub', 'resize-y')
   })
 
   it('pins a latin island LTR and sets it in mono', () => {
@@ -3287,8 +3289,8 @@ Create `ui/src/ui/fieldFrame.ts`:
  * reason dismissibleStack.ts sits beside Overlay.tsx rather than inside it.
  */
 export const FIELD_FRAME =
-  'block w-full box-border text-ink rounded-12 border-hairline outline-none ' +
-  'leading-[1.7] transition-[border-color] duration-base'
+  'block w-full box-border text-ink rounded-button border-hairline outline-none ' +
+  'leading-[1.7] transition-[border-color]'
 
 /**
  * R3 — the one thing that moves between the two surfaces is the type size: the
@@ -3302,16 +3304,16 @@ export const FIELD_FRAME =
 export function fieldScale(surface: 'panel' | 'reader') {
   return surface === 'reader'
     ? {
-        text: 'text-15',
+        text: 'text-fs-lg',
         pad: 'px-[15px] py-[13px]',
         padReveal: 'ps-[46px] pe-[15px] py-[13px]',
-        label: 'text-13',
+        label: 'text-fs-sm',
       }
     : {
-        text: 'text-14',
+        text: 'text-fs-body',
         pad: 'px-[14px] py-[12px]',
         padReveal: 'ps-[46px] pe-[14px] py-[12px]',
-        label: 'text-12h',
+        label: 'text-fs-sm2',
       }
 }
 ```
@@ -3380,7 +3382,7 @@ export function TextField({
           aria-invalid={invalid || undefined}
           aria-describedby={hint === undefined ? undefined : hintId}
           onChange={(e) => onChange(e.target.value)}
-          className={`${FIELD_FRAME} ${edge} ${scale.text} ${scale.pad} bg-panel-tint resize-y`}
+          className={`${FIELD_FRAME} ${edge} ${scale.text} ${scale.pad} bg-surface-sub resize-y`}
         />
       ) : (
         <input
@@ -3396,7 +3398,7 @@ export function TextField({
       {hint !== undefined && (
         <p
           id={hintId}
-          className={`m-0 mt-[7px] text-11h leading-[1.8] ${invalid ? 'font-semibold text-conflict' : 'text-faint'}`}
+          className={`m-0 mt-[7px] text-fs-xs leading-[1.8] ${invalid ? 'font-semibold text-conflict' : 'text-faint'}`}
         >
           {hint}
         </p>
@@ -3471,7 +3473,7 @@ export function PasswordField({
           onClick={() => setShown((v) => !v)}
           aria-pressed={shown}
           aria-label={shown ? 'پنهان کردن گذرواژه' : 'نمایش گذرواژه'}
-          className="absolute left-[8px] top-1/2 -translate-y-1/2 w-[32px] h-[32px] inline-flex items-center justify-center border-0 bg-transparent rounded-9 text-muted cursor-pointer hover:bg-tile-v2 hover:text-violet"
+          className="absolute left-[8px] top-1/2 -translate-y-1/2 w-[32px] h-[32px] inline-flex items-center justify-center border-0 bg-transparent rounded-tool text-muted cursor-pointer hover:bg-tile-v2 hover:text-violet"
         >
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"
             strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden focusable="false">
@@ -3482,7 +3484,7 @@ export function PasswordField({
       {hint !== undefined && (
         <p
           id={hintId}
-          className={`m-0 mt-[7px] text-11h leading-[1.8] ${invalid ? 'font-semibold text-conflict' : 'text-faint'}`}
+          className={`m-0 mt-[7px] text-fs-xs leading-[1.8] ${invalid ? 'font-semibold text-conflict' : 'text-faint'}`}
         >
           {hint}
         </p>
@@ -3540,12 +3542,12 @@ const need=process.argv.slice(1);
 const miss=need.filter(c=>!new RegExp("\\."+c+"(?![\\w-])").test(css));
 console.log(miss.length?"MISSING "+miss.join(" "):"OK "+need.length+" classes present");
 process.exit(miss.length?1:0);
-' text-15 text-14 text-13 text-12h text-11h rounded-12 rounded-9 border-hairline \
-  border-line border-coral border-conflict bg-card bg-panel-tint bg-tile-v2 \
-  text-ink text-violet text-faint text-muted text-conflict duration-base resize-y
+' text-fs-lg text-fs-body text-fs-sm text-fs-sm2 text-fs-xs rounded-button rounded-tool border-hairline \
+  border-line border-coral border-conflict bg-card bg-surface-sub bg-tile-v2 \
+  text-ink text-violet text-faint text-muted text-conflict resize-y
 ```
 
-Expected: `OK 21 classes present`. A `MISSING` line means Task 2 has not exposed that
+Expected: `OK 20 classes present`. A `MISSING` line means Task 2 has not exposed that
 token yet — fix it there, not with an arbitrary value here.
 
 - [ ] **Step 11: Commit the verification**
@@ -3586,7 +3588,7 @@ check drawn at stroke 3.
 - Consumes:
   - `useSurface()` / `SurfaceProvider` from `ui/src/ui/surface.tsx` (Task 5).
   - `pushDismissible`, `popDismissible`, `isTopDismissible` from `ui/src/ui/dismissibleStack.ts` (existing).
-  - Task 2's utilities: `text-15` `text-13h` `text-13` `text-12h` `text-11h` (15 / 13.5 / 13 / 12.5 / 11.5px) · `rounded-16` `rounded-14` `rounded-12` `rounded-11` `rounded-10` `rounded-6` `rounded-round` (16 / 14 / 12 / 11 / 10 / 6px / 50%) · `border-hairline` (1.5px) · `border-line` `#E3D8F5` · `border-line-dashed` `#C9B8EC` (`--line-dashed`) · `border-coral` `#FA5A52` · `border-violet` `#4A25A9` · `border-warm` `#EFE7DC` · `bg-violet` `bg-green` `bg-card` `bg-tile-v2` `bg-tile-v4` (`--tile-v4` `#F8F4FE`) · `border-card-edge` `rgba(42,29,94,.07)` (Task 1's role `--card-edge` — §4.3's default card border, 46 uses, no token) · `shadow-pop` (Task 3 corrects it to S1's `0 20px 45px -20px rgba(74,37,169,.45)`) · `text-ink` `text-card` `text-violet` `text-muted` `text-faint`.
+  - Task 2's utilities: `text-fs-lg` `text-fs-menu` `text-fs-sm` `text-fs-sm2` `text-fs-xs` (15 / 13.5 / 13 / 12.5 / 11.5px) · `rounded-card` `rounded-tile` `rounded-button` `rounded-input` `rounded-control` `rounded-tick` `rounded-round` (16 / 14 / 12 / 11 / 10 / 6px / 50%) · `border-hairline` (1.5px) · `border-line` `#E3D8F5` · `border-line-dashed` `#C9B8EC` (`--line-dashed`) · `border-coral` `#FA5A52` · `border-violet` `#4A25A9` · `border-warm` `#EFE7DC` · `bg-violet` `bg-green` `bg-card` `bg-tile-v2` `bg-tile-v4` (`--tile-v4` `#F8F4FE`) · `border-border-card` `rgba(42,29,94,.07)` (`--border-card` — §4.3's default card border, 46 uses; the class is the family's long form, see Task 2) · `shadow-pop` (Task 3 corrects it to S1's `0 20px 45px -20px rgba(74,37,169,.45)`) · `text-ink` `text-card` `text-violet` `text-muted` `text-faint`.
 - Produces:
   - `ui/src/ui/Checkbox.tsx`
     - `function TickBox({ on, tone, className }: { on: boolean; tone?: 'violet' | 'green'; className?: string }): JSX.Element` — the 18×18 square on its own, so `Dropdown`'s multi-select options and the flow bar's confirm toggle draw the same tick rather than a fourth copy of it.
@@ -3740,7 +3742,7 @@ export function TickBox({ on, tone = 'violet', className = '' }: {
     <span
       data-tick
       aria-hidden
-      className={`w-[18px] h-[18px] flex-none inline-flex items-center justify-center rounded-6 border-hairline text-card ${on ? TONE[tone] : 'bg-card border-line-dashed'} ${className}`}
+      className={`w-[18px] h-[18px] flex-none inline-flex items-center justify-center rounded-tick border-hairline text-card ${on ? TONE[tone] : 'bg-card border-line-dashed'} ${className}`}
     >
       {on && (
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -3772,11 +3774,11 @@ export function Checkbox({
   const auto = useId()
   const id = given ?? auto
   const hintId = `${id}-hint`
-  const text = useSurface() === 'reader' ? 'text-15' : 'text-13h'
+  const text = useSurface() === 'reader' ? 'text-fs-lg' : 'text-fs-menu'
   return (
     <label
       htmlFor={id}
-      className={`relative flex items-center gap-[11px] px-[12px] py-[11px] rounded-12 border-hairline ${checked ? 'bg-tile-v4 border-line-dashed' : 'bg-card border-line'} ${disabled ? 'cursor-default opacity-60' : 'cursor-pointer'} ${className}`}
+      className={`relative flex items-center gap-[11px] px-[12px] py-[11px] rounded-button border-hairline ${checked ? 'bg-tile-v4 border-line-dashed' : 'bg-card border-line'} ${disabled ? 'cursor-default opacity-60' : 'cursor-pointer'} ${className}`}
     >
       {/* The native input keeps the role, the state and the keyboard; the span
           beside it is paint. `sr-only` rather than `display:none`, which would
@@ -3795,7 +3797,7 @@ export function Checkbox({
       <span className="min-w-0">
         <span className={`block font-bold text-ink ${text}`}>{label}</span>
         {hint !== undefined && (
-          <span id={hintId} className="block mt-[4px] text-11h text-faint leading-[1.7]">{hint}</span>
+          <span id={hintId} className="block mt-[4px] text-fs-xs text-faint leading-[1.7]">{hint}</span>
         )}
       </span>
     </label>
@@ -3837,11 +3839,11 @@ export function Radio({
 }: RadioProps) {
   const auto = useId()
   const id = given ?? auto
-  const text = useSurface() === 'reader' ? 'text-15' : 'text-13h'
+  const text = useSurface() === 'reader' ? 'text-fs-lg' : 'text-fs-menu'
   return (
     <label
       htmlFor={id}
-      className={`relative flex items-start gap-[12px] px-[15px] py-[14px] rounded-14 border-hairline cursor-pointer ${checked ? 'bg-tile-v2 border-violet' : 'bg-card border-warm'} ${className}`}
+      className={`relative flex items-start gap-[12px] px-[15px] py-[14px] rounded-tile border-hairline cursor-pointer ${checked ? 'bg-tile-v2 border-violet' : 'bg-card border-warm'} ${className}`}
     >
       <input
         id={id} type="radio" name={name} value={value} checked={checked}
@@ -3857,7 +3859,7 @@ export function Radio({
       <span className="min-w-0">
         <span className={`block font-bold text-ink ${text}`}>{label}</span>
         {note !== undefined && (
-          <span className="block mt-[4px] text-11h text-faint leading-[1.7]">{note}</span>
+          <span className="block mt-[4px] text-fs-xs text-faint leading-[1.7]">{note}</span>
         )}
       </span>
     </label>
@@ -4026,8 +4028,8 @@ export interface DropdownProps {
 }
 
 const OPTION =
-  'w-full flex items-center gap-[9px] px-[12px] py-[10px] rounded-11 border-0 ' +
-  'text-start text-13 text-ink cursor-pointer hover:bg-tile-v2'
+  'w-full flex items-center gap-[9px] px-[12px] py-[10px] rounded-input border-0 ' +
+  'text-start text-fs-sm text-ink cursor-pointer hover:bg-tile-v2'
 
 export function Dropdown({
   label, options, placeholder, value, onChange, values, onToggle,
@@ -4042,7 +4044,7 @@ export function Dropdown({
   const identity = useRef(Symbol('dropdown')).current
   const id = useId()
   const multiple = values !== undefined
-  const text = useSurface() === 'reader' ? 'text-15' : 'text-13h'
+  const text = useSurface() === 'reader' ? 'text-fs-lg' : 'text-fs-menu'
 
   useEffect(() => {
     if (!open) return
@@ -4094,7 +4096,7 @@ export function Dropdown({
     <div ref={box} data-dd className={`relative ${className}`}>
       <span
         id={`${id}-label`}
-        className={hideLabel ? 'sr-only' : `block font-semibold text-violet mb-[6px] text-12h`}
+        className={hideLabel ? 'sr-only' : `block font-semibold text-violet mb-[6px] text-fs-sm2`}
       >
         {label}
       </span>
@@ -4108,7 +4110,7 @@ export function Dropdown({
         onKeyDown={(e) => {
           if (e.key === 'ArrowDown') { e.preventDefault(); setOpen(true); requestAnimationFrame(() => move('first')) }
         }}
-        className={`w-full flex items-center gap-[10px] px-[14px] py-[10px] rounded-12 bg-card text-ink text-start cursor-pointer border-hairline ${open ? 'border-coral' : 'border-line'} ${text}`}
+        className={`w-full flex items-center gap-[10px] px-[14px] py-[10px] rounded-button bg-card text-ink text-start cursor-pointer border-hairline ${open ? 'border-coral' : 'border-line'} ${text}`}
       >
         <span className={`flex-1 overflow-hidden text-ellipsis whitespace-nowrap ${chosen.length ? '' : 'text-faint'}`}>
           {chosen.length ? chosen.map((o) => o.label).join('، ') : placeholder}
@@ -4127,7 +4129,7 @@ export function Dropdown({
           aria-labelledby={`${id}-label`}
           aria-multiselectable={multiple || undefined}
           onKeyDown={onListKey}
-          className="absolute top-[calc(100%+6px)] start-0 end-0 z-[35] max-h-[280px] overflow-auto flex flex-col gap-[2px] p-[7px] bg-card border border-card-edge rounded-16 shadow-pop"
+          className="absolute top-[calc(100%+6px)] start-0 end-0 z-[35] max-h-[280px] overflow-auto flex flex-col gap-[2px] p-[7px] bg-card border border-border-card rounded-card shadow-pop"
         >
           {searchable && (
             <input
@@ -4136,11 +4138,11 @@ export function Dropdown({
               placeholder={searchPlaceholder}
               aria-label={searchPlaceholder}
               onChange={(e) => setQuery(e.target.value)}
-              className="w-full box-border ps-[12px] pe-[34px] py-[9px] mb-[4px] rounded-10 text-12h text-ink bg-card border-hairline border-line outline-none focus:border-coral"
+              className="w-full box-border ps-[12px] pe-[34px] py-[9px] mb-[4px] rounded-control text-fs-sm2 text-ink bg-card border-hairline border-line outline-none focus:border-coral"
             />
           )}
           {shown.length === 0 ? (
-            <p className="m-0 px-[12px] py-[14px] text-center text-12h text-muted">{noHit}</p>
+            <p className="m-0 px-[12px] py-[14px] text-center text-fs-sm2 text-muted">{noHit}</p>
           ) : shown.map((o) => {
             const picked = multiple ? values.includes(o.value) : o.value === value
             return (
@@ -4169,7 +4171,7 @@ export function Dropdown({
                 <span className="min-w-0 flex-1">
                   <span className="block">{o.label}</span>
                   {o.note !== undefined && (
-                    <span className="block mt-[2px] text-11h font-normal text-faint">{o.note}</span>
+                    <span className="block mt-[2px] text-fs-xs font-normal text-faint">{o.note}</span>
                   )}
                 </span>
               </button>
@@ -4213,9 +4215,9 @@ const need=process.argv.slice(1);
 const miss=need.filter(c=>!new RegExp("\\."+c+"(?![\\w-])").test(css));
 console.log(miss.length?"MISSING "+miss.join(" "):"OK "+need.length+" classes present");
 process.exit(miss.length?1:0);
-' rounded-16 rounded-14 rounded-12 rounded-11 rounded-10 rounded-6 rounded-round \
-  border-line-dashed border-card-edge border-warm border-violet bg-tile-v4 bg-green \
-  bg-violet shadow-pop text-13h text-13 text-12h text-11h text-15 sr-only
+' rounded-card rounded-tile rounded-button rounded-input rounded-control rounded-tick rounded-round \
+  border-line-dashed border-border-card border-warm border-violet bg-tile-v4 bg-green \
+  bg-violet shadow-pop text-fs-menu text-fs-sm text-fs-sm2 text-fs-xs text-fs-lg sr-only
 ```
 
 Expected: `OK 21 classes present`.
@@ -4254,7 +4256,7 @@ difference between one table and three; Task 19 consumes it for the users screen
 
 - Consumes:
   - `toFa` from `ui/src/lib/format.ts` (existing).
-  - Task 2's utilities: `rounded-18` `rounded-10` (18 / 10px) · `border-card-edge` `rgba(42,29,94,.07)` · `border-panel-edge` `#EDE5F5` (Task 1's role for `--border-current`, §4.3's sub-panel border) · `border-row-sep` `#F4F0FA` (Task 1's role `--row-sep` — §1.2's table row separator, 4 uses, no token) · `bg-panel-tint` `#FBF9FE` · `bg-tile-v4` `#F8F4FE` · `text-11h` `text-13` `text-12h` `text-12` · `text-secondary` `#5a5175` (Task 1's role for `--text-current`; §9.9 records that its declared role is wrong and its real one is all secondary body copy) · `text-disabled` `#cfc7e0` (`--text-disabled`) · `shadow-card` · `duration-base` · `max760:` (Task 2's `≤760px` max-width screen).
+  - Task 2's utilities: `rounded-doc` `rounded-control` (18 / 10px) · `border-border-card` `rgba(42,29,94,.07)` · `border-border-current` `#EDE5F5` (`--border-current`, §4.3's sub-panel border) · `border-line-row` `#F4F0FA` (`--line-row` — §1.2's table row separator, 4 uses) · `bg-surface-sub` `#FBF9FE` · `bg-tile-v4` `#F8F4FE` · `text-fs-xs` `text-fs-sm` `text-fs-sm2` `text-fs-caption` · `text-body-ink` `#5a5175` (`--text-body`; §9.9 corrects that token to `#5a5175`, the colour that carries all secondary body copy — not `--text-current`, which keeps the diff-view role `text-ink-current` names) · `text-disabled` `#cfc7e0` (`--text-disabled`) · `shadow-card` · `transition-[background]` (Task 2 makes `--duration` the theme's default transition duration, so there is no `duration-*` class for `.16s`) · `max760:` (Task 2's `≤760px` max-width screen).
 - Produces:
   - `ui/src/ui/DataTable.tsx`
     - `interface DataColumn<Row> { key: string; head: string; track: string; cell: (row: Row) => ReactNode; mobile?: boolean }` — `track` is one CSS grid track (`'16px'`, `'1.4fr'`, `'34px'`); `mobile: false` drops the column at ≤760px.
@@ -4470,7 +4472,7 @@ export interface DataTableProps<Row> {
 
 // §5.2 — the shell is the card: 18px radius, the near-invisible violet hairline,
 // the two-layer neutral shadow that does the work on the violet field.
-const SHELL = 'bg-card border border-card-edge rounded-18 overflow-hidden shadow-card'
+const SHELL = 'bg-card border border-border-card rounded-doc overflow-hidden shadow-card'
 
 // The head and every row are the same grid. At ≤760px both become flex lines and
 // the template stops applying, which is exactly how the design collapses them.
@@ -4485,7 +4487,7 @@ export function DataTable<Row>({
   return (
     <div role={openable ? 'grid' : 'table'} aria-label={label} className={SHELL}>
       {filters !== undefined && (
-        <div className="flex flex-wrap gap-[8px] px-[18px] py-[14px] bg-tile-v4 border-b border-panel-edge">
+        <div className="flex flex-wrap gap-[8px] px-[18px] py-[14px] bg-tile-v4 border-b border-border-current">
           {filters}
         </div>
       )}
@@ -4493,14 +4495,14 @@ export function DataTable<Row>({
         data-r-thead
         role="row"
         style={template}
-        className={`${LINE} border-b border-panel-edge max760:hidden ${headFill ? 'bg-tile-v4' : ''}`}
+        className={`${LINE} border-b border-border-current max760:hidden ${headFill ? 'bg-tile-v4' : ''}`}
       >
         {columns.map((c) => (
-          <span key={c.key} role="columnheader" className="text-11h font-bold text-muted">{c.head}</span>
+          <span key={c.key} role="columnheader" className="text-fs-xs font-bold text-muted">{c.head}</span>
         ))}
       </div>
       {rows.length === 0 ? (
-        <p className="m-0 px-[20px] py-[44px] text-center text-13 text-faint">{empty}</p>
+        <p className="m-0 px-[20px] py-[44px] text-center text-fs-sm text-faint">{empty}</p>
       ) : (
         rows.map((row) => (
           <div
@@ -4518,7 +4520,7 @@ export function DataTable<Row>({
                   }
                 : undefined
             }
-            className={`${LINE} border-b border-row-sep transition-[background] duration-base ${openable ? 'cursor-pointer hover:bg-panel-tint' : ''}`}
+            className={`${LINE} border-b border-line-row transition-[background] ${openable ? 'cursor-pointer hover:bg-surface-sub' : ''}`}
           >
             {columns.map((c) => (
               <div
@@ -4561,7 +4563,7 @@ export interface PagerProps {
 const NAV =
   'relative before:absolute before:content-[""] before:-inset-[5px] ' +
   'w-[34px] h-[34px] inline-flex items-center justify-center flex-none ' +
-  'bg-card text-violet border-hairline border-line rounded-10 cursor-pointer ' +
+  'bg-card text-violet border-hairline border-line rounded-control cursor-pointer ' +
   'disabled:text-disabled disabled:cursor-default'
 
 export function Pager({ from, to, count, page, pages, onPage }: PagerProps) {
@@ -4569,7 +4571,7 @@ export function Pager({ from, to, count, page, pages, onPage }: PagerProps) {
     <div className="flex items-center justify-between gap-[12px] px-[18px] py-[14px]">
       {/* §2.7 — every count, position and index a reader sees is Persian, with
           no exception for "technical" numbers. */}
-      <span className="text-12 text-muted">{toFa(from)} تا {toFa(to)} از {toFa(count)}</span>
+      <span className="text-fs-caption text-muted">{toFa(from)} تا {toFa(to)} از {toFa(count)}</span>
       <div className="flex items-center gap-[8px]">
         <button
           type="button" aria-label="صفحهٔ قبلی" disabled={page <= 1}
@@ -4581,7 +4583,7 @@ export function Pager({ from, to, count, page, pages, onPage }: PagerProps) {
             <path d="M15 6l-6 6 6 6" />
           </svg>
         </button>
-        <span aria-live="polite" className="min-w-[74px] text-center text-12h font-semibold text-secondary">
+        <span aria-live="polite" className="min-w-[74px] text-center text-fs-sm2 font-semibold text-body-ink">
           صفحهٔ {toFa(page)} از {toFa(pages)}
         </span>
         <button
@@ -4629,12 +4631,12 @@ const need=process.argv.slice(1);
 const miss=need.filter(c=>!new RegExp("\\."+c+"(?![\\w-])").test(css));
 console.log(miss.length?"MISSING "+miss.join(" "):"OK "+need.length+" classes present");
 process.exit(miss.length?1:0);
-' rounded-18 rounded-10 border-card-edge border-panel-edge border-row-sep \
-  bg-panel-tint bg-tile-v4 shadow-card text-11h text-13 text-12h text-12 \
-  text-secondary text-disabled duration-base
+' rounded-doc rounded-control border-border-card border-border-current border-line-row \
+  bg-surface-sub bg-tile-v4 shadow-card text-fs-xs text-fs-sm text-fs-sm2 text-fs-caption \
+  text-body-ink text-disabled
 ```
 
-Expected: `OK 15 classes present`. Then confirm the two responsive rules actually
+Expected: `OK 14 classes present`. Then confirm the two responsive rules actually
 compiled at the right width — a screen key that never reached the config would leave
 `max760:hidden` out of the CSS entirely:
 
@@ -4690,7 +4692,7 @@ not; `FAB` is the one control whose size the two surfaces genuinely disagree abo
 - Consumes:
   - `useSurface()` / `SurfaceProvider` from `ui/src/ui/surface.tsx` (Task 5).
   - `toFa` from `ui/src/lib/format.ts`.
-  - Task 2's utilities: `rounded-16` `rounded-14` `rounded-12` `rounded-9` `rounded-pill` `rounded-round` · `text-27` `text-23` `text-13` `text-12h` `text-12` `text-11h` `text-11` · `border-card-edge` `rgba(42,29,94,.07)` · `border-panel-edge` `#EDE5F5` · `bg-panel-tint` `#FBF9FE` · `bg-tile-v2` `#F4EFFB` · `bg-tile-v4` `#F8F4FE` · `bg-tile-ok` `bg-tile-warn` `bg-tile-c` · `text-icom-control` `#8A5A00` · `text-secondary` `#5a5175` · `shadow-card` · `shadow-conflict-dot` (`--ring-conflict-dot`, `0 0 0 3px #FFE4E1`) · `shadow-fab` (Task 1's role — §6.15's `0 6px 14px rgba(16,10,40,.22), 0 18px 40px -14px rgba(250,90,82,.9)`, which no token carries).
+  - Task 2's utilities: `rounded-card` `rounded-tile` `rounded-button` `rounded-tool` `rounded-pill` `rounded-round` · `text-fs-stat` `text-fs-h1` `text-fs-sm` `text-fs-sm2` `text-fs-caption` `text-fs-xs` `text-fs-xxs` · `border-border-card` `rgba(42,29,94,.07)` · `border-border-current` `#EDE5F5` · `bg-surface-sub` `#FBF9FE` · `bg-tile-v2` `#F4EFFB` · `bg-tile-v4` `#F8F4FE` · `bg-tile-ok` `bg-tile-warn` `bg-tile-c` · `text-icom-control` `#8A5A00` · `text-body-ink` `#5a5175` · `shadow-card` · `shadow-conflict-dot` (`--ring-conflict-dot`, `0 0 0 3px #FFE4E1`) · `shadow-fab` (Task 1's role — §6.15's `0 6px 14px rgba(16,10,40,.22), 0 18px 40px -14px rgba(250,90,82,.9)`, which no token carries).
 - Produces:
   - `ui/src/ui/SectionCard.tsx` — `function SectionCard({ eyebrow, skin, children, className }: { eyebrow?: string; skin?: 'tint' | 'white'; children: ReactNode; className?: string }): JSX.Element`
   - `ui/src/ui/StatTile.tsx` — `type StatTone = 'violet' | 'ink' | 'conflict' | 'ok' | 'warn'`; `function StatTile({ value, label, tone, dot, skin, className }: { value: number | string; label: string; tone?: StatTone; dot?: boolean; skin?: 'feature' | 'compact'; className?: string }): JSX.Element`. A `number` is run through `toFa`; a `string` is passed through, so a caller that has already formatted a range is not double-converted.
@@ -4730,11 +4732,11 @@ describe('SectionCard', () => {
   it('is tinted and shadowless by default, white and shadowed on request', () => {
     const { container, unmount } = render(<SectionCard><p>x</p></SectionCard>)
     const tint = container.querySelector('section') as HTMLElement
-    expect(tint).toHaveClass('bg-panel-tint', 'border-panel-edge')
+    expect(tint).toHaveClass('bg-surface-sub', 'border-border-current')
     expect(tint.className).not.toMatch(/shadow-/)
     unmount()
     const white = render(<SectionCard skin="white"><p>x</p></SectionCard>)
-    expect(white.container.querySelector('section')).toHaveClass('bg-card', 'border-card-edge', 'shadow-card')
+    expect(white.container.querySelector('section')).toHaveClass('bg-card', 'border-border-card', 'shadow-card')
   })
 })
 
@@ -4749,10 +4751,10 @@ describe('StatTile', () => {
 
   it('reads at 27px as a header stat and 23px in a grid', () => {
     const { unmount } = render(<StatTile value={9} label="دپارتمان" />)
-    expect(screen.getByText('۹')).toHaveClass('text-27')
+    expect(screen.getByText('۹')).toHaveClass('text-fs-stat')
     unmount()
     render(<StatTile value={9} label="دپارتمان" skin="compact" />)
-    expect(screen.getByText('۹')).toHaveClass('text-23')
+    expect(screen.getByText('۹')).toHaveClass('text-fs-h1')
   })
 
   it('carries the conflict dot with its ring only when asked', () => {
@@ -4829,7 +4831,7 @@ describe('Timeline', () => {
   it('stops the rail at the last node', () => {
     const { container } = render(<Timeline label="زنجیره" nodes={NODES} />)
     const rails = container.querySelectorAll('[data-node-line]')
-    expect(rails[0]).toHaveClass('bg-panel-edge')
+    expect(rails[0]).toHaveClass('bg-border-current')
     expect(rails[1]).toHaveClass('bg-transparent')
   })
 })
@@ -4898,15 +4900,15 @@ export function SectionCard({
 }) {
   const id = useId()
   const shell = skin === 'white'
-    ? 'bg-card border-card-edge shadow-card'
-    : 'bg-panel-tint border-panel-edge'
+    ? 'bg-card border-border-card shadow-card'
+    : 'bg-surface-sub border-border-current'
   return (
     <section
       aria-labelledby={eyebrow === undefined ? undefined : id}
-      className={`border rounded-16 p-[18px] ${shell} ${className}`}
+      className={`border rounded-card p-[18px] ${shell} ${className}`}
     >
       {eyebrow !== undefined && (
-        <p id={id} className="m-0 mb-[12px] text-11 font-bold text-muted">{eyebrow}</p>
+        <p id={id} className="m-0 mb-[12px] text-fs-xxs font-bold text-muted">{eyebrow}</p>
       )}
       {children}
     </section>
@@ -4950,18 +4952,18 @@ export function StatTile({
   className?: string
 }) {
   const shell = skin === 'feature'
-    ? 'rounded-16 px-[20px] py-[14px] min-w-[96px]'
-    : 'rounded-14 px-[17px] py-[15px] text-center'
-  const size = skin === 'feature' ? 'text-27' : 'text-23'
+    ? 'rounded-card px-[20px] py-[14px] min-w-[96px]'
+    : 'rounded-tile px-[17px] py-[15px] text-center'
+  const size = skin === 'feature' ? 'text-fs-stat' : 'text-fs-h1'
   return (
-    <div className={`bg-card border border-card-edge shadow-card ${shell} ${className}`}>
+    <div className={`bg-card border border-border-card shadow-card ${shell} ${className}`}>
       <div className={`flex items-center gap-[7px] ${skin === 'compact' ? 'justify-center' : ''}`}>
         <span className={`font-extrabold leading-none ${size} ${TONE[tone]}`}>
           {typeof value === 'number' ? toFa(value) : value}
         </span>
         {dot && <span data-dot aria-hidden className="w-[8px] h-[8px] flex-none rounded-round bg-coral shadow-conflict-dot" />}
       </div>
-      <div className="mt-[5px] text-11h font-semibold text-muted">{label}</div>
+      <div className="mt-[5px] text-fs-xs font-semibold text-muted">{label}</div>
     </div>
   )
 }
@@ -5021,7 +5023,7 @@ export function NavTabTray({
       role="tablist"
       aria-label={label}
       onKeyDown={onKeyDown}
-      className={`inline-flex gap-[4px] p-[4px] rounded-12 bg-tile-v2 ${className}`}
+      className={`inline-flex gap-[4px] p-[4px] rounded-button bg-tile-v2 ${className}`}
     >
       {tabs.map((t) => {
         const active = t.id === value
@@ -5033,7 +5035,7 @@ export function NavTabTray({
             aria-selected={active}
             tabIndex={active ? 0 : -1}
             onClick={() => onChange(t.id)}
-            className={`px-[14px] py-[8px] rounded-9 border-0 cursor-pointer text-12h font-bold ${stretch ? 'flex-1' : ''} ${active ? 'bg-violet text-card' : 'bg-transparent text-violet'}`}
+            className={`px-[14px] py-[8px] rounded-tool border-0 cursor-pointer text-fs-sm2 font-bold ${stretch ? 'flex-1' : ''} ${active ? 'bg-violet text-card' : 'bg-transparent text-violet'}`}
           >
             {t.label}
           </button>
@@ -5090,23 +5092,23 @@ export function Timeline({ nodes, label }: { nodes: TimelineNode[]; label: strin
             <span
               data-node-dot
               aria-hidden
-              className={`w-[26px] h-[26px] inline-flex items-center justify-center rounded-round text-11 font-bold ${DOT[n.state]}`}
+              className={`w-[26px] h-[26px] inline-flex items-center justify-center rounded-round text-fs-xxs font-bold ${DOT[n.state]}`}
             >
               {n.mark ?? toFa(i + 1)}
             </span>
             <span
               data-node-line
               aria-hidden
-              className={`flex-1 w-[2px] min-h-[14px] ${i === nodes.length - 1 ? 'bg-transparent' : 'bg-panel-edge'}`}
+              className={`flex-1 w-[2px] min-h-[14px] ${i === nodes.length - 1 ? 'bg-transparent' : 'bg-border-current'}`}
             />
           </span>
           <div className="pb-[14px] min-w-0">
-            <p className="m-0 text-13 font-bold text-ink">
-              {n.name} <span className="text-11 font-normal text-muted">{n.role}</span>
+            <p className="m-0 text-fs-sm font-bold text-ink">
+              {n.name} <span className="text-fs-xxs font-normal text-muted">{n.role}</span>
             </p>
-            <p className={`m-0 mt-[2px] text-12 font-semibold ${STATE[n.state]}`}>{n.stateLabel}</p>
+            <p className={`m-0 mt-[2px] text-fs-caption font-semibold ${STATE[n.state]}`}>{n.stateLabel}</p>
             {n.note !== undefined && (
-              <p className="m-0 mt-[6px] px-[11px] py-[9px] rounded-9 bg-tile-v4 text-12 text-secondary leading-[1.7]">
+              <p className="m-0 mt-[6px] px-[11px] py-[9px] rounded-tool bg-tile-v4 text-fs-caption text-body-ink leading-[1.7]">
                 {n.note}
               </p>
             )}
@@ -5162,7 +5164,7 @@ export function FAB({
         <span
           data-fab-badge
           aria-hidden
-          className="absolute top-[-2px] start-[-2px] min-w-[21px] h-[21px] px-[6px] inline-flex items-center justify-center rounded-pill bg-violet text-card text-11 font-bold border-2 border-ink"
+          className="absolute top-[-2px] start-[-2px] min-w-[21px] h-[21px] px-[6px] inline-flex items-center justify-center rounded-pill bg-violet text-card text-fs-xxs font-bold border-2 border-ink"
         >
           {toFa(count)}
         </span>
@@ -5229,10 +5231,10 @@ const need=process.argv.slice(1);
 const miss=need.filter(c=>!new RegExp("\\."+c+"(?![\\w-])").test(css));
 console.log(miss.length?"MISSING "+miss.join(" "):"OK "+need.length+" classes present");
 process.exit(miss.length?1:0);
-' rounded-16 rounded-14 rounded-9 rounded-pill rounded-round text-27 text-23 \
-  text-13 text-12h text-12 text-11h text-11 bg-panel-tint bg-tile-v2 bg-tile-v4 \
-  bg-tile-ok bg-tile-warn bg-tile-c border-panel-edge border-card-edge \
-  text-icom-control text-secondary shadow-card shadow-conflict-dot shadow-fab
+' rounded-card rounded-tile rounded-tool rounded-pill rounded-round text-fs-stat text-fs-h1 \
+  text-fs-sm text-fs-sm2 text-fs-caption text-fs-xs text-fs-xxs bg-surface-sub bg-tile-v2 bg-tile-v4 \
+  bg-tile-ok bg-tile-warn bg-tile-c border-border-current border-border-card \
+  text-icom-control text-body-ink shadow-card shadow-conflict-dot shadow-fab
 ```
 
 Expected: `OK 25 classes present`. `shadow-fab` and `shadow-conflict-dot` are the two most
@@ -5289,7 +5291,7 @@ place in this plan where a shape is authored rather than quoted.
   - `deptMeta` and `DEPT_CODES` from `ui/src/lib/departments.ts` (existing — the nine
     24×24 `d` strings and their fixed violet/coral accents are already there, verbatim
     from the deliverable's `DEPTS`).
-  - Task 2's utilities: `rounded-16` `rounded-14` `rounded-11` `rounded-20` · `bg-tile-v` `text-violet` · `bg-tile-c` `text-conflict` · `bg-tile-warn` `text-warn` · `bg-tile-ok` `text-green` · `text-dept-numeral-violet` `#EDE4FA` (`--dept-numeral-violet`) · `text-dept-numeral-coral` `#FBE4E1` (`--dept-numeral-coral`).
+  - Task 2's utilities: `rounded-card` `rounded-tile` `rounded-input` `rounded-feature` · `bg-tile-v` `text-violet` · `bg-tile-c` `text-conflict` · `bg-tile-warn` `text-warn` · `bg-tile-ok` `text-green` · `text-dept-numeral-violet` `#EDE4FA` (`--dept-numeral-violet`) · `text-dept-numeral-coral` `#FBE4E1` (`--dept-numeral-coral`).
 - Produces:
   - `ui/src/ui/icons/index.tsx` — `const ICONS: Record<IconName, ReactNode>`, `type IconName`. Twenty-one keys; the rest arrive with the screen that renders them.
   - `ui/src/ui/Icon.tsx` — `function Icon({ name, d, px, stroke, className }: { name?: IconName; d?: string; px?: number; stroke?: number; className?: string }): JSX.Element`. `d` wins over `name` (§5.1.2), which is how the nine department paths reach it without joining the set. **`px`, not `size`** — `guards.test.ts:164` forbids a `size` prop on a shared component, and the value here is a pixel box rather than a density.
@@ -5380,13 +5382,13 @@ describe('IconTile', () => {
     const { container, unmount } = on('panel', <IconTile dept="dining" />)
     const tile = container.querySelector('[data-tile]') as HTMLElement
     expect(tile.style.width).toBe('48px')
-    expect(tile).toHaveClass('rounded-14')
+    expect(tile).toHaveClass('rounded-tile')
     expect(container.querySelector('svg')?.getAttribute('width')).toBe('24')
     unmount()
     const reader = on('reader', <IconTile dept="dining" />)
     const big = reader.container.querySelector('[data-tile]') as HTMLElement
     expect(big.style.width).toBe('54px')
-    expect(big).toHaveClass('rounded-16')
+    expect(big).toHaveClass('rounded-card')
     // §6.17 states 26px, not the 27 the half-the-tile rule would give.
     expect(reader.container.querySelector('svg')?.getAttribute('width')).toBe('26')
   })
@@ -5426,7 +5428,7 @@ describe('Logo', () => {
     const { container } = render(<Logo />)
     const img = container.querySelector('img') as HTMLImageElement
     expect(img.getAttribute('src')).toMatch(/inja-logo/)
-    expect(img).toHaveClass('object-cover', 'rounded-11')
+    expect(img).toHaveClass('object-cover', 'rounded-input')
     expect(img.getAttribute('width')).toBe('38')
     // Decorative beside the wordmark it sits next to; naming it twice is worse
     // than not naming it once.
@@ -5434,10 +5436,10 @@ describe('Logo', () => {
   })
 
   it('takes the login size too', () => {
-    const { container } = render(<Logo px={76} radius="rounded-20" />)
+    const { container } = render(<Logo px={76} radius="rounded-feature" />)
     const img = container.querySelector('img') as HTMLImageElement
     expect(img.getAttribute('width')).toBe('76')
-    expect(img).toHaveClass('rounded-20')
+    expect(img).toHaveClass('rounded-feature')
   })
 })
 
@@ -5620,7 +5622,7 @@ export function IconTile({
   return (
     <span
       data-tile
-      className={`inline-flex items-center justify-center flex-none ${box >= 54 ? 'rounded-16' : 'rounded-14'} ${tone} ${className}`}
+      className={`inline-flex items-center justify-center flex-none ${box >= 54 ? 'rounded-card' : 'rounded-tile'} ${tone} ${className}`}
       style={{ width: box, height: box }}
     >
       <Icon name={name} d={d ?? meta?.icon} px={glyph} stroke={1.9} />
@@ -5643,7 +5645,7 @@ import logoSrc from '../assets/inja-logo.jpg'
  * «اینجا فست‌فود»; a second announcement of the same name is noise, not access.
  */
 export function Logo({
-  px = 38, radius = 'rounded-11', className = '',
+  px = 38, radius = 'rounded-input', className = '',
 }: {
   px?: number
   radius?: string
@@ -5767,7 +5769,7 @@ const need=process.argv.slice(1);
 const miss=need.filter(c=>!new RegExp("\\."+c+"(?![\\w-])").test(css));
 console.log(miss.length?"MISSING "+miss.join(" "):"OK "+need.length+" classes present");
 process.exit(miss.length?1:0);
-' rounded-16 rounded-14 rounded-11 rounded-20 object-cover bg-tile-v bg-tile-c \
+' rounded-card rounded-tile rounded-input rounded-feature object-cover bg-tile-v bg-tile-c \
   bg-tile-warn bg-tile-ok text-violet text-conflict text-warn text-green \
   text-dept-numeral-violet text-dept-numeral-coral
 ```
