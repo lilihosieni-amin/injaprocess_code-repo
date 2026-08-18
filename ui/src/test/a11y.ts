@@ -6,6 +6,14 @@
  * as components, so every class they mentioned counted as consumed.
  *
  *   marker: zz-only-a-test-file-writes-this
+ *
+ * NOT ONE CLASS IN THIS FILE IS SPELLED WHOLE — no prose, no comment, no error
+ * message writes a utility followed by a bracketed value. Every .ts/.tsx under
+ * `./src` is inside a Tailwind CONTENT glob, and its scanner does not read a
+ * comment, a string or a template literal differently from code, so seven of
+ * the classes this file exists to REJECT were being minted into the built
+ * stylesheet by the sentences rejecting them. src/ui/composites.test.tsx holds
+ * this file to it, and holds itself to the same rule.
  */
 import { expect } from 'vitest'
 import { readFileSync } from 'node:fs'
@@ -33,7 +41,7 @@ export function expectTouchTarget(el: HTMLElement) {
    design has no opinion about it.
 
    The two halves of that rule are two different numbers, and the second is what
-   this file has to measure. `before:-inset-[5px]` is right on the pager's 34px
+   this file has to measure. A 5px `before:-inset-` is right on the pager's 34px
    button and wrong on the 32px close control in src/ui/Overlay.tsx, which takes
    6px — so a helper that pattern-matched one literal inset would pass the
    control it was written against and reject a correctly built sibling. The
@@ -116,9 +124,10 @@ const TOUCH = (() => {
 
    Four separate holes were opened by treating the class list as a set of
    literals to pattern-match: `min-w-touch` beside `w-pager` (min-width beats
-   width, so the control paints the 44px the plan forbids), `before:content-[none]`
-   (matches `before:content-[…]` and generates no box), two `w-…` classes on one
-   element (CSS resolves them by EMITTED order, and reading the first in
+   width, so the control paints the 44px the plan forbids), a `before:content-`
+   of `none` (matches any bracketed spelling of it and generates no box), two
+   `w-…` classes on one element (CSS resolves them by EMITTED order, and
+   reading the first in
    CLASS-STRING order is the exact mistake src/ui/table.test.tsx's `paint`/
    `winner` docstring warns about), and a `::before` that is told not to draw.
 
@@ -144,9 +153,9 @@ const TOUCH = (() => {
 /**
  * One class token, split into its variant prefixes and the utility it ends in.
  *
- * `md:before:-inset-[5px]` is `['md', 'before']` + `-inset-[5px]`. The split
- * ignores a `:` inside `[]` or `()`, so an arbitrary value can hold one without
- * being read as a variant chain.
+ * `md:before:opacity-0` is `['md', 'before']` + `opacity-0`, and a bracketed
+ * arbitrary value at the end comes through whole: the split ignores a `:`
+ * inside `[]` or `()`, so a value holding one is not read as a variant chain.
  */
 function parse(raw: string) {
   const pieces: string[] = []
@@ -271,19 +280,19 @@ export function expectExpandedHitArea(el: HTMLElement) {
     'is a static ::before at every other width',
   )).toBe(true)
 
-  // The ::before's content. `before:content-[…]` used to be pattern-matched,
-  // which `before:content-[none]` satisfies while setting `content: none` — the
-  // one value that defeats the check's own purpose.
+  // The ::before's content. A bracketed `before:content-` used to be
+  // pattern-matched, which a value of `none` satisfies while setting
+  // `content: none` — the one value that defeats the check's own purpose.
   const content = tokens.find((t) => t.pseudo && !t.conditional && /^content-/.test(t.utility))
   expect(content, on(
-    'no `before:content-[…]` — a ::before with no content property generates no box at all, so ' +
+    'no `before:content-` — a ::before with no content property generates no box at all, so ' +
     'the inset below grows nothing and the control is only as big as it looks',
   )).toBeDefined()
   const value = /^content-\[(.*)\]$/.exec(content?.utility ?? '')?.[1] ?? content?.utility.slice('content-'.length)
   expect(['none', 'normal'].includes(String(value)), on(
     `\`${content?.raw}\` sets \`content: ${value}\`, and that generates no box at all — it is the ` +
-    'one value that passes a `before:content-[…]` spelling check and leaves the hit area exactly ' +
-    "as big as the control looks. The empty string (`before:content-['']`) is what draws a box",
+    'one value that passes a bracketed `before:content-` spelling check and leaves the hit area ' +
+    'exactly as big as the control looks. The EMPTY string is the value that draws a box',
   )).toBe(false)
 
   // Anything that removes the ::before's box, at any width, in any state.
@@ -316,18 +325,19 @@ export function expectExpandedHitArea(el: HTMLElement) {
     }
   }
 
-  // The inset, at EVERY width it is stated for. `md:before:-inset-[1px]` beside
-  // a base `[5px]` is a 44px target below 768px and a 36px one above it, and a
-  // check that read the unconditional class alone called that correct.
+  // The inset, at EVERY width it is stated for. A 1px `before:-inset-` behind
+  // `md:`, beside an unconditional 5px one, is a 44px target below 768px and a
+  // 36px one above it, and a check that read the unconditional class alone
+  // called that correct.
   const insets = tokens
     .filter((t) => t.pseudo)
     .map((t) => ({ t, m: /^-inset-\[(\d+(?:\.\d+)?)px\]$/.exec(t.utility) }))
     .filter((x): x is { t: Token; m: RegExpExecArray } => x.m !== null)
     .map((x) => ({ klass: x.t.raw, px: Number(x.m[1]), conditional: x.t.conditional }))
   expect(insets.some((i) => !i.conditional), on(
-    `no unconditional \`before:-inset-[Npx]\` — nothing grows the hit area past the drawn box, so ` +
+    'no unconditional `before:-inset-` — nothing grows the hit area past the drawn box, so ' +
     `this control is only as big as it looks and F11's ${TOUCH}px floor is unmet. A variant ` +
-    `prefix (\`md:before:-inset-[5px]\`) is the same miss on every width it does not cover`,
+    'prefix in front of it (`md:`, `max760:`) is the same miss on every width it does not cover',
   )).toBe(true)
   const thinnest = insets.reduce((a, b) => (b.px < a.px ? b : a))
 
@@ -380,7 +390,7 @@ export function expectExpandedHitArea(el: HTMLElement) {
       `the drawn box is ${narrowest.px}px ${AXIS[axis]} (\`${narrowest.klass}\`) and the ::before adds ` +
       `${thinnest.px}px on every side (\`${thinnest.klass}\`), so the hit area is ${reach}px ${AXIS[axis]} where F11 needs ` +
       `${TOUCH}px. ` +
-      `A ${narrowest.px}px box takes before:-inset-[${(TOUCH - narrowest.px) / 2}px]`,
+      `A ${narrowest.px}px box takes \`before:-inset-\` at ${(TOUCH - narrowest.px) / 2}px`,
     )).toBeGreaterThanOrEqual(TOUCH)
   }
 }

@@ -1,12 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { readFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import postcss from 'postcss'
 import tailwind from 'tailwindcss'
 import config from '../../tailwind.config.js'
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { SurfaceProvider } from './surface'
 import { SectionCard } from './SectionCard'
 import { StatTile, type StatTone } from './StatTile'
@@ -135,6 +135,10 @@ function winner(painted: Painted[], prop: string, state = ''): string {
  * and a line appears; delete one and a line vanishes; swap one token for
  * another and a line changes. A mutation has nowhere to hide behind "no test
  * named that property".
+ *
+ * AT REST, though, and only at rest — the `continue` below is a whole half of
+ * the utility layer skipped. `variantsOf` is that half; the two are used
+ * together everywhere, and neither is the check on its own.
  */
 async function snapOf(classNames: string): Promise<string[]> {
   const { painted } = await compile(classNames)
@@ -148,6 +152,111 @@ async function snapOf(classNames: string): Promise<string[]> {
 
 /** The same, for an element that has already been rendered. */
 const snap = (el: Element) => snapOf(el.getAttribute('class') ?? '')
+
+/**
+ * EVERY declaration the same class string produces OUTSIDE the base state — in
+ * a media query, on a pseudo-element, in a `:hover` or a `:focus` — as sorted
+ * `state · prop: value` lines, with the media query in front of the state.
+ *
+ * `snapOf` above reads `p.state !== '' || p.media !== '' → continue`, so a
+ * whole half of the utility layer was invisible to this file: eleven mutations
+ * survived the suite by hiding in it, and every one of them compiles, so
+ * `dead()` waves it through too. `md:hidden` on the FAB deletes the control on
+ * every viewport at or above 768px. `max760:hidden` on the tray deletes it on
+ * every phone. `before:bg-conflict` paints the transparent hit overlay as a
+ * coral rectangle larger than the pill it sits behind. `focus:outline-none`
+ * removes the only thing a keyboard user has. None of them changes one line of
+ * the base-state snapshot, and none is visible in jsdom.
+ *
+ * So this is the other half of `snapOf`, in the same shape and with the same
+ * contract: not "the properties someone thought to name" but every one there
+ * is. The two together are the whole of what a class string can do.
+ */
+function variantsWithin(painted: Painted[], classNames: string): string[] {
+  const mine = new Set(classNames.split(/\s+/).filter(Boolean))
+  const own = new Map<string, string>()
+  for (const p of painted) {
+    if (p.state === '' && p.media === '') continue
+    if (!mine.has(p.klass)) continue
+    const where = `${p.media === '' ? '' : `${p.media} `}${p.state}`.trim()
+    for (const [prop, value] of p.decls) own.set(`${where} · ${prop}`, value)
+  }
+  return [...own].map(([k, v]) => `${k}: ${v}`).sort()
+}
+
+/**
+ * The same, compiling the string on its own.
+ *
+ * `variantsWithin` takes a compile that has already happened and keeps only the
+ * rules whose leading class this element actually writes, so ONE pass over the
+ * union of every branch answers for all of them — the reason the sweep below
+ * needs that is in its own comment, and the harness test pins the two against
+ * each other.
+ */
+async function variantsOf(classNames: string): Promise<string[]> {
+  return variantsWithin((await compile(classNames)).painted, classNames)
+}
+
+/* -------------------------------------------------------------------------
+   The half a class string cannot answer for at all.
+
+   Nine mutations survived without touching a single class: `{children}` before
+   the eyebrow (every section heading moves below its body, and
+   `aria-labelledby` still resolves, so the name test passes too); the stat
+   label before the numeral; the conflict dot before the numeral, which in RTL
+   lands on the wrong side; a root `<div>` turned `<span>`, which makes the card
+   an inline box and collapses the layout; `[...tabs].reverse()`, which every
+   behavioural test in this file passes because selection and `onChange` key off
+   the `tabs` ARRAY and nothing ever read the DOM's order; the FAB's badge moved
+   outside the `<button>`, so `absolute` resolves against a different containing
+   block and the badge leaves the disc.
+
+   `snap` sees none of it. Neither does `getByText`, `getByRole` or a count of
+   elements. So the shape is snapshotted the same way the declarations are: an
+   indented outline of every element and every run of text, in document order,
+   carrying the attributes that are STRUCTURE rather than skin.
+
+   Text nodes get their own line rather than being folded into their parent,
+   because their position is part of the order: Timeline's name sits beside its
+   role in one paragraph, and a `<span>` that moved in front of it would be
+   invisible to any check that joined the two together first.
+   ------------------------------------------------------------------------- */
+
+/**
+ * The attributes that are part of a composite's SHAPE.
+ *
+ * Deliberately not `class` (that is `snap`'s and `variants`' half), not
+ * `aria-label`/`aria-labelledby` (asserted through the accessible name, which
+ * is what a screen reader actually reads) and not the generated `id`. What is
+ * left is the set a mutation can change without touching a class: the role, the
+ * `type` that decides whether a click submits the enclosing form, the roving
+ * `tabindex`, the selected state, and the two ways an element is taken out of
+ * the reading or out of the page.
+ */
+const SHAPE_ATTRS = [
+  'role', 'type', 'tabindex', 'aria-selected', 'aria-hidden', 'hidden', 'focusable',
+] as const
+
+function shapeOf(el: Element, depth = 0): string[] {
+  const pad = '  '.repeat(depth)
+  const marks = [
+    ...SHAPE_ATTRS.filter((a) => el.hasAttribute(a)).map((a) => `${a}=${el.getAttribute(a)}`),
+    // Every `data-` hook, by name: they are how the rest of this file finds the
+    // dot, the rail and the badge, so a hook that moved or vanished has to move
+    // a line here too.
+    ...el.getAttributeNames().filter((a) => a.startsWith('data-')),
+  ]
+  const lines = [`${pad}${el.tagName.toLowerCase()}${marks.length > 0 ? `[${marks.join(' ')}]` : ''}`]
+  for (const n of Array.from(el.childNodes)) {
+    if (n.nodeType === 3) {
+      const text = (n.textContent ?? '').trim()
+      if (text !== '') lines.push(`${'  '.repeat(depth + 1)}"${text}"`)
+    } else if (n.nodeType === 1) {
+      lines.push(...shapeOf(n as Element, depth + 1))
+    }
+  }
+  return lines
+}
 
 /** Every class in this string that compiles to nothing. */
 async function dead(classNames: string): Promise<string[]> {
@@ -271,18 +380,26 @@ const SOURCES = ['SectionCard.tsx', 'StatTile.tsx', 'NavTabTray.tsx', 'Timeline.
 
    Everything else on the design's ladder comes through a token, and the test
    above says so. The hit-area overlay is the exception the plan carves out by
-   name: `before:-inset-[Npx]` is derived ARITHMETIC — whatever brings this
-   control's drawn size up to F11's 44 — so N differs per control (6px on
-   Overlay's 32px close button, 5px on Pager's 34px page button, 5px on the
-   34.75px tab below). A token would have to be minted per control size and
+   name: the negative `before` inset is derived ARITHMETIC — whatever brings
+   this control's drawn size up to F11's 44 — so N differs per control (6px on
+   Overlay's 32px close button, 5px on Pager's 34px page button, 4px on the
+   36.75px tab below). A token would have to be minted per control size and
    would record the arithmetic in the one place that cannot check it; the
    arithmetic is checked here instead, against the box the control actually
    draws.
 
-   Anchored, so a variant-prefixed `md:before:-inset-[5px]` — a 44px target
-   above 768px and a 34.75px one on every phone — is NOT this. `_ANYWHERE` is
-   the same pattern for striking the two spellings out of a source line, with a
+   Anchored, so the same utility behind a `md:` prefix — a 44px target above
+   768px and a 36.75px one on every phone — is NOT this. `_ANYWHERE` is the
+   same pattern for striking the two spellings out of a source line, with a
    lookbehind that refuses to strike the tail off a variant chain.
+
+   NOTE that not one class in this block is spelled out. The whole file used to
+   spell them, and every .ts/.tsx under `./src` is inside a Tailwind CONTENT
+   glob: its scanner does not read a comment differently from code, so the
+   sentences EXPLAINING
+   the fixtures minted the very rules the fixtures were assembled from
+   fragments to avoid. The test at the end of the next block holds this file
+   and src/test/a11y.ts to it.
    ------------------------------------------------------------------------- */
 const HIT_AREA = /^before:(?:content-\[""\]|-inset-\[\d+(?:\.\d+)?px\])$/
 const HIT_AREA_ANYWHERE = /(?<![\w:-])before:(?:content-\[""\]|-inset-\[\d+(?:\.\d+)?px\])/g
@@ -337,6 +454,79 @@ describe('the harness itself', () => {
       'border-radius: var(--radius-round)',
     ])
     expect(await snapOf('')).toEqual([])
+  })
+
+  it('snapshots the declarations OUTSIDE the base state, and answers empty for a class with none', async () => {
+    // The half `snapOf` skips. Pinned in both directions first, because an
+    // empty answer is what this returns for "there are none" AND for "the
+    // parse never looked" — and the second reading is the one that would make
+    // every assertion below vacuous while turning the whole suite green.
+    expect(await variantsOf('bg-coral rounded-round')).toEqual([])
+    expect(await variantsOf('md:hidden')).toEqual(['(min-width: 768px) · display: none'])
+    expect(await variantsOf('hover:bg-conflict')).toEqual([':hover · background-color: var(--conflict)'])
+    expect(await variantsOf('focus:outline-none')).toEqual([
+      ':focus · outline-offset: 2px',
+      ':focus · outline: 2px solid transparent',
+    ])
+    // A pseudo-element, which is where the hit-area overlay lives, and an
+    // invented class, which must add nothing rather than being reported as an
+    // empty variant set nobody notices.
+    expect(await variantsOf('before:bg-coral')).toEqual([
+      '::before · background-color: var(--coral)',
+      '::before · content: var(--tw-content)',
+    ])
+    expect(await variantsOf('md:bg-coral-ish')).toEqual([])
+    // …and the base state stays out of it, or every element would carry its
+    // whole snapshot twice and a real variant would be lost in the noise.
+    expect(await variantsOf('bg-coral md:bg-violet')).toEqual([
+      '(min-width: 768px) · background-color: var(--violet)',
+    ])
+    // …and the union shortcut the branch sweep is built on: one compile over
+    // everything, then each element keeps only the rules its OWN classes lead.
+    // Pinned against the one-string answer, because if the two ever diverged
+    // the sweep would be checking something other than what it says.
+    const union = await compile('bg-coral md:hidden hover:bg-conflict before:bg-coral w-s4')
+    for (const one of ['md:hidden', 'hover:bg-conflict', 'before:bg-coral', 'bg-coral w-s4', '']) {
+      expect(variantsWithin(union.painted, one), one).toEqual(await variantsOf(one))
+    }
+  })
+
+  it('outlines the DOM shape: element type, nesting, order, and text among them', () => {
+    // Everything `snap` and `variants` cannot see. Pinned against a fixture
+    // built here rather than against a component, so the four things it claims
+    // to notice are each shown changing the outline.
+    const box = document.createElement('div')
+    box.innerHTML =
+      '<section><p id="a">one</p><span data-x role="note" aria-hidden="true">two</span></section>'
+    expect(shapeOf(box.firstElementChild!)).toEqual([
+      'section',
+      '  p',
+      '    "one"',
+      '  span[role=note aria-hidden=true data-x]',
+      '    "two"',
+    ])
+    // Order moves a line…
+    box.innerHTML = '<section><span data-x>two</span><p>one</p></section>'
+    expect(shapeOf(box.firstElementChild!)).toEqual([
+      'section', '  span[data-x]', '    "two"', '  p', '    "one"',
+    ])
+    // …the element type changes one…
+    box.innerHTML = '<section><span>one</span></section>'
+    expect(shapeOf(box.firstElementChild!)).toEqual(['section', '  span', '    "one"'])
+    // …the nesting changes the indent…
+    box.innerHTML = '<section><p><span>one</span></p></section>'
+    expect(shapeOf(box.firstElementChild!)).toEqual(['section', '  p', '    span', '      "one"'])
+    // …and a run of text is placed among its siblings rather than folded into
+    // its parent, which is the only way a `<span>` that moved in front of it
+    // is visible at all.
+    box.innerHTML = '<p>name <span>role</span></p>'
+    expect(shapeOf(box.firstElementChild!)).toEqual(['p', '  "name"', '  span', '    "role"'])
+    box.innerHTML = '<p><span>role</span> name</p>'
+    expect(shapeOf(box.firstElementChild!)).toEqual(['p', '  span', '    "role"', '  "name"'])
+    // The class attribute is deliberately absent: it is the other two helpers'
+    // half, and an outline carrying it would go red for every skin change.
+    box.innerHTML = '<p class="bg-coral">x</p>'
+    expect(shapeOf(box.firstElementChild!)).toEqual(['p', '  "x"'])
   })
 
   it('reads the base layer’s inherited line-height, and a px length through its token', async () => {
@@ -433,10 +623,105 @@ describe('every class these five composites write, in every branch', () => {
     ])
   })
 
+  /**
+   * The ONE thing any of these five draws outside the base state.
+   *
+   * The tab's hit-area overlay, in full: `before:absolute`, `before:content`
+   * and the derived inset, each of which Tailwind emits `content:
+   * var(--tw-content)` alongside. Everything else in this task paints at rest
+   * and only at rest — there is no hover skin, no focus ring of its own (the
+   * base layer's `:focus-visible` outline is the whole of it) and no
+   * responsive branch in any of the five.
+   */
+  const TAB_OVERLAY = [
+    '::before · --tw-content: ""',
+    '::before · content: var(--tw-content)',
+    '::before · inset: -4px',
+    '::before · position: absolute',
+  ]
+
+  it('paints in a state, at a breakpoint or on a pseudo-element ONLY where it says it does', async () => {
+    // Eleven mutations survived by living here. Each of them compiles, so
+    // `dead()` accepts it; none of them changes a base-state declaration, so
+    // every `snap` in this file stays green; and jsdom paints nothing, so no
+    // rendered assertion sees one either. `md:hidden` on the FAB and
+    // `max760:hidden` on the tray each delete a whole control — the second on
+    // every phone, using the design's own breakpoint.
+    //
+    // The answer is the same one `snap` gives at rest: not a list of the
+    // variants someone thought of, but every variant there is, on every element
+    // of every branch, against a set that is empty almost everywhere.
+    //
+    // Rendered first and compiled ONCE over the union, exactly as the sweep two
+    // tests up does and for the same reason: whether a utility emits does not
+    // depend on what it was compiled beside, and twenty-one passes of Tailwind
+    // is a flake rather than a check. (It was one — this loop compiled per
+    // element and timed out the first time the machine was busy.)
+    const seen = new Set<string>()
+    const elements: { why: string; role: string | null; className: string }[] = []
+    for (const [name, node] of BRANCHES) {
+      const { container, unmount } = on(name.includes('reader') ? 'reader' : 'panel', node())
+      const root = container.firstElementChild!
+      for (const el of [root, ...Array.from(root.querySelectorAll('*'))]) {
+        const className = el.getAttribute('class') ?? ''
+        for (const c of className.split(/\s+/).filter(Boolean)) seen.add(c)
+        elements.push({
+          why: `${name} · <${el.tagName.toLowerCase()} class="${className}">`,
+          role: el.getAttribute('role'),
+          className,
+        })
+      }
+      unmount()
+    }
+    const { painted } = await compile([...seen].join(' '))
+    for (const el of elements) {
+      expect(variantsWithin(painted, el.className), el.why)
+        .toEqual(el.role === 'tab' ? TAB_OVERLAY : [])
+    }
+    // …over every element of every branch, and against a compile that really
+    // produced rules: an empty `painted` would make every line above vacuously
+    // true and this whole test a green nothing.
+    expect(elements.length).toBeGreaterThan(70)
+    expect(painted.length).toBeGreaterThan(70)
+  })
+
+  it('renders nothing that is not on the page', () => {
+    // `hidden` is an ATTRIBUTE as well as a class, and neither `getByText` nor
+    // `getByRole` filters by visibility: `<p hidden>` on SectionCard's eyebrow
+    // makes every section heading in the app invisible while the name test, the
+    // id test and the declaration snapshot all still pass. The class form is
+    // caught by `snap` (it adds `display: none`); this is the other one.
+    for (const [name, node] of BRANCHES) {
+      const { container, unmount } = on(name.includes('reader') ? 'reader' : 'panel', node())
+      try {
+        const root = container.firstElementChild!
+        for (const el of [root, ...Array.from(root.querySelectorAll('*'))]) {
+          expect(el, `${name} · <${el.tagName.toLowerCase()}>`).toBeVisible()
+        }
+      } finally {
+        unmount()
+      }
+    }
+  })
+
+  /**
+   * A class name assembled from its parts, never written whole.
+   *
+   * Every .ts/.tsx under `./src` is inside a Tailwind CONTENT glob, so a
+   * fixture spelled out in this file is a rule Tailwind mints into the shipped
+   * stylesheet — and a fixture is by definition a rule nothing renders. Shared by the two tests below: the one
+   * that pins what HIT_AREA accepts, and the one that pins that neither file
+   * spells such a class anywhere in its own text.
+   */
+  const klass = (variants: string, utility: string, value: string) =>
+    `${variants}${utility}${value === '' ? '' : `[${value}]`}`
+
   it('writes no arbitrary value but the hit area, whose N is arithmetic and not a design value', async () => {
-    // guards.test.ts bans `text-[`, `rounded-[` and `shadow-[` only, so
-    // `p-[7px]` passes every gate in this repo while stepping straight past
-    // the token layer. Nothing here may hold a bracket except HIT_AREA.
+    // guards.test.ts bans three utility prefixes and no others, so an
+    // arbitrary padding length passes every gate in this repo while stepping
+    // straight past the token layer. Nothing here may hold a bracket except
+    // HIT_AREA. (The example is not spelled: doing so put it in the shipped
+    // sheet — see the last test in this block.)
     for (const [name, node] of BRANCHES) {
       const { container, unmount } = on('panel', node())
       const brackets = classStringOf(container.firstElementChild!)
@@ -462,11 +747,18 @@ describe('every class these five composites write, in every branch', () => {
     // Assembled from fragments rather than written out, because
     // `./src/**/*.{ts,tsx}` is a CONTENT glob: a class spelled whole in this
     // file is a class Tailwind mints into the shipped stylesheet, and a fixture
-    // is by definition a rule nothing renders. One of these would have shipped
-    // `inset: -5`, which is not even valid CSS. `dist/assets/*.css` is the
-    // check — none of the eight is in it.
-    const klass = (variants: string, utility: string, value: string) =>
-      `${variants}${utility}${value === '' ? '' : `[${value}]`}`
+    // is by definition a rule nothing renders.
+    //
+    // CORRECTION (round 3). This comment used to end "`dist/assets/*.css` is
+    // the check — none of the eight is in it", and that was false when it was
+    // written. Two of them WERE in the built sheet, minted not by the fixtures
+    // — the fragment assembly below works — but by the PROSE around them: the
+    // block above HIT_AREA and the comment opening this test each spelled one
+    // out, and Tailwind's scanner reads a comment exactly as it reads code.
+    // The claim is kept and corrected rather than deleted, because the shape of
+    // the mistake is the finding: a leak-proof mechanism with the leak beside
+    // it. The last test in this block is now the check, and it reads the source
+    // rather than trusting a sentence about it.
     for (const near of [
       klass('before:', '-inset-', '5'),        // no unit
       klass('before:', '-inset-', '5rem'),     // not px
@@ -481,11 +773,50 @@ describe('every class these five composites write, in every branch', () => {
       expect(HIT_AREA.test(near), near).toBe(false)
     }
     for (const real of [
+      klass('before:', '-inset-', '4px'),      // the tab's own N
       klass('before:', '-inset-', '5px'),
       klass('before:', '-inset-', '16.5px'),
       klass('before:', 'content-', '""'),
     ]) {
       expect(HIT_AREA.test(real), real).toBe(true)
+    }
+  })
+
+  it('spells no arbitrary class in its own text either, comments and messages included', () => {
+    // The leak the fragment assembly above was built to prevent, coming in
+    // through the door beside it. `.p-\[7px\]` and `.md\:before\:-inset-\[5px\]`
+    // were both in `dist/assets/index-*.css` while the comment three tests up
+    // said they had been "verified absent" — minted by two sentences in THIS
+    // file (the HIT_AREA block and the head of the test above) and by seven
+    // more in src/test/a11y.ts, which explains the same rule at greater length.
+    //
+    // Tailwind's scanner has no idea what a comment is. Neither does it know
+    // what a template literal or an error message is, which is why a11y.ts's
+    // `expect(...)` failure text counted too. So the rule for both files is the
+    // simplest one that can be checked: no line may contain a whole arbitrary
+    // class ANYWHERE in it, in any kind of text. The two files talk about these
+    // classes constantly — they write `before:-inset-` and give N in words, or
+    // assemble the literal from fragments.
+    //
+    // A regex source is not a spelling: `-inset-\[` has a backslash where a
+    // class has a bracket, and Tailwind cannot mint from it either.
+    const SPELLED = /(?<![\w$\\])[a-z0-9][\w:-]*-\[[^\]\n]*\]/
+    for (const file of ['src/ui/composites.test.tsx', 'src/test/a11y.ts']) {
+      const hits = readFileSync(resolve(process.cwd(), file), 'utf8').split('\n')
+        .map((line, i) => ({ n: i + 1, line: line.trim() }))
+        .filter(({ line }) => SPELLED.test(line))
+      expect(hits.map((h) => `${file}:${h.n} ${h.line}`)).toEqual([])
+    }
+    // …and the pattern is not vacuously blind. It sees a spelled class, with or
+    // without a variant chain, and it steps over the two shapes these files are
+    // full of: a TS index and an escaped regex.
+    for (const leak of [
+      klass('', 'p-', '7px'),
+      klass('md:before:', '-inset-', '5px'),
+      klass('before:', "content-", "''"),
+    ]) expect(SPELLED.test(leak), leak).toBe(true)
+    for (const safe of ['tabs[next]', 'string[]', 'pieces[pieces.length - 1]', '-inset-\\[\\d+px\\]']) {
+      expect(SPELLED.test(safe), safe).toBe(false)
     }
   })
 
@@ -625,6 +956,34 @@ describe('SectionCard', () => {
     expect(tokenLiteral('--fs-xxs')).toBe('11px')
   })
 
+  it('puts the eyebrow ABOVE the body, and drops the line entirely without one', () => {
+    // `{children}` rendered before the eyebrow is a mutation no class check can
+    // see, no count of elements can see, and — because `aria-labelledby` points
+    // at an id rather than at a position — the accessible-name test above
+    // passes too. Every section heading in the app would sit under its own
+    // body. The order is the assertion.
+    const { container, unmount } = render(
+      <SectionCard eyebrow="نقش"><p>یک</p><p>دو</p></SectionCard>,
+    )
+    expect(shapeOf(container.firstElementChild!)).toEqual([
+      'section',
+      '  p',
+      '    "نقش"',
+      '  p',
+      '    "یک"',
+      '  p',
+      '    "دو"',
+    ])
+    unmount()
+
+    const bare = render(<SectionCard><p>یک</p></SectionCard>)
+    expect(shapeOf(bare.container.firstElementChild!)).toEqual([
+      'section',
+      '  p',
+      '    "یک"',
+    ])
+  })
+
   it('adds the caller’s class without losing one of its own', async () => {
     const { container } = render(<SectionCard className="mt-s3"><p>x</p></SectionCard>)
     const section = container.querySelector('section')!
@@ -682,6 +1041,45 @@ describe('StatTile', () => {
     unmount()
     const quiet = render(<StatTile value={0} label="تعارض باز" tone="ok" />)
     expect(quiet.container.querySelector('[data-dot]')).toBeNull()
+    quiet.unmount()
+    // …and the TONE does not conjure one. The negative case above renders
+    // `tone="ok"`, so a predicate widened to `dot || tone === 'conflict'`
+    // satisfies it — and the two are drawn together on every screen that has
+    // both, so nothing would look wrong until the audit's closed-conflict tile
+    // reads zero with a coral dot beside it.
+    const closed = render(<StatTile value={0} label="تعارض باز" tone="conflict" />)
+    expect(closed.container.querySelector('[data-dot]')).toBeNull()
+  })
+
+  it('draws the numeral, then the dot, then the label — in that order', () => {
+    // Three mutations that change no class at all: the label above the numeral,
+    // the dot before the numeral (which in RTL puts it on the far side of the
+    // number it belongs to), and the root turned `<span>` — an inline box, so
+    // the padding stops reserving height and the tile collapses into the line
+    // beside it. All three leave every declaration snapshot in this block
+    // identical, and `getByText` finds the same nodes either way.
+    const { container, unmount } = render(<StatTile value={3} label="ل" tone="conflict" dot />)
+    expect(shapeOf(container.firstElementChild!)).toEqual([
+      'div',
+      '  div',
+      '    span',
+      '      "۳"',
+      '    span[aria-hidden=true data-dot]',
+      '  div',
+      '    "ل"',
+    ])
+    unmount()
+    // …and without the dot the row still holds the numeral alone, rather than
+    // the label moving up into it.
+    const plain = render(<StatTile value={3} label="ل" skin="compact" />)
+    expect(shapeOf(plain.container.firstElementChild!)).toEqual([
+      'div',
+      '  div',
+      '    span',
+      '      "۳"',
+      '  div',
+      '    "ل"',
+    ])
   })
 
   it('draws the dot at 8px with §1.1’s coral and the 3px ring, and hides it from the reading', async () => {
@@ -912,6 +1310,104 @@ describe('NavTabTray', () => {
     expect(onChange).not.toHaveBeenCalled()
   })
 
+  it('lays the tabs out in the order it was given them', () => {
+    // `[...tabs].reverse()` passes every other test in this block, because
+    // selection and `onChange` both key off the `tabs` ARRAY and nothing here
+    // ever read the DOM. It is the same accident as the one already fixed —
+    // every test happening to select the first tab — one level down: this time
+    // nothing read ORDER from the DOM. A segmented control whose tabs are in
+    // the wrong order is wrong in the one way its user can see and its tests
+    // cannot.
+    const { container } = render(<NavTabTray label="نما" value="mine" tabs={TABS} onChange={() => {}} />)
+    expect(screen.getAllByRole('tab').map((t) => t.textContent))
+      .toEqual(['رسیده به شما', 'همه', 'بسته‌شده'])
+    // …and the whole shape around them: three buttons, direct children of the
+    // tablist, each a real `<button type="button">` carrying its own label.
+    expect(shapeOf(container.firstElementChild!)).toEqual([
+      'div[role=tablist]',
+      '  button[role=tab type=button tabindex=0 aria-selected=true]',
+      '    "رسیده به شما"',
+      '  button[role=tab type=button tabindex=-1 aria-selected=false]',
+      '    "همه"',
+      '  button[role=tab type=button tabindex=-1 aria-selected=false]',
+      '    "بسته‌شده"',
+    ])
+  })
+
+  it('moves the FOCUS with the selection, not the selection alone', async () => {
+    // All four keyboard tests above assert the `onChange` sequence and nothing
+    // else, so dropping the `.focus()` call passes every one of them. It is not
+    // a cosmetic loss: this is a ROVING tabindex, so the moment the selection
+    // moves the previously focused tab becomes `tabindex="-1"` — keyboard focus
+    // is then sitting on an element the tab order no longer contains, and the
+    // next Tab press restarts from the top of the document.
+    //
+    // Controlled, because that is what makes the tabindex actually rove; the
+    // tests above hold `value` still.
+    document.documentElement.setAttribute('dir', 'rtl')
+    function Controlled() {
+      const [v, setV] = useState('mine')
+      return <NavTabTray label="نما" value={v} tabs={TABS} onChange={setV} />
+    }
+    render(<Controlled />)
+    const [first, middle, last] = screen.getAllByRole('tab')
+    first.focus()
+
+    await userEvent.keyboard('{ArrowLeft}')
+    expect(middle).toHaveFocus()
+    expect(middle).toHaveAttribute('tabindex', '0')
+    expect(first).toHaveAttribute('tabindex', '-1')
+
+    await userEvent.keyboard('{End}')
+    expect(last).toHaveFocus()
+    await userEvent.keyboard('{Home}')
+    expect(first).toHaveFocus()
+    // …and the one place focus must NOT move: a key press that changes nothing
+    // leaves it where it was, rather than snapping it to an end.
+    await userEvent.keyboard('{ArrowRight}')
+    expect(first).toHaveFocus()
+  })
+
+  it('swallows the keys it acts on, and leaves every other key to the page', () => {
+    // Without `preventDefault` the arrows move the selection AND scroll the
+    // page under it, and Home/End jump to the top and bottom of the document.
+    // `fireEvent` returns false exactly when a handler cancelled the event, so
+    // this is the one assertion that reads it.
+    document.documentElement.setAttribute('dir', 'rtl')
+    render(<NavTabTray label="نما" value="all" tabs={TABS} onChange={() => {}} />)
+    const tab = screen.getByRole('tab', { name: 'همه' })
+    for (const key of ['ArrowLeft', 'ArrowRight', 'Home', 'End']) {
+      expect(fireEvent.keyDown(tab, { key }), `${key} must be swallowed`).toBe(false)
+    }
+    // …and the tray does not cancel what it does not handle: cancelling Tab
+    // would trap focus in the tray, and cancelling a printable key would break
+    // type-ahead everywhere the tray happens to sit.
+    for (const key of ['ArrowUp', 'ArrowDown', 'Tab', 'a']) {
+      expect(fireEvent.keyDown(tab, { key }), `${key} must pass through`).toBe(true)
+    }
+    // The ends, where the tray reports no change: it must not cancel there
+    // either, or an arrow at the last tab would silently eat the page's scroll.
+    render(<NavTabTray label="نما" value="closed" tabs={TABS} onChange={() => {}} />)
+    expect(fireEvent.keyDown(screen.getAllByRole('tab').at(-1)!, { key: 'ArrowLeft' })).toBe(true)
+  })
+
+  it('does not submit the form it may be sitting in', async () => {
+    // `type` defaults to `submit` on a `<button>`, and a tray is exactly the
+    // control a filter form puts at the top of itself. Every assertion in this
+    // block passes with `type="submit"`; the page just reloads on the first
+    // click.
+    const submitted = vi.fn()
+    const onChange = vi.fn()
+    render(
+      <form onSubmit={(e) => { e.preventDefault(); submitted() }}>
+        <NavTabTray label="نما" value="mine" tabs={TABS} onChange={onChange} />
+      </form>,
+    )
+    await userEvent.click(screen.getByRole('tab', { name: 'همه' }))
+    expect(onChange).toHaveBeenCalledExactlyOnceWith('all')
+    expect(submitted).not.toHaveBeenCalled()
+  })
+
   it('reports the tab that was clicked', async () => {
     const onChange = vi.fn()
     render(<NavTabTray label="نما" value="mine" tabs={TABS} onChange={onChange} />)
@@ -972,10 +1468,13 @@ describe('NavTabTray', () => {
       'cursor: pointer',
       'font-size: var(--fs-sm2)',
       'font-weight: var(--fw-bold)',
-      'padding-bottom: var(--space-4)',
-      'padding-left: var(--space-7)',
-      'padding-right: var(--space-7)',
-      'padding-top: var(--space-4)',
+      // OWNER RULING — `9px 10px`, the audit tray's own padding (panel 1511).
+      // The comments tray draws `8px 6px` (panel 953); one instance each, so
+      // dominance could not settle it. `px-s7` was 14px, which is neither.
+      'padding-bottom: var(--pad-tab-y-audit)',
+      'padding-left: var(--space-5)',
+      'padding-right: var(--space-5)',
+      'padding-top: var(--pad-tab-y-audit)',
       // F11 — the anchor the hit-area overlay is placed against. It is the one
       // declaration on this element that paints nothing, and the two tests
       // below are what say why it is here.
@@ -989,6 +1488,13 @@ describe('NavTabTray', () => {
     )
     expect(tokenLiteral('--radius-sm')).toBe('9px')
     expect(tokenLiteral('--fs-sm2')).toBe('12.5px')
+    expect(tokenLiteral('--pad-tab-y-audit')).toBe('9px')
+    expect(tokenLiteral('--space-5')).toBe('10px')
+    // …and NOT the 14px rung it used to write, which is the one number of the
+    // three that appears in neither tray.
+    expect(tokenLiteral('--space-7')).toBe('14px')
+    expect(winner(await paint(screen.getByRole('tab', { name: 'همه' }).className), 'padding-left'))
+      .not.toBe('var(--space-7)')
   })
 
   it('spans its container only when the caller asks', async () => {
@@ -1021,9 +1527,11 @@ describe('NavTabTray', () => {
      hit-area one). The test after this one holds it to that, and holds the
      shared helper to every OTHER half of the contract.
      ----------------------------------------------------------------------- */
-  it('grows every tab’s target to F11’s floor and leaves the 34.75px it draws alone', async () => {
+  it('grows every tab’s target to F11’s floor and leaves the 36.75px it draws alone', async () => {
     const floor = pxOf('var(--size-touch)')
     const lineHeight = await baseLineHeight()
+    // The gap between two tabs, which is what the overlay may not cross.
+    const gap = pxOf(tokenLiteral('--space-1'))
     for (const stretch of [false, true]) {
       const { unmount } = render(
         <NavTabTray label="نما" value="mine" tabs={TABS} onChange={() => {}} stretch={stretch} />,
@@ -1038,14 +1546,14 @@ describe('NavTabTray', () => {
         const painted = await paint(tab.className)
 
         // THE DRAWN BOX — read off the element's own declarations, not restated:
-        // 8px of `py-s4` twice around a 12.5px `--fs-sm2` line box at the base
-        // layer's 1.5. Change any one of the three and this number moves, which
-        // is the point — the inset below is derived from it.
+        // 9px of `py-tab-y-audit` twice around a 12.5px `--fs-sm2` line box at
+        // the base layer's 1.5. Change any one of the three and this number
+        // moves, which is the point — the inset below is derived from it.
         const drawn =
           pxOf(winner(painted, 'padding-top'))
           + pxOf(winner(painted, 'padding-bottom'))
           + pxOf(winner(painted, 'font-size')) * lineHeight
-        expect(drawn, why).toBe(34.75)
+        expect(drawn, why).toBe(36.75)
         // Never inflated to the floor. A tab that already measured 44 would be
         // the OTHER defect, and `min-h-touch` is how the retired file wrote it.
         expect(drawn, why).toBeLessThan(floor)
@@ -1066,11 +1574,38 @@ describe('NavTabTray', () => {
         expect(winner(painted, 'pointer-events', '::before'), why).toBe('')
         expect(winner(painted, 'pointer-events'), why).toBe('')
 
-        // THE ARITHMETIC. `inset: -5px` on all four sides, so the target is the
-        // drawn box plus 2N: 34.75 + 10 = 44.75.
+        // THE ARITHMETIC, bounded at BOTH ends. `inset: -4px` on all four
+        // sides, so the target is the drawn box plus 2N: 36.75 + 8 = 44.75.
+        //
+        // A floor with no ceiling over it is not the rule. A 24px inset
+        // satisfied "at least 44" and every other assertion in this file, and
+        // measured in Chromium it made the tab's target 82.75px tall with each
+        // overlay reaching 20px into its neighbour — roughly the inner half of
+        // every visible pill selecting the wrong view, with nothing to see.
+        //
+        // So N is pinned to the SMALLEST integer that clears the floor, which
+        // is what "derived arithmetic" means: N-1 must fail, i.e. drawn +
+        // 2(N-1) < floor, i.e. the target is under floor + 2. Stated as the
+        // half-open interval [44, 46) so both halves are one assertion and
+        // neither can be satisfied by moving the other.
         const inset = -pxOf(winner(painted, 'inset', '::before'))
         expect(inset, why).toBeGreaterThan(0)
-        expect(drawn + 2 * inset, why).toBeGreaterThanOrEqual(floor)
+        const target = drawn + 2 * inset
+        expect(target, why).toBeGreaterThanOrEqual(floor)
+        expect(target, why).toBeLessThan(floor + 2)
+        expect(Number.isInteger(inset), `${why} · inset ${inset}px`).toBe(true)
+        // …said once more as the arithmetic itself, so the interval above is
+        // not merely a range that happens to hold: N is Math.ceil of what the
+        // floor demands, and nothing larger.
+        expect(inset, why).toBe(Math.ceil((floor - drawn) / 2))
+
+        // AND THE NEIGHBOUR. A segmented control is the one place where an
+        // over-wide target is not merely wasteful: past half the gap the two
+        // overlays cross, and past the whole gap a tab's target covers part of
+        // the pill beside it. 2N is exactly the 4px gap here, so each target
+        // reaches its neighbour's drawn edge and stops.
+        expect(inset, `${why} · laps over the neighbour's drawn edge`)
+          .toBeLessThanOrEqual(gap)
       }
       unmount()
     }
@@ -1083,7 +1618,7 @@ describe('NavTabTray', () => {
     // a `before:content` that is neither `none` nor `normal`, no
     // `before:pointer-events-none`, no `hidden`/`invisible`/`scale-0`/`static`
     // on the ::before, no clipping `overflow` on the control, an unconditional
-    // `before:-inset-[Npx]` rather than one behind a `md:`/`max760:` variant —
+    // `before:-inset-` rather than one behind a `md:`/`max760:` variant —
     // it decides here, because it reaches its LAST check before stopping.
     //
     // That last check is the drawn box, which it resolves out of `w-…`/`h-…`
@@ -1136,6 +1671,37 @@ describe('Timeline', () => {
       .toEqual(['سحر بیات سرپرست سالن', 'رضا کریمی ادیتور'])
     expect([...items].map((li) => li.querySelector('[data-node-dot]')!.textContent))
       .toEqual(['۱', '۲'])
+  })
+
+  it('builds each row as a rail beside a block body, with the note last', () => {
+    // The body is a `<div>` and not a `<span>`: an inline body has no width of
+    // its own, so `min-w-0` stops applying and a long note stretches the row
+    // instead of wrapping inside it — which is the one thing `min-w-0` is there
+    // for, and a change no class check can see because no class changed.
+    //
+    // The name's text also sits BEFORE the role's span, which is the order a
+    // joined `textContent` comparison cannot tell from its reverse.
+    const { container } = render(<Timeline label="ز" nodes={NODES} />)
+    expect(shapeOf(container.querySelector('li')!)).toEqual([
+      'li',
+      '  span',
+      '    span[aria-hidden=true data-node-dot]',
+      '      "۱"',
+      '    span[aria-hidden=true data-node-line]',
+      '  div',
+      '    p',
+      '      "سحر بیات"',
+      '      span',
+      '        "سرپرست سالن"',
+      '    p',
+      '      "تأیید کرد"',
+    ])
+    // …and the node that has one carries the note as a third paragraph, after
+    // the state line rather than before it.
+    expect(shapeOf(container.querySelectorAll('li')[1]!).slice(-2)).toEqual([
+      '    p',
+      '      "روی میز از دیروز"',
+    ])
   })
 
   it('numbers its rail in Persian and colours each node by its state', () => {
@@ -1458,6 +2024,53 @@ describe('FAB', () => {
     // The glyph must not be a second, empty box: an `<svg>` with no path draws
     // nothing and every assertion above still holds.
     expect(svg.querySelectorAll('path')).toHaveLength(1)
+    // THE REST OF THE ATTRIBUTES, because an SVG's geometry is not in a class
+    // string and nothing else in this file reads one. Four mutations lived
+    // here: an 8px box inside the 52px disc, a `fill` of `currentColor` that
+    // floods the speech bubble solid coral-on-white, and butt/miter joins that
+    // give a rounded design system a set of sharp corners. The panel draws the
+    // box at 22px (the reader's 24 is Task 11's, when the pair gets a role).
+    expect(svg.getAttribute('width')).toBe('22')
+    expect(svg.getAttribute('height')).toBe('22')
+    expect(svg.getAttribute('fill')).toBe('none')
+    expect(svg.getAttribute('stroke-linecap')).toBe('round')
+    expect(svg.getAttribute('stroke-linejoin')).toBe('round')
+  })
+
+  it('keeps the badge INSIDE the disc, after the glyph', async () => {
+    // `absolute` resolves against the nearest positioned ancestor, and the
+    // button is it — `fixed` positions the FAB itself. Move the badge out of
+    // the `<button>` and it is pinned to whatever box happens to be positioned
+    // further up: it leaves the disc entirely, while `[data-fab-badge]` still
+    // finds it, its declaration snapshot is unchanged, and the accessible name
+    // (which never came from the badge) still reads the count.
+    const { container } = on('panel', <FAB label="ک" count={3} onClick={() => {}} />)
+    expect(shapeOf(container.querySelector('button')!)).toEqual([
+      'button[type=button]',
+      '  svg[aria-hidden=true focusable=false]',
+      '    path',
+      '  span[aria-hidden=true data-fab-badge]',
+      '    "۳"',
+    ])
+    expect(container.querySelector('[data-fab-badge]')!.parentElement)
+      .toBe(container.querySelector('button'))
+  })
+
+  it('does not submit the form it may be sitting in', async () => {
+    // A `<button>` is a submit button unless it says otherwise, and the FAB is
+    // `fixed` — it is placed by the viewport and can end up inside any form on
+    // the screen without anyone choosing that. Every other assertion in this
+    // block passes with `type="submit"`.
+    const submitted = vi.fn()
+    const onClick = vi.fn()
+    render(
+      <form onSubmit={(e) => { e.preventDefault(); submitted() }}>
+        <FAB label="کامنت تازه" onClick={onClick} />
+      </form>,
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'کامنت تازه' }))
+    expect(onClick).toHaveBeenCalledOnce()
+    expect(submitted).not.toHaveBeenCalled()
   })
 
   it('reports the press once', async () => {

@@ -1413,7 +1413,7 @@ const PENDING: string[] = [
   'py-dropdown-y-filter', 'px-dropdown-x-filter',
   'py-option-y', 
   'my-stat-grid', 
-  'py-tab-y-audit', 'min-w-tab', 'gap-tab-flow', 
+  'min-w-tab', 'gap-tab-flow', 
   'max1080:hidden',
   // The single minting pass — 29 of its 30 classes. `z-canvas-overlay` is the
   // thirtieth and is NOT here: owner ruling R15 minted the rung and pointed its
