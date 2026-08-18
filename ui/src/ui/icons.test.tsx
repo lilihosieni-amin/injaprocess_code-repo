@@ -830,7 +830,10 @@ describe('the icon rule', () => {
     expect(sources.filter((s) => s.raw.some((l) => GLYPH.test(l))).length).toBeGreaterThan(3)
   })
 
-  it('has folded the four inline SVGs Tasks 7–10 left behind into Icon', () => {
+  it('has folded every inline SVG out of the four files Tasks 7–10 left them in', () => {
+    // FOUR FILES, and six SVGs — the plan's step 8 named two of Dropdown's
+    // three and would have left the popover magnifier inline.
+    //
     // Four, named — not "every SVG in src/ui/". Overlay.tsx's close cross,
     // SearchField.tsx's magnifier, Button.tsx's spinner and Checkbox.tsx's 13px
     // tick keep theirs: each is drawn by the task that owns it and none is on
