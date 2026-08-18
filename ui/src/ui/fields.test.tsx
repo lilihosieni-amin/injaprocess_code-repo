@@ -512,30 +512,52 @@ describe('TextField', () => {
     expect(winner(p, 'background-color')).toBe('var(--card)')
   })
 
-  it('sets a panel textarea one step below the panel input beside it', async () => {
-    // The panel's dialog textareas are 13px against its 14px inputs (3 of 4
-    // uses; the fourth is 13.5px), so on the PANEL the textarea is one step
-    // down and `--role-fs-dense` is that step exactly.
+  it('sets a textarea one step below its input on the panel and one step above on the reader', async () => {
+    // The one part of the field that scales — and it does not merely scale, it
+    // INVERTS. Measured: the panel's dialog textareas are 13px ×3 and 13.5px ×1
+    // against its 14px inputs (one step DOWN); the reader's are 16px ×3, 15.5px
+    // ×1 and 13.5px ×1 against its own 14px inputs (one step UP, dominant 16px).
+    // Two directions from the same anchor is a genuine per-surface difference
+    // under R3, which is why --role-fs-textarea exists rather than a constant.
     //
-    // The reader is not the same relationship, and this test used to claim it
-    // was. Measured, the reader's five textareas are 16px, 16px, 16px, 15.5px
-    // and 13.5px against its 14px inputs — one step UP, dominant 16px. The
-    // reader end of --role-fs-dense is 14.5px: a size no reader textarea draws,
-    // on the wrong side of the input. The old assertion pinned that 14.5px into
-    // the suite as if it were the design's number, which is the one thing a
-    // measurement-shaped assertion must never do.
-    //
-    // So only the half that is backed is asserted. The reader half needs a role
-    // of its own (13px panel / 16px reader); roles.css is frozen to this task,
-    // the name is reported to the owner, and until it is minted this file
-    // claims nothing about the reader's textarea rather than claiming 14.5px.
-    on('panel', <TextField label="توضیح" value="" onChange={() => {}} multiline />)
-    const el = screen.getByLabelText('توضیح')
-    expect(el).toHaveClass('text-role-dense')
-    expect(winner(await paint(el.className), 'font-size')).toBe('var(--role-fs-dense)')
-    // Both ends of "one step below", so the name is a measurement: the role's
-    // panel value against the fixed step the input beside it is on.
-    expect(readerScaleOf('--role-fs-dense').panel).toBe('13px')
+    // It is also why this cannot ride --role-fs-dense. Owner ruling R12 dropped
+    // that role's reader override, so it is 13/13 — right for list, table and
+    // hint copy, and wrong here: it would draw the reader's textarea one step
+    // BELOW its input where the design draws it one step above. Before the role
+    // was minted this test asserted the panel half only rather than pin the
+    // then-14.5px reader value — a size the design draws nowhere — into the
+    // suite. The role exists now, so the reader half is back, with 16px.
+    const { unmount } = on('panel', <TextField label="توضیح" value="" onChange={() => {}} multiline />)
+    const panel = screen.getByLabelText('توضیح')
+    expect(panel).toHaveClass('text-role-textarea')
+    expect(winner(await paint(panel.className), 'font-size')).toBe('var(--role-fs-textarea)')
+
+    // One element, one type class. Two `text-*` sizes on one node race in
+    // Tailwind's OUTPUT order and not the class attribute's, so "the right one
+    // is present" is not the same claim as "the right one wins" — the trap
+    // FIELD_PAD_REVEAL's docstring records. This reads every rule the compiled
+    // sheet emits for this element that sets a font-size, and there is one.
+    const sized = (await paint(panel.className)).filter(
+      (r) => r.state === '' && r.media === '' && /(^|; )font-size: /.test(r.decls),
+    )
+    expect(sized.map((r) => r.klass)).toEqual(['text-role-textarea'])
+    unmount()
+
+    on('reader', <TextField label="توضیح" value="" onChange={() => {}} multiline />)
+    const reader = screen.getByLabelText('توضیح')
+    // The attribute roles.css keys its overrides on, on the same node as the
+    // context, so geometry and scale cannot disagree: the reader really is the
+    // reader here, and it writes the SAME class — what changes across the two
+    // surfaces is the role's value, never the class string.
+    expect(reader.closest('[data-surface]')).toHaveAttribute('data-surface', 'reader')
+    expect(reader).toHaveClass('text-role-textarea')
+    expect(winner(await paint(reader.className), 'font-size')).toBe('var(--role-fs-textarea)')
+
+    // …and the two numbers that class resolves to, read off roles.css and
+    // tokens.css, against the fixed step the input beside it is on. jsdom paints
+    // nothing, so without this pair of lines everything above proves only that a
+    // string was written into an attribute.
+    expect(readerScaleOf('--role-fs-textarea')).toEqual({ panel: '13px', reader: '16px' })
     expect(tokenLiteral('--fs-body')).toBe('14px')
   })
 
