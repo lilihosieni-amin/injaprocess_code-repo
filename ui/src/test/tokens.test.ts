@@ -342,4 +342,46 @@ describe('R1 — a correction records what it overrode and why', () => {
     expect(token('--space-stat-label')).toBe('7px')  // the 4-up label's margin-top
     expect(declarations('--gap-stat-dot')).toBe(1)
   })
+
+  it('the shell mint — the nine values the pass above could not have named', () => {
+    // The pass above minted from the SCREENS. Not one of its 25 tokens is a
+    // shell value, and the sweep of Tasks 12-25 that followed found the two
+    // shells holding 91 of the project's 95 remaining arbitrary `[…]` values
+    // between them. These nine are the names those leftovers needed.
+    const shell = {
+      '--width-menu': '265px',       // the anchored menu popover, panel 140
+      '--space-hint': '3px',         // a hint line under its label, 7 uses
+      '--lh-lockup': '1.25',         // the brand lockup's two lines, panel 120
+      '--size-count-chrome': '19px', // the chrome's count badge, panel 156 / reader 145
+      '--pad-inbox-x': '13px',       // the inbox button, panel 152
+      '--pad-crumb-y': '9px',        // the breadcrumb strip, panel 174
+      '--pad-back-y': '7px',         // its «بازگشت» button, panel 176
+      '--pad-topbar-reader': '20px', // the reader's chrome gutter, reader 133 / 156
+      '--grid-idef0': '1fr 1.4fr 1fr', // the A-0 IDEF0 grid, panel 414
+    }
+    for (const [name, value] of Object.entries(shell)) expect(token(name), name).toBe(value)
+    expect(Object.keys(shell).length).toBe(9)
+    expect(Object.keys(shell).filter((n) => declarations(n) !== 1)).toEqual([])
+
+    // …and every number here that already had an owner left that owner alone.
+    // Six of the nine are values some other role already carries, which is the
+    // whole reason they were minted rather than borrowed; if a later pass
+    // "tidies" any pair into one name, this is the line that objects.
+    expect(token('--gap-tab-flow')).toBe('3px')       // 3px — the flow nav group's gap
+    expect(token('--size-count')).toBe('21px')        // the FAB's badge, not the chrome's
+    expect(token('--size-tick')).toBe('19px')         // L-10's tick box, not the badge
+    expect(token('--pad-dropdown-x-filter')).toBe('13px') // the filter chip, not the inbox
+    expect(token('--pad-tab-y-audit')).toBe('9px')    // the audit tab, not the crumb strip
+    expect(token('--pad-popover')).toBe('7px')        // the popover's inset, not the button
+    expect(token('--gap-stat-dot')).toBe('7px')       // the stat dot's gap, likewise
+    expect(token('--pad-empty-x')).toBe('20px')       // the empty-state card, not the chrome
+    // The one this mint is most likely to be collapsed into, and the one the
+    // plan actually got wrong: --pad-reader-x is the reader's CONTENT gutter and
+    // --pad-topbar-reader its CHROME gutter, four pixels apart.
+    expect(token('--pad-reader-x')).toBe('24px')
+    expect(token('--pad-topbar-reader')).not.toBe(token('--pad-reader-x'))
+    // --lh-tight keeps the 1.2 that every title step pairs with; the lockup is
+    // its own role at 1.25 and does not move it.
+    expect(token('--lh-tight')).toBe('')              // declared in the frozen _ds, not here
+  })
 })

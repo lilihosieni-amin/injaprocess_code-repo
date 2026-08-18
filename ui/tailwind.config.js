@@ -258,6 +258,12 @@ export default {
         // paints. Deleting the key leaves `leading-none` emitting Tailwind's own
         // `1` and only the pairing table notices.
         none: 'var(--lh-none)',
+        // The shell mint — the brand lockup's two lines, 1.25. Ledger L-17
+        // decided the three PROSE leadings and said nothing about the display
+        // end, where the design runs 1.2 · 1.25 · 1.3 · 1.4 · 1.5 and the token
+        // file names only the 1.2. `leading-tight` IS that 1.2 and keeps its own
+        // role, so this is a mint and not a re-value.
+        lockup: 'var(--lh-lockup)',
       },
       borderRadius: {
         badge: 'var(--radius-badge)', chip: 'var(--radius-chip)', control: 'var(--radius-control)',
@@ -304,7 +310,13 @@ export default {
       },
       minHeight: { touch: 'var(--size-touch)', chiprow: 'var(--size-chiprow)' }, // 44px, 24px
       minWidth: {
-        touch: 'var(--size-touch)', menu: '220px',
+        touch: 'var(--size-touch)',
+        // `menu` was a raw `220px` LITERAL until the shell mint — the one key in
+        // this file with no token behind it, and a value neither deliverable
+        // draws anywhere. It is now --width-menu, the 265px the panel's own
+        // «مدیریت» popover is; tokens.css says why that number and not one of
+        // the design's other four menu widths.
+        menu: 'var(--width-menu)',               // 265px — an anchored menu popover
         // §5.2 — three floors the twelve primitives state outright, and the FAB
         // badge's, which is a floor on one axis and a fixed height on the other
         // (`min-width:21px; height:21px`), so `count` is carried on `height`
@@ -313,6 +325,11 @@ export default {
         stat: 'var(--width-stat)',               // 96px  — the header stat tile
         tab: 'var(--width-tab)',                 // 132px — an audit tab
         count: 'var(--size-count)',              // 21px  — the FAB count badge
+        // …and the chrome's own count badge, which is the same shape — a floor
+        // on one axis, a fixed box on the other — so it is carried the same way
+        // and appears on `width` nowhere. 19px, not `count`'s 21px: that one is
+        // the FAB's.
+        'count-chrome': 'var(--size-count-chrome)', // 19px — the top-bar badge
       },
       // §5.2 Dropdown — the popover's scroll cap. On `maxHeight` and not on
       // `spacing`: a cap is not a step, the same reason the three search-icon
@@ -326,6 +343,10 @@ export default {
         users: 'var(--grid-users)',
         audit: 'var(--grid-audit)',
         activity: 'var(--grid-activity)',
+        // …and the A-0 IDEF0 block on the process summary. The three above are
+        // the argument for it: a template is a value like any other, and Task 16
+        // was the only screen still writing one out.
+        idef0: 'var(--grid-idef0)',
       },
       // The `s` prefix keeps this dense _ds scale (4, 5, 6, 8, 10px…) from shadowing
       // Tailwind's own numeric spacing keys, which are a sparser rem scale (4, 8, 12, 16, 20px…).
@@ -401,6 +422,18 @@ export default {
         // is the same number again for the popover's inset; three roles, three
         // keys, so moving one never moves the other two.
         'stat-dot': 'var(--gap-stat-dot)',                    // 7px
+        // The shell mint — the five lengths the two shells draw that no token
+        // held. Same rules as every key above: one key per token, the direction
+        // stays out of the key, and a number that already has an owner is minted
+        // again rather than borrowed. `hint` and `back-y` join the three 3px and
+        // three 7px roles already on this scale, and `inbox-x` the five 13px
+        // ones; `topbar-reader` is the reader's chrome gutter, which is NOT
+        // `reader-x` (that is 24px and is the reader's CONTENT gutter).
+        hint: 'var(--space-hint)',                            // 3px  — a hint under its label
+        'inbox-x': 'var(--pad-inbox-x)',                      // 13px — the inbox button
+        'crumb-y': 'var(--pad-crumb-y)',                      // 9px  — the breadcrumb strip
+        'back-y': 'var(--pad-back-y)',                        // 7px  — its «بازگشت» button
+        'topbar-reader': 'var(--pad-topbar-reader)',          // 20px — the reader's chrome
       },
       maxWidth: {
         departments: 'var(--width-departments)', list: 'var(--width-list)',
@@ -503,6 +536,9 @@ export default {
         // and a fixed box on the other — so `count` is on `minWidth` above and
         // on `height` here, and on `width` nowhere: it never sets one.
         count: 'var(--size-count)',
+        // …and the chrome's badge, 19px, carried the same way for the same
+        // reason. Both shells draw it; neither draws it at 21.
+        'count-chrome': 'var(--size-count-chrome)',
       },
       // §5.2 — the search field's icon sits `--inset-search-icon` from the edge.
       // It is an inset, not spacing: naming it here keeps `start-search-icon`

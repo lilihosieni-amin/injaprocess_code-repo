@@ -414,9 +414,13 @@ const EXPECTED: Record<string, string | string[]> = {
   'h-touch': 'var(--size-touch)',
   'min-h-touch': 'var(--size-touch)',
   'min-w-touch': 'var(--size-touch)',
-  // The one utility in the theme with no token behind it: the menu's minimum
-  // width predates this branch and §6 gives it no name.
-  'min-w-menu': '220px',
+  // This was the one utility in the theme with no token behind it — a raw
+  // `'220px'` in tailwind.config.js, a value neither deliverable draws anywhere
+  // (`220px` appears zero times in both). The shell mint gave it --width-menu,
+  // 265px, the width of the panel's own «مدیریت» popover and the only menu
+  // popover either shell draws. If this line ever reads a bare length again, the
+  // theme has grown a second place where a value lives.
+  'min-w-menu': 'var(--width-menu)',
   // R3's ten square control boxes, one name each carried on both scales.
   'w-tile-reader': 'var(--size-tile-reader)',
   'h-tile-reader': 'var(--size-tile-reader)',
@@ -596,6 +600,28 @@ const EXPECTED: Record<string, string | string[]> = {
   'h-chev': 'var(--size-chev)',
   'w-glyph-tile': 'var(--size-glyph-tile)',
   'h-glyph-tile': 'var(--size-glyph-tile)',
+  // The shell mint. Nine classes, and the pairing is the whole point of half of
+  // them: four of these numbers already had an owner at the same value, and this
+  // block is what says which class carries which of the two.
+  //   · `mt-hint` is --space-hint 3px, NOT --gap-tab-flow's 3px (the flow nav
+  //     group's gap).
+  //   · `py-back-y` is --pad-back-y 7px, NOT --pad-popover, --space-stat-label
+  //     or --gap-stat-dot, which are the other three 7px roles.
+  //   · `px-inbox-x` is --pad-inbox-x 13px, one of six 13px roles.
+  //   · `py-crumb-y` is --pad-crumb-y 9px, one of six 9px roles.
+  //   · `px-topbar-reader` is --pad-topbar-reader 20px — the reader's CHROME
+  //     gutter — and is four pixels off `px-reader-x`, which is its CONTENT
+  //     gutter. Swapping those two is invisible in every set-membership test in
+  //     this file and wrong on screen, which is what a pairing table is for.
+  'mt-hint': 'var(--space-hint)',
+  'leading-lockup': 'var(--lh-lockup)',
+  'min-w-count-chrome': 'var(--size-count-chrome)',
+  'h-count-chrome': 'var(--size-count-chrome)',
+  'px-inbox-x': 'var(--pad-inbox-x)',
+  'py-crumb-y': 'var(--pad-crumb-y)',
+  'py-back-y': 'var(--pad-back-y)',
+  'px-topbar-reader': 'var(--pad-topbar-reader)',
+  'grid-cols-idef0': 'var(--grid-idef0)',
   // Media query, not token — asserted by the breakpoint tests below.
   'max1080:hidden': 'display: none',
   'max760:hidden': 'display: none',
@@ -1404,7 +1430,20 @@ const PENDING: string[] = [
   // colour ledger L-01 retired. These three lines come off as those tasks land.
   'text-role-title-on-field', 'text-role-subtitle-on-field', 'text-role-eyebrow',
   // …and StatTile's numeral-to-dot gap, unconsumed until Task 10 builds it.
-  
+
+  // The shell mint. Nine names for the values Tasks 12, 13 and 16 were still
+  // writing out, minted for the same reason the pass before it was: guards.test.ts
+  // makes an unnamed value unwritable, so the name has to exist before its
+  // consumer. Task 12 deletes `mt-hint`, `leading-lockup`, `min-w-count-chrome`,
+  // `h-count-chrome`, `px-inbox-x`, `py-crumb-y` and `py-back-y`; Task 13 deletes
+  // `px-topbar-reader` and shares four of Task 12's, so it deletes nothing on its
+  // own; Task 16 deletes `grid-cols-idef0`.
+  //
+  // `min-w-menu` is deliberately NOT here. The mint gave it a token instead of a
+  // new name, and src/ui/Menu.tsx already writes it, so it has a consumer today.
+  'mt-hint', 'leading-lockup', 'min-w-count-chrome', 'h-count-chrome',
+  'px-inbox-x', 'py-crumb-y', 'py-back-y', 'px-topbar-reader',
+  'grid-cols-idef0',
 ]
 
 /**
@@ -1426,36 +1465,43 @@ const PENDING: string[] = [
  * without bound.
  *
  * ---------------------------------------------------------------------------
- * IT HAS BEEN RAISED ONCE, AND THAT WAS THE EVENT IT WAS RAISED FOR.
+ * IT HAS BEEN RAISED TWICE, AND BOTH WERE THE EVENT IT IS RAISED FOR.
  *
- * 231 -> 260, on 2026-08-18, by the single minting pass. Read the distinction
- * before you touch this number again, because it is the whole point:
+ * 231 -> 260, on 2026-08-18, by the single minting pass, and 218 -> 235 on the
+ * same day by the shell mint that followed it. Read the distinction before you
+ * touch this number again, because it is the whole point:
  *
  *   · MINTING a utility legitimately adds an unconsumed line. The theme is
  *     named ahead of the screens on purpose — guards.test.ts bans `text-[…]`,
  *     `rounded-[…]` and `shadow-[…]`, so a value with no name cannot be written
  *     at all, and the name therefore has to exist before its consumer does. The
- *     mint added 33 such lines — 29 from the spec, then 3 for the
- *     type-on-the-violet-field group and StatTile's numeral-to-dot gap — and it
- *     is the last one: tailwind.config.js, tokens.css and roles.css are
- *     re-frozen behind it.
+ *     first mint added 33 such lines — 29 from the spec, then 3 for the
+ *     type-on-the-violet-field group and StatTile's numeral-to-dot gap. The
+ *     shell mint added 9 more, for the reason the first one missed them: it
+ *     minted from the SCREENS, and the two shells and the summary screen were
+ *     left writing fourteen values out by hand.
  *   · CONSUMING a utility, or failing to, may never add one. A screen that lands
  *     without writing the classes it was minted for is a screen that is not
  *     finished, and the number below is what says so.
  *
  * So: a raise is legal only in the same commit as a deliberate mint of the
- * theme, and there is no further mint planned. If you are here because a task
- * you are writing has pushed PENDING past the number below, the answer is not
- * this line — either the task has stopped consuming something it should still
- * consume, or it has added a theme key it has no consumer for, and R11 forbids
- * the second.
+ * theme, and BOTH mints have now happened — tailwind.config.js, tokens.css and
+ * roles.css are re-frozen behind the second, and no third is planned. If you are
+ * here because a task you are writing has pushed PENDING past the number below,
+ * the answer is not this line — either the task has stopped consuming something
+ * it should still consume, or it has added a theme key it has no consumer for,
+ * and R11 forbids the second.
  *
  * The number is the count plus ten, which is the headroom rule the 231 was set
  * by, kept so a task that legitimately STOPS using a utility can put its line
  * back without needing this edit.
  * ---------------------------------------------------------------------------
  */
-const CEILING = 218 // LOWERED 2026-08-18 against PENDING.length === 218 (task 10 landed 21 consumers)
+// RAISED 2026-08-18 against PENDING.length === 225 (the shell mint's 9 names,
+// unconsumed until Tasks 12, 13 and 16 land). The count before it was 216, under
+// a ceiling of 218 that had been LOWERED the same day against a then-count of
+// 218; two of those lines were consumed between the two edits.
+const CEILING = 235
 
 describe('Owner ruling R11 — a named utility has a component that uses it', () => {
   it('reads a real, sizeable set of component files — tests AND test helpers excluded', () => {
