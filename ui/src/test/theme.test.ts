@@ -614,7 +614,10 @@ const EXPECTED: Record<string, string | string[]> = {
   //     gutter. Swapping those two is invisible in every set-membership test in
   //     this file and wrong on screen, which is what a pairing table is for.
   'mt-hint': 'var(--space-hint)',
-  'leading-lockup': 'var(--lh-lockup)',
+  // Reads the ROLE — the one leading that differs by surface. If this line ever
+  // reads `--lh-lockup` again, `leading-lockup` paints 1.25 inside the reader
+  // and every set-membership test in this file still passes.
+  'leading-lockup': 'var(--role-lh-lockup)',
   'min-w-count-chrome': 'var(--size-count-chrome)',
   'h-count-chrome': 'var(--size-count-chrome)',
   'px-inbox-x': 'var(--pad-inbox-x)',

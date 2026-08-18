@@ -168,6 +168,11 @@
                                            re-cutting --lh-relaxed, which keeps its own 1.75, so
                                            the correction had to land here */
   --role-lh-prose: var(--lh-loose);
+  --role-lh-lockup: var(--lh-lockup);   /* the brand lockup in the top bar — the ONE
+                                           leading that is not shared: 1.25 in the panel,
+                                           1.3 in the reader, which the block below sets.
+                                           Every other --role-lh-* is surface-independent
+                                           and src/ui/surface.test.tsx guards that. */
   --role-tracking-eyebrow: var(--tracking-eyebrow);
   --role-tracking-display: var(--tracking-display);
 
@@ -190,6 +195,12 @@
    colour-, shadow- or motion-shaped may be declared here — a value that appears
    in both blocks is a value with two places to keep in step, which is exactly
    the defect R8 exists to stop.
+
+   Leadings were foundations too, and shared, until the brand lockup: the panel
+   draws it 1.25 and the reader 1.3, so --role-lh-lockup is the one --role-lh-*
+   this block may hold. src/ui/surface.test.tsx enforces exactly that — its
+   foundations guard reads `lh-(?!lockup)`, so the other four leadings still
+   cannot appear here. Widening that carve-out is a decision, not a fix.
 
    Specificity is deliberate: [data-surface='reader'] and :root both weigh
    (0,1,0), so this block wins only by coming later in the file. Keep it last.
@@ -219,4 +230,8 @@
                                                   homeless. */
   --role-iconbtn: var(--size-iconbtn-reader);  /* 42px */
   --role-fab: var(--size-fab-reader);          /* 56px */
+  --role-lh-lockup: var(--lh-lockup-reader);   /* 1.3 — the panel draws 1.25 (panel 120),
+                                                  the reader 1.3 (reader 136). The one
+                                                  leading in the system that is a scale
+                                                  and not a foundation. */
 }

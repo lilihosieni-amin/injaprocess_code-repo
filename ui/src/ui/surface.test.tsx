@@ -190,6 +190,12 @@ const SCALE: { role: string; panel: string; reader: string; panelPx: string; rea
   { role: '--role-fs-textarea', panel: 'var(--fs-sm)', reader: 'var(--fs-doc-body)', panelPx: '13px', readerPx: '16px' },
   { role: '--role-iconbtn', panel: 'var(--size-iconbtn)', reader: 'var(--size-iconbtn-reader)', panelPx: '40px', readerPx: '42px' },
   { role: '--role-fab', panel: 'var(--size-fab)', reader: 'var(--size-fab-reader)', panelPx: '52px', readerPx: '56px' },
+  // The fourteenth row, and the only one that is not a length. The brand lockup
+  // is drawn 1.25 in the panel (`Inja Panel.dc.html:120`) and 1.3 in the reader
+  // (`Inja Reader.dc.html:136`); the shell mint first collapsed the two onto the
+  // panel's number, and the owner ruled it back out as a per-surface role. The
+  // guard below carries the matching carve-out.
+  { role: '--role-lh-lockup', panel: 'var(--lh-lockup)', reader: 'var(--lh-lockup-reader)', panelPx: '1.25', readerPx: '1.3' },
 ]
 
 describe('R3 — the two scales differ where the ruling says they differ', () => {
@@ -233,9 +239,13 @@ describe('R3 — the two scales differ where the ruling says they differ', () =>
   it('makes every row a real difference — a row the two surfaces share proves nothing', () => {
     const same = SCALE.filter((r) => r.panelPx === r.readerPx || r.panel === r.reader)
     expect(same.map((r) => r.role)).toEqual([])
-    // Still 13, and it stayed 13 by a swap rather than by standing still: R12
-    // took --role-fs-dense out and the minting pass put --role-fs-textarea in.
-    expect(SCALE).toHaveLength(13)
+    // The number carries a history, so keep reading before you edit it. It was
+    // 13 for two passes, and it stayed 13 by a SWAP rather than by standing
+    // still: R12 took --role-fs-dense out and the minting pass put
+    // --role-fs-textarea in. It is 14 now because the reader-chrome ruling added
+    // --role-lh-lockup — a genuinely new row, the first since, and the first that
+    // is a leading rather than a length.
+    expect(SCALE).toHaveLength(14)
   })
 
   it('leaves the padding the two surfaces share on :root alone', () => {
@@ -248,9 +258,26 @@ describe('R3 — the two scales differ where the ruling says they differ', () =>
   })
 
   it('shares every foundation — the reader block redefines no colour, shadow or motion', () => {
+    // `lh-(?!lockup)` and not a bare `lh-`, and the exception has a reason worth
+    // keeping: leadings ARE surface-independent in this system — --role-lh-body,
+    // --role-lh-title, --role-lh-subcopy and --role-lh-prose are one value each
+    // on both surfaces, and this guard is what holds them there — EXCEPT the
+    // brand lockup, which the reader draws at 1.3 where the panel draws 1.25.
+    // That one row is --role-lh-lockup, it is in SCALE above with both numbers,
+    // and it is the only --role-lh-* the reader block may hold.
+    //
+    // Deleting `lh-` outright would unguard all five and is the wrong repair: it
+    // would let a future pass split --role-lh-prose per surface with nothing
+    // objecting. Widening the carve-out is a decision, not a fix.
     const shared = readerBlock.match(
-      /--role-(field|canvas|surface|scrim|focus|hover|shadow|lift|duration|border|ink|link|primary|new|confirmed|danger|awaiting|info|dead|title-on|subtitle-on|eyebrow|radius-|fw-|lh-|tracking-)[a-z0-9-]*\s*:/g,
+      /--role-(field|canvas|surface|scrim|focus|hover|shadow|lift|duration|border|ink|link|primary|new|confirmed|danger|awaiting|info|dead|title-on|subtitle-on|eyebrow|radius-|fw-|lh-(?!lockup)|tracking-)[a-z0-9-]*\s*:/g,
     )
     expect(shared).toBeNull()
+    // …and the carve-out is exactly one name wide. Asked against a synthetic
+    // block, because the real one is clean and a clean input cannot prove a
+    // filter runs: the four shared leadings must still be caught here.
+    const guard = /--role-(lh-(?!lockup))[a-z0-9-]*\s*:/g
+    expect('--role-lh-body: x; --role-lh-prose: y;'.match(guard)).toHaveLength(2)
+    expect('--role-lh-lockup: x;'.match(guard)).toBeNull()
   })
 })

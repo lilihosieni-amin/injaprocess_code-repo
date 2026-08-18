@@ -258,12 +258,18 @@ export default {
         // paints. Deleting the key leaves `leading-none` emitting Tailwind's own
         // `1` and only the pairing table notices.
         none: 'var(--lh-none)',
-        // The shell mint — the brand lockup's two lines, 1.25. Ledger L-17
-        // decided the three PROSE leadings and said nothing about the display
-        // end, where the design runs 1.2 · 1.25 · 1.3 · 1.4 · 1.5 and the token
-        // file names only the 1.2. `leading-tight` IS that 1.2 and keeps its own
-        // role, so this is a mint and not a re-value.
-        lockup: 'var(--lh-lockup)',
+        // The brand lockup's two lines. Ledger L-17 decided the three PROSE
+        // leadings and said nothing about the display end, where the design runs
+        // 1.2 · 1.25 · 1.3 · 1.4 · 1.5 and the token file names only the 1.2.
+        // `leading-tight` IS that 1.2 and keeps its own role, so this is a mint
+        // and not a re-value.
+        //
+        // It reads the ROLE, not a token: this is the only leading in the system
+        // that differs by surface — 1.25 in the panel (panel 120), 1.3 in the
+        // reader (reader 136) — so one class string is both, the way `w-iconbtn`
+        // is 40 and 42. Pointing this key back at `--lh-lockup` would silently
+        // paint the panel's number inside the reader.
+        lockup: 'var(--role-lh-lockup)',
       },
       borderRadius: {
         badge: 'var(--radius-badge)', chip: 'var(--radius-chip)', control: 'var(--radius-control)',

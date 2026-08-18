@@ -482,12 +482,17 @@
    behind it.
 
    Every value was read out of ui/design/** and checked BEFORE it was named,
-   and five of the shells' values are deliberately NOT here: the reader draws
-   them at numbers the ladder already holds, so they resolve to `py-s5`,
-   `gap-s6` and to --lh-lockup below rather than to five more names. A token
-   for a value the design does not draw is worse than a value written out,
-   because the token makes it look decided. The refusals, one by one, are in
+   and four of the shells' values are deliberately NOT here: the reader draws
+   them at numbers the ladder already holds, so they resolve to `py-s5` twice
+   and `gap-s6` rather than to four more names. A token for a value the design
+   does not draw is worse than a value written out, because the token makes it
+   look decided. The refusals, one by one, are in
    .superpowers/sdd/ui-shell-mint-report.md.
+
+   The fifth refusal did not survive review, and that is the process working:
+   the reader's 1.3 lockup leading was collapsed onto the panel's 1.25 here, and
+   the owner ruled it back out as a per-surface ROLE instead. See --lh-lockup
+   below and --role-lh-lockup in roles.css.
 
    Numbers after a file name are line numbers in ui/design/Inja Panel.dc.html
    and ui/design/Inja Reader.dc.html.
@@ -518,13 +523,19 @@
      KPI numeral, panel 1628, and every title step on `fontSize` pairs with it),
      so R8 mints rather than borrows.
 
-     ONE role, one value. The panel draws 1.25 (panel 120) and the reader 1.3
-     (reader 136); roles.css rule 1 gives a role one value, and with no ledger
-     row to decide it the two collapse here onto the panel's number — the
-     primary deliverable, the one every § reference in the spec is to. The
-     difference is 17.5px against 18.9px on a two-line 14px stack. Recorded for
-     the ledger rather than decided by this file. */
+     ONE role, TWO surfaces: the panel draws 1.25 (panel 120) and the reader 1.3
+     (reader 136). The shell mint first collapsed those onto the panel's number,
+     reading roles.css rule 1 as forbidding the second value; the owner ruled
+     otherwise, and correctly — a role with a per-surface value is not a second
+     name for one role, it is what the role layer is FOR. So the two live here
+     as the two ends of a scale and `--role-lh-lockup` in roles.css switches
+     between them, exactly as --size-iconbtn / --size-iconbtn-reader do.
+
+     Nothing may name these two directly: the class is `leading-lockup`, it
+     reads the role, and it is 1.25 in the panel and 1.3 inside
+     [data-surface='reader'] from the identical class string. */
   --lh-lockup: 1.25;
+  --lh-lockup-reader: 1.3;
 
   /* The count badge on the chrome — the conflict count on the panel's inbox
      button (panel 156) and the approval count on the reader's comments button

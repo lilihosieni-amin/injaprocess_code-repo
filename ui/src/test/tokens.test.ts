@@ -415,4 +415,26 @@ describe('R1 — a correction records what it overrode and why', () => {
     expect(token('--size-menu-more')).toBe('36px')    // the PANEL's square, 3 uses
     expect(token('--size-logo-bar')).toBe('')         // declared in the frozen _ds, at 38px
   })
+
+  it('the lockup leading is a per-surface pair, not one value and not two names', () => {
+    // The owner's ruling on the shell mint's one over-reach. The mint collapsed
+    // the panel's 1.25 and the reader's 1.3 onto 1.25, reading roles.css rule 1
+    // as forbidding the second value; a role WITH a per-surface value is not a
+    // second name for one role, it is what the role layer is for.
+    //
+    // Both ends live here, as the two ends of a scale; --role-lh-lockup in
+    // roles.css switches between them and `leading-lockup` is the only class.
+    // src/ui/surface.test.tsx holds the pair against the design's two numbers.
+    expect(token('--lh-lockup')).toBe('1.25')          // panel 120
+    expect(token('--lh-lockup-reader')).toBe('1.3')    // reader 136
+    expect(declarations('--lh-lockup')).toBe(1)
+    expect(declarations('--lh-lockup-reader')).toBe(1)
+    // …and the four leadings that really are shared did not follow it apart.
+    // --lh-tight keeps the 1.2 that every title step pairs with, and it is the
+    // token the lockup would have borrowed had R8 not forbidden it.
+    expect(token('--lh-sub')).toBe('1.8')
+    expect(token('--lh-none')).toBe('1')
+    expect(token('--lh-tight')).toBe('')               // frozen _ds, 1.2
+    expect(token('--lh-lockup')).not.toBe(token('--lh-lockup-reader'))
+  })
 })
