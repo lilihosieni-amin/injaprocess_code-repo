@@ -53,6 +53,7 @@ export function Dropdown({
   const box = useRef<HTMLDivElement>(null)
   const trigger = useRef<HTMLButtonElement>(null)
   const list = useRef<HTMLDivElement>(null)
+  const search = useRef<HTMLInputElement>(null)
   const identity = useRef(Symbol('dropdown')).current
   const id = useId()
   const multiple = values !== undefined
@@ -104,8 +105,16 @@ export function Dropdown({
   }
 
   function onListKey(e: React.KeyboardEvent) {
+    // Home/End belong to the CARET while the search field holds it. This
+    // handler sits on the popover, so without the exemption a user correcting
+    // the start of a Persian family name — caret at «ادی|», Home — has the key
+    // preventDefault()ed, the caret left where it was and focus thrown out of
+    // the field onto an option. ArrowUp/ArrowDown are the opposite case: they
+    // are the only way down into the results, so the field gives them up.
+    const inField = e.target === search.current
     if (e.key === 'ArrowDown') { e.preventDefault(); move(1) }
     else if (e.key === 'ArrowUp') { e.preventDefault(); move(-1) }
+    else if (inField) return
     else if (e.key === 'Home') { e.preventDefault(); move('first') }
     else if (e.key === 'End') { e.preventDefault(); move('last') }
   }
@@ -174,6 +183,7 @@ export function Dropdown({
           {searchable && (
             <div className="relative mb-s1">
               <input
+                ref={search}
                 type="search"
                 value={query}
                 placeholder={searchPlaceholder}

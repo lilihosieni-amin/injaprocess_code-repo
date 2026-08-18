@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { readFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
@@ -45,9 +45,18 @@ import { isTopDismissible, popDismissible, pushDismissible } from './dismissible
 
    `sheet()` asserts the FULL emitted declaration set of an element — the
    popover, the trigger, the option, the tick, the dot, the row, the card —
-   against a measured expectation. Adding a class, dropping one, or swapping
-   one for a different real one all change that set, so the test does not have
-   to have anticipated the property to fail on it.
+   against a measured expectation. Adding an UNPREFIXED class, dropping one, or
+   swapping one for a different real one all change that set, so the test does
+   not have to have anticipated the property to fail on it.
+
+   Unprefixed is the whole of that claim, and the re-review of this task was
+   right to bound it: `sheet()` reads one state at a time and skips every rule
+   carrying a `state` or a `media`, so a class ADDED under a variant leaves the
+   resting snapshot identical — `hover:bg-coral`, `focus:border-violet`, and
+   `md:hidden` on the popover, which is a menu that vanishes above the
+   breakpoint with the rest of this file green. `conditional()` is the other
+   half: it lists every non-resting rule an element's classes emit, and the
+   three "writes only these conditional rules" tests pin those lists exactly.
    ------------------------------------------------------------------------- */
 
 /** One emitted rule, split into the class that carries it and the state it applies in. */
@@ -69,7 +78,7 @@ function classesIn(selector: string): string[] {
 async function compile(classNames: string): Promise<{
   painted: Painted[]
   alive: Set<string>
-  raw: { selector: string; decls: string }[]
+  raw: { selector: string; decls: string; media: string }[]
 }> {
   const classes = [...new Set(classNames.split(/\s+/).filter(Boolean))]
   if (classes.length === 0) return { painted: [], alive: new Set(), raw: [] }
@@ -79,7 +88,7 @@ async function compile(classNames: string): Promise<{
 
   const painted: Painted[] = []
   const alive = new Set<string>()
-  const raw: { selector: string; decls: string }[] = []
+  const raw: { selector: string; decls: string; media: string }[] = []
   result.root.walkRules((rule) => {
     // A selector that sets nothing is the failure this file exists to catch.
     if (!rule.nodes || rule.nodes.length === 0) return
@@ -91,7 +100,7 @@ async function compile(classNames: string): Promise<{
       .join('; ')
     if (!decls) return
     for (const sel of rule.selectors) {
-      raw.push({ selector: sel, decls })
+      raw.push({ selector: sel, decls, media })
       for (const k of classesIn(sel)) alive.add(k)
       const m = /^\.((?:\\.|[^\s.:>~+,(){}[\]])+)(.*)$/.exec(sel)
       if (!m) continue
@@ -129,10 +138,13 @@ function winner(painted: Painted[], prop: string, state = ''): string {
  * resolves them — not the handful an assertion happened to name.
  *
  * This is the difference between "the properties I was thinking about are
- * right" and "these classes and no others are on this element". A `toEqual`
- * against one of these fails on a class that was dropped, one that was added,
- * and one that was swapped for a different real class — none of which the
- * property-by-property form can see.
+ * right" and "these unprefixed classes and no others are on this element". A
+ * `toEqual` against one of these fails on a class that was dropped, an
+ * UNPREFIXED one that was added, and one that was swapped for a different real
+ * class — none of which the property-by-property form can see. A class added
+ * under a variant (`hover:`, `focus:`, `md:`) emits in a different state or
+ * media and is invisible here BY CONSTRUCTION; `conditional()` below is what
+ * catches that half.
  */
 function sheet(painted: Painted[], state = ''): Record<string, string> {
   const out: Record<string, string> = {}
@@ -144,6 +156,33 @@ function sheet(painted: Painted[], state = ''): Record<string, string> {
     }
   }
   return out
+}
+
+/**
+ * Every rule these classes emit that a RESTING element does not get — each
+ * `:hover`/`:focus`/peer rule, and each `@media` one, as its own line.
+ *
+ * `sheet()` deliberately sees only the resting state, so it cannot be the thing
+ * that catches an ADDED variant class: `hover:bg-coral`, `focus:border-violet`
+ * and — the sharp one — `md:hidden` on the popover all leave the resting
+ * snapshot untouched, and `dead()` calls them alive because they do compile.
+ * `md:hidden` in particular is a dropdown menu that vanishes above the
+ * breakpoint with every other assertion in this file still green.
+ *
+ * A rule is resting iff it is unprefixed: no media, and a selector that is one
+ * bare class and nothing else.
+ */
+function conditional(raw: { selector: string; media: string }[]): string[] {
+  return [...new Set(
+    raw
+      .filter((r) => r.media !== '' || !/^\.(?:\\.|[\w-])+$/.test(r.selector))
+      .map((r) => (r.media ? `@media ${r.media} ` : '') + r.selector.replace(/\\/g, '')),
+  )].sort()
+}
+
+/** Every conditional rule the element and all of its descendants carry. */
+async function conditionalsOf(root: Element): Promise<string[]> {
+  return conditional((await compile(classStringOf(root))).raw)
 }
 
 /** The full declaration set an element actually renders with. */
@@ -230,6 +269,16 @@ function on(surface: 'panel' | 'reader', node: ReactNode) {
   return render(<SurfaceProvider surface={surface}>{node}</SurfaceProvider>)
 }
 
+/**
+ * One animation frame, flushed.
+ *
+ * An ArrowDown on a CLOSED trigger has to open first and then step in, and the
+ * options do not exist until React has committed — so the component waits a
+ * frame. jsdom runs `requestAnimationFrame`; nothing about that branch is
+ * untestable, it was simply never reached.
+ */
+const frame = () => act(() => new Promise<void>((r) => { requestAnimationFrame(() => r()) }))
+
 const tickOf = (c: Element) => c.querySelector('[data-tick]') as HTMLElement
 
 /**
@@ -286,6 +335,29 @@ describe('the harness itself', () => {
     // States are kept apart, so a `:hover` rule cannot stand in for the resting one.
     expect(sheet(await paint('hover:bg-tile-v2'))).toEqual({})
     expect(sheet(await paint('hover:bg-tile-v2'), ':hover')).toEqual({ 'background-color': 'var(--tile-v2)' })
+  })
+
+  it('lists the conditional rules the resting snapshot is blind to', async () => {
+    // The bound on the claim above, pinned rather than asserted in prose. A
+    // resting `sheet()` cannot see a variant class, so `conditional()` has to —
+    // and both halves are pinned here, or the three component-level lists below
+    // prove nothing.
+    expect(conditional((await compile('flex px-s7')).raw)).toEqual([])
+
+    const hover = await compile('hover:bg-coral')
+    expect(sheet(hover.painted)).toEqual({})
+    expect(conditional(hover.raw)).toEqual(['.hover:bg-coral:hover'])
+
+    // The sharp one: a breakpoint class changes NO resting declaration, so the
+    // popover could be given `md:hidden` — invisible above 768px — and every
+    // other assertion in this file would still pass.
+    const media = await compile('md:hidden')
+    expect(sheet(media.painted)).toEqual({})
+    expect(conditional(media.raw)).toEqual(['@media (min-width: 768px) .md:hidden'])
+
+    // A peer rule is conditional too: its selector is not one bare class.
+    expect(conditional((await compile('peer-focus-visible:border-coral')).raw))
+      .toEqual(['.peer:focus-visible ~ .peer-focus-visible:border-coral'])
   })
 
   it('reads the token files, so a literal here is measured and not restated', () => {
@@ -451,6 +523,31 @@ const OPTION_ROW = {
   color: 'var(--ink)',
 }
 
+/**
+ * What `sr-only` and NOTHING ELSE emits.
+ *
+ * Named once and asserted at all three sites — both sr-only inputs and the
+ * hidden dropdown caption — because `toHaveClass('peer','sr-only')` is
+ * satisfied by `"peer sr-only hidden"`. In jsdom that mutation is invisible
+ * from every direction: no stylesheet is loaded, so `input.focus()` still
+ * focuses, and label clicks forward whatever the input's display is. In a
+ * browser `display:none` takes the control out of the tab order AND out of the
+ * accessibility tree, so the change-supervisor dialog looks perfect, works with
+ * a mouse, and is completely unreachable by keyboard and silent to a screen
+ * reader. The declaration set is the only place that shows.
+ */
+const SR_ONLY = {
+  position: 'absolute',
+  width: '1px',
+  height: '1px',
+  padding: '0',
+  margin: '-1px',
+  overflow: 'hidden',
+  clip: 'rect(0, 0, 0, 0)',
+  'white-space': 'nowrap',
+  'border-width': '0',
+}
+
 /** The in-popover search field (§8, design/Inja Panel.dc.html:1220). */
 const SEARCH_FIELD = {
   'box-sizing': 'border-box',
@@ -518,6 +615,26 @@ describe('Checkbox', () => {
       expect(await dead(harvested), JSON.stringify(props)).toEqual([])
       r.unmount()
     }
+  })
+
+  it('writes no conditional rule but the one focus idiom', async () => {
+    // The half every declaration snapshot above is blind to. `sheet()` reads
+    // one state at a time, so a class ADDED under a variant changes nothing it
+    // asserts and `dead()` calls it alive: `hover:bg-coral` on the row and
+    // `md:hidden` on it both survive the entire file. This is the exact list.
+    const seen = new Set<string>()
+    for (const props of [
+      { checked: false, hint: 'چرا' },
+      { checked: true },
+      { checked: true, disabled: true },
+    ] as const) {
+      const r = on('panel', <Checkbox label="کل سامانه" onChange={() => {}} {...props} />)
+      for (const c of await conditionalsOf(r.container.querySelector('label')!)) seen.add(c)
+      r.unmount()
+    }
+    expect([...seen].sort()).toEqual([
+      '.peer:focus-visible ~ .peer-focus-visible:border-coral',
+    ])
   })
 
   it('draws the 19px box ledger L-10 names, with the 13px check inside it', async () => {
@@ -610,10 +727,7 @@ describe('Checkbox', () => {
     expect(input).toHaveClass('peer')
     // `sr-only` clips; `display:none` and `visibility:hidden` would also take
     // the control off the tab order, which is the mutation this catches.
-    expect(await styles(input)).toEqual({
-      position: 'absolute', width: '1px', height: '1px', padding: '0', margin: '-1px',
-      overflow: 'hidden', clip: 'rect(0, 0, 0, 0)', 'white-space': 'nowrap', 'border-width': '0',
-    })
+    expect(await styles(input)).toEqual(SR_ONLY)
     input.focus()
     expect(input).toHaveFocus()
   })
@@ -661,6 +775,11 @@ describe('Checkbox', () => {
       'font-weight': 'var(--fw-bold)',
       color: 'var(--ink)',
     })
+    // The box the two lines sit in. `min-w-0` is what lets a long unbroken hint
+    // WRAP inside the row rather than force the flex item past the row's edge —
+    // a flex item's min-width is `auto`, not 0, so without it the row overflows.
+    expect(await styles(container.querySelector('label > span:last-child')!))
+      .toEqual({ 'min-width': '0px' })
     expect(tokenLiteral('--fs-xs')).toBe('11.5px')
     expect(tokenLiteral('--lh-normal')).toBe('1.7')
     // 4px of lead, which is NOT the radio note's 5px — two roles, two leads.
@@ -698,6 +817,29 @@ describe('Checkbox', () => {
     // a click on nothing.
     await userEvent.click(screen.getByText('توضیح'))
     expect(seen).toEqual([true, true])
+  })
+
+  it('takes the id and the extra class the caller gives it', async () => {
+    // Ignoring either prop outright survived everything else in this file —
+    // the same `className` mutation dies on `Dropdown` only because one test
+    // there happens to pass one. A caller's `id` is what a screen's own
+    // `aria-describedby` or <label for> outside the row points at, and
+    // `className` is how a screen places the row in its own grid.
+    const given = on('panel', (
+      <Checkbox label="کل سامانه" checked={false} onChange={() => {}} id="perm-all" className="w-full" />
+    ))
+    const row = given.container.querySelector('label')!
+    expect(screen.getByRole('checkbox')).toHaveAttribute('id', 'perm-all')
+    expect(row).toHaveAttribute('for', 'perm-all')
+    expect(await styles(row)).toEqual({ ...CHECKBOX_ROW, ...ROW_OFF, cursor: 'pointer', width: '100%' })
+    given.unmount()
+
+    // …and with no id given the row still binds to itself, so the caller's
+    // prop is an override rather than the only thing holding the pair together.
+    const auto = on('panel', <Checkbox label="کل سامانه" checked={false} onChange={() => {}} />)
+    const input = auto.container.querySelector('input')!
+    expect(input.id).not.toBe('')
+    expect(auto.container.querySelector('label')).toHaveAttribute('for', input.id)
   })
 
   it('announces nothing decorative', () => {
@@ -752,6 +894,20 @@ describe('Radio', () => {
     }
   })
 
+  it('writes no conditional rule but the one focus idiom', async () => {
+    const seen = new Set<string>()
+    for (const checked of [true, false]) {
+      const r = on('panel', (
+        <Radio name="s" value="a" checked={checked} onChange={() => {}} label="سحر" note="یادداشت" />
+      ))
+      for (const c of await conditionalsOf(r.container.querySelector('label')!)) seen.add(c)
+      r.unmount()
+    }
+    expect([...seen].sort()).toEqual([
+      '.peer:focus-visible ~ .peer-focus-visible:border-coral',
+    ])
+  })
+
   it('paints the dot with these declarations and no others — picked and not', async () => {
     // The mutation this exists for: giving the UNPICKED dot the picked one's
     // fill, so every option in the group reads as chosen. Nothing in the old
@@ -789,9 +945,14 @@ describe('Radio', () => {
     const rule = raw.find((r) => r.selector.includes('peer-focus-visible'))
     expect(rule?.decls).toBe('border-color: var(--coral)')
     expect(rule?.selector).toMatch(/\.peer:focus-visible\s*~/)
-    // …and the input it answers is really the peer beside it.
+    // …and the input it answers is really the peer beside it, hidden the one
+    // way that keeps it. The sibling assertion `Checkbox` had and this did not:
+    // `toHaveClass('peer','sr-only')` is satisfied by `"peer sr-only hidden"`,
+    // and `display:none` here is a change-supervisor dialog that mouse-works
+    // and is unreachable by keyboard and silent to a screen reader.
     const input = container.querySelector('input') as HTMLInputElement
-    expect(input).toHaveClass('peer', 'sr-only')
+    expect(input).toHaveClass('peer')
+    expect(await styles(input)).toEqual(SR_ONLY)
     expect(input.nextElementSibling).toBe(dot)
     input.focus()
     expect(input).toHaveFocus()
@@ -828,6 +989,10 @@ describe('Radio', () => {
     expect(tokenLiteral('--text-muted')).toBe('#8a7db0')
     expect(tokenLiteral('--text-faint')).toBe('#a99fc4')
     expect(tokenLiteral('--space-2')).toBe('5px')
+    // …inside a box that may shrink, so a long unbroken note wraps rather than
+    // pushing the option card past its own edge.
+    expect(await styles(screen.getByText('یادداشت').parentElement!))
+      .toEqual({ 'min-width': '0px' })
   })
 
   it('takes its title step from the surface, not from a prop', async () => {
@@ -852,6 +1017,34 @@ describe('Radio', () => {
     expect(seen).toEqual(['09120000000'])
     await userEvent.click(screen.getByText('یادداشت'))
     expect(seen).toEqual(['09120000000', '09120000000'])
+  })
+
+  it('takes the id and class the caller gives it, and carries its own value', async () => {
+    const given = on('panel', (
+      <Radio
+        name="sup" value="09120000000" checked onChange={() => {}} label="سحر"
+        id="sup-1" className="w-full"
+      />
+    ))
+    const input = screen.getByRole('radio') as HTMLInputElement
+    const card = given.container.querySelector('label')!
+    expect(input).toHaveAttribute('id', 'sup-1')
+    expect(card).toHaveAttribute('for', 'sup-1')
+    expect(await styles(card)).toEqual({
+      ...RADIO_CARD, 'background-color': 'var(--tile-v2)',
+      'border-color': 'var(--violet)', width: '100%',
+    })
+    // The NATIVE value, which the `onChange` assertion above does not reach —
+    // that one reads the prop back out of a closure and passes with no `value`
+    // attribute at all. A radio group in a real <form> submits this, and the
+    // group is only a group because each input in it carries a distinct one.
+    expect(input).toHaveAttribute('value', '09120000000')
+    given.unmount()
+
+    const auto = on('panel', <Radio name="s" value="a" checked={false} onChange={() => {}} label="سحر" />)
+    const bare = auto.container.querySelector('input')!
+    expect(bare.id).not.toBe('')
+    expect(auto.container.querySelector('label')).toHaveAttribute('for', bare.id)
   })
 
   it('announces nothing decorative, and reads the scope line as part of the choice', () => {
@@ -995,8 +1188,15 @@ describe('Dropdown', () => {
     // Every child of the list is an option, and nothing else.
     expect(Array.from(list.children).map((c) => c.getAttribute('role')))
       .toEqual(['option', 'option', 'option'])
+    // …and the list is NAMED, not merely pointed somewhere. `toHaveAttribute`
+    // alone is satisfied by an id that resolves to nothing, which leaves the
+    // listbox anonymous — the same shape as the trigger defect this round's
+    // headline fix was about. Asserted through the accessible-name computation,
+    // and against the element the id really resolves to.
+    expect(named('listbox', 'نقش')).toBe(list)
+    const namedBy = list.getAttribute('aria-labelledby')!
+    expect(document.getElementById(namedBy)).toHaveTextContent('نقش')
     // `aria-multiselectable` describes the LIST, so it has to be on the list.
-    expect(list).toHaveAttribute('aria-labelledby')
     expect(pop).not.toHaveAttribute('aria-multiselectable')
 
     // …and the miss message is a sibling of the list, not a child of it — a
@@ -1120,6 +1320,30 @@ describe('Dropdown', () => {
     expect(trigger).toHaveFocus()
   })
 
+  it('leaves an Escape for the dialog ON TOP of it alone, and answers its own', async () => {
+    // The guard, rather than the bookkeeping. The sibling test below pushes the
+    // other dismissible BEFORE opening, so the popover is always the top and
+    // `isTopDismissible(identity)` is always true — deleting the guard passes
+    // it. Here something opens ON TOP of an open popover, which is the only
+    // arrangement in which the guard does any work: the Escape belongs to the
+    // thing above, and the popover has to ignore it.
+    on('panel', <Dropdown label="نقش" options={ROLES} placeholder="ب" onChange={() => {}} />)
+    await userEvent.click(screen.getByRole('button'))
+    expect(screen.getByRole('listbox')).toBeInTheDocument()
+
+    const over = Symbol('a dialog opened from the menu')
+    pushDismissible(over)
+    await userEvent.keyboard('{Escape}')
+    // Still open: that Escape was not the popover's to answer.
+    expect(screen.getByRole('listbox')).toBeInTheDocument()
+    expect(screen.getByRole('button')).toHaveAttribute('aria-expanded', 'true')
+
+    // …and once the thing above is gone, the next Escape IS the popover's.
+    popDismissible(over)
+    await userEvent.keyboard('{Escape}')
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+  })
+
   it('leaves an Escape for the dialog underneath it alone', async () => {
     // I7 — the popover joins the shared dismissible stack, so the Escape that
     // closes it stops there. Before that stack existed, one Escape took the
@@ -1137,11 +1361,29 @@ describe('Dropdown', () => {
     popDismissible(under)
   })
 
-  it('walks the options with the arrow keys — from the trigger and from the field', async () => {
+  it('walks the options with the arrow keys — from the CLOSED trigger and from the field', async () => {
     on('panel', (
       <Dropdown label="نقش" options={ROLES} placeholder="ب" onChange={() => {}} searchable searchPlaceholder="ج" />
     ))
-    await userEvent.click(screen.getByRole('button'))
+    const trigger = screen.getByRole('button')
+
+    // The closed branch, which is the one a keyboard user actually meets and
+    // which this test was named for and never reached: it opened with a CLICK
+    // first, so every ArrowDown went through `if (open) move('first')` and
+    // deleting the closed branch's own `move('first')` stranded the user on the
+    // trigger with all of this green. Opening has to wait a frame for the
+    // options to mount, so the frame is flushed rather than assumed away.
+    trigger.focus()
+    await userEvent.keyboard('{ArrowDown}')
+    expect(screen.getByRole('listbox')).toBeInTheDocument()
+    await frame()
+    expect(screen.getByRole('option', { name: 'خواننده' })).toHaveFocus()
+
+    // Back to the trigger, and now the OPEN branch — which steps in at once,
+    // because waiting a frame for options that already exist is a race.
+    await userEvent.keyboard('{Escape}')
+    expect(trigger).toHaveFocus()
+    await userEvent.click(trigger)
     await userEvent.keyboard('{ArrowDown}')
     expect(screen.getByRole('option', { name: 'خواننده' })).toHaveFocus()
     await userEvent.keyboard('{ArrowDown}')
@@ -1170,6 +1412,37 @@ describe('Dropdown', () => {
     await userEvent.click(screen.getByPlaceholderText('ج'))
     await userEvent.keyboard('{ArrowUp}')
     expect(screen.getByRole('option', { name: 'خواننده' })).toHaveFocus()
+  })
+
+  it('leaves Home and End to the caret while the search field holds it', async () => {
+    // The key handler sits on the POPOVER, so it saw Home and End from inside
+    // the search field too and claimed both. With the caret at position 3 of
+    // «ادی», Home was preventDefault()ed — so the caret never moved — and focus
+    // jumped to an option: a user correcting the start of a Persian family name
+    // was thrown out of the field they were typing in.
+    on('panel', (
+      <Dropdown label="سرپرست" options={ROLES} placeholder="ب" onChange={() => {}} searchable searchPlaceholder="ج" />
+    ))
+    await userEvent.click(screen.getByRole('button'))
+    const field = screen.getByPlaceholderText('ج') as HTMLInputElement
+    await userEvent.type(field, 'ادی')
+    expect(field.selectionStart).toBe(3)
+
+    await userEvent.keyboard('{Home}')
+    expect(field).toHaveFocus()
+    expect(field.selectionStart).toBe(0)
+
+    await userEvent.keyboard('{End}')
+    expect(field).toHaveFocus()
+    expect(field.selectionStart).toBe(3)
+
+    // …and the exemption is only the field's. Inside the list both keys are
+    // still the list's, which is what the arrow-key test walks in full.
+    await userEvent.clear(field)
+    await userEvent.keyboard('{ArrowDown}')
+    expect(screen.getByRole('option', { name: 'خواننده' })).toHaveFocus()
+    await userEvent.keyboard('{End}')
+    expect(screen.getByRole('option', { name: 'مدیر' })).toHaveFocus()
   })
 
   it('filters when searchable, and states the miss rather than showing a blank', async () => {
@@ -1229,6 +1502,21 @@ describe('Dropdown', () => {
         'translate(var(--tw-translate-x), var(--tw-translate-y)) rotate(var(--tw-rotate)) skewX(var(--tw-skew-x)) skewY(var(--tw-skew-y)) scaleX(var(--tw-scale-x)) scaleY(var(--tw-scale-y))',
       color: 'var(--text-faint)',
     })
+    // …and it is a MAGNIFIER. The chevron's `d` and stroke-width are asserted,
+    // the tick's are; the glyph whose absence was the defect this test exists
+    // for had neither, so the same 34px-reserved-for-nothing appearance came
+    // back through `strokeWidth="0.2"` (invisible at 14px) or `r="2"` with
+    // every declaration above unchanged.
+    expect(glyph.getAttribute('stroke-width')).toBe('2')
+    expect(glyph.getAttribute('fill')).toBe('none')
+    const lens = glyph.querySelector('circle')!
+    expect([lens.getAttribute('cx'), lens.getAttribute('cy'), lens.getAttribute('r')])
+      .toEqual(['11', '11', '7'])
+    expect(glyph.querySelector('path')?.getAttribute('d')).toBe('m21 21-4.3-4.3')
+    // Sized by the token, never by an SVG attribute.
+    expect(glyph.getAttribute('width')).toBeNull()
+    expect(glyph.getAttribute('viewBox')).toBe('0 0 24 24')
+
     // The relationship, not the two ends separately: the icon has to sit INSIDE
     // the room the field reserves, or it lands on top of the caret.
     const room = Number.parseFloat(tokenLiteral('--pad-search-x-menu'))
@@ -1264,6 +1552,18 @@ describe('Dropdown', () => {
     // …and the fill is the CHECK, not just the box.
     expect(tickIn('خواننده').querySelector('svg')).toBeTruthy()
     expect(tickIn('ادیتور').querySelector('svg')).toBeNull()
+
+    // The tick is PAINT. `aria-selected` is the record of the choice — this
+    // file says so itself, about the single-select's trailing check — and only
+    // the single-select branch pinned it, so `aria-selected={multiple ? false
+    // : picked}` left a list where a sighted user sees two filled ticks and a
+    // screen-reader user hears three UNSELECTED options inside a list that has
+    // just announced itself as multi-selectable.
+    const stateOf = (name: string) =>
+      screen.getByRole('option', { name }).getAttribute('aria-selected')
+    expect(stateOf('خواننده')).toBe('true')
+    expect(stateOf('مدیر')).toBe('true')
+    expect(stateOf('ادیتور')).toBe('false')
 
     await userEvent.click(screen.getByRole('option', { name: 'ادیتور' }))
     expect(seen).toEqual(['editor'])
@@ -1307,10 +1607,7 @@ describe('Dropdown', () => {
     const hidden = on('panel', <Dropdown label="نقش" options={ROLES} placeholder="ب" onChange={() => {}} hideLabel />)
     // `sr-only`, which clips — not `hidden`, which would take the name out of
     // the accessibility tree and leave the trigger anonymous.
-    expect(await styles(hidden.container.querySelector('[data-dd] > span')!)).toEqual({
-      position: 'absolute', width: '1px', height: '1px', padding: '0', margin: '-1px',
-      overflow: 'hidden', clip: 'rect(0, 0, 0, 0)', 'white-space': 'nowrap', 'border-width': '0',
-    })
+    expect(await styles(hidden.container.querySelector('[data-dd] > span')!)).toEqual(SR_ONLY)
   })
 
   it('writes no class that compiles to nothing — closed, open, searching, multi', async () => {
@@ -1338,6 +1635,43 @@ describe('Dropdown', () => {
     const multi = on('panel', <Dropdown label="د" options={ROLES} placeholder="د" values={[]} onToggle={() => {}} />)
     await userEvent.click(screen.getByRole('button'))
     expect(await harvest(multi.container.querySelector('[data-dd]')!)).toEqual([])
+  })
+
+  it('writes no conditional rule but the row hover and the field focus', async () => {
+    // The mutation this exists for is `md:hidden` on the popover: a dropdown
+    // menu that is simply not there above 768px, with all of the declaration
+    // snapshots, `dead()` and every behavioural test in this file still green,
+    // because a breakpoint class emits inside a `@media` and `sheet()` reads
+    // only the resting state. So the conditional rules are listed EXACTLY.
+    const seen = new Set<string>()
+    const shut = on('panel', <Dropdown label="نقش" options={ROLES} placeholder="ب" onChange={() => {}} />)
+    for (const c of await conditionalsOf(shut.container.querySelector('[data-dd]')!)) seen.add(c)
+    shut.unmount()
+
+    const open = on('panel', (
+      <Dropdown
+        label="نقش" options={ROLES} placeholder="ب" value="admin" onChange={() => {}}
+        searchable searchPlaceholder="ج"
+      />
+    ))
+    await userEvent.click(screen.getByRole('button'))
+    for (const c of await conditionalsOf(open.container.querySelector('[data-dd]')!)) seen.add(c)
+    await userEvent.type(screen.getByPlaceholderText('ج'), 'zzz')
+    for (const c of await conditionalsOf(open.container.querySelector('[data-dd]')!)) seen.add(c)
+    open.unmount()
+
+    const multi = on('panel', (
+      <Dropdown label="د" options={ROLES} placeholder="د" values={['reader']} onToggle={() => {}} hideLabel />
+    ))
+    await userEvent.click(screen.getByRole('button'))
+    for (const c of await conditionalsOf(multi.container.querySelector('[data-dd]')!)) seen.add(c)
+
+    expect([...seen].sort()).toEqual([
+      // The option row answering the pointer (§5.2)…
+      '.hover:bg-tile-v2:hover',
+      // …and the search field's ONLY focus indicator, since it is `outline-none`.
+      '.focus:border-coral:focus',
+    ].sort())
   })
 
   it('anchors the popover to its own trigger, not to the page', async () => {
