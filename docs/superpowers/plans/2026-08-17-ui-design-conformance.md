@@ -11470,7 +11470,7 @@ which R5 forbids outright.
 `rounded-card` (16px) · `rounded-control` (10px) · `rounded-input` (11px) ·
 `border-border-current` (#EDE5F5) · `border-border-danger` (#FDD9D6) · `bg-tile-c2` (#FFF3F2) ·
 `bg-tile-v2` (#F4EFFB) · `text-violet-on-violet` (#C9BEEE) · `border-hairline` (1.5px) ·
-`border-warm` (#EFE7DC) · `shadow-card` · screens `narrow`.
+`border-warm` (#EFE7DC) · `shadow-card` · the `max760:` variant (the ≤760 mobile pass — there is no `narrow` screen or utility; both breakpoints are `addVariant`'d as `max1080:`/`max760:`).
 
 ```ts
 // ui/src/ui/SectionCard.tsx (Task 10)
@@ -12008,7 +12008,7 @@ card inside a card, and it reads as a rendering fault (F34/F40).
 `border-warm` (#EFE7DC) · `rounded-panel` (24px) · `rounded-card` (16px) ·
 `rounded-button` (12px) · `rounded-tile` (14px) · `w-glyph h-glyph` (15px) ·
 `w-tool h-tool` (34px) · `shadow-modal` (S1's two-layer dialog shadow) ·
-screens `narrow`.
+the `max760:` variant (the ≤760 mobile pass — there is no `narrow` screen or utility; both breakpoints are `addVariant`'d as `max1080:`/`max760:`).
 
 ```ts
 // ui/src/ui/Overlay.tsx (Task 6) — Dialog gained width, subtitle, footer, and a
@@ -12863,7 +12863,7 @@ the change-password card and the divergence is written into the ledger.
 `bg-surface-sub` (#FBF9FE) · `border-border-current` (#EDE5F5) ·
 `bg-tile-warn` (#FBEEDC) · `border-warn-edge` (`#F0DDBB`) · `text-warn-fg` (#8A5A00) ·
 `text-violet-on-violet` (#C9BEEE) · `rounded-card` (16px) · `rounded-input` (11px) ·
-`rounded-control` (10px) · screens `narrow`.
+`rounded-control` (10px) · the `max760:` variant (the ≤760 mobile pass — there is no `narrow` screen or utility; both breakpoints are `addVariant`'d as `max1080:`/`max760:`).
 `SectionCard`, `PasswordField`, `Button`, `Icon` as in Tasks 21/6/7/10.
 
 *Produces* — no new exports. `Profile` keeps its named export shape, and no new
@@ -13203,7 +13203,7 @@ card is blank. And `Card` is re-implemented byte-for-byte rather than imported
 
 *Consumes* — `max-w-access` (820px, §3.3 gives policy the same 820 as Access) ·
 `px-screen-x` · `py-screen-y` · `rounded-card` (16px) · `border-hair` (#F2ECE3) ·
-`text-violet-on-violet` (#C9BEEE) · `shadow-card` · screens `narrow`.
+`text-violet-on-violet` (#C9BEEE) · `shadow-card` · the `max760:` variant (the ≤760 mobile pass — there is no `narrow` screen or utility; both breakpoints are `addVariant`'d as `max1080:`/`max760:`).
 `Checkbox` (Task 8, `box={19} tone="green"`), `Card` (Task 6), `Spinner`
 (`ui/Button`).
 
@@ -13548,7 +13548,7 @@ scrollbar decision made in a sixth file (P3, O1).
 `blurScrim`), `Button` (`danger`, `affirm`, `block`, disabled appearance),
 `IconButton`, `Icon`, `Menu`, `SectionCard`, `Toast`; `bg-tile-ok` · `bg-tile-c` ·
 `text-green` · `text-conflict` · `rounded-tile` (14px) · `w-tool h-tool` (34px) ·
-`shadow-modal` · screens `narrow`.
+`shadow-modal` · the `max760:` variant (the ≤760 mobile pass — there is no `narrow` screen or utility; both breakpoints are `addVariant`'d as `max1080:`/`max760:`).
 
 *Produces*
 ```ts
