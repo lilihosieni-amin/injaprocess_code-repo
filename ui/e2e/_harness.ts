@@ -11,6 +11,37 @@ export const SURFACE = 'rgb(255, 255, 255)'
 export const ON_FIELD = 'rgb(251, 247, 241)'
 /** §6.1 — the muted violet body copy on the field (#B7A6E0). */
 export const ON_FIELD_MUTED = 'rgb(183, 166, 224)'
+/**
+ * Ledger **L-01** — the screen title on the violet field, `#FFFFFF`.
+ *
+ * The same string as `SURFACE`, and deliberately a second name: one is the
+ * colour a *card* is painted, the other the colour a *title on the field* is
+ * written in, and a screen that repainted one has no business dragging the
+ * other with it. L-01 counted 10 screens at `#FFFFFF` against departments alone
+ * at `#FBF7F1` and decided white for all eleven, so `ON_FIELD` above is now the
+ * flow canvas's ground and the value the departments H1 still paints **today** —
+ * not a title colour any new screen may take.
+ *
+ * **The theme cannot reach this value by the name the plan writes.** Tasks 15
+ * and 17–20 all write `text-on-dark`, which is `--text-on-dark` `#FBF7F1`;
+ * `roles.css` names the decided value `--role-title-on-field: var(--card)` and
+ * no Tailwind key reads that role. Until one exists the class is `text-card`.
+ * Recorded in `.superpowers/sdd/ui-harness-preflight-report.md`.
+ */
+export const TITLE_ON_FIELD = 'rgb(255, 255, 255)'
+/**
+ * Ledger **L-28** — the subtitle under it, `#C9BEEE`, on both surfaces.
+ *
+ * `#B7A6E0` (`ON_FIELD_MUTED`) survives on departments alone, 1 use against 13,
+ * and `--violet-on-dark-body` has already been re-cut to `#C9BEEE` in
+ * `tokens.css`. Every row below writes this; departments keeps the old value
+ * until Task 14 repaints it.
+ */
+export const SUBTITLE_ON_FIELD = 'rgb(201, 190, 238)'
+/** §6.13 / ledger L-15 — the sub-panel edge `#EDE5F5` (`--border-current`). */
+export const SUBPANEL_BORDER = 'rgb(237, 229, 245)'
+/** §1.2 — `--surface-sub` `#FBF9FE`, THE sub-panel fill (see `profile` below). */
+export const SUBPANEL_SURFACE = 'rgb(251, 249, 254)'
 /** §4.3 — the default card border, 46 uses (ledger L-15). */
 export const CARD_BORDER = 'rgba(42, 29, 94, 0.07)'
 /**
@@ -394,6 +425,55 @@ export interface ScreenDesign {
  * `CARD_SHADOW` and adds `border` and `shadow` to this record in the same
  * commit — `background` is already here, holding the cream the screen paints
  * today. The screen has no focusable control, so `focus` is absent by fact.
+ *
+ * ## Two surfaces, two rows
+ *
+ * R3 makes five of these screens exist twice — the same screen read at a
+ * different scale, not a second theme. A row is one screen at one scale, so a
+ * screen with two surfaces gets **two rows**: `<name>` for the panel and
+ * `<name>Reader` for the reader, and its component writes
+ * `data-screen={reader ? '<name>Reader' : '<name>'}`. Two rows rather than a
+ * surface-aware field because nothing here is surface-aware: `PerWidth` keys on
+ * the viewport, and a sixth mechanism keyed on something else is a second place
+ * for a screen's numbers to live.
+ *
+ * ## This table was filled in ahead of the screens, and what that does and does
+ * not mean
+ *
+ * Eleven screen tasks each planned to append their own row to this one file, in
+ * one shared working tree. The later write wins and the build stays green, so
+ * the rows were written **before** the screens, from the plan's own task
+ * sections cross-checked against `ui/design/Inja Panel.dc.html` and
+ * `ui/design/Inja Reader.dc.html`, and the screen tasks are forbidden to touch
+ * the table. Every number below is quoted from one of those two deliverables or
+ * from a decided row of `docs/superpowers/ui-normalisation-ledger.md`, and where
+ * the two disagree the row says which it took and why.
+ *
+ * Four screens are **deliberately absent**, because a wrong row is worse than no
+ * row for twenty-one tasks that will trust it. `users` and `access` draw no
+ * subtitle this shape can grade — Users has no second line at all, and Access's
+ * is an `dir="ltr"` mono username, which `direction` (one value for every graded
+ * hook) cannot hold beside an RTL column. `signIn` is identical at 1440, 1080
+ * and 760, so a row for it would fail `every DESIGN row carries a width-dependent
+ * expectation` on the day it was added. The dialogs are not `[data-screen]`
+ * regions at all. Each is written up, with every value that *is* settled, in
+ * `.superpowers/sdd/ui-harness-preflight-report.md`.
+ *
+ * ## The one assertion these rows are known to fail, and it is not theirs
+ *
+ * Task 15 moves §8's scroll rule into `base.css` —
+ * `[data-r-pad]{direction:ltr}` with `[data-r-pad] > *{direction:rtl}` — so the
+ * scrollbar sits on the right. `[data-r-pad]` is the same element as
+ * `[data-screen]` on every screen that carries it (it is the scrolling region
+ * that paints the field and holds the screen padding), so on those screens the
+ * root computes `ltr` while the column, both type hooks, the grid and the card
+ * all compute `rtl`. `direction` is one value for the whole row, so no row can
+ * state that, and the rows below keep the default `rtl` — right for five of the
+ * six graded hooks and wrong for the root. This is a finding against the harness
+ * and the plan, not a licence to waive it: see the report. It affects
+ * `departments`, `departmentsReader`, `processList`, `processListReader` and
+ * `overview`; `summary`, `policy` and `profile` write no `data-r-pad`, which is
+ * itself an inconsistency the deliverables do not have.
  */
 export const DESIGN = {
   departments: {
@@ -436,6 +516,223 @@ export const DESIGN = {
     // the floor. One selector reaches both because it is the screen's only
     // `pointer-events-none`.
     contrastWaived: ['[data-card] .pointer-events-none'],
+  },
+
+  /**
+   * Task 14, the reader half — `data-screen="departmentsReader"`.
+   *
+   * `Inja Reader.dc.html:170` — `padding:30px 24px 60px`, a `720px` column, a
+   * `26px/800 #fff` title and a single-column list of `18px` white cards that
+   * lift. R4 only routes a reader here when they can reach two or more
+   * departments; with one, `ReaderShell` lands them on a process list and a spec
+   * pointed at this row is grading the wrong page.
+   */
+  departmentsReader: {
+    field: FIELD,
+    column: '720px',
+    // 720 caps at every width: 1440−48, 1080−48 and (at ≤760, where the
+    // deliverable's own `[data-r-pad]{padding:18px 14px}` takes over) 760−28=732
+    // are all wider. Measured, not assumed: this Chrome overlays its scrollbar —
+    // an `overflow:auto` box that is scrolling reports `clientWidth` equal to
+    // `offsetWidth`, so no width below carries a scrollbar term.
+    columnWidth: { 1440: '720px', 1080: '720px', 760: '720px' },
+    // The per-width expectation this row is proved by. `--role-pad-x` is 24px on
+    // the reader against the panel's 40, `--role-pad-bottom` 60 against 30, and
+    // both deliverables' `@media (max-width:760px)` blocks rewrite every
+    // `[data-r-pad]` to `18px 14px` — which is what `max760:px-s7 max760:py-s9`
+    // compiles to (`--space-7` 14px, `--space-9` 18px).
+    padding: { 1440: '30px 24px 60px', 1080: '30px 24px 60px', 760: '18px 14px' },
+    // `--fs-h1-reader-home`. Ledger L-34 keeps the reader's hero *smaller* than
+    // its own list title (30px) — recorded as reading like a defect, referred to
+    // the owner, and not silently "fixed" here.
+    h1: { size: '26px', weight: '800', color: TITLE_ON_FIELD },
+    // The deliverable writes 14.5px. R12 drops the reader's 14.5px override —
+    // it is `--role-fs-dense`, 13px on the panel — so this is 13px on both
+    // surfaces. Do not restore 14.5 here without moving R12.
+    body: { size: '13px', color: SUBTITLE_ON_FIELD },
+    // `--role-dept-gap` is `--space-7` 14px on the reader against the panel's 18,
+    // and the list is one column at every width (`[data-r-deptgrid]` in the
+    // reader deliverable is a flex column; Task 14 draws it as a 1-track grid so
+    // one component serves both surfaces). The row is proved responsive by
+    // `padding` above, not by this.
+    grid: { selector: '[data-r-deptgrid]', columns: { 1440: 1, 1080: 1, 760: 1 }, gap: '14px' },
+    card: { radius: '18px', shadow: CARD_SHADOW, border: CARD_BORDER, background: SURFACE },
+    lift: '[data-card]',
+  },
+
+  /**
+   * Task 15, panel — `Inja Panel.dc.html:269`.
+   *
+   * `padding:30px 40px`, `--width-list` 920, a `22px/800` title beside the
+   * department tile and a `13px` count line under it. The rows are the design's
+   * `16px` white cards at `17px 19px` with the card hairline, the two-layer
+   * shadow and the −2px lift.
+   */
+  processList: {
+    field: FIELD,
+    column: '920px',
+    // 920 caps at 1440 and 1080 (1000 available); at 760 the `18px 14px` pass
+    // leaves 732 and the column is uncapped.
+    columnWidth: { 1440: '920px', 1080: '920px', 760: '732px' },
+    padding: { 1440: '30px 40px', 1080: '30px 40px', 760: '18px 14px' },
+    // `--fs-h2`, ledger L-02's one screen title. The deliverable paints it
+    // `#fff`; the plan's own JSX writes `text-on-dark`, which is `#FBF7F1` —
+    // see TITLE_ON_FIELD for why this row takes white.
+    h1: { size: '22px', weight: '800', color: TITLE_ON_FIELD },
+    body: { size: '13px', color: SUBTITLE_ON_FIELD },
+    // `[data-r-prow]`: `background:#fff;border:1px solid rgba(42,29,94,.07);
+    // border-radius:16px;padding:17px 19px;box-shadow:<the two-layer card
+    // shadow>` with `style-hover="transform:translateY(-2px)"`.
+    card: { radius: '16px', shadow: CARD_SHADOW, border: CARD_BORDER, background: SURFACE },
+    // The large `SearchField` is the screen's first input, and §4.6's focus rule
+    // is 15 of 15 declarations: a coral border, no ring and no glow.
+    focus: 'input',
+    lift: '[data-card]',
+  },
+
+  /**
+   * Task 15, the reader half — `Inja Reader.dc.html:196`.
+   *
+   * Same screen, the reader's scale: a `720px` column, a **centred** `30px`
+   * title (`--fs-h1-reader-list`) and a centred lead line. `ProcessList.tsx`
+   * already branches on `useSurface()` for both — `reader ? 'max-w-reader' :
+   * 'max-w-list'` and `reader ? 'text-fs-h1-reader-list' : 'text-fs-h2'`.
+   */
+  processListReader: {
+    field: FIELD,
+    column: '720px',
+    columnWidth: { 1440: '720px', 1080: '720px', 760: '720px' },
+    // The per-width expectation this row is proved by; see `departmentsReader`.
+    padding: { 1440: '30px 24px 60px', 1080: '30px 24px 60px', 760: '18px 14px' },
+    h1: { size: '30px', weight: '800', color: TITLE_ON_FIELD, align: 'center' },
+    // 14.5px in the deliverable, 13px here — R12, as on `departmentsReader`.
+    body: { size: '13px', color: SUBTITLE_ON_FIELD, align: 'center' },
+    card: { radius: '16px', shadow: CARD_SHADOW, border: CARD_BORDER, background: SURFACE },
+    lift: '[data-card]',
+  },
+
+  /**
+   * Task 16 — `Inja Panel.dc.html:382`. Panel only: the reader never meets a
+   * process summary, it goes from the list to the step-by-step view.
+   *
+   * The subtitle is inside `<sc-if value="{{ isEditor }}">`, so **the spec must
+   * sign in as an editor** or `[data-body]` has nothing to hook.
+   */
+  summary: {
+    field: FIELD,
+    column: '960px',                       // --width-summary
+    columnWidth: { 1440: '960px', 1080: '960px', 760: '732px' },
+    padding: { 1440: '30px 40px', 1080: '30px 40px', 760: '18px 14px' },
+    // The deliverable draws 23px here. Ledger **L-02** counts 22px on seven
+    // screens against this one 23 and the profile's 21, and decides 22 for all
+    // nine; `--fs-h1`'s 23px stays the audit stat numeral. The plan's own Task 16
+    // step still quotes 23 — L-02 supersedes it.
+    h1: { size: '22px', weight: '800', color: TITLE_ON_FIELD },
+    // 15px, `--fs-lg`. Not one of ledger L-27's four body steps and not
+    // normalised by anything: it is the screen subtitle the design gives this
+    // one screen, `max-width:640px`, `line-height:1.75`.
+    body: { size: '15px', color: SUBTITLE_ON_FIELD },
+    // The A-0 card: `border-radius:18px;padding:24px`. The deliverable's own
+    // border is `1px solid #EFE7DC`; ledger **L-15** retires that for
+    // `rgba(42,29,94,.07)`, which is what Task 16 builds and what `CARD_BORDER`
+    // holds.
+    card: { radius: '18px', shadow: CARD_SHADOW, border: CARD_BORDER, background: SURFACE },
+    // No `grid`: the IDEF0 block is `[data-r-idef0]`, a `1fr 1.4fr 1fr` grid that
+    // becomes `display:flex;flex-direction:column` at ≤760, so `trackCount` reads
+    // the specified value at one of the three widths and `gridGeometry` measures
+    // a flex column. Grading it needs a rule this shape does not have; the
+    // screen's own spec asserts the `display` swap directly.
+  },
+
+  /**
+   * Task 17 — `Inja Panel.dc.html:466`, the department overview. Panel only:
+   * `Overview.tsx` reads `useSurface()` for its `IconTile` and writes
+   * `max-w-list` and `text-fs-h2` unconditionally, so there is no reader row.
+   */
+  overview: {
+    field: FIELD,
+    // The deliverable draws `max-width:900px`. Ledger **L-07** decides 920
+    // (`--width-list`) on dominance — 900 has no token, no role and no second
+    // use — and `--role-column` resolves there, so the theme cannot express 900.
+    column: '920px',
+    columnWidth: { 1440: '920px', 1080: '920px', 760: '732px' },
+    padding: { 1440: '30px 40px', 1080: '30px 40px', 760: '18px 14px' },
+    h1: { size: '22px', weight: '800', color: TITLE_ON_FIELD },
+    body: { size: '13px', color: SUBTITLE_ON_FIELD },
+    // The sub-units grid: `grid grid-cols-2 gap-s6 max760:grid-cols-1`
+    // (`--space-6` is 12px). **The fixture must serve at least two sub-units** —
+    // the section is not drawn for an empty list, and a one-item grid proves no
+    // gutter.
+    grid: {
+      selector: '[data-r-2col]',
+      columns: { 1440: 2, 1080: 2, 760: 1 },
+      gap: '12px',
+    },
+    // The three stacked §6.4 cards: `bg-card border-border-card rounded-doc
+    // shadow-card`, radius `--radius-doc` 18px. Same L-15 note as `summary`.
+    card: { radius: '18px', shadow: CARD_SHADOW, border: CARD_BORDER, background: SURFACE },
+    // The rebuilt `Accordion` header is the screen's only `aria-expanded`, and
+    // §4.6 says nothing on this screen lifts or scales on press — so `focus` and
+    // no `lift`.
+    focus: '[aria-expanded]',
+  },
+
+  /**
+   * Task 23, the visibility policy — `Inja Panel.dc.html:1756`.
+   *
+   * §3.3 gives it Access's `820px`. One card of rows, not six: `background:#fff;
+   * border:1px solid rgba(42,29,94,.07);border-radius:16px;padding:8px 18px`
+   * with the two-layer shadow. Ledger **V2** settles the radius at 16 against
+   * the visual audit's 20 — §6.12 quotes the literal, the audit measured a
+   * screenshot.
+   */
+  policy: {
+    field: FIELD,
+    column: '820px',                       // --width-access
+    columnWidth: { 1440: '820px', 1080: '820px', 760: '732px' },
+    padding: { 1440: '30px 40px', 1080: '30px 40px', 760: '18px 14px' },
+    h1: { size: '22px', weight: '800', color: TITLE_ON_FIELD },
+    body: { size: '13px', color: SUBTITLE_ON_FIELD },
+    card: { radius: '16px', shadow: CARD_SHADOW, border: CARD_BORDER, background: SURFACE },
+    // No `focus`: the row's real control is an `sr-only` input behind a drawn
+    // 19px tick, and a 1×1 clipped box is the wrong thing to measure a focus
+    // indicator on. No `lift`: F7's fix is a hover *fill* (`hover:bg-tile-v4`),
+    // not a transform — §4.6 lifts cards, not rows inside one.
+  },
+
+  /**
+   * Task 22 — `Inja Panel.dc.html:1785`, and `Inja Reader.dc.html:834` draws it
+   * identically (`padding:30px 40px`, a `700px` column), so one row serves both.
+   */
+  profile: {
+    field: FIELD,
+    column: '700px',                       // --width-profile
+    // 700 caps at every width — at 760 the `18px 14px` pass still leaves 732.
+    // The row is proved responsive by `padding`.
+    columnWidth: { 1440: '700px', 1080: '700px', 760: '700px' },
+    padding: { 1440: '30px 40px', 1080: '30px 40px', 760: '18px 14px' },
+    // Both deliverables draw 21px and Task 22's own JSX writes
+    // `text-fs-stat-sm`. Ledger **L-02** normalises the profile to 22 and
+    // **L-33** repeats it — `--fs-stat-sm` 21px exists for the *activity stat
+    // numeral*, which `tokens.css` says in as many words. 22px.
+    h1: { size: '22px', weight: '800', color: TITLE_ON_FIELD },
+    // `12.5px #C9BEEE` — the role line beside the mono username. Hook the
+    // wrapper, not the username: that span is `dir="ltr"`, and `direction` is one
+    // value for every graded hook in this row.
+    body: { size: '12.5px', color: SUBTITLE_ON_FIELD },
+    // The tinted `SectionCard`: `background:#FBF9FE;border:1px solid #EDE5F5;
+    // border-radius:16px`, and no shadow — it is a sub-panel, not a card on the
+    // field. **`background` is the value the mint decided, not the one the role
+    // used to resolve to**: `--role-surface-sub` pointed at `--tile-v4`
+    // `#F8F4FE` when this row was written, two shades off the deliverable's
+    // `#FBF9FE`; `.superpowers/sdd/mint-spec.md` §2.1 C1 re-points it at
+    // `--surface-sub`, and that correction has since landed in `roles.css:39`.
+    // If a revert ever puts `--tile-v4` back, this line goes red — correct the
+    // role, not this row.
+    card: { radius: '16px', border: SUBPANEL_BORDER, background: SUBPANEL_SURFACE },
+    // The three `PasswordField`s are the screen's inputs; the first is «گذرواژهٔ
+    // فعلی». §4.6: a coral border, no ring, no glow.
+    focus: 'input',
   },
 } satisfies Record<string, ScreenDesign>
 
