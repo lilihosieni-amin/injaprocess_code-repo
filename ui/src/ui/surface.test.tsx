@@ -180,7 +180,14 @@ const SCALE: { role: string; panel: string; reader: string; panelPx: string; rea
   { role: '--role-fs-title', panel: 'var(--fs-h2)', reader: 'var(--fs-h1-reader-list)', panelPx: '22px', readerPx: '30px' },
   { role: '--role-fs-hero', panel: 'var(--fs-display)', reader: 'var(--fs-h1-reader-home)', panelPx: '34px', readerPx: '26px' },
   { role: '--role-fs-body', panel: 'var(--fs-body)', reader: 'var(--fs-body-reader)', panelPx: '14px', readerPx: '15px' },
-  { role: '--role-fs-dense', panel: 'var(--fs-sm)', reader: 'var(--fs-body-lead)', panelPx: '13px', readerPx: '14.5px' },
+  // Owner ruling R12 removed --role-fs-dense from this table: a matched-element
+  // comparison over 70 pairs found the reader draws the panel's five 13px
+  // elements at 13px x3 and 13.5px x2 and at 14.5px never, so it is one size on
+  // both surfaces and no longer a row. --role-fs-textarea is the row that
+  // carries the real per-surface difference the dense role was standing in for:
+  // a panel textarea is one step BELOW its 14px input, a reader textarea one
+  // step above it.
+  { role: '--role-fs-textarea', panel: 'var(--fs-sm)', reader: 'var(--fs-doc-body)', panelPx: '13px', readerPx: '16px' },
   { role: '--role-iconbtn', panel: 'var(--size-iconbtn)', reader: 'var(--size-iconbtn-reader)', panelPx: '40px', readerPx: '42px' },
   { role: '--role-fab', panel: 'var(--size-fab)', reader: 'var(--size-fab-reader)', panelPx: '52px', readerPx: '56px' },
 ]
@@ -226,6 +233,8 @@ describe('R3 — the two scales differ where the ruling says they differ', () =>
   it('makes every row a real difference — a row the two surfaces share proves nothing', () => {
     const same = SCALE.filter((r) => r.panelPx === r.readerPx || r.panel === r.reader)
     expect(same.map((r) => r.role)).toEqual([])
+    // Still 13, and it stayed 13 by a swap rather than by standing still: R12
+    // took --role-fs-dense out and the minting pass put --role-fs-textarea in.
     expect(SCALE).toHaveLength(13)
   })
 

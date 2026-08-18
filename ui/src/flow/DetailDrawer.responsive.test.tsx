@@ -62,7 +62,7 @@ describe('the detail drawer on a phone', () => {
     // and their fidelity is deliberate: nothing above the breakpoint may move.
     const cls = renderDrawer().className
     for (const c of ['absolute', 'top-0', 'bottom-0', 'left-0', 'w-[340px]', 'bg-white',
-      'border-e', 'border-warm', 'flex', 'flex-col', 'z-[15]']) {
+      'border-e', 'border-warm', 'flex', 'flex-col', 'z-canvas-overlay']) {
       expect(cls.split(/\s+/)).toContain(c)
     }
     expect(cls).toMatch(/shadow-\[20px_0_50px_-30px_rgba\(74,37,169,\.5\)\]/)

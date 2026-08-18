@@ -87,8 +87,10 @@ function winner(painted: Painted[], prop: string, state = '', media = ''): strin
  * src/styles/roles.css and src/styles/tokens.css.
  *
  * A surface-scaled utility writes ONE class on both surfaces, so asserting the
- * class name proves nothing about scaling. This is the half that does: the role
- * behind the class must be two different numbers.
+ * class name proves nothing about scaling. This is the half that does: it says
+ * what the role behind the class is worth on each side. `reader` is '' when the
+ * reader block does not override the role — which is a real answer and not a
+ * failure, and is what owner ruling R12 made true of --role-fs-dense.
  */
 function readerScaleOf(role: string): { panel: string; reader: string } {
   const roles = readFileSync(resolve(process.cwd(), 'src/styles/roles.css'), 'utf8')
@@ -318,13 +320,24 @@ describe('P6 — the search field is the design’s search field', () => {
     const p = await paint(cls)
     // The class is the same on both surfaces — that is the point of the layer —
     // so asserting the class name would prove nothing at all. What must be true
-    // is that the size it resolves to is the ROLE and not a fixed step, and that
-    // the role really is two numbers.
+    // is that the size it resolves to is the ROLE and not a fixed step: the
+    // field reads the scale layer, so the surface decides its size and no prop
+    // ever can.
     expect(winner(p, 'font-size')).toBe('var(--role-fs-dense)')
     expect(winner(p, 'font-size')).not.toBe('var(--fs-sm)')
-    expect(readerScaleOf('--role-fs-dense')).toEqual({ panel: '13px', reader: '14.5px' })
-    // …and the field really is inside a reader surface, so the second value is
-    // the one in force here.
+    // This line used to read `{ panel: '13px', reader: '14.5px' }`. Owner ruling
+    // R12 removed that override: a matched-element comparison over 70 pairs
+    // found the reader draws the panel's five 13px elements at 13px x3 and
+    // 13.5px x2 and at 14.5px NEVER, and the ten reader sites that are 14.5px
+    // are a different role (--fs-body-lead, a fixed step the panel uses too).
+    // So dense copy is 13px on both surfaces by ruling, and pinning 14.5px here
+    // would make the suite defend a number the design never draws.
+    expect(readerScaleOf('--role-fs-dense')).toEqual({ panel: '13px', reader: '' })
+    // …but the helper above must still be able to SEE an override, or the line
+    // before it would pass on a roles.css whose reader block had been deleted
+    // wholesale. --role-fs-body is the control: R3 genuinely scales body copy.
+    expect(readerScaleOf('--role-fs-body')).toEqual({ panel: '14px', reader: '15px' })
+    // …and the field really is inside a reader surface.
     expect(container.querySelector('[data-surface="reader"]')).not.toBeNull()
   })
 

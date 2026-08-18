@@ -291,4 +291,45 @@ describe('R1 — a correction records what it overrode and why', () => {
       expect(css).toContain(section)
     }
   })
+
+  it('the single minting pass — carries every value it minted, once each', () => {
+    // Minted in ONE pass for the same reason §5.2's forty-two were: unfreezing
+    // this file, roles.css and tailwind.config.js needs a quiet tree, and four
+    // separate passes would need four of them. The block is appended rather than
+    // folded into §5.2's, whose 42 is the record of a different pass and is
+    // cross-referenced from four places.
+    const minted = {
+      // L-42..L-47 — the stacking ladder, Bootstrap 5's published $zindex-* scale.
+      // --z-canvas-overlay is owner ruling R15's rung: the value is the 15 that
+      // src/flow/DetailDrawer.tsx already wrote as a literal, so naming it moved
+      // nothing on screen and gave the ladder a real consumer instead of a
+      // permanent entry on theme.test.ts's PENDING.
+      '--z-canvas-overlay': '15',
+      '--z-dropdown': '1000', '--z-chrome': '1020', '--z-floating': '1030',
+      '--z-drawer': '1045', '--z-modal': '1055', '--z-popover': '1070',
+      '--z-tooltip': '1080', '--z-toast': '1090',
+      // the values the Tasks 12-25 utility sweep found unnamed
+      '--radius-bar': '2px',
+      '--shadow-feature':
+        '0 2px 4px rgba(16, 10, 40, .18), 0 22px 46px -20px rgba(16, 10, 40, .65)',
+      '--duration-row': '.14s', '--ease-css': 'ease',
+      '--width-subtitle': '440px', '--size-chiprow': '24px',
+      '--size-menu-more': '36px', '--width-login': '380px',
+      '--size-dot': '9px', '--size-chev': '30px',
+      '--warn-edge': '#F0DDBB', '--warn-fg': '#8A5A00',
+      '--width-intro': '600px', '--size-glyph-tile': '42px',
+      // Task 9's one un-named value
+      '--gap-table-row-mobile': '11px',
+    }
+    for (const [name, value] of Object.entries(minted)) expect(token(name), name).toBe(value)
+    expect(Object.keys(minted).length).toBe(24)
+    // Declared once each — the failure mode the one-pass rule exists to prevent.
+    expect(Object.keys(minted).filter((n) => declarations(n) !== 1)).toEqual([])
+    // …and none of them moved a number that already had an owner. --warn keeps
+    // the awaiting amber (ledger L-05, still an open veto), --line-dashed keeps
+    // the dashed-affordance lilac, and the eight 11px tokens keep their roles.
+    expect(token('--warn')).toBe('')          // declared in the frozen _ds, not here
+    expect(token('--gap-tick-row')).toBe('11px')
+    expect(token('--pad-note-x')).toBe('11px')
+  })
 })

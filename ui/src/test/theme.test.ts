@@ -550,6 +550,43 @@ const EXPECTED: Record<string, string | string[]> = {
   'px-note-x': 'var(--pad-note-x)',
   'h-count': 'var(--size-count)',
   'min-w-count': 'var(--size-count)',
+  // The single minting pass. The stacking ladder reads the ROLE and not the
+  // token — the same shape `w-tile -> --role-tile -> --size-tile` has — so the
+  // ladder's semantic layer stays in roles.css, which is the file that IS the
+  // semantic layer, and `reachable` follows the hop.
+  'z-canvas-overlay': 'var(--role-z-canvas-overlay)',
+  'z-dropdown': 'var(--role-z-dropdown)',
+  'z-chrome': 'var(--role-z-chrome)',
+  'z-floating': 'var(--role-z-floating)',
+  'z-drawer': 'var(--role-z-drawer)',
+  'z-modal': 'var(--role-z-modal)',
+  'z-popover': 'var(--role-z-popover)',
+  'z-tooltip': 'var(--role-z-tooltip)',
+  'z-toast': 'var(--role-z-toast)',
+  'ease-css': 'var(--ease-css)',
+  'duration-row': 'var(--duration-row)',
+  'rounded-bar': 'var(--radius-bar)',
+  'shadow-feature': 'var(--shadow-feature)',
+  'max-w-subtitle': 'var(--width-subtitle)',
+  'max-w-intro': 'var(--width-intro)',
+  'min-h-chiprow': 'var(--size-chiprow)',
+  // One key on `colors`, two classes — and `text-warn-fg` below is a SECOND
+  // token on `textColor`, not the same one seen twice. The two are pinned apart
+  // here and again in the regression test at the foot of this describe.
+  'bg-warn-edge': 'var(--warn-edge)',
+  'border-warn-edge': 'var(--warn-edge)',
+  'text-warn-fg': 'var(--warn-fg)',
+  'text-role-textarea': 'var(--role-fs-textarea)',
+  'gap-table-row-mobile': 'var(--gap-table-row-mobile)',
+  'w-menu-more': 'var(--size-menu-more)',
+  'h-menu-more': 'var(--size-menu-more)',
+  'w-login': 'var(--width-login)',
+  'w-dot': 'var(--size-dot)',
+  'h-dot': 'var(--size-dot)',
+  'w-chev': 'var(--size-chev)',
+  'h-chev': 'var(--size-chev)',
+  'w-glyph-tile': 'var(--size-glyph-tile)',
+  'h-glyph-tile': 'var(--size-glyph-tile)',
   // Media query, not token — asserted by the breakpoint tests below.
   'max1080:hidden': 'display: none',
   'max760:hidden': 'display: none',
@@ -659,12 +696,14 @@ describe('R1 (structural) — every design token has a utility name', () => {
     // This checks the other direction — every var() the theme emits, including
     // the ones no list above covers — against the declared set.
     //
-    // 250 is what the theme reads today, not a floor with room under it: later
+    // 344 is what the theme reads today, not a floor with room under it: later
     // tasks only add names, so a drop below it means keys were removed. (Was
-    // 192 before Task 3's 48 tokens were named, on 58 var() sites — the ten
-    // square `--size-*` boxes are read twice each, once on width and once on
-    // height, which is one name on two properties, not two names.)
-    expect(referencedList.length).toBeGreaterThanOrEqual(250)
+    // 192 before Task 3's 48 tokens were named, on 58 var() sites, then 250, then
+    // 315 — the ten square `--size-*` boxes are read twice each, once on width
+    // and once on height, which is one name on two properties, not two names.
+    // The single minting pass added 29 sites for 30 classes: `--warn-edge` is
+    // one key on `colors` that Tailwind spends on both `bg-` and `border-`.)
+    expect(referencedList.length).toBeGreaterThanOrEqual(344)
     // Two declaration sites, because the app has two: tokens.css holds every
     // literal, and roles.css holds R3's scale layer, which is the only thing a
     // utility may name that is not a token. Both are read from disk; neither is
@@ -681,7 +720,7 @@ describe('R1 (structural) — every design token has a utility name', () => {
     // file would fail loudly rather than quietly; but if it returned everything,
     // it would launder any misspelling. This pins both ends: the layer is real,
     // finite, and does NOT contain a name the config could plausibly mistype.
-    expect(roles.size).toBeGreaterThanOrEqual(111 - 13)
+    expect(roles.size).toBeGreaterThanOrEqual(121 - 13)
     expect(roles.has('--role-tile')).toBe(true)
     expect(roles.has('--role-nonesuch')).toBe(false)
     // …and it reads a ROLE layer, not "every property that points at a token".
@@ -694,13 +733,24 @@ describe('R1 (structural) — every design token has a utility name', () => {
     // which is the mutation the paragraph above is about.
     const synthetic = roleTargets('--size-tile: var(--x);\n--role-real: var(--y);')
     expect([...synthetic.keys()]).toEqual(['--role-real'])
-    // The four scale roles the theme now names must each resolve to TWO
-    // different tokens, or `text-role-dense` would be one size on both surfaces
-    // and the utility would be a lie.
-    for (const role of ['--role-fs-body', '--role-fs-dense', '--role-fs-title', '--role-fs-hero',
-      '--role-tile', '--role-iconbtn', '--role-fab']) {
+    // The scale roles the theme names must each resolve to TWO different
+    // tokens, or `text-role-textarea` would be one size on both surfaces and the
+    // utility would be a lie.
+    //
+    // --role-fs-dense is deliberately NOT in this list any more. Owner ruling
+    // R12 dropped its reader override — a matched-element comparison over 70
+    // pairs found the reader draws the panel's five 13px elements at 13px and
+    // 13.5px and at 14.5px never — so it is one size on both surfaces on
+    // purpose, and asserting two tokens for it would defend the number the
+    // ruling removed. --role-fs-textarea is the role that carries the genuine
+    // per-surface difference the dense role was being asked to express.
+    for (const role of ['--role-fs-body', '--role-fs-textarea', '--role-fs-title',
+      '--role-fs-hero', '--role-tile', '--role-iconbtn', '--role-fab']) {
       expect([...(roles.get(role) ?? [])].length, role).toBe(2)
     }
+    // …and the role R12 collapsed resolves to exactly one, so a reader override
+    // cannot creep back in unnoticed.
+    expect([...(roles.get('--role-fs-dense') ?? [])].length).toBe(1)
   })
 
   it('leaves no declared token without a utility name', () => {
@@ -1233,6 +1283,29 @@ const PENDING: string[] = [
   'py-stat-y-grid', 'px-stat-x-grid', 'my-stat-grid', 'mt-stat-label',
   'py-tab-y-audit', 'min-w-tab', 'gap-tab-flow', 'py-note-y',
   'px-note-x', 'h-count', 'min-w-count', 'max1080:hidden',
+  // The single minting pass — 29 of its 30 classes. `z-canvas-overlay` is the
+  // thirtieth and is NOT here: owner ruling R15 minted the rung and pointed its
+  // one consumer at it in the same change, so src/flow/DetailDrawer.tsx writes
+  // it today and the `stale` assertion below would fail if it were listed.
+  //
+  // Two of the 29 will still be here at Task 25 and should be DELETED from the
+  // theme rather than consumed: `z-popover` and `z-tooltip` are the adopted
+  // scale's reserved rungs (L-42) and nothing in this plan portals a popover or
+  // draws a tooltip. That is a decision for whoever empties the list, not a
+  // surprise for them to discover.
+  'z-dropdown', 'z-chrome', 'z-floating', 'z-drawer',
+  'z-modal', 'z-popover', 'z-tooltip', 'z-toast',
+  'ease-css', 'duration-row', 'rounded-bar', 'shadow-feature',
+  'max-w-subtitle', 'max-w-intro', 'min-h-chiprow',
+  'bg-warn-edge', 'border-warn-edge', 'text-warn-fg',
+  // src/ui/fieldFrame.ts's FIELD_TYPE_TEXTAREA still writes `text-role-dense`,
+  // and its own docstring records why: roles.css and tailwind.config.js were
+  // frozen to that task, so it took the closest wrong thing and referred the
+  // name. This pass mints the name; switching the constant over is Task 7's
+  // change, because src/ui/fields.test.tsx pins the class on the element.
+  'text-role-textarea', 'gap-table-row-mobile',
+  'w-menu-more', 'h-menu-more', 'w-login',
+  'w-dot', 'h-dot', 'w-chev', 'h-chev', 'w-glyph-tile', 'h-glyph-tile',
 ]
 
 /**
@@ -1242,18 +1315,42 @@ const PENDING: string[] = [
  * the count. A task that legitimately STOPS using a utility has to put its line
  * back, and doing the right thing failed with `expected 221 to be less than or
  * equal to 220` — whose only available fix is to edit the number upward, which
- * is the one edit a ratchet exists to forbid. It happened on this commit's own
+ * is the one edit a ratchet exists to forbid. It happened on that commit's own
  * first run: `text-role-body` turned out to be "used" by a docstring.
  *
  * A ratchet needs slack in the direction that may move and none in the
  * direction that may not. So the number carries headroom and states the count
  * it was set against, and the rule is written here rather than implied: it may
- * be LOWERED by any task that empties lines, and it is never raised. The slack
- * hides nothing — the accuracy test below forces every line on the list to be a
- * genuine orphan and every genuine orphan to be on the list — it only stops the
- * list growing without bound.
+ * be LOWERED by any task that empties lines. The slack hides nothing — the
+ * accuracy test below forces every line on the list to be a genuine orphan and
+ * every genuine orphan to be on the list — it only stops the list growing
+ * without bound.
+ *
+ * ---------------------------------------------------------------------------
+ * IT HAS BEEN RAISED ONCE, AND THAT WAS THE EVENT IT WAS RAISED FOR.
+ *
+ * 231 -> 260, on 2026-08-18, by the single minting pass. Read the distinction
+ * before you touch this number again, because it is the whole point:
+ *
+ *   · MINTING a utility legitimately adds an unconsumed line. The theme is
+ *     named ahead of the screens on purpose — guards.test.ts bans `text-[…]`,
+ *     `rounded-[…]` and `shadow-[…]`, so a value with no name cannot be written
+ *     at all, and the name therefore has to exist before its consumer does. The
+ *     mint added 29 such lines in ONE pass, in ONE commit, against a written
+ *     spec, and it is the last one: tailwind.config.js, tokens.css and roles.css
+ *     are re-frozen behind it.
+ *   · CONSUMING a utility, or failing to, may never add one. A screen that lands
+ *     without writing the classes it was minted for is a screen that is not
+ *     finished, and the number below is what says so.
+ *
+ * So: a raise is legal only in the same commit as a deliberate mint of the
+ * theme, and there is no further mint planned. If you are here because a task
+ * you are writing has pushed PENDING past 260, the answer is not this line —
+ * either the task has stopped consuming something it should still consume, or
+ * it has added a theme key it has no consumer for, and R11 forbids the second.
+ * ---------------------------------------------------------------------------
  */
-const CEILING = 231 // set 2026-08-18 against PENDING.length === 221
+const CEILING = 260 // set 2026-08-18 against PENDING.length === 250
 
 describe('Owner ruling R11 — a named utility has a component that uses it', () => {
   it('reads a real, sizeable set of component files — tests AND test helpers excluded', () => {

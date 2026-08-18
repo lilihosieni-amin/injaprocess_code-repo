@@ -101,3 +101,14 @@ py-tab-y-audit min-w-tab gap-tab-flow
 py-note-y px-note-x
 h-count min-w-count
 max1080:hidden max760:hidden
+# The single minting pass. The stacking ladder (L-42..L-47), the values the
+# Tasks 12-25 sweep found unnamed, the reader's own textarea step, and Task 9's
+# mobile row gap.
+z-canvas-overlay
+z-dropdown z-chrome z-floating z-drawer z-modal z-popover z-tooltip z-toast
+ease-css duration-row rounded-bar shadow-feature
+max-w-subtitle max-w-intro min-h-chiprow
+bg-warn-edge border-warn-edge text-warn-fg
+text-role-textarea gap-table-row-mobile
+w-menu-more h-menu-more w-login
+w-dot h-dot w-chev h-chev w-glyph-tile h-glyph-tile

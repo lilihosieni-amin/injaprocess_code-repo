@@ -134,10 +134,22 @@ export default {
         // member of the family a shorter name the other five do not have — the
         // exact split F2 undid for `--border-card`.
         'border-pick': 'var(--border-pick)',
+        // §6.6's amber notice edge. It joins the --line-* / --border-* family on
+        // THIS scale, where every other border colour in the theme lives, so the
+        // class is the short `border-warn-edge` the plan already writes. It is
+        // deliberately not named `--border-warn-edge`: the comment above reserves
+        // that family for the long `border-border-<x>` form.
+        'warn-edge': 'var(--warn-edge)',
       },
       textColor: {
         'icom-input': 'var(--icom-input-fg)', 'icom-control': 'var(--icom-control-fg)',
         'icom-output': 'var(--icom-output-fg)', 'icom-mech': 'var(--icom-mech-fg)',
+        // §6.6's amber notice ink. The `-fg` stays IN the key, breaking the
+        // convention its four neighbours follow, because dropping it gives
+        // `textColor.warn` — which shadows `colors.warn` and makes `text-warn`
+        // paint the notice ink instead of --warn's amber. One class, two
+        // meanings, silently. theme.test.ts pins both classes apart.
+        'warn-fg': 'var(--warn-fg)',
       },
       fontFamily: { sans: 'var(--font-sans)', mono: 'var(--font-mono)' },
       fontSize: {
@@ -192,6 +204,11 @@ export default {
         'role-dense': 'var(--role-fs-dense)',  // 13px panel / 14.5px reader
         'role-title': 'var(--role-fs-title)',  // 22px panel / 30px reader
         'role-hero': 'var(--role-fs-hero)',    // 34px panel / 26px reader
+        // …and a fifth, which is the only one of them that is NOT a copy of a
+        // body step: a panel textarea sets one step below its input and a reader
+        // textarea one step above it. --role-fs-dense cannot express that — owner
+        // ruling R12 makes it one size on both surfaces.
+        'role-textarea': 'var(--role-fs-textarea)', // 13px panel / 16px reader
       },
       fontWeight: {
         regular: 'var(--fw-regular)', semibold: 'var(--fw-semibold)',
@@ -233,6 +250,7 @@ export default {
         tick: 'var(--radius-tick)',                // 6px  — the 19px tick
         'tick-nested': 'var(--radius-tick-nested)',// 5px  — the 16px tick
         reveal: 'var(--radius-reveal)',            // 8px  — the reveal button
+        bar: 'var(--radius-bar)',                  // 2px  — the coral eyebrow bar
       },
       borderWidth: { hairline: 'var(--border-hairline)' },
       boxShadow: {
@@ -248,8 +266,13 @@ export default {
         // §4.2 — the comment FAB's own two-layer coral shadow. No other shadow
         // token matches it, so `shadow-coral` is not a substitute.
         fab: 'var(--shadow-fab)',
+        // The department feature card's heavier rest shadow — one use, and the
+        // ledger's "Referred to the owner" #9 reads it as a role rather than as
+        // drift. If that is overturned the card takes `shadow-card` and this key
+        // goes with the token.
+        feature: 'var(--shadow-feature)',
       },
-      minHeight: { touch: 'var(--size-touch)' },
+      minHeight: { touch: 'var(--size-touch)', chiprow: 'var(--size-chiprow)' }, // 44px, 24px
       minWidth: {
         touch: 'var(--size-touch)', menu: '220px',
         // §5.2 — three floors the twelve primitives state outright, and the FAB
@@ -338,6 +361,11 @@ export default {
         'tab-flow': 'var(--gap-tab-flow)',                    // 3px
         'note-y': 'var(--pad-note-y)',                        // 9px
         'note-x': 'var(--pad-note-x)',                        // 11px
+        // Task 9 — the only arbitrary length left in DataTable.tsx, the row gap
+        // below 760px. Eight tokens in tokens.css already hold 11px and every one
+        // is minted for another role, so this is minted again under its own name
+        // rather than borrowed.
+        'table-row-mobile': 'var(--gap-table-row-mobile)',    // 11px
       },
       maxWidth: {
         departments: 'var(--width-departments)', list: 'var(--width-list)',
@@ -359,6 +387,11 @@ export default {
         dialog: 'var(--width-dialog)',             // 520px — new user, views
         'dialog-sm': 'var(--width-dialog-sm)',     // 460px — confirm content
         'dialog-xs': 'var(--width-dialog-xs)',     // 440px — confirm comment
+        // Two measures for a paragraph, not for a box: the departments screen's
+        // subtitle and the intro paragraph on the violet field. `--width-` comes
+        // off, as it does for every key above.
+        subtitle: 'var(--width-subtitle)',         // 440px — departments subtitle
+        intro: 'var(--width-intro)',               // 600px — intro paragraph
       },
       // The ten `--size-*` tokens R3 adds are square boxes, so each is named once
       // and carried on both scales — `w-glyph`/`h-glyph` is one name on two
@@ -396,6 +429,15 @@ export default {
         'tick-glyph-nested': 'var(--size-tick-glyph-nested)', // 11px — in a 16px box
         chevron: 'var(--size-chevron)',                 // 15px — dropdown + pager
         pager: 'var(--size-pager)',                     // 34px — a page button
+        // The Tasks 12-25 sweep's own squares, carried on both scales like the
+        // rest. `login` is on THIS scale only: the design gives the sign-in card
+        // a fixed `width: 380` and the plan writes `w-login max-w-full`, so there
+        // is no height and no max-width to name.
+        'menu-more': 'var(--size-menu-more)',           // 36px — the … / home button
+        login: 'var(--width-login)',                    // 380px — the sign-in card
+        dot: 'var(--size-dot)',                         // 9px  — the table state dot
+        chev: 'var(--size-chev)',                       // 30px — the table chevron cell
+        'glyph-tile': 'var(--size-glyph-tile)',         // 42px — §6.15's glyph tile
       },
       height: {
         tile: 'var(--role-tile)', tool: 'var(--size-tool)', avatar: 'var(--size-avatar)',
@@ -418,6 +460,10 @@ export default {
         'tick-glyph-nested': 'var(--size-tick-glyph-nested)',
         chevron: 'var(--size-chevron)',
         pager: 'var(--size-pager)',
+        'menu-more': 'var(--size-menu-more)',
+        dot: 'var(--size-dot)',
+        chev: 'var(--size-chev)',
+        'glyph-tile': 'var(--size-glyph-tile)',
         // The FAB badge is `min-width:21px; height:21px` — a floor on one axis
         // and a fixed box on the other — so `count` is on `minWidth` above and
         // on `height` here, and on `width` nowhere: it never sets one.
@@ -439,6 +485,33 @@ export default {
       transitionDuration: {
         DEFAULT: 'var(--duration)', fast: 'var(--duration-fast)',
         chev: 'var(--duration-chev)',
+        row: 'var(--duration-row)',
+      },
+      // The design's one easing curve is the bare CSS keyword `ease`, on all four
+      // `transition:` declarations both deliverables write. It cannot be reached
+      // as DEFAULT: Tailwind's filterDefault keeps DEFAULT out of the `ease-*`
+      // class scale, exactly as it does for `duration-*`. So it is a named key,
+      // and the `--ease-` stem comes off the way `--duration-` does. Moving
+      // DEFAULT here as well would silently re-time every existing `transition`
+      // in src/, which is a behaviour change and not a naming one; it is
+      // mint-spec Q4 and is deliberately not done here.
+      transitionTimingFunction: { css: 'var(--ease-css)' },
+      // L-42..L-47 — the stacking ladder. Bootstrap 5's published $zindex-* scale,
+      // adopted as a STANDARD rather than reverse-engineered from the
+      // deliverables' 26 values over 50 declarations. Extending this scale adds
+      // keys; Tailwind's own z-0..z-50 and z-auto survive beside them. Named by
+      // ROLE, never by number, so guards.test.ts sees no t-shirt size and no
+      // component can write a rung it does not mean.
+      zIndex: {
+        'canvas-overlay': 'var(--role-z-canvas-overlay)', // 15   — inside the flow canvas
+        dropdown: 'var(--role-z-dropdown)',   // 1000 — anchored popover
+        chrome: 'var(--role-z-chrome)',       // 1020 — top bar, flow bar, sticky head
+        floating: 'var(--role-z-floating)',   // 1030 — the comment FAB
+        drawer: 'var(--role-z-drawer)',       // 1045 — drawer, sheet, full-bleed pane
+        modal: 'var(--role-z-modal)',         // 1055 — dialog scrim and box
+        popover: 'var(--role-z-popover)',     // 1070 — reserved
+        tooltip: 'var(--role-z-tooltip)',     // 1080 — reserved
+        toast: 'var(--role-z-toast)',         // 1090 — the ceiling
       },
       // `--hover-lift` is the whole `translateY(…)` function, which Tailwind's
       // translate scale cannot take; the distance is named here — written

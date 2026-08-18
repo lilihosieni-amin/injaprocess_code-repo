@@ -94,8 +94,11 @@ describe('R8 — one rule per role', () => {
     // `>= 62` against a file of 83, which left room to delete the whole type-role
     // block (17 declarations) and four more with every test still green.
     // Raised to 111 by R3's scale layer: ten new panel rows on :root and the
-    // thirteen the reader block overrides.
-    expect(roleDeclarations().length).toBeGreaterThanOrEqual(111)
+    // thirteen the reader block overrides. Then to 121 by the single minting
+    // pass: nine stacking rungs (L-42..L-47, plus R15's in-canvas rung) and
+    // --role-fs-textarea on both surfaces, less the one reader override owner
+    // ruling R12 removed.
+    expect(roleDeclarations().length).toBeGreaterThanOrEqual(121)
   })
 
   it('keeps every group of roles the design has, so none can be deleted wholesale', () => {
@@ -304,23 +307,76 @@ describe('R8 — a role carries the value its own ruling decided', () => {
   })
 
   it('leaves the roles Task 3 still owes pointing at the token it will correct', () => {
-    // These seven resolve to a value the design contradicts, on purpose: the
+    // These five resolve to a value the design contradicts, on purpose: the
     // token is corrected in Task 3 and the correction lands through the role.
     // Pinned so the correction cannot miss by being re-pointed here instead.
+    //
+    // It was seven. Two of the seven were wrong about which treatment Task 3
+    // used, and the test below is what replaces them — see its comment.
     const pending: Record<string, string> = {
-      '--role-surface-sub': '--tile-v4',
       '--role-confirmed-edge': '--border-ok',
       '--role-shadow-card-hover': '--shadow-card-hover',
       '--role-shadow-dialog': '--shadow-modal',
       '--role-shadow-pop': '--shadow-pop',
       '--role-radius-pill': '--radius-pill',
-      '--role-lh-subcopy': '--lh-relaxed',
     }
     const wrong = Object.entries(pending).filter(
       ([role, token]) => roleValue(role) !== `var(${token})`,
     )
     expect(wrong.map(([role, token]) => `${role}: ${roleValue(role)} (want var(${token}))`))
       .toEqual([])
+  })
+
+  it('points the two roles Task 3 minted a NEW token for at that token', () => {
+    // Task 3 had two treatments available and used both. Where the nearest token
+    // had no other role it re-valued it in place, and the correction reaches the
+    // role for free — that is the five rows above. Where it did (--tile-v4 is
+    // the hover tint, --lh-relaxed is 1.75) it minted a new token instead, and
+    // then the role has to be re-pointed or it keeps resolving to the old value.
+    // Both of these did, for months: --role-surface-sub rendered #F8F4FE where
+    // the design says #FBF9FE, and --role-lh-subcopy 1.75 where ledger L-17 says
+    // 1.8. This is the assertion that would have caught them.
+    expect(roleValue('--role-surface-sub')).toBe('var(--surface-sub)')
+    expect(resolve(roleValue('--role-surface-sub'))).toBe('#FBF9FE')
+    expect(roleValue('--role-lh-subcopy')).toBe('var(--lh-sub)')
+    expect(resolve(roleValue('--role-lh-subcopy'))).toBe('1.8')
+    // The third correction's pair render identically today (both #C9B8EC) so
+    // nothing moves on screen — but the role must name the token minted for it,
+    // or the day either value moves, the wrong one moves.
+    expect(roleValue('--role-border-pick')).toBe('var(--border-pick)')
+    expect(resolve(roleValue('--role-border-pick'))).toBe('#C9B8EC')
+    // …and the three tokens they used to point at keep their own roles.
+    expect(resolve('var(--tile-v4)')).toBe('#F8F4FE')
+    expect(resolve('var(--lh-relaxed)')).toBe('1.75')
+    expect(resolve('var(--line-dashed)')).toBe('#C9B8EC')
+  })
+
+  it('gives the stacking ladder a rung per role, and keeps them in the order they stack', () => {
+    // L-42..L-47 adopt Bootstrap 5's published $zindex-* scale as a standard
+    // rather than reverse-engineering the deliverables' 26 values. Nothing else
+    // in this file would catch a rung being re-pointed at its neighbour: TIES is
+    // a table of ledger and ruling values and the ladder is neither.
+    const ladder = [
+      ['--role-z-canvas-overlay', '--z-canvas-overlay', '15'],
+      ['--role-z-dropdown', '--z-dropdown', '1000'],
+      ['--role-z-chrome', '--z-chrome', '1020'],
+      ['--role-z-floating', '--z-floating', '1030'],
+      ['--role-z-drawer', '--z-drawer', '1045'],
+      ['--role-z-modal', '--z-modal', '1055'],
+      ['--role-z-popover', '--z-popover', '1070'],
+      ['--role-z-tooltip', '--z-tooltip', '1080'],
+      ['--role-z-toast', '--z-toast', '1090'],
+    ]
+    const wrong = ladder.filter(
+      ([role, token, value]) =>
+        roleValue(role) !== `var(${token})` || resolve(roleValue(role)) !== value,
+    )
+    expect(wrong.map(([role]) => `${role} -> ${resolve(roleValue(role))}`)).toEqual([])
+    // A ladder is an ORDER, not a set of numbers: two rungs that swapped values
+    // would satisfy every line above and stack the app upside down.
+    const numbers = ladder.map(([role]) => Number(resolve(roleValue(role))))
+    expect(numbers).toEqual([...numbers].sort((a, b) => a - b))
+    expect(new Set(numbers).size).toBe(ladder.length)
   })
 })
 

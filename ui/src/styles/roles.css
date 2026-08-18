@@ -36,8 +36,10 @@
   --role-field: var(--ink);              /* the whole app sits on the deep violet field */
   --role-canvas: var(--bg);              /* flow canvas ground, nothing else */
   --role-surface: var(--card);           /* every card, row, table, panel */
-  --role-surface-sub: var(--tile-v4);    /* the sub-panel skin (SectionCard, dialog search);
-                                            nearest token today, Task 3 mints the exact one */
+  --role-surface-sub: var(--surface-sub); /* the sub-panel skin (SectionCard, dialog search).
+                                            Task 3 minted --surface-sub FOR this role and left
+                                            --tile-v4 its own (the hover tint below), so the
+                                            correction lands here rather than on the token */
   --role-surface-tint: var(--tile-v4);   /* hover row, actor pill */
   --role-scrim: var(--scrim);
 
@@ -98,7 +100,11 @@
   --role-border-control: var(--line);        /* 1.5px on every control */
   --role-border-sub: var(--border-current);  /* the sub-panel border */
   --role-border-hair: var(--hair);           /* a rule inside a card */
-  --role-border-pick: var(--line-dashed);    /* unchecked tick, active filter */
+  --role-border-pick: var(--border-pick);    /* unchecked tick, active filter. --line-dashed
+                                                holds the same value for the dashed "add"
+                                                affordance and keeps it; naming that one here
+                                                would mean the day either value moves, the
+                                                wrong one moves */
   --role-border-warm: var(--warm);           /* top bar and drawer edges only */
 
   /* ---- interaction (4.6) ---- */
@@ -141,7 +147,13 @@
   --role-fs-section: var(--fs-lg);
   --role-fs-body: var(--fs-body);       /* ledger L-27: body copy */
   --role-fs-menu: var(--fs-menu);       /* ledger L-27: menu, dropdown and dialog-button copy */
-  --role-fs-dense: var(--fs-sm);        /* ledger L-27: list, table and hint copy */
+  --role-fs-dense: var(--fs-sm);        /* ledger L-27: list, table and hint copy. Owner ruling
+                                           R12 drops the reader override: a matched-element
+                                           comparison over 70 pairs found the reader draws the
+                                           five 13px panel elements at 13px x3 and 13.5px x2 and
+                                           at 14.5px never, so this is one size on both surfaces */
+  --role-fs-textarea: var(--fs-sm);     /* 13px — a panel textarea is one step BELOW its 14px
+                                           input (3 of 4 uses). The reader inverts it below */
   --role-fs-control: var(--fs-sm2);     /* the most common step in the design */
   --role-fs-caption: var(--fs-caption); /* ledger L-33: caption, table meta, calendar day */
   --role-fs-eyebrow: var(--fs-xs);
@@ -152,10 +164,23 @@
   --role-fw-meta: var(--fw-semibold);
   --role-lh-title: var(--lh-tight);
   --role-lh-body: var(--lh-normal);
-  --role-lh-subcopy: var(--lh-relaxed); /* ledger L-17: Task 3 re-cuts it to 1.8 */
+  --role-lh-subcopy: var(--lh-sub);     /* ledger L-17: 1.8. Task 3 minted --lh-sub rather than
+                                           re-cutting --lh-relaxed, which keeps its own 1.75, so
+                                           the correction had to land here */
   --role-lh-prose: var(--lh-loose);
   --role-tracking-eyebrow: var(--tracking-eyebrow);
   --role-tracking-display: var(--tracking-display);
+
+  /* ---- stacking (L-42..L-47) ---- */
+  --role-z-canvas-overlay: var(--z-canvas-overlay); /* a panel inside the flow canvas — L-45 */
+  --role-z-dropdown: var(--z-dropdown);   /* anchored popover — L-43 collapses 7 values here */
+  --role-z-chrome: var(--z-chrome);       /* top bar, flow bar, breadcrumb, sticky table head */
+  --role-z-floating: var(--z-floating);   /* the comment FAB */
+  --role-z-drawer: var(--z-drawer);       /* drawer, bottom sheet, mobile full-bleed pane — L-44 */
+  --role-z-modal: var(--z-modal);         /* dialog scrim and box — L-44 */
+  --role-z-popover: var(--z-popover);     /* reserved; nothing consumes it */
+  --role-z-tooltip: var(--z-tooltip);     /* reserved; nothing consumes it */
+  --role-z-toast: var(--z-toast);         /* the ceiling — L-47 */
 }
 
 /* R3 — the reader is the same product read at a different size, not a second
@@ -185,7 +210,13 @@
                                                   the hero is smaller than the
                                                   titles beneath it. */
   --role-fs-body: var(--fs-body-reader);       /* 15px */
-  --role-fs-dense: var(--fs-body-lead);        /* 14.5px */
+  --role-fs-textarea: var(--fs-doc-body);      /* 16px — a reader textarea is one step
+                                                  ABOVE its 14px input: measured 16px x3,
+                                                  15.5px x1, against 14px x3 / 15px x1. That
+                                                  is a genuine per-surface difference and it
+                                                  is why owner ruling R12 could drop the dense
+                                                  override without leaving the textarea
+                                                  homeless. */
   --role-iconbtn: var(--size-iconbtn-reader);  /* 42px */
   --role-fab: var(--size-fab-reader);          /* 56px */
 }

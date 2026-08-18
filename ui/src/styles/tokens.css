@@ -355,3 +355,84 @@
      the count badge does not. Its cut-out ring is `2px solid --ink` (L-24). */
   --size-count: 21px;              /* `min-width:21px; height:21px` */
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   The single minting pass. Everything the design conformance project still
+   needed a name for, minted in ONE pass because unfreezing this file, roles.css
+   and tailwind.config.js requires a quiet tree, and four separate passes would
+   need four of them.
+
+   Section references are to .superpowers/sdd/ui-design-spec.md; ledger rows to
+   docs/superpowers/ui-normalisation-ledger.md.
+   ───────────────────────────────────────────────────────────────────────── */
+:root {
+  /* L-42..L-47 — the stacking ladder, built on Bootstrap 5's published $zindex-*
+     scale rather than reverse-engineered from the deliverables' 26 values. The
+     rungs are named by ROLE in roles.css so no number reaches a component;
+     nesting adds 1 inside a rung's own band, not 10 across bands. The popover
+     and tooltip rungs are the standard's reserved ones and nothing consumes
+     them yet. */
+  --z-canvas-overlay: 15;   /* L-45 — a panel INSIDE the flow canvas. It is below
+                               every rung beneath it on purpose: the canvas owns a
+                               local stack and a drawer over it must not out-rank
+                               the app chrome. Owner ruling R15 mints it and points
+                               its one consumer, src/flow/DetailDrawer.tsx, at it,
+                               so the value is unchanged and a literal 15 becomes a
+                               name. */
+  --z-dropdown: 1000;       /* anchored popover — dropdown, select menu, kebab,
+                               export menu, date picker (L-43 collapses 7 here) */
+  --z-chrome: 1020;         /* app chrome — top bar, flow bar, breadcrumb strip,
+                               reader back bar, sticky table head */
+  --z-floating: 1030;       /* the comment FAB */
+  --z-drawer: 1045;         /* drawer, bottom sheet, mobile full-bleed pane (L-44) */
+  --z-modal: 1055;          /* modal scrim and box (L-44) */
+  --z-popover: 1070;        /* portalled popover — reserved, consumed by nothing today */
+  --z-tooltip: 1080;        /* tooltip — reserved, consumed by nothing today */
+  --z-toast: 1090;          /* the toast, the ceiling (L-47) */
+
+  /* The values the Tasks 12-25 utility sweep found unnamed. Each is read out of
+     ui/design/** and the line it is written on is cited in
+     .superpowers/sdd/mint-spec.md §1.2. */
+  --radius-bar: 2px;               /* the coral eyebrow bar, `22x2 radius 2` */
+  --shadow-feature: 0 2px 4px rgba(16, 10, 40, .18), 0 22px 46px -20px rgba(16, 10, 40, .65);
+                                   /* the department feature card's heavier rest
+                                      shadow, 1 use. Recorded in the ledger's
+                                      "Referred to the owner" #9 as a deliberate
+                                      single-use role rather than drift; if the
+                                      owner reads it as drift instead, this token
+                                      goes and the card takes --role-shadow-card */
+  --duration-row: .14s;            /* the users table row's hover transition, 1 use.
+                                      The only duration in the product that is
+                                      neither --duration .16s nor --duration-chev
+                                      .18s */
+  --ease-css: ease;                /* the design's one easing curve — both
+                                      deliverables write the bare CSS keyword on
+                                      every transition they declare */
+  --width-subtitle: 440px;         /* the departments screen's subtitle measure */
+  --size-chiprow: 24px;            /* the department card's chip row floor */
+  --size-menu-more: 36px;          /* the … / home square button, 3 uses */
+  --width-login: 380px;            /* the sign-in card. Read from the design
+                                      system's own Login.jsx, not from a
+                                      deliverable: neither one draws a sign-in
+                                      screen (§9.13) */
+  --size-dot: 9px;                 /* the users table's state dot */
+  --size-chev: 30px;               /* the users table's chevron cell */
+  --warn-edge: #F0DDBB;            /* §6.6's amber notice edge, 1 use */
+  --warn-fg: #8A5A00;              /* §6.6's amber notice ink. The value carries
+                                      three roles in the design and one of them,
+                                      the awaiting status ink, sits under ledger
+                                      L-05's open veto: if the owner resolves L-05
+                                      towards this number, this token becomes a
+                                      redundant alias of --warn and the notice
+                                      collapses onto text-warn */
+  --width-intro: 600px;            /* a screen's intro paragraph on the violet
+                                      field, 2 uses */
+  --size-glyph-tile: 42px;         /* §6.15's confirm-dialog glyph tile, `42x42
+                                      radius 14` — the 14 is --radius-tile */
+
+  /* Task 9's one un-named value. Eight tokens in this file already hold 11px and
+     every one is minted for another component's role, so the R8 rule applies: a
+     number that already has an owner is minted again under its own name rather
+     than borrowed. Name taken verbatim from .superpowers/sdd/ui-task-9-report.md. */
+  --gap-table-row-mobile: 11px;    /* the <=760px table row gap */
+}
