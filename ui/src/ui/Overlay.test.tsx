@@ -339,19 +339,56 @@ describe('P3 — Overlay is as capable as the dialog the design draws', () => {
     expect(winner(p, 'color')).toBe('var(--text-muted)')
   })
 
+  it('sets the header row on the design’s scale, not Tailwind’s own', async () => {
+    // §5.2 — 12px between the icon, the title block and the close control, and
+    // 16px under the whole row. Unasserted until now: `gap-s6 mb-s8` could
+    // become `gap-s14 mb-s1` — 4px of gap under a 38px gutter — with every
+    // other test in this file green, because none of them reads this element.
+    render(<Dialog open onClose={() => {}} title="کاربر جدید"><p>ب</p></Dialog>)
+    const header = screen.getByRole('heading', { name: 'کاربر جدید' }).parentElement!.parentElement!
+    const p = await paint(header.className)
+    expect(winner(p, 'gap')).toBe('var(--space-6)')          // 12px
+    expect(winner(p, 'margin-bottom')).toBe('var(--space-8)') // 16px
+  })
+
   it('draws the close control the ledger decided, not IconButton’s default skin', async () => {
     // L-23 — --tile-v2 behind a --text-muted glyph at --radius-sm. Passing those
-    // three through IconButton's `className` would NOT produce them: Tailwind's
+    // through IconButton's `className` would NOT produce them: Tailwind's
     // emitted order, not the class string's, decides between two utilities on
-    // one property, and `bg-transparent`, `text-violet` and `rounded-control`
-    // all sort after the three that would have to beat them. Asserted as the
-    // WINNING value, which is the only assertion that can tell the two apart.
+    // one property, and `bg-transparent` and `text-violet` both sort after the
+    // two that would have to beat them (`rounded-control` does not — it sorts
+    // BEFORE `rounded-tool`, so the radius is the one of the four that would
+    // have survived). Asserted as the WINNING value, which is the only
+    // assertion that can tell the two apart.
     render(<Dialog open onClose={() => {}} title="ت"><p>ب</p></Dialog>)
     const close = screen.getByRole('button', { name: 'بستن' })
     const p = await paint(close.className)
     expect(winner(p, 'background-color')).toBe('var(--tile-v2)')
     expect(winner(p, 'color')).toBe('var(--text-muted)')
     expect(winner(p, 'border-radius')).toBe('var(--radius-sm)')
+  })
+
+  it('draws the close control at the design’s 32px and grows the target, not the box', async () => {
+    // The plan's one rule for every control on the design's 30/32/34/36/40/42
+    // ladder: draw the design's size, expand the hit area with a transparent
+    // `::before`, never inflate the drawn control to 44px. This shipped at
+    // IconButton's `min-h-touch` — a 44x44 box, invisible while it was
+    // transparent and a visible lilac tile the moment L-23's `bg-tile-v2`
+    // landed on it.
+    render(<Dialog open onClose={() => {}} title="ت"><p>ب</p></Dialog>)
+    const p = await paint(screen.getByRole('button', { name: 'بستن' }).className)
+    expect(winner(p, 'width')).toBe('var(--size-close)')     // 32px — L-23
+    expect(winner(p, 'height')).toBe('var(--size-close)')
+    // …and NOT inflated: min-height beats height, so a `min-h-touch` left on
+    // this control would silently draw 44 while the two lines above still pass.
+    expect(winner(p, 'min-width')).toBe('')
+    expect(winner(p, 'min-height')).toBe('')
+    // F11's 44px is the `::before`: 32 + 2x6. It paints nothing — no colour, no
+    // border — so the design's box is what a person sees.
+    expect(winner(p, 'position')).toBe('relative')
+    expect(winner(p, 'position', '::before')).toBe('absolute')
+    expect(winner(p, 'inset', '::before')).toBe('-6px')
+    expect(winner(p, 'background-color', '::before')).toBe('')
   })
 
   it('pins each footer child to an equal share, so no caller re-invents the pair', async () => {

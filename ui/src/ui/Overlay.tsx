@@ -30,24 +30,31 @@ const WIDTH = {
 } as const
 
 /**
- * Ledger L-23 — the one close control: 32x32, --tile-v2, --radius-sm glyph in
- * --text-muted.
+ * Ledger L-23 — the one close control: 32x32, --tile-v2, --radius-sm, an 18px
+ * glyph in --text-muted.
  *
  * Written here rather than as `<IconButton className="bg-tile-v2 …"/>` because
- * that does not work: IconButton's own `bg-transparent`, `text-violet` and
- * `rounded-control` sort AFTER those three in Tailwind's output, and emitted
- * order — not the order of the class string — decides which of two utilities on
- * one property wins. The skin would have been written and never painted.
+ * that does not work. Compiled through the real theme, three of the four
+ * utilities the skin would pass in are beaten by IconButton's own:
+ * `bg-transparent`, `text-violet` and `min-h-touch`/`min-w-touch` are emitted
+ * after `bg-tile-v2`, `text-muted` and `w-close`/`h-close` (and `min-height`
+ * beats `height` regardless of order), so the fill, the glyph colour and the
+ * size would all have been written and never painted. The one that would have
+ * survived is `rounded-tool`: Tailwind sorts a plugin's utilities by class name
+ * and `rounded-control` sorts BEFORE it, so the radius is the exception, not an
+ * instance of the rule. Either way the order of the class *string* is
+ * irrelevant — the same trap Button.tsx's `I5` comment documents.
  *
  * It keeps IconButton's accessibility contract exactly: `label` is the
  * accessible name (the mockups rely on `title`, which never reaches a keyboard
  * user), and the glyph is hidden from assistive technology.
  *
- * The 32x32 the ledger draws is NOT set here. IconButton's `min-h-touch` is the
- * app's current rule for every icon control and this one is no exception until
- * the drawn-size / hit-area split ships with Task 11's Icon work; setting
- * `w-close h-close` today would be a class that paints nothing, because
- * `min-height` beats `height`.
+ * The drawn box is the design's 32x32 and the 44px touch target (F11) is a
+ * transparent `::before` around it — the plan's one rule for every control on
+ * the design's 30/32/34/36/40/42 ladder, which supersedes any per-task
+ * treatment: never inflate a drawn control to 44px. 32 + 2x6 = 44, so the
+ * inset is 6px here where a 34px box takes 5px. Nothing about the `::before`
+ * paints, which is why the design has no opinion about it.
  */
 function CloseButton({ onClick }: { onClick: () => void }) {
   return (
@@ -57,12 +64,13 @@ function CloseButton({ onClick }: { onClick: () => void }) {
       aria-label="بستن"
       title="بستن"
       className={
-        'inline-flex items-center justify-center shrink-0 min-h-touch min-w-touch ' +
+        'relative before:absolute before:content-[""] before:-inset-[6px] ' +
+        'inline-flex items-center justify-center shrink-0 w-close h-close ' +
         'border-0 cursor-pointer bg-tile-v2 rounded-tool text-muted transition hover:bg-tile-v'
       }
     >
       <svg aria-hidden focusable="false" viewBox="0 0 24 24" fill="none"
-        stroke="currentColor" strokeWidth="2.2" width="20" height="20">
+        stroke="currentColor" strokeWidth="2.2" width="18" height="18">
         <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />
       </svg>
     </button>

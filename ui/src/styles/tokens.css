@@ -224,4 +224,9 @@
   --inset-search-icon-dialog: 14px;  /* --inset-search-icon (15px) is the large one */
   --inset-search-icon-menu: 11px;
   --size-search-glyph: 17px;
+  /* §5.2 — the empty-state card is `48px 20px`, two axes and two numbers, and
+     the ladder holds neither (30 and 38 straddle 48; 18 and 22 straddle 20).
+     Two tokens rather than one, because a single key cannot say both. */
+  --pad-empty-y: 48px;
+  --pad-empty-x: 20px;
 }

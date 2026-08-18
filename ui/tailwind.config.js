@@ -265,6 +265,10 @@ export default {
         'search-x-dialog': 'var(--pad-search-x-dialog)',      // 42px
         'search-y-menu': 'var(--pad-search-y-menu)',          // 9px
         'search-x-menu': 'var(--pad-search-x-menu)',          // 34px
+        // §5.2 — the empty-state card's two-axis padding. Two keys because the
+        // design gives two numbers and `p-empty` could only ever carry one.
+        'empty-y': 'var(--pad-empty-y)',                      // 48px
+        'empty-x': 'var(--pad-empty-x)',                      // 20px
       },
       maxWidth: {
         departments: 'var(--width-departments)', list: 'var(--width-list)',

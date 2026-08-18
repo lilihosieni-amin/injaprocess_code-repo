@@ -9,7 +9,7 @@ import { Button } from './Button'
 import { Card } from './Card'
 import { SearchField } from './SearchField'
 import { SurfaceProvider } from './surface'
-import { EmptyState, LoadFailedScreen, LoadingState } from './states'
+import { DeniedState, EmptyState, ErrorState, LoadFailedScreen, LoadingState, NotFoundState } from './states'
 
 /* -------------------------------------------------------------------------
    Why this file compiles CSS instead of reading class names.
@@ -227,6 +227,11 @@ describe('P4 — Card carries the design’s recipe, not four hand-rolled copies
     // apart, which `toContain('border-')` could not.
     expect(winner(p, 'border-color')).toBe('var(--border-card)')
     expect(winner(p, 'border-color')).not.toBe('var(--warm)')
+    // §4.3 gives the card 1px and every *control* 1.5px, so the width is half
+    // the recipe and not a detail: `border` -> `border-hairline` is a 46-use
+    // edge getting 50% heavier, and the colour assertion above cannot see it.
+    expect(winner(p, 'border-width')).toBe('1px')
+    expect(winner(p, 'border-width')).not.toBe('var(--border-hairline)')
     // `card` is also a colour key, so --tw-shadow-colored is the layer that
     // carries the value; see the coral note above.
     expect(winner(p, '--tw-shadow-colored')).toBe('var(--shadow-card)')
@@ -353,6 +358,13 @@ describe('P6 — the search field is the design’s search field', () => {
     expect(winner(big, 'inset-inline-start')).toBe('var(--inset-search-icon)')
     expect(winner(big, 'right')).toBe('')
     expect(winner(big, 'width')).toBe('var(--size-search-glyph)')
+    // The magnifier sits ON TOP of the field's leading 44px. Without
+    // `pointer-events-none` it swallows every click on that edge — which in an
+    // RTL layout is the edge a person's caret goes to first — and the field
+    // looks broken rather than styled. Neither this nor the glyph's own colour
+    // was asserted anywhere; both are the design's (§5.2, --text-faint).
+    expect(winner(big, 'pointer-events')).toBe('none')
+    expect(winner(big, 'color')).toBe('var(--text-faint)')
 
     rerender(<SearchField label="ج" value="" onChange={noop} place="dialog" />)
     const mid = await paint(glyph())
@@ -375,7 +387,14 @@ describe('P7 — the state screens stand where they claim to', () => {
     const card = await paint(root().className)
     expect(winner(card, 'background-color')).toBe('var(--card)')
     expect(winner(card, 'border-color')).toBe('var(--border-card)')
-    expect(winner(card, 'padding')).toBe('var(--space-12)')
+    // §5.2 — `48px 20px`, two axes and two numbers. It shipped `p-s12` (30px
+    // both ways) because the ladder has no 48 rung and no two-axis key; the two
+    // tokens are the same move the nine control-geometry values beside them
+    // already are, so the largest divergence in this task is closed rather than
+    // recorded. A single `padding` would mean it went back to one number.
+    expect(winner(card, 'padding-top')).toBe('var(--pad-empty-y)')
+    expect(winner(card, 'padding-left')).toBe('var(--pad-empty-x)')
+    expect(winner(card, 'padding')).toBe('')
 
     rerender(<EmptyState title="چیزی نیست" variant="dashed" />)
     const dashed = await paint(root().className)
@@ -411,5 +430,39 @@ describe('P7 — the state screens stand where they claim to', () => {
     render(<LoadingState rows={1} />)
     const p = await paint(screen.getAllByTestId('skeleton-row')[0].className)
     expect(winner(p, 'height')).toBe('var(--space-16)')   // 40px, a rung; 64px is none
+  })
+
+  it('puts every margin and padding on the design scale, not Tailwind’s own', async () => {
+    // The commit that made these five edits headlined them "on the scale's own
+    // steps" and left three of them unprotected: `mt-s7`->`mt-4`, `px-s8`->`px-4`
+    // and `mt-s2`->`mt-2` all left the whole suite green. guards.test.ts polices
+    // Tailwind's palette, type scale and radii — not its default SPACING scale,
+    // which is a sparser rem ladder (4/8/12/16/20px) that silently compiles.
+    // Asserted as the token, so a rem step cannot satisfy it.
+    render(<ErrorState message="بارگذاری نشد." onRetry={() => {}} />)
+    const retry = screen.getByRole('button', { name: 'تلاش دوباره' })
+    expect(winner(await paint(retry.parentElement!.className), 'margin-top'))
+      .toBe('var(--space-7)')      // 14px; mt-4 is 1rem and this goes red
+    expect(winner(await paint(retry.className), 'padding-left'))
+      .toBe('var(--space-8)')      // 16px; px-4 is 1rem
+
+    for (const State of [DeniedState, NotFoundState]) {
+      const { container, unmount } = render(<State />)
+      const hint = container.querySelectorAll('p')[1]
+      expect(winner(await paint(hint.className), 'margin-top'), State.name)
+        .toBe('var(--space-2)')    // 5px; mt-2 is 0.5rem
+      unmount()
+    }
+  })
+
+  it('draws the empty state’s hint as sub-copy, not as a second heading', async () => {
+    // Also unasserted: restyling this line `text-fs-h1 text-conflict mt-s16`
+    // left the suite green — a 23px red hint under a bold title, on a live
+    // screen. It is the design's smallest supporting copy and nothing else.
+    render(<EmptyState title="چیزی نیست" hint="بعداً دوباره سر بزنید." />)
+    const p = await paint(screen.getByText('بعداً دوباره سر بزنید.').className)
+    expect(winner(p, 'font-size')).toBe('var(--fs-sm)')
+    expect(winner(p, 'color')).toBe('var(--text-faint)')
+    expect(winner(p, 'margin-top')).toBe('var(--space-1)')
   })
 })

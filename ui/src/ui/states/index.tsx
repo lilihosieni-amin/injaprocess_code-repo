@@ -14,9 +14,17 @@ export function LoadingState({ rows = 3 }: { rows?: number }) {
   )
 }
 
-/** §5.2 — the design gives emptiness three forms, by what contains it. */
+/**
+ * §5.2 — the design gives emptiness three forms, by what contains it.
+ *
+ * The card's `48px 20px` is two numbers on two axes and the _ds ladder holds
+ * neither (30 and 38 straddle 48; 18 and 22 straddle 20), so it is two tokens —
+ * `--pad-empty-y` / `--pad-empty-x` — exactly as the nine control-geometry
+ * values beside them in tokens.css are. It shipped at `p-s12` (30px both ways),
+ * which is 18px short on the axis a screen reads first.
+ */
 const EMPTY = {
-  card: 'p-s12 text-center',            // inside a card on a screen
+  card: 'py-empty-y px-empty-x text-center',  // inside a card on a screen
   dashed: 'p-s9 text-center border border-dashed border-line rounded-tile bg-card',
   inline: 'py-s16 px-s10 text-center',  // inside a table or a drawer
 } as const

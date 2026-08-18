@@ -80,8 +80,9 @@ function lengthIn(name: string): string {
  * deliberately left alone so "a token must have a utility name" keeps asking
  * about tokens and not about roles.
  */
-function roleTargets(): Map<string, Set<string>> {
-  const css = readFileSync(resolve(process.cwd(), 'src/styles/roles.css'), 'utf8')
+function roleTargets(
+  css = readFileSync(resolve(process.cwd(), 'src/styles/roles.css'), 'utf8'),
+): Map<string, Set<string>> {
   const map = new Map<string, Set<string>>()
   for (const m of css.matchAll(/(--role-[a-z0-9-]+)\s*:\s*var\((--[a-z0-9-]+)\)/g)) {
     if (!map.has(m[1])) map.set(m[1], new Set())
@@ -461,6 +462,10 @@ const EXPECTED: Record<string, string | string[]> = {
   'ps-search-x-menu': 'var(--pad-search-x-menu)',
   'w-search-glyph': 'var(--size-search-glyph)',
   'h-search-glyph': 'var(--size-search-glyph)',
+  // §5.2 — the empty-state card's two axes. Two keys, because `48px 20px` is
+  // two numbers and the ladder has a rung for neither.
+  'py-empty-y': 'var(--pad-empty-y)',
+  'px-empty-x': 'var(--pad-empty-x)',
   'border-hairline': 'var(--border-hairline)',
   transition: 'var(--duration)',
   'duration-fast': 'var(--duration-fast)',
@@ -604,7 +609,16 @@ describe('R1 (structural) — every design token has a utility name', () => {
     expect(roles.size).toBeGreaterThanOrEqual(111 - 13)
     expect(roles.has('--role-tile')).toBe(true)
     expect(roles.has('--role-nonesuch')).toBe(false)
-    expect(roles.has('--size-tile')).toBe(false)
+    // …and it reads a ROLE layer, not "every property that points at a token".
+    // Asked against a synthetic block rather than against `roles`, because
+    // roles.css declares nothing but `--role-*` today: `expect(roles.has(
+    // '--size-tile')).toBe(false)` — which stood here — could never fail,
+    // since --size-tile appears in that file only as a var() TARGET and no
+    // widening of the key pattern can make it a key. Two lines of synthetic
+    // CSS can: broaden `--role-[a-z0-9-]+` to `--[a-z0-9-]+` and this goes red,
+    // which is the mutation the paragraph above is about.
+    const synthetic = roleTargets('--size-tile: var(--x);\n--role-real: var(--y);')
+    expect([...synthetic.keys()]).toEqual(['--role-real'])
     // The four scale roles the theme now names must each resolve to TWO
     // different tokens, or `text-role-dense` would be one size on both surfaces
     // and the utility would be a lie.

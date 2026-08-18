@@ -137,10 +137,11 @@ describe('R1 — the deliverable wins over the extracted token', () => {
 
   it('§5.2 — carries the control geometry the spacing scale has no rung for', () => {
     // Same reason as the block above: a token no test reads is a token the next
-    // task can revert by accident. These nine are the dialog scrim's inset and
-    // the search field's three scales, none of which lands on the _ds ladder
-    // (4·5·6·8·10·12·14·16·18·22·26·30·38·40).
+    // task can revert by accident. These eleven are the empty-state card's two
+    // axes, the dialog scrim's inset and the search field's three scales, none
+    // of which lands on the _ds ladder (4·5·6·8·10·12·14·16·18·22·26·30·38·40).
     const control = {
+      '--pad-empty-y': '48px', '--pad-empty-x': '20px',
       '--pad-modal': '24px',
       '--pad-search-y': '13px', '--pad-search-x': '44px',
       '--pad-search-x-dialog': '42px',

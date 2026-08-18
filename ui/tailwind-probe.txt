@@ -71,9 +71,10 @@ max-w-dialog-wide max-w-dialog-lg max-w-dialog max-w-dialog-sm max-w-dialog-xs
 # `inset` scale so the search icon is placed with inset-inline-start and RTL
 # stays structural.
 start-search-icon start-search-icon-dialog start-search-icon-menu
-# §5.2 — the six control paddings and the magnifier's own box.
+# §5.2 — the six control paddings, the magnifier's own box, and the empty-state
+# card's two-axis 48/20.
 p-modal py-search-y px-search-x px-search-x-dialog py-search-y-menu
-ps-search-x-menu w-search-glyph h-search-glyph
+ps-search-x-menu w-search-glyph h-search-glyph py-empty-y px-empty-x
 border-hairline
 transition duration-fast duration-chev
 -translate-y-lift

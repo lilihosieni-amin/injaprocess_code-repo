@@ -3021,7 +3021,7 @@ cautionary tale for what that costs. Recorded as ledger row L-14, vetoable there
 
   ```ts
   import { expect, test } from '@playwright/test'
-  import { CARD_SHADOW, FOCUS, LIFT, SURFACE, serve, signedIn } from './_harness'
+  import { CARD_SHADOW, FOCUS, LIFT, SURFACE, serve, shadowOf, signedIn } from './_harness'
 
   const DEPARTMENTS = [
     { code: 'management', name: 'مدیریت', count: 4, subs: 1, conflicts: 0 },
@@ -3053,7 +3053,14 @@ cautionary tale for what that costs. Recorded as ledger row L-14, vetoable there
       document.body.append(b)
     })
     expect(await css(page, '#probe-disabled', 'opacity')).toBe('0.6')
-    expect(await css(page, '#probe-disabled', 'box-shadow')).toBe('none')
+    // `shadowOf`, never a raw compare: Tailwind 3 composes EVERY shadow utility
+    // as `var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow)`,
+    // so Chrome serialises two fully transparent ring layers ahead of the real
+    // ones and `shadow-none` computes to three transparent layers rather than to
+    // the keyword. `_harness.ts`'s own docstring says both raw forms can never
+    // pass. Do NOT repair a red here by pasting what the browser printed — that
+    // writes Tailwind's ring scaffolding into the design's ledger.
+    expect(shadowOf(await css(page, '#probe-disabled', 'box-shadow'))).toBe('none')
     expect(await css(page, '#probe-disabled', 'cursor')).toBe('default')
     await page.locator('#probe-disabled').hover({ force: true })
     expect(await css(page, '#probe-disabled', 'filter')).toBe('none')
@@ -3083,7 +3090,7 @@ cautionary tale for what that costs. Recorded as ledger row L-14, vetoable there
     })
     expect(await css(page, '#probe-card', 'background-color')).toBe(SURFACE)
     expect(await css(page, '#probe-card', 'border-top-color')).toBe('rgba(42, 29, 94, 0.07)')
-    expect(await css(page, '#probe-card', 'box-shadow')).toBe(CARD_SHADOW)
+    expect(shadowOf(await css(page, '#probe-card', 'box-shadow'))).toBe(CARD_SHADOW)
     expect(await css(page, '#probe-card', 'transition-duration')).toBe('0.16s')
     await page.locator('#probe-card').hover()
     await expect.poll(() => css(page, '#probe-card', 'transform')).toBe(LIFT)
