@@ -25,9 +25,36 @@ const NAV =
   // cannot act is never hidden and never a pointer target.
   'disabled:text-disabled disabled:cursor-default'
 
+/**
+ * The two chevrons, in the direction a RIGHT-TO-LEFT reader travels.
+ *
+ * «صفحهٔ قبلی» is first in the DOM, which in RTL puts it on the RIGHT — and the
+ * page before this one lies further right, so it points RIGHT. «صفحهٔ بعدی» is
+ * second, on the LEFT, and points LEFT. Both design pagers draw exactly this
+ * (`design/Inja Panel.dc.html:1602` and `:1720`), as does the row chevron at
+ * `:1274` and the department CTA at `:257` — the file is RTL-aware throughout.
+ *
+ * Swapped, the two arrows point inward at each other and each points at the
+ * page it will NOT take you to. Nothing about a `d` attribute is checked by a
+ * class-string test, a snapshot or a build, which is why they are named here
+ * and pinned to their labels in src/ui/table.test.tsx.
+ */
+const CHEVRON = {
+  /** `>` — towards the start of the list, which in RTL is to the right. */
+  prev: 'M9 6l6 6-6 6',
+  /** `<` — towards the end of the list, which in RTL is to the left. */
+  next: 'M15 6l-6 6 6 6',
+} as const
+
 export function Pager({ from, to, count, page, pages, onPage }: PagerProps) {
   return (
-    <div className="flex items-center justify-between gap-s6 px-s9 py-s7">
+    // §6.16 — both design pagers sit in a `data-r-stack`, which at ≤760px is
+    // `flex-direction:column; align-items:stretch` with the same 12px gap. On a
+    // phone the count and the two buttons stack rather than squeezing together.
+    <div
+      data-r-pager
+      className="flex items-center justify-between gap-s6 px-s9 py-s7 max760:flex-col max760:items-stretch"
+    >
       {/* §2.7 — every count, position and index a reader sees is Persian, with
           no exception for "technical" numbers. */}
       <span className="text-fs-caption text-muted">{toFa(from)} تا {toFa(to)} از {toFa(count)}</span>
@@ -39,7 +66,7 @@ export function Pager({ from, to, count, page, pages, onPage }: PagerProps) {
           {/* Folded into `Icon` by Task 11 — chevronPrev, 15×15 @2.4 (§8). */}
           <svg className="w-chevron h-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor"
             strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden focusable="false">
-            <path d="M15 6l-6 6 6 6" />
+            <path d={CHEVRON.prev} />
           </svg>
         </button>
         {/* The label is held at `--width-page-label` so the two buttons do not
@@ -53,7 +80,7 @@ export function Pager({ from, to, count, page, pages, onPage }: PagerProps) {
         >
           <svg className="w-chevron h-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor"
             strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden focusable="false">
-            <path d="M9 6l6 6-6 6" />
+            <path d={CHEVRON.next} />
           </svg>
         </button>
       </div>

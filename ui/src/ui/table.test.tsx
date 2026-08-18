@@ -1,11 +1,17 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import postcss from 'postcss'
 import tailwind from 'tailwindcss'
 import config from '../../tailwind.config.js'
-import { DataTable, type DataColumn, type DataTableProps } from './DataTable'
+import {
+  DataTable,
+  type DataColumn,
+  type DataTableProps,
+  type TemplatedColumn,
+} from './DataTable'
 import { Pager } from './Pager'
+import { Dialog } from './Overlay'
 import { expectExpandedHitArea } from '../test/a11y'
 
 interface Row { id: string; name: string; role: string }
@@ -25,6 +31,11 @@ const COLUMNS: DataColumn<Row>[] = [
   { key: 'go', head: '', track: '34px', cell: () => null },
 ]
 
+/** The same six columns with the tracks taken out — the templated form. */
+const TEMPLATED: TemplatedColumn<Row>[] = COLUMNS.map((c) => ({
+  key: c.key, head: c.head, cell: c.cell, mobile: c.mobile,
+}))
+
 describe('DataTable', () => {
   it('lays the head and every row on the same six tracks', () => {
     const { container } = render(
@@ -37,9 +48,23 @@ describe('DataTable', () => {
 
   it('is a plain table, and no row invites a click, when nothing may be opened', () => {
     // R5 — a list never renders a row it would then refuse to open.
-    render(<DataTable label="کاربران" columns={COLUMNS} rows={ROWS} rowKey={(r) => r.id} empty="خالی" />)
+    const { container } = render(
+      <DataTable label="کاربران" columns={COLUMNS} rows={ROWS} rowKey={(r) => r.id} empty="خالی" />,
+    )
     expect(screen.getByRole('table', { name: 'کاربران' })).toBeInTheDocument()
     expect(screen.queryAllByRole('gridcell')).toHaveLength(0)
+    // …and the three claims the name actually makes, which the line above does
+    // not: `role='cell'` instead of `gridcell` passes it, and so does a
+    // `tabIndex={0}` on every row. A row that opens nothing is not a tab stop,
+    // carries no name, and is not a pointer target.
+    expect(screen.queryAllByRole('cell')).toHaveLength(COLUMNS.length * ROWS.length)
+    const rows = Array.from(container.querySelectorAll<HTMLElement>('[data-r-trow]'))
+    expect(rows).toHaveLength(ROWS.length)
+    for (const row of rows) {
+      expect(row).not.toHaveAttribute('tabindex')
+      expect(row).not.toHaveAttribute('aria-label')
+      expect(row.className).not.toMatch(/cursor-pointer/)
+    }
   })
 
   it('becomes a keyboard-reachable grid when rows open', async () => {
@@ -51,6 +76,10 @@ describe('DataTable', () => {
       />,
     )
     expect(screen.getByRole('grid', { name: 'کاربران' })).toBeInTheDocument()
+    // Every cell of an openable table is a `gridcell`, not a `cell`: the two
+    // are different roles and only one of them belongs inside a grid.
+    expect(screen.queryAllByRole('gridcell')).toHaveLength(COLUMNS.length * ROWS.length)
+    expect(screen.queryAllByRole('cell')).toHaveLength(0)
     const row = screen.getByRole('row', { name: 'پروندهٔ سحر بیات' })
     expect(row).toHaveAttribute('tabindex', '0')
     row.focus()
@@ -59,10 +88,63 @@ describe('DataTable', () => {
     expect(opened).toEqual(['09120000001', '09120000002'])
   })
 
+  it('leaves a control inside a cell to its own click, and does not open behind it', async () => {
+    // Task 19's users row draws a chevron in its last column. Without a guard,
+    // one press works the control AND opens the row behind it.
+    const onOpen = vi.fn()
+    const pressed = vi.fn()
+    const withButton: DataColumn<Row>[] = [
+      ...COLUMNS.slice(0, -1),
+      { key: 'go', head: '', track: '34px', cell: () => <button type="button" onClick={pressed}>باز</button> },
+    ]
+    render(
+      <DataTable
+        label="کاربران" columns={withButton} rows={ROWS} rowKey={(r) => r.id} empty="خالی"
+        onOpen={onOpen} rowLabel={(r) => `پروندهٔ ${r.name}`}
+      />,
+    )
+    await userEvent.click(screen.getAllByRole('button', { name: 'باز' })[0])
+    expect(pressed).toHaveBeenCalledOnce()
+    expect(onOpen).not.toHaveBeenCalled()
+
+    // The guard is about controls, not about the row: a click on a plain cell
+    // still opens it, which `e.target === e.currentTarget` would have broken.
+    await userEvent.click(screen.getAllByText('سحر بیات')[0])
+    expect(onOpen).toHaveBeenCalledOnce()
+
+    // …and a key pressed on that control belongs to the control alone.
+    onOpen.mockClear()
+    screen.getAllByRole('button', { name: 'باز' })[0].focus()
+    await userEvent.keyboard('{Enter}')
+    expect(onOpen).not.toHaveBeenCalled()
+  })
+
   it('states the emptiness rather than drawing an empty grid', () => {
     render(<DataTable label="کاربران" columns={COLUMNS} rows={[]} rowKey={(r) => r.id} empty="کاربری با این نام پیدا نشد" />)
     expect(screen.getByText('کاربری با این نام پیدا نشد')).toBeInTheDocument()
     expect(screen.queryAllByRole('cell')).toHaveLength(0)
+  })
+
+  it('keeps the filter bar, the empty line and the pager out of the table structure', () => {
+    // A `role="table"`/`grid` may hold rows and rowgroups. A filter bar full of
+    // comboboxes and a pager full of buttons are neither, and `presentation`
+    // does not launder them because it is dropped from anything focusable.
+    const { container } = render(
+      <DataTable
+        label="کاربران" columns={COLUMNS} rows={[]} rowKey={(r) => r.id} empty="خالی"
+        filters={<button type="button">فیلتر</button>}
+        pager={<Pager from={1} to={5} count={12} page={1} pages={3} onPage={() => {}} />}
+      />,
+    )
+    const table = screen.getByRole('table', { name: 'کاربران' })
+    for (const child of Array.from(table.children)) {
+      expect(child.getAttribute('role')).toBe('row')
+    }
+    for (const sel of ['[data-r-tfilters]', '[data-r-empty]', '[data-r-pager]']) {
+      const el = container.querySelector(sel)
+      expect(el, sel).not.toBeNull()
+      expect(table.contains(el), `${sel} is inside role="table"`).toBe(false)
+    }
   })
 
   it('hides the head and drops the two wide columns at 760px', () => {
@@ -96,6 +178,68 @@ describe('DataTable', () => {
   })
 })
 
+/* -------------------------------------------------------------------------
+   Owner ruling R11 — the three minted templates are USED, not deleted.
+
+   `--grid-users`, `--grid-audit` and `--grid-activity` are named by
+   tailwind.config.js as `grid-cols-users`/`-audit`/`-activity`. The component
+   built to lay tables out could not reach them, so the users template was
+   written down twice: once in tokens.css and once as six `track` strings at the
+   call site. `template` is the seam that closes that.
+   ------------------------------------------------------------------------- */
+describe('DataTable, laid out by a minted template', () => {
+  it('writes the template class and NO inline template', () => {
+    const { container } = render(
+      <DataTable label="کاربران" columns={TEMPLATED} rows={ROWS} rowKey={(r) => r.id} empty="خالی" template="users" />,
+    )
+    const lines = Array.from(container.querySelectorAll<HTMLElement>('[role="row"]'))
+    expect(lines).toHaveLength(1 + ROWS.length)
+    for (const line of lines) {
+      expect(line.className).toMatch(/\bgrid-cols-users\b/)
+      // An inline `gridTemplateColumns` beats a class unconditionally, so a
+      // template that sat BESIDE one would be named and ignored. This is the
+      // assertion that says it replaces it.
+      expect(line.style.gridTemplateColumns).toBe('')
+    }
+  })
+
+  it('names the other two templates as themselves, not as one class with a hole in it', () => {
+    for (const [template, klass] of [['audit', 'grid-cols-audit'], ['activity', 'grid-cols-activity']] as const) {
+      const { container, unmount } = render(
+        <DataTable label="ک" columns={TEMPLATED} rows={ROWS} rowKey={(r) => r.id} empty="خالی" template={template} />,
+      )
+      expect((container.querySelector('[data-r-thead]') as HTMLElement).className).toMatch(
+        new RegExp(`\\b${klass}\\b`),
+      )
+      unmount()
+    }
+  })
+
+  it('gives a track table no template class at all', () => {
+    const { container } = render(
+      <DataTable label="ک" columns={COLUMNS} rows={ROWS} rowKey={(r) => r.id} empty="خالی" />,
+    )
+    expect(container.innerHTML).not.toMatch(/grid-cols-/)
+  })
+
+  it('refuses, at compile time, the two shapes that could disagree', () => {
+    // Not a runtime assertion: `@ts-expect-error` FAILS the type-check when the
+    // line below stops being an error, which is how a type is tested. The
+    // reviewer's warning was that `track` and `template` could come to
+    // disagree; the answer is that a caller cannot write both down.
+    const both = (
+      // @ts-expect-error — a templated table's columns carry no `track`.
+      <DataTable label="ک" columns={COLUMNS} rows={ROWS} rowKey={(r: Row) => r.id} empty="خ" template="users" />
+    )
+    // …and the same for a focusable row with no accessible name.
+    const nameless = (
+      // @ts-expect-error — `onOpen` without `rowLabel` ships nameless tab stops.
+      <DataTable label="ک" columns={COLUMNS} rows={ROWS} rowKey={(r: Row) => r.id} empty="خ" onOpen={() => {}} />
+    )
+    expect([both, nameless].every(Boolean)).toBe(true)
+  })
+})
+
 describe('Pager', () => {
   it('writes every number in Persian', () => {
     render(<Pager from={1} to={5} count={12} page={1} pages={3} onPage={() => {}} />)
@@ -118,6 +262,33 @@ describe('Pager', () => {
     await userEvent.click(screen.getByRole('button', { name: 'صفحهٔ بعدی' }))
     await userEvent.click(screen.getByRole('button', { name: 'صفحهٔ قبلی' }))
     expect(seen).toEqual([3, 1])
+  })
+
+  it('points each chevron at the page it will take you to, in a right-to-left row', () => {
+    // The one thing in this component that no class-string test, no snapshot
+    // and no build can see: an SVG `d`. Swapped, the two arrows point inward at
+    // each other and each points at the page it will NOT open — a first-click
+    // error every time, on the most-used control in three screens.
+    //
+    // The design draws exactly this in both its pagers
+    // (design/Inja Panel.dc.html:1602 and :1720): «قبلی» is first in the DOM,
+    // which in RTL is the RIGHT side, and the page before this one lies to the
+    // right — so it points right. The row chevron (:1274) and the department
+    // CTA (:257) are the same rule.
+    const { container } = render(<Pager from={6} to={10} count={12} page={2} pages={3} onPage={() => {}} />)
+    const d = (name: string) =>
+      screen.getByRole('button', { name }).querySelector('path')!.getAttribute('d')
+
+    expect(d('صفحهٔ قبلی')).toBe('M9 6l6 6-6 6')
+    expect(d('صفحهٔ بعدی')).toBe('M15 6l-6 6 6 6')
+    // Two lines that each pin a literal would both still pass if the component
+    // drew one glyph twice and the labels moved instead, so the pairing is
+    // asserted as a pairing: the labels are in this DOM order, and the glyphs
+    // differ.
+    expect(
+      Array.from(container.querySelectorAll('button')).map((b) => b.getAttribute('aria-label')),
+    ).toEqual(['صفحهٔ قبلی', 'صفحهٔ بعدی'])
+    expect(d('صفحهٔ قبلی')).not.toBe(d('صفحهٔ بعدی'))
   })
 
   it('fades the glyph when disabled rather than hiding the control', () => {
@@ -200,17 +371,42 @@ function winner(painted: Painted[], prop: string, state = '', media = ''): strin
 
 const R760 = '(max-width: 760px)'
 
+/**
+ * Render the table and hand back the class string of every part of it.
+ *
+ * `filters` and `pager` are slots, and a slot nothing ever renders is a class
+ * string nothing ever compiles: `bg-tile-v4` → `bg-tile-v9` on the filter bar
+ * survived the whole suite, and `bg-tile-v9` emits nothing at all. Both slots
+ * go through here so `paint()` sees them.
+ *
+ * The cast is the harness', not the component's: `DataTableProps` is two unions
+ * (tracks × openability) and `Partial<>` of their intersection flattens both.
+ * The exclusivity that matters is asserted at a real call site by the two
+ * `@ts-expect-error` cases above.
+ */
 function shell(props: Partial<DataTableProps<Row>> = {}) {
   const { container } = render(
-    <DataTable
-      label="کاربران" columns={COLUMNS} rows={ROWS} rowKey={(r) => r.id} empty="خالی"
-      {...props}
+    <DataTable<Row>
+      {...({
+        label: 'کاربران', columns: COLUMNS, rows: ROWS, rowKey: (r: Row) => r.id, empty: 'خالی',
+        ...props,
+      } as DataTableProps<Row>)}
     />,
   )
+  const cls = (sel: string) => {
+    const el = container.querySelector(sel)
+    if (el === null) throw new Error(`shell(): nothing rendered for \`${sel}\``)
+    return (el as HTMLElement).className
+  }
   return {
-    head: (container.querySelector('[data-r-thead]') as HTMLElement).className,
-    row: (container.querySelector('[data-r-trow]') as HTMLElement).className,
-    cell: (key: string) => (container.querySelector(`[data-col="${key}"]`) as HTMLElement).className,
+    container,
+    card: cls('[data-r-tshell]'),
+    head: cls('[data-r-thead]'),
+    row: cls('[data-r-trow]'),
+    headcol: (key: string) => cls(`[data-headcol="${key}"]`),
+    cell: (key: string) => cls(`[data-col="${key}"]`),
+    filters: () => cls('[data-r-tfilters]'),
+    pager: () => cls('[data-r-pager]'),
   }
 }
 
@@ -242,6 +438,43 @@ describe('what the table’s class strings compile to', () => {
     // px-* is what Tailwind 3 emits for the inline gutter.
     expect(winner(h, 'padding-right')).toBe('var(--space-9)')
     expect(winner(r, 'padding-left')).toBe('var(--space-9)')
+    // §6.7 — both lines centre their content on the cross axis. `items-start`
+    // compiles just as happily and drops every short cell to the top of a row
+    // sized by its tallest.
+    expect(winner(h, 'align-items')).toBe('center')
+    expect(winner(r, 'align-items')).toBe('center')
+  })
+
+  it('resolves the head and the body cells by the SAME track rule', async () => {
+    // A grid item's automatic minimum size is its content, so a `1fr` track
+    // holding an unbreakable string resolves wider than 1fr. `min-w-0` on the
+    // body cell alone left the head computing its columns by a different rule
+    // from the rows underneath — the one disagreement this component's own
+    // docstring promises is impossible.
+    const s = shell()
+    for (const key of ['name', 'role', 'sup']) {
+      expect(winner(await paint(s.headcol(key)), 'min-width'), `head ${key}`).toBe('0px')
+      expect(winner(await paint(s.cell(key)), 'min-width'), `cell ${key}`).toBe('0px')
+    }
+  })
+
+  it('writes the head in the type the design draws it in', async () => {
+    // design/Inja Panel.dc.html:1245 — 11.5px / 700 / #8a7db0. Three values,
+    // three tokens, and every one of them compiles to something else if the
+    // class is changed, with nothing else in the suite noticing.
+    const h = await paint(shell().headcol('name'))
+    expect(winner(h, 'font-size')).toBe('var(--fs-xs)')
+    expect(winner(h, 'font-weight')).toBe('var(--fw-bold)')
+    expect(winner(h, 'color')).toBe('var(--text-muted)')
+  })
+
+  it('keeps the card clipping its rows at the 18px radius', async () => {
+    // The comment on the shell says `overflow-hidden` is what makes the head
+    // fill and the row rules stop at the corner; deleting it changes nothing
+    // any other test can see.
+    const c = await paint(shell().card)
+    expect(winner(c, 'overflow')).toBe('hidden')
+    expect(winner(c, 'border-radius')).toBe('var(--radius-doc)')
   })
 
   it('collapses the row and drops the head at exactly 760px', async () => {
@@ -275,7 +508,7 @@ describe('what the table’s class strings compile to', () => {
   })
 
   it('hovers a row over the theme’s one duration, on the background alone', async () => {
-    const { row } = shell({ onOpen: () => {} })
+    const { row } = shell({ onOpen: () => {}, rowLabel: (r) => r.name })
     const r = await paint(row)
     // R8 — the design's .14s is a token nowhere else in 4018 lines; the row
     // hover runs at --duration like every other transition in the app. There is
@@ -314,6 +547,13 @@ describe('what the table’s class strings compile to', () => {
     expect(winner(r, 'border-color')).toBe('var(--line-row)')
   })
 
+  it('lays a templated table on the minted track list, and on nothing else', async () => {
+    const { head, row } = shell({ columns: TEMPLATED, template: 'users' })
+    for (const line of [await paint(head), await paint(row)]) {
+      expect(winner(line, 'grid-template-columns')).toBe('var(--grid-users)')
+    }
+  })
+
   it('states an empty table at the inline padding minted for it', async () => {
     const { container } = render(
       <DataTable label="ک" columns={COLUMNS} rows={[]} rowKey={(r) => r.id} empty="خالی" />,
@@ -325,6 +565,52 @@ describe('what the table’s class strings compile to', () => {
     expect(winner(p, 'padding-right')).toBe('var(--pad-empty-x)')
     expect(winner(p, 'font-size')).toBe('var(--fs-sm)')
     expect(winner(p, 'color')).toBe('var(--text-faint)')
+    // The one line of an empty table sits under the middle of it, not at the
+    // reading edge — the design's `text-align:center` on every empty state.
+    expect(winner(p, 'text-align')).toBe('center')
+  })
+})
+
+describe('what the table’s two SLOTS compile to', () => {
+  // Rendered, not described. Until this block existed, `filters` and `pager`
+  // were props no test ever passed, so their class strings never reached the
+  // compiler: `bg-tile-v4` → `bg-tile-v9` survived 975 tests, and `bg-tile-v9`
+  // emits nothing at all.
+  const slots = () => shell({
+    filters: <button type="button">دپارتمان</button>,
+    pager: <Pager from={1} to={5} count={12} page={2} pages={3} onPage={() => {}} />,
+  })
+
+  it('draws the filter bar the design draws (`:1516`, `:1635`)', async () => {
+    const f = await paint(slots().filters())
+    expect(winner(f, 'display')).toBe('flex')
+    // The one value this bar had wrong: the design centres its controls, and a
+    // filter bar of two different control heights left-hangs them without it.
+    expect(winner(f, 'align-items')).toBe('center')
+    expect(winner(f, 'flex-wrap')).toBe('wrap')
+    expect(winner(f, 'gap')).toBe('var(--space-4)')
+    expect(winner(f, 'padding-top')).toBe('var(--space-7)')
+    expect(winner(f, 'padding-right')).toBe('var(--space-9)')
+    expect(winner(f, 'background-color')).toBe('var(--tile-v4)')
+    expect(winner(f, 'border-bottom-width')).toBe('1px')
+    expect(winner(f, 'border-color')).toBe('var(--border-current)')
+    // §6.16 — `[data-r-afilters]` becomes a stretched column at ≤760px.
+    expect(winner(f, 'flex-direction', '', R760)).toBe('column')
+    expect(winner(f, 'align-items', '', R760)).toBe('stretch')
+  })
+
+  it('draws the pager bar, and stacks it on a phone like every other data-r-stack', async () => {
+    const p = await paint(slots().pager())
+    expect(winner(p, 'display')).toBe('flex')
+    expect(winner(p, 'align-items')).toBe('center')
+    expect(winner(p, 'justify-content')).toBe('space-between')
+    expect(winner(p, 'gap')).toBe('var(--space-6)')
+    expect(winner(p, 'padding-top')).toBe('var(--space-7)')
+    expect(winner(p, 'padding-right')).toBe('var(--space-9)')
+    // design/Inja Panel.dc.html:45 — `[data-r-stack]` is a stretched column at
+    // ≤760px, and both design pagers sit in one.
+    expect(winner(p, 'flex-direction', '', R760)).toBe('column')
+    expect(winner(p, 'align-items', '', R760)).toBe('stretch')
   })
 })
 
@@ -344,6 +630,10 @@ describe('what the pager’s class strings compile to', () => {
     expect(winner(p, 'position')).toBe('relative')
     expect(winner(p, 'position', '::before')).toBe('absolute')
     expect(winner(p, 'inset', '::before')).toBe('-5px')
+    // Tailwind routes `content` through its own custom property, so the value
+    // to read is the one it sets, not the shorthand that reads it back.
+    expect(winner(p, '--tw-content', '::before')).toBe('""')
+    expect(winner(p, 'content', '::before')).toBe('var(--tw-content)')
   })
 
   it('fades the glyph and keeps the surface when it cannot step', async () => {
@@ -367,15 +657,26 @@ describe('what the pager’s class strings compile to', () => {
     expect(winner(p, 'font-size')).toBe('var(--fs-sm2)')
     expect(winner(p, 'color')).toBe('var(--text-body)')
   })
+
+  it('writes the count in the quieter of the two type roles', async () => {
+    // design/Inja Panel.dc.html:1600 — 12px --text-muted, against the page
+    // label's 12.5px/600 --text-body. Two different roles in one 34px-tall bar;
+    // nothing else in the suite could tell them apart.
+    render(<Pager from={1} to={5} count={12} page={2} pages={3} onPage={() => {}} />)
+    const p = await paint(screen.getByText('۱ تا ۵ از ۱۲').className)
+    expect(winner(p, 'font-size')).toBe('var(--fs-caption)')
+    expect(winner(p, 'color')).toBe('var(--text-muted)')
+  })
 })
 
 /* -------------------------------------------------------------------------
    `expectExpandedHitArea` is a shared helper — Task 11's row chevron and the
-   crumb home button assert with it next, and src/ui/Overlay.tsx's 32px close
-   control is already built the way it describes. A helper that only ever runs
-   green proves nothing, so these pin what it REFUSES. There is no
-   src/test/a11y.test.ts to put them in and this task owns four files; Task 12
-   should move them when it takes the a11y helpers.
+   crumb home button assert with it next, src/ui/PasswordField.tsx's reveal
+   button already does, and src/ui/Overlay.tsx's 32px close control is built the
+   way it describes. A helper that only ever runs green proves nothing, so these
+   pin what it REFUSES. There is no src/test/a11y.test.ts to put them in and
+   this task owns four files; Task 12 should move them when it takes the a11y
+   helpers.
    ------------------------------------------------------------------------- */
 describe('expectExpandedHitArea', () => {
   const control = (className: string) => {
@@ -383,43 +684,105 @@ describe('expectExpandedHitArea', () => {
     el.className = className
     return el
   }
-  const PAGER = 'relative before:absolute before:content-[""] before:-inset-[5px] w-pager h-pager'
 
   it('passes the 34px pager button and the 32px close control alike', () => {
     // 34 + 2×5 and 32 + 2×6 are both 44. A helper that matched one literal
-    // inset would reject src/ui/Overlay.tsx, which is already built this way.
-    expectExpandedHitArea(control(PAGER))
-    expectExpandedHitArea(control('relative before:absolute before:-inset-[6px] w-close h-close'))
+    // inset would reject the close control, which is already built this way.
+    //
+    // Both are the REAL controls, rendered — a hand-written string here is a
+    // test whose input is not the shape its name claims, and would keep passing
+    // after either component stopped matching it.
+    render(<Pager from={1} to={5} count={12} page={2} pages={3} onPage={() => {}} />)
+    expectExpandedHitArea(screen.getByRole('button', { name: 'صفحهٔ بعدی' }))
+
+    render(<Dialog open onClose={() => {}} title="حذف"><button type="button">تأیید</button></Dialog>)
+    expectExpandedHitArea(screen.getByRole('button', { name: 'بستن' }))
+  })
+
+  it('measures a box the theme names on `spacing` alone, not only on `width`', () => {
+    // Tailwind derives `w-*` and `h-*` from `spacing` as well as from their own
+    // keys, so `w-tick-row` (11px, spacing-only) is a legal utility. Reading
+    // `theme.extend.width` alone rejected it as a key "this theme knows"
+    // nothing about — a refusal with a misleading reason, which is worse than
+    // no refusal. 11 + 2×16.5 = 44.
+    expectExpandedHitArea(control(
+      'relative before:absolute before:content-[""] before:-inset-[16.5px] w-tick-row h-tick-row',
+    ))
   })
 
   it('refuses a drawn box with no ::before around it', () => {
     // Everything the rule asks for except the one thing that does the growing.
-    expect(() => expectExpandedHitArea(control('relative before:absolute w-pager h-pager')))
-      .toThrow(/before:-inset/)
+    expect(() => expectExpandedHitArea(control(
+      'relative before:absolute before:content-[""] w-pager h-pager',
+    ))).toThrow(/before:-inset/)
+  })
+
+  it('refuses a ::before with no content, which generates no box at all', () => {
+    expect(() => expectExpandedHitArea(control(
+      'relative before:absolute before:-inset-[5px] w-pager h-pager',
+    ))).toThrow(/before:content/)
+  })
+
+  it('refuses a ::before that is told not to take pointer events', () => {
+    // The ::before IS the hit area. This is the one declaration that measures
+    // 44px and catches nothing, and it is the single most plausible thing for
+    // someone to add to a decorative-looking pseudo-element.
+    expect(() => expectExpandedHitArea(control(
+      'relative before:absolute before:content-[""] before:-inset-[5px] before:pointer-events-none w-pager h-pager',
+    ))).toThrow(/pointer-events-none/)
   })
 
   it('refuses a control that states no drawn box to measure from', () => {
-    expect(() => expectExpandedHitArea(control('relative before:absolute before:-inset-[5px]')))
-      .toThrow(/measured/)
+    expect(() => expectExpandedHitArea(control(
+      'relative before:absolute before:content-[""] before:-inset-[5px]',
+    ))).toThrow(/measured/)
   })
 
   it('refuses a ::before that does not reach 44px', () => {
     // The mistake the helper exists to catch: 32 + 2×5 is 42, and nothing about
     // it is visible, so nothing else would ever catch it.
-    expect(() => expectExpandedHitArea(control('relative before:absolute before:-inset-[5px] w-close h-close')))
-      .toThrow(/42px/)
+    expect(() => expectExpandedHitArea(control(
+      'relative before:absolute before:content-[""] before:-inset-[5px] w-close h-close',
+    ))).toThrow(/42px/)
+  })
+
+  it('refuses a box that reaches 44px on one axis only', () => {
+    // `-inset-` grows all four sides, but the drawn box has TWO numbers and
+    // only the width used to be read: this control is 44px wide and 25px tall,
+    // and a thumb misses it exactly as often as it misses a 25px square. The
+    // design's ladder is square today; nothing makes it stay square.
+    expect(() => expectExpandedHitArea(control(
+      'relative before:absolute before:content-[""] before:-inset-[5px] w-pager h-chevron',
+    ))).toThrow(/25px tall/)
   })
 
   it('refuses a ::before that grows from the wrong box', () => {
-    expect(() => expectExpandedHitArea(control('before:absolute before:-inset-[5px] w-pager h-pager')))
-      .toThrow(/relative/)
+    expect(() => expectExpandedHitArea(control(
+      'before:absolute before:content-[""] before:-inset-[5px] w-pager h-pager',
+    ))).toThrow(/relative/)
+  })
+
+  it('refuses each of the three rules when it holds only at some widths', () => {
+    // `\brelative\b` also matches inside `md:relative`, because `\b` sits
+    // between the `:` and the `r`. All three of these passed a helper that
+    // pattern-matched the raw class string, and each one is a control that is
+    // built correctly on a desktop and unhittable on the phone that needs it.
+    const base = 'relative before:absolute before:content-[""] before:-inset-[5px] w-pager h-pager'
+    const swap = (from: string, to: string) => control(base.replace(from, to))
+    expect(() => expectExpandedHitArea(swap('relative', 'md:relative')))
+      .toThrow(/unconditional `relative`/)
+    expect(() => expectExpandedHitArea(swap('before:absolute', 'max760:before:absolute')))
+      .toThrow(/unconditional `before:absolute`/)
+    expect(() => expectExpandedHitArea(swap('before:-inset-[5px]', 'md:before:-inset-[5px]')))
+      .toThrow(/unconditional `before:-inset/)
   })
 
   it('refuses a control whose drawn box was inflated to the floor instead', () => {
     // The plan's rule, in the direction the helper can be misused: never grow
     // the painted control to 44px. That control is asserted with
     // expectTouchTarget; this one is for the design's smaller ladder.
-    expect(() => expectExpandedHitArea(control('relative before:absolute before:-inset-[5px] w-touch h-touch')))
-      .toThrow(/expectTouchTarget/)
+    expect(() => expectExpandedHitArea(control(
+      'relative before:absolute before:content-[""] before:-inset-[5px] w-touch h-touch',
+    ))).toThrow(/expectTouchTarget/)
   })
 })

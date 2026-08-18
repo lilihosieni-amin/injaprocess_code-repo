@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { readFileSync } from 'node:fs'
-import { dirname, resolve } from 'node:path'
+import { readFileSync, readdirSync, statSync } from 'node:fs'
+import { dirname, join, resolve } from 'node:path'
 import postcss from 'postcss'
 import tailwind from 'tailwindcss'
 import config from '../../tailwind.config.js'
@@ -911,5 +911,202 @@ describe('R1 (structural) — motion', () => {
     const { css } = await build(['duration-fast', 'duration-chev'])
     expect(css).toContain('transition-duration: var(--duration-fast)')
     expect(css).toContain('transition-duration: var(--duration-chev)')
+  })
+})
+
+/* ---------------------------------------------------------------------------
+   Owner ruling R11 — a minted utility is USED, or it is on a list a later task
+   must empty.
+
+   The three grid templates (`grid-cols-users`, `-audit`, `-activity`) were
+   minted with no consumer, and the reviewer's recommendation was to delete
+   them. The owner ruled the opposite — use them — on one condition: that the
+   test which proved they EXIST is rewritten to prove they are USED. The reason
+   given was "otherwise we'll be right back here in six months."
+
+   Neither check this file already had can answer that question:
+
+     · the reachability guard above computes reachability from the THEME's own
+       var() sites, so it proves a token has a NAME, never that anything writes
+       it; and
+     · "does the class emit" cannot tell used from unused either, because
+       Tailwind's `content` globs include this very file — the max-[560px] test
+       above says so in as many words — so a class mentioned only in a test is
+       emitted like any other.
+
+   So this block reads src/** with the tests taken OUT, which is the only place
+   the question can be asked.
+   --------------------------------------------------------------------------- */
+
+/** Every file a component could be written in, minus the tests. */
+function componentFiles(dir = resolve(process.cwd(), 'src'), out: string[] = []): string[] {
+  for (const name of readdirSync(dir)) {
+    const p = join(dir, name)
+    if (statSync(p).isDirectory()) componentFiles(p, out)
+    else if (/\.(tsx?|jsx?|css|html)$/.test(name) && !/\.test\./.test(name)) out.push(p)
+  }
+  return out
+}
+
+const COMPONENTS = componentFiles()
+const COMPONENT_SOURCE = COMPONENTS.map((f) => readFileSync(f, 'utf8')).join('\n')
+
+/**
+ * Does a component write this class?
+ *
+ * The boundary is a word character or a hyphen on either side, and deliberately
+ * NOT a colon: `disabled:text-disabled` and `max760:p-s7` write `text-disabled`
+ * and `p-s7`, in a state and at a width. A matcher that refused a leading colon
+ * would call both of those unconsumed and send someone deleting a utility two
+ * shipped components depend on.
+ */
+function written(klass: string): boolean {
+  return new RegExp(`(?<![\\w-])${klass.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\w-])`)
+    .test(COMPONENT_SOURCE)
+}
+
+/**
+ * The utilities the theme names that NO component writes yet.
+ *
+ * This is the list R11 turns on. A promise to use a utility later is what
+ * minted three templates nothing could reach; a list that a named task must
+ * mechanically empty is not a promise, it is a receipt. Every line here is a
+ * screen or a primitive that has not been rebuilt yet — Tasks 13–24 — and every
+ * one of them deletes its own lines as it lands.
+ *
+ * ** TASK 25 MUST TURN THE TEST BELOW INTO `expect(PENDING).toEqual([])`. **
+ * That is the whole point of keeping the list rather than deleting the classes:
+ * by Task 25 every screen exists, so a utility still on this list at that point
+ * has no consumer and never will, and the theme should lose it. Until then the
+ * list is asserted to be exactly accurate in BOTH directions, so it can neither
+ * hide a newly orphaned utility nor keep a stale line after a screen starts
+ * using one.
+ */
+// In tailwind-probe.txt's own order, which groups them by the scale each is
+// minted on, so a whole family landing at once deletes contiguous lines.
+const PENDING: string[] = [
+  'bg-muted', 'bg-faint', 'bg-warm', 'bg-line',
+  'bg-login-orb', 'bg-warn', 'bg-info', 'bg-violet-mid',
+  'bg-violet-edge', 'bg-violet-on-dark', 'bg-violet-on-dark-body', 'bg-violet-on-violet',
+  'bg-desk', 'bg-tile-v3', 'bg-tile-ctl', 'bg-value-current',
+  'bg-hair', 'bg-line-soft', 'bg-line-dashed', 'bg-border-danger',
+  'bg-border-dead', 'bg-border-current', 'bg-border-ok', 'bg-strong',
+  'bg-body-ink', 'bg-ghost', 'bg-dialog-ghost', 'bg-ink-current',
+  'bg-ink-proposed', 'bg-on-dark', 'bg-disabled', 'bg-ok',
+  'bg-danger', 'bg-warn-soft', 'bg-info-soft', 'bg-ok-soft',
+  'bg-danger-soft', 'bg-toast-check', 'bg-junction-xor', 'bg-junction-and',
+  'bg-junction-or', 'bg-dept-numeral-violet', 'bg-dept-numeral-coral', 'bg-steps-sub',
+  'bg-steps-sub-border', 'bg-steps-sub-hover', 'bg-steps-group', 'bg-steps-group-border',
+  'bg-link', 'bg-link-hover', 'text-violet-on-dark', 'text-violet-on-dark-body',
+  'text-violet-on-violet', 'text-strong', 'text-ghost', 'text-dialog-ghost',
+  'text-ink-current', 'text-ink-proposed', 'text-on-dark', 'text-ok',
+  'text-danger', 'text-toast-check', 'text-link', 'text-link-hover',
+  'border-line-soft', 'border-line-dashed', 'border-border-dead', 'border-border-ok',
+  'border-hair', 'border-steps-sub-border', 'border-steps-group-border', 'border-card',
+  'bg-tile-v5', 'bg-disc-coral', 'bg-disc-violet', 'bg-line-divider',
+  'border-line-divider', 'bg-line-row', 'bg-line-filter', 'border-line-filter',
+  'bg-border-pick', 'text-fs-display', 'text-fs-h1', 'text-fs-h2',
+  'text-fs-h3', 'text-fs-h4', 'text-fs-h5', 'text-fs-lg',
+  'text-fs-xxs', 'text-fs-micro', 'text-fs-doc-base', 'text-fs-doc-h1',
+  'text-fs-doc-title', 'text-fs-doc-step', 'text-fs-doc-body', 'text-fs-menu',
+  'text-fs-numeral', 'text-fs-stat', 'text-fs-steps-title', 'text-fs-display-hand',
+  'text-fs-stat-sm', 'text-fs-body-lead', 'text-fs-nano', 'text-fs-badge-sm',
+  'text-fs-tag', 'text-fs-h1-reader-home', 'text-fs-h1-reader-list', 'text-fs-h1-reader-dept',
+  'text-fs-body-reader', 'text-prose', 'text-role-title', 'text-role-hero',
+  'font-sans', 'font-regular', 'leading-snug', 'leading-looser',
+  'tracking-eyebrow', 'tracking-display', 'rounded-badge', 'rounded-input',
+  'rounded-pill', 'rounded-round', 'shadow-sheet', 'shadow-drawer',
+  'shadow-card-dark', 'shadow-stat-dark', 'shadow-guide-hover', 'shadow-ring-flash',
+  'shadow-conflict-dot', 'shadow-fab', 'p-screen-x', 'p-screen-y',
+  'p-topbar', 'p-half', 'gap-topbar', 'px-reader-x',
+  'pb-reader-bottom', 'pt-departments-top', 'pb-departments-bottom', 'p-s1',
+  'p-s2', 'p-s3', 'p-s4', 'p-s5',
+  'p-s6', 'p-s14', 'p-s16', 'w-tile',
+  'h-tile', 'w-tool', 'h-tool', 'w-avatar',
+  'h-avatar', 'w-logo-bar', 'h-logo-bar', 'w-logo-login',
+  'h-logo-login', 'w-touch', 'h-touch', 'w-tile-reader',
+  'h-tile-reader', 'w-glyph', 'h-glyph', 'w-glyph-reader',
+  'h-glyph-reader', 'w-iconbtn', 'h-iconbtn', 'w-iconbtn-reader',
+  'h-iconbtn-reader', 'w-fab', 'h-fab', 'w-fab-reader',
+  'h-fab-reader', 'w-tick', 'h-tick', 'w-tick-nested',
+  'h-tick-nested', 'max-w-departments', 'max-w-summary', 'max-w-doc',
+  'max-w-drawer', 'max-w-reader', 'max-w-profile', 'max-w-steps',
+  'max-w-access', 'max-w-audit', 'duration-fast', 'duration-chev',
+  'p-compose', 'rounded-tick', 'rounded-tick-nested', 'w-tick-glyph',
+  'h-tick-glyph', 'w-tick-glyph-nested', 'h-tick-glyph-nested', 'gap-tick-row',
+  'py-tick-row-y', 'py-tick-nested-y', 'px-radio-x', 'py-dropdown-y-dialog',
+  'py-dropdown-y-filter', 'px-dropdown-x-filter', 'p-popover', 'gap-option',
+  'py-option-y', 'max-h-popover', 'px-stat-x', 'min-w-stat',
+  'py-stat-y-grid', 'px-stat-x-grid', 'my-stat-grid', 'mt-stat-label',
+  'py-tab-y-audit', 'min-w-tab', 'gap-tab-flow', 'py-note-y',
+  'px-note-x', 'h-count', 'min-w-count', 'max1080:hidden',
+]
+
+describe('Owner ruling R11 — a named utility has a component that writes it', () => {
+  it('reads a real, sizeable set of component files, tests excluded', () => {
+    // Both assertions below compare a derived list to a list, so a scan that
+    // reads nothing would report every class as unconsumed and a scan that read
+    // the tests would report almost none. Pin both ends of it.
+    expect(COMPONENTS.length).toBeGreaterThan(50)
+    expect(COMPONENTS.some((f) => f.includes('/src/ui/DataTable.tsx'))).toBe(true)
+    expect(COMPONENTS.some((f) => /\.test\./.test(f))).toBe(false)
+
+    // …and the exclusion is load-bearing, not decorative: `w-touch` is written
+    // in src/ui/table.test.tsx (as the box expectExpandedHitArea must refuse)
+    // and nowhere else, so a scan that read the tests would call it consumed.
+    expect(readFileSync(resolve(process.cwd(), 'src/ui/table.test.tsx'), 'utf8'))
+      .toContain('w-touch')
+    expect(written('w-touch')).toBe(false)
+
+    // The matcher itself, both ways round, so neither test below can pass by
+    // saying "yes" or "no" to everything.
+    expect(written('rounded-doc')).toBe(true)
+    expect(written('rounded-nonesuch')).toBe(false)
+  })
+
+  it('has a component writing each of the three minted grid templates', () => {
+    // The assertion R11 asked for, in place of the three EXPECTED rows that
+    // only proved the theme NAMES them. src/ui/DataTable.tsx's `template` prop
+    // is the consumer; before it, the users track list was written down twice —
+    // once in tokens.css as --grid-users and once as six `track` strings at the
+    // call site — and the theme's copy was unreachable.
+    const templates = ['grid-cols-users', 'grid-cols-audit', 'grid-cols-activity']
+    expect(templates.filter((c) => !written(c))).toEqual([])
+    // Named by a component, not merely mentioned: the class must be assembled
+    // as a literal, because a `grid-cols-${key}` is invisible to Tailwind's
+    // scanner and would emit nothing however many callers passed the prop.
+    const table = readFileSync(resolve(process.cwd(), 'src/ui/DataTable.tsx'), 'utf8')
+    expect(templates.filter((c) => !table.includes(`'${c}'`))).toEqual([])
+  })
+
+  it('keeps PENDING exactly accurate — no orphan off the list, no stale line on it', () => {
+    const orphans = probeClasses().filter((c) => !written(c) && !PENDING.includes(c))
+    expect(
+      orphans,
+      `${orphans.length} utilities the theme names have no consumer and are not on PENDING. ` +
+      'Either write them into the component they were minted for, or add them to the list in ' +
+      'src/test/theme.test.ts with the task that will consume them.',
+    ).toEqual([])
+
+    const stale = PENDING.filter((c) => written(c))
+    expect(
+      stale,
+      `${stale.length} utilities on PENDING now HAVE a consumer. Delete these lines from the ` +
+      'list — that is how it empties, and Task 25 asserts it is empty.',
+    ).toEqual([])
+
+    // The list may only ever name utilities this theme actually has, or it
+    // becomes a place to park typos where nothing else looks.
+    const ghosts = PENDING.filter((c) => !probeClasses().includes(c))
+    expect(ghosts, 'PENDING names classes the theme does not').toEqual([])
+    expect(PENDING.filter((c, i) => PENDING.indexOf(c) !== i)).toEqual([])
+  })
+
+  it('is a list that shrinks — Task 25 asserts it is empty', () => {
+    // Not a floor with room under it: a task that consumes utilities without
+    // deleting their lines fails the accuracy test above, and a task that adds
+    // an unconsumed one fails it too. This line is the ratchet: the count only
+    // ever goes down, and the last task to move it moves it to zero.
+    expect(PENDING.length).toBeLessThanOrEqual(220)
   })
 })
