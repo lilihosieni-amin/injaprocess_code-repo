@@ -4726,7 +4726,7 @@ not; `FAB` is the one control whose size the two surfaces genuinely disagree abo
     the one class in this task that waited on the single minting pass
     (`.superpowers/sdd/mint-spec.md` §1.1 rung 3, §3); that pass has landed and it now
     emits `z-index:var(--role-z-floating)`. Nothing here is blocked.
-  - **One value with no token, deliberately left arbitrary.** `gap-[7px]` between the stat
+  - **`gap-stat-dot`** (`--gap-stat-dot`, 7px) is the gap between the stat
     numeral and its conflict dot (`design/Inja Panel.dc.html:221`, `display:flex;
     align-items:center;gap:7px`). `tokens.css` holds two 7px tokens — `--pad-popover` (the
     dropdown popover's inset) and `--space-stat-label` (the 4-up label's margin-top) — and
@@ -5017,12 +5017,12 @@ export function StatTile({
   const size = skin === 'feature' ? 'text-fs-stat' : 'text-fs-stat-sm'
   return (
     <div className={`bg-card border border-border-card shadow-card ${shell} ${className}`}>
-      {/* `gap-[7px]` is the one value in this task with no token: it is the
+      {/* `gap-stat-dot` is this gap's own token. Do NOT borrow it for the other
           design's own `gap:7px` (Inja Panel.dc.html:221), and both 7px tokens
           the theme holds — `--pad-popover` and `--space-stat-label` — were
           minted for other roles. Borrowing one would put this gap behind a name
           that means something else. Listed in the Interfaces block above. */}
-      <div className={`flex items-center gap-[7px] ${skin === 'compact' ? 'justify-center' : ''}`}>
+      <div className={`flex items-center gap-stat-dot ${skin === 'compact' ? 'justify-center' : ''}`}>
         <span className={`font-extrabold leading-none ${size} ${TONE[tone]}`}>
           {typeof value === 'number' ? toFa(value) : value}
         </span>
@@ -6343,7 +6343,7 @@ end. Leave them written out, and take them to the owner as one list.
 | `leading-[1.25]` | the brand lockup's two lines | `Inja Panel.dc.html:120` — `line-height:1.25` | 1 use in each shell. `--lh-tight` is **1.2**, itself a single use; L-17 decides the three *prose* line-heights and says nothing about the display end of the scale |
 | `min-w-[19px] h-[19px]` | the count badge on the chrome | `Inja Panel.dc.html:156` — `min-width:19px;height:19px` | `--size-count` is the **FAB's** badge at 21px and `--size-tick` is L-10's 19px tick box — two owners, neither this role |
 | `px-[13px]` | the inbox button's inline padding | `Inja Panel.dc.html:152` — `padding:8px 13px` | five tokens hold 13px (`--pad-search-y`, `--pad-compose`, `--pad-tick-row-y`, `--pad-dropdown-x-filter`, `--pad-table-row-y`) and every one is another component's |
-| `gap-[7px]` | the inbox button's icon/label gap | `Inja Panel.dc.html:152` says **`gap:8px`** | ⚠ **the plan's 7px disagrees with the design.** Left as written rather than re-decided: if the owner confirms the design, this becomes `gap-s4` and the value is off this list |
+| `gap-s4` | the inbox button's icon/label gap | `Inja Panel.dc.html:152` says **`gap:8px`** | ✅ **Resolved to the design's 8px** (`gap-s4`). R1: the deliverable beats the plan. Note this is a DIFFERENT element from Task 10's stat gap, which is genuinely 7px (`Inja Panel.dc.html:221`) and has its own token `--gap-stat-dot`. Two `gap-[7px]` sites, two different roles, two different right answers — which is why mapping by pixel value rather than by role keeps producing the wrong token. |
 | `py-[9px]` | the crumb strip / reader back bar | `Inja Panel.dc.html:174` — `padding:9px 22px` | 9px is off the ladder (8 → 10); its five tokens are the audit tab, the option gap, the menu search field, the filter chip and the timeline note |
 | `py-[7px]` | the «بازگشت» button | `Inja Panel.dc.html:176` — `padding:7px 12px` | 7px is off the ladder (6 → 8); `--pad-popover` and `--space-stat-label` hold it for other roles |
 
@@ -6477,7 +6477,7 @@ export function PanelShell({ session }: { session: SessionDescriptor }) {
             <button
               type="button" onClick={() => setInboxOpen(true)}
               aria-label={openCount > 0 ? `صندوق بازبینی تعارض‌ها، ${toFa(openCount)} مورد در انتظار` : 'صندوق بازبینی تعارض‌ها'}
-              className={`${GHOST} relative gap-[7px] px-[13px] py-s4 rounded-button text-fs-sm2 font-bold max760:hidden`}
+              className={`${GHOST} relative gap-s4 px-[13px] py-s4 rounded-button text-fs-sm2 font-bold max760:hidden`}
             >
               <Icon name="inbox" px={16} />
               صندوق تعارض‌ها
