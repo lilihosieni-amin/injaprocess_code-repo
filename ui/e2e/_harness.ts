@@ -571,7 +571,22 @@ export const DESIGN = {
     // `max760:px-s7 max760:py-s9` to the screen.** Until then this states what
     // the screen *does*, so the mutant that changes the padding dies today.
     padding: '38px 40px 48px',
+    // §R7 drops every `[data-r-title]` to 25px at <=760 (`Inja Panel.dc.html:90`,
+    // `!important`) and the departments title IS one (`:207`, 34px), but
+    // `Departments.tsx` writes a bare size with no `max760:` variant. Same rule as
+    // `padding`, `grid.columns` and `card` around it: this states what the screen
+    // *does*, so the mutant that resizes the title dies today. **Task 14 rewrites
+    // this as `{ 1440: '34px', 1080: '34px', 760: '25px' }` in the same commit
+    // that adds the variant.**
     h1: { size: '34px', weight: '800', color: ON_FIELD },
+    // The fourth "states today's paint" line, and the least obvious: this is
+    // #B7A6E0 because `Departments.tsx:32` writes `text-[#B7A6E0]` — AN ARBITRARY
+    // HEX LITERAL, not a token. No *named* utility can paint it: Task 3 re-cut
+    // `--violet-on-dark-body` to #C9BEEE, and L-28 settles the role there. The
+    // screen only gets away with it because it predates the guard's reach. So the
+    // row is right about today and wrong about the design, exactly like its three
+    // neighbours. **Task 14 changes this to `SUBTITLE_ON_FIELD` in the same commit
+    // that replaces the literal with the token.**
     body: { size: '14px', color: ON_FIELD_MUTED },
     // §6.16 requires 3 / 2 / 1 and the screen ships 3 / 3 / 3 — `Departments.tsx`
     // writes a bare `grid-cols-3` with no `max1080:` or `max760:` variant, so the

@@ -1465,7 +1465,7 @@ const PENDING: string[] = [
   // READER's numbers — it writes the panel's in eleven places — needs three
   // names the mint above had no reason to look for. All four lines are Task 13's
   // and come off with it.
-  'gap-button-icon', 'px-button-x', 'w-menu-more-reader', 'h-menu-more-reader',
+  'px-button-x', 'w-menu-more-reader', 'h-menu-more-reader',
 ]
 
 /**
