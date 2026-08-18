@@ -72,6 +72,7 @@ export function Checkbox({
   const auto = useId()
   const id = given ?? auto
   const hintId = `${id}-hint`
+  const titleId = `${id}-title`
   const text = useSurface() === 'reader' ? 'text-fs-lg' : 'text-fs-menu'
   return (
     <label
@@ -87,13 +88,18 @@ export function Checkbox({
         type="checkbox"
         checked={checked}
         disabled={disabled}
+        // The <label> wraps the hint as well as the title, so implicit labelling
+        // would put the explanation in the NAME and `aria-describedby` would
+        // then read it out a second time as the description. Naming the title
+        // explicitly leaves each string with one job.
+        aria-labelledby={titleId}
         aria-describedby={hint === undefined ? undefined : hintId}
         onChange={(e) => onChange(e.target.checked)}
         className="peer sr-only"
       />
       <TickBox on={checked} className="peer-focus-visible:border-coral" />
       <span className="min-w-0">
-        <span className={`block font-bold text-ink ${text}`}>{label}</span>
+        <span id={titleId} className={`block font-bold text-ink ${text}`}>{label}</span>
         {hint !== undefined && (
           <span id={hintId} className="block mt-s1 text-fs-xs text-faint leading-normal">{hint}</span>
         )}

@@ -123,7 +123,14 @@ export function Dropdown({
         type="button"
         aria-haspopup="listbox"
         aria-expanded={open}
-        aria-labelledby={`${id}-label`}
+        aria-controls={open ? `${id}-list` : undefined}
+        // BOTH ids, in this order. `aria-labelledby` REPLACES the button's
+        // contents in the accessible-name computation, so naming only the
+        // label gave every trigger the accessible name «نقش» whatever was
+        // chosen inside it — a screen-reader user could open the menu, pick a
+        // value and never hear which one. Label then value is what a native
+        // <select> announces, and what §5.2's trigger has to announce too.
+        aria-labelledby={`${id}-label ${id}-value`}
         onClick={() => setOpen((v) => !v)}
         onKeyDown={(e) => {
           if (e.key !== 'ArrowDown') return
@@ -136,7 +143,10 @@ export function Dropdown({
         }}
         className={`w-full flex items-center gap-s5 px-s7 py-s5 rounded-button bg-card text-ink text-start cursor-pointer border-hairline ${open ? 'border-coral' : 'border-line'} ${text}`}
       >
-        <span className={`flex-1 overflow-hidden text-ellipsis whitespace-nowrap ${chosen.length ? '' : 'text-faint'}`}>
+        <span
+          id={`${id}-value`}
+          className={`flex-1 overflow-hidden text-ellipsis whitespace-nowrap ${chosen.length ? '' : 'text-faint'}`}
+        >
           {chosen.length ? chosen.map((o) => o.label).join('، ') : placeholder}
         </span>
         {/* Folded into `Icon` by Task 11. chevron-down, 15×15 @2.2 (§5.2) —
@@ -149,11 +159,15 @@ export function Dropdown({
         </svg>
       </button>
       {open && (
+        // The popover is a plain <div>. ARIA 1.2 gives `listbox` required owned
+        // elements of `option` (or `group` → `option`), so the search field
+        // cannot live inside it: assistive tech either skips the field or
+        // mis-announces the count of the list. The box carries the paint, the
+        // field comes first, and `role="listbox"` sits on the options container
+        // underneath — which is also where `aria-multiselectable` belongs,
+        // since it describes the list and not the box around it.
         <div
-          ref={list}
-          role="listbox"
-          aria-labelledby={`${id}-label`}
-          aria-multiselectable={multiple || undefined}
+          data-popover
           onKeyDown={onListKey}
           className="absolute top-full mt-s3 start-0 end-0 z-dropdown max-h-popover overflow-auto flex flex-col gap-half p-popover bg-card border border-border-card rounded-card shadow-pop"
         >
@@ -184,43 +198,56 @@ export function Dropdown({
               </svg>
             </div>
           )}
-          {shown.length === 0 ? (
+          {/* Stated, never blank — and a SIBLING of the list rather than a
+              child of it, because a <p> is not one of `listbox`'s permitted
+              owned elements either. */}
+          {shown.length === 0 && (
             <p className="m-0 px-s6 py-s7 text-center text-fs-sm2 text-muted">{noHit}</p>
-          ) : shown.map((o) => {
-            const picked = multiple ? values.includes(o.value) : o.value === value
-            return (
-              <button
-                key={o.value}
-                type="button"
-                role="option"
-                aria-selected={picked}
-                onClick={() => {
-                  if (multiple) onToggle?.(o.value)
-                  else { onChange?.(o.value); setOpen(false); trigger.current?.focus() }
-                }}
-                className={`${OPTION} ${picked ? 'bg-tile-v2 font-bold' : 'bg-transparent font-semibold'}`}
-              >
-                {/* A multi-select option LEADS with its tick and a single-select
-                    one TRAILS its check — which is what the design draws at
-                    :1386 and :1334 respectively, and why the unpicked row needs
-                    no spacer holding a column open. */}
-                {multiple && <TickBox on={picked} />}
-                <span className="min-w-0 flex-1">
-                  <span className="block">{o.label}</span>
-                  {o.note !== undefined && (
-                    <span className="block mt-half text-fs-xs font-normal text-faint">{o.note}</span>
+          )}
+          <div
+            ref={list}
+            id={`${id}-list`}
+            role="listbox"
+            aria-labelledby={`${id}-label`}
+            aria-multiselectable={multiple || undefined}
+            className="flex flex-col gap-half"
+          >
+            {shown.map((o) => {
+              const picked = multiple ? values.includes(o.value) : o.value === value
+              return (
+                <button
+                  key={o.value}
+                  type="button"
+                  role="option"
+                  aria-selected={picked}
+                  onClick={() => {
+                    if (multiple) onToggle?.(o.value)
+                    else { onChange?.(o.value); setOpen(false); trigger.current?.focus() }
+                  }}
+                  className={`${OPTION} ${picked ? 'bg-tile-v2 font-bold' : 'bg-transparent font-semibold'}`}
+                >
+                  {/* A multi-select option LEADS with its tick and a single-select
+                      one TRAILS its check — which is what the design draws at
+                      :1386 and :1334 respectively, and why the unpicked row needs
+                      no spacer holding a column open. */}
+                  {multiple && <TickBox on={picked} />}
+                  <span className="min-w-0 flex-1">
+                    <span className="block">{o.label}</span>
+                    {o.note !== undefined && (
+                      <span className="block mt-half text-fs-xs font-normal text-faint">{o.note}</span>
+                    )}
+                  </span>
+                  {!multiple && picked && (
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                      strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"
+                      aria-hidden focusable="false" className="w-s7 h-s7 flex-none text-violet">
+                      <path d="M20 6L9 17l-5-5" />
+                    </svg>
                   )}
-                </span>
-                {!multiple && picked && (
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                    strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"
-                    aria-hidden focusable="false" className="w-s7 h-s7 flex-none text-violet">
-                    <path d="M20 6L9 17l-5-5" />
-                  </svg>
-                )}
-              </button>
-            )
-          })}
+                </button>
+              )
+            })}
+          </div>
         </div>
       )}
     </div>
