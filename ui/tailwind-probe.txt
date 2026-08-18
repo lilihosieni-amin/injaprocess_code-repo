@@ -79,4 +79,25 @@ border-hairline
 transition duration-fast duration-chev
 -translate-y-lift
 backdrop-blur-scrim
+# §5.2 — the twelve primitives, minted in one pass so five parallel tasks build
+# against a frozen config. Grouped in the order the report's table is:
+# TextField · PasswordField · Checkbox · Radio · Dropdown · DataTable · Pager ·
+# StatTile · NavTabTray · Timeline · FAB. SectionCard mints nothing — every
+# value its two skins draw already had a token and a name.
+py-textarea-y p-compose
+ps-reveal w-reveal h-reveal w-reveal-glyph h-reveal-glyph rounded-reveal
+rounded-tick rounded-tick-nested w-tick-glyph h-tick-glyph
+w-tick-glyph-nested h-tick-glyph-nested gap-tick-row py-tick-row-y
+py-tick-nested-y
+px-radio-x
+py-dropdown-y-dialog py-dropdown-y-filter px-dropdown-x-filter p-popover
+gap-option py-option-y w-chevron h-chevron max-h-popover
+grid-cols-users grid-cols-audit grid-cols-activity py-table-row-y
+py-empty-y-inline
+w-pager h-pager min-w-page-label
+leading-none px-stat-x min-w-stat py-stat-y-grid px-stat-x-grid my-stat-grid
+mt-stat-label
+py-tab-y-audit min-w-tab gap-tab-flow
+py-note-y px-note-x
+h-count min-w-count
 max1080:hidden max760:hidden

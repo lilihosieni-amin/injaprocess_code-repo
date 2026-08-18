@@ -187,6 +187,105 @@ describe('R1 — a correction records what it overrode and why', () => {
     expect(same.map(([name]) => name)).toEqual([])
   })
 
+  it('§5.2 — carries every value the twelve primitives draw and no token held', () => {
+    // The whole point of minting these in one pass. Five tasks build the twelve
+    // primitives in parallel against one working tree; if each minted its own
+    // values, the second write to this file would silently drop the first and
+    // the build would still be green. Every value they need is pinned here, so
+    // a task that "helpfully" re-values one turns this red instead.
+    //
+    // Grouped exactly as .superpowers/sdd/ui-primitives-tokens-report.md is, so
+    // the two can be read side by side. SectionCard is absent on purpose: every
+    // value its two skins draw already had a token before this pass.
+    const primitives = {
+      // TextField / Textarea
+      '--pad-textarea-y': '11px', '--pad-compose': '13px',
+      // PasswordField
+      '--pad-reveal': '46px', '--size-reveal': '32px',
+      '--size-reveal-glyph': '17px', '--radius-reveal': '8px',
+      // Checkbox — the two boxes are --size-tick / --size-tick-nested (L-10);
+      // these are the radius and the check glyph each of them carries.
+      '--radius-tick': '6px', '--radius-tick-nested': '5px',
+      '--size-tick-glyph': '13px', '--size-tick-glyph-nested': '11px',
+      '--gap-tick-row': '11px', '--pad-tick-row-y': '13px',
+      '--pad-tick-nested-y': '11px',
+      // Radio
+      '--pad-radio-x': '15px',
+      // Dropdown
+      '--pad-dropdown-y-dialog': '11px', '--pad-dropdown-y-filter': '9px',
+      '--pad-dropdown-x-filter': '13px', '--pad-popover': '7px',
+      '--gap-option': '9px', '--pad-option-y': '11px',
+      '--size-chevron': '15px', '--height-popover': '280px',
+      // DataTable
+      '--grid-users': '16px 1.4fr 1fr 1.1fr 1fr 34px',
+      '--grid-audit': '1.5fr .7fr .7fr 1.1fr 1.1fr 1fr',
+      '--grid-activity': '.9fr 1.4fr 1.4fr .9fr 1fr .6fr',
+      '--pad-table-row-y': '13px', '--pad-empty-y-inline': '44px',
+      // Pager
+      '--size-pager': '34px', '--width-page-label': '74px',
+      // StatTile
+      '--lh-none': '1', '--pad-stat-x': '20px', '--width-stat': '96px',
+      '--pad-stat-y-grid': '15px', '--pad-stat-x-grid': '17px',
+      '--space-stat-grid': '20px', '--space-stat-label': '7px',
+      // NavTabTray
+      '--pad-tab-y-audit': '9px', '--width-tab': '132px',
+      '--gap-tab-flow': '3px',
+      // Timeline
+      '--pad-note-y': '9px', '--pad-note-x': '11px',
+      // FAB
+      '--size-count': '21px',
+    }
+    for (const [name, value] of Object.entries(primitives)) {
+      expect(token(name), name).toBe(value)
+    }
+    // 42 is the whole pass, not a floor with room under it: the report, the
+    // config, the probe and theme.test.ts's pairing table all carry the same
+    // 42, so a token dropped from one of them has to be dropped from this line
+    // too before anything goes green.
+    expect(Object.keys(primitives).length).toBe(42)
+  })
+
+  it('§5.2 — declares each of them exactly once', () => {
+    // The failure mode this pass exists to prevent, asserted rather than
+    // trusted. Two parallel tasks appending to this file both "work": the file
+    // ends with two declarations of one name, the later one wins, and the
+    // earlier task's screens quietly move. --shadow-card-hover is the only
+    // token this file may declare twice (F7, then §9.2's alpha correction) and
+    // the reader test at the top of this file already pins that at two.
+    const once = [
+      '--pad-textarea-y', '--pad-compose', '--pad-reveal', '--size-reveal',
+      '--size-reveal-glyph', '--radius-reveal', '--radius-tick',
+      '--radius-tick-nested', '--size-tick-glyph', '--size-tick-glyph-nested',
+      '--gap-tick-row', '--pad-tick-row-y', '--pad-tick-nested-y',
+      '--pad-radio-x', '--pad-dropdown-y-dialog', '--pad-dropdown-y-filter',
+      '--pad-dropdown-x-filter', '--pad-popover', '--gap-option',
+      '--pad-option-y', '--size-chevron', '--height-popover', '--grid-users',
+      '--grid-audit', '--grid-activity', '--pad-table-row-y',
+      '--pad-empty-y-inline', '--size-pager', '--width-page-label', '--lh-none',
+      '--pad-stat-x', '--width-stat', '--pad-stat-y-grid', '--pad-stat-x-grid',
+      '--space-stat-grid', '--space-stat-label', '--pad-tab-y-audit',
+      '--width-tab', '--gap-tab-flow', '--pad-note-y', '--pad-note-x',
+      '--size-count',
+    ]
+    expect(once.filter((n) => declarations(n) !== 1)).toEqual([])
+    expect(once.length).toBe(42)
+  })
+
+  it('§5.2 — keeps a number that already had an owner off its owner’s token', () => {
+    // Four of the twelve's values are numbers a token already carries under a
+    // different role. Minting a second name is only correct if the FIRST one
+    // still holds its own value, so this asserts both ends: had this pass
+    // "corrected the nearest token" instead, --size-close would be the reveal
+    // button's box and ledger L-23's close would have moved with it.
+    expect(token('--size-close')).toBe('32px')          // L-23's close button
+    expect(token('--size-search-glyph')).toBe('17px')   // the magnifier
+    expect(token('--pad-search-y')).toBe('13px')        // the search field
+    expect(token('--pad-empty-x')).toBe('20px')         // the empty-state card
+    expect(token('--pad-empty-y')).toBe('48px')         // …and its 48px, which
+    // --pad-empty-y-inline (44px) deliberately does not touch.
+    expect(token('--pad-empty-y-inline')).toBe('44px')
+  })
+
   it('cites the section of the spec that overrules the token', () => {
     for (const section of ['§9.8', '§9.9', '§9.2', '§4.3', '§9.4', 'L-20', 'R3']) {
       expect(css).toContain(section)

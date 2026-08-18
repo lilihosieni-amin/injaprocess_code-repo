@@ -204,6 +204,13 @@ export default {
         // Ledger L-17's third prose role: explanatory sub-copy under a control,
         // 1.8, 17 uses. `--lh-` comes off like every other key on this scale.
         sub: 'var(--lh-sub)',
+        // §5.2 StatTile — `line-height:1` on the stat numeral. Tailwind already
+        // ships `leading-none` at the same number, so this is a seventh
+        // REDEFINITION rather than a new name: it puts the last leading in the
+        // app behind a token, so `--lh-none` cannot drift from what the class
+        // paints. Deleting the key leaves `leading-none` emitting Tailwind's own
+        // `1` and only the pairing table notices.
+        none: 'var(--lh-none)',
       },
       borderRadius: {
         badge: 'var(--radius-badge)', chip: 'var(--radius-chip)', control: 'var(--radius-control)',
@@ -218,6 +225,14 @@ export default {
         feature: 'var(--radius-card-lg)',  // 20px — department card, wide modal
         pill: 'var(--radius-pill)',
         round: 'var(--radius-round)',
+        // §5.2 — three radii the twelve primitives draw and the ladder
+        // (6·7·9·10·11·12·13·14·16·18·20·24) has no rung for. Named by role,
+        // never by t-shirt size (rule 1): `tick`/`tick-nested` pair with the two
+        // boxes ledger L-10 fixes, and `reveal` is the password field's eye
+        // button — the 8px L-23 records as having no token.
+        tick: 'var(--radius-tick)',                // 6px  — the 19px tick
+        'tick-nested': 'var(--radius-tick-nested)',// 5px  — the 16px tick
+        reveal: 'var(--radius-reveal)',            // 8px  — the reveal button
       },
       borderWidth: { hairline: 'var(--border-hairline)' },
       boxShadow: {
@@ -235,7 +250,30 @@ export default {
         fab: 'var(--shadow-fab)',
       },
       minHeight: { touch: 'var(--size-touch)' },
-      minWidth: { touch: 'var(--size-touch)', menu: '220px' },
+      minWidth: {
+        touch: 'var(--size-touch)', menu: '220px',
+        // §5.2 — three floors the twelve primitives state outright, and the FAB
+        // badge's, which is a floor on one axis and a fixed height on the other
+        // (`min-width:21px; height:21px`), so `count` is carried on `height`
+        // below as well: one name, two properties.
+        'page-label': 'var(--width-page-label)', // 74px  — the pager's page label
+        stat: 'var(--width-stat)',               // 96px  — the header stat tile
+        tab: 'var(--width-tab)',                 // 132px — an audit tab
+        count: 'var(--size-count)',              // 21px  — the FAB count badge
+      },
+      // §5.2 Dropdown — the popover's scroll cap. On `maxHeight` and not on
+      // `spacing`: a cap is not a step, the same reason the three search-icon
+      // insets sit on `inset`.
+      maxHeight: { popover: 'var(--height-popover)' },
+      // §5.2 DataTable — the three column templates the design states exactly.
+      // Named here rather than written as `grid-cols-[16px_1.4fr_…]` at the six
+      // call sites (a head and a row per table), which is six places one column
+      // count would have to be kept in step.
+      gridTemplateColumns: {
+        users: 'var(--grid-users)',
+        audit: 'var(--grid-audit)',
+        activity: 'var(--grid-activity)',
+      },
       // The `s` prefix keeps this dense _ds scale (4, 5, 6, 8, 10px…) from shadowing
       // Tailwind's own numeric spacing keys, which are a sparser rem scale (4, 8, 12, 16, 20px…).
       spacing: {
@@ -269,6 +307,37 @@ export default {
         // design gives two numbers and `p-empty` could only ever carry one.
         'empty-y': 'var(--pad-empty-y)',                      // 48px
         'empty-x': 'var(--pad-empty-x)',                      // 20px
+        // §5.2 — the twelve primitives' own geometry. Same rules as the six
+        // above: one key per token, the direction stays out of the key, and a
+        // value the _ds ladder already holds is not re-named here (the ticks'
+        // 10px gap is `gap-s5`, the table's 18px gutter `px-s9`, the tab tray's
+        // 4px `p-s1`). Every key on this scale is also reachable as `w-`, `h-`,
+        // `min-w-`, `start-` and `end-`, which is Tailwind deriving those from
+        // `spacing`, not five names for one token.
+        'textarea-y': 'var(--pad-textarea-y)',                // 11px
+        compose: 'var(--pad-compose)',                        // 13px
+        reveal: 'var(--pad-reveal)',                          // 46px
+        'tick-row': 'var(--gap-tick-row)',                    // 11px
+        'tick-row-y': 'var(--pad-tick-row-y)',                // 13px
+        'tick-nested-y': 'var(--pad-tick-nested-y)',          // 11px
+        'radio-x': 'var(--pad-radio-x)',                      // 15px
+        'dropdown-y-dialog': 'var(--pad-dropdown-y-dialog)',  // 11px
+        'dropdown-y-filter': 'var(--pad-dropdown-y-filter)',  // 9px
+        'dropdown-x-filter': 'var(--pad-dropdown-x-filter)',  // 13px
+        popover: 'var(--pad-popover)',                        // 7px
+        option: 'var(--gap-option)',                          // 9px
+        'option-y': 'var(--pad-option-y)',                    // 11px
+        'table-row-y': 'var(--pad-table-row-y)',              // 13px
+        'empty-y-inline': 'var(--pad-empty-y-inline)',        // 44px
+        'stat-x': 'var(--pad-stat-x)',                        // 20px
+        'stat-y-grid': 'var(--pad-stat-y-grid)',              // 15px
+        'stat-x-grid': 'var(--pad-stat-x-grid)',              // 17px
+        'stat-grid': 'var(--space-stat-grid)',                // 20px
+        'stat-label': 'var(--space-stat-label)',              // 7px
+        'tab-y-audit': 'var(--pad-tab-y-audit)',              // 9px
+        'tab-flow': 'var(--gap-tab-flow)',                    // 3px
+        'note-y': 'var(--pad-note-y)',                        // 9px
+        'note-x': 'var(--pad-note-x)',                        // 11px
       },
       maxWidth: {
         departments: 'var(--width-departments)', list: 'var(--width-list)',
@@ -316,6 +385,17 @@ export default {
         'tick-nested': 'var(--size-tick-nested)',       // 16px — L-10, a nested tick
         close: 'var(--size-close)',                     // 32px — L-23
         'search-glyph': 'var(--size-search-glyph)',     // 17px — §5.2 SearchField
+        // §5.2 — six more square boxes, from the twelve primitives. Each is
+        // named once and carried on both scales, exactly as the ten above are.
+        // `close` and `search-glyph` hold 32px and 17px already, for L-23's
+        // close button and the magnifier; these keep those roles and the reveal
+        // button gets its own, so neither name has to mean two things.
+        reveal: 'var(--size-reveal)',                   // 32px — the eye button
+        'reveal-glyph': 'var(--size-reveal-glyph)',     // 17px — the eye path
+        'tick-glyph': 'var(--size-tick-glyph)',         // 13px — check in a 19px box
+        'tick-glyph-nested': 'var(--size-tick-glyph-nested)', // 11px — in a 16px box
+        chevron: 'var(--size-chevron)',                 // 15px — dropdown + pager
+        pager: 'var(--size-pager)',                     // 34px — a page button
       },
       height: {
         tile: 'var(--role-tile)', tool: 'var(--size-tool)', avatar: 'var(--size-avatar)',
@@ -332,6 +412,16 @@ export default {
         'tick-nested': 'var(--size-tick-nested)',
         close: 'var(--size-close)',
         'search-glyph': 'var(--size-search-glyph)',
+        reveal: 'var(--size-reveal)',
+        'reveal-glyph': 'var(--size-reveal-glyph)',
+        'tick-glyph': 'var(--size-tick-glyph)',
+        'tick-glyph-nested': 'var(--size-tick-glyph-nested)',
+        chevron: 'var(--size-chevron)',
+        pager: 'var(--size-pager)',
+        // The FAB badge is `min-width:21px; height:21px` — a floor on one axis
+        // and a fixed box on the other — so `count` is on `minWidth` above and
+        // on `height` here, and on `width` nowhere: it never sets one.
+        count: 'var(--size-count)',
       },
       // §5.2 — the search field's icon sits `--inset-search-icon` from the edge.
       // It is an inset, not spacing: naming it here keeps `start-search-icon`

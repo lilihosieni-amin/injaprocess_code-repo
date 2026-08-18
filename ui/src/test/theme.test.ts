@@ -475,6 +475,75 @@ const EXPECTED: Record<string, string | string[]> = {
   // again, here and in the config, so editing effects.css moves both.
   '-translate-y-lift': `-${lengthIn('--hover-lift')}`,
   'backdrop-blur-scrim': tokenValue('--blur-scrim'),
+  // §5.2 — the twelve primitives. Minted in one pass, before the five tasks
+  // that build them run in parallel, so none of them appends to tokens.css
+  // while another is holding the same working tree. Grouped here in the order
+  // the report's table is; `SectionCard` is absent because it mints nothing.
+  //
+  // Six keys are carried on two properties (`w-`/`h-`), which is one name on
+  // two scales — the arrangement `tile`, `glyph` and `close` already have — and
+  // `count` is on `h-`/`min-w-` because the FAB badge fixes one axis and floors
+  // the other. Every `spacing` key here is ALSO reachable as `w-`, `min-w-`,
+  // `start-` and `end-`: that is Tailwind deriving those scales from `spacing`,
+  // not five names for one token.
+  'py-textarea-y': 'var(--pad-textarea-y)',
+  'p-compose': 'var(--pad-compose)',
+  'ps-reveal': 'var(--pad-reveal)',
+  'w-reveal': 'var(--size-reveal)',
+  'h-reveal': 'var(--size-reveal)',
+  'w-reveal-glyph': 'var(--size-reveal-glyph)',
+  'h-reveal-glyph': 'var(--size-reveal-glyph)',
+  'rounded-reveal': 'var(--radius-reveal)',
+  // The pair ledger L-10 turns on: the two tick BOXES are --size-tick /
+  // --size-tick-nested, and each has a radius and a check glyph of its own.
+  // Swap `rounded-tick` and `rounded-tick-nested` and both the token set and
+  // the class set are untouched — this line is what goes red.
+  'rounded-tick': 'var(--radius-tick)',
+  'rounded-tick-nested': 'var(--radius-tick-nested)',
+  'w-tick-glyph': 'var(--size-tick-glyph)',
+  'h-tick-glyph': 'var(--size-tick-glyph)',
+  'w-tick-glyph-nested': 'var(--size-tick-glyph-nested)',
+  'h-tick-glyph-nested': 'var(--size-tick-glyph-nested)',
+  'gap-tick-row': 'var(--gap-tick-row)',
+  'py-tick-row-y': 'var(--pad-tick-row-y)',
+  'py-tick-nested-y': 'var(--pad-tick-nested-y)',
+  'px-radio-x': 'var(--pad-radio-x)',
+  'py-dropdown-y-dialog': 'var(--pad-dropdown-y-dialog)',
+  'py-dropdown-y-filter': 'var(--pad-dropdown-y-filter)',
+  'px-dropdown-x-filter': 'var(--pad-dropdown-x-filter)',
+  'p-popover': 'var(--pad-popover)',
+  'gap-option': 'var(--gap-option)',
+  'py-option-y': 'var(--pad-option-y)',
+  'w-chevron': 'var(--size-chevron)',
+  'h-chevron': 'var(--size-chevron)',
+  'max-h-popover': 'var(--height-popover)',
+  'grid-cols-users': 'var(--grid-users)',
+  'grid-cols-audit': 'var(--grid-audit)',
+  'grid-cols-activity': 'var(--grid-activity)',
+  'py-table-row-y': 'var(--pad-table-row-y)',
+  // …and NOT --pad-empty-y, which is the 48px card variant. One stem, two
+  // values, and the closing paren is what tells them apart.
+  'py-empty-y-inline': 'var(--pad-empty-y-inline)',
+  'w-pager': 'var(--size-pager)',
+  'h-pager': 'var(--size-pager)',
+  'min-w-page-label': 'var(--width-page-label)',
+  // A seventh redefinition of one of Tailwind's own leadings, for the same
+  // reason as the six above: delete the key and `leading-none` still emits, at
+  // Tailwind's `1` rather than the token's, and only this line notices.
+  'leading-none': 'var(--lh-none)',
+  'px-stat-x': 'var(--pad-stat-x)',
+  'min-w-stat': 'var(--width-stat)',
+  'py-stat-y-grid': 'var(--pad-stat-y-grid)',
+  'px-stat-x-grid': 'var(--pad-stat-x-grid)',
+  'my-stat-grid': 'var(--space-stat-grid)',
+  'mt-stat-label': 'var(--space-stat-label)',
+  'py-tab-y-audit': 'var(--pad-tab-y-audit)',
+  'min-w-tab': 'var(--width-tab)',
+  'gap-tab-flow': 'var(--gap-tab-flow)',
+  'py-note-y': 'var(--pad-note-y)',
+  'px-note-x': 'var(--pad-note-x)',
+  'h-count': 'var(--size-count)',
+  'min-w-count': 'var(--size-count)',
   // Media query, not token — asserted by the breakpoint tests below.
   'max1080:hidden': 'display: none',
   'max760:hidden': 'display: none',

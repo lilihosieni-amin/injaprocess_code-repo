@@ -230,3 +230,128 @@
   --pad-empty-y: 48px;
   --pad-empty-x: 20px;
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   §5.2 — the twelve primitives S1 requires and the design system does not
+   define: TextField, PasswordField, Checkbox, Radio, Dropdown, DataTable,
+   Pager, SectionCard, StatTile, NavTabTray, Timeline and the comment FAB.
+
+   Every value below is one those twelve draw and no token carries. They are
+   minted here in ONE pass, before the five tasks that build them run in
+   parallel: two of those tasks appending to this file in one working tree is a
+   later write that silently drops an earlier one, with a green build.
+
+   Nothing in this block corrects an existing token, so nothing here records a
+   "was": each is a value the token layer simply never held. Where the nearest
+   token has the right number but a role of its own — `--size-close` is 32px for
+   ledger L-23's close button, `--size-search-glyph` 17px for the magnifier,
+   `--pad-search-y` 13px for the search field, `--pad-empty-x` 20px for the
+   empty-state card — the number is minted again under its own name rather than
+   borrowed. That is the same rule the R8 block above states, and the reason
+   `--line-dashed` and `--border-pick` both hold #C9B8EC.
+
+   What the ladders already hold is deliberately NOT re-minted: the tick boxes
+   are `--size-tick` 19px and `--size-tick-nested` 16px (ledger L-10), the
+   timeline dot is `--space-11` 26px, the FAB is `--size-fab` / `--size-fab-reader`
+   and its glyph `--space-10` 22px, the table shell is `--radius-doc` 18px with a
+   `--tile-v4` head (ledger L-11) and a `--border-card` hairline, and the ticks'
+   unchecked edge is `--border-pick` (ledger L-09). `SectionCard` appears in the
+   list above and mints nothing at all: every value its two skins draw — #FBF9FE
+   on `--border-current`, #fff on `--border-card`, radius 16, padding 18/16, an
+   11px eyebrow in `--text-muted` — already has a token and a utility.
+   ───────────────────────────────────────────────────────────────────────── */
+:root {
+  /* TextField / Textarea — the input's own `12px 14px` is --space-6/--space-7
+     and its 12px radius is --radius-md. Only the two textareas fall off the
+     ladder. */
+  --pad-textarea-y: 11px;    /* `padding:11px 12px`, 3 uses; the x is --space-6 */
+  --pad-compose: 13px;       /* the compose drawer's textarea, `padding:13px` on
+                                all four sides — ledger L-13's one drawer */
+
+  /* PasswordField — the reveal affordance, four numbers of its own. */
+  --pad-reveal: 46px;        /* `padding-inline-start:46px` on the input */
+  --size-reveal: 32px;       /* the 32x32 transparent button */
+  --size-reveal-glyph: 17px; /* the 17x17 eye / eye-off path */
+  --radius-reveal: 8px;      /* the radii ladder runs 7 -> 9 and L-23 records
+                                that 8px has no token; the reveal button is 8 */
+
+  /* Checkbox — ledger L-10 fixes the two BOXES; the design pairs each with a
+     radius and a check glyph, and neither has a token. */
+  --radius-tick: 6px;              /* the 19px tick */
+  --radius-tick-nested: 5px;       /* the 16px tick */
+  --size-tick-glyph: 13px;         /* the check inside the 19px box, stroke 3 */
+  --size-tick-glyph-nested: 11px;  /* the check inside the 16px box, stroke 3.2 */
+  --gap-tick-row: 11px;            /* row: `gap:11px; padding:13px 14px` */
+  --pad-tick-row-y: 13px;          /* …the x of which is --space-7 */
+  --pad-tick-nested-y: 11px;       /* nested: `gap:10px; padding:11px 12px`,
+                                      both of which are on the ladder */
+
+  /* Radio — the 19px dot is --size-tick, its 2px offset --space-half, its 8px
+     inner pip --space-4; only the card's inline padding is off the ladder. */
+  --pad-radio-x: 15px;             /* the card's `padding:14px 15px` */
+
+  /* Dropdown — the design gives the trigger three scales (screen, dialog,
+     filter chip) and the option two, exactly as SearchField has three places.
+     The screen trigger's `10px 14px` and the small option's `10px 12px` are on
+     the ladder; these are the rest. */
+  --pad-dropdown-y-dialog: 11px;   /* `padding:11px 14px` in the new-user dialog */
+  --pad-dropdown-y-filter: 9px;    /* the filter chip, `padding:9px 13px` */
+  --pad-dropdown-x-filter: 13px;
+  --pad-popover: 7px;              /* the popover's own inset round its options */
+  --gap-option: 9px;               /* option row: `gap:9px` */
+  --pad-option-y: 11px;            /* the large option, `padding:11px 12px` */
+  --size-chevron: 15px;            /* the 15x15 chevron on the trigger — and the
+                                      pager's, which is the same glyph */
+  --height-popover: 280px;         /* the scroll cap. The design writes four
+                                      (212, 240, 250, 280) and states no rule;
+                                      the largest is taken so nothing the design
+                                      showed open is clipped. Referred: it wants
+                                      a ledger row, like L-10 and L-23. */
+
+  /* DataTable — the three grids the design states outright (§5.2). A template
+     is a value like any other, and `grid-cols-[16px_1.4fr_…]` at six call sites
+     is six places to keep one column count in step. */
+  --grid-users: 16px 1.4fr 1fr 1.1fr 1fr 34px;
+  --grid-audit: 1.5fr .7fr .7fr 1.1fr 1.1fr 1fr;
+  --grid-activity: .9fr 1.4fr 1.4fr .9fr 1fr .6fr;
+  --pad-table-row-y: 13px;         /* row padding-y. The three tables write 14
+                                      (users) and 13 (audit, activity) for one
+                                      role, so R8 rule 2 normalises to 13; the
+                                      head's 12 and the 18px inline padding are
+                                      --space-6 and --space-9 already. */
+  --pad-empty-y-inline: 44px;      /* the empty row INSIDE a table, `44px 20px`.
+                                      --pad-empty-y is the 48px card variant;
+                                      the x is --pad-empty-x for both. */
+
+  /* Pager */
+  --size-pager: 34px;              /* the 34x34 page buttons */
+  --width-page-label: 74px;        /* `min-width:74px` on the centred page label */
+
+  /* StatTile — two variants the design draws side by side. */
+  --lh-none: 1;                    /* `line-height:1` on the stat numeral. The
+                                      name Tailwind already uses for 1 is
+                                      redefined here, as the other six leadings
+                                      are, so no leading in the app is untokened. */
+  --pad-stat-x: 20px;              /* header tile, `padding:14px 20px` */
+  --width-stat: 96px;              /* header tile, `min-width:96px` */
+  --pad-stat-y-grid: 15px;         /* 4-up tile, `padding:15px 17px` */
+  --pad-stat-x-grid: 17px;
+  --space-stat-grid: 20px;         /* the 4-up grid's own `margin:20px 0` */
+  --space-stat-label: 7px;         /* the 4-up label's `margin-top:7px`; the
+                                      header variant's 5px is --space-2 */
+
+  /* NavTabTray — the tray (`gap:4px; padding:4px; radius 12`) and its button
+     (`8px 14px`, radius 9) are all on the ladder; three variant values are not. */
+  --pad-tab-y-audit: 9px;          /* audit tabs, `padding:9px 10px` */
+  --width-tab: 132px;              /* audit tabs, `min-width:132px` */
+  --gap-tab-flow: 3px;             /* the flow nav group, `gap:3px; padding:5px` */
+
+  /* Timeline — the 26px dot is --space-11, the 2px rail --space-half, the
+     #EDE5F5 rail colour --border-current. Only the note's box is off-ladder. */
+  --pad-note-y: 9px;               /* the note, `padding:9px 11px` */
+  --pad-note-x: 11px;
+
+  /* FAB — 52/56 and the two-layer coral shadow already have tokens (R3, §4.2);
+     the count badge does not. Its cut-out ring is `2px solid --ink` (L-24). */
+  --size-count: 21px;              /* `min-width:21px; height:21px` */
+}
