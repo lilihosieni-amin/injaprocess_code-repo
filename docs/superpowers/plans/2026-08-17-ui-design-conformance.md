@@ -7072,7 +7072,22 @@ test('the top bar matches the design at this width', async ({ page }) => {
   await expect(bar).toHaveCSS('border-bottom-width', '1px')
   // The app's field, behind everything (§6.0, §9.1).
   await expect(page.locator('[data-shell="panel"]')).toHaveCSS('background-color', 'rgb(42, 29, 94)')
-  await expectDesign(page, 'panel-shell')
+  // NO `expectDesign` HERE, AND NO `DESIGN` ROW — deliberately. `ScreenDesign` makes
+  // `column`, `columnWidth`, `padding`, `h1` and `body` REQUIRED, and `expectDesign`
+  // resolves `[data-screen="<name>"]` then grades the content column's declared and used
+  // width, four-sided padding on the screen root, and the `[data-h1]`/`[data-body]` runs.
+  // Chrome has none of those. The row is not merely missing but UNFILLABLE under that type.
+  //
+  // And inventing the hooks one would need is already known to break a neighbour:
+  // `expectDesign`'s own comment records that adding a `data-body` to this topbar once made
+  // the departments check read the topbar's 22px instead of the screen's 14px. The DESIGN
+  // table's docstring names three screens deliberately absent for the same reason — a wrong
+  // row is worse than no row.
+  //
+  // The chrome's own numbers are graded inline above and below: bar background and hairline,
+  // the per-width padding (22/22/14), the strip's 9/22 at all three widths, and the two
+  // `display` flips at 1080 and 760. If chrome is ever to join the frozen table it needs a
+  // SECOND record type, not a row of this one.
   await shot(page, 'panel-shell')
 })
 
