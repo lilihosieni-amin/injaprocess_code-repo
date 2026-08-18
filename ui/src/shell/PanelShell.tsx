@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, Outlet, useLocation } from 'react-router-dom'
 import { can, type SessionDescriptor } from '../auth/session'
-import { administrationRefusal } from '../auth/can'
+import { administrationRefusal, useCan } from '../auth/can'
 import { usePending, useLogout, useDepartments } from '../api/hooks'
 import { InboxModal } from '../write/InboxModal'
 import { Sheet } from '../ui/Overlay'
+import { pushDismissible, popDismissible, isTopDismissible } from '../ui/dismissibleStack'
 import { SurfaceProvider } from '../ui/surface'
 import { Icon } from '../ui/Icon'
 import { Logo } from '../ui/Logo'
@@ -24,6 +25,24 @@ const TRAY_ITEM = 'px-s7 py-s4 rounded-tool border-0 no-underline cursor-pointer
 // hover UNDER it. The pairing that measured 1.04:1 was `text-card` over the same
 // hover, which is a near-white block with a white label inside it.
 const GHOST = 'inline-flex items-center justify-center bg-card text-violet border-hairline border-line cursor-pointer no-underline hover:bg-tile-v2'
+
+// §6.0's mobile sheet row (Panel :2082) — a full-width block, 14px all round,
+// on the card white behind a 1.5px `--line` hairline, its text aligned to the
+// start, with the label carried on a `flex:1` span. (Values by token name: the
+// guard in src/test/guards.test.ts reads comments, and F6 says this file names
+// no literal.)
+//
+// **Deliberately not `GHOST` plus an override, which is how it was written and
+// is why it shipped wrong.** GHOST is shrink-to-fit and centres what is in it —
+// correct for the bar's four icon and pill controls, and the opposite of this
+// row. Appending `justify-start` to it does nothing at all: Tailwind emits
+// `justify-center` AFTER `justify-start`, and the cascade takes the last
+// declaration in the SHEET's order, never the order of the class attribute. So
+// every entry in the sheet drew its label centred while the source said start,
+// the build exited 0, and jsdom — which computes no cascade — read the class
+// name and agreed with the source. Same trap, same line, for `flex` under
+// `inline-flex`. Nothing here may name a utility this file also names in GHOST.
+const SHEET_ITEM = 'flex items-center justify-start gap-s6 px-s7 py-s7 rounded-tile bg-card text-violet border-hairline border-line cursor-pointer no-underline hover:bg-tile-v2 text-fs-menu font-bold'
 
 // F11's 44px floor against the design's 34-36px boxes: the painted box stays the
 // design's, and an invisible `::before` grows the target. Nothing about it shows.
@@ -45,6 +64,9 @@ export function PanelShell({ session }: { session: SessionDescriptor }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const { pathname } = useLocation()
   const canEdit = can(session, 'edit')
+  // Scope-aware, unlike `can` above, which reads the capability list and
+  // nothing else. Used by the one nav entry whose screen checks a scope.
+  const mayReach = useCan(session)
   // C2 — the conflict inbox is an edit-only surface; a panel user without `edit`
   // never needs the query fired at all.
   const { data: pending = [] } = usePending({ enabled: canEdit })
@@ -56,19 +78,94 @@ export function PanelShell({ session }: { session: SessionDescriptor }) {
   const back = crumbs.length > 1 ? crumbs[crumbs.length - 2] : undefined
   const home = pathname === '/departments'
 
-  // R5 — an entry whose target this caller cannot reach is absent, not disabled.
-  // `administrationRefusal` is the twin `access.requires` uses, including its
-  // order, so the header and the screen it leads to cannot come to disagree; a
-  // holder of `manage_users` scoped to one department is answered 404 on every
-  // endpoint behind «کاربران», which is a wall the app itself pointed them at.
-  // §6.0's «گزارش فعالیت کاربران» is absent for the same rule: no such screen.
+  // R5 — an entry whose target this caller cannot reach is absent, not
+  // disabled, not explained. Each of the three gates below is the SAME
+  // predicate the screen behind it gates itself on, so the header and the
+  // screen it leads to cannot come to disagree.
+  //
+  // «کاربران» — `administrationRefusal` is the twin of `access.requires`,
+  //   INCLUDING ITS ORDER (D56): scope is checked before capability, so a
+  //   holder of `manage_users` scoped to one department is answered **404** on
+  //   every endpoint behind this entry — «چیزی اینجا نیست», a wall the app
+  //   itself pointed them at. That asymmetry is not a tidy-up waiting to
+  //   happen: 404 is for a caller who may not learn the surface exists,
+  //   because user administration is not scoped to a department at all (D11),
+  //   and 403 is for one who holds `*` and merely may not act.
+  //
+  // «سیاست نمایش محتوا» — the same shape, one code milder, and the entry that
+  //   used to be spelled `can(session, 'set_visibility')`. `can` reads the
+  //   capability list and IGNORES SCOPE; Visibility.tsx asks
+  //   `can('set_visibility', '*')` — the `*` because one policy governs every
+  //   department — and refuses 403 otherwise. So a scoped holder was drawn an
+  //   entry and then refused when they clicked it, which is precisely the
+  //   greyed-out-with-an-explanation that R5 forbids, only worse for arriving
+  //   a click too late. `mayReach` is the same `useCan` that screen uses.
+  //   Cosmetic either way (D48) — both endpoints re-derive capability AND
+  //   scope and refuse regardless; this decides what to DRAW.
+  //
+  // «پروفایل و گذرواژه» — ungated, and that is the whole difference. It leads
+  //   to the caller's own password, which everybody has. A gate here would be
+  //   a gate on the only screen in the app whose endpoint cannot be pointed at
+  //   anybody else's row.
+  //
+  // §6.0's «گزارش فعالیت کاربران» is absent under the same rule: no such screen.
   const adminItems = [
     ...(administrationRefusal(session) === undefined
       ? [{ to: '/users', label: 'کاربران', hint: 'نقش، دپارتمان، سرپرست و غیرفعال‌سازی' }] : []),
-    ...(can(session, 'set_visibility')
+    ...(mayReach('set_visibility', '*')
       ? [{ to: '/visibility', label: 'سیاست نمایش محتوا', hint: 'یک تصمیم برای همهٔ غیرادیتورها' }] : []),
     { to: '/profile', label: 'پروفایل و گذرواژه', hint: 'نشست‌های باز و تغییر گذرواژه' },
   ]
+
+  /*
+   * The «مدیریت» popover answers Escape, and joins the SHARED dismissible stack
+   * to do it (I7) — the same module `src/ui/Menu.tsx` and `src/ui/Overlay.tsx`
+   * push onto, so only the topmost dismissible of any kind answers one press.
+   * Without that, an Escape meant for a Dialog opened over this menu would
+   * close both, which is the exact bug I7 was raised for.
+   *
+   * ## Why this is not just `<Menu/>`
+   *
+   * `src/ui/Menu.tsx` already implements this contract, and reusing it was the
+   * first thing tried. It cannot be used here, and not because it is frozen:
+   *
+   *   · its items are `MenuItem = { label, onSelect }` rendered as `<button>`.
+   *     These entries NAVIGATE — they are `<Link>`s with an `href` a reader can
+   *     copy, middle-click and see in the status bar, and three tests assert
+   *     that href. A button that calls `navigate()` is not the same control.
+   *   · every entry here carries a second line, §6.0's `hint`. `MenuItem` has
+   *     one string.
+   *   · its paint is the old chrome's, not §6.0's: a 44px minimum row rather
+   *     than the deliverable's 11px/12px option box, the popover pinned to the
+   *     opposite inline edge, a different corner, a different pad, a different
+   *     hairline and a hard-coded stacking rung instead of the role token.
+   *
+   * So the CONTRACT is reimplemented and the COMPONENT is not: the identity,
+   * the push/pop and the topmost check below are `Menu.tsx`'s, line for line.
+   * When `src/ui/` unfreezes, the lift is to give `Menu` link items and a hint
+   * line and delete this — not to restyle it from the outside.
+   */
+  const adminTrigger = useRef<HTMLButtonElement>(null)
+  const adminId = useRef(Symbol('panel-admin')).current
+
+  useEffect(() => {
+    if (!adminOpen) return
+    pushDismissible(adminId)
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== 'Escape' || !isTopDismissible(adminId)) return
+      setAdminOpen(false)
+      // …and the keyboard goes back where it was standing. `Menu.tsx` does not
+      // do this half, and its omission is a real one: a caller who has tabbed
+      // INTO the popover is holding a node that Escape unmounts, so focus lands
+      // on <body> and the next Tab restarts from the top of the document.
+      adminTrigger.current?.focus()
+    }
+    document.addEventListener('keydown', onKey)
+    return () => {
+      popDismissible(adminId)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [adminOpen, adminId])
 
   /*
    * The three chrome pieces below are FUNCTIONS THAT RETURN ELEMENTS, called as
@@ -87,11 +184,17 @@ export function PanelShell({ session }: { session: SessionDescriptor }) {
   const adminMenu = () => (
     <div className="relative">
       <button
+        ref={adminTrigger}
         type="button" aria-haspopup="menu" aria-expanded={adminOpen}
         onClick={() => setAdminOpen((v) => !v)}
         className={`${TRAY_ITEM} inline-flex items-center gap-s3 bg-transparent text-violet`}
       >
         مدیریت
+        {/* Down, and it stays down while the popover is open: §6.0 draws
+            `M6 9l6 6 6-6` on this button and writes no open-state variant of
+            it, though it has an `adminOpen` to key one off. A caret that flips
+            would be a second, redundant statement of `aria-expanded`, which is
+            already on the button and is the one a screen reader hears. */}
         <Icon name="chevronDown" px={13} stroke={2.4} />
       </button>
       {adminOpen && (
@@ -109,7 +212,16 @@ export function PanelShell({ session }: { session: SessionDescriptor }) {
             {adminItems.map((i) => (
               <Link
                 key={i.to} role="menuitem" to={i.to} onClick={() => setAdminOpen(false)}
-                className={`block px-s6 py-option-y rounded-input no-underline text-start hover:bg-tile-v2 ${pathname === i.to ? 'bg-tile-v2' : 'bg-transparent'}`}
+                // Always the resting fill, for the same reason the nav pill
+                // above is always the active one: §6.0's `{{ a.bg }}` has
+                // exactly one value here. This popover lives inside the top
+                // bar, the top bar is drawn on `/departments` and nowhere else,
+                // and no entry in it leads to `/departments` — so a
+                // `pathname === i.to` branch is unreachable by construction.
+                // It was written, and it was dead: no test could enter it, and
+                // a reviewer's mutation that INVERTED it survived every suite
+                // because inverting unreachable code changes nothing.
+                className="block px-s6 py-option-y rounded-input no-underline text-start hover:bg-tile-v2 bg-transparent"
               >
                 <span className="block text-fs-menu font-bold text-ink">{i.label}</span>
                 <span className="block mt-hint text-fs-xs text-faint">{i.hint}</span>
@@ -224,9 +336,41 @@ export function PanelShell({ session }: { session: SessionDescriptor }) {
           </li>
         ))}
       </ol>
-      <Link to="/departments" aria-label="خانه" className={`${GHOST} ${HIT} ms-auto w-menu-more h-menu-more rounded-input flex-none`}>
-        <Icon name="home" px={16} />
-      </Link>
+      {/* §6.0 draws this cluster as its own box — `margin-inline-start:auto;
+          display:flex; align-items:center; gap:8px; flex:none` (Panel :188) —
+          and puts one button in it. The wrapper is the deliverable's; the
+          second button in it is not, and is the fix for the defect below. */}
+      <div className="ms-auto flex items-center gap-s4 flex-none">
+        <Link to="/departments" aria-label="خانه" className={`${GHOST} ${HIT} w-menu-more h-menu-more rounded-input flex-none`}>
+          <Icon name="home" px={16} />
+        </Link>
+        {/* **REACHABILITY, and the one place this shell overrules §6.0.**
+            `showTopBar: screen === 'depts'` is the design's own call and it is
+            kept — but the design draws sign-out nowhere at all, so it never had
+            to answer where sign-out lives on the screens the bar is absent
+            from. The rewrite that adopted the gating answered "nowhere": an
+            editor standing on the flow screen could not sign out, could not
+            open the conflict inbox, and could not reach any administration
+            screen without going home first — and under 1080 the sheet holding
+            all three had no opener there either, so it was unreachable rather
+            than merely inconvenient. The shipping shell before this one
+            (a033328^) drew its header, sign-out and all, on every route; losing
+            that was a regression against the app, not a concession to the
+            design.
+            One control restores all of it, because the sheet already carries
+            every destination, the inbox and sign-out. It is drawn at EVERY
+            width here, unlike the bar's, which is the ≤1080 stand-in for a nav
+            tray this strip does not have at any width. It takes the strip's own
+            36px white box rather than the bar's 40px lavender one: on this
+            lavender ground a lavender button is a border and nothing else, and
+            §6.0's own «خانه» beside it is white for that reason. */}
+        <button
+          data-r-menu type="button" onClick={() => setMenuOpen(true)} aria-label="فهرست"
+          className={`${GHOST} ${HIT} w-menu-more h-menu-more rounded-input flex-none`}
+        >
+          <Icon name="menu" px={17} stroke={2.2} />
+        </button>
+      </div>
     </nav>
   )
 
@@ -254,20 +398,20 @@ export function PanelShell({ session }: { session: SessionDescriptor }) {
               <p className="m-0 text-fs-body font-bold text-ink">{session.displayName}</p>
               <p className="m-0 mt-half text-fs-xs text-muted">{session.role}</p>
             </div>
-            <Link to="/departments" onClick={() => setMenuOpen(false)} className={`${GHOST} px-s7 py-s7 rounded-tile text-fs-menu font-bold justify-start`}>
+            <Link to="/departments" onClick={() => setMenuOpen(false)} className={`${SHEET_ITEM}`}>
               دپارتمان‌ها
             </Link>
             {adminItems.map((i) => (
-              <Link key={i.to} to={i.to} onClick={() => setMenuOpen(false)} className={`${GHOST} px-s7 py-s7 rounded-tile text-fs-menu font-bold justify-start`}>
+              <Link key={i.to} to={i.to} onClick={() => setMenuOpen(false)} className={`${SHEET_ITEM}`}>
                 {i.label}
               </Link>
             ))}
             {canEdit && (
-              <button type="button" onClick={() => { setMenuOpen(false); setInboxOpen(true) }} className={`${GHOST} px-s7 py-s7 rounded-tile text-fs-menu font-bold justify-start`}>
+              <button type="button" onClick={() => { setMenuOpen(false); setInboxOpen(true) }} className={`${SHEET_ITEM}`}>
                 صندوق بازبینی {openCount > 0 && toFa(openCount)}
               </button>
             )}
-            <button type="button" onClick={() => logout.mutate()} className={`${GHOST} px-s7 py-s7 rounded-tile text-fs-menu font-bold justify-start`}>
+            <button type="button" onClick={() => logout.mutate()} className={`${SHEET_ITEM}`}>
               خروج
             </button>
           </div>

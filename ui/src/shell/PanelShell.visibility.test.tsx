@@ -23,6 +23,11 @@ afterEach(() => vi.restoreAllMocks())
  *
  * The fetch stub is the shell's two reads: it calls `useDepartments` for the
  * crumb trail's Persian names now, as well as `usePending`.
+ *
+ * `BASE` carries `scopes: ['*']`, and for a long time every fixture in this
+ * file inherited it unchanged — which is exactly why nothing here could see a
+ * gate that read the capability and ignored the scope. Any test about this
+ * entry's SCOPE must name its own.
  */
 function mount(session: SessionDescriptor) {
   vi.spyOn(globalThis, 'fetch').mockImplementation(() =>
@@ -89,6 +94,38 @@ describe('the policy entry in the panel header', () => {
     // between "this entry is gated" and "nothing rendered at all".
     expect(screen.getByRole('menu')).toBeInTheDocument()
     expect(policy()).toBeNull()
+  })
+
+  it('is not drawn for a holder of set_visibility scoped to one department', async () => {
+    // **R5, and the fixture every other test in this file was missing.** All
+    // five of them hold `scopes: ['*']`, so none could tell a gate that reads
+    // the capability list from one that also reads the scope — and the gate
+    // was the first kind: `can(session, 'set_visibility')`, where `can` is
+    // `descriptor.capabilities.includes(...)` and ignores scope entirely.
+    //
+    // Visibility.tsx asks `can('set_visibility', '*')` — the `*` because one
+    // policy governs every department (D11) — and returns a 403 refusal
+    // otherwise. So this session was shown the entry and refused the instant
+    // they pressed it: an unreachable target on their screen, which R5 forbids
+    // in a form worse than a greyed-out control, because it costs a click to
+    // discover. The sibling «کاربران» gets this right through
+    // `administrationRefusal` and has had a scoped fixture of its own in
+    // shells.test.tsx from the start; this entry had none.
+    mount({ ...BASE, capabilities: ['view', 'edit', 'set_visibility'], scopes: ['dept:dining'] })
+    await openAdmin()
+    // …and the menu it is absent from is on screen, so this is "the entry is
+    // gated" and not "nothing rendered".
+    expect(screen.getByRole('menu')).toBeInTheDocument()
+    expect(policy()).toBeNull()
+  })
+
+  it('is drawn for a holder scoped `*`, which is the pair’s other half', async () => {
+    // Without this the gate could be `false` and every negative above would
+    // still pass. `BASE` is `scopes: ['*']`, and it is spelled out here rather
+    // than inherited silently, because the scope is now the axis under test.
+    mount({ ...BASE, capabilities: ['view', 'edit', 'set_visibility'], scopes: ['*'] })
+    await openAdmin()
+    expect(policy()).toBeInTheDocument()
   })
 
   it('is not drawn for a panel user who holds view_audit but not set_visibility', async () => {

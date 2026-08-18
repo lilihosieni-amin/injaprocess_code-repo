@@ -1,15 +1,14 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import postcss from 'postcss'
-import tailwind from 'tailwindcss'
-import config from '../../tailwind.config.js'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AppShell } from './AppShell'
 import { PanelShell } from './PanelShell'
 import { Icon } from '../ui/Icon'
+import { pushDismissible, popDismissible, isTopDismissible } from '../ui/dismissibleStack'
 import { expectExpandedHitArea } from '../test/a11y'
+import { paint, winner, declarations } from '../test/paint'
 import type { SessionDescriptor, Capability } from '../auth/session'
 
 /*
@@ -115,7 +114,9 @@ const DEPTS = [{ code: 'dining', name: 'سالن', count: 3, subs: 0 }]
 function renderPanel(
   caps: Capability[],
   entry: string,
-  { pending = [] as unknown[], depts = DEPTS as unknown[] } = {},
+  { pending = [] as unknown[], depts = DEPTS as unknown[], scopes }: {
+    pending?: unknown[]; depts?: unknown[]; scopes?: string[]
+  } = {},
 ) {
   vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
     const url = String(typeof input === 'string' ? input : (input as Request).url ?? input)
@@ -124,14 +125,16 @@ function renderPanel(
       status: 200, headers: { 'Content-Type': 'application/json' },
     }))
   })
+  const who = scopes === undefined ? session(caps) : { ...session(caps), scopes }
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={qc}>
       <MemoryRouter initialEntries={[entry]}>
         <Routes>
-          <Route element={<PanelShell session={session(caps)} />}>
+          <Route element={<PanelShell session={who} />}>
             <Route path="/departments" element={<p>محتوا</p>} />
             <Route path="/departments/:code" element={<p>محتوا</p>} />
+            <Route path="/processes/:pid" element={<p>محتوا</p>} />
             <Route path="/processes/:pid/flow" element={<p>محتوا</p>} />
             <Route path="/users" element={<p>محتوا</p>} />
             <Route path="/visibility" element={<p>محتوا</p>} />
@@ -141,6 +144,40 @@ function renderPanel(
       </MemoryRouter>
     </QueryClientProvider>,
   )
+}
+
+/**
+ * The administration fixture: every entry drawn, so a test about the menu's
+ * CONTENTS is not silently a test about an empty menu.
+ *
+ * `scopes: ['*']` because both gated entries need it — «کاربران» is answered
+ * 404 without it (D56) and «سیاست نمایش محتوا» 403 — and `session()` above is
+ * deliberately scoped to one department, which is what makes the two negative
+ * fixtures non-vacuous. It goes through `renderPanel`, and that is not a
+ * tidy-up: the two tests that used to build this render inline had **no fetch
+ * stub at all**, so `useDepartments` and `usePending` reached jsdom's real
+ * `fetch` and the suite's strongest content fixtures were leaning on a network
+ * call that happened to fail quietly.
+ */
+function renderAdmin(entry = '/departments') {
+  return renderPanel(['view', 'edit', 'set_visibility', 'manage_users'], entry, { scopes: ['*'] })
+}
+
+/** Every `d` this element draws, in order — the whole glyph, not its first path. */
+function glyphOf(el: Element | null | undefined): string {
+  return Array.from(el?.querySelectorAll('path') ?? []).map((p) => p.getAttribute('d')).join(' ')
+}
+
+/**
+ * The drawing `<Icon name={…}/>` makes, read off the icon set rather than
+ * matched against a literal `d` — so these pins survive Task 11 redrawing a
+ * glyph and still fail a swap to a different one.
+ */
+function iconGlyph(name: Parameters<typeof Icon>[0]['name']): string {
+  const { container, unmount } = render(<Icon name={name} px={16} />)
+  const d = glyphOf(container)
+  unmount()
+  return d
 }
 
 /** The header's own controls — the set audit S1 measured. */
@@ -344,13 +381,7 @@ describe('PanelShell chrome', () => {
   it('draws the administration entries this caller CAN reach', async () => {
     // The non-vacuous twin of the test above: without it, a menu that renders
     // nothing at all passes, and so does one whose gate is `false`.
-    render(
-      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-        <MemoryRouter initialEntries={['/departments']}>
-          <PanelShell session={{ ...session(['view', 'edit', 'set_visibility', 'manage_users']), scopes: ['*'] }} />
-        </MemoryRouter>
-      </QueryClientProvider>,
-    )
+    renderAdmin()
     await userEvent.click(screen.getByRole('button', { name: /مدیریت/ }))
     expect(screen.getByRole('menuitem', { name: /کاربران/ })).toHaveAttribute('href', '/users')
     expect(screen.getByRole('menuitem', { name: /سیاست نمایش محتوا/ })).toHaveAttribute('href', '/visibility')
@@ -424,13 +455,7 @@ describe('PanelShell chrome', () => {
   it('offers every destination the bar has, in the sheet the hamburger opens', async () => {
     // The mobile chrome is the ONLY route to the inbox and to sign-out below
     // 1080, so a sheet that lost one of them would strand a phone.
-    render(
-      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-        <MemoryRouter initialEntries={['/departments']}>
-          <PanelShell session={{ ...session(['view', 'edit', 'set_visibility', 'manage_users']), scopes: ['*'] }} />
-        </MemoryRouter>
-      </QueryClientProvider>,
-    )
+    renderAdmin()
     await userEvent.click(screen.getByRole('button', { name: 'فهرست' }))
     const sheet = screen.getByRole('dialog')
     for (const name of ['دپارتمان‌ها', 'کاربران', 'سیاست نمایش محتوا', 'پروفایل و گذرواژه']) {
@@ -487,6 +512,352 @@ describe('PanelShell chrome', () => {
   })
 })
 
+/* ==================================================================== *
+ * PanelShell — reachability
+ *
+ * §6.0 draws the top bar on `/departments` and the crumb strip everywhere
+ * else, and that gating is kept. What the design cannot settle is where the
+ * app's own controls go on the screens the bar is absent from: it draws no
+ * sign-out at all, so it never had to answer.
+ *
+ * The answer this shell shipped with was "nowhere". Every test in the block
+ * above passed over an editor who, standing on the flow screen, could not
+ * sign out, could not open the conflict inbox and could not reach any
+ * administration screen — and, under 1080, had no opener for the sheet that
+ * holds all three either. The shipping shell before the rewrite (a033328^)
+ * drew its header on every route.
+ * ==================================================================== */
+
+/** Every route this shell is ever mounted on, one per branch of its chrome. */
+const ROUTES = ['/departments', '/departments/dining', '/processes/dining-003', '/processes/dining-003/flow']
+
+describe('PanelShell reachability', () => {
+  it('puts sign-out one control away on EVERY route', async () => {
+    for (const entry of ROUTES) {
+      const { unmount } = renderAdmin(entry)
+      const opener = screen.getByRole('button', { name: 'فهرست' })
+      await userEvent.click(opener)
+      expect(within(screen.getByRole('dialog')).getByRole('button', { name: 'خروج' }), entry)
+        .toBeInTheDocument()
+      unmount()
+    }
+  })
+
+  it('puts the conflict inbox one control away on EVERY route', async () => {
+    for (const entry of ROUTES) {
+      const { unmount } = renderAdmin(entry)
+      await userEvent.click(screen.getByRole('button', { name: 'فهرست' }))
+      expect(within(screen.getByRole('dialog')).getByRole('button', { name: /صندوق بازبینی/ }), entry)
+        .toBeInTheDocument()
+      unmount()
+    }
+  })
+
+  it('puts every administration screen one control away on EVERY route', async () => {
+    for (const entry of ROUTES) {
+      const { unmount } = renderAdmin(entry)
+      await userEvent.click(screen.getByRole('button', { name: 'فهرست' }))
+      const sheet = screen.getByRole('dialog')
+      for (const name of ['کاربران', 'سیاست نمایش محتوا', 'پروفایل و گذرواژه']) {
+        expect(within(sheet).getByRole('link', { name: new RegExp(name) }), `${entry} ${name}`)
+          .toBeInTheDocument()
+      }
+      unmount()
+    }
+  })
+
+  it('draws the crumb strip’s opener at every width, unlike the bar’s', () => {
+    // The bar's hamburger is the ≤1080 stand-in for a nav tray that is drawn
+    // above it; the strip has no tray at any width, so its opener is not a
+    // narrow-screen affordance and must not be hidden at a breakpoint. A
+    // `max1080:` on this one puts every desktop editor back where they started.
+    const { container, unmount } = renderPanel(['view', 'edit'], '/departments/dining')
+    const opener = container.querySelector('[data-r-crumbbar] [data-r-menu]') as HTMLElement
+    expect(opener).toBeInTheDocument()
+    expect(opener.className).not.toMatch(/\bhidden\b/)
+    expect(opener.className).not.toMatch(/max\d+:/)
+    unmount()
+    // …and it lives in the strip's own inline-end cluster, beside «خانه»,
+    // which is the box §6.0 draws there.
+    const inner = renderPanel(['view', 'edit'], '/departments/dining')
+    const cluster = inner.container.querySelector('[data-r-crumbbar] .ms-auto') as HTMLElement
+    expect(within(cluster).getByRole('link', { name: 'خانه' })).toBeInTheDocument()
+    expect(within(cluster).getByRole('button', { name: 'فهرست' })).toBeInTheDocument()
+  })
+})
+
+/* ==================================================================== *
+ * PanelShell — the chrome's controls actually do something
+ *
+ * Every assertion in this block is about an `onClick`. Before it, the suite
+ * clicked «مدیریت» and the scrim and nothing else in the chrome: dropping the
+ * handler off the top bar's sign-out, off the inbox button, off the sheet's
+ * sign-out, or off the sheet's destinations left every vitest and every
+ * Playwright project green, at all three widths.
+ * ==================================================================== */
+
+/** The URLs the shell's stubbed `fetch` was actually asked for. */
+const asked = () => vi.mocked(globalThis.fetch).mock.calls.map((c) => String(c[0]))
+
+/** `POST /api/auth/logout` — what `useLogout` does and the only proof it ran. */
+function signedOut(): number {
+  return vi.mocked(globalThis.fetch).mock.calls
+    .filter((c) => String(c[0]).includes('/api/auth/logout'))
+    .filter((c) => (c[1] as RequestInit | undefined)?.method === 'POST')
+    .length
+}
+
+/** The inbox modal's own subtitle — a string no button in either chrome carries. */
+const INBOX_BODY = /مقدار فعلی در برابر پیشنهاد/
+
+describe('PanelShell controls', () => {
+  it('signs out when the top bar’s «خروج» is pressed', async () => {
+    renderPanel(['view', 'edit'], '/departments')
+    expect(signedOut()).toBe(0)
+    await userEvent.click(screen.getByRole('button', { name: 'خروج' }))
+    await waitFor(() => expect(signedOut()).toBe(1))
+  })
+
+  it('signs out when the sheet’s «خروج» is pressed', async () => {
+    // The phone's only sign-out, and a separate handler from the one above.
+    renderAdmin()
+    await userEvent.click(screen.getByRole('button', { name: 'فهرست' }))
+    await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'خروج' }))
+    await waitFor(() => expect(signedOut()).toBe(1))
+  })
+
+  it('opens the conflict inbox when the top bar’s inbox is pressed', async () => {
+    renderPanel(['view', 'edit'], '/departments')
+    expect(screen.queryByText(INBOX_BODY)).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: /صندوق بازبینی/ }))
+    expect(await screen.findByText(INBOX_BODY)).toBeInTheDocument()
+  })
+
+  it('opens the inbox from the sheet, and shuts the sheet on the way', async () => {
+    // Two state changes on one handler, and the suite could see neither. A
+    // sheet that opens the inbox and stays put leaves the phone's whole screen
+    // covered by the menu it was dismissed from; one that shuts and opens
+    // nothing is a control that does nothing at all.
+    renderAdmin()
+    await userEvent.click(screen.getByRole('button', { name: 'فهرست' }))
+    await userEvent.click(
+      within(screen.getByRole('dialog')).getByRole('button', { name: /صندوق بازبینی/ }),
+    )
+    expect(await screen.findByText(INBOX_BODY)).toBeInTheDocument()
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+  })
+
+  it('shuts the sheet behind every destination it offers', async () => {
+    // The sheet navigates and then stands over the screen it navigated to.
+    for (const name of ['دپارتمان‌ها', 'کاربران', 'سیاست نمایش محتوا', 'پروفایل و گذرواژه']) {
+      const { unmount } = renderAdmin()
+      await userEvent.click(screen.getByRole('button', { name: 'فهرست' }))
+      await userEvent.click(
+        within(screen.getByRole('dialog')).getByRole('link', { name: new RegExp(name) }),
+      )
+      await waitFor(() => expect(screen.queryByRole('dialog'), name).toBeNull())
+      unmount()
+    }
+  })
+
+  it('points the brand lockup and the nav pill at the home screen', async () => {
+    // Neither destination was asserted, so the logo could take you to the
+    // password screen and the one nav entry to the policy screen, and the crumb
+    // links — whose `href`s ARE asserted — would go on passing.
+    const { container, unmount } = renderPanel(['view', 'edit'], '/departments')
+    const lockup = container.querySelector('[data-r-topbar] > a') as HTMLElement
+    expect(within(lockup).getByText('اینجا فست‌فود')).toBeInTheDocument()
+    expect(lockup).toHaveAttribute('href', '/departments')
+    expect(container.querySelector('[data-r-nav] a')).toHaveAttribute('href', '/departments')
+    unmount()
+    // …and pressing the lockup keeps you there rather than moving you.
+    renderPanel(['view', 'edit'], '/departments')
+    await userEvent.click(within(
+      screen.getByText('اینجا فست‌فود').closest('a') as HTMLElement,
+    ).getByText('اینجا فست‌فود'))
+    expect(await screen.findByRole('button', { name: /مدیریت/ })).toBeInTheDocument()
+    expect(asked().some((u) => u.includes('/api/departments'))).toBe(true)
+  })
+})
+
+/* ==================================================================== *
+ * PanelShell — the glyphs
+ *
+ * Task 11's finding species: a wrong picture on a real button. Every control
+ * below carries a `<Icon name>` whose drawing nothing measured, so the panel
+ * could sign you out under a hamburger, send you home under a sheet of paper
+ * and open the inbox under a speech bubble with the whole suite green.
+ * ==================================================================== */
+
+describe('PanelShell glyphs', () => {
+  it('draws six DIFFERENT pictures, so the pins below are about something', () => {
+    // The negative half. Without it, an icon set that had collapsed to one
+    // drawing would satisfy every assertion in this block.
+    const names = ['logout', 'menu', 'home', 'file', 'inbox', 'comment', 'chevronDown', 'chevronUp'] as const
+    const drawn = names.map(iconGlyph)
+    for (const d of drawn) expect(d).not.toBe('')
+    expect(new Set(drawn).size).toBe(names.length)
+  })
+
+  it('draws the sign-out glyph on sign-out, not the hamburger beside it', () => {
+    const { unmount } = renderPanel(['view', 'edit'], '/departments')
+    const out = glyphOf(screen.getByRole('button', { name: 'خروج' }))
+    unmount()
+    expect(out).toBe(iconGlyph('logout'))
+    expect(out).not.toBe(iconGlyph('menu'))
+  })
+
+  it('draws the inbox tray on the inbox, not a speech bubble', () => {
+    // The deliverable draws a TRAY on this button (Panel :158). `comment` is
+    // the glyph an earlier pass reached for and is a different picture.
+    const { unmount } = renderPanel(['view', 'edit'], '/departments')
+    const box = glyphOf(screen.getByRole('button', { name: /صندوق بازبینی/ }))
+    unmount()
+    expect(box).toBe(iconGlyph('inbox'))
+    expect(box).not.toBe(iconGlyph('comment'))
+  })
+
+  it('draws a house on «خانه», not a sheet of paper', () => {
+    // §6.0 draws `M3 11l9-7 9 7v9…` on this very button (Panel :189). `file` is
+    // in the panel's own set, so a swap compiles and every other test agrees.
+    const { unmount } = renderPanel(['view', 'edit'], '/departments/dining')
+    const house = glyphOf(screen.getByRole('link', { name: 'خانه' }))
+    unmount()
+    expect(house).toBe(iconGlyph('home'))
+    expect(house).not.toBe(iconGlyph('file'))
+  })
+
+  it('draws the hamburger on both sheet openers, not the tray or a house', () => {
+    for (const entry of ['/departments', '/departments/dining']) {
+      const { unmount } = renderPanel(['view', 'edit'], entry)
+      const burger = glyphOf(screen.getByRole('button', { name: 'فهرست' }))
+      expect(burger, entry).toBe(iconGlyph('menu'))
+      expect(burger, entry).not.toBe(iconGlyph('home'))
+      unmount()
+    }
+  })
+
+  it('points the «مدیریت» caret down while its menu is shut, and leaves it there', async () => {
+    // §6.0 draws `M6 9l6 6 6-6` here and writes no open-state variant, though
+    // it has an `adminOpen` to key one off. A caret drawn UP while the menu is
+    // shut says the opposite of what the button does, and `aria-expanded` —
+    // which IS asserted — cannot see it.
+    renderPanel(['view', 'edit'], '/departments')
+    const trigger = screen.getByRole('button', { name: /مدیریت/ })
+    expect(glyphOf(trigger)).toBe(iconGlyph('chevronDown'))
+    expect(glyphOf(trigger)).not.toBe(iconGlyph('chevronUp'))
+    await userEvent.click(trigger)
+    expect(screen.getByRole('menu')).toBeInTheDocument()
+    expect(glyphOf(screen.getByRole('button', { name: /مدیریت/ }))).toBe(iconGlyph('chevronDown'))
+  })
+})
+
+/* ==================================================================== *
+ * PanelShell — dismissing the «مدیریت» popover from the keyboard
+ * ==================================================================== */
+
+describe('PanelShell popover dismissal', () => {
+  it('shuts on Escape and hands the keyboard back to the trigger', async () => {
+    // Probed before this landed: open, Escape, and the menu was still there.
+    // The only ways out were a mouse click on the trigger or on an
+    // `aria-hidden` scrim, so a keyboard-only caller could not dismiss it at
+    // all — they could tab through it, past it, and never close it.
+    renderPanel(['view', 'edit'], '/departments')
+    const trigger = screen.getByRole('button', { name: /مدیریت/ })
+    trigger.focus()
+    await userEvent.keyboard('{Enter}')
+    expect(screen.getByRole('menu')).toBeInTheDocument()
+    // **Standing INSIDE the popover when Escape arrives**, which is the only
+    // arrangement that can see the second half of this test. Pressed from the
+    // trigger, focus was never going to move, so an implementation that
+    // restores nothing passes — measured: dropping the restore left a version
+    // of this test that opened from the trigger completely green.
+    await userEvent.tab()
+    const first = within(screen.getByRole('menu')).getAllByRole('menuitem')[0]
+    expect(document.activeElement).toBe(first)
+    await userEvent.keyboard('{Escape}')
+    expect(screen.queryByRole('menu')).toBeNull()
+    expect(screen.getByRole('button', { name: /مدیریت/ })).toHaveAttribute('aria-expanded', 'false')
+    // …and the keyboard is back on the trigger rather than on <body>, which is
+    // the half `src/ui/Menu.tsx` leaves out: Escape unmounts the node the
+    // caller was standing on, and focus falls to the document body, so the
+    // next Tab restarts from the top of the page.
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: /مدیریت/ }))
+  })
+
+  it('defers to whatever dismissible is above it, rather than listening on document', async () => {
+    // I7 — the shared stack, the one `src/ui/Menu.tsx` and `src/ui/Overlay.tsx`
+    // push onto. A bare `document` keydown listener passes the test above and
+    // fails this one: with a Dialog opened over this menu, one Escape would
+    // close both, which is the exact defect I7 was raised for.
+    renderPanel(['view', 'edit'], '/departments')
+    await userEvent.click(screen.getByRole('button', { name: /مدیریت/ }))
+    expect(screen.getByRole('menu')).toBeInTheDocument()
+    const above = Symbol('something over the menu')
+    pushDismissible(above)
+    try {
+      await userEvent.keyboard('{Escape}')
+      expect(screen.getByRole('menu')).toBeInTheDocument()
+    } finally {
+      popDismissible(above)
+    }
+    // …and it answers again the moment it is topmost.
+    await userEvent.keyboard('{Escape}')
+    expect(screen.queryByRole('menu')).toBeNull()
+  })
+
+  it('leaves the shared stack as it found it', async () => {
+    // An identity that is pushed and never popped sits on top of the stack for
+    // ever and silences every dismissible after it — including the sheet and
+    // the inbox modal this same shell opens.
+    const { unmount } = renderPanel(['view', 'edit'], '/departments')
+    await userEvent.click(screen.getByRole('button', { name: /مدیریت/ }))
+    await userEvent.keyboard('{Escape}')
+    expect(screen.queryByRole('menu')).toBeNull()
+    // If the shell's identity were still on the stack, this one could not be
+    // the top and its own Escape would be ignored.
+    const after = Symbol('after')
+    pushDismissible(after)
+    expect(isTopDismissible(after)).toBe(true)
+    popDismissible(after)
+    unmount()
+  })
+
+  it('takes its keydown listener off the document when it shuts', async () => {
+    // The other half of the cleanup, and it cannot be observed through
+    // behaviour: a listener left behind is guarded by the same
+    // `isTopDismissible` check as the live one, so it early-returns and does
+    // nothing visible. What it does instead is accumulate — one more listener
+    // on `document` per open, for the life of the session — and the only place
+    // that is visible is the registration itself. So the registration is what
+    // is counted.
+    const added: unknown[] = []
+    const removed: unknown[] = []
+    const realAdd = document.addEventListener.bind(document)
+    const realRemove = document.removeEventListener.bind(document)
+    vi.spyOn(document, 'addEventListener').mockImplementation((t, l, o) => {
+      if (t === 'keydown') added.push(l)
+      realAdd(t, l as EventListener, o)
+    })
+    vi.spyOn(document, 'removeEventListener').mockImplementation((t, l, o) => {
+      if (t === 'keydown') removed.push(l)
+      realRemove(t, l as EventListener, o)
+    })
+    renderPanel(['view', 'edit'], '/departments')
+    const trigger = () => screen.getByRole('button', { name: /مدیریت/ })
+    for (let i = 0; i < 3; i++) {
+      await userEvent.click(trigger())
+      expect(screen.getByRole('menu')).toBeInTheDocument()
+      await userEvent.click(trigger())
+      expect(screen.queryByRole('menu')).toBeNull()
+    }
+    // Three opens, three closes: whatever went on came back off, and nothing is
+    // still attached. A count of zero on both sides would make this vacuous.
+    expect(added.length).toBeGreaterThanOrEqual(3)
+    expect(new Set(removed)).toEqual(new Set(added))
+  })
+})
+
 /* -------------------------------------------------------------------------
    Everything above proves a string was written into a class attribute. jsdom
    paints nothing, so it cannot tell `py-crumb-y` from `py-crmub-y` — an
@@ -497,71 +868,32 @@ describe('PanelShell chrome', () => {
    So the block below runs the shell's OWN rendered class strings through the
    real `tailwind.config.js` and asserts the declarations that come out.
 
-   `paint` and `winner` are copied from src/ui/table.test.tsx, which asks for
-   them to be lifted into a shared module "by Task 12". They are not lifted
-   here: doing so means editing two files under `src/ui/`, which this task is
-   forbidden to touch. Recorded in the task report instead.
+   `paint`, `winner` and `declarations` come from `src/test/paint.ts`, which is
+   where src/ui/table.test.tsx's comment asks for them to be lifted "by Task
+   12". Lifting the two copies under `src/ui/` is one import each and is left to
+   whoever unfreezes that directory; this file's copy is gone, so there are two
+   left rather than three, and the module they should point at exists.
    ------------------------------------------------------------------------- */
-
-/** One emitted rule, split into the class that carries it and the state it applies in. */
-type Painted = { klass: string; state: string; media: string; decls: string }
-
-/** Compile a class string through the real `tailwind.config.js`. */
-async function paint(classNames: string): Promise<Painted[]> {
-  const classes = [...new Set(classNames.split(/\s+/).filter(Boolean))]
-  const result = await postcss([
-    tailwind({ ...config, content: [{ raw: classes.join(' '), extension: 'html' }] }),
-  ]).process('@tailwind utilities;', { from: undefined })
-
-  const out: Painted[] = []
-  result.root.walkRules((rule) => {
-    // A selector that sets nothing is the failure this block exists to catch.
-    if (!rule.nodes || rule.nodes.length === 0) return
-    const media =
-      rule.parent && 'name' in rule.parent ? String((rule.parent as { params: string }).params) : ''
-    const decls = rule.nodes
-      .filter((n) => n.type === 'decl')
-      .map((n) => `${(n as unknown as { prop: string }).prop}: ${(n as unknown as { value: string }).value}`)
-      .join('; ')
-    for (const sel of rule.selectors) {
-      const m = /^\.((?:\\.|[^\s.:>~+,(){}[\]])+)(.*)$/.exec(sel)
-      if (!m) continue
-      out.push({ klass: m[1].replace(/\\/g, ''), state: m[2], media, decls })
-    }
-  })
-  return out
-}
-
-/**
- * The winning value of `prop` for an element wearing these classes, in `state`
- * and at `media` — the LAST declaration in emitted order, which is how the
- * cascade resolves two utilities that set the same property. Returns `''` when
- * nothing sets it, so a missing declaration and an invented class fail alike.
- */
-function winner(painted: Painted[], prop: string, state = '', media = ''): string {
-  let value = ''
-  for (const p of painted) {
-    if (p.state !== state || p.media !== media) continue
-    for (const d of p.decls.split('; ')) {
-      const [name, ...rest] = d.split(': ')
-      if (name === prop) value = rest.join(': ')
-    }
-  }
-  return value
-}
 
 const R1080 = '(max-width: 1080px)'
 const R760 = '(max-width: 760px)'
 
-/** The class strings the shell actually renders, read off the DOM. */
+/**
+ * The class strings the shell actually renders, read off the DOM.
+ *
+ * `unmount` is handed back and every caller uses it. Without that, each render
+ * stayed mounted for the rest of the file and `screen` queries went ambiguous
+ * across tests — one assertion below had already been written as
+ * `getAllByRole(…)[1]` to step over a shell nobody had taken down.
+ */
 function chrome(entry: string, caps: Capability[] = ['view', 'edit']) {
-  const { container } = renderPanel(caps, entry)
+  const { container, unmount } = renderPanel(caps, entry)
   const cls = (sel: string) => {
     const el = container.querySelector(sel)
     if (el === null) throw new Error(`chrome(): nothing rendered for \`${sel}\``)
     return (el as HTMLElement).className
   }
-  return { container, cls }
+  return { container, cls, unmount }
 }
 
 describe('the compiler this block is asserted with', () => {
@@ -579,12 +911,34 @@ describe('the compiler this block is asserted with', () => {
     expect(winner(await paint('max1080:hidden'), 'display')).toBe('')
     expect(winner(await paint('max9999:hidden'), 'display', '', '(max-width: 9999px)')).toBe('')
   })
+
+  it('reports the VALUE a property settles on, not merely that it was set', async () => {
+    // The whole-set guards below are `toEqual` against a written-out set, and
+    // the first spelling of them collected property NAMES alone: it checked
+    // that nobody had added or removed a declaration and let every swap that
+    // keeps the property and changes its value walk through. Two survived a
+    // reviewer's mutation survey on that exact axis. `declarations` returns
+    // `name: value` pairs, and this is the pin that says so.
+    expect(declarations(await paint('items-center'))).toEqual(new Set(['align-items: center']))
+    expect(declarations(await paint('items-start'))).toEqual(new Set(['align-items: flex-start']))
+    expect(declarations(await paint('flex'))).toEqual(new Set(['display: flex']))
+    expect(declarations(await paint('inline-flex'))).toEqual(new Set(['display: inline-flex']))
+    // …resolved through the cascade, like `winner`: two utilities setting one
+    // property report once, at the value that actually wins. This pair is not
+    // hypothetical — it is how the sheet's rows drew centred labels while their
+    // source said `justify-start`.
+    expect(declarations(await paint('justify-start justify-center')))
+      .toEqual(new Set(['justify-content: center']))
+    // …and an invented utility contributes nothing rather than a bare name.
+    expect(declarations(await paint('items-centre'))).toEqual(new Set())
+  })
 })
 
 describe('what the panel chrome’s class strings compile to', () => {
   it('paints the top bar white on a cream hairline, at the design’s box', async () => {
-    const { cls } = chrome('/departments')
+    const { cls, unmount } = chrome('/departments')
     const bar = await paint(cls('[data-r-topbar]'))
+    unmount()
     // §6.0 — `padding:12px 22px; background:#fff; border-bottom:1px solid #EFE7DC`.
     expect(winner(bar, 'background-color')).toBe('var(--card)')
     expect(winner(bar, 'border-bottom-width')).toBe('1px')
@@ -599,20 +953,64 @@ describe('what the panel chrome’s class strings compile to', () => {
     expect(winner(bar, 'padding-left', '', R760)).toBe('var(--space-7)')
     expect(winner(bar, 'padding-top', '', R760)).toBe('var(--space-5)')
     expect(winner(bar, 'gap', '', R760)).toBe('var(--space-5)')
-    // …and the whole emitted set at rest, so a declaration nobody thought to
-    // name cannot arrive unnoticed.
-    expect(new Set(bar.filter((p) => p.state === '' && p.media === '')
-      .flatMap((p) => p.decls.split('; ').map((d) => d.split(':')[0]))))
-      .toEqual(new Set([
-        'display', 'align-items', 'gap', 'padding-left', 'padding-right',
-        'padding-top', 'padding-bottom', 'background-color', 'border-bottom-width',
-        'border-color', 'flex', 'z-index',
-      ]))
+    // …and the whole emitted set at rest, WITH the value each property settles
+    // on, so neither a declaration nobody thought to name nor a value nobody
+    // asked for can arrive unnoticed.
+    //
+    // The value half is the half that catches things. Collecting names alone —
+    // which is what this assertion used to do — passed a bar whose
+    // `align-items` had been moved off centre, and passed a bar changed from
+    // `flex` to `inline-flex`, which shrinks a full-width white bar to the
+    // width of its own buttons and stops the cream hairline at the last one.
+    // Neither is visible to any `toHaveCSS` in the Playwright spec either,
+    // because none of them measures this bar's box.
+    expect(declarations(bar)).toEqual(new Set([
+      'display: flex',
+      'align-items: center',
+      'gap: var(--space-7)',
+      'padding-left: var(--pad-topbar)',
+      'padding-right: var(--pad-topbar)',
+      'padding-top: var(--space-6)',
+      'padding-bottom: var(--space-6)',
+      'background-color: var(--card)',
+      'border-bottom-width: 1px',
+      'border-color: var(--warm)',
+      'flex: none',
+      'z-index: var(--role-z-chrome)',
+    ]))
+    // …and at ≤760 the deliverable overrides the gutter and the gap and nothing
+    // else, so the set there is exactly those five.
+    expect(declarations(bar, '', R760)).toEqual(new Set([
+      'gap: var(--space-5)',
+      'padding-left: var(--space-7)',
+      'padding-right: var(--space-7)',
+      'padding-top: var(--space-5)',
+      'padding-bottom: var(--space-5)',
+    ]))
+  })
+
+  it('paints the shell’s own root as the full-viewport field it has to be', async () => {
+    const { cls, unmount } = chrome('/departments')
+    const root = await paint(cls('[data-shell="panel"]'))
+    unmount()
+    // `100vh`, not `100%`. `h-full` compiles, looks right in every class-name
+    // assertion, and resolves against a parent with no height of its own — so
+    // the whole app collapses to the height of its content and the flow
+    // canvas, which resolves its own height down this chain, renders at zero.
+    expect(declarations(root)).toEqual(new Set([
+      'height: 100vh',
+      'display: flex',
+      'flex-direction: column',
+      'overflow: hidden',
+      'background-color: var(--ink)',
+      'color: var(--ink)',
+    ]))
   })
 
   it('paints the crumb strip on the violet tile, at the design’s box', async () => {
-    const { cls } = chrome('/departments/dining')
+    const { cls, unmount } = chrome('/departments/dining')
     const strip = await paint(cls('[data-r-crumbbar]'))
+    unmount()
     // §6.0 — `padding:9px 22px; background:#F4EFFB; border-bottom:1px solid #E3D8F5`.
     expect(winner(strip, 'padding-top')).toBe('var(--pad-crumb-y)')
     expect(winner(strip, 'padding-left')).toBe('var(--pad-topbar)')
@@ -625,13 +1023,36 @@ describe('what the panel chrome’s class strings compile to', () => {
     // the filter chip and the timeline note.
     expect(winner(strip, 'padding-top')).not.toBe('var(--space-5)')
     expect(winner(strip, 'padding-top')).not.toBe('var(--pad-tab-y-audit)')
+    // The whole set, values included: the strip is a full-width row whose
+    // contents sit on its centre line, and it must stay one. `items-start`
+    // drops the back button and the «خانه» button off the crumbs' baseline;
+    // `inline-flex` shrinks the lavender ground to its contents and leaves the
+    // rest of the row on the violet field behind it.
+    expect(declarations(strip)).toEqual(new Set([
+      'display: flex',
+      'align-items: center',
+      'gap: var(--space-5)',
+      'padding-left: var(--pad-topbar)',
+      'padding-right: var(--pad-topbar)',
+      'padding-top: var(--pad-crumb-y)',
+      'padding-bottom: var(--pad-crumb-y)',
+      'background-color: var(--tile-v2)',
+      'border-bottom-width: 1px',
+      'border-color: var(--line)',
+      'flex: none',
+    ]))
+    // …and §6.0 writes NO ≤760 rule for this bar at all, unlike the top bar,
+    // which it overrides by name. So the set at that width is empty — not
+    // "the gutter is unchanged", but "nothing is".
+    expect(declarations(strip, '', R760)).toEqual(new Set())
   })
 
   it('gives the ghost controls a violet label over a violet-tile hover', async () => {
     // Audit S1, at the declaration level: the pairing that measured 1.04:1 was
     // `color: var(--card)` over `background-color: var(--tile-v2)`.
-    const { cls } = chrome('/departments/dining')
+    const { cls, unmount } = chrome('/departments/dining')
     const back = await paint(cls('[data-r-crumbbar] a[href="/departments"]'))
+    unmount()
     expect(winner(back, 'color')).toBe('var(--violet)')
     expect(winner(back, 'background-color')).toBe('var(--card)')
     expect(winner(back, 'background-color', ':hover')).toBe('var(--tile-v2)')
@@ -646,6 +1067,82 @@ describe('what the panel chrome’s class strings compile to', () => {
     // tokens.css forbids exactly this borrowing.
     expect(winner(back, 'padding-top')).not.toBe('var(--gap-stat-dot)')
     expect(winner(back, 'padding-top')).not.toBe('var(--pad-popover)')
+    // The whole ghost recipe, values included. `justify-content` is the one
+    // that has actually gone wrong in this file: the shell's mobile sheet rows
+    // wrote `justify-start` after this same string and drew centred anyway,
+    // because the emitted sheet puts `justify-center` last. Here centred is
+    // right — a chevron and a word, sized to their own content.
+    expect(declarations(back)).toEqual(new Set([
+      'display: inline-flex',
+      'align-items: center',
+      'justify-content: center',
+      'gap: var(--space-3)',
+      'padding-left: var(--space-6)',
+      'padding-right: var(--space-6)',
+      'padding-top: var(--pad-back-y)',
+      'padding-bottom: var(--pad-back-y)',
+      'border-radius: var(--radius-input)',
+      'border-width: var(--border-hairline)',
+      'border-color: var(--line)',
+      'background-color: var(--card)',
+      'color: var(--violet)',
+      'font-size: var(--fs-sm2)',
+      'font-weight: var(--fw-bold)',
+      'text-decoration-line: none',
+      'cursor: pointer',
+      'flex: none',
+    ]))
+  })
+
+  it('gives the sheet’s rows the design’s full-width row, not the bar’s centred pill', async () => {
+    // §6.0's sheet (Panel :2082) draws `display:flex; width:100%; padding:14px;
+    // text-align:start` with the label on a `flex:1` span — a stack of rows a
+    // thumb reads down the leading edge of.
+    //
+    // Written as the ghost recipe plus `justify-start`, it drew CENTRED, on
+    // every entry, on every phone. Tailwind emits `justify-center` after
+    // `justify-start`, so the cascade takes the ghost's value no matter which
+    // way round the class attribute is written, and jsdom — which resolves no
+    // cascade — reads the class name and reports the intent. The whole class of
+    // bug is invisible without compiling the sheet, which is what this block
+    // is for; it went unseen here because nothing ever painted the sheet.
+    renderAdmin()
+    await userEvent.click(screen.getByRole('button', { name: 'فهرست' }))
+    const sheet = screen.getByRole('dialog')
+    const row = await paint((within(sheet).getByRole('link', { name: 'دپارتمان‌ها' })).className)
+    expect(winner(row, 'justify-content')).toBe('flex-start')
+    expect(winner(row, 'justify-content')).not.toBe('center')
+    expect(winner(row, 'display')).toBe('flex')
+    expect(winner(row, 'display')).not.toBe('inline-flex')
+    expect(declarations(row)).toEqual(new Set([
+      'display: flex',
+      'align-items: center',
+      'justify-content: flex-start',
+      'gap: var(--space-6)',
+      'padding-left: var(--space-7)',
+      'padding-right: var(--space-7)',
+      'padding-top: var(--space-7)',
+      'padding-bottom: var(--space-7)',
+      'border-radius: var(--radius-tile)',
+      'border-width: var(--border-hairline)',
+      'border-color: var(--line)',
+      'background-color: var(--card)',
+      'color: var(--violet)',
+      'font-size: var(--fs-menu)',
+      'font-weight: var(--fw-bold)',
+      'text-decoration-line: none',
+      'cursor: pointer',
+    ]))
+    // …and every row in the sheet is that one recipe, links and buttons alike.
+    const every = [
+      ...within(sheet).getAllByRole('link'),
+      ...within(sheet).getAllByRole('button').filter((b) => b.getAttribute('aria-label') !== 'بستن'),
+    ]
+    expect(every.length).toBeGreaterThan(4)
+    for (const el of every) {
+      expect(winner(await paint(el.className), 'justify-content'), el.textContent ?? '')
+        .toBe('flex-start')
+    }
   })
 
   it('draws the count badge round, 19px, and ringed in the card white', async () => {
@@ -679,30 +1176,123 @@ describe('what the panel chrome’s class strings compile to', () => {
     expect(container.querySelector('[data-r-topbar]')).toBeInTheDocument()
   })
 
-  it('holds the nav tray, the inbox and the crumbs to the deliverable’s two breakpoints', async () => {
-    const { cls } = chrome('/departments')
+  it('holds the nav tray, the divider and the inbox to the deliverable’s 1080 breakpoint', async () => {
+    // Renamed: this stands on `/departments`, where §6.0 draws the top bar and
+    // NO crumb strip, so it never had a crumb to hold to anything. The 760
+    // half is the test below, which stands on a screen that has one.
+    const { cls, unmount } = chrome('/departments')
     const nav = await paint(cls('[data-r-nav]'))
     const burger = await paint(cls('[data-r-menu]'))
+    const divider = await paint(cls('[data-r-topbar] > span[aria-hidden]'))
+    const pill = await paint(cls('[data-r-nav] a'))
     const inbox = await paint(screen.getByRole('button', { name: /صندوق بازبینی/ }).className)
+    unmount()
     expect(winner(nav, 'display')).toBe('inline-flex')
     expect(winner(nav, 'display', '', R1080)).toBe('none')
     expect(winner(burger, 'display')).toBe('none')
     expect(winner(burger, 'display', '', R1080)).toBe('flex')
     expect(winner(inbox, 'display')).toBe('inline-flex')
     expect(winner(inbox, 'display', '', R1080)).toBe('none')
-    // The tray's one entry is the active pill — this bar is only ever drawn on
-    // the screen that entry leads to — so it is the violet fill with the card
-    // white on it, which is the one legal pairing of `text-card` in this bar.
-    const pill = await paint((cls('[data-r-nav] a') as string))
+    // §6.16's `[data-r-hide]` rule covers the brand divider as well as the
+    // inbox. It is a 1px hairline with no text in it, so nothing else in this
+    // file can notice it going or staying.
+    expect(declarations(divider, '', R1080)).toEqual(new Set(['display: none']))
+    expect(declarations(divider)).toEqual(new Set([
+      'width: 1px',
+      'height: var(--space-11)',
+      'margin-left: var(--space-1)',
+      'margin-right: var(--space-1)',
+      'background-color: var(--border-current)',
+    ]))
+    // The tray is a lavender ground with a 4px inset, and the pill inside it is
+    // the active one — this bar is only ever drawn on the screen that entry
+    // leads to — so it is the violet fill with the card white on it, which is
+    // the one legal pairing of `text-card` in this bar.
+    expect(declarations(nav)).toEqual(new Set([
+      'display: inline-flex',
+      'align-items: center',
+      'gap: var(--space-1)',
+      'padding: var(--space-1)',
+      'border-radius: var(--radius-md)',
+      'background-color: var(--tile-v2)',
+    ]))
     expect(winner(pill, 'background-color')).toBe('var(--violet)')
     expect(winner(pill, 'color')).toBe('var(--card)')
     expect(winner(pill, 'background-color', ':hover')).toBe('')
+    // §6.0 — `padding:8px 14px`, and that way round. Transposed it is still two
+    // real tokens, still compiles, and draws a tall narrow pill.
+    expect(declarations(pill)).toEqual(new Set([
+      'padding-left: var(--space-7)',
+      'padding-right: var(--space-7)',
+      'padding-top: var(--space-4)',
+      'padding-bottom: var(--space-4)',
+      'border-radius: var(--radius-sm)',
+      'border-width: 0px',
+      'background-color: var(--violet)',
+      'color: var(--card)',
+      'font-size: var(--fs-sm2)',
+      'font-weight: var(--fw-bold)',
+      'text-decoration-line: none',
+      'cursor: pointer',
+    ]))
+  })
+
+  it('pushes both right-hand clusters to the inline end, on both chromes', async () => {
+    // §6.0 gives each bar a `margin-inline-start:auto` cluster — Panel :151 in
+    // the top bar and :188 in the crumb strip. Lose the auto margin and the
+    // cluster collapses back against the brand or the crumbs with the rest of
+    // the row empty behind it. Nothing else in this file reads either box.
+    const bar = chrome('/departments')
+    const top = await paint(bar.cls('[data-r-topbar] .ms-auto'))
+    bar.unmount()
+    const inner = chrome('/departments/dining')
+    const strip = await paint(inner.cls('[data-r-crumbbar] .ms-auto'))
+    inner.unmount()
+    expect(declarations(top)).toEqual(new Set([
+      'margin-inline-start: auto',
+      'display: flex',
+      'align-items: center',
+      'gap: var(--space-5)',
+    ]))
+    expect(declarations(strip)).toEqual(new Set([
+      'margin-inline-start: auto',
+      'display: flex',
+      'align-items: center',
+      'gap: var(--space-4)',
+      'flex: none',
+    ]))
+  })
+
+  it('marks where you are and does not mark where you have been', async () => {
+    // §6.0 draws the trail's leaf `color:#2A1D5E; font-weight:700` and every
+    // link before it `color:#8a7db0` at the list's own weight — the one visual
+    // difference between "you are here" and "you can go here". Both are a
+    // colour and a weight on a bare span, so nothing else in this file — which
+    // reads the trail through `aria-current` and `href` — can see either move.
+    const { cls, unmount } = chrome('/departments/dining')
+    await screen.findByText('دپارتمان سالن')
+    const current = await paint(cls('[data-r-crumbs] [aria-current="page"]'))
+    const link = await paint(cls('[data-r-crumbs] a'))
+    const sep = await paint(cls('[data-r-crumbs] span[aria-hidden]'))
+    unmount()
+    expect(declarations(current)).toEqual(new Set([
+      'color: var(--ink)',
+      'font-weight: var(--fw-semibold)',
+    ]))
+    expect(declarations(link)).toEqual(new Set([
+      'color: var(--text-muted)',
+      'text-decoration-line: none',
+    ]))
+    // …and the `/` between them is fainter than either, which is what keeps it
+    // from reading as a crumb of its own.
+    expect(declarations(sep)).toEqual(new Set(['color: var(--text-faint)']))
   })
 
   it('takes the crumbs away at 760 and leaves the strip’s box alone', async () => {
-    const { cls } = chrome('/departments/dining')
+    const { cls, unmount } = chrome('/departments/dining')
     const crumbs = await paint(cls('[data-r-crumbs]'))
     const strip = await paint(cls('[data-r-crumbbar]'))
+    unmount()
     expect(winner(crumbs, 'display')).toBe('flex')
     expect(winner(crumbs, 'display', '', R760)).toBe('none')
     // §6.0 — `flex-wrap:wrap; min-width:0`. Without the floor the list refuses
@@ -760,25 +1350,94 @@ describe('what the panel chrome’s class strings compile to', () => {
     expect(winner(h, 'margin-top')).not.toBe('var(--gap-tab-flow)')
     expect(winner(h, 'color')).toBe('var(--text-faint)')
     expect(winner(h, 'font-size')).toBe('var(--fs-xs)')
+    // The whole popover box, values included. Two of these decide whether it is
+    // a popover at all: a background that is not the opaque card leaves the
+    // screen behind it legible straight through the menu, and the inline-start
+    // pin is the RTL-correct edge — `inset-inline-end` opens it off the far
+    // side of a trigger that sits at the bar's start.
+    expect(declarations(m)).toEqual(new Set([
+      'position: absolute',
+      'top: 100%',
+      'margin-top: calc(var(--space-3) * -1)',
+      'inset-inline-start: 0px',
+      'z-index: var(--role-z-dropdown)',
+      'min-width: var(--width-menu)',
+      'display: flex',
+      'flex-direction: column',
+      'gap: var(--space-half)',
+      'padding: var(--space-4)',
+      'background-color: var(--card)',
+      'border-width: 1px',
+      'border-color: var(--border-card)',
+      'border-radius: var(--radius-card)',
+      '--tw-shadow: var(--shadow-pop)',
+      '--tw-shadow-colored: var(--shadow-pop)',
+      'box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow)',
+    ]))
+    // Every row rests transparent and lights on hover — never the other way
+    // round, which would read as "all of these are current except the one you
+    // are pointing at". There is no current-state branch to invert: this
+    // popover is drawn on `/departments` and nothing in it leads there.
+    expect(declarations(r)).toEqual(new Set([
+      'display: block',
+      'padding-left: var(--space-6)',
+      'padding-right: var(--space-6)',
+      'padding-top: var(--pad-option-y)',
+      'padding-bottom: var(--pad-option-y)',
+      'border-radius: var(--radius-input)',
+      'background-color: transparent',
+      'text-align: start',
+      'text-decoration-line: none',
+    ]))
+    for (const row of Array.from(menu.querySelectorAll('a'))) {
+      const p = await paint(row.className)
+      expect(winner(p, 'background-color'), row.textContent ?? '').toBe('transparent')
+      expect(winner(p, 'background-color', ':hover'), row.textContent ?? '').toBe('var(--tile-v2)')
+    }
   })
 
-  it('stacks the chrome above the page and the popover above the chrome’s siblings', async () => {
+  it('stacks the chrome above the page, and the popover inside the chrome’s own context', async () => {
     // L-42…L-47 — the rungs replace the deliverable's `z-index:20` and `29`/`30`.
     // Tailwind ships its own `z-20`/`z-30`, which emit, look right in every test
     // and are the wrong layer.
-    const { cls } = chrome('/departments')
+    //
+    // Renamed, and the missing half added. The popover's own rung is BELOW the
+    // chrome's — 1000 against 1020 — so read as two numbers this looked wrong,
+    // and the previous spelling of this test asserted only the number and left
+    // the reason unstated. The reason is that the popover is a DESCENDANT of
+    // the header: the header's own `z-index` opens a stacking context, both the
+    // popover and its scrim are painted inside it, and their rungs order them
+    // against each other and against nothing else. So the nesting is the load-
+    // bearing fact and it is asserted here rather than assumed.
+    const { cls, container, unmount } = chrome('/departments')
     const bar = await paint(cls('[data-r-topbar]'))
     expect(winner(bar, 'z-index')).toBe('var(--role-z-chrome)')
-    renderPanel(['view', 'edit'], '/departments')
-    await userEvent.click(screen.getAllByRole('button', { name: /مدیریت/ })[1])
-    const m = await paint(screen.getByRole('menu').className)
+    await userEvent.click(screen.getByRole('button', { name: /مدیریت/ }))
+    const menu = screen.getByRole('menu')
+    const scrim = container.querySelector('.fixed.inset-0') as HTMLElement
+    const topbar = container.querySelector('[data-r-topbar]') as HTMLElement
+    expect(topbar.contains(menu)).toBe(true)
+    expect(topbar.contains(scrim)).toBe(true)
+    const m = await paint(menu.className)
+    const s = await paint(scrim.className)
+    unmount()
     expect(winner(m, 'z-index')).toBe('var(--role-z-dropdown)')
+    // The scrim rides the same rung and is written BEFORE the popover, so the
+    // popover wins on document order — put the scrim after it and every click
+    // meant for a menu entry lands on the sheet of glass over it instead.
+    expect(winner(s, 'z-index')).toBe('var(--role-z-dropdown)')
+    expect(declarations(s)).toEqual(new Set([
+      'position: fixed',
+      'inset: 0px',
+      'z-index: var(--role-z-dropdown)',
+    ]))
   })
 
   it('gives the inbox button the design’s own padding and gap', async () => {
-    const { cls } = chrome('/departments')
+    const { cls, unmount } = chrome('/departments')
     void cls('[data-r-topbar]')
     const inbox = await paint(screen.getByRole('button', { name: /صندوق بازبینی/ }).className)
+    unmount()
     // §6.0 — `padding:8px 13px; gap:8px; border-radius:12px`.
     expect(winner(inbox, 'padding-left')).toBe('var(--pad-inbox-x)')
     expect(winner(inbox, 'padding-top')).toBe('var(--space-4)')

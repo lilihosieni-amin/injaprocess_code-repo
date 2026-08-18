@@ -151,6 +151,189 @@ test('the brand mark is the raster no file used to import', async ({ page }) => 
   expect(box.drawn).toBe(38)
 })
 
+/*
+ * ## `inline-flex` on either bar is NOT visible here, and that is measured
+ *
+ * A reviewer's mutation survey expected `flex` → `inline-flex` on the top bar
+ * to shrink the white ground to the width of its own buttons and stop the cream
+ * hairline at the last one. Run: it does not. Both bars are direct children of
+ * `[data-shell="panel"]`, which is a flex column, so each is a FLEX ITEM — and
+ * a flex item's `display` is blockified, `inline-flex` computing to `flex`. The
+ * used box is identical and `toHaveCSS('display', …)` reports `flex` either
+ * way, so an assertion on that property here would be green on both spellings
+ * and would read as a pin while proving nothing.
+ *
+ * The declaration is still wrong and is still worth refusing — it would bite
+ * the day either bar stopped being a flex item — so it is refused where it can
+ * actually be seen: the whole-set `declarations()` guards in shells.test.tsx
+ * compile the class string and compare `display: flex` by value.
+ *
+ * What the two tests below pin is the other half, which no unit test can reach:
+ * that the used box really does span the window. A max-width, a stray margin,
+ * a padding that overflows or an ancestor that has stopped stretching are all
+ * invisible to a class string and all end with the field showing through the
+ * chrome.
+ */
+
+test('the top bar is a full-width block, and its hairline reaches both edges', async ({ page }) => {
+  await home(page)
+  const width = page.viewportSize()!.width
+  const bar = page.locator('[data-r-topbar]')
+  const box = (await bar.boundingBox())!
+  expect(Math.round(box.width), 'the bar is not spanning the window').toBe(width)
+  expect(Math.round(box.x)).toBe(0)
+  // …and the rule under it is drawn across that whole width rather than under
+  // the controls alone, which is the thing a reader would actually notice.
+  const rule = await bar.evaluate((el) => {
+    const s = getComputedStyle(el)
+    return { w: el.getBoundingClientRect().width, style: s.borderBottomStyle }
+  })
+  expect(rule.style).toBe('solid')
+  expect(Math.round(rule.w)).toBe(width)
+})
+
+test('the crumb strip is a full-width block too', async ({ page }) => {
+  // The other chrome. Its ground is the lavender tile, so any width it fails to
+  // cover is the deep violet field showing through the middle of the chrome.
+  await inner(page)
+  const width = page.viewportSize()!.width
+  const strip = page.locator('[data-r-crumbbar]')
+  const box = (await strip.boundingBox())!
+  expect(Math.round(box.width), 'the strip is not spanning the window').toBe(width)
+  expect(Math.round(box.x)).toBe(0)
+})
+
+/* ------------------------------------------------------------------ *
+ * Reachability — the chrome off the home screen
+ *
+ * §6.0 draws the top bar on `/departments` and the crumb strip everywhere
+ * else, and this shell keeps that. What the design cannot settle is where the
+ * app's own controls live on the screens without a bar: it draws no sign-out
+ * anywhere, so it never had to answer.
+ *
+ * The answer this shell shipped with was "nowhere" — measured on
+ * `/departments/dining` and `/processes/dining-003/flow`: no `[data-r-menu]`,
+ * no «خروج», no «صندوق بازبینی». The strip carried «بازگشت» and «خانه» and
+ * nothing else, at all three widths.
+ * ------------------------------------------------------------------ */
+
+/** An editor who also holds both administration capabilities, scoped `*`. */
+async function administrator(page: Page) {
+  await signedIn(page, {
+    capabilities: ['view', 'comment', 'export_pdf', 'edit', 'confirm', 'manage_users', 'set_visibility'],
+    scopes: ['*'],
+  })
+  await serve(page, {
+    '/api/departments': DEPARTMENTS,
+    '/api/pending': PENDING,
+    '/api/departments/dining/processes': PROCESSES,
+    '/api/confirmations?department=dining': [],
+    '/api/processes/dining-003': PROCESS,
+  })
+}
+
+for (const [where, url] of [
+  ['an inner screen', '/departments/dining'],
+  ['the flow screen, which has no bar of its own', '/processes/dining-003/flow'],
+] as const) {
+  test(`sign-out, the inbox and administration are reachable from ${where}`, async ({ page }) => {
+    await administrator(page)
+    await page.goto(url)
+    await page.locator('[data-r-crumbbar]').waitFor()
+    await pinPage(page, `goto('${url}')`)
+    // Visible at EVERY width: the strip has no nav tray for this to stand in
+    // for, unlike the bar's hamburger, so hiding it above 1080 puts every
+    // desktop editor back where they started.
+    const opener = page.locator('[data-r-crumbbar] [data-r-menu]')
+    await expect(opener).toBeVisible()
+    await opener.click()
+    const sheet = page.getByRole('dialog')
+    await expect(sheet).toBeVisible()
+    await expect(sheet.getByRole('button', { name: 'خروج' })).toBeVisible()
+    await expect(sheet.getByRole('button', { name: /صندوق بازبینی/ })).toBeVisible()
+    for (const name of ['دپارتمان‌ها', 'کاربران', 'سیاست نمایش محتوا', 'پروفایل و گذرواژه']) {
+      await expect(sheet.getByRole('link', { name: new RegExp(name) }), name).toBeVisible()
+    }
+  })
+}
+
+test('the sheet’s rows read down the leading edge, not from the middle', async ({ page }) => {
+  // §6.0's sheet rows are `display:flex; width:100%; text-align:start` with the
+  // label on a `flex:1` span (Panel :2082) — a stack a thumb reads down one
+  // edge of.
+  //
+  // They were written as the bar's ghost recipe plus `justify-start`, and drew
+  // CENTRED: Tailwind emits `justify-center` after `justify-start`, so the
+  // ghost's value wins no matter which order the class attribute is in. The
+  // build exits 0, jsdom reads the class name and reports the intent, and this
+  // is the only place the difference exists. RTL, so the leading edge is the
+  // right one.
+  await administrator(page)
+  await page.goto('/departments/dining')
+  await page.locator('[data-r-crumbbar]').waitFor()
+  await pinPage(page, "goto('/departments/dining')")
+  await page.locator('[data-r-crumbbar] [data-r-menu]').click()
+  const sheet = page.getByRole('dialog')
+  await expect(sheet).toBeVisible()
+  const rows = sheet.getByRole('link')
+  const n = await rows.count()
+  expect(n, 'the sheet drew no destinations, so this test is about nothing').toBeGreaterThan(2)
+  for (let i = 0; i < n; i++) {
+    const row = rows.nth(i)
+    await expect(row).toHaveCSS('justify-content', 'flex-start')
+    // …and the label actually sits against the padding edge, which is the part
+    // a declaration alone cannot promise.
+    const gap = await row.evaluate((el) => {
+      const pad = parseFloat(getComputedStyle(el).paddingInlineStart)
+      const box = el.getBoundingClientRect()
+      const label = (el.firstChild as Text | Element | null)
+      const range = document.createRange()
+      if (label === null) return NaN
+      range.selectNodeContents(el)
+      const text = range.getBoundingClientRect()
+      // RTL: the inline start of both boxes is their right edge.
+      return box.right - text.right - pad
+    })
+    expect(Math.abs(gap), `row ${i} is not sitting against its leading edge`).toBeLessThan(2)
+  }
+  // …and the rows span the sheet rather than sitting at the width of their own
+  // words. Not an `inline-flex` check — the sheet's body is a flex column, so
+  // its rows are flex items and `inline-flex` is blockified to `flex` there
+  // exactly as it is on the two bars above; that spelling is refused by value
+  // in shells.test.tsx instead. This is a width pin, and it is the reason every
+  // row's leading edge lines up with every other's.
+  const sheetBox = (await sheet.boundingBox())!
+  const first = (await rows.first().boundingBox())!
+  const last = (await rows.last().boundingBox())!
+  expect(Math.round(first.width), 'the rows are not the same width as each other')
+    .toBe(Math.round(last.width))
+  expect(first.width).toBeGreaterThan(sheetBox.width * 0.8)
+})
+
+test('the «مدیریت» popover closes on Escape, from the keyboard alone', async ({ page }) => {
+  // Probed before this landed: open, press Escape, the menu is still there. The
+  // only exits were a mouse click on the trigger or on an `aria-hidden` scrim,
+  // so a keyboard-only caller could tab through the menu, past it, and never
+  // dismiss it. `src/ui/Menu.tsx` and `src/ui/Overlay.tsx` both answer Escape
+  // through the shared dismissible stack; this shell now joins it.
+  await administrator(page)
+  await page.goto('/departments')
+  await page.locator('[data-r-topbar]').waitFor()
+  await pinPage(page, "goto('/departments')")
+  test.skip(page.viewportSize()!.width <= 1080, 'the nav tray is hidden at this width, by design')
+  const trigger = page.getByRole('button', { name: /مدیریت/ })
+  await trigger.focus()
+  await page.keyboard.press('Enter')
+  await expect(page.getByRole('menu')).toBeVisible()
+  await page.keyboard.press('Tab')
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('menu')).toHaveCount(0)
+  await expect(trigger).toHaveAttribute('aria-expanded', 'false')
+  // …and the keyboard is back on the trigger, so the next Tab carries on from
+  // the bar rather than restarting at the top of the document.
+  await expect(trigger).toBeFocused()
+})
+
 /* ------------------------------------------------------------------ *
  * The two breakpoints
  * ------------------------------------------------------------------ */
