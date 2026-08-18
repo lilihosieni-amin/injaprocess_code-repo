@@ -537,51 +537,76 @@ function mountShell(descriptor: SessionDescriptor) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={qc}>
-      <MemoryRouter><PanelShell session={descriptor} /></MemoryRouter>
+      {/*
+        `/departments` and not the router's default `/`. §6.0 draws the top bar
+        on the home screen and the crumb strip on every other one, and this entry
+        lives in the top bar's «مدیریت» popover — so at `/` there is no popover
+        to open, `entry()` below is null for every session, and all six tests in
+        this block would agree with each other while measuring nothing at all.
+        Three of them are `toBeNull()` assertions and would have gone green.
+      */}
+      <MemoryRouter initialEntries={['/departments']}><PanelShell session={descriptor} /></MemoryRouter>
     </QueryClientProvider>,
   )
 }
 
+/**
+ * Open the «مدیریت» popover and hand back the user-administration entry, or
+ * null. §6.0 moved this entry out of the bar and into that menu; it is still an
+ * `<a href>` and still announces its route, and `role="menuitem"` is what puts
+ * it inside the menu its trigger says it opens.
+ *
+ * Matched by pattern rather than by exact name: every row carries the hint line
+ * §6.0 gives it, so the accessible name is both lines run together.
+ */
+async function adminEntry() {
+  await userEvent.click(screen.getByRole('button', { name: /مدیریت/ }))
+  // The menu is on screen whatever this session holds, so a null below is this
+  // entry being gated and never the popover failing to open.
+  expect(screen.getByRole('menu')).toBeInTheDocument()
+  return screen.queryByRole('menuitem', { name: /^کاربران/ })
+}
+
 describe('the user-administration entry in the panel header', () => {
-  it('is drawn for a `*`-scoped holder of manage_users', () => {
+  it('is drawn for a `*`-scoped holder of manage_users', async () => {
     mountShell(EDITOR)
-    expect(screen.getByRole('link', { name: 'کاربران' })).toBeInTheDocument()
+    expect(await adminEntry()).toBeInTheDocument()
   })
 
-  it('points at the user list', () => {
+  it('points at the user list', async () => {
     mountShell(EDITOR)
-    expect(screen.getByRole('link', { name: 'کاربران' })).toHaveAttribute('href', '/users')
+    expect(await adminEntry()).toHaveAttribute('href', '/users')
   })
 
-  it('is not drawn for a panel user who holds every panel capability except manage_users', () => {
+  it('is not drawn for a panel user who holds every panel capability except manage_users', async () => {
     // The fixture that makes this pair non-vacuous: `edit`, `confirm`,
     // `set_visibility` and `view_audit` and NOT `manage_users`, so a gate
     // rewritten to `can(session, 'edit')` — or one that simply sits inside the
     // existing `canEdit` block, the likeliest way to write it by accident —
     // fails here rather than passing everything.
     mountShell({ ...EDITOR, capabilities: ['view', 'edit', 'confirm', 'set_visibility', 'view_audit'] })
-    expect(screen.queryByRole('link', { name: 'کاربران' })).toBeNull()
+    expect(await adminEntry()).toBeNull()
   })
 
-  it('is not drawn for an auditor', () => {
+  it('is not drawn for an auditor', async () => {
     mountShell({ ...EDITOR, capabilities: ['view', 'view_audit'] })
-    expect(screen.queryByRole('link', { name: 'کاربران' })).toBeNull()
+    expect(await adminEntry()).toBeNull()
   })
 
-  it('is not drawn for a holder of manage_users scoped to one department', () => {
+  it('is not drawn for a holder of manage_users scoped to one department', async () => {
     // The endpoints require the capability at `*` and answer a scoped caller
     // 404 (scope is checked first). A link into «چیزی اینجا نیست» is a link the
     // app itself drew into a wall.
     mountShell({ ...EDITOR, scopes: ['dept:cooking'] })
-    expect(screen.queryByRole('link', { name: 'کاربران' })).toBeNull()
+    expect(await adminEntry()).toBeNull()
   })
 
-  it('is drawn for a holder of manage_users who cannot edit', () => {
+  it('is drawn for a holder of manage_users who cannot edit', async () => {
     // The other half of the pair above: an Admin holds `manage_users` and no
     // `edit`, and a gate spelled `canEdit && …` would hide the one surface that
     // is their whole job.
     mountShell(ADMIN)
-    expect(screen.getByRole('link', { name: 'کاربران' })).toBeInTheDocument()
+    expect(await adminEntry()).toBeInTheDocument()
   })
 })
 

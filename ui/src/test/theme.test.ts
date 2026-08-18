@@ -1375,12 +1375,12 @@ const PENDING: string[] = [
   'text-ink-current', 'text-ink-proposed', 'text-on-dark', 'text-ok',
   'text-danger', 'text-toast-check', 'text-link', 'text-link-hover',
   'border-line-soft', 'border-line-dashed', 'border-border-dead', 'border-border-ok',
-  'border-hair', 'border-steps-sub-border', 'border-steps-group-border', 'border-card',
+  'border-hair', 'border-steps-sub-border', 'border-steps-group-border',
   'bg-tile-v5', 'bg-disc-coral', 'bg-disc-violet', 'bg-line-divider',
   'border-line-divider', 'bg-line-row', 'bg-line-filter', 'border-line-filter',
   'bg-border-pick', 'text-fs-display', 'text-fs-h1', 'text-fs-h2',
   'text-fs-h3', 'text-fs-h4', 'text-fs-h5',
-  'text-fs-micro', 'text-fs-doc-base', 'text-fs-doc-h1',
+  'text-fs-doc-base', 'text-fs-doc-h1',
   'text-fs-doc-title', 'text-fs-doc-step', 'text-fs-doc-body',
   'text-fs-numeral', 'text-fs-steps-title', 'text-fs-display-hand',
   'text-fs-body-lead', 'text-fs-nano', 'text-fs-badge-sm',
@@ -1397,8 +1397,8 @@ const PENDING: string[] = [
   'shadow-card-dark', 'shadow-stat-dark', 'shadow-guide-hover', 'shadow-ring-flash',
   'p-screen-x', 'p-screen-y',
   'p-topbar', 'p-half', 'gap-topbar', 'px-reader-x',
-  'pb-reader-bottom', 'pt-departments-top', 'pb-departments-bottom', 
-  'p-s2', 'p-s3', 'p-s4', 'p-s5',
+  'pb-reader-bottom', 'pt-departments-top', 'pb-departments-bottom',
+  'p-s2', 'p-s3', 'p-s5',
   'p-s6', 'p-s14', 'p-s16',
   // `w-tile`/`h-tile` and the two glyph pairs came off here when Task 11's
   // src/ui/IconTile.tsx landed: R3 declares the tile as a role trio
@@ -1408,10 +1408,10 @@ const PENDING: string[] = [
   // which is what tailwind.config.js's own comment says the `-reader` keys are
   // for — "still writable when a screen genuinely needs one". If nothing ever
   // does, Task 25 takes them off the theme rather than off this list.
-  'w-tool', 'h-tool', 'w-avatar',
+  'w-avatar',
   'h-avatar', 'w-logo-bar', 'h-logo-bar', 'w-logo-login',
   'h-logo-login', 'w-touch', 'h-touch', 'w-tile-reader',
-  'h-tile-reader', 'w-iconbtn', 'h-iconbtn', 'w-iconbtn-reader',
+  'h-tile-reader', 'w-iconbtn-reader',
   'h-iconbtn-reader', 'w-fab-reader',
   'h-fab-reader', 'w-tick-nested',
   'h-tick-nested', 'max-w-departments', 'max-w-summary', 'max-w-doc',
@@ -1421,10 +1421,8 @@ const PENDING: string[] = [
   'w-tick-glyph-nested', 'h-tick-glyph-nested',
   'py-tick-nested-y', 'py-dropdown-y-dialog',
   'py-dropdown-y-filter', 'px-dropdown-x-filter',
-  'py-option-y', 
-  'my-stat-grid', 
-  'gap-tab-flow', 
-  'max1080:hidden',
+  'my-stat-grid',
+  'gap-tab-flow',
   // The single minting pass — 29 of its 30 classes. `z-canvas-overlay` is the
   // thirtieth and is NOT here: owner ruling R15 minted the rung and pointed its
   // one consumer at it in the same change, so src/flow/DetailDrawer.tsx writes
@@ -1439,13 +1437,13 @@ const PENDING: string[] = [
   // `z-dropdown` and `text-role-textarea` are already gone from this list:
   // Task 8's Dropdown and TextField landed and consumed them, which is the
   // mechanism working — a line comes off when its consumer arrives.
-  'z-chrome', 'z-drawer',
+  'z-drawer',
   'z-modal', 'z-popover', 'z-tooltip', 'z-toast',
   'ease-css', 'duration-row', 'rounded-bar', 'shadow-feature',
   'max-w-subtitle', 'max-w-intro', 'min-h-chiprow',
   'bg-warn-edge', 'border-warn-edge', 'text-warn-fg',
   'gap-table-row-mobile',
-  'w-menu-more', 'h-menu-more', 'w-login',
+  'w-login',
   'w-dot', 'h-dot', 'w-chev', 'h-chev', 'w-glyph-tile', 'h-glyph-tile',
   // …and the type-on-the-violet-field group. Unconsumed only because Tasks 15,
   // 17, 19 and 20 have not landed: those four screens are the ones that write a
@@ -1464,8 +1462,11 @@ const PENDING: string[] = [
   //
   // `min-w-menu` is deliberately NOT here. The mint gave it a token instead of a
   // new name, and src/ui/Menu.tsx already writes it, so it has a consumer today.
-  'mt-hint', 'leading-lockup', 'min-w-count-chrome', 'h-count-chrome',
-  'px-inbox-x', 'py-crumb-y', 'py-back-y', 'px-topbar-reader',
+  //
+  // Task 12 has landed, and it deleted its own seven names above plus the twelve
+  // older lines its chrome turned out to consume. What is left of the mint here
+  // is Task 13's and Task 16's.
+  'px-topbar-reader',
   'grid-cols-idef0',
 
   // The reader-chrome mint. The owner's ruling that ReaderShell takes the

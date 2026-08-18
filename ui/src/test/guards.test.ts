@@ -140,6 +140,14 @@ describe('F10 — RTL is structural', () => {
       // (spreading a `{ dir: 'ltr' }` object so the string `dir=` never appears)
       // would defeat the guard without changing the markup it exists to police.
       'src/ui/TextField.tsx',
+      // The crumb strip pins a process id LTR and monospaced — §8's rule for
+      // every latin island in an RTL app, and the only `dir=` in either shell.
+      // `src/shell/crumbs.ts`, which decides WHICH crumb is one, is deliberately
+      // not on this list and must not join it: it renders nothing, and its
+      // docstring says so without spelling the attribute, because this scan
+      // reads comments too and a file that merely describes the island would
+      // otherwise have to be declared as one.
+      'src/shell/PanelShell.tsx',
       'src/screens/UserFields.tsx',
       'src/screens/SupervisorPicker.tsx',
       'src/screens/Profile.tsx',

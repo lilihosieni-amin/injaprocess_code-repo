@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { act, render, renderHook, screen, waitFor } from '@testing-library/react'
+import { act, render, renderHook, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { RequireAuth } from './RequireAuth'
@@ -14,14 +15,15 @@ const DESCRIPTOR = {
   supervisor: '09120000000', canSupervise: false, pendingApprovals: 0,
 }
 
-function mount() {
+function mount(entry = '/') {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={['/']}>
+      <MemoryRouter initialEntries={[entry]}>
         <Routes>
           <Route element={<RequireAuth />}>
             <Route path="/" element={<p>محتوا</p>} />
+            <Route path="/departments" element={<p>محتوا</p>} />
           </Route>
           <Route path="/login" element={<p>صفحهٔ ورود</p>} />
         </Routes>
@@ -82,13 +84,26 @@ describe('RequireAuth', () => {
 
   it('shows the signed-in person by their display name, not their username', async () => {
     // displayName and username are both strings on the descriptor, so a swap
-    // type-checks. The panel header is where the difference is visible.
+    // type-checks, and only a rendered surface can tell them apart.
+    //
+    // **The surface moved, and the move is a finding, not a rename.** The panel
+    // header used to write the name straight into the bar. Neither deliverable
+    // does: the panel's lockup second line is the product tagline
+    // (`Inja Panel.dc.html:122`) and the reader's is the caller's ROLE, not
+    // their name (`Inja Reader.dc.html:138`), and the design's answer to "who
+    // am I" is the profile entry rather than a label. So the only place in the
+    // rebuilt chrome that names the signed-in person is the sheet the hamburger
+    // opens — which the same design hides above 1080px. Recorded in the Task 12
+    // report as an owner question beside the sign-out one; asserted here where
+    // it now is, so the swap this test exists to catch is still caught.
     vi.stubGlobal('fetch', vi.fn(async () => new Response(
       JSON.stringify({ ...DESCRIPTOR, role: 'editor', capabilities: [...DESCRIPTOR.capabilities, 'edit'] }),
       { status: 200, headers: { 'Content-Type': 'application/json' } })))
-    mount()
-    expect(await screen.findByText('سحر بیات')).toBeInTheDocument()
-    expect(screen.queryByText('09123456789')).not.toBeInTheDocument()
+    mount('/departments')
+    await userEvent.click(await screen.findByRole('button', { name: 'فهرست' }))
+    const sheet = screen.getByRole('dialog')
+    expect(within(sheet).getByText('سحر بیات')).toBeInTheDocument()
+    expect(within(sheet).queryByText('09123456789')).toBeNull()
   })
 
   it('carries pendingApprovals through to the reader badge', async () => {

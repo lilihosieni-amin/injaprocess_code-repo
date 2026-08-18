@@ -569,12 +569,17 @@ describe('the way to the profile screen', () => {
     vi.stubGlobal('fetch', vi.fn(async () => json([])))
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     const s = { ...READER, capabilities, scopes: ['dept:cooking'] }
+    // The panel starts on its home screen: §6.0 draws the top bar there and the
+    // crumb strip everywhere else, and the entry this block is about now lives
+    // in the top bar's «مدیریت» popover. At the router's default `/` there is no
+    // popover to open and the assertion below would be about nothing.
+    const entry = shell === 'panel' ? '/departments' : '/'
     return render(
       <QueryClientProvider client={qc}>
-        <MemoryRouter initialEntries={['/']}>
+        <MemoryRouter initialEntries={[entry]}>
           <Routes>
             <Route element={shell === 'panel' ? <PanelShell session={s} /> : <ReaderShell session={s} />}>
-              <Route path="/" element={<p>محتوا</p>} />
+              <Route path={entry} element={<p>محتوا</p>} />
             </Route>
           </Routes>
         </MemoryRouter>
@@ -582,11 +587,16 @@ describe('the way to the profile screen', () => {
     )
   }
 
-  it('is in the panel header, for a panel user who administers nobody', () => {
+  it('is in the panel header, for a panel user who administers nobody', async () => {
     // Ungated, unlike the «کاربران» entry beside it: an Editor without
-    // `manage_users` is answered 404 there and still has a password here.
+    // `manage_users` is answered 404 there and still has a password here — so
+    // this is the one row that is in the popover for EVERY panel session, and
+    // the «کاربران» row above it is absent for this one.
     renderShell('panel', ['view', 'comment', 'edit'])
-    expect(screen.getByRole('link', { name: 'نمایه' })).toHaveAttribute('href', '/profile')
+    await userEvent.click(screen.getByRole('button', { name: /مدیریت/ }))
+    expect(screen.getByRole('menuitem', { name: /^پروفایل و گذرواژه/ }))
+      .toHaveAttribute('href', '/profile')
+    expect(screen.queryByRole('menuitem', { name: /^کاربران/ })).toBeNull()
   })
 
   it('is in the reader header too', () => {
