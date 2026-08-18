@@ -33,6 +33,13 @@
  *    grep scores that as present. => We count declarations, and we also flag a
  *    declaration whose `var(--x)` is never declared anywhere in the CSS.
  *
+ * Harvesting everything would also cry wolf, so a token is only judged when the
+ * literal holding it is demonstrably a class string — see `inClassPosition` and
+ * the CORROBORATION block. Measured over all 87 non-test source files: 681 ok,
+ * 0 dead, and the three false positives an earlier version reported
+ * (`btn-spinner`, `react-router-dom`, `react-dom/client`) are gone with no loss
+ * of the real ones.
+ *
  * ---------------------------------------------------------------------------
  * WHAT THIS CANNOT PROVE
  * ---------------------------------------------------------------------------
@@ -63,12 +70,22 @@ import { execSync } from 'node:child_process'
 // ---------------------------------------------------------------------------
 // 1. The files this task writes
 // ---------------------------------------------------------------------------
+// Named explicitly, or — with no arguments — every source file the working tree
+// has changed, which is what a task has in hand when it reaches its check step.
+//
+// Test files are left out of the automatic set on purpose. They carry invented
+// class names as fixtures (`rounded-tickk`, `w-tick-nineteen`) and quote CSS
+// PROPERTY names in assertions (`text-align`, `inset-inline-end`) that collide
+// with live utility namespaces. Running the default set over `choices.test.tsx`
+// reported three of those as dead. Name a test file explicitly if you really
+// want it scanned.
+const isTest = (f) => /(^|\/)(test|e2e)\/|\.(test|spec)\.[cm]?[jt]sx?$/.test(f)
 let files = process.argv.slice(2)
 if (!files.length) {
   files = execSync('git status --porcelain -- .', { encoding: 'utf8' })
     .split('\n').map((l) => l.slice(3).trim()).filter(Boolean)
     .map((f) => (f.startsWith('ui/') ? f.slice(3) : f))
-    .filter((f) => /\.(tsx?|txt|html)$/.test(f) && existsSync(f))
+    .filter((f) => /\.(tsx?|txt|html)$/.test(f) && !isTest(f) && existsSync(f))
 }
 if (!files.length) {
   console.error('harvest-classes: no source files given and none changed — name them explicitly')
@@ -97,7 +114,9 @@ function quoted(src, i, q) {
 }
 
 /**
- * Every string literal in a .ts/.tsx file, with comments removed.
+ * Every string literal in a .ts/.tsx file, with comments removed, as
+ * `{ text, pos }` — `pos` is where the literal opened, which lets the caller
+ * ask whether it stood in a `className` position.
  *
  * Comments MUST be removed: this codebase documents class names in prose —
  * "`gap-s4` → `gap-s99` emits nothing" sits in a JSX comment in Pager.tsx — and
@@ -112,21 +131,21 @@ function quoted(src, i, q) {
  * but `quoted()` above bounds that to one line.
  */
 function literals(src, path) {
-  if (path.endsWith('.txt')) return [src.replace(/^\s*#.*$/gm, '')]
+  if (path.endsWith('.txt')) return [{ text: src.replace(/^\s*#.*$/gm, ''), pos: -1 }]
   if (path.endsWith('.html')) {
     const clean = src.replace(/<!--[\s\S]*?-->/g, '')
-    return [...clean.matchAll(/=\s*"([^"]*)"|=\s*'([^']*)'/g)].map((m) => m[1] ?? m[2])
+    return [...clean.matchAll(/=\s*"([^"]*)"|=\s*'([^']*)'/g)].map((m) => ({ text: m[1] ?? m[2], pos: m.index }))
   }
   const out = []
-  let i = 0, mode = 'code', buf = ''
+  let i = 0, mode = 'code', buf = '', open = 0
   const braces = []               // one entry per open `${`, holding its brace depth
   while (i < src.length) {
     const c = src[i], d = src[i + 1]
     if (mode === 'code') {
       if (c === '/' && d === '/') { const e = src.indexOf('\n', i); i = e < 0 ? src.length : e; continue }
       if (c === '/' && d === '*') { const e = src.indexOf('*/', i + 2); i = e < 0 ? src.length : e + 2; continue }
-      if (c === '"' || c === "'") { const [s, next] = quoted(src, i, c); if (s !== null) out.push(s); i = next; continue }
-      if (c === '`') { mode = 'tpl'; buf = ''; i++; continue }
+      if (c === '"' || c === "'") { const [s, next] = quoted(src, i, c); if (s !== null) out.push({ text: s, pos: i }); i = next; continue }
+      if (c === '`') { mode = 'tpl'; buf = ''; open = i; i++; continue }
       if (braces.length) {
         if (c === '{') braces[braces.length - 1]++
         else if (c === '}') {
@@ -138,12 +157,38 @@ function literals(src, path) {
     }
     // mode === 'tpl'
     if (c === '\\') { buf += d ?? ''; i += 2; continue }
-    if (c === '`') { out.push(buf); buf = ''; mode = 'code'; i++; continue }
-    if (c === '$' && d === '{') { out.push(buf); buf = ' '; braces.push(1); mode = 'code'; i += 2; continue }
+    if (c === '`') { out.push({ text: buf, pos: open }); buf = ''; mode = 'code'; i++; continue }
+    if (c === '$' && d === '{') { out.push({ text: buf, pos: open }); buf = ' '; braces.push(1); mode = 'code'; i += 2; continue }
     buf += c; i++
   }
-  if (buf.trim()) out.push(buf)
+  if (buf.trim()) out.push({ text: buf, pos: open })
   return out
+}
+
+/**
+ * Did this literal stand where a class string goes?
+ *
+ * Harvesting every string in a file also harvests things that are not classes,
+ * and some of them collide with a live namespace: `data-testid="btn-spinner"`
+ * looks dead because `.btn-coral` makes `btn-` live, and `from 'react-router-dom'`
+ * looks dead because @xyflow ships `.react-flow__*`. Both were reported by an
+ * earlier version of this file across the whole app.
+ *
+ * A literal counts as a class string when the nearest `className` / `cn(` /
+ * `clsx(` before it is not separated from it by a `;`, a `<`, a `>` or a second
+ * `=` — the `<svg` and the `data-testid=` in the example above both break the
+ * link. A literal that fails this test is still checked if it is CORROBORATED
+ * (see below), which is what carries `const NAV = 'w-pager h-pager …'` in a
+ * helper module where no `className` is in sight.
+ */
+function inClassPosition(src, pos) {
+  if (pos < 0) return true                       // a .txt inventory is all classes
+  const before = src.slice(Math.max(0, pos - 250), pos)
+  const k = Math.max(before.lastIndexOf('className'), before.lastIndexOf('class='),
+    before.lastIndexOf('cn('), before.lastIndexOf('clsx('), before.lastIndexOf('twMerge('))
+  if (k < 0) return false
+  const between = before.slice(k)
+  return !/[;<>]/.test(between) && (between.match(/=/g) ?? []).length <= 1
 }
 
 /** Tokens that could be a Tailwind class. Persian prose, paths and URLs are out. */
@@ -156,20 +201,20 @@ function looksLikeClass(t) {
 }
 
 const candidates = new Map()      // class -> Set(file it was written in)
-const groups = []                 // one token[] per literal, for the co-occurrence rule
+const groups = []                 // { tokens, classPos } per literal
 for (const f of files) {
   let src
   try { src = readFileSync(f, 'utf8') } catch { console.log(`  skipped (unreadable): ${f}`); continue }
-  for (const lit of literals(src, f)) {
-    const group = []
-    for (const raw of lit.split(/\s+/)) {
+  for (const { text, pos } of literals(src, f)) {
+    const tokens = []
+    for (const raw of text.split(/\s+/)) {
       const t = raw.trim()
       if (!looksLikeClass(t)) continue
       if (!candidates.has(t)) candidates.set(t, new Set())
       candidates.get(t).add(f)
-      group.push(t)
+      tokens.push(t)
     }
-    if (group.length) groups.push(group)
+    if (tokens.length) groups.push({ tokens, classPos: inClassPosition(src, pos) })
   }
 }
 
@@ -292,7 +337,8 @@ for (const name of emitted.keys()) {
   if (ns) liveNamespaces.add(ns)
 }
 
-const OK = 'ok', DEAD = 'DEAD', EMPTY = 'EMPTY', NOVAR = 'NOVAR', SKIP = 'not-utility-shaped'
+const OK = 'ok', DEAD = 'DEAD', EMPTY = 'EMPTY', NOVAR = 'NOVAR'
+const SKIP = 'not-utility-shaped', NOTCLASS = 'not-a-class-string'
 
 function classify(t) {
   const rec = emitted.get(t)
@@ -317,18 +363,30 @@ function classify(t) {
 const verdict = new Map()
 for (const t of candidates.keys()) verdict.set(t, classify(t))
 
-// A bare word (no `-`) cannot be judged by namespace, so it lands in SKIP. But
-// if it stood in a literal beside two or more classes that DO emit, that
-// literal was a class string, and a bare word in it that emits nothing is a
-// typo — `flexx`, `truncat`, `hiddne`. Promote those to DEAD.
-for (const group of groups) {
-  const live = group.filter((t) => verdict.get(t)[0] === OK).length
+// CORROBORATION. A literal is treated as a class string when it either stood in
+// a `className` position or held two-or-more tokens of which at least one emits
+// — the second half is what covers a helper module's `const NAV = 'w-pager …'`.
+// A token seen only in literals that are neither is not judged at all: that is
+// how `from 'react-router-dom'` and `data-testid="btn-spinner"` stop being
+// reported dead just because `.react-flow__*` and `.btn-coral` make their
+// namespaces live.
+const corroborated = new Set()
+for (const { tokens, classPos } of groups) {
+  const live = tokens.filter((t) => verdict.get(t)[0] === OK).length
+  if (!classPos && !(tokens.length >= 2 && live >= 1)) continue
+  for (const t of tokens) corroborated.add(t)
+  // A bare word (no `-`) cannot be judged by namespace, so it lands in SKIP.
+  // In a string that is demonstrably a class list, a bare word that emits
+  // nothing is a typo — `flexx`, `truncat`, `hiddne`. Promote those.
   if (live < 2) continue
-  for (const t of group) {
+  for (const t of tokens) {
     if (verdict.get(t)[0] === SKIP && !namespaceOf(baseOf(t))) {
       verdict.set(t, [DEAD, `bare word in a class string beside ${live} classes that do emit`])
     }
   }
+}
+for (const [t, v] of verdict) {
+  if (!corroborated.has(t) && v[0] !== OK) verdict.set(t, [NOTCLASS, ''])
 }
 
 // ---------------------------------------------------------------------------
@@ -388,9 +446,14 @@ for (const kind of [DEAD, EMPTY, NOVAR]) {
     console.log(`  ${kind}  ${t}\n        ${why}\n        written in ${where(t)}`)
   }
 }
-const skipped = bucket(SKIP).map(([t]) => t).sort()
-if (skipped.length) {
-  console.log(`  ${SKIP} (${skipped.length}, harvested but NOT checked): ${skipped.join(' ')}`)
+for (const kind of [SKIP, NOTCLASS]) {
+  const names = bucket(kind).map(([t]) => t).sort()
+  if (names.length) console.log(`  ${kind} (${names.length}, harvested but NOT checked): ${names.join(' ')}`)
+}
+// `HARVEST_LIST=1` prints what was certified — useful when comparing this
+// against a hand-kept list, or when reviewing what a task actually writes.
+if (process.env.HARVEST_LIST) {
+  console.log(`  ok (${bucket(OK).length}): ${bucket(OK).map(([t]) => t).sort().join(' ')}`)
 }
 console.log(`  ok ${bucket(OK).length}   DEAD ${bucket(DEAD).length}   `
   + `EMPTY ${bucket(EMPTY).length}   NOVAR ${bucket(NOVAR).length}`)
