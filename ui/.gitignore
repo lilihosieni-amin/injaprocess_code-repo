@@ -10,6 +10,10 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+# The build `playwright.config.ts`'s webServer makes and `vite preview` serves.
+# Its own directory, not `dist`, so a colleague's `npm run build` cannot empty it
+# under a running suite.
+dist-e2e
 *.local
 
 # Editor directories and files
