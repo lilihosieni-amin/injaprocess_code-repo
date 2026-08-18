@@ -22,37 +22,62 @@ import type { ReactNode } from 'react'
  * (src/screens/ProcessList.tsx, export/steps/StepsApp.tsx). A provenance list is
  * the thing an owner reviews, so this one is asserted rather than asserted-to:
  * src/ui/icons.test.tsx renders all twenty-one keys and looks each one up in the
- * two deliverables and in `InjaIcons`, as two tables that name every key.
+ * two deliverables and in `InjaIcons`, as tables that name every key.
  *
- * **Sixteen are the design deliverable's own drawing:**
+ * The same claim, made a second time, cost a second glyph. `inbox` was called
+ * this codebase's own "because no deliverable draws either" — and the panel's
+ * «صندوق بازبینی تعارض‌ها» button draws a TRAY, on the very control
+ * src/shell/PanelShell.tsx renders `<Icon name="inbox">` in. Membership of a
+ * deliverable is not enough either: the set is now pinned to the AFFORDANCES
+ * the design draws these glyphs on, because swapping `menu` for `funnel`, or
+ * `home` for the design's own subprocess glyph, left every table green.
+ *
+ * **Eighteen of the twenty-one are the design deliverable's own drawing**, and
+ * the design draws in TWO DIALECTS: markup, and a `d` BOUND as a string.
+ *
+ * Written as markup:
  *
  *   · in both        — chevronStart, chevronEnd, chevronPrev, chevronNext,
  *                      check, search, user, comment, home
- *   · in the panel   — chevronDown, file, menu, funnel
+ *   · in the panel   — chevronDown, file, menu, funnel, inbox
  *   · `dots` — the row kebab's three circles are the design's to the decimal;
  *     only the `fill`/`stroke` pair moves, off its <svg> and onto each circle,
  *     because Icon's <svg> says the opposite of the design's and an attribute
  *     on the child is how a child overrides its parent.
+ *
+ * Bound rather than written — the panel interpolates a `d` in TEN places and the
+ * reader in five, and a scan for `<path d="…">` sees none of them:
+ *
  *   · `eye` and `eyeOff` — the change-password reveal (Panel :1860) binds ONE
  *     `d` through `newPwIcon` and draws the r=3 iris beside it, so the design's
  *     own construction is eye, and eye with `M3 3l18 18` appended.
+ *   · `chevronUp` — six accordions and role cards bind
+ *     `chevron: open ? 'M6 15l6-6 6 6' : …`, which is this glyph's three points
+ *     in the other order and the same picture on screen.
  *
- * **Three are the design system's**, from `InjaIcons` in design/_ds/…: `trash`,
- * `userBust` and `chevronUp`, all three byte for byte.
+ * **Two are the design system's alone**, from `InjaIcons` in design/_ds/…:
+ * `trash` and `userBust`, both byte for byte, and both drawn in the product
+ * TODAY. `InjaIcons` carries `chevronUp` and `inbox` byte for byte as well — it
+ * agrees with the deliverable about both.
  *
- * **Two are this codebase's own**, which neither the design nor `InjaIcons`
- * draws: `inbox` and `logout`, from the two shells. `InjaIcons` names a
- * different `inbox` — a tray, from an older shell — and no `logout` at all, so
- * these two bytes are the last record of them and icons.test.tsx pins them as
- * exactly that.
+ * **One is this codebase's own**, which neither the design nor `InjaIcons`
+ * draws: `logout`, from the two shells. Those bytes are the last record of it,
+ * so icons.test.tsx pins them as exactly that rather than as a measurement
+ * pretending to be one.
  *
- * `InjaIcons` disagrees with this set in four more places, and all four are
+ * `InjaIcons` disagrees with this set in five places, and all five are
  * decisions rather than drift: the four horizontal chevrons are the SAME four
  * drawings under crossed names (see below — it is where the plan's wrong table
  * came from), and its kebab lies on its side where S1's stands up.
  *
- * Twenty-one keys; the other twelve arrive with the screen that renders them —
- * `InjaIcons.trashSmall` among them, which three live call sites draw.
+ * Twenty-one keys; the other twelve arrive with the screen that renders them.
+ * Three of those twelve are already answered and icons.test.tsx says so, so that
+ * the next task does not author them: `InjaIcons.trashSmall`, which three live
+ * call sites draw; `InjaIcons.warning`, which both deliverables BIND byte for
+ * byte on the confirm dialog; and `InjaIcons.info`, which nothing else records.
+ * `document` and `list` are the opposite case — the panel binds a drawing for
+ * each and it is NOT the design system's key of that name, which is a ruling to
+ * ask for rather than a blank to fill.
  */
 export const ICONS = {
   /* THE FOUR HORIZONTAL CHEVRONS ARE NAMED LOGICALLY, AND THIS APP IS RTL.
@@ -82,9 +107,15 @@ export const ICONS = {
   /** `<` — the next page. */
   chevronNext: <path d="M15 6l-6 6 6 6" />,
   chevronDown: <path d="M6 9l6 6 6-6" />,
-  // The one chevron the deliverable draws nowhere. `InjaIcons.chevronUp` has it,
-  // and src/screens/Overview.tsx's role card — where src/ui/Accordion.tsx's open
-  // mark now comes from — draws the same path.
+  // THE DELIVERABLES DRAW THIS ONE SIX TIMES — as a BOUND `d` rather than as
+  // markup, which is why a scan for `<path d="…">` reports none: every accordion
+  // and role card ships `chevron: open ? 'M6 15l6-6 6 6' : …` (Panel :2853,
+  // :2933, :3501; Reader :1866, :1950, :2539). `M6 15l6-6 6 6` and this `d` are
+  // the SAME THREE POINTS traversed in opposite order — with round caps and
+  // joins the two are the same picture — and `InjaIcons.chevronUp` is this
+  // direction byte for byte, which is what src/screens/Overview.tsx's role card
+  // draws and what src/ui/Accordion.tsx's open mark now comes from.
+  // src/ui/icons.test.tsx reconciles the two rather than restating this.
   chevronUp: <path d="M18 15l-6-6-6 6" />,
   check: <path d="M20 6L9 17l-5-5" />,
   search: <><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" /></>,
@@ -105,7 +136,15 @@ export const ICONS = {
   // rings.
   dots: <><circle cx="12" cy="5" r="1.8" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r="1.8" fill="currentColor" stroke="none" /><circle cx="12" cy="19" r="1.8" fill="currentColor" stroke="none" /></>,
   file: <><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6" /></>,
-  inbox: <><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M3 8l9 6 9-6" /></>,
+  // THE CONFLICT BUTTON’S OWN GLYPH, from the affordance this key is drawn on:
+  // Panel :152 is «صندوق بازبینی تعارض‌ها» — same label, same count badge,
+  // `onClick="{{ openInbox }}"` — and it draws a TRAY. `InjaIcons.inbox` is that
+  // same tray byte for byte. The envelope this key used to carry came from the
+  // old shell, matched neither, and shipped: src/shell/PanelShell.tsx renders
+  // <Icon name="inbox"> inside that very button, so the panel drew one picture
+  // and the design another. `home`-without-a-door and the invented `comment`,
+  // a third time; src/ui/icons.test.tsx now pins this one to the button.
+  inbox: <><path d="M22 12h-6l-2 3h-4l-2-3H2" /><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" /></>,
   logout: <><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3" /><path d="M10 16l-4-4 4-4M6 12h10" /></>,
   // The «خانه» button in both deliverables (Panel :191, Reader :163) draws a
   // COMPLETE house as one path, and it has a doorway. An earlier draft here drew

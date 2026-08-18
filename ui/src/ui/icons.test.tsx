@@ -246,6 +246,46 @@ const DRAWINGS: [string, Set<string>][] = DELIVERABLES.map(([name, src]) => [
 ])
 
 /**
+ * THE OTHER HALF OF WHAT A DELIVERABLE DRAWS: every `d` it BINDS rather than
+ * writes — the path-data strings its script quotes and its markup interpolates
+ * through `<path d="{{ … }}">`.
+ *
+ * `DRAWINGS` above reads markup, and markup is not where half of these glyphs
+ * live. The panel binds a `d` in TEN places and the reader in five, and the
+ * sentence "a scan for `<path d=` finds none, so the design draws none" has now
+ * been wrong three times over — it authored a doorless `home`, invented a
+ * `comment` bubble the design already ships four times per file, and left an
+ * envelope on the conflict button the panel draws a tray on. `eye` and `eyeOff`
+ * were rescued one at a time by `revealGlyphs()`; this is the general case, and
+ * most of what it protects has not been written yet: `InjaIcons.warning` is one
+ * of these strings BYTE FOR BYTE, and the next task that greps for `<path d=`
+ * would conclude the design draws no warning and author one.
+ *
+ * `M` followed by a coordinate is the whole filter, which is what SVG path data
+ * begins with and what nothing else in these files is: it harvests seventeen
+ * strings per deliverable and every one of them is a drawing.
+ */
+const BOUND: [string, Set<string>][] = DELIVERABLES.map(([name, src]) => [
+  name,
+  new Set([...src.matchAll(/'(M-?[\d.][^']*)'/g)].map((m) => m[1])),
+])
+
+/** The names a deliverable interpolates into a `d`, in the order it draws them. */
+function boundSites(src: string): string[] {
+  return [...src.matchAll(/<path d="\{\{ ([^}]+?) \}\}"/g)].map((m) => m[1])
+}
+
+/**
+ * Which deliverables BIND this glyph — its `d`s joined the way the design binds
+ * them, since the design ships `eyeOff` as one string of two subpaths.
+ */
+function boundIn(name: keyof typeof ICONS): string[] {
+  const joined = pathsOf(name).join('')
+  if (joined === '') return []
+  return BOUND.filter(([, ds]) => ds.has(joined)).map(([n]) => n)
+}
+
+/**
  * The `d` of the first glyph the design draws inside the affordance `marker`
  * names — its `onClick` binding, or the label beside it.
  *
@@ -259,6 +299,30 @@ function drawnBy(marker: string): string {
   expect(at, `the design draws no ${marker}`).toBeGreaterThan(0)
   expect(src.indexOf(marker, at + 1), `${marker} is not unique in the deliverable`).toBe(-1)
   return /<path d="([^"]+)"/.exec(src.slice(at, at + 1500))?.[1] ?? ''
+}
+
+/**
+ * The WHOLE drawing the design puts inside the affordance `marker` names — the
+ * bytes between the first `<svg …>` after it and that svg's `</svg>`.
+ *
+ * `drawnIn` asks "is this drawing SOMEWHERE in the deliverable?", and that is a
+ * weaker question than it reads as. It closed the fragment leak — half of
+ * `file` is a substring of `file` and is not the icon — but it cannot see a
+ * SUBSTITUTION between two real drawings: swapping `menu` and `funnel`, or
+ * setting `home` to the design's own subprocess glyph, leaves both drawings in
+ * the panel and every table green. Both were run against the whole suite and
+ * both survived it. This is the other question — "is it the right drawing for
+ * THIS control?" — and it is the one `drawnBy` was already asking of the four
+ * chevrons.
+ */
+function drawnAt(marker: string): string {
+  const src = readFileSync(designSrc, 'utf8')
+  const at = src.indexOf(marker)
+  expect(at, `the design draws no ${marker}`).toBeGreaterThan(0)
+  expect(src.indexOf(marker, at + 1), `${marker} is not unique in the deliverable`).toBe(-1)
+  const svg = /<svg\b[^>]*>([\s\S]*?)<\/svg>/.exec(src.slice(at))
+  expect(svg, `${marker} has no glyph inside it`).not.toBeNull()
+  return svg![1]
 }
 
 /**
@@ -363,9 +427,25 @@ const PATH_ARGS: Record<string, number> = {
  * it is, never bigger.
  */
 function pathSpan(d: string): { w: number; h: number } {
+  const pts = pathPoints(d)
+  expect(pts.length, `${d} draws no point at all`).toBeGreaterThan(0)
+  const xs = pts.map((q) => q[0])
+  const ys = pts.map((q) => q[1])
+  return { w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) }
+}
+
+/**
+ * The ON-PATH POINTS one `d` visits, in order and in absolute user units.
+ *
+ * `M6 15l6-6 6 6` and `M18 15l-6-6-6 6` are the SAME THREE POINTS walked in
+ * opposite directions — one picture, two spellings — and the deliverables use
+ * the first where this set uses the second. Comparing the bytes calls them
+ * different drawings; comparing the numbers calls `M6 15l6-6 6 6` and
+ * `M6 15l6-6 6 5` the same one. This is what tells the two apart.
+ */
+function pathPoints(d: string): [number, number][] {
   const tokens = d.match(/[MmLlHhVvCcSsQqTtAaZz]|-?(?:\d*\.\d+|\d+)/g) ?? []
-  const xs: number[] = []
-  const ys: number[] = []
+  const pts: [number, number][] = []
   let x = 0
   let y = 0
   let sx = 0
@@ -379,8 +459,7 @@ function pathSpan(d: string): { w: number; h: number } {
       if (cmd === 'Z' || cmd === 'z') {
         x = sx
         y = sy
-        xs.push(x)
-        ys.push(y)
+        pts.push([x, y])
         continue
       }
     } else {
@@ -408,11 +487,9 @@ function pathSpan(d: string): { w: number; h: number } {
       sx = x
       sy = y
     }
-    xs.push(x)
-    ys.push(y)
+    pts.push([x, y])
   }
-  expect(xs.length, `${d} draws no point at all`).toBeGreaterThan(0)
-  return { w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) }
+  return pts
 }
 
 /** The size of the smallest box that holds one drawn node. */
@@ -557,6 +634,48 @@ describe('Icon', () => {
     expect(new Set(four.map(pathOf)).size).toBe(4)
   })
 
+  it('draws each glyph on the CONTROL the design draws it on, not merely somewhere', () => {
+    /* THE SUBSTITUTION THE MEMBERSHIP TABLE CANNOT SEE.
+
+       "This drawing is somewhere in the deliverable" is not "this is the right
+       drawing for this name", and the gap between them is wide enough to walk
+       two real defects through. Both of these were run against the whole suite
+       and both came back 1203 green:
+
+         · swap `menu` and `funnel` — the hamburger becomes a filter funnel and
+           the funnel becomes three lines. Both are still panel drawings.
+         · set `home` to the design's own SUBPROCESS glyph,
+           `M3 3h7v7H3zM14 14h7v7h-7zM14 3l7 7M10 14l-7 7`, which both
+           deliverables draw four times over — the «خانه» button then draws two
+           disconnected squares, and every table still agrees.
+
+       The four chevrons were never exposed to it, because `drawnBy` pins each
+       one to the BUTTON the design draws it on. These four had no individual
+       pin at all — `home`, `menu` and `funnel` are 'absent' from `InjaIcons`,
+       so deliverable membership was the only thing holding them — and `inbox`
+       is the one that actually shipped wrong: src/shell/PanelShell.tsx renders
+       `<Icon name="inbox">` inside «صندوق بازبینی تعارض‌ها», and this set drew
+       an envelope where that button draws a tray. Two pictures, one control.
+
+       Whole drawing against whole drawing, because `inbox` is two paths and the
+       tray's lid alone would pass a `d`-level check. */
+    expect(drawnAt('title="خانه"')).toBe(markupOf('home'))
+    expect(drawnAt('title="منو"')).toBe(markupOf('menu'))
+    expect(drawnAt('data-r-filters=""')).toBe(markupOf('funnel'))
+    expect(drawnAt('onClick="{{ openInbox }}"')).toBe(markupOf('inbox'))
+    // …and the four controls really do draw four different glyphs, or one
+    // drawing used for all of them would satisfy every line above — which is
+    // exactly the failure mode the swap above is.
+    const controls = [
+      'title="خانه"', 'title="منو"', 'data-r-filters=""', 'onClick="{{ openInbox }}"',
+    ]
+    expect(new Set(controls.map(drawnAt)).size).toBe(4)
+    // …against a reader that can miss. `drawnAt` returning '' for everything
+    // would make the four lines above compare nothing to nothing.
+    for (const c of controls) expect(drawnAt(c), c).toContain('<path d="')
+    expect(() => drawnAt('title="no such control"')).toThrow()
+  })
+
   it('is the design’s own drawing wherever the design draws one — all 21, and where', () => {
     /* THE PROVENANCE LIST IS THE THING AN OWNER REVIEWS, so it is measured here
        rather than written down in a docstring and believed.
@@ -574,8 +693,15 @@ describe('Icon', () => {
        `file` is two paths and losing the second leaves a rectangle that is still
        a document and still passes.
 
-       An `[]` here is a claim in its own right, and four of the seven have their
-       own assertion below saying where they DO come from. */
+       An `[]` here is a claim in its own right, and NOT a claim that nothing
+       draws the glyph: five of these six are drawn — by the design as a bound
+       string, or by `InjaIcons` and a live call site — and each one names the
+       assertion below that says where it comes from. The one true `[]` is
+       `logout`.
+
+       Nor is a name in this table safe because it is in it: membership is not
+       identity, and the test above pins `home`, `menu`, `funnel` and `inbox` to
+       the controls the design draws them on for exactly that reason. */
     const found = Object.fromEntries(
       (Object.keys(ICONS) as (keyof typeof ICONS)[]).map((n) => [n, drawnIn(n)]),
     )
@@ -585,22 +711,26 @@ describe('Icon', () => {
       chevronPrev: ['panel', 'reader'],
       chevronNext: ['panel', 'reader'],
       chevronDown: ['panel'],
-      chevronUp: [],           // src/screens/Overview.tsx — the design draws none
+      chevronUp: [],           // …as MARKUP. Both deliverables BIND it six times over
+      //                         and the picture is the same — the bound-`d` test below
       check: ['panel', 'reader'],
       search: ['panel', 'reader'],
       user: ['panel', 'reader'],
-      userBust: [],            // authored: nothing anywhere draws a bust
+      userBust: [],            // `InjaIcons.userBust`, which export/steps/StepsApp.tsx
+      //                         draws today — the design-system table below
       dots: [],                // the design's own circles WITH the fill/stroke pair
       //                         moved onto them; drop the pair and this reads
       //                         ['panel'], which is the hollow-ring bug — below
       file: ['panel'],
-      inbox: [],               // src/shell/PanelShell.tsx — below
+      inbox: ['panel'],        // the conflict button's own tray (Panel :152), pinned to
+      //                         that button above
       logout: [],              // src/shell/PanelShell.tsx — below
       home: ['panel', 'reader'],
       menu: ['panel'],
       comment: ['panel', 'reader'],
       funnel: ['panel'],
-      trash: [],               // authored: nothing anywhere draws a bin
+      trash: [],               // `InjaIcons.trash`, which src/screens/ProcessList.tsx
+      //                         draws today — the design-system table below
       eye: [],                 // the design BINDS its `d` rather than writing it — below
       eyeOff: [],              // …and so this one too
     })
@@ -618,6 +748,111 @@ describe('Icon', () => {
     }
   })
 
+  it('reads the `d`s the design BINDS as well as the ones it writes — all fifteen sites', () => {
+    /* THE BLIND SPOT THAT HAS NOW COST THREE GLYPHS.
+
+       Half of what these two files draw never appears in their markup. The
+       panel interpolates a `d` in TEN places and the reader in FIVE, and every
+       one of those `d`s lives in the script above as a quoted string — so
+       "I grepped for `<path d=` and the design draws none" is a sentence that
+       is FALSE BY CONSTRUCTION for a whole dialect of the deliverable. It has
+       been written three times: it authored a doorless `home`, it invented a
+       `comment` bubble the design ships four times per file, and it left an
+       envelope on the conflict button the panel draws a tray on.
+
+       `revealGlyphs()` below rescued `eye` and `eyeOff` one at a time. This is
+       the general case, and most of what it protects has not been written yet:
+       `warning`, `info`, `document` and `list` are four of the twelve keys
+       still to arrive, and the answers for all four are in here. */
+    // Every site, by the name it interpolates — so a deliverable that grew a
+    // tenth binding cannot slip past a count. `e.d` is flow-edge geometry
+    // rather than an icon, and it is listed because a harvest that quietly
+    // stopped seeing it would be a harvest that had stopped working.
+    expect(boundSites(DELIVERABLES[0][1])).toEqual([
+      'd.icon', 'deptIcon', 'x.icon', 'p.chevron', 'bs.chevron', 'st.chevron', 'e.d',
+      'sc.icon', 'newPwIcon', 'confDlgIcon',
+    ])
+    expect(boundSites(DELIVERABLES[1][1])).toEqual([
+      'd.icon', 'p.chevron', 'bs.chevron', 'st.chevron', 'e.d',
+    ])
+    // …and the strings those sites are fed. Both files carry the same
+    // seventeen, which is itself the finding: the reader binds `confDlgIcon`
+    // and `newPwIcon` in its state without drawing either.
+    for (const [name, ds] of BOUND) expect(ds.size, name).toBe(17)
+    expect([...BOUND[0][1]].sort()).toEqual([...BOUND[1][1]].sort())
+
+    // WHAT THIS SET TAKES FROM THE BOUND DIALECT. Four keys, and every one of
+    // them was called authored or undrawn at some point in this file's history.
+    expect(Object.fromEntries(
+      (Object.keys(ICONS) as (keyof typeof ICONS)[]).map((n) => [n, boundIn(n)]),
+    )).toEqual({
+      chevronStart: [], chevronEnd: ['panel', 'reader'], chevronPrev: [], chevronNext: [],
+      chevronDown: [], chevronUp: [],   // …the same three points backwards — below
+      check: ['panel', 'reader'],       // the confirm dialog's OK arm
+      search: [], user: [], userBust: [], dots: [], file: [], inbox: [], logout: [],
+      home: [], menu: [], comment: [], funnel: [], trash: [],
+      eye: ['panel', 'reader'], eyeOff: ['panel', 'reader'],
+    })
+
+    // CHEVRON-UP IS DRAWN SIX TIMES, and the note that said "the deliverable
+    // draws it nowhere" was false. `M6 15l6-6 6 6` is this glyph's three points
+    // walked the other way — identical on screen with round caps and joins — so
+    // the reconciliation is on the POINTS, not the bytes.
+    const open = 'M6 15l6-6 6 6'
+    for (const [name, ds] of BOUND) expect(ds.has(open), name).toBe(true)
+    expect(pathPoints(open)).toEqual([...pathPoints(pathOf('chevronUp'))].reverse())
+    // …and that comparison can fail, or "same points reversed" would be a
+    // property every three-point chevron in the set happens to have.
+    expect(pathPoints(open)).not.toEqual([...pathPoints(pathOf('chevronDown'))].reverse())
+    expect(pathPoints(open)).not.toEqual(pathPoints(pathOf('chevronUp')))
+
+    // THE FOUR ANSWERS FOR THE KEYS STILL TO COME. A task that greps markup
+    // finds nothing for any of them and authors four glyphs.
+    const ds = injaIcons()
+    const asPath = (d: string) => canonical(`<path d="${d}"/>`)
+    // `warning` — bound as the confirm dialog's un-confirm arm, and it is
+    // `InjaIcons.warning` BYTE FOR BYTE, in both files. There is nothing to
+    // decide here and nothing to draw.
+    const warning = 'M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z'
+    for (const [name, bound] of BOUND) expect(bound.has(warning), name).toBe(true)
+    expect(canonical(ds.get('warning')!)).toBe(asPath(warning))
+    // `document` and `list` — the export menu binds one of each, and NEITHER is
+    // the design-system key of that name. That is a ruling to ask for, not a
+    // blank to fill: the two records disagree.
+    const exportDoc = 'M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8zM14 3v5h5M9 13h6M9 17h4'
+    const exportList = 'M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01'
+    for (const [name, bound] of BOUND) {
+      expect(bound.has(exportDoc), name).toBe(true)
+      expect(bound.has(exportList), name).toBe(true)
+    }
+    expect(canonical(ds.get('document')!)).not.toBe(asPath(exportDoc))
+    expect(canonical(ds.get('list')!)).not.toBe(asPath(exportList))
+    // `info` — neither dialect of either deliverable carries it, so `InjaIcons`
+    // really is the only record, and THAT is the sentence L-39 supports.
+    const info = /<path d="([^"]+)"/.exec(ds.get('info')!)![1]
+    for (const [name, bound] of BOUND) expect(bound.has(info), name).toBe(false)
+    for (const [name, src] of DELIVERABLES) expect(src.includes(info), name).toBe(false)
+
+    // THE NINE DEPARTMENT GLYPHS are bound too — `DEPTS[].icon`, the first site
+    // in the list above — and src/lib/departments.ts carries all nine. They
+    // never joined this set (§5.1.2 sends them through `Icon`'s `d`), so
+    // nothing else in this file would notice one drifting.
+    expect(DEPT_CODES).toHaveLength(9)
+    for (const code of DEPT_CODES) {
+      for (const [name, bound] of BOUND) {
+        expect(bound.has(deptMeta(code).icon), `${code} in ${name}`).toBe(true)
+      }
+    }
+
+    // …and the harvest itself can miss, which every table above depends on it
+    // not doing silently. A regex that had stopped matching answers an empty
+    // set to everything; one that matched too much drags in prose.
+    for (const [name, bound] of BOUND) {
+      expect(bound.has('M4 20l16-16'), name).toBe(false)
+      for (const d of bound) expect(pathPoints(d).length, `${name}: ${d}`).toBeGreaterThan(1)
+    }
+  })
+
   it('quotes the glyphs that already existed, rather than redrawing them', () => {
     // `comment` is the sharp one: an earlier draft of this set invented a speech
     // bubble on the premise that the design ships none. It ships one, four times
@@ -626,17 +861,28 @@ describe('Icon', () => {
     // assertion about the disc stayed green. Read from the DESIGN, because
     // FAB.tsx now reads this set and a check against it would be circular.
     expect(readFileSync(designSrc, 'utf8')).toContain(pathOf('comment'))
-    // `inbox` and `logout` came from the two shells, and the comparison against
-    // them has now expired the way the one against FAB.tsx had: the shells read
-    // THIS SET. The design draws neither glyph and `InjaIcons` names only a
-    // different `inbox` (below), so these bytes are the last record of the two
-    // and the pin is that record rather than a measurement pretending to be one.
-    expect(markupOf('inbox'))
-      .toBe('<rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="M3 8l9 6 9-6"></path>')
+    // `inbox` USED TO BE ON THIS LIST, and that is the sharp one now: it was
+    // called the codebase's own on the strength of "no deliverable draws
+    // either", and the panel's conflict button — same label, same badge,
+    // `openInbox` — draws a tray. It is measured against that button above and
+    // is not a record of anything any more.
+    //
+    // `logout` is the last one that really is a record. It came from the two
+    // shells, the comparison against them has expired the way the one against
+    // FAB.tsx had — the shells read THIS SET — and neither the design nor
+    // `InjaIcons` draws it, so the pin is that record rather than a measurement
+    // pretending to be one.
     expect(markupOf('logout')).toBe(
       '<path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"></path>'
       + '<path d="M10 16l-4-4 4-4M6 12h10"></path>',
     )
+    // …and it is the ONLY one left in that position, or a second glyph could
+    // quietly go back to being its own record. Every other key is answered by
+    // the deliverable (as markup or as a bound `d`) or by `InjaIcons`.
+    const unsourced = (Object.keys(ICONS) as (keyof typeof ICONS)[]).filter(
+      (n) => drawnIn(n).length === 0 && boundIn(n).length === 0 && !injaIcons().has(n),
+    )
+    expect(unsourced).toEqual(['logout'])
   })
 
   it('agrees with the design system’s own icon map, and says where it does NOT', () => {
@@ -678,7 +924,7 @@ describe('Icon', () => {
       userBust: 'same',
       dots: 'differs',          // the map's kebab lies down; S1's stands up
       file: 'same',
-      inbox: 'differs',         // the map's is a tray; the shell drew an envelope
+      inbox: 'same',            // the map's tray IS the panel's conflict button
       logout: 'absent',
       home: 'absent',
       menu: 'absent',
@@ -706,10 +952,16 @@ describe('Icon', () => {
     // S1's row menu stands it up, and the panel deliverable is where that one is
     // read from — see the kebab test.
     expect(ds.get('dots')).toContain('cx="5" cy="12"')
-    // The inbox: the map has the tray the old shell/TopBar drew; the conflict
-    // button this set inherited is an envelope, and no deliverable draws either.
-    expect(ds.get('inbox')).toContain('M22 12h-6l-2 3h-4l-2-3H2')
-    expect(markupOf('inbox')).toContain('M3 8l9 6 9-6')
+    // The inbox: the map and the deliverable are the SAME drawing here, which is
+    // the thing the old verdict of 'differs' was hiding. The set carried an
+    // envelope inherited from the old shell/TopBar; `InjaIcons.inbox` is a tray,
+    // the panel's «صندوق بازبینی تعارض‌ها» button draws that same tray, and
+    // src/shell/PanelShell.tsx renders this key inside that button. So the two
+    // ground truths are closed against each other rather than each against the
+    // set, and the envelope is asserted gone from both.
+    expect(canonical(ds.get('inbox')!)).toBe(canonical(drawnAt('onClick="{{ openInbox }}"')))
+    expect(ds.get('inbox')).not.toContain('M3 8l9 6 9-6')
+    expect(markupOf('inbox')).not.toContain('M3 8l9 6 9-6')
 
     // …and `canonical` really does reconcile the two dialects, or every 'same'
     // above is a comparison that never happened. The map self-closes its tags
