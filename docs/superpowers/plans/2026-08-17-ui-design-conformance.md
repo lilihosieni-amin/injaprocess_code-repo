@@ -5017,12 +5017,16 @@ not; `FAB` is the one control whose size the two surfaces genuinely disagree abo
     emits `z-index:var(--role-z-floating)`. Nothing here is blocked.
   - **`gap-stat-dot`** (`--gap-stat-dot`, 7px) is the gap between the stat
     numeral and its conflict dot (`design/Inja Panel.dc.html:221`, `display:flex;
-    align-items:center;gap:7px`). `tokens.css` holds two 7px tokens — `--pad-popover` (the
-    dropdown popover's inset) and `--space-stat-label` (the 4-up label's margin-top) — and
-    the R8 block's own rule says a number that already has an owner is minted again under
-    its own name rather than borrowed. Neither the pre-flight nor `mint-spec.md` minted one
-    for this role, so it stays written out and is listed for the owner rather than
-    silently attached to a token that means something else.
+    align-items:center;gap:7px`). ✅ **It has its own token, `--gap-stat-dot`, and its own
+    class, `gap-stat-dot`** — write the class, never the number. `tokens.css` now holds
+    **four** 7px tokens: `--pad-popover` (the dropdown popover's inset),
+    `--space-stat-label` (the 4-up label's margin-top), `--pad-back-y` (the panel back
+    button's padding-y, Task 12) and `--gap-button-icon` (a button's icon-to-label gap,
+    Task 13). The R8 block's own rule is why there are four: a number that already has an
+    owner is minted again under its own name rather than borrowed, and the comment beside
+    `--gap-stat-dot` in `tokens.css` enumerates the design's 22 `gap:7px` sites into five
+    roles precisely so that none of them is silently attached to a token that means
+    something else.
 - Produces:
   - `ui/src/ui/SectionCard.tsx` — `function SectionCard({ eyebrow, skin, children, className }: { eyebrow?: string; skin?: 'tint' | 'white'; children: ReactNode; className?: string }): JSX.Element`
   - `ui/src/ui/StatTile.tsx` — `type StatTone = 'violet' | 'ink' | 'conflict' | 'ok' | 'warn'`; `function StatTile({ value, label, tone, dot, skin, className }: { value: number | string; label: string; tone?: StatTone; dot?: boolean; skin?: 'feature' | 'compact'; className?: string }): JSX.Element`. A `number` is run through `toFa`; a `string` is passed through, so a caller that has already formatted a range is not double-converted.
@@ -5230,9 +5234,10 @@ import { useId, type ReactNode } from 'react'
 
 /**
  * The sub-panel (§5.2) — the dominant container inside a form-ish screen, and
- * the reason `#FBF9FE` is the 24-times-used surface the token file has no name
- * for. Two skins, used side by side on the Access screen: tinted and shadowless,
- * or white with the card shadow.
+ * the role `--surface-sub` was minted for: the tint appears two dozen times
+ * across the deliverables and had no name until Task 1 gave it one. Write
+ * `bg-surface-sub`, never the hex. Two skins, used side by side on the Access
+ * screen: tinted and shadowless, or white with the card shadow.
  *
  * The eyebrow is the section's accessible name, not decoration: eight of these
  * stack on one screen and a screen reader needs to know where each begins.
@@ -6641,26 +6646,37 @@ Run: `cd ui && npx vitest run src/shell/shells.test.tsx`
 Expected: FAIL — nine new failures, the first being
 `Unable to find an element by: [data-r-topbar]` (the header today has no such attribute).
 
-**The eight values in this shell that no token holds — deliberate, not an oversight.**
+**The eight values in this shell that had no token — every one of them has a name now.**
 
-Every other length, gap, radius and rung below comes from the theme. These eight do not,
-because the design draws them once each in the chrome and the single minting pass
-(`.superpowers/sdd/mint-spec.md`) minted from the *screens*, not from the two shells — none
-of its 23 tokens is a shell value. **Do not mint them here.** `ui/tailwind.config.js`,
-`ui/src/styles/tokens.css` and `ui/src/styles/roles.css` are frozen; adding a name to one of
-them from inside a screen task is the unreachable-token failure this whole rebuild exists to
-end. Leave them written out, and take them to the owner as one list.
+Every length, gap, radius and rung below comes from the theme, and that now includes these
+eight. It did not when this step was first written: the design draws them once each in the
+chrome, and the single minting pass (`.superpowers/sdd/mint-spec.md`) minted from the
+*screens* rather than from the two shells, so none of its 23 tokens was a shell value. The
+**shell mint** has since closed exactly that gap — `.superpowers/sdd/ui-shell-mint-report.md`,
+commits `73b1fe8`, `af8c5c9` and `4d30bda`. Step 7 below writes the names.
 
-| Written out | Role | Design line | Why no token |
+**Do not write the number back, and do not mint anything further here.**
+`ui/tailwind.config.js`, `ui/src/styles/tokens.css` and `ui/src/styles/roles.css` are frozen
+again; adding a name to one of them from inside a screen task is the unreachable-token
+failure this whole rebuild exists to end.
+
+Map by ROLE, never by pixel value. The last column exists because six of these eight numbers
+are *also* held by a token that belongs to something else, and reaching for the same-valued
+neighbour is how this project's signature defect propagates. Every class below was verified
+against a compile of `ui/tailwind.config.js`: each emits a rule carrying the property and the
+`var(--…)` its row names, and each of those custom properties is declared in
+`src/styles/tokens.css` or `src/styles/roles.css`.
+
+| Now written | Role | Design line | Resolution |
 |---|---|---|---|
-| `min-w-[265px]` | «مدیریت» menu popover min-width | `Inja Panel.dc.html:140` — `min-width:265px` | 1 use. `minWidth.menu` is a raw `220px` literal in the config for something else, and matches no value in either deliverable |
-| `mt-[3px]` | the menu row's hint offset | `Inja Panel.dc.html:145` — `margin-top:3px` | 1 use. 3px is off the `--space-*` ladder (2 → 4); `--gap-tab-flow` is 3px for the flow nav group's gap, a different role |
-| `leading-[1.25]` | the brand lockup's two lines | `Inja Panel.dc.html:120` — `line-height:1.25` | 1 use in each shell. `--lh-tight` is **1.2**, itself a single use; L-17 decides the three *prose* line-heights and says nothing about the display end of the scale |
-| `min-w-[19px] h-[19px]` | the count badge on the chrome | `Inja Panel.dc.html:156` — `min-width:19px;height:19px` | `--size-count` is the **FAB's** badge at 21px and `--size-tick` is L-10's 19px tick box — two owners, neither this role |
-| `px-[13px]` | the inbox button's inline padding | `Inja Panel.dc.html:152` — `padding:8px 13px` | five tokens hold 13px (`--pad-search-y`, `--pad-compose`, `--pad-tick-row-y`, `--pad-dropdown-x-filter`, `--pad-table-row-y`) and every one is another component's |
+| `min-w-menu` | «مدیریت» menu popover min-width | `Inja Panel.dc.html:140` — `min-width:265px` | ✅ **Resolved to `--width-menu` (265px)** — `minWidth.menu` → `min-w-menu`. Was `min-w-[265px]`. That key held a raw `220px` literal matching no `min-width` either deliverable draws; the mint re-pointed the existing key rather than adding one, so the class name did not move and `src/ui/Menu.tsx` needed no edit. The design draws five menu popovers (190/225/265/270) and this is the only one either *shell* draws; for a **floor**, the widest is the direction that cannot crop a label. |
+| `mt-hint` | the menu row's hint offset | `Inja Panel.dc.html:145` — `margin-top:3px` | ✅ **Resolved to `--space-hint` (3px)** — `spacing.hint` → `mt-hint`. Was `mt-[3px]`. 3px is off the `--space-*` ladder (2 → 4), and the sweep found **seven** uses of this role, not the one this row used to claim. Not `--gap-tab-flow`, which is also 3px but is the flow nav group's *gap* rather than a hint line's offset under the label it explains. |
+| `leading-lockup` | the brand lockup's two lines | `Inja Panel.dc.html:120` — `line-height:1.25` | ✅ **Resolved to `--role-lh-lockup`** — `lineHeight.lockup` → `leading-lockup`. Was `leading-[1.25]`. It is a **role**, not a plain token: `--lh-lockup` 1.25 on the panel, `--lh-lockup-reader` 1.3 under `[data-surface='reader']` (`Inja Reader.dc.html:136`), so both shells write the identical class and R3 picks the number. It is `surface.test.tsx`'s fourteenth `SCALE` row and the one carve-out in that file's "leadings are surface-independent" guard. Not `--lh-tight`, which is 1.2 and is every title step's leading. |
+| `min-w-count-chrome h-count-chrome` | the count badge on the chrome | `Inja Panel.dc.html:156` — `min-width:19px;height:19px` | ✅ **Resolved to `--size-count-chrome` (19px)** — the key `count-chrome` is on **both** the `minWidth` and the `height` scale, which is why the prefix differs between the two halves of the pair. Was `min-w-[19px] h-[19px]`. Not `--size-count`, which is 21px and is the **FAB's** badge; not `--size-tick`, which is also 19px and is L-10's tick box. Three badges, three owners, and only this one is chrome. |
+| `px-inbox-x` | the inbox button's inline padding | `Inja Panel.dc.html:152` — `padding:8px 13px` | ✅ **Resolved to `--pad-inbox-x` (13px)** — `spacing['inbox-x']` → `px-inbox-x`. Was `px-[13px]`. Five other tokens hold 13px — `--pad-search-y`, `--pad-compose`, `--pad-tick-row-y`, `--pad-dropdown-x-filter`, `--pad-table-row-y` — and every one of them is another component's. |
 | `gap-s4` | the inbox button's icon/label gap | `Inja Panel.dc.html:152` says **`gap:8px`** | ✅ **Resolved to the design's 8px** (`gap-s4`). R1: the deliverable beats the plan. Note this is a DIFFERENT element from Task 10's stat gap, which is genuinely 7px (`Inja Panel.dc.html:221`) and has its own token `--gap-stat-dot`. Two `gap-[7px]` sites, two different roles, two different right answers — which is why mapping by pixel value rather than by role keeps producing the wrong token. |
-| `py-[9px]` | the crumb strip / reader back bar | `Inja Panel.dc.html:174` — `padding:9px 22px` | 9px is off the ladder (8 → 10); its five tokens are the audit tab, the option gap, the menu search field, the filter chip and the timeline note |
-| `py-[7px]` | the «بازگشت» button | `Inja Panel.dc.html:176` — `padding:7px 12px` | 7px is off the ladder (6 → 8); `--pad-popover` and `--space-stat-label` hold it for other roles |
+| `py-crumb-y` | the panel's crumb strip | `Inja Panel.dc.html:174` — `padding:9px 22px` | ✅ **Resolved to `--pad-crumb-y` (9px)** — `spacing['crumb-y']` → `py-crumb-y`. Was `py-[9px]`. 9px is off the ladder (8 → 10) and its five other tokens are the audit tab, the option gap, the menu search field, the filter chip and the timeline note. **The panel's strip only** — this row used to read "crumb strip / reader back bar" and that was the error: the reader draws its back bar `padding:10px 20px` (`Inja Reader.dc.html:156`), which is `--space-5` and was reachable all along as `py-s5`. Task 13 writes that, not this. |
+| `py-back-y` | the panel's «بازگشت» button | `Inja Panel.dc.html:176` — `padding:7px 12px` | ✅ **Resolved to `--pad-back-y` (7px)** — `spacing['back-y']` → `py-back-y`. Was `py-[7px]`. 7px is off the ladder (6 → 8) and has four other owners: `--pad-popover`, `--space-stat-label`, `--gap-stat-dot` (whose comment in `tokens.css` forbids exactly this borrowing) and `--gap-button-icon`. What separates this one is that it is a *padding* on *this* button — `padding:7px 12px` is drawn five times across three roles and only the panel's back button is named here. **The panel's button only** — the reader draws its own `padding:10px 15px` (`Inja Reader.dc.html:157`), so Task 13 writes `py-s5 px-button-x`. |
 
 `before:content-[""]` in `HIT` is **not** on this list and is not a design value: it is the
 one declaration that makes a `::before` render at all, it is the idiom `PasswordField.tsx`
@@ -7444,20 +7460,37 @@ redirect at all).
 
 - [ ] **Step 7: Rewrite `ReaderShell`**
 
-**Nothing in this shell is written out as an arbitrary value.** The four that used to be —
-`leading-[1.25]`, `min-w-[19px] h-[19px]`, `py-[9px]` and `py-[7px]` — are now `leading-lockup`,
-`min-w-count-chrome h-count-chrome` and `py-s5` twice, and they
-are on Task 12's table with the design line each is read from. **Do not mint them**: the
-config, `tokens.css` and `roles.css` are frozen, and a screen task that unfreezes one of them
-recreates the unreachable-token problem the rebuild exists to fix. `before:content-[""]` is
-structural, not a value — see the same note.
+**Nothing in this shell is written out as an arbitrary value.** The four that used to be are
+all resolved — but only two of them by Task 12's tokens. The other two are the reader drawing
+its **own** numbers, which is the whole finding of the shell mint's §5 and the reason this
+step's markup changed:
+
+- `leading-[1.25]` → **`leading-lockup`**, the role `--role-lh-lockup`: 1.25 on the panel and
+  **1.3 here** (`Inja Reader.dc.html:136`), because this subtree is `surface="reader"`. One
+  class, two values — see Task 12's table.
+- `min-w-[19px] h-[19px]` → **`min-w-count-chrome h-count-chrome`** (`--size-count-chrome`,
+  19px). Same badge, same token as the panel's; the reader draws it at `:145`.
+- `py-[9px]` on the back bar → **`py-s5`**, *not* Task 12's `py-crumb-y`. The reader draws
+  `padding:10px 20px` (`:156`), not the panel's 9px. 10px is `--space-5` and was reachable all
+  along, so nothing was minted for it.
+- `py-[7px]` on the back button → **`py-s5`** for the same reason: the reader draws
+  `padding:10px 15px` (`:157`), not the panel's 7px. Its inline 15px is **`px-button-x`**
+  (`--pad-button-x`) and its 7px icon gap is **`gap-button-icon`** (`--gap-button-icon`), both
+  minted by the reader-chrome pass (`af8c5c9`) because four 15px and four 7px tokens already
+  existed and not one of them was a standard button's.
+
+**Do not mint anything further**: the config, `tokens.css` and `roles.css` are frozen again,
+and a screen task that unfreezes one of them recreates the unreachable-token problem the
+rebuild exists to fix. `before:content-[""]` is structural, not a value — see Task 12's note.
 
 Everything else here is the theme. Two worth pointing at, because both look like numbers and
-are not: `px-reader-x` is `--pad-reader-x` 24px, the reader's own gutter rather than a
-coincidence with `--pad-modal`; and `w-iconbtn h-iconbtn` is `--role-iconbtn`, which is 42px
-**because this subtree is inside `SurfaceProvider surface="reader"`** and 40px in the panel
-from the identical class string. That is R3 working, and it is why neither shell writes a
-pixel for its icon buttons.
+are not: `px-topbar-reader` is `--pad-topbar-reader` **20px**, the reader's *chrome* gutter,
+and it is deliberately **not** `px-reader-x` — `--pad-reader-x` is 24px, the reader's
+*content* gutter (`padding:30px 24px 60px`, `:168`), a different row of the page. Mapping the
+chrome onto it was the mistake the shell mint caught. And `w-iconbtn h-iconbtn` is
+`--role-iconbtn`, which is 42px **because this subtree is inside
+`SurfaceProvider surface="reader"`** and 40px in the panel from the identical class string.
+That is R3 working, and it is why neither shell writes a pixel for its icon buttons.
 
 Replace `ui/src/shell/ReaderShell.tsx` with:
 
@@ -9508,22 +9541,28 @@ blanked the field, which is a claim of absence standing in for an absence of a c
   on their behalf — see *The class-emission check* in Global Constraints for the
   measurement that retired the old grep.
 
-  `grid-cols-[1fr_1.4fr_1fr]` is the case that used to break this step, and it is
-  the reason the check parses the CSS instead of grepping it. Tailwind escapes
-  every CSS-special character in an arbitrary class name, the `.` in `1.4fr`
-  included, so the emitted selector is `.grid-cols-\[1fr_1\.4fr_1fr\]`. The
-  string this step once grepped for was the unescaped form under `grep -F`, so it
-  printed `NOT IN CSS:` on a build where the class was present and correct. The
-  scanner unescapes the selector when it indexes it, and an escaping control fails
-  the run if that unescaping ever stops working.
+  The A-0 grid is the case that used to break this step, and it is the reason the
+  check parses the CSS instead of grepping it. This screen once wrote it as
+  `grid-cols-[1fr_1.4fr_1fr]`, and Tailwind escapes every CSS-special character in
+  an arbitrary class name — the `.` in `1.4fr` included — so the emitted selector
+  was `.grid-cols-\[1fr_1\.4fr_1fr\]`. The string this step once grepped for was
+  the unescaped form under `grep -F`, so it printed `NOT IN CSS:` on a build where
+  the class was present and correct. The scanner unescapes the selector when it
+  indexes it, and an escaping control fails the run if that unescaping ever stops
+  working — which still matters here, because every `max760:` variant this file
+  writes is escaped the same way.
 
-  `grid-cols-[1fr_1.4fr_1fr]` stays an arbitrary **grid template**: no guard
-  forbids it and no token holds it. Not because a token *could not* —
-  `gridTemplateColumns` already carries `users`, `audit` and `activity` for exactly
-  this shape — but because none was minted for the A-0 grid, and
-  `ui/tailwind.config.js` is frozen after the single minting pass. **Do not mint
-  one here.** It is on the list of values Task 25 Step 4 must exempt by name or
-  send to the owner.
+  ✅ **The A-0 grid now has a token: `--grid-idef0` (`1fr 1.4fr 1fr`), written
+  `grid-cols-idef0`.** The shell mint (`.superpowers/sdd/ui-shell-mint-report.md`,
+  commit `73b1fe8`) minted it onto the `gridTemplateColumns` scale beside `users`,
+  `audit` and `activity`, which already carried exactly this shape for three other
+  tables — the A-0 grid was simply the one nobody had named. It is its own key
+  rather than a reuse of those three because they are a **table's** column tracks
+  and this is the IDEF0 diagram's three-cell row (`Inja Panel.dc.html:414`); the
+  numbers differ and nothing may make them move together. **Do not mint anything
+  further here** — `ui/tailwind.config.js` is frozen again after that pass. This
+  screen now writes **no arbitrary value of any kind**, and Task 25 Step 4 no
+  longer exempts it.
 
   **A failure.** `DEAD` — the class compiled to no rule at all; that is a **typo
   in the component**, so fix the class string, rebuild, re-run. `EMPTY` — the
@@ -14296,8 +14335,14 @@ export function ConfirmAction(props: { row: Confirmation | undefined; department
     t-shirt guards, which name them as a class. Only note here that the design's
     toast is `bottom:26px; padding:12px 20px; radius 12px` — `bottom-s11`,
     `py-s6`, `rounded-button` and `text-card` cover all but the 20px inline
-    padding, which no token holds under this role. **Do not mint one**; put it on
-    Task 25's `UNTOKENISED` list with the rest.
+    padding, which **still** holds no token under this role: `tokens.css` has
+    four 20px names — `--pad-empty-x`, `--pad-stat-x`, `--space-stat-grid` and
+    `--pad-topbar-reader` (the reader's chrome gutter) — and not one of them is a
+    toast. **Do not mint one.** It is the single value this plan still hands to
+    the owner unnamed; carry it into Task 25's report as such. It does not go on
+    `UNTOKENISED`: that list exempts a *file* from the arbitrary-value check, the
+    shell mint emptied it, and `px-5` is a t-shirt name rather than a `[…]`, so
+    it is Task 25's t-shirt guard that meets this one.
   - **O2** — `ExportMenu.tsx:74`'s `w-[42px] h-[42px]` trigger, `ExportModal.tsx:99`
     and `InboxModal.tsx:26`'s `w-8 h-8` closes: all become `IconButton` with
     `min-h-touch min-w-touch` around a `w-tool h-tool` drawn box.
@@ -14566,9 +14611,12 @@ cases and a full-app browser sweep.
     // A file on that list is exempt from the check above, so the list is the one
     // place a new arbitrary value could hide. Pin its length: adding a file to it
     // is then a deliberate edit with a number beside it, not a quiet append.
-    expect(UNTOKENISED.length).toBeLessThanOrEqual(3)
+    // The pin is 0 because the shell mint emptied the list — see its declaration.
+    // Raising this number is the edit that needs an argument beside it.
+    expect(UNTOKENISED.length).toBeLessThanOrEqual(0)
     // …and every entry still has one, so the list cannot rot into a set of names
-    // that stopped meaning anything.
+    // that stopped meaning anything. Vacuous while the list is empty, and kept
+    // deliberately: it is the rule the next entry has to satisfy.
     for (const rel of UNTOKENISED) {
       const f = files().find((x) => x.rel === rel)
       expect(f, `${rel} is on UNTOKENISED but not in files()`).toBeDefined()
@@ -14581,32 +14629,38 @@ cases and a full-app browser sweep.
 
   ```ts
   /**
-   * The list a later pass must empty, or the owner must name. Every entry holds
-   * a value the design genuinely draws that NO token holds: the single minting
-   * pass minted from the screens, and none of its 23 tokens is a shell value.
+   * The list a later pass must empty, or the owner must name. An entry would be a
+   * file holding a value the design genuinely draws that NO token holds.
    *
-   * These are not waived — the point of naming the files is that the list is
-   * short, reviewable, and only shrinks. Task 12's own step carries the design
-   * line each value is read from, its role, and why the nearest token belongs to
-   * something else. Do NOT resolve one by adding a key to `tailwind.config.js`;
-   * see Step 6.
+   * It is EMPTY, and that is the finished state rather than an oversight. It held
+   * three files — the two shells and the process summary — because the single
+   * minting pass minted from the screens and none of its 23 tokens was a shell
+   * value. The shell mint has since named every one of those values
+   * (`.superpowers/sdd/ui-shell-mint-report.md`): nine tokens plus a per-surface
+   * role for the brand lockup's leading. All three files now write theme classes
+   * and none of them needs the exemption. Tasks 12, 13 and 16 carry the design
+   * line, the role and the token for each.
+   *
+   * An entry is not a waiver — the point of naming the file is that the list is
+   * short, reviewable, and only shrinks. A file comes back onto it only for a
+   * value the design draws that nothing holds, with its role and its design line,
+   * and it goes to the owner in the same breath. Do NOT resolve one by adding a
+   * key to `tailwind.config.js`; see Step 6.
+   *
+   * The type annotation is load-bearing: an unannotated `[]` infers `never[]` and
+   * `UNTOKENISED.includes(f.rel)` above stops compiling.
    */
-  const UNTOKENISED = [
-    // 265px menu, 3px hint offset, 1.25 lockup leading, the 19px count badge,
-    // 13px + 7px on the inbox button, 9px crumb strip, 7px back button.
-    'src/shell/PanelShell.tsx',
-    // The same 1.25, 19px, 9px and 7px, on the reader's chrome.
-    'src/shell/ReaderShell.tsx',
-    // grid-cols-[1fr_1.4fr_1fr] — the A-0 grid. `gridTemplateColumns` holds
-    // three templates (users, audit, activity) and none of them is this one.
-    'src/screens/Summary.tsx',
-  ]
+  const UNTOKENISED: string[] = []
   ```
 
-  Three files, not five: `Pager.tsx`, `Overlay.tsx` and `PasswordField.tsx` carry
-  only `before:content-[""]` and a derived `before:-inset-[…]`, both of which
-  `STRUCTURAL` now covers by name, and `Button.tsx`'s only `-[…px]` is inside a
-  comment. Verified against the tree.
+  Empty, not three, and none of the near misses belongs on it either: `Pager.tsx`,
+  `Overlay.tsx` and `PasswordField.tsx` carry only `before:content-[""]` and a
+  derived `before:-inset-[…]`, both of which `STRUCTURAL` covers by name, and
+  `Button.tsx`'s only `-[…px]` is inside a comment. Verified against the tree.
+
+  **Step 1's scan is what settles this, not this paragraph.** If it reports an
+  `arb` hit in a file this list no longer names, that is a real finding: resolve
+  it against Step 6's three outcomes and say which one it was.
 
 - [ ] **Step 5: Add the two cases the regexes never had.**
   ```ts
@@ -14665,9 +14719,14 @@ cases and a full-app browser sweep.
      Step 4, with a line saying which of those it is.
   3. **The design draws a value nothing holds.** Then it goes on `UNTOKENISED`
      with its file, its role and the design line it is read from — and it goes
-     to the owner as part of the one list this task hands over, together with
-     the eight the two shells already carry. Minting it here would be the very
-     defect this step is checking for, committed by the check itself.
+     to the owner as part of the one list this task hands over. That list starts
+     **empty**: the eight the two shells used to carry all have names now (the
+     shell mint, `73b1fe8` / `af8c5c9` / `4d30bda`), and so does the A-0 grid.
+     The one value known to still have none is the toast's 20px inline padding,
+     Task 24 Step 22 — which is a `px-5` t-shirt name rather than a `[…]`, so it
+     reaches this task through the t-shirt guard and not through `UNTOKENISED`.
+     Minting anything here would be the very defect this step is checking for,
+     committed by the check itself.
 
 - [ ] **Step 7: Complete the island list.**
   Replace `ISLANDS` with what Step 1's scan actually found, one commented group
