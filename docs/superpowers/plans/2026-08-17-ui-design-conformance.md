@@ -6326,6 +6326,32 @@ Run: `cd ui && npx vitest run src/shell/shells.test.tsx`
 Expected: FAIL — nine new failures, the first being
 `Unable to find an element by: [data-r-topbar]` (the header today has no such attribute).
 
+**The eight values in this shell that no token holds — deliberate, not an oversight.**
+
+Every other length, gap, radius and rung below comes from the theme. These eight do not,
+because the design draws them once each in the chrome and the single minting pass
+(`.superpowers/sdd/mint-spec.md`) minted from the *screens*, not from the two shells — none
+of its 23 tokens is a shell value. **Do not mint them here.** `ui/tailwind.config.js`,
+`ui/src/styles/tokens.css` and `ui/src/styles/roles.css` are frozen; adding a name to one of
+them from inside a screen task is the unreachable-token failure this whole rebuild exists to
+end. Leave them written out, and take them to the owner as one list.
+
+| Written out | Role | Design line | Why no token |
+|---|---|---|---|
+| `min-w-[265px]` | «مدیریت» menu popover min-width | `Inja Panel.dc.html:140` — `min-width:265px` | 1 use. `minWidth.menu` is a raw `220px` literal in the config for something else, and matches no value in either deliverable |
+| `mt-[3px]` | the menu row's hint offset | `Inja Panel.dc.html:145` — `margin-top:3px` | 1 use. 3px is off the `--space-*` ladder (2 → 4); `--gap-tab-flow` is 3px for the flow nav group's gap, a different role |
+| `leading-[1.25]` | the brand lockup's two lines | `Inja Panel.dc.html:120` — `line-height:1.25` | 1 use in each shell. `--lh-tight` is **1.2**, itself a single use; L-17 decides the three *prose* line-heights and says nothing about the display end of the scale |
+| `min-w-[19px] h-[19px]` | the count badge on the chrome | `Inja Panel.dc.html:156` — `min-width:19px;height:19px` | `--size-count` is the **FAB's** badge at 21px and `--size-tick` is L-10's 19px tick box — two owners, neither this role |
+| `px-[13px]` | the inbox button's inline padding | `Inja Panel.dc.html:152` — `padding:8px 13px` | five tokens hold 13px (`--pad-search-y`, `--pad-compose`, `--pad-tick-row-y`, `--pad-dropdown-x-filter`, `--pad-table-row-y`) and every one is another component's |
+| `gap-[7px]` | the inbox button's icon/label gap | `Inja Panel.dc.html:152` says **`gap:8px`** | ⚠ **the plan's 7px disagrees with the design.** Left as written rather than re-decided: if the owner confirms the design, this becomes `gap-s4` and the value is off this list |
+| `py-[9px]` | the crumb strip / reader back bar | `Inja Panel.dc.html:174` — `padding:9px 22px` | 9px is off the ladder (8 → 10); its five tokens are the audit tab, the option gap, the menu search field, the filter chip and the timeline note |
+| `py-[7px]` | the «بازگشت» button | `Inja Panel.dc.html:176` — `padding:7px 12px` | 7px is off the ladder (6 → 8); `--pad-popover` and `--space-stat-label` hold it for other roles |
+
+`before:content-[""]` in `HIT` is **not** on this list and is not a design value: it is the
+one declaration that makes a `::before` render at all, it is the idiom `PasswordField.tsx`
+already ships, and `src/ui/table.test.tsx` has a test asserting `before:content-none` is
+*not* a substitute for it. Task 25 Step 4 must exempt it by name.
+
 - [ ] **Step 7: Rewrite `PanelShell`**
 
 Replace `ui/src/shell/PanelShell.tsx` with:
@@ -6348,15 +6374,22 @@ import { panelCrumbs } from './crumbs'
 // `<nav>` rather than a NavTabTray: the tray is a `tablist` and these are not
 // tabs, and borrowing the role because the paint matches would announce a set of
 // views where there is a set of destinations.
-const TRAY = 'inline-flex items-center gap-[4px] p-[4px] rounded-button bg-tile-v2'
-const TRAY_ITEM = 'px-[14px] py-[8px] rounded-tool border-0 no-underline cursor-pointer text-fs-sm2 font-bold'
+const TRAY = 'inline-flex items-center gap-s1 p-s1 rounded-button bg-tile-v2'
+const TRAY_ITEM = 'px-s7 py-s4 rounded-tool border-0 no-underline cursor-pointer text-fs-sm2 font-bold'
 
 // §5.2 — icon buttons are `#fff` / `--violet` / `1.5px --line`.
 const GHOST = 'inline-flex items-center justify-center bg-card text-violet border-hairline border-line cursor-pointer no-underline hover:bg-tile-v2'
 
 // F11's 44px floor against the design's 34–36px boxes: the painted box stays the
 // design's, and an invisible `::before` grows the target. Nothing about it shows.
-const HIT = 'relative before:absolute before:content-[""] before:-inset-[5px]'
+//
+// The 5px is DERIVED, not drawn — `(44 - 34) / 2` against the smallest box this
+// shell paints, `w-tool` — and it happens to land exactly on `--space-2`, so it
+// is written `-inset-s2` rather than as a number. It clears the floor on all
+// three: 34 + 10 = 44, 36 + 10 = 46, 40 + 10 = 50. `before:content-[""]` is the
+// declaration that makes the pseudo-element exist at all; `before:content-none`
+// is not a substitute and `src/ui/table.test.tsx` has a test that says so.
+const HIT = 'relative before:absolute before:content-[""] before:-inset-s2'
 
 /** Compact density, breadcrumb trail, administration surfaces. */
 export function PanelShell({ session }: { session: SessionDescriptor }) {
@@ -6396,19 +6429,19 @@ export function PanelShell({ session }: { session: SessionDescriptor }) {
         <button
           type="button" aria-haspopup="menu" aria-expanded={adminOpen}
           onClick={() => setAdminOpen((v) => !v)}
-          className={`${TRAY_ITEM} inline-flex items-center gap-[6px] bg-transparent text-violet`}
+          className={`${TRAY_ITEM} inline-flex items-center gap-s3 bg-transparent text-violet`}
         >
           مدیریت
           <Icon name="chevronDown" px={13} stroke={2.4} />
         </button>
         {adminOpen && (
           <>
-            <div aria-hidden onClick={() => setAdminOpen(false)} className="fixed inset-0 z-[29]" />
-            <div role="menu" className="absolute top-[calc(100%+6px)] start-0 z-30 min-w-[265px] p-[8px] bg-card border border-border-card rounded-card shadow-pop">
+            <div aria-hidden onClick={() => setAdminOpen(false)} className="fixed inset-0 z-dropdown" />
+            <div role="menu" className="absolute top-full mt-s3 start-0 z-dropdown min-w-[265px] p-s4 bg-card border border-border-card rounded-card shadow-pop">
               {adminItems.map((i) => (
                 <Link
                   key={i.to} role="menuitem" to={i.to} onClick={() => setAdminOpen(false)}
-                  className={`block px-[12px] py-[11px] rounded-input no-underline text-start hover:bg-tile-v2 ${pathname === i.to ? 'bg-tile-v2' : 'bg-transparent'}`}
+                  className={`block px-s6 py-option-y rounded-input no-underline text-start hover:bg-tile-v2 ${pathname === i.to ? 'bg-tile-v2' : 'bg-transparent'}`}
                 >
                   <span className="block text-fs-menu font-bold text-ink">{i.label}</span>
                   <span className="block mt-[3px] text-fs-xs text-faint">{i.hint}</span>
@@ -6425,26 +6458,26 @@ export function PanelShell({ session }: { session: SessionDescriptor }) {
     return (
       <header
         data-r-topbar
-        className="flex items-center gap-[14px] px-[22px] py-[12px] bg-card border-b border-warm flex-none z-20 max760:px-[14px] max760:py-[10px] max760:gap-[10px]"
+        className="flex items-center gap-s7 px-topbar py-s6 bg-card border-b border-warm flex-none z-chrome max760:px-s7 max760:py-s5 max760:gap-s5"
       >
-        <Link to="/departments" className="flex items-center gap-[10px] no-underline">
+        <Link to="/departments" className="flex items-center gap-s5 no-underline">
           <Logo px={38} />
           <span className="block leading-[1.25]">
             <span className="block text-fs-body font-bold text-ink">اینجا فست‌فود</span>
             <span className="block text-fs-micro text-muted">سامانهٔ فرآیندها</span>
           </span>
         </Link>
-        <span aria-hidden className="w-[1px] h-[26px] mx-[4px] bg-border-current max1080:hidden" />
+        <span aria-hidden className="w-px h-s11 mx-s1 bg-border-current max1080:hidden" />
         <nav data-r-nav aria-label="بخش‌های اصلی" className={`${TRAY} max1080:hidden`}>
           <Link to="/departments" className={`${TRAY_ITEM} bg-violet text-card`}>دپارتمان‌ها</Link>
           <AdminMenu />
         </nav>
-        <div className="ms-auto flex items-center gap-[10px]">
+        <div className="ms-auto flex items-center gap-s5">
           {canEdit && (
             <button
               type="button" onClick={() => setInboxOpen(true)}
               aria-label={openCount > 0 ? `صندوق بازبینی تعارض‌ها، ${toFa(openCount)} مورد در انتظار` : 'صندوق بازبینی تعارض‌ها'}
-              className={`${GHOST} relative gap-[7px] px-[13px] py-[8px] rounded-button text-fs-sm2 font-bold max760:hidden`}
+              className={`${GHOST} relative gap-[7px] px-[13px] py-s4 rounded-button text-fs-sm2 font-bold max760:hidden`}
             >
               <Icon name="inbox" px={16} />
               صندوق تعارض‌ها
@@ -6460,7 +6493,7 @@ export function PanelShell({ session }: { session: SessionDescriptor }) {
                 // 7% alpha would be invisible here — and would still build.
                 <span
                   aria-hidden
-                  className="absolute top-[-6px] left-[-6px] min-w-[19px] h-[19px] px-[4px] inline-flex items-center justify-center rounded-round bg-coral text-card text-fs-micro font-bold border-2 border-card"
+                  className="absolute -top-s3 -left-s3 min-w-[19px] h-[19px] px-s1 inline-flex items-center justify-center rounded-round bg-coral text-card text-fs-micro font-bold border-2 border-card"
                 >
                   {toFa(openCount)}
                 </span>
@@ -6471,13 +6504,13 @@ export function PanelShell({ session }: { session: SessionDescriptor }) {
               needs one, drawn on §5.2's icon-button metrics. Owner question. */}
           <button
             type="button" onClick={() => logout.mutate()} aria-label="خروج"
-            className={`${GHOST} ${HIT} w-[34px] h-[34px] rounded-control`}
+            className={`${GHOST} ${HIT} w-tool h-tool rounded-control`}
           >
             <Icon name="logout" px={17} stroke={2.2} />
           </button>
           <button
             data-r-menu type="button" onClick={() => setMenuOpen(true)} aria-label="فهرست"
-            className="hidden max1080:inline-flex items-center justify-center w-[40px] h-[40px] rounded-input bg-tile-v2 text-violet border-hairline border-line cursor-pointer"
+            className="hidden max1080:inline-flex items-center justify-center w-iconbtn h-iconbtn rounded-input bg-tile-v2 text-violet border-hairline border-line cursor-pointer"
           >
             <Icon name="menu" px={19} stroke={2.2} />
           </button>
@@ -6490,17 +6523,17 @@ export function PanelShell({ session }: { session: SessionDescriptor }) {
     return (
       <nav
         data-r-crumbbar aria-label="مسیر"
-        className="flex items-center gap-[10px] px-[22px] py-[9px] bg-tile-v2 border-b border-line flex-none max760:px-[14px] max760:py-[10px] max760:gap-[10px]"
+        className="flex items-center gap-s5 px-topbar py-[9px] bg-tile-v2 border-b border-line flex-none max760:px-s7 max760:py-s5 max760:gap-s5"
       >
         {back?.to !== undefined && (
-          <Link to={back.to} className={`${GHOST} gap-[6px] px-[12px] py-[7px] rounded-input text-fs-sm2 font-bold`}>
+          <Link to={back.to} className={`${GHOST} gap-s3 px-s6 py-[7px] rounded-input text-fs-sm2 font-bold`}>
             <Icon name="chevronEnd" px={15} stroke={2.4} />
             بازگشت
           </Link>
         )}
-        <ol data-r-crumbs className="flex flex-wrap items-center gap-[6px] list-none m-0 p-0 text-fs-sm2 max760:hidden">
+        <ol data-r-crumbs className="flex flex-wrap items-center gap-s3 list-none m-0 p-0 text-fs-sm2 max760:hidden">
           {crumbs.map((c, i) => (
-            <li key={`${c.label}-${i}`} className="flex items-center gap-[6px]">
+            <li key={`${c.label}-${i}`} className="flex items-center gap-s3">
               {i > 0 && <span aria-hidden className="text-faint">/</span>}
               {c.to !== undefined && i < crumbs.length - 1 ? (
                 <Link to={c.to} dir={c.mono ? 'ltr' : undefined} className={`no-underline text-muted ${c.mono ? 'font-mono' : ''}`}>
@@ -6514,7 +6547,7 @@ export function PanelShell({ session }: { session: SessionDescriptor }) {
             </li>
           ))}
         </ol>
-        <Link to="/departments" aria-label="خانه" className={`${GHOST} ${HIT} ms-auto w-[36px] h-[36px] rounded-input`}>
+        <Link to="/departments" aria-label="خانه" className={`${GHOST} ${HIT} ms-auto w-menu-more h-menu-more rounded-input`}>
           <Icon name="home" px={16} />
         </Link>
       </nav>
@@ -6540,25 +6573,25 @@ export function PanelShell({ session }: { session: SessionDescriptor }) {
         </main>
         {inboxOpen && <InboxModal onClose={() => setInboxOpen(false)} />}
         <Sheet open={menuOpen} onClose={() => setMenuOpen(false)} title="فهرست">
-          <div className="flex flex-col gap-[10px]">
+          <div className="flex flex-col gap-s5">
             <div>
               <p className="m-0 text-fs-body font-bold text-ink">{session.displayName}</p>
-              <p className="m-0 mt-[2px] text-fs-xs text-muted">{session.role}</p>
+              <p className="m-0 mt-half text-fs-xs text-muted">{session.role}</p>
             </div>
-            <Link to="/departments" onClick={() => setMenuOpen(false)} className={`${GHOST} px-[14px] py-[14px] rounded-tile text-fs-menu font-bold justify-start`}>
+            <Link to="/departments" onClick={() => setMenuOpen(false)} className={`${GHOST} px-s7 py-s7 rounded-tile text-fs-menu font-bold justify-start`}>
               دپارتمان‌ها
             </Link>
             {adminItems.map((i) => (
-              <Link key={i.to} to={i.to} onClick={() => setMenuOpen(false)} className={`${GHOST} px-[14px] py-[14px] rounded-tile text-fs-menu font-bold justify-start`}>
+              <Link key={i.to} to={i.to} onClick={() => setMenuOpen(false)} className={`${GHOST} px-s7 py-s7 rounded-tile text-fs-menu font-bold justify-start`}>
                 {i.label}
               </Link>
             ))}
             {canEdit && (
-              <button type="button" onClick={() => { setMenuOpen(false); setInboxOpen(true) }} className={`${GHOST} px-[14px] py-[14px] rounded-tile text-fs-menu font-bold justify-start`}>
+              <button type="button" onClick={() => { setMenuOpen(false); setInboxOpen(true) }} className={`${GHOST} px-s7 py-s7 rounded-tile text-fs-menu font-bold justify-start`}>
                 صندوق تعارض‌ها {openCount > 0 && toFa(openCount)}
               </button>
             )}
-            <button type="button" onClick={() => logout.mutate()} className={`${GHOST} px-[14px] py-[14px] rounded-tile text-fs-menu font-bold justify-start`}>
+            <button type="button" onClick={() => logout.mutate()} className={`${GHOST} px-s7 py-s7 rounded-tile text-fs-menu font-bold justify-start`}>
               خروج
             </button>
           </div>
@@ -6639,10 +6672,32 @@ process.exit(miss.length?1:0);
 ' text-fs-body text-fs-menu text-fs-sm2 text-fs-xs text-fs-micro rounded-card rounded-tile rounded-button \
   rounded-input rounded-control rounded-tool rounded-round bg-card bg-tile-v2 bg-violet \
   bg-coral bg-ink bg-border-current border-warm border-line border-border-card \
-  border-hairline text-ink text-violet text-muted text-faint text-card shadow-pop
+  border-hairline text-ink text-violet text-muted text-faint text-card shadow-pop \
+  px-topbar py-option-y w-tool h-tool w-iconbtn h-iconbtn w-menu-more h-menu-more \
+  z-chrome z-dropdown mt-half mt-s3 top-full
 ```
 
-Expected: `OK 28 classes present`. Then prove both breakpoints compiled:
+Expected: `OK 41 classes present`.
+
+The thirteen names on the last three lines are the ones this step exists for. The
+twenty-eight above them are colours and type steps that ship today and have shipped for
+weeks; a grep that certifies only those certifies nothing about *this* task. The thirteen
+are the classes `PanelShell` newly depends on, and each is one character away from
+something that compiles to nothing while `npm run build` still exits 0: `px-topbar` is
+`--pad-topbar` 22px and not `px-s10`, `w-tool` is `--size-tool` 34px and not `w-pager`,
+`w-menu-more` is 36px, `py-option-y` is `--pad-option-y` 11px, and `z-chrome` / `z-dropdown`
+are the L-42…L-47 rungs that replace the deliverable's `z-index:20` and `29`/`30` — Tailwind
+ships its own `z-20` and `z-30`, which emit, look right in every test and are the wrong
+layer.
+
+A `MISSING` line here is a **typo in `PanelShell.tsx`**, not a gap in the theme. Every one
+of the forty-one is in the frozen theme today, verified by compiling this exact list.
+**Do not add anything to `ui/tailwind.config.js`**: it, `src/styles/tokens.css` and
+`src/styles/roles.css` are frozen after the single minting pass, and a name added here would
+be the unreachable-token failure the rebuild exists to end. If a name really is absent from
+the theme, stop and report it rather than minting it.
+
+Then prove both breakpoints compiled:
 
 ```bash
 cd ui && node -e '
@@ -7012,11 +7067,21 @@ describe('ReaderShell chrome', () => {
     expect(container.querySelector('[data-shell="reader"]')).toHaveClass('bg-ink', 'text-ink')
   })
 
-  it('gives the reader 42px icon buttons, not the panel’s 34', async () => {
+  it('asks for the icon-button ROLE, which is what makes it 42 here and 34 on the panel', async () => {
     // R3's table: the reader's icon buttons are 42×42 at radius 12.
+    //
+    // The class is `w-iconbtn`, not a number, and it is the SAME string the panel
+    // writes — `--role-iconbtn` is `--size-iconbtn` 40px on `:root` and
+    // `--size-iconbtn-reader` 42px under `[data-surface='reader']`, so the
+    // difference is carried by the role layer that R3 exists to be. jsdom
+    // computes no CSS, so this assertion can only pin that the shell asked for
+    // the role; the two values themselves are pinned by `--role-iconbtn`'s row in
+    // `SCALE` in `src/ui/surface.test.tsx`, and the painted box by the Playwright
+    // check in Step 11. A `w-[42px]` here would pass this test and this test
+    // alone, and would stop being the design the day R3 moved.
     renderReader(THREE, '/departments')
     await screen.findByText('فهرست دپارتمان‌ها')
-    expect(screen.getByRole('link', { name: 'نمایه' })).toHaveClass('w-[42px]', 'h-[42px]', 'rounded-button')
+    expect(screen.getByRole('link', { name: 'نمایه' })).toHaveClass('w-iconbtn', 'h-iconbtn', 'rounded-button')
   })
 
   it('counts the approvals waiting for you in Persian, and drops the badge at zero', async () => {
@@ -7057,6 +7122,20 @@ redirect at all).
 
 - [ ] **Step 7: Rewrite `ReaderShell`**
 
+**The four values below that no token holds** — `leading-[1.25]`, `min-w-[19px] h-[19px]`,
+`py-[9px]` and `py-[7px]` — are the same four this shell shares with `PanelShell`, and they
+are on Task 12's table with the design line each is read from. **Do not mint them**: the
+config, `tokens.css` and `roles.css` are frozen, and a screen task that unfreezes one of them
+recreates the unreachable-token problem the rebuild exists to fix. `before:content-[""]` is
+structural, not a value — see the same note.
+
+Everything else here is the theme. Two worth pointing at, because both look like numbers and
+are not: `px-reader-x` is `--pad-reader-x` 24px, the reader's own gutter rather than a
+coincidence with `--pad-modal`; and `w-iconbtn h-iconbtn` is `--role-iconbtn`, which is 42px
+**because this subtree is inside `SurfaceProvider surface="reader"`** and 40px in the panel
+from the identical class string. That is R3 working, and it is why neither shell writes a
+pixel for its icon buttons.
+
 Replace `ui/src/shell/ReaderShell.tsx` with:
 
 ```tsx
@@ -7070,7 +7149,11 @@ import { toFa } from '../lib/format'
 import { readerBack } from './crumbs'
 
 const GHOST = 'inline-flex items-center justify-center bg-card text-violet border-hairline border-line cursor-pointer no-underline hover:bg-tile-v2'
-const HIT = 'relative before:absolute before:content-[""] before:-inset-[5px]'
+// F11's 44px floor. Same expander as `PanelShell`: the 5px is `(44 - 34) / 2`
+// against the smallest box either shell paints and lands on `--space-2`, so it
+// is `-inset-s2` and not a number. Here it clears the floor with room —
+// 36 + 10 = 46 on the home square, 42 + 10 = 52 on the reader's icon buttons.
+const HIT = 'relative before:absolute before:content-[""] before:-inset-s2'
 
 /**
  * Roomier density, one screen at a time.
@@ -7117,33 +7200,33 @@ export function ReaderShell({ session }: { session: SessionDescriptor }) {
         {onFlow ? null : atRoot ? (
           <header
             data-r-topbar
-            className="flex items-center gap-[14px] px-[24px] py-[12px] bg-card border-b border-warm flex-none z-20 max760:px-[14px] max760:py-[10px] max760:gap-[10px]"
+            className="flex items-center gap-s7 px-reader-x py-s6 bg-card border-b border-warm flex-none z-chrome max760:px-s7 max760:py-s5 max760:gap-s5"
           >
-            <Link to={root} className="flex items-center gap-[10px] no-underline">
+            <Link to={root} className="flex items-center gap-s5 no-underline">
               <Logo px={38} />
               <span className="block leading-[1.25]">
                 <span className="block text-fs-body font-bold text-ink">اینجا فست‌فود</span>
                 <span className="block text-fs-micro text-muted">سامانهٔ فرآیندها</span>
               </span>
             </Link>
-            <div className="ms-auto flex items-center gap-[10px]">
+            <div className="ms-auto flex items-center gap-s5">
               {session.pendingApprovals > 0 && (
                 <span
                   role="status"
                   aria-label={`${toFa(session.pendingApprovals)} کامنت در انتظار تأیید شما`}
-                  className="min-w-[19px] h-[19px] px-[4px] inline-flex items-center justify-center rounded-round bg-coral text-card text-fs-micro font-bold"
+                  className="min-w-[19px] h-[19px] px-s1 inline-flex items-center justify-center rounded-round bg-coral text-card text-fs-micro font-bold"
                 >
                   {toFa(session.pendingApprovals)}
                 </span>
               )}
               {/* R3 — the reader's icon buttons are 42×42 at radius 12, against
                   the panel's 34×34 at radius 10. */}
-              <Link to="/profile" aria-label="نمایه" className={`${GHOST} ${HIT} w-[42px] h-[42px] rounded-button`}>
+              <Link to="/profile" aria-label="نمایه" className={`${GHOST} ${HIT} w-iconbtn h-iconbtn rounded-button`}>
                 <Icon name="user" px={18} />
               </Link>
               <button
                 type="button" onClick={() => logout.mutate()} aria-label="خروج"
-                className={`${GHOST} ${HIT} w-[42px] h-[42px] rounded-button`}
+                className={`${GHOST} ${HIT} w-iconbtn h-iconbtn rounded-button`}
               >
                 <Icon name="logout" px={18} stroke={2.2} />
               </button>
@@ -7152,15 +7235,15 @@ export function ReaderShell({ session }: { session: SessionDescriptor }) {
         ) : (
           <nav
             data-r-backbar aria-label="بازگشت"
-            className="flex items-center gap-[10px] px-[24px] py-[9px] bg-card border-b border-warm flex-none z-20 max760:px-[14px] max760:gap-[10px]"
+            className="flex items-center gap-s5 px-reader-x py-[9px] bg-card border-b border-warm flex-none z-chrome max760:px-s7 max760:gap-s5"
           >
             {back !== undefined && (
-              <Link to={back} className={`${GHOST} gap-[6px] px-[12px] py-[7px] rounded-input text-fs-sm font-bold`}>
+              <Link to={back} className={`${GHOST} gap-s3 px-s6 py-[7px] rounded-input text-fs-sm font-bold`}>
                 <Icon name="chevronEnd" px={15} stroke={2.4} />
                 بازگشت
               </Link>
             )}
-            <Link to={root} aria-label="خانه" className={`${GHOST} ${HIT} ms-auto w-[36px] h-[36px] rounded-input`}>
+            <Link to={root} aria-label="خانه" className={`${GHOST} ${HIT} ms-auto w-menu-more h-menu-more rounded-input`}>
               <Icon name="home" px={16} />
             </Link>
           </nav>
@@ -7208,10 +7291,24 @@ console.log(miss.length?"MISSING "+miss.join(" "):"OK "+need.length+" classes pr
 process.exit(miss.length?1:0);
 ' rounded-button rounded-input rounded-round text-fs-body text-fs-sm text-fs-micro bg-card bg-ink \
   bg-coral border-warm border-line border-hairline text-ink text-violet \
-  text-muted text-card
+  text-muted text-card \
+  px-reader-x w-iconbtn h-iconbtn w-menu-more h-menu-more z-chrome
 ```
 
-Expected: `OK 16 classes present`.
+Expected: `OK 22 classes present`.
+
+The sixteen above the last line are Task 12's list over again — they are what the two shells
+*share*, so they prove nothing about this one. The six on the last line are what this shell
+adds: `px-reader-x` (`--pad-reader-x` 24px, the reader's own gutter — the panel writes
+`px-topbar` 22px in the same slot), `w-iconbtn h-iconbtn` (`--role-iconbtn`, 42px here and
+40px in the panel from the same string — the assertion in Step 8 pins that the shell asks
+for the role, this pins that the role compiles), `w-menu-more h-menu-more` (36px, the home
+square) and `z-chrome` (L-42's 1020, replacing the deliverable's `z-index:20`).
+
+A `MISSING` line is a typo in `ReaderShell.tsx`. All twenty-two are in the frozen theme
+today, verified by compiling this list. **Nothing goes into `ui/tailwind.config.js`,
+`src/styles/tokens.css` or `src/styles/roles.css` from this task** — they are frozen after
+the single minting pass. If a name is genuinely absent, stop and report it.
 
 - [ ] **Step 11: Write the real-browser check at all three widths**
 
@@ -7307,8 +7404,6 @@ value below is already on screen at 1440px; the job is to make it survive a toke
 a reader, and a 760px viewport without changing what a person sees at desktop.
 
 **Files**
-- Modify: `ui/tailwind.config.js`
-- Modify: `ui/src/styles/roles.css`
 - Modify: `ui/src/lib/departments.ts`
 - Modify: `ui/src/ui/IconTile.tsx`
 - Modify: `ui/src/screens/Departments.tsx`
@@ -7338,11 +7433,9 @@ a reader, and a 760px viewport without changing what a person sees at desktop.
 
 ---
 
-- [ ] **Step 1: Confirm the utility names Tasks 2–3 exposed, and add whatever is missing.**
-  Every later step in Tasks 14–18 is written against the names below. Run the check, and
-  for each name that is absent add it to `ui/tailwind.config.js` (reading its value from
-  `ui/src/styles/roles.css`) before going on. This is the one step in Part 3 that may
-  touch the theme.
+- [ ] **Step 1: Confirm the utility names Tasks 2–3 exposed. Add nothing.**
+  Every later step in Tasks 14–18 is written against the names below. Run the check and
+  read the result; this step **does not touch `ui/tailwind.config.js`**.
 
   ```bash
   cd ui && for u in \
@@ -7357,10 +7450,21 @@ a reader, and a 760px viewport without changing what a person sees at desktop.
   ; do grep -q -- "$u" tailwind.config.js || echo "MISSING: $u"; done
   ```
 
-  Expected output against the shipped Tasks 2–3 theme: exactly three lines — `--radius-bar`,
-  `--shadow-feature` and `--duration-row`, the only values in the table below that no token
-  holds. Each `MISSING:` line is a theme
-  entry to add now. The loop greps for the **token** each utility resolves to, not for the class name;
+  Expected output: **nothing at all.** This step once expected three lines —
+  `--radius-bar`, `--shadow-feature` and `--duration-row`, the only values in the table
+  below that no token held — and the single minting pass
+  (`.superpowers/sdd/mint-spec.md` §1.2 #9–11) has minted all three. Verified by running
+  the loop above against the shipped config: zero output.
+
+  So a `MISSING:` line now means the theme has **regressed** — something dropped a token
+  that was there. **Stop and find out what dropped it. Do not add it back here, and do not
+  add a second, differently-named entry beside it.** `ui/tailwind.config.js`,
+  `ui/src/styles/tokens.css` and `ui/src/styles/roles.css` are frozen after the single
+  minting pass; a screen task minting into one of them is the unreachable-token failure
+  this rebuild exists to end, which is exactly why the mint was consolidated into one pass
+  in the first place. Report it and wait.
+
+  The loop greps for the **token** each utility resolves to, not for the class name;
   a token whose own name begins with `--border-` is keyed `border-<x>` on the colours scale and written
   `border-border-<x>`. Add no second, shorter name for one of them — `border-card` is
   already taken, by the white `--card`. The mapping, token by token:
@@ -7409,7 +7513,10 @@ a reader, and a 760px viewport without changing what a person sees at desktop.
   and `60px` are **not** snapped: they are gutters, not interior spacing, and get their
   own tokens above.
 
-- [ ] **Step 2: Record the normalisations this part of the plan makes, and commit the theme.**
+- [ ] **Step 2: Record the normalisations this part of the plan makes.**
+  The theme itself is **not** committed here — it was committed by the single minting pass
+  and is frozen. What this step records is the ledger.
+
   Append to `docs/superpowers/ui-normalisation-ledger.md` (owner-vetoable, per R8):
 
   ```markdown
@@ -7429,8 +7536,8 @@ a reader, and a 760px viewport without changing what a person sees at desktop.
   ```bash
   cd ui && npm run build 2>&1 | tail -3
   grep -c "to1080\|to760" dist/assets/*.css   # >0 once a consumer exists; 0 is expected here
-  git add ui/tailwind.config.js ui/src/styles/roles.css docs/superpowers/ui-normalisation-ledger.md
-  git commit -m "build(ui): the last unreachable tokens get names, and every snap is written down"
+  git add docs/superpowers/ui-normalisation-ledger.md
+  git commit -m "docs(ui): every snap this part of the plan makes is written down"
   ```
 
 - [ ] **Step 3: Give the e2e harness a way to sign in.**
@@ -7541,22 +7648,32 @@ a reader, and a 760px viewport without changing what a person sees at desktop.
   }
   ```
 
-  and add the two disc tints to `roles.css` / `tailwind.config.js` (`--cta-violet: #F3EDFC`,
-  `--cta-coral: #FFF0EE` — §6.1, no `_ds` token exists for either; ledger row P3-8):
+  **The two disc tints are already minted. Add nothing.** This step used to say "add
+  `--cta-violet: #F3EDFC` / `--cta-coral: #FFF0EE` to `roles.css` / `tailwind.config.js`
+  (no `_ds` token exists for either; ledger row P3-8)". Both values ship today, under the
+  names the map above already writes:
 
-  ```css
-  /* ui/src/styles/roles.css — the department card's footer CTA disc.
-     S1 paints #F3EDFC and #FFF0EE once each and S3 tokenises neither. */
-  --cta-violet: #F3EDFC;
-  --cta-coral: #FFF0EE;
   ```
+  src/styles/tokens.css:98   --disc-coral: #FFF0EE;    /* new */
+  src/styles/tokens.css:99   --disc-violet: #F3EDFC;   /* new */
+  tailwind.config.js:129     'disc-coral': 'var(--disc-coral)',
+  tailwind.config.js:130     'disc-violet': 'var(--disc-violet)',
+  ```
+
+  Minting `--cta-violet` / `--cta-coral` beside them would put **the same two colours in
+  the theme twice under two names** — the exact failure the single minting pass exists to
+  prevent — in a file that is frozen after that pass. Step 17's grep list already checks
+  `bg-disc-violet` and `bg-disc-coral`, so the instruction contradicted this task's own
+  verification. `bg-disc-violet` and `bg-disc-coral` compile today; verified.
 
 - [ ] **Step 7: Run it, watch it pass, commit.**
   ```bash
   cd ui && npx vitest run src/lib/departments.test.ts && npx tsc -b
-  git add src/lib/departments.ts src/lib/departments.test.ts src/styles/roles.css tailwind.config.js
+  git add src/lib/departments.ts src/lib/departments.test.ts
   git commit -m "refactor(ui): the accent decides its own four classes, not the screen that draws them"
   ```
+  `src/styles/roles.css` and `tailwind.config.js` are **not** staged: this task no longer
+  writes to either.
 
 - [ ] **Step 8: Write the failing test for a surface-aware `IconTile`.**
   R3's scale layer, applied to the one element the two surfaces most obviously disagree
@@ -7860,12 +7977,17 @@ a reader, and a 760px viewport without changing what a person sees at desktop.
     grep -qF -- "$c" dist/assets/*.css || echo "NOT IN CSS: $c"
   done
   ```
-  Expected: no output. Any `NOT IN CSS:` line is a class name the theme does not define —
-  fix the theme, rebuild, re-run.
+  Expected: no output. Every one of these thirty-three compiles against the frozen theme
+  today; verified. A `NOT IN CSS:` line is therefore a **misspelling in the component**,
+  not a gap in the theme — fix the class string, rebuild, re-run. **Do not add the name to
+  `ui/tailwind.config.js`**: it, `src/styles/tokens.css` and `src/styles/roles.css` are
+  frozen after the single minting pass, and minting from inside a screen task is the
+  unreachable-token failure this rebuild exists to end. If a name really is missing from
+  the theme, stop and report it.
 
 - [ ] **Step 18: Commit the screen.**
   ```bash
-  cd ui && git add src/screens/Departments.tsx src/screens/Departments.test.tsx src/ui/IconTile.tsx tailwind.config.js src/styles/roles.css
+  cd ui && git add src/screens/Departments.tsx src/screens/Departments.test.tsx src/ui/IconTile.tsx
   git commit -m "feat(ui): the departments board keeps its face and gains a reader, two breakpoints and no literals"
   ```
 
@@ -8272,7 +8394,7 @@ action bar with a `36×36` `⋯`.
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-s5">
                     {orderPos.has(p.id) && (
-                      <span data-testid={`pos-${p.id}`} className="font-extrabold text-fs-body text-violet min-w-pos text-center shrink-0 max760:hidden">
+                      <span data-testid={`pos-${p.id}`} className="font-extrabold text-fs-body text-violet min-w-s9 text-center shrink-0 max760:hidden">
                         {toFa(orderPos.get(p.id)!)}
                       </span>
                     )}
@@ -8319,8 +8441,11 @@ action bar with a `36×36` `⋯`.
   ```
 
   Notes for whoever runs this: `ConfirmMark` and `TAG_CLS` are no longer imported —
-  delete both import lines. `min-w-pos` is `--size-pos: 18px` (§6.2, the position
-  column). The summary line under the title is gone: §6.2's row is title + meta +
+  delete both import lines. §6.2's position column is `min-width:18px`, which is
+  **`--space-9`** — the `_ds` ladder's own 18px rung, which is what a role-neutral ladder
+  is for — so the class is `min-w-s9` and there is no `--size-pos` to mint. (Tailwind 3.4
+  derives `minWidth` from `spacing`; `.min-w-s9{min-width:var(--space-9)}` compiles today,
+  verified. The step once wrote `min-w-pos`, which compiles to nothing.) The summary line under the title is gone: §6.2's row is title + meta +
   actions, and the summary is what the screen behind «اطلاعات کلی» is for. The activity
   count survives as a **count chip** in the meta row rather than as a third column — the
   design has no such column, and dropping the number outright would remove information
@@ -8347,7 +8472,7 @@ action bar with a `36×36` `⋯`.
 
   ```bash
   cd ui && npx vitest run src/test/guards.test.ts && npx tsc -b && npx eslint .
-  git add src/screens/ProcessList.tsx src/screens/ProcessList.test.tsx src/test/guards.test.ts src/styles/roles.css tailwind.config.js
+  git add src/screens/ProcessList.tsx src/screens/ProcessList.test.tsx src/test/guards.test.ts
   git commit -m "feat(ui): the process list loses its LTR box, its 44px title line and its desktop-only action bar"
   ```
 
@@ -8357,7 +8482,7 @@ action bar with a `36×36` `⋯`.
   for c in max760\\:flex-col max760\\:items-stretch max760\\:p-s7 max760\\:gap-s6 max760\\:hidden \
            max760\\:inline-flex max760\\:flex-1 max760\\:py-s6 max760\\:w-full max760\\:px-s7 \
            text-fs-h1-reader-list text-fs-h4 text-fs-sm2 text-violet-on-violet text-dialog-ghost \
-           bg-tile-v3 border-border-card border-line-dashed rounded-pill rounded-input w-menu-more min-w-pos \
+           bg-tile-v3 border-border-card border-line-dashed rounded-pill rounded-input w-menu-more min-w-s9 \
            shadow-card-hover ease-css ps-s11; do
     grep -qF -- "$c" dist/assets/*.css || echo "NOT IN CSS: $c"
   done
@@ -8777,16 +8902,30 @@ blanked the field, which is a claim of absence standing in for an absence of a c
            text-fs-h1 text-fs-lg text-fs-sm2 text-fs-xxs text-on-dark text-violet-on-violet \
            rounded-doc rounded-tile rounded-badge rounded-round border-border-card border-border-dead border-line-dashed \
            bg-tile-dead bg-tile-v4 max-w-prose max-w-summary shadow-violet leading-loose leading-relaxed \
-           grid-cols-\\[1fr_1.4fr_1fr\\]; do
+           grid-cols-\\[1fr_1\\.4fr_1fr\\]; do
     grep -qF -- "$c" dist/assets/*.css || echo "NOT IN CSS: $c"
   done
   ```
-  Expected: no output. `grid-cols-[1fr_1.4fr_1fr]` is an arbitrary **grid template**, not
-  a colour, size, radius or shadow — no guard forbids it and no token could express it.
+  Expected: no output.
+
+  **The grid-template entry needs its dot escaped and did not have it.** Tailwind escapes
+  every CSS-special character in an arbitrary class name, the `.` in `1.4fr` included, so
+  the selector it emits is `.grid-cols-\[1fr_1\.4fr_1fr\]`. The string this step used to
+  grep for, `grid-cols-\[1fr_1.4fr_1fr\]`, is `grep -F` — a *literal* match — so it never
+  found the escaped form and printed `NOT IN CSS:` on a build where the class was present
+  and correct. Verified both ways against a real compile: the unescaped string does not
+  match, the escaped one does.
+
+  `grid-cols-[1fr_1.4fr_1fr]` stays an arbitrary **grid template**: no guard forbids it,
+  and no token holds it. That is not because a token *could not* — `gridTemplateColumns`
+  already carries `users`, `audit` and `activity` for exactly this shape — but because
+  none was minted for the A-0 grid, and `ui/tailwind.config.js` is frozen after the single
+  minting pass. **Do not mint one here.** It is on the list of values Task 25 Step 4 must
+  exempt by name or send to the owner.
 
 - [ ] **Step 11: Commit the screen.**
   ```bash
-  cd ui && git add src/screens/Summary.tsx src/screens/Summary.test.tsx src/screens/Summary.edit.test.tsx src/test/guards.test.ts src/styles/roles.css tailwind.config.js
+  cd ui && git add src/screens/Summary.tsx src/screens/Summary.test.tsx src/screens/Summary.edit.test.tsx src/test/guards.test.ts
   git commit -m "feat(ui): the summary moves onto the violet field and stops telling a reader a blank is an emptiness"
   ```
 
@@ -9152,7 +9291,7 @@ consumer in Task 15.
         <section className="bg-card border border-border-card rounded-doc p-s10 mb-s7 shadow-card">
           <div className="text-fs-xxs font-bold text-muted mb-s6">شرح دپارتمان</div>
           {data.description.trim()
-            ? <p className="text-fs-body text-ink leading-justify text-justify [text-wrap:pretty] m-0 whitespace-pre-line">{data.description}</p>
+            ? <p className="text-fs-body text-ink leading-loose text-justify [text-wrap:pretty] m-0 whitespace-pre-line">{data.description}</p>
             : <p className="text-fs-sm2 text-faint m-0">شرحی ثبت نشده است.</p>}
         </section>
 
@@ -9165,7 +9304,7 @@ consumer in Task 15.
                 {data.sub_units.map((s, i) => (
                   <div key={i} className="bg-surface-sub border border-border-current rounded-tile px-s7 py-s7 self-start">
                     <div className="font-bold text-fs-sm2 text-ink">{s.name}</div>
-                    <p className="text-fs-sm2 text-ink-current mt-s2 leading-sub text-justify m-0">{s.description}</p>
+                    <p className="text-fs-sm2 text-ink-current mt-s2 leading-loose text-justify m-0">{s.description}</p>
                   </div>
                 ))}
               </div>
@@ -9188,7 +9327,7 @@ consumer in Task 15.
                       {pr.duties.map((d, j) => (
                         <li key={j} className="flex gap-s5 items-start">
                           <span className="w-s10 h-s10 shrink-0 rounded-badge bg-tile-v text-violet text-fs-micro font-bold flex items-center justify-center">{toFa(j + 1)}</span>
-                          <span className="text-fs-sm2 text-ink-current leading-sub text-justify">{d}</span>
+                          <span className="text-fs-sm2 text-ink-current leading-loose text-justify">{d}</span>
                         </li>
                       ))}
                     </ol>
@@ -9215,12 +9354,27 @@ consumer in Task 15.
         </section>
   ```
 
-  Three theme entries this markup needs: `leading-justify` (`--lh-justify: 2.05`, §6.4's
-  description paragraphs) and `leading-sub` (`--lh-sub: 1.95`, §6.4's sub-unit and duty
-  text). Both are off the six-step line-height scale and are the only two such values in
-  the product — add them as their own tokens rather than snapping, because a paragraph's
-  leading is what the reader actually experiences. `[text-wrap:pretty]` is an arbitrary
-  *property*, which no guard forbids and no token can express.
+  **This markup needs no theme entry at all: all three prose lines are `leading-loose`.**
+
+  The step used to ask for "three theme entries" and then list two — `leading-justify`
+  (`--lh-justify: 2.05`) and `leading-sub` (`--lh-sub: 1.95`) — "off the six-step
+  line-height scale … add them as their own tokens rather than snapping". Four things were
+  wrong with that: it said three and listed two, `--lh-sub` is **1.8** and not 1.95,
+  `leading-sub` already ships, and `leading-justify` compiles to nothing and must not be
+  minted. Ledger **L-17** decides prose leading by dominance and says outright that
+  *"`1.75`, `1.85`, `1.95`, `2` and `2.05` normalise"*; `tokens.css`'s own comment on
+  `--lh-sub` says where to: *"1.95 and 2.05 normalise to `--lh-loose` 1.9 for long-form
+  prose."*
+
+  All three sites are long-form justified prose, which is precisely the role L-17 gives
+  `1.9`: the department description (`Inja Panel.dc.html:487` / `Inja Reader.dc.html:248`,
+  `2.05`, the product's only one), and the sub-unit description and duty text
+  (`Inja Panel.dc.html:497` and `:520`, the product's only two `1.95`s). None of them is
+  the "explanatory sub-copy under a control" role that `--lh-sub` 1.8 exists for, so
+  `leading-sub` keeps its own 17 sites elsewhere and is not written here.
+
+  `[text-wrap:pretty]` is an arbitrary *property*, which no guard forbids and no token can
+  express.
 
 - [ ] **Step 9: Rebuild the edit view's controls.**
   In the edit branches of `ui/src/screens/Overview.tsx`, replace the twelve hand-rolled
@@ -9246,7 +9400,7 @@ consumer in Task 15.
   cd ui && npx tsc -b && npx eslint . && npm run build
   for c in max760\\:grid-cols-1 text-fs-h2 text-fs-xxs text-fs-micro text-ink-current \
            text-violet-on-violet bg-surface-sub border-border-current border-hair border-border-card \
-           rounded-doc rounded-tile rounded-badge rounded-pill leading-justify leading-sub \
+           rounded-doc rounded-tile rounded-badge rounded-pill leading-loose \
            duration-chev ease-css max-w-list; do
     grep -qF -- "$c" dist/assets/*.css || echo "NOT IN CSS: $c"
   done
@@ -9255,7 +9409,7 @@ consumer in Task 15.
 
 - [ ] **Step 12: Commit the screen.**
   ```bash
-  cd ui && git add src/screens/Overview.tsx src/screens/Overview.test.tsx src/screens/Overview.edit.test.tsx src/ui/AddButton.tsx src/screens/Summary.tsx src/styles/roles.css tailwind.config.js
+  cd ui && git add src/screens/Overview.tsx src/screens/Overview.test.tsx src/screens/Overview.edit.test.tsx src/ui/AddButton.tsx src/screens/Summary.tsx
   git commit -m "feat(ui): the department page stops re-inventing the accordion sitting next to it"
   ```
 
@@ -9540,7 +9694,7 @@ departments screen (§9.13). It is `ui_kits/panel/Login.jsx` inside
 - [ ] **Step 7: Typecheck, lint, commit.**
   ```bash
   cd ui && npx tsc -b && npx eslint .
-  git add src/screens/SignIn.tsx src/screens/SignIn.test.tsx src/styles/base.css src/styles/roles.css tailwind.config.js
+  git add src/screens/SignIn.tsx src/screens/SignIn.test.tsx src/styles/base.css
   git commit -m "feat(ui): the login screen finally draws the brand it has been shipping since the first commit"
   ```
 
@@ -9934,12 +10088,25 @@ export const ROLE_TONE: Record<string, string>   // token-backed utility pairs
   Every value below is read from a Tailwind class; a name that differs by one
   character compiles to nothing and the build still exits 0. Run:
   ```
-  cd ui && node -e "const c=require('./tailwind.config.js').default;const t=c.theme.extend;const need={maxWidth:['access','profile'],borderRadius:['doc','tile','input','tool','feature'],colors:['surface-sub','line-row','line-filter','border-pick','tile-v3','tile-v4','tile-c2','border-current','hair','line-soft','line-dashed','border-danger','ink-current','violet-mid','violet-on-violet'],width:['dot','glyph','chev','tool'],spacing:['screen-x','screen-y']};for(const[k,v]of Object.entries(need))for(const n of v)if(!(n in (t[k]||{})))console.log('MISSING',k,n);const v=[];for(const pl of (c.plugins||[]))pl({addVariant:(n)=>v.push(n)});console.log('variants',JSON.stringify(v))"
+  cd ui && node --input-type=module -e "import c from './tailwind.config.js';const t=c.theme.extend;const need={maxWidth:['access','profile'],borderRadius:['doc','tile','input','tool','feature'],colors:['surface-sub','line-row','line-filter','border-pick','tile-v3','tile-v4','tile-c2','border-current','hair','line-soft','line-dashed','border-danger','ink-current','violet-mid','violet-on-violet'],width:['dot','glyph','chev','tool'],spacing:['screen-x','screen-y']};for(const[k,v]of Object.entries(need))for(const n of v)if(!(n in (t[k]||{})))console.log('MISSING',k,n);const v=[];for(const pl of (c.plugins||[]))pl({addVariant:(n)=>v.push(n)});console.log('variants',JSON.stringify(v))"
   ```
-  Expected: no `MISSING` lines and
-  `max1080:` / `max760:` (addVariant, not `theme.screens`). Any `MISSING`
-  line is a Task 2/3 naming difference — fix the name **in this task's steps**,
-  not in the config, and note it at the top of the commit body.
+  Expected — run, not predicted:
+  ```
+  variants ["max1080","max760"]
+  ```
+  No `MISSING` lines, and the two variants come from `addVariant` in `plugins`, not from
+  `theme.screens`. Any `MISSING` line is a Task 2/3 naming difference — fix the name **in
+  this task's steps**, not in the config, and note it at the top of the commit body.
+  `ui/tailwind.config.js` is frozen after the single minting pass.
+
+  **This invocation was `node -e "const c=require('./tailwind.config.js').default; …"` and
+  could not run at all.** `ui/package.json` is `"type": "module"` and the config is ESM, so
+  `require()` threw `ERR_REQUIRE_ESM` before checking anything — the one step meant to
+  catch naming drift in this task exited non-zero on every tree it was ever run against,
+  including a correct one. The fix is `node --input-type=module -e` plus `import c from
+  './tailwind.config.js';`. Everything after that is unchanged: the `v` in the
+  `for (const [k, v] of …)` head is scoped to that loop, so the later top-level `const v`
+  is a separate binding and is legal in an ES module. Both forms verified by running them.
 
 - [ ] **Step 2: A failing test for the role tone map.**
   The role is the primary thing an administrator scans this list for and it is
@@ -11369,7 +11536,7 @@ export const SUPERVISE_NOTE: string
                   )}
                 </label>
                 {on && openViews === d.code && (
-                  <div className="absolute z-nested top-full start-0 end-0 mt-s3 flex flex-col
+                  <div className="absolute z-dropdown top-full start-0 end-0 mt-s3 flex flex-col
                                   gap-s2 bg-card border border-warm rounded-card shadow-pop p-s4">
                     {REPORT_KINDS.map((kind) => (
                       <Checkbox key={kind} box={16} tone="violet"
@@ -11715,7 +11882,7 @@ export const SUPERVISE_NOTE: string
 - [ ] **Step 23: Grep the built CSS, then add `new-user` to the harness.**
   ```
   cd ui && npm run build && for c in 'rounded-panel' 'bg-surface-sub' 'border-line-dashed' \
-    'bg-tile-v4' 'w-glyph' 'h-glyph' 'shadow-pop' 'z-nested' 'opacity-40' \
+    'bg-tile-v4' 'w-glyph' 'h-glyph' 'shadow-pop' 'z-dropdown' 'opacity-40' \
     'pointer-events-none' 'max760\:grid-cols-1' 'start-0' 'end-0' 'sr-only' ; do
       grep -qF "$c" dist/assets/*.css && echo "ok  $c" || echo "MISSING $c"; done
   ```
@@ -12807,8 +12974,29 @@ export function ConfirmAction(props: { row: Confirmation | undefined; department
   with a test asserting that two presses of «به بالا» move a row two places and
   that the saved sequence is what the list shows.
 
-- [ ] **Step 22: Clear the last four line-level findings.**
+- [ ] **Step 22: Clear the last five line-level findings.**
   One commit each is overkill; one edit pass, one test run, one commit:
+  - **The toast's two arbitrary values.** `ToastProvider.tsx:29` writes
+    `text-[13px]` and `z-[60]`. Both have an exact name and neither may survive
+    into Task 25, which retires `src/write/` from `PENDING_REBUILD` and bans
+    `x-[…]` outright — and `text-[13px]` is already banned by the *old* regex, so
+    it is only invisible because of the exemption:
+    - `text-[13px]` → **`text-fs-sm`** (`--fs-sm` 13px; `Inja Panel.dc.html:2113`
+      draws the toast at `font-size:13px`).
+    - `z-[60]` → **`z-toast`** (`--role-z-toast`, L-42/L-47's ceiling, 1090). The
+      design writes `z-index:80` here and L-42 replaces the deliverable's own
+      numbers with the Bootstrap ladder, so 80 does not carry over. This is the
+      rung's **first consumer** — it was minted by the single minting pass and has
+      sat on `PENDING` unwritten since, which is exactly the state R11 says a
+      minted utility may not stay in.
+
+    Leave the rest of that line's Tailwind t-shirt sizes (`bottom-6`, `px-5`,
+    `py-3`, `rounded-xl`, `gap-2.5`, `text-white`) to Task 25's palette and
+    t-shirt guards, which name them as a class. Only note here that the design's
+    toast is `bottom:26px; padding:12px 20px; radius 12px` — `bottom-s11`,
+    `py-s6`, `rounded-button` and `text-card` cover all but the 20px inline
+    padding, which no token holds under this role. **Do not mint one**; put it on
+    Task 25's `UNTOKENISED` list with the rest.
   - **O2** — `ExportMenu.tsx:74`'s `w-[42px] h-[42px]` trigger, `ExportModal.tsx:99`
     and `InboxModal.tsx:26`'s `w-8 h-8` closes: all become `IconButton` with
     `min-h-touch min-w-touch` around a `w-tool h-tool` drawn box.
@@ -12942,26 +13130,124 @@ cases and a full-app browser sweep.
 - [ ] **Step 4: Tighten the arbitrary-value regex.**
   Replace the second `it(…)` and the deferral comment above the file's helpers:
   ```ts
-  it('no component names an arbitrary value of any kind', () => {
+  it('no component names an arbitrary LENGTH', () => {
     // Was `(text|rounded|shadow)-\[` — three utilities out of all of them, so
     // `px-[0.6em]`, `max-w-[560px]`, `w-[42px]`, `h-16`-style caps and every
     // other `x-[…]` passed. The escape hatch is now closed by name rather than
     // by which utility happened to be listed.
     //
-    // Two exceptions, both measured against the *text* rather than the design's
-    // px ladder, which is what makes them legitimate rather than a value nobody
-    // tokenised: the button spinner is sized in `em` so it tracks its label, and
-    // `Overlay` caps itself in `vh` because a dialog is bounded by the viewport
-    // and not by the token scale.
+    // STRUCTURAL is not an escape hatch: none of these is a value off the
+    // design's ladder that somebody declined to tokenise.
+    //   `content-[""]`      the one declaration that makes a `::before` render
+    //                       at all. `content-none` is NOT a substitute — it sets
+    //                       `content:none` and the pseudo-element vanishes;
+    //                       `src/ui/table.test.tsx` has a test that says so.
+    //   `transition-[a,b]`  a property LIST. `transitionProperty` carries no
+    //                       keys and a CSS property name is not a design value.
+    //                       Three primitives already ship this form.
+    //   `[prop:value]`      an arbitrary property, e.g. `[text-wrap:pretty]`.
+    //   `-[…em]`            sized against the text, so it tracks its label —
+    //                       `Button`'s spinner.
+    //   `-[…vh|vw]`         bounded by the viewport, not by the token scale —
+    //                       `Overlay`'s caps.
+    //   `-[…%]`             a proportion of a parent; no token can hold one.
+    //   `-[var(--x)]`       reads a token. This is the token system, not a
+    //                       bypass of it — `Overlay`'s `w-[var(--width-drawer)]`.
+    //   `before:-inset-[…]` the hit expander. It is DERIVED, not drawn: the
+    //                       painted box stays the design's and the `::before`
+    //                       grows the target to F11's 44px floor, so the number
+    //                       is `(44 - box) / 2` and differs per component —
+    //                       5px round a 34px `w-tool`, 6px round a 32px
+    //                       `w-close`. No single token could hold it, and the
+    //                       three primitives that ship it each computed their
+    //                       own. `-inset-s2` is written where the rung happens
+    //                       to be exact; this covers the rest.
     const ARBITRARY = /\b[a-z-]+-\[/
-    const EXCEPTIONS = /-\[[\d.]+(em|vh|vw)\]/
-    const hits = files().flatMap((f) =>
-      readFileSync(f.path, 'utf8').split('\n')
-        .map((line, i) => ({ rel: f.rel, n: i + 1, line }))
-        .filter(({ line }) => ARBITRARY.test(line) && !EXCEPTIONS.test(line)))
+    const STRUCTURAL = new RegExp([
+      /content-\[""\]/, /transition-\[[a-z,\- ]+\]/, /before:-inset-\[[\d.]+px\]/,
+      /-\[(?:[\d.]+(?:em|vh|vw|%)|var\(--[a-z0-9-]+\))\]/,
+    ].map((r) => r.source).join('|'))
+
+    // A comment that *names* an arbitrary value is not one. `Button.tsx:7`
+    // explains why it sets no default padding by quoting `px-3 py-[7px]` from
+    // src/flow/, and `Toast.tsx:41` explains why the toast's z is an inline style
+    // by quoting `z-[60]`. Both are the file arguing against the thing the guard
+    // forbids, and a check that fails on them teaches the next person to delete
+    // the explanation. Strip comments before matching, not after.
+    const stripComments = (src: string) => {
+      let inBlock = false
+      return src.split('\n').map((line) => {
+        let out = '', i = 0
+        while (i < line.length) {
+          if (inBlock) {
+            const end = line.indexOf('*/', i)
+            if (end === -1) { i = line.length } else { i = end + 2; inBlock = false }
+          } else if (line.startsWith('//', i)) {
+            break
+          } else if (line.startsWith('/*', i)) {
+            inBlock = true; i += 2
+          } else {
+            out += line[i]; i++
+          }
+        }
+        return out
+      })
+    }
+
+    const hits = files()
+      .filter((f) => !UNTOKENISED.includes(f.rel))
+      .flatMap((f) =>
+        stripComments(readFileSync(f.path, 'utf8'))
+          .map((line, i) => ({ rel: f.rel, n: i + 1, line }))
+          .filter(({ line }) => ARBITRARY.test(line) && !STRUCTURAL.test(line)))
     expect(hits.map((h) => `${h.rel}:${h.n} ${h.line.trim()}`)).toEqual([])
   })
+
+  it('the untokenised list only ever shrinks', () => {
+    // A file on that list is exempt from the check above, so the list is the one
+    // place a new arbitrary value could hide. Pin its length: adding a file to it
+    // is then a deliberate edit with a number beside it, not a quiet append.
+    expect(UNTOKENISED.length).toBeLessThanOrEqual(3)
+    // …and every entry still has one, so the list cannot rot into a set of names
+    // that stopped meaning anything.
+    for (const rel of UNTOKENISED) {
+      const f = files().find((x) => x.rel === rel)
+      expect(f, `${rel} is on UNTOKENISED but not in files()`).toBeDefined()
+      expect(/\b[a-z-]+-\[/.test(readFileSync(f!.path, 'utf8')), rel).toBe(true)
+    }
+  })
   ```
+
+  Hoist beside `files()`, so both `it()` blocks see it:
+
+  ```ts
+  /**
+   * The list a later pass must empty, or the owner must name. Every entry holds
+   * a value the design genuinely draws that NO token holds: the single minting
+   * pass minted from the screens, and none of its 23 tokens is a shell value.
+   *
+   * These are not waived — the point of naming the files is that the list is
+   * short, reviewable, and only shrinks. Task 12's own step carries the design
+   * line each value is read from, its role, and why the nearest token belongs to
+   * something else. Do NOT resolve one by adding a key to `tailwind.config.js`;
+   * see Step 6.
+   */
+  const UNTOKENISED = [
+    // 265px menu, 3px hint offset, 1.25 lockup leading, the 19px count badge,
+    // 13px + 7px on the inbox button, 9px crumb strip, 7px back button.
+    'src/shell/PanelShell.tsx',
+    // The same 1.25, 19px, 9px and 7px, on the reader's chrome.
+    'src/shell/ReaderShell.tsx',
+    // grid-cols-[1fr_1.4fr_1fr] — the A-0 grid. `gridTemplateColumns` holds
+    // three templates (users, audit, activity) and none of them is this one.
+    'src/screens/Summary.tsx',
+  ]
+  ```
+
+  Three files, not five: `Pager.tsx`, `Overlay.tsx` and `PasswordField.tsx` carry
+  only `before:content-[""]` and a derived `before:-inset-[…]`, both of which
+  `STRUCTURAL` now covers by name, and `Button.tsx`'s only `-[…px]` is inside a
+  comment. Verified against the tree.
 
 - [ ] **Step 5: Add the two cases the regexes never had.**
   ```ts
@@ -12993,11 +13279,36 @@ cases and a full-app browser sweep.
   })
   ```
 
-- [ ] **Step 6: Run them and fix what they name.**
+- [ ] **Step 6: Run them and fix what they name. Mint nothing.**
   `cd ui && npx vitest run src/test/guards.test.ts`
+
   Every hit is a real value that should have come from a token. Fix each at its
-  source — a missing utility goes into `tailwind.config.js`, not into an
-  exception list. Re-run until only the `dir=` case is red.
+  source — **by pointing the component at the name the theme already has.** Re-run
+  until only the `dir=` case is red.
+
+  **This step used to say "a missing utility goes into `tailwind.config.js`, not
+  into an exception list". Do not do that.** `ui/tailwind.config.js`,
+  `ui/src/styles/tokens.css` and `ui/src/styles/roles.css` were unfrozen exactly
+  once, for the single minting pass (`.superpowers/sdd/mint-spec.md`), and
+  re-frozen. That pass exists because minting piecemeal, from inside whichever
+  task happened to need a value, is what produced the unreachable-token problem
+  this whole rebuild is here to fix: a name added at the end of the plan has no
+  probe line, no `EXPECTED` row, no `tokens.test.ts` assertion and no consumer
+  but the one line that asked for it — and `theme.test.ts` is closed over both
+  ends, so it goes red the moment the key lands without the four things around
+  it. Worse, a second name for a value that already has one is invisible: both
+  compile, both paint, and the day the design moves, only one of them moves.
+
+  So a hit is one of three things, and none of them is a mint:
+  1. **A name exists** — use it. This is nearly all of them.
+  2. **It is structural** — `content-[""]`, a `transition-[…]` property list, an
+     `em`/`vh`/`%` measure, a `var(--token)`. It belongs in `STRUCTURAL` in
+     Step 4, with a line saying which of those it is.
+  3. **The design draws a value nothing holds.** Then it goes on `UNTOKENISED`
+     with its file, its role and the design line it is read from — and it goes
+     to the owner as part of the one list this task hands over, together with
+     the eight the two shells already carry. Minting it here would be the very
+     defect this step is checking for, committed by the check itself.
 
 - [ ] **Step 7: Complete the island list.**
   Replace `ISLANDS` with what Step 1's scan actually found, one commented group
