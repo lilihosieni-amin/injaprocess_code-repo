@@ -7777,6 +7777,7 @@ a reader, and a 760px viewport without changing what a person sees at desktop.
     max1080 max760 \
     --fs-display --fs-h1 --fs-h2 --fs-h3 --fs-h4 --fs-h5 --fs-lg --fs-body --fs-sm --fs-sm2 --fs-xs --fs-xxs --fs-micro --fs-h1-reader-home --fs-h1-reader-list \
     --radius-bar --radius-sm --radius-input --radius-lg --radius-tile --radius-card-lg --radius-pill --radius-round \
+    --role-title-on-field --role-subtitle-on-field \
     --text-on-dark --violet-on-dark --violet-on-dark-body --violet-on-violet --text-current --text-dialog-ghost \
     --tile-v3 --tile-v4 --tile-c2 --surface-sub --border-card --border-current --hair --line-dashed --border-danger \
     --shadow-feature --shadow-pop \
@@ -7813,10 +7814,12 @@ a reader, and a 760px viewport without changing what a person sees at desktop.
   | `leading-tight/snug/normal/relaxed/loose/looser` | `--lh-*` | 1.2 / 1.6 / 1.7 / 1.75 / 1.9 / 2.1 |
   | `rounded-bar` | `--radius-bar` | `2px` (the coral eyebrow bar) |
   | `rounded-tool` `rounded-input` `rounded-search` `rounded-tile` `rounded-feature` `rounded-pill` `rounded-round` | `--radius-sm/input/lg/tile/card-lg/pill/round` | 9 / 11 / 13 / 14 / 20 / 20 / 50% |
-  | `text-on-dark` | `--text-on-dark` | `#FBF7F1` |
-  | `text-violet-on-dark` | `--violet-on-dark` | `#B79FE6` |
-  | `text-violet-on-dark-body` | `--violet-on-dark-body` | `#B7A6E0` |
-  | `text-violet-on-violet` | `--violet-on-violet` | `#C9BEEE` |
+  | `text-role-title-on-field` | `--role-title-on-field` → `--card` | `#FFFFFF` — ledger **L-01**, THE screen title on the violet field. Tasks 15–23 all write it |
+  | `text-role-subtitle-on-field` | `--role-subtitle-on-field` → `--violet-on-violet` | `#C9BEEE` — ledger **L-28**, THE subtitle under it |
+  | `text-on-dark` | `--text-on-dark` | `#FBF7F1` — the flow canvas's ground, and **not a title colour**: L-01 retired it there. The two role classes above are what a screen title and its subtitle take. Its one remaining title use in this plan is the `departments` **panel** `<h1>` (Step 12), whose row is `ON_FIELD` |
+  | `text-violet-on-dark` | `--violet-on-dark` | `#B79FE6` — the coral-bar eyebrow line, not a subtitle |
+  | `text-violet-on-dark-body` | `--violet-on-dark-body` | `#C9BEEE` — Task 3 re-cut it from `#B7A6E0` (`tokens.css:106`), so this table once read `#B7A6E0` and was wrong. Right value now, wrong word still: L-28's role is written `text-role-subtitle-on-field` |
+  | `text-violet-on-violet` | `--violet-on-violet` | `#C9BEEE` — its own declared role is the **mono id** inside a violet box (`A-0 · <id>`, a username); a *subtitle* takes the role class above |
   | `text-ink-current` | `--text-current` | `#5a5175` |
   | `text-dialog-ghost` | `--text-dialog-ghost` | `#6B5CA5` |
   | `bg-tile-v3` `bg-tile-v4` `bg-tile-c2` | `--tile-v3/v4/c2` | `#F5F1FB` / `#F8F4FE` / `#FFF3F2` |
@@ -8108,7 +8111,8 @@ a reader, and a 760px viewport without changing what a person sees at desktop.
   ```
 
 - [ ] **Step 12: Write the failing tests for the screen itself.**
-  Three claims jsdom *can* hold: the responsive hook exists, the reader is one column,
+  Four claims jsdom *can* hold: the responsive hook exists, the reader is one column,
+  the title's colour **branches with the surface** — the reader's white, the panel's cream —
   and nothing on the screen carries a hex literal any more. Append to
   `ui/src/screens/Departments.test.tsx`:
 
@@ -8154,6 +8158,21 @@ a reader, and a 760px viewport without changing what a person sees at desktop.
       const h1 = await screen.findByRole('heading', { level: 1 })
       expect(h1).toHaveAttribute('data-r-title')
       expect(h1.className).toContain('text-fs-display')
+      // The colour branches with the size, and this is the arm that keeps the
+      // retired cream: `departments.h1.color` is `ON_FIELD` `#FBF7F1`, the one
+      // screen L-01 did not move to white. Collapsing the two arms into one
+      // class is what put `#FBF7F1` on every other screen's title.
+      expect(h1.className).toContain('text-on-dark')
+      expect(h1.className).not.toContain('text-role-title-on-field')
+    })
+
+    it('writes the reader’s H1 in the white L-01 decided, not the cream it retired', async () => {
+      serve()
+      renderAt('/departments', <SurfaceProvider surface="reader"><Departments /></SurfaceProvider>, '/departments')
+      const h1 = await screen.findByRole('heading', { level: 1 })
+      expect(h1.className).toContain('text-fs-h1-reader-home')
+      expect(h1.className).toContain('text-role-title-on-field')  // --card, #FFFFFF
+      expect(h1.className).not.toContain('text-on-dark')          // --text-on-dark, #FBF7F1
     })
   })
 
@@ -8225,8 +8244,8 @@ a reader, and a 760px viewport without changing what a person sees at desktop.
                 <span className="w-s10 h-0.5 bg-coral rounded-bar" />
                 <span className="text-fs-xs font-bold tracking-eyebrow text-violet-on-dark">INJA FOOD · مستندسازی فرآیند</span>
               </div>
-              <h1 data-r-title className={`font-extrabold ${reader ? 'text-fs-h1-reader-home' : 'text-fs-display'} text-on-dark tracking-display m-0`}>دپارتمان‌ها</h1>
-              <p className="text-fs-body text-violet-on-dark-body mt-s4 max-w-subtitle leading-normal m-0">
+              <h1 data-r-title className={`font-extrabold ${reader ? 'text-fs-h1-reader-home text-role-title-on-field' : 'text-fs-display text-on-dark'} tracking-display m-0`}>دپارتمان‌ها</h1>
+              <p className="text-fs-body text-role-subtitle-on-field mt-s4 max-w-subtitle leading-normal m-0">
                 نقشهٔ فرآیندهای مجموعه به تفکیک واحد. یک دپارتمان را برای مرور فرآیندهای مستندشده، کارت خلاصه و فلوچارت انتخاب کنید.
               </p>
             </div>
@@ -8374,16 +8393,31 @@ a reader, and a 760px viewport without changing what a person sees at desktop.
   `[data-r-deptgrid]` at `14px`, and the white `18px` card with `CARD_BORDER` and
   `CARD_SHADOW`.
 
-  **The two rows disagree about the title colour, on purpose, and the JSX above cannot
+  **The two rows disagree about the title colour, on purpose, and one class string cannot
   satisfy both.** `departments.h1.color` is `ON_FIELD` `#FBF7F1` — what this screen paints
   today, and the one screen ledger **L-01** did *not* move to white. `departmentsReader.h1`
-  is `TITLE_ON_FIELD`, `#FFFFFF`. Step 12's `<h1>` writes one class string, `text-on-dark`,
-  for both surfaces, so one of the two rows goes red whatever it says. Branch it on
-  `useSurface()` the way the size beside it already branches — the reader's white is
-  `text-role-title-on-field` (`tailwind.config.js:180` → `--role-title-on-field`, `roles.css:71`),
-  which is the class every *other* screen's title wants too and which no step in this plan
-  writes yet. If you conclude the panel should move to white as well, that is a decision
-  about L-01's one exception: **stop and report it** rather than repainting the row.
+  is `TITLE_ON_FIELD`, `#FFFFFF`. So Step 12's `<h1>` **branches the colour on `useSurface()`
+  the way the size beside it already branches**: the reader takes `text-role-title-on-field`
+  (`--role-title-on-field` → `--card`, `#FFFFFF`; `roles.css:71`) and the panel keeps
+  `text-on-dark` (`--text-on-dark`, `#FBF7F1`), so both rows go green. **Write it exactly as
+  Step 12 has it and do not collapse the two branches back into one class** — one string here
+  is what put `#FBF7F1` on all nine screen titles in the first place.
+  `text-role-title-on-field` is the class every *other* screen's title takes (Tasks 15–23 all
+  write it); departments is the single exception, on the panel surface only. If you conclude
+  the panel should move to white as well, that is a decision about L-01's one exception:
+  **stop and report it** rather than repainting the row.
+
+  **The `body` row disagrees the same way, and this one cannot be branched.**
+  `departments.body` is `ON_FIELD_MUTED` `#B7A6E0`; `departmentsReader.body` is
+  `SUBTITLE_ON_FIELD` `#C9BEEE`. `#B7A6E0` is reachable from **no utility this theme has**:
+  Task 3 re-cut `--violet-on-dark-body` from `#B7A6E0` to `#C9BEEE` (ledger **L-28**, 13 uses
+  against 1) and `--violet-on-dark` is `#B79FE6`, a different colour. So Step 12's `<p>` takes
+  `text-role-subtitle-on-field` (`--role-subtitle-on-field` → `--violet-on-violet`, `#C9BEEE`)
+  on both surfaces — never `text-violet-on-dark-body`, whose name still reads like the answer
+  and whose value L-28 moved. The reader's row goes green on it, and the panel's `body` line
+  is a **fourth** line in this row that states what the screen paints *today*: it goes red when
+  your screen is built, and `SUBTITLE_ON_FIELD` is its replacement. **Report it with the three
+  below; do not edit it.**
 
   **Three lines in the `departments` row deliberately state what the screen does *today*,
   not what you are about to build**, so that the mutation tests covering them keep dying
@@ -8752,7 +8786,7 @@ action bar with a `36×36` `⋯`.
           <div>
             <div className="flex items-center gap-s6">
               <IconTile accent={m.accent} glyph={code} />
-              <h1 className={`font-extrabold ${reader ? 'text-fs-h1-reader-list' : 'text-fs-h2'} text-on-dark m-0`}>
+              <h1 className={`font-extrabold ${reader ? 'text-fs-h1-reader-list' : 'text-fs-h2'} text-role-title-on-field m-0`}>
                 دپارتمان {dept?.name ?? ''}
               </h1>
               {/* §6.2 puts the mobile ⋯ in the title row, not in the bar it
@@ -8959,10 +8993,11 @@ action bar with a `36×36` `⋯`.
 
   - the panel's `920px` column and `30px 40px` → `18px 14px` padding; the reader's `720px`,
     its **centred** `30px/800` title (`--fs-h1-reader-list`) and centred lead;
-  - `h1.color` is `TITLE_ON_FIELD` — **`rgb(255,255,255)`, ledger L-01** — on *both* rows.
-    The JSX in the steps above writes `text-on-dark`, which is `--text-on-dark` `#FBF7F1`,
-    the value L-01 retired. That is a real disagreement between this task's JSX and the row
-    it is graded against, and it is **not** fixed by editing the row.
+  - `h1.color` is `TITLE_ON_FIELD` — **`rgb(255,255,255)`, ledger L-01** — on *both* rows,
+    and the JSX in the steps above writes it: `text-role-title-on-field`
+    (`--role-title-on-field` → `--card`). **Do not reach for `text-on-dark`** — it reads like
+    the answer and it is `--text-on-dark` `#FBF7F1`, the value L-01 retired. If a title on the
+    violet field ever disagrees with this row, it is **not** fixed by editing the row.
   - `body` is `13px` `#C9BEEE` on both — R12 drops the reader deliverable's 14.5px.
 
   **If a row is missing, or a number in it disagrees with §6.2 or the deliverables, stop and
@@ -9162,10 +9197,10 @@ blanked the field, which is a claim of absence standing in for an absence of a c
       serve(FULL)
       renderAt('/processes/:pid', <Summary />, '/processes/cooking-001', EDITOR)
       const h1 = await screen.findByRole('heading', { level: 1 })
-      expect(h1.className).toContain('text-on-dark')
+      expect(h1.className).toContain('text-role-title-on-field')
       // Ledger P3-2: §6.3 says this heading is #2A1D5E, which is the field it
       // sits on. §6.0 settles it — headings on the field are #fff.
-      expect(screen.getByText('شاخص‌های کلیدی عملکرد (KPI)').className).toContain('text-on-dark')
+      expect(screen.getByText('شاخص‌های کلیدی عملکرد (KPI)').className).toContain('text-role-title-on-field')
     })
 
     it('uses no character as an icon', () => {
@@ -9249,7 +9284,7 @@ blanked the field, which is a claim of absence standing in for an absence of a c
                 )}
               </div>
             )}
-            <h1 className="font-extrabold text-fs-h1 text-on-dark m-0">{proc.name}</h1>
+            <h1 className="font-extrabold text-fs-h1 text-role-title-on-field m-0">{proc.name}</h1>
             {proc.summary.trim() !== '' && (
               <p className="text-fs-lg text-violet-on-violet mt-s4 max-w-prose leading-relaxed m-0">{proc.summary}</p>
             )}
@@ -9292,7 +9327,7 @@ blanked the field, which is a claim of absence standing in for an absence of a c
           </div>
         </div>
 
-        <h2 className="font-bold text-fs-lg text-on-dark mb-s6 m-0">شاخص‌های کلیدی عملکرد (KPI)</h2>
+        <h2 className="font-bold text-fs-lg text-role-title-on-field mb-s6 m-0">شاخص‌های کلیدی عملکرد (KPI)</h2>
         {proc.kpis.length > 0 ? (
           <div data-r-2col className="grid grid-cols-2 gap-s7 max760:grid-cols-1">
             {proc.kpis.map((k, i) => (
@@ -9482,8 +9517,9 @@ blanked the field, which is a claim of absence standing in for an absence of a c
   - **`h1.size` is `22px`, not the 23px this task's own step quotes.** Ledger **L-02** counts
     22 on seven screens against summary's 23 and profile's 21 and decides 22 for all nine;
     `--fs-h1`'s 23px stays the audit stat numeral. Build 22.
-  - **`h1.color` is `TITLE_ON_FIELD` — `rgb(255,255,255)`, ledger L-01.** The JSX above writes
-    `text-on-dark`, `#FBF7F1`, the value L-01 retired.
+  - **`h1.color` is `TITLE_ON_FIELD` — `rgb(255,255,255)`, ledger L-01**, and the JSX above
+    writes it: `text-role-title-on-field`. The `<h2>` beside it takes the same class for the
+    same reason. **Not `text-on-dark`** — that is `#FBF7F1`, the value L-01 retired.
 
   There is deliberately **no `grid`** in this row: `[data-r-idef0]` is a `1fr 1.4fr 1fr` grid
   above 760 and a flex column at ≤760, which `trackCount` cannot grade — your own spec asserts
@@ -9814,7 +9850,7 @@ consumer in Task 15.
             <IconTile accent={m.accent} glyph={code} />
             <div>
               <div className="flex items-center gap-s5">
-                <h1 className="font-extrabold text-fs-h2 text-on-dark m-0">خلاصهٔ {data.name}</h1>
+                <h1 className="font-extrabold text-fs-h2 text-role-title-on-field m-0">خلاصهٔ {data.name}</h1>
                 {/* `mark`, not `m`: `m` is the department's tile metadata three
                     lines up, and two different `m`s in one JSX block is a rename
                     waiting to go to the wrong one. */}
@@ -10002,8 +10038,9 @@ consumer in Task 15.
 
   - `column` is `920px` — ledger **L-07**, not §6.4's `900`: 900 has no token, no role and no
     second use, and `--role-column` resolves to `--width-list`, so the theme cannot express it.
-  - `h1.color` is `TITLE_ON_FIELD`, `rgb(255,255,255)` (L-01). The JSX above writes
-    `text-on-dark`, `#FBF7F1` — the value L-01 retired.
+  - `h1.color` is `TITLE_ON_FIELD`, `rgb(255,255,255)` (L-01), and the JSX above writes it:
+    `text-role-title-on-field`. **Not `text-on-dark`** — that is `#FBF7F1`, the value L-01
+    retired.
   - `grid` is `[data-r-2col]` at `2 / 2 / 1` with a `12px` gutter, and **the fixture must
     serve at least two sub-units**: the section is not drawn for an empty list, and a
     one-item grid proves no gutter — the harness's own vacuity guard fires on it.
@@ -11161,7 +11198,7 @@ export const ROLE_TONE: Record<string, string>   // token-backed utility pairs
       <div className="flex-1 overflow-auto py-screen-y px-screen-x max760:px-s7 max760:py-s9">
         <div className="max-w-list mx-auto">
           <div className="flex items-center justify-between gap-s6 flex-wrap">
-            <h1 className="text-title font-extrabold text-on-dark">کاربران</h1>
+            <h1 className="text-title font-extrabold text-role-title-on-field">کاربران</h1>
             {/* Coral, not violet. §5.2 gives coral to the new/primary-forward
                 role and §6.7 names this button as one; the violet stays for the
                 commit inside the dialog this opens (§6.14). One rule, applied
@@ -11351,7 +11388,7 @@ export const ROLE_TONE: Record<string, string>   // token-backed utility pairs
   | field | `FIELD` — `rgb(42, 29, 94)` |
   | column | `920px` (`--width-list`), measured `920 / 920 / 732` |
   | padding | `30px 40px`, and `18px 14px` at ≤760 |
-  | h1 | `22px` / `800` / `TITLE_ON_FIELD` `rgb(255,255,255)` — ledger **L-01**. The JSX above writes `text-on-dark`, which is `#FBF7F1`, the value L-01 retired |
+  | h1 | `22px` / `800` / `TITLE_ON_FIELD` `rgb(255,255,255)` — ledger **L-01**, written `text-role-title-on-field`. Not `text-on-dark`: that is `#FBF7F1`, the value L-01 retired |
   | card | radius `18px` (`--radius-doc`, the table shell), `CARD_BORDER`, `CARD_SHADOW`, `SURFACE` |
 
 - [ ] **Step 21: Write the Playwright check — the gate that jsdom cannot be.**
@@ -11801,7 +11838,7 @@ export function SectionCard(props: { eyebrow: string; tone?: 'tinted' | 'white'
           {/* back link — Step 3 */}
           <div className="flex items-start justify-between gap-s6 flex-wrap mt-s5">
             <div>
-              <h1 className="text-title font-extrabold text-on-dark m-0">{user.displayName}</h1>
+              <h1 className="text-title font-extrabold text-role-title-on-field m-0">{user.displayName}</h1>
               {/* §6.8 — the username is a latin run on a violet field: mono,
                   `#C9BEEE`, pinned `ltr`, aligned to the start. It was absent
                   from this screen entirely. */}
@@ -11907,7 +11944,8 @@ export function SectionCard(props: { eyebrow: string; tone?: 'tinted' | 'white'
   card are still held to `rtl`, so a mirrored page cannot pass by claiming this exemption.
   `family` is ledger **L-21**'s token stack, measured through the app's own `font-mono` class
   — the deliverable's `'JetBrains Mono'` first choice is never loaded and falls through.
-  `h1.color` is `TITLE_ON_FIELD`, white (L-01), where the JSX above writes `text-on-dark`.
+  `h1.color` is `TITLE_ON_FIELD`, white (L-01), which is what the JSX above writes —
+  `text-role-title-on-field`, not `text-on-dark` (`#FBF7F1`, the value L-01 retired).
 
   **If the row is missing, or a number in it disagrees with §6.8, stop and report it** — do
   not add a row and do not edit one.
@@ -12905,7 +12943,7 @@ API type, hook or route path is added.
               sentence out of the app, and the design's own profile has neither.
               The two facts worth keeping — who you are and what you are — are
               the header. */}
-          <h1 className="text-fs-stat-sm font-extrabold text-on-dark m-0">
+          <h1 className="text-fs-stat-sm font-extrabold text-role-title-on-field m-0">
             {session.displayName}
           </h1>
           <p data-testid="profile-meta"
@@ -13095,7 +13133,8 @@ API type, hook or route path is added.
   - **`h1.size` is `22px`, not the `21px` this task's Steps 3 and 11 quote.** Ledger **L-02**
     and **L-33**: `--fs-stat-sm` 21px exists for the *activity stat numeral*, which
     `tokens.css:147` says in as many words. So the class is not `text-fs-stat-sm`.
-  - **`h1.color` is `TITLE_ON_FIELD`, white** (L-01), where the JSX writes `text-on-dark`.
+  - **`h1.color` is `TITLE_ON_FIELD`, white** (L-01), which is what the JSX writes —
+    `text-role-title-on-field`, not `text-on-dark` (`#FBF7F1`, the value L-01 retired).
   - **`card.background` is `SUBPANEL_SURFACE` `#FBF9FE`** — the value the mint decided, not the
     one the role used to resolve to. `--role-surface-sub` pointed at `--tile-v4` `#F8F4FE` when
     the row was written; `mint-spec.md` §2.1 C1 re-points it at `--surface-sub` and that
@@ -13259,7 +13298,7 @@ export const STATE_OFF: string   // 'پنهان است'
     return (
       <div className="flex-1 overflow-auto py-screen-y px-screen-x max760:px-s7 max760:py-s9">
         <div className="max-w-access mx-auto">
-          <h1 className="text-title font-extrabold text-on-dark m-0">سیاست نمایش محتوا</h1>
+          <h1 className="text-title font-extrabold text-role-title-on-field m-0">سیاست نمایش محتوا</h1>
           {/* §6.12 — the intro makes the framing explicit: a decision applied to
               every non-editor, not a permission granted to anybody. It is
               `13px #C9BEEE lh 1.8` capped at 600px, on the violet field. */}
@@ -13442,7 +13481,8 @@ export const STATE_OFF: string   // 'پنهان است'
   - `column` is `820px` (`--width-access`) — §3.3 gives the policy screen Access's width.
   - `card.radius` is **16px**, ledger **V2**: §6.12 quotes the literal, the visual audit
     measured a screenshot at 20. The row takes the spec.
-  - `h1.color` is `TITLE_ON_FIELD`, white (L-01), where the JSX above writes `text-on-dark`.
+  - `h1.color` is `TITLE_ON_FIELD`, white (L-01), which is what the JSX above writes —
+    `text-role-title-on-field`, not `text-on-dark` (`#FBF7F1`, the value L-01 retired).
   - **no `focus`** — the row's only control is an `sr-only` input behind a drawn 19px tick, and
     a 1×1 clipped box is the wrong thing to measure a focus indicator on;
   - **no `lift`** — F7's fix is a hover *fill* (`hover:bg-tile-v4`), not a transform: §4.6
