@@ -3167,7 +3167,7 @@ import { TextField } from './TextField'
 import { PasswordField } from './PasswordField'
 
 function on(surface: 'panel' | 'reader', node: ReactNode) {
-  return render(<SurfaceProvider value={surface}>{node}</SurfaceProvider>)
+  return render(<SurfaceProvider surface={surface}>{node}</SurfaceProvider>)
 }
 
 describe('TextField', () => {
@@ -3621,7 +3621,7 @@ import { Radio } from './Radio'
 import { Dropdown } from './Dropdown'
 
 function on(surface: 'panel' | 'reader', node: ReactNode) {
-  return render(<SurfaceProvider value={surface}>{node}</SurfaceProvider>)
+  return render(<SurfaceProvider surface={surface}>{node}</SurfaceProvider>)
 }
 
 describe('Checkbox', () => {
@@ -4718,7 +4718,7 @@ import { Timeline } from './Timeline'
 import { FAB } from './FAB'
 
 function on(surface: 'panel' | 'reader', node: ReactNode) {
-  return render(<SurfaceProvider value={surface}>{node}</SurfaceProvider>)
+  return render(<SurfaceProvider surface={surface}>{node}</SurfaceProvider>)
 }
 
 describe('SectionCard', () => {
@@ -5317,7 +5317,7 @@ import { Logo } from './Logo'
 import { deptMeta, DEPT_CODES } from '../lib/departments'
 
 function on(surface: 'panel' | 'reader', node: ReactNode) {
-  return render(<SurfaceProvider value={surface}>{node}</SurfaceProvider>)
+  return render(<SurfaceProvider surface={surface}>{node}</SurfaceProvider>)
 }
 
 describe('Icon', () => {
@@ -5841,7 +5841,7 @@ button in the right cluster, on the metrics §5.2 gives icon buttons. **Flagged 
   - Task 2's utilities: `text-14` `text-13h` `text-12h` `text-11h` `text-10h` · `rounded-16` `rounded-12` `rounded-11` `rounded-10` `rounded-9` `rounded-round` · `bg-card` `bg-tile-v2` `bg-violet` `bg-coral` `bg-ink` · `border-warm` `#EFE7DC` · `border-line` `#E3D8F5` · `border-card-edge` · `bg-panel-edge` `#EDE5F5` · `text-ink` `text-violet` `text-muted` `text-faint` `text-card` · `shadow-pop` · `max1080:` and `max760:` (Task 2's two max-width screens).
 - Produces:
   - `ui/src/shell/crumbs.ts` — `interface Crumb { label: string; to?: string; mono?: boolean }`; `function panelCrumbs(pathname: string, deptName: (code: string) => string): Crumb[]`
-  - `ui/src/shell/PanelShell.tsx` — unchanged export `function PanelShell({ session }: { session: SessionDescriptor }): JSX.Element`, now wrapping its subtree in `<SurfaceProvider value="panel">`.
+  - `ui/src/shell/PanelShell.tsx` — unchanged export `function PanelShell({ session }: { session: SessionDescriptor }): JSX.Element`, now wrapping its subtree in `<SurfaceProvider surface="panel">`.
 
 - [ ] **Step 1: Write the failing test for the trail**
 
@@ -6341,7 +6341,7 @@ export function PanelShell({ session }: { session: SessionDescriptor }) {
   return (
     // R3 — the scale layer. Every surface-aware primitive below reads this, and
     // nothing passes a density prop down (F4/F8).
-    <SurfaceProvider value="panel">
+    <SurfaceProvider surface="panel">
       {/* §6.0 — the whole application sits on `#2A1D5E`, and the root's own text
           colour is `#2A1D5E` too: screens do not paint their own ground, they
           are cards floating on the violet field, and everything legible on the
@@ -6582,7 +6582,7 @@ Four things, one of which is a product rule the design does not carry.
    there (Task 12).
 3. **The reader scale.** 720px content column, `30px 24px 60px` padding, 14.5–15px body,
    `42×42` icon buttons, 54×54 department tiles — supplied to every primitive below by
-   `<SurfaceProvider value="reader">`, not by a prop anybody passes.
+   `<SurfaceProvider surface="reader">`, not by a prop anybody passes.
 4. **R4 — the single-department landing.** A reader whose reachable departments number
    **exactly one** lands on that department's process list, never on a list holding one
    tile. **Decided by scope alone, never by content**: a department with nothing confirmed
@@ -6925,7 +6925,7 @@ export function ReaderShell({ session }: { session: SessionDescriptor }) {
   }
 
   return (
-    <SurfaceProvider value="reader">
+    <SurfaceProvider surface="reader">
       {/* §6.0 — the app sits on `#2A1D5E`, and the root's own colour is `#2A1D5E`
           too. Audit S7 read this shell as "inverted against the design"; §9.1
           settles it the other way — the readme's cream page is superseded and
@@ -7384,7 +7384,7 @@ a reader, and a 760px viewport without changing what a person sees at desktop.
   describe('IconTile takes its scale from the surface, never from a prop', () => {
     it('is the panel tile inside a panel', () => {
       const { container } = render(
-        <SurfaceProvider value="panel"><IconTile accent="coral" glyph="cooking" /></SurfaceProvider>)
+        <SurfaceProvider surface="panel"><IconTile accent="coral" glyph="cooking" /></SurfaceProvider>)
       const tile = container.firstElementChild!
       expect(tile.className).toContain('w-tile')
       expect(tile.className).toContain('rounded-tile')
@@ -7393,7 +7393,7 @@ a reader, and a 760px viewport without changing what a person sees at desktop.
 
     it('is the reader tile inside a reader', () => {
       const { container } = render(
-        <SurfaceProvider value="reader"><IconTile accent="coral" glyph="cooking" /></SurfaceProvider>)
+        <SurfaceProvider surface="reader"><IconTile accent="coral" glyph="cooking" /></SurfaceProvider>)
       const tile = container.firstElementChild!
       expect(tile.className).toContain('w-tile-reader')
       expect(tile.className).toContain('rounded-card')      // 16px
@@ -7403,7 +7403,7 @@ a reader, and a 760px viewport without changing what a person sees at desktop.
     it('draws the glyph at the design’s department stroke weight', () => {
       // 1.9 is the department glyph's weight and nothing else's (§5.2 iconography).
       const { container } = render(
-        <SurfaceProvider value="panel"><IconTile accent="violet" glyph="cashier" /></SurfaceProvider>)
+        <SurfaceProvider surface="panel"><IconTile accent="violet" glyph="cashier" /></SurfaceProvider>)
       expect(container.querySelector('svg')).toHaveAttribute('stroke-width', '1.9')
     })
   })
@@ -7473,7 +7473,7 @@ a reader, and a 760px viewport without changing what a person sees at desktop.
   describe('the two surfaces', () => {
     it('is a three-column grid in the panel, and names the hook the breakpoints target', async () => {
       serve()
-      renderAt('/departments', <SurfaceProvider value="panel"><Departments /></SurfaceProvider>, '/departments')
+      renderAt('/departments', <SurfaceProvider surface="panel"><Departments /></SurfaceProvider>, '/departments')
       await screen.findByText('دپارتمان پخت')
       const grid = document.querySelector('[data-r-deptgrid]')!
       expect(grid).toBeInTheDocument()
@@ -7485,7 +7485,7 @@ a reader, and a 760px viewport without changing what a person sees at desktop.
 
     it('is a single-column list in the reader, at the reader’s gap', async () => {
       serve()
-      renderAt('/departments', <SurfaceProvider value="reader"><Departments /></SurfaceProvider>, '/departments')
+      renderAt('/departments', <SurfaceProvider surface="reader"><Departments /></SurfaceProvider>, '/departments')
       await screen.findByText('دپارتمان پخت')
       const grid = document.querySelector('[data-r-deptgrid]')!
       expect(grid.className).toContain('grid-cols-1')
@@ -7495,7 +7495,7 @@ a reader, and a 760px viewport without changing what a person sees at desktop.
 
     it('gives the H1 the hook that shrinks it to 25px at ≤760', async () => {
       serve()
-      renderAt('/departments', <SurfaceProvider value="panel"><Departments /></SurfaceProvider>, '/departments')
+      renderAt('/departments', <SurfaceProvider surface="panel"><Departments /></SurfaceProvider>, '/departments')
       const h1 = await screen.findByRole('heading', { level: 1 })
       expect(h1).toHaveAttribute('data-r-title')
       expect(h1.className).toContain('text-fs-display')
