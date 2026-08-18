@@ -1,10 +1,20 @@
 import { useId, useState } from 'react'
-import { FIELD_FRAME, FIELD_LABEL, FIELD_PAD_REVEAL, fieldEdge, fieldHint } from './fieldFrame'
+import type { FieldGround } from './fieldFrame'
+import {
+  FIELD_FRAME, FIELD_LABEL, FIELD_PAD_REVEAL, FIELD_TYPE,
+  fieldEdge, fieldGround, fieldHint,
+} from './fieldFrame'
 
 // Folded into `Icon` by Task 11. The design names the glyph and its size
 // («17x17 eye / eye-off») but ships no path for it, and InjaIcons' 33 keys have
 // no eye — ledger L-39 — so these two are drawn to the set's stated
 // construction (24x24 box, currentColor stroke, round caps) rather than quoted.
+//
+// EYE_OFF is EYE struck through. Which of the two is on screen is the only
+// thing a SIGHTED user has to tell the two states apart — `aria-pressed` and
+// the label carry it for everyone else — so swapping them is a defect no
+// accessible-name assertion can see, and fields.test.tsx asserts the struck
+// path itself in both states.
 const EYE = <><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z" /><circle cx="12" cy="12" r="3" /></>
 const EYE_OFF = <><path d="M10.6 6.2A9.7 9.7 0 0 1 12 6c6.4 0 10 7 10 7a17.6 17.6 0 0 1-3.4 4.3M6.6 7.7A17.6 17.6 0 0 0 2 13s3.6 7 10 7a9.6 9.6 0 0 0 4.2-.9" /><path d="M3 3l18 18" /></>
 
@@ -14,6 +24,17 @@ export interface PasswordFieldProps {
   onChange: (next: string) => void
   hint?: string
   invalid?: boolean
+  /**
+   * §1.2 — the ground the control sits on. The reader's profile draws its
+   * password trio on the sub-panel surface, so this cannot be hard-coded to the
+   * card without that screen re-inventing the field.
+   */
+  ground?: FieldGround
+  /**
+   * The reader draws eight bullets here; the panel draws Persian copy. The
+   * default is the reader's, and a caller that draws the other says so.
+   */
+  placeholder?: string
   autoComplete?: 'current-password' | 'new-password'
   name?: string
   id?: string
@@ -22,7 +43,8 @@ export interface PasswordFieldProps {
 
 /** TextField's frame plus §5.2's reveal affordance. */
 export function PasswordField({
-  label, value, onChange, hint, invalid = false,
+  label, value, onChange, hint, invalid = false, ground = 'card',
+  placeholder = '••••••••',
   autoComplete = 'current-password', name, id: given, className = '',
 }: PasswordFieldProps) {
   const auto = useId()
@@ -38,28 +60,50 @@ export function PasswordField({
         <input
           id={id} name={name} value={value} autoComplete={autoComplete}
           type={shown ? 'text' : 'password'}
-          placeholder="••••••••"
+          placeholder={placeholder}
           aria-invalid={invalid || undefined}
           aria-describedby={hint === undefined ? undefined : hintId}
           onChange={(e) => onChange(e.target.value)}
-          className={`${FIELD_FRAME} ${edge} ${FIELD_PAD_REVEAL} bg-card`}
+          className={`${FIELD_FRAME} ${FIELD_TYPE} ${edge} ${FIELD_PAD_REVEAL} ${fieldGround(ground)}`}
         />
-        {/* §8 — the design pins this button with a physical `left:8px`, which
-            is the inline END in an app whose html is direction:rtl and which
-            never runs ltr. Written as `end-s4`, the same way SearchField's
-            magnifier keeps the design's edge without keeping its physicality. */}
-        <button
-          type="button"
-          onClick={() => setShown((v) => !v)}
-          aria-pressed={shown}
-          aria-label={shown ? 'پنهان کردن گذرواژه' : 'نمایش گذرواژه'}
-          className="absolute end-s4 top-1/2 -translate-y-1/2 w-reveal h-reveal inline-flex items-center justify-center border-0 bg-transparent rounded-reveal text-muted cursor-pointer hover:bg-tile-v2 hover:text-violet"
-        >
-          <svg className="w-reveal-glyph h-reveal-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-            strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden focusable="false">
-            {shown ? EYE_OFF : EYE}
-          </svg>
-        </button>
+        {/* §8 — the button sits at the INLINE START, the edge FIELD_PAD_REVEAL
+            reserves 46px on. The design writes the pin as a physical `left:8px`
+            and the reserve as `padding-inline-start`, and in an RTL app those
+            are opposite edges: taking the physical one literally put the eye
+            over the value while the reserved room sat empty on the other side.
+            The 46px is 8 + 32 + 6, which can only be the button's own edge, so
+            the logical spelling of the RESERVE is the one that is right and the
+            button follows it — as SearchField's magnifier already does.
+
+            The pin is on this wrapper and not on the button because the button
+            needs `relative` for its hit area (below), and `relative` and
+            `absolute` are the same CSS property: Tailwind emits `.relative`
+            AFTER `.absolute`, so writing both on one element silently unpins
+            it, whatever order the class string is in. */}
+        <span className="absolute start-s4 top-1/2 -translate-y-1/2 inline-flex">
+          {/* F11 — the drawn control stays the design's 32x32 and a transparent
+              `::before` grows the HIT AREA to 44 (32 + 2x6), the plan's one rule
+              for every rung of the 30/32/34/36/40/42 ladder. It supersedes any
+              per-task treatment, and src/ui/Overlay.tsx's close control is the
+              same 32px box with the same 6px inset. The input is taller than 44,
+              so nothing clips. */}
+          <button
+            type="button"
+            onClick={() => setShown((v) => !v)}
+            aria-pressed={shown}
+            aria-label={shown ? 'پنهان کردن گذرواژه' : 'نمایش گذرواژه'}
+            className={
+              'relative before:absolute before:content-[""] before:-inset-[6px] ' +
+              'w-reveal h-reveal inline-flex items-center justify-center border-0 ' +
+              'bg-transparent rounded-reveal text-muted cursor-pointer hover:bg-tile-v2 hover:text-violet'
+            }
+          >
+            <svg className="w-reveal-glyph h-reveal-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden focusable="false">
+              {shown ? EYE_OFF : EYE}
+            </svg>
+          </button>
+        </span>
       </div>
       {hint !== undefined && <p id={hintId} className={fieldHint(invalid)}>{hint}</p>}
     </div>

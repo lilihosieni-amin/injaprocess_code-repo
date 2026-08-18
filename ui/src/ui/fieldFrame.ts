@@ -8,23 +8,57 @@
  * decoration the design refuses. (No literal is quoted in this file: the
  * guard scans comments too, and a hex in prose is still a second record.)
  *
+ * `outline-none` is not an exception to that: it emits a transparent outline to
+ * kill the UA's default, and it is the ONLY `outline-*` allowed anywhere near a
+ * field. fields.test.tsx pins both halves — no drawn outline in the class
+ * string, and nothing but the transparent one in the compiled sheet.
+ *
  * Split out of TextField.tsx so PasswordField can share it without either file
  * exporting a non-component (react-refresh/only-export-components), the same
  * reason dismissibleStack.ts sits beside Overlay.tsx rather than inside it.
  *
- * `text-role-body` rather than a per-surface branch: R3's scale layer is
- * roles.css, where `--role-fs-body` is 14px on the panel and 15px on the
- * reader, keyed on the same `data-surface` attribute SurfaceProvider sets.
- * Ledger L-41 decided that roles.css is the SINGLE semantic layer for type; a
- * function here returning `text-fs-body` or `text-fs-lg` would be a second
- * place the same step is written down, and the two would drift silently.
+ * Four of these classes look like scaffolding and are load-bearing, so each is
+ * asserted by the DECLARATION it paints rather than by its presence:
+ * `w-full` (without it a field is the browser's ~177px default), `box-border`
+ * (without it `100%` + padding + border overflows its dialog), `leading-normal`
+ * (without it the field falls to `normal` and stops matching Button's height),
+ * and the type size below.
  */
 export const FIELD_FRAME =
-  'block w-full box-border text-ink text-role-body leading-normal ' +
+  'block w-full box-border text-ink leading-normal ' +
   'rounded-button border-hairline outline-none transition-[border-color] ' +
   // §4.6 — "disabled keeps its surface and fades", the same treatment Button
   // gives it. A control that is off is never hidden and never a pointer target.
   'disabled:opacity-60 disabled:cursor-default'
+
+/**
+ * The single-line control's type: a FIXED step, not a `--role-*` one.
+ *
+ * The plan reached for `text-role-body`, whose role is 14px on the panel and
+ * 15px on the reader. Both deliverables were then re-measured and both draw an
+ * input at 14px — the reader's profile fields included — so the role would have
+ * grown the reader's fields past what the design draws. R1 makes the
+ * deliverable win over the plan, and a form control's value is not body copy:
+ * it is a control, and the design scales it with neither.
+ *
+ * This is why the size is here and not in FIELD_FRAME: the textarea takes a
+ * different one (below), and two `text-*` classes on one element race in
+ * Tailwind's OUTPUT order, not the class string's — the trap FIELD_PAD_REVEAL
+ * documents. One element, one type class, decided in TypeScript.
+ */
+export const FIELD_TYPE = 'text-fs-body'
+
+/**
+ * The textarea's type, and the one place in this file that DOES scale.
+ *
+ * The panel's three dialog textareas are 13px against its 14px inputs, which is
+ * `--role-fs-dense` exactly (13px panel / 14.5px reader — the ledger's "list,
+ * table and hint copy"). Two sizes in one dialog looked like drift when the
+ * plan was written; it is not, because the design draws the same relationship
+ * in both deliverables. A long free-text answer sets smaller than a one-line
+ * value on purpose.
+ */
+export const FIELD_TYPE_TEXTAREA = 'text-role-dense'
 
 /**
  * `12px 14px`, on BOTH surfaces.
@@ -45,15 +79,19 @@ export const FIELD_PAD = 'py-s6 px-s7'
  * same physical edge in RTL, and which one wins is decided by Tailwind's
  * output order, not by the order of the class attribute. Naming the two
  * edges logically is the only spelling that cannot lose that race.
+ *
+ * The 46px is `8 + 32 + 6` — the button's inset, the button, and the gap to the
+ * value — so it belongs on the button's own edge and nowhere else. PasswordField
+ * pins the button to the INLINE START to match, and fields.test.tsx relates the
+ * two edges in one assertion rather than pinning each independently: the first
+ * cut of this component reserved one edge and pinned the button to the other,
+ * and two independent assertions both passed while the eye sat over the value.
  */
 export const FIELD_PAD_REVEAL = 'py-s6 ps-reveal pe-s7'
 
 /**
  * `11px 12px` — the one part of the field that falls off the spacing ladder,
- * which is why Task 2 minted `--pad-textarea-y` for it. The type size stays
- * the field's own: the deliverables draw four different textarea sizes
- * (13 / 13.5 / 15.5 / 16px) with no rule behind them, and a 13px textarea
- * beside a 14px input in the same dialog is drift, not design.
+ * which is why Task 2 minted `--pad-textarea-y` for it.
  */
 export const FIELD_PAD_TEXTAREA = 'py-textarea-y px-s6'
 
@@ -62,6 +100,22 @@ export const FIELD_PAD_TEXTAREA = 'py-textarea-y px-s6'
  * the surface either: both deliverables label every field at 12.5px.
  */
 export const FIELD_LABEL = 'block font-semibold text-violet text-fs-sm2 mb-s3'
+
+/**
+ * Which ground the control sits on.
+ *
+ * §1.2's sub-panel surface is not decoration: the reader's profile password
+ * trio and the panel's dialog textareas sit on it, and a field hard-coded to
+ * `--card` draws a white box on a near-white ground with only the hairline
+ * between them. The textarea defaults to the sub-panel ground because that is
+ * where the design always puts it; every other field defaults to the card and
+ * a caller inside a sub-panel asks for the other.
+ */
+export type FieldGround = 'card' | 'sub'
+
+export function fieldGround(ground: FieldGround): string {
+  return ground === 'sub' ? 'bg-surface-sub' : 'bg-card'
+}
 
 /**
  * §5.1.5 — invalid beats focus. A field that is wrong must not look accepted
