@@ -3151,7 +3151,7 @@ with the border carrying the whole state machine.
     - `function PasswordField(props: PasswordFieldProps): JSX.Element`
   - **No `size` prop.** The design's `TextField` has `size='sm'|'md'|'lg'`; R3 puts scale on
     the surface instead, and `guards.test.ts:164` forbids a size prop on a shared component.
-  - The eye / eye-off SVGs are inlined here and **folded into `Icon` by Task 11, step 12.**
+  - The eye / eye-off SVGs are inlined here and **folded into `Icon` by Task 11, step 8.**
 
 - [ ] **Step 1: Write the failing test**
 
@@ -3604,7 +3604,7 @@ check drawn at stroke 3.
     - `interface DropdownOption { value: string; label: string; note?: string }`
     - `interface DropdownProps { label: string; options: DropdownOption[]; placeholder: string; value?: string; onChange?: (next: string) => void; values?: string[]; onToggle?: (value: string) => void; searchable?: boolean; searchPlaceholder?: string; noHit?: string; hideLabel?: boolean; className?: string }` — supplying `values` puts it in multi-select mode.
     - `function Dropdown(props: DropdownProps): JSX.Element`
-  - The chevron-down and check SVGs are inlined here and **folded into `Icon` by Task 11, step 12.**
+  - The chevron-down and check SVGs are inlined here and **folded into `Icon` by Task 11, step 8.**
 
 - [ ] **Step 1: Write the failing test for the two ticks**
 
@@ -4286,7 +4286,7 @@ difference between one table and three; Task 19 consumes it for the users screen
     - `function Pager(props: PagerProps): JSX.Element` — every number rendered through `toFa`.
   - `ui/src/test/a11y.ts`
     - `expectExpandedHitArea(el: HTMLElement): void` — asserts the 34×34 design box carries the transparent 44×44 hit area.
-  - The two chevron SVGs are inlined here and **folded into `Icon` by Task 11, step 12.**
+  - The two chevron SVGs are inlined here and **folded into `Icon` by Task 11, step 8.**
 
 - [ ] **Step 1: Write the failing test**
 
