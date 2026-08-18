@@ -3,6 +3,8 @@
 Every test here drives a throwaway FastAPI app, so nothing depends on which
 endpoints exist today: the subject is `requires` itself.
 """
+import json
+import logging
 import time
 
 import pytest
@@ -43,6 +45,12 @@ def test_out_of_scope_is_404_and_refused_action_is_403(data_root, tmp_path, monk
 
     class Cfg:
         session_ttl = 86400
+        # `requires` records `access.denied` on its 403 branch (D42) and logs its
+        # 404s, and both read the caller's address through `auth.client_ip` — so
+        # this stand-in for `Settings` needs the field that decides how far into
+        # `X-Forwarded-For` to trust. 0 is `load_settings`' own default: no proxy
+        # in front, record the peer.
+        trusted_proxy_hops = 0
     app.state.cfg = Cfg()
 
     @app.get("/visible")
@@ -117,6 +125,12 @@ def _app(conn) -> FastAPI:
 
     class Cfg:
         session_ttl = 86400
+        # `requires` records `access.denied` on its 403 branch (D42) and logs its
+        # 404s, and both read the caller's address through `auth.client_ip` — so
+        # this stand-in for `Settings` needs the field that decides how far into
+        # `X-Forwarded-For` to trust. 0 is `load_settings`' own default: no proxy
+        # in front, record the peer.
+        trusted_proxy_hops = 0
 
     app.state.cfg = Cfg()
     return app
@@ -435,3 +449,151 @@ def test_the_gate_hands_the_endpoint_the_user_and_leaves_it_on_the_request(tmp_p
     body = _client(app, conn, uid).get("/who").json()
     assert body == {"returned": "09120000001", "on_request": "09120000001",
                     "id": uid}
+
+
+# --------------------------------------------------------------------------
+# What the record is told about a refusal (spec D42, §11 test 16d)
+# --------------------------------------------------------------------------
+
+def _denials(conn):
+    return [dict(r) for r in conn.execute(
+        "SELECT * FROM audit_events WHERE action = 'access.denied' ORDER BY id")]
+
+
+def test_a_403_writes_access_denied(tmp_path):
+    """D42 calls this the highest-signal event in the catalogue, and it had no
+    writer at all — `requires` is the only place a 403 of this kind is decided.
+
+    A 403 means somebody acted on a resource they *can* see, through a control
+    the UI never drew for them (D48). It essentially cannot happen in normal use,
+    which is what makes it worth a row.
+
+    Every column is asserted, not just the action: a row whose actor is wrong is
+    worse than no row, and D44's permission history is built on `actor` plus
+    `target`. `detail` carries the capability because *"denied"* without
+    *"denied what"* cannot tell an attempt to edit from an attempt to administer.
+    """
+    conn = _conn(tmp_path)
+    uid = _user(conn, "09120000001", "reader", "dept:dining")
+    app = _app(conn)
+    _route(app, "/edit-here", "edit", "dept:dining")
+    client = _client(app, conn, uid)
+    session = client.cookies.get(COOKIE_NAME)
+    assert session
+
+    assert client.get("/edit-here").status_code == 403
+
+    rows = _denials(conn)
+    assert len(rows) == 1, rows
+    row = rows[0]
+    assert row["actor"] == "09120000001", (
+        "recorded against the wrong person; the actor is the signed-in session")
+    assert row["target"] == "dept:dining"
+    assert row["session_id"] == session, (
+        "the row does not name the sign-in that produced it")
+    assert row["outcome"] == "denied", row["outcome"]
+    assert json.loads(row["detail"]) == {"capability": "edit"}
+    assert row["at"] > 0
+    assert row["ip"] is not None and row["user_agent"] is not None
+
+
+def test_a_404_writes_nothing(tmp_path, caplog):
+    """The other half of §11 test 16d, and the half that is easy to get wrong by
+    being helpful.
+
+    D42, twice over: *"404s are deliberately not recorded — they would bury the
+    403s."* An out-of-scope resource is indistinguishable from a typo by design,
+    so recording it means recording typo-volume traffic into the one table whose
+    value is that it is nearly all signal.
+
+    Not silence, though. The refusal goes to the **application log**, which is
+    not a report surface and has no volume budget — so an operator asking "is
+    somebody walking department codes" has somewhere to look, without the
+    activity record paying for it. Asserting the log line is what stops this test
+    passing on a gate that simply forgot the whole question.
+    """
+    conn = _conn(tmp_path)
+    uid = _user(conn, "09120000001", "reader", "dept:dining")
+    app = _app(conn)
+    _route(app, "/view-elsewhere", "view", "dept:cashier")
+    client = _client(app, conn, uid)
+
+    with caplog.at_level(logging.INFO):
+        assert client.get("/view-elsewhere").status_code == 404
+
+    assert _denials(conn) == [], (
+        "a 404 was recorded as access.denied: D42 keeps that event off the 404"
+        " path, because typo-volume rows bury the 403s it exists for")
+    lines = [r.getMessage() for r in caplog.records
+             if r.name == "inja_ui_backend.access"]
+    assert len(lines) == 1, lines
+    assert "dept:cashier" in lines[0] and "09120000001" in lines[0], lines[0]
+
+
+def test_both_halves_refuse_and_only_the_403_is_recorded(tmp_path):
+    """The two branches in one request pair, so neither can be read in isolation.
+
+    This is the shape that catches "record it on every refusal": the counts are
+    asserted together, and a single `record` hoisted above the scope check passes
+    both tests above taken one at a time while failing this one.
+    """
+    conn = _conn(tmp_path)
+    uid = _user(conn, "09120000001", "reader", "dept:dining")
+    app = _app(conn)
+    _route(app, "/edit-here", "edit", "dept:dining")               # 403
+    _route(app, "/edit-elsewhere", "edit", "dept:cashier")         # 404, both halves
+    _route(app, "/view-elsewhere", "view", "dept:cashier")         # 404, scope only
+    client = _client(app, conn, uid)
+
+    assert client.get("/edit-here").status_code == 403
+    assert client.get("/edit-elsewhere").status_code == 404
+    assert client.get("/view-elsewhere").status_code == 404
+
+    rows = _denials(conn)
+    assert [r["target"] for r in rows] == ["dept:dining"], (
+        "the out-of-scope refusals were recorded too, and `dept:cashier` — a"
+        " department this caller must not learn exists — is now in the record"
+        " that a scoped auditor can read")
+
+
+def test_a_permitted_request_is_recorded_as_nothing(tmp_path):
+    """`access.denied` on the success path would make every request a row and
+    D45's volume estimate fiction. The mutant is a `record` outside both `if`s."""
+    conn = _conn(tmp_path)
+    uid = _user(conn, "09120000001", "reader", "dept:dining")
+    app = _app(conn)
+    _route(app, "/view-here", "view", "dept:dining")
+    client = _client(app, conn, uid)
+
+    assert client.get("/view-here").status_code == 200
+    assert _denials(conn) == []
+
+
+def test_a_403_without_a_resolved_session_still_records(tmp_path):
+    """The gate must record a refusal, not raise on the way to recording it.
+
+    `current_user` leaves the session id on `request.state`, so on every route in
+    this service it is there by the time the gate runs. `State` raises
+    `AttributeError` for a key it does not hold, though, and a gate that raises
+    answers **500** — which is this module's stated failure mode ("a crash is a
+    denial of service") arriving through the one line added to make refusals
+    visible. Reached the way the disabled-account test reaches it, by overriding
+    the session gate.
+
+    The row is still written and simply names no session: a refusal recorded
+    without its sign-in is worth more than a stack trace, and `session_id` is
+    nullable for exactly this.
+    """
+    conn = _conn(tmp_path)
+    uid = _user(conn, "09120000001", "reader", "dept:dining")
+    app = _app(conn)
+    _route(app, "/edit-here", "edit", "dept:dining")
+    app.dependency_overrides[require_session] = lambda: users.by_id(conn, uid)
+
+    assert _client(app).get("/edit-here").status_code == 403, (
+        "the gate raised instead of refusing")
+
+    rows = _denials(conn)
+    assert len(rows) == 1, rows
+    assert rows[0]["session_id"] is None
+    assert rows[0]["actor"] == "09120000001"

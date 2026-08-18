@@ -36,13 +36,16 @@ re-deciding any part of it in this module is how the two would come to disagree.
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 from typing import Callable
 
 from fastapi import Depends, HTTPException, Request
 
-from .auth import require_session
+from .auth import client_ip, record, require_session
 from .scopes import SCOPE_RE, contains, dept_of
+
+logger = logging.getLogger(__name__)
 
 #: The body of **every** 404 this service answers with — the gate's and every
 #: router's alike.
@@ -178,6 +181,36 @@ def reachable_departments(conn: sqlite3.Connection, user: sqlite3.Row,
     return codes
 
 
+def log_out_of_scope(request: Request, user: sqlite3.Row, target: str) -> None:
+    """Leave a trace of a refusal the caller is told nothing about.
+
+    A 404 for an out-of-scope resource is deliberately indistinguishable from a
+    typo (D56), so the only party that can tell the two apart is this process.
+    Somebody walking `dept:` codes to find out which departments exist looks,
+    from outside, exactly like a member of staff following a stale bookmark —
+    and an operator who is never told has nowhere to see the difference.
+
+    **This is not `access.denied`, and must not become it.** D42 puts that event
+    on the 403 and says why twice: *"404s are deliberately not recorded — they
+    would bury the 403s"*, the 403 being *"the highest-signal event in the
+    catalogue"* precisely because it is near-zero volume. §11 test 16d pins the
+    absence. The activity record is a report surface with a volume budget (D45);
+    the application log is not, and this line is what the second half of that
+    trade buys back.
+
+    INFO, not WARNING: a boundary that is indistinguishable from a typo produces
+    typo-volume traffic, and a log level that cries wolf is one an operator
+    filters out.
+
+    Both values are attacker-chosen — the target comes out of the URL — so both
+    are `%r`-quoted and truncated. Unquoted, a newline in a target writes a log
+    line of the caller's choosing, which is the same reason
+    `export_files._log_failed_login` quotes the username it records.
+    """
+    logger.info("out of scope: %r asked for %r from %s",
+                user["username"], target[:120], client_ip(request))
+
+
 def requires(capability: str, target: str | Callable[[Request], str]):
     """A dependency that gates an endpoint on one capability at one target.
 
@@ -216,17 +249,51 @@ def requires(capability: str, target: str | Callable[[Request], str]):
     Read-only, and no explicit transaction: this runs on the connection shared
     across the threadpool (see `db.connect`).
 
-    `access.denied` (D42) is not recorded yet. When it arrives it belongs on the
-    403 branch below and never on the 404 — 404s are unrecorded by design,
-    because a boundary that is indistinguishable from a typo produces typo-volume
-    noise that would bury the 403s.
+    **`access.denied` (D42) is written on the 403 branch and on that branch
+    only.** The event is what D42 calls the highest-signal row in the catalogue:
+    a 403 means somebody acted on a resource they *can* see, through a control
+    the UI never drew for them, which essentially cannot happen in normal use.
+    The 404 branch stays unrecorded by design — a boundary indistinguishable
+    from a typo produces typo-volume rows that would bury the 403s — and §11
+    test 16d pins both halves. What the 404 branch leaves instead is
+    `log_out_of_scope`'s line in the application log, which costs the activity
+    record nothing.
+
+    The row carries D41's columns and no invention: `actor` is the signed-in
+    user, `session_id` ties it to the sign-in that produced it, `target` is the
+    scope string that was refused, and `ip`/`user_agent` come from
+    `request_origin` like every other event. `detail` carries the capability,
+    because *"denied"* without *"denied what"* cannot tell an attempt to edit
+    from an attempt to administer, and D44's permission history is built on
+    exactly that distinction.
+
+    Written before the raise, on the shared connection and outside any
+    transaction (see `db.connect`), so a refusal cannot be recorded as anything
+    else and cannot be lost to the exception on its way out.
     """
     def dependency(request: Request, user=Depends(require_session)):
         conn = request.app.state.db
         resolved = target(request) if callable(target) else target
         if not any(contains(s, resolved) for s in scopes_of(conn, user)):
+            log_out_of_scope(request, user, resolved)
             raise HTTPException(status_code=404, detail=NOT_FOUND)
         if capability not in capabilities_of(conn, user):
+            # `getattr`, not `request.state.session_id`. `current_user` leaves
+            # the id there and `require_session` is a sub-dependency, so on every
+            # route in this service it is set by the time this runs — but
+            # `starlette.datastructures.State` raises `AttributeError` for a key
+            # it does not hold, and a gate that raises answers 500 instead of
+            # 403. This module's own rule is that an unanswerable question is a
+            # value and never an exception ("a crash is a denial of service"),
+            # and the column is nullable, so a row that names no session is
+            # strictly better than no row and a stack trace. It is reachable
+            # today by overriding `require_session`, which is how
+            # `test_a_disabled_row_reaching_the_gate_holds_no_capability`
+            # isolates the second lock.
+            record(request, "access.denied", actor=user["username"],
+                   session_id=getattr(request.state, "session_id", None),
+                   target=resolved, outcome="denied",
+                   detail={"capability": capability})
             raise HTTPException(status_code=403, detail="اجازهٔ این کار را ندارید")
         request.state.user = user
         return user

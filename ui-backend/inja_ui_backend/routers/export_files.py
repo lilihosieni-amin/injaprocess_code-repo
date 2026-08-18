@@ -41,7 +41,10 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from starlette.staticfiles import NotModifiedResponse, StaticFiles
 
 from .. import export_auth
+from ..access import log_out_of_scope, scopes_of
+from ..auth import current_user
 from ..export_auth import EXPORT_COOKIE, require_export_access
+from ..scopes import contains
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +63,83 @@ COOKIE_PATH = "/exports"
 #: gate, so someone who has just signed in gets this router's own "nothing is
 #: published here" 404 rather than being bounced somewhere else entirely.
 _EXPORTS_ROOT = COOKIE_PATH + "/"
+
+#: The scope a file that names no department sits in.
+#:
+#: `*` and not `None`, so the question stays a containment question and
+#: `scopes.contains` stays the only thing that answers it: `contains("*", "*")`
+#: is True and `contains("dept:cooking", "*")` is False, so such a file is
+#: reachable by a caller who reaches everything and by nobody else. That is the
+#: rule D44 already gives for the *events* that belong to no department — "shown
+#: to `view_audit` holders scoped `*` and to nobody else" — applied to a byte
+#: stream instead of a row.
+_NO_DEPARTMENT = "*"
+
+
+def _scope_of(file_path: str) -> str:
+    """The scope the requested file sits in, read from the path alone.
+
+    `write_export` publishes at `EXPORT_DIR/{code}/{kind}-{token}.{html,pdf}`
+    (D27), so both halves of `dept:{code}/report:{kind}` are in the path and
+    nothing has to be opened to learn them. Lexical, like every other
+    reachability question in this service.
+
+    Anything of another shape names no department and answers `_NO_DEPARTMENT`.
+    That is what makes the traversal case safe rather than merely unlikely:
+    reaching out of the department the path *names* costs a second `/` —
+    `cooking/../dining/steps-x.html` — and a second `/` is exactly what stops
+    the path naming a department, so a `..` segment can only ever move a file
+    into the `*`-only bucket and never into a neighbour's. The one residual is a
+    symlink inside `EXPORT_DIR/{code}/` pointing at another department, which
+    would name this department and serve that one; nothing in this system
+    creates one, and the containment check below is what would have to be
+    revisited if anything ever did.
+
+    A shape the grammar refuses — a filename with no `-`, a `%00`, a department
+    code that is not `[a-z]+` — produces a target no scope contains, including
+    `*`. That is the fail-closed answer and it costs nothing: no such file is
+    published.
+    """
+    code, sep, name = file_path.partition("/")
+    if not sep or "/" in name:
+        return _NO_DEPARTMENT
+    return f"dept:{code}/report:{name.partition('-')[0]}"
+
+
+def _may_reach(request: Request, file_path: str) -> bool:
+    """Whether this caller's own scopes reach the file they asked for.
+
+    D56's **Downloads** row, which is the whole reason this function exists:
+    *"the download endpoint re-derives scope on every request; that the cached
+    artifact exists (D27) is not authorisation to serve it."* The gate above
+    answers *"is there a session"* and never *"whose"*, so without this a Reader
+    scoped to one department could read every other department's published
+    bundle — the artifact is on disk, and its name is handed out by `POST
+    /api/departments/{code}/exports/{kind}`.
+
+    Only a caller who *has* scopes is asked about them. The shared export
+    credential (D28) carries no identity, so there is no scope to re-derive for
+    it and inventing one here would either lock out every reader it was handed
+    to or answer a question it was never asked. That credential is the surface
+    D24 retires outright; whoever lands D24 deletes this branch along with
+    `export_auth`, and what is left is the check below applied to everybody.
+
+    `scopes.contains` decides (D10). Re-deciding any part of containment here is
+    how this and `requires` would come to disagree about one department.
+
+    A refusal is logged, never recorded: the answer is a 404, and D42 keeps
+    `access.denied` off the 404 path. `log_out_of_scope` is the shared line, so
+    this route and the gate leave the same trace.
+    """
+    user = current_user(request)
+    if user is None:
+        return True
+    target = _scope_of(file_path)
+    if any(contains(s, target) for s in scopes_of(request.app.state.db, user)):
+        return True
+    log_out_of_scope(request, user, target)
+    return False
+
 
 #: Borrowed, not reimplemented. `is_not_modified` is the exact comparison the
 #: mount used to make — `If-None-Match` against the response's own `etag`, then
@@ -84,6 +164,13 @@ def serve_export(file_path: str, request: Request):
     page = _sign_in_page(request)
     if page is not None:
         return page
+    if not _may_reach(request, file_path):
+        # The same bare 404 as a file that was never published, and for D56's
+        # reason: a 403 here would tell a caller that the department publishes
+        # at all. Before the filesystem is touched, so an out-of-scope probe
+        # costs no `stat` — and it makes no difference to what is disclosed,
+        # because every refusal on this route is this one answer.
+        raise HTTPException(status_code=404)
     cfg = request.app.state.cfg
     if not cfg.export_dir:
         # `create_app` registers this router only when EXPORT_DIR is usable, so

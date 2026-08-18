@@ -1078,17 +1078,25 @@ NOT_SWEPT: dict[tuple[str, str], str] = {
     ("POST", "/api/users/{user_id}/password"): "see POST /api/users above.",
     ("POST", "/api/users/{user_id}/disabled"): "see POST /api/users above.",
     ("GET", "/exports/{file_path:path}"): (
-        "**UNRESOLVED, and left unresolved deliberately — do not delete this "
-        "entry without reading D56's Downloads row.** The download is gated by "
-        "the shared export credential alone, and that credential derives no "
-        "department scope, so this endpoint serves any published artifact to "
-        "anyone holding it. D56 says: 'The download endpoint re-derives scope on "
-        "every request. That the cached artifact exists is not authorisation to "
-        "serve it.' The old reason given for skipping it — that it is 'behind "
-        "that credential' — is the argument that row rejects. It is excluded "
-        "here because it is pre-existing and outside this sub-project's diff, "
-        "not because it is settled. Whoever closes it: the sweep in this file is "
-        "where it comes back."),
+        "**PARTLY RESOLVED — do not delete this entry without reading D56's "
+        "Downloads row.** The scope half is closed: the route now derives "
+        "`dept:{code}/report:{kind}` from the requested path and asks "
+        "`scopes.contains`, answering the same bare 404 as a missing file when "
+        "the caller's scopes do not reach it "
+        "(`routers/export_files.py::_may_reach`, pinned by the five tests under "
+        "'The download re-derives scope' in test_exports_api.py). Two things are "
+        "still open, and both belong to D24/D25 rather than to a body scan: the "
+        "**capability** half — downloading is authorised by `export_pdf` (D25), "
+        "so a `reader_no_download` holder is still served an artifact of a "
+        "department they may read, which makes FR-E7 decorative on this route; "
+        "and the **shared export credential**, which carries no identity and "
+        "therefore no scope, so a caller holding it alone is still served every "
+        "department. D24 retires that credential outright and is what closes it. "
+        "Excluded from the sweep here because what this file scans is response "
+        "bodies for foreign ids, and this route's body is an opaque file — the "
+        "authorisation is the whole question and it is pinned where it lives. "
+        "Whoever lands D24: the sweep in this file is still where the rest comes "
+        "back."),
 }
 
 
@@ -1996,10 +2004,12 @@ def _published(client, kind="steps") -> str:
     **The sweep above cannot reach this.** `POST …/exports/{kind}` answers
     `{"url": …, "generated_at": …}`, so `_leaks` walks a URL and a timestamp and
     learns nothing whatever about what was published — while the file it names is
-    the largest body this service produces and is served from a mount that
-    derives no department scope at all (`NOT_SWEPT`). That gap is how the export
-    came to be the one boundary handing a reader an unconfirmed process: every
-    scan in this file was green throughout.
+    the largest body this service produces and is served from a route this file
+    does not sweep (`NOT_SWEPT`). That gap is how the export came to be the one
+    boundary handing a reader an unconfirmed process: every scan in this file was
+    green throughout. The route derives and checks a department scope now; what
+    it still does not check is `export_pdf`, and the `NOT_SWEPT` entry says which
+    half is which.
     """
     r = client.post(f"/api/departments/{MINE}/exports/{kind}")
     assert r.status_code == 200, r.text

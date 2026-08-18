@@ -331,6 +331,28 @@ async def delete_process(pid: str, request: Request,
     return {"deleted": pid}
 
 
+#: What a caller is told when the layout CLI refuses their document.
+#:
+#: A sentence, not a diagnosis, and deliberately the same one for every way the
+#: CLI can fail. `EngineError.message` is that CLI's **stderr**, and the CLI has
+#: no error handling of its own (`engine/layout/cli.py` ends at `write_json_atomic`
+#: with nothing caught), so its stderr on any failure is a Python traceback: the
+#: absolute path of the venv's `layout` script, of `engine/layout/cli.py` and of
+#: `engine_common/__init__.py`, their line numbers, the exception class, and —
+#: when the schema is what refused — the offending fragment of the document. Put
+#: in `HTTPException(detail=…)` that is served to the caller, which is how the
+#: server's filesystem layout came to be readable by any Editor.
+#:
+#: The detail is not discarded; it goes to the log, where the person who can act
+#: on it is. This is the one boundary in this module where the engine's own words
+#: cannot be forwarded, because they are the only ones that are a traceback
+#: rather than a message: `validate_doc` and `resolve_pending` below reach
+#: `engine_common.validate`'s own `ValueError`, whose text is a schema
+#: complaint an Editor can act on — and those two are a separate question from
+#: this one, filed rather than folded in here.
+LAYOUT_FAILED = "چیدمان خودکار روی این نمودار انجام نشد؛ نمودار تغییری نکرد."
+
+
 @router.post("/{pid}/relayout")
 def relayout(pid: str, body: dict, request: Request,
              user=Depends(requires("edit", _pid_target))):
@@ -343,7 +365,15 @@ def relayout(pid: str, body: dict, request: Request,
     try:
         laid_out = engine.run_layout(cfg, doc)
     except engine.EngineError as e:
-        raise HTTPException(status_code=422, detail=e.message)
+        # `%r` on both, and truncated: the CLI's stderr embeds whatever fragment
+        # of the caller's own document the schema objected to, so an unquoted
+        # newline in a node label writes a log line of the caller's choosing.
+        # Same reason `export_files._log_failed_login` quotes the username it
+        # records. WARNING, not ERROR: a document the schema refuses is a client
+        # mistake, and the operator wants it findable without it paging anyone.
+        logger.warning("relayout failed for %r (exit %d): %r",
+                       pid[:64], e.code, e.message[:2000])
+        raise HTTPException(status_code=422, detail=LAYOUT_FAILED)
     # An echo of what the caller sent, so redaction can disclose nothing new
     # here — and it runs anyway, so that the one boundary nobody has to think
     # about is not the one that stops matching the others.

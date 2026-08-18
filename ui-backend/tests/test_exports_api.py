@@ -1379,3 +1379,194 @@ def test_a_missing_export_is_404_for_a_reader_with_a_session(data_root, tmp_path
     assert c.get("/exports/cooking/flowchart-deadbeefdeadbeef.pdf").status_code == 404
     # a directory is not a document
     assert c.get("/exports/cooking").status_code == 404
+
+
+# --------------------------------------------------------------------------
+# The download re-derives scope (D56's *Downloads* row)
+#
+#   "The download endpoint re-derives scope on every request. That the cached
+#    artifact exists (D27) is not authorisation to serve it."
+#
+# Everything above this line drives either the seeded Editor — who is scoped `*`
+# and therefore reaches every department — or the shared export credential, which
+# carries no identity at all. Neither can show whether this route asks *whose*
+# session it is holding, which is why the hole below survived a green suite.
+# --------------------------------------------------------------------------
+
+#: Planted in a department the caller under test is not scoped to. Asserted absent
+#: from every refusal, so a 404 that still streamed the bytes fails here.
+FOREIGN_MARKER = "سند محرمانهٔ بخش پذیرایی"
+
+
+def _scoped_session(cfg, username: str, *scopes: str, role: str = "reader") -> str:
+    """A live session for a user holding exactly `scopes` — no more, no less.
+
+    `seeded_session` hands back the seeded Editor (`*`), the one caller for whom
+    every containment question answers True. The password hash is a literal: this
+    session is issued straight into the store, so nothing ever verifies it, and an
+    argon2 call here would buy nothing but ~60 ms per test.
+    """
+    import time as _time
+
+    from inja_ui_backend import db
+    from inja_ui_backend.store import sessions, users
+    from inja_ui_backend.tests_helpers import seed_editor
+
+    seed_editor(cfg)                     # the four roles come from the seed (D50)
+    conn = db.connect(cfg.app_db)
+    try:
+        rid = conn.execute("SELECT id FROM roles WHERE name = ?", (role,)).fetchone()[0]
+        uid = users.create(conn, username=username, display_name=username,
+                           password_hash="h", role_id=rid)
+        for scope in scopes:
+            conn.execute("INSERT INTO user_scopes (user_id, scope) VALUES (?, ?)",
+                         (uid, scope))
+        return sessions.issue(conn, uid, ip="", user_agent="",
+                              now=int(_time.time()))
+    finally:
+        conn.close()
+
+
+def _plant_export(cfg, code: str, kind: str, body: str) -> str:
+    """Put an artifact exactly where `write_export` puts one, and return its URL.
+
+    Straight to disk rather than through `POST /api/departments/{code}/exports/
+    {kind}`: the fixture data root carries one department with an overview, so the
+    real endpoint answers 409 for every other one — and the subject here is the
+    *serving* route, which reads whatever sits at `EXPORT_DIR/{code}/{kind}-
+    {token}.html` (D27) without asking who put it there.
+    """
+    folder = cfg.export_dir / code
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / f"{kind}-deadbeefdeadbeef.html").write_text(body, encoding="utf-8")
+    return f"/exports/{code}/{kind}-deadbeefdeadbeef.html"
+
+
+def test_a_department_scoped_caller_cannot_fetch_another_departments_export(
+        data_root, tmp_path, monkeypatch):
+    """The hole this section exists for.
+
+    The export gate (D25/D29) answers *"is there a session"* and never *"whose"*.
+    A Reader scoped to one department holds a perfectly good session, and the
+    other department's artifact is a plain file whose name they were told by
+    `POST …/exports/{kind}` — or can simply be walked. Without a scope check on
+    this route they get the whole bundle: every process, every node, every ICOM
+    entry of a department they may not open a single screen of.
+    """
+    cfg, cooking_url, _ = _publish(data_root, tmp_path, monkeypatch)
+    dining_url = _plant_export(cfg, "dining", "flowchart", FOREIGN_MARKER)
+    c = _reader(cfg, COOKIE_NAME, _scoped_session(cfg, "09120000002", "dept:cooking"))
+
+    # The arrangement is real before anything is asserted about the refusal: their
+    # OWN department opens. Without this line a route that 404s everything — a
+    # broken fixture, a mistyped URL — would pass the assertion below.
+    assert c.get(cooking_url).status_code == 200, (
+        "the scoped caller cannot reach their own department's export either, so"
+        " the refusal below proves nothing")
+
+    r = c.get(dining_url)
+    assert r.status_code == 404, (
+        f"answered {r.status_code}: a caller scoped dept:cooking fetched"
+        " dept:dining's published bundle by path (D56, Downloads)")
+    assert FOREIGN_MARKER not in r.text
+
+
+def test_the_out_of_scope_download_is_404_and_never_403(data_root, tmp_path,
+                                                        monkeypatch):
+    """D56: a 403 here teaches the caller that the department publishes at all.
+
+    Byte-identical to the answer for a file that was never published, which is the
+    half a status-only assertion misses — prose saying "not your department" puts
+    back exactly what the status code took away.
+    """
+    cfg, _, _ = _publish(data_root, tmp_path, monkeypatch)
+    dining_url = _plant_export(cfg, "dining", "flowchart", FOREIGN_MARKER)
+    c = _reader(cfg, COOKIE_NAME, _scoped_session(cfg, "09120000002", "dept:cooking"))
+
+    refused = c.get(dining_url)
+    never_published = c.get("/exports/cooking/flowchart-0000000000000000.html")
+    assert refused.status_code == 404
+    assert never_published.status_code == 404
+    assert refused.text == never_published.text, (
+        "the out-of-scope refusal is distinguishable from a missing file, so the"
+        " boundary is mappable by reading the body instead of the status")
+
+
+def test_a_report_scoped_caller_reaches_that_report_and_no_other(data_root, tmp_path,
+                                                                monkeypatch):
+    """The third rung of the grammar (D10): `dept:{code}/report:{kind}`.
+
+    A caller scoped to one *report* of a department must not receive the other
+    report of the same department — the two files sit in one folder, one keystroke
+    apart, and a check that stopped at the department code would hand over both.
+    """
+    cfg, _, _ = _publish(data_root, tmp_path, monkeypatch)
+    steps_url = _plant_export(cfg, "cooking", "steps", "راهنمای گام‌به‌گام")
+    flow_url = _plant_export(cfg, "cooking", "flowchart", FOREIGN_MARKER)
+    c = _reader(cfg, COOKIE_NAME,
+                _scoped_session(cfg, "09120000002", "dept:cooking/report:steps"))
+
+    assert c.get(steps_url).status_code == 200
+    r = c.get(flow_url)
+    assert r.status_code == 404, (
+        f"answered {r.status_code}: a dept:cooking/report:steps holder was served"
+        " the flowchart bundle, so the check stops at the department code")
+    assert FOREIGN_MARKER not in r.text
+
+
+def test_a_wildcard_holder_still_reaches_every_department(data_root, tmp_path,
+                                                          monkeypatch):
+    """The other direction, and the mutant a fail-closed check invites.
+
+    `*` is the seeded Editor's scope and the only scope any account has today, so
+    a check that refused it would take the whole feature down — and the tests
+    above, which are all about refusals, would not notice.
+    """
+    cfg, cooking_url, _ = _publish(data_root, tmp_path, monkeypatch)
+    dining_url = _plant_export(cfg, "dining", "flowchart", FOREIGN_MARKER)
+    c = _reader(cfg, COOKIE_NAME, seeded_session(cfg))
+
+    assert c.get(cooking_url).status_code == 200
+    assert c.get(dining_url).status_code == 200
+    assert FOREIGN_MARKER in c.get(dining_url).text
+
+
+def test_dot_segments_cannot_carry_a_scoped_caller_out_of_their_department(
+        data_root, tmp_path, monkeypatch):
+    """A `{file_path:path}` route captures slashes, so the department the path
+    *names* and the file it *reaches* are two different questions.
+
+    Starlette decodes before it routes, so `%2e%2e` arrives as a literal `..` in
+    the captured value and `%2f` as a literal `/` — checked in this repo by
+    `test_path_traversal_is_refused`. What matters for the scope check is that
+    escaping the named department costs a second `/`, which is exactly what makes
+    the path stop naming a department at all: it is then reachable only by a `*`
+    holder, and this caller is not one.
+
+    An absolute captured path (`/exports//etc/passwd` captures `/etc/passwd`) is
+    the same shape of question and is asserted here rather than assumed, because
+    `Path(root) / "/etc/passwd"` is `/etc/passwd` — pathlib drops the left side
+    entirely, so nothing about the join keeps it under the export directory.
+    """
+    cfg, _, _ = _publish(data_root, tmp_path, monkeypatch)
+    _plant_export(cfg, "dining", "flowchart", FOREIGN_MARKER)
+    secret = tmp_path / "secret.txt"
+    secret.write_text("not for readers", encoding="utf-8")
+    c = _reader(cfg, COOKIE_NAME, _scoped_session(cfg, "09120000002", "dept:cooking"))
+
+    for url in (
+        # out of the named department and into another one
+        "/exports/cooking/%2e%2e/dining/flowchart-deadbeefdeadbeef.html",
+        "/exports/dining/flowchart-deadbeefdeadbeef.html",
+        # out of EXPORT_DIR altogether
+        "/exports/cooking/%2e%2e/%2e%2e/secret.txt",
+        "/exports/%2e%2e/secret.txt",
+        # an absolute path, which pathlib's join does not keep under the root
+        "/exports//etc/passwd",
+        "/exports/%2fetc/passwd",
+    ):
+        r = c.get(url)
+        assert r.status_code == 404, f"{url} answered {r.status_code}"
+        assert FOREIGN_MARKER not in r.text, url
+        assert "not for readers" not in r.text, url
+        assert "root:" not in r.text, url
