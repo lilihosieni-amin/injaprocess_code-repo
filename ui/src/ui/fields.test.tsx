@@ -126,7 +126,45 @@ function readerScaleOf(role: string): { panel: string; reader: string } {
   }
 }
 
-type Pin = { el: HTMLElement; edge: 'start' | 'end' }
+/** The compiled `position` of one box — '' when nothing in its classes sets one. */
+async function positionOf(el: HTMLElement): Promise<string> {
+  if (!el.className || typeof el.className !== 'string') return ''
+  return winner(await paint(el.className), 'position')
+}
+
+/**
+ * The box an out-of-flow control is actually measured against: the nearest
+ * ancestor that establishes a containing block.
+ *
+ * `inset-inline-start: 8px` and `top: 50%` are not positions. They are offsets
+ * INTO whichever box this returns, so the same two declarations put the eye
+ * 8px inside the field or 8px inside the viewport depending on a class written
+ * somewhere else entirely.
+ */
+async function containingBlockOf(el: HTMLElement): Promise<HTMLElement | undefined> {
+  for (let a = el.parentElement; a && a !== document.body; a = a.parentElement) {
+    const pos = await positionOf(a)
+    if (pos !== '' && pos !== 'static') return a
+  }
+  return undefined
+}
+
+/** The closest ancestor two nodes share. */
+function sharedAncestor(a: HTMLElement, b: HTMLElement): HTMLElement | undefined {
+  for (let el: HTMLElement | null = a; el; el = el.parentElement) {
+    if (el.contains(b)) return el
+  }
+  return undefined
+}
+
+type Pin = {
+  el: HTMLElement
+  edge: 'start' | 'end'
+  /** What the sheet computes for that box — `absolute`, or it is still in flow. */
+  position: string
+  /** The box its offsets are measured into, `undefined` for the viewport. */
+  against: HTMLElement | undefined
+}
 
 /**
  * The logical edge an in-field control is pinned to, found on whichever box
@@ -135,6 +173,15 @@ type Pin = { el: HTMLElement; edge: 'start' | 'end' }
  * Walking rather than reading one known element is the point: it makes the
  * assertion about WHERE THE BUTTON ENDS UP, which is what a user sees, and not
  * about which node in this component's tree happens to hold the class today.
+ *
+ * The first cut of this helper returned the edge and stopped, and that made it
+ * a certificate for a CLASS rather than for a position. Three separate one-line
+ * mutations put the eye outside the field — measured in Chromium at
+ * [860,892]x434..466, 47px past the field's edge — and all three were green,
+ * because each left `start-s4` exactly where it was and changed only what that
+ * offset was measured into. So the two facts that make an offset a position are
+ * carried out of here with the edge: whether the box is out of flow at all, and
+ * which box it is offset into.
  */
 async function inlinePin(from: HTMLElement): Promise<Pin | undefined> {
   for (let el: HTMLElement | null = from; el && el !== document.body; el = el.parentElement) {
@@ -142,10 +189,45 @@ async function inlinePin(from: HTMLElement): Promise<Pin | undefined> {
     const p = await paint(el.className)
     const start = winner(p, 'inset-inline-start')
     const end = winner(p, 'inset-inline-end')
-    if (start !== '' && end === '') return { el, edge: 'start' }
-    if (end !== '' && start === '') return { el, edge: 'end' }
+    const edge = start !== '' && end === '' ? 'start' : end !== '' && start === '' ? 'end' : undefined
+    if (edge === undefined) continue
+    return { el, edge, position: winner(p, 'position'), against: await containingBlockOf(el) }
   }
   return undefined
+}
+
+/**
+ * The reveal button is pinned INSIDE THE FIELD'S OWN BOX, not merely pinned.
+ *
+ * Three things have to hold at once and no two of them imply the third:
+ *
+ *   1. the box carrying the offsets is out of flow — `position: absolute`.
+ *      Tailwind emits `.relative` AFTER `.absolute`, so one element carrying
+ *      both computes `relative`, keeps every class the eye needs and quietly
+ *      rejoins the layout: measured, the eye lands 16px BELOW the field's
+ *      bottom border, in the gap before the next field. That is the exact
+ *      hazard the wrapper <span> was introduced to prevent, and it was the
+ *      unasserted one.
+ *   2. it is measured into SOME box — without a positioned ancestor the offsets
+ *      are taken from the initial containing block and the eye leaves for the
+ *      page (47px past the field's edge, ~370px down).
+ *   3. that box is the field's own. Nearest-positioned-ancestor and
+ *      closest-common-ancestor-with-the-field have to be the SAME node:
+ *      `relative` one level further out is a box that also holds the label and
+ *      the hint, and `top-1/2` then centres the eye on all three.
+ */
+async function expectPinnedInField(button: HTMLElement, field: HTMLElement): Promise<Pin> {
+  const pin = await inlinePin(button)
+  expect(pin).toBeDefined()
+  expect(pin!.position).toBe('absolute')
+  expect(pin!.against).toBeDefined()
+  expect(pin!.against).toBe(sharedAncestor(pin!.el, field))
+  // …and that box holds the field and the pinned control and nothing else, so
+  // "the field's box" is a measurement and not a hope: any other flow content
+  // in it is height the eye's 50% is centred on and the field is not.
+  const inFlow = [...pin!.against!.children].filter((c) => c !== pin!.el && !c.contains(pin!.el))
+  expect(inFlow).toEqual([field])
+  return pin!
 }
 
 /** The logical edge on which the reveal button's room is reserved. */
@@ -158,6 +240,26 @@ function reservedEdge(painted: Painted[]): 'start' | 'end' | undefined {
 
 function on(surface: 'panel' | 'reader', node: ReactNode) {
   return render(<SurfaceProvider surface={surface}>{node}</SurfaceProvider>)
+}
+
+/**
+ * The three shapes a field takes in the product, mounted side by side.
+ *
+ * FIELD_FRAME is shared, so anything it paints has to be asserted on all three
+ * — an assertion about the single-line input alone covers one of the three
+ * places a change to that string lands.
+ */
+function everyShape(): Record<'input' | 'textarea' | 'password', HTMLElement> {
+  on('panel', <>
+    <TextField label="نام" value="" onChange={() => {}} />
+    <TextField label="توضیح" value="" onChange={() => {}} multiline />
+    <PasswordField label="گذرواژه" value="" onChange={() => {}} />
+  </>)
+  return {
+    input: screen.getByLabelText('نام'),
+    textarea: screen.getByLabelText('توضیح'),
+    password: screen.getByLabelText('گذرواژه'),
+  }
 }
 
 describe('the compiler these assertions are made with', () => {
@@ -237,6 +339,32 @@ describe('TextField', () => {
     expect(winner(p, 'line-height')).toBe('var(--lh-normal)')
   })
 
+  it('turns the same 12px corner on every shape a field takes', async () => {
+    // Nothing in this file named the radius at all, so `rounded-button` ->
+    // nothing squared off every field in the product — input, textarea and
+    // password alike — with 30 green tests behind it.
+    //
+    // 12px is the design's own number for an input (7 of 11 panel uses, 3 of 4
+    // reader uses). The TEXTAREA draws 11px and is here on ledger L-40's
+    // provisional normalisation, which is an owner veto still open: if the
+    // owner keeps the ladder this assertion is where the textarea splits off,
+    // and today it is right for a reason rather than by accident.
+    for (const [shape, el] of Object.entries(everyShape())) {
+      expect(winner(await paint(el.className), 'border-radius'), shape).toBe('var(--radius-md)')
+    }
+    expect(tokenLiteral('--radius-md')).toBe('12px')
+  })
+
+  it('writes the value in the app ink, on every shape a field takes', async () => {
+    // The other half of what FIELD_FRAME paints and nothing asserted:
+    // `text-ink` -> `text-faint` leaves every typed value in the product a pale
+    // lilac on white, and the border, the padding, the radius and the ground
+    // are all still exactly right.
+    for (const [shape, el] of Object.entries(everyShape())) {
+      expect(winner(await paint(el.className), 'color'), shape).toBe('var(--ink)')
+    }
+  })
+
   it('lets invalid beat focus, and turns the hint into the error line', async () => {
     // §5.1.5 — invalid wins over focus, so a field that is wrong stays red while
     // it is being fixed rather than looking accepted the moment it is touched.
@@ -310,10 +438,17 @@ describe('TextField', () => {
     on('reader', <TextField label="نام" value="" onChange={() => {}} />)
     const reader = screen.getByLabelText('نام').className
 
+    // FOUR sides, because the name says four and `py-s6 px-s7` is two classes
+    // that each set two of them. `py-s6` -> `pt-s6` takes the field from 49.8px
+    // to 37.8px with `padding-bottom: 0` and the value sitting on the bottom
+    // border, and a pair of assertions naming only the top and the left is
+    // green on that field.
     for (const cls of [panel, reader]) {
       const p = await paint(cls)
-      expect(winner(p, 'padding-top')).toBe('var(--space-6)')   // 12px
-      expect(winner(p, 'padding-left')).toBe('var(--space-7)')  // 14px
+      expect(winner(p, 'padding-top')).toBe('var(--space-6)')     // 12px
+      expect(winner(p, 'padding-bottom')).toBe('var(--space-6)')  // 12px
+      expect(winner(p, 'padding-left')).toBe('var(--space-7)')    // 14px
+      expect(winner(p, 'padding-right')).toBe('var(--space-7)')   // 14px
     }
     // The label does not scale either — 12.5px in both deliverables.
     expect(screen.getAllByText('نام')[0]).toHaveClass('text-fs-sm2')
@@ -363,7 +498,9 @@ describe('TextField', () => {
     expect(winner(p, 'background-color')).toBe('var(--surface-sub)')
     expect(winner(p, 'resize')).toBe('vertical')
     expect(winner(p, 'padding-top')).toBe('var(--pad-textarea-y)')
+    expect(winner(p, 'padding-bottom')).toBe('var(--pad-textarea-y)')
     expect(winner(p, 'padding-left')).toBe('var(--space-6)')
+    expect(winner(p, 'padding-right')).toBe('var(--space-6)')
   })
 
   it('lets a textarea take the card ground when a screen asks', async () => {
@@ -375,17 +512,31 @@ describe('TextField', () => {
     expect(winner(p, 'background-color')).toBe('var(--card)')
   })
 
-  it('sets a textarea one step down, on the role that scales', async () => {
-    // The panel's three dialog textareas are 13px against its 14px inputs, and
-    // the reader draws the same relationship — so this one IS a role:
-    // --role-fs-dense, 13px panel / 14.5px reader, the ledger's "list, table and
-    // hint copy". Two sizes in one dialog is the design being consistent, not
-    // drift to normalise away.
+  it('sets a panel textarea one step below the panel input beside it', async () => {
+    // The panel's dialog textareas are 13px against its 14px inputs (3 of 4
+    // uses; the fourth is 13.5px), so on the PANEL the textarea is one step
+    // down and `--role-fs-dense` is that step exactly.
+    //
+    // The reader is not the same relationship, and this test used to claim it
+    // was. Measured, the reader's five textareas are 16px, 16px, 16px, 15.5px
+    // and 13.5px against its 14px inputs — one step UP, dominant 16px. The
+    // reader end of --role-fs-dense is 14.5px: a size no reader textarea draws,
+    // on the wrong side of the input. The old assertion pinned that 14.5px into
+    // the suite as if it were the design's number, which is the one thing a
+    // measurement-shaped assertion must never do.
+    //
+    // So only the half that is backed is asserted. The reader half needs a role
+    // of its own (13px panel / 16px reader); roles.css is frozen to this task,
+    // the name is reported to the owner, and until it is minted this file
+    // claims nothing about the reader's textarea rather than claiming 14.5px.
     on('panel', <TextField label="توضیح" value="" onChange={() => {}} multiline />)
     const el = screen.getByLabelText('توضیح')
     expect(el).toHaveClass('text-role-dense')
     expect(winner(await paint(el.className), 'font-size')).toBe('var(--role-fs-dense)')
-    expect(readerScaleOf('--role-fs-dense')).toEqual({ panel: '13px', reader: '14.5px' })
+    // Both ends of "one step below", so the name is a measurement: the role's
+    // panel value against the fixed step the input beside it is on.
+    expect(readerScaleOf('--role-fs-dense').panel).toBe('13px')
+    expect(tokenLiteral('--fs-body')).toBe('14px')
   })
 
   it('pins a latin island LTR and sets it in mono', async () => {
@@ -479,16 +630,23 @@ describe('PasswordField', () => {
     // the class string's, decides which wins. So there is no padding-right.
     expect(winner(p, 'padding-right')).toBe('')
     expect(winner(p, 'padding-inline-end')).toBe('var(--space-7)')
+    // Reserving the room on one edge is not the same box as the other four
+    // sides keeping theirs: `py-s6` -> nothing leaves the password field 25.8px
+    // tall, shorter than the 32px eye standing in it, and every assertion about
+    // the inline edges is still true of that field.
+    expect(winner(p, 'padding-top')).toBe('var(--space-6)')
+    expect(winner(p, 'padding-bottom')).toBe('var(--space-6)')
 
-    // …and the button is ON that edge. This is the assertion this file did not
-    // have: the room was reserved at the inline start while the button was
-    // pinned to the inline end, and the two separate assertions that pinned
-    // each side were both green while the eye sat over the last 25px of the
-    // value and 46px of empty room sat on the other side of the field.
+    // …and the button is ON that edge, out of flow, inside the field's own box.
+    // This is the assertion this file did not have: the room was reserved at
+    // the inline start while the button was pinned to the inline end, and the
+    // two separate assertions that pinned each side were both green while the
+    // eye sat over the last 25px of the value and 46px of empty room sat on the
+    // other side of the field.
     const reserved = reservedEdge(p)
     expect(reserved).toBe('start')
-    const pin = await inlinePin(screen.getByRole('button', { name: 'نمایش گذرواژه' }))
-    expect(pin?.edge).toBe(reserved)
+    const pin = await expectPinnedInField(screen.getByRole('button', { name: 'نمایش گذرواژه' }), el)
+    expect(pin.edge).toBe(reserved)
   })
 
   it('draws the reveal button the design draws', async () => {
@@ -504,11 +662,21 @@ describe('PasswordField', () => {
     expect(winner(p, 'background-color', ':hover')).toBe('var(--tile-v2)')
     expect(winner(p, 'color', ':hover')).toBe('var(--violet)')
 
+    // The 17px glyph is centred IN the 32px box. This is the second half of a
+    // size assertion and not a restatement of it: dropping the two centring
+    // classes leaves every number above true and moves the glyph from (7.5,7.5)
+    // to (15,0) — jammed into the box's corner, half of it over the border.
+    expect(winner(p, 'display')).toBe('inline-flex')
+    expect(winner(p, 'align-items')).toBe('center')
+    expect(winner(p, 'justify-content')).toBe('center')
+
     // The pin, on whichever box carries it: 8px from the inline start and
     // centred on the control's own axis. Without the centring the eye jumps to
-    // the top edge of the field and sits half over the border.
-    const pin = await inlinePin(b)
-    const q = await paint(pin!.el.className)
+    // the top edge of the field and sits half over the border — and without the
+    // three facts expectPinnedInField adds, `start-s4` is an offset into a box
+    // that may not be the field at all.
+    const pin = await expectPinnedInField(b, screen.getByLabelText('گذرواژه'))
+    const q = await paint(pin.el.className)
     expect(winner(q, 'inset-inline-start')).toBe('var(--space-4)')
     expect(winner(q, 'inset-inline-end')).toBe('')
     expect(winner(q, 'left')).toBe('')
@@ -519,6 +687,47 @@ describe('PasswordField', () => {
     const g = await paint(glyph.getAttribute('class') ?? '')
     expect(winner(g, 'width')).toBe('var(--size-reveal-glyph)')
     expect(winner(g, 'height')).toBe('var(--size-reveal-glyph)')
+  })
+
+  it('draws the eye as a stroked outline, not a filled blob or nothing at all', async () => {
+    // The glyph's SIZE was asserted and its PAINT was not, and the two are set
+    // by different attributes. `fill="none"` -> `fill="currentColor"` turns the
+    // outline into a solid blob; `stroke="currentColor"` -> `stroke="none"`
+    // leaves a 17x17 hole where the eye is, on a button whose accessible name,
+    // box, radius, colour, hover and pin are all still exactly right. Both are
+    // the design's stated construction for this set (24x24 box, currentColor
+    // stroke, round caps — ledger L-39, which records that InjaIcons ships no
+    // eye at all), and both are one word long.
+    on('panel', <PasswordField label="گذرواژه" value="" onChange={() => {}} />)
+    const glyph = screen.getByRole('button', { name: 'نمایش گذرواژه' }).querySelector('svg')!
+    expect(glyph).toHaveAttribute('fill', 'none')
+    expect(glyph).toHaveAttribute('stroke', 'currentColor')
+    expect(glyph).toHaveAttribute('stroke-width', '2')
+    expect(glyph).toHaveAttribute('stroke-linecap', 'round')
+    // …and it is a real drawing: an empty <svg> passes every attribute above.
+    expect(glyph.querySelectorAll('path, circle').length).toBeGreaterThan(0)
+  })
+
+  it('does not submit the form it is standing in', async () => {
+    // A <button> with no `type` inside a <form> is a SUBMIT button. The reveal
+    // sits inside every login and every change-password form in the product, so
+    // dropping one attribute turns "show me what I typed" into "send it" — with
+    // aria-pressed, both glyphs and every paint assertion still green.
+    const submits: string[] = []
+    on('panel',
+      <form onSubmit={(e) => { e.preventDefault(); submits.push('submitted') }}>
+        <PasswordField label="گذرواژه" value="hunter2" onChange={() => {}} />
+      </form>,
+    )
+    // The behaviour first and the attribute second, in that order on purpose:
+    // `type="button"` is how this is achieved today, and the click is what the
+    // user does. An assertion that only reads the attribute is a restatement of
+    // the implementation.
+    await userEvent.click(screen.getByRole('button', { name: 'نمایش گذرواژه' }))
+    expect(submits).toEqual([])
+    // …and it still did its own job while not doing the form's.
+    expect(screen.getByLabelText('گذرواژه')).toHaveAttribute('type', 'text')
+    expect(screen.getByRole('button', { name: 'پنهان کردن گذرواژه' })).toHaveAttribute('type', 'button')
   })
 
   it('gives the 32px reveal the 44px hit area F11 asks for', () => {

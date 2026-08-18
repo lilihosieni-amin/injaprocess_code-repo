@@ -51,12 +51,24 @@ export const FIELD_TYPE = 'text-fs-body'
 /**
  * The textarea's type, and the one place in this file that DOES scale.
  *
- * The panel's three dialog textareas are 13px against its 14px inputs, which is
- * `--role-fs-dense` exactly (13px panel / 14.5px reader — the ledger's "list,
- * table and hint copy"). Two sizes in one dialog looked like drift when the
- * plan was written; it is not, because the design draws the same relationship
- * in both deliverables. A long free-text answer sets smaller than a one-line
- * value on purpose.
+ * The panel's dialog textareas are 13px against its 14px inputs (3 of 4 uses),
+ * which is `--role-fs-dense`'s panel value exactly. A long free-text answer
+ * sets smaller than a one-line value on purpose.
+ *
+ * The READER end of this role is wrong and is a KNOWN, RECORDED gap rather than
+ * a claim. The plan asserted that the reader draws the same relationship; it
+ * does not. Measured, the reader's five textareas are 16px, 16px, 16px, 15.5px
+ * and 13.5px against its 14px inputs — one step UP, dominant 16px — while
+ * `--role-fs-dense` resolves to 14.5px there: a size no reader textarea draws,
+ * on the wrong side of the input.
+ *
+ * By R3 that is a genuine per-surface difference, so the textarea wants a role
+ * of its own — 13px panel / 16px reader, both values already tokenised
+ * (`--fs-sm`, `--fs-doc-body`). src/styles/roles.css and tailwind.config.js are
+ * frozen to this task, so the name is referred to the owner and this stays on
+ * `--role-fs-dense`, which keeps the PANEL correct and is the closest wrong
+ * thing on the reader. fields.test.tsx asserts the panel half only: pinning
+ * 14.5px there would make the suite defend a number the design never draws.
  */
 export const FIELD_TYPE_TEXTAREA = 'text-role-dense'
 
