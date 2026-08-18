@@ -7734,10 +7734,16 @@ a reader, and a 760px viewport without changing what a person sees at desktop.
 - Modify: `ui/src/ui/IconTile.tsx`
 - Modify: `ui/src/screens/Departments.tsx`
 - Modify: `ui/src/screens/Departments.test.tsx`
-- Modify: `ui/e2e/_harness.ts`
-- Modify: `docs/superpowers/ui-normalisation-ledger.md`
+- Modify: `ui/e2e/departments.spec.ts` — **it exists**; Task 4 wrote the panel half of it
 - Create: `ui/src/lib/departments.test.ts`
-- Create: `ui/e2e/departments.spec.ts`
+
+**Files this task must not write** — each is frozen, and each for a different reason:
+
+| Path | Why | What to do instead |
+|---|---|---|
+| `ui/tailwind.config.js`, `ui/src/styles/tokens.css`, `ui/src/styles/roles.css`, `ui/tailwind-probe.txt` | Frozen between deliberate minting passes, so that many tasks can run in one tree without clobbering each other's theme edits. Unfrozen exactly once, by the single consolidated mint (`.superpowers/sdd/mint-spec.md`). | A value with no token is **not** minted here. Stop, and report the value and the role it plays. |
+| `ui/e2e/_harness.ts` | Pre-populated and frozen. Its `DESIGN` table is the expected-value record every screen is graded against, written up front (commit `3dda9ef`, `.superpowers/sdd/ui-harness-preflight-report.md`) precisely because eleven tasks appending to one file in one tree means the later write silently clobbers the earlier one, with a green build. | **`departments` and `departmentsReader` are already there.** Read them. If either is missing, or a number in it disagrees with what you build, stop and report. |
+| `docs/superpowers/ui-normalisation-ledger.md` | The reviewer maintains it at review time, for the same one-file-many-writers reason. | Report the row you would have added, verbatim, in your task report. |
 
 **Interfaces**
 
@@ -7747,15 +7753,18 @@ a reader, and a 760px viewport without changing what a person sees at desktop.
 - `StatTile({ value: string; label: string; tone: 'violet' | 'ink' | 'conflict' | 'ok'; dot?: boolean })` (Task 10)
 - `IconTile({ accent: 'violet' | 'coral'; glyph: string })` — Task 11; **surface-aware**, no `size` prop (the F4/F8 guard forbids one)
 - `Icon({ name: string; strokeWidth?: number; px?: number })` (Task 11)
-- `expectDesign(page, screen)`, `shot(page, name)` — `ui/e2e/_harness.ts` (Task 4)
+- `expectDesign(page, screen)`, `shot(page, name)`, `visit(page, url, screen?)`, `signedIn(page, over?)`,
+  `serve(page, table)` — `ui/e2e/_harness.ts` (Task 4). **Read, never written.** `signedIn` answers
+  `GET /api/auth/me` from a fixture and `serve` answers the rest by pathname; between them they are
+  the sign-in this task needs, and `expectEveryEndpointStubbed` (which `expectDesign` and `shot`
+  both call) fails a spec that registered neither.
 - `toFa` (`ui/src/lib/format.ts`), `useDepartments` (`ui/src/api/hooks.ts`)
 
 *Produces*
 - `Departments` — unchanged export, unchanged route
 - `deptMeta(code): { icon: string; accent: 'violet' | 'coral'; tileClass: string; numeralClass: string; accentText: string; ctaDiscClass: string }`
 - `IconTile` — surface-aware: panel `48×48` radius `14` glyph `24` @1.9 · reader `54×54` radius `16` glyph `26` @1.9
-- `signIn(page, who: 'editor' | 'reader')` in `ui/e2e/_harness.ts`
-- `ui/e2e/_harness.ts` `DESIGN.departments` entry
+- the reader half of `ui/e2e/departments.spec.ts` (the panel half is Task 4's, and stays)
 
 ---
 
@@ -7839,11 +7848,16 @@ a reader, and a 760px viewport without changing what a person sees at desktop.
   and `60px` are **not** snapped: they are gutters, not interior spacing, and get their
   own tokens above.
 
-- [ ] **Step 2: Record the normalisations this part of the plan makes.**
+- [ ] **Step 2: Report the normalisations this part of the plan makes. Do not write them.**
   The theme itself is **not** committed here — it was committed by the single minting pass
-  and is frozen. What this step records is the ledger.
+  and is frozen. Neither is the ledger: `docs/superpowers/ui-normalisation-ledger.md` is
+  maintained by the reviewer at review time, for the same reason the harness table is —
+  several tasks running in one working tree would each append to one file, and the later
+  write wins silently. **Copy the block below into your task report as "the ledger rows this
+  task would add"; do not open the ledger, do not commit it.** If a row below is already in
+  the ledger under a different number, say so in the report rather than restating it.
 
-  Append to `docs/superpowers/ui-normalisation-ledger.md` (owner-vetoable, per R8):
+  The rows (owner-vetoable, per R8):
 
   ```markdown
   ## Part 3 — screens 14–18
@@ -7862,9 +7876,10 @@ a reader, and a 760px viewport without changing what a person sees at desktop.
   ```bash
   cd ui && npm run build 2>&1 | tail -3
   grep -rn 'max1080:\|max760:' src/ | wc -l   # the responsive utilities consumed in source
-  git add docs/superpowers/ui-normalisation-ledger.md
-  git commit -m "docs(ui): every snap this part of the plan makes is written down"
   ```
+  Nothing is staged or committed by this step: the ledger is not yours to write, and the
+  theme it would have recorded was committed by the mint.
+
   The count is a source-side count on purpose. The step used to read
   `grep -c "to1080\|to760" dist/assets/*.css` with the note *"0 is expected
   here"*, and it could never have been anything else: the utilities are named
@@ -7874,30 +7889,33 @@ a reader, and a 760px viewport without changing what a person sees at desktop.
   component writes one. Expect a non-zero number: Tasks 6, 9 and 10 already carry
   responsive utilities in the primitives, and this task adds the screen's own.
 
-- [ ] **Step 3: Give the e2e harness a way to sign in.**
-  Tasks 12–13 may already have added this; run `grep -n "export function signIn" ui/e2e/_harness.ts`
-  first and skip the step if it prints a line. Otherwise append to `ui/e2e/_harness.ts`:
-
-  ```ts
-  import type { Page } from '@playwright/test'
-
-  /** Sign in over the API rather than through the form: the session cookie is what
-   *  every screen spec needs, and driving the login form in each of them would make
-   *  a change to SignIn break twelve unrelated specs. `sign-in.spec.ts` is the one
-   *  place the form itself is exercised. */
-  export async function signIn(page: Page, who: 'editor' | 'reader') {
-    const creds = who === 'editor'
-      ? { username: process.env.E2E_EDITOR_USER!, password: process.env.E2E_EDITOR_PASSWORD! }
-      : { username: process.env.E2E_READER_USER!, password: process.env.E2E_READER_PASSWORD! }
-    const res = await page.request.post('/api/auth/login', { data: creds })
-    if (!res.ok()) throw new Error(`e2e sign-in failed for ${who}: ${res.status()}`)
-  }
-  ```
+- [ ] **Step 3: Read the sign-in the harness already gives you. Add nothing to it.**
+  This step used to say *"append a `signIn(page, who)` to `ui/e2e/_harness.ts`"* that posted
+  real credentials to `/api/auth/login`. **`ui/e2e/_harness.ts` is frozen, and it already
+  solves this — differently and better.** Run:
 
   ```bash
-  cd ui && npx tsc -b && git add e2e/_harness.ts
-  git commit -m "test(ui): the browser checks can sign in as either surface"
+  cd ui && grep -n "export async function \(signedIn\|serve\|visit\|expectDesign\|shot\)" e2e/_harness.ts
   ```
+
+  Expected: five lines. What they are, and why this is not the same thing under another name:
+
+  - `signedIn(page, over: Partial<Session> = {})` — answers `GET /api/auth/me` from a fixture.
+    No live login, no credentials in the environment, no database. Pass `over` to change the
+    session: a reader is `signedIn(page, { … })` with the reader's capabilities and scopes.
+  - `serve(page, table)` — answers every other read by **pathname**, one fixture per path.
+  - `visit(page, url, screen?)` — goes there, waits for `[data-screen]`, and pins the page so a
+    later navigation is reported as a navigation instead of as a defect in the screen.
+  - `expectEveryEndpointStubbed`, which `expectDesign` and `shot` both call, **fails a spec
+    that registered no stubs at all** — with nothing intercepted, `/api/` requests leave the
+    browser, are proxied to the FastAPI container on `:8000`, and are answered by it. A posted
+    login would have made that the normal case: the check would grade a live database.
+
+  So there is no sign-in to write, and nothing to commit here. **If any of the five is
+  missing, stop and report it** — do not add it back, and do not add a second, differently
+  named one beside it. The table in that file is the expected-value record all eleven screen
+  tasks are graded against; a task that edits it is grading itself, and two tasks that edit
+  it in one working tree lose one of the two edits with a green build.
 
 - [ ] **Step 4: Write the failing test for the department accent map.**
   `Departments.tsx:59` hard-codes `text-[#FBE4E1]` / `text-[#EDE4FA]` — exactly
@@ -8338,40 +8356,75 @@ a reader, and a 760px viewport without changing what a person sees at desktop.
   git commit -m "feat(ui): the departments board keeps its face and gains a reader, two breakpoints and no literals"
   ```
 
-- [ ] **Step 19: Teach the harness the departments numbers.**
-  Add to the `DESIGN` table in `ui/e2e/_harness.ts` (match Task 4's field names; the
-  numbers are the contract):
+- [ ] **Step 19: Read the two departments rows the harness already holds. Write neither.**
+  This step used to say *"add to the `DESIGN` table"*, with a row in field names Task 4 never
+  shipped. **Both rows exist.** They were written before any screen was, by the pre-flight
+  (commit `3dda9ef`; the reasoning is in `.superpowers/sdd/ui-harness-preflight-report.md`),
+  because eleven screen tasks each appending a row to one file in one working tree means the
+  later write silently clobbers the earlier one and the build still goes green.
 
-  ```ts
-  departments: {
-    field: 'rgb(42, 29, 94)',                       // §6.0 — the app's ground
-    column: 1120,                                   // --width-departments
-    padding: { top: 38, inline: 40, bottom: 48 },   // §3.3
-    h1: { size: 34, weight: 800, color: 'rgb(251, 247, 241)' },
-    subtitle: { size: 14, color: 'rgb(183, 166, 224)' },
-    card: {
-      radius: 20, padding: 22,
-      border: '1px solid rgba(42, 29, 94, 0.07)',
-      shadow: 'rgba(16, 10, 40, 0.18) 0px 2px 4px 0px, rgba(16, 10, 40, 0.65) 0px 22px 46px -20px',
-    },
-    tile: { box: 48, radius: 14 },
-    cta: { box: 34, radius: '50%' },
-  },
+  ```bash
+  cd ui && node -e "const s=require('fs').readFileSync('e2e/_harness.ts','utf8');for(const k of ['departments:','departmentsReader:'])console.log(k, s.includes('  '+k)?'present':'MISSING')"
   ```
 
-- [ ] **Step 20: Write the browser check.**
-  Create `ui/e2e/departments.spec.ts`:
+  Read them — `departments` (panel) and `departmentsReader` — and build **to** them:
+  the reader's `720px` column, its `30px 24px 60px` → `18px 14px` padding, its `26px/800`
+  white title (`--fs-h1-reader-home`, ledger L-34 keeps it smaller than the list's 30px),
+  its `13px` `#C9BEEE` lead (R12 drops the deliverable's 14.5px), its one-column
+  `[data-r-deptgrid]` at `14px`, and the white `18px` card with `CARD_BORDER` and
+  `CARD_SHADOW`.
+
+  **The two rows disagree about the title colour, on purpose, and the JSX above cannot
+  satisfy both.** `departments.h1.color` is `ON_FIELD` `#FBF7F1` — what this screen paints
+  today, and the one screen ledger **L-01** did *not* move to white. `departmentsReader.h1`
+  is `TITLE_ON_FIELD`, `#FFFFFF`. Step 12's `<h1>` writes one class string, `text-on-dark`,
+  for both surfaces, so one of the two rows goes red whatever it says. Branch it on
+  `useSurface()` the way the size beside it already branches — the reader's white is
+  `text-role-title-on-field` (`tailwind.config.js:180` → `--role-title-on-field`, `roles.css:71`),
+  which is the class every *other* screen's title wants too and which no step in this plan
+  writes yet. If you conclude the panel should move to white as well, that is a decision
+  about L-01's one exception: **stop and report it** rather than repainting the row.
+
+  **Three lines in the `departments` row deliberately state what the screen does *today*,
+  not what you are about to build**, so that the mutation tests covering them keep dying
+  while this task is in flight: `padding` (one value, no per-width record), `grid.columns`
+  (`3 / 3 / 3`), and `card` (cream `#FBF7F1`, no `border`, no `shadow`). Each carries a
+  comment saying so. **You do not edit them.** When your screen is built, the row goes red on
+  exactly those three — that red is expected, and it is the handover: **stop, and report the
+  three replacements in your task report**, quoting them so the reviewer can apply them in
+  one edit:
+
+  ```ts
+  padding: { 1440: '38px 40px 48px', 1080: '38px 40px 48px', 760: '18px 14px' },
+  grid: { columns: { 1440: 3, 1080: 2, 760: 1 }, gap: '18px' },
+  card: { radius: '20px', shadow: CARD_SHADOW, border: CARD_BORDER, background: SURFACE },
+  ```
+
+  Any *other* disagreement between a row and what §6.16 / the deliverables say is a defect in
+  one of the two, not a licence to edit the row: **stop and report that too.**
+
+- [ ] **Step 20: Extend the browser check that already exists.**
+  **`ui/e2e/departments.spec.ts` is not yours to create** — Task 4 wrote it, as the one
+  screen the visual audit calls near pixel-faithful, and it is what proved the harness
+  works. Open it, keep its `DEPARTMENTS` fixture (it is typed as `Department[]`, so a
+  change to the endpoint's type is a `tsc` error here rather than a screen rendering
+  `undefined` in a check that still passes), and add this task's two halves to it.
+
+  The sign-in is `signedIn` + `serve`, not a posted login — see Step 3.
 
   ```ts
   import { test, expect } from '@playwright/test'
-  import { expectDesign, shot, signIn } from './_harness'
+  import type { Department } from '../src/api/types'
+  import { expectDesign, serve, shot, signedIn, visit } from './_harness'
 
   const cols = (t: string) => t.split(' ').filter(Boolean).length
 
-  test('departments — panel', async ({ page }) => {
-    await signIn(page, 'editor')
-    await page.goto('/departments')
-    await page.locator('[data-r-deptgrid] > *').first().waitFor()
+  // …the existing DEPARTMENTS fixture and the existing panel test stay…
+
+  test('departments — panel, at this width', async ({ page }) => {
+    await signedIn(page)
+    await serve(page, { '/api/departments': DEPARTMENTS, '/api/pending': [] })
+    await visit(page, '/departments', 'departments')
     const w = page.viewportSize()!.width
 
     await expectDesign(page, 'departments')
@@ -8396,19 +8449,23 @@ a reader, and a 760px viewport without changing what a person sees at desktop.
 
   test('departments — reader', async ({ page }) => {
     // R4: this screen exists for a reader only when they reach two or more
-    // departments. E2E_READER_USER must be scoped to at least two, or ReaderShell
-    // lands them on a process list and this spec is asserting the wrong page.
-    await signIn(page, 'reader')
-    await page.goto('/departments')
-    await page.locator('[data-r-deptgrid] > *').first().waitFor()
+    // departments. The session fixture must therefore carry at least two scopes,
+    // or `ReaderShell` lands them on a process list and this spec asserts the
+    // wrong page. That is a property of the fixture, not of the environment —
+    // `signedIn` overrides the session, so no E2E_READER_USER is involved.
+    await signedIn(page, {
+      username: 'reader', displayName: 'خواننده', role: 'reader',
+      capabilities: ['view'], scopes: ['cooking', 'warehouse'],
+    })
+    await serve(page, { '/api/departments': DEPARTMENTS, '/api/pending': [] })
+    await visit(page, '/departments', 'departmentsReader')
     const w = page.viewportSize()!.width
+
+    await expectDesign(page, 'departmentsReader')
 
     const grid = page.locator('[data-r-deptgrid]')
     expect(cols(await grid.evaluate((el) => getComputedStyle(el).gridTemplateColumns))).toBe(1)
     expect(await grid.evaluate((el) => getComputedStyle(el).gap)).toBe('14px')
-
-    const wrap = page.locator('[data-r-pad] > div')
-    expect(await wrap.evaluate((el) => getComputedStyle(el).maxWidth)).toBe('720px')
 
     const tile = page.locator('[data-r-deptgrid] svg').first().locator('..')
     const box = await tile.boundingBox()
@@ -8418,6 +8475,10 @@ a reader, and a 760px viewport without changing what a person sees at desktop.
     await shot(page, `departments-reader-${w}`)
   })
   ```
+
+  The reader's `720px` column is not re-asserted here: `departmentsReader.columnWidth` in
+  the frozen table already grades it at all three widths, and a second copy of a number is
+  a second place for it to go stale.
 
 - [ ] **Step 21: Run the browser check and watch it fail where it should.**
   ```bash
@@ -8437,9 +8498,12 @@ a reader, and a 760px viewport without changing what a person sees at desktop.
 
 - [ ] **Step 23: Commit the check.**
   ```bash
-  cd ui && git add e2e/departments.spec.ts e2e/_harness.ts
-  git commit -m "test(ui): the departments board is measured in a browser at three widths"
+  cd ui && git commit e2e/departments.spec.ts \
+    -m "test(ui): the departments board is measured in a browser at three widths"
   ```
+  `e2e/_harness.ts` is **not** staged — it is frozen and this task did not touch it. Commit
+  by pathspec rather than `git add` + `git commit`: `git commit` with no pathspec commits the
+  *index*, and another agent's staged change was swallowed into an unrelated commit that way.
 
 ---
 
@@ -8458,8 +8522,15 @@ action bar with a `36×36` `⋯`.
 - Modify: `ui/src/screens/ProcessList.test.tsx`
 - Modify: `ui/src/styles/base.css`
 - Modify: `ui/src/test/guards.test.ts`
-- Modify: `ui/e2e/_harness.ts`
 - Create: `ui/e2e/process-list.spec.ts`
+
+**Files this task must not write**
+
+| Path | Why | What to do instead |
+|---|---|---|
+| `ui/tailwind.config.js`, `ui/src/styles/tokens.css`, `ui/src/styles/roles.css`, `ui/tailwind-probe.txt` | Frozen between deliberate minting passes, so many tasks can run in one tree without clobbering each other. Unfrozen exactly once, by the single consolidated mint (`.superpowers/sdd/mint-spec.md`). | A value with no token is not minted here. Stop, and report the value and its role. |
+| `ui/e2e/_harness.ts` | Pre-populated and frozen — the `DESIGN` table is the expected-value record every screen is graded against, written up front (`3dda9ef`) because eleven tasks appending to one file in one tree lose all but the last write, with a green build. | **`processList` and `processListReader` are already there.** Read them; if either is missing or wrong, stop and report. |
+| `docs/superpowers/ui-normalisation-ledger.md` | Maintained by the reviewer at review time. | Report the row you would add, in your task report. |
 
 **Interfaces**
 
@@ -8711,8 +8782,25 @@ action bar with a `36×36` `⋯`.
         </div>
   ```
 
-  Add `--size-menu-more: 36px` to `roles.css` and expose it as `w-menu-more h-menu-more`
-  (§6.2 — the `⋯` that replaces the action bar is `36×36`).
+  **`w-menu-more h-menu-more` already exists. Add nothing.** This step used to say *"add
+  `--size-menu-more: 36px` to `roles.css` and expose it as `w-menu-more h-menu-more`"*; the
+  single minting pass has since minted it — `src/styles/tokens.css:413`
+  (`--size-menu-more: 36px; /* the … / home square button, 3 uses */`) and
+  `tailwind.config.js` keys it on both `width` and `height`. Verify and move on:
+
+  ```bash
+  cd ui && grep -n -- '--size-menu-more' src/styles/tokens.css src/styles/roles.css
+  grep -n "menu-more" tailwind.config.js
+  ```
+
+  Expected: the token on one line and two config keys. **If it is gone, the theme has
+  regressed — stop and report it. Do not mint it here, and do not add a second,
+  differently-named entry beside it.** `ui/tailwind.config.js`, `src/styles/tokens.css`,
+  `src/styles/roles.css` and `tailwind-probe.txt` are frozen between deliberate minting
+  passes, and they are frozen so that many tasks can run in one working tree at once: a
+  screen task minting into one of them is the unreachable-token failure this whole rebuild
+  exists to end, which is why the mint was consolidated into a single pass in the first
+  place. (§6.2 — the `⋯` that replaces the action bar is `36×36`.)
 
 - [ ] **Step 10: Rebuild the row.**
   Replace the list block (`:103-149`) of `ui/src/screens/ProcessList.tsx`:
@@ -8855,34 +8943,53 @@ action bar with a `36×36` `⋯`.
   right element, that the element renders, that it is visible, or that its value
   is the one the design asks for — no. That stays with the Playwright checks.
 
-- [ ] **Step 14: Teach the harness the process-list numbers.**
-  Add to `DESIGN` in `ui/e2e/_harness.ts`:
+- [ ] **Step 14: Read the two process-list rows the harness already holds. Write neither.**
+  This step used to say *"add to `DESIGN` in `ui/e2e/_harness.ts`"*. **`ui/e2e/_harness.ts` is
+  frozen and both rows are already in it** — `processList` and `processListReader` — written
+  before any screen was, by the pre-flight (`3dda9ef`;
+  `.superpowers/sdd/ui-harness-preflight-report.md`). The reason is mechanical: eleven screen
+  tasks each appending a row to one file in one working tree means the later write silently
+  clobbers the earlier one, and the build still exits 0.
 
-  ```ts
-  processList: {
-    field: 'rgb(42, 29, 94)',
-    column: 920,                                   // --width-list
-    padding: { block: 30, inline: 40 },
-    h1: { size: 22, weight: 800, color: 'rgb(255, 255, 255)' },
-    row: {
-      radius: 16, padding: '17px 19px',
-      border: '1px solid rgba(42, 29, 94, 0.07)',
-      shadow: 'rgba(16, 10, 40, 0.16) 0px 1px 2px 0px, rgba(16, 10, 40, 0.55) 0px 14px 30px -16px',
-    },
-    search: { radius: 13, size: 13, border: '1.5px solid rgb(227, 216, 245)', focus: 'rgb(250, 90, 82)' },
-  },
+  ```bash
+  cd ui && node -e "const s=require('fs').readFileSync('e2e/_harness.ts','utf8');for(const k of ['processList:','processListReader:'])console.log(k, s.includes('  '+k)?'present':'MISSING')"
   ```
 
+  Build to them. Both are worth reading before you write a class:
+
+  - the panel's `920px` column and `30px 40px` → `18px 14px` padding; the reader's `720px`,
+    its **centred** `30px/800` title (`--fs-h1-reader-list`) and centred lead;
+  - `h1.color` is `TITLE_ON_FIELD` — **`rgb(255,255,255)`, ledger L-01** — on *both* rows.
+    The JSX in the steps above writes `text-on-dark`, which is `--text-on-dark` `#FBF7F1`,
+    the value L-01 retired. That is a real disagreement between this task's JSX and the row
+    it is graded against, and it is **not** fixed by editing the row.
+  - `body` is `13px` `#C9BEEE` on both — R12 drops the reader deliverable's 14.5px.
+
+  **If a row is missing, or a number in it disagrees with §6.2 or the deliverables, stop and
+  report it.** Do not add a row, do not edit one: the table is the expected-value record all
+  eleven screen tasks are graded against, so a task that edits it is grading itself.
+
 - [ ] **Step 15: Write the browser check.**
-  Create `ui/e2e/process-list.spec.ts`:
+  Create `ui/e2e/process-list.spec.ts`. The sign-in is the harness's own `signedIn` + `serve`
+  — fixtures, not a posted login (Task 14 Step 3 says why, and `expectEveryEndpointStubbed`
+  fails a spec that stubs nothing). Stub the three reads this screen makes:
+  `/api/departments`, `/api/departments/<code>/processes` and `/api/confirmations`.
 
   ```ts
   import { test, expect } from '@playwright/test'
-  import { expectDesign, shot, signIn } from './_harness'
+  import { expectDesign, serve, shot, signedIn, visit } from './_harness'
+
+  const CODE = 'cooking'
 
   test('process list', async ({ page }) => {
-    await signIn(page, 'editor')
-    await page.goto(`/departments/${process.env.E2E_DEPARTMENT ?? 'cooking'}`)
+    await signedIn(page)
+    await serve(page, {
+      '/api/departments': DEPARTMENTS,
+      [`/api/departments/${CODE}/processes`]: PROCESSES,
+      [`/api/confirmations?department=${CODE}`]: [],
+      '/api/pending': [],
+    })
+    await visit(page, `/departments/${CODE}`, 'processList')
     await page.locator('[data-r-prow]').first().waitFor()
     const w = page.viewportSize()!.width
 
@@ -8915,6 +9022,13 @@ action bar with a `36×36` `⋯`.
   })
   ```
 
+  **Add a second test for the reader half.** `processListReader` is a row in the frozen table
+  and a row nothing measures grades nothing: sign in with a reader session
+  (`signedIn(page, { role: 'reader', capabilities: ['view'], scopes: [CODE, 'warehouse'] })`),
+  `visit(page, …, 'processListReader')`, `expectDesign(page, 'processListReader')`, `shot`.
+  The centred `30px` title and the `720px` column are the row's, not the spec's — do not
+  restate them here.
+
 - [ ] **Step 16: Run it, and run it green.**
   ```bash
   cd ui && npx playwright test e2e/process-list.spec.ts --reporter=list
@@ -8926,9 +9040,12 @@ action bar with a `36×36` `⋯`.
 
 - [ ] **Step 17: Commit the check.**
   ```bash
-  cd ui && git add e2e/process-list.spec.ts e2e/_harness.ts
-  git commit -m "test(ui): the process list is measured at three widths, ⋯ included"
+  cd ui && git commit e2e/process-list.spec.ts \
+    -m "test(ui): the process list is measured at three widths, ⋯ included"
   ```
+  `e2e/_harness.ts` is **not** staged: it is frozen and this task did not touch it. Commit by
+  pathspec, not `git add` + bare `git commit` — the latter commits the *index*, and another
+  agent's staged change has already been swallowed into an unrelated commit that way.
 
 ---
 
@@ -8945,8 +9062,15 @@ blanked the field, which is a claim of absence standing in for an absence of a c
 - Modify: `ui/src/screens/Summary.test.tsx`
 - Modify: `ui/src/screens/Summary.edit.test.tsx`
 - Modify: `ui/src/test/guards.test.ts`
-- Modify: `ui/e2e/_harness.ts`
 - Create: `ui/e2e/summary.spec.ts`
+
+**Files this task must not write**
+
+| Path | Why | What to do instead |
+|---|---|---|
+| `ui/tailwind.config.js`, `ui/src/styles/tokens.css`, `ui/src/styles/roles.css`, `ui/tailwind-probe.txt` | Frozen between deliberate minting passes, so many tasks can run in one tree without clobbering each other. Unfrozen exactly once, by the single consolidated mint. | A value with no token is not minted here. Stop, and report the value and its role. |
+| `ui/e2e/_harness.ts` | Pre-populated and frozen — the `DESIGN` table is the record every screen is graded against, written up front (`3dda9ef`) because eleven tasks appending to one file in one tree lose all but the last write, with a green build. | **`summary` is already there.** Read it; if it is missing or wrong, stop and report. |
+| `docs/superpowers/ui-normalisation-ledger.md` | Maintained by the reviewer at review time. | Report the row you would add, in your task report. |
 
 **Interfaces**
 
@@ -9320,8 +9444,11 @@ blanked the field, which is a claim of absence standing in for an absence of a c
   git commit -m "feat(ui): the summary moves onto the violet field and stops telling a reader a blank is an emptiness"
   ```
 
-- [ ] **Step 12: Record the touch-target decision for owner veto.**
-  Append to `docs/superpowers/ui-normalisation-ledger.md` under P3-7:
+- [ ] **Step 12: Report the touch-target decision for owner veto. Do not write it.**
+  `docs/superpowers/ui-normalisation-ledger.md` is maintained by the reviewer at review time,
+  for the same one-file-many-writers reason the harness table is frozen. **Put the block below
+  in your task report, under "the ledger row this task would add"; do not open the ledger.**
+  It belongs beside P3-7: 
 
   ```markdown
   **P3-7, in full.** `--size-touch: 44px` (F11) is an app rule, not a design one: the
@@ -9336,37 +9463,55 @@ blanked the field, which is a claim of absence standing in for an absence of a c
   deliverable at every list screen.
   ```
 
+  Nothing is staged or committed by this step.
+
+- [ ] **Step 13: Read the summary row the harness already holds. Do not write one.**
+  This step used to say *"add to `DESIGN` in `ui/e2e/_harness.ts`"*. **The file is frozen and
+  the row is already in it**, written before any screen was, by the pre-flight (`3dda9ef`;
+  `.superpowers/sdd/ui-harness-preflight-report.md`) — eleven screen tasks each appending to
+  one file in one working tree means the later write silently clobbers the earlier one, and
+  the build still exits 0.
+
   ```bash
-  git add docs/superpowers/ui-normalisation-ledger.md
-  git commit -m "docs(ui): the 44px floor bends for in-row icon buttons, and says so"
+  cd ui && node -e "const s=require('fs').readFileSync('e2e/_harness.ts','utf8');console.log('summary:', s.includes('  summary:')?'present':'MISSING')"
   ```
 
-- [ ] **Step 13: Teach the harness the summary numbers.**
-  Add to `DESIGN` in `ui/e2e/_harness.ts`:
+  Two things in it supersede the numbers written elsewhere in this task, and **neither is a
+  reason to edit the row**:
 
-  ```ts
-  summary: {
-    field: 'rgb(42, 29, 94)',
-    column: 960,                                   // --width-summary
-    padding: { block: 30, inline: 40 },
-    h1: { size: 23, weight: 800, color: 'rgb(255, 255, 255)' },
-    subtitle: { size: 15, color: 'rgb(201, 190, 238)', maxWidth: 640 },
-    card: { radius: 18, padding: 24, border: '1px solid rgba(42, 29, 94, 0.07)' },
-    a0: { background: 'rgb(74, 37, 169)', radius: 14, color: 'rgb(255, 255, 255)' },
-    kpi: { radius: 14, padding: '16px 18px' },
-  },
-  ```
+  - **`h1.size` is `22px`, not the 23px this task's own step quotes.** Ledger **L-02** counts
+    22 on seven screens against summary's 23 and profile's 21 and decides 22 for all nine;
+    `--fs-h1`'s 23px stays the audit stat numeral. Build 22.
+  - **`h1.color` is `TITLE_ON_FIELD` — `rgb(255,255,255)`, ledger L-01.** The JSX above writes
+    `text-on-dark`, `#FBF7F1`, the value L-01 retired.
+
+  There is deliberately **no `grid`** in this row: `[data-r-idef0]` is a `1fr 1.4fr 1fr` grid
+  above 760 and a flex column at ≤760, which `trackCount` cannot grade — your own spec asserts
+  the `display` swap directly, which is the right place for it. And `summary.body` is behind
+  `isEditor`, so **the spec must sign in as an editor** or `[data-body]` matches nothing.
+
+  **If the row is missing, or a number in it disagrees with the deliverable, stop and report
+  it** — do not add a row and do not edit one.
 
 - [ ] **Step 14: Write the browser check.**
   Create `ui/e2e/summary.spec.ts`:
 
   ```ts
   import { test, expect } from '@playwright/test'
-  import { expectDesign, shot, signIn } from './_harness'
+  import { expectDesign, serve, shot, signedIn, visit } from './_harness'
+
+  const PID = 'cooking-001'
 
   test('process summary', async ({ page }) => {
-    await signIn(page, 'editor')
-    await page.goto(`/processes/${process.env.E2E_PROCESS ?? 'cooking-001'}`)
+    // An editor, and not for convenience: `[data-body]` is behind `isEditor`, so a
+    // reader session leaves `summary.body` with nothing to grade.
+    await signedIn(page)
+    await serve(page, {
+      '/api/departments': DEPARTMENTS,
+      [`/api/processes/${PID}`]: PROCESS,
+      '/api/pending': [],
+    })
+    await visit(page, `/processes/${PID}`, 'summary')
     await page.locator('[data-r-idef0]').waitFor()
     const w = page.viewportSize()!.width
 
@@ -9407,9 +9552,12 @@ blanked the field, which is a claim of absence standing in for an absence of a c
 
 - [ ] **Step 16: Commit the check.**
   ```bash
-  cd ui && git add e2e/summary.spec.ts e2e/_harness.ts
-  git commit -m "test(ui): the A-0 card is measured at three widths and collapses where the design says"
+  cd ui && git commit e2e/summary.spec.ts \
+    -m "test(ui): the A-0 card is measured at three widths and collapses where the design says"
   ```
+  `e2e/_harness.ts` is **not** staged: it is frozen and this task did not touch it. Commit by
+  pathspec, not `git add` + bare `git commit` — the latter commits the *index*, and another
+  agent's staged change has already been swallowed into an unrelated commit that way.
 
 ---
 
@@ -9437,9 +9585,15 @@ consumer in Task 15.
 - Modify: `ui/src/screens/Overview.tsx`
 - Modify: `ui/src/screens/Overview.test.tsx`
 - Modify: `ui/src/screens/Overview.edit.test.tsx`
-- Modify: `ui/e2e/_harness.ts`
-- Modify: `docs/superpowers/ui-normalisation-ledger.md`
 - Create: `ui/e2e/overview.spec.ts`
+
+**Files this task must not write**
+
+| Path | Why | What to do instead |
+|---|---|---|
+| `ui/tailwind.config.js`, `ui/src/styles/tokens.css`, `ui/src/styles/roles.css`, `ui/tailwind-probe.txt` | Frozen between deliberate minting passes, so many tasks can run in one tree without clobbering each other. Unfrozen exactly once, by the single consolidated mint. | A value with no token is not minted here. Stop, and report the value and its role. |
+| `ui/e2e/_harness.ts` | Pre-populated and frozen — the `DESIGN` table is the record every screen is graded against, written up front (`3dda9ef`) because eleven tasks appending to one file in one tree lose all but the last write, with a green build. | **`overview` is already there.** Read it; if it is missing or wrong, stop and report. |
+| `docs/superpowers/ui-normalisation-ledger.md` | Maintained by the reviewer at review time. | Report the rows you would add, in your task report. |
 
 **Interfaces**
 
@@ -9575,18 +9729,18 @@ consumer in Task 15.
   git commit -m "feat(ui): the accordion the readme says does not exist gets the shape §6.4 gives it"
   ```
 
-- [ ] **Step 5: Record the resolution in the ledger.**
-  Append to `docs/superpowers/ui-normalisation-ledger.md`:
+- [ ] **Step 5: Report the resolution. Do not write it into the ledger.**
+  `docs/superpowers/ui-normalisation-ledger.md` is maintained by the reviewer at review time,
+  for the same one-file-many-writers reason the harness table is frozen. **Put the two rows
+  below in your task report, under "the ledger rows this task would add"; do not open the
+  ledger.**
 
   ```markdown
   | P3-9 | Readme: *"there is no … Accordion here, because the product has none."* Deliverables: two accordions, one fully specified at §6.4 | 1 claim vs 2 instances | **Keep `Accordion`**, rebuilt to §6.4; `Overview` is its first consumer | R1 — the deliverable outranks the readme, and R1 already records this claim as false of it |
   | P3-10 | Department-info roles: KPI block shows a padlock line when policy hides KPIs (§6.4) | 1 | **Not built** | `visibility.public_overview` returns the overview unchanged for both stances (D55) and `overview.schema.json` marks `kpi` required — this backend cannot produce the case, and the line would be dead code standing in for it (the same argument already applied to `updated_at` in `Overview.tsx:78`) |
   ```
 
-  ```bash
-  git add docs/superpowers/ui-normalisation-ledger.md
-  git commit -m "docs(ui): the accordion stays and the padlock line does not, each with its reason"
-  ```
+  Nothing is staged or committed by this step.
 
 - [ ] **Step 6: Write the failing tests for the screen.**
   Append to `ui/src/screens/Overview.test.tsx`:
@@ -9832,32 +9986,51 @@ consumer in Task 15.
   git commit -m "feat(ui): the department page stops re-inventing the accordion sitting next to it"
   ```
 
-- [ ] **Step 13: Teach the harness the overview numbers.**
-  Add to `DESIGN` in `ui/e2e/_harness.ts`:
+- [ ] **Step 13: Read the overview row the harness already holds. Do not write one.**
+  This step used to say *"add to `DESIGN` in `ui/e2e/_harness.ts`"*. **The file is frozen and
+  the row is already in it**, written before any screen was, by the pre-flight (`3dda9ef`;
+  `.superpowers/sdd/ui-harness-preflight-report.md`) — eleven screen tasks each appending to
+  one file in one working tree means the later write silently clobbers the earlier one, and
+  the build still exits 0.
 
-  ```ts
-  overview: {
-    field: 'rgb(42, 29, 94)',
-    column: 920,                                   // ledger P3-1, not §6.4's 900
-    padding: { block: 30, inline: 40 },
-    h1: { size: 22, weight: 800, color: 'rgb(255, 255, 255)' },
-    meta: { size: 13, color: 'rgb(201, 190, 238)' },
-    card: { radius: 18, padding: 22, border: '1px solid rgba(42, 29, 94, 0.07)' },
-    eyebrow: { size: 11, weight: 700, color: 'rgb(138, 125, 176)' },
-    subunit: { background: 'rgb(251, 249, 254)', border: '1px solid rgb(237, 229, 245)', radius: 14 },
-  },
+  ```bash
+  cd ui && node -e "const s=require('fs').readFileSync('e2e/_harness.ts','utf8');console.log('overview:', s.includes('  overview:')?'present':'MISSING')"
   ```
+
+  Panel only — `Overview.tsx` writes `max-w-list` and `text-fs-h2` unconditionally, so there
+  is no reader row and none is wanted. Three things to build **to**:
+
+  - `column` is `920px` — ledger **L-07**, not §6.4's `900`: 900 has no token, no role and no
+    second use, and `--role-column` resolves to `--width-list`, so the theme cannot express it.
+  - `h1.color` is `TITLE_ON_FIELD`, `rgb(255,255,255)` (L-01). The JSX above writes
+    `text-on-dark`, `#FBF7F1` — the value L-01 retired.
+  - `grid` is `[data-r-2col]` at `2 / 2 / 1` with a `12px` gutter, and **the fixture must
+    serve at least two sub-units**: the section is not drawn for an empty list, and a
+    one-item grid proves no gutter — the harness's own vacuity guard fires on it.
+
+  **If the row is missing, or a number in it disagrees with §6.4, stop and report it** — do
+  not add a row and do not edit one.
 
 - [ ] **Step 14: Write the browser check.**
   Create `ui/e2e/overview.spec.ts`:
 
   ```ts
   import { test, expect } from '@playwright/test'
-  import { expectDesign, shot, signIn } from './_harness'
+  import { expectDesign, serve, shot, signedIn, visit } from './_harness'
+
+  const CODE = 'cooking'
 
   test('department overview', async ({ page }) => {
-    await signIn(page, 'editor')
-    await page.goto(`/departments/${process.env.E2E_DEPARTMENT ?? 'cooking'}/overview`)
+    await signedIn(page)
+    // OVERVIEW must carry **two or more sub-units**: `[data-r-2col]` is not drawn for
+    // an empty list, and a one-item grid proves no gutter — the row's own vacuity
+    // guard fires on it.
+    await serve(page, {
+      '/api/departments': DEPARTMENTS,
+      [`/api/departments/${CODE}/overview`]: OVERVIEW,
+      '/api/pending': [],
+    })
+    await visit(page, `/departments/${CODE}/overview`, 'overview')
     await page.getByText('نقش‌ها و شرح وظایف').waitFor()
     const w = page.viewportSize()!.width
 
@@ -9894,9 +10067,12 @@ consumer in Task 15.
 
 - [ ] **Step 16: Commit the check.**
   ```bash
-  cd ui && git add e2e/overview.spec.ts e2e/_harness.ts
-  git commit -m "test(ui): the department page and its accordion are measured at three widths"
+  cd ui && git commit e2e/overview.spec.ts \
+    -m "test(ui): the department page and its accordion are measured at three widths"
   ```
+  `e2e/_harness.ts` is **not** staged: it is frozen and this task did not touch it. Commit by
+  pathspec, not `git add` + bare `git commit` — the latter commits the *index*, and another
+  agent's staged change has already been swallowed into an unrelated commit that way.
 
 ---
 
@@ -9919,10 +10095,17 @@ departments screen (§9.13). It is `ui_kits/panel/Login.jsx` inside
 - Modify: `ui/src/screens/Refusal.tsx`
 - Modify: `ui/src/ui/states/index.tsx`
 - Modify: `ui/src/styles/base.css`
-- Modify: `ui/e2e/_harness.ts`
 - Create: `ui/src/screens/Refusal.test.tsx`
 - Create: `ui/e2e/sign-in.spec.ts`
 - Create: `ui/e2e/refusal.spec.ts`
+
+**Files this task must not write**
+
+| Path | Why | What to do instead |
+|---|---|---|
+| `ui/tailwind.config.js`, `ui/src/styles/tokens.css`, `ui/src/styles/roles.css`, `ui/tailwind-probe.txt` | Frozen between deliberate minting passes, so many tasks can run in one tree without clobbering each other. Unfrozen exactly once, by the single consolidated mint. | A value with no token is not minted here. Stop, and report the value and its role. |
+| `ui/e2e/_harness.ts` | Pre-populated and frozen — eleven tasks appending to one file in one tree lose all but the last write, with a green build. | **Neither of this task's two screens has a `DESIGN` row, and neither is getting one** — the reasons are in Step 13. Both specs assert their own numbers. Do not add a row. |
+| `docs/superpowers/ui-normalisation-ledger.md` | Maintained by the reviewer at review time. | Report the row you would add, in your task report. |
 
 **Interfaces**
 
@@ -10329,39 +10512,70 @@ departments screen (§9.13). It is `ui_kits/panel/Login.jsx` inside
   would be caught by the harvest as `NOVAR`, not as present — that is the bucket
   this pair of greps used to stand in for.
 
-- [ ] **Step 13: Teach the harness the login and refusal numbers.**
-  Add to `DESIGN` in `ui/e2e/_harness.ts`:
+- [ ] **Step 13: Neither of these screens gets a `DESIGN` row. Assert their numbers in their own specs.**
+  This step used to say *"add `signIn` and `refusal` to `DESIGN` in `ui/e2e/_harness.ts`"*.
+  **`ui/e2e/_harness.ts` is frozen and both rows were deliberately left out** by the pre-flight
+  that filled the table in ahead of the screens (`3dda9ef`, written up in
+  `.superpowers/sdd/ui-harness-preflight-report.md`). The freeze itself is mechanical — eleven
+  tasks appending to one file in one working tree lose all but the last write, with a green
+  build — but these two absences are decisions, and each has its own reason:
 
-  ```ts
-  signIn: {
-    field: 'rgb(46, 22, 104)',                     // --login-bg
-    card: { width: 380, radius: 24, padding: 30, background: 'rgb(251, 247, 241)' },
-    logo: { box: 76, radius: 20 },
-    brand: { size: 19, weight: 800, color: 'rgb(42, 29, 94)' },
-    label: { size: 12.5, weight: 600, color: 'rgb(74, 37, 169)' },
-    input: { radius: 12, size: 14, border: '1.5px solid rgb(227, 216, 245)', focus: 'rgb(250, 90, 82)' },
-    submit: { background: 'rgb(250, 90, 82)', block: true },
-  },
-  refusal: {
-    field: 'rgb(42, 29, 94)',
-    column: 920,
-    padding: { block: 30, inline: 40 },
-  },
-  ```
+  - **`signIn` is out because a row for it would turn the suite red the day it was added.**
+    The harness asserts that *every `DESIGN` row carries a width-dependent expectation*, and
+    this screen has none: a `380px` fixed-width card centred on `--login-bg`, no content
+    column, no screen padding, no `[data-r-pad]`. Even this task's own spec expects
+    `Math.min(380, w - 60)` at ≤760, which is 380 at 760 too. Nothing about it differs between
+    1440, 1080 and 760 (F1).
+  - **`refusal` is out because its type is not settled.** `ScreenDesign` requires `h1` and
+    `body`, and this screen has neither: its content is `NotFoundState` / `DeniedState`, a
+    `<p>` inside a white `Card` with no heading at all. There is no `[data-h1]` to hook, and
+    inventing one is designing the screen rather than measuring it (F4).
+
+  **Do not add either row, and do not make `h1`/`body` optional to fit one** — that is
+  weakening the gate twenty-one checks depend on, to fit one screen. If you believe a row is
+  needed, stop and report it.
+
+  What *is* settled is recorded, so nothing is lost. Assert it directly in the two specs below:
+
+  | | value |
+  |---|---|
+  | login field | `rgb(46, 22, 104)` (`--login-bg`) |
+  | login card | `380px`, radius `24px` (`--radius-panel`), background `rgb(251, 247, 241)` (`--bg`), padding **30** (32 in `ui_kits/panel/Login.jsx`, snapped by ledger P3-5), `--shadow-modal` |
+  | orbs | 420px and 300px circles, `--login-orb` `#3A1D85`, opacity `.55` / `.5` |
+  | logo / brand | 76×76 radius 20; brand line 19px/800 `--ink`; sub-brand 12.5px `--text-muted` |
+  | login field control | label 12.5px/600 `--violet`; input `12px 14px`, `1.5px solid --line`, radius 12px, 14px, `#fff`, coral border on focus |
+  | refusal | field `FIELD`; column **920px** — ledger **P3-6**, *"a failed read and a refused read stand in the same slot"*, so `Refusal` moves off its `max-w-[560px]` onto `LoadFailedScreen`'s 920; padding `30px 40px`, and `18px 14px` at ≤760 |
 
 - [ ] **Step 14: Write the login browser check.**
   Create `ui/e2e/sign-in.spec.ts`:
 
   ```ts
   import { test, expect } from '@playwright/test'
-  import { expectDesign, shot } from './_harness'
+  import { shot, signedIn } from './_harness'
 
   test('sign in', async ({ page }) => {
-    await page.goto('/login')          // the one spec that does not call signIn
+    // The one spec that must NOT be signed in — and it still installs the stub
+    // layer, because `shot` calls `expectEveryEndpointStubbed` and a spec that
+    // intercepts nothing is grading whatever the FastAPI container on :8000
+    // happens to hold. `signedIn` installs the layer; the route registered after
+    // it wins (Playwright tries handlers in reverse registration order) and
+    // answers the session endpoint the way an anonymous caller is answered.
+    await signedIn(page)
+    await page.route((url) => url.pathname === '/api/auth/me', (route) =>
+      route.fulfill({ status: 401, contentType: 'application/json',
+                      body: JSON.stringify({ detail: 'authentication required' }) }))
+
+    await page.goto('/login')
     await page.getByLabel('شمارهٔ موبایل').waitFor()
     const w = page.viewportSize()!.width
 
-    await expectDesign(page, 'signIn')
+    // There is no `expectDesign(page, 'signIn')`: this screen has no `DESIGN`
+    // row and is not getting one — it is identical at 1440, 1080 and 760, and a
+    // row with no width-dependent expectation fails the harness's own guard on
+    // the day it is added (Step 13, finding F1). Its numbers are asserted here.
+    const screen = page.locator('[data-screen]')
+    expect(await screen.evaluate((el) => getComputedStyle(el).backgroundColor))
+      .toBe('rgb(46, 22, 104)')                    // --login-bg
 
     const card = page.locator('form')
     const box = (await card.boundingBox())!
@@ -10392,18 +10606,36 @@ departments screen (§9.13). It is `ui_kits/panel/Login.jsx` inside
 
   ```ts
   import { test, expect } from '@playwright/test'
-  import { expectDesign, shot, signIn } from './_harness'
+  import { FIELD, expandPadding, serve, shot, signedIn } from './_harness'
+
+  const OUT_OF_SCOPE = 'logistics'
 
   test('refusal — reachable by typing, and only by typing', async ({ page }) => {
-    await signIn(page, 'reader')
+    // A reader, from a fixture — `signedIn` overrides the session, so no
+    // E2E_READER_USER and no live login is involved (Task 14 Step 3).
+    await signedIn(page, {
+      username: 'reader', displayName: 'خواننده', role: 'reader',
+      capabilities: ['view'], scopes: ['cooking', 'warehouse'],
+    })
+    await serve(page, { '/api/departments': DEPARTMENTS, '/api/pending': [] })
     const w = page.viewportSize()!.width
 
     // Half 1: a typed URL for something out of scope answers 404, and says so
     // without confirming that anything is there.
-    await page.goto(`/departments/${process.env.E2E_OUT_OF_SCOPE ?? 'logistics'}`)
+    await page.goto(`/departments/${OUT_OF_SCOPE}`)
     await expect(page.getByText('چیزی اینجا نیست')).toBeVisible()
     await expect(page.getByText('اجازهٔ این کار را ندارید')).toHaveCount(0)
-    await expectDesign(page, 'refusal')
+
+    // There is no `expectDesign(page, 'refusal')`: this screen has no `DESIGN`
+    // row and is not getting one — `ScreenDesign` requires `h1` and `body`, and
+    // the refusal has neither (its content is a `<p>` inside a `Card`, with no
+    // heading at all). Step 13, finding F4. What *is* settled is asserted here.
+    const screen = page.locator('[data-screen]')
+    expect(await screen.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(FIELD)
+    const col = page.locator('[data-col]')
+    expect(await col.evaluate((el) => getComputedStyle(el).maxWidth)).toBe('920px')  // ledger P3-6
+    const pad = expandPadding(await screen.evaluate((el) => getComputedStyle(el).padding))
+    expect([pad.top, pad.left]).toEqual(w > 760 ? ['30px', '40px'] : ['18px', '14px'])
 
     // Half 1, the other status: a refused act on a screen the reader can see.
     await page.goto('/visibility')
@@ -10416,7 +10648,7 @@ departments screen (§9.13). It is `ui_kits/panel/Login.jsx` inside
     await expect(page.getByRole('link', { name: 'کاربران' })).toHaveCount(0)
 
     // …and the refusal itself offers nothing onward.
-    await page.goto(`/departments/${process.env.E2E_OUT_OF_SCOPE ?? 'logistics'}`)
+    await page.goto(`/departments/${OUT_OF_SCOPE}`)
     const main = page.locator('main')
     await expect(main.locator('a, button')).toHaveCount(0)
 
@@ -10453,9 +10685,12 @@ departments screen (§9.13). It is `ui_kits/panel/Login.jsx` inside
 
 - [ ] **Step 19: Commit the checks.**
   ```bash
-  cd ui && git add e2e/sign-in.spec.ts e2e/refusal.spec.ts e2e/_harness.ts
-  git commit -m "test(ui): the login card and both refusals are measured, and R5's second half gets a browser to prove it"
+  cd ui && git commit e2e/sign-in.spec.ts e2e/refusal.spec.ts \
+    -m "test(ui): the login card and both refusals are measured, and R5's second half gets a browser to prove it"
   ```
+  `e2e/_harness.ts` is **not** staged: it is frozen and this task did not touch it. Commit by
+  pathspec, not `git add` + bare `git commit` — the latter commits the *index*, and another
+  agent's staged change has already been swallowed into an unrelated commit that way.
 ### Task 19: `Users` — the 6-column table
 
 The design's centrepiece on this screen is a table. The app has none: two free-floating
@@ -10473,7 +10708,14 @@ design is coral (`ui-audit-visual.md` §"`/users`"). Rebuilt to §6.7.
 | Modify | `ui/src/lib/roles.ts` |
 | Modify | `ui/src/screens/users.test.tsx` |
 | Create | `ui/e2e/users.spec.ts` |
-| Modify | `ui/e2e/_harness.ts` |
+
+**Files this task must not write**
+
+| Path | Why | What to do instead |
+|---|---|---|
+| `ui/tailwind.config.js`, `ui/src/styles/tokens.css`, `ui/src/styles/roles.css`, `ui/tailwind-probe.txt` | Frozen between deliberate minting passes, so many tasks can run in one tree without clobbering each other. Unfrozen exactly once, by the single consolidated mint. | A value with no token is not minted here. Stop, and report the value and its role. |
+| `ui/e2e/_harness.ts` | Pre-populated and frozen — eleven tasks appending to one file in one tree lose all but the last write, with a green build. | **`users` has no `DESIGN` row and is not getting one** — Step 20 says why. The spec asserts its own numbers. |
+| `docs/superpowers/ui-normalisation-ledger.md` | Maintained by the reviewer at review time. | Report the row you would add, in your task report. |
 
 **Interfaces**
 
@@ -11083,27 +11325,71 @@ export const ROLE_TONE: Record<string, string>   // token-backed utility pairs
   right element, that the element renders, that it is visible, or that its value
   is the one the design asks for — no. That stays with the Playwright checks.
 
-- [ ] **Step 20: Add `users` to the design table in the harness.**
-  In `ui/e2e/_harness.ts`, add to the `DESIGN` record:
-  ```ts
-    users: {
-      maxWidth: 920, padX: 40, padY: 30,
-      h1: { size: '22px', weight: '800', color: 'rgb(255, 255, 255)' },
-      card: { radius: '18px', border: '1px solid rgba(42, 29, 94, 0.07)' },
-    },
-  ```
+- [ ] **Step 20: `users` has no `DESIGN` row. Do not add one — assert the numbers in the spec.**
+  This step used to say *"add `users` to the design table in the harness"*, in field names
+  (`maxWidth`, `padX`, `padY`) that `ScreenDesign` does not have. **`ui/e2e/_harness.ts` is
+  frozen**: the table was filled in ahead of all eleven screen tasks (`3dda9ef`) because
+  eleven tasks appending to one file in one working tree lose all but the last write with a
+  green build, and the table is the expected-value record every screen is graded against.
+
+  **`users` was left out on purpose, and the reason is not the freeze.** `ScreenDesign.body`
+  is required — a legal colour on the wrong element is the defect the whole file exists to
+  catch — and this screen draws no second line at all: `Inja Panel.dc.html:1187` is
+  `<div style="font-weight:800;font-size:22px;color:#fff">کاربران</div>` followed by an empty
+  `<div>`, and this task's own JSX is an `<h1>` with nothing under it. The nearest candidates
+  are the filter bar's caption and the table's 13px cells, and picking one is designing the
+  screen rather than measuring it (`.superpowers/sdd/ui-harness-preflight-report.md`, F2).
+
+  **Do not add the row, and do not make `body` optional to fit it** — that weakens a gate
+  twenty-one checks depend on, for one screen. If you think the screen should grow a subtitle,
+  that is a design decision: stop and report it.
+
+  Everything else about the screen **is** settled, and the spec below asserts it directly:
+
+  | | value |
+  |---|---|
+  | field | `FIELD` — `rgb(42, 29, 94)` |
+  | column | `920px` (`--width-list`), measured `920 / 920 / 732` |
+  | padding | `30px 40px`, and `18px 14px` at ≤760 |
+  | h1 | `22px` / `800` / `TITLE_ON_FIELD` `rgb(255,255,255)` — ledger **L-01**. The JSX above writes `text-on-dark`, which is `#FBF7F1`, the value L-01 retired |
+  | card | radius `18px` (`--radius-doc`, the table shell), `CARD_BORDER`, `CARD_SHADOW`, `SURFACE` |
 
 - [ ] **Step 21: Write the Playwright check — the gate that jsdom cannot be.**
   Create `ui/e2e/users.spec.ts`:
   ```ts
   import { test, expect } from '@playwright/test'
-  import { expectDesign, shot } from './_harness'
+  import { CARD_BORDER, FIELD, SURFACE, TITLE_ON_FIELD, expandPadding, serve, shot, signedIn, visit } from './_harness'
 
   test('users — six columns on the violet field, at three widths', async ({ page }) => {
-    await page.goto('/users')
-    await expectDesign(page, 'users')
+    // `signedIn` + `serve`, not a bare `goto`: with nothing intercepted every
+    // /api/ request leaves the browser and is answered by the FastAPI container
+    // on :8000, and `shot`'s own `expectEveryEndpointStubbed` fails the spec for
+    // it. The session must be able to administer users, or this screen refuses.
+    await signedIn(page)
+    await serve(page, { '/api/users': USERS, '/api/departments': DEPARTMENTS, '/api/pending': [] })
+    await visit(page, '/users')
 
     const width = page.viewportSize()!.width
+
+    // There is no `expectDesign(page, 'users')`: this screen has no `DESIGN` row
+    // and is not getting one — it draws no second line, so there is no
+    // `[data-body]` to grade and `ScreenDesign.body` is required (Step 20).
+    // Its settled numbers are asserted here instead, against the harness's own
+    // constants so a re-cut token moves both at once.
+    const screen = page.locator('[data-screen]')
+    expect(await screen.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(FIELD)
+    const pad = expandPadding(await screen.evaluate((el) => getComputedStyle(el).padding))
+    expect([pad.top, pad.left]).toEqual(width > 760 ? ['30px', '40px'] : ['18px', '14px'])
+    const col = page.locator('[data-col]')
+    expect(await col.evaluate((el) => getComputedStyle(el).maxWidth)).toBe('920px')
+    const h1 = page.locator('[data-h1]')
+    await expect(h1).toHaveCSS('font-size', '22px')
+    await expect(h1).toHaveCSS('font-weight', '800')
+    await expect(h1).toHaveCSS('color', TITLE_ON_FIELD)
+    const shell = page.locator('[data-card]').first()
+    await expect(shell).toHaveCSS('border-radius', '18px')
+    await expect(shell).toHaveCSS('border-color', CARD_BORDER)
+    await expect(shell).toHaveCSS('background-color', SURFACE)
     const head = page.getByTestId('datatable-head')
     const row = page.getByRole('row').filter({ hasText: 'سحر بیات' })
 
@@ -11145,9 +11431,12 @@ export const ROLE_TONE: Record<string, string>   // token-backed utility pairs
   `3 passed (1440, 1080, 760)`. Compare `e2e/__shots__/users-1440.png` against
   `.superpowers/sdd/ui-audit-shots/design-users.png` by eye before committing.
   ```
-  git add ui/e2e/users.spec.ts ui/e2e/_harness.ts ui/e2e/__shots__
-  git commit -m "test(ui): the user table is checked in a browser, at all three widths"
+  git commit ui/e2e/users.spec.ts ui/e2e/__shots__ \
+    -m "test(ui): the user table is checked in a browser, at all three widths"
   ```
+  `ui/e2e/_harness.ts` is **not** staged: it is frozen and this task did not touch it. Commit
+  by pathspec, not `git add` + bare `git commit` — the latter commits the *index*, and another
+  agent's staged change has already been swallowed into an unrelated commit that way.
 
 ---
 
@@ -11166,8 +11455,14 @@ which R5 forbids outright.
 | Modify | `ui/src/screens/UserDetail.tsx` |
 | Modify | `ui/src/screens/users.test.tsx` |
 | Create | `ui/e2e/user-detail.spec.ts` |
-| Modify | `ui/e2e/_harness.ts` |
-| Modify | `docs/superpowers/ui-normalisation-ledger.md` |
+
+**Files this task must not write**
+
+| Path | Why | What to do instead |
+|---|---|---|
+| `ui/tailwind.config.js`, `ui/src/styles/tokens.css`, `ui/src/styles/roles.css`, `ui/tailwind-probe.txt` | Frozen between deliberate minting passes, so many tasks can run in one tree without clobbering each other. Unfrozen exactly once, by the single consolidated mint. | A value with no token is not minted here. Stop, and report the value and its role. |
+| `ui/e2e/_harness.ts` | Pre-populated and frozen — eleven tasks appending to one file in one tree lose all but the last write, with a green build. | **`access` is already there.** Read it; if it is missing or wrong, stop and report. |
+| `docs/superpowers/ui-normalisation-ledger.md` | Maintained by the reviewer at review time. | Report the rows you would add, in your task report. |
 
 **Interfaces**
 
@@ -11541,8 +11836,10 @@ export function SectionCard(props: { eyebrow: string; tone?: 'tinted' | 'white'
   git commit -m "feat(ui): a person's record becomes four panels, and says only what it can do"
   ```
 
-- [ ] **Step 20: Record the three divergences in the ledger.**
-  Append to `docs/superpowers/ui-normalisation-ledger.md`:
+- [ ] **Step 20: Report the three divergences. Do not write them into the ledger.**
+  `docs/superpowers/ui-normalisation-ledger.md` is maintained by the reviewer at review time,
+  for the same one-file-many-writers reason the harness table is frozen. **Put the block below
+  in your task report, under "the ledger rows this task would add"; do not open the ledger.**
   ```md
   ## Access (§6.8) — three places the design describes a product we do not have
 
@@ -11552,10 +11849,7 @@ export function SectionCard(props: { eyebrow: string; tone?: 'tinted' | 'white'
   | A2 | Panel 1's edit mode is inline (role Dropdown + department tile grid) and §6.9 is a dedicated change-supervisor modal | Both open `EditUserDialog` | The edge and the scopes are re-validated together on the server (`supervisor_id != … or scopes != before_scopes`), so a modal that moves one without the other would be refused. One editing surface, one diff. **Owner question.** |
   | A3 | The self-account and over-scope cases are explained in prose | Absent, with nothing in their place | R5. The design shows actions "only when the viewer may manage this user" and says nothing otherwise; «نمایه» is in the shell nav on every screen. |
   ```
-  ```
-  git add docs/superpowers/ui-normalisation-ledger.md
-  git commit -m "docs(ui): three places the Access design describes a product we do not have"
-  ```
+  Nothing is staged or committed by this step.
 
 - [ ] **Step 21: Prove every class this screen writes emits.**
   ```bash
@@ -11589,23 +11883,48 @@ export function SectionCard(props: { eyebrow: string; tone?: 'tinted' | 'white'
   right element, that the element renders, that it is visible, or that its value
   is the one the design asks for — no. That stays with the Playwright checks.
 
-- [ ] **Step 22: Add `access` to the harness table.**
-  ```ts
-    access: {
-      maxWidth: 820, padX: 40, padY: 30,
-      h1: { size: '22px', weight: '800', color: 'rgb(255, 255, 255)' },
-      card: { radius: '16px', border: '1px solid rgb(237, 229, 245)' },
-    },
+- [ ] **Step 22: Read the `access` row the harness already holds. Do not write one.**
+  This step used to say *"add `access` to the harness table"*, in field names (`maxWidth`,
+  `padX`, `padY`) that `ScreenDesign` does not have. **`ui/e2e/_harness.ts` is frozen and the
+  row is already in it** — eleven screen tasks each appending to one file in one working tree
+  means the later write silently clobbers the earlier one, with a green build, so the table
+  was filled in ahead of the screens (`3dda9ef`).
+
+  ```bash
+  cd ui && node -e "const s=require('fs').readFileSync('e2e/_harness.ts','utf8');console.log('access:', s.includes('  access:')?'present':'MISSING')"
   ```
+
+  Read it, and note the one thing about it that is easy to build wrong:
+
+  ```ts
+  body: { size: '12.5px', color: SUBTITLE_ON_FIELD, family: FONT_MONO, align: 'start' },
+  direction: { body: 'ltr' },
+  ```
+
+  The screen's only second line is the mono username, `<span dir="ltr">` — an ordinary and
+  correct latin island inside a Persian form. `direction` is stated **per hook** for exactly
+  this: it says `ltr` about the one hook it is true of, while the column, the title and the
+  card are still held to `rtl`, so a mirrored page cannot pass by claiming this exemption.
+  `family` is ledger **L-21**'s token stack, measured through the app's own `font-mono` class
+  — the deliverable's `'JetBrains Mono'` first choice is never loaded and falls through.
+  `h1.color` is `TITLE_ON_FIELD`, white (L-01), where the JSX above writes `text-on-dark`.
+
+  **If the row is missing, or a number in it disagrees with §6.8, stop and report it** — do
+  not add a row and do not edit one.
 
 - [ ] **Step 23: Write the Playwright check.**
   Create `ui/e2e/user-detail.spec.ts`:
   ```ts
   import { test, expect } from '@playwright/test'
-  import { expectDesign, shot } from './_harness'
+  import { expectDesign, serve, shot, signedIn, visit } from './_harness'
 
   test('access — four panels at 820, and no glyph arrows', async ({ page }) => {
-    await page.goto('/users/2')
+    // `signedIn` + `serve`, not a bare `goto`: with nothing intercepted every
+    // /api/ request leaves the browser and is answered by the FastAPI container
+    // on :8000, and `expectDesign` fails the spec for it.
+    await signedIn(page)
+    await serve(page, { '/api/users': USERS, '/api/departments': DEPARTMENTS, '/api/pending': [] })
+    await visit(page, '/users/2', 'access')
     await expectDesign(page, 'access')
 
     const back = page.getByRole('link', { name: 'فهرست کاربران' })
@@ -11639,9 +11958,12 @@ export function SectionCard(props: { eyebrow: string; tone?: 'tinted' | 'white'
   Compare `e2e/__shots__/user-detail-1440.png` against
   `.superpowers/sdd/ui-audit-shots/design-user-detail.png`.
   ```
-  git add ui/e2e/user-detail.spec.ts ui/e2e/_harness.ts ui/e2e/__shots__
-  git commit -m "test(ui): the record screen is checked in a browser, at all three widths"
+  git commit ui/e2e/user-detail.spec.ts ui/e2e/__shots__ \
+    -m "test(ui): the record screen is checked in a browser, at all three widths"
   ```
+  `ui/e2e/_harness.ts` is **not** staged: it is frozen and this task did not touch it. Commit
+  by pathspec, not `git add` + bare `git commit` — the latter commits the *index*, and another
+  agent's staged change has already been swallowed into an unrelated commit that way.
 
 ---
 
@@ -11670,8 +11992,14 @@ card inside a card, and it reads as a rendering fault (F34/F40).
 | Modify | `ui/src/screens/EditUserDialog.test.tsx` |
 | Modify | `ui/src/screens/SupervisorPicker.test.tsx` |
 | Create | `ui/e2e/user-dialog.spec.ts` |
-| Modify | `ui/e2e/_harness.ts` |
-| Modify | `docs/superpowers/ui-normalisation-ledger.md` |
+
+**Files this task must not write**
+
+| Path | Why | What to do instead |
+|---|---|---|
+| `ui/tailwind.config.js`, `ui/src/styles/tokens.css`, `ui/src/styles/roles.css`, `ui/tailwind-probe.txt` | Frozen between deliberate minting passes, so many tasks can run in one tree without clobbering each other. Unfrozen exactly once, by the single consolidated mint. | A value with no token is not minted here. Stop, and report the value and its role. |
+| `ui/e2e/_harness.ts` | Pre-populated and frozen — eleven tasks appending to one file in one tree lose all but the last write, with a green build. | **A dialog is not a `[data-screen]` region and gets no `DESIGN` row at all** — Step 23 says why. `user-dialog.spec.ts` asserts the dialog's numbers, which is where they already were. |
+| `docs/superpowers/ui-normalisation-ledger.md` | Maintained by the reviewer at review time. | Report the rows you would add, in your task report. |
 
 **Interfaces**
 
@@ -12361,8 +12689,10 @@ export const SUPERVISE_NOTE: string
   git commit -m "feat(ui): one dialog skeleton, two dialogs, and a form that fits the box"
   ```
 
-- [ ] **Step 22: Record the four divergences.**
-  Append to `docs/superpowers/ui-normalisation-ledger.md`:
+- [ ] **Step 22: Report the four divergences. Do not write them into the ledger.**
+  `docs/superpowers/ui-normalisation-ledger.md` is maintained by the reviewer at review time,
+  for the same one-file-many-writers reason the harness table is frozen. **Put the block below
+  in your task report, under "the ledger rows this task would add"; do not open the ledger.**
   ```md
   ## The user dialogs (§6.14) — four adaptations
 
@@ -12373,12 +12703,9 @@ export const SUPERVISE_NOTE: string
   | D3 | Report kinds «راهنمای گام‌به‌گام» / «سند فلوچارت» | «راهنمای گام‌به‌گام» / «مستندات کامل» | `REPORT_KIND_LABELS` is pinned to `exports.EXPORT_KINDS`, which `test_exports.py` asserts verbatim. Renaming a kind on one screen would leave the export menu calling it something else. **Owner question.** |
   | D4 | The dialog's submit is violet (§6.14); the visual audit reads the readme's "coral for anything primary" and calls this a defect | Violet inside the dialog; **coral** on «کاربر جدید» (§6.7) | R8, role first: coral is the *new-affordance* role — the control that opens a creation flow — and violet is the commit. Both deliverables are internally consistent under that rule; the readme's blanket sentence is not. **Owner question.** |
   ```
-  ```
-  git add docs/superpowers/ui-normalisation-ledger.md
-  git commit -m "docs(ui): four adaptations the user dialogs make, and why each is not drift"
-  ```
+  Nothing is staged or committed by this step.
 
-- [ ] **Step 23: Prove every class the dialogs write emits, then add `new-user` to the harness.**
+- [ ] **Step 23: Prove every class the dialogs write emits.**
   ```bash
   cd ui && npx vite build
   node scripts/harvest-classes.mjs src/screens/UserDialogShell.tsx src/screens/NewUserDialog.tsx src/screens/EditUserDialog.tsx \
@@ -12411,30 +12738,50 @@ export const SUPERVISE_NOTE: string
   right element, that the element renders, that it is visible, or that its value
   is the one the design asks for — no. That stays with the Playwright checks.
 
-  Then in `ui/e2e/_harness.ts`:
-  ```ts
-    'new-user': {
-      dialog: { width: 520, radius: '24px', padding: '26px',
-                shadow: '0 4px 10px rgba(16,10,40,.28), 0 44px 90px -30px rgba(16,10,40,.8)' },
-    },
+  **There is no `'new-user'` row to add, and `ui/e2e/_harness.ts` is frozen.** This step used
+  to end *"then in `ui/e2e/_harness.ts`: `'new-user': { dialog: { … } }`"*, and that row never
+  fitted: `expectDesign` needs a screen root that paints the field and carries the screen
+  padding, a `[data-col]` with a `max-width`, a `[data-h1]` and a `[data-body]`. **A dialog
+  has none of them** — it has a fixed `520px` width, a scrim rather than a field, and `26px`
+  of its own padding. The shape written above (`{ dialog: { width, radius, padding, shadow } }`)
+  is a different shape from every other row in the table, which is why it was left out of the
+  pre-flight (`3dda9ef`; `.superpowers/sdd/ui-harness-preflight-report.md`, F5).
+
+  So the dialog's numbers stay where Step 24 already asserts them — in
+  `ui/e2e/user-dialog.spec.ts`:
+
   ```
+  width 520px · radius 24px (20px 20px 0 0 as a bottom sheet at ≤760) · padding 26px
+  shadow  0 4px 10px rgba(16,10,40,.28), 0 44px 90px -30px rgba(16,10,40,.8)
+  ```
+
+  **Do not add the row, and do not widen `ScreenDesign` to accept it.** The table is frozen
+  for a mechanical reason as well as this one: eleven tasks appending to one file in one
+  working tree lose all but the last write, with a green build. If you believe a dialog needs
+  a table entry, stop and report it.
 
 - [ ] **Step 24: Write the Playwright check — the one that measures the height.**
   Create `ui/e2e/user-dialog.spec.ts`:
   ```ts
   import { test, expect } from '@playwright/test'
-  import { expectDesign, shot } from './_harness'
+  import { serve, shot, signedIn, visit } from './_harness'
 
   test('new user — 520 wide, and it fits', async ({ page }) => {
-    await page.goto('/users')
+    await signedIn(page)
+    await serve(page, { '/api/users': USERS, '/api/departments': DEPARTMENTS, '/api/pending': [] })
+    await visit(page, '/users')
     await page.getByRole('button', { name: 'کاربر جدید' }).click()
     const box = page.getByRole('dialog', { name: 'کاربر جدید' })
-    await expectDesign(page, 'new-user')
 
+    // No `expectDesign(page, 'new-user')`: a dialog is not a `[data-screen]`
+    // region — no field, no screen padding, no `[data-col]`, no `[data-h1]` —
+    // so it has no row in the table and is not getting one (Step 23). Its
+    // numbers are asserted here, which is where they belong.
     const width = page.viewportSize()!.width
     if (width > 760) {
       await expect(box).toHaveCSS('width', '520px')
       await expect(box).toHaveCSS('border-radius', '24px')
+      await expect(box).toHaveCSS('padding', '26px')
     } else {
       // §5.2 — at ≤760px every modal becomes a bottom sheet.
       await expect(box).toHaveCSS('border-radius', '20px 20px 0px 0px')
@@ -12476,9 +12823,12 @@ export const SUPERVISE_NOTE: string
   `e2e/__shots__/new-user-1440.png` with
   `.superpowers/sdd/ui-audit-shots/design-dialog-new-user.png`.
   ```
-  git add ui/e2e/user-dialog.spec.ts ui/e2e/_harness.ts ui/e2e/__shots__
-  git commit -m "test(ui): the dialog's height is measured where jsdom cannot see it"
+  git commit ui/e2e/user-dialog.spec.ts ui/e2e/__shots__ \
+    -m "test(ui): the dialog's height is measured where jsdom cannot see it"
   ```
+  `ui/e2e/_harness.ts` is **not** staged: it is frozen and this task did not touch it. Commit
+  by pathspec, not `git add` + bare `git commit` — the latter commits the *index*, and another
+  agent's staged change has already been swallowed into an unrelated commit that way.
 
 ---
 
@@ -12498,8 +12848,14 @@ the change-password card and the divergence is written into the ledger.
 | Modify | `ui/src/screens/Profile.tsx` |
 | Modify | `ui/src/screens/Profile.test.tsx` |
 | Create | `ui/e2e/profile.spec.ts` |
-| Modify | `ui/e2e/_harness.ts` |
-| Modify | `docs/superpowers/ui-normalisation-ledger.md` |
+
+**Files this task must not write**
+
+| Path | Why | What to do instead |
+|---|---|---|
+| `ui/tailwind.config.js`, `ui/src/styles/tokens.css`, `ui/src/styles/roles.css`, `ui/tailwind-probe.txt` | Frozen between deliberate minting passes, so many tasks can run in one tree without clobbering each other. Unfrozen exactly once, by the single consolidated mint. | A value with no token is not minted here. Stop, and report the value and its role. |
+| `ui/e2e/_harness.ts` | Pre-populated and frozen — eleven tasks appending to one file in one tree lose all but the last write, with a green build. | **`profile` is already there.** Read it; if it is missing or wrong, stop and report. |
+| `docs/superpowers/ui-normalisation-ledger.md` | Maintained by the reviewer at review time. | Report the rows you would add, in your task report. |
 
 **Interfaces**
 
@@ -12677,8 +13033,10 @@ API type, hook or route path is added.
   git commit -m "feat(ui): new and repeat sit side by side, and the warning gets a surface"
   ```
 
-- [ ] **Step 9: Record the two divergences.**
-  Append to `docs/superpowers/ui-normalisation-ledger.md`:
+- [ ] **Step 9: Report the two divergences. Do not write them into the ledger.**
+  `docs/superpowers/ui-normalisation-ledger.md` is maintained by the reviewer at review time,
+  for the same one-file-many-writers reason the harness table is frozen. **Put the block below
+  in your task report, under "the ledger rows this task would add"; do not open the ledger.**
   ```md
   ## Profile (§6.13) — two adaptations
 
@@ -12687,10 +13045,7 @@ API type, hook or route path is added.
   | P1 | A second card below the password one, listing the account's live sign-ins with a per-row ghost button | Nothing. The page ends with the change-password card | The owner removed the feature from the product — «I don't need open session card in profile. delete it from ui.» It is not built, not stubbed, and no `/api/auth/sessions` route is added or wanted. A deliberate divergence from the deliverable, written down here rather than left silent. |
   | P2 | The rule statement ends "بازنشانی گذرواژهٔ دیگران هم فقط یک لینک یک‌بارمصرف می‌سازد" | "…مدیر سامانه گذرواژهٔ تازه‌ای می‌گذارد و به شما می‌گوید" | Same cause as ledger A1: there is no reset link (D15). |
   ```
-  ```
-  git add docs/superpowers/ui-normalisation-ledger.md
-  git commit -m "docs(ui): the profile drops a card §6.13 draws, on the owner's word"
-  ```
+  Nothing is staged or committed by this step.
 
 - [ ] **Step 10: Prove every class this screen writes emits.**
   ```bash
@@ -12724,23 +13079,48 @@ API type, hook or route path is added.
   right element, that the element renders, that it is visible, or that its value
   is the one the design asks for — no. That stays with the Playwright checks.
 
-- [ ] **Step 11: Add `profile` to the harness table.**
-  ```ts
-    profile: {
-      maxWidth: 700, padX: 40, padY: 30,
-      h1: { size: '21px', weight: '800', color: 'rgb(255, 255, 255)' },
-      card: { radius: '16px', border: '1px solid rgb(237, 229, 245)' },
-    },
+- [ ] **Step 11: Read the `profile` row the harness already holds. Do not write one.**
+  This step used to say *"add `profile` to the harness table"*, in field names (`maxWidth`,
+  `padX`, `padY`) that `ScreenDesign` does not have. **`ui/e2e/_harness.ts` is frozen and the
+  row is already in it**, written ahead of the screens (`3dda9ef`) because eleven tasks
+  appending to one file in one working tree lose all but the last write, with a green build.
+
+  ```bash
+  cd ui && node -e "const s=require('fs').readFileSync('e2e/_harness.ts','utf8');console.log('profile:', s.includes('  profile:')?'present':'MISSING')"
   ```
+
+  Three things in the row supersede numbers written elsewhere in this task, and **none of them
+  is a reason to edit it**:
+
+  - **`h1.size` is `22px`, not the `21px` this task's Steps 3 and 11 quote.** Ledger **L-02**
+    and **L-33**: `--fs-stat-sm` 21px exists for the *activity stat numeral*, which
+    `tokens.css:147` says in as many words. So the class is not `text-fs-stat-sm`.
+  - **`h1.color` is `TITLE_ON_FIELD`, white** (L-01), where the JSX writes `text-on-dark`.
+  - **`card.background` is `SUBPANEL_SURFACE` `#FBF9FE`** — the value the mint decided, not the
+    one the role used to resolve to. `--role-surface-sub` pointed at `--tile-v4` `#F8F4FE` when
+    the row was written; `mint-spec.md` §2.1 C1 re-points it at `--surface-sub` and that
+    correction has landed in `roles.css:39`. If a revert ever puts `--tile-v4` back, this line
+    goes red — **correct the role, not the row**, and that is a stop-and-report.
+
+  One more, from the pre-flight: the reader deliverable draws this screen at `30px 40px`, not
+  the reader's own `30px 24px 60px`, so **`Profile` must not be wrapped in a reader surface**
+  or the row goes red on padding. One row serves both surfaces here.
+
+  **If the row is missing, or a number in it disagrees with §6.13, stop and report it.**
 
 - [ ] **Step 12: Write the Playwright check.**
   Create `ui/e2e/profile.spec.ts`:
   ```ts
   import { test, expect } from '@playwright/test'
-  import { expectDesign, shot } from './_harness'
+  import { expectDesign, serve, shot, signedIn, visit } from './_harness'
 
   test('profile — 700 wide, paired fields, violet labels', async ({ page }) => {
-    await page.goto('/profile')
+    // `signedIn` + `serve`, not a bare `goto`: with nothing intercepted every
+    // /api/ request leaves the browser and is answered by the FastAPI container
+    // on :8000, and `expectDesign` fails the spec for it.
+    await signedIn(page)
+    await serve(page, { '/api/departments': DEPARTMENTS, '/api/pending': [] })
+    await visit(page, '/profile', 'profile')
     await expectDesign(page, 'profile')
 
     const pair = page.getByTestId('password-pair')
@@ -12786,9 +13166,12 @@ API type, hook or route path is added.
   is absent by owner ruling (Global Constraints, ledger P1); everything above it
   should match.
   ```
-  git add ui/e2e/profile.spec.ts ui/e2e/_harness.ts ui/e2e/__shots__
-  git commit -m "test(ui): the profile's two-column pairing is checked in a browser"
+  git commit ui/e2e/profile.spec.ts ui/e2e/__shots__ \
+    -m "test(ui): the profile's two-column pairing is checked in a browser"
   ```
+  `ui/e2e/_harness.ts` is **not** staged: it is frozen and this task did not touch it. Commit
+  by pathspec, not `git add` + bare `git commit` — the latter commits the *index*, and another
+  agent's staged change has already been swallowed into an unrelated commit that way.
 
 ---
 
@@ -12807,8 +13190,14 @@ card is blank. And `Card` is re-implemented byte-for-byte rather than imported
 | Modify | `ui/src/screens/Visibility.tsx` |
 | Modify | `ui/src/screens/Visibility.test.tsx` |
 | Create | `ui/e2e/visibility.spec.ts` |
-| Modify | `ui/e2e/_harness.ts` |
-| Modify | `docs/superpowers/ui-normalisation-ledger.md` |
+
+**Files this task must not write**
+
+| Path | Why | What to do instead |
+|---|---|---|
+| `ui/tailwind.config.js`, `ui/src/styles/tokens.css`, `ui/src/styles/roles.css`, `ui/tailwind-probe.txt` | Frozen between deliberate minting passes, so many tasks can run in one tree without clobbering each other. Unfrozen exactly once, by the single consolidated mint. | A value with no token is not minted here. Stop, and report the value and its role. |
+| `ui/e2e/_harness.ts` | Pre-populated and frozen — eleven tasks appending to one file in one tree lose all but the last write, with a green build. | **This screen's row is already there, under the name `policy`.** Read it; if it is missing or wrong, stop and report. |
+| `docs/superpowers/ui-normalisation-ledger.md` | Maintained by the reviewer at review time. | Report the rows you would add, in your task report. |
 
 **Interfaces**
 
@@ -12991,8 +13380,10 @@ export const STATE_OFF: string   // 'پنهان است'
   git commit -m "feat(ui): six floating cards become one, and every row says where it stands"
   ```
 
-- [ ] **Step 7: Record the two divergences.**
-  Append to `docs/superpowers/ui-normalisation-ledger.md`:
+- [ ] **Step 7: Report the two divergences. Do not write them into the ledger.**
+  `docs/superpowers/ui-normalisation-ledger.md` is maintained by the reviewer at review time,
+  for the same one-file-many-writers reason the harness table is frozen. **Put the block below
+  in your task report, under "the ledger rows this task would add"; do not open the ledger.**
   ```md
   ## Visibility policy (§6.12) — two divergences
 
@@ -13001,10 +13392,7 @@ export const STATE_OFF: string   // 'پنهان است'
   | V1 | Seven rows, the first («نام گام و ترتیب گام‌ها») **on and locked** | Six rows, whatever the server declares | The switch set comes from `GET /api/visibility`, not from a constant: a field the server declared with no wording here is still drawn under its own key, and a field named here that the server does not know is not drawn at all. A hardcoded seven makes the first case a field silently published with no way to turn it off. And R5: a locked row is a control you would refuse — drawn, it is exactly the "disabled with an explanation" the rule forbids. **Owner question: should `label` become a server field?** |
   | V2 | The card is `border-radius:16px` in §6.12; `ui-audit-visual.md` reads 20px off the rendered prototype | 16px | §6.12 quotes the literal value from S1; the visual audit measured a screenshot. The spec is the authority (`ui-design-spec.md` §0). |
   ```
-  ```
-  git add docs/superpowers/ui-normalisation-ledger.md
-  git commit -m "docs(ui): the seventh policy row, and which reading of the card radius wins"
-  ```
+  Nothing is staged or committed by this step.
 
 - [ ] **Step 8: Prove every class this screen writes emits.**
   ```bash
@@ -13038,23 +13426,44 @@ export const STATE_OFF: string   // 'پنهان است'
   right element, that the element renders, that it is visible, or that its value
   is the one the design asks for — no. That stays with the Playwright checks.
 
-- [ ] **Step 9: Add `policy` to the harness table.**
-  ```ts
-    policy: {
-      maxWidth: 820, padX: 40, padY: 30,
-      h1: { size: '22px', weight: '800', color: 'rgb(255, 255, 255)' },
-      card: { radius: '16px' },
-    },
+- [ ] **Step 9: Read the `policy` row the harness already holds. Do not write one.**
+  This step used to say *"add `policy` to the harness table"*, in field names (`maxWidth`,
+  `padX`, `padY`) that `ScreenDesign` does not have. **`ui/e2e/_harness.ts` is frozen and the
+  row is already in it** — written ahead of the screens (`3dda9ef`) because eleven tasks
+  appending to one file in one working tree lose all but the last write, with a green build.
+  It is keyed `policy`, not `visibility`, so `Visibility.tsx` writes `data-screen="policy"`.
+
+  ```bash
+  cd ui && node -e "const s=require('fs').readFileSync('e2e/_harness.ts','utf8');console.log('policy:', s.includes('  policy:')?'present':'MISSING')"
   ```
+
+  Read it, and note what it deliberately does **not** carry:
+
+  - `column` is `820px` (`--width-access`) — §3.3 gives the policy screen Access's width.
+  - `card.radius` is **16px**, ledger **V2**: §6.12 quotes the literal, the visual audit
+    measured a screenshot at 20. The row takes the spec.
+  - `h1.color` is `TITLE_ON_FIELD`, white (L-01), where the JSX above writes `text-on-dark`.
+  - **no `focus`** — the row's only control is an `sr-only` input behind a drawn 19px tick, and
+    a 1×1 clipped box is the wrong thing to measure a focus indicator on;
+  - **no `lift`** — F7's fix is a hover *fill* (`hover:bg-tile-v4`), not a transform: §4.6
+    lifts cards, not rows inside one.
+
+  Neither omission is an oversight to fill in. **If the row is missing, or a number in it
+  disagrees with §6.12, stop and report it** — do not add a row and do not edit one.
 
 - [ ] **Step 10: Write the Playwright check.**
   Create `ui/e2e/visibility.spec.ts`:
   ```ts
   import { test, expect } from '@playwright/test'
-  import { expectDesign, shot } from './_harness'
+  import { expectDesign, serve, shot, signedIn, visit } from './_harness'
 
   test('policy — one card, 19px ticks, a word on the left', async ({ page }) => {
-    await page.goto('/visibility')
+    // `signedIn` + `serve`, not a bare `goto`: with nothing intercepted every
+    // /api/ request leaves the browser and is answered by the FastAPI container
+    // on :8000, and `expectDesign` fails the spec for it.
+    await signedIn(page)
+    await serve(page, { '/api/visibility': POLICY, '/api/departments': DEPARTMENTS, '/api/pending': [] })
+    await visit(page, '/visibility', 'policy')
     await expectDesign(page, 'policy')
 
     // One card, not six (or seven).
@@ -13091,9 +13500,12 @@ export const STATE_OFF: string   // 'پنهان است'
   `e2e/__shots__/visibility-1440.png` with
   `.superpowers/sdd/ui-audit-shots/design-policy.png`.
   ```
-  git add ui/e2e/visibility.spec.ts ui/e2e/_harness.ts ui/e2e/__shots__
-  git commit -m "test(ui): the policy card is measured in a browser, at all three widths"
+  git commit ui/e2e/visibility.spec.ts ui/e2e/__shots__ \
+    -m "test(ui): the policy card is measured in a browser, at all three widths"
   ```
+  `ui/e2e/_harness.ts` is **not** staged: it is frozen and this task did not touch it. Commit
+  by pathspec, not `git add` + bare `git commit` — the latter commits the *index*, and another
+  agent's staged change has already been swallowed into an unrelated commit that way.
 
 ---
 
@@ -13121,7 +13533,14 @@ scrollbar decision made in a sixth file (P3, O1).
 | Modify | their five `*.test.tsx` siblings |
 | Modify | `ui/src/index.css` |
 | Create | `ui/e2e/write.spec.ts` |
-| Modify | `ui/e2e/_harness.ts` |
+
+**Files this task must not write**
+
+| Path | Why | What to do instead |
+|---|---|---|
+| `ui/tailwind.config.js`, `ui/src/styles/tokens.css`, `ui/src/styles/roles.css`, `ui/tailwind-probe.txt` | Frozen between deliberate minting passes, so many tasks can run in one tree without clobbering each other. Unfrozen exactly once, by the single consolidated mint. | A value with no token is not minted here — Step 22 already says so for the one this task meets. Stop, and report the value and its role. |
+| `ui/e2e/_harness.ts` | Pre-populated and frozen — eleven tasks appending to one file in one tree lose all but the last write, with a green build. | **This task needs nothing from the table.** `write.spec.ts` imports `shot` only: no `expectDesign`, no `DESIGN` row, and none is wanted (`.superpowers/sdd/ui-harness-preflight-report.md`, F6 — of the eleven screen tasks, this is the one that never wanted a row). Its fixtures belong in `write.spec.ts`. If you find yourself needing to change the harness, stop and report it. |
+| `docs/superpowers/ui-normalisation-ledger.md` | Maintained by the reviewer at review time. | Report the row you would add, in your task report. |
 
 **Interfaces**
 
@@ -13379,10 +13798,24 @@ export function ConfirmAction(props: { row: Confirmation | undefined; department
   Create `ui/e2e/write.spec.ts`:
   ```ts
   import { test, expect } from '@playwright/test'
-  import { shot } from './_harness'
+  import { serve, shot, signedIn, visit } from './_harness'
+
+  const CODE = 'dining'
 
   test('a process row is as tall as its own type', async ({ page }) => {
-    await page.goto('/departments/dining')
+    // `signedIn` + `serve`, not a bare `goto`: `shot` calls
+    // `expectEveryEndpointStubbed`, which fails a spec that intercepts nothing —
+    // with no route installed every /api/ request leaves the browser and is
+    // answered by the FastAPI container on :8000, so the check would grade a live
+    // database instead of the working tree.
+    await signedIn(page)
+    await serve(page, {
+      '/api/departments': DEPARTMENTS,
+      [`/api/departments/${CODE}/processes`]: PROCESSES,
+      [`/api/confirmations?department=${CODE}`]: CONFIRMATIONS,
+      '/api/pending': [],
+    })
+    await visit(page, `/departments/${CODE}`)
     const title = page.getByTestId('process-title').first()
     const box = (await title.boundingBox())!
     // F1 — this line was forced to 44px by one green button, on every row.
@@ -13653,7 +14086,15 @@ export function ConfirmAction(props: { row: Confirmation | undefined; department
   Append to `ui/e2e/write.spec.ts`:
   ```ts
   test('the write dialogs are one dialog', async ({ page }) => {
-    await page.goto('/departments/dining')
+    await signedIn(page)
+    await serve(page, {
+      '/api/departments': DEPARTMENTS,
+      [`/api/departments/${CODE}/processes`]: PROCESSES,
+      [`/api/confirmations?department=${CODE}`]: CONFIRMATIONS,
+      [`/api/departments/${CODE}/next-id`]: { next_id: `${CODE}-002` },
+      '/api/pending': [],
+    })
+    await visit(page, `/departments/${CODE}`)
     await page.getByRole('button', { name: 'فرآیند تازه' }).click()
     const box = page.getByRole('dialog')
     const width = page.viewportSize()!.width
