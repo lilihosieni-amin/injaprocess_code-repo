@@ -29,10 +29,14 @@ export interface TemplatedColumn<Row> extends DataColumnBase<Row> {
  * The three grid templates the theme mints — `--grid-users`, `--grid-audit`,
  * `--grid-activity` — named as the classes that carry them.
  *
- * Written out as three literal class names rather than assembled from the key,
- * because that is the only form Tailwind's content scanner can see, and it is
- * also what makes `grid-cols-users` findable by the R11 guard in
- * src/test/theme.test.ts, which asks whether a COMPONENT writes each one.
+ * Written out rather than assembled from the key because a reader grepping for
+ * `grid-cols-audit` should land here, and for no stronger reason than that.
+ * The earlier claim on this docstring — that an assembled name "is invisible to
+ * Tailwind's scanner and would emit nothing" — was false for this repo:
+ * tailwind.config.js puts ./tailwind-probe.txt in `content` and all three live
+ * there, so all three are built whatever this file spells. The R11 guard in
+ * src/test/theme.test.ts does not read this file's TEXT either; it renders the
+ * component and reads the class off the element.
  */
 const TEMPLATE = {
   users: 'grid-cols-users',

@@ -1,9 +1,15 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
+import { createElement } from 'react'
+import { render } from '@testing-library/react'
 import postcss from 'postcss'
 import tailwind from 'tailwindcss'
 import config from '../../tailwind.config.js'
+// R11's condition is that the three minted templates are USED, and "used" is a
+// claim about a rendered element — so the guard at the foot of this file
+// renders the component that consumes them rather than grepping its source.
+import { DataTable, type TemplatedColumn } from '../ui/DataTable'
 
 /* tailwind.config.js carries `@type {import('tailwindcss').Config}`, which types
    every theme scale as `ResolvableTo<…>` — a union with a resolver function this
@@ -914,6 +920,7 @@ describe('R1 (structural) — motion', () => {
   })
 })
 
+
 /* ---------------------------------------------------------------------------
    Owner ruling R11 — a minted utility is USED, or it is on a list a later task
    must empty.
@@ -934,22 +941,150 @@ describe('R1 (structural) — motion', () => {
        above says so in as many words — so a class mentioned only in a test is
        emitted like any other.
 
-   So this block reads src/** with the tests taken OUT, which is the only place
-   the question can be asked.
+   The first answer to that was a text scan of src/**, and it proved something
+   weaker than it claimed. All four of these were green on a clean tree:
+
+     · `// TODO(task-14): … bg-muted.`, with `bg-muted` off PENDING — a class
+       "used" by a comment;
+     · `const UNUSED = ['bg-muted','bg-faint','bg-warm'] as const; void UNUSED`
+       — a class "used" by a declaration nothing renders;
+     · the same mention placed in src/test/a11y.ts, because the exclusion was
+       `!/\.test\./` against the FILENAME and src/test/ holds four files that do
+       not carry it; and
+     · the `TEMPLATE` map assembled from its key, with the three literals left
+       in a comment — where `grid-cols-users` read as consumed off the DOCSTRING
+       that explains this guard.
+
+   So this block asks the question twice, in the two forms that can answer it:
+
+     · RENDERED — the component is rendered and the class is read off the
+       element, which is what "used" means and what no text scan can fake. That
+       is the R11 condition, and it is the check the three templates answer to.
+     · SCANNED — for the other 348 utilities, which no single test can render,
+       the source is scanned; but it is scanned with the comments removed, with
+       src/test/** out by DIRECTORY, and with only the class strings a
+       `className` can actually reach. That is bookkeeping for the PENDING
+       ledger, and it is documented as bookkeeping.
    --------------------------------------------------------------------------- */
 
+/** Test infrastructure. Excluded by DIRECTORY: `a11y.ts`, `setup.ts`,
+ *  `utils.tsx` and `reactflow-mock.ts` carry no `.test.` in their names, and a
+ *  filename-only exclusion read all four of them as components. */
+const TEST_DIR = resolve(process.cwd(), 'src/test')
+
+interface Source { path: string; text: string }
+
 /** Every file a component could be written in, minus the tests. */
-function componentFiles(dir = resolve(process.cwd(), 'src'), out: string[] = []): string[] {
+function componentSources(dir = resolve(process.cwd(), 'src'), out: Source[] = []): Source[] {
   for (const name of readdirSync(dir)) {
     const p = join(dir, name)
-    if (statSync(p).isDirectory()) componentFiles(p, out)
-    else if (/\.(tsx?|jsx?|css|html)$/.test(name) && !/\.test\./.test(name)) out.push(p)
+    if (statSync(p).isDirectory()) { if (p !== TEST_DIR) componentSources(p, out) }
+    else if (/\.(tsx?|jsx?|css|html)$/.test(name) && !/\.test\.[cm]?[jt]sx?$/.test(name)) {
+      out.push({ path: p, text: readFileSync(p, 'utf8') })
+    }
   }
   return out
 }
 
-const COMPONENTS = componentFiles()
-const COMPONENT_SOURCE = COMPONENTS.map((f) => readFileSync(f, 'utf8')).join('\n')
+/**
+ * The source with `//` and block comments removed and every string literal left
+ * exactly as written.
+ *
+ * A class name in prose is not a consumer. It is the most natural thing in the
+ * world to write — this repo's components explain themselves at length, and one
+ * of those explanations was what made `grid-cols-users` look consumed.
+ */
+function stripComments(src: string): string {
+  let out = ''
+  for (let i = 0; i < src.length;) {
+    const c = src[i]
+    if (c === '/' && src[i + 1] === '/') { while (i < src.length && src[i] !== '\n') i++; continue }
+    if (c === '/' && src[i + 1] === '*') {
+      i += 2
+      while (i < src.length && !(src[i] === '*' && src[i + 1] === '/')) i++
+      i += 2
+      continue
+    }
+    if (c === '"' || c === "'" || c === '`') {
+      out += c
+      i++
+      while (i < src.length) {
+        if (src[i] === '\\') { out += src.slice(i, i + 2); i += 2; continue }
+        if (src[i] === c) { out += c; i++; break }
+        out += src[i]
+        i++
+      }
+      continue
+    }
+    out += c
+    i++
+  }
+  return out
+}
+
+/** A top-level declaration, and the name it binds. */
+const TOP_LEVEL =
+  /^(?:export\s+)?(?:default\s+)?(?:async\s+)?(?:const|let|var|function|class|type|interface|enum)\s+([A-Za-z_$][\w$]*)/
+
+/**
+ * A file cut at its top-level declarations, so each piece can be asked whether
+ * anything reaches it. Cut by INDENTATION rather than by parsing: a top-level
+ * declaration starts at column 0, everything nested is indented, and this
+ * codebase is formatted. A parser would be the honest tool and a much larger
+ * one; the failure mode of this cut is that a piece is too BIG, which can only
+ * make the scan more generous, never less.
+ */
+function chunk(src: string): { name: string; text: string }[] {
+  const out: { name: string; text: string }[] = []
+  let cur = { name: '', text: '' }
+  for (const line of src.split('\n')) {
+    const m = TOP_LEVEL.exec(line)
+    if (m) { out.push(cur); cur = { name: m[1], text: '' } }
+    cur.text += `${line}\n`
+  }
+  out.push(cur)
+  return out
+}
+
+/**
+ * The part of the source a `className` can actually reach.
+ *
+ * A class is written by a component when it lands in a class attribute — either
+ * spelled there, or held in something the attribute reads. `const UNUSED =
+ * ['bg-muted'] as const` is neither, and a scan of the raw text called it a
+ * consumer. So: every declaration holding a `className=`/`class=` seeds the
+ * set, every identifier those pieces name pulls its own declaration in, and
+ * that repeats to a fixed point. A `.css` or `.html` file is taken whole — a
+ * class name in `@apply` or in a `class` attribute is already at its use site.
+ */
+function consumedSource(sources: Source[]): string {
+  const chunks: { name: string; text: string; seed: boolean }[] = []
+  for (const { path, text } of sources) {
+    const stripped = stripComments(text)
+    if (/\.(css|html)$/.test(path)) chunks.push({ name: '', text: stripped, seed: true })
+    else for (const c of chunk(stripped)) chunks.push({ ...c, seed: /\b(?:className|class)\s*=/.test(c.text) })
+  }
+  const byName = new Map<string, typeof chunks>()
+  for (const c of chunks) if (c.name) byName.set(c.name, [...(byName.get(c.name) ?? []), c])
+
+  const reached = new Set(chunks.filter((c) => c.seed))
+  let frontier = [...reached]
+  while (frontier.length > 0) {
+    const names = new Set<string>()
+    for (const c of frontier) for (const m of c.text.matchAll(/[A-Za-z_$][\w$]*/g)) names.add(m[0])
+    const next: typeof chunks = []
+    for (const name of names) {
+      for (const c of byName.get(name) ?? []) if (!reached.has(c)) { reached.add(c); next.push(c) }
+    }
+    frontier = next
+  }
+  return [...reached].map((c) => c.text).join('\n')
+}
+
+const COMPONENTS = componentSources()
+/** Every byte of every scanned file, comments and all — for the pins below. */
+const COMPONENT_TEXT = COMPONENTS.map((f) => f.text).join('\n')
+const CONSUMED = consumedSource(COMPONENTS)
 
 /**
  * Does a component write this class?
@@ -960,13 +1095,66 @@ const COMPONENT_SOURCE = COMPONENTS.map((f) => readFileSync(f, 'utf8')).join('\n
  * would call both of those unconsumed and send someone deleting a utility two
  * shipped components depend on.
  */
-function written(klass: string): boolean {
+function written(klass: string, source: string = CONSUMED): boolean {
   return new RegExp(`(?<![\\w-])${klass.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\w-])`)
-    .test(COMPONENT_SOURCE)
+    .test(source)
+}
+
+/* --- the other half: what the components actually put on an element -------- */
+
+interface TRow { id: string }
+const T_ROWS: TRow[] = [{ id: '1' }, { id: '2' }]
+/** Six columns, because all three minted templates name six tracks. */
+const T_COLUMNS: TemplatedColumn<TRow>[] = ['a', 'b', 'c', 'd', 'e', 'f']
+  .map((key) => ({ key, head: key, cell: () => key }))
+
+const GRID_TEMPLATES = [
+  ['users', 'grid-cols-users', '--grid-users'],
+  ['audit', 'grid-cols-audit', '--grid-audit'],
+  ['activity', 'grid-cols-activity', '--grid-activity'],
+] as const
+
+/**
+ * Every class `DataTable` puts on a real element when it is asked for each of
+ * the three minted templates.
+ *
+ * This is the R11 answer. A comment cannot render, an unreferenced array cannot
+ * render, and a name assembled from its key renders exactly as well as one
+ * written out — which is the point: the question R11 asked is whether the
+ * template REACHES an element, and that is a question about the DOM.
+ */
+function renderedClasses(template: (typeof GRID_TEMPLATES)[number][0]): Set<string> {
+  const { container, unmount } = render(createElement(DataTable<TRow>, {
+    label: 'کاربران', columns: T_COLUMNS, rows: T_ROWS,
+    rowKey: (r: TRow) => r.id, empty: 'خالی', template,
+  }))
+  const out = new Set<string>()
+  for (const el of Array.from(container.querySelectorAll('[class]'))) {
+    for (const k of Array.from(el.classList)) out.add(k)
+  }
+  unmount()
+  return out
+}
+
+let renderedOnce: Set<string> | undefined
+/** The union of the three, memoised — the PENDING ledger below reads it too. */
+function rendered(): Set<string> {
+  if (renderedOnce === undefined) {
+    renderedOnce = new Set(GRID_TEMPLATES.flatMap(([t]) => [...renderedClasses(t)]))
+  }
+  return renderedOnce
 }
 
 /**
- * The utilities the theme names that NO component writes yet.
+ * Used, by either proof: rendered onto an element, or written into a class
+ * string a `className` reaches. The two are one question with two answers, and
+ * the ledger below must accept both — otherwise a component that assembles a
+ * class name would be reported as an orphan while visibly using it.
+ */
+const consumed = (klass: string) => rendered().has(klass) || written(klass)
+
+/**
+ * The utilities the theme names that NO component uses yet.
  *
  * This is the list R11 turns on. A promise to use a utility later is what
  * minted three templates nothing could reach; a list that a named task must
@@ -1012,7 +1200,12 @@ const PENDING: string[] = [
   'text-fs-numeral', 'text-fs-stat', 'text-fs-steps-title', 'text-fs-display-hand',
   'text-fs-stat-sm', 'text-fs-body-lead', 'text-fs-nano', 'text-fs-badge-sm',
   'text-fs-tag', 'text-fs-h1-reader-home', 'text-fs-h1-reader-list', 'text-fs-h1-reader-dept',
-  'text-fs-body-reader', 'text-prose', 'text-role-title', 'text-role-hero',
+  'text-fs-body-reader', 'text-prose',
+  // Named only in a docstring in src/ui/fieldFrame.ts, which explains why the
+  // field's type is a FIXED step and not this role. The scan above stopped
+  // reading comments, and prose stopped counting as a consumer.
+  'text-role-body',
+  'text-role-title', 'text-role-hero',
   'font-sans', 'font-regular', 'leading-snug', 'leading-looser',
   'tracking-eyebrow', 'tracking-display', 'rounded-badge', 'rounded-input',
   'rounded-pill', 'rounded-round', 'shadow-sheet', 'shadow-drawer',
@@ -1042,21 +1235,65 @@ const PENDING: string[] = [
   'px-note-x', 'h-count', 'min-w-count', 'max1080:hidden',
 ]
 
-describe('Owner ruling R11 — a named utility has a component that writes it', () => {
-  it('reads a real, sizeable set of component files, tests excluded', () => {
-    // Both assertions below compare a derived list to a list, so a scan that
-    // reads nothing would report every class as unconsumed and a scan that read
+/**
+ * The high-water mark PENDING may not pass.
+ *
+ * `PENDING.length <= 220` was not a ratchet; it was a ceiling resting exactly on
+ * the count. A task that legitimately STOPS using a utility has to put its line
+ * back, and doing the right thing failed with `expected 221 to be less than or
+ * equal to 220` — whose only available fix is to edit the number upward, which
+ * is the one edit a ratchet exists to forbid. It happened on this commit's own
+ * first run: `text-role-body` turned out to be "used" by a docstring.
+ *
+ * A ratchet needs slack in the direction that may move and none in the
+ * direction that may not. So the number carries headroom and states the count
+ * it was set against, and the rule is written here rather than implied: it may
+ * be LOWERED by any task that empties lines, and it is never raised. The slack
+ * hides nothing — the accuracy test below forces every line on the list to be a
+ * genuine orphan and every genuine orphan to be on the list — it only stops the
+ * list growing without bound.
+ */
+const CEILING = 231 // set 2026-08-18 against PENDING.length === 221
+
+describe('Owner ruling R11 — a named utility has a component that uses it', () => {
+  it('reads a real, sizeable set of component files — tests AND test helpers excluded', () => {
+    // Both ledger assertions compare a derived list to a list, so a scan that
+    // read nothing would report every class as unconsumed and a scan that read
     // the tests would report almost none. Pin both ends of it.
     expect(COMPONENTS.length).toBeGreaterThan(50)
-    expect(COMPONENTS.some((f) => f.includes('/src/ui/DataTable.tsx'))).toBe(true)
-    expect(COMPONENTS.some((f) => /\.test\./.test(f))).toBe(false)
+    expect(COMPONENTS.some((f) => f.path.endsWith('/src/ui/DataTable.tsx'))).toBe(true)
 
-    // …and the exclusion is load-bearing, not decorative: `w-touch` is written
-    // in src/ui/table.test.tsx (as the box expectExpandedHitArea must refuse)
-    // and nowhere else, so a scan that read the tests would call it consumed.
-    expect(readFileSync(resolve(process.cwd(), 'src/ui/table.test.tsx'), 'utf8'))
-      .toContain('w-touch')
-    expect(written('w-touch')).toBe(false)
+    const byName = COMPONENTS.filter((f) => /\.test\./.test(f.path)).map((f) => f.path)
+    expect(byName, 'a `.test.` file is being read as a component').toEqual([])
+
+    const byDir = COMPONENTS.filter((f) => f.path.includes(`${TEST_DIR}/`)).map((f) => f.path)
+    expect(
+      byDir,
+      'src/test/ is test infrastructure, not components: a11y.ts, setup.ts, utils.tsx and ' +
+      'reactflow-mock.ts carry no `.test.` in their names, and a filename-only exclusion read ' +
+      'all four of them as consumers of whatever they happened to mention.',
+    ).toEqual([])
+
+    // …and the exclusion is load-bearing, not decorative. Its predecessor
+    // pinned that with `expect(written('w-touch')).toBe(false)` — and `w-touch`
+    // is F11's 44px floor utility, on PENDING, which Task 11 onward will
+    // legitimately write. Its first honest use turned two tests red, one of
+    // them with a bare `expected true to be false`. This marker is a string no
+    // component can ever want, and it is matched against the RAW text of every
+    // scanned file, so it cannot be defused by comment-stripping either.
+    const MARKER = 'zz-only-a-test-file-writes-this'
+    for (const f of ['src/ui/table.test.tsx', 'src/test/a11y.ts']) {
+      expect(
+        readFileSync(resolve(process.cwd(), f), 'utf8'),
+        `${f} no longer carries the marker this pin needs, so the pin proves nothing. Put ` +
+        `\`${MARKER}\` back, or move it to another file this scan must not read.`,
+      ).toContain(MARKER)
+    }
+    expect(
+      COMPONENT_TEXT.includes(MARKER),
+      'a file that only a test writes has entered the component set, so every class those tests ' +
+      'mention now reads as consumed and the ledger below is worthless.',
+    ).toBe(false)
 
     // The matcher itself, both ways round, so neither test below can pass by
     // saying "yes" or "no" to everything.
@@ -1064,31 +1301,80 @@ describe('Owner ruling R11 — a named utility has a component that writes it', 
     expect(written('rounded-nonesuch')).toBe(false)
   })
 
-  it('has a component writing each of the three minted grid templates', () => {
-    // The assertion R11 asked for, in place of the three EXPECTED rows that
-    // only proved the theme NAMES them. src/ui/DataTable.tsx's `template` prop
-    // is the consumer; before it, the users track list was written down twice —
-    // once in tokens.css as --grid-users and once as six `track` strings at the
-    // call site — and the theme's copy was unreachable.
-    const templates = ['grid-cols-users', 'grid-cols-audit', 'grid-cols-activity']
-    expect(templates.filter((c) => !written(c))).toEqual([])
-    // Named by a component, not merely mentioned: the class must be assembled
-    // as a literal, because a `grid-cols-${key}` is invisible to Tailwind's
-    // scanner and would emit nothing however many callers passed the prop.
-    const table = readFileSync(resolve(process.cwd(), 'src/ui/DataTable.tsx'), 'utf8')
-    expect(templates.filter((c) => !table.includes(`'${c}'`))).toEqual([])
+  it('counts a class a component WRITES, and not one it merely mentions', () => {
+    // The scan, against the three shapes that defeated its predecessor — run on
+    // synthetic sources so this states the rule rather than depending on which
+    // file happens to contain what today.
+    const scan = (text: string) => consumedSource([{ path: '/src/ui/Synthetic.tsx', text }])
+    const holds = (text: string, klass = 'bg-warm') => written(klass, scan(text))
+    const render_ = 'export function A() { return <i className="p-s4" /> }'
+
+    // Written — in the attribute, and in anything the attribute reads.
+    expect(holds('export function A() { return <i className="bg-warm" /> }')).toBe(true)
+    expect(holds(`const K = 'bg-warm'\nexport function A() { return <i className={K} /> }`)).toBe(true)
+    expect(holds(`const M = { a: 'bg-warm' }\nexport function A() { return <i className={M.a} /> }`)).toBe(true)
+    expect(holds(`const L = 'bg-warm'\nconst K = \`\${L} p-s4\`\nexport function A() { return <i className={K} /> }`)).toBe(true)
+
+    // Not written — a line comment, a block comment, and a declaration that
+    // nothing renders. All three were green.
+    expect(holds(`// TODO(task-14): this row will want bg-warm.\n${render_}`)).toBe(false)
+    expect(holds(`/** …until then, bg-warm has no consumer. */\n${render_}`)).toBe(false)
+    expect(holds(`const UNUSED = ['bg-warm'] as const\nvoid UNUSED\n${render_}`)).toBe(false)
+  })
+
+  it('RENDERS each of the three minted grid templates onto a real element', async () => {
+    // The assertion R11 asked for, in the only form that can answer it. Its
+    // predecessor asked whether src/ui/DataTable.tsx CONTAINED the three
+    // strings, which a docstring satisfies — and the reason it gave for
+    // demanding a literal ("an assembled `grid-cols-${key}` is invisible to
+    // Tailwind's scanner and would emit nothing") was false for this repo:
+    // tailwind.config.js has ./tailwind-probe.txt in `content` and all 351
+    // utilities live there, built from a file that spells no literal anywhere.
+    //
+    // So this renders the component instead and reads the class off the
+    // element, then compiles that class and checks it carries the minted track
+    // list. Delete the `template` prop and all three go red; assemble the name
+    // from its key and all three stay green, which is correct — the class
+    // reaches the element either way.
+    for (const [template, klass, token] of GRID_TEMPLATES) {
+      const { container, unmount } = render(createElement(DataTable<TRow>, {
+        label: 'کاربران', columns: T_COLUMNS, rows: T_ROWS,
+        rowKey: (r: TRow) => r.id, empty: 'خالی', template,
+      }))
+      const lines = Array.from(container.querySelectorAll<HTMLElement>('[role="row"]'))
+      expect(lines, `${template}: the table rendered no head and no rows`)
+        .toHaveLength(1 + T_ROWS.length)
+      for (const line of lines) {
+        expect(
+          Array.from(line.classList),
+          `${template}: the rendered element does not carry \`${klass}\`, so nothing in the app ` +
+          `reaches ${token} — which is the whole of what R11 asked.`,
+        ).toContain(klass)
+        // An inline `gridTemplateColumns` beats a class unconditionally, so a
+        // template that sat BESIDE one would be named on the element and
+        // ignored by the browser. Naming it is not using it.
+        expect(line.style.gridTemplateColumns, `${template}: an inline template overrides the class`)
+          .toBe('')
+      }
+      unmount()
+
+      const { decls } = await build([klass])
+      expect(decls.get(klass), `${klass} emits no rule`).toBeDefined()
+      expect(decls.get(klass)).toContain(`grid-template-columns: var(${token})`)
+    }
   })
 
   it('keeps PENDING exactly accurate — no orphan off the list, no stale line on it', () => {
-    const orphans = probeClasses().filter((c) => !written(c) && !PENDING.includes(c))
+    const orphans = probeClasses().filter((c) => !consumed(c) && !PENDING.includes(c))
     expect(
       orphans,
       `${orphans.length} utilities the theme names have no consumer and are not on PENDING. ` +
       'Either write them into the component they were minted for, or add them to the list in ' +
-      'src/test/theme.test.ts with the task that will consume them.',
+      'src/test/theme.test.ts with the task that will consume them. A mention in a comment, and ' +
+      'a declaration nothing renders, are not consumers.',
     ).toEqual([])
 
-    const stale = PENDING.filter((c) => written(c))
+    const stale = PENDING.filter((c) => consumed(c))
     expect(
       stale,
       `${stale.length} utilities on PENDING now HAVE a consumer. Delete these lines from the ` +
@@ -1103,10 +1389,12 @@ describe('Owner ruling R11 — a named utility has a component that writes it', 
   })
 
   it('is a list that shrinks — Task 25 asserts it is empty', () => {
-    // Not a floor with room under it: a task that consumes utilities without
-    // deleting their lines fails the accuracy test above, and a task that adds
-    // an unconsumed one fails it too. This line is the ratchet: the count only
-    // ever goes down, and the last task to move it moves it to zero.
-    expect(PENDING.length).toBeLessThanOrEqual(220)
+    expect(
+      PENDING.length,
+      `PENDING is ${PENDING.length} lines against a ceiling of ${CEILING}. The ceiling is not a ` +
+      'budget to spend: the accuracy test above already forces every line to be a genuine orphan. ' +
+      'If a task has genuinely orphaned this many utilities, the theme should lose them rather ' +
+      'than the number go up — this line may be LOWERED, never raised.',
+    ).toBeLessThanOrEqual(CEILING)
   })
 })

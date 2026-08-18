@@ -1,3 +1,12 @@
+/*
+ * Test infrastructure, not a component. src/test/theme.test.ts's R11 scan pins
+ * that by looking for the marker below in every file it reads: this file lives
+ * under src/test/, which that scan excludes by DIRECTORY — a filename-only
+ * exclusion (`!/\.test\./`) read it, setup.ts, utils.tsx and reactflow-mock.ts
+ * as components, so every class they mentioned counted as consumed.
+ *
+ *   marker: zz-only-a-test-file-writes-this
+ */
 import { expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
@@ -102,28 +111,126 @@ const TOUCH = (() => {
   return v
 })()
 
+/* -------------------------------------------------------------------------
+   Reading a class STRING is not reading a box.
+
+   Four separate holes were opened by treating the class list as a set of
+   literals to pattern-match: `min-w-touch` beside `w-pager` (min-width beats
+   width, so the control paints the 44px the plan forbids), `before:content-[none]`
+   (matches `before:content-[…]` and generates no box), two `w-…` classes on one
+   element (CSS resolves them by EMITTED order, and reading the first in
+   CLASS-STRING order is the exact mistake src/ui/table.test.tsx's `paint`/
+   `winner` docstring warns about), and a `::before` that is told not to draw.
+
+   So the box is RESOLVED here rather than matched: every class token is split
+   into its variants and its utility, the axis is computed the way the used
+   value is computed (`max(min-width, min(width, max-width))`), an ambiguous
+   double statement is refused instead of guessed at, and anything that removes
+   the ::before's box — `hidden`, `invisible`, `scale-0`, a `content` of `none`,
+   an `overflow` that clips it — is refused by name.
+
+   Why not compile the class string through Tailwind, as `paint`/`winner` do?
+   Because Tailwind's PostCSS plugin is declared `async`, so the whole pipeline
+   is a promise, and this helper is called SYNCHRONOUSLY from
+   src/ui/fields.test.tsx and will be called from twenty more. Making it async
+   would turn every existing call into a floating promise that asserts nothing
+   and still exits 0 — the defect this file exists to prevent, introduced by the
+   fix for it. The compiled counterpart is asserted on the real controls in
+   src/ui/table.test.tsx ("draws the design's 34px box and grows the target
+   around it"), which reads width, min-width, overflow, pointer-events and the
+   ::before's own display/content/inset out of the emitted sheet.
+   ------------------------------------------------------------------------- */
+
 /**
- * One axis of the box the control PAINTS, read off its own class string.
+ * One class token, split into its variant prefixes and the utility it ends in.
  *
- * `classes` is already split on whitespace, so `^w-` anchors to a real class
- * boundary: `md:w-pager` is a different box at a different width and is not the
- * base one this helper measures.
+ * `md:before:-inset-[5px]` is `['md', 'before']` + `-inset-[5px]`. The split
+ * ignores a `:` inside `[]` or `()`, so an arbitrary value can hold one without
+ * being read as a variant chain.
  */
-function drawnBox(
-  classes: string[], axis: 'w' | 'h',
-): { klass: string; px: number } | undefined {
-  for (const klass of classes) {
-    const m = new RegExp(`^${axis}-(.+)$`).exec(klass)
-    if (!m) continue
-    const arbitrary = /^\[(.+)\]$/.exec(m[1])
-    const px = pixels(arbitrary ? arbitrary[1] : SCALES[axis][m[1]])
-    if (px !== undefined) return { klass, px }
+function parse(raw: string) {
+  const pieces: string[] = []
+  let depth = 0
+  let start = 0
+  for (let i = 0; i < raw.length; i++) {
+    const c = raw[i]
+    if (c === '[' || c === '(') depth++
+    else if (c === ']' || c === ')') depth--
+    else if (c === ':' && depth === 0) { pieces.push(raw.slice(start, i)); start = i + 1 }
   }
-  return undefined
+  pieces.push(raw.slice(start))
+  const variants = pieces.slice(0, -1)
+  return {
+    raw,
+    variants,
+    utility: pieces[pieces.length - 1],
+    /** Does this class apply to the ::before rather than to the control? */
+    pseudo: variants.includes('before'),
+    /** Does it apply only at some widths / in some state? */
+    conditional: variants.some((v) => v !== 'before'),
+  }
+}
+
+type Token = ReturnType<typeof parse>
+
+/** The px length a `w-…`/`h-…`/`min-w-…`/`size-…` utility resolves to, if any. */
+function lengthOf(utility: string, prefix: string, axis: 'w' | 'h'): number | undefined {
+  const m = new RegExp(`^${prefix}-(.+)$`).exec(utility)
+  if (!m) return undefined
+  const arbitrary = /^\[(.+)\]$/.exec(m[1])
+  return pixels(arbitrary ? arbitrary[1] : SCALES[axis][m[1]])
+}
+
+/**
+ * Every class on this element that states a length on `axis`, as
+ * `{ klass, px }`. `size-…` states both axes at once, so it answers to both.
+ */
+function boxes(tokens: Token[], prefix: '' | 'min' | 'max', axis: 'w' | 'h') {
+  const head = prefix === '' ? axis : `${prefix}-${axis}`
+  const out: { klass: string; px: number; conditional: boolean }[] = []
+  for (const t of tokens) {
+    if (t.pseudo) continue
+    const px = lengthOf(t.utility, head, axis) ?? lengthOf(t.utility, `${prefix === '' ? '' : `${prefix}-`}size`, axis)
+    if (px !== undefined) out.push({ klass: t.raw, px, conditional: t.conditional })
+  }
+  return out
 }
 
 /** The axis names, for a message that says which one is short. */
 const AXIS = { w: 'wide', h: 'tall' } as const
+const LONG = { w: 'width', h: 'height' } as const
+
+/**
+ * Utilities that leave the ::before with no hittable box, whatever the inset
+ * says. Every one of them compiles, and none of them is visible in a jsdom
+ * test, a snapshot or a build.
+ */
+const NO_BOX: Record<string, string> = {
+  hidden: 'sets `display: none`, and a ::before that is not displayed is not generated at all',
+  invisible: 'sets `visibility: hidden`, which stops the box catching a pointer',
+  'scale-0': 'scales the box to nothing',
+  'scale-x-0': 'scales the box to nothing on one axis',
+  'scale-y-0': 'scales the box to nothing on one axis',
+  'w-0': 'overrides the width the inset gives it',
+  'h-0': 'overrides the height the inset gives it',
+  'size-0': 'overrides the size the inset gives it',
+  static: 'takes the ::before out of the overlay and back into the layout',
+  relative: 'takes the ::before out of the overlay and back into the layout',
+  fixed: 'anchors the ::before to the viewport rather than to the control',
+  sticky: 'takes the ::before out of the overlay and back into the layout',
+  'pointer-events-none': 'is the one declaration that makes the hit area stop being one',
+}
+
+/**
+ * `overflow` values on the CONTROL that clip its own `::before` back to the
+ * drawn box. The overlay is bigger than its parent by design; anything that
+ * clips the parent's paint area cuts the hit area back to what it looks like.
+ */
+const CLIPS = new Set([
+  'overflow-hidden', 'overflow-clip', 'overflow-auto', 'overflow-scroll',
+  'overflow-x-hidden', 'overflow-y-hidden', 'overflow-x-clip', 'overflow-y-clip',
+  'overflow-x-auto', 'overflow-y-auto', 'overflow-x-scroll', 'overflow-y-scroll',
+])
 
 /**
  * Asserts that a control drawn smaller than F11's floor carries a transparent
@@ -141,11 +248,16 @@ export function expectExpandedHitArea(el: HTMLElement) {
   // the `r` — so a control that is only positioned above 768px, or whose
   // ::before is only absolute below 760, passed a helper that read the raw
   // string. A class is a whitespace-delimited token; so is the assertion.
-  const classes = cls.split(/\s+/).filter(Boolean)
-  const has = (klass: string) => classes.includes(klass)
+  const tokens = cls.split(/\s+/).filter(Boolean).map(parse)
   const on = (msg: string) => `${msg}\n  on: <${el.tagName.toLowerCase()} class="${cls}">`
+  /** A class that applies to the control itself, at every width and in every state. */
+  const base = (utility: string) =>
+    tokens.some((t) => !t.pseudo && !t.conditional && t.utility === utility)
+  /** The same, on the ::before. */
+  const onBefore = (utility: string) =>
+    tokens.some((t) => t.pseudo && !t.conditional && t.utility === utility)
 
-  expect(has('relative'), on(
+  expect(base('relative'), on(
     'no unconditional `relative` — the hit area is a `::before` overlay, and an absolutely ' +
     'positioned ::before is placed against the nearest POSITIONED ancestor, so without `relative` ' +
     'on the control ITSELF the target grows around some other box entirely, and nothing about ' +
@@ -153,60 +265,122 @@ export function expectExpandedHitArea(el: HTMLElement) {
     'the only place a thumb needs the target, growing around the wrong element',
   )).toBe(true)
 
-  expect(has('before:absolute'), on(
+  expect(onBefore('absolute'), on(
     'no unconditional `before:absolute` — a static ::before takes part in the layout, so it moves ' +
     'the glyph instead of overlaying the control. A variant-prefixed one (`max760:before:absolute`) ' +
     'is a static ::before at every other width',
   )).toBe(true)
 
-  expect(classes.some((k) => /^before:content-\[/.test(k)), on(
+  // The ::before's content. `before:content-[…]` used to be pattern-matched,
+  // which `before:content-[none]` satisfies while setting `content: none` — the
+  // one value that defeats the check's own purpose.
+  const content = tokens.find((t) => t.pseudo && !t.conditional && /^content-/.test(t.utility))
+  expect(content, on(
     'no `before:content-[…]` — a ::before with no content property generates no box at all, so ' +
     'the inset below grows nothing and the control is only as big as it looks',
-  )).toBe(true)
-
-  expect(has('before:pointer-events-none'), on(
-    '`before:pointer-events-none` — the ::before is the hit area, and this is the one declaration ' +
-    'that makes it stop being one. The box still measures 44px and catches nothing',
+  )).toBeDefined()
+  const value = /^content-\[(.*)\]$/.exec(content?.utility ?? '')?.[1] ?? content?.utility.slice('content-'.length)
+  expect(['none', 'normal'].includes(String(value)), on(
+    `\`${content?.raw}\` sets \`content: ${value}\`, and that generates no box at all — it is the ` +
+    'one value that passes a `before:content-[…]` spelling check and leaves the hit area exactly ' +
+    "as big as the control looks. The empty string (`before:content-['']`) is what draws a box",
   )).toBe(false)
 
-  const grow = classes
-    .map((k) => /^before:-inset-\[(\d+(?:\.\d+)?)px\]$/.exec(k))
-    .find((m): m is RegExpExecArray => m !== null)
-  expect(grow, on(
+  // Anything that removes the ::before's box, at any width, in any state.
+  for (const t of tokens) {
+    if (!t.pseudo) continue
+    const why = NO_BOX[t.utility]
+    if (why === undefined) continue
+    expect(t.raw, on(
+      `\`${t.raw}\` ${why}. The ::before IS the hit area: it measures ${TOUCH}px and catches ` +
+      'nothing. A variant-prefixed form is the same hole at the widths it covers',
+    )).toBe('')
+  }
+
+  // …and the same three, one level up, on the control itself.
+  for (const t of tokens) {
+    if (t.pseudo) continue
+    if (t.utility === 'pointer-events-none') {
+      expect(t.raw, on(
+        `\`${t.raw}\` on the CONTROL — pointer-events is inherited, so this takes the ::before ` +
+        'with it. The strictly weaker `before:pointer-events-none` is refused above; this is that ' +
+        'hole with the control included',
+      )).toBe('')
+    }
+    if (CLIPS.has(t.utility)) {
+      expect(t.raw, on(
+        `\`${t.raw}\` on the CONTROL clips its own ::before back to the drawn box. The overlay is ` +
+        'deliberately bigger than the element that generates it, so an overflow that clips the ' +
+        'parent cuts the hit area back to exactly what the control looks like',
+      )).toBe('')
+    }
+  }
+
+  // The inset, at EVERY width it is stated for. `md:before:-inset-[1px]` beside
+  // a base `[5px]` is a 44px target below 768px and a 36px one above it, and a
+  // check that read the unconditional class alone called that correct.
+  const insets = tokens
+    .filter((t) => t.pseudo)
+    .map((t) => ({ t, m: /^-inset-\[(\d+(?:\.\d+)?)px\]$/.exec(t.utility) }))
+    .filter((x): x is { t: Token; m: RegExpExecArray } => x.m !== null)
+    .map((x) => ({ klass: x.t.raw, px: Number(x.m[1]), conditional: x.t.conditional }))
+  expect(insets.some((i) => !i.conditional), on(
     `no unconditional \`before:-inset-[Npx]\` — nothing grows the hit area past the drawn box, so ` +
     `this control is only as big as it looks and F11's ${TOUCH}px floor is unmet. A variant ` +
     `prefix (\`md:before:-inset-[5px]\`) is the same miss on every width it does not cover`,
-  )).toBeTruthy()
-  const inset = Number(grow![1])
+  )).toBe(true)
+  const thinnest = insets.reduce((a, b) => (b.px < a.px ? b : a))
 
   // BOTH axes. `-inset-` grows all four sides, but the drawn box has two
   // numbers and only one of them used to be read: `w-pager h-chevron` is 44
   // wide and 25 tall, and a helper that scanned `w-…` alone called that a 44px
   // target. The design's ladder is square today; nothing makes it stay square.
   for (const axis of ['w', 'h'] as const) {
-    const box = drawnBox(classes, axis)
-    expect(box, on(
+    const stated = boxes(tokens, '', axis)
+    const unconditional = stated.filter((b) => !b.conditional)
+
+    expect(unconditional.length > 0, on(
       `the drawn box is not stated on the control (no \`${axis}-<key>\` this theme knows on its ` +
-      `${axis === 'w' ? 'width' : 'height'} or spacing scale, and no \`${axis}-[Npx]\`), so the hit ` +
+      `${LONG[axis]} or spacing scale, and no \`${axis}-[Npx]\`), so the hit ` +
       'area can only be pattern-matched, not measured — which is how a 5px inset would come to sit ' +
       'on a 32px box',
-    )).toBeDefined()
+    )).toBe(true)
 
-    const drawn = box!.px
-    const reach = drawn + 2 * inset
+    expect(unconditional.map((b) => b.klass).join(' + '), on(
+      `two classes state this control's ${LONG[axis]} at once. Which one wins is decided by ` +
+      "Tailwind's EMITTED order and not by the order of the class string, so the drawn box here " +
+      'cannot be read, only guessed at — state it once',
+    )).toBe(unconditional[0]?.klass ?? '')
+
+    // The USED value, not the `width` declaration: `min-width` beats `width`
+    // whenever it is larger, so `w-pager min-w-touch` paints the 44px control
+    // the plan forbids while still naming the design's 34.
+    const width = unconditional[0]
+    const mins = boxes(tokens, 'min', axis).filter((b) => !b.conditional)
+    const maxes = boxes(tokens, 'max', axis).filter((b) => !b.conditional)
+    let decides = width
+    let drawn = width.px
+    for (const m of maxes) if (m.px < drawn) { drawn = m.px; decides = m }
+    for (const m of mins) if (m.px > drawn) { drawn = m.px; decides = m }
 
     expect(drawn, on(
-      `the control paints ${drawn}px ${AXIS[axis]} (\`${box!.klass}\`), which already meets the ` +
+      `the control paints ${drawn}px ${AXIS[axis]} (\`${decides.klass}\`), which already meets the ` +
       `${TOUCH}px floor. The plan's rule is that a drawn control is never inflated to the floor, ` +
       'so either this box is wrong or this is not the helper for it — a control that is genuinely ' +
       '44px is asserted with expectTouchTarget instead',
     )).toBeLessThan(TOUCH)
 
+    // The narrowest the box is ever stated, against the thinnest the inset is
+    // ever stated: a control that shrinks at one breakpoint and grows at none
+    // is unhittable exactly there, and there is nothing to see.
+    const narrowest = stated.reduce((a, b) => (b.px < a.px ? b : a), width)
+    const reach = narrowest.px + 2 * thinnest.px
+
     expect(reach, on(
-      `the drawn box is ${drawn}px ${AXIS[axis]} (\`${box!.klass}\`) and the ::before adds ` +
-      `${inset}px on every side, so the hit area is ${reach}px ${AXIS[axis]} where F11 needs ` +
+      `the drawn box is ${narrowest.px}px ${AXIS[axis]} (\`${narrowest.klass}\`) and the ::before adds ` +
+      `${thinnest.px}px on every side (\`${thinnest.klass}\`), so the hit area is ${reach}px ${AXIS[axis]} where F11 needs ` +
       `${TOUCH}px. ` +
-      `A ${drawn}px box takes before:-inset-[${(TOUCH - drawn) / 2}px]`,
+      `A ${narrowest.px}px box takes before:-inset-[${(TOUCH - narrowest.px) / 2}px]`,
     )).toBeGreaterThanOrEqual(TOUCH)
   }
 }

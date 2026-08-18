@@ -58,7 +58,11 @@ export function Pager({ from, to, count, page, pages, onPage }: PagerProps) {
       {/* §2.7 — every count, position and index a reader sees is Persian, with
           no exception for "technical" numbers. */}
       <span className="text-fs-caption text-muted">{toFa(from)} تا {toFa(to)} از {toFa(count)}</span>
-      <div className="flex items-center gap-s4">
+      {/* Named so the row itself can be compiled, not just the buttons in it:
+          `gap-s4` → `gap-s99` emits nothing, and a `flex-row-reverse` here
+          swaps the two arrows on screen while leaving the DOM order, the
+          labels and the `d` attributes exactly as the tests below pin them. */}
+      <div data-r-pagernav className="flex items-center gap-s4">
         <button
           type="button" aria-label="صفحهٔ قبلی" disabled={page <= 1}
           onClick={() => onPage(page - 1)} className={NAV}

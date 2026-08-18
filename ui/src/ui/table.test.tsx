@@ -1,4 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import postcss from 'postcss'
@@ -13,6 +15,16 @@ import {
 import { Pager } from './Pager'
 import { Dialog } from './Overlay'
 import { expectExpandedHitArea } from '../test/a11y'
+
+/*
+ * A test file, and src/test/theme.test.ts's R11 scan proves it never reads one
+ * by looking for this marker in every file it does read. Its predecessor pinned
+ * the same thing with `expect(written('w-touch')).toBe(false)` — and `w-touch`
+ * is F11's 44px floor utility, which Task 11 onward will legitimately write, so
+ * the first honest use of it turned two unrelated tests red.
+ *
+ *   marker: zz-only-a-test-file-writes-this
+ */
 
 interface Row { id: string; name: string; role: string }
 
@@ -44,6 +56,28 @@ describe('DataTable', () => {
     const tracks = Array.from(container.querySelectorAll<HTMLElement>('[role="row"]'))
       .map((el) => el.style.gridTemplateColumns)
     expect(tracks).toEqual(Array(3).fill('16px 1.4fr 1fr 1.1fr 1fr 34px'))
+  })
+
+  it('writes every head label, once, over the column it belongs to', () => {
+    // Three separate claims, none of which anything else in this file made.
+    // `{[...columns].reverse().map(…)}` on the head alone put all six labels
+    // over the wrong columns and stayed green; `columns.slice(0, 5)` put five
+    // labels over six tracks and stayed green; and printing `c.key` instead of
+    // `c.head` headed a Persian table `dot name role sup dept go` in Latin and
+    // stayed green. Order, COUNT and TEXT, read off the rendered element.
+    const { container } = render(
+      <DataTable label="کاربران" columns={COLUMNS} rows={ROWS} rowKey={(r) => r.id} empty="خالی" />,
+    )
+    const head = container.querySelector('[data-r-thead]') as HTMLElement
+    const cells = Array.from(head.children) as HTMLElement[]
+    expect(cells.map((e) => e.dataset.headcol)).toEqual(COLUMNS.map((c) => c.key))
+    expect(cells.map((e) => e.textContent)).toEqual(COLUMNS.map((c) => c.head))
+    // …and the body is laid on the same order, for the same reason: a row whose
+    // cells came out reversed sits under the head it disagrees with.
+    for (const row of Array.from(container.querySelectorAll<HTMLElement>('[data-r-trow]'))) {
+      expect(Array.from(row.children).map((e) => (e as HTMLElement).dataset.col))
+        .toEqual(COLUMNS.map((c) => c.key))
+    }
   })
 
   it('is a plain table, and no row invites a click, when nothing may be opened', () => {
@@ -212,6 +246,28 @@ describe('DataTable, laid out by a minted template', () => {
         new RegExp(`\\b${klass}\\b`),
       )
       unmount()
+    }
+  })
+
+  it('brings as many columns as the minted template has tracks', () => {
+    // `template` decouples the column list from the track list, and nothing in
+    // the TYPE can close that: the count lives in a CSS custom property.
+    // `TEMPLATED.slice(0, 4)` with template="users" type-checks and renders
+    // four cells over six tracks — two empty columns, no error anywhere.
+    //
+    // So the count is pinned against the token itself, for the one table this
+    // task builds. Task 19 (users), the audit screen and the activity screen
+    // each owe the same line for their own column list.
+    const tokens = readFileSync(resolve(process.cwd(), 'src/styles/tokens.css'), 'utf8')
+    const tracks = /--grid-users:\s*([^;]+);/.exec(tokens)![1].trim().split(/\s+/)
+    expect(tracks).toHaveLength(6)
+    expect(TEMPLATED).toHaveLength(tracks.length)
+
+    const { container } = render(
+      <DataTable label="ک" columns={TEMPLATED} rows={ROWS} rowKey={(r) => r.id} empty="خالی" template="users" />,
+    )
+    for (const line of Array.from(container.querySelectorAll<HTMLElement>('[role="row"]'))) {
+      expect(line.children).toHaveLength(tracks.length)
     }
   })
 
@@ -458,7 +514,7 @@ describe('what the table’s class strings compile to', () => {
     }
   })
 
-  it('writes the head in the type the design draws it in', async () => {
+  it('sets the head’s type, weight and colour — its TEXT is pinned above', async () => {
     // design/Inja Panel.dc.html:1245 — 11.5px / 700 / #8a7db0. Three values,
     // three tokens, and every one of them compiles to something else if the
     // class is changed, with nothing else in the suite noticing.
@@ -604,6 +660,10 @@ describe('what the table’s two SLOTS compile to', () => {
     expect(winner(p, 'display')).toBe('flex')
     expect(winner(p, 'align-items')).toBe('center')
     expect(winner(p, 'justify-content')).toBe('space-between')
+    // Not reversed either: the count reads at the start of an RTL line and the
+    // buttons at the end, and `flex-row-reverse` swaps them with nothing else
+    // in the suite noticing.
+    expect(winner(p, 'flex-direction')).toBe('')
     expect(winner(p, 'gap')).toBe('var(--space-6)')
     expect(winner(p, 'padding-top')).toBe('var(--space-7)')
     expect(winner(p, 'padding-right')).toBe('var(--space-9)')
@@ -620,13 +680,71 @@ describe('what the pager’s class strings compile to', () => {
     return screen.getByRole('button', { name: 'صفحهٔ بعدی' }).className
   }
 
+  /** The row the two buttons sit in, and the two glyphs inside them. */
+  const parts = () => {
+    const { container } = render(<Pager from={1} to={5} count={12} page={2} pages={3} onPage={() => {}} />)
+    const row = container.querySelector('[data-r-pagernav]')
+    if (row === null) throw new Error('the pager draws no [data-r-pagernav] row')
+    return {
+      row: (row as HTMLElement).className,
+      glyphs: Array.from(container.querySelectorAll('svg')).map((s) => s.getAttribute('class') ?? ''),
+    }
+  }
+
+  it('never reverses the row the two arrows sit in', async () => {
+    // F1's defect, re-entering one level up. `flex-row-reverse` here swaps the
+    // two buttons on screen so each arrow again points at the page it will NOT
+    // open — and it moves neither the DOM order, nor the `aria-label`, nor the
+    // `d`, which are the only three things the chevron test reads. Visual order
+    // is a compiled declaration, so it is asserted as one.
+    const r = await paint(parts().row)
+    expect(winner(r, 'flex-direction')).toBe('')
+    expect(winner(r, 'flex-direction', '', R760)).toBe('')
+    // …and the row itself, which nothing compiled before: `gap-s4` → `gap-s99`
+    // emits nothing at all and the two buttons close up against each other.
+    expect(winner(r, 'display')).toBe('flex')
+    expect(winner(r, 'align-items')).toBe('center')
+    expect(winner(r, 'gap')).toBe('var(--space-4)')
+  })
+
+  it('sizes both chevrons from the theme, inside a 34px button', async () => {
+    // The SVGs carry no `width`/`height` ATTRIBUTE, so a dead size class does
+    // not fall back to something a little wrong — it falls back to the replaced
+    // element default of 300×150 and blows the 34px button apart. Both glyphs,
+    // because only one of them is ever the one that was edited.
+    const { glyphs } = parts()
+    expect(glyphs).toHaveLength(2)
+    for (const g of glyphs) {
+      const s = await paint(g)
+      expect(winner(s, 'width'), g).toBe('var(--size-chevron)')
+      expect(winner(s, 'height'), g).toBe('var(--size-chevron)')
+    }
+  })
+
   it('draws the design’s 34px box and grows the target around it', async () => {
     const p = await paint(nav())
     expect(winner(p, 'width')).toBe('var(--size-pager)')
     expect(winner(p, 'height')).toBe('var(--size-pager)')
-    // Never inflated: a `min-height` would beat `height` and silently turn the
-    // drawn control into a 44px one.
+    // Never inflated: a `min-width`/`min-height` beats `width`/`height` and
+    // silently turns the drawn control into a 44px one, which is the rule this
+    // whole ladder exists to keep. `expectExpandedHitArea` resolves the same
+    // three properties off the class list; this is the compiled counterpart,
+    // and the reason that helper is allowed to stay synchronous.
     expect(winner(p, 'min-height')).toBe('')
+    expect(winner(p, 'min-width')).toBe('')
+    expect(winner(p, 'max-width')).toBe('')
+    expect(winner(p, 'max-height')).toBe('')
+    // Nothing clips the ::before back to the drawn box, and nothing takes the
+    // pointer events off it — a 44px box that catches nothing is the failure
+    // with no symptom.
+    expect(winner(p, 'overflow')).toBe('')
+    expect(winner(p, 'pointer-events')).toBe('')
+    expect(winner(p, 'pointer-events', '::before')).toBe('')
+    // …and the ::before is generated at all: `display:none`, `visibility:hidden`
+    // and `transform:scale(0)` each leave the selector emitting and the box gone.
+    expect(winner(p, 'display', '::before')).toBe('')
+    expect(winner(p, 'visibility', '::before')).toBe('')
+    expect(winner(p, 'transform', '::before')).toBe('')
     expect(winner(p, 'position')).toBe('relative')
     expect(winner(p, 'position', '::before')).toBe('absolute')
     expect(winner(p, 'inset', '::before')).toBe('-5px')
@@ -721,6 +839,77 @@ describe('expectExpandedHitArea', () => {
     expect(() => expectExpandedHitArea(control(
       'relative before:absolute before:-inset-[5px] w-pager h-pager',
     ))).toThrow(/before:content/)
+  })
+
+  it('refuses the one content VALUE that passes a spelling check and draws nothing', () => {
+    // `before:content-[none]` matches `/^before:content-\[/` exactly, and sets
+    // `content: none`, which generates no box at all. The check was defeated by
+    // the single value that defeats its purpose.
+    expect(() => expectExpandedHitArea(control(
+      'relative before:absolute before:content-[none] before:-inset-[5px] w-pager h-pager',
+    ))).toThrow(/content: none/)
+    expect(() => expectExpandedHitArea(control(
+      'relative before:absolute before:content-none before:-inset-[5px] w-pager h-pager',
+    ))).toThrow(/content: none/)
+  })
+
+  it('refuses a ::before that is generated and then told not to draw', () => {
+    const base = 'relative before:absolute before:content-[""] before:-inset-[5px] w-pager h-pager'
+    for (const [klass, why] of [
+      ['before:hidden', /display: none/],
+      ['before:invisible', /visibility: hidden/],
+      ['before:scale-0', /scales the box to nothing/],
+      ['before:static', /back into the layout/],
+      ['md:before:hidden', /display: none/],
+    ] as const) {
+      expect(() => expectExpandedHitArea(control(`${base} ${klass}`)), klass).toThrow(why)
+    }
+  })
+
+  it('refuses a control that clips its own ::before back to the drawn box', () => {
+    // `overflow-hidden` is the most ordinary class in the file — it is on the
+    // table shell three lines from here — and on a control it cuts the 44px
+    // overlay back to the 34px the control looks like.
+    const base = 'relative before:absolute before:content-[""] before:-inset-[5px] w-pager h-pager'
+    for (const klass of ['overflow-hidden', 'overflow-clip', 'overflow-x-hidden']) {
+      expect(() => expectExpandedHitArea(control(`${base} ${klass}`)), klass).toThrow(/clips its own/)
+    }
+  })
+
+  it('refuses pointer-events-none on the CONTROL, not only on the ::before', () => {
+    // The strictly weaker `before:` form was refused while the stronger one —
+    // which takes the ::before with it, because pointer-events inherits —
+    // passed.
+    expect(() => expectExpandedHitArea(control(
+      'relative before:absolute before:content-[""] before:-inset-[5px] pointer-events-none w-pager h-pager',
+    ))).toThrow(/on the CONTROL/)
+  })
+
+  it('refuses a drawn box that a min-width quietly inflates to the floor', () => {
+    // `min-width` beats `width`, so this control paints 44px — exactly the
+    // "never inflate a drawn control to the floor" rule this helper says it
+    // enforces, defeated by reading `w-`/`h-` while the browser resolves
+    // `min-*`. Same species as the `w-pager h-chevron` hole.
+    expect(() => expectExpandedHitArea(control(
+      'relative before:absolute before:content-[""] before:-inset-[5px] w-pager h-pager min-w-touch min-h-touch',
+    ))).toThrow(/44px wide \(`min-w-touch`\).+expectTouchTarget/s)
+  })
+
+  it('refuses a control that states one axis twice, rather than guessing which wins', () => {
+    // `drawnBox()` returned the first match in CLASS-STRING order while CSS
+    // resolves by EMITTED order — the exact mistake this file's own
+    // `paint`/`winner` docstring warns about, made by the helper beside it.
+    expect(() => expectExpandedHitArea(control(
+      'relative before:absolute before:content-[""] before:-inset-[5px] w-pager w-touch h-pager',
+    ))).toThrow(/EMITTED order/)
+  })
+
+  it('refuses an inset that holds at one width and shrinks at another', () => {
+    // 34 + 2×1 = 36. Below 768px the target is 44px and above it 36px, and the
+    // check that read the unconditional class alone called that correct.
+    expect(() => expectExpandedHitArea(control(
+      'relative before:absolute before:content-[""] before:-inset-[5px] md:before:-inset-[1px] w-pager h-pager',
+    ))).toThrow(/36px wide/)
   })
 
   it('refuses a ::before that is told not to take pointer events', () => {
