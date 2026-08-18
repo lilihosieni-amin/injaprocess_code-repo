@@ -575,7 +575,8 @@ describe('every class these five composites write, in every branch', () => {
     ['StatTile compact with the dot', () => <StatTile value={3} label="ل" skin="compact" dot />],
     ['StatTile with a string value', () => <StatTile value="۱ تا ۵" label="ل" />],
     ['NavTabTray', () => <NavTabTray label="ن" value="mine" tabs={TABS} onChange={() => {}} />],
-    ['NavTabTray stretched', () => <NavTabTray label="ن" value="all" tabs={TABS} onChange={() => {}} stretch />],
+    ['NavTabTray unstretched', () => <NavTabTray label="ن" value="all" tabs={TABS} onChange={() => {}} stretch={false} />],
+    ['NavTabTray wrapped', () => <NavTabTray label="ن" value="all" tabs={TABS} onChange={() => {}} wrap />],
     ...(['done', 'awaiting', 'rejected', 'pending'] as TimelineState[]).map(
       (state): [string, () => ReactNode] => [
         `Timeline/${state}`,
@@ -1452,7 +1453,7 @@ describe('NavTabTray', () => {
     expect(await snap(container.firstElementChild!)).toEqual([
       'background-color: var(--tile-v2)',
       'border-radius: var(--radius-md)',
-      'display: inline-flex',
+      'display: flex',
       'gap: var(--space-1)',
       'padding: var(--space-1)',
     ])
@@ -1466,6 +1467,11 @@ describe('NavTabTray', () => {
       'border-radius: var(--radius-sm)',
       'border-width: 0px',
       'cursor: pointer',
+      // OWNER RULING — `flex:1` on every tab is the DEFAULT, because it is what
+      // both trays draw. It is in `shared` and not in a branch below for the
+      // same reason the padding is: it is not a variant of this control, it is
+      // this control.
+      'flex: 1 1 0%',
       'font-size: var(--fs-sm2)',
       'font-weight: var(--fw-bold)',
       // OWNER RULING — `9px 10px`, the audit tray's own padding (panel 1511).
@@ -1497,14 +1503,69 @@ describe('NavTabTray', () => {
       .not.toBe('var(--space-7)')
   })
 
-  it('spans its container only when the caller asks', async () => {
-    const { unmount } = render(<NavTabTray label="نما" value="mine" tabs={TABS} onChange={() => {}} />)
-    expect(await snap(screen.getByRole('tab', { name: 'همه' }))).not.toContain('flex: 1 1 0%')
-    unmount()
-    render(<NavTabTray label="نما" value="mine" tabs={TABS} onChange={() => {}} stretch />)
+  it('spans its container by default, and stops only when the caller says so', async () => {
+    // OWNER RULING. Both trays draw `display:flex` on the tray and `flex:1` on
+    // every tab, so that is the default; `stretch={false}` is the exception.
+    //
+    // The two halves are ONE decision and the test says why: `flex:1` inside an
+    // `inline-flex` container divides the leftover space in a box that
+    // shrink-to-fits, which is none of it. Under the old `inline-flex` the
+    // `stretch` prop was a class that reached the element and changed nothing —
+    // the assertion below would have passed then too, which is exactly why the
+    // container is asserted here rather than only in the tray's own snapshot.
+    const { container, unmount } = render(
+      <NavTabTray label="نما" value="mine" tabs={TABS} onChange={() => {}} />,
+    )
+    expect(winner(await paint(container.firstElementChild!.className), 'display')).toBe('flex')
+    expect(winner(await paint(container.firstElementChild!.className), 'display')).not.toBe('inline-flex')
     for (const tab of screen.getAllByRole('tab')) {
       expect(await snap(tab)).toContain('flex: 1 1 0%')
     }
+    unmount()
+
+    render(<NavTabTray label="نما" value="mine" tabs={TABS} onChange={() => {}} stretch={false} />)
+    // …and the tray is still `flex` when the tabs are not stretched: the
+    // container is the ruling, the tabs are the prop.
+    expect(winner(await paint(screen.getByRole('tablist').className), 'display')).toBe('flex')
+    for (const tab of screen.getAllByRole('tab')) {
+      expect(await snap(tab)).not.toContain('flex: 1 1 0%')
+    }
+  })
+
+  it('wraps with a 132px floor under every tab, or neither', async () => {
+    // The audit tray's other half (panel 1511), which the comments tray does
+    // not have. The two are one decision: a floor with no wrap overflows the
+    // tray, and a wrap with no floor never has anything to wrap. Asserted
+    // together, and asserted ABSENT together, because either one alone is a
+    // tray the design does not draw.
+    const { container, unmount } = render(
+      <NavTabTray label="نما" value="mine" tabs={TABS} onChange={() => {}} wrap />,
+    )
+    expect(await snap(container.firstElementChild!)).toEqual([
+      'background-color: var(--tile-v2)',
+      'border-radius: var(--radius-md)',
+      'display: flex',
+      'flex-wrap: wrap',
+      'gap: var(--space-1)',
+      'padding: var(--space-1)',
+    ])
+    for (const tab of screen.getAllByRole('tab')) {
+      expect(await snap(tab)).toContain('min-width: var(--width-tab)')
+    }
+    // 132px, and it is the AUDIT TAB's token — the tray has three other floors
+    // at other numbers and this one wears its own name (R16).
+    expect(tokenLiteral('--width-tab')).toBe('132px')
+    unmount()
+
+    const plain = render(<NavTabTray label="نما" value="mine" tabs={TABS} onChange={() => {}} />)
+    expect(await snap(plain.container.firstElementChild!)).not.toContain('flex-wrap: wrap')
+    for (const tab of screen.getAllByRole('tab')) {
+      expect(await snap(tab)).not.toContain('min-width: var(--width-tab)')
+    }
+    // …because unconditional it would be wrong: three 132px tabs and two 4px
+    // gaps need 404px, and the comments tray has 356px of usable width, so the
+    // floor alone would put that tray on two rows.
+    expect(3 * 132 + 2 * 4).toBeGreaterThan(356)
   })
 
   /* -----------------------------------------------------------------------

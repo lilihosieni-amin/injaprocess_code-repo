@@ -41,16 +41,44 @@ export interface NavTab { id: string; label: string }
  * The 4px gap between two tabs is exactly 2x4, so a tab's target reaches its
  * neighbour's drawn edge and stops there. Under the 8px padding this replaced
  * the inset was 5px and lapped 1px over; the owner's ruling removes even that.
+ *
+ * OWNER RULING — the tray is `display:flex` and every tab is `flex:1`, because
+ * that is what BOTH trays draw (panel 953 and 1511) and R1 makes the
+ * deliverable the authority. The two halves are one decision, not two: `flex:1`
+ * inside an `inline-flex` container distributes the leftover space in a box
+ * that shrink-to-fits, which is none of it — so `stretch` on its own was a prop
+ * that could not do anything, and `inline-flex` was the reason. The tray spans
+ * its container and the tabs divide it. `stretch={false}` is still there for a
+ * caller that wants content-sized tabs; nothing in the deliverable asks for
+ * one, and the ruling made it the exception rather than the default.
+ *
+ * `wrap` is the audit tray's OTHER half (panel 1511): `flex-wrap:wrap` on the
+ * tray and `min-width:132px` (`min-w-tab`) under every tab. Those two are also
+ * one decision — a floor without a wrap overflows, because that tray's six tabs
+ * need 6x132 and no tray is that wide — and they are the six-tab tray's and not
+ * the three-tab tray's. Unconditional `min-w-tab` would push the comments tray
+ * (356px of usable width, three tabs, 404px of floor) onto two rows, which the
+ * design does not draw. So it is a prop, and the default is the tray the
+ * comments screen draws.
  */
 export function NavTabTray({
-  tabs, value, onChange, label, stretch = false, className = '',
+  tabs, value, onChange, label, stretch = true, wrap = false, className = '',
 }: {
   tabs: NavTab[]
   value: string
   onChange: (id: string) => void
   label: string
-  /** `flex:1` on every tab, for a tray that spans its container. */
+  /**
+   * `flex:1` on every tab, which is what both trays draw. Pass `false` for
+   * content-sized tabs — a shape the deliverable does not have.
+   */
   stretch?: boolean
+  /**
+   * The audit tray's pair: the tray wraps and every tab gets `min-w-tab`'s
+   * 132px floor, so more tabs than fit one row break onto the next instead of
+   * squashing to nothing.
+   */
+  wrap?: boolean
   className?: string
 }) {
   const box = useRef<HTMLDivElement>(null)
@@ -79,7 +107,7 @@ export function NavTabTray({
       role="tablist"
       aria-label={label}
       onKeyDown={onKeyDown}
-      className={`inline-flex gap-s1 p-s1 rounded-button bg-tile-v2 ${className}`}
+      className={`flex gap-s1 p-s1 rounded-button bg-tile-v2 ${wrap ? 'flex-wrap' : ''} ${className}`}
     >
       {tabs.map((t) => {
         const active = t.id === value
@@ -91,7 +119,7 @@ export function NavTabTray({
             aria-selected={active}
             tabIndex={active ? 0 : -1}
             onClick={() => onChange(t.id)}
-            className={`relative before:absolute before:content-[""] before:-inset-[4px] px-s5 py-tab-y-audit rounded-tool border-0 cursor-pointer text-fs-sm2 font-bold ${stretch ? 'flex-1' : ''} ${active ? 'bg-violet text-card' : 'bg-transparent text-violet'}`}
+            className={`relative before:absolute before:content-[""] before:-inset-[4px] px-s5 py-tab-y-audit rounded-tool border-0 cursor-pointer text-fs-sm2 font-bold ${stretch ? 'flex-1' : ''} ${wrap ? 'min-w-tab' : ''} ${active ? 'bg-violet text-card' : 'bg-transparent text-violet'}`}
           >
             {t.label}
           </button>
