@@ -1,22 +1,10 @@
 import { useId, useState } from 'react'
+import { Icon } from './Icon'
 import type { FieldGround } from './fieldFrame'
 import {
   FIELD_FRAME, FIELD_LABEL, FIELD_PAD_REVEAL, FIELD_TYPE,
   fieldEdge, fieldGround, fieldHint,
 } from './fieldFrame'
-
-// Folded into `Icon` by Task 11. The design names the glyph and its size
-// («17x17 eye / eye-off») but ships no path for it, and InjaIcons' 33 keys have
-// no eye — ledger L-39 — so these two are drawn to the set's stated
-// construction (24x24 box, currentColor stroke, round caps) rather than quoted.
-//
-// EYE_OFF is EYE struck through. Which of the two is on screen is the only
-// thing a SIGHTED user has to tell the two states apart — `aria-pressed` and
-// the label carry it for everyone else — so swapping them is a defect no
-// accessible-name assertion can see, and fields.test.tsx asserts the struck
-// path itself in both states.
-const EYE = <><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z" /><circle cx="12" cy="12" r="3" /></>
-const EYE_OFF = <><path d="M10.6 6.2A9.7 9.7 0 0 1 12 6c6.4 0 10 7 10 7a17.6 17.6 0 0 1-3.4 4.3M6.6 7.7A17.6 17.6 0 0 0 2 13s3.6 7 10 7a9.6 9.6 0 0 0 4.2-.9" /><path d="M3 3l18 18" /></>
 
 export interface PasswordFieldProps {
   label: string
@@ -98,10 +86,21 @@ export function PasswordField({
               'bg-transparent rounded-reveal text-muted cursor-pointer hover:bg-tile-v2 hover:text-violet'
             }
           >
-            <svg className="w-reveal-glyph h-reveal-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-              strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden focusable="false">
-              {shown ? EYE_OFF : EYE}
-            </svg>
+            {/* The glyph is sized by `--size-reveal-glyph` and NOT by a `px`
+                prop: an SVG width attribute beats the stylesheet, and
+                fields.test.tsx resolves this box through the cascade. `Icon`'s
+                default stroke is the 2 that file asserts.
+
+                `eyeOff` is `eye` struck through, and which of the two is on
+                screen is the only thing a SIGHTED user has to tell the two
+                states apart — `aria-pressed` and the label carry it for
+                everyone else — so swapping them is a defect no accessible-name
+                assertion can see. src/ui/icons/index.tsx holds both paths,
+                byte-identical to the two constants this replaced. */}
+            <Icon
+              name={shown ? 'eyeOff' : 'eye'}
+              className="w-reveal-glyph h-reveal-glyph"
+            />
           </button>
         </span>
       </div>

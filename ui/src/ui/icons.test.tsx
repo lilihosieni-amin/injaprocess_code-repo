@@ -164,6 +164,35 @@ function roleTarget(role: string, surface: 'panel' | 'reader' = 'panel'): string
 
 const sourceOf = (file: string) => readFileSync(join(process.cwd(), 'src/ui', file), 'utf8')
 
+/** The panel deliverable — the file every value in this rebuild is measured against. */
+const designSrc = join(process.cwd(), 'design/Inja Panel.dc.html')
+
+/**
+ * The `d` of the first glyph the design draws inside the affordance `marker`
+ * names — its `onClick` binding, or the label beside it.
+ *
+ * This is how a chevron's DIRECTION gets asserted against something other than
+ * an opinion. Each marker occurs exactly once in the deliverable, which the
+ * helper checks, so "the first path after it" is that button's own glyph.
+ */
+function drawnBy(marker: string): string {
+  const src = readFileSync(designSrc, 'utf8')
+  const at = src.indexOf(marker)
+  expect(at, `the design draws no ${marker}`).toBeGreaterThan(0)
+  expect(src.indexOf(marker, at + 1), `${marker} is not unique in the deliverable`).toBe(-1)
+  return /<path d="([^"]+)"/.exec(src.slice(at, at + 1500))?.[1] ?? ''
+}
+
+/** The single `d` the named icon draws, for the one-path glyphs. */
+function pathOf(name: keyof typeof ICONS): string {
+  const { container, unmount } = render(<Icon name={name} />)
+  const paths = Array.from(container.querySelectorAll('path'))
+  expect(paths, name).toHaveLength(1)
+  const d = paths[0].getAttribute('d') ?? ''
+  unmount()
+  return d
+}
+
 function on(surface: 'panel' | 'reader', node: ReactNode) {
   return render(<SurfaceProvider surface={surface}>{node}</SurfaceProvider>)
 }
@@ -258,10 +287,10 @@ describe('Icon', () => {
 
   it('carries the paths the design fixes, byte for byte', () => {
     const fixed: Record<string, string> = {
-      chevronEnd: 'M9 18l6-6-6-6',
-      chevronStart: 'M15 18l-6-6 6-6',
-      chevronNext: 'M9 6l6 6-6 6',
-      chevronPrev: 'M15 6l-6 6 6 6',
+      chevronStart: 'M9 18l6-6-6-6',
+      chevronEnd: 'M15 18l-6-6 6-6',
+      chevronPrev: 'M9 6l6 6-6 6',
+      chevronNext: 'M15 6l-6 6 6 6',
       chevronDown: 'M6 9l6 6 6-6',
       chevronUp: 'M18 15l-6-6-6 6',
       check: 'M20 6L9 17l-5-5',
@@ -276,28 +305,66 @@ describe('Icon', () => {
     expect(search.container.querySelector('path')?.getAttribute('d')).toBe('m21 21-4.3-4.3')
   })
 
-  it('quotes the four glyphs this codebase already drew, rather than redrawing them', () => {
-    // `comment` is the sharp one: an earlier draft of the icon set invented a
-    // speech bubble on the premise that the design ships none. It ships one —
-    // src/ui/FAB.tsx carries it and src/ui/composites.test.tsx pins it — and
-    // step 8 of this task swaps that <svg> for this key, so an invented path
-    // would have changed the FAB's glyph while every class assertion about the
-    // disc stayed green.
-    const pathsOf = (src: string) =>
-      [...src.matchAll(/\sd="([^"]+)"/g)].map((m) => m[1])
-    const quoted = (file: string, name: keyof typeof ICONS) => {
+  it('names each horizontal chevron for where it points in a RIGHT-TO-LEFT product', () => {
+    // The plan's icon table had all four the English way round — `chevronNext`
+    // pointing right, `chevronStart` pointing left — and this app is RTL. Every
+    // one of them compiles, looks right in a review, and puts the arrow on the
+    // affordance it does not perform: it is the defect src/ui/Pager.tsx's
+    // docstring exists about, one layer up and in four places instead of two.
+    //
+    // So the four names are pinned to the four BUTTONS the design draws them
+    // on, read out of the deliverable itself rather than restated here. A
+    // future task reaching for `chevronStart` for a back button gets the design's
+    // own back button, whatever anyone thought "start" meant.
+    expect(drawnBy('onClick="{{ back }}"')).toBe(pathOf('chevronStart'))
+    expect(drawnBy('{{ d.cta }}')).toBe(pathOf('chevronEnd'))
+    expect(drawnBy('onClick="{{ prevPage }}"')).toBe(pathOf('chevronPrev'))
+    expect(drawnBy('onClick="{{ nextPage }}"')).toBe(pathOf('chevronNext'))
+    // …and the pairs really are pairs, or one path used for all four would
+    // satisfy every line above.
+    const four = ['chevronStart', 'chevronEnd', 'chevronPrev', 'chevronNext'] as const
+    expect(new Set(four.map(pathOf)).size).toBe(4)
+  })
+
+  it('quotes the glyphs that already existed, rather than redrawing them', () => {
+    // `comment` is the sharp one: an earlier draft of this set invented a speech
+    // bubble on the premise that the design ships none. It ships one, four times
+    // over in each deliverable, and src/ui/FAB.tsx was already drawing it — so
+    // the swap in step 8 would have changed the FAB's glyph while every class
+    // assertion about the disc stayed green. Read from the DESIGN, because
+    // FAB.tsx now reads this set and a check against it would be circular.
+    expect(readFileSync(designSrc, 'utf8')).toContain(pathOf('comment'))
+    // The two the prototype drew and this task carried over unchanged. Both
+    // shells still draw them inline — neither is on this task's Modify list —
+    // so these are a real comparison and not a restatement.
+    const shell = readFileSync(join(process.cwd(), 'src/shell/PanelShell.tsx'), 'utf8')
+    for (const name of ['inbox', 'logout'] as const) {
       const { container, unmount } = render(<Icon name={name} />)
       const drawn = Array.from(container.querySelectorAll('path')).map((p) => p.getAttribute('d'))
-      const inFile = pathsOf(readFileSync(join(process.cwd(), file), 'utf8'))
-      for (const d of drawn) expect(inFile, `${name} is not the path ${file} draws`).toContain(d)
       expect(drawn.length, name).toBeGreaterThan(0)
+      for (const d of drawn) expect(shell, `${name} is not the path the shell draws`).toContain(d)
       unmount()
     }
-    quoted('src/ui/FAB.tsx', 'comment')
-    quoted('src/shell/PanelShell.tsx', 'inbox')
-    quoted('src/shell/PanelShell.tsx', 'logout')
-    quoted('src/ui/PasswordField.tsx', 'eye')
-    quoted('src/ui/PasswordField.tsx', 'eyeOff')
+  })
+
+  it('draws eyeOff as eye struck through, and eye unstruck', () => {
+    // Ledger L-39: InjaIcons ships no eye, so these two were authored — in
+    // src/ui/PasswordField.tsx, and moved here unchanged. The strike is the
+    // whole difference between the two states and the only one a SIGHTED user
+    // can see (`aria-pressed` and the label carry it for everyone else), which
+    // is why src/ui/fields.test.tsx asserts it in both states and this asserts
+    // it of the set they now both come from.
+    const strike = 'M3 3l18 18'
+    const paths = (name: 'eye' | 'eyeOff') => {
+      const { container, unmount } = render(<Icon name={name} />)
+      const out = Array.from(container.querySelectorAll('path')).map((p) => p.getAttribute('d'))
+      unmount()
+      return out
+    }
+    expect(paths('eyeOff')).toContain(strike)
+    expect(paths('eye')).not.toContain(strike)
+    // …and eyeOff is the eye WITH a strike, not a bare diagonal line.
+    expect(paths('eyeOff').length).toBeGreaterThan(1)
   })
 
   it('draws the kebab vertically, the way S1 does', () => {

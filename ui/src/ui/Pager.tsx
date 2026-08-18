@@ -1,3 +1,4 @@
+import { Icon } from './Icon'
 import { toFa } from '../lib/format'
 
 export interface PagerProps {
@@ -25,8 +26,14 @@ const NAV =
   // cannot act is never hidden and never a pointer target.
   'disabled:text-disabled disabled:cursor-default'
 
-/**
- * The two chevrons, in the direction a RIGHT-TO-LEFT reader travels.
+/*
+ * THE TWO CHEVRONS, in the direction a RIGHT-TO-LEFT reader travels.
+ *
+ * The two `<Icon>` calls below carry `chevronPrev` and `chevronNext`, whose
+ * paths are `M9 6l6 6-6 6` and `M15 6l-6 6 6 6` in src/ui/icons/index.tsx. This
+ * is the only written record of WHY «قبلی» points right, and it stays with the
+ * component that pairs the glyph to the label rather than moving to the set,
+ * which knows nothing about either.
  *
  * «صفحهٔ قبلی» is first in the DOM, which in RTL puts it on the RIGHT — and the
  * page before this one lies further right, so it points RIGHT. «صفحهٔ بعدی» is
@@ -36,15 +43,9 @@ const NAV =
  *
  * Swapped, the two arrows point inward at each other and each points at the
  * page it will NOT take you to. Nothing about a `d` attribute is checked by a
- * class-string test, a snapshot or a build, which is why they are named here
- * and pinned to their labels in src/ui/table.test.tsx.
+ * class-string test, a snapshot or a build, which is why the two names are
+ * pinned to their two labels in src/ui/table.test.tsx.
  */
-const CHEVRON = {
-  /** `>` — towards the start of the list, which in RTL is to the right. */
-  prev: 'M9 6l6 6-6 6',
-  /** `<` — towards the end of the list, which in RTL is to the left. */
-  next: 'M15 6l-6 6 6 6',
-} as const
 
 export function Pager({ from, to, count, page, pages, onPage }: PagerProps) {
   return (
@@ -67,11 +68,9 @@ export function Pager({ from, to, count, page, pages, onPage }: PagerProps) {
           type="button" aria-label="صفحهٔ قبلی" disabled={page <= 1}
           onClick={() => onPage(page - 1)} className={NAV}
         >
-          {/* Folded into `Icon` by Task 11 — chevronPrev, 15×15 @2.4 (§8). */}
-          <svg className="w-chevron h-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-            strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden focusable="false">
-            <path d={CHEVRON.prev} />
-          </svg>
+          {/* `>` — towards the START of the list, which in RTL is to the right.
+              15×15 @2.4 (§8), sized by `--size-chevron` and not by an attribute. */}
+          <Icon name="chevronPrev" stroke={2.4} className="w-chevron h-chevron" />
         </button>
         {/* The label is held at `--width-page-label` so the two buttons do not
             shift sideways as ۹ becomes ۱۰. */}
@@ -82,10 +81,8 @@ export function Pager({ from, to, count, page, pages, onPage }: PagerProps) {
           type="button" aria-label="صفحهٔ بعدی" disabled={page >= pages}
           onClick={() => onPage(page + 1)} className={NAV}
         >
-          <svg className="w-chevron h-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-            strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden focusable="false">
-            <path d={CHEVRON.next} />
-          </svg>
+          {/* `<` — towards the END of the list, which in RTL is to the left. */}
+          <Icon name="chevronNext" stroke={2.4} className="w-chevron h-chevron" />
         </button>
       </div>
     </div>

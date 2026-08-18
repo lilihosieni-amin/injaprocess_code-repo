@@ -1,3 +1,4 @@
+import { Icon } from './Icon'
 import { toFa } from '../lib/format'
 
 /**
@@ -37,14 +38,15 @@ export function FAB({
       aria-label={count > 0 ? `${label}، ${toFa(count)} مورد` : label}
       className={`fixed bottom-s10 right-s10 left-auto z-floating w-fab h-fab inline-flex items-center justify-center rounded-round bg-coral text-card border-0 cursor-pointer shadow-fab ${className}`}
     >
-      {/* The deliverable's own speech-bubble path, at its own 2.2 stroke. Folded
-          into `Icon` by Task 11, step 8 — which is also where the glyph's box
-          stops being an attribute: the panel draws it 22px and the reader 24px,
-          a surface pair that has no role of its own yet. */}
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-        strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden focusable="false">
-        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-      </svg>
+      {/* The deliverable's own speech-bubble path, at its own 2.2 stroke, now
+          held once in src/ui/icons/index.tsx as `comment` — where it was quoted
+          FROM this file rather than redrawn.
+
+          The box stays an attribute. The panel draws it 22px and the reader
+          24px, and that surface pair has no role of its own, so there is no
+          class to write; when one is minted the `px` comes off and a class
+          goes on, the way the pager's and the dropdown's already have. */}
+      <Icon name="comment" px={22} stroke={2.2} />
       {count > 0 && (
         <span
           data-fab-badge

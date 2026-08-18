@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react'
+import { Icon } from './Icon'
 import { useSurface } from './surface'
 import { pushDismissible, popDismissible, isTopDismissible } from './dismissibleStack'
 import { TickBox } from './Checkbox'
@@ -158,14 +159,11 @@ export function Dropdown({
         >
           {chosen.length ? chosen.map((o) => o.label).join('، ') : placeholder}
         </span>
-        {/* Folded into `Icon` by Task 11. chevron-down, 15×15 @2.2 (§5.2) —
-            sized by `--size-chevron`, which is the pager's glyph too, rather
-            than by a width attribute that would be a second record of it. */}
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
-          strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"
-          aria-hidden focusable="false" className="w-chevron h-chevron flex-none text-muted">
-          <path d="M6 9l6 6 6-6" />
-        </svg>
+        {/* chevron-down, 15×15 @2.2 (§5.2) — sized by `--size-chevron`, which
+            is the pager's glyph too, rather than by a width attribute that
+            would be a second record of it. `Icon` writes no width unless it is
+            given a `px`, which is what keeps the class in charge. */}
+        <Icon name="chevronDown" stroke={2.2} className="w-chevron h-chevron flex-none text-muted" />
       </button>
       {open && (
         // The popover is a plain <div>. ARIA 1.2 gives `listbox` required owned
@@ -197,15 +195,10 @@ export function Dropdown({
                   nothing. Pinned to the inline start, which is the edge the
                   design writes physically as `right` in an app whose html is
                   direction:rtl and which never runs ltr. */}
-              <svg
-                aria-hidden focusable="false"
+              <Icon
+                name="search"
                 className="absolute start-search-icon-menu top-1/2 -translate-y-1/2 pointer-events-none w-s7 h-s7 text-faint"
-                viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-                strokeLinecap="round" strokeLinejoin="round"
-              >
-                <circle cx="11" cy="11" r="7" />
-                <path d="m21 21-4.3-4.3" />
-              </svg>
+              />
             </div>
           )}
           {/* Stated, never blank — and a SIBLING of the list rather than a
@@ -248,11 +241,7 @@ export function Dropdown({
                     )}
                   </span>
                   {!multiple && picked && (
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                      strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"
-                      aria-hidden focusable="false" className="w-s7 h-s7 flex-none text-violet">
-                      <path d="M20 6L9 17l-5-5" />
-                    </svg>
+                    <Icon name="check" stroke={3} className="w-s7 h-s7 flex-none text-violet" />
                   )}
                 </button>
               )

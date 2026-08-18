@@ -26,10 +26,32 @@ import type { ReactNode } from 'react'
  * the screen that renders them.
  */
 export const ICONS = {
-  chevronStart: <path d="M15 18l-6-6 6-6" />,
-  chevronEnd: <path d="M9 18l6-6-6-6" />,
-  chevronNext: <path d="M9 6l6 6-6 6" />,
-  chevronPrev: <path d="M15 6l-6 6 6 6" />,
+  /* THE FOUR HORIZONTAL CHEVRONS ARE NAMED LOGICALLY, AND THIS APP IS RTL.
+   *
+   * A chevron pointing right is `start`/`prev` here and would be `end`/`next` in
+   * an English product; the plan's own table had them the English way round, and
+   * the design deliverable settles it against that table in four places:
+   *
+   *   · «بازگشت», the crumb bar's BACK button      (Panel :177) — points RIGHT
+   *   · the department card's OPEN cta             (Panel :257) — points LEFT
+   *   · «صفحهٔ قبلی», the pager's PREVIOUS button   (Panel :1603) — points RIGHT
+   *   · «صفحهٔ بعدی», the pager's NEXT button       (Panel :1607) — points LEFT
+   *
+   * which is the same rule everywhere: in a right-to-left reading, what you came
+   * from lies to the RIGHT and what you are going to lies to the LEFT. Named
+   * physically the four would be honest and unusable (F10 — RTL is structural);
+   * named the English way they compile, look right in review and put every arrow
+   * in the product on the affordance it does not perform. src/ui/icons.test.tsx
+   * pins all four to the design's own four buttons rather than to this comment.
+   */
+  /** `>` — towards the start of a trail: the back button. */
+  chevronStart: <path d="M9 18l6-6-6-6" />,
+  /** `<` — towards the end: the drill-in chevron on a card or a row. */
+  chevronEnd: <path d="M15 18l-6-6 6-6" />,
+  /** `>` — the previous page. */
+  chevronPrev: <path d="M9 6l6 6-6 6" />,
+  /** `<` — the next page. */
+  chevronNext: <path d="M15 6l-6 6 6 6" />,
   chevronDown: <path d="M6 9l6 6 6-6" />,
   chevronUp: <path d="M18 15l-6-6-6 6" />,
   check: <path d="M20 6L9 17l-5-5" />,
