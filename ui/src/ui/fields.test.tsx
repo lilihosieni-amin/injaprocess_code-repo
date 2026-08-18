@@ -157,6 +157,64 @@ function sharedAncestor(a: HTMLElement, b: HTMLElement): HTMLElement | undefined
   return undefined
 }
 
+/**
+ * The two inline paddings of a control, in whichever spelling its classes are
+ * written in.
+ *
+ * `px-*` emits the PHYSICAL pair and every other padding assertion in this file
+ * names the logical one, so reading `padding-left` / `padding-right` alone
+ * would go red on a rewrite that changed nothing a user sees. The app is RTL,
+ * so the inline start is the physical right.
+ */
+function inlinePad(painted: Painted[]): { start: string; end: string } {
+  return {
+    start: winner(painted, 'padding-inline-start') || winner(painted, 'padding-right'),
+    end: winner(painted, 'padding-inline-end') || winner(painted, 'padding-left'),
+  }
+}
+
+/**
+ * The three parts of a field, in the order a reader meets them going down the
+ * page: the label, then the control it names, then the rule statement — or the
+ * red error line — under it.
+ *
+ * Nothing else in this file can see that order. `getByLabelText` binds through
+ * `htmlFor`/`id` and `getByText` finds a node wherever it sits, so the whole
+ * suite stayed green with the label moved BELOW the control (every label in the
+ * product read as a caption under the wrong field) and with the hint moved
+ * between the label and the control (the rule statement and the error line
+ * pushing every input down the dialog).
+ *
+ * Order alone is not the claim either: a hint that goes `absolute` keeps its
+ * place in the document and leaves the flow entirely, taking the error line out
+ * from under the field it belongs to. So each part is walked up to the field's
+ * own box and every box on the way has to still be in flow.
+ */
+async function expectFieldStack(
+  label: HTMLElement,
+  control: HTMLElement,
+  hint: HTMLElement,
+): Promise<void> {
+  const box = sharedAncestor(label, hint)
+  expect(box).toBeDefined()
+  expect(box!.contains(control)).toBe(true)
+
+  const parts: [string, HTMLElement][] = [['label', label], ['control', control], ['hint', hint]]
+  for (const [name, el] of parts) {
+    for (let n: HTMLElement | null = el; n && n !== box; n = n.parentElement) {
+      expect(['', 'static', 'relative'], `${name} is out of flow`).toContain(await positionOf(n))
+    }
+  }
+  for (let i = 1; i < parts.length; i++) {
+    const [prev, before] = parts[i - 1]
+    const [next, after] = parts[i]
+    expect(
+      Boolean(before.compareDocumentPosition(after) & Node.DOCUMENT_POSITION_FOLLOWING),
+      `the ${next} does not come after the ${prev}`,
+    ).toBe(true)
+  }
+}
+
 type Pin = {
   el: HTMLElement
   edge: 'start' | 'end'
@@ -248,12 +306,21 @@ function on(surface: 'panel' | 'reader', node: ReactNode) {
  * FIELD_FRAME is shared, so anything it paints has to be asserted on all three
  * — an assertion about the single-line input alone covers one of the three
  * places a change to that string lands.
+ *
+ * `shared` puts a STATE on all three at once, for the same reason. The frame is
+ * shared but the class string each branch composes out of it is written three
+ * times, so `${edge}` dropped from the textarea's — a grey field beside its
+ * lilac sibling, no focus indicator at all because the frame carries
+ * `outline-none`, and no red edge when it is wrong — is invisible to any test
+ * that mounts one of the other two.
  */
-function everyShape(): Record<'input' | 'textarea' | 'password', HTMLElement> {
+function everyShape(
+  shared: { invalid?: boolean } = {},
+): Record<'input' | 'textarea' | 'password', HTMLElement> {
   on('panel', <>
-    <TextField label="نام" value="" onChange={() => {}} />
-    <TextField label="توضیح" value="" onChange={() => {}} multiline />
-    <PasswordField label="گذرواژه" value="" onChange={() => {}} />
+    <TextField label="نام" value="" onChange={() => {}} {...shared} />
+    <TextField label="توضیح" value="" onChange={() => {}} multiline {...shared} />
+    <PasswordField label="گذرواژه" value="" onChange={() => {}} {...shared} />
   </>)
   return {
     input: screen.getByLabelText('نام'),
@@ -287,33 +354,105 @@ describe('TextField', () => {
     expect(seen.join('')).toBe('سحر')
   })
 
-  it('rests on the control border and turns coral on focus', async () => {
-    on('panel', <TextField label="نام" value="" onChange={() => {}} />)
-    const el = screen.getByLabelText('نام')
-    expect(el).toHaveClass('border-hairline', 'border-line', 'focus:border-coral')
-    // §4.6 — no ring and no DRAWN outline. `outline-none` is the one permitted
-    // `outline-*`: it emits a transparent outline to kill the UA default and
-    // paints nothing. Written as "any outline-* that is not outline-none"
-    // rather than as "any outline-[" — the bracket form let `outline-4
-    // outline-coral` through, which is the exact decoration this rule bans.
-    expect(el.className).not.toMatch(/\bring-|\boutline-(?!none\b)/)
+  it('reports every keystroke from a textarea and from the password field too', async () => {
+    // React makes a `value`-bearing control with no `onChange` READ-ONLY: the
+    // user types and nothing appears. Dropping it from the textarea branch and
+    // dropping it from PasswordField were two separate one-word mutations and
+    // both were green, because the only control this file ever typed into was
+    // the single-line input.
+    const seen = { textarea: '', password: '' }
+    on('panel', <>
+      <TextField label="توضیح" value="" onChange={(v) => { seen.textarea += v }} multiline />
+      <PasswordField label="گذرواژه" value="" onChange={(v) => { seen.password += v }} />
+    </>)
+    await userEvent.type(screen.getByLabelText('توضیح'), 'سلام')
+    await userEvent.type(screen.getByLabelText('گذرواژه'), 'hunter2')
+    expect(seen).toEqual({ textarea: 'سلام', password: 'hunter2' })
+  })
 
-    // §4.3 / §4.6 — the border IS the state machine: 1.5px --line at rest,
-    // --coral on focus, and no ring, glow or outline anywhere near it.
-    const p = await paint(el.className)
-    expect(winner(p, 'border-width')).toBe('var(--border-hairline)')
-    expect(winner(p, 'border-color')).toBe('var(--line)')
-    expect(winner(p, 'border-color', ':focus')).toBe('var(--coral)')
-    expect(winner(p, 'box-shadow')).toBe('')
-    // The compiled half of the same rule, so it holds against a class name this
-    // regex has not been taught: the only outline in the sheet is the
-    // transparent one, at rest and on focus alike.
-    expect(winner(p, 'outline')).toBe('2px solid transparent')
-    expect(winner(p, 'outline-width')).toBe('')
-    expect(winner(p, 'outline-color')).toBe('')
-    expect(winner(p, 'outline-style')).toBe('')
-    expect(winner(p, 'outline', ':focus')).toBe('')
-    expect(winner(p, 'outline-width', ':focus')).toBe('')
+  it('puts a caller class on the field box, on both components', () => {
+    // Both components accept `className`, both destructure it, and nothing in
+    // this file passed one — so `<div className={className}>` -> `<div>` on
+    // either of them is invisible here, and every caller's placement class
+    // (the margin above it, its cell in a grid) silently does nothing.
+    on('panel', <>
+      <TextField label="نام" value="" onChange={() => {}} className="mt-s3" />
+      <PasswordField label="گذرواژه" value="" onChange={() => {}} className="mb-s3" />
+    </>)
+    for (const [cls, label] of [['mt-s3', 'نام'], ['mb-s3', 'گذرواژه']] as const) {
+      const box = screen.getByLabelText(label).closest(`.${cls}`)
+      expect(box, cls).not.toBeNull()
+      // …the FIELD's box and not some wrapper inside it: a class that places
+      // the field has to hold the label too, or it places half of one.
+      expect(box!.contains(screen.getByText(label)), cls).toBe(true)
+    }
+  })
+
+  it('forwards the attributes a form, a keyboard and a password manager need', () => {
+    // Five props accepted, type-checked, and then dropped on the floor — which
+    // is worse than refusing them, because the caller has no way to find out.
+    // `type` is the mobile keyboard the field brings up, `name` is whether it
+    // submits anything at all, `autoComplete` is whether a password manager
+    // fills it, and `placeholder` and `required` are what the caller wrote.
+    on('panel', <>
+      <TextField label="ایمیل" value="" onChange={() => {}} type="email" name="email"
+        placeholder="name@example.com" autoComplete="email" required />
+      <TextField label="توضیح" value="" onChange={() => {}} multiline name="note"
+        placeholder="در چند خط بنویسید" required />
+      <PasswordField label="گذرواژه" value="" onChange={() => {}} name="password" autoComplete="new-password" />
+    </>)
+
+    const email = screen.getByLabelText('ایمیل')
+    expect(email).toHaveAttribute('type', 'email')
+    expect(email).toHaveAttribute('name', 'email')
+    expect(email).toHaveAttribute('placeholder', 'name@example.com')
+    expect(email).toHaveAttribute('autocomplete', 'email')
+    expect(email).toBeRequired()
+
+    const note = screen.getByLabelText('توضیح')
+    expect(note).toHaveAttribute('name', 'note')
+    expect(note).toHaveAttribute('placeholder', 'در چند خط بنویسید')
+    expect(note).toBeRequired()
+
+    const password = screen.getByLabelText('گذرواژه')
+    expect(password).toHaveAttribute('name', 'password')
+    expect(password).toHaveAttribute('autocomplete', 'new-password')
+  })
+
+  it('rests on the control border and turns coral on focus, on every shape a field takes', async () => {
+    // The brief's thesis sentence — "the border carries the whole state
+    // machine" — held on the single-line input and was never asked of the other
+    // two. Deleting `${edge}` from the TEXTAREA's class string alone left this
+    // suite 34/34 green: preflight then paints `border-color` its own grey, so
+    // the textarea draws a grey edge beside its lilac sibling in the same
+    // dialog, it never turns coral on focus, and because FIELD_FRAME carries
+    // `outline-none` a focused textarea would have NO focus indicator at all.
+    for (const [shape, el] of Object.entries(everyShape())) {
+      expect(el, shape).toHaveClass('border-hairline', 'border-line', 'focus:border-coral')
+      // §4.6 — no ring and no DRAWN outline. `outline-none` is the one permitted
+      // `outline-*`: it emits a transparent outline to kill the UA default and
+      // paints nothing. Written as "any outline-* that is not outline-none"
+      // rather than as "any outline-[" — the bracket form let `outline-4
+      // outline-coral` through, which is the exact decoration this rule bans.
+      expect(el.className, shape).not.toMatch(/\bring-|\boutline-(?!none\b)/)
+
+      // §4.3 / §4.6 — the border IS the state machine: 1.5px --line at rest,
+      // --coral on focus, and no ring, glow or outline anywhere near it.
+      const p = await paint(el.className)
+      expect(winner(p, 'border-width'), shape).toBe('var(--border-hairline)')
+      expect(winner(p, 'border-color'), shape).toBe('var(--line)')
+      expect(winner(p, 'border-color', ':focus'), shape).toBe('var(--coral)')
+      expect(winner(p, 'box-shadow'), shape).toBe('')
+      // The compiled half of the same rule, so it holds against a class name this
+      // regex has not been taught: the only outline in the sheet is the
+      // transparent one, at rest and on focus alike.
+      expect(winner(p, 'outline'), shape).toBe('2px solid transparent')
+      expect(winner(p, 'outline-width'), shape).toBe('')
+      expect(winner(p, 'outline-color'), shape).toBe('')
+      expect(winner(p, 'outline-style'), shape).toBe('')
+      expect(winner(p, 'outline', ':focus'), shape).toBe('')
+      expect(winner(p, 'outline-width', ':focus'), shape).toBe('')
+    }
   })
 
   it('transitions the border at the app duration and nothing else', async () => {
@@ -326,17 +465,23 @@ describe('TextField', () => {
     expect(winner(p, 'transition-duration')).toBe('var(--duration)')
   })
 
-  it('fills its container, keeps its padding inside its width, and takes the app leading', async () => {
-    // Three classes that look like scaffolding and are each one line away from a
-    // visible break: without `w-full` the field is the browser's ~177px default,
-    // without `box-border` 100% + 14px + 14px + 1.5px + 1.5px hangs 31px out of
-    // its dialog, and without `leading-normal` the line-height falls back to
-    // `normal` and the control loses ~9px of height and stops matching Button.
-    on('panel', <TextField label="نام" value="" onChange={() => {}} />)
-    const p = await paint(screen.getByLabelText('نام').className)
-    expect(winner(p, 'width')).toBe('100%')
-    expect(winner(p, 'box-sizing')).toBe('border-box')
-    expect(winner(p, 'line-height')).toBe('var(--lh-normal)')
+  it('fills its container, keeps its padding inside its width, and takes the app leading, on every shape a field takes', async () => {
+    // Four classes that look like scaffolding and are each one line away from a
+    // visible break: without `w-full` the field is the browser's ~177px default
+    // (a TEXTAREA falls all the way to its ~20-column one, which is why this
+    // mounts all three rather than the single-line input it used to), without
+    // `box-border` 100% + 14px + 14px + 1.5px + 1.5px hangs 31px out of its
+    // dialog, without `leading-normal` the line-height falls back to `normal`
+    // and the control loses ~9px of height and stops matching Button, and
+    // without `block` the field is an inline box that ignores `w-full`'s
+    // sibling half of the deal and sits on the label's baseline.
+    for (const [shape, el] of Object.entries(everyShape())) {
+      const p = await paint(el.className)
+      expect(winner(p, 'display'), shape).toBe('block')
+      expect(winner(p, 'width'), shape).toBe('100%')
+      expect(winner(p, 'box-sizing'), shape).toBe('border-box')
+      expect(winner(p, 'line-height'), shape).toBe('var(--lh-normal)')
+    }
   })
 
   it('turns the same 12px corner on every shape a field takes', async () => {
@@ -391,6 +536,48 @@ describe('TextField', () => {
     expect(winner(h, 'margin-top')).toBe('var(--space-1)')
   })
 
+  it('draws the conflict edge and announces itself, on every shape a field takes', async () => {
+    // The other half of the state machine, and the same hole: `invalid` was
+    // asserted on the input and on the password field, never on the textarea,
+    // so the textarea drew no red edge when it was wrong and `aria-invalid`
+    // deleted from that branch — an invalid textarea that is never announced —
+    // was a one-word mutation with 34 green tests behind it.
+    for (const [shape, el] of Object.entries(everyShape({ invalid: true }))) {
+      expect(el, shape).toHaveAttribute('aria-invalid', 'true')
+      const p = await paint(el.className)
+      // §5.1.5 — invalid beats focus, so both states are read: a colour the two
+      // share would prove nothing about `invalid` at all.
+      expect(winner(p, 'border-color'), shape).toBe('var(--conflict)')
+      expect(winner(p, 'border-color', ':focus'), shape).toBe('var(--conflict)')
+    }
+  })
+
+  it('stacks the label, the control and the hint in that order, on both components', async () => {
+    // Two mutations that every other assertion in this file is blind to, and
+    // both of them are visible on every field in the product: moving the <p>
+    // from after the control to immediately after the <label> puts the rule
+    // statement — and the red error line — BETWEEN the label and the input,
+    // pushing the control down; moving the <label> after the control makes
+    // every label read as a caption under the wrong field. `getByLabelText`
+    // binds through htmlFor/id and `getByText` finds a node wherever it sits,
+    // so both stayed green on both components.
+    on('panel', <>
+      <TextField label="نام" value="" onChange={() => {}} hint="نام کامل، همان‌طور که در فیش حقوقی آمده" />
+      <PasswordField label="گذرواژه" value="" onChange={() => {}} invalid hint="گذرواژه کوتاه است" />
+    </>)
+    await expectFieldStack(
+      screen.getByText('نام'),
+      screen.getByLabelText('نام'),
+      screen.getByText('نام کامل، همان‌طور که در فیش حقوقی آمده'),
+    )
+    // …and the error line, which is the one a user reads under pressure.
+    await expectFieldStack(
+      screen.getByText('گذرواژه'),
+      screen.getByLabelText('گذرواژه'),
+      screen.getByText('گذرواژه کوتاه است'),
+    )
+  })
+
   it('keeps a neutral hint neutral', async () => {
     on('panel', <TextField label="نام" value="" onChange={() => {}} hint="نام کامل، همان‌طور که در فیش حقوقی آمده" />)
     const hint = screen.getByText('نام کامل، همان‌طور که در فیش حقوقی آمده')
@@ -434,9 +621,11 @@ describe('TextField', () => {
     // where the design scales and nowhere else.
     const { unmount } = on('panel', <TextField label="نام" value="" onChange={() => {}} />)
     const panel = screen.getByLabelText('نام').className
+    const panelLabel = screen.getByText('نام').className
     unmount()
     on('reader', <TextField label="نام" value="" onChange={() => {}} />)
     const reader = screen.getByLabelText('نام').className
+    const readerLabel = screen.getByText('نام').className
 
     // FOUR sides, because the name says four and `py-s6 px-s7` is two classes
     // that each set two of them. `py-s6` -> `pt-s6` takes the field from 49.8px
@@ -447,11 +636,19 @@ describe('TextField', () => {
       const p = await paint(cls)
       expect(winner(p, 'padding-top')).toBe('var(--space-6)')     // 12px
       expect(winner(p, 'padding-bottom')).toBe('var(--space-6)')  // 12px
-      expect(winner(p, 'padding-left')).toBe('var(--space-7)')    // 14px
-      expect(winner(p, 'padding-right')).toBe('var(--space-7)')   // 14px
+      // The inline pair through `inlinePad`, which reads whichever spelling the
+      // class is written in: `px-*` emits the physical one and the rest of this
+      // file insists on the logical one, so naming `padding-left` here would
+      // have gone red on a logically-equivalent rewrite that a user cannot see.
+      expect(inlinePad(p)).toEqual({ start: 'var(--space-7)', end: 'var(--space-7)' }) // 14px
     }
-    // The label does not scale either — 12.5px in both deliverables.
-    expect(screen.getAllByText('نام')[0]).toHaveClass('text-fs-sm2')
+    // The label does not scale either — 12.5px in both deliverables, and BOTH
+    // are read here. This line used to run after the panel render was unmounted
+    // and certified the reader twice while its name claimed the pair.
+    for (const cls of [panelLabel, readerLabel]) {
+      expect(cls).toMatch(/\btext-fs-sm2\b/)
+      expect(winner(await paint(cls), 'font-size')).toBe('var(--fs-sm2)')
+    }
   })
 
   it('labels the control the way the design labels it', async () => {
@@ -499,8 +696,16 @@ describe('TextField', () => {
     expect(winner(p, 'resize')).toBe('vertical')
     expect(winner(p, 'padding-top')).toBe('var(--pad-textarea-y)')
     expect(winner(p, 'padding-bottom')).toBe('var(--pad-textarea-y)')
-    expect(winner(p, 'padding-left')).toBe('var(--space-6)')
-    expect(winner(p, 'padding-right')).toBe('var(--space-6)')
+    expect(inlinePad(p)).toEqual({ start: 'var(--space-6)', end: 'var(--space-6)' })
+  })
+
+  it('gives a textarea three rows when the caller does not ask for a number', () => {
+    // The design draws a textarea 3–6 lines tall. `rows = 3` -> `rows = 1`
+    // renders a one-line box with a resize grabber hanging off it, and the only
+    // mount in this file that reads `rows` passes its own 5 — so the default
+    // that every real caller takes was never asserted at all.
+    on('panel', <TextField label="توضیح" value="" onChange={() => {}} multiline />)
+    expect(screen.getByLabelText('توضیح')).toHaveAttribute('rows', '3')
   })
 
   it('lets a textarea take the card ground when a screen asks', async () => {
@@ -592,16 +797,26 @@ describe('TextField', () => {
     expect(screen.getByLabelText('توضیح')).not.toHaveAttribute('dir')
   })
 
-  it('fades when disabled and stops being a pointer target', async () => {
-    on('panel', <TextField label="نام" value="" onChange={() => {}} disabled />)
-    const el = screen.getByLabelText('نام')
-    expect(el).toBeDisabled()
-    // §4.6 — "disabled keeps its surface and fades"; asserted against BOTH
-    // states, because a value the two share proves nothing about `disabled`.
-    const p = await paint(el.className)
-    expect(winner(p, 'opacity', ':disabled')).toBe('0.6')
-    expect(winner(p, 'opacity')).toBe('')
-    expect(winner(p, 'cursor', ':disabled')).toBe('default')
+  it('fades when disabled and stops being a pointer target, on both shapes it draws', async () => {
+    // `disabled` dropped from the TEXTAREA branch leaves a control that is
+    // fully opaque and still editable while its caller believes it is off —
+    // the "disabled indistinguishable from rest" case — and the class-level
+    // assertions below cannot see it, because the class string is where the
+    // fade lives and the attribute is what turns it on.
+    on('panel', <>
+      <TextField label="نام" value="" onChange={() => {}} disabled />
+      <TextField label="توضیح" value="" onChange={() => {}} multiline disabled />
+    </>)
+    for (const shape of ['نام', 'توضیح']) {
+      const el = screen.getByLabelText(shape)
+      expect(el, shape).toBeDisabled()
+      // §4.6 — "disabled keeps its surface and fades"; asserted against BOTH
+      // states, because a value the two share proves nothing about `disabled`.
+      const p = await paint(el.className)
+      expect(winner(p, 'opacity', ':disabled'), shape).toBe('0.6')
+      expect(winner(p, 'opacity'), shape).toBe('')
+      expect(winner(p, 'cursor', ':disabled'), shape).toBe('default')
+    }
   })
 })
 
@@ -642,7 +857,16 @@ describe('PasswordField', () => {
     // §5.2 — 46px of padding-inline-start for a 32x32 button. The 46 is
     // 8 + 32 + 6: the button's inset, the button, and the gap to the value. It
     // can only be the button's own edge, which is what the second half asserts.
-    on('panel', <PasswordField label="گذرواژه" value="" onChange={() => {}} />)
+    //
+    // Mounted WITH a hint, which is one word and arms the strongest clause in
+    // expectPinnedInField. That clause forbids a second flow box inside the one
+    // the eye is measured into, and no call site here had ever rendered a field
+    // with anything under it — so the wrapper was always [input, span] and the
+    // clause could not fail. A password field with a hint is the shipped shape
+    // (the change-password form draws one), and it is the shape where a hint
+    // that ends up inside that box makes `top-1/2` centre the eye on input plus
+    // hint and drop it below the field.
+    on('panel', <PasswordField label="گذرواژه" value="" onChange={() => {}} hint="دست‌کم ۸ نویسه" />)
     const el = screen.getByLabelText('گذرواژه')
     expect(el).toHaveClass('ps-reveal')
     const p = await paint(el.className)
@@ -672,7 +896,10 @@ describe('PasswordField', () => {
   })
 
   it('draws the reveal button the design draws', async () => {
-    on('panel', <PasswordField label="گذرواژه" value="" onChange={() => {}} />)
+    // …with a hint, for the reason the test above records: it is the shipped
+    // shape, and the only one in which expectPinnedInField's last clause has
+    // anything to catch.
+    on('panel', <PasswordField label="گذرواژه" value="" onChange={() => {}} hint="دست‌کم ۸ نویسه" />)
     const b = screen.getByRole('button', { name: 'نمایش گذرواژه' })
     const p = await paint(b.className)
     // 32x32, radius 8 (the ladder runs 7 -> 9, so --radius-reveal exists),
@@ -750,6 +977,18 @@ describe('PasswordField', () => {
     // …and it still did its own job while not doing the form's.
     expect(screen.getByLabelText('گذرواژه')).toHaveAttribute('type', 'text')
     expect(screen.getByRole('button', { name: 'پنهان کردن گذرواژه' })).toHaveAttribute('type', 'button')
+  })
+
+  it('puts the value before the reveal in the tab order', async () => {
+    // Swapping the <input> and the reveal <span> moves NOTHING on screen — the
+    // eye is out of flow and pinned to an edge either way — so every paint
+    // assertion in this file stays green while Tab lands on "show my password"
+    // before the password itself, on every login form in the product.
+    on('panel', <PasswordField label="گذرواژه" value="hunter2" onChange={() => {}} />)
+    await userEvent.tab()
+    expect(screen.getByLabelText('گذرواژه')).toHaveFocus()
+    await userEvent.tab()
+    expect(screen.getByRole('button', { name: 'نمایش گذرواژه' })).toHaveFocus()
   })
 
   it('gives the 32px reveal the 44px hit area F11 asks for', () => {
