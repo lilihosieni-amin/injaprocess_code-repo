@@ -8,8 +8,16 @@ type Variant = 'coral' | 'violet' | 'green' | 'ghost' | 'danger'
 // may not touch, and Tailwind's output order, not the class string's, would
 // decide which won. Padding and size stay with the caller, and the surface has
 // nothing to scale here — the design's button sizes are the same on both.
+
+// The icon-to-label gap is --gap-button-icon, 7px, and NOT Tailwind's own
+// `gap-2`, which is 8. The design draws 7 at every button of this shape —
+// `Inja Panel.dc.html:1012` and `:1296`, `Inja Reader.dc.html:157`, `:202` and
+// `:750`, each `display:inline-flex;align-items:center;gap:7px`. `gap-2` is a
+// real class emitting a real rule, so no check could see the one-pixel lie
+// until the role had a name of its own; `primitives.design.test.tsx` now
+// asserts the compiled value, not the class.
 const BASE =
-  'inline-flex items-center justify-center gap-2 min-h-touch min-w-touch ' +
+  'inline-flex items-center justify-center gap-button-icon min-h-touch min-w-touch ' +
   'rounded-button font-bold cursor-pointer border-0 transition ' +
   // P1 — "Disabled keeps its surface and fades" (§4.6); a disabled control is
   // never hidden, never a pointer target, and never keeps a coloured glow that

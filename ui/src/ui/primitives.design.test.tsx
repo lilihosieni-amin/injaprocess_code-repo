@@ -83,6 +83,31 @@ function winner(painted: Painted[], prop: string, state = '', media = ''): strin
 }
 
 /**
+ * Every `--token: value` literal in src/styles/tokens.css and the files it
+ * imports.
+ *
+ * `winner()` stops at the declaration — `gap: var(--gap-button-icon)` — and a
+ * token name is still a name. This is the hop that turns it into the number the
+ * design draws, so an assertion can say *7px* and not *the token we happen to
+ * point at today*.
+ */
+function tokenLiterals(): Map<string, string> {
+  const entry = resolve(process.cwd(), 'src/styles/tokens.css')
+  const files = [
+    ...[...readFileSync(entry, 'utf8').matchAll(/@import\s+'([^']+)'/g)]
+      .map((m) => resolve(dirname(entry), m[1])),
+    entry,
+  ]
+  const values = new Map<string, string>()
+  for (const f of files) {
+    for (const m of readFileSync(f, 'utf8').matchAll(/(--[a-z0-9-]+)\s*:\s*([^;{}]+)/g)) {
+      values.set(m[1], m[2].trim())
+    }
+  }
+  return values
+}
+
+/**
  * What one `--role-*` property resolves to on each surface, read out of
  * src/styles/roles.css and src/styles/tokens.css.
  *
@@ -99,18 +124,7 @@ function readerScaleOf(role: string): { panel: string; reader: string } {
   const target = (body: string) =>
     new RegExp(`(?<![-\\w])${role}\\s*:\\s*var\\((--[a-z0-9-]+)\\)`).exec(body)?.[1] ?? ''
 
-  const entry = resolve(process.cwd(), 'src/styles/tokens.css')
-  const files = [
-    ...[...readFileSync(entry, 'utf8').matchAll(/@import\s+'([^']+)'/g)]
-      .map((m) => resolve(dirname(entry), m[1])),
-    entry,
-  ]
-  const values = new Map<string, string>()
-  for (const f of files) {
-    for (const m of readFileSync(f, 'utf8').matchAll(/(--[a-z0-9-]+)\s*:\s*([^;{}]+)/g)) {
-      values.set(m[1], m[2].trim())
-    }
-  }
+  const values = tokenLiterals()
   const literal = (token: string) => values.get(token) ?? ''
   return {
     panel: literal(target(block(':root'))),
@@ -216,6 +230,34 @@ describe('P1 — a disabled button does not look or behave like a working one', 
     // shifts sideways when a save starts.
     expect(screen.queryByTestId('btn-icon')).toBeNull()
     expect(screen.getByTestId('btn-spinner')).toBeTruthy()
+  })
+})
+
+describe('S4 — a button’s icon sits at the design’s 7px, not at a framework default', () => {
+  it('paints --gap-button-icon’s 7px, and not `gap-2`’s 8', async () => {
+    render(<Button icon={<svg data-testid="btn-icon" />}>ذخیره</Button>)
+    const p = await paint(screen.getByRole('button').className)
+
+    // This is the defect the whole file exists for, in its purest form. `gap-2`
+    // is Tailwind's OWN numeric key: a perfectly real class emitting a perfectly
+    // real rule, so nothing ever went red while every button in the app painted
+    // an 8px icon gap against a design that draws 7 — panel 1012 and 1296,
+    // reader 157, 202 and 750, all `display:inline-flex;align-items:center;gap:7px`.
+    // A `toHaveClass('gap-button-icon')` would have passed on either spelling,
+    // which is precisely how it survived; so the assertion is the VALUE.
+    const gap = winner(p, 'gap')
+    expect(gap).toBe('var(--gap-button-icon)')
+    expect(tokenLiterals().get('--gap-button-icon')).toBe('7px')
+
+    // Both halves are load-bearing and neither is redundant:
+    //   · the literal catches the token being redefined out from under the
+    //     class — `--gap-button-icon: 8px` paints the old bug back;
+    //   · the token name catches the SAME-VALUE swap, which no value check
+    //     can see. Four other tokens hold 7px (--pad-popover, --space-stat-label,
+    //     --gap-stat-dot, --pad-back-y) and the theme's pairing table says why
+    //     each is a different role; borrowing one of them here compiles, paints
+    //     identically, and is wrong the day either role moves.
+    expect(gap).not.toBe('0.5rem')
   })
 })
 
