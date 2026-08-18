@@ -6752,14 +6752,14 @@ export function PanelShell({ session }: { session: SessionDescriptor }) {
         {adminOpen && (
           <>
             <div aria-hidden onClick={() => setAdminOpen(false)} className="fixed inset-0 z-dropdown" />
-            <div role="menu" className="absolute top-full mt-s3 start-0 z-dropdown min-w-[265px] p-s4 bg-card border border-border-card rounded-card shadow-pop">
+            <div role="menu" className="absolute top-full -mt-s3 start-0 z-dropdown min-w-menu p-s4 bg-card border border-border-card rounded-card shadow-pop">
               {adminItems.map((i) => (
                 <Link
                   key={i.to} role="menuitem" to={i.to} onClick={() => setAdminOpen(false)}
                   className={`block px-s6 py-option-y rounded-input no-underline text-start hover:bg-tile-v2 ${pathname === i.to ? 'bg-tile-v2' : 'bg-transparent'}`}
                 >
                   <span className="block text-fs-menu font-bold text-ink">{i.label}</span>
-                  <span className="block mt-[3px] text-fs-xs text-faint">{i.hint}</span>
+                  <span className="block mt-hint text-fs-xs text-faint">{i.hint}</span>
                 </Link>
               ))}
             </div>
@@ -6777,7 +6777,7 @@ export function PanelShell({ session }: { session: SessionDescriptor }) {
       >
         <Link to="/departments" className="flex items-center gap-s5 no-underline">
           <Logo px={38} />
-          <span className="block leading-[1.25]">
+          <span className="block leading-lockup">
             <span className="block text-fs-body font-bold text-ink">اینجا فست‌فود</span>
             <span className="block text-fs-micro text-muted">سامانهٔ فرآیندها</span>
           </span>
@@ -6792,7 +6792,7 @@ export function PanelShell({ session }: { session: SessionDescriptor }) {
             <button
               type="button" onClick={() => setInboxOpen(true)}
               aria-label={openCount > 0 ? `صندوق بازبینی تعارض‌ها، ${toFa(openCount)} مورد در انتظار` : 'صندوق بازبینی تعارض‌ها'}
-              className={`${GHOST} relative gap-s4 px-[13px] py-s4 rounded-button text-fs-sm2 font-bold max760:hidden`}
+              className={`${GHOST} relative gap-s4 px-inbox-x py-s4 rounded-button text-fs-sm2 font-bold max760:hidden`}
             >
               <Icon name="inbox" px={16} />
               صندوق تعارض‌ها
@@ -6808,7 +6808,7 @@ export function PanelShell({ session }: { session: SessionDescriptor }) {
                 // 7% alpha would be invisible here — and would still build.
                 <span
                   aria-hidden
-                  className="absolute -top-s3 -left-s3 min-w-[19px] h-[19px] px-s1 inline-flex items-center justify-center rounded-round bg-coral text-card text-fs-micro font-bold border-2 border-card"
+                  className="absolute -top-s3 -left-s3 min-w-count-chrome h-count-chrome px-s1 inline-flex items-center justify-center rounded-round bg-coral text-card text-fs-micro font-bold border-2 border-card"
                 >
                   {toFa(openCount)}
                 </span>
@@ -6838,10 +6838,10 @@ export function PanelShell({ session }: { session: SessionDescriptor }) {
     return (
       <nav
         data-r-crumbbar aria-label="مسیر"
-        className="flex items-center gap-s5 px-topbar py-[9px] bg-tile-v2 border-b border-line flex-none max760:px-s7 max760:py-s5 max760:gap-s5"
+        className="flex items-center gap-s5 px-topbar py-crumb-y bg-tile-v2 border-b border-line flex-none max760:px-s7 max760:py-s5 max760:gap-s5"
       >
         {back?.to !== undefined && (
-          <Link to={back.to} className={`${GHOST} gap-s3 px-s6 py-[7px] rounded-input text-fs-sm2 font-bold`}>
+          <Link to={back.to} className={`${GHOST} gap-s3 px-s6 py-back-y rounded-input text-fs-sm2 font-bold`}>
             <Icon name="chevronEnd" px={15} stroke={2.4} />
             بازگشت
           </Link>
@@ -7176,6 +7176,7 @@ honest failure mode, and the one the e2e sweep can see.
   - The same utility vocabulary Task 12 lists, plus `rounded-button` and `text-fs-sm`.
 - Produces:
   - `ui/src/shell/crumbs.ts` — `function readerBack(pathname: string, root: string): string | undefined` — where the reader's back bar goes, and `undefined` when they are already at their root.
+  - `ui/src/shell/crumbs.ts` — `function readerHere(pathname: string, root: string): { title?: string; deptCode?: string; about?: boolean }` — what the back bar calls the screen it is on. Two screens name themselves; two are named after their department, so this returns the code and `ReaderShell` resolves the name from the list it already has.
   - `ui/src/shell/ReaderShell.tsx` — unchanged export `function ReaderShell({ session }: { session: SessionDescriptor }): JSX.Element`.
 
 - [ ] **Step 1: Write the failing test for the back target**
@@ -7443,8 +7444,9 @@ redirect at all).
 
 - [ ] **Step 7: Rewrite `ReaderShell`**
 
-**The four values below that no token holds** — `leading-[1.25]`, `min-w-[19px] h-[19px]`,
-`py-[9px]` and `py-[7px]` — are the same four this shell shares with `PanelShell`, and they
+**Nothing in this shell is written out as an arbitrary value.** The four that used to be —
+`leading-[1.25]`, `min-w-[19px] h-[19px]`, `py-[9px]` and `py-[7px]` — are now `leading-lockup`,
+`min-w-count-chrome h-count-chrome` and `py-s5` twice, and they
 are on Task 12's table with the design line each is read from. **Do not mint them**: the
 config, `tokens.css` and `roles.css` are frozen, and a screen task that unfreezes one of them
 recreates the unreachable-token problem the rebuild exists to fix. `before:content-[""]` is
@@ -7499,6 +7501,12 @@ export function ReaderShell({ session }: { session: SessionDescriptor }) {
   const only = departments?.length === 1 ? departments[0].code : undefined
   const root = only === undefined ? '/departments' : `/departments/${only}`
   const back = readerBack(pathname, root)
+  const here = readerHere(pathname, root)
+  const hereTitle =
+    here.title ??
+    (here.deptCode === undefined
+      ? ''
+      : `${here.about ? 'دربارهٔ ' : ''}${departments?.find((d) => d.code === here.deptCode)?.name ?? ''}`)
   const onFlow = /^\/processes\/[^/]+\/flow$/.test(pathname)
   const atRoot = pathname === root
 
@@ -7521,13 +7529,13 @@ export function ReaderShell({ session }: { session: SessionDescriptor }) {
         {onFlow ? null : atRoot ? (
           <header
             data-r-topbar
-            className="flex items-center gap-s7 px-reader-x py-s6 bg-card border-b border-warm flex-none z-chrome max760:px-s7 max760:py-s5 max760:gap-s5"
+            className="flex items-center gap-s6 px-topbar-reader py-s6 bg-card border-b border-warm flex-none z-chrome max760:px-s7 max760:py-s5 max760:gap-s5"
           >
             <Link to={root} className="flex items-center gap-s5 no-underline">
               <Logo px={38} />
-              <span className="block leading-[1.25]">
-                <span className="block text-fs-body font-bold text-ink">اینجا فست‌فود</span>
-                <span className="block text-fs-micro text-muted">سامانهٔ فرآیندها</span>
+              <span className="block leading-lockup">
+                <span className="block text-fs-body-lead font-bold text-ink">اینجا فست‌فود</span>
+                <span className="block text-fs-xxs text-muted">سامانهٔ فرآیندها</span>
               </span>
             </Link>
             <div className="ms-auto flex items-center gap-s5">
@@ -7535,7 +7543,7 @@ export function ReaderShell({ session }: { session: SessionDescriptor }) {
                 <span
                   role="status"
                   aria-label={`${toFa(session.pendingApprovals)} کامنت در انتظار تأیید شما`}
-                  className="min-w-[19px] h-[19px] px-s1 inline-flex items-center justify-center rounded-round bg-coral text-card text-fs-micro font-bold"
+                  className="min-w-count-chrome h-count-chrome px-s1 inline-flex items-center justify-center rounded-round bg-coral text-card text-fs-micro font-bold"
                 >
                   {toFa(session.pendingApprovals)}
                 </span>
@@ -7556,15 +7564,16 @@ export function ReaderShell({ session }: { session: SessionDescriptor }) {
         ) : (
           <nav
             data-r-backbar aria-label="بازگشت"
-            className="flex items-center gap-s5 px-reader-x py-[9px] bg-card border-b border-warm flex-none z-chrome max760:px-s7 max760:gap-s5"
+            className="flex items-center gap-s5 px-topbar-reader py-s5 bg-card border-b border-warm flex-none z-chrome max760:px-s7 max760:gap-s5"
           >
             {back !== undefined && (
-              <Link to={back} className={`${GHOST} gap-s3 px-s6 py-[7px] rounded-input text-fs-sm font-bold`}>
+              <Link to={back} className={`${GHOST} gap-button-icon px-button-x py-s5 rounded-button text-fs-menu font-bold`}>
                 <Icon name="chevronEnd" px={15} stroke={2.4} />
                 بازگشت
               </Link>
             )}
-            <Link to={root} aria-label="خانه" className={`${GHOST} ${HIT} ms-auto w-menu-more h-menu-more rounded-input`}>
+            <span className="flex-1 min-w-0 truncate text-fs-menu font-bold text-ink">{hereTitle}</span>
+            <Link to={root} aria-label="خانه" className={`${GHOST} ${HIT} flex-none w-menu-more-reader h-menu-more-reader rounded-input`}>
               <Icon name="home" px={16} />
             </Link>
           </nav>
@@ -7614,8 +7623,8 @@ measurement that retired the old grep.
 
 Sixteen of the 22 names the old hand-kept list carried were Task 12's list over
 again — what the two shells share. The harvest makes that distinction free: it
-reports what **these** files write, so the reader-only names (`px-reader-x` and
-the reader's own geometry) are in the run because `ReaderShell.tsx` writes them,
+reports what **these** files write, so the reader-only names (`px-topbar-reader`
+and the reader's own geometry) are in the run because `ReaderShell.tsx` writes them,
 not because someone remembered to type them into a list.
 
 **A failure.** `DEAD` — the class compiled to no rule at all; that is a **typo
@@ -9364,7 +9373,7 @@ blanked the field, which is a claim of absence standing in for an absence of a c
           <div className="font-bold text-fs-body text-violet mb-s9 flex items-center gap-s4">
             <span className="w-s4 h-s4 bg-coral rounded-round" />نمای IDEF0 سطح فرآیند (A-0)
           </div>
-          <div data-r-idef0 className="grid grid-cols-[1fr_1.4fr_1fr] gap-s7 items-center max760:flex max760:flex-col max760:gap-s6">
+          <div data-r-idef0 className="grid grid-cols-idef0 gap-s7 items-center max760:flex max760:flex-col max760:gap-s6">
             <div className="col-start-2 row-start-1 text-center min-w-0">
               <div className="text-fs-xxs text-muted mb-s2">کنترل‌ها ↓</div>
               <div className="flex flex-wrap gap-s2 justify-center">{proc.idef0.controls.map((t, i) => <Chip key={i} kind="control">{t}</Chip>)}</div>
