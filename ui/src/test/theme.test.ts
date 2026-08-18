@@ -577,6 +577,12 @@ const EXPECTED: Record<string, string | string[]> = {
   'border-warn-edge': 'var(--warn-edge)',
   'text-warn-fg': 'var(--warn-fg)',
   'text-role-textarea': 'var(--role-fs-textarea)',
+  // §6.0 / §9.7k — the type-on-the-violet-field group. These read the ROLE and
+  // not the token on purpose: the tokens are decoys, and the test below pins
+  // each against the decoy it is most likely to be swapped for.
+  'text-role-title-on-field': 'var(--role-title-on-field)',
+  'text-role-subtitle-on-field': 'var(--role-subtitle-on-field)',
+  'text-role-eyebrow': 'var(--role-eyebrow)',
   'gap-table-row-mobile': 'var(--gap-table-row-mobile)',
   'w-menu-more': 'var(--size-menu-more)',
   'h-menu-more': 'var(--size-menu-more)',
@@ -701,9 +707,10 @@ describe('R1 (structural) — every design token has a utility name', () => {
     // 192 before Task 3's 48 tokens were named, on 58 var() sites, then 250, then
     // 315 — the ten square `--size-*` boxes are read twice each, once on width
     // and once on height, which is one name on two properties, not two names.
-    // The single minting pass added 29 sites for 30 classes: `--warn-edge` is
-    // one key on `colors` that Tailwind spends on both `bg-` and `border-`.)
-    expect(referencedList.length).toBeGreaterThanOrEqual(344)
+    // The single minting pass added 29 sites for 30 classes — `--warn-edge` is
+    // one key on `colors` that Tailwind spends on both `bg-` and `border-` — and
+    // then 3 more for the type-on-the-violet-field group.)
+    expect(referencedList.length).toBeGreaterThanOrEqual(347)
     // Two declaration sites, because the app has two: tokens.css holds every
     // literal, and roles.css holds R3's scale layer, which is the only thing a
     // utility may name that is not a token. Both are read from disk; neither is
@@ -789,6 +796,95 @@ describe('R1 (structural) — every design token has a utility name', () => {
     // above pass. Twelve is what Task 2 justified, one by one, in its report.
     expect(NAMED_ELSEWHERE.length).toBe(12)
     expect(new Set(NAMED_ELSEWHERE).size).toBe(12)
+  })
+
+  it('leaves no role that can only be written by naming something else', () => {
+    // The closure test above walks TOKENS, so it can say nothing about a ROLE:
+    // a role no utility names carries nothing into `reachable`. This asks the
+    // other question — is every role writable AT ALL?
+    //
+    // The bar is deliberately NOT "every role has a key". 90 of the 108 do not,
+    // and they do not need one: --role-primary is --violet and `bg-violet`
+    // writes it, so the value is reachable and the role is a record rather than
+    // a vocabulary word. The bar is that a role must be writable SOMEHOW: by its
+    // own name, or by the name of every token it points at.
+    //
+    // This is a FLOOR, and it is worth knowing what it does not catch. It did
+    // not catch the L-01 defect: --role-title-on-field is --card, and --card has
+    // `text-card`, so by this test the white was always writable. What made it a
+    // defect is that `text-card` says SURFACE while the class that reads like the
+    // answer on a dark field — `text-on-dark` — is a different colour, the cream
+    // L-01 retired, and the plan wrote it on 19 screen titles. A value you can
+    // only reach by writing a word that means something else is not reachable in
+    // any sense that matters. The test below this one is the sharp one for that,
+    // and it names the decoys; this one stops the weaker failure where a role's
+    // value has no class of any kind.
+    const NAMED_BY_ITS_LENGTH = [
+      // --role-lift is translateY(-2px), a whole transform function. Tailwind
+      // 3.4 has no themeable `transform` namespace, so neither the role nor the
+      // token can be a var() anywhere in this config; the DISTANCE is named
+      // instead (`-translate-y-lift`) and the test below this one asserts it.
+      '--role-lift',
+    ]
+    const unwritable = [...roles]
+      .filter(([role, tokens]) =>
+        !referenced.has(role) &&
+        !NAMED_BY_ITS_LENGTH.includes(role) &&
+        [...tokens].some((t) => !referenced.has(t)))
+      .map(([role]) => role)
+      .sort()
+    expect(
+      unwritable,
+      'these roles have no utility of their own AND point at a token that has ' +
+      'none either, so the value they decide cannot be written at all',
+    ).toEqual([])
+
+    // …and the check can fail: a role whose token is a typo is unwritable both
+    // ways, and must be caught. Asked against a synthetic map, because `roles`
+    // is currently clean and a clean input can never prove a filter runs.
+    const synthetic = new Map([['--role-invented', new Set(['--not-a-token'])]])
+    expect(
+      [...synthetic].filter(([r, ts]) =>
+        !referenced.has(r) && [...ts].some((t) => !referenced.has(t))).length,
+    ).toBe(1)
+  })
+
+  it('gives the type-on-the-violet-field group its own words, and keeps the decoys apart', () => {
+    // The three roles §6.0 / §9.7k decides, and the sharp end of the test above.
+    //
+    // Every other unkeyed role can be written by naming its token and getting
+    // the right thing. These three could not: the classes a screen reaches for
+    // are `text-on-dark` (a DIFFERENT colour — the cream ledger L-01 retired,
+    // which the plan writes on 19 screen titles today), `text-card` (the right
+    // colour under a word that means "surface"), and `text-violet-on-violet`
+    // (the right colour under a role that is "mono id inside a violet box").
+    // So the group gets its own words, and each is pinned here against the exact
+    // class it is most likely to be swapped for.
+    const literal = (role: string) => tokenValue([...(roles.get(role) ?? [])][0])
+
+    // L-01, decided 10 against 1. The decoy is `text-on-dark`, which READS like
+    // the answer on a dark field and is the cream the ruling retired.
+    expect(referenced.has('--role-title-on-field')).toBe(true)
+    expect(literal('--role-title-on-field')).toBe('#FFFFFF')
+    expect(tokenValue('--text-on-dark')).toBe('#FBF7F1')
+    expect(literal('--role-title-on-field')).not.toBe(tokenValue('--text-on-dark'))
+
+    // L-28, decided 13 against 1. The decoy is `text-violet-on-dark-body`, one
+    // letter away and the token the ruling decided AGAINST — and it holds the
+    // right value today only because Task 3 corrected it, which is why the role
+    // must not be written through it.
+    expect(referenced.has('--role-subtitle-on-field')).toBe(true)
+    expect(literal('--role-subtitle-on-field')).toBe('#C9BEEE')
+
+    // The third of the group. Its token is honestly named, so this one is cheap
+    // — but a group written two ways is how the other two went wrong.
+    expect(referenced.has('--role-eyebrow')).toBe(true)
+    expect(literal('--role-eyebrow')).toBe('#B79FE6')
+
+    // The three are three different colours, so a key pointed at its neighbour
+    // fails here rather than rendering a plausible screen.
+    const group = ['--role-title-on-field', '--role-subtitle-on-field', '--role-eyebrow']
+    expect(new Set(group.map(literal)).size).toBe(3)
   })
 
   // --hover-lift is `translateY(-2px)` — a whole transform function, not a
@@ -1306,6 +1402,11 @@ const PENDING: string[] = [
   'text-role-textarea', 'gap-table-row-mobile',
   'w-menu-more', 'h-menu-more', 'w-login',
   'w-dot', 'h-dot', 'w-chev', 'h-chev', 'w-glyph-tile', 'h-glyph-tile',
+  // …and the type-on-the-violet-field group. Unconsumed only because Tasks 15,
+  // 17, 19 and 20 have not landed: those four screens are the ones that write a
+  // title on the field, and they currently write `text-on-dark`, which is the
+  // colour ledger L-01 retired. These three lines come off as those tasks land.
+  'text-role-title-on-field', 'text-role-subtitle-on-field', 'text-role-eyebrow',
 ]
 
 /**
@@ -1336,21 +1437,26 @@ const PENDING: string[] = [
  *     named ahead of the screens on purpose — guards.test.ts bans `text-[…]`,
  *     `rounded-[…]` and `shadow-[…]`, so a value with no name cannot be written
  *     at all, and the name therefore has to exist before its consumer does. The
- *     mint added 29 such lines in ONE pass, in ONE commit, against a written
- *     spec, and it is the last one: tailwind.config.js, tokens.css and roles.css
- *     are re-frozen behind it.
+ *     mint added 32 such lines — 29 from the spec, then 3 for the
+ *     type-on-the-violet-field group — and it is the last one:
+ *     tailwind.config.js, tokens.css and roles.css are re-frozen behind it.
  *   · CONSUMING a utility, or failing to, may never add one. A screen that lands
  *     without writing the classes it was minted for is a screen that is not
  *     finished, and the number below is what says so.
  *
  * So: a raise is legal only in the same commit as a deliberate mint of the
  * theme, and there is no further mint planned. If you are here because a task
- * you are writing has pushed PENDING past 260, the answer is not this line —
- * either the task has stopped consuming something it should still consume, or
- * it has added a theme key it has no consumer for, and R11 forbids the second.
+ * you are writing has pushed PENDING past the number below, the answer is not
+ * this line — either the task has stopped consuming something it should still
+ * consume, or it has added a theme key it has no consumer for, and R11 forbids
+ * the second.
+ *
+ * The number is the count plus ten, which is the headroom rule the 231 was set
+ * by, kept so a task that legitimately STOPS using a utility can put its line
+ * back without needing this edit.
  * ---------------------------------------------------------------------------
  */
-const CEILING = 260 // set 2026-08-18 against PENDING.length === 250
+const CEILING = 263 // set 2026-08-18 against PENDING.length === 253
 
 describe('Owner ruling R11 — a named utility has a component that uses it', () => {
   it('reads a real, sizeable set of component files — tests AND test helpers excluded', () => {

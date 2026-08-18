@@ -150,6 +150,36 @@ export default {
         // paint the notice ink instead of --warn's amber. One class, two
         // meanings, silently. theme.test.ts pins both classes apart.
         'warn-fg': 'var(--warn-fg)',
+        // ---- §6.0 / §9.7k — "type on the violet field", the one role group in
+        // roles.css that CANNOT be written by naming its token instead.
+        //
+        // Every other role this theme does not key is reachable the long way: the
+        // token behind it has a class, so a screen can write the value even if it
+        // cannot write the role. These three cannot, because their tokens are
+        // DECOYS — the name a screen reaches for is a different colour, or the
+        // same colour under a role that is not this one:
+        //
+        //   · --role-title-on-field is --card #FFFFFF by ledger L-01, decided 10
+        //     against 1. The class that reads like the answer is `text-on-dark`,
+        //     which is --text-on-dark #FBF7F1 — the value L-01 RETIRED, and which
+        //     the plan writes on 19 screen titles today. That is the bug this
+        //     group exists to make unwritable.
+        //   · --role-subtitle-on-field is --violet-on-violet #C9BEEE by L-28, a
+        //     token whose own declared role is "mono id inside a violet box"; and
+        //     it sits one letter from --violet-on-dark-body, the token L-28 ruled
+        //     AGAINST. Right value, wrong word, and a decoy beside it.
+        //   · --role-eyebrow completes the group. Its token is honestly named, so
+        //     this key is the cheap one — but a group written two ways is how the
+        //     first two got wrong in the first place.
+        //
+        // The keys keep the WHOLE role stem. `fontSize` drops the `fs-` from its
+        // role keys (--role-fs-body -> `role-body`), and shortening these the same
+        // way would give `role-title`, which is already a font SIZE: one class,
+        // two meanings, silently — the same trap `warn-fg` above avoids. A future
+        // key for --role-fs-eyebrow must therefore be `role-fs-eyebrow`.
+        'role-title-on-field': 'var(--role-title-on-field)',       // #FFFFFF — L-01
+        'role-subtitle-on-field': 'var(--role-subtitle-on-field)', // #C9BEEE — L-28
+        'role-eyebrow': 'var(--role-eyebrow)',                     // #B79FE6
       },
       fontFamily: { sans: 'var(--font-sans)', mono: 'var(--font-mono)' },
       fontSize: {

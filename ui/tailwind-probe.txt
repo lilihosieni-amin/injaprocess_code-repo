@@ -112,3 +112,6 @@ bg-warn-edge border-warn-edge text-warn-fg
 text-role-textarea gap-table-row-mobile
 w-menu-more h-menu-more w-login
 w-dot h-dot w-chev h-chev w-glyph-tile h-glyph-tile
+# §6.0 / §9.7k — the three roles that cannot be written by naming their token:
+# the token is a decoy (see tailwind.config.js). `text-on-dark` is NOT the title.
+text-role-title-on-field text-role-subtitle-on-field text-role-eyebrow
