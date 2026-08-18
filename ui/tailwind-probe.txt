@@ -125,3 +125,7 @@ gap-stat-dot
 mt-hint leading-lockup min-w-count-chrome h-count-chrome
 px-inbox-x py-crumb-y py-back-y px-topbar-reader
 grid-cols-idef0
+# The reader-chrome mint. The owner's ruling on ReaderShell — the reader takes
+# the reader's numbers in all eleven places the plan wrote the panel's — needs
+# three names the shell mint above had no reason to look for.
+gap-button-icon px-button-x w-menu-more-reader h-menu-more-reader

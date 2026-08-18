@@ -622,6 +622,19 @@ const EXPECTED: Record<string, string | string[]> = {
   'py-back-y': 'var(--pad-back-y)',
   'px-topbar-reader': 'var(--pad-topbar-reader)',
   'grid-cols-idef0': 'var(--grid-idef0)',
+  // The reader-chrome mint, and three more pairings that a set test cannot see:
+  //   · `gap-button-icon` is --gap-button-icon 7px, the FIFTH 7px role in the
+  //     theme and the first that is a button's icon gap. `gap-popover`,
+  //     `mt-stat-label`, `gap-stat-dot` and `py-back-y` are the other four.
+  //   · `px-button-x` is --pad-button-x 15px, NOT --pad-radio-x, which is the
+  //     same number for a radio CARD's inline padding.
+  //   · `w-menu-more-reader` is 38px and is a BUTTON; --size-logo-bar is also
+  //     38px and is the logo IMAGE on the same bar. Swapping those two compiles,
+  //     paints, and is wrong the day either moves.
+  'gap-button-icon': 'var(--gap-button-icon)',
+  'px-button-x': 'var(--pad-button-x)',
+  'w-menu-more-reader': 'var(--size-menu-more-reader)',
+  'h-menu-more-reader': 'var(--size-menu-more-reader)',
   // Media query, not token — asserted by the breakpoint tests below.
   'max1080:hidden': 'display: none',
   'max760:hidden': 'display: none',
@@ -1444,6 +1457,12 @@ const PENDING: string[] = [
   'mt-hint', 'leading-lockup', 'min-w-count-chrome', 'h-count-chrome',
   'px-inbox-x', 'py-crumb-y', 'py-back-y', 'px-topbar-reader',
   'grid-cols-idef0',
+
+  // The reader-chrome mint. The owner's ruling that ReaderShell takes the
+  // READER's numbers — it writes the panel's in eleven places — needs three
+  // names the mint above had no reason to look for. All four lines are Task 13's
+  // and come off with it.
+  'gap-button-icon', 'px-button-x', 'w-menu-more-reader', 'h-menu-more-reader',
 ]
 
 /**
@@ -1467,9 +1486,10 @@ const PENDING: string[] = [
  * ---------------------------------------------------------------------------
  * IT HAS BEEN RAISED TWICE, AND BOTH WERE THE EVENT IT IS RAISED FOR.
  *
- * 231 -> 260, on 2026-08-18, by the single minting pass, and 218 -> 235 on the
- * same day by the shell mint that followed it. Read the distinction before you
- * touch this number again, because it is the whole point:
+ * 231 -> 260, on 2026-08-18, by the single minting pass; 218 -> 235 the same day
+ * by the shell mint that followed it; and 235 -> 239 by the reader-chrome mint
+ * the owner's ruling on ReaderShell required, in the same session. Read the
+ * distinction before you touch this number again, because it is the whole point:
  *
  *   · MINTING a utility legitimately adds an unconsumed line. The theme is
  *     named ahead of the screens on purpose — guards.test.ts bans `text-[…]`,
@@ -1479,7 +1499,10 @@ const PENDING: string[] = [
  *     type-on-the-violet-field group and StatTile's numeral-to-dot gap. The
  *     shell mint added 9 more, for the reason the first one missed them: it
  *     minted from the SCREENS, and the two shells and the summary screen were
- *     left writing fourteen values out by hand.
+ *     left writing fourteen values out by hand. The reader-chrome mint added 4,
+ *     which is a ruling landing and not a screen slipping: ReaderShell was
+ *     written from the PANEL's numbers, and three of the eleven values the
+ *     design draws instead had no name at all.
  *   · CONSUMING a utility, or failing to, may never add one. A screen that lands
  *     without writing the classes it was minted for is a screen that is not
  *     finished, and the number below is what says so.
@@ -1497,11 +1520,12 @@ const PENDING: string[] = [
  * back without needing this edit.
  * ---------------------------------------------------------------------------
  */
-// RAISED 2026-08-18 against PENDING.length === 225 (the shell mint's 9 names,
-// unconsumed until Tasks 12, 13 and 16 land). The count before it was 216, under
-// a ceiling of 218 that had been LOWERED the same day against a then-count of
-// 218; two of those lines were consumed between the two edits.
-const CEILING = 235
+// RAISED 2026-08-18 against PENDING.length === 229 — the shell mint's 9 names
+// and the reader-chrome mint's 4, all unconsumed until Tasks 12, 13 and 16 land.
+// The count before the two mints was 216, under a ceiling of 218 that had been
+// LOWERED the same day against a then-count of 218; two of those lines were
+// consumed between that edit and this one.
+const CEILING = 239
 
 describe('Owner ruling R11 — a named utility has a component that uses it', () => {
   it('reads a real, sizeable set of component files — tests AND test helpers excluded', () => {

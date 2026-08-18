@@ -384,4 +384,35 @@ describe('R1 — a correction records what it overrode and why', () => {
     // its own role at 1.25 and does not move it.
     expect(token('--lh-tight')).toBe('')              // declared in the frozen _ds, not here
   })
+
+  it('the reader-chrome mint — the three the ruling on ReaderShell needed', () => {
+    // The owner's ruling (2026-08-18): PanelShell matches the design at all 22
+    // values it draws; ReaderShell writes the PANEL's numbers in eleven places,
+    // and R1 plus R3 give the reader its own. Eight of the eleven were already
+    // writable. These three were not.
+    const readerChrome = {
+      '--gap-button-icon': '7px',       // a button's icon-to-label gap, reader 157
+      '--pad-button-x': '15px',         // a standard button's inline padding, 10 sites
+      '--size-menu-more-reader': '38px', // the reader's home square, reader 162
+    }
+    for (const [name, value] of Object.entries(readerChrome)) expect(token(name), name).toBe(value)
+    expect(Object.keys(readerChrome).length).toBe(3)
+    expect(Object.keys(readerChrome).filter((n) => declarations(n) !== 1)).toEqual([])
+
+    // All three are numbers that already had an owner, which is the whole reason
+    // they are minted and not borrowed. The FIVE 7px roles in this file are now
+    // asserted together: if a later pass collapses any of them, this is the line.
+    expect(token('--pad-popover')).toBe('7px')        // the popover's inset
+    expect(token('--space-stat-label')).toBe('7px')   // the 4-up label's margin-top
+    expect(token('--gap-stat-dot')).toBe('7px')       // the stat numeral's dot gap
+    expect(token('--pad-back-y')).toBe('7px')         // the PANEL back button's padding-y
+    // …and 15px and 38px keep theirs too. --size-logo-bar is the trap here: it is
+    // 38px and sits on the same bar as the button, and it is the logo IMAGE.
+    expect(token('--pad-radio-x')).toBe('15px')       // the radio CARD, not a button
+    expect(token('--pad-stat-y-grid')).toBe('15px')   // the 4-up tile's padding-y
+    expect(token('--size-chevron')).toBe('15px')      // the chevron glyph
+    expect(token('--inset-search-icon')).toBe('15px') // the magnifier's offset
+    expect(token('--size-menu-more')).toBe('36px')    // the PANEL's square, 3 uses
+    expect(token('--size-logo-bar')).toBe('')         // declared in the frozen _ds, at 38px
+  })
 })

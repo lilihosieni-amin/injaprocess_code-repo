@@ -434,6 +434,13 @@ export default {
         'crumb-y': 'var(--pad-crumb-y)',                      // 9px  — the breadcrumb strip
         'back-y': 'var(--pad-back-y)',                        // 7px  — its «بازگشت» button
         'topbar-reader': 'var(--pad-topbar-reader)',          // 20px — the reader's chrome
+        // The reader-chrome mint. `button-icon` is the FIFTH 7px key on this
+        // scale (`popover`, `stat-label`, `stat-dot`, `back-y` are the others)
+        // and the first that is a button's icon gap; `button-x` is the design's
+        // commonest button inline padding, and is not `radio-x`, which is the
+        // same number for a CARD.
+        'button-icon': 'var(--gap-button-icon)',              // 7px  — a button's icon gap
+        'button-x': 'var(--pad-button-x)',                    // 15px — a button's inline padding
       },
       maxWidth: {
         departments: 'var(--width-departments)', list: 'var(--width-list)',
@@ -502,6 +509,9 @@ export default {
         // a fixed `width: 380` and the plan writes `w-login max-w-full`, so there
         // is no height and no max-width to name.
         'menu-more': 'var(--size-menu-more)',           // 36px — the … / home button
+        // …and its reader sibling, the same relationship `iconbtn`/`iconbtn-reader`
+        // has. NOT `logo-bar`, which is also 38px and is the logo IMAGE.
+        'menu-more-reader': 'var(--size-menu-more-reader)', // 38px — the reader's
         login: 'var(--width-login)',                    // 380px — the sign-in card
         dot: 'var(--size-dot)',                         // 9px  — the table state dot
         chev: 'var(--size-chev)',                       // 30px — the table chevron cell
@@ -529,6 +539,7 @@ export default {
         chevron: 'var(--size-chevron)',
         pager: 'var(--size-pager)',
         'menu-more': 'var(--size-menu-more)',
+        'menu-more-reader': 'var(--size-menu-more-reader)',
         dot: 'var(--size-dot)',
         chev: 'var(--size-chev)',
         'glyph-tile': 'var(--size-glyph-tile)',

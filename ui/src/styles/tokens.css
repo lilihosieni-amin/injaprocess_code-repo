@@ -454,7 +454,11 @@
      not one — audited element by element:
        · the stat numeral and its conflict dot  — panel 221. ONE site. This token.
        · a button or trigger's icon-to-label gap — panel 1012, 1211, 1296, 1519,
-         1638; reader 157, 202, 750. Eight sites, and Button/Dropdown's to name.
+         1638; reader 157, 202, 750. Eight sites. NAMED: the reader-chrome mint
+         at the foot of this file calls it --gap-button-icon, because Task 13's
+         back button is `reader 157` and the ruling on that shell made it the
+         first of the eight to need writing. Three of the eight are Dropdown
+         triggers whose 7 is a `space-between` minimum; that block says so.
        · a chip, badge or pill row              — panel 240, 691, 879, 923, 1314,
          1318; reader 451, 639, 704. Nine sites, and the row's to name.
        · a list row's COLUMN gap, label to sub  — panel 644; reader 404. A
@@ -462,7 +466,8 @@
        · an inline meta row                     — panel 249, 2025.
      Naming by value rather than by role is the defect this file's R8 block
      exists to stop, and one number over five roles is how it happens. Each of
-     the other four mints its own name when its component is built. */
+     the other four mints its own name when its component is built — one of them
+     now has, and the count of 7px tokens in this file is five, not three. */
   --gap-stat-dot: 7px;             /* the stat numeral's gap to its conflict dot */
 }
 
@@ -584,4 +589,72 @@
      read as a second declaration of that token and silently swallows every line
      down to the next semicolon. That is exactly how this block first went red. */
   --grid-idef0: 1fr 1.4fr 1fr;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   The reader-chrome mint — three values the owner's ruling on ReaderShell
+   needs, and which the shell mint above could not have known it needed.
+
+   That ruling (2026-08-18): `PanelShell` matches the design at all 22 values it
+   draws, while `ReaderShell` writes the PANEL's numbers in eleven places. R1
+   makes the deliverable beat the plan and R3 exists because the two surfaces
+   differ deliberately, so the reader's own numbers win in all eleven. Eight of
+   the eleven are already writable — `gap-s6`, `px-topbar-reader`,
+   `leading-lockup`, `text-fs-body-lead`, `text-fs-xxs`, `py-s5` ×2,
+   `rounded-button`, `text-fs-menu`. These three are the rest.
+
+   The full eleven, with the exact plan edit each needs, are in
+   .superpowers/sdd/task-13-plan-patch.md.
+   ───────────────────────────────────────────────────────────────────────── */
+:root {
+  /* A button's icon-to-label gap. This is NOT a new role: it is the SECOND of
+     the five roles the --gap-stat-dot comment above already audited out of the
+     design's 22 `gap:7px` sites, and that comment names `reader 157` — the
+     back button this mint is for — among its eight. It had no token only
+     because the comment deferred it, in its own words, as "Button/Dropdown's to
+     name", and neither has been built to the design yet: `src/ui/Button.tsx`
+     ships Tailwind's own `gap-2`, which is 8px, not this 7.
+
+     Five sites are the role as such — an inline-flex button with a leading or
+     trailing icon: panel 1012 and 1296, reader 157, 202 and 750. The other
+     three the comment groups here (panel 1211, 1519, 1638) are Dropdown
+     TRIGGERS, where the same 7 is the minimum gap in a `justify-content:
+     space-between` row rather than a drawn gap; same number and same family,
+     but a different mechanic, so whether Dropdown consumes this name or mints
+     its own is Dropdown's call and not decided here.
+
+     Four tokens already hold 7px and not one of them is this: --pad-popover
+     (the popover's inset), --space-stat-label (the 4-up label's margin-top),
+     --gap-stat-dot (the stat numeral's dot gap, whose comment forbids
+     borrowing) and --pad-back-y (the PANEL back button's padding-y, minted one
+     block above). */
+  --gap-button-icon: 7px;
+
+  /* A standard button's inline padding. Ten sites, five on each surface and
+     across four different buttons: panel 669, 717, 723 and reader 429, 477, 483
+     draw `padding:11px 15px`; panel 1412 and reader 157, 221, 223 draw
+     `padding:10px 15px`. The vertical is --space-5 or --pad-textarea-y; the 15
+     is constant, and it is the design's commonest button inline padding.
+
+     It is not EVERY button's: the design also draws 12 (the panel's small back
+     button, panel 176), 13 (the inbox button, --pad-inbox-x), 14, 16 and 18 on
+     buttons at other sizes. Those are other roles and must not borrow this one.
+
+     Four tokens already hold 15px and none is a button's padding:
+     --pad-radio-x (the radio CARD's inline padding, panel 1469),
+     --pad-stat-y-grid (the 4-up tile's padding-y), --size-chevron (the chevron
+     glyph) and --inset-search-icon (the magnifier's offset). */
+  --pad-button-x: 15px;
+
+  /* The reader's own ⋯ / home square button, `38x38 radius 11` (reader 162).
+     The R3 sibling of --size-menu-more, which is 36px and has three uses, all
+     of them in the PANEL: its home button (panel 190), its tools button (panel
+     278) and its mobile menu tile (panel 298). Same relationship, same naming,
+     as --size-iconbtn 40 / --size-iconbtn-reader 42.
+
+     It is NOT --size-logo-bar, which is also 38px and is the logo IMAGE's role
+     — panel 119 and reader 135, the one element on this bar that is not a
+     button. And it is not reader 184, which is 38px and round (`border-radius:
+     50%`): a disc, not this square. */
+  --size-menu-more-reader: 38px;
 }
