@@ -1399,12 +1399,19 @@ const PENDING: string[] = [
   'p-topbar', 'p-half', 'gap-topbar', 'px-reader-x',
   'pb-reader-bottom', 'pt-departments-top', 'pb-departments-bottom', 
   'p-s2', 'p-s3', 'p-s4', 'p-s5',
-  'p-s6', 'p-s14', 'p-s16', 'w-tile',
-  'h-tile', 'w-tool', 'h-tool', 'w-avatar',
+  'p-s6', 'p-s14', 'p-s16',
+  // `w-tile`/`h-tile` and the two glyph pairs came off here when Task 11's
+  // src/ui/IconTile.tsx landed: R3 declares the tile as a role trio
+  // (--role-tile 48/54, --role-tile-radius 14/16, --role-tile-glyph 24/26) and
+  // the component writes the class rather than the number. `w-tile-reader` and
+  // `h-tile-reader` stay: the BOX reads the role and needs no per-surface name,
+  // which is what tailwind.config.js's own comment says the `-reader` keys are
+  // for — "still writable when a screen genuinely needs one". If nothing ever
+  // does, Task 25 takes them off the theme rather than off this list.
+  'w-tool', 'h-tool', 'w-avatar',
   'h-avatar', 'w-logo-bar', 'h-logo-bar', 'w-logo-login',
   'h-logo-login', 'w-touch', 'h-touch', 'w-tile-reader',
-  'h-tile-reader', 'w-glyph', 'h-glyph', 'w-glyph-reader',
-  'h-glyph-reader', 'w-iconbtn', 'h-iconbtn', 'w-iconbtn-reader',
+  'h-tile-reader', 'w-iconbtn', 'h-iconbtn', 'w-iconbtn-reader',
   'h-iconbtn-reader', 'w-fab-reader',
   'h-fab-reader', 'w-tick-nested',
   'h-tick-nested', 'max-w-departments', 'max-w-summary', 'max-w-doc',

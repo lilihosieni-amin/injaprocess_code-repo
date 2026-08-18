@@ -21,7 +21,18 @@ const TILE: Record<Accent, string> = {
   coral: 'bg-tile-c text-conflict',
 }
 
-export function deptMeta(code: string): { icon: string; accent: Accent; tileClass: string } {
-  const m = META[code] ?? { accent: 'violet', icon: '' }
-  return { ...m, tileClass: TILE[m.accent] }
+// The ghosted two-digit index on a department card (§6.1) — `--dept-numeral-violet`
+// and `--dept-numeral-coral`. Those two values lived in src/screens/Departments.tsx
+// as raw hexes because this map returned the tile and not the numeral (audit §4);
+// an accent belongs in one place, whole.
+const NUMERAL: Record<Accent, string> = {
+  violet: 'text-dept-numeral-violet',
+  coral: 'text-dept-numeral-coral',
+}
+
+export function deptMeta(code: string): {
+  icon: string; accent: Accent; tileClass: string; numeralClass: string
+} {
+  const m = META[code] ?? { accent: 'violet' as Accent, icon: '' }
+  return { ...m, tileClass: TILE[m.accent], numeralClass: NUMERAL[m.accent] }
 }
