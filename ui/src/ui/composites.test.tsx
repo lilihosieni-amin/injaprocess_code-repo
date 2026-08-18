@@ -13,6 +13,7 @@ import { StatTile, type StatTone } from './StatTile'
 import { NavTabTray } from './NavTabTray'
 import { Timeline, type TimelineNode, type TimelineState } from './Timeline'
 import { FAB } from './FAB'
+import { expectExpandedHitArea } from '../test/a11y'
 
 /* -------------------------------------------------------------------------
    Three halves, and the last two are the ones that matter.
@@ -154,6 +155,40 @@ async function dead(classNames: string): Promise<string[]> {
   return [...new Set(classNames.split(/\s+/).filter(Boolean))].filter((c) => !alive.has(c))
 }
 
+/* -------------------------------------------------------------------------
+   The number the utility layer cannot tell you.
+
+   A control whose drawn height is `padding + line box` has no `h-…` class to
+   read, and the line box is `font-size x line-height` where the line-height is
+   INHERITED — Tailwind's base layer sets it once, on `html`, and every button
+   takes it from there. So the third factor is not in the element's class
+   string at all, and a test that wanted the drawn height either hard-codes 1.5
+   (a second, silent record of a value the base layer owns) or reads it.
+
+   This reads it: the base layer is compiled and `html`'s own `line-height` is
+   taken out of it. Change the preflight, or turn it off, and the arithmetic
+   below moves with it.
+   ------------------------------------------------------------------------- */
+let BASE_LINE_HEIGHT: Promise<number> | undefined
+function baseLineHeight(): Promise<number> {
+  BASE_LINE_HEIGHT ??= (async () => {
+    const result = await postcss([
+      tailwind({ ...config, content: [{ raw: 'x', extension: 'html' }] }),
+    ]).process('@tailwind base;', { from: undefined })
+    let value = ''
+    result.root.walkRules((rule) => {
+      if (!rule.selectors.includes('html')) return
+      for (const n of rule.nodes ?? []) {
+        if (n.type !== 'decl') continue
+        const decl = n as unknown as { prop: string; value: string }
+        if (decl.prop === 'line-height') value = decl.value
+      }
+    })
+    return Number(value)
+  })()
+  return BASE_LINE_HEIGHT
+}
+
 /** Every class the element and all of its descendants write. */
 function classStringOf(root: Element): string {
   const parts: string[] = []
@@ -188,6 +223,17 @@ function declared(): Map<string, string> {
 const tokenLiteral = (token: string) => declared().get(token) ?? ''
 
 /**
+ * A CSS length in px, following `var(--x)` back to the token behind it.
+ * Returns NaN for anything that is not a px length, so a missing declaration
+ * and a wrong one both fail the arithmetic rather than passing it as 0.
+ */
+function pxOf(value: string): number {
+  const token = /^var\((--[a-z0-9-]+)\)$/.exec(value.trim())?.[1]
+  const literal = token === undefined ? value.trim() : tokenLiteral(token)
+  return Number(/^(-?\d+(?:\.\d+)?)px$/.exec(literal)?.[1] ?? NaN)
+}
+
+/**
  * What a `--role-*` property is worth on one surface, read out of
  * `src/styles/roles.css` and then followed back to its literal.
  *
@@ -219,6 +265,27 @@ function codeOf(file: string): string {
 }
 
 const SOURCES = ['SectionCard.tsx', 'StatTile.tsx', 'NavTabTray.tsx', 'Timeline.tsx', 'FAB.tsx'] as const
+
+/* -------------------------------------------------------------------------
+   The one bracketed spelling these five files may write.
+
+   Everything else on the design's ladder comes through a token, and the test
+   above says so. The hit-area overlay is the exception the plan carves out by
+   name: `before:-inset-[Npx]` is derived ARITHMETIC — whatever brings this
+   control's drawn size up to F11's 44 — so N differs per control (6px on
+   Overlay's 32px close button, 5px on Pager's 34px page button, 5px on the
+   34.75px tab below). A token would have to be minted per control size and
+   would record the arithmetic in the one place that cannot check it; the
+   arithmetic is checked here instead, against the box the control actually
+   draws.
+
+   Anchored, so a variant-prefixed `md:before:-inset-[5px]` — a 44px target
+   above 768px and a 34.75px one on every phone — is NOT this. `_ANYWHERE` is
+   the same pattern for striking the two spellings out of a source line, with a
+   lookbehind that refuses to strike the tail off a variant chain.
+   ------------------------------------------------------------------------- */
+const HIT_AREA = /^before:(?:content-\[""\]|-inset-\[\d+(?:\.\d+)?px\])$/
+const HIT_AREA_ANYWHERE = /(?<![\w:-])before:(?:content-\[""\]|-inset-\[\d+(?:\.\d+)?px\])/g
 
 function on(surface: 'panel' | 'reader', node: ReactNode) {
   return render(<SurfaceProvider surface={surface}>{node}</SurfaceProvider>)
@@ -270,6 +337,21 @@ describe('the harness itself', () => {
       'border-radius: var(--radius-round)',
     ])
     expect(await snapOf('')).toEqual([])
+  })
+
+  it('reads the base layer’s inherited line-height, and a px length through its token', async () => {
+    // Both feed the hit-area arithmetic below, and both answer with a number
+    // for "nothing found" unless they are pinned: `Number('')` is 0 and would
+    // make every line box zero tall, which is the direction that passes.
+    expect(await baseLineHeight()).toBe(1.5)
+    expect(pxOf('var(--space-4)')).toBe(8)
+    expect(pxOf('12.5px')).toBe(12.5)
+    expect(pxOf('-5px')).toBe(-5)
+    expect(pxOf('var(--nonesuch)')).toBeNaN()
+    expect(pxOf('')).toBeNaN()
+    expect(pxOf('transparent')).toBeNaN()
+    // A unitless token is not a length: `--fw-bold` is 700 and 700 is not 700px.
+    expect(pxOf('var(--fw-bold)')).toBeNaN()
   })
 
   it('reads the token and role files, so a literal here is measured and not restated', () => {
@@ -351,25 +433,59 @@ describe('every class these five composites write, in every branch', () => {
     ])
   })
 
-  it('writes no arbitrary value — every length, colour and radius comes through a name', async () => {
+  it('writes no arbitrary value but the hit area, whose N is arithmetic and not a design value', async () => {
     // guards.test.ts bans `text-[`, `rounded-[` and `shadow-[` only, so
     // `p-[7px]` passes every gate in this repo while stepping straight past
-    // the token layer. Nothing here may hold a bracket at all.
+    // the token layer. Nothing here may hold a bracket except HIT_AREA.
     for (const [name, node] of BRANCHES) {
       const { container, unmount } = on('panel', node())
       const brackets = classStringOf(container.firstElementChild!)
-        .split(/\s+/).filter((c) => c.includes('[') || c.includes(']'))
+        .split(/\s+/).filter((c) => (c.includes('[') || c.includes(']')) && !HIT_AREA.test(c))
       expect(brackets, name).toEqual([])
       unmount()
     }
     // The same question of the sources, which also covers a branch this file
     // failed to think of. `-[` is the shape of a Tailwind arbitrary value and
     // matches neither a TS array type (`string[]`) nor an index (`tabs[next]`).
+    // The two allowed spellings are struck out of the line first, so a second
+    // bracket ON THE SAME LINE — the class string that carries the hit area is
+    // also the one that carries every other utility the tab draws — is still
+    // reported.
     for (const file of SOURCES) {
       const hits = sourceOf(file).split('\n')
         .map((line, i) => ({ n: i + 1, line: line.trim() }))
-        .filter(({ line }) => /-\[/.test(line))
+        .filter(({ line }) => /-\[/.test(line.replace(HIT_AREA_ANYWHERE, '')))
       expect(hits.map((h) => `${file}:${h.n} ${h.line}`)).toEqual([])
+    }
+    // …and the carve-out is a keyhole, not a door. Every near miss stays banned.
+    //
+    // Assembled from fragments rather than written out, because
+    // `./src/**/*.{ts,tsx}` is a CONTENT glob: a class spelled whole in this
+    // file is a class Tailwind mints into the shipped stylesheet, and a fixture
+    // is by definition a rule nothing renders. One of these would have shipped
+    // `inset: -5`, which is not even valid CSS. `dist/assets/*.css` is the
+    // check — none of the eight is in it.
+    const klass = (variants: string, utility: string, value: string) =>
+      `${variants}${utility}${value === '' ? '' : `[${value}]`}`
+    for (const near of [
+      klass('before:', '-inset-', '5'),        // no unit
+      klass('before:', '-inset-', '5rem'),     // not px
+      klass('before:', 'inset-', '5px'),       // positive: an inset, not an outset
+      klass('', '-inset-', '5px'),             // not on the ::before at all
+      klass('md:before:', '-inset-', '5px'),   // only above 768px
+      klass('before:', 'content-', 'none'),    // generates no box
+      klass('before:', 'content-', "'x'"),     // paints a glyph
+      klass('', 'p-', '7px'),                  // an ordinary arbitrary length
+      klass('before:', '-inset-', ''),         // no value at all
+    ]) {
+      expect(HIT_AREA.test(near), near).toBe(false)
+    }
+    for (const real of [
+      klass('before:', '-inset-', '5px'),
+      klass('before:', '-inset-', '16.5px'),
+      klass('before:', 'content-', '""'),
+    ]) {
+      expect(HIT_AREA.test(real), real).toBe(true)
     }
   })
 
@@ -811,6 +927,30 @@ describe('NavTabTray', () => {
     expect(screen.getByRole('tab', { name: 'الف' })).toHaveClass('bg-transparent', 'text-violet')
   })
 
+  it('puts the selection, the tab stop and the fill on the SAME tab, and never on the first', async () => {
+    // Every other test in this block that reads `aria-selected` or `tabindex`
+    // happens to select the FIRST tab, so selection wired to the head of the
+    // list rather than to `value` — `t.id === tabs[0].id` — satisfies all of
+    // them and ships. Two mutations survived the suite that way. The three
+    // answers are each legal on their own and wrong together, which is the
+    // failure a selected-state control is most prone to and the one nothing
+    // about a rendered tray shows, so they are asked of ONE render, of EVERY
+    // tab, with the LAST tab selected.
+    render(<NavTabTray label="نما" value="closed" tabs={TABS} onChange={() => {}} />)
+    const selected = screen.getByRole('tab', { name: 'بسته‌شده' })
+    for (const tab of screen.getAllByRole('tab')) {
+      const mine = tab === selected
+      const why = `${tab.textContent} (${mine ? 'the selected tab' : 'not selected'})`
+      expect(tab.getAttribute('aria-selected'), why).toBe(String(mine))
+      expect(tab.getAttribute('tabindex'), why).toBe(mine ? '0' : '-1')
+      const painted = await snap(tab)
+      expect(painted, why).toContain(
+        mine ? 'background-color: var(--violet)' : 'background-color: transparent',
+      )
+      expect(painted, why).toContain(mine ? 'color: var(--card)' : 'color: var(--violet)')
+    }
+  })
+
   it('draws §5.2’s segmented tray: a 12px violet-tinted box with 4px of gap and inset', async () => {
     const { container } = render(<NavTabTray label="نما" value="mine" tabs={TABS} onChange={() => {}} />)
     expect(await snap(container.firstElementChild!)).toEqual([
@@ -836,6 +976,10 @@ describe('NavTabTray', () => {
       'padding-left: var(--space-7)',
       'padding-right: var(--space-7)',
       'padding-top: var(--space-4)',
+      // F11 — the anchor the hit-area overlay is placed against. It is the one
+      // declaration on this element that paints nothing, and the two tests
+      // below are what say why it is here.
+      'position: relative',
     ]
     expect(await snap(screen.getByRole('tab', { name: 'همه' }))).toEqual(
       ['background-color: var(--violet)', ...shared.slice(0, 2), 'color: var(--card)', ...shared.slice(2)].sort(),
@@ -855,6 +999,118 @@ describe('NavTabTray', () => {
     for (const tab of screen.getAllByRole('tab')) {
       expect(await snap(tab)).toContain('flex: 1 1 0%')
     }
+  })
+
+  /* -----------------------------------------------------------------------
+     F11, on the one control in this file that is drawn under the floor.
+
+     The retired `Tabs.tsx` carried `min-h-touch`, so replacing it with a tray
+     that carries no 44px provision at all made a control SMALLER than the one
+     it retired — a net accessibility regression, not a difference. The plan's
+     one rule for the design's 30/32/34/36/40/42 ladder decides the repair and
+     supersedes any per-task treatment: the drawn control is the design's size,
+     the target is brought to 44 by a transparent `::before`.
+
+     The two halves of that rule are two numbers, and only one of them is in
+     the class string. The drawn height here is `padding + line box`, and the
+     line box's third factor — the line-height — is INHERITED from the base
+     layer, so it is not on this element at all. That is also why
+     `expectExpandedHitArea` cannot be the check: it resolves the drawn box out
+     of the control's own `w-…`/`h-…` classes, and a tab has neither (its width
+     is its label's, and pinning either would be a design change, not a
+     hit-area one). The test after this one holds it to that, and holds the
+     shared helper to every OTHER half of the contract.
+     ----------------------------------------------------------------------- */
+  it('grows every tab’s target to F11’s floor and leaves the 34.75px it draws alone', async () => {
+    const floor = pxOf('var(--size-touch)')
+    const lineHeight = await baseLineHeight()
+    for (const stretch of [false, true]) {
+      const { unmount } = render(
+        <NavTabTray label="نما" value="mine" tabs={TABS} onChange={() => {}} stretch={stretch} />,
+      )
+      // The tray cannot clip what the tabs overhang: the overlay is
+      // deliberately 1px wider than the box that generates it, and any
+      // `overflow` on the parent would cut it back to what a tab looks like.
+      expect(winner(await paint(screen.getByRole('tablist').className), 'overflow')).toBe('')
+
+      for (const tab of screen.getAllByRole('tab')) {
+        const why = `${stretch ? 'stretched' : 'plain'} · ${tab.textContent}`
+        const painted = await paint(tab.className)
+
+        // THE DRAWN BOX — read off the element's own declarations, not restated:
+        // 8px of `py-s4` twice around a 12.5px `--fs-sm2` line box at the base
+        // layer's 1.5. Change any one of the three and this number moves, which
+        // is the point — the inset below is derived from it.
+        const drawn =
+          pxOf(winner(painted, 'padding-top'))
+          + pxOf(winner(painted, 'padding-bottom'))
+          + pxOf(winner(painted, 'font-size')) * lineHeight
+        expect(drawn, why).toBe(34.75)
+        // Never inflated to the floor. A tab that already measured 44 would be
+        // the OTHER defect, and `min-h-touch` is how the retired file wrote it.
+        expect(drawn, why).toBeLessThan(floor)
+        expect(winner(painted, 'min-height'), why).toBe('')
+        expect(winner(painted, 'height'), why).toBe('')
+
+        // THE OVERLAY — every declaration it takes to generate a box that
+        // catches a pointer. Each of these compiles and none of them is visible
+        // in jsdom, in a snapshot or in a build.
+        expect(winner(painted, 'position'), why).toBe('relative')
+        expect(winner(painted, 'position', '::before'), why).toBe('absolute')
+        expect(winner(painted, '--tw-content', '::before'), why).toBe('""')
+        expect(winner(painted, 'content', '::before'), why).toBe('var(--tw-content)')
+        expect(winner(painted, 'display', '::before'), why).toBe('')
+        expect(winner(painted, 'visibility', '::before'), why).toBe('')
+        // pointer-events is inherited, so the control's own value is the one
+        // that would take the overlay with it.
+        expect(winner(painted, 'pointer-events', '::before'), why).toBe('')
+        expect(winner(painted, 'pointer-events'), why).toBe('')
+
+        // THE ARITHMETIC. `inset: -5px` on all four sides, so the target is the
+        // drawn box plus 2N: 34.75 + 10 = 44.75.
+        const inset = -pxOf(winner(painted, 'inset', '::before'))
+        expect(inset, why).toBeGreaterThan(0)
+        expect(drawn + 2 * inset, why).toBeGreaterThanOrEqual(floor)
+      }
+      unmount()
+    }
+  })
+
+  it('passes every half of the shared helper’s contract except the one it cannot state', () => {
+    // `expectExpandedHitArea` is this project's checker for the rule above and
+    // it is imported, not re-implemented: everything it CAN decide about this
+    // tab — the unconditional `relative`, the unconditional `before:absolute`,
+    // a `before:content` that is neither `none` nor `normal`, no
+    // `before:pointer-events-none`, no `hidden`/`invisible`/`scale-0`/`static`
+    // on the ::before, no clipping `overflow` on the control, an unconditional
+    // `before:-inset-[Npx]` rather than one behind a `md:`/`max760:` variant —
+    // it decides here, because it reaches its LAST check before stopping.
+    //
+    // That last check is the drawn box, which it resolves out of `w-…`/`h-…`
+    // on the control. A tab states neither: its width is its label's and its
+    // height is its padding's. So the helper reports exactly that, and the
+    // test above measures the box instead. The day a tab is given a stated box
+    // this goes red, and the two tests collapse into one call to the helper.
+    render(<NavTabTray label="نما" value="mine" tabs={TABS} onChange={() => {}} />)
+    const tab = screen.getByRole('tab', { name: 'همه' })
+    expect(() => expectExpandedHitArea(tab)).toThrow(/the drawn box is not stated on the control/)
+
+    // …and it is not merely throwing at the first thing it looks at. Strip
+    // either half of the overlay and it names THAT instead, which is what makes
+    // the message above evidence that the rest of the contract held.
+    const probe = (className: string) => {
+      const el = document.createElement('button')
+      el.className = className
+      return el
+    }
+    expect(() => expectExpandedHitArea(probe(tab.className.replace(/\brelative\b/, ''))))
+      .toThrow(/no unconditional `relative`/)
+    expect(() => expectExpandedHitArea(probe(tab.className.replace(/\bbefore:absolute\b/, ''))))
+      .toThrow(/no unconditional `before:absolute`/)
+    expect(() => expectExpandedHitArea(probe(tab.className.replace(/before:-inset-\[[\d.]+px\]/, ''))))
+      .toThrow(/no unconditional `before:-inset-/)
+    expect(() => expectExpandedHitArea(probe(tab.className.replace(/before:content-\[""\]/, ''))))
+      .toThrow(/no `before:content-/)
   })
 })
 
