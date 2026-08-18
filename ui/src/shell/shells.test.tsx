@@ -134,9 +134,11 @@ function renderPanel(
           <Route element={<PanelShell session={who} />}>
             <Route path="/departments" element={<p>محتوا</p>} />
             <Route path="/departments/:code" element={<p>محتوا</p>} />
+            <Route path="/departments/:code/overview" element={<p>محتوا</p>} />
             <Route path="/processes/:pid" element={<p>محتوا</p>} />
             <Route path="/processes/:pid/flow" element={<p>محتوا</p>} />
             <Route path="/users" element={<p>محتوا</p>} />
+            <Route path="/users/:id" element={<p>محتوا</p>} />
             <Route path="/visibility" element={<p>محتوا</p>} />
             <Route path="/profile" element={<p>محتوا</p>} />
           </Route>
@@ -159,8 +161,8 @@ function renderPanel(
  * `fetch` and the suite's strongest content fixtures were leaning on a network
  * call that happened to fail quietly.
  */
-function renderAdmin(entry = '/departments') {
-  return renderPanel(['view', 'edit', 'set_visibility', 'manage_users'], entry, { scopes: ['*'] })
+function renderAdmin(entry = '/departments', { pending = [] as unknown[] } = {}) {
+  return renderPanel(['view', 'edit', 'set_visibility', 'manage_users'], entry, { scopes: ['*'], pending })
 }
 
 /** Every `d` this element draws, in order — the whole glyph, not its first path. */
@@ -463,18 +465,116 @@ describe('PanelShell chrome', () => {
     }
     expect(within(sheet).getByRole('button', { name: /صندوق بازبینی/ })).toBeInTheDocument()
     expect(within(sheet).getByRole('button', { name: 'خروج' })).toBeInTheDocument()
+    // …and each destination is the route it names. The «مدیریت» popover's three
+    // hrefs are asserted twice over; the sheet's one non-`adminItems`
+    // destination was not asserted once, and the test that clicks it waits for
+    // the dialog to vanish, never for where it went.
+    expect(within(sheet).getByRole('link', { name: /دپارتمان‌ها/ })).toHaveAttribute('href', '/departments')
+    expect(within(sheet).getByRole('link', { name: /کاربران/ })).toHaveAttribute('href', '/users')
+    expect(within(sheet).getByRole('link', { name: /سیاست نمایش محتوا/ })).toHaveAttribute('href', '/visibility')
+    expect(within(sheet).getByRole('link', { name: /پروفایل و گذرواژه/ })).toHaveAttribute('href', '/profile')
   })
 
-  it('grows both under-sized chrome controls to the 44px floor', () => {
-    // F11 against the design's ladder: the painted box stays 34 and 36, and a
-    // transparent ::before carries the target. `expectExpandedHitArea` resolves
-    // the used width from the element's own classes rather than matching a
-    // literal, so it also refuses a ::before that has been told not to draw.
-    const { unmount } = renderPanel(['view', 'edit'], '/departments')
+  /* R5 in the sheet. Every fixture that had ever opened it was `renderAdmin()`
+     — an editor holding both administration capabilities, scoped `*` — so the
+     surface that carries them all on six of the eight routes was graded by one
+     session who is allowed everything. Both mutations below survived vitest AND
+     Playwright: `{canEdit &&` rewritten to `{true &&`, and `adminItems` replaced
+     by a literal three-entry list. The bar's twins are protected by tests that
+     read `[data-r-topbar]` and by seven in PanelShell.visibility.test.tsx that
+     read the popover; not one of them can see the sheet. */
+  it('leaves the inbox out of the sheet for a caller who cannot edit', async () => {
+    // R5/C2 — «صندوق بازبینی» drawn to a `view`-only caller is an entry the
+    // screen behind it refuses, which R5 forbids in the form that costs a
+    // click to discover. It is also the only sheet row that fires a query.
+    renderPanel(['view'], '/departments/dining')
+    await userEvent.click(screen.getByRole('button', { name: 'فهرست' }))
+    const sheet = screen.getByRole('dialog')
+    expect(within(sheet).queryByRole('button', { name: /صندوق بازبینی/ })).toBeNull()
+    // …and the sheet it is absent from is on screen and carries its other rows,
+    // which is the difference between "this entry is gated" and "nothing
+    // rendered at all".
+    expect(within(sheet).getByRole('link', { name: /دپارتمان‌ها/ })).toBeInTheDocument()
+    expect(within(sheet).getByRole('button', { name: 'خروج' })).toBeInTheDocument()
+  })
+
+  it('leaves the administration entries this caller cannot reach out of the sheet too', async () => {
+    // A `view`-only panel caller holds neither administration capability, so
+    // the group holds its one ungated entry and nothing else.
+    renderPanel(['view'], '/departments/dining')
+    await userEvent.click(screen.getByRole('button', { name: 'فهرست' }))
+    const sheet = screen.getByRole('dialog')
+    for (const name of ['کاربران', 'سیاست نمایش محتوا']) {
+      expect(within(sheet).queryByRole('link', { name: new RegExp(name) }), name).toBeNull()
+    }
+    expect(within(sheet).getByRole('link', { name: /پروفایل و گذرواژه/ })).toBeInTheDocument()
+  })
+
+  it('leaves user administration out of the sheet for a holder scoped to one department', async () => {
+    // D56, in the sheet. `session()` is scoped to `dept:dining`, and
+    // `administrationRefusal` checks the SCOPE before the capability — so this
+    // holder of `manage_users` is answered 404 on every endpoint behind
+    // «کاربران». Drawn, it is a wall the app itself pointed them at.
+    renderPanel(['view', 'edit', 'manage_users', 'set_visibility'], '/departments/dining')
+    await userEvent.click(screen.getByRole('button', { name: 'فهرست' }))
+    const sheet = screen.getByRole('dialog')
+    expect(within(sheet).queryByRole('link', { name: /کاربران/ })).toBeNull()
+    // …and «سیاست نمایش محتوا» goes with it, one refusal code milder: that
+    // screen asks `can('set_visibility', '*')` because one policy governs every
+    // department (D11), and this caller holds the capability but not the scope.
+    expect(within(sheet).queryByRole('link', { name: /سیاست نمایش محتوا/ })).toBeNull()
+    // The pair's other half: scoped `*`, the same capabilities, both drawn. A
+    // gate spelled `false` would satisfy every negative above.
+    expect(within(sheet).getByRole('link', { name: /پروفایل و گذرواژه/ })).toBeInTheDocument()
+  })
+
+  it('draws both gated entries in the sheet for a holder scoped `*`', async () => {
+    renderAdmin('/departments/dining')
+    await userEvent.click(screen.getByRole('button', { name: 'فهرست' }))
+    const sheet = screen.getByRole('dialog')
+    for (const name of ['کاربران', 'سیاست نمایش محتوا', 'پروفایل و گذرواژه']) {
+      expect(within(sheet).getByRole('link', { name: new RegExp(name) }), name).toBeInTheDocument()
+    }
+    expect(within(sheet).getByRole('button', { name: /صندوق بازبینی/ })).toBeInTheDocument()
+  })
+
+  it('counts the sheet’s inbox in Persian, which is the count a phone can see', async () => {
+    // The bar's badge is asserted in Persian and the bar is hidden at ≤1080, so
+    // the ONE count a phone is ever shown had no digit assertion at all — and
+    // no fixture had ever opened the sheet with a non-empty inbox, so `toFa`
+    // could come off and both suites would agree. The Playwright check matches
+    // `/صندوق بازبینی/` as a regex, which «صندوق بازبینی 2» satisfies.
+    renderAdmin('/departments/dining', {
+      pending: [{ process: 'dining-001' }, { process: 'dining-002' }],
+    })
+    await userEvent.click(screen.getByRole('button', { name: 'فهرست' }))
+    const sheet = screen.getByRole('dialog')
+    const row = await within(sheet).findByRole('button', { name: /صندوق بازبینی ۲/ })
+    expect(row).toBeInTheDocument()
+    // …and no latin digit anywhere in the sheet, which is the assertion that
+    // does not have to be told where the count is written.
+    expect(sheet.textContent ?? '').not.toMatch(/[0-9]/)
+    expect(sheet.textContent ?? '').toContain('۲')
+  })
+
+  it('grows every under-sized chrome control to the 44px floor', () => {
+    // F11 against the design's ladder: the painted box stays 34, 36 and 40, and
+    // a transparent ::before carries the target. `expectExpandedHitArea`
+    // resolves the used width from the element's own classes rather than
+    // matching a literal, so it also refuses a ::before that has been told not
+    // to draw.
+    //
+    // Was "both", and read two controls. There are FOUR under-sized boxes in
+    // this chrome and the two it missed are the two sheet openers — the strip's
+    // is the only route to sign-out on six routes, and dropping `${HIT}` off it
+    // left a 36px target under the floor with every suite green.
+    const bar = renderPanel(['view', 'edit'], '/departments')
     expectExpandedHitArea(screen.getByRole('button', { name: 'خروج' }))
-    unmount()
+    expectExpandedHitArea(screen.getByRole('button', { name: 'فهرست' }))
+    bar.unmount()
     renderPanel(['view', 'edit'], '/departments/dining')
     expectExpandedHitArea(screen.getByRole('link', { name: 'خانه' }))
+    expectExpandedHitArea(screen.getByRole('button', { name: 'فهرست' }))
   })
 
   it('marks the surface so R3’s scale resolves under it', () => {
@@ -528,8 +628,34 @@ describe('PanelShell chrome', () => {
  * drew its header on every route.
  * ==================================================================== */
 
-/** Every route this shell is ever mounted on, one per branch of its chrome. */
-const ROUTES = ['/departments', '/departments/dining', '/processes/dining-003', '/processes/dining-003/flow']
+/**
+ * Every route this shell is ever mounted on — `src/routes.tsx`'s whole panel
+ * list, minus the two redirects.
+ *
+ * **The three flat administration routes are the ones that matter here, and
+ * they were missing.** `panelCrumbs` gives `/users`, `/visibility` and
+ * `/profile` a single crumb, so `back` is undefined on all three and no back
+ * control is drawn — and every route this list used to hold has one. A
+ * reviewer's mutation that wrapped the strip's opener in the back button's own
+ * `back?.to !== undefined` guard therefore removed sign-out, the inbox and all
+ * three administration entries from the three administration screens, and the
+ * block below — named "EVERY route" — was green.
+ */
+const ROUTES = [
+  '/departments',
+  '/departments/dining',
+  '/departments/dining/overview',
+  '/processes/dining-003',
+  '/processes/dining-003/flow',
+  '/users',
+  '/users/09120000000',
+  '/visibility',
+  '/profile',
+]
+
+/** The routes that carry a back control, and the routes that do not. Both exist. */
+const WITH_BACK = ROUTES.filter((r) => !['/departments', '/users', '/visibility', '/profile'].includes(r))
+const WITHOUT_BACK = ['/users', '/visibility', '/profile']
 
 describe('PanelShell reachability', () => {
   it('puts sign-out one control away on EVERY route', async () => {
@@ -578,11 +704,157 @@ describe('PanelShell reachability', () => {
     expect(opener.className).not.toMatch(/max\d+:/)
     unmount()
     // …and it lives in the strip's own inline-end cluster, beside «خانه»,
-    // which is the box §6.0 draws there.
+    // which is the box §6.0 draws there, and AFTER it: the deliverable's
+    // cluster reads «خانه» first from the inline start, and an `order-` on
+    // either control transposes the two without moving a line of markup.
     const inner = renderPanel(['view', 'edit'], '/departments/dining')
     const cluster = inner.container.querySelector('[data-r-crumbbar] .ms-auto') as HTMLElement
     expect(within(cluster).getByRole('link', { name: 'خانه' })).toBeInTheDocument()
     expect(within(cluster).getByRole('button', { name: 'فهرست' })).toBeInTheDocument()
+    expect(Array.from(cluster.children).map((c) => c.getAttribute('aria-label')))
+      .toEqual(['خانه', 'فهرست'])
+  })
+
+  it('draws the strip’s opener on the three screens that have no back control', () => {
+    // `panelCrumbs` gives these three a single crumb, so `back` is undefined and
+    // the strip draws no «بازگشت» — and the opener beside «خانه» is the only
+    // thing on the screen that reaches sign-out, the inbox or any other
+    // administration entry. A mutation that hung the opener off the back
+    // button's own guard emptied all three, and every route ROUTES used to hold
+    // has a back control, so nothing saw it.
+    for (const entry of WITHOUT_BACK) {
+      const { container, unmount } = renderPanel(['view', 'edit'], entry)
+      expect(container.querySelector('[data-r-crumbbar] a[href="/departments"][aria-label]'), entry)
+        .toBeInTheDocument()
+      expect(within(container).queryByRole('link', { name: /بازگشت/ }), entry).toBeNull()
+      expect(container.querySelector('[data-r-crumbbar] [data-r-menu]'), entry).toBeInTheDocument()
+      unmount()
+    }
+    // …and the other half: the routes that DO draw one still do, so this is a
+    // test about two branches rather than one that would pass with no back
+    // control anywhere.
+    for (const entry of WITH_BACK) {
+      const { container, unmount } = renderPanel(['view', 'edit'], entry)
+      expect(within(container).getByRole('link', { name: /بازگشت/ }), entry).toBeInTheDocument()
+      unmount()
+    }
+  })
+
+  it('leaves the strip’s opener in the tab order, on every route it is drawn', () => {
+    // On six of the eight routes this control is the only way to sign-out and
+    // to the inbox. `tabIndex={-1}` on it takes both away from a keyboard-only
+    // caller entirely and is invisible to every other assertion in this file:
+    // the element is still present, still labelled, still the right size and
+    // still clickable by a mouse.
+    for (const entry of ROUTES) {
+      const { container, unmount } = renderPanel(['view', 'edit'], entry)
+      const opener = container.querySelector('[data-r-menu]') as HTMLElement
+      expect(opener, entry).toBeInTheDocument()
+      expect(opener.tabIndex, `${entry}: the sheet opener is out of the tab order`).toBe(0)
+      expect(opener.hasAttribute('disabled'), entry).toBe(false)
+      expect(opener.getAttribute('aria-hidden'), entry).toBeNull()
+      unmount()
+    }
+  })
+
+  it('draws the strip’s opener at the design’s own box, in the design’s own colours', async () => {
+    // The whole emitted set, values included. Everything about this control was
+    // asserted except what it looks like: that it exists, that its class string
+    // carries no `hidden` and no breakpoint variant, and which glyph is in it.
+    // Six separate mutations to its paint survived both suites — including
+    // dropping `hover:bg-tile-v2` from the ghost recipe, which leaves `Icon`'s
+    // `currentColor` white on a white box: an empty white square where the only
+    // sign-out on the screen is.
+    const { container, unmount } = renderPanel(['view', 'edit'], '/departments/dining')
+    const opener = container.querySelector('[data-r-crumbbar] [data-r-menu]') as HTMLElement
+    const o = await paint(opener.className)
+    unmount()
+    expect(declarations(o)).toEqual(new Set([
+      'display: inline-flex',
+      'align-items: center',
+      'justify-content: center',
+      'position: relative',
+      'width: var(--size-menu-more)',
+      'height: var(--size-menu-more)',
+      'border-radius: var(--radius-input)',
+      'border-width: var(--border-hairline)',
+      'border-color: var(--line)',
+      'background-color: var(--card)',
+      'color: var(--violet)',
+      'text-decoration-line: none',
+      'cursor: pointer',
+      'flex: none',
+    ]))
+    // The hover half, which is the one that decides whether the glyph is
+    // visible at all: `Icon` draws in `currentColor`, so a control whose label
+    // is `--card` on the strip's own white box is an empty square.
+    expect(declarations(o, ':hover')).toEqual(new Set(['background-color: var(--tile-v2)']))
+    expect(winner(o, 'color')).not.toBe('var(--card)')
+    // §6.0's own «خانه» beside it is the strip's 36px white box, not the bar's
+    // 40px lavender one — on this lavender ground a lavender button is a border
+    // and nothing else. `--size-tool` is the same family one rung down (34px)
+    // and compiles; `--role-iconbtn` is the bar's 40.
+    expect(winner(o, 'width')).not.toBe('var(--size-tool)')
+    expect(winner(o, 'width')).not.toBe('var(--role-iconbtn)')
+    expect(winner(o, 'background-color')).not.toBe('var(--tile-v2)')
+    // …and the ::before that carries F11's floor around the 36px box.
+    expect(winner(o, 'position', '::before')).toBe('absolute')
+    expect(winner(o, 'content', '::before')).toBe('var(--tw-content)')
+    expect(winner(o, '--tw-content', '::before')).toBe('""')
+    expect(winner(o, 'inset', '::before')).toBe('-5px')
+  })
+
+  it('paints «خانه» the same 36px white box, and neither control reorders itself', async () => {
+    // The opener's neighbour, and the deliverable's own control (Panel :189).
+    // Its box was read one property at a time — `width` and the ::before inset
+    // — so the rest of it, its colours included, had no assertion at all.
+    //
+    // **`order-` is why this is a whole-set and not four `winner` lines.** The
+    // cluster's markup order is asserted a few tests up, and `order-last` on
+    // either control transposes the two without touching a line of it: the
+    // deliverable reads «خانه» first from the inline start, and a strip that
+    // draws the hamburger there instead puts the app's only sign-out where the
+    // design puts going home. Nothing in a class-name check, a snapshot or
+    // jsdom can see that, because jsdom resolves no flex order.
+    const { container, unmount } = renderPanel(['view', 'edit'], '/departments/dining')
+    const cluster = container.querySelector('[data-r-crumbbar] .ms-auto') as HTMLElement
+    const sets = await Promise.all(
+      Array.from(cluster.children).map(async (c) => declarations(await paint((c as HTMLElement).className))),
+    )
+    unmount()
+    const BOX = new Set([
+      'display: inline-flex',
+      'align-items: center',
+      'justify-content: center',
+      'position: relative',
+      'width: var(--size-menu-more)',
+      'height: var(--size-menu-more)',
+      'border-radius: var(--radius-input)',
+      'border-width: var(--border-hairline)',
+      'border-color: var(--line)',
+      'background-color: var(--card)',
+      'color: var(--violet)',
+      'text-decoration-line: none',
+      'cursor: pointer',
+      'flex: none',
+    ])
+    // Both controls, one recipe, and NEITHER of them setting `order` — which is
+    // the declaration this set exists to refuse.
+    expect(sets).toEqual([BOX, BOX])
+  })
+
+  it('sizes the glyph in each chrome opener to the deliverable’s own number', () => {
+    // §6.0 draws a 19px hamburger in the bar's 40px box and a 17px one in the
+    // strip's 36px box. `Icon` writes `px` as a width ATTRIBUTE, so nothing in
+    // a class-name assertion can see it and an 8px glyph in a 36px box is a
+    // control that looks empty.
+    for (const [entry, px] of [['/departments', '19'], ['/departments/dining', '17']] as const) {
+      const { unmount } = renderPanel(['view', 'edit'], entry)
+      const svg = screen.getByRole('button', { name: 'فهرست' }).querySelector('svg')
+      expect(svg?.getAttribute('width'), entry).toBe(px)
+      expect(svg?.getAttribute('height'), entry).toBe(px)
+      unmount()
+    }
   })
 })
 
@@ -690,9 +962,14 @@ describe('PanelShell controls', () => {
  * ==================================================================== */
 
 describe('PanelShell glyphs', () => {
-  it('draws six DIFFERENT pictures, so the pins below are about something', () => {
+  it('draws eight DIFFERENT pictures, so the pins below are about something', () => {
     // The negative half. Without it, an icon set that had collapsed to one
     // drawing would satisfy every assertion in this block.
+    //
+    // Named "six" while asserting eight, which is harmless — the assertion is
+    // the stronger of the two — and is the same name/shape slippage this
+    // project keeps finding, in this round's own new code. The name is now the
+    // count, and the count is read off the list rather than written twice.
     const names = ['logout', 'menu', 'home', 'file', 'inbox', 'comment', 'chevronDown', 'chevronUp'] as const
     const drawn = names.map(iconGlyph)
     for (const d of drawn) expect(d).not.toBe('')
@@ -870,9 +1147,15 @@ describe('PanelShell popover dismissal', () => {
 
    `paint`, `winner` and `declarations` come from `src/test/paint.ts`, which is
    where src/ui/table.test.tsx's comment asks for them to be lifted "by Task
-   12". Lifting the two copies under `src/ui/` is one import each and is left to
-   whoever unfreezes that directory; this file's copy is gone, so there are two
-   left rather than three, and the module they should point at exists.
+   12". This file's copy is gone and the module they should point at exists;
+   lifting the rest is one import each and is left to whoever unfreezes
+   `src/ui/`, which is frozen for this task.
+
+   **Seven files under `src/ui/` still carry their own copy**, not two: choices,
+   composites, fields, icons, Overlay, primitives.design and table. The earlier
+   count here said "two left rather than three", which was true only of the
+   three files the older comment in table.test.tsx happened to name, and reading
+   it as the whole inventory understates the lift by more than a factor of two.
    ------------------------------------------------------------------------- */
 
 const R1080 = '(max-width: 1080px)'
@@ -1109,7 +1392,11 @@ describe('what the panel chrome’s class strings compile to', () => {
     renderAdmin()
     await userEvent.click(screen.getByRole('button', { name: 'فهرست' }))
     const sheet = screen.getByRole('dialog')
-    const row = await paint((within(sheet).getByRole('link', { name: 'دپارتمان‌ها' })).className)
+    // A row that is NOT where this render is standing. `renderAdmin()` enters at
+    // `/departments`, so «دپارتمان‌ها» wears §6.0's current-entry paint and is
+    // the wrong row to read the resting recipe off; the test below is the one
+    // about that row.
+    const row = await paint((within(sheet).getByRole('link', { name: /پروفایل و گذرواژه/ })).className)
     expect(winner(row, 'justify-content')).toBe('flex-start')
     expect(winner(row, 'justify-content')).not.toBe('center')
     expect(winner(row, 'display')).toBe('flex')
@@ -1143,6 +1430,157 @@ describe('what the panel chrome’s class strings compile to', () => {
       expect(winner(await paint(el.className), 'justify-content'), el.textContent ?? '')
         .toBe('flex-start')
     }
+  })
+
+  it('marks the sheet row you are standing on, and leaves every other one resting', async () => {
+    // §6.0's `{{ m.bg }}`/`{{ m.fg }}`/`{{ m.border }}` (Panel :2083). The sheet
+    // is the app's only route to sign-out, the inbox and every administration
+    // screen on six of its eight routes, and four of those routes are a
+    // destination it draws — so it is the one surface where "you are here" can
+    // be said at all. The «مدیریت» popover's own current-state branch was dead
+    // by construction (that bar is drawn on `/departments`, and nothing in the
+    // popover leads there) and was deleted; this is where it belongs.
+    for (const [entry, current] of [
+      ['/departments', 'دپارتمان‌ها'],
+      ['/visibility', 'سیاست نمایش محتوا'],
+      ['/profile', 'پروفایل و گذرواژه'],
+    ] as const) {
+      const { unmount } = renderAdmin(entry)
+      await userEvent.click(screen.getByRole('button', { name: 'فهرست' }))
+      const sheet = screen.getByRole('dialog')
+      const rows = within(sheet).getAllByRole('link')
+      expect(rows.length, entry).toBeGreaterThan(3)
+      for (const row of rows) {
+        const here = (row.textContent ?? '').includes(current)
+        const p = await paint(row.className)
+        const where = `${entry} → ${row.textContent}`
+        expect(winner(p, 'background-color'), where).toBe(here ? 'var(--violet)' : 'var(--card)')
+        expect(winner(p, 'color'), where).toBe(here ? 'var(--card)' : 'var(--violet)')
+        expect(winner(p, 'border-color'), where).toBe(here ? 'var(--violet)' : 'var(--line)')
+        // The current row must carry NO hover. `text-card` over `--tile-v2` is
+        // the 1.04:1 pairing audit S1 measured, and lighting the violet row
+        // lavender under its white label is exactly that pairing, on the one
+        // menu a phone has. A resting row hovers because its label is violet.
+        expect(winner(p, 'background-color', ':hover'), where)
+          .toBe(here ? '' : 'var(--tile-v2)')
+      }
+      // …and exactly one row is marked, so this is a current-entry highlight
+      // and not a fill that happens to be on.
+      const marked = await Promise.all(
+        rows.map(async (r) => winner(await paint(r.className), 'background-color')),
+      )
+      expect(marked.filter((c) => c === 'var(--violet)').length, entry).toBe(1)
+      unmount()
+    }
+  })
+
+  it('marks nothing at all on a route the sheet does not lead to', async () => {
+    // The negative half of the pair above. Without it a highlight spelled
+    // `true` — or one keyed off something the fixture always satisfies — paints
+    // every row violet and satisfies every "the current row is violet" line.
+    renderAdmin('/processes/dining-003/flow')
+    await userEvent.click(screen.getByRole('button', { name: 'فهرست' }))
+    const rows = within(screen.getByRole('dialog')).getAllByRole('link')
+    expect(rows.length).toBeGreaterThan(3)
+    for (const row of rows) {
+      expect(winner(await paint(row.className), 'background-color'), row.textContent ?? '')
+        .toBe('var(--card)')
+    }
+  })
+
+  it('carries every sheet label on a flex:1 span, with the count pushed to the end', async () => {
+    // §6.0's row is `<span style="flex:1">{{ label }}</span>` and then the
+    // badge (Panel :2083-2084) — the span is the whole reason every label in
+    // the stack sits on one leading edge whatever follows it. The comment on
+    // `SHEET_ITEM` claimed the span for months; there was none, and the count
+    // was bare text run on after the words.
+    renderAdmin('/departments', { pending: [{ process: 'dining-001' }, { process: 'dining-002' }] })
+    await userEvent.click(screen.getByRole('button', { name: 'فهرست' }))
+    const sheet = screen.getByRole('dialog')
+    const rows = [
+      ...within(sheet).getAllByRole('link'),
+      ...within(sheet).getAllByRole('button').filter((b) => b.getAttribute('aria-label') !== 'بستن'),
+    ]
+    expect(rows.length).toBeGreaterThan(4)
+    for (const row of rows) {
+      const label = row.firstElementChild as HTMLElement | null
+      expect(label?.tagName, row.textContent ?? '').toBe('SPAN')
+      expect(declarations(await paint(label?.className ?? '')), row.textContent ?? '')
+        .toEqual(new Set(['flex: 1 1 0%']))
+    }
+    // …and the count is §6.0's coral pill rather than a word ending in a digit.
+    const inbox = within(sheet).getByRole('button', { name: /صندوق بازبینی/ })
+    const pill = inbox.lastElementChild as HTMLElement
+    expect(pill.textContent).toBe('۲')
+    const p = await paint(pill.className)
+    expect(declarations(p)).toEqual(new Set([
+      'min-width: var(--size-count-chrome)',
+      'height: var(--size-count-chrome)',
+      'padding-left: var(--space-3)',
+      'padding-right: var(--space-3)',
+      'display: flex',
+      'align-items: center',
+      'justify-content: center',
+      'border-radius: var(--radius-round)',
+      'background-color: var(--coral)',
+      'color: var(--card)',
+      'font-size: var(--fs-xxs)',
+      'font-weight: var(--fw-bold)',
+      'flex: none',
+    ]))
+    // Round, not merely rounded: `--radius-pill` is 20px and would draw a
+    // stadium on a 19px box, which is the same shape one corner short.
+    expect(winner(p, 'border-radius')).not.toBe('var(--radius-pill)')
+    // …and it does not shrink away when a long label pushes at it, which is
+    // what `flex-none` is for beside a `flex:1` sibling.
+    expect(winner(p, 'flex')).toBe('none')
+  })
+
+  it('stacks the sheet, and sets the administration entries apart under their heading', async () => {
+    // §6.0 (Panel :2090-2091) puts the administration entries in their own
+    // group behind a `--warm` rule under an «مدیریت» heading; flat, they read
+    // as four peers of «دپارتمان‌ها», which is the one entry that is not
+    // administration. Nothing in this file had ever painted the sheet's own
+    // container, so the stack could have collapsed to a 4px ladder — every row
+    // still correct, the menu unreadable — with both suites green.
+    renderAdmin()
+    await userEvent.click(screen.getByRole('button', { name: 'فهرست' }))
+    const sheet = screen.getByRole('dialog')
+    const stack = within(sheet).getByRole('link', { name: /دپارتمان‌ها/ }).parentElement as HTMLElement
+    expect(declarations(await paint(stack.className))).toEqual(new Set([
+      'display: flex',
+      'flex-direction: column',
+      'gap: var(--space-5)',
+    ]))
+    // NOT `--space-half`, which is 2px and is the popover's row gap.
+    expect(winner(await paint(stack.className), 'gap')).not.toBe('var(--space-half)')
+    const group = within(sheet).getByRole('group', { name: 'مدیریت' })
+    expect(declarations(await paint(group.className))).toEqual(new Set([
+      'margin-top: var(--space-8)',
+      'padding-top: var(--space-7)',
+      'border-top-width: 1px',
+      'border-color: var(--warm)',
+      'display: flex',
+      'flex-direction: column',
+      'gap: var(--space-5)',
+    ]))
+    // The rule is the cream `--warm`, the edge every chrome bar in this app
+    // takes — not `--line`, the lavender hairline the rows themselves wear,
+    // which would read as one more row with nothing in it.
+    expect(winner(await paint(group.className), 'border-color')).not.toBe('var(--line)')
+    // …and the heading itself, which is the accessible name of that group.
+    const heading = within(group).getByText('مدیریت')
+    expect(declarations(await paint(heading.className))).toEqual(new Set([
+      'margin: 0px',
+      'font-size: var(--fs-xs)',
+      'font-weight: var(--fw-bold)',
+      'color: var(--text-muted)',
+    ]))
+    // Every administration entry is inside it, and «دپارتمان‌ها» is not.
+    for (const name of ['کاربران', 'سیاست نمایش محتوا', 'پروفایل و گذرواژه']) {
+      expect(within(group).getByRole('link', { name: new RegExp(name) }), name).toBeInTheDocument()
+    }
+    expect(within(group).queryByRole('link', { name: /دپارتمان‌ها/ })).toBeNull()
   })
 
   it('draws the count badge round, 19px, and ringed in the card white', async () => {

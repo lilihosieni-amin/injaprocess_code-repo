@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { Link, Outlet, useLocation } from 'react-router-dom'
 import { can, type SessionDescriptor } from '../auth/session'
 import { administrationRefusal, useCan } from '../auth/can'
@@ -27,10 +27,10 @@ const TRAY_ITEM = 'px-s7 py-s4 rounded-tool border-0 no-underline cursor-pointer
 const GHOST = 'inline-flex items-center justify-center bg-card text-violet border-hairline border-line cursor-pointer no-underline hover:bg-tile-v2'
 
 // §6.0's mobile sheet row (Panel :2082) — a full-width block, 14px all round,
-// on the card white behind a 1.5px `--line` hairline, its text aligned to the
-// start, with the label carried on a `flex:1` span. (Values by token name: the
-// guard in src/test/guards.test.ts reads comments, and F6 says this file names
-// no literal.)
+// behind a 1.5px hairline, its text aligned to the start, with the label
+// carried on a `flex:1` span. (Values by token name: the guard in
+// src/test/guards.test.ts reads comments, and F6 says this file names no
+// literal.)
 //
 // **Deliberately not `GHOST` plus an override, which is how it was written and
 // is why it shipped wrong.** GHOST is shrink-to-fit and centres what is in it —
@@ -41,8 +41,41 @@ const GHOST = 'inline-flex items-center justify-center bg-card text-violet borde
 // every entry in the sheet drew its label centred while the source said start,
 // the build exited 0, and jsdom — which computes no cascade — read the class
 // name and agreed with the source. Same trap, same line, for `flex` under
-// `inline-flex`. Nothing here may name a utility this file also names in GHOST.
-const SHEET_ITEM = 'flex items-center justify-start gap-s6 px-s7 py-s7 rounded-tile bg-card text-violet border-hairline border-line cursor-pointer no-underline hover:bg-tile-v2 text-fs-menu font-bold'
+// `inline-flex`.
+//
+// **The rule that trap leaves behind, stated as the rule actually kept:** no
+// string a row wears may set a property another string on that same row already
+// sets to a DIFFERENT value. (The earlier wording — "nothing here may name a
+// utility this file also names in GHOST" — was simply false, and being false it
+// invited the wrong repair: this row and GHOST have always shared eight
+// utilities, every one of them at the same value, and de-duplicating those
+// would have changed nothing while leaving the real hazard in place.) It is why
+// the three declarations §6.0 varies per row live in REST/HERE below rather
+// than being appended to this string as an override.
+const SHEET_ITEM = 'flex items-center justify-start gap-s6 px-s7 py-s7 rounded-tile border-hairline cursor-pointer no-underline text-fs-menu font-bold'
+
+// §6.0's `{{ m.bg }}` / `{{ m.fg }}` / `{{ m.border }}` (Panel :2083), which is
+// the sheet's current-entry highlight — the same violet fill and card label the
+// top bar's nav pill takes, against the resting card white.
+//
+// It is drawn HERE and not in the «مدیریت» popover, and that is the whole point
+// of it: the popover lives in the top bar, the bar is drawn on `/departments`
+// alone, and nothing in the popover leads there — so a `pathname === to` branch
+// up there is unreachable by construction, was written, was dead, and was
+// deleted. The sheet is reachable from all eight panel routes and four of them
+// are a destination it draws, so this is where "you are here" can be said at
+// all. §6.0's own sheet hard-codes the administration group white and lets its
+// popover carry that group's current state; this shell has no reachable popover
+// to carry it, so the one predicate governs every row that has a destination.
+//
+// A row with no destination — the inbox, sign-out — is never current, which is
+// §6.0's own `m.id !== 'inbox'` exclusion arrived at from the other end.
+//
+// REST keeps the hover; HERE must not have one. `text-card` over `--tile-v2` is
+// the 1.04:1 pairing audit S1 measured, and a hover that lit this row lavender
+// under a white label would reintroduce it on the app's only phone menu.
+const SHEET_REST = 'bg-card text-violet border-line hover:bg-tile-v2'
+const SHEET_HERE = 'bg-violet text-card border-violet'
 
 // F11's 44px floor against the design's 34-36px boxes: the painted box stays the
 // design's, and an invisible `::before` grows the target. Nothing about it shows.
@@ -77,6 +110,13 @@ export function PanelShell({ session }: { session: SessionDescriptor }) {
   const crumbs = panelCrumbs(pathname, (code) => departments.find((d) => d.code === code)?.name ?? code)
   const back = crumbs.length > 1 ? crumbs[crumbs.length - 2] : undefined
   const home = pathname === '/departments'
+  // §6.0 labels the sheet's administration group. `useId` because the label is
+  // what names the group to a screen reader, and two panel shells on one page
+  // (the test file mounts several) must not both claim the same id.
+  const adminGroup = useId()
+
+  /** A sheet row's own three declarations: §6.0's current entry, or its resting one. */
+  const sheetRow = (to: string) => `${SHEET_ITEM} ${pathname === to ? SHEET_HERE : SHEET_REST}`
 
   // R5 — an entry whose target this caller cannot reach is absent, not
   // disabled, not explained. Each of the three gates below is the SAME
@@ -295,9 +335,15 @@ export function PanelShell({ session }: { session: SessionDescriptor }) {
         >
           <Icon name="logout" px={17} stroke={2.2} />
         </button>
+        {/* F11's floor reaches this one too. §6.0 draws it 40px — under the 44px
+            minimum like every other box on the design's ladder — so it takes
+            the same `::before` overlay the two 34/36px controls do, and for the
+            same reason: the painted box stays the deliverable's and the target
+            grows around it. 40 + 10 = 50, and the cluster's own 10px gap means
+            two neighbouring overlays meet without overlapping. */}
         <button
           data-r-menu type="button" onClick={() => setMenuOpen(true)} aria-label="فهرست"
-          className="hidden max1080:flex items-center justify-center w-iconbtn h-iconbtn rounded-input bg-tile-v2 text-violet border-hairline border-line cursor-pointer flex-none"
+          className={`${HIT} hidden max1080:flex items-center justify-center w-iconbtn h-iconbtn rounded-input bg-tile-v2 text-violet border-hairline border-line cursor-pointer flex-none`}
         >
           <Icon name="menu" px={19} stroke={2.2} />
         </button>
@@ -392,27 +438,54 @@ export function PanelShell({ session }: { session: SessionDescriptor }) {
           <Outlet />
         </main>
         {inboxOpen && <InboxModal onClose={() => setInboxOpen(false)} />}
+        {/* §6.0's mobile menu (Panel :2071-2100), and — because this shell draws
+            the strip's opener at every width — the app's only route to sign-out,
+            to the conflict inbox and to every administration screen on six of
+            its eight routes. Every row is a `flex:1` label span and an optional
+            end-aligned pill, which is the deliverable's own row: the span is what
+            keeps every label on one leading edge whatever sits after it. */}
         <Sheet open={menuOpen} onClose={() => setMenuOpen(false)} title="فهرست">
           <div className="flex flex-col gap-s5">
             <div>
               <p className="m-0 text-fs-body font-bold text-ink">{session.displayName}</p>
               <p className="m-0 mt-half text-fs-xs text-muted">{session.role}</p>
             </div>
-            <Link to="/departments" onClick={() => setMenuOpen(false)} className={`${SHEET_ITEM}`}>
-              دپارتمان‌ها
+            <Link to="/departments" onClick={() => setMenuOpen(false)} className={sheetRow('/departments')}>
+              <span className="flex-1">دپارتمان‌ها</span>
             </Link>
-            {adminItems.map((i) => (
-              <Link key={i.to} to={i.to} onClick={() => setMenuOpen(false)} className={`${SHEET_ITEM}`}>
-                {i.label}
-              </Link>
-            ))}
             {canEdit && (
-              <button type="button" onClick={() => { setMenuOpen(false); setInboxOpen(true) }} className={`${SHEET_ITEM}`}>
-                صندوق بازبینی {openCount > 0 && toFa(openCount)}
+              <button type="button" onClick={() => { setMenuOpen(false); setInboxOpen(true) }} className={`${SHEET_ITEM} ${SHEET_REST}`}>
+                <span className="flex-1">صندوق بازبینی</span>
+                {openCount > 0 && (
+                  // §6.0 — `min-width:22px; height:22px; border-radius:999px`
+                  // on the coral, pushed to the row's end by the span above.
+                  // Written on the chrome's own count-badge token, which is
+                  // 19px: the deliverable draws 19 in the bar and 22 here, and
+                  // a third badge size needs a token in `src/styles/`, which
+                  // this task may not add. Reported rather than invented — the
+                  // shape, the colour and the placement are the design's; one
+                  // number is the shell's nearest named rung.
+                  <span className="min-w-count-chrome h-count-chrome px-s3 flex items-center justify-center rounded-round bg-coral text-card text-fs-xxs font-bold flex-none">
+                    {toFa(openCount)}
+                  </span>
+                )}
               </button>
             )}
-            <button type="button" onClick={() => logout.mutate()} className={`${SHEET_ITEM}`}>
-              خروج
+            {/* §6.0 sets the administration entries apart under their own
+                heading, behind a `--warm` rule (Panel :2090-2091). Flat, they
+                read as four peers of «دپارتمان‌ها», which is the one entry that
+                is not administration. `role="group"` + `aria-labelledby` is what
+                carries the heading to a reader who cannot see the rule. */}
+            <div role="group" aria-labelledby={adminGroup} className="mt-s8 pt-s7 border-t border-warm flex flex-col gap-s5">
+              <p id={adminGroup} className="m-0 text-fs-xs font-bold text-muted">مدیریت</p>
+              {adminItems.map((i) => (
+                <Link key={i.to} to={i.to} onClick={() => setMenuOpen(false)} className={sheetRow(i.to)}>
+                  <span className="flex-1">{i.label}</span>
+                </Link>
+              ))}
+            </div>
+            <button type="button" onClick={() => logout.mutate()} className={`${SHEET_ITEM} ${SHEET_REST}`}>
+              <span className="flex-1">خروج</span>
             </button>
           </div>
         </Sheet>

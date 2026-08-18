@@ -490,30 +490,114 @@ async function contrastOf(handle: ReturnType<Page['locator']>): Promise<number> 
   })
 }
 
+/**
+ * Every control on one surface, at rest and hovered, against what is painted
+ * behind it. `least` is the floor on how many were actually measured, so a
+ * selector that matches nothing cannot pass.
+ */
+async function expectNothingVanishesOnHover(page: Page, root: string, least: number) {
+  const controls = page.locator(`${root} a, ${root} button`)
+  const n = await controls.count()
+  expect(n, `${root} drew almost nothing, so this check is about nothing`).toBeGreaterThan(least)
+  let measured = 0
+  for (let i = 0; i < n; i++) {
+    const c = controls.nth(i)
+    if (!(await c.isVisible())) continue
+    // At rest first: a control that is already illegible is not a hover defect.
+    expect(await contrastOf(c), `${root} control ${i} at rest`).toBeGreaterThan(LEGIBLE)
+    await c.hover()
+    await expect(c).toHaveCSS('cursor', /pointer|default/)
+    const ratio = await contrastOf(c)
+    expect(
+      ratio,
+      `${root} control ${i} (${(await c.textContent())?.trim() || (await c.getAttribute('aria-label'))}) ` +
+      `hovered: its label is ${ratio.toFixed(2)}:1 against its own fill`,
+    ).toBeGreaterThan(LEGIBLE)
+    measured++
+  }
+  expect(measured, `every control in ${root} was invisible, so nothing was measured`)
+    .toBeGreaterThan(least - 1)
+  await page.mouse.move(0, 0)
+}
+
 test('no header control disappears when you point at it', async ({ page }) => {
   // Audit S1, measured: `text-card` over `hover:bg-tile-v2` is white on #F4EFFB,
   // about 1.04:1, and jsdom could never have caught it. The floor is the
   // harness's LEGIBLE — deliberately not WCAG AA, which this design does not
   // meet anywhere; what is being caught is text a reader cannot see AT ALL.
   await home(page)
-  const controls = page.locator('[data-r-topbar] a, [data-r-topbar] button')
-  const n = await controls.count()
-  expect(n, 'the bar drew almost nothing, so this test is about nothing').toBeGreaterThan(2)
-  let measured = 0
-  for (let i = 0; i < n; i++) {
-    const c = controls.nth(i)
-    if (!(await c.isVisible())) continue
-    // At rest first: a control that is already illegible is not a hover defect.
-    expect(await contrastOf(c), `control ${i} at rest`).toBeGreaterThan(LEGIBLE)
-    await c.hover()
-    await expect(c).toHaveCSS('cursor', /pointer|default/)
-    const ratio = await contrastOf(c)
-    expect(ratio, `control ${i} hovered: its label is ${ratio.toFixed(2)}:1 against its own fill`)
-      .toBeGreaterThan(LEGIBLE)
-    measured++
-  }
-  expect(measured, 'every control in the bar was invisible, so nothing was measured').toBeGreaterThan(1)
-  await page.mouse.move(0, 0)
+  await expectNothingVanishesOnHover(page, '[data-r-topbar]', 2)
+})
+
+test('no CRUMB STRIP control disappears when you point at it either', async ({ page }) => {
+  // The half this sweep was missing, and the one that matters most: the strip
+  // is the chrome on six of the eight panel routes, and its opener is the only
+  // route to sign-out on all six. The unit twin is a class-name pairing check
+  // that a mutation dropping the hover half of the ghost recipe walks straight
+  // through — `Icon` draws in `currentColor`, so a `text-card` label on the
+  // strip's own white box is an empty white square where sign-out is, and only
+  // a browser can weigh one against the other.
+  await administrator(page)
+  await page.goto('/departments/dining')
+  await page.locator('[data-r-crumbbar]').waitFor()
+  await pinPage(page, "goto('/departments/dining')")
+  await expectNothingVanishesOnHover(page, '[data-r-crumbbar]', 2)
+})
+
+test('no SHEET row disappears when you point at it', async ({ page }) => {
+  // The third chrome surface, and the only one a phone has. §6.0's
+  // current-entry highlight is a white label on the brand violet, and the
+  // resting rows hover onto `--tile-v2` — put those two together on one row and
+  // it is audit S1's 1.04:1 pairing again, on the app's whole mobile menu.
+  await administrator(page)
+  // `/profile` because the sheet DRAWS that route, so its row wears §6.0's
+  // current-entry paint while every other row is at rest — both are on screen
+  // at once. It is also one of the three screens with no back control, and the
+  // strip's opener is drawn at every width, so this runs on all three projects.
+  // The screen behind it makes no read of its own, so it needs no stub.
+  await page.goto('/profile')
+  await page.locator('[data-r-crumbbar]').waitFor()
+  await pinPage(page, "goto('/profile')")
+  await page.locator('[data-r-crumbbar] [data-r-menu]').click()
+  await expect(page.getByRole('dialog')).toBeVisible()
+  await expectNothingVanishesOnHover(page, '[role="dialog"]', 4)
+})
+
+test('the strip’s opener is reachable from the keyboard, and its cluster reads «خانه» first', async ({ page }) => {
+  // Two defects one control apart, neither of them visible to a class-name
+  // check. `tabIndex={-1}` leaves a keyboard-only caller with no sign-out at
+  // all on six of the eight routes — the element is still there, still
+  // labelled, still the right size, still clickable by a mouse. And an `order-`
+  // on either control transposes the cluster without moving a line of markup:
+  // the deliverable reads «خانه» first from the inline start (Panel :188-190),
+  // and RTL makes that the RIGHT-hand end.
+  await administrator(page)
+  await page.goto('/departments/dining')
+  await page.locator('[data-r-crumbbar]').waitFor()
+  await pinPage(page, "goto('/departments/dining')")
+  const homeBtn = page.getByRole('link', { name: 'خانه' })
+  const opener = page.locator('[data-r-crumbbar] [data-r-menu]')
+  await expect(homeBtn).toBeVisible()
+  await expect(opener).toBeVisible()
+  // The two are adjacent in the cluster, so one Tab off «خانه» must land on the
+  // opener. A `tabIndex` of -1 takes it out of the sequence and the Tab runs
+  // past it into the page.
+  await homeBtn.focus()
+  await page.keyboard.press('Tab')
+  await expect(opener).toBeFocused()
+  // …and Enter on it opens the sheet, so the keyboard reaches sign-out.
+  await page.keyboard.press('Enter')
+  const sheet = page.getByRole('dialog')
+  await expect(sheet).toBeVisible()
+  await expect(sheet.getByRole('button', { name: 'خروج' })).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(sheet).toBeHidden()
+  // The painted order, which is the half `order-` moves.
+  const [h, o] = [(await homeBtn.boundingBox())!, (await opener.boundingBox())!]
+  expect(h.x, 'RTL: «خانه» is the inline-start control, so it sits to the RIGHT of the opener')
+    .toBeGreaterThan(o.x)
+  expect(Math.round(h.width), 'the deliverable draws both cluster controls at 36px').toBe(36)
+  expect(Math.round(o.width)).toBe(36)
 })
 
 /* ------------------------------------------------------------------ *
