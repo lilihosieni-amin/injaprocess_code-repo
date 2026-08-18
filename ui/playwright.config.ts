@@ -53,6 +53,13 @@ export default defineConfig({
   // is what every per-breakpoint expectation is keyed by. Adding a project here
   // without adding its width there is not a silent no-op: `atWidth` throws,
   // naming the viewport, rather than letting a fourth project grade nothing.
+  //
+  // **Removing one is the dangerous direction, and it is asserted.** Deleting
+  // `w1440` used to leave the run at 8 passed / 12 skipped with nothing failing:
+  // `harness.spec.ts`'s `proved once` block is gated on `WIDTHS[0]`, so four of
+  // its guards simply stopped running. `the run shape is the one §4 documents`
+  // compares this list against `WIDTHS` from every project, so a missing,
+  // renamed or resized one is a red rather than a quieter run.
   projects: [
     { name: 'w1440', use: { viewport: { width: 1440, height: 1000 } } },
     { name: 'w1080', use: { viewport: { width: 1080, height: 900 } } },

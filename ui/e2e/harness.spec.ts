@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import playwrightConfig from '../playwright.config'
 import type { Department } from '../src/api/types'
 import type { PerWidth, ScreenDesign } from './_harness'
 import {
@@ -35,6 +36,50 @@ const onDepartments = async (page: Page) => {
  * Width-independent — proved once, not three times
  * ================================================================== */
 
+/**
+ * **The ledger of what is allowed to be proved once.** Membership here is a
+ * decision, not a location.
+ *
+ * Being inside the `proved once` describe means a test runs at 1440 and is
+ * *skipped* at 1080 and 760. That is right for a pure function and wrong for
+ * anything that renders — and skipping is silent. Measured: moving
+ * `shadowOf strips…` into that describe took the suite from 18 passed / 12
+ * skipped to **16 / 14**, with no failure and no warning; the assertion simply
+ * stopped being made at two of the three widths. §4 invites screen authors into
+ * this block by name, so the invitation now comes with a gate: a test in there
+ * must be registered with `provedOnce()` **and** be named here, or the
+ * `beforeEach` below fails it at 1440 and `the run shape` fails it everywhere.
+ *
+ * Before adding a title: if the test reads `page`, hovers, measures, screenshots
+ * or asserts anything a stylesheet decides, it is **not** width-independent
+ * however much it looks it — a `max760:` variant is exactly the kind of thing
+ * that only appears at one width.
+ */
+const WIDTH_INDEPENDENT = [
+  'atWidth resolves a per-width record and refuses an unlisted width',
+  'expandPadding takes the whole 1–4 value shorthand',
+  'trackCount counts drawn tracks, not whitespace',
+  'every DESIGN row carries a width-dependent expectation',
+  'expectEveryEndpointStubbed fails when the spec registered no stubs',
+  'serve() refuses to stub one pathname twice',
+] as const
+
+/** The titles actually registered through `provedOnce`, in source order. */
+const provedOnceTitles: string[] = []
+
+/**
+ * Registers a test that is skipped in every project but the first.
+ *
+ * A thin wrapper on purpose: the body is handed to `test()` untouched, so
+ * Playwright still reads its destructured fixtures out of the signature and
+ * nothing about cost or scheduling changes. All it adds is the title, to a list
+ * `the run shape` compares against the ledger above.
+ */
+function provedOnce(title: string, body: (args: { page: Page }) => void | Promise<void>) {
+  provedOnceTitles.push(title)
+  test(title, body)
+}
+
 test.describe('proved once', () => {
   // Nothing in this block reads the viewport, and three of them do not open a
   // page at all. Run in every project they were 9 of the suite's 18 reported
@@ -45,7 +90,21 @@ test.describe('proved once', () => {
     'width-independent: one project is the whole proof',
   )
 
-  test('atWidth resolves a per-width record and refuses an unlisted width', () => {
+  // The gate on the invitation. A bare `test(...)` dropped in here — which is
+  // what §4's own wording used to invite — runs once and is skipped twice with
+  // no signal; this makes that a failure at the one width where it does run.
+  // eslint-disable-next-line no-empty-pattern
+  test.beforeEach(({}, testInfo) => {
+    expect(
+      provedOnceTitles,
+      `\`${testInfo.title}\` is inside the \`proved once\` describe but was registered with a ` +
+      'bare `test(...)`, so it is silently skipped at 1080 and 760. Register it with ' +
+      '`provedOnce(...)` and name it in WIDTH_INDEPENDENT — or, if it renders anything at all, ' +
+      'move it out of this block and let it run three times.',
+    ).toContain(testInfo.title)
+  })
+
+  provedOnce('atWidth resolves a per-width record and refuses an unlisted width', () => {
     const perWidth: PerWidth<string> = { 1440: 'a', 1080: 'b', 760: 'c' }
     expect(atWidth(1440, perWidth)).toBe('a')
     expect(atWidth(1080, perWidth)).toBe('b')
@@ -56,7 +115,7 @@ test.describe('proved once', () => {
     expect(() => atWidth(999, perWidth)).toThrow(/not one of 1440 \/ 1080 \/ 760/)
   })
 
-  test('expandPadding takes the whole 1–4 value shorthand', () => {
+  provedOnce('expandPadding takes the whole 1–4 value shorthand', () => {
     expect(expandPadding('30px'))
       .toEqual({ top: '30px', right: '30px', bottom: '30px', left: '30px' })
     expect(expandPadding('30px 40px'))
@@ -73,7 +132,7 @@ test.describe('proved once', () => {
     expect(() => expandPadding('1px 2px 3px 4px 5px')).toThrow(/1 to 4 lengths/)
   })
 
-  test('trackCount counts drawn tracks, not whitespace', () => {
+  provedOnce('trackCount counts drawn tracks, not whitespace', () => {
     // A used value — the only thing a *visible* grid reports. Measured on the
     // departments grid at 1440.
     expect(trackCount('361.328px 361.328px 361.344px')).toBe(3)
@@ -90,7 +149,7 @@ test.describe('proved once', () => {
     expect(() => trackCount('repeat(3, minmax(0px, 1fr))')).toThrow(/specified/)
   })
 
-  test('every DESIGN row carries a width-dependent expectation', () => {
+  provedOnce('every DESIGN row carries a width-dependent expectation', () => {
     // R7's gate is only real if something differs between the three projects.
     // Every other property this harness reads — max-width, font-size, padding,
     // radius, transform — computes to its declared value at every viewport, so
@@ -116,7 +175,7 @@ test.describe('proved once', () => {
     }
   })
 
-  test('expectEveryEndpointStubbed fails when the spec registered no stubs', async ({ page }) => {
+  provedOnce('expectEveryEndpointStubbed fails when the spec registered no stubs', async ({ page }) => {
     // The vacuous case the old `s ? [...s.unstubbed] : []` reported clean. A
     // spec that forgets both `signedIn()` and `serve()` installs no page.route,
     // so every /api/ call reaches the vite proxy and the container on :8000 —
@@ -124,7 +183,7 @@ test.describe('proved once', () => {
     await expect(expectEveryEndpointStubbed(page)).rejects.toThrow(/registered no stubs at all/)
   })
 
-  test('serve() refuses to stub one pathname twice', async ({ page }) => {
+  provedOnce('serve() refuses to stub one pathname twice', async ({ page }) => {
     // Two keys, one pathname: only the pathname is matched, so keeping the
     // second silently answers the first's request with the wrong body.
     await expect(serve(page, {
@@ -135,6 +194,42 @@ test.describe('proved once', () => {
     await serve(page, { '/api/departments': DEPARTMENTS })
     await expect(serve(page, { '/api/departments': [] })).rejects.toThrow(/stubbed twice/)
   })
+})
+
+/* ================================================================== *
+ * The shape of the run itself
+ * ================================================================== */
+
+/**
+ * **Deliberately not in `proved once`.** This is the one test that must survive
+ * the projects being wrong, and every single-project gate has the same hole:
+ * delete the project it is gated on and it stops running instead of failing.
+ * Measured — deleting `w1440` from `playwright.config.ts` gave **8 passed, 12
+ * skipped** and no failure at all, because `proved once` is keyed on
+ * `WIDTHS[0]`: `trackCount`, the DESIGN row walk, the stub-vacuity guard and
+ * the `serve()` duplicate guard all stopped being run, silently. So this one
+ * pays 3× on purpose. It opens no page and takes microseconds.
+ */
+test('the run shape is the one §4 documents', () => {
+  const declared = (playwrightConfig.projects ?? []).map(
+    (project) => `${project.name}@${project.use?.viewport?.width ?? 'no viewport'}`,
+  )
+  expect(
+    declared,
+    'playwright.config.ts must declare exactly one project per width in WIDTHS, named `w<width>`. ' +
+    'A width with no project is not a smaller run, it is an unproved breakpoint — and every ' +
+    'assertion `proved once` gates on the first width stops running entirely. Add the project ' +
+    'and the width to WIDTHS together; `atWidth` refuses a project whose width no ByWidth ' +
+    'record carries, so the two cannot drift apart.',
+  ).toEqual(WIDTHS.map((width) => `w${width}@${width}`))
+
+  expect(
+    provedOnceTitles,
+    'the `proved once` ledger and the tests registered through `provedOnce()` have drifted. ' +
+    'Every entry costs 1× and proves 1×, so adding one is a claim that the test cannot see a ' +
+    'breakpoint. Make the claim in WIDTH_INDEPENDENT, where a reviewer reads it, or leave the ' +
+    'test outside the block.',
+  ).toEqual([...WIDTH_INDEPENDENT])
 })
 
 /** Every `ByWidth` record in a `DESIGN` row, with the dotted path that reaches it. */
@@ -322,4 +417,180 @@ test('the focus branch passes on both focus idioms, and fails without one', asyn
   } finally {
     delete row.focus
   }
+})
+
+/* ------------------------------------------------------------------ *
+ * Every clause of the focus check, pinned to a probe that kills it
+ * ------------------------------------------------------------------ */
+
+/**
+ * The mutants, as CSS.
+ *
+ * Written as plain rules rather than Tailwind classes because
+ * `tailwind.config.js`'s content globs are `index.html`, `src/`, `export/` and
+ * `tailwind-probe.txt` — **not `e2e/`** — so a utility this file invents is
+ * never emitted and a probe built from one would be styled by nothing. These
+ * are also unlayered, which is what lets them beat `base.css`'s
+ * `@layer base :focus-visible` where they mean to: an unlayered declaration
+ * wins over any layer, which is the same reason Tailwind's `outline-none`
+ * suppresses F11's ring on the 21 fields that wear it.
+ *
+ * Each probe is the smallest control that reaches exactly one clause and fails
+ * it, with every earlier clause passing — otherwise it would not prove that
+ * clause is what fired.
+ */
+const CLAUSE_PROBE_CSS = `
+/* clause 2 — an indicator that is already there at rest, so nothing changes. */
+[data-probe-stuck]{border:1.5px solid rgb(250,90,82);outline:2px solid transparent}
+/* clause 3a — F11's coral ring appears, and the border turns the wrong colour with it. */
+[data-probe-offcolour]{border:1.5px solid rgb(200,200,200)}
+[data-probe-offcolour]:focus{border-color:rgb(42,29,94)}
+/* clause 3b — the coral border appears, and a second, non-coral ring with it. */
+[data-probe-offring]{border:1.5px solid rgb(200,200,200);outline:2px solid transparent}
+[data-probe-offring]:focus{border-color:rgb(250,90,82);outline:3px solid rgb(42,29,94)}
+/* clause 4 — the coral border appears, and brings a glow §4.6 does not declare. */
+[data-probe-glow]{border:1.5px solid rgb(200,200,200);outline:2px solid transparent}
+[data-probe-glow]:focus{border-color:rgb(250,90,82);box-shadow:0 0 0 4px rgba(250,90,82,.35)}
+/* clause 5 — a correct indicator that never goes away again. */
+[data-probe-sticky]{border:1.5px solid rgb(200,200,200);outline:2px solid transparent}
+[data-probe-sticky].zz-still-focused{border-color:rgb(250,90,82)}
+`
+
+async function plantClauseProbes(page: Page) {
+  await page.evaluate((css) => {
+    const style = document.createElement('style')
+    style.textContent = css
+    document.head.append(style)
+    const host = document.querySelector('[data-screen="departments"] [data-col]')!
+    const make = (tag: 'input' | 'button', name: string) => {
+      const el = document.createElement(tag)
+      el.setAttribute(`data-probe-${name}`, '')
+      if (tag === 'button') el.textContent = 'دکمه'
+      host.prepend(el)
+      return el
+    }
+    make('input', 'stuck')
+    // A <button>, so `base.css`'s F11 ring is the indicator that satisfies
+    // clause 1 and the wrong-coloured border is all that is left to fail.
+    make('button', 'offcolour')
+    make('input', 'offring')
+    make('input', 'glow')
+    // The ordinary React defect: a class set in an `onFocus` and never taken
+    // off again. CSS alone cannot express "stays after blur".
+    const sticky = make('input', 'sticky')
+    sticky.addEventListener('focus', () => sticky.classList.add('zz-still-focused'))
+  }, CLAUSE_PROBE_CSS)
+}
+
+test('every clause of the focus check has a probe that kills it', async ({ page }) => {
+  await onDepartments(page)
+  await plantClauseProbes(page)
+
+  // Clause 1 — "a coral indicator appears" — is pinned by `mute` and `ringless`
+  // in the test above. These are the other four. Before them, deleting any one
+  // of the four left the whole suite at 18 passed / 12 skipped: the evidence in
+  // §10.4 was real but it lived in scratch probes that were deleted before the
+  // commit, so the file twenty-one tasks inherit did not hold it.
+  const dies = async (probe: string, why: string, message: RegExp) => {
+    await expect(
+      expectFocusIndicator(page, `[data-probe-${probe}]`, `probe: ${why}`),
+      `the \`${probe}\` probe stopped killing its clause — that clause can no longer fail`,
+    ).rejects.toThrow(message)
+  }
+
+  // 2. it was not there at rest. A control with a decorative permanent coral
+  //    border and no focus style at all is the escape this closes.
+  await dies('stuck', 'a coral border that is there at rest', /nothing changed when/)
+  // 3. nothing non-coral appears with it — both halves, border and ring.
+  await dies('offcolour', 'a border that turns the wrong colour', /focus border colour/)
+  await dies('offring', 'a ring that is not coral', /focus ring colour/)
+  // 4. no glow is added.
+  await dies('glow', 'a glow that arrives with focus', /focus added a glow/)
+  // 5. the indicator goes away again, so `shot()` cannot photograph it.
+  await dies('sticky', 'an indicator that survives blur', /still shows a focus indicator after blur/)
+})
+
+/* ------------------------------------------------------------------ *
+ * The modality: a spec that used the mouse first is not a false red
+ * ------------------------------------------------------------------ */
+
+test('the focus check survives a spec that used the mouse first', async ({ page }) => {
+  await onDepartments(page)
+  const field = await plant(page, 'input', 'clicked-field', FIELD_IDIOM)
+  const button = await plant(page, 'button', 'clicked-button', BUTTON_IDIOM)
+  const elsewhere = await plant(page, 'button', 'elsewhere', BUTTON_IDIOM)
+
+  const clickAndRelease = async (selector: string) => {
+    await page.locator(selector).first().click()
+    await page.locator(selector).first().blur()
+  }
+
+  // First, the browser behaviour this exists for, measured rather than
+  // remembered: with the mouse used last, a bare `.focus()` leaves
+  // `:focus-visible` off, F11's ring is not painted, and the at-rest and
+  // focused states are byte-identical. That is what made `expectFocusIndicator`
+  // report "draws no coral indicator" on a control whose indicator is correct —
+  // a false **red**, inside a template that says "Do not weaken it".
+  await clickAndRelease(elsewhere)
+  await page.locator(button).first().focus()
+  expect(
+    await page.locator(button).first().evaluate((el) => ({
+      focusVisible: el.matches(':focus-visible'),
+      outlineStyle: getComputedStyle(el).outlineStyle,
+    })),
+    'Chrome no longer withholds `:focus-visible` from a scripted `.focus()` after a mouse ' +
+    'click. If that is really true, the keyboard-modality press in `expectFocusIndicator` is ' +
+    'no longer load-bearing — but check before removing it, because this is the only thing ' +
+    'that says so.',
+  ).toEqual({ focusVisible: false, outlineStyle: 'none' })
+  await page.locator(button).first().blur()
+
+  // And then the check itself, in the three shapes a real screen spec makes:
+  // the pointer used elsewhere, the pointer used on the target, and the other
+  // idiom for good measure. The suite used to pass only because the one spec
+  // that exercised the button idiom did so on a pointer-virgin page.
+  await clickAndRelease(elsewhere)
+  await expectFocusIndicator(page, button, 'probe: button idiom, the mouse was used elsewhere')
+
+  await clickAndRelease(button)
+  await expectFocusIndicator(page, button, 'probe: button idiom, the target itself was clicked')
+
+  await clickAndRelease(elsewhere)
+  await expectFocusIndicator(page, field, 'probe: field idiom, the mouse was used elsewhere')
+})
+
+/* ------------------------------------------------------------------ *
+ * A hook can be `toBeVisible()` and still paint nothing
+ * ------------------------------------------------------------------ */
+
+const FADED_GRID = '[data-screen="departments"] [data-grid]'
+
+test('a hook that is laid out but painted at opacity 0 is not measured', async ({ page }) => {
+  await onDepartments(page)
+
+  await page.evaluate(() => {
+    // The shape twenty-one screens will produce: a fade-in wrapper. Nothing
+    // sets opacity on the grid itself.
+    const fading = document.createElement('div')
+    fading.setAttribute('style', 'opacity:0')
+    const decoy = document.createElement('div')
+    decoy.setAttribute('data-grid', '')
+    // **Three** tracks — the number `DESIGN.departments.grid.columns` wants at
+    // every width — so the count cannot be what saves this. Only the paint can.
+    decoy.setAttribute('style', 'display:grid;height:40px;grid-template-columns:100px 100px 100px')
+    fading.append(decoy)
+    document.querySelector('[data-screen="departments"] [data-col]')!.prepend(fading)
+  })
+
+  // Playwright calls it visible: it has a box and it is not `visibility:hidden`.
+  await expect(page.locator(FADED_GRID).first()).toBeVisible()
+  // And it is laid out, so `trackCount` gets a used value and is content with
+  // it — the `display:none` kill (§10.4's U) does not reach this at all.
+  const tracks = await page.locator(FADED_GRID).first()
+    .evaluate((el) => getComputedStyle(el).gridTemplateColumns)
+  expect(trackCount(tracks), `the decoy did not lay out (${tracks}); it must, or it proves nothing`)
+    .toBe(3)
+
+  // So without the paint gate this is a green run grading a decoy.
+  await expect(expectDesign(page, 'departments')).rejects.toThrow(/painted at opacity 0/)
 })

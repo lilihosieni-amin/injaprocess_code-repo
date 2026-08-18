@@ -462,6 +462,30 @@ const css = (page: Page, selector: string, prop: string) =>
   )
 
 /**
+ * The opacity an element is really painted at: its own, times every ancestor's.
+ *
+ * Read up the tree rather than off the element, because that is where it comes
+ * from — nothing sets `opacity:0` on the grid itself, it sets it on the panel
+ * that is fading in around it. The first fully transparent node is named in the
+ * failure, since the element the selector matched will look innocent.
+ */
+const paintedOpacity = (page: Page, selector: string) =>
+  page.locator(selector).first().evaluate((el) => {
+    let product = 1
+    let culprit: string | null = null
+    for (let node: Element | null = el; node; node = node.parentElement) {
+      const opacity = Number(getComputedStyle(node).opacity)
+      if (Number.isFinite(opacity)) product *= opacity
+      if (opacity === 0 && culprit === null) {
+        const cls = node.getAttribute('class')
+        culprit = `${node === el ? 'the hook itself' : 'an ancestor'}: <` +
+          `${node.tagName.toLowerCase()}${cls ? ` class="${cls}"` : ''}>`
+      }
+    }
+    return { product, culprit }
+  })
+
+/**
  * Names a missing hook in ~5s instead of timing out for 30 inside `evaluate`,
  * and refuses to measure one that is **not on screen**.
  *
@@ -473,6 +497,17 @@ const css = (page: Page, selector: string, prop: string) =>
  * with its specified value (see `trackCount`), so a hidden one-column decoy
  * satisfied a three-column assertion. Where a screen legitimately has two
  * twins, point `grid.selector` at the one that is on screen at this width.
+ *
+ * **And `toBeVisible()` is not "the reader can see it".** Playwright's
+ * definition is a non-empty bounding box plus no `visibility:hidden`; an
+ * `opacity:0` element satisfies both. It is worse than a `display:none` twin,
+ * not better: it is fully laid out, so its track list resolves to real used
+ * values and every colour, size and radius reads exactly as if it were on
+ * screen. Measured on this repo — an `opacity:0` wrapper holding a
+ * three-column `[data-grid]`, prepended inside `[data-col]` — the departments
+ * check went **green grading the decoy**. There is no `opacity-0` in `src/`
+ * today; there are twenty-one screens coming, and a fade-in overlay is the
+ * ordinary way to get one. So the paint is checked too.
  */
 async function hook(page: Page, selector: string, what: string) {
   const el = page.locator(selector).first()
@@ -486,7 +521,18 @@ async function hook(page: Page, selector: string, what: string) {
     'not visible. A hidden twin is measured with the wrong values, not skipped; give the ' +
     'visible one a distinct selector.',
   ).toBeVisible({ timeout: HOOK_TIMEOUT })
+  const painted = await paintedOpacity(page, selector)
+  expect(
+    painted.product,
+    `transparent measurement hook: ${what} — \`${selector}\` resolves first to an element that ` +
+    `is laid out but painted at opacity 0 (${painted.culprit}). Playwright calls that visible: ` +
+    'it has a box and it is not `visibility:hidden` — and because it still lays out, its grid ' +
+    'tracks, colours, sizes and radii all read as if the reader could see them. A fade-in ' +
+    'overlay or a `transition-opacity` twin is measured, not skipped; give the one that is ' +
+    'actually painted at this width a distinct selector.',
+  ).toBeGreaterThan(0)
 }
+
 
 /* ------------------------------------------------------------------ *
  * focus
@@ -500,6 +546,14 @@ interface FocusState {
   outlineColor: string
   outlineWidth: string
   shadow: string
+  /**
+   * Whether Chrome would paint `base.css`'s F11 ring for this element right
+   * now. Not an indicator in itself — it is the *permission* for one, and it is
+   * the thing a mouse click takes away. Carried in the state so a failure
+   * prints it: "focusVisible: false" is the difference between "this screen has
+   * no focus style" and "this check focused it like a mouse".
+   */
+  focusVisible: boolean
 }
 
 const focusState = (page: Page, selector: string): Promise<FocusState> =>
@@ -512,8 +566,20 @@ const focusState = (page: Page, selector: string): Promise<FocusState> =>
       outlineColor: cs.getPropertyValue('outline-color'),
       outlineWidth: cs.getPropertyValue('outline-width'),
       shadow: cs.getPropertyValue('box-shadow'),
+      focusVisible: el.matches(':focus-visible'),
     }
   })
+
+/**
+ * A key press whose only job is to tell Chrome the user is on the keyboard.
+ *
+ * `Shift` and not `Tab`: Tab moves focus somewhere the check does not control,
+ * and `Control`/`Meta` do not work — Blink ignores a keydown that carries a
+ * shortcut modifier when it decides focus modality, measured here (`Control`
+ * leaves `:focus-visible` false, `Shift` sets it true). A bare `Shift` keydown
+ * moves no focus, scrolls nothing, types nothing and closes nothing.
+ */
+const KEYBOARD_MODALITY = 'Shift'
 
 /** A border that is actually drawn, in the focus colour. */
 const coralBorder = (s: FocusState) =>
@@ -554,6 +620,25 @@ const paintsRing = (s: FocusState) =>
  * It then blurs, and requires the indicator to go away — otherwise `shot()`
  * would photograph a focus ring the design does not draw, which is exactly the
  * defect I5 fixed for hover.
+ *
+ * ### The control is focused the way a *keyboard* user focuses it
+ *
+ * `el.focus()` alone is not enough, and the way it fails is the worst way an
+ * assertion can fail: it is a false **red**. F11's ring is a `:focus-visible`
+ * rule, and Chrome only grants `:focus-visible` on a scripted `.focus()` when
+ * the last thing the user did was a keyboard thing. Measured here: click *any*
+ * control with the mouse, then `.focus()` a `<Button>`-shaped one, and its at-
+ * rest and focused states are byte-identical — `outline-style: none`,
+ * `:focus-visible` false — so this check reports "draws no coral indicator" on
+ * a control whose indicator is perfectly correct. A screen spec that opens a
+ * menu, dismisses a toast or types in a filter before calling `expectDesign`
+ * would meet that red, be told by §4 not to weaken the assertion, and add a
+ * focus style the design never asked for. Twenty-one times.
+ *
+ * So the modality is set before the focused state is read: one `Shift` keydown,
+ * which moves no focus and types nothing (see `KEYBOARD_MODALITY`). What the
+ * check then measures is what a person tabbing through the screen sees, which
+ * is what F11 is *about*. **A spec is free to use the mouse first.**
  */
 export async function expectFocusIndicator(page: Page, selector: string, label: string) {
   const el = page.locator(selector).first()
@@ -561,9 +646,19 @@ export async function expectFocusIndicator(page: Page, selector: string, label: 
 
   await el.focus()
   await expect(el, `${label}: \`${selector}\` did not take focus — is it focusable?`).toBeFocused()
+  await page.keyboard.press(KEYBOARD_MODALITY)
   const held = await focusState(page, selector)
 
   const seen = ` (at rest ${JSON.stringify(rest)}; focused ${JSON.stringify(held)})`
+
+  expect(
+    held.focusVisible,
+    `${label}: \`${selector}\` is focused, but Chrome does not consider it \`:focus-visible\`, ` +
+    'so `base.css`\'s F11 ring is not painted and a control whose only indicator is that ring ' +
+    'would be reported as having none. **This is a fault in the harness, not in the screen** — ' +
+    `the \`${KEYBOARD_MODALITY}\` press above exists to set the keyboard modality and something ` +
+    'has stopped it working. Do not add a focus style to the screen to make this go away.' + seen,
+  ).toBe(true)
   const borderChanged = held.borderColor !== rest.borderColor || held.borderWidth !== rest.borderWidth
   const ringChanged = held.outlineColor !== rest.outlineColor ||
     held.outlineStyle !== rest.outlineStyle || held.outlineWidth !== rest.outlineWidth
