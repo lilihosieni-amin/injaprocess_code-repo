@@ -1079,24 +1079,27 @@ NOT_SWEPT: dict[tuple[str, str], str] = {
     ("POST", "/api/users/{user_id}/disabled"): "see POST /api/users above.",
     ("GET", "/exports/{file_path:path}"): (
         "**PARTLY RESOLVED — do not delete this entry without reading D56's "
-        "Downloads row.** The scope half is closed: the route now derives "
+        "Downloads row.** Both halves of D12 are now asked, in D56's order, by "
+        "`routers/export_files.py::_authorise`. Scope: the route derives "
         "`dept:{code}/report:{kind}` from the requested path and asks "
         "`scopes.contains`, answering the same bare 404 as a missing file when "
-        "the caller's scopes do not reach it "
-        "(`routers/export_files.py::_may_reach`, pinned by the five tests under "
-        "'The download re-derives scope' in test_exports_api.py). Two things are "
-        "still open, and both belong to D24/D25 rather than to a body scan: the "
-        "**capability** half — downloading is authorised by `export_pdf` (D25), "
-        "so a `reader_no_download` holder is still served an artifact of a "
-        "department they may read, which makes FR-E7 decorative on this route; "
-        "and the **shared export credential**, which carries no identity and "
-        "therefore no scope, so a caller holding it alone is still served every "
-        "department. D24 retires that credential outright and is what closes it. "
-        "Excluded from the sweep here because what this file scans is response "
-        "bodies for foreign ids, and this route's body is an opaque file — the "
-        "authorisation is the whole question and it is pinned where it lives. "
-        "Whoever lands D24: the sweep in this file is still where the rest comes "
-        "back."),
+        "the caller's scopes do not reach it. Capability: downloading is "
+        "authorised by `export_pdf` (D25), so a `reader_no_download` holder "
+        "scoped to the department is refused **403** — a resource they can see, "
+        "an action they may not take — with `access.denied` recorded (D42), and "
+        "a caller who fails both halves gets the 404. Pinned by the tests under "
+        "'The download re-derives scope' and 'The download asks for export_pdf' "
+        "in test_exports_api.py. One thing is still open, and it belongs to D24 "
+        "rather than to a body scan: the **shared export credential**, which "
+        "carries no identity and therefore neither scope nor role, so a caller "
+        "holding it alone is still served every department and is asked for no "
+        "capability. D24 retires that credential outright and is what closes it "
+        "— `test_the_shared_export_credential_is_still_asked_for_no_capability` "
+        "records the residual and goes when it does. Excluded from the sweep "
+        "here because what this file scans is response bodies for foreign ids, "
+        "and this route's body is an opaque file — the authorisation is the "
+        "whole question and it is pinned where it lives. Whoever lands D24: the "
+        "sweep in this file is still where the rest comes back."),
 }
 
 

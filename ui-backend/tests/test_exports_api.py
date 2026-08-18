@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 from inja_ui_backend import export_auth
 from inja_ui_backend import exports as exports_mod
 from inja_ui_backend import pdf as pdf_mod
-from inja_ui_backend.access import NOT_FOUND
+from inja_ui_backend.access import FORBIDDEN, NOT_FOUND
 from inja_ui_backend.app import create_app
 from inja_ui_backend.auth import COOKIE_NAME
 from inja_ui_backend.tests_helpers import cfg_for, seeded_session
@@ -1570,3 +1570,236 @@ def test_dot_segments_cannot_carry_a_scoped_caller_out_of_their_department(
         assert FOREIGN_MARKER not in r.text, url
         assert "not for readers" not in r.text, url
         assert "root:" not in r.text, url
+
+
+# --------------------------------------------------------------------------
+# The download asks for `export_pdf` (D25; FR-E7)
+#
+#   D25: "**Downloading** returns the built single-file artifact — PDF or
+#    standalone HTML. It is authorised by `export_pdf`." — and FR-E7: "the
+#    ability to download may be withheld from a person who may still read."
+#
+# The section above closes *whose* department this is. It does not ask whether
+# this caller may download at all, and every caller it drives holds `export_pdf`
+# (`reader` and the seeded Editor both do), so the hole below survives it: a
+# `reader_no_download` holder — the role the seed creates for exactly this
+# promise (D50) — is scoped to the department, passes the scope check, and is
+# handed the artifact.
+#
+# The refusal is **403 and not 404**, which is the opposite of the section
+# above and for D56's own reason: this caller *may* see this department, so
+# nothing is disclosed by saying "not this action". The 404 is reserved for the
+# resource they must not learn exists — which is why scope is asked first, and
+# why the both-halves-refuse case below has to answer 404.
+# --------------------------------------------------------------------------
+
+def _denials(cfg):
+    """Every `access.denied` row in the activity record, oldest first."""
+    from inja_ui_backend import db
+
+    conn = db.connect(cfg.app_db)
+    try:
+        return [dict(r) for r in conn.execute(
+            "SELECT * FROM audit_events WHERE action = 'access.denied' ORDER BY id")]
+    finally:
+        conn.close()
+
+
+def test_a_reader_without_export_pdf_cannot_download_their_own_departments_report(
+        data_root, tmp_path, monkeypatch):
+    """FR-E7's promise, on the route that hands out the bytes.
+
+    `reader_no_download` is `view` + `comment` and no `export_pdf` — the seeded
+    role that exists *because* FR-E7 promises download can be withheld from
+    someone who may still read. Scoped to the department, so the scope check
+    above admits them and this is the only thing left standing between them and
+    the whole bundle.
+
+    The precondition is asserted first and it is not a formality: this is the
+    route where a status-only test of a gate that refuses *everybody* would pass
+    vacuously. A `reader` — same scope, same URL, `export_pdf` in the role — must
+    get the artifact and its bytes, or the refusal below proves nothing.
+
+    Both files, because D25 authorises the pair: `.html` → `.pdf` is one
+    keystroke, and the HTML is the standalone single-file build with the whole
+    department inlined (ARD §13.3), so serving it is the same disclosure as
+    serving the PDF. HEAD too — the route answers it, and a HEAD that 200s tells
+    the caller the artifact is there and how big it is.
+    """
+    cfg, html_url, pdf_url = _publish(data_root, tmp_path, monkeypatch)
+    can = _reader(cfg, COOKIE_NAME,
+                  _scoped_session(cfg, "09120000002", "dept:cooking"))
+    cannot = _reader(cfg, COOKIE_NAME,
+                     _scoped_session(cfg, "09120000003", "dept:cooking",
+                                     role="reader_no_download"))
+
+    # The precondition: identical scope, identical URL, and the only difference
+    # is the capability. Without these four lines a route that refused every
+    # caller would pass every assertion below.
+    ok_html = can.get(html_url)
+    assert ok_html.status_code == 200, (
+        "the export_pdf holder cannot download their own department either, so"
+        " the refusals below prove nothing")
+    assert "inja-export-data" in ok_html.text
+    assert can.get(pdf_url).content == PDF_BYTES
+
+    for url, forbidden in ((html_url, b"inja-export-data"), (pdf_url, PDF_BYTES[:20])):
+        r = cannot.get(url)
+        assert r.status_code == 403, (
+            f"{url} answered {r.status_code}: a role holding no `export_pdf` was"
+            " served the built artifact, which makes FR-E7 decorative (D25)")
+        assert forbidden not in r.content, url
+        assert cannot.head(url).status_code == 403, url
+
+
+def test_the_withheld_download_is_403_and_not_the_missing_files_404(
+        data_root, tmp_path, monkeypatch):
+    """D56's partition, in the direction the section above inverts.
+
+    Scope answers 404 because the caller must not learn the department publishes.
+    This caller already knows: they hold `view` on it and read the report in the
+    application. Answering 404 here would tell them their own department's report
+    does not exist — a lie to the one person entitled to the truth, and one that
+    hides the fact that what is missing is a *permission* somebody could grant.
+
+    The 404 it is measured against is the one a caller who **may** download gets
+    for a file that was never published, because that is the answer "gone" still
+    has to mean on this route.
+
+    The second half is the property the ordering buys and it is asserted rather
+    than assumed: for the withheld caller a real artifact and an invented path
+    answer *identically*. The capability check runs before the filesystem is
+    touched, so 403 is what they get either way and the refusal is no oracle for
+    which reports exist.
+    """
+    cfg, html_url, _ = _publish(data_root, tmp_path, monkeypatch)
+    invented = "/exports/cooking/flowchart-0000000000000000.html"
+    withheld = _reader(cfg, COOKIE_NAME,
+                       _scoped_session(cfg, "09120000003", "dept:cooking",
+                                       role="reader_no_download"))
+    permitted = _reader(cfg, COOKIE_NAME,
+                        _scoped_session(cfg, "09120000002", "dept:cooking"))
+
+    refused = withheld.get(html_url)
+    gone = permitted.get(invented)
+    assert permitted.get(html_url).status_code == 200, (
+        "the export_pdf holder cannot download it either, so the 403 below is"
+        " not a statement about the capability")
+    assert refused.status_code == 403, refused.status_code
+    assert refused.json()["detail"] == FORBIDDEN
+    assert gone.status_code == 404
+    assert refused.text != gone.text, (
+        "the withheld download is indistinguishable from a file that was never"
+        " published, so nobody can tell a missing report from a missing grant")
+
+    probe = withheld.get(invented)
+    assert probe.status_code == 403 and probe.text == refused.text, (
+        "the withheld caller is told 404 for an artifact that is not there and"
+        " 403 for one that is, so the refusal maps which reports exist")
+
+
+def test_out_of_scope_and_without_the_capability_is_404_and_never_403(
+        data_root, tmp_path, monkeypatch):
+    """The ordering test, and the only case where the order is visible.
+
+    A caller who fails *both* halves must be answered for the scope half first:
+    a 403 says "this exists, and you may not download it", about a department
+    D56 forbids them to learn of at all. Reverse the two checks in
+    `serve_export` and this is the test that dies — the two tests above pass
+    under either order, because each exercises exactly one half.
+
+    `access.denied` is asserted absent for the same reason `requires` keeps it
+    off the 404 branch (D42): the row would carry `dept:dining` — a department
+    this caller must not learn exists — into a record a scoped auditor reads.
+    """
+    cfg, _, _ = _publish(data_root, tmp_path, monkeypatch)
+    dining_url = _plant_export(cfg, "dining", "flowchart", FOREIGN_MARKER)
+    c = _reader(cfg, COOKIE_NAME,
+                _scoped_session(cfg, "09120000003", "dept:cooking",
+                                role="reader_no_download"))
+
+    r = c.get(dining_url)
+    assert r.status_code == 404, (
+        f"answered {r.status_code}: capability was checked before scope, so a"
+        " 403 has just told a caller that dept:dining publishes a report (D56)")
+    assert FOREIGN_MARKER not in r.text
+    assert _denials(cfg) == [], (
+        "an out-of-scope refusal was recorded as access.denied, naming a"
+        " department the caller must not learn exists (D42)")
+
+
+def test_the_withheld_download_writes_access_denied(data_root, tmp_path, monkeypatch):
+    """D42's highest-signal event, on this route as on the main gate.
+
+    A 403 means somebody acted on a resource they *can* see through a control the
+    UI never drew for them — near-zero volume, near-pure signal — and a download
+    refused for want of `export_pdf` is exactly that. Every column is asserted:
+    a row whose actor or target is wrong is worse than no row, and D44's
+    permission history is `actor` plus `target`. `detail` carries the capability,
+    because "denied" without "denied what" cannot tell this from an attempt to
+    edit.
+
+    The target is the scope string the check ran on — `dept:{code}/report:{kind}`,
+    read off the path (D27's layout) — and not the URL, so the row is comparable
+    with the ones `requires` writes for `POST …/exports/{kind}`.
+    """
+    cfg, html_url, _ = _publish(data_root, tmp_path, monkeypatch)
+    session = _scoped_session(cfg, "09120000003", "dept:cooking",
+                              role="reader_no_download")
+    c = _reader(cfg, COOKIE_NAME, session)
+
+    assert c.get(html_url).status_code == 403
+
+    rows = _denials(cfg)
+    assert len(rows) == 1, rows
+    row = rows[0]
+    assert row["actor"] == "09120000003", (
+        "recorded against the wrong person; the actor is the signed-in session")
+    assert row["target"] == "dept:cooking/report:flowchart", row["target"]
+    assert row["session_id"] == session, (
+        "the row does not name the sign-in that produced it")
+    assert row["outcome"] == "denied", row["outcome"]
+    assert json.loads(row["detail"]) == {"capability": "export_pdf"}
+    assert row["at"] > 0
+    assert row["ip"] is not None and row["user_agent"] is not None
+
+
+def test_a_permitted_download_is_recorded_as_no_denial(data_root, tmp_path,
+                                                       monkeypatch):
+    """The mutant a `record` outside both branches invites: every download a row.
+
+    D45 gives the activity record a volume budget and D42 spends it on refusals;
+    a denial written on the success path makes both fiction.
+    """
+    cfg, html_url, pdf_url = _publish(data_root, tmp_path, monkeypatch)
+    c = _reader(cfg, COOKIE_NAME, _scoped_session(cfg, "09120000002", "dept:cooking"))
+
+    assert c.get(html_url).status_code == 200
+    assert c.get(pdf_url).status_code == 200
+    assert _denials(cfg) == []
+
+
+def test_the_shared_export_credential_is_still_asked_for_no_capability(
+        data_root, tmp_path, monkeypatch):
+    """The hole D24 closes, pinned as it stands rather than left to be discovered.
+
+    The shared export credential (the retired D28 design) carries no identity, so
+    there is no role to read a capability from and no scope to re-derive — the
+    capability check, like the scope check beside it, asks only a caller who has
+    one. A holder of that credential alone is therefore still served every
+    department's artifact, and `export_pdf` never enters the question.
+
+    This test asserts today's behaviour, not the desired one. **When D24 lands
+    and `export_auth` goes, this test goes with it** — the caller it drives will
+    not exist. It is here so the residual is a recorded fact with a name rather
+    than a silent gap between the scope check and the capability check.
+    """
+    cfg, html_url, _ = _publish(data_root, tmp_path, monkeypatch)
+    dining_url = _plant_export(cfg, "dining", "flowchart", FOREIGN_MARKER)
+    c = _reader(cfg, export_auth.EXPORT_COOKIE, export_auth.issue_cookie(cfg))
+
+    assert c.get(html_url).status_code == 200
+    assert c.get(dining_url).status_code == 200, (
+        "the identity-less export credential now derives a scope from somewhere;"
+        " if that is deliberate, D24 has landed and this test should be deleted")
+    assert _denials(cfg) == []

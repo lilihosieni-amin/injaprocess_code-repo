@@ -41,8 +41,8 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from starlette.staticfiles import NotModifiedResponse, StaticFiles
 
 from .. import export_auth
-from ..access import log_out_of_scope, scopes_of
-from ..auth import current_user
+from ..access import FORBIDDEN, capabilities_of, log_out_of_scope, scopes_of
+from ..auth import current_user, record
 from ..export_auth import EXPORT_COOKIE, require_export_access
 from ..scopes import contains
 
@@ -75,6 +75,19 @@ _EXPORTS_ROOT = COOKIE_PATH + "/"
 #: stream instead of a row.
 _NO_DEPARTMENT = "*"
 
+#: What this route is an instance of, and therefore what it asks for.
+#:
+#: D25 splits one feature in two: *reading* a report renders it in the
+#: application from a JSON payload and is authorised by `view`; *downloading*
+#: returns the built single-file artifact and is authorised by `export_pdf`.
+#: What is served below is the built artifact — the whole department inlined
+#: into one document (ARD §13.3) — so this route is the download, on both
+#: extensions. Serving it to a `view` holder is exactly the failure D25 names:
+#: it *"hands a reader without `export_pdf` the complete artifact and a
+#: Ctrl-S"*, and makes FR-E7's promise that download may be withheld from
+#: someone who may still read into decoration.
+_DOWNLOAD = "export_pdf"
+
 
 def _scope_of(file_path: str) -> str:
     """The scope the requested file sits in, read from the path alone.
@@ -106,39 +119,69 @@ def _scope_of(file_path: str) -> str:
     return f"dept:{code}/report:{name.partition('-')[0]}"
 
 
-def _may_reach(request: Request, file_path: str) -> bool:
-    """Whether this caller's own scopes reach the file they asked for.
+def _authorise(request: Request, file_path: str) -> None:
+    """Both halves of D12 for this route — scope, then capability. Raises or returns.
 
-    D56's **Downloads** row, which is the whole reason this function exists:
-    *"the download endpoint re-derives scope on every request; that the cached
-    artifact exists (D27) is not authorisation to serve it."* The gate above
-    answers *"is there a session"* and never *"whose"*, so without this a Reader
-    scoped to one department could read every other department's published
-    bundle — the artifact is on disk, and its name is handed out by `POST
-    /api/departments/{code}/exports/{kind}`.
+    D56's **Downloads** row is the whole reason this function exists: *"the
+    download endpoint re-derives scope on every request; that the cached artifact
+    exists (D27) is not authorisation to serve it."* The gate above answers *"is
+    there a session"* and never *"whose"* nor *"may they"*, so without this a
+    Reader scoped to one department could read every other department's bundle,
+    and a `reader_no_download` holder — the role the seed creates precisely
+    because FR-E7 promises download can be withheld — could download their own.
 
-    Only a caller who *has* scopes is asked about them. The shared export
-    credential (D28) carries no identity, so there is no scope to re-derive for
-    it and inventing one here would either lock out every reader it was handed
-    to or answer a question it was never asked. That credential is the surface
-    D24 retires outright; whoever lands D24 deletes this branch along with
-    `export_auth`, and what is left is the check below applied to everybody.
+    **The order is the entire point, and it is D56's own** (`access.requires`
+    keeps the same one, for the same reason). Scope first, so the answer to a
+    resource the caller may not learn of is the bare 404 a never-published file
+    gets; capability second, so the answer to an action refused on something
+    they *can* see is a 403. Reversed, a caller who fails both halves is told
+    403 — *"this exists, and you may not have it"* — about a department they
+    were never to learn publishes at all. That disclosure is invisible to any
+    test whose out-of-scope caller happens to hold `export_pdf`, which is every
+    caller in this file's scope section, so it is pinned by a test of its own.
 
-    `scopes.contains` decides (D10). Re-deciding any part of containment here is
-    how this and `requires` would come to disagree about one department.
+    Only a caller who *has* an identity is asked either question. The shared
+    export credential (D28) carries no identity, so it has no scope to re-derive
+    and no role to read a capability from; inventing either here would lock out
+    every reader it was handed to or answer a question it was never asked. That
+    credential is the surface D24 retires outright — whoever lands D24 deletes
+    this branch along with `export_auth`, and what is left is both checks
+    applied to everybody.
 
-    A refusal is logged, never recorded: the answer is a 404, and D42 keeps
-    `access.denied` off the 404 path. `log_out_of_scope` is the shared line, so
-    this route and the gate leave the same trace.
+    `scopes.contains` decides containment (D10) and `capabilities_of` decides
+    the capability, because re-deciding either here is how this route and
+    `requires` would come to disagree about one department or one role.
+
+    The two refusals leave different traces, and D42 is why. The 404 is logged
+    and never recorded: it is indistinguishable from a typo by design, so
+    recording it would bury the 403s in typo-volume rows — `log_out_of_scope` is
+    the line `requires` writes too, so the route and the gate leave the same
+    one. The 403 *is* recorded, as `access.denied`: it means somebody acted on a
+    resource they can see through a control the UI never drew for them, which
+    D42 calls the highest-signal event in the catalogue. Written before the
+    raise, so a refusal cannot be lost to the exception on its way out, and
+    `session_id` is read with `getattr` because `State` raises for a key it does
+    not hold and a gate that raises answers 500 instead of 403.
     """
     user = current_user(request)
     if user is None:
-        return True
+        return
+    conn = request.app.state.db
     target = _scope_of(file_path)
-    if any(contains(s, target) for s in scopes_of(request.app.state.db, user)):
-        return True
-    log_out_of_scope(request, user, target)
-    return False
+    if not any(contains(s, target) for s in scopes_of(conn, user)):
+        log_out_of_scope(request, user, target)
+        # The same bare 404 as a file that was never published, and for D56's
+        # reason: a 403 here would tell a caller that the department publishes
+        # at all. Detail-free, so it is byte-identical to the answer the missing
+        # file gets — a status made illegible and then spelled out in the prose
+        # underneath is not made illegible at all.
+        raise HTTPException(status_code=404)
+    if _DOWNLOAD not in capabilities_of(conn, user):
+        record(request, "access.denied", actor=user["username"],
+               session_id=getattr(request.state, "session_id", None),
+               target=target, outcome="denied",
+               detail={"capability": _DOWNLOAD})
+        raise HTTPException(status_code=403, detail=FORBIDDEN)
 
 
 #: Borrowed, not reimplemented. `is_not_modified` is the exact comparison the
@@ -160,17 +203,16 @@ def serve_export(file_path: str, request: Request):
     the `.html` share a path but for the extension, and whether a given token
     exists is not something to tell a stranger. A reader without one is shown the
     login page rather than refused, so the same first line covers both.
+
+    Then permission, still before the filesystem is touched. An out-of-scope
+    probe therefore costs no `stat`, and — the half that matters — neither
+    refusal can depend on whether the file is there, so no caller learns from a
+    refusal which artifacts exist.
     """
     page = _sign_in_page(request)
     if page is not None:
         return page
-    if not _may_reach(request, file_path):
-        # The same bare 404 as a file that was never published, and for D56's
-        # reason: a 403 here would tell a caller that the department publishes
-        # at all. Before the filesystem is touched, so an out-of-scope probe
-        # costs no `stat` — and it makes no difference to what is disclosed,
-        # because every refusal on this route is this one answer.
-        raise HTTPException(status_code=404)
+    _authorise(request, file_path)
     cfg = request.app.state.cfg
     if not cfg.export_dir:
         # `create_app` registers this router only when EXPORT_DIR is usable, so

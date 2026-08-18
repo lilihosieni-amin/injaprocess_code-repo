@@ -63,6 +63,21 @@ logger = logging.getLogger(__name__)
 #: — narrows it for the prober too.
 NOT_FOUND = "یافت نشد"
 
+#: The body of every 403 this service answers with.
+#:
+#: A constant for the opposite reason to `NOT_FOUND`'s. That one is uniform so
+#: the caller can learn *nothing* from it; this one is shared so a person who
+#: hits the same wall twice — once through `requires` on an API route, once
+#: through `routers/export_files` on a download — is told the same thing both
+#: times. There is only one fact to state, and it is the same fact: the caller
+#: may see this, and may not do this to it.
+#:
+#: Deliberately no capability name. `access.denied` carries that (D42), and the
+#: activity record is where it belongs; on the wire it would tell a caller which
+#: permission to go and ask for, which is a map of the permission model handed
+#: out one refusal at a time.
+FORBIDDEN = "اجازهٔ این کار را ندارید"
+
 
 def capabilities_of(conn: sqlite3.Connection, user: sqlite3.Row) -> frozenset[str]:
     """The capability set of this user's role — the only source there is.
@@ -294,7 +309,7 @@ def requires(capability: str, target: str | Callable[[Request], str]):
                    session_id=getattr(request.state, "session_id", None),
                    target=resolved, outcome="denied",
                    detail={"capability": capability})
-            raise HTTPException(status_code=403, detail="اجازهٔ این کار را ندارید")
+            raise HTTPException(status_code=403, detail=FORBIDDEN)
         request.state.user = user
         return user
     return dependency
