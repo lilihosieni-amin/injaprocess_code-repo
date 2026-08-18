@@ -5838,7 +5838,7 @@ button in the right cluster, on the metrics §5.2 gives icon buttons. **Flagged 
   - `Icon` (Task 11), `Logo` (Task 11).
   - `useDepartments`, `usePending`, `useLogout` from `ui/src/api/hooks.ts`; `can` from `ui/src/auth/session.ts`; `administrationRefusal` from `ui/src/auth/can.ts`; `toFa` from `ui/src/lib/format.ts`; `DEPT_CODES` from `ui/src/lib/departments.ts` — all existing.
   - `expectDesign(page, screen)` and `shot(page, name)` from `ui/e2e/_harness.ts` (Task 4); the three widths are `playwright.config.ts`'s three projects, so one spec runs at 1440, 1080 and 760.
-  - Task 2's utilities: `text-14` `text-13h` `text-12h` `text-11h` `text-10h` · `rounded-16` `rounded-12` `rounded-11` `rounded-10` `rounded-9` `rounded-round` · `bg-card` `bg-tile-v2` `bg-violet` `bg-coral` `bg-ink` · `border-warm` `#EFE7DC` · `border-line` `#E3D8F5` · `border-card-edge` · `bg-panel-edge` `#EDE5F5` · `text-ink` `text-violet` `text-muted` `text-faint` `text-card` · `shadow-pop` · `max1080:` and `max760:` (Task 2's two max-width screens).
+  - Task 2's utilities: `text-fs-body` `text-fs-menu` `text-fs-sm2` `text-fs-xs` `text-fs-micro` · `rounded-card` `rounded-button` `rounded-input` `rounded-control` `rounded-tool` `rounded-round` · `bg-card` `bg-tile-v2` `bg-violet` `bg-coral` `bg-ink` · `border-warm` `#EFE7DC` · `border-line` `#E3D8F5` · `border-border-card` · `bg-border-current` `#EDE5F5` · `text-ink` `text-violet` `text-muted` `text-faint` `text-card` · `shadow-pop` · `max1080:` and `max760:` (Task 2's two max-width screens).
 - Produces:
   - `ui/src/shell/crumbs.ts` — `interface Crumb { label: string; to?: string; mono?: boolean }`; `function panelCrumbs(pathname: string, deptName: (code: string) => string): Crumb[]`
   - `ui/src/shell/PanelShell.tsx` — unchanged export `function PanelShell({ session }: { session: SessionDescriptor }): JSX.Element`, now wrapping its subtree in `<SurfaceProvider surface="panel">`.
@@ -6165,8 +6165,8 @@ import { panelCrumbs } from './crumbs'
 // `<nav>` rather than a NavTabTray: the tray is a `tablist` and these are not
 // tabs, and borrowing the role because the paint matches would announce a set of
 // views where there is a set of destinations.
-const TRAY = 'inline-flex items-center gap-[4px] p-[4px] rounded-12 bg-tile-v2'
-const TRAY_ITEM = 'px-[14px] py-[8px] rounded-9 border-0 no-underline cursor-pointer text-12h font-bold'
+const TRAY = 'inline-flex items-center gap-[4px] p-[4px] rounded-button bg-tile-v2'
+const TRAY_ITEM = 'px-[14px] py-[8px] rounded-tool border-0 no-underline cursor-pointer text-fs-sm2 font-bold'
 
 // §5.2 — icon buttons are `#fff` / `--violet` / `1.5px --line`.
 const GHOST = 'inline-flex items-center justify-center bg-card text-violet border-hairline border-line cursor-pointer no-underline hover:bg-tile-v2'
@@ -6221,14 +6221,14 @@ export function PanelShell({ session }: { session: SessionDescriptor }) {
         {adminOpen && (
           <>
             <div aria-hidden onClick={() => setAdminOpen(false)} className="fixed inset-0 z-[29]" />
-            <div role="menu" className="absolute top-[calc(100%+6px)] start-0 z-30 min-w-[265px] p-[8px] bg-card border border-card-edge rounded-16 shadow-pop">
+            <div role="menu" className="absolute top-[calc(100%+6px)] start-0 z-30 min-w-[265px] p-[8px] bg-card border border-border-card rounded-card shadow-pop">
               {adminItems.map((i) => (
                 <Link
                   key={i.to} role="menuitem" to={i.to} onClick={() => setAdminOpen(false)}
-                  className={`block px-[12px] py-[11px] rounded-11 no-underline text-start hover:bg-tile-v2 ${pathname === i.to ? 'bg-tile-v2' : 'bg-transparent'}`}
+                  className={`block px-[12px] py-[11px] rounded-input no-underline text-start hover:bg-tile-v2 ${pathname === i.to ? 'bg-tile-v2' : 'bg-transparent'}`}
                 >
-                  <span className="block text-13h font-bold text-ink">{i.label}</span>
-                  <span className="block mt-[3px] text-11h text-faint">{i.hint}</span>
+                  <span className="block text-fs-menu font-bold text-ink">{i.label}</span>
+                  <span className="block mt-[3px] text-fs-xs text-faint">{i.hint}</span>
                 </Link>
               ))}
             </div>
@@ -6247,11 +6247,11 @@ export function PanelShell({ session }: { session: SessionDescriptor }) {
         <Link to="/departments" className="flex items-center gap-[10px] no-underline">
           <Logo px={38} />
           <span className="block leading-[1.25]">
-            <span className="block text-14 font-bold text-ink">اینجا فست‌فود</span>
-            <span className="block text-10h text-muted">سامانهٔ فرآیندها</span>
+            <span className="block text-fs-body font-bold text-ink">اینجا فست‌فود</span>
+            <span className="block text-fs-micro text-muted">سامانهٔ فرآیندها</span>
           </span>
         </Link>
-        <span aria-hidden className="w-[1px] h-[26px] mx-[4px] bg-panel-edge max1080:hidden" />
+        <span aria-hidden className="w-[1px] h-[26px] mx-[4px] bg-border-current max1080:hidden" />
         <nav data-r-nav aria-label="بخش‌های اصلی" className={`${TRAY} max1080:hidden`}>
           <Link to="/departments" className={`${TRAY_ITEM} bg-violet text-card`}>دپارتمان‌ها</Link>
           <AdminMenu />
@@ -6261,7 +6261,7 @@ export function PanelShell({ session }: { session: SessionDescriptor }) {
             <button
               type="button" onClick={() => setInboxOpen(true)}
               aria-label={openCount > 0 ? `صندوق بازبینی تعارض‌ها، ${toFa(openCount)} مورد در انتظار` : 'صندوق بازبینی تعارض‌ها'}
-              className={`${GHOST} relative gap-[7px] px-[13px] py-[8px] rounded-12 text-12h font-bold max760:hidden`}
+              className={`${GHOST} relative gap-[7px] px-[13px] py-[8px] rounded-button text-fs-sm2 font-bold max760:hidden`}
             >
               <Icon name="inbox" px={16} />
               صندوق تعارض‌ها
@@ -6277,7 +6277,7 @@ export function PanelShell({ session }: { session: SessionDescriptor }) {
                 // 7% alpha would be invisible here — and would still build.
                 <span
                   aria-hidden
-                  className="absolute top-[-6px] left-[-6px] min-w-[19px] h-[19px] px-[4px] inline-flex items-center justify-center rounded-round bg-coral text-card text-10h font-bold border-2 border-card"
+                  className="absolute top-[-6px] left-[-6px] min-w-[19px] h-[19px] px-[4px] inline-flex items-center justify-center rounded-round bg-coral text-card text-fs-micro font-bold border-2 border-card"
                 >
                   {toFa(openCount)}
                 </span>
@@ -6288,13 +6288,13 @@ export function PanelShell({ session }: { session: SessionDescriptor }) {
               needs one, drawn on §5.2's icon-button metrics. Owner question. */}
           <button
             type="button" onClick={() => logout.mutate()} aria-label="خروج"
-            className={`${GHOST} ${HIT} w-[34px] h-[34px] rounded-10`}
+            className={`${GHOST} ${HIT} w-[34px] h-[34px] rounded-control`}
           >
             <Icon name="logout" px={17} stroke={2.2} />
           </button>
           <button
             data-r-menu type="button" onClick={() => setMenuOpen(true)} aria-label="فهرست"
-            className="hidden max1080:inline-flex items-center justify-center w-[40px] h-[40px] rounded-11 bg-tile-v2 text-violet border-hairline border-line cursor-pointer"
+            className="hidden max1080:inline-flex items-center justify-center w-[40px] h-[40px] rounded-input bg-tile-v2 text-violet border-hairline border-line cursor-pointer"
           >
             <Icon name="menu" px={19} stroke={2.2} />
           </button>
@@ -6310,12 +6310,12 @@ export function PanelShell({ session }: { session: SessionDescriptor }) {
         className="flex items-center gap-[10px] px-[22px] py-[9px] bg-tile-v2 border-b border-line flex-none max760:px-[14px] max760:py-[10px] max760:gap-[10px]"
       >
         {back?.to !== undefined && (
-          <Link to={back.to} className={`${GHOST} gap-[6px] px-[12px] py-[7px] rounded-11 text-12h font-bold`}>
+          <Link to={back.to} className={`${GHOST} gap-[6px] px-[12px] py-[7px] rounded-input text-fs-sm2 font-bold`}>
             <Icon name="chevronEnd" px={15} stroke={2.4} />
             بازگشت
           </Link>
         )}
-        <ol data-r-crumbs className="flex flex-wrap items-center gap-[6px] list-none m-0 p-0 text-12h max760:hidden">
+        <ol data-r-crumbs className="flex flex-wrap items-center gap-[6px] list-none m-0 p-0 text-fs-sm2 max760:hidden">
           {crumbs.map((c, i) => (
             <li key={`${c.label}-${i}`} className="flex items-center gap-[6px]">
               {i > 0 && <span aria-hidden className="text-faint">/</span>}
@@ -6331,7 +6331,7 @@ export function PanelShell({ session }: { session: SessionDescriptor }) {
             </li>
           ))}
         </ol>
-        <Link to="/departments" aria-label="خانه" className={`${GHOST} ${HIT} ms-auto w-[36px] h-[36px] rounded-11`}>
+        <Link to="/departments" aria-label="خانه" className={`${GHOST} ${HIT} ms-auto w-[36px] h-[36px] rounded-input`}>
           <Icon name="home" px={16} />
         </Link>
       </nav>
@@ -6359,23 +6359,23 @@ export function PanelShell({ session }: { session: SessionDescriptor }) {
         <Sheet open={menuOpen} onClose={() => setMenuOpen(false)} title="فهرست">
           <div className="flex flex-col gap-[10px]">
             <div>
-              <p className="m-0 text-14 font-bold text-ink">{session.displayName}</p>
-              <p className="m-0 mt-[2px] text-11h text-muted">{session.role}</p>
+              <p className="m-0 text-fs-body font-bold text-ink">{session.displayName}</p>
+              <p className="m-0 mt-[2px] text-fs-xs text-muted">{session.role}</p>
             </div>
-            <Link to="/departments" onClick={() => setMenuOpen(false)} className={`${GHOST} px-[14px] py-[14px] rounded-14 text-13h font-bold justify-start`}>
+            <Link to="/departments" onClick={() => setMenuOpen(false)} className={`${GHOST} px-[14px] py-[14px] rounded-tile text-fs-menu font-bold justify-start`}>
               دپارتمان‌ها
             </Link>
             {adminItems.map((i) => (
-              <Link key={i.to} to={i.to} onClick={() => setMenuOpen(false)} className={`${GHOST} px-[14px] py-[14px] rounded-14 text-13h font-bold justify-start`}>
+              <Link key={i.to} to={i.to} onClick={() => setMenuOpen(false)} className={`${GHOST} px-[14px] py-[14px] rounded-tile text-fs-menu font-bold justify-start`}>
                 {i.label}
               </Link>
             ))}
             {canEdit && (
-              <button type="button" onClick={() => { setMenuOpen(false); setInboxOpen(true) }} className={`${GHOST} px-[14px] py-[14px] rounded-14 text-13h font-bold justify-start`}>
+              <button type="button" onClick={() => { setMenuOpen(false); setInboxOpen(true) }} className={`${GHOST} px-[14px] py-[14px] rounded-tile text-fs-menu font-bold justify-start`}>
                 صندوق تعارض‌ها {openCount > 0 && toFa(openCount)}
               </button>
             )}
-            <button type="button" onClick={() => logout.mutate()} className={`${GHOST} px-[14px] py-[14px] rounded-14 text-13h font-bold justify-start`}>
+            <button type="button" onClick={() => logout.mutate()} className={`${GHOST} px-[14px] py-[14px] rounded-tile text-fs-menu font-bold justify-start`}>
               خروج
             </button>
           </div>
@@ -6453,9 +6453,9 @@ const need=process.argv.slice(1);
 const miss=need.filter(c=>!new RegExp("\\."+c+"(?![\\w-])").test(css));
 console.log(miss.length?"MISSING "+miss.join(" "):"OK "+need.length+" classes present");
 process.exit(miss.length?1:0);
-' text-14 text-13h text-12h text-11h text-10h rounded-16 rounded-14 rounded-12 \
-  rounded-11 rounded-10 rounded-9 rounded-round bg-card bg-tile-v2 bg-violet \
-  bg-coral bg-ink bg-panel-edge border-warm border-line border-card-edge \
+' text-fs-body text-fs-menu text-fs-sm2 text-fs-xs text-fs-micro rounded-card rounded-tile rounded-button \
+  rounded-input rounded-control rounded-tool rounded-round bg-card bg-tile-v2 bg-violet \
+  bg-coral bg-ink bg-border-current border-warm border-line border-border-card \
   border-hairline text-ink text-violet text-muted text-faint text-card shadow-pop
 ```
 
@@ -6614,7 +6614,7 @@ honest failure mode, and the one the e2e sweep can see.
   - `useDepartments`, `useLogout` from `ui/src/api/hooks.ts`; `toFa` from `ui/src/lib/format.ts`; `DEPT_CODES` from `ui/src/lib/departments.ts`.
   - `Navigate`, `useLocation` from `react-router-dom`.
   - `expectDesign`, `shot` from `ui/e2e/_harness.ts` (Task 4).
-  - The same utility vocabulary Task 12 lists, plus `rounded-12` and `text-13`.
+  - The same utility vocabulary Task 12 lists, plus `rounded-button` and `text-fs-sm`.
 - Produces:
   - `ui/src/shell/crumbs.ts` — `function readerBack(pathname: string, root: string): string | undefined` — where the reader's back bar goes, and `undefined` when they are already at their root.
   - `ui/src/shell/ReaderShell.tsx` — unchanged export `function ReaderShell({ session }: { session: SessionDescriptor }): JSX.Element`.
@@ -6833,7 +6833,7 @@ describe('ReaderShell chrome', () => {
     // R3's table: the reader's icon buttons are 42×42 at radius 12.
     renderReader(THREE, '/departments')
     await screen.findByText('فهرست دپارتمان‌ها')
-    expect(screen.getByRole('link', { name: 'نمایه' })).toHaveClass('w-[42px]', 'h-[42px]', 'rounded-12')
+    expect(screen.getByRole('link', { name: 'نمایه' })).toHaveClass('w-[42px]', 'h-[42px]', 'rounded-button')
   })
 
   it('counts the approvals waiting for you in Persian, and drops the badge at zero', async () => {
@@ -6939,8 +6939,8 @@ export function ReaderShell({ session }: { session: SessionDescriptor }) {
             <Link to={root} className="flex items-center gap-[10px] no-underline">
               <Logo px={38} />
               <span className="block leading-[1.25]">
-                <span className="block text-14 font-bold text-ink">اینجا فست‌فود</span>
-                <span className="block text-10h text-muted">سامانهٔ فرآیندها</span>
+                <span className="block text-fs-body font-bold text-ink">اینجا فست‌فود</span>
+                <span className="block text-fs-micro text-muted">سامانهٔ فرآیندها</span>
               </span>
             </Link>
             <div className="ms-auto flex items-center gap-[10px]">
@@ -6948,19 +6948,19 @@ export function ReaderShell({ session }: { session: SessionDescriptor }) {
                 <span
                   role="status"
                   aria-label={`${toFa(session.pendingApprovals)} کامنت در انتظار تأیید شما`}
-                  className="min-w-[19px] h-[19px] px-[4px] inline-flex items-center justify-center rounded-round bg-coral text-card text-10h font-bold"
+                  className="min-w-[19px] h-[19px] px-[4px] inline-flex items-center justify-center rounded-round bg-coral text-card text-fs-micro font-bold"
                 >
                   {toFa(session.pendingApprovals)}
                 </span>
               )}
               {/* R3 — the reader's icon buttons are 42×42 at radius 12, against
                   the panel's 34×34 at radius 10. */}
-              <Link to="/profile" aria-label="نمایه" className={`${GHOST} ${HIT} w-[42px] h-[42px] rounded-12`}>
+              <Link to="/profile" aria-label="نمایه" className={`${GHOST} ${HIT} w-[42px] h-[42px] rounded-button`}>
                 <Icon name="user" px={18} />
               </Link>
               <button
                 type="button" onClick={() => logout.mutate()} aria-label="خروج"
-                className={`${GHOST} ${HIT} w-[42px] h-[42px] rounded-12`}
+                className={`${GHOST} ${HIT} w-[42px] h-[42px] rounded-button`}
               >
                 <Icon name="logout" px={18} stroke={2.2} />
               </button>
@@ -6972,12 +6972,12 @@ export function ReaderShell({ session }: { session: SessionDescriptor }) {
             className="flex items-center gap-[10px] px-[24px] py-[9px] bg-card border-b border-warm flex-none z-20 max760:px-[14px] max760:gap-[10px]"
           >
             {back !== undefined && (
-              <Link to={back} className={`${GHOST} gap-[6px] px-[12px] py-[7px] rounded-11 text-13 font-bold`}>
+              <Link to={back} className={`${GHOST} gap-[6px] px-[12px] py-[7px] rounded-input text-fs-sm font-bold`}>
                 <Icon name="chevronEnd" px={15} stroke={2.4} />
                 بازگشت
               </Link>
             )}
-            <Link to={root} aria-label="خانه" className={`${GHOST} ${HIT} ms-auto w-[36px] h-[36px] rounded-11`}>
+            <Link to={root} aria-label="خانه" className={`${GHOST} ${HIT} ms-auto w-[36px] h-[36px] rounded-input`}>
               <Icon name="home" px={16} />
             </Link>
           </nav>
@@ -7023,7 +7023,7 @@ const need=process.argv.slice(1);
 const miss=need.filter(c=>!new RegExp("\\."+c+"(?![\\w-])").test(css));
 console.log(miss.length?"MISSING "+miss.join(" "):"OK "+need.length+" classes present");
 process.exit(miss.length?1:0);
-' rounded-12 rounded-11 rounded-round text-14 text-13 text-10h bg-card bg-ink \
+' rounded-button rounded-input rounded-round text-fs-body text-fs-sm text-fs-micro bg-card bg-ink \
   bg-coral border-warm border-line border-hairline text-ink text-violet \
   text-muted text-card
 ```
@@ -7163,20 +7163,22 @@ a reader, and a 760px viewport without changing what a person sees at desktop.
 
   ```bash
   cd ui && for u in \
-    to1080 to760 \
-    fs-display fs-h1 fs-h2 fs-h3 fs-h4 fs-h5 fs-lg fs-body fs-sm fs-sm2 fs-xs fs-xxs fs-micro fs-reader-h1 fs-reader-list-h1 \
-    rounded-bar rounded-tool rounded-input rounded-search rounded-tile rounded-feature rounded-pill rounded-round \
-    on-dark violet-on-dark violet-on-dark-body violet-on-violet text-current dialog-ghost \
-    tile-v3 tile-v4 tile-c2 subpanel border-card border-subpanel border-hair lilac border-danger \
-    shadow-feature shadow-pop \
-    px-screen py-screen pt-depts pb-depts px-reader pb-reader max-w-reader \
-    tile-reader logo-login logo-bar duration-base duration-chev duration-row ease-css \
+    max1080 max760 \
+    --fs-display --fs-h1 --fs-h2 --fs-h3 --fs-h4 --fs-h5 --fs-lg --fs-body --fs-sm --fs-sm2 --fs-xs --fs-xxs --fs-micro --fs-h1-reader-home --fs-h1-reader-list \
+    --radius-bar --radius-sm --radius-input --radius-lg --radius-tile --radius-card-lg --radius-pill --radius-round \
+    --text-on-dark --violet-on-dark --violet-on-dark-body --violet-on-violet --text-current --text-dialog-ghost \
+    --tile-v3 --tile-v4 --tile-c2 --surface-sub --border-card --border-current --hair --line-dashed --border-danger \
+    --shadow-feature --shadow-pop \
+    --pad-screen-x --pad-screen-y --pad-departments-top --pad-departments-bottom --pad-reader-x --pad-reader-bottom --width-reader \
+    --size-tile-reader --size-logo-login --size-logo-bar --duration-chev --duration-row \
   ; do grep -q -- "$u" tailwind.config.js || echo "MISSING: $u"; done
   ```
 
-  Expected output when Tasks 2–3 are complete: nothing. Each `MISSING:` line is a theme
-  entry to add now. The loop greps for **theme keys**, not for class names: a token whose
-  own name begins with `border-` is keyed `border-<x>` on the colours scale and written
+  Expected output against the shipped Tasks 2–3 theme: exactly three lines — `--radius-bar`,
+  `--shadow-feature` and `--duration-row`, the only values in the table below that no token
+  holds. Each `MISSING:` line is a theme
+  entry to add now. The loop greps for the **token** each utility resolves to, not for the class name;
+  a token whose own name begins with `--border-` is keyed `border-<x>` on the colours scale and written
   `border-border-<x>`. Add no second, shorter name for one of them — `border-card` is
   already taken, by the white `--card`. The mapping, token by token:
 
@@ -7184,8 +7186,8 @@ a reader, and a 760px viewport without changing what a person sees at desktop.
   |---|---|---|
   | `max1080:` / `max760:` | — | **Already shipped by Task 2, named `max1080:` / `max760:`.** Do not add these: read them as `max1080:` / `max760:` — the plan once wrote four other spellings for these two variants and every one of them compiled to nothing. Never put them in `theme.screens` — see Step 8 of Task 2: one max-width object there deletes Tailwind's whole `min-*`/`max-*` family and the 30 shipped `max-[560px]:` utilities with it, silently. |
   | `text-fs-display … text-fs-micro` | `--fs-display … --fs-micro` | 34/23/22/19/17/16/15/14/13/12.5/11.5/11/10.5px |
-  | `text-fs-reader-h1` | `--fs-reader-h1` | `26px` (reader home) |
-  | `text-fs-reader-list-h1` | `--fs-reader-list-h1` | `30px` (reader process list) |
+  | `text-fs-h1-reader-home` | `--fs-h1-reader-home` | `26px` (reader home) |
+  | `text-fs-h1-reader-list` | `--fs-h1-reader-list` | `30px` (reader process list) |
   | `leading-tight/snug/normal/relaxed/loose/looser` | `--lh-*` | 1.2 / 1.6 / 1.7 / 1.75 / 1.9 / 2.1 |
   | `rounded-bar` | `--radius-bar` | `2px` (the coral eyebrow bar) |
   | `rounded-tool` `rounded-input` `rounded-search` `rounded-tile` `rounded-feature` `rounded-pill` `rounded-round` | `--radius-sm/input/lg/tile/card-lg/pill/round` | 9 / 11 / 13 / 14 / 20 / 20 / 50% |
@@ -7193,25 +7195,26 @@ a reader, and a 760px viewport without changing what a person sees at desktop.
   | `text-violet-on-dark` | `--violet-on-dark` | `#B79FE6` |
   | `text-violet-on-dark-body` | `--violet-on-dark-body` | `#B7A6E0` |
   | `text-violet-on-violet` | `--violet-on-violet` | `#C9BEEE` |
-  | `text-text-current` | `--text-current` | `#5a5175` |
+  | `text-ink-current` | `--text-current` | `#5a5175` |
   | `text-dialog-ghost` | `--text-dialog-ghost` | `#6B5CA5` |
   | `bg-tile-v3` `bg-tile-v4` `bg-tile-c2` | `--tile-v3/v4/c2` | `#F5F1FB` / `#F8F4FE` / `#FFF3F2` |
-  | `bg-subpanel` | `--surface-subpanel` | `#FBF9FE` (S1 ×24, S3 has no token) |
+  | `bg-surface-sub` | `--surface-sub` | `#FBF9FE` (S1 ×24, S3 has no token) |
   | `border-border-card` | `--border-card` | `rgba(42,29,94,.07)` (S1 ×46 — the default card border) |
-  | `border-subpanel` | `--border-current` | `#EDE5F5` |
+  | `border-border-current` | `--border-current` | `#EDE5F5` |
   | `border-hair` | `--hair` | `#F2ECE3` |
-  | `border-lilac` | `--line-dashed` | `#C9B8EC` |
+  | `border-line-dashed` | `--line-dashed` | `#C9B8EC` |
   | `border-border-danger` | `--border-danger` | `#FDD9D6` |
   | `shadow-feature` | `--shadow-feature` | `0 2px 4px rgba(16,10,40,.18), 0 22px 46px -20px rgba(16,10,40,.65)` |
   | `shadow-pop` | `--shadow-pop` | `0 20px 45px -20px rgba(74,37,169,.45)` |
-  | `px-screen` `py-screen` | `--pad-screen-x/y` | 40 / 30 |
-  | `pt-depts` `pb-depts` | `--pad-depts-top/bottom` | 38 / 48 |
-  | `px-reader` `pb-reader` | `--pad-reader-x/bottom` | 24 / 60 |
+  | `px-screen-x` `py-screen-y` | `--pad-screen-x/y` | 40 / 30 |
+  | `pt-departments-top` `pb-departments-bottom` | `--pad-departments-top/bottom` | 38 / 48 |
+  | `px-reader-x` `pb-reader-bottom` | `--pad-reader-x/bottom` | 24 / 60 |
   | `max-w-reader` | `--width-reader` | `720px` |
   | `w-tile-reader h-tile-reader` | `--size-tile-reader` | `54px` |
   | `w-logo-login h-logo-login` / `w-logo-bar h-logo-bar` | `--size-logo-login` / `--size-logo-bar` | 76 / 38 |
-  | `duration-base` `duration-chev` `duration-row` | `--duration` `--duration-chev` | `.16s` `.18s` `.14s` |
-  | `ease-css` | — | the CSS keyword `ease` (S1's two transitions both say `ease`) |
+  | `transition` (and every `transition-*`) | `--duration` | `.16s` — Task 2 registers it as `transitionDuration.DEFAULT`, which Tailwind's `filterDefault` keeps out of the `duration-*` scale, so a bare `transition` already carries it and no `duration-*` class for it can exist |
+  | `duration-chev` `duration-row` | `--duration-chev` — | `.18s` `.14s` |
+  | `ease-css` | — | the CSS keyword `ease` (S1's two transitions both say `ease`). No class carries it yet: Tailwind's own `transitionTimingFunction.DEFAULT` is `cubic-bezier(.4,0,.2,1)` and `filterDefault` keeps DEFAULT out of the `ease-*` scale, so this needs a named `transitionTimingFunction` key before it can be written |
 
   **Snapping rule, applied once for all of Tasks 14–18.** Five values in these screens
   fall between two steps of the frozen 14-step spacing scale (4·5·6·8·10·12·14·16·18·22·26·30·38·40).
@@ -7289,14 +7292,14 @@ a reader, and a 760px viewport without changing what a person sees at desktop.
       expect(coral.tileClass).toBe('bg-tile-c text-conflict')
       expect(coral.numeralClass).toBe('text-dept-numeral-coral')
       expect(coral.accentText).toBe('text-conflict')
-      expect(coral.ctaDiscClass).toBe('bg-cta-coral')
+      expect(coral.ctaDiscClass).toBe('bg-disc-coral')
 
       const violet = deptMeta('cashier')    // t:'v'
       expect(violet.accent).toBe('violet')
       expect(violet.tileClass).toBe('bg-tile-v text-violet')
       expect(violet.numeralClass).toBe('text-dept-numeral-violet')
       expect(violet.accentText).toBe('text-violet')
-      expect(violet.ctaDiscClass).toBe('bg-cta-violet')
+      expect(violet.ctaDiscClass).toBe('bg-disc-violet')
     })
 
     it('answers for a code it has never heard of', () => {
@@ -7305,7 +7308,7 @@ a reader, and a 760px viewport without changing what a person sees at desktop.
       const m = deptMeta('not-a-department')
       expect(m.accent).toBe('violet')
       expect(m.icon).toBe('')
-      expect(m.ctaDiscClass).toBe('bg-cta-violet')
+      expect(m.ctaDiscClass).toBe('bg-disc-violet')
     })
 
     it('covers all nine departments', () => {
@@ -7339,13 +7342,13 @@ a reader, and a 760px viewport without changing what a person sees at desktop.
       tileClass: 'bg-tile-v text-violet',
       numeralClass: 'text-dept-numeral-violet',
       accentText: 'text-violet',
-      ctaDiscClass: 'bg-cta-violet',
+      ctaDiscClass: 'bg-disc-violet',
     },
     coral: {
       tileClass: 'bg-tile-c text-conflict',
       numeralClass: 'text-dept-numeral-coral',
       accentText: 'text-conflict',
-      ctaDiscClass: 'bg-cta-coral',
+      ctaDiscClass: 'bg-disc-coral',
     },
   }
 
@@ -7557,8 +7560,8 @@ a reader, and a 760px viewport without changing what a person sees at desktop.
     // #2A1D5E and the shell owns it; a `bg-ink` here would be a second opinion
     // about the field, and the browser check asserts the shell's, not this file's.
     const pad = reader
-      ? 'pt-screen px-reader pb-reader'          // 30 / 24 / 60
-      : 'pt-depts px-screen pb-depts max760:px-s7 max760:py-s9'   // 38 / 40 / 48 → 14 / 18
+      ? 'pt-screen-y px-reader-x pb-reader-bottom'          // 30 / 24 / 60
+      : 'pt-departments-top px-screen-x pb-departments-bottom max760:px-s7 max760:py-s9'   // 38 / 40 / 48 → 14 / 18
 
     return (
       <div data-r-pad className={`flex-1 overflow-auto ${pad}`}>
@@ -7570,7 +7573,7 @@ a reader, and a 760px viewport without changing what a person sees at desktop.
                 <span className="w-s10 h-0.5 bg-coral rounded-bar" />
                 <span className="text-fs-xs font-bold tracking-eyebrow text-violet-on-dark">INJA FOOD · مستندسازی فرآیند</span>
               </div>
-              <h1 data-r-title className={`font-extrabold ${reader ? 'text-fs-reader-h1' : 'text-fs-display'} text-on-dark tracking-display m-0`}>دپارتمان‌ها</h1>
+              <h1 data-r-title className={`font-extrabold ${reader ? 'text-fs-h1-reader-home' : 'text-fs-display'} text-on-dark tracking-display m-0`}>دپارتمان‌ها</h1>
               <p className="text-fs-body text-violet-on-dark-body mt-s4 max-w-subtitle leading-normal m-0">
                 نقشهٔ فرآیندهای مجموعه به تفکیک واحد. یک دپارتمان را برای مرور فرآیندهای مستندشده، کارت خلاصه و فلوچارت انتخاب کنید.
               </p>
@@ -7599,12 +7602,12 @@ a reader, and a 760px viewport without changing what a person sees at desktop.
               return (
                 <Card key={d.code} hoverLift radius="feature"
                   onClick={() => nav(`/departments/${d.code}`)}
-                  className="relative overflow-hidden p-s10 cursor-pointer border-border-card shadow-feature hover:shadow-card-hover hover:border-lilac transition-[transform,box-shadow,border-color] duration-base ease-css">
+                  className="relative overflow-hidden p-s10 cursor-pointer border-border-card shadow-feature hover:shadow-card-hover hover:border-line-dashed transition-[transform,box-shadow,border-color] ease-css">
                   <span className={`absolute top-0 inset-x-0 h-1 ${m.accent === 'coral' ? 'bg-conflict' : 'bg-violet'}`} />
                   {/* `end-s10`, not `left-5`: in RTL the ghosted numeral sits on the
                       inline end. The physical spelling was one of the four mirror
                       bugs O5 lists, and it is invisible until an LTR locale exists. */}
-                  <span aria-hidden className={`absolute top-s7 end-s10 text-fs-ghost font-extrabold leading-none pointer-events-none ${m.numeralClass}`}>
+                  <span aria-hidden className={`absolute top-s7 end-s10 text-fs-numeral font-extrabold leading-none pointer-events-none ${m.numeralClass}`}>
                     {toFa(String(i + 1).padStart(2, '0'))}
                   </span>
                   <IconTile accent={m.accent} glyph={d.code} />
@@ -7640,9 +7643,9 @@ a reader, and a 760px viewport without changing what a person sees at desktop.
   ```
 
   Two theme entries this markup needs and Step 1's list does not carry, because they are
-  this screen's alone: `--fs-ghost: 46px` (`text-fs-ghost`, the ghosted index numeral),
-  `--width-subtitle: 440px` (`max-w-subtitle`), `--size-chiprow: 24px` (`min-h-chiprow`).
-  Add all three now.
+  this screen's alone: `--width-subtitle: 440px` (`max-w-subtitle`) and
+  `--size-chiprow: 24px` (`min-h-chiprow`). The ghosted index numeral needs neither: 46px
+  already ships as `--fs-numeral` (Task 3) and is written `text-fs-numeral`. Add both now.
 
 - [ ] **Step 15: Run the screen suite, watch it pass.**
   ```bash
@@ -7665,12 +7668,12 @@ a reader, and a 760px viewport without changing what a person sees at desktop.
   ```bash
   cd ui && npm run build
   for c in max1080\\:grid-cols-2 max760\\:grid-cols-1 max760\\:gap-s6 max760\\:hidden \
-           text-fs-display text-fs-reader-h1 text-fs-ghost text-on-dark text-violet-on-dark \
-           text-violet-on-dark-body text-dialog-ghost bg-tile-v3 bg-cta-violet bg-cta-coral \
+           text-fs-display text-fs-h1-reader-home text-fs-numeral text-on-dark text-violet-on-dark \
+           text-violet-on-dark-body text-dialog-ghost bg-tile-v3 bg-disc-violet bg-disc-coral \
            rounded-bar rounded-pill rounded-round rounded-feature rounded-tile \
-           shadow-feature border-border-card border-hair border-lilac \
-           pt-depts pb-depts px-reader pb-reader max-w-reader max-w-subtitle \
-           w-tile-reader min-h-chiprow duration-base ease-css tracking-display; do
+           shadow-feature border-border-card border-hair border-line-dashed \
+           pt-departments-top pb-departments-bottom px-reader-x pb-reader-bottom max-w-reader max-w-subtitle \
+           w-tile-reader min-h-chiprow ease-css tracking-display; do
     grep -qF -- "$c" dist/assets/*.css || echo "NOT IN CSS: $c"
   done
   ```
@@ -8020,13 +8023,13 @@ action bar with a `36×36` `⋯`.
   return (
     <div data-r-pad ref={scrollRef}
       onScroll={(e) => sessionStorage.setItem(scrollKey, String(e.currentTarget.scrollTop))}
-      className="flex-1 overflow-auto py-screen px-screen max760:px-s7 max760:py-s9">
+      className="flex-1 overflow-auto py-screen-y px-screen-x max760:px-s7 max760:py-s9">
       <div className={`${reader ? 'max-w-reader' : 'max-w-list'} mx-auto`}>
         <div className="flex items-end justify-between gap-s8 mb-s10" data-r-stack>
           <div>
             <div className="flex items-center gap-s6">
               <IconTile accent={m.accent} glyph={code} />
-              <h1 className={`font-extrabold ${reader ? 'text-fs-reader-list-h1' : 'text-fs-h2'} text-on-dark m-0`}>
+              <h1 className={`font-extrabold ${reader ? 'text-fs-h1-reader-list' : 'text-fs-h2'} text-on-dark m-0`}>
                 دپارتمان {dept?.name ?? ''}
               </h1>
               {/* §6.2 puts the mobile ⋯ in the title row, not in the bar it
@@ -8079,8 +8082,8 @@ action bar with a `36×36` `⋯`.
             return (
               <div key={p.id} data-r-prow
                 className={`bg-card border border-border-card rounded-card px-s9 py-s9 flex items-center gap-s8 shadow-card
-                  hover:-translate-y-0.5 hover:shadow-card-hover hover:border-lilac
-                  transition-[transform,box-shadow,border-color] duration-base ease-css
+                  hover:-translate-y-0.5 hover:shadow-card-hover hover:border-line-dashed
+                  transition-[transform,box-shadow,border-color] ease-css
                   max760:flex-col max760:items-stretch max760:p-s7 max760:gap-s6
                   ${tombstoned ? 'opacity-60' : ''}`}>
                 <div className="flex-1 min-w-0">
@@ -8170,9 +8173,9 @@ action bar with a `36×36` `⋯`.
   cd ui && npm run build
   for c in max760\\:flex-col max760\\:items-stretch max760\\:p-s7 max760\\:gap-s6 max760\\:hidden \
            max760\\:inline-flex max760\\:flex-1 max760\\:py-s6 max760\\:w-full max760\\:px-s7 \
-           text-fs-reader-list-h1 text-fs-h4 text-fs-sm2 text-violet-on-violet text-dialog-ghost \
-           bg-tile-v3 border-border-card border-lilac rounded-pill rounded-input w-menu-more min-w-pos \
-           shadow-card-hover duration-base ease-css ps-s11; do
+           text-fs-h1-reader-list text-fs-h4 text-fs-sm2 text-violet-on-violet text-dialog-ghost \
+           bg-tile-v3 border-border-card border-line-dashed rounded-pill rounded-input w-menu-more min-w-pos \
+           shadow-card-hover ease-css ps-s11; do
     grep -qF -- "$c" dist/assets/*.css || echo "NOT IN CSS: $c"
   done
   ```
@@ -8425,7 +8428,7 @@ blanked the field, which is a claim of absence standing in for an absence of a c
   Replace `:79-181` of `ui/src/screens/Summary.tsx` (the read branch):
 
   ```tsx
-    <div data-r-pad className="flex-1 overflow-auto py-screen px-screen max760:px-s7 max760:py-s9">
+    <div data-r-pad className="flex-1 overflow-auto py-screen-y px-screen-x max760:px-s7 max760:py-s9">
       <div className="max-w-summary mx-auto">
         <div className="flex items-start justify-between gap-s8 mb-s10" data-r-stack>
           <div>
@@ -8524,7 +8527,7 @@ blanked the field, which is a claim of absence standing in for an absence of a c
   function AddButton({ onClick, children }: { onClick: () => void; children: ReactNode }) {
     return (
       <button type="button" onClick={onClick}
-        className="self-start inline-flex items-center gap-s2 text-fs-sm2 font-semibold text-violet border-hairline border-dashed border-lilac bg-tile-v4 rounded-input px-s6 py-s3">
+        className="self-start inline-flex items-center gap-s2 text-fs-sm2 font-semibold text-violet border-hairline border-dashed border-line-dashed bg-tile-v4 rounded-input px-s6 py-s3">
         <Icon name="plus" px={13} strokeWidth={2.4} />{children}
       </button>
     )
@@ -8589,7 +8592,7 @@ blanked the field, which is a claim of absence standing in for an absence of a c
   cd ui && npx tsc -b && npx eslint . && npm run build
   for c in max760\\:flex-col max760\\:grid-cols-1 max760\\:gap-s6 max760\\:flex-wrap \
            text-fs-h1 text-fs-lg text-fs-sm2 text-fs-xxs text-on-dark text-violet-on-violet \
-           rounded-doc rounded-tile rounded-badge rounded-round border-border-card border-border-dead border-lilac \
+           rounded-doc rounded-tile rounded-badge rounded-round border-border-card border-border-dead border-line-dashed \
            bg-tile-dead bg-tile-v4 max-w-prose max-w-summary shadow-violet leading-loose leading-relaxed \
            grid-cols-\\[1fr_1.4fr_1fr\\]; do
     grep -qF -- "$c" dist/assets/*.css || echo "NOT IN CSS: $c"
@@ -8829,9 +8832,9 @@ consumer in Task 15.
         {items.map((it) => {
           const isOpen = open.has(it.key)
           return (
-            <div key={it.key} className="border border-subpanel rounded-tile overflow-hidden">
+            <div key={it.key} className="border border-border-current rounded-tile overflow-hidden">
               <button type="button" onClick={() => toggle(it.key)} aria-expanded={isOpen}
-                className="w-full flex items-center gap-s6 text-start px-s8 py-s7 bg-subpanel border-0 cursor-pointer">
+                className="w-full flex items-center gap-s6 text-start px-s8 py-s7 bg-surface-sub border-0 cursor-pointer">
                 <span className="font-bold text-fs-body text-ink flex-1 min-w-0">{it.title}</span>
                 {it.badge !== undefined && (
                   <span className="text-fs-xxs font-semibold text-violet bg-tile-v px-s5 py-s3 rounded-pill shrink-0">{it.badge}</span>
@@ -8937,7 +8940,7 @@ consumer in Task 15.
   and `:146-183` (the personnel section) with §6.4's three stacked cards. The header:
 
   ```tsx
-    <div data-r-pad className="flex-1 overflow-auto py-screen px-screen max760:px-s7 max760:py-s9">
+    <div data-r-pad className="flex-1 overflow-auto py-screen-y px-screen-x max760:px-s7 max760:py-s9">
       <div className="max-w-list mx-auto">
         <div className="flex items-start justify-between gap-s8 mb-s9" data-r-stack>
           <div className="flex items-center gap-s6">
@@ -8977,9 +8980,9 @@ consumer in Task 15.
             : (
               <div data-r-2col className="grid grid-cols-2 gap-s6 max760:grid-cols-1">
                 {data.sub_units.map((s, i) => (
-                  <div key={i} className="bg-subpanel border border-subpanel rounded-tile px-s7 py-s7 self-start">
+                  <div key={i} className="bg-surface-sub border border-border-current rounded-tile px-s7 py-s7 self-start">
                     <div className="font-bold text-fs-sm2 text-ink">{s.name}</div>
-                    <p className="text-fs-sm2 text-text-current mt-s2 leading-sub text-justify m-0">{s.description}</p>
+                    <p className="text-fs-sm2 text-ink-current mt-s2 leading-sub text-justify m-0">{s.description}</p>
                   </div>
                 ))}
               </div>
@@ -9002,14 +9005,14 @@ consumer in Task 15.
                       {pr.duties.map((d, j) => (
                         <li key={j} className="flex gap-s5 items-start">
                           <span className="w-s10 h-s10 shrink-0 rounded-badge bg-tile-v text-violet text-fs-micro font-bold flex items-center justify-center">{toFa(j + 1)}</span>
-                          <span className="text-fs-sm2 text-text-current leading-sub text-justify">{d}</span>
+                          <span className="text-fs-sm2 text-ink-current leading-sub text-justify">{d}</span>
                         </li>
                       ))}
                     </ol>
                     {pr.kpi.length > 0 && (
                       <div className="mt-s9 pt-s7 border-t border-hair flex flex-col gap-s4">
                         {pr.kpi.map((k, j) => (
-                          <div key={j} className="flex gap-s4 items-start text-fs-sm text-text-current leading-loose">
+                          <div key={j} className="flex gap-s4 items-start text-fs-sm text-ink-current leading-loose">
                             <Icon name="check" px={14} strokeWidth={2.6} className="text-green shrink-0 mt-s1" />{k}
                           </div>
                         ))}
@@ -9058,8 +9061,8 @@ consumer in Task 15.
 - [ ] **Step 11: Typecheck, lint, build, grep.**
   ```bash
   cd ui && npx tsc -b && npx eslint . && npm run build
-  for c in max760\\:grid-cols-1 text-fs-h2 text-fs-xxs text-fs-micro text-text-current \
-           text-violet-on-violet bg-subpanel border-subpanel border-hair border-border-card \
+  for c in max760\\:grid-cols-1 text-fs-h2 text-fs-xxs text-fs-micro text-ink-current \
+           text-violet-on-violet bg-surface-sub border-border-current border-hair border-border-card \
            rounded-doc rounded-tile rounded-badge rounded-pill leading-justify leading-sub \
            duration-chev ease-css max-w-list; do
     grep -qF -- "$c" dist/assets/*.css || echo "NOT IN CSS: $c"
@@ -9408,8 +9411,8 @@ departments screen (§9.13). It is `ui_kits/panel/Login.jsx` inside
       // a refused read land in the same place; they may not land at two sizes.
       const { container } = render(<RefusalScreen status={404} />)
       const wrap = container.firstElementChild!
-      expect(wrap.className).toContain('py-screen')
-      expect(wrap.className).toContain('px-screen')
+      expect(wrap.className).toContain('py-screen-y')
+      expect(wrap.className).toContain('px-screen-x')
       expect(wrap.firstElementChild!.className).toContain('max-w-list')
     })
   })
@@ -9471,7 +9474,7 @@ departments screen (§9.13). It is `ui_kits/panel/Login.jsx` inside
   cd ui && npx vitest run src/screens/Refusal.test.tsx
   ```
   Expected: one failure — `expected 'flex-1 overflow-auto py-[30px] px-10' to contain
-  'py-screen'`. The other five pass today, and that is the point: they are the pins that
+  'py-screen-y'`. The other five pass today, and that is the point: they are the pins that
   stop the next change from breaking what is currently right by accident.
 
 - [ ] **Step 10: Align the two wrappers.**
@@ -9492,7 +9495,7 @@ departments screen (§9.13). It is `ui_kits/panel/Login.jsx` inside
    */
   export function RefusalScreen({ status }: { status: 403 | 404 }) {
     return (
-      <div className="flex-1 overflow-auto py-screen px-screen max760:px-s7 max760:py-s9">
+      <div className="flex-1 overflow-auto py-screen-y px-screen-x max760:px-s7 max760:py-s9">
         <div className="max-w-list mx-auto">
           {status === 404 ? <NotFoundState /> : <DeniedState />}
         </div>
@@ -9506,7 +9509,7 @@ departments screen (§9.13). It is `ui_kits/panel/Login.jsx` inside
 
   ```tsx
     return (
-      <div className="flex-1 overflow-auto py-screen px-screen max760:px-s7 max760:py-s9">
+      <div className="flex-1 overflow-auto py-screen-y px-screen-x max760:px-s7 max760:py-s9">
         <div className="max-w-list mx-auto">
   ```
 
@@ -9528,7 +9531,7 @@ departments screen (§9.13). It is `ui_kits/panel/Login.jsx` inside
   ```bash
   cd ui && npm run build
   for c in bg-login-bg w-login rounded-panel rounded-feature w-logo-login h-logo-login \
-           text-fs-h3 text-fs-sm2 text-fs-body shadow-modal py-screen px-screen max-w-list \
+           text-fs-h3 text-fs-sm2 text-fs-body shadow-modal py-screen-y px-screen-x max-w-list \
            max760\\:px-s7 max760\\:py-s9; do
     grep -qF -- "$c" dist/assets/*.css || echo "NOT IN CSS: $c"
   done
@@ -9690,11 +9693,11 @@ design is coral (`ui-audit-visual.md` §"`/users`"). Rebuilt to §6.7.
 *Consumes* — from Tasks 2/3 (Tailwind names for the newly-exposed tokens):
 `px-screen-x` (`--pad-screen-x:40px`) · `py-screen-y` (`--pad-screen-y:30px`) ·
 `max-w-list` (920px) · `rounded-doc` (18px) · `rounded-tile` (14px) ·
-`rounded-input` (11px) · `bg-sub-panel` (`--sub-panel:#FBF9FE`) ·
-`border-row-sep` (`--row-sep:#F4F0FA`) · `border-filter-edge` (`--filter-edge:#E9E0F7`) ·
+`rounded-input` (11px) · `bg-surface-sub` (`--surface-sub:#FBF9FE`) ·
+`border-line-row` (`--line-row:#F4F0FA`) · `border-line-filter` (`--line-filter:#E9E0F7`) ·
 `bg-tile-v2` (#F4EFFB) · `bg-tile-v4` (#F8F4FE) · `border-border-current` (#EDE5F5) ·
-`text-current` (#5a5175) · `text-violet-mid` (#7A52D0) · `w-dot h-dot` (9px) ·
-`w-chev h-chev` (30px) · `shadow-card` (S1's two-layer value) · `duration-ds` (.16s) ·
+`text-ink-current` (`--text-current`, #5a5175) · `text-violet-mid` (#7A52D0) · `w-dot h-dot` (9px) ·
+`w-chev h-chev` (30px) · `shadow-card` (S1's two-layer value) ·
 `-translate-y-lift` · the breakpoint variants `max1080:` and `max760:`, registered by Task 2 via `addVariant` in `plugins` — **never** as `theme.screens` objects, which delete Tailwind's whole `min-*`/`max-*` family and the 30 shipped `max-[560px]:` utilities with it, silently and with a green build.
 
 From Tasks 6–11:
@@ -9748,7 +9751,7 @@ export const ROLE_TONE: Record<string, string>   // token-backed utility pairs
   Every value below is read from a Tailwind class; a name that differs by one
   character compiles to nothing and the build still exits 0. Run:
   ```
-  cd ui && node -e "const c=require('./tailwind.config.js').default;const t=c.theme.extend;const need={maxWidth:['access','profile'],borderRadius:['doc','tile','input','tool','feature'],colors:['sub-panel','row-sep','filter-edge','tick-off','tile-v3','tile-v4','tile-c2','border-current','hair','line-soft','line-dashed','border-danger','text-current','violet-mid','violet-on-violet'],width:['dot','glyph','chev','tool'],spacing:['screen-x','screen-y']};for(const[k,v]of Object.entries(need))for(const n of v)if(!(n in (t[k]||{})))console.log('MISSING',k,n);const v=[];for(const pl of (c.plugins||[]))pl({addVariant:(n)=>v.push(n)});console.log('variants',JSON.stringify(v))"
+  cd ui && node -e "const c=require('./tailwind.config.js').default;const t=c.theme.extend;const need={maxWidth:['access','profile'],borderRadius:['doc','tile','input','tool','feature'],colors:['surface-sub','line-row','line-filter','border-pick','tile-v3','tile-v4','tile-c2','border-current','hair','line-soft','line-dashed','border-danger','ink-current','violet-mid','violet-on-violet'],width:['dot','glyph','chev','tool'],spacing:['screen-x','screen-y']};for(const[k,v]of Object.entries(need))for(const n of v)if(!(n in (t[k]||{})))console.log('MISSING',k,n);const v=[];for(const pl of (c.plugins||[]))pl({addVariant:(n)=>v.push(n)});console.log('variants',JSON.stringify(v))"
   ```
   Expected: no `MISSING` lines and
   `max1080:` / `max760:` (addVariant, not `theme.screens`). Any `MISSING`
@@ -10023,17 +10026,17 @@ export const ROLE_TONE: Record<string, string>   // token-backed utility pairs
 
     return (
       <div role="group" aria-label="فیلتر کاربران"
-        className="grid grid-cols-4 items-center gap-s4 mb-s8 border border-filter-edge
+        className="grid grid-cols-4 items-center gap-s4 mb-s8 border border-line-filter
                    rounded-tile px-s6 py-s5 bg-tile-v2 max760:grid-cols-2 max760:p-s5">
         <div className="col-span-full flex items-center gap-s4">
-          <span className="inline-flex items-center gap-s3 text-eyebrow font-bold text-violet">
+          <span className="inline-flex items-center gap-s3 text-fs-xs font-bold text-violet">
             <Icon name="funnel" className="w-s7 h-s7" strokeWidth={2.2} />
             فیلتر کاربران
           </span>
           {/* The count the old screen carried as a free-floating line, in the
               shape §6.10 gives it: pushed to the inline end, gone at ≤760px
               where the bar is already two rows tall. */}
-          <span className="ms-auto text-small font-semibold text-muted max760:hidden">
+          <span className="ms-auto text-fs-sm font-semibold text-muted max760:hidden">
             {toFa(count)} از {toFa(total)}
           </span>
         </div>
@@ -10059,7 +10062,7 @@ export const ROLE_TONE: Record<string, string>   // token-backed utility pairs
         {anyActive(filters) && (
           <button type="button" onClick={() => onFilters(NO_FILTERS)}
             className="col-span-full justify-self-start border-0 bg-transparent p-s1
-                       text-control font-bold text-violet-mid underline underline-offset-4
+                       text-fs-sm2 font-bold text-violet-mid underline underline-offset-4
                        cursor-pointer min-h-touch">
             پاک کردن فیلترها
           </button>
@@ -10123,7 +10126,7 @@ export const ROLE_TONE: Record<string, string>   // token-backed utility pairs
                 from what the control *is* (R8). Below the gate, so a
                 department-scoped caller is answered «چیزی اینجا نیست» above and
                 never reaches a control the app put up a wall in front of. */}
-            <Button variant="coral" className="px-s8 py-s5 text-small rounded-button"
+            <Button variant="coral" className="px-s8 py-s5 text-fs-sm rounded-button"
               onClick={() => setCreating(true)}>
               کاربر جدید
             </Button>
@@ -10178,7 +10181,7 @@ export const ROLE_TONE: Record<string, string>   // token-backed utility pairs
       key: 'role', head: 'نقش',
       cell: (u) => (
         <span className={`inline-block truncate max-w-full px-s5 py-s1 rounded-control
-                          text-control font-semibold ${roleTone(u.role)}
+                          text-fs-sm2 font-semibold ${roleTone(u.role)}
                           max760:max-w-[42%]`}>
           {roleLabel(u.role)}
         </span>
@@ -10191,8 +10194,8 @@ export const ROLE_TONE: Record<string, string>   // token-backed utility pairs
         // D14 leaves a disabled supervisor in place rather than repointing the
         // people under them, so the colour is the whole warning: this person's
         // comment approvals route to an account that can no longer sign in.
-        <span className={`block truncate text-control
-                          ${u.supervisor?.disabled ? 'text-conflict' : 'text-current'}`}>
+        <span className={`block truncate text-fs-sm2
+                          ${u.supervisor?.disabled ? 'text-conflict' : 'text-ink-current'}`}>
           {u.supervisor ? u.supervisor.displayName : '—'}
         </span>
       ),
@@ -10200,7 +10203,7 @@ export const ROLE_TONE: Record<string, string>   // token-backed utility pairs
     {
       key: 'dept', head: 'دپارتمان', narrowHidden: true,
       cell: (u) => (
-        <span className="block truncate text-control text-muted">
+        <span className="block truncate text-fs-sm2 text-muted">
           {scopesLabel(u.scopes, names)}
         </span>
       ),
@@ -10246,7 +10249,7 @@ export const ROLE_TONE: Record<string, string>   // token-backed utility pairs
   A class Tailwind never saw compiles to nothing and `npm run build` still exits 0.
   ```
   cd ui && npm run build && for c in 'py-screen-y' 'px-screen-x' 'rounded-tile' \
-    'border-filter-edge' 'bg-tile-v2' 'text-violet-mid' 'w-dot' 'h-dot' 'w-chev' \
+    'border-line-filter' 'bg-tile-v2' 'text-violet-mid' 'w-dot' 'h-dot' 'w-chev' \
     'h-chev' 'rounded-round' 'max760\:grid-cols-2' 'max760\:hidden' 'max760\:px-s7' \
     'col-span-full' 'underline-offset-4' ; do
       grep -qF "$c" dist/assets/*.css && echo "ok  $c" || echo "MISSING $c"; done
@@ -10393,8 +10396,8 @@ export function SectionCard(props: { eyebrow: string; tone?: 'tinted' | 'white'
   ```tsx
           <Link to="/users"
             className="inline-flex items-center gap-s3 min-h-touch px-s6 rounded-control
-                       text-control text-violet no-underline hover:bg-tile-v2
-                       transition-colors duration-ds">
+                       text-fs-sm2 text-violet no-underline hover:bg-tile-v2
+                       transition-colors">
             {/* §8 — chevrons are chosen by hand per direction rather than
                 transformed, and "back" is `M9 18l6-6-6-6`. The `←` this replaces
                 was two violations in seven characters: a unicode glyph where the
@@ -10449,7 +10452,7 @@ export function SectionCard(props: { eyebrow: string; tone?: 'tinted' | 'white'
               <span aria-hidden
                 className="self-stretch w-px bg-warm max760:hidden" />
               {user.scopes.length === 0
-                ? <span className="text-control text-muted">{NO_DEPARTMENT}</span>
+                ? <span className="text-fs-sm2 text-muted">{NO_DEPARTMENT}</span>
                 : user.scopes.map((scope) => (
                   <Chip key={scope} kind="scope">{scopeLabel(scope, names)}</Chip>
                 ))}
@@ -10565,23 +10568,23 @@ export function SectionCard(props: { eyebrow: string; tone?: 'tinted' | 'white'
                 // §6.9's dedicated change-supervisor modal has no counterpart
                 // here, and `EditUserDialog` owns the edge, the scopes and the
                 // re-validation that binds them (see the ledger).
-                <Button variant="ghost" className="px-s6 py-s5 text-control rounded-input"
+                <Button variant="ghost" className="px-s6 py-s5 text-fs-sm2 rounded-input"
                   onClick={() => setEditing(true)}>
                   تغییر سرپرست
                 </Button>
               }>
-              <p className="text-sub font-bold text-ink m-0">
+              <p className="text-fs-menu font-bold text-ink m-0">
                 {user.supervisor ? user.supervisor.displayName : 'سرپرستی ندارد'}
               </p>
               {user.supervisor?.disabled && (
-                <p className="text-eyebrow font-semibold text-conflict mt-s3 m-0">
+                <p className="text-fs-xs font-semibold text-conflict mt-s3 m-0">
                   این سرپرست غیرفعال است — کامنت‌های این کاربر یک پله بالاتر می‌روند.
                 </p>
               )}
               {/* D51 — an org-chart fact and not a capability, said in the
                   design's own rule-statement register (11.5px, faint, lh 1.7)
                   rather than as another body paragraph. */}
-              <p className="text-eyebrow text-faint leading-normal mt-s4 m-0">
+              <p className="text-fs-xs text-faint leading-normal mt-s4 m-0">
                 سرپرست جایگاهی در نمودار سازمانی است، تأیید نظرها را مسیر می‌دهد و هیچ
                 دسترسی‌ای نمی‌دهد.
                 {user.canSupervise
@@ -10600,10 +10603,10 @@ export function SectionCard(props: { eyebrow: string; tone?: 'tinted' | 'white'
   R5 forbids drawing a button for a route that does not exist.
   ```tsx
             <SectionCard eyebrow="گذرواژه" tone="white" aria-label="گذرواژه">
-              <h2 className="text-sub font-extrabold text-ink m-0">
+              <h2 className="text-fs-menu font-extrabold text-ink m-0">
                 بازنشانی گذرواژهٔ {user.displayName}
               </h2>
-              <p className="text-small text-muted leading-loose max-w-prose mt-s3 m-0">
+              <p className="text-fs-sm text-muted leading-loose max-w-prose mt-s3 m-0">
                 گذرواژهٔ تازه را خودتان انتخاب می‌کنید و به این شخص می‌گویید؛ پیوند
                 بازیابی‌ای در کار نیست. با ثبت آن، همهٔ نشست‌های باز این کاربر بسته
                 می‌شود.
@@ -10614,19 +10617,19 @@ export function SectionCard(props: { eyebrow: string; tone?: 'tinted' | 'white'
                   onChange={setPasswordValue} autoComplete="new-password"
                   className="flex-1 min-w-0"
                   invalid={tooShort} hint={tooShort ? TOO_SHORT : undefined} />
-                <Button variant="violet" className="px-s8 py-s5 text-small rounded-button"
+                <Button variant="violet" className="px-s8 py-s5 text-fs-sm rounded-button"
                   loading={setPassword.isPending} loadingLabel="در حال ثبت…"
                   onClick={submitPassword}>
                   ثبت گذرواژه
                 </Button>
               </div>
               {setPassword.error && (
-                <p role="alert" className="text-eyebrow font-semibold text-conflict mt-s5 m-0">
+                <p role="alert" className="text-fs-xs font-semibold text-conflict mt-s5 m-0">
                   {refusalText(setPassword.error)}
                 </p>
               )}
               {setPassword.isSuccess && !tooShort && (
-                <p role="status" className="text-eyebrow font-semibold text-green mt-s5 m-0">
+                <p role="status" className="text-fs-xs font-semibold text-green mt-s5 m-0">
                   گذرواژهٔ تازه ثبت شد؛ آن را به این شخص بگویید. همهٔ نشست‌های این کاربر
                   بسته شد.
                 </p>
@@ -10646,23 +10649,23 @@ export function SectionCard(props: { eyebrow: string; tone?: 'tinted' | 'white'
                 section. */}
             <div role="group" aria-label="غیرفعال‌سازی کاربر"
               className="bg-card border border-border-danger rounded-card p-s9 mb-s7">
-              <h2 className="text-sub font-extrabold text-conflict m-0">
+              <h2 className="text-fs-menu font-extrabold text-conflict m-0">
                 {user.disabled ? 'فعال‌سازی کاربر' : 'غیرفعال‌سازی کاربر'}
               </h2>
-              <p className="text-small text-muted leading-loose max-w-prose mt-s3 m-0">
+              <p className="text-fs-sm text-muted leading-loose max-w-prose mt-s3 m-0">
                 غیرفعال کردن یک حساب همهٔ نشست‌های آن را می‌بندد. شمارهٔ کاربر نزد خودش
                 می‌ماند و به کس دیگری داده نمی‌شود.
               </p>
               <div className="mt-s8">
                 <Button variant={user.disabled ? 'affirm' : 'danger'}
-                  className="px-s8 py-s5 text-small rounded-button"
+                  className="px-s8 py-s5 text-fs-sm rounded-button"
                   loading={setDisabled.isPending} loadingLabel="در حال ثبت…"
                   onClick={() => setDisabled.mutate(!user.disabled)}>
                   {user.disabled ? 'فعال‌سازی کاربر' : 'غیرفعال‌سازی کاربر'}
                 </Button>
               </div>
               {setDisabled.error && (
-                <p role="alert" className="text-eyebrow font-semibold text-conflict mt-s5 m-0">
+                <p role="alert" className="text-fs-xs font-semibold text-conflict mt-s5 m-0">
                   {refusalText(setDisabled.error)}
                 </p>
               )}
@@ -10681,13 +10684,13 @@ export function SectionCard(props: { eyebrow: string; tone?: 'tinted' | 'white'
               {/* §6.8 — the username is a latin run on a violet field: mono,
                   `#C9BEEE`, pinned `ltr`, aligned to the start. It was absent
                   from this screen entirely. */}
-              <span dir="ltr" className="block text-control font-mono text-violet-on-violet
+              <span dir="ltr" className="block text-fs-sm2 font-mono text-violet-on-violet
                                          text-start mt-s2">
                 {user.username}
               </span>
             </div>
             {manageable && (
-              <Button variant="violet" className="px-s8 py-s5 text-small rounded-button"
+              <Button variant="violet" className="px-s8 py-s5 text-fs-sm rounded-button"
                 onClick={() => setEditing(true)}>
                 ویرایش
               </Button>
@@ -10731,11 +10734,11 @@ export function SectionCard(props: { eyebrow: string; tone?: 'tinted' | 'white'
 - [ ] **Step 21: Grep the built CSS.**
   ```
   cd ui && npm run build && for c in 'max-w-access' 'border-border-danger' 'bg-tile-c2' \
-    'text-violet-on-violet' 'rounded-input' 'duration-ds' 'max760\:flex-col' \
+    'text-violet-on-violet' 'rounded-input' 'max760\:flex-col' \
     'max760\:items-stretch' 'max-w-prose' 'leading-loose' ; do
       grep -qF "$c" dist/assets/*.css && echo "ok  $c" || echo "MISSING $c"; done
   ```
-  Expected: ten `ok` lines.
+  Expected: nine `ok` lines.
 
 - [ ] **Step 22: Add `access` to the harness table.**
   ```ts
@@ -10823,7 +10826,7 @@ card inside a card, and it reads as a rendering fault (F34/F40).
 
 **Interfaces**
 
-*Consumes* — `bg-sub-panel` (#FBF9FE) · `border-border-current` (#EDE5F5) ·
+*Consumes* — `bg-surface-sub` (#FBF9FE) · `border-border-current` (#EDE5F5) ·
 `border-line-dashed` (#C9B8EC) · `bg-tile-v4` (#F8F4FE) · `bg-tile-v` (#F0E9FB) ·
 `border-warm` (#EFE7DC) · `rounded-panel` (24px) · `rounded-card` (16px) ·
 `rounded-button` (12px) · `rounded-tile` (14px) · `w-glyph h-glyph` (15px) ·
@@ -10964,12 +10967,12 @@ export const SUPERVISE_NOTE: string
                 new-affordance role and it is spent on «کاربر جدید», the control
                 that opened this box (see the ledger). */}
             <Button type="submit" form="user-dialog-form" variant="violet"
-              className="flex-1 py-s6 text-sub rounded-button"
+              className="flex-1 py-s6 text-fs-menu rounded-button"
               loading={submitting} loadingLabel="در حال ثبت…">
               {submitLabel}
             </Button>
             <Button type="button" variant="ghost"
-              className="flex-1 py-s6 text-sub rounded-button" onClick={onClose}>
+              className="flex-1 py-s6 text-fs-menu rounded-button" onClick={onClose}>
               انصراف
             </Button>
           </div>
@@ -10981,7 +10984,7 @@ export const SUPERVISE_NOTE: string
             // §4.6 — "Errors are stated in copy: a `11.5px/600 #E23D35` line
             // under the offending control." role="alert" because this text
             // appears after the press that caused it.
-            <p role="alert" className="text-eyebrow font-semibold text-conflict m-0">
+            <p role="alert" className="text-fs-xs font-semibold text-conflict m-0">
               {alert}
             </p>
           )}
@@ -11164,26 +11167,26 @@ export const SUPERVISE_NOTE: string
                     glyph in that department's own fixed accent, a 13px/600 label. */}
                 <label className={`flex items-center gap-s5 min-h-touch px-s6 py-s5
                                    rounded-button border-hairline cursor-pointer
-                                   transition-colors duration-ds
+                                   transition-colors
                                    ${on ? 'border-line-dashed bg-tile-v4' : 'border-warm bg-card'}`}>
                   <Checkbox box={17} tone="violet" checked={on} aria-label={d.name}
                     onChange={(v) => toggleDepartment(d.code, v)} label={null} />
                   <DeptGlyph code={d.code} className="w-glyph h-glyph shrink-0" />
-                  <span className="text-small font-semibold text-ink truncate">{d.name}</span>
+                  <span className="text-fs-sm font-semibold text-ink truncate">{d.name}</span>
                   {on && (
                     <button type="button" onClick={(e) => {
                       e.preventDefault()
                       setOpenViews(openViews === d.code ? null : d.code)
                     }}
                       className="ms-auto inline-flex items-center gap-s2 border-0 bg-transparent
-                                 p-s2 text-eyebrow font-bold text-violet cursor-pointer">
+                                 p-s2 text-fs-xs font-bold text-violet cursor-pointer">
                       نماها
                       <Icon name="chevron-down" className="w-s6 h-s6" strokeWidth={2.4} />
                     </button>
                   )}
                 </label>
                 {on && openViews === d.code && (
-                  <div className="absolute z-nested top-full inset-inline-0 mt-s3 flex flex-col
+                  <div className="absolute z-nested top-full start-0 end-0 mt-s3 flex flex-col
                                   gap-s2 bg-card border border-warm rounded-card shadow-pop p-s4">
                     {REPORT_KINDS.map((kind) => (
                       <Checkbox key={kind} box={16} tone="violet"
@@ -11199,7 +11202,7 @@ export const SUPERVISE_NOTE: string
         </div>
 
         {undrawable.length > 0 && (
-          <p className="text-eyebrow font-semibold text-warn m-0">
+          <p className="text-fs-xs font-semibold text-warn m-0">
             {UNDRAWABLE_SCOPES} {undrawable.map((s) => scopeLabel(s, names)).join('، ')}
           </p>
         )}
@@ -11282,11 +11285,11 @@ export const SUPERVISE_NOTE: string
           ]}
         />
         {staysPut && value !== null && !candidates.some((c) => c.id === value) && (
-          <p className="text-eyebrow font-semibold text-warn m-0">{SUPERVISOR_OFF_LIST}</p>
+          <p className="text-fs-xs font-semibold text-warn m-0">{SUPERVISOR_OFF_LIST}</p>
         )}
         {/* §6.14's closing rule statement, in its own register: 11.5px, faint,
             lh 1.8. It is the whole answer to "why is this list this short". */}
-        <p className="text-eyebrow text-faint leading-loose m-0">
+        <p className="text-fs-xs text-faint leading-loose m-0">
           سرپرست باید بالاتر از این کاربر باشد و دپارتمانش دپارتمان او را پوشش دهد.
           خوانندهٔ گزارش نمی‌تواند سرپرست کسی باشد، چون کامنتی را تأیید نمی‌کند.
         </p>
@@ -11528,12 +11531,12 @@ export const SUPERVISE_NOTE: string
 
 - [ ] **Step 23: Grep the built CSS, then add `new-user` to the harness.**
   ```
-  cd ui && npm run build && for c in 'rounded-panel' 'bg-sub-panel' 'border-line-dashed' \
+  cd ui && npm run build && for c in 'rounded-panel' 'bg-surface-sub' 'border-line-dashed' \
     'bg-tile-v4' 'w-glyph' 'h-glyph' 'shadow-pop' 'z-nested' 'opacity-40' \
-    'pointer-events-none' 'max760\:grid-cols-1' 'inset-inline-0' 'sr-only' ; do
+    'pointer-events-none' 'max760\:grid-cols-1' 'start-0' 'end-0' 'sr-only' ; do
       grep -qF "$c" dist/assets/*.css && echo "ok  $c" || echo "MISSING $c"; done
   ```
-  Expected: thirteen `ok` lines. Then in `ui/e2e/_harness.ts`:
+  Expected: fourteen `ok` lines. Then in `ui/e2e/_harness.ts`:
   ```ts
     'new-user': {
       dialog: { width: 520, radius: '24px', padding: '26px',
@@ -11626,7 +11629,7 @@ the change-password card and the divergence is written into the ledger.
 **Interfaces**
 
 *Consumes* — `max-w-profile` (700px) · `px-screen-x` · `py-screen-y` ·
-`bg-sub-panel` (#FBF9FE) · `border-border-current` (#EDE5F5) ·
+`bg-surface-sub` (#FBF9FE) · `border-border-current` (#EDE5F5) ·
 `bg-tile-warn` (#FBEEDC) · `border-warn-edge` (`#F0DDBB`) · `text-warn-fg` (#8A5A00) ·
 `text-violet-on-violet` (#C9BEEE) · `rounded-card` (16px) · `rounded-input` (11px) ·
 `rounded-control` (10px) · screens `narrow`.
@@ -11671,18 +11674,18 @@ API type, hook or route path is added.
               sentence out of the app, and the design's own profile has neither.
               The two facts worth keeping — who you are and what you are — are
               the header. */}
-          <h1 className="text-h1-profile font-extrabold text-on-dark m-0">
+          <h1 className="text-fs-stat-sm font-extrabold text-on-dark m-0">
             {session.displayName}
           </h1>
           <p data-testid="profile-meta"
-            className="flex items-center gap-s4 flex-wrap text-control
+            className="flex items-center gap-s4 flex-wrap text-fs-sm2
                        text-violet-on-violet mt-s2 m-0">
             <span>{roleLabel(session.role)}</span>
             <span aria-hidden>·</span>
             <span dir="ltr" className="font-mono">{session.username}</span>
           </p>
   ```
-  `text-h1-profile` is the 21px role Task 3 added for §2.4's two 21px uses.
+  `text-fs-stat-sm` is the 21px role Task 3 added for §2.4's two 21px uses.
 
 - [ ] **Step 4: Run it and watch it pass, then commit.**
   `cd ui && npx vitest run src/screens/Profile.test.tsx -t 'titled with the person'` → `1 passed`.
@@ -11706,7 +11709,7 @@ API type, hook or route path is added.
     // §5.2 TextField — the field label is the design's second label register:
     // 12.5px/600 `#4A25A9`, not the 11px/700 muted section caption.
     const label = within(card).getByText('گذرواژهٔ فعلی')
-    expect(label).toHaveClass('text-control', 'font-semibold', 'text-violet')
+    expect(label).toHaveClass('text-fs-sm2', 'font-semibold', 'text-violet')
     expect(label).not.toHaveClass('font-bold', 'text-muted')
     expect(within(card).getByRole('button', { name: 'ذخیرهٔ گذرواژه' })).toBeInTheDocument()
   })
@@ -11753,7 +11756,7 @@ API type, hook or route path is added.
                   `12px #8A5A00 lh 1.7`. */}
               <p role="note" aria-label="هشدار"
                 className="bg-tile-warn border border-warn-edge rounded-control
-                           px-s6 py-s5 text-small text-warn-fg leading-normal m-0">
+                           px-s6 py-s5 text-fs-caption text-warn-fg leading-normal m-0">
                 با عوض شدن گذرواژه، همهٔ دستگاه‌های دیگری که با این حساب وارد شده‌اند
                 بیرون می‌آیند؛ همین دستگاه باز می‌ماند.
               </p>
@@ -11761,7 +11764,7 @@ API type, hook or route path is added.
               {/* §6.13's closing rule statement. The design's third clause is
                   about a reset link this product does not have (D15), so it
                   states what actually happens instead. */}
-              <p className="text-eyebrow text-faint leading-loose m-0">
+              <p className="text-fs-xs text-faint leading-loose m-0">
                 گذرواژهٔ خود را فقط خودتان می‌توانید تغییر دهید؛ هیچ‌کس دیگری گذرواژهٔ
                 شما را نمی‌بیند. اگر آن را فراموش کردید، مدیر سامانه گذرواژهٔ تازه‌ای
                 می‌گذارد و به شما می‌گوید.
@@ -11769,7 +11772,7 @@ API type, hook or route path is added.
 
               <div className="mt-s2">
                 <Button type="submit" variant="violet"
-                  className="px-s9 py-s6 text-sub rounded-button"
+                  className="px-s9 py-s6 text-fs-menu rounded-button"
                   loading={change.isPending} loadingLabel="در حال ثبت…">
                   ذخیرهٔ گذرواژه
                 </Button>
@@ -11777,12 +11780,12 @@ API type, hook or route path is added.
             </form>
 
             {(problem || change.error) && (
-              <p role="alert" className="text-eyebrow font-semibold text-conflict mt-s5 m-0">
+              <p role="alert" className="text-fs-xs font-semibold text-conflict mt-s5 m-0">
                 {problem ?? refusalText(change.error)}
               </p>
             )}
             {change.isSuccess && !problem && (
-              <p role="status" className="text-eyebrow font-semibold text-green mt-s5 m-0">
+              <p role="status" className="text-fs-xs font-semibold text-green mt-s5 m-0">
                 گذرواژهٔ شما عوض شد. دستگاه‌های دیگر از این حساب بیرون آمدند؛ همین
                 دستگاه باز است.
               </p>
@@ -11816,7 +11819,7 @@ API type, hook or route path is added.
 
 - [ ] **Step 10: Grep the built CSS.**
   ```
-  cd ui && npm run build && for c in 'max-w-profile' 'text-h1-profile' 'bg-tile-warn' \
+  cd ui && npm run build && for c in 'max-w-profile' 'text-fs-stat-sm' 'bg-tile-warn' \
     'border-warn-edge' 'text-warn-fg' 'max760\:grid-cols-1' ; do
       grep -qF "$c" dist/assets/*.css && echo "ok  $c" || echo "MISSING $c"; done
   ```
@@ -11972,7 +11975,7 @@ export const STATE_OFF: string   // 'پنهان است'
           {/* §6.12 — the intro makes the framing explicit: a decision applied to
               every non-editor, not a permission granted to anybody. It is
               `13px #C9BEEE lh 1.8` capped at 600px, on the violet field. */}
-          <p className="text-small text-violet-on-violet leading-loose max-w-intro mt-s4 m-0">
+          <p className="text-fs-sm text-violet-on-violet leading-loose max-w-intro mt-s4 m-0">
             این تنظیم برای همهٔ کسانی که اجازهٔ ویرایش ندارند یکسان است و به دپارتمان یا
             نقش کسی بستگی ندارد. معرفی دپارتمان همیشه به‌طور کامل نمایش داده می‌شود و
             تنظیمی ندارد.
@@ -11983,7 +11986,7 @@ export const STATE_OFF: string   // 'پنهان است'
               inline, byte for byte identical to the primitive it did not use. */}
           <Card role="group" aria-label="سیاست نمایش محتوا"
             aria-busy={set.isPending || undefined}
-            className={`px-s9 py-s4 mt-s10 transition-opacity duration-ds
+            className={`px-s9 py-s4 mt-s10 transition-opacity
                         ${set.isPending ? 'opacity-60' : ''}`}>
             <ul className="list-none p-0 m-0">
               {rows.map(({ field, label, hint }) => {
@@ -11993,7 +11996,7 @@ export const STATE_OFF: string   // 'پنهان است'
                   <li key={field} role="listitem" aria-label={label}
                     className="border-b border-hair last:border-b-0">
                     <label className="flex items-start gap-s6 py-s7 px-s1 cursor-pointer
-                                      transition-colors duration-ds hover:bg-tile-v4
+                                      transition-colors hover:bg-tile-v4
                                       max760:flex-wrap">
                       {/* `aria-label` even though the label wraps the control:
                           the accessible name computed from a wrapping label is
@@ -12005,9 +12008,9 @@ export const STATE_OFF: string   // 'پنهان است'
                         disabled={set.isPending} label={null}
                         onChange={(v) => set.mutate({ field, visible: v })} />
                       <span className="flex-1 min-w-0">
-                        <span className="block text-sub font-bold text-ink">{label}</span>
+                        <span className="block text-fs-menu font-bold text-ink">{label}</span>
                         <span id={`vis-hint-${field}`}
-                          className="block text-eyebrow text-muted leading-normal mt-s2">
+                          className="block text-fs-xs text-muted leading-normal mt-s2">
                           {hint}
                         </span>
                         {failed && (
@@ -12017,7 +12020,7 @@ export const STATE_OFF: string   // 'پنهان است'
                           // naming no field, while the switch that failed sprang
                           // back to the server's value in silence.
                           <span role="alert"
-                            className="block text-eyebrow font-semibold text-conflict mt-s3">
+                            className="block text-fs-xs font-semibold text-conflict mt-s3">
                             {FAILED}
                           </span>
                         )}
@@ -12025,7 +12028,7 @@ export const STATE_OFF: string   // 'پنهان است'
                       {/* The word §6.12 puts at the far end of the row, and the
                           reason the row is not 60% empty. `11px/600`, green when
                           shown and muted when hidden. */}
-                      <span className={`ms-auto shrink-0 text-eyebrow font-semibold
+                      <span className={`ms-auto shrink-0 text-fs-xxs font-semibold
                                         ${on ? 'text-green' : 'text-muted'}`}>
                         {on ? STATE_ON : STATE_OFF}
                       </span>
@@ -12036,7 +12039,7 @@ export const STATE_OFF: string   // 'پنهان است'
             </ul>
           </Card>
 
-          <p className="text-eyebrow text-faint mt-s10 m-0">
+          <p className="text-fs-xs text-faint mt-s10 m-0">
             {/* F8/F9 — the label used to sit inside `font-mono`, a latin stack
                 with no Persian glyphs, so «نسخهٔ تنظیم:» fell through to whatever
                 the OS substituted; and the digest, which can hold a `-` or a `_`,
@@ -12107,11 +12110,11 @@ export const STATE_OFF: string   // 'پنهان است'
 - [ ] **Step 8: Grep the built CSS.**
   ```
   cd ui && npm run build && for c in 'max-w-access' 'max-w-intro' 'border-hair' \
-    'last\:border-b-0' 'hover\:bg-tile-v4' 'transition-opacity' 'duration-ds' \
+    'last\:border-b-0' 'hover\:bg-tile-v4' 'transition-opacity' \
     'opacity-60' 'text-violet-on-violet' 'max760\:flex-wrap' ; do
       grep -qF "$c" dist/assets/*.css && echo "ok  $c" || echo "MISSING $c"; done
   ```
-  Expected: ten `ok` lines.
+  Expected: nine `ok` lines.
 
 - [ ] **Step 9: Add `policy` to the harness table.**
   ```ts
@@ -12204,7 +12207,7 @@ scrollbar decision made in a sixth file (P3, O1).
 `blurScrim`), `Button` (`danger`, `affirm`, `block`, disabled appearance),
 `IconButton`, `Icon`, `Menu`, `SectionCard`, `Toast`; `bg-tile-ok` · `bg-tile-c` ·
 `text-green` · `text-conflict` · `rounded-tile` (14px) · `w-tool h-tool` (34px) ·
-`shadow-modal` · `duration-ds` · screens `narrow`.
+`shadow-modal` · screens `narrow`.
 
 *Produces*
 ```ts
@@ -12264,7 +12267,7 @@ export function ConfirmAction(props: { row: Confirmation | undefined; department
           // ISO string every other timestamp in this app carries. Handed to
           // `jalali` raw it is read as milliseconds and prints ۱۳۴۸/…, five
           // decades off and perfectly plausible-looking.
-          <span data-testid="confirm-by" className="text-eyebrow text-muted">
+          <span data-testid="confirm-by" className="text-fs-xs text-muted">
             توسط {toFa(by)} · {jalali(new Date(at * 1000).toISOString())}
           </span>
         )}
@@ -12369,7 +12372,7 @@ export function ConfirmAction(props: { row: Confirmation | undefined; department
           icon={
             <span data-testid="confirm-box"
               className={`flex items-center justify-center w-tool h-tool rounded-button
-                          border-hairline transition-colors duration-ds
+                          border-hairline transition-colors
                           ${confirming ? 'border-line text-violet hover:bg-tile-v2'
                                        : 'border-border-danger text-conflict hover:bg-tile-c2'}`}>
               <Icon name={confirming ? 'check' : 'check-off'}
@@ -12395,7 +12398,7 @@ export function ConfirmAction(props: { row: Confirmation | undefined; department
             footer={
               <div className="flex gap-s5">
                 <Button variant={confirming ? 'green' : 'coral'}
-                  className="flex-1 py-s6 text-sub rounded-button"
+                  className="flex-1 py-s6 text-fs-menu rounded-button"
                   loading={set.isPending || revoke.isPending} loadingLabel="در حال ثبت…"
                   onClick={() => {
                     if (confirming) {
@@ -12407,7 +12410,7 @@ export function ConfirmAction(props: { row: Confirmation | undefined; department
                   }}>
                   {label}
                 </Button>
-                <Button variant="ghost" className="flex-1 py-s6 text-sub rounded-button"
+                <Button variant="ghost" className="flex-1 py-s6 text-fs-menu rounded-button"
                   onClick={() => setAsking(false)}>انصراف</Button>
               </div>
             }>
@@ -12415,7 +12418,7 @@ export function ConfirmAction(props: { row: Confirmation | undefined; department
               // role="alert": this text appears after the press that caused it,
               // so a screen reader is elsewhere when it arrives. On its own line
               // inside the dialog rather than inline in a process row.
-              <p role="alert" className="text-eyebrow font-semibold text-conflict m-0">
+              <p role="alert" className="text-fs-xs font-semibold text-conflict m-0">
                 {moved ? MOVED : status === 403 ? GONE : FAILED}
               </p>
             )}
@@ -12589,12 +12592,12 @@ export function ConfirmAction(props: { row: Confirmation | undefined; department
   ```tsx
         footer={
           <div className="flex gap-s5">
-            <Button variant="danger" className="flex-1 py-s6 text-sub rounded-button"
+            <Button variant="danger" className="flex-1 py-s6 text-fs-menu rounded-button"
               loading={del.isPending} loadingLabel="در حال حذف…"
               onClick={() => del.mutate(pid, { onSuccess: onDone })}>
               حذف کامل فرآیند
             </Button>
-            <Button variant="ghost" className="flex-1 py-s6 text-sub rounded-button"
+            <Button variant="ghost" className="flex-1 py-s6 text-fs-menu rounded-button"
               onClick={onClose}>انصراف</Button>
           </div>
         }
@@ -12647,7 +12650,7 @@ export function ConfirmAction(props: { row: Confirmation | undefined; department
 - [ ] **Step 23: Grep the built CSS, and check `.btn` is really gone.**
   ```
   cd ui && npm run build && for c in 'w-tool' 'h-tool' 'bg-tile-c2' 'border-border-danger' \
-    'rounded-tile' 'start-1/2' 'text-start' 'w-glyph-tile' 'duration-ds' ; do
+    'rounded-tile' 'start-1/2' 'text-start' 'w-glyph-tile' ; do
       grep -qF "$c" dist/assets/*.css && echo "ok  $c" || echo "MISSING $c"; done
   grep -c '\.btn' dist/assets/*.css     # expect 0
   grep -rn 'z-\[7[24]\]\|bg-\[rgba(36,17,82' src/ || echo 'no hand-rolled scrims left'
