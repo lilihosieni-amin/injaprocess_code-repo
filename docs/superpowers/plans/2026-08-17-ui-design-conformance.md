@@ -8235,8 +8235,8 @@ a reader, and a 760px viewport without changing what a person sees at desktop.
       : 'pt-departments-top px-screen-x pb-departments-bottom max760:px-s7 max760:py-s9'   // 38 / 40 / 48 → 14 / 18
 
     return (
-      <div data-r-pad className={`flex-1 overflow-auto ${pad}`}>
-        <div className={`${reader ? 'max-w-reader' : 'max-w-departments'} mx-auto`}>
+      <div data-screen={reader ? 'departmentsReader' : 'departments'} data-r-pad className={`flex-1 overflow-auto ${pad}`}>
+        <div data-col className={`${reader ? 'max-w-reader' : 'max-w-departments'} mx-auto`}>
 
           <div className="flex items-end justify-between gap-s11 flex-wrap mb-s12" data-r-stack>
             <div>
@@ -8244,8 +8244,8 @@ a reader, and a 760px viewport without changing what a person sees at desktop.
                 <span className="w-s10 h-0.5 bg-coral rounded-bar" />
                 <span className="text-fs-xs font-bold tracking-eyebrow text-violet-on-dark">INJA FOOD · مستندسازی فرآیند</span>
               </div>
-              <h1 data-r-title className={`font-extrabold ${reader ? 'text-fs-h1-reader-home text-role-title-on-field' : 'text-fs-display text-on-dark'} tracking-display m-0`}>دپارتمان‌ها</h1>
-              <p className="text-fs-body text-role-subtitle-on-field mt-s4 max-w-subtitle leading-normal m-0">
+              <h1 data-h1 data-r-title className={`font-extrabold ${reader ? 'text-fs-h1-reader-home text-role-title-on-field' : 'text-fs-display text-on-dark'} tracking-display m-0`}>دپارتمان‌ها</h1>
+              <p data-body className="text-fs-body text-role-subtitle-on-field mt-s4 max-w-subtitle leading-normal m-0">
                 نقشهٔ فرآیندهای مجموعه به تفکیک واحد. یک دپارتمان را برای مرور فرآیندهای مستندشده، کارت خلاصه و فلوچارت انتخاب کنید.
               </p>
             </div>
@@ -8264,14 +8264,14 @@ a reader, and a 760px viewport without changing what a person sees at desktop.
             )}
           </div>
 
-          <div data-r-deptgrid
+          <div data-grid data-r-deptgrid
             className={reader
               ? 'grid grid-cols-1 gap-s7'
               : 'grid grid-cols-3 gap-s9 max1080:grid-cols-2 max760:grid-cols-1 max760:gap-s6'}>
             {data.map((d, i) => {
               const m = deptMeta(d.code)
               return (
-                <Card key={d.code} hoverLift radius="feature"
+                <Card key={d.code} data-card hoverLift radius="feature"
                   onClick={() => nav(`/departments/${d.code}`)}
                   className="relative overflow-hidden p-s10 cursor-pointer border-border-card shadow-feature hover:shadow-card-hover hover:border-line-dashed transition-[transform,box-shadow,border-color] ease-css">
                   <span className={`absolute top-0 inset-x-0 h-1 ${m.accent === 'coral' ? 'bg-conflict' : 'bg-violet'}`} />
@@ -8376,6 +8376,35 @@ a reader, and a 760px viewport without changing what a person sees at desktop.
   ```
 
 - [ ] **Step 19: Read the two departments rows the harness already holds. Write neither.**
+  **The measurement hooks are in the JSX above, and they are what makes this row more than a
+  comment.** `expectDesign(page, '<name>')` finds every one of them by `[data-screen="<name>"]
+  <hook>` — namespaced to the screen, and the **first** match in document order — and `hook()`
+  refuses one that is detached, `display:none`, painted at `opacity:0`, outside the viewport,
+  sliced off the side, or covered by something. `direction` is asserted on every graded hook
+  and **defaults to `rtl`**; only a row that names a hook exempts it.
+
+  `[data-col]`, `[data-h1]` and `[data-body]` are graded on **every** row — they are required
+  fields of `ScreenDesign`, not optional ones — and `[data-card]` / the grid hook are graded
+  whenever the row carries `card` / `grid`. **A hook the screen forgets is a loud red**
+  (`missing measurement hook: …`), and `visit(page, url, '<name>')` will not even get that far.
+  The failure that is *silent* is a hook on the **wrong** element: it grades that element's
+  colours, lengths and radii and reports green. So do not move one onto a wrapper, a twin or a
+  parent to make a number come out right — that is the exact defect this layer exists to catch.
+
+  Both departments rows grade all six, and one element serves both surfaces:
+
+  | hook | the element in Step 14's JSX | what the rows grade on it |
+  |---|---|---|
+  | `data-screen` | the `[data-r-pad]` root, written `data-screen={reader ? 'departmentsReader' : 'departments'}` | `field`, `padding`, and §8's scroll-box rule (`data-r-pad` root ⇒ `ltr`, every immediate child back at `rtl`) |
+  | `data-col` | the `max-w-reader` / `max-w-departments` column | `column` (declared `max-width`) and `columnWidth` (the used width, per project width) |
+  | `data-h1` | the `<h1>` that already carries `data-r-title` | 34px/800 `ON_FIELD` on the panel, 26px/800 `TITLE_ON_FIELD` on the reader — the colour branches, which is why the hook goes on the branching element and not on the block around it |
+  | `data-body` | the subtitle `<p>` under it | `body.size` / `body.color`; the lead line, never the eyebrow above the title |
+  | `data-grid` | the same div as `data-r-deptgrid` | the **panel** row names no `grid.selector`, so it resolves `[data-grid]`; the **reader** row names `[data-r-deptgrid]`. One div wears both, because one component draws both surfaces |
+  | `data-card` | the `<Card>` inside the grid, first in document order | `card.radius` / `background` (+ `border` and `shadow` once the panel row is updated), and it is also the `lift` target and the root of `contrastWaived`'s `[data-card] .pointer-events-none` |
+
+  `data-r-title`, `data-r-stack` and `data-r-deptgrid` stay: they are this task's own responsive
+  hooks and the vitest suite in Step 12 reads them by name.
+
   This step used to say *"add to the `DESIGN` table"*, with a row in field names Task 4 never
   shipped. **Both rows exist.** They were written before any screen was, by the pre-flight
   (commit `3dda9ef`; the reasoning is in `.superpowers/sdd/ui-harness-preflight-report.md`),
@@ -8396,11 +8425,11 @@ a reader, and a 760px viewport without changing what a person sees at desktop.
   **The two rows disagree about the title colour, on purpose, and one class string cannot
   satisfy both.** `departments.h1.color` is `ON_FIELD` `#FBF7F1` — what this screen paints
   today, and the one screen ledger **L-01** did *not* move to white. `departmentsReader.h1`
-  is `TITLE_ON_FIELD`, `#FFFFFF`. So Step 12's `<h1>` **branches the colour on `useSurface()`
+  is `TITLE_ON_FIELD`, `#FFFFFF`. So Step 14's `<h1>` **branches the colour on `useSurface()`
   the way the size beside it already branches**: the reader takes `text-role-title-on-field`
   (`--role-title-on-field` → `--card`, `#FFFFFF`; `roles.css:71`) and the panel keeps
   `text-on-dark` (`--text-on-dark`, `#FBF7F1`), so both rows go green. **Write it exactly as
-  Step 12 has it and do not collapse the two branches back into one class** — one string here
+  Step 14 has it and do not collapse the two branches back into one class** — one string here
   is what put `#FBF7F1` on all nine screen titles in the first place.
   `text-role-title-on-field` is the class every *other* screen's title takes (Tasks 15–23 all
   write it); departments is the single exception, on the panel surface only. If you conclude
@@ -8411,7 +8440,7 @@ a reader, and a 760px viewport without changing what a person sees at desktop.
   `departments.body` is `ON_FIELD_MUTED` `#B7A6E0`; `departmentsReader.body` is
   `SUBTITLE_ON_FIELD` `#C9BEEE`. `#B7A6E0` is reachable from **no utility this theme has**:
   Task 3 re-cut `--violet-on-dark-body` from `#B7A6E0` to `#C9BEEE` (ledger **L-28**, 13 uses
-  against 1) and `--violet-on-dark` is `#B79FE6`, a different colour. So Step 12's `<p>` takes
+  against 1) and `--violet-on-dark` is `#B79FE6`, a different colour. So Step 14's `<p>` takes
   `text-role-subtitle-on-field` (`--role-subtitle-on-field` → `--violet-on-violet`, `#C9BEEE`)
   on both surfaces — never `text-violet-on-dark-body`, whose name still reads like the answer
   and whose value L-28 moved. The reader's row goes green on it, and the panel's `body` line
@@ -8419,17 +8448,19 @@ a reader, and a 760px viewport without changing what a person sees at desktop.
   your screen is built, and `SUBTITLE_ON_FIELD` is its replacement. **Report it with the three
   below; do not edit it.**
 
-  **Three lines in the `departments` row deliberately state what the screen does *today*,
+  **Four lines in the `departments` row deliberately state what the screen does *today*,
   not what you are about to build**, so that the mutation tests covering them keep dying
   while this task is in flight: `padding` (one value, no per-width record), `grid.columns`
-  (`3 / 3 / 3`), and `card` (cream `#FBF7F1`, no `border`, no `shadow`). Each carries a
-  comment saying so. **You do not edit them.** When your screen is built, the row goes red on
-  exactly those three — that red is expected, and it is the handover: **stop, and report the
-  three replacements in your task report**, quoting them so the reviewer can apply them in
-  one edit:
+  (`3 / 3 / 3`), `card` (cream `#FBF7F1`, no `border`, no `shadow`), and the `body.color`
+  above. The first three each carry a comment saying so; `body` does not, because it was
+  written before Task 3 re-cut the token out from under it. **You do not edit any of them.**
+  When your screen is built, the row goes red on exactly those four — that red is expected,
+  and it is the handover: **stop, and report the four replacements in your task report**,
+  quoting them so the reviewer can apply them in one edit:
 
   ```ts
   padding: { 1440: '38px 40px 48px', 1080: '38px 40px 48px', 760: '18px 14px' },
+  body: { size: '14px', color: SUBTITLE_ON_FIELD },
   grid: { columns: { 1440: 3, 1080: 2, 760: 1 }, gap: '18px' },
   card: { radius: '20px', shadow: CARD_SHADOW, border: CARD_BORDER, background: SURFACE },
   ```
@@ -8778,15 +8809,15 @@ action bar with a `36×36` `⋯`.
   ]
 
   return (
-    <div data-r-pad ref={scrollRef}
+    <div data-screen={reader ? 'processListReader' : 'processList'} data-r-pad ref={scrollRef}
       onScroll={(e) => sessionStorage.setItem(scrollKey, String(e.currentTarget.scrollTop))}
       className="flex-1 overflow-auto py-screen-y px-screen-x max760:px-s7 max760:py-s9">
-      <div className={`${reader ? 'max-w-reader' : 'max-w-list'} mx-auto`}>
+      <div data-col className={`${reader ? 'max-w-reader' : 'max-w-list'} mx-auto`}>
         <div className="flex items-end justify-between gap-s8 mb-s10" data-r-stack>
           <div>
             <div className="flex items-center gap-s6">
               <IconTile accent={m.accent} glyph={code} />
-              <h1 className={`font-extrabold ${reader ? 'text-fs-h1-reader-list' : 'text-fs-h2'} text-role-title-on-field m-0`}>
+              <h1 data-h1 className={`font-extrabold ${reader ? 'text-fs-h1-reader-list' : 'text-fs-h2'} text-role-title-on-field m-0`}>
                 دپارتمان {dept?.name ?? ''}
               </h1>
               {/* §6.2 puts the mobile ⋯ in the title row, not in the bar it
@@ -8798,7 +8829,7 @@ action bar with a `36×36` `⋯`.
                 ⋯
               </Menu>
             </div>
-            <p className="text-fs-sm text-violet-on-violet mt-s4 leading-normal m-0">
+            <p data-body className="text-fs-sm text-role-subtitle-on-field mt-s4 leading-normal m-0">
               {toFa(dept?.count ?? procs.length)} فرآیند مستندشده · برای مشاهدهٔ کارت خلاصه و فلوچارت روی هر فرآیند بزنید.
             </p>
           </div>
@@ -8854,7 +8885,7 @@ action bar with a `36×36` `⋯`.
             const tombstoned = !!p.tombstoned
             const mark = markOf.get(p.id)
             return (
-              <div key={p.id} data-r-prow
+              <div key={p.id} data-card data-r-prow
                 className={`bg-card border border-border-card rounded-card px-s9 py-s9 flex items-center gap-s8 shadow-card
                   hover:-translate-y-0.5 hover:shadow-card-hover hover:border-line-dashed
                   transition-[transform,box-shadow,border-color] ease-css
@@ -8978,6 +9009,36 @@ action bar with a `36×36` `⋯`.
   is the one the design asks for — no. That stays with the Playwright checks.
 
 - [ ] **Step 14: Read the two process-list rows the harness already holds. Write neither.**
+  **The measurement hooks are in the JSX above, and they are what makes this row more than a
+  comment.** `expectDesign(page, '<name>')` finds every one of them by `[data-screen="<name>"]
+  <hook>` — namespaced to the screen, and the **first** match in document order — and `hook()`
+  refuses one that is detached, `display:none`, painted at `opacity:0`, outside the viewport,
+  sliced off the side, or covered by something. `direction` is asserted on every graded hook
+  and **defaults to `rtl`**; only a row that names a hook exempts it.
+
+  `[data-col]`, `[data-h1]` and `[data-body]` are graded on **every** row — they are required
+  fields of `ScreenDesign`, not optional ones — and `[data-card]` / the grid hook are graded
+  whenever the row carries `card` / `grid`. **A hook the screen forgets is a loud red**
+  (`missing measurement hook: …`), and `visit(page, url, '<name>')` will not even get that far.
+  The failure that is *silent* is a hook on the **wrong** element: it grades that element's
+  colours, lengths and radii and reports green. So do not move one onto a wrapper, a twin or a
+  parent to make a number come out right — that is the exact defect this layer exists to catch.
+
+  Neither process-list row carries a `grid`, so there is **no `data-grid` on this screen** — the
+  list is a flex column and a hook nothing measures is noise. Five hooks, and one element serves
+  both surfaces:
+
+  | hook | the element in Steps 9–10 | what the rows grade on it |
+  |---|---|---|
+  | `data-screen` | the `[data-r-pad]` root, written `data-screen={reader ? 'processListReader' : 'processList'}` | `field`, `padding`, §8's scroll-box rule |
+  | `data-col` | the `max-w-reader` / `max-w-list` column | `column` and `columnWidth` |
+  | `data-h1` | the `<h1>` beside the `IconTile` | 22px on the panel, a **centred** 30px on the reader |
+  | `data-body` | the count/lead `<p>` under the title | 13px `SUBTITLE_ON_FIELD`, centred on the reader |
+  | `data-card` | the first `[data-r-prow]` row | `card.radius` 16px, `CARD_BORDER`, `CARD_SHADOW`, white — and the `lift` target |
+
+  The row keeps `data-r-prow` as well: the spec in Step 15 and the vitest suite both read it by
+  name, and `[data-card]` is the harness's name for the same element, not a replacement for it.
+
   This step used to say *"add to `DESIGN` in `ui/e2e/_harness.ts`"*. **`ui/e2e/_harness.ts` is
   frozen and both rows are already in it** — `processList` and `processListReader` — written
   before any screen was, by the pre-flight (`3dda9ef`;
@@ -9261,8 +9322,8 @@ blanked the field, which is a claim of absence standing in for an absence of a c
   Replace `:79-181` of `ui/src/screens/Summary.tsx` (the read branch):
 
   ```tsx
-    <div data-r-pad className="flex-1 overflow-auto py-screen-y px-screen-x max760:px-s7 max760:py-s9">
-      <div className="max-w-summary mx-auto">
+    <div data-screen="summary" data-r-pad className="flex-1 overflow-auto py-screen-y px-screen-x max760:px-s7 max760:py-s9">
+      <div data-col className="max-w-summary mx-auto">
         <div className="flex items-start justify-between gap-s8 mb-s10" data-r-stack>
           <div>
             <div className="flex items-center gap-s5 mb-s4">
@@ -9284,9 +9345,9 @@ blanked the field, which is a claim of absence standing in for an absence of a c
                 )}
               </div>
             )}
-            <h1 className="font-extrabold text-fs-h1 text-role-title-on-field m-0">{proc.name}</h1>
+            <h1 data-h1 className="font-extrabold text-fs-h1 text-role-title-on-field m-0">{proc.name}</h1>
             {proc.summary.trim() !== '' && (
-              <p className="text-fs-lg text-violet-on-violet mt-s4 max-w-prose leading-relaxed m-0">{proc.summary}</p>
+              <p data-body className="text-fs-lg text-role-subtitle-on-field mt-s4 max-w-prose leading-relaxed m-0">{proc.summary}</p>
             )}
           </div>
           <div data-r-actions className="flex gap-s5 shrink-0 max760:flex-wrap">
@@ -9299,7 +9360,7 @@ blanked the field, which is a claim of absence standing in for an absence of a c
           </div>
         </div>
 
-        <div className="bg-card border border-border-card rounded-doc p-s11 mb-s9 shadow-card">
+        <div data-card className="bg-card border border-border-card rounded-doc p-s11 mb-s9 shadow-card">
           <div className="font-bold text-fs-body text-violet mb-s9 flex items-center gap-s4">
             <span className="w-s4 h-s4 bg-coral rounded-round" />نمای IDEF0 سطح فرآیند (A-0)
           </div>
@@ -9501,6 +9562,36 @@ blanked the field, which is a claim of absence standing in for an absence of a c
   Nothing is staged or committed by this step.
 
 - [ ] **Step 13: Read the summary row the harness already holds. Do not write one.**
+  **The measurement hooks are in the JSX above, and they are what makes this row more than a
+  comment.** `expectDesign(page, '<name>')` finds every one of them by `[data-screen="<name>"]
+  <hook>` — namespaced to the screen, and the **first** match in document order — and `hook()`
+  refuses one that is detached, `display:none`, painted at `opacity:0`, outside the viewport,
+  sliced off the side, or covered by something. `direction` is asserted on every graded hook
+  and **defaults to `rtl`**; only a row that names a hook exempts it.
+
+  `[data-col]`, `[data-h1]` and `[data-body]` are graded on **every** row — they are required
+  fields of `ScreenDesign`, not optional ones — and `[data-card]` / the grid hook are graded
+  whenever the row carries `card` / `grid`. **A hook the screen forgets is a loud red**
+  (`missing measurement hook: …`), and `visit(page, url, '<name>')` will not even get that far.
+  The failure that is *silent* is a hook on the **wrong** element: it grades that element's
+  colours, lengths and radii and reports green. So do not move one onto a wrapper, a twin or a
+  parent to make a number come out right — that is the exact defect this layer exists to catch.
+
+  `summary` carries no `grid` — the IDEF0 block becomes a flex column at ≤760 and the row says in
+  as many words that grading it needs a rule this shape does not have — so **no `data-grid` goes
+  on this screen**. Five hooks:
+
+  | hook | the element in Step 6 | what the row grades on it |
+  |---|---|---|
+  | `data-screen` | the `[data-r-pad]` root, `data-screen="summary"` | `field`, `padding`, §8's scroll-box rule |
+  | `data-col` | the `max-w-summary` column | `column` `960px`, `columnWidth` |
+  | `data-h1` | the process-name `<h1>` | 22px/800 `TITLE_ON_FIELD` — ledger L-02, **not** the 23px the deliverable draws |
+  | `data-body` | the `{proc.summary}` `<p>` | 15px (`--fs-lg`) `SUBTITLE_ON_FIELD`. It is inside a guard, so **the fixture must carry a non-empty `summary`** or the hook does not render and the check fails on a missing hook |
+  | `data-card` | the A-0 card, the screen's first card | radius 18px (`rounded-doc`), `CARD_BORDER`, `CARD_SHADOW`, white |
+
+  `data-r-idef0`, `data-r-2col` and `data-r-stack` are this task's own responsive hooks and are
+  not graded by the row; leave them where they are.
+
   This step used to say *"add to `DESIGN` in `ui/e2e/_harness.ts`"*. **The file is frozen and
   the row is already in it**, written before any screen was, by the pre-flight (`3dda9ef`;
   `.superpowers/sdd/ui-harness-preflight-report.md`) — eleven screen tasks each appending to
@@ -9843,14 +9934,14 @@ consumer in Task 15.
   and `:146-183` (the personnel section) with §6.4's three stacked cards. The header:
 
   ```tsx
-    <div data-r-pad className="flex-1 overflow-auto py-screen-y px-screen-x max760:px-s7 max760:py-s9">
-      <div className="max-w-list mx-auto">
+    <div data-screen="overview" data-r-pad className="flex-1 overflow-auto py-screen-y px-screen-x max760:px-s7 max760:py-s9">
+      <div data-col className="max-w-list mx-auto">
         <div className="flex items-start justify-between gap-s8 mb-s9" data-r-stack>
           <div className="flex items-center gap-s6">
             <IconTile accent={m.accent} glyph={code} />
             <div>
               <div className="flex items-center gap-s5">
-                <h1 className="font-extrabold text-fs-h2 text-role-title-on-field m-0">خلاصهٔ {data.name}</h1>
+                <h1 data-h1 className="font-extrabold text-fs-h2 text-role-title-on-field m-0">خلاصهٔ {data.name}</h1>
                 {/* `mark`, not `m`: `m` is the department's tile metadata three
                     lines up, and two different `m`s in one JSX block is a rename
                     waiting to go to the wrong one. */}
@@ -9858,7 +9949,7 @@ consumer in Task 15.
               </div>
               {/* `updated_at` is unguarded on purpose — `visibility.public_overview`
                   returns the department page unchanged for both stances (D55). */}
-              <p className="text-fs-sm text-violet-on-violet mt-s2 leading-normal m-0">آخرین به‌روزرسانی: {jalali(data.updated_at)}</p>
+              <p data-body className="text-fs-sm text-role-subtitle-on-field mt-s2 leading-normal m-0">آخرین به‌روزرسانی: {jalali(data.updated_at)}</p>
             </div>
           </div>
           {/* …the edit / cancel / save cluster, unchanged apart from its classes… */}
@@ -9869,7 +9960,7 @@ consumer in Task 15.
   by an `text-fs-xxs font-bold text-muted mb-s6` eyebrow:
 
   ```tsx
-        <section className="bg-card border border-border-card rounded-doc p-s10 mb-s7 shadow-card">
+        <section data-card className="bg-card border border-border-card rounded-doc p-s10 mb-s7 shadow-card">
           <div className="text-fs-xxs font-bold text-muted mb-s6">شرح دپارتمان</div>
           {data.description.trim()
             ? <p className="text-fs-body text-ink leading-loose text-justify [text-wrap:pretty] m-0 whitespace-pre-line">{data.description}</p>
@@ -10023,6 +10114,35 @@ consumer in Task 15.
   ```
 
 - [ ] **Step 13: Read the overview row the harness already holds. Do not write one.**
+  **The measurement hooks are in the JSX above, and they are what makes this row more than a
+  comment.** `expectDesign(page, '<name>')` finds every one of them by `[data-screen="<name>"]
+  <hook>` — namespaced to the screen, and the **first** match in document order — and `hook()`
+  refuses one that is detached, `display:none`, painted at `opacity:0`, outside the viewport,
+  sliced off the side, or covered by something. `direction` is asserted on every graded hook
+  and **defaults to `rtl`**; only a row that names a hook exempts it.
+
+  `[data-col]`, `[data-h1]` and `[data-body]` are graded on **every** row — they are required
+  fields of `ScreenDesign`, not optional ones — and `[data-card]` / the grid hook are graded
+  whenever the row carries `card` / `grid`. **A hook the screen forgets is a loud red**
+  (`missing measurement hook: …`), and `visit(page, url, '<name>')` will not even get that far.
+  The failure that is *silent* is a hook on the **wrong** element: it grades that element's
+  colours, lengths and radii and reports green. So do not move one onto a wrapper, a twin or a
+  parent to make a number come out right — that is the exact defect this layer exists to catch.
+
+  Five hooks, and one of them is a name this task already writes:
+
+  | hook | the element in Step 8 | what the row grades on it |
+  |---|---|---|
+  | `data-screen` | the `[data-r-pad]` root, `data-screen="overview"` | `field`, `padding`, §8's scroll-box rule |
+  | `data-col` | the `max-w-list` column | `column` `920px` — ledger **L-07**, not the deliverable's 900 |
+  | `data-h1` | the «خلاصهٔ …» `<h1>` | 22px/800 `TITLE_ON_FIELD` |
+  | `data-body` | the «آخرین به‌روزرسانی» `<p>` | 13px `SUBTITLE_ON_FIELD` |
+  | `grid` | **`[data-r-2col]`, the sub-units grid — already in the JSX** | the row names this selector itself, so **do not add a `data-grid`**: 2 / 2 / 1 tracks and a `12px` gutter, checked twice (the declared `column-gap`/`row-gap`, and the distance between adjacent border boxes). **The fixture must serve at least two sub-units**, or the grid has one item and proves no gutter |
+  | `data-card` | the **first** of the three `<section>`s — «شرح دپارتمان» | radius 18px, `CARD_BORDER`, `CARD_SHADOW`, white. Only the first: the harness measures `.first()`, and three identical hooks say the same thing three times |
+
+  The row also names `focus: '[aria-expanded]'`, which the rebuilt `Accordion` header supplies —
+  no attribute of this screen's own.
+
   This step used to say *"add to `DESIGN` in `ui/e2e/_harness.ts`"*. **The file is frozen and
   the row is already in it**, written before any screen was, by the pre-flight (`3dda9ef`;
   `.superpowers/sdd/ui-harness-preflight-report.md`) — eleven screen tasks each appending to
@@ -10252,7 +10372,7 @@ departments screen (§9.13). It is `ui_kits/panel/Login.jsx` inside
 
   ```tsx
     return (
-      <div className="min-h-screen relative flex items-center justify-center overflow-hidden bg-login-bg p-s10">
+      <div data-screen="signIn" className="min-h-screen relative flex items-center justify-center overflow-hidden bg-login-bg p-s10">
         <span aria-hidden className="login-orb-a" />
         <span aria-hidden className="login-orb-b" />
 
@@ -10471,8 +10591,8 @@ departments screen (§9.13). It is `ui_kits/panel/Login.jsx` inside
    */
   export function RefusalScreen({ status }: { status: 403 | 404 }) {
     return (
-      <div className="flex-1 overflow-auto py-screen-y px-screen-x max760:px-s7 max760:py-s9">
-        <div className="max-w-list mx-auto">
+      <div data-screen="refusal" className="flex-1 overflow-auto py-screen-y px-screen-x max760:px-s7 max760:py-s9">
+        <div data-col className="max-w-list mx-auto">
           {status === 404 ? <NotFoundState /> : <DeniedState />}
         </div>
       </div>
@@ -10550,6 +10670,24 @@ departments screen (§9.13). It is `ui_kits/panel/Login.jsx` inside
   this pair of greps used to stand in for.
 
 - [ ] **Step 13: Neither of these screens gets a `DESIGN` row. Assert their numbers in their own specs.**
+  **No `DESIGN` row means no `expectDesign`, and no `[data-h1]`, `[data-body]`, `[data-card]` or
+  `[data-grid]` on either screen.** Do not add one "for symmetry": a hook nothing measures is a
+  claim nothing keeps honest, and `[data-h1]` in particular would be inventing a heading this
+  screen does not have — which is the reason `refusal` has no row in the first place.
+
+  What the two specs below *do* read is two hooks, and the JSX in Steps 5 and 10 now carries
+  exactly those two and nothing else:
+
+  | screen | hook | element |
+  |---|---|---|
+  | `signIn` | `data-screen="signIn"` | the `min-h-screen … bg-login-bg` wrapper — the spec reads `--login-bg` off it |
+  | `refusal` | `data-screen="refusal"` | `RefusalScreen`'s `[data-r-pad]`-shaped wrapper — the spec reads `FIELD` and the padding off it |
+  | `refusal` | `data-col` | its `max-w-list` column — the spec reads the `920px` of ledger P3-6 off it |
+
+  These are **the specs' own selectors, not `expectDesign`'s**. They are named the same because
+  the name is the codebase's word for "the screen region" and "the content column"; naming them
+  anything else would put a second vocabulary in front of the next reader.
+
   This step used to say *"add `signIn` and `refusal` to `DESIGN` in `ui/e2e/_harness.ts`"*.
   **`ui/e2e/_harness.ts` is frozen and both rows were deliberately left out** by the pre-flight
   that filled the table in ahead of the screens (`3dda9ef`, written up in
@@ -11195,10 +11333,10 @@ export const ROLE_TONE: Record<string, string>   // token-backed utility pairs
   (the screen's JSX plus the whole `UserRow` function) with:
   ```tsx
     return (
-      <div className="flex-1 overflow-auto py-screen-y px-screen-x max760:px-s7 max760:py-s9">
-        <div className="max-w-list mx-auto">
+      <div data-screen="users" className="flex-1 overflow-auto py-screen-y px-screen-x max760:px-s7 max760:py-s9">
+        <div data-col className="max-w-list mx-auto">
           <div className="flex items-center justify-between gap-s6 flex-wrap">
-            <h1 className="text-title font-extrabold text-role-title-on-field">کاربران</h1>
+            <h1 data-h1 className="text-title font-extrabold text-role-title-on-field">کاربران</h1>
             {/* Coral, not violet. §5.2 gives coral to the new/primary-forward
                 role and §6.7 names this button as one; the violet stays for the
                 commit inside the dialog this opens (§6.14). One rule, applied
@@ -11363,6 +11501,20 @@ export const ROLE_TONE: Record<string, string>   // token-backed utility pairs
   is the one the design asks for — no. That stays with the Playwright checks.
 
 - [ ] **Step 20: `users` has no `DESIGN` row. Do not add one — assert the numbers in the spec.**
+  **No row means no `expectDesign` and no `[data-body]`** — the screen draws no second line, which
+  is precisely why it has no row, and hooking something to fill the slot would be designing the
+  screen rather than measuring it.
+
+  The spec in Step 21 reads three hooks, and Step 16's JSX now carries exactly those three:
+  `data-screen="users"` on the scrolling wrapper (field and padding), `data-col` on the
+  `max-w-list` column (`920px`), and `data-h1` on the «کاربران» `<h1>` (22px/800
+  `TITLE_ON_FIELD`). They are the spec's own selectors, not `expectDesign`'s.
+
+  The table shell is **not** hooked here and the spec no longer looks for `[data-card]` on it:
+  `DataTable` (Task 9, and a file this task must not write) renders its shell as
+  `<Card data-r-tshell radius="doc">` and forwards nothing else, so `[data-r-tshell]` is the
+  selector that exists. Read the radius, border and background off that.
+
   This step used to say *"add `users` to the design table in the harness"*, in field names
   (`maxWidth`, `padX`, `padY`) that `ScreenDesign` does not have. **`ui/e2e/_harness.ts` is
   frozen**: the table was filled in ahead of all eleven screen tasks (`3dda9ef`) because
@@ -11423,7 +11575,7 @@ export const ROLE_TONE: Record<string, string>   // token-backed utility pairs
     await expect(h1).toHaveCSS('font-size', '22px')
     await expect(h1).toHaveCSS('font-weight', '800')
     await expect(h1).toHaveCSS('color', TITLE_ON_FIELD)
-    const shell = page.locator('[data-card]').first()
+    const shell = page.locator('[data-r-tshell]').first()
     await expect(shell).toHaveCSS('border-radius', '18px')
     await expect(shell).toHaveCSS('border-color', CARD_BORDER)
     await expect(shell).toHaveCSS('background-color', SURFACE)
@@ -11604,7 +11756,7 @@ export function SectionCard(props: { eyebrow: string; tone?: 'tinted' | 'white'
               at the §5.2 scope-chip skin. The rule is the only thing on the
               panel that says "these are two different kinds of fact", so it is
               drawn rather than left to spacing. */}
-          <SectionCard eyebrow="نقش و دپارتمان" aria-label="نقش و دپارتمان">
+          <SectionCard data-card eyebrow="نقش و دپارتمان" aria-label="نقش و دپارتمان">
             <div className="flex items-center gap-s6 flex-wrap">
               <Chip kind="scope">{roleLabel(user.role)}</Chip>
               <span aria-hidden
@@ -11833,16 +11985,16 @@ export function SectionCard(props: { eyebrow: string; tone?: 'tinted' | 'white'
 - [ ] **Step 18: Rewrite the header and the frame.**
   Replace the screen's outer wrapper and title block:
   ```tsx
-      <div className="flex-1 overflow-auto py-screen-y px-screen-x max760:px-s7 max760:py-s9">
-        <div className="max-w-access mx-auto">
+      <div data-screen="access" className="flex-1 overflow-auto py-screen-y px-screen-x max760:px-s7 max760:py-s9">
+        <div data-col className="max-w-access mx-auto">
           {/* back link — Step 3 */}
           <div className="flex items-start justify-between gap-s6 flex-wrap mt-s5">
             <div>
-              <h1 className="text-title font-extrabold text-role-title-on-field m-0">{user.displayName}</h1>
+              <h1 data-h1 className="text-title font-extrabold text-role-title-on-field m-0">{user.displayName}</h1>
               {/* §6.8 — the username is a latin run on a violet field: mono,
                   `#C9BEEE`, pinned `ltr`, aligned to the start. It was absent
                   from this screen entirely. */}
-              <span dir="ltr" className="block text-fs-sm2 font-mono text-violet-on-violet
+              <span data-body dir="ltr" className="block text-fs-sm2 font-mono text-violet-on-violet
                                          text-start mt-s2">
                 {user.username}
               </span>
@@ -11921,6 +12073,39 @@ export function SectionCard(props: { eyebrow: string; tone?: 'tinted' | 'white'
   is the one the design asks for — no. That stays with the Playwright checks.
 
 - [ ] **Step 22: Read the `access` row the harness already holds. Do not write one.**
+  **The measurement hooks are in the JSX above, and they are what makes this row more than a
+  comment.** `expectDesign(page, '<name>')` finds every one of them by `[data-screen="<name>"]
+  <hook>` — namespaced to the screen, and the **first** match in document order — and `hook()`
+  refuses one that is detached, `display:none`, painted at `opacity:0`, outside the viewport,
+  sliced off the side, or covered by something. `direction` is asserted on every graded hook
+  and **defaults to `rtl`**; only a row that names a hook exempts it.
+
+  `[data-col]`, `[data-h1]` and `[data-body]` are graded on **every** row — they are required
+  fields of `ScreenDesign`, not optional ones — and `[data-card]` / the grid hook are graded
+  whenever the row carries `card` / `grid`. **A hook the screen forgets is a loud red**
+  (`missing measurement hook: …`), and `visit(page, url, '<name>')` will not even get that far.
+  The failure that is *silent* is a hook on the **wrong** element: it grades that element's
+  colours, lengths and radii and reports green. So do not move one onto a wrapper, a twin or a
+  parent to make a number come out right — that is the exact defect this layer exists to catch.
+
+  `access` carries no `grid`, so **no `data-grid` goes on this screen**. Five hooks:
+
+  | hook | the element | what the row grades on it |
+  |---|---|---|
+  | `data-screen` | Step 18's scrolling wrapper, `data-screen="access"` | `field`, `padding`. It carries **no** `data-r-pad`, so its own `direction` must be `rtl` |
+  | `data-col` | the `max-w-access` column | `column` `820px`, `columnWidth` |
+  | `data-h1` | the `{user.displayName}` `<h1>` | 22px/800 `TITLE_ON_FIELD` |
+  | `data-body` | the `<span dir="ltr">` mono username under it | 12.5px, `FONT_MONO`, `align: 'start'`, and the row's one `direction: { body: 'ltr' }` exemption. **This hook is the reason that exemption is per hook** — put it on the wrapper instead and the exemption stops describing anything, while the column and the title are still held to `rtl` |
+  | `data-card` | panel 1, the «نقش و دپارتمان» `SectionCard` (Step 7) — first in document order | radius 16px, a `SUBPANEL_BORDER` `#EDE5F5` edge, white, **no shadow asserted** |
+
+  **Two things about that last row will stop you, and both are reports, not repairs.**
+  `ui/src/ui/SectionCard.tsx` as shipped destructures `{ eyebrow, skin, children, className }`
+  and forwards nothing else, so neither the `data-card` above nor the `aria-label` Step 7 writes
+  reaches the DOM; and neither of its two skins paints white over `#EDE5F5` (`tint` is
+  `--surface-sub` over `--border-current`, `white` is `--card` over `--border-card` **with** the
+  card shadow). That file is Task 10's and this task must not write it. **Stop and report both**
+  — the row, the primitive and this step have to be reconciled by whoever owns all three.
+
   This step used to say *"add `access` to the harness table"*, in field names (`maxWidth`,
   `padX`, `padY`) that `ScreenDesign` does not have. **`ui/e2e/_harness.ts` is frozen and the
   row is already in it** — eleven screen tasks each appending to one file in one working tree
@@ -12785,6 +12970,12 @@ export const SUPERVISE_NOTE: string
   is a different shape from every other row in the table, which is why it was left out of the
   pre-flight (`3dda9ef`; `.superpowers/sdd/ui-harness-preflight-report.md`, F5).
 
+  **So no dialog file in this task carries a measurement hook either** — no `data-screen`,
+  `data-col`, `data-h1`, `data-body`, `data-card` or `data-grid`. Those five are `expectDesign`'s
+  selectors and `expectDesign` is never called here; a hook with no row behind it is a claim
+  nothing keeps honest, and `[data-screen]` on a dialog would additionally be caught by §8's
+  scroll-box rule, which the dialog cannot satisfy.
+
   So the dialog's numbers stay where Step 24 already asserts them — in
   `ui/e2e/user-dialog.spec.ts`:
 
@@ -12900,7 +13091,7 @@ the change-password card and the divergence is written into the ledger.
 *Consumes* — `max-w-profile` (700px) · `px-screen-x` · `py-screen-y` ·
 `bg-surface-sub` (#FBF9FE) · `border-border-current` (#EDE5F5) ·
 `bg-tile-warn` (#FBEEDC) · `border-warn-edge` (`#F0DDBB`) · `text-warn-fg` (#8A5A00) ·
-`text-violet-on-violet` (#C9BEEE) · `rounded-card` (16px) · `rounded-input` (11px) ·
+`text-role-subtitle-on-field` (`--role-subtitle-on-field` → `--violet-on-violet`, #C9BEEE) · `rounded-card` (16px) · `rounded-input` (11px) ·
 `rounded-control` (10px) · the `max760:` variant (the ≤760 mobile pass — there is no `narrow` screen or utility; both breakpoints are `addVariant`'d as `max1080:`/`max760:`).
 `SectionCard`, `PasswordField`, `Button`, `Icon` as in Tasks 21/6/7/10.
 
@@ -12935,20 +13126,20 @@ API type, hook or route path is added.
 - [ ] **Step 3: Rewrite the header and drop the identity card.**
   In `ui/src/screens/Profile.tsx` replace the outer wrapper and the first `Card`:
   ```tsx
-      <div className="flex-1 overflow-auto py-screen-y px-screen-x max760:px-s7 max760:py-s9">
-        <div className="max-w-profile mx-auto">
+      <div data-screen="profile" className="flex-1 overflow-auto py-screen-y px-screen-x max760:px-s7 max760:py-s9">
+        <div data-col className="max-w-profile mx-auto">
           {/* §6.13 — `21px/800 #fff` name, `12.5px #C9BEEE` role. The identity
               card this replaces was three lines of plain text plus a paragraph
               explaining why there is no edit control here; R5 puts that class of
               sentence out of the app, and the design's own profile has neither.
               The two facts worth keeping — who you are and what you are — are
               the header. */}
-          <h1 className="text-fs-stat-sm font-extrabold text-role-title-on-field m-0">
+          <h1 data-h1 className="text-fs-stat-sm font-extrabold text-role-title-on-field m-0">
             {session.displayName}
           </h1>
-          <p data-testid="profile-meta"
+          <p data-body data-testid="profile-meta"
             className="flex items-center gap-s4 flex-wrap text-fs-sm2
-                       text-violet-on-violet mt-s2 m-0">
+                       text-role-subtitle-on-field mt-s2 m-0">
             <span>{roleLabel(session.role)}</span>
             <span aria-hidden>·</span>
             <span dir="ltr" className="font-mono">{session.username}</span>
@@ -13004,7 +13195,7 @@ API type, hook or route path is added.
   is now the shared one):
   ```tsx
           {/* §6.13 — a tinted SectionCard eyebrowed «تغییر گذرواژه». */}
-          <SectionCard eyebrow="تغییر گذرواژه" aria-label="تغییر گذرواژه" className="mt-s8">
+          <SectionCard data-card eyebrow="تغییر گذرواژه" aria-label="تغییر گذرواژه" className="mt-s8">
             <form onSubmit={submit} className="flex flex-col gap-s6">
               <PasswordField id={currentId} label="گذرواژهٔ فعلی" placeholder="••••••••"
                 autoComplete="current-password" value={current} onChange={setCurrent} />
@@ -13118,6 +13309,36 @@ API type, hook or route path is added.
   is the one the design asks for — no. That stays with the Playwright checks.
 
 - [ ] **Step 11: Read the `profile` row the harness already holds. Do not write one.**
+  **The measurement hooks are in the JSX above, and they are what makes this row more than a
+  comment.** `expectDesign(page, '<name>')` finds every one of them by `[data-screen="<name>"]
+  <hook>` — namespaced to the screen, and the **first** match in document order — and `hook()`
+  refuses one that is detached, `display:none`, painted at `opacity:0`, outside the viewport,
+  sliced off the side, or covered by something. `direction` is asserted on every graded hook
+  and **defaults to `rtl`**; only a row that names a hook exempts it.
+
+  `[data-col]`, `[data-h1]` and `[data-body]` are graded on **every** row — they are required
+  fields of `ScreenDesign`, not optional ones — and `[data-card]` / the grid hook are graded
+  whenever the row carries `card` / `grid`. **A hook the screen forgets is a loud red**
+  (`missing measurement hook: …`), and `visit(page, url, '<name>')` will not even get that far.
+  The failure that is *silent* is a hook on the **wrong** element: it grades that element's
+  colours, lengths and radii and reports green. So do not move one onto a wrapper, a twin or a
+  parent to make a number come out right — that is the exact defect this layer exists to catch.
+
+  `profile` carries no `grid`, so **no `data-grid` goes on this screen**. Five hooks:
+
+  | hook | the element | what the row grades on it |
+  |---|---|---|
+  | `data-screen` | Step 3's scrolling wrapper, `data-screen="profile"` | `field`, `padding`. One row serves both surfaces — both deliverables draw this screen identically |
+  | `data-col` | the `max-w-profile` column | `column` `700px`, `columnWidth` (700 at all three widths; the row is proved responsive by `padding`) |
+  | `data-h1` | the `{session.displayName}` `<h1>` | 22px/800 `TITLE_ON_FIELD` — ledger **L-02**/**L-33**, **not** the 21px `text-fs-stat-sm` the JSX writes today. `--fs-stat-sm` is the activity-stat numeral, which `tokens.css` says in as many words |
+  | `data-body` | the `[data-testid="profile-meta"]` `<p>` — **the wrapper, not the username span inside it** | 12.5px `SUBTITLE_ON_FIELD`. The span is `dir="ltr"` and this row states no `direction` exemption, so hooking the span would fail on a screen that is correct |
+  | `data-card` | the «تغییر گذرواژه» `SectionCard` (Step 7) | radius 16px, `SUBPANEL_BORDER` `#EDE5F5`, `SUBPANEL_SURFACE` `#FBF9FE` — the tinted sub-panel, `skin="tint"`, and no shadow |
+
+  **`ui/src/ui/SectionCard.tsx` as shipped forwards nothing but `className`** — it destructures
+  `{ eyebrow, skin, children, className }` — so the `data-card` above and the `aria-label` Step 7
+  writes are both dropped before they reach the DOM. That file is Task 10's and this task must not
+  write it: **stop and report it.**
+
   This step used to say *"add `profile` to the harness table"*, in field names (`maxWidth`,
   `padX`, `padY`) that `ScreenDesign` does not have. **`ui/e2e/_harness.ts` is frozen and the
   row is already in it**, written ahead of the screens (`3dda9ef`) because eleven tasks
@@ -13242,7 +13463,7 @@ card is blank. And `Card` is re-implemented byte-for-byte rather than imported
 
 *Consumes* — `max-w-access` (820px, §3.3 gives policy the same 820 as Access) ·
 `px-screen-x` · `py-screen-y` · `rounded-card` (16px) · `border-hair` (#F2ECE3) ·
-`text-violet-on-violet` (#C9BEEE) · `shadow-card` · the `max760:` variant (the ≤760 mobile pass — there is no `narrow` screen or utility; both breakpoints are `addVariant`'d as `max1080:`/`max760:`).
+`text-role-subtitle-on-field` (`--role-subtitle-on-field` → `--violet-on-violet`, #C9BEEE) · `shadow-card` · the `max760:` variant (the ≤760 mobile pass — there is no `narrow` screen or utility; both breakpoints are `addVariant`'d as `max1080:`/`max760:`).
 `Checkbox` (Task 8, `box={19} tone="green"`), `Card` (Task 6), `Spinner`
 (`ui/Button`).
 
@@ -13296,13 +13517,13 @@ export const STATE_OFF: string   // 'پنهان است'
   Replace everything from `return (` to the end of `ui/src/screens/Visibility.tsx`:
   ```tsx
     return (
-      <div className="flex-1 overflow-auto py-screen-y px-screen-x max760:px-s7 max760:py-s9">
-        <div className="max-w-access mx-auto">
-          <h1 className="text-title font-extrabold text-role-title-on-field m-0">سیاست نمایش محتوا</h1>
+      <div data-screen="policy" className="flex-1 overflow-auto py-screen-y px-screen-x max760:px-s7 max760:py-s9">
+        <div data-col className="max-w-access mx-auto">
+          <h1 data-h1 className="text-title font-extrabold text-role-title-on-field m-0">سیاست نمایش محتوا</h1>
           {/* §6.12 — the intro makes the framing explicit: a decision applied to
               every non-editor, not a permission granted to anybody. It is
               `13px #C9BEEE lh 1.8` capped at 600px, on the violet field. */}
-          <p className="text-fs-sm text-violet-on-violet leading-loose max-w-intro mt-s4 m-0">
+          <p data-body className="text-fs-sm text-role-subtitle-on-field leading-loose max-w-intro mt-s4 m-0">
             این تنظیم برای همهٔ کسانی که اجازهٔ ویرایش ندارند یکسان است و به دپارتمان یا
             نقش کسی بستگی ندارد. معرفی دپارتمان همیشه به‌طور کامل نمایش داده می‌شود و
             تنظیمی ندارد.
@@ -13311,7 +13532,7 @@ export const STATE_OFF: string   // 'پنهان است'
           {/* One card, not six. `Card` imported rather than re-declared: this
               screen carried `bg-card border border-warm rounded-card shadow-card`
               inline, byte for byte identical to the primitive it did not use. */}
-          <Card role="group" aria-label="سیاست نمایش محتوا"
+          <Card data-card role="group" aria-label="سیاست نمایش محتوا"
             aria-busy={set.isPending || undefined}
             className={`px-s9 py-s4 mt-s10 transition-opacity
                         ${set.isPending ? 'opacity-60' : ''}`}>
@@ -13466,6 +13687,32 @@ export const STATE_OFF: string   // 'پنهان است'
   is the one the design asks for — no. That stays with the Playwright checks.
 
 - [ ] **Step 9: Read the `policy` row the harness already holds. Do not write one.**
+  **The measurement hooks are in the JSX above, and they are what makes this row more than a
+  comment.** `expectDesign(page, '<name>')` finds every one of them by `[data-screen="<name>"]
+  <hook>` — namespaced to the screen, and the **first** match in document order — and `hook()`
+  refuses one that is detached, `display:none`, painted at `opacity:0`, outside the viewport,
+  sliced off the side, or covered by something. `direction` is asserted on every graded hook
+  and **defaults to `rtl`**; only a row that names a hook exempts it.
+
+  `[data-col]`, `[data-h1]` and `[data-body]` are graded on **every** row — they are required
+  fields of `ScreenDesign`, not optional ones — and `[data-card]` / the grid hook are graded
+  whenever the row carries `card` / `grid`. **A hook the screen forgets is a loud red**
+  (`missing measurement hook: …`), and `visit(page, url, '<name>')` will not even get that far.
+  The failure that is *silent* is a hook on the **wrong** element: it grades that element's
+  colours, lengths and radii and reports green. So do not move one onto a wrapper, a twin or a
+  parent to make a number come out right — that is the exact defect this layer exists to catch.
+
+  `policy` carries no `grid` — one card of rows, not a grid of cards — so **no `data-grid` goes on
+  this screen**. Five hooks:
+
+  | hook | the element in Step 3 | what the row grades on it |
+  |---|---|---|
+  | `data-screen` | the scrolling wrapper, `data-screen="policy"` | `field`, `padding`. Keyed `policy`, not `visibility` |
+  | `data-col` | the `max-w-access` column | `column` `820px` — §3.3 gives the policy screen Access's width |
+  | `data-h1` | the «سیاست نمایش محتوا» `<h1>` | 22px/800 `TITLE_ON_FIELD` |
+  | `data-body` | the intro `<p>` under it | 13px `SUBTITLE_ON_FIELD` |
+  | `data-card` | the one `<Card role="group">` | radius **16px** — ledger **V2** settles that against the visual audit's 20 — `CARD_BORDER`, `CARD_SHADOW`, white |
+
   This step used to say *"add `policy` to the harness table"*, in field names (`maxWidth`,
   `padX`, `padY`) that `ScreenDesign` does not have. **`ui/e2e/_harness.ts` is frozen and the
   row is already in it** — written ahead of the screens (`3dda9ef`) because eleven tasks
@@ -13579,7 +13826,7 @@ scrollbar decision made in a sixth file (P3, O1).
 | Path | Why | What to do instead |
 |---|---|---|
 | `ui/tailwind.config.js`, `ui/src/styles/tokens.css`, `ui/src/styles/roles.css`, `ui/tailwind-probe.txt` | Frozen between deliberate minting passes, so many tasks can run in one tree without clobbering each other. Unfrozen exactly once, by the single consolidated mint. | A value with no token is not minted here — Step 22 already says so for the one this task meets. Stop, and report the value and its role. |
-| `ui/e2e/_harness.ts` | Pre-populated and frozen — eleven tasks appending to one file in one tree lose all but the last write, with a green build. | **This task needs nothing from the table.** `write.spec.ts` imports `shot` only: no `expectDesign`, no `DESIGN` row, and none is wanted (`.superpowers/sdd/ui-harness-preflight-report.md`, F6 — of the eleven screen tasks, this is the one that never wanted a row). Its fixtures belong in `write.spec.ts`. If you find yourself needing to change the harness, stop and report it. |
+| `ui/e2e/_harness.ts` | Pre-populated and frozen — eleven tasks appending to one file in one tree lose all but the last write, with a green build. | **This task needs nothing from the table.** `write.spec.ts` imports `shot` only: no `expectDesign`, no `DESIGN` row, and none is wanted (`.superpowers/sdd/ui-harness-preflight-report.md`, F6 — of the eleven screen tasks, this is the one that never wanted a row). Its fixtures belong in `write.spec.ts`. If you find yourself needing to change the harness, stop and report it. **No file this task writes carries a measurement hook, either** — `data-screen`, `data-col`, `data-h1`, `data-body`, `data-card` and `data-grid` are `expectDesign`'s selectors, and `write.spec.ts` never calls it. `ConfirmMark`'s three call sites are inside screens that carry their own hooks (Tasks 15/16/17); do not move, copy or re-point one. |
 | `docs/superpowers/ui-normalisation-ledger.md` | Maintained by the reviewer at review time. | Report the row you would add, in your task report. |
 
 **Interfaces**
