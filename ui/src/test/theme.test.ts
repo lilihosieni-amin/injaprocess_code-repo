@@ -841,7 +841,6 @@ describe('R1 (structural) — every design token has a utility name', () => {
       'these roles have no utility of their own AND point at a token that has ' +
       'none either, so the value they decide cannot be written at all',
     ).toEqual([])
-
     // …and the check can fail: a role whose token is a typo is unwritable both
     // ways, and must be caught. Asked against a synthetic map, because `roles`
     // is currently clean and a clean input can never prove a filter runs.
@@ -864,32 +863,27 @@ describe('R1 (structural) — every design token has a utility name', () => {
     // So the group gets its own words, and each is pinned here against the exact
     // class it is most likely to be swapped for.
     const literal = (role: string) => tokenValue([...(roles.get(role) ?? [])][0])
-
     // L-01, decided 10 against 1. The decoy is `text-on-dark`, which READS like
     // the answer on a dark field and is the cream the ruling retired.
     expect(referenced.has('--role-title-on-field')).toBe(true)
     expect(literal('--role-title-on-field')).toBe('#FFFFFF')
     expect(tokenValue('--text-on-dark')).toBe('#FBF7F1')
     expect(literal('--role-title-on-field')).not.toBe(tokenValue('--text-on-dark'))
-
     // L-28, decided 13 against 1. The decoy is `text-violet-on-dark-body`, one
     // letter away and the token the ruling decided AGAINST — and it holds the
     // right value today only because Task 3 corrected it, which is why the role
     // must not be written through it.
     expect(referenced.has('--role-subtitle-on-field')).toBe(true)
     expect(literal('--role-subtitle-on-field')).toBe('#C9BEEE')
-
     // The third of the group. Its token is honestly named, so this one is cheap
     // — but a group written two ways is how the other two went wrong.
     expect(referenced.has('--role-eyebrow')).toBe(true)
     expect(literal('--role-eyebrow')).toBe('#B79FE6')
-
     // The three are three different colours, so a key pointed at its neighbour
     // fails here rather than rendering a plausible screen.
     const group = ['--role-title-on-field', '--role-subtitle-on-field', '--role-eyebrow']
     expect(new Set(group.map(literal)).size).toBe(3)
   })
-
   // --hover-lift is `translateY(-2px)` — a whole transform function, not a
   // length. Tailwind 3.4 ships no themeable `transform` namespace (its
   // defaultTheme has rotate/scale/skew/translate and nothing that takes a raw
@@ -1327,7 +1321,7 @@ const PENDING: string[] = [
   'bg-violet-edge', 'bg-violet-on-dark', 'bg-violet-on-dark-body', 'bg-violet-on-violet',
   'bg-desk', 'bg-tile-v3', 'bg-tile-ctl', 'bg-value-current',
   'bg-hair', 'bg-line-soft', 'bg-line-dashed', 'bg-border-danger',
-  'bg-border-dead', 'bg-border-current', 'bg-border-ok', 'bg-strong',
+  'bg-border-dead', 'bg-border-ok', 'bg-strong',
   'bg-body-ink', 'bg-ghost', 'bg-dialog-ghost', 'bg-ink-current',
   'bg-ink-proposed', 'bg-on-dark', 'bg-disabled', 'bg-ok',
   'bg-danger', 'bg-warn-soft', 'bg-info-soft', 'bg-ok-soft',
@@ -1344,10 +1338,10 @@ const PENDING: string[] = [
   'border-line-divider', 'bg-line-row', 'bg-line-filter', 'border-line-filter',
   'bg-border-pick', 'text-fs-display', 'text-fs-h1', 'text-fs-h2',
   'text-fs-h3', 'text-fs-h4', 'text-fs-h5',
-  'text-fs-xxs', 'text-fs-micro', 'text-fs-doc-base', 'text-fs-doc-h1',
+  'text-fs-micro', 'text-fs-doc-base', 'text-fs-doc-h1',
   'text-fs-doc-title', 'text-fs-doc-step', 'text-fs-doc-body',
-  'text-fs-numeral', 'text-fs-stat', 'text-fs-steps-title', 'text-fs-display-hand',
-  'text-fs-stat-sm', 'text-fs-body-lead', 'text-fs-nano', 'text-fs-badge-sm',
+  'text-fs-numeral', 'text-fs-steps-title', 'text-fs-display-hand',
+  'text-fs-body-lead', 'text-fs-nano', 'text-fs-badge-sm',
   'text-fs-tag', 'text-fs-h1-reader-home', 'text-fs-h1-reader-list', 'text-fs-h1-reader-dept',
   'text-fs-body-reader', 'text-prose',
   // Named only in a docstring in src/ui/fieldFrame.ts, which explains why the
@@ -1357,11 +1351,11 @@ const PENDING: string[] = [
   'text-role-title', 'text-role-hero',
   'font-sans', 'font-regular', 'leading-snug', 'leading-looser',
   'tracking-eyebrow', 'tracking-display', 'rounded-badge',
-  'rounded-pill', 'shadow-sheet', 'shadow-drawer',
+  'shadow-sheet', 'shadow-drawer',
   'shadow-card-dark', 'shadow-stat-dark', 'shadow-guide-hover', 'shadow-ring-flash',
-  'shadow-conflict-dot', 'shadow-fab', 'p-screen-x', 'p-screen-y',
+  'p-screen-x', 'p-screen-y',
   'p-topbar', 'p-half', 'gap-topbar', 'px-reader-x',
-  'pb-reader-bottom', 'pt-departments-top', 'pb-departments-bottom', 'p-s1',
+  'pb-reader-bottom', 'pt-departments-top', 'pb-departments-bottom', 
   'p-s2', 'p-s3', 'p-s4', 'p-s5',
   'p-s6', 'p-s14', 'p-s16', 'w-tile',
   'h-tile', 'w-tool', 'h-tool', 'w-avatar',
@@ -1369,7 +1363,7 @@ const PENDING: string[] = [
   'h-logo-login', 'w-touch', 'h-touch', 'w-tile-reader',
   'h-tile-reader', 'w-glyph', 'h-glyph', 'w-glyph-reader',
   'h-glyph-reader', 'w-iconbtn', 'h-iconbtn', 'w-iconbtn-reader',
-  'h-iconbtn-reader', 'w-fab', 'h-fab', 'w-fab-reader',
+  'h-iconbtn-reader', 'w-fab-reader',
   'h-fab-reader', 'w-tick-nested',
   'h-tick-nested', 'max-w-departments', 'max-w-summary', 'max-w-doc',
   'max-w-drawer', 'max-w-reader', 'max-w-profile', 'max-w-steps',
@@ -1378,10 +1372,10 @@ const PENDING: string[] = [
   'w-tick-glyph-nested', 'h-tick-glyph-nested',
   'py-tick-nested-y', 'py-dropdown-y-dialog',
   'py-dropdown-y-filter', 'px-dropdown-x-filter',
-  'py-option-y', 'px-stat-x', 'min-w-stat',
-  'py-stat-y-grid', 'px-stat-x-grid', 'my-stat-grid', 'mt-stat-label',
-  'py-tab-y-audit', 'min-w-tab', 'gap-tab-flow', 'py-note-y',
-  'px-note-x', 'h-count', 'min-w-count', 'max1080:hidden',
+  'py-option-y', 
+  'my-stat-grid', 
+  'py-tab-y-audit', 'min-w-tab', 'gap-tab-flow', 
+  'max1080:hidden',
   // The single minting pass — 29 of its 30 classes. `z-canvas-overlay` is the
   // thirtieth and is NOT here: owner ruling R15 minted the rung and pointed its
   // one consumer at it in the same change, so src/flow/DetailDrawer.tsx writes
@@ -1396,7 +1390,7 @@ const PENDING: string[] = [
   // `z-dropdown` and `text-role-textarea` are already gone from this list:
   // Task 8's Dropdown and TextField landed and consumed them, which is the
   // mechanism working — a line comes off when its consumer arrives.
-  'z-chrome', 'z-floating', 'z-drawer',
+  'z-chrome', 'z-drawer',
   'z-modal', 'z-popover', 'z-tooltip', 'z-toast',
   'ease-css', 'duration-row', 'rounded-bar', 'shadow-feature',
   'max-w-subtitle', 'max-w-intro', 'min-h-chiprow',
@@ -1410,7 +1404,7 @@ const PENDING: string[] = [
   // colour ledger L-01 retired. These three lines come off as those tasks land.
   'text-role-title-on-field', 'text-role-subtitle-on-field', 'text-role-eyebrow',
   // …and StatTile's numeral-to-dot gap, unconsumed until Task 10 builds it.
-  'gap-stat-dot',
+  
 ]
 
 /**
@@ -1461,7 +1455,7 @@ const PENDING: string[] = [
  * back without needing this edit.
  * ---------------------------------------------------------------------------
  */
-const CEILING = 247 // LOWERED 2026-08-18 against PENDING.length === 237
+const CEILING = 218 // LOWERED 2026-08-18 against PENDING.length === 218 (task 10 landed 21 consumers)
 
 describe('Owner ruling R11 — a named utility has a component that uses it', () => {
   it('reads a real, sizeable set of component files — tests AND test helpers excluded', () => {
@@ -1481,7 +1475,6 @@ describe('Owner ruling R11 — a named utility has a component that uses it', ()
       'reactflow-mock.ts carry no `.test.` in their names, and a filename-only exclusion read ' +
       'all four of them as consumers of whatever they happened to mention.',
     ).toEqual([])
-
     // …and the exclusion is load-bearing, not decorative. Its predecessor
     // pinned that with `expect(written('w-touch')).toBe(false)` — and `w-touch`
     // is F11's 44px floor utility, on PENDING, which Task 11 onward will
@@ -1502,7 +1495,6 @@ describe('Owner ruling R11 — a named utility has a component that uses it', ()
       'a file that only a test writes has entered the component set, so every class those tests ' +
       'mention now reads as consumed and the ledger below is worthless.',
     ).toBe(false)
-
     // The matcher itself, both ways round, so neither test below can pass by
     // saying "yes" or "no" to everything.
     expect(written('rounded-doc')).toBe(true)
@@ -1516,13 +1508,11 @@ describe('Owner ruling R11 — a named utility has a component that uses it', ()
     const scan = (text: string) => consumedSource([{ path: '/src/ui/Synthetic.tsx', text }])
     const holds = (text: string, klass = 'bg-warm') => written(klass, scan(text))
     const render_ = 'export function A() { return <i className="p-s4" /> }'
-
     // Written — in the attribute, and in anything the attribute reads.
     expect(holds('export function A() { return <i className="bg-warm" /> }')).toBe(true)
     expect(holds(`const K = 'bg-warm'\nexport function A() { return <i className={K} /> }`)).toBe(true)
     expect(holds(`const M = { a: 'bg-warm' }\nexport function A() { return <i className={M.a} /> }`)).toBe(true)
     expect(holds(`const L = 'bg-warm'\nconst K = \`\${L} p-s4\`\nexport function A() { return <i className={K} /> }`)).toBe(true)
-
     // Not written — a line comment, a block comment, and a declaration that
     // nothing renders. All three were green.
     expect(holds(`// TODO(task-14): this row will want bg-warm.\n${render_}`)).toBe(false)
@@ -1588,7 +1578,6 @@ describe('Owner ruling R11 — a named utility has a component that uses it', ()
       `${stale.length} utilities on PENDING now HAVE a consumer. Delete these lines from the ` +
       'list — that is how it empties, and Task 25 asserts it is empty.',
     ).toEqual([])
-
     // The list may only ever name utilities this theme actually has, or it
     // becomes a place to park typos where nothing else looks.
     const ghosts = PENDING.filter((c) => !probeClasses().includes(c))
