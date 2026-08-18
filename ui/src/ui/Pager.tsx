@@ -1,0 +1,62 @@
+import { toFa } from '../lib/format'
+
+export interface PagerProps {
+  from: number
+  to: number
+  count: number
+  page: number
+  pages: number
+  onPage: (next: number) => void
+}
+
+/**
+ * §5.2 — 34×34, a 1.5px `--line` edge, radius 10, the glyph in `--violet`.
+ *
+ * The `before:` box is the invisible 44px hit area (see `expectExpandedHitArea`
+ * in src/test/a11y.ts): 34 + 2×5 = 44. It changes nothing that is painted,
+ * which is why the design has no opinion about it — and why the drawn box stays
+ * the design's 34 rather than being inflated to the floor.
+ */
+const NAV =
+  'relative before:absolute before:content-[""] before:-inset-[5px] ' +
+  'w-pager h-pager inline-flex items-center justify-center flex-none ' +
+  'bg-card text-violet border-hairline border-line rounded-control cursor-pointer ' +
+  // §4.6 — "Disabled keeps its surface and fades the glyph"; a control that
+  // cannot act is never hidden and never a pointer target.
+  'disabled:text-disabled disabled:cursor-default'
+
+export function Pager({ from, to, count, page, pages, onPage }: PagerProps) {
+  return (
+    <div className="flex items-center justify-between gap-s6 px-s9 py-s7">
+      {/* §2.7 — every count, position and index a reader sees is Persian, with
+          no exception for "technical" numbers. */}
+      <span className="text-fs-caption text-muted">{toFa(from)} تا {toFa(to)} از {toFa(count)}</span>
+      <div className="flex items-center gap-s4">
+        <button
+          type="button" aria-label="صفحهٔ قبلی" disabled={page <= 1}
+          onClick={() => onPage(page - 1)} className={NAV}
+        >
+          {/* Folded into `Icon` by Task 11 — chevronPrev, 15×15 @2.4 (§8). */}
+          <svg className="w-chevron h-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden focusable="false">
+            <path d="M15 6l-6 6 6 6" />
+          </svg>
+        </button>
+        {/* The label is held at `--width-page-label` so the two buttons do not
+            shift sideways as ۹ becomes ۱۰. */}
+        <span aria-live="polite" className="min-w-page-label text-center text-fs-sm2 font-semibold text-body-ink">
+          صفحهٔ {toFa(page)} از {toFa(pages)}
+        </span>
+        <button
+          type="button" aria-label="صفحهٔ بعدی" disabled={page >= pages}
+          onClick={() => onPage(page + 1)} className={NAV}
+        >
+          <svg className="w-chevron h-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden focusable="false">
+            <path d="M9 6l6 6-6 6" />
+          </svg>
+        </button>
+      </div>
+    </div>
+  )
+}
