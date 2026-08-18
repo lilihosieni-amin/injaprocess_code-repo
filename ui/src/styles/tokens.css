@@ -435,4 +435,18 @@
      number that already has an owner is minted again under its own name rather
      than borrowed. Name taken verbatim from .superpowers/sdd/ui-task-9-report.md. */
   --gap-table-row-mobile: 11px;    /* the <=760px table row gap */
+
+  /* StatTile — the header tile's own flex row, `display:flex; align-items:center;
+     gap:7px`, holding the 27px conflict numeral (--fs-stat) and the 8px coral
+     dot. `Inja Panel.dc.html:221`. Task 10's sweep left it as `gap-[7px]` and
+     documented why: the file's two other 7px tokens are --pad-popover (the
+     popover's inset round its options) and --space-stat-label (the 4-up label's
+     margin-top), and R8 forbids borrowing a number across roles. The owner has
+     now ruled to mint rather than borrow.
+
+     It sits here and not beside its five siblings in the §5.2 block above
+     because that block's count is pinned at exactly 42, twice, in
+     tokens.test.ts, and that 42 is the record of a different pass. Same
+     component, same naming, one block further down. */
+  --gap-stat-dot: 7px;             /* the stat numeral's gap to its conflict dot */
 }

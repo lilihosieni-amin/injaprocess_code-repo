@@ -396,6 +396,11 @@ export default {
         // is minted for another role, so this is minted again under its own name
         // rather than borrowed.
         'table-row-mobile': 'var(--gap-table-row-mobile)',    // 11px
+        // §5.2 StatTile — the header tile's numeral-to-dot gap. `stat-label`
+        // above is the SAME NUMBER for the 4-up label's margin-top and `popover`
+        // is the same number again for the popover's inset; three roles, three
+        // keys, so moving one never moves the other two.
+        'stat-dot': 'var(--gap-stat-dot)',                    // 7px
       },
       maxWidth: {
         departments: 'var(--width-departments)', list: 'var(--width-list)',

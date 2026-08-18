@@ -320,9 +320,13 @@ describe('R1 — a correction records what it overrode and why', () => {
       '--width-intro': '600px', '--size-glyph-tile': '42px',
       // Task 9's one un-named value
       '--gap-table-row-mobile': '11px',
+      // §5.2 StatTile — the numeral's gap to its conflict dot, minted by owner
+      // ruling rather than borrowed. Asserted beside its two same-valued
+      // siblings below, which is the check that no role took another's number.
+      '--gap-stat-dot': '7px',
     }
     for (const [name, value] of Object.entries(minted)) expect(token(name), name).toBe(value)
-    expect(Object.keys(minted).length).toBe(24)
+    expect(Object.keys(minted).length).toBe(25)
     // Declared once each — the failure mode the one-pass rule exists to prevent.
     expect(Object.keys(minted).filter((n) => declarations(n) !== 1)).toEqual([])
     // …and none of them moved a number that already had an owner. --warn keeps
@@ -331,5 +335,11 @@ describe('R1 — a correction records what it overrode and why', () => {
     expect(token('--warn')).toBe('')          // declared in the frozen _ds, not here
     expect(token('--gap-tick-row')).toBe('11px')
     expect(token('--pad-note-x')).toBe('11px')
+    // …and the two 7px tokens --gap-stat-dot was minted BESIDE rather than
+    // borrowed from. Three roles, three names, one number: if a later pass
+    // "tidies" them into one, this is the line that objects.
+    expect(token('--pad-popover')).toBe('7px')       // the popover's inset
+    expect(token('--space-stat-label')).toBe('7px')  // the 4-up label's margin-top
+    expect(declarations('--gap-stat-dot')).toBe(1)
   })
 })

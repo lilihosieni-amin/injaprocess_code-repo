@@ -583,6 +583,9 @@ const EXPECTED: Record<string, string | string[]> = {
   'text-role-title-on-field': 'var(--role-title-on-field)',
   'text-role-subtitle-on-field': 'var(--role-subtitle-on-field)',
   'text-role-eyebrow': 'var(--role-eyebrow)',
+  // §5.2 StatTile — the third 7px role. `gap-stat-label` and `gap-popover` hold
+  // the same number for the other two, and this line is what keeps them apart.
+  'gap-stat-dot': 'var(--gap-stat-dot)',
   'gap-table-row-mobile': 'var(--gap-table-row-mobile)',
   'w-menu-more': 'var(--size-menu-more)',
   'h-menu-more': 'var(--size-menu-more)',
@@ -709,8 +712,8 @@ describe('R1 (structural) — every design token has a utility name', () => {
     // and once on height, which is one name on two properties, not two names.
     // The single minting pass added 29 sites for 30 classes — `--warn-edge` is
     // one key on `colors` that Tailwind spends on both `bg-` and `border-` — and
-    // then 3 more for the type-on-the-violet-field group.)
-    expect(referencedList.length).toBeGreaterThanOrEqual(347)
+    // then 3 more for the type-on-the-violet-field group, then --gap-stat-dot.)
+    expect(referencedList.length).toBeGreaterThanOrEqual(348)
     // Two declaration sites, because the app has two: tokens.css holds every
     // literal, and roles.css holds R3's scale layer, which is the only thing a
     // utility may name that is not a token. Both are read from disk; neither is
@@ -1407,6 +1410,8 @@ const PENDING: string[] = [
   // title on the field, and they currently write `text-on-dark`, which is the
   // colour ledger L-01 retired. These three lines come off as those tasks land.
   'text-role-title-on-field', 'text-role-subtitle-on-field', 'text-role-eyebrow',
+  // …and StatTile's numeral-to-dot gap, unconsumed until Task 10 builds it.
+  'gap-stat-dot',
 ]
 
 /**
@@ -1437,9 +1442,10 @@ const PENDING: string[] = [
  *     named ahead of the screens on purpose — guards.test.ts bans `text-[…]`,
  *     `rounded-[…]` and `shadow-[…]`, so a value with no name cannot be written
  *     at all, and the name therefore has to exist before its consumer does. The
- *     mint added 32 such lines — 29 from the spec, then 3 for the
- *     type-on-the-violet-field group — and it is the last one:
- *     tailwind.config.js, tokens.css and roles.css are re-frozen behind it.
+ *     mint added 33 such lines — 29 from the spec, then 3 for the
+ *     type-on-the-violet-field group and StatTile's numeral-to-dot gap — and it
+ *     is the last one: tailwind.config.js, tokens.css and roles.css are
+ *     re-frozen behind it.
  *   · CONSUMING a utility, or failing to, may never add one. A screen that lands
  *     without writing the classes it was minted for is a screen that is not
  *     finished, and the number below is what says so.
@@ -1456,7 +1462,7 @@ const PENDING: string[] = [
  * back without needing this edit.
  * ---------------------------------------------------------------------------
  */
-const CEILING = 263 // set 2026-08-18 against PENDING.length === 253
+const CEILING = 264 // set 2026-08-18 against PENDING.length === 254
 
 describe('Owner ruling R11 — a named utility has a component that uses it', () => {
   it('reads a real, sizeable set of component files — tests AND test helpers excluded', () => {
