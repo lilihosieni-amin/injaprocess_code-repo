@@ -930,6 +930,168 @@ test('every composition check has a mutant that kills it', async ({ page }) => {
 })
 
 /* ------------------------------------------------------------------ *
+ * §8's scroll box — a correct screen the gate used to accuse
+ * ------------------------------------------------------------------ */
+
+/**
+ * **A predicted false red, constructed and shown not to fire.**
+ *
+ * Task 15 puts `[data-r-pad]{direction:ltr}` and `[data-r-pad] > *{direction:rtl}`
+ * into `base.css` (§8: RTL text, scrollbar on the right) and Task 14 puts
+ * `data-r-pad` on this screen. `[data-r-pad]` **is** `[data-screen]`, so the root
+ * computes `ltr` while everything under it computes `rtl` — and against a single
+ * per-row `direction` that is a correct screen going red, in a file twenty-one
+ * screen checks copy, whose cheapest repair is to weaken the direction check.
+ * This project has already paid for that shape twice; the second time the false
+ * red sat inside a template telling twenty-one tasks "Do not weaken it".
+ *
+ * So the three states are pinned here rather than argued about:
+ *
+ * 1. the scroll box, complete — **green**;
+ * 2. the scroll box with the child reset missing — red, and specifically at the
+ *    O1 defect, which is the reason §8 is a stylesheet rule and not two
+ *    attributes;
+ * 3. `dir="ltr"` with no scroll box at all — red, the whole Persian UI mirrored,
+ *    which is one of the seven survivors the hardening pass was built to kill
+ *    and which `text-align` cannot see (Chrome reports `start` in both
+ *    directions).
+ *
+ * Deliberately **not** in `proved once`: it renders, and a `direction` that is
+ * decided by a stylesheet is exactly the kind of thing a breakpoint can move.
+ */
+test('§8’s scroll box is a legal LTR root, and only when it proves itself', async ({ page }) => {
+  await onDepartments(page)
+  await expectDesign(page, 'departments')
+
+  const change = (css: string, attr: readonly [string, string] | null = null): Change =>
+    ({ css, node: null, attr, strip: null })
+
+  // 1. Task 14 + Task 15, exactly as they will ship.
+  const box = change(`${SCREEN}{direction:ltr} ${SCREEN} > *{direction:rtl}`, ['data-r-pad', ''])
+  await applyMutant(page, box)
+  await expectSamePage(page, 'applying §8’s scroll box')
+  const root = page.locator(SCREEN)
+  expect(
+    await root.evaluate((el) => getComputedStyle(el).direction),
+    'the construction did not take: this test proves nothing unless the root really is LTR',
+  ).toBe('ltr')
+  expect(
+    await root.evaluate((el) => getComputedStyle(el.firstElementChild!).direction),
+    'the child reset did not take, so state 1 is state 2 and the green below would be a lie',
+  ).toBe('rtl')
+  await expectDesign(page, 'departments')
+  await undoMutant(page, box)
+
+  // 2. The same box, minus the rule that flips the children back. This is O1:
+  //    the attribute form flipped back the one child somebody remembered, and
+  //    every dialog mounted beside it stayed LTR — the workaround five files in
+  //    src/write/ each carry a comment about.
+  const halfBox = change(`${SCREEN}{direction:ltr}`, ['data-r-pad', ''])
+  await applyMutant(page, halfBox)
+  await expectSamePage(page, 'applying the scroll box without its child reset')
+  await failsWith(
+    expectDesign(page, 'departments'),
+    /did not reach all of them/,
+    'a scroll box whose children were not flipped back is accepted, so §8’s rule could lose ' +
+    'its second line and nothing would say so',
+  )
+  await undoMutant(page, halfBox)
+
+  // 3. And the thing the check is actually for. No `data-r-pad`, so no reset and
+  //    no scroll box: the page is mirrored.
+  const mirror = change(`${SCREEN}{direction:ltr}`)
+  await applyMutant(page, mirror)
+  await expectSamePage(page, 'applying the LTR mirror')
+  await failsWith(
+    expectDesign(page, 'departments'),
+    /carries no `data-r-pad`/,
+    'an LTR root with no scroll box behind it is accepted — the whole Persian UI mirrors and ' +
+    'not one length, colour, weight, radius or track count moves',
+  )
+  await undoMutant(page, mirror)
+
+  // Everything really was put back, so the three states above graded three
+  // pages and not one progressively broken one.
+  await expectDesign(page, 'departments')
+})
+
+/**
+ * The other half of the per-hook change: the override is **narrow**, and both
+ * of its own guards fire.
+ *
+ * The reason `direction` is keyed by hook rather than stated once for the row is
+ * that a row-wide `ltr` would excuse a mirrored page in the same breath as a
+ * latin username. So the exemption has to be shown to cover the one hook it
+ * names and no other — and, like `contrastWaived`, to be incapable of outliving
+ * or misdescribing the thing it was written for.
+ */
+test('a direction override covers one hook, and cannot be a no-op or an orphan', async ({ page }) => {
+  await onDepartments(page)
+  const row = DESIGN.departments as ScreenDesign
+  const ltrBody: Change =
+    { css: `${SCREEN} [data-body]{direction:ltr}`, node: null, attr: null, strip: null }
+
+  try {
+    // A latin island on a hooked run of type, with nothing said about it.
+    await applyMutant(page, ltrBody)
+    await expectSamePage(page, 'flipping [data-body] to LTR')
+    await failsWith(
+      expectDesign(page, 'departments'),
+      /departments: data-body direction/,
+      'an LTR run of hooked type is accepted with nothing in the row saying so',
+    )
+
+    // Said, at the hook it is true of: green.
+    row.direction = { body: 'ltr' }
+    await expectDesign(page, 'departments')
+
+    // …and it covers that hook and nothing else. The column mirrors too and the
+    // row still goes red, which is what a single per-row value could not do.
+    const alsoCol: Change =
+      { css: `${SCREEN} [data-col]{direction:ltr}`, node: null, attr: null, strip: null }
+    await applyMutant(page, alsoCol)
+    await expectSamePage(page, 'flipping [data-col] to LTR as well')
+    await failsWith(
+      expectDesign(page, 'departments'),
+      /departments: data-col direction/,
+      'an override on `body` is excusing `col` as well — the exemption is not per hook at all',
+    )
+    await undoMutant(page, alsoCol)
+    await undoMutant(page, ltrBody)
+
+    // Guard 1: an entry that only restates the default.
+    row.direction = { body: 'rtl' }
+    await failsWith(
+      expectDesign(page, 'departments'),
+      /names a hook and then states the default/,
+      'a no-op override is accepted, so a row can claim a deviation it does not have',
+    )
+
+    // Guard 2: an entry for a hook this row does not grade. `grid` is the one
+    // that can be taken away without disturbing anything else measured here.
+    const grid = row.grid
+    try {
+      delete row.grid
+      row.direction = { grid: 'ltr' }
+      await failsWith(
+        expectDesign(page, 'departments'),
+        /`direction` names hooks this row does not grade/,
+        'an override for a hook that is never measured is accepted, so it can outlive the ' +
+        'element it was written for exactly as a stale `contrastWaived` entry used to',
+      )
+    } finally {
+      row.grid = grid
+    }
+  } finally {
+    delete row.direction
+    await undoMutant(page, ltrBody)
+  }
+
+  // The page really was put back.
+  await expectDesign(page, 'departments')
+})
+
+/* ------------------------------------------------------------------ *
  * A navigation between a mutation and its measurement
  * ------------------------------------------------------------------ */
 

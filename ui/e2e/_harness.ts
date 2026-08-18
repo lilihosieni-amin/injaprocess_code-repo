@@ -85,6 +85,17 @@ export const LIFT = 'matrix(1, 0, 0, 1, 0, -2)'
 export const FONT_SANS =
   '"Vazirmatn Variable", Vazirmatn, system-ui, -apple-system, "Segoe UI", sans-serif'
 /**
+ * `--font-mono`, as Chrome serialises it — the one latin island's stack.
+ *
+ * Ledger **L-21**: both deliverables write
+ * `'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace` twenty-three
+ * times and **never load JetBrains Mono**, so the first choice silently falls
+ * through and what the design actually renders is the token. Measured on this
+ * repo through `font-mono`, not transcribed from the token file.
+ */
+export const FONT_MONO = 'ui-monospace, "SF Mono", Menlo, Consolas, monospace'
+
+/**
  * §6.0 — the application is Persian and reads right to left.
  *
  * `index.html` carries `dir="rtl"` and `base.css` repeats it on `html`, so every
@@ -312,6 +323,17 @@ export interface Measured {
   align?: PerWidth<string>
 }
 
+/**
+ * The hooks `expectDesign` grades, other than the screen root.
+ *
+ * A closed set, so `direction` cannot name a hook that does not exist: an object
+ * literal with a stray key is a `tsc` error rather than a line that grades
+ * nothing. `grid` is this name whatever selector the row gives it — the row
+ * names one grid, and calling the override `[data-r-2col]` on one screen and
+ * `data-grid` on the next would put the selector in two places.
+ */
+export type ContentHook = 'col' | 'h1' | 'body' | 'grid' | 'card'
+
 export interface ScreenDesign {
   /** computed `background-color` of `[data-screen]` */
   field: PerWidth<string>
@@ -328,22 +350,76 @@ export interface ScreenDesign {
   /** the `padding` shorthand of `[data-screen]`, 1–4 lengths */
   padding: PerWidth<string>
   /**
-   * computed `direction`, asserted on **every graded hook** — the screen root,
-   * the column, both type hooks, the grid and the card.
+   * computed `direction`, asserted on **every graded hook**, per hook.
    *
-   * **Defaults to `rtl`**, so no screen has to remember it, and a screen with an
-   * LTR island has to write the lie down where a reviewer sees it. This is the
-   * assertion that notices a `dir="ltr"` on a screen root: it mirrors the
-   * headings, reverses the card order, points the chevrons the wrong way and
-   * puts the sentence-final period on the wrong side, and it moves **no** length,
-   * colour, weight, radius or track count that this file measures.
+   * **Every content hook defaults to `rtl`**, so no screen has to remember it,
+   * and a screen with an LTR island has to write the lie down where a reviewer
+   * sees it — by hook, so the exemption covers the one run of type that is
+   * really latin and nothing else. This is the assertion that notices a
+   * `dir="ltr"` mirroring the whole Persian UI: headings to the other margin,
+   * cards in reverse order, chevrons the wrong way, the sentence-final period on
+   * the wrong side — and **no** length, colour, weight, radius or track count
+   * that this file measures moves. `text-align` cannot stand in for it: Chrome
+   * reports `start` in both directions.
+   *
+   * ## Why this is per hook and not one value per row
+   *
+   * §8 wants RTL text with the scrollbar on the right, and both deliverables
+   * spell that as two lines of CSS, which Task 15 moves into `base.css`:
+   *
+   * ```css
+   * [data-r-pad]     { direction: ltr; }
+   * [data-r-pad] > * { direction: rtl; }
+   * ```
+   *
+   * `[data-r-pad]` **is** `[data-screen]` — it is the scrolling region that
+   * paints the field and carries the screen padding. So on every screen that
+   * carries it the root computes `ltr` while the column, both type hooks, the
+   * grid and the card all compute `rtl`. One value for the whole row cannot say
+   * that: `rtl` accuses a correct screen and `ltr` excuses a mirrored one. A row
+   * written that way was a **predicted false red** — a correct screen failed by
+   * the gate, in a template twenty-one tasks copy, whose cheapest repair is to
+   * weaken the gate. This project has paid for that twice.
+   *
+   * ## The screen root is not in this record, and that is deliberate
+   *
+   * Its rule is not a row's to state, because it is §8's:
+   *
+   * - `rtl` — the ordinary screen, and what every screen without a scroll box
+   *   must be.
+   * - `ltr` — legal **only** as §8's scroll box, and the box has to prove
+   *   itself: the root carries `data-r-pad` *and* **every** immediate element
+   *   child of it computes `rtl`.
+   *
+   * That second clause is why this is an assertion and not an exemption. It is
+   * strictly stronger than asserting `rtl`, because a mirrored page can never
+   * satisfy it — a mirror is a root whose children are `ltr`. And it closes the
+   * defect §8's stylesheet rule exists for: the attribute form (`dir="ltr"` on
+   * the region, `dir="rtl"` on the one child somebody remembered) left every
+   * dialog mounted beside it LTR, which is the workaround
+   * `write/CreateProcessModal`, `DeleteProcessConfirm`, `ReorderModal`,
+   * `ExportModal` and `ExportMenu` each carry a comment about. Checking one
+   * child — `[data-col]`, the only one hooked — would have gone on missing it.
+   *
+   * The rule holds whether or not a given screen carries `data-r-pad`: a screen
+   * without one has an `rtl` root and never reaches the second clause. So no row
+   * has to guess which screens get the scroll box, which is as well — the
+   * deliverables put it on **every** screen and the plan writes it on two.
+   *
+   * ## What a row may say
+   *
+   * One entry per content hook that is genuinely not `rtl`. `access`'s
+   * `[data-body]` is the case this exists for: the design's only subtitle there
+   * is a `dir="ltr"` mono username, which is an ordinary and correct thing
+   * inside a Persian form. Both halves are verified — an entry naming a hook the
+   * row does not grade fails, and an entry that only restates the `rtl` default
+   * fails, because a deviation that is not one is a hole nobody decided to open.
    *
    * Deliberately not applied to the `focus` and `lift` targets: an LTR field for
-   * an email address, a phone number or a code is an ordinary and correct thing
-   * inside a Persian form, and a gate that red-flagged it would be teaching
-   * twenty-one screens the wrong lesson.
+   * an email address, a phone number or a code is ordinary, and a gate that
+   * red-flagged it would be teaching twenty-one screens the wrong lesson.
    */
-  direction?: PerWidth<'rtl' | 'ltr'>
+  direction?: Partial<Record<ContentHook, PerWidth<'rtl' | 'ltr'>>>
   /** computed on `[data-h1]` */
   h1: Measured & { weight: PerWidth<string> }
   /** computed on `[data-body]` */
@@ -449,31 +525,35 @@ export interface ScreenDesign {
  * from a decided row of `docs/superpowers/ui-normalisation-ledger.md`, and where
  * the two disagree the row says which it took and why.
  *
- * Four screens are **deliberately absent**, because a wrong row is worse than no
- * row for twenty-one tasks that will trust it. `users` and `access` draw no
- * subtitle this shape can grade — Users has no second line at all, and Access's
- * is an `dir="ltr"` mono username, which `direction` (one value for every graded
- * hook) cannot hold beside an RTL column. `signIn` is identical at 1440, 1080
- * and 760, so a row for it would fail `every DESIGN row carries a width-dependent
- * expectation` on the day it was added. The dialogs are not `[data-screen]`
- * regions at all. Each is written up, with every value that *is* settled, in
- * `.superpowers/sdd/ui-harness-preflight-report.md`.
+ * Three screens are **deliberately absent**, because a wrong row is worse than
+ * no row for twenty-one tasks that will trust it. `users` draws no second line
+ * at all, so there is no `[data-body]` to grade and choosing one would be
+ * designing the screen rather than measuring it. `signIn` is identical at 1440,
+ * 1080 and 760, so a row for it would fail `every DESIGN row carries a
+ * width-dependent expectation` on the day it was added. The dialogs are not
+ * `[data-screen]` regions at all. Each is written up, with every value that *is*
+ * settled, in `.superpowers/sdd/ui-harness-preflight-report.md`.
  *
- * ## The one assertion these rows are known to fail, and it is not theirs
+ * ## §8's scroll box: the false red that was predicted and then removed
  *
  * Task 15 moves §8's scroll rule into `base.css` —
  * `[data-r-pad]{direction:ltr}` with `[data-r-pad] > *{direction:rtl}` — so the
  * scrollbar sits on the right. `[data-r-pad]` is the same element as
- * `[data-screen]` on every screen that carries it (it is the scrolling region
- * that paints the field and holds the screen padding), so on those screens the
- * root computes `ltr` while the column, both type hooks, the grid and the card
- * all compute `rtl`. `direction` is one value for the whole row, so no row can
- * state that, and the rows below keep the default `rtl` — right for five of the
- * six graded hooks and wrong for the root. This is a finding against the harness
- * and the plan, not a licence to waive it: see the report. It affects
- * `departments`, `departmentsReader`, `processList`, `processListReader` and
- * `overview`; `summary`, `policy` and `profile` write no `data-r-pad`, which is
- * itself an inconsistency the deliverables do not have.
+ * `[data-screen]` on every screen that carries it, so on those screens the root
+ * computes `ltr` while the column, both type hooks, the grid and the card all
+ * compute `rtl`. Against a single per-row `direction` that was a **correct
+ * screen failed by the gate** — `departments` would have gone red the moment
+ * Task 14 added the attribute, and the red would have read as a defect in the
+ * screen, in a file twenty-one screen checks copy.
+ *
+ * So `direction` is per hook, and the root's own rule is §8's rather than the
+ * row's: `rtl`, or `ltr` **only** as the scroll box, proved — `data-r-pad` on
+ * the root and every immediate child back at `rtl`. No row below states it, no
+ * row has to guess which screens get the pad (the deliverables give it to all of
+ * them and the plan writes it on two), and a mirrored page still cannot satisfy
+ * it, because a mirror is a root whose children are LTR too. See
+ * `ScreenDesign.direction`, and `harness.spec.ts`'s
+ * `§8's scroll box is a legal LTR root, and only when it proves itself`.
  */
 export const DESIGN = {
   departments: {
@@ -698,6 +778,34 @@ export const DESIGN = {
     // 19px tick, and a 1×1 clipped box is the wrong thing to measure a focus
     // indicator on. No `lift`: F7's fix is a hover *fill* (`hover:bg-tile-v4`),
     // not a transform — §4.6 lifts cards, not rows inside one.
+  },
+
+  /**
+   * Task 20, the Access screen — `Inja Panel.dc.html:1286`.
+   *
+   * **This row exists because `direction` became per hook.** The design's only
+   * second line here is the mono username, `<span dir="ltr">` — an ordinary and
+   * correct latin island inside a Persian form — and while one `direction` value
+   * covered the whole row, saying so would have excused a mirrored column at the
+   * same time. `direction: { body: 'ltr' }` says it about the one hook it is
+   * true of, and the column, the title and the card are still held to `rtl`.
+   */
+  access: {
+    field: FIELD,
+    column: '820px',                       // --width-access
+    columnWidth: { 1440: '820px', 1080: '820px', 760: '732px' },
+    padding: { 1440: '30px 40px', 1080: '30px 40px', 760: '18px 14px' },
+    h1: { size: '22px', weight: '800', color: TITLE_ON_FIELD },
+    // `<div dir="ltr" style="font-family:<mono>;font-size:12.5px;color:#C9BEEE;
+    // text-align:start">{{ su.user }}</div>`. `align` is written out because the
+    // deliverable writes it out — an LTR run inside an RTL column would otherwise
+    // be read as end-aligned by anyone skimming, and `start` is what it is.
+    body: { size: '12.5px', color: SUBTITLE_ON_FIELD, family: FONT_MONO, align: 'start' },
+    direction: { body: 'ltr' },
+    // `border:1px solid #EDE5F5;border-radius:16px;padding:18px;background:var(--card)`
+    // — a white panel on a sub-panel edge, and no shadow: §6.8's four cards sit
+    // flat, unlike the cards on the list screens.
+    card: { radius: '16px', border: SUBPANEL_BORDER, background: SURFACE },
   },
 
   /**
@@ -1622,6 +1730,48 @@ const textRuns = async (page: Page, root: string, waived: readonly string[]) => 
 )
 
 /* ------------------------------------------------------------------ *
+ * §8's scroll box — the one root a Persian screen may write `ltr` on
+ * ------------------------------------------------------------------ */
+
+/** Whether the screen root is §8's scroll box, and which children escaped it. */
+interface ScrollBox {
+  /** the root carries `data-r-pad`, the selector §8's rule actually targets */
+  isPad: boolean
+  /** immediate element children that did **not** come back to `rtl` */
+  escaped: string[]
+}
+
+/**
+ * The two halves of `[data-r-pad]{direction:ltr} [data-r-pad] > *{direction:rtl}`.
+ *
+ * Read only when the root computes `ltr`, which on a Persian application is
+ * either §8's scroll box or the whole page mirrored — and nothing else this
+ * file measures can tell those apart. `isPad` separates them by the attribute
+ * the stylesheet rule is written against, and `escaped` proves the half that
+ * makes the box harmless: **every** immediate child came back, not just the one
+ * that happens to be hooked.
+ *
+ * `el.children` is elements only, so text nodes and comments are not candidates
+ * — and they are not, because `direction` on a text node is its parent's.
+ */
+const scrollBox = async (page: Page, selector: string): Promise<ScrollBox> => samePage(
+  page,
+  await page.locator(selector).first().evaluate((el) => ({
+    nav: window.__uiHarnessPage?.() ?? null,
+    value: {
+      isPad: el.hasAttribute('data-r-pad'),
+      escaped: Array.from(el.children)
+        .filter((child) => getComputedStyle(child).direction !== 'rtl')
+        .map((child) => {
+          const cls = child.getAttribute('class')
+          return `<${child.tagName.toLowerCase()}${cls ? ` class="${cls}"` : ''}>`
+        }),
+    },
+  })),
+  `reading §8's scroll-box contract on \`${selector}\``,
+)
+
+/* ------------------------------------------------------------------ *
  * focus
  * ------------------------------------------------------------------ */
 
@@ -1834,11 +1984,17 @@ export async function expectDesign(page: Page, screen: keyof typeof DESIGN) {
    * The graded hooks, in the order they are measured. Every one gets the
    * `direction` check; see `ScreenDesign.direction` for why the focus and lift
    * targets do not.
+   *
+   * `hook` is the stable name the row's `direction` record is keyed by, and it
+   * is carried beside `what` rather than parsed back out of it: `what` is
+   * whatever reads best in a failure — `data-h1`, or the row's own grid selector
+   * — and keying an override off a human-readable string is how a renamed
+   * message silently turns an override into a no-op.
    */
-  const graded: { what: string; selector: string }[] = []
-  const grade = async (what: string, selector: string) => {
+  const graded: { hook: ContentHook | 'screen'; what: string; selector: string }[] = []
+  const grade = async (hook_: ContentHook, what: string, selector: string) => {
     await hook(page, selector, what)
-    graded.push({ what, selector })
+    graded.push({ hook: hook_, what, selector })
   }
 
   await orNavigated(
@@ -1846,12 +2002,12 @@ export async function expectDesign(page: Page, screen: keyof typeof DESIGN) {
     expect(page.locator(root), `${screen}: \`${root}\` is not visible`).toBeVisible(),
     `waiting for \`${root}\``,
   )
-  graded.push({ what: 'data-screen', selector: root })
+  graded.push({ hook: 'screen', what: 'data-screen', selector: root })
 
   expect(await css(page, root, 'background-color'), `${screen}: field`).toBe(at(d.field))
 
   const col = within('[data-col]')
-  await grade('data-col', col)
+  await grade('col', 'data-col', col)
   expect(await css(page, col, 'max-width'), `${screen}: column max-width`).toBe(at(d.column))
   // The one width-dependent assertion. See `ByWidth` above for why it exists.
   expect(await css(page, col, 'width'), `${screen}: column used width at ${w}px`)
@@ -1879,14 +2035,14 @@ export async function expectDesign(page: Page, screen: keyof typeof DESIGN) {
   }
 
   const h1 = within('[data-h1]')
-  await grade('data-h1', h1)
+  await grade('h1', 'data-h1', h1)
   expect(await css(page, h1, 'font-size'), `${screen}: h1 size`).toBe(at(d.h1.size))
   expect(await css(page, h1, 'font-weight'), `${screen}: h1 weight`).toBe(at(d.h1.weight))
   expect(await css(page, h1, 'color'), `${screen}: h1 colour`).toBe(at(d.h1.color))
   await type('h1', h1, d.h1)
 
   const body = within('[data-body]')
-  await grade('data-body', body)
+  await grade('body', 'data-body', body)
   expect(await css(page, body, 'font-size'), `${screen}: body size`).toBe(at(d.body.size))
   expect(await css(page, body, 'color'), `${screen}: body colour`).toBe(at(d.body.color))
   if (d.body.weight !== undefined) {
@@ -1896,7 +2052,7 @@ export async function expectDesign(page: Page, screen: keyof typeof DESIGN) {
 
   if (d.grid) {
     const grid = within(d.grid.selector ?? '[data-grid]')
-    await grade(d.grid.selector ?? 'data-grid', grid)
+    await grade('grid', d.grid.selector ?? 'data-grid', grid)
     const tracks = await css(page, grid, 'grid-template-columns')
     expect(trackCount(tracks), `${screen}: grid columns at ${w}px (grid-template-columns: ${tracks})`)
       .toBe(atWidth(w, d.grid.columns))
@@ -1935,7 +2091,7 @@ export async function expectDesign(page: Page, screen: keyof typeof DESIGN) {
   if (d.card) {
     const c = d.card
     const card = within('[data-card]')
-    await grade('data-card', card)
+    await grade('card', 'data-card', card)
     if (c.radius !== undefined) {
       expect(await css(page, card, 'border-top-left-radius'), `${screen}: card radius`)
         .toBe(at(c.radius))
@@ -1953,17 +2109,73 @@ export async function expectDesign(page: Page, screen: keyof typeof DESIGN) {
       .toBe(at(c.background))
   }
 
-  const direction = at<'rtl' | 'ltr'>(d.direction ?? RTL)
-  for (const { what, selector } of graded) {
+  /* ---- direction, per hook. See `ScreenDesign.direction`. ---- */
+  const overrides = d.direction ?? {}
+  const overridden = Object.keys(overrides) as ContentHook[]
+
+  // Both halves of "a deviation must be real". An override on a hook this row
+  // does not grade cannot ever fire, and one that restates `rtl` announces a
+  // deviation there is none of — either way a reviewer reads a claim the run
+  // does not make. Same rule, and the same reason, as `contrastWaived`.
+  const gradedHooks = new Set(graded.map((g) => g.hook))
+  expect(
+    overridden.filter((h) => !gradedHooks.has(h)),
+    `${screen}: \`direction\` names hooks this row does not grade. An override on a hook that ` +
+    'is never measured is a sentence in the row that nothing keeps honest — delete it, or add ' +
+    'the hook it was written for.',
+  ).toEqual([])
+  expect(
+    overridden.filter((h) => WIDTHS.every((w) => atWidth(w, overrides[h]!) === RTL)),
+    `${screen}: \`direction\` names a hook and then states the default. Every hook is \`rtl\` ` +
+    'unless the row says otherwise, so this reads as a deviation and is not one; the next ' +
+    'person to change that element will trust it. Delete the entry.',
+  ).toEqual([])
+
+  for (const { hook: which, what, selector } of graded) {
+    const drawn = await css(page, selector, 'direction')
+
+    if (which === 'screen') {
+      // The root's rule is §8's, not the row's: `rtl`, or `ltr` proved to be
+      // the scroll box. `rtl` is the ordinary answer and costs nothing.
+      if (drawn === RTL) continue
+      const box = await scrollBox(page, root)
+      expect(
+        box.isPad,
+        `${screen}: data-screen direction — the application is Persian and every screen ` +
+        'inherits `rtl` from `index.html`, so nothing declares it and nothing used to measure ' +
+        'it. This root computes `ltr` and it is **not** §8\'s scroll box: it carries no ' +
+        '`data-r-pad`, so no rule flips its children back and the whole page is mirrored — ' +
+        'headings to the other margin, cards in the reverse order, chevrons pointing the wrong ' +
+        'way, the sentence-final period on the wrong side — while no length, colour, weight, ' +
+        'radius or track count in this file moves. The scroll box is the one legal LTR root and ' +
+        'it has to prove itself; see `ScreenDesign.direction`.',
+      ).toBe(true)
+      expect(
+        box.escaped,
+        `${screen}: data-screen direction — this root is §8's scroll box (\`data-r-pad\`, ` +
+        '`direction:ltr` so the scrollbar sits on the right), but the rule that flips its ' +
+        'children back did not reach all of them, so those subtrees are mirrored. That is the ' +
+        'O1 defect verbatim: the attribute form flipped back the one child somebody remembered ' +
+        'and every dialog mounted beside it stayed LTR, which is the workaround five files in ' +
+        '`src/write/` each carry a comment about. The rule is `[data-r-pad] > * { direction: ' +
+        'rtl }` and it has to be the rule, not two attributes. An island that really must read ' +
+        'LTR nests one level deeper, inside `[data-col]`, as every other LTR island in this ' +
+        'codebase does.',
+      ).toEqual([])
+      continue
+    }
+
     expect(
-      await css(page, selector, 'direction'),
+      drawn,
       `${screen}: ${what} direction — the application is Persian and every screen inherits ` +
       '`rtl` from `index.html`, so nothing declares it and nothing used to measure it. A `dir` ' +
-      'on a screen root mirrors the whole page — headings to the other margin, cards in the ' +
-      'reverse order, chevrons pointing the wrong way, the sentence-final period on the wrong ' +
-      'side — and moves no length, colour, weight, radius or track count in this file. If the ' +
-      'flip is deliberate, say so in the row\'s `direction`.',
-    ).toBe(direction)
+      'inside the column mirrors everything under it — headings to the other margin, cards in ' +
+      'the reverse order, chevrons pointing the wrong way, the sentence-final period on the ' +
+      'wrong side — and moves no length, colour, weight, radius or track count in this file. ' +
+      `If the flip is deliberate — a latin id, a phone number, a mono username — say so as ` +
+      `\`direction: { ${which}: 'ltr' }\` in the row, where a reviewer reads it. Do not state ` +
+      'it for the whole row: that would excuse a mirrored page as well as a latin word.',
+    ).toBe(at<'rtl' | 'ltr'>(overrides[which] ?? RTL))
   }
 
   const { runs, deadWaivers } = await textRuns(page, root, d.contrastWaived ?? [])
