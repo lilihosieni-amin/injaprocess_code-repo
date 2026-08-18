@@ -1343,9 +1343,9 @@ const PENDING: string[] = [
   'bg-tile-v5', 'bg-disc-coral', 'bg-disc-violet', 'bg-line-divider',
   'border-line-divider', 'bg-line-row', 'bg-line-filter', 'border-line-filter',
   'bg-border-pick', 'text-fs-display', 'text-fs-h1', 'text-fs-h2',
-  'text-fs-h3', 'text-fs-h4', 'text-fs-h5', 'text-fs-lg',
+  'text-fs-h3', 'text-fs-h4', 'text-fs-h5',
   'text-fs-xxs', 'text-fs-micro', 'text-fs-doc-base', 'text-fs-doc-h1',
-  'text-fs-doc-title', 'text-fs-doc-step', 'text-fs-doc-body', 'text-fs-menu',
+  'text-fs-doc-title', 'text-fs-doc-step', 'text-fs-doc-body',
   'text-fs-numeral', 'text-fs-stat', 'text-fs-steps-title', 'text-fs-display-hand',
   'text-fs-stat-sm', 'text-fs-body-lead', 'text-fs-nano', 'text-fs-badge-sm',
   'text-fs-tag', 'text-fs-h1-reader-home', 'text-fs-h1-reader-list', 'text-fs-h1-reader-dept',
@@ -1356,8 +1356,8 @@ const PENDING: string[] = [
   'text-role-body',
   'text-role-title', 'text-role-hero',
   'font-sans', 'font-regular', 'leading-snug', 'leading-looser',
-  'tracking-eyebrow', 'tracking-display', 'rounded-badge', 'rounded-input',
-  'rounded-pill', 'rounded-round', 'shadow-sheet', 'shadow-drawer',
+  'tracking-eyebrow', 'tracking-display', 'rounded-badge',
+  'rounded-pill', 'shadow-sheet', 'shadow-drawer',
   'shadow-card-dark', 'shadow-stat-dark', 'shadow-guide-hover', 'shadow-ring-flash',
   'shadow-conflict-dot', 'shadow-fab', 'p-screen-x', 'p-screen-y',
   'p-topbar', 'p-half', 'gap-topbar', 'px-reader-x',
@@ -1370,15 +1370,15 @@ const PENDING: string[] = [
   'h-tile-reader', 'w-glyph', 'h-glyph', 'w-glyph-reader',
   'h-glyph-reader', 'w-iconbtn', 'h-iconbtn', 'w-iconbtn-reader',
   'h-iconbtn-reader', 'w-fab', 'h-fab', 'w-fab-reader',
-  'h-fab-reader', 'w-tick', 'h-tick', 'w-tick-nested',
+  'h-fab-reader', 'w-tick-nested',
   'h-tick-nested', 'max-w-departments', 'max-w-summary', 'max-w-doc',
   'max-w-drawer', 'max-w-reader', 'max-w-profile', 'max-w-steps',
   'max-w-access', 'max-w-audit', 'duration-fast', 'duration-chev',
-  'p-compose', 'rounded-tick', 'rounded-tick-nested', 'w-tick-glyph',
-  'h-tick-glyph', 'w-tick-glyph-nested', 'h-tick-glyph-nested', 'gap-tick-row',
-  'py-tick-row-y', 'py-tick-nested-y', 'px-radio-x', 'py-dropdown-y-dialog',
-  'py-dropdown-y-filter', 'px-dropdown-x-filter', 'p-popover', 'gap-option',
-  'py-option-y', 'max-h-popover', 'px-stat-x', 'min-w-stat',
+  'p-compose', 'rounded-tick-nested',
+  'w-tick-glyph-nested', 'h-tick-glyph-nested',
+  'py-tick-nested-y', 'py-dropdown-y-dialog',
+  'py-dropdown-y-filter', 'px-dropdown-x-filter',
+  'py-option-y', 'px-stat-x', 'min-w-stat',
   'py-stat-y-grid', 'px-stat-x-grid', 'my-stat-grid', 'mt-stat-label',
   'py-tab-y-audit', 'min-w-tab', 'gap-tab-flow', 'py-note-y',
   'px-note-x', 'h-count', 'min-w-count', 'max1080:hidden',
@@ -1392,17 +1392,16 @@ const PENDING: string[] = [
   // scale's reserved rungs (L-42) and nothing in this plan portals a popover or
   // draws a tooltip. That is a decision for whoever empties the list, not a
   // surprise for them to discover.
-  'z-dropdown', 'z-chrome', 'z-floating', 'z-drawer',
+  //
+  // `z-dropdown` and `text-role-textarea` are already gone from this list:
+  // Task 8's Dropdown and TextField landed and consumed them, which is the
+  // mechanism working — a line comes off when its consumer arrives.
+  'z-chrome', 'z-floating', 'z-drawer',
   'z-modal', 'z-popover', 'z-tooltip', 'z-toast',
   'ease-css', 'duration-row', 'rounded-bar', 'shadow-feature',
   'max-w-subtitle', 'max-w-intro', 'min-h-chiprow',
   'bg-warn-edge', 'border-warn-edge', 'text-warn-fg',
-  // src/ui/fieldFrame.ts's FIELD_TYPE_TEXTAREA still writes `text-role-dense`,
-  // and its own docstring records why: roles.css and tailwind.config.js were
-  // frozen to that task, so it took the closest wrong thing and referred the
-  // name. This pass mints the name; switching the constant over is Task 7's
-  // change, because src/ui/fields.test.tsx pins the class on the element.
-  'text-role-textarea', 'gap-table-row-mobile',
+  'gap-table-row-mobile',
   'w-menu-more', 'h-menu-more', 'w-login',
   'w-dot', 'h-dot', 'w-chev', 'h-chev', 'w-glyph-tile', 'h-glyph-tile',
   // …and the type-on-the-violet-field group. Unconsumed only because Tasks 15,
@@ -1462,7 +1461,7 @@ const PENDING: string[] = [
  * back without needing this edit.
  * ---------------------------------------------------------------------------
  */
-const CEILING = 264 // set 2026-08-18 against PENDING.length === 254
+const CEILING = 247 // LOWERED 2026-08-18 against PENDING.length === 237
 
 describe('Owner ruling R11 — a named utility has a component that uses it', () => {
   it('reads a real, sizeable set of component files — tests AND test helpers excluded', () => {

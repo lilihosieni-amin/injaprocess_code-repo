@@ -447,6 +447,21 @@
      It sits here and not beside its five siblings in the §5.2 block above
      because that block's count is pinned at exactly 42, twice, in
      tokens.test.ts, and that 42 is the record of a different pass. Same
-     component, same naming, one block further down. */
+     component, same naming, one block further down.
+
+     DO NOT BORROW THIS FOR THE OTHER 7px GAPS. `gap:7px` appears 15 times in
+     the panel and 7 in the reader, and those 22 sites are at least FIVE roles,
+     not one — audited element by element:
+       · the stat numeral and its conflict dot  — panel 221. ONE site. This token.
+       · a button or trigger's icon-to-label gap — panel 1012, 1211, 1296, 1519,
+         1638; reader 157, 202, 750. Eight sites, and Button/Dropdown's to name.
+       · a chip, badge or pill row              — panel 240, 691, 879, 923, 1314,
+         1318; reader 451, 639, 704. Nine sites, and the row's to name.
+       · a list row's COLUMN gap, label to sub  — panel 644; reader 404. A
+         different axis entirely (flex-direction:column).
+       · an inline meta row                     — panel 249, 2025.
+     Naming by value rather than by role is the defect this file's R8 block
+     exists to stop, and one number over five roles is how it happens. Each of
+     the other four mints its own name when its component is built. */
   --gap-stat-dot: 7px;             /* the stat numeral's gap to its conflict dot */
 }
