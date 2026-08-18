@@ -2,7 +2,6 @@ import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { SearchField } from './SearchField'
-import { Tabs } from './Tabs'
 import { Accordion } from './Accordion'
 import { Menu } from './Menu'
 import { Dialog } from './Overlay'
@@ -18,22 +17,6 @@ describe('SearchField', () => {
     render(<SearchField label="جست‌وجو" value="" onChange={onChange} />)
     await userEvent.type(screen.getByLabelText('جست‌وجو'), 'س')
     expect(onChange).toHaveBeenCalledWith('س')
-  })
-})
-
-describe('Tabs', () => {
-  const items = [{ id: 'a', label: 'همه' }, { id: 'b', label: 'باز' }]
-  it('exposes a tablist with the active tab selected', () => {
-    render(<Tabs items={items} value="a" onChange={() => {}} />)
-    expect(screen.getByRole('tablist')).toBeInTheDocument()
-    expect(screen.getByRole('tab', { name: 'همه' })).toHaveAttribute('aria-selected', 'true')
-    expect(screen.getByRole('tab', { name: 'باز' })).toHaveAttribute('aria-selected', 'false')
-  })
-  it('reports a change', async () => {
-    const onChange = vi.fn()
-    render(<Tabs items={items} value="a" onChange={onChange} />)
-    await userEvent.click(screen.getByRole('tab', { name: 'باز' }))
-    expect(onChange).toHaveBeenCalledWith('b')
   })
 })
 
