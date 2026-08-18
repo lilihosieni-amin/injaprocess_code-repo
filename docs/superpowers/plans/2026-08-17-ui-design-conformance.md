@@ -4694,10 +4694,10 @@ not; `FAB` is the one control whose size the two surfaces genuinely disagree abo
 |---|---|---|
 | `SectionCard` padding `18px`, or `16px` inside a dialog | **18px** | One rule per role. A sub-card is a sub-card; the dialog is already 26px-padded around it. |
 | `SectionCard` eyebrow margin `12px`, or `14px` when the body is a list | **12px** | Same. The 14px is one screen's local adjustment. |
-| `StatTile` value `27px` (home), `23px` centred (audit), `21px/lh 1.2` start-aligned (activity) | **two skins: `feature` 27px, `compact` 23px centred** | Not one role with three treatments — a header stat over the violet field and a stat in a 4-up grid are different roles with different containers. The 21px start-aligned variant normalises into `compact`. |
+| `StatTile` value `27px` (home), `23px` centred (audit), `21px/lh 1.2` start-aligned (activity) | **two skins: `feature` 27px (`--fs-stat`), `compact` 21px centred (`--fs-stat-sm`)** | Not one role with three treatments — a header stat over the violet field and a stat in a 4-up grid are different roles with different containers. **Owner ruling R14 settles ledger L-29 at 21px**, closing the 23-or-21 question this row used to leave open: 23px is `--fs-h1`, the *process summary title*, and a stat numeral borrowing a heading token is the drift this rebuild exists to end. `--fs-stat-sm` was minted for exactly this numeral. The 23px centred variant normalises into `compact`. |
 | Audit's fourth stat in `#E8A33D` | **`--warn` `#B4690E`** | `#E8A33D` is `--junction-or`, whose palette §1.1 calls "one fixed map, never re-assigned". Amber-as-warning is `--warn`. |
 | FAB badge ring `#2A1D5E` (panel) vs `#FBF7F1` (reader) | **`--ink` `#2A1D5E` on both** | The ring exists to cut the badge out of the field behind it, and §6.0/§6.17 agree the field is `#2A1D5E` on both surfaces. §6.17 defect 5 already calls the reader's cream ring "a stray light halo". |
-| `Timeline` rail line `min-height:{{h.lineH}}px`, computed per node | **`min-h-[14px]` with `flex-1`** | A prototype layout constant with no design meaning; the row's own `padding-bottom:14px` sets the rhythm. |
+| `Timeline` rail line `min-height:{{h.lineH}}px`, computed per node | **`min-h-s7` with `flex-1`** | A prototype layout constant with no design meaning; the row's own `padding-bottom:14px` — `pb-s7`, the same rung — sets the rhythm. |
 
 **Files:**
 - Create: `ui/src/ui/SectionCard.tsx`, `ui/src/ui/StatTile.tsx`, `ui/src/ui/NavTabTray.tsx`, `ui/src/ui/Timeline.tsx`, `ui/src/ui/FAB.tsx`, `ui/src/ui/composites.test.tsx`
@@ -4707,16 +4707,40 @@ not; `FAB` is the one control whose size the two surfaces genuinely disagree abo
 **Interfaces:**
 
 - Consumes:
-  - `useSurface()` / `SurfaceProvider` from `ui/src/ui/surface.tsx` (Task 5).
+  - `SurfaceProvider` from `ui/src/ui/surface.tsx` (Task 5) — in `composites.test.tsx`, to
+    render the FAB on each surface. **No component in this task calls `useSurface()`**:
+    `w-fab`/`h-fab` read `--role-fab`, so the surface reaches the FAB through CSS and no
+    call site has to know which one it is in (`tailwind.config.js`'s own R3 comment).
   - `toFa` from `ui/src/lib/format.ts`.
-  - Task 2's utilities: `rounded-card` `rounded-tile` `rounded-button` `rounded-tool` `rounded-pill` `rounded-round` · `text-fs-stat` `text-fs-h1` `text-fs-sm` `text-fs-sm2` `text-fs-caption` `text-fs-xs` `text-fs-xxs` · `border-border-card` `rgba(42,29,94,.07)` · `border-border-current` `#EDE5F5` · `bg-surface-sub` `#FBF9FE` · `bg-tile-v2` `#F4EFFB` · `bg-tile-v4` `#F8F4FE` · `bg-tile-ok` `bg-tile-warn` `bg-tile-c` · `text-icom-control` `#8A5A00` · `text-body-ink` `#5a5175` · `shadow-card` · `shadow-conflict-dot` (`--ring-conflict-dot`, `0 0 0 3px #FFE4E1`) · `shadow-fab` (Task 1's role — §6.15's `0 6px 14px rgba(16,10,40,.22), 0 18px 40px -14px rgba(250,90,82,.9)`, which no token carries).
+  - Task 2's utilities — **every class below already emits today** (compiled from
+    `src/index.css` against the frozen config), with the single exception noted at the end:
+    - radii `rounded-card` `rounded-tile` `rounded-button` `rounded-tool` `rounded-pill` `rounded-round`
+    - type `text-fs-stat` `text-fs-stat-sm` `text-fs-sm` `text-fs-sm2` `text-fs-caption` `text-fs-xs` `text-fs-xxs` · `leading-none` (`--lh-none`) · `leading-normal` (`--lh-normal`, 1.7)
+    - colour, surfaces `bg-card` · `bg-surface-sub` `#FBF9FE` · `bg-tile-v2` `#F4EFFB` · `bg-tile-v4` `#F8F4FE` · `bg-tile-ok` `bg-tile-warn` `bg-tile-c` · `bg-coral` `bg-violet` · `bg-border-current` `#EDE5F5` (the timeline rail, a line drawn as a filled 2px box)
+    - colour, edges `border-border-card` `rgba(42,29,94,.07)` · `border-border-current` `#EDE5F5` · `border-ink` (L-24's cut-out ring)
+    - colour, ink `text-card` `text-violet` `text-ink` `text-conflict` `text-green` `text-warn` `text-muted` `text-faint` · `text-icom-control` `#8A5A00` · `text-body-ink` `#5a5175`
+    - shadow `shadow-card` · `shadow-conflict-dot` (`--ring-conflict-dot`, `0 0 0 3px #FFE4E1`) · `shadow-fab` (`--shadow-fab`, §6.15's `0 6px 14px rgba(16,10,40,.22), 0 18px 40px -14px rgba(250,90,82,.9)` — Task 1 minted it and `boxShadow.fab` carries it)
+    - geometry, from the pre-flight mint (`.superpowers/sdd/ui-primitives-tokens-report.md`)
+      and the `_ds` ladder: `p-s9` `mb-s6` · `px-stat-x` `py-s7` `min-w-stat` `px-stat-x-grid` `py-stat-y-grid` `mt-s2` `w-s4` `h-s4` · `gap-s1` `p-s1` `px-s7` `py-s4` · `gap-s6` `w-s11` `h-s11` `w-half` `min-h-s7` `pb-s7` `mt-half` `mt-s3` `px-note-x` `py-note-y` · `w-fab` `h-fab` `bottom-s10` `right-s10` `-top-half` `-start-half` `min-w-count` `h-count` `px-s3`
+  - stacking `z-floating` (`--role-z-floating`, 1030 — "the comment FAB", L-42). This was
+    the one class in this task that waited on the single minting pass
+    (`.superpowers/sdd/mint-spec.md` §1.1 rung 3, §3); that pass has landed and it now
+    emits `z-index:var(--role-z-floating)`. Nothing here is blocked.
+  - **One value with no token, deliberately left arbitrary.** `gap-[7px]` between the stat
+    numeral and its conflict dot (`design/Inja Panel.dc.html:221`, `display:flex;
+    align-items:center;gap:7px`). `tokens.css` holds two 7px tokens — `--pad-popover` (the
+    dropdown popover's inset) and `--space-stat-label` (the 4-up label's margin-top) — and
+    the R8 block's own rule says a number that already has an owner is minted again under
+    its own name rather than borrowed. Neither the pre-flight nor `mint-spec.md` minted one
+    for this role, so it stays written out and is listed for the owner rather than
+    silently attached to a token that means something else.
 - Produces:
   - `ui/src/ui/SectionCard.tsx` — `function SectionCard({ eyebrow, skin, children, className }: { eyebrow?: string; skin?: 'tint' | 'white'; children: ReactNode; className?: string }): JSX.Element`
   - `ui/src/ui/StatTile.tsx` — `type StatTone = 'violet' | 'ink' | 'conflict' | 'ok' | 'warn'`; `function StatTile({ value, label, tone, dot, skin, className }: { value: number | string; label: string; tone?: StatTone; dot?: boolean; skin?: 'feature' | 'compact'; className?: string }): JSX.Element`. A `number` is run through `toFa`; a `string` is passed through, so a caller that has already formatted a range is not double-converted.
   - `ui/src/ui/NavTabTray.tsx` — `interface NavTab { id: string; label: string }`; `function NavTabTray({ tabs, value, onChange, label, stretch, className }: { tabs: NavTab[]; value: string; onChange: (id: string) => void; label: string; stretch?: boolean; className?: string }): JSX.Element`. A real `tablist`, for real tab sets only — **the top bar's nav is links and does not use this** (Task 12).
   - `ui/src/ui/Timeline.tsx` — `type TimelineState = 'done' | 'awaiting' | 'rejected' | 'pending'`; `interface TimelineNode { id: string; name: string; role: string; state: TimelineState; stateLabel: string; mark?: string; note?: string }`; `function Timeline({ nodes, label }: { nodes: TimelineNode[]; label: string }): JSX.Element`
   - `ui/src/ui/FAB.tsx` — `function FAB({ label, count, onClick, className }: { label: string; count?: number; onClick: () => void; className?: string }): JSX.Element`
-  - The FAB's comment glyph is inlined here and **folded into `Icon` by Task 11, step 12.**
+  - The FAB's comment glyph is inlined here and **folded into `Icon` by Task 11, step 8.**
 
 - [ ] **Step 1: Write the failing test**
 
@@ -4766,12 +4790,17 @@ describe('StatTile', () => {
     expect(screen.getByText('۱ تا ۵')).toBeInTheDocument()
   })
 
-  it('reads at 27px as a header stat and 23px in a grid', () => {
+  it('reads at 27px as a header stat and 21px in a grid, on the stat scale both times', () => {
+    // R14 / L-29 — the 4-up numeral is `--fs-stat-sm` (21px) and NOT `--fs-h1`
+    // (23px, the process summary title). Two points apart, both plausible on
+    // screen, and only one of them is a stat: which is why this is asserted by
+    // class and not by size. The failure guarded against is a stat numeral
+    // wearing a heading token.
     const { unmount } = render(<StatTile value={9} label="دپارتمان" />)
     expect(screen.getByText('۹')).toHaveClass('text-fs-stat')
     unmount()
     render(<StatTile value={9} label="دپارتمان" skin="compact" />)
-    expect(screen.getByText('۹')).toHaveClass('text-fs-h1')
+    expect(screen.getByText('۹')).toHaveClass('text-fs-stat-sm')
   })
 
   it('carries the conflict dot with its ring only when asked', () => {
@@ -4854,12 +4883,18 @@ describe('Timeline', () => {
 })
 
 describe('FAB', () => {
-  it('is 52px in the panel and 56px in the reader', () => {
+  it('takes its box from the surface role rather than from a branch of its own', () => {
+    // R3 — 52px in the panel and 56px in the reader, and `--role-fab` is what
+    // holds the difference: one class on both surfaces, resolved by CSS, so the
+    // component never asks which surface it is in. The 52/56 split is asserted
+    // where it lives, in src/ui/surface.test.tsx. What is asserted here is that
+    // the FAB reads the ROLE and not one end of it — `w-fab-reader` on the
+    // reader would paint the right number today and stop tracking the role.
     const { unmount } = on('panel', <FAB label="کامنت تازه" onClick={() => {}} />)
-    expect(screen.getByRole('button')).toHaveClass('w-[52px]', 'h-[52px]')
+    expect(screen.getByRole('button')).toHaveClass('w-fab', 'h-fab')
     unmount()
     on('reader', <FAB label="کامنت تازه" onClick={() => {}} />)
-    expect(screen.getByRole('button')).toHaveClass('w-[56px]', 'h-[56px]')
+    expect(screen.getByRole('button')).toHaveClass('w-fab', 'h-fab')
   })
 
   it('says how many are waiting, in Persian, in its accessible name', () => {
@@ -4877,11 +4912,17 @@ describe('FAB', () => {
     expect(screen.getByRole('button', { name: 'کامنت تازه' })).toBeInTheDocument()
   })
 
-  it('sits where the design pins it', () => {
+  it('sits where the design pins it, on the stacking ladder’s floating rung', () => {
     // §8 — the FAB is one of the surviving physical pins: bottom:22px; right:22px;
-    // left:auto, reproduced as written rather than mirrored.
+    // left:auto, reproduced as written rather than mirrored. The 22px is
+    // `--space-10`, the _ds ladder's own rung, so the pin is named without the
+    // physical spelling changing.
+    //
+    // `z-floating` is L-42's rung for exactly this control (1030). Tailwind's
+    // own `z-40` emits and would look correct in every test and every build —
+    // it is the number nothing in this design system chose.
     on('panel', <FAB label="کامنت تازه" onClick={() => {}} />)
-    expect(screen.getByRole('button')).toHaveClass('fixed', 'bottom-[22px]', 'right-[22px]', 'left-auto', 'z-40')
+    expect(screen.getByRole('button')).toHaveClass('fixed', 'bottom-s10', 'right-s10', 'left-auto', 'z-floating')
   })
 })
 ```
@@ -4922,10 +4963,10 @@ export function SectionCard({
   return (
     <section
       aria-labelledby={eyebrow === undefined ? undefined : id}
-      className={`border rounded-card p-[18px] ${shell} ${className}`}
+      className={`border rounded-card p-s9 ${shell} ${className}`}
     >
       {eyebrow !== undefined && (
-        <p id={id} className="m-0 mb-[12px] text-fs-xxs font-bold text-muted">{eyebrow}</p>
+        <p id={id} className="m-0 mb-s6 text-fs-xxs font-bold text-muted">{eyebrow}</p>
       )}
       {children}
     </section>
@@ -4969,18 +5010,28 @@ export function StatTile({
   className?: string
 }) {
   const shell = skin === 'feature'
-    ? 'rounded-card px-[20px] py-[14px] min-w-[96px]'
-    : 'rounded-tile px-[17px] py-[15px] text-center'
-  const size = skin === 'feature' ? 'text-fs-stat' : 'text-fs-h1'
+    ? 'rounded-card px-stat-x py-s7 min-w-stat'
+    : 'rounded-tile px-stat-x-grid py-stat-y-grid text-center'
+  // R14 / L-29 — 27px and 21px, both off the stat scale. Not `text-fs-h1`:
+  // that is the process summary title, and it is not what a stat numeral is.
+  const size = skin === 'feature' ? 'text-fs-stat' : 'text-fs-stat-sm'
   return (
     <div className={`bg-card border border-border-card shadow-card ${shell} ${className}`}>
+      {/* `gap-[7px]` is the one value in this task with no token: it is the
+          design's own `gap:7px` (Inja Panel.dc.html:221), and both 7px tokens
+          the theme holds — `--pad-popover` and `--space-stat-label` — were
+          minted for other roles. Borrowing one would put this gap behind a name
+          that means something else. Listed in the Interfaces block above. */}
       <div className={`flex items-center gap-[7px] ${skin === 'compact' ? 'justify-center' : ''}`}>
         <span className={`font-extrabold leading-none ${size} ${TONE[tone]}`}>
           {typeof value === 'number' ? toFa(value) : value}
         </span>
-        {dot && <span data-dot aria-hidden className="w-[8px] h-[8px] flex-none rounded-round bg-coral shadow-conflict-dot" />}
+        {dot && <span data-dot aria-hidden className="w-s4 h-s4 flex-none rounded-round bg-coral shadow-conflict-dot" />}
       </div>
-      <div className="mt-[5px] text-fs-xs font-semibold text-muted">{label}</div>
+      {/* `mt-s2` is 5px — the header tile's own `margin-top:5px`
+          (Inja Panel.dc.html:213). `--space-stat-label` is the 4-up tile's 7px
+          and is NOT this; see the note in the sweep report. */}
+      <div className="mt-s2 text-fs-xs font-semibold text-muted">{label}</div>
     </div>
   )
 }
@@ -5040,7 +5091,7 @@ export function NavTabTray({
       role="tablist"
       aria-label={label}
       onKeyDown={onKeyDown}
-      className={`inline-flex gap-[4px] p-[4px] rounded-button bg-tile-v2 ${className}`}
+      className={`inline-flex gap-s1 p-s1 rounded-button bg-tile-v2 ${className}`}
     >
       {tabs.map((t) => {
         const active = t.id === value
@@ -5052,7 +5103,7 @@ export function NavTabTray({
             aria-selected={active}
             tabIndex={active ? 0 : -1}
             onClick={() => onChange(t.id)}
-            className={`px-[14px] py-[8px] rounded-tool border-0 cursor-pointer text-fs-sm2 font-bold ${stretch ? 'flex-1' : ''} ${active ? 'bg-violet text-card' : 'bg-transparent text-violet'}`}
+            className={`px-s7 py-s4 rounded-tool border-0 cursor-pointer text-fs-sm2 font-bold ${stretch ? 'flex-1' : ''} ${active ? 'bg-violet text-card' : 'bg-transparent text-violet'}`}
           >
             {t.label}
           </button>
@@ -5104,28 +5155,30 @@ export function Timeline({ nodes, label }: { nodes: TimelineNode[]; label: strin
   return (
     <ol aria-label={label} className="flex flex-col list-none m-0 p-0">
       {nodes.map((n, i) => (
-        <li key={n.id} className="flex gap-[12px]">
+        <li key={n.id} className="flex gap-s6">
           <span className="flex flex-col items-center flex-none">
             <span
               data-node-dot
               aria-hidden
-              className={`w-[26px] h-[26px] inline-flex items-center justify-center rounded-round text-fs-xxs font-bold ${DOT[n.state]}`}
+              className={`w-s11 h-s11 inline-flex items-center justify-center rounded-round text-fs-xxs font-bold ${DOT[n.state]}`}
             >
               {n.mark ?? toFa(i + 1)}
             </span>
+            {/* `min-h-s7` is the R8 row's 14px: the same rung as the body's own
+                `pb-s7` below, which is what sets the rhythm. */}
             <span
               data-node-line
               aria-hidden
-              className={`flex-1 w-[2px] min-h-[14px] ${i === nodes.length - 1 ? 'bg-transparent' : 'bg-border-current'}`}
+              className={`flex-1 w-half min-h-s7 ${i === nodes.length - 1 ? 'bg-transparent' : 'bg-border-current'}`}
             />
           </span>
-          <div className="pb-[14px] min-w-0">
+          <div className="pb-s7 min-w-0">
             <p className="m-0 text-fs-sm font-bold text-ink">
               {n.name} <span className="text-fs-xxs font-normal text-muted">{n.role}</span>
             </p>
-            <p className={`m-0 mt-[2px] text-fs-caption font-semibold ${STATE[n.state]}`}>{n.stateLabel}</p>
+            <p className={`m-0 mt-half text-fs-caption font-semibold ${STATE[n.state]}`}>{n.stateLabel}</p>
             {n.note !== undefined && (
-              <p className="m-0 mt-[6px] px-[11px] py-[9px] rounded-tool bg-tile-v4 text-fs-caption text-body-ink leading-[1.7]">
+              <p className="m-0 mt-s3 px-note-x py-note-y rounded-tool bg-tile-v4 text-fs-caption text-body-ink leading-normal">
                 {n.note}
               </p>
             )}
@@ -5140,7 +5193,6 @@ export function Timeline({ nodes, label }: { nodes: TimelineNode[]; label: strin
 Create `ui/src/ui/FAB.tsx`:
 
 ```tsx
-import { useSurface } from './surface'
 import { toFa } from '../lib/format'
 
 /**
@@ -5148,12 +5200,21 @@ import { toFa } from '../lib/format'
  * one control whose size the two deliverables genuinely disagree about, and the
  * disagreement is deliberate rather than drift.
  *
+ * The size is `w-fab h-fab` on both surfaces and nothing here branches on the
+ * surface: those read `--role-fab`, which is `--size-fab` under `:root` and
+ * `--size-fab-reader` under `[data-surface='reader']`. That is R3's whole
+ * arrangement — the config's own comment puts it as "one class is 48/40/52 in
+ * the panel and 54/42/56 in the reader without a single call site knowing which
+ * surface it is in" — so this component does not call `useSurface()` at all.
+ *
  * The badge's 2px ring is `--ink` on both surfaces. The reader deliverable rings
  * it in cream `#FBF7F1` over a `#2A1D5E` field — §6.17 calls that a stray light
  * halo, and R8 says a deliverable contradicting itself is a defect, not a spec.
  *
  * §8 — `bottom:22px; right:22px; left:auto` is one of the physical pins the
- * design keeps, reproduced as written.
+ * design keeps, reproduced as written; the 22px is `--space-10`, so the pin is
+ * named without its spelling changing. `z-floating` is L-42's rung for a
+ * floating control (1030).
  */
 export function FAB({
   label, count = 0, onClick, className = '',
@@ -5163,16 +5224,15 @@ export function FAB({
   onClick: () => void
   className?: string
 }) {
-  const box = useSurface() === 'reader' ? 'w-[56px] h-[56px]' : 'w-[52px] h-[52px]'
   return (
     <button
       type="button"
       onClick={onClick}
       aria-label={count > 0 ? `${label}، ${toFa(count)} مورد` : label}
-      className={`fixed bottom-[22px] right-[22px] left-auto z-40 inline-flex items-center justify-center rounded-round bg-coral text-card border-0 cursor-pointer shadow-fab ${box} ${className}`}
+      className={`fixed bottom-s10 right-s10 left-auto z-floating w-fab h-fab inline-flex items-center justify-center rounded-round bg-coral text-card border-0 cursor-pointer shadow-fab ${className}`}
     >
-      {/* Folded into `Icon` by Task 11 — 22×22 @2.2. The design names the size
-          and the stroke but ships no path, and InjaIcons has no comment key. */}
+      {/* Folded into `Icon` by Task 11, step 8 — 22×22 @2.2. The design names the
+          size and the stroke but ships no path, and InjaIcons has no comment key. */}
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
         strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden focusable="false">
         <path d="M21 12a8 8 0 0 1-8 8H7l-4 3v-5.5A8 8 0 0 1 11 4h2a8 8 0 0 1 8 8z" />
@@ -5181,7 +5241,7 @@ export function FAB({
         <span
           data-fab-badge
           aria-hidden
-          className="absolute top-[-2px] start-[-2px] min-w-[21px] h-[21px] px-[6px] inline-flex items-center justify-center rounded-pill bg-violet text-card text-fs-xxs font-bold border-2 border-ink"
+          className="absolute -top-half -start-half min-w-count h-count px-s3 inline-flex items-center justify-center rounded-pill bg-violet text-card text-fs-xxs font-bold border-2 border-ink"
         >
           {toFa(count)}
         </span>
@@ -5194,7 +5254,7 @@ export function FAB({
 - [ ] **Step 6: Run it and watch it pass**
 
 Run: `cd ui && npx vitest run src/ui/composites.test.tsx`
-Expected: PASS — 14 tests.
+Expected: PASS — 15 tests (SectionCard 2, StatTile 3, NavTabTray 3, Timeline 3, FAB 4).
 
 - [ ] **Step 7: Commit**
 
@@ -5233,7 +5293,7 @@ git commit -m "refactor(ui): one tab tray, not two — the unused one goes"
 
 Run: `cd ui && npx tsc -b && npx eslint .`
 Expected: both exit 0. `StatTile`'s `skin` and `SectionCard`'s `skin` are composition
-axes, not density, so `guards.test.ts:164` (which bans `density|size|scale|compact|dense|roomy|variant`)
+axes, not density, so `guards.test.ts`'s F4/F8 guard (which bans `density|size|scale|compact|dense|roomy|variant`)
 stays quiet — check it actually does, because "compact" appears as a *value* of `skin`
 and the regex looks for it as a prop **name** followed by `:`.
 
@@ -5248,23 +5308,54 @@ const need=process.argv.slice(1);
 const miss=need.filter(c=>!new RegExp("\\."+c+"(?![\\w-])").test(css));
 console.log(miss.length?"MISSING "+miss.join(" "):"OK "+need.length+" classes present");
 process.exit(miss.length?1:0);
-' rounded-card rounded-tile rounded-tool rounded-pill rounded-round text-fs-stat text-fs-h1 \
-  text-fs-sm text-fs-sm2 text-fs-caption text-fs-xs text-fs-xxs bg-surface-sub bg-tile-v2 bg-tile-v4 \
-  bg-tile-ok bg-tile-warn bg-tile-c border-border-current border-border-card \
-  text-icom-control text-body-ink shadow-card shadow-conflict-dot shadow-fab
+' rounded-card rounded-tile rounded-button rounded-tool rounded-pill rounded-round \
+  text-fs-stat text-fs-stat-sm text-fs-sm text-fs-sm2 text-fs-caption text-fs-xs text-fs-xxs \
+  leading-none leading-normal \
+  bg-card bg-surface-sub bg-tile-v2 bg-tile-v4 bg-tile-ok bg-tile-warn bg-tile-c \
+  bg-coral bg-violet bg-border-current \
+  border-border-card border-border-current border-ink \
+  text-card text-violet text-ink text-conflict text-green text-warn text-muted text-faint \
+  text-icom-control text-body-ink \
+  shadow-card shadow-conflict-dot shadow-fab \
+  p-s9 mb-s6 px-stat-x py-s7 min-w-stat px-stat-x-grid py-stat-y-grid mt-s2 w-s4 h-s4 \
+  gap-s1 p-s1 px-s7 py-s4 gap-s6 w-s11 h-s11 w-half min-h-s7 pb-s7 mt-half mt-s3 \
+  px-note-x py-note-y \
+  w-fab h-fab bottom-s10 right-s10 -top-half -start-half min-w-count h-count px-s3 \
+  z-floating
 ```
 
-Expected: `OK 25 classes present`. `shadow-fab` and `shadow-conflict-dot` are the two most
-likely misses — the first has no token at all and is a role Task 1 must have added.
+Expected: `OK 75 classes present`.
+
+**This is the whole set of theme-named classes the five components write** — not a sample.
+Tailwind's own utilities (`flex`, `flex-col`, `inline-flex`, `items-center`,
+`justify-center`, `flex-1`, `flex-none`, `text-center`, `min-w-0`, `list-none`, `m-0`,
+`p-0`, `border`, `border-0`, `border-2`, `fixed`, `absolute`, `left-auto`,
+`bg-transparent`, `font-bold`, `font-semibold`, `font-extrabold`, `font-normal`,
+`cursor-pointer`) are left out: they ship with the framework and cannot go missing.
+Everything above resolves to a `var(--…)` this project declares, and every one of them
+**was compiled and confirmed to emit a rule with a non-empty body** while this section was
+written — except one:
+
+**`z-floating` was the one class here that waited on the single minting pass.** It is
+`--role-z-floating` (1030, "the comment FAB"), specified in `.superpowers/sdd/mint-spec.md`
+§1.1/§3. That pass has since landed and the class was re-compiled and confirmed:
+`.z-floating{z-index:var(--role-z-floating)}`. Nothing in this task is blocked. If this
+step ever reports `MISSING z-floating` again, the stacking ladder has been lost from
+`tailwind.config.js` — that is a theme regression to report, not a class to re-mint.
+
+**Do not add a missing utility to `ui/tailwind.config.js`, `ui/src/styles/tokens.css` or
+`ui/src/styles/roles.css`.** Those three are frozen for the duration of this plan and are
+unfrozen exactly once, by the minting pass, for the 23 tokens / 9 roles / 29 keys that pass
+specifies. A miss that is not `z-floating` is a **typo in a component's class string**, and
+the fix is in the component: minting a name to make a misspelling compile is the exact
+failure this rebuild exists to undo. If a genuinely unnamed value turns up, stop and add it
+to `mint-spec.md` rather than to the config.
 
 - [ ] **Step 13: Commit the verification**
 
-Nothing new if green; otherwise fix the theme and:
-
-```
-git add ui/tailwind.config.js ui/src/styles/roles.css
-git commit -m "fix(ui): the FAB shadow and the conflict-dot ring get names"
-```
+Nothing to commit — this step changes no file. Green means the five components and the
+frozen theme agree; `MISSING z-floating` alone means wait for the mint. Anything else is a
+component bug, fixed in the component and folded into the Step 7 or Step 10 commit.
 
 ---
 
@@ -5299,7 +5390,7 @@ place in this plan where a shape is authored rather than quoted.
 
 **Files:**
 - Create: `ui/src/ui/icons/index.tsx`, `ui/src/ui/Icon.tsx`, `ui/src/ui/IconTile.tsx`, `ui/src/ui/Logo.tsx`, `ui/src/ui/icons.test.tsx`
-- Modify: `ui/src/lib/departments.ts` (add `numeralClass` to `deptMeta`), `ui/src/ui/PasswordField.tsx`, `ui/src/ui/Dropdown.tsx`, `ui/src/ui/Pager.tsx`, `ui/src/ui/FAB.tsx` (each swaps its inline SVG for `<Icon>`)
+- Modify: `ui/src/lib/departments.ts` (add `numeralClass` to `deptMeta`), `ui/src/ui/PasswordField.tsx`, `ui/src/ui/Dropdown.tsx`, `ui/src/ui/Pager.tsx`, `ui/src/ui/FAB.tsx` (each swaps its inline SVG for `<Icon>`), `ui/src/ui/Accordion.tsx` (step 9 — its `−`/`+` is the last unicode glyph in `src/ui/`)
 
 **Interfaces:**
 
@@ -5311,7 +5402,7 @@ place in this plan where a shape is authored rather than quoted.
   - Task 2's utilities: `rounded-card` `rounded-tile` `rounded-input` `rounded-feature` · `bg-tile-v` `text-violet` · `bg-tile-c` `text-conflict` · `bg-tile-warn` `text-warn` · `bg-tile-ok` `text-green` · `text-dept-numeral-violet` `#EDE4FA` (`--dept-numeral-violet`) · `text-dept-numeral-coral` `#FBE4E1` (`--dept-numeral-coral`).
 - Produces:
   - `ui/src/ui/icons/index.tsx` — `const ICONS: Record<IconName, ReactNode>`, `type IconName`. Twenty-one keys; the rest arrive with the screen that renders them.
-  - `ui/src/ui/Icon.tsx` — `function Icon({ name, d, px, stroke, className }: { name?: IconName; d?: string; px?: number; stroke?: number; className?: string }): JSX.Element`. `d` wins over `name` (§5.1.2), which is how the nine department paths reach it without joining the set. **`px`, not `size`** — `guards.test.ts:164` forbids a `size` prop on a shared component, and the value here is a pixel box rather than a density.
+  - `ui/src/ui/Icon.tsx` — `function Icon({ name, d, px, stroke, className }: { name?: IconName; d?: string; px?: number; stroke?: number; className?: string }): JSX.Element`. `d` wins over `name` (§5.1.2), which is how the nine department paths reach it without joining the set. **`px`, not `size`** — `guards.test.ts`'s F4/F8 guard forbids a `size` prop on a shared component, and the value here is a pixel box rather than a density.
   - `ui/src/ui/IconTile.tsx` — `function IconTile({ dept, name, d, accent, px, className }: { dept?: string; name?: IconName; d?: string; accent?: 'violet' | 'coral' | 'warn' | 'ok'; px?: number; className?: string }): JSX.Element`
   - `ui/src/ui/Logo.tsx` — `function Logo({ px, radius, className }: { px?: number; radius?: string; className?: string }): JSX.Element`
   - `ui/src/lib/departments.ts` — `deptMeta(code)` gains `numeralClass: string`.
@@ -5464,6 +5555,16 @@ describe('the icon rule', () => {
   it('leaves no unicode glyph standing in for an icon in src/ui/', () => {
     // "No icon font, no PNG icons, no emoji, no unicode-glyph icons", with two
     // sanctioned exceptions that live in src/write/ and src/flow/, not here.
+    //
+    // COMMENTS ARE BLANKED FIRST, and that is not a loophole — it is the
+    // difference between the rule and a spellcheck. `×` is the multiplication
+    // sign this codebase writes every box with (`34×34`, `2×5`, `24×24 box`,
+    // `48×48/radius 14`, `52×52`), `…` is an ellipsis (`transition-…`), `→` is
+    // an arrow in an explanation (`gap-s4 → gap-s99 emits nothing`). Scanned
+    // raw, this test fails on seven lines in src/ui/ today — six of them prose
+    // — and on three of this task's own files, none of which renders anything.
+    // The rule is about what reaches the screen. Blanked rather than deleted so
+    // the line numbers in the failure still point at the real line.
     const dir = join(process.cwd(), 'src/ui')
     const files: string[] = []
     ;(function walk(d: string) {
@@ -5473,16 +5574,30 @@ describe('the icon rule', () => {
         else if (/\.tsx?$/.test(name) && !/\.test\.tsx?$/.test(name)) files.push(p)
       }
     })(dir)
-    const hits = files.flatMap((p) =>
-      readFileSync(p, 'utf8')
+    const blank = (m: string) => m.replace(/[^\n]/g, ' ')
+    // The `[^:"'\`\\]` lookbehind-by-capture keeps `https://` and a `//` inside
+    // a string literal from swallowing the rest of the line.
+    const decomment = (src: string) =>
+      src
+        .replace(/\/\*[\s\S]*?\*\//g, blank)
+        .replace(/(^|[^:"'`\\])\/\/[^\n]*/g, (m, lead: string) => lead + blank(m.slice(lead.length)))
+    const hits = files.flatMap((p) => {
+      const raw = readFileSync(p, 'utf8')
+      const shown = raw.split('\n')
+      return decomment(raw)
         .split('\n')
-        .map((line, i) => ({ p: p.slice(p.indexOf('src/')), n: i + 1, line }))
-        .filter(({ line }) => /[×−⋯…✓✔➜←→↑↓]/.test(line)),
-    )
-    expect(hits.map((h) => `${h.p}:${h.n} ${h.line.trim()}`)).toEqual([])
+        .map((line, i) => ({ p: p.slice(p.indexOf('src/')), n: i + 1, line, raw: shown[i] }))
+        .filter(({ line }) => /[×−⋯…✓✔➜←→↑↓]/.test(line))
+    })
+    expect(hits.map((h) => `${h.p}:${h.n} ${h.raw.trim()}`)).toEqual([])
   })
 
-  it('has folded every inline SVG in src/ui/ into Icon', () => {
+  it('has folded the four inline SVGs Tasks 7–10 left behind into Icon', () => {
+    // Four, named — not "every SVG in src/ui/". `Overlay.tsx`'s close cross,
+    // `SearchField.tsx`'s magnifier, `Button.tsx`'s spinner and `Checkbox.tsx`'s
+    // 13px tick keep theirs: each is drawn by the task that owns it and none is
+    // on this task's Modify list. A test named for all of them would be read as
+    // licence to rewrite four files this task never opened.
     const named = ['PasswordField', 'Dropdown', 'Pager', 'FAB']
     for (const f of named) {
       const src = readFileSync(join(process.cwd(), `src/ui/${f}.tsx`), 'utf8')
@@ -5560,7 +5675,7 @@ import { ICONS, type IconName } from './icons'
 /**
  * One inline SVG for every glyph in the product.
  *
- * `px` rather than `size`: `guards.test.ts:164` forbids a size prop on a shared
+ * `px` rather than `size`: `guards.test.ts`'s F4/F8 guard forbids a size prop on a shared
  * component (F4/F8 puts density on the shell), and this is a pixel box rather
  * than a density anyway — a 12px file chip and a 26px department glyph are two
  * different drawings, not two densities of one.
@@ -5707,9 +5822,16 @@ export function deptMeta(code: string): {
 
 - [ ] **Step 6: Run it and watch the icon half pass**
 
-Run: `cd ui && npx vitest run src/ui/icons.test.tsx -t 'Icon|IconTile|department accent|Logo'`
-Expected: PASS — 10 tests. The two `the icon rule` tests still fail: Tasks 7–10 left four
-inline SVGs behind.
+Run: `cd ui && npx vitest run src/ui/icons.test.tsx`
+Expected: **11 passed, 2 failed, 13 total.** The whole file, not a `-t` slice: the obvious
+filter (`-t 'Icon|IconTile|department accent|Logo'`) does not do what it looks like — the
+pattern is matched against the *full* test name, and `has folded … into Icon` contains
+`Icon`, so the slice would drag in one of the two tests that are supposed to be red and
+report a failure as a surprise.
+
+The 11 green are `Icon` (5), `IconTile` (3), `the department accent map` (1) and `Logo` (2).
+The 2 red are both in `the icon rule`, and both for reasons step 8 and step 9 fix:
+`Accordion.tsx`'s `−`/`+` is still there, and Tasks 7–10 left four inline SVGs behind.
 
 - [ ] **Step 7: Commit**
 
@@ -5721,27 +5843,57 @@ git commit -m "feat(ui): the line-icon set, the glyph tile, and the logo that wa
 - [ ] **Step 8: Fold the four inline SVGs into `Icon`**
 
 Each of Tasks 7–10 inlined the glyph it needed because this task had not run yet. Replace
-them now — four edits, no behaviour change:
+them now — four edits, **no behaviour change and no change to any painted value**.
 
-- `ui/src/ui/PasswordField.tsx`: delete the `EYE` / `EYE_OFF` constants and the `<svg>`
-  wrapper; the button's child becomes
-  `<Icon name={shown ? 'eyeOff' : 'eye'} px={17} />`.
+The four do not all size their glyph the same way, and the swap must follow each file
+rather than impose one shape on all four. Two of them size with a **class** off the token
+scale (`w-reveal-glyph`, `w-chevron`) and two with a **width/height attribute**. Where the
+class is what the file has, `px` must NOT replace it: `px` writes a bare number into the
+component and drops the token, and in `PasswordField`'s case it also turns a Task 7 test
+red — `fields.test.tsx` resolves the glyph's `width` through the CSS cascade and asserts it
+is `var(--size-reveal-glyph)`, which an attribute does not satisfy.
+
+- `ui/src/ui/PasswordField.tsx`: delete the `EYE` / `EYE_OFF` constants and the `<svg>`;
+  the button's child becomes
+  **`<Icon name={shown ? 'eyeOff' : 'eye'} className="w-reveal-glyph h-reveal-glyph" />`.**
+  No `px` (the class carries the 17px) and no `stroke` — `Icon`'s default is 2, which is
+  what `fields.test.tsx` asserts. **Keep the wrapper `<span className="absolute start-s4
+  top-1/2 -translate-y-1/2 inline-flex">`**: the button needs `relative` for its hit area
+  and `relative` and `absolute` are the same property, so the pin lives on the wrapper.
+  The paths in `ICONS.eye` / `ICONS.eyeOff` are byte-identical to the constants being
+  deleted, so `fields.test.tsx`'s strike assertion (`d === 'M3 3l18 18'`) still holds.
 - `ui/src/ui/Dropdown.tsx`: the trigger's chevron becomes
   `<Icon name="chevronDown" px={15} stroke={2.2} className="text-muted" />`; the picked
-  check becomes `<Icon name="check" px={14} stroke={3} className="text-violet" />`.
-- `ui/src/ui/Pager.tsx`: `<Icon name="chevronPrev" px={15} stroke={2.4} />` and
-  `<Icon name="chevronNext" px={15} stroke={2.4} />`.
-- `ui/src/ui/FAB.tsx`: `<Icon name="comment" px={22} stroke={2.2} />`.
+  check becomes `<Icon name="check" px={14} stroke={3} className="text-violet" />`. `px`
+  here, because attributes are what Task 8 wrote — this is a like-for-like swap, not a
+  re-sizing. (`Icon` adds `flex-none`, which both SVGs carry today.)
+- `ui/src/ui/Pager.tsx`: **`<Icon name="chevronPrev" stroke={2.4} className="w-chevron
+  h-chevron" />`** and **`<Icon name="chevronNext" stroke={2.4} className="w-chevron
+  h-chevron" />`** — the class, not `px={15}`: `w-chevron` is `--size-chevron`, the token
+  Task 9 put there deliberately. Delete the `CHEVRON` constant, and **carry its doc comment
+  onto the two `<Icon>` calls**: it is the only written record of why «قبلی» points right
+  in an RTL row, and `table.test.tsx` pins the two `d` values to the two labels. The
+  `d`s in `ICONS.chevronPrev` / `ICONS.chevronNext` are byte-identical to `CHEVRON.prev` /
+  `CHEVRON.next`, so that test does not move.
+- `ui/src/ui/FAB.tsx`: `<Icon name="comment" px={22} stroke={2.2} />` — attributes, as
+  Task 10 wrote them.
 
 - [ ] **Step 9: Run the whole icon suite and watch it pass**
 
 Run: `cd ui && npx vitest run src/ui/icons.test.tsx src/ui/fields.test.tsx src/ui/choices.test.tsx src/ui/table.test.tsx src/ui/composites.test.tsx`
-Expected: PASS — 12 icon tests plus the 56 from Tasks 7–10, all still green. The
-`has folded every inline SVG` test is the one that just turned; the
-`leaves no unicode glyph` test proves `Accordion.tsx`'s `−`/`+` (audit P7) is the only
-thing left in `src/ui/` — **fix it in the same edit**: swap
+Expected: PASS — **all 13 tests in `icons.test.tsx`**, and every test in the four suites
+Tasks 7–10 wrote still green. (A total is not stated for those four: three of them have
+been revised since this section was written, and a number that goes stale is a number that
+gets ignored. What matters is that none of them moves.)
+
+`has folded the four inline SVGs Tasks 7–10 left behind into Icon` is the test step 8 just
+turned. `leaves no unicode glyph standing in for an icon in src/ui/` is the other, and it
+now names exactly one line — `Accordion.tsx`'s `−`/`+` (audit P7), the last unicode glyph
+in `src/ui/`. **Fix it in the same edit**: swap
 `<span aria-hidden>{open ? '−' : '+'}</span>` for
-`<Icon name={open ? 'chevronUp' : 'chevronDown'} px={16} stroke={2.4} />`.
+`<Icon name={open ? 'chevronUp' : 'chevronDown'} px={16} stroke={2.4} />`. The span is
+already `aria-hidden` and `Icon` is too, so the header's accessible name does not change
+and `controls.test.tsx`'s `getByRole('button', { name: 'سرپرست سالن' })` does not move.
 
 - [ ] **Step 10: Commit**
 
@@ -5791,17 +5943,31 @@ process.exit(miss.length?1:0);
   text-dept-numeral-violet text-dept-numeral-coral
 ```
 
-Expected: `OK 15 classes present`. The two numeral tints are the likely misses — they are
-tokens the theme never named, which is why `Departments.tsx:59` hard-codes their hexes.
+Expected: `OK 15 classes present` — **all fifteen, first time.** That is the whole set of
+theme-named classes `Icon`, `IconTile` and `Logo` write; the rest of what they carry
+(`block`, `flex-none`, `inline-flex`, `items-center`, `justify-center`) ships with Tailwind.
+Every one of the fifteen was compiled from `src/index.css` against the frozen config while
+this section was written and confirmed to emit a rule with a non-empty body.
+
+The old note here said the two numeral tints were "the likely misses — tokens the theme
+never named". **That is no longer true and had been fixed before this step was ever run.**
+`--dept-numeral-violet` `#EDE4FA` and `--dept-numeral-coral` `#FBE4E1` are declared in the
+frozen `_ds` `colors.css`, and `tailwind.config.js` carries both on `colors`, so
+`text-dept-numeral-violet` and `text-dept-numeral-coral` emit today. `Departments.tsx`
+hard-coding the hexes is what **Task 14** fixes by consuming `deptMeta().numeralClass`;
+nothing about it is a gap in the theme.
 
 - [ ] **Step 14: Commit the verification**
 
-Nothing new if green; otherwise fix the theme and:
+Nothing to commit — this step changes no file, and there is no expected miss to chase.
 
-```
-git add ui/tailwind.config.js
-git commit -m "fix(ui): the department numeral tints get names"
-```
+**Do not add a missing utility to `ui/tailwind.config.js`, `ui/src/styles/tokens.css` or
+`ui/src/styles/roles.css`.** Those three are frozen for the duration of this plan and are
+unfrozen exactly once, by the single minting pass specified in
+`.superpowers/sdd/mint-spec.md`. A miss here is a **typo in a component's class string**,
+and the fix is in the component: minting a name to make a misspelling compile recreates the
+problem this rebuild exists to undo. If a genuinely unnamed value turns up, stop and add it
+to `mint-spec.md` rather than to the config.
 
 ---
 
