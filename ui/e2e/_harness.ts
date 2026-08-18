@@ -440,6 +440,279 @@ export const DESIGN = {
 } satisfies Record<string, ScreenDesign>
 
 /* ------------------------------------------------------------------ *
+ * The page every measurement is supposed to be made on
+ * ------------------------------------------------------------------ */
+
+/** A document's identity, and how many in-page navigations it has been through. */
+interface Stamp {
+  /** `<document id>#<in-page navigations>`. Either half moving is a navigation. */
+  token: string
+  href: string
+}
+
+declare global {
+  interface Window {
+    /** Installed by `instrument()`, before one line of application code runs. */
+    __uiHarnessPage?: () => Stamp
+  }
+}
+
+/** Where a page was pinned, so the failure can say what it was pinned *by*. */
+interface Pin {
+  stamp: Stamp
+  where: string
+}
+
+const PINNED = new WeakMap<Page, Pin>()
+const INSTRUMENTED = new WeakSet<Page>()
+
+/**
+ * The sentence every navigation failure carries.
+ *
+ * Exported behind `isNavigationFault` so a spec that expects a *specific* red —
+ * `rejects.toThrow(/covered measurement hook/)` — can re-throw this one verbatim
+ * instead of wrapping it in its own accusation. That wrapping is the whole
+ * defect: the spec's message is written for the case where the guard failed,
+ * and it is printed for the case where the page moved.
+ */
+const NAVIGATION_FAULT = 'the page navigated out from under this measurement'
+
+/** Is this failure the harness saying the page moved, rather than a real red? */
+export function isNavigationFault(failure: unknown): boolean {
+  return failure instanceof Error && failure.message.includes(NAVIGATION_FAULT)
+}
+
+/**
+ * Stamps every document this page loads, and counts its in-page navigations.
+ *
+ * Two kinds of movement, both of which destroy what a spec has planted and
+ * neither of which any assertion in this file could previously see:
+ *
+ * 1. **A new document** — `goto`, `reload`, a followed link. The window is
+ *    replaced, so the stamp is too, and *everything* is gone: injected
+ *    stylesheets, planted probes, decoy nodes, attributes set on the screen root.
+ * 2. **An in-page history navigation** — `pushState`, `replaceState`,
+ *    `popstate`, a hash change. **These count, and the decision is deliberate:
+ *    this application is a React SPA.** A route change here is not cosmetic —
+ *    react-router unmounts the whole screen subtree and mounts another one, so
+ *    every node a spec planted inside `[data-screen]` dies, while a stylesheet
+ *    injected into `<head>` survives untouched. That half-wiped page is the
+ *    *more* misleading of the two: some of the mutation is still in force, so
+ *    the failure it produces looks like a plausible partial defect rather than
+ *    like a page that moved.
+ *
+ * The counter is bumped by patching `history.pushState`/`replaceState` rather
+ * than by listening for something, because a `pushState` fires no event. The
+ * patch is installed by an init script, so it is in place before react-router
+ * reads `window.history`, and it calls straight through.
+ *
+ * The known cost of counting the second kind: a bare `history.replaceState` that
+ * re-renders nothing — a query-string tidy-up, say — is reported as a
+ * navigation although nothing was lost. That is accepted rather than worked
+ * around, because the two are not distinguishable from outside the app and the
+ * one that matters is the one that silently empties the screen. The escape is a
+ * line: `await pinPage(page)`.
+ */
+async function instrument(page: Page) {
+  if (INSTRUMENTED.has(page)) return
+  INSTRUMENTED.add(page)
+  await page.addInitScript(() => {
+    const id = `${Date.now().toString(36)}.${Math.random().toString(36).slice(2, 8)}`
+    let soft = 0
+    const wrap = (name: 'pushState' | 'replaceState') => {
+      const original = window.history[name].bind(window.history)
+      window.history[name] = (...args: Parameters<History['pushState']>) => {
+        soft += 1
+        original(...args)
+      }
+    }
+    wrap('pushState')
+    wrap('replaceState')
+    window.addEventListener('popstate', () => { soft += 1 })
+    window.addEventListener('hashchange', () => { soft += 1 })
+    window.__uiHarnessPage = () => ({ token: `${id}#${soft}`, href: location.href })
+  })
+}
+
+/** The failure, written for whoever meets it — which is not whoever wrote it. */
+function navigated(pin: Pin, now: Stamp | null, what: string): Error {
+  const moved = now === null
+    ? 'the document carries no harness stamp at all, so it cannot be the one that was pinned. ' +
+      'It was opened before the init script was installed, or by something that bypassed it'
+    : pin.stamp.token.split('#')[0] !== now.token.split('#')[0]
+      ? 'a whole new document — a `goto`, a `reload`, a form submit, a followed link. Every ' +
+        'node, every injected stylesheet and every attribute the spec set is gone with it'
+      : 'an in-page history navigation — `pushState`, `replaceState`, `popstate` or a hash ' +
+        'change. The document survived, and so did anything injected into `<head>`. What does ' +
+        'not survive an in-app route change is the screen: react-router unmounts it, and ' +
+        'everything the spec planted inside it goes too. Half the mutation is left standing, ' +
+        'which is why the red this produces looks like a plausible partial defect rather than ' +
+        'like a page that moved'
+  return new Error(
+    `_harness: ${NAVIGATION_FAULT}.\n` +
+    `    measuring: ${what}\n` +
+    `    pinned:    ${pin.stamp.token}  ${pin.stamp.href}   (${pin.where})\n` +
+    `    found:     ${now ? `${now.token}  ${now.href}` : '(no stamp)'}\n` +
+    `    what moved: ${moved}.\n` +
+    '\n' +
+    '**The navigation is the fault. It is not a reason to relax anything.** A guard handed a ' +
+    'page it was never given tells the truth about the wrong page, and the reds that come out ' +
+    'of it read as accusations against the guard itself — "the mutant is no longer caught", ' +
+    '"the decoys are not in front of the screen\'s hooks any more", "the probe stopped killing ' +
+    'its clause". Every one of those means what this message means: the mutation, the decoy or ' +
+    'the probe was applied to a page that no longer exists, so of course nothing found it. Do ' +
+    'not weaken the assertion, delete the probe, widen the regex or lower a threshold to make ' +
+    'this green — none of them is what broke.\n' +
+    '\n' +
+    'Find what moved the page:\n' +
+    '  - a `page.goto`, `page.reload` or `page.goBack` in the spec between the setup and the ' +
+    'measurement;\n' +
+    '  - a click that followed a link or called the router. In this SPA that is enough: the ' +
+    'screen is unmounted and everything planted inside it goes with it;\n' +
+    '  - a redirect the application made after the screen first appeared — a session that ' +
+    'expired mid-run and sent the page to /login is the usual one;\n' +
+    '  - a file saved under a watching dev server. `playwright.config.ts` builds once and ' +
+    'serves the frozen `dist-e2e` through `vite preview` precisely so this cannot happen; if ' +
+    'it is happening again, the run is not being served from that build.\n' +
+    '\n' +
+    'If the navigation is deliberate — a spec that clicks through to a second screen and ' +
+    'measures that — say so: `await pinPage(page)` after it, and every later measurement is ' +
+    'graded against the new page.',
+  )
+}
+
+/**
+ * Grades one page read against the page that was pinned, and hands back its value.
+ *
+ * Every reader in this file is folded into this shape — `{ nav, value }` out of
+ * one `evaluate` — so the check costs **no extra round trip**: the stamp comes
+ * back in the same call as the measurement it belongs to. That matters because
+ * this file is a template twenty-one screen checks copy, and a guard that costs
+ * a round trip per property would be paid for on every one of them.
+ *
+ * A page with no stamp and no pin is left alone rather than failed: that is
+ * `about:blank` and the three `proved once` entries that never open a page.
+ */
+function samePage<T>(page: Page, read: { nav: Stamp | null; value: T }, what: string): T {
+  const pin = PINNED.get(page)
+  if (!pin) {
+    // Nothing pinned yet — pin here, so the window this guard covers starts at
+    // the first thing the harness ever looked at. A spec that navigates with
+    // `visit()` gets a pin one step earlier still, which is what covers the gap
+    // between `page.goto` and the first measurement.
+    if (read.nav) PINNED.set(page, { stamp: read.nav, where: `first measured while ${what}` })
+    return read.value
+  }
+  if (read.nav !== null && read.nav.token === pin.stamp.token) return read.value
+  throw navigated(pin, read.nav, what)
+}
+
+/**
+ * This page carries the stamp, so everything measured on it is able to notice a
+ * navigation — *and* it has not navigated.
+ *
+ * The guard's own precondition, and the reason it is worth a round trip at the
+ * top of `expectDesign` and again at the camera. The stamp is written by an init
+ * script, and an init script only reaches documents opened **after** it was
+ * installed: `signedIn` and `serve` install it, and every spec calls one of them
+ * before it navigates — but a spec that navigated first has a page with no
+ * stamp, and every navigation check in this file would then pass on it in
+ * silence. A guard that cannot fail is the defect this file spends its length
+ * refusing, one layer down.
+ */
+async function expectGuardedPage(page: Page, what: string) {
+  const nav = await page.evaluate(() => window.__uiHarnessPage?.() ?? null)
+  if (!nav) {
+    throw new Error(
+      '_harness: this page carries no harness stamp, so nothing measured on it could tell you ' +
+      `whether it navigated (${what}). The stamp is written by an init script, and an init ` +
+      'script only reaches documents opened after it was installed — so call `signedIn(page)` ' +
+      'or `serve(page, …)` **before** navigating (every spec must anyway), and navigate with ' +
+      '`visit(page, url)`, which installs it itself and pins the page it lands on.',
+    )
+  }
+  samePage(page, { nav, value: null }, what)
+}
+
+/** The same check, standing alone, for the places that read no value. */
+export async function expectSamePage(page: Page, what: string) {
+  samePage(
+    page,
+    await page.evaluate(() => ({ nav: window.__uiHarnessPage?.() ?? null, value: null })),
+    what,
+  )
+}
+
+/**
+ * Runs something that can fail for its own reasons, and asks *first* whether the
+ * page moved before letting its failure stand.
+ *
+ * This is the zero-cost half: on a green run it does nothing at all. It exists
+ * for the locator waits, whose failures are the most confidently wrong messages
+ * in the file — a hook that vanished with the document is reported as "missing
+ * measurement hook", which reads as a defect in the screen and invites someone
+ * to go and add the attribute that is already there.
+ */
+async function orNavigated<T>(page: Page, run: Promise<T>, what: string): Promise<T> {
+  try {
+    return await run
+  } catch (failure) {
+    await expectSamePage(page, what)
+    throw failure
+  }
+}
+
+/**
+ * Declares that *this* is the page every later measurement must be made on.
+ *
+ * Called for you by `visit()`. Call it yourself after a deliberate navigation —
+ * a click that routes, a second `page.goto` — and never to silence a failure you
+ * did not cause: re-pinning is how a spec says "the page moved and I meant it",
+ * which is a claim about the spec, not a repair of the harness.
+ */
+export async function pinPage(page: Page, where = 'pinPage()') {
+  const nav = await page.evaluate(() => window.__uiHarnessPage?.() ?? null)
+  if (!nav) {
+    throw new Error(
+      '_harness: pinPage() found no harness stamp on this page. The stamp is installed by an ' +
+      'init script, and an init script only reaches documents opened after it was added — so ' +
+      'call `signedIn(page)` or `serve(page, …)` before navigating (every spec must anyway, or ' +
+      '`expectEveryEndpointStubbed` fails it), or navigate with `visit(page, url)`, which ' +
+      'installs it itself.',
+    )
+  }
+  PINNED.set(page, { stamp: nav, where })
+}
+
+/**
+ * Open a screen: navigate, wait for it, and pin the page to it.
+ *
+ * The three lines every screen spec writes, and the reason they are one line
+ * here is the pin. `page.goto` on its own leaves the guard armed only from the
+ * first measurement onward, so anything a spec plants *before* it measures —
+ * a decoy, a probe, a mutant — sits in an unguarded window. Going through
+ * `visit` closes that window.
+ *
+ * **The pin is taken after the screen is on the page, not after `goto` returns,
+ * and that ordering is load-bearing.** This application counts one in-page
+ * navigation before it has drawn anything: `createBrowserRouter` builds a
+ * `createBrowserHistory`, which seeds `history.state.idx` with a `replaceState`
+ * at module evaluation — measured here, the pin taken after `waitFor` reads
+ * `#1` on a fresh `goto` and `#0` after a `reload`, where the seeded state
+ * survives and no second seed is written. Pinning the instant `goto` resolves
+ * would catch that startup `replaceState` on the wrong side of the pin and go
+ * red on every green run, which is the shape of false red this whole guard
+ * exists to stop being. Waiting for the screen also absorbs any redirect the
+ * application makes on the way in.
+ */
+export async function visit(page: Page, url: string, screen?: keyof typeof DESIGN) {
+  await instrument(page)
+  await page.goto(url)
+  if (screen !== undefined) await page.locator(`[data-screen="${screen}"]`).waitFor()
+  await pinPage(page, `visit(page, '${url}')`)
+}
+
+/* ------------------------------------------------------------------ *
  * The stubs
  * ------------------------------------------------------------------ */
 
@@ -480,10 +753,14 @@ const STUBS = new WeakMap<Page, Stubs>()
  * Three defects it exists to make impossible, all three measured on this repo:
  *
  * 1. **Nothing falls through to the container.** With one `page.route` per
- *    endpoint, an endpoint a later screen forgets to stub reaches the vite
- *    proxy and the FastAPI container on `:8000` — which is listening, and
- *    answered. A check that silently grades a live database is the drift R6
- *    exists to catch. Anything unstubbed is aborted and **named** by
+ *    endpoint, an endpoint a later screen forgets to stub leaves the browser
+ *    and is proxied to the FastAPI container on `:8000` — which is listening,
+ *    and answered. The proxy is `vite.config.ts`'s `server.proxy`, which the
+ *    `vite preview` server this suite runs against inherits, so this is as true
+ *    of the frozen `dist-e2e` build as it was of the dev server: do not go
+ *    looking for a dev server on `:5173` when diagnosing it, there is none.
+ *    A check that silently grades a live database is the drift R6 exists to
+ *    catch. Anything unstubbed is aborted and **named** by
  *    `expectEveryEndpointStubbed`, which `expectDesign` and `shot` both call.
  * 2. **Query strings match.** The old form globbed `**${path}`, which does not
  *    match `/api/confirmations?department=cooking` — the exact URL
@@ -497,6 +774,9 @@ const STUBS = new WeakMap<Page, Stubs>()
 async function stubs(page: Page): Promise<Stubs> {
   const existing = STUBS.get(page)
   if (existing) return existing
+  // Every spec reaches this before its `goto` — which is the one moment an init
+  // script can still be installed for the document that is about to be opened.
+  await instrument(page)
   const s: Stubs = { table: new Map(), unstubbed: new Set() }
   STUBS.set(page, s)
   await page.route(
@@ -557,8 +837,11 @@ export async function serve(page: Page, table: Record<string, unknown>) {
  * this used to take — `s ? [...s.unstubbed] : []` — reported a clean bill of
  * health for the one case where *nothing at all* was intercepted: no
  * `signedIn`, no `serve`, therefore no `page.route`, therefore every `/api/`
- * request leaves the browser, is proxied by vite to the FastAPI container on
- * `:8000`, and is answered by it. Measured on this repo: an unstubbed
+ * request leaves the browser, is proxied to the FastAPI container on `:8000`,
+ * and is answered by it. The proxy that carries it there is
+ * `vite.config.ts`'s `server.proxy`, which `vite preview` inherits — the run is
+ * served from the frozen `dist-e2e` build, not from a dev server, and the
+ * fall-through is unchanged by that. Measured on this repo: an unstubbed
  * `GET /api/pending?department=cooking` came back `401
  * {"detail":"authentication required"}` — a real response, from a real
  * database, in a check whose whole premise is that it grades the working tree.
@@ -568,11 +851,19 @@ export async function expectEveryEndpointStubbed(page: Page) {
   if (!s) {
     throw new Error(
       'this spec registered no stubs at all — call `signedIn(page)` and `serve(page, …)` ' +
-      'before `page.goto`. With no page.route installed nothing is intercepted: every /api/ ' +
-      'request reaches the vite proxy and the FastAPI container on :8000, which is listening ' +
-      'and answers, so the check would be grading a live database instead of the working tree.',
+      'before `visit(page, …)`. With no page.route installed nothing is intercepted: every ' +
+      '/api/ request leaves the browser and is proxied to the FastAPI container on :8000, ' +
+      'which is listening and answers, so the check would be grading a live database instead ' +
+      'of the working tree. (The proxy is `vite.config.ts`\'s `server.proxy`; `vite preview` ' +
+      'inherits it, so the run being served from the frozen `dist-e2e` build changes nothing ' +
+      'about this — there is no dev server to go looking at.)',
     )
   }
+  // Before the census, because a route change is one of the ways this list grows
+  // a pathname the spec never wrote: the new screen's own reads land in it, and
+  // "endpoints the spec never stubbed" is then a true sentence about a page the
+  // spec never opened on purpose.
+  await expectSamePage(page, 'the census of unstubbed endpoints')
   expect(
     [...s.unstubbed].sort(),
     'endpoints the spec never stubbed — add them to serve()',
@@ -586,11 +877,17 @@ export async function expectEveryEndpointStubbed(page: Page) {
 /** How long a missing measurement hook is waited for before it is named. */
 const HOOK_TIMEOUT = 5_000
 
-const css = (page: Page, selector: string, prop: string) =>
-  page.locator(selector).first().evaluate(
-    (el, p) => getComputedStyle(el).getPropertyValue(p),
+const css = async (page: Page, selector: string, prop: string) => samePage(
+  page,
+  await page.locator(selector).first().evaluate(
+    (el, p) => ({
+      nav: window.__uiHarnessPage?.() ?? null,
+      value: getComputedStyle(el).getPropertyValue(p),
+    }),
     prop,
-  )
+  ),
+  `reading \`${prop}\` off \`${selector}\``,
+)
 
 /**
  * The opacity an element is really painted at: its own, times every ancestor's.
@@ -600,8 +897,9 @@ const css = (page: Page, selector: string, prop: string) =>
  * that is fading in around it. The first fully transparent node is named in the
  * failure, since the element the selector matched will look innocent.
  */
-const paintedOpacity = (page: Page, selector: string) =>
-  page.locator(selector).first().evaluate((el) => {
+const paintedOpacity = async (page: Page, selector: string) => samePage(
+  page,
+  await page.locator(selector).first().evaluate((el) => {
     let product = 1
     let culprit: string | null = null
     for (let node: Element | null = el; node; node = node.parentElement) {
@@ -613,8 +911,10 @@ const paintedOpacity = (page: Page, selector: string) =>
           `${node.tagName.toLowerCase()}${cls ? ` class="${cls}"` : ''}>`
       }
     }
-    return { product, culprit }
-  })
+    return { nav: window.__uiHarnessPage?.() ?? null, value: { product, culprit } }
+  }),
+  `reading the painted opacity of \`${selector}\``,
+)
 
 /* ------------------------------------------------------------------ *
  * Where a hook actually is, and what is painted on top of it
@@ -670,8 +970,10 @@ interface Placement {
  * affects no layout, and the sheet is removed in a `finally` before the
  * `evaluate` returns, so nothing observes the page in the altered state.
  */
-const placement = (page: Page, selector: string): Promise<Placement> =>
-  page.locator(selector).first().evaluate((el) => {
+const placement = async (page: Page, selector: string): Promise<Placement> => samePage(
+  page,
+  await page.locator(selector).first().evaluate((el) => {
+    const stamped = (value: Placement) => ({ nav: window.__uiHarnessPage?.() ?? null, value })
     const vw = document.documentElement.clientWidth
     const vh = document.documentElement.clientHeight
     const r = el.getBoundingClientRect()
@@ -684,7 +986,7 @@ const placement = (page: Page, selector: string): Promise<Placement> =>
     const onScreen = x1 - x0 > 0.5 && y1 - y0 > 0.5
     const outLeft = Math.max(0, -r.left)
     const outRight = Math.max(0, r.right - vw)
-    if (!onScreen) return { rect, viewport, onScreen, outLeft, outRight, cover: null }
+    if (!onScreen) return stamped({ rect, viewport, onScreen, outLeft, outRight, cover: null })
 
     const alphaOf = (colour: string): number => {
       const c = colour.trim()
@@ -742,8 +1044,10 @@ const placement = (page: Page, selector: string): Promise<Placement> =>
       : culprit
         ? describe(culprit)
         : 'no sampled point inside the box resolved to this element at all'
-    return { rect, viewport, onScreen, outLeft, outRight, cover }
-  })
+    return stamped({ rect, viewport, onScreen, outLeft, outRight, cover })
+  }),
+  `reading where \`${selector}\` sits, and what is painted over it`,
+)
 
 /**
  * Names a missing hook in ~5s instead of timing out for 30 inside `evaluate`,
@@ -771,16 +1075,21 @@ const placement = (page: Page, selector: string): Promise<Placement> =>
  */
 async function hook(page: Page, selector: string, what: string) {
   const el = page.locator(selector).first()
-  await expect(
+  // Both waits go through `orNavigated`, which costs nothing when they pass and
+  // asks whether the page moved before letting them fail. A hook that left with
+  // the document reads exactly like a hook the screen forgot to put there, and
+  // "missing measurement hook" sends the reader to add an attribute that is
+  // already in the source.
+  await orNavigated(page, expect(
     el,
     `missing measurement hook: ${what} — nothing matches \`${selector}\``,
-  ).toBeAttached({ timeout: HOOK_TIMEOUT })
-  await expect(
+  ).toBeAttached({ timeout: HOOK_TIMEOUT }), `waiting for the measurement hook ${what}`)
+  await orNavigated(page, expect(
     el,
     `hidden measurement hook: ${what} — \`${selector}\` resolves first to an element that is ` +
     'not visible. A hidden twin is measured with the wrong values, not skipped; give the ' +
     'visible one a distinct selector.',
-  ).toBeVisible({ timeout: HOOK_TIMEOUT })
+  ).toBeVisible({ timeout: HOOK_TIMEOUT }), `waiting for the measurement hook ${what} to be visible`)
   const painted = await paintedOpacity(page, selector)
   expect(
     painted.product,
@@ -857,8 +1166,9 @@ interface GridGeometry {
  * reads it. Items taken out of flow (`position: absolute` / `fixed`) are not
  * arranged by the gutter and are left out.
  */
-const gridGeometry = (page: Page, selector: string): Promise<GridGeometry> =>
-  page.locator(selector).first().evaluate((el) => {
+const gridGeometry = async (page: Page, selector: string): Promise<GridGeometry> => samePage(
+  page,
+  await page.locator(selector).first().evaluate((el) => {
     const round = (n: number) => Math.round(n * 100) / 100
     const boxes = Array.from(el.children)
       .filter((c) => {
@@ -879,8 +1189,13 @@ const gridGeometry = (page: Page, selector: string): Promise<GridGeometry> =>
       const above = Math.max(...rows[i - 1].map((b) => b.bottom))
       rowGaps.push(round(Math.min(...rows[i].map((b) => b.top)) - above))
     }
-    return { items: boxes.length, rows: rows.length, columnGaps, rowGaps }
-  })
+    return {
+      nav: window.__uiHarnessPage?.() ?? null,
+      value: { items: boxes.length, rows: rows.length, columnGaps, rowGaps },
+    }
+  }),
+  `measuring the gutters the browser drew inside \`${selector}\``,
+)
 
 /* ------------------------------------------------------------------ *
  * every run of type on the screen, against what is behind it
@@ -923,8 +1238,9 @@ interface TextRun {
  * in the stack, the colour is an approximation and the row is flagged
  * `approximate`. Type over a photograph is not gradable this way; waive it.
  */
-const textRuns = (page: Page, root: string, waived: readonly string[]) =>
-  page.locator(root).first().evaluate(
+const textRuns = async (page: Page, root: string, waived: readonly string[]) => samePage(
+  page,
+  await page.locator(root).first().evaluate(
     (el, waivers: string[]) => {
       const parse = (colour: string): number[] | null => {
         const c = colour.trim()
@@ -1001,10 +1317,12 @@ const textRuns = (page: Page, root: string, waived: readonly string[]) =>
           approximate,
         })
       }
-      return { runs, deadWaivers }
+      return { nav: window.__uiHarnessPage?.() ?? null, value: { runs, deadWaivers } }
     },
     [...waived],
-  )
+  ),
+  `reading every run of type inside \`${root}\``,
+)
 
 /* ------------------------------------------------------------------ *
  * focus
@@ -1028,19 +1346,25 @@ interface FocusState {
   focusVisible: boolean
 }
 
-const focusState = (page: Page, selector: string): Promise<FocusState> =>
-  page.locator(selector).first().evaluate((el) => {
+const focusState = async (page: Page, selector: string): Promise<FocusState> => samePage(
+  page,
+  await page.locator(selector).first().evaluate((el) => {
     const cs = getComputedStyle(el)
     return {
-      borderColor: cs.getPropertyValue('border-top-color'),
-      borderWidth: cs.getPropertyValue('border-top-width'),
-      outlineStyle: cs.getPropertyValue('outline-style'),
-      outlineColor: cs.getPropertyValue('outline-color'),
-      outlineWidth: cs.getPropertyValue('outline-width'),
-      shadow: cs.getPropertyValue('box-shadow'),
-      focusVisible: el.matches(':focus-visible'),
+      nav: window.__uiHarnessPage?.() ?? null,
+      value: {
+        borderColor: cs.getPropertyValue('border-top-color'),
+        borderWidth: cs.getPropertyValue('border-top-width'),
+        outlineStyle: cs.getPropertyValue('outline-style'),
+        outlineColor: cs.getPropertyValue('outline-color'),
+        outlineWidth: cs.getPropertyValue('outline-width'),
+        shadow: cs.getPropertyValue('box-shadow'),
+        focusVisible: el.matches(':focus-visible'),
+      },
     }
-  })
+  }),
+  `reading the focus state of \`${selector}\``,
+)
 
 /**
  * A key press whose only job is to tell Chrome the user is on the keyboard.
@@ -1113,11 +1437,21 @@ const paintsRing = (s: FocusState) =>
  * is what F11 is *about*. **A spec is free to use the mouse first.**
  */
 export async function expectFocusIndicator(page: Page, selector: string, label: string) {
+  // Ahead of the first read, because this one is called directly by specs as
+  // well as through `expectDesign`'s `hook`. A control that left with the
+  // document is not a control that is missing a focus style: without this, the
+  // locator below waits for an element that will never come and the test dies
+  // of a timeout with nothing in it that says why.
+  await expectSamePage(page, `looking for the focus target \`${selector}\``)
   const el = page.locator(selector).first()
   const rest = await focusState(page, selector)
 
   await el.focus()
-  await expect(el, `${label}: \`${selector}\` did not take focus — is it focusable?`).toBeFocused()
+  await orNavigated(
+    page,
+    expect(el, `${label}: \`${selector}\` did not take focus — is it focusable?`).toBeFocused(),
+    `focusing \`${selector}\``,
+  )
   await page.keyboard.press(KEYBOARD_MODALITY)
   const held = await focusState(page, selector)
 
@@ -1182,6 +1516,10 @@ export async function expectDesign(page: Page, screen: keyof typeof DESIGN) {
   const w = viewport.width
   const at = <T>(v: PerWidth<T>): T => atWidth(w, v)
 
+  // Before anything is measured: see `expectGuardedPage`. Everything below can
+  // notice a navigation only because this page was stamped on the way in.
+  await expectGuardedPage(page, `grading the ${screen} screen`)
+
   const root = `[data-screen="${screen}"]`
   /**
    * Every content hook is resolved **inside the screen**, never document-wide.
@@ -1206,7 +1544,11 @@ export async function expectDesign(page: Page, screen: keyof typeof DESIGN) {
     graded.push({ what, selector })
   }
 
-  await expect(page.locator(root), `${screen}: \`${root}\` is not visible`).toBeVisible()
+  await orNavigated(
+    page,
+    expect(page.locator(root), `${screen}: \`${root}\` is not visible`).toBeVisible(),
+    `waiting for \`${root}\``,
+  )
   graded.push({ what: 'data-screen', selector: root })
 
   expect(await css(page, root, 'background-color'), `${screen}: field`).toBe(at(d.field))
@@ -1400,8 +1742,13 @@ export async function expectDesign(page: Page, screen: keyof typeof DESIGN) {
  * camera is `animations: 'disabled'` on the screenshot itself; see `shot`.
  */
 export async function expectReducedMotion(page: Page) {
-  const reduced = await page.evaluate(
-    () => matchMedia('(prefers-reduced-motion: reduce)').matches,
+  const reduced = samePage(
+    page,
+    await page.evaluate(() => ({
+      nav: window.__uiHarnessPage?.() ?? null,
+      value: matchMedia('(prefers-reduced-motion: reduce)').matches,
+    })),
+    'reading `prefers-reduced-motion`',
   )
   expect(
     reduced,
@@ -1422,8 +1769,17 @@ export async function expectReducedMotion(page: Page) {
  */
 const HOVERED = '[data-screen] :hover'
 
-const hoveredCount = (page: Page) =>
-  page.evaluate((sel) => document.querySelectorAll(sel).length, HOVERED)
+const hoveredCount = async (page: Page) => samePage(
+  page,
+  await page.evaluate(
+    (sel) => ({
+      nav: window.__uiHarnessPage?.() ?? null,
+      value: document.querySelectorAll(sel).length,
+    }),
+    HOVERED,
+  ),
+  'counting what the pointer is over',
+)
 
 /**
  * A screenshot at the running project's width, for comparison against ui/design/.
@@ -1481,6 +1837,11 @@ export async function shot(page: Page, name: string) {
   //    `animations: 'allow'` — only `toHaveScreenshot` disables them — and the
   //    app reads `prefers-reduced-motion` nowhere, so a transform was sampled
   //    mid-flight at `matrix(1, 0, 0, 1, 0, -0.298916)`.
+  // The camera reads the whole page and returns nothing this file can grade, so
+  // the one measurement that cannot fold the stamp into its own call pays for a
+  // round trip. A screenshot of a page that moved is a picture of another
+  // screen, filed under this screen's name in `e2e/__shots__/`.
+  await expectGuardedPage(page, 'the screenshot')
   const width = page.viewportSize()?.width ?? 0
   await page.screenshot({
     path: `e2e/__shots__/${name}-${width}.png`,

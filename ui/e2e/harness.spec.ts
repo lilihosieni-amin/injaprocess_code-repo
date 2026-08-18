@@ -4,7 +4,8 @@ import type { Department } from '../src/api/types'
 import type { PerWidth, ScreenDesign } from './_harness'
 import {
   atWidth, CARD_SHADOW, DESIGN, expandPadding, expectDesign, expectEveryEndpointStubbed,
-  expectFocusIndicator, serve, shadowOf, signedIn, trackCount, WIDTHS,
+  expectFocusIndicator, expectSamePage, isNavigationFault, pinPage, serve, shadowOf, shot,
+  signedIn, trackCount, visit, WIDTHS,
 } from './_harness'
 
 /**
@@ -28,8 +29,28 @@ const DEPARTMENTS: Department[] = [
 const onDepartments = async (page: Page) => {
   await signedIn(page)
   await serve(page, { '/api/departments': DEPARTMENTS, '/api/pending': [] })
-  await page.goto('/departments')
-  await page.locator('[data-screen="departments"]').waitFor()
+  // `visit`, not `page.goto`: it pins the page, so everything this file plants
+  // afterwards — decoys, probes, mutants — is planted inside a window the
+  // harness is watching. With a bare `goto` the watch starts at the first
+  // measurement instead, and a navigation before that one is invisible.
+  await visit(page, '/departments', 'departments')
+}
+
+/**
+ * The red a guard is supposed to produce, and not another red wearing its message.
+ *
+ * `expect(promise).rejects.toThrow(/…/)` prints the **caller's** message whatever
+ * the promise actually did, so a navigation that wiped the mutation is reported
+ * as "the mutant is no longer caught" — an accusation against the guard, and an
+ * invitation to weaken it. `_harness` now names a navigation when it sees one;
+ * this is what lets that name out, instead of replacing it with this file's own
+ * theory of what went wrong.
+ */
+async function failsWith(run: Promise<unknown>, message: RegExp, accusation: string) {
+  const failure = await run.then(() => null, (error: unknown) => error)
+  if (isNavigationFault(failure)) throw failure
+  expect(failure, `${accusation} — it did not fail at all`).not.toBeNull()
+  expect((failure as Error).message, accusation).toMatch(message)
 }
 
 /* ================================================================== *
@@ -385,6 +406,7 @@ test('the content hooks are read inside the screen, never document-wide', async 
       host.prepend(decoy)
     }
   }, [...DECOY_HOOKS])
+  await expectSamePage(page, 'planting the decoys')
 
   await expectDesign(page, 'departments')
 
@@ -397,6 +419,10 @@ test('the content hooks are read inside the screen, never document-wide', async 
   // signal at all. What is asserted is the exact condition that makes the test
   // mean something: for every hook, the element a document-wide `.first()`
   // would have picked is the decoy, and it is outside the screen.
+  // Before the census, because the census cannot tell "the decoys were never
+  // planted" from "the page they were planted on is gone" — and its message
+  // says the first, which is the accusation this guard exists to stop.
+  await expectSamePage(page, 'the decoy census')
   const globalFirstIsTheDecoy = await page.evaluate((attrs) => attrs.map((attr) => {
     const first = document.querySelector(`[${attr}]`)
     return first !== null && first.hasAttribute('data-decoy') && first.closest('[data-screen]') === null
@@ -456,6 +482,7 @@ test('the focus branch passes on both focus idioms, and fails without one', asyn
   // permanently so the branch can never quietly become unfailable again.
   const mute = await plant(page, 'input', 'mute', FIELD_IDIOM.replace('focus:border-coral', ''))
   const ringless = await plant(page, 'button', 'ringless', `${BUTTON_IDIOM} outline-none`)
+  await expectSamePage(page, 'planting the two focus idioms and their mutants')
 
   // Green on both real idioms. Before this fix the rule was "coral border, no
   // box-shadow, and a coral outline if any": one red on the field (its outline
@@ -467,10 +494,16 @@ test('the focus branch passes on both focus idioms, and fails without one', asyn
 
   // Red when the indicator is gone — on the field because nothing turns coral,
   // on the button because `outline-none` suppresses F11's ring.
-  await expect(expectFocusIndicator(page, mute, 'probe: field without focus:border-coral'))
-    .rejects.toThrow(/draws no coral indicator/)
-  await expect(expectFocusIndicator(page, ringless, 'probe: button with outline-none'))
-    .rejects.toThrow(/draws no coral indicator/)
+  await failsWith(
+    expectFocusIndicator(page, mute, 'probe: field without focus:border-coral'),
+    /draws no coral indicator/,
+    'the field idiom stripped of `focus:border-coral` is no longer caught',
+  )
+  await failsWith(
+    expectFocusIndicator(page, ringless, 'probe: button with outline-none'),
+    /draws no coral indicator/,
+    'the button idiom wearing `outline-none` is no longer caught',
+  )
 
   // And the wiring: `expectDesign` really resolves `d.focus` inside the screen
   // and runs the check. Tested by setting the key rather than by reading the
@@ -483,8 +516,11 @@ test('the focus branch passes on both focus idioms, and fails without one', asyn
     row.focus = '[data-probe-field]'
     await expectDesign(page, 'departments')
     row.focus = '[data-probe-mute]'
-    await expect(expectDesign(page, 'departments'))
-      .rejects.toThrow(/departments: focus: focusing .* draws no coral indicator/)
+    await failsWith(
+      expectDesign(page, 'departments'),
+      /departments: focus: focusing .* draws no coral indicator/,
+      '`expectDesign` no longer runs the focus branch it resolves from `d.focus`',
+    )
   } finally {
     delete row.focus
   }
@@ -563,18 +599,18 @@ async function plantClauseProbes(page: Page) {
 test('every clause of the focus check has a probe that kills it', async ({ page }) => {
   await onDepartments(page)
   await plantClauseProbes(page)
+  await expectSamePage(page, 'planting the clause probes')
 
   // Clause 1 — "a coral indicator appears" — is pinned by `mute` and `ringless`
   // in the test above. These are the other four. Before them, deleting any one
   // of the four left the whole suite at 18 passed / 12 skipped: the evidence in
   // §10.4 was real but it lived in scratch probes that were deleted before the
   // commit, so the file twenty-one tasks inherit did not hold it.
-  const dies = async (probe: string, why: string, message: RegExp) => {
-    await expect(
-      expectFocusIndicator(page, `[data-probe-${probe}]`, `probe: ${why}`),
-      `the \`${probe}\` probe stopped killing its clause — that clause can no longer fail`,
-    ).rejects.toThrow(message)
-  }
+  const dies = (probe: string, why: string, message: RegExp) => failsWith(
+    expectFocusIndicator(page, `[data-probe-${probe}]`, `probe: ${why}`),
+    message,
+    `the \`${probe}\` probe stopped killing its clause — that clause can no longer fail`,
+  )
 
   // 0. the self-diagnostic, which is not a clause about the screen at all: it
   //    decides whether a modality regression is reported as "this screen has no
@@ -678,7 +714,11 @@ test('a hook that is laid out but painted at opacity 0 is not measured', async (
     .toBe(3)
 
   // So without the paint gate this is a green run grading a decoy.
-  await expect(expectDesign(page, 'departments')).rejects.toThrow(/painted at opacity 0/)
+  await failsWith(
+    expectDesign(page, 'departments'),
+    /painted at opacity 0/,
+    'a laid-out but unpainted decoy is measured again',
+  )
 })
 
 /* ------------------------------------------------------------------ *
@@ -868,12 +908,18 @@ test('every composition check has a mutant that kills it', async ({ page }) => {
   for (const mutant of COMPOSITION_MUTANTS) {
     const change = asChange(mutant)
     await applyMutant(page, change)
-    await expect(
+    // The mutation landed on the page that was pinned. Without this the loop
+    // could go on applying mutants to a page that had moved, and report every
+    // one of them as "no longer caught" — see `failsWith`, which is the other
+    // half of the same fix.
+    await expectSamePage(page, `applying the “${mutant.why}” mutant`)
+    await failsWith(
       expectDesign(page, 'departments'),
+      mutant.message,
       `the “${mutant.why}” mutant is no longer caught, or is caught by something else. Each ` +
       'of these left the suite at 30 passed / 12 skipped when it was applied to the working ' +
       'tree for real; the page it produces is visibly wrong and every value on it is legal.',
-    ).rejects.toThrow(mutant.message)
+    )
     await undoMutant(page, change)
   }
 
@@ -881,4 +927,173 @@ test('every composition check has a mutant that kills it', async ({ page }) => {
   // degrade, mutant by mutant, into "expectDesign fails on an already-broken
   // page", and the later entries would pass for the wrong reason.
   await expectDesign(page, 'departments')
+})
+
+/* ------------------------------------------------------------------ *
+ * A navigation between a mutation and its measurement
+ * ------------------------------------------------------------------ */
+
+/**
+ * **The failure mode every test above is built out of, and the one that used to
+ * be laundered into an accusation against the guards.**
+ *
+ * Every check in this file works the same way: put something on the page, then
+ * measure. If the page moves in between, the thing that was put there is gone —
+ * and the measurement that follows is perfectly correct about a page nobody
+ * asked about. What came out of that, measured on this repo on 2026-08-18 when a
+ * watched file was saved mid-run, was not `Execution context was destroyed`
+ * (which nobody misreads). It was:
+ *
+ * - `the “a scrim that failed to unmount, over the whole page” mutant is no
+ *   longer caught, or is caught by something else`
+ * - `the decoys are not in front of the screen's hooks any more (data-col, …),
+ *   so this test proved nothing about scoping`
+ * - `the \`modality\` probe stopped killing its clause — that clause can no
+ *   longer fail`
+ *
+ * Three reds that name a guard as the suspect, in a file twenty-one screen
+ * checks copy, and whose cheapest repair is to weaken the guard. This project
+ * has already paid for that once: a false red sat inside a template telling
+ * twenty-one tasks "Do not weaken it", which is an instruction to weaken a
+ * correct assertion twenty-one times over.
+ *
+ * Both halves are pinned here because they fail differently and only one of them
+ * is visible to a nonce on `window`.
+ */
+test('a navigation between a mutation and its measurement names itself', async ({ page }) => {
+  await onDepartments(page)
+  const scrim = asChange(COMPOSITION_MUTANTS[0])
+
+  // 1. A new document. `page.reload()` puts the departments screen back exactly
+  //    as it was, minus the mutant — which is why the loop above used to report
+  //    the mutant as "no longer caught" instead of reporting the reload.
+  await applyMutant(page, scrim)
+  await page.reload()
+  await page.locator(SCREEN).waitFor()
+  const hard = await expectDesign(page, 'departments').then(() => null, (e: unknown) => e as Error)
+  expect(hard, 'expectDesign passed on a page that had been reloaded under it').not.toBeNull()
+  expect(isNavigationFault(hard)).toBe(true)
+  expect(hard!.message).toMatch(/a whole new document/)
+  // The two sentences the message exists for: it names the navigation as the
+  // fault, and it refuses the repair the old red invited.
+  expect(hard!.message).toMatch(/The navigation is the fault/)
+  expect(hard!.message).toMatch(/Do not weaken the assertion/)
+  // And it is not the mutant's own red wearing a different hat.
+  expect(hard!.message).not.toMatch(/covered measurement hook/)
+
+  // The escape, which is what makes the guard usable rather than a wall: a spec
+  // that navigated on purpose says so, in one line, and goes on measuring.
+  await pinPage(page)
+  await expectDesign(page, 'departments')
+
+  // 2. An in-page history navigation. **This is the half a nonce on `window`
+  //    cannot see**: same document, same window, same `<head>` — the injected
+  //    stylesheet is still in it — so every nonce, sentinel and global survives.
+  //    What does not survive in this application is the screen: react-router
+  //    unmounts it and everything a spec planted inside it goes too, which is
+  //    the more misleading of the two failures because half the mutation is
+  //    still in force.
+  await applyMutant(page, scrim)
+  await page.evaluate(() => history.pushState({}, '', location.pathname))
+  const soft = await expectDesign(page, 'departments').then(() => null, (e: unknown) => e as Error)
+  expect(soft, 'a pushState went unnoticed — the SPA half of the guard is not armed').not.toBeNull()
+  expect(isNavigationFault(soft)).toBe(true)
+  expect(soft!.message).toMatch(/an in-page history navigation/)
+
+  await pinPage(page)
+  await undoMutant(page, scrim)
+  await expectDesign(page, 'departments')
+
+  // 3. And the camera, which is the one measurement with no value to fold the
+  //    check into. A screenshot of a page that moved is a picture of another
+  //    screen, filed in `e2e/__shots__/` under this screen's name and compared
+  //    by a human against `ui/design/`.
+  await page.reload()
+  await page.locator(SCREEN).waitFor()
+  const camera = await shot(page, 'navigated-away').then(() => null, (e: unknown) => e as Error)
+  expect(camera, 'shot() photographed a page that had moved under it').not.toBeNull()
+  expect(isNavigationFault(camera)).toBe(true)
+  await pinPage(page)
+})
+
+/* ------------------------------------------------------------------ *
+ * The two guards against grading an empty page
+ * ------------------------------------------------------------------ */
+
+/**
+ * The two vacuity guards, each with the emptiness that must reach it.
+ *
+ * Both were added in the last hardening pass and neither was pinned: deleting
+ * either one left the suite green, because nothing in it ever produced the
+ * empty case. A guard whose failure no test can provoke is furniture — it is
+ * the same defect as the four assertions that had never been executed by any
+ * screen, one layer down.
+ */
+test('the two vacuity guards fail when there is nothing to grade', async ({ page }) => {
+  await onDepartments(page)
+
+  // 1. `g.items > 0`. An empty grid's gutter is correct about nothing, and
+  //    nothing else notices: `grid-template-columns` still resolves to three
+  //    used tracks, `column-gap` and `row-gap` still read 18px, and the
+  //    geometric census simply has no pair of items to measure. The
+  //    `min-height` keeps the grid itself visible, so what fires is the
+  //    emptiness and not `hook`'s visibility gate. The fixture that really
+  //    produces this is an endpoint serving `[]`.
+  const empty = asChange({
+    why: 'a grid with nothing in it',
+    message: /has no items to arrange/,
+    css: `${SCREEN} [data-grid]{min-height:40px}\n${SCREEN} [data-grid]>*{display:none}`,
+  })
+  await applyMutant(page, empty)
+  await expectSamePage(page, 'emptying the grid')
+  await failsWith(
+    expectDesign(page, 'departments'),
+    /the grid has no items to arrange/,
+    'an empty grid no longer fails, so every geometric assertion in the grid block — the ' +
+    'drawn gutters, the adjacency census — is vacuously true on a screen whose list came ' +
+    'back empty',
+  )
+  await undoMutant(page, empty)
+
+  // 2. `runs.length > 0`. A contrast census that graded nothing, which is how
+  //    the census stops being able to fail. The way it really happens is a
+  //    waiver that grew: one selector wide enough to cover the screen, every
+  //    run of type skipped — and `deadWaivers` is content, because the selector
+  //    does match something.
+  const row = DESIGN.departments as ScreenDesign
+  const waived = row.contrastWaived
+  try {
+    row.contrastWaived = ['[data-screen]']
+    await failsWith(
+      expectDesign(page, 'departments'),
+      /found no type at all/,
+      'a contrast census that graded nothing no longer fails, so the check that notices a ' +
+      'title painted in its own background colour can be switched off by widening a waiver',
+    )
+  } finally {
+    row.contrastWaived = waived
+  }
+
+  await expectDesign(page, 'departments')
+})
+
+/**
+ * The navigation guard's own precondition, which is the one that can make every
+ * other check in this file silently inert.
+ *
+ * The stamp those checks compare is written by an init script, and an init
+ * script only reaches documents opened after it was installed. `signedIn` and
+ * `serve` install it, which is why `expectDesign` on a properly-set-up spec is
+ * guarded — but nothing about a page *says* it was stamped, so a spec that
+ * navigated before it stubbed would be graded by a navigation guard that can
+ * never fire. `about:blank` is that page in its purest form: never stamped, and
+ * every `nav` read off it comes back null.
+ */
+test('a page the harness never stamped cannot be graded at all', async ({ page }) => {
+  await failsWith(
+    expectDesign(page, 'departments'),
+    /carries no harness stamp/,
+    'a page with no stamp is graded anyway, so every navigation check in `_harness.ts` passes ' +
+    'on it in silence — the guard is furniture on exactly the specs that got the setup wrong',
+  )
 })

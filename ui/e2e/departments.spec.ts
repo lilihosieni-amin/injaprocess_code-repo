@@ -1,6 +1,6 @@
 import { test } from '@playwright/test'
 import type { Department } from '../src/api/types'
-import { expectDesign, serve, shot, signedIn } from './_harness'
+import { expectDesign, serve, shot, signedIn, visit } from './_harness'
 
 /**
  * Typed as the endpoint's own response type, not an untyped literal: a change
@@ -20,7 +20,10 @@ const DEPARTMENTS: Department[] = [
 test('departments renders the design’s numbers', async ({ page }) => {
   await signedIn(page)
   await serve(page, { '/api/departments': DEPARTMENTS, '/api/pending': [] })
-  await page.goto('/departments')
+  // `visit` rather than `page.goto`: it waits for the screen and pins the page
+  // to it, so a navigation between here and the measurements below is named as
+  // a navigation instead of being reported as a defect in the screen.
+  await visit(page, '/departments', 'departments')
   await expectDesign(page, 'departments')
   await shot(page, 'departments')
 })
