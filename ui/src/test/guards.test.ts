@@ -134,6 +134,12 @@ describe('F10 — RTL is structural', () => {
     // have turned this guard red on the day `src/screens/` left it.
     const ISLANDS = [
       'src/ui/IdBadge.tsx',
+      // TextField pins `dir="ltr"` when its caller asks for a latin island — the
+      // username on the new-user dialog, a process id, an IP. Declared here
+      // rather than worked around inside the component, because the workaround
+      // (spreading a `{ dir: 'ltr' }` object so the string `dir=` never appears)
+      // would defeat the guard without changing the markup it exists to police.
+      'src/ui/TextField.tsx',
       'src/screens/UserFields.tsx',
       'src/screens/SupervisorPicker.tsx',
       'src/screens/Profile.tsx',
