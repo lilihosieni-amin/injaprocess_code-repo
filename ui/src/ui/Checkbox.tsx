@@ -20,9 +20,10 @@ import { useSurface } from './surface'
  * accepted / approved / confirmed STATE, which is why the flow screen's
  * confirmed mark keeps its green and this box may not borrow it.
  *
- * The unchecked edge is `--border-pick` (ledger L-09, #C9B8EC), which is the
- * token named for this role. `--line-dashed` holds the same value for the
- * dashed "add" affordances and keeps it.
+ * The unchecked edge is `--border-pick` (ledger L-09), which is the token
+ * named for this role. `--line-dashed` holds the same value for the dashed
+ * "add" affordances and keeps it — guards.test.ts forbids writing either value
+ * here, which is the point: the token is the only place it is spelled.
  */
 export function TickBox({ on, className = '' }: {
   on: boolean
@@ -49,7 +50,8 @@ export interface CheckboxProps {
   label: string
   checked: boolean
   onChange: (next: boolean) => void
-  /** The explanatory line under the title — 11.5px #a99fc4 lh 1.7 (§5.2). */
+  /** The explanatory line under the title — `--fs-xs` in `--text-faint` at
+      `--lh-normal` (§5.2). */
   hint?: string
   /** Only for a row that is on and locked, like the policy's «نام گام». */
   disabled?: boolean

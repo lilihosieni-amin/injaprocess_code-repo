@@ -10,6 +10,8 @@ import type { ReactNode } from 'react'
 import { SurfaceProvider } from './surface'
 import { Checkbox, TickBox } from './Checkbox'
 import { Radio } from './Radio'
+import { Dropdown } from './Dropdown'
+import { isTopDismissible, popDismissible, pushDismissible } from './dismissibleStack'
 
 /* -------------------------------------------------------------------------
    Two halves, and the second is the one that matters.
@@ -152,6 +154,15 @@ function declared(): Map<string, string> {
   return values
 }
 
+/**
+ * What one `--role-*` property points at, read out of src/styles/roles.css —
+ * the file the role layer lives in, which `declared()` above does not read.
+ */
+function roleTarget(role: string): string {
+  const roles = readFileSync(resolve(process.cwd(), 'src/styles/roles.css'), 'utf8')
+  return new RegExp(`(?<![-\\w])${role}\\s*:\\s*var\\((--[a-z0-9-]+)\\)`).exec(roles)?.[1] ?? ''
+}
+
 /** What one token is actually worth, so "19px" is a measurement and not a claim. */
 function tokenLiteral(token: string): string {
   return declared().get(token) ?? ''
@@ -228,6 +239,12 @@ describe('Checkbox', () => {
     expect(winner(box, 'height')).toBe('var(--size-tick)')
     expect(winner(box, 'border-radius')).toBe('var(--radius-tick)')
     expect(winner(box, 'border-width')).toBe('var(--border-hairline)')
+    // A 19px box that can be squeezed is not a 19px box: beside a long label in
+    // a flex row, `flex-none` is the only thing holding it. And the check is
+    // centred in it by the box, not by the glyph.
+    expect(winner(box, 'flex')).toBe('none')
+    expect(winner(box, 'align-items')).toBe('center')
+    expect(winner(box, 'justify-content')).toBe('center')
     // …and what those are worth. L-10 settled 19, not 18; §"Iconography" gives
     // the check in a 12–13px box stroke 3.
     expect(tokenLiteral('--size-tick')).toBe('19px')
@@ -496,5 +513,381 @@ describe('Radio', () => {
     const src = sourceOf('Radio.tsx')
     expect(src).not.toMatch(/\bdisabled\b/)
     expect(src).not.toMatch(/opacity-60/)
+  })
+})
+
+/** Every property any of these classes sets, in any state — for the RTL scan. */
+function allProps(painted: Painted[]): string[] {
+  const out = new Set<string>()
+  for (const p of painted) for (const d of p.decls.split('; ')) out.add(d.split(': ')[0])
+  return [...out]
+}
+
+const ROLES = [
+  { value: 'reader', label: 'خواننده' },
+  { value: 'editor', label: 'ادیتور' },
+  { value: 'admin', label: 'مدیر' },
+]
+
+describe('Dropdown', () => {
+  it('is a closed listbox trigger carrying its placeholder', () => {
+    on('panel', <Dropdown label="نقش" options={ROLES} placeholder="نقش" onChange={() => {}} />)
+    const trigger = screen.getByRole('button', { name: 'نقش' })
+    expect(trigger).toHaveAttribute('aria-haspopup', 'listbox')
+    expect(trigger).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+  })
+
+  it('opens, and turns its border coral while open', async () => {
+    on('panel', <Dropdown label="نقش" options={ROLES} placeholder="نقش" onChange={() => {}} />)
+    const trigger = screen.getByRole('button', { name: 'نقش' })
+    await userEvent.click(trigger)
+    expect(trigger).toHaveAttribute('aria-expanded', 'true')
+    expect(trigger).toHaveClass('border-coral')
+    expect(screen.getAllByRole('option')).toHaveLength(3)
+  })
+
+  it('reports the value and closes', async () => {
+    const seen: string[] = []
+    on('panel', <Dropdown label="نقش" options={ROLES} placeholder="نقش" onChange={(v) => seen.push(v)} />)
+    await userEvent.click(screen.getByRole('button', { name: 'نقش' }))
+    await userEvent.keyboard('{ArrowDown}')
+    await userEvent.click(screen.getByRole('option', { name: 'ادیتور' }))
+    expect(seen).toEqual(['editor'])
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+    // …and focus comes back with it. A closed popover that has left focus on a
+    // node it just unmounted drops the caret to <body>.
+    expect(screen.getByRole('button', { name: 'نقش' })).toHaveFocus()
+  })
+
+  it('marks the picked option, and only that one', async () => {
+    on('panel', <Dropdown label="نقش" options={ROLES} placeholder="نقش" value="admin" onChange={() => {}} />)
+    await userEvent.click(screen.getByRole('button'))
+    expect(screen.getByRole('option', { name: 'مدیر' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('option', { name: 'ادیتور' })).toHaveAttribute('aria-selected', 'false')
+  })
+
+  it('closes on Escape and gives focus back to the trigger', async () => {
+    on('panel', <Dropdown label="نقش" options={ROLES} placeholder="نقش" onChange={() => {}} />)
+    const trigger = screen.getByRole('button')
+    await userEvent.click(trigger)
+    // Step INTO the list first. Escaping straight from the trigger leaves focus
+    // where it already was, so the restore is unobservable and dropping it
+    // passed this test — which is the first thing a mutation found here.
+    await userEvent.keyboard('{ArrowDown}')
+    expect(trigger).not.toHaveFocus()
+    await userEvent.keyboard('{Escape}')
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+    expect(trigger).toHaveFocus()
+  })
+
+  it('leaves an Escape for the dialog underneath it alone', async () => {
+    // I7 — the popover joins the shared dismissible stack, so the Escape that
+    // closes it stops there. Before that stack existed, one Escape took the
+    // menu AND the dialog it was opened inside. Asserted through the stack's
+    // own view of the world: while the popover is open it is the top, and once
+    // it closes the thing beneath it is the top again.
+    const under = Symbol('a dialog')
+    pushDismissible(under)
+    on('panel', <Dropdown label="نقش" options={ROLES} placeholder="نقش" onChange={() => {}} />)
+    expect(isTopDismissible(under)).toBe(true)
+    await userEvent.click(screen.getByRole('button'))
+    expect(isTopDismissible(under)).toBe(false)
+    await userEvent.keyboard('{Escape}')
+    expect(isTopDismissible(under)).toBe(true)
+    popDismissible(under)
+  })
+
+  it('walks the options with the arrow keys', async () => {
+    on('panel', <Dropdown label="نقش" options={ROLES} placeholder="نقش" onChange={() => {}} />)
+    await userEvent.click(screen.getByRole('button'))
+    await userEvent.keyboard('{ArrowDown}')
+    expect(screen.getByRole('option', { name: 'خواننده' })).toHaveFocus()
+    await userEvent.keyboard('{ArrowDown}')
+    expect(screen.getByRole('option', { name: 'ادیتور' })).toHaveFocus()
+    await userEvent.keyboard('{End}')
+    expect(screen.getByRole('option', { name: 'مدیر' })).toHaveFocus()
+    await userEvent.keyboard('{ArrowUp}')
+    expect(screen.getByRole('option', { name: 'ادیتور' })).toHaveFocus()
+    await userEvent.keyboard('{Home}')
+    expect(screen.getByRole('option', { name: 'خواننده' })).toHaveFocus()
+    // …and the ends hold rather than wrapping past them.
+    await userEvent.keyboard('{ArrowUp}')
+    expect(screen.getByRole('option', { name: 'خواننده' })).toHaveFocus()
+  })
+
+  it('filters when searchable, and states the miss rather than showing a blank', async () => {
+    on('panel', (
+      <Dropdown
+        label="سرپرست" options={ROLES} placeholder="سرپرست" onChange={() => {}}
+        searchable searchPlaceholder="جست‌وجو…" noHit="سرپرستی با این نام نیست"
+      />
+    ))
+    await userEvent.click(screen.getByRole('button', { name: 'سرپرست' }))
+    await userEvent.type(screen.getByPlaceholderText('جست‌وجو…'), 'ادی')
+    expect(screen.getAllByRole('option')).toHaveLength(1)
+    await userEvent.type(screen.getByPlaceholderText('جست‌وجو…'), 'xyz')
+    expect(screen.queryAllByRole('option')).toHaveLength(0)
+    expect(screen.getByText('سرپرستی با این نام نیست')).toBeInTheDocument()
+  })
+
+  it('draws the magnifier in the room it reserves for one', async () => {
+    // The design's popover search field is `padding:9px 34px 9px 12px` with a
+    // 14px magnifier pinned 11px in (design/Inja Panel.dc.html:1220). The brief
+    // kept the 34px and dropped the icon, which leaves a third of the field
+    // empty for nothing — legal, compiling, and visibly wrong.
+    const { container } = on('panel', (
+      <Dropdown label="س" options={ROLES} placeholder="س" onChange={() => {}} searchable searchPlaceholder="جست‌وجو…" />
+    ))
+    await userEvent.click(screen.getByRole('button'))
+    const field = screen.getByPlaceholderText('جست‌وجو…')
+    const glyph = container.querySelector('input[type="search"] ~ svg') as SVGElement
+    expect(glyph, 'the reserved inline-start room holds no magnifier').toBeTruthy()
+
+    const box = await paint(field.className)
+    const icon = await paint(glyph.getAttribute('class') ?? '')
+    expect(winner(box, 'padding-inline-start')).toBe('var(--pad-search-x-menu)')
+    expect(winner(icon, 'inset-inline-start')).toBe('var(--inset-search-icon-menu)')
+    // The relationship, not the two ends separately: the icon has to sit INSIDE
+    // the room the field reserves, or it lands on top of the caret.
+    const room = Number.parseFloat(tokenLiteral('--pad-search-x-menu'))
+    const inset = Number.parseFloat(tokenLiteral('--inset-search-icon-menu'))
+    const glyphW = Number.parseFloat(tokenLiteral('--space-7'))
+    expect(room).toBeGreaterThanOrEqual(inset + glyphW)
+    expect(winner(icon, 'pointer-events')).toBe('none')
+    // …and it is PAINTED. `hidden` on this svg leaves the element in the DOM,
+    // the inset intact and the reserved room empty — which is the exact defect
+    // this test exists for, and it survived the first cut of these assertions.
+    expect(winner(icon, 'display')).not.toBe('none')
+    expect(winner(icon, 'visibility')).not.toBe('hidden')
+    expect(winner(icon, 'opacity')).not.toBe('0')
+    expect(winner(icon, 'color')).toBe('var(--text-faint)')
+    expect(winner(icon, 'width')).toBe('var(--space-7)')
+  })
+
+  it('multi-selects with the same tick the checkbox draws, and stays open', async () => {
+    const seen: string[] = []
+    on('panel', (
+      <Dropdown
+        label="دپارتمان" options={ROLES} placeholder="دپارتمان"
+        values={['reader']} onToggle={(v) => seen.push(v)}
+      />
+    ))
+    await userEvent.click(screen.getByRole('button', { name: 'دپارتمان' }))
+    const list = screen.getByRole('listbox')
+    expect(list).toHaveAttribute('aria-multiselectable', 'true')
+    expect(list.querySelectorAll('[data-tick]')).toHaveLength(3)
+    await userEvent.click(screen.getByRole('option', { name: 'مدیر' }))
+    expect(seen).toEqual(['admin'])
+    expect(screen.getByRole('listbox')).toBeInTheDocument()
+  })
+
+  it('keeps its label bound even when the trigger text is the label', () => {
+    // The filter bar shows «نقش» as the trigger text, so a second visible label
+    // would be a duplicate — but dropping the label would leave the control
+    // unnamed. `hideLabel` hides it; it never removes it.
+    const { container } = on('panel', <Dropdown label="نقش" options={ROLES} placeholder="نقش" onChange={() => {}} hideLabel />)
+    const name = container.querySelector('.sr-only')
+    expect(name).toHaveTextContent('نقش')
+    expect(screen.getByRole('button', { name: 'نقش' })).toBeInTheDocument()
+  })
+
+  it('writes no class that compiles to nothing — closed, open, searching, multi', async () => {
+    const shut = on('panel', <Dropdown label="نقش" options={ROLES} placeholder="نقش" onChange={() => {}} />)
+    expect(await dead(classStringOf(shut.container.querySelector('[data-dd]')!))).toEqual([])
+    shut.unmount()
+
+    const open = on('panel', (
+      <Dropdown
+        label="نقش" options={[{ value: 'a', label: 'الف', note: 'یادداشت' }]} placeholder="نقش"
+        value="a" onChange={() => {}} searchable searchPlaceholder="ج"
+      />
+    ))
+    await userEvent.click(screen.getByRole('button'))
+    expect(await dead(classStringOf(open.container.querySelector('[data-dd]')!))).toEqual([])
+    await userEvent.type(screen.getByPlaceholderText('ج'), 'zzz')
+    expect(await dead(classStringOf(open.container.querySelector('[data-dd]')!))).toEqual([])
+    open.unmount()
+
+    const multi = on('panel', <Dropdown label="د" options={ROLES} placeholder="د" values={[]} onToggle={() => {}} />)
+    await userEvent.click(screen.getByRole('button'))
+    expect(await dead(classStringOf(multi.container.querySelector('[data-dd]')!))).toEqual([])
+  })
+
+  it('sits on the ladder\'s anchored-popover rung, not on the deliverable\'s 35', async () => {
+    // Ledger L-42/L-43 — one role, one rung. The deliverable wrote the same
+    // popover 25, 27, 30, 35, 37, 39 and 57, each exactly high enough to clear
+    // whatever its own anchor sat in; a value that moves with nesting depth and
+    // not with what the element IS records no distinction.
+    on('panel', <Dropdown label="نقش" options={ROLES} placeholder="نقش" onChange={() => {}} />)
+    await userEvent.click(screen.getByRole('button'))
+    const pop = await paint(screen.getByRole('listbox').className)
+    expect(winner(pop, 'z-index')).toBe('var(--role-z-dropdown)')
+    expect(roleTarget('--role-z-dropdown')).toBe('--z-dropdown')
+    expect(tokenLiteral('--z-dropdown')).toBe('1000')
+    expect(roleTarget('--role-z-nonesuch')).toBe('')
+  })
+
+  it('is the popover the design draws — 280 tall, 7 inset, 2 between, radius 16', async () => {
+    on('panel', <Dropdown label="نقش" options={ROLES} placeholder="نقش" onChange={() => {}} />)
+    await userEvent.click(screen.getByRole('button'))
+    const pop = await paint(screen.getByRole('listbox').className)
+    expect(winner(pop, 'position')).toBe('absolute')
+    expect(winner(pop, 'top')).toBe('100%')
+    expect(winner(pop, 'margin-top')).toBe('var(--space-3)')
+    expect(winner(pop, 'max-height')).toBe('var(--height-popover)')
+    expect(winner(pop, 'overflow')).toBe('auto')
+    expect(winner(pop, 'padding')).toBe('var(--pad-popover)')
+    expect(winner(pop, 'gap')).toBe('var(--space-half)')
+    expect(winner(pop, 'border-radius')).toBe('var(--radius-card)')
+    expect(winner(pop, 'border-color')).toBe('var(--border-card)')
+    expect(winner(pop, 'background-color')).toBe('var(--card)')
+    expect(winner(pop, '--tw-shadow')).toBe('var(--shadow-pop)')
+    expect(tokenLiteral('--height-popover')).toBe('280px')
+    expect(tokenLiteral('--pad-popover')).toBe('7px')
+    expect(tokenLiteral('--space-3')).toBe('6px')
+    // …and the card hairline, not the control's 1.5px, which is the one border
+    // in this component that is NOT --line.
+    expect(winner(pop, 'border-width')).toBe('1px')
+  })
+
+  it('anchors itself logically, the way a right-to-left app has to', async () => {
+    // F10 — the design writes `inset-inline:0` and the deliverable's magnifier
+    // a physical `right:11px`, which is the same edge only because the app is
+    // never ltr. A physical `left`/`right` here mirrors the whole popover the
+    // day anything renders ltr, and jsdom reports no geometry to catch it.
+    on('panel', (
+      <Dropdown label="نقش" options={ROLES} placeholder="نقش" onChange={() => {}} searchable searchPlaceholder="ج" />
+    ))
+    await userEvent.click(screen.getByRole('button'))
+    const pop = await paint(screen.getByRole('listbox').className)
+    expect(allProps(pop)).toContain('inset-inline-start')
+    expect(allProps(pop)).toContain('inset-inline-end')
+    expect(allProps(pop)).not.toContain('left')
+    expect(allProps(pop)).not.toContain('right')
+
+    const field = await paint(screen.getByPlaceholderText('ج').className)
+    expect(allProps(field)).not.toContain('padding-left')
+    expect(allProps(field)).not.toContain('padding-right')
+
+    const opt = await paint(screen.getAllByRole('option')[0].className)
+    expect(winner(opt, 'text-align')).toBe('start')
+  })
+
+  it('is the trigger the design draws, and fades only the placeholder', async () => {
+    const empty = on('panel', <Dropdown label="نقش" options={ROLES} placeholder="نقش را انتخاب کنید" onChange={() => {}} />)
+    const shut = await paint(screen.getByRole('button').className)
+    expect(winner(shut, 'padding-top')).toBe('var(--space-5)')
+    expect(winner(shut, 'padding-left')).toBe('var(--space-7)')
+    expect(winner(shut, 'border-radius')).toBe('var(--radius-md)')
+    expect(winner(shut, 'border-width')).toBe('var(--border-hairline)')
+    expect(winner(shut, 'border-color')).toBe('var(--line)')
+    expect(winner(shut, 'background-color')).toBe('var(--card)')
+    expect(winner(shut, 'font-size')).toBe('var(--fs-menu)')
+
+    const ph = empty.container.querySelector('button > span') as HTMLElement
+    const label = await paint(ph.className)
+    expect(winner(label, 'color')).toBe('var(--text-faint)')
+    // It fills the row and clips. Without these the chevron is dragged off the
+    // trigger's inline end by a long value, or the trigger grows a second line.
+    expect(winner(label, 'flex')).toBe('1 1 0%')
+    expect(winner(label, 'overflow')).toBe('hidden')
+    expect(winner(label, 'text-overflow')).toBe('ellipsis')
+    expect(winner(label, 'white-space')).toBe('nowrap')
+    empty.unmount()
+
+    // …and the chosen value is NOT faint. The design gives the trigger two inks
+    // (#2A1D5E chosen, #a99fc4 empty) and a component that faded both would
+    // read as permanently unset.
+    const filled = on('panel', <Dropdown label="نقش" options={ROLES} placeholder="نقش" value="admin" onChange={() => {}} />)
+    const value = filled.container.querySelector('button > span') as HTMLElement
+    expect(value).toHaveTextContent('مدیر')
+    expect(winner(await paint(value.className), 'color')).not.toBe('var(--text-faint)')
+  })
+
+  it('draws the chevron at the token size, not at an attribute', async () => {
+    const { container } = on('panel', <Dropdown label="نقش" options={ROLES} placeholder="نقش" onChange={() => {}} />)
+    const chev = container.querySelector('button > svg') as SVGElement
+    const p = await paint(chev.getAttribute('class') ?? '')
+    expect(winner(p, 'width')).toBe('var(--size-chevron)')
+    expect(winner(p, 'height')).toBe('var(--size-chevron)')
+    expect(winner(p, 'color')).toBe('var(--text-muted)')
+    expect(tokenLiteral('--size-chevron')).toBe('15px')
+    expect(chev.getAttribute('width')).toBeNull()
+    // It points DOWN. Nothing about a `d` attribute is checked by a class
+    // string, a snapshot or a build, and the same glyph rotated is the pager's.
+    expect(chev.querySelector('path')?.getAttribute('d')).toBe('M6 9l6 6 6-6')
+  })
+
+  it('is the option row the design draws, and marks the picked one twice over', async () => {
+    on('panel', <Dropdown label="نقش" options={ROLES} placeholder="نقش" value="admin" onChange={() => {}} />)
+    await userEvent.click(screen.getByRole('button'))
+    const picked = await paint(screen.getByRole('option', { name: 'مدیر' }).className)
+    const rest = await paint(screen.getByRole('option', { name: 'ادیتور' }).className)
+
+    expect(winner(rest, 'gap')).toBe('var(--gap-option)')
+    expect(winner(rest, 'padding-top')).toBe('var(--space-5)')
+    expect(winner(rest, 'padding-left')).toBe('var(--space-6)')
+    expect(winner(rest, 'border-radius')).toBe('var(--radius-input)')
+    expect(winner(rest, 'border-width')).toBe('0px')
+    expect(winner(rest, 'cursor')).toBe('pointer')
+    expect(tokenLiteral('--gap-option')).toBe('9px')
+
+    // Tint AND weight, which is what the design changes; either alone leaves a
+    // picked row that reads as unpicked at a glance.
+    expect(winner(picked, 'background-color')).toBe('var(--tile-v2)')
+    expect(winner(rest, 'background-color')).toBe('transparent')
+    expect(winner(picked, 'font-weight')).toBe('var(--fw-bold)')
+    expect(winner(rest, 'font-weight')).toBe('var(--fw-semibold)')
+    // …and a row answers the pointer, which is the whole of its affordance.
+    expect(winner(rest, 'background-color', ':hover')).toBe('var(--tile-v2)')
+  })
+
+  it('trails the single-select check after the label, as the design does', async () => {
+    // design/Inja Panel.dc.html:1334 — `<span style="flex:1">{{label}}</span>`
+    // and then the check. The brief led with it behind a 14px spacer, which
+    // indents every label in the list by 23px the design does not draw.
+    on('panel', <Dropdown label="نقش" options={ROLES} placeholder="نقش" value="admin" onChange={() => {}} />)
+    await userEvent.click(screen.getByRole('button'))
+    const picked = screen.getByRole('option', { name: 'مدیر' })
+    const kids = Array.from(picked.children)
+    expect(kids[0].tagName.toLowerCase()).toBe('span')
+    expect(kids[kids.length - 1].tagName.toLowerCase()).toBe('svg')
+    // The label fills the row, which is what puts the check at the inline END
+    // rather than immediately after the text.
+    expect(winner(await paint(kids[0].getAttribute('class') ?? ''), 'flex')).toBe('1 1 0%')
+    const check = await paint(kids[kids.length - 1].getAttribute('class') ?? '')
+    expect(winner(check, 'color')).toBe('var(--violet)')
+    expect(winner(check, 'flex')).toBe('none')
+    expect(winner(check, 'width')).toBe('var(--space-7)')
+    // An unpicked row draws nothing there — no spacer, so the labels line up
+    // with the popover's own inset rather than with a phantom column.
+    const plain = screen.getByRole('option', { name: 'ادیتور' })
+    expect(plain.querySelector('svg')).toBeNull()
+    expect(plain.children).toHaveLength(1)
+  })
+
+  it('takes its trigger step from the surface, not from a prop', async () => {
+    const panel = on('panel', <Dropdown label="نقش" options={ROLES} placeholder="نقش" onChange={() => {}} />)
+    const one = await paint(screen.getByRole('button').className)
+    panel.unmount()
+    on('reader', <Dropdown label="نقش" options={ROLES} placeholder="نقش" onChange={() => {}} />)
+    const two = await paint(screen.getByRole('button').className)
+    expect(winner(one, 'font-size')).toBe('var(--fs-menu)')
+    expect(winner(two, 'font-size')).toBe('var(--fs-lg)')
+  })
+
+  it('names no size, density or scale — F4/F8 puts those on the shell', () => {
+    const src = sourceOf('Dropdown.tsx')
+    expect(src).not.toMatch(/(?<!-)\b(density|size|scale|compact|dense|roomy|variant)\??:\s*('|"|[A-Za-z])/)
+    // …and writes no arbitrary value of ANY kind. guards.test.ts bans three
+    // prefixes only, so `z-[35]` and `p-[7px]` would pass it while bypassing
+    // the token layer entirely.
+    for (const file of ['Checkbox.tsx', 'Radio.tsx', 'Dropdown.tsx']) {
+      const arbitrary = sourceOf(file)
+        .split('\n')
+        .filter((l) => /\b[a-z-]+-\[[^\]]+\]/.test(l))
+      expect(arbitrary, `${file} writes an arbitrary Tailwind value`).toEqual([])
+    }
   })
 })

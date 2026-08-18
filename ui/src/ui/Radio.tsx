@@ -7,7 +7,8 @@ export interface RadioProps {
   checked: boolean
   onChange: (value: string) => void
   label: string
-  /** The scope line under the name — 11.5px #8a7db0 lh 1.7 (§5.2). */
+  /** The scope line under the name — `--fs-xs` in `--text-muted` at
+      `--lh-normal` (§5.2), a step darker than the checkbox's hint. */
   note?: string
   id?: string
   className?: string
