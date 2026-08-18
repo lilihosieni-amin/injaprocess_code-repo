@@ -1383,7 +1383,7 @@ const PENDING: string[] = [
   'text-fs-doc-base', 'text-fs-doc-h1',
   'text-fs-doc-title', 'text-fs-doc-step', 'text-fs-doc-body',
   'text-fs-numeral', 'text-fs-steps-title', 'text-fs-display-hand',
-  'text-fs-body-lead', 'text-fs-nano', 'text-fs-badge-sm',
+  'text-fs-nano', 'text-fs-badge-sm',
   'text-fs-tag', 'text-fs-h1-reader-home', 'text-fs-h1-reader-list', 'text-fs-h1-reader-dept',
   'text-fs-body-reader', 'text-prose',
   // Named only in a docstring in src/ui/fieldFrame.ts, which explains why the
@@ -1463,17 +1463,18 @@ const PENDING: string[] = [
   // `min-w-menu` is deliberately NOT here. The mint gave it a token instead of a
   // new name, and src/ui/Menu.tsx already writes it, so it has a consumer today.
   //
-  // Task 12 has landed, and it deleted its own seven names above plus the twelve
-  // older lines its chrome turned out to consume. What is left of the mint here
-  // is Task 13's and Task 16's.
-  'px-topbar-reader',
+  // Tasks 12 and 13 have both landed. Task 12 deleted its own seven names above
+  // plus the twelve older lines its chrome turned out to consume; Task 13 has now
+  // deleted `px-topbar-reader` and, with it, `text-fs-body-lead` above — the
+  // reader's lockup is the only place in the product that writes the 14.5px step.
+  // What is left of the shell mint here is Task 16's one line.
   'grid-cols-idef0',
 
   // The reader-chrome mint. The owner's ruling that ReaderShell takes the
-  // READER's numbers — it writes the panel's in eleven places — needs three
-  // names the mint above had no reason to look for. All four lines are Task 13's
-  // and come off with it.
-  'px-button-x', 'w-menu-more-reader', 'h-menu-more-reader',
+  // READER's numbers — it wrote the panel's in eleven places — needed three names
+  // the mint above had no reason to look for. All three are consumed by the
+  // reader's «بازگشت» button and its home square as of Task 13, so the line is
+  // gone; `gap-button-icon`, the third of them, was never on this list.
 ]
 
 /**

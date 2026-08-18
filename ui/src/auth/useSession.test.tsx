@@ -107,11 +107,22 @@ describe('RequireAuth', () => {
   })
 
   it('carries pendingApprovals through to the reader badge', async () => {
+    // `/departments` rather than `/`: as of Task 13 the reader draws its TOP BAR
+    // on its root and a back bar on every other screen, and the badge is on the
+    // top bar. At `/` — a route the app's own catch-all redirects away from — the
+    // reader now gets the back bar, which carries «بازگشت» and «خانه» and no
+    // count at all.
+    //
+    // And «۴», not «4»: audit S4 found the two shells were the only surfaces in
+    // the product rendering a latin digit, so a reader saw «۳ فرآیند» on the page
+    // and `3` in the header. The digit is the half this test is about, so it is
+    // asserted as the reader sees it.
     vi.stubGlobal('fetch', vi.fn(async () => new Response(
       JSON.stringify({ ...DESCRIPTOR, pendingApprovals: 4 }),
       { status: 200, headers: { 'Content-Type': 'application/json' } })))
-    mount()
-    expect(await screen.findByText('4')).toBeInTheDocument()
+    const { container } = mount('/departments')
+    expect(await screen.findByText('۴')).toBeInTheDocument()
+    expect(container.textContent).not.toMatch(/[0-9]/)
   })
 })
 

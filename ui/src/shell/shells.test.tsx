@@ -1,15 +1,17 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter, Routes, Route } from 'react-router-dom'
+import { MemoryRouter, Routes, Route, useParams } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AppShell } from './AppShell'
 import { PanelShell } from './PanelShell'
+import { ReaderShell } from './ReaderShell'
 import { Icon } from '../ui/Icon'
 import { pushDismissible, popDismissible, isTopDismissible } from '../ui/dismissibleStack'
 import { expectExpandedHitArea } from '../test/a11y'
 import { paint, winner, declarations } from '../test/paint'
 import type { SessionDescriptor, Capability } from '../auth/session'
+import type { Department } from '../api/types'
 
 /*
  * A test file, and src/test/theme.test.ts's R11 scan excludes it by name. The
@@ -1907,5 +1909,813 @@ describe('what the panel chrome’s class strings compile to', () => {
     expect(winner(home, 'inset', '::before')).toBe('-5px')
     // NOT `--size-logo-bar`, which is also 38px, nor the reader's 38px sibling.
     expect(winner(home, 'width')).not.toBe('var(--size-menu-more-reader)')
+  })
+})
+
+/* ==================================================================== *
+ * ReaderShell — Task 13
+ *
+ * Three things the panel does not do, and one the design does not carry.
+ *
+ *   · the chrome off home is a BACK BAR on `#fff`, not the panel's breadcrumb
+ *     strip on `#F4EFFB` (§9.12);
+ *   · there is NO chrome at all on the flowchart (R3);
+ *   · every metric on both bars is the READER's — the two surfaces differ
+ *     deliberately, which is what R3 exists to be, so a value copied off
+ *     `PanelShell` is wrong here even when it compiles and looks right;
+ *   · R4 — a reader whose reachable departments number exactly one lands on
+ *     that department's process list, which is then their root.
+ * ==================================================================== */
+
+const ONE: Department[] = [{ code: 'dining', name: 'سالن', count: 3, subs: 0 }]
+const ONE_EMPTY: Department[] = [{ code: 'dining', name: 'سالن', count: 0, subs: 0 }]
+const ONE_COOKING: Department[] = [{ code: 'cooking', name: 'پخت', count: 2, subs: 1 }]
+const THREE: Department[] = [
+  { code: 'dining', name: 'سالن', count: 3, subs: 0 },
+  { code: 'cooking', name: 'پخت', count: 2, subs: 1 },
+  { code: 'warehouse', name: 'انبار', count: 0, subs: 0 },
+]
+
+/**
+ * The routed screen behind `/departments/:code`, which reports which department
+ * it was actually given.
+ *
+ * R4 redirects to `departments[0].code`, and a fixture standing on one
+ * department cannot tell that apart from a redirect hard-coded to `dining` —
+ * every one of this file's other fixtures is a `dining` fixture. The `:code`
+ * this stub prints is what makes `ONE_COOKING` below say something.
+ */
+function ProcessListStub() {
+  const { code } = useParams()
+  return (
+    <>
+      <p>فهرست فرآیندها</p>
+      <span data-code>{code}</span>
+    </>
+  )
+}
+
+const READER_CAPS: Capability[] = ['view', 'comment', 'export_pdf']
+
+/**
+ * Render the reader shell at `entry`, with the one read it makes answered.
+ *
+ * Keyed on the URL rather than answering everything with one body, for the same
+ * reason `renderPanel` above is: a sign-out POST answered with a department list
+ * is a mock that cannot tell the two apart, and `signedOut()` counts calls on
+ * this same spy.
+ */
+function renderReader(depts: Department[], entry: string, over: Partial<SessionDescriptor> = {}) {
+  vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+    const url = String(typeof input === 'string' ? input : (input as Request).url ?? input)
+    const body = url.includes('/api/departments') ? depts : { ok: true }
+    return Promise.resolve(new Response(JSON.stringify(body), {
+      status: 200, headers: { 'Content-Type': 'application/json' },
+    }))
+  })
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return render(
+    <QueryClientProvider client={qc}>
+      <MemoryRouter initialEntries={[entry]}>
+        <Routes>
+          <Route element={<ReaderShell session={{ ...session(READER_CAPS), ...over }} />}>
+            <Route path="/departments" element={<p>فهرست دپارتمان‌ها</p>} />
+            <Route path="/departments/:code" element={<ProcessListStub />} />
+            <Route path="/departments/:code/overview" element={<p>خلاصهٔ دپارتمان</p>} />
+            <Route path="/processes/:pid" element={<p>خلاصهٔ فرآیند</p>} />
+            <Route path="/processes/:pid/flow" element={<p>فلوچارت</p>} />
+            <Route path="/profile" element={<p>محتوای پروفایل</p>} />
+          </Route>
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  )
+}
+
+/** The class strings the READER chrome renders, read off the DOM. Twin of `chrome()`. */
+function readerChrome(entry: string, depts: Department[] = THREE) {
+  const { container, unmount } = renderReader(depts, entry)
+  const cls = (sel: string) => {
+    const el = container.querySelector(sel)
+    if (el === null) throw new Error(`readerChrome(): nothing rendered for \`${sel}\``)
+    return (el as HTMLElement).className
+  }
+  return { container, cls, unmount }
+}
+
+describe('R4 — a reader with one department never sees the department list', () => {
+  it('lands on that department’s process list', async () => {
+    renderReader(ONE, '/departments')
+    expect(await screen.findByText('فهرست فرآیندها')).toBeInTheDocument()
+    expect(screen.queryByText('فهرست دپارتمان‌ها')).toBeNull()
+  })
+
+  it('lands on the department they actually have, not on the one the fixtures use', async () => {
+    // `departments[0].code` -> `'dining'` is a one-word mutation that every
+    // other case in this block is blind to, because every other fixture IS
+    // `dining`. This one is scoped to `cooking` and reads the `:code` back off
+    // the routed screen.
+    const { container } = renderReader(ONE_COOKING, '/departments')
+    await screen.findByText('فهرست فرآیندها')
+    expect(container.querySelector('[data-code]')).toHaveTextContent('cooking')
+  })
+
+  it('redirects on scope alone — a department with nothing in it still redirects', async () => {
+    // The owner's ruling, stated as a rule about scope and not about content:
+    // the same person always lands in the same place, rather than moving as
+    // content gets confirmed. The list then shows its own empty state.
+    renderReader(ONE_EMPTY, '/departments')
+    expect(await screen.findByText('فهرست فرآیندها')).toBeInTheDocument()
+  })
+
+  it('makes that list their root, so it carries no back bar', async () => {
+    const { container } = renderReader(ONE, '/departments')
+    await screen.findByText('فهرست فرآیندها')
+    expect(container.querySelector('[data-r-backbar]')).toBeNull()
+    expect(container.querySelector('[data-r-topbar]')).toBeInTheDocument()
+  })
+
+  it('leaves a reader with more than one department on the list', async () => {
+    renderReader(THREE, '/departments')
+    expect(await screen.findByText('فهرست دپارتمان‌ها')).toBeInTheDocument()
+  })
+
+  it('gives a many-department reader a back bar one level down', async () => {
+    const { container } = renderReader(THREE, '/departments/dining')
+    await screen.findByText('فهرست فرآیندها')
+    expect(container.querySelector('[data-r-backbar]')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'بازگشت' })).toHaveAttribute('href', '/departments')
+  })
+
+  it('never flashes the one-tile list while the departments are still loading', async () => {
+    // A redirect that waits for the answer is a redirect; one that renders the
+    // list first and then leaves is a flicker the reader can see and click.
+    const { container } = renderReader(ONE, '/departments')
+    expect(screen.queryByText('فهرست دپارتمان‌ها')).toBeNull()
+    await screen.findByText('فهرست فرآیندها')
+    expect(container.querySelector('[data-shell="reader"]')).toBeInTheDocument()
+  })
+
+  it('never flashes the WRONG CHROME on the one-department reader’s own root either', async () => {
+    // The same argument, one route over, and it is not in the plan. On a deep
+    // link or a refresh at `/departments/dining` the departments are not in yet,
+    // so `only` is undefined and the root reads as `/departments` — which draws
+    // this reader a BACK BAR whose «بازگشت» goes to the department list R4
+    // exists to keep them out of. It is on screen, it is clickable, and it is
+    // replaced by the top bar a moment later. So the two routes whose chrome
+    // depends on the answer both wait for it; every other route's chrome is the
+    // back bar whatever the answer is, and none of them waits.
+    const { container } = renderReader(ONE, '/departments/dining')
+    expect(container.querySelector('[data-r-backbar]')).toBeNull()
+    expect(container.querySelector('[data-r-topbar]')).toBeNull()
+    await screen.findByText('فهرست فرآیندها')
+    expect(container.querySelector('[data-r-topbar]')).toBeInTheDocument()
+    expect(container.querySelector('[data-r-backbar]')).toBeNull()
+  })
+
+  it('holds nothing else up: a route whose chrome the answer cannot change draws at once', async () => {
+    // The other half of the gate, and the reason it is two routes wide and not
+    // "wait for the query". `/processes/:pid/flow` and `/profile` get the same
+    // chrome whichever root this reader has, so blanking them would be latency
+    // bought for nothing — one extra round trip on every cold deep link.
+    const flow = renderReader(ONE, '/processes/dining-003/flow')
+    expect(screen.getByText('فلوچارت')).toBeInTheDocument()
+    flow.unmount()
+    const { container } = renderReader(ONE, '/profile')
+    expect(screen.getByText('محتوای پروفایل')).toBeInTheDocument()
+    expect(container.querySelector('[data-r-backbar]')).toBeInTheDocument()
+  })
+
+  it('redirects from a trailing slash too, which is one keystroke away', async () => {
+    // `pathname === '/departments'` walks past `/departments/` and leaves this
+    // reader standing on the one-tile list, which is the whole of what R4
+    // forbids. The two functions in `crumbs.ts` normalise for the same reason.
+    const { container } = renderReader(ONE, '/departments/')
+    expect(await screen.findByText('فهرست فرآیندها')).toBeInTheDocument()
+    expect(container.querySelector('[data-r-topbar]')).toBeInTheDocument()
+  })
+
+  it('redirects from the department LIST and from nowhere else', async () => {
+    // R4 is a rule about one route. A redirect keyed on `only !== undefined`
+    // alone sends this reader home from every screen they open, which is the
+    // same one-line mutation and is invisible to every case above.
+    renderReader(ONE, '/departments/dining/overview')
+    expect(await screen.findByText('خلاصهٔ دپارتمان')).toBeInTheDocument()
+    expect(screen.queryByText('فهرست فرآیندها')).toBeNull()
+  })
+
+  it('is reader-only: an admin scoped to one department still sees the list', async () => {
+    // R4's own clause. For them the list is a real navigation level and their
+    // chrome is the breadcrumb strip, so the ruling does not apply.
+    vi.spyOn(globalThis, 'fetch').mockImplementation(() =>
+      Promise.resolve(new Response(JSON.stringify(ONE), { status: 200, headers: { 'Content-Type': 'application/json' } })),
+    )
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={qc}>
+        <MemoryRouter initialEntries={['/departments']}>
+          <Routes>
+            <Route element={<PanelShell session={session(['view', 'edit'])} />}>
+              <Route path="/departments" element={<p>فهرست دپارتمان‌ها</p>} />
+              <Route path="/departments/:code" element={<p>فهرست فرآیندها</p>} />
+            </Route>
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+    expect(await screen.findByText('فهرست دپارتمان‌ها')).toBeInTheDocument()
+  })
+})
+
+describe('ReaderShell chrome', () => {
+  it('draws no chrome at all on the flowchart', async () => {
+    // R3 — "a back bar — and neither on the flow screen". The panel keeps its
+    // crumb strip there and this shell keeps nothing, which is a reader rule.
+    //
+    // The second render is what stops this being a test a shell with NO chrome
+    // anywhere passes — which is exactly what the shell before this one was.
+    const flow = renderReader(THREE, '/processes/dining-003/flow')
+    await screen.findByText('فلوچارت')
+    expect(flow.container.querySelector('[data-r-topbar]')).toBeNull()
+    expect(flow.container.querySelector('[data-r-backbar]')).toBeNull()
+    // …and the routed screen is still there, so this is a bar that is absent
+    // rather than a shell that rendered nothing.
+    expect(flow.container.querySelector('main')).toBeInTheDocument()
+    flow.unmount()
+    const { container } = renderReader(THREE, '/processes/dining-003')
+    await screen.findByText('خلاصهٔ فرآیند')
+    expect(container.querySelector('[data-r-backbar]')).toBeInTheDocument()
+  })
+
+  it('draws the top bar on the root and the back bar on every other screen', async () => {
+    // The reader's `showTopBar` / `showBackBar` (Reader :2684-2686), which is
+    // the panel's split one screen further in: the panel keeps its crumb strip
+    // on the flowchart and this shell keeps nothing there.
+    for (const [entry, bar, gone] of [
+      ['/departments', '[data-r-topbar]', '[data-r-backbar]'],
+      ['/departments/dining', '[data-r-backbar]', '[data-r-topbar]'],
+      ['/departments/dining/overview', '[data-r-backbar]', '[data-r-topbar]'],
+      ['/processes/dining-003', '[data-r-backbar]', '[data-r-topbar]'],
+      ['/profile', '[data-r-backbar]', '[data-r-topbar]'],
+    ] as const) {
+      const { container, unmount } = renderReader(THREE, entry)
+      await waitFor(() => expect(container.querySelector(bar), entry).toBeInTheDocument())
+      expect(container.querySelector(gone), entry).toBeNull()
+      // …and never both, which is the shape a `? :` that became two `&&`s takes.
+      expect(container.querySelectorAll('[data-r-topbar], [data-r-backbar]').length, entry).toBe(1)
+      unmount()
+    }
+  })
+
+  it('is a white bar on the violet field, with the logo', async () => {
+    const { container } = renderReader(THREE, '/departments')
+    await screen.findByText('فهرست دپارتمان‌ها')
+    expect(container.querySelector('[data-r-topbar]')).toHaveClass('bg-card', 'border-warm')
+    expect(container.querySelector('[data-r-topbar] img')).toHaveAttribute('src', expect.stringMatching(/inja-logo/))
+    // Audit S7 read this shell as inverted against the design because it renders
+    // `bg-ink`. §9.1 settles it the other way — both deliverables put every
+    // screen on the violet field. What WAS wrong is the `text-card` beside it:
+    // §6.0's root sets `color:#2A1D5E`, so an element that forgets to colour
+    // itself is invisible rather than accidentally white, which is the honest
+    // failure mode and the one the e2e sweep can see.
+    expect(container.querySelector('[data-shell="reader"]')).toHaveClass('bg-ink', 'text-ink')
+    expect(container.querySelector('[data-shell="reader"]')).not.toHaveClass('text-card')
+  })
+
+  it('draws the logo at the box the design gives it, as an attribute', async () => {
+    // An `<img>` needs its intrinsic size before the file lands or the whole bar
+    // reflows when it does. `Inja Reader.dc.html:135` — 38×38, the same box the
+    // panel draws it at.
+    const { container } = renderReader(THREE, '/departments')
+    await screen.findByText('فهرست دپارتمان‌ها')
+    const img = container.querySelector('[data-r-topbar] img')
+    expect(img).toHaveAttribute('width', '38')
+    expect(img).toHaveAttribute('height', '38')
+  })
+
+  it('asks for the icon-button ROLE, which is what makes it 42 here and 34 on the panel', async () => {
+    // R3's table: the reader's icon buttons are 42×42 at radius 12.
+    //
+    // The class is `w-iconbtn`, not a number, and it is the SAME string the panel
+    // writes — `--role-iconbtn` is `--size-iconbtn` 40px on `:root` and
+    // `--size-iconbtn-reader` 42px under `[data-surface='reader']`, so the
+    // difference is carried by the role layer that R3 exists to be. jsdom
+    // computes no CSS, so this assertion can only pin that the shell asked for
+    // the role; the two values themselves are pinned by `--role-iconbtn`'s row in
+    // `SCALE` in `src/ui/surface.test.tsx`, and the painted box by the Playwright
+    // check in `e2e/reader-shell.spec.ts`. A `w-[42px]` here would pass this test
+    // and this test alone, and would stop being the design the day R3 moved.
+    renderReader(THREE, '/departments')
+    await screen.findByText('فهرست دپارتمان‌ها')
+    for (const name of ['نمایه', 'خروج']) {
+      const control = name === 'نمایه'
+        ? screen.getByRole('link', { name })
+        : screen.getByRole('button', { name })
+      expect(control, name).toHaveClass('w-iconbtn', 'h-iconbtn', 'rounded-button')
+      // …and NOT the panel's own square, which is a different token at a
+      // different value and compiles just as cleanly.
+      expect(control.className, name).not.toMatch(/\bw-(tool|menu-more)\b/)
+    }
+  })
+
+  it('gives the home square the READER’s 38px box, not the panel’s 36', async () => {
+    // `Inja Reader.dc.html:162` — `38×38; border-radius:11px`. The panel draws
+    // its own home button, its tools button and its mobile menu tile all at 36
+    // (`--size-menu-more`), and `w-menu-more` here compiles, paints and is two
+    // pixels wrong on every screen this bar is on.
+    renderReader(THREE, '/departments/dining')
+    await screen.findByText('فهرست فرآیندها')
+    const home = screen.getByRole('link', { name: 'خانه' })
+    expect(home).toHaveClass('w-menu-more-reader', 'h-menu-more-reader', 'rounded-input')
+    // A whole class token, not `\b`: `\b` sits between the `e` and the `-` of
+    // `w-menu-more-reader`, so the panel's own key matches inside the reader's.
+    expect(home.className.split(/\s+/)).not.toContain('w-menu-more')
+  })
+
+  it('counts the approvals waiting for you in Persian, and drops the badge at zero', async () => {
+    // Audit S4 and S5 together: a latin digit in a 44×44 coral square.
+    const zero = renderReader(THREE, '/departments')
+    await screen.findByText('فهرست دپارتمان‌ها')
+    expect(screen.queryByRole('status')).toBeNull()
+    zero.unmount()
+    renderReader(THREE, '/departments', { pendingApprovals: 4 })
+    const badge = await screen.findByRole('status')
+    expect(badge).toHaveTextContent('۴')
+    expect(badge.textContent).not.toMatch(/[0-9]/)
+    expect(badge).toHaveClass('rounded-round', 'min-w-count-chrome', 'h-count-chrome')
+    // S5 — the badge is not interactive, so it must not carry the touch floor.
+    expect(badge.className).not.toMatch(/\bmin-[wh]-touch\b/)
+    // …and it says what it is counting. A bare «۴» in a coral disc is a number
+    // with no sentence attached, and this is the app's only notification channel.
+    expect(badge.getAttribute('aria-label')).toContain('۴')
+  })
+
+  it('names the screen the back bar is on, resolved from the departments it already holds', async () => {
+    // `Inja Reader.dc.html:160-161` — the one piece of text on that bar, and the
+    // plan drew the bar without it. The NAME comes from the query, never from
+    // the code in the URL: «دپارتمان dining» is the failure this pins against.
+    const list = renderReader(THREE, '/departments/dining')
+    expect(await screen.findByText('سالن')).toBeInTheDocument()
+    list.unmount()
+    const about = renderReader(THREE, '/departments/cooking/overview')
+    expect(await screen.findByText('دربارهٔ پخت')).toBeInTheDocument()
+    about.unmount()
+    // …and the two that name themselves need no query at all, which is why they
+    // are a different branch: this one is on screen before the fetch resolves.
+    renderReader(THREE, '/profile')
+    expect(screen.getByText('پروفایل من')).toBeInTheDocument()
+  })
+
+  it('leaves the title empty rather than half-written before the query lands', async () => {
+    // The deliverable's own answer for a process screen is the empty string, and
+    // the same empty string is what a department screen shows for the ~200ms
+    // before `useDepartments` answers. «دپارتمان undefined» is the failure.
+    const { container } = renderReader(THREE, '/processes/dining-003')
+    await screen.findByText('خلاصهٔ فرآیند')
+    const bar = container.querySelector('[data-r-backbar]') as HTMLElement
+    expect(bar.textContent).not.toMatch(/undefined|dining/)
+  })
+
+  it('marks the surface so R3’s scale resolves under it', async () => {
+    const { container } = renderReader(THREE, '/departments')
+    await screen.findByText('فهرست دپارتمان‌ها')
+    const surface = container.querySelector('[data-surface="reader"]')
+    expect(surface).toBeInTheDocument()
+    expect(surface).toHaveClass('contents')
+  })
+
+  it('gives the outlet a growing, unpadded flex column ancestor, on both chromes and on neither', async () => {
+    // C1 — FlowScreen's canvas resolves `h-full` down this chain, and padding
+    // here renders it at zero height. The flow screen has no bar at all, so it
+    // is the one that most needs saying.
+    for (const [entry, text] of [
+      ['/departments', 'فهرست دپارتمان‌ها'],
+      ['/departments/dining', 'فهرست فرآیندها'],
+      ['/processes/dining-003/flow', 'فلوچارت'],
+    ] as const) {
+      const { unmount } = renderReader(THREE, entry)
+      const main = (await screen.findByText(text)).parentElement as HTMLElement
+      expect(main.tagName, entry).toBe('MAIN')
+      expect(main.className, entry).toMatch(/\bflex-1\b/)
+      expect(main.className, entry).toMatch(/\bmin-h-0\b/)
+      expect(main.className, entry).not.toMatch(/(^|\s)p[xytrbl]?-/)
+      unmount()
+    }
+  })
+
+  it('renders no h1 of its own, on either chrome', async () => {
+    // I6 — the brand is a span; the routed screen owns the page's one h1 (F11).
+    for (const [entry, text] of [
+      ['/departments', 'فهرست دپارتمان‌ها'],
+      ['/departments/dining', 'فهرست فرآیندها'],
+    ] as const) {
+      const { container, unmount } = renderReader(THREE, entry)
+      await screen.findByText(text)
+      expect(container.querySelectorAll('h1').length, entry).toBe(0)
+      unmount()
+    }
+  })
+
+  it('grows every under-sized chrome control to the 44px floor', async () => {
+    // F11 against the design's ladder: the painted box stays 42 and 38, and a
+    // transparent ::before carries the target. `expectExpandedHitArea` resolves
+    // the used box from the element's own classes rather than matching a
+    // literal, so it also refuses a ::before that has been told not to draw.
+    const bar = renderReader(THREE, '/departments')
+    expectExpandedHitArea(await screen.findByRole('link', { name: 'نمایه' }))
+    expectExpandedHitArea(screen.getByRole('button', { name: 'خروج' }))
+    bar.unmount()
+    renderReader(THREE, '/departments/dining')
+    expectExpandedHitArea(await screen.findByRole('link', { name: 'خانه' }))
+  })
+})
+
+/** Whatever a control calls itself, for a message that says WHICH one is out. */
+function named(el: HTMLElement): string {
+  return el.getAttribute('aria-label') ?? el.textContent ?? el.tagName
+}
+
+describe('ReaderShell reachability', () => {
+  it('puts sign-out and the profile one control away on the reader’s root', async () => {
+    renderReader(THREE, '/departments')
+    await screen.findByText('فهرست دپارتمان‌ها')
+    expect(screen.getByRole('button', { name: 'خروج' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'نمایه' })).toHaveAttribute('href', '/profile')
+  })
+
+  it('signs out when the top bar’s «خروج» is pressed', async () => {
+    // A control asserted only to exist is not asserted. This one is wired.
+    renderReader(THREE, '/departments')
+    await screen.findByText('فهرست دپارتمان‌ها')
+    expect(signedOut()).toBe(0)
+    await userEvent.click(screen.getByRole('button', { name: 'خروج' }))
+    await waitFor(() => expect(signedOut()).toBe(1))
+  })
+
+  it('keeps a way back on EVERY route that has a bar at all, and points it where readerBack says', async () => {
+    for (const [entry, text, to] of [
+      ['/departments/dining', 'فهرست فرآیندها', '/departments'],
+      ['/departments/dining/overview', 'خلاصهٔ دپارتمان', '/departments/dining'],
+      ['/processes/dining-003', 'خلاصهٔ فرآیند', '/departments/dining'],
+      ['/profile', 'محتوای پروفایل', '/departments'],
+    ] as const) {
+      const { unmount } = renderReader(THREE, entry)
+      await screen.findByText(text)
+      expect(screen.getByRole('link', { name: 'بازگشت' }), entry).toHaveAttribute('href', to)
+      // …and «خانه» beside it, which is the reader's one route back to the bar
+      // that holds sign-out. The design draws no sign-out on this bar and this
+      // shell does not add one: it is two clicks, not nowhere, which is the
+      // difference between this and the panel's strip before Task 12 fixed it.
+      expect(screen.getByRole('link', { name: 'خانه' }), entry).toHaveAttribute('href', '/departments')
+      unmount()
+    }
+  })
+
+  it('points «خانه» at the ONE-department reader’s own root, not at the list', async () => {
+    // The other half of R4, and the mutation `to={root}` -> `to="/departments"`
+    // is invisible to every many-department case above: for them the two are the
+    // same string. For this reader «خانه» would land on a list that bounces them
+    // straight back — a control whose destination is a redirect.
+    renderReader(ONE, '/departments/dining/overview')
+    await screen.findByText('دربارهٔ سالن')
+    expect(screen.getByRole('link', { name: 'خانه' })).toHaveAttribute('href', '/departments/dining')
+    expect(screen.getByRole('link', { name: 'بازگشت' })).toHaveAttribute('href', '/departments/dining')
+  })
+
+  it('points the brand lockup at the same root «خانه» does', async () => {
+    const one = renderReader(ONE, '/departments')
+    await screen.findByText('فهرست فرآیندها')
+    expect(screen.getByRole('link', { name: /اینجا فست‌فود/ })).toHaveAttribute('href', '/departments/dining')
+    one.unmount()
+    renderReader(THREE, '/departments')
+    await screen.findByText('فهرست دپارتمان‌ها')
+    expect(screen.getByRole('link', { name: /اینجا فست‌فود/ })).toHaveAttribute('href', '/departments')
+  })
+
+  it('leaves the whole chrome in the tab order', async () => {
+    // `tabIndex={-1}` on any of these is a control that is still there, still
+    // labelled, still the right size and still clickable by a mouse — and gone
+    // for a keyboard. Sign-out is the one that matters most.
+    const bar = renderReader(THREE, '/departments')
+    await screen.findByText('فهرست دپارتمان‌ها')
+    for (const el of controlsIn(bar.container)) {
+      expect(el.getAttribute('tabindex'), named(el)).not.toBe('-1')
+    }
+    expect(controlsIn(bar.container).length).toBeGreaterThan(2)
+    bar.unmount()
+    const back = renderReader(THREE, '/departments/dining')
+    await screen.findByText('فهرست فرآیندها')
+    const controls = controlsIn(back.container, '[data-r-backbar]')
+    expect(controls.length).toBeGreaterThan(1)
+    for (const el of controls) {
+      expect(el.getAttribute('tabindex'), named(el)).not.toBe('-1')
+    }
+  })
+})
+
+describe('ReaderShell glyphs', () => {
+  it('draws four DIFFERENT pictures, so the pins below are about something', () => {
+    const drawn = ['chevronStart', 'home', 'user', 'logout'].map(
+      (n) => iconGlyph(n as Parameters<typeof Icon>[0]['name']),
+    )
+    expect(new Set(drawn).size).toBe(4)
+    expect(drawn.every((d) => d.length > 0)).toBe(true)
+  })
+
+  it('points «بازگشت» the way an RTL reader came from', async () => {
+    // `Inja Reader.dc.html:158` draws `M9 18l6-6-6-6` on this very button, which
+    // is `chevronStart`. In a right-to-left reading what you came from lies to
+    // the RIGHT, so the back control points right — and `chevronEnd`, the
+    // drill-in chevron, is the same picture mirrored and compiles just as well.
+    const { container } = renderReader(THREE, '/departments/dining')
+    await screen.findByText('فهرست فرآیندها')
+    const glyph = glyphOf(screen.getByRole('link', { name: 'بازگشت' }))
+    expect(glyph).toBe(iconGlyph('chevronStart'))
+    expect(glyph).not.toBe(iconGlyph('chevronEnd'))
+    // …and «خانه» beside it is a house, not the same chevron again.
+    expect(glyphOf(container.querySelector('a[aria-label="خانه"]'))).toBe(iconGlyph('home'))
+  })
+
+  it('draws a person on the profile and the sign-out glyph on sign-out', async () => {
+    const { container } = renderReader(THREE, '/departments')
+    await screen.findByText('فهرست دپارتمان‌ها')
+    expect(glyphOf(container.querySelector('a[aria-label="نمایه"]'))).toBe(iconGlyph('user'))
+    expect(glyphOf(container.querySelector('button[aria-label="خروج"]'))).toBe(iconGlyph('logout'))
+  })
+
+  it('sizes each glyph to the deliverable’s own number', async () => {
+    // The reader's bar draws its icons at 19 (reader 143, 149) and its back bar
+    // at 16 and 17 (reader 158, 163) — every one of them a step above the
+    // panel's, because every box under them is. A glyph sized off the panel
+    // renders a small picture in a large button and nothing fails.
+    const bar = renderReader(THREE, '/departments')
+    await screen.findByText('فهرست دپارتمان‌ها')
+    const svg = (sel: string) => bar.container.querySelector(`${sel} svg`)
+    expect(svg('a[aria-label="نمایه"]')).toHaveAttribute('width', '19')
+    expect(svg('button[aria-label="خروج"]')).toHaveAttribute('width', '19')
+    bar.unmount()
+    const back = renderReader(THREE, '/departments/dining')
+    await screen.findByText('فهرست فرآیندها')
+    expect(back.container.querySelector('[data-r-backbar] a[href="/departments"] svg'))
+      .toHaveAttribute('width', '16')
+    expect(back.container.querySelector('a[aria-label="خانه"] svg')).toHaveAttribute('width', '17')
+  })
+})
+
+describe('what the reader chrome’s class strings compile to', () => {
+  it('paints the top bar white on a cream hairline, at the READER’s box', async () => {
+    const { cls, unmount } = readerChrome('/departments')
+    await screen.findByText('فهرست دپارتمان‌ها')
+    const bar = await paint(cls('[data-r-topbar]'))
+    unmount()
+    // `Inja Reader.dc.html:133` — `gap:12px; padding:12px 20px; background:#fff;
+    // border-bottom:1px solid #EFE7DC; z-index:20`. The panel draws `gap:14px;
+    // padding:12px 22px` on its own bar, and every one of those three numbers
+    // compiles here.
+    expect(winner(bar, 'gap')).toBe('var(--space-6)')
+    expect(winner(bar, 'gap')).not.toBe('var(--space-7)')
+    expect(winner(bar, 'padding-left')).toBe('var(--pad-topbar-reader)')
+    // NOT the panel's gutter, and NOT the reader's CONTENT gutter, which is a
+    // different row of the page four pixels away.
+    expect(winner(bar, 'padding-left')).not.toBe('var(--pad-topbar)')
+    expect(winner(bar, 'padding-left')).not.toBe('var(--pad-reader-x)')
+    expect(declarations(bar)).toEqual(new Set([
+      'display: flex',
+      'align-items: center',
+      'gap: var(--space-6)',
+      'padding-left: var(--pad-topbar-reader)',
+      'padding-right: var(--pad-topbar-reader)',
+      'padding-top: var(--space-6)',
+      'padding-bottom: var(--space-6)',
+      'background-color: var(--card)',
+      'border-bottom-width: 1px',
+      'border-color: var(--warm)',
+      'flex: none',
+      'z-index: var(--role-z-chrome)',
+    ]))
+    // `Inja Reader.dc.html:97` — `[data-r-topbar]{padding:10px 14px; gap:10px}`
+    // at ≤760, and nothing else.
+    expect(declarations(bar, '', R760)).toEqual(new Set([
+      'gap: var(--space-5)',
+      'padding-left: var(--space-7)',
+      'padding-right: var(--space-7)',
+      'padding-top: var(--space-5)',
+      'padding-bottom: var(--space-5)',
+    ]))
+  })
+
+  it('paints the back bar white too, and does NOT tighten it at 760', async () => {
+    const { cls, unmount } = readerChrome('/departments/dining')
+    await screen.findByText('فهرست فرآیندها')
+    const bar = await paint(cls('[data-r-backbar]'))
+    unmount()
+    // `Inja Reader.dc.html:156` — `gap:10px; padding:10px 20px; background:#fff;
+    // border-bottom:1px solid #EFE7DC`. This is NOT the panel's crumb strip:
+    // that one is `9px 22px` on the LAVENDER tile behind a violet hairline, and
+    // it would compile here without a word.
+    expect(winner(bar, 'background-color')).toBe('var(--card)')
+    expect(winner(bar, 'background-color')).not.toBe('var(--tile-v2)')
+    expect(winner(bar, 'border-color')).toBe('var(--warm)')
+    expect(winner(bar, 'padding-top')).toBe('var(--space-5)')
+    expect(winner(bar, 'padding-top')).not.toBe('var(--pad-crumb-y)')
+    expect(declarations(bar)).toEqual(new Set([
+      'display: flex',
+      'align-items: center',
+      'gap: var(--space-5)',
+      'padding-left: var(--pad-topbar-reader)',
+      'padding-right: var(--pad-topbar-reader)',
+      'padding-top: var(--space-5)',
+      'padding-bottom: var(--space-5)',
+      'background-color: var(--card)',
+      'border-bottom-width: 1px',
+      'border-color: var(--warm)',
+      'flex: none',
+    ]))
+    // The deliverable writes its ≤760 override against `[data-r-topbar]` by
+    // name and writes NONE for this bar, exactly as the panel's own strip has
+    // none. A `max760:px-s7` copied off the bar above narrows this one by six
+    // pixels on every phone and nothing says so.
+    expect(declarations(bar, '', R760)).toEqual(new Set())
+    expect(declarations(bar, '', R1080)).toEqual(new Set())
+  })
+
+  it('paints the shell’s own root as the full-viewport field it has to be', async () => {
+    const { cls, unmount } = readerChrome('/departments')
+    await screen.findByText('فهرست دپارتمان‌ها')
+    const root = await paint(cls('[data-shell="reader"]'))
+    unmount()
+    expect(declarations(root)).toEqual(new Set([
+      'height: 100vh',
+      'display: flex',
+      'flex-direction: column',
+      'overflow: hidden',
+      'background-color: var(--ink)',
+      'color: var(--ink)',
+    ]))
+  })
+
+  it('gives the reader’s ghost controls the LAVENDER box the design draws them on', async () => {
+    // `Inja Reader.dc.html:142, 148, 157, 162` — every control on both reader
+    // bars is `background:#F4EFFB; border:1.5px solid #E3D8F5; color:#4A25A9`.
+    //
+    // This is the reversal that makes the two surfaces different rather than
+    // scaled. The panel's bars put a WHITE control on a lavender strip; the
+    // reader's put a LAVENDER control on a white bar. `bg-card` — the panel's
+    // recipe, byte for byte — compiles, builds, passes every class-name check
+    // and paints a white button on a white bar with a hairline round it.
+    const { cls, unmount } = readerChrome('/departments/dining')
+    await screen.findByText('فهرست فرآیندها')
+    const ghost = await paint(cls('[data-r-backbar] a[aria-label="خانه"]'))
+    unmount()
+    expect(winner(ghost, 'background-color')).toBe('var(--tile-v2)')
+    expect(winner(ghost, 'background-color')).not.toBe('var(--card)')
+    expect(winner(ghost, 'color')).toBe('var(--violet)')
+    expect(winner(ghost, 'border-color')).toBe('var(--line)')
+    expect(winner(ghost, 'border-width')).toBe('var(--border-hairline)')
+    // …and no hover that does nothing. The panel's ghost hovers ONTO
+    // `--tile-v2`, which is the colour this one already is: the same string
+    // pasted here is a control that reports feedback in its source and gives a
+    // reader none. The design draws no hover for these four buttons at all.
+    const rest = winner(ghost, 'background-color')
+    const hover = winner(ghost, 'background-color', ':hover')
+    expect(hover === '' || hover !== rest).toBe(true)
+  })
+
+  it('gives «بازگشت» all five of the reader’s own values', async () => {
+    // `Inja Reader.dc.html:157` — `gap:7px; padding:10px 15px; border-radius:12px;
+    // font-weight:700; font-size:13.5px`. The panel's own back button is
+    // `gap:6px; padding:7px 12px; radius 11; 12.5px` — five values, five
+    // different, and one class string carries all of them.
+    const { cls, unmount } = readerChrome('/departments/dining')
+    await screen.findByText('فهرست فرآیندها')
+    const back = await paint(cls('[data-r-backbar] a[href="/departments"]'))
+    unmount()
+    expect(winner(back, 'gap')).toBe('var(--gap-button-icon)')
+    expect(winner(back, 'gap')).not.toBe('var(--space-3)')
+    expect(winner(back, 'padding-left')).toBe('var(--pad-button-x)')
+    expect(winner(back, 'padding-left')).not.toBe('var(--space-6)')
+    expect(winner(back, 'padding-top')).toBe('var(--space-5)')
+    expect(winner(back, 'padding-top')).not.toBe('var(--pad-back-y)')
+    expect(winner(back, 'border-radius')).toBe('var(--radius-md)')
+    expect(winner(back, 'border-radius')).not.toBe('var(--radius-input)')
+    expect(winner(back, 'font-size')).toBe('var(--fs-menu)')
+    expect(winner(back, 'font-size')).not.toBe('var(--fs-sm2)')
+    expect(winner(back, 'font-weight')).toBe('var(--fw-bold)')
+  })
+
+  it('gives the home square the reader’s 38px box at the design’s 11px corner', async () => {
+    const { cls, unmount } = readerChrome('/departments/dining')
+    await screen.findByText('فهرست فرآیندها')
+    const home = await paint(cls('[data-r-backbar] a[aria-label="خانه"]'))
+    unmount()
+    expect(winner(home, 'width')).toBe('var(--size-menu-more-reader)')
+    expect(winner(home, 'height')).toBe('var(--size-menu-more-reader)')
+    // Same value, different owner: `--size-logo-bar` is also 38px and is the
+    // logo IMAGE's role. A same-value swap paints identically and only a name
+    // check can see it.
+    expect(winner(home, 'width')).not.toBe('var(--size-logo-bar)')
+    expect(winner(home, 'width')).not.toBe('var(--size-menu-more)')
+    expect(winner(home, 'border-radius')).toBe('var(--radius-input)')
+    expect(winner(home, 'flex')).toBe('none')
+  })
+
+  it('gives the icon buttons the ROLE, and the design’s 12px corner', async () => {
+    const { cls, unmount } = readerChrome('/departments')
+    await screen.findByText('فهرست دپارتمان‌ها')
+    const btn = await paint(cls('[data-r-topbar] a[aria-label="نمایه"]'))
+    unmount()
+    expect(winner(btn, 'width')).toBe('var(--role-iconbtn)')
+    expect(winner(btn, 'width')).not.toBe('var(--size-iconbtn-reader)')
+    expect(winner(btn, 'height')).toBe('var(--role-iconbtn)')
+    expect(winner(btn, 'border-radius')).toBe('var(--radius-md)')
+    // F11's overlay, on the ::before rather than on the box the design draws.
+    expect(winner(btn, 'position')).toBe('relative')
+    expect(winner(btn, 'position', '::before')).toBe('absolute')
+    expect(winner(btn, 'inset', '::before')).toBe('-5px')
+    expect(winner(btn, 'content', '::before')).toBe('var(--tw-content)')
+  })
+
+  it('gives the brand lockup the surface-aware leading and the reader’s two type steps', async () => {
+    // `Inja Reader.dc.html:136-138` — `line-height:1.3`, then 14.5px over 11px.
+    // The panel draws 1.25 over 14px over 10.5px, and `leading-lockup` is ONE
+    // class that is both: `--role-lh-lockup` switches on `[data-surface]`, the
+    // way `w-iconbtn` is 40 and 42. Pointing it at `--lh-lockup` compiles and
+    // silently makes the reader the panel.
+    const { container, cls, unmount } = readerChrome('/departments')
+    await screen.findByText('فهرست دپارتمان‌ها')
+    const lockup = await paint(cls('[data-r-topbar] a span'))
+    const name = await paint((container.querySelectorAll('[data-r-topbar] a span span')[0] as HTMLElement).className)
+    const sub = await paint((container.querySelectorAll('[data-r-topbar] a span span')[1] as HTMLElement).className)
+    unmount()
+    expect(winner(lockup, 'line-height')).toBe('var(--role-lh-lockup)')
+    expect(winner(lockup, 'line-height')).not.toBe('var(--lh-lockup)')
+    expect(winner(lockup, 'line-height')).not.toBe('var(--lh-tight)')
+    expect(winner(name, 'font-size')).toBe('var(--fs-body-lead)')
+    expect(winner(name, 'font-size')).not.toBe('var(--fs-body)')
+    expect(winner(sub, 'font-size')).toBe('var(--fs-xxs)')
+    expect(winner(sub, 'font-size')).not.toBe('var(--fs-micro)')
+  })
+
+  it('draws the count badge round, 19px, and coral', async () => {
+    const { cls, unmount } = readerChrome('/departments')
+    await screen.findByText('فهرست دپارتمان‌ها')
+    unmount()
+    const { container, unmount: drop } = renderReader(THREE, '/departments', { pendingApprovals: 4 })
+    await screen.findByRole('status')
+    const badge = await paint((container.querySelector('[role="status"]') as HTMLElement).className)
+    drop()
+    void cls
+    // `Inja Reader.dc.html:145` — `min-width:19px; height:19px; padding:0 4px;
+    // background:#FA5A52; color:#fff; border-radius:50%; font-size:10.5px`.
+    expect(winner(badge, 'min-width')).toBe('var(--size-count-chrome)')
+    expect(winner(badge, 'height')).toBe('var(--size-count-chrome)')
+    // Same value, two other owners: `--size-tick` is 19px and is the tick box,
+    // `--size-count` is 21px and is the FAB's badge.
+    expect(winner(badge, 'min-width')).not.toBe('var(--size-tick)')
+    expect(winner(badge, 'border-radius')).toBe('var(--radius-round)')
+    expect(winner(badge, 'background-color')).toBe('var(--coral)')
+    expect(winner(badge, 'color')).toBe('var(--card)')
+    expect(winner(badge, 'font-size')).toBe('var(--fs-micro)')
+    expect(winner(badge, 'padding-left')).toBe('var(--space-1)')
+  })
+
+  it('carries the bar’s title on a flex:1 span that truncates rather than wraps', async () => {
+    // `Inja Reader.dc.html:160` — `flex:1; min-width:0; overflow:hidden;
+    // text-overflow:ellipsis; white-space:nowrap`. The `min-width:0` is what
+    // makes the other two work at all inside a flex row, and it is the half a
+    // `truncate` on its own leaves out.
+    const { container, unmount } = readerChrome('/departments/dining')
+    await screen.findByText('فهرست فرآیندها')
+    const title = await paint((container.querySelector('[data-r-backbar] > span') as HTMLElement).className)
+    unmount()
+    expect(declarations(title)).toEqual(new Set([
+      'flex: 1 1 0%',
+      'min-width: 0px',
+      'overflow: hidden',
+      'text-overflow: ellipsis',
+      'white-space: nowrap',
+      'font-size: var(--fs-menu)',
+      'font-weight: var(--fw-bold)',
+      'color: var(--ink)',
+    ]))
+  })
+
+  it('pushes the bar’s right-hand cluster to the inline end at the design’s 8px gap', async () => {
+    // `Inja Reader.dc.html:141` — `margin-inline-start:auto; gap:8px; flex:none`.
+    // The panel's own cluster is `gap:10px`, and `gap-s5` here compiles.
+    const { container, unmount } = readerChrome('/departments')
+    await screen.findByText('فهرست دپارتمان‌ها')
+    const cluster = await paint(
+      (container.querySelector('[data-r-topbar] a[aria-label="نمایه"]')!.parentElement as HTMLElement).className,
+    )
+    unmount()
+    expect(declarations(cluster)).toEqual(new Set([
+      'margin-inline-start: auto',
+      'display: flex',
+      'align-items: center',
+      'gap: var(--space-4)',
+      'flex: none',
+    ]))
+    expect(winner(cluster, 'gap')).not.toBe('var(--space-5)')
   })
 })

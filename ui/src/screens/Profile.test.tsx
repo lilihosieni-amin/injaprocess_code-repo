@@ -569,11 +569,15 @@ describe('the way to the profile screen', () => {
     vi.stubGlobal('fetch', vi.fn(async () => json([])))
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     const s = { ...READER, capabilities, scopes: ['dept:cooking'] }
-    // The panel starts on its home screen: §6.0 draws the top bar there and the
-    // crumb strip everywhere else, and the entry this block is about now lives
-    // in the top bar's «مدیریت» popover. At the router's default `/` there is no
-    // popover to open and the assertion below would be about nothing.
-    const entry = shell === 'panel' ? '/departments' : '/'
+    // Both shells start on their home screen: §6.0 draws the panel's top bar
+    // there and the crumb strip everywhere else, and the entry this block is
+    // about now lives in the top bar's «مدیریت» popover. At the router's default
+    // `/` there is no popover to open and the assertion below would be about
+    // nothing. The same is true of the reader as of Task 13 — its own top bar is
+    // drawn on its root and a BACK BAR on every other screen, and «نمایه» is on
+    // the top bar, so at `/` the reader's link would be missing for the same
+    // reason rather than for the one this test is looking for.
+    const entry = '/departments'
     return render(
       <QueryClientProvider client={qc}>
         <MemoryRouter initialEntries={[entry]}>
@@ -599,11 +603,16 @@ describe('the way to the profile screen', () => {
     expect(screen.queryByRole('menuitem', { name: /^کاربران/ })).toBeNull()
   })
 
-  it('is in the reader header too', () => {
+  it('is in the reader header too', async () => {
     // The reader shell is where most of the staff live, and it is the shell
     // that has no administration surface at all — so a link only in the panel
     // header leaves the majority with no way to change their password.
+    //
+    // `findBy`, because the reader's chrome on this route waits for
+    // `GET /api/departments`: R4 makes the shape of that answer decide which bar
+    // is drawn, and drawing one and swapping it is the flicker R4 exists to
+    // prevent.
     renderShell('reader', ['view', 'comment', 'export_pdf'])
-    expect(screen.getByRole('link', { name: 'نمایه' })).toHaveAttribute('href', '/profile')
+    expect(await screen.findByRole('link', { name: 'نمایه' })).toHaveAttribute('href', '/profile')
   })
 })

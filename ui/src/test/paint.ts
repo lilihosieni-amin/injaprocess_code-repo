@@ -37,9 +37,36 @@ import config from '../../tailwind.config.js'
 /** One emitted rule, split into the class that carries it and the state it applies in. */
 export type Painted = { klass: string; state: string; media: string; decls: string }
 
+/**
+ * One Tailwind compile per distinct class SET, for the life of the worker.
+ *
+ * Every call here spins up the JIT over the real config and costs 100-400ms, and
+ * the callers repeat themselves heavily — one chrome's class string is asserted
+ * by `winner` five or six times and by `declarations` twice more, each of which
+ * used to be its own compile. Measured: the panel chrome's slowest assertion ran
+ * 804ms alone and timed out at 5s under whole-suite contention once a second
+ * shell's worth of these landed in the same file.
+ *
+ * Safe because the input is a string and the output is read-only in every
+ * caller: `winner` and `declarations` below only walk it, and nothing in the
+ * suite mutates a `Painted`. The key is the SET, not the raw string, so two
+ * spellings of the same classes share one compile — which is also the reason the
+ * set is computed before the cache is consulted rather than after.
+ */
+const COMPILED = new Map<string, Promise<Painted[]>>()
+
 /** Compile a class string through the real `tailwind.config.js`. */
-export async function paint(classNames: string): Promise<Painted[]> {
-  const classes = [...new Set(classNames.split(/\s+/).filter(Boolean))]
+export function paint(classNames: string): Promise<Painted[]> {
+  const classes = [...new Set(classNames.split(/\s+/).filter(Boolean))].sort()
+  const key = classes.join(' ')
+  const hit = COMPILED.get(key)
+  if (hit !== undefined) return hit
+  const run = compile(classes)
+  COMPILED.set(key, run)
+  return run
+}
+
+async function compile(classes: string[]): Promise<Painted[]> {
   const result = await postcss([
     tailwind({ ...config, content: [{ raw: classes.join(' '), extension: 'html' }] }),
   ]).process('@tailwind utilities;', { from: undefined })
