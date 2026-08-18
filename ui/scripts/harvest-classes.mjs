@@ -45,21 +45,20 @@
  * ---------------------------------------------------------------------------
  * CONTROLS (they run on every invocation, so the check cannot go quietly dead)
  * ---------------------------------------------------------------------------
- * - a negative control: invented names are fed through the same classifier and
- *   must all come back dead. If one is reported present the checker is broken.
- * - an escaping control: the CSS index must contain at least one class whose
- *   name holds a `:`, which can only happen if the unescaper ran. If it is
- *   zero, every variant class would be silently misreported and we fail.
+ * - a negative control: invented names — derived from the namespaces THIS
+ *   stylesheet actually has, so each is a probe it can judge — are fed through
+ *   the same classifier and must all come back dead. If one is reported present
+ *   the checker is broken. Stubbing the check out is caught here: the run goes
+ *   from `47 ok / 1 DEAD` to `47 ok / 0 DEAD` and the control reports 0/7.
+ * - an escaping control: after indexing, no class name may still carry a
+ *   backslash, and at least one must carry a `:`. Both halves are needed —
+ *   testing only for a `:` passes a completely broken unescaper, because
+ *   `hover\:bg-x` contains a colon too. Measured while building this: with the
+ *   unescaper removed the colon-only test still reported a healthy 87 while all
+ *   310 escaped classes were misfiled.
  */
 import { readFileSync, readdirSync, existsSync } from 'node:fs'
 import { execSync } from 'node:child_process'
-
-/** Invented names. Every one must classify as DEAD or the checker is broken. */
-const NEGATIVE_CONTROL = [
-  'bg-zzz-not-a-real-token', 'px-zzz-not-a-real-token', 'w-zzz-not-a-real-token',
-  'text-fs-zzz-not-a-real-step', 'hover:bg-zzz-not-a-real-token',
-  'max760:bg-zzz-not-a-real-token',
-]
 
 // ---------------------------------------------------------------------------
 // 1. The files this task writes
@@ -335,8 +334,42 @@ for (const group of groups) {
 // ---------------------------------------------------------------------------
 // 5. The controls
 // ---------------------------------------------------------------------------
+/**
+ * Invented names, DERIVED FROM THIS STYLESHEET so each one is a probe it can
+ * actually judge. A hand-written list is wrong on a stylesheet that happens to
+ * have no `px-` class: the probe falls through to `not-utility-shaped`, the
+ * control reports a leak, and the run fails for no reason. Observed while
+ * building this, on a six-rule fixture.
+ *
+ * The set covers all three ways a name can be dead: an unknown name in a live
+ * namespace, the same behind a variant that does exist, and a live base behind
+ * a variant that does not.
+ */
+const NEGATIVE_CONTROL = (() => {
+  const preferred = ['bg-', 'text-', 'px-', 'w-', 'border-', 'rounded-']
+  const ordered = [...new Set([...preferred.filter((n) => liveNamespaces.has(n)),
+                               ...[...liveNamespaces].sort()])].slice(0, 5)
+  const realVariant = [...emitted.keys()].filter((n) => /^[a-z-]+:/.test(n)).sort()[0]
+  const prefix = realVariant ? realVariant.slice(0, realVariant.indexOf(':') + 1) : ''
+  const liveBase = [...emitted].filter(([n, r]) => r.decls > 0 && !n.includes(':') && namespaceOf(n))
+    .map(([n]) => n).sort()[0]
+  return [
+    ...ordered.map((n) => `${n}zzz-not-a-real-token`),
+    ...(prefix && ordered.length ? [`${prefix}${ordered[0]}zzz-not-a-real-token`] : []),
+    ...(liveBase ? [`zzz-not-a-real-variant:${liveBase}`] : []),
+  ]
+})()
+if (NEGATIVE_CONTROL.length < 3) {
+  console.error('harvest-classes: the CSS index is too small to build a negative control — is dist/assets stale?')
+  process.exit(1)
+}
 const leaked = NEGATIVE_CONTROL.filter((t) => classify(t)[0] !== DEAD)
-const escapedClasses = [...emitted.keys()].filter((n) => n.includes(':'))
+// A `:` alone is not proof the unescaper ran — `hover\\:bg-x` contains one too.
+// The index is only correct when no class name still carries a backslash AND at
+// least one carries a colon. Checking only for a colon lets a broken unescaper
+// report a healthy 87 while every variant class is misfiled.
+const stillEscaped = [...emitted.keys()].filter((n) => n.includes('\\'))
+const escapedClasses = [...emitted.keys()].filter((n) => n.includes(':') && !n.includes('\\'))
 
 // ---------------------------------------------------------------------------
 // 6. Report
@@ -364,10 +397,13 @@ console.log(`  ok ${bucket(OK).length}   DEAD ${bucket(DEAD).length}   `
 
 console.log(`  control (negative): ${NEGATIVE_CONTROL.length - leaked.length}/${NEGATIVE_CONTROL.length}`
   + ` invented names reported dead${leaked.length ? ` — LEAKED: ${leaked.join(' ')}` : ''}`)
+const escapingBroken = escapedClasses.length === 0 || stillEscaped.length > 0
 console.log(`  control (escaping): ${escapedClasses.length} escaped variant classes unescaped`
-  + (escapedClasses.length ? ` (e.g. ${escapedClasses.sort()[0]})` : ' — THE UNESCAPER IS BROKEN'))
+  + (escapedClasses.length ? ` (e.g. ${escapedClasses.sort()[0]})` : '')
+  + (stillEscaped.length ? `, but ${stillEscaped.length} class names still carry a backslash` : '')
+  + (escapingBroken ? ' — THE UNESCAPER IS BROKEN, every variant class above is misfiled' : ''))
 
-const controlsFailed = leaked.length + (escapedClasses.length ? 0 : 1)
+const controlsFailed = leaked.length + (escapingBroken ? 1 : 0)
 if (controlsFailed) console.log('  the controls did not hold: this run proves nothing')
 console.log(failures + controlsFailed ? 'FAIL' : 'PASS')
 console.log('  (proves these files write classes that compile; NOT that a class reaches'
