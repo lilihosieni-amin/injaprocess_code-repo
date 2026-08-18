@@ -26,7 +26,7 @@
 - **No gradients anywhere.** The one texture is the flow canvas's 20px `#E3D8F5` dot grid on `#FBF7F1`.
 - **No emoji, no unicode-glyph icons** — inline line SVG at stroke 2.2–2.6. Two named exceptions: `⣿` and the IDEF0 arrows. One raster: the logo.
 - **Nothing scales or bounces on press.** Focus is `border-color: #FA5A52` with no glow and no ring (15/15 uses in the design).
-- Frontend tests: `cd ui && npx vitest run`, `globals: false` — import from `vitest` explicitly. **`npm run build` is mandatory**, and **grep the built CSS** for every Tailwind class introduced: an invented class compiles to nothing while the build exits 0.
+- Frontend tests: `cd ui && npx vitest run`, `globals: false` — import from `vitest` explicitly. **`npm run build` is mandatory**, and every task that writes Tailwind classes ends by running **`node ui/scripts/harvest-classes.mjs`** over the files it wrote: an invented class compiles to nothing while the build exits 0. A hand-kept list grepped against `dist/assets/*.css` does **not** catch it — that was measured, twice — see *The class-emission check* below.
 - **Coral opens, violet commits (owner ruling).** Coral `#FA5A52` is the affordance that *starts* a creation flow («کاربر جدید», «فرآیند تازه»); violet `#4A25A9` is the commit inside the form or dialog; `--conflict #E23D35` stays destructive. Both deliverables are self-consistent under this rule — only the readme's blanket "coral for anything primary" is not, and the deliverable wins (R1).
 - **Password reset is a direct set — D15 wins over the design (owner ruling).** §6.8 and §6.13 draw a one-time reset *link* and state no password is ever created or shown. That contradicts D15, which the owner reaffirmed: the administrator types the value and tells the person, because this system is Telegram-fed and has no delivery channel. Build the design's shell around the app's control and **rewrite the two sentences** that describe a link.
 - **The 29 unspecified icons are authored to the set's own construction rules (owner ruling)** — stroke 2.2–2.6, matching joinery and optical weight. §5.1.2 fixes only 11 of 33 `InjaIcons` paths, and seven glyphs the panel renders have no key at all: the breadcrumb house, the hamburger, the users filter funnel, the eye and eye-off, the FAB comment mark, and the sign-out mark. **Every authored icon is listed in the ledger** so the owner can review or replace it.
@@ -35,6 +35,73 @@
 - **Playwright is pinned to 1.61.0** — 1.62.1 declares `engines.node: ">=20"` and this machine runs Node v18.19.1. 1.61.0 is the newest release declaring `>=18`. Install with `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1` and `channel: 'chrome'`; Chrome is at `/usr/bin/google-chrome` and the network is restricted. **Do not bump this without checking `engines.node` first.**
 - **Do not touch** `ui/src/flow/**` (frozen — F16), `ui/export/**`, `engine/`, `data-repo`, or anything under `ui-backend/`. This plan changes no backend behaviour.
 - **`ui/design/**` is read-only.** It is the specification, never an output.
+
+---
+
+### The class-emission check (`ui/scripts/harvest-classes.mjs`)
+
+Every task that writes Tailwind classes ends with one invocation of the scanner:
+
+```bash
+cd ui && npx vite build
+node scripts/harvest-classes.mjs <the files this task wrote>
+```
+
+It harvests the class candidates **out of the files themselves** — never from a
+hand-kept list — looks each one up in an index it *parses* out of
+`dist/assets/*.css` (selectors unescaped, declarations counted, every `var(--x)`
+cross-checked against the declared custom properties), and buckets them
+`ok` / `DEAD` / `EMPTY` / `NOVAR`. A negative control and an escaping control run
+on every invocation and the script exits 1 if either fails, so the check cannot
+go quietly dead. `HARVEST_LIST=1` prints the certified list, which is how the
+numbers below were obtained.
+
+**Why the old "build, then grep `dist/assets/*.css` for a hand-kept list" step is
+gone.** It proved almost nothing here, and this was measured on a real build, not
+argued:
+
+- `ui/tailwind.config.js:59` puts `'./tailwind-probe.txt'` in Tailwind's
+  `content`, and that probe names **every** theme class. So every theme class
+  emits whether or not any component writes it. **All 14 classes Task 9's step
+  grepped for are named verbatim in the probe** — the step passed whether or not
+  `DataTable.tsx` and `Pager.tsx` existed at all.
+- A hand-kept list drifts from the files, in both directions. Task 9's 14 named
+  **5 classes its two files never write** and missed **52 they do**, including
+  `grid-cols-users`, every `max760:*` and `before:-inset-[5px]`. Task 8's 52
+  named 3 its three files never write and missed 56 they do, including
+  `focus:border-coral` and `peer-focus-visible:border-coral`. Task 6's 33 missed
+  123.
+- Tailwind **escapes** the special characters in a class name: `hover:bg-tile-v2`
+  is written `.hover\:bg-tile-v2:hover`, and `1.4fr` inside an arbitrary value
+  becomes `1\.4fr`. A grep that escapes the name for a regex therefore reports
+  every variant class missing. Task 6's step did exactly that and printed `MISS`
+  for all eleven of its variant classes on a build where every one of them was
+  present and correct.
+- A substring grep for `.w-tick` is satisfied by `.w-tick-glyph`; index lookup is
+  not. And a theme key pointing at nothing emits a rule with an **empty body**,
+  which a grep scores as present and this scanner reports as `EMPTY`.
+
+**What a failure means.** `DEAD` = the class compiled to no rule: a **typo in the
+component**, fixed in the component. `EMPTY` = the theme key resolves to nothing.
+`NOVAR` = the rule reads a `var(--…)` nothing declares. The last two are theme
+regressions to report.
+
+**Never "add it to the config."** `ui/tailwind.config.js`,
+`ui/src/styles/tokens.css`, `ui/src/styles/roles.css` and
+`ui/tailwind-probe.txt` are frozen for the duration of this plan and were
+unfrozen exactly once, by the single minting pass specified in
+`.superpowers/sdd/mint-spec.md`. Minting a name from inside a task to make a
+misspelling compile is precisely the unreachable-token failure this rebuild
+exists to end — 106 of the design system's 178 tokens had no reachable name,
+which is why nine screens drifted while every individual value stayed legal. If a
+value genuinely has no name, **stop and report it**, and put it in
+`mint-spec.md`.
+
+**What this check cannot prove.** That a component *writes* a class and that the
+class compiles to a rule with declarations — yes. That the class reaches the
+right element, that the element renders, that it is visible, or that its value is
+the one the design asks for — **no**. That stays with the Playwright checks of
+R6. A green run here is a floor, never a conformance result.
 
 ---
 
@@ -84,7 +151,7 @@ ends with its Playwright check at all three widths.
 |---|---|---|
 | **A — Foundations** |
 | 1 | The semantic table and the normalisation ledger | **Owner veto point** |
-| 2 | Tailwind config: the 106 tokens and the two breakpoints | build + CSS grep |
+| 2 | Tailwind config: the 106 tokens and the two breakpoints | build + `harvest-classes` |
 | 3 | Token corrections the deliverable requires | vitest |
 | 4 | The Playwright harness | e2e green on one existing page |
 | **B — Primitives** |
@@ -94,7 +161,7 @@ ends with its Playwright check at all three widths.
 | 8 | `Checkbox`, `Radio`, `Dropdown` | vitest |
 | 9 | `DataTable`, `Pager` | vitest |
 | 10 | `SectionCard`, `StatTile`, `NavTabTray`, `Timeline`, `FAB` | vitest |
-| 11 | `Icon`, the icon set, `IconTile`, the department glyphs, the logo | vitest + CSS grep |
+| 11 | `Icon`, the icon set, `IconTile`, the department glyphs, the logo | vitest + `harvest-classes` |
 | **C — Shell** |
 | 12 | `PanelShell` — chrome, logo, breadcrumb, both breakpoints, Persian digits | e2e ×3 |
 | 13 | `ReaderShell` — back bar, flow chrome, reader scale, single-department landing (R4) | e2e ×3 |
@@ -905,26 +972,60 @@ invent one:
   Expected: every existing suite still green — in particular `guards.test.ts`,
   which must not have gained a hit from the new names — tsc silent, eslint silent.
 
-- [ ] **Step 12: Build, then grep the built CSS for every class introduced.**
+- [ ] **Step 12: Build, then prove every name this task minted actually emits.**
+  ```bash
+  cd ui && npx vite build
+  node scripts/harvest-classes.mjs tailwind-probe.txt
   ```
-  cd ui && npm run build
-  CSS=$(ls dist/assets/*.css | head -1)
-  for c in text-fs-display text-fs-h4 text-fs-sm2 text-fs-micro text-fs-doc-step \
-           rounded-tool rounded-input rounded-search rounded-tile rounded-feature \
-           rounded-pill rounded-round shadow-drawer shadow-card-dark \
-           shadow-stat-dark shadow-guide-hover shadow-ring-flash \
-           shadow-conflict-dot p-screen-x p-screen-y p-topbar p-half \
-           w-logo-bar w-logo-login duration-fast duration-chev \
-           backdrop-blur-scrim font-regular leading-looser tracking-display \
-           bg-tile-v4 bg-tile-c2 text-disabled border-border-danger; do
-    grep -q "\\.$(printf '%s' "$c" | sed 's/[.[\*^$]/\\&/g')" "$CSS" \
-      && echo "ok   $c" || echo "MISS $c"
-  done
-  grep -c 'max-width: *1080px' "$CSS"
-  grep -c 'max-width: *760px' "$CSS"
+  Expected: the run ends `DEAD 0   EMPTY 0   NOVAR 0`, both controls hold
+  (`control (negative): N/N invented names reported dead` and
+  `control (escaping): … escaped variant classes unescaped`), and the last line
+  is `PASS`. The script exits 1 on any failure, so it can be `&&`-chained.
+  The class list is **harvested out of these files**, never hand-kept, so it
+  cannot drift from what they write and `tailwind-probe.txt` cannot certify it
+  on their behalf — see *The class-emission check* in Global Constraints for the
+  measurement that retired the old grep.
+
+  `tailwind-probe.txt` **is** this task's deliverable — the inventory that names
+  every theme class — so scanning it is the strongest form of this check the plan
+  has. It certifies the whole theme rather than a 34-name sample of it, and
+  because the scanner parses the CSS instead of grepping it, a key that resolves
+  to nothing and emits an empty body is reported `EMPTY` rather than scored as
+  present. The only class this step cannot judge is one that is in the theme but
+  not in the probe; that is what `theme.test.ts` is for.
+
+  **A failure.** `DEAD` — the class compiled to no rule at all; that is a **typo
+  in the component**, so fix the class string, rebuild, re-run. `EMPTY` — the
+  selector emitted with an empty body, so the theme key resolves to nothing.
+  `NOVAR` — the rule reads a `var(--…)` nothing declares. The last two are theme
+  regressions: **stop and report them.** Do **not** add the name to
+  `ui/tailwind.config.js`, `src/styles/tokens.css`, `src/styles/roles.css` or
+  `tailwind-probe.txt`. All four are frozen for the duration of this plan and
+  were unfrozen exactly once, by the single minting pass in
+  `.superpowers/sdd/mint-spec.md`; minting one here to make a misspelling compile
+  recreates the unreachable-token problem the whole rebuild exists to fix. A
+  value that genuinely has no name goes into `mint-spec.md`, not into the config
+  and not into this task's commit.
+
+  **What this step cannot prove:** that these files write a class and that the
+  class compiles to a rule with declarations, yes. That the class reaches the
+  right element, that the element renders, that it is visible, or that its value
+  is the one the design asks for — no. That stays with the Playwright checks.
+
+  Then prove the two breakpoints compiled at the right widths:
+
+  ```bash
+  cd ui && node -e '
+  const fs=require("node:fs");
+  const css=fs.readdirSync("dist/assets").filter(f=>/\.css$/.test(f))
+    .map(f=>fs.readFileSync("dist/assets/"+f,"utf8")).join("\n");
+  const a=/@media\s*\(max-width:\s*1080px\)/.test(css)&&/max1080\\:hidden/.test(css);
+  const b=/@media\s*\(max-width:\s*760px\)/.test(css)&&/max760\\:hidden/.test(css);
+  console.log(a&&b?"OK both breakpoints compiled":`MISSING r1080=${a} r760=${b}`);
+  process.exit(a&&b?0:1);'
   ```
-  Expected: `ok` for all 34 classes and no `MISS`; both `grep -c` print a
-  non-zero count (the two `max1080:`/`max760:` probe classes).
+  Expected: `OK both breakpoints compiled`. The regexes look for the **escaped**
+  selector `max1080\:hidden`, which is what Tailwind writes.
   ```
   git add ui/tailwind.config.js ui/tailwind-probe.txt ui/src/test/theme.test.ts
   git commit -m "feat(ui): the other 106 tokens get a name, and the design's two breakpoints arrive"
@@ -1398,21 +1499,62 @@ Utilities added in the same task: `bg-tile-v5` `bg-line-divider`
   every literal added in this task is in `src/styles/tokens.css`, the one file on
   the guard's `ALLOWED` list — and `theme.test.ts` still passes.
 
-- [ ] **Step 13: Build and grep the built CSS.**
+- [ ] **Step 13: Build, and prove every name this task corrected still emits.**
+  ```bash
+  cd ui && npx vite build
+  node scripts/harvest-classes.mjs tailwind-probe.txt
   ```
-  cd ui && npm run build
-  CSS=$(ls dist/assets/*.css | head -1)
-  for c in bg-tile-v5 bg-surface-sub border-border-card border-border-pick \
-           text-fs-dialog text-fs-menu text-fs-caption text-fs-numeral \
-           max-w-reader max-w-dialog-wide p-reader-x w-iconbtn-reader \
-           w-tick h-tick w-close shadow-fab leading-sub; do
-    grep -q "\\.$(printf '%s' "$c" | sed 's/[.[\*^$]/\\&/g')" "$CSS" \
-      && echo "ok   $c" || echo "MISS $c"
-  done
-  grep -o 'scrollbar[^}]*width: *[0-9]*px' "$CSS" | head -3
+  Expected: the run ends `DEAD 0   EMPTY 0   NOVAR 0`, both controls hold
+  (`control (negative): N/N invented names reported dead` and
+  `control (escaping): … escaped variant classes unescaped`), and the last line
+  is `PASS`. The script exits 1 on any failure, so it can be `&&`-chained.
+  The class list is **harvested out of these files**, never hand-kept, so it
+  cannot drift from what they write and `tailwind-probe.txt` cannot certify it
+  on their behalf — see *The class-emission check* in Global Constraints for the
+  measurement that retired the old grep.
+
+  The probe is the inventory, so this run covers the 17 names this task touches
+  and every other theme class at the same time. A token corrected to point at a
+  custom property that does not exist shows up here as `NOVAR`, and a theme key
+  left pointing at nothing shows up as `EMPTY` — neither of which a grep can see.
+
+  **A failure.** `DEAD` — the class compiled to no rule at all; that is a **typo
+  in the component**, so fix the class string, rebuild, re-run. `EMPTY` — the
+  selector emitted with an empty body, so the theme key resolves to nothing.
+  `NOVAR` — the rule reads a `var(--…)` nothing declares. The last two are theme
+  regressions: **stop and report them.** Do **not** add the name to
+  `ui/tailwind.config.js`, `src/styles/tokens.css`, `src/styles/roles.css` or
+  `tailwind-probe.txt`. All four are frozen for the duration of this plan and
+  were unfrozen exactly once, by the single minting pass in
+  `.superpowers/sdd/mint-spec.md`; minting one here to make a misspelling compile
+  recreates the unreachable-token problem the whole rebuild exists to fix. A
+  value that genuinely has no name goes into `mint-spec.md`, not into the config
+  and not into this task's commit.
+
+  **What this step cannot prove:** that these files write a class and that the
+  class compiles to a rule with declarations, yes. That the class reaches the
+  right element, that the element renders, that it is visible, or that its value
+  is the one the design asks for — no. That stays with the Playwright checks.
+
+  Then prove the scrollbar correction actually reached the built CSS. Grepping
+  for a literal `width: 10px` cannot work: the rule is written against a token,
+  so the CSS says `width: var(--space-5)` and the number only exists on the
+  custom property. Resolve it:
+
+  ```bash
+  cd ui && node -e '
+  const fs=require("node:fs");
+  const css=fs.readdirSync("dist/assets").filter(f=>/\.css$/.test(f))
+    .map(f=>fs.readFileSync("dist/assets/"+f,"utf8")).join("\n");
+  const m=css.match(/::-webkit-scrollbar\s*\{[^}]*width:\s*([^;}]+)/);
+  const v=m&&m[1].trim();
+  const name=v&&v.match(/^var\((--[\w-]+)\)$/);
+  const decl=name&&css.match(new RegExp(name[1]+":\\s*([^;}]+)"));
+  const px=decl?decl[1].trim():v;
+  console.log(m?`scrollbar width: ${v}${decl?" = "+px:""}`:"NO ::-webkit-scrollbar RULE");
+  process.exit(px==="10px"?0:1);'
   ```
-  Expected: `ok` for all 17 classes and no `MISS`; the last grep prints
-  `width: 10px`, never `12px`.
+  Expected: `scrollbar width: var(--space-5) = 10px`, exit 0 — never `12px`.
 
 - [ ] **Step 14: Commit.**
   ```
@@ -2149,16 +2291,53 @@ override, it does not re-declare them on `:root`.)
   `react-refresh/only-export-components` allows a hook beside its provider only
   as a warning — confirm the run reports **zero** warnings and errors).
 
-- [ ] **Step 8: Build, grep, run the browser check, commit.**
+- [ ] **Step 8: Build, check the reader block and the classes, run the browser check, commit.**
+  ```bash
+  cd ui && npx vite build
+  node scripts/harvest-classes.mjs src/ui/surface.tsx src/shell/AppShell.tsx
   ```
-  cd ui && npm run build
-  CSS=$(ls dist/assets/*.css | head -1)
-  grep -c "data-surface='reader'\|\[data-surface=.reader.\]" "$CSS"
+  Expected: the run ends `DEAD 0   EMPTY 0   NOVAR 0`, both controls hold
+  (`control (negative): N/N invented names reported dead` and
+  `control (escaping): … escaped variant classes unescaped`), and the last line
+  is `PASS`. The script exits 1 on any failure, so it can be `&&`-chained.
+  The class list is **harvested out of these files**, never hand-kept, so it
+  cannot drift from what they write and `tailwind-probe.txt` cannot certify it
+  on their behalf — see *The class-emission check* in Global Constraints for the
+  measurement that retired the old grep.
+
+  **A failure.** `DEAD` — the class compiled to no rule at all; that is a **typo
+  in the component**, so fix the class string, rebuild, re-run. `EMPTY` — the
+  selector emitted with an empty body, so the theme key resolves to nothing.
+  `NOVAR` — the rule reads a `var(--…)` nothing declares. The last two are theme
+  regressions: **stop and report them.** Do **not** add the name to
+  `ui/tailwind.config.js`, `src/styles/tokens.css`, `src/styles/roles.css` or
+  `tailwind-probe.txt`. All four are frozen for the duration of this plan and
+  were unfrozen exactly once, by the single minting pass in
+  `.superpowers/sdd/mint-spec.md`; minting one here to make a misspelling compile
+  recreates the unreachable-token problem the whole rebuild exists to fix. A
+  value that genuinely has no name goes into `mint-spec.md`, not into the config
+  and not into this task's commit.
+
+  **What this step cannot prove:** that these files write a class and that the
+  class compiles to a rule with declarations, yes. That the class reaches the
+  right element, that the element renders, that it is visible, or that its value
+  is the one the design asks for — no. That stays with the Playwright checks.
+
+  Then check the reader block survived the build. The old grep here
+  (`data-surface='reader'\|\[data-surface=.reader.\]`) matched **nothing** on a
+  real build and would have reported the block missing when it was present:
+  the minifier drops the quotes, so the CSS holds `[data-surface=reader]` and
+  both halves of that pattern require a character on either side of `reader`.
+
+  ```bash
+  cd ui && CSS=$(ls dist/assets/*.css | head -1)
+  grep -o -- "\[data-surface=[^]]*\]" "$CSS" | sort -u
+  grep -c -- "\[data-surface=[\"']\?reader[\"']\?\]" "$CSS"
   npx playwright test
   ```
-  Expected: the grep prints a non-zero count (the reader block survived the
-  build), and Playwright reports `3 passed` — `/departments` is a panel surface
-  and none of its numbers moved.
+  Expected: the first grep lists `[data-surface=reader]` (quoted or not — that is
+  the point), the second prints a non-zero count, and Playwright reports
+  `3 passed` — `/departments` is a panel surface and none of its numbers moved.
   ```
   git add ui/src/ui/surface.tsx ui/src/ui/surface.test.tsx \
           ui/src/styles/roles.css ui/src/shell/AppShell.tsx
@@ -2495,62 +2674,55 @@ cautionary tale for what that costs. Recorded as ledger row L-14, vetoable there
   git commit -m "fix(ui): one card recipe, and the lift the design gives it"
   ```
 
-- [ ] **Step 10: Add the six control values the design names and the scale lacks.**
-  At the end of `ui/src/styles/tokens.css`, append:
+- [ ] **Step 10: Confirm the control geometry this field needs is already named — do not mint it.**
+  §5.2 states control geometry the 14-step spacing scale
+  (4·5·6·8·10·12·14·16·18·22·26·30·38·40) does not hold. It was named **once**, in
+  the single minting pass, ahead of this task and deliberately so — several
+  primitives are built in parallel and a mint from inside one clobbers the others.
+  **This step adds nothing to any file.** It confirms what is there and stops if
+  it is not.
 
-  ```css
-  /* §5.2 — control geometry the design states outright and the spacing scale
-     (4·5·6·8·10·12·14·16·18·22·26·30·38·40) does not hold. Named here rather
-     than written as `p-[13px]` at four call sites. */
-  :root {
-    --pad-modal: 24px;                 /* the scrim's inset around a dialog */
-    --pad-search-y: 13px;              /* the screen-level search field */
-    --pad-search-x: 44px;              /* both sides, as S1 writes it */
-    --pad-search-x-dialog: 42px;
-    --pad-search-y-menu: 9px;
-    --pad-search-x-menu: 34px;
-    --inset-search-icon-dialog: 14px;  /* --inset-search-icon (15px) is the large one */
-    --inset-search-icon-menu: 11px;
-    --size-search-glyph: 17px;
-  }
+  Nine tokens in `ui/src/styles/tokens.css`: `--pad-modal` 24px (the scrim's
+  inset around a dialog), `--pad-search-y` 13px, `--pad-search-x` 44px (both
+  sides, as S1 writes it), `--pad-search-x-dialog` 42px, `--pad-search-y-menu`
+  9px, `--pad-search-x-menu` 34px, `--inset-search-icon-dialog` 14px
+  (`--inset-search-icon` 15px is the large one), `--inset-search-icon-menu` 11px,
+  `--size-search-glyph` 17px.
+
+  Their theme keys are in `ui/tailwind.config.js`, and **where** matters. The
+  three search-icon offsets are on `theme.extend.inset`, **not** `spacing` — an
+  inset is not a padding, `p-search-icon-menu` would be a class with no meaning,
+  and it is `inset` that makes `start-search-icon` logical so RTL is structural.
+  And `tile` / `iconbtn` / `fab` on **both** `width` and `height` point at
+  `var(--role-…)`, not at the panel's pixel number, so they are 48/40/52 in the
+  panel and 54/42/56 in the reader without a call site knowing which surface it
+  is in (R3).
+
+  ```bash
+  cd ui
+  grep -c -- '--pad-modal:\|--pad-search-y:\|--pad-search-x:\|--pad-search-x-dialog:\|--pad-search-y-menu:\|--pad-search-x-menu:\|--inset-search-icon-dialog:\|--inset-search-icon-menu:\|--size-search-glyph:' src/styles/tokens.css
+  node --input-type=module -e "import c from './tailwind.config.js';const t=c.theme.extend;
+  const need={spacing:['modal','search-y','search-x','search-x-dialog','search-y-menu','search-x-menu'],
+    inset:['search-icon','search-icon-dialog','search-icon-menu'],
+    width:['search-glyph','tile','iconbtn','fab'],height:['search-glyph','tile','iconbtn','fab']};
+  for(const[k,v]of Object.entries(need))for(const n of v)if(!(n in (t[k]||{})))console.log('MISSING',k,n);
+  for(const k of ['width','height'])for(const n of ['tile','iconbtn','fab'])
+    if(!/^var\(--role-/.test(t[k][n]||''))console.log('NOT ROLE-SCALED',k,n,t[k][n]);
+  console.log('checked')"
   ```
+  Expected: `9`, then `checked` and nothing else — no `MISSING`, no
+  `NOT ROLE-SCALED`. `ui/tailwind-probe.txt` already names the twelve utilities
+  these produce (`p-modal py-search-y px-search-x px-search-x-dialog
+  py-search-y-menu ps-search-x-menu pe-s6 start-search-icon
+  start-search-icon-dialog start-search-icon-menu w-search-glyph
+  h-search-glyph`), which is why Task 2's probe scan already certifies them.
 
-  In `ui/tailwind.config.js` add to `theme.extend.spacing`:
-
-  ```js
-        modal: 'var(--pad-modal)',
-        'search-y': 'var(--pad-search-y)', 'search-x': 'var(--pad-search-x)',
-        'search-x-dialog': 'var(--pad-search-x-dialog)',
-        'search-y-menu': 'var(--pad-search-y-menu)',
-        'search-x-menu': 'var(--pad-search-x-menu)',
-        'search-icon-dialog': 'var(--inset-search-icon-dialog)',
-        'search-icon-menu': 'var(--inset-search-icon-menu)',
-  ```
-
-  add to **both** `theme.extend.width` and `theme.extend.height`:
-
-  ```js
-        'search-glyph': 'var(--size-search-glyph)',
-  ```
-
-  and re-point the three geometry keys in **both** `width` and `height` so they
-  scale with the surface rather than pinning the panel's number:
-
-  ```js
-        // R3 — through the role, so 48/40/52 in the panel and 54/42/56 in the
-        // reader without a single call site knowing which it is in.
-        tile: 'var(--role-tile)',
-        iconbtn: 'var(--role-iconbtn)',
-        fab: 'var(--role-fab)',
-  ```
-
-  and append to `ui/tailwind-probe.txt`:
-
-  ```
-  p-modal py-search-y px-search-x px-search-x-dialog py-search-y-menu
-  ps-search-x-menu pe-s6 start-search-icon start-search-icon-dialog
-  start-search-icon-menu w-search-glyph h-search-glyph
-  ```
+  **If anything is missing, stop and report it. Do not add it here.**
+  `tokens.css`, `tailwind.config.js` and `tailwind-probe.txt` are frozen after the
+  single minting pass (`.superpowers/sdd/mint-spec.md`). Minting from inside a
+  primitive task is the unreachable-token failure this rebuild exists to end, and
+  it buries the new name in a component's commit where no one reviewing the theme
+  will ever see it.
 
 - [ ] **Step 11: Write the failing test for `SearchField`.**
   Append to `ui/src/ui/primitives.design.test.tsx`:
@@ -2666,33 +2838,40 @@ cautionary tale for what that costs. Recorded as ledger row L-14, vetoable there
   }
   ```
 
-- [ ] **Step 14: Name the surface-scaled type role the field uses.**
-  In `ui/tailwind.config.js`, add to `theme.extend.fontSize`:
+- [ ] **Step 14: Confirm the surface-scaled type roles are already named — do not mint them.**
+  Four `fontSize` keys change with the surface: `role-body` (14px panel / 15px
+  reader), `role-dense` (13 / 14.5), `role-title` (22 / 30) and `role-hero`
+  (34 / 26). Everything else in that scale is a fixed step; these four **are** the
+  scale layer of R3. They were minted once with the rest, and
+  `ui/tailwind-probe.txt` already names `text-role-body text-role-dense
+  text-role-title text-role-hero`. **This step adds nothing to any file.**
 
-  ```js
-        // R3 — the two type roles that change with the surface. Everything else
-        // in this scale is a fixed step; these two are the scale layer.
-        'role-body': 'var(--role-fs-body)',    // 14px panel / 15px reader
-        'role-dense': 'var(--role-fs-dense)',  // 13px panel / 14.5px reader
-        'role-title': 'var(--role-fs-title)',  // 22px panel / 30px reader
-        'role-hero': 'var(--role-fs-hero)',    // 34px panel / 26px reader
+  ```bash
+  cd ui
+  node --input-type=module -e "import c from './tailwind.config.js';
+  const f=c.theme.extend.fontSize||{};
+  for(const n of ['role-body','role-dense','role-title','role-hero'])
+    if(!/^var\(--role-fs-/.test(f[n]||''))console.log('MISSING OR NOT ROLE-BACKED',n,f[n]);
+  console.log('checked')"
+  grep -c 'text-role-body' tailwind-probe.txt
   ```
+  Expected: `checked` with no line before it, then `1`.
 
-  and append to `ui/tailwind-probe.txt`:
-
-  ```
-  text-role-body text-role-dense text-role-title text-role-hero
-  ```
+  **If one is missing, stop and report it** — never add it to
+  `tailwind.config.js`. See Step 10 for why.
 
 - [ ] **Step 15: Run it and see it pass, then commit.**
   `cd ui && npx vitest run src/ui/primitives.design.test.tsx && npx vitest run`
   Expected: the new block green and the whole suite green. `screens/SignIn.tsx`
   and the other hand-rolled inputs are untouched — they are Tasks 18 and 21.
   ```
-  git add ui/src/ui/SearchField.tsx ui/src/styles/tokens.css ui/tailwind.config.js \
-          ui/tailwind-probe.txt ui/src/ui/primitives.design.test.tsx
+  git add ui/src/ui/SearchField.tsx ui/src/ui/primitives.design.test.tsx
   git commit -m "fix(ui): the search field takes the design's border, radius and coral focus"
   ```
+  `ui/src/styles/tokens.css`, `ui/tailwind.config.js` and `ui/tailwind-probe.txt`
+  are **not** in this commit and must not be. Steps 10 and 14 changed no file, and
+  a frozen path riding along in a primitive's commit is exactly how a mint escapes
+  review.
 
 - [ ] **Step 16: Write the failing test for `Overlay`.**
   Append to `ui/src/ui/Overlay.test.tsx`:
@@ -2995,26 +3174,53 @@ cautionary tale for what that costs. Recorded as ledger row L-14, vetoable there
     place"*, and until now it stood at a 30px gutter where the refusal stands at
     40px. `--pad-screen-x` is what both mean.
 
-- [ ] **Step 21: Run everything, build, grep the built CSS.**
+- [ ] **Step 21: Run everything, build, prove every class these five files write emits.**
+  ```bash
+  cd ui && npx vitest run && npx tsc -b && npx eslint .
   ```
-  cd ui && npx vitest run && npx tsc -b && npx eslint . && npm run build
-  CSS=$(ls dist/assets/*.css | head -1)
-  for c in disabled:opacity-60 disabled:shadow-none disabled:cursor-default \
-           disabled:text-disabled enabled:hover:brightness-105 \
-           border-border-card hover:-translate-y-lift hover:shadow-card-hover \
-           hover:border-border-pick rounded-feature p-s10 p-s11 p-modal \
-           max-w-dialog max-w-dialog-wide max760:items-end max760:rounded-b-none \
-           text-fs-dialog leading-sub border-hairline focus:border-coral \
-           rounded-search py-search-y px-search-x py-search-y-menu \
-           text-role-dense w-close h-close w-search-glyph py-screen-y px-screen-x \
-           h-s16 p-s12; do
-    grep -q "\\.$(printf '%s' "$c" | sed 's/[.:[\*^$]/\\&/g')" "$CSS" \
-      && echo "ok   $c" || echo "MISS $c"
-  done
+  Expected: all three exit 0. Then:
+  ```bash
+  cd ui && npx vite build
+  node scripts/harvest-classes.mjs src/ui/Button.tsx src/ui/Card.tsx src/ui/Overlay.tsx src/ui/SearchField.tsx src/ui/IconButton.tsx src/ui/states/index.tsx
   ```
-  Expected: `ok` for all 31 classes and no `MISS`. A `MISS` means the class was
-  invented — Tailwind emits nothing for it and `npm run build` still exits 0,
-  which is exactly the trap this grep exists to catch.
+  Expected: the run ends `DEAD 0   EMPTY 0   NOVAR 0`, both controls hold
+  (`control (negative): N/N invented names reported dead` and
+  `control (escaping): … escaped variant classes unescaped`), and the last line
+  is `PASS`. The script exits 1 on any failure, so it can be `&&`-chained.
+  The class list is **harvested out of these files**, never hand-kept, so it
+  cannot drift from what they write and `tailwind-probe.txt` cannot certify it
+  on their behalf — see *The class-emission check* in Global Constraints for the
+  measurement that retired the old grep.
+
+  Measured on the built primitives: **156 classes come back `ok`, 0 dead.** The
+  hand-kept list this step used to carry held 33 of them — it missed 123,
+  `max760:max-h-[92vh]`, `min-h-touch`, `before:-inset-[6px]`, `bg-scrim` and
+  `md:w-[var(--width-drawer)]` among them — and its `Expected:` line said 31,
+  which is not even the length of its own list. Worse, it escaped each name for a
+  regex and so printed `MISS` for **all eleven of its variant classes**
+  (`disabled:*`, `enabled:hover:brightness-105`, `hover:-translate-y-lift`,
+  `hover:shadow-card-hover`, `hover:border-border-pick`, `max760:items-end`,
+  `max760:rounded-b-none`, `focus:border-coral`) on a build where every one was
+  present: the CSS holds `.disabled\:opacity-60`, and the pattern asked for
+  `.disabled:opacity-60`.
+
+  **A failure.** `DEAD` — the class compiled to no rule at all; that is a **typo
+  in the component**, so fix the class string, rebuild, re-run. `EMPTY` — the
+  selector emitted with an empty body, so the theme key resolves to nothing.
+  `NOVAR` — the rule reads a `var(--…)` nothing declares. The last two are theme
+  regressions: **stop and report them.** Do **not** add the name to
+  `ui/tailwind.config.js`, `src/styles/tokens.css`, `src/styles/roles.css` or
+  `tailwind-probe.txt`. All four are frozen for the duration of this plan and
+  were unfrozen exactly once, by the single minting pass in
+  `.superpowers/sdd/mint-spec.md`; minting one here to make a misspelling compile
+  recreates the unreachable-token problem the whole rebuild exists to fix. A
+  value that genuinely has no name goes into `mint-spec.md`, not into the config
+  and not into this task's commit.
+
+  **What this step cannot prove:** that these files write a class and that the
+  class compiles to a rule with declarations, yes. That the class reaches the
+  right element, that the element renders, that it is visible, or that its value
+  is the one the design asks for — no. That stays with the Playwright checks.
 
 - [ ] **Step 22: Write the browser check for the primitives, run it at three widths, commit.**
   Create `ui/e2e/primitives.spec.ts`:
@@ -3528,37 +3734,62 @@ Expected: all three exit 0. `tsc -b` is the one that catches a `TextFieldProps` 
 that no caller can satisfy; `eslint .` is the one that catches a non-component export
 sneaking back into a `.tsx`.
 
-- [ ] **Step 10: Build, and grep the built CSS for every named class this task introduced**
+- [ ] **Step 10: Build, and prove every class the field primitives write emits**
+  ```bash
+  cd ui && npx vite build
+  node scripts/harvest-classes.mjs src/ui/fieldFrame.ts src/ui/TextField.tsx src/ui/PasswordField.tsx
+  ```
+  Expected: the run ends `DEAD 0   EMPTY 0   NOVAR 0`, both controls hold
+  (`control (negative): N/N invented names reported dead` and
+  `control (escaping): … escaped variant classes unescaped`), and the last line
+  is `PASS`. The script exits 1 on any failure, so it can be `&&`-chained.
+  The class list is **harvested out of these files**, never hand-kept, so it
+  cannot drift from what they write and `tailwind-probe.txt` cannot certify it
+  on their behalf — see *The class-emission check* in Global Constraints for the
+  measurement that retired the old grep.
 
-An invented Tailwind class compiles to nothing while the build still exits 0, so the
-build alone proves nothing. Run:
+  `fieldFrame.ts` is named on purpose: it is a helper module with no `className`
+  attribute anywhere in it, and the scanner still judges its class strings — a
+  literal holding two-or-more tokens of which at least one emits is corroborated
+  as a class list. That is precisely the file a `className`-only heuristic would
+  skip, and it is where the whole border state machine lives.
 
-```bash
-cd ui && npm run build && node -e '
-const fs=require("fs");
-const css=fs.readdirSync("dist/assets").filter(f=>/\.css$/.test(f))
-  .map(f=>fs.readFileSync("dist/assets/"+f,"utf8")).join("\n");
-const need=process.argv.slice(1);
-const miss=need.filter(c=>!new RegExp("\\."+c+"(?![\\w-])").test(css));
-console.log(miss.length?"MISSING "+miss.join(" "):"OK "+need.length+" classes present");
-process.exit(miss.length?1:0);
-' text-fs-lg text-fs-body text-fs-sm text-fs-sm2 text-fs-xs rounded-button rounded-tool border-hairline \
-  border-line border-coral border-conflict bg-card bg-surface-sub bg-tile-v2 \
-  text-ink text-violet text-faint text-muted text-conflict resize-y
-```
+  Measured on the built primitives: **57 classes `ok`, 0 dead.** The hand-kept
+  list this step used to carry named 20.
 
-Expected: `OK 20 classes present`. A `MISSING` line means Task 2 has not exposed that
-token yet — fix it there, not with an arbitrary value here.
+  **A failure.** `DEAD` — the class compiled to no rule at all; that is a **typo
+  in the component**, so fix the class string, rebuild, re-run. `EMPTY` — the
+  selector emitted with an empty body, so the theme key resolves to nothing.
+  `NOVAR` — the rule reads a `var(--…)` nothing declares. The last two are theme
+  regressions: **stop and report them.** Do **not** add the name to
+  `ui/tailwind.config.js`, `src/styles/tokens.css`, `src/styles/roles.css` or
+  `tailwind-probe.txt`. All four are frozen for the duration of this plan and
+  were unfrozen exactly once, by the single minting pass in
+  `.superpowers/sdd/mint-spec.md`; minting one here to make a misspelling compile
+  recreates the unreachable-token problem the whole rebuild exists to fix. A
+  value that genuinely has no name goes into `mint-spec.md`, not into the config
+  and not into this task's commit.
 
-- [ ] **Step 11: Commit the verification**
+  **What this step cannot prove:** that these files write a class and that the
+  class compiles to a rule with declarations, yes. That the class reaches the
+  right element, that the element renders, that it is visible, or that its value
+  is the one the design asks for — no. That stays with the Playwright checks.
 
-Nothing to add if the previous step was green. If Task 2 needed a utility added, commit
-that change on its own:
 
-```
-git add ui/tailwind.config.js
-git commit -m "fix(ui): expose the token the field primitive could not reach"
-```
+- [ ] **Step 11: Nothing to commit — and nothing to mint**
+
+  Step 10 changes no file. If it was green there is nothing to add here.
+
+  If it was **not** green, the fix is in the component, not in the theme. The old
+  text here said a miss meant "Task 2 has not exposed that token yet — fix it
+  there", and then staged `ui/tailwind.config.js` on its own. Do neither.
+  `tailwind.config.js`, `src/styles/tokens.css`, `src/styles/roles.css` and
+  `tailwind-probe.txt` are frozen after the single minting pass
+  (`.superpowers/sdd/mint-spec.md`), and a `DEAD` here is a misspelled class in
+  `TextField.tsx`, `PasswordField.tsx` or `fieldFrame.ts` — minting a name to make
+  the misspelling compile is the unreachable-token failure this rebuild exists to
+  end. If a value the field genuinely needs has no name at all, **stop and report
+  it** and put it in `mint-spec.md`.
 
 ---
 
@@ -4214,39 +4445,66 @@ only bans three prefixes, so `px-[12px]` and `z-[35]` would pass it while bypass
 token layer entirely — `grep -n '\[' src/ui/{Checkbox,Radio,Dropdown}.tsx` must return
 nothing but TypeScript array types and array indexing.
 
-- [ ] **Step 13: Build, and grep the built CSS**
+- [ ] **Step 13: Build, and prove every class these three files write emits**
+  ```bash
+  cd ui && npx vite build
+  node scripts/harvest-classes.mjs src/ui/Checkbox.tsx src/ui/Radio.tsx src/ui/Dropdown.tsx
+  ```
+  Expected: the run ends `DEAD 0   EMPTY 0   NOVAR 0`, both controls hold
+  (`control (negative): N/N invented names reported dead` and
+  `control (escaping): … escaped variant classes unescaped`), and the last line
+  is `PASS`. The script exits 1 on any failure, so it can be `&&`-chained.
+  The class list is **harvested out of these files**, never hand-kept, so it
+  cannot drift from what they write and `tailwind-probe.txt` cannot certify it
+  on their behalf — see *The class-emission check* in Global Constraints for the
+  measurement that retired the old grep.
 
-```bash
-cd ui && npm run build && node -e '
-const fs=require("fs");
-const css=fs.readdirSync("dist/assets").filter(f=>/\.css$/.test(f))
-  .map(f=>fs.readFileSync("dist/assets/"+f,"utf8")).join("\n");
-const need=process.argv.slice(1);
-const miss=need.filter(c=>!new RegExp("\\."+c+"(?![\\w-])").test(css));
-console.log(miss.length?"MISSING "+miss.join(" "):"OK "+need.length+" classes present");
-process.exit(miss.length?1:0);
-' rounded-card rounded-tile rounded-button rounded-input rounded-control rounded-tick rounded-round \
-  border-line-dashed border-border-card border-warm border-violet bg-tile-v4 bg-green \
-  bg-violet shadow-pop text-fs-menu text-fs-sm text-fs-sm2 text-fs-xs text-fs-lg sr-only \
-  w-tick h-tick gap-tick-row py-tick-nested-y px-radio-x gap-option p-popover max-h-popover \
-  py-search-y-menu ps-search-x-menu pe-s6 mt-half mt-s1 mt-s3 mb-s1 mb-s3 gap-half gap-s5 \
-  gap-s6 px-s6 px-s7 py-s5 py-s7 w-s4 h-s4 w-s7 top-full leading-normal z-dropdown \
-  w-tick-glyph h-tick-glyph
-```
+  Measured on the built primitives: **105 classes `ok`, 0 dead.** The hand-kept
+  list this step used to carry named 52 — three of which (`bg-green`,
+  `border-line-dashed`, `py-tick-nested-y`) these files never write, while 56 they
+  do write were absent from it, `focus:border-coral`,
+  `peer-focus-visible:border-coral`, `start-search-icon-menu`, `py-tick-row-y` and
+  `border-border-pick` among them. Both halves of that drift are invisible to a
+  grep: the probe emits the three phantoms anyway, and nothing was looking for the
+  56.
 
-Expected: `OK 52 classes present`.
+  Do **not** name the three test files here. They carry invented class names as
+  fixtures (`rounded-tickk`, `w-tick-nineteen`) and quote CSS *property* names in
+  assertions (`text-align`, `inset-inline-end`) that collide with live utility
+  namespaces; the scanner reports those as dead, correctly and uselessly.
 
-- [ ] **Step 14: Commit the verification**
+  **A failure.** `DEAD` — the class compiled to no rule at all; that is a **typo
+  in the component**, so fix the class string, rebuild, re-run. `EMPTY` — the
+  selector emitted with an empty body, so the theme key resolves to nothing.
+  `NOVAR` — the rule reads a `var(--…)` nothing declares. The last two are theme
+  regressions: **stop and report them.** Do **not** add the name to
+  `ui/tailwind.config.js`, `src/styles/tokens.css`, `src/styles/roles.css` or
+  `tailwind-probe.txt`. All four are frozen for the duration of this plan and
+  were unfrozen exactly once, by the single minting pass in
+  `.superpowers/sdd/mint-spec.md`; minting one here to make a misspelling compile
+  recreates the unreachable-token problem the whole rebuild exists to fix. A
+  value that genuinely has no name goes into `mint-spec.md`, not into the config
+  and not into this task's commit.
 
-Nothing new if green.
+  **What this step cannot prove:** that these files write a class and that the
+  class compiles to a rule with declarations, yes. That the class reaches the
+  right element, that the element renders, that it is visible, or that its value
+  is the one the design asks for — no. That stays with the Playwright checks.
 
-**If a utility is missing, do NOT add it to `ui/tailwind.config.js`.** That file, along with
-`ui/src/styles/tokens.css`, `ui/src/styles/roles.css` and `ui/tailwind-probe.txt`, is FROZEN
-for this task — every token these three primitives need was minted ahead of time so several
-primitives could be built in parallel without clobbering one another. A missing utility means
-either the class name is wrong (check it against the theme, mapping by ROLE and never by pixel
-value) or a genuine gap in the mint. **Stop and report it.** Minting here silently recreates
-the unreachable-token problem this whole rebuild exists to fix.
+
+- [ ] **Step 14: Nothing to commit**
+
+  Step 13 changes no file. Green means these three primitives and the frozen theme
+  agree.
+
+  **If a class comes back `DEAD`, do NOT add it to `ui/tailwind.config.js`.** That
+  file, along with `ui/src/styles/tokens.css`, `ui/src/styles/roles.css` and
+  `ui/tailwind-probe.txt`, is FROZEN for this task — every token these three
+  primitives need was minted ahead of time so several primitives could be built in
+  parallel without clobbering one another. A dead class means either the name is
+  wrong (check it against the theme, mapping by ROLE and never by pixel value) or
+  a genuine gap in the mint. **Stop and report it.** Minting here silently
+  recreates the unreachable-token problem this whole rebuild exists to fix.
 
 ---
 
@@ -4637,46 +4895,77 @@ Expected: all three exit 0. `tsc -b` is load-bearing here — `DataTable<Row>` i
 generic component in the app, and a `cell` signature that does not match its `Row` is
 exactly the mistake Task 19 would otherwise make at the call site.
 
-- [ ] **Step 9: Build, and grep the built CSS**
+- [ ] **Step 9: Build, and prove every class the table and pager write emits**
+  ```bash
+  cd ui && npx vite build
+  node scripts/harvest-classes.mjs src/ui/DataTable.tsx src/ui/Pager.tsx
+  ```
+  Expected: the run ends `DEAD 0   EMPTY 0   NOVAR 0`, both controls hold
+  (`control (negative): N/N invented names reported dead` and
+  `control (escaping): … escaped variant classes unescaped`), and the last line
+  is `PASS`. The script exits 1 on any failure, so it can be `&&`-chained.
+  The class list is **harvested out of these files**, never hand-kept, so it
+  cannot drift from what they write and `tailwind-probe.txt` cannot certify it
+  on their behalf — see *The class-emission check* in Global Constraints for the
+  measurement that retired the old grep.
 
-```bash
-cd ui && npm run build && node -e '
-const fs=require("fs");
-const css=fs.readdirSync("dist/assets").filter(f=>/\.css$/.test(f))
-  .map(f=>fs.readFileSync("dist/assets/"+f,"utf8")).join("\n");
-const need=process.argv.slice(1);
-const miss=need.filter(c=>!new RegExp("\\."+c+"(?![\\w-])").test(css));
-console.log(miss.length?"MISSING "+miss.join(" "):"OK "+need.length+" classes present");
-process.exit(miss.length?1:0);
-' rounded-doc rounded-control border-border-card border-border-current border-line-row \
-  bg-surface-sub bg-tile-v4 shadow-card text-fs-xs text-fs-sm text-fs-sm2 text-fs-caption \
-  text-body-ink text-disabled
-```
+  This is the step whose old form proved the least in the whole plan, and it is
+  worth knowing why before trusting the new one. It grepped for 14 names — and
+  **all 14 are written verbatim in `ui/tailwind-probe.txt`**, which
+  `tailwind.config.js:59` puts in Tailwind's `content`. Every one of them
+  therefore emitted whether or not `DataTable.tsx` and `Pager.tsx` existed at all;
+  the step would have printed `OK 14 classes present` against an empty repository.
+  Five of the 14 (`bg-surface-sub`, `border-border-card`, `rounded-doc`,
+  `shadow-card`, `text-disabled`) are not written by these two files at any point,
+  and **52 classes they do write were unlisted** — `grid-cols-users`,
+  `grid-cols-audit`, `grid-cols-activity`, every `max760:*`, `before:-inset-[5px]`,
+  `py-table-row-y`, `min-w-page-label`, `hover:bg-surface-sub`.
 
-Expected: `OK 14 classes present`. Then confirm the two responsive rules actually
-compiled at the right width — a screen key that never reached the config would leave
-`max760:hidden` out of the CSS entirely:
+  Measured on the built primitives: **61 classes `ok`, 0 dead.**
 
-```bash
-cd ui && node -e '
-const fs=require("fs");
-const css=fs.readdirSync("dist/assets").filter(f=>/\.css$/.test(f))
-  .map(f=>fs.readFileSync("dist/assets/"+f,"utf8")).join("\n");
-const ok=/@media\s*\(max-width:\s*760px\)/.test(css) && /max760\\:hidden/.test(css);
-console.log(ok?"OK r760 compiles to a max-width:760px query":"MISSING r760");
-process.exit(ok?0:1);'
-```
+  **A failure.** `DEAD` — the class compiled to no rule at all; that is a **typo
+  in the component**, so fix the class string, rebuild, re-run. `EMPTY` — the
+  selector emitted with an empty body, so the theme key resolves to nothing.
+  `NOVAR` — the rule reads a `var(--…)` nothing declares. The last two are theme
+  regressions: **stop and report them.** Do **not** add the name to
+  `ui/tailwind.config.js`, `src/styles/tokens.css`, `src/styles/roles.css` or
+  `tailwind-probe.txt`. All four are frozen for the duration of this plan and
+  were unfrozen exactly once, by the single minting pass in
+  `.superpowers/sdd/mint-spec.md`; minting one here to make a misspelling compile
+  recreates the unreachable-token problem the whole rebuild exists to fix. A
+  value that genuinely has no name goes into `mint-spec.md`, not into the config
+  and not into this task's commit.
 
-Expected: `OK r760 compiles to a max-width:760px query`.
+  **What this step cannot prove:** that these files write a class and that the
+  class compiles to a rule with declarations, yes. That the class reaches the
+  right element, that the element renders, that it is visible, or that its value
+  is the one the design asks for — no. That stays with the Playwright checks.
 
-- [ ] **Step 10: Commit the verification**
+  Then confirm the two responsive rules actually compiled at the right width — a
+  screen key that never reached the config would leave `max760:hidden` out of the
+  CSS entirely, and the scanner would report it `DEAD` without saying why:
 
-Nothing new if green. Otherwise fix `ui/tailwind.config.js` and:
+  ```bash
+  cd ui && node -e '
+  const fs=require("node:fs");
+  const css=fs.readdirSync("dist/assets").filter(f=>/\.css$/.test(f))
+    .map(f=>fs.readFileSync("dist/assets/"+f,"utf8")).join("\n");
+  const ok=/@media\s*\(max-width:\s*760px\)/.test(css) && /max760\\:hidden/.test(css);
+  console.log(ok?"OK r760 compiles to a max-width:760px query":"MISSING r760");
+  process.exit(ok?0:1);'
+  ```
 
-```
-git add ui/tailwind.config.js
-git commit -m "fix(ui): the 760px breakpoint reaches the table"
-```
+  Expected: `OK r760 compiles to a max-width:760px query`.
+
+- [ ] **Step 10: Nothing to commit**
+
+  Step 9 changes no file, and there is nothing here to stage. The old text said
+  *"Otherwise fix `ui/tailwind.config.js`"* and then staged it on its own —
+  **do not.** That file, `src/styles/tokens.css`, `src/styles/roles.css` and
+  `tailwind-probe.txt` are frozen after the single minting pass
+  (`.superpowers/sdd/mint-spec.md`). A `DEAD` class is a typo in `DataTable.tsx`
+  or `Pager.tsx`; a `MISSING r760` is a theme regression — the breakpoint plugin
+  has been lost from the config — and both are reported, not patched from here.
 
 ---
 
@@ -5297,65 +5586,71 @@ axes, not density, so `guards.test.ts`'s F4/F8 guard (which bans `density|size|s
 stays quiet — check it actually does, because "compact" appears as a *value* of `skin`
 and the regex looks for it as a prop **name** followed by `:`.
 
-- [ ] **Step 12: Build, and grep the built CSS**
+- [ ] **Step 12: Build, and prove every class the five composites write emits**
+  ```bash
+  cd ui && npx vite build
+  node scripts/harvest-classes.mjs src/ui/SectionCard.tsx src/ui/StatTile.tsx src/ui/NavTabTray.tsx src/ui/Timeline.tsx src/ui/FAB.tsx
+  ```
+  Expected: the run ends `DEAD 0   EMPTY 0   NOVAR 0`, both controls hold
+  (`control (negative): N/N invented names reported dead` and
+  `control (escaping): … escaped variant classes unescaped`), and the last line
+  is `PASS`. The script exits 1 on any failure, so it can be `&&`-chained.
+  The class list is **harvested out of these files**, never hand-kept, so it
+  cannot drift from what they write and `tailwind-probe.txt` cannot certify it
+  on their behalf — see *The class-emission check* in Global Constraints for the
+  measurement that retired the old grep.
 
-```bash
-cd ui && npm run build && node -e '
-const fs=require("fs");
-const css=fs.readdirSync("dist/assets").filter(f=>/\.css$/.test(f))
-  .map(f=>fs.readFileSync("dist/assets/"+f,"utf8")).join("\n");
-const need=process.argv.slice(1);
-const miss=need.filter(c=>!new RegExp("\\."+c+"(?![\\w-])").test(css));
-console.log(miss.length?"MISSING "+miss.join(" "):"OK "+need.length+" classes present");
-process.exit(miss.length?1:0);
-' rounded-card rounded-tile rounded-button rounded-tool rounded-pill rounded-round \
-  text-fs-stat text-fs-stat-sm text-fs-sm text-fs-sm2 text-fs-caption text-fs-xs text-fs-xxs \
-  leading-none leading-normal \
-  bg-card bg-surface-sub bg-tile-v2 bg-tile-v4 bg-tile-ok bg-tile-warn bg-tile-c \
-  bg-coral bg-violet bg-border-current \
-  border-border-card border-border-current border-ink \
-  text-card text-violet text-ink text-conflict text-green text-warn text-muted text-faint \
-  text-icom-control text-body-ink \
-  shadow-card shadow-conflict-dot shadow-fab \
-  p-s9 mb-s6 px-stat-x py-s7 min-w-stat px-stat-x-grid py-stat-y-grid mt-s2 w-s4 h-s4 \
-  gap-s1 p-s1 px-s7 py-s4 gap-s6 w-s11 h-s11 w-half min-h-s7 pb-s7 mt-half mt-s3 \
-  px-note-x py-note-y \
-  w-fab h-fab bottom-s10 right-s10 -top-half -start-half min-w-count h-count px-s3 \
-  z-floating
-```
+  Measured on the built components: **102 classes `ok`, 0 dead.** The hand-kept
+  list this step used to carry named 75 and called itself *"the whole set of
+  theme-named classes the five components write — not a sample"*. It was not:
+  two of the 75 (`-top-half`, `-start-half`) are written nowhere in the five, and
+  29 that are written were missing from it, including `gap-stat-dot`,
+  `mt-stat-label` and `before:-inset-[5px]` — the last being the transparent 44px
+  hit-area overlay the touch-target rule turns on, i.e. the one class in the set
+  whose absence would break a global constraint.
 
-Expected: `OK 75 classes present`.
+  `z-floating` no longer needs its footnote: the minting pass landed, and it
+  compiles to `.z-floating{z-index:var(--role-z-floating)}`. If it ever comes back
+  `DEAD`, the stacking ladder has been lost from `tailwind.config.js` — a theme
+  regression to report, not a class to re-mint.
 
-**This is the whole set of theme-named classes the five components write** — not a sample.
-Tailwind's own utilities (`flex`, `flex-col`, `inline-flex`, `items-center`,
-`justify-center`, `flex-1`, `flex-none`, `text-center`, `min-w-0`, `list-none`, `m-0`,
-`p-0`, `border`, `border-0`, `border-2`, `fixed`, `absolute`, `left-auto`,
-`bg-transparent`, `font-bold`, `font-semibold`, `font-extrabold`, `font-normal`,
-`cursor-pointer`) are left out: they ship with the framework and cannot go missing.
-Everything above resolves to a `var(--…)` this project declares, and every one of them
-**was compiled and confirmed to emit a rule with a non-empty body** while this section was
-written — except one:
+  **A failure.** `DEAD` — the class compiled to no rule at all; that is a **typo
+  in the component**, so fix the class string, rebuild, re-run. `EMPTY` — the
+  selector emitted with an empty body, so the theme key resolves to nothing.
+  `NOVAR` — the rule reads a `var(--…)` nothing declares. The last two are theme
+  regressions: **stop and report them.** Do **not** add the name to
+  `ui/tailwind.config.js`, `src/styles/tokens.css`, `src/styles/roles.css` or
+  `tailwind-probe.txt`. All four are frozen for the duration of this plan and
+  were unfrozen exactly once, by the single minting pass in
+  `.superpowers/sdd/mint-spec.md`; minting one here to make a misspelling compile
+  recreates the unreachable-token problem the whole rebuild exists to fix. A
+  value that genuinely has no name goes into `mint-spec.md`, not into the config
+  and not into this task's commit.
 
-**`z-floating` was the one class here that waited on the single minting pass.** It is
-`--role-z-floating` (1030, "the comment FAB"), specified in `.superpowers/sdd/mint-spec.md`
-§1.1/§3. That pass has since landed and the class was re-compiled and confirmed:
-`.z-floating{z-index:var(--role-z-floating)}`. Nothing in this task is blocked. If this
-step ever reports `MISSING z-floating` again, the stacking ladder has been lost from
-`tailwind.config.js` — that is a theme regression to report, not a class to re-mint.
+  **What this step cannot prove:** that these files write a class and that the
+  class compiles to a rule with declarations, yes. That the class reaches the
+  right element, that the element renders, that it is visible, or that its value
+  is the one the design asks for — no. That stays with the Playwright checks.
 
-**Do not add a missing utility to `ui/tailwind.config.js`, `ui/src/styles/tokens.css` or
-`ui/src/styles/roles.css`.** Those three are frozen for the duration of this plan and are
-unfrozen exactly once, by the minting pass, for the 23 tokens / 9 roles / 29 keys that pass
-specifies. A miss that is not `z-floating` is a **typo in a component's class string**, and
-the fix is in the component: minting a name to make a misspelling compile is the exact
-failure this rebuild exists to undo. If a genuinely unnamed value turns up, stop and add it
-to `mint-spec.md` rather than to the config.
+  Tailwind's own utilities (`flex`, `flex-col`, `inline-flex`, `items-center`,
+  `justify-center`, `flex-1`, `flex-none`, `text-center`, `min-w-0`, `list-none`,
+  `m-0`, `p-0`, `border`, `border-0`, `border-2`, `fixed`, `absolute`,
+  `left-auto`, `bg-transparent`, `font-bold`, `font-semibold`, `font-extrabold`,
+  `font-normal`, `cursor-pointer`) are checked too, and pass — the scanner does
+  not exempt them, because a typo in one of them (`flexx`, `hiddne`) compiles to
+  nothing just as quietly. That is the `bare word in a class string` promotion in
+  the classifier.
 
-- [ ] **Step 13: Commit the verification**
+- [ ] **Step 13: Nothing to commit**
 
-Nothing to commit — this step changes no file. Green means the five components and the
-frozen theme agree; `MISSING z-floating` alone means wait for the mint. Anything else is a
-component bug, fixed in the component and folded into the Step 7 or Step 10 commit.
+  Step 12 changes no file. Green means the five components and the frozen theme
+  agree. Anything else is a component bug, fixed in the component and folded into
+  the Step 7 or Step 10 commit — **never** by adding a name to
+  `ui/tailwind.config.js`, `ui/src/styles/tokens.css`, `ui/src/styles/roles.css`
+  or `ui/tailwind-probe.txt`. Those four are frozen for the duration of this plan
+  and were unfrozen exactly once, by the minting pass, for the 23 tokens / 9 roles
+  / 29 keys it specifies. If a genuinely unnamed value turns up, stop and add it
+  to `mint-spec.md`.
 
 ---
 
@@ -5927,47 +6222,67 @@ process.exit(asset&&referenced?0:1);'
 
 Expected: `OK logo emitted and referenced`.
 
-- [ ] **Step 13: Grep the built CSS**
+- [ ] **Step 13: Prove every class the icon layer writes emits**
+  ```bash
+  cd ui && npx vite build
+  node scripts/harvest-classes.mjs src/ui/Icon.tsx src/ui/icons/index.tsx src/ui/IconTile.tsx src/ui/Logo.tsx src/lib/departments.ts \
+    src/ui/PasswordField.tsx src/ui/Dropdown.tsx src/ui/Pager.tsx src/ui/FAB.tsx src/ui/Accordion.tsx
+  ```
+  Expected: the run ends `DEAD 0   EMPTY 0   NOVAR 0`, both controls hold
+  (`control (negative): N/N invented names reported dead` and
+  `control (escaping): … escaped variant classes unescaped`), and the last line
+  is `PASS`. The script exits 1 on any failure, so it can be `&&`-chained.
+  The class list is **harvested out of these files**, never hand-kept, so it
+  cannot drift from what they write and `tailwind-probe.txt` cannot certify it
+  on their behalf — see *The class-emission check* in Global Constraints for the
+  measurement that retired the old grep.
 
-```bash
-cd ui && node -e '
-const fs=require("fs");
-const css=fs.readdirSync("dist/assets").filter(f=>/\.css$/.test(f))
-  .map(f=>fs.readFileSync("dist/assets/"+f,"utf8")).join("\n");
-const need=process.argv.slice(1);
-const miss=need.filter(c=>!new RegExp("\\."+c+"(?![\\w-])").test(css));
-console.log(miss.length?"MISSING "+miss.join(" "):"OK "+need.length+" classes present");
-process.exit(miss.length?1:0);
-' rounded-card rounded-tile rounded-input rounded-feature object-cover bg-tile-v bg-tile-c \
-  bg-tile-warn bg-tile-ok text-violet text-conflict text-warn text-green \
-  text-dept-numeral-violet text-dept-numeral-coral
-```
+  The five files on the second line are the ones Step 10 re-pointed at the icon
+  set; they are named here because this task rewrote their markup and a class
+  string is easy to lose in that edit.
 
-Expected: `OK 15 classes present` — **all fifteen, first time.** That is the whole set of
-theme-named classes `Icon`, `IconTile` and `Logo` write; the rest of what they carry
-(`block`, `flex-none`, `inline-flex`, `items-center`, `justify-center`) ships with Tailwind.
-Every one of the fifteen was compiled from `src/index.css` against the frozen config while
-this section was written and confirmed to emit a rule with a non-empty body.
+  `src/lib/departments.ts` is the interesting one. It holds
+  `deptMeta().numeralClass` — `text-dept-numeral-violet` / `text-dept-numeral-coral`
+  — in a plain module with no JSX in sight, and the scanner still judges it. The
+  old note here claimed those two tints were *"the likely misses — tokens the
+  theme never named"*. **That was already untrue when it was written:**
+  `--dept-numeral-violet` `#EDE4FA` and `--dept-numeral-coral` `#FBE4E1` are
+  declared in the frozen `_ds` `colors.css` and both sit on `colors` in
+  `tailwind.config.js`. `Departments.tsx` hard-coding the hexes is what **Task 14**
+  fixes by consuming `numeralClass`; nothing about it was ever a gap in the theme.
 
-The old note here said the two numeral tints were "the likely misses — tokens the theme
-never named". **That is no longer true and had been fixed before this step was ever run.**
-`--dept-numeral-violet` `#EDE4FA` and `--dept-numeral-coral` `#FBE4E1` are declared in the
-frozen `_ds` `colors.css`, and `tailwind.config.js` carries both on `colors`, so
-`text-dept-numeral-violet` and `text-dept-numeral-coral` emit today. `Departments.tsx`
-hard-coding the hexes is what **Task 14** fixes by consuming `deptMeta().numeralClass`;
-nothing about it is a gap in the theme.
+  **A failure.** `DEAD` — the class compiled to no rule at all; that is a **typo
+  in the component**, so fix the class string, rebuild, re-run. `EMPTY` — the
+  selector emitted with an empty body, so the theme key resolves to nothing.
+  `NOVAR` — the rule reads a `var(--…)` nothing declares. The last two are theme
+  regressions: **stop and report them.** Do **not** add the name to
+  `ui/tailwind.config.js`, `src/styles/tokens.css`, `src/styles/roles.css` or
+  `tailwind-probe.txt`. All four are frozen for the duration of this plan and
+  were unfrozen exactly once, by the single minting pass in
+  `.superpowers/sdd/mint-spec.md`; minting one here to make a misspelling compile
+  recreates the unreachable-token problem the whole rebuild exists to fix. A
+  value that genuinely has no name goes into `mint-spec.md`, not into the config
+  and not into this task's commit.
 
-- [ ] **Step 14: Commit the verification**
+  **What this step cannot prove:** that these files write a class and that the
+  class compiles to a rule with declarations, yes. That the class reaches the
+  right element, that the element renders, that it is visible, or that its value
+  is the one the design asks for — no. That stays with the Playwright checks.
 
-Nothing to commit — this step changes no file, and there is no expected miss to chase.
 
-**Do not add a missing utility to `ui/tailwind.config.js`, `ui/src/styles/tokens.css` or
-`ui/src/styles/roles.css`.** Those three are frozen for the duration of this plan and are
-unfrozen exactly once, by the single minting pass specified in
-`.superpowers/sdd/mint-spec.md`. A miss here is a **typo in a component's class string**,
-and the fix is in the component: minting a name to make a misspelling compile recreates the
-problem this rebuild exists to undo. If a genuinely unnamed value turns up, stop and add it
-to `mint-spec.md` rather than to the config.
+- [ ] **Step 14: Nothing to commit**
+
+  This step changes no file, and there is no expected miss to chase.
+
+  **Do not add a missing utility to `ui/tailwind.config.js`,
+  `ui/src/styles/tokens.css`, `ui/src/styles/roles.css` or
+  `ui/tailwind-probe.txt`.** All four are frozen for the duration of this plan and
+  were unfrozen exactly once, by the single minting pass specified in
+  `.superpowers/sdd/mint-spec.md`. A `DEAD` here is a **typo in a component's
+  class string**, and the fix is in the component: minting a name to make a
+  misspelling compile recreates the problem this rebuild exists to undo. If a
+  genuinely unnamed value turns up, stop and add it to `mint-spec.md` rather than
+  to the config.
 
 ---
 
@@ -6658,50 +6973,56 @@ git commit -m "feat(ui): a white bar with a logo, a trail, and no control that v
 - [ ] **Step 12: Run the whole suite, the type-checker, the linter and the build**
 
 Run: `cd ui && npx vitest run && npx tsc -b && npx eslint . && npm run build`
-Expected: all four exit 0. Then grep the built CSS:
-
+Expected: all four exit 0. Then prove every class `PanelShell` writes emits:
 ```bash
-cd ui && node -e '
-const fs=require("fs");
-const css=fs.readdirSync("dist/assets").filter(f=>/\.css$/.test(f))
-  .map(f=>fs.readFileSync("dist/assets/"+f,"utf8")).join("\n");
-const need=process.argv.slice(1);
-const miss=need.filter(c=>!new RegExp("\\."+c+"(?![\\w-])").test(css));
-console.log(miss.length?"MISSING "+miss.join(" "):"OK "+need.length+" classes present");
-process.exit(miss.length?1:0);
-' text-fs-body text-fs-menu text-fs-sm2 text-fs-xs text-fs-micro rounded-card rounded-tile rounded-button \
-  rounded-input rounded-control rounded-tool rounded-round bg-card bg-tile-v2 bg-violet \
-  bg-coral bg-ink bg-border-current border-warm border-line border-border-card \
-  border-hairline text-ink text-violet text-muted text-faint text-card shadow-pop \
-  px-topbar py-option-y w-tool h-tool w-iconbtn h-iconbtn w-menu-more h-menu-more \
-  z-chrome z-dropdown mt-half mt-s3 top-full
+cd ui && npx vite build
+node scripts/harvest-classes.mjs src/shell/PanelShell.tsx src/shell/crumbs.ts
 ```
+Expected: the run ends `DEAD 0   EMPTY 0   NOVAR 0`, both controls hold
+(`control (negative): N/N invented names reported dead` and
+`control (escaping): … escaped variant classes unescaped`), and the last line
+is `PASS`. The script exits 1 on any failure, so it can be `&&`-chained.
+The class list is **harvested out of these files**, never hand-kept, so it
+cannot drift from what they write and `tailwind-probe.txt` cannot certify it
+on their behalf — see *The class-emission check* in Global Constraints for the
+measurement that retired the old grep.
 
-Expected: `OK 41 classes present`.
+The old form of this step grepped a hand-kept list of 41 and said so honestly:
+*"the twenty-eight above them are colours and type steps that ship today and have
+shipped for weeks; a grep that certifies only those certifies nothing about this
+task."* That is the right instinct and the wrong tool — all 41 are named in
+`tailwind-probe.txt`, so all 41 emitted whether or not `PanelShell.tsx` was ever
+written. The thirteen that step existed for are exactly the ones a harvest cannot
+miss, because they are read off the component: `px-topbar` is `--pad-topbar` 22px
+and not `px-s10`, `w-tool` is `--size-tool` 34px and not `w-pager`, `w-menu-more`
+is 36px, `py-option-y` is `--pad-option-y` 11px, and `z-chrome` / `z-dropdown` are
+the L-42…L-47 rungs that replace the deliverable's `z-index:20` and `29`/`30` —
+Tailwind ships its own `z-20` and `z-30`, which emit, look right in every test and
+are the wrong layer.
 
-The thirteen names on the last three lines are the ones this step exists for. The
-twenty-eight above them are colours and type steps that ship today and have shipped for
-weeks; a grep that certifies only those certifies nothing about *this* task. The thirteen
-are the classes `PanelShell` newly depends on, and each is one character away from
-something that compiles to nothing while `npm run build` still exits 0: `px-topbar` is
-`--pad-topbar` 22px and not `px-s10`, `w-tool` is `--size-tool` 34px and not `w-pager`,
-`w-menu-more` is 36px, `py-option-y` is `--pad-option-y` 11px, and `z-chrome` / `z-dropdown`
-are the L-42…L-47 rungs that replace the deliverable's `z-index:20` and `29`/`30` — Tailwind
-ships its own `z-20` and `z-30`, which emit, look right in every test and are the wrong
-layer.
+**A failure.** `DEAD` — the class compiled to no rule at all; that is a **typo
+in the component**, so fix the class string, rebuild, re-run. `EMPTY` — the
+selector emitted with an empty body, so the theme key resolves to nothing.
+`NOVAR` — the rule reads a `var(--…)` nothing declares. The last two are theme
+regressions: **stop and report them.** Do **not** add the name to
+`ui/tailwind.config.js`, `src/styles/tokens.css`, `src/styles/roles.css` or
+`tailwind-probe.txt`. All four are frozen for the duration of this plan and
+were unfrozen exactly once, by the single minting pass in
+`.superpowers/sdd/mint-spec.md`; minting one here to make a misspelling compile
+recreates the unreachable-token problem the whole rebuild exists to fix. A
+value that genuinely has no name goes into `mint-spec.md`, not into the config
+and not into this task's commit.
 
-A `MISSING` line here is a **typo in `PanelShell.tsx`**, not a gap in the theme. Every one
-of the forty-one is in the frozen theme today, verified by compiling this exact list.
-**Do not add anything to `ui/tailwind.config.js`**: it, `src/styles/tokens.css` and
-`src/styles/roles.css` are frozen after the single minting pass, and a name added here would
-be the unreachable-token failure the rebuild exists to end. If a name really is absent from
-the theme, stop and report it rather than minting it.
+**What this step cannot prove:** that these files write a class and that the
+class compiles to a rule with declarations, yes. That the class reaches the
+right element, that the element renders, that it is visible, or that its value
+is the one the design asks for — no. That stays with the Playwright checks.
 
 Then prove both breakpoints compiled:
 
 ```bash
 cd ui && node -e '
-const fs=require("fs");
+const fs=require("node:fs");
 const css=fs.readdirSync("dist/assets").filter(f=>/\.css$/.test(f))
   .map(f=>fs.readFileSync("dist/assets/"+f,"utf8")).join("\n");
 const a=/@media\s*\(max-width:\s*1080px\)/.test(css)&&/max1080\\:hidden/.test(css);
@@ -7277,38 +7598,43 @@ git commit -m "feat(ui): one department is not a list, and the flowchart wears n
 - [ ] **Step 10: Run the whole suite, the type-checker, the linter and the build**
 
 Run: `cd ui && npx vitest run && npx tsc -b && npx eslint . && npm run build`
-Expected: all four exit 0. Then grep the built CSS for the classes this task added on top
-of Task 12's:
-
+Expected: all four exit 0. Then prove every class `ReaderShell` writes emits:
 ```bash
-cd ui && node -e '
-const fs=require("fs");
-const css=fs.readdirSync("dist/assets").filter(f=>/\.css$/.test(f))
-  .map(f=>fs.readFileSync("dist/assets/"+f,"utf8")).join("\n");
-const need=process.argv.slice(1);
-const miss=need.filter(c=>!new RegExp("\\."+c+"(?![\\w-])").test(css));
-console.log(miss.length?"MISSING "+miss.join(" "):"OK "+need.length+" classes present");
-process.exit(miss.length?1:0);
-' rounded-button rounded-input rounded-round text-fs-body text-fs-sm text-fs-micro bg-card bg-ink \
-  bg-coral border-warm border-line border-hairline text-ink text-violet \
-  text-muted text-card \
-  px-reader-x w-iconbtn h-iconbtn w-menu-more h-menu-more z-chrome
+cd ui && npx vite build
+node scripts/harvest-classes.mjs src/shell/ReaderShell.tsx src/shell/crumbs.ts
 ```
+Expected: the run ends `DEAD 0   EMPTY 0   NOVAR 0`, both controls hold
+(`control (negative): N/N invented names reported dead` and
+`control (escaping): … escaped variant classes unescaped`), and the last line
+is `PASS`. The script exits 1 on any failure, so it can be `&&`-chained.
+The class list is **harvested out of these files**, never hand-kept, so it
+cannot drift from what they write and `tailwind-probe.txt` cannot certify it
+on their behalf — see *The class-emission check* in Global Constraints for the
+measurement that retired the old grep.
 
-Expected: `OK 22 classes present`.
+Sixteen of the 22 names the old hand-kept list carried were Task 12's list over
+again — what the two shells share. The harvest makes that distinction free: it
+reports what **these** files write, so the reader-only names (`px-reader-x` and
+the reader's own geometry) are in the run because `ReaderShell.tsx` writes them,
+not because someone remembered to type them into a list.
 
-The sixteen above the last line are Task 12's list over again — they are what the two shells
-*share*, so they prove nothing about this one. The six on the last line are what this shell
-adds: `px-reader-x` (`--pad-reader-x` 24px, the reader's own gutter — the panel writes
-`px-topbar` 22px in the same slot), `w-iconbtn h-iconbtn` (`--role-iconbtn`, 42px here and
-40px in the panel from the same string — the assertion in Step 8 pins that the shell asks
-for the role, this pins that the role compiles), `w-menu-more h-menu-more` (36px, the home
-square) and `z-chrome` (L-42's 1020, replacing the deliverable's `z-index:20`).
+**A failure.** `DEAD` — the class compiled to no rule at all; that is a **typo
+in the component**, so fix the class string, rebuild, re-run. `EMPTY` — the
+selector emitted with an empty body, so the theme key resolves to nothing.
+`NOVAR` — the rule reads a `var(--…)` nothing declares. The last two are theme
+regressions: **stop and report them.** Do **not** add the name to
+`ui/tailwind.config.js`, `src/styles/tokens.css`, `src/styles/roles.css` or
+`tailwind-probe.txt`. All four are frozen for the duration of this plan and
+were unfrozen exactly once, by the single minting pass in
+`.superpowers/sdd/mint-spec.md`; minting one here to make a misspelling compile
+recreates the unreachable-token problem the whole rebuild exists to fix. A
+value that genuinely has no name goes into `mint-spec.md`, not into the config
+and not into this task's commit.
 
-A `MISSING` line is a typo in `ReaderShell.tsx`. All twenty-two are in the frozen theme
-today, verified by compiling this list. **Nothing goes into `ui/tailwind.config.js`,
-`src/styles/tokens.css` or `src/styles/roles.css` from this task** — they are frozen after
-the single minting pass. If a name is genuinely absent, stop and report it.
+**What this step cannot prove:** that these files write a class and that the
+class compiles to a rule with declarations, yes. That the class reaches the
+right element, that the element renders, that it is visible, or that its value
+is the one the design asks for — no. That stays with the Playwright checks.
 
 - [ ] **Step 11: Write the real-browser check at all three widths**
 
@@ -7535,10 +7861,18 @@ a reader, and a 760px viewport without changing what a person sees at desktop.
 
   ```bash
   cd ui && npm run build 2>&1 | tail -3
-  grep -c "to1080\|to760" dist/assets/*.css   # >0 once a consumer exists; 0 is expected here
+  grep -rn 'max1080:\|max760:' src/ | wc -l   # the responsive utilities consumed in source
   git add docs/superpowers/ui-normalisation-ledger.md
   git commit -m "docs(ui): every snap this part of the plan makes is written down"
   ```
+  The count is a source-side count on purpose. The step used to read
+  `grep -c "to1080\|to760" dist/assets/*.css` with the note *"0 is expected
+  here"*, and it could never have been anything else: the utilities are named
+  `max1080:` and `max760:`, so the pattern matched nothing whatever the code did.
+  Nor can the built CSS answer the question at all — `tailwind-probe.txt` names
+  `max1080:hidden` and `max760:hidden`, so both variants emit whether or not a
+  component writes one. Expect a non-zero number: Tasks 6, 9 and 10 already carry
+  responsive utilities in the primitives, and this task adds the screen's own.
 
 - [ ] **Step 3: Give the e2e harness a way to sign in.**
   Tasks 12–13 may already have added this; run `grep -n "export function signIn" ui/e2e/_harness.ts`
@@ -7961,29 +8295,42 @@ a reader, and a 760px viewport without changing what a person sees at desktop.
   ```
   Expected: both silent.
 
-- [ ] **Step 17: Build, and grep the built CSS for every class this screen introduced.**
-  An invented utility compiles to nothing while `npm run build` exits 0 — this is the
-  step that catches it.
-
+- [ ] **Step 17: Build, and prove every class this screen writes emits.**
   ```bash
-  cd ui && npm run build
-  for c in max1080\\:grid-cols-2 max760\\:grid-cols-1 max760\\:gap-s6 max760\\:hidden \
-           text-fs-display text-fs-h1-reader-home text-fs-numeral text-on-dark text-violet-on-dark \
-           text-violet-on-dark-body text-dialog-ghost bg-tile-v3 bg-disc-violet bg-disc-coral \
-           rounded-bar rounded-pill rounded-round rounded-feature rounded-tile \
-           shadow-feature border-border-card border-hair border-line-dashed \
-           pt-departments-top pb-departments-bottom px-reader-x pb-reader-bottom max-w-reader max-w-subtitle \
-           w-tile-reader min-h-chiprow ease-css tracking-display; do
-    grep -qF -- "$c" dist/assets/*.css || echo "NOT IN CSS: $c"
-  done
+  cd ui && npx vite build
+  node scripts/harvest-classes.mjs src/screens/Departments.tsx src/ui/IconTile.tsx src/lib/departments.ts
   ```
-  Expected: no output. Every one of these thirty-three compiles against the frozen theme
-  today; verified. A `NOT IN CSS:` line is therefore a **misspelling in the component**,
-  not a gap in the theme — fix the class string, rebuild, re-run. **Do not add the name to
-  `ui/tailwind.config.js`**: it, `src/styles/tokens.css` and `src/styles/roles.css` are
-  frozen after the single minting pass, and minting from inside a screen task is the
-  unreachable-token failure this rebuild exists to end. If a name really is missing from
-  the theme, stop and report it.
+  Expected: the run ends `DEAD 0   EMPTY 0   NOVAR 0`, both controls hold
+  (`control (negative): N/N invented names reported dead` and
+  `control (escaping): … escaped variant classes unescaped`), and the last line
+  is `PASS`. The script exits 1 on any failure, so it can be `&&`-chained.
+  The class list is **harvested out of these files**, never hand-kept, so it
+  cannot drift from what they write and `tailwind-probe.txt` cannot certify it
+  on their behalf — see *The class-emission check* in Global Constraints for the
+  measurement that retired the old grep.
+
+  `src/lib/departments.ts` is named because this is the task that makes
+  `deptMeta().numeralClass` load-bearing: the two numeral tints move out of
+  hard-coded hexes in the screen and into the module, and the harvest is what
+  proves they are real class names on the way through.
+
+  **A failure.** `DEAD` — the class compiled to no rule at all; that is a **typo
+  in the component**, so fix the class string, rebuild, re-run. `EMPTY` — the
+  selector emitted with an empty body, so the theme key resolves to nothing.
+  `NOVAR` — the rule reads a `var(--…)` nothing declares. The last two are theme
+  regressions: **stop and report them.** Do **not** add the name to
+  `ui/tailwind.config.js`, `src/styles/tokens.css`, `src/styles/roles.css` or
+  `tailwind-probe.txt`. All four are frozen for the duration of this plan and
+  were unfrozen exactly once, by the single minting pass in
+  `.superpowers/sdd/mint-spec.md`; minting one here to make a misspelling compile
+  recreates the unreachable-token problem the whole rebuild exists to fix. A
+  value that genuinely has no name goes into `mint-spec.md`, not into the config
+  and not into this task's commit.
+
+  **What this step cannot prove:** that these files write a class and that the
+  class compiles to a rule with declarations, yes. That the class reaches the
+  right element, that the element renders, that it is visible, or that its value
+  is the one the design asks for — no. That stays with the Playwright checks.
 
 - [ ] **Step 18: Commit the screen.**
   ```bash
@@ -8476,18 +8823,37 @@ action bar with a `36×36` `⋯`.
   git commit -m "feat(ui): the process list loses its LTR box, its 44px title line and its desktop-only action bar"
   ```
 
-- [ ] **Step 13: Build, and grep the built CSS for every class this screen introduced.**
+- [ ] **Step 13: Build, and prove every class this screen writes emits.**
   ```bash
-  cd ui && npm run build
-  for c in max760\\:flex-col max760\\:items-stretch max760\\:p-s7 max760\\:gap-s6 max760\\:hidden \
-           max760\\:inline-flex max760\\:flex-1 max760\\:py-s6 max760\\:w-full max760\\:px-s7 \
-           text-fs-h1-reader-list text-fs-h4 text-fs-sm2 text-violet-on-violet text-dialog-ghost \
-           bg-tile-v3 border-border-card border-line-dashed rounded-pill rounded-input w-menu-more min-w-s9 \
-           shadow-card-hover ease-css ps-s11; do
-    grep -qF -- "$c" dist/assets/*.css || echo "NOT IN CSS: $c"
-  done
+  cd ui && npx vite build
+  node scripts/harvest-classes.mjs src/screens/ProcessList.tsx
   ```
-  Expected: no output.
+  Expected: the run ends `DEAD 0   EMPTY 0   NOVAR 0`, both controls hold
+  (`control (negative): N/N invented names reported dead` and
+  `control (escaping): … escaped variant classes unescaped`), and the last line
+  is `PASS`. The script exits 1 on any failure, so it can be `&&`-chained.
+  The class list is **harvested out of these files**, never hand-kept, so it
+  cannot drift from what they write and `tailwind-probe.txt` cannot certify it
+  on their behalf — see *The class-emission check* in Global Constraints for the
+  measurement that retired the old grep.
+
+  **A failure.** `DEAD` — the class compiled to no rule at all; that is a **typo
+  in the component**, so fix the class string, rebuild, re-run. `EMPTY` — the
+  selector emitted with an empty body, so the theme key resolves to nothing.
+  `NOVAR` — the rule reads a `var(--…)` nothing declares. The last two are theme
+  regressions: **stop and report them.** Do **not** add the name to
+  `ui/tailwind.config.js`, `src/styles/tokens.css`, `src/styles/roles.css` or
+  `tailwind-probe.txt`. All four are frozen for the duration of this plan and
+  were unfrozen exactly once, by the single minting pass in
+  `.superpowers/sdd/mint-spec.md`; minting one here to make a misspelling compile
+  recreates the unreachable-token problem the whole rebuild exists to fix. A
+  value that genuinely has no name goes into `mint-spec.md`, not into the config
+  and not into this task's commit.
+
+  **What this step cannot prove:** that these files write a class and that the
+  class compiles to a rule with declarations, yes. That the class reaches the
+  right element, that the element renders, that it is visible, or that its value
+  is the one the design asks for — no. That stays with the Playwright checks.
 
 - [ ] **Step 14: Teach the harness the process-list numbers.**
   Add to `DESIGN` in `ui/e2e/_harness.ts`:
@@ -8895,33 +9261,58 @@ blanked the field, which is a claim of absence standing in for an absence of a c
   still be a button **here** — the summary is where the act lives now that the row
   carries only the chip.
 
-- [ ] **Step 10: Typecheck, lint, build, grep.**
+- [ ] **Step 10: Typecheck, lint, build, then prove every class this screen writes emits.**
   ```bash
-  cd ui && npx tsc -b && npx eslint . && npm run build
-  for c in max760\\:flex-col max760\\:grid-cols-1 max760\\:gap-s6 max760\\:flex-wrap \
-           text-fs-h1 text-fs-lg text-fs-sm2 text-fs-xxs text-on-dark text-violet-on-violet \
-           rounded-doc rounded-tile rounded-badge rounded-round border-border-card border-border-dead border-line-dashed \
-           bg-tile-dead bg-tile-v4 max-w-prose max-w-summary shadow-violet leading-loose leading-relaxed \
-           grid-cols-\\[1fr_1\\.4fr_1fr\\]; do
-    grep -qF -- "$c" dist/assets/*.css || echo "NOT IN CSS: $c"
-  done
+  cd ui && npx tsc -b && npx eslint .
   ```
-  Expected: no output.
+  Expected: both silent. Then:
+  ```bash
+  cd ui && npx vite build
+  node scripts/harvest-classes.mjs src/screens/Summary.tsx
+  ```
+  Expected: the run ends `DEAD 0   EMPTY 0   NOVAR 0`, both controls hold
+  (`control (negative): N/N invented names reported dead` and
+  `control (escaping): … escaped variant classes unescaped`), and the last line
+  is `PASS`. The script exits 1 on any failure, so it can be `&&`-chained.
+  The class list is **harvested out of these files**, never hand-kept, so it
+  cannot drift from what they write and `tailwind-probe.txt` cannot certify it
+  on their behalf — see *The class-emission check* in Global Constraints for the
+  measurement that retired the old grep.
 
-  **The grid-template entry needs its dot escaped and did not have it.** Tailwind escapes
-  every CSS-special character in an arbitrary class name, the `.` in `1.4fr` included, so
-  the selector it emits is `.grid-cols-\[1fr_1\.4fr_1fr\]`. The string this step used to
-  grep for, `grid-cols-\[1fr_1.4fr_1fr\]`, is `grep -F` — a *literal* match — so it never
-  found the escaped form and printed `NOT IN CSS:` on a build where the class was present
-  and correct. Verified both ways against a real compile: the unescaped string does not
-  match, the escaped one does.
+  `grid-cols-[1fr_1.4fr_1fr]` is the case that used to break this step, and it is
+  the reason the check parses the CSS instead of grepping it. Tailwind escapes
+  every CSS-special character in an arbitrary class name, the `.` in `1.4fr`
+  included, so the emitted selector is `.grid-cols-\[1fr_1\.4fr_1fr\]`. The
+  string this step once grepped for was the unescaped form under `grep -F`, so it
+  printed `NOT IN CSS:` on a build where the class was present and correct. The
+  scanner unescapes the selector when it indexes it, and an escaping control fails
+  the run if that unescaping ever stops working.
 
-  `grid-cols-[1fr_1.4fr_1fr]` stays an arbitrary **grid template**: no guard forbids it,
-  and no token holds it. That is not because a token *could not* — `gridTemplateColumns`
-  already carries `users`, `audit` and `activity` for exactly this shape — but because
-  none was minted for the A-0 grid, and `ui/tailwind.config.js` is frozen after the single
-  minting pass. **Do not mint one here.** It is on the list of values Task 25 Step 4 must
-  exempt by name or send to the owner.
+  `grid-cols-[1fr_1.4fr_1fr]` stays an arbitrary **grid template**: no guard
+  forbids it and no token holds it. Not because a token *could not* —
+  `gridTemplateColumns` already carries `users`, `audit` and `activity` for exactly
+  this shape — but because none was minted for the A-0 grid, and
+  `ui/tailwind.config.js` is frozen after the single minting pass. **Do not mint
+  one here.** It is on the list of values Task 25 Step 4 must exempt by name or
+  send to the owner.
+
+  **A failure.** `DEAD` — the class compiled to no rule at all; that is a **typo
+  in the component**, so fix the class string, rebuild, re-run. `EMPTY` — the
+  selector emitted with an empty body, so the theme key resolves to nothing.
+  `NOVAR` — the rule reads a `var(--…)` nothing declares. The last two are theme
+  regressions: **stop and report them.** Do **not** add the name to
+  `ui/tailwind.config.js`, `src/styles/tokens.css`, `src/styles/roles.css` or
+  `tailwind-probe.txt`. All four are frozen for the duration of this plan and
+  were unfrozen exactly once, by the single minting pass in
+  `.superpowers/sdd/mint-spec.md`; minting one here to make a misspelling compile
+  recreates the unreachable-token problem the whole rebuild exists to fix. A
+  value that genuinely has no name goes into `mint-spec.md`, not into the config
+  and not into this task's commit.
+
+  **What this step cannot prove:** that these files write a class and that the
+  class compiles to a rule with declarations, yes. That the class reaches the
+  right element, that the element renders, that it is visible, or that its value
+  is the one the design asks for — no. That stays with the Playwright checks.
 
 - [ ] **Step 11: Commit the screen.**
   ```bash
@@ -9395,17 +9786,45 @@ consumer in Task 15.
   is a button on this screen and that saving re-asks the confirmations listing — both
   survive untouched, because the mark and the save path are not what this task changed.
 
-- [ ] **Step 11: Typecheck, lint, build, grep.**
+- [ ] **Step 11: Typecheck, lint, build, then prove every class this screen writes emits.**
   ```bash
-  cd ui && npx tsc -b && npx eslint . && npm run build
-  for c in max760\\:grid-cols-1 text-fs-h2 text-fs-xxs text-fs-micro text-ink-current \
-           text-violet-on-violet bg-surface-sub border-border-current border-hair border-border-card \
-           rounded-doc rounded-tile rounded-badge rounded-pill leading-loose \
-           duration-chev ease-css max-w-list; do
-    grep -qF -- "$c" dist/assets/*.css || echo "NOT IN CSS: $c"
-  done
+  cd ui && npx tsc -b && npx eslint .
   ```
-  Expected: no output.
+  Expected: both silent. Then:
+  ```bash
+  cd ui && npx vite build
+  node scripts/harvest-classes.mjs src/screens/Overview.tsx src/ui/Accordion.tsx src/ui/AddButton.tsx src/screens/Summary.tsx
+  ```
+  Expected: the run ends `DEAD 0   EMPTY 0   NOVAR 0`, both controls hold
+  (`control (negative): N/N invented names reported dead` and
+  `control (escaping): … escaped variant classes unescaped`), and the last line
+  is `PASS`. The script exits 1 on any failure, so it can be `&&`-chained.
+  The class list is **harvested out of these files**, never hand-kept, so it
+  cannot drift from what they write and `tailwind-probe.txt` cannot certify it
+  on their behalf — see *The class-emission check* in Global Constraints for the
+  measurement that retired the old grep.
+
+  `Summary.tsx` is in the list because this task edits it too (Step 12 stages it);
+  a screen that is touched by two tasks is scanned by both, which is cheap and is
+  how a class dropped in the second edit gets caught.
+
+  **A failure.** `DEAD` — the class compiled to no rule at all; that is a **typo
+  in the component**, so fix the class string, rebuild, re-run. `EMPTY` — the
+  selector emitted with an empty body, so the theme key resolves to nothing.
+  `NOVAR` — the rule reads a `var(--…)` nothing declares. The last two are theme
+  regressions: **stop and report them.** Do **not** add the name to
+  `ui/tailwind.config.js`, `src/styles/tokens.css`, `src/styles/roles.css` or
+  `tailwind-probe.txt`. All four are frozen for the duration of this plan and
+  were unfrozen exactly once, by the single minting pass in
+  `.superpowers/sdd/mint-spec.md`; minting one here to make a misspelling compile
+  recreates the unreachable-token problem the whole rebuild exists to fix. A
+  value that genuinely has no name goes into `mint-spec.md`, not into the config
+  and not into this task's commit.
+
+  **What this step cannot prove:** that these files write a class and that the
+  class compiles to a rule with declarations, yes. That the class reaches the
+  right element, that the element renders, that it is visible, or that its value
+  is the one the design asks for — no. That stays with the Playwright checks.
 
 - [ ] **Step 12: Commit the screen.**
   ```bash
@@ -9864,20 +10283,51 @@ departments screen (§9.13). It is `ui_kits/panel/Login.jsx` inside
   git commit -m "fix(ui): a refused read and a failed read stand in the same slot, and neither offers a way onward"
   ```
 
-- [ ] **Step 12: Build, and grep the built CSS.**
+- [ ] **Step 12: Build, and prove every class these two screens write emits.**
   ```bash
-  cd ui && npm run build
-  for c in bg-login-bg w-login rounded-panel rounded-feature w-logo-login h-logo-login \
-           text-fs-h3 text-fs-sm2 text-fs-body shadow-modal py-screen-y px-screen-x max-w-list \
-           max760\\:px-s7 max760\\:py-s9; do
-    grep -qF -- "$c" dist/assets/*.css || echo "NOT IN CSS: $c"
-  done
-  grep -q "login-orb-a" dist/assets/*.css || echo "NOT IN CSS: .login-orb-a"
-  grep -q -- "--login-orb" dist/assets/*.css || echo "NOT IN CSS: --login-orb"
+  cd ui && npx vite build
+  node scripts/harvest-classes.mjs src/screens/SignIn.tsx src/screens/Refusal.tsx src/ui/states/index.tsx
   ```
-  Expected: no output. The last two lines matter more than they look: `--login-orb` has
-  been defined, exposed in the theme and referenced by nothing since the theme was
-  written, and this is the first build in which it reaches a rendered pixel.
+  Expected: the run ends `DEAD 0   EMPTY 0   NOVAR 0`, both controls hold
+  (`control (negative): N/N invented names reported dead` and
+  `control (escaping): … escaped variant classes unescaped`), and the last line
+  is `PASS`. The script exits 1 on any failure, so it can be `&&`-chained.
+  The class list is **harvested out of these files**, never hand-kept, so it
+  cannot drift from what they write and `tailwind-probe.txt` cannot certify it
+  on their behalf — see *The class-emission check* in Global Constraints for the
+  measurement that retired the old grep.
+
+  **A failure.** `DEAD` — the class compiled to no rule at all; that is a **typo
+  in the component**, so fix the class string, rebuild, re-run. `EMPTY` — the
+  selector emitted with an empty body, so the theme key resolves to nothing.
+  `NOVAR` — the rule reads a `var(--…)` nothing declares. The last two are theme
+  regressions: **stop and report them.** Do **not** add the name to
+  `ui/tailwind.config.js`, `src/styles/tokens.css`, `src/styles/roles.css` or
+  `tailwind-probe.txt`. All four are frozen for the duration of this plan and
+  were unfrozen exactly once, by the single minting pass in
+  `.superpowers/sdd/mint-spec.md`; minting one here to make a misspelling compile
+  recreates the unreachable-token problem the whole rebuild exists to fix. A
+  value that genuinely has no name goes into `mint-spec.md`, not into the config
+  and not into this task's commit.
+
+  **What this step cannot prove:** that these files write a class and that the
+  class compiles to a rule with declarations, yes. That the class reaches the
+  right element, that the element renders, that it is visible, or that its value
+  is the one the design asks for — no. That stays with the Playwright checks.
+
+  Then the two checks the harvest cannot make, because neither is a utility class:
+
+  ```bash
+  cd ui && CSS=$(ls dist/assets/*.css | head -1)
+  grep -q "login-orb-a" "$CSS" || echo "NOT IN CSS: .login-orb-a"
+  grep -q -- "--login-orb" "$CSS" || echo "NOT IN CSS: --login-orb"
+  ```
+  Expected: no output. These matter more than they look: `--login-orb` has been
+  defined, exposed in the theme and referenced by nothing since the theme was
+  written, and this is the first build in which it reaches a rendered pixel. Note
+  that a `bg-login-orb` utility reading a `var(--login-orb)` that nothing declared
+  would be caught by the harvest as `NOVAR`, not as present — that is the bucket
+  this pair of greps used to stand in for.
 
 - [ ] **Step 13: Teach the harness the login and refusal numbers.**
   Add to `DESIGN` in `ui/e2e/_harness.ts`:
@@ -10595,17 +11045,43 @@ export const ROLE_TONE: Record<string, string>   // token-backed utility pairs
   git commit -m "feat(ui): the user list becomes a table, and its left half gets a job"
   ```
 
-- [ ] **Step 19: Grep the built CSS for every class this task introduced.**
-  A class Tailwind never saw compiles to nothing and `npm run build` still exits 0.
+- [ ] **Step 19: Prove every class this task writes emits.**
+  ```bash
+  cd ui && npx vite build
+  node scripts/harvest-classes.mjs src/screens/Users.tsx src/screens/UsersFilters.tsx src/screens/usersFilter.ts src/lib/roles.ts
   ```
-  cd ui && npm run build && for c in 'py-screen-y' 'px-screen-x' 'rounded-tile' \
-    'border-line-filter' 'bg-tile-v2' 'text-violet-mid' 'w-dot' 'h-dot' 'w-chev' \
-    'h-chev' 'rounded-round' 'max760\:grid-cols-2' 'max760\:hidden' 'max760\:px-s7' \
-    'col-span-full' 'underline-offset-4' ; do
-      grep -qF "$c" dist/assets/*.css && echo "ok  $c" || echo "MISSING $c"; done
-  ```
-  Expected: sixteen `ok` lines, no `MISSING`. Any `MISSING` is a class that
-  renders as nothing — fix the name and re-run before moving on.
+  Expected: the run ends `DEAD 0   EMPTY 0   NOVAR 0`, both controls hold
+  (`control (negative): N/N invented names reported dead` and
+  `control (escaping): … escaped variant classes unescaped`), and the last line
+  is `PASS`. The script exits 1 on any failure, so it can be `&&`-chained.
+  The class list is **harvested out of these files**, never hand-kept, so it
+  cannot drift from what they write and `tailwind-probe.txt` cannot certify it
+  on their behalf — see *The class-emission check* in Global Constraints for the
+  measurement that retired the old grep.
+
+  `src/lib/roles.ts` is named for the same reason `fieldFrame.ts` is in Task 7:
+  `ROLE_TONE` is a `Record<string, string>` of token-backed utility **pairs** in a
+  module with no JSX, and a typo in one of them is invisible to every other check
+  in this task. It is exactly the shape the scanner's corroboration rule exists to
+  cover — a literal holding two-or-more tokens of which at least one emits.
+
+  **A failure.** `DEAD` — the class compiled to no rule at all; that is a **typo
+  in the component**, so fix the class string, rebuild, re-run. `EMPTY` — the
+  selector emitted with an empty body, so the theme key resolves to nothing.
+  `NOVAR` — the rule reads a `var(--…)` nothing declares. The last two are theme
+  regressions: **stop and report them.** Do **not** add the name to
+  `ui/tailwind.config.js`, `src/styles/tokens.css`, `src/styles/roles.css` or
+  `tailwind-probe.txt`. All four are frozen for the duration of this plan and
+  were unfrozen exactly once, by the single minting pass in
+  `.superpowers/sdd/mint-spec.md`; minting one here to make a misspelling compile
+  recreates the unreachable-token problem the whole rebuild exists to fix. A
+  value that genuinely has no name goes into `mint-spec.md`, not into the config
+  and not into this task's commit.
+
+  **What this step cannot prove:** that these files write a class and that the
+  class compiles to a rule with declarations, yes. That the class reaches the
+  right element, that the element renders, that it is visible, or that its value
+  is the one the design asks for — no. That stays with the Playwright checks.
 
 - [ ] **Step 20: Add `users` to the design table in the harness.**
   In `ui/e2e/_harness.ts`, add to the `DESIGN` record:
@@ -11081,14 +11557,37 @@ export function SectionCard(props: { eyebrow: string; tone?: 'tinted' | 'white'
   git commit -m "docs(ui): three places the Access design describes a product we do not have"
   ```
 
-- [ ] **Step 21: Grep the built CSS.**
+- [ ] **Step 21: Prove every class this screen writes emits.**
+  ```bash
+  cd ui && npx vite build
+  node scripts/harvest-classes.mjs src/screens/UserDetail.tsx
   ```
-  cd ui && npm run build && for c in 'max-w-access' 'border-border-danger' 'bg-tile-c2' \
-    'text-violet-on-violet' 'rounded-input' 'max760\:flex-col' \
-    'max760\:items-stretch' 'max-w-prose' 'leading-loose' ; do
-      grep -qF "$c" dist/assets/*.css && echo "ok  $c" || echo "MISSING $c"; done
-  ```
-  Expected: nine `ok` lines.
+  Expected: the run ends `DEAD 0   EMPTY 0   NOVAR 0`, both controls hold
+  (`control (negative): N/N invented names reported dead` and
+  `control (escaping): … escaped variant classes unescaped`), and the last line
+  is `PASS`. The script exits 1 on any failure, so it can be `&&`-chained.
+  The class list is **harvested out of these files**, never hand-kept, so it
+  cannot drift from what they write and `tailwind-probe.txt` cannot certify it
+  on their behalf — see *The class-emission check* in Global Constraints for the
+  measurement that retired the old grep.
+
+  **A failure.** `DEAD` — the class compiled to no rule at all; that is a **typo
+  in the component**, so fix the class string, rebuild, re-run. `EMPTY` — the
+  selector emitted with an empty body, so the theme key resolves to nothing.
+  `NOVAR` — the rule reads a `var(--…)` nothing declares. The last two are theme
+  regressions: **stop and report them.** Do **not** add the name to
+  `ui/tailwind.config.js`, `src/styles/tokens.css`, `src/styles/roles.css` or
+  `tailwind-probe.txt`. All four are frozen for the duration of this plan and
+  were unfrozen exactly once, by the single minting pass in
+  `.superpowers/sdd/mint-spec.md`; minting one here to make a misspelling compile
+  recreates the unreachable-token problem the whole rebuild exists to fix. A
+  value that genuinely has no name goes into `mint-spec.md`, not into the config
+  and not into this task's commit.
+
+  **What this step cannot prove:** that these files write a class and that the
+  class compiles to a rule with declarations, yes. That the class reaches the
+  right element, that the element renders, that it is visible, or that its value
+  is the one the design asks for — no. That stays with the Playwright checks.
 
 - [ ] **Step 22: Add `access` to the harness table.**
   ```ts
@@ -11879,14 +12378,40 @@ export const SUPERVISE_NOTE: string
   git commit -m "docs(ui): four adaptations the user dialogs make, and why each is not drift"
   ```
 
-- [ ] **Step 23: Grep the built CSS, then add `new-user` to the harness.**
+- [ ] **Step 23: Prove every class the dialogs write emits, then add `new-user` to the harness.**
+  ```bash
+  cd ui && npx vite build
+  node scripts/harvest-classes.mjs src/screens/UserDialogShell.tsx src/screens/NewUserDialog.tsx src/screens/EditUserDialog.tsx \
+    src/screens/UserFields.tsx src/screens/ScopePicker.tsx src/screens/SupervisorPicker.tsx
   ```
-  cd ui && npm run build && for c in 'rounded-panel' 'bg-surface-sub' 'border-line-dashed' \
-    'bg-tile-v4' 'w-glyph' 'h-glyph' 'shadow-pop' 'z-dropdown' 'opacity-40' \
-    'pointer-events-none' 'max760\:grid-cols-1' 'start-0' 'end-0' 'sr-only' ; do
-      grep -qF "$c" dist/assets/*.css && echo "ok  $c" || echo "MISSING $c"; done
-  ```
-  Expected: fourteen `ok` lines. Then in `ui/e2e/_harness.ts`:
+  Expected: the run ends `DEAD 0   EMPTY 0   NOVAR 0`, both controls hold
+  (`control (negative): N/N invented names reported dead` and
+  `control (escaping): … escaped variant classes unescaped`), and the last line
+  is `PASS`. The script exits 1 on any failure, so it can be `&&`-chained.
+  The class list is **harvested out of these files**, never hand-kept, so it
+  cannot drift from what they write and `tailwind-probe.txt` cannot certify it
+  on their behalf — see *The class-emission check* in Global Constraints for the
+  measurement that retired the old grep.
+
+  **A failure.** `DEAD` — the class compiled to no rule at all; that is a **typo
+  in the component**, so fix the class string, rebuild, re-run. `EMPTY` — the
+  selector emitted with an empty body, so the theme key resolves to nothing.
+  `NOVAR` — the rule reads a `var(--…)` nothing declares. The last two are theme
+  regressions: **stop and report them.** Do **not** add the name to
+  `ui/tailwind.config.js`, `src/styles/tokens.css`, `src/styles/roles.css` or
+  `tailwind-probe.txt`. All four are frozen for the duration of this plan and
+  were unfrozen exactly once, by the single minting pass in
+  `.superpowers/sdd/mint-spec.md`; minting one here to make a misspelling compile
+  recreates the unreachable-token problem the whole rebuild exists to fix. A
+  value that genuinely has no name goes into `mint-spec.md`, not into the config
+  and not into this task's commit.
+
+  **What this step cannot prove:** that these files write a class and that the
+  class compiles to a rule with declarations, yes. That the class reaches the
+  right element, that the element renders, that it is visible, or that its value
+  is the one the design asks for — no. That stays with the Playwright checks.
+
+  Then in `ui/e2e/_harness.ts`:
   ```ts
     'new-user': {
       dialog: { width: 520, radius: '24px', padding: '26px',
@@ -12167,13 +12692,37 @@ API type, hook or route path is added.
   git commit -m "docs(ui): the profile drops a card §6.13 draws, on the owner's word"
   ```
 
-- [ ] **Step 10: Grep the built CSS.**
+- [ ] **Step 10: Prove every class this screen writes emits.**
+  ```bash
+  cd ui && npx vite build
+  node scripts/harvest-classes.mjs src/screens/Profile.tsx
   ```
-  cd ui && npm run build && for c in 'max-w-profile' 'text-fs-stat-sm' 'bg-tile-warn' \
-    'border-warn-edge' 'text-warn-fg' 'max760\:grid-cols-1' ; do
-      grep -qF "$c" dist/assets/*.css && echo "ok  $c" || echo "MISSING $c"; done
-  ```
-  Expected: six `ok` lines.
+  Expected: the run ends `DEAD 0   EMPTY 0   NOVAR 0`, both controls hold
+  (`control (negative): N/N invented names reported dead` and
+  `control (escaping): … escaped variant classes unescaped`), and the last line
+  is `PASS`. The script exits 1 on any failure, so it can be `&&`-chained.
+  The class list is **harvested out of these files**, never hand-kept, so it
+  cannot drift from what they write and `tailwind-probe.txt` cannot certify it
+  on their behalf — see *The class-emission check* in Global Constraints for the
+  measurement that retired the old grep.
+
+  **A failure.** `DEAD` — the class compiled to no rule at all; that is a **typo
+  in the component**, so fix the class string, rebuild, re-run. `EMPTY` — the
+  selector emitted with an empty body, so the theme key resolves to nothing.
+  `NOVAR` — the rule reads a `var(--…)` nothing declares. The last two are theme
+  regressions: **stop and report them.** Do **not** add the name to
+  `ui/tailwind.config.js`, `src/styles/tokens.css`, `src/styles/roles.css` or
+  `tailwind-probe.txt`. All four are frozen for the duration of this plan and
+  were unfrozen exactly once, by the single minting pass in
+  `.superpowers/sdd/mint-spec.md`; minting one here to make a misspelling compile
+  recreates the unreachable-token problem the whole rebuild exists to fix. A
+  value that genuinely has no name goes into `mint-spec.md`, not into the config
+  and not into this task's commit.
+
+  **What this step cannot prove:** that these files write a class and that the
+  class compiles to a rule with declarations, yes. That the class reaches the
+  right element, that the element renders, that it is visible, or that its value
+  is the one the design asks for — no. That stays with the Playwright checks.
 
 - [ ] **Step 11: Add `profile` to the harness table.**
   ```ts
@@ -12457,14 +13006,37 @@ export const STATE_OFF: string   // 'پنهان است'
   git commit -m "docs(ui): the seventh policy row, and which reading of the card radius wins"
   ```
 
-- [ ] **Step 8: Grep the built CSS.**
+- [ ] **Step 8: Prove every class this screen writes emits.**
+  ```bash
+  cd ui && npx vite build
+  node scripts/harvest-classes.mjs src/screens/Visibility.tsx
   ```
-  cd ui && npm run build && for c in 'max-w-access' 'max-w-intro' 'border-hair' \
-    'last\:border-b-0' 'hover\:bg-tile-v4' 'transition-opacity' \
-    'opacity-60' 'text-violet-on-violet' 'max760\:flex-wrap' ; do
-      grep -qF "$c" dist/assets/*.css && echo "ok  $c" || echo "MISSING $c"; done
-  ```
-  Expected: nine `ok` lines.
+  Expected: the run ends `DEAD 0   EMPTY 0   NOVAR 0`, both controls hold
+  (`control (negative): N/N invented names reported dead` and
+  `control (escaping): … escaped variant classes unescaped`), and the last line
+  is `PASS`. The script exits 1 on any failure, so it can be `&&`-chained.
+  The class list is **harvested out of these files**, never hand-kept, so it
+  cannot drift from what they write and `tailwind-probe.txt` cannot certify it
+  on their behalf — see *The class-emission check* in Global Constraints for the
+  measurement that retired the old grep.
+
+  **A failure.** `DEAD` — the class compiled to no rule at all; that is a **typo
+  in the component**, so fix the class string, rebuild, re-run. `EMPTY` — the
+  selector emitted with an empty body, so the theme key resolves to nothing.
+  `NOVAR` — the rule reads a `var(--…)` nothing declares. The last two are theme
+  regressions: **stop and report them.** Do **not** add the name to
+  `ui/tailwind.config.js`, `src/styles/tokens.css`, `src/styles/roles.css` or
+  `tailwind-probe.txt`. All four are frozen for the duration of this plan and
+  were unfrozen exactly once, by the single minting pass in
+  `.superpowers/sdd/mint-spec.md`; minting one here to make a misspelling compile
+  recreates the unreachable-token problem the whole rebuild exists to fix. A
+  value that genuinely has no name goes into `mint-spec.md`, not into the config
+  and not into this task's commit.
+
+  **What this step cannot prove:** that these files write a class and that the
+  class compiles to a rule with declarations, yes. That the class reaches the
+  right element, that the element renders, that it is visible, or that its value
+  is the one the design asks for — no. That stays with the Playwright checks.
 
 - [ ] **Step 9: Add `policy` to the harness table.**
   ```ts
@@ -13009,7 +13581,8 @@ export function ConfirmAction(props: { row: Confirmation | undefined; department
   - **O13** — `ui/src/index.css`'s `.btn` compatibility layer has three
     consumers, all in `ExportModal.tsx` (`:112`, `:123`, `:142`). Replace them
     with `Button` (`:142` is an `<a>` — `Button` takes `as="a"` from Task 6) and
-    delete the four CSS rules.
+    delete the five CSS rules — `.btn`, `.btn-coral`, `.btn-violet`, `.btn-green`
+    and `.btn-ghost`. (The old text said four; `src/index.css` holds five.)
   - **P12** — `ExportMenu.tsx:69-94` hand-rolls a second dropdown while
     `ui/Menu.tsx` has no consumer at all. Point it at `Menu`.
   ```
@@ -13018,14 +13591,63 @@ export function ConfirmAction(props: { row: Confirmation | undefined; department
   git commit -m "fix(ui): the write flows reach the touch floor, mirror correctly, and drop .btn"
   ```
 
-- [ ] **Step 23: Grep the built CSS, and check `.btn` is really gone.**
+- [ ] **Step 23: Prove every class the write flows write emits, and check `.btn` is really gone.**
+  ```bash
+  cd ui && npx vite build
+  node scripts/harvest-classes.mjs src/write/ConfirmMark.tsx src/write/CreateProcessModal.tsx src/write/DeleteProcessConfirm.tsx \
+    src/write/ExportMenu.tsx src/write/ExportModal.tsx src/write/InboxModal.tsx \
+    src/write/ReorderModal.tsx src/write/ToastProvider.tsx
   ```
-  cd ui && npm run build && for c in 'w-tool' 'h-tool' 'bg-tile-c2' 'border-border-danger' \
-    'rounded-tile' 'start-1/2' 'text-start' 'w-glyph-tile' ; do
-      grep -qF "$c" dist/assets/*.css && echo "ok  $c" || echo "MISSING $c"; done
-  grep -c '\.btn' dist/assets/*.css     # expect 0
+  Expected: the run ends `DEAD 0   EMPTY 0   NOVAR 0`, both controls hold
+  (`control (negative): N/N invented names reported dead` and
+  `control (escaping): … escaped variant classes unescaped`), and the last line
+  is `PASS`. The script exits 1 on any failure, so it can be `&&`-chained.
+  The class list is **harvested out of these files**, never hand-kept, so it
+  cannot drift from what they write and `tailwind-probe.txt` cannot certify it
+  on their behalf — see *The class-emission check* in Global Constraints for the
+  measurement that retired the old grep.
+
+  `start-1/2` is why this step could not stay a `grep -F`. Tailwind escapes the
+  `/`, so the emitted selector is `.start-1\/2`; `grep -qF 'start-1/2'` matches
+  nothing on a build where the class is present, and would have reported the O5
+  mirror fix missing at the moment it landed. Confirmed both ways against a real
+  compile: the unescaped literal does not match, the escaped one does. The scanner
+  unescapes on the way into its index, so neither form is something to remember.
+
+  **A failure.** `DEAD` — the class compiled to no rule at all; that is a **typo
+  in the component**, so fix the class string, rebuild, re-run. `EMPTY` — the
+  selector emitted with an empty body, so the theme key resolves to nothing.
+  `NOVAR` — the rule reads a `var(--…)` nothing declares. The last two are theme
+  regressions: **stop and report them.** Do **not** add the name to
+  `ui/tailwind.config.js`, `src/styles/tokens.css`, `src/styles/roles.css` or
+  `tailwind-probe.txt`. All four are frozen for the duration of this plan and
+  were unfrozen exactly once, by the single minting pass in
+  `.superpowers/sdd/mint-spec.md`; minting one here to make a misspelling compile
+  recreates the unreachable-token problem the whole rebuild exists to fix. A
+  value that genuinely has no name goes into `mint-spec.md`, not into the config
+  and not into this task's commit.
+
+  **What this step cannot prove:** that these files write a class and that the
+  class compiles to a rule with declarations, yes. That the class reaches the
+  right element, that the element renders, that it is visible, or that its value
+  is the one the design asks for — no. That stays with the Playwright checks.
+
+  Then check the compatibility layer really went, and that no hand-rolled scrim
+  survived:
+
+  ```bash
+  cd ui && CSS=$(ls dist/assets/*.css | head -1)
+  grep -o '\.btn[a-z-]*' "$CSS" | sort -u        # expect no output
+  grep -n '\.btn' src/index.css                  # expect no output
   grep -rn 'z-\[7[24]\]\|bg-\[rgba(36,17,82' src/ || echo 'no hand-rolled scrims left'
   ```
+  Expected: nothing from the first two, and `no hand-rolled scrims left` from the
+  third. The old check here was `grep -c '\.btn' dist/assets/*.css # expect 0`,
+  which cannot do the job twice over: `grep -c` counts matching **lines** and the
+  built CSS is one minified line, so it prints 1 at most however many `.btn` rules
+  survive; and `\.btn` matches `.btn-coral` as happily as `.btn`, so it can only
+  reach 0 once **all five** rules are gone. `grep -o … | sort -u` prints the names
+  that are left, which is what you actually need to see.
 
 - [ ] **Step 24: Extend the browser check to the dialogs, then commit.**
   Append to `ui/e2e/write.spec.ts`:
