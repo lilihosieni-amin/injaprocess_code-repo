@@ -68,16 +68,67 @@ const WIDTH_INDEPENDENT = [
 const provedOnceTitles: string[] = []
 
 /**
+ * A `proved once` test never rendered anything.
+ *
+ * **The mechanical half of the ledger above, and the reason the ledger is no
+ * longer only a comment.** Being named in `WIDTH_INDEPENDENT` and registered
+ * with `provedOnce()` buys a test one run at 1440 and a silent skip at 1080 and
+ * 760 — `31 passed / 14 skipped`, no failure, nothing in the output that says an
+ * assertion stopped being made. Both gates that guarded that were judgement
+ * calls: `WIDTH_INDEPENDENT`'s own doc concedes "membership here is a decision,
+ * not a location", and the `beforeEach` below only catches the *shape* of the
+ * registration, not what the test does. A test that satisfies both and still
+ * opens a page was accepted in silence, which is the identical outcome to the
+ * residual this file just closed.
+ *
+ * A test that never rendered cannot have seen a breakpoint, and that is checkable
+ * without judgement: the page is still the one Playwright handed it. `location`
+ * catches `page.goto`, and the empty `<body>` catches `page.setContent` and
+ * anything else that puts a DOM in front of a stylesheet.
+ *
+ * Three of the six entries take no fixtures at all and never reach this — they
+ * cannot render, having no page to render into (see `provedOnce`).
+ */
+async function expectNeverRendered(page: Page, title: string) {
+  const state = await page.evaluate(() => ({
+    url: location.href,
+    body: document.body ? document.body.innerHTML.trim() : '',
+  }))
+  expect(
+    state,
+    `\`${title}\` is registered with provedOnce() and named in WIDTH_INDEPENDENT, so it ran at ` +
+    `${WIDTHS[0]} and was skipped at ${WIDTHS.slice(1).join(' and ')} — and it rendered a page. ` +
+    'Anything a stylesheet decides can differ at the two widths that skipped it: a `max760:` ' +
+    'variant, a grid that collapses, a header that wraps, a column that stops being capped. ' +
+    'Take it out of the `proved once` block and let it run three times; a browser test is not ' +
+    'width-independent however much it looks it.',
+  ).toEqual({ url: 'about:blank', body: '' })
+}
+
+/**
  * Registers a test that is skipped in every project but the first.
  *
- * A thin wrapper on purpose: the body is handed to `test()` untouched, so
- * Playwright still reads its destructured fixtures out of the signature and
- * nothing about cost or scheduling changes. All it adds is the title, to a list
- * `the run shape` compares against the ledger above.
+ * The body is still handed its fixtures the way Playwright expects, and the
+ * bodies that take none are still registered with none — three of the six ask
+ * for nothing, and wrapping them in a `page`-taking signature would start a
+ * browser context for tests that exist to call a pure function. A body that
+ * *does* take `page` gets it, and is held to `expectNeverRendered` afterwards.
+ *
+ * Arity is what decides, and it is exact rather than a guess: a body with no
+ * parameter has no fixture, so it has no page, so it cannot render. One that
+ * destructures `{ page }` has arity 1. There is no third case, because a
+ * Playwright test body's only route to a browser is the fixture in its signature.
  */
 function provedOnce(title: string, body: (args: { page: Page }) => void | Promise<void>) {
   provedOnceTitles.push(title)
-  test(title, body)
+  if (body.length === 0) {
+    test(title, () => (body as () => void | Promise<void>)())
+    return
+  }
+  test(title, async ({ page }) => {
+    await body({ page })
+    await expectNeverRendered(page, title)
+  })
 }
 
 test.describe('proved once', () => {
@@ -251,6 +302,26 @@ function byWidthRecords(
 /* ================================================================== *
  * Measured in the browser, at all three widths
  * ================================================================== */
+
+/**
+ * **Deliberately not in `proved once` itself.** It renders, so it runs three
+ * times — and a guard against tests being parked at one width cannot be parked
+ * at one width.
+ */
+test('a proved-once test that renders is a failure, not a silent skip', async ({ page }) => {
+  // The shape the three page-taking entries in WIDTH_INDEPENDENT really have:
+  // they hold a `Page` because the stub table is keyed by one, and they never
+  // put anything in front of a stylesheet.
+  await expectNeverRendered(page, 'a test that only touched the stub table')
+
+  await onDepartments(page)
+  await expect(
+    expectNeverRendered(page, 'a test that opened the departments screen'),
+    'a genuine browser test can be registered with provedOnce(), named in WIDTH_INDEPENDENT, ' +
+    'and go on running at one width while it is silently skipped at the other two. That is the ' +
+    'residual this file just closed, re-opened.',
+  ).rejects.toThrow(/it rendered a page/)
+})
 
 test('shadowOf strips Tailwind’s ring layers, so CARD_SHADOW is reachable', async ({ page }) => {
   await onDepartments(page)
@@ -479,6 +550,13 @@ async function plantClauseProbes(page: Page) {
     // off again. CSS alone cannot express "stays after blur".
     const sticky = make('input', 'sticky')
     sticky.addEventListener('focus', () => sticky.classList.add('zz-still-focused'))
+    // Clause 0 — the self-diagnostic. A <button>, so `base.css`'s F11 ring is
+    // its only possible indicator, and it drops focus on the modality keypress
+    // so that Chrome withholds `:focus-visible` at the moment the focused state
+    // is read. That is the state the diagnostic exists to name, and it is the
+    // only probe here whose failure is supposed to blame the harness.
+    const modality = make('button', 'modality')
+    modality.addEventListener('keydown', () => modality.blur())
   }, CLAUSE_PROBE_CSS)
 }
 
@@ -498,6 +576,14 @@ test('every clause of the focus check has a probe that kills it', async ({ page 
     ).rejects.toThrow(message)
   }
 
+  // 0. the self-diagnostic, which is not a clause about the screen at all: it
+  //    decides whether a modality regression is reported as "this screen has no
+  //    focus style" or as "the harness stopped setting the keyboard modality".
+  //    That misattribution is the false red §10 just fixed, and deleting the
+  //    check left the suite green — the probe below would simply have been
+  //    reported as having no coral indicator, which is the wrong answer about
+  //    the wrong file.
+  await dies('modality', 'focus lost before the state is read', /fault in the harness/)
   // 2. it was not there at rest. A control with a decorative permanent coral
   //    border and no focus style at all is the escape this closes.
   await dies('stuck', 'a coral border that is there at rest', /nothing changed when/)
@@ -593,4 +679,206 @@ test('a hook that is laid out but painted at opacity 0 is not measured', async (
 
   // So without the paint gate this is a green run grading a decoy.
   await expect(expectDesign(page, 'departments')).rejects.toThrow(/painted at opacity 0/)
+})
+
+/* ------------------------------------------------------------------ *
+ * Composition: ten ways to break a page while every value stays legal
+ * ------------------------------------------------------------------ */
+
+const SCREEN = '[data-screen="departments"]'
+
+/**
+ * One change to the running page, and the assertion it must reach.
+ *
+ * Every one of these was applied to `Departments.tsx` or `base.css` for real and
+ * the suite stayed at **30 passed / 12 skipped**. They are re-applied here at
+ * runtime rather than left in `src/` for the obvious reason, and written as
+ * plain CSS, attributes and nodes rather than Tailwind classes for the reason
+ * `CLAUSE_PROBE_CSS` gives two hundred lines up: `tailwind.config.js`'s content
+ * globs do not include `e2e/`, so a utility this file invents is emitted by
+ * nothing. The injected sheet is unlayered, which is what lets it beat
+ * `base.css`.
+ */
+interface Mutant {
+  why: string
+  /** the failure it must produce — the *specific* one, so a different red is a red here */
+  message: RegExp
+  /** an unlayered rule injected into `<head>` */
+  css?: string
+  /** `[host selector, outerHTML]`, prepended into the host */
+  node?: readonly [string, string]
+  /** `[name, value]`, set on the screen root */
+  attr?: readonly [string, string]
+  /** `[selector, class]`, removed from every match and put back afterwards */
+  strip?: readonly [string, string]
+}
+
+const COMPOSITION_MUTANTS: readonly Mutant[] = [
+  {
+    // S1. Screenshot-verified: a solid violet rectangle, no text, no cards —
+    // and every colour, length, radius and track underneath it still correct,
+    // because a covered element is laid out exactly like an uncovered one.
+    // `pointer-events-none` is what makes it survive to production and what
+    // makes a naive `elementFromPoint` walk straight past it.
+    why: 'a scrim that failed to unmount, over the whole page',
+    node: [SCREEN, '<div style="position:fixed;inset:0;background:rgb(42, 29, 94);' +
+      'z-index:50;pointer-events:none"></div>'],
+    message: /covered measurement hook: data-col/,
+  },
+  {
+    // S2. `max-width` and the used `width` — the two lengths the column is
+    // graded on — do not move by a pixel.
+    why: 'the content column pushed off the left edge',
+    css: `${SCREEN} [data-col]{position:relative;left:-9999px}`,
+    message: /off-screen measurement hook: data-col/,
+  },
+  {
+    // S2, halfway: the shape the reviewer described as "cards sliced in half".
+    // This one is *on* screen, so the intersection test above is content with
+    // it; only the containment test sees it.
+    why: 'the content column half off the side, where nothing scrolls',
+    css: `${SCREEN} [data-col]{position:relative;left:-600px}`,
+    message: /measurement hook off the side: data-col/,
+  },
+  {
+    // S3. The mutation that opened this hole. The card title is not a hooked
+    // element and never will be, which is why the census reads every run of
+    // type on the screen instead of the two the DESIGN row names.
+    why: 'every card title painted in the card’s own colour',
+    css: '[data-card] .text-ink{color:rgb(251, 247, 241)}',
+    message: /type the reader cannot see/,
+  },
+  {
+    // S4. Radius, shadow, border and every length are untouched; the cards
+    // simply stop being cards. `card.background` is required for this reason.
+    why: 'the cards repainted the colour of the field',
+    css: '[data-card]{background-color:rgb(42, 29, 94)}',
+    message: /departments: card background/,
+  },
+  {
+    // S5. `trackCount` still answers 3 and `[data-col]`'s used width does not
+    // move — a three-column grid blown a quarter of the viewport apart.
+    why: 'the grid gutter blown out to 240px',
+    css: `${SCREEN} [data-grid]{gap:240px}`,
+    message: /departments: grid column-gap/,
+  },
+  {
+    // S5, the half a declared `gap` cannot see: the gutter the reader measures
+    // is 98px and `column-gap` still says 18px. This is the mutant the
+    // geometric half exists for, and the only thing that kills it.
+    why: 'a margin on the items, opening a gutter `gap` never mentions',
+    css: '[data-card]{margin-left:40px;margin-right:40px}',
+    message: /the gutters the browser drew between adjacent items/,
+  },
+  {
+    // S6. The most consequential of the seven: the entire Persian UI mirrors.
+    // Headings to the other margin, cards in the reverse order, chevrons
+    // backwards, the sentence-final period on the wrong side — and not one
+    // length, colour, weight, radius or track count in this file moves.
+    why: 'the whole right-to-left screen mirrored to LTR',
+    attr: ['dir', 'ltr'],
+    message: /direction — the application is Persian/,
+  },
+  {
+    // S7. `base.css:8` is the *only* place the application's type stack is
+    // named, so nothing declared a family, so nothing measured one.
+    why: 'the application’s typeface replaced, globally, in one line',
+    css: "body{font-family:'Times New Roman', serif}",
+    message: /departments: h1 font-family/,
+  },
+  {
+    // The waiver's own precondition. A `contrastWaived` entry that has outlived
+    // the element it was written for is a hole nobody decided to open, and the
+    // census would go on skipping whatever grew into its place.
+    why: 'a contrast waiver that no longer matches anything',
+    strip: ['[data-card] .pointer-events-none', 'pointer-events-none'],
+    message: /`contrastWaived` names selectors that match nothing/,
+  },
+  {
+    // D2. The `toBeVisible` half of `hook()` was doing real work and nothing
+    // pinned it: deleting it left the suite fully green. Chrome answers a
+    // `display:none` element with its *specified* values, so a decoy in front
+    // of the real hook is measured with the wrong numbers rather than skipped.
+    why: 'a display:none decoy in front of the real [data-h1]',
+    node: [`${SCREEN} [data-col]`, '<div data-h1 style="display:none">دپارتمان‌ها</div>'],
+    message: /hidden measurement hook: data-h1/,
+  },
+] as const
+
+interface Change {
+  css: string | null
+  node: readonly [string, string] | null
+  attr: readonly [string, string] | null
+  strip: readonly [string, string] | null
+}
+
+const asChange = (m: Mutant): Change => ({
+  css: m.css ?? null, node: m.node ?? null, attr: m.attr ?? null, strip: m.strip ?? null,
+})
+
+const applyMutant = (page: Page, c: Change) =>
+  page.evaluate((m) => {
+    if (m.css) {
+      const sheet = document.createElement('style')
+      sheet.id = 'zz-mutant'
+      sheet.textContent = m.css
+      document.head.append(sheet)
+    }
+    if (m.node) {
+      const template = document.createElement('template')
+      template.innerHTML = m.node[1]
+      const el = template.content.firstElementChild!
+      el.setAttribute('data-zz-mutant', '')
+      document.querySelector(m.node[0])!.prepend(el)
+    }
+    if (m.attr) {
+      document.querySelector('[data-screen="departments"]')!.setAttribute(m.attr[0], m.attr[1])
+    }
+    if (m.strip) {
+      for (const el of Array.from(document.querySelectorAll(m.strip[0]))) {
+        el.classList.remove(m.strip[1])
+        el.setAttribute('data-zz-stripped', '')
+      }
+    }
+  }, c)
+
+const undoMutant = (page: Page, c: Change) =>
+  page.evaluate((m) => {
+    document.getElementById('zz-mutant')?.remove()
+    for (const el of Array.from(document.querySelectorAll('[data-zz-mutant]'))) el.remove()
+    if (m.attr) {
+      document.querySelector('[data-screen="departments"]')!.removeAttribute(m.attr[0])
+    }
+    if (m.strip) {
+      for (const el of Array.from(document.querySelectorAll('[data-zz-stripped]'))) {
+        el.classList.add(m.strip[1])
+        el.removeAttribute('data-zz-stripped')
+      }
+    }
+  }, c)
+
+test('every composition check has a mutant that kills it', async ({ page }) => {
+  await onDepartments(page)
+
+  // The page as it ships passes. Without this, "it went red" would prove
+  // nothing about the mutant — the same red would be reported if the screen
+  // were broken before anything was applied to it.
+  await expectDesign(page, 'departments')
+
+  for (const mutant of COMPOSITION_MUTANTS) {
+    const change = asChange(mutant)
+    await applyMutant(page, change)
+    await expect(
+      expectDesign(page, 'departments'),
+      `the “${mutant.why}” mutant is no longer caught, or is caught by something else. Each ` +
+      'of these left the suite at 30 passed / 12 skipped when it was applied to the working ' +
+      'tree for real; the page it produces is visibly wrong and every value on it is legal.',
+    ).rejects.toThrow(mutant.message)
+    await undoMutant(page, change)
+  }
+
+  // …and every one of them really was put back. Without this the run would
+  // degrade, mutant by mutant, into "expectDesign fails on an already-broken
+  // page", and the later entries would pass for the wrong reason.
+  await expectDesign(page, 'departments')
 })

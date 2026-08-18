@@ -41,6 +41,55 @@ export const CARD_SHADOW =
 export const FOCUS = 'rgb(250, 90, 82)'
 /** §4.5 — --hover-lift: translateY(-2px). */
 export const LIFT = 'matrix(1, 0, 0, 1, 0, -2)'
+/**
+ * `--font-sans`, as Chrome serialises it.
+ *
+ * The whole application inherits this from `base.css`'s `body` rule, which is
+ * why it had never been asserted anywhere: nothing *declares* a family, so
+ * nothing looked like it needed grading. That is exactly what made it free to
+ * break — replacing the one declaration in `base.css` re-set every glyph on
+ * every screen and not one value this file measures moved. Quoted from
+ * `design/_ds/…/tokens/typography.css`, in the order Chrome prints it.
+ */
+export const FONT_SANS =
+  '"Vazirmatn Variable", Vazirmatn, system-ui, -apple-system, "Segoe UI", sans-serif'
+/**
+ * §6.0 — the application is Persian and reads right to left.
+ *
+ * `index.html` carries `dir="rtl"` and `base.css` repeats it on `html`, so every
+ * screen inherits it and no screen declares it. Same shape as `FONT_SANS`: an
+ * inherited property nothing measured, and `dir="ltr"` on a screen root mirrors
+ * the headings, the card order, the chevrons and the sentence-final punctuation
+ * while every length, colour and weight in this file stays byte-identical.
+ */
+export const RTL = 'rtl'
+
+/**
+ * The floor a run of text must clear against what is painted behind it.
+ *
+ * **This is not an accessibility gate and must not be read as one.** WCAG AA is
+ * 4.5:1 for body copy and this screen does not meet it — `text-muted` on the
+ * cream card measures 3.49 and the coral primary button measures 3.16. The
+ * defect being caught here is narrower and cruder: *text the reader cannot see
+ * at all*, which is what a colour swap between a surface and the type on it
+ * produces. Measured on `departments`, 2026-08-18:
+ *
+ * | | ratio |
+ * |---|---|
+ * | card title `text-ink` → `text-bg` (cream on cream) | **1.00** |
+ * | card `bg-bg` → `bg-ink` (ink title on the ink field) | **1.00** |
+ * | the decorative `۰۱` watermark, `#EDE4FA` on `#FBF7F1` | 1.15 — waived |
+ * | the dimmest **real** text, `text-muted` on the card | 3.49 |
+ * | `Button.tsx`'s white-on-coral | 3.16 |
+ *
+ * 2.0 sits in the gap: every mutant is at 1.0, the nearest real text is at 3.16,
+ * and the two decorative watermarks are below it *because they are decoration*
+ * and are named in `contrastWaived`. Raising this to 4.5 would be a different,
+ * larger claim about the design and would go red on the shipped screen; §4 says
+ * a conflict like that is a finding, not something to resolve by moving a
+ * number, so it is recorded rather than enforced.
+ */
+export const LEGIBLE = 2
 
 /* ------------------------------------------------------------------ *
  * Per-width expectations — the only thing that makes 1080 and 760 pay
@@ -217,6 +266,19 @@ export interface Measured {
    * title — and every other assertion in this file stays green.
    */
   color: PerWidth<string>
+  /**
+   * computed `font-family`. **Defaults to `FONT_SANS`**, so a screen that uses
+   * the application's type stack — every screen — writes nothing, and one that
+   * deliberately does not has to say so here.
+   */
+  family?: PerWidth<string>
+  /**
+   * computed `text-align`. **Defaults to `start`**, which is what Chrome reports
+   * for type that has not been aligned; a screen that centres or end-aligns a
+   * run declares it. Note this does *not* catch an RTL page flipped to LTR —
+   * `start` is `start` in both directions. `ScreenDesign.direction` catches that.
+   */
+  align?: PerWidth<string>
 }
 
 export interface ScreenDesign {
@@ -234,6 +296,23 @@ export interface ScreenDesign {
   columnWidth: ByWidth<string>
   /** the `padding` shorthand of `[data-screen]`, 1–4 lengths */
   padding: PerWidth<string>
+  /**
+   * computed `direction`, asserted on **every graded hook** — the screen root,
+   * the column, both type hooks, the grid and the card.
+   *
+   * **Defaults to `rtl`**, so no screen has to remember it, and a screen with an
+   * LTR island has to write the lie down where a reviewer sees it. This is the
+   * assertion that notices a `dir="ltr"` on a screen root: it mirrors the
+   * headings, reverses the card order, points the chevrons the wrong way and
+   * puts the sentence-final period on the wrong side, and it moves **no** length,
+   * colour, weight, radius or track count that this file measures.
+   *
+   * Deliberately not applied to the `focus` and `lift` targets: an LTR field for
+   * an email address, a phone number or a code is an ordinary and correct thing
+   * inside a Persian form, and a gate that red-flagged it would be teaching
+   * twenty-one screens the wrong lesson.
+   */
+  direction?: PerWidth<'rtl' | 'ltr'>
   /** computed on `[data-h1]` */
   h1: Measured & { weight: PerWidth<string> }
   /** computed on `[data-body]` */
@@ -245,13 +324,35 @@ export interface ScreenDesign {
    * the assertion that notices a layout collapsing or refusing to collapse:
    * `grid-cols-3` → `grid-cols-1` changes nothing else measured here.
    */
-  grid?: { selector?: string; columns: ByWidth<number> }
+  grid?: {
+    selector?: string
+    columns: ByWidth<number>
+    /**
+     * The gutter, as a length — checked twice, and required.
+     *
+     * Once as the computed `column-gap`/`row-gap`, and once **geometrically**,
+     * as the distance between the border boxes of adjacent items. The pair
+     * matters because either one alone is escapable: `gap-[18px]` →
+     * `gap-[240px]` blows the layout apart while `trackCount` still answers 3
+     * and `[data-col]`'s used width does not move, and a margin on the items
+     * opens a visible gutter that the computed `gap` never mentions.
+     */
+    gap: PerWidth<string>
+  }
   card?: {
     radius?: PerWidth<string>
     /** compared through `shadowOf` — quote `CARD_SHADOW`, never the raw computed string */
     shadow?: PerWidth<string>
     border?: PerWidth<string>
-    background?: PerWidth<string>
+    /**
+     * computed `background-color`. **Required**, for the same reason
+     * `Measured.color` is: a card painted the same colour as the field it sits
+     * on does not look like a mistake in any single value — the radius, the
+     * shadow, the border and every length are untouched — it just stops being a
+     * card. Write what the screen paints *today*; a task that repaints it
+     * changes this line in the same commit.
+     */
+    background: PerWidth<string>
   }
   /**
    * A focusable selector **inside the screen**; focusing it must raise a coral
@@ -262,6 +363,23 @@ export interface ScreenDesign {
   focus?: string
   /** A selector **inside the screen**; its transform must become the -2px lift. */
   lift?: string
+  /**
+   * Selectors inside the screen whose text is exempt from `LEGIBLE`.
+   *
+   * The census below reads **every** run of type on the screen, not only the two
+   * the `DESIGN` row names, because the invisible-text defect does not confine
+   * itself to hooked elements — the mutation that started this was on a card
+   * title, and no screen will ever hook every title it draws. Firing on all of
+   * it needs a way to say "this one is decoration", and this is it: one line,
+   * visible to a reviewer, and **verified** — a selector that matches nothing is
+   * a failure, so a waiver cannot outlive the thing it was written for.
+   *
+   * `el.closest(selector)` decides, so a waiver on a wrapper covers its subtree.
+   * Use it for two things and nothing else: type that is decorative by design
+   * (a watermark numeral), and type over a background this method cannot reduce
+   * to a colour (a gradient or an image).
+   */
+  contrastWaived?: readonly string[]
 }
 
 /**
@@ -273,9 +391,9 @@ export interface ScreenDesign {
  * the padding, the title and the card's radius. Its card is still cream
  * `#FBF7F1` with `--shadow-card-dark` and a `#EFE7DC` border, which ledger
  * L-14/L-15 retire; Task 14 rebuilds it white with `CARD_BORDER` and
- * `CARD_SHADOW` and adds `background`, `border` and `shadow` to this record in
- * the same commit. The screen has no focusable control, so `focus` is absent by
- * fact.
+ * `CARD_SHADOW` and adds `border` and `shadow` to this record in the same
+ * commit — `background` is already here, holding the cream the screen paints
+ * today. The screen has no focusable control, so `focus` is absent by fact.
  */
 export const DESIGN = {
   departments: {
@@ -302,9 +420,22 @@ export const DESIGN = {
     // the mutant that collapses the grid dies at all three widths today. **Task
     // 14 edits the line below to `{ 1440: 3, 1080: 2, 760: 1 }` in the same
     // commit that adds the variants.**
-    grid: { columns: { 1440: 3, 1080: 3, 760: 3 } },
-    card: { radius: '20px' },
+    grid: { columns: { 1440: 3, 1080: 3, 760: 3 }, gap: '18px' },
+    // §9.1/L-14 make this `#fff`; `Departments.tsx` still paints `bg-bg`, the
+    // cream `#FBF7F1`, and Task 14 rebuilds it. Same rule as `padding` and
+    // `grid.columns` above: this states what the screen *does*, so the mutant
+    // that repaints the card the colour of the field dies today. Task 14 changes
+    // this to `SURFACE` in the commit that repaints it, and adds `border` and
+    // `shadow` beside it.
+    card: { radius: '20px', background: 'rgb(251, 247, 241)' },
     lift: '[data-card]',
+    // The two `text-[46px]` watermark numerals behind each card's icon —
+    // `#EDE4FA` and `#FBE4E1` on the cream card, 1.15 and 1.14. They are drawn
+    // to be *nearly* invisible and they carry no information the reader needs;
+    // the numeral is decoration, and it is the screen's only run of type below
+    // the floor. One selector reaches both because it is the screen's only
+    // `pointer-events-none`.
+    contrastWaived: ['[data-card] .pointer-events-none'],
   },
 } satisfies Record<string, ScreenDesign>
 
@@ -485,6 +616,135 @@ const paintedOpacity = (page: Page, selector: string) =>
     return { product, culprit }
   })
 
+/* ------------------------------------------------------------------ *
+ * Where a hook actually is, and what is painted on top of it
+ * ------------------------------------------------------------------ */
+
+/** Where a hook sits relative to the viewport, and whether anything covers it. */
+interface Placement {
+  /** the hook's border box, in viewport coordinates */
+  rect: { left: number; top: number; right: number; bottom: number }
+  viewport: { width: number; height: number }
+  /** does any part of the box fall inside the viewport? */
+  onScreen: boolean
+  /** how far the box sticks out past each side edge; 0 when it does not */
+  outLeft: number
+  outRight: number
+  /**
+   * `null` when some point inside the box resolves to the hook with nothing
+   * painted over it. Otherwise the first thing found painted on top — or, if no
+   * sampled point resolved to the hook at all, a note saying so.
+   */
+  cover: string | null
+}
+
+/**
+ * The two questions no computed property can answer: *is this on screen*, and
+ * *can anything be seen of it*.
+ *
+ * Both were open, and both are cheap to break by accident:
+ *
+ * 1. **Off to the side.** `[data-col]` given `relative left-[-9999px]` keeps its
+ *    declared `max-width` and its used `width` exactly — those are the two
+ *    lengths the column is graded on — while the whole content column, cards and
+ *    all, leaves the page. Every colour, size, radius, track count and shadow
+ *    reads normally, because every one of them is computed from a box that is
+ *    laid out perfectly well; it is just laid out somewhere nobody can look.
+ * 2. **Painted over.** A `fixed inset-0` element with a background is one
+ *    unmounted scrim away at any moment, and it renders a *completely blank*
+ *    page — screenshot-verified: a solid rectangle, no text, no cards — with
+ *    every assertion in this file still green.
+ *
+ * The cover test is a hit test, at up to five points spread through the part of
+ * the box that is on screen, and it passes as soon as **one** of them reaches
+ * the hook with nothing opaque in front. One is the right number: a hook only
+ * needs somewhere the reader's eye can land, and requiring all five would go red
+ * on any element with something legitimately layered over a corner of it.
+ *
+ * **`pointer-events` is forced on for the length of the probe**, and that is the
+ * part that matters. `elementsFromPoint` is hit testing, hit testing honours
+ * `pointer-events: none`, and the scrim above wears it — a scrim that still
+ * catches clicks is a bug someone notices in a minute, so the ones that survive
+ * to production are exactly the ones the naive probe cannot see. An `!important`
+ * author rule beats both a class and an ordinary inline style, `pointer-events`
+ * affects no layout, and the sheet is removed in a `finally` before the
+ * `evaluate` returns, so nothing observes the page in the altered state.
+ */
+const placement = (page: Page, selector: string): Promise<Placement> =>
+  page.locator(selector).first().evaluate((el) => {
+    const vw = document.documentElement.clientWidth
+    const vh = document.documentElement.clientHeight
+    const r = el.getBoundingClientRect()
+    const rect = { left: r.left, top: r.top, right: r.right, bottom: r.bottom }
+    const viewport = { width: vw, height: vh }
+    const x0 = Math.max(r.left, 0)
+    const x1 = Math.min(r.right, vw)
+    const y0 = Math.max(r.top, 0)
+    const y1 = Math.min(r.bottom, vh)
+    const onScreen = x1 - x0 > 0.5 && y1 - y0 > 0.5
+    const outLeft = Math.max(0, -r.left)
+    const outRight = Math.max(0, r.right - vw)
+    if (!onScreen) return { rect, viewport, onScreen, outLeft, outRight, cover: null }
+
+    const alphaOf = (colour: string): number => {
+      const c = colour.trim()
+      if (c === 'transparent') return 0
+      const m = /^rgba?\(\s*[\d.]+[,\s]+[\d.]+[,\s]+[\d.]+\s*(?:[,/]\s*([\d.]+)\s*)?\)$/.exec(c)
+      if (!m) return 1
+      return m[1] === undefined ? 1 : Number(m[1])
+    }
+    const paints = (n: Element): boolean => {
+      const cs = getComputedStyle(n)
+      if (cs.visibility === 'hidden') return false
+      for (let p: Element | null = n; p; p = p.parentElement) {
+        if (Number(getComputedStyle(p).opacity) === 0) return false
+      }
+      if (cs.backgroundImage !== 'none') return true
+      if (/^(img|svg|canvas|video|iframe)$/.test(n.tagName.toLowerCase())) return true
+      return alphaOf(cs.backgroundColor) > 0
+    }
+    const describe = (n: Element): string => {
+      const cs = getComputedStyle(n)
+      const cls = n.getAttribute('class')
+      return `<${n.tagName.toLowerCase()}${cls ? ` class="${cls}"` : ''}> ` +
+        `{ position: ${cs.position}, z-index: ${cs.zIndex}, ` +
+        `background-color: ${cs.backgroundColor}, background-image: ${cs.backgroundImage}, ` +
+        `pointer-events: ${cs.pointerEvents} }`
+    }
+
+    const sheet = document.createElement('style')
+    sheet.textContent = '*, *::before, *::after { pointer-events: auto !important }'
+    document.head.append(sheet)
+    let clear = false
+    let culprit: Element | null = null
+    try {
+      const fx = [0.5, 0.25, 0.75, 0.25, 0.75]
+      const fy = [0.5, 0.25, 0.25, 0.75, 0.75]
+      for (let i = 0; i < fx.length; i++) {
+        const stack = document.elementsFromPoint(x0 + (x1 - x0) * fx[i], y0 + (y1 - y0) * fy[i])
+        const self = stack.findIndex((n) => el.contains(n))
+        if (self === -1) continue
+        const above = stack.slice(0, self).filter(paints)
+        if (above.length === 0) {
+          clear = true
+          break
+        }
+        culprit = above[0]
+      }
+    } finally {
+      // Before `describe`, so the report prints the element's *real*
+      // `pointer-events` — "none" is the interesting half of the finding, and
+      // reading it through the override would print "auto" and hide it.
+      sheet.remove()
+    }
+    const cover = clear
+      ? null
+      : culprit
+        ? describe(culprit)
+        : 'no sampled point inside the box resolved to this element at all'
+    return { rect, viewport, onScreen, outLeft, outRight, cover }
+  })
+
 /**
  * Names a missing hook in ~5s instead of timing out for 30 inside `evaluate`,
  * and refuses to measure one that is **not on screen**.
@@ -531,8 +791,220 @@ async function hook(page: Page, selector: string, what: string) {
     'overlay or a `transition-opacity` twin is measured, not skipped; give the one that is ' +
     'actually painted at this width a distinct selector.',
   ).toBeGreaterThan(0)
+
+  const p = await placement(page, selector)
+  const box = `box ${JSON.stringify(p.rect)} in a ${p.viewport.width}×${p.viewport.height} viewport`
+
+  expect(
+    p.onScreen,
+    `off-screen measurement hook: ${what} — no part of \`${selector}\` is inside the viewport ` +
+    `(${box}). Nothing about a box that is laid out somewhere nobody can look reads as wrong: ` +
+    'a column at `left:-9999px` reports the same `max-width` and the same used `width` as one ' +
+    'in the middle of the page, and every colour, size, radius and track inside it is computed ' +
+    'exactly as if it were on screen. If the hook is genuinely further down a long page, point ' +
+    'the selector at the twin the reader meets first at this width.',
+  ).toBe(true)
+
+  expect(
+    Math.max(p.outLeft, p.outRight) <= 0.5,
+    `measurement hook off the side: ${what} — \`${selector}\` sticks out ` +
+    `${p.outLeft > 0.5 ? `${p.outLeft.toFixed(1)}px past the left edge` : ''}` +
+    `${p.outLeft > 0.5 && p.outRight > 0.5 ? ' and ' : ''}` +
+    `${p.outRight > 0.5 ? `${p.outRight.toFixed(1)}px past the right edge` : ''} ` +
+    `(${box}). Nothing in this application scrolls horizontally, so that part of the hook is ` +
+    'not somewhere the reader can scroll to — it is sliced off. A screen that really needs a ' +
+    'wider-than-viewport element must hook the scroll container, not its content.',
+  ).toBe(true)
+
+  expect(
+    p.cover,
+    `covered measurement hook: ${what} — every point sampled inside \`${selector}\` has ` +
+    'something painted on top of it. The hook goes on computing every colour, length, radius ' +
+    'and track it always did, so a scrim that failed to unmount is a solid rectangle where the ' +
+    'page should be and a fully green suite. **`pointer-events: none` is not an exemption** — ' +
+    'it stops the mouse, not the paint, and the probe forces hit testing on for exactly that ' +
+    'reason. If this is a deliberate overlay, the spec must dismiss it before measuring the ' +
+    `screen underneath it. Found: ${p.cover}`,
+  ).toBe(null)
 }
 
+
+/* ------------------------------------------------------------------ *
+ * the gutters the browser actually drew
+ * ------------------------------------------------------------------ */
+
+/** Every gap between adjacent grid items, measured off their border boxes. */
+interface GridGeometry {
+  items: number
+  rows: number
+  columnGaps: number[]
+  rowGaps: number[]
+}
+
+/**
+ * The distance between adjacent items, in pixels, read off the boxes.
+ *
+ * The computed `column-gap` is a declared length like any other, and the point
+ * of this file is that declared lengths are not what a reader sees. Two things
+ * this catches that the declaration cannot: a margin or a transform on the items,
+ * which opens a gutter the `gap` property never mentions; and items that have
+ * escaped the grid altogether, which leaves `gap` perfectly correct and nothing
+ * arranged by it. The declaration is still asserted too — together they are the
+ * pair, and `grid.gap` is required so a screen cannot skip both.
+ *
+ * Rows are grouped by the top edge the browser gave each item rather than by
+ * track index, so a wrapped or auto-placed grid is read the same way a reader
+ * reads it. Items taken out of flow (`position: absolute` / `fixed`) are not
+ * arranged by the gutter and are left out.
+ */
+const gridGeometry = (page: Page, selector: string): Promise<GridGeometry> =>
+  page.locator(selector).first().evaluate((el) => {
+    const round = (n: number) => Math.round(n * 100) / 100
+    const boxes = Array.from(el.children)
+      .filter((c) => {
+        const cs = getComputedStyle(c)
+        return cs.display !== 'none' && cs.position !== 'absolute' && cs.position !== 'fixed'
+      })
+      .map((c) => c.getBoundingClientRect())
+      .filter((r) => r.width > 0 && r.height > 0)
+    const tops = [...new Set(boxes.map((b) => Math.round(b.top)))].sort((a, b) => a - b)
+    const rows = tops.map((t) =>
+      boxes.filter((b) => Math.round(b.top) === t).sort((a, b) => a.left - b.left))
+    const columnGaps: number[] = []
+    for (const row of rows) {
+      for (let i = 1; i < row.length; i++) columnGaps.push(round(row[i].left - row[i - 1].right))
+    }
+    const rowGaps: number[] = []
+    for (let i = 1; i < rows.length; i++) {
+      const above = Math.max(...rows[i - 1].map((b) => b.bottom))
+      rowGaps.push(round(Math.min(...rows[i].map((b) => b.top)) - above))
+    }
+    return { items: boxes.length, rows: rows.length, columnGaps, rowGaps }
+  })
+
+/* ------------------------------------------------------------------ *
+ * every run of type on the screen, against what is behind it
+ * ------------------------------------------------------------------ */
+
+/** One run of type, with the colour it is painted in and the colour behind it. */
+interface TextRun {
+  ratio: number
+  color: string
+  background: string
+  fontSize: string
+  text: string
+  where: string
+  /** a gradient or image is in the stack, so `background` is an approximation */
+  approximate: boolean
+}
+
+/**
+ * Every run of type inside the screen, with its contrast against what is painted
+ * behind it.
+ *
+ * **Every run, not only the hooked ones, and that is the whole point.** The
+ * `DESIGN` row names two pieces of type — the H1 and the body line — and grades
+ * their colours exactly. The mutation that opened this hole was on neither: a
+ * card *title*, `text-ink` → `text-bg`, cream on a cream card, every title on
+ * the screen gone, and there is no version of this file where twenty-one screens
+ * hook every title, label, chip and caption they draw. So nothing is enumerated:
+ * anything with a text node under `[data-screen]` is read, and `contrastWaived`
+ * is the only way out.
+ *
+ * The background is composited **from the first fully opaque ancestor inward**,
+ * which is what the compositor does: a card with a solid background hides
+ * whatever the page paints beneath it, so the search stops there and a field
+ * colour four ancestors up cannot be mistaken for the thing behind the text. A
+ * translucent layer under the text is composited over the layer beneath it, in
+ * order, and the text's own colour is composited over the result — so
+ * `text-white/70` is graded at the colour it is actually painted, not at white.
+ *
+ * Known blind spot, stated rather than hidden: where a gradient or an image is
+ * in the stack, the colour is an approximation and the row is flagged
+ * `approximate`. Type over a photograph is not gradable this way; waive it.
+ */
+const textRuns = (page: Page, root: string, waived: readonly string[]) =>
+  page.locator(root).first().evaluate(
+    (el, waivers: string[]) => {
+      const parse = (colour: string): number[] | null => {
+        const c = colour.trim()
+        if (c === 'transparent') return [0, 0, 0, 0]
+        const m =
+          /^rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)\s*(?:[,/]\s*([\d.]+)\s*)?\)$/.exec(c)
+        if (!m) return null
+        return [Number(m[1]), Number(m[2]), Number(m[3]), m[4] === undefined ? 1 : Number(m[4])]
+      }
+      const over = (top: number[], bottom: number[]): number[] => {
+        const a = top[3] + bottom[3] * (1 - top[3])
+        if (a === 0) return [0, 0, 0, 0]
+        const mix = (i: number) =>
+          (top[i] * top[3] + bottom[i] * bottom[3] * (1 - top[3])) / a
+        return [mix(0), mix(1), mix(2), a]
+      }
+      const luminance = (c: number[]): number => {
+        const channel = (v: number) => {
+          const s = v / 255
+          return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4)
+        }
+        return 0.2126 * channel(c[0]) + 0.7152 * channel(c[1]) + 0.0722 * channel(c[2])
+      }
+      const contrast = (a: number[], b: number[]) => {
+        const la = luminance(a)
+        const lb = luminance(b)
+        return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05)
+      }
+
+      const deadWaivers = waivers.filter(
+        (s) => !el.matches(s) && el.querySelector(s) === null)
+      const runs: TextRun[] = []
+      for (const n of [el, ...Array.from(el.querySelectorAll('*'))]) {
+        const writes = Array.from(n.childNodes)
+          .some((c) => c.nodeType === 3 && (c.textContent ?? '').trim() !== '')
+        if (!writes) continue
+        if (waivers.some((s) => n.closest(s) !== null)) continue
+        const cs = getComputedStyle(n)
+        if (cs.display === 'none' || cs.visibility === 'hidden') continue
+        const box = n.getBoundingClientRect()
+        // `sr-only` type is a 1×1 clipped box. It is not painted, so it is not graded.
+        if (box.width < 2 || box.height < 2) continue
+        let opacity = 1
+        for (let p: Element | null = n; p; p = p.parentElement) {
+          opacity *= Number(getComputedStyle(p).opacity)
+        }
+        if (opacity === 0) continue
+
+        const stack: CSSStyleDeclaration[] = []
+        for (let p: Element | null = n; p; p = p.parentElement) {
+          const s = getComputedStyle(p)
+          stack.push(s)
+          const c = parse(s.backgroundColor)
+          if (c && c[3] >= 1) break
+        }
+        let approximate = false
+        let background = [255, 255, 255, 1]
+        for (let i = stack.length - 1; i >= 0; i--) {
+          if (stack[i].backgroundImage !== 'none') approximate = true
+          const c = parse(stack[i].backgroundColor)
+          if (c && c[3] > 0) background = over(c, background)
+        }
+        const declared = parse(cs.color)
+        if (!declared) continue
+        const painted = over(declared, background)
+        const cls = n.getAttribute('class')
+        runs.push({
+          ratio: Math.round(contrast(painted, background) * 100) / 100,
+          color: cs.color,
+          background: `rgb(${background.slice(0, 3).map((v) => Math.round(v)).join(', ')})`,
+          fontSize: cs.fontSize,
+          text: (n.textContent ?? '').trim().slice(0, 30),
+          where: `<${n.tagName.toLowerCase()}${cls ? ` class="${cls}"` : ''}>`,
+          approximate,
+        })
+      }
+      return { runs, deadWaivers }
+    },
+    [...waived],
+  )
 
 /* ------------------------------------------------------------------ *
  * focus
@@ -723,12 +1195,24 @@ export async function expectDesign(page: Page, screen: keyof typeof DESIGN) {
    */
   const within = (selector: string) => `${root} ${selector}`
 
+  /**
+   * The graded hooks, in the order they are measured. Every one gets the
+   * `direction` check; see `ScreenDesign.direction` for why the focus and lift
+   * targets do not.
+   */
+  const graded: { what: string; selector: string }[] = []
+  const grade = async (what: string, selector: string) => {
+    await hook(page, selector, what)
+    graded.push({ what, selector })
+  }
+
   await expect(page.locator(root), `${screen}: \`${root}\` is not visible`).toBeVisible()
+  graded.push({ what: 'data-screen', selector: root })
 
   expect(await css(page, root, 'background-color'), `${screen}: field`).toBe(at(d.field))
 
   const col = within('[data-col]')
-  await hook(page, col, 'data-col')
+  await grade('data-col', col)
   expect(await css(page, col, 'max-width'), `${screen}: column max-width`).toBe(at(d.column))
   // The one width-dependent assertion. See `ByWidth` above for why it exists.
   expect(await css(page, col, 'width'), `${screen}: column used width at ${w}px`)
@@ -740,32 +1224,79 @@ export async function expectDesign(page: Page, screen: keyof typeof DESIGN) {
   expect(await css(page, root, 'padding-bottom'), `${screen}: padding-bottom`).toBe(pad.bottom)
   expect(await css(page, root, 'padding-left'), `${screen}: padding-left`).toBe(pad.left)
 
+  /**
+   * The two inherited properties, graded on every run of type this row names.
+   *
+   * Neither is declared anywhere in `src/` — the family comes from `base.css`'s
+   * one `body` rule and the direction from `index.html` — which is precisely why
+   * neither had ever been measured, and precisely why breaking either one costs
+   * nothing to do and shows up in nothing this file used to read.
+   */
+  const type = async (what: string, selector: string, m: Measured) => {
+    expect(await css(page, selector, 'font-family'), `${screen}: ${what} font-family`)
+      .toBe(at(m.family ?? FONT_SANS))
+    expect(await css(page, selector, 'text-align'), `${screen}: ${what} text-align`)
+      .toBe(at(m.align ?? 'start'))
+  }
+
   const h1 = within('[data-h1]')
-  await hook(page, h1, 'data-h1')
+  await grade('data-h1', h1)
   expect(await css(page, h1, 'font-size'), `${screen}: h1 size`).toBe(at(d.h1.size))
   expect(await css(page, h1, 'font-weight'), `${screen}: h1 weight`).toBe(at(d.h1.weight))
   expect(await css(page, h1, 'color'), `${screen}: h1 colour`).toBe(at(d.h1.color))
+  await type('h1', h1, d.h1)
 
   const body = within('[data-body]')
-  await hook(page, body, 'data-body')
+  await grade('data-body', body)
   expect(await css(page, body, 'font-size'), `${screen}: body size`).toBe(at(d.body.size))
   expect(await css(page, body, 'color'), `${screen}: body colour`).toBe(at(d.body.color))
   if (d.body.weight !== undefined) {
     expect(await css(page, body, 'font-weight'), `${screen}: body weight`).toBe(at(d.body.weight))
   }
+  await type('body', body, d.body)
 
   if (d.grid) {
     const grid = within(d.grid.selector ?? '[data-grid]')
-    await hook(page, grid, d.grid.selector ?? 'data-grid')
+    await grade(d.grid.selector ?? 'data-grid', grid)
     const tracks = await css(page, grid, 'grid-template-columns')
     expect(trackCount(tracks), `${screen}: grid columns at ${w}px (grid-template-columns: ${tracks})`)
       .toBe(atWidth(w, d.grid.columns))
+
+    const gap = at(d.grid.gap)
+    expect(await css(page, grid, 'column-gap'), `${screen}: grid column-gap`).toBe(gap)
+    expect(await css(page, grid, 'row-gap'), `${screen}: grid row-gap`).toBe(gap)
+
+    const g = await gridGeometry(page, grid)
+    expect(
+      g.items,
+      `${screen}: the grid has no items to arrange, so its gutter is unproved. A fixture that ` +
+      'serves an empty list makes every geometric check in this block vacuously true — serve ' +
+      'enough rows to fill more than one cell.',
+    ).toBeGreaterThan(0)
+    if (g.items > 1) {
+      expect(
+        g.columnGaps.length + g.rowGaps.length,
+        `${screen}: ${g.items} grid items and not one pair adjacent to another (${g.rows} row(s) ` +
+        'by the top edges the browser gave them). Items that are not arranged by the grid leave ' +
+        '`gap` reading correctly and nothing arranged by it.',
+      ).toBeGreaterThan(0)
+    }
+    const want = parseFloat(gap)
+    const drawn = [...g.columnGaps, ...g.rowGaps]
+    expect(
+      drawn.filter((v) => Math.abs(v - want) > 0.5),
+      `${screen}: the gutters the browser drew between adjacent items are not ${gap} ` +
+      `(column ${JSON.stringify(g.columnGaps)}, row ${JSON.stringify(g.rowGaps)}, across ` +
+      `${g.rows} row(s) of ${g.items} items). The declared \`gap\` above agreed, so this is a ` +
+      'margin, a transform or an item that is not in the grid — none of which the declaration ' +
+      'can see.',
+    ).toEqual([])
   }
 
   if (d.card) {
     const c = d.card
     const card = within('[data-card]')
-    await hook(page, card, 'data-card')
+    await grade('data-card', card)
     if (c.radius !== undefined) {
       expect(await css(page, card, 'border-top-left-radius'), `${screen}: card radius`)
         .toBe(at(c.radius))
@@ -779,11 +1310,45 @@ export async function expectDesign(page: Page, screen: keyof typeof DESIGN) {
         .toBe(at(c.border))
       expect(await css(page, card, 'border-top-width'), `${screen}: card border width`).toBe('1px')
     }
-    if (c.background !== undefined) {
-      expect(await css(page, card, 'background-color'), `${screen}: card background`)
-        .toBe(at(c.background))
-    }
+    expect(await css(page, card, 'background-color'), `${screen}: card background`)
+      .toBe(at(c.background))
   }
+
+  const direction = at<'rtl' | 'ltr'>(d.direction ?? RTL)
+  for (const { what, selector } of graded) {
+    expect(
+      await css(page, selector, 'direction'),
+      `${screen}: ${what} direction — the application is Persian and every screen inherits ` +
+      '`rtl` from `index.html`, so nothing declares it and nothing used to measure it. A `dir` ' +
+      'on a screen root mirrors the whole page — headings to the other margin, cards in the ' +
+      'reverse order, chevrons pointing the wrong way, the sentence-final period on the wrong ' +
+      'side — and moves no length, colour, weight, radius or track count in this file. If the ' +
+      'flip is deliberate, say so in the row\'s `direction`.',
+    ).toBe(direction)
+  }
+
+  const { runs, deadWaivers } = await textRuns(page, root, d.contrastWaived ?? [])
+  expect(
+    deadWaivers,
+    `${screen}: \`contrastWaived\` names selectors that match nothing on the screen. A waiver ` +
+    'that has outlived the element it was written for is a hole nobody decided to open — ' +
+    'delete it, or point it at what it was meant to cover.',
+  ).toEqual([])
+  expect(
+    runs.length,
+    `${screen}: the census found no type at all inside \`${root}\`, so it graded nothing. ` +
+    'Either the screen rendered empty or every run is waived.',
+  ).toBeGreaterThan(0)
+  expect(
+    runs.filter((r) => r.ratio < LEGIBLE),
+    `${screen}: type the reader cannot see. Each row below is a run of text and the colour ` +
+    `painted behind it; anything under ${LEGIBLE}:1 is invisible rather than merely dim. This ` +
+    'is not an accessibility gate — see `LEGIBLE` — it is the check that notices a title ' +
+    'painted in its own background colour, or a card repainted the colour of the field it sits ' +
+    'on. Rows flagged `approximate` sit over a gradient or an image, where a single background ' +
+    'colour is a guess. Decoration that is meant to be nearly invisible goes in the row\'s ' +
+    '`contrastWaived`.',
+  ).toEqual([])
 
   if (d.focus) {
     const target = within(d.focus)
@@ -860,7 +1425,32 @@ const HOVERED = '[data-screen] :hover'
 const hoveredCount = (page: Page) =>
   page.evaluate((sel) => document.querySelectorAll(sel).length, HOVERED)
 
-/** A screenshot at the running project's width, for comparison against ui/design/. */
+/**
+ * A screenshot at the running project's width, for comparison against ui/design/.
+ *
+ * **Deliberately a `page.screenshot`, not a `toHaveScreenshot`, and it is not a
+ * gate.** Pixel comparison is the obvious answer to "the page looks wrong" and
+ * neither baseline it could use is sound here:
+ *
+ * - `ui/design/` is hand-written HTML with a different DOM, different class
+ *   names and different fonts loaded a different way. It is what the screens are
+ *   *drawn from*, not a rendering of them; a diff against it is red on every
+ *   screen, forever, for reasons that are not defects.
+ * - A **self**-baseline — commit today's render, compare tomorrow's — freezes
+ *   whatever the page looks like the moment the baseline is taken. This screen's
+ *   card is the wrong colour, its grid does not collapse and its padding has no
+ *   mobile variant; all three are recorded above as things Task 14 fixes. A
+ *   self-baseline would turn every one of those into an approved reference and
+ *   go red on the commit that *corrects* them.
+ *
+ * So the composition checks above are structural instead: each one names the
+ * thing it is asserting — this hook is on screen, nothing is painted over it,
+ * the page reads right to left, this type can be seen against what is behind it,
+ * the gutter the browser drew is the gutter the design asked for. They fail with
+ * a sentence rather than a diff image, they say which property moved, and they
+ * are the same at all three widths without three sets of reference pixels. The
+ * image this writes is for a human to look at; nothing compares it.
+ */
 export async function shot(page: Page, name: string) {
   await expectReducedMotion(page)
   await expectEveryEndpointStubbed(page)
