@@ -219,6 +219,31 @@ const sourceOf = (file: string) => readFileSync(join(process.cwd(), 'src/ui', fi
 
 /** The panel deliverable — the file every value in this rebuild is measured against. */
 const designSrc = join(process.cwd(), 'design/Inja Panel.dc.html')
+const readerSrc = join(process.cwd(), 'design/Inja Reader.dc.html')
+
+/** Both deliverables, by name. The design is TWO files and they do not agree. */
+const DELIVERABLES: [string, string][] = [
+  ['panel', readFileSync(designSrc, 'utf8')],
+  ['reader', readFileSync(readerSrc, 'utf8')],
+]
+
+/**
+ * Every inline SVG in a deliverable, reduced to WHAT IT DRAWS — the exact bytes
+ * between its own `<svg …>` and `</svg>`, and nothing outside them.
+ *
+ * A set of whole drawings rather than one long string, because "these bytes
+ * occur somewhere in the file" is a much weaker claim than it looks and both
+ * ends of it leak. Dropping `file`'s fold leaves the FIRST HALF of the design's
+ * own file icon, which is still a substring; dropping `user`'s head leaves the
+ * SECOND half, and closing the lookup with `</svg>` does not catch it because
+ * the byte before the remaining path is the `>` of the `</circle>` that was
+ * dropped. Both survived until the comparison became one whole drawing against
+ * another.
+ */
+const DRAWINGS: [string, Set<string>][] = DELIVERABLES.map(([name, src]) => [
+  name,
+  new Set([...src.matchAll(/<svg\b[^>]*>([\s\S]*?)<\/svg>/g)].map((m) => m[1])),
+])
 
 /**
  * The `d` of the first glyph the design draws inside the affordance `marker`
@@ -237,33 +262,166 @@ function drawnBy(marker: string): string {
 }
 
 /**
- * The drawing inside one inline-SVG component in a shell file: every `d` in
- * order, and how many drawable nodes there are altogether.
+ * The design system's own icon map — `InjaIcons`, thirty-three keys of markup
+ * in design/_ds/…/_ds_bundle.js.
  *
- * Both numbers, because "each path I draw appears somewhere in that file" is
- * satisfied by drawing half the glyph.
+ * The bundle is a deliverable and is never rewritten by a task, which is why
+ * the two glyphs it records are checked against IT rather than against the
+ * screens that draw them: src/screens/ProcessList.tsx and
+ * export/steps/StepsApp.tsx are both on later tasks' Modify lists, and a check
+ * against a file that is about to fold onto this set goes circular the moment
+ * it does — which is how the assertion this one replaces expired mid-review.
  */
-function shellGlyph(file: string, component: string): { paths: string[]; nodes: number } {
-  const src = readFileSync(join(process.cwd(), file), 'utf8')
-  const at = src.indexOf(`const ${component} = `)
-  expect(at, `${file} draws no ${component}`).toBeGreaterThan(0)
-  const end = src.indexOf('</svg>', at)
-  expect(end, `${component} has no closing </svg>`).toBeGreaterThan(at)
-  const block = src.slice(at, end)
-  return {
-    paths: [...block.matchAll(/<path d="([^"]+)"/g)].map((m) => m[1]),
-    nodes: [...block.matchAll(/<(path|circle|rect)\b/g)].length,
-  }
+function injaIcons(): Map<string, string> {
+  const dir = join(process.cwd(), 'design/_ds')
+  const packages = readdirSync(dir)
+  expect(packages, 'design/_ds holds one design-system package').toHaveLength(1)
+  const src = readFileSync(join(dir, packages[0], '_ds_bundle.js'), 'utf8')
+  const at = src.indexOf('const InjaIcons = {')
+  expect(at, 'the design system bundle ships no InjaIcons map').toBeGreaterThan(0)
+  const block = src.slice(at, src.indexOf('\n};', at))
+  return new Map([...block.matchAll(/^\s*(\w+): '(.*?)',?$/gm)].map((m) => [m[1], m[2]]))
+}
+
+/**
+ * One drawing reduced to a form that survives the trip between markup dialects:
+ * `InjaIcons` self-closes its tags, jsdom writes them out longhand, and the
+ * GEOMETRY is what is being compared. Nothing else about the bytes may move.
+ */
+function canonical(markup: string): string {
+  return markup
+    .replace(/\s*\/>/g, '>')
+    .replace(/<\/(path|circle|rect)>/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
 /** The single `d` the named icon draws, for the one-path glyphs. */
 function pathOf(name: keyof typeof ICONS): string {
-  const { container, unmount } = render(<Icon name={name} />)
-  const paths = Array.from(container.querySelectorAll('path'))
+  const paths = pathsOf(name)
   expect(paths, name).toHaveLength(1)
-  const d = paths[0].getAttribute('d') ?? ''
+  return paths[0]
+}
+
+/** Every `d` the named icon draws, in the order it draws them. */
+function pathsOf(name: keyof typeof ICONS): string[] {
+  const { container, unmount } = render(<Icon name={name} />)
+  const out = Array.from(container.querySelectorAll('path')).map((p) => p.getAttribute('d') ?? '')
   unmount()
-  return d
+  return out
+}
+
+/**
+ * The markup one glyph renders — every drawn node, serialised.
+ *
+ * This is what gets looked up in the deliverable. A `d` on its own is not
+ * enough: `file` is TWO paths and losing the second leaves a rectangle that is
+ * still a document, still passes "contains this `d`", and is not the icon.
+ */
+function markupOf(name: keyof typeof ICONS): string {
+  const { container, unmount } = render(<Icon name={name} />)
+  const inner = (container.querySelector('svg') as SVGElement).innerHTML
+  unmount()
+  expect(inner, `${name} draws nothing at all`).not.toBe('')
+  return inner
+}
+
+/** Which deliverables draw this glyph — the whole drawing, against whole drawings. */
+function drawnIn(name: keyof typeof ICONS): string[] {
+  const inner = markupOf(name)
+  return DRAWINGS.filter(([, drawn]) => drawn.has(inner)).map(([n]) => n)
+}
+
+/**
+ * The two `d`s the design's change-password reveal binds, and the node it draws
+ * beside them (Panel :1860 and :3762, Reader :2914).
+ *
+ * The reveal is the one place the design ships an eye, and it ships it as a
+ * BOUND STRING rather than as markup — `newPwIcon: shown ? '…' : '…'` — which is
+ * why a scan for `<path d="…">` reports the deliverable as drawing none.
+ */
+function revealGlyphs(): { shown: string; hidden: string; beside: string } {
+  const src = DELIVERABLES[0][1]
+  const bound = /newPwIcon: s\.newPwShow \? '([^']+)' : '([^']+)'/.exec(src)
+  expect(bound, 'the design binds no newPwIcon').not.toBeNull()
+  const svg = /<svg[^>]*><path d="\{\{ newPwIcon \}\}"><\/path>(.*?)<\/svg>/.exec(src)
+  expect(svg, 'the design’s reveal button draws no bound path').not.toBeNull()
+  return { shown: bound![1], hidden: bound![2], beside: svg![1] }
+}
+
+/* How many arguments each SVG path command takes. */
+const PATH_ARGS: Record<string, number> = {
+  M: 2, L: 2, H: 1, V: 1, C: 6, S: 4, Q: 4, T: 2, A: 7, Z: 0,
+}
+
+/**
+ * How far one `d` reaches, in user units on the 24-box.
+ *
+ * On-path points only: curve control points are ignored and an arc contributes
+ * its endpoint, so this UNDER-reports a curved glyph. That is the safe
+ * direction for the floor it is used for — it can call a drawing smaller than
+ * it is, never bigger.
+ */
+function pathSpan(d: string): { w: number; h: number } {
+  const tokens = d.match(/[MmLlHhVvCcSsQqTtAaZz]|-?(?:\d*\.\d+|\d+)/g) ?? []
+  const xs: number[] = []
+  const ys: number[] = []
+  let x = 0
+  let y = 0
+  let sx = 0
+  let sy = 0
+  let cmd = ''
+  for (let i = 0; i < tokens.length;) {
+    const t = tokens[i]
+    if (/[A-Za-z]/.test(t)) {
+      cmd = t
+      i += 1
+      if (cmd === 'Z' || cmd === 'z') {
+        x = sx
+        y = sy
+        xs.push(x)
+        ys.push(y)
+        continue
+      }
+    } else {
+      expect(cmd, `${d} begins with a number`).not.toBe('')
+      // A second coordinate pair after a moveto is an implicit lineto.
+      if (cmd === 'M') cmd = 'L'
+      else if (cmd === 'm') cmd = 'l'
+    }
+    const c = cmd.toUpperCase()
+    const rel = cmd !== c
+    const a = tokens.slice(i, i + PATH_ARGS[c]).map(Number)
+    expect(a, `${d} — "${cmd}" is short of arguments`).toHaveLength(PATH_ARGS[c])
+    i += PATH_ARGS[c]
+    if (c === 'H') x = rel ? x + a[0] : a[0]
+    else if (c === 'V') y = rel ? y + a[0] : a[0]
+    else {
+      const end = c === 'C' ? [a[4], a[5]]
+        : c === 'S' || c === 'Q' ? [a[2], a[3]]
+          : c === 'A' ? [a[5], a[6]]
+            : [a[0], a[1]]
+      x = rel ? x + end[0] : end[0]
+      y = rel ? y + end[1] : end[1]
+    }
+    if (c === 'M') {
+      sx = x
+      sy = y
+    }
+    xs.push(x)
+    ys.push(y)
+  }
+  expect(xs.length, `${d} draws no point at all`).toBeGreaterThan(0)
+  return { w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) }
+}
+
+/** The size of the smallest box that holds one drawn node. */
+function nodeSpan(node: Element): { w: number; h: number } {
+  const num = (a: string) => Number(node.getAttribute(a) ?? '0')
+  if (node.tagName === 'path') return pathSpan(node.getAttribute('d') ?? '')
+  if (node.tagName === 'circle') return { w: 2 * num('r'), h: 2 * num('r') }
+  if (node.tagName === 'rect') return { w: num('width'), h: num('height') }
+  throw new Error(`nodeSpan cannot measure <${node.tagName}>`)
 }
 
 function on(surface: 'panel' | 'reader', node: ReactNode) {
@@ -399,6 +557,67 @@ describe('Icon', () => {
     expect(new Set(four.map(pathOf)).size).toBe(4)
   })
 
+  it('is the design’s own drawing wherever the design draws one — all 21, and where', () => {
+    /* THE PROVENANCE LIST IS THE THING AN OWNER REVIEWS, so it is measured here
+       rather than written down in a docstring and believed.
+
+       The set's first draft said six keys were authored "because neither
+       deliverable carries a `d` for them". FIVE OF THE SIX WERE IN THE
+       DELIVERABLE, and one of those five had shipped wrong on the strength of
+       the claim: `home` was a roofline over an open-bottomed box, and both files
+       draw a complete house WITH A DOOR, as one path, on the same «خانه» button.
+       A list that is wrong in both directions is worse than one that is short,
+       and prose cannot fail.
+
+       So: render every key, look its whole markup up in both deliverables, and
+       compare the answer to this table. `toContain(pathOf(x))` would not do it —
+       `file` is two paths and losing the second leaves a rectangle that is still
+       a document and still passes.
+
+       An `[]` here is a claim in its own right, and four of the seven have their
+       own assertion below saying where they DO come from. */
+    const found = Object.fromEntries(
+      (Object.keys(ICONS) as (keyof typeof ICONS)[]).map((n) => [n, drawnIn(n)]),
+    )
+    expect(found).toEqual({
+      chevronStart: ['panel', 'reader'],
+      chevronEnd: ['panel', 'reader'],
+      chevronPrev: ['panel', 'reader'],
+      chevronNext: ['panel', 'reader'],
+      chevronDown: ['panel'],
+      chevronUp: [],           // src/screens/Overview.tsx — the design draws none
+      check: ['panel', 'reader'],
+      search: ['panel', 'reader'],
+      user: ['panel', 'reader'],
+      userBust: [],            // authored: nothing anywhere draws a bust
+      dots: [],                // the design's own circles WITH the fill/stroke pair
+      //                         moved onto them; drop the pair and this reads
+      //                         ['panel'], which is the hollow-ring bug — below
+      file: ['panel'],
+      inbox: [],               // src/shell/PanelShell.tsx — below
+      logout: [],              // src/shell/PanelShell.tsx — below
+      home: ['panel', 'reader'],
+      menu: ['panel'],
+      comment: ['panel', 'reader'],
+      funnel: ['panel'],
+      trash: [],               // authored: nothing anywhere draws a bin
+      eye: [],                 // the design BINDS its `d` rather than writing it — below
+      eyeOff: [],              // …and so this one too
+    })
+    // …against a harvest that really found the design's drawings, and a lookup
+    // that can miss. A `DRAWINGS` that had silently stopped matching would
+    // answer [] to every key, and one that matched anything would answer both
+    // names to every key; the table above cannot tell either from a real result.
+    expect(DRAWINGS.map(([n]) => n)).toEqual(['panel', 'reader'])
+    for (const [name, drawn] of DRAWINGS) {
+      // The reader is the smaller of the two and draws 19 distinct glyphs; a
+      // harvest that had stopped matching would answer 0.
+      expect(drawn.size, name).toBeGreaterThan(12)
+      expect(drawn.has('<path d="M4 20l16-16"></path>'), name).toBe(false)
+      expect(drawn.has(markupOf('check')), name).toBe(true)
+    }
+  })
+
   it('quotes the glyphs that already existed, rather than redrawing them', () => {
     // `comment` is the sharp one: an earlier draft of this set invented a speech
     // bubble on the premise that the design ships none. It ships one, four times
@@ -407,51 +626,203 @@ describe('Icon', () => {
     // assertion about the disc stayed green. Read from the DESIGN, because
     // FAB.tsx now reads this set and a check against it would be circular.
     expect(readFileSync(designSrc, 'utf8')).toContain(pathOf('comment'))
-    // The two the prototype drew and this task carried over unchanged. Both
-    // shells still draw them inline — neither is on this task's Modify list —
-    // so these are a real comparison and not a restatement.
-    //
-    // EVERY path, in order, and the node count with it. "each path I draw is
-    // somewhere in that file" is satisfied by drawing HALF the glyph: dropping
-    // the arrow out of `logout` leaves the door frame, which is a door, and it
-    // passed.
-    for (const [name, component] of [['inbox', 'InboxIcon'], ['logout', 'LogoutIcon']] as const) {
-      const { container, unmount } = render(<Icon name={name} />)
-      const svg = container.querySelector('svg') as SVGElement
-      const drawn = Array.from(svg.querySelectorAll('path')).map((p) => p.getAttribute('d'))
-      const { paths, nodes } = shellGlyph('src/shell/PanelShell.tsx', component)
-      expect(drawn, name).toEqual(paths)
-      expect(svg.querySelectorAll('path, circle, rect').length, name).toBe(nodes)
-      unmount()
-    }
+    // `inbox` and `logout` came from the two shells, and the comparison against
+    // them has now expired the way the one against FAB.tsx had: the shells read
+    // THIS SET. The design draws neither glyph and `InjaIcons` names only a
+    // different `inbox` (below), so these bytes are the last record of the two
+    // and the pin is that record rather than a measurement pretending to be one.
+    expect(markupOf('inbox'))
+      .toBe('<rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="M3 8l9 6 9-6"></path>')
+    expect(markupOf('logout')).toBe(
+      '<path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"></path>'
+      + '<path d="M10 16l-4-4 4-4M6 12h10"></path>',
+    )
   })
 
-  it('draws eyeOff as eye struck through, and eye unstruck', () => {
-    // Ledger L-39: InjaIcons ships no eye, so these two were authored — in
-    // src/ui/PasswordField.tsx, and moved here unchanged. The strike is the
-    // whole difference between the two states and the only one a SIGHTED user
-    // can see (`aria-pressed` and the label carry it for everyone else), which
-    // is why src/ui/fields.test.tsx asserts it in both states and this asserts
-    // it of the set they now both come from.
-    const strike = 'M3 3l18 18'
-    const paths = (name: 'eye' | 'eyeOff') => {
-      const { container, unmount } = render(<Icon name={name} />)
-      const out = Array.from(container.querySelectorAll('path')).map((p) => p.getAttribute('d'))
-      unmount()
-      return out
+  it('agrees with the design system’s own icon map, and says where it does NOT', () => {
+    /* `InjaIcons` — thirty-three keys in design/_ds/…/_ds_bundle.js — is the
+       OTHER ground truth in this repo, and the one nobody opened.
+
+       Its header says it was "lifted verbatim from the TSX that inlines it",
+       which makes it a record of what this codebase ALREADY DRAWS rather than a
+       new ruling — and therefore exactly the right thing to hold a set that
+       promises to quote rather than redraw. Two keys here had been called
+       AUTHORED, "because nothing in either deliverable, the token files or the
+       33-key InjaIcons export carries a `d` for them", and that sentence was
+       false about the very file it named: `trash` is drawn today in
+       src/screens/ProcessList.tsx and `userBust` in export/steps/StepsApp.tsx,
+       both byte for byte the map's. Redrawing them would have changed the delete
+       affordance and the export's actor glyph the moment those screens folded
+       onto this set — the `comment` mistake, twice more.
+
+       So every key is compared, and each of the four disagreements is a decision
+       stated below rather than a drift. */
+    const ds = injaIcons()
+    expect(ds.size, 'the map is 33 keys, or it was not parsed').toBe(33)
+    const verdict = (name: keyof typeof ICONS) => (
+      !ds.has(name) ? 'absent'
+        : canonical(ds.get(name)!) === canonical(markupOf(name)) ? 'same' : 'differs'
+    )
+    expect(Object.fromEntries(
+      (Object.keys(ICONS) as (keyof typeof ICONS)[]).map((n) => [n, verdict(n)]),
+    )).toEqual({
+      chevronStart: 'differs',  // the RTL renaming — a crossing, below
+      chevronEnd: 'differs',
+      chevronPrev: 'differs',
+      chevronNext: 'differs',
+      chevronDown: 'same',
+      chevronUp: 'same',
+      check: 'same',
+      search: 'same',
+      user: 'same',
+      userBust: 'same',
+      dots: 'differs',          // the map's kebab lies down; S1's stands up
+      file: 'same',
+      inbox: 'differs',         // the map's is a tray; the shell drew an envelope
+      logout: 'absent',
+      home: 'absent',
+      menu: 'absent',
+      comment: 'absent',
+      funnel: 'absent',
+      trash: 'same',
+      eye: 'absent',            // L-39, and it is the deliverable that has one
+      eyeOff: 'absent',
+    })
+
+    // THE FOUR CHEVRONS ARE A CROSSING, not four unrelated disagreements — and
+    // this is where the plan's wrong table came from. `InjaIcons` names them the
+    // English way round, the way the TSX it was lifted from did; the deliverable
+    // puts the RIGHT-pointing one on «بازگشت» and «صفحهٔ قبلی», which the test
+    // above pins to those buttons. Same four drawings, two names swapped twice.
+    for (const [ours, theirs] of [
+      ['chevronStart', 'chevronEnd'], ['chevronEnd', 'chevronStart'],
+      ['chevronPrev', 'chevronNext'], ['chevronNext', 'chevronPrev'],
+    ] as const) {
+      expect(canonical(ds.get(theirs)!), `${ours} ↔ ${theirs}`)
+        .toBe(canonical(markupOf(ours)))
     }
-    expect(paths('eyeOff')).toContain(strike)
-    expect(paths('eye')).not.toContain(strike)
-    // …and eyeOff is the eye WITH a strike, not a bare diagonal line.
-    expect(paths('eyeOff').length).toBeGreaterThan(1)
+
+    // The kebab: the map lays it on its side (§9.7 l draws the idea three ways).
+    // S1's row menu stands it up, and the panel deliverable is where that one is
+    // read from — see the kebab test.
+    expect(ds.get('dots')).toContain('cx="5" cy="12"')
+    // The inbox: the map has the tray the old shell/TopBar drew; the conflict
+    // button this set inherited is an envelope, and no deliverable draws either.
+    expect(ds.get('inbox')).toContain('M22 12h-6l-2 3h-4l-2-3H2')
+    expect(markupOf('inbox')).toContain('M3 8l9 6 9-6')
+
+    // …and `canonical` really does reconcile the two dialects, or every 'same'
+    // above is a comparison that never happened. The map self-closes its tags
+    // and jsdom writes them out; nothing else about the bytes may move.
+    expect(canonical('<path d="M1 2"/><circle r="3"/>'))
+      .toBe(canonical('<path d="M1 2"></path><circle r="3"></circle>'))
+    expect(canonical('<path d="M1 2"/>')).not.toBe(canonical('<path d="M1 3"/>'))
   })
 
-  it('draws the kebab vertically, the way S1 does', () => {
+  it('draws eyeOff as eye struck through, the way the DESIGN binds the two', () => {
+    // Ledger L-39 says `InjaIcons` ships no eye, and an earlier draft read that
+    // as "the design ships no eye" and drew a lucide-style gapped one. L-39 is
+    // about the ICON EXPORT: the change-password reveal ships both states as a
+    // bound `d` — `newPwIcon: shown ? '…' : '…'` — into a fixed <svg>, which is
+    // why a scan for `<path d="…">` finds nothing and the deliverable draws it
+    // all the same. Both are read out of the file here.
+    const { shown, hidden, beside } = revealGlyphs()
+    // eyeOff IS eye with the strike appended — in the deliverable's own bytes,
+    // not as a convention this file invented.
+    expect(hidden).toBe(`${shown}M3 3l18 18`)
+    expect(beside).toBe('<circle cx="12" cy="12" r="3"></circle>')
+    // Subpaths of one `d` and sibling <path>s paint identically, so the set
+    // keeps the strike separate: src/ui/fields.test.tsx reads it as a `d` of its
+    // own in both states, and joining them back up is the comparison.
+    expect(pathsOf('eye').join('')).toBe(shown)
+    expect(pathsOf('eyeOff').join('')).toBe(hidden)
+    // …and the iris the design draws beside the lens, which is the node the
+    // strike assertion cannot see: `r="0.2"` leaves both joins above
+    // byte-identical and takes the pupil out of the eye.
+    for (const name of ['eye', 'eyeOff'] as const) {
+      const { container, unmount } = render(<Icon name={name} />)
+      expect(container.innerHTML, name).toContain(beside)
+      unmount()
+    }
+    // The strike is the whole difference a SIGHTED user has to tell the reveal's
+    // two states apart — `aria-pressed` and the label carry it for everyone else.
+    expect(pathsOf('eyeOff')).toContain('M3 3l18 18')
+    expect(pathsOf('eye')).not.toContain('M3 3l18 18')
+    expect(pathsOf('eyeOff').length).toBeGreaterThan(1)
+  })
+
+  it('draws the kebab vertically, the way S1 does, and SOLID', () => {
     // §9.7 l — three renderings of one idea; this is the one S1 uses on a row.
     const { container } = render(<Icon name="dots" />)
-    const cys = Array.from(container.querySelectorAll('circle')).map((c) => c.getAttribute('cy'))
-    expect(cys).toEqual(['5', '12', '19'])
-    expect(container.querySelectorAll('circle')[0].getAttribute('cx')).toBe('12')
+    const circles = Array.from(container.querySelectorAll('circle'))
+    expect(circles.map((c) => c.getAttribute('cy'))).toEqual(['5', '12', '19'])
+    expect(circles.map((c) => c.getAttribute('cx'))).toEqual(['12', '12', '12'])
+    // The design's own kebab (Panel :356), read out of the deliverable. It is
+    // the only three-circle SVG in either file, which is asserted rather than
+    // assumed — a regex that matched two of them would pick whichever came
+    // first and compare this glyph to something else.
+    const kebabs = [...DELIVERABLES[0][1].matchAll(
+      /<svg([^>]*)>((?:<circle [^>]*><\/circle>){3})<\/svg>/g,
+    )]
+    expect(kebabs, 'the design draws no three-circle kebab').toHaveLength(1)
+    const [, svgAttrs, drawn] = kebabs[0]
+    expect(drawn).toBe(circles
+      .map((c) => `<circle cx="${c.getAttribute('cx')}" cy="${c.getAttribute('cy')}" r="${c.getAttribute('r')}"></circle>`)
+      .join(''))
+    // THE FILL IS THE GLYPH. The design fills that <svg> and strokes nothing;
+    // Icon's <svg> says the exact opposite, because every other glyph in the set
+    // is a line drawing. So the inversion rides on the circles, where a child's
+    // attribute beats its parent — and dropping it turns three solid dots into
+    // three hollow rings while every `cx`, `cy` and `r` above stays put.
+    expect(svgAttrs).toContain('fill="currentColor"')
+    expect(svgAttrs).toContain('stroke="none"')
+    const svg = container.querySelector('svg') as SVGElement
+    expect(svg.getAttribute('fill')).toBe('none')
+    expect(svg.getAttribute('stroke')).toBe('currentColor')
+    for (const c of circles) {
+      expect(c.getAttribute('fill')).toBe('currentColor')
+      expect(c.getAttribute('stroke')).toBe('none')
+    }
+  })
+
+  it('draws every node big enough for a user to see it, on all twenty-one keys', () => {
+    /* THE FLOOR A COLLAPSED DRAWING FALLS THROUGH.
+
+       "Draws at least one node" and "no two keys share a shape" are the only
+       things the two glyphs with NO GROUND TRUTH — `userBust` and `trash` — have
+       to satisfy, and a stub satisfies both: `ICONS.trash` swapped for `M4 7h1`
+       renders a 1px tick where the delete affordance is, is a shape no other key
+       has, and every other assertion in this file stays green. So does the iris
+       at `r="0.2"`, which the strike assertion above cannot see.
+
+       Two units on a 24-box. The smallest thing this set really draws is 3.6 —
+       a kebab dot — so the floor is a floor and not a fit to the current
+       values. */
+    const FLOOR = 2
+    const tiny: string[] = []
+    for (const name of Object.keys(ICONS) as (keyof typeof ICONS)[]) {
+      const { container, unmount } = render(<Icon name={name} />)
+      for (const node of Array.from(container.querySelectorAll('path, circle, rect'))) {
+        const { w, h } = nodeSpan(node)
+        if (Math.max(w, h) < FLOOR) tiny.push(`${name}: <${node.tagName}> reaches ${w} by ${h}`)
+      }
+      unmount()
+    }
+    expect(tiny).toEqual([])
+    // …against a measure that can see one, or the loop above is a green nothing.
+    // Both mutations, and one real glyph so the measure is not simply small.
+    const probe = (tag: string, attrs: Record<string, string>) => {
+      const el = document.createElementNS('http://www.w3.org/2000/svg', tag)
+      for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v)
+      return nodeSpan(el)
+    }
+    expect(probe('path', { d: 'M4 7h1' })).toEqual({ w: 1, h: 0 })
+    expect(probe('circle', { r: '0.2' })).toEqual({ w: 0.4, h: 0.4 })
+    expect(probe('path', { d: pathOf('trash') })).toEqual({ w: 18, h: 20 })
+    // …and it walks a path rather than reading its numbers: every command in
+    // this set is relative or absolute and the two do not mean the same thing.
+    expect(pathSpan('M10 10l4 4')).toEqual({ w: 4, h: 4 })
+    expect(pathSpan('M10 10L4 4')).toEqual({ w: 6, h: 6 })
   })
 
   it('gives every key a drawing, and no two keys the same one', () => {
@@ -592,6 +963,19 @@ describe('IconTile', () => {
     const both = on('panel', <IconTile dept="cooking" d="M4 20l16-16" />)
     expect(both.container.querySelector('path')?.getAttribute('d')).toBe('M4 20l16-16')
     expect(deptMeta('cooking').icon).not.toBe('M4 20l16-16')
+    both.unmount()
+    // …AND A `name` REACHES THE DRAWING TOO, which is the same question's other
+    // half and was the same hole. Deleting `name={name}` from the <Icon> call
+    // leaves the tinted 48px square with an EMPTY <svg> in it — the tile, and no
+    // glyph — and every box, radius, accent and stroke assertion in this file
+    // stays green, because the three `name`-passing cases here all read the
+    // width and the classes and none of them read the path.
+    const named = on('panel', <IconTile name="trash" />)
+    expect(named.container.querySelector('path')?.getAttribute('d')).toBe(pathOf('trash'))
+    named.unmount()
+    // …a key no department carries, or the department fallback would answer for
+    // it and the assertion above would pass with `name` on the floor.
+    expect(DEPT_CODES.map((c) => deptMeta(c).icon)).not.toContain(pathOf('trash'))
   })
 
   it('lets a caller override the box, and halves it for the glyph', async () => {
@@ -711,6 +1095,32 @@ describe('Logo', () => {
     expect(winner(await paint('object-cover'), 'object-fit')).toBe('cover')
     expect(winner(await paint('rounded-input'), 'border-radius')).toBe('var(--radius-input)')
     expect(tokenLiteral('--radius-input')).toBe('11px')
+  })
+
+  it('reaches the raster through the BUNDLER, not through a path it typed out', () => {
+    /* The one thing `toMatch(/inja-logo/)` above cannot say.
+
+       Under vitest the import resolves to the string `/src/assets/inja-logo.jpg`
+       — which is byte for byte what a hard-coded literal would be. The two are
+       INDISTINGUISHABLE at runtime here, so replacing the import with the
+       literal passes every assertion above, and the reviewer's proposed
+       one-liner ("assert the src does not start with /src/") fails on the
+       CORRECT code. In a production build they are not alike at all: an import
+       makes vite emit a hashed asset and rewrite the reference, a literal emits
+       no asset, and the brand mark is a broken image in the app bar and on the
+       login screen.
+
+       So it is asserted where the difference actually lives — in the source. */
+    const src = sourceOf('Logo.tsx')
+    const imported = /^import (\w+) from '(\.\.\/assets\/[\w.-]+)'$/m.exec(src)
+    expect(imported, 'Logo.tsx does not import its raster, so vite emits none').not.toBeNull()
+    const [, binding, spec] = imported!
+    // …the file it names is really on disk, or the import is a broken build
+    // rather than a working one.
+    expect(statSync(join(process.cwd(), 'src/ui', spec)).size).toBeGreaterThan(0)
+    // …and the <img> is bound to that identifier, not to a string beside it.
+    expect(src).toContain(`src={${binding}}`)
+    expect(src).not.toMatch(/src="[^"]*inja-logo/)
   })
 
   it('takes the login size too', async () => {
@@ -871,6 +1281,12 @@ describe('the icon rule', () => {
     // move.
     expect(screen.getByRole('button', { name: 'سرپرست سالن' })).toBe(header)
     expect(header.querySelector('svg')).toHaveAttribute('aria-hidden', 'true')
+    // …and it has a WEIGHT. 2.4 is the chevron step of the stroke ladder the
+    // icon set's own docstring records, and it is the one attribute sitting
+    // between the two `d`s above and the size class below that nothing here
+    // read: at 0.4 the mark is a hairline in a 44px header, with both `d`
+    // assertions, the accessible name and the whole declaration set green.
+    expect(header.querySelector('svg')).toHaveAttribute('stroke-width', '2.4')
     // …and it has a SIZE. `Icon` writes no width attribute unless it is given a
     // `px`, which is the right default and also the sharp edge: a glyph that
     // loses its size class does not fall back to something a little wrong, it
