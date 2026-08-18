@@ -90,6 +90,59 @@ function winner(painted: Painted[], prop: string): string {
 }
 
 /**
+ * EVERY declaration these classes emit at rest, resolved the way the cascade
+ * resolves them — not the handful an assertion happened to name.
+ *
+ * `dead()` only sees a class that emits NOTHING, and a property-by-property
+ * assertion only constrains the properties whoever wrote it was thinking about:
+ * dropping `justify-center` from the tile leaves the glyph jammed against one
+ * edge of a 48px square, compiles perfectly, and survived both. A `toEqual`
+ * against this fails on a class that was dropped, an unprefixed one that was
+ * added, and one swapped for a different real one.
+ */
+function sheet(painted: Painted[]): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const p of painted) {
+    if (p.state !== '' || p.media !== '') continue
+    for (const d of p.decls.split('; ')) {
+      const [name, ...rest] = d.split(': ')
+      out[name] = rest.join(': ')
+    }
+  }
+  return out
+}
+
+/**
+ * Every rule these classes emit that a RESTING element does not get.
+ *
+ * `sheet()` sees only the resting state BY CONSTRUCTION, so it cannot be the
+ * thing that catches an ADDED variant: `hover:bg-tile-v2` on the tile, or
+ * `md:hidden` on it, leave the resting snapshot byte-identical and `dead()`
+ * calls them alive because they do compile. This is the other half.
+ */
+function conditionals(painted: Painted[]): string[] {
+  return [...new Set(
+    painted
+      .filter((p) => p.state !== '' || p.media !== '')
+      .map((p) => `${p.media ? `@media ${p.media} ` : ''}.${p.klass}${p.state}`),
+  )].sort()
+}
+
+/** Every non-resting rule the element and all of its descendants carry. */
+async function conditionalsOf(root: Element): Promise<string[]> {
+  return conditionals(await paint(classStringOf(root)))
+}
+
+/** The full declaration set an element actually renders with. */
+async function styles(el: Element): Promise<Record<string, string>> {
+  const cls = el.getAttribute('class') ?? ''
+  // An element with no class at all would snapshot as `{}` and match an
+  // expectation of `{}` — the same "empty is not clean" hole `dead()` has.
+  expect(cls.trim(), 'the element carries no class at all').not.toBe('')
+  return sheet(await paint(cls))
+}
+
+/**
  * Every class in this string that compiles to nothing.
  *
  * It REFUSES an empty string rather than answering `[]`: a harvest that had
@@ -181,6 +234,26 @@ function drawnBy(marker: string): string {
   expect(at, `the design draws no ${marker}`).toBeGreaterThan(0)
   expect(src.indexOf(marker, at + 1), `${marker} is not unique in the deliverable`).toBe(-1)
   return /<path d="([^"]+)"/.exec(src.slice(at, at + 1500))?.[1] ?? ''
+}
+
+/**
+ * The drawing inside one inline-SVG component in a shell file: every `d` in
+ * order, and how many drawable nodes there are altogether.
+ *
+ * Both numbers, because "each path I draw appears somewhere in that file" is
+ * satisfied by drawing half the glyph.
+ */
+function shellGlyph(file: string, component: string): { paths: string[]; nodes: number } {
+  const src = readFileSync(join(process.cwd(), file), 'utf8')
+  const at = src.indexOf(`const ${component} = `)
+  expect(at, `${file} draws no ${component}`).toBeGreaterThan(0)
+  const end = src.indexOf('</svg>', at)
+  expect(end, `${component} has no closing </svg>`).toBeGreaterThan(at)
+  const block = src.slice(at, end)
+  return {
+    paths: [...block.matchAll(/<path d="([^"]+)"/g)].map((m) => m[1]),
+    nodes: [...block.matchAll(/<(path|circle|rect)\b/g)].length,
+  }
 }
 
 /** The single `d` the named icon draws, for the one-path glyphs. */
@@ -337,12 +410,18 @@ describe('Icon', () => {
     // The two the prototype drew and this task carried over unchanged. Both
     // shells still draw them inline — neither is on this task's Modify list —
     // so these are a real comparison and not a restatement.
-    const shell = readFileSync(join(process.cwd(), 'src/shell/PanelShell.tsx'), 'utf8')
-    for (const name of ['inbox', 'logout'] as const) {
+    //
+    // EVERY path, in order, and the node count with it. "each path I draw is
+    // somewhere in that file" is satisfied by drawing HALF the glyph: dropping
+    // the arrow out of `logout` leaves the door frame, which is a door, and it
+    // passed.
+    for (const [name, component] of [['inbox', 'InboxIcon'], ['logout', 'LogoutIcon']] as const) {
       const { container, unmount } = render(<Icon name={name} />)
-      const drawn = Array.from(container.querySelectorAll('path')).map((p) => p.getAttribute('d'))
-      expect(drawn.length, name).toBeGreaterThan(0)
-      for (const d of drawn) expect(shell, `${name} is not the path the shell draws`).toContain(d)
+      const svg = container.querySelector('svg') as SVGElement
+      const drawn = Array.from(svg.querySelectorAll('path')).map((p) => p.getAttribute('d'))
+      const { paths, nodes } = shellGlyph('src/shell/PanelShell.tsx', component)
+      expect(drawn, name).toEqual(paths)
+      expect(svg.querySelectorAll('path, circle, rect').length, name).toBe(nodes)
       unmount()
     }
   })
@@ -455,6 +534,64 @@ describe('IconTile', () => {
     expect(tokenLiteral('--size-tile')).not.toBe(tokenLiteral('--size-tile-reader'))
     expect(tokenLiteral('--radius-tile')).not.toBe(tokenLiteral('--radius-card'))
     expect(tokenLiteral('--size-glyph')).not.toBe(tokenLiteral('--size-glyph-reader'))
+  })
+
+  it('emits these declarations and no others, on either surface', async () => {
+    // The whole set, not the properties an assertion thought of. Dropping
+    // `justify-center` leaves a 24px glyph jammed against one edge of a 48px
+    // square: it compiles, `dead()` waves it through, jsdom paints nothing, and
+    // every other assertion in this file stays green.
+    const CENTRED = {
+      display: 'inline-flex',
+      'align-items': 'center',
+      'justify-content': 'center',
+      flex: 'none',
+      'background-color': 'var(--tile-c)',
+      color: 'var(--conflict)',
+      width: 'var(--role-tile)',
+      height: 'var(--role-tile)',
+    }
+    const panel = on('panel', <IconTile dept="dining" />)
+    expect(await styles(panel.container.querySelector('[data-tile]')!))
+      .toEqual({ ...CENTRED, 'border-radius': 'var(--radius-tile)' })
+    panel.unmount()
+    const reader = on('reader', <IconTile dept="dining" />)
+    expect(await styles(reader.container.querySelector('[data-tile]')!))
+      .toEqual({ ...CENTRED, 'border-radius': 'var(--radius-card)' })
+    reader.unmount()
+    // …and the glyph inside it, which carries a class of its own on this path.
+    const g = on('panel', <IconTile dept="dining" />)
+    expect(await styles(g.container.querySelector('svg')!))
+      .toEqual({ width: 'var(--size-glyph)', height: 'var(--size-glyph)' })
+    g.unmount()
+
+    // …and NOTHING it draws is conditional. The tile paints at rest and only at
+    // rest: it has no hover skin (the card around it lifts, the tile does not),
+    // no focus ring of its own and no responsive branch. A variant class is
+    // invisible to the three snapshots above by construction — `hover:bg-tile-v2`
+    // survived all of them — so it is asserted as its own question.
+    for (const surface of ['panel', 'reader'] as const) {
+      const { container, unmount } = on(surface, <IconTile dept="dining" />)
+      expect(await conditionalsOf(container.querySelector('[data-tile]')!), surface).toEqual([])
+      unmount()
+    }
+    // …against a helper that can see one, or the two lines above are a green
+    // nothing.
+    expect(conditionals(await paint('hover:bg-tile-v2 max760:hidden')))
+      .toEqual(['.hover:bg-tile-v2:hover', '@media (max-width: 760px) .max760:hidden'])
+  })
+
+  it('lets an explicit path beat the department’s, as Icon does', () => {
+    // `d` is IconTile's pass-through for a glyph that is in neither the icon set
+    // nor the department map — a one-off tile on a screen. Dropping the `??`
+    // silently ignores it and draws the department glyph, or nothing at all.
+    const { container, unmount } = on('panel', <IconTile d="M4 20l16-16" />)
+    expect(container.querySelector('path')?.getAttribute('d')).toBe('M4 20l16-16')
+    unmount()
+    // …and it beats a department that is also given, the way Icon's does.
+    const both = on('panel', <IconTile dept="cooking" d="M4 20l16-16" />)
+    expect(both.container.querySelector('path')?.getAttribute('d')).toBe('M4 20l16-16')
+    expect(deptMeta('cooking').icon).not.toBe('M4 20l16-16')
   })
 
   it('lets a caller override the box, and halves it for the glyph', async () => {
@@ -731,5 +868,14 @@ describe('the icon rule', () => {
     // move.
     expect(screen.getByRole('button', { name: 'سرپرست سالن' })).toBe(header)
     expect(header.querySelector('svg')).toHaveAttribute('aria-hidden', 'true')
+    // …and it has a SIZE. `Icon` writes no width attribute unless it is given a
+    // `px`, which is the right default and also the sharp edge: a glyph that
+    // loses its size class does not fall back to something a little wrong, it
+    // falls back to the replaced-element default of 300×150 and blows the
+    // header apart — with the `d` assertions above, the accessible name and the
+    // whole of controls.test.tsx still green.
+    expect(await styles(header.querySelector('svg')!)).toEqual({
+      width: 'var(--size-chevron)', height: 'var(--size-chevron)', flex: 'none',
+    })
   })
 })

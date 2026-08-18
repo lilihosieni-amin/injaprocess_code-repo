@@ -719,6 +719,15 @@ describe('what the pager’s class strings compile to', () => {
       expect(winner(s, 'width'), g).toBe('var(--size-chevron)')
       expect(winner(s, 'height'), g).toBe('var(--size-chevron)')
     }
+    // …and the WEIGHT the design draws them at, which is not a class and so is
+    // not in the two lines above. §8 gives the pager chevron 2.4; at 2 the two
+    // arrows are visibly thinner than every other 15px chevron on the screen,
+    // and nothing else in this file — or in the swap that moved both glyphs
+    // into `Icon` — would say so.
+    const { container } = render(<Pager from={1} to={5} count={12} page={2} pages={3} onPage={() => {}} />)
+    const strokes = Array.from(container.querySelectorAll('svg'))
+      .map((s) => s.getAttribute('stroke-width'))
+    expect(strokes).toEqual(['2.4', '2.4'])
   })
 
   it('draws the design’s 34px box and grows the target around it', async () => {

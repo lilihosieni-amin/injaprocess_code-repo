@@ -1808,6 +1808,14 @@ describe('Dropdown', () => {
     expect(await styles(kids[kids.length - 1])).toEqual({
       width: 'var(--space-7)', height: 'var(--space-7)', flex: 'none', color: 'var(--violet)',
     })
+    // …and it is the CHECK, at the weight §5.2 gives a check in a small box.
+    // Neither the `d` nor the stroke is in a class string, so the paint
+    // assertion above is blind to both: a 2.6 check reads as a hairline beside
+    // the 3 the tick in the same list draws, and a chevron in its place is a
+    // picked row that looks like a row you can open.
+    const check = kids[kids.length - 1]
+    expect(check.getAttribute('stroke-width')).toBe('3')
+    expect(check.querySelector('path')?.getAttribute('d')).toBe('M20 6L9 17l-5-5')
     // An unpicked row draws nothing there — no spacer, so the labels line up
     // with the popover's own inset rather than with a phantom column.
     const plain = screen.getByRole('option', { name: 'ادیتور' })
