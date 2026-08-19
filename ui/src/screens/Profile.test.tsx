@@ -706,4 +706,32 @@ describe('the profile header (§6.13)', () => {
     expect(warn).toHaveClass('bg-tile-warn', 'border-warn-edge')
     expect(warn).toHaveTextContent(/همهٔ دستگاه‌های دیگری که با این حساب وارد شده‌اند/)
   })
+
+  it('takes the ledger-corrected 22px title role and the sub-panel card recipe', async () => {
+    // Two facts a `toHaveClass` check can pin even though jsdom computes no
+    // pixel: which ROLE the title takes (ledger L-02/L-33 corrects the
+    // brief's own 21px `text-fs-stat-sm` — see Profile.tsx's docstring on the
+    // `<h1>`), and which recipe the password card's shell takes (the tinted
+    // sub-panel `SectionCard.tsx` draws, reproduced locally per the docstring
+    // on that `<div>` — radius 16, `--border-current`, `--surface-sub`).
+    drawProfile(EDITOR)
+    const h1 = await screen.findByRole('heading', { level: 1 })
+    expect(h1).toHaveClass('text-fs-h2')
+    expect(h1).not.toHaveClass('text-fs-stat-sm')
+    const card = screen.getByRole('group', { name: 'تغییر گذرواژه' })
+    expect(card).toHaveClass('rounded-card', 'bg-surface-sub', 'border-border-current')
+  })
+
+  it('sits the password trio on the sub-panel ground, not the card default', async () => {
+    // `PasswordFieldProps.ground`'s own docstring in `ui/src/ui/fieldFrame.ts`
+    // names this exact trio as the reason the prop exists: left at the
+    // default `'card'`, each field draws a near-white box on the card's own
+    // `#FBF9FE` tint, indistinguishable but for a hairline.
+    drawProfile(EDITOR)
+    const current = await screen.findByLabelText('گذرواژهٔ فعلی')
+    expect(current).toHaveClass('bg-surface-sub')
+    expect(current).not.toHaveClass('bg-card')
+    expect(screen.getByLabelText('گذرواژهٔ تازه')).toHaveClass('bg-surface-sub')
+    expect(screen.getByLabelText('تکرار گذرواژهٔ تازه')).toHaveClass('bg-surface-sub')
+  })
 })
