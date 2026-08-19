@@ -137,13 +137,29 @@ describe('nothing in the app leads here', () => {
       }
       return out
     }
-    /** `Visibility.tsx` renders 403 from `administrationRefusal(session)` rather
-     *  than from a response, and that is correct: `/visibility` is drawn in the
-     *  chrome only for a holder of `set_visibility`, so the only way to arrive
-     *  without it is to type the URL — which is precisely the case R5 keeps the
-     *  surface for. The screen states the refusal locally instead of firing a
-     *  request it knows will be refused. */
-    const DECLARED = ['screens/Refusal.tsx', 'screens/Visibility.tsx']
+    /**
+     * **The list is empty, and the two lines that used to be on it were both
+     * untrue.**
+     *
+     * `screens/Refusal.tsx` declares `RefusalScreen` and never renders one, so
+     * the scan below has never matched it. `screens/Visibility.tsx` has called
+     * `refusalStatus(error)` since it was written, so the scan has never matched
+     * that either — and the comment excusing it said the screen *"renders 403
+     * from `administrationRefusal(session)`"*, which was false twice over: it
+     * called no such function, and the reason it gave for the 403 ("the only way
+     * to arrive without it is to type the URL") is precisely the case D56
+     * reserves the **404** for. It now uses `visibilityRefusal`, the same twin
+     * of `access.requires` — scope first, then capability — that `/users` and
+     * `/users/:id` use, so a department-scoped caller gets «چیزی اینجا نیست»
+     * exactly as `GET /api/visibility` answers them.
+     *
+     * Three screens therefore render a refusal from the client twin as well as
+     * from a response, and this scan cannot tell those apart: it asks only
+     * whether the module mentions `refusalStatus(` at all. That is what the
+     * claim above is worth, and it is stated here rather than left to be
+     * rediscovered.
+     */
+    const DECLARED: string[] = []
     const offenders = walk(SRC)
       .filter((p) => !DECLARED.some((d) => p.endsWith(d)))
       .filter((p) => {
@@ -151,6 +167,18 @@ describe('nothing in the app leads here', () => {
         return s.includes('<RefusalScreen') && !s.includes('refusalStatus(')
       })
     expect(offenders).toEqual([])
+    // An exception that no longer trips the scan is an exception nobody is
+    // paying for, and the next line added beside it inherits the same absence of
+    // scrutiny. Each entry has to earn its place by still matching — the same
+    // idle check `guards.test.ts`'s F4/F8 EXCEPTIONS list carries.
+    const idle = DECLARED.filter((d) => {
+      const p = walk(SRC).find((x) => x.endsWith(d))
+      if (p === undefined) return true
+      const s = readFileSync(p, 'utf8')
+      return !(s.includes('<RefusalScreen') && !s.includes('refusalStatus('))
+    })
+    expect(idle, 'these files are declared exceptions but no longer trip the scan — delete the line')
+      .toEqual([])
     // The scan above compares a derived list to `[]`, so it also passes over a
     // walk that found nothing at all — a renamed component, a moved directory,
     // a `walk` that silently stopped recursing. This states that the set it

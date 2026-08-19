@@ -40,12 +40,21 @@ export function Departments() {
 
   const totalProc = data.reduce((a, d) => a + (d.count ?? 0), 0)
   // The open-conflict count is served only for a department the viewer may edit,
-  // and is absent — not zero — for the rest. So the tile is drawn only when at
-  // least one department carried the key, and sums only those: a reader who was
+  // and is absent — not zero — for the rest. So the tile is drawn only when
+  // EVERY department carried the key, and sums all of them: a reader who was
   // told nothing is shown nothing, rather than a green ۰ asserting "no open
   // conflicts" on their behalf. Absence of a claim, not a claim of absence.
+  //
+  // **`every`, not `some`, and that is the whole rule.** `list_departments`
+  // decides `conflicts` per department (`if may_edit(f"dept:{d['code']}")`), so
+  // the ordinary case for a department head is *served for one, withheld for the
+  // rest*. With `[cooking 0, warehouse withheld, accounting withheld]`, `some`
+  // was true, the sum was 0, and the tile drew «۰ تعارض باز» in `tone='ok'` —
+  // green — over the whole board: a claim of absence about two departments this
+  // screen was told nothing about. An empty board is not a claim either, which
+  // is why the length check has to stand beside it: `[].every(…)` is `true`.
   const totalConflicts = data.reduce((a, d) => a + (d.conflicts ?? 0), 0)
-  const knowsConflicts = data.some((d) => d.conflicts !== undefined)
+  const knowsConflicts = data.length > 0 && data.every((d) => d.conflicts !== undefined)
   const hasConflicts = totalConflicts > 0
 
   // §6.16 gives every `[data-r-pad]` the same `18px 14px` at ≤760, so the mobile

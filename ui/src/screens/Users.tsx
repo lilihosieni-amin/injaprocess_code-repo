@@ -67,7 +67,7 @@ export function Users() {
 
   // Hooks first, then the early returns: an early return above them would change
   // hook order between renders the moment the session or the listing arrives.
-  if (!session) return <div className="flex-1 bg-bg" />
+  if (!session) return <div className="flex-1 bg-ink" />
   if (refusal) return <RefusalScreen status={refusal} />
   const refused = refusalStatus(error)
   if (refused) return <RefusalScreen status={refused} />

@@ -108,15 +108,64 @@ describe('F10 — RTL is structural', () => {
     // matched nothing. Now also catches the bare left/right text-align utility,
     // ml/mr/pl/pr-auto, physical border/rounded corners, float, and the inline
     // JS style properties (margin/paddingLeft/Right).
+    //
+    // I2b — `-\d` was a hole the width of this project's whole spacing scale.
+    // Every step is `s`-prefixed (`s1`…`s16`), so the mirror bug this line exists
+    // for is spelled **`left-s10`**, not `left-10`, and the regex could not match
+    // it. Confirmed by mutation: replacing `end-s10` with `left-s10` at
+    // `src/screens/Departments.tsx:191` left this scan and its per-file copy in
+    // `Departments.test.tsx` both green. `s?\d` closes it for the physical insets
+    // and for `ml`/`mr`/`pl`/`pr` alike.
+    //
+    // Deliberately still not matching a bare `left:`/`right:` CSS declaration:
+    // `src/styles/base.css`'s two login orbs are byte-faithful to the design
+    // system's own `Login.jsx`, which renders under the same RTL document, and
+    // widening this to catch them would force a ruling rather than a fix.
     const BAD =
-      /(margin|padding)-(left|right)|text-align:\s*(left|right)|\b(ml|mr|pl|pr|left|right)-\d|\btext-(left|right)\b|\b(ml|mr|pl|pr)-(auto|\d)|\bborder-[lr]\b|\brounded-[lr]-|\bfloat-(left|right)\b|margin(Left|Right)|padding(Left|Right)/
+      /(margin|padding)-(left|right)|text-align:\s*(left|right)|\b(ml|mr|pl|pr|left|right)-s?\d|\btext-(left|right)\b|\b(ml|mr|pl|pr)-(auto|s?\d)|\bborder-[lr]\b|\brounded-[lr]-|\bfloat-(left|right)\b|margin(Left|Right)|padding(Left|Right)/
+
+    /**
+     * §8's declared physical pins — the two the DESIGN keeps, uncovered the
+     * moment `s?\d` closed the hole above and named here rather than left to a
+     * regex that could not see them.
+     *
+     * Each is one TOKEN in one file, not a file-wide pass: the token is removed
+     * from the line and the scan is re-run on what is left, so a genuine mirror
+     * bug on the same line still fires. Neither is being endorsed here — both
+     * carry a `§8` rationale at their own call site and both would be a
+     * different picture in an LTR locale that does not exist yet; what this list
+     * does is make them *visible*, which the hole did not.
+     */
+    const PHYSICAL_PINS: { rel: string; pin: string }[] = [
+      // The inbox count badge hangs off the corner the RTL bar puts last.
+      // `PanelShell.tsx`: "mirroring it would move it onto the label."
+      { rel: 'src/shell/PanelShell.tsx', pin: '-left-s3' },
+      // The comment FAB. `FAB.tsx`: "`bottom:22px; right:22px; left:auto` is one
+      // of the physical pins the design keeps, reproduced as written."
+      { rel: 'src/ui/FAB.tsx', pin: 'right-s10' },
+      { rel: 'src/ui/FAB.tsx', pin: 'left-auto' },
+    ]
+    const withoutPins = (rel: string, line: string) =>
+      PHYSICAL_PINS.filter((p) => p.rel === rel)
+        .reduce((s, p) => s.split(p.pin).join(''), line)
+
     const hits = files().flatMap((f) =>
       readFileSync(f.path, 'utf8')
         .split('\n')
         .map((line, i) => ({ rel: f.rel, n: i + 1, line }))
-        .filter(({ line }) => BAD.test(line)),
+        .filter(({ rel, line }) => BAD.test(withoutPins(rel, line))),
     )
     expect(hits.map((h) => `${h.rel}:${h.n} ${h.line.trim()}`)).toEqual([])
+
+    // The list is the only way past this guard, so it must not be able to grow
+    // quietly: a pin whose file no longer writes it is an exception nobody is
+    // paying for. Same idle check F4/F8's EXCEPTIONS carries below.
+    const idle = PHYSICAL_PINS.filter((p) => {
+      const f = files().find((x) => x.rel === p.rel)
+      return !f || !readFileSync(f.path, 'utf8').includes(p.pin)
+    })
+    expect(idle, 'these physical pins are declared but no longer written — delete the line')
+      .toEqual([])
   })
 
   it('only the declared islands pin dir', () => {
@@ -158,6 +207,20 @@ describe('F10 — RTL is structural', () => {
       // scrolling region: that is `[data-r-pad]`, whose direction pair lives in
       // `src/styles/base.css` with every other screen's.
       'src/screens/Summary.tsx',
+      // Task 18's sign-in form. The one field on it is a mobile number — latin
+      // digits inside an RTL document, §8's island, and the same island
+      // `UserFields.tsx` and `Profile.tsx` above pin for the same number. Added
+      // when it was found undeclared: `src/screens/` is still in
+      // PENDING_REBUILD, so nothing has been able to see it since Task 18
+      // landed, and the day that line goes this guard would have turned red on
+      // a file nobody had written down.
+      'src/screens/SignIn.tsx',
+      // Task 23's policy screen. It pins `ltr` on ONE thing: the policy version
+      // digest, which is a mono latin run that can hold a `-` or a `_` and
+      // bidi-reorders inside the Persian sentence around it. Not on the label
+      // beside it — that used to sit inside the same `font-mono` span and fell
+      // through to whatever the OS substituted for Persian glyphs.
+      'src/screens/Visibility.tsx',
       // `src/screens/ProcessList.tsx` is deliberately NOT here, and the absence
       // is the finding rather than an omission: that screen used to pin the
       // direction twice — once on its scrolling region, once back on the single

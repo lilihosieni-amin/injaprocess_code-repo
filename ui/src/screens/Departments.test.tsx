@@ -58,9 +58,10 @@ describe('Departments', () => {
   })
 
   // The mixed case a scoped editor actually sees: served for the department they
-  // may edit, withheld for the one they may not. The tile then reports what they
-  // were told and nothing more.
-  it('counts only the departments whose conflicts were served', async () => {
+  // may edit, withheld for the one they may not. The tile is a claim about the
+  // WHOLE board — it is labelled «تعارض باز» and nothing narrows it — so a board
+  // it was told only part of is a board it may not sum.
+  it('says nothing at all when even one department’s count was withheld', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(
       JSON.stringify([
         { code: 'cooking', name: 'پخت', count: 12, subs: 2, conflicts: 3 },
@@ -72,10 +73,48 @@ describe('Departments', () => {
     // wait for a card: the header stats render before the board resolves, and
     // every count reads ۰ until it does
     expect(await screen.findByText('دپارتمان پخت')).toBeInTheDocument()
-    expect(screen.getByText('تعارض باز')).toBeInTheDocument()
-    expect(screen.getByText('۳')).toBeInTheDocument()
+    expect(screen.queryByText('تعارض باز')).not.toBeInTheDocument()
+    // …and the per-card badge, which IS narrowed to its own department, stays.
     expect(screen.getByText('۳ تعارض')).toBeInTheDocument()          // cooking's own badge
     expect(screen.queryByText('۰ تعارض')).not.toBeInTheDocument()    // cashier gets no badge
+  })
+
+  // **The case `some` could not see, and the reason it had to become `every`.**
+  // The served department has zero conflicts and the rest were withheld, so the
+  // sum is 0 and the tile drew «۰ تعارض باز» in `tone='ok'` — a green zero
+  // asserting "no open conflicts" over two departments nobody told this screen
+  // anything about. Both existing tests missed it: one withholds every count and
+  // the other serves a non-zero one, and neither can distinguish `some` from
+  // `every`.
+  it('draws no green ۰ over departments it was told nothing about', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(
+      JSON.stringify([
+        { code: 'cooking', name: 'پخت', count: 12, subs: 2, conflicts: 0 },
+        { code: 'cashier', name: 'صندوق', count: 3, subs: 0 },
+        { code: 'dining', name: 'سالن', count: 4, subs: 0 },
+      ]),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    ))
+    renderAt('/departments', <Departments />, '/departments')
+    expect(await screen.findByText('دپارتمان پخت')).toBeInTheDocument()
+    expect(screen.queryByText('تعارض باز')).not.toBeInTheDocument()
+    expect(screen.queryByText(/تعارض/)).not.toBeInTheDocument()
+  })
+
+  // The other side of the same rule: a zero the caller was told in full is a
+  // fact, and withholding it would be its own kind of dishonesty.
+  it('draws the green ۰ when every department’s count was served and all are zero', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(
+      JSON.stringify([
+        { code: 'cooking', name: 'پخت', count: 12, subs: 2, conflicts: 0 },
+        { code: 'cashier', name: 'صندوق', count: 3, subs: 0, conflicts: 0 },
+      ]),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    ))
+    renderAt('/departments', <Departments />, '/departments')
+    expect(await screen.findByText('دپارتمان پخت')).toBeInTheDocument()
+    expect(screen.getByText('تعارض باز')).toBeInTheDocument()
+    expect(screen.getByText('۰')).toBeInTheDocument()
   })
 })
 
@@ -460,8 +499,25 @@ describe('the token sweep', () => {
     expect(src).not.toMatch(/(text|rounded|shadow)-\[/)
     expect(src).not.toMatch(/\brounded-(sm|md|lg|xl|2xl|3xl|full)\b/)
     expect(src).not.toMatch(/\btext-(xs|sm|base|lg|xl|[2-9]xl)\b/)
-    expect(src).not.toMatch(/\b(left|right)-\d/)
+    // `s?\d`, not `\d`. Every step of this project's spacing scale is
+    // `s`-prefixed, so the mirror bug this line exists for is spelled
+    // **`left-s10`** — which `/\b(left|right)-\d/` cannot match. Confirmed by
+    // mutation: replacing `end-s10` with `left-s10` at `Departments.tsx:191`
+    // left this line green (the kill came from a different test, which reads
+    // `inset-inline-end` out of the compiled sheet). `guards.test.ts:112` had
+    // the same hole and is fixed with it.
+    expect(src).not.toMatch(/\b(left|right)-s?\d/)
     // …and the scan is really reading the screen, not an empty string.
     expect(src).toContain('data-r-deptgrid')
+    // …and it is a scan that CAN fire: the physical spelling it forbids is one
+    // character from the logical one the file actually uses, and a regex that
+    // matched neither would pass this whole block in silence.
+    expect(src).toContain('end-s10')
+    // Assembled from its two halves rather than written out: every .tsx under
+    // ./src is inside a Tailwind CONTENT glob and the scanner does not read a
+    // test file differently from a component, so spelling the forbidden class
+    // here would MINT it into the built stylesheet — the physical inset this
+    // guard exists to keep out of the product, added by the guard.
+    expect(['left', 's10'].join('-')).toMatch(/\b(left|right)-s?\d/)
   })
 })

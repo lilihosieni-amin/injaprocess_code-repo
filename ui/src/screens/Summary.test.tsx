@@ -41,9 +41,14 @@ describe('Summary', () => {
     expect(screen.getByText('زمان آماده‌سازی')).toBeInTheDocument()
   })
 
-  it('shows the no-fabrication note when there are no KPIs', async () => {
+  it('shows the no-fabrication note when there are no KPIs — to the editor it is true for', async () => {
+    // EDITOR, not the default sessionless render. `visibility.filtered` returns
+    // the document untouched for an editor and blanks `kpis` for everybody else,
+    // so «سامانه اطلاعات را نمی‌سازد» is a statement only an editor's empty list
+    // can carry. Without the session this passed for a caller the claim is
+    // false for.
     mock({ ...withKpi, kpis: [] })
-    renderAt('/processes/:pid', <Summary />, '/processes/cooking-002')
+    renderAt('/processes/:pid', <Summary />, '/processes/cooking-002', EDITOR)
     expect(await screen.findByText(/سامانه اطلاعات را نمی‌سازد/)).toBeInTheDocument()
   })
 
@@ -65,6 +70,35 @@ describe('Summary', () => {
     renderAt('/processes/:pid', <Summary />, '/processes/cooking-002', OTHER_DEPT_EDITOR)
     expect(await screen.findByRole('button', { name: 'مشاهدهٔ فلوچارت' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'ویرایش اطلاعات' })).not.toBeInTheDocument()
+  })
+})
+
+describe('a read that failed', () => {
+  it('says so, and offers the retry, instead of a page that stays blank for ever', async () => {
+    // `refusalStatus` maps 403 and 404 and nothing else, so a 500, a dropped
+    // connection or an unparseable body fell through to `!p` and drew
+    // `<div class="flex-1 …"/>` — nothing to read, nothing to press, no way to
+    // tell it from a slow network. `Users`, `UserDetail` and `Visibility` each
+    // grew this branch on this branch; this screen did not.
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response('{}', { status: 500, headers: { 'Content-Type': 'application/json' } }))
+    renderAt('/processes/:pid', <Summary />, '/processes/cooking-002', EDITOR)
+    expect(await screen.findByText('اطلاعات فرآیند بارگذاری نشد.')).toBeInTheDocument()
+    // Worth asking again, which is what a 5xx is and a 4xx is not — decided by
+    // `retryQuery`, the same predicate the query itself uses.
+    expect(screen.getByRole('button', { name: 'تلاش دوباره' })).toBeInTheDocument()
+  })
+
+  it('paints the violet field while the read is in flight, not the warm cream', async () => {
+    // `background-color` does not inherit, which is the reason every rebuilt
+    // `[data-screen]` repeats `bg-ink`. The in-flight blank wrote `bg-bg` — the
+    // warm cream — so the first navigation to this screen flashed a full
+    // viewport of it over the field. Measured in Chrome at 1440x1000.
+    vi.spyOn(globalThis, 'fetch').mockReturnValue(new Promise(() => {}))
+    const { container } = renderAt('/processes/:pid', <Summary />, '/processes/cooking-002', EDITOR)
+    const blank = container.firstElementChild as HTMLElement
+    expect(blank.className).toContain('bg-ink')
+    expect(blank.className).not.toContain('bg-bg')
   })
 })
 
@@ -131,6 +165,51 @@ describe('a reader whose policy blanked the detail', () => {
     renderAt('/processes/:pid', <Summary />, '/processes/cooking-001', EDITOR)
     expect(await screen.findByText(/شاخصی برای این فرآیند ثبت نشده است/)).toBeInTheDocument()
   })
+
+  it('says the opposite to a reader on the SAME payload — the session is what decides', async () => {
+    // The pair that makes the test above mean something. `READER` is `EDITOR`
+    // minus `edit` and nothing else, and the document is byte-identical, so only
+    // the capability can explain the difference. Swapping the session in that
+    // test used to change nothing at all: `hasPublishedDetail` and the KPI
+    // branch read the payload alone, which is F2 restated as a test.
+    mock({ ...BLANKED, summary: 'خلاصه', idef0: { inputs: ['ورودی'], controls: [], outputs: [], mechanisms: [] } })
+    renderAt('/processes/:pid', <Summary />, '/processes/cooking-001', READER)
+    expect(await screen.findByText(/نمایش داده نمی‌شوند\.$/)).toBeInTheDocument()
+    expect(screen.queryByText(/شاخصی برای این فرآیند ثبت نشده است/)).toBeNull()
+  })
+
+  it('is the ordinary mixed case — summary published, KPIs withheld — and says nothing about the list', async () => {
+    // **The defect Task 16 existed to fix, one level down.** The three switches
+    // are independent (`visibility.py`: summary→process_summary,
+    // idef0→process_idef0, kpis→process_kpis) and `/visibility` sets each
+    // separately, so this is not an exotic fixture: it is what a department with
+    // `process_kpis` off looks like to every non-editor. `hasPublishedDetail` is
+    // an OR, so the detail block was drawn and the screen printed «شاخصی برای
+    // این فرآیند ثبت نشده است» — a claim that nobody recorded one — about a list
+    // the policy had withheld.
+    mock({ ...BLANKED, summary: 'خلاصهٔ منتشرشده' })
+    renderAt('/processes/:pid', <Summary />, '/processes/cooking-001', READER)
+    expect(await screen.findByText('خلاصهٔ منتشرشده')).toBeInTheDocument()
+    expect(screen.queryByText(/ثبت نشده است/)).toBeNull()
+    // …and the A-0 block is not drawn as an empty diagram either: four labelled
+    // columns with no chips is the same claim made in pictures.
+    expect(document.querySelector('[data-r-idef0]')).toBeNull()
+    expect(screen.getByText(/نمای IDEF0 این فرآیند نمایش داده نمی‌شود/)).toBeInTheDocument()
+  })
+
+  it('never shows the withheld card to an editor — a brand-new process is empty, not filtered', async () => {
+    // `routers/processes.py`'s `_skeleton` writes every new process with
+    // `summary: ""`, an empty `idef0` and `kpis: []`. So EVERY process, at the
+    // moment its own editor created it, told that editor «سیاست نمایش محتوای
+    // این دپارتمان تعیین می‌کند…» — false, because `visibility.filtered` returns
+    // early for an editor and filters nothing — and hid the honest empty states
+    // behind it.
+    mock(BLANKED)
+    renderAt('/processes/:pid', <Summary />, '/processes/cooking-001', EDITOR)
+    expect(await screen.findByText('نمای IDEF0 سطح فرآیند (A-0)')).toBeInTheDocument()
+    expect(screen.queryByText('خلاصه، نمای IDEF0 و شاخص‌ها نمایش داده نمی‌شوند')).toBeNull()
+    expect(screen.getByText(/شاخصی برای این فرآیند ثبت نشده است/)).toBeInTheDocument()
+  })
 })
 
 describe('the screen’s own shape', () => {
@@ -193,7 +272,7 @@ describe('what counts as published detail', () => {
     expect(screen.queryByText('خلاصه، نمای IDEF0 و شاخص‌ها نمایش داده نمی‌شوند')).not.toBeInTheDocument()
   })
 
-  it('draws the A-0 card for a process whose only detail is a KPI', async () => {
+  it('draws the detail for a process whose only detail is a KPI', async () => {
     mock({ ...BLANKED, kpis: [{ name: 'زمان چرخه' }] })
     renderAt('/processes/:pid', <Summary />, '/processes/cooking-001', READER)
     expect(await screen.findByText('زمان چرخه')).toBeInTheDocument()

@@ -142,10 +142,16 @@ test('users — six columns on the violet field, at three widths', async ({ page
     await expect(head).toBeHidden()
     await expect(row).toHaveCSS('display', 'flex')
     await expect(row).toHaveCSS('padding', '14px')
-    // Hidden, not absent — `toHaveCount(0)` would pass for a row that never
-    // drew the column at any width, which is a different screen.
-    await expect(row.getByText('صندوق')).toBeHidden()
-    await expect(row.getByText('مریم رستمی')).toBeHidden()
+    // Hidden, not absent — and `toBeHidden()` alone does not say that.
+    // Playwright's own types: it *"Ensures that Locator **either does not
+    // resolve to any DOM node**, or resolves to a non-visible one"*, so count 0
+    // satisfies it — exactly the case this comment claims to guard against, and
+    // exactly what a screen that dropped the column at ≤760 would produce. The
+    // honest pair is both halves: the cell is in the DOM, and it is not painted.
+    for (const text of ['صندوق', 'مریم رستمی']) {
+      await expect(row.getByText(text), text).toHaveCount(1)
+      await expect(row.getByText(text), text).toBeHidden()
+    }
     // …and the two that stay, stay.
     await expect(row.getByText('سحر بیات')).toBeVisible()
     await expect(row.getByText('مدیر')).toBeVisible()

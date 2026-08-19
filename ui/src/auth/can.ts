@@ -31,21 +31,21 @@ export function scopeContains(scope: string, target: string): boolean {
 }
 
 /**
- * What the server would answer this session on the administration surface, and
+ * What the server would answer this session on a surface it gates at `*`, and
  * `undefined` when it would serve them — **the client twin of `access.requires`,
  * including its order** (D56).
  *
  * Scope is checked before capability, and the split is the whole point:
  *
- *   404  the caller is not scoped `*`. User administration is not scoped to a
- *        department (D11), so it is not a thing they may learn exists here, and
- *        the answer is deliberately indistinguishable from a typo.
+ *   404  the caller is not scoped `*`. The surface is not scoped to a department
+ *        at all, so it is not a thing they may learn exists here, and the answer
+ *        is deliberately indistinguishable from a typo.
  *   403  the caller holds `*` and not the capability. They can see the surface
  *        and merely may not act.
  *
  * Collapsing the two into one message undoes the existence rule on the screen
  * after the server took trouble to keep it on the wire. In one function because
- * the header and two screens ask it and three copies would drift; `undefined`
+ * the header and three screens ask it and four copies would drift; `undefined`
  * rather than a bool because the caller has to render *which* refusal, not
  * merely that there was one.
  *
@@ -55,14 +55,39 @@ export function scopeContains(scope: string, target: string): boolean {
  *
  * Cosmetic, like `useCan` below: the endpoints re-derive both halves and answer
  * the same two codes regardless (D48).
+ *
+ * **Parameterised by capability rather than copied per surface**, because the
+ * fourth caller is what found the defect: `Visibility` neither used this nor had
+ * an equivalent, and answered a flat 403 to both refusals — telling a
+ * department-scoped caller that a content-visibility policy exists here, which
+ * is exactly the disclosure `routers/visibility.py`'s 404 is there to refuse.
  */
-export function administrationRefusal(
+function globalSurfaceRefusal(
   session: SessionDescriptor | undefined,
+  capability: Capability,
 ): 403 | 404 | undefined {
   if (!session) return undefined
   if (!session.scopes.some((held) => scopeContains(held, '*'))) return 404
-  if (!session.capabilities.includes('manage_users')) return 403
+  if (!session.capabilities.includes(capability)) return 403
   return undefined
+}
+
+/** `/users` and `/users/:id` — `requires("manage_users", "*")` on every route
+ *  (D11: user administration is not scoped to a department). */
+export function administrationRefusal(
+  session: SessionDescriptor | undefined,
+): 403 | 404 | undefined {
+  return globalSurfaceRefusal(session, 'manage_users')
+}
+
+/** `/visibility` — `requires("set_visibility", "*")` in BOTH directions
+ *  (`routers/visibility.py`: one global policy, so `*` is the only target
+ *  honest about the blast radius). `tests/test_reader_sees_no_users.py:413`
+ *  pins `GET /api/visibility` → **404** for a department-scoped Reader. */
+export function visibilityRefusal(
+  session: SessionDescriptor | undefined,
+): 403 | 404 | undefined {
+  return globalSurfaceRefusal(session, 'set_visibility')
 }
 
 /**

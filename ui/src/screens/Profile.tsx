@@ -66,7 +66,7 @@ export function Profile() {
   // flicker. It is here because a form rendered against no session is a form
   // whose submit has no account behind it, and «whose password is this» is the
   // one question this screen must never answer by guessing.
-  if (!session) return <div className="flex-1 bg-bg" />
+  if (!session) return <div className="flex-1 bg-ink" />
 
   function submit(e: FormEvent) {
     e.preventDefault()
@@ -109,7 +109,7 @@ export function Profile() {
     // it; that omission is reported rather than followed.
     <div data-screen="profile" className="flex-1 overflow-auto bg-ink py-screen-y px-screen-x max760:px-s7 max760:py-s9">
       <div data-col className="max-w-profile mx-auto">
-        {/* §6.13 — `22px/800 #fff` name, `12.5px #C9BEEE` role (ledger L-02,
+        {/* §6.13 — `22px/800 --card` name, `12.5px --violet-on-dark-body` role (ledger L-02,
             L-33 — NOT the 21px `text-fs-stat-sm` an earlier draft of this
             screen's task wrote; that role is the activity-stat numeral, which
             `tokens.css` says in as many words). The identity card this
@@ -155,7 +155,7 @@ export function Profile() {
                 reader's profile draws its password trio on the sub-panel
                 surface" — as the reason the prop exists at all. Left at the
                 default `'card'` (the brief's own Step 7 snippet does) draws
-                each field as a near-white box on the `#FBF9FE` tinted card,
+                each field as a near-white box on the `--surface-sub` tinted card,
                 the very defect that docstring exists to prevent. */}
             <PasswordField id={currentId} label="گذرواژهٔ فعلی" placeholder="••••••••"
               autoComplete="current-password" ground="sub" value={current} onChange={setCurrent} />
@@ -172,8 +172,8 @@ export function Profile() {
                 devices were signed out» in the confirmation is news rather
                 than a warning — about a tablet in the kitchen somebody else is
                 holding. §6.6's amber notice is the design's surface for
-                exactly this: `#FBEEDC` on `1px #F0DDBB` at radius 10,
-                `12px #8A5A00 lh 1.7`. */}
+                exactly this: `--tile-warn` on `1px --warn-edge` at radius 10,
+                `12px --warn-fg lh 1.7`. */}
             <p role="note" aria-label="هشدار"
               className="bg-tile-warn border border-warn-edge rounded-control
                          px-s6 py-s5 text-fs-caption text-warn-fg leading-normal m-0">

@@ -257,17 +257,41 @@ describe('who the visibility policy screen is drawn for', () => {
     await waitFor(() => expect(seen.gets).toBe(0))
   })
 
-  it('refuses a department-scoped holder of set_visibility', async () => {
+  it('answers a department-scoped holder of set_visibility the way the server does — not found, not refused', async () => {
     // The capability alone is not the gate the endpoints apply: they require it
     // at `*`, because one policy governs every department and a `dept:` holder
     // deciding it would be deciding for everyone else (D16). A screen gated on
     // the capability alone would draw this person six switches the server
-    // answers 403 to.
+    // refuses.
+    //
+    // **And the refusal is a 404, not a 403.** `access.requires` checks SCOPE
+    // BEFORE CAPABILITY — *"the order is the whole point … they must not learn
+    // it exists"* — so `GET /api/visibility` answers this caller 404, which
+    // `tests/test_reader_sees_no_users.py:413` pins. This screen used to write
+    // one status for both refusals and told them «اجازهٔ این کار را ندارید»:
+    // *this exists, but not for you*, about a surface the 404 exists to keep
+    // quiet. Owner: "i ok with not found 404."
     const seen = stubServer(DEFAULTS)
     session = { ...EDITOR, scopes: ['dept:cooking'] }
     mount()
-    expect(await screen.findByText('اجازهٔ این کار را ندارید')).toBeInTheDocument()
+    expect(await screen.findByText('چیزی اینجا نیست')).toBeInTheDocument()
+    expect(screen.queryByText('اجازهٔ این کار را ندارید')).toBeNull()
     expect(screen.queryAllByRole('checkbox')).toHaveLength(0)
+    await waitFor(() => expect(seen.gets).toBe(0))
+  })
+
+  it('answers a caller refused by BOTH halves 404, because scope is asked first', async () => {
+    // The one fixture that pins the ORDER rather than the pair. A `*`-scoped
+    // caller without the capability is 403 under either ordering and a scoped
+    // caller who holds it is 404 under either, so neither of the two tests
+    // around this one can tell a screen that asks about the capability first
+    // from one that asks about the scope first. This caller is refused on both
+    // counts, and only the server's order gives 404.
+    const seen = stubServer(DEFAULTS)
+    session = { ...EDITOR, capabilities: ['view', 'edit'], scopes: ['dept:cooking'] }
+    mount()
+    expect(await screen.findByText('چیزی اینجا نیست')).toBeInTheDocument()
+    expect(screen.queryByText('اجازهٔ این کار را ندارید')).toBeNull()
     await waitFor(() => expect(seen.gets).toBe(0))
   })
 

@@ -640,7 +640,18 @@ describe('the scope fieldset on the create form', () => {
     await openViews('سالن')
     await userEvent.click(screen.getByRole('checkbox', { name: STEPS }))
     expect(screen.getByRole('checkbox', { name: STEPS })).toBeChecked()
+    // The tile states its narrowing in words («فقط …»), which is what stays on
+    // screen once «کل سامانه» disables the grid and closes the popover with it.
+    // Read here rather than the box itself, because the box is no longer in the
+    // document to read — and a control inside an inert region is exactly what
+    // that change exists to stop.
+    expect(screen.getByText(/^فقط/)).toBeInTheDocument()
     await userEvent.click(screen.getByRole('checkbox', { name: 'کل سامانه' }))
+    expect(screen.queryByText(/^فقط/)).toBeNull()
+    // …and it is gone from the draft, not merely hidden: turning «کل سامانه»
+    // back off leaves nothing behind, and the popover reopens with a clear box.
+    await userEvent.click(screen.getByRole('checkbox', { name: 'کل سامانه' }))
+    await openViews('سالن')
     expect(screen.getByRole('checkbox', { name: STEPS })).not.toBeChecked()
   })
 })

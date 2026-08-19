@@ -1,5 +1,5 @@
 import { useSession } from '../auth/useSession'
-import { useCan } from '../auth/can'
+import { visibilityRefusal } from '../auth/can'
 import { useVisibility, useSetVisibilityField } from '../api/hooks'
 import { refusalStatus } from '../api/client'
 import { LoadFailedScreen } from '../ui/states'
@@ -71,17 +71,40 @@ const FAILED = 'انجام نشد؛ دوباره تلاش کنید.'
  * exist.
  */
 export function Visibility() {
-  const can = useCan(useSession().data)
-  // `*`, not the bare capability: the endpoints require `set_visibility` at the
-  // global scope, because one policy governs every department. Cosmetic either
-  // way (D48) — this decides what to draw, the server decides what to answer.
-  const allowed = can('set_visibility', '*')
-  const { data, error, refetch } = useVisibility({ enabled: allowed })
+  // **The server's own partition, in the server's own order** (D56).
+  //
+  // `routers/visibility.py` gates both directions on
+  // `requires("set_visibility", "*")`, and `access.requires` checks SCOPE
+  // BEFORE CAPABILITY — *"the order is the whole point … 404 the target is
+  // outside the caller's scope; they must not learn it exists"*. So a
+  // department-scoped caller who types `/visibility` is answered **404** by the
+  // API, and `tests/test_reader_sees_no_users.py:413` pins exactly that.
+  //
+  // This screen used to write one status for two different refusals —
+  // `can('set_visibility', '*')` and then a flat `<RefusalScreen status={403}/>`
+  // — so that caller was told «اجازهٔ این کار را ندارید»: *this exists, but not
+  // for you*, about a surface D56 reserves the 404 for. The owner ruled it
+  // directly: "i ok with not found 404."
+  //
+  // `visibilityRefusal` is the same twin `/users` and `/users/:id` already use,
+  // one capability along; a fourth local copy of the partition is how the three
+  // would come to disagree. Cosmetic either way (D48) — this decides what to
+  // draw, the server decides what to answer.
+  const session = useSession().data
+  const refusal = visibilityRefusal(session)
+  // `!!session` as well as the partition, exactly as `Users` writes it:
+  // `visibilityRefusal` answers `undefined` for a session that has not arrived
+  // yet — nobody has said what this person may do — and NFR-12 / AC-24 want a
+  // refused caller to fire no request at all.
+  const { data, error, refetch } = useVisibility({
+    enabled: !!session && refusal === undefined,
+  })
   const set = useSetVisibilityField()
 
   // Hooks first, then the early returns: an early return above them would change
   // hook order between renders the moment the session or the policy arrives.
-  if (!allowed) return <RefusalScreen status={403} />
+  if (!session) return <div className="flex-1 bg-ink" />
+  if (refusal) return <RefusalScreen status={refusal} />
   const refused = refusalStatus(error)
   if (refused) return <RefusalScreen status={refused} />
   // Ahead of the blank, and that order is the whole fix. `refusalStatus` maps
@@ -93,7 +116,12 @@ export function Visibility() {
     return <LoadFailedScreen message="تنظیم نمایش محتوا بارگذاری نشد." error={error}
       onRetry={() => { void refetch() }} />
   }
-  if (!data) return <div className="flex-1 bg-bg" />
+  // The in-flight blank paints the FIELD, not `--bg`. `--bg` is the warm cream
+  // this app never paints a screen on and the shell behind this is `--ink`;
+  // `background-color` does not inherit, which is the very reason the root below
+  // repeats `bg-ink`. Measured in Chrome at 1440x1000 with the policy read hung:
+  // a full-viewport cream block over the violet field.
+  if (!data) return <div className="flex-1 bg-ink" />
 
   const fields = data.fields as Record<string, boolean>
   const rows = [
@@ -119,7 +147,7 @@ export function Visibility() {
         <h1 data-h1 className="text-title font-extrabold text-role-title-on-field m-0">سیاست نمایش محتوا</h1>
         {/* §6.12 — the intro makes the framing explicit: a decision applied to
             every non-editor, not a permission granted to anybody. `13px
-            #C9BEEE lh 1.8` capped at 600px, on the violet field.
+            --violet-on-dark-body lh 1.8` capped at 600px, on the violet field.
 
             Two `<p>`s, not one: the D16 sentence and the D55 sentence are each
             pinned verbatim by their own behavioural test above, matched as the
@@ -183,7 +211,7 @@ export function Visibility() {
                       </span>
                       {failed && (
                         // §4.6 — "Errors are stated in copy: a `11.5px/600
-                        // #E23D35` line under the offending control." It used
+                        // --conflict` line under the offending control." It used
                         // to be one bare red line hanging under the last card,
                         // naming no field, while the switch that failed sprang
                         // back to the server's value in silence.

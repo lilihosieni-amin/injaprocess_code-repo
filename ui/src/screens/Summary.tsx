@@ -14,23 +14,45 @@ import { SectionCard } from '../ui/SectionCard'
 import { TextField } from '../ui/TextField'
 import { toFa } from '../lib/format'
 import { refusalStatus } from '../api/client'
+import { LoadFailedScreen } from '../ui/states'
 import { RefusalScreen } from './Refusal'
+
+/** Whether the A-0 block has a single term in it. */
+function hasIcom(icom: Icom): boolean {
+  return icom.inputs.length + icom.controls.length
+    + icom.outputs.length + icom.mechanisms.length > 0
+}
 
 /** Whether the response carried any of the three switchable fields.
  *
  *  `visibility.filtered` blanks `summary`, `idef0` and `kpis` rather than
  *  dropping them (unlike `source` and the timestamps, which it removes), so
  *  "withheld" and "never recorded" arrive as the same bytes and no guard can
- *  separate them. Saying «ثبت نشده است» would pick one and be wrong half the
- *  time; the design's own card says only what is observable — that they are
- *  not shown. Same principle as the departments conflict tile: absence of a
- *  claim, not a claim of absence. */
+ *  separate them.
+ *
+ *  **This is an OR, and it decides one thing only: whether §6.3's card is the
+ *  whole screen.** It used to gate the three empty states as well, and that was
+ *  the AC-25 defect Task 16 existed to remove, one level down. The three policy
+ *  switches are INDEPENDENT — `visibility.py` maps `summary→process_summary`,
+ *  `idef0→process_idef0`, `kpis→process_kpis`, and `/visibility` sets each
+ *  separately — so the ordinary mixed case is summary shown, KPIs withheld: the
+ *  OR was true, the detail block was drawn, and the screen printed «شاخصی برای
+ *  این فرآیند ثبت نشده است» — *nobody recorded one* — about a list the policy
+ *  had withheld. Each field now answers for itself. */
 function hasPublishedDetail(p: Process): boolean {
-  const icom = p.idef0
-  return p.summary.trim() !== ''
-    || p.kpis.length > 0
-    || icom.inputs.length + icom.controls.length + icom.outputs.length + icom.mechanisms.length > 0
+  return p.summary.trim() !== '' || p.kpis.length > 0 || hasIcom(p.idef0)
 }
+
+/**
+ * The only thing this screen may say about a switchable field that arrived
+ * empty from a caller who may have been denied it: that it is not shown.
+ *
+ * Never «ثبت نشده است», which asserts that nobody recorded one. Exported so the
+ * screen and its tests cannot come to word the same state differently, exactly
+ * as `Visibility.tsx` exports the two words §6.12 ends its rows with.
+ */
+export const IDEF0_NOT_SHOWN = 'نمای IDEF0 این فرآیند نمایش داده نمی‌شود.'
+export const KPIS_NOT_SHOWN = 'شاخص‌های این فرآیند نمایش داده نمی‌شوند.'
 
 /**
  * The destructive square — `--tile-c2` under `--conflict` behind a 1.5px
@@ -134,7 +156,7 @@ function ListEditor({ label, row, items, onChange }: {
 export function Summary() {
   const { pid = '' } = useParams()
   const nav = useNavigate()
-  const { data: p, error } = useProcess(pid)
+  const { data: p, error, refetch } = useProcess(pid)
   const put = usePutProcess(pid)
   const toast = useToast()
   const can = useCan(useSession().data)
@@ -158,7 +180,24 @@ export function Summary() {
   // get the same screen, which is the whole point of the status being uniform.
   const refused = refusalStatus(error)
   if (refused) return <RefusalScreen status={refused} />
-  if (!p) return <div className="flex-1 bg-bg" />
+  // Ahead of the blank, and that order is the whole fix. `refusalStatus` maps
+  // 403 and 404 only, so every other failure — a 500 above all — fell through to
+  // `!p` and drew a page that stayed empty for ever, with nothing on it to say
+  // the process had not loaded and nothing to try again with. `Users`,
+  // `UserDetail` and `Visibility` each grew this branch on this branch; these
+  // two screens were missed.
+  if (error) {
+    return <LoadFailedScreen message="اطلاعات فرآیند بارگذاری نشد." error={error}
+      onRetry={() => { void refetch() }} />
+  }
+  // …and the in-flight blank paints the FIELD, not `--bg`. `--bg` is the warm
+  // cream this app never paints a screen on and the shell behind this is
+  // `--ink`; `background-color` does
+  // not inherit, which is the very reason every rebuilt `[data-screen]` repeats
+  // `bg-ink`. Measured in Chrome: a full-viewport cream flash on every first
+  // navigation to this screen, invisible to every test by construction — jsdom
+  // paints nothing and every e2e stubs the read so the window never opens.
+  if (!p) return <div className="flex-1 bg-ink" />
 
   const proc: Process = p
   const mark = marks.find((m) => m.target === proc.id)
@@ -166,6 +205,17 @@ export function Summary() {
   // Cosmetic only: PUT /api/processes/{pid} re-derives `edit` from the session
   // row and refuses regardless. Asked about the process's own department, which
   // is the department the endpoint gates on too.
+  //
+  // **It is also the disclosure predicate, and that is not a coincidence.**
+  // `disclosure.redact` passes `editor=self.edits(dept)` — `_may_edit(f"dept:
+  // {dept}")` — into `visibility.filtered`, which returns the document untouched
+  // for an editor and blanks `summary`, `idef0` and `kpis` for everybody else.
+  // So this one boolean is the line between "this field arrived empty because it
+  // IS empty" and "this field arrived empty and I cannot tell which". Nothing
+  // below may claim absence on the false side of it (NFR-12 / AC-25). The
+  // premise this file used to carry — *"the app is never told which way the
+  // switch is set"* — is true of the switch and false of the only question that
+  // decides what may be said about it.
   const mayEdit = can('edit', `dept:${proc.department}`)
   function enter() {
     if (tombstoned) return
@@ -245,11 +295,18 @@ export function Summary() {
         </div>
 
         {!editing ? (
-          !hasPublishedDetail(proc) ? (
+          !mayEdit && !hasPublishedDetail(proc) ? (
             // §6.3's own card, and the one claim this screen is allowed to
             // make about the three switchable fields: that they are not being
-            // shown. `hasPublishedDetail` is content-based because the app is
-            // never told which way the switch is set — see its docstring.
+            // shown.
+            //
+            // `!mayEdit` is the half that was missing. `routers/processes.py`'s
+            // `_skeleton` writes every new process with `summary: ""`, an empty
+            // `idef0` and `kpis: []`, so **every process, the moment its own
+            // editor created it**, showed that editor «سیاست نمایش محتوای این
+            // دپارتمان تعیین می‌کند…» — false, because `visibility.filtered`
+            // returns early for an editor and filters nothing — and suppressed
+            // the honest «ثبت نشده است» empty states behind it.
             <div className="bg-card border border-border-card rounded-doc px-s11 py-s10 shadow-card">
               <div className="font-bold text-fs-body text-ink">خلاصه، نمای IDEF0 و شاخص‌ها نمایش داده نمی‌شوند</div>
               <p className="text-fs-sm text-muted leading-loose mt-s4 m-0">
@@ -262,6 +319,14 @@ export function Summary() {
                 <div className="font-bold text-fs-body text-violet mb-s9 flex items-center gap-s4">
                   <span className="w-s4 h-s4 bg-coral rounded-round" />نمای IDEF0 سطح فرآیند (A-0)
                 </div>
+                {!mayEdit && !hasIcom(proc.idef0) ? (
+                  // Four labelled columns with no chips is a picture of an
+                  // empty diagram, and to a caller who may have been denied the
+                  // field that is a claim of absence drawn rather than written.
+                  // An editor keeps the empty frame: it is theirs to fill, and
+                  // nothing was withheld from them.
+                  <p className="text-fs-sm text-muted leading-loose m-0">{IDEF0_NOT_SHOWN}</p>
+                ) : (
                 <div data-r-idef0 className="grid grid-cols-idef0 gap-s7 items-center max760:flex max760:flex-col max760:gap-s6">
                   <div className="col-start-2 row-start-1 text-center min-w-0">
                     <div className="text-fs-xxs text-muted mb-s3">کنترل‌ها ↓</div>
@@ -286,6 +351,7 @@ export function Summary() {
                     <div className="text-fs-xxs text-muted mt-s3">↑ مکانیزم‌ها</div>
                   </div>
                 </div>
+                )}
               </div>
 
               {/* Ledger P3-2: §6.3 gives this heading `--ink`, which is the
@@ -306,7 +372,16 @@ export function Summary() {
                 </div>
               ) : (
                 <div className="bg-card border border-dashed border-line rounded-tile p-s9 text-center text-faint text-fs-sm2 leading-loose">
-                  شاخصی برای این فرآیند ثبت نشده است. (سامانه اطلاعات را نمی‌سازد؛ فقط از محتوای واقعی جلسه پر می‌شود.)
+                  {/* Two sentences for two different facts, and the boolean
+                      that chooses between them is the server's own. «ثبت نشده
+                      است» claims nobody recorded a KPI; that is knowable only
+                      for the caller `visibility.filtered` hands the document to
+                      untouched. For everyone else an empty list is
+                      indistinguishable from a withheld one, so the screen says
+                      the one thing it can see. */}
+                  {mayEdit
+                    ? 'شاخصی برای این فرآیند ثبت نشده است. (سامانه اطلاعات را نمی‌سازد؛ فقط از محتوای واقعی جلسه پر می‌شود.)'
+                    : KPIS_NOT_SHOWN}
                 </div>
               )}
             </>

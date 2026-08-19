@@ -82,7 +82,7 @@ export function UserDetail() {
   const passwordId = useId()
 
   // Hooks first, then the early returns.
-  if (!session) return <div className="flex-1 bg-bg" />
+  if (!session) return <div className="flex-1 bg-ink" />
   if (refusal) return <RefusalScreen status={refusal} />
   const refused = refusalStatus(error)
   if (refused) return <RefusalScreen status={refused} />
@@ -96,7 +96,7 @@ export function UserDetail() {
     return <LoadFailedScreen message="اطلاعات این کاربر بارگذاری نشد." error={error}
       onRetry={() => { void refetch() }} />
   }
-  if (!user) return <div className="flex-1 bg-bg" />
+  if (!user) return <div className="flex-1 bg-ink" />
 
   const manageable = mayManage(session, user)
   const disableLabel = user.disabled ? 'فعال‌سازی کاربر' : 'غیرفعال‌سازی کاربر'
@@ -137,7 +137,7 @@ export function UserDetail() {
             line SVG, drawn pointing away from the screen it returns to — and a
             17px-tall hit target with no hover (F14).
 
-            The colour is NOT the deliverable's `#4A25A9`: that is the back
+            The colour is NOT the deliverable's own `--violet`: that is the back
             button on the panel's white crumb strip, and this link sits on the
             violet field, where `--violet` on `--ink` measures 1.6:1 and the
             harness census reads it as text nobody can see. It takes the field's

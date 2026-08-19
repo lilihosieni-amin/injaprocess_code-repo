@@ -59,6 +59,11 @@ export function ScopePicker({ scopes, onChange }: {
    *  reviving whatever was ticked before it — those boxes were cleared when it
    *  went on, and bringing them back would grant departments nobody re-read. */
   function toggleEverything(on: boolean) {
+    // …and the open «نماها» popover closes with it. The grid below is disabled
+    // while `*` is on, so a popover left open would be a live control inside an
+    // inert region — and the one that reappeared when `*` came back off would be
+    // one nobody asked for.
+    if (on) setOpenViews(null)
     onChange(on ? ['*'] : [])
   }
 
@@ -119,8 +124,20 @@ export function ScopePicker({ scopes, onChange }: {
       {/* §6.8 — `grid repeat(2,1fr); gap:8px`, dimmed by opacity when "whole
           system" is on. Dimmed rather than hidden (R5's neighbour): an
           administrator who cannot see the nine departments cannot see what they
-          are about to widen past. */}
+          are about to widen past.
+
+          **`pointer-events-none` stops the mouse and not the keyboard**, so
+          every tick and every views button in this grid stayed tabbable and
+          fully operable while the whole thing read as disabled — R5's shape
+          inverted: drawn as refused, isn't. The controls now carry `disabled`,
+          which is what takes them out of the tab order, refuses the space bar
+          and reaches assistive technology; `aria-disabled` on the group says the
+          same thing about the region the opacity dims. The three are one
+          statement, and this is *presentation* only — owner ruling R31 (the
+          views button on every tile) is untouched, and ticking a department
+          still correctly drops `*`. */}
       <div role="group" aria-label="دپارتمان" data-dimmed={every ? 'true' : 'false'}
+        aria-disabled={every || undefined}
         className={`grid grid-cols-2 gap-s4 max760:grid-cols-1 ${every ? 'opacity-40 pointer-events-none' : ''}`}>
         {list.map((d) => {
           const whole = scopes.includes(`dept:${d.code}`)
@@ -145,6 +162,7 @@ export function ScopePicker({ scopes, onChange }: {
                 <input
                   type="checkbox"
                   checked={whole}
+                  disabled={every}
                   aria-label={d.name}
                   onChange={(e) => toggleDepartment(d.code, e.target.checked)}
                   className="peer sr-only"
@@ -158,6 +176,7 @@ export function ScopePicker({ scopes, onChange }: {
                     because it lives inside a <label> whose control is the tick:
                     a bare press would toggle the whole department. */}
                 <button type="button"
+                  disabled={every}
                   aria-label={`نماهای ${d.name}`}
                   aria-expanded={openViews === d.code}
                   onClick={(e) => {
@@ -177,7 +196,7 @@ export function ScopePicker({ scopes, onChange }: {
                   </span>
                 )}
               </label>
-              {openViews === d.code && (
+              {openViews === d.code && !every && (
                 // §6.8's nested view menu. One is open at a time, so the two
                 // kinds need no department in their accessible names.
                 <div className="absolute z-dropdown top-full start-0 end-0 mt-s3 flex flex-col

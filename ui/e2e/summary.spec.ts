@@ -121,7 +121,14 @@ test('process summary', async ({ page }) => {
  * populated screen, and the test above is where it grades it.
  */
 test('process summary — the fields the reader is not being shown', async ({ page }) => {
-  await signedIn(page)
+  // **A READER**, and that is now load-bearing rather than incidental. The card
+  // is a statement about the visibility POLICY, and `visibility.filtered`
+  // returns the document untouched for anyone holding `edit` on its department —
+  // so drawing it for an editor says a switch withheld something when nothing
+  // was filtered at all. This spec used to run as `signedIn`'s default editor,
+  // which is exactly the caller the claim is false for; the editor's own
+  // rendering of the same payload is the block below.
+  await signedIn(page, { role: 'reader', capabilities: ['view', 'comment', 'export_pdf'] })
   await serve(page, {
     '/api/departments': DEPARTMENTS,
     [`/api/processes/${PID}`]: BLANKED,
@@ -135,4 +142,33 @@ test('process summary — the fields the reader is not being shown', async ({ pa
   expect(await page.locator('body').innerText()).not.toContain('شاخصی برای این فرآیند ثبت نشده است')
 
   await shot(page, `summary-withheld-${page.viewportSize()!.width}`)
+})
+
+/**
+ * The same bytes, the other caller — NFR-12 / AC-25 from the side that was
+ * getting it wrong.
+ *
+ * `routers/processes.py`'s `_skeleton` writes every new process with an empty
+ * summary, an empty ICOM and no KPIs, so this payload is not a contrivance: it
+ * is what every process looks like at the moment its own editor creates it.
+ * That editor was shown «سیاست نمایش محتوای این دپارتمان تعیین می‌کند…» — a
+ * sentence about a filter that never ran for them — with the honest empty states
+ * suppressed behind it.
+ *
+ * Paired with the test above deliberately: the two differ in the session and in
+ * nothing else, so neither can pass for a screen that ignores it.
+ */
+test('process summary — an editor’s brand-new process is empty, not withheld', async ({ page }) => {
+  await signedIn(page)
+  await serve(page, {
+    '/api/departments': DEPARTMENTS,
+    [`/api/processes/${PID}`]: BLANKED,
+    [`/api/confirmations?department=${CODE}`]: CONFIRMATIONS,
+    '/api/pending': [],
+  })
+  await visit(page, `/processes/${PID}`, 'summary')
+
+  await expect(page.getByText('خلاصه، نمای IDEF0 و شاخص‌ها نمایش داده نمی‌شوند')).toHaveCount(0)
+  await expect(page.getByText('نمای IDEF0 سطح فرآیند (A-0)')).toBeVisible()
+  expect(await page.locator('body').innerText()).toContain('شاخصی برای این فرآیند ثبت نشده است')
 })

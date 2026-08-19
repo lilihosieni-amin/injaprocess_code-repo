@@ -718,7 +718,13 @@ describe('who the user list is drawn for', () => {
     session = { ...EDITOR, capabilities: ['view', 'edit', 'confirm', 'set_visibility'] }
     mountList()
     expect(await screen.findByText('اجازهٔ این کار را ندارید')).toBeInTheDocument()
-    expect(screen.queryAllByRole('listitem')).toHaveLength(0)
+    // `rows()`, not `queryAllByRole('listitem')`. §6.7 replaced the `<ul>` of
+    // cards with `DataTable`, so this screen renders NO `listitem` in any state —
+    // the file says so itself at the top — and the three assertions that used it
+    // were green against a screen showing the full listing. Confirmed by
+    // mutation: rendering the two-row table into this test's own body left them
+    // passing. `rows()` reads `[data-r-trow]`, which is the body row's own hook.
+    expect(rows()).toHaveLength(0)
     await waitFor(() => expect(seen.gets).toEqual([]))
   })
 
@@ -757,7 +763,7 @@ describe('who the user list is drawn for', () => {
     stubServer([SAHAR], { readStatus: 403 })
     mountList()
     expect(await screen.findByText('اجازهٔ این کار را ندارید')).toBeInTheDocument()
-    expect(screen.queryAllByRole('listitem')).toHaveLength(0)
+    expect(rows()).toHaveLength(0)
   })
 
   it('shows the not-found surface when the server answers 404, not the refusal one', async () => {
@@ -776,7 +782,7 @@ describe('who the user list is drawn for', () => {
     mountList()
     expect(await screen.findByText('فهرست کاربران بارگذاری نشد.')).toBeInTheDocument()
     expect(screen.queryByText('هنوز کاربری ثبت نشده است')).toBeNull()
-    expect(screen.queryAllByRole('listitem')).toHaveLength(0)
+    expect(rows()).toHaveLength(0)
     // And it is worth asking again, which is exactly what a 5xx is and a 4xx is
     // not — decided by `retryQuery`, the same predicate the query itself uses.
     expect(screen.getByRole('button', { name: 'تلاش دوباره' })).toBeInTheDocument()

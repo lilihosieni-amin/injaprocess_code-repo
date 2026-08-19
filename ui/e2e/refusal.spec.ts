@@ -86,10 +86,30 @@ test('refusal — reachable by typing, and only by typing', async ({ page }) => 
   const pad = expandPadding(await screen.evaluate((el) => getComputedStyle(el).padding))
   expect([pad.top, pad.left]).toEqual(w > 760 ? ['30px', '40px'] : ['18px', '14px'])
 
-  // Half 1, the other status: a refused act on a screen the reader can see.
+  // Half 1b — the SAME status for the same reason, on a second surface, and it
+  // is the one this spec used to get wrong.
+  //
+  // `/visibility` is `requires("set_visibility", "*")` in both directions, and
+  // `access.requires` checks SCOPE BEFORE CAPABILITY, so this session — which
+  // holds no `*` — is answered **404** by `GET /api/visibility`
+  // (`tests/test_reader_sees_no_users.py:413` pins it for a scoped Reader). The
+  // screen used to state 403 for every refusal, so it told a department-scoped
+  // caller that a content-visibility policy exists here, which is exactly the
+  // disclosure the 404 refuses. Owner: "i ok with not found 404."
+  await page.goto('/visibility')
+  await expect(page.getByText('چیزی اینجا نیست')).toBeVisible()
+  await expect(page.getByText('اجازهٔ این کار را ندارید')).toHaveCount(0)
+
+  // Half 1c — the other status, and the pair that makes the two above mean
+  // something. Same screen, same URL, one difference: this caller IS scoped `*`
+  // and merely lacks the capability, which is the case 403 is for. Without it
+  // both halves of the partition read 404 in the browser and a screen that
+  // answered 404 to everybody would pass the whole spec.
+  await signedIn(page, { ...SCOPED_EDITOR, scopes: ['*'] })
   await page.goto('/visibility')
   await expect(page.getByText('اجازهٔ این کار را ندارید')).toBeVisible()
   await expect(page.getByText('چیزی اینجا نیست')).toHaveCount(0)
+  await signedIn(page, SCOPED_EDITOR)
 
   // Half 2: nothing in the chrome offers a screen that would refuse them.
   //

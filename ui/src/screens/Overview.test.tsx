@@ -100,6 +100,33 @@ describe('Overview', () => {
   })
 })
 
+describe('a read that failed', () => {
+  it('says so, and offers the retry, instead of a page that stays blank for ever', async () => {
+    // `refusalStatus` maps 403 and 404 and nothing else, so a 500, a dropped
+    // connection or an unparseable body fell through to `!data` and drew
+    // `<div class="flex-1 …"/>` — nothing to read, nothing to press, no way to
+    // tell it from a slow network. `Users`, `UserDetail` and `Visibility` each
+    // grew this branch on this branch; this screen did not.
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response('{}', { status: 500, headers: { 'Content-Type': 'application/json' } }))
+    at(EDITOR)
+    expect(await screen.findByText('اطلاعات دپارتمان بارگذاری نشد.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'تلاش دوباره' })).toBeInTheDocument()
+  })
+
+  it('paints the violet field while the read is in flight, not the warm cream', async () => {
+    // `background-color` does not inherit, which is the reason every rebuilt
+    // `[data-screen]` repeats `bg-ink`. The in-flight blank wrote `bg-bg` — the
+    // warm cream — so the first navigation to this screen flashed a full
+    // viewport of it over the field. Measured in Chrome at 1440x1000.
+    vi.spyOn(globalThis, 'fetch').mockReturnValue(new Promise(() => {}))
+    const { container } = at(EDITOR)
+    const blank = container.firstElementChild as HTMLElement
+    expect(blank.className).toContain('bg-ink')
+    expect(blank.className).not.toContain('bg-bg')
+  })
+})
+
 describe('the rebuilt department page', () => {
   it('uses the shared accordion and has no second close button', async () => {
     serve()

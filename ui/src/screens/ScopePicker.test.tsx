@@ -39,10 +39,26 @@ describe('ScopePicker', () => {
     expect(within(grid).getByRole('checkbox', { name: 'سالن' })).toBeInTheDocument()
   })
 
-  it('widening removes `*` and every narrowing of the same department', async () => {
-    const onChange = draw(['*', 'dept:dining/report:steps'])
+  it('widening drops every narrowing of the same department and touches no other', async () => {
+    // The fixture used to hold `*` as well, which is a state no hand can reach
+    // this control from: the grid is DISABLED while «کل سامانه» is on, so the
+    // only route to a single department is to turn it off first (which leaves
+    // nothing behind — see the two-step test below). `toggleDepartment` still
+    // filters `*` out defensively; what is asserted here is what a person can do.
+    const onChange = draw(['dept:dining/report:steps', 'dept:cashier'])
     await userEvent.click(await screen.findByRole('checkbox', { name: 'سالن' }))
-    expect(onChange).toHaveBeenCalledWith(['dept:dining'])
+    expect(onChange).toHaveBeenCalledWith(['dept:cashier', 'dept:dining'])
+  })
+
+  it('leaves nothing behind when «کل سامانه» comes off, so the grid opens empty', async () => {
+    // The other half of the route above, and the reason the `*` filter in
+    // `toggleDepartment` is belt-and-braces rather than the mechanism: turning
+    // the wildcard off clears the draft outright rather than reviving whatever
+    // was ticked before it — those boxes were cleared when it went on, and
+    // bringing them back would grant departments nobody re-read.
+    const onChange = draw(['*'])
+    await userEvent.click(await screen.findByRole('checkbox', { name: 'کل سامانه' }))
+    expect(onChange).toHaveBeenCalledWith([])
   })
 
   it('a report drops the whole-department grant and keeps its siblings', async () => {
@@ -67,6 +83,35 @@ describe('ScopePicker', () => {
     draw(['*'])
     expect((await screen.findAllByRole('group', { name: 'دپارتمان' }))[1])
       .toHaveAttribute('data-dimmed', 'true')
+  })
+
+  it('makes the dimmed grid actually disabled — the keyboard reaches it too', async () => {
+    // `opacity-40 pointer-events-none` stops the MOUSE. Every tick and every
+    // views button in the grid stayed in the tab order, took focus and operated
+    // normally from the keyboard while the whole region read as refused — R5's
+    // shape inverted. Asserted through the keyboard rather than through a class
+    // name, because the class is exactly what looked right.
+    const onChange = draw(['*'])
+    const dining = await screen.findByRole('checkbox', { name: 'سالن' })
+    const views = screen.getByRole('button', { name: 'نماهای سالن' })
+    expect(dining).toBeDisabled()
+    expect(views).toBeDisabled()
+    expect(screen.getByRole('group', { name: 'دپارتمان' })).toHaveAttribute('aria-disabled', 'true')
+
+    // Tab from «کل سامانه» — the last control before the grid — must not land
+    // inside it. `userEvent.tab()` walks the real tab order, so a control that
+    // is merely dimmed is caught here and a `disabled` one is not reachable.
+    screen.getByRole('checkbox', { name: 'کل سامانه' }).focus()
+    await userEvent.tab()
+    expect(screen.getByRole('group', { name: 'دپارتمان' })).not.toContainElement(
+      document.activeElement as HTMLElement)
+
+    // …and pressing it changes nothing, which is the half a tab-order check
+    // alone would not cover for a mouse-less screen reader user.
+    await userEvent.click(views)
+    expect(screen.queryByRole('checkbox', { name: 'راهنمای گام‌به‌گام' })).toBeNull()
+    await userEvent.click(dining)
+    expect(onChange).not.toHaveBeenCalled()
   })
 
   it('tints a tile the account reaches at all, and leaves the rest untinted', async () => {

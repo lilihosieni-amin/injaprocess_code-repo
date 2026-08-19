@@ -13,6 +13,7 @@ import { TextField } from '../ui/TextField'
 import { useToast } from '../write/ToastProvider'
 import { ConfirmMark } from '../write/ConfirmMark'
 import { refusalStatus } from '../api/client'
+import { LoadFailedScreen } from '../ui/states'
 import { RefusalScreen } from './Refusal'
 import type { Overview as OverviewT } from '../api/types'
 
@@ -62,7 +63,7 @@ type ArrayKey = { [K in keyof Draft]: Draft[K] extends unknown[] ? K : never }[k
  */
 export function Overview() {
   const { code = '' } = useParams()
-  const { data, error } = useOverview(code)
+  const { data, error, refetch } = useOverview(code)
   const put = usePutOverview(code)
   const toast = useToast()
   // Cosmetic only: PUT /api/departments/{code}/overview re-derives `edit` from
@@ -80,7 +81,23 @@ export function Overview() {
   // this" — the screen must not say which of the two it is.
   const refused = refusalStatus(error)
   if (refused) return <RefusalScreen status={refused} />
-  if (!data) return <div className="flex-1 bg-bg" />
+  // Ahead of the blank, and that order is the whole fix. `refusalStatus` maps
+  // 403 and 404 only, so every other failure — a 500 above all — fell through to
+  // `!data` and drew a page that stayed empty for ever, with nothing on it to
+  // say the department had not loaded and nothing to try again with. `Users`,
+  // `UserDetail` and `Visibility` each grew this branch on this branch; this
+  // screen and `Summary` were missed.
+  if (error) {
+    return <LoadFailedScreen message="اطلاعات دپارتمان بارگذاری نشد." error={error}
+      onRetry={() => { void refetch() }} />
+  }
+  // …and the in-flight blank paints the FIELD, not `--bg`. `--bg` is the warm
+  // cream this app never paints a screen on and the shell behind this is
+  // `--ink`; `background-color` does
+  // not inherit, which is the very reason every rebuilt `[data-screen]` repeats
+  // `bg-ink`. Measured in Chrome: a full-viewport cream flash on every first
+  // navigation to this screen.
+  if (!data) return <div className="flex-1 bg-ink" />
 
   function enter() {
     setDraft({

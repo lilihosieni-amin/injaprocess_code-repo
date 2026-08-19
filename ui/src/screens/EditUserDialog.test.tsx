@@ -519,6 +519,11 @@ describe('the supervisor picker on the edit form', () => {
     const seen = stubServer(HOMA, { stallCandidates: true })
     mountDetail(9)
     await openDialog()
+    // Homa is `*`-scoped, and the department grid is DISABLED under «کل سامانه»
+    // — dimmed and inert, not dimmed and secretly operable — so narrowing her to
+    // one department is the two steps a hand actually takes. It used to be one
+    // click, which only the keyboard could make.
+    await userEvent.click(screen.getByRole('checkbox', { name: 'کل سامانه' }))
     await userEvent.click(screen.getByRole('checkbox', { name: 'پخت' }))
     await save()
     await waitFor(() => expect(seen.writes).toHaveLength(1))
