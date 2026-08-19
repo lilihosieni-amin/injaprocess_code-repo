@@ -379,13 +379,15 @@ describe('the supervisor picker', () => {
     expect(screen.getByText(/کامنتی را تأیید نمی‌کند/)).toBeInTheDocument()
   })
 
-  it('says the supervisor grants nothing (D51)', async () => {
-    // It routes comment approval and confers no capability, no scope and no
-    // rank. Drawn beside a role picker with no qualification it reads as a
-    // permission, and would then be chosen to give somebody something. The
-    // design has no permission model to state this in, so the clause is added
-    // to §6.14's own rule statement rather than replacing it.
+  it('states §6.14’s two sentences and no third — owner ruling R32', async () => {
+    // A third clause saying the choice grants no access was written here and
+    // the owner removed it: the deliverable wins on content, and this picker is
+    // not where a permission model gets explained. Pinned in BOTH directions —
+    // the two sentences must be present AND the removed one absent — because a
+    // later reader of D51 would otherwise have every reason to add it back.
     mount({ candidates: [SAHAR] })
-    expect(await screen.findByText(/هیچ دسترسی‌ای نمی‌دهد/)).toBeInTheDocument()
+    expect(await screen.findByText(/دپارتمانش دپارتمان او را پوشش دهد/)).toBeInTheDocument()
+    expect(screen.getByText(/کامنتی را تأیید نمی‌کند/)).toBeInTheDocument()
+    expect(screen.queryByText(/هیچ دسترسی‌ای نمی‌دهد/)).toBeNull()
   })
 })

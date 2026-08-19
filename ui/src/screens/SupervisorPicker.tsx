@@ -19,15 +19,17 @@ export const SUPERVISOR_OFF_LIST =
 /** §6.14's own closing rule statement, plus D51's clause.
  *
  *  The two design sentences are why the list is as short as it is. The third is
- *  this product's and the design has no permission model to state it in: drawn
- *  beside a role picker with no qualification, a supervisor reads as a
- *  permission and would then be chosen to give somebody something. It routes
- *  comment approval (D34) and grants nothing whatever — a Reader may supervise
- *  a Reader. */
+ *  this product's. It routes comment approval (D34) and grants nothing whatever
+ *  — a Reader may supervise a Reader.
+ *
+ *  **Owner ruling R32: the rule statement is the design's TWO sentences, and no
+ *  third.** A clause saying the choice grants no access was added here and the
+ *  owner removed it: the deliverable wins on content (R1/R22), and this file is
+ *  not where a permission model gets explained. The test below pins the absence
+ *  as well as the presence, so it cannot drift back in. */
 export const SUPERVISOR_RULE =
   'سرپرست باید بالاتر از این کاربر باشد و دپارتمانش دپارتمان او را پوشش دهد. '
-  + 'خوانندهٔ گزارش نمی‌تواند سرپرست کسی باشد، چون کامنتی را تأیید نمی‌کند. '
-  + 'این انتخاب جایگاهی در نمودار سازمانی است و هیچ دسترسی‌ای نمی‌دهد.'
+  + 'خوانندهٔ گزارش نمی‌تواند سرپرست کسی باشد، چون کامنتی را تأیید نمی‌کند.'
 
 /** §6.14 — what the popover says when the server offered nobody. Distinct from
  *  the search miss below, which is a different fact with different advice. */
