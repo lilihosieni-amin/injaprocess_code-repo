@@ -4,7 +4,7 @@ import { useConfirmations, useProcess, usePutProcess } from '../api/hooks'
 import { useSession } from '../auth/useSession'
 import { useCan } from '../auth/can'
 import { useToast } from '../write/ToastProvider'
-import { ConfirmMark } from '../write/ConfirmMark'
+import { ConfirmMark, ConfirmAction } from '../write/ConfirmMark'
 import type { Process, Icom, Kpi } from '../api/types'
 import { Chip } from '../ui/Chip'
 import { Icon } from '../ui/Icon'
@@ -274,9 +274,14 @@ export function Summary() {
               </>
             )}
           </div>
-          <div data-r-actions className="flex gap-s5 shrink-0 max760:flex-wrap">
+          <div data-r-actions className="flex items-center gap-s5 shrink-0 max760:flex-wrap">
             {!editing ? (
               <>
+                {/* §6.3 — the act belongs in the header's action group, not in
+                    the badge row beside the mark. `ConfirmMark` is a 22px pill
+                    and this is a 44px control; putting them on one line is
+                    what set the height of every process row (F1). */}
+                <ConfirmAction row={mark} department={dept} />
                 {mayEdit && !tombstoned && (
                   <Button variant="ghost" onClick={enter} className="px-s8 py-s6 text-fs-sm">ویرایش اطلاعات</Button>
                 )}

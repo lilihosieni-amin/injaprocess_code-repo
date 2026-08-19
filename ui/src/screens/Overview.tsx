@@ -11,7 +11,7 @@ import { Icon } from '../ui/Icon'
 import { IconTile } from '../ui/IconTile'
 import { TextField } from '../ui/TextField'
 import { useToast } from '../write/ToastProvider'
-import { ConfirmMark } from '../write/ConfirmMark'
+import { ConfirmMark, ConfirmAction } from '../write/ConfirmMark'
 import { refusalStatus } from '../api/client'
 import { LoadFailedScreen } from '../ui/states'
 import { RefusalScreen } from './Refusal'
@@ -171,10 +171,18 @@ export function Overview() {
           </div>
           {!editing ? (
             // R5 — an editor's control is ABSENT for everyone else, never drawn
-            // and disabled.
-            mayEdit && (
-              <Button variant="violet" onClick={enter} className="flex-none px-s8 py-s5 text-fs-sm">ویرایش</Button>
-            )
+            // and disabled, and that is true of both of these: `ConfirmAction`
+            // draws nothing at all without `confirm` on this department.
+            //
+            // §6.4 — the act sits in the header's action group. It used to be in
+            // the title row beside `ConfirmMark`, where a 44px control set the
+            // height of a 22px line of badges (F1).
+            <div className="flex items-center gap-s5 flex-none">
+              <ConfirmAction row={marks.find((mark) => mark.target === code)} department={code} />
+              {mayEdit && (
+                <Button variant="violet" onClick={enter} className="flex-none px-s8 py-s5 text-fs-sm">ویرایش</Button>
+              )}
+            </div>
           ) : (
             // §6.16's second half: `[data-r-stack] [data-r-actions]` wraps at
             // ≤760 and its buttons take `flex:1 1 45%`. `max760:flex-1` is that

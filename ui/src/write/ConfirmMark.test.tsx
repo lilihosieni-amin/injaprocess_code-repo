@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { ConfirmMark } from './ConfirmMark'
+import { ConfirmMark, ConfirmAction } from './ConfirmMark'
 import type { Confirmation } from '../api/types'
 import type { SessionDescriptor } from '../auth/session'
 
@@ -87,17 +87,16 @@ function recordingClient() {
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks() })
 
 describe('ConfirmMark', () => {
-  it('says a process is unconfirmed, and says who cannot see it', () => {
+  it('says a process is unconfirmed, and offers no act of its own', () => {
     mount(UNCONFIRMED, EDITOR)
     expect(screen.getByText('تأیید نشده')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'تأیید محتوا' })).toBeInTheDocument()
+    expect(screen.queryByRole('button')).toBeNull()
   })
 
-  it('says a process is confirmed and offers the withdrawal', () => {
+  it('says a process is confirmed, and still offers no act', () => {
     mount(CONFIRMED, EDITOR)
     expect(screen.getByText('تأیید شده')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'لغو تأیید' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'تأیید محتوا' })).toBeNull()
+    expect(screen.queryByRole('button')).toBeNull()
   })
 
   it('draws nothing at all for someone who cannot confirm', () => {
@@ -120,30 +119,148 @@ describe('ConfirmMark', () => {
   })
 })
 
-describe('ConfirmMark — the fingerprint goes back exactly as it came', () => {
-  it('POSTs the row’s own fingerprint to the row’s own target', async () => {
-    // The whole point of storing a fingerprint rather than a boolean: what is
-    // vouched for is the bytes this row describes. A mutation that sent no
-    // fingerprint, or one from anywhere else, would confirm a document nobody
-    // read — and the server, which compares against the file on disk, is the
-    // only thing that could ever notice.
+/** One `ConfirmAction`, and a `rerender` that swaps only the row.
+ *
+ *  Rendered through a helper that keeps ONE `QueryClient` across the rerender:
+ *  a fresh client would drop the mutation whose 409 the "stops saying it" pair
+ *  is about, and both halves would pass for the wrong reason. */
+function actionView(row: Confirmation | undefined, qc: QueryClient) {
+  return (
+    <QueryClientProvider client={qc}>
+      <ConfirmAction row={row} department="dining" />
+    </QueryClientProvider>
+  )
+}
+
+function drawAction(row: Confirmation | undefined,
+  who: SessionDescriptor | undefined = EDITOR) {
+  session = who
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const view = render(actionView(row, qc))
+  return {
+    ...view,
+    qc,
+    rerender: (next: Confirmation | undefined) => view.rerender(actionView(next, qc)),
+  }
+}
+
+/** Open the dialog and press its own OK. Two presses, and that is the point:
+ *  FR-I3 says nothing is written until the editor asks for it a second time. */
+function press(label: string) {
+  fireEvent.click(screen.getByRole('button', { name: label }))
+  const dialog = screen.getByRole('dialog')
+  fireEvent.click(within(dialog).getByRole('button', { name: label }))
+  return dialog
+}
+
+describe('ConfirmAction — who is offered the act at all', () => {
+  it('draws nothing at all for someone who cannot confirm', () => {
+    // R5 / D22 — not a disabled button and not a greyed control: a reader only
+    // ever sees confirmed content, so the act would be an affordance nobody in
+    // that role can use. The server refuses regardless (D48).
+    const { container } = drawAction(UNCONFIRMED, READER)
+    expect(container).toBeEmptyDOMElement()
+  })
+
+  it('draws nothing for a holder of confirm scoped to another department', () => {
+    const { container } = drawAction(UNCONFIRMED, OTHER_DEPT_EDITOR)
+    expect(container).toBeEmptyDOMElement()
+  })
+
+  it('draws nothing while the row has not arrived', () => {
+    const { container } = drawAction(undefined, EDITOR)
+    expect(container).toBeEmptyDOMElement()
+  })
+
+  it('offers the withdrawal, and only that, once the row is confirmed', () => {
+    drawAction(CONFIRMED, EDITOR)
+    expect(screen.getByRole('button', { name: 'لغو تأیید' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'تأیید محتوا' })).toBeNull()
+  })
+})
+
+describe('ConfirmAction — nothing is written until the editor asks twice', () => {
+  it('confirms behind the design’s confirm-content dialog', async () => {
     const spy = mockFetch(200, { ...UNCONFIRMED, confirmed: true })
-    mount(UNCONFIRMED, EDITOR)
+    drawAction(UNCONFIRMED)
     fireEvent.click(screen.getByRole('button', { name: 'تأیید محتوا' }))
+    const dialog = await screen.findByRole('dialog', { name: /تأیید محتوا/ })
+    // §6.15 `confirmDialog` — a 42x42 radius-14 tinted glyph tile beside the
+    // title; OK filled `--green` confirming, `--coral` un-confirming
+    // (`Inja Panel.dc.html:3601`, `:3603`).
+    expect(within(dialog).getByTestId('confirm-glyph'))
+      .toHaveClass('bg-tile-ok', 'text-green')
+    // FR-I3 — opening the box writes nothing. The mutation goes out on the
+    // second press and not before.
+    expect(spy).not.toHaveBeenCalled()
+    fireEvent.click(within(dialog).getByRole('button', { name: 'تأیید محتوا' }))
     await waitFor(() => expect(spy).toHaveBeenCalled())
+    // The fingerprint comes from the server and goes straight back: the client
+    // computes none, because canonical JSON here would have to agree with
+    // Python's byte for byte over Persian text.
     const [url, init] = spy.mock.calls[0]
     expect(url).toBe('/api/confirmations/dining-001')
-    expect(init?.method).toBe('POST')
     expect(JSON.parse(String(init?.body))).toEqual({ fingerprint: 'a'.repeat(64) })
   })
 
+  it('writes nothing at all when the dialog is dismissed instead', async () => {
+    // The other half of FR-I3, and the half a "fire on open" regression would
+    // leave green: cancelling must leave the document exactly as it was.
+    const spy = mockFetch(200, { ...UNCONFIRMED, confirmed: true })
+    drawAction(UNCONFIRMED)
+    fireEvent.click(screen.getByRole('button', { name: 'تأیید محتوا' }))
+    const dialog = await screen.findByRole('dialog')
+    fireEvent.click(within(dialog).getByRole('button', { name: 'انصراف' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(spy).not.toHaveBeenCalled()
+  })
+
+  it('draws the un-confirming dialog in the conflict tone', async () => {
+    mockFetch(200, UNCONFIRMED)
+    drawAction(CONFIRMED)
+    fireEvent.click(screen.getByRole('button', { name: 'لغو تأیید' }))
+    const dialog = await screen.findByRole('dialog', { name: /لغو تأیید/ })
+    expect(within(dialog).getByTestId('confirm-glyph'))
+      .toHaveClass('bg-tile-c', 'text-conflict')
+  })
+
+  it('states FR-V2’s rule where the editor is deciding, in the deliverable’s own words', async () => {
+    // `Inja Panel.dc.html:3599` — the confirm-content dialog's own note. A
+    // confirmation is for a VERSION, and this is the one place the product says
+    // so to the person it binds (FR-V2 / FR-V3 / AC-18).
+    mockFetch(200, { ...UNCONFIRMED, confirmed: true })
+    drawAction(UNCONFIRMED)
+    fireEvent.click(screen.getByRole('button', { name: 'تأیید محتوا' }))
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByText(/جابه‌جایی گره‌ها/)).toBeInTheDocument()
+    expect(within(dialog).getByText(/تأیید را باطل می‌کند/)).toBeInTheDocument()
+  })
+
+  it('is a 44px hit target drawn at the design’s 34px', () => {
+    drawAction(UNCONFIRMED)
+    const button = screen.getByRole('button', { name: 'تأیید محتوا' })
+    expect(button).toHaveClass('min-h-touch', 'min-w-touch')
+    expect(within(button).getByTestId('confirm-box')).toHaveClass('w-tool', 'h-tool')
+  })
+
+  it('is not a control that can set the height of a title line', () => {
+    // The F1 defect one property along: `ConfirmMark` is what a title row
+    // carries, and it must stay free of the 44px floor even though the act it
+    // used to hold now has one.
+    drawMark({ confirmed: false })
+    const mark = screen.getByTestId('confirm-mark')
+    expect(within(mark).queryByTestId('confirm-box')).toBeNull()
+  })
+})
+
+describe('ConfirmAction — the fingerprint goes back exactly as it came', () => {
   it('confirms the target named by the row, never the department it was drawn in', async () => {
     // `department` is the scope the capability is asked about; `row.target` is
-    // what is confirmed. A process mark drawn on the department page must still
-    // POST to the process.
+    // what is confirmed. A process control drawn on a department page must
+    // still POST to the process.
     const spy = mockFetch(200, { ...UNCONFIRMED, confirmed: true })
-    mount({ ...UNCONFIRMED, target: 'dining-007' }, EDITOR)
-    fireEvent.click(screen.getByRole('button', { name: 'تأیید محتوا' }))
+    drawAction({ ...UNCONFIRMED, target: 'dining-007' })
+    press('تأیید محتوا')
     await waitFor(() => expect(spy).toHaveBeenCalled())
     expect(spy.mock.calls[0][0]).toBe('/api/confirmations/dining-007')
   })
@@ -153,24 +270,32 @@ describe('ConfirmMark — the fingerprint goes back exactly as it came', () => {
     // which version it was: the server takes no body, and requiring one would
     // refuse the withdrawal precisely when the document has drifted.
     const spy = mockFetch(200, UNCONFIRMED)
-    mount(CONFIRMED, EDITOR)
-    fireEvent.click(screen.getByRole('button', { name: 'لغو تأیید' }))
+    drawAction(CONFIRMED)
+    press('لغو تأیید')
     await waitFor(() => expect(spy).toHaveBeenCalled())
     const [url, init] = spy.mock.calls[0]
     expect(url).toBe('/api/confirmations/dining-001')
     expect(init?.method).toBe('DELETE')
     expect(init?.body).toBeUndefined()
   })
+
+  it('closes the dialog once the write lands', async () => {
+    const spy = mockFetch(200, { ...UNCONFIRMED, confirmed: true })
+    drawAction(UNCONFIRMED)
+    press('تأیید محتوا')
+    await waitFor(() => expect(spy).toHaveBeenCalled())
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+  })
 })
 
-describe('ConfirmMark — a 409 is not a failure, it is “look again”', () => {
+describe('ConfirmAction — a 409 is not a failure, it is “look again”', () => {
   it('says the content moved, and does not say the request failed', async () => {
     const spy = mockFetch(409, {
       detail: 'این محتوا از زمانی که آن را دیدید تغییر کرده است؛'
               + ' دوباره بررسی و تأیید کنید.',
     })
-    mount(UNCONFIRMED, EDITOR)
-    fireEvent.click(screen.getByRole('button', { name: 'تأیید محتوا' }))
+    drawAction(UNCONFIRMED)
+    press('تأیید محتوا')
     await waitFor(() => expect(spy).toHaveBeenCalled())
     // On the **role**, not on the text. A message that appears after the click
     // that caused it reaches a screen reader only if it is announced, and
@@ -184,6 +309,17 @@ describe('ConfirmMark — a 409 is not a failure, it is “look again”', () =>
     // "it didn't work, try again" tells the editor to retry the very thing
     // that will keep being refused.
     expect(screen.queryByText(/دوباره تلاش کنید/)).toBeNull()
+    // …and it is inside the dialog, never back in the row that opened it (F3).
+    expect(within(screen.getByRole('dialog')).getByRole('alert')).toBeInTheDocument()
+  })
+
+  it('keeps the dialog open on a 409, so the sentence has somewhere to be', async () => {
+    const spy = mockFetch(409, { detail: 'تغییر کرده است' })
+    drawAction(UNCONFIRMED)
+    press('تأیید محتوا')
+    await waitFor(() => expect(spy).toHaveBeenCalled())
+    await screen.findByRole('alert')
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
   })
 
   it('refetches the row after a 409, so the stale fingerprint on screen is replaced', async () => {
@@ -193,12 +329,8 @@ describe('ConfirmMark — a 409 is not a failure, it is “look again”', () =>
     const spy = mockFetch(409, { detail: 'تغییر کرده است' })
     session = EDITOR
     const { qc, invalidated } = recordingClient()
-    render(
-      <QueryClientProvider client={qc}>
-        <ConfirmMark row={UNCONFIRMED} department="dining" />
-      </QueryClientProvider>,
-    )
-    fireEvent.click(screen.getByRole('button', { name: 'تأیید محتوا' }))
+    render(actionView(UNCONFIRMED, qc))
+    press('تأیید محتوا')
     await waitFor(() => expect(spy).toHaveBeenCalled())
     await waitFor(() =>
       expect(invalidated).toContainEqual(['confirmations', 'dining']))
@@ -210,19 +342,12 @@ describe('ConfirmMark — a 409 is not a failure, it is “look again”', () =>
     // it sits beside an up-to-date row telling the editor to look again at the
     // very thing they are now looking at, cleared only by the next click.
     const spy = mockFetch(409, { detail: 'تغییر کرده است' })
-    session = EDITOR
-    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-    const view = (row: Confirmation) => (
-      <QueryClientProvider client={qc}>
-        <ConfirmMark row={row} department="dining" />
-      </QueryClientProvider>
-    )
-    const { rerender } = render(view(UNCONFIRMED))
-    fireEvent.click(screen.getByRole('button', { name: 'تأیید محتوا' }))
+    const { rerender } = drawAction(UNCONFIRMED)
+    press('تأیید محتوا')
     await waitFor(() => expect(spy).toHaveBeenCalled())
     expect(await screen.findByRole('alert')).toHaveTextContent(/تغییر کرده است/)
     // What the refetch produces: the same target, a fingerprint that moved.
-    rerender(view({ ...UNCONFIRMED, fingerprint: 'f'.repeat(64) }))
+    rerender({ ...UNCONFIRMED, fingerprint: 'f'.repeat(64) })
     expect(screen.queryByRole('alert')).toBeNull()
   })
 
@@ -231,37 +356,30 @@ describe('ConfirmMark — a 409 is not a failure, it is “look again”', () =>
     // fix would silently break: a re-render that does not carry a new
     // fingerprint has not answered the 409, so the message must stay.
     const spy = mockFetch(409, { detail: 'تغییر کرده است' })
-    session = EDITOR
-    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-    const view = (row: Confirmation) => (
-      <QueryClientProvider client={qc}>
-        <ConfirmMark row={row} department="dining" />
-      </QueryClientProvider>
-    )
-    const { rerender } = render(view(UNCONFIRMED))
-    fireEvent.click(screen.getByRole('button', { name: 'تأیید محتوا' }))
+    const { rerender } = drawAction(UNCONFIRMED)
+    press('تأیید محتوا')
     await waitFor(() => expect(spy).toHaveBeenCalled())
     expect(await screen.findByRole('alert')).toHaveTextContent(/تغییر کرده است/)
-    rerender(view({ ...UNCONFIRMED }))
+    rerender({ ...UNCONFIRMED })
     expect(screen.getByRole('alert')).toHaveTextContent(/تغییر کرده است/)
   })
 
   it('reports anything that is not a 409 as a plain failure', async () => {
     const spy = mockFetch(500, { detail: 'boom' })
-    mount(UNCONFIRMED, EDITOR)
-    fireEvent.click(screen.getByRole('button', { name: 'تأیید محتوا' }))
+    drawAction(UNCONFIRMED)
+    press('تأیید محتوا')
     await waitFor(() => expect(spy).toHaveBeenCalled())
     expect(await screen.findByRole('alert')).toHaveTextContent(/دوباره تلاش کنید/)
     expect(screen.queryByText(/تغییر کرده است/)).toBeNull()
   })
 
   it('says a failed withdrawal failed — the DELETE has an error surface of its own', async () => {
-    // Every case above clicks «تأیید محتوا», so `failure = set.error` alone
+    // Every case above presses «تأیید محتوا», so `failure = set.error` alone
     // passes all of them: a DELETE that 5xx'd would leave the editor watching a
     // button that did nothing and said nothing about it.
     const spy = mockFetch(500, { detail: 'boom' })
-    mount(CONFIRMED, EDITOR)
-    fireEvent.click(screen.getByRole('button', { name: 'لغو تأیید' }))
+    drawAction(CONFIRMED)
+    press('لغو تأیید')
     await waitFor(() => expect(spy).toHaveBeenCalled())
     expect(await screen.findByRole('alert')).toHaveTextContent(/دوباره تلاش کنید/)
   })
@@ -275,8 +393,8 @@ describe('ConfirmMark — a 409 is not a failure, it is “look again”', () =>
     // pipeline `merge` run tombstones outside this app entirely, so no client
     // invalidation can close it.
     const spy = mockFetch(403, { detail: 'این فرآیند حذف شده و دیگر قابل تأیید نیست' })
-    mount(UNCONFIRMED, EDITOR)
-    fireEvent.click(screen.getByRole('button', { name: 'تأیید محتوا' }))
+    drawAction(UNCONFIRMED)
+    press('تأیید محتوا')
     await waitFor(() => expect(spy).toHaveBeenCalled())
     expect(await screen.findByRole('alert')).toHaveTextContent(/صفحه را تازه کنید/)
     expect(screen.queryByText(/دوباره تلاش کنید/)).toBeNull()
@@ -287,12 +405,8 @@ describe('ConfirmMark — a 409 is not a failure, it is “look again”', () =>
     const spy = mockFetch(200, { ...UNCONFIRMED, confirmed: true })
     session = EDITOR
     const { qc, invalidated } = recordingClient()
-    render(
-      <QueryClientProvider client={qc}>
-        <ConfirmMark row={UNCONFIRMED} department="dining" />
-      </QueryClientProvider>,
-    )
-    fireEvent.click(screen.getByRole('button', { name: 'تأیید محتوا' }))
+    render(actionView(UNCONFIRMED, qc))
+    press('تأیید محتوا')
     await waitFor(() => expect(spy).toHaveBeenCalled())
     // The department board's counts move with a confirmation for every reader,
     // so both keys have to go.
@@ -306,12 +420,8 @@ describe('ConfirmMark — a 409 is not a failure, it is “look again”', () =>
     const spy = mockFetch(200, UNCONFIRMED)
     session = EDITOR
     const { qc, invalidated } = recordingClient()
-    render(
-      <QueryClientProvider client={qc}>
-        <ConfirmMark row={CONFIRMED} department="dining" />
-      </QueryClientProvider>,
-    )
-    fireEvent.click(screen.getByRole('button', { name: 'لغو تأیید' }))
+    render(actionView(CONFIRMED, qc))
+    press('لغو تأیید')
     await waitFor(() => expect(spy).toHaveBeenCalled())
     await waitFor(() => {
       expect(invalidated).toContainEqual(['confirmations', 'dining'])
@@ -320,16 +430,16 @@ describe('ConfirmMark — a 409 is not a failure, it is “look again”', () =>
   })
 })
 
-describe('ConfirmMark — a request in flight looks like one', () => {
+describe('ConfirmAction — a request in flight looks like one', () => {
   it('goes busy while the confirmation is in flight, and refuses the second click', async () => {
     // `Button` implements the disable-while-loading itself and `primitives.test`
     // pins that. What is pinned here is that this call site *wires* it: strip
-    // `loading`/`loadingLabel` from both buttons and every other test in this
+    // `loading`/`loadingLabel` from the dialog's OK and every other test in this
     // file still passes, so the double-submit guard could be dropped invisibly.
     const spy = stalledFetch()
-    mount(UNCONFIRMED, EDITOR)
-    fireEvent.click(screen.getByRole('button', { name: 'تأیید محتوا' }))
-    const busy = await screen.findByRole('button', { name: 'در حال تأیید…' })
+    drawAction(UNCONFIRMED)
+    press('تأیید محتوا')
+    const busy = await screen.findByRole('button', { name: 'در حال ثبت…' })
     expect(busy).toBeDisabled()
     expect(busy).toHaveAttribute('aria-busy', 'true')
     fireEvent.click(busy)
@@ -338,36 +448,13 @@ describe('ConfirmMark — a request in flight looks like one', () => {
 
   it('goes busy while the withdrawal is in flight too', async () => {
     const spy = stalledFetch()
-    mount(CONFIRMED, EDITOR)
-    fireEvent.click(screen.getByRole('button', { name: 'لغو تأیید' }))
-    const busy = await screen.findByRole('button', { name: 'در حال لغو…' })
+    drawAction(CONFIRMED)
+    press('لغو تأیید')
+    const busy = await screen.findByRole('button', { name: 'در حال ثبت…' })
     expect(busy).toBeDisabled()
     expect(busy).toHaveAttribute('aria-busy', 'true')
     fireEvent.click(busy)
     expect(spy).toHaveBeenCalledTimes(1)
-  })
-})
-
-describe('ConfirmMark — the two buttons are sized by their call site', () => {
-  // I5: `Button`'s BASE deliberately carries no horizontal padding and no type
-  // size, and every other non-test call site in src/ passes both. Without them
-  // these two render as 44 px touch boxes with the text against the edges, at
-  // inherited body size, inside a title line of 12.5 px chips. **jsdom lays
-  // nothing out**, so the class list is the only thing a test can see — the
-  // same reason an earlier task here had to assert `maxLength` as an attribute
-  // rather than by typing past it.
-  it('gives the confirm button horizontal padding and a type role', () => {
-    mount(UNCONFIRMED, EDITOR)
-    const cls = screen.getByRole('button', { name: 'تأیید محتوا' }).className
-    expect(cls).toMatch(/\bpx-\S+/)
-    expect(cls).toMatch(/\btext-caption\b/)
-  })
-
-  it('gives the withdraw button the same', () => {
-    mount(CONFIRMED, EDITOR)
-    const cls = screen.getByRole('button', { name: 'لغو تأیید' }).className
-    expect(cls).toMatch(/\bpx-\S+/)
-    expect(cls).toMatch(/\btext-caption\b/)
   })
 })
 
@@ -401,5 +488,50 @@ describe('ConfirmMark — who vouched, and when', () => {
     expect(screen.queryByText(/توسط/)).toBeNull()
     expect(screen.queryByText(/null/)).toBeNull()
     expect(screen.queryByText(/NaN/)).toBeNull()
+  })
+})
+
+/** One `ConfirmMark`, drawn from the two facts a row carries. */
+function drawMark(
+  o: { confirmed: boolean; by?: string | null; at?: number | null } = { confirmed: false },
+  who: SessionDescriptor | undefined = EDITOR,
+) {
+  return mount({ ...CONFIRMED, confirmed: o.confirmed,
+    confirmed_by: o.by ?? null, confirmed_at: o.at ?? null }, who)
+}
+
+describe('the mark states, and the action acts (F1, F2, F3)', () => {
+  it('renders a pill and nothing that can force a row taller', () => {
+    drawMark({ confirmed: true })
+    const mark = screen.getByTestId('confirm-mark')
+    // F1 — `Button`'s BASE is `min-h-touch min-w-touch` = 44x44. Dropped into a
+    // title line built from an 11px id badge, a 15px name and a 10.5px tag —
+    // natural height ~22px — it set the height of every row on the list.
+    expect(within(mark).queryAllByRole('button')).toHaveLength(0)
+    expect(mark.querySelector('.min-h-touch')).toBeNull()
+    expect(within(mark).getByText('تأیید شده')).toBeInTheDocument()
+  })
+
+  it('keeps the failure sentence out of the title row (F3)', () => {
+    // MOVED is 62 Persian characters. On a 920px row already carrying a badge,
+    // a name, a tag, a pill and a button, it had nowhere to go but a second
+    // line — so the row silently doubled and pushed every row below it down.
+    // The mark performs no act at all now, so it can hold no failure of its own.
+    drawMark({ confirmed: false })
+    expect(within(screen.getByTestId('confirm-mark')).queryByRole('alert')).toBeNull()
+  })
+
+  it('gives the byline a colour somebody can read on the field it is drawn on (F4)', () => {
+    // **Not `text-muted`, and this is a correction to the brief.** F4 measured
+    // `--text-faint #a99fc4` against CREAM (2.27:1) — but neither call site is
+    // on cream: `Summary` puts this mark in its badge row and `Overview` beside
+    // its H1, and both of those roots are `bg-ink`, the #2A1D5E field. Against
+    // the field the numbers invert — faint is 5.88:1 and `--text-muted #8a7db0`
+    // is 3.93:1 — so the prescribed fix would have LOWERED the contrast at both
+    // real call sites. `--role-subtitle-on-field` (#C9BEEE, ledger L-28) is the
+    // decided role for secondary copy on the field and measures 8.6:1.
+    drawMark({ confirmed: true, by: '09120000000', at: 1753000000 })
+    expect(screen.getByTestId('confirm-by')).toHaveClass('text-role-subtitle-on-field')
+    expect(screen.getByTestId('confirm-by')).not.toHaveClass('text-faint')
   })
 })
