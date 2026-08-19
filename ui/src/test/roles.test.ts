@@ -209,7 +209,7 @@ const TIES: Tie[] = [
     needle: '-12px',
   },
   { role: '--role-radius-dialog', token: '--radius-panel', value: '24px', from: 'L-04' },
-  { role: '--role-awaiting', token: '--warn', value: '#B4690E', from: 'L-05' },
+  { role: '--role-awaiting', token: '--warn-fg', value: '#8A5A00', from: 'L-05' },
   { role: '--role-link-quiet', token: '--violet-mid', value: '#7A52D0', from: 'L-06' },
   { role: '--role-surface', token: '--card', value: '#FFFFFF', from: 'L-14' },
   {
@@ -242,8 +242,8 @@ const TIES: Tie[] = [
   },
   { role: '--role-fs-caption', token: '--fs-caption', value: '12px', from: 'L-33' },
   { role: '--role-ink-body', token: '--text-current', value: '#5a5175', from: 'L-35' },
-  { role: '--role-radius-control', token: '--radius-md', value: '12px', from: 'L-40' },
-  { role: '--role-radius-input', token: '--radius-md', value: '12px', from: 'L-40' },
+  { role: '--role-radius-control', token: '--radius-control', value: '10px', from: 'L-40' },
+  { role: '--role-radius-input', token: '--radius-input', value: '11px', from: 'L-40' },
 
   // Decided by the owner directly — the value must appear in the rulings file.
   { role: '--role-field', token: '--ink', value: '#2A1D5E', from: 'rulings' },

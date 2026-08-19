@@ -39,7 +39,8 @@ import type { Process } from '../api/types'
 const CHIP = 'inline-flex items-center gap-s1 text-fs-tag font-semibold px-s4 py-half rounded-pill'
 
 /**
- * The five tags `deriveTag` derives, by the role each one carries (R8).
+ * The four tags `deriveTag` derives, by the role each one carries (R8). A
+ * plain process draws none at all — owner ruling R28, ledger L-12.
  *
  * Token names, never literals: the four hex pairs this map used to hold were
  * `--tile-warn`/`--warn`, `--tile-c`/`--conflict`, `--tile-v`/`--violet` and
@@ -50,7 +51,6 @@ const TAG_TONE: Record<string, string> = {
   sub: 'bg-tile-warn text-warn',            // --role-awaiting
   conflict: 'bg-tile-c text-conflict',      // --role-danger
   kpi: 'bg-tile-v text-violet',             // --role-primary
-  plain: 'bg-tile-v text-violet',           // --role-primary
   tombstone: 'bg-tile-dead text-muted',     // --role-dead
 }
 
@@ -349,7 +349,7 @@ export function ProcessList() {
                   <div data-r-pmeta data-testid={`meta-${p.id}`}
                     className="flex items-center gap-s4 flex-wrap mt-s4 ps-s11 max760:hidden">
                     <IdBadge>{p.id}</IdBadge>
-                    <span className={`${CHIP} ${TAG_TONE[tag.kind]}`}>{tag.label}</span>
+                    {tag && <span className={`${CHIP} ${TAG_TONE[tag.kind]}`}>{tag.label}</span>}
                     {mark && (
                       <span className={`${CHIP} ${mark.confirmed ? 'bg-tile-ok text-green' : 'bg-tile-warn text-warn'}`}>
                         {mark.confirmed ? 'تأیید شده' : 'تأیید نشده'}

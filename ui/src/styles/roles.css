@@ -22,10 +22,15 @@
    by this task: --border-card, --fs-dialog, --fs-menu and --fs-caption. Task 3
    must not re-value --warm or any panel type step to reach them.
 
-   Every value the ledger decides is named here. The one exception is deliberate
-   and recorded: --role-radius-control and --role-radius-input collapse 11px and
-   10px into 12px (ledger L-40, referred to the owner), so --radius-input and
-   --radius-control are named by no role while that veto is open.
+   Every value the ledger decides is named here, with no exception left open.
+   L-40 is settled by owner ruling R26: the three-rung radius ladder STAYS --
+   12px button, 11px input, 10px control -- because the design is consistent
+   about it, which makes it a deliberate hierarchy and not a contradiction. The
+   provisional collapse into 12px is withdrawn. It never reached the product
+   anyway: these two names had zero consumers, so roles.css recorded a change
+   nothing performed while all sixty sites painted the ladder through the raw
+   tokens. The utilities now resolve THROUGH these names, so the record and the
+   paint cannot drift apart again (the L-41 defect).
 
    Section references are to .superpowers/sdd/ui-design-spec.md. Colour values
    are deliberately not repeated in these comments — the token names carry them,
@@ -80,7 +85,15 @@
   --role-confirmed: var(--green);
   --role-confirmed-soft: var(--tile-ok);
   --role-confirmed-edge: var(--border-ok);   /* Task 3 corrects the token (9.8) */
-  --role-awaiting: var(--warn);              /* ledger L-05 */
+  /* ledger L-05, owner ruling R27 — the value the deliverable paints for all
+     three status maps (7 uses against 3). The row provisionally chose --warn on
+     the rule that a status may not borrow an ICOM colour; the owner overturned
+     it, because the design keeps that rule only once in four -- ICOM green,
+     violet and blue are all shared with app-wide roles. --warn cannot be
+     re-valued: its value lives in the read-only design bundle. --warn-fg
+     already holds the value this role wants, so the ROLE moves, not the token.
+     No literal here on purpose: this file keeps names, never values. */
+  --role-awaiting: var(--warn-fg);
   --role-awaiting-soft: var(--tile-warn);
   --role-danger: var(--conflict);
   --role-danger-soft: var(--tile-c);
@@ -128,9 +141,12 @@
   /* ---- radii (4.4) ---- */
   --role-radius-badge: var(--radius-badge);
   --role-radius-chip: var(--radius-chip);
-  --role-radius-close: var(--radius-sm);       /* ledger L-23 — provisional, referred */
-  --role-radius-control: var(--radius-md);     /* ledger L-40 — 10px normalises here */
-  --role-radius-input: var(--radius-md);       /* ledger L-40 — 11px normalises here */
+  --role-radius-close: var(--radius-sm);       /* ledger L-23, owner ruling R29 — one
+                                                  close button, 32x32 at 9px. The two
+                                                  roles §4.4 states are collapsed on
+                                                  purpose, so 8px stays token-less. */
+  --role-radius-control: var(--radius-control);/* ledger L-40, owner ruling R26 — 10px */
+  --role-radius-input: var(--radius-input);    /* ledger L-40, owner ruling R26 — 11px */
   --role-radius-search: var(--radius-lg);
   --role-radius-tile: var(--radius-tile);
   --role-radius-card: var(--radius-card);

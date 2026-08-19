@@ -67,12 +67,22 @@ export function formatConflictValue(v: unknown): string {
   return String(v)
 }
 
-export type TagKind = 'sub' | 'conflict' | 'kpi' | 'plain' | 'tombstone'
+export type TagKind = 'sub' | 'conflict' | 'kpi' | 'tombstone'
 
-export function deriveTag(p: Process): { label: string; kind: TagKind } {
+/**
+ * Owner ruling R28, ledger L-12 — a plain process draws NO tag, so this returns
+ * null for it rather than a fifth kind.
+ *
+ * A tag marks an exception: a sub-process, a conflict, a KPI, a tombstone. One
+ * that says «مستند» on a screen where every row is a document marks nothing,
+ * and its skin was byte-identical to the KPI tag, so two of the five tags were
+ * indistinguishable. Returning null makes the rule structural: no screen can
+ * render the tag by reaching for a tone that no longer exists.
+ */
+export function deriveTag(p: Process): { label: string; kind: TagKind } | null {
   if (p.tombstoned) return { label: 'باطل‌شده', kind: 'tombstone' }
   if (p.parent) return { label: 'زیرفرآیند', kind: 'sub' }
   if (p.pending && p.pending.length) return { label: `${toFa(p.pending.length)} تعارض`, kind: 'conflict' }
   if (p.kpis && p.kpis.length) return { label: 'دارای KPI', kind: 'kpi' }
-  return { label: 'مستند', kind: 'plain' }
+  return null
 }

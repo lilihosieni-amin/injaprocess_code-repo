@@ -47,8 +47,12 @@ describe('deriveTag', () => {
     expect(deriveTag({ ...base, kpis: [{ name: 'k' }] } as never))
       .toEqual({ label: 'دارای KPI', kind: 'kpi' })
   })
-  it('falls back to documented', () => {
-    expect(deriveTag(base as never)).toEqual({ label: 'مستند', kind: 'plain' })
+  it('gives a plain process no tag at all — owner ruling R28, ledger L-12', () => {
+    // A tag marks an exception. «مستند» on a screen where every row is a
+    // document marked nothing, and its skin was byte-identical to the KPI
+    // tag, so two of the five tags were indistinguishable. `null` is the
+    // ruling made structural: there is no `plain` kind left to render.
+    expect(deriveTag(base as never)).toBeNull()
   })
   it('labels a tombstoned process باطل‌شده, outranking sub/conflict/kpi', () => {
     const p = { ...base, tombstoned: true, parent: { process: 'a', node: 'n' }, kpis: [{ name: 'k' }] }
