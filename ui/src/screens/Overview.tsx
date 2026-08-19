@@ -27,9 +27,19 @@ type ArrayKey = { [K in keyof Draft]: Draft[K] extends unknown[] ? K : never }[k
  * The department page — `Inja Panel.dc.html:466`, §6.4.
  *
  * Three stacked white cards on the violet field: the description, the
- * sub-units in a two-track grid, and the roles as a disclosure. Panel only —
- * the reader deliverable draws no department summary, so nothing here branches
- * on `useSurface()` and there is no `overviewReader` row in the harness.
+ * sub-units in a two-track grid, and the roles as a disclosure.
+ *
+ * **This is the PANEL composition only, and the reader is not "no screen" — it
+ * is an unbuilt one.** `Inja Reader.dc.html:234` draws its own «دربارهٔ {dept}»:
+ * a 720px column, a CENTRED 24px title (`--fs-h1-reader-dept`, a token minted
+ * for this screen and still on R11's PENDING list with no consumer), a lead
+ * line under the roles eyebrow, sub-units in a single-column flex rather than a
+ * two-track grid, and the accordion one step up at 15.5/12/19px. `ReaderShell`
+ * already routes here — `readerHere()` returns `about: true` for this exact
+ * path — so a reader reaches this screen today and is served the panel's
+ * composition. The frozen `DESIGN` table has no `overviewReader` row and this
+ * task may not add one; it is written up in the task report instead of being
+ * silently branched here on a guess.
  *
  * **The roles section is `ui/Accordion`, not a copy of it.** This screen used to
  * hand-roll the whole control — a button, `aria-expanded`, a rotating chevron
@@ -110,7 +120,17 @@ export function Overview() {
           no role and no second use, and `--role-column` resolves to
           `--width-list`, so the theme cannot express it. */}
       <div data-col className="max-w-list mx-auto">
-        <div data-r-stack className="flex items-start justify-between gap-s8 mb-s10">
+        {/* §6.16 gives every `[data-r-stack]` the same collapse at ≤760 —
+            `flex-direction:column;align-items:stretch;gap:12px` — and this
+            screen carries the attribute, so it owes the rule. `Departments.tsx`
+            writes the same three variants for the same reason. */}
+        <div
+          data-r-stack
+          className={
+            'flex items-start justify-between gap-s8 mb-s10 '
+            + 'max760:flex-col max760:items-stretch max760:gap-s6'
+          }
+        >
           <div className="flex items-center gap-s6">
             <IconTile dept={code} />
             <div>
@@ -139,10 +159,15 @@ export function Overview() {
               <Button variant="violet" onClick={enter} className="flex-none px-s8 py-s5 text-fs-sm">ویرایش</Button>
             )
           ) : (
-            <div className="flex flex-none gap-s5">
-              <Button variant="ghost" onClick={() => setDraft(null)} className="px-s8 py-s5 text-fs-sm">انصراف</Button>
+            // §6.16's second half: `[data-r-stack] [data-r-actions]` wraps at
+            // ≤760 and its buttons take `flex:1 1 45%`. `max760:flex-1` is that
+            // share, spelled the way `ProcessList.tsx` spells it rather than as
+            // an arbitrary basis.
+            <div data-r-actions className="flex flex-none gap-s5 max760:flex-wrap">
+              <Button variant="ghost" onClick={() => setDraft(null)}
+                className="px-s8 py-s5 text-fs-sm max760:flex-1">انصراف</Button>
               <Button variant="green" onClick={save} loading={put.isPending} loadingLabel="در حال ذخیره…"
-                className="px-s8 py-s5 text-fs-sm">ذخیره</Button>
+                className="px-s8 py-s5 text-fs-sm max760:flex-1">ذخیره</Button>
             </div>
           )}
         </div>
@@ -180,8 +205,8 @@ export function Overview() {
               <div data-r-2col className="grid grid-cols-2 gap-s6 max760:grid-cols-1">
                 {data.sub_units.map((s, i) => (
                   // `padding:14px 15px` — the 15 normalised to the ladder's 14
-                  // (see the report; the three tokens holding 15px each forbid
-                  // being borrowed).
+                  // (report row P3-12: four tokens hold 15px and every one of
+                  // their comments forbids the others borrowing it).
                   <div key={i} className="self-start bg-surface-sub border border-border-current rounded-tile p-s7">
                     <div className="text-fs-menu font-bold text-ink">{s.name}</div>
                     {/* `margin-top:7px` normalised to the ladder's 8. */}

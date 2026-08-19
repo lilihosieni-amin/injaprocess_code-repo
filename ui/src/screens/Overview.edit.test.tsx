@@ -2,6 +2,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { screen, fireEvent, waitFor } from '@testing-library/react'
 import { Overview } from './Overview'
 import { renderAt } from '../test/utils'
+import { declarations, paint } from '../test/paint'
 import type { SessionDescriptor } from '../auth/session'
 
 afterEach(() => vi.restoreAllMocks())
@@ -51,27 +52,38 @@ describe('Overview edit', () => {
     expect((putBody as { personnel: { duties: string[] }[] }).personnel[0].duties).toEqual(['مدیریت', 'کنترل انبار'])
   })
 
-  it('removes a duty, which the test above only ever claimed to do', async () => {
+  it('removes the duty whose control was pressed, which the test above only claimed to do', async () => {
     // The test above was named «add one, remove one» and never removed
     // anything: `removeDuty` had no coverage at all, and a control that drops
     // the WRONG row — or every row — would have shipped with the suite green.
-    // Two duties, so dropping the first is distinguishable from dropping all.
-    const TWO = { ...OV, personnel: [{ role: 'سرآشپز', duties: ['مدیریت', 'کنترل کیفیت'], kpi: ['شاخص اولیه'] }] }
+    //
+    // THREE duties and the MIDDLE one, not two and the first. A survey of this
+    // file's own mutants found `k !== j` -> `k !== 0` alive against a
+    // two-duty fixture whose first row was the one pressed: the mutant and the
+    // component agreed on that one case, so the assertion could not tell them
+    // apart. Pressing the middle of three leaves a different survivor for
+    // `k !== 0`, for `k !== 2`, and for a filter that drops everything.
+    const THREE = {
+      ...OV,
+      personnel: [{ role: 'سرآشپز', duties: ['مدیریت', 'کنترل کیفیت', 'برنامهٔ روز'], kpi: ['شاخص اولیه'] }],
+    }
     let putBody: unknown = null
     vi.spyOn(globalThis, 'fetch').mockImplementation((_input: RequestInfo | URL, init?: RequestInit) => {
       if (init?.method === 'PUT') putBody = JSON.parse(init.body as string)
-      return Promise.resolve(new Response(JSON.stringify(TWO), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+      return Promise.resolve(new Response(JSON.stringify(THREE), { status: 200, headers: { 'Content-Type': 'application/json' } }))
     })
     renderAt('/departments/:code/overview', <Overview />, '/departments/cooking/overview', EDITOR)
     fireEvent.click(await screen.findByRole('button', { name: 'ویرایش' }))
     // F11 — the row's own control carries an accessible name, not a `title`
     // alone, and there is one per duty.
     const drops = screen.getAllByRole('button', { name: 'حذف وظیفه' })
-    expect(drops).toHaveLength(2)
-    fireEvent.click(drops[0])
+    expect(drops).toHaveLength(3)
+    fireEvent.click(drops[1])
+    expect(screen.queryByDisplayValue('کنترل کیفیت')).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'ذخیره' }))
     await waitFor(() => expect(putBody).not.toBeNull())
-    expect((putBody as { personnel: { duties: string[] }[] }).personnel[0].duties).toEqual(['کنترل کیفیت'])
+    expect((putBody as { personnel: { duties: string[] }[] }).personnel[0].duties)
+      .toEqual(['مدیریت', 'برنامهٔ روز'])
   })
 
   it('reaches every editable value by a bound label, never by a placeholder', async () => {
@@ -161,5 +173,97 @@ describe('Overview edit', () => {
     fireEvent.click(screen.getByRole('button', { name: 'ذخیره' }))
     await waitFor(() => expect(spy).toHaveBeenCalledWith('/api/departments/cooking/overview', expect.objectContaining({ method: 'PUT' })))
     expect((putBody as { description: string }).description).toBe('شرح تازه')
+  })
+
+
+  it('gives the save cluster §6.16’s share of the row at ≤760', async () => {
+    // `[data-r-stack] [data-r-actions]{flex-wrap:wrap}` and
+    // `[data-r-stack] [data-r-actions] > button{flex:1 1 45%}` — the second half
+    // of the rule the header stack owes. Only the ≤760 slice is asserted here:
+    // the desktop set is the same two buttons every other screen draws.
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify(OV), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+    renderAt('/departments/:code/overview', <Overview />, '/departments/cooking/overview', EDITOR)
+    fireEvent.click(await screen.findByRole('button', { name: 'ویرایش' }))
+    const R760 = '(max-width: 760px)'
+    const cluster = document.querySelector<HTMLElement>('[data-r-actions]')!
+    expect([...declarations(await paint(cluster.className), '', R760)]).toEqual(['flex-wrap: wrap'])
+    for (const name of ['انصراف', 'ذخیره']) {
+      const b = screen.getByRole('button', { name })
+      expect(cluster.contains(b), name).toBe(true)
+      expect([...declarations(await paint(b.className), '', R760)], name).toEqual(['flex: 1 1 0%'])
+    }
+  })
+
+  it('paints the two controls the design system draws for a repeating list', async () => {
+    // A control asserted only to EXIST is not asserted. Both of these are
+    // colour-on-colour boxes with no text of their own inside them, so the
+    // browser gate's contrast census — which reads runs of text — cannot see a
+    // destructive square repainted the colour of the card it sits on, and
+    // nothing else measures them at all.
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify(OV), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+    renderAt('/departments/:code/overview', <Overview />, '/departments/cooking/overview', EDITOR)
+    fireEvent.click(await screen.findByRole('button', { name: 'ویرایش' }))
+
+    // `AddButton` from `components/forms/ListEditor.jsx`: `inline-flex;gap:6px;
+    // 12.5px/600 --violet;1.5px dashed --line-dashed;radius --radius-control;
+    // padding:6px 12px`.
+    const add = screen.getByRole('button', { name: 'افزودن وظیفه' })
+    expect([...declarations(await paint(add.className))].sort()).toEqual([
+      'align-items: center',
+      'align-self: flex-start',
+      'background-color: transparent',
+      'border-color: var(--line-dashed)',
+      'border-radius: var(--radius-control)',
+      'border-style: dashed',
+      'border-width: var(--border-hairline)',
+      'color: var(--violet)',
+      'cursor: pointer',
+      'display: inline-flex',
+      'font-size: var(--fs-sm2)',
+      'font-weight: var(--fw-semibold)',
+      'gap: var(--space-3)',
+      'padding-bottom: var(--space-3)',
+      'padding-left: var(--space-6)',
+      'padding-right: var(--space-6)',
+      'padding-top: var(--space-3)',
+      'position: relative',
+    ])
+
+    // The destructive square: `--tile-c2` under `--conflict` behind a 1.5px
+    // `--border-danger` edge — the four `#FADAD8` borders this screen used to
+    // carry, which missed the token by three bytes.
+    const drop = screen.getAllByRole('button', { name: 'حذف وظیفه' })[0]
+    expect([...declarations(await paint(drop.className))].sort()).toEqual([
+      'align-items: center',
+      'background-color: var(--tile-c2)',
+      'border-color: var(--border-danger)',
+      'border-radius: var(--radius-input)',
+      'border-width: var(--border-hairline)',
+      'color: var(--conflict)',
+      'cursor: pointer',
+      'display: inline-flex',
+      'flex: none',
+      'height: var(--size-tool)',
+      'justify-content: center',
+      'position: relative',
+      'width: var(--size-tool)',
+    ])
+
+    // F11's floor, on both: the design draws each at about 34px and the plan's
+    // rule is that a drawn control is never inflated to 44 — a transparent
+    // ::before grows the HIT AREA instead. 34 + 2x5 is the 44, and none of it
+    // paints. `content: none` is the value that passes a spelling check and
+    // generates no box at all, so the content is read, not merely found.
+    for (const el of [add, drop]) {
+      const before = [...declarations(await paint(el.className), '::before')].sort()
+      expect(before).toEqual([
+        '--tw-content: ""',
+        'content: var(--tw-content)',
+        'inset: -5px',
+        'position: absolute',
+      ])
+    }
   })
 })

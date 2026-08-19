@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { screen, fireEvent } from '@testing-library/react'
 import { Overview } from './Overview'
 import { renderAt } from '../test/utils'
+import { deptMeta } from '../lib/departments'
 import { declarations, paint } from '../test/paint'
 import type { SessionDescriptor } from '../auth/session'
 
@@ -160,6 +161,15 @@ describe('the rebuilt department page', () => {
     // gate measures `.first()`, and three identical hooks say one thing thrice.
     expect(document.querySelectorAll('[data-card]')).toHaveLength(1)
     expect(firstCard().textContent).toMatch(/^شرح دپارتمان/)
+    // The department tile beside the title. §6.4 draws NO tile here — this is
+    // the plan's own addition, matching the lockup the sibling list screen
+    // does draw — so it is pinned rather than left as an unasserted ornament,
+    // and it is named in the task report for the owner to veto. `cooking` is
+    // coral in `deptMeta`, and a tile that lost the code would fall back to the
+    // violet default with nothing else moving.
+    const tile = document.querySelector<HTMLElement>('[data-tile]')!
+    expect(tile.className).toContain('bg-tile-c')
+    expect(tile.querySelector('path')!.getAttribute('d')).toBe(deptMeta('cooking').icon)
   })
 
   it('caps its column where every sibling screen caps theirs', async () => {
@@ -200,6 +210,32 @@ describe('the rebuilt department page', () => {
       'padding-left: var(--space-7)',
       'padding-right: var(--space-7)',
       'padding-top: var(--space-9)',
+    ])
+  })
+
+  it('collapses §6.16’s header stack at ≤760, which carrying the attribute owes', async () => {
+    // `[data-r-stack]{flex-direction:column;align-items:stretch;gap:12px}` is a
+    // rule the deliverable writes once for every screen that carries the
+    // attribute, and this screen carries it. A SWAP at the breakpoint, not an
+    // append: `flex-col` replaces the row direction and `gap-s6` replaces the
+    // 16px gutter.
+    serve()
+    at(READER)
+    await screen.findByText('خلاصهٔ دپارتمان پخت')
+    const stack = document.querySelector<HTMLElement>('[data-r-stack]')!
+    const R760 = '(max-width: 760px)'
+    const painted = await paint(stack.className)
+    expect([...declarations(painted)].sort()).toEqual([
+      'align-items: flex-start',
+      'display: flex',
+      'gap: var(--space-8)',
+      'justify-content: space-between',
+      'margin-bottom: var(--space-10)',
+    ])
+    expect([...declarations(painted, '', R760)].sort()).toEqual([
+      'align-items: stretch',
+      'flex-direction: column',
+      'gap: var(--space-6)',
     ])
   })
 
@@ -296,6 +332,116 @@ describe('the rebuilt department page', () => {
       'text-align: justify',
       'text-wrap: pretty',
     ])
+  })
+
+  it('paints §6.4’s roles card — the numbered duty, its text, and the KPI block', async () => {
+    // The mutation survey found the duty text and the sub-unit name unasserted:
+    // both are `13.5px` in the deliverable, which ledger L-27 names `--fs-menu`
+    // ("menu, dropdown and SUB-CARD TITLES"), and both could drop to the 12.5px
+    // control step the brief writes for them with every other check green.
+    serve()
+    at(READER)
+    fireEvent.click(await screen.findByRole('button', { name: /سرآشپز/ }))
+
+    expect([...declarations(await paint(screen.getByText('آشپزخانهٔ گرم').className))].sort()).toEqual([
+      'color: var(--ink)',
+      'font-size: var(--fs-menu)',
+      'font-weight: var(--fw-bold)',
+    ])
+    expect([...declarations(await paint(screen.getByText('کنترل کیفیت').className))].sort()).toEqual([
+      'color: var(--text-body)',
+      // Without `flex: 1` a long duty does not fill the row beside its numeral.
+      'flex: 1 1 0%',
+      'font-size: var(--fs-menu)',
+      'line-height: var(--lh-loose)',
+      'text-align: justify',
+      'text-wrap: pretty',
+    ])
+    // §6.4's `20x20` numeral tile — see the report for why it draws 22.
+    expect([...declarations(await paint(screen.getByText('۲').className))].sort()).toEqual([
+      'align-items: center',
+      'background-color: var(--tile-v)',
+      'border-radius: var(--radius-badge)',
+      'color: var(--violet)',
+      'display: flex',
+      'flex: none',
+      'font-size: var(--fs-micro)',
+      'font-weight: var(--fw-bold)',
+      'height: var(--space-10)',
+      'justify-content: center',
+      'margin-top: var(--space-half)',
+      'width: var(--space-10)',
+    ])
+    // The two eyebrows inside the open body are `--text-faint`, one step
+    // dimmer than the card's own `--text-muted` eyebrow.
+    for (const t of ['شرح وظایف', 'شاخص‌های عملکرد (۱)']) {
+      expect([...declarations(await paint(screen.getByText(t).className))].sort(), t).toEqual([
+        'color: var(--text-faint)',
+        'font-size: var(--fs-xxs)',
+        'font-weight: var(--fw-bold)',
+        'margin-bottom: var(--space-5)',
+      ])
+    }
+    // The rule §6.4 draws between the duties and the KPIs — `margin-top:18px;
+    // padding-top:14px;border-top:1px solid --hair`. It is a box with no text
+    // in it, so nothing else in either layer can see it disappear.
+    expect([...declarations(await paint(
+      screen.getByText('شاخص‌های عملکرد (۱)').parentElement!.className,
+    ))].sort()).toEqual([
+      'border-color: var(--hair)',
+      'border-top-width: 1px',
+      'margin-top: var(--space-9)',
+      'padding-top: var(--space-7)',
+    ])
+    // The KPI row and the tick in it. The tick has no text of its own, so the
+    // browser gate's contrast census cannot see it turn the colour of the card.
+    const kpi = screen.getByText('کاهش ضایعات به زیر ۵٪')
+    expect([...declarations(await paint(kpi.className))].sort()).toEqual([
+      'align-items: flex-start',
+      'color: var(--text-body)',
+      'display: flex',
+      'font-size: var(--fs-sm)',
+      'gap: var(--space-4)',
+      'line-height: var(--lh-loose)',
+      'text-wrap: pretty',
+    ])
+    const tick = kpi.querySelector('svg')!
+    expect(tick).toHaveAttribute('stroke-width', '2.6')
+    expect(tick).toHaveAttribute('width', '14')
+    expect([...declarations(await paint(tick.getAttribute('class')!))].sort()).toEqual([
+      'color: var(--green)',
+      'flex: none',
+      'margin-top: var(--space-1)',
+    ])
+  })
+
+  it('says each empty section is empty, in the dimmest ink on the card', async () => {
+    // Three sections and a fourth line inside the accordion all say "nothing is
+    // recorded here". The mutation survey found every one of them asserted by
+    // its WORDS and by nothing else: `--text-faint` could become
+    // `--text-muted` — a step brighter, and the colour the section's own
+    // eyebrow takes — with the suite green. Emptiness is a fact, not an
+    // apology, and it is stated one step below the content it stands in for.
+    serve({ ...OV, description: '   ', sub_units: [], personnel: [{ role: 'سرآشپز', duties: ['مدیریت'], kpi: [] }] })
+    at(READER)
+    await screen.findByText('خلاصهٔ دپارتمان پخت')
+    const FAINT = ['color: var(--text-faint)', 'font-size: var(--fs-sm2)']
+    for (const t of ['شرحی ثبت نشده است.', 'واحدی ثبت نشده است.']) {
+      expect([...declarations(await paint(screen.getByText(t).className))].sort(), t).toEqual(FAINT)
+    }
+    // …and the KPI line, which carries the block's own rule above it.
+    fireEvent.click(screen.getByRole('button', { name: /سرآشپز/ }))
+    expect([...declarations(await paint(screen.getByText('شاخصی ثبت نشده است.').className))].sort()).toEqual([
+      'border-color: var(--hair)',
+      'border-top-width: 1px',
+      'color: var(--text-faint)',
+      'font-size: var(--fs-sm2)',
+      'margin-top: var(--space-9)',
+      'padding-top: var(--space-7)',
+    ])
+    // The sub-units section is empty, so `[data-r-2col]` is not drawn at all —
+    // which is why the browser gate's fixture has to serve two of them.
+    expect(document.querySelector('[data-r-2col]')).toBeNull()
   })
 
   it('leaves no literal value, no physical direction and no near-miss border', () => {

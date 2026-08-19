@@ -110,18 +110,29 @@ describe('Accordion', () => {
   it('turns that chevron a quarter turn on open, over --duration-chev', async () => {
     const { container } = render(<Accordion items={items} />)
     const turn = () => container.querySelector('svg')!.parentElement!
-    // A SWAP, never an append: two rotation utilities on one element would be
-    // resolved by Tailwind's output order and not by the class attribute's.
-    const closed = await paint(turn().className)
-    expect(declarations(closed)).toContain('--tw-rotate: 0deg')
-    expect(declarations(closed)).toContain('transition-duration: var(--duration-chev)')
-    expect(declarations(closed)).toContain('transition-timing-function: var(--ease-css)')
-    expect(declarations(closed)).toContain('transition-property: transform')
-
+    // The WHOLE declaration set, in both states, and not only the rotation.
+    // The colour is in here because it is the one that costs nothing to break
+    // and shows up nowhere else: the browser gate's contrast census reads runs
+    // of TEXT, and an SVG is not text — a chevron repainted the colour of the
+    // box behind it is invisible on the screen and green everywhere.
+    //
+    // A SWAP, never an append: two rotation utilities on one element are
+    // resolved by Tailwind's output order and not by the class attribute's, so
+    // the rest state is spelled out rather than left off.
+    const TURN = (deg: string) => [
+      `--tw-rotate: ${deg}`,
+      'color: var(--text-muted)',
+      'display: flex',
+      'flex: none',
+      'transform: translate(var(--tw-translate-x), var(--tw-translate-y)) rotate(var(--tw-rotate))'
+        + ' skewX(var(--tw-skew-x)) skewY(var(--tw-skew-y)) scaleX(var(--tw-scale-x)) scaleY(var(--tw-scale-y))',
+      'transition-duration: var(--duration-chev)',
+      'transition-property: transform',
+      'transition-timing-function: var(--ease-css)',
+    ]
+    expect([...declarations(await paint(turn().className))].sort()).toEqual(TURN('0deg'))
     await userEvent.click(screen.getByRole('button', { name: /سرآشپز/ }))
-    const open = await paint(turn().className)
-    expect(declarations(open)).toContain('--tw-rotate: 90deg')
-    expect(declarations(open)).toContain('transition-duration: var(--duration-chev)')
+    expect([...declarations(await paint(turn().className))].sort()).toEqual(TURN('90deg'))
   })
 
   it('paints the item shell, the header and the body the way §6.4 draws them', async () => {
