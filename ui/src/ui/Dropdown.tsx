@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react'
+import { toLatinDigits } from '../lib/digits'
 import { Icon } from './Icon'
 import { useSurface } from './surface'
 import { pushDismissible, popDismissible, isTopDismissible } from './dismissibleStack'
@@ -23,8 +24,19 @@ export interface DropdownProps {
   onToggle?: (value: string) => void
   searchable?: boolean
   searchPlaceholder?: string
-  /** Stated, never blank — §"EmptyState": emptiness is a fact, not an apology. */
+  /** Stated, never blank — §"EmptyState": emptiness is a fact, not an apology.
+   *  This one is the SEARCH MISS: the list has rows and the query matched none. */
   noHit?: string
+  /**
+   * What the popover says when there are no options **at all**, which is a
+   * different fact from a search that missed and usually has different advice.
+   * §6.14 states one for the supervisor picker («برای این نقش سرپرستی در دسترس
+   * نیست»); said with `noHit` instead, an administrator searching a healthy
+   * installation for a name nobody has would be told the account can have no
+   * supervisor whatever. Defaults to `noHit`, so a caller with one sentence for
+   * both keeps the behaviour it had.
+   */
+  empty?: string
   hideLabel?: boolean
   className?: string
 }
@@ -47,7 +59,7 @@ const OPTION =
 export function Dropdown({
   label, options, placeholder, value, onChange, values, onToggle,
   searchable = false, searchPlaceholder = 'جست‌وجو…', noHit = 'موردی پیدا نشد',
-  hideLabel = false, className = '',
+  empty, hideLabel = false, className = '',
 }: DropdownProps) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -91,7 +103,18 @@ export function Dropdown({
     if (!open) setQuery('')
   }, [open])
 
-  const shown = query ? options.filter((o) => o.label.includes(query)) : options
+  // Over the label AND the note, and over both **as they are stored**: the note
+  // is a latin-digit mobile number (D57) while an ordinary Persian keyboard
+  // emits ۰۹…, so an unfolded query matches nothing while looking exactly like
+  // "this person is not on the list". `toLatinDigits` is a no-op on Persian
+  // prose, so the name half is unaffected.
+  const needle = toLatinDigits(query)
+  const shown = query
+    ? options.filter((o) =>
+      o.label.includes(query)
+      || toLatinDigits(o.label).includes(needle)
+      || (o.note !== undefined && toLatinDigits(o.note).includes(needle)))
+    : options
   const chosen = multiple
     ? options.filter((o) => values.includes(o.value))
     : options.filter((o) => o.value === value)
@@ -205,7 +228,9 @@ export function Dropdown({
               child of it, because a <p> is not one of `listbox`'s permitted
               owned elements either. */}
           {shown.length === 0 && (
-            <p className="m-0 px-s6 py-s7 text-center text-fs-sm2 text-muted">{noHit}</p>
+            <p className="m-0 px-s6 py-s7 text-center text-fs-sm2 text-muted">
+              {options.length === 0 ? empty ?? noHit : noHit}
+            </p>
           )}
           <div
             ref={list}

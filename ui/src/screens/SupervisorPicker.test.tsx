@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { useState } from 'react'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { SupervisorPicker } from './SupervisorPicker'
@@ -95,6 +95,17 @@ const MINA: SupervisorCandidate = {
   scopes: ['admin'], canSupervise: true,
 }
 
+/** Forty of them, for the height claim. */
+function many(n: number): SupervisorCandidate[] {
+  return Array.from({ length: n }, (_, i) => ({
+    id: 100 + i,
+    username: `0912${String(1000000 + i).slice(0, 7)}`,
+    displayName: `سرپرست ${i}`,
+    scopes: ['*'],
+    canSupervise: true,
+  }))
+}
+
 /** `staysPut` defaults to true — the edit-form case the component was written
  *  for, an existing account whose supervisor and scopes are both unchanged. The
  *  one test below that passes `false` is what separates the note's guard from
@@ -121,30 +132,72 @@ function mount(props: Parameters<typeof Harness>[0]) {
   )
 }
 
+/** The one trigger. Its accessible name is «سرپرست» plus whatever is chosen —
+ *  label then value, which is what a native <select> announces. */
+const trigger = () => screen.getByRole('button', { name: /سرپرست/ })
+
+/** Open the popover and hand back the list inside it. */
+async function openList(): Promise<HTMLElement> {
+  await userEvent.click(trigger())
+  return screen.findByRole('listbox')
+}
+
 /** The options as they are on screen, named. Throws on a row it cannot name, so
  *  a fixture that stops appearing is a failure rather than a shortened list. */
 const NAMES = ['سحر بیات', 'کیوان مرادی', 'آرش تهرانی', 'کاوه سالاری']
-function renderedNames(): string[] {
-  return screen.getAllByRole('radio').map((r) => {
-    const name = NAMES.find((n) => (r.getAttribute('aria-label') ?? r.closest('label')?.textContent ?? '').includes(n))
-    if (!name) throw new Error(`option belongs to no fixture: ${r.closest('label')?.textContent}`)
+function renderedNames(list: HTMLElement): string[] {
+  return within(list).getAllByRole('option').map((o) => {
+    const name = NAMES.find((n) => (o.textContent ?? '').includes(n))
+    if (!name) throw new Error(`option belongs to no fixture: ${o.textContent}`)
     return name
   })
 }
 
 describe('the supervisor picker', () => {
+  it('is a searchable dropdown, not an uncapped list of radios in a modal', async () => {
+    // F29 — 40 candidates x 49px was ~1960px of radios below an already-1300px
+    // scope fieldset, inside one scrolling dialog whose title scrolled away too.
+    mount({ candidates: many(40) })
+    expect(screen.queryAllByRole('radio')).toHaveLength(0)
+    const list = await openList()
+    // §5.2 Dropdown — `max-height: …; overflow:auto` on the POPOVER, which is
+    // the box the list sits in: `role="listbox"` may own only options, so the
+    // search field is a sibling and the scroll cap is on their shared parent.
+    expect(list.closest('[data-popover]')).toHaveClass('overflow-auto', 'max-h-popover')
+    expect(within(list).getAllByRole('option')).toHaveLength(40)
+  })
+
+  it('states the empty case in the design\'s words', async () => {
+    mount({ candidates: [] })
+    await userEvent.click(trigger())
+    expect(await screen.findByText('برای این نقش سرپرستی در دسترس نیست')).toBeInTheDocument()
+  })
+
+  it('says nobody matched, in the one place a search miss belongs', async () => {
+    // A miss and an empty list are different facts. Said with one sentence, an
+    // administrator searching «zzz» in a healthy installation is told there is
+    // nobody to supervise this account at all.
+    mount({ candidates: [SAHAR, KEYVAN, ARASH] })
+    await openList()
+    await userEvent.type(screen.getByPlaceholderText('نام یا شماره'), 'zzz')
+    expect(await screen.findByText('سرپرستی با این نام نیست')).toBeInTheDocument()
+    expect(screen.queryByText('برای این نقش سرپرستی در دسترس نیست')).toBeNull()
+  })
+
   it('writes each candidate\'s own scope beside their own name (D52)', async () => {
     // Past thirty users the reason somebody is on this list is otherwise
     // invisible. The pairing is the assertion: a picker that draws every
     // candidate against the *first* candidate's scope passes every «is سالن on
     // screen» check and fails only this.
     mount({ candidates: [SAHAR, KEYVAN, ARASH] })
-    await waitFor(() => expect(screen.getByRole('radio', { name: /سحر بیات\s*—\s*سالن/ })).toBeInTheDocument())
-    expect(screen.getByRole('radio', { name: /کیوان مرادی\s*—\s*همهٔ دپارتمان‌ها/ })).toBeInTheDocument()
-    expect(screen.getByRole('radio', { name: /آرش تهرانی\s*—\s*انبار/ })).toBeInTheDocument()
+    const list = await openList()
+    await waitFor(() =>
+      expect(within(list).getByRole('option', { name: /سحر بیات\s*—\s*سالن/ })).toBeInTheDocument())
+    expect(within(list).getByRole('option', { name: /کیوان مرادی\s*—\s*همهٔ دپارتمان‌ها/ })).toBeInTheDocument()
+    expect(within(list).getByRole('option', { name: /آرش تهرانی\s*—\s*انبار/ })).toBeInTheDocument()
     // …and nobody carries somebody else's.
-    expect(screen.queryByRole('radio', { name: /سحر بیات\s*—\s*انبار/ })).toBeNull()
-    expect(screen.queryByRole('radio', { name: /آرش تهرانی\s*—\s*سالن/ })).toBeNull()
+    expect(within(list).queryByRole('option', { name: /سحر بیات\s*—\s*انبار/ })).toBeNull()
+    expect(within(list).queryByRole('option', { name: /آرش تهرانی\s*—\s*سالن/ })).toBeNull()
   })
 
   it('names every scope a candidate holds, not just the first', async () => {
@@ -152,8 +205,9 @@ describe('the supervisor picker', () => {
     // person an administrator will believe covers less than they do — and the
     // single-scope majority makes `scopes[0]` look right everywhere else.
     mount({ candidates: [KAVEH] })
-    await waitFor(() => expect(screen.getByRole('radio', { name: /صندوق/ })).toBeInTheDocument())
-    expect(screen.getByRole('radio', { name: /کاوه سالاری/ })).toHaveAccessibleName(/سالن/)
+    const list = await openList()
+    await waitFor(() => expect(within(list).getByRole('option', { name: /صندوق/ })).toBeInTheDocument())
+    expect(within(list).getByRole('option', { name: /کاوه سالاری/ })).toHaveAccessibleName(/سالن/)
   })
 
   it('names a report scope in Persian rather than quoting the stored string', async () => {
@@ -161,17 +215,16 @@ describe('the supervisor picker', () => {
     // reaches it: `scopeLabel` used to render `dept:dining/report:steps` as
     // «سالن/report:steps» — the department translated and the report left in the
     // stored spelling, half a sentence in each language beside somebody's name.
-    // Parenthesised, because `scopesLabel` joins with «، » and «سالن، فقط X»
-    // cannot be read back as one scope.
     mount({ candidates: [RAHA] })
+    const list = await openList()
     // Waited for the *label*, not merely for the row: `/api/departments` is this
     // component's one request, and until it lands `scopeLabel` falls back to the
     // code — «dining (فقط …)» — which is the honest thing to draw and not what
     // this test is about.
-    await waitFor(() => expect(screen.getByRole('radio', { name: /رها فرجی/ }))
+    await waitFor(() => expect(within(list).getByRole('option', { name: /رها فرجی/ }))
       .toHaveAccessibleName(/سالن \(فقط راهنمای گام‌به‌گام\)/))
     // …and not as the whole department, which is more than she reaches.
-    expect(screen.queryByRole('radio', { name: /رها فرجی\s*—\s*سالن$/ })).toBeNull()
+    expect(within(list).queryByRole('option', { name: /رها فرجی\s*—\s*سالن$/ })).toBeNull()
   })
 
   it('quotes a scope the grammar refuses, rather than calling it everything', async () => {
@@ -181,14 +234,11 @@ describe('the supervisor picker', () => {
     // writing «مینا دهقان — همهٔ دپارتمان‌ها» beside somebody covered by
     // nothing at all — in the one list an administrator picks an org-chart edge
     // out of, where a `*` holder is exactly who they are looking for.
-    //
-    // The stored row really is reachable: `user_scopes.scope` is `TEXT NOT NULL`
-    // with no CHECK. Quoted verbatim it is legible and obviously wrong, which is
-    // the honest thing to draw; translated upward it is invisible and false.
     mount({ candidates: [MINA] })
-    await waitFor(() => expect(screen.getByRole('radio', { name: /مینا دهقان/ }))
+    const list = await openList()
+    await waitFor(() => expect(within(list).getByRole('option', { name: /مینا دهقان/ }))
       .toHaveAccessibleName(/—\s*admin/))
-    expect(screen.getByRole('radio', { name: /مینا دهقان/ }))
+    expect(within(list).getByRole('option', { name: /مینا دهقان/ }))
       .not.toHaveAccessibleName(/همهٔ دپارتمان‌ها/)
   })
 
@@ -201,14 +251,19 @@ describe('the supervisor picker', () => {
     // every field drawn here, so no sort in either direction can reproduce this
     // list.
     mount({ candidates: [SAHAR, KEYVAN, ARASH] })
-    await waitFor(() => expect(screen.getAllByRole('radio')).toHaveLength(3))
-    expect(renderedNames()).toEqual(['سحر بیات', 'کیوان مرادی', 'آرش تهرانی'])
+    const list = await openList()
+    await waitFor(() => expect(within(list).getAllByRole('option')).toHaveLength(3))
+    expect(renderedNames(list)).toEqual(['سحر بیات', 'کیوان مرادی', 'آرش تهرانی'])
   })
 
   it('offers no “no supervisor” choice to a user who does not reach everything (D51)', async () => {
     mount({ candidates: [SAHAR], allowNone: false })
-    await waitFor(() => expect(screen.getAllByRole('radio')).toHaveLength(1))
-    expect(screen.queryByRole('radio', { name: 'بدون سرپرست' })).toBeNull()
+    const list = await openList()
+    await waitFor(() => expect(within(list).getAllByRole('option')).toHaveLength(1))
+    expect(within(list).queryByRole('option', { name: 'بدون سرپرست' })).toBeNull()
+    // …and the trigger says nothing has been chosen, rather than reading as the
+    // state this account may not be in.
+    expect(trigger()).toHaveAccessibleName(/انتخاب کنید/)
   })
 
   it('offers it to a user who does', async () => {
@@ -216,14 +271,18 @@ describe('the supervisor picker', () => {
     // `*`-scoped account and for nobody else, so a picker that always offers it
     // — or never does — is wrong for half the accounts in the installation.
     mount({ candidates: [SAHAR], allowNone: true })
-    expect(await screen.findByRole('radio', { name: 'بدون سرپرست' })).toBeInTheDocument()
+    const list = await openList()
+    expect(within(list).getByRole('option', { name: 'بدون سرپرست' })).toBeInTheDocument()
+    // …and it is what the trigger already reads, because `null` IS that state
+    // for such an account and is what this form would send.
+    expect(trigger()).toHaveAccessibleName(/بدون سرپرست/)
   })
 
   it('starts on the person creating the account, when they are eligible', async () => {
     mount({ candidates: [SAHAR, KEYVAN, ARASH], preferred: KEYVAN.username })
-    await waitFor(() => expect(screen.getByRole('radio', { name: /کیوان مرادی/ })).toBeChecked())
-    expect(screen.getByRole('radio', { name: /سحر بیات/ })).not.toBeChecked()
-    expect(screen.getByRole('radio', { name: /آرش تهرانی/ })).not.toBeChecked()
+    await waitFor(() => expect(trigger()).toHaveAccessibleName(/کیوان مرادی/))
+    expect(trigger()).not.toHaveAccessibleName(/سحر بیات/)
+    expect(trigger()).not.toHaveAccessibleName(/آرش تهرانی/)
   })
 
   it('starts on nobody when the creator is not eligible, rather than on whoever is first', async () => {
@@ -232,31 +291,40 @@ describe('the supervisor picker', () => {
     // administrator never chose — and the org chart is the one thing on this
     // form nobody re-reads afterwards.
     mount({ candidates: [SAHAR, KEYVAN, ARASH], preferred: '09129999999' })
-    await waitFor(() => expect(screen.getAllByRole('radio')).toHaveLength(3))
-    for (const radio of screen.getAllByRole('radio')) expect(radio).not.toBeChecked()
+    const list = await openList()
+    await waitFor(() => expect(within(list).getAllByRole('option')).toHaveLength(3))
+    for (const option of within(list).getAllByRole('option')) {
+      expect(option).toHaveAttribute('aria-selected', 'false')
+    }
   })
 
   it('does not overwrite a choice the administrator has already made', async () => {
     mount({ candidates: [SAHAR, KEYVAN, ARASH], preferred: KEYVAN.username, initial: ARASH.id })
-    await waitFor(() => expect(screen.getByRole('radio', { name: /آرش تهرانی/ })).toBeChecked())
-    expect(screen.getByRole('radio', { name: /کیوان مرادی/ })).not.toBeChecked()
+    await waitFor(() => expect(trigger()).toHaveAccessibleName(/آرش تهرانی/))
+    expect(trigger()).not.toHaveAccessibleName(/کیوان مرادی/)
   })
 
   it('marks the chosen candidate and only them', async () => {
     mount({ candidates: [SAHAR, KEYVAN, ARASH] })
-    await waitFor(() => expect(screen.getAllByRole('radio')).toHaveLength(3))
-    await userEvent.click(screen.getByRole('radio', { name: /سحر بیات/ }))
-    expect(screen.getByRole('radio', { name: /سحر بیات/ })).toBeChecked()
-    expect(screen.getByRole('radio', { name: /کیوان مرادی/ })).not.toBeChecked()
-    expect(screen.getByRole('radio', { name: /آرش تهرانی/ })).not.toBeChecked()
+    const list = await openList()
+    await waitFor(() => expect(within(list).getAllByRole('option')).toHaveLength(3))
+    await userEvent.click(within(list).getByRole('option', { name: /سحر بیات/ }))
+    const reopened = await openList()
+    expect(within(reopened).getByRole('option', { name: /سحر بیات/ }))
+      .toHaveAttribute('aria-selected', 'true')
+    expect(within(reopened).getByRole('option', { name: /کیوان مرادی/ }))
+      .toHaveAttribute('aria-selected', 'false')
+    expect(within(reopened).getByRole('option', { name: /آرش تهرانی/ }))
+      .toHaveAttribute('aria-selected', 'false')
   })
 
   it('narrows the list by name', async () => {
     mount({ candidates: [SAHAR, KEYVAN, ARASH] })
-    await waitFor(() => expect(screen.getAllByRole('radio')).toHaveLength(3))
-    await userEvent.type(screen.getByLabelText('جست‌وجوی سرپرست'), 'کیوان')
-    await waitFor(() => expect(screen.getAllByRole('radio')).toHaveLength(1))
-    expect(screen.getByRole('radio', { name: /کیوان مرادی/ })).toBeInTheDocument()
+    const list = await openList()
+    await waitFor(() => expect(within(list).getAllByRole('option')).toHaveLength(3))
+    await userEvent.type(screen.getByPlaceholderText('نام یا شماره'), 'کیوان')
+    await waitFor(() => expect(within(list).getAllByRole('option')).toHaveLength(1))
+    expect(within(list).getByRole('option', { name: /کیوان مرادی/ })).toBeInTheDocument()
   })
 
   it('narrows it by the number however the digits were typed', async () => {
@@ -264,10 +332,11 @@ describe('the supervisor picker', () => {
     // Unfolded, searching for a colleague's own number returns nothing at all —
     // and looks exactly like "this person cannot supervise".
     mount({ candidates: [SAHAR, KEYVAN, ARASH] })
-    await waitFor(() => expect(screen.getAllByRole('radio')).toHaveLength(3))
-    await userEvent.type(screen.getByLabelText('جست‌وجوی سرپرست'), '۱۱۱۱')
-    await waitFor(() => expect(screen.getAllByRole('radio')).toHaveLength(1))
-    expect(screen.getByRole('radio', { name: /آرش تهرانی/ })).toBeInTheDocument()
+    const list = await openList()
+    await waitFor(() => expect(within(list).getAllByRole('option')).toHaveLength(3))
+    await userEvent.type(screen.getByPlaceholderText('نام یا شماره'), '۱۱۱۱')
+    await waitFor(() => expect(within(list).getAllByRole('option')).toHaveLength(1))
+    expect(within(list).getByRole('option', { name: /آرش تهرانی/ })).toBeInTheDocument()
   })
 
   it('says so when the person already supervising is not on the list, instead of showing nothing selected', async () => {
@@ -278,9 +347,8 @@ describe('the supervisor picker', () => {
     // makes that true. `staysPut` defaults true here, which is that save's
     // shape: neither the edge nor the scopes moving.
     mount({ candidates: [SAHAR, KEYVAN], initial: 99 })
-    await waitFor(() => expect(screen.getAllByRole('radio')).toHaveLength(2))
-    expect(screen.getByText(/سرپرست کنونی در این فهرست نیست/)).toBeInTheDocument()
-    for (const radio of screen.getAllByRole('radio')) expect(radio).not.toBeChecked()
+    expect(await screen.findByText(/سرپرست کنونی در این فهرست نیست/)).toBeInTheDocument()
+    expect(trigger()).toHaveAccessibleName(/انتخاب کنید/)
   })
 
   it('says nothing of the kind when the chosen candidate is on the list', async () => {
@@ -288,7 +356,7 @@ describe('the supervisor picker', () => {
     // that is always in the DOM — which would pass the test above for the wrong
     // reason.
     mount({ candidates: [SAHAR, KEYVAN], initial: SAHAR.id })
-    await waitFor(() => expect(screen.getByRole('radio', { name: /سحر بیات/ })).toBeChecked())
+    await waitFor(() => expect(trigger()).toHaveAccessibleName(/سحر بیات/))
     expect(screen.queryByText(/سرپرست کنونی در این فهرست نیست/)).toBeNull()
   })
 
@@ -301,19 +369,22 @@ describe('the supervisor picker', () => {
     // is refused rather than left alone. Only the value off the list is drawn
     // here, so an unguarded note passes every other test in this file.
     mount({ candidates: [SAHAR, KEYVAN], initial: 99, staysPut: false })
-    await waitFor(() => expect(screen.getAllByRole('radio')).toHaveLength(2))
+    await waitFor(() => expect(trigger()).toHaveAccessibleName(/انتخاب کنید/))
     expect(screen.queryByText(/سرپرست کنونی در این فهرست نیست/)).toBeNull()
   })
 
-  it('says nobody is eligible rather than drawing an empty box', async () => {
-    mount({ candidates: [] })
-    expect(await screen.findByText(/کسی نمی‌تواند سرپرست این کاربر باشد/)).toBeInTheDocument()
+  it('states the rule that makes this list this short (§6.14)', async () => {
+    mount({ candidates: [SAHAR] })
+    expect(await screen.findByText(/دپارتمانش دپارتمان او را پوشش دهد/)).toBeInTheDocument()
+    expect(screen.getByText(/کامنتی را تأیید نمی‌کند/)).toBeInTheDocument()
   })
 
   it('says the supervisor grants nothing (D51)', async () => {
     // It routes comment approval and confers no capability, no scope and no
     // rank. Drawn beside a role picker with no qualification it reads as a
-    // permission, and would then be chosen to give somebody something.
+    // permission, and would then be chosen to give somebody something. The
+    // design has no permission model to state this in, so the clause is added
+    // to §6.14's own rule statement rather than replacing it.
     mount({ candidates: [SAHAR] })
     expect(await screen.findByText(/هیچ دسترسی‌ای نمی‌دهد/)).toBeInTheDocument()
   })

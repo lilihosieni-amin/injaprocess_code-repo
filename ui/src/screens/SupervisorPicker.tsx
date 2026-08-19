@@ -1,9 +1,7 @@
-import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { useDepartments } from '../api/hooks'
-import { toLatinDigits } from '../lib/digits'
 import { scopesLabel } from '../lib/scopes'
-import { SearchField } from '../ui/SearchField'
-import { LoadingState } from '../ui/states'
+import { Dropdown } from '../ui/Dropdown'
 import type { SupervisorCandidate } from '../api/users'
 
 /** What a `*`-scoped account may be given instead of a supervisor (D51). */
@@ -18,8 +16,32 @@ export const NO_SUPERVISOR = 'بدون سرپرست'
 export const SUPERVISOR_OFF_LIST =
   'سرپرست کنونی در این فهرست نیست؛ تا وقتی تغییرش ندهید همان‌جا می‌ماند.'
 
+/** §6.14's own closing rule statement, plus D51's clause.
+ *
+ *  The two design sentences are why the list is as short as it is. The third is
+ *  this product's and the design has no permission model to state it in: drawn
+ *  beside a role picker with no qualification, a supervisor reads as a
+ *  permission and would then be chosen to give somebody something. It routes
+ *  comment approval (D34) and grants nothing whatever — a Reader may supervise
+ *  a Reader. */
+export const SUPERVISOR_RULE =
+  'سرپرست باید بالاتر از این کاربر باشد و دپارتمانش دپارتمان او را پوشش دهد. '
+  + 'خوانندهٔ گزارش نمی‌تواند سرپرست کسی باشد، چون کامنتی را تأیید نمی‌کند. '
+  + 'این انتخاب جایگاهی در نمودار سازمانی است و هیچ دسترسی‌ای نمی‌دهد.'
+
+/** §6.14 — what the popover says when the server offered nobody. Distinct from
+ *  the search miss below, which is a different fact with different advice. */
+export const NO_CANDIDATE = 'برای این نقش سرپرستی در دسترس نیست'
+export const NO_SEARCH_HIT = 'سرپرستی با این نام نیست'
+
 /**
  * Who may supervise this account, and **why each of them is on the list** (D52).
+ *
+ * §6.14 draws a single-select `Dropdown`, and that is not a skin change: forty
+ * candidates were forty 49px radio rows — ~1960px — stacked under an
+ * already-1300px scope fieldset inside one scrolling dialog (F29). A popover
+ * with a `--height-popover` cap and its own search is the same list at a bounded
+ * height.
  *
  * Presentational, and entirely: the rows are the server's answer to
  * `eligible_supervisors` handed down as a prop, so this component adds nobody,
@@ -71,8 +93,6 @@ export function SupervisorPicker({
   preferred?: string
   pending: boolean
 }) {
-  const group = useId()
-  const [q, setQ] = useState('')
   const defaulted = useRef(false)
   const { data: departments } = useDepartments()
   const names = useMemo(
@@ -89,76 +109,43 @@ export function SupervisorPicker({
     onChange(mine.id)
   }, [candidates, preferred, value, onChange])
 
-  const query = q.trim()
-  const digits = toLatinDigits(query)
-  // Over the name and over the number **as it is stored**: ordinary Persian
-  // keyboards emit ۰۹…, the stored username is ASCII (D57), and an unfolded
-  // query matches nothing while looking exactly like "this person cannot
-  // supervise".
-  const shown = candidates.filter((c) =>
-    query === '' || c.displayName.includes(query) || c.username.includes(digits))
+  const options = [
+    // D51 — "no supervisor" is a state only a `*`-scoped account may be in, so
+    // the option exists for exactly those. NFR-12: a choice this account may
+    // not make is ABSENT, never drawn and disabled.
+    ...(allowNone ? [{ value: '', label: NO_SUPERVISOR }] : []),
+    ...candidates.map((c) => ({
+      value: String(c.id),
+      // D52 — the scope goes beside the name because past thirty users the
+      // reason somebody is on this list is otherwise invisible, and picking
+      // blindly is how a chain ends up routed somewhere nobody intended.
+      label: `${c.displayName} — ${scopesLabel(c.scopes, names)}`,
+      note: c.username,
+    })),
+  ]
 
   return (
-    <fieldset className="border-0 p-0 m-0 flex flex-col gap-s5">
-      <legend className="text-caption font-bold text-muted p-0">سرپرست</legend>
-      {/* D51 — an org-chart fact, not a capability. It routes comment approval
-          (D34) and grants nothing whatever: a Reader may supervise a Reader.
-          Drawn beside a role picker with no qualification it reads as a
-          permission, and would then be chosen to give somebody something. */}
-      <p className="text-caption text-faint m-0">
-        سرپرست جایگاهی در نمودار سازمانی است، تأیید نظرها را مسیر می‌دهد و هیچ
-        دسترسی‌ای نمی‌دهد.
-      </p>
-
-      <SearchField label="جست‌وجوی سرپرست" value={q} onChange={setQ}
-        placeholder="نام یا شماره" />
-
+    <div className="flex flex-col gap-s3">
+      <Dropdown
+        label="سرپرست"
+        // `''` is «بدون سرپرست» and only exists where that state is legal; where
+        // it is not, `undefined` leaves the trigger on its placeholder rather
+        // than reading as a choice nobody made. An off-list id matches no option
+        // and lands on the placeholder too, which is what the note below is for.
+        value={value === null ? (allowNone ? '' : undefined) : String(value)}
+        onChange={(id) => onChange(id === '' ? null : Number(id))}
+        placeholder={pending ? 'در حال بارگذاری…' : 'انتخاب کنید'}
+        searchable searchPlaceholder="نام یا شماره"
+        noHit={NO_SEARCH_HIT}
+        empty={NO_CANDIDATE}
+        options={options}
+      />
       {staysPut && value !== null && !candidates.some((c) => c.id === value) && (
-        <p className="text-caption text-warn font-bold m-0">{SUPERVISOR_OFF_LIST}</p>
+        <p className="text-fs-xs font-semibold text-warn m-0">{SUPERVISOR_OFF_LIST}</p>
       )}
-
-      {pending ? (
-        <LoadingState rows={2} />
-      ) : candidates.length === 0 ? (
-        <p className="text-caption text-muted m-0">
-          کسی نمی‌تواند سرپرست این کاربر باشد؛ دامنهٔ دسترسی را کم‌تر کنید یا
-          سرپرستی یکی از کاربران را فعال کنید.
-        </p>
-      ) : (
-        <ul className="list-none p-0 m-0 flex flex-col gap-s2">
-          {allowNone && (
-            <li>
-              <label className="flex items-center gap-s5 min-h-touch cursor-pointer">
-                <input type="radio" name={group} checked={value === null}
-                  onChange={() => onChange(null)}
-                  className="w-s8 h-s8 accent-violet" />
-                <span className="text-body text-ink">{NO_SUPERVISOR}</span>
-              </label>
-            </li>
-          )}
-          {shown.map((c) => (
-            <li key={c.id}>
-              <label className="flex items-start gap-s5 min-h-touch cursor-pointer">
-                <input type="radio" name={group} checked={value === c.id}
-                  onChange={() => onChange(c.id)}
-                  className="mt-s4 w-s8 h-s8 accent-violet" />
-                <span className="flex flex-col gap-s1">
-                  <span className="text-body text-ink">
-                    {c.displayName} — {scopesLabel(c.scopes, names)}
-                  </span>
-                  {/* The number is a latin-digit run inside RTL prose. Pinned
-                      `ltr` so a spelling that is not digits alone stays in the
-                      order it was stored in. */}
-                  <span dir="ltr" className="text-caption text-muted font-mono">{c.username}</span>
-                </span>
-              </label>
-            </li>
-          ))}
-          {shown.length === 0 && (
-            <li className="text-caption text-muted">کسی با این مشخصات پیدا نشد.</li>
-          )}
-        </ul>
-      )}
-    </fieldset>
+      {/* §6.14's closing rule statement, in its own register: 11.5px, faint,
+          lh 1.8. It is the whole answer to "why is this list this short". */}
+      <p className="text-fs-xs text-faint leading-sub m-0">{SUPERVISOR_RULE}</p>
+    </div>
   )
 }
