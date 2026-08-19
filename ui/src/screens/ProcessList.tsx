@@ -382,17 +382,25 @@ export function ProcessList() {
                       that leads somewhere with nothing on it.
 
                       «اطلاعات کلی» opens `Summary`, and when the department's
-                      three content switches are all off that screen is §6.3's
-                      card and nothing else — «خلاصه، نمای IDEF0 و شاخص‌ها نمایش
-                      داده نمی‌شوند» over a paragraph about the policy. Offering
-                      the button anyway walks every reader in that department
-                      into an empty page.
+                      three content switches are all off that screen is its
+                      header and nothing else: owner ruling R43 withdrew the
+                      §6.3 card that used to explain the absence, so there is no
+                      longer even a sentence there to have walked a reader to.
+                      Offering the button anyway walks every reader in that
+                      department into an empty page.
 
-                      **The same predicate `Summary.tsx` decides by**, imported
-                      rather than restated: `!mayEdit && !hasPublishedDetail(p)`.
-                      Two spellings of one rule is how this project got its worst
-                      bugs, and an OR that had drifted from a per-field test was
-                      Task 16's own defect.
+                      **The same question `Summary.tsx` answers**, asked here
+                      once rather than restated three times. R43 left that screen
+                      with no branch that calls this predicate — each section
+                      guards on its own field — so the two are no longer coupled
+                      by construction and are coupled by assertion instead:
+                      `Summary.test.tsx`'s «what counts as published detail»
+                      walks all eight combinations of the three fields and
+                      requires what that screen draws for a non-editor to equal
+                      `hasPublishedDetail` of the same bytes. Two spellings of
+                      one rule is how this project got its worst bugs, and an OR
+                      that had drifted from a per-field test was Task 16's own
+                      defect.
 
                       **And it discloses nothing (NFR-12 / AC-25).**
                       `GET /api/departments/{code}/processes` runs

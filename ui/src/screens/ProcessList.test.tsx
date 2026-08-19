@@ -437,10 +437,11 @@ describe('the row, the empty state and the mobile overflow', () => {
  *
  * When the department's three content switches are all off, `visibility.filtered`
  * hands a non-editor a document whose `summary`, `idef0` and `kpis` are present
- * and emptied, and `Summary` then draws §6.3's card and **nothing else**: «خلاصه،
- * نمای IDEF0 و شاخص‌ها نمایش داده نمی‌شوند» over a paragraph explaining the
- * policy. A list that keeps offering the button is walking every reader in that
- * department into an empty page.
+ * and emptied, and `Summary` then draws its header and **nothing else**. Owner
+ * ruling R43 removed the §6.3 card that used to stand in for the three sections,
+ * so that screen no longer even carries a sentence about the absence: a list
+ * that keeps offering the button is walking every reader in that department into
+ * a page with a title on it and nothing beneath.
  *
  * **How the list knows, and why it discloses nothing new (NFR-12 / AC-25).**
  * `GET /api/departments/{code}/processes` runs `shown.redact(d, code)` over every

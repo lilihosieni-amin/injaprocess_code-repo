@@ -106,28 +106,33 @@ test('process summary', async ({ page }) => {
 })
 
 /**
- * The claim this screen exists to stop making, checked where it is actually
- * painted rather than where it is merely written.
+ * **Owner ruling R43**, checked where the page is actually painted rather than
+ * where it is merely written.
  *
- * `src/screens/Summary.test.tsx` proves the strings are in the DOM; jsdom lays
- * nothing out, so it cannot tell a card that is drawn from one that is present
- * and invisible. Here the limit card has to be a visible box on the field and
- * «شاخصی برای این فرآیند ثبت نشده است» has to be absent from the rendered text
- * of the whole page — not merely from a query on one element.
+ * A non-editor whose three switchable fields were all withheld gets the header
+ * and nothing under it — no A-0 card, no KPI heading, and no sentence naming
+ * what is missing. Task 16 drew §6.3's stated-limit card here; the owner has
+ * overruled §6.3 for this screen, because a sentence naming three withheld
+ * sections is itself the disclosure they are removing. The deliverable says the
+ * same structurally: `ui/design/Inja Panel.dc.html` :409–:463 is one
+ * `sc-if isEditor` around the whole lot.
  *
- * No `expectDesign` in this one: the read branch is not drawn at all in this
- * state, so `[data-body]` and `[data-card]` have nothing to hook and the
- * `summary` row would fail on a missing hook. What the row grades is the
- * populated screen, and the test above is where it grades it.
+ * `src/screens/Summary.test.tsx` proves the nodes are out of the DOM; jsdom
+ * lays nothing out, so it cannot tell a section that is gone from one that is
+ * present and invisible — and a `toBeHidden()` satisfied by count 0 has shipped
+ * on this branch before. Here the page's own rendered text is read, and the
+ * header has to be VISIBLE on it: R43 withdraws the sections, not the screen.
+ *
+ * No `expectDesign` in this one: no detail section is drawn in this state, so
+ * `[data-body]` and `[data-card]` have nothing to hook and the `summary` row
+ * would fail on a missing hook. What that row grades is the populated screen,
+ * and the first test in this file is where it grades it.
  */
 test('process summary — the fields the reader is not being shown', async ({ page }) => {
-  // **A READER**, and that is now load-bearing rather than incidental. The card
-  // is a statement about the visibility POLICY, and `visibility.filtered`
-  // returns the document untouched for anyone holding `edit` on its department —
-  // so drawing it for an editor says a switch withheld something when nothing
-  // was filtered at all. This spec used to run as `signedIn`'s default editor,
-  // which is exactly the caller the claim is false for; the editor's own
-  // rendering of the same payload is the block below.
+  // **A READER**, and that is load-bearing rather than incidental:
+  // `visibility.filtered` returns the document untouched to anyone holding
+  // `edit` on its department, so this state does not exist for an editor at all.
+  // The editor's own rendering of these same bytes is the block below.
   await signedIn(page, { role: 'reader', capabilities: ['view', 'comment', 'export_pdf'] })
   await serve(page, {
     '/api/departments': DEPARTMENTS,
@@ -137,9 +142,19 @@ test('process summary — the fields the reader is not being shown', async ({ pa
   })
   await visit(page, `/processes/${PID}`, 'summary')
 
-  await expect(page.getByText('خلاصه، نمای IDEF0 و شاخص‌ها نمایش داده نمی‌شوند')).toBeVisible()
+  // The screen renders: the name and the flowchart door are not switchable.
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'مشاهدهٔ فلوچارت' })).toBeVisible()
+
   await expect(page.getByText('نمای IDEF0 سطح فرآیند (A-0)')).toHaveCount(0)
-  expect(await page.locator('body').innerText()).not.toContain('شاخصی برای این فرآیند ثبت نشده است')
+  await expect(page.getByText('شاخص‌های کلیدی عملکرد (KPI)')).toHaveCount(0)
+  await expect(page.locator('[data-r-idef0]')).toHaveCount(0)
+  await expect(page.locator('[data-card]')).toHaveCount(0)
+  // Not a word about any of it, read off the whole painted page rather than off
+  // a query for one node.
+  const body = await page.locator('body').innerText()
+  expect(body).not.toContain('نمایش داده نمی‌شوند')
+  expect(body).not.toContain('شاخصی برای این فرآیند ثبت نشده است')
 
   await shot(page, `summary-withheld-${page.viewportSize()!.width}`)
 })
@@ -168,7 +183,8 @@ test('process summary — an editor’s brand-new process is empty, not withheld
   })
   await visit(page, `/processes/${PID}`, 'summary')
 
-  await expect(page.getByText('خلاصه، نمای IDEF0 و شاخص‌ها نمایش داده نمی‌شوند')).toHaveCount(0)
   await expect(page.getByText('نمای IDEF0 سطح فرآیند (A-0)')).toBeVisible()
+  await expect(page.getByText('شاخص‌های کلیدی عملکرد (KPI)')).toBeVisible()
+  await expect(page.locator('[data-r-idef0]')).toBeVisible()
   expect(await page.locator('body').innerText()).toContain('شاخصی برای این فرآیند ثبت نشده است')
 })

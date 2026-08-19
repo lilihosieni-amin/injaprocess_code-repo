@@ -4,6 +4,8 @@ import { fileURLToPath } from 'node:url'
 import { screen } from '@testing-library/react'
 import { Summary } from './Summary'
 import { renderAt } from '../test/utils'
+import { hasPublishedDetail } from '../lib/published'
+import type { Process } from '../api/types'
 import type { SessionDescriptor } from '../auth/session'
 
 afterEach(() => vi.restoreAllMocks())
@@ -139,24 +141,115 @@ const BLANKED = {
   kpis: [], nodes: [], edges: [], pending: [],
 }
 
-describe('a reader whose policy blanked the detail', () => {
-  it('is told the fields are not shown, and is not told they are empty', async () => {
-    // «شاخصی ثبت نشده است» asserts that nobody recorded one. When the policy
-    // blanked the field the app cannot tell that from "withheld", so it says
-    // neither — it states the only thing it knows, which is that they are not
-    // being shown. Same rule as the departments conflict tile.
+/**
+ * **Owner ruling R43 — where a field was withheld, a non-editor sees nothing.**
+ *
+ * Not a stated limit, not a heading over an explanation: nothing. The owner was
+ * shown both readings of this screen and chose the deliverable's, under a rule
+ * they gave in their own words — *"if user couldn't see anything, we shouldn't
+ * see anything about it. like design."*
+ *
+ * `ui/design/Inja Panel.dc.html` is the specification and says it structurally.
+ * Line 409 opens `<sc-if value="{{ isEditor }}">` and line 463 closes it; the
+ * A-0 card (:410), its heading «نمای IDEF0 سطح فرآیند (A-0)» (:412), the KPI
+ * heading (:446) and both KPI states (:447, :460) sit inside that one guard. A
+ * non-editor's summary screen in the deliverable is its header and nothing
+ * beneath it.
+ *
+ * **This reverses part of Task 16.** That task implemented §6.3's *"a non-editor
+ * sees a stated limit, not a blank"* and was right to, given the spec it had.
+ * §6.3 still says it; the owner has overruled §6.3 for this screen, so a later
+ * reader who finds that clause and no stated limit here is looking at a
+ * decision, not a regression. The sentence «خلاصه، نمای IDEF0 و شاخص‌ها نمایش
+ * داده نمی‌شوند» went with the sections — a sentence naming three withheld
+ * sections is itself the disclosure the ruling removes.
+ *
+ * **What Task 16 got right is kept, and is what the pairs below are for.** The
+ * three switches are INDEPENDENT — `visibility.py` maps summary→process_summary,
+ * idef0→process_idef0, kpis→process_kpis and `/visibility` sets each separately
+ * — so a withheld KPI list may not take the A-0 card down with it. An OR across
+ * the three was a real defect. Every case is written twice, absent and present,
+ * because a one-sided absence test passes just as happily against a screen that
+ * draws nothing for anybody.
+ */
+describe('R43 — a non-editor sees nothing where a withheld field would be', () => {
+  it('draws no A-0 card, no KPI heading, and no sentence naming either', async () => {
     mock(BLANKED)
     renderAt('/processes/:pid', <Summary />, '/processes/cooking-001', READER)
-    expect(await screen.findByText('خلاصه، نمای IDEF0 و شاخص‌ها نمایش داده نمی‌شوند')).toBeInTheDocument()
-    expect(screen.queryByText(/شاخصی برای این فرآیند ثبت نشده است/)).not.toBeInTheDocument()
-    expect(screen.queryByText('نمای IDEF0 سطح فرآیند (A-0)')).not.toBeInTheDocument()
+    // The screen still RENDERS. The ruling withdraws the sections, not the page:
+    // the name, the id and the flowchart door are not switchable fields.
+    expect(await screen.findByRole('heading', { level: 1, name: 'خرید و پرداخت' })).toBeInTheDocument()
+    expect(screen.getByText('cooking-001')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'مشاهدهٔ فلوچارت' })).toBeInTheDocument()
+
+    expect(screen.queryByText('نمای IDEF0 سطح فرآیند (A-0)')).toBeNull()
+    expect(screen.queryByText('شاخص‌های کلیدی عملکرد (KPI)')).toBeNull()
+    expect(document.querySelector('[data-card]')).toBeNull()
+    expect(document.querySelector('[data-r-idef0]')).toBeNull()
+    expect(document.querySelector('[data-body]')).toBeNull()
+    // No sentence about any of it, in either wording — neither the stated limit
+    // R43 removes nor a «ثبت نشده است» that would be a claim of absence.
+    expect(screen.queryByText(/نمایش داده نمی/)).toBeNull()
+    expect(screen.queryByText(/ثبت نشده است/)).toBeNull()
   })
 
-  it('draws the detail the moment any of it arrives', async () => {
-    mock({ ...BLANKED, summary: 'خلاصهٔ واقعی' })
+  it('serves an EDITOR every one of them, on the same bytes', async () => {
+    // The pair, and the only thing that makes the test above mean anything.
+    // `READER` is `EDITOR` minus `edit` and nothing else and the document is
+    // byte-identical, so the capability is all that can explain a difference.
+    // `routers/processes.py`'s `_skeleton` writes every new process exactly like
+    // `BLANKED`, so this is also every process at the moment its own editor
+    // created it: empty rather than filtered, and theirs to fill in here.
+    mock(BLANKED)
+    renderAt('/processes/:pid', <Summary />, '/processes/cooking-001', EDITOR)
+    expect(await screen.findByText('نمای IDEF0 سطح فرآیند (A-0)')).toBeInTheDocument()
+    expect(screen.getByText('شاخص‌های کلیدی عملکرد (KPI)')).toBeInTheDocument()
+    expect(document.querySelector('[data-r-idef0]')).not.toBeNull()
+    // …and «ثبت نشده است» survives for the one caller it is true for.
+    expect(screen.getByText(/شاخصی برای این فرآیند ثبت نشده است/)).toBeInTheDocument()
+  })
+
+  it('keeps the A-0 card for a non-editor whose ICOM survived, and drops only the KPIs', async () => {
+    mock({ ...BLANKED, idef0: { inputs: ['درخواست خرید'], controls: [], outputs: [], mechanisms: [] } })
     renderAt('/processes/:pid', <Summary />, '/processes/cooking-001', READER)
-    expect(await screen.findByText('خلاصهٔ واقعی')).toBeInTheDocument()
-    expect(screen.queryByText('خلاصه، نمای IDEF0 و شاخص‌ها نمایش داده نمی‌شوند')).not.toBeInTheDocument()
+    expect(await screen.findByText('نمای IDEF0 سطح فرآیند (A-0)')).toBeInTheDocument()
+    expect(screen.getByText('درخواست خرید')).toBeInTheDocument()
+    // The independence, from the side an OR would break: one withheld switch
+    // takes its own section away and no other.
+    expect(screen.queryByText('شاخص‌های کلیدی عملکرد (KPI)')).toBeNull()
+    expect(screen.queryByText(/ثبت نشده است/)).toBeNull()
+  })
+
+  it('keeps the KPI section for a non-editor whose KPIs survived, and drops only the A-0 card', async () => {
+    mock({ ...BLANKED, kpis: [{ name: 'زمان چرخه', definition: 'میانگین', target: '۲ ساعت' }] })
+    renderAt('/processes/:pid', <Summary />, '/processes/cooking-001', READER)
+    expect(await screen.findByText('شاخص‌های کلیدی عملکرد (KPI)')).toBeInTheDocument()
+    expect(screen.getByText('زمان چرخه')).toBeInTheDocument()
+    expect(screen.queryByText('نمای IDEF0 سطح فرآیند (A-0)')).toBeNull()
+    // Four labelled columns with no chips is a claim of absence drawn instead of
+    // written, so the frame goes with the heading.
+    expect(document.querySelector('[data-r-idef0]')).toBeNull()
+  })
+
+  it('keeps the summary for a non-editor when the summary is the one that survived', async () => {
+    // The ordinary mixed case: a department with `process_idef0` and
+    // `process_kpis` off and `process_summary` on.
+    mock({ ...BLANKED, summary: 'خلاصهٔ منتشرشده' })
+    renderAt('/processes/:pid', <Summary />, '/processes/cooking-001', READER)
+    expect(await screen.findByText('خلاصهٔ منتشرشده')).toBeInTheDocument()
+    expect(screen.queryByText('نمای IDEF0 سطح فرآیند (A-0)')).toBeNull()
+    expect(screen.queryByText('شاخص‌های کلیدی عملکرد (KPI)')).toBeNull()
+    expect(screen.queryByText(/نمایش داده نمی/)).toBeNull()
+  })
+
+  it('renders no subtitle hook at all when the summary is the withheld field', async () => {
+    // `[data-body]` is what the browser gate grades the subtitle on. An
+    // unguarded paragraph would put an EMPTY hook on the page — a zero-height
+    // run of type the gate then measures, and a margin the design does not draw.
+    mock({ ...BLANKED, kpis: [{ name: 'زمان چرخه' }] })
+    renderAt('/processes/:pid', <Summary />, '/processes/cooking-001', READER)
+    await screen.findByText('زمان چرخه')
+    expect(document.querySelector('[data-body]')).toBeNull()
   })
 
   it('keeps «ثبت نشده است» for an editor looking at a genuinely empty KPI list', async () => {
@@ -166,49 +259,20 @@ describe('a reader whose policy blanked the detail', () => {
     expect(await screen.findByText(/شاخصی برای این فرآیند ثبت نشده است/)).toBeInTheDocument()
   })
 
-  it('says the opposite to a reader on the SAME payload — the session is what decides', async () => {
-    // The pair that makes the test above mean something. `READER` is `EDITOR`
-    // minus `edit` and nothing else, and the document is byte-identical, so only
-    // the capability can explain the difference. Swapping the session in that
-    // test used to change nothing at all: `hasPublishedDetail` and the KPI
-    // branch read the payload alone, which is F2 restated as a test.
+  it('says nothing at all to a reader on the SAME payload — the session is what decides', async () => {
+    // The pair for the test above. Swapping the session in it once changed
+    // nothing whatever: the KPI branch read the payload alone, which is F2
+    // restated as a test.
     mock({ ...BLANKED, summary: 'خلاصه', idef0: { inputs: ['ورودی'], controls: [], outputs: [], mechanisms: [] } })
     renderAt('/processes/:pid', <Summary />, '/processes/cooking-001', READER)
-    expect(await screen.findByText(/نمایش داده نمی‌شوند\.$/)).toBeInTheDocument()
-    expect(screen.queryByText(/شاخصی برای این فرآیند ثبت نشده است/)).toBeNull()
-  })
-
-  it('is the ordinary mixed case — summary published, KPIs withheld — and says nothing about the list', async () => {
-    // **The defect Task 16 existed to fix, one level down.** The three switches
-    // are independent (`visibility.py`: summary→process_summary,
-    // idef0→process_idef0, kpis→process_kpis) and `/visibility` sets each
-    // separately, so this is not an exotic fixture: it is what a department with
-    // `process_kpis` off looks like to every non-editor. `hasPublishedDetail` is
-    // an OR, so the detail block was drawn and the screen printed «شاخصی برای
-    // این فرآیند ثبت نشده است» — a claim that nobody recorded one — about a list
-    // the policy had withheld.
-    mock({ ...BLANKED, summary: 'خلاصهٔ منتشرشده' })
-    renderAt('/processes/:pid', <Summary />, '/processes/cooking-001', READER)
-    expect(await screen.findByText('خلاصهٔ منتشرشده')).toBeInTheDocument()
-    expect(screen.queryByText(/ثبت نشده است/)).toBeNull()
-    // …and the A-0 block is not drawn as an empty diagram either: four labelled
-    // columns with no chips is the same claim made in pictures.
-    expect(document.querySelector('[data-r-idef0]')).toBeNull()
-    expect(screen.getByText(/نمای IDEF0 این فرآیند نمایش داده نمی‌شود/)).toBeInTheDocument()
-  })
-
-  it('never shows the withheld card to an editor — a brand-new process is empty, not filtered', async () => {
-    // `routers/processes.py`'s `_skeleton` writes every new process with
-    // `summary: ""`, an empty `idef0` and `kpis: []`. So EVERY process, at the
-    // moment its own editor created it, told that editor «سیاست نمایش محتوای
-    // این دپارتمان تعیین می‌کند…» — false, because `visibility.filtered` returns
-    // early for an editor and filters nothing — and hid the honest empty states
-    // behind it.
-    mock(BLANKED)
-    renderAt('/processes/:pid', <Summary />, '/processes/cooking-001', EDITOR)
+    // Its ICOM survived, so the A-0 card is drawn…
     expect(await screen.findByText('نمای IDEF0 سطح فرآیند (A-0)')).toBeInTheDocument()
-    expect(screen.queryByText('خلاصه، نمای IDEF0 و شاخص‌ها نمایش داده نمی‌شوند')).toBeNull()
-    expect(screen.getByText(/شاخصی برای این فرآیند ثبت نشده است/)).toBeInTheDocument()
+    // …and its KPI list did not, so that section is simply not there — neither
+    // «ثبت نشده است», which would claim nobody recorded one, nor a sentence
+    // saying the list is being withheld, which is what R43 removes.
+    expect(screen.queryByText('شاخص‌های کلیدی عملکرد (KPI)')).toBeNull()
+    expect(screen.queryByText(/ثبت نشده است/)).toBeNull()
+    expect(screen.queryByText(/نمایش داده نمی/)).toBeNull()
   })
 })
 
@@ -261,32 +325,74 @@ describe('the screen’s own shape', () => {
   })
 })
 
+/**
+ * **R39 × R43 — the door and the room, proved to agree.**
+ *
+ * `ProcessList` withdraws «اطلاعات کلی» exactly when `!mayEdit &&
+ * !hasPublishedDetail(p)` (R39): never offer a control that leads somewhere with
+ * nothing on it. Until R43 this screen *called* that same predicate, so the two
+ * could not drift by construction — the list's question and the screen's whole
+ * top-level branch were one expression.
+ *
+ * R43 deleted that branch. Each section now asks only about its own field, and
+ * "nothing was published" is no longer a state this screen has a branch for: it
+ * is simply every section declining to draw. The coupling therefore has to be
+ * ASSERTED rather than compiled, and this table is the assertion. Over all eight
+ * combinations of the three switchable fields, what a non-editor actually finds
+ * below the header must equal `hasPublishedDetail` of the very bytes they were
+ * served.
+ *
+ * It is a real mutation test and not a restatement: turning `published.ts`'s
+ * `||` into `&&` reddens the six mixed rows here, exactly as it reddens the four
+ * R39 rows in `ProcessList.test.tsx`. Widening the predicate reddens the empty
+ * row. Neither file can move without the other going red.
+ */
 describe('what counts as published detail', () => {
-  // Three fields, three clauses, and the card must stay away if ANY of them
-  // arrived. A predicate that only looked at `summary` would tell a reader
-  // holding a full ICOM diagram that it is not being shown.
-  it('draws the A-0 card for a process whose only detail is its ICOM', async () => {
-    mock({ ...BLANKED, idef0: { inputs: ['درخواست خرید'], controls: [], outputs: [], mechanisms: [] } })
-    renderAt('/processes/:pid', <Summary />, '/processes/cooking-001', READER)
-    expect(await screen.findByText('نمای IDEF0 سطح فرآیند (A-0)')).toBeInTheDocument()
-    expect(screen.queryByText('خلاصه، نمای IDEF0 و شاخص‌ها نمایش داده نمی‌شوند')).not.toBeInTheDocument()
-  })
+  /** The three switchable fields, each as `visibility.filtered` leaves it when
+   *  its switch is ON. Absent from a row means the switch was off — which is
+   *  byte-identical to never having been recorded, which is the point. */
+  const SURVIVES = {
+    summary: { summary: 'خلاصهٔ منتشرشده' },
+    idef0: { idef0: { inputs: ['درخواست خرید'], controls: [], outputs: [], mechanisms: [] } },
+    kpis: { kpis: [{ name: 'زمان چرخه' }] },
+  } as const
+  const NAMES = ['summary', 'idef0', 'kpis'] as const
 
-  it('draws the detail for a process whose only detail is a KPI', async () => {
-    mock({ ...BLANKED, kpis: [{ name: 'زمان چرخه' }] })
-    renderAt('/processes/:pid', <Summary />, '/processes/cooking-001', READER)
-    expect(await screen.findByText('زمان چرخه')).toBeInTheDocument()
-    expect(screen.queryByText('خلاصه، نمای IDEF0 و شاخص‌ها نمایش داده نمی‌شوند')).not.toBeInTheDocument()
-  })
+  /** All eight subsets, smallest first. */
+  const CASES = [0, 1, 2, 3, 4, 5, 6, 7].map(
+    (bits) => NAMES.filter((_, i) => bits & (1 << i)))
 
-  it('renders no subtitle hook at all when the summary is the blanked field', async () => {
-    // `[data-body]` is what the browser gate grades the subtitle on. An
-    // unguarded paragraph would put an EMPTY hook on the page — a zero-height
-    // run of type the gate then measures, and a margin the design does not draw.
-    mock({ ...BLANKED, kpis: [{ name: 'زمان چرخه' }] })
-    renderAt('/processes/:pid', <Summary />, '/processes/cooking-001', READER)
-    await screen.findByText('زمان چرخه')
-    expect(document.querySelector('[data-body]')).toBeNull()
+  for (const on of CASES) {
+    const label = on.length ? on.join(' + ') : 'nothing'
+    it(`a non-editor served ${label} sees detail iff hasPublishedDetail says so`, async () => {
+      const doc = Object.assign({ ...BLANKED }, ...on.map((k) => SURVIVES[k]))
+      mock(doc)
+      renderAt('/processes/:pid', <Summary />, '/processes/cooking-001', READER)
+      // The header is unconditional, so it is what tells us the read landed —
+      // waiting on any section would beg the question this test asks.
+      await screen.findByRole('heading', { level: 1, name: 'خرید و پرداخت' })
+
+      // The three hooks the three sections put on the page, and nothing else is
+      // below the header: the subtitle, the A-0 card, the KPI heading.
+      const drawn = document.querySelector('[data-body]') !== null
+        || document.querySelector('[data-card]') !== null
+        || screen.queryByText('شاخص‌های کلیدی عملکرد (KPI)') !== null
+
+      expect(drawn).toBe(hasPublishedDetail(doc as unknown as Process))
+    })
+  }
+
+  it('offers an editor the whole screen on the row where a non-editor gets none of it', async () => {
+    // The pair for the `nothing` row above, and the reason `hasPublishedDetail`
+    // is never asked on its own: `visibility.filtered` returns the document
+    // untouched to anyone holding `edit` on its department, so a blank one of
+    // theirs is genuinely blank and every section is theirs to fill.
+    mock(BLANKED)
+    renderAt('/processes/:pid', <Summary />, '/processes/cooking-001', EDITOR)
+    await screen.findByText('نمای IDEF0 سطح فرآیند (A-0)')
+    expect(document.querySelector('[data-card]')).not.toBeNull()
+    expect(screen.getByText('شاخص‌های کلیدی عملکرد (KPI)')).toBeInTheDocument()
+    expect(hasPublishedDetail(BLANKED as unknown as Process)).toBe(false)
   })
 })
 

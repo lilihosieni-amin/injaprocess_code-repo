@@ -13,23 +13,18 @@ import { Button } from '../ui/Button'
 import { SectionCard } from '../ui/SectionCard'
 import { TextField } from '../ui/TextField'
 import { toFa } from '../lib/format'
-// R39 — one home for the rule, shared with `ProcessList`, which now asks the
-// same question to decide whether to offer a door to this screen at all.
-import { hasIcom, hasPublishedDetail } from '../lib/published'
+// `hasIcom` — one home for "is there a term in this A-0 block", shared with
+// `DetailDrawer`. Its neighbour `hasPublishedDetail` is the OR across all three
+// switchable fields, and R43 left this screen with no branch that asks it: each
+// section below asks about its own field alone, and "nothing was published" is
+// no longer a state, only every section declining to draw. `ProcessList` still
+// asks it, to decide whether to offer a door here at all (R39) — and that the
+// door and the room still agree is asserted, over all eight combinations of the
+// three fields, in `Summary.test.tsx`'s «what counts as published detail».
+import { hasIcom } from '../lib/published'
 import { refusalStatus } from '../api/client'
 import { LoadFailedScreen } from '../ui/states'
 import { RefusalScreen } from './Refusal'
-
-/**
- * The only thing this screen may say about a switchable field that arrived
- * empty from a caller who may have been denied it: that it is not shown.
- *
- * Never «ثبت نشده است», which asserts that nobody recorded one. Exported so the
- * screen and its tests cannot come to word the same state differently, exactly
- * as `Visibility.tsx` exports the two words §6.12 ends its rows with.
- */
-export const IDEF0_NOT_SHOWN = 'نمای IDEF0 این فرآیند نمایش داده نمی‌شود.'
-export const KPIS_NOT_SHOWN = 'شاخص‌های این فرآیند نمایش داده نمی‌شوند.'
 
 /**
  * The destructive square — `--tile-c2` under `--conflict` behind a 1.5px
@@ -277,38 +272,47 @@ export function Summary() {
         </div>
 
         {!editing ? (
-          !mayEdit && !hasPublishedDetail(proc) ? (
-            // §6.3's own card, and the one claim this screen is allowed to
-            // make about the three switchable fields: that they are not being
-            // shown.
-            //
-            // `!mayEdit` is the half that was missing. `routers/processes.py`'s
-            // `_skeleton` writes every new process with `summary: ""`, an empty
-            // `idef0` and `kpis: []`, so **every process, the moment its own
-            // editor created it**, showed that editor «سیاست نمایش محتوای این
-            // دپارتمان تعیین می‌کند…» — false, because `visibility.filtered`
-            // returns early for an editor and filters nothing — and suppressed
-            // the honest «ثبت نشده است» empty states behind it.
-            <div className="bg-card border border-border-card rounded-doc px-s11 py-s10 shadow-card">
-              <div className="font-bold text-fs-body text-ink">خلاصه، نمای IDEF0 و شاخص‌ها نمایش داده نمی‌شوند</div>
-              <p className="text-fs-sm text-muted leading-loose mt-s4 m-0">
-                سیاست نمایش محتوای این دپارتمان تعیین می‌کند چه بخش‌هایی از یک فرآیند منتشر شود. فلوچارت و گام‌به‌گام این فرآیند در دسترس شماست.
-              </p>
-            </div>
-          ) : (
-            <>
+          /* **Owner ruling R43 — where a switchable field was withheld, a
+             non-editor sees NOTHING.** No card, no heading, and no sentence
+             saying so: the section is simply not on the page.
+
+             **This reverses part of Task 16, deliberately.** §6.3 says a
+             non-editor gets *a stated limit, not a blank*, and Task 16
+             implemented it — «خلاصه، نمای IDEF0 و شاخص‌ها نمایش داده نمی‌شوند»
+             over a paragraph about the policy, plus a per-field line inside each
+             section. The owner was shown that reading beside the deliverable's
+             and chose the deliverable's, under a rule they gave in their own
+             words: *"if user couldn't see anything, we shouldn't see anything
+             about it. like design."* A sentence naming three withheld sections
+             is itself the disclosure they are removing. §6.3 still reads the
+             other way; a later reader who finds that clause and no stated limit
+             here is looking at a DECISION, not a regression.
+
+             The deliverable says it structurally rather than in prose.
+             `ui/design/Inja Panel.dc.html` opens `<sc-if value="{{ isEditor }}">`
+             at :409 and does not close it until :463, so the A-0 card (:410),
+             its heading (:412), the KPI heading (:446) and both KPI states
+             (:447, :460) are all inside one editor guard. What is left for
+             everyone else is the header — which is why the guards below are per
+             SECTION and the screen itself is never withheld.
+
+             **The three switches stay independent.** `visibility.py` maps
+             summary→process_summary, idef0→process_idef0, kpis→process_kpis and
+             `/visibility` sets each separately, so the ordinary case is one of
+             them off. An OR across the three — one withheld field taking the
+             other two sections down with it — was a real defect; each guard here
+             reads its own field and nothing else. */
+          <>
+            {(mayEdit || hasIcom(proc.idef0)) && (
               <div data-card className="bg-card border border-border-card rounded-doc p-s11 mb-s9 shadow-card">
                 <div className="font-bold text-fs-body text-violet mb-s9 flex items-center gap-s4">
                   <span className="w-s4 h-s4 bg-coral rounded-round" />نمای IDEF0 سطح فرآیند (A-0)
                 </div>
-                {!mayEdit && !hasIcom(proc.idef0) ? (
-                  // Four labelled columns with no chips is a picture of an
-                  // empty diagram, and to a caller who may have been denied the
-                  // field that is a claim of absence drawn rather than written.
-                  // An editor keeps the empty frame: it is theirs to fill, and
-                  // nothing was withheld from them.
-                  <p className="text-fs-sm text-muted leading-loose m-0">{IDEF0_NOT_SHOWN}</p>
-                ) : (
+                {/* An editor keeps the empty frame — it is theirs to fill, and
+                    `visibility.filtered` withheld nothing from them. A
+                    non-editor is only ever here with terms to draw, because
+                    four labelled columns with no chips would be a claim of
+                    absence made in pictures. */}
                 <div data-r-idef0 className="grid grid-cols-idef0 gap-s7 items-center max760:flex max760:flex-col max760:gap-s6">
                   <div className="col-start-2 row-start-1 text-center min-w-0">
                     <div className="text-fs-xxs text-muted mb-s3">کنترل‌ها ↓</div>
@@ -333,41 +337,45 @@ export function Summary() {
                     <div className="text-fs-xxs text-muted mt-s3">↑ مکانیزم‌ها</div>
                   </div>
                 </div>
-                )}
               </div>
+            )}
 
-              {/* Ledger P3-2: §6.3 gives this heading `--ink`, which is the
-                  very colour of the field it is written on — contrast 1.00.
-                  §6.0 settles it: headings on the field are white. */}
-              <h2 className="font-bold text-fs-lg text-role-title-on-field mb-s6 m-0">شاخص‌های کلیدی عملکرد (KPI)</h2>
-              {proc.kpis.length > 0 ? (
-                <div data-r-2col className="grid grid-cols-2 gap-s7 max760:grid-cols-1">
-                  {proc.kpis.map((k, i) => (
-                    <div key={i} className="bg-card border border-border-card rounded-tile px-s9 py-s8">
-                      <div className="flex items-center justify-between gap-s4">
-                        <div className="font-bold text-fs-body text-ink">{k.name}</div>
-                        {k.target && <div className="text-fs-sm2 font-bold text-conflict bg-tile-c px-s5 py-s1 rounded-badge">{k.target}</div>}
+            {(mayEdit || proc.kpis.length > 0) && (
+              <>
+                {/* Ledger P3-2: §6.3 gives this heading `--ink`, which is the
+                    very colour of the field it is written on — contrast 1.00.
+                    §6.0 settles it: headings on the field are white. */}
+                <h2 className="font-bold text-fs-lg text-role-title-on-field mb-s6 m-0">شاخص‌های کلیدی عملکرد (KPI)</h2>
+                {proc.kpis.length > 0 ? (
+                  <div data-r-2col className="grid grid-cols-2 gap-s7 max760:grid-cols-1">
+                    {proc.kpis.map((k, i) => (
+                      <div key={i} className="bg-card border border-border-card rounded-tile px-s9 py-s8">
+                        <div className="flex items-center justify-between gap-s4">
+                          <div className="font-bold text-fs-body text-ink">{k.name}</div>
+                          {k.target && <div className="text-fs-sm2 font-bold text-conflict bg-tile-c px-s5 py-s1 rounded-badge">{k.target}</div>}
+                        </div>
+                        <p className="text-fs-sm2 text-muted mt-s4 leading-relaxed m-0">{k.definition}</p>
                       </div>
-                      <p className="text-fs-sm2 text-muted mt-s4 leading-relaxed m-0">{k.definition}</p>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="bg-card border border-dashed border-line rounded-tile p-s9 text-center text-faint text-fs-sm2 leading-loose">
-                  {/* Two sentences for two different facts, and the boolean
-                      that chooses between them is the server's own. «ثبت نشده
-                      است» claims nobody recorded a KPI; that is knowable only
-                      for the caller `visibility.filtered` hands the document to
-                      untouched. For everyone else an empty list is
-                      indistinguishable from a withheld one, so the screen says
-                      the one thing it can see. */}
-                  {mayEdit
-                    ? 'شاخصی برای این فرآیند ثبت نشده است. (سامانه اطلاعات را نمی‌سازد؛ فقط از محتوای واقعی جلسه پر می‌شود.)'
-                    : KPIS_NOT_SHOWN}
-                </div>
-              )}
-            </>
-          )
+                    ))}
+                  </div>
+                ) : (
+                  <div className="bg-card border border-dashed border-line rounded-tile p-s9 text-center text-faint text-fs-sm2 leading-loose">
+                    {/* Reachable only for an editor — the guard above is the
+                        other half of it — and that is what licenses the
+                        sentence. «ثبت نشده است» claims nobody recorded a KPI,
+                        which is knowable only for the caller
+                        `visibility.filtered` hands the document to untouched.
+                        For everyone else an empty list is indistinguishable
+                        from a withheld one, and under R43 the screen answers
+                        that by saying nothing at all rather than by saying so.
+                        The deliverable draws this state at :460, inside the
+                        same `isEditor` guard. */}
+                    شاخصی برای این فرآیند ثبت نشده است. (سامانه اطلاعات را نمی‌سازد؛ فقط از محتوای واقعی جلسه پر می‌شود.)
+                  </div>
+                )}
+              </>
+            )}
+          </>
         ) : (
           <>
             {/* The deliverable draws no edit form for this screen — its own
