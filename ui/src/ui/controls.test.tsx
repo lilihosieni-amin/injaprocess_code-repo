@@ -191,7 +191,9 @@ describe('Accordion', () => {
     ])
 
     // `font-size:11px;font-weight:600;color:#4A25A9;background:#F0E9FB;
-    //  padding:3px 10px;border-radius:999px;flex:none`
+    //  padding:3px 10px;border-radius:999px;flex:none` — the 3px normalised to
+    // the ladder's 4, the same 1px call ledger P3-4 made for the department
+    // card's chips. See the component for why it is not borrowed.
     expect([...declarations(await paint(badge.className))].sort()).toEqual([
       'background-color: var(--tile-v)',
       'border-radius: var(--radius-pill)',
@@ -199,10 +201,10 @@ describe('Accordion', () => {
       'flex: none',
       'font-size: var(--fs-xxs)',
       'font-weight: var(--fw-semibold)',
-      'padding-bottom: var(--space-hint)',
+      'padding-bottom: var(--space-1)',
       'padding-left: var(--space-5)',
       'padding-right: var(--space-5)',
-      'padding-top: var(--space-hint)',
+      'padding-top: var(--space-1)',
     ])
   })
 

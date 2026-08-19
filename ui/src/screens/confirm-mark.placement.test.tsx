@@ -92,7 +92,11 @@ describe('the mark on the department overview', () => {
     // console on every page load of every editor in the building.
     const calls = mock()
     renderAt('/departments/:code/overview', <Overview />, '/departments/cooking/overview', EDITOR)
-    expect(await screen.findByText('دپارتمان پخت')).toBeInTheDocument()
+    // A regex, because §6.4's title is «خلاصهٔ {{ deptName }}» and the exact
+    // matcher this used to carry looked for the name on its own. What is being
+    // waited for is "the page rendered", which the department's own name in the
+    // H1 still says.
+    expect(await screen.findByText(/دپارتمان پخت/)).toBeInTheDocument()
     expect(screen.queryByText('تأیید نشده')).toBeNull()
     expect(screen.queryByText('تأیید شده')).toBeNull()
     expect(calls.some((u) => u.startsWith('/api/confirmations'))).toBe(false)

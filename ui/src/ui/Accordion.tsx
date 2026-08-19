@@ -101,11 +101,13 @@ function Row({ item, open, onToggle }: {
       >
         <span className="flex-1 min-w-0 text-fs-body font-bold text-ink">{item.title}</span>
         {item.badge !== undefined && (
-          // `py-hint` is 3px and its declared role is the offset of a hint line
-          // under its label — borrowed here because 3px as a PILL's vertical
-          // padding (5 uses across the two deliverables) has no token of its
-          // own. Reported for the next mint pass rather than minted here.
-          <span className="flex-none text-fs-xxs font-semibold text-violet bg-tile-v py-hint px-s5 rounded-pill">
+          // §6.4 draws `padding:3px 10px`. 3px is off the _ds ladder (2 -> 4)
+          // and the two tokens that hold it are a hint line's offset and the
+          // flow nav group's gap, whose own comments forbid borrowing them, so
+          // this takes the nearest rung — which is also the `4px 10px` ledger
+          // P3-4 already normalised the department card's chips onto. The
+          // report asks for the pill's own token.
+          <span className="flex-none text-fs-xxs font-semibold text-violet bg-tile-v py-s1 px-s5 rounded-pill">
             {item.badge}
           </span>
         )}
