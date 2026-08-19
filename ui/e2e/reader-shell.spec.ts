@@ -317,6 +317,23 @@ test('«بازگشت» is drawn at all five of the reader’s own numbers', asyn
   const glyph = back.locator('svg')
   await expect(glyph).toHaveAttribute('width', '16')
   await expect(glyph.locator('path')).toHaveAttribute('d', 'M9 18l6-6-6-6')
+  // …and F11's floor, which those five values leave it 1.75px short of: the
+  // design draws this button 42.25px tall, and 42 is a rung of the same control
+  // ladder the two icon buttons are on. The painted box stays the design's and
+  // the `::before` grows the target, so the probe is 3px below the drawn edge.
+  //
+  // `expectExpandedHitArea` cannot say this one: it RESOLVES the drawn box from
+  // the element's own `w-`/`h-` classes, and this control has neither — its box
+  // is its padding and its text. So it is measured here or nowhere.
+  const box = (await back.boundingBox())!
+  expect(box.height, 'the drawn button already meets the floor, so the overlay is the wrong tool')
+    .toBeLessThan(44)
+  const probe = { x: box.x + box.width / 2, y: box.y + box.height + 3 }
+  const hit = await page.evaluate((p) => {
+    const el = document.elementFromPoint(p.x, p.y)
+    return el === null ? null : (el.closest('a, button')?.textContent?.trim() ?? el.tagName)
+  }, probe)
+  expect(hit, 'a pointer 3px below the drawn edge did not land on «بازگشت»').toBe('بازگشت')
 })
 
 test('the home square is the reader’s 38px box, and it catches a 44px pointer', async ({ page }) => {

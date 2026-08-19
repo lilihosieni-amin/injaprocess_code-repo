@@ -280,6 +280,21 @@ describe('readerBack', () => {
     expect(readerBack('/departments/dining//overview', '/departments')).toBe('/departments/dining')
   })
 
+  it('never sends a one-department reader to a list they cannot see', () => {
+    // R4 read back into this function. For a MANY-department reader the root and
+    // `/departments` are the same string, so every case above passes whichever of
+    // the two the departments branch hands back; for a one-department reader they
+    // are not, and the literal gives them a control whose destination is a
+    // redirect straight back to where they already were. Both routes below are
+    // off the app's own route table today, which is exactly why nothing else
+    // separates the two spellings.
+    expect(readerBack('/departments/cooking', '/departments/dining')).toBe('/departments/dining')
+    expect(readerBack('/departments/dining/settings', '/departments/dining')).toBe('/departments/dining')
+    // …and the many-department reader's answer is unchanged, which is the half
+    // that says this is one answer and not two.
+    expect(readerBack('/departments/cooking', '/departments')).toBe('/departments')
+  })
+
   it('never offers to take a reader to the screen they are already on', () => {
     // A back control pointing at the current page is a control that does
     // nothing, and every individual case above is satisfied by an answer that

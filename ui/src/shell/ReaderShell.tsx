@@ -187,7 +187,7 @@ export function ReaderShell({ session }: { session: SessionDescriptor }) {
               // `chevronStart`, which is the `M9 18l6-6-6-6` the deliverable
               // draws on this very button: in a right-to-left reading what you
               // came from lies to the RIGHT.
-              <Link to={back} className={`${GHOST} gap-button-icon px-button-x py-s5 rounded-button text-fs-menu font-bold flex-none`}>
+              <Link to={back} className={`${GHOST} ${HIT} gap-button-icon px-button-x py-s5 rounded-button text-fs-menu font-bold flex-none`}>
                 <Icon name="chevronStart" px={16} stroke={2.4} />
                 بازگشت
               </Link>

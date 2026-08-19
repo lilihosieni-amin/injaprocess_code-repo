@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter, Routes, Route, useParams } from 'react-router-dom'
+import { MemoryRouter, Routes, Route, useParams, useNavigate } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AppShell } from './AppShell'
 import { PanelShell } from './PanelShell'
@@ -1957,6 +1957,12 @@ function ProcessListStub() {
 
 const READER_CAPS: Capability[] = ['view', 'comment', 'export_pdf']
 
+/** One step back in the history, from inside the router that owns it. */
+function GoBack() {
+  const nav = useNavigate()
+  return <button type="button" onClick={() => nav(-1)}>عقب</button>
+}
+
 /**
  * Render the reader shell at `entry`, with the one read it makes answered.
  *
@@ -2084,6 +2090,34 @@ describe('R4 — a reader with one department never sees the department list', (
     const { container } = renderReader(ONE, '/profile')
     expect(screen.getByText('محتوای پروفایل')).toBeInTheDocument()
     expect(container.querySelector('[data-r-backbar]')).toBeInTheDocument()
+  })
+
+  it('REPLACES the list in the history rather than stacking on it', async () => {
+    // Without `replace` the entry the reader was bounced off stays behind them:
+    // one press of Back returns them to `/departments`, which redirects forward
+    // again, and the browser's own Back button stops working on the reader's
+    // root. It is one word, nothing about it is on screen, and every assertion
+    // above passes either way.
+    vi.spyOn(globalThis, 'fetch').mockImplementation(() =>
+      Promise.resolve(new Response(JSON.stringify(ONE), { status: 200, headers: { 'Content-Type': 'application/json' } })),
+    )
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={qc}>
+        <MemoryRouter initialEntries={['/profile', '/departments']} initialIndex={1}>
+          <Routes>
+            <Route element={<ReaderShell session={session(READER_CAPS)} />}>
+              <Route path="/departments" element={<p>فهرست دپارتمان‌ها</p>} />
+              <Route path="/departments/:code" element={<GoBack />} />
+              <Route path="/profile" element={<p>محتوای پروفایل</p>} />
+            </Route>
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+    await screen.findByRole('button', { name: 'عقب' })
+    await userEvent.click(screen.getByRole('button', { name: 'عقب' }))
+    expect(await screen.findByText('محتوای پروفایل')).toBeInTheDocument()
   })
 
   it('redirects from a trailing slash too, which is one keystroke away', async () => {
@@ -2267,13 +2301,29 @@ describe('ReaderShell chrome', () => {
   })
 
   it('leaves the title empty rather than half-written before the query lands', async () => {
-    // The deliverable's own answer for a process screen is the empty string, and
-    // the same empty string is what a department screen shows for the ~200ms
-    // before `useDepartments` answers. «دپارتمان undefined» is the failure.
+    // The deliverable's own answer for a process screen is the empty string.
     const { container } = renderReader(THREE, '/processes/dining-003')
     await screen.findByText('خلاصهٔ فرآیند')
     const bar = container.querySelector('[data-r-backbar]') as HTMLElement
     expect(bar.textContent).not.toMatch(/undefined|dining/)
+  })
+
+  it('never writes the department CODE on the bar, not even for the frame before the query lands', async () => {
+    // The name is in the query and the code is in the URL, and the fallback for
+    // "asked before it answered" is the empty string — never the code. The
+    // department summary is the route that shows it: it is not behind the
+    // redirect's gate, so it paints once with `departments` still undefined, and
+    // a fallback of `here.deptCode` writes «دربارهٔ dining» — a latin word, in
+    // the Persian bar, on the app's only right-to-left surface (§8).
+    //
+    // The assertion is taken BEFORE the await on purpose. Every other title case
+    // in this file waits for the answer first, and after it lands the two
+    // spellings agree.
+    const { container } = renderReader(THREE, '/departments/dining/overview')
+    const bar = container.querySelector('[data-r-backbar]') as HTMLElement
+    expect(bar, 'the back bar is not on screen yet, so this test is about nothing').toBeInTheDocument()
+    expect(bar.textContent).not.toMatch(/[A-Za-z]/)
+    expect(await screen.findByText('دربارهٔ سالن')).toBeInTheDocument()
   })
 
   it('marks the surface so R3’s scale resolves under it', async () => {

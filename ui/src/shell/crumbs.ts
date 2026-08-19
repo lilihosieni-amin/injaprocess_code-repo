@@ -104,7 +104,11 @@ export function readerBack(pathname: string, root: string): string | undefined {
 
   if (parts[0] === 'departments' && parts[1] !== undefined) {
     if (parts[2] === 'overview') return `/departments/${parts[1]}`
-    return '/departments'
+    // `home`, not the literal `/departments`. For a many-department reader the
+    // two are the same string, which is why the plan's spelling passes every
+    // case; for an R4 reader they are not, and the literal hands them a control
+    // whose destination is a redirect back to where they already were.
+    return home
   }
 
   if (parts[0] === 'processes' && parts[1] !== undefined) {
