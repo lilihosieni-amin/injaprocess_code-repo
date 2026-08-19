@@ -2051,6 +2051,10 @@ describe('R4 — a reader with one department never sees the department list', (
     await screen.findByText('فهرست فرآیندها')
     expect(container.querySelector('[data-r-backbar]')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'بازگشت' })).toHaveAttribute('href', '/departments')
+    // …and it is a NAMED landmark. An unlabelled `<nav>` is announced as
+    // "navigation" with nothing to tell it from any other on the page, and this
+    // is the one a reader lands in on every screen but their root.
+    expect(screen.getByRole('navigation', { name: 'مسیر' })).toBe(container.querySelector('[data-r-backbar]'))
   })
 
   it('never flashes the one-tile list while the departments are still loading', async () => {
@@ -2120,6 +2124,30 @@ describe('R4 — a reader with one department never sees the department list', (
     expect(await screen.findByText('محتوای پروفایل')).toBeInTheDocument()
   })
 
+  it('reads a trailing slash on the ONE-department reader’s own root as their root', async () => {
+    // The other half of the trailing-slash case, and the one the redirect cannot
+    // cover: at `/departments/dining/` the redirect never fires, so the only
+    // thing standing between this reader and a back bar to a list they must
+    // never see is whether the at-root question normalises. `pathname === root`
+    // does not.
+    const { container } = renderReader(ONE, '/departments/dining/')
+    await screen.findByText('فهرست فرآیندها')
+    expect(container.querySelector('[data-r-topbar]')).toBeInTheDocument()
+    expect(container.querySelector('[data-r-backbar]')).toBeNull()
+  })
+
+  it('marks the frame it waits on, so the app’s own ground does not blink', async () => {
+    // `data-shell` is F8's density switch and it carries the page's type scale
+    // and its ground. A blank frame without it is one paint of the default
+    // surface between the sign-in screen and the reader's own — and it is the
+    // frame this shell deliberately draws, so it is the one place the mark can
+    // go missing without anything else noticing.
+    const { container } = renderReader(ONE, '/departments')
+    expect(container.querySelector('[data-shell="reader"]')).toBeInTheDocument()
+    expect(container.querySelector('[data-r-topbar]')).toBeNull()
+    await screen.findByText('فهرست فرآیندها')
+  })
+
   it('redirects from a trailing slash too, which is one keystroke away', async () => {
     // `pathname === '/departments'` walks past `/departments/` and leaves this
     // reader standing on the one-tile list, which is the whole of what R4
@@ -2177,6 +2205,16 @@ describe('ReaderShell chrome', () => {
     expect(flow.container.querySelector('main')).toBeInTheDocument()
     flow.unmount()
     const { container } = renderReader(THREE, '/processes/dining-003')
+    await screen.findByText('خلاصهٔ فرآیند')
+    expect(container.querySelector('[data-r-backbar]')).toBeInTheDocument()
+  })
+
+  it('takes the chrome away on the flowchart and NOT on a process whose id looks like one', async () => {
+    // `/\/flow/` — the regex without its anchors — matches `/processes/flow-001`,
+    // a process in a department called `flow`, and leaves that reader on a screen
+    // with no chrome and no way back. `allocate-id` issues `{dept}-{nnn}`, so the
+    // id is one department code away from existing.
+    const { container } = renderReader(THREE, '/processes/flow-001')
     await screen.findByText('خلاصهٔ فرآیند')
     expect(container.querySelector('[data-r-backbar]')).toBeInTheDocument()
   })
@@ -2704,6 +2742,35 @@ describe('what the reader chrome’s class strings compile to', () => {
     expect(winner(name, 'font-size')).not.toBe('var(--fs-body)')
     expect(winner(sub, 'font-size')).toBe('var(--fs-xxs)')
     expect(winner(sub, 'font-size')).not.toBe('var(--fs-micro)')
+    // reader 134, 136, 138 — `min-width:0` twice and the ellipsis on the second
+    // line, which is what lets the lockup give way to the controls beside it
+    // instead of pushing them off a narrow bar. Nothing about it is visible
+    // until the window is narrow enough, and `truncate` without a `min-width:0`
+    // above it does nothing at all inside a flex row.
+    expect(declarations(lockup)).toEqual(new Set([
+      'display: block',
+      'min-width: 0px',
+      'line-height: var(--role-lh-lockup)',
+    ]))
+    expect(declarations(sub)).toEqual(new Set([
+      'display: block',
+      'overflow: hidden',
+      'text-overflow: ellipsis',
+      'white-space: nowrap',
+      'font-size: var(--fs-xxs)',
+      'color: var(--text-muted)',
+    ]))
+  })
+
+  it('lets the brand lockup give way rather than push the controls off the bar', async () => {
+    // reader 134 — `min-width:0` on the lockup itself. A flex item's default
+    // `min-width:auto` is its content, so without this the lockup refuses to
+    // shrink and the two icon buttons are pushed past the bar's own edge.
+    const { container, unmount } = readerChrome('/departments')
+    await screen.findByText('فهرست دپارتمان‌ها')
+    const link = await paint((container.querySelector('[data-r-topbar] a') as HTMLElement).className)
+    unmount()
+    expect(winner(link, 'min-width')).toBe('0px')
   })
 
   it('draws the count badge round, 19px, and coral', async () => {

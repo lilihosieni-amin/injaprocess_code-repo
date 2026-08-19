@@ -68,12 +68,10 @@ export function ReaderShell({ session }: { session: SessionDescriptor }) {
     (here.deptCode === undefined
       ? ''
       : `${here.about ? 'دربارهٔ ' : ''}${departments?.find((d) => d.code === here.deptCode)?.name ?? ''}`)
+  // Anchored at both ends. `/\/flow/` matches `/processes/flow-001` — a process
+  // in a department called `flow` — and strips the chrome off a screen that is
+  // not the flowchart, leaving that reader no way back at all.
   const onFlow = /^\/processes\/[^/]+\/flow\/?$/.test(pathname)
-  // The design's `showTopBar` is "the reader is at their root", which is the
-  // question `readerBack` already answers — and answers on NORMALISED paths, so
-  // a trailing slash cannot put an R4 reader's own landing screen behind a back
-  // bar pointing at the list R4 exists to keep them out of.
-  const atRoot = back === undefined
 
   // The two routes whose CHROME depends on the answer wait for it.
   //
@@ -110,7 +108,19 @@ export function ReaderShell({ session }: { session: SessionDescriptor }) {
           that forgets to colour itself should be invisible, not accidentally
           white, which is the honest failure mode and the one a browser sees. */}
       <div data-shell="reader" className="h-screen flex flex-col overflow-hidden bg-ink text-ink">
-        {onFlow ? null : atRoot ? (
+        {/* The design's `showTopBar` is "the reader is at their root", which is
+            the question `readerBack` has already answered — and answered on
+            NORMALISED paths, so a trailing slash cannot put an R4 reader's own
+            landing screen behind a back bar pointing at the list R4 exists to
+            keep them out of.
+
+            Branching on `back` itself, rather than on an `atRoot` beside it, is
+            what keeps the back bar's own `back !== undefined` guard from
+            existing: the two would say the same thing, the guard would be true
+            every time it was evaluated, and an unreachable branch is a branch no
+            mutation of it can be caught in. Here the type carries the invariant
+            — `back` is a `string` inside this arm and TypeScript knows it. */}
+        {onFlow ? null : back === undefined ? (
           /* reader 133 — `gap:12px; padding:12px 20px`, against the panel's
              `gap:14px; padding:12px 22px`. `--pad-topbar-reader` is the reader's
              CHROME gutter and is deliberately not `--pad-reader-x`, which is
@@ -178,7 +188,7 @@ export function ReaderShell({ session }: { session: SessionDescriptor }) {
             data-r-backbar aria-label="مسیر"
             className="flex items-center gap-s5 px-topbar-reader py-s5 bg-card border-b border-warm flex-none"
           >
-            {back !== undefined && (
+            {
               // reader 157 — `gap:7px; padding:10px 15px; border-radius:12px;
               // font-weight:700; font-size:13.5px`. The panel's own back button
               // is `gap:6px; padding:7px 12px; radius 11; 12.5px`: five values,
@@ -191,7 +201,7 @@ export function ReaderShell({ session }: { session: SessionDescriptor }) {
                 <Icon name="chevronStart" px={16} stroke={2.4} />
                 بازگشت
               </Link>
-            )}
+            }
             {/* reader 160 — the one piece of text on this bar, and the thing
                 that says which document you are in. `min-w-0` is what makes
                 `truncate` work at all inside a flex row. */}
