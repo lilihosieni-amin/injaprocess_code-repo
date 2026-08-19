@@ -1533,7 +1533,7 @@ const PENDING: string[] = [
 // or the ratchet slackens by exactly as much as the task just achieved.
 // Note for the record: 6be6662's message claimed a drop to 165 that never applied; the
 // value stayed at 239 until this commit. The ratchet was looser than it read.
-const CEILING = 137
+const CEILING = 131
 
 describe('Owner ruling R11 — a named utility has a component that uses it', () => {
   it('reads a real, sizeable set of component files — tests AND test helpers excluded', () => {
