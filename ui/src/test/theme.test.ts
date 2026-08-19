@@ -356,6 +356,7 @@ const EXPECTED: Record<string, string | string[]> = {
   'rounded-search': 'var(--radius-lg)',
   'rounded-tile': 'var(--radius-tile)',
   'rounded-feature': 'var(--radius-card-lg)',
+  'rounded-sheet': 'var(--radius-sheet)',
   'rounded-pill': 'var(--radius-pill)',
   'rounded-round': 'var(--radius-round)',
   'shadow-card': 'var(--shadow-card)',
@@ -1358,6 +1359,12 @@ const consumed = (klass: string) => rendered().has(klass) || written(klass)
 // In tailwind-probe.txt's own order, which groups them by the scale each is
 // minted on, so a whole family landing at once deletes contiguous lines.
 const PENDING: string[] = [
+  // `rounded-sheet` is minted and USED — Overlay's drawer writes `rounded-t-sheet`
+  // (owner ruling R35, §5.2's 22px). It sits here only because `written()` matches on
+  // a word boundary and cannot see through the `t-` infix, so the orphan check would
+  // otherwise call a consumed utility unconsumed. Remove it when that matcher learns
+  // the side variants; do NOT remove it by writing the class a second time.
+  'rounded-sheet',
   'bg-muted', 'bg-faint', 'bg-line',
   'bg-login-orb', 'bg-warn', 'bg-info', 'bg-violet-mid',
   'bg-violet-edge', 'bg-violet-on-dark', 'bg-violet-on-dark-body', 'bg-violet-on-violet',
@@ -1410,7 +1417,7 @@ const PENDING: string[] = [
   'h-iconbtn-reader', 'w-fab-reader',
   'h-fab-reader', 'w-tick-nested',
   'h-tick-nested', 'max-w-doc',
-  'max-w-drawer', 'max-w-steps',
+  'max-w-steps',
   'max-w-audit', 'duration-fast',
   'p-compose', 'rounded-tick-nested',
   'w-tick-glyph-nested', 'h-tick-glyph-nested',
@@ -1432,9 +1439,7 @@ const PENDING: string[] = [
   // `z-dropdown` and `text-role-textarea` are already gone from this list:
   // Task 8's Dropdown and TextField landed and consumed them, which is the
   // mechanism working — a line comes off when its consumer arrives.
-  'z-drawer',
-  'z-modal', 'z-popover', 'z-tooltip', 'z-toast',
-  'duration-row',
+  'z-popover', 'z-tooltip', 'duration-row',
   'bg-warn-edge', 'gap-table-row-mobile',
   'w-glyph-tile', 'h-glyph-tile',
   // The type-on-the-violet-field group came off here when Task 14's departments
@@ -1529,7 +1534,7 @@ const PENDING: string[] = [
 // or the ratchet slackens by exactly as much as the task just achieved.
 // Note for the record: 6be6662's message claimed a drop to 165 that never applied; the
 // value stayed at 239 until this commit. The ratchet was looser than it read.
-const CEILING = 140
+const CEILING = 137
 
 describe('Owner ruling R11 — a named utility has a component that uses it', () => {
   it('reads a real, sizeable set of component files — tests AND test helpers excluded', () => {
