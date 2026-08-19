@@ -84,7 +84,7 @@ export function Users() {
 
   return (
     <div data-screen="users"
-      className="flex-1 overflow-auto py-screen-y px-screen-x max760:px-s7 max760:py-s9">
+      className="flex-1 overflow-auto bg-ink py-screen-y px-screen-x max760:px-s7 max760:py-s9">
       <div data-col className="max-w-list mx-auto">
         <div className="flex items-end justify-between gap-s8 flex-wrap mb-s10
                         max760:flex-col max760:items-stretch max760:gap-s6">

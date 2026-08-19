@@ -75,7 +75,13 @@ async function reader(page: Page, depts: Department[] = TWO, over: Record<string
 /** The reader's root, where the design draws the top bar. */
 async function home(page: Page) {
   await reader(page)
-  await visit(page, '/departments', 'departments')
+  // `departmentsReader`, not `departments`. Task 14 gave the reader half of the
+  // board its own DESIGN row deliberately, because the two surfaces differ in
+  // composition and not only in scale, so the screen hook differs too. This
+  // helper still named the panel's, and every assertion below it timed out
+  // waiting for a hook the reader never writes -- seven tests at three widths
+  // that looked like design failures while grading nothing at all.
+  await visit(page, '/departments', 'departmentsReader')
 }
 
 /** An inner screen, where the design draws the back bar instead. */
@@ -488,7 +494,7 @@ test('the approval count is a 19px round badge in Persian', async ({ page }) => 
   // Audit S4 and S5 together. reader 145 — `min-width:19px; height:19px;
   // border-radius:50%` on the coral, and the digits Persian.
   await reader(page, TWO, { pendingApprovals: 4 })
-  await visit(page, '/departments', 'departments')
+  await visit(page, '/departments', 'departmentsReader')
   const badge = page.getByRole('status')
   await expect(badge).toBeVisible()
   await expect(badge).toHaveText('۴')
