@@ -1372,13 +1372,12 @@ const PENDING: string[] = [
   'bg-steps-sub-border', 'bg-steps-sub-hover', 'bg-steps-group', 'bg-steps-group-border',
   'bg-link', 'bg-link-hover', 'text-violet-on-dark', 'text-violet-on-dark-body',
   'text-strong', 'text-ghost',
-  'text-ink-current', 'text-ink-proposed', 'text-ok',
+  'text-ink-proposed', 'text-ok',
   'text-danger', 'text-toast-check', 'text-link', 'text-link-hover',
-  'border-line-soft', 'border-border-dead', 'border-border-ok',
+  'border-line-soft', 'border-border-ok',
   'border-steps-sub-border', 'border-steps-group-border',
   'bg-tile-v5', 'bg-line-divider',
-  'border-line-divider', 'bg-line-row', 'bg-line-filter', 'border-line-filter',
-  'bg-border-pick', 'text-fs-h1',
+  'border-line-divider', 'bg-line-row', 'bg-line-filter', 'bg-border-pick', 'text-fs-h1',
   
   'text-fs-doc-base', 'text-fs-doc-h1',
   'text-fs-doc-title', 'text-fs-doc-step', 'text-fs-doc-body',
@@ -1396,8 +1395,7 @@ const PENDING: string[] = [
   'shadow-card-dark', 'shadow-stat-dark', 'shadow-guide-hover', 'shadow-ring-flash',
   'p-screen-x', 'p-screen-y',
   'p-topbar', 'p-half', 'gap-topbar',
-  'p-s2', 'p-s3', 'p-s5',
-  'p-s14', 'p-s16',
+  'p-s2', 'p-s3', 'p-s14', 'p-s16',
   // `w-tile`/`h-tile` and the two glyph pairs came off here when Task 11's
   // src/ui/IconTile.tsx landed: R3 declares the tile as a role trio
   // (--role-tile 48/54, --role-tile-radius 14/16, --role-tile-glyph 24/26) and
@@ -1412,7 +1410,7 @@ const PENDING: string[] = [
   'h-tile-reader', 'w-iconbtn-reader',
   'h-iconbtn-reader', 'w-fab-reader',
   'h-fab-reader', 'w-tick-nested',
-  'h-tick-nested', 'max-w-summary', 'max-w-doc',
+  'h-tick-nested', 'max-w-doc',
   'max-w-drawer', 'max-w-profile', 'max-w-steps',
   'max-w-audit', 'duration-fast',
   'p-compose', 'rounded-tick-nested',
@@ -1442,7 +1440,7 @@ const PENDING: string[] = [
   'bg-warn-edge', 'border-warn-edge', 'text-warn-fg',
   'gap-table-row-mobile',
   'w-login',
-  'w-dot', 'h-dot', 'w-chev', 'h-chev', 'w-glyph-tile', 'h-glyph-tile',
+  'w-glyph-tile', 'h-glyph-tile',
   // The type-on-the-violet-field group came off here when Task 14's departments
   // screen landed: its READER title takes `text-role-title-on-field`, both
   // surfaces take `text-role-subtitle-on-field` for the lead, and the panel's
@@ -1466,7 +1464,6 @@ const PENDING: string[] = [
   // deleted `px-topbar-reader` and, with it, `text-fs-body-lead` above — the
   // reader's lockup is the only place in the product that writes the 14.5px step.
   // What is left of the shell mint here is Task 16's one line.
-  'grid-cols-idef0',
   // The reader-chrome mint. The owner's ruling that ReaderShell takes the
   // READER's numbers — it wrote the panel's in eleven places — needed three names
   // the mint above had no reason to look for. All three are consumed by the
@@ -1529,12 +1526,14 @@ const PENDING: string[] = [
  * back without needing this edit.
  * ---------------------------------------------------------------------------
  */
-// RAISED 2026-08-18 against PENDING.length === 229 — the shell mint's 9 names
-// and the reader-chrome mint's 4, all unconsumed until Tasks 12, 13 and 16 land.
-// The count before the two mints was 216, under a ceiling of 218 that had been
-// LOWERED the same day against a then-count of 218; two of those lines were
-// consumed between that edit and this one.
-const CEILING = 239
+// LOWERED 2026-08-19 to 147, the exact length of the list below.
+// Ten lines came off in this pass — Task 16's `max-w-summary` and `grid-cols-idef0`,
+// Task 19's `border-line-filter`, and the dot/chev pairs the shells now draw — so the
+// ceiling follows them down. A task that lands consumers must take the ceiling with it,
+// or the ratchet slackens by exactly as much as the task just achieved.
+// Note for the record: 6be6662's message claimed a drop to 165 that never applied; the
+// value stayed at 239 until this commit. The ratchet was looser than it read.
+const CEILING = 147
 
 describe('Owner ruling R11 — a named utility has a component that uses it', () => {
   it('reads a real, sizeable set of component files — tests AND test helpers excluded', () => {

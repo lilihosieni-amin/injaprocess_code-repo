@@ -195,7 +195,7 @@ function mountList() {
 
 /** Open the dialog and wait for the role list — every field is drawn by then. */
 async function openDialog() {
-  await userEvent.click(await screen.findByRole('button', { name: 'کاربر تازه' }))
+  await userEvent.click(await screen.findByRole('button', { name: 'کاربر جدید' }))
   await screen.findByRole('dialog')
   await waitFor(() => expect(screen.getByRole('option', { name: 'خواننده' })).toBeInTheDocument())
 }
@@ -220,7 +220,9 @@ async function fillValidForm() {
 /** By the option, never by its value: the value is the role **id**, so a string
  *  argument would silently match nothing and leave the select where it was. */
 async function chooseRole(name: string) {
-  const select = screen.getByLabelText('نقش')
+  // Scoped to the dialog: Task 19's filter bar draws its own «نقش» Dropdown on
+  // the Users screen behind this one, so an unscoped query matches two.
+  const select = within(screen.getByRole('dialog')).getByLabelText('نقش')
   await userEvent.selectOptions(select, within(select).getByRole('option', { name }))
 }
 
@@ -237,8 +239,11 @@ describe('opening the create-user dialog', () => {
     // not exist yet, so the answer would be thrown away anyway.
     const seen = stubServer()
     mountList()
-    await screen.findByRole('button', { name: 'کاربر تازه' })
-    await waitFor(() => expect(seen.gets).toEqual(['/api/users']))
+    await screen.findByRole('button', { name: 'کاربر جدید' })
+    // Task 19's filter bar resolves department codes to Persian names, so the
+    // screen reads the registry on mount. The claim under test is unchanged:
+    // the DIALOG's own reads (roles, candidates) wait until it is opened.
+    await waitFor(() => expect([...seen.gets].sort()).toEqual(['/api/departments', '/api/users']))
   })
 
   it('is not offered to somebody the surface itself refuses', async () => {
@@ -249,7 +254,7 @@ describe('opening the create-user dialog', () => {
     session = { ...ADMIN, scopes: ['dept:dining'] }
     mountList()
     expect(await screen.findByText('چیزی اینجا نیست')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'کاربر تازه' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'کاربر جدید' })).toBeNull()
   })
 })
 
@@ -262,7 +267,7 @@ describe('the role picker on the create form', () => {
     stubServer()
     mountList()
     await openDialog()
-    const select = screen.getByLabelText('نقش')
+    const select = within(screen.getByRole('dialog')).getByLabelText('نقش')
     const offered = within(select).getAllByRole('option')
       .map((o) => o.textContent)
       .filter((t) => t !== 'انتخاب کنید')
@@ -539,7 +544,7 @@ describe('when one of the create dialog\'s own reads fails', () => {
   /** Opened without waiting for a role option — when the failing read is
    *  `/api/roles` there is none to wait for. */
   async function openFailedDialog() {
-    await userEvent.click(await screen.findByRole('button', { name: 'کاربر تازه' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'کاربر جدید' }))
     await screen.findByRole('dialog')
   }
 
@@ -562,7 +567,7 @@ describe('when one of the create dialog\'s own reads fails', () => {
     mountList()
     await openFailedDialog()
     expect(await screen.findByText(ROLES_UNREADABLE)).toBeInTheDocument()
-    expect(screen.queryByLabelText('نقش')).toBeNull()
+    expect(within(screen.getByRole('dialog')).queryByLabelText('نقش')).toBeNull()
     expect(screen.queryByRole('button', { name: 'ساخت کاربر' })).toBeNull()
   })
 
@@ -726,13 +731,16 @@ describe('creating the account', () => {
     // created makes it a second time.
     stubServer()
     mountList()
-    await waitFor(() => expect(screen.getAllByRole('listitem')).toHaveLength(1))
+    // A table since Task 19: one body row, plus the header row.
+    await waitFor(() => expect(screen.getAllByRole('row')).toHaveLength(2))
     await openDialog()
     await fillValidForm()
     await userEvent.click(await screen.findByRole('radio', { name: /سحر بیات/ }))
     await submit()
-    await waitFor(() => expect(screen.getAllByRole('listitem')).toHaveLength(2))
-    expect(within(screen.getAllByRole('listitem')[1]).getByText('نگار سلیمی')).toBeInTheDocument()
+    // Two body rows now, plus the header — and the new account is the second
+    // body row, so it is index 2 among all rows.
+    await waitFor(() => expect(screen.getAllByRole('row')).toHaveLength(3))
+    expect(within(screen.getAllByRole('row')[2]).getByText('نگار سلیمی')).toBeInTheDocument()
   })
 
   it('closes the dialog once the account exists', async () => {
@@ -799,7 +807,7 @@ describe('creating the account', () => {
     expect(labelled.length).toBeGreaterThan(1)
     for (const b of labelled) {
       expect(b.className, `«${b.textContent}» has no horizontal padding`).toMatch(/(^|\s)px-/)
-      expect(b.className, `«${b.textContent}» sets no type size`).toMatch(/(^|\s)text-(caption|body|subtitle)\b/)
+      expect(b.className, `«${b.textContent}» sets no type size`).toMatch(/(^|\s)text-(caption|body|subtitle|fs-[a-z0-9]+)\b/)
     }
   })
 })
