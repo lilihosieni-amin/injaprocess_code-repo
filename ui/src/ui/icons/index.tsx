@@ -113,9 +113,17 @@ export const ICONS = {
   // :2933, :3501; Reader :1866, :1950, :2539). `M6 15l6-6 6 6` and this `d` are
   // the SAME THREE POINTS traversed in opposite order — with round caps and
   // joins the two are the same picture — and `InjaIcons.chevronUp` is this
-  // direction byte for byte, which is what src/screens/Overview.tsx's role card
-  // draws and what src/ui/Accordion.tsx's open mark now comes from.
-  // src/ui/icons.test.tsx reconciles the two rather than restating this.
+  // direction byte for byte. src/ui/icons.test.tsx reconciles the two rather
+  // than restating this.
+  //
+  // NO COMPONENT RENDERS IT. The bound pair above is `open ? up : end`, and the
+  // two paths are one drawing a quarter turn apart — rotating `chevronEnd` 90°
+  // about the centre of the 24-box maps `M15 18l-6-6 6-6` onto `M6 15l6-6 6 6`
+  // exactly — so src/ui/Accordion.tsx draws the ONE glyph and turns it, which
+  // is the design system's own disclosure idiom (`StepCard`, the only other
+  // consumer of `--duration-chev`). This key stays because it is the design's
+  // own drawing and because both suites use it as the negative control that
+  // tells the two directions apart.
   chevronUp: <path d="M18 15l-6-6-6 6" />,
   check: <path d="M20 6L9 17l-5-5" />,
   search: <><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" /></>,

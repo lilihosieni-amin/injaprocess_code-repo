@@ -1524,34 +1524,55 @@ describe('the icon rule', () => {
     // scan above says the CHARACTER is gone; this says a DRAWING replaced it,
     // which deleting the span would also satisfy — and that the mark still
     // changes with the state, which one chevron drawn in both would not.
-    render(<Accordion title="سرپرست سالن"><p>محتوا</p></Accordion>)
+    //
+    // **The two pictures are §6.4's own, and Task 17 settled which they are.**
+    // `Inja Panel.dc.html:3501` binds `chevron: open ? 'M6 15l6-6 6 6' :
+    // 'M15 18l-6-6 6-6'`, and the deliverables bind that same pair five more
+    // times (Panel :2853, :2933; Reader :1866, :1950, :2539). Collapsed is `<`
+    // — the inline END in a right-to-left reading, which is `chevronEnd` — and
+    // never a down chevron; `chevronDown` is the select trigger and discloses
+    // nothing in either deliverable. The open path is that same drawing turned
+    // a quarter turn, so the state change is a rotation and not a second `d`.
+    render(<Accordion items={[{ key: 'a', title: 'سرپرست سالن', body: <p>محتوا</p> }]} />)
     const header = screen.getByRole('button', { name: 'سرپرست سالن' })
-    const mark = () => header.querySelector('svg path')?.getAttribute('d')
-    expect(header.querySelector('svg')).toBeTruthy()
-    const shut = mark()
-    expect(shut).toBe('M6 9l6 6 6-6')
+    const svg = () => header.querySelector('svg')!
+    const mark = () => svg().querySelector('path')?.getAttribute('d')
+    expect(svg()).toBeTruthy()
+    // Read off the shared set rather than transcribed: a `d` written out here
+    // would keep passing while the glyph moved under it.
+    expect(mark()).toBe((ICONS.chevronEnd as { props: { d: string } }).props.d)
+    expect(mark()).not.toBe((ICONS.chevronDown as { props: { d: string } }).props.d)
+
+    // The turn, and the rest position it turns FROM. `rotate-0` is written out
+    // rather than left off: a state spelled as an appended class races with
+    // whatever else sets `transform` in Tailwind's output order.
+    const turn = () => svg().parentElement!
+    expect(await styles(turn())).toMatchObject({ '--tw-rotate': '0deg' })
     await userEvent.click(header)
-    expect(mark()).toBe('M18 15l-6-6-6 6')
-    expect(mark()).not.toBe(shut)
+    expect(await styles(turn())).toMatchObject({ '--tw-rotate': '90deg' })
+    // …and the `d` did NOT move: one drawing, two orientations.
+    expect(mark()).toBe((ICONS.chevronEnd as { props: { d: string } }).props.d)
+
     // The span was already aria-hidden and Icon is too, so the header's
     // accessible name — which src/ui/controls.test.tsx finds it by — does not
     // move.
     expect(screen.getByRole('button', { name: 'سرپرست سالن' })).toBe(header)
-    expect(header.querySelector('svg')).toHaveAttribute('aria-hidden', 'true')
+    expect(svg()).toHaveAttribute('aria-hidden', 'true')
     // …and it has a WEIGHT. 2.4 is the chevron step of the stroke ladder the
     // icon set's own docstring records, and it is the one attribute sitting
-    // between the two `d`s above and the size class below that nothing here
-    // read: at 0.4 the mark is a hairline in a 44px header, with both `d`
-    // assertions, the accessible name and the whole declaration set green.
-    expect(header.querySelector('svg')).toHaveAttribute('stroke-width', '2.4')
+    // between the `d` above and the size below that nothing here read: at 0.4
+    // the mark is a hairline in a 44px header, with the `d` assertion, the
+    // accessible name and the whole declaration set green.
+    expect(svg()).toHaveAttribute('stroke-width', '2.4')
     // …and it has a SIZE. `Icon` writes no width attribute unless it is given a
     // `px`, which is the right default and also the sharp edge: a glyph that
-    // loses its size class does not fall back to something a little wrong, it
-    // falls back to the replaced-element default of 300×150 and blows the
-    // header apart — with the `d` assertions above, the accessible name and the
-    // whole of controls.test.tsx still green.
-    expect(await styles(header.querySelector('svg')!)).toEqual({
-      width: 'var(--size-chevron)', height: 'var(--size-chevron)', flex: 'none',
-    })
+    // loses its size does not fall back to something a little wrong, it falls
+    // back to the replaced-element default of 300×150 and blows the header
+    // apart — with the `d`, the weight, the accessible name and the whole of
+    // controls.test.tsx still green. §6.4 draws 17, which is one step above the
+    // 15px `--size-chevron` the dropdown and the pager take and has no token of
+    // its own; Task 17's report asks for one.
+    expect(svg()).toHaveAttribute('width', '17')
+    expect(svg()).toHaveAttribute('height', '17')
   })
 })
