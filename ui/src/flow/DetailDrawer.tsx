@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { Chip } from '../ui/Chip'
 import { useProcesses } from '../api/hooks'
+import { useCan } from '../auth/can'
+import { useSession } from '../auth/useSession'
 import { fieldFa } from './adapt'
 import { toFa, formatConflictValue } from '../lib/format'
 import type { ProcNode, ActivityNode, JunctionNode, Pending, ReadableProcess } from '../api/types'
@@ -202,38 +204,12 @@ export function DetailDrawer(props: DrawerProps) {
               </>
             )}
             {props.conflicts.length > 0 && (
-              <div className="mt-5">
-                <div className="flex items-center gap-[6px] text-[11px] font-bold text-[#E23D35] mb-2">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" /></svg>
-                  تعارض‌های این باکس ({toFa(props.conflicts.length)})
-                </div>
-                {props.conflicts.map((c) => (
-                  <div key={c.index} className="bg-white border border-[#FDD9D6] rounded-[12px] p-3 mb-[10px]">
-                    <div className="flex items-center justify-between mb-[9px]">
-                      <span className="text-[11.5px] font-bold text-[#2A1D5E]">{fieldFa(c.pending.field)}</span>
-                      <span className="text-[10px] text-[#a99fc4]">{c.pending.source}</span>
-                    </div>
-                    <div className="bg-[#F6F3FB] border border-[#EDE5F5] rounded-[9px] px-[10px] py-2 mb-[7px]">
-                      <div className="text-[9.5px] text-[#a99fc4] mb-[3px]">مقدار فعلی</div>
-                      <div className="text-[12px] text-[#5a5175] leading-relaxed whitespace-pre-line">{formatConflictValue(c.pending.current)}</div>
-                    </div>
-                    <div className="bg-[#FFF3F2] border border-[#FDD9D6] rounded-[9px] px-[10px] py-2 mb-[10px]">
-                      <div className="text-[9.5px] text-[#E23D35] mb-[3px]">پیشنهاد جدید</div>
-                      <div className="text-[12px] text-[#8a2b26] leading-relaxed font-semibold whitespace-pre-line">{formatConflictValue(c.pending.proposed)}</div>
-                    </div>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => props.onAccept(c.index)}
-                        className="flex-1 py-2 border-none rounded-[9px] bg-[#1F8A5B] text-white font-bold text-[12px] cursor-pointer"
-                      >پذیرش</button>
-                      <button
-                        onClick={() => props.onReject(c.index)}
-                        className="flex-1 py-2 border-[1.5px] border-[#E3D8F5] bg-white text-[#8a7db0] font-semibold text-[12px] cursor-pointer rounded-[9px]"
-                      >رد</button>
-                    </div>
-                  </div>
-                ))}
-              </div>
+              <Conflicts
+                conflicts={props.conflicts}
+                department={props.process.department}
+                onAccept={props.onAccept}
+                onReject={props.onReject}
+              />
             )}
             {(props.showInternals ?? true) && (
               <div className="text-[10.5px] text-[#c3bad6] mt-5 border-t border-dashed border-[#EDE5F5] pt-3" dir="ltr">source: {a.source.created_by}</div>
@@ -251,6 +227,100 @@ export function DetailDrawer(props: DrawerProps) {
           </button>
         </div>
       )}
+    </div>
+  )
+}
+
+/** This node's open conflicts — and, for the person who may resolve them, the
+ *  two controls that do.
+ *
+ *  **R5.** «پذیرش»/«رد» call `POST /api/processes/{pid}/pending/{index}`, which
+ *  is `requires("edit", _pid_target)` — `edit` over `dept:{dept_of(pid)}`
+ *  (`routers/processes.py:414`). They live in the drawer's *view* branch,
+ *  outside every `props.editing` guard, so before this gate the drawer offered
+ *  them to whoever it was handed a conflict for. That is the same defect
+ *  `6bf9a69` took off «ویرایش» one level out, in its worse form: there the
+ *  refusal arrives before the click, because the control leads to a screen; here
+ *  it arrives after, because the control *is* the request.
+ *
+ *  Nothing today feeds a non-editor a conflict to be offered — `visibility`
+ *  empties `pending` for exactly the callers this gate refuses (`out["pending"]
+ *  = []` under `editor=False`, which `Disclosure.edits` resolves per department
+ *  from the very target below). That agreement is a coincidence of two rules
+ *  written for different reasons, D17's never-shown block and this endpoint's
+ *  gate, and it is not the drawer saying anything. R5 is about what the screen
+ *  offers; a screen whose only reason for not offering a refused action is that
+ *  a filter three modules away withheld the data is not obeying it, it is being
+ *  saved by it.
+ *
+ *  **The cards stay.** They are the node's state, not an offer to act: the same
+ *  reader is already shown this node's conflict count on the node itself
+ *  (`nodes/ActivityNode.tsx`), a button whose entire action is to open this
+ *  drawer. What R5 removes is the offer, not the news.
+ *
+ *  **Asked about THIS process's department, not about the person.** The endpoint
+ *  gates on the process's own department, so a holder of `edit` over a different
+ *  one must not be handed a button whose POST 403s — and `session.ts`'s bare
+ *  `can(descriptor, capability)` has no target parameter at all, so it cannot
+ *  express the question. This is `auth/can.ts`'s `useCan`, which takes one, and
+ *  the scope argument is the whole difference between the two.
+ *
+ *  **A component and not a `mayResolve` at the top of the drawer**, so the
+ *  session is consulted only where the answer is used. `DetailDrawer` is also
+ *  the exported document's drawer (`export/flowchart/FlowViewer.tsx`), which
+ *  runs against a QueryClient whose default `queryFn` throws by design because
+ *  an export has no backend (`export/shared/seed.ts`); `useSession` brings its
+ *  own `queryFn` and would walk straight past that guard into a real
+ *  `/api/auth/me` from a `file://` page. The export ships `pending: []` and
+ *  passes `conflicts={[]}`, so mounted only when there IS a conflict this never
+ *  runs there.
+ *
+ *  Cosmetic only, like every other `useCan` on a screen (D48): the endpoint
+ *  re-derives permission from the session row and refuses a typed request
+ *  regardless of what was drawn.
+ */
+function Conflicts({ conflicts, department, onAccept, onReject }: {
+  conflicts: { pending: Pending; index: number }[]
+  department: string
+  onAccept: (index: number) => void
+  onReject: (index: number) => void
+}) {
+  const can = useCan(useSession().data)
+  const mayResolve = can('edit', `dept:${department}`)
+  return (
+    <div className="mt-5">
+      <div className="flex items-center gap-[6px] text-[11px] font-bold text-[#E23D35] mb-2">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" /></svg>
+        تعارض‌های این باکس ({toFa(conflicts.length)})
+      </div>
+      {conflicts.map((c) => (
+        <div key={c.index} className="bg-white border border-[#FDD9D6] rounded-[12px] p-3 mb-[10px]">
+          <div className="flex items-center justify-between mb-[9px]">
+            <span className="text-[11.5px] font-bold text-[#2A1D5E]">{fieldFa(c.pending.field)}</span>
+            <span className="text-[10px] text-[#a99fc4]">{c.pending.source}</span>
+          </div>
+          <div className="bg-[#F6F3FB] border border-[#EDE5F5] rounded-[9px] px-[10px] py-2 mb-[7px]">
+            <div className="text-[9.5px] text-[#a99fc4] mb-[3px]">مقدار فعلی</div>
+            <div className="text-[12px] text-[#5a5175] leading-relaxed whitespace-pre-line">{formatConflictValue(c.pending.current)}</div>
+          </div>
+          <div className="bg-[#FFF3F2] border border-[#FDD9D6] rounded-[9px] px-[10px] py-2 mb-[10px]">
+            <div className="text-[9.5px] text-[#E23D35] mb-[3px]">پیشنهاد جدید</div>
+            <div className="text-[12px] text-[#8a2b26] leading-relaxed font-semibold whitespace-pre-line">{formatConflictValue(c.pending.proposed)}</div>
+          </div>
+          {mayResolve && (
+            <div className="flex gap-2">
+              <button
+                onClick={() => onAccept(c.index)}
+                className="flex-1 py-2 border-none rounded-[9px] bg-[#1F8A5B] text-white font-bold text-[12px] cursor-pointer"
+              >پذیرش</button>
+              <button
+                onClick={() => onReject(c.index)}
+                className="flex-1 py-2 border-[1.5px] border-[#E3D8F5] bg-white text-[#8a7db0] font-semibold text-[12px] cursor-pointer rounded-[9px]"
+              >رد</button>
+            </div>
+          )}
+        </div>
+      ))}
     </div>
   )
 }
