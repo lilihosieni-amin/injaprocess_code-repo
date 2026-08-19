@@ -815,9 +815,23 @@ const COMPOSITION_MUTANTS: readonly Mutant[] = [
     // Headings to the other margin, cards in the reverse order, chevrons
     // backwards, the sentence-final period on the wrong side — and not one
     // length, colour, weight, radius or track count in this file moves.
+    //
+    // **The second line is not scenery, and the message is not the one this
+    // entry was written with.** `dir="ltr"` on the root alone stopped producing
+    // a mirror the day this screen became §8's scroll box: Task 14 gave it
+    // `data-r-pad` and Task 15 put `[data-r-pad] > *{direction:rtl}` in
+    // `base.css`, so the root turns LTR, every child is flipped straight back,
+    // and the page is not mirrored at all — the check went (correctly) green on
+    // a mutant that no longer does anything, and before the stylesheet rule
+    // landed it went red with the WRONG accusation. A mirror on a screen that
+    // IS the scroll box has to take the children with it, and what catches it is
+    // the escaped-child half of the root clause, which is the same half `§8's
+    // scroll box is a legal LTR root` pins directly. An injected <style> is
+    // unlayered, so it beats `@layer base` whatever the specificity.
     why: 'the whole right-to-left screen mirrored to LTR',
     attr: ['dir', 'ltr'],
-    message: /direction — the application is Persian/,
+    css: `${SCREEN} > *{direction:ltr}`,
+    message: /the rule that flips its children back did not reach all of them/,
   },
   {
     // S7. `base.css:8` is the *only* place the application's type stack is
