@@ -30,6 +30,38 @@ const WIDTH = {
 } as const
 
 /**
+ * Ledger **L-44**, under owner ruling R9's adopted scale: *"a dialog takes
+ * `--role-z-modal` (`$zindex-modal` 1055) and a drawer, bottom sheet or
+ * full-bleed pane takes `--role-z-drawer` (`$zindex-offcanvas` 1045). That maps
+ * one-for-one onto the `presentation` prop `ui/src/ui/Overlay.tsx` already
+ * carries."* This is that map, and until now it did not exist: the scrim wrote
+ * a raw `50 + depth * 10`.
+ *
+ * **50 is BELOW `--role-z-chrome` (1020).** With any overlay open, the panel's
+ * top bar, the comment FAB (`--role-z-floating`, 1030) and every anchored
+ * popover (`--role-z-dropdown`, 1000) painted *above* the scrim and stayed
+ * hit-testable, while `aria-modal="true"` told assistive technology the rest of
+ * the page was inert. Measured in Chrome with the nav Sheet open:
+ * `document.elementFromPoint` over the middle of the top bar returned the
+ * `<header>`, not the scrim. That is the L-41 defect the ledger itself names —
+ * a semantic layer nothing reads — one property along, and it inverted the
+ * stack rather than merely failing to express it.
+ *
+ * Two spellings of one rung, and they must never drift apart:
+ *
+ *   `klass`  the utility, which is what paints for a lone overlay — so the two
+ *            rungs finally have a component consumer and `theme.test.ts` is no
+ *            longer the only thing keeping them alive.
+ *   `token`  the same rung as a token, for the nesting ordinal below. A static
+ *            utility cannot express "this rung plus n", which is the one and
+ *            only reason an inline style survives on this element at all.
+ */
+const RUNG = {
+  dialog: { klass: 'z-modal', token: '--role-z-modal' },
+  sheet: { klass: 'z-drawer', token: '--role-z-drawer' },
+} as const
+
+/**
  * Ledger L-23 — the one close control: 32x32, --tile-v2, --radius-sm, an 18px
  * glyph in --text-muted.
  *
@@ -173,31 +205,58 @@ function Overlay({
   // every modal in the design becomes a bottom sheet: the scrim loses its
   // padding and aligns to the end, the box goes full width, 92vh tall, and
   // rounds only its top corners. The breakpoint is the design's 760px, not
-  // Tailwind's md (768px), which is what this used before.
+  // Tailwind's md (768px).
   // FIX 5 — only what differs between the two presentations lives here; the
   // shared shape (full width, the panel radius, flat-bottomed below 760px) is
   // on the box below so it cannot be mistaken for something that tells them apart.
   //
-  // The sheet's top corners are the MODAL's own number and are therefore here
-  // rather than on the shared box: §5.2 writes `[data-r-modalbox]{…border-radius:
-  // 20px 20px 0 0}` inside the ≤760 block, and both deliverables carry that rule
-  // verbatim (`Inja Panel.dc.html:108`). The corner SHRINKS as the dialog fills
-  // the width — it does not keep the desktop dialog's 24. `rounded-feature` is
-  // that step, named for it in tailwind.config.js ("department card, wide
-  // modal"). The drawer takes a different number there (§5.2 gives the
-  // drawer-as-bottom-sheet 22, which the radius ladder has no rung for), which
-  // is exactly why this cannot be shared: one class for both would state the
-  // modal's rule about a box the design measures separately.
+  // **Both branches are keyed on `max760:` and the sheet's was not.** It carried
+  // `md:` — Tailwind's 768 — against a scrim whose `max760:p-0 max760:items-end`
+  // is the design's 760, which left a seven-pixel band (761–767) where the box
+  // was neither: full width and 88vh tall like a bottom sheet, but inside a
+  // centred, padded scrim and radiused on all four corners. Measured in Chrome
+  // on `PanelShell`'s nav Sheet, the product's only `presentation="sheet"`:
+  // at 760 it is a bottom sheet, at 768 an inline-start drawer, and at **764** a
+  // centred rounded card 716px wide. Reachable at every width ≤1080, which is
+  // where its «فهرست» opener is drawn. The drawer is now the BASE shape and the
+  // bottom sheet the `max760:` override, because that is the only arrangement in
+  // which one breakpoint governs both branches.
+  //
+  // The two top corners are each presentation's OWN number and are therefore
+  // here rather than on the shared box:
+  //   dialog — §5.2 writes `[data-r-modalbox]{…border-radius: 20px 20px 0 0}`
+  //     inside the ≤760 block and both deliverables carry it verbatim
+  //     (`Inja Panel.dc.html:108`). The corner SHRINKS as the dialog fills the
+  //     width; it does not keep the desktop dialog's 24. `rounded-feature` is
+  //     that step, named for it in tailwind.config.js.
+  //   sheet — §5.2 gives the drawer-as-bottom-sheet `border-radius: 22px 22px
+  //     0 0`, and the ladder (6·7·9·10·11·12·13·14·16·18·20·24) has no 22 rung,
+  //     so it drew 24 by default. **Owner ruling R35** («do like design») minted
+  //     `--radius-sheet` for it; `rounded-t-sheet` is that rung.
+  // One class for both would state one sheet's rule about a box the design
+  // measures separately. Both are pinned by compiled value below, never by
+  // class name: `rounded-panel` sets all four corners and each of these has to
+  // BEAT it inside the media query.
   const shape =
     presentation === 'sheet'
-      ? 'md:w-[var(--width-drawer)] md:h-full md:max-h-none md:me-auto md:ms-0 max-h-[88vh]'
+      ? 'max-w-drawer h-full me-auto ms-0 ' +
+        'max760:max-w-full max760:h-auto max760:max-h-[88vh] max760:rounded-t-sheet'
       : `${WIDTH[width]} max-h-[86vh] max760:max-w-full max760:max-h-[92vh] ` +
         'max760:rounded-t-feature'
 
+  const rung = RUNG[presentation]
+
   return (
     <div
-      className={`fixed inset-0 flex items-center justify-center bg-scrim p-modal max760:p-0 max760:items-end ${blurScrim ? 'backdrop-blur-scrim' : ''}`}
-      style={{ zIndex: 50 + depth * 10 }}
+      className={`fixed inset-0 flex items-center justify-center bg-scrim p-modal max760:p-0 max760:items-end ${rung.klass} ${blurScrim ? 'backdrop-blur-scrim' : ''}`}
+      // L-42 — "Nesting adds **1** inside the rung's own band rather than 10
+      // across bands", so fifteen stacked overlays still fit beneath the
+      // reserved `--role-z-popover` (1070) where the deliverables reached two.
+      // Written as a calc over the SAME token `rung.klass` compiles to, and only
+      // when there is an ordinal to add: at depth 0 — every overlay in the
+      // product today — nothing is written here and the utility is what paints,
+      // so this cannot become a class that is named and never drawn.
+      style={depth === 0 ? undefined : { zIndex: `calc(var(${rung.token}) + ${depth})` }}
       onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}
     >
       <div

@@ -153,6 +153,14 @@
   --role-radius-doc: var(--radius-doc);        /* table shell, dept-info and summary card */
   --role-radius-feature: var(--radius-card-lg); /* department card, wide modal, comments panes */
   --role-radius-dialog: var(--radius-panel);   /* ledger L-04: 24px, always */
+  --role-radius-sheet: var(--radius-sheet);    /* §5.2 / owner ruling R35 — 22px, the
+                                                  DRAWER's two top corners once it
+                                                  becomes a bottom sheet at ≤760. Not
+                                                  the modal's, which is
+                                                  --role-radius-feature's 20, and not
+                                                  --role-radius-dialog's 24, which is
+                                                  what the drawer drew for want of a
+                                                  rung. Three numbers, three roles. */
   --role-radius-pill: var(--radius-pill);      /* Task 3 corrects the token — ledger L-20 */
   --role-radius-round: var(--radius-round);
 

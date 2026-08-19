@@ -129,3 +129,8 @@ grid-cols-idef0
 # the reader's numbers in all eleven places the plan wrote the panel's — needs
 # three names the shell mint above had no reason to look for.
 gap-button-icon px-button-x w-menu-more-reader h-menu-more-reader
+# Owner ruling R35 — the drawer-as-bottom-sheet's 22px top corners (§5.2). The
+# ladder has no 22 rung; the modal's sheet is 20 and the centred dialog 24.
+# Written `rounded-t-sheet` at its one consumer, so the bare stem below is the
+# inventory entry and not the spelling any component uses.
+rounded-sheet

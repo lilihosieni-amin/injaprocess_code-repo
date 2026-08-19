@@ -37,12 +37,15 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <Ctx.Provider value={push}>
       {children}
-      {/* M3 — Overlay stacks its scrims at `50 + depth * 10` (ui/Overlay.tsx), so a
-          static z-[60] falls behind the topmost scrim once three overlays are open.
-          100 stays above any depth this app plausibly stacks; set as an inline
-          style, not a class, so it reads next to that comment rather than as an
-          arbitrary Tailwind value elsewhere in the file. */}
-      <div style={{ zIndex: 100 }} className="fixed start-0 end-0 bottom-6 flex flex-col items-center gap-2 pointer-events-none">
+      {/* Ledger **L-47** — the toast is the ceiling, `--role-z-toast` (Bootstrap's
+          `$zindex-toast`, 1090). M3's inline `zIndex: 100` was a number chosen to
+          out-stack `Overlay`'s own raw `50 + depth * 10`, and it stopped being
+          one the moment `Overlay` joined the ladder: 100 is below both
+          `--role-z-drawer` (1045) and `--role-z-modal` (1055), so a toast raised
+          over an open dialog would now paint BEHIND its scrim. A rung, not a
+          number, is the whole point of L-42 — and this way the two cannot come to
+          disagree about which is on top again. */}
+      <div className="fixed start-0 end-0 bottom-6 z-toast flex flex-col items-center gap-2 pointer-events-none">
         {items.map((t) => (
           <div
             key={t.id}

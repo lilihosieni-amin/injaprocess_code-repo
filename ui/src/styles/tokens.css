@@ -394,6 +394,19 @@
      ui/design/** and the line it is written on is cited in
      .superpowers/sdd/mint-spec.md §1.2. */
   --radius-bar: 2px;               /* the coral eyebrow bar, `22x2 radius 2` */
+  --radius-sheet: 22px;            /* **Owner ruling R35** («do like design»).
+                                      The ladder above runs 6·7·9·10·11·12·13·
+                                      14·16·18·20·24 and deliberately has no 22:
+                                      this rung exists because §5.2 draws the
+                                      DRAWER as a bottom sheet at `border-radius:
+                                      22px 22px 0 0` and the MODAL as one at
+                                      `20px 20px 0 0`, and those are two roles,
+                                      not one value written twice. Named by role
+                                      — never --radius-22 — for the same reason
+                                      every other rung is. Its one consumer is
+                                      `Overlay`'s `presentation="sheet"` branch;
+                                      the modal's 20 is --radius-card-lg and must
+                                      not be moved onto this. */
   --shadow-feature: 0 2px 4px rgba(16, 10, 40, .18), 0 22px 46px -20px rgba(16, 10, 40, .65);
                                    /* the department feature card's heavier rest
                                       shadow, 1 use. Recorded in the ledger's

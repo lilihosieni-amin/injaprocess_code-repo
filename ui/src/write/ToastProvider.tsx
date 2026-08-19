@@ -26,7 +26,14 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         // no tone/danger variant (every call site is a plain confirmation), so
         // role="status"/aria-live="polite" covers it; add tone-based alert
         // handling here if this provider ever grows one.
-        <div role="status" aria-live="polite" className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-ink text-white px-5 py-3 rounded-xl text-[13px] font-semibold shadow-modal z-[60] flex items-center gap-2.5">
+        //
+        // Ledger L-47 — `z-toast` (`--role-z-toast`, 1090), not the arbitrary
+        // 60 it shipped. 60 out-stacked `Overlay`'s old raw `50 + depth * 10` only
+        // until two overlays were open, and out-stacks its ladder rungs (1045 /
+        // 1055) not at all: this is the live provider every call site uses, so
+        // a toast raised over an open dialog would have painted behind its
+        // scrim. The toast is the ceiling.
+        <div role="status" aria-live="polite" className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-ink text-white px-5 py-3 rounded-xl text-[13px] font-semibold shadow-modal z-toast flex items-center gap-2.5">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#7BE0A8" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
           {message}
         </div>

@@ -310,6 +310,141 @@ test('the sheet’s rows read down the leading edge, not from the middle', async
   expect(first.width).toBeGreaterThan(sheetBox.width * 0.8)
 })
 
+/**
+ * Open the nav sheet from the crumb strip's own opener, which §6.0 draws at
+ * every width — the top bar's hamburger is `hidden max1080:flex` and would make
+ * the two blocks below untestable at 1440.
+ */
+async function openSheet(page: Page) {
+  await administrator(page)
+  await page.goto('/departments/dining')
+  await page.locator('[data-r-crumbbar]').waitFor()
+  await pinPage(page, "goto('/departments/dining')")
+  await page.locator('[data-r-crumbbar] [data-r-menu]').click()
+  const sheet = page.getByRole('dialog', { name: 'فهرست' })
+  await expect(sheet).toBeVisible()
+  return sheet
+}
+
+/** Every rung of the adopted scale (R9 / L-42), read off the document itself. */
+async function rungs(page: Page): Promise<Record<string, number>> {
+  return page.evaluate(() => {
+    const cs = getComputedStyle(document.documentElement)
+    return Object.fromEntries(['dropdown', 'chrome', 'floating', 'drawer', 'modal'].map(
+      (r) => [r, Number(cs.getPropertyValue(`--role-z-${r}`))],
+    )) as Record<string, number>
+  })
+}
+
+test('an open sheet actually covers the chrome its aria-modal calls inert (L-42 / L-44)', async ({ page }) => {
+  // The scrim wrote a raw `50 + depth * 10`. 50 is BELOW `--role-z-chrome`
+  // (1020), so with any overlay open the top bar, the FAB (`--role-z-floating`,
+  // 1030) and every popover (`--role-z-dropdown`, 1000) painted above it and
+  // stayed hit-testable — while `aria-modal="true"` told assistive technology
+  // the rest of the page was inert. Half the ladder was live and exactly the
+  // half that lifts an overlay above it was dead.
+  //
+  // Measured as a HIT TEST, not as a class name and not as a pair of numbers:
+  // the question is what a finger lands on, and `elementFromPoint` is the only
+  // thing that answers it. Probed at 760x900 before the fix, this returned the
+  // <header>.
+  await administrator(page)
+  await page.goto('/departments')
+  await page.locator('[data-r-topbar]').waitFor()
+  await pinPage(page, "goto('/departments')")
+  // `[data-r-topbar]` is the app's ONLY `z-chrome` element (the crumb strip
+  // carries no rung), and its opener for this sheet is `hidden max1080:flex`.
+  // So this is the reproduction at every width where it can be reproduced —
+  // which is also every width the sheet is reachable from the bar at all.
+  test.skip(page.viewportSize()!.width > 1080,
+    'the top bar draws no sheet opener above 1080, by design (§6.16)')
+  await page.locator('[data-r-topbar] [data-r-menu]').click()
+  await expect(page.getByRole('dialog', { name: 'فهرست' })).toBeVisible()
+
+  const box = (await page.locator('[data-r-topbar]').boundingBox())!
+  const hit = await page.evaluate(({ x, y }) => {
+    const scrim = document.querySelector('[role="dialog"]')!.parentElement!
+    const el = document.elementFromPoint(x, y)
+    return {
+      tag: el === null ? null : el.tagName,
+      inScrim: el !== null && scrim.contains(el),
+      barZ: Number(getComputedStyle(document.querySelector('[data-r-topbar]')!).zIndex),
+      scrimZ: Number(getComputedStyle(scrim).zIndex),
+    }
+  }, { x: box.x + box.width / 2, y: box.y + box.height / 2 })
+
+  // The bar really is on its rung, so this is not a test that passes because
+  // the chrome forgot to raise itself.
+  const rung = await rungs(page)
+  expect(hit.barZ, 'the top bar is not on --role-z-chrome, so this proves nothing')
+    .toBe(rung.chrome)
+  expect(hit.inScrim, `a pointer over the top bar landed on <${hit.tag}>, through the scrim`)
+    .toBe(true)
+  // …and it is the LADDER that put it there, at the rung L-44 names for a
+  // drawer or bottom sheet — not a number this component chose.
+  expect(hit.scrimZ).toBe(rung.drawer)
+  for (const under of ['dropdown', 'chrome', 'floating'] as const) {
+    expect(hit.scrimZ, `the scrim does not clear --role-z-${under}`)
+      .toBeGreaterThan(rung[under])
+  }
+  // The two rungs are the standard's, in the standard's order (R9 / L-42).
+  expect(rung.drawer).toBeLessThan(rung.modal)
+})
+
+test('the nav sheet is a drawer above 760 and a bottom sheet at or below it, with no band between', async ({ page }) => {
+  // F6 — measured in Chrome before the fix: 760 → a bottom sheet; **764 → a
+  // centred rounded card 716px wide**; 768 → an inline-start drawer. The box was
+  // keyed on Tailwind's `md` (768) while the scrim beside it used the design's
+  // 760, so 761–767 was neither presentation. The sheet is reachable at every
+  // width ≤1080 (its opener is `hidden max1080:flex`) and from the crumb strip
+  // at all of them, and NO spec measured its box at any width.
+  const sheet = await openSheet(page)
+  // The crumb strip carries no rung, so the hit test above cannot run here —
+  // but the rung itself can be asserted at every width, and this is the only
+  // block that opens the sheet at 1440 at all.
+  expect(await sheet.evaluate((el) => Number(getComputedStyle(el.parentElement!).zIndex)))
+    .toBe((await rungs(page)).drawer)
+  const measure = () => sheet.evaluate((el) => {
+    const box = el.getBoundingClientRect()
+    const cs = getComputedStyle(el)
+    const scrim = getComputedStyle(el.parentElement!)
+    return {
+      width: Math.round(box.width),
+      viewport: Math.round(document.documentElement.clientWidth),
+      bottomGap: Math.round(document.documentElement.clientHeight - box.bottom),
+      topLeft: cs.borderTopLeftRadius,
+      bottomLeft: cs.borderBottomLeftRadius,
+      align: scrim.alignItems,
+      padding: scrim.paddingTop,
+    }
+  })
+
+  for (const width of [760, 764, 768, 1080]) {
+    await page.setViewportSize({ width, height: 900 })
+    await expect(sheet).toBeVisible()
+    const m = await measure()
+    if (width <= 760) {
+      // A bottom sheet: full width, flush with the bottom, in a scrim with no
+      // padding, flat-bottomed and — owner ruling R35 — 22px on top.
+      expect(m.width, `${width}: not full width`).toBe(m.viewport)
+      expect(m.align, `${width}: the scrim is not bottom-aligned`).toBe('flex-end')
+      expect(m.padding, `${width}: the scrim kept its inset`).toBe('0px')
+      expect(m.bottomGap, `${width}: the sheet is not flush with the bottom`).toBe(0)
+      expect(m.topLeft, `${width}: §5.2 draws the drawer-as-sheet at 22px (R35)`).toBe('22px')
+      expect(m.bottomLeft, `${width}: a bottom sheet has no bottom corners`).toBe('0px')
+    } else {
+      // A drawer: --width-drawer wide, full height, anchored to the inline
+      // start, radiused on all four corners. 764 is the band, and it is the
+      // reason this loop is not [760, 1080].
+      expect(m.width, `${width}: not the drawer's own width`).toBe(340)
+      expect(m.align, `${width}: the scrim is not centred`).toBe('center')
+      expect(m.bottomGap, `${width}: a drawer is full height`).toBe(24)
+      expect(m.topLeft, `${width}: a drawer is the dialog radius on all four corners`).toBe('24px')
+      expect(m.bottomLeft, `${width}: a drawer is the dialog radius on all four corners`).toBe('24px')
+    }
+  }
+})
+
 test('the «مدیریت» popover closes on Escape, from the keyboard alone', async ({ page }) => {
   // Probed before this landed: open, press Escape, the menu is still there. The
   // only exits were a mouse click on the trigger or on an `aria-hidden` scrim,

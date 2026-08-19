@@ -155,30 +155,128 @@ describe('Sheet', () => {
     expect(onClose).toHaveBeenCalledOnce()
   })
 
-  it('anchors to the inline start above the breakpoint, using logical properties', () => {
-    render(<SheetHarness onClose={() => {}} />)
-    const className = screen.getByRole('dialog').className
-    expect(className).toMatch(/md:me-auto/)
-    expect(className).toMatch(/md:ms-0/)
+  it('anchors to the inline start above the breakpoint, using logical properties', async () => {
+    // Was `className.toMatch(/md:me-auto/)`, twice — a string match that says
+    // nothing about WHICH breakpoint, which is precisely how the sheet kept
+    // Tailwind's md (768) while the scrim beside it moved to the design's 760
+    // and nothing went red. Read out of the compiled sheet instead.
+    const { container } = render(<SheetHarness onClose={() => {}} />)
+    const box = await paint(container.querySelector('[role="dialog"]')!.className)
+    expect(winner(box, 'margin-inline-end')).toBe('auto')
+    expect(winner(box, 'margin-inline-start')).toBe('0px')
+  })
+
+  it('is a drawer above the design’s breakpoint and a bottom sheet at or below it — one number, not two', async () => {
+    // F6 — the seven-pixel band. The box was keyed on `md:` (768) and the scrim
+    // on `max760:` (760), so at 761–767 the nav sheet drew as a centred rounded
+    // card 716px wide inside a padded scrim: neither drawer nor bottom sheet.
+    // Measured in Chrome at 760 / 764 / 768 before the fix; asserted here as
+    // the rule rather than the three samples.
+    const { container } = render(<SheetHarness onClose={() => {}} />)
+    const scrim = await paint((container.firstElementChild as HTMLElement).className)
+    const box = await paint(container.querySelector('[role="dialog"]')!.className)
+
+    // Above: an inline-start drawer, --width-drawer wide and full height.
+    expect(winner(box, 'max-width')).toBe('var(--width-drawer)')
+    expect(winner(box, 'height')).toBe('100%')
+    expect(winner(scrim, 'align-items')).toBe('center')
+
+    // At or below 760 — the SAME number the scrim uses, in the same query.
+    expect(winner(box, 'max-width', '', PHONE)).toBe('100%')
+    expect(winner(box, 'height', '', PHONE)).toBe('auto')
+    expect(winner(box, 'max-height', '', PHONE)).toBe('88vh')
+    expect(winner(scrim, 'align-items', '', PHONE)).toBe('flex-end')
+    expect(winner(scrim, 'padding', '', PHONE)).toBe('0px')
+
+    // …and NOTHING on this box is keyed on Tailwind's md any more. This is the
+    // assertion the band could not survive: it is a claim about the absence of
+    // a second breakpoint, which no class-name match can make.
+    for (const prop of ['max-width', 'height', 'max-height', 'margin-inline-end', 'margin-inline-start']) {
+      expect(winner(box, prop, '', MD), prop).toBe('')
+    }
+  })
+
+  it('rounds its top corners at owner ruling R35’s 22px — not the modal’s 20, not the dialog’s 24', async () => {
+    // R35 («do like design»): §5.2 gives the drawer-as-bottom-sheet
+    // `border-radius: 22px 22px 0 0`, and the radius ladder
+    // (6·7·9·10·11·12·13·14·16·18·20·24) had no 22 rung, so it drew 24.
+    // `--radius-sheet` is that rung; the MODAL's sheet is `--radius-card-lg`'s
+    // 20 and must not move onto it.
+    const { container } = render(<SheetHarness onClose={() => {}} />)
+    const box = await paint(container.querySelector('[role="dialog"]')!.className)
+
+    // Above the breakpoint the dialog shorthand stands, on all four corners.
+    expect(winner(box, 'border-radius')).toBe('var(--radius-panel)')
+    expect(winner(box, 'border-top-left-radius')).toBe('')
+
+    // At or below it the sheet's rung has to BEAT that shorthand inside the
+    // media query — which `toHaveClass` cannot see, and is exactly why
+    // `40ddb17`'s regression test for the modal's 20 was written this way.
+    expect(winner(box, 'border-top-left-radius', '', PHONE)).toBe('var(--radius-sheet)')
+    expect(winner(box, 'border-top-right-radius', '', PHONE)).toBe('var(--radius-sheet)')
+    expect(winner(box, 'border-bottom-left-radius', '', PHONE)).toBe('0px')
+    expect(winner(box, 'border-bottom-right-radius', '', PHONE)).toBe('0px')
   })
 })
 
 describe('Dialog vs Sheet — the two presentations cannot collapse into each other', () => {
-  it("the Dialog is centred and width-capped, not anchored like the Sheet's drawer", () => {
-    render(<Harness onClose={() => {}} />)
-    const className = screen.getByRole('dialog').className
+  it("the Dialog is centred and width-capped, not anchored like the Sheet's drawer", async () => {
+    const { container } = render(<Harness onClose={() => {}} />)
     // 560px was never one of the design's five widths; the standard dialog is
-    // 520px (§3.3). The five are pinned by computed value in P3 below.
-    expect(className).toMatch(/\bmax-w-dialog\b/)
-    expect(className).not.toMatch(/md:w-\[var\(--width-drawer\)\]/)
-    expect(className).not.toMatch(/md:me-auto/)
+    // 520px (§3.3). Read as compiled values, not as class names: the pair this
+    // replaces asserted `md:`-prefixed strings, so both halves went on passing
+    // when the sheet's breakpoint was wrong.
+    const box = await paint(container.querySelector('[role="dialog"]')!.className)
+    expect(winner(box, 'max-width')).toBe('var(--width-dialog)')
+    expect(winner(box, 'margin-inline-end')).toBe('')
+    expect(winner(box, 'height')).toBe('')
   })
 
-  it("the Sheet is a fixed-width drawer anchored inline-start, not the Dialog's centred cap", () => {
-    render(<SheetHarness onClose={() => {}} />)
-    const className = screen.getByRole('dialog').className
-    expect(className).toMatch(/md:w-\[var\(--width-drawer\)\]/)
-    expect(className).not.toMatch(/\bmax-w-dialog\b/)
+  it("the Sheet is a fixed-width drawer anchored inline-start, not the Dialog's centred cap", async () => {
+    const { container } = render(<SheetHarness onClose={() => {}} />)
+    const box = await paint(container.querySelector('[role="dialog"]')!.className)
+    expect(winner(box, 'max-width')).toBe('var(--width-drawer)')
+    expect(winner(box, 'margin-inline-end')).toBe('auto')
+  })
+})
+
+describe('L-42 / L-44 — the z ladder reaches the dialog primitive', () => {
+  it('puts a dialog on --role-z-modal and a sheet on --role-z-drawer', async () => {
+    // The scrim used to write `50 + depth * 10` inline. 50 is BELOW
+    // `--role-z-chrome` (1020), so the panel's top bar, the FAB (1030) and every
+    // popover (1000) painted above it and stayed hit-testable while
+    // `aria-modal="true"` claimed the page behind was inert. Neither rung had a
+    // component consumer at all — half the ladder was live and exactly the half
+    // that lifts a modal above the rest was dead.
+    const dialog = render(<Harness onClose={() => {}} />)
+    const dialogScrim = dialog.container.firstElementChild as HTMLElement
+    expect(winner(await paint(dialogScrim.className), 'z-index')).toBe('var(--role-z-modal)')
+    // …written as a class, not as an inline number: an inline style would beat
+    // the utility and leave the ladder named and never painted.
+    expect(dialogScrim.style.zIndex).toBe('')
+    dialog.unmount()
+
+    const sheet = render(<SheetHarness onClose={() => {}} />)
+    const sheetScrim = sheet.container.firstElementChild as HTMLElement
+    expect(winner(await paint(sheetScrim.className), 'z-index')).toBe('var(--role-z-drawer)')
+    expect(sheetScrim.style.zIndex).toBe('')
+  })
+
+  it('adds ONE per nesting level inside the rung’s own band, never ten across bands', () => {
+    // L-42 — "Nesting adds 1 inside the rung's own band rather than 10 across
+    // bands, so fifteen stacked overlays fit beneath the reserved 1070 where the
+    // deliverables reach two." `50 + depth * 10` cleared `--role-z-dropdown`
+    // (1000) only at depth 96.
+    const { container } = render(
+      <>
+        <Dialog open onClose={() => {}} title="بیرونی"><button>خارجی</button></Dialog>
+        <Dialog open onClose={() => {}} title="داخلی"><button>داخلی</button></Dialog>
+      </>,
+    )
+    const scrims = Array.from(container.children) as HTMLElement[]
+    expect(scrims).toHaveLength(2)
+    expect(scrims[0].style.zIndex).toBe('')                            // depth 0 — the class
+    expect(scrims[1].style.zIndex).toBe('calc(var(--role-z-modal) + 1)')
   })
 })
 
@@ -229,6 +327,9 @@ function winner(painted: Painted[], prop: string, state = '', media = ''): strin
 }
 
 const PHONE = '(max-width: 760px)'
+/** Tailwind's own `md`, which is 768 and is NOT this design's breakpoint. Named
+ *  so the Sheet can assert that nothing of its shape is keyed on it. */
+const MD = '(min-width: 768px)'
 
 describe('P3 — Overlay is as capable as the dialog the design draws', () => {
   it('carries a subtitle, an icon and a footer', () => {

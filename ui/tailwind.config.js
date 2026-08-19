@@ -293,6 +293,12 @@ export default {
         'tick-nested': 'var(--radius-tick-nested)',// 5px  — the 16px tick
         reveal: 'var(--radius-reveal)',            // 8px  — the reveal button
         bar: 'var(--radius-bar)',                  // 2px  — the coral eyebrow bar
+        // Owner ruling R35 — the DRAWER's two top corners once it becomes a
+        // bottom sheet at ≤760 (§5.2, `border-radius:22px 22px 0 0`). The
+        // MODAL's are `feature`'s 20 and the centred dialog's are `panel`'s 24;
+        // three numbers, three roles, and the ladder has no 22 rung of its own.
+        // Written `rounded-t-sheet` at its one consumer, src/ui/Overlay.tsx.
+        sheet: 'var(--radius-sheet)',              // 22px — the drawer-as-sheet
       },
       borderWidth: { hairline: 'var(--border-hairline)' },
       boxShadow: {
