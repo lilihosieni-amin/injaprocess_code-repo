@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test'
-import type { Department, PendingItem, Process } from '../src/api/types'
+import type { Department, Overview, PendingItem, Process } from '../src/api/types'
+import type { AdminUser } from '../src/api/users'
 import { FIELD, LEGIBLE, SURFACE, pinPage, serve, shot, signedIn, visit } from './_harness'
 
 /*
@@ -577,6 +578,148 @@ test('the process id is still an island when the trail makes it a link', async (
   ])
   expect(leaf).toBe(persian)
   expect(latin).not.toBe(persian)
+})
+
+/* ------------------------------------------------------------------ *
+ * R41 — how many ways back, counted rather than looked for
+ *
+ * The owner's ruling: "the back button is never shown correctly. some pages
+ * don't have it at all. some pages like flowchart have two of them."
+ *
+ * Both halves were invisible to every check this repo had, and for the same
+ * reason: **nothing counted**. `the crumbs go at 760` two blocks up asserts
+ * `getByRole('link', { name: 'بازگشت' })` is *visible* on one route, which a
+ * screen with two of them satisfies; the reader's own
+ * `a back bar below the root, and no chrome at all on the flowchart` grades the
+ * reader shell, which is the one surface that was already right. And the jsdom
+ * suite cannot see the doubling at all — `shells.test.tsx` mounts the panel
+ * shell with `<p>محتوا</p>` behind every route, so the flow toolbar that draws
+ * the second «بازگشت» is not in the tree it renders.
+ *
+ * So this is a COUNT, on the composed page, at all three widths.
+ * ------------------------------------------------------------------ */
+
+/**
+ * The panel's own back table, read off `Inja Panel.dc.html` and nothing else.
+ *
+ * Two lines of the deliverable settle every row:
+ *
+ *   `showCrumbBar: screen !== 'depts'`                         (Panel :3454)
+ *   `canBack: s.hist.length > 0 && screen !== 'depts'`         (Panel :3451)
+ *
+ * `hist` is pushed by the prototype's `go()`, and **every** transition to a
+ * screen other than `depts` goes through it (Panel :2749-3905); the three that
+ * reach `depts` reset it to `[]`. So `canBack` is exactly "you are not on the
+ * home screen", and the panel draws **one** «بازگشت» on every route but
+ * `/departments`, in the crumb strip.
+ *
+ * That includes the flow screen. **The panel deliverable's flow toolbar has no
+ * back button in it** — Panel :558-613, whose first child is `data-r-flownav`,
+ * the next/previous pair. The one in `src/flow/FlowScreen.tsx` is the READER
+ * deliverable's (`Inja Reader.dc.html:313`, `data-r-flowback`), which the
+ * reader needs because its shell draws no bar there at all; `src/flow/` is
+ * another task's file, so the strip's own back is what gives way here. Same
+ * count, same destination — `/processes/{pid}` either way — and the deviation
+ * is recorded in `.superpowers/sdd/task-R41-report.md`.
+ */
+const BACK_PER_ROUTE: ReadonlyArray<readonly [string, number]> = [
+  ['/departments', 0],
+  ['/departments/dining', 1],
+  ['/departments/dining/overview', 1],
+  ['/processes/dining-003', 1],
+  ['/processes/dining-003/flow', 1],
+  ['/users', 1],
+  ['/users/2', 1],
+  ['/visibility', 1],
+  ['/profile', 1],
+]
+
+/**
+ * A user record for `/users/2`, and a policy for `/visibility`.
+ *
+ * Both routes render a refusal rather than their screen for a session that
+ * cannot reach them, and a refusal still wears the chrome — so the count would
+ * pass over a page the caller is being turned away from. `ADMINISTRATOR` below
+ * holds what each screen gates itself on, so every route in the table above is
+ * the screen it names.
+ */
+const USER: AdminUser = {
+  id: 2, username: '09121111111', displayName: 'سحر بیات',
+  roleId: 3, role: 'admin', capabilities: ['view', 'comment', 'manage_users'],
+  scopes: ['dept:dining'],
+  supervisor: { id: 21, username: '09123333333', displayName: 'مریم رستمی', disabled: false },
+  canSupervise: false, disabled: false, createdAt: 1700000000,
+}
+
+const POLICY = {
+  fields: {
+    process_summary: true, process_idef0: true, process_kpis: true,
+    node_description: true, node_actor: true, node_icom: true,
+  },
+  version: '0123456789abcdef',
+}
+
+const OVERVIEW: Overview = {
+  department: 'dining', name: 'سالن', description: 'یک بند.',
+  sub_units: [], personnel: [], updated_at: '۱۴۰۴/۰۵/۰۱',
+}
+
+/** Everything the nine routes read, and a session none of them refuses. */
+async function everywhere(page: Page) {
+  await signedIn(page, {
+    capabilities: ['view', 'comment', 'export_pdf', 'edit', 'confirm',
+                   'manage_users', 'manage_peers', 'view_audit', 'set_visibility'],
+    scopes: ['*'],
+  })
+  await serve(page, {
+    '/api/departments': DEPARTMENTS,
+    '/api/pending': PENDING,
+    '/api/departments/dining/processes': [PROCESS],
+    '/api/departments/dining/overview': OVERVIEW,
+    '/api/confirmations?department=dining': [],
+    '/api/processes/dining-003': PROCESS,
+    '/api/users': [USER],
+    '/api/users/2': USER,
+    '/api/visibility': POLICY,
+  })
+}
+
+test('one «بازگشت» per panel route, and never two', async ({ page }) => {
+  await everywhere(page)
+  for (const [url, expected] of BACK_PER_ROUTE) {
+    await page.goto(url)
+    // The chrome the deliverable draws on this route, so the count is never
+    // taken against a shell that has not decided which bar it is drawing.
+    await page.locator(url === '/departments' ? '[data-r-topbar]' : '[data-r-crumbbar]').waitFor()
+    // …and on the flow route, the screen as well: the second «بازگشت» is drawn
+    // by `FlowScreen`, which mounts after its process lands, so a count taken
+    // the instant the strip appeared would report 1 on a page that becomes 2.
+    if (url.endsWith('/flow')) await page.getByText('پذیرایی از مهمان').waitFor()
+    await pinPage(page, `goto('${url}')`)
+    await expect(page.getByRole('link', { name: 'بازگشت' }), url).toHaveCount(expected)
+  }
+})
+
+test('the one «بازگشت» on each route leads somewhere the caller can reach', async ({ page }) => {
+  // R5 — a control pointing at a page the caller is refused is a control that
+  // should not have been drawn, and D56 makes the refusal a 404: a back button
+  // that probes what exists is the shape this rule exists to refuse. So the
+  // destination is walked, not read off an href.
+  await everywhere(page)
+  for (const [url, expected] of BACK_PER_ROUTE) {
+    if (expected === 0) continue
+    await page.goto(url)
+    await page.locator('[data-r-crumbbar]').waitFor()
+    if (url.endsWith('/flow')) await page.getByText('پذیرایی از مهمان').waitFor()
+    await pinPage(page, `goto('${url}')`)
+    await page.getByRole('link', { name: 'بازگشت' }).click()
+    await pinPage(page, `«بازگشت» from ${url}`)
+    // Somewhere else, and not the refusal surface — which is what a back
+    // control aimed at a screen this session cannot open would land on.
+    await expect.poll(() => new URL(page.url()).pathname, { message: url }).not.toBe(url)
+    await expect(page.locator('[data-shell="panel"]'), url).toBeVisible()
+    await expect(page.getByText('چیزی اینجا نیست'), url).toHaveCount(0)
+  }
 })
 
 /* ------------------------------------------------------------------ *

@@ -72,8 +72,34 @@ export function panelCrumbs(pathname: string, deptName: (code: string) => string
     return [{ label: 'کاربران', to: '/users' }, { label: 'دسترسی' }]
   }
 
+  /*
+   * **R41.** The three flat administration screens, and the fix for "some pages
+   * don't have it at all".
+   *
+   * `Inja Panel.dc.html:3407` opens EVERY trail with «دپارتمان‌ها» and a `go`
+   * that returns there — the array is seeded with it before a single branch
+   * runs, and `users`, `policy` and `profile` each push one label onto it
+   * (:3413, through `ADMIN_LABEL`). So the deliverable's trail here is two
+   * crumbs, and `canBack: s.hist.length > 0 && screen !== 'depts'` (:3451) draws
+   * «بازگشت» on all three. Every transition to a screen other than `depts` goes
+   * through the prototype's `go()`, which pushes history, and the three that
+   * reach `depts` reset it — so that predicate is exactly "not the home screen",
+   * and the panel deliverable has a back control on all eight inner routes.
+   *
+   * This function used to answer a SINGLE crumb with no `to` for these three,
+   * and `PanelShell`'s `crumbs.length > 1` therefore left «بازگشت» undrawn on
+   * `/users`, `/visibility` and `/profile`. It is one omission and not three:
+   * the leading crumb was simply missing, and with it back the strip's existing
+   * rule draws the design's control without a special case for a "flat" route.
+   *
+   * The unknown-route arm keeps its lone crumb, and deliberately: `routes.tsx`'s
+   * catch-all redirects an unknown path to `/departments`, so the only caller
+   * that reaches it is the home screen itself — where §6.0 draws no strip at all.
+   */
   const flat = FLAT[parts[0] ?? '']
-  return flat === undefined ? [{ label: HOME }] : [{ label: flat }]
+  return flat === undefined
+    ? [{ label: HOME }]
+    : [{ label: HOME, to: '/departments' }, { label: flat }]
 }
 
 /** `/a//b/` and `/a/b` are the same route; `pathname === root` is a string compare. */

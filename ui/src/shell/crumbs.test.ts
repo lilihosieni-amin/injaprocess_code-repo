@@ -51,13 +51,54 @@ describe('panelCrumbs', () => {
   })
 
   it('knows the administration screens', () => {
-    expect(panelCrumbs('/users', name)).toEqual([{ label: 'کاربران' }])
+    // **R41.** Two crumbs, not one, and the leading one is what draws «بازگشت»:
+    // `Inja Panel.dc.html:3407` seeds every trail with «دپارتمان‌ها» before a
+    // branch runs, and `:3413` pushes the administration label onto it. With the
+    // leading crumb missing these three had `crumbs.length === 1`, so
+    // `PanelShell`'s `crumbs.length > 1 ? … : undefined` left them with no back
+    // control at all — the "some pages don't have it" half of the owner's
+    // ruling, on the three screens that had it.
+    expect(panelCrumbs('/users', name)).toEqual([
+      { label: 'دپارتمان‌ها', to: '/departments' },
+      { label: 'کاربران' },
+    ])
     expect(panelCrumbs('/users/09120000000', name)).toEqual([
       { label: 'کاربران', to: '/users' },
       { label: 'دسترسی' },
     ])
-    expect(panelCrumbs('/visibility', name)).toEqual([{ label: 'سیاست نمایش محتوا' }])
-    expect(panelCrumbs('/profile', name)).toEqual([{ label: 'پروفایل و گذرواژه' }])
+    expect(panelCrumbs('/visibility', name)).toEqual([
+      { label: 'دپارتمان‌ها', to: '/departments' },
+      { label: 'سیاست نمایش محتوا' },
+    ])
+    expect(panelCrumbs('/profile', name)).toEqual([
+      { label: 'دپارتمان‌ها', to: '/departments' },
+      { label: 'پروفایل و گذرواژه' },
+    ])
+  })
+
+  it('gives every route but the home screen a crumb to go back to', () => {
+    // The rule the three rows above are three instances of, stated once and
+    // over the whole route table — `src/routes.tsx`'s panel list, minus the two
+    // redirects. `PanelShell` derives «بازگشت» from `crumbs[length - 2]`, so a
+    // trail of one is a screen with no way back, and §6.0 draws one on every
+    // route but `/departments` (`canBack: s.hist.length > 0 && screen !==
+    // 'depts'`, Panel :3451, where `hist` is empty on the home screen alone).
+    //
+    // Written as a sweep because the defect it caught was an omission: three
+    // routes nobody had listed beside the others. A per-route `expect` cannot
+    // notice the route that is not in it.
+    for (const path of [
+      '/departments/dining', '/departments/dining/overview',
+      '/processes/dining-003', '/processes/dining-003/flow',
+      '/users', '/users/09120000000', '/visibility', '/profile',
+    ]) {
+      const trail = panelCrumbs(path, name)
+      expect(trail.length, path).toBeGreaterThan(1)
+      expect(trail[trail.length - 2].to, path).toBeDefined()
+    }
+    // …and the home screen is the one that has none, so this is a test about
+    // two branches rather than one that a trail-of-two everywhere would satisfy.
+    expect(panelCrumbs('/departments', name)).toHaveLength(1)
   })
 
   it('falls back to home rather than to an empty bar', () => {

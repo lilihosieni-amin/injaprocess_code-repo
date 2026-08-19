@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test'
-import type { Department, Process } from '../src/api/types'
+import type { Department, Overview, Process } from '../src/api/types'
 import { FIELD, LEGIBLE, SURFACE, pinPage, serve, shot, signedIn, visit } from './_harness'
 
 /*
@@ -485,6 +485,89 @@ test('R4 — a reader with one department lands on its process list, with no way
   await pinPage(page, "goto('/processes/dining-003')")
   await expect(page.getByRole('link', { name: 'خانه' })).toHaveAttribute('href', '/departments/dining')
 })
+
+/* ------------------------------------------------------------------ *
+ * R41 — how many ways back, counted rather than looked for
+ *
+ * `a back bar below the root, and no chrome at all on the flowchart` above
+ * asserts the bar EXISTS on one route and is ABSENT on another. Neither can see
+ * a second «بازگشت» beside the first, which is what the panel shipped: the
+ * ruling that sent this task is "some pages like flowchart have two of them".
+ * This surface is the one that was already right, and the count is what says so
+ * — and what would notice the day it stopped being.
+ * ------------------------------------------------------------------ */
+
+/**
+ * The reader's own back table, read off `Inja Reader.dc.html` and nothing else.
+ *
+ *   `showBackBar: screen !== 'flow'
+ *                 && !(screen === 'depts'
+ *                      || (myDepts.length === 1 && screen === 'plist'))`  (:2684)
+ *   `showTopBar:  screen === 'depts' || (myDepts.length === 1 && screen === 'plist')`
+ *
+ * Route-derived, unlike the panel's history-derived `canBack`, so the two roots
+ * are the whole of it: a many-department reader's root is the department list,
+ * an R4 reader's is their one process list, and the root carries the top bar and
+ * no back. Every other screen carries a back bar with one «بازگشت» in it — and
+ * the flowchart carries no bar at all, its «بازگشت» being the first child of the
+ * flow toolbar (:312-316, `data-r-flowback`). One either way, never two, never
+ * none.
+ */
+const READER_BACKS: ReadonlyArray<readonly [string, number]> = [
+  ['/departments', 0],
+  ['/departments/dining', 1],
+  ['/departments/dining/overview', 1],
+  ['/processes/dining-003', 1],
+  ['/processes/dining-003/flow', 1],
+  ['/profile', 1],
+]
+
+/** R4's table: the same routes for a reader whose root is one level down. */
+const R4_BACKS: ReadonlyArray<readonly [string, number]> = [
+  // The redirect's destination, and their root — so the top bar and no back.
+  ['/departments', 0],
+  ['/departments/dining', 0],
+  ['/departments/dining/overview', 1],
+  ['/processes/dining-003', 1],
+  ['/processes/dining-003/flow', 1],
+  ['/profile', 1],
+]
+
+const OVERVIEW: Overview = {
+  department: 'dining', name: 'سالن', description: 'یک بند.',
+  sub_units: [], personnel: [], updated_at: '۱۴۰۴/۰۵/۰۱',
+}
+
+/** `reader()` above plus the one endpoint the department overview reads. */
+async function everywhere(page: Page, depts: Department[] = TWO, over: Record<string, unknown> = {}) {
+  await signedIn(page, { ...READER, ...over })
+  await serve(page, {
+    '/api/departments': depts,
+    '/api/departments/dining/processes': PROCESSES,
+    '/api/departments/dining/overview': OVERVIEW,
+    '/api/processes/dining-003': PROCESS,
+    '/api/confirmations?department=dining': [],
+  })
+}
+
+for (const [who, depts, over, table] of [
+  ['a reader with two departments', TWO, {}, READER_BACKS],
+  ['an R4 reader with one', ONE, { scopes: ['dept:dining'] }, R4_BACKS],
+] as const) {
+  test(`one «بازگشت» per reader route for ${who}, and never two`, async ({ page }) => {
+    await everywhere(page, [...depts], { ...over })
+    for (const [url, expected] of table) {
+      await page.goto(url)
+      // Whichever bar this route wears — and on the flowchart, neither, so the
+      // wait is on the screen itself.
+      await (url.endsWith('/flow')
+        ? page.getByText('پذیرایی از مهمان').waitFor()
+        : page.locator('[data-r-topbar], [data-r-backbar]').first().waitFor())
+      await pinPage(page, `goto('${url}')`)
+      await expect(page.getByRole('link', { name: 'بازگشت' }), url).toHaveCount(expected)
+    }
+  })
+}
 
 /* ------------------------------------------------------------------ *
  * The badge, and audit S1 measured rather than asserted from a class name
