@@ -5,6 +5,7 @@ import { SurfaceProvider } from '../ui/surface'
 import { Icon } from '../ui/Icon'
 import { Logo } from '../ui/Logo'
 import { toFa } from '../lib/format'
+import { roleLabel } from '../lib/roles'
 import { readerBack, readerHere } from './crumbs'
 
 // Every control on both reader bars is the violet tile behind a 1.5px --line
@@ -140,7 +141,18 @@ export function ReaderShell({ session }: { session: SessionDescriptor }) {
                   `w-iconbtn` is 40 and 42. */}
               <span className="block min-w-0 leading-lockup">
                 <span className="block text-fs-body-lead font-bold text-ink">اینجا فست‌فود</span>
-                <span className="block truncate text-fs-xxs text-muted">سامانهٔ فرآیندها</span>
+              {/* reader 138 — `{{ roleLabel }}`, and reader 2497 binds that to
+                  `me.role`. So the second line names the SIGNED-IN PERSON, not
+                  the product: two accounts on the same bar read differently,
+                  which a fixed tagline can never do. R22.
+                  Through `roleLabel` and not raw, because the deliverable's
+                  `me.role` is already a Persian word and this app's is a seed
+                  IDENTIFIER (D50) — `reader_no_download`, in latin, under
+                  «اینجا فست‌فود», on the app's one right-to-left surface. It is
+                  the same mapping `/profile`, the users table and the user
+                  record already draw, and a role this build has no wording for
+                  keeps its identifier rather than being erased. */}
+              <span className="block truncate text-fs-xxs text-muted">{roleLabel(session.role)}</span>
               </span>
             </Link>
             {/* reader 141 — `margin-inline-start:auto; gap:8px; flex:none`. The
@@ -161,7 +173,12 @@ export function ReaderShell({ session }: { session: SessionDescriptor }) {
               {/* R3 — the reader's icon buttons are 42×42 at radius 12 (reader
                   142, 148), against the panel's 34×34 at radius 10. Neither
                   shell writes a pixel for them: `w-iconbtn` reads the role. */}
-              <Link to="/profile" aria-label="نمایه" className={`${GHOST} ${HIT} w-iconbtn h-iconbtn rounded-button`}>
+              {/* reader 148 — `title="پروفایل من"`. «نمایه» was the plan's word
+                  and the deliverable's is this one; R22 settles it for the
+                  deliverable. It is also what `readerHere` already calls the
+                  screen this opens (`crumbs.ts:148`), so the control and its
+                  destination stop disagreeing about the name of the same page. */}
+              <Link to="/profile" aria-label="پروفایل من" className={`${GHOST} ${HIT} w-iconbtn h-iconbtn rounded-button`}>
                 <Icon name="user" px={19} />
               </Link>
               {/* Neither deliverable has a sign-out affordance anywhere — the

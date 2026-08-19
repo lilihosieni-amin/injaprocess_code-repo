@@ -170,6 +170,11 @@ test('the brand lockup takes the reader’s leading and the reader’s two type 
   expect(m.lh / m.fs).toBeCloseTo(1.3, 2)
   await expect(lockup.locator('span').first()).toHaveCSS('font-size', '14.5px')
   await expect(lockup.locator('span').nth(1)).toHaveCSS('font-size', '11px')
+  // reader 138/2497 — that second line is the SIGNED-IN PERSON's role, put
+  // through `roleLabel` because this app's `role` is a seed identifier (D50)
+  // and the deliverable's is already a Persian word. `READER` above signs in as
+  // `reader`; raw, this line would read `reader` in latin under «اینجا فست‌فود».
+  await expect(lockup.locator('span').nth(1)).toHaveText('خواننده')
   // …and the logo beside it decoded, which `toBeVisible` cannot say: a broken
   // src is a visible element with no picture in it.
   const logo = page.locator('[data-r-topbar] img')
@@ -184,7 +189,7 @@ test('the brand lockup takes the reader’s leading and the reader’s two type 
 test('the reader’s icon buttons are 42px, not the panel’s 34 — and catch a 44px pointer', async ({ page }) => {
   await home(page)
   for (const control of [
-    page.getByRole('link', { name: 'نمایه' }),
+    page.getByRole('link', { name: 'پروفایل من' }),
     page.getByRole('button', { name: 'خروج' }),
   ]) {
     const box = (await control.boundingBox())!
@@ -226,7 +231,66 @@ test('a back bar below the root, and no chrome at all on the flowchart', async (
   // …and the screen behind it is still there, so this is a bar that is absent
   // rather than a shell that rendered nothing.
   await expect(page.locator('[data-shell="reader"] main')).toBeVisible()
+  // R21 — and this is the other half of "no chrome": the design puts «بازگشت»
+  // INSIDE the flow toolbar (reader 312-313, `data-r-flowback` as its first
+  // child) rather than on a bar of its own. Before it landed, the complete set
+  // of controls a reader was offered on this screen was «ویرایش» and React
+  // Flow's three zoom buttons — no back, no home, no sign-out, no link of any
+  // kind, measured in this browser.
+  const flowback = page.locator('[data-r-flowback]')
+  await expect(flowback).toBeVisible()
+  await expect(flowback).toHaveAttribute('href', '/processes/dining-003')
   await shot(page, 'reader-flow-nochrome')
+})
+
+test('a reader can LEAVE the flowchart, which is what R21 is for', async ({ page }) => {
+  // The dead end, closed and then walked. `toHaveAttribute` says the control
+  // points somewhere; only the click says a reader gets there — a `<Link>` whose
+  // `to` never reaches the router, or a control the canvas paints over, has the
+  // right href and goes nowhere.
+  await reader(page)
+  await page.goto('/processes/dining-003/flow')
+  await page.getByText('پذیرایی از مهمان').waitFor()
+  await pinPage(page, "goto('/processes/dining-003/flow')")
+  await page.locator('[data-r-flowback]').click()
+  await expect.poll(() => new URL(page.url()).pathname).toBe('/processes/dining-003')
+  // …and where they land has the reader's own chrome on it, so the way out
+  // continues rather than stopping one screen later.
+  await expect(page.locator('[data-r-backbar]')).toBeVisible()
+})
+
+test('the flow toolbar’s «بازگشت» is drawn at the design’s own numbers', async ({ page }) => {
+  // reader 313 — `padding:9px 13px; border-radius:11px; font-weight:700;
+  // font-size:13px; gap:6px`, on `#F4EFFB` behind a `1.5px solid #E3D8F5`, with
+  // a 15px chevron at `stroke-width:2.4` pointing the way an RTL reader came
+  // from. Every one of those numbers differs from the back BAR's «بازگشت» one
+  // route over, which is `10px 15px / radius 12 / 13.5px / gap 7px` — so a
+  // control copied off that bar compiles, paints, reads correctly and is the
+  // wrong size on the one screen the design draws this one on.
+  await reader(page)
+  await page.goto('/processes/dining-003/flow')
+  await page.getByText('پذیرایی از مهمان').waitFor()
+  await pinPage(page, "goto('/processes/dining-003/flow')")
+  const back = page.locator('[data-r-flowback]')
+  await expect(back).toHaveCSS('padding-top', '9px')
+  await expect(back).toHaveCSS('padding-left', '13px')
+  await expect(back).toHaveCSS('border-radius', '11px')
+  await expect(back).toHaveCSS('font-size', '13px')
+  await expect(back).toHaveCSS('font-weight', '700')
+  await expect(back).toHaveCSS('column-gap', '6px')
+  await expect(back).toHaveCSS('background-color', 'rgb(244, 239, 251)')
+  await expect(back).toHaveCSS('color', 'rgb(74, 37, 169)')
+  await expect(back).toHaveCSS('border-top-color', 'rgb(227, 216, 245)')
+  const glyph = back.locator('svg')
+  await expect(glyph).toHaveAttribute('width', '15')
+  await expect(glyph).toHaveAttribute('stroke-width', '2.4')
+  await expect(glyph.locator('path')).toHaveAttribute('d', 'M9 18l6-6-6-6')
+  // It is the INLINE-START control on that toolbar (reader 313 is the bar's
+  // first child), which in RTL means it sits to the right of everything else.
+  const box = (await back.boundingBox())!
+  const id = (await page.getByText('dining-003').boundingBox())!
+  expect(box.x, '«بازگشت» is not the inline-start control on the flow toolbar')
+    .toBeGreaterThan(id.x)
 })
 
 test('the back bar keeps its 20px gutter at every width, and the field does not show through', async ({ page }) => {
@@ -290,7 +354,7 @@ test('every control on the reader’s bars is the LAVENDER box the design draws'
   await page.locator('[data-r-topbar]').waitFor()
   await pinPage(page, "goto('/departments')")
   for (const control of [
-    page.getByRole('link', { name: 'نمایه' }),
+    page.getByRole('link', { name: 'پروفایل من' }),
     page.getByRole('button', { name: 'خروج' }),
   ]) {
     await expect(control).toHaveCSS('background-color', TILE)
@@ -482,27 +546,62 @@ async function contrastOf(handle: ReturnType<Page['locator']>): Promise<number> 
   })
 }
 
+/**
+ * Nothing on this bar stops being visible when a pointer lands on it.
+ *
+ * TWO readings, because a control can go missing in two ways and the first
+ * spelling of this function could only see one of them.
+ *
+ *  · its LABEL against its own fill, which is what `contrastOf` grades; and
+ *  · its BOX against the bar behind it, which is not a contrast question at
+ *    all. `hover:bg-card` on the reader's ghost — the other half of the panel's
+ *    recipe, and one word — paints the hovered control exactly the colour of
+ *    the bar it sits on. The label stays violet on white and reads perfectly,
+ *    so the ratio above says nothing is wrong; the tile the design draws has
+ *    disappeared under the pointer. The name of this function promised that and
+ *    the body measured only the first half of it.
+ *
+ * Asked only of a control that paints a tile AT REST: the brand lockup is a
+ * transparent link on the bar and there is no box of its own to lose.
+ */
 async function expectNothingVanishesOnHover(page: Page, root: string, least: number) {
   const controls = page.locator(`${root} a, ${root} button`)
   const n = await controls.count()
   expect(n, `${root} drew almost nothing, so this check is about nothing`).toBeGreaterThan(least)
+  const fill = (el: ReturnType<Page['locator']>) =>
+    el.evaluate((e) => getComputedStyle(e).backgroundColor)
+  const bar = await fill(page.locator(root))
   let measured = 0
+  let tiles = 0
   for (let i = 0; i < n; i++) {
     const c = controls.nth(i)
     if (!(await c.isVisible())) continue
+    const name = (await c.textContent())?.trim() || (await c.getAttribute('aria-label'))
     expect(await contrastOf(c), `${root} control ${i} at rest`).toBeGreaterThan(LEGIBLE)
+    // Transparent at rest, or already the bar's own colour, is not a tile.
+    const rest = await fill(c)
+    const isTile = rest !== bar && !/,\s*0\)$/.test(rest)
     await c.hover()
     await expect(c).toHaveCSS('cursor', /pointer|default/)
     const ratio = await contrastOf(c)
     expect(
       ratio,
-      `${root} control ${i} (${(await c.textContent())?.trim() || (await c.getAttribute('aria-label'))}) ` +
-      `hovered: its label is ${ratio.toFixed(2)}:1 against its own fill`,
+      `${root} control ${i} (${name}) hovered: its label is ${ratio.toFixed(2)}:1 against its own fill`,
     ).toBeGreaterThan(LEGIBLE)
+    if (isTile) {
+      expect(
+        await fill(c),
+        `${root} control ${i} (${name}) hovered: its fill became ${bar}, which is the bar's own — ` +
+        'the label is still legible and the control is no longer a box',
+      ).not.toBe(bar)
+      tiles++
+    }
     measured++
   }
   expect(measured, `every control in ${root} was invisible, so nothing was measured`)
     .toBeGreaterThan(least - 1)
+  expect(tiles, `no control in ${root} painted a tile of its own, so the box half measured nothing`)
+    .toBeGreaterThan(0)
   await page.mouse.move(0, 0)
 }
 

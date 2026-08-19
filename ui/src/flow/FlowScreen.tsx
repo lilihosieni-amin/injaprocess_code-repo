@@ -1,4 +1,4 @@
-import { useNavigate, useParams, Link } from 'react-router-dom'
+import { useNavigate, useParams, useLocation, Link } from 'react-router-dom'
 import { useState, useRef } from 'react'
 import { ReactFlowProvider, useReactFlow, type Connection } from '@xyflow/react'
 import { useProcess, useProcesses, usePutProcess, useRelayout, useCreateProcess, useResolvePending } from '../api/hooks'
@@ -7,6 +7,8 @@ import { neighborProcess } from '../lib/process-nav'
 import { toFlowNodes, toFlowEdges } from './adapt'
 import { Canvas } from './Canvas'
 import { Button, Spinner } from '../ui/Button'
+import { Icon } from '../ui/Icon'
+import { readerBack } from '../shell/crumbs'
 import { IdBadge } from '../ui/IdBadge'
 import { DeleteNodeConfirm } from './DeleteNodeConfirm'
 import { DetailDrawer } from './DetailDrawer'
@@ -24,6 +26,7 @@ export function FlowScreen() {
 function FlowEditor() {
   const { pid = '' } = useParams()
   const nav = useNavigate()
+  const { pathname } = useLocation()
   const { data: server } = useProcess(pid)
   const { data: siblings = [] } = useProcesses(server?.department ?? '', { enabled: !!server?.department })
   const ed = useFlowEditor(server)
@@ -50,6 +53,12 @@ function FlowEditor() {
   const editing = ed.editing
   const prevProc = neighborProcess(siblings, proc.id, -1)
   const nextProc = neighborProcess(siblings, proc.id, 1)
+  // R21's destination. `readerBack` answers `undefined` for a path that IS the
+  // root it is handed, which `/processes/{pid}/flow` against a department never
+  // is; the coalesce narrows `string | undefined` to the `To` a `<Link>` takes
+  // and is not a second answer to the question.
+  const deptRoot = `/departments/${proc.department}`
+  const backTo = readerBack(pathname, deptRoot) ?? deptRoot
 
   function onSave() {
     if (tombstoned) return
@@ -68,6 +77,33 @@ function FlowEditor() {
   return (
     <div className="flex-1 flex flex-col min-h-0">
       <div className="flex items-center gap-3 px-[22px] py-[11px] bg-white border-b border-warm shrink-0">
+        {/* R21 — `Inja Reader.dc.html:312-313`. On the flowchart the design puts
+            «بازگشت» INSIDE this toolbar, as its first child, and draws no bar of
+            its own above it; that is why `ReaderShell` renders no chrome on this
+            route at all. Without this control the screen is a dead end for a
+            reader: signed in as one, the complete set of controls rendered here
+            is «ویرایش» and React Flow's three zoom buttons — no back, no home,
+            no sign-out, no link of any kind.
+
+            `readerBack` rather than a literal `/processes/{pid}`, so the one
+            function that answers "where does back go" stays the only one. On
+            this route it answers the process summary (`crumbs.ts:116`) whatever
+            root it is handed, which is why this department — a page anyone who
+            can open this process can also reach — is a safe thing to hand it.
+
+            Drawn at reader 313's own numbers (`9px 13px`, radius 11, 13px, the
+            lavender tile behind a 1.5px hairline), spelled the way the rest of
+            this file spells a value: F16 keeps `src/flow/` out of F6's token
+            guard, and a token minted for one button on a frozen screen would be
+            a fifth spelling of a colour this file already writes four ways. */}
+        <Link
+          to={backTo}
+          data-r-flowback
+          className="inline-flex items-center gap-1.5 px-[13px] py-[9px] rounded-[11px] font-bold text-[13px] bg-tile-v2 text-violet border-[1.5px] border-line flex-none no-underline"
+        >
+          <Icon name="chevronStart" px={15} stroke={2.4} />
+          بازگشت
+        </Link>
         {!editing && (prevProc || nextProc) && (
           <div className="flex items-center gap-[3px] bg-tile-v2 rounded-xl p-[5px]">
             {/* next process — sits on the right in RTL (first in DOM), '>' icon */}

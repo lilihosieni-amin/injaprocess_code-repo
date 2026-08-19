@@ -574,7 +574,7 @@ describe('the way to the profile screen', () => {
     // about now lives in the top bar's «مدیریت» popover. At the router's default
     // `/` there is no popover to open and the assertion below would be about
     // nothing. The same is true of the reader as of Task 13 — its own top bar is
-    // drawn on its root and a BACK BAR on every other screen, and «نمایه» is on
+    // drawn on its root and a BACK BAR on every other screen, and «پروفایل من» is on
     // the top bar, so at `/` the reader's link would be missing for the same
     // reason rather than for the one this test is looking for.
     const entry = '/departments'
@@ -613,6 +613,9 @@ describe('the way to the profile screen', () => {
     // is drawn, and drawing one and swapping it is the flicker R4 exists to
     // prevent.
     renderShell('reader', ['view', 'comment', 'export_pdf'])
-    expect(await screen.findByRole('link', { name: 'نمایه' })).toHaveAttribute('href', '/profile')
+    // R22 — the control's name is the deliverable's «پروفایل من» (reader 148)
+    // rather than the plan's «نمایه», and is the same word `readerHere` gives
+    // the screen it opens, so the two stop disagreeing about one page.
+    expect(await screen.findByRole('link', { name: 'پروفایل من' })).toHaveAttribute('href', '/profile')
   })
 })
