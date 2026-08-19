@@ -84,7 +84,7 @@ export function ConfirmMark({ row, department }:
         // `--role-subtitle-on-field` and NOT `--text-muted`, which is what F4
         // asked for. Both call sites — `Summary`'s badge row and `Overview`'s
         // title row — are inside a `bg-ink` screen root, so this line is drawn
-        // on the #2A1D5E field and never on cream. Measured against the field:
+        // on the `--ink` field and never on cream. Measured against the field:
         // `--text-faint` 5.88:1, `--text-muted` 3.93:1, this 8.6:1. F4's 2.33
         // is the faint/cream pair, which is a surface neither call site uses,
         // and taking its prescription would have made the byline *less* legible

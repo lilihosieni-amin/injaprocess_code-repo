@@ -221,6 +221,16 @@ describe('F10 — RTL is structural', () => {
       // beside it — that used to sit inside the same `font-mono` span and fell
       // through to whatever the OS substituted for Persian glyphs.
       'src/screens/Visibility.tsx',
+      // Task 24's two write islands, declared ahead of the scan for the same
+      // reason every `src/screens/` entry above was: `src/write/` is still in
+      // PENDING_REBUILD, so nothing can see them today and the day that line
+      // goes this guard would turn red on two files nobody had written down.
+      // Both pin `ltr` on a mono latin run several levels inside an RTL dialog,
+      // which is precisely what §8's scroll-box rule is written NOT to reach:
+      // the id the server will allocate, previewed before it exists, and the
+      // absolute URL of a finished export in its copy field.
+      'src/write/CreateProcessModal.tsx',
+      'src/write/ExportModal.tsx',
       // `src/screens/ProcessList.tsx` is deliberately NOT here, and the absence
       // is the finding rather than an omission: that screen used to pin the
       // direction twice — once on its scrolling region, once back on the single

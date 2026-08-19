@@ -19,9 +19,9 @@ const KINDS: { kind: ExportKind; label: string; hint: string; tile: string; icon
     kind: 'steps',
     label: 'خروجی راهنمای گام‌به‌گام',
     hint: 'فهرست ساده و خوانا برای پرسنل',
-    // `--tile-warn` / `--warn` by name: the pair used to be `#FBEEDC` and
-    // `#B4690E` written out, which is a second home for two values the theme
-    // already keeps and `ProcessList` already reads for its sub-process tag.
+    // `--tile-warn` / `--warn` by name: the pair used to be two hex literals
+    // written out, which is a second home for two values the theme already
+    // keeps and `ProcessList` already reads for its sub-process tag.
     tile: 'bg-tile-warn text-warn',
     icon: 'M9 6h11M9 12h11M9 18h11M3.1 6h.01M3.1 12h.01M3.1 18h.01',
   },
@@ -74,11 +74,12 @@ export function ExportMenu({ department }: { department: string }) {
   if (kinds.length === 0) return null
 
   return (
-    // O1 — no `dir` here. §8's scroll box flips its own immediate children back
-    // in `base.css`; this component used to re-pin the direction itself because
-    // `ProcessList` set `dir="ltr"` as an attribute on the scrolling region.
+    // O1 — the direction is not pinned here. §8's scroll box flips its own
+    // immediate children back in `base.css`; this component used to re-pin the
+    // direction itself, because `ProcessList` once set it as an attribute on
+    // the scrolling region and flipped back only the one child it remembered.
     <div ref={wrap} className="relative shrink-0">
-      {/* O2 — the trigger was a `w-[42px] h-[42px]` box, which is neither a
+      {/* O2 — the trigger was an arbitrary 42px square, which is neither a
           token nor the design's own number: `--size-iconbtn` is the panel's icon
           button at 40. `IconButton` owns the 44px hit target and the accessible
           name; the drawn box is the 40 inside it, and it carries the fill and
@@ -102,9 +103,10 @@ export function ExportMenu({ department }: { department: string }) {
       {open && (
         <div role="menu" className="absolute top-full mt-s4 end-0 min-w-menu bg-card border border-line rounded-tile shadow-pop z-dropdown p-popover">
           {kinds.map((k) => (
-            // O5 — `text-start`, not `text-right`. It happened to look correct
-            // only because two physical offsets cancelled; in an LTR locale the
-            // label would end-align against a start-aligned tile.
+            // O5 — `text-start`, and not the physical alignment this row used
+            // to carry. It happened to look correct only because two physical
+            // offsets cancelled; in an LTR locale the label would align to the
+            // far side of a tile that had not moved with it.
             <button key={k.kind} role="menuitem" type="button" onClick={() => run(k.kind)}
               className="flex items-start gap-option w-full text-start px-s6 py-option-y rounded-control border-0 bg-transparent cursor-pointer hover:bg-tile-v2">
               <span className={`w-tool h-tool shrink-0 rounded-control flex items-center justify-center ${k.tile}`}>

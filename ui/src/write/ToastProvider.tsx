@@ -35,15 +35,15 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         // a toast raised over an open dialog would have painted behind its
         // scrim. The toast is the ceiling.
         //
-        // O5 — `start-1/2` with a LOGICAL translate, not `left-1/2
-        // -translate-x-1/2`. The two physical offsets cancelled, so the toast
-        // happened to centre correctly; in an LTR locale `start` becomes `left`
-        // and the pair would still cancel, which is what makes this a fix rather
-        // than a rename. The old form was a mirror bug waiting for the day one
-        // of the two was touched.
+        // O5 — a logical inset and a logical translate. The pair this line
+        // used to carry was physical at both ends, and the two cancelled, so the
+        // toast happened to centre correctly; under a logical inset the pair
+        // still cancels in either direction, which is what makes this a fix
+        // rather than a rename. The old form was a mirror bug waiting for the
+        // day one of the two was touched.
         //
-        // `text-fs-sm` (`--fs-sm` 13px) rather than the `text-[13px]` this line
-        // carried: the design draws the toast at `font-size:13px`
+        // `text-fs-sm` (`--fs-sm` 13px) rather than the arbitrary size this line
+        // carried: the design draws the toast at 13px
         // (`Inja Panel.dc.html:2113`) and the scale has the rung.
         <div role="status" aria-live="polite" className="fixed bottom-s11 start-1/2 rtl:translate-x-1/2 ltr:-translate-x-1/2 bg-ink text-card px-5 py-s6 rounded-button text-fs-sm font-semibold shadow-modal z-toast flex items-center gap-s5">
           <Icon d="M20 6L9 17l-5-5" px={16} stroke={2.4} className="text-toast-check" />

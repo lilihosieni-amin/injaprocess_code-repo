@@ -9,9 +9,10 @@ import { IdBadge } from '../ui/IdBadge'
 
 /** §6.13's two value panels — the same box twice, tinted for what it holds.
  *
- *  Colours by name and never as literals: the pair used to write `#F6F3FB`,
- *  `#EDE5F5`, `#5a5175`, `#FFF3F2`, `#FDD9D6` and `#8a2b26` — six hex values
- *  for four roles the theme already holds. */
+ *  Colours by name and never as literals: the pair used to write six hex
+ *  values out — a fill, an edge and an ink for each side — where the theme
+ *  already holds all six under `--value-current`, `--border-current`,
+ *  `--text-current`, `--tile-c2`, `--border-danger` and `--text-proposed`. */
 const PANEL = 'rounded-input px-s6 py-s5 border'
 const EYEBROW = 'text-fs-nano mb-s1'
 const VALUE = 'text-fs-sm2 leading-normal whitespace-pre-line'

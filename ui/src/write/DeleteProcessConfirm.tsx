@@ -29,13 +29,14 @@ export function DeleteProcessConfirm({ pid, name, onClose }: { pid: string; name
       title={`حذف کامل فرآیند «${name}»؟`}
       footer={
         <div className="flex gap-s5">
-          {/* O6 — this pair was hand-rolled because `Button` had no `danger`:
-              `rounded-xl` (Tailwind's 12px, not `--radius-md`), `text-sm`
-              (14px, not `--fs-body`), `text-white` (not `text-card`) and
-              `text-[#6B5CA5]` on its sibling — and none of `Button`'s touch
-              floor, focus handling or busy state. O8/P1 — `disabled` alone
-              rendered no visible change at all, so the slowest action in the
-              product looked frozen. */}
+          {/* O6 — this pair was hand-rolled, because `Button` had no
+              destructive skin at all. What it drew instead: a Tailwind built-in
+              radius rather than `--radius-md`, a built-in type step rather than
+              `--fs-body`, a raw white rather than `--card`, an arbitrary violet
+              literal on its sibling — and none of `Button`'s touch floor, focus
+              handling or busy state.
+              O8/P1 — `disabled` alone rendered no visible change at all, so
+              the slowest action in the product looked frozen. */}
           <Button variant="danger" onClick={confirm}
             loading={del.isPending} loadingLabel="در حال حذف…"
             className="flex-1 px-s8 text-fs-menu">حذف کامل فرآیند</Button>
