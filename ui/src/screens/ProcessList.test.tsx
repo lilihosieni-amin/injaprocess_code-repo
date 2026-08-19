@@ -36,19 +36,26 @@ const EDITOR: SessionDescriptor = {
 const READER: SessionDescriptor = { ...EDITOR, role: 'reader', capabilities: ['view', 'comment', 'export_pdf'] }
 const OTHER_DEPT_EDITOR: SessionDescriptor = { ...EDITOR, scopes: ['dept:cashier'] }
 
+/** An ICOM with nothing in it — what `visibility.filtered` blanks `idef0` to,
+ *  and what a process nobody has drawn an A-0 for genuinely holds. Written out
+ *  on every fixture below because `Process.idef0` is REQUIRED: the server sends
+ *  the key on every document, blanked or filled, so a fixture without one is a
+ *  payload the API cannot produce. */
+const NO_ICOM = { inputs: [], controls: [], outputs: [], mechanisms: [] }
+
 // Curated order deliberately diverges from id order (cooking-014 before cooking-001):
 // if ProcessList ever started sorting by id before numbering, the position assertions
 // below would flip and fail. See finding A in the Task 11 review.
 const PROCS = [
-  { id: 'cooking-014', department: 'cooking', name: 'پرداخت هزینه', summary: 's2', parent: { process: 'cooking-001', node: 'n' }, kpis: [], pending: [], nodes: [{ type: 'activity' }] },
-  { id: 'cooking-001', department: 'cooking', name: 'خرید و پرداخت', summary: 's1', parent: null, kpis: [{ name: 'k' }], pending: [], nodes: [{ type: 'activity' }, { type: 'start' }] },
-  { id: 'cooking-002', department: 'cooking', name: 'فرآیند قدیمی', summary: 's3', parent: null, kpis: [], pending: [], nodes: [], tombstoned: true, superseded_by: ['cooking-050'] },
+  { id: 'cooking-014', department: 'cooking', name: 'پرداخت هزینه', summary: 's2', parent: { process: 'cooking-001', node: 'n' }, idef0: NO_ICOM, kpis: [], pending: [], nodes: [{ type: 'activity' }] },
+  { id: 'cooking-001', department: 'cooking', name: 'خرید و پرداخت', summary: 's1', parent: null, idef0: NO_ICOM, kpis: [{ name: 'k' }], pending: [], nodes: [{ type: 'activity' }, { type: 'start' }] },
+  { id: 'cooking-002', department: 'cooking', name: 'فرآیند قدیمی', summary: 's3', parent: null, idef0: NO_ICOM, kpis: [], pending: [], nodes: [], tombstoned: true, superseded_by: ['cooking-050'] },
 ]
 
-function mock() {
+function mock(procs: unknown[] = PROCS) {
   vi.spyOn(globalThis, 'fetch').mockImplementation((input: RequestInfo | URL) => {
     const url = String(input)
-    if (url.includes('/processes')) return Promise.resolve(new Response(JSON.stringify(PROCS), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+    if (url.includes('/processes')) return Promise.resolve(new Response(JSON.stringify(procs), { status: 200, headers: { 'Content-Type': 'application/json' } }))
     return Promise.resolve(new Response(JSON.stringify([{ code: 'cooking', name: 'پخت', count: 2 }]), { status: 200, headers: { 'Content-Type': 'application/json' } }))
   })
 }
@@ -421,5 +428,104 @@ describe('the row, the empty state and the mobile overflow', () => {
     expect(src).not.toMatch(/(text|rounded|shadow)-\[/)
     expect(src).not.toMatch(/\brounded-(sm|md|lg|xl|2xl|3xl|full)\b/)
     expect(src).not.toMatch(/\btext-(xs|sm|base|lg|xl|[2-9]xl)\b/)
+  })
+})
+
+/**
+ * R39 — «اطلاعات کلی» leads to `Summary`, and a screen that will refuse must not
+ * be offered a door (R5).
+ *
+ * When the department's three content switches are all off, `visibility.filtered`
+ * hands a non-editor a document whose `summary`, `idef0` and `kpis` are present
+ * and emptied, and `Summary` then draws §6.3's card and **nothing else**: «خلاصه،
+ * نمای IDEF0 و شاخص‌ها نمایش داده نمی‌شوند» over a paragraph explaining the
+ * policy. A list that keeps offering the button is walking every reader in that
+ * department into an empty page.
+ *
+ * **How the list knows, and why it discloses nothing new (NFR-12 / AC-25).**
+ * `GET /api/departments/{code}/processes` runs `shown.redact(d, code)` over every
+ * row — the same `Disclosure` that `GET /api/processes/{pid}` runs — so each row
+ * in this list is byte-identical to what the summary screen would be served for
+ * that process. The predicate reads the bytes the caller already holds. It is not
+ * a count, not a flag and not a second endpoint: nothing crosses the wire that
+ * did not cross it before, and a reader who may not have the fields still cannot
+ * tell "withheld" from "never recorded" — which is precisely why the button is
+ * withdrawn in BOTH cases rather than only the first.
+ *
+ * `hasPublishedDetail` is imported from `src/lib/published.ts`, the one place it
+ * is written. Two spellings of one rule is how this project got its worst bugs,
+ * and the OR-versus-per-field defect Task 16 removed was exactly that.
+ */
+describe('R39 — the list stops offering a summary that would be empty', () => {
+  /** All three switchable fields as `visibility.filtered` blanks them. */
+  const WITHHELD = {
+    id: 'cooking-007', department: 'cooking', name: 'فرآیند بی‌جزئیات',
+    summary: '', parent: null, idef0: NO_ICOM, kpis: [], pending: [], nodes: [],
+  }
+
+  it('draws no «اطلاعات کلی» for a reader whose row arrived with all three fields blank', async () => {
+    mock([WITHHELD])
+    renderAt('/departments/:code', <ProcessList />, '/departments/cooking', READER)
+    await screen.findByText('فرآیند بی‌جزئیات')
+    expect(screen.queryByRole('button', { name: 'اطلاعات کلی' })).toBeNull()
+    // …and the row is not gutted: «فلوچارت» is a screen that IS served to this
+    // reader — §6.3's own card says so in as many words — so it stays.
+    expect(screen.getByRole('button', { name: 'فلوچارت' })).toBeInTheDocument()
+  })
+
+  for (const [what, survivor] of [
+    ['a published summary', { summary: 'این فرآیند خلاصه دارد' }],
+    ['one ICOM term', { idef0: { ...NO_ICOM, inputs: ['درخواست خرید'] } }],
+    ['one KPI', { kpis: [{ name: 'زمان چرخه' }] }],
+  ] as const) {
+    it(`keeps «اطلاعات کلی» when ${what} survives the filter`, async () => {
+      // The three switches are INDEPENDENT (`visibility.py`: summary→
+      // process_summary, idef0→process_idef0, kpis→process_kpis, each set
+      // separately by `/visibility`), so "all three withheld" is the only case
+      // that empties the page. Any one survivor and the summary has something on
+      // it — which is what makes a predicate reading only `summary` wrong.
+      mock([{ ...WITHHELD, ...survivor }])
+      renderAt('/departments/:code', <ProcessList />, '/departments/cooking', READER)
+      await screen.findByText('فرآیند بی‌جزئیات')
+      expect(screen.getByRole('button', { name: 'اطلاعات کلی' })).toBeInTheDocument()
+    })
+  }
+
+  it('never withdraws it from an editor — their blank process is empty, not filtered', async () => {
+    // `visibility.filtered` returns the document untouched for an editor, and
+    // `_skeleton` writes every new process with `summary: ""`, an empty `idef0`
+    // and `kpis: []`. So without the `mayEdit` half, EVERY process would lose
+    // its button from the moment its own editor created it — and the summary
+    // screen they were being kept away from is the one place they can fill it in.
+    mock([WITHHELD])
+    renderAt('/departments/:code', <ProcessList />, '/departments/cooking', EDITOR)
+    await screen.findByText('فرآیند بی‌جزئیات')
+    expect(screen.getByRole('button', { name: 'اطلاعات کلی' })).toBeInTheDocument()
+  })
+
+  it('asks about THIS department: an editor of another one is served the reader’s document', async () => {
+    // `Disclosure` passes `editor=self.edits(dept)` for the department the
+    // document is in, so `dept:cashier` is filtered out of `cooking` exactly as
+    // a reader is. Asking "does this person hold edit anywhere?" would leave
+    // them the one button that leads nowhere.
+    mock([WITHHELD])
+    renderAt('/departments/:code', <ProcessList />, '/departments/cooking', OTHER_DEPT_EDITOR)
+    await screen.findByText('فرآیند بی‌جزئیات')
+    expect(screen.queryByRole('button', { name: 'اطلاعات کلی' })).toBeNull()
+  })
+
+  it('decides per row, not per screen', async () => {
+    // The mutation this exists for: a screen-wide guard — "does ANY row in this
+    // department have published detail" — passes every test above on a
+    // single-row fixture and takes the button off every row in a department
+    // where one process is withheld, or leaves it on every row where one is not.
+    mock([WITHHELD, { ...WITHHELD, id: 'cooking-008', name: 'فرآیند پرجزئیات', summary: 'خلاصهٔ منتشرشده' }])
+    renderAt('/departments/:code', <ProcessList />, '/departments/cooking', READER)
+    await screen.findByText('فرآیند پرجزئیات')
+    const offered = screen.getAllByRole('button', { name: 'اطلاعات کلی' })
+    expect(offered).toHaveLength(1)
+    const rows = [...document.querySelectorAll('[data-r-prow]')]
+    const withDoor = rows.find((r) => r.contains(offered[0]))!
+    expect(within(withDoor as HTMLElement).getByText('فرآیند پرجزئیات')).toBeInTheDocument()
   })
 })

@@ -5,6 +5,7 @@ import { useSession } from '../auth/useSession'
 import { useCan } from '../auth/can'
 import { deriveTag, toFa } from '../lib/format'
 import { countActivities } from '../lib/counts'
+import { hasPublishedDetail } from '../lib/published'
 import { IdBadge } from '../ui/IdBadge'
 import { Button } from '../ui/Button'
 import { Card } from '../ui/Card'
@@ -377,8 +378,41 @@ export function ProcessList() {
                   </div>
                 </div>
                 <div data-r-pactions className="flex items-center gap-s4 flex-none max760:self-stretch max760:w-full">
-                  <Button variant="ghost" onClick={() => nav(`/processes/${p.id}`)}
-                    className="px-s7 py-s4 text-fs-sm2 max760:flex-1">اطلاعات کلی</Button>
+                  {/* R39, which is R5 one screen removed: never draw a control
+                      that leads somewhere with nothing on it.
+
+                      «اطلاعات کلی» opens `Summary`, and when the department's
+                      three content switches are all off that screen is §6.3's
+                      card and nothing else — «خلاصه، نمای IDEF0 و شاخص‌ها نمایش
+                      داده نمی‌شوند» over a paragraph about the policy. Offering
+                      the button anyway walks every reader in that department
+                      into an empty page.
+
+                      **The same predicate `Summary.tsx` decides by**, imported
+                      rather than restated: `!mayEdit && !hasPublishedDetail(p)`.
+                      Two spellings of one rule is how this project got its worst
+                      bugs, and an OR that had drifted from a per-field test was
+                      Task 16's own defect.
+
+                      **And it discloses nothing (NFR-12 / AC-25).**
+                      `GET /api/departments/{code}/processes` runs
+                      `shown.redact(d, code)` over every row — the same
+                      `Disclosure` the single-process endpoint runs — so each row
+                      here is byte-identical to what the summary screen would be
+                      served for it. Nothing new crosses the wire, no count is
+                      asked for, and the button is withdrawn identically for
+                      "withheld" and for "never recorded", which is why it cannot
+                      become a signal about the policy.
+
+                      `mayEdit` is this DEPARTMENT's question (line 195), not the
+                      person's, and that is load-bearing here too: `Disclosure`
+                      passes `editor=self.edits(dept)`, so an editor of another
+                      department is filtered exactly as a reader is and must lose
+                      the button exactly as a reader does. */}
+                  {(mayEdit || hasPublishedDetail(p)) && (
+                    <Button variant="ghost" onClick={() => nav(`/processes/${p.id}`)}
+                      className="px-s7 py-s4 text-fs-sm2 max760:flex-1">اطلاعات کلی</Button>
+                  )}
                   <Button variant="violet" onClick={() => nav(`/processes/${p.id}/flow`)}
                     className="px-s7 py-s4 text-fs-sm2 max760:flex-1">فلوچارت</Button>
                   {mayEdit && (

@@ -13,35 +13,12 @@ import { Button } from '../ui/Button'
 import { SectionCard } from '../ui/SectionCard'
 import { TextField } from '../ui/TextField'
 import { toFa } from '../lib/format'
+// R39 — one home for the rule, shared with `ProcessList`, which now asks the
+// same question to decide whether to offer a door to this screen at all.
+import { hasIcom, hasPublishedDetail } from '../lib/published'
 import { refusalStatus } from '../api/client'
 import { LoadFailedScreen } from '../ui/states'
 import { RefusalScreen } from './Refusal'
-
-/** Whether the A-0 block has a single term in it. */
-function hasIcom(icom: Icom): boolean {
-  return icom.inputs.length + icom.controls.length
-    + icom.outputs.length + icom.mechanisms.length > 0
-}
-
-/** Whether the response carried any of the three switchable fields.
- *
- *  `visibility.filtered` blanks `summary`, `idef0` and `kpis` rather than
- *  dropping them (unlike `source` and the timestamps, which it removes), so
- *  "withheld" and "never recorded" arrive as the same bytes and no guard can
- *  separate them.
- *
- *  **This is an OR, and it decides one thing only: whether §6.3's card is the
- *  whole screen.** It used to gate the three empty states as well, and that was
- *  the AC-25 defect Task 16 existed to remove, one level down. The three policy
- *  switches are INDEPENDENT — `visibility.py` maps `summary→process_summary`,
- *  `idef0→process_idef0`, `kpis→process_kpis`, and `/visibility` sets each
- *  separately — so the ordinary mixed case is summary shown, KPIs withheld: the
- *  OR was true, the detail block was drawn, and the screen printed «شاخصی برای
- *  این فرآیند ثبت نشده است» — *nobody recorded one* — about a list the policy
- *  had withheld. Each field now answers for itself. */
-function hasPublishedDetail(p: Process): boolean {
-  return p.summary.trim() !== '' || p.kpis.length > 0 || hasIcom(p.idef0)
-}
 
 /**
  * The only thing this screen may say about a switchable field that arrived
