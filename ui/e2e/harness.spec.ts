@@ -633,6 +633,63 @@ test('every clause of the focus check has a probe that kills it', async ({ page 
 })
 
 /* ------------------------------------------------------------------ *
+ * The settle: two equal reads are not the same as "it has stopped"
+ * ------------------------------------------------------------------ */
+
+/**
+ * A control whose focus border is exactly right and arrives LATE.
+ *
+ * This is the probe the self-test did not have, and its absence is what let a
+ * correct screen be reported as having no focus indicator. `FIELD_IDIOM` above
+ * is the pre-rebuild inline input and carries no `transition` at all, so it
+ * reaches its focused colour within the same frame and every settle strategy
+ * grades it identically — including a wrong one. Every field the product
+ * actually ships carries `transition-[border-color]` at `--duration`, and the
+ * page they are graded on is not the foreground window, so its frames are
+ * throttled: measured on this repo, `border-top-color` sat at `--line` for
+ * 450ms of wall clock after `.focus()` and moved only once something asked for
+ * a frame. A settle that waits for two consecutive reads to AGREE therefore
+ * agrees on whatever tween the current frame holds, and the failures it
+ * produces name the screen — «draws no coral indicator», at
+ * `rgb(230, 197, 221)` on sign-in and `rgb(236, 165, 180)` on the process list.
+ *
+ * The delay is what makes the probe deterministic rather than a race. For its
+ * whole first second the border is *frozen at the resting colour*, so any two
+ * reads inside that second agree, at any frame rate and on any machine. A
+ * sampling settle takes that agreement as "held" and grades `--line`; a settle
+ * that asks the element whether a transition is still running cannot, and waits
+ * out the delay to find the coral the probe genuinely draws. Remove
+ * `now.running === 0` from `expectFocusIndicator` and this test goes red on its
+ * first assertion.
+ *
+ * Unlayered plain CSS, and `1.5px`/`rgb(...)` literals, for the reason
+ * `CLAUSE_PROBE_CSS` gives: `e2e/` is not in Tailwind's content globs, so a
+ * utility invented here would be emitted by nothing.
+ */
+const DELAYED_PROBE_CSS = `
+[data-probe-delayed]{border:1.5px solid rgb(227,216,245);outline:2px solid transparent;
+  transition:border-color .16s linear 1s}
+[data-probe-delayed]:focus{border-color:rgb(250,90,82)}
+`
+
+test('the focus check waits for the indicator, not merely for two reads that agree', async ({ page }) => {
+  await onDepartments(page)
+  await page.evaluate((css) => {
+    const style = document.createElement('style')
+    style.textContent = css
+    document.head.append(style)
+    const el = document.createElement('input')
+    el.setAttribute('data-probe-delayed', '')
+    document.querySelector('[data-screen="departments"] [data-col]')!.prepend(el)
+  }, DELAYED_PROBE_CSS)
+  await expectSamePage(page, 'planting the delayed-transition probe')
+
+  // Green, and it is the WAIT that makes it green: the indicator this asserts
+  // does not exist at the moment the two reads either side of the delay agree.
+  await expectFocusIndicator(page, '[data-probe-delayed]', 'probe: a focus border that arrives late')
+})
+
+/* ------------------------------------------------------------------ *
  * The modality: a spec that used the mouse first is not a false red
  * ------------------------------------------------------------------ */
 

@@ -1824,11 +1824,43 @@ interface FocusState {
    * no focus style" and "this check focused it like a mouse".
    */
   focusVisible: boolean
+  /**
+   * How many transitions are still running ON THIS ELEMENT — the difference
+   * between "these two reads are the same" and "this value has stopped moving".
+   *
+   * The settle loop below used to decide that on sampling alone: read twice,
+   * and if the two agree, call it held. That is only sound when the value is
+   * sampled faster than it changes, and here it is not. A transitioning
+   * property's computed value is the value AT THE LAST FRAME, and this page
+   * produces frames at the rate a browser gives a window that is not in the
+   * foreground — measured on this repo: after `.focus()`, `border-top-color`
+   * stayed at `--line` for **450ms** of wall clock across three reads, then
+   * reached `--coral` exactly, one frame after something asked for a frame.
+   * Two reads 100ms apart therefore land inside ONE frame routinely, agree on
+   * whatever tween that frame happens to hold, and the check then grades a
+   * colour that is neither end of the transition: `rgb(230, 197, 221)` on
+   * sign-in at 1440 and `rgb(236, 165, 180)` on the process list at 760, both
+   * between `--line` and `--coral`, both reported as "draws no coral
+   * indicator" on a screen whose focus border is correct.
+   *
+   * `getAnimations()` answers the question directly: Chrome drops a CSS
+   * transition from it the moment it finishes, so `running === 0` IS "it has
+   * stopped moving", at any frame rate. It is required alongside the two equal
+   * reads rather than instead of them, so the loop still cannot exit on a
+   * single sample.
+   */
+  running: number
 }
 
 const focusState = async (page: Page, selector: string): Promise<FocusState> => samePage(
   page,
-  await page.locator(selector).first().evaluate((el) => {
+  await page.locator(selector).first().evaluate(async (el) => {
+    // One frame before reading, and it is not a delay: `requestAnimationFrame`
+    // is what makes a throttled page produce the frame at all. Without it the
+    // poll can spin through its whole timeout re-reading a value the page has
+    // no reason to advance, and time out with "never stopped changing" on a
+    // control that settled long ago in every sense but the painted one.
+    await new Promise<void>((done) => requestAnimationFrame(() => done()))
     const cs = getComputedStyle(el)
     return {
       nav: window.__uiHarnessPage?.() ?? null,
@@ -1840,6 +1872,7 @@ const focusState = async (page: Page, selector: string): Promise<FocusState> => 
         outlineWidth: cs.getPropertyValue('outline-width'),
         shadow: cs.getPropertyValue('box-shadow'),
         focusVisible: el.matches(':focus-visible'),
+        running: el.getAnimations().filter((a) => a.playState === 'running').length,
       },
     }
   }),
@@ -1940,16 +1973,26 @@ export async function expectFocusIndicator(page: Page, selector: string, label: 
   // on every run. `harness.spec.ts`'s FIELD_IDIOM probe is the PRE-REBUILD inline
   // input, which carried no `transition`, which is why this self-test never met
   // the case: `processList` is the first DESIGN row ever to set `focus`.
+  // That gap is now closed by `the focus check waits for the indicator, not
+  // merely for two reads that agree`, whose probe delays its transition so the
+  // wrong settle is wrong on every run rather than on some of them.
   //
-  // Settling is not asserting. This waits for two consecutive reads to AGREE and
-  // says nothing about WHICH value they agree on, so every clause below is still
-  // reached and can still fail.
+  // Settling is not asserting. This waits for the element to report no running
+  // transition AND for two consecutive reads to AGREE; it says nothing about
+  // WHICH value they agree on, so every clause below is still reached and can
+  // still fail.
+  //
+  // Both halves are needed, and the first one is the one that was missing. Two
+  // equal reads alone is a sampling argument, and this page is sampled faster
+  // than it is painted — see `FocusState.running` for the measurement and for
+  // the two tweens it graded as "no coral indicator" on correct screens.
   let prev = await focusState(page, selector)
   let held = prev
   await expect
     .poll(async () => {
       const now = await focusState(page, selector)
-      const still = now.borderColor === prev.borderColor
+      const still = now.running === 0
+        && now.borderColor === prev.borderColor
         && now.borderWidth === prev.borderWidth
         && now.outlineColor === prev.outlineColor
         && now.outlineWidth === prev.outlineWidth
@@ -2284,11 +2327,11 @@ export async function expectDesign(page: Page, screen: keyof typeof DESIGN) {
     // pointer itself but only after this ran — had to undo it. Polling the
     // transform back to `none` rather than only moving the mouse also proves
     // the lift is released, which a one-way check never did.
-    await page.mouse.move(0, 0)
+    await page.mouse.move(PARKED.x, PARKED.y)
     await expect
       .poll(() => css(page, target, 'transform'), {
         message: `${screen}: the lift did not release when the pointer left. The pointer is ` +
-          'parked at (0, 0); a screen that reaches the top-left corner must park it elsewhere.',
+          `parked off the page at (${PARKED.x}, ${PARKED.y}), so nothing is under it.`,
         timeout: HOOK_TIMEOUT,
       })
       .toBe('none')
@@ -2339,6 +2382,29 @@ export async function expectReducedMotion(page: Page) {
  * descendant under the pointer answers.
  */
 const HOVERED = '[data-screen] :hover'
+
+/**
+ * Where the pointer goes when it is meant to be over nothing: **off the page**.
+ *
+ * It used to go to `(0, 0)`, and both messages that mention it told the reader
+ * to "park it somewhere else" — advice no spec can take, because `(0, 0)` is a
+ * position ON the document and something is always at it. The case that proves
+ * it is the one the design draws on purpose: §5.2's modal scrim is
+ * `position:fixed; inset:0`, so while any dialog is open EVERY point in the
+ * viewport is over it, and `hoveredCount` counts the scrim plus the screen
+ * column it descends from — measured, `2`, at every coordinate inside the
+ * viewport. `shot()`'s own precondition was therefore unreachable for any
+ * screen photographed with a dialog open, and there is no "somewhere else".
+ *
+ * A negative coordinate is outside the viewport, so no element is under the
+ * pointer and `:hover` is empty — measured here at `(-1, -1)`, `(-5, -5)` and
+ * beyond the bottom-right corner alike, with the new-user dialog open.
+ *
+ * The census itself is untouched: it still counts every `:hover` element inside
+ * the screen and still fails if one is left under the shutter. What changed is
+ * only that the pointer is now somewhere the claim can be true.
+ */
+const PARKED = { x: -1, y: -1 } as const
 
 const hoveredCount = async (page: Page) => samePage(
   page,
@@ -2393,13 +2459,14 @@ export async function shot(page: Page, name: string) {
   //    `expectDesign` now restores the pointer itself; this stays because
   //    `shot()` may be called without it, and because the census below is a
   //    stronger claim than "the mouse was moved".
-  await page.mouse.move(0, 0)
+  await page.mouse.move(PARKED.x, PARKED.y)
   await expect
     .poll(() => hoveredCount(page), {
       message:
         'something inside [data-screen] is still :hover at the moment of the screenshot. ' +
-        'The pointer is parked at (0, 0); a screen that reaches the top-left corner must ' +
-        'park it somewhere else before calling shot().',
+        `The pointer is parked off the page at (${PARKED.x}, ${PARKED.y}), so nothing should ` +
+        'be under it — a spec that hovers something and then re-enters the page, or an ' +
+        'element that keeps a hover class after the pointer leaves, is what this catches.',
       timeout: HOOK_TIMEOUT,
     })
     .toBe(0)
