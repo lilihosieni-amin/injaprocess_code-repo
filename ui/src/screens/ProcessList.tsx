@@ -28,7 +28,7 @@ import type { Process } from '../api/types'
  * badge, tag chip" — and the pill radius, the 8px inline padding and the 2px
  * block padding are the design's own `padding:2px 8px; border-radius:999px`.
  *
- * **Not `StatusPill`.** That primitive is §5.2's status pill: `px-3 py-1` at
+ * **Not `StatusPill`.** That primitive is §5.2's status pill: 12px by 4px at
  * `--fs-caption` behind `--radius-chip`, which is a bigger chip at a bigger
  * radius, and its five tones are `ok | warn | danger | neutral | info` — it has
  * no violet, which is the tone four of this screen's five tags take. Reaching

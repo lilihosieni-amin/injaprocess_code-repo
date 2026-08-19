@@ -1638,12 +1638,21 @@ describe('what the panel chrome’s class strings compile to', () => {
     // is also 19px. Three badges, three owners; only this one is chrome.
     expect(winner(b, 'height')).not.toBe('var(--size-count)')
     expect(winner(b, 'height')).not.toBe('var(--size-tick)')
-    // §8 — the corner it hangs off is one of the physical pins the deliverable
-    // keeps (`top:-6px; left:-6px`): the RTL bar puts the button's inline END on
-    // the left, and mirroring this to `inset-inline-start` would move the badge
-    // onto the label it is meant to sit beside.
+    // §8 — the corner it hangs off. The deliverable writes `top:-6px; left:-6px`
+    // and this used to reproduce it physically, declared as one of
+    // guards.test.ts's two `PHYSICAL_PINS`; Task 25 overturned that. The RTL bar
+    // puts the button's inline END on the left, so `inset-inline-end` resolves
+    // to the same edge and paints identically — and the argument the pin stood
+    // on ("mirroring would move it onto the label") is true of the inline START
+    // and false of the inline END.
+    //
+    // Asserted as the LOGICAL property, which is the whole of what changed: a
+    // regression to `left` fails here as a missing `inset-inline-end`, and a
+    // mirror bug that reached for `start` fails on the third line.
     expect(winner(b, 'top')).toBe('calc(var(--space-3) * -1)')
-    expect(winner(b, 'left')).toBe('calc(var(--space-3) * -1)')
+    expect(winner(b, 'inset-inline-end')).toBe('calc(var(--space-3) * -1)')
+    expect(winner(b, 'inset-inline-start')).toBe('')
+    expect(winner(b, 'left')).toBe('')
     expect(winner(b, 'right')).toBe('')
     expect(container.querySelector('[data-r-topbar]')).toBeInTheDocument()
   })

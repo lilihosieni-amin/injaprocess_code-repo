@@ -5,7 +5,7 @@ import { Card } from '../Card'
 export function LoadingState({ rows = 3 }: { rows?: number }) {
   // F12 — skeletons shaped like the content, so nothing shifts when data lands.
   return (
-    <div role="status" aria-busy="true" aria-label="در حال بارگذاری" className="flex flex-col gap-3">
+    <div role="status" aria-busy="true" aria-label="در حال بارگذاری" className="flex flex-col gap-s6">
       {Array.from({ length: rows }, (_, i) => (
         <div key={i} data-testid="skeleton-row"
           className="h-s16 rounded-card bg-tile-v2 animate-pulse" />

@@ -30,7 +30,7 @@ export function SearchField({
 }) {
   const id = useId()
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex flex-col gap-s1">
       {/* F11 — bound label. The mockups use placeholders alone, which vanish on
           focus and are not announced as names. */}
       <label htmlFor={id} className="text-caption font-bold text-muted">{label}</label>

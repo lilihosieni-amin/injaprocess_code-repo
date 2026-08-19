@@ -556,7 +556,9 @@ describe('what the table’s class strings compile to', () => {
     expect(winner(r, 'display', '', R760)).toBe('flex')
     expect(winner(r, 'padding-top')).toBe('var(--pad-table-row-y)')
     expect(winner(r, 'padding', '', R760)).toBe('var(--space-7)')
-    expect(winner(r, 'gap', '', R760)).toBe('11px')
+    // `--gap-table-row-mobile`, not `11px`: the token was minted for this exact
+    // line in Task 9 and this file wrote the number out for sixteen commits.
+    expect(winner(r, 'gap', '', R760)).toBe('var(--gap-table-row-mobile)')
 
     // Two columns are dropped, the other four are not.
     expect(winner(sup, 'display', '', R760)).toBe('none')

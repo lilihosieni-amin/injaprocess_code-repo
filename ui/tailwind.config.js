@@ -453,6 +453,13 @@ export default {
         // same number for a CARD.
         'button-icon': 'var(--gap-button-icon)',              // 7px  — a button's icon gap
         'button-x': 'var(--pad-button-x)',                    // 15px — a button's inline padding
+        // The toast mint (Task 25). The FIFTH 20px key on this scale, for the
+        // same reason `button-icon` above is the fifth 7px one: the toast's
+        // `padding:12px 20px` (reader 978) is its own role, and the four that
+        // already hold 20 are an empty card, a header tile, the 4-up grid's
+        // margin and the reader's chrome gutter. Its vertical 12 is `py-s6` and
+        // needs nothing new.
+        'toast-x': 'var(--pad-toast-x)',                      // 20px — the toast's inline padding
       },
       maxWidth: {
         departments: 'var(--width-departments)', list: 'var(--width-list)',

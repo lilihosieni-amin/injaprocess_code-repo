@@ -681,4 +681,24 @@
      button. And it is not reader 184, which is 38px and round (`border-radius:
      50%`): a disc, not this square. */
   --size-menu-more-reader: 38px;
+
+  /* The toast mint — ONE token, Task 25, and the last value in this file.
+     The toast is `position:fixed; bottom:26px; padding:12px 20px` (reader 978).
+     Three of those four numbers already had names — 26 is --space-11, 12 is
+     --space-6, and the toast's stacking rung is --z-toast — and the fourth did
+     not: 20px has four owners in this file (--pad-empty-x, the empty card's
+     inline padding; --pad-stat-x, the header tile's; --space-stat-grid, the 4-up
+     grid's margin; --pad-topbar-reader, the reader's chrome gutter) and not one
+     of them is a toast. Two components wrote it as Tailwind's own `px-5`, which
+     is the rem scale the `s` prefix exists to keep out, and no guard could see
+     it because a t-shirt name is not an arbitrary value.
+
+     Minted rather than borrowed, under the rule this whole file states: a number
+     that already has an owner is minted again. Minted at all, rather than
+     reported like the two values beside it in Task 25's report, because it IS a
+     design number and it is the ONLY one of the three that is — the reorder
+     drop indicator's 3px and the export menu's 288px are both values the design
+     never draws, and enshrining either as a token would make an invention
+     permanent. */
+  --pad-toast-x: 20px;
 }

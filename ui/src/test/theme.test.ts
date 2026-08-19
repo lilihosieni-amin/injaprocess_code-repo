@@ -639,6 +639,11 @@ const EXPECTED: Record<string, string | string[]> = {
   'px-button-x': 'var(--pad-button-x)',
   'w-menu-more-reader': 'var(--size-menu-more-reader)',
   'h-menu-more-reader': 'var(--size-menu-more-reader)',
+  // The toast mint (Task 25). The trap here is the four 20px tokens it is not:
+  // name this `px-empty-x`, `px-stat-x`, `px-stat-grid` or `px-topbar-reader`
+  // and it compiles, paints identically, and moves the wrong element the day
+  // the empty card or the reader's chrome changes.
+  'px-toast-x': 'var(--pad-toast-x)',
   // Media query, not token — asserted by the breakpoint tests below.
   'max1080:hidden': 'display: none',
   'max760:hidden': 'display: none',
@@ -1041,13 +1046,23 @@ describe('R7 (§6.16) — the design’s two breakpoints', () => {
     // export/flowchart/FlowViewer.tsx (22) with the build still exiting 0.
     // Neither file is in this branch's scope, so nothing else would catch it.
     // Tailwind kills `min-*` and `max-*` with one switch, so the max side
-    // covers both. Both classes asked for here are deliberately ones the app
-    // already ships — DetailDrawer's `max-[560px]:w-10`, Overlay's `md:h-full`:
-    // every string in this file is itself scanned by the real `content` globs,
-    // and a novel one would mint a rule in dist/ that no component asked for.
-    const { emitted } = await build(['max-[560px]:w-10', 'md:h-full'])
+    // covers both. The classes asked for here are deliberately ones the app
+    // already ships, because every string in this file is itself scanned by the
+    // real `content` globs and a novel one would mint a rule in dist/ that no
+    // component asked for.
+    //
+    // Which is why `md:h-full` is no longer among them. This test used to ask
+    // for it and name Overlay as its consumer; Overlay's last `md:` came off in
+    // the task before Task 24, and the sentence stayed. The assertion passed —
+    // `md:h-full` compiles for anybody — so nothing went red, and the file was
+    // minting into dist/ exactly the rule its own comment forbids. The app ships
+    // no `md:` and no `min-[…]` anywhere: `Overlay.tsx:27`'s surviving `md:` is
+    // an object KEY on the dialog-width map, not a class. The two classes below
+    // are both real, both from `src/flow/DetailDrawer.tsx`, and cover the switch
+    // this test exists for.
+    const { emitted } = await build(['max-[560px]:w-10', 'max-[560px]:h-[58%]'])
     expect(emitted.get('max-[560px]:w-10')).toBe('@media (max-width: 560px)')
-    expect(emitted.get('md:h-full')).toBe('@media (min-width: 768px)')
+    expect(emitted.get('max-[560px]:h-[58%]')).toBe('@media (max-width: 560px)')
   })
 })
 
@@ -1130,7 +1145,7 @@ describe('R1 (structural) — motion', () => {
    The first answer to that was a text scan of src/**, and it proved something
    weaker than it claimed. All four of these were green on a clean tree:
 
-     · `// TODO(task-14): … bg-muted.`, with `bg-muted` off PENDING — a class
+     · `// TODO(task-14): … bg-muted.`, with `bg-muted` off UNPAINTED — a class
        "used" by a comment;
      · `const UNUSED = ['bg-muted','bg-faint','bg-warm'] as const; void UNUSED`
        — a class "used" by a declaration nothing renders;
@@ -1149,7 +1164,7 @@ describe('R1 (structural) — motion', () => {
      · SCANNED — for the other 348 utilities, which no single test can render,
        the source is scanned; but it is scanned with the comments removed, with
        src/test/** out by DIRECTORY, and with only the class strings a
-       `className` can actually reach. That is bookkeeping for the PENDING
+       `className` can actually reach. That is bookkeeping for the UNPAINTED
        ledger, and it is documented as bookkeeping.
    --------------------------------------------------------------------------- */
 
@@ -1271,6 +1286,28 @@ const COMPONENTS = componentSources()
 /** Every byte of every scanned file, comments and all — for the pins below. */
 const COMPONENT_TEXT = COMPONENTS.map((f) => f.text).join('\n')
 const CONSUMED = consumedSource(COMPONENTS)
+/**
+ * Every stylesheet under src/ that is not a declaration site.
+ *
+ * A token can reach an element without any utility naming it: `base.css` paints
+ * `--login-orb` on two decorative circles with a bare `var()`, because their
+ * geometry is four negative physical offsets and a utility would be four more
+ * classes for one rule. The census below has to see that, or it reports a value
+ * the app visibly paints as a value nothing paints.
+ */
+const STYLESHEETS = COMPONENTS.filter((f) =>
+  f.path.endsWith('.css') && !/tokens\.css$|roles\.css$/.test(f.path))
+  .map((f) => f.text).join('\n')
+
+/**
+ * Tailwind's side and corner infixes, for the scales this theme extends.
+ *
+ * A theme key is one entry; Tailwind spells it several ways. `borderRadius.sheet`
+ * is `rounded-sheet`, `rounded-t-sheet`, `rounded-ss-sheet` and eleven more, and
+ * every one of them emits `var(--radius-sheet)`. Same for `borderColor`
+ * (`border-t-…`), `divideWidth`, `space` and `inset`.
+ */
+const SIDES = 't|r|b|l|s|e|x|y|tl|tr|br|bl|ss|se|ee|es'
 
 /**
  * Does a component write this class?
@@ -1280,10 +1317,24 @@ const CONSUMED = consumedSource(COMPONENTS)
  * and `p-s7`, in a state and at a width. A matcher that refused a leading colon
  * would call both of those unconsumed and send someone deleting a utility two
  * shipped components depend on.
+ *
+ * …and it now sees through a side INFIX as well as a state PREFIX, for the same
+ * reason. `Overlay`'s drawer writes `rounded-t-sheet` — the only spelling of
+ * `borderRadius.sheet` any component uses — and a word-boundary match on
+ * `rounded-sheet` could not see it, so the R11 ledger below reported a consumed
+ * utility as an orphan and the list carried a line explaining the false
+ * positive. The honest fix is here, in the matcher, and not a second `className`
+ * writing the bare stem to quiet it: a class written only to satisfy a test is
+ * not a consumer, and R11 is a question about what reaches an element.
  */
 function written(klass: string, source: string = CONSUMED): boolean {
-  return new RegExp(`(?<![\\w-])${klass.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\w-])`)
-    .test(source)
+  const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const cut = klass.indexOf('-')
+  const forms = [esc(klass)]
+  if (cut > 0) {
+    forms.push(`${esc(klass.slice(0, cut))}-(?:${SIDES})-${esc(klass.slice(cut + 1))}`)
+  }
+  return new RegExp(`(?<![\\w-])(?:${forms.join('|')})(?![\\w-])`).test(source)
 }
 
 /* --- the other half: what the components actually put on an element -------- */
@@ -1323,7 +1374,7 @@ function renderedClasses(template: (typeof GRID_TEMPLATES)[number][0]): Set<stri
 }
 
 let renderedOnce: Set<string> | undefined
-/** The union of the three, memoised — the PENDING ledger below reads it too. */
+/** The union of the three, memoised — the UNPAINTED ledger below reads it too. */
 function rendered(): Set<string> {
   if (renderedOnce === undefined) {
     renderedOnce = new Set(GRID_TEMPLATES.flatMap(([t]) => [...renderedClasses(t)]))
@@ -1340,31 +1391,47 @@ function rendered(): Set<string> {
 const consumed = (klass: string) => rendered().has(klass) || written(klass)
 
 /**
- * The utilities the theme names that NO component uses yet.
+ * The utilities the theme names that no component writes.
  *
- * This is the list R11 turns on. A promise to use a utility later is what
- * minted three templates nothing could reach; a list that a named task must
- * mechanically empty is not a promise, it is a receipt. Every line here is a
- * screen or a primitive that has not been rebuilt yet — Tasks 13–24 — and every
- * one of them deletes its own lines as it lands.
+ * **It was called `PENDING`, and that name was a claim this file could not
+ * make.** It read "every line here is a screen or a primitive that has not been
+ * rebuilt yet — Tasks 13–24 — and every one of them deletes its own lines as it
+ * lands", and it carried an instruction in capitals that Task 25 must turn the
+ * test below into `expect(…).toEqual([])`. Task 25 arrived, every screen exists,
+ * and 129 lines are still here. They are not late. Emptying the list needs one
+ * of two things and neither is available:
  *
- * ** TASK 25 MUST TURN THE TEST BELOW INTO `expect(PENDING).toEqual([])`. **
- * That is the whole point of keeping the list rather than deleting the classes:
- * by Task 25 every screen exists, so a utility still on this list at that point
- * has no consumer and never will, and the theme should lose it. Until then the
- * list is asserted to be exactly accurate in BOTH directions, so it can neither
- * hide a newly orphaned utility nor keep a stale line after a screen starts
- * using one.
+ *   · **Give each one a consumer.** That means writing a class into a component
+ *     because a test wants it there, which is the defect R11 exists to catch,
+ *     stated backwards.
+ *   · **Delete each one from the theme.** For 89 of the 129 that would strand
+ *     the token underneath, and `leaves no declared token without a utility
+ *     name` above would go red — whose only fix is deleting the token, and the
+ *     tokens live in `design/_ds/…/tokens/*.css`, which is READ-ONLY
+ *     specification. The design system is simply larger than this product.
+ *
+ * So the list keeps its two accuracy assertions in both directions and its
+ * ratchet, and it stops promising. The census, which the test below asserts
+ * rather than merely stating:
+ *
+ *   · **40** are a second SPELLING of a value the app does paint — `bg-muted`
+ *     beside the `text-muted` nine screens write, `bg-login-orb` beside
+ *     `base.css`'s own `var(--login-orb)`, `w-touch` beside the `min-w-touch`
+ *     every primitive carries. Tailwind derives them from one theme key; the
+ *     value is on screen, this spelling of it is not.
+ *   · **89** are painted nowhere in `src/`, each for a reason declared in
+ *     `UNPAINTED_BECAUSE` below: the flowchart (frozen by F16, and it writes hex
+ *     literals rather than these), the exported document (`ui/export/**` is
+ *     off-limits to this repo), a `_ds` semantic colour this product reconciled
+ *     onto its own palette, two z rungs L-42 reserves, and rungs of ladders no
+ *     screen has reached.
+ *
+ * Both counts are DERIVED, not typed: add an orphan and it lands in one bucket
+ * or fails to land in either, and the test says which.
  */
 // In tailwind-probe.txt's own order, which groups them by the scale each is
 // minted on, so a whole family landing at once deletes contiguous lines.
-const PENDING: string[] = [
-  // `rounded-sheet` is minted and USED — Overlay's drawer writes `rounded-t-sheet`
-  // (owner ruling R35, §5.2's 22px). It sits here only because `written()` matches on
-  // a word boundary and cannot see through the `t-` infix, so the orphan check would
-  // otherwise call a consumed utility unconsumed. Remove it when that matcher learns
-  // the side variants; do NOT remove it by writing the class a second time.
-  'rounded-sheet',
+const UNPAINTED: string[] = [
   'bg-muted', 'bg-faint', 'bg-line',
   'bg-login-orb', 'bg-warn', 'bg-info', 'bg-violet-mid',
   'bg-violet-edge', 'bg-violet-on-dark', 'bg-violet-on-dark-body', 'bg-violet-on-violet',
@@ -1440,7 +1507,7 @@ const PENDING: string[] = [
   // Task 8's Dropdown and TextField landed and consumed them, which is the
   // mechanism working — a line comes off when its consumer arrives.
   'z-popover', 'z-tooltip', 'duration-row',
-  'bg-warn-edge', 'gap-table-row-mobile',
+  'bg-warn-edge',
   // The type-on-the-violet-field group came off here when Task 14's departments
   // screen landed: its READER title takes `text-role-title-on-field`, both
   // surfaces take `text-role-subtitle-on-field` for the lead, and the panel's
@@ -1469,12 +1536,24 @@ const PENDING: string[] = [
   // the mint above had no reason to look for. All three are consumed by the
   // reader's «بازگشت» button and its home square as of Task 13, so the line is
   // gone; `gap-button-icon`, the third of them, was never on this list.
+  //
+  // Task 25 took two more off, and both are worth reading as a pair because one
+  // is the honest fix and the other is the one that looked like it.
+  //   · `rounded-sheet` (R35, §5.2's 22px) was never unconsumed: `Overlay`'s
+  //     drawer writes `rounded-t-sheet`, and `written()` matched on a word
+  //     boundary so it could not see through the `t-` infix. The line came off by
+  //     teaching the matcher Tailwind's side variants — NOT by writing the bare
+  //     stem a second time somewhere, which would have been a class written to
+  //     satisfy a test.
+  //   · `gap-table-row-mobile` was genuinely unconsumed, and its consumer was
+  //     `src/ui/DataTable.tsx` writing `gap-[11px]` three lines under a comment
+  //     saying the value had no name. It had had one since Task 9.
 ]
 
 /**
- * The high-water mark PENDING may not pass.
+ * The high-water mark UNPAINTED may not pass.
  *
- * `PENDING.length <= 220` was not a ratchet; it was a ceiling resting exactly on
+ * `UNPAINTED.length <= 220` was not a ratchet; it was a ceiling resting exactly on
  * the count. A task that legitimately STOPS using a utility has to put its line
  * back, and doing the right thing failed with `expected 221 to be less than or
  * equal to 220` — whose only available fix is to edit the number upward, which
@@ -1516,7 +1595,7 @@ const PENDING: string[] = [
  * So: a raise is legal only in the same commit as a deliberate mint of the
  * theme, and BOTH mints have now happened — tailwind.config.js, tokens.css and
  * roles.css are re-frozen behind the second, and no third is planned. If you are
- * here because a task you are writing has pushed PENDING past the number below,
+ * here because a task you are writing has pushed UNPAINTED past the number below,
  * the answer is not this line — either the task has stopped consuming something
  * it should still consume, or it has added a theme key it has no consumer for,
  * and R11 forbids the second.
@@ -1526,14 +1605,23 @@ const PENDING: string[] = [
  * back without needing this edit.
  * ---------------------------------------------------------------------------
  */
-// LOWERED 2026-08-19 to 147, the exact length of the list below.
-// Ten lines came off in this pass — Task 16's `max-w-summary` and `grid-cols-idef0`,
-// Task 19's `border-line-filter`, and the dot/chev pairs the shells now draw — so the
-// ceiling follows them down. A task that lands consumers must take the ceiling with it,
-// or the ratchet slackens by exactly as much as the task just achieved.
+// LOWERED 2026-08-19 by Task 25 to 129, the exact length of the list below.
+// Two lines came off in this pass — `rounded-sheet` when the matcher learned Tailwind's
+// side variants, `gap-table-row-mobile` when DataTable stopped writing `gap-[11px]` —
+// so the ceiling follows them down. A task that lands consumers must take the ceiling
+// with it, or the ratchet slackens by exactly as much as the task just achieved.
+//
+// The headroom the paragraph above describes is deliberately GONE. It existed so a task
+// that legitimately stopped using a utility could put its line back without editing this
+// number; that was the right rule while 24 tasks were still landing, and it is the wrong
+// one now that they have all landed. There is no next task to be kind to. From here the
+// number is the count, exactly, and any change to the list is a change to this line —
+// which is what makes the pair readable in a diff.
+//
 // Note for the record: 6be6662's message claimed a drop to 165 that never applied; the
-// value stayed at 239 until this commit. The ratchet was looser than it read.
-const CEILING = 131
+// value stayed at 239 until the commit before this one. The ratchet was looser than it
+// read, twice.
+const CEILING = 129
 
 describe('Owner ruling R11 — a named utility has a component that uses it', () => {
   it('reads a real, sizeable set of component files — tests AND test helpers excluded', () => {
@@ -1555,7 +1643,7 @@ describe('Owner ruling R11 — a named utility has a component that uses it', ()
     ).toEqual([])
     // …and the exclusion is load-bearing, not decorative. Its predecessor
     // pinned that with `expect(written('w-touch')).toBe(false)` — and `w-touch`
-    // is F11's 44px floor utility, on PENDING, which Task 11 onward will
+    // is F11's 44px floor utility, on UNPAINTED, which Task 11 onward will
     // legitimately write. Its first honest use turned two tests red, one of
     // them with a bare `expected true to be false`. This marker is a string no
     // component can ever want, and it is matched against the RAW text of every
@@ -1640,33 +1728,163 @@ describe('Owner ruling R11 — a named utility has a component that uses it', ()
     }
   })
 
-  it('keeps PENDING exactly accurate — no orphan off the list, no stale line on it', () => {
-    const orphans = probeClasses().filter((c) => !consumed(c) && !PENDING.includes(c))
+  it('keeps UNPAINTED exactly accurate — no orphan off the list, no stale line on it', () => {
+    const orphans = probeClasses().filter((c) => !consumed(c) && !UNPAINTED.includes(c))
     expect(
       orphans,
-      `${orphans.length} utilities the theme names have no consumer and are not on PENDING. ` +
+      `${orphans.length} utilities the theme names have no consumer and are not on UNPAINTED. ` +
       'Either write them into the component they were minted for, or add them to the list in ' +
       'src/test/theme.test.ts with the task that will consume them. A mention in a comment, and ' +
       'a declaration nothing renders, are not consumers.',
     ).toEqual([])
 
-    const stale = PENDING.filter((c) => consumed(c))
+    const stale = UNPAINTED.filter((c) => consumed(c))
     expect(
       stale,
-      `${stale.length} utilities on PENDING now HAVE a consumer. Delete these lines from the ` +
-      'list — that is how it empties, and Task 25 asserts it is empty.',
+      `${stale.length} utilities on UNPAINTED now HAVE a consumer. Delete these lines from the ` +
+      'list and lower CEILING by the same number — that is how it shrinks.',
     ).toEqual([])
     // The list may only ever name utilities this theme actually has, or it
     // becomes a place to park typos where nothing else looks.
-    const ghosts = PENDING.filter((c) => !probeClasses().includes(c))
-    expect(ghosts, 'PENDING names classes the theme does not').toEqual([])
-    expect(PENDING.filter((c, i) => PENDING.indexOf(c) !== i)).toEqual([])
+    const ghosts = UNPAINTED.filter((c) => !probeClasses().includes(c))
+    expect(ghosts, 'UNPAINTED names classes the theme does not').toEqual([])
+    expect(UNPAINTED.filter((c, i) => UNPAINTED.indexOf(c) !== i)).toEqual([])
   })
 
-  it('is a list that shrinks — Task 25 asserts it is empty', () => {
+  it('accounts for every unpainted utility — one bucket each, and no third', () => {
+    // What replaced `expect(PENDING).toEqual([])`, which Task 25 could not honestly
+    // write. An empty list asserted empty is a test that cannot fail; a list of 129
+    // asserted to be exhaustively EXPLAINED is one that fails the day somebody adds
+    // a 130th without saying why. See UNPAINTED's own docstring for why 0 is not
+    // reachable from a read-only `_ds` token set.
+
+    /** Is the VALUE on screen under a different spelling of the same theme key? */
+    const tokensOf = (klass: string) => ([] as string[]).concat(EXPECTED[klass] ?? [])
+      .flatMap((v) => [...v.matchAll(/var\((--[a-z0-9-]+)\)/g)].map((m) => m[1]))
+    // Every name that would reach one token: the token itself, and every ROLE
+    // that resolves to it. `w-tile` writes `var(--role-tile)`, which is
+    // `--size-tile` on the panel and `--size-tile-reader` in the reader, so the
+    // reader's size is painted by a class that never spells it — the same hop
+    // `reachable` at the top of this file makes for the same reason.
+    // …and the hop runs both ways. `text-role-body` names the ROLE, so the
+    // classes that paint the same value name the two TOKENS under it.
+    const namesOf = (t: string) => [
+      t,
+      ...[...roles].filter(([, ts]) => ts.has(t)).map(([r]) => r),
+      ...(roles.get(t) ?? []),
+    ]
+    // Built once. The obvious spelling of this — a `.some()` over EXPECTED
+    // inside a `.some()` over 129 entries, with `probeClasses()` re-reading the
+    // file on each pass — is 129 × 396 × a file read, and it took the suite past
+    // its 5s per-test timeout the first time it ran beside the other 107 files.
+    const inProbe = new Set(probeClasses())
+    const onList = new Set(UNPAINTED)
+    /** name → the probe classes that carry it, excluding ones nothing paints. */
+    const painters = new Map<string, string[]>()
+    for (const [cls, v] of Object.entries(EXPECTED)) {
+      if (onList.has(cls) || !inProbe.has(cls)) continue
+      for (const s of ([] as string[]).concat(v)) {
+        for (const m of s.matchAll(/var\((--[a-z0-9-]+)\)/g)) {
+          painters.set(m[1], [...(painters.get(m[1]) ?? []), cls])
+        }
+      }
+    }
+    const paintedElsewhere = (klass: string) =>
+      tokensOf(klass).flatMap(namesOf).some((n) =>
+        // another probe class carries the same token, and that one IS consumed…
+        (painters.get(n) ?? []).some((other) => other !== klass)
+        // …or a stylesheet paints it directly, which is what base.css does with
+        // `--login-orb` and what no `bg-login-orb` anywhere would improve on.
+        || STYLESHEETS.includes(`var(${n})`))
+
+    /**
+     * The reason each of the other 89 is painted nowhere. A family, not a name,
+     * so a sibling minted later inherits the argument instead of slipping in
+     * beside it unexplained — and every family is asserted below to still cover
+     * something, so one that empties is deleted rather than left standing.
+     */
+    const UNPAINTED_BECAUSE: { why: string; match: RegExp }[] = [
+      { // F16 freezes `src/flow/`, and what is frozen there writes hex literals
+        // and Tailwind's own palette — it never reached for these names. The
+        // junction fills, the two department numerals and the nested tick are
+        // the flowchart's own furniture.
+        why: 'the flowchart, frozen by F16',
+        match: /^bg-junction-|^bg-dept-numeral-|tick-(glyph-)?nested/,
+      },
+      { // `ui/export/**` is off-limits to this repo (ARD §2.1): the standalone
+        // HTML document the engine emits is where the doc type scale and the
+        // steps blocks are drawn, and nothing under `src/` may draw them.
+        why: 'the exported document, built under ui/export/ which this repo does not own',
+        match: /^text-fs-doc-|^text-fs-steps-title$|steps-(sub|group)/,
+      },
+      { // The `_ds` ships a full semantic palette; this product reconciled it
+        // onto its own (F7/F8) — `--conflict` for danger, `--green` for ok,
+        // `--warn-fg` for the awaiting amber (R27). The `_ds` names stay
+        // declared because `design/_ds/**` is read-only specification, so their
+        // utilities stay named and unwritten.
+        why: 'a _ds semantic colour this product reconciled onto its own palette',
+        match: /^(bg|text|border)-(warn|info|ok|danger|link)(-soft|-hover|-edge)?$|^(bg|border)-border-ok$/,
+      },
+      { // L-42's adopted ladder reserves two rungs. Nothing in this plan portals
+        // a popover or draws a tooltip, and the rungs are kept so the next thing
+        // that does lands between `--z-modal` and `--z-toast` rather than
+        // guessing. Deleting them would leave the ladder with a hole in it.
+        why: 'a z rung L-42 reserves for a control this product does not have',
+        match: /^z-(popover|tooltip)$/,
+      },
+      { // A rung of a ladder no screen has reached. These are the ones a later
+        // screen would legitimately consume, and the only group that could
+        // shrink on its own.
+        why: 'a rung of a scale no screen has reached',
+        match: new RegExp([
+          '^(bg|text|border)-(muted|faint|ghost|strong|desk|tile-ctl|line-soft|line-divider',
+          '|tile-v5|violet-edge|violet-on-dark-body)$',
+          '|^text-fs-(h1|badge-sm|h1-reader-dept|body-reader)$',
+          '|^(font-regular|leading-snug|leading-looser)$',
+          '|^shadow-(sheet|drawer|card-dark|stat-dark|guide-hover|ring-flash)$',
+          '|^(p|gap)-topbar$|^p-s(2|3|14|16)$|^(w|h)-(avatar|logo-bar)$',
+          '|^max-w-(doc|steps|audit)$|^duration-(fast|row)$|^p-compose$',
+          '|^p[xy]?-dropdown-|^my-stat-grid$|^gap-tab-flow$',
+        ].join('')),
+      },
+    ]
+
+    const buckets = UNPAINTED.map((c) => ({
+      klass: c,
+      spelling: paintedElsewhere(c),
+      reason: UNPAINTED_BECAUSE.find((r) => r.match.test(c)),
+    }))
+
+    const unexplained = buckets.filter((b) => !b.spelling && b.reason === undefined)
     expect(
-      PENDING.length,
-      `PENDING is ${PENDING.length} lines against a ceiling of ${CEILING}. The ceiling is not a ` +
+      unexplained.map((b) => b.klass),
+      `${unexplained.length} utilities are on UNPAINTED with no account of why. Either the ` +
+      'value reaches the screen under another spelling of the same theme key — in which case ' +
+      'this test finds that itself — or nothing paints it, and a family in UNPAINTED_BECAUSE ' +
+      'has to say what would.',
+    ).toEqual([])
+
+    // Both halves of the census the docstring states, so a line that moves
+    // between buckets is visible rather than absorbed.
+    expect(buckets.filter((b) => b.spelling).length).toBe(40)
+    expect(buckets.filter((b) => !b.spelling).length).toBe(89)
+
+    // A family that stops covering anything is an argument nobody is paying
+    // for, and the next name added beside it inherits the same absence of
+    // scrutiny. Same idle check guards.test.ts carries over its exception lists.
+    const idle = UNPAINTED_BECAUSE.filter((r) => !UNPAINTED.some((c) => r.match.test(c)))
+    expect(idle.map((r) => r.why), 'this reason covers nothing — delete it').toEqual([])
+
+    // …and the mechanical half must not be able to answer "yes" to everything,
+    // which is the failure mode that would swallow the whole list silently.
+    expect(paintedElsewhere('bg-muted'), '--text-muted is painted only as text').toBe(false)
+    expect(paintedElsewhere('bg-line'), '--line is painted by border-line').toBe(true)
+  })
+
+  it('is a list that only ever shrinks', () => {
+    expect(
+      UNPAINTED.length,
+      `UNPAINTED is ${UNPAINTED.length} lines against a ceiling of ${CEILING}. The ceiling is not a ` +
       'budget to spend: the accuracy test above already forces every line to be a genuine orphan. ' +
       'If a task has genuinely orphaned this many utilities, the theme should lose them rather ' +
       'than the number go up — this line may be LOWERED, never raised.',

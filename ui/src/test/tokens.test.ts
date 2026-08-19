@@ -416,6 +416,27 @@ describe('R1 — a correction records what it overrode and why', () => {
     expect(token('--size-logo-bar')).toBe('')         // declared in the frozen _ds, at 38px
   })
 
+  it('gives the toast its own 20px, and does not let it borrow one of the four', () => {
+    // The toast mint (Task 25), the last token added to this file. The design
+    // draws the toast `position:fixed; bottom:26px; padding:12px 20px`
+    // (reader 978). Three of those numbers had names; the inline padding did
+    // not, and two components wrote Tailwind's own `px-5` — a t-shirt name off
+    // the rem scale the `s` prefix exists to keep out, which no guard in this
+    // repo could see because it is not an arbitrary value and not a hex.
+    expect(token('--pad-toast-x')).toBe('20px')
+    expect(declarations('--pad-toast-x')).toBe(1)
+    // …and the four 20px roles it must never collapse into. Every one of them
+    // paints identically today and moves a different element tomorrow.
+    expect(token('--pad-empty-x')).toBe('20px')        // the empty-state card
+    expect(token('--pad-stat-x')).toBe('20px')         // the header stat tile
+    expect(token('--space-stat-grid')).toBe('20px')    // the 4-up grid's margin
+    expect(token('--pad-topbar-reader')).toBe('20px')  // the reader's chrome gutter
+    // The other two numbers the toast draws are NOT minted, because they are on
+    // the ladder already: this is what says so.
+    expect(token('--space-11')).toBe('')               // frozen _ds, 26px — `bottom-s11`
+    expect(token('--space-6')).toBe('')                // frozen _ds, 12px — `py-s6`
+  })
+
   it('the lockup leading is a per-surface pair, not one value and not two names', () => {
     // The owner's ruling on the shell mint's one over-reach. The mint collapsed
     // the panel's 1.25 and the reader's 1.3 onto 1.25, reading roles.css rule 1

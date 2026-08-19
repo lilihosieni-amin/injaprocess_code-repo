@@ -305,12 +305,23 @@ export function PanelShell({ session }: { session: SessionDescriptor }) {
             <Icon name="inbox" px={16} />
             صندوق بازبینی
             {openCount > 0 && (
-              // §8 — the badge's `top` and `left` are one of the physical pins
-              // the deliverable keeps: it hangs off the corner the RTL bar puts
-              // last, and mirroring it would move it onto the label. Round and
-              // 19px: audit S5 found this inheriting the 44px touch floor as a
-              // `<span aria-hidden>` that is not interactive, so it rendered as
-              // a coral square beside the button.
+              // §8 — the badge hangs off the corner the RTL bar puts last, which
+              // is the button's INLINE END. This was written as a physical inset
+              // and declared one of guards.test.ts's two `PHYSICAL_PINS`; Task
+              // 25 overturned that. Under RTL `inset-inline-end` resolves to the
+              // same edge, so `-end-s3` renders byte-identically today, and the
+              // argument the pin was declared on — "mirroring it would move it
+              // onto the label" — is true of the inline START and false of the
+              // inline END: mirroring is exactly what keeps it off the label if
+              // this ever renders LTR. `src/ui/FAB.tsx`'s own badge already
+              // writes the logical form. The FAB's own pin is different in kind
+              // and survives — the design puts the FAB on the RTL document's
+              // inline START corner, so the logical form would move it across
+              // the screen — which is why one line stayed and this one went.
+              //
+              // Round and 19px: audit S5 found this inheriting the 44px touch
+              // floor as a `<span aria-hidden>` that is not interactive, so it
+              // rendered as a coral square beside the button.
               //
               // `border-card` here is the WHITE `--card`, not the hairline: the
               // ring cuts the badge out of whatever it overlaps. The hairline is
@@ -318,7 +329,7 @@ export function PanelShell({ session }: { session: SessionDescriptor }) {
               // be invisible here — and would still build.
               <span
                 aria-hidden
-                className="absolute -top-s3 -left-s3 min-w-count-chrome h-count-chrome px-s1 flex items-center justify-center rounded-round bg-coral text-card text-fs-micro font-bold border-2 border-card"
+                className="absolute -top-s3 -end-s3 min-w-count-chrome h-count-chrome px-s1 flex items-center justify-center rounded-round bg-coral text-card text-fs-micro font-bold border-2 border-card"
               >
                 {toFa(openCount)}
               </span>

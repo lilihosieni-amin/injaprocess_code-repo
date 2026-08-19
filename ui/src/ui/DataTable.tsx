@@ -110,12 +110,14 @@ const LINE = 'grid items-center gap-s6 px-s9'
  * something that also says `max760:hidden` would leave which one wins to
  * Tailwind's output order.
  *
- * The 11px gap is the one value here the token layer does not name — every
- * 11px token it holds (`--gap-tick-row`, `--pad-option-y`, `--pad-note-x`) is
- * minted for another component's role, and this task may not add a thirteenth.
- * Reported rather than borrowed.
+ * The 11px gap HAS a name, and this file was writing it out. `--gap-table-row-
+ * mobile` ("the <=760px table row gap") was minted for exactly this line and
+ * exactly this role — not borrowed from one of the eight other 11px tokens,
+ * each of which is another component's — and the class was never written, so it
+ * sat on `theme.test.ts`'s PENDING ledger as an orphan while its one consumer
+ * spelled the number instead. Both halves of that are now closed.
  */
-const COLLAPSE = 'max760:flex max760:gap-[11px] max760:p-s7'
+const COLLAPSE = 'max760:flex max760:gap-table-row-mobile max760:p-s7'
 
 const HEAD = `${LINE} py-s6 border-b border-border-current max760:hidden`
 

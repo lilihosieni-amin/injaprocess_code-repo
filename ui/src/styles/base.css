@@ -14,7 +14,7 @@
   /* F11 — a visible focus ring on everything focusable, buttons included. */
   :focus-visible {
     outline: 3px solid var(--coral);
-    outline-offset: 2px;
+    outline-offset: var(--space-half);
   }
 
   /* Ledger L-08 — 10px, not the token file's 12px. Both deliverables' own style

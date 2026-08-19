@@ -45,7 +45,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           over an open dialog would now paint BEHIND its scrim. A rung, not a
           number, is the whole point of L-42 — and this way the two cannot come to
           disagree about which is on top again. */}
-      <div className="fixed start-0 end-0 bottom-6 z-toast flex flex-col items-center gap-2 pointer-events-none">
+      <div className="fixed start-0 end-0 bottom-s11 z-toast flex flex-col items-center gap-s4 pointer-events-none">
         {items.map((t) => (
           <div
             key={t.id}
@@ -53,7 +53,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             // hear is not feedback.
             role={t.tone === 'danger' ? 'alert' : 'status'}
             aria-live={t.tone === 'danger' ? 'assertive' : 'polite'}
-            className={`px-5 py-3 rounded-control text-body font-bold shadow-modal ${
+            className={`px-toast-x py-s6 rounded-control text-body font-bold shadow-modal ${
               t.tone === 'danger' ? 'bg-conflict text-card' : 'bg-ink text-card'
             }`}
           >

@@ -129,6 +129,10 @@ grid-cols-idef0
 # the reader's numbers in all eleven places the plan wrote the panel's — needs
 # three names the shell mint above had no reason to look for.
 gap-button-icon px-button-x w-menu-more-reader h-menu-more-reader
+# The toast mint (Task 25). The design's toast is `padding:12px 20px` (reader
+# 978); the 12 is `py-s6` and the 20 had four owners in tokens.css, none of them
+# a toast. Both toast components wrote Tailwind's own `px-5` for it.
+px-toast-x
 # Owner ruling R35 — the drawer-as-bottom-sheet's 22px top corners (§5.2). The
 # ladder has no 22 rung; the modal's sheet is 20 and the centred dialog 24.
 # Written `rounded-t-sheet` at its one consumer, so the bare stem below is the
