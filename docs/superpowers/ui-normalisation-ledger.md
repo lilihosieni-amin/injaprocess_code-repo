@@ -164,3 +164,125 @@ resolved by looking harder at the design.
    never reaches the page. The canvas's effective range in the app's own
    stacking context is **1 to 6**, clear of the adopted scale by three orders of
    magnitude.
+
+---
+
+## Closing state — Task 25
+
+`PENDING_REBUILD` is gone. `UNPOLICED` holds `src/flow/` alone, permanently and
+under F16, and it is now the only directory under `src/` that F6/F8/F10 do not
+police. `src/screens/` and `src/write/` had been exempt for the whole of this
+rebuild, which means every one of Tasks 14–24 was graded with the guards partly
+switched off; turning them on found four real defects and no false ones.
+
+The guard now catches every arbitrary Tailwind value (not the three utilities
+that happened to be listed), `rgb`/`rgba` literals, raw px in stylesheets, a
+native form control left for the operating system to paint, and Tailwind's own
+numeric spacing scale. The `dir=` island list is derived from a scan and
+asserted rather than declared and trusted — it was wrong in five places and
+incomplete by four when the exemption came off. Comments are stripped before
+matching in the four new checks and in none of the old ones, which is a
+deliberate split: three files are written around the fact that the island and
+palette scans read prose as code.
+
+A browser sweep covers all nine screens at 1440 / 1080 / 760
+(`ui/e2e/sweep.spec.ts`, 27 cases): the screen on §9.1's field, Vazirmatn
+loaded, RTL, no sideways scroll, no latin numeral outside a declared island, no
+console error. `signIn` is swept as the one deliberate exception and pinned in
+both directions.
+
+### What did not close, and why
+
+1. **R11's ledger cannot reach 0, and no longer says it will.** It was named
+   `PENDING`, it claimed every line was a screen that had not landed yet, and it
+   carried an instruction that Task 25 assert it empty. 24 tasks later 129 lines
+   remain, and they are not late: 89 of them are the sole utility name for a
+   token declared in `design/_ds/…/tokens/*.css`, which is read-only
+   specification. Deleting the utility strands the token and turns `leaves no
+   declared token without a utility name` red; the only fix for that is deleting
+   the token, which this repo may not do. The design system is larger than this
+   product. It is `UNPAINTED` now, with a derived census — 40 are a second
+   spelling of a value the app does paint, 89 are painted nowhere for a reason
+   declared per family — and a test that fails when a new orphan matches
+   neither. The ceiling follows it to exactly 129 and loses the headroom it
+   carried while tasks were still landing.
+
+2. **Three values had no token; one was minted and two must not be.**
+   `--pad-toast-x: 20px` is the toast's inline padding, `padding:12px 20px`
+   (reader 978) — a design number with four owners in `tokens.css` and none of
+   them a toast, written as Tailwind's own `px-5` by both toast components. The
+   other two are NOT design numbers: the reorder modal's 3px drop indicator was
+   `h-[3px]` before Task 24 and the design draws no drag-reorder affordance at
+   all, and the export menu's 288px was `w-[288px]`, which Task 24's own report
+   calls "itself not a design number" — it is `min-w-menu` now, the role, and
+   sizes to content above 265. Minting either would make an invention permanent.
+   **The 3px indicator keeps `h-hint`, which is the right value under the wrong
+   role** (`--space-hint` is "a hint under its label"), and that is the one
+   thing here still worth an owner's word.
+
+3. **`src/ui/Menu.tsx` has no production consumer, and four popovers reimplement
+   it.** `ExportMenu`, `ProcessList`'s `⋯` and `PanelShell`'s admin menu each
+   carry a comment saying they would be `Menu` if it could express an icon
+   trigger, link items or a second line, and `Menu` itself is rendered only by
+   `controls.test.tsx`. Recorded rather than closed: widening a shared primitive
+   and re-adopting it on three screens is its own change with its own browser
+   pass, and `min-w-menu` reaches the stylesheet through the unused component
+   alone.
+
+4. **Two toast systems are mounted at once.** `main.tsx` mounts
+   `src/write/ToastProvider.tsx` and `AppShell` mounts `src/ui/Toast.tsx` inside
+   it, so nothing calls the second one's `useToast`. Its own comment deferred
+   consolidation to "the plan that rebuilds `src/write/`", which was Task 24.
+   Both now write the design's numbers; which one survives is a product call.
+
+5. **`src/screens/UserFields.tsx` keeps its own sub-panel.** `SectionCard` took
+   `label`, `data-card`, `actions` and §6.8's two missing skins, and `Profile`
+   and `UserDetail` are the shared box again. `UserFields` is not, because §6.14
+   draws the dialog's sub-panels at 16px against R8's 18px, and settling that
+   inside the component means a `pad` prop — a density knob on a shared
+   component, which F4/F8 forbids.
+
+6. **`src/styles/base.css` keeps three literals, declared in the guard.** F11's
+   3px focus ring (the radius ladder has no 3px rung and the two 3px spacing
+   tokens are a hint's offset and the flow nav group's gap) and the two login
+   orbs' diameters, which are byte-faithful to the design system's own
+   `Login.jsx`. Their four physical offsets are negative and the px regex cannot
+   reach a `-140px`; recorded so whoever closes that hole knows what it surfaces.
+
+7. **`src/test/roles.test.ts` reads `.superpowers/sdd/ui-owner-rulings.md`,**
+   which is gitignored. The file cannot run from a clean checkout of this
+   repository — it fails at import with `ENOENT`, not as an assertion. Found
+   while mutation-grading in a private tree.
+
+### Still frozen, still wrong — `src/flow/**` (F16)
+
+Reported, never edited. The exemption was hiding: 14 hex literals, ~60
+arbitrary `[…]` lengths, Tailwind's own palette and radii, ten `dir=` islands
+(now declared, so the island list is the whole truth about the app rather than
+about what is scanned), and two stacking values the adopted ladder cannot reach.
+`DeleteNodeConfirm.tsx:3` is the sixth hand-rolled scrim in the app — `fixed
+inset-0`, the scrim colour as an `rgba()` literal, and `z-[70]`, which under a
+scale beginning at 1000 lands below every rung including the dropdown.
+`DetailDrawer.tsx:135` writes `z-20` where `tokens.css` names that file as
+`--z-canvas-overlay`'s one intended consumer. Nothing collides today; both are
+one line whenever that directory thaws.
+
+### Open for the owner
+
+Every one of these was recorded rather than chosen silently, and none is
+blocking.
+
+| Ref | Question |
+|---|---|
+| A1, P2 | The design's Access and Profile both describe a one-time reset **link**; this product has an administrator-chosen password (D15). Is the link wanted, or is the design out of date? |
+| A2 | §6.9's change-supervisor modal and §6.8's inline edit mode both have no counterpart: `EditUserDialog` owns role, scopes and supervisor together because the server re-validates them together. Keep one dialog? |
+| D3 | The design calls the flowchart report «سند فلوچارت» (nine times in each deliverable); `REPORT_KIND_LABELS` calls it «مستندات کامل», pinned to `exports.EXPORT_KINDS`. Which name is the product's? |
+| D4 | Coral is the *new-affordance* role and violet the commit (§6.7 vs §6.14). The readme's blanket "coral for anything primary" contradicts both deliverables. Confirm the rule. |
+| V1 | §6.12 has a seventh policy row, «نام گام و ترتیب گام‌ها», on and locked. It is not a server field, and R5 forbids drawing a locked control. Should it become one? |
+| T-1 | The reorder modal's drop indicator is 3px on `--space-hint`, a token minted for a hint's offset. The design draws no drag-reorder affordance, so there is no number to read. Keep the borrowed role, or is the modal itself out of scope? |
+| P1 | ~~The open-sessions card~~ — **answered.** The owner removed the feature: «I don't need open session card in profile. delete it from ui.» Not built, not stubbed, no route added. Task 22 records the divergence. |
+
+Three ledger rows remain referred and are **not** settled here: **L-10** (the
+checkbox tick size), **L-29** (the 4-up stat value) and **L-34** (the reader's
+title scale). So does the Users screen's missing subtitle, which is unwritten
+copy that exists nowhere in the design and cannot be inferred.
