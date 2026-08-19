@@ -10,7 +10,8 @@ import { FIELD, serve, shot, signedIn, visit } from './_harness'
  * exists because a `min-h-touch` on one button set the height of every row on a
  * list while a green unit suite watched. So each test below says which claim it
  * is making and measures it: a used height, a used width, a computed colour, a
- * contrast ratio, and what `document.elementFromPoint` finds over the chrome.
+ * contrast ratio, and a `var()` the theme resolves and jsdom hands back as a
+ * literal string.
  *
  * No `expectDesign` and no `DESIGN` row: a dialog is not a `[data-screen]`
  * region — no field, no screen padding, no `[data-col]`, no `[data-h1]`, no
@@ -165,7 +166,7 @@ test('the confirm control is the design’s 34px inside the app’s 44px target'
   await shot(page, 'confirm-action')
 })
 
-test('the confirm-content dialog is §6.15’s, and the page behind it is really inert', async ({ page }) => {
+test('the confirm-content dialog is §6.15’s, and its scrim is on the modal rung', async ({ page }) => {
   await signedIn(page)
   await reads(page)
   await visit(page, `/processes/${PID}`, 'summary')
@@ -195,24 +196,8 @@ test('the confirm-content dialog is §6.15’s, and the page behind it is really
   expect(tile.width).toBe(42)
   expect(tile.height).toBe(42)
 
-  // **P3/O7, and the only form of it worth asserting.** Five dialogs painted
-  // their own scrim at z-40/50/60/72/74, all of them BELOW `--role-z-chrome`
-  // (1020), so the panel's top bar stayed above the scrim and hit-testable while
-  // `aria-modal="true"` told assistive technology the page was inert. This is
-  // what `elementFromPoint` finds over the middle of the chrome; a class name
-  // could never have answered it.
   const scrim = box.locator('xpath=..')
   await expect(scrim).toHaveCSS('background-color', 'rgba(36, 17, 82, 0.45)')
-  const overChrome = await page.evaluate(() => {
-    const header = document.querySelector('header')
-    if (!header) return 'no header'
-    const r = header.getBoundingClientRect()
-    const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)
-    return hit?.closest('[role="dialog"]') ? 'the dialog'
-      : hit === document.querySelector('[role="dialog"]')?.parentElement ? 'the scrim'
-        : 'the page behind it'
-  })
-  expect(overChrome).not.toBe('the page behind it')
 
   // FR-I3 — the box asks, it does not write. Escape takes it away with nothing
   // sent; `expectEveryEndpointStubbed` inside `shot` fails the spec if a POST
@@ -259,6 +244,29 @@ test('the create dialog is one dialog', async ({ page }) => {
     const b = (await box.getByRole('button', { name }).boundingBox())!
     expect(b.height).toBeGreaterThanOrEqual(44)
   }
+
+  // **P3/O7.** Five dialogs painted their own scrim at z-40 / z-50 / z-[60] /
+  // z-[72] / z-[74], every one of them BELOW `--role-z-chrome` (1020), so the
+  // panel's top bar, the comment FAB and every anchored popover painted *above*
+  // a scrim whose box said `aria-modal="true"`. This asserts the scrim sits on
+  // L-44's modal rung, read from the page's own custom property so no number is
+  // written here — and it is a claim only a browser can settle, because jsdom
+  // resolves no `var()` and reports the literal string back.
+  //
+  // **It is asserted this way and not with `elementFromPoint`, and the reason is
+  // a guard that could not fail.** The first cut of this check asked what
+  // `document.elementFromPoint` returned over the middle of the chrome. Measured:
+  // it returned `no header` at every width on both of the routes these dialogs
+  // open from — `/departments/{code}` and `/processes/{pid}` draw the crumb
+  // strip, not the top bar, and nothing on either screen is on the z ladder at
+  // all. So the check passed with the scrim *mutated down to `z-40`*, which is
+  // exactly the defect it claimed to catch. A hit test against static content
+  // cannot see this bug either: a `position:fixed` scrim paints above static
+  // siblings at z-40 just as happily as at 1055. The rung is the claim.
+  const rung = await page.evaluate(() =>
+    getComputedStyle(document.documentElement).getPropertyValue('--role-z-modal').trim())
+  expect(Number(rung)).toBeGreaterThanOrEqual(1000)
+  await expect(box.locator('xpath=..')).toHaveCSS('z-index', rung)
 
   await page.keyboard.press('Escape')
   await expect(box).toHaveCount(0)

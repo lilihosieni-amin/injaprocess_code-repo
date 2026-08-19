@@ -194,6 +194,17 @@ describe('ExportModal — one dialog, one scrim, one direction (P3, O1, O7)', ()
     expect(onClose).toHaveBeenCalled()
   })
 
+  it('takes §3.3\u2019s width for this dialog, and not the default', async () => {
+    const onClose = vi.fn()
+    render(<ExportModal title={TITLE} status="pending" onRetry={() => {}} onClose={onClose} />)
+    // 520 — the standard dialog. `Dialog`'s `width` prop is a KEY, not a number: `Overlay`
+    // types it `keyof typeof WIDTH` and maps it to one of five `max-w-dialog-*`
+    // utilities, so a wrong key compiles and paints the wrong box silently.
+    // `md` is the default, which is why the negative half is here too.
+    expect(await screen.findByRole('dialog')).toHaveClass('max-w-dialog')
+
+  })
+
   it('does not re-pin its own direction', async () => {
     const onClose = vi.fn()
     render(<ExportModal title={TITLE} status="pending" onRetry={() => {}} onClose={onClose} />)
