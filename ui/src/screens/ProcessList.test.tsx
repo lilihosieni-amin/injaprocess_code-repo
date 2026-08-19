@@ -197,19 +197,29 @@ describe('the scroll container', () => {
 
 const CONFIRMER: SessionDescriptor = { ...EDITOR, capabilities: [...EDITOR.capabilities, 'confirm'] }
 
-/** A row whose stored mark is for exactly the bytes on screen. */
-function mockConfirmed() {
+/** A row carrying a stored mark, with `confirmed` as the caller asks for it.
+ *
+ *  Parameterised rather than fixed at `true`, and that is the whole point: a
+ *  chip that ignores the field and always reads «تأیید شده» is correct on every
+ *  confirmed fixture there is, and telling an editor that a document they have
+ *  since edited is still vouched for is the one thing the fingerprint exists to
+ *  prevent. `_row` sets `confirmed_by`/`confirmed_at` only when the stored
+ *  fingerprint still matches, so an unconfirmed row carries nulls here too. */
+function mockMark(confirmed: boolean) {
   vi.spyOn(globalThis, 'fetch').mockImplementation((input: RequestInfo | URL) => {
     const url = String(input)
     const body = url.startsWith('/api/confirmations')
       ? [{ target: 'cooking-001', kind: 'process', fingerprint: 'a'.repeat(64),
-           confirmed: true, confirmed_by: '09120000001', confirmed_at: 1770000000 }]
+           confirmed,
+           confirmed_by: confirmed ? '09120000001' : null,
+           confirmed_at: confirmed ? 1770000000 : null }]
       : url.includes('/processes') ? PROCS
       : [{ code: 'cooking', name: 'پخت', count: 2 }]
     return Promise.resolve(new Response(JSON.stringify(body),
       { status: 200, headers: { 'Content-Type': 'application/json' } }))
   })
 }
+const mockConfirmed = () => mockMark(true)
 
 describe('the confirmation on a row', () => {
   it('states the mark and offers no act', async () => {
@@ -222,6 +232,18 @@ describe('the confirmation on a row', () => {
     expect(await screen.findByText('تأیید شده')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'تأیید محتوا' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'لغو تأیید' })).not.toBeInTheDocument()
+  })
+
+  it('says the row is NOT confirmed when the stored mark is for other bytes', async () => {
+    // The other half of the chip, and the half a fixture that is always
+    // `confirmed: true` cannot ask for. `row.confirmed` means "the stored mark
+    // is for THESE bytes", not "a mark exists", so a document edited after
+    // being confirmed arrives false — and a chip that ignored the field would
+    // tell the one person who can act that the page is still vouched for.
+    mockMark(false)
+    renderAt('/departments/:code', <ProcessList />, '/departments/cooking', CONFIRMER)
+    expect(await screen.findByText('تأیید نشده')).toBeInTheDocument()
+    expect(screen.queryByText('تأیید شده')).not.toBeInTheDocument()
   })
 
   it('puts the mark in the meta line and leaves the title line free of controls', async () => {
