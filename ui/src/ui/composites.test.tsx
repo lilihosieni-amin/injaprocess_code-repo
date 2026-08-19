@@ -998,6 +998,101 @@ describe('SectionCard', () => {
     expect(section).toHaveClass('mt-s3', 'bg-surface-sub', 'rounded-card', 'p-s9')
     expect(await dead(section.className)).toEqual([])
   })
+
+  it('is a GROUP when it is given a name, and a landmark when it takes one from its eyebrow', () => {
+    // The distinction three screens hand-rolled this box to keep, and the whole
+    // reason `label` exists rather than a `role` passthrough. An accessibly
+    // named `<section>` is a landmark `region`; four of those on one user record
+    // is a screen reader announcing furniture, and they are groupings of related
+    // controls. The eyebrow branch is the other role and stays a landmark: three
+    // of them structure the process summary, which is a document.
+    const { container, unmount } = render(
+      <SectionCard eyebrow="گذرواژه" label="گذرواژه"><p>x</p></SectionCard>,
+    )
+    expect(screen.getByRole('group', { name: 'گذرواژه' })).toBe(container.querySelector('section'))
+    // …and it does not claim BOTH, which would be one name overriding another
+    // and the eyebrow's id pointing at an element nothing announces.
+    expect(container.querySelector('section')).not.toHaveAttribute('aria-labelledby')
+    expect(screen.getByText('گذرواژه').id).toBe('')
+    unmount()
+
+    const region = render(<SectionCard eyebrow="نقش"><p>x</p></SectionCard>)
+    expect(region.container.querySelector('section')).not.toHaveAttribute('role')
+    expect(screen.getByRole('region', { name: 'نقش' })).toBeInTheDocument()
+  })
+
+  it('names a panel that has no eyebrow at all', () => {
+    // §6.8's fourth panel is the disable boundary: a sentence and a button,
+    // no eyebrow. Its name cannot come from one, which is the case a component
+    // that only ever named itself from its eyebrow could not serve.
+    render(<SectionCard label="غیرفعال‌سازی کاربر"><p>x</p></SectionCard>)
+    expect(screen.getByRole('group', { name: 'غیرفعال‌سازی کاربر' })).toBeInTheDocument()
+  })
+
+  it('carries the harness hook only when it is asked to', () => {
+    // `[data-card]` is what the e2e harness measures a card's radius, border,
+    // shadow and background against, and it takes the FIRST match in document
+    // order — so a screen passes it once. Rendered unconditionally, every
+    // section on the Access screen would claim to be the measured one and the
+    // three below the first would be graded by nothing.
+    const { container, unmount } = render(<SectionCard card><p>x</p></SectionCard>)
+    expect(container.querySelector('section')).toHaveAttribute('data-card')
+    unmount()
+    const off = render(<SectionCard><p>x</p></SectionCard>)
+    expect(off.container.querySelector('section')).not.toHaveAttribute('data-card')
+  })
+
+  it('puts the actions beside the body, not under it, and adds no wrapper without them', () => {
+    // Two of §6.8's four panels put a control on the eyebrow line. The absent
+    // branch matters as much: a flex wrapper rendered unconditionally would
+    // change the layout of every section in the app that has no actions, and no
+    // class assertion on the section itself would see it.
+    const { container, unmount } = render(
+      <SectionCard label="سرپرست" actions={<button type="button">تغییر</button>}>
+        <p>یک</p>
+      </SectionCard>,
+    )
+    expect(shapeOf(container.firstElementChild!)).toEqual([
+      'section[role=group]',
+      '  div',
+      '    div',
+      '      p',
+      '        "یک"',
+      '    div',
+      '      button[type=button]',
+      '        "تغییر"',
+    ])
+    unmount()
+
+    const bare = render(<SectionCard label="سرپرست"><p>یک</p></SectionCard>)
+    expect(shapeOf(bare.container.firstElementChild!))
+      .toEqual(['section[role=group]', '  p', '    "یک"'])
+  })
+
+  it('draws §6.8’s two other skins, which are neither of the first two', async () => {
+    // `plain` is panels 1 and 2 — `--card` over `--border-current` and FLAT, which
+    // is neither `tint` (the tinted surface) nor `white` (the card recipe, with
+    // the shadow). Getting this wrong is invisible in jsdom and obvious on
+    // screen, which is why the whole declaration set is asserted.
+    const { container, unmount } = render(<SectionCard skin="plain"><p>x</p></SectionCard>)
+    expect(await snap(container.querySelector('section')!)).toEqual([
+      'background-color: var(--card)',
+      'border-color: var(--border-current)',
+      'border-radius: var(--radius-card)',
+      'border-width: 1px',
+      'padding: var(--space-9)',
+    ])
+    unmount()
+
+    const danger = render(<SectionCard skin="danger"><p>x</p></SectionCard>)
+    expect(await snap(danger.container.querySelector('section')!)).toEqual([
+      'background-color: var(--card)',
+      'border-color: var(--border-danger)',
+      'border-radius: var(--radius-card)',
+      'border-width: 1px',
+      'padding: var(--space-9)',
+    ])
+  })
 })
 
 /* ========================================================================= */

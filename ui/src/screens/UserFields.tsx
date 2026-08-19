@@ -24,13 +24,21 @@ export const CAN_SUPERVISE_NOTE =
  * One §6.14 section: a tinted sub-panel at 16px with a caption that is also its
  * accessible name.
  *
- * `role="group"` rather than `<section aria-labelledby>`, and not
- * `src/ui/SectionCard.tsx`, for the two reasons `src/screens/UserDetail.tsx`
- * gives beside its own `Panel`: an accessibly-named `<section>` is a landmark
- * `region`, and two landmarks inside a modal is a screen reader announcing
- * furniture; and `SectionCard` forwards nothing but its four props, so no
- * `aria-label` can reach the DOM through it. The three local copies of this box
- * reconcile in one commit by whoever owns all three.
+ * There were three local copies of this box and their docstrings all said they
+ * "reconcile in one commit by whoever owns all three". Task 25 was that commit
+ * and it reconciled the other two: `src/ui/SectionCard.tsx` now takes a `label`
+ * — which is also the switch from a landmark `region` to a `group`, the reason
+ * all three hand-rolled it — plus `data-card`, an `actions` slot and §6.8's two
+ * missing skins. `src/screens/Profile.tsx` and `src/screens/UserDetail.tsx` are
+ * both the shared component again.
+ *
+ * **This one is not, and the reason is a value rather than an API.** §6.14 draws
+ * the dialog's sub-panels at 16px (`p-s8`); R8 fixes `SectionCard` at 18px and
+ * its own docstring says why it declines the dialog's number — "the dialog is
+ * already 26px-padded around this box". Settling that inside the component means
+ * a `pad` prop, which is a density knob on a shared component, which is the one
+ * thing F4/F8 says it may not have. So the difference is one number in one
+ * screen, stated here, rather than a prop every caller can reach.
  */
 function Section({ caption, children }: { caption: string; children: ReactNode }) {
   return (

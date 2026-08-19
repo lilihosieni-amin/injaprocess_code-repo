@@ -1,4 +1,4 @@
-import { useId, useState, type ReactNode } from 'react'
+import { useId, useState, type ComponentProps } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useSession } from '../auth/useSession'
 import { administrationRefusal } from '../auth/can'
@@ -14,6 +14,7 @@ import { MIN_PASSWORD, TOO_SHORT } from '../lib/userDraft'
 import { Button } from '../ui/Button'
 import { Icon } from '../ui/Icon'
 import { PasswordField } from '../ui/PasswordField'
+import { SectionCard } from '../ui/SectionCard'
 import { LoadFailedScreen } from '../ui/states'
 import { EditUserDialog } from './EditUserDialog'
 import { RefusalScreen } from './Refusal'
@@ -186,7 +187,7 @@ export function UserDetail() {
             in the design's own rule-statement register — 11.5px, faint, 1.7 —
             rather than as a second body paragraph that would read as a
             permission. */}
-        <Panel eyebrow="سرپرست" label="سرپرست"
+        <Panel skin="plain" eyebrow="سرپرست" label="سرپرست"
           actions={manageable && (
             // §6.8 gives this the row-action size: `10px 15px`, 12.5px,
             // radius 11. It opens the one editing surface this app has —
@@ -229,7 +230,7 @@ export function UserDetail() {
                 R5 forbids drawing a button for a route that does not exist, so
                 the white card, the type sizes and the primary's role are the
                 design's and the copy and the control are the app's. */}
-            <Panel tone="card" eyebrow="گذرواژه" label="گذرواژه">
+            <Panel skin="white" eyebrow="گذرواژه" label="گذرواژه">
               <h2 className="text-fs-menu font-bold text-ink">
                 بازنشانی گذرواژهٔ {user.displayName}
               </h2>
@@ -284,7 +285,7 @@ export function UserDetail() {
                 button skin for both directions — there is no separate affirming
                 variant for re-enabling, and re-enabling restores capabilities,
                 so it is exactly as consequential as disabling. */}
-            <Panel tone="danger" label={disableLabel}
+            <Panel skin="danger" label={disableLabel}
               actions={
                 <Button variant="danger" className="px-s8 py-s6 text-fs-sm rounded-button"
                   loading={setDisabled.isPending} loadingLabel="در حال ثبت…"
@@ -335,7 +336,7 @@ function RoleAndScopePanel({ user }: { user: AdminUser }) {
   const names = Object.fromEntries((departments ?? []).map((d) => [d.code, d.name]))
 
   return (
-    <Panel card eyebrow="نقش و دپارتمان" label="نقش و دپارتمان">
+    <Panel skin="plain" card eyebrow="نقش و دپارتمان" label="نقش و دپارتمان">
       <div className="flex items-center gap-s5 flex-wrap">
         {/* In Persian, like every other word on this record. `roleLabel` keeps
             the identifier for a role seeded on the server ahead of this build —
@@ -376,62 +377,22 @@ const SCOPE_CHIP =
   'bg-tile-v2 border-hairline border-line px-s6 py-s4 rounded-control'
 
 /**
- * One §6.8 panel: white, radius 16, 18px of padding, 14px below it, and an
- * eyebrow that is the section's accessible name.
+ * One §6.8 panel — `src/ui/SectionCard.tsx`, with `mb-s7` beneath it.
  *
- * **Local, and it should not stay local.** `src/ui/SectionCard.tsx` is this box
- * — right radius, right padding, right eyebrow — and this screen cannot use it
- * for three separate reasons, none of which this task may fix: it destructures
- * `{ eyebrow, skin, children, className }` and forwards nothing else, so neither
- * a `data-card` measurement hook nor an `aria-label` reaches the DOM; it has no
- * `actions` slot, which two of these four panels need; and neither of its two
- * skins is the one §6.8 draws (`tint` is `--surface-sub` over `--border-current`
- * and `white` is `--card` over `--border-card` **with** the card shadow, while
- * panels 1 and 2 here are `--card` over `--border-current` with **no** shadow).
- * The two files reconcile in one commit by whoever owns both.
+ * This was a local copy, and its docstring listed the three things that made
+ * `SectionCard` unusable here: it forwarded nothing but `className`, so neither
+ * a `data-card` measurement hook nor an accessible name reached the DOM; it had
+ * no `actions` slot, which two of these four panels need; and neither of its two
+ * skins was the one §6.8 draws on panels 1 and 2 (`--card` over
+ * `--border-current`, flat). Task 25 gave it all three and this is the shared
+ * box again, so the alias below is the whole of what is left — the shared
+ * component cannot hold `mb-s7`, which is this screen's spacing between its own
+ * panels and not the box's own geometry.
  *
- * `role="group"` rather than `<section aria-labelledby>`: an accessibly-named
- * `<section>` is a landmark `region`, and four landmarks on one record is a
- * screen reader announcing furniture. These are groupings of related controls.
+ * `label` and not the eyebrow's `aria-labelledby`, which is the distinction
+ * `SectionCard` now keeps rather than erases: with a label it renders a `group`,
+ * a grouping of related controls, and four accessibly-named landmark `region`s
+ * on one record is a screen reader announcing furniture.
  */
-function Panel({
-  tone = 'sub', eyebrow, label, actions, card = false, children,
-}: {
-  /** Which of §6.8's three panel skins. */
-  tone?: 'sub' | 'card' | 'danger'
-  eyebrow?: string
-  /** The accessible name. Panel 4 has no eyebrow, so it cannot come from one. */
-  label: string
-  actions?: ReactNode
-  /** Carries `[data-card]`, the harness's card hook. Panel 1 only, and the
-   *  harness takes the FIRST match in document order, so a second would be
-   *  measured by nothing and would silently claim to be measured. */
-  card?: boolean
-  children: ReactNode
-}) {
-  return (
-    <div role="group" aria-label={label} data-card={card ? '' : undefined}
-      className={`border rounded-card p-s9 mb-s7 ${PANEL_SKIN[tone]}`}>
-      {eyebrow !== undefined && (
-        <p className="mb-s6 text-fs-xxs font-bold text-muted">{eyebrow}</p>
-      )}
-      {actions === undefined || actions === false ? children : (
-        <div className="flex items-center justify-between gap-s6
-                        max760:flex-col max760:items-stretch">
-          <div className="min-w-0">{children}</div>
-          <div className="flex-none max760:self-start">{actions}</div>
-        </div>
-      )}
-    </div>
-  )
-}
-
-const PANEL_SKIN: Record<'sub' | 'card' | 'danger', string> = {
-  // Panels 1 and 2 — white on the sub-panel edge, and flat. Not `--surface-sub`:
-  // the deliverable writes `background-color: var(--card)` on both.
-  sub: 'bg-card border-border-current',
-  // Panel 3 — the card recipe proper, shadow included.
-  card: 'bg-card border-border-card shadow-card',
-  // Panel 4 — the boundary.
-  danger: 'bg-card border-border-danger',
-}
+const Panel = ({ className = '', ...props }: ComponentProps<typeof SectionCard>) =>
+  <SectionCard {...props} className={`mb-s7 ${className}`} />

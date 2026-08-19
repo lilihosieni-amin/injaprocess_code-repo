@@ -6,6 +6,7 @@ import { roleLabel } from '../lib/roles'
 import { MIN_PASSWORD, TOO_SHORT } from '../lib/userDraft'
 import { Button } from '../ui/Button'
 import { PasswordField } from '../ui/PasswordField'
+import { SectionCard } from '../ui/SectionCard'
 
 /** Said here rather than left to the server, because the server's answer to an
  *  empty `current` is «گذرواژهٔ فعلی درست نیست» — a sentence that blames a value
@@ -132,23 +133,13 @@ export function Profile() {
           <span dir="ltr" className="font-mono">{session.username}</span>
         </p>
 
-        {/* §6.13 — a tinted sub-panel eyebrowed «تغییر گذرواژه».
-            `ui/src/ui/SectionCard.tsx` (Task 10's, frozen for this task) is
-            this exact recipe — `border rounded-card p-s9 bg-surface-sub
-            border-border-current` plus the eyebrow paragraph — but as shipped
-            it destructures `{ eyebrow, skin, children, className }` and
-            forwards nothing else, so neither `data-card` (the harness's
-            measurement hook) nor `aria-label`/`role="group"` (this screen's
-            own vitest assertion) would reach the DOM if it were used here.
-            `ui/src/screens/UserDetail.tsx`'s local `Panel` documents the
-            identical defect and works around it the identical way, for the
-            identical reason (`role="group"` there too, so four
-            accessibly-named `<section>` landmarks on one record don't read to
-            a screen reader as furniture). Reported rather than fixed here:
-            this task must not write SectionCard.tsx. */}
-        <div data-card role="group" aria-label="تغییر گذرواژه"
-          className="border rounded-card p-s9 bg-surface-sub border-border-current mt-s8">
-          <p className="m-0 mb-s6 text-fs-xxs font-bold text-muted">تغییر گذرواژه</p>
+        {/* §6.13 — a tinted sub-panel eyebrowed «تغییر گذرواژه». This was a raw
+            `<div>` reproducing `SectionCard`'s recipe byte for byte, because
+            that component forwarded nothing but `className` and so could carry
+            neither `data-card` (the harness's measurement hook) nor
+            `role="group"` (a group of controls, not a fourth landmark on one
+            record). Task 25 widened it; this is the shared box again. */}
+        <SectionCard eyebrow="تغییر گذرواژه" label="تغییر گذرواژه" card className="mt-s8">
           <form onSubmit={submit} className="flex flex-col gap-s6">
             {/* `ground="sub"`: `ui/src/ui/fieldFrame.ts`'s own docstring on
                 `PasswordFieldProps.ground` names this exact trio — "the
@@ -223,7 +214,7 @@ export function Profile() {
               دستگاه باز است.
             </p>
           )}
-        </div>
+        </SectionCard>
       </div>
     </div>
   )
