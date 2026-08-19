@@ -1326,3 +1326,15 @@ describe('what §6.8 paints (the compiled rule, not the class string)', () => {
     expect([...declarations(p, '', '(max-width: 760px)')]).toEqual(['display: none'])
   })
 })
+
+describe('the role is a coloured pill, one pair per role (§1.2)', () => {
+  it('maps every seeded role and falls back for an unknown one', async () => {
+    const { ROLE_TONE, roleTone } = await import('../lib/roles')
+    expect(ROLE_TONE.editor).toBe('bg-tile-c text-conflict')
+    expect(ROLE_TONE.admin).toBe('bg-tile-v text-violet')
+    expect(ROLE_TONE.reader).toBe('bg-tile-v2 text-violet')
+    expect(ROLE_TONE.reader_no_download).toBe('bg-tile-v2 text-violet')
+    expect(roleTone('something_seeded_later')).toBe('bg-tile-v2 text-violet')
+    expect(roleTone(null)).toBe('bg-tile-v2 text-violet')
+  })
+})

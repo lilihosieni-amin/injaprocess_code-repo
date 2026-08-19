@@ -37,3 +37,35 @@ export function roleLabel(role: string | null | undefined): string {
   if (role === null || role === undefined || role === '') return NO_ROLE_NAME
   return ROLE_LABELS[role] ?? role
 }
+
+/**
+ * The three fg/bg pairs S1's script declares for the users table (§1.2, script
+ * 991–992): `editor` takes the coral tile under `--conflict`, `admin` the
+ * violet icon tile under `--violet`, and every reader the lighter violet tile
+ * under the same `--violet`. Written as token-backed utility pairs — the values
+ * themselves live in `design/_ds/…/tokens/colors.css` and nowhere else — so no
+ * literal reaches a screen and none is repeated here either (F6 scans this
+ * file, comments included).
+ *
+ * **The design declares the pair and draws only half of it.** `Inja Panel.dc.html`
+ * binds both `roleBg` and `roleFg` on every user row and the table's own
+ * `<span data-r-trole>` paints the foreground alone, so the backgrounds are
+ * declared and rendered nowhere. F52 is the reason to draw them: the role is
+ * what an administrator scans this list for and coloured text at 12.5px is the
+ * least distinct thing on the row. Reported rather than assumed — see the task
+ * report's ledger row.
+ *
+ * A role seeded ahead of this build gets the reader pair rather than nothing:
+ * an unstyled word in a column of pills reads as a rendering fault, and the
+ * label beside it (`roleLabel`) already carries the unknown identifier.
+ */
+export const ROLE_TONE: Record<string, string> = {
+  editor: 'bg-tile-c text-conflict',
+  admin: 'bg-tile-v text-violet',
+  reader: 'bg-tile-v2 text-violet',
+  reader_no_download: 'bg-tile-v2 text-violet',
+}
+
+export function roleTone(role: string | null | undefined): string {
+  return (role && ROLE_TONE[role]) || 'bg-tile-v2 text-violet'
+}
