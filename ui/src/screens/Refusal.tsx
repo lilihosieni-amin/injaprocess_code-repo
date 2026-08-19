@@ -12,7 +12,7 @@ import { DeniedState, NotFoundState } from '../ui/states'
  */
 export function RefusalScreen({ status }: { status: 403 | 404 }) {
   return (
-    <div data-screen="refusal" className="flex-1 overflow-auto py-screen-y px-screen-x max760:px-s7 max760:py-s9">
+    <div data-screen="refusal" className="flex-1 overflow-auto bg-ink py-screen-y px-screen-x max760:px-s7 max760:py-s9">
       <div data-col className="max-w-list mx-auto">
         {status === 404 ? <NotFoundState /> : <DeniedState />}
       </div>

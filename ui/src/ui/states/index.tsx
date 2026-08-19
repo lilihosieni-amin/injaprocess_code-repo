@@ -116,7 +116,11 @@ export function ErrorState({ message, onRetry, inline = false }: {
  * non-numeric id will be a 422 every time — and a button that re-runs a settled
  * refusal is furniture that wastes the press.
  *
- * Laid out like `RefusalScreen`, because it stands in the same place.
+ * Laid out like `RefusalScreen`, because it stands in the same place — and
+ * `Refusal.test.tsx` compares the two wrapper strings as sets rather than
+ * naming a class at a time, because this docstring made that claim while the
+ * two used a different width and a different gutter and every assertion either
+ * file had still passed.
  */
 export function LoadFailedScreen({ message, error, onRetry }: {
   message: string
@@ -124,7 +128,7 @@ export function LoadFailedScreen({ message, error, onRetry }: {
   onRetry: () => void
 }) {
   return (
-    <div className="flex-1 overflow-auto py-screen-y px-screen-x max760:px-s7 max760:py-s9">
+    <div className="flex-1 overflow-auto bg-ink py-screen-y px-screen-x max760:px-s7 max760:py-s9">
       <div className="max-w-list mx-auto">
         <ErrorState message={message} onRetry={retryQuery(0, error) ? onRetry : undefined} />
       </div>

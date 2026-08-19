@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, cleanup } from '@testing-library/react'
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { RefusalScreen } from './Refusal'
+import { LoadFailedScreen } from '../ui/states'
 import { appRoutes } from '../routes'
 
 /** R5 — «Never draw what you would refuse.»
@@ -47,6 +48,40 @@ describe('the two refusals stay distinct', () => {
     expect(wrap.className).toContain('py-screen-y')
     expect(wrap.className).toContain('px-screen-x')
     expect(wrap.firstElementChild!.className).toContain('max-w-list')
+  })
+
+  it('paints the violet field itself, as every other screen root does', () => {
+    // Not in the task brief, and the brief's own browser check asserts it:
+    // `expect(getComputedStyle([data-screen]).backgroundColor).toBe(FIELD)`.
+    // This root declared no background at all, so that assertion reads
+    // `rgba(0, 0, 0, 0)` and fails. It LOOKS right in a browser only because
+    // `[data-shell]` two ancestors up is `bg-ink` and the transparency lets it
+    // through — which is exactly the accident `Users.tsx` and `Visibility.tsx`
+    // do not rely on: both write `bg-ink` on their own `[data-screen]`, and the
+    // harness grades the field off that element and no other.
+    const { container } = render(<RefusalScreen status={404} />)
+    expect(container.firstElementChild!.className).toContain('bg-ink')
+  })
+
+  it('is the same wrapper as a failed read, string for string', () => {
+    // The three assertions above name three classes, so P10's claim — "a failed
+    // read and a refused read stand in the same slot" — has to be re-made by
+    // hand every time either wrapper grows a fourth. That is how these two came
+    // apart in the first place: `LoadFailedScreen`'s docstring said "laid out
+    // like RefusalScreen" while it used a different width AND a different
+    // gutter, and every assertion either file had still passed.
+    //
+    // So the strings are compared instead, as sets. `data-screen` and
+    // `data-col` are attributes rather than classes and are deliberately not
+    // part of this: the refusal is a destination a typed URL can land on and is
+    // measured by a browser; a failed read is a state any screen can enter.
+    const refusal = render(<RefusalScreen status={404} />).container.firstElementChild!.className
+    cleanup()
+    const failed = render(
+      <LoadFailedScreen message="نشد" error={null} onRetry={() => {}} />,
+    ).container.firstElementChild!.className
+    const set = (s: string) => [...new Set(s.split(/\s+/).filter(Boolean))].sort()
+    expect(set(refusal)).toEqual(set(failed))
   })
 })
 
