@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 import type { Department } from '../src/api/types'
-import { expectDesign, serve, shot, signedIn, visit } from './_harness'
+import { expandPadding, expectDesign, serve, shot, signedIn, visit } from './_harness'
 
 /**
  * `signedIn(page)`'s default session holds `edit`/`confirm` (`PanelShell`
@@ -52,7 +52,45 @@ test('profile — 700 wide, paired fields, violet labels', async ({ page }) => {
   const input = page.getByLabel('گذرواژهٔ فعلی')
   await expect(input).toHaveCSS('font-size', '14px')
   await expect(input).toHaveCSS('border-radius', '12px')
-  await expect(input).toHaveCSS('padding', '12px 14px')
+
+  // §5.2's field box, for the control this screen actually draws: `padding:
+  // 12px 14px` **plus `padding-inline-start:46px`**, because all three of these
+  // are `PasswordField`s and a password field with a reveal button reserves the
+  // button's room on its own edge. §5.2 states that as a rule of the component
+  // ("A password field with a reveal button reserves `padding-inline-start:46px`
+  // and places a 32x32 button at left:8px"), and `Inja Panel.dc.html:1858` draws
+  // it — the 46 is 8 + 32 + 6, the button's inset, the button, and the gap to
+  // the value.
+  //
+  // This line used to read `toHaveCSS('padding', '12px 14px')`, transcribed from
+  // §6.13's sentence about the deliverable's own profile — where the three
+  // controls are bare `type="password"` inputs with no reveal at all. **The
+  // divergence is real and is reported, not settled here**: this app's Profile
+  // screen deliberately took the shared `PasswordField` (task 22, note N6), and
+  // this spec grades the screen that exists. What it must not do is assert the
+  // *bare* field's box on a *reveal* field, which is a box no control in this
+  // product has: the reserve would have to be missing for it to pass, and a
+  // missing reserve is the F-defect `fields.test.tsx` was written around — the
+  // eye sitting over the last 25px of the value.
+  const pad = expandPadding(await input.evaluate((el) => getComputedStyle(el).padding))
+  expect([pad.top, pad.bottom]).toEqual(['12px', '12px'])
+  // The document is RTL, so inline-start is the RIGHT edge and inline-end the
+  // left. Read as the four physical edges rather than as the shorthand string,
+  // so a reserve that landed on the wrong side is a failure here and not a
+  // different-looking pass.
+  expect([pad.right, pad.left]).toEqual(['46px', '14px'])
+
+  // …and the reserve is the button's room rather than 46px of empty margin.
+  // Two assertions that each pinned one side independently were both green
+  // while the eye stood over the value and the room sat on the other edge
+  // (`fields.test.tsx`, "reserves the inline-start room the reveal button
+  // occupies"); jsdom can relate the two only through the cascade, so the
+  // browser relates them through geometry.
+  const eye = page.getByRole('button', { name: 'نمایش گذرواژه' }).first()
+  const [field, button] = await Promise.all([input.boundingBox(), eye.boundingBox()])
+  const inlineStart = field!.x + field!.width          // the right edge, in RTL
+  expect(button!.x + button!.width).toBeLessThanOrEqual(inlineStart)
+  expect(button!.x).toBeGreaterThan(inlineStart - 46)
 
   await expect(page.getByRole('note', { name: 'هشدار' }))
     .toHaveCSS('background-color', 'rgb(251, 238, 220)')

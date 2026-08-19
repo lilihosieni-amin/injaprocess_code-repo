@@ -119,9 +119,25 @@ test('refusal — reachable by typing, and only by typing', async ({ page }) => 
   // The same claim by name, because an href is not what a person reads. Asked
   // of the whole page, not of the menu: an entry moved into the nav tray or the
   // mobile sheet is still an entry.
-  await expect(page.getByRole('link', { name: 'پروفایل و گذرواژه' })).toHaveCount(1)
-  await expect(page.getByRole('link', { name: 'کاربران' })).toHaveCount(0)
-  await expect(page.getByRole('link', { name: 'سیاست نمایش محتوا' })).toHaveCount(0)
+  //
+  // The ROLE is the width's, and it has to be, because the two chrome pieces
+  // are two different ARIA patterns. Above 1080 the entries live in
+  // `PanelShell`'s `role="menu"` popover, so each `<Link>` carries
+  // `role="menuitem"` — an explicit role REPLACES the implicit one, and
+  // `getByRole('link')` therefore matches none of them. Below it the same
+  // `adminItems` are drawn as plain `<Link>`s in the sheet, which are links.
+  //
+  // Written as one `role` rather than as a union because of what the two
+  // `toHaveCount(0)`s below are for: asked as `link` at 1440 they passed
+  // **vacuously** — there are no links in that popover at all, so they would
+  // have stayed green with «کاربران» sitting in it in plain sight. A negative
+  // that cannot fail is not a check, and it was the positive control above
+  // (which DID go red) that exposed it.
+  const entry = (name: string) =>
+    page.getByRole(w > 1080 ? 'menuitem' : 'link', { name })
+  await expect(entry('پروفایل و گذرواژه')).toHaveCount(1)
+  await expect(entry('کاربران')).toHaveCount(0)
+  await expect(entry('سیاست نمایش محتوا')).toHaveCount(0)
 
   // …and the refusal itself offers nothing onward.
   await page.goto(`/departments/${OUT_OF_SCOPE}`)

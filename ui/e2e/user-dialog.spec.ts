@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test'
 import type { Department } from '../src/api/types'
 import type { AdminUser, Role, SupervisorCandidate } from '../src/api/users'
-import { FOCUS, SUBPANEL_SURFACE, serve, shot, signedIn, visit } from './_harness'
+import { FOCUS, SUBPANEL_SURFACE, serve, shadowOf, shot, signedIn, visit } from './_harness'
 
 /**
  * **The nine of the real deployment**, and that is the whole point of this file.
@@ -94,11 +94,22 @@ test('new user — 520 wide, and it fits', async ({ page }) => {
     await expect(box).toHaveCSS('border-radius', '20px 20px 0px 0px')
     await expect(box).toHaveCSS('width', `${width}px`)
   }
-  // S1's two-layer dialog shadow, at every width.
-  await expect(box).toHaveCSS(
-    'box-shadow',
-    'rgba(16, 10, 40, 0.28) 0px 4px 10px 0px, rgba(16, 10, 40, 0.8) 0px 44px 90px -30px',
-  )
+  // S1's two-layer dialog shadow (§5.2, ledger L-04), at every width — read
+  // through `shadowOf`, which is the only way this can be asserted.
+  //
+  // Tailwind 3 composes every shadow utility as
+  // `var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow)`, so
+  // Chrome serialises TWO fully transparent ring layers ahead of the design's
+  // two: the raw computed value here is `rgba(0, 0, 0, 0) 0px 0px 0px 0px,
+  // rgba(0, 0, 0, 0) 0px 0px 0px 0px, <the two below>`. A raw `toHaveCSS` can
+  // therefore never pass, and the repair `_harness.ts` names in as many words —
+  // "do not repair a red by pasting what the browser printed" — is not to write
+  // the ring scaffolding into the expectation but to drop the layers that paint
+  // nothing. `harness.spec.ts:347` holds both halves of that: the real class
+  // passes through `shadowOf`, and the raw string does not equal the constant.
+  await expect
+    .poll(async () => shadowOf(await box.evaluate((el) => getComputedStyle(el).boxShadow)))
+    .toBe('rgba(16, 10, 40, 0.28) 0px 4px 10px 0px, rgba(16, 10, 40, 0.8) 0px 44px 90px -30px')
 
   // **The finding this whole task exists for**: 2207px of content in an 850px
   // box, with «ساخت کاربر» below the fold. Nine departments are on screen and
@@ -118,11 +129,41 @@ test('new user — 520 wide, and it fits', async ({ page }) => {
   const footer = box.getByTestId('dialog-footer')
   await expect(footer.getByRole('button', { name: 'ایجاد کاربر' })).toBeInViewport()
   await expect(box.getByRole('heading', { name: 'کاربر جدید' })).toBeInViewport()
-  const [create, cancel] = await Promise.all([
-    footer.getByRole('button', { name: 'ایجاد کاربر' }).boundingBox(),
-    footer.getByRole('button', { name: 'انصراف' }).boundingBox(),
+
+  // §5.2's footer is "two `flex:1` buttons", and that is asserted as the
+  // DECLARATION plus a bound on what `flex:1` can still leave unequal.
+  //
+  // Not `Math.abs(a - b) < 2`, which is what stood here and which nothing in
+  // this product could have satisfied. The two differ by exactly 2px at all
+  // three widths — measured 227 / 229 in a 466px footer — and the 2px is not
+  // sub-pixel rounding, it is the ghost's own edge: `flex-basis:0` under
+  // `box-sizing:border-box` floors each item's flex BASE size at its own
+  // padding + border, so the free space is divided equally and the secondary
+  // keeps its `1.5px --line` border ON TOP of its half. The deliverable draws
+  // the same pair the same way — `Inja Panel.dc.html:1934-1935`, `flex:1;
+  // border:0` beside `flex:1; border:1.5px solid #E3D8F5` — where content-box
+  // widens the difference to 3px rather than narrowing it. So «equal» is
+  // `flex:1`; the residual is the border one of them wears, and asserting it
+  // away would be asking the screen to be something the design is not.
+  const create = footer.getByRole('button', { name: 'ایجاد کاربر' })
+  const cancel = footer.getByRole('button', { name: 'انصراف' })
+  await expect(create).toHaveCSS('flex', '1 1 0%')
+  await expect(cancel).toHaveCSS('flex', '1 1 0%')
+  const [createBox, cancelBox, edge] = await Promise.all([
+    create.boundingBox(),
+    cancel.boundingBox(),
+    // Read off the element rather than written as `2`: the bound is the ghost's
+    // border, so a padding or a width that drifted for any OTHER reason is
+    // still a failure here.
+    cancel.evaluate((el) => {
+      const cs = getComputedStyle(el)
+      return parseFloat(cs.borderInlineStartWidth) + parseFloat(cs.borderInlineEndWidth)
+    }),
   ])
-  expect(Math.abs(create!.width - cancel!.width)).toBeLessThan(2)
+  expect(Math.abs(createBox!.width - cancelBox!.width)).toBeLessThanOrEqual(edge)
+  // …and it is the BORDERED one that is wider, which is what says the residual
+  // is that border and not something squeezing the primary.
+  expect(cancelBox!.width).toBeGreaterThanOrEqual(createBox!.width)
 
   // F36 — the ghost cancel was white on white. §5.2's sheet keeps it white and
   // the section cards tint, so the contrast comes from the surface behind it.
@@ -138,9 +179,36 @@ test('new user — 520 wide, and it fits', async ({ page }) => {
   const tracks = await grid.evaluate((el) => getComputedStyle(el).gridTemplateColumns)
   expect(tracks.split(' ')).toHaveLength(width > 760 ? 2 : 1)
 
-  // §5.2 TextField — 1.5px --line, focus turns it coral, no ring.
+  // §5.2 TextField — the design's hairline edge, and coral on focus.
   const name = box.getByLabel('نام و نام خانوادگی')
-  await expect(name).toHaveCSS('border-width', '1.5px')
+
+  // The width is compared against the design's own `--border-hairline` and not
+  // against the literal `1.5px`, which is a value NO element can report in this
+  // browser. `getComputedStyle` hands back the USED border width, and a used
+  // border is snapped to whole device pixels: measured here at
+  // `devicePixelRatio: 1`, a `<div style="border:1.5px solid red">` reports
+  // `border-top-width: 1px` while its own `style.borderTopWidth` still reads
+  // `1.5px`. `toHaveCSS('border-width', '1.5px')` — which is what stood here —
+  // could therefore not have passed on any element at all, hairline or not.
+  //
+  // The DECLARATION is graded where it is legible: `src/ui/fields.test.tsx`
+  // ("rests on the control border and turns coral on focus, on every shape a
+  // field takes") compiles the field's class string through the real theme and
+  // asserts `border-width: var(--border-hairline)` on the input, the password
+  // input and the textarea. What is graded here is the half only a browser can
+  // see — that this field's edge is the one the design's hairline resolves to,
+  // and that it is drawn at all rather than collapsed to nothing.
+  const hairline = await page.evaluate(() => {
+    const probe = document.createElement('div')
+    probe.style.cssText = 'border-style:solid;border-width:var(--border-hairline)'
+    document.body.appendChild(probe)
+    const used = getComputedStyle(probe).borderTopWidth
+    probe.remove()
+    return used
+  })
+  expect(parseFloat(hairline)).toBeGreaterThan(0)
+  await expect(name).toHaveCSS('border-width', hairline)
+
   await name.focus()
   await expect(name).toHaveCSS('border-color', FOCUS)
 
