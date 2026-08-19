@@ -81,7 +81,7 @@ describe('routing', () => {
   it('routes /visibility to the policy screen for a global set_visibility holder', async () => {
     boot('/visibility', true, ['view', 'edit', 'set_visibility'], ['*'])
     await waitFor(() =>
-      expect(screen.getByRole('heading', { name: 'نمایش محتوا' })).toBeInTheDocument())
+      expect(screen.getByRole('heading', { name: 'سیاست نمایش محتوا' })).toBeInTheDocument())
   })
 
   // Same trap as the entry above, and the same reason for pinning it in the real

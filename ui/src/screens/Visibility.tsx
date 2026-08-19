@@ -4,7 +4,14 @@ import { useVisibility, useSetVisibilityField } from '../api/hooks'
 import { refusalStatus } from '../api/client'
 import { LoadFailedScreen } from '../ui/states'
 import { RefusalScreen } from './Refusal'
+import { Card } from '../ui/Card'
+import { TickBox } from '../ui/Checkbox'
 import type { PolicyField } from '../api/types'
+
+/** The two words §6.12 puts at the end of every row. Exported so the screen
+ *  and its test cannot come to word the same state differently. */
+export const STATE_ON = 'نمایش داده می‌شود'
+export const STATE_OFF = 'پنهان است'
 
 /** The six switches, in the order the store lists them: the process's own record
  *  first, then a node's. The labels name what a reader would see, never the
@@ -101,53 +108,112 @@ export function Visibility() {
   ]
 
   return (
-    <div className="flex-1 overflow-auto py-s12 px-s12">
-      <div className="max-w-list mx-auto">
-        <h1 className="text-title font-extrabold text-ink">نمایش محتوا</h1>
-        <p className="text-caption text-muted mt-s4">
+    // §6.0 — the shell owns the violet field and this root repaints it,
+    // because the browser gate reads `background-color` off THIS element with
+    // `getComputedStyle`, which does not inherit — the same reason every other
+    // full-bleed screen (`Overview`, `UserDetail`, `Users`) repeats `bg-ink` on
+    // its own `[data-screen]` even though `PanelShell` already paints it.
+    <div data-screen="policy"
+      className="flex-1 overflow-auto bg-ink py-screen-y px-screen-x max760:px-s7 max760:py-s9">
+      <div data-col className="max-w-access mx-auto">
+        <h1 data-h1 className="text-title font-extrabold text-role-title-on-field m-0">سیاست نمایش محتوا</h1>
+        {/* §6.12 — the intro makes the framing explicit: a decision applied to
+            every non-editor, not a permission granted to anybody. `13px
+            #C9BEEE lh 1.8` capped at 600px, on the violet field.
+
+            Two `<p>`s, not one: the D16 sentence and the D55 sentence are each
+            pinned verbatim by their own behavioural test above, matched as the
+            WHOLE text of one element. Folding them into a single paragraph —
+            which is what would happen by literally concatenating them — makes
+            neither substring the full text of anything, and both queries stop
+            finding an element. */}
+        <p data-body className="text-fs-sm text-role-subtitle-on-field leading-loose max-w-intro mt-s4 m-0">
           این تنظیم برای همهٔ کسانی که اجازهٔ ویرایش ندارند یکسان است.
         </p>
-        <p className="text-caption text-faint mt-s2">
+        <p className="text-fs-sm text-role-subtitle-on-field leading-loose max-w-intro mt-s2 m-0">
           معرفی دپارتمان همیشه به‌طور کامل نمایش داده می‌شود و تنظیمی ندارد.
         </p>
 
-        <div className="flex flex-col gap-s5 mt-s10">
-          {rows.map(({ field, label, hint }) => (
-            <label key={field}
-              className="flex items-start gap-s6 bg-card border border-warm rounded-card px-s9 py-s8 shadow-card cursor-pointer">
-              {/* `aria-label`, even though the <label> wraps the control: the
-                  accessible name computed from a wrapping label is its WHOLE
-                  subtree, so without this every switch is announced as its title
-                  followed by its explanation run together. The hint stays
-                  attached as the description instead, which is what it is. */}
-              <input
-                type="checkbox"
-                aria-label={label}
-                aria-describedby={`vis-hint-${field}`}
-                checked={fields[field]}
-                disabled={set.isPending}
-                onChange={(e) => set.mutate({ field, visible: e.target.checked })}
-                className="min-h-touch min-w-touch shrink-0 accent-violet"
-              />
-              <span className="min-w-0">
-                <span className="block text-subtitle font-bold text-ink">{label}</span>
-                <span id={`vis-hint-${field}`} className="block text-caption text-muted mt-s2">{hint}</span>
-              </span>
-            </label>
-          ))}
-        </div>
+        {/* One card, not six. `Card` imported rather than re-declared: this
+            screen carried `bg-card border border-warm rounded-card shadow-card`
+            inline, byte for byte identical to the primitive it did not use. */}
+        <Card data-card role="group" aria-label="سیاست نمایش محتوا"
+          aria-busy={set.isPending || undefined}
+          className={`px-s9 py-s4 mt-s10 transition-opacity
+                      ${set.isPending ? 'opacity-60' : ''}`}>
+          <ul className="list-none p-0 m-0">
+            {rows.map(({ field, label, hint }) => {
+              const on = fields[field]
+              const failed = set.error && set.variables?.field === field
+              return (
+                <li key={field} role="listitem" aria-label={label}
+                  className="border-b border-hair last:border-b-0">
+                  <label className="flex items-start gap-s6 py-s7 px-s1 cursor-pointer
+                                    transition-colors hover:bg-tile-v4
+                                    max760:flex-wrap">
+                    {/* `aria-label` even though the label wraps the control:
+                        the accessible name computed from a wrapping label is
+                        its WHOLE subtree, so without this every row is
+                        announced as its title, its explanation and its state
+                        word run together. */}
+                    <input
+                      type="checkbox"
+                      checked={on}
+                      disabled={set.isPending}
+                      aria-label={label}
+                      aria-describedby={`vis-hint-${field}`}
+                      onChange={(e) => set.mutate({ field, visible: e.target.checked })}
+                      className="peer sr-only"
+                    />
+                    {/* The drawn tick is `TickBox` (Task 8), not `Checkbox`:
+                        `Checkbox` owns its own `<label>`, its own background
+                        recipe and a single fixed hint string, none of which
+                        fit a table row that also carries a trailing state word
+                        and a per-row failure line. Re-implementing the square
+                        itself here — rather than reusing the primitive that
+                        already carries ledger L-48's violet fill and L-09's
+                        `--border-pick` off-border — would be exactly the F6
+                        defect this screen exists to remove. */}
+                    <TickBox on={on} className="peer-focus-visible:border-coral" />
+                    <span className="flex-1 min-w-0">
+                      <span className="block text-fs-menu font-bold text-ink">{label}</span>
+                      <span id={`vis-hint-${field}`}
+                        className="block text-fs-xs text-muted leading-normal mt-s2">
+                        {hint}
+                      </span>
+                      {failed && (
+                        // §4.6 — "Errors are stated in copy: a `11.5px/600
+                        // #E23D35` line under the offending control." It used
+                        // to be one bare red line hanging under the last card,
+                        // naming no field, while the switch that failed sprang
+                        // back to the server's value in silence.
+                        <span role="alert"
+                          className="block text-fs-xs font-semibold text-conflict mt-s3">
+                          {FAILED}
+                        </span>
+                      )}
+                    </span>
+                    {/* The word §6.12 puts at the far end of the row, and the
+                        reason the row is not 60% empty. `11px/600`, green when
+                        shown and muted when hidden. */}
+                    <span className={`ms-auto shrink-0 text-fs-xxs font-semibold
+                                      ${on ? 'text-green' : 'text-muted'}`}>
+                      {on ? STATE_ON : STATE_OFF}
+                    </span>
+                  </label>
+                </li>
+              )
+            })}
+          </ul>
+        </Card>
 
-        {set.error && (
-          // role="alert" and not a bare span: this text appears after the click
-          // that caused it, so a screen reader is elsewhere on the page when it
-          // arrives and would never be told. A swallowed failure here is the
-          // worst kind — the switch springs back to the server's value and the
-          // Editor is left believing they published, or unpublished, something.
-          <p role="alert" className="text-caption text-conflict mt-s6">{FAILED}</p>
-        )}
-
-        <p className="text-caption text-faint mt-s10 font-mono">
-          نسخهٔ تنظیم: {data.version}
+        <p className="text-fs-xs text-faint mt-s10 m-0">
+          {/* F8/F9 — the label used to sit inside `font-mono`, a latin stack
+              with no Persian glyphs, so «نسخهٔ تنظیم:» fell through to whatever
+              the OS substituted; and the digest, which can hold a `-` or a `_`,
+              bidi-reordered inside the Persian sentence. Only the digest is
+              mono, and only the digest is pinned. */}
+          نسخهٔ تنظیم: <span dir="ltr" className="font-mono">{data.version}</span>
         </p>
       </div>
     </div>

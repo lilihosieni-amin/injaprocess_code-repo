@@ -32,6 +32,14 @@ export function TickBox({ on, className = '' }: {
   return (
     <span
       data-tick
+      // `data-testid`, alongside `data-tick`: `Visibility.tsx` (Task 23) is
+      // this component's first caller outside its own test file, and its
+      // Playwright/vitest coverage measures the drawn 19px square by
+      // `getByTestId('tick')` — the id every other sized measurement hook in
+      // this app already uses (`state-dot`, `btn-spinner`). Purely additive:
+      // no prop changed, `[data-tick]` still resolves for every existing
+      // caller and test.
+      data-testid="tick"
       aria-hidden
       className={`w-tick h-tick flex-none inline-flex items-center justify-center rounded-tick border-hairline text-card ${on ? 'bg-violet border-violet' : 'bg-card border-border-pick'} ${className}`}
     >

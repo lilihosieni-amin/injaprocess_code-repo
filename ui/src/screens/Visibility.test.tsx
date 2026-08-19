@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Visibility } from './Visibility'
@@ -42,6 +42,89 @@ function mount() {
   return render(<QueryClientProvider client={qc}><Visibility /></QueryClientProvider>)
 }
 
+
+/** Same fixture as `DEFAULTS`, named the way the structural tests below refer
+ *  to it — process_summary off, node_actor on, so «پنهان است» and «نمایش داده
+ *  می‌شود» each have a row to be found on. */
+const POLICY = DEFAULTS
+
+/**
+ * Stubs the server and mounts the screen in one call, for tests that only
+ * care what is drawn — not who is asking or what a PUT changes.
+ *
+ * `hold: true` pins every PUT behind a promise this call's returned
+ * `resolve()` releases, so a test can inspect the busy state (`aria-busy`,
+ * `opacity-60`) before letting the flip land. Without it, a PUT resolves
+ * immediately with the flipped field applied, the same shape `stubServer`
+ * (below) answers with.
+ */
+function drawVisibility(
+  fields: Record<string, boolean>,
+  opts: { version?: string; putStatus?: number; hold?: boolean } = {},
+) {
+  let release: (() => void) | null = null
+  vi.stubGlobal('fetch', vi.fn(async (path: string, init?: RequestInit) => {
+    if (init?.method === 'PUT') {
+      const body = JSON.parse(String(init.body)) as { visible: boolean }
+      put = { path, body }
+      if (opts.hold) await new Promise<void>((res) => { release = res })
+      const status = opts.putStatus ?? 200
+      if (status !== 200) {
+        return new Response(JSON.stringify({ detail: 'nope' }), { status, headers: JSON_HEAD })
+      }
+      const field = path.slice(path.lastIndexOf('/') + 1)
+      return new Response(
+        JSON.stringify({ fields: { ...fields, [field]: body.visible }, version: opts.version ?? 'ffffffffffffffff' }),
+        { status: 200, headers: JSON_HEAD })
+    }
+    return new Response(JSON.stringify({ fields, version: opts.version ?? '0123456789abcdef' }),
+      { status: 200, headers: JSON_HEAD })
+  }))
+  mount()
+  return { resolve: () => release?.() }
+}
+
+describe('the policy card — one card of rows, not six floating ones', () => {
+  it('is one card of rows, each with a drawn tick and a word for its state', async () => {
+    drawVisibility(POLICY)
+    const card = await screen.findByRole('group', { name: 'سیاست نمایش محتوا' })
+    const rows = within(card).getAllByRole('checkbox')
+    expect(rows).toHaveLength(6)
+    // F5/X4 — `min-h-touch min-w-touch` on an `appearance:auto` checkbox
+    // renders a 44px OS square with a 44px tick, beside a two-line block
+    // ~40px tall. The control was bigger than the content it labelled, and
+    // the same control is 16px elsewhere. §6.12 fixes it at 19×19.
+    rows.forEach((r) => expect(r).toHaveClass('sr-only'))       // the input is the a11y layer
+    expect(within(card).getAllByTestId('tick')).toHaveLength(6)
+    // The left-hand state word — the thing that fills 55–60% of a blank row.
+    const summary = within(card).getByRole('listitem', { name: 'خلاصهٔ فرآیند' })
+    expect(within(summary).getByText('پنهان است')).toHaveClass('text-muted')
+    const actor = within(card).getByRole('listitem', { name: 'مسئول فعالیت' })
+    expect(within(actor).getByText('نمایش داده می‌شود')).toHaveClass('text-green')
+  })
+
+  it('separates rows with a hairline and does not rule off the last one', async () => {
+    drawVisibility(POLICY)
+    const rows = within(await screen.findByRole('group', { name: 'سیاست نمایش محتوا' }))
+      .getAllByRole('listitem')
+    rows.slice(0, -1).forEach((r) => expect(r).toHaveClass('border-b'))
+    expect(rows[rows.length - 1]).toHaveClass('last:border-b-0')
+  })
+
+  it('looks busy rather than frozen while a flip is in flight', async () => {
+    const { resolve } = drawVisibility(POLICY, { hold: true })
+    await userEvent.click(await screen.findByRole('checkbox', { name: 'خلاصهٔ فرآیند' }))
+    const card = screen.getByRole('group', { name: 'سیاست نمایش محتوا' })
+    expect(card).toHaveAttribute('aria-busy', 'true')
+    expect(card).toHaveClass('opacity-60')
+    // §4.6 Disabled — "keeps its surface and fades". S1 expresses it as an
+    // opacity on the container, which is exactly one flip's worth of feedback
+    // for a mutation that really does hold every row.
+    resolve()
+    await waitFor(() => expect(card).not.toHaveAttribute('aria-busy'))
+  })
+})
+
 describe('the visibility policy screen', () => {
   it('lists all six switches with the values the server sent', async () => {
     mount()
@@ -80,8 +163,17 @@ describe('the visibility policy screen', () => {
     // switch and flipping it back restores the earlier string. A label like
     // «شمارهٔ ویرایش (هر تغییر یکی زیاد می‌شود)» would imply the opposite, and
     // the substring match below is what a rewording like that breaks.
+    //
+    // A matcher FUNCTION, not a plain regex: F8/F9 (Task 23) puts the digest in
+    // its own `dir="ltr"` span so it no longer bidi-reorders inside the Persian
+    // sentence, and Testing Library's default text match only reads an
+    // element's OWN direct text nodes — never a descendant element's — so a
+    // plain string/regex can no longer see "prefix + digest" as one match once
+    // the digest has its own wrapping element. `element.textContent` (native,
+    // not `getNodeText`) still sees the whole line, and only the `<p>` has it.
     mount()
-    expect(await screen.findByText(/نسخهٔ تنظیم: 0123456789abcdef/)).toBeInTheDocument()
+    expect(await screen.findByText((_, node) =>
+      node?.textContent === 'نسخهٔ تنظیم: 0123456789abcdef')).toBeInTheDocument()
   })
 
   it('says the department introduction has no switch here and is always shown in full (D55)', async () => {
