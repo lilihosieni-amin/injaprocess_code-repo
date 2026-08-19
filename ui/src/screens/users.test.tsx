@@ -674,45 +674,60 @@ describe('the user-administration entry in the panel header', () => {
 
 describe('one person\'s record', () => {
   it('shows the account as the server reports it', async () => {
-    stubServer([SAHAR])
-    mountDetail(7)
+    renderDetail(EDITOR, SAHAR)
     expect(await screen.findByRole('heading', { name: 'سحر بیات' })).toBeInTheDocument()
     expect(screen.getByText('09121111111')).toBeInTheDocument()
     expect(screen.getByText('مدیر')).toBeInTheDocument()
-    expect(screen.getByText('dept:cooking')).toBeInTheDocument()
-    expect(screen.getByText(/مریم رستمی/)).toBeInTheDocument()
-    expect(screen.getByText('فعال')).toBeInTheDocument()
+    // The department's NAME. §6.8 prints «پخت» where the row stores
+    // `dept:cooking`, which is a storage key and not a word anybody reads.
+    expect(screen.getByText('پخت')).toBeInTheDocument()
+    expect(screen.getByText('مریم رستمی')).toBeInTheDocument()
   })
 
   it('lists every scope, not just the first', async () => {
     // `scopes[0]` renders correctly for the single-scope majority and silently
     // hides the second department of a head of two.
-    stubServer([NADER])
-    mountDetail(8)
-    expect(await screen.findByText('dept:dining')).toBeInTheDocument()
-    expect(screen.getByText('dept:cashier')).toBeInTheDocument()
+    renderDetail(EDITOR, NADER)
+    expect(await screen.findByText('سالن')).toBeInTheDocument()
+    expect(screen.getByText('صندوق')).toBeInTheDocument()
   })
 
-  it('reads the creation date as unix seconds, not milliseconds', async () => {
-    // The server writes `int(time.time())`. Handed to `jalali` raw it is read as
-    // milliseconds and prints ۱۳۴۸/… — five decades off and perfectly
-    // plausible-looking. 1700000000 is 2023-11-14, i.e. ۱۴۰۲/۰۸/۲۳.
-    stubServer([SAHAR])
-    mountDetail(7)
-    expect(await screen.findByText('۱۴۰۲/۰۸/۲۳')).toBeInTheDocument()
+  it('draws no creation date, because §6.8 has no field for one', async () => {
+    // **The guard this replaces, and why it went.** It asserted that
+    // `createdAt` — unix SECONDS (`users.created_at` is `INTEGER DEFAULT
+    // (unixepoch())`), not the ISO string every timestamp in `api/types.ts` is
+    // — was multiplied before `jalali` saw it; handed over raw it read as
+    // milliseconds and printed ۱۳۴۸/…, five decades off and perfectly
+    // plausible-looking. §6.8's four panels have nowhere to print a creation
+    // date, so the field is gone from this screen and the guard with it. Stated
+    // as an assertion rather than deleted, so its removal is a decision on the
+    // record. `jalali` itself is still covered by `lib/format.test.ts`, and
+    // **no screen in this app renders `createdAt` any more** — reported.
+    renderDetail(EDITOR, SAHAR)
+    await screen.findByRole('heading', { name: 'سحر بیات' })
+    expect(screen.queryByText(/۱۴۰۲/)).toBeNull()
   })
 
-  it('marks a disabled account disabled', async () => {
-    stubServer([NADER])
-    mountDetail(8)
-    expect(await screen.findByText('غیرفعال')).toBeInTheDocument()
-    expect(screen.queryByText('فعال')).toBeNull()
+  it('says a disabled account is disabled where §6.8 puts it — on the danger card', async () => {
+    // The `StatusPill` beside the name is gone: §6.8 draws no pill there, and
+    // the account's state is the danger card's whole subject. The deliverable
+    // binds ONE label (`{{ disableLabel }}`) to that card's heading and to its
+    // button, so a screen that read the flag backwards would say «غیرفعال‌سازی»
+    // on an account that is already off.
+    renderDetail(EDITOR, NADER)
+    expect(await screen.findByRole('group', { name: 'فعال‌سازی کاربر' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'فعال‌سازی کاربر' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'غیرفعال‌سازی کاربر' })).toBeNull()
   })
 
   it('warns when this person\'s supervisor is disabled (D14)', async () => {
-    stubServer([NADER])
-    mountDetail(8)
-    expect(await screen.findByText(/سرپرست این کاربر غیرفعال است/)).toBeInTheDocument()
+    // D14 leaves a disabled supervisor in place rather than quietly repointing
+    // the people under them, so the gap is stated here or nowhere. §6.8's own
+    // sentence says where the comments go instead, which the old one did not.
+    renderDetail(EDITOR, NADER)
+    expect(await screen.findByText(
+      'این سرپرست غیرفعال است — کامنت‌های این کاربر یک پله بالاتر می‌روند.'))
+      .toBeInTheDocument()
   })
 
   it('says the supervisor flag is an org-chart fact that grants nothing (D51)', async () => {
@@ -720,19 +735,18 @@ describe('one person\'s record', () => {
     // scope and no rank. Drawn as «دسترسی سرپرستی» beside the role it reads as a
     // permission, and an administrator would then set it to give somebody
     // something — or refuse to set it to withhold something.
-    stubServer([NADER])
-    mountDetail(8)
-    expect(await screen.findByText('می‌تواند سرپرست دیگران باشد')).toBeInTheDocument()
-    expect(screen.getByText('این یک جایگاه در نمودار سازمانی است و هیچ دسترسی‌ای نمی‌دهد.'))
+    renderDetail(EDITOR, NADER)
+    const sup = await screen.findByRole('group', { name: 'سرپرست' })
+    expect(within(sup).getByText(/هیچ\s*دسترسی‌ای نمی‌دهد/)).toBeInTheDocument()
+    expect(within(sup).getByText(/این کاربر خودش می‌تواند سرپرست دیگران باشد/))
       .toBeInTheDocument()
   })
 
   it('does not claim the flag for somebody who does not carry it', async () => {
-    stubServer([SAHAR])
-    mountDetail(7)
-    expect(await screen.findByRole('heading', { name: 'سحر بیات' })).toBeInTheDocument()
-    expect(screen.getByText('نمی‌تواند سرپرست دیگران باشد')).toBeInTheDocument()
-    expect(screen.queryByText('می‌تواند سرپرست دیگران باشد')).toBeNull()
+    renderDetail(EDITOR, SAHAR)
+    const sup = await screen.findByRole('group', { name: 'سرپرست' })
+    expect(within(sup).getByText(/این کاربر سرپرست کسی نمی‌شود/)).toBeInTheDocument()
+    expect(within(sup).queryByText(/می‌تواند سرپرست دیگران باشد/)).toBeNull()
   })
 
   it('shows the not-found surface for an id the server does not know', async () => {
@@ -754,6 +768,12 @@ describe('one person\'s record', () => {
     session = { ...EDITOR, capabilities: ['view', 'edit'] }
     mountDetail(7)
     expect(await screen.findByText('اجازهٔ این کار را ندارید')).toBeInTheDocument()
+    // Not one read at all, the department registry included: §6.8 panel 1 reads
+    // it to name a scope, and it does so from a child component that this
+    // refusal never mounts — so a caller who is about to be shown a 403 asks
+    // the server for nothing. `useUser`'s `enabled` flag is the same idea one
+    // line further up; a `useDepartments()` in the screen body would sit ABOVE
+    // the early return and fire regardless.
     await waitFor(() => expect(seen.gets).toEqual([]))
   })
 
@@ -789,23 +809,32 @@ describe('one person\'s record', () => {
 
 describe('the controls on one person\'s record', () => {
   it('offers them to an administrator who may act on this account', async () => {
-    stubServer([SAHAR])
-    mountDetail(7)
-    expect(await screen.findByRole('button', { name: 'غیرفعال‌سازی حساب' })).toBeInTheDocument()
+    renderDetail(EDITOR, SAHAR)
+    expect(await screen.findByRole('button', { name: 'غیرفعال‌سازی کاربر' })).toBeInTheDocument()
     expect(screen.getByLabelText('گذرواژهٔ تازه')).toBeInTheDocument()
+    // Both editing entrances, and they are one surface: the header's «ویرایش»
+    // and the supervisor panel's «تغییر سرپرست» open the same dialog, because
+    // the edge and the scopes are re-validated together on the server.
+    expect(screen.getByRole('button', { name: 'ویرایش' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'تغییر سرپرست' })).toBeInTheDocument()
   })
 
-  it('withholds them on the administrator\'s own record, and says where to go instead', async () => {
+  it('withholds them on the administrator\'s own record, and says nothing (R5)', async () => {
     // D13: nobody edits their own record, and the server answers SELF_EDIT to
     // every write on this path. A screen that draws the controls anyway makes
     // the administrator find that out by pressing them.
-    stubServer([{ ...SAHAR, username: EDITOR.username }])
-    mountDetail(7)
-    expect(await screen.findByText(/گذرواژهٔ خودتان را از صفحهٔ نمایه عوض کنید/)).toBeInTheDocument()
-    // …and not the other reason. There are two, they send an administrator to
-    // two different places, and only one of them is true here.
-    expect(screen.queryByText(/دسترسی این حساب از دسترسی شما بیشتر است/)).toBeNull()
-    expect(screen.queryByRole('button', { name: 'غیرفعال‌سازی حساب' })).toBeNull()
+    //
+    // **And it explains nothing.** The sentence that stood here sent the reader
+    // to «نمایه» for the one thing they may change — but `PanelShell` carries
+    // that entry in the nav on every screen, so this was a second, worse route
+    // to a link already on the page, and R5 draws no refusal.
+    renderDetail(EDITOR, { ...SAHAR, username: EDITOR.username })
+    await screen.findByRole('heading', { name: 'سحر بیات' })
+    expect(screen.queryByText(/حساب خودتان را از این صفحه/)).toBeNull()
+    expect(screen.queryByText(/گذرواژهٔ خودتان را از صفحهٔ نمایه عوض کنید/)).toBeNull()
+    expect(screen.queryByRole('button', { name: 'ویرایش' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'تغییر سرپرست' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'غیرفعال‌سازی کاربر' })).toBeNull()
     expect(screen.queryByLabelText('گذرواژهٔ تازه')).toBeNull()
   })
 
@@ -813,17 +842,14 @@ describe('the controls on one person\'s record', () => {
     // The subset rule (D13). An Admin may not touch an Editor: every write here
     // comes back NOT_A_SUBSET, so the controls are drawn for nobody who would
     // only be refused.
-    session = ADMIN
-    stubServer([EDITOR_ROW])
-    mountDetail(9)
+    renderDetail(ADMIN, EDITOR_ROW)
     expect(await screen.findByRole('heading', { name: 'هما نیک‌روش' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'غیرفعال‌سازی حساب' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'غیرفعال‌سازی کاربر' })).toBeNull()
     expect(screen.queryByLabelText('گذرواژهٔ تازه')).toBeNull()
-    // **Which sentence, not merely that the controls are gone.** Told the self
-    // sentence here, an Admin reading somebody else's record is sent to their
-    // own profile page to change something that is not the problem — and the
-    // reason they were actually refused is never stated.
-    expect(screen.getByText(/دسترسی این حساب از دسترسی شما بیشتر است/)).toBeInTheDocument()
+    // **R5 even here.** This refusal depends on the TARGET rather than on the
+    // caller — «this account holds more than you do» — and the rule does not
+    // bend for that: the panels are absent, and nothing stands in their place.
+    expect(screen.queryByText(/دسترسی این حساب از دسترسی شما بیشتر است/)).toBeNull()
     expect(screen.queryByText(/گذرواژهٔ خودتان را از صفحهٔ نمایه عوض کنید/)).toBeNull()
   })
 
@@ -832,12 +858,10 @@ describe('the controls on one person\'s record', () => {
     // itself, so an Admin may not act on another Admin holding exactly what they
     // hold. A screen implementing `⊆` instead of `⊂` draws the controls here and
     // passes every other case in this file.
-    session = ADMIN
-    stubServer([{ ...SAHAR, capabilities: ADMIN.capabilities }])
-    mountDetail(7)
+    renderDetail(ADMIN, { ...SAHAR, capabilities: ADMIN.capabilities })
     expect(await screen.findByRole('heading', { name: 'سحر بیات' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'غیرفعال‌سازی حساب' })).toBeNull()
-    expect(screen.getByText(/دسترسی این حساب از دسترسی شما بیشتر است/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'غیرفعال‌سازی کاربر' })).toBeNull()
+    expect(screen.queryByText(/دسترسی این حساب از دسترسی شما بیشتر است/)).toBeNull()
     expect(screen.queryByText(/گذرواژهٔ خودتان را از صفحهٔ نمایه عوض کنید/)).toBeNull()
   })
 
@@ -855,10 +879,9 @@ describe('the controls on one person\'s record', () => {
     // SCOPE_NOT_COVERED rather than being conferred unchecked", so every write
     // from here really would be refused, and drawing the controls would send an
     // administrator to press them.
-    stubServer([{ ...SAHAR, scopes: [''] }])
-    mountDetail(7)
+    renderDetail(EDITOR, { ...SAHAR, scopes: [''] })
     expect(await screen.findByRole('heading', { name: 'سحر بیات' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'غیرفعال‌سازی حساب' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'غیرفعال‌سازی کاربر' })).toBeNull()
     expect(screen.queryByLabelText('گذرواژهٔ تازه')).toBeNull()
   })
 
@@ -866,23 +889,28 @@ describe('the controls on one person\'s record', () => {
     // The other side of the same line. `manage_peers` is what makes «may appoint
     // an equal» one bit in one role rather than a rank comparison (D13), and a
     // screen that ignores it hides the controls an Editor really does hold.
-    stubServer([{ ...SAHAR, capabilities: EDITOR.capabilities }])
-    mountDetail(7)
-    expect(await screen.findByRole('button', { name: 'غیرفعال‌سازی حساب' })).toBeInTheDocument()
+    renderDetail(EDITOR, { ...SAHAR, capabilities: EDITOR.capabilities })
+    expect(await screen.findByRole('button', { name: 'غیرفعال‌سازی کاربر' })).toBeInTheDocument()
   })
 
-  it('gives every control its own horizontal padding and type size', async () => {
+  it('gives every action its own horizontal padding and type size', async () => {
     // `Button`'s BASE carries neither on purpose (I5) — the call site owns both
     // — so a bare `<Button>` renders as a 44 px touch box with its text jammed
     // against the edges. jsdom measures nothing, so the class is the only thing
     // any runnable test can see, and a previous task shipped two such buttons
     // because nothing asserted it.
-    stubServer([SAHAR])
-    mountDetail(7)
-    await screen.findByRole('button', { name: 'غیرفعال‌سازی حساب' })
-    for (const b of screen.getAllByRole('button')) {
-      expect(b.className, `«${b.textContent}» has no horizontal padding`).toMatch(/(^|\s)px-/)
-      expect(b.className, `«${b.textContent}» sets no type size`).toMatch(/(^|\s)text-(caption|body|subtitle)\b/)
+    //
+    // The four are NAMED rather than swept up with `getAllByRole('button')`:
+    // `PasswordField`'s reveal control is a 32px square sized by `--size-reveal`
+    // and owns neither by design, so a loop would have to be weakened to admit
+    // it — which is how a guard comes to assert nothing. Naming them also makes
+    // the list a statement of which actions §6.8 draws.
+    renderDetail(EDITOR, SAHAR)
+    await screen.findByRole('button', { name: 'غیرفعال‌سازی کاربر' })
+    for (const name of ['ویرایش', 'تغییر سرپرست', 'ثبت گذرواژه', 'غیرفعال‌سازی کاربر']) {
+      const b = screen.getByRole('button', { name })
+      expect(b.className, `«${name}» has no horizontal padding`).toMatch(/(^|\s)px-[a-z]/)
+      expect(b.className, `«${name}» sets no type size`).toMatch(/(^|\s)text-fs-[a-z0-9]+\b/)
     }
   })
 })
@@ -894,25 +922,26 @@ describe('disabling and re-enabling an account', () => {
     // it contradicts is the one thing an administrator reads to check the write
     // worked. The stub really flips its stored row, so only a screen that
     // re-reads can show «غیرفعال» here.
-    const seen = stubServer([SAHAR])
-    mountDetail(7)
-    await userEvent.click(await screen.findByRole('button', { name: 'غیرفعال‌سازی حساب' }))
+    const { seen } = renderDetail(EDITOR, SAHAR)
+    await userEvent.click(await screen.findByRole('button', { name: 'غیرفعال‌سازی کاربر' }))
     await waitFor(() => expect(seen.writes).toHaveLength(1))
     expect(seen.writes[0].path).toBe('/api/users/7/disabled')
     expect(seen.writes[0].body).toEqual({ disabled: true })
-    expect(await screen.findByText('غیرفعال')).toBeInTheDocument()
-    expect(screen.queryByText('فعال')).toBeNull()
+    // The danger card carries the state now that the pill is gone: its heading
+    // and its button both flip to the other direction, and they can only do
+    // that if the screen re-read the row the stub really stored.
+    expect(await screen.findByRole('button', { name: 'فعال‌سازی کاربر' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'غیرفعال‌سازی کاربر' })).toBeNull()
   })
 
   it('re-enables in the other direction, sending false', async () => {
     // One endpoint, both verbs (D14). A screen hardcoding `true` disables an
     // account that was already disabled and reports success.
-    const seen = stubServer([NADER])
-    mountDetail(8)
-    await userEvent.click(await screen.findByRole('button', { name: 'فعال‌سازی حساب' }))
+    const { seen } = renderDetail(EDITOR, NADER)
+    await userEvent.click(await screen.findByRole('button', { name: 'فعال‌سازی کاربر' }))
     await waitFor(() => expect(seen.writes).toHaveLength(1))
     expect(seen.writes[0].body).toEqual({ disabled: false })
-    expect(await screen.findByText('فعال')).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'غیرفعال‌سازی کاربر' })).toBeInTheDocument()
   })
 
   it('repeats the server\'s own sentence when the write is refused, and keeps the stored state', async () => {
@@ -921,15 +950,15 @@ describe('disabling and re-enabling an account', () => {
     // the drawn controls could not have predicted. Its Persian sentence is
     // written for this administrator and names something they can act on;
     // «انجام نشد» in its place throws that away.
-    stubServer([SAHAR], {
+    renderDetail(EDITOR, SAHAR, {
       writeStatus: 403,
       writeDetail: 'این تنها ویرایشگر فعال سامانه است و دسترسی‌اش را نمی‌توان برداشت',
     })
-    mountDetail(7)
-    await userEvent.click(await screen.findByRole('button', { name: 'غیرفعال‌سازی حساب' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'غیرفعال‌سازی کاربر' }))
     expect(await screen.findByRole('alert'))
       .toHaveTextContent('این تنها ویرایشگر فعال سامانه است و دسترسی‌اش را نمی‌توان برداشت')
-    expect(screen.getByText('فعال')).toBeInTheDocument()
+    // The write did not land, so the card still offers the direction it did.
+    expect(screen.getByRole('button', { name: 'غیرفعال‌سازی کاربر' })).toBeInTheDocument()
   })
 
   it('does not put a framework\'s English on a Persian screen when a 4xx carries no sentence', async () => {
@@ -940,14 +969,13 @@ describe('disabling and re-enabling an account', () => {
     // back to `res.statusText`: «Unprocessable Entity», in English, in an alert,
     // to a Persian-speaking administrator. Same for a proxy-generated 429 or 413
     // with no JSON body at all.
-    stubServer([SAHAR], {
+    renderDetail(EDITOR, SAHAR, {
       writeStatus: 422,
       writeDetail: [{ type: 'bool_parsing', loc: ['body', 'disabled'],
                       msg: 'Input should be a valid boolean' }],
       statusText: 'Unprocessable Entity',
     })
-    mountDetail(7)
-    await userEvent.click(await screen.findByRole('button', { name: 'غیرفعال‌سازی حساب' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'غیرفعال‌سازی کاربر' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('انجام نشد؛ دوباره تلاش کنید.')
     expect(screen.queryByText(/Unprocessable Entity/)).toBeNull()
     expect(screen.queryByText(/valid boolean/)).toBeNull()
@@ -958,25 +986,23 @@ describe('disabling and re-enabling an account', () => {
     // Error"}` — a `detail` that *is* a string, and still not a sentence written
     // for anybody. A 5xx is not a refusal at all, so it never speaks for the
     // server; widening the echo to "any ApiError" puts this on the screen.
-    stubServer([SAHAR], {
+    renderDetail(EDITOR, SAHAR, {
       writeStatus: 500, writeDetail: 'Internal Server Error',
       statusText: 'Internal Server Error',
     })
-    mountDetail(7)
-    await userEvent.click(await screen.findByRole('button', { name: 'غیرفعال‌سازی حساب' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'غیرفعال‌سازی کاربر' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('انجام نشد؛ دوباره تلاش کنید.')
     expect(screen.queryByText(/Internal Server Error/)).toBeNull()
     // The write did not land, so the stored state is what is still drawn.
-    expect(screen.getByText('فعال')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'غیرفعال‌سازی کاربر' })).toBeInTheDocument()
   })
 
   it('says nothing about failure while everything is succeeding', async () => {
     // The alert must be the consequence of a refusal, not furniture that is
     // always in the DOM — which would pass the test above for the wrong reason.
-    stubServer([SAHAR])
-    mountDetail(7)
-    await userEvent.click(await screen.findByRole('button', { name: 'غیرفعال‌سازی حساب' }))
-    expect(await screen.findByText('غیرفعال')).toBeInTheDocument()
+    renderDetail(EDITOR, SAHAR)
+    await userEvent.click(await screen.findByRole('button', { name: 'غیرفعال‌سازی کاربر' }))
+    expect(await screen.findByRole('button', { name: 'فعال‌سازی کاربر' })).toBeInTheDocument()
     expect(screen.queryByRole('alert')).toBeNull()
   })
 })
@@ -1014,11 +1040,23 @@ describe('setting somebody else\'s password (D15)', () => {
   it('refuses a value under six characters without spending an argon2 hash on it', async () => {
     // The server's floor is six (D58). Sending it anyway costs a ~61 ms hash on
     // the shared verify limiter to be told what the field already knew.
-    const seen = stubServer([SAHAR])
-    mountDetail(7)
-    await userEvent.type(await screen.findByLabelText('گذرواژهٔ تازه'), 'five5')
+    //
+    // Stated UNDER the control rather than in a detached `role="alert"`: §4.6
+    // has no field-level error style — errors are stated in copy — and
+    // `PasswordField` binds that line to the input with `aria-describedby` and
+    // marks it `aria-invalid`, so a screen reader that lands in the field is
+    // told what is wrong with the field it is in. The alert this replaces sat
+    // outside the control and named nothing.
+    const { seen } = renderDetail(EDITOR, SAHAR)
+    const field = await screen.findByLabelText('گذرواژهٔ تازه')
+    await userEvent.type(field, 'five5')
     await userEvent.click(screen.getByRole('button', { name: 'ثبت گذرواژه' }))
-    expect(await screen.findByRole('alert')).toHaveTextContent('گذرواژه باید دست‌کم ۶ نویسه باشد')
+    await waitFor(() => expect(field).toHaveAttribute('aria-invalid', 'true'))
+    const described = field.getAttribute('aria-describedby')
+    expect(described, 'the floor is stated in a line the field does not point at')
+      .not.toBeNull()
+    expect(document.getElementById(described!))
+      .toHaveTextContent('گذرواژه باید دست‌کم ۶ نویسه باشد')
     expect(seen.writes).toEqual([])
   })
 
@@ -1072,5 +1110,108 @@ describe('the record screen (§6.8)', () => {
     expect(svg!.getAttribute('stroke-width')).toBe('2.4')
     // F14 — it was a 17px-tall hit target with no hover.
     expect(back).toHaveClass('min-h-touch')
+  })
+
+  it('names the department the account reaches, not the key it is stored under', async () => {
+    renderDetail(EDITOR, { ...SAHAR, scopes: ['dept:dining', 'dept:cashier/report:steps'] })
+    const panel = await screen.findByRole('group', { name: 'نقش و دپارتمان' })
+    expect(within(panel).getByText('سالن')).toBeInTheDocument()
+    expect(within(panel).getByText('صندوق (فقط راهنمای گام‌به‌گام)')).toBeInTheDocument()
+    expect(within(panel).queryByText(/dept:/)).toBeNull()
+  })
+
+  it('quotes a scope the grammar refuses rather than prettifying it away', async () => {
+    // Its own test rather than a second `renderDetail` inside the one above:
+    // two mounts in one test leave both records in the document, and every
+    // `screen.*` query then reads across a page nobody drew.
+    //
+    // An account covered by nothing must not read as an account covered by a
+    // department (`lib/scopes.ts`, `ParsedScope.refused`) — `user_scopes.scope`
+    // is `TEXT NOT NULL` with no CHECK, so such a row is storable today.
+    renderDetail(EDITOR, { ...SAHAR, scopes: ['nonsense'] })
+    const panel = await screen.findByRole('group', { name: 'نقش و دپارتمان' })
+    expect(within(panel).getByText('nonsense')).toBeInTheDocument()
+  })
+
+  it('says so, rather than nothing, for an account with no scope row at all', async () => {
+    renderDetail(EDITOR, { ...SAHAR, scopes: [] })
+    const panel = await screen.findByRole('group', { name: 'نقش و دپارتمان' })
+    expect(within(panel).getByText('هیچ دامنه‌ای')).toBeInTheDocument()
+  })
+
+  it('draws nothing at all where a viewer may not act, and explains nothing (R5)', async () => {
+    // ADMIN holds `manage_users` without `manage_peers`, and this target confers
+    // `edit`, which they do not hold — so the subset rule refuses them and
+    // `mayManage` is false. The refusal depends on the TARGET, not the caller,
+    // and R5 does not bend for that: absent, not explained.
+    renderDetail(ADMIN, { ...SAHAR, capabilities: [...ADMIN.capabilities, 'edit'] })
+    expect(await screen.findByRole('heading', { name: 'سحر بیات' })).toBeInTheDocument()
+    // The three manage panels are absent — not disabled, not explained.
+    expect(screen.queryByRole('button', { name: 'ویرایش' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'تغییر سرپرست' })).toBeNull()
+    expect(screen.queryByRole('group', { name: 'گذرواژه' })).toBeNull()
+    expect(screen.queryByRole('group', { name: /غیرفعال‌سازی/ })).toBeNull()
+    expect(screen.queryByText(/دسترسی این حساب از دسترسی شما بیشتر است/)).toBeNull()
+    // What stays is what everybody who reaches this surface may read.
+    expect(screen.getByRole('group', { name: 'نقش و دپارتمان' })).toBeInTheDocument()
+    expect(screen.getByRole('group', { name: 'سرپرست' })).toBeInTheDocument()
+  })
+
+  it('says nothing on your own record either — the profile is in the nav (R5)', async () => {
+    renderDetail(EDITOR, { ...SAHAR, username: EDITOR.username })
+    await screen.findByRole('heading', { name: 'سحر بیات' })
+    expect(screen.queryByText(/حساب خودتان را از این صفحه/)).toBeNull()
+    expect(screen.queryByRole('button', { name: 'ویرایش' })).toBeNull()
+  })
+
+  it('stacks the design\'s four panels, in order, with the danger card last', async () => {
+    renderDetail(EDITOR, {
+      ...SAHAR,
+      supervisor: { id: 21, username: '09123333333', displayName: 'مریم رستمی', disabled: true },
+    })
+    const groups = await screen.findAllByRole('group')
+    expect(groups.map((g) => g.getAttribute('aria-label')))
+      .toEqual(['نقش و دپارتمان', 'سرپرست', 'گذرواژه', 'غیرفعال‌سازی کاربر'])
+    const sup = screen.getByRole('group', { name: 'سرپرست' })
+    expect(within(sup).getByText('مریم رستمی')).toBeInTheDocument()
+    expect(within(sup).getByText(
+      'این سرپرست غیرفعال است — کامنت‌های این کاربر یک پله بالاتر می‌روند.')).toBeInTheDocument()
+    expect(within(sup).getByRole('button', { name: 'تغییر سرپرست' })).toBeInTheDocument()
+    expect(within(screen.getByRole('group', { name: 'گذرواژه' }))
+      .getByRole('heading', { name: 'بازنشانی گذرواژهٔ سحر بیات' })).toBeInTheDocument()
+    // §5.2's destructive ghost: `--tile-c2` under `--conflict`. The deliverable
+    // binds the SAME skin in both directions — re-enabling restores
+    // capabilities, so it is exactly as consequential as disabling.
+    expect(screen.getByRole('button', { name: 'غیرفعال‌سازی کاربر' }))
+      .toHaveClass('bg-tile-c2', 'text-conflict')
+  })
+
+  it('hooks the measurement points on the elements the harness row means', async () => {
+    // `expectDesign` resolves each hook as the FIRST match inside
+    // `[data-screen="access"]`, and a hook on the wrong element grades that
+    // element and reports GREEN — which is worse than omitting it. jsdom paints
+    // nothing, so what a runnable test can hold is which element carries which
+    // attribute; the values are the Playwright check's.
+    renderDetail(EDITOR, SAHAR)
+    const screenRoot = document.querySelector('[data-screen="access"]')!
+    expect(screenRoot).not.toBeNull()
+    // [data-col] is the 820px column, not the scrolling root.
+    expect(screenRoot.querySelector('[data-col]')!.className).toContain('max-w-access')
+    // [data-h1] is the <h1> itself.
+    expect(screenRoot.querySelector('[data-h1]')!.tagName).toBe('H1')
+    expect(screenRoot.querySelector('[data-h1]')!.textContent).toBe('سحر بیات')
+    // [data-body] is the mono username — the one hook the row exempts from
+    // `rtl`. On the wrapper instead, the exemption would stop describing
+    // anything while the column and the title stayed held to `rtl`.
+    const body = screenRoot.querySelector('[data-body]')!
+    expect(body.getAttribute('dir')).toBe('ltr')
+    expect(body.textContent).toBe('09121111111')
+    // [data-card] is panel 1, and there is exactly one of them: a second would
+    // be measured by nothing while claiming to be measured.
+    const cards = screenRoot.querySelectorAll('[data-card]')
+    expect(cards).toHaveLength(1)
+    expect(cards[0].getAttribute('aria-label')).toBe('نقش و دپارتمان')
+    // `access` carries no `grid`, so no grid hook goes on this screen.
+    expect(screenRoot.querySelectorAll('[data-grid]')).toHaveLength(0)
   })
 })

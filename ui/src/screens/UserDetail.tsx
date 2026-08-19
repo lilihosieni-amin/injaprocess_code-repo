@@ -1,46 +1,71 @@
-import { useState, type ReactNode } from 'react'
+import { useId, useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useSession } from '../auth/useSession'
 import { administrationRefusal } from '../auth/can'
+import { useDepartments } from '../api/hooks'
 import {
-  mayManage, useSetUserDisabled, useSetUserPassword, useUser,
+  mayManage, useSetUserDisabled, useSetUserPassword, useUser, type AdminUser,
 } from '../api/users'
 import { refusalStatus } from '../api/client'
-import { jalali } from '../lib/format'
 import { refusalText } from '../lib/refusal'
 import { roleLabel } from '../lib/roles'
+import { NO_DEPARTMENT, scopeLabel } from '../lib/scopes'
 import { MIN_PASSWORD, TOO_SHORT } from '../lib/userDraft'
 import { Button } from '../ui/Button'
-import { Card } from '../ui/Card'
 import { Icon } from '../ui/Icon'
-import { StatusPill } from '../ui/StatusPill'
+import { PasswordField } from '../ui/PasswordField'
 import { LoadFailedScreen } from '../ui/states'
 import { EditUserDialog } from './EditUserDialog'
 import { RefusalScreen } from './Refusal'
-import { SUPERVISOR_GONE } from './Users'
 
 /**
- * One person's record, and the two acts an administrator performs on it
- * (D13, D14, D15).
+ * One person's record — §6.8's Access screen: four panels in an 820px column on
+ * the violet field.
  *
- * **Read-only for anyone this administrator may not act on.** `mayManage` is the
- * client twin of `delegation.may_modify`: the account is still shown — the
- * surface is `*`-gated, so everyone who reaches it may see everyone — while the
- * controls whose every press would come back refused are not drawn at all. The
- * two reasons that arise say different things, because "you cannot edit
- * yourself, go to your profile" and "this account holds more than you do" send
- * an administrator to different places.
+ * ## R5 is the whole composition
+ *
+ * "If a person cannot reach something it is not on their screen at all." The
+ * account is still shown to everyone who reaches this surface — it is `*`-gated,
+ * so everybody here already sees everybody — but the three panels whose every
+ * press would come back refused are **absent**: not disabled, not explained, and
+ * not a row that answers 404 when clicked. The deliverable states the same rule
+ * structurally, wrapping the password and danger cards in
+ * `<sc-if value="{{ canManageSel }}">` and drawing nothing where they are not.
+ *
+ * **The two sentences that used to stand here are gone with them.** They
+ * explained, to somebody who could do nothing about either, why three panels
+ * were missing: «this account holds more than you do» and «you cannot edit
+ * yourself». R5 forbids that outright, and it does so even here, where the
+ * refusal depends on the TARGET rather than on the caller — an administrator
+ * looking at an account that holds more than they do is refused by the subset
+ * rule, and is still shown nothing rather than told. The one thing in those two
+ * sentences that was useful — "change your own password on the profile" — is a
+ * destination and not a refusal, and `PanelShell` carries «نمایه» in the nav on
+ * every screen; a sentence here was a second, worse route to a link already on
+ * the page.
+ *
+ * ## The two gates, and the scope argument each one needs
+ *
+ * `administrationRefusal(session)` decides whether this screen exists for the
+ * caller at all, and it checks **scope before capability** (D56): not scoped `*`
+ * is a 404, `*` without `manage_users` is a 403. Reversed, a 403 would tell a
+ * department-scoped caller that user administration exists.
+ *
+ * `mayManage(session, user)` decides what is drawn on it, and it carries the
+ * scope clause itself — `scopeContains(held, wanted)` over every scope the
+ * target holds. Neither gate is `can(capability)`, which reads capabilities and
+ * ignores scope entirely; `PanelShell` was gating a nav entry that way and drew
+ * an entry whose screen answered 403.
  *
  * `mayManage` cannot answer for `LAST_EDITOR`, which counts rows this screen
  * never reads, so a refusal can still arrive at a control that was drawn — and
- * the alert repeats the server's sentence rather than assuming the screen
+ * the alert repeats the server's own sentence rather than assuming the screen
  * predicted every answer.
  *
- * The facts below are read-only; changing any of them is `EditUserDialog`,
- * which owns the candidate picker and the diff that decides what is sent. What
- * this screen owes D14 is the *warning*, since a disabled supervisor is left in
- * place rather than quietly repointed, and nothing else in the app would ever
- * mention it.
+ * Changing any fact on this record is `EditUserDialog`, which owns the candidate
+ * picker and the diff that decides what is sent. What this screen owes D14 is
+ * the *warning*, since a disabled supervisor is left in place rather than
+ * quietly repointed, and nothing else in the app would ever mention it.
  */
 export function UserDetail() {
   const { id = '' } = useParams()
@@ -54,6 +79,7 @@ export function UserDetail() {
   const [password, setPasswordValue] = useState('')
   const [tooShort, setTooShort] = useState(false)
   const [editing, setEditing] = useState(false)
+  const passwordId = useId()
 
   // Hooks first, then the early returns.
   if (!session) return <div className="flex-1 bg-bg" />
@@ -72,8 +98,8 @@ export function UserDetail() {
   }
   if (!user) return <div className="flex-1 bg-bg" />
 
-  const mine = session.username === user.username
   const manageable = mayManage(session, user)
+  const disableLabel = user.disabled ? 'فعال‌سازی کاربر' : 'غیرفعال‌سازی کاربر'
 
   function submitPassword() {
     // Both flags reset on every attempt: a complaint left over from the last try
@@ -89,8 +115,12 @@ export function UserDetail() {
   }
 
   return (
-    <div className="flex-1 overflow-auto py-s12 px-s12">
-      <div className="max-w-list mx-auto">
+    // §6.0 — the shell owns the violet field and this root repaints it, because
+    // the gate reads `background-color` off THIS element with
+    // `getComputedStyle`, which does not inherit.
+    <div data-screen="access"
+      className="flex-1 overflow-auto bg-ink py-screen-y px-screen-x max760:px-s7 max760:py-s9">
+      <div data-col className="max-w-access mx-auto">
         {/* §8 — chevrons are chosen by hand per direction rather than
             transformed, and "back" is `M9 18l6-6-6-6`, which `ICONS` calls
             `chevronStart`: towards the start of a trail, and in a right-to-left
@@ -114,91 +144,157 @@ export function UserDetail() {
           فهرست کاربران
         </Link>
 
-        <div className="flex items-center gap-s6 flex-wrap mt-s5">
-          <h1 className="text-title font-extrabold text-ink">{user.displayName}</h1>
-          <StatusPill tone={user.disabled ? 'neutral' : 'ok'}
-            label={user.disabled ? 'غیرفعال' : 'فعال'} />
-          <span dir="ltr" className="text-caption text-muted font-mono">{user.username}</span>
+        <div className="flex items-center justify-between gap-s7 flex-wrap mt-s5 mb-s4">
+          <div className="min-w-0">
+            <h1 data-h1 className="text-title font-extrabold text-role-title-on-field">
+              {user.displayName}
+            </h1>
+            {/* §6.8 — the username is a latin run on a violet field: mono,
+                `--violet-on-violet`, pinned `ltr`, aligned to the START. It was
+                absent from this screen's header entirely. `text-start` is
+                written out because the deliverable writes it out: inside an RTL
+                column an LTR run would otherwise be read as end-aligned by
+                anyone skimming, and `start` is what it is. */}
+            <span data-body dir="ltr"
+              className="block text-fs-sm2 font-mono text-violet-on-violet text-start mt-s2">
+              {user.username}
+            </span>
+          </div>
+          {/* R5 — the edit control is drawn only for a viewer the server would
+              really let write. The deliverable gates the same button on
+              `canManageSel`. */}
+          {manageable && (
+            <Button variant="violet" className="px-s8 py-s6 text-fs-sm rounded-button flex-none"
+              onClick={() => setEditing(true)}>
+              ویرایش
+            </Button>
+          )}
         </div>
 
-        <Card className="px-s9 py-s8 mt-s8 flex flex-col gap-s7">
-          <Row label="نقش">
-            {/* In Persian, like every other word on this record. `roleLabel`
-                keeps the identifier for a role seeded on the server ahead of
-                this build — quoted is legible, and «—» would say the account
-                has no role at all. */}
-            <span className="text-body text-ink">{roleLabel(user.role)}</span>
-          </Row>
+        <RoleAndScopePanel user={user} />
 
-          <Row label="دامنهٔ دسترسی">
-            {/* Every scope, never `scopes[0]`: a head of two departments holds
-                two rows, and showing one of them hides half of what they reach. */}
-            <span className="flex gap-s4 flex-wrap">
-              {user.scopes.length === 0
-                ? <span className="text-body text-muted">هیچ دامنه‌ای</span>
-                : user.scopes.map((scope) => (
-                  <span key={scope} className="text-caption text-violet bg-tile-v px-s5 py-s2 rounded-chip">
-                    {scope === '*' ? 'همهٔ دپارتمان‌ها' : scope}
-                  </span>
-                ))}
-            </span>
-          </Row>
+        {/* §6.8 panel 2. The supervisor is an org-chart position (D51): it
+            routes comment approval and grants nothing whatever, which is said
+            in the design's own rule-statement register — 11.5px, faint, 1.7 —
+            rather than as a second body paragraph that would read as a
+            permission. */}
+        <Panel eyebrow="سرپرست" label="سرپرست"
+          actions={manageable && (
+            // §6.8 gives this the row-action size: `10px 15px`, 12.5px,
+            // radius 11. It opens the one editing surface this app has —
+            // §6.9's dedicated change-supervisor modal has no counterpart
+            // here, because `EditUserDialog` owns the edge, the scopes and the
+            // re-validation that binds them (see the ledger).
+            <Button variant="ghost"
+              className="px-button-x py-s5 text-fs-sm2 rounded-input"
+              onClick={() => setEditing(true)}>
+              تغییر سرپرست
+            </Button>
+          )}>
+          <p className="text-fs-menu font-bold text-ink">
+            {user.supervisor ? user.supervisor.displayName : 'سرپرستی ندارد'}
+          </p>
+          {user.supervisor?.disabled && (
+            // D14 — a disabled supervisor is left in place rather than quietly
+            // repointed, so the gap is stated here or nowhere.
+            <p className="text-fs-xs font-semibold text-conflict mt-s1">
+              این سرپرست غیرفعال است — کامنت‌های این کاربر یک پله بالاتر می‌روند.
+            </p>
+          )}
+          <p className="text-fs-xs text-faint leading-normal mt-s1">
+            سرپرست جایگاهی در نمودار سازمانی است، تأیید نظرها را مسیر می‌دهد و هیچ
+            دسترسی‌ای نمی‌دهد.
+            {user.canSupervise
+              ? ' این کاربر خودش می‌تواند سرپرست دیگران باشد.'
+              : ' این کاربر سرپرست کسی نمی‌شود.'}
+          </p>
+        </Panel>
 
-          <Row label="سرپرست">
-            <span className="flex flex-col gap-s2">
-              <span className="text-body text-ink">
-                {user.supervisor ? user.supervisor.displayName : 'سرپرستی ندارد'}
-              </span>
-              {user.supervisor?.disabled && (
-                <span className="text-caption text-warn font-bold">
-                  {SUPERVISOR_GONE}؛ تأیید نظرهای این کاربر جایی برای رفتن ندارد.
-                </span>
-              )}
-            </span>
-          </Row>
-
-          <Row label="سرپرستی">
-            {/* D51 — an org-chart fact, not a capability. It routes comment
-                approval (D34) and grants nothing whatever: a Reader may
-                supervise a Reader, and an Admin without the flag supervises
-                nobody. Drawn beside the role with no qualification it reads as a
-                permission, and would then be set to give somebody something. */}
-            <span className="flex flex-col gap-s2">
-              <span className="text-body text-ink">
-                {user.canSupervise ? 'می‌تواند سرپرست دیگران باشد' : 'نمی‌تواند سرپرست دیگران باشد'}
-              </span>
-              <span className="text-caption text-faint">
-                این یک جایگاه در نمودار سازمانی است و هیچ دسترسی‌ای نمی‌دهد.
-              </span>
-            </span>
-          </Row>
-
-          <Row label="تاریخ ساخت">
-            {/* `createdAt` is unix **seconds** — `unixepoch()` on the server, not
-                the ISO string every other timestamp in this app carries. Handed
-                to `jalali` raw it is read as milliseconds and prints ۱۳۴۸/…,
-                five decades off and perfectly plausible-looking. */}
-            <span className="text-body text-ink">
-              {jalali(new Date(user.createdAt * 1000).toISOString())}
-            </span>
-          </Row>
-        </Card>
-
-        {manageable ? (
-          <div className="flex flex-col gap-s8 mt-s10">
-            <Card className="px-s9 py-s8">
-              <h2 className="text-subtitle font-bold text-ink">مشخصات</h2>
-              <p className="text-caption text-muted mt-s3">
-                نام، شماره، نقش، دامنهٔ دسترسی و سرپرست این حساب از اینجا عوض
-                می‌شود. تنها چیزهایی فرستاده می‌شود که واقعاً تغییر کرده باشند.
+        {manageable && (
+          <>
+            {/* §6.8 panel 3 — the design's shell, the app's control.
+                The deliverable draws «ساختن لینک بازنشانی» and states that no
+                password is ever created or shown. **This product has no reset
+                link**: D15 is `POST /api/users/{id}/password`, a direct set of a
+                value the administrator chooses and tells the person, because a
+                deployment fed by Telegram has no channel to deliver a link over.
+                R5 forbids drawing a button for a route that does not exist, so
+                the white card, the type sizes and the primary's role are the
+                design's and the copy and the control are the app's. */}
+            <Panel tone="card" eyebrow="گذرواژه" label="گذرواژه">
+              <h2 className="text-fs-menu font-bold text-ink">
+                بازنشانی گذرواژهٔ {user.displayName}
+              </h2>
+              <p className="text-fs-caption text-muted leading-sub max-w-prose mt-s2">
+                گذرواژهٔ تازه را خودتان انتخاب می‌کنید و به این شخص می‌گویید؛ پیوند
+                بازیابی‌ای در کار نیست. با ثبت آن، همهٔ نشست‌های باز این کاربر بسته
+                می‌شود.
               </p>
-              <div className="mt-s6">
-                <Button variant="violet" className="px-s8 text-caption"
-                  onClick={() => setEditing(true)}>
-                  ویرایش کاربر
+              <div className="flex items-end gap-s5 flex-wrap mt-s8
+                              max760:flex-col max760:items-stretch">
+                {/* F16/F35 — the bare `<input>` and its wrapping `<label>` that
+                    stood here were the fourth of four labelled-input
+                    implementations in this app, and the only one with no
+                    `htmlFor`. §5.1.5's "invalid beats focus" comes with the
+                    primitive, and the floor is stated under the control rather
+                    than as a detached alert. */}
+                <PasswordField id={passwordId} label="گذرواژهٔ تازه" value={password}
+                  onChange={setPasswordValue} autoComplete="new-password"
+                  className="flex-1 min-w-0"
+                  invalid={tooShort} hint={tooShort ? TOO_SHORT : undefined} />
+                <Button variant="violet" className="px-s8 py-s6 text-fs-sm rounded-button"
+                  loading={setPassword.isPending} loadingLabel="در حال ثبت…"
+                  onClick={submitPassword}>
+                  ثبت گذرواژه
                 </Button>
               </div>
-            </Card>
+              {setPassword.error && (
+                // role="alert": this text appears after the click that caused
+                // it, so a screen reader is elsewhere on the page when it
+                // arrives and would otherwise never be told.
+                <p role="alert" className="text-fs-xs font-semibold text-conflict mt-s5">
+                  {refusalText(setPassword.error)}
+                </p>
+              )}
+              {setPassword.isSuccess && !tooShort && (
+                // D15 has no delivery channel of its own, so the administrator
+                // IS the delivery channel and has to be told so; and the
+                // revocation is invisible on this screen, so it is said in words
+                // rather than discovered by the person whose open tab dies.
+                <p role="status" className="text-fs-xs font-semibold text-green mt-s5">
+                  گذرواژهٔ تازه ثبت شد؛ آن را به این شخص بگویید. همهٔ نشست‌های این کاربر
+                  بسته شد.
+                </p>
+              )}
+            </Panel>
+
+            {/* §6.8 panel 4: white, a `1px --border-danger` edge, radius 16,
+                padding 18, with a destructive ghost carrying the same label as
+                the heading. The heading is the only `--conflict` title in the
+                app and it is what makes the card readable as a boundary rather
+                than as a fourth section. The deliverable binds ONE label and ONE
+                button skin for both directions — there is no separate affirming
+                variant for re-enabling, and re-enabling restores capabilities,
+                so it is exactly as consequential as disabling. */}
+            <Panel tone="danger" label={disableLabel}
+              actions={
+                <Button variant="danger" className="px-s8 py-s6 text-fs-sm rounded-button"
+                  loading={setDisabled.isPending} loadingLabel="در حال ثبت…"
+                  onClick={() => setDisabled.mutate(!user.disabled)}>
+                  {disableLabel}
+                </Button>
+              }>
+              <h2 className="text-fs-menu font-bold text-conflict">{disableLabel}</h2>
+              <p className="text-fs-caption text-muted leading-sub max-w-prose mt-s2">
+                غیرفعال کردن یک حساب همهٔ نشست‌های آن را می‌بندد. شمارهٔ کاربر نزد خودش
+                می‌ماند و به کس دیگری داده نمی‌شود.
+              </p>
+              {setDisabled.error && (
+                <p role="alert" className="text-fs-xs font-semibold text-conflict mt-s5">
+                  {refusalText(setDisabled.error)}
+                </p>
+              )}
+            </Panel>
 
             {/* Mounted only while it is open: the roles and the candidate list
                 are not two requests on every visit to somebody's record, and a
@@ -206,104 +302,128 @@ export function UserDetail() {
             {editing && (
               <EditUserDialog user={user} open onClose={() => setEditing(false)} />
             )}
-
-            <Card className="px-s9 py-s8">
-              <h2 className="text-subtitle font-bold text-ink">وضعیت حساب</h2>
-              <p className="text-caption text-muted mt-s3">
-                غیرفعال کردن یک حساب همهٔ نشست‌های آن را می‌بندد. شمارهٔ کاربر نزد
-                خودش می‌ماند و به کس دیگری داده نمی‌شود.
-              </p>
-              <div className="mt-s6">
-                {/* `Button`'s BASE carries no horizontal padding and no type size
-                    on purpose (I5) — the call site owns both — so a bare
-                    `<Button>` is a 44 px box with its text against the edges, at
-                    inherited body size. jsdom measures nothing, so only a
-                    browser ever shows it. */}
-                <Button
-                  variant={user.disabled ? 'green' : 'coral'}
-                  className="px-s8 text-caption"
-                  loading={setDisabled.isPending}
-                  loadingLabel="در حال ثبت…"
-                  onClick={() => setDisabled.mutate(!user.disabled)}
-                >
-                  {user.disabled ? 'فعال‌سازی حساب' : 'غیرفعال‌سازی حساب'}
-                </Button>
-              </div>
-              {setDisabled.error && (
-                // role="alert": this text appears after the click that caused
-                // it, so a screen reader is elsewhere on the page when it
-                // arrives and would otherwise never be told.
-                <p role="alert" className="text-caption text-conflict mt-s5">
-                  {refusalText(setDisabled.error)}
-                </p>
-              )}
-            </Card>
-
-            <Card className="px-s9 py-s8">
-              <h2 className="text-subtitle font-bold text-ink">گذرواژه</h2>
-              <p className="text-caption text-muted mt-s3">
-                گذرواژهٔ تازه را خودتان انتخاب می‌کنید و به این شخص می‌گویید؛ پیوند
-                بازیابی‌ای در کار نیست.
-              </p>
-              <div className="flex items-end gap-s5 flex-wrap mt-s6">
-                <label className="flex flex-col gap-s2 flex-1 min-w-0">
-                  <span className="text-caption font-bold text-muted">گذرواژهٔ تازه</span>
-                  <input
-                    type="password"
-                    value={password}
-                    autoComplete="new-password"
-                    onChange={(e) => setPasswordValue(e.target.value)}
-                    className="min-h-touch w-full px-s7 rounded-control border border-line bg-card text-body text-ink"
-                  />
-                </label>
-                <Button variant="violet" className="px-s8 text-caption"
-                  loading={setPassword.isPending} loadingLabel="در حال ثبت…"
-                  onClick={submitPassword}>
-                  ثبت گذرواژه
-                </Button>
-              </div>
-              {(tooShort || setPassword.error) && (
-                <p role="alert" className="text-caption text-conflict mt-s5">
-                  {tooShort ? TOO_SHORT : refusalText(setPassword.error)}
-                </p>
-              )}
-              {setPassword.isSuccess && !tooShort && (
-                // D15 has no delivery channel of its own, so the administrator
-                // is the delivery channel and has to be told so; and the
-                // revocation is invisible on this screen, so it is said in
-                // words rather than left to be discovered by the person who
-                // suddenly cannot use their open tab.
-                <p role="status" className="text-caption text-green font-bold mt-s5">
-                  گذرواژهٔ تازه ثبت شد؛ آن را به این شخص بگویید. همهٔ نشست‌های این
-                  کاربر بسته شد.
-                </p>
-              )}
-            </Card>
-          </div>
-        ) : (
-          <p className="text-caption text-muted mt-s10">
-            {mine
-              // D13, and the server's own SELF_EDIT sentence: this is the one
-              // account nobody administers from here, and there is somewhere
-              // else to go for the one thing they may change.
-              ? 'حساب خودتان را از این صفحه نمی‌توانید تغییر دهید؛ گذرواژهٔ خودتان را از صفحهٔ نمایه عوض کنید.'
-              : 'دسترسی این حساب از دسترسی شما بیشتر است، پس تغییر آن از اینجا ممکن نیست.'}
-          </p>
+          </>
         )}
       </div>
     </div>
   )
 }
 
-/** One labelled fact. A `<dl>` pair would be the honest markup for the block,
- *  but it cannot hold the per-row flex layout without a wrapper that breaks the
- *  dt/dd association, so the label is bound to its value by proximity and by the
- *  bold/plain contrast every other record in this app uses. */
-function Row({ label, children }: { label: string; children: ReactNode }) {
+/**
+ * §6.8 panel 1 — the role and the departments this account reaches.
+ *
+ * **The registry is read here and not in the screen** so that a caller the
+ * surface refuses fires no request for it. The refusals above are early returns
+ * *after* the hooks, so a `useDepartments()` in the screen body would ask the
+ * server for the department list on behalf of somebody who is about to be shown
+ * a 404 — the same defect `useUser`'s `enabled` flag exists to prevent one line
+ * further up.
+ *
+ * Every scope, never `scopes[0]`: a head of two departments holds two rows, and
+ * showing one of them hides half of what they reach.
+ */
+function RoleAndScopePanel({ user }: { user: AdminUser }) {
+  const { data: departments } = useDepartments()
+  const names = Object.fromEntries((departments ?? []).map((d) => [d.code, d.name]))
+
   return (
-    <div className="flex gap-s6 flex-wrap">
-      <span className="text-caption font-bold text-muted">{label}</span>
-      {children}
+    <Panel card eyebrow="نقش و دپارتمان" label="نقش و دپارتمان">
+      <div className="flex items-center gap-s5 flex-wrap">
+        {/* In Persian, like every other word on this record. `roleLabel` keeps
+            the identifier for a role seeded on the server ahead of this build —
+            quoted is legible, and «—» would say the account has no role at all. */}
+        <span className={SCOPE_CHIP}>{roleLabel(user.role)}</span>
+        {/* The `1px --warm` rule is the only thing on this panel that says
+            "these are two different kinds of fact", so the design draws it
+            rather than leaving it to spacing — and it is the one thing here
+            that goes at ≤760px, where the chips wrap and a vertical rule
+            between two wrapped rows says nothing. */}
+        <span aria-hidden className="w-px self-stretch bg-warm max760:hidden" />
+        <div className="flex items-center gap-s4 flex-wrap min-w-0">
+          {user.scopes.length === 0
+            ? <span className="text-fs-sm2 text-muted">{NO_DEPARTMENT}</span>
+            : user.scopes.map((scope) => (
+              <span key={scope} className={SCOPE_CHIP}>{scopeLabel(scope, names)}</span>
+            ))}
+        </div>
+      </div>
+    </Panel>
+  )
+}
+
+/**
+ * §5.2's scope chip: `12.5px/600 --ink` on `--tile-v2` behind a `1.5px --line`
+ * edge, radius 10.
+ *
+ * Written here rather than taken from `src/ui/Chip.tsx`, which ships four ICOM
+ * kinds (`input`/`control`/`output`/`mech`) and no scope skin — see this task's
+ * report. The 7px the deliverable draws for the vertical padding has no token
+ * of that role either (the five 7px keys on the scale are a popover inset, a
+ * stat label's margin, a stat dot's gap, the crumb back button's vertical
+ * padding and a button's icon gap), so this takes the ladder's 8px rung rather
+ * than borrowing one of them or minting an unreviewed sixth.
+ */
+const SCOPE_CHIP =
+  'inline-flex items-center flex-none text-fs-sm2 font-semibold text-ink ' +
+  'bg-tile-v2 border-hairline border-line px-s6 py-s4 rounded-control'
+
+/**
+ * One §6.8 panel: white, radius 16, 18px of padding, 14px below it, and an
+ * eyebrow that is the section's accessible name.
+ *
+ * **Local, and it should not stay local.** `src/ui/SectionCard.tsx` is this box
+ * — right radius, right padding, right eyebrow — and this screen cannot use it
+ * for three separate reasons, none of which this task may fix: it destructures
+ * `{ eyebrow, skin, children, className }` and forwards nothing else, so neither
+ * a `data-card` measurement hook nor an `aria-label` reaches the DOM; it has no
+ * `actions` slot, which two of these four panels need; and neither of its two
+ * skins is the one §6.8 draws (`tint` is `--surface-sub` over `--border-current`
+ * and `white` is `--card` over `--border-card` **with** the card shadow, while
+ * panels 1 and 2 here are `--card` over `--border-current` with **no** shadow).
+ * The two files reconcile in one commit by whoever owns both.
+ *
+ * `role="group"` rather than `<section aria-labelledby>`: an accessibly-named
+ * `<section>` is a landmark `region`, and four landmarks on one record is a
+ * screen reader announcing furniture. These are groupings of related controls.
+ */
+function Panel({
+  tone = 'sub', eyebrow, label, actions, card = false, children,
+}: {
+  /** Which of §6.8's three panel skins. */
+  tone?: 'sub' | 'card' | 'danger'
+  eyebrow?: string
+  /** The accessible name. Panel 4 has no eyebrow, so it cannot come from one. */
+  label: string
+  actions?: ReactNode
+  /** Carries `[data-card]`, the harness's card hook. Panel 1 only, and the
+   *  harness takes the FIRST match in document order, so a second would be
+   *  measured by nothing and would silently claim to be measured. */
+  card?: boolean
+  children: ReactNode
+}) {
+  return (
+    <div role="group" aria-label={label} data-card={card ? '' : undefined}
+      className={`border rounded-card p-s9 mb-s7 ${PANEL_SKIN[tone]}`}>
+      {eyebrow !== undefined && (
+        <p className="mb-s6 text-fs-xxs font-bold text-muted">{eyebrow}</p>
+      )}
+      {actions === undefined || actions === false ? children : (
+        <div className="flex items-center justify-between gap-s6
+                        max760:flex-col max760:items-stretch">
+          <div className="min-w-0">{children}</div>
+          <div className="flex-none max760:self-start">{actions}</div>
+        </div>
+      )}
     </div>
   )
+}
+
+const PANEL_SKIN: Record<'sub' | 'card' | 'danger', string> = {
+  // Panels 1 and 2 — white on the sub-panel edge, and flat. Not `--surface-sub`:
+  // the deliverable writes `background-color: var(--card)` on both.
+  sub: 'bg-card border-border-current',
+  // Panel 3 — the card recipe proper, shadow included.
+  card: 'bg-card border-border-card shadow-card',
+  // Panel 4 — the boundary.
+  danger: 'bg-card border-border-danger',
 }
