@@ -109,11 +109,20 @@ describe('nothing in the app leads here', () => {
   it('is not a destination: no route resolves to it', () => {
     const flat = (rs: typeof appRoutes): string[] =>
       rs.flatMap((r) => [String(r.path ?? ''), ...flat(r.children ?? [])])
-    const paths = flat(appRoutes)
-    expect(paths).not.toContain('/403')
-    expect(paths).not.toContain('/404')
-    expect(paths).not.toContain('/denied')
-    expect(paths).not.toContain('/forbidden')
+    // Normalised, and that is the fix rather than a tidy-up: these four were
+    // `not.toContain('/403')` and worked only because `routes.tsx` happens to
+    // write leading slashes throughout. A CHILD route is spelled without one —
+    // `path: '403'` — and slipped past all four, which is the one spelling
+    // somebody adding a refusal route inside the shell would reach for.
+    const norm = (p: string) => p.replace(/^\/+/, '')
+    const paths = flat(appRoutes).map(norm)
+    for (const dead of ['403', '404', 'denied', 'forbidden']) {
+      expect(paths, `${dead} is reachable as a route`).not.toContain(dead)
+    }
+    // …and the normalisation has not eaten the list it is filtering: a `norm`
+    // that returned '' for everything would satisfy every line above.
+    expect(paths).toContain('users')
+    expect(paths).toContain('profile')
     // `join(process.cwd(), …)` and not `new URL('../routes.tsx',
     // import.meta.url)`: the jsdom environment installs its own `URL`
     // constructor as the global, so the object `new URL` builds here is not the

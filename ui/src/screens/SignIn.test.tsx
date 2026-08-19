@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { SignIn } from './SignIn'
 import { createWrapper } from '../test/utils'
+import { FIELD_LABEL } from '../ui/fieldFrame'
 
 afterEach(() => vi.restoreAllMocks())
 
@@ -330,15 +331,28 @@ describe('the brand lockup the design specifies and the app has never drawn', ()
     expect(fieldOf(password).className).toContain('mb-s8')
   })
 
-  it('gives its field labels the brand violet', () => {
-    // The visual audit's finding 6: every label in the app collapsed into the
-    // muted 11px/700 section-caption register, so nothing led the eye down a
-    // form. The DS Login's Label is 12.5px/600 --violet.
+  it('takes its field label from the shared frame rather than dressing its own', () => {
+    // This asserted `text-violet`, `font-semibold` and `text-fs-sm2` under the
+    // title "gives its field labels the brand violet" — and graded
+    // `fieldFrame.ts`'s `FIELD_LABEL` constant, which `TextField` and
+    // `PasswordField` write unconditionally. It passed identically for every
+    // screen in the app, including screens that do not exist, and it would have
+    // gone on passing if SignIn had stopped rendering a field at all.
+    //
+    // What SignIn actually decides is whether its one field goes through the
+    // primitive, and that is what this says: the label's class IS the shared
+    // string, byte for byte. A screen that hand-rolls a label to look the same
+    // fails here. The visual audit's finding 6 — that the DS Login's label is
+    // 12.5px/600 --violet and not the muted section-caption register — is
+    // graded against COMPILED CSS in `src/ui/fields.test.tsx`, once, where the
+    // constant lives.
     const Wrapper = createWrapper()
     render(<Wrapper><SignIn /></Wrapper>)
     const label = screen.getByText('شمارهٔ موبایل')
-    expect(label.className).toContain('text-violet')
-    expect(label.className).toContain('font-semibold')
-    expect(label.className).toContain('text-fs-sm2')
+    expect(label.tagName).toBe('LABEL')
+    expect(label.className).toBe(FIELD_LABEL)
+    // …and the constant is not empty, or the line above would pass against a
+    // label with no class at all.
+    expect(FIELD_LABEL).toContain('text-violet')
   })
 })

@@ -2,6 +2,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { screen, fireEvent, waitFor } from '@testing-library/react'
 import { Summary } from './Summary'
 import { renderAt } from '../test/utils'
+import { paint, winner } from '../test/paint'
 import type { SessionDescriptor } from '../auth/session'
 
 afterEach(() => vi.restoreAllMocks())
@@ -93,12 +94,23 @@ describe('the edit form’s ground', () => {
   it('sits its fields on the sub-panel, not as white boxes on a near-white card', async () => {
     // §1.2 — a field inside a `SectionCard skin="tint"` asks for `ground="sub"`
     // or it draws a white box on `--surface-sub` with only the hairline between
-    // them. jsdom proves the class string; the colour itself is `TextField`'s.
+    // them.
+    //
+    // This used to be `className).toContain('bg-surface-sub')`, and that string
+    // is present on a field that paints WHITE: `bg-card` and `bg-surface-sub`
+    // are both on the element in the default ground, and which of them lands on
+    // the pixel is a question about emitted order that no `toContain` can ask.
+    // Routed through `winner()`, which is what `src/test/paint.ts` exists to
+    // answer — and asserted against `--card` in the negative, because that is
+    // the colour the defect actually drew.
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(JSON.stringify(P), { status: 200, headers: { 'Content-Type': 'application/json' } }))
     renderAt('/processes/:pid', <Summary />, '/processes/cooking-002', EDITOR)
     fireEvent.click(await screen.findByRole('button', { name: /ویرایش اطلاعات/ }))
-    expect(screen.getByLabelText('نام فرآیند').className).toContain('bg-surface-sub')
-    expect(screen.getByLabelText('ورودی ۱').className).toContain('bg-surface-sub')
+    for (const name of ['نام فرآیند', 'ورودی ۱']) {
+      const painted = await paint(screen.getByLabelText(name).className)
+      expect(winner(painted, 'background-color'), name).toBe('var(--surface-sub)')
+      expect(winner(painted, 'background-color'), name).not.toBe('var(--card)')
+    }
   })
 })

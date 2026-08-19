@@ -3,6 +3,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Visibility } from './Visibility'
+import { paint, winner } from '../test/paint'
 import type { SessionDescriptor } from '../auth/session'
 
 let session: SessionDescriptor | undefined
@@ -104,11 +105,30 @@ describe('the policy card — one card of rows, not six floating ones', () => {
   })
 
   it('separates rows with a hairline and does not rule off the last one', async () => {
+    // This read `rows.slice(0, -1)` for `border-b` and `rows[last]` for
+    // `last:border-b-0`, which looked like two claims and was one: all six
+    // `<li>` share ONE className literal, so the split passed against an
+    // implementation that branches on index and against one that does not, and
+    // it would have passed with the rule written on the wrong row.
+    //
+    // What decides the last row is the VARIANT, and what a variant does is a
+    // question about compiled CSS. Both halves are asserted where they live:
+    // the literal is one string on every row, and `last:border-b-0` compiles to
+    // a `:last-child` rule that zeroes the width. The last row's rendered
+    // border is measured in a browser, in `e2e/visibility.spec.ts` — jsdom
+    // resolves no variant and cannot answer it here.
     drawVisibility(POLICY)
     const rows = within(await screen.findByRole('group', { name: 'سیاست نمایش محتوا' }))
       .getAllByRole('listitem')
-    rows.slice(0, -1).forEach((r) => expect(r).toHaveClass('border-b'))
-    expect(rows[rows.length - 1]).toHaveClass('last:border-b-0')
+    expect(rows.length).toBeGreaterThan(1)
+    expect(new Set(rows.map((r) => r.className)).size,
+      'the rows carry more than one class string, so the claim below is about only some of them')
+      .toBe(1)
+    for (const r of rows) expect(r).toHaveClass('border-b', 'border-hair', 'last:border-b-0')
+
+    const painted = await paint('border-b last:border-b-0')
+    expect(winner(painted, 'border-bottom-width')).toBe('1px')
+    expect(winner(painted, 'border-bottom-width', ':last-child')).toBe('0px')
   })
 
   it('looks busy rather than frozen while a flip is in flight', async () => {

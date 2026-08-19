@@ -136,10 +136,40 @@ test('process list — the panel', async ({ page }) => {
   // child is flipped back, not just the one somebody remembered: that second
   // half is the whole of O1, and a check that read `firstElementChild` alone
   // would pass on the very arrangement this task deleted.
+  //
+  // …which is what this WAS, in a longer spelling. `[data-r-pad]` has exactly
+  // one element child on this route, so `Array.from(el.children)` and
+  // `firstElementChild` were the same assertion and the stronger half was
+  // stated, not exercised. The rule under test is
+  // `[data-r-pad] > * { direction: rtl }` in `src/styles/base.css`, and what it
+  // claims is REACH — so a second child is added, measured, and taken away
+  // again. A rule written `[data-r-pad] > :first-child`, or moved onto the
+  // screen's own element, fails on `probe` while every real child still passes.
   const pad = page.locator('[data-r-pad]')
   expect(await pad.evaluate((el) => getComputedStyle(el).direction)).toBe('ltr')
-  expect(await pad.evaluate((el) => Array.from(el.children)
-    .filter((c) => getComputedStyle(c).direction !== 'rtl').length)).toBe(0)
+  const flipped = await pad.evaluate((el) => {
+    const before = el.children.length
+    const probe = document.createElement('div')
+    el.append(probe)
+    const nested = document.createElement('span')
+    probe.append(nested)
+    const answer = {
+      before,
+      strays: Array.from(el.children)
+        .filter((c) => getComputedStyle(c).direction !== 'rtl').length,
+      probe: getComputedStyle(probe).direction,
+      // `> *` and not a descendant selector: a rule that reached every level
+      // would flip a genuine latin island — `IdBadge`, a mono process id — back
+      // out of `ltr` several elements down.
+      nested: getComputedStyle(nested).direction,
+    }
+    probe.remove()
+    return answer
+  })
+  expect(flipped.before, 'the real tree has one child here, which is why the probe exists').toBe(1)
+  expect(flipped.strays).toBe(0)
+  expect(flipped.probe, 'a child the screen did not write is not flipped back').toBe('rtl')
+  expect(flipped.nested, 'the flip reaches past the immediate children').toBe('rtl')
 
   await shot(page, 'process-list')
 })

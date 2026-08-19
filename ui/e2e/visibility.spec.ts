@@ -62,6 +62,18 @@ test('policy — one card, 19px ticks, a word on the left', async ({ page }) => 
 
   const row = page.getByRole('listitem', { name: 'مسئول فعالیت' })
   await expect(row).toHaveCSS('border-bottom-color', 'rgb(242, 236, 227)')   // --hair
+  await expect(row).toHaveCSS('border-bottom-width', '1px')
+
+  // …and the LAST row is not ruled off, which nothing anywhere asserted. All
+  // six `<li>` carry one className literal, so the vitest half can only say
+  // that `last:border-b-0` is written on every one of them; whether it lands is
+  // `:last-child`, and that is a question about a rendered document. This row
+  // is picked by position for exactly that reason.
+  const rows = page.getByRole('listitem')
+  const count = await rows.count()
+  expect(count).toBeGreaterThan(1)
+  await expect(rows.nth(count - 1)).toHaveCSS('border-bottom-width', '0px')
+  await expect(rows.nth(count - 2)).toHaveCSS('border-bottom-width', '1px')
 
   // The state word sits at the inline end — which in RTL is the physical left,
   // and it is what the empty 60% of the row was for.
