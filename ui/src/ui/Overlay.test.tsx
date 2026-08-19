@@ -319,6 +319,26 @@ describe('P3 — Overlay is as capable as the dialog the design draws', () => {
     expect(winner(box, 'border-bottom-left-radius', '', PHONE)).toBe('0px')
     expect(winner(box, 'border-bottom-right-radius', '', PHONE)).toBe('0px')
     expect(winner(box, 'max-width', '', PHONE)).toBe('100%')
+
+    // …and the two corners that are left SHRINK. §5.2's ≤760 block is
+    // `[data-r-modalbox]{max-height:92vh; border-radius:20px 20px 0 0;
+    // width:100%}` and both deliverables carry it verbatim
+    // (`design/Inja Panel.dc.html:108`), so the sheet's top corners are the
+    // 20px step and NOT the 24 the same box takes as a centred dialog. Flat at
+    // the bottom is only half of the rule, and the half that was written: the
+    // box drew `24px 24px 0 0` and `user-dialog.spec.ts` measured it in Chrome.
+    //
+    // Asserted through `paint()`/`winner()` and not as a class string, which is
+    // the whole point of this block: `rounded-panel` sets all four corners and
+    // this has to BEAT it inside the media query. `toHaveClass` would have been
+    // green with the utility emitted before the shorthand and the corner still
+    // at 24 — which is exactly how `FIELD_PAD_REVEAL`'s docstring describes the
+    // `ps-*` / `px-*` race, one property along.
+    expect(winner(box, 'border-top-left-radius', '', PHONE)).toBe('var(--radius-card-lg)')
+    expect(winner(box, 'border-top-right-radius', '', PHONE)).toBe('var(--radius-card-lg)')
+    // Above the breakpoint the same two corners are the shorthand's, untouched.
+    expect(winner(box, 'border-top-left-radius')).toBe('')
+    expect(winner(box, 'border-top-right-radius')).toBe('')
   })
 
   it('titles at 18px/800 — one dialog title size (ledger L-16)', async () => {

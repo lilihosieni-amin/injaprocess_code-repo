@@ -177,10 +177,22 @@ function Overlay({
   // FIX 5 — only what differs between the two presentations lives here; the
   // shared shape (full width, the panel radius, flat-bottomed below 760px) is
   // on the box below so it cannot be mistaken for something that tells them apart.
+  //
+  // The sheet's top corners are the MODAL's own number and are therefore here
+  // rather than on the shared box: §5.2 writes `[data-r-modalbox]{…border-radius:
+  // 20px 20px 0 0}` inside the ≤760 block, and both deliverables carry that rule
+  // verbatim (`Inja Panel.dc.html:108`). The corner SHRINKS as the dialog fills
+  // the width — it does not keep the desktop dialog's 24. `rounded-feature` is
+  // that step, named for it in tailwind.config.js ("department card, wide
+  // modal"). The drawer takes a different number there (§5.2 gives the
+  // drawer-as-bottom-sheet 22, which the radius ladder has no rung for), which
+  // is exactly why this cannot be shared: one class for both would state the
+  // modal's rule about a box the design measures separately.
   const shape =
     presentation === 'sheet'
       ? 'md:w-[var(--width-drawer)] md:h-full md:max-h-none md:me-auto md:ms-0 max-h-[88vh]'
-      : `${WIDTH[width]} max-h-[86vh] max760:max-w-full max760:max-h-[92vh]`
+      : `${WIDTH[width]} max-h-[86vh] max760:max-w-full max760:max-h-[92vh] ` +
+        'max760:rounded-t-feature'
 
   return (
     <div
