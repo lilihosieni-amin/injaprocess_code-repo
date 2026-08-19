@@ -164,7 +164,7 @@ export function ScopePicker({ scopes, onChange }: {
                     e.preventDefault()
                     setOpenViews(openViews === d.code ? null : d.code)
                   }}
-                  className="inline-flex items-center gap-s1 border-0 bg-transparent p-s1
+                  className="inline-flex items-center gap-s1 border-0 bg-transparent px-s1 py-s1
                              text-fs-xs font-bold text-violet cursor-pointer">
                   نماها
                   <Icon name="chevronDown" stroke={2.4} className="w-s6 h-s6" />

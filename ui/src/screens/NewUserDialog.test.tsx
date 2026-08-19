@@ -193,11 +193,38 @@ function mountList() {
   )
 }
 
-/** Open the dialog and wait for the role list — every field is drawn by then. */
+/** Open the dialog and wait for the department registry to land — the scope
+ *  grid is the last thing the form draws out of a read. The role list and the
+ *  candidate list live behind popovers, so each test below waits for whichever
+ *  of them it opens. */
 async function openDialog() {
   await userEvent.click(await screen.findByRole('button', { name: 'کاربر جدید' }))
   await screen.findByRole('dialog')
-  await waitFor(() => expect(screen.getByRole('option', { name: 'خواننده' })).toBeInTheDocument())
+  await screen.findByRole('checkbox', { name: 'سالن' })
+}
+
+/** The dialog's own controls, never the users screen's behind it: Task 19's
+ *  filter bar draws its own «نقش» and «سرپرست» Dropdowns and both render as
+ *  buttons, so an unscoped query matches two. */
+const dialog = () => within(screen.getByRole('dialog'))
+const roleTrigger = () => dialog().getByRole('button', { name: /^نقش/ })
+const supervisorTrigger = () => dialog().getByRole('button', { name: /^سرپرست/ })
+
+/** Open the supervisor popover and hand back the list inside it. */
+async function openSupervisors(): Promise<HTMLElement> {
+  await userEvent.click(supervisorTrigger())
+  return screen.findByRole('listbox')
+}
+
+/** Pick a supervisor by the name drawn on their row. */
+async function chooseSupervisor(name: RegExp | string) {
+  const list = await openSupervisors()
+  await userEvent.click(await within(list).findByRole('option', { name }))
+}
+
+/** Open one department tile's «نماها» popover. */
+async function openViews(department: string) {
+  await userEvent.click(dialog().getByRole('button', { name: `نماهای ${department}` }))
 }
 
 /** The one request the picker made, or a failure naming what was asked instead. */
@@ -212,18 +239,16 @@ function candidateQuery(seen: Seen): string {
 async function fillValidForm() {
   await userEvent.type(screen.getByLabelText('نام و نام خانوادگی'), 'نگار سلیمی')
   await userEvent.type(screen.getByLabelText('شمارهٔ موبایل'), '09123456789')
-  await userEvent.type(screen.getByLabelText('گذرواژه'), 'sixchars')
+  await userEvent.type(screen.getByLabelText('گذرواژهٔ اولیه'), 'sixchars')
   await chooseRole('خواننده')
-  await userEvent.click(screen.getByRole('checkbox', { name: 'دپارتمان سالن' }))
+  await userEvent.click(screen.getByRole('checkbox', { name: 'سالن' }))
 }
 
-/** By the option, never by its value: the value is the role **id**, so a string
- *  argument would silently match nothing and leave the select where it was. */
+/** By the option's Persian wording, never by its value: the value is the role
+ *  **id**, so a string argument would silently match nothing. */
 async function chooseRole(name: string) {
-  // Scoped to the dialog: Task 19's filter bar draws its own «نقش» Dropdown on
-  // the Users screen behind this one, so an unscoped query matches two.
-  const select = within(screen.getByRole('dialog')).getByLabelText('نقش')
-  await userEvent.selectOptions(select, within(select).getByRole('option', { name }))
+  await userEvent.click(roleTrigger())
+  await userEvent.click(await screen.findByRole('option', { name }))
 }
 
 function submit() {
@@ -269,6 +294,31 @@ describe('the dialog shell (§5.2 Modal, §6.14)', () => {
   })
 })
 
+describe('the two captioned sections (§6.14)', () => {
+  it('groups the fields into the design\'s two captioned sections', async () => {
+    stubServer()
+    mountList()
+    await openDialog()
+    const dialog = await screen.findByRole('dialog', { name: 'کاربر جدید' })
+    const sections = within(dialog).getAllByRole('group', { name: /هویت|جایگاه/ })
+    expect(sections.map((s) => s.getAttribute('aria-label')))
+      .toEqual(['هویت و ورود', 'جایگاه در سازمان'])
+    const identity = sections[0]
+    // The 2-up grid: name and number on one row, password full-width beneath.
+    expect(within(identity).getByTestId('two-up')).toHaveClass('grid', 'grid-cols-2')
+    expect(within(identity).getByLabelText('نام و نام خانوادگی'))
+      .toHaveAttribute('placeholder', 'مثلاً سحر بیات')
+    const number = within(identity).getByLabelText('شمارهٔ موبایل')
+    expect(number).toHaveAttribute('dir', 'ltr')
+    expect(number).toHaveAttribute('placeholder', '09123456789')
+    // §6.14 — the initial password carries the reveal-button pattern.
+    const reveal = within(identity).getByRole('button', { name: 'نمایش گذرواژه' })
+    expect(within(identity).getByLabelText('گذرواژهٔ اولیه')).toHaveAttribute('type', 'password')
+    await userEvent.click(reveal)
+    expect(within(identity).getByLabelText('گذرواژهٔ اولیه')).toHaveAttribute('type', 'text')
+  })
+})
+
 describe('opening the create-user dialog', () => {
   it('asks the server for nothing until it is opened', async () => {
     // Roles, departments and candidates are three requests per page view for a
@@ -304,11 +354,16 @@ describe('the role picker on the create form', () => {
     stubServer()
     mountList()
     await openDialog()
-    const select = within(screen.getByRole('dialog')).getByLabelText('نقش')
-    const offered = within(select).getAllByRole('option')
-      .map((o) => o.textContent)
-      .filter((t) => t !== 'انتخاب کنید')
-    expect(offered).toEqual(['مدیر', 'خواننده بدون خروجی', 'خواننده'])
+    await userEvent.click(roleTrigger())
+    const list = await screen.findByRole('listbox')
+    await waitFor(() => expect(within(list).getAllByRole('option')).toHaveLength(3))
+    expect(within(list).getAllByRole('option').map((o) => o.textContent))
+      .toEqual(['مدیر', 'خواننده بدون خروجی', 'خواننده'])
+    // …and there is no blank option: `roleId: null` is a 400 the server calls "a
+    // form that lost its value", and R5 forbids drawing a choice this form would
+    // refuse. FR-A5/AC-16 — nor is there any affordance here that would create,
+    // rename or remove a role: the roles are fixed and only users are made.
+    expect(within(list).queryByRole('option', { name: 'انتخاب کنید' })).toBeNull()
   })
 
   it('never offers a role the server left out', async () => {
@@ -317,10 +372,13 @@ describe('the role picker on the create form', () => {
     stubServer()
     mountList()
     await openDialog()
-    // Both spellings: the option is now drawn in Persian, so asking only about
-    // the identifier would pass on a screen that offered «تحلیل‌گر».
-    expect(screen.queryByRole('option', { name: 'تحلیل‌گر' })).toBeNull()
-    expect(screen.queryByRole('option', { name: 'editor' })).toBeNull()
+    await userEvent.click(roleTrigger())
+    const list = await screen.findByRole('listbox')
+    await waitFor(() => expect(within(list).getAllByRole('option')).toHaveLength(3))
+    // Both spellings: the option is drawn in Persian, so asking only about the
+    // identifier would pass on a screen that offered «تحلیل‌گر».
+    expect(within(list).queryByRole('option', { name: 'تحلیل‌گر' })).toBeNull()
+    expect(within(list).queryByRole('option', { name: 'editor' })).toBeNull()
   })
 
   it('will not submit until a role is chosen, and spends no request finding out', async () => {
@@ -329,7 +387,7 @@ describe('the role picker on the create form', () => {
     await openDialog()
     await userEvent.type(screen.getByLabelText('نام و نام خانوادگی'), 'نگار سلیمی')
     await userEvent.type(screen.getByLabelText('شمارهٔ موبایل'), '09123456789')
-    await userEvent.type(screen.getByLabelText('گذرواژه'), 'sixchars')
+    await userEvent.type(screen.getByLabelText('گذرواژهٔ اولیه'), 'sixchars')
     await submit()
     expect(await screen.findByRole('alert')).toHaveTextContent('نقش کاربر را انتخاب کنید')
     expect(seen.writes).toEqual([])
@@ -346,8 +404,8 @@ describe('the supervisor picker on the create form', () => {
     const seen = stubServer()
     mountList()
     await openDialog()
-    await userEvent.click(screen.getByRole('checkbox', { name: 'دپارتمان سالن' }))
-    await userEvent.click(screen.getByRole('checkbox', { name: 'دپارتمان صندوق' }))
+    await userEvent.click(screen.getByRole('checkbox', { name: 'سالن' }))
+    await userEvent.click(screen.getByRole('checkbox', { name: 'صندوق' }))
     await waitFor(() => {
       const q = candidateQuery(seen)
       expect(q).toContain('scope=dept%3Adining')
@@ -373,15 +431,17 @@ describe('the supervisor picker on the create form', () => {
     stubServer({ users: [NADER, BABAK] })
     mountList()
     await openDialog()
-    await waitFor(() => expect(screen.getByRole('radio', { name: /سحر بیات/ })).toBeInTheDocument())
-    expect(screen.queryByRole('radio', { name: /بابک آرام/ })).toBeNull()
+    const list = await openSupervisors()
+    await waitFor(() =>
+      expect(within(list).getByRole('option', { name: /سحر بیات/ })).toBeInTheDocument())
+    expect(within(list).queryByRole('option', { name: /بابک آرام/ })).toBeNull()
   })
 
   it('starts on the person creating the account, when the server offered them', async () => {
     stubServer()
     mountList()
     await openDialog()
-    await waitFor(() => expect(screen.getByRole('radio', { name: /کامران راد/ })).toBeChecked())
+    await waitFor(() => expect(supervisorTrigger()).toHaveAccessibleName(/کامران راد/))
   })
 
   it('refuses to submit with no supervisor for a user who does not reach everything (D51)', async () => {
@@ -392,9 +452,11 @@ describe('the supervisor picker on the create form', () => {
     await openDialog()
     await fillValidForm()
     // …and the choice is not even offered, because it is not a state this
-    // account may be in. Offering it and then refusing it is worse than not
-    // offering it.
-    expect(screen.queryByRole('radio', { name: 'بدون سرپرست' })).toBeNull()
+    // account may be in. NFR-12/AC-25 — a candidate this account may not have is
+    // ABSENT, never drawn and disabled with an explanation.
+    const list = await openSupervisors()
+    expect(within(list).queryByRole('option', { name: 'بدون سرپرست' })).toBeNull()
+    await userEvent.keyboard('{Escape}')
     await submit()
     expect(await screen.findByRole('alert'))
       .toHaveTextContent('برای کاربری که به همهٔ دپارتمان‌ها دسترسی ندارد باید سرپرست انتخاب کنید')
@@ -409,10 +471,10 @@ describe('the supervisor picker on the create form', () => {
     await openDialog()
     await userEvent.type(screen.getByLabelText('نام و نام خانوادگی'), 'نگار سلیمی')
     await userEvent.type(screen.getByLabelText('شمارهٔ موبایل'), '09123456789')
-    await userEvent.type(screen.getByLabelText('گذرواژه'), 'sixchars')
+    await userEvent.type(screen.getByLabelText('گذرواژهٔ اولیه'), 'sixchars')
     await chooseRole('خواننده')
-    await userEvent.click(screen.getByRole('checkbox', { name: 'همهٔ دپارتمان‌ها' }))
-    await userEvent.click(await screen.findByRole('radio', { name: 'بدون سرپرست' }))
+    await userEvent.click(screen.getByRole('checkbox', { name: 'کل سامانه' }))
+    await chooseSupervisor('بدون سرپرست')
     await submit()
     await waitFor(() => expect(seen.writes).toHaveLength(1))
     expect(seen.writes[0].body.scopes).toEqual(['*'])
@@ -431,13 +493,13 @@ describe('the supervisor picker on the create form', () => {
     await openDialog()
     await userEvent.type(screen.getByLabelText('نام و نام خانوادگی'), 'نگار سلیمی')
     await userEvent.type(screen.getByLabelText('شمارهٔ موبایل'), '09123456789')
-    await userEvent.type(screen.getByLabelText('گذرواژه'), 'sixchars')
+    await userEvent.type(screen.getByLabelText('گذرواژهٔ اولیه'), 'sixchars')
     await chooseRole('خواننده')
-    await userEvent.click(screen.getByRole('checkbox', { name: 'همهٔ دپارتمان‌ها' }))
-    await waitFor(() => expect(screen.getByRole('radio', { name: /کامران راد/ })).toBeChecked())
-    await userEvent.click(screen.getByRole('radio', { name: 'بدون سرپرست' }))
-    expect(screen.getByRole('radio', { name: 'بدون سرپرست' })).toBeChecked()
-    expect(screen.getByRole('radio', { name: /کامران راد/ })).not.toBeChecked()
+    await userEvent.click(screen.getByRole('checkbox', { name: 'کل سامانه' }))
+    await waitFor(() => expect(supervisorTrigger()).toHaveAccessibleName(/کامران راد/))
+    await chooseSupervisor('بدون سرپرست')
+    expect(supervisorTrigger()).toHaveAccessibleName(/بدون سرپرست/)
+    expect(supervisorTrigger()).not.toHaveAccessibleName(/کامران راد/)
     await submit()
     await waitFor(() => expect(seen.writes).toHaveLength(1))
     expect(seen.writes[0].body.supervisorId).toBeNull()
@@ -451,11 +513,11 @@ describe('the supervisor picker on the create form', () => {
     mountList()
     await openDialog()
     await fillValidForm()
-    await userEvent.click(await screen.findByRole('radio', { name: /سحر بیات/ }))
+    await chooseSupervisor(/سحر بیات/)
     // The server now offers nobody but the actor for these scopes.
     seen.setCandidates([KAMRAN])
-    await userEvent.click(screen.getByRole('checkbox', { name: 'دپارتمان صندوق' }))
-    await waitFor(() => expect(screen.queryByRole('radio', { name: /سحر بیات/ })).toBeNull())
+    await userEvent.click(screen.getByRole('checkbox', { name: 'صندوق' }))
+    await waitFor(() => expect(supervisorTrigger()).toHaveAccessibleName(/انتخاب کنید/))
     // …and it does **not** say the chosen supervisor stays where they are. That
     // note is for D14's edit case — an existing account whose edge nothing in
     // this save touches — and there is no account here at all: it would promise
@@ -481,21 +543,24 @@ describe('the supervisor picker on the create form', () => {
     mountList()
     await openDialog()
     await fillValidForm()
-    await userEvent.click(await screen.findByRole('radio', { name: /سحر بیات/ }))
+    await chooseSupervisor(/سحر بیات/)
     seen.stallCandidates()
-    await userEvent.click(screen.getByRole('checkbox', { name: 'دپارتمان صندوق' }))
-    await waitFor(() => expect(screen.queryByRole('radio', { name: /سحر بیات/ })).toBeNull())
+    await userEvent.click(screen.getByRole('checkbox', { name: 'صندوق' }))
+    await waitFor(() => expect(supervisorTrigger()).toHaveAccessibleName(/در حال بارگذاری…/))
     await submit()
     await waitFor(() => expect(seen.writes).toHaveLength(1))
     expect(seen.writes[0].body.supervisorId).toBe(32)
-    expect(seen.writes[0].body.scopes).toEqual(['dept:dining', 'dept:cashier'])
+    // Sorted, because `ScopePicker` sorts: the server stores `sorted(set(raw))`
+    // and `draftPatch` compares order-insensitively, so the tick order is not a
+    // fact about the account and must not reach the wire as one.
+    expect(seen.writes[0].body.scopes).toEqual(['dept:cashier', 'dept:dining'])
     expect(screen.queryByRole('alert')).toBeNull()
   })
 })
 
-/** One report box under «دپارتمان سالن». The department is in the accessible
- *  name because the same kinds are drawn under every department. */
-const DINING_STEPS = 'دپارتمان سالن — فقط راهنمای گام‌به‌گام'
+/** One report box, inside the «سالن» tile's own «نماها» popover. One popover is
+ *  open at a time, so the kind needs no department in its name. */
+const STEPS = 'راهنمای گام‌به‌گام'
 
 describe('the scope fieldset on the create form', () => {
   it('creates D11\'s «Report reader»: a Reader holding one report of one department', async () => {
@@ -509,10 +574,11 @@ describe('the scope fieldset on the create form', () => {
     await openDialog()
     await userEvent.type(screen.getByLabelText('نام و نام خانوادگی'), 'رها فرجی')
     await userEvent.type(screen.getByLabelText('شمارهٔ موبایل'), '09126666666')
-    await userEvent.type(screen.getByLabelText('گذرواژه'), 'sixchars')
+    await userEvent.type(screen.getByLabelText('گذرواژهٔ اولیه'), 'sixchars')
     await chooseRole('خواننده')
-    await userEvent.click(screen.getByRole('checkbox', { name: DINING_STEPS }))
-    await userEvent.click(await screen.findByRole('radio', { name: /سحر بیات/ }))
+    await openViews('سالن')
+    await userEvent.click(screen.getByRole('checkbox', { name: STEPS }))
+    await chooseSupervisor(/سحر بیات/)
     await submit()
     await waitFor(() => expect(seen.writes).toHaveLength(1))
     expect(seen.writes[0].body.scopes).toEqual(['dept:dining/report:steps'])
@@ -526,7 +592,8 @@ describe('the scope fieldset on the create form', () => {
     const seen = stubServer()
     mountList()
     await openDialog()
-    await userEvent.click(screen.getByRole('checkbox', { name: DINING_STEPS }))
+    await openViews('سالن')
+    await userEvent.click(screen.getByRole('checkbox', { name: STEPS }))
     await waitFor(() =>
       expect(candidateQuery(seen)).toContain('scope=dept%3Adining%2Freport%3Asteps'))
   })
@@ -541,24 +608,24 @@ describe('the scope fieldset on the create form', () => {
     const seen = stubServer()
     mountList()
     await openDialog()
-    await userEvent.click(screen.getByRole('checkbox', { name: 'دپارتمان سالن' }))
-    await userEvent.click(screen.getByRole('checkbox', { name: 'همهٔ دپارتمان‌ها' }))
-    expect(screen.getByRole('checkbox', { name: 'همهٔ دپارتمان‌ها' })).toBeChecked()
-    expect(screen.getByRole('checkbox', { name: 'دپارتمان سالن' })).not.toBeChecked()
+    await userEvent.click(screen.getByRole('checkbox', { name: 'سالن' }))
+    await userEvent.click(screen.getByRole('checkbox', { name: 'کل سامانه' }))
+    expect(screen.getByRole('checkbox', { name: 'کل سامانه' })).toBeChecked()
+    expect(screen.getByRole('checkbox', { name: 'سالن' })).not.toBeChecked()
     // …and it unticks again, which is the half the mutant above kills outright.
-    await userEvent.click(screen.getByRole('checkbox', { name: 'همهٔ دپارتمان‌ها' }))
-    expect(screen.getByRole('checkbox', { name: 'همهٔ دپارتمان‌ها' })).not.toBeChecked()
-    expect(screen.getByRole('checkbox', { name: 'دپارتمان سالن' })).not.toBeChecked()
+    await userEvent.click(screen.getByRole('checkbox', { name: 'کل سامانه' }))
+    expect(screen.getByRole('checkbox', { name: 'کل سامانه' })).not.toBeChecked()
+    expect(screen.getByRole('checkbox', { name: 'سالن' })).not.toBeChecked()
 
     // …and what reaches the wire is one scope, never two rows saying the same
     // thing. The mutant's body would be `['dept:dining', '*']`.
     await userEvent.type(screen.getByLabelText('نام و نام خانوادگی'), 'نگار سلیمی')
     await userEvent.type(screen.getByLabelText('شمارهٔ موبایل'), '09123456789')
-    await userEvent.type(screen.getByLabelText('گذرواژه'), 'sixchars')
+    await userEvent.type(screen.getByLabelText('گذرواژهٔ اولیه'), 'sixchars')
     await chooseRole('خواننده')
-    await userEvent.click(screen.getByRole('checkbox', { name: 'دپارتمان سالن' }))
-    await userEvent.click(screen.getByRole('checkbox', { name: 'همهٔ دپارتمان‌ها' }))
-    await userEvent.click(await screen.findByRole('radio', { name: /کامران راد/ }))
+    await userEvent.click(screen.getByRole('checkbox', { name: 'سالن' }))
+    await userEvent.click(screen.getByRole('checkbox', { name: 'کل سامانه' }))
+    await chooseSupervisor(/کامران راد/)
     await submit()
     await waitFor(() => expect(seen.writes).toHaveLength(1))
     expect(seen.writes[0].body.scopes).toEqual(['*'])
@@ -570,10 +637,11 @@ describe('the scope fieldset on the create form', () => {
     stubServer()
     mountList()
     await openDialog()
-    await userEvent.click(screen.getByRole('checkbox', { name: DINING_STEPS }))
-    expect(screen.getByRole('checkbox', { name: DINING_STEPS })).toBeChecked()
-    await userEvent.click(screen.getByRole('checkbox', { name: 'همهٔ دپارتمان‌ها' }))
-    expect(screen.getByRole('checkbox', { name: DINING_STEPS })).not.toBeChecked()
+    await openViews('سالن')
+    await userEvent.click(screen.getByRole('checkbox', { name: STEPS }))
+    expect(screen.getByRole('checkbox', { name: STEPS })).toBeChecked()
+    await userEvent.click(screen.getByRole('checkbox', { name: 'کل سامانه' }))
+    expect(screen.getByRole('checkbox', { name: STEPS })).not.toBeChecked()
   })
 })
 
@@ -593,7 +661,9 @@ describe('when one of the create dialog\'s own reads fails', () => {
     mountList()
     await openFailedDialog()
     expect(await screen.findByText(CANDIDATES_UNREADABLE)).toBeInTheDocument()
-    expect(screen.queryByText(/کسی نمی‌تواند سرپرست این کاربر باشد/)).toBeNull()
+    expect(screen.queryByText(/برای این نقش سرپرستی در دسترس نیست/)).toBeNull()
+    // …and no picker at all, so the sentence has nowhere to come from.
+    expect(within(screen.getByRole('dialog')).queryByRole('button', { name: /^سرپرست/ })).toBeNull()
   })
 
   it('says the role list did not load, instead of a form that refuses every submit', async () => {
@@ -604,7 +674,7 @@ describe('when one of the create dialog\'s own reads fails', () => {
     mountList()
     await openFailedDialog()
     expect(await screen.findByText(ROLES_UNREADABLE)).toBeInTheDocument()
-    expect(within(screen.getByRole('dialog')).queryByLabelText('نقش')).toBeNull()
+    expect(within(screen.getByRole('dialog')).queryByRole('button', { name: /^نقش/ })).toBeNull()
     expect(screen.queryByRole('button', { name: 'ایجاد کاربر' })).toBeNull()
   })
 
@@ -615,6 +685,7 @@ describe('when one of the create dialog\'s own reads fails', () => {
     await screen.findByText(ROLES_UNREADABLE)
     seen.healReads()
     await userEvent.click(screen.getByRole('button', { name: 'تلاش دوباره' }))
+    await userEvent.click(await dialog().findByRole('button', { name: /^نقش/ }))
     expect(await screen.findByRole('option', { name: 'خواننده' })).toBeInTheDocument()
   })
 
@@ -631,7 +702,10 @@ describe('when one of the create dialog\'s own reads fails', () => {
     mountList()
     await openFailedDialog()
     expect(await screen.findByText(DEPARTMENTS_UNREADABLE)).toBeInTheDocument()
-    expect(screen.queryByRole('checkbox', { name: EVERY_DEPARTMENT })).toBeNull()
+    // The `*` control is «کل سامانه» on screen and `EVERY_DEPARTMENT` to a screen
+    // reader; neither is drawn over a registry that did not arrive.
+    expect(screen.queryByRole('checkbox', { name: 'کل سامانه' })).toBeNull()
+    expect(screen.queryByText(EVERY_DEPARTMENT)).toBeNull()
     expect(screen.queryByRole('button', { name: 'ایجاد کاربر' })).toBeNull()
   })
 
@@ -645,8 +719,9 @@ describe('when one of the create dialog\'s own reads fails', () => {
     await screen.findByText(DEPARTMENTS_UNREADABLE)
     seen.healReads()
     await userEvent.click(screen.getByRole('button', { name: 'تلاش دوباره' }))
-    expect(await screen.findByRole('checkbox', { name: 'دپارتمان سالن' })).toBeInTheDocument()
-    expect(screen.getByRole('checkbox', { name: DINING_STEPS })).toBeInTheDocument()
+    expect(await screen.findByRole('checkbox', { name: 'سالن' })).toBeInTheDocument()
+    await openViews('سالن')
+    expect(screen.getByRole('checkbox', { name: STEPS })).toBeInTheDocument()
   })
 })
 
@@ -681,10 +756,10 @@ describe('the number and the password on the create form', () => {
     await openDialog()
     await userEvent.type(screen.getByLabelText('نام و نام خانوادگی'), 'نگار سلیمی')
     await userEvent.type(screen.getByLabelText('شمارهٔ موبایل'), '+98 ۰۹۱۲ 345 6789')
-    await userEvent.type(screen.getByLabelText('گذرواژه'), 'sixchars')
+    await userEvent.type(screen.getByLabelText('گذرواژهٔ اولیه'), 'sixchars')
     await chooseRole('خواننده')
-    await userEvent.click(screen.getByRole('checkbox', { name: 'دپارتمان سالن' }))
-    await userEvent.click(await screen.findByRole('radio', { name: /سحر بیات/ }))
+    await userEvent.click(screen.getByRole('checkbox', { name: 'سالن' }))
+    await chooseSupervisor(/سحر بیات/)
     await submit()
     await waitFor(() => expect(seen.writes).toHaveLength(1))
     expect(seen.writes[0].body.username).toBe('09123456789')
@@ -696,7 +771,7 @@ describe('the number and the password on the create form', () => {
     await openDialog()
     await userEvent.type(screen.getByLabelText('نام و نام خانوادگی'), 'نگار سلیمی')
     await userEvent.type(screen.getByLabelText('شمارهٔ موبایل'), '021 88 99 77 66')
-    await userEvent.type(screen.getByLabelText('گذرواژه'), 'sixchars')
+    await userEvent.type(screen.getByLabelText('گذرواژهٔ اولیه'), 'sixchars')
     await chooseRole('خواننده')
     await submit()
     expect(await screen.findByRole('alert')).toHaveTextContent('شمارهٔ موبایل معتبر نیست')
@@ -707,7 +782,7 @@ describe('the number and the password on the create form', () => {
     stubServer()
     mountList()
     await openDialog()
-    expect(screen.getByLabelText('گذرواژه')).toHaveAttribute('type', 'password')
+    expect(screen.getByLabelText('گذرواژهٔ اولیه')).toHaveAttribute('type', 'password')
   })
 
   it('refuses a password under six characters without spending an argon2 hash on it', async () => {
@@ -718,10 +793,10 @@ describe('the number and the password on the create form', () => {
     await openDialog()
     await userEvent.type(screen.getByLabelText('نام و نام خانوادگی'), 'نگار سلیمی')
     await userEvent.type(screen.getByLabelText('شمارهٔ موبایل'), '09123456789')
-    await userEvent.type(screen.getByLabelText('گذرواژه'), 'five5')
+    await userEvent.type(screen.getByLabelText('گذرواژهٔ اولیه'), 'five5')
     await chooseRole('خواننده')
-    await userEvent.click(screen.getByRole('checkbox', { name: 'دپارتمان سالن' }))
-    await userEvent.click(await screen.findByRole('radio', { name: /سحر بیات/ }))
+    await userEvent.click(screen.getByRole('checkbox', { name: 'سالن' }))
+    await chooseSupervisor(/سحر بیات/)
     await submit()
     expect(await screen.findByRole('alert')).toHaveTextContent('گذرواژه باید دست‌کم ۶ نویسه باشد')
     expect(seen.writes).toEqual([])
@@ -732,7 +807,7 @@ describe('the number and the password on the create form', () => {
     mountList()
     await openDialog()
     await userEvent.type(screen.getByLabelText('شمارهٔ موبایل'), '09123456789')
-    await userEvent.type(screen.getByLabelText('گذرواژه'), 'sixchars')
+    await userEvent.type(screen.getByLabelText('گذرواژهٔ اولیه'), 'sixchars')
     await chooseRole('خواننده')
     await submit()
     expect(await screen.findByRole('alert')).toHaveTextContent('نام کاربر را بنویسید')
@@ -749,8 +824,8 @@ describe('creating the account', () => {
     mountList()
     await openDialog()
     await fillValidForm()
-    await userEvent.click(await screen.findByRole('radio', { name: /سحر بیات/ }))
-    await userEvent.click(screen.getByRole('checkbox', { name: 'می‌تواند سرپرست دیگران باشد' }))
+    await chooseSupervisor(/سحر بیات/)
+    await userEvent.click(screen.getByRole('checkbox', { name: 'سرپرست‌شدن' }))
     await submit()
     await waitFor(() => expect(seen.writes).toHaveLength(1))
     expect(seen.writes[0].path).toBe('/api/users')
@@ -772,7 +847,7 @@ describe('creating the account', () => {
     await waitFor(() => expect(screen.getAllByRole('row')).toHaveLength(2))
     await openDialog()
     await fillValidForm()
-    await userEvent.click(await screen.findByRole('radio', { name: /سحر بیات/ }))
+    await chooseSupervisor(/سحر بیات/)
     await submit()
     // Two body rows now, plus the header — and the new account is the second
     // body row, so it is index 2 among all rows.
@@ -785,7 +860,7 @@ describe('creating the account', () => {
     mountList()
     await openDialog()
     await fillValidForm()
-    await userEvent.click(await screen.findByRole('radio', { name: /سحر بیات/ }))
+    await chooseSupervisor(/سحر بیات/)
     await submit()
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
   })
@@ -798,7 +873,7 @@ describe('creating the account', () => {
     mountList()
     await openDialog()
     await fillValidForm()
-    await userEvent.click(await screen.findByRole('radio', { name: /سحر بیات/ }))
+    await chooseSupervisor(/سحر بیات/)
     await submit()
     expect(await screen.findByRole('alert')).toHaveTextContent('این شماره از پیش ثبت شده است')
     expect(screen.getByRole('dialog')).toBeInTheDocument()
@@ -816,7 +891,7 @@ describe('creating the account', () => {
     mountList()
     await openDialog()
     await fillValidForm()
-    await userEvent.click(await screen.findByRole('radio', { name: /سحر بیات/ }))
+    await chooseSupervisor(/سحر بیات/)
     await submit()
     expect(await screen.findByRole('alert')).toHaveTextContent('انجام نشد؛ دوباره تلاش کنید.')
     expect(screen.queryByText(/Unprocessable Entity/)).toBeNull()

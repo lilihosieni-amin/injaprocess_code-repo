@@ -1,4 +1,4 @@
-import { useId, useState, type FormEvent } from 'react'
+import { useState, type FormEvent } from 'react'
 import { useSession } from '../auth/useSession'
 import { useDepartments } from '../api/hooks'
 import { useCreateUser, useRoles, useSupervisorCandidates } from '../api/users'
@@ -34,7 +34,6 @@ const BLANK: UserDraft = {
  */
 export function NewUserDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const session = useSession().data
-  const passwordId = useId()
   const [draft, setDraft] = useState<UserDraft>(BLANK)
   const [password, setPassword] = useState('')
   const [problem, setProblem] = useState<string | undefined>(undefined)
@@ -112,27 +111,8 @@ export function NewUserDialog({ open, onClose }: { open: boolean; onClose: () =>
         // sentence about an account that does not exist.
         supervisorStaysPut={false}
         preferred={session?.username}
+        password={{ value: password, onChange: setPassword }}
       />
-
-      <div className="flex flex-col gap-s2">
-        <label htmlFor={passwordId} className="text-caption font-bold text-muted">
-          گذرواژه
-        </label>
-        <input
-          id={passwordId}
-          type="password"
-          autoComplete="new-password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          className="min-h-touch w-full px-s7 rounded-control border border-line bg-card text-body text-ink"
-        />
-        {/* D15 has no delivery channel of its own: the administrator chooses
-            the value and tells the person, so they have to know that is the
-            arrangement before they invent one nobody can be told. */}
-        <p className="text-caption text-faint m-0">
-          این گذرواژه را خودتان به این شخص می‌گویید؛ پیوند بازیابی‌ای در کار نیست.
-        </p>
-      </div>
     </UserDialogShell>
   )
 }

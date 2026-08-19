@@ -3,9 +3,7 @@ import { useDepartments } from '../api/hooks'
 import { useModifyUser, useRoles, useSupervisorCandidates } from '../api/users'
 import { refusalText } from '../lib/refusal'
 import { draftPatch, draftProblem, readFailure, type UserDraft } from '../lib/userDraft'
-import { Button } from '../ui/Button'
-import { Dialog } from '../ui/Overlay'
-import { LoadFailedScreen } from '../ui/states'
+import { UserDialogShell } from './UserDialogShell'
 import { UserFields } from './UserFields'
 import type { AdminUser } from '../api/users'
 
@@ -108,49 +106,33 @@ export function EditUserDialog({ user, open, onClose }: {
   // `/api/departments` answering 500 it drew an account holding two grants as an
   // account holding none, and said nothing about the read at all.
   const failed = readFailure(roles, departments, candidates)
-  if (failed) {
-    return (
-      <Dialog open={open} onClose={onClose} title="ویرایش کاربر">
-        <LoadFailedScreen message={failed.message} error={failed.error}
-          onRetry={() => {
-            // All three, whichever one failed: a query in `error` refetches on
-            // nothing but being asked, so retrying only the two that were
-            // already fine would leave the same screen on the press.
-            void roles.refetch(); void departments.refetch(); void candidates.refetch()
-          }} />
-      </Dialog>
-    )
-  }
 
   return (
-    <Dialog open={open} onClose={onClose} title="ویرایش کاربر">
-      <form onSubmit={submit} className="flex flex-col gap-s8">
-        <UserFields
-          draft={draft} onChange={setDraft}
-          roles={roles.data ?? []}
-          candidates={candidates.data ?? []}
-          candidatesPending={candidates.isPending}
-          // Only a save that touches neither the edge nor the scopes leaves an
-          // off-list supervisor where they are; anything else is re-judged, here
-          // and on the server.
-          supervisorStaysPut={!supervisorMoved}
-        />
-
-        {alert && (
-          <p role="alert" className="text-caption text-conflict m-0">{alert}</p>
-        )}
-
-        <div className="flex items-center gap-s5 flex-wrap">
-          <Button type="submit" variant="violet" className="px-s8 text-caption"
-            loading={modify.isPending} loadingLabel="در حال ثبت…">
-            ثبت تغییرات
-          </Button>
-          <Button type="button" variant="ghost" className="px-s8 text-caption"
-            onClick={onClose}>
-            انصراف
-          </Button>
-        </div>
-      </form>
-    </Dialog>
+    <UserDialogShell
+      open={open} onClose={onClose} title="ویرایش کاربر" submitLabel="ثبت تغییرات"
+      submitting={modify.isPending} alert={alert}
+      failure={failed}
+      onRetry={() => {
+        // All three, whichever one failed: a query in `error` refetches on
+        // nothing but being asked, so retrying only the two that were already
+        // fine would leave the same screen on the press.
+        void roles.refetch(); void departments.refetch(); void candidates.refetch()
+      }}
+      onSubmit={submit}
+    >
+      <UserFields
+        draft={draft} onChange={setDraft}
+        roles={roles.data ?? []}
+        candidates={candidates.data ?? []}
+        candidatesPending={candidates.isPending}
+        // Only a save that touches neither the edge nor the scopes leaves an
+        // off-list supervisor where they are; anything else is re-judged, here
+        // and on the server.
+        supervisorStaysPut={!supervisorMoved}
+      />
+      {/* There is no password here. Setting somebody else's is its own endpoint,
+          its own event and its own revocation rule (D15), and it is on the
+          record behind this dialog. */}
+    </UserDialogShell>
   )
 }

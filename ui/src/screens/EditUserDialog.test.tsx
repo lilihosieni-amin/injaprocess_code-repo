@@ -5,7 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { CANDIDATES_UNREADABLE, DEPARTMENTS_UNREADABLE, ROLES_UNREADABLE } from '../lib/userDraft'
 import { EVERY_DEPARTMENT } from '../lib/scopes'
-import { UNDRAWABLE_SCOPES } from './UserFields'
+import { UNDRAWABLE_SCOPES } from './ScopePicker'
 import { UserDetail } from './UserDetail'
 import type { AdminUser, Role, SupervisorCandidate } from '../api/users'
 import type { SessionDescriptor } from '../auth/session'
@@ -41,6 +41,18 @@ const DEPARTMENTS = [
   { code: 'cooking', name: 'پخت', count: 0, subs: 0 },
   { code: 'dining', name: 'سالن', count: 0, subs: 0 },
   { code: 'cashier', name: 'صندوق', count: 0, subs: 0 },
+]
+
+/** The real deployment's nine, which is the registry the height claim is about:
+ *  three departments could never have produced 2207px. */
+const NINE = [
+  ...DEPARTMENTS,
+  { code: 'management', name: 'مدیریت', count: 0, subs: 0 },
+  { code: 'accounting', name: 'حسابداری', count: 0, subs: 0 },
+  { code: 'warehouse', name: 'انبار', count: 0, subs: 0 },
+  { code: 'procurement', name: 'تدارکات', count: 0, subs: 0 },
+  { code: 'preparation', name: 'آماده‌سازی', count: 0, subs: 0 },
+  { code: 'logistics', name: 'پشتیبانی', count: 0, subs: 0 },
 ]
 
 const ROLES: Role[] = [
@@ -192,6 +204,9 @@ interface Seen {
  */
 function stubServer(user: AdminUser, opts: {
   candidates?: SupervisorCandidate[]
+  /** The registry `/api/departments` answers. Three by default; `NINE` is the
+   *  real deployment, and the scope grid's height is a claim about nine. */
+  departments?: typeof DEPARTMENTS
   /** Answer the candidate list never — the query stays `isPending` and its data
    *  stays `undefined`, which is the state a slow or hung request really leaves
    *  the form in. */
@@ -259,7 +274,9 @@ function stubServer(user: AdminUser, opts: {
       return rolesStatus === 200 ? json(ROLES) : json({ detail: 'نه' }, rolesStatus)
     }
     if (path === '/api/departments') {
-      return departmentsStatus === 200 ? json(DEPARTMENTS) : json({ detail: 'نه' }, departmentsStatus)
+      return departmentsStatus === 200
+        ? json(opts.departments ?? DEPARTMENTS)
+        : json({ detail: 'نه' }, departmentsStatus)
     }
     if (path.startsWith('/api/users/supervisor-candidates')) {
       if (opts.stallCandidates) return new Promise<Response>(() => {})
@@ -283,10 +300,38 @@ function mountDetail(id: number) {
   )
 }
 
+/** Open the dialog and wait for the department registry to land — the scope grid
+ *  is the last thing the form draws out of a read. The role list and the
+ *  candidate list live behind popovers, so each test waits for the one it opens. */
 async function openDialog() {
   await userEvent.click(await screen.findByRole('button', { name: 'ویرایش' }))
   await screen.findByRole('dialog')
-  await waitFor(() => expect(screen.getByRole('option', { name: 'خواننده' })).toBeInTheDocument())
+  await screen.findByRole('checkbox', { name: 'سالن' })
+}
+
+/** The dialog's own controls, never the record screen's behind it. */
+const dialog = () => within(screen.getByRole('dialog'))
+const roleTrigger = () => dialog().getByRole('button', { name: /^نقش/ })
+const supervisorTrigger = () => dialog().getByRole('button', { name: /^سرپرست/ })
+
+async function openSupervisors(): Promise<HTMLElement> {
+  await userEvent.click(supervisorTrigger())
+  return screen.findByRole('listbox')
+}
+
+async function chooseSupervisor(name: RegExp | string) {
+  const list = await openSupervisors()
+  await userEvent.click(await within(list).findByRole('option', { name }))
+}
+
+async function chooseRole(name: string) {
+  await userEvent.click(roleTrigger())
+  await userEvent.click(await screen.findByRole('option', { name }))
+}
+
+/** Open one department tile's «نماها» popover. */
+async function openViews(department: string) {
+  await userEvent.click(dialog().getByRole('button', { name: `نماهای ${department}` }))
 }
 
 function save() {
@@ -365,7 +410,7 @@ describe('the supervisor picker on the edit form', () => {
     const seen = stubServer(SAHAR)
     mountDetail(7)
     await openDialog()
-    await userEvent.click(screen.getByRole('checkbox', { name: 'دپارتمان صندوق' }))
+    await userEvent.click(screen.getByRole('checkbox', { name: 'صندوق' }))
     await waitFor(() => {
       const q = candidateQuery(seen)
       expect(q).toContain('scope=dept%3Acooking')
@@ -402,7 +447,7 @@ describe('the supervisor picker on the edit form', () => {
     const seen = stubServer(HOMA)
     mountDetail(9)
     await openDialog()
-    await userEvent.click(await screen.findByRole('radio', { name: 'بدون سرپرست' }))
+    await chooseSupervisor('بدون سرپرست')
     await save()
     await waitFor(() => expect(seen.writes).toHaveLength(1))
     expect(seen.writes[0].body).toEqual({ supervisorId: null })
@@ -422,14 +467,14 @@ describe('the supervisor picker on the edit form', () => {
     const seen = stubServer(SAHAR)
     mountDetail(7)
     await openDialog()
-    await userEvent.click(await screen.findByRole('radio', { name: /آرش تهرانی/ }))
+    await chooseSupervisor(/آرش تهرانی/)
     seen.setCandidates([KEYVAN])
     // Ticked and unticked: the scopes end where they started — so the patch
     // carries the supervisor and nothing else — while the picker has re-read
     // the list in between.
-    await userEvent.click(screen.getByRole('checkbox', { name: 'دپارتمان صندوق' }))
-    await userEvent.click(screen.getByRole('checkbox', { name: 'دپارتمان صندوق' }))
-    await waitFor(() => expect(screen.queryByRole('radio', { name: /آرش تهرانی/ })).toBeNull())
+    await userEvent.click(screen.getByRole('checkbox', { name: 'صندوق' }))
+    await userEvent.click(screen.getByRole('checkbox', { name: 'صندوق' }))
+    await waitFor(() => expect(supervisorTrigger()).toHaveAccessibleName(/انتخاب کنید/))
     await save()
     expect(await screen.findByRole('alert'))
       .toHaveTextContent('این شخص نمی‌تواند سرپرست این کاربر باشد')
@@ -447,10 +492,10 @@ describe('the supervisor picker on the edit form', () => {
     const seen = stubServer(SAHAR_UNDER_ARASH)
     mountDetail(7)
     await openDialog()
-    await waitFor(() => expect(screen.getByRole('radio', { name: /آرش تهرانی/ })).toBeChecked())
+    await waitFor(() => expect(supervisorTrigger()).toHaveAccessibleName(/آرش تهرانی/))
     seen.setCandidates([KEYVAN])
-    await userEvent.click(screen.getByRole('checkbox', { name: 'دپارتمان صندوق' }))
-    await waitFor(() => expect(screen.queryByRole('radio', { name: /آرش تهرانی/ })).toBeNull())
+    await userEvent.click(screen.getByRole('checkbox', { name: 'صندوق' }))
+    await waitFor(() => expect(supervisorTrigger()).toHaveAccessibleName(/انتخاب کنید/))
     // The other half of the D14 note above: Arash is off the list here too, and
     // here «تا وقتی تغییرش ندهید همان‌جا می‌ماند» would be false — this save
     // moves the scopes, so the edge is re-judged and refused rather than left
@@ -474,7 +519,7 @@ describe('the supervisor picker on the edit form', () => {
     const seen = stubServer(HOMA, { stallCandidates: true })
     mountDetail(9)
     await openDialog()
-    await userEvent.click(screen.getByRole('checkbox', { name: 'دپارتمان پخت' }))
+    await userEvent.click(screen.getByRole('checkbox', { name: 'پخت' }))
     await save()
     await waitFor(() => expect(seen.writes).toHaveLength(1))
     expect(seen.writes[0].body).toEqual({ scopes: ['dept:cooking'] })
@@ -485,19 +530,38 @@ describe('the supervisor picker on the edit form', () => {
     const seen = stubServer(SAHAR)
     mountDetail(7)
     await openDialog()
-    await userEvent.click(await screen.findByRole('radio', { name: /آرش تهرانی/ }))
+    await chooseSupervisor(/آرش تهرانی/)
     await save()
     await waitFor(() => expect(seen.writes).toHaveLength(1))
     expect(seen.writes[0].body).toEqual({ supervisorId: 31 })
   })
 })
 
-/** The two report boxes under «دپارتمان سالن». Their accessible name carries the
- *  department, because the same two kinds are drawn under every one of them and
- *  nine identically-named controls are nine controls nobody can tell apart. */
-const DINING_STEPS = 'دپارتمان سالن — فقط راهنمای گام‌به‌گام'
-const DINING_FLOW = 'دپارتمان سالن — فقط مستندات کامل'
-const COOKING_STEPS = 'دپارتمان پخت — فقط راهنمای گام‌به‌گام'
+/** The two report kinds. They no longer carry a department in their name: one
+ *  «نماها» popover is open at a time, so the two controls on screen belong to
+ *  exactly one department and nine identically-named boxes never coexist. */
+const STEPS = 'راهنمای گام‌به‌گام'
+const FLOW = 'مستندات کامل'
+
+describe('how much of the box the form is', () => {
+  it('draws a bounded number of controls on a nine-department registry', async () => {
+    // Was 1 + 9 + 18 = 28 checkboxes plus a native select and N radios — 2207px
+    // of scrollHeight in an 850px box. Now: nine tiles + «کل سامانه» +
+    // «سرپرست‌شدن», with the report level behind a per-tile popover. jsdom
+    // measures nothing, so this is the structural half; the pixels are in
+    // `ui/e2e/user-dialog.spec.ts`.
+    stubServer(SAHAR, { departments: NINE })
+    mountDetail(7)
+    await openDialog()
+    const box = screen.getByRole('dialog')
+    await waitFor(() =>
+      expect(within(box).getAllByRole('checkbox')).toHaveLength(11))
+    expect(within(box).queryAllByRole('combobox')).toHaveLength(0)   // no native select
+    expect(box.querySelectorAll('select')).toHaveLength(0)
+    // …and no radio anywhere: forty candidates were forty 49px rows (F29).
+    expect(within(box).queryAllByRole('radio')).toHaveLength(0)
+  })
+})
 
 describe('the scope fieldset', () => {
   it('draws a report-scoped account\'s own grant', async () => {
@@ -509,12 +573,15 @@ describe('the scope fieldset', () => {
     stubServer(RAHA)
     mountDetail(11)
     await openDialog()
-    expect(screen.getByRole('checkbox', { name: DINING_STEPS })).toBeChecked()
+    // Legible before anything is opened: the tile names its own narrowing.
+    expect(dialog().getByText(/فقط راهنمای گام‌به‌گام/)).toBeInTheDocument()
+    await openViews('سالن')
+    expect(screen.getByRole('checkbox', { name: STEPS })).toBeChecked()
     // …and not as the whole department, which is what the obvious "repair" of a
     // blank fieldset would have made her.
-    expect(screen.getByRole('checkbox', { name: 'دپارتمان سالن' })).not.toBeChecked()
-    expect(screen.getByRole('checkbox', { name: DINING_FLOW })).not.toBeChecked()
-    expect(screen.getByRole('checkbox', { name: 'همهٔ دپارتمان‌ها' })).not.toBeChecked()
+    expect(screen.getByRole('checkbox', { name: 'سالن' })).not.toBeChecked()
+    expect(screen.getByRole('checkbox', { name: FLOW })).not.toBeChecked()
+    expect(screen.getByRole('checkbox', { name: 'کل سامانه' })).not.toBeChecked()
     expect(screen.queryByText(new RegExp(UNDRAWABLE_SCOPES))).toBeNull()
   })
 
@@ -526,6 +593,11 @@ describe('the scope fieldset', () => {
     mountDetail(11)
     await openDialog()
     for (const box of screen.getAllByRole('checkbox')) expect(box).not.toBeChecked()
+    // …and no tile claims a narrowing either, which is the half a tick alone
+    // cannot separate: a report-scoped account draws its tile unticked too.
+    expect(dialog().queryByText(/^فقط /)).toBeNull()
+    await openViews('سالن')
+    expect(screen.getByRole('checkbox', { name: STEPS })).not.toBeChecked()
   })
 
   it('asks for candidates covering the report scope itself, not the department around it', async () => {
@@ -546,9 +618,10 @@ describe('the scope fieldset', () => {
     const seen = stubServer(SAHAR_UNDER_ARASH)
     mountDetail(7)
     await openDialog()
-    expect(screen.getByRole('checkbox', { name: 'دپارتمان پخت' })).toBeChecked()
-    await userEvent.click(screen.getByRole('checkbox', { name: COOKING_STEPS }))
-    expect(screen.getByRole('checkbox', { name: 'دپارتمان پخت' })).not.toBeChecked()
+    expect(screen.getByRole('checkbox', { name: 'پخت' })).toBeChecked()
+    await openViews('پخت')
+    await userEvent.click(screen.getByRole('checkbox', { name: STEPS }))
+    expect(screen.getByRole('checkbox', { name: 'پخت' })).not.toBeChecked()
     await save()
     await waitFor(() => expect(seen.writes).toHaveLength(1))
     expect(seen.writes[0].body.scopes).toEqual(['dept:cooking/report:steps'])
@@ -560,8 +633,9 @@ describe('the scope fieldset', () => {
     const seen = stubServer(RAHA)
     mountDetail(11)
     await openDialog()
-    await userEvent.click(screen.getByRole('checkbox', { name: 'دپارتمان سالن' }))
-    expect(screen.getByRole('checkbox', { name: DINING_STEPS })).not.toBeChecked()
+    await userEvent.click(screen.getByRole('checkbox', { name: 'سالن' }))
+    await openViews('سالن')
+    expect(screen.getByRole('checkbox', { name: STEPS })).not.toBeChecked()
     await save()
     await waitFor(() => expect(seen.writes).toHaveLength(1))
     expect(seen.writes[0].body.scopes).toEqual(['dept:dining'])
@@ -574,8 +648,9 @@ describe('the scope fieldset', () => {
     const seen = stubServer(RAHA)
     mountDetail(11)
     await openDialog()
-    await userEvent.click(screen.getByRole('checkbox', { name: DINING_STEPS }))
-    expect(screen.getByRole('checkbox', { name: 'دپارتمان سالن' })).not.toBeChecked()
+    await openViews('سالن')
+    await userEvent.click(screen.getByRole('checkbox', { name: STEPS }))
+    expect(screen.getByRole('checkbox', { name: 'سالن' })).not.toBeChecked()
     await save()
     await waitFor(() => expect(seen.writes).toHaveLength(1))
     expect(seen.writes[0].body.scopes).toEqual([])
@@ -587,8 +662,9 @@ describe('the scope fieldset', () => {
     const seen = stubServer(RAHA)
     mountDetail(11)
     await openDialog()
-    await userEvent.click(screen.getByRole('checkbox', { name: DINING_FLOW }))
-    expect(screen.getByRole('checkbox', { name: DINING_STEPS })).toBeChecked()
+    await openViews('سالن')
+    await userEvent.click(screen.getByRole('checkbox', { name: FLOW }))
+    expect(screen.getByRole('checkbox', { name: STEPS })).toBeChecked()
     await save()
     await waitFor(() => expect(seen.writes).toHaveLength(1))
     expect([...(seen.writes[0].body.scopes as string[])].sort())
@@ -610,10 +686,10 @@ describe('the scope fieldset', () => {
     // fieldset stopped drawing it at all.
     const form = screen.getByRole('dialog')
     expect(await within(form).findByText(/سالن\/report:daily/)).toBeInTheDocument()
-    await userEvent.click(screen.getByRole('checkbox', { name: 'دپارتمان صندوق' }))
+    await userEvent.click(screen.getByRole('checkbox', { name: 'صندوق' }))
     await save()
     await waitFor(() => expect(seen.writes).toHaveLength(1))
-    expect(seen.writes[0].body.scopes).toEqual(['dept:dining/report:daily', 'dept:cashier'])
+    expect(seen.writes[0].body.scopes).toEqual(['dept:cashier', 'dept:dining/report:daily'])
   })
 
 })
@@ -637,8 +713,10 @@ describe('when one of the dialog\'s own reads fails', () => {
     mountDetail(7)
     await openFailedDialog()
     expect(await screen.findByText(CANDIDATES_UNREADABLE)).toBeInTheDocument()
-    expect(screen.queryByText(/کسی نمی‌تواند سرپرست این کاربر باشد/)).toBeNull()
+    expect(screen.queryByText(/برای این نقش سرپرستی در دسترس نیست/)).toBeNull()
     expect(screen.queryByText(/سرپرست کنونی در این فهرست نیست/)).toBeNull()
+    // …and no picker at all, so neither sentence has anywhere to come from.
+    expect(dialog().queryByRole('button', { name: /^سرپرست/ })).toBeNull()
   })
 
   it('says the role list did not load, instead of a select nothing can be chosen from', async () => {
@@ -649,7 +727,7 @@ describe('when one of the dialog\'s own reads fails', () => {
     mountDetail(7)
     await openFailedDialog()
     expect(await screen.findByText(ROLES_UNREADABLE)).toBeInTheDocument()
-    expect(screen.queryByLabelText('نقش')).toBeNull()
+    expect(dialog().queryByRole('button', { name: /^نقش/ })).toBeNull()
     expect(screen.queryByRole('button', { name: 'ثبت تغییرات' })).toBeNull()
   })
 
@@ -663,7 +741,7 @@ describe('when one of the dialog\'s own reads fails', () => {
     await screen.findByText(CANDIDATES_UNREADABLE)
     seen.healReads()
     await userEvent.click(screen.getByRole('button', { name: 'تلاش دوباره' }))
-    expect(await screen.findByRole('radio', { name: /آرش تهرانی/ })).toBeChecked()
+    await waitFor(() => expect(supervisorTrigger()).toHaveAccessibleName(/آرش تهرانی/))
   })
 
   it('says the department registry did not load, instead of drawing two grants as none', async () => {
@@ -680,10 +758,13 @@ describe('when one of the dialog\'s own reads fails', () => {
     mountDetail(11)
     await openFailedDialog()
     expect(await screen.findByText(DEPARTMENTS_UNREADABLE)).toBeInTheDocument()
-    // Not the fieldset with its two surviving boxes: «همهٔ دپارتمان‌ها»
-    // unticked, beside no departments whatever, is a picture of an account that
-    // reaches nothing, and this dialog has learned nothing about what she reaches.
-    expect(screen.queryByRole('checkbox', { name: EVERY_DEPARTMENT })).toBeNull()
+    // Not the grid with its one surviving box: «کل سامانه» unticked, beside no
+    // departments whatever, is a picture of an account that reaches nothing, and
+    // this dialog has learned nothing about what she reaches. The `*` control is
+    // «کل سامانه» on screen and `EVERY_DEPARTMENT` to a screen reader; neither
+    // is drawn over a registry that did not arrive.
+    expect(screen.queryByRole('checkbox', { name: 'کل سامانه' })).toBeNull()
+    expect(screen.queryByText(EVERY_DEPARTMENT)).toBeNull()
     expect(screen.queryByRole('button', { name: 'ثبت تغییرات' })).toBeNull()
   })
 
@@ -699,9 +780,10 @@ describe('when one of the dialog\'s own reads fails', () => {
     await screen.findByText(DEPARTMENTS_UNREADABLE)
     seen.healReads()
     await userEvent.click(screen.getByRole('button', { name: 'تلاش دوباره' }))
-    expect(await screen.findByRole('checkbox', { name: 'دپارتمان پخت' })).toBeChecked()
-    expect(screen.getByRole('checkbox', { name: DINING_STEPS })).toBeChecked()
-    expect(screen.getByRole('checkbox', { name: EVERY_DEPARTMENT })).not.toBeChecked()
+    expect(await screen.findByRole('checkbox', { name: 'پخت' })).toBeChecked()
+    await openViews('سالن')
+    expect(screen.getByRole('checkbox', { name: STEPS })).toBeChecked()
+    expect(screen.getByRole('checkbox', { name: 'کل سامانه' })).not.toBeChecked()
   })
 })
 
@@ -719,7 +801,7 @@ describe('what the edit form sends', () => {
     const seen = stubServer(SAHAR)
     mountDetail(7)
     await openDialog()
-    await userEvent.click(screen.getByRole('checkbox', { name: 'می‌تواند سرپرست دیگران باشد' }))
+    await userEvent.click(screen.getByRole('checkbox', { name: 'سرپرست‌شدن' }))
     await save()
     await waitFor(() => expect(seen.writes).toHaveLength(1))
     expect(seen.writes[0].path).toBe('/api/users/7')
@@ -731,11 +813,14 @@ describe('what the edit form sends', () => {
     const seen = stubServer(SAHAR)
     mountDetail(7)
     await openDialog()
-    await userEvent.click(screen.getByRole('checkbox', { name: 'دپارتمان صندوق' }))
-    await userEvent.click(await screen.findByRole('radio', { name: /کیوان مرادی/ }))
+    await userEvent.click(screen.getByRole('checkbox', { name: 'صندوق' }))
+    await chooseSupervisor(/کیوان مرادی/)
     await save()
     await waitFor(() => expect(seen.writes).toHaveLength(1))
-    expect(seen.writes[0].body.scopes).toEqual(['dept:cooking', 'dept:cashier'])
+    // Sorted, because `ScopePicker` sorts: the server stores `sorted(set(raw))`
+    // and `draftPatch` compares order-insensitively, so the tick order is not a
+    // fact about the account and must not reach the wire as one.
+    expect(seen.writes[0].body.scopes).toEqual(['dept:cashier', 'dept:cooking'])
   })
 
   it('normalises a changed number before sending it (D57)', async () => {
@@ -762,19 +847,27 @@ describe('what the edit form sends', () => {
     expect(seen.writes).toEqual([])
   })
 
-  it('refuses a cleared role locally rather than sending the null that earns a 400', async () => {
-    // `roleId: null` is a 400 and deliberately not the 403 an unknown *id*
-    // earns: "no such role" and "not one of yours" are the same fact from where
-    // the caller stands and must not be told apart, while `null` is neither of
-    // them. A form that quietly dropped the field instead would report success
-    // and leave the role where it was.
-    const seen = stubServer(SAHAR)
+  it('offers no way to clear the role, because `roleId: null` is a refusal (R5)', async () => {
+    // `roleId: null` is a 400 the server calls "a form that lost its value" —
+    // deliberately not the 403 an unknown *id* earns, since "no such role" and
+    // "not one of yours" are the same fact from where the caller stands and must
+    // not be told apart. The old native `<select>` carried an «انتخاب کنید»
+    // option that produced exactly that body, and the form then refused it
+    // locally: a control drawn only to be turned down. §6.14's Dropdown has no
+    // such row, so the state is unreachable rather than merely refused.
+    //
+    // The local refusal itself is still pinned where the state IS reachable —
+    // the create form, which opens with nothing chosen.
+    stubServer(SAHAR)
     mountDetail(7)
     await openDialog()
-    await userEvent.selectOptions(screen.getByLabelText('نقش'), '')
-    await save()
-    expect(await screen.findByRole('alert')).toHaveTextContent('نقش کاربر را انتخاب کنید')
-    expect(seen.writes).toEqual([])
+    await userEvent.click(roleTrigger())
+    const list = await screen.findByRole('listbox')
+    await waitFor(() => expect(within(list).getAllByRole('option')).toHaveLength(3))
+    expect(within(list).queryByRole('option', { name: 'انتخاب کنید' })).toBeNull()
+    for (const option of within(list).getAllByRole('option')) {
+      expect(option.textContent).not.toBe('')
+    }
   })
 
   it('refuses an emptied number locally, for the same reason', async () => {
@@ -797,10 +890,9 @@ describe('what the edit form sends', () => {
     mountDetail(9)
     await openDialog()
     await userEvent.type(screen.getByLabelText('نام و نام خانوادگی'), 'ی')
-    await userEvent.click(screen.getByRole('checkbox', { name: 'می‌تواند سرپرست دیگران باشد' }))
-    await userEvent.click(await screen.findByRole('radio', { name: 'بدون سرپرست' }))
-    const select = screen.getByLabelText('نقش')
-    await userEvent.selectOptions(select, within(select).getByRole('option', { name: 'خواننده' }))
+    await userEvent.click(screen.getByRole('checkbox', { name: 'سرپرست‌شدن' }))
+    await chooseSupervisor('بدون سرپرست')
+    await chooseRole('خواننده')
     await save()
     await waitFor(() => expect(seen.writes).toHaveLength(1))
     expect(seen.writes[0].body).toEqual({
@@ -817,11 +909,10 @@ describe('what the edit form sends', () => {
     await userEvent.type(screen.getByLabelText('نام و نام خانوادگی'), 'ی')
     await userEvent.clear(screen.getByLabelText('شمارهٔ موبایل'))
     await userEvent.type(screen.getByLabelText('شمارهٔ موبایل'), '09123456789')
-    await userEvent.click(screen.getByRole('checkbox', { name: 'می‌تواند سرپرست دیگران باشد' }))
-    await userEvent.click(screen.getByRole('checkbox', { name: 'دپارتمان صندوق' }))
-    const select = screen.getByLabelText('نقش')
-    await userEvent.selectOptions(select, within(select).getByRole('option', { name: 'مدیر' }))
-    await userEvent.click(await screen.findByRole('radio', { name: /کیوان مرادی/ }))
+    await userEvent.click(screen.getByRole('checkbox', { name: 'سرپرست‌شدن' }))
+    await userEvent.click(screen.getByRole('checkbox', { name: 'صندوق' }))
+    await chooseRole('مدیر')
+    await chooseSupervisor(/کیوان مرادی/)
     await save()
     await waitFor(() => expect(seen.writes).toHaveLength(1))
     const body = seen.writes[0].body
@@ -869,7 +960,7 @@ describe('what the edit form shows afterwards', () => {
     })
     mountDetail(7)
     await openDialog()
-    await userEvent.click(await screen.findByRole('radio', { name: /آرش تهرانی/ }))
+    await chooseSupervisor(/آرش تهرانی/)
     await save()
     expect(await screen.findByRole('alert'))
       .toHaveTextContent('این انتخاب زنجیرهٔ سرپرستی را حلقه می‌کند')
@@ -884,7 +975,7 @@ describe('what the edit form shows afterwards', () => {
     })
     mountDetail(7)
     await openDialog()
-    await userEvent.click(await screen.findByRole('radio', { name: /آرش تهرانی/ }))
+    await chooseSupervisor(/آرش تهرانی/)
     await save()
     expect(await screen.findByRole('alert')).toHaveTextContent('انجام نشد؛ دوباره تلاش کنید.')
     expect(screen.queryByText(/Unprocessable Entity/)).toBeNull()
@@ -898,11 +989,12 @@ describe('what the edit form shows afterwards', () => {
     await openDialog()
     expect(screen.getByLabelText('نام و نام خانوادگی')).toHaveValue('سحر بیات')
     expect(screen.getByLabelText('شمارهٔ موبایل')).toHaveValue('09121111111')
-    expect(screen.getByRole('checkbox', { name: 'دپارتمان پخت' })).toBeChecked()
-    expect(screen.getByRole('checkbox', { name: 'دپارتمان صندوق' })).not.toBeChecked()
-    expect(screen.getByRole('checkbox', { name: 'می‌تواند سرپرست دیگران باشد' })).not.toBeChecked()
-    // The select's value is the role **id**, which is what the PATCH carries.
-    expect(screen.getByLabelText('نقش')).toHaveValue('4')
+    expect(screen.getByRole('checkbox', { name: 'پخت' })).toBeChecked()
+    expect(screen.getByRole('checkbox', { name: 'صندوق' })).not.toBeChecked()
+    expect(screen.getByRole('checkbox', { name: 'سرپرست‌شدن' })).not.toBeChecked()
+    // The trigger reads the role's Persian wording; the VALUE behind it is the
+    // id, which is what the PATCH carries and what the saves above prove.
+    expect(roleTrigger()).toHaveAccessibleName(/خواننده/)
   })
 
   it('gives every control its own horizontal padding and type size', async () => {

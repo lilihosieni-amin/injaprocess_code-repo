@@ -3,7 +3,8 @@ import { useState } from 'react'
 import { render, screen } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { EVERY_DEPARTMENT } from '../lib/scopes'
-import { UNDRAWABLE_SCOPES, UserFields } from './UserFields'
+import { UNDRAWABLE_SCOPES } from './ScopePicker'
+import { UserFields } from './UserFields'
 import type { UserDraft } from '../lib/userDraft'
 import type { Role } from '../api/users'
 
@@ -101,7 +102,7 @@ describe('the scope fieldset when the department registry is not there', () => {
     mount(TWO_GRANTS)
     // The fieldset really is on screen — `*` is drawn from no registry — so the
     // absence below is a decision and not an unmounted component.
-    expect(await screen.findByRole('checkbox', { name: EVERY_DEPARTMENT })).toBeInTheDocument()
+    expect(await screen.findByRole('checkbox', { name: 'کل سامانه' })).toBeInTheDocument()
     expect(screen.queryByText(new RegExp(UNDRAWABLE_SCOPES))).toBeNull()
   })
 
@@ -151,13 +152,13 @@ describe('the scope fieldset on a scope the grammar refuses', () => {
     // be fully in hand before any of this means anything, or the assertions
     // below could be true merely of a fieldset that had not loaded yet — which
     // is the state the test above is about and a different fact entirely.
-    expect(await screen.findByRole('checkbox', { name: 'دپارتمان سالن' })).not.toBeChecked()
+    expect(await screen.findByRole('checkbox', { name: 'سالن' })).not.toBeChecked()
     const notice = screen.getByText(new RegExp(UNDRAWABLE_SCOPES))
     expect(notice).toHaveTextContent('dept:Dining')
     expect(notice).not.toHaveTextContent(EVERY_DEPARTMENT)
     // …and «سالن» is what a form that lower-cased its way out of the problem
     // would have ticked, while `*` is the box the mutant's word belongs to.
-    expect(screen.getByRole('checkbox', { name: EVERY_DEPARTMENT })).not.toBeChecked()
+    expect(screen.getByRole('checkbox', { name: 'کل سامانه' })).not.toBeChecked()
   })
 
   it('says nothing about an account whose every scope it can draw', async () => {
@@ -166,7 +167,7 @@ describe('the scope fieldset on a scope the grammar refuses', () => {
     // that shouts about every ordinary account it ever draws.
     stubDepartments()
     mount(TWO_GRANTS)
-    expect(await screen.findByRole('checkbox', { name: 'دپارتمان پخت' })).toBeChecked()
+    expect(await screen.findByRole('checkbox', { name: 'پخت' })).toBeChecked()
     expect(screen.queryByText(new RegExp(UNDRAWABLE_SCOPES))).toBeNull()
   })
 })
