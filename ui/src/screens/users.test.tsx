@@ -9,6 +9,7 @@ import { PanelShell } from '../shell/PanelShell'
 import type { AdminUser } from '../api/users'
 import type { Department } from '../api/types'
 import type { SessionDescriptor } from '../auth/session'
+import { declarations, paint, winner } from '../test/paint'
 
 let session: SessionDescriptor | undefined
 vi.mock('../auth/useSession', () => ({ useSession: () => ({ data: session }) }))
@@ -1213,5 +1214,108 @@ describe('the record screen (§6.8)', () => {
     expect(cards[0].getAttribute('aria-label')).toBe('نقش و دپارتمان')
     // `access` carries no `grid`, so no grid hook goes on this screen.
     expect(screenRoot.querySelectorAll('[data-grid]')).toHaveLength(0)
+  })
+})
+
+
+/**
+ * §6.8's own values, read off the compiled rule rather than off the class
+ * string.
+ *
+ * jsdom renders nothing. `toHaveClass` proves a string was written, and a
+ * misspelt utility is a perfectly legal string that emits no rule at all —
+ * nine screens shipped that way. Every block below takes the component's OWN
+ * rendered `className` (never a copy of it) through the real
+ * `tailwind.config.js` and compares the **full declaration set**, property AND
+ * value, so a swap that keeps the property — radius 16 → 20, white → cream,
+ * a hairline that becomes a hairline of another width — dies here as well as a
+ * deletion does. `src/test/paint.ts` is imported, not copied.
+ */
+describe('what §6.8 paints (the compiled rule, not the class string)', () => {
+  async function painted(el: Element) {
+    return paint(el.className)
+  }
+
+  it('paints §5.2\'s scope chip', async () => {
+    renderDetail(EDITOR, { ...SAHAR, scopes: ['dept:dining'] })
+    const panel = await screen.findByRole('group', { name: 'نقش و دپارتمان' })
+    // The DEPARTMENT chip, not the role chip beside it: `getByText` names which
+    // of the two is being measured, where `querySelector('span')` would grade
+    // whichever came first and never say so.
+    expect([...declarations(await painted(within(panel).getByText('سالن')))].sort()).toEqual([
+      'align-items: center',
+      'background-color: var(--tile-v2)',
+      'border-color: var(--line)',
+      'border-radius: var(--radius-control)',
+      // 1.5px, which is the one value on this chip a browser can never confirm:
+      // Chrome reports the USED border-width, floored to whole device pixels.
+      'border-width: var(--border-hairline)',
+      'color: var(--ink)',
+      'display: inline-flex',
+      'flex: none',
+      'font-size: var(--fs-sm2)',
+      'font-weight: var(--fw-semibold)',
+      'padding-bottom: var(--space-4)',
+      'padding-left: var(--space-6)',
+      'padding-right: var(--space-6)',
+      'padding-top: var(--space-4)',
+    ])
+  })
+
+  it('paints three panel skins, and they are three', async () => {
+    // §6.8 draws panels 1 and 2 white on `--border-current` and FLAT, panel 3
+    // on the card recipe with its shadow, and panel 4 on the danger edge. One
+    // skin for all four is the commonest way to draw this screen and it is
+    // wrong three times over — and `src/ui/SectionCard.tsx` ships neither of the
+    // two that are not the card, which is why this screen draws its own box.
+    renderDetail(EDITOR, SAHAR)
+    const sub = await screen.findByRole('group', { name: 'نقش و دپارتمان' })
+    const card = screen.getByRole('group', { name: 'گذرواژه' })
+    const danger = screen.getByRole('group', { name: 'غیرفعال‌سازی کاربر' })
+
+    const shared = [
+      'border-radius: var(--radius-card)',
+      'border-width: 1px',
+      'margin-bottom: var(--space-7)',
+      'padding: var(--space-9)',
+    ]
+    expect([...declarations(await painted(sub))].sort()).toEqual([
+      'background-color: var(--card)',
+      'border-color: var(--border-current)',
+      ...shared,
+    ].sort())
+    expect([...declarations(await painted(danger))].sort()).toEqual([
+      'background-color: var(--card)',
+      'border-color: var(--border-danger)',
+      ...shared,
+    ].sort())
+
+    // Panel 3 is the only one of the three that carries a shadow, and the only
+    // one on `--border-card`. Asserted on the two properties that differ rather
+    // than on the whole set, because Tailwind's shadow scaffolding
+    // (`--tw-ring-offset-shadow` and friends) is not this screen's decision.
+    const c = await painted(card)
+    expect(winner(c, 'border-color')).toBe('var(--border-card)')
+    expect(winner(c, '--tw-shadow-colored')).toBe('var(--shadow-card)')
+    expect(winner(await painted(sub), '--tw-shadow-colored'), 'panel 1 has a shadow').toBe('')
+    expect(winner(await painted(danger), '--tw-shadow-colored'), 'panel 4 has a shadow').toBe('')
+  })
+
+  it('spells the ≤760 rule as a swap, in a media query, not as a second element', async () => {
+    // The `1px --warm` divider between the role chip and the scope chips. The
+    // mobile pass is the ONE thing §6.8 changes here, and it is a `display`
+    // swap inside `(max-width: 760px)` — not a duplicate element rendered
+    // conditionally, which would be a second thing to keep in step.
+    renderDetail(EDITOR, SAHAR)
+    const panel = await screen.findByRole('group', { name: 'نقش و دپارتمان' })
+    const rule = panel.querySelector('[aria-hidden]')!
+    expect(rule).not.toBeNull()
+    const p = await painted(rule)
+    expect([...declarations(p)].sort()).toEqual([
+      'align-self: stretch',
+      'background-color: var(--warm)',
+      'width: 1px',
+    ])
+    expect([...declarations(p, '', '(max-width: 760px)')]).toEqual(['display: none'])
   })
 })

@@ -137,7 +137,7 @@ const RAHA_UNKNOWN_KIND: AdminUser = { ...RAHA, scopes: ['dept:dining/report:dai
  * It would not reach this dialog: `mayManage`'s scope clause runs every one of
  * the target's scopes through `scopeContains`, which answers `false` for a
  * malformed argument even to a `*` holder — so such an account is covered by
- * nobody, `UserDetail` draws no «ویرایش کاربر» button on it, and the server
+ * nobody, `UserDetail` draws no «ویرایش» button on it, and the server
  * answers the same `SCOPE_NOT_COVERED`. A fixture written for it here fails on
  * the *button*, before the fieldset it claims to be about is ever on screen.
  *
@@ -284,7 +284,7 @@ function mountDetail(id: number) {
 }
 
 async function openDialog() {
-  await userEvent.click(await screen.findByRole('button', { name: 'ویرایش کاربر' }))
+  await userEvent.click(await screen.findByRole('button', { name: 'ویرایش' }))
   await screen.findByRole('dialog')
   await waitFor(() => expect(screen.getByRole('option', { name: 'خواننده' })).toBeInTheDocument())
 }
@@ -308,7 +308,7 @@ describe('who may edit a record', () => {
   it('offers the control to an administrator who may act on this account', async () => {
     stubServer(SAHAR)
     mountDetail(7)
-    expect(await screen.findByRole('button', { name: 'ویرایش کاربر' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'ویرایش' })).toBeInTheDocument()
   })
 
   it('withholds it from an Admin looking at an account that confers more than they hold', async () => {
@@ -318,14 +318,25 @@ describe('who may edit a record', () => {
     stubServer({ ...SAHAR, capabilities: EDITOR.capabilities })
     mountDetail(7)
     expect(await screen.findByRole('heading', { name: 'سحر بیات' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'ویرایش کاربر' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'ویرایش' })).toBeNull()
   })
 
   it('asks the server for nothing until the dialog is opened', async () => {
+    // The roles and the candidate list are what this is about: they are two
+    // requests per visit to anybody's record if the dialog is mounted eagerly,
+    // and a second opening would start on the account as it stood before the
+    // first. The record itself and the department registry are read because
+    // §6.8 DRAWS both — the record is the screen, and panel 1 needs the
+    // registry to print «سالن» where the row stores `dept:dining` — so they are
+    // named here rather than swept into a bare `toEqual([])` that would have to
+    // be loosened the next time the screen legitimately reads something.
     const seen = stubServer(SAHAR)
     mountDetail(7)
-    await screen.findByRole('button', { name: 'ویرایش کاربر' })
-    await waitFor(() => expect(seen.gets).toEqual(['/api/users/7']))
+    await screen.findByRole('button', { name: 'ویرایش' })
+    await waitFor(() => expect([...seen.gets].sort())
+      .toEqual(['/api/departments', '/api/users/7']))
+    expect(seen.gets.filter((p) => p.startsWith('/api/roles')
+      || p.startsWith('/api/users/supervisor-candidates'))).toEqual([])
   })
 })
 
@@ -593,7 +604,12 @@ describe('the scope fieldset', () => {
     const seen = stubServer(RAHA_UNKNOWN_KIND)
     mountDetail(11)
     await openDialog()
-    expect(await screen.findByText(/سالن\/report:daily/)).toBeInTheDocument()
+    // Inside the DIALOG. §6.8 panel 1 behind it names every scope through the
+    // same `scopeLabel`, so an unscoped query now matches the record screen's
+    // chip as well as the fieldset's line — and would go on passing if the
+    // fieldset stopped drawing it at all.
+    const form = screen.getByRole('dialog')
+    expect(await within(form).findByText(/سالن\/report:daily/)).toBeInTheDocument()
     await userEvent.click(screen.getByRole('checkbox', { name: 'دپارتمان صندوق' }))
     await save()
     await waitFor(() => expect(seen.writes).toHaveLength(1))
@@ -606,7 +622,7 @@ describe('when one of the dialog\'s own reads fails', () => {
   /** The dialog, opened without waiting for a role option — there is none to
    *  wait for when the read this test is about is the one that failed. */
   async function openFailedDialog() {
-    await userEvent.click(await screen.findByRole('button', { name: 'ویرایش کاربر' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'ویرایش' }))
     await screen.findByRole('dialog')
   }
 
@@ -897,7 +913,13 @@ describe('what the edit form shows afterwards', () => {
     expect(labelled.length).toBeGreaterThan(1)
     for (const b of labelled) {
       expect(b.className, `«${b.textContent}» has no horizontal padding`).toMatch(/(^|\s)px-/)
-      expect(b.className, `«${b.textContent}» sets no type size`).toMatch(/(^|\s)text-(caption|body|subtitle)\b/)
+      // `text-fs-*` joins the three role steps: §6.8's record screen behind this
+      // dialog sets its buttons from the literal scale (`text-fs-sm`,
+      // `text-fs-sm2`), and this sweep reads every labelled button on the page
+      // deliberately. What is being asserted is that a size is set at all —
+      // `Button`'s BASE sets none (I5) — not which of the two scales names it.
+      expect(b.className, `«${b.textContent}» sets no type size`)
+        .toMatch(/(^|\s)text-(caption|body|subtitle|fs-[a-z0-9]+)\b/)
     }
   })
 })

@@ -1358,7 +1358,7 @@ const consumed = (klass: string) => rendered().has(klass) || written(klass)
 // In tailwind-probe.txt's own order, which groups them by the scale each is
 // minted on, so a whole family landing at once deletes contiguous lines.
 const PENDING: string[] = [
-  'bg-muted', 'bg-faint', 'bg-warm', 'bg-line',
+  'bg-muted', 'bg-faint', 'bg-line',
   'bg-login-orb', 'bg-warn', 'bg-info', 'bg-violet-mid',
   'bg-violet-edge', 'bg-violet-on-dark', 'bg-violet-on-dark-body', 'bg-violet-on-violet',
   'bg-desk', 'bg-tile-ctl', 'bg-value-current',
@@ -1371,7 +1371,7 @@ const PENDING: string[] = [
   'bg-junction-or', 'bg-dept-numeral-violet', 'bg-dept-numeral-coral', 'bg-steps-sub',
   'bg-steps-sub-border', 'bg-steps-sub-hover', 'bg-steps-group', 'bg-steps-group-border',
   'bg-link', 'bg-link-hover', 'text-violet-on-dark', 'text-violet-on-dark-body',
-  'text-violet-on-violet', 'text-strong', 'text-ghost',
+  'text-strong', 'text-ghost',
   'text-ink-current', 'text-ink-proposed', 'text-ok',
   'text-danger', 'text-toast-check', 'text-link', 'text-link-hover',
   'border-line-soft', 'border-line-dashed', 'border-border-dead', 'border-border-ok',
@@ -1415,7 +1415,7 @@ const PENDING: string[] = [
   'h-fab-reader', 'w-tick-nested',
   'h-tick-nested', 'max-w-summary', 'max-w-doc',
   'max-w-drawer', 'max-w-profile', 'max-w-steps',
-  'max-w-access', 'max-w-audit', 'duration-fast', 'duration-chev',
+  'max-w-audit', 'duration-fast', 'duration-chev',
   'p-compose', 'rounded-tick-nested',
   'w-tick-glyph-nested', 'h-tick-glyph-nested',
   'py-tick-nested-y', 'py-dropdown-y-dialog',
