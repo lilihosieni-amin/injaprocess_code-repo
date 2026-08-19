@@ -57,11 +57,31 @@ describe('ScopePicker', () => {
     const onChange = draw(['dept:dining'])
     await userEvent.click(await screen.findByRole('checkbox', { name: 'کل سامانه' }))
     expect(onChange).toHaveBeenCalledWith(['*'])
+    // **Both halves**, because one alone is satisfied by a grid that is always
+    // dimmed — a same-value ternary is a shipped defect here (ledger L-32) and
+    // it renders every ordinary account's departments at 40% opacity.
+    expect(screen.getByRole('group', { name: 'دپارتمان' }))
+      .toHaveAttribute('data-dimmed', 'false')
     // R5's neighbour: §6.8 dims the grid by opacity when "whole system" is on.
     // Hidden, an administrator cannot see what they are about to widen past.
     draw(['*'])
     expect((await screen.findAllByRole('group', { name: 'دپارتمان' }))[1])
       .toHaveAttribute('data-dimmed', 'true')
+  })
+
+  it('tints a tile the account reaches at all, and leaves the rest untinted', async () => {
+    // §6.8's tile is `{on:--tile-v4 over --line-dashed | off:--card over --warm}`,
+    // and "on" here has to mean "reaches this department", not "reaches the
+    // whole of it": a report-scoped department painted exactly like an ungranted
+    // one is the picture that made D11's «Report reader» read as an account with
+    // no departments at all. The TICK still says whole-or-not — drawn ticked,
+    // the tile would report more reach than the account holds.
+    draw(['dept:dining/report:steps'])
+    const dining = (await screen.findByRole('checkbox', { name: 'سالن' })).closest('label')!
+    const cashier = screen.getByRole('checkbox', { name: 'صندوق' }).closest('label')!
+    expect(dining).toHaveClass('bg-tile-v4', 'border-line-dashed')
+    expect(cashier).toHaveClass('bg-card', 'border-warm')
+    expect(screen.getByRole('checkbox', { name: 'سالن' })).not.toBeChecked()
   })
 
   it('keeps a scope it can draw no control for, and says so', async () => {

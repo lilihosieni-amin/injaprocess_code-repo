@@ -678,6 +678,19 @@ describe('when one of the create dialog\'s own reads fails', () => {
     expect(screen.queryByRole('button', { name: 'ایجاد کاربر' })).toBeNull()
   })
 
+  it('offers no retry for a refusal that will answer the same way every time (R5)', async () => {
+    // `retryQuery` is the one predicate that decides whether asking again could
+    // change the answer, and no 4xx qualifies — a 403 on `/api/roles` is settled.
+    // A button that re-runs it is a control the app would refuse: the press
+    // costs a round trip and redraws the same sentence. The failure surface
+    // still SAYS what happened; only the affordance is withheld.
+    stubServer({ rolesStatus: 403 })
+    mountList()
+    await openFailedDialog()
+    expect(await screen.findByText(ROLES_UNREADABLE)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'تلاش دوباره' })).toBeNull()
+  })
+
   it('offers a retry, and draws the form once the read succeeds', async () => {
     const seen = stubServer({ rolesStatus: 500 })
     mountList()

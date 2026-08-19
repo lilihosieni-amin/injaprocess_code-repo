@@ -128,11 +128,15 @@ export function SupervisorPicker({
     <div className="flex flex-col gap-s3">
       <Dropdown
         label="سرپرست"
-        // `''` is «بدون سرپرست» and only exists where that state is legal; where
-        // it is not, `undefined` leaves the trigger on its placeholder rather
-        // than reading as a choice nobody made. An off-list id matches no option
-        // and lands on the placeholder too, which is what the note below is for.
-        value={value === null ? (allowNone ? '' : undefined) : String(value)}
+        // `''` is «بدون سرپرست»'s own value, and that option exists only where
+        // the state is legal (D51) — so where it is not, `''` matches no option
+        // and the trigger stays on its placeholder rather than reading as a
+        // choice nobody made. An off-list id lands there the same way, which is
+        // what the note below is for. Written without a second `allowNone`
+        // branch on purpose: the two spellings paint identically, and a ternary
+        // whose arms cannot be told apart is a defect this project has shipped
+        // before (ledger L-32).
+        value={value === null ? '' : String(value)}
         onChange={(id) => onChange(id === '' ? null : Number(id))}
         placeholder={pending ? 'در حال بارگذاری…' : 'انتخاب کنید'}
         searchable searchPlaceholder="نام یا شماره"
