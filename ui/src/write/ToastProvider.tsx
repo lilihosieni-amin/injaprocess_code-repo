@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useRef, useState, type ReactNode } from 'react'
+import { Icon } from '../ui/Icon'
 
 type ToastCtx = { show: (message: string) => void }
 const Ctx = createContext<ToastCtx>({ show: () => {} })
@@ -33,8 +34,19 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         // 1055) not at all: this is the live provider every call site uses, so
         // a toast raised over an open dialog would have painted behind its
         // scrim. The toast is the ceiling.
-        <div role="status" aria-live="polite" className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-ink text-white px-5 py-3 rounded-xl text-[13px] font-semibold shadow-modal z-toast flex items-center gap-2.5">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#7BE0A8" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
+        //
+        // O5 — `start-1/2` with a LOGICAL translate, not `left-1/2
+        // -translate-x-1/2`. The two physical offsets cancelled, so the toast
+        // happened to centre correctly; in an LTR locale `start` becomes `left`
+        // and the pair would still cancel, which is what makes this a fix rather
+        // than a rename. The old form was a mirror bug waiting for the day one
+        // of the two was touched.
+        //
+        // `text-fs-sm` (`--fs-sm` 13px) rather than the `text-[13px]` this line
+        // carried: the design draws the toast at `font-size:13px`
+        // (`Inja Panel.dc.html:2113`) and the scale has the rung.
+        <div role="status" aria-live="polite" className="fixed bottom-s11 start-1/2 rtl:translate-x-1/2 ltr:-translate-x-1/2 bg-ink text-card px-5 py-s6 rounded-button text-fs-sm font-semibold shadow-modal z-toast flex items-center gap-s5">
+          <Icon d="M20 6L9 17l-5-5" px={16} stroke={2.4} className="text-toast-check" />
           {message}
         </div>
       )}

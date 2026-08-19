@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, fireEvent, act } from '@testing-library/react'
 import { ExportModal } from './ExportModal'
+import userEvent from '@testing-library/user-event'
 
 const TITLE = 'خروجی مستندات کامل — سند رسمی'
 
@@ -20,30 +21,29 @@ afterEach(() => {
 })
 
 describe('ExportModal', () => {
-  // ProcessList's scroll container is dir="ltr" (scrollbar placement) and the modals
-  // render inside it, so the modal must re-establish its own direction — the same
-  // fix ReorderModal needed in 61cb036.
-  it('renders right-to-left even when mounted inside an LTR container', () => {
-    render(<div dir="ltr"><ExportModal title={TITLE} status="pending" onRetry={() => {}} onClose={() => {}} /></div>)
-    const heading = screen.getByText('در حال آماده‌سازی خروجی…')
-    expect(heading.closest('[dir]')?.getAttribute('dir')).toBe('rtl')
-  })
-
   it('shows a spinner and the building message while pending', () => {
-    render(<ExportModal title={TITLE} status="pending" onRetry={() => {}} onClose={() => {}} />)
+    const onClose = vi.fn()
+    render(<ExportModal title={TITLE} status="pending" onRetry={() => {}} onClose={onClose} />)
     expect(screen.getByText('در حال آماده‌سازی خروجی…')).toBeInTheDocument()
     expect(screen.getByTestId('btn-spinner')).toBeInTheDocument()
     expect(screen.getByText(TITLE)).toBeInTheDocument()
   })
 
-  it('ignores an outside click while pending but honours it once ready', () => {
+  it('ignores a press on the scrim while pending but honours it once ready', () => {
+    // Nothing aborts the POST (D-abort), so a stray press on the backdrop does
+    // not stop the export — it loses the link the export is being made FOR, and
+    // the next attempt is a second write to the same deterministic filename.
+    // `Overlay` dismisses on **mousedown**, which `fireEvent.click` does not
+    // emit; a `click` here would report a clean pass on a scrim that dismisses
+    // in every state.
     const onClose = vi.fn()
+    const scrim = () => screen.getByRole('dialog').parentElement!
     const { rerender } = render(<ExportModal title={TITLE} status="pending" onRetry={() => {}} onClose={onClose} />)
-    fireEvent.click(screen.getByTestId('export-modal-backdrop'))
+    fireEvent.mouseDown(scrim())
     expect(onClose).not.toHaveBeenCalled()
 
     rerender(<ExportModal title={TITLE} status="ready" url="https://x/exports/a.html" onRetry={() => {}} onClose={onClose} />)
-    fireEvent.click(screen.getByTestId('export-modal-backdrop'))
+    fireEvent.mouseDown(scrim())
     expect(onClose).toHaveBeenCalled()
   })
 
@@ -58,17 +58,21 @@ describe('ExportModal', () => {
   })
 
   it('offers a header close button that works while pending', () => {
-    // outside click is suppressed while pending, so without this button Escape
-    // is the only way out — unreachable on a touch device.
+    // The scrim is suppressed while pending, so without this button Escape is
+    // the only way out — unreachable on a touch device. O3: it used to be a bare
+    // «×» with no `aria-label`, no `title` and no visually-hidden text, so a
+    // screen reader announced the glyph or nothing at all; `Overlay`'s carries
+    // «بستن». The pending state draws no footer, so this name is unambiguous.
     const onClose = vi.fn()
     render(<ExportModal title={TITLE} status="pending" onRetry={() => {}} onClose={onClose} />)
-    fireEvent.click(screen.getByRole('button', { name: 'بستن پنجره' }))
+    fireEvent.click(screen.getByRole('button', { name: 'بستن' }))
     expect(onClose).toHaveBeenCalled()
   })
 
   it('shows the link, opens it in a new tab, and states the caveats', () => {
+    const onClose = vi.fn()
     const url = 'https://inja.example/exports/dining/steps-0123456789abcdef.html'
-    render(<ExportModal title={TITLE} status="ready" url={url} onRetry={() => {}} onClose={() => {}} />)
+    render(<ExportModal title={TITLE} status="ready" url={url} onRetry={() => {}} onClose={onClose} />)
     expect(screen.getByText('خروجی آماده شد')).toBeInTheDocument()
     expect(screen.getByDisplayValue(url)).toHaveAttribute('readonly')
     const open = screen.getByRole('link', { name: /باز کردن خروجی/ })
@@ -84,11 +88,12 @@ describe('ExportModal', () => {
   })
 
   it('copies the link and flips the button label back after 1.8s', () => {
+    const onClose = vi.fn()
     vi.useFakeTimers()
     const writeText = vi.fn().mockResolvedValue(undefined)
     setClipboard({ writeText })
     const url = 'https://inja.example/exports/dining/steps-0123456789abcdef.html'
-    render(<ExportModal title={TITLE} status="ready" url={url} onRetry={() => {}} onClose={() => {}} />)
+    render(<ExportModal title={TITLE} status="ready" url={url} onRetry={() => {}} onClose={onClose} />)
 
     fireEvent.click(screen.getByRole('button', { name: /کپی لینک/ }))
     expect(writeText).toHaveBeenCalledWith(url)
@@ -99,13 +104,14 @@ describe('ExportModal', () => {
   })
 
   it('copies through execCommand when navigator.clipboard is absent', () => {
+    const onClose = vi.fn()
     // served over plain http locally, so this is the branch that actually runs
     setClipboard(undefined)
     let copiedText: string | undefined
     const exec = vi.fn(() => { copiedText = document.querySelector('textarea')?.value; return true })
     Object.defineProperty(document, 'execCommand', { value: exec, configurable: true, writable: true })
     const url = 'https://inja.example/exports/dining/steps-0123456789abcdef.html'
-    render(<ExportModal title={TITLE} status="ready" url={url} onRetry={() => {}} onClose={() => {}} />)
+    render(<ExportModal title={TITLE} status="ready" url={url} onRetry={() => {}} onClose={onClose} />)
 
     fireEvent.click(screen.getByRole('button', { name: /کپی لینک/ }))
     expect(exec).toHaveBeenCalledWith('copy')
@@ -115,10 +121,11 @@ describe('ExportModal', () => {
   })
 
   it('does not claim success when execCommand refuses the copy', () => {
+    const onClose = vi.fn()
     setClipboard(undefined)
     Object.defineProperty(document, 'execCommand', { value: vi.fn(() => false), configurable: true, writable: true })
     const url = 'https://inja.example/exports/dining/steps-0123456789abcdef.html'
-    render(<ExportModal title={TITLE} status="ready" url={url} onRetry={() => {}} onClose={() => {}} />)
+    render(<ExportModal title={TITLE} status="ready" url={url} onRetry={() => {}} onClose={onClose} />)
 
     fireEvent.click(screen.getByRole('button', { name: /کپی لینک/ }))
     expect(screen.queryByRole('button', { name: /کپی شد/ })).not.toBeInTheDocument()
@@ -126,17 +133,19 @@ describe('ExportModal', () => {
   })
 
   it('shows the failure message and retries', () => {
+    const onClose = vi.fn()
     const onRetry = vi.fn()
-    render(<ExportModal title={TITLE} status="failed" error="قالب خروجی یافت نشد" onRetry={onRetry} onClose={() => {}} />)
+    render(<ExportModal title={TITLE} status="failed" error="قالب خروجی یافت نشد" onRetry={onRetry} onClose={onClose} />)
     expect(screen.getByText('قالب خروجی یافت نشد')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'تلاش دوباره' }))
     expect(onRetry).toHaveBeenCalled()
   })
 
   it('does not announce success without a link', () => {
+    const onClose = vi.fn()
     // ready-with-no-url would otherwise be a success header over an empty body
     const onRetry = vi.fn()
-    render(<ExportModal title={TITLE} status="ready" onRetry={onRetry} onClose={() => {}} />)
+    render(<ExportModal title={TITLE} status="ready" onRetry={onRetry} onClose={onClose} />)
     expect(screen.queryByText('خروجی آماده شد')).not.toBeInTheDocument()
     expect(screen.getByText('خروجی گرفته نشد')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'تلاش دوباره' }))
@@ -144,14 +153,56 @@ describe('ExportModal', () => {
   })
 
   it('explains a failure that arrived without a message', () => {
-    render(<ExportModal title={TITLE} status="failed" onRetry={() => {}} onClose={() => {}} />)
+    const onClose = vi.fn()
+    render(<ExportModal title={TITLE} status="failed" onRetry={() => {}} onClose={onClose} />)
     expect(screen.getByText('دلیل خطا مشخص نیست؛ دوباره تلاش کنید.')).toBeInTheDocument()
   })
 
-  it('closes on Escape in every state', () => {
+  it('closes on Escape in every state, pending included', async () => {
+    // `fireEvent.keyDown(window, …)` is what stood here, and it cannot work
+    // against `Overlay`: an event DISPATCHED on `window` has `window` as its
+    // target, so a listener on `document` — which is where the primitive's is —
+    // is never on its propagation path. It passed only because the old
+    // component listened on `window` itself.
     const onClose = vi.fn()
     render(<ExportModal title={TITLE} status="pending" onRetry={() => {}} onClose={onClose} />)
-    fireEvent.keyDown(window, { key: 'Escape' })
+    await userEvent.keyboard('{Escape}')
     expect(onClose).toHaveBeenCalled()
+  })
+})
+
+describe('ExportModal — one dialog, one scrim, one direction (P3, O1, O7)', () => {
+  it('is a real dialog: escape closes it, focus is trapped, and the scrim is the primitive\u2019s', async () => {
+    const onClose = vi.fn()
+    render(<ExportModal title={TITLE} status="pending" onRetry={() => {}} onClose={onClose} />)
+    const box = await screen.findByRole('dialog', { name: /در حال آماده‌سازی خروجی/ })
+    expect(box).toHaveAttribute('aria-modal', 'true')
+    // P3/O7 — five dialogs bypassed `Overlay` and hand-picked five different
+    // stacking levels of their own against its ladder; three of them could not
+    // be closed from the keyboard at all. The rung is asserted on the SCRIM's
+    // class rather than on an inline style: `Overlay` writes `z-modal` and only
+    // adds `style="z-index: calc(...)"` for a NESTED overlay, so an assertion on
+    // an inline z-index is one that a lone dialog — every dialog here — can
+    // never satisfy however correct it is.
+    expect(box.parentElement).toHaveClass('z-modal')
+    expect(document.body.style.overflow).toBe('hidden')
+    // …and Escape reaches it. Asserted as `onClose` being CALLED, not as the
+    // box disappearing: every one of these five is controlled by its parent —
+    // `open` is a literal — so a dialog that answered Escape perfectly would
+    // still be on screen at the end of this test.
+    await userEvent.keyboard('{Escape}')
+    expect(onClose).toHaveBeenCalled()
+  })
+
+  it('does not re-pin its own direction', async () => {
+    const onClose = vi.fn()
+    render(<ExportModal title={TITLE} status="pending" onRetry={() => {}} onClose={onClose} />)
+    // O1 — five files carried `dir="rtl"` and a comment explaining it, because
+    // `ProcessList` set `dir="ltr"` on its whole scrolling region to move a
+    // scrollbar. §8's own idiom flips the *container* and its immediate children
+    // back, and that lives in `base.css` as `[data-r-pad]`, not in every dialog
+    // that mounts inside it. `closest`, not the element itself: a `dir` on the
+    // scrim above it would pin this box just as effectively.
+    expect((await screen.findByRole('dialog')).closest('[dir]')).toBeNull()
   })
 })

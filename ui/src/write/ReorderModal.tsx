@@ -3,10 +3,26 @@ import { useSaveOrder } from '../api/hooks'
 import { ApiError } from '../api/client'
 import { useToast } from './ToastProvider'
 import { Button } from '../ui/Button'
+import { Dialog } from '../ui/Overlay'
+import { Icon } from '../ui/Icon'
+import { IconButton } from '../ui/IconButton'
 import { IdBadge } from '../ui/IdBadge'
 import { toFa } from '../lib/format'
 import type { Process } from '../api/types'
 
+/**
+ * §3.3's 540 dialog — the order of one department's processes.
+ *
+ * **O4 — dragging is not the only way in.** The rows were `draggable` with four
+ * drag handlers and nothing else, so a keyboard or screen-reader user could open
+ * this box, read the order, and save it exactly as they found it. Every row now
+ * carries a labelled pair of move buttons beside the `⣿` handle, and the label
+ * names the row it moves — «بردن «نام» به بالا» — because "up" alone is the same
+ * accessible name on every row in the list.
+ *
+ * FR-I3 — nothing is written by moving a row. `seq` is a draft, and only
+ * «ذخیرهٔ ترتیب» sends it.
+ */
 export function ReorderModal({ department, departmentName, processes, onClose }: {
   department: string
   departmentName: string
@@ -54,53 +70,59 @@ export function ReorderModal({ department, departmentName, processes, onClose }:
   }
 
   return (
-    // dir is pinned here, not inherited: ProcessList's scroll container is dir="ltr"
-    // (scrollbar placement) and mounts its modals inside it. Same fix ActivityNode
-    // applies inside the dir="ltr" Canvas.
-    <div dir="rtl" onClick={onClose} className="fixed inset-0 bg-[rgba(36,17,82,.45)] flex items-center justify-center z-50 p-6">
-      <div onClick={(e) => e.stopPropagation()} className="w-[560px] max-w-full bg-bg rounded-3xl overflow-hidden shadow-modal flex flex-col max-h-[82vh]">
-        <div className="px-[22px] py-5 bg-white border-b border-warm shrink-0">
-          <div className="font-extrabold text-[17px] text-ink">ترتیب فرآیندهای {departmentName}</div>
-          <div className="text-[12px] text-muted mt-0.5">{toFa(seq.length)} فرآیند · هر ردیف را بکشید و در جای دلخواه رها کنید.</div>
-        </div>
-
-        <div className="p-[22px] overflow-auto flex-1">
-          {seq.length === 0 && (
-            <div className="text-center py-10 text-faint text-[13px]">فرآیندی برای ترتیب‌دادن وجود ندارد</div>
-          )}
-          <div className="flex flex-col gap-1.5">
-            {seq.map((p, i) => (
-              <Fragment key={p.id}>
-                {marksGapBefore(i) && <div data-testid="drop-indicator" className="h-[3px] rounded-full bg-coral" />}
-                <div
-                  data-testid="reorder-row"
-                  data-pid={p.id}
-                  draggable
-                  onDragStart={() => setDragFrom(i)}
-                  onDragOver={(e) => { e.preventDefault(); setOverIndex(i) }}
-                  onDrop={() => { if (dragFrom !== null) moveTo(dragFrom, i); endDrag() }}
-                  onDragEnd={endDrag}
-                  className={`bg-white border border-warm rounded-xl px-3 py-2 flex items-center gap-2.5 cursor-grab ${dragFrom === i ? 'opacity-40 border-coral' : ''}`}
-                >
-                  <span className="text-faint text-[15px] leading-none select-none" aria-hidden>⣿</span>
-                  <span className="font-extrabold text-[12px] text-violet min-w-[20px] text-center">{toFa(i + 1)}</span>
-                  <IdBadge>{p.id}</IdBadge>
-                  <span className="font-bold text-[12.5px] text-ink flex-1 min-w-0 truncate">{p.name}</span>
-                  {p.parent && <span className="text-[9px] px-2 py-0.5 rounded-full font-semibold text-[#B4690E] bg-[#FBEEDC] shrink-0">زیرفرآیند</span>}
-                </div>
-                {marksGapAfter(i) && <div data-testid="drop-indicator" className="h-[3px] rounded-full bg-coral" />}
-              </Fragment>
-            ))}
-          </div>
-        </div>
-
-        <div className="px-[22px] py-4 bg-white border-t border-warm flex gap-2.5 shrink-0">
+    <Dialog
+      open
+      onClose={onClose}
+      width="lg"
+      title={`ترتیب فرآیندهای ${departmentName}`}
+      subtitle={`${toFa(seq.length)} فرآیند · هر ردیف را بکشید و رها کنید، یا با کلیدهای بالا و پایین جابه‌جا کنید.`}
+      footer={
+        <div className="flex gap-s5">
           {/* nothing to order: saving would write an `order.json` for a department
               that ARD §4.6 keeps fileless until its first process */}
-          <Button variant="coral" onClick={doSave} loading={save.isPending} loadingLabel="در حال ذخیره…" disabled={seq.length === 0} className="flex-1 py-2.5 text-[13px]">ذخیرهٔ ترتیب</Button>
-          <Button variant="ghost" onClick={onClose} className="flex-1 py-2.5 text-[13px]">انصراف</Button>
+          <Button variant="coral" onClick={doSave} loading={save.isPending} loadingLabel="در حال ذخیره…"
+            disabled={seq.length === 0} className="flex-1 px-s8 text-fs-menu">ذخیرهٔ ترتیب</Button>
+          <Button variant="ghost" onClick={onClose} className="flex-1 px-s8 text-fs-menu">انصراف</Button>
         </div>
+      }
+    >
+      {seq.length === 0 && (
+        <div className="text-center py-empty-y text-faint text-fs-sm">فرآیندی برای ترتیب‌دادن وجود ندارد</div>
+      )}
+      <div className="flex flex-col gap-s2">
+        {seq.map((p, i) => (
+          <Fragment key={p.id}>
+            {marksGapBefore(i) && <div data-testid="drop-indicator" className="h-hint rounded-pill bg-coral" />}
+            <div
+              data-testid="reorder-row"
+              data-pid={p.id}
+              draggable
+              onDragStart={() => setDragFrom(i)}
+              onDragOver={(e) => { e.preventDefault(); setOverIndex(i) }}
+              onDrop={() => { if (dragFrom !== null) moveTo(dragFrom, i); endDrag() }}
+              onDragEnd={endDrag}
+              className={`bg-card border border-warm rounded-button px-s6 py-s4 flex items-center gap-s5 cursor-grab ${dragFrom === i ? 'opacity-40 border-coral' : ''}`}
+            >
+              {/* §5.2 sanctions this glyph as a character rather than an SVG,
+                  so it stays — but it is decoration now, not the only handle. */}
+              <span className="text-faint text-fs-lg leading-none select-none" aria-hidden>⣿</span>
+              <div className="flex flex-col shrink-0">
+                <IconButton label={`بردن «${p.name}» به بالا`}
+                  disabled={i === 0} onClick={() => moveTo(i, i - 1)}
+                  icon={<Icon name="chevronUp" px={14} stroke={2.4} />} />
+                <IconButton label={`بردن «${p.name}» به پایین`}
+                  disabled={i === seq.length - 1} onClick={() => moveTo(i, i + 1)}
+                  icon={<Icon name="chevronDown" px={14} stroke={2.4} />} />
+              </div>
+              <span className="font-extrabold text-fs-caption text-violet min-w-s10 text-center">{toFa(i + 1)}</span>
+              <IdBadge>{p.id}</IdBadge>
+              <span className="font-bold text-fs-sm2 text-ink flex-1 min-w-0 truncate">{p.name}</span>
+              {p.parent && <span className="text-fs-tag px-s4 py-half rounded-pill font-semibold text-warn bg-tile-warn shrink-0">زیرفرآیند</span>}
+            </div>
+            {marksGapAfter(i) && <div data-testid="drop-indicator" className="h-hint rounded-pill bg-coral" />}
+          </Fragment>
+        ))}
       </div>
-    </div>
+    </Dialog>
   )
 }

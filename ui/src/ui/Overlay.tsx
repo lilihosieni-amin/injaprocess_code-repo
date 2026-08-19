@@ -124,13 +124,25 @@ interface OverlayProps {
   width?: keyof typeof WIDTH
   /** §4.5 — `blur(3px)`. The export dialog is the only case in the design. */
   blurScrim?: boolean
+  /**
+   * Whether a press on the scrim dismisses. Default `true`.
+   *
+   * The export dialog is the one caller that says no, and only while its POST
+   * is in flight: closing it there does not abort the request (nothing does),
+   * it loses the link the request is being made FOR — the modal unmounts, the
+   * URL arrives into a component nobody is looking at, and the next export is a
+   * second write to the same deterministic filename. Escape and the close
+   * button are unaffected, so the box is never a trap; what is withdrawn is the
+   * *accidental* dismissal, which is the only one a stray click produces.
+   */
+  dismissOnScrim?: boolean
   /** 'dialog' centres above the breakpoint; 'sheet' anchors to the inline start. */
   presentation?: 'dialog' | 'sheet'
 }
 
 function Overlay({
   open, onClose, title, children, subtitle, icon, footer,
-  width = 'md', blurScrim = false, presentation = 'dialog',
+  width = 'md', blurScrim = false, dismissOnScrim = true, presentation = 'dialog',
 }: OverlayProps) {
   const box = useRef<HTMLDivElement>(null)
   const restoreTo = useRef<HTMLElement | null>(null)
@@ -257,7 +269,7 @@ function Overlay({
       // product today — nothing is written here and the utility is what paints,
       // so this cannot become a class that is named and never drawn.
       style={depth === 0 ? undefined : { zIndex: `calc(var(${rung.token}) + ${depth})` }}
-      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}
+      onMouseDown={(e) => { if (dismissOnScrim && e.target === e.currentTarget) onClose() }}
     >
       <div
         ref={box}

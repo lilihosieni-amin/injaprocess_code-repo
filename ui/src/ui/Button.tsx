@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, ReactNode } from 'react'
+import type { AnchorHTMLAttributes, ButtonHTMLAttributes, ReactNode } from 'react'
 
 type Variant = 'coral' | 'violet' | 'green' | 'ghost' | 'danger'
 
@@ -51,10 +51,7 @@ export function Spinner({ className = '' }: { className?: string }) {
   )
 }
 
-export function Button({
-  variant = 'ghost', className = '', loading = false, loadingLabel,
-  icon, block = false, children, disabled, ...props
-}: ButtonHTMLAttributes<HTMLButtonElement> & {
+interface Skin {
   variant?: Variant
   loading?: boolean
   loadingLabel?: ReactNode
@@ -62,7 +59,68 @@ export function Button({
   icon?: ReactNode
   /** Full width: a dialog footer button, or a stacked action at <=760px. */
   block?: boolean
-}) {
+}
+
+/**
+ * `as="a"` — the one thing on this scale that is a NAVIGATION and not an act.
+ *
+ * A discriminated union rather than an intersection of the two attribute sets:
+ * `onClick` is `MouseEventHandler<HTMLButtonElement>` on one and
+ * `<HTMLAnchorElement>` on the other, and an intersection of those two is a
+ * handler no ordinary call site can satisfy. Narrowing on `as` gives each branch
+ * its own element's props and nothing else's.
+ *
+ * `href`, `target` and `rel` therefore reach the anchor and `disabled`, `type`
+ * and `form` cannot be written on it at all — which is the point: a disabled
+ * link is not a thing, and `loading` is ignored here because a link does not
+ * make a request whose end this component could know about. `no-underline`
+ * because `BASE` paints a filled surface; an underline through it is the
+ * browser's default for `<a>`, not a decision.
+ */
+type ButtonProps =
+  | (Skin & ButtonHTMLAttributes<HTMLButtonElement> & { as?: 'button' })
+  | (Skin & AnchorHTMLAttributes<HTMLAnchorElement> & { as: 'a' })
+
+export function Button(props: ButtonProps) {
+  // `as`, `loading` and `loadingLabel` are dropped by NAME rather than by
+  // destructuring them into throwaway bindings: `@typescript-eslint/no-unused-vars`
+  // is on with no `varsIgnorePattern`, so `const { as: _as, … }` is an error
+  // here, not a convention.
+  if (props.as === 'a') {
+    const { variant = 'ghost', className = '', icon, block = false, children } = props
+    const rest = { ...props } as Partial<typeof props>
+    delete rest.as
+    delete rest.variant
+    delete rest.className
+    delete rest.icon
+    delete rest.block
+    delete rest.children
+    delete rest.loading
+    delete rest.loadingLabel
+    return (
+      <a
+        className={`${BASE} ${V[variant]} ${block ? 'w-full' : ''} no-underline ${className}`}
+        {...rest}
+      >
+        {icon}
+        {children}
+      </a>
+    )
+  }
+  const {
+    variant = 'ghost', className = '', loading = false, loadingLabel,
+    icon, block = false, children, disabled,
+  } = props
+  const rest = { ...props } as Partial<typeof props>
+  delete rest.as
+  delete rest.variant
+  delete rest.className
+  delete rest.loading
+  delete rest.loadingLabel
+  delete rest.icon
+  delete rest.block
+  delete rest.children
+  delete rest.disabled
   return (
     // a slow save must look busy, not frozen: the spinner is the feedback and the
     // forced `disabled` is what stops a second submit while the first is in flight
@@ -70,7 +128,7 @@ export function Button({
       className={`${BASE} ${V[variant]} ${block ? 'w-full' : ''} ${loading ? 'cursor-progress' : ''} ${className}`}
       disabled={disabled || loading}
       aria-busy={loading || undefined}
-      {...props}
+      {...rest}
     >
       {/* S4's busy contract: the spinner takes the icon's place, it does not
           join it, so the label never shifts sideways when a save starts. */}

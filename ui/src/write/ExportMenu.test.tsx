@@ -160,7 +160,7 @@ describe('ExportMenu', () => {
     fireEvent.click(screen.getByText('خروجی مستندات کامل'))
     expect(screen.getByText('در حال آماده‌سازی خروجی…')).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'بستن پنجره' }))
+    fireEvent.click(screen.getByRole('button', { name: 'بستن' }))
     expect(screen.queryByText('در حال آماده‌سازی خروجی…')).not.toBeInTheDocument()
     // nothing aborts the POST, so the write is still on its way to the same
     // deterministic filename; a second export here would race it (last writer
@@ -178,7 +178,7 @@ describe('ExportMenu', () => {
     const trigger = screen.getByRole('button', { name: 'خروجی‌ها' })
     fireEvent.click(trigger)
     fireEvent.click(screen.getByText('خروجی مستندات کامل'))
-    fireEvent.click(screen.getByRole('button', { name: 'بستن پنجره' }))
+    fireEvent.click(screen.getByRole('button', { name: 'بستن' }))
     first.settle()
     await waitFor(() => expect(trigger).toBeEnabled())
 

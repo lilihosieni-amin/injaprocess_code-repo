@@ -1,27 +1,35 @@
 import { useEffect, useRef, useState } from 'react'
-import type { ReactNode } from 'react'
 import { useCreateExport } from '../api/hooks'
 import { useSession } from '../auth/useSession'
 import { useCan } from '../auth/can'
 import { ExportModal } from './ExportModal'
+import { Icon } from '../ui/Icon'
+import { IconButton } from '../ui/IconButton'
 import type { ExportKind } from '../api/types'
 
-const KINDS: { kind: ExportKind; label: string; hint: string; tile: string; icon: ReactNode }[] = [
+const KINDS: { kind: ExportKind; label: string; hint: string; tile: string; icon: string }[] = [
   {
     kind: 'flowchart',
     label: 'خروجی مستندات کامل',
     hint: 'سند رسمی با فلوچارت تعاملی',
     tile: 'bg-tile-v text-violet',
-    icon: <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M8 13h8M8 17h5" />,
+    icon: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M8 13h8M8 17h5',
   },
   {
     kind: 'steps',
     label: 'خروجی راهنمای گام‌به‌گام',
     hint: 'فهرست ساده و خوانا برای پرسنل',
-    tile: 'bg-[#FBEEDC] text-[#B4690E]',
-    icon: <><path d="M9 6h11M9 12h11M9 18h11" /><circle cx="4.5" cy="6" r="1.4" /><circle cx="4.5" cy="12" r="1.4" /><circle cx="4.5" cy="18" r="1.4" /></>,
+    // `--tile-warn` / `--warn` by name: the pair used to be `#FBEEDC` and
+    // `#B4690E` written out, which is a second home for two values the theme
+    // already keeps and `ProcessList` already reads for its sub-process tag.
+    tile: 'bg-tile-warn text-warn',
+    icon: 'M9 6h11M9 12h11M9 18h11M3.1 6h.01M3.1 12h.01M3.1 18h.01',
   },
 ]
+
+/** The `⋯` the trigger draws. §5.2 sanctions the character elsewhere; here the
+ *  design draws three filled dots, so it is a path. */
+const DOTS = 'M5 12h.01M12 12h.01M19 12h.01'
 
 /** The title shown in the modal header — the export being built. */
 const TITLE: Record<ExportKind, string> = {
@@ -66,27 +74,45 @@ export function ExportMenu({ department }: { department: string }) {
   if (kinds.length === 0) return null
 
   return (
-    <div dir="rtl" ref={wrap} className="relative shrink-0">
-      <button
+    // O1 — no `dir` here. §8's scroll box flips its own immediate children back
+    // in `base.css`; this component used to re-pin the direction itself because
+    // `ProcessList` set `dir="ltr"` as an attribute on the scrolling region.
+    <div ref={wrap} className="relative shrink-0">
+      {/* O2 — the trigger was a `w-[42px] h-[42px]` box, which is neither a
+          token nor the design's own number: `--size-iconbtn` is the panel's icon
+          button at 40. `IconButton` owns the 44px hit target and the accessible
+          name; the drawn box is the 40 inside it, and it carries the fill and
+          the edge because `IconButton`'s own `bg-transparent`/`border-0` would
+          beat them on the button element whatever order the class string is in
+          (the same trap `Overlay`'s CloseButton documents). */}
+      <IconButton
+        label="خروجی‌ها"
         onClick={() => setOpen((v) => !v)}
         disabled={create.isPending}
-        title="خروجی‌ها" aria-label="خروجی‌ها" aria-haspopup="menu" aria-expanded={open}
-        className="flex items-center justify-center w-[42px] h-[42px] border-[1.5px] border-line bg-white text-violet rounded-xl disabled:opacity-60"
-      >
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8" /><circle cx="12" cy="12" r="1.8" /><circle cx="19" cy="12" r="1.8" /></svg>
-      </button>
+        aria-haspopup="menu"
+        aria-expanded={open}
+        className="disabled:opacity-60"
+        icon={
+          <span className="flex items-center justify-center w-iconbtn h-iconbtn border-hairline border-line bg-card text-violet rounded-button">
+            <Icon d={DOTS} px={18} stroke={3.2} />
+          </span>
+        }
+      />
 
       {open && (
-        <div role="menu" className="absolute top-[calc(100%+8px)] end-0 w-[288px] bg-white border border-line rounded-[14px] shadow-modal z-40 p-[7px]">
+        <div role="menu" className="absolute top-full mt-s4 end-0 min-w-menu bg-card border border-line rounded-tile shadow-pop z-dropdown p-popover">
           {kinds.map((k) => (
-            <button key={k.kind} role="menuitem" onClick={() => run(k.kind)}
-              className="flex items-start gap-[11px] w-full text-right px-3 py-[11px] rounded-[10px] hover:bg-tile-v2">
-              <span className={`w-[34px] h-[34px] shrink-0 rounded-[10px] flex items-center justify-center ${k.tile}`}>
-                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{k.icon}</svg>
+            // O5 — `text-start`, not `text-right`. It happened to look correct
+            // only because two physical offsets cancelled; in an LTR locale the
+            // label would end-align against a start-aligned tile.
+            <button key={k.kind} role="menuitem" type="button" onClick={() => run(k.kind)}
+              className="flex items-start gap-option w-full text-start px-s6 py-option-y rounded-control border-0 bg-transparent cursor-pointer hover:bg-tile-v2">
+              <span className={`w-tool h-tool shrink-0 rounded-control flex items-center justify-center ${k.tile}`}>
+                <Icon d={k.icon} px={17} />
               </span>
               <span className="flex-1 min-w-0">
-                <span className="block font-bold text-[13.5px] text-ink">{k.label}</span>
-                <span className="block text-[11.5px] text-muted mt-[3px] leading-relaxed">{k.hint}</span>
+                <span className="block font-bold text-fs-menu text-ink">{k.label}</span>
+                <span className="block text-fs-xs text-muted mt-hint leading-relaxed">{k.hint}</span>
               </span>
             </button>
           ))}

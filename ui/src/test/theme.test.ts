@@ -1368,7 +1368,7 @@ const PENDING: string[] = [
   'bg-muted', 'bg-faint', 'bg-line',
   'bg-login-orb', 'bg-warn', 'bg-info', 'bg-violet-mid',
   'bg-violet-edge', 'bg-violet-on-dark', 'bg-violet-on-dark-body', 'bg-violet-on-violet',
-  'bg-desk', 'bg-tile-ctl', 'bg-value-current',
+  'bg-desk', 'bg-tile-ctl',
   'bg-hair', 'bg-line-soft', 'bg-line-dashed', 'bg-border-danger',
   'bg-border-dead', 'bg-border-ok', 'bg-strong',
   'bg-body-ink', 'bg-ghost', 'bg-dialog-ghost', 'bg-ink-current',
@@ -1379,8 +1379,8 @@ const PENDING: string[] = [
   'bg-steps-sub-border', 'bg-steps-sub-hover', 'bg-steps-group', 'bg-steps-group-border',
   'bg-link', 'bg-link-hover', 'text-violet-on-dark', 'text-violet-on-dark-body',
   'text-strong', 'text-ghost',
-  'text-ink-proposed', 'text-ok',
-  'text-danger', 'text-toast-check', 'text-link', 'text-link-hover',
+  'text-ok',
+  'text-danger', 'text-link', 'text-link-hover',
   'border-line-soft', 'border-border-ok',
   'border-steps-sub-border', 'border-steps-group-border',
   'bg-tile-v5', 'bg-line-divider',
@@ -1389,7 +1389,7 @@ const PENDING: string[] = [
   'text-fs-doc-base', 'text-fs-doc-h1',
   'text-fs-doc-title', 'text-fs-doc-step', 'text-fs-doc-body',
   'text-fs-steps-title',
-  'text-fs-nano', 'text-fs-badge-sm',
+  'text-fs-badge-sm',
   'text-fs-h1-reader-list', 'text-fs-h1-reader-dept',
   'text-fs-body-reader', 'text-prose',
   // Named only in a docstring in src/ui/fieldFrame.ts, which explains why the
@@ -1441,7 +1441,6 @@ const PENDING: string[] = [
   // mechanism working — a line comes off when its consumer arrives.
   'z-popover', 'z-tooltip', 'duration-row',
   'bg-warn-edge', 'gap-table-row-mobile',
-  'w-glyph-tile', 'h-glyph-tile',
   // The type-on-the-violet-field group came off here when Task 14's departments
   // screen landed: its READER title takes `text-role-title-on-field`, both
   // surfaces take `text-role-subtitle-on-field` for the lead, and the panel's

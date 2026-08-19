@@ -3,8 +3,26 @@ import { usePending, useResolveInboxPending } from '../api/hooks'
 import { useToast } from './ToastProvider'
 import { fieldFa } from '../flow/adapt'
 import { formatConflictValue } from '../lib/format'
+import { Button } from '../ui/Button'
+import { Dialog } from '../ui/Overlay'
 import { IdBadge } from '../ui/IdBadge'
 
+/** §6.13's two value panels — the same box twice, tinted for what it holds.
+ *
+ *  Colours by name and never as literals: the pair used to write `#F6F3FB`,
+ *  `#EDE5F5`, `#5a5175`, `#FFF3F2`, `#FDD9D6` and `#8a2b26` — six hex values
+ *  for four roles the theme already holds. */
+const PANEL = 'rounded-input px-s6 py-s5 border'
+const EYEBROW = 'text-fs-nano mb-s1'
+const VALUE = 'text-fs-sm2 leading-normal whitespace-pre-line'
+
+/**
+ * §3.3's 640 dialog — the conflict inbox.
+ *
+ * **Nothing here writes on arrival.** FR-I3: the current value stays untouched
+ * until the editor accepts or rejects, which is what the header says and what
+ * `useResolveInboxPending` does — one POST per decision, per `(pid, index)`.
+ */
 export function InboxModal({ onClose }: { onClose: () => void }) {
   const { data: rows = [] } = usePending()
   const resolve = useResolveInboxPending()
@@ -16,45 +34,54 @@ export function InboxModal({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div onClick={onClose} className="fixed inset-0 bg-[rgba(36,17,82,.45)] flex items-center justify-center z-50 p-6">
-      <div onClick={(e) => e.stopPropagation()} className="w-[640px] max-w-full max-h-[86vh] bg-bg rounded-[20px] flex flex-col overflow-hidden shadow-modal">
-        <div className="flex items-center justify-between px-[22px] py-5 bg-white border-b border-warm">
-          <div>
-            <div className="font-extrabold text-[17px] text-ink">صندوق بازبینی تعارض‌ها</div>
-            <div className="text-[12px] text-muted mt-0.5">مقدار فعلی در برابر پیشنهاد — تا تصمیم شما مقدار اصلی دست‌نخورده می‌ماند.</div>
-          </div>
-          <button onClick={onClose} className="w-8 h-8 bg-tile-v2 rounded-[9px] text-muted text-lg">×</button>
+    // O3 — the close button goes with the hand-rolled scrim. It had no
+    // `aria-label`, no `title` and no visually-hidden text, so a screen reader
+    // announced "×" or nothing at all; `Overlay`'s carries «بستن».
+    <Dialog
+      open
+      onClose={onClose}
+      width="wide"
+      title="صندوق بازبینی تعارض‌ها"
+      subtitle="مقدار فعلی در برابر پیشنهاد — تا تصمیم شما مقدار اصلی دست‌نخورده می‌ماند."
+    >
+      {rows.length === 0 ? (
+        <div className="text-center py-empty-y">
+          <div className="text-fs-sm font-semibold text-muted">تعارض بازی وجود ندارد</div>
+          <div className="text-fs-caption text-faint mt-s2">همهٔ پیشنهادها رسیدگی شده‌اند.</div>
         </div>
-        <div className="flex-1 overflow-auto p-5">
-          {rows.length === 0 ? (
-            <div className="text-center py-10 text-faint">
-              <div className="text-[13.5px] font-semibold text-muted">تعارض بازی وجود ندارد</div>
-              <div className="text-[12px] mt-1">همهٔ پیشنهادها رسیدگی شده‌اند.</div>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-3.5">
-              {rows.map((c) => (
-                <div key={`${c.process}#${c.index}`} className="bg-white border border-warm rounded-[14px] p-4">
-                  <div className="flex items-center gap-2 mb-3">
-                    <IdBadge>{c.node}</IdBadge>
-                    <span className="text-[12.5px] font-bold text-ink">{fieldFa(c.field)}</span>
-                    <span className="text-[10.5px] text-faint">{c.source}</span>
-                    <button onClick={() => { onClose(); nav(`/processes/${c.process}/flow`) }} className="ms-auto text-[11px] font-semibold text-violet border-[1.5px] border-line bg-white rounded-lg px-2.5 py-1.5">مشاهده در فلوچارت</button>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2.5 mb-3.5">
-                    <div className="bg-[#F6F3FB] border border-[#EDE5F5] rounded-[10px] px-3 py-2.5"><div className="text-[10px] text-faint mb-1">مقدار فعلی</div><div className="text-[12.5px] text-[#5a5175] leading-normal whitespace-pre-line">{formatConflictValue(c.current)}</div></div>
-                    <div className="bg-[#FFF3F2] border border-[#FDD9D6] rounded-[10px] px-3 py-2.5"><div className="text-[10px] text-conflict mb-1">پیشنهاد جدید</div><div className="text-[12.5px] text-[#8a2b26] font-semibold leading-normal whitespace-pre-line">{formatConflictValue(c.proposed)}</div></div>
-                  </div>
-                  <div className="flex gap-2.5">
-                    <button onClick={() => decide(c.process, c.index, 'accept')} className="flex-1 py-2.5 rounded-[10px] bg-green text-white font-bold text-[12.5px]">پذیرش پیشنهاد</button>
-                    <button onClick={() => decide(c.process, c.index, 'reject')} className="flex-1 py-2.5 rounded-[10px] border-[1.5px] border-line bg-white text-muted font-semibold text-[12.5px]">رد کردن</button>
-                  </div>
+      ) : (
+        <div className="flex flex-col gap-s7">
+          {rows.map((c) => (
+            <div key={`${c.process}#${c.index}`} className="bg-card border border-border-card rounded-tile p-s8">
+              <div className="flex items-center gap-s4 mb-s6">
+                <IdBadge>{c.node}</IdBadge>
+                <span className="text-fs-sm2 font-bold text-ink">{fieldFa(c.field)}</span>
+                <span className="text-fs-xxs text-faint">{c.source}</span>
+                <Button variant="ghost" className="ms-auto px-s6 text-fs-xs"
+                  onClick={() => { onClose(); nav(`/processes/${c.process}/flow`) }}>
+                  مشاهده در فلوچارت
+                </Button>
+              </div>
+              <div className="grid grid-cols-2 gap-s5 mb-s7">
+                <div className={`${PANEL} bg-value-current border-border-current`}>
+                  <div className={`${EYEBROW} text-faint`}>مقدار فعلی</div>
+                  <div className={`${VALUE} text-ink-current`}>{formatConflictValue(c.current)}</div>
                 </div>
-              ))}
+                <div className={`${PANEL} bg-tile-c2 border-border-danger`}>
+                  <div className={`${EYEBROW} text-conflict`}>پیشنهاد جدید</div>
+                  <div className={`${VALUE} font-semibold text-ink-proposed`}>{formatConflictValue(c.proposed)}</div>
+                </div>
+              </div>
+              <div className="flex gap-s5">
+                <Button variant="green" className="flex-1 px-s8 text-fs-sm2"
+                  onClick={() => decide(c.process, c.index, 'accept')}>پذیرش پیشنهاد</Button>
+                <Button variant="ghost" className="flex-1 px-s8 text-fs-sm2"
+                  onClick={() => decide(c.process, c.index, 'reject')}>رد کردن</Button>
+              </div>
             </div>
-          )}
+          ))}
         </div>
-      </div>
-    </div>
+      )}
+    </Dialog>
   )
 }

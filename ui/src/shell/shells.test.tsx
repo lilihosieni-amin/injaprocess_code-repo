@@ -932,7 +932,12 @@ describe('PanelShell controls', () => {
       within(screen.getByRole('dialog')).getByRole('button', { name: /صندوق بازبینی/ }),
     )
     expect(await screen.findByText(INBOX_BODY)).toBeInTheDocument()
-    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    // …and the SHEET is gone, named. A bare `queryByRole('dialog')` said "no
+    // dialog is left", which stopped being the claim the moment `InboxModal`
+    // became a real `role="dialog"` of its own (Task 24): the box this test is
+    // about is the one titled «فهرست», and what replaced it is a dialog too.
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'فهرست' })).toBeNull())
   })
 
   it('shuts the sheet behind every destination it offers', async () => {

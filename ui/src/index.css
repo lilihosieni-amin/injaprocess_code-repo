@@ -15,28 +15,6 @@
     border-radius: var(--radius-badge);
   }
 
-  /* Compatibility layer for call sites that use these as raw class strings.
-     Button.tsx and Chip.tsx no longer emit them — the remaining consumer is:
-       src/write/ExportModal.tsx  — a later plan (P2)
-     (BackButton.tsx and TopBar.tsx, once listed here, were deleted on this
-     branch.) Delete a rule only when its last consumer is gone. */
-  .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-button font-bold cursor-pointer border-0;
-  }
-  .btn-coral {
-    @apply bg-coral text-card shadow-coral hover:brightness-105;
-  }
-  .btn-violet {
-    @apply bg-violet text-card shadow-violet hover:brightness-110;
-  }
-  .btn-green {
-    @apply bg-green text-card shadow-green hover:brightness-105;
-  }
-  .btn-ghost {
-    @apply bg-card text-violet hover:bg-tile-v2;
-    border: var(--border-hairline) solid var(--line);
-  }
-
   .chip,
   .chip-input,
   .chip-control,
