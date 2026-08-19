@@ -281,6 +281,28 @@ describe('the brand lockup the design specifies and the app has never drawn', ()
     expect(card.className).not.toContain('max-w-list')
   })
 
+  it('stands on the login field, with the two orbs the design puts behind it', () => {
+    // Added after a mutation run, not before it: deleting both orbs, and
+    // repainting `--login-bg` as `--ink`, each survived every other assertion
+    // in this file. Both are read by `e2e/sign-in.spec.ts` — which measures the
+    // painted colour and the drawn circle, and is the only check that can —
+    // but a browser check nothing runs in CI's unit lane is not cover for a
+    // whole screen going the wrong colour.
+    //
+    // What this claims is what jsdom can carry: the strings are written, on the
+    // right elements, and the orbs are hidden from the accessibility tree
+    // because they are decoration. Whether either paints a pixel is the
+    // browser's answer, not this one's.
+    const { container } = render(<>{createWrapper()({ children: <SignIn /> })}</>)
+    const wrap = container.querySelector('[data-screen="signIn"]')!
+    expect(wrap.className).toContain('bg-login-bg')
+    expect(wrap.className).toContain('relative')      // the orbs are absolute against it
+    expect(wrap.className).toContain('overflow-hidden')
+    const orbs = container.querySelectorAll('.login-orb-a, .login-orb-b')
+    expect(orbs).toHaveLength(2)
+    orbs.forEach((o) => expect(o).toHaveAttribute('aria-hidden'))
+  })
+
   it('sets the two fields apart by the design\'s own 16px', () => {
     // Not in the task brief, and the brief's JSX is wrong without it. The DS
     // Login gives every `Input` `marginBottom: 16`; the brief replaces those

@@ -63,6 +63,26 @@ describe('the two refusals stay distinct', () => {
     expect(container.firstElementChild!.className).toContain('bg-ink')
   })
 
+  it('carries the two hooks the browser check reads, and no others', () => {
+    // Added after a mutation run: deleting `data-col` survived every other
+    // assertion here. It is the only handle `e2e/refusal.spec.ts` has on the
+    // 920px column, so losing it does not fail that check either — it makes it
+    // time out on a selector, which reads as a broken spec rather than as a
+    // screen that lost its column.
+    //
+    // «and no others» is the second half and is not decoration: this screen has
+    // **no `DESIGN` row**, so `[data-h1]`, `[data-body]`, `[data-card]` and
+    // `[data-grid]` are hooks nothing measures. `[data-h1]` in particular would
+    // be inventing a heading the refusal does not have — which is the reason
+    // the row was left out of the frozen harness table in the first place.
+    const { container } = render(<RefusalScreen status={404} />)
+    expect(container.querySelector('[data-screen="refusal"]')).toBe(container.firstElementChild)
+    expect(container.querySelectorAll('[data-col]')).toHaveLength(1)
+    for (const dead of ['[data-h1]', '[data-body]', '[data-card]', '[data-grid]']) {
+      expect(container.querySelectorAll(dead), `${dead} is a hook nothing measures`).toHaveLength(0)
+    }
+  })
+
   it('is the same wrapper as a failed read, string for string', () => {
     // The three assertions above name three classes, so P10's claim — "a failed
     // read and a refused read stand in the same slot" — has to be re-made by
