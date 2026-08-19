@@ -153,6 +153,11 @@ describe('F10 — RTL is structural', () => {
       'src/screens/Profile.tsx',
       'src/screens/Users.tsx',
       'src/screens/UserDetail.tsx',
+      // Summary pins `ltr` on one thing: the mono `A-0 · {id}` line inside the
+      // IDEF0 centre box (§8 — every mono id run is an LTR island). NOT on its
+      // scrolling region: that is `[data-r-pad]`, whose direction pair lives in
+      // `src/styles/base.css` with every other screen's.
+      'src/screens/Summary.tsx',
       // `src/screens/ProcessList.tsx` is deliberately NOT here, and the absence
       // is the finding rather than an omission: that screen used to pin the
       // direction twice — once on its scrolling region, once back on the single

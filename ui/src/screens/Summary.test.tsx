@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { screen } from '@testing-library/react'
 import { Summary } from './Summary'
 import { renderAt } from '../test/utils'
@@ -86,5 +88,96 @@ describe('Summary — tombstoned', () => {
     expect(screen.getByRole('link', { name: /cooking-050/ })).toHaveAttribute('href', '/processes/cooking-050')
     expect(screen.queryByRole('button', { name: 'ویرایش اطلاعات' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'مشاهدهٔ فلوچارت' })).toBeInTheDocument()
+  })
+})
+
+/**
+ * A process as `visibility.filtered` hands it to a reader whose department has
+ * the content switch off: `summary`, `idef0` and `kpis` are **present and
+ * emptied**, not dropped (`api/types.ts`, `ReadableProcess`). Byte for byte
+ * this is also what a genuinely empty process looks like, which is the whole
+ * point — the screen cannot tell them apart and must not pretend it can.
+ */
+const BLANKED = {
+  id: 'cooking-001', department: 'cooking', name: 'خرید و پرداخت',
+  summary: '', parent: null,
+  idef0: { inputs: [], controls: [], outputs: [], mechanisms: [] },
+  kpis: [], nodes: [], edges: [], pending: [],
+}
+
+describe('a reader whose policy blanked the detail', () => {
+  it('is told the fields are not shown, and is not told they are empty', async () => {
+    // «شاخصی ثبت نشده است» asserts that nobody recorded one. When the policy
+    // blanked the field the app cannot tell that from "withheld", so it says
+    // neither — it states the only thing it knows, which is that they are not
+    // being shown. Same rule as the departments conflict tile.
+    mock(BLANKED)
+    renderAt('/processes/:pid', <Summary />, '/processes/cooking-001', READER)
+    expect(await screen.findByText('خلاصه، نمای IDEF0 و شاخص‌ها نمایش داده نمی‌شوند')).toBeInTheDocument()
+    expect(screen.queryByText(/شاخصی برای این فرآیند ثبت نشده است/)).not.toBeInTheDocument()
+    expect(screen.queryByText('نمای IDEF0 سطح فرآیند (A-0)')).not.toBeInTheDocument()
+  })
+
+  it('draws the detail the moment any of it arrives', async () => {
+    mock({ ...BLANKED, summary: 'خلاصهٔ واقعی' })
+    renderAt('/processes/:pid', <Summary />, '/processes/cooking-001', READER)
+    expect(await screen.findByText('خلاصهٔ واقعی')).toBeInTheDocument()
+    expect(screen.queryByText('خلاصه، نمای IDEF0 و شاخص‌ها نمایش داده نمی‌شوند')).not.toBeInTheDocument()
+  })
+
+  it('keeps «ثبت نشده است» for an editor looking at a genuinely empty KPI list', async () => {
+    // The editor is served everything, so an empty list here really is empty.
+    mock({ ...BLANKED, summary: 'خلاصه', idef0: { inputs: ['ورودی'], controls: [], outputs: [], mechanisms: [] } })
+    renderAt('/processes/:pid', <Summary />, '/processes/cooking-001', EDITOR)
+    expect(await screen.findByText(/شاخصی برای این فرآیند ثبت نشده است/)).toBeInTheDocument()
+  })
+})
+
+describe('the screen’s own shape', () => {
+  it('names the two hooks the ≤760 pass targets', async () => {
+    mock(withKpi)
+    renderAt('/processes/:pid', <Summary />, '/processes/cooking-002', EDITOR)
+    await screen.findByText('نمای IDEF0 سطح فرآیند (A-0)')
+    const idef0 = document.querySelector('[data-r-idef0]')!
+    expect(idef0.className).toContain('max760:flex')
+    expect(idef0.className).toContain('max760:flex-col')
+    expect(idef0.className).toContain('max760:gap-s6')
+    // The read branch's two-column grid is the KPI pair; the edit branch puts
+    // the same hook on the ICOM pair. Both collapse at ≤760.
+    const twoCol = document.querySelector('[data-r-2col]')!
+    expect(twoCol.className).toContain('grid-cols-2')
+    expect(twoCol.className).toContain('max760:grid-cols-1')
+  })
+
+  it('puts the title and the section heading on the dark field, in white', async () => {
+    mock(withKpi)
+    renderAt('/processes/:pid', <Summary />, '/processes/cooking-002', EDITOR)
+    const h1 = await screen.findByRole('heading', { level: 1 })
+    expect(h1.className).toContain('text-role-title-on-field')
+    // Ledger P3-2: §6.3 says this heading is #2A1D5E, which is the field it
+    // sits on. §6.0 settles it — headings on the field are #fff.
+    expect(screen.getByText('شاخص‌های کلیدی عملکرد (KPI)').className).toContain('text-role-title-on-field')
+  })
+
+  it('paints the field it sits on, and caps the column where the design does', async () => {
+    // `getComputedStyle` does not inherit, and the e2e gate reads
+    // `background-color` off THIS element: a root that painted nothing would
+    // compute transparent however violet the shell behind it is.
+    mock(withKpi)
+    renderAt('/processes/:pid', <Summary />, '/processes/cooking-002', EDITOR)
+    await screen.findByText('نمای IDEF0 سطح فرآیند (A-0)')
+    const root = document.querySelector('[data-screen="summary"]')!
+    expect(root.className).toContain('bg-ink')
+    expect(root).toHaveAttribute('data-r-pad')
+    expect(document.querySelector('[data-col]')!.className).toContain('max-w-summary')
+  })
+
+  it('uses no character as an icon', () => {
+    const src = readFileSync(fileURLToPath(import.meta.url).replace(/\.test\.tsx$/, '.tsx'), 'utf8')
+    expect(src).not.toMatch(/>×</)
+    expect(src).not.toMatch(/#[0-9a-fA-F]{3,8}\b/)
+    expect(src).not.toMatch(/(text|rounded|shadow)-\[/)
+    expect(src).not.toMatch(/\brounded-(sm|md|lg|xl|2xl|3xl|full)\b/)
+    expect(src).not.toMatch(/\btext-(xs|sm|base|lg|xl|[2-9]xl)\b/)
   })
 })

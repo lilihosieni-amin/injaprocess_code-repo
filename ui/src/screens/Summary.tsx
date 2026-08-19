@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useConfirmations, useProcess, usePutProcess } from '../api/hooks'
 import { useSession } from '../auth/useSession'
@@ -7,24 +7,125 @@ import { useToast } from '../write/ToastProvider'
 import { ConfirmMark } from '../write/ConfirmMark'
 import type { Process, Icom, Kpi } from '../api/types'
 import { Chip } from '../ui/Chip'
+import { Icon } from '../ui/Icon'
 import { IdBadge } from '../ui/IdBadge'
 import { Button } from '../ui/Button'
+import { SectionCard } from '../ui/SectionCard'
+import { TextField } from '../ui/TextField'
+import { toFa } from '../lib/format'
 import { refusalStatus } from '../api/client'
 import { RefusalScreen } from './Refusal'
 
-function ListEditor({ label, items, onChange }: { label: string; items: string[]; onChange: (v: string[]) => void }) {
+/** Whether the response carried any of the three switchable fields.
+ *
+ *  `visibility.filtered` blanks `summary`, `idef0` and `kpis` rather than
+ *  dropping them (unlike `source` and the timestamps, which it removes), so
+ *  "withheld" and "never recorded" arrive as the same bytes and no guard can
+ *  separate them. Saying «ثبت نشده است» would pick one and be wrong half the
+ *  time; the design's own card says only what is observable — that they are
+ *  not shown. Same principle as the departments conflict tile: absence of a
+ *  claim, not a claim of absence. */
+function hasPublishedDetail(p: Process): boolean {
+  const icom = p.idef0
+  return p.summary.trim() !== ''
+    || p.kpis.length > 0
+    || icom.inputs.length + icom.controls.length + icom.outputs.length + icom.mechanisms.length > 0
+}
+
+/**
+ * The destructive square — `--tile-c2` under `--conflict` behind a 1.5px
+ * `--border-danger` edge, which is `Button`'s `danger` variant's colours at the
+ * size the design draws the control.
+ *
+ * **Not `<Button variant="danger">`**, which is what this task's own brief
+ * asked for: `Button`'s BASE carries `min-h-touch min-w-touch`, and a `min-`
+ * beats a `width` whatever the emitted order is, so a `w-tool h-tool` passed
+ * through it paints 44×44 and the class that says 34 is never drawn. The
+ * painted box stays the design's and a transparent `::before` grows the HIT
+ * area to 44 — here 34 + 2×5. Byte-identical to the control
+ * `src/screens/Overview.tsx` and `src/screens/ProcessList.tsx` already draw;
+ * the three want lifting into `src/ui/`, which is in this task's report.
+ */
+function RemoveButton({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={label}
+      aria-label={label}
+      className={
+        'relative before:absolute before:content-[""] before:-inset-[5px] '
+        + 'inline-flex items-center justify-center flex-none w-tool h-tool '
+        + 'rounded-input border-hairline border-border-danger bg-tile-c2 '
+        + 'text-conflict cursor-pointer'
+      }
+    >
+      <Icon name="trash" px={16} />
+    </button>
+  )
+}
+
+/**
+ * The design system's `AddButton`, ledger **L-22**: `inline-flex;gap:6px;
+ * 12.5px/600 --violet;1.5px dashed --line-dashed;radius --radius-control;
+ * padding:6px 12px`. L-22 decides the exported control's `12.5px`/radius 10
+ * over `ListEditor`'s own inline `11px`/radius 9, which is what this screen
+ * used to draw.
+ *
+ * **No leading glyph.** The brief asks for `<Icon name="plus" …>`; `ICONS` has
+ * no `plus` key and `src/ui/icons/` is not this task's to write, so the control
+ * is the text alone — the same shape `src/screens/Overview.tsx` ships. A `+`
+ * character would be a unicode glyph doing an icon's job, which is the very
+ * thing ledger L-19 forbids and this screen is being rebuilt to stop doing.
+ *
+ * ~34px drawn, so it takes the same `::before` the destructive square does.
+ */
+function AddButton({ children, onClick }: { children: ReactNode; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={
+        'relative before:absolute before:content-[""] before:-inset-[5px] '
+        + 'self-start inline-flex items-center gap-s3 py-s3 px-s6 '
+        + 'rounded-control border-hairline border-dashed border-line-dashed '
+        + 'bg-transparent text-violet text-fs-sm2 font-semibold cursor-pointer'
+      }
+    >
+      {children}
+    </button>
+  )
+}
+
+/**
+ * One ICOM face's list of terms.
+ *
+ * F11 — the placeholder is not the label, and neither is the column heading:
+ * each row carries its own numbered label so a screen reader can tell
+ * «ورودی ۲» from «ورودی ۳». The heading above the column stays, because it is
+ * what a sighted reader groups the four faces by.
+ */
+function ListEditor({ label, row, items, onChange }: {
+  label: string
+  /** The singular this list's rows are numbered by — «ورودی» under «ورودی‌ها». */
+  row: string
+  items: string[]
+  onChange: (v: string[]) => void
+}) {
   return (
     <div>
-      <div className="text-[12px] font-bold text-ink mb-2">{label}</div>
-      <div className="flex flex-col gap-1.5">
+      <div className="text-fs-sm2 font-semibold text-violet mb-s4">{label}</div>
+      <div className="flex flex-col gap-s5">
         {items.map((it, i) => (
-          <div key={i} className="flex gap-1.5 items-center">
-            <input value={it} onChange={(e) => onChange(items.map((x, k) => (k === i ? e.target.value : x)))}
-              className="flex-1 px-3 py-2 border-[1.5px] border-line rounded-[9px] text-[12.5px] text-ink outline-none focus:border-coral" />
-            <button onClick={() => onChange(items.filter((_, k) => k !== i))} className="w-[30px] h-[30px] shrink-0 border-[1.5px] border-[#FDD9D6] bg-[#FFF3F2] text-conflict rounded-[9px]">×</button>
+          <div key={i} className="flex items-start gap-s5">
+            <TextField className="flex-1 min-w-0" ground="sub"
+              label={`${row} ${toFa(i + 1)}`} value={it}
+              onChange={(v) => onChange(items.map((x, k) => (k === i ? v : x)))} />
+            <RemoveButton label={`حذف ${row} ${toFa(i + 1)}`}
+              onClick={() => onChange(items.filter((_, k) => k !== i))} />
           </div>
         ))}
-        <button onClick={() => onChange([...items, ''])} className="self-start text-[11.5px] font-semibold text-violet border-[1.5px] border-dashed border-[#C9B8EC] bg-[#F8F4FE] rounded-[9px] px-3 py-1.5">افزودن</button>
+        <AddButton onClick={() => onChange([...items, ''])}>افزودن</AddButton>
       </div>
     </div>
   )
@@ -60,6 +161,7 @@ export function Summary() {
   if (!p) return <div className="flex-1 bg-bg" />
 
   const proc: Process = p
+  const mark = marks.find((m) => m.target === proc.id)
   const tombstoned = !!proc.tombstoned
   // Cosmetic only: PUT /api/processes/{pid} re-derives `edit` from the session
   // row and refuses regardless. Asked about the process's own department, which
@@ -77,20 +179,30 @@ export function Summary() {
   const setKpi = (i: number, p2: Partial<Kpi>) => setDraft((d) => d && ({ ...d, kpis: d.kpis.map((k, k2) => (k2 === i ? { ...k, ...p2 } : k)) }))
 
   return (
-    <div className="flex-1 overflow-auto py-[30px] px-10">
-      <div className="max-w-[960px] mx-auto">
-        <div className="flex items-start justify-between gap-4 mb-[22px]">
-          <div>
-            <div className="flex items-center gap-2.5 mb-2">
+    // §6.0 — the shell owns the violet field, and this root repaints it because
+    // the gate reads `background-color` off THIS element with `getComputedStyle`,
+    // which does not inherit: a root that painted nothing would compute
+    // `rgba(0, 0, 0, 0)` however violet the shell behind it is. §8's scroll box
+    // is `data-r-pad`, whose two `direction` rules live in `src/styles/base.css`.
+    <div data-screen="summary" data-r-pad
+      className="flex-1 overflow-auto bg-ink py-screen-y px-screen-x max760:px-s7 max760:py-s9">
+      <div data-col className="max-w-summary mx-auto">
+        <div data-r-stack className="flex items-start justify-between gap-s8 mb-s10">
+          <div className="min-w-0">
+            <div className="flex items-center flex-wrap gap-s5 mb-s4">
               <IdBadge tone="violet">{proc.id}</IdBadge>
-              {proc.parent && <span className="text-[11px] text-violet bg-tile-v px-2.5 py-1 rounded-md font-semibold">زیرفرآیند</span>}
-              <ConfirmMark row={marks.find((m) => m.target === proc.id)} department={dept} />
+              {proc.parent && <span className="text-fs-xxs font-semibold text-violet bg-tile-v px-s5 py-s1 rounded-badge">زیرفرآیند</span>}
+              {/* The design draws one status pill here under `isEditor`.
+                  `ConfirmMark` IS that pill — it renders a `StatusPill` of its
+                  own — so a second one beside it would put «تأیید شده» on the
+                  screen twice and say nothing new. */}
+              <ConfirmMark row={mark} department={dept} />
             </div>
             {tombstoned && (
-              <div className="mb-3 rounded-xl border border-[#E4DEF0] bg-[#EDEAF3] px-4 py-3 text-[13px] text-muted">
-                <div className="font-bold text-ink mb-1">این فرآیند باطل شده است.</div>
+              <div className="mb-s6 rounded-button border border-border-dead bg-tile-dead px-s8 py-s6 text-fs-sm text-muted">
+                <div className="font-bold text-ink mb-s1">این فرآیند باطل شده است.</div>
                 {(proc.superseded_by ?? []).length > 0 && (
-                  <div className="flex flex-wrap gap-2 items-center">
+                  <div className="flex flex-wrap gap-s4 items-center">
                     <span>جانشین:</span>
                     {(proc.superseded_by ?? []).map((h) => (
                       <Link key={h} to={`/processes/${h}`} className="font-mono text-violet underline decoration-dotted">{h}</Link>
@@ -99,107 +211,151 @@ export function Summary() {
                 )}
               </div>
             )}
-            {!editing ? (
+            {!editing && (
               <>
-                <div className="font-extrabold text-[23px] text-ink">{proc.name}</div>
-                <div className="text-[15px] text-muted mt-2 max-w-[640px] leading-relaxed">{proc.summary}</div>
-              </>
-            ) : (
-              <>
-                <input value={draft!.name} onChange={(e) => setDraft({ ...draft!, name: e.target.value })} placeholder="نام فرآیند"
-                  className="w-[520px] max-w-full font-extrabold text-[19px] text-ink border-[1.5px] border-line rounded-xl px-3 py-2 outline-none focus:border-coral" />
-                <textarea value={draft!.summary} onChange={(e) => setDraft({ ...draft!, summary: e.target.value })} rows={2} placeholder="خلاصهٔ فرآیند"
-                  className="w-[520px] max-w-full mt-2 text-[13px] text-ink border-[1.5px] border-line rounded-xl px-3 py-2 outline-none focus:border-coral resize-y" />
+                {/* Ledger L-02: the deliverable draws 23px here and 22px on
+                    seven other screens; 22 wins for all nine. L-01: a title on
+                    the field is white (`--role-title-on-field`), not the cream
+                    `--text-on-dark` that L-01 retired. */}
+                <h1 data-h1 className="font-extrabold text-fs-h2 text-role-title-on-field m-0">{proc.name}</h1>
+                {proc.summary.trim() !== '' && (
+                  <p data-body className="text-fs-lg text-role-subtitle-on-field mt-s4 leading-relaxed m-0">{proc.summary}</p>
+                )}
               </>
             )}
           </div>
-          <div className="flex gap-2.5 shrink-0">
+          <div data-r-actions className="flex gap-s5 shrink-0 max760:flex-wrap">
             {!editing ? (
               <>
                 {mayEdit && !tombstoned && (
-                  <Button variant="ghost" onClick={enter} className="px-4 py-3 text-[13px]">ویرایش اطلاعات</Button>
+                  <Button variant="ghost" onClick={enter} className="px-s8 py-s6 text-fs-sm">ویرایش اطلاعات</Button>
                 )}
-                <Button variant="coral" onClick={() => nav(`/processes/${proc.id}/flow`)} className="px-[18px] py-3 text-[13.5px]">مشاهدهٔ فلوچارت</Button>
+                {/* Ledger P3-3 — violet primary, matching the row's own pairing. */}
+                <Button variant="violet" onClick={() => nav(`/processes/${proc.id}/flow`)}
+                  className="px-s8 py-s6 text-fs-sm">مشاهدهٔ فلوچارت</Button>
               </>
             ) : (
               <>
-                <Button variant="ghost" onClick={() => setDraft(null)} className="px-4 py-3 text-[13px]">انصراف</Button>
-                <Button variant="green" onClick={save} loading={put.isPending} loadingLabel="در حال ذخیره…" className="px-[18px] py-3 text-[13.5px]">ذخیره</Button>
+                <Button variant="ghost" onClick={() => setDraft(null)} className="px-s8 py-s6 text-fs-sm">انصراف</Button>
+                <Button variant="green" onClick={save} loading={put.isPending} loadingLabel="در حال ذخیره…"
+                  className="px-s8 py-s6 text-fs-sm">ذخیره</Button>
               </>
             )}
           </div>
         </div>
 
         {!editing ? (
-          <>
-            <div className="bg-white border border-warm rounded-[18px] p-6 mb-5 shadow-card">
-              <div className="font-bold text-sm text-violet mb-[18px] flex items-center gap-2">
-                <span className="w-2 h-2 bg-coral rounded-full" />نمای IDEF0 سطح فرآیند (A-0)
-              </div>
-              <div className="grid grid-cols-[1fr_1.4fr_1fr] gap-3.5 items-center">
-                <div className="col-start-2 row-start-1 text-center min-w-0">
-                  <div className="text-[11px] text-muted mb-1.5">کنترل‌ها ↓</div>
-                  <div className="flex flex-wrap gap-1.5 justify-center">{proc.idef0.controls.map((t, i) => <Chip key={i} kind="control">{t}</Chip>)}</div>
-                </div>
-                <div className="col-start-3 row-start-2 text-center min-w-0">
-                  <div className="text-[11px] text-muted mb-1.5">ورودی‌ها →</div>
-                  <div className="flex flex-col gap-1.5 items-center">{proc.idef0.inputs.map((t, i) => <Chip key={i} kind="input">{t}</Chip>)}</div>
-                </div>
-                <div className="col-start-2 row-start-2 bg-violet rounded-[14px] px-4 py-[22px] text-center text-white shadow-violet">
-                  <div className="font-bold text-[15px]">{proc.name}</div>
-                  <div className="font-mono text-[11px] text-[#C9BEEE] mt-1.5" dir="ltr">A-0 · {proc.id}</div>
-                </div>
-                <div className="col-start-1 row-start-2 text-center min-w-0">
-                  <div className="text-[11px] text-muted mb-1.5">← خروجی‌ها</div>
-                  <div className="flex flex-col gap-1.5 items-center">{proc.idef0.outputs.map((t, i) => <Chip key={i} kind="output">{t}</Chip>)}</div>
-                </div>
-                <div className="col-start-2 row-start-3 text-center min-w-0">
-                  <div className="flex flex-wrap gap-1.5 justify-center">{proc.idef0.mechanisms.map((t, i) => <Chip key={i} kind="mech">{t}</Chip>)}</div>
-                  <div className="text-[11px] text-muted mt-1.5">↑ مکانیزم‌ها</div>
-                </div>
-              </div>
+          !hasPublishedDetail(proc) ? (
+            // §6.3's own card, and the one claim this screen is allowed to
+            // make about the three switchable fields: that they are not being
+            // shown. `hasPublishedDetail` is content-based because the app is
+            // never told which way the switch is set — see its docstring.
+            <div className="bg-card border border-border-card rounded-doc px-s11 py-s10 shadow-card">
+              <div className="font-bold text-fs-body text-ink">خلاصه، نمای IDEF0 و شاخص‌ها نمایش داده نمی‌شوند</div>
+              <p className="text-fs-sm text-muted leading-loose mt-s4 m-0">
+                سیاست نمایش محتوای این دپارتمان تعیین می‌کند چه بخش‌هایی از یک فرآیند منتشر شود. فلوچارت و گام‌به‌گام این فرآیند در دسترس شماست.
+              </p>
             </div>
-
-            <div className="font-bold text-[15px] text-ink mb-3">شاخص‌های کلیدی عملکرد (KPI)</div>
-            {proc.kpis.length > 0 ? (
-              <div className="grid grid-cols-2 gap-3.5">
-                {proc.kpis.map((k, i) => (
-                  <div key={i} className="bg-white border border-warm rounded-[14px] px-[18px] py-4">
-                    <div className="flex items-center justify-between">
-                      <div className="font-bold text-sm text-ink">{k.name}</div>
-                      {k.target && <div className="text-xs font-bold text-conflict bg-[#FFE9E7] px-2.5 py-0.5 rounded-lg">{k.target}</div>}
-                    </div>
-                    <div className="text-[13.5px] text-muted mt-2 leading-relaxed">{k.definition}</div>
+          ) : (
+            <>
+              <div data-card className="bg-card border border-border-card rounded-doc p-s11 mb-s9 shadow-card">
+                <div className="font-bold text-fs-body text-violet mb-s9 flex items-center gap-s4">
+                  <span className="w-s4 h-s4 bg-coral rounded-round" />نمای IDEF0 سطح فرآیند (A-0)
+                </div>
+                <div data-r-idef0 className="grid grid-cols-idef0 gap-s7 items-center max760:flex max760:flex-col max760:gap-s6">
+                  <div className="col-start-2 row-start-1 text-center min-w-0">
+                    <div className="text-fs-xxs text-muted mb-s3">کنترل‌ها ↓</div>
+                    <div className="flex flex-wrap gap-s3 justify-center">{proc.idef0.controls.map((t, i) => <Chip key={i} kind="control">{t}</Chip>)}</div>
                   </div>
-                ))}
+                  <div className="col-start-3 row-start-2 text-center min-w-0">
+                    <div className="text-fs-xxs text-muted mb-s3">ورودی‌ها →</div>
+                    <div className="flex flex-col gap-s3 items-center">{proc.idef0.inputs.map((t, i) => <Chip key={i} kind="input">{t}</Chip>)}</div>
+                  </div>
+                  <div className="col-start-2 row-start-2 bg-violet rounded-tile px-s8 py-s10 text-center text-card shadow-violet">
+                    <div className="font-bold text-fs-lg">{proc.name}</div>
+                    {/* §8 — every mono id run is an LTR island. Declared in
+                        `src/test/guards.test.ts`'s ISLANDS beside the others. */}
+                    <div dir="ltr" className="font-mono text-fs-xxs text-violet-on-violet mt-s3">A-0 · {proc.id}</div>
+                  </div>
+                  <div className="col-start-1 row-start-2 text-center min-w-0">
+                    <div className="text-fs-xxs text-muted mb-s3">← خروجی‌ها</div>
+                    <div className="flex flex-col gap-s3 items-center">{proc.idef0.outputs.map((t, i) => <Chip key={i} kind="output">{t}</Chip>)}</div>
+                  </div>
+                  <div className="col-start-2 row-start-3 text-center min-w-0">
+                    <div className="flex flex-wrap gap-s3 justify-center">{proc.idef0.mechanisms.map((t, i) => <Chip key={i} kind="mech">{t}</Chip>)}</div>
+                    <div className="text-fs-xxs text-muted mt-s3">↑ مکانیزم‌ها</div>
+                  </div>
+                </div>
               </div>
-            ) : (
-              <div className="bg-white border border-dashed border-line rounded-[14px] p-5 text-center text-faint text-[12.5px]">
-                شاخصی برای این فرآیند ثبت نشده است. (سامانه اطلاعات را نمی‌سازد؛ فقط از محتوای واقعی جلسه پر می‌شود.)
-              </div>
-            )}
-          </>
+
+              {/* Ledger P3-2: §6.3 gives this heading `--ink`, which is the
+                  very colour of the field it is written on — contrast 1.00.
+                  §6.0 settles it: headings on the field are white. */}
+              <h2 className="font-bold text-fs-lg text-role-title-on-field mb-s6 m-0">شاخص‌های کلیدی عملکرد (KPI)</h2>
+              {proc.kpis.length > 0 ? (
+                <div data-r-2col className="grid grid-cols-2 gap-s7 max760:grid-cols-1">
+                  {proc.kpis.map((k, i) => (
+                    <div key={i} className="bg-card border border-border-card rounded-tile px-s9 py-s8">
+                      <div className="flex items-center justify-between gap-s4">
+                        <div className="font-bold text-fs-body text-ink">{k.name}</div>
+                        {k.target && <div className="text-fs-sm2 font-bold text-conflict bg-tile-c px-s5 py-s1 rounded-badge">{k.target}</div>}
+                      </div>
+                      <p className="text-fs-sm2 text-muted mt-s4 leading-relaxed m-0">{k.definition}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="bg-card border border-dashed border-line rounded-tile p-s9 text-center text-faint text-fs-sm2 leading-loose">
+                  شاخصی برای این فرآیند ثبت نشده است. (سامانه اطلاعات را نمی‌سازد؛ فقط از محتوای واقعی جلسه پر می‌شود.)
+                </div>
+              )}
+            </>
+          )
         ) : (
           <>
-            <div className="bg-white border border-warm rounded-[18px] p-6 mb-5 shadow-card grid grid-cols-2 gap-5">
-              <ListEditor label="ورودی‌ها" items={draft!.idef0.inputs} onChange={(v) => setIcom('inputs', v)} />
-              <ListEditor label="کنترل‌ها" items={draft!.idef0.controls} onChange={(v) => setIcom('controls', v)} />
-              <ListEditor label="خروجی‌ها" items={draft!.idef0.outputs} onChange={(v) => setIcom('outputs', v)} />
-              <ListEditor label="مکانیزم‌ها" items={draft!.idef0.mechanisms} onChange={(v) => setIcom('mechanisms', v)} />
-            </div>
-            <div className="flex flex-col gap-3">
-              {draft!.kpis.map((k, i) => (
-                <div key={i} className="bg-white border border-warm rounded-[14px] p-4 flex gap-2.5 items-start">
-                  <div className="flex-1 flex flex-col gap-2">
-                    <input value={k.name} onChange={(e) => setKpi(i, { name: e.target.value })} placeholder="نام شاخص" className="px-3 py-2 border-[1.5px] border-line rounded-[9px] text-[13px] font-bold text-ink outline-none focus:border-coral" />
-                    <input value={k.definition ?? ''} onChange={(e) => setKpi(i, { definition: e.target.value })} placeholder="تعریف شاخص" className="px-3 py-2 border-[1.5px] border-line rounded-[9px] text-[12.5px] text-ink outline-none focus:border-coral" />
-                    <input value={k.target ?? ''} onChange={(e) => setKpi(i, { target: e.target.value })} placeholder="مقدار هدف" className="px-3 py-2 border-[1.5px] border-line rounded-[9px] text-[12.5px] text-conflict font-semibold outline-none focus:border-coral" />
+            {/* The deliverable draws no edit form for this screen — its own
+                «ویرایش اطلاعات» is bound to `notImpl` — so the form is the
+                app's, built out of §5.2's sub-panel and the shared field. The
+                fields sit on a sub-panel rather than straight on the violet
+                field because `FIELD_LABEL` is `--violet` type, which on
+                `--ink` is unreadable. */}
+            <SectionCard skin="tint" eyebrow="اطلاعات فرآیند" className="mb-s9">
+              <div className="flex flex-col gap-s6">
+                <TextField label="نام فرآیند" ground="sub" value={draft!.name}
+                  onChange={(v) => setDraft({ ...draft!, name: v })} />
+                <TextField label="خلاصهٔ فرآیند" multiline rows={2} ground="sub" value={draft!.summary}
+                  onChange={(v) => setDraft({ ...draft!, summary: v })} />
+              </div>
+            </SectionCard>
+
+            <SectionCard skin="tint" eyebrow="نمای IDEF0" className="mb-s9">
+              <div data-r-2col className="grid grid-cols-2 gap-s9 max760:grid-cols-1">
+                <ListEditor label="ورودی‌ها" row="ورودی" items={draft!.idef0.inputs} onChange={(v) => setIcom('inputs', v)} />
+                <ListEditor label="کنترل‌ها" row="کنترل" items={draft!.idef0.controls} onChange={(v) => setIcom('controls', v)} />
+                <ListEditor label="خروجی‌ها" row="خروجی" items={draft!.idef0.outputs} onChange={(v) => setIcom('outputs', v)} />
+                <ListEditor label="مکانیزم‌ها" row="مکانیزم" items={draft!.idef0.mechanisms} onChange={(v) => setIcom('mechanisms', v)} />
+              </div>
+            </SectionCard>
+
+            <SectionCard skin="tint" eyebrow="شاخص‌های کلیدی عملکرد (KPI)">
+              <div className="flex flex-col gap-s6">
+                {draft!.kpis.map((k, i) => (
+                  <div key={i} className="flex items-start gap-s5">
+                    <div className="flex-1 min-w-0 flex flex-col gap-s5">
+                      <TextField label={`نام شاخص ${toFa(i + 1)}`} ground="sub" value={k.name}
+                        onChange={(v) => setKpi(i, { name: v })} />
+                      <TextField label={`تعریف شاخص ${toFa(i + 1)}`} ground="sub" value={k.definition ?? ''}
+                        onChange={(v) => setKpi(i, { definition: v })} />
+                      <TextField label={`مقدار هدف ${toFa(i + 1)}`} ground="sub" value={k.target ?? ''}
+                        onChange={(v) => setKpi(i, { target: v })} />
+                    </div>
+                    <RemoveButton label={`حذف شاخص ${toFa(i + 1)}`}
+                      onClick={() => setDraft({ ...draft!, kpis: draft!.kpis.filter((_, k2) => k2 !== i) })} />
                   </div>
-                  <button onClick={() => setDraft({ ...draft!, kpis: draft!.kpis.filter((_, k2) => k2 !== i) })} className="w-8 h-8 shrink-0 border-[1.5px] border-[#FDD9D6] bg-[#FFF3F2] text-conflict rounded-[9px]">×</button>
-                </div>
-              ))}
-              <button onClick={() => setDraft({ ...draft!, kpis: [...draft!.kpis, { name: '' }] })} className="self-start text-[12px] font-semibold text-violet border-[1.5px] border-dashed border-[#C9B8EC] bg-[#F8F4FE] rounded-[9px] px-3 py-1.5">افزودن شاخص</button>
-            </div>
+                ))}
+                <AddButton onClick={() => setDraft({ ...draft!, kpis: [...draft!.kpis, { name: '' }] })}>افزودن شاخص</AddButton>
+              </div>
+            </SectionCard>
           </>
         )}
       </div>
