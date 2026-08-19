@@ -1379,25 +1379,25 @@ const PENDING: string[] = [
   'bg-tile-v5', 'bg-line-divider',
   'border-line-divider', 'bg-line-row', 'bg-line-filter', 'border-line-filter',
   'bg-border-pick', 'text-fs-h1',
-  'text-fs-h4', 'text-fs-h5',
+  
   'text-fs-doc-base', 'text-fs-doc-h1',
   'text-fs-doc-title', 'text-fs-doc-step', 'text-fs-doc-body',
   'text-fs-steps-title',
   'text-fs-nano', 'text-fs-badge-sm',
-  'text-fs-tag', 'text-fs-h1-reader-list', 'text-fs-h1-reader-dept',
+  'text-fs-h1-reader-list', 'text-fs-h1-reader-dept',
   'text-fs-body-reader', 'text-prose',
   // Named only in a docstring in src/ui/fieldFrame.ts, which explains why the
   // field's type is a FIXED step and not this role. The scan above stopped
   // reading comments, and prose stopped counting as a consumer.
   'text-role-body',
-  'text-role-title', 'text-role-hero',
+  'text-role-hero',
   'font-sans', 'font-regular', 'leading-snug', 'leading-looser',
   'shadow-sheet', 'shadow-drawer',
   'shadow-card-dark', 'shadow-stat-dark', 'shadow-guide-hover', 'shadow-ring-flash',
   'p-screen-x', 'p-screen-y',
   'p-topbar', 'p-half', 'gap-topbar',
   'p-s2', 'p-s3', 'p-s5',
-  'p-s6', 'p-s14', 'p-s16',
+  'p-s14', 'p-s16',
   // `w-tile`/`h-tile` and the two glyph pairs came off here when Task 11's
   // src/ui/IconTile.tsx landed: R3 declares the tile as a role trio
   // (--role-tile 48/54, --role-tile-radius 14/16, --role-tile-glyph 24/26) and
