@@ -986,7 +986,15 @@ test('§8’s scroll box is a legal LTR root, and only when it proves itself', a
   //    the attribute form flipped back the one child somebody remembered, and
   //    every dialog mounted beside it stayed LTR — the workaround five files in
   //    src/write/ each carry a comment about.
-  const halfBox = change(`${SCREEN}{direction:ltr}`, ['data-r-pad', ''])
+  // Since Task 15 shipped §8's rule into `base.css`, a mutant that only turns
+  // the root LTR no longer REACHES state 2: the real
+  // `[data-r-pad] > *{direction:rtl}` flips the children back and the check goes
+  // — correctly — green, so `failsWith` below reported that the guard had died.
+  // The state being pinned is "the reset did not reach them", so the mutant has
+  // to defeat the real reset as well. An injected <style> is unlayered and beats
+  // `@layer base` whatever the specificity, which is what makes that possible
+  // without touching the stylesheet the app ships.
+  const halfBox = change(`${SCREEN}{direction:ltr} ${SCREEN} > *{direction:ltr}`, ['data-r-pad', ''])
   await applyMutant(page, halfBox)
   await expectSamePage(page, 'applying the scroll box without its child reset')
   await failsWith(
@@ -1047,8 +1055,18 @@ test('a direction override covers one hook, and cannot be a no-op or an orphan',
 
     // …and it covers that hook and nothing else. The column mirrors too and the
     // row still goes red, which is what a single per-row value could not do.
-    const alsoCol: Change =
-      { css: `${SCREEN} [data-col]{direction:ltr}`, node: null, attr: null, strip: null }
+    // `${SCREEN}{direction:rtl}` first, and it is not scenery: `[data-col]` is
+    // the scroll box's own immediate child, so since Task 15 put §8's rule in
+    // `base.css` this root really is `[data-r-pad]` and mirroring the column
+    // alone ALSO breaks the root's scroll-box contract. The root is graded
+    // before any content hook, so what arrived was the escaped-child failure and
+    // not the per-hook one this line is about. Pinning the root back to `rtl`
+    // takes it out of the LTR branch entirely and leaves `col` as the only thing
+    // mirrored — which is the state this claim was always written against.
+    const alsoCol: Change = {
+      css: `${SCREEN}{direction:rtl} ${SCREEN} [data-col]{direction:ltr}`,
+      node: null, attr: null, strip: null,
+    }
     await applyMutant(page, alsoCol)
     await expectSamePage(page, 'flipping [data-col] to LTR as well')
     await failsWith(
