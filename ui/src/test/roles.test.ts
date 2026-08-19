@@ -177,7 +177,12 @@ describe('R8 — one rule per role', () => {
 
 const LEDGER_PATH = join(UI, '..', 'docs/superpowers/ui-normalisation-ledger.md')
 const ledger = readFileSync(LEDGER_PATH, 'utf8')
-const rulings = readFileSync(join(UI, '..', '.superpowers/sdd/ui-owner-rulings.md'), 'utf8')
+// Tracked, beside the ledger on the line above. It used to be read from
+// `.superpowers/sdd/`, which is gitignored scratch — so this file threw ENOENT at
+// import on any clean checkout, and the whole spec was unrunnable for anyone who
+// had not personally generated it. A test that asserts against the owner's rulings
+// must be able to read them from the repository, like the ledger it sits next to.
+const rulings = readFileSync(join(UI, '..', 'docs/superpowers/ui-owner-rulings.md'), 'utf8')
 
 const ledgerRows = ledger
   .split('\n')
