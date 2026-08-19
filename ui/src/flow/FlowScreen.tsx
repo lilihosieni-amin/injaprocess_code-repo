@@ -98,7 +98,33 @@ function FlowEditor() {
   }
 
   return (
-    <div className="flex-1 flex flex-col min-h-0">
+    // R40 — **the flowchart screen is cream, for everyone.** Owner ruling, and a
+    // regression rather than a preference: at this branch's merge base
+    // `PanelShell` painted `bg-bg` on its root and this screen inherited it; the
+    // shell rebuild moved both shell roots to `bg-ink` (§6.0's violet field,
+    // which is right for every other screen) and this file declares no ground of
+    // its own, so the canvas silently went violet. Ledger **L-01** records
+    // `#FBF7F1` as "the flow canvas's ground".
+    //
+    // **Here, not on the shells.** `bg-ink` on `[data-screen]` is fixed into
+    // place across the rebuild and `e2e/sweep.spec.ts` pins it for eight screens;
+    // repainting a shell would make this screen right and take the other eight
+    // off the field. `background-color` does not inherit, so this is the element
+    // that has to say it — one declaration on the one root that is an ancestor of
+    // all three regions.
+    //
+    // **And only here.** `Canvas.tsx` paints nothing and must go on painting
+    // nothing: `@xyflow/react`'s own `.react-flow` background-color is
+    // `transparent` by default, and the pane, its viewport and the renderer are
+    // transparent too, so the cream declared on this box is what shows through
+    // the canvas — exactly as it did before the regression. The two toolbars
+    // (`bg-white`) and the tombstone strip are opaque and cover it deliberately;
+    // the in-flight blank forty lines up is already `bg-bg`, so the route is one
+    // colour from first paint to last. Measured in Chrome by `e2e/flow.spec.ts`
+    // at three widths on both surfaces — `data-r-flow` is that spec's hook, and
+    // deliberately not `data-screen`, which means "sits on §6.0's field" and is
+    // the one thing this screen does not do.
+    <div data-r-flow className="flex-1 flex flex-col min-h-0 bg-bg">
       <div className="flex items-center gap-3 px-[22px] py-[11px] bg-white border-b border-warm shrink-0">
         {/* R21 — `Inja Reader.dc.html:312-313`. On the flowchart the design puts
             «بازگشت» INSIDE this toolbar, as its first child, and draws no bar of
