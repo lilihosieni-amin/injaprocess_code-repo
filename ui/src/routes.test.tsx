@@ -102,8 +102,12 @@ describe('routing', () => {
   // app in which nobody can ever change their password.
   it('routes /profile to the profile screen, for a caller with no administration right at all', async () => {
     boot('/profile', true, ['view'], ['dept:cooking'])
+    // By the screen hook, not by the heading's words. Task 22 rebuilt the header
+    // and the h1 is now the signed-in person's own name, which is a content
+    // decision this routing test has no business pinning: what it means is
+    // "/profile resolves to the profile screen", and that is what it now asks.
     await waitFor(() =>
-      expect(screen.getByRole('heading', { name: 'نمایه' })).toBeInTheDocument())
+      expect(document.querySelector('[data-screen="profile"]')).toBeInTheDocument())
   })
 
   // `/profile` sits under RequireAuth's children in `routes.tsx`, same as

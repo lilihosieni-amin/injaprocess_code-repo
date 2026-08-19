@@ -1405,13 +1405,12 @@ const PENDING: string[] = [
   // for — "still writable when a screen genuinely needs one". If nothing ever
   // does, Task 25 takes them off the theme rather than off this list.
   'w-avatar',
-  'h-avatar', 'w-logo-bar', 'h-logo-bar', 'w-logo-login',
-  'h-logo-login', 'w-touch', 'h-touch', 'w-tile-reader',
+  'h-avatar', 'w-logo-bar', 'h-logo-bar', 'w-touch', 'h-touch', 'w-tile-reader',
   'h-tile-reader', 'w-iconbtn-reader',
   'h-iconbtn-reader', 'w-fab-reader',
   'h-fab-reader', 'w-tick-nested',
   'h-tick-nested', 'max-w-doc',
-  'max-w-drawer', 'max-w-profile', 'max-w-steps',
+  'max-w-drawer', 'max-w-steps',
   'max-w-audit', 'duration-fast',
   'p-compose', 'rounded-tick-nested',
   'w-tick-glyph-nested', 'h-tick-glyph-nested',
@@ -1436,10 +1435,7 @@ const PENDING: string[] = [
   'z-drawer',
   'z-modal', 'z-popover', 'z-tooltip', 'z-toast',
   'duration-row',
-  'max-w-intro',
-  'bg-warn-edge', 'border-warn-edge', 'text-warn-fg',
-  'gap-table-row-mobile',
-  'w-login',
+  'bg-warn-edge', 'gap-table-row-mobile',
   'w-glyph-tile', 'h-glyph-tile',
   // The type-on-the-violet-field group came off here when Task 14's departments
   // screen landed: its READER title takes `text-role-title-on-field`, both
@@ -1533,7 +1529,7 @@ const PENDING: string[] = [
 // or the ratchet slackens by exactly as much as the task just achieved.
 // Note for the record: 6be6662's message claimed a drop to 165 that never applied; the
 // value stayed at 239 until this commit. The ratchet was looser than it read.
-const CEILING = 147
+const CEILING = 140
 
 describe('Owner ruling R11 — a named utility has a component that uses it', () => {
   it('reads a real, sizeable set of component files — tests AND test helpers excluded', () => {
