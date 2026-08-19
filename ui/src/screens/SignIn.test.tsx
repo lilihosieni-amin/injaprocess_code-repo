@@ -161,6 +161,33 @@ describe('SignIn', () => {
     expect(msg.textContent).not.toMatch(/وجود ندارد|غیرفعال|نادرست است/)
   })
 
+  it('says the same words whether or not the number belongs to an account', async () => {
+    // D56's guarantee is not "the copy avoids certain words", it is that the two
+    // cases are INDISTINGUISHABLE. The test above it reads one 401 and checks
+    // the sentence against a blocklist, which a screen that branched on the
+    // server's `detail` would walk straight past — «این شماره ثبت نشده» carries
+    // no word of that list and tells an attacker which numbers are accounts.
+    //
+    // So both cases are rendered and their text compared to each other. The
+    // server sends one body for both; a screen that reads it at all fails here.
+    const say = async (detail: string) => {
+      mockFetch(401, { detail })
+      const Wrapper = createWrapper()
+      const { unmount } = render(<Wrapper><SignIn /></Wrapper>)
+      await userEvent.type(screen.getByLabelText('شمارهٔ موبایل'), '09123456789')
+      await userEvent.type(screen.getByLabelText('گذرواژه'), 'sixchars')
+      await userEvent.click(screen.getByRole('button', { name: 'ورود' }))
+      const text = (await screen.findByRole('alert')).textContent
+      unmount()
+      vi.unstubAllGlobals()
+      return text
+    }
+    const unknownNumber = await say('no such user')
+    const wrongPassword = await say('bad password')
+    expect(unknownNumber).toBe(wrongPassword)
+    expect(unknownNumber).toBe('شماره یا گذرواژه درست نیست.')
+  })
+
   it('refuses to submit a password under six characters without calling the API', async () => {
     const spy = mockFetch(200)
     const Wrapper = createWrapper()
