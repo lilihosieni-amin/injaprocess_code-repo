@@ -1196,6 +1196,13 @@ describe('the record screen (§6.8)', () => {
     renderDetail(EDITOR, SAHAR)
     const screenRoot = document.querySelector('[data-screen="access"]')!
     expect(screenRoot).not.toBeNull()
+    // §8's scroll box. `base.css` flips this root to `ltr` so the scrollbar sits
+    // on the right and flips every immediate child back with `> *`; the harness
+    // accepts an LTR root ONLY when it proves itself that way, and the three
+    // sibling screens all carry it. The browser check measures the flip; this
+    // holds the attribute the rule keys off, which the browser check cannot
+    // report as missing — a root without it is simply graded as `rtl` and passes.
+    expect(screenRoot.hasAttribute('data-r-pad')).toBe(true)
     // [data-col] is the 820px column, not the scrolling root.
     expect(screenRoot.querySelector('[data-col]')!.className).toContain('max-w-access')
     // [data-h1] is the <h1> itself.

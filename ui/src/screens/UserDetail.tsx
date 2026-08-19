@@ -118,7 +118,15 @@ export function UserDetail() {
     // §6.0 — the shell owns the violet field and this root repaints it, because
     // the gate reads `background-color` off THIS element with
     // `getComputedStyle`, which does not inherit.
-    <div data-screen="access"
+    //
+    // `data-r-pad` is §8's scroll box, which the deliverable writes on this very
+    // screen (`Inja Panel.dc.html:1286`) and which `base.css` turns into
+    // `direction:ltr` with `[data-r-pad] > * { direction: rtl }` — so the
+    // scrollbar sits on the right of an RTL page and every child is flipped back
+    // by the RULE rather than by an attribute somebody remembered on one of
+    // them. The one latin island here is the mono username, two levels down,
+    // which `> *` deliberately does not reach.
+    <div data-screen="access" data-r-pad
       className="flex-1 overflow-auto bg-ink py-screen-y px-screen-x max760:px-s7 max760:py-s9">
       <div data-col className="max-w-access mx-auto">
         {/* §8 — chevrons are chosen by hand per direction rather than
