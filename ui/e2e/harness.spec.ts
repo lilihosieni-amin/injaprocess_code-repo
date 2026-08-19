@@ -806,8 +806,21 @@ const COMPOSITION_MUTANTS: readonly Mutant[] = [
     // S5, the half a declared `gap` cannot see: the gutter the reader measures
     // is 98px and `column-gap` still says 18px. This is the mutant the
     // geometric half exists for, and the only thing that kills it.
+    //
+    // The margin is on ALL FOUR SIDES, and that is the point. Task 14 made the
+    // departments grid collapse to a SINGLE COLUMN at 760 (`{1440:3, 1080:2,
+    // 760:1}`), so the axis that HAS neighbours now depends on the width: at
+    // 1440 the fixture fills one row, so there are column gutters and no row
+    // gutters; at 760 the reverse. The old inline-only form silently stopped
+    // being caught at w760 — not because the check weakened, but because the
+    // fixture no longer had two items side by side to put a gutter between.
+    // `expectDesign` measures both axes (`[...g.columnGaps, ...g.rowGaps]`), so
+    // a margin on every side opens a gutter on whichever axis has neighbours,
+    // at every width this suite runs. A self-test that fires only where the
+    // layout happens to have horizontal neighbours is testing the fixture, not
+    // the check.
     why: 'a margin on the items, opening a gutter `gap` never mentions',
-    css: '[data-card]{margin-left:40px;margin-right:40px}',
+    css: '[data-card]{margin:40px}',
     message: /the gutters the browser drew between adjacent items/,
   },
   {

@@ -1933,7 +1933,36 @@ export async function expectFocusIndicator(page: Page, selector: string, label: 
     `focusing \`${selector}\``,
   )
   await page.keyboard.press(KEYBOARD_MODALITY)
-  const held = await focusState(page, selector)
+  // The focused state ONCE IT HAS STOPPED MOVING. Every field in this codebase
+  // transitions its focus border at `--duration` (.16s, ledger L-18), so a single
+  // read lands mid-tween — measured on the process list at 1440,
+  // `rgb(230, 197, 221)`, between `--line` and `--coral`, and a different colour
+  // on every run. `harness.spec.ts`'s FIELD_IDIOM probe is the PRE-REBUILD inline
+  // input, which carried no `transition`, which is why this self-test never met
+  // the case: `processList` is the first DESIGN row ever to set `focus`.
+  //
+  // Settling is not asserting. This waits for two consecutive reads to AGREE and
+  // says nothing about WHICH value they agree on, so every clause below is still
+  // reached and can still fail.
+  let prev = await focusState(page, selector)
+  let held = prev
+  await expect
+    .poll(async () => {
+      const now = await focusState(page, selector)
+      const still = now.borderColor === prev.borderColor
+        && now.borderWidth === prev.borderWidth
+        && now.outlineColor === prev.outlineColor
+        && now.outlineWidth === prev.outlineWidth
+        && now.outlineStyle === prev.outlineStyle
+        && now.shadow === prev.shadow
+      prev = now
+      held = now
+      return still
+    }, {
+      message: `${label}: \`${selector}\`'s focus indicator never stopped changing`,
+      timeout: HOOK_TIMEOUT,
+    })
+    .toBe(true)
 
   const seen = ` (at rest ${JSON.stringify(rest)}; focused ${JSON.stringify(held)})`
 
