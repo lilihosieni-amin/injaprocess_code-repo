@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
@@ -34,10 +34,22 @@ const READER: SessionDescriptor = {
   canSupervise: false, pendingApprovals: 0,
 }
 
+/** An Editor: §6.13's own screenshot signs in as one, and Step 5's
+ *  «تحلیل‌گر» role label only ever comes from this role (`lib/roles.ts`). */
+const EDITOR: SessionDescriptor = {
+  username: '09123334455', displayName: 'ویدا مهرآیین', role: 'editor',
+  capabilities: ['view', 'comment', 'edit', 'confirm'],
+  scopes: ['dept:cooking'], supervisor: '09120000000',
+  canSupervise: false, pendingApprovals: 0,
+}
+
 const CURRENT = 'گذرواژهٔ فعلی'
 const NEXT = 'گذرواژهٔ تازه'
 const REPEAT = 'تکرار گذرواژهٔ تازه'
-const SUBMIT = 'تغییر گذرواژه'
+/** «ذخیرهٔ گذرواژه» — §6.13's own submit label. The screen's older,
+ *  pre-rebuild draft said «تغییر گذرواژه»; every test below reads the label
+ *  through this constant rather than the literal so the rename is one line. */
+const SUBMIT = 'ذخیرهٔ گذرواژه'
 
 /**
  * Three values that are **pairwise different and all long enough**, so that
@@ -92,6 +104,15 @@ function mountProfile() {
       </MemoryRouter>
     </QueryClientProvider>,
   )
+}
+
+/** Stubs the server and mounts in one call, for the tests below that only
+ *  read the drawn screen and never inspect a request. `session` is set first
+ *  so the mocked `useSession` sees it on the render `mountProfile` triggers. */
+function drawProfile(s: SessionDescriptor) {
+  session = s
+  stubServer()
+  return mountProfile()
 }
 
 /** Fill the form. Every argument is explicit — a helper that defaulted the
@@ -164,14 +185,19 @@ describe('the profile form', () => {
     // `Button`'s BASE carries neither on purpose (I5) — the call site owns both
     // — so a bare `<Button>` is a 44 px box with its text against the edges.
     // jsdom measures nothing, so the class is all any runnable test can see.
+    //
+    // The type class itself moved from the pre-rebuild `text-caption` family
+    // to the theme's `text-fs-*` scale (`text-fs-menu`, §6.13's own button
+    // copy size) when this screen was rebuilt — this pattern, not the exact
+    // name, is what the test pins.
     stubServer()
     mountProfile()
     const button = await screen.findByRole('button', { name: SUBMIT })
     expect(button.className).toMatch(/(^|\s)px-/)
-    expect(button.className).toMatch(/(^|\s)text-(caption|body|subtitle)\b/)
+    expect(button.className).toMatch(/(^|\s)text-fs-\w/)
   })
 
-  it('writes nothing but the password: no control here besides the three fields and the submit button', async () => {
+  it('writes nothing but the password: no control here besides the three fields, their reveal toggles and the submit button', async () => {
     // D13 forbids every other route to self-modification, and this screen's
     // whole reason to exist is being the single exception for password only —
     // name, number, role and scope are read-only prose above the form. A
@@ -181,6 +207,14 @@ describe('the profile form', () => {
     // blind to an extra *interactive* control sitting next to them. So this
     // asserts the writable surface itself, positively and exhaustively,
     // rather than the wording around it.
+    //
+    // `PasswordField` — the shared component §6.13's rebuild moved this screen
+    // onto — draws its own show/hide toggle per field (§5.2's reveal
+    // affordance), so the button count is four, not one: three `type="button"`
+    // reveal toggles (each `aria-pressed`, which nothing else on this screen
+    // is) plus the one `type="submit"`. That is still exhaustive: a stray
+    // `<select>` or extra text input would still show up as a control this
+    // list does not account for.
     stubServer()
     const { container } = mountProfile()
     await screen.findByLabelText(CURRENT)
@@ -188,7 +222,12 @@ describe('the profile form', () => {
     expect(screen.queryAllByRole('combobox')).toEqual([])
     expect(screen.queryAllByRole('checkbox')).toEqual([])
     expect(screen.queryAllByRole('radio')).toEqual([])
-    expect(screen.getAllByRole('button')).toHaveLength(1)
+    const buttons = screen.getAllByRole('button')
+    expect(buttons).toHaveLength(4)
+    const submitButtons = buttons.filter((b) => b.getAttribute('type') === 'submit')
+    expect(submitButtons).toHaveLength(1)
+    const revealButtons = buttons.filter((b) => b.hasAttribute('aria-pressed'))
+    expect(revealButtons).toHaveLength(3)
     // Password inputs expose no ARIA role at all (confirmed empirically: an
     // `<input type="password">` matches none of `getByRole('textbox')` and
     // friends above), so the three fields have to be counted a different way
@@ -425,7 +464,7 @@ describe('changing your own password', () => {
     // request is in flight the button's accessible name is its `loadingLabel`,
     // so a second `getByRole(…, { name: SUBMIT })` would fail to find it and
     // "no second request" would pass for the wrong reason.
-    const button = screen.getByRole('button', { name: /در حال ثبت|تغییر گذرواژه/ })
+    const button = screen.getByRole('button', { name: new RegExp(`در حال ثبت|${SUBMIT}`) })
     expect(button).toBeDisabled()
     await userEvent.click(button)
     expect(seen.writes).toHaveLength(1)
@@ -477,13 +516,20 @@ describe('changing your own password', () => {
 })
 
 describe('what the profile screen says about itself', () => {
-  it('states that this is the one place, and the only person, that changes this password', async () => {
+  it('states that only the account holder can change this password', async () => {
     // D13 refuses every self-edit, and the user-administration screens say so
-    // in as many words. This screen is the single exception, and it has to be
-    // the one that explains why it is not a second way in.
+    // in as many words. This screen is the single exception.
+    //
+    // The pre-rebuild copy framed this as a meta-sentence about the screen
+    // itself ("فقط از همین صفحه … عوض می‌کنید") — the class of self-referential
+    // "why there is no edit control here" prose R5 puts out of the app, and
+    // §6.13's identity card (the one Task 22 replaced with the name/role
+    // header) never carried it either. What survives, in the closing rule
+    // statement under the form, is the fact that matters: nobody else can see
+    // or set this value.
     stubServer()
     mountProfile()
-    expect(await screen.findByText(/فقط خودتان عوض می‌کنید/)).toBeInTheDocument()
+    expect(await screen.findByText(/فقط خودتان می‌توانید تغییر دهید/)).toBeInTheDocument()
   })
 
   it('warns that changing it signs the other devices out, before it is changed', async () => {
@@ -617,5 +663,47 @@ describe('the way to the profile screen', () => {
     // rather than the plan's «نمایه», and is the same word `readerHere` gives
     // the screen it opens, so the two stop disagreeing about one page.
     expect(await screen.findByRole('link', { name: 'پروفایل من' })).toHaveAttribute('href', '/profile')
+  })
+})
+
+describe('the profile header (§6.13)', () => {
+  it('is titled with the person, not with the route', async () => {
+    drawProfile(EDITOR)
+    const h1 = await screen.findByRole('heading', { level: 1 })
+    expect(h1).toHaveTextContent('ویدا مهرآیین')
+    expect(screen.queryByRole('heading', { name: 'نمایه' })).toBeNull()
+    const meta = screen.getByTestId('profile-meta')
+    expect(meta).toHaveTextContent('تحلیل‌گر')
+    // The number is a latin-digit run on a violet field: mono, pinned ltr.
+    const number = within(meta).getByText(EDITOR.username)
+    expect(number).toHaveAttribute('dir', 'ltr')
+    expect(number).toHaveClass('font-mono')
+  })
+
+  it('pairs the new password with its repeat, and leads with violet labels', async () => {
+    drawProfile(EDITOR)
+    const card = await screen.findByRole('group', { name: 'تغییر گذرواژه' })
+    const pair = within(card).getByTestId('password-pair')
+    expect(pair).toHaveClass('grid', 'grid-cols-2', 'max760:grid-cols-1')
+    expect(within(pair).getByLabelText('گذرواژهٔ تازه')).toBeInTheDocument()
+    expect(within(pair).getByLabelText('تکرار گذرواژهٔ تازه')).toBeInTheDocument()
+    // The current password is full width, above the pair.
+    expect(within(pair).queryByLabelText('گذرواژهٔ فعلی')).toBeNull()
+    // §5.2 TextField — the field label is the design's second label register:
+    // 12.5px/600 `#4A25A9`, not the 11px/700 muted section caption.
+    const label = within(card).getByText('گذرواژهٔ فعلی')
+    expect(label).toHaveClass('text-fs-sm2', 'font-semibold', 'text-violet')
+    expect(label).not.toHaveClass('font-bold', 'text-muted')
+    expect(within(card).getByRole('button', { name: 'ذخیرهٔ گذرواژه' })).toBeInTheDocument()
+  })
+
+  it('gives the sign-out warning a surface instead of a third grey paragraph', async () => {
+    drawProfile(EDITOR)
+    // F47 — three consecutive 12.5px paragraphs in grey, amber and lilac at 6px
+    // separation, of which the amber one is the only consequential sentence and
+    // visually the second weakest.
+    const warn = await screen.findByRole('note', { name: 'هشدار' })
+    expect(warn).toHaveClass('bg-tile-warn', 'border-warn-edge')
+    expect(warn).toHaveTextContent(/همهٔ دستگاه‌های دیگری که با این حساب وارد شده‌اند/)
   })
 })

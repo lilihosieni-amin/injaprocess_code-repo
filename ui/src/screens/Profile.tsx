@@ -5,7 +5,7 @@ import { refusalText } from '../lib/refusal'
 import { roleLabel } from '../lib/roles'
 import { MIN_PASSWORD, TOO_SHORT } from '../lib/userDraft'
 import { Button } from '../ui/Button'
-import { Card } from '../ui/Card'
+import { PasswordField } from '../ui/PasswordField'
 
 /** Said here rather than left to the server, because the server's answer to an
  *  empty `current` is «گذرواژهٔ فعلی درست نیست» — a sentence that blames a value
@@ -102,72 +102,102 @@ export function Profile() {
   }
 
   return (
-    <div className="flex-1 overflow-auto py-s12 px-s12">
-      <div className="max-w-list mx-auto">
-        <h1 className="text-title font-extrabold text-ink">نمایه</h1>
+    // `bg-ink` paints the violet field the harness's `field: FIELD` check reads
+    // off `[data-screen]` itself (`getComputedStyle`, non-inherited) — the same
+    // class every other rebuilt screen's own `data-screen` wrapper carries
+    // (`Users.tsx`, `Summary.tsx`). The task brief's own Step 3 snippet omits
+    // it; that omission is reported rather than followed.
+    <div data-screen="profile" className="flex-1 overflow-auto bg-ink py-screen-y px-screen-x max760:px-s7 max760:py-s9">
+      <div data-col className="max-w-profile mx-auto">
+        {/* §6.13 — `22px/800 #fff` name, `12.5px #C9BEEE` role (ledger L-02,
+            L-33 — NOT the 21px `text-fs-stat-sm` an earlier draft of this
+            screen's task wrote; that role is the activity-stat numeral, which
+            `tokens.css` says in as many words). The identity card this
+            replaces was three lines of plain text plus a paragraph explaining
+            why there is no edit control here; R5 puts that class of sentence
+            out of the app, and the design's own profile has neither. The two
+            facts worth keeping — who you are and what you are — are the
+            header. */}
+        <h1 data-h1 className="text-fs-h2 font-extrabold text-role-title-on-field m-0">
+          {session.displayName}
+        </h1>
+        <p data-body data-testid="profile-meta"
+          className="flex items-center gap-s4 flex-wrap text-fs-sm2
+                     text-role-subtitle-on-field mt-s2 m-0">
+          <span>{roleLabel(session.role)}</span>
+          <span aria-hidden>·</span>
+          {/* A latin-digit run inside RTL prose, pinned `ltr` so a stored
+              spelling that is not digits alone stays in the order it was
+              stored in. Declared in `test/guards.test.ts`'s ISLANDS. */}
+          <span dir="ltr" className="font-mono">{session.username}</span>
+        </p>
 
-        <Card className="px-s9 py-s8 mt-s8 flex flex-col gap-s4">
-          <span className="text-subtitle font-bold text-ink">{session.displayName}</span>
-          <div className="flex items-center gap-s6 flex-wrap">
-            {/* A latin-digit run inside RTL prose, pinned `ltr` so a stored
-                spelling that is not digits alone stays in the order it was
-                stored in. Declared in `test/guards.test.ts`'s ISLANDS. */}
-            <span dir="ltr" className="text-caption text-muted font-mono">{session.username}</span>
-            {/* **The sharpest instance of the raw identifier.** Every account
-                reaches this page, including a floor staffer with no English at
-                all, and `reader_no_download` beside their own name was the only
-                latin text on it besides their number. */}
-            <span className="text-caption text-violet font-bold">{roleLabel(session.role)}</span>
-          </div>
-          {/* Read-only, every one of them, and the paragraph says why rather
-              than leaving somebody hunting for an edit control that D13 will
-              never put here. */}
-          <p className="text-caption text-faint m-0">
-            نام، شماره، نقش و دامنهٔ دسترسی حساب خودتان را از اینجا نمی‌توانید عوض
-            کنید؛ اینها را مدیر سامانه تغییر می‌دهد.
-          </p>
-        </Card>
+        {/* §6.13 — a tinted sub-panel eyebrowed «تغییر گذرواژه».
+            `ui/src/ui/SectionCard.tsx` (Task 10's, frozen for this task) is
+            this exact recipe — `border rounded-card p-s9 bg-surface-sub
+            border-border-current` plus the eyebrow paragraph — but as shipped
+            it destructures `{ eyebrow, skin, children, className }` and
+            forwards nothing else, so neither `data-card` (the harness's
+            measurement hook) nor `aria-label`/`role="group"` (this screen's
+            own vitest assertion) would reach the DOM if it were used here.
+            `ui/src/screens/UserDetail.tsx`'s local `Panel` documents the
+            identical defect and works around it the identical way, for the
+            identical reason (`role="group"` there too, so four
+            accessibly-named `<section>` landmarks on one record don't read to
+            a screen reader as furniture). Reported rather than fixed here:
+            this task must not write SectionCard.tsx. */}
+        <div data-card role="group" aria-label="تغییر گذرواژه"
+          className="border rounded-card p-s9 bg-surface-sub border-border-current mt-s8">
+          <p className="m-0 mb-s6 text-fs-xxs font-bold text-muted">تغییر گذرواژه</p>
+          <form onSubmit={submit} className="flex flex-col gap-s6">
+            {/* `ground="sub"`: `ui/src/ui/fieldFrame.ts`'s own docstring on
+                `PasswordFieldProps.ground` names this exact trio — "the
+                reader's profile draws its password trio on the sub-panel
+                surface" — as the reason the prop exists at all. Left at the
+                default `'card'` (the brief's own Step 7 snippet does) draws
+                each field as a near-white box on the `#FBF9FE` tinted card,
+                the very defect that docstring exists to prevent. */}
+            <PasswordField id={currentId} label="گذرواژهٔ فعلی" placeholder="••••••••"
+              autoComplete="current-password" ground="sub" value={current} onChange={setCurrent} />
+            <div data-testid="password-pair"
+              className="grid grid-cols-2 gap-s6 max760:grid-cols-1">
+              <PasswordField id={nextId} label="گذرواژهٔ تازه" placeholder="••••••••"
+                autoComplete="new-password" ground="sub" value={next} onChange={setNext} />
+              <PasswordField id={repeatId} label="تکرار گذرواژهٔ تازه" placeholder="••••••••"
+                autoComplete="new-password" ground="sub" value={repeat} onChange={setRepeat} />
+            </div>
 
-        <Card className="px-s9 py-s8 mt-s8">
-          <h2 className="text-subtitle font-bold text-ink">تغییر گذرواژه</h2>
-          <p className="text-caption text-muted mt-s3">
-            گذرواژهٔ خودتان را فقط از همین صفحه و فقط خودتان عوض می‌کنید؛ حساب
-            خودتان را از صفحهٔ کاربران نمی‌توانید تغییر دهید.
-          </p>
-          {/* Said before the change, not after it: a security action whose
-              effects are invisible is one people avoid, and «your other devices
-              were signed out» in the confirmation is news rather than a warning
-              — about a tablet in the kitchen somebody else is holding. */}
-          <p className="text-caption text-warn font-bold mt-s3">
-            با عوض شدن گذرواژه، همهٔ دستگاه‌های دیگری که با این حساب وارد شده‌اند
-            بیرون می‌آیند؛ همین دستگاه باز می‌ماند.
-          </p>
-          <p className="text-caption text-faint mt-s3">
-            اگر گذرواژه‌تان را فراموش کردید، مدیر سامانه گذرواژهٔ تازه‌ای برایتان
-            می‌گذارد؛ پیوند بازیابی در کار نیست.
-          </p>
+            {/* Said before the change and not after it. A security action whose
+                effects are invisible is one people avoid, and «your other
+                devices were signed out» in the confirmation is news rather
+                than a warning — about a tablet in the kitchen somebody else is
+                holding. §6.6's amber notice is the design's surface for
+                exactly this: `#FBEEDC` on `1px #F0DDBB` at radius 10,
+                `12px #8A5A00 lh 1.7`. */}
+            <p role="note" aria-label="هشدار"
+              className="bg-tile-warn border border-warn-edge rounded-control
+                         px-s6 py-s5 text-fs-caption text-warn-fg leading-normal m-0">
+              با عوض شدن گذرواژه، همهٔ دستگاه‌های دیگری که با این حساب وارد شده‌اند
+              بیرون می‌آیند؛ همین دستگاه باز می‌ماند.
+            </p>
 
-          <form onSubmit={submit} className="flex flex-col gap-s6 mt-s7">
-            <Field id={currentId} label="گذرواژهٔ فعلی" autoComplete="current-password"
-              value={current} onChange={setCurrent} />
-            <Field id={nextId} label="گذرواژهٔ تازه" autoComplete="new-password"
-              value={next} onChange={setNext} />
-            <Field id={repeatId} label="تکرار گذرواژهٔ تازه" autoComplete="new-password"
-              value={repeat} onChange={setRepeat} />
+            {/* §6.13's closing rule statement. The design's third clause is
+                about a reset link this product does not have (D15, ledger
+                A1/P2), so it states what actually happens instead. */}
+            <p className="text-fs-xs text-faint leading-loose m-0">
+              گذرواژهٔ خود را فقط خودتان می‌توانید تغییر دهید؛ هیچ‌کس دیگری گذرواژهٔ
+              شما را نمی‌بیند. اگر آن را فراموش کردید، مدیر سامانه گذرواژهٔ تازه‌ای
+              می‌گذارد و به شما می‌گوید.
+            </p>
 
-            <div>
-              {/* `Button`'s BASE carries no horizontal padding and no type size
-                  on purpose (I5) — the call site owns both — so a bare
-                  `<Button>` is a 44 px box with its text against the edges, at
-                  inherited body size. jsdom measures nothing, so only a browser
-                  ever shows it. `loading` also forces `disabled`, which is what
-                  stops a second submit landing behind the first: the duplicate
-                  would carry a `current` the first request has already
-                  invalidated, and come back «گذرواژهٔ فعلی درست نیست» on a
-                  change that worked. */}
-              <Button type="submit" variant="violet" className="px-s8 text-caption"
+            <div className="mt-s2">
+              {/* `loading` still forces `disabled`, which is what stops a
+                  second submit landing behind the first with a `current` the
+                  first request has already invalidated. */}
+              <Button type="submit" variant="violet"
+                className="px-s9 py-s6 text-fs-menu rounded-button"
                 loading={change.isPending} loadingLabel="در حال ثبت…">
-                تغییر گذرواژه
+                ذخیرهٔ گذرواژه
               </Button>
             </div>
           </form>
@@ -183,53 +213,18 @@ export function Profile() {
             // «گذرواژه باید دست‌کم ۶ نویسه باشد», and «انجام نشد» in their place
             // leaves somebody retyping the wrong field. A 5xx and a 4xx with no
             // sentence get the local retry line instead.
-            <p role="alert" className="text-caption text-conflict mt-s5">
+            <p role="alert" className="text-fs-xs font-semibold text-conflict mt-s5 m-0">
               {problem ?? refusalText(change.error)}
             </p>
           )}
           {change.isSuccess && !problem && (
-            <p role="status" className="text-caption text-green font-bold mt-s5">
+            <p role="status" className="text-fs-xs font-semibold text-green mt-s5 m-0">
               گذرواژهٔ شما عوض شد. دستگاه‌های دیگر از این حساب بیرون آمدند؛ همین
               دستگاه باز است.
             </p>
           )}
-        </Card>
+        </div>
       </div>
-    </div>
-  )
-}
-
-/**
- * One password field.
- *
- * `type="password"` lives here, once, rather than at three call sites: this is a
- * shared back-office screen, a field that renders as `type="text"` puts somebody's
- * password on it in front of whoever is standing there, and **no test that reads
- * a field by its label can see the difference** — an earlier screen in this
- * project shipped exactly that and passed every assertion in its file.
- *
- * No `maxLength`, deliberately. A cap does not reject a longer password, it
- * silently stores a *different* one — and jsdom does not enforce `maxLength` at
- * all, so a browser would truncate where every runnable test stayed green.
- */
-function Field({ id, label, autoComplete, value, onChange }: {
-  id: string
-  label: string
-  autoComplete: 'current-password' | 'new-password'
-  value: string
-  onChange: (v: string) => void
-}) {
-  return (
-    <div className="flex flex-col gap-s2">
-      <label htmlFor={id} className="text-caption font-bold text-muted">{label}</label>
-      <input
-        id={id}
-        type="password"
-        autoComplete={autoComplete}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="min-h-touch px-s7 rounded-control border border-line bg-card text-body text-ink"
-      />
     </div>
   )
 }
