@@ -2,9 +2,40 @@ import { useNavigate } from 'react-router-dom'
 import { useDepartments } from '../api/hooks'
 import { deptMeta } from '../lib/departments'
 import { toFa } from '../lib/format'
+import { Card } from '../ui/Card'
+import { Icon } from '../ui/Icon'
+import { IconTile } from '../ui/IconTile'
+import { StatTile } from '../ui/StatTile'
+import { useSurface } from '../ui/surface'
 
+/**
+ * The department board, on both of R3's surfaces.
+ *
+ * The visual audit calls this screen near pixel-faithful to `Inja Panel.dc.html`
+ * and it is — so nothing a person sees at 1440px moves here. What changes is
+ * everything a person does NOT see: 33 hard-coded values become the tokens that
+ * already held them, the two breakpoints §6.16 specifies arrive, and the reader
+ * gets its own composition instead of the panel's.
+ *
+ * **The two surfaces differ in composition, not only in scale.** The reader
+ * deliverable (`Inja Reader.dc.html:170`) draws a single-column list of
+ * horizontal rows — tile, name, count, chevron — with no eyebrow, no stat row,
+ * no accent bar, no watermark numeral and no chips. That is R5 as much as R3: a
+ * reader may not edit, so the sub-process and open-conflict counts an editor
+ * needs are ABSENT rather than drawn and inert. The watermark is also the one
+ * thing the harness could not tolerate on this surface — `departmentsReader`
+ * carries no `contrastWaived`, and the numeral is drawn at 1.15:1 on purpose.
+ *
+ * Everything that is only a scale difference stays in the theme, not here:
+ * `IconTile` is `w-tile h-tile` on both surfaces because `--role-tile` is 48px
+ * under `:root` and 54px under `[data-surface='reader']`. This file branches
+ * only where the two surfaces genuinely disagree — the column, the padding, the
+ * H1's size AND colour, the grid, the card's radius and rest shadow, and which
+ * composition is drawn.
+ */
 export function Departments() {
   const nav = useNavigate()
+  const reader = useSurface() === 'reader'
   const { data = [] } = useDepartments()
 
   const totalProc = data.reduce((a, d) => a + (d.count ?? 0), 0)
@@ -17,78 +48,185 @@ export function Departments() {
   const knowsConflicts = data.some((d) => d.conflicts !== undefined)
   const hasConflicts = totalConflicts > 0
 
-  return (
-    <div data-screen="departments" className="flex-1 overflow-auto pt-[38px] pb-12 px-10 bg-ink">
-      <div data-col className="max-w-[1120px] mx-auto">
+  // §6.16 gives every `[data-r-pad]` the same `18px 14px` at ≤760, so the mobile
+  // pair is written once for both surfaces and only the desktop set branches.
+  // `max760:py-s9` beats the `pt-`/`pb-` beside it because Tailwind sorts every
+  // variant after every bare utility in the same layer — asserted in the suite,
+  // because the class attribute's own order decides nothing.
+  const pad = reader
+    ? 'pt-screen-y px-reader-x pb-reader-bottom'          // 30 / 24 / 60
+    : 'pt-departments-top px-screen-x pb-departments-bottom'  // 38 / 40 / 48
 
-        {/* header */}
-        <div className="flex items-end justify-between gap-6 flex-wrap mb-[30px]">
+  return (
+    // §6.0 — the shell owns the violet field, and this root repaints it because
+    // the gate reads `background-color` off THIS element with `getComputedStyle`,
+    // which does not inherit. A root that painted nothing would compute
+    // `rgba(0, 0, 0, 0)` however violet the shell behind it is.
+    <div
+      data-screen={reader ? 'departmentsReader' : 'departments'}
+      data-r-pad
+      className={`flex-1 overflow-auto bg-ink ${pad} max760:px-s7 max760:py-s9`}
+    >
+      <div data-col className={`${reader ? 'max-w-reader' : 'max-w-departments'} mx-auto`}>
+
+        <div
+          data-r-stack
+          className={reader
+            ? 'mb-s11'
+            : 'flex items-end justify-between gap-s11 flex-wrap mb-s12 '
+              + 'max760:flex-col max760:items-stretch max760:gap-s6'}
+        >
           <div>
-            <div className="flex items-center gap-2 mb-[11px]">
-              <span className="w-[22px] h-0.5 bg-coral rounded-[2px]" />
-              <span className="text-[11.5px] font-bold tracking-[.14em] text-[#B79FE6]">INJA FOOD · مستندسازی فرآیند</span>
-            </div>
-            <div data-h1 className="font-extrabold text-[34px] text-bg tracking-[-.01em]">دپارتمان‌ها</div>
-            <div data-body className="text-[14px] text-[#B7A6E0] mt-2 max-w-[440px] leading-[1.7]">نقشهٔ فرآیندهای مجموعه به تفکیک واحد. یک دپارتمان را برای مرور فرآیندهای مستندشده، کارت خلاصه و فلوچارت انتخاب کنید.</div>
-          </div>
-          <div className="flex gap-3 flex-none">
-            <Stat value={toFa(totalProc)} label="فرآیند مستند" valueClass="text-violet" />
-            <Stat value={toFa(data.length)} label="دپارتمان" valueClass="text-ink" />
-            {knowsConflicts && (
-              <div className="bg-bg border border-warm rounded-2xl px-5 py-3.5 min-w-[96px] shadow-[0_8px_22px_-12px_rgba(0,0,0,.4)]">
-                <div className="flex items-center gap-[7px]">
-                  <span className={`font-extrabold text-[27px] leading-none ${hasConflicts ? 'text-conflict' : 'text-green'}`}>{toFa(totalConflicts)}</span>
-                  {hasConflicts && <span className="w-2 h-2 rounded-full bg-coral shadow-[0_0_0_3px_#FFE4E1]" />}
-                </div>
-                <div className="text-[11.5px] text-muted mt-[5px] font-semibold">تعارض باز</div>
+            {/* The eyebrow is the panel's: the reader deliverable's home screen
+                opens on its title. */}
+            {!reader && (
+              <div className="flex items-center gap-s4 mb-s5">
+                <span aria-hidden className="w-s10 h-half bg-coral rounded-bar" />
+                <span className="text-fs-xs font-bold tracking-eyebrow text-role-eyebrow">
+                  INJA FOOD · مستندسازی فرآیند
+                </span>
               </div>
             )}
+            <h1
+              data-h1
+              data-r-title
+              className={`font-extrabold ${reader
+                ? 'text-fs-h1-reader-home text-role-title-on-field'
+                : 'text-fs-display max760:text-fs-display-hand text-on-dark tracking-display'}`}
+            >
+              {reader ? 'دپارتمان‌های من' : 'دپارتمان‌ها'}
+            </h1>
+            {/* One colour for both surfaces and it is the ROLE, never
+                `text-violet-on-dark-body`: that token's name still reads like the
+                answer, and Task 3 re-cut its value out from under it (L-28). No
+                hex is spelled in this file, in code OR in a comment — Tailwind's
+                scanner does not read a comment differently from code. */}
+            <p
+              data-body
+              className={`text-role-subtitle-on-field mt-s4 ${reader
+                ? 'text-role-dense leading-sub'
+                : 'text-fs-body max-w-subtitle leading-normal'}`}
+            >
+              {reader
+                ? 'کدام بخش را می‌خواهید بخوانید؟'
+                : 'نقشهٔ فرآیندهای مجموعه به تفکیک واحد. یک دپارتمان را برای مرور فرآیندهای مستندشده، کارت خلاصه و فلوچارت انتخاب کنید.'}
+            </p>
           </div>
+
+          {/* The stat row is panel chrome: the reader deliverable's home screen
+              carries no counters, only the list. R3 — a difference in
+              composition, not a difference in theme. */}
+          {!reader && (
+            <div className="flex gap-s6 flex-none max760:hidden">
+              <StatTile value={totalProc} label="فرآیند مستند" tone="violet" />
+              <StatTile value={data.length} label="دپارتمان" tone="ink" />
+              {knowsConflicts && (
+                <StatTile
+                  value={totalConflicts}
+                  label="تعارض باز"
+                  tone={hasConflicts ? 'conflict' : 'ok'}
+                  dot={hasConflicts}
+                />
+              )}
+            </div>
+          )}
         </div>
 
-        {/* grid */}
-        <div data-grid className="grid grid-cols-3 gap-[18px]">
+        <div
+          data-grid
+          data-r-deptgrid
+          className={reader
+            ? 'grid grid-cols-1 gap-s7'
+            : 'grid grid-cols-3 gap-s9 max1080:grid-cols-2 max760:grid-cols-1'}
+        >
           {data.map((d, i) => {
             const m = deptMeta(d.code)
-            const isC = m.accent === 'coral'
-            const accentText = isC ? 'text-conflict' : 'text-violet'
-            return (
-              <div key={d.code} data-card onClick={() => nav(`/departments/${d.code}`)}
-                className="relative overflow-hidden bg-bg border border-warm rounded-[20px] p-[22px] cursor-pointer shadow-[0_10px_26px_-14px_rgba(0,0,0,.45)] hover:-translate-y-0.5 hover:shadow-card-hover transition">
-                <div className={`absolute top-0 inset-x-0 h-1 ${isC ? 'bg-conflict' : 'bg-violet'}`} />
-                <div className={`absolute top-3.5 left-5 text-[46px] font-extrabold leading-none pointer-events-none ${isC ? 'text-[#FBE4E1]' : 'text-[#EDE4FA]'}`}>{toFa(String(i + 1).padStart(2, '0'))}</div>
-                <div className={`w-12 h-12 rounded-[14px] flex items-center justify-center shrink-0 ${m.tileClass}`}>
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d={m.icon} /></svg>
-                </div>
-                <div className="font-extrabold text-[18px] text-ink mt-4">دپارتمان {d.name}</div>
-                <div className="flex items-center gap-[7px] flex-wrap mt-[11px] min-h-[24px]">
-                  <span className="inline-flex items-center gap-[5px] text-[11.5px] font-semibold text-[#6B5CA5] bg-[#F5F1FB] px-2.5 py-1 rounded-[20px]">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6" /></svg>
-                    {toFa(d.count)} فرآیند
-                  </span>
-                  {(d.subs ?? 0) > 0 && <span className="text-[11px] font-semibold text-[#B4690E] bg-[#FBEEDC] px-[9px] py-1 rounded-[20px]">{toFa(d.subs)} زیرفرآیند</span>}
-                  {d.conflicts !== undefined && d.conflicts > 0 && <span className="inline-flex items-center gap-1 text-[11px] font-bold text-conflict bg-tile-c px-[9px] py-1 rounded-[20px]"><span className="w-1.5 h-1.5 rounded-full bg-coral" />{toFa(d.conflicts)} تعارض</span>}
-                </div>
-                <div className="flex items-center justify-between gap-2.5 mt-4 pt-[15px] border-t border-[#F2ECE3]">
-                  <span className={`text-[12.5px] font-bold ${accentText}`}>مشاهدهٔ فرآیندها</span>
-                  <div className={`w-[34px] h-[34px] rounded-full flex-none flex items-center justify-center ${accentText} ${isC ? 'bg-[#FFF0EE]' : 'bg-[#F3EDFC]'}`}>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6" /></svg>
+            return reader ? (
+              <Card
+                key={d.code}
+                data-card
+                hoverLift
+                radius="doc"
+                padding="feature"
+                onClick={() => nav(`/departments/${d.code}`)}
+                className="flex items-center gap-s8 cursor-pointer"
+              >
+                <IconTile dept={d.code} />
+                <div className="flex-1 min-w-0">
+                  <div className="font-extrabold text-fs-h3 text-ink">{d.name}</div>
+                  <div className="text-fs-menu text-muted mt-s3">
+                    {toFa(d.count)} فرآیند مستند
                   </div>
                 </div>
-              </div>
+                {/* The reader's chevron disc is violet for every department: the
+                    deliverable tints the tile by accent and leaves this one
+                    fixed. */}
+                <span
+                  aria-hidden
+                  className="w-tool h-tool rounded-round flex-none flex items-center justify-center text-violet bg-disc-violet"
+                >
+                  <Icon name="chevronEnd" px={16} stroke={2.4} />
+                </span>
+              </Card>
+            ) : (
+              <Card
+                key={d.code}
+                data-card
+                hoverLift
+                radius="feature"
+                padding="feature"
+                onClick={() => nav(`/departments/${d.code}`)}
+                className="relative overflow-hidden cursor-pointer shadow-feature"
+              >
+                <span
+                  aria-hidden
+                  className={`absolute top-0 inset-x-0 h-1 ${m.accent === 'coral' ? 'bg-conflict' : 'bg-violet'}`}
+                />
+                {/* `end-`, never a physical inset: in RTL the ghosted numeral
+                    sits on the inline END, which is the page's left. The physical
+                    spelling this replaces was one of the four mirror bugs O5
+                    lists, and it is invisible until an LTR locale exists. */}
+                <span
+                  aria-hidden
+                  className={`absolute top-s7 end-s10 text-fs-numeral font-extrabold leading-none pointer-events-none ${m.numeralClass}`}
+                >
+                  {toFa(String(i + 1).padStart(2, '0'))}
+                </span>
+                <IconTile dept={d.code} />
+                <div className="font-extrabold text-fs-dialog text-ink mt-s8">
+                  دپارتمان {d.name}
+                </div>
+                <div className="flex items-center gap-s3 flex-wrap mt-s5 min-h-chiprow">
+                  <span className="inline-flex items-center gap-s2 text-fs-xs font-semibold text-dialog-ghost bg-tile-v3 px-s5 py-s1 rounded-pill">
+                    <Icon name="file" px={12} />
+                    {toFa(d.count)} فرآیند
+                  </span>
+                  {(d.subs ?? 0) > 0 && (
+                    <span className="text-fs-xxs font-semibold text-warn bg-tile-warn px-s5 py-s1 rounded-pill">
+                      {toFa(d.subs)} زیرفرآیند
+                    </span>
+                  )}
+                  {d.conflicts !== undefined && d.conflicts > 0 && (
+                    <span className="inline-flex items-center gap-s1 text-fs-xxs font-bold text-conflict bg-tile-c px-s5 py-s1 rounded-pill">
+                      <span aria-hidden className="w-s3 h-s3 rounded-round bg-coral" />
+                      {toFa(d.conflicts)} تعارض
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center justify-between gap-s5 mt-s8 pt-s8 border-t border-hair">
+                  <span className={`text-fs-sm2 font-bold ${m.accentText}`}>مشاهدهٔ فرآیندها</span>
+                  <span
+                    aria-hidden
+                    className={`w-tool h-tool rounded-round flex-none flex items-center justify-center ${m.accentText} ${m.ctaDiscClass}`}
+                  >
+                    <Icon name="chevronEnd" px={16} stroke={2.4} />
+                  </span>
+                </div>
+              </Card>
             )
           })}
         </div>
       </div>
-    </div>
-  )
-}
-
-function Stat({ value, label, valueClass }: { value: string; label: string; valueClass: string }) {
-  return (
-    <div className="bg-bg border border-warm rounded-2xl px-5 py-3.5 min-w-[96px] shadow-[0_8px_22px_-12px_rgba(0,0,0,.4)]">
-      <div className={`font-extrabold text-[27px] leading-none ${valueClass}`}>{value}</div>
-      <div className="text-[11.5px] text-muted mt-[5px] font-semibold">{label}</div>
     </div>
   )
 }

@@ -1361,7 +1361,7 @@ const PENDING: string[] = [
   'bg-muted', 'bg-faint', 'bg-warm', 'bg-line',
   'bg-login-orb', 'bg-warn', 'bg-info', 'bg-violet-mid',
   'bg-violet-edge', 'bg-violet-on-dark', 'bg-violet-on-dark-body', 'bg-violet-on-violet',
-  'bg-desk', 'bg-tile-v3', 'bg-tile-ctl', 'bg-value-current',
+  'bg-desk', 'bg-tile-ctl', 'bg-value-current',
   'bg-hair', 'bg-line-soft', 'bg-line-dashed', 'bg-border-danger',
   'bg-border-dead', 'bg-border-ok', 'bg-strong',
   'bg-body-ink', 'bg-ghost', 'bg-dialog-ghost', 'bg-ink-current',
@@ -1371,20 +1371,20 @@ const PENDING: string[] = [
   'bg-junction-or', 'bg-dept-numeral-violet', 'bg-dept-numeral-coral', 'bg-steps-sub',
   'bg-steps-sub-border', 'bg-steps-sub-hover', 'bg-steps-group', 'bg-steps-group-border',
   'bg-link', 'bg-link-hover', 'text-violet-on-dark', 'text-violet-on-dark-body',
-  'text-violet-on-violet', 'text-strong', 'text-ghost', 'text-dialog-ghost',
-  'text-ink-current', 'text-ink-proposed', 'text-on-dark', 'text-ok',
+  'text-violet-on-violet', 'text-strong', 'text-ghost',
+  'text-ink-current', 'text-ink-proposed', 'text-ok',
   'text-danger', 'text-toast-check', 'text-link', 'text-link-hover',
   'border-line-soft', 'border-line-dashed', 'border-border-dead', 'border-border-ok',
-  'border-hair', 'border-steps-sub-border', 'border-steps-group-border',
+  'border-steps-sub-border', 'border-steps-group-border',
   'bg-tile-v5', 'bg-line-divider',
   'border-line-divider', 'bg-line-row', 'bg-line-filter', 'border-line-filter',
-  'bg-border-pick', 'text-fs-display', 'text-fs-h1', 'text-fs-h2',
-  'text-fs-h3', 'text-fs-h4', 'text-fs-h5',
+  'bg-border-pick', 'text-fs-h1', 'text-fs-h2',
+  'text-fs-h4', 'text-fs-h5',
   'text-fs-doc-base', 'text-fs-doc-h1',
   'text-fs-doc-title', 'text-fs-doc-step', 'text-fs-doc-body',
-  'text-fs-numeral', 'text-fs-steps-title', 'text-fs-display-hand',
+  'text-fs-steps-title',
   'text-fs-nano', 'text-fs-badge-sm',
-  'text-fs-tag', 'text-fs-h1-reader-home', 'text-fs-h1-reader-list', 'text-fs-h1-reader-dept',
+  'text-fs-tag', 'text-fs-h1-reader-list', 'text-fs-h1-reader-dept',
   'text-fs-body-reader', 'text-prose',
   // Named only in a docstring in src/ui/fieldFrame.ts, which explains why the
   // field's type is a FIXED step and not this role. The scan above stopped
@@ -1392,12 +1392,11 @@ const PENDING: string[] = [
   'text-role-body',
   'text-role-title', 'text-role-hero',
   'font-sans', 'font-regular', 'leading-snug', 'leading-looser',
-  'tracking-eyebrow', 'tracking-display', 'rounded-badge',
+  'rounded-badge',
   'shadow-sheet', 'shadow-drawer',
   'shadow-card-dark', 'shadow-stat-dark', 'shadow-guide-hover', 'shadow-ring-flash',
   'p-screen-x', 'p-screen-y',
-  'p-topbar', 'p-half', 'gap-topbar', 'px-reader-x',
-  'pb-reader-bottom', 'pt-departments-top', 'pb-departments-bottom',
+  'p-topbar', 'p-half', 'gap-topbar',
   'p-s2', 'p-s3', 'p-s5',
   'p-s6', 'p-s14', 'p-s16',
   // `w-tile`/`h-tile` and the two glyph pairs came off here when Task 11's
@@ -1414,8 +1413,8 @@ const PENDING: string[] = [
   'h-tile-reader', 'w-iconbtn-reader',
   'h-iconbtn-reader', 'w-fab-reader',
   'h-fab-reader', 'w-tick-nested',
-  'h-tick-nested', 'max-w-departments', 'max-w-summary', 'max-w-doc',
-  'max-w-drawer', 'max-w-reader', 'max-w-profile', 'max-w-steps',
+  'h-tick-nested', 'max-w-summary', 'max-w-doc',
+  'max-w-drawer', 'max-w-profile', 'max-w-steps',
   'max-w-access', 'max-w-audit', 'duration-fast', 'duration-chev',
   'p-compose', 'rounded-tick-nested',
   'w-tick-glyph-nested', 'h-tick-glyph-nested',
@@ -1439,19 +1438,19 @@ const PENDING: string[] = [
   // mechanism working — a line comes off when its consumer arrives.
   'z-drawer',
   'z-modal', 'z-popover', 'z-tooltip', 'z-toast',
-  'ease-css', 'duration-row', 'rounded-bar', 'shadow-feature',
-  'max-w-subtitle', 'max-w-intro', 'min-h-chiprow',
+  'ease-css', 'duration-row',
+  'max-w-intro',
   'bg-warn-edge', 'border-warn-edge', 'text-warn-fg',
   'gap-table-row-mobile',
   'w-login',
   'w-dot', 'h-dot', 'w-chev', 'h-chev', 'w-glyph-tile', 'h-glyph-tile',
-  // …and the type-on-the-violet-field group. Unconsumed only because Tasks 15,
-  // 17, 19 and 20 have not landed: those four screens are the ones that write a
-  // title on the field, and they currently write `text-on-dark`, which is the
-  // colour ledger L-01 retired. These three lines come off as those tasks land.
-  'text-role-title-on-field', 'text-role-subtitle-on-field', 'text-role-eyebrow',
+  // The type-on-the-violet-field group came off here when Task 14's departments
+  // screen landed: its READER title takes `text-role-title-on-field`, both
+  // surfaces take `text-role-subtitle-on-field` for the lead, and the panel's
+  // eyebrow takes `text-role-eyebrow`. `text-on-dark` came off with them — the
+  // departments PANEL title is L-01's single surviving exception and is the one
+  // consumer the retired colour still has.
   // …and StatTile's numeral-to-dot gap, unconsumed until Task 10 builds it.
-
   // The shell mint. Nine names for the values Tasks 12, 13 and 16 were still
   // writing out, minted for the same reason the pass before it was: guards.test.ts
   // makes an unnamed value unwritable, so the name has to exist before its
@@ -1469,7 +1468,6 @@ const PENDING: string[] = [
   // reader's lockup is the only place in the product that writes the 14.5px step.
   // What is left of the shell mint here is Task 16's one line.
   'grid-cols-idef0',
-
   // The reader-chrome mint. The owner's ruling that ReaderShell takes the
   // READER's numbers — it wrote the panel's in eleven places — needed three names
   // the mint above had no reason to look for. All three are consumed by the

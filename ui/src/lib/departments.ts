@@ -27,10 +27,11 @@ interface AccentClasses {
  * Everything the violet/coral choice decides, in one place.
  *
  * The ghosted index numeral and the footer CTA disc used to be written out at
- * `Departments.tsx:59` and `:74` as four hex literals — `#EDE4FA`, `#FBE4E1`,
- * `#F3EDFC` and `#FFF0EE` — every one of which is byte-identical to a token the
- * theme already holds (`--dept-numeral-violet`, `--dept-numeral-coral`,
- * `--disc-violet`, `--disc-coral`). They are accent decisions, so they belong
+ * `Departments.tsx:59` and `:74` as four hex literals, every one of which was
+ * byte-identical to a token the theme already held (`--dept-numeral-violet`,
+ * `--dept-numeral-coral`, `--disc-violet`, `--disc-coral`). No literal is
+ * repeated here — not in code and not in this comment, which guards.test.ts
+ * scans the same way. They are accent decisions, so they belong
  * beside the accent rather than in the one screen that happens to draw them:
  * half an accent in a module and half in a component is how the second screen
  * to draw a department gets one of the four wrong.
