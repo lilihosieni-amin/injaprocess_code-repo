@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { screen } from '@testing-library/react'
 import { Departments } from './Departments'
 import { renderAt } from '../test/utils'
-import { paint, winner } from '../test/paint'
+import { declarations, paint, winner } from '../test/paint'
 import { SurfaceProvider } from '../ui/surface'
 
 afterEach(() => vi.restoreAllMocks())
@@ -308,6 +308,141 @@ describe('the cascade, not the class string', () => {
     expect(tracks('')).toBe('repeat(3, minmax(0, 1fr))')
     expect(tracks('(max-width: 1080px)')).toBe('repeat(2, minmax(0, 1fr))')
     expect(tracks('(max-width: 760px)')).toBe('repeat(1, minmax(0, 1fr))')
+  })
+})
+
+describe('the full declaration set, per element', () => {
+  // A control asserted only to EXIST is not asserted. These three compare the
+  // WHOLE set — every property the class string sets, at the value the cascade
+  // lands on — so a swap that keeps the property and changes what it is set to
+  // cannot walk through, and neither can a dropped one.
+
+  it('pins the watermark numeral, inline END and all', async () => {
+    serveDepts()
+    on('panel')
+    await screen.findByText('دپارتمان پخت')
+    const ghost = firstCard().querySelector('.pointer-events-none') as HTMLElement
+    expect([...declarations(await paint(ghost.className))].sort()).toEqual([
+      'color: var(--dept-numeral-coral)',
+      'font-size: var(--fs-numeral)',
+      'font-weight: var(--fw-extrabold)',
+      // `inset-inline-end`, never `left`: in RTL this is the page's left, and a
+      // physical spelling is invisible until an LTR locale exists. It is also
+      // invisible to every check that reads a class string, because
+      // `start-s10` and `end-s10` are both real classes.
+      'inset-inline-end: var(--space-10)',
+      'line-height: var(--lh-none)',
+      'pointer-events: none',
+      'position: absolute',
+      'top: var(--space-7)',
+    ])
+  })
+
+  it('pins the panel card — the interior, the edge, the radius and the shadow', async () => {
+    serveDepts()
+    on('panel')
+    await screen.findByText('دپارتمان پخت')
+    expect([...declarations(await paint(firstCard().className))].sort()).toEqual([
+      // The shadow chain in full; `restShadow` above says why there are three
+      // custom properties here and not one.
+      '--tw-shadow-color: var(--card)',
+      '--tw-shadow-colored: var(--shadow-feature)',
+      '--tw-shadow: var(--tw-shadow-colored)',
+      'background-color: var(--card)',
+      'border-color: var(--border-card)',
+      'border-radius: var(--radius-card-lg)',
+      'border-width: 1px',
+      'box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow)',
+      'cursor: pointer',
+      'overflow: hidden',
+      'padding: var(--space-10)',
+      'position: relative',
+      'transition-duration: var(--duration)',
+      'transition-property: color, background-color, border-color, text-decoration-color, fill, stroke, opacity, box-shadow, transform, filter, backdrop-filter',
+      'transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1)',
+    ])
+  })
+
+  it('pins the count chip, whose padding P3-4 normalised', async () => {
+    serveDepts()
+    on('panel')
+    const chip = (await screen.findByText(/۱۲ فرآیند/)) as HTMLElement
+    expect([...declarations(await paint(chip.className))].sort()).toEqual([
+      'align-items: center',
+      'background-color: var(--tile-v3)',
+      'border-radius: var(--radius-pill)',
+      'color: var(--text-dialog-ghost)',
+      'display: inline-flex',
+      'font-size: var(--fs-xs)',
+      'font-weight: var(--fw-semibold)',
+      'gap: var(--space-2)',
+      // 4px 10px on every chip on this card — the sub chip's 4px 9px was a 1px
+      // difference between two chips on one card (ledger P3-4).
+      'padding-bottom: var(--space-1)',
+      'padding-left: var(--space-5)',
+      'padding-right: var(--space-5)',
+      'padding-top: var(--space-1)',
+    ])
+  })
+
+  it('pins both H1s — the size, the colour and the tracking each surface takes', async () => {
+    serveDepts()
+    const panel = on('panel')
+    const h1 = await screen.findByRole('heading', { level: 1 })
+    expect([...declarations(await paint(h1.className))].sort()).toEqual([
+      'color: var(--text-on-dark)',
+      'font-size: var(--fs-display)',
+      'font-weight: var(--fw-extrabold)',
+      'letter-spacing: var(--tracking-display)',
+      'line-height: var(--lh-tight)',
+    ])
+    panel.unmount()
+
+    serveDepts()
+    on('reader')
+    const readerH1 = await screen.findByRole('heading', { level: 1 })
+    // Three declarations, not five: the reader's hero carries no display
+    // tracking and no tight leading, which is the deliverable and not an
+    // oversight — its 26px title is a different drawing from the panel's 34px.
+    expect([...declarations(await paint(readerH1.className))].sort()).toEqual([
+      'color: var(--role-title-on-field)',
+      'font-size: var(--fs-h1-reader-home)',
+      'font-weight: var(--fw-extrabold)',
+    ])
+  })
+
+  it('pins the chip row, whose floor keeps a one-chip card the height of a three-chip one', async () => {
+    serveDepts()
+    on('panel')
+    await screen.findByText('دپارتمان پخت')
+    // Found through the chip it contains, NOT by `.min-h-chiprow`: a selector
+    // naming the class under test turns "the declaration is gone" into "the
+    // element is gone", which is a kill for the wrong reason and reads the same
+    // in the report.
+    const row = screen.getByText(/۱۲ فرآیند/).parentElement as HTMLElement
+    expect([...declarations(await paint(row.className))].sort()).toEqual([
+      'align-items: center',
+      'display: flex',
+      'flex-wrap: wrap',
+      'gap: var(--space-3)',
+      'margin-top: var(--space-5)',
+      'min-height: var(--size-chiprow)',
+    ])
+  })
+
+  it('keeps each department’s own accent on its own tile', async () => {
+    // §1.1 — a department is fixed violet or coral and is never re-assigned.
+    // `IconTile` derives the tint from the code; passing it a literal accent
+    // would paint all nine one colour and no length, radius or shadow above
+    // would move.
+    serveDepts()
+    on('panel')
+    await screen.findByText('دپارتمان پخت')
+    const tiles = document.querySelectorAll('[data-tile]')
+    expect(tiles).toHaveLength(2)
+    expect(tiles[0].className).toContain('bg-tile-c')     // cooking — coral
+    expect(tiles[1].className).toContain('bg-tile-v')     // cashier — violet
+    expect(tiles[0].className).not.toContain('bg-tile-v')
   })
 })
 
