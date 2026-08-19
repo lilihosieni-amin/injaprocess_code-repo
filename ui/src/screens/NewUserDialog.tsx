@@ -5,9 +5,7 @@ import { useCreateUser, useRoles, useSupervisorCandidates } from '../api/users'
 import { normalisePhone } from '../lib/digits'
 import { refusalText } from '../lib/refusal'
 import { draftProblem, readFailure, type UserDraft } from '../lib/userDraft'
-import { Button } from '../ui/Button'
-import { Dialog } from '../ui/Overlay'
-import { LoadFailedScreen } from '../ui/states'
+import { UserDialogShell } from './UserDialogShell'
 import { UserFields } from './UserFields'
 
 const BLANK: UserDraft = {
@@ -89,77 +87,52 @@ export function NewUserDialog({ open, onClose }: { open: boolean; onClose: () =>
   // supervise this account — and refuses every submit with a sentence about a
   // field the administrator did fill in.
   const failed = readFailure(roles, departments, candidates)
-  if (failed) {
-    return (
-      <Dialog open={open} onClose={onClose} title="کاربر تازه">
-        <LoadFailedScreen message={failed.message} error={failed.error}
-          onRetry={() => {
-            // All three, whichever one failed: a query in `error` refetches on
-            // nothing but being asked, so retrying only the two that were
-            // already fine would leave the same screen on the press.
-            void roles.refetch(); void departments.refetch(); void candidates.refetch()
-          }} />
-      </Dialog>
-    )
-  }
 
   return (
-    <Dialog open={open} onClose={onClose} title="کاربر تازه">
-      <form onSubmit={submit} className="flex flex-col gap-s8">
-        <UserFields
-          draft={draft} onChange={setDraft}
-          roles={roles.data ?? []}
-          candidates={candidates.data ?? []}
-          candidatesPending={candidates.isPending}
-          // There is no account yet, so there is no supervisor to stay put: a
-          // choice that has dropped off the list here is simply refused on
-          // submit, and «تا وقتی تغییرش ندهید همان‌جا می‌ماند» would be a
-          // sentence about an account that does not exist.
-          supervisorStaysPut={false}
-          preferred={session?.username}
+    <UserDialogShell
+      open={open} onClose={onClose} title="کاربر جدید" submitLabel="ایجاد کاربر"
+      submitting={create.isPending} alert={alert}
+      failure={failed}
+      onRetry={() => {
+        // All three, whichever one failed: a query in `error` refetches on
+        // nothing but being asked, so retrying only the two that were already
+        // fine would leave the same screen on the press.
+        void roles.refetch(); void departments.refetch(); void candidates.refetch()
+      }}
+      onSubmit={submit}
+    >
+      <UserFields
+        draft={draft} onChange={setDraft}
+        roles={roles.data ?? []}
+        candidates={candidates.data ?? []}
+        candidatesPending={candidates.isPending}
+        // There is no account yet, so there is no supervisor to stay put: a
+        // choice that has dropped off the list here is simply refused on
+        // submit, and «تا وقتی تغییرش ندهید همان‌جا می‌ماند» would be a
+        // sentence about an account that does not exist.
+        supervisorStaysPut={false}
+        preferred={session?.username}
+      />
+
+      <div className="flex flex-col gap-s2">
+        <label htmlFor={passwordId} className="text-caption font-bold text-muted">
+          گذرواژه
+        </label>
+        <input
+          id={passwordId}
+          type="password"
+          autoComplete="new-password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          className="min-h-touch w-full px-s7 rounded-control border border-line bg-card text-body text-ink"
         />
-
-        <div className="flex flex-col gap-s2">
-          <label htmlFor={passwordId} className="text-caption font-bold text-muted">
-            گذرواژه
-          </label>
-          <input
-            id={passwordId}
-            type="password"
-            autoComplete="new-password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="min-h-touch w-full px-s7 rounded-control border border-line bg-card text-body text-ink"
-          />
-          {/* D15 has no delivery channel of its own: the administrator chooses
-              the value and tells the person, so they have to know that is the
-              arrangement before they invent one nobody can be told. */}
-          <p className="text-caption text-faint m-0">
-            این گذرواژه را خودتان به این شخص می‌گویید؛ پیوند بازیابی‌ای در کار نیست.
-          </p>
-        </div>
-
-        {alert && (
-          // role="alert": this text appears after the press that caused it, so
-          // a screen reader is elsewhere on the page when it arrives.
-          <p role="alert" className="text-caption text-conflict m-0">{alert}</p>
-        )}
-
-        <div className="flex items-center gap-s5 flex-wrap">
-          {/* `Button`'s BASE carries no horizontal padding and no type size on
-              purpose (I5) — the call site owns both — so a bare `<Button>` is a
-              44 px box with its text against the edges. jsdom measures nothing,
-              so only a browser ever shows it. */}
-          <Button type="submit" variant="violet" className="px-s8 text-caption"
-            loading={create.isPending} loadingLabel="در حال ثبت…">
-            ساخت کاربر
-          </Button>
-          <Button type="button" variant="ghost" className="px-s8 text-caption"
-            onClick={onClose}>
-            انصراف
-          </Button>
-        </div>
-      </form>
-    </Dialog>
+        {/* D15 has no delivery channel of its own: the administrator chooses
+            the value and tells the person, so they have to know that is the
+            arrangement before they invent one nobody can be told. */}
+        <p className="text-caption text-faint m-0">
+          این گذرواژه را خودتان به این شخص می‌گویید؛ پیوند بازیابی‌ای در کار نیست.
+        </p>
+      </div>
+    </UserDialogShell>
   )
 }

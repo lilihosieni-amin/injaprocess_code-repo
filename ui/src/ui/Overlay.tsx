@@ -193,9 +193,16 @@ function Overlay({
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className={`bg-card border border-border-card shadow-modal overflow-auto p-s11 w-full rounded-panel max760:rounded-b-none ${shape}`}
+        className={`bg-card border border-border-card shadow-modal flex flex-col p-s11 w-full rounded-panel max760:rounded-b-none ${shape}`}
       >
-        <div className="flex items-start gap-s6 mb-s8">
+        {/* §5.2's Modal is a flex COLUMN — a `flex:none` header, a `flex:1`
+            scrolling body and a `flex:none` footer — and this box used to carry
+            `overflow-auto` itself, scrolling all three together. On a real
+            registry that put the new-user dialog's title above the top of the
+            window and its submit button thousands of pixels down (F37): the one
+            control a person opens the box to press was the one they could not
+            find. The scroll belongs to the body alone. */}
+        <div className="flex-none flex items-start gap-s6 mb-s8">
           {icon}
           <div className="flex-1 min-w-0">
             {/* Ledger L-16 — 18px/800, the one dialog title size. */}
@@ -206,11 +213,11 @@ function Overlay({
           </div>
           <CloseButton onClick={onClose} />
         </div>
-        {children}
+        <div data-testid="dialog-body" className="flex-1 overflow-auto">{children}</div>
         {footer && (
           // §5.2 — "two equal buttons" is the footer's doing here, not every
           // caller's: gap 10px, each child flex:1.
-          <div className="flex gap-s5 mt-s10 [&>*]:flex-1">{footer}</div>
+          <div className="flex-none flex gap-s5 mt-s10 [&>*]:flex-1">{footer}</div>
         )}
       </div>
     </div>

@@ -46,17 +46,47 @@ export function EmptyState({ title, hint, variant = 'card' }: {
   return <div className={EMPTY[variant]}>{body}</div>
 }
 
-export function ErrorState({ message, onRetry }: { message: string; onRetry?: () => void }) {
-  return (
-    <Card className="p-s12 text-center">
-      <p className="text-subtitle font-bold text-ink m-0">{message}</p>
+export function ErrorState({ message, onRetry, inline = false }: {
+  message: string
+  onRetry?: () => void
+  /**
+   * The shape a failure takes **inside** a box that is already a card — a
+   * modal, a drawer, a table.
+   *
+   * Both user dialogs used to stand `LoadFailedScreen` in here, which is a
+   * *page*: a 40px screen gutter, a 920px column that can never reach its width
+   * inside 520, and this same bordered, shadowed card inside a bordered,
+   * shadowed dialog — 56px of padding before the first word, and a picture that
+   * reads as a rendering fault rather than as a failed read (F34/F40). §5.2's
+   * inline empty shape (`text-align:center; padding:44px 20px; 13px;
+   * --text-faint`) is what a modal has for this.
+   *
+   * `role="alert"` on this variant and not on the card: this text arrives
+   * *after* a press — opening the dialog, or retrying inside it — while a screen
+   * reader is somewhere else on the page. The full-page variant IS the page, so
+   * a landing announcement would be furniture.
+   */
+  inline?: boolean
+}) {
+  const body = (
+    <>
+      <p
+        role={inline ? 'alert' : undefined}
+        className={inline
+          ? 'text-fs-sm text-faint m-0 leading-relaxed'
+          : 'text-subtitle font-bold text-ink m-0'}
+      >
+        {message}
+      </p>
       {onRetry && (
         <div className="mt-s7">
           <Button variant="violet" onClick={onRetry} className="px-s8">تلاش دوباره</Button>
         </div>
       )}
-    </Card>
+    </>
   )
+  if (inline) return <div className="py-empty-y-inline px-empty-x text-center">{body}</div>
+  return <Card className="p-s12 text-center">{body}</Card>
 }
 
 /**
@@ -94,7 +124,7 @@ export function LoadFailedScreen({ message, error, onRetry }: {
   onRetry: () => void
 }) {
   return (
-    <div className="flex-1 overflow-auto py-screen-y px-screen-x">
+    <div className="flex-1 overflow-auto py-screen-y px-screen-x max760:px-s7 max760:py-s9">
       <div className="max-w-list mx-auto">
         <ErrorState message={message} onRetry={retryQuery(0, error) ? onRetry : undefined} />
       </div>

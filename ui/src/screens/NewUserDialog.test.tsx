@@ -227,10 +227,47 @@ async function chooseRole(name: string) {
 }
 
 function submit() {
-  return userEvent.click(screen.getByRole('button', { name: 'ساخت کاربر' }))
+  return userEvent.click(screen.getByRole('button', { name: 'ایجاد کاربر' }))
 }
 
 beforeEach(() => { session = ADMIN })
+
+describe('the dialog shell (§5.2 Modal, §6.14)', () => {
+  it('pins the header and the footer and scrolls only the body', async () => {
+    // F37 — `Overlay` scrolled the whole box, so on a real registry the title
+    // left the top of the dialog and «ساخت کاربر» sat below 2207px of content
+    // in an 850px window. §5.2's Modal is a flex column: a `flex:none` header, a
+    // `flex:1` scrolling body and a `flex:none` footer.
+    stubServer()
+    mountList()
+    await openDialog()
+    const dialog = await screen.findByRole('dialog', { name: 'کاربر جدید' })
+    expect(dialog).toHaveClass('flex', 'flex-col')
+    expect(within(dialog).getByTestId('dialog-body')).toHaveClass('flex-1', 'overflow-auto')
+    const footer = within(dialog).getByTestId('dialog-footer')
+    expect(footer).toHaveClass('flex-none')
+    // §5.2 — "a footer of two equal-width buttons".
+    const buttons = within(footer).getAllByRole('button')
+    expect(buttons.map((b) => b.textContent)).toEqual(['ایجاد کاربر', 'انصراف'])
+    buttons.forEach((b) => expect(b).toHaveClass('flex-1'))
+  })
+
+  it('reports a failed read inside the box, not as a page folded into it', async () => {
+    stubServer({ rolesStatus: 500 })
+    mountList()
+    await userEvent.click(await screen.findByRole('button', { name: 'کاربر جدید' }))
+    const dialog = await screen.findByRole('dialog', { name: 'کاربر جدید' })
+    // F34 — `LoadFailedScreen` is `py-screen-y px-screen-x` + `max-w-list` + a
+    // `Card p-s12` inside a box that already has its own 26px: 56px before the
+    // first word, in a 520px-wide box, sharing the dialog's own shadow and border.
+    expect(dialog.querySelector('.max-w-list')).toBeNull()
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(/بارگذاری نشد/)
+    expect(within(dialog).getByRole('button', { name: 'تلاش دوباره' })).toBeInTheDocument()
+    // The form is not drawn behind a failed read, and neither is the footer:
+    // there is nothing to submit.
+    expect(within(dialog).queryByTestId('dialog-footer')).toBeNull()
+  })
+})
 
 describe('opening the create-user dialog', () => {
   it('asks the server for nothing until it is opened', async () => {
@@ -568,7 +605,7 @@ describe('when one of the create dialog\'s own reads fails', () => {
     await openFailedDialog()
     expect(await screen.findByText(ROLES_UNREADABLE)).toBeInTheDocument()
     expect(within(screen.getByRole('dialog')).queryByLabelText('نقش')).toBeNull()
-    expect(screen.queryByRole('button', { name: 'ساخت کاربر' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'ایجاد کاربر' })).toBeNull()
   })
 
   it('offers a retry, and draws the form once the read succeeds', async () => {
@@ -595,7 +632,7 @@ describe('when one of the create dialog\'s own reads fails', () => {
     await openFailedDialog()
     expect(await screen.findByText(DEPARTMENTS_UNREADABLE)).toBeInTheDocument()
     expect(screen.queryByRole('checkbox', { name: EVERY_DEPARTMENT })).toBeNull()
-    expect(screen.queryByRole('button', { name: 'ساخت کاربر' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'ایجاد کاربر' })).toBeNull()
   })
 
   it('retries the department registry too, and draws its boxes once it arrives', async () => {
