@@ -827,9 +827,18 @@ export const DESIGN = {
     body: { size: '12.5px', color: SUBTITLE_ON_FIELD, family: FONT_MONO, align: 'start' },
     direction: { body: 'ltr' },
     // `border:1px solid #EDE5F5;border-radius:16px;padding:18px;background:var(--card)`
-    // — a white panel on a sub-panel edge, and no shadow: §6.8's four cards sit
-    // flat, unlike the cards on the list screens.
-    card: { radius: '16px', border: SUBPANEL_BORDER, background: SURFACE },
+    // — a white panel on a sub-panel edge, and flat. Corrected 2026-08-19: the
+    // old comment said "§6.8's FOUR cards sit flat". THREE of them do. Panel 3,
+    // «گذرواژه», is the card recipe — CARD_BORDER under CARD_SHADOW
+    // (`Inja Panel.dc.html:1409`). No value here moves, because `[data-card]` is
+    // panel 1; the prose was simply wrong, and a later reader would have taken it
+    // as licence to flatten a card the design shadows.
+    //
+    // `shadow: 'none'` is stated rather than left unsaid: FLATNESS IS THE ONE
+    // VALUE that separates a §6.8 sub-panel from a list card, so leaving it
+    // unasserted left the row unable to tell them apart. Measured through
+    // `shadowOf` at all three widths.
+    card: { radius: '16px', border: SUBPANEL_BORDER, background: SURFACE, shadow: 'none' },
   },
 
   /**
