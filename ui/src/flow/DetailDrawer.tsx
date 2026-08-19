@@ -5,7 +5,21 @@ import { useCan } from '../auth/can'
 import { useSession } from '../auth/useSession'
 import { fieldFa } from './adapt'
 import { toFa, formatConflictValue } from '../lib/format'
-import type { ProcNode, ActivityNode, JunctionNode, Pending, ReadableProcess } from '../api/types'
+import type { ProcNode, ActivityNode, JunctionNode, Icom, Pending, ReadableProcess } from '../api/types'
+
+/** Whether this ICOM record carries a single term on any of its four faces.
+ *
+ *  **Local, and that is a deliberate second spelling.** `src/lib/published.ts`
+ *  exports the same predicate as `hasIcom`, asked of the *process's* A-0 block
+ *  by `Summary` and `ProcessList`, and this belongs there beside it. That module
+ *  is not in HEAD — it arrives with another task still in flight — and a commit
+ *  that imported it would leave this branch unbuildable for everyone until that
+ *  one lands. Four lines duplicated for a week is the cheaper of the two.
+ *  Folding this into `lib/published.ts` is in the R42 report. */
+function anyIcomTerm(icom: Icom): boolean {
+  return icom.inputs.length + icom.controls.length
+    + icom.outputs.length + icom.mechanisms.length > 0
+}
 
 export type DrawerProps = {
   node: ProcNode
@@ -17,7 +31,30 @@ export type DrawerProps = {
    *  activity and who performs it, not the data contract, and provenance names
    *  meetings and runs that mean nothing outside the system. The export's
    *  payload no longer carries either value, so rendering them would print
-   *  empty labels. */
+   *  empty labels.
+   *
+   *  **R42 judged this default unsafe, and left it in place deliberately.** A
+   *  permission that defaults to *granted* fails open: a caller who forgets the
+   *  prop shows internals, which is the exact inversion of NFR-12. It is not
+   *  what protects anyone today either — the prop has **no production caller**
+   *  (`grep -rn showInternals src/` finds this line, its two uses below and one
+   *  test), because `FlowScreen.tsx` does not pass it and the `src/export/`
+   *  viewer its docstring describes does not exist in this tree. Every role
+   *  therefore reaches these two blocks with the guard open.
+   *
+   *  What actually holds the line is the emptiness check beside each use, and
+   *  that is the stronger rule rather than a weaker one: the server **blanks**
+   *  what it withholds instead of dropping it, precisely because this directory
+   *  is frozen and dereferences the fields — so withheld and never-recorded
+   *  arrive identically, and the only honest response to either is silence.
+   *  The design agrees: both deliverables gate the ICOM block and the `source:`
+   *  footer on `isEditor` (`Inja Panel.dc.html:819,857`, `Inja
+   *  Reader.dc.html:579,617`), and a non-editor is exactly who is handed blanks.
+   *
+   *  The fix this file may not make is the plumbing one: `FlowScreen.tsx` is
+   *  another task's, and the prop wants replacing there by a required boolean
+   *  the caller must state. Written up in the R42 report rather than guessed at
+   *  here. */
   showInternals?: boolean
   /** Only `department` and `id` are read — see `ReadableProcess`: an export's
    *  process is not a whole `Process`, and this prop must not claim it is. */
@@ -186,13 +223,19 @@ export function DetailDrawer(props: DrawerProps) {
           /* ─── VIEW: activity ─── */
           <>
             <div className="font-extrabold text-[16px] text-ink leading-tight">{a.label}</div>
-            <div className="flex items-center gap-2 mt-3 px-3 py-2.5 bg-[#F8F4FE] rounded-[10px]">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#4A25A9" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="4"></circle><path d="M4 21a8 8 0 0 1 16 0"></path></svg>
-              <span className="text-[12.5px] text-violet font-semibold">{a.actor}</span>
-            </div>
-            <div className="text-[11px] font-bold text-muted mt-[18px] mb-1.5">توضیحات</div>
-            <div className="text-[12.5px] text-[#5a5175] leading-relaxed">{a.description}</div>
-            {(props.showInternals ?? true) && (
+            {a.actor.trim() !== '' && (
+              <div data-actor className="flex items-center gap-2 mt-3 px-3 py-2.5 bg-[#F8F4FE] rounded-[10px]">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#4A25A9" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="4"></circle><path d="M4 21a8 8 0 0 1 16 0"></path></svg>
+                <span className="text-[12.5px] text-violet font-semibold">{a.actor}</span>
+              </div>
+            )}
+            {a.description.trim() !== '' && (
+              <>
+                <div className="text-[11px] font-bold text-muted mt-[18px] mb-1.5">توضیحات</div>
+                <div className="text-[12.5px] text-[#5a5175] leading-relaxed">{a.description}</div>
+              </>
+            )}
+            {(props.showInternals ?? true) && anyIcomTerm(a.icom) && (
               <>
                 <div className="text-[11px] font-bold text-muted mt-[18px] mb-2">اطلاعات ICOM</div>
                 <div className="flex flex-col gap-2.5">
@@ -211,7 +254,7 @@ export function DetailDrawer(props: DrawerProps) {
                 onReject={props.onReject}
               />
             )}
-            {(props.showInternals ?? true) && (
+            {(props.showInternals ?? true) && a.source.created_by.trim() !== '' && (
               <div className="text-[10.5px] text-[#c3bad6] mt-5 border-t border-dashed border-[#EDE5F5] pt-3" dir="ltr">source: {a.source.created_by}</div>
             )}
           </>
@@ -325,7 +368,21 @@ function Conflicts({ conflicts, department, onAccept, onReject }: {
   )
 }
 
+/** One ICOM face — **or nothing at all, when the face carries no term.**
+ *
+ *  R42. This used to render its label unconditionally, so a node whose four
+ *  faces were all empty drew «ورودی‌ها», «کنترل‌ها», «خروجی‌ها» and «مکانیزم‌ها»
+ *  over nothing, under a fifth heading that was over nothing too. The block
+ *  above is gone in that case; this is the other half, for the ordinary node
+ *  that has inputs and outputs and no controls.
+ *
+ *  An empty face inside a block that is being drawn is *genuinely* empty — the
+ *  policy switch is one switch over all four (`visibility._NODE_SWITCH`'s
+ *  `node_icom`), so if any face survived, none was withheld. Its label still
+ *  goes: a caption with nothing under it is the shape the ruling names, and the
+ *  block's own presence already says everything the empty label would. */
 function IcomRow({ label, items, kind }: { label: string; items: string[]; kind: 'input' | 'control' | 'output' | 'mech' }) {
+  if (items.length === 0) return null
   return (
     <div>
       <div className="text-[10.5px] text-faint mb-1.5">{label}</div>
