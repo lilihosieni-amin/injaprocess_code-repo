@@ -12,6 +12,7 @@ import { roleLabel } from '../lib/roles'
 import { MIN_PASSWORD, TOO_SHORT } from '../lib/userDraft'
 import { Button } from '../ui/Button'
 import { Card } from '../ui/Card'
+import { Icon } from '../ui/Icon'
 import { StatusPill } from '../ui/StatusPill'
 import { LoadFailedScreen } from '../ui/states'
 import { EditUserDialog } from './EditUserDialog'
@@ -90,8 +91,27 @@ export function UserDetail() {
   return (
     <div className="flex-1 overflow-auto py-s12 px-s12">
       <div className="max-w-list mx-auto">
-        <Link to="/users" className="text-caption text-violet no-underline">
-          ← فهرست کاربران
+        {/* §8 — chevrons are chosen by hand per direction rather than
+            transformed, and "back" is `M9 18l6-6-6-6`, which `ICONS` calls
+            `chevronStart`: towards the start of a trail, and in a right-to-left
+            reading that points RIGHT. The `←` this replaces was two violations
+            in seven characters — a unicode glyph where §5.2 specifies inline
+            line SVG, drawn pointing away from the screen it returns to — and a
+            17px-tall hit target with no hover (F14).
+
+            The colour is NOT the deliverable's `#4A25A9`: that is the back
+            button on the panel's white crumb strip, and this link sits on the
+            violet field, where `--violet` on `--ink` measures 1.6:1 and the
+            harness census reads it as text nobody can see. It takes the field's
+            own secondary, the same `--violet-on-violet` the username under it
+            is drawn in. The Access screen has no back control in the
+            deliverable at all, so there is no drawn value to take. */}
+        <Link to="/users"
+          className="inline-flex items-center gap-s3 min-h-touch px-s6 rounded-control
+                     text-fs-sm2 font-semibold text-violet-on-violet no-underline
+                     hover:text-role-title-on-field transition-colors">
+          <Icon name="chevronStart" className="w-chevron h-chevron" stroke={2.4} />
+          فهرست کاربران
         </Link>
 
         <div className="flex items-center gap-s6 flex-wrap mt-s5">

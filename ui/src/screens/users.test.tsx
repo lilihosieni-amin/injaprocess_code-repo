@@ -7,6 +7,7 @@ import { Users } from './Users'
 import { UserDetail } from './UserDetail'
 import { PanelShell } from '../shell/PanelShell'
 import type { AdminUser } from '../api/users'
+import type { Department } from '../api/types'
 import type { SessionDescriptor } from '../auth/session'
 
 let session: SessionDescriptor | undefined
@@ -100,6 +101,22 @@ const EDITOR_ROW: AdminUser = {
   createdAt: 1650000000,
 }
 
+/**
+ * The department registry, which is what turns a stored scope key into the name
+ * the design prints. Typed as the endpoint's own response type so a renamed or
+ * widened field is a `tsc -b` error here rather than a screen that renders
+ * `undefined` under a test that never reads the payload.
+ *
+ * Every code below is one some fixture above really holds, and no two names
+ * share a substring: «سالن» / «صندوق» / «پخت» / «بار».
+ */
+const DEPARTMENTS: Department[] = [
+  { code: 'cooking', name: 'پخت', count: 6, subs: 3, conflicts: 0 },
+  { code: 'dining', name: 'سالن', count: 4, subs: 1, conflicts: 0 },
+  { code: 'cashier', name: 'صندوق', count: 2, subs: 0, conflicts: 0 },
+  { code: 'bar', name: 'بار', count: 1, subs: 0, conflicts: 0 },
+]
+
 interface Seen {
   gets: string[]
   writes: { path: string; body: unknown }[]
@@ -136,6 +153,8 @@ function stubServer(rows: AdminUser[], opts: {
   /** What the browser exposes as `res.statusText` — the English the fallback
    *  reaches for when the body carried no sentence. */
   statusText?: string
+  /** The department registry `GET /api/departments` answers. */
+  departments?: Department[]
 } = {}): Seen {
   const state = new Map(rows.map((r) => [String(r.id), { ...r }]))
   const seen: Seen = { gets: [], writes: [] }
@@ -159,6 +178,13 @@ function stubServer(rows: AdminUser[], opts: {
     seen.gets.push(path)
     const status = opts.readStatus ?? 200
     if (status >= 400) return json({ detail: opts.readDetail ?? 'نه' }, status, opts.statusText)
+    // The registry the record screen reads to name a scope. Served from the
+    // same stub as the accounts so a test that renders one person's record does
+    // not have to remember a second endpoint — and it is a real answer rather
+    // than a 404, because `scopeLabel` falls back to the stored CODE when the
+    // registry is missing, which would let «names the department» pass on the
+    // very fallback it exists to disbelieve.
+    if (path === '/api/departments') return json(opts.departments ?? DEPARTMENTS)
     if (path === '/api/users') return json([...state.values()])
     const row = state.get(path.slice('/api/users/'.length))
     return row ? json(row) : json({ detail: 'یافت نشد' }, 404)
@@ -193,6 +219,42 @@ function mountDetail(id: number | string) {
       </MemoryRouter>
     </QueryClientProvider>,
   )
+}
+
+/**
+ * One person's record, mounted for a named actor, with the account and the
+ * department registry **already in cache**.
+ *
+ * Seeded rather than only stubbed, because most of what §6.8 has to be held to
+ * is an ABSENCE — three panels that a viewer who may not manage this account
+ * must not be shown. An absence asserted while `GET /api/users/{id}` is still
+ * in flight passes for the wrong reason: in that window the screen draws
+ * nothing at all, so «no ویرایش button» is a true sentence about a blank page
+ * and says nothing whatever about the gate it was written for. With the row in
+ * cache the first paint is the loaded record, and «absent» can only mean the
+ * gate. The stub stays installed underneath for the writes, and for the
+ * background re-read react-query fires on mount.
+ */
+function renderDetail(
+  actor: SessionDescriptor,
+  user: AdminUser,
+  opts: Parameters<typeof stubServer>[1] = {},
+) {
+  session = actor
+  const seen = stubServer([user], opts)
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  qc.setQueryData(['users', String(user.id)], user)
+  qc.setQueryData(['departments'], opts.departments ?? DEPARTMENTS)
+  const view = render(
+    <QueryClientProvider client={qc}>
+      <MemoryRouter initialEntries={[`/users/${user.id}`]}>
+        <Routes>
+          <Route path="/users/:id" element={<UserDetail />} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  )
+  return { ...view, seen }
 }
 
 /** The row whose text carries this name. Never `rows[n]` — an index is exactly
@@ -990,5 +1052,25 @@ describe('setting somebody else\'s password (D15)', () => {
     expect(await screen.findByRole('alert'))
       .toHaveTextContent('کسی نمی‌تواند حساب خودش را تغییر دهد')
     expect(screen.queryByText(/گذرواژهٔ تازه ثبت شد/)).toBeNull()
+  })
+})
+
+describe('the record screen (§6.8)', () => {
+  it('goes back with a drawn chevron, not a unicode arrow pointing away', async () => {
+    renderDetail(EDITOR, SAHAR)
+    const back = await screen.findByRole('link', { name: 'فهرست کاربران' })
+    // §5.2 iconography bans unicode-glyph icons outright; the two sanctioned
+    // exceptions are `⣿` and the ICOM arrows, and a back arrow is neither.
+    expect(back.textContent).not.toMatch(/[←→]/)
+    const svg = back.querySelector('svg')
+    expect(svg).not.toBeNull()
+    // §8 — "back" is `M9 18l6-6-6-6`: toward the start of the reading
+    // direction, which in RTL is rightward. `←` was drawn pointing away from
+    // where the link goes. `ICONS.chevronStart` is that path, and it is the
+    // one the deliverable's own «بازگشت» button draws (`Inja Panel.dc.html:177`).
+    expect(svg!.querySelector('path')!.getAttribute('d')).toBe('M9 18l6-6-6-6')
+    expect(svg!.getAttribute('stroke-width')).toBe('2.4')
+    // F14 — it was a 17px-tall hit target with no hover.
+    expect(back).toHaveClass('min-h-touch')
   })
 })
