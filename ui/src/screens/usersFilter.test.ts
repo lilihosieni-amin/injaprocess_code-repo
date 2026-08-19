@@ -105,12 +105,27 @@ describe('usersFilter', () => {
   })
 
   it('offers only options the listing actually contains, each once', () => {
-    const other = { ...base, id: 2, role: 'editor', scopes: ['dept:cashier'],
-      supervisor: { id: 9, username: '09129', displayName: 'مریم', disabled: false } }
-    const o = filterOptions([base, other, { ...base, id: 3 }], names)
+    /*
+     * **Every list below is in an order the listing cannot produce by
+     * accident.** The three rows are handed over role-`editor` first, scope
+     * `dining` first and supervisor `9` first — so on all three fields the
+     * order a `Set` or a `Map` preserves is NOT the order asserted, and a
+     * dropped `.sort()` fails rather than agreeing by coincidence. Two rows
+     * share a role, two share a department and two share a supervisor, so a
+     * dropped de-duplication fails as well.
+     */
+    const مریم = { id: 9, username: '09129', displayName: 'مریم', disabled: false }
+    const آرش = { id: 4, username: '09124', displayName: 'آرش', disabled: false }
+    const listing = [
+      { ...base, id: 1, role: 'editor', scopes: ['dept:dining'], supervisor: مریم },
+      { ...base, id: 2, role: 'admin', scopes: ['dept:cashier'], supervisor: مریم },
+      { ...base, id: 3, role: 'admin', scopes: ['dept:dining'], supervisor: آرش },
+    ]
+    const o = filterOptions(listing, names)
     expect(o.roles.map((r) => r.value)).toEqual(['admin', 'editor'])
     expect(o.roles[0].label).toBe('مدیر')
-    expect(o.supervisors).toEqual([{ value: '9', label: 'مریم' }])
+    expect(o.supervisors).toEqual([{ value: '4', label: 'آرش' },
+                                   { value: '9', label: 'مریم' }])
     expect(o.depts).toEqual([{ value: 'cashier', label: 'صندوق' },
                              { value: 'dining', label: 'سالن' }])
   })

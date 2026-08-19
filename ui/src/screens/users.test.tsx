@@ -557,6 +557,11 @@ describe('the user list', () => {
     await userEvent.click(within(bar).getByRole('button', { name: /وضعیت/ }))
     await userEvent.click(await screen.findByRole('option', { name: 'غیرفعال' }))
     await waitFor(() => expect(rows()).toHaveLength(1))
+    // …and it is the DISABLED account that survived. One row is one row either
+    // way — Sahar is active and Nader is not — so a status filter wired to the
+    // wrong value, or to a constant, leaves the count right and the person
+    // wrong. That is the whole reason this assertion names somebody.
+    expect(renderedNames()).toEqual(['نادر قاسمی'])
     await userEvent.click(within(bar).getByRole('button', { name: 'پاک کردن فیلترها' }))
     await waitFor(() => expect(rows()).toHaveLength(2))
     expect(within(bar).queryByRole('button', { name: 'پاک کردن فیلترها' })).toBeNull()
@@ -656,6 +661,35 @@ describe('the user list', () => {
     // gated by the same `manage_users` at `*` that let this list be read.
     await userEvent.click(row)
     expect(await screen.findByRole('heading', { name: 'سحر بیات' })).toBeInTheDocument()
+  })
+
+  it('names a department in the filter menu the way the row names it', async () => {
+    // The menu's options come from the same registry the department column
+    // reads, so a dropdown offering `dept:cooking` where the row says «پخت» is
+    // one control disagreeing with the column beside it. Every code these two
+    // accounts hold is offered, once, and nothing else — the registry has nine
+    // departments and a menu built from it would list them all, including ones
+    // no account reaches, which can only ever produce an empty table (R5).
+    stubServer([SAHAR, NADER])
+    mountList()
+    await waitFor(() => expect(rows()).toHaveLength(2))
+    const bar = screen.getByRole('group', { name: 'فیلتر کاربران' })
+    await userEvent.click(within(bar).getByRole('button', { name: /دپارتمان/ }))
+    expect(screen.getAllByRole('option').map((o) => o.textContent))
+      .toEqual(['صندوق', 'پخت', 'سالن'])
+    expect(screen.queryByRole('option', { name: 'بار' })).toBeNull()
+  })
+
+  it('fills the table head, which is the one colour any head paints (L-11)', async () => {
+    // jsdom paints nothing, so this is a claim about a class STRING on the
+    // head — the e2e check reads the colour. It is here as well because the
+    // plan's own text called this «the one table head with no fill» and the
+    // deliverable paints it `#F8F4FE` (`Inja Panel.dc.html:1250`); an assertion
+    // that lives only in a spec nobody may run is not a guard.
+    stubServer([SAHAR])
+    mountList()
+    const table = await screen.findByRole('grid', { name: 'کاربران' })
+    expect(table.querySelector('[data-r-thead]')).toHaveClass('bg-tile-v4')
   })
 
   it('lays the head and every row on the SAME six tracks, off the minted template', async () => {

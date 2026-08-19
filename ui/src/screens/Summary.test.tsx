@@ -181,3 +181,70 @@ describe('the screen’s own shape', () => {
     expect(src).not.toMatch(/\btext-(xs|sm|base|lg|xl|[2-9]xl)\b/)
   })
 })
+
+describe('what counts as published detail', () => {
+  // Three fields, three clauses, and the card must stay away if ANY of them
+  // arrived. A predicate that only looked at `summary` would tell a reader
+  // holding a full ICOM diagram that it is not being shown.
+  it('draws the A-0 card for a process whose only detail is its ICOM', async () => {
+    mock({ ...BLANKED, idef0: { inputs: ['درخواست خرید'], controls: [], outputs: [], mechanisms: [] } })
+    renderAt('/processes/:pid', <Summary />, '/processes/cooking-001', READER)
+    expect(await screen.findByText('نمای IDEF0 سطح فرآیند (A-0)')).toBeInTheDocument()
+    expect(screen.queryByText('خلاصه، نمای IDEF0 و شاخص‌ها نمایش داده نمی‌شوند')).not.toBeInTheDocument()
+  })
+
+  it('draws the A-0 card for a process whose only detail is a KPI', async () => {
+    mock({ ...BLANKED, kpis: [{ name: 'زمان چرخه' }] })
+    renderAt('/processes/:pid', <Summary />, '/processes/cooking-001', READER)
+    expect(await screen.findByText('زمان چرخه')).toBeInTheDocument()
+    expect(screen.queryByText('خلاصه، نمای IDEF0 و شاخص‌ها نمایش داده نمی‌شوند')).not.toBeInTheDocument()
+  })
+
+  it('renders no subtitle hook at all when the summary is the blanked field', async () => {
+    // `[data-body]` is what the browser gate grades the subtitle on. An
+    // unguarded paragraph would put an EMPTY hook on the page — a zero-height
+    // run of type the gate then measures, and a margin the design does not draw.
+    mock({ ...BLANKED, kpis: [{ name: 'زمان چرخه' }] })
+    renderAt('/processes/:pid', <Summary />, '/processes/cooking-001', READER)
+    await screen.findByText('زمان چرخه')
+    expect(document.querySelector('[data-body]')).toBeNull()
+  })
+})
+
+describe('the values the browser gate grades, named where jsdom can see them', () => {
+  // jsdom lays nothing out, so each of these proves a class STRING was written
+  // and nothing about a pixel. They exist because `e2e/summary.spec.ts` is the
+  // only thing that measures the paint, and a red there is a slow, three-width
+  // round trip; a wrong token name is cheaper to catch here.
+  it('gives the A-0 card the recipe the summary row is graded against', async () => {
+    mock(withKpi)
+    renderAt('/processes/:pid', <Summary />, '/processes/cooking-002', EDITOR)
+    await screen.findByText('نمای IDEF0 سطح فرآیند (A-0)')
+    const card = document.querySelector('[data-card]')!
+    // radius 18 (`--radius-doc`), the L-15 hairline, the two-layer card shadow,
+    // white — the four values `DESIGN.summary.card` holds.
+    expect(card.className).toContain('rounded-doc')
+    expect(card.className).toContain('border-border-card')
+    expect(card.className).toContain('shadow-card')
+    expect(card.className).toContain('bg-card')
+  })
+
+  it('writes the subtitle in the colour ledger L-28 decided', async () => {
+    mock(withKpi)
+    renderAt('/processes/:pid', <Summary />, '/processes/cooking-002', EDITOR)
+    await screen.findByText('نمای IDEF0 سطح فرآیند (A-0)')
+    expect(document.querySelector('[data-body]')!.className).toContain('text-role-subtitle-on-field')
+  })
+
+  it('keeps the A-0 box violet with the mono id as an LTR island', async () => {
+    mock(withKpi)
+    renderAt('/processes/:pid', <Summary />, '/processes/cooking-002', EDITOR)
+    const id = await screen.findByText(/A-0 ·/)
+    // §8 — a latin run inside RTL prose is pinned, and this is the one thing on
+    // the screen that pins it. `src/test/guards.test.ts` declares the file as
+    // an island for exactly this attribute.
+    expect(id).toHaveAttribute('dir', 'ltr')
+    expect(id.className).toContain('font-mono')
+    expect(id.parentElement!.className).toContain('bg-violet')
+  })
+})

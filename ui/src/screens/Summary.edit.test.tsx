@@ -88,3 +88,17 @@ describe('the rebuilt edit branch', () => {
     expect(body.kpis).toEqual([{ name: 'زمان چرخه', target: 'کمتر از ۱۵ دقیقه' }])
   })
 })
+
+describe('the edit form’s ground', () => {
+  it('sits its fields on the sub-panel, not as white boxes on a near-white card', async () => {
+    // §1.2 — a field inside a `SectionCard skin="tint"` asks for `ground="sub"`
+    // or it draws a white box on `--surface-sub` with only the hairline between
+    // them. jsdom proves the class string; the colour itself is `TextField`'s.
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify(P), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+    renderAt('/processes/:pid', <Summary />, '/processes/cooking-002', EDITOR)
+    fireEvent.click(await screen.findByRole('button', { name: /ویرایش اطلاعات/ }))
+    expect(screen.getByLabelText('نام فرآیند').className).toContain('bg-surface-sub')
+    expect(screen.getByLabelText('ورودی ۱').className).toContain('bg-surface-sub')
+  })
+})
