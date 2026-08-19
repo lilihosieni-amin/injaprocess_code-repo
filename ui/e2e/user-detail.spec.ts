@@ -192,3 +192,61 @@ test('access — R5: a viewer who may not act is shown nothing, not told', async
 
   await shot(page, 'user-detail-readonly')
 })
+
+/**
+ * The nine departments the product has, and an account that reaches the
+ * step-by-step guide of every one of them.
+ *
+ * §6.8 draws one chip per scope on a single row, so the row's own rule — that
+ * it WRAPS — is only exercised by an account whose chips do not fit. The
+ * two-scope fixture above never asks the question: deleting `flex-wrap` leaves
+ * every colour, length, radius and count in this file byte-identical and the
+ * panel still looks right. **Nine bare department names do not ask it either**
+ * — measured: ten chips of «پخت»-length still sit on one row inside an 820px
+ * column — which is why every scope below is report-narrowed, and why the
+ * assertion is two-sided.
+ */
+const NINE: Department[] = [
+  { code: 'management', name: 'مدیریت', count: 4, subs: 1, conflicts: 0 },
+  { code: 'accounting', name: 'حسابداری', count: 3, subs: 0, conflicts: 0 },
+  { code: 'warehouse', name: 'انبار', count: 5, subs: 2, conflicts: 0 },
+  { code: 'procurement', name: 'کارپردازی', count: 2, subs: 0, conflicts: 0 },
+  { code: 'cooking', name: 'پخت', count: 6, subs: 3, conflicts: 0 },
+  { code: 'preparation', name: 'آماده‌سازی', count: 1, subs: 0, conflicts: 0 },
+  { code: 'dining', name: 'سالن', count: 4, subs: 1, conflicts: 0 },
+  { code: 'cashier', name: 'صندوق', count: 2, subs: 0, conflicts: 0 },
+  { code: 'bar', name: 'بار', count: 1, subs: 0, conflicts: 0 },
+]
+
+test('access — a head of nine departments wraps, and stays inside the panel', async ({ page }) => {
+  await signedIn(page, VIEWER)
+  await serve(page, {
+    '/api/users/2': { ...SAHAR, scopes: NINE.map((d) => `dept:${d.code}/report:steps`) },
+    '/api/departments': NINE,
+    '/api/pending': [],
+  })
+  await visit(page, '/users/2', 'access')
+
+  const panel = page.getByRole('group', { name: 'نقش و دپارتمان' })
+  const panelBox = (await panel.boundingBox())!
+  const tops: number[] = []
+  const chips = ['مدیر', ...NINE.map((d) => `${d.name} (فقط راهنمای گام‌به‌گام)`)]
+  for (const name of chips) {
+    const chip = panel.getByText(name, { exact: true })
+    const box = (await chip.boundingBox())!
+    // Inside the panel, on the inline axis. A row that cannot wrap runs its
+    // last chips out through the panel's edge and off the column; nothing else
+    // this spec measures moves when it does.
+    expect(box.x, `«${name}» starts outside the panel`)
+      .toBeGreaterThanOrEqual(panelBox.x - 0.5)
+    expect(box.x + box.width, `«${name}» runs out through the panel's edge`)
+      .toBeLessThanOrEqual(panelBox.x + panelBox.width + 0.5)
+    tops.push(Math.round(box.y))
+  }
+  // …and it really wrapped, rather than merely fitting: ten chips on one line
+  // would satisfy the two bounds above only by shrinking, which `flex-none`
+  // forbids, so both halves are needed to say "wrapped" rather than "did not
+  // overflow".
+  expect(new Set(tops).size, 'ten chips sat on one row').toBeGreaterThan(1)
+  expect(tops).toHaveLength(chips.length)
+})
