@@ -66,6 +66,15 @@ export const CARD_BORDER = 'rgba(42, 29, 94, 0.07)'
  * nothing. `harness.spec.ts` holds both halves of that: the real class passes
  * through `shadowOf`, and the raw string does not equal this constant.
  */
+/**
+ * The departments card's own shadow. NOT `CARD_SHADOW`: the deliverable, mint-spec
+ * §1.2 #10 and `tailwind.config.js:311` all give this card `--shadow-feature`, which
+ * has no other consumer anywhere in the plan. Recorded here so the difference is a
+ * stated decision rather than a discrepancy someone later 'fixes' into CARD_SHADOW.
+ */
+export const FEATURE_SHADOW =
+  'rgba(16, 10, 40, 0.18) 0px 2px 4px 0px, rgba(16, 10, 40, 0.65) 0px 22px 46px -20px'
+
 export const CARD_SHADOW =
   'rgba(16, 10, 40, 0.16) 0px 1px 2px 0px, rgba(16, 10, 40, 0.55) 0px 14px 30px -16px'
 /** §4.6 — focus is a coral border. 15 of 15 declarations, no glow. */
@@ -560,7 +569,7 @@ export const DESIGN = {
     field: FIELD,
     column: '1120px',
     // 1440 − 80 of screen padding is capped by the 1120 column; 1080 and 760 are not.
-    columnWidth: { 1440: '1120px', 1080: '1000px', 760: '680px' },
+    columnWidth: { 1440: '1120px', 1080: '1000px', 760: '732px' },
     // §6.16 requires `[data-r-pad]{padding:18px 14px}` at ≤760px and the screen
     // ships one padding at every width — `Departments.tsx` writes a bare
     // `pt-[38px] pb-12 px-10` with no `max760:` variant, so the mobile viewport
@@ -570,7 +579,7 @@ export const DESIGN = {
     // 40px 48px', 760: '18px 14px' }` — in the same commit that adds
     // `max760:px-s7 max760:py-s9` to the screen.** Until then this states what
     // the screen *does*, so the mutant that changes the padding dies today.
-    padding: '38px 40px 48px',
+    padding: { 1440: '38px 40px 48px', 1080: '38px 40px 48px', 760: '18px 14px' },
     // §R7 drops every `[data-r-title]` to 25px at <=760 (`Inja Panel.dc.html:90`,
     // `!important`) and the departments title IS one (`:207`, 34px), but
     // `Departments.tsx` writes a bare size with no `max760:` variant. Same rule as
@@ -578,7 +587,7 @@ export const DESIGN = {
     // *does*, so the mutant that resizes the title dies today. **Task 14 rewrites
     // this as `{ 1440: '34px', 1080: '34px', 760: '25px' }` in the same commit
     // that adds the variant.**
-    h1: { size: '34px', weight: '800', color: ON_FIELD },
+    h1: { size: { 1440: '34px', 1080: '34px', 760: '25px' }, weight: '800', color: ON_FIELD },
     // The fourth "states today's paint" line, and the least obvious: this is
     // #B7A6E0 because `Departments.tsx:32` writes `text-[#B7A6E0]` — AN ARBITRARY
     // HEX LITERAL, not a token. No *named* utility can paint it: Task 3 re-cut
@@ -587,7 +596,7 @@ export const DESIGN = {
     // row is right about today and wrong about the design, exactly like its three
     // neighbours. **Task 14 changes this to `SUBTITLE_ON_FIELD` in the same commit
     // that replaces the literal with the token.**
-    body: { size: '14px', color: ON_FIELD_MUTED },
+    body: { size: '14px', color: SUBTITLE_ON_FIELD },
     // §6.16 requires 3 / 2 / 1 and the screen ships 3 / 3 / 3 — `Departments.tsx`
     // writes a bare `grid-cols-3` with no `max1080:` or `max760:` variant, so the
     // three-column grid is squeezed into 760px. That is a real R7 defect and it
@@ -595,14 +604,14 @@ export const DESIGN = {
     // the mutant that collapses the grid dies at all three widths today. **Task
     // 14 edits the line below to `{ 1440: 3, 1080: 2, 760: 1 }` in the same
     // commit that adds the variants.**
-    grid: { columns: { 1440: 3, 1080: 3, 760: 3 }, gap: '18px' },
+    grid: { columns: { 1440: 3, 1080: 2, 760: 1 }, gap: '18px' },
     // §9.1/L-14 make this `#fff`; `Departments.tsx` still paints `bg-bg`, the
     // cream `#FBF7F1`, and Task 14 rebuilds it. Same rule as `padding` and
     // `grid.columns` above: this states what the screen *does*, so the mutant
     // that repaints the card the colour of the field dies today. Task 14 changes
     // this to `SURFACE` in the commit that repaints it, and adds `border` and
     // `shadow` beside it.
-    card: { radius: '20px', background: 'rgb(251, 247, 241)' },
+    card: { radius: '20px', shadow: FEATURE_SHADOW, border: CARD_BORDER, background: SURFACE },
     lift: '[data-card]',
     // The two `text-[46px]` watermark numerals behind each card's icon —
     // `#EDE4FA` and `#FBE4E1` on the cream card, 1.15 and 1.14. They are drawn
