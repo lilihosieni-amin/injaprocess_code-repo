@@ -16,23 +16,41 @@ const META: Record<string, Meta> = {
 
 export const DEPT_CODES = Object.keys(META)
 
-const TILE: Record<Accent, string> = {
-  violet: 'bg-tile-v text-violet',
-  coral: 'bg-tile-c text-conflict',
+interface AccentClasses {
+  tileClass: string
+  numeralClass: string
+  accentText: string
+  ctaDiscClass: string
 }
 
-// The ghosted two-digit index on a department card (§6.1) — `--dept-numeral-violet`
-// and `--dept-numeral-coral`. Those two values lived in src/screens/Departments.tsx
-// as raw hexes because this map returned the tile and not the numeral (audit §4);
-// an accent belongs in one place, whole.
-const NUMERAL: Record<Accent, string> = {
-  violet: 'text-dept-numeral-violet',
-  coral: 'text-dept-numeral-coral',
+/**
+ * Everything the violet/coral choice decides, in one place.
+ *
+ * The ghosted index numeral and the footer CTA disc used to be written out at
+ * `Departments.tsx:59` and `:74` as four hex literals — `#EDE4FA`, `#FBE4E1`,
+ * `#F3EDFC` and `#FFF0EE` — every one of which is byte-identical to a token the
+ * theme already holds (`--dept-numeral-violet`, `--dept-numeral-coral`,
+ * `--disc-violet`, `--disc-coral`). They are accent decisions, so they belong
+ * beside the accent rather than in the one screen that happens to draw them:
+ * half an accent in a module and half in a component is how the second screen
+ * to draw a department gets one of the four wrong.
+ */
+const ACCENT: Record<Accent, AccentClasses> = {
+  violet: {
+    tileClass: 'bg-tile-v text-violet',
+    numeralClass: 'text-dept-numeral-violet',
+    accentText: 'text-violet',
+    ctaDiscClass: 'bg-disc-violet',
+  },
+  coral: {
+    tileClass: 'bg-tile-c text-conflict',
+    numeralClass: 'text-dept-numeral-coral',
+    accentText: 'text-conflict',
+    ctaDiscClass: 'bg-disc-coral',
+  },
 }
 
-export function deptMeta(code: string): {
-  icon: string; accent: Accent; tileClass: string; numeralClass: string
-} {
+export function deptMeta(code: string): Meta & AccentClasses {
   const m = META[code] ?? { accent: 'violet' as Accent, icon: '' }
-  return { ...m, tileClass: TILE[m.accent], numeralClass: NUMERAL[m.accent] }
+  return { ...m, ...ACCENT[m.accent] }
 }

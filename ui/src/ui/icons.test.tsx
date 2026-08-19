@@ -1322,9 +1322,14 @@ describe('the department accent map', () => {
     expect(deptMeta('dining').tileClass).toBe('bg-tile-c text-conflict')
     expect(deptMeta('warehouse').tileClass).toBe('bg-tile-v text-violet')
     // …and an unknown code still answers, rather than throwing on a screen.
+    // Task 14 added `accentText` and `ctaDiscClass` — the other two decisions
+    // the accent makes, which src/screens/Departments.tsx used to hard-code.
+    // The exhaustive shape stays exhaustive: a key ADDED without this line
+    // moving is a key no caller was told about.
     expect(deptMeta('nonesuch')).toEqual({
       icon: '', accent: 'violet',
       tileClass: 'bg-tile-v text-violet', numeralClass: 'text-dept-numeral-violet',
+      accentText: 'text-violet', ctaDiscClass: 'bg-disc-violet',
     })
   })
 })

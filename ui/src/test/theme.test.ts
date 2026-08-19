@@ -1376,7 +1376,7 @@ const PENDING: string[] = [
   'text-danger', 'text-toast-check', 'text-link', 'text-link-hover',
   'border-line-soft', 'border-line-dashed', 'border-border-dead', 'border-border-ok',
   'border-hair', 'border-steps-sub-border', 'border-steps-group-border',
-  'bg-tile-v5', 'bg-disc-coral', 'bg-disc-violet', 'bg-line-divider',
+  'bg-tile-v5', 'bg-line-divider',
   'border-line-divider', 'bg-line-row', 'bg-line-filter', 'border-line-filter',
   'bg-border-pick', 'text-fs-display', 'text-fs-h1', 'text-fs-h2',
   'text-fs-h3', 'text-fs-h4', 'text-fs-h5',
