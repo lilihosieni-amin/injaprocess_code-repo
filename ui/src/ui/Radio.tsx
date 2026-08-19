@@ -22,6 +22,12 @@ export interface RadioProps {
  * 8px white pip, pushed 2px down so it sits against the first line rather than
  * the middle of a three-line option.
  *
+ * The ring keeps `w-tick h-tick` under owner ruling R36, which is a reading of
+ * the design and not an omission: panel 1470 draws this pick at 19, the same
+ * box as a tick in a screen row, so the row rung is the right token and there
+ * is no rung of its own to ask for. `rounded-round` rather than `rounded-tick`
+ * is the whole of the difference — a radio is a circle.
+ *
  * There is deliberately no way to render an option the caller may not offer,
  * and no red line explaining one. The design draws a blocked candidate at
  * reduced opacity with an explanation beneath it; R5 is explicit that where a

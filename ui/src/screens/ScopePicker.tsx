@@ -116,8 +116,10 @@ export function ScopePicker({ scopes, onChange }: {
 
   return (
     <div className="flex flex-col gap-s5">
-      {/* §6.8's own checkbox row — an 19px tick (ledger L-10 normalises the
-          design's 18), a 13.5px/700 title and an 11.5px explanation beneath. */}
+      {/* §6.8's own checkbox row — the 18px tick the design draws at panel 1356
+          (owner ruling R36 keeps it at 18 rather than normalising it up to the
+          19 of a screen row), a 13.5px/700 title and an 11.5px explanation
+          beneath. `Checkbox` already defaults to that rung. */}
       <Checkbox checked={every} onChange={toggleEverything}
         label="کل سامانه" hint={EVERY_NOTE} />
 
@@ -167,7 +169,7 @@ export function ScopePicker({ scopes, onChange }: {
                   onChange={(e) => toggleDepartment(d.code, e.target.checked)}
                   className="peer sr-only"
                 />
-                <TickBox on={whole} className="peer-focus-visible:border-coral" />
+                <TickBox on={whole} rung="scope" className="peer-focus-visible:border-coral" />
                 <span className={`min-w-0 flex-1 truncate text-fs-sm font-semibold ${deptMeta(d.code).accentText}`}>
                   {d.name}
                 </span>
@@ -203,6 +205,10 @@ export function ScopePicker({ scopes, onChange }: {
                                 gap-s2 bg-card border border-border-card rounded-card shadow-pop p-popover">
                   {REPORT_KINDS.map((kind) => (
                     <Checkbox key={kind}
+                      // Panel 1386 — an option inside the popover that hangs off
+                      // the cell above, which is the deepest rung the design
+                      // draws and the only place in this app that reaches it.
+                      rung="nested"
                       checked={scopes.includes(`dept:${d.code}/report:${kind}`)}
                       onChange={(v) => toggleReport(d.code, kind, v)}
                       label={REPORT_KIND_LABELS[kind]} />

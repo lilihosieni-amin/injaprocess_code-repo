@@ -62,7 +62,8 @@ w-tile h-tile w-tool h-tool w-avatar h-avatar w-logo-bar h-logo-bar
 w-logo-login h-logo-login w-touch h-touch min-h-touch min-w-touch min-w-menu
 w-tile-reader h-tile-reader w-glyph h-glyph w-glyph-reader h-glyph-reader
 w-iconbtn h-iconbtn w-iconbtn-reader h-iconbtn-reader w-fab h-fab
-w-fab-reader h-fab-reader w-tick h-tick w-tick-nested h-tick-nested
+w-fab-reader h-fab-reader w-tick h-tick w-tick-field h-tick-field
+w-tick-scope h-tick-scope w-tick-nested h-tick-nested
 w-close h-close
 max-w-departments max-w-list max-w-summary max-w-doc max-w-drawer
 max-w-reader max-w-profile max-w-steps max-w-access max-w-audit
@@ -87,6 +88,7 @@ backdrop-blur-scrim
 py-textarea-y p-compose
 ps-reveal w-reveal h-reveal w-reveal-glyph h-reveal-glyph rounded-reveal
 rounded-tick rounded-tick-nested w-tick-glyph h-tick-glyph
+w-tick-glyph-field h-tick-glyph-field
 w-tick-glyph-nested h-tick-glyph-nested gap-tick-row py-tick-row-y
 py-tick-nested-y
 px-radio-x

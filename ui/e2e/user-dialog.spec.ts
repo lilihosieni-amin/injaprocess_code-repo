@@ -226,3 +226,73 @@ test('new user — 520 wide, and it fits', async ({ page }) => {
 
   await shot(page, 'new-user')
 })
+
+/**
+ * **Owner ruling R36 — the tick ladder, measured rather than asserted.**
+ *
+ * A tick's size is PAINT. `toHaveClass('w-tick-scope')` proves a string reached
+ * an attribute, and this project's signature defect is exactly the class that
+ * reaches an attribute and emits nothing. `src/ui/choices.test.tsx` compiles
+ * every rung through the real theme, which closes that; what only a browser can
+ * say is that the four rungs are four different boxes ON SCREEN, in one
+ * document, with the cascade and the media queries applied.
+ *
+ * This dialog is where three of them are drawn at once — the fourth, the 19px
+ * screen row, is measured in `e2e/visibility.spec.ts` on the policy screen.
+ * `[data-rung]` is what makes the claim legible: `getByTestId('tick').nth(11)`
+ * would be a claim about document order rather than about the design.
+ */
+test('new user — the three tick rungs the design draws in this dialog (R36)', async ({ page }) => {
+  await signedIn(page, VIEWER)
+  await serve(page, {
+    '/api/users': USERS,
+    '/api/departments': DEPARTMENTS,
+    '/api/pending': [],
+    '/api/roles': ROLES,
+    '/api/users/supervisor-candidates': CANDIDATES,
+  })
+  await visit(page, '/users')
+  await page.getByRole('button', { name: 'کاربر جدید' }).click()
+  const box = page.getByRole('dialog', { name: 'کاربر جدید' })
+  await expect(box).toBeVisible()
+
+  // `field`, 18px at radius 6 — panel 1356 «کل سامانه» and panel 1344 the
+  // supervisor flag. Two of them, and both must measure: a rung wired at one
+  // site and missed at the other is the defect this ruling reverses.
+  const field = box.locator('[data-rung="field"]')
+  await expect(field).toHaveCount(2)
+  for (let i = 0; i < 2; i++) {
+    await expect(field.nth(i)).toHaveCSS('width', '18px')
+    await expect(field.nth(i)).toHaveCSS('height', '18px')
+    await expect(field.nth(i)).toHaveCSS('border-radius', '6px')
+  }
+
+  // `scope`, 17px at radius 6 — panel 1369, one per department cell.
+  const scope = box.locator('[data-rung="scope"]')
+  await expect(scope).toHaveCount(DEPARTMENTS.length)
+  await expect(scope.first()).toHaveCSS('width', '17px')
+  await expect(scope.first()).toHaveCSS('height', '17px')
+  await expect(scope.first()).toHaveCSS('border-radius', '6px')
+
+  // `nested`, 16px at radius 5 — panel 1386, the view options inside the
+  // popover that hangs off one of those cells. The deepest rung the design
+  // draws, and the only one that takes a different radius.
+  await box.getByRole('button', { name: 'نماهای پخت' }).click()
+  const nested = box.locator('[data-rung="nested"]')
+  await expect(nested.first()).toBeVisible()
+  await expect(nested.first()).toHaveCSS('width', '16px')
+  await expect(nested.first()).toHaveCSS('height', '16px')
+  await expect(nested.first()).toHaveCSS('border-radius', '5px')
+
+  // …and the three are three DIFFERENT boxes in one open document, which is the
+  // whole of what the owner ruled. Read off the same page rather than from three
+  // separate assertions that could each be right about the wrong element.
+  const drawn = await box.evaluate((el) => {
+    const seen = new Map<string, string>()
+    for (const t of el.querySelectorAll<HTMLElement>('[data-rung]')) {
+      seen.set(t.dataset.rung!, getComputedStyle(t).width)
+    }
+    return [...seen].sort()
+  })
+  expect(drawn).toEqual([['field', '18px'], ['nested', '16px'], ['scope', '17px']])
+})

@@ -196,8 +196,25 @@
   --size-iconbtn-reader: 42px;
   --size-fab: 52px;
   --size-fab-reader: 56px;
-  --size-tick: 19px;            /* ledger L-10 — a tick in a list row */
-  --size-tick-nested: 16px;     /* ledger L-10 — a tick inside another option */
+  /* ledger L-10, settled by owner ruling R36 — "checkbox should be like design.
+     exactly like design." The design draws this control at four sizes keyed to
+     how deeply the site is nested, and all four are kept; the provisional
+     two-by-role normalisation, which sent 17 and 18 up to 19, is withdrawn.
+     Named by ROLE, never by size: the rung comes from what the SITE is.
+       --size-tick        a tick in a list row on the screen itself — the
+                          visibility policy row (panel 1764) and the flow bar's
+                          confirmed toggle (panel 579, 600). The supervisor
+                          radio's ring is the same box (panel 1470), which is
+                          why Radio reads this token and not one of its own.
+       --size-tick-field  a tick that is a whole form field inside a card or a
+                          dialog — the supervisor flag (panel 1344) and «whole
+                          system» (panel 1356). That is the row Checkbox draws.
+       --size-tick-scope  a tick on a department-scope cell (panel 1369).
+       --size-tick-nested a tick inside another option (panel 1386). */
+  --size-tick: 19px;
+  --size-tick-field: 18px;
+  --size-tick-scope: 17px;
+  --size-tick-nested: 16px;
   --size-close: 32px;           /* ledger L-23 */
   --inset-search-icon: 15px;    /* §5.2 SearchField, the large field */
 
@@ -251,7 +268,7 @@
    `--line-dashed` and `--border-pick` both hold #C9B8EC.
 
    What the ladders already hold is deliberately NOT re-minted: the tick boxes
-   are `--size-tick` 19px and `--size-tick-nested` 16px (ledger L-10), the
+   are the four `--size-tick*` rungs above (ledger L-10, owner ruling R36), the
    timeline dot is `--space-11` 26px, the FAB is `--size-fab` / `--size-fab-reader`
    and its glyph `--space-10` 22px, the table shell is `--radius-doc` 18px with a
    `--tile-v4` head (ledger L-11) and a `--border-card` hairline, and the ticks'
@@ -275,12 +292,26 @@
   --radius-reveal: 8px;      /* the radii ladder runs 7 -> 9 and L-23 records
                                 that 8px has no token; the reveal button is 8 */
 
-  /* Checkbox — ledger L-10 fixes the two BOXES; the design pairs each with a
-     radius and a check glyph, and neither has a token. */
-  --radius-tick: 6px;              /* the 19px tick */
-  --radius-tick-nested: 5px;       /* the 16px tick */
-  --size-tick-glyph: 13px;         /* the check inside the 19px box, stroke 3 */
-  --size-tick-glyph-nested: 11px;  /* the check inside the 16px box, stroke 3.2 */
+  /* Checkbox — ledger L-10 fixes the four BOXES; the design pairs each with a
+     radius and a check glyph.
+
+     The radius does NOT track the box, so it is read off the design per rung
+     rather than interpolated: a tick in a row, a form field or a scope cell is
+     drawn at 6 (panel 1764, 1344, 1356, 1369) and only a tick inside another
+     option at 5 (panel 1386). Two radii for four boxes, and that is why R36
+     mints no third — the pair below is complete.
+
+     (The design draws one further pairing this app has no site for: the
+     new-user dialog's department dropdown at panel 1897 is a 17px box at
+     radius 5. This build draws that choice as ScopePicker's cell grid, which
+     is panel 1369's 17-at-6. Recorded so the next reader knows the pair is a
+     deliberate stop and not an omission.) */
+  --radius-tick: 6px;              /* a tick in a row, a field or a scope cell */
+  --radius-tick-nested: 5px;       /* a tick inside another option */
+  --size-tick-glyph: 13px;         /* the check in a row's tick, stroke 3 */
+  --size-tick-glyph-field: 12px;   /* the check in a form field's tick, stroke 3 */
+  --size-tick-glyph-nested: 11px;  /* the check in a scope cell's and in a nested
+                                      option's tick, stroke 3.2 */
   --gap-tick-row: 11px;            /* row: `gap:11px; padding:13px 14px` */
   --pad-tick-row-y: 13px;          /* …the x of which is --space-7 */
   --pad-tick-nested-y: 11px;       /* nested: `gap:10px; padding:11px 12px`,

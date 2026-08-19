@@ -10,16 +10,17 @@ built.
 
 Resolution order, from R8: (1) the design's own stated semantics decide;
 (2) failing that, dominant usage wins; (3) failing that, it goes to the owner.
-Every row says which of the three settled it. The seven rows marked
+Every row says which of the three settled it. The rows marked
 **Owner veto** are the ones rule 3 could not settle — they are listed again under
 **Referred to the owner** at the end, with three further items that are not
-contradictions at all.
+contradictions at all. Seven rows were referred; five have since been ruled on
+and two are still open.
 
-Eight rows record rulings the owner has **already** made — L-36 to L-39, and
-L-05, L-12, L-23 and L-40, ruled on 2026-08-19 as R27, R28, R29 and R26. Those
-outrank the deliverable outright, so they sit above rule 1 rather than inside it;
-they are marked **Decided — owner ruling** and are here so this document is
-complete on its own.
+Nine rows record rulings the owner has **already** made — L-36 to L-39, and
+L-05, L-12, L-23, L-40 and L-10, ruled on 2026-08-19 as R27, R28, R29, R26 and
+R36. Those outrank the deliverable outright, so they sit above rule 1 rather
+than inside it; they are marked **Decided — owner ruling** and are here so this
+document is complete on its own.
 
 Counts are from `.superpowers/sdd/ui-design-spec.md`, which counted them in the
 deliverables. The value chosen here is the value `ui/src/styles/roles.css` names,
@@ -28,7 +29,7 @@ and no later task may use another.
 The line below is checked against the table by `ui/src/test/roles.test.ts`, so a
 row cannot be dropped off the end of the ledger without the test noticing.
 
-**48 rows: 45 decided, 3 referred.**
+**48 rows: 46 decided, 2 referred.**
 
 ## Action versus state
 
@@ -72,7 +73,7 @@ violet is the commit inside the form or dialog; `--conflict` stays destructive.
 | L-07 | Department-info content width | `900px`; the sibling list screens are `920px` (`--width-list`) | 1 vs 2 | **Decided — dominance.** `920px`. 900 has no token, no role, and no reason. |
 | L-08 | Scrollbar width | `12px` in `tokens/base.css`; `10px` in both deliverables' own style blocks | 1 vs 2 | **Decided — dominance.** `10px`. Both deliverables agree against the token file. |
 | L-09 | Unchecked tick border | `#C9B8EC` everywhere; `#DCD3EC` on the visibility-policy rows | 13 vs 1 | **Decided — dominance.** `#C9B8EC`. `#DCD3EC` has no token and no role of its own. |
-| L-10 | Checkbox tick size | `16px` nested view option; `17px` department scope and new-user scope; `18px` supervisor flag and “whole system”; `19px` policy row and confirmed tick (and the supervisor radio) | 1 / 2 / 2 / 2 | **Owner veto.** Provisionally two sizes by role rather than four by screen: a tick in a list row is `19px`, a tick nested inside another option is `16px`, and 17 and 18 normalise to 19. The design states no meaning for the ladder and three rungs are tied, so the rule is an invention until the owner confirms it. |
+| L-10 | Checkbox tick size | `16px` nested view option; `17px` department scope and new-user scope; `18px` supervisor flag and “whole system”; `19px` policy row and confirmed tick (and the supervisor radio) | 1 / 2 / 2 / 2 | **Decided — owner ruling (R36).** **All four rungs are kept, exactly as drawn** — “checkbox should be like design. exactly like design.” The provisional two-by-role normalisation, which sent 17 and 18 up to 19, is **withdrawn**. Each rung is named for the site it is drawn at rather than for its number: `--size-tick` a tick in a screen row (panel 1764, 579, 600 — and 1470, the supervisor radio's ring), `--size-tick-field` a whole form field (1344, 1356), `--size-tick-scope` a department-scope cell (1369), `--size-tick-nested` a tick inside another option (1386). Every site in the column to the left was re-read against the deliverable and **the catalogue was right**. Two things it did not record: the **radius does not track the box** — 19, 18 and 17 are all drawn at 6 and only 16 at 5, so the mint adds no third radius — and the design draws a **fifth pairing**, 17px at radius 5 (1897, the new-user dialog's department dropdown), which this build has no site for because it draws that same choice as ScopePicker's cell grid |
 | L-11 | Table-head background | Users head none; audit head none with `#F8F4FE` on its filter bar; activity `#F8F4FE` on both; the sessions-card head on User activity `#F8F4FE` | 2 unfilled vs 2 filled | **Decided — semantics.** `#F8F4FE` on the head and on an in-table filter bar: the design's own colour census names “table-header bg” as a role of `#F8F4FE`, and it is the only value any head paints. The Users filter bar is a detached card above the table on `#F4EFFB` — a different component, not a third variant. |
 | L-12 | `ProcessTag.plain` | Byte-identical to `.kpi` — `--violet` on `--tile-v` | 2 of 5 tags indistinguishable | **Decided — owner ruling (R28).** A plain process draws **no tag**. A tag marks an exception (sub-process, conflict, KPI, tombstone); one that says «فرآیند» on a screen of processes marks nothing. The muted-skin alternative was offered and declined. Made structural rather than conventional: `deriveTag` returns `null`, `TagKind` has no `plain` member and `TAG_TONE` has no `plain` key, so no screen can render it by reaching for a tone that no longer exists. (The label was «مستند», not «فرآیند» as this row first recorded; the collision with `.kpi` is what the row is about and that was exact.) |
 | L-13 | Reader compose drawer | Two drawers mount at once on the flow screen: 340 and 380px wide, padding 20 and 24, title 18 and 19, textarea 13.5 and 15.5, radius 12 and 14, submit violet and coral | 2 | **Decided — semantics.** One drawer, the panel's: `380px`, padding `20px`, title `18px`, textarea `13.5px`, radius `12px`, **violet** submit. The submit is a normal save, not a destructive-forward act, so coral is the error — coral opens, violet commits. |
@@ -115,25 +116,23 @@ violet is the commit inside the form or dialog; `--conflict` stays destructive.
 
 ## Referred to the owner
 
-**Three** rows above, plus three items that are not contradictions and cannot be
+**Two** rows above, plus three items that are not contradictions and cannot be
 resolved by looking harder at the design.
 
-> Four of the original seven were ruled on 2026-08-19 and have moved into the table
+> Five of the original seven were ruled on 2026-08-19 and have moved into the table
 > as decided: **L-05** (R27, `#8A5A00`), **L-12** (R28, no tag), **L-23** (R29, one
-> close button at 9px) and **L-40** (R26, the ladder stays).
+> close button at 9px), **L-40** (R26, the ladder stays) and **L-10** (R36, all four
+> tick rungs kept exactly as drawn).
 
-1. **L-10 — the checkbox tick size.** Two sizes by role (19 in a row, 16 when
-   nested) is an invention. The design gives a four-rung ladder keyed to nesting
-   depth with three rungs tied at two sites each.
-2. **L-29 — the 4-up stat value.** `23px` centred or `21px` start-aligned. An
+1. **L-29 — the 4-up stat value.** `23px` centred or `21px` start-aligned. An
    exact four-to-four tie with no stated reason on either side.
-3. **L-34 — the reader's screen-title scale.** Kept as R3 wrote it, but its hero
+2. **L-34 — the reader's screen-title scale.** Kept as R3 wrote it, but its hero
    is smaller than its titles.
-4. **The Users screen has no subtitle.** Every one of the thirteen panel screens
+3. **The Users screen has no subtitle.** Every one of the thirteen panel screens
    carries a one-sentence subtitle saying what the screen is for; Users has the
    slot and it ships empty. The copy does not exist in the design and cannot be
    inferred — it has to be written.
-5. **The department card's heavier rest shadow.** The one feature card carries
+4. **The department card's heavier rest shadow.** The one feature card carries
    `0 2px 4px rgba(16,10,40,.18), 0 22px 46px -20px rgba(16,10,40,.65)` where
    every other surface carries the standard two-layer card shadow. Read as
    deliberate (a feature card is its own role) and therefore *not* normalised —
@@ -141,7 +140,7 @@ resolved by looking harder at the design.
    it collapses into `--role-shadow-card` and the home screen flattens by one
    notch.
 
-6. **The two z-index values in `ui/src/flow/**` that the adopted scale cannot
+5. **The two z-index values in `ui/src/flow/**` that the adopted scale cannot
    reach.** That directory is frozen, so neither can be corrected by this
    project. `DetailDrawer.tsx`'s `z-[15]` is harmless and is simply adopted as
    the value of `--role-z-canvas-overlay` (L-45). `DeleteNodeConfirm.tsx`'s
@@ -282,7 +281,9 @@ blocking.
 | T-1 | The reorder modal's drop indicator is 3px on `--space-hint`, a token minted for a hint's offset. The design draws no drag-reorder affordance, so there is no number to read. Keep the borrowed role, or is the modal itself out of scope? |
 | P1 | ~~The open-sessions card~~ — **answered.** The owner removed the feature: «I don't need open session card in profile. delete it from ui.» Not built, not stubbed, no route added. Task 22 records the divergence. |
 
-Three ledger rows remain referred and are **not** settled here: **L-10** (the
-checkbox tick size), **L-29** (the 4-up stat value) and **L-34** (the reader's
-title scale). So does the Users screen's missing subtitle, which is unwritten
-copy that exists nowhere in the design and cannot be inferred.
+Two ledger rows remain referred and are **not** settled here: **L-29** (the 4-up
+stat value) and **L-34** (the reader's title scale). So does the Users screen's
+missing subtitle, which is unwritten copy that exists nowhere in the design and
+cannot be inferred. **L-10** (the checkbox tick size) was referred until
+2026-08-19, when the owner ruled on it as **R36**: all four rungs the design
+draws are kept, exactly as drawn.

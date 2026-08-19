@@ -286,11 +286,15 @@ export default {
         round: 'var(--radius-round)',
         // §5.2 — three radii the twelve primitives draw and the ladder
         // (6·7·9·10·11·12·13·14·16·18·20·24) has no rung for. Named by role,
-        // never by t-shirt size (rule 1): `tick`/`tick-nested` pair with the two
-        // boxes ledger L-10 fixes, and `reveal` is the password field's eye
-        // button — the 8px L-23 records as having no token.
-        tick: 'var(--radius-tick)',                // 6px  — the 19px tick
-        'tick-nested': 'var(--radius-tick-nested)',// 5px  — the 16px tick
+        // never by t-shirt size (rule 1). Ledger L-10, settled by owner ruling
+        // R36, fixes FOUR tick boxes and only TWO radii: `tick` is what a tick
+        // in a row, in a form field or on a scope cell is drawn at, and
+        // `tick-nested` what a tick inside another option is drawn at — so the
+        // radius comes from the site and is never derived from the box.
+        // `reveal` is the password field's eye button, the 8px L-23 records as
+        // having no token.
+        tick: 'var(--radius-tick)',                // 6px  — row, field, scope
+        'tick-nested': 'var(--radius-tick-nested)',// 5px  — inside an option
         reveal: 'var(--radius-reveal)',            // 8px  — the reveal button
         bar: 'var(--radius-bar)',                  // 2px  — the coral eyebrow bar
         // Owner ruling R35 — the DRAWER's two top corners once it becomes a
@@ -508,8 +512,13 @@ export default {
         'iconbtn-reader': 'var(--size-iconbtn-reader)', // 42px
         fab: 'var(--role-fab)',                         // 52px panel / 56px reader
         'fab-reader': 'var(--size-fab-reader)',         // 56px
-        tick: 'var(--size-tick)',                       // 19px — L-10, a tick in a row
-        'tick-nested': 'var(--size-tick-nested)',       // 16px — L-10, a nested tick
+        // Ledger L-10, settled by owner ruling R36: four rungs, one per site the
+        // design draws, named by ROLE and never by the number. A caller picks
+        // the rung its SITE is, which is why there is no `tick-17`.
+        tick: 'var(--size-tick)',                       // 19px — a tick in a list row
+        'tick-field': 'var(--size-tick-field)',         // 18px — a whole form field
+        'tick-scope': 'var(--size-tick-scope)',         // 17px — a scope cell
+        'tick-nested': 'var(--size-tick-nested)',       // 16px — inside another option
         close: 'var(--size-close)',                     // 32px — L-23
         'search-glyph': 'var(--size-search-glyph)',     // 17px — §5.2 SearchField
         // §5.2 — six more square boxes, from the twelve primitives. Each is
@@ -519,8 +528,11 @@ export default {
         // button gets its own, so neither name has to mean two things.
         reveal: 'var(--size-reveal)',                   // 32px — the eye button
         'reveal-glyph': 'var(--size-reveal-glyph)',     // 17px — the eye path
-        'tick-glyph': 'var(--size-tick-glyph)',         // 13px — check in a 19px box
-        'tick-glyph-nested': 'var(--size-tick-glyph-nested)', // 11px — in a 16px box
+        // …and the check inside each of those four boxes. Three glyphs, not four:
+        // the design draws 11 in the scope cell AND in the nested option.
+        'tick-glyph': 'var(--size-tick-glyph)',         // 13px — in a row's tick
+        'tick-glyph-field': 'var(--size-tick-glyph-field)',   // 12px — in a field's
+        'tick-glyph-nested': 'var(--size-tick-glyph-nested)', // 11px — scope + nested
         chevron: 'var(--size-chevron)',                 // 15px — dropdown + pager
         pager: 'var(--size-pager)',                     // 34px — a page button
         // The Tasks 12-25 sweep's own squares, carried on both scales like the
@@ -548,12 +560,15 @@ export default {
         fab: 'var(--role-fab)',
         'fab-reader': 'var(--size-fab-reader)',
         tick: 'var(--size-tick)',
+        'tick-field': 'var(--size-tick-field)',
+        'tick-scope': 'var(--size-tick-scope)',
         'tick-nested': 'var(--size-tick-nested)',
         close: 'var(--size-close)',
         'search-glyph': 'var(--size-search-glyph)',
         reveal: 'var(--size-reveal)',
         'reveal-glyph': 'var(--size-reveal-glyph)',
         'tick-glyph': 'var(--size-tick-glyph)',
+        'tick-glyph-field': 'var(--size-tick-glyph-field)',
         'tick-glyph-nested': 'var(--size-tick-glyph-nested)',
         chevron: 'var(--size-chevron)',
         pager: 'var(--size-pager)',

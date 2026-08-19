@@ -111,9 +111,34 @@ describe('R1 — the deliverable wins over the extracted token', () => {
     expect(token('--fs-body-reader')).toBe('15px')
   })
 
-  it('ledger L-10 — two tick sizes by role, not four by screen', () => {
+  it('ledger L-10, owner ruling R36 — four tick sizes, one per rung the design draws', () => {
+    // R36 reverses the provisional normalisation this test used to assert. The
+    // design draws four boxes and the owner kept all four: the rung comes from
+    // what the SITE is, and the two the build had collapsed into `--size-tick`
+    // get their own names rather than borrowing a number that means a row.
+    //
+    //   19  the policy row (panel 1764) and the confirmed toggle (panel 579, 600)
+    //   18  the supervisor flag (panel 1344) and «whole system» (panel 1356)
+    //   17  the department scope cell (panel 1369)
+    //   16  the view option nested in that cell's popover (panel 1386)
     expect(token('--size-tick')).toBe('19px')
+    expect(token('--size-tick-field')).toBe('18px')
+    expect(token('--size-tick-scope')).toBe('17px')
     expect(token('--size-tick-nested')).toBe('16px')
+  })
+
+  it('owner ruling R36 — each rung carries the radius and the check the design pairs with it', () => {
+    // Read off the design rather than interpolated. The radius does NOT track
+    // the size: three of the four rungs are drawn at 6 and only the nested one
+    // at 5, which is why there is no third radius token — a tick in a row, a
+    // form field or a scope cell is `--radius-tick`, and one inside another
+    // option is `--radius-tick-nested`.
+    expect(token('--radius-tick')).toBe('6px')          // 1764, 1344, 1356, 1369
+    expect(token('--radius-tick-nested')).toBe('5px')   // 1386
+    // The check inside each box, which the design shrinks with the box.
+    expect(token('--size-tick-glyph')).toBe('13px')       // 1765, in the 19px box
+    expect(token('--size-tick-glyph-field')).toBe('12px') // 1345/1357, in the 18px box
+    expect(token('--size-tick-glyph-nested')).toBe('11px')// 1370/1387, in 17 and 16
   })
 
   it('§3.3 / §3.4 — carries the rest of the geometry the ruling’s table gives', () => {

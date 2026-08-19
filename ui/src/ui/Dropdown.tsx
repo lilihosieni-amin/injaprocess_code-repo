@@ -258,7 +258,7 @@ export function Dropdown({
                       one TRAILS its check — which is what the design draws at
                       :1386 and :1334 respectively, and why the unpicked row needs
                       no spacer holding a column open. */}
-                  {multiple && <TickBox on={picked} />}
+                  {multiple && <TickBox on={picked} rung="nested" />}
                   <span className="min-w-0 flex-1">
                     <span className="block">{o.label}</span>
                     {o.note !== undefined && (

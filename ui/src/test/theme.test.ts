@@ -439,6 +439,10 @@ const EXPECTED: Record<string, string | string[]> = {
   'h-fab-reader': 'var(--size-fab-reader)',
   'w-tick': 'var(--size-tick)',
   'h-tick': 'var(--size-tick)',
+  'w-tick-field': 'var(--size-tick-field)',
+  'h-tick-field': 'var(--size-tick-field)',
+  'w-tick-scope': 'var(--size-tick-scope)',
+  'h-tick-scope': 'var(--size-tick-scope)',
   'w-tick-nested': 'var(--size-tick-nested)',
   'h-tick-nested': 'var(--size-tick-nested)',
   'w-close': 'var(--size-close)',
@@ -505,14 +509,17 @@ const EXPECTED: Record<string, string | string[]> = {
   'w-reveal-glyph': 'var(--size-reveal-glyph)',
   'h-reveal-glyph': 'var(--size-reveal-glyph)',
   'rounded-reveal': 'var(--radius-reveal)',
-  // The pair ledger L-10 turns on: the two tick BOXES are --size-tick /
-  // --size-tick-nested, and each has a radius and a check glyph of its own.
-  // Swap `rounded-tick` and `rounded-tick-nested` and both the token set and
-  // the class set are untouched — this line is what goes red.
+  // The ladder ledger L-10 turns on, as owner ruling R36 settled it: FOUR tick
+  // BOXES above, and under them two radii and three check glyphs — because
+  // neither the radius nor the check tracks the box one-for-one. Swap
+  // `rounded-tick` and `rounded-tick-nested` and both the token set and the
+  // class set are untouched — these lines are what go red.
   'rounded-tick': 'var(--radius-tick)',
   'rounded-tick-nested': 'var(--radius-tick-nested)',
   'w-tick-glyph': 'var(--size-tick-glyph)',
   'h-tick-glyph': 'var(--size-tick-glyph)',
+  'w-tick-glyph-field': 'var(--size-tick-glyph-field)',
+  'h-tick-glyph-field': 'var(--size-tick-glyph-field)',
   'w-tick-glyph-nested': 'var(--size-tick-glyph-nested)',
   'h-tick-glyph-nested': 'var(--size-tick-glyph-nested)',
   'gap-tick-row': 'var(--gap-tick-row)',
@@ -1398,13 +1405,13 @@ const consumed = (klass: string) => rendered().has(klass) || written(klass)
  * rebuilt yet — Tasks 13–24 — and every one of them deletes its own lines as it
  * lands", and it carried an instruction in capitals that Task 25 must turn the
  * test below into `expect(…).toEqual([])`. Task 25 arrived, every screen exists,
- * and 129 lines are still here. They are not late. Emptying the list needs one
- * of two things and neither is available:
+ * and 129 lines were still here — 124 after owner ruling R36. They are not late.
+ * Emptying the list needs one of two things and neither is available:
  *
  *   · **Give each one a consumer.** That means writing a class into a component
  *     because a test wants it there, which is the defect R11 exists to catch,
  *     stated backwards.
- *   · **Delete each one from the theme.** For 89 of the 129 that would strand
+ *   · **Delete each one from the theme.** For 84 of the 124 that would strand
  *     the token underneath, and `leaves no declared token without a utility
  *     name` above would go red — whose only fix is deleting the token, and the
  *     tokens live in `design/_ds/…/tokens/*.css`, which is READ-ONLY
@@ -1419,7 +1426,7 @@ const consumed = (klass: string) => rendered().has(klass) || written(klass)
  *     `base.css`'s own `var(--login-orb)`, `w-touch` beside the `min-w-touch`
  *     every primitive carries. Tailwind derives them from one theme key; the
  *     value is on screen, this spelling of it is not.
- *   · **89** are painted nowhere in `src/`, each for a reason declared in
+ *   · **84** are painted nowhere in `src/`, each for a reason declared in
  *     `UNPAINTED_BECAUSE` below: the flowchart (frozen by F16, and it writes hex
  *     literals rather than these), the exported document (`ui/export/**` is
  *     off-limits to this repo), a `_ds` semantic colour this product reconciled
@@ -1482,12 +1489,16 @@ const UNPAINTED: string[] = [
   'h-avatar', 'w-logo-bar', 'h-logo-bar', 'w-touch', 'h-touch', 'w-tile-reader',
   'h-tile-reader', 'w-iconbtn-reader',
   'h-iconbtn-reader', 'w-fab-reader',
-  'h-fab-reader', 'w-tick-nested',
-  'h-tick-nested', 'max-w-doc',
+  // Owner ruling R36 gave the nested rung a consumer. `w-tick-nested`,
+  // `h-tick-nested`, `rounded-tick-nested`, `w-tick-glyph-nested` and
+  // `h-tick-glyph-nested` came off this list here: the design draws a 16px tick
+  // at radius 5 inside another option (panel 1386), and ScopePicker's nested
+  // view menu and Dropdown's multi-select option both draw it now that a tick
+  // takes the rung its site calls for. CEILING below follows them down by five.
+  'h-fab-reader', 'max-w-doc',
   'max-w-steps',
   'max-w-audit', 'duration-fast',
-  'p-compose', 'rounded-tick-nested',
-  'w-tick-glyph-nested', 'h-tick-glyph-nested',
+  'p-compose',
   'py-tick-nested-y', 'py-dropdown-y-dialog',
   'py-dropdown-y-filter', 'px-dropdown-x-filter',
   'my-stat-grid',
@@ -1605,7 +1616,10 @@ const UNPAINTED: string[] = [
  * back without needing this edit.
  * ---------------------------------------------------------------------------
  */
-// LOWERED 2026-08-19 by Task 25 to 129, the exact length of the list below.
+// LOWERED 2026-08-19 by owner ruling R36 to 124: the nested tick rung got five
+// consumers at once (see the note beside them in the list below), so the number
+// follows the lines off it rather than keeping their room. Before that, LOWERED
+// 2026-08-19 by Task 25 to 129, the exact length of the list below.
 // Two lines came off in this pass — `rounded-sheet` when the matcher learned Tailwind's
 // side variants, `gap-table-row-mobile` when DataTable stopped writing `gap-[11px]` —
 // so the ceiling follows them down. A task that lands consumers must take the ceiling
@@ -1621,7 +1635,7 @@ const UNPAINTED: string[] = [
 // Note for the record: 6be6662's message claimed a drop to 165 that never applied; the
 // value stayed at 239 until the commit before this one. The ratchet was looser than it
 // read, twice.
-const CEILING = 129
+const CEILING = 124
 
 describe('Owner ruling R11 — a named utility has a component that uses it', () => {
   it('reads a real, sizeable set of component files — tests AND test helpers excluded', () => {
@@ -1806,10 +1820,12 @@ describe('Owner ruling R11 — a named utility has a component that uses it', ()
     const UNPAINTED_BECAUSE: { why: string; match: RegExp }[] = [
       { // F16 freezes `src/flow/`, and what is frozen there writes hex literals
         // and Tailwind's own palette — it never reached for these names. The
-        // junction fills, the two department numerals and the nested tick are
-        // the flowchart's own furniture.
+        // junction fills and the two department numerals are the flowchart's
+        // own furniture. `tick-(glyph-)?nested` used to be here too and is not
+        // any more: owner ruling R36 gave the nested tick rung two consumers in
+        // this app, so those five names left the list entirely.
         why: 'the flowchart, frozen by F16',
-        match: /^bg-junction-|^bg-dept-numeral-|tick-(glyph-)?nested/,
+        match: /^bg-junction-|^bg-dept-numeral-/,
       },
       { // `ui/export/**` is off-limits to this repo (ARD §2.1): the standalone
         // HTML document the engine emits is where the doc type scale and the
@@ -1845,6 +1861,13 @@ describe('Owner ruling R11 — a named utility has a component that uses it', ()
           '|^(p|gap)-topbar$|^p-s(2|3|14|16)$|^(w|h)-(avatar|logo-bar)$',
           '|^max-w-(doc|steps|audit)$|^duration-(fast|row)$|^p-compose$',
           '|^p[xy]?-dropdown-|^my-stat-grid$|^gap-tab-flow$',
+          // The nested OPTION's own `padding:11px 12px`. Owner ruling R36 gave
+          // the nested tick BOX consumers, and this is not that: ScopePicker's
+          // nested view menu draws `Checkbox`, whose row carries
+          // `py-tick-row-y`, so the option padding is still a rung nothing has
+          // reached. It used to be explained by the flowchart family's
+          // `tick-(glyph-)?nested`, which was never the right reason for it.
+          '|^py-tick-nested-y$',
         ].join('')),
       },
     ]
@@ -1867,7 +1890,7 @@ describe('Owner ruling R11 — a named utility has a component that uses it', ()
     // Both halves of the census the docstring states, so a line that moves
     // between buckets is visible rather than absorbed.
     expect(buckets.filter((b) => b.spelling).length).toBe(40)
-    expect(buckets.filter((b) => !b.spelling).length).toBe(89)
+    expect(buckets.filter((b) => !b.spelling).length).toBe(84)
 
     // A family that stops covering anything is an argument nobody is paying
     // for, and the next name added beside it inherits the same absence of

@@ -391,21 +391,36 @@ describe('the harness itself', () => {
    two states is the only thing spelled out twice.
    --------------------------------------------------------------------------- */
 
-/** The tick square, in whichever of its two states — §5.2, ledger L-10. */
-const TICK_BOX = {
+/**
+ * The tick square at one rung of the ladder — §5.2, ledger L-10, owner ruling
+ * R36. The box and the radius are the only things a rung changes; everything
+ * else about the square is the same at all four.
+ */
+const tickBox = (size: string, radius: string) => ({
   display: 'inline-flex',
-  width: 'var(--size-tick)',
-  height: 'var(--size-tick)',
+  width: `var(${size})`,
+  height: `var(${size})`,
   flex: 'none',
   'align-items': 'center',
   'justify-content': 'center',
-  'border-radius': 'var(--radius-tick)',
+  'border-radius': `var(${radius})`,
   'border-width': 'var(--border-hairline)',
   // White check on whichever fill; a tick the colour of its own box is invisible.
   color: 'var(--card)',
-}
-const TICK_ON = { ...TICK_BOX, 'background-color': 'var(--violet)', 'border-color': 'var(--violet)' }
-const TICK_OFF = { ...TICK_BOX, 'background-color': 'var(--card)', 'border-color': 'var(--border-pick)' }
+})
+const ticked = (box: Record<string, string>) =>
+  ({ ...box, 'background-color': 'var(--violet)', 'border-color': 'var(--violet)' })
+const unticked = (box: Record<string, string>) =>
+  ({ ...box, 'background-color': 'var(--card)', 'border-color': 'var(--border-pick)' })
+
+/** What `Checkbox` draws: its row IS the design's form field (panel 1344, 1356). */
+const TICK_BOX = tickBox('--size-tick-field', '--radius-tick')
+const TICK_ON = ticked(TICK_BOX)
+const TICK_OFF = unticked(TICK_BOX)
+
+/** What a dropdown option draws — the tick nested inside another option (panel 1386). */
+const OPTION_TICK_ON = ticked(tickBox('--size-tick-nested', '--radius-tick-nested'))
+const OPTION_TICK_OFF = unticked(tickBox('--size-tick-nested', '--radius-tick-nested'))
 
 /** The checkbox row — `gap:11px; padding:13px 14px; radius 12` (§5.2). */
 const CHECKBOX_ROW = {
@@ -591,9 +606,9 @@ describe('Checkbox', () => {
     const dark = on('panel', <Checkbox label="کل سامانه" checked={false} onChange={() => {}} />)
     expect(await styles(tickOf(dark.container))).toEqual(TICK_OFF)
     dark.unmount()
-    // …and TickBox on its own paints the same thing, since the dropdown's
-    // multi-select options draw this and not a fourth copy.
-    const bare = on('panel', <TickBox on />)
+    // …and TickBox on its own paints the same thing at the same rung, since the
+    // screens that place a bare tick draw this and not a fourth copy.
+    const bare = on('panel', <TickBox on rung="field" />)
     expect(await styles(bare.container.querySelector('[data-tick]')!)).toEqual(TICK_ON)
   })
 
@@ -637,21 +652,23 @@ describe('Checkbox', () => {
     ])
   })
 
-  it('draws the 19px box ledger L-10 names, with the 13px check inside it', async () => {
+  it('draws the 18px box its own row is drawn at, with the 12px check inside it', async () => {
     const { container } = on('panel', <Checkbox label="کل سامانه" checked onChange={() => {}} />)
     const tick = tickOf(container)
-    // L-10 settled 19, not 18; §"Iconography" gives the check in a 12–13px box
-    // stroke 3. The declarations above name the tokens; these are what the
-    // tokens are worth.
-    expect(tokenLiteral('--size-tick')).toBe('19px')
+    // Owner ruling R36 reversed L-10's provisional normalisation. `Checkbox`'s
+    // ROW is `gap:11px; padding:13px 14px; radius 12` and the design draws that
+    // row exactly twice — the supervisor flag (panel 1344) and «کل سامانه»
+    // (panel 1356) — with an 18px tick in both. The declarations above name the
+    // tokens; these are what the tokens are worth.
+    expect(tokenLiteral('--size-tick-field')).toBe('18px')
     expect(tokenLiteral('--radius-tick')).toBe('6px')
     expect(tokenLiteral('--border-hairline')).toBe('1.5px')
 
     const glyph = tick.querySelector('svg') as SVGElement
     expect(await styles(glyph)).toEqual({
-      width: 'var(--size-tick-glyph)', height: 'var(--size-tick-glyph)',
+      width: 'var(--size-tick-glyph-field)', height: 'var(--size-tick-glyph-field)',
     })
-    expect(tokenLiteral('--size-tick-glyph')).toBe('13px')
+    expect(tokenLiteral('--size-tick-glyph-field')).toBe('12px')
     expect(glyph.getAttribute('stroke-width')).toBe('3')
     // Sized by the token, never by an SVG attribute — an attribute is a second
     // record of a number the token layer already holds.
@@ -660,8 +677,65 @@ describe('Checkbox', () => {
     // string, a snapshot or a build.
     expect(glyph.querySelector('path')?.getAttribute('d')).toBe('M20 6L9 17l-5-5')
     // And the unchecked box draws nothing at all inside itself.
-    const off = on('panel', <TickBox on={false} />)
+    const off = on('panel', <TickBox on={false} rung="field" />)
     expect(off.container.querySelector('svg')).toBeNull()
+  })
+
+  /*
+   * Owner ruling R36, in one table: each row is a rung of the design's ladder,
+   * the design line that draws it, the box, the radius and the check inside it.
+   *
+   * One `it` per rung rather than one loop inside one `it`: each rung costs
+   * three Tailwind compiles and four of them in a single test ran past the 5s
+   * per-test budget under whole-suite contention. Four tests also name the rung
+   * that failed in the report line rather than in an assertion message.
+   */
+  const RUNGS = [
+    // rung      design    box                    radius                   check                       stroke
+    ['row',    '1764', '--size-tick',        '--radius-tick',        '--size-tick-glyph',        '3'],
+    ['field',  '1344', '--size-tick-field',  '--radius-tick',        '--size-tick-glyph-field',  '3'],
+    ['scope',  '1369', '--size-tick-scope',  '--radius-tick',        '--size-tick-glyph-nested', '3.2'],
+    ['nested', '1386', '--size-tick-nested', '--radius-tick-nested', '--size-tick-glyph-nested', '3.2'],
+  ] as const
+  const PX = { row: '19px', field: '18px', scope: '17px', nested: '16px' }
+  const RADIUS_PX = { row: '6px', field: '6px', scope: '6px', nested: '5px' }
+  const GLYPH_PX = { row: '13px', field: '12px', scope: '11px', nested: '11px' }
+
+  for (const [rung, line, box, radius, check, stroke] of RUNGS) {
+    it(`owner ruling R36 — draws the \`${rung}\` rung the design draws at panel ${line}`, async () => {
+      // Compiled CSS on both halves. `toHaveClass` would pass on a misspelt
+      // name that emits nothing, and a rung whose box is right and whose radius
+      // came from the neighbouring rung is exactly the mistake a ladder invites.
+      //
+      // The radius does NOT track the size — 19, 18 and 17 are all drawn at 6
+      // and only 16 at 5 — so each is read off the design at its own site
+      // rather than interpolated between the two rungs that were already known.
+      const r = on('panel', <TickBox on rung={rung} />)
+      const el = r.container.querySelector('[data-tick]') as HTMLElement
+      expect(await styles(el)).toEqual(ticked(tickBox(box, radius)))
+      expect(tokenLiteral(box)).toBe(PX[rung])
+      expect(tokenLiteral(radius)).toBe(RADIUS_PX[rung])
+      expect(el.getAttribute('data-rung')).toBe(rung)
+
+      const glyph = r.container.querySelector('svg') as SVGElement
+      expect(await styles(glyph)).toEqual({ width: `var(${check})`, height: `var(${check})` })
+      expect(tokenLiteral(check)).toBe(GLYPH_PX[rung])
+      expect(glyph.getAttribute('stroke-width')).toBe(stroke)
+    })
+  }
+
+  it('owner ruling R36 — writes no dead class at any rung, and the four boxes are four', async () => {
+    // The half a declaration snapshot cannot do, run at every rung rather than
+    // at whichever one happened to be the default.
+    for (const [rung] of RUNGS) {
+      const r = on('panel', <TickBox on rung={rung} />)
+      const el = r.container.querySelector('[data-tick]') as HTMLElement
+      expect(await dead(classStringOf(el)), rung).toEqual([])
+      r.unmount()
+    }
+    // Four DISTINCT boxes, which is the whole of what the owner ruled: a mint
+    // that gave two rungs one token would satisfy every assertion above.
+    expect(new Set(RUNGS.map(([, , box]) => tokenLiteral(box))).size).toBe(4)
   })
 
   it('is the row the design draws — gap 11, padding 13/14, radius 12', async () => {
@@ -1529,7 +1603,7 @@ describe('Dropdown', () => {
     })
   })
 
-  it('multi-selects with the same tick the checkbox draws, and FILLS the ticked ones', async () => {
+  it('multi-selects with the NESTED tick, and FILLS the ticked ones', async () => {
     const seen: string[] = []
     on('panel', (
       <Dropdown
@@ -1545,10 +1619,12 @@ describe('Dropdown', () => {
     // Counting the ticks proved only that three spans exist. `on={false}` on
     // every one of them is a multi-select where nothing you tick ever fills,
     // and it passed the count.
+    // …and at the rung the design draws for an option inside a popover: 16px
+    // at radius 5 (panel 1386), not the 19px row this component used to borrow.
     const tickIn = (name: string) => tickOf(screen.getByRole('option', { name }))
-    expect(await styles(tickIn('خواننده'))).toEqual(TICK_ON)
-    expect(await styles(tickIn('مدیر'))).toEqual(TICK_ON)
-    expect(await styles(tickIn('ادیتور'))).toEqual(TICK_OFF)
+    expect(await styles(tickIn('خواننده'))).toEqual(OPTION_TICK_ON)
+    expect(await styles(tickIn('مدیر'))).toEqual(OPTION_TICK_ON)
+    expect(await styles(tickIn('ادیتور'))).toEqual(OPTION_TICK_OFF)
     // …and the fill is the CHECK, not just the box.
     expect(tickIn('خواننده').querySelector('svg')).toBeTruthy()
     expect(tickIn('ادیتور').querySelector('svg')).toBeNull()

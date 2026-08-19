@@ -202,7 +202,7 @@ export function Visibility() {
                         already carries ledger L-48's violet fill and L-09's
                         `--border-pick` off-border — would be exactly the F6
                         defect this screen exists to remove. */}
-                    <TickBox on={on} className="peer-focus-visible:border-coral" />
+                    <TickBox on={on} rung="row" className="peer-focus-visible:border-coral" />
                     <span className="flex-1 min-w-0">
                       <span className="block text-fs-menu font-bold text-ink">{label}</span>
                       <span id={`vis-hint-${field}`}

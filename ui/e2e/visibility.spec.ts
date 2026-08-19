@@ -55,9 +55,17 @@ test('policy — one card, 19px ticks, a word on the left', async ({ page }) => 
   // policy row's own one-off `#DCD3EC` variant, which is what the deliverable
   // actually drew here. `TickBox` (Task 8) paints every unchecked tick in the
   // app from the one token, and this row is not a second exception to it.
+  //
+  // 19 is the `row` rung under owner ruling R36, which kept all four of the
+  // design's tick sizes rather than normalising them to two: this row is panel
+  // 1764, and `[data-rung]` says so on the element. The other three rungs are
+  // measured together in `e2e/user-dialog.spec.ts`, where the design draws them
+  // in one open dialog.
   const tick = page.getByTestId('tick').first()
+  await expect(tick).toHaveAttribute('data-rung', 'row')
   await expect(tick).toHaveCSS('width', '19px')
   await expect(tick).toHaveCSS('height', '19px')
+  await expect(tick).toHaveCSS('border-radius', '6px')
   await expect(tick).toHaveCSS('border-color', 'rgb(201, 184, 236)')   // --border-pick
 
   const row = page.getByRole('listitem', { name: 'مسئول فعالیت' })
