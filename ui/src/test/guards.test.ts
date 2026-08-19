@@ -153,6 +153,15 @@ describe('F10 — RTL is structural', () => {
       'src/screens/Profile.tsx',
       'src/screens/Users.tsx',
       'src/screens/UserDetail.tsx',
+      // `src/screens/ProcessList.tsx` is deliberately NOT here, and the absence
+      // is the finding rather than an omission: that screen used to pin the
+      // direction twice — once on its scrolling region, once back on the single
+      // child somebody remembered — and it now pins it nowhere. §8's intent
+      // moved into `[data-r-pad]{direction:ltr}` / `[data-r-pad] > *{direction:
+      // rtl}` in `src/styles/base.css`, where the rule reaches every child
+      // instead, so the five re-pins under `src/write/` that existed to undo the
+      // second half have nothing left to undo. Anyone re-adding the attribute to
+      // that file has re-opened O1 and must not add a line here to quiet this.
     ]
     const hits = files()
       .filter((f) => !ISLANDS.includes(f.rel))

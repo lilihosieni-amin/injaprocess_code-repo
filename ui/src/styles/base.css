@@ -37,4 +37,25 @@
     background-clip: content-box;
   }
   ::-webkit-scrollbar-thumb:hover { background: var(--violet); }
+
+  /* §8 — the scroll-direction workaround, verbatim from S1's <style> block.
+     Every scrolling container is flipped to `ltr` so its scrollbar sits on the
+     right, and its immediate children are flipped straight back to `rtl`. This
+     is deliberate: the design wants RTL text with a right-hand scrollbar.
+
+     A stylesheet rule and not two attributes on two hand-picked elements,
+     because the attribute form only flipped back the one child somebody
+     remembered — every dialog that mounted in the same container stayed LTR and
+     had to re-pin itself, which is the workaround `write/CreateProcessModal`,
+     `DeleteProcessConfirm`, `ReorderModal`, `ExportModal` and `ExportMenu` each
+     carry a comment about. (The attribute is not spelled out in this comment
+     for the reason `src/shell/crumbs.ts`'s docstring does not spell it either:
+     guards.test.ts's island scan reads a comment exactly as it reads code, so a
+     file that merely DESCRIBES an island would have to be declared as one.)
+
+     `> *` and not a descendant selector: the second rule has to reach every
+     immediate child and stop there, or it would flip a genuine latin island
+     (`IdBadge`, a mono process id) back out of `ltr` several levels down. */
+  [data-r-pad] { direction: ltr; }
+  [data-r-pad] > * { direction: rtl; }
 }
