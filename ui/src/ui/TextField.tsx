@@ -25,6 +25,26 @@ export interface TextFieldProps {
   /** §8 — a latin island: username, process id, IP. Pins LTR and sets mono. */
   ltr?: boolean
   /**
+   * The direction of the VALUE, when it is not the document's and the value is
+   * not a latin island.
+   *
+   * `ltr` above already pins the direction, so this exists for the one case
+   * that is left-to-right WITHOUT being latin: the sign-in screen's mobile
+   * number, which the design draws in the sans face with a Persian-digit
+   * placeholder. Widening `ltr` to cover it would have set that field in
+   * --font-mono, a stack with no Persian glyphs — two different claims behind
+   * one prop, which is the split this second name exists to keep apart.
+   * Explicit wins; `ltr` supplies the default.
+   */
+  dir?: 'ltr' | 'rtl'
+  /**
+   * Which soft keyboard a phone offers. It is not derivable from `type`: a
+   * mobile number is `type="tel"`, whose keypad carries `+`, `*` and `#` — and
+   * `numeric` is what asks for the bare digit pad this product's one canonical
+   * spelling needs.
+   */
+  inputMode?: 'text' | 'numeric' | 'tel' | 'decimal' | 'email' | 'url' | 'search'
+  /**
    * §1.2 — the ground the control sits on. Defaults to the card, except for a
    * textarea, which the design always draws on the sub-panel surface. A caller
    * inside a sub-panel (the reader's profile block, a dialog's tinted section)
@@ -53,8 +73,8 @@ export interface TextFieldProps {
  */
 export function TextField({
   label, value, onChange, hint, invalid = false, multiline = false, rows = 3,
-  type = 'text', ltr = false, ground, placeholder, autoComplete, disabled = false,
-  required = false, name, id: given, className = '',
+  type = 'text', ltr = false, dir, inputMode, ground, placeholder, autoComplete,
+  disabled = false, required = false, name, id: given, className = '',
 }: TextFieldProps) {
   const auto = useId()
   const id = given ?? auto
@@ -66,6 +86,9 @@ export function TextField({
   // input. The first cut applied this to the input branch only and silently
   // discarded `ltr` on the other, which is a prop that lies about what it did.
   const island = ltr ? 'font-mono' : ''
+  // One expression, computed once, so the two branches below cannot come to
+  // disagree about the direction of the same value.
+  const writing = dir ?? (ltr ? 'ltr' : undefined)
 
   return (
     <div className={className}>
@@ -74,7 +97,7 @@ export function TextField({
         <textarea
           id={id} name={name} value={value} rows={rows} required={required}
           disabled={disabled} placeholder={placeholder}
-          dir={ltr ? 'ltr' : undefined}
+          dir={writing}
           aria-invalid={invalid || undefined}
           aria-describedby={hint === undefined ? undefined : hintId}
           onChange={(e) => onChange(e.target.value)}
@@ -84,7 +107,8 @@ export function TextField({
         <input
           id={id} name={name} value={value} type={type} required={required}
           disabled={disabled} placeholder={placeholder} autoComplete={autoComplete}
-          dir={ltr ? 'ltr' : undefined}
+          inputMode={inputMode}
+          dir={writing}
           aria-invalid={invalid || undefined}
           aria-describedby={hint === undefined ? undefined : hintId}
           onChange={(e) => onChange(e.target.value)}

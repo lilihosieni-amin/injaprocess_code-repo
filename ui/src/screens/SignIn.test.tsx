@@ -30,6 +30,23 @@ describe('SignIn', () => {
     expect(field).toHaveAttribute('autoComplete', 'username')
   })
 
+  it('runs the number left-to-right without setting it in the mono face', () => {
+    // §8's `ltr` prop on TextField means "a latin island": it pins the
+    // direction AND swaps to --font-mono. This field is the first case that is
+    // one without the other. The DS Login's own Input writes
+    // `fontFamily: var(--font-sans)`, and the placeholder here is «۰۹۱۲۳۴۵۶۷۸۹»
+    // — Persian digits, which the mono stack (SF Mono, Menlo, Consolas) has no
+    // glyphs for and would render from a fallback face at a different size.
+    // Asserted as the absence of a class, which is the only form jsdom can
+    // carry: `font-mono` written here is a string that would reach the
+    // stylesheet, and its absence is the claim being made.
+    const Wrapper = createWrapper()
+    render(<Wrapper><SignIn /></Wrapper>)
+    const field = screen.getByLabelText('شمارهٔ موبایل')
+    expect(field).toHaveAttribute('dir', 'ltr')
+    expect(field.className).not.toContain('font-mono')
+  })
+
   it('masks the password', () => {
     // type="text" here puts someone's password on screen in a shared kitchen,
     // and nothing else in the suite would notice: every other assertion in this
@@ -180,7 +197,16 @@ describe('SignIn', () => {
     await userEvent.type(screen.getByLabelText('شمارهٔ موبایل'), '09123456789')
     await userEvent.type(screen.getByLabelText('گذرواژه'), 'sixchars')
     await userEvent.click(screen.getByRole('button', { name: 'ورود' }))
-    expect(screen.getByRole('button')).toBeDisabled()
+    // Named, because the password field now carries its own reveal toggle and a
+    // bare getByRole('button') would find two.
+    //
+    // Named by the LOADING label and not by «ورود»: Button swaps its children
+    // for `loadingLabel` while a request is in flight, so the accessible name
+    // of the control this test is about is «در حال ورود…» for exactly as long
+    // as the state it asserts lasts. Asking for «ورود» finds nothing — which is
+    // also the only assertion in the suite that would notice `loadingLabel`
+    // being dropped, leaving a button that goes silently dead under the cursor.
+    expect(screen.getByRole('button', { name: 'در حال ورود…' })).toBeDisabled()
     release(new Response('{}', { status: 200 }))
   })
 
@@ -197,5 +223,73 @@ describe('SignIn', () => {
     const field = screen.getByLabelText('شمارهٔ موبایل')
     const cap = field.getAttribute('maxLength')
     expect(cap === null || Number(cap) >= 18).toBe(true)
+  })
+})
+
+describe('the brand lockup the design specifies and the app has never drawn', () => {
+  it('draws the one raster the product ships', () => {
+    const Wrapper = createWrapper()
+    render(<Wrapper><SignIn /></Wrapper>)
+    const logo = screen.getByRole('img', { name: 'اینجا فست‌فود' })
+    expect(logo).toHaveAttribute('src')
+    expect(logo.className).toContain('w-logo-login')     // --size-logo-login: 76px
+    expect(logo.className).toContain('rounded-feature')  // 20px
+    expect(logo.className).toContain('object-cover')
+  })
+
+  it('carries the two-line brand beneath it', () => {
+    const Wrapper = createWrapper()
+    render(<Wrapper><SignIn /></Wrapper>)
+    expect(screen.getByText('اینجا فست‌فود')).toBeInTheDocument()
+    expect(screen.getByText('سامانهٔ مستندسازی فرآیندها')).toBeInTheDocument()
+  })
+
+  it('is a dialog-scale panel, not a 920px list', () => {
+    // O10 — `max-w-list` is --width-list, 920px: a login card almost a metre
+    // wide on a desktop monitor, holding two inputs.
+    const { container } = render(<>{createWrapper()({ children: <SignIn /> })}</>)
+    const card = container.querySelector('form')!
+    expect(card.className).toContain('w-login')          // 380px
+    expect(card.className).toContain('rounded-panel')    // 24px
+    expect(card.className).not.toContain('max-w-list')
+  })
+
+  it('sets the two fields apart by the design\'s own 16px', () => {
+    // Not in the task brief, and the brief's JSX is wrong without it. The DS
+    // Login gives every `Input` `marginBottom: 16`; the brief replaces those
+    // inputs with `TextField`/`PasswordField` inside a `<form>` that sets no
+    // gap, which leaves the number box and the password box sharing an edge —
+    // one 1.5px line between two controls, read as a single divided control.
+    //
+    // The class lands on the field WRAPPER (TextField's own root div), which is
+    // why it is asserted on the input's parent chain rather than on the input:
+    // `mb-s8` on the <input> itself would be inside the border and would move
+    // nothing. jsdom carries no layout, so this asserts the class string only;
+    // the 16px it resolves to is `--space-8`, and what a browser makes of it is
+    // the screenshot's business.
+    const Wrapper = createWrapper()
+    const { container } = render(<Wrapper><SignIn /></Wrapper>)
+    const form = container.querySelector('form')!
+    const number = screen.getByLabelText('شمارهٔ موبایل')
+    const password = screen.getByLabelText('گذرواژه')
+    const fieldOf = (el: Element) => {
+      let n: Element | null = el
+      while (n && n.parentElement !== form) n = n.parentElement
+      return n!
+    }
+    expect(fieldOf(number).className).toContain('mb-s8')
+    expect(fieldOf(password).className).toContain('mb-s8')
+  })
+
+  it('gives its field labels the brand violet', () => {
+    // The visual audit's finding 6: every label in the app collapsed into the
+    // muted 11px/700 section-caption register, so nothing led the eye down a
+    // form. The DS Login's Label is 12.5px/600 --violet.
+    const Wrapper = createWrapper()
+    render(<Wrapper><SignIn /></Wrapper>)
+    const label = screen.getByText('شمارهٔ موبایل')
+    expect(label.className).toContain('text-violet')
+    expect(label.className).toContain('font-semibold')
+    expect(label.className).toContain('text-fs-sm2')
   })
 })

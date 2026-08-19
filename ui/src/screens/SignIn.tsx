@@ -1,10 +1,12 @@
 import { useId, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '../ui/Button'
-import { Card } from '../ui/Card'
+import { TextField } from '../ui/TextField'
+import { PasswordField } from '../ui/PasswordField'
 import { normalisePhone } from '../lib/digits'
 import { useLogin } from '../api/hooks'
 import { ApiError } from '../api/client'
+import injaLogo from '../assets/inja-logo.jpg'
 
 const MIN_PASSWORD = 6
 // The server's twin of this is phone.USERNAME_RE. Checked here as well because
@@ -52,58 +54,64 @@ export function SignIn() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-login-bg p-6">
-      <Card className="w-full max-w-list p-8">
-        <h1 className="text-title font-extrabold text-ink m-0">ورود به سامانه</h1>
+    <div data-screen="signIn" className="min-h-screen relative flex items-center justify-center overflow-hidden bg-login-bg p-s10">
+      <span aria-hidden className="login-orb-a" />
+      <span aria-hidden className="login-orb-b" />
 
-        <form onSubmit={onSubmit} className="mt-6 flex flex-col gap-4">
-          <div className="flex flex-col gap-1">
-            <label htmlFor={numberId} className="text-caption font-bold text-muted">
-              شمارهٔ موبایل
-            </label>
-            <input
-              id={numberId}
-              type="tel"
-              inputMode="numeric"
-              autoComplete="username"
-              dir="ltr"
-              // No maxLength. normalisePhone accepts nine spellings — five of
-              // them, including '+98 0912 345 6789' and '(0912) 3456789', are
-              // longer than a canonical number. Truncating one does not reject
-              // it, it silently makes a DIFFERENT number, and D56's identical
-              // 401 then tells the person only that something was wrong while
-              // they look at a correctly-typed phone. USERNAME_RE is what says
-              // no, after normalisation, where the answer can be honest.
-              value={number}
-              onChange={(e) => setNumber(e.target.value)}
-              className="min-h-touch px-4 rounded-control border border-line bg-card text-body text-ink"
-            />
+      <form onSubmit={onSubmit} className="relative w-login max-w-full bg-bg rounded-panel p-s12 shadow-modal">
+        <div className="flex flex-col items-center gap-s7 mb-s10">
+          <img src={injaLogo} alt="اینجا فست‌فود"
+            className="w-logo-login h-logo-login rounded-feature object-cover" />
+          <div className="text-center">
+            <div className="font-extrabold text-fs-h3 text-ink">اینجا فست‌فود</div>
+            <div className="text-fs-sm2 text-muted mt-s1">سامانهٔ مستندسازی فرآیندها</div>
           </div>
+        </div>
 
-          <div className="flex flex-col gap-1">
-            <label htmlFor={passwordId} className="text-caption font-bold text-muted">
-              گذرواژه
-            </label>
-            <input
-              id={passwordId}
-              type="password"
-              autoComplete="current-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="min-h-touch px-4 rounded-control border border-line bg-card text-body text-ink"
-            />
-          </div>
+        {/* `mb-s8` on each field, and it is the design's own number rather than a
+            margin picked to taste: the DS Login gives every Input
+            `marginBottom:16`, and the two fields are otherwise flush — two
+            boxes sharing an edge, which reads as one control with a line
+            through it. It also sets the distance to the submit exactly, since
+            16 + the button's own `mt-s4` is the 24 the DS draws there. */}
+        <TextField
+          id={numberId}
+          label="شمارهٔ موبایل"
+          type="tel"
+          inputMode="numeric"
+          autoComplete="username"
+          dir="ltr"
+          placeholder="۰۹۱۲۳۴۵۶۷۸۹"
+          // No maxLength. normalisePhone accepts nine spellings — five of them,
+          // including '+98 0912 345 6789' and '(0912) 3456789', are longer than
+          // a canonical number. Truncating one does not reject it, it silently
+          // makes a DIFFERENT number, and D56's identical 401 then tells the
+          // person only that something was wrong while they look at a
+          // correctly-typed phone. USERNAME_RE is what says no, after
+          // normalisation, where the answer can be honest.
+          value={number}
+          onChange={setNumber}
+          className="mb-s8"
+        />
 
-          {error && (
-            <p role="alert" className="text-body text-conflict m-0">{error}</p>
-          )}
+        <PasswordField
+          id={passwordId}
+          label="گذرواژه"
+          autoComplete="current-password"
+          placeholder="گذرواژه را بنویسید"
+          value={password}
+          onChange={setPassword}
+          className="mb-s8"
+        />
 
-          <Button type="submit" variant="violet" className="px-4"
-                  loading={login.isPending} loadingLabel="در حال ورود…">
-            ورود
-          </Button>
-        </form>
-      </Card>
+        {error && <p role="alert" className="text-fs-sm2 text-conflict mt-s4 mb-s4">{error}</p>}
+
+        <Button type="submit" variant="coral" block
+          loading={login.isPending} loadingLabel="در حال ورود…"
+          className="mt-s4 py-s7 px-s9 text-fs-body">
+          ورود
+        </Button>
+      </form>
     </div>
   )
 }

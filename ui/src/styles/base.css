@@ -58,4 +58,16 @@
      (`IdBadge`, a mono process id) back out of `ltr` several levels down. */
   [data-r-pad] { direction: ltr; }
   [data-r-pad] > * { direction: rtl; }
+
+  /* The login field. `--login-orb` has been defined, exposed and unused since the
+     theme was written: the DS's Login.jsx paints two solid circles at 50–55%
+     opacity on flat --login-bg, and the readme is explicit that the depth comes
+     from those, "not a gradient" (there are no gradients anywhere in this
+     product). Written here rather than as utilities because the geometry is four
+     negative physical offsets on two decorative circles — a circle mirrors to
+     itself, so nothing here is an RTL bug waiting to happen. */
+  .login-orb-a,
+  .login-orb-b { position: absolute; border-radius: 50%; background: var(--login-orb); pointer-events: none; }
+  .login-orb-a { width: 420px; height: 420px; opacity: .55; top: -140px; left: -110px; }
+  .login-orb-b { width: 300px; height: 300px; opacity: .5;  bottom: -120px; right: -90px; }
 }
