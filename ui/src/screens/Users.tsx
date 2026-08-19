@@ -1,19 +1,20 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { useSession } from '../auth/useSession'
 import { administrationRefusal } from '../auth/can'
+import { useDepartments } from '../api/hooks'
 import { useUsers } from '../api/users'
 import { refusalStatus } from '../api/client'
-import { toLatinDigits } from '../lib/digits'
-import { toFa } from '../lib/format'
-import { roleLabel } from '../lib/roles'
+import { roleLabel, roleTone } from '../lib/roles'
+import { scopesLabel } from '../lib/scopes'
 import { Button } from '../ui/Button'
-import { Card } from '../ui/Card'
-import { SearchField } from '../ui/SearchField'
-import { StatusPill } from '../ui/StatusPill'
-import { EmptyState, LoadFailedScreen, LoadingState } from '../ui/states'
+import { DataTable, type TemplatedColumn } from '../ui/DataTable'
+import { Icon } from '../ui/Icon'
+import { LoadFailedScreen, LoadingState } from '../ui/states'
 import { NewUserDialog } from './NewUserDialog'
 import { RefusalScreen } from './Refusal'
+import { UsersFilters } from './UsersFilters'
+import { NO_FILTERS, matches, type UserFilters } from './usersFilter'
 import type { AdminUser } from '../api/users'
 
 /** What D14 surfaces instead of repointing. Written once and used on both
@@ -31,6 +32,16 @@ export const SUPERVISOR_GONE = 'سرپرست این کاربر غیرفعال ا
  * typing the path — exactly the case a gate that lives in the header alone does
  * not cover. Cosmetic either way: every endpoint re-derives both halves (D48).
  *
+ * **Nothing below the gate is fetched above it.** FR-A11/AC-24 says a reader is
+ * shown no user list at all, and NFR-12 says withheld data is never sent and
+ * then hidden — so the refusal is not a render-time filter but an early return
+ * over a query that never fires (`useUsers`'s `enabled`). The department
+ * registry has the same rule and needs a component of its own to obey it:
+ * hooks run before every early return, so a `useDepartments()` in this function
+ * body would put an `/api/departments` in the network log of a caller the app
+ * is about to answer «چیزی اینجا نیست». `UsersBody` is where it lives instead,
+ * and it is mounted only past the gate.
+ *
  * **The search is over what is on screen, and over the number as it is stored.**
  * Ordinary Persian keyboards emit ۰۹…, the stored username is ASCII (D57), and
  * an unfolded query matches nothing while looking exactly like "no such person".
@@ -38,6 +49,13 @@ export const SUPERVISOR_GONE = 'سرپرست این کاربر غیرفعال ا
  * The order is the server's — by `username`, because display names are not
  * unique and ordering by one would leave ties to the query plan and move rows
  * between two identical requests. Nothing is re-sorted here.
+ *
+ * **The screen carries no subtitle**, and the empty slot is the design's own:
+ * `Inja Panel.dc.html:1187` draws the «کاربران» title followed by an empty
+ * `<div>` where every other panel screen carries a sentence. The copy does not
+ * exist in the deliverable and cannot be inferred from it, so nothing is
+ * invented here — it is referred to the owner, and it is why this screen has no
+ * `DESIGN` row in `e2e/_harness.ts` (`ScreenDesign.body` is required).
  */
 export function Users() {
   const session = useSession().data
@@ -45,7 +63,6 @@ export function Users() {
   const { data, error, isPending, refetch } = useUsers({
     enabled: !!session && refusal === undefined,
   })
-  const [q, setQ] = useState('')
   const [creating, setCreating] = useState(false)
 
   // Hooks first, then the early returns: an early return above them would change
@@ -65,119 +82,154 @@ export function Users() {
       onRetry={() => { void refetch() }} />
   }
 
-  const users = data ?? []
-  const query = q.trim()
-  const digits = toLatinDigits(query)
-  // The placeholder promises «نام، شماره یا نقش», and the role is now drawn in
-  // Persian — so both spellings match: the label somebody can read off the row,
-  // and the identifier an administrator who knows the seeded names would type.
-  // Dropping the identifier would break a search that used to work; dropping the
-  // label would promise a search over text nobody can find.
-  const list = users.filter((u) =>
-    !query
-    || u.displayName.includes(query)
-    || u.username.includes(digits)
-    || (u.role ?? '').includes(query)
-    || roleLabel(u.role).includes(query))
-
   return (
-    <div className="flex-1 overflow-auto py-s12 px-s12">
-      <div className="max-w-list mx-auto">
-        <div className="flex items-center justify-between gap-s6 flex-wrap">
-          <h1 className="text-title font-extrabold text-ink">کاربران</h1>
-          {/* Below the gate, and that is the whole placement decision: a
+    <div data-screen="users"
+      className="flex-1 overflow-auto py-screen-y px-screen-x max760:px-s7 max760:py-s9">
+      <div data-col className="max-w-list mx-auto">
+        <div className="flex items-end justify-between gap-s8 flex-wrap mb-s10
+                        max760:flex-col max760:items-stretch max760:gap-s6">
+          <h1 data-h1 className="text-title font-extrabold text-role-title-on-field">کاربران</h1>
+          {/* Coral, not violet. §5.2 gives coral to the new/primary-forward
+              role and §6.7 names this button as one; the violet stays for the
+              commit inside the dialog this opens (§6.14). One rule, applied
+              from what the control *is* (R8). Below the gate, so a
               department-scoped caller is answered «چیزی اینجا نیست» above and
-              never reaches this line, so the app never draws a control into a
-              wall it put up itself. */}
-          <Button variant="violet" className="px-s8 text-caption"
+              never reaches a control the app put up a wall in front of. */}
+          <Button variant="coral" className="px-s8 py-s5 text-fs-sm max760:self-start"
             onClick={() => setCreating(true)}>
-            کاربر تازه
+            کاربر جدید
           </Button>
         </div>
-        <p className="text-caption text-muted mt-s4">
-          هر کاربر یک نقش دارد و یک یا چند دامنهٔ دسترسی. سرپرست جایگاهی در نمودار
-          سازمانی است و هیچ دسترسی‌ای نمی‌دهد.
-        </p>
 
         {/* Mounted only while it is open, so the roles and the candidate list
             are not three requests on every page view — and a second opening
             starts blank rather than on the last attempt's half-filled form. */}
         {creating && <NewUserDialog open onClose={() => setCreating(false)} />}
 
-        <div className="mt-s8">
-          <SearchField label="جست‌وجوی کاربر" value={q} onChange={setQ}
-            placeholder="نام، شماره یا نقش" />
-        </div>
-
-        {isPending ? (
-          <div className="mt-s8"><LoadingState /></div>
-        ) : list.length === 0 ? (
-          <div className="mt-s8">
-            <EmptyState
-              title={users.length === 0 ? 'هنوز کاربری ثبت نشده است' : 'کاربری با این مشخصات پیدا نشد'}
-              hint={users.length === 0 ? undefined : 'بخشی از نام، شماره یا نقش را بنویسید.'} />
-          </div>
-        ) : (
-          <>
-            <p className="text-caption text-faint mt-s8">
-              {toFa(list.length)} کاربر از {toFa(users.length)}
-            </p>
-            {/* A list, and marked as one: these rows are a set of peers rather
-                than sections of a document, and a screen reader announcing
-                «فهرست، ۹ مورد» is what tells somebody how long it is before they
-                start down it. */}
-            <ul className="list-none p-0 m-0 flex flex-col gap-s5 mt-s5">
-              {list.map((u) => <UserRow key={u.id} user={u} />)}
-            </ul>
-          </>
-        )}
+        <UsersBody users={data ?? []} isPending={isPending} />
       </div>
     </div>
   )
 }
 
 /**
- * One account's row.
+ * The filter card and the table — everything on this screen that reads the
+ * department registry.
  *
- * Its own component taking the whole `user`, deliberately: every field below is
- * read off the one object the row was handed, so there is no second collection
- * to index into and no way for this row to draw the next row's role. `key` is
- * the account id and never the position — a filtered list re-keyed by index
- * reuses the element that held somebody else.
+ * Its own component for one reason and it is not tidiness: `useDepartments` is
+ * a hook, hooks run before `Users`'s early returns, and a caller who is about
+ * to be refused must ask the server for nothing (NFR-12). Mounted here, the
+ * request happens only for somebody the gate has already let through.
  */
-function UserRow({ user }: { user: AdminUser }) {
+function UsersBody({ users, isPending }: { users: AdminUser[]; isPending: boolean }) {
+  const [q, setQ] = useState('')
+  const [filters, setFilters] = useState<UserFilters>(NO_FILTERS)
+  const navigate = useNavigate()
+  const { data: departments } = useDepartments()
+  const names = Object.fromEntries((departments ?? []).map((d) => [d.code, d.name]))
+  const list = users.filter((u) => matches(u, q, filters))
+
   return (
-    <li>
-      <Link to={`/users/${user.id}`} className="block no-underline">
-        <Card className="px-s9 py-s8 hover:shadow-card-hover transition">
-          <div className="flex items-center gap-s6 flex-wrap">
-            <span className="text-subtitle font-bold text-ink">{user.displayName}</span>
-            <StatusPill tone={user.disabled ? 'neutral' : 'ok'}
-              label={user.disabled ? 'غیرفعال' : 'فعال'} />
-            {/* The number is a latin-digit run inside RTL prose. Pinned `ltr` so
-                a spelling that is not digits alone stays in the order it was
-                stored in. */}
-            <span dir="ltr" className="text-caption text-muted font-mono">{user.username}</span>
-          </div>
-          <div className="flex items-center gap-s6 flex-wrap mt-s4">
-            {/* The role in Persian. It was the only English on the row, on a
-                screen whose search offers «نقش» as something to type. */}
-            <span className="text-caption text-violet font-bold">{roleLabel(user.role)}</span>
-            <span className="text-caption text-muted">
-              {user.supervisor
-                ? `سرپرست: ${user.supervisor.displayName}`
-                : 'بدون سرپرست'}
-            </span>
-          </div>
-          {user.supervisor?.disabled && (
-            // D14 does not repoint subordinates when a supervisor is disabled —
-            // the gap is surfaced instead — so this is the only place anybody
-            // learns that this person's comment approval routes to an account
-            // that can no longer sign in.
-            <p className="text-caption text-warn font-bold mt-s4">{SUPERVISOR_GONE}</p>
-          )}
-        </Card>
-      </Link>
-    </li>
+    <>
+      <UsersFilters q={q} onQ={setQ} filters={filters} onFilters={setFilters}
+        users={users} names={names} count={list.length} total={users.length} />
+
+      {isPending ? <LoadingState /> : (
+        <DataTable
+          label="کاربران"
+          template="users"
+          rows={list}
+          rowKey={(u) => String(u.id)}
+          rowLabel={(u) => u.displayName}
+          onOpen={(u) => navigate(`/users/${u.id}`)}
+          // §6.7 draws ONE empty line, because the design's own fixture is
+          // never empty. `DataTable` takes a string the screen computes, so the
+          // distinction the old screen made survives the rebuild: «nobody is
+          // registered» and «your search matched nobody» are different facts,
+          // and telling an administrator the first when the second is true is a
+          // statement about their installation that this screen cannot know.
+          empty={users.length === 0
+            ? 'هنوز کاربری ثبت نشده است'
+            : 'کاربری با این نام پیدا نشد'}
+          headFill
+          columns={COLUMNS(names)}
+        />
+      )}
+    </>
   )
 }
+
+/**
+ * The six columns of §6.7, in the order and at the sizes the design fixes them:
+ * `16px 1.4fr 1fr 1.1fr 1fr 34px`, which is `--grid-users` and reaches the head
+ * and every row through `template="users"` — the first consumer the three
+ * minted templates have (R11).
+ *
+ * A function of the department registry rather than a constant, because the
+ * department cell is the only one that needs anything the row does not carry —
+ * `AdminUser` holds scopes, and «سالن» is a name the registry supplies.
+ */
+const COLUMNS = (names: Record<string, string>): TemplatedColumn<AdminUser>[] => [
+  {
+    key: 'state', head: '',
+    cell: (u) => (
+      // F11 — the state is a word to a screen reader and a colour to everybody
+      // else, never a colour alone.
+      <span data-testid="state-dot" data-state={u.disabled ? 'disabled' : 'active'}
+        aria-label={u.disabled ? 'غیرفعال' : 'فعال'}
+        className={`block w-dot h-dot rounded-round ${u.disabled ? 'bg-conflict' : 'bg-green'}`} />
+    ),
+  },
+  {
+    key: 'name', head: 'نام',
+    cell: (u) => (
+      <span className="block truncate text-body font-bold text-ink">{u.displayName}</span>
+    ),
+  },
+  {
+    key: 'role', head: 'نقش',
+    cell: (u) => (
+      <span className={`inline-block truncate max-w-full px-s5 py-s1 rounded-control
+                        text-fs-sm2 font-semibold ${roleTone(u.role)}
+                        max760:max-w-[42%]`}>
+        {roleLabel(u.role)}
+      </span>
+    ),
+  },
+  {
+    key: 'supervisor', head: 'سرپرست', mobile: false,
+    cell: (u) => (
+      // D14 leaves a disabled supervisor in place rather than repointing the
+      // people under them, so the colour is the whole warning: this person's
+      // comment approvals route to an account that can no longer sign in. The
+      // sentence itself is on the record (`SUPERVISOR_GONE`), where there is
+      // room for it; the row says it in the one way a 12.5px cell can, and says
+      // it in words to a screen reader as well rather than in colour alone.
+      <span title={u.supervisor?.disabled ? SUPERVISOR_GONE : undefined}
+        className={`block truncate text-fs-sm2
+                    ${u.supervisor?.disabled ? 'text-conflict' : 'text-ink-current'}`}>
+        {u.supervisor ? u.supervisor.displayName : '—'}
+      </span>
+    ),
+  },
+  {
+    key: 'dept', head: 'دپارتمان', mobile: false,
+    cell: (u) => (
+      <span className="block truncate text-fs-sm2 text-muted">
+        {scopesLabel(u.scopes, names)}
+      </span>
+    ),
+  },
+  {
+    key: 'open', head: '',
+    cell: () => (
+      // `chevronEnd`, and the name is doing work: in a right-to-left reading
+      // what you are going to lies to the LEFT, and `chevronStart` would render,
+      // look deliberate and point back at the screen this row does not go to.
+      <span aria-hidden className="flex items-center justify-center w-chev h-chev
+                                   rounded-round bg-tile-v2 text-violet">
+        <Icon name="chevronEnd" className="w-s7 h-s7" stroke={2.4} />
+      </span>
+    ),
+  },
+]

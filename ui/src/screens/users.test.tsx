@@ -3,7 +3,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
-import { Users } from './Users'
+import { SUPERVISOR_GONE, Users } from './Users'
 import { UserDetail } from './UserDetail'
 import { PanelShell } from '../shell/PanelShell'
 import type { AdminUser } from '../api/users'
@@ -258,10 +258,23 @@ function renderDetail(
   return { ...view, seen }
 }
 
+/**
+ * Every ROW the table drew, head excluded.
+ *
+ * §6.7 replaced the `<ul>` of cards with a six-column grid, so `listitem` is
+ * gone from this screen — and `getAllByRole('row')` alone is not the
+ * replacement, because `DataTable` marks its head `role="row"` too and a head
+ * that is always present would make «one row per account» off by one for ever.
+ * `[data-r-trow]` is the body row's own hook.
+ */
+function rows(): HTMLElement[] {
+  return screen.queryAllByRole('row').filter((r) => r.hasAttribute('data-r-trow'))
+}
+
 /** The row whose text carries this name. Never `rows[n]` — an index is exactly
  *  the thing these assertions exist to disbelieve. */
 function rowOf(name: string): HTMLElement {
-  const row = screen.getAllByRole('listitem').find((r) => r.textContent?.includes(name))
+  const row = rows().find((r) => r.textContent?.includes(name))
   if (!row) throw new Error(`no row for ${name}`)
   return row
 }
@@ -276,7 +289,7 @@ function rowOf(name: string): HTMLElement {
  */
 const FIXTURE_NAMES = ['سحر بیات', 'نادر قاسمی', 'شیرین کاویان']
 function renderedNames(): string[] {
-  return screen.getAllByRole('listitem').map((r) => {
+  return rows().map((r) => {
     const name = FIXTURE_NAMES.find((n) => r.textContent!.includes(n))
     if (!name) throw new Error(`row belongs to no fixture: ${r.textContent}`)
     return name
@@ -289,30 +302,42 @@ describe('the user list', () => {
   it('draws one row per account', async () => {
     stubServer([SAHAR, NADER])
     mountList()
-    await waitFor(() => expect(screen.getAllByRole('listitem')).toHaveLength(2))
+    await waitFor(() => expect(rows()).toHaveLength(2))
   })
 
-  it('puts each account\'s own name, number, role and supervisor on its own row', async () => {
+  it('puts each account\'s own name, role, supervisor and department on its own row', async () => {
     // The index/key assertion. Both rows are on screen either way, so a lookup
     // that pairs one user's name with the next user's role passes every
     // «getByText('مدیر')» in the file and fails only this.
     stubServer([SAHAR, NADER])
     mountList()
-    await waitFor(() => expect(screen.getAllByRole('listitem')).toHaveLength(2))
+    await waitFor(() => expect(rows()).toHaveLength(2))
 
     const sahar = within(rowOf('سحر بیات'))
-    expect(sahar.getByText('09121111111')).toBeInTheDocument()
     expect(sahar.getByText('مدیر')).toBeInTheDocument()
     expect(sahar.getByText(/مریم رستمی/)).toBeInTheDocument()
+    expect(await sahar.findByText('پخت')).toBeInTheDocument()
     expect(sahar.queryByText('خواننده')).toBeNull()
     expect(sahar.queryByText(/بابک آرام/)).toBeNull()
 
     const nader = within(rowOf('نادر قاسمی'))
-    expect(nader.getByText('09122222222')).toBeInTheDocument()
     expect(nader.getByText('خواننده')).toBeInTheDocument()
     expect(nader.getByText(/بابک آرام/)).toBeInTheDocument()
+    expect(await nader.findByText('سالن، صندوق')).toBeInTheDocument()
     expect(nader.queryByText('مدیر')).toBeNull()
     expect(nader.queryByText(/مریم رستمی/)).toBeNull()
+  })
+
+  it('draws no phone number on the row, because §6.7 has no column for one', async () => {
+    // The six columns are the dot, the name, the role, the supervisor, the
+    // department and the chevron. The number was on the old card and is not
+    // on the design's row — stated as an assertion rather than deleted
+    // silently, because it is still what the search matches on and «it is
+    // searchable but not shown» is the sort of thing a later task re-adds.
+    stubServer([SAHAR, NADER])
+    mountList()
+    await waitFor(() => expect(rows()).toHaveLength(2))
+    expect(within(rowOf('سحر بیات')).queryByText('09121111111')).toBeNull()
   })
 
   it('names the role in Persian, and leaves a role it has no wording for legible', async () => {
@@ -328,12 +353,27 @@ describe('the user list', () => {
     // about Sahar.
     stubServer([SAHAR, SHIRIN])
     mountList()
-    await waitFor(() => expect(screen.getAllByRole('listitem')).toHaveLength(2))
+    await waitFor(() => expect(rows()).toHaveLength(2))
     expect(within(rowOf('سحر بیات')).getByText('مدیر')).toBeInTheDocument()
     expect(within(rowOf('شیرین کاویان')).getByText('auditor')).toBeInTheDocument()
     // …and the identifier of a role that *does* have wording is nowhere on the
     // screen, which is what makes this a translation rather than an addition.
     expect(screen.queryByText('admin')).toBeNull()
+  })
+
+  it('gives the role its own pair of colours, one per role (§1.2)', async () => {
+    // jsdom paints nothing, so this is a claim about a class STRING reaching
+    // the element the role is drawn on — the e2e check is what proves a
+    // colour. Two rows, because one pair asserted alone passes for a screen
+    // that gives every role the same tone.
+    stubServer([SAHAR, SHIRIN])
+    mountList()
+    await waitFor(() => expect(rows()).toHaveLength(2))
+    expect(within(rowOf('سحر بیات')).getByText('مدیر'))
+      .toHaveClass('bg-tile-v', 'text-violet')
+    // An unseeded role takes the reader pair rather than no class at all.
+    expect(within(rowOf('شیرین کاویان')).getByText('auditor'))
+      .toHaveClass('bg-tile-v2', 'text-violet')
   })
 
   it('renders the accounts in the order the server sent them, re-sorting nothing', async () => {
@@ -360,21 +400,21 @@ describe('the user list', () => {
     // person's account.
     stubServer([SHIRIN, NADER, SAHAR])
     mountList()
-    await waitFor(() => expect(screen.getAllByRole('listitem')).toHaveLength(3))
+    await waitFor(() => expect(rows()).toHaveLength(3))
     expect(renderedNames()).toEqual(['شیرین کاویان', 'نادر قاسمی', 'سحر بیات'])
   })
 
   it('counts the matches against the whole installation, not against themselves', async () => {
     // Two numbers that are equal until something is typed, which is why the
-    // filtered half is asserted as well: «۲ کاربر از ۲» is true of the screen
-    // and true of a screen that prints one of the two counts twice.
+    // filtered half is asserted as well: «۲ از ۲» is true of the screen and
+    // true of a screen that prints one of the two counts twice.
     stubServer([SAHAR, NADER])
     mountList()
-    await waitFor(() => expect(screen.getAllByRole('listitem')).toHaveLength(2))
-    expect(screen.getByText('۲ کاربر از ۲')).toBeInTheDocument()
+    await waitFor(() => expect(rows()).toHaveLength(2))
+    expect(screen.getByText('۲ از ۲')).toBeInTheDocument()
     await userEvent.type(screen.getByLabelText('جست‌وجوی کاربر'), 'نادر')
-    await waitFor(() => expect(screen.getAllByRole('listitem')).toHaveLength(1))
-    expect(screen.getByText('۱ کاربر از ۲')).toBeInTheDocument()
+    await waitFor(() => expect(rows()).toHaveLength(1))
+    expect(screen.getByText('۱ از ۲')).toBeInTheDocument()
   })
 
   it('marks the disabled account disabled and the active one active — each on its own row', async () => {
@@ -383,40 +423,77 @@ describe('the user list', () => {
     // asserting only the disabled one passes for a screen that inverts the flag.
     stubServer([SAHAR, NADER])
     mountList()
-    await waitFor(() => expect(screen.getAllByRole('listitem')).toHaveLength(2))
+    await waitFor(() => expect(rows()).toHaveLength(2))
 
-    expect(within(rowOf('نادر قاسمی')).getByText('غیرفعال')).toBeInTheDocument()
-    expect(within(rowOf('نادر قاسمی')).queryByText('فعال')).toBeNull()
-    expect(within(rowOf('سحر بیات')).getByText('فعال')).toBeInTheDocument()
-    expect(within(rowOf('سحر بیات')).queryByText('غیرفعال')).toBeNull()
+    expect(within(rowOf('نادر قاسمی')).getByTestId('state-dot'))
+      .toHaveAttribute('data-state', 'disabled')
+    expect(within(rowOf('سحر بیات')).getByTestId('state-dot'))
+      .toHaveAttribute('data-state', 'active')
   })
 
   it('says a disabled account is disabled in words, not in colour alone', async () => {
-    // F11. `tone="neutral"` is reinforcement; a pill drawn with no label at all
-    // still renders a grey box, and a grey box says nothing to a screen reader
-    // and nothing at all in the printed page.
+    // F11. The design draws the state as a 9px dot and nothing else, and a
+    // coloured dot says nothing to a screen reader and nothing at all in the
+    // printed page. The word is the dot's accessible name — the design's own
+    // `title="{{ u.stLabel }}"`, which it already carries for a sighted user
+    // hovering it, promoted to a label so it is announced.
     stubServer([NADER])
     mountList()
-    expect(await screen.findByText('غیرفعال')).toBeInTheDocument()
+    await waitFor(() => expect(rows()).toHaveLength(1))
+    expect(within(rowOf('نادر قاسمی')).getByLabelText('غیرفعال')).toBeInTheDocument()
+    expect(within(rowOf('نادر قاسمی')).queryByLabelText('فعال')).toBeNull()
   })
 
   it('warns on the row of a user whose supervisor is disabled, and only there (D14)', async () => {
     // D14 refuses to repoint subordinates when a supervisor is disabled — the
-    // gap is surfaced instead. A screen that does not surface it leaves an
-    // approval route pointing at an account that can no longer sign in.
+    // gap is surfaced instead. §6.7 has no room for the sentence the old card
+    // carried, so the row says it the two ways a 12.5px cell can: the
+    // supervisor's name in `--conflict`, and the sentence itself as the cell's
+    // `title`. The sentence in full is on the record screen (§6.8).
     stubServer([SAHAR, NADER])
     mountList()
-    await waitFor(() => expect(screen.getAllByRole('listitem')).toHaveLength(2))
-    expect(within(rowOf('نادر قاسمی')).getByText('سرپرست این کاربر غیرفعال است')).toBeInTheDocument()
-    expect(within(rowOf('سحر بیات')).queryByText('سرپرست این کاربر غیرفعال است')).toBeNull()
+    await waitFor(() => expect(rows()).toHaveLength(2))
+
+    const gone = within(rowOf('نادر قاسمی')).getByText('بابک آرام')
+    expect(gone).toHaveClass('text-conflict')
+    expect(gone).toHaveAttribute('title', SUPERVISOR_GONE)
+
+    const here = within(rowOf('سحر بیات')).getByText('مریم رستمی')
+    expect(here).not.toHaveClass('text-conflict')
+    expect(here).not.toHaveAttribute('title')
+  })
+
+  it('draws an em dash where an account has no supervisor at all', async () => {
+    // «—» rather than a blank cell: an empty cell in a column of names reads as
+    // a rendering fault, and this account genuinely reports to nobody.
+    stubServer([{ ...SAHAR, supervisor: null }])
+    mountList()
+    await waitFor(() => expect(rows()).toHaveLength(1))
+    expect(within(rowOf('سحر بیات')).getByText('—')).toBeInTheDocument()
+  })
+
+  it('drops the supervisor and department columns at ≤760px, and keeps the role', async () => {
+    // §6.7's mobile pass, as a class string — jsdom lays nothing out, so this
+    // says «the swap is spelled on the right three cells», not «the columns are
+    // gone». The e2e check at 760 is what measures it.
+    stubServer([SAHAR])
+    mountList()
+    await waitFor(() => expect(rows()).toHaveLength(1))
+    const row = rowOf('سحر بیات')
+    const cell = (key: string) => row.querySelector(`[data-col="${key}"]`)!
+    expect(cell('supervisor')).toHaveClass('max760:hidden')
+    expect(cell('dept')).toHaveClass('max760:hidden')
+    expect(cell('name')).not.toHaveClass('max760:hidden')
+    expect(cell('role')).not.toHaveClass('max760:hidden')
+    expect(cell('state')).not.toHaveClass('max760:hidden')
   })
 
   it('filters by name', async () => {
     stubServer([SAHAR, NADER])
     mountList()
-    await waitFor(() => expect(screen.getAllByRole('listitem')).toHaveLength(2))
+    await waitFor(() => expect(rows()).toHaveLength(2))
     await userEvent.type(screen.getByLabelText('جست‌وجوی کاربر'), 'نادر')
-    await waitFor(() => expect(screen.getAllByRole('listitem')).toHaveLength(1))
+    await waitFor(() => expect(rows()).toHaveLength(1))
     expect(screen.getByText('نادر قاسمی')).toBeInTheDocument()
     expect(screen.queryByText('سحر بیات')).toBeNull()
   })
@@ -424,55 +501,74 @@ describe('the user list', () => {
   it('filters by the number however the digits were typed', async () => {
     // Ordinary Persian keyboards emit ۰۹…, and the stored number is ASCII (D57).
     // Without the fold, searching for your own colleague's number by typing it
-    // returns nothing at all — and looks exactly like "no such person".
+    // returns nothing at all — and looks exactly like "no such person". The
+    // number is not drawn on the row any more, which makes this the ONLY way
+    // anybody reaches an account by it.
     stubServer([SAHAR, NADER])
     mountList()
-    await waitFor(() => expect(screen.getAllByRole('listitem')).toHaveLength(2))
+    await waitFor(() => expect(rows()).toHaveLength(2))
     await userEvent.type(screen.getByLabelText('جست‌وجوی کاربر'), '۱۱۱۱')
-    await waitFor(() => expect(screen.getAllByRole('listitem')).toHaveLength(1))
+    await waitFor(() => expect(rows()).toHaveLength(1))
     expect(screen.getByText('سحر بیات')).toBeInTheDocument()
   })
 
-  it('filters by role, which is the third thing the placeholder promises', async () => {
-    // «نام، شماره یا نقش». The role clause is the one a screen can lose without
-    // any other assertion in this file noticing: the two clauses above it still
-    // answer every name and every number.
+  it('no longer answers a role typed into the search, because the role has a control', async () => {
+    // The pair of the two tests this replaces. While the role was the one thing
+    // on the row you could not otherwise narrow by, matching it in the text
+    // field was right; it now has a dropdown of its own, and a query that
+    // silently matches a column with its own control is a filter that disagrees
+    // with the filter beside it. Both spellings are asserted — the stored
+    // identifier and the Persian label — because a partial rewrite leaves one.
     stubServer([SAHAR, NADER])
     mountList()
-    await waitFor(() => expect(screen.getAllByRole('listitem')).toHaveLength(2))
-    expect(screen.getByLabelText('جست‌وجوی کاربر'))
-      .toHaveAttribute('placeholder', 'نام، شماره یا نقش')
+    await waitFor(() => expect(rows()).toHaveLength(2))
     await userEvent.type(screen.getByLabelText('جست‌وجوی کاربر'), 'reader')
-    await waitFor(() => expect(screen.getAllByRole('listitem')).toHaveLength(1))
+    await waitFor(() => expect(rows()).toHaveLength(0))
+    await userEvent.clear(screen.getByLabelText('جست‌وجوی کاربر'))
+    await userEvent.type(screen.getByLabelText('جست‌وجوی کاربر'), 'خواننده')
+    await waitFor(() => expect(rows()).toHaveLength(0))
+  })
+
+  it('narrows the list from the role dropdown, on the options the listing holds', async () => {
+    // The half that replaces it, end to end: the menu offers the two roles
+    // these two accounts hold and nothing else (R5 applied to a menu's
+    // contents), and choosing one narrows the table.
+    stubServer([SAHAR, NADER])
+    mountList()
+    await waitFor(() => expect(rows()).toHaveLength(2))
+    const bar = screen.getByRole('group', { name: 'فیلتر کاربران' })
+    await userEvent.click(within(bar).getByRole('button', { name: /نقش/ }))
+    expect(screen.getAllByRole('option').map((o) => o.textContent))
+      .toEqual(['مدیر', 'خواننده'])
+    await userEvent.click(screen.getByRole('option', { name: 'خواننده' }))
+    await waitFor(() => expect(rows()).toHaveLength(1))
     expect(screen.getByText('نادر قاسمی')).toBeInTheDocument()
     expect(screen.queryByText('سحر بیات')).toBeNull()
   })
 
-  it('filters by the Persian role as well, which is the only spelling on the row', async () => {
-    // The pair of the test above, and the half that would otherwise be broken:
-    // the role is now drawn as «خواننده», so a search that matched only the
-    // stored `reader` promises «نقش» while answering nothing to the one word
-    // anybody can read off the screen. The identifier clause stays because an
-    // administrator who knows the seeded names should not lose a search that
-    // used to work — which is why both are asserted, in two tests, against the
-    // same two rows.
+  it('puts the whole list back when the filters are cleared', async () => {
+    // L-06 — the link clears and destroys nothing, so the rows it removed come
+    // back. A clear that reset the dropdown's own label and not the filter, or
+    // the filter and not the label, is what this pins.
     stubServer([SAHAR, NADER])
     mountList()
-    await waitFor(() => expect(screen.getAllByRole('listitem')).toHaveLength(2))
-    await userEvent.type(screen.getByLabelText('جست‌وجوی کاربر'), 'خواننده')
-    await waitFor(() => expect(screen.getAllByRole('listitem')).toHaveLength(1))
-    expect(screen.getByText('نادر قاسمی')).toBeInTheDocument()
-    expect(screen.queryByText('سحر بیات')).toBeNull()
+    await waitFor(() => expect(rows()).toHaveLength(2))
+    const bar = screen.getByRole('group', { name: 'فیلتر کاربران' })
+    await userEvent.click(within(bar).getByRole('button', { name: /وضعیت/ }))
+    await userEvent.click(await screen.findByRole('option', { name: 'غیرفعال' }))
+    await waitFor(() => expect(rows()).toHaveLength(1))
+    await userEvent.click(within(bar).getByRole('button', { name: 'پاک کردن فیلترها' }))
+    await waitFor(() => expect(rows()).toHaveLength(2))
+    expect(within(bar).queryByRole('button', { name: 'پاک کردن فیلترها' })).toBeNull()
   })
 
   it('says so when the search matches nobody, rather than showing a bare page', async () => {
     stubServer([SAHAR, NADER])
     mountList()
-    await waitFor(() => expect(screen.getAllByRole('listitem')).toHaveLength(2))
+    await waitFor(() => expect(rows()).toHaveLength(2))
     await userEvent.type(screen.getByLabelText('جست‌وجوی کاربر'), 'کسی')
-    await waitFor(() => expect(screen.queryAllByRole('listitem')).toHaveLength(0))
-    expect(screen.getByText('کاربری با این مشخصات پیدا نشد')).toBeInTheDocument()
-    expect(screen.getByText('بخشی از نام، شماره یا نقش را بنویسید.')).toBeInTheDocument()
+    await waitFor(() => expect(rows()).toHaveLength(0))
+    expect(screen.getByText('کاربری با این نام پیدا نشد')).toBeInTheDocument()
     // …and not the *other* empty state. Two accounts exist; a screen that says
     // none are registered has contradicted the request it just read.
     expect(screen.queryByText('هنوز کاربری ثبت نشده است')).toBeNull()
@@ -482,33 +578,103 @@ describe('the user list', () => {
     // The only fixture in this file that sends an empty list, and without it the
     // empty-installation title has no input at all: every other test reaches the
     // empty state through the search box, where the other title is correct.
+    //
+    // §6.7 draws ONE empty line, because the design's own fixture is never
+    // empty — but `DataTable`'s `empty` is a string the screen computes, so the
+    // distinction the old screen made survives the rebuild rather than being
+    // lost to a component that could only say one thing.
     stubServer([])
     mountList()
     expect(await screen.findByText('هنوز کاربری ثبت نشده است')).toBeInTheDocument()
-    expect(screen.queryByText('کاربری با این مشخصات پیدا نشد')).toBeNull()
-    // No search hint either: there is nothing to narrow.
-    expect(screen.queryByText('بخشی از نام، شماره یا نقش را بنویسید.')).toBeNull()
+    expect(screen.queryByText('کاربری با این نام پیدا نشد')).toBeNull()
   })
 
   it('opens one person\'s record when their row is chosen', async () => {
     stubServer([SAHAR, NADER])
     mountList()
-    await waitFor(() => expect(screen.getAllByRole('listitem')).toHaveLength(2))
-    await userEvent.click(within(rowOf('سحر بیات')).getByRole('link'))
+    await waitFor(() => expect(rows()).toHaveLength(2))
+    await userEvent.click(rowOf('سحر بیات'))
     expect(await screen.findByRole('heading', { name: 'سحر بیات' })).toBeInTheDocument()
     // …the record of the person whose row was chosen, not of the first row.
     expect(screen.queryByRole('heading', { name: 'نادر قاسمی' })).toBeNull()
   })
 
-  it('points each row at that person\'s own record', async () => {
-    // The href is the one thing about a row that is invisible on screen, and a
-    // row linking to `/users/0` (or to the same id for everyone) looks correct
-    // until it is clicked.
+  it('opens the OTHER person\'s record from the other row', async () => {
+    // The pair of the test above, and what replaces «points each row at that
+    // person's own record»: §6.7's row is a `role="row"` with an `onOpen`
+    // rather than a link, so there is no `href` to read — a row that navigated
+    // to the same id for everybody now looks correct until it is used, and only
+    // opening the second one catches it.
     stubServer([SAHAR, NADER])
     mountList()
-    await waitFor(() => expect(screen.getAllByRole('listitem')).toHaveLength(2))
-    expect(within(rowOf('سحر بیات')).getByRole('link')).toHaveAttribute('href', '/users/7')
-    expect(within(rowOf('نادر قاسمی')).getByRole('link')).toHaveAttribute('href', '/users/8')
+    await waitFor(() => expect(rows()).toHaveLength(2))
+    await userEvent.click(rowOf('نادر قاسمی'))
+    expect(await screen.findByRole('heading', { name: 'نادر قاسمی' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'سحر بیات' })).toBeNull()
+  })
+
+  it('opens a record from the keyboard, on the row that has focus', async () => {
+    // The row is the tab stop (`DataTable`), and it is the ONLY way into a
+    // record now that the row is not a link: a mouse-only affordance here would
+    // put user administration out of reach of a keyboard entirely.
+    stubServer([SAHAR, NADER])
+    mountList()
+    await waitFor(() => expect(rows()).toHaveLength(2))
+    rowOf('نادر قاسمی').focus()
+    await userEvent.keyboard('{Enter}')
+    expect(await screen.findByRole('heading', { name: 'نادر قاسمی' })).toBeInTheDocument()
+  })
+
+  it('draws the design\'s filter card: legend, search, four dropdowns, clear link', async () => {
+    stubServer([SAHAR, NADER])
+    mountList()
+    const bar = await screen.findByRole('group', { name: 'فیلتر کاربران' })
+    expect(within(bar).getByPlaceholderText('جست‌وجوی نام یا نام کاربری…')).toBeInTheDocument()
+    for (const label of ['نقش', 'سرپرست', 'وضعیت', 'دپارتمان']) {
+      expect(within(bar).getByRole('button', { name: new RegExp(label) })).toBeInTheDocument()
+    }
+    // R5 — the link is absent until there is something for it to clear.
+    expect(within(bar).queryByRole('button', { name: 'پاک کردن فیلترها' })).toBeNull()
+    await userEvent.click(within(bar).getByRole('button', { name: /وضعیت/ }))
+    await userEvent.click(await screen.findByRole('option', { name: 'غیرفعال' }))
+    expect(within(bar).getByRole('button', { name: 'پاک کردن فیلترها' })).toBeInTheDocument()
+  })
+
+  it('renders one row per account across the design\'s six columns', async () => {
+    stubServer([SAHAR, NADER])
+    mountList()
+    const table = await screen.findByRole('grid', { name: 'کاربران' })
+    expect(within(table).getAllByRole('columnheader').map((h) => h.textContent))
+      .toEqual(['', 'نام', 'نقش', 'سرپرست', 'دپارتمان', ''])
+    const row = within(table).getByRole('row', { name: /سحر بیات/ })
+    expect(within(row).getByTestId('state-dot')).toHaveAttribute('data-state', 'active')
+    expect(within(row).getByText('مدیر')).toHaveClass('bg-tile-v', 'text-violet')
+    expect(within(row).getByText('مریم رستمی')).toBeInTheDocument()
+    // The department column reads scopes, and reads them in Persian.
+    expect(await within(row).findByText('پخت')).toBeInTheDocument()
+    // R5 — every row on this screen opens, because `GET /api/users/{id}` is
+    // gated by the same `manage_users` at `*` that let this list be read.
+    await userEvent.click(row)
+    expect(await screen.findByRole('heading', { name: 'سحر بیات' })).toBeInTheDocument()
+  })
+
+  it('lays the head and every row on the SAME six tracks, off the minted template', async () => {
+    // Owner ruling R11 — the three grid templates were minted with no consumer,
+    // and this screen is the first. Read off the rendered elements rather than
+    // out of the theme: a template that exists and reaches nothing is exactly
+    // what the ruling was about. The head and a row are both asserted because
+    // a column declared once and laid out twice is the disagreement
+    // `DataTable` promises cannot happen.
+    stubServer([SAHAR, NADER])
+    mountList()
+    const table = await screen.findByRole('grid', { name: 'کاربران' })
+    const head = table.querySelector('[data-r-thead]')!
+    expect(head).toHaveClass('grid-cols-users')
+    expect(rowOf('سحر بیات')).toHaveClass('grid-cols-users')
+    // …and nothing writes the tracks inline, which would win over the class and
+    // leave the template named but unused.
+    expect((head as HTMLElement).style.gridTemplateColumns).toBe('')
+    expect(rowOf('سحر بیات').style.gridTemplateColumns).toBe('')
   })
 })
 
@@ -586,8 +752,14 @@ describe('who the user list is drawn for', () => {
     const seen = stubServer([SAHAR], { readStatus: 500 })
     mountList()
     await userEvent.click(await screen.findByRole('button', { name: 'تلاش دوباره' }))
-    await waitFor(() => expect(seen.gets.length).toBeGreaterThan(1))
-    expect(seen.gets.every((p) => p === '/api/users')).toBe(true)
+    await waitFor(() =>
+      expect(seen.gets.filter((p) => p === '/api/users').length).toBeGreaterThan(1))
+    // …and it re-reads the LISTING, not something else. `/api/departments` is
+    // in this log too and legitimately so: the filter card names a department,
+    // and every caller who got past the gate holds `manage_users` at `*` and
+    // therefore reaches every department there is. Nothing else may appear.
+    expect([...new Set(seen.gets)].sort())
+      .toEqual(['/api/departments', '/api/users'])
   })
 })
 
