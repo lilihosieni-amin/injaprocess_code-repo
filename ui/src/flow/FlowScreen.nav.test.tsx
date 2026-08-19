@@ -2,8 +2,21 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { screen, fireEvent, waitFor } from '@testing-library/react'
 import { FlowScreen } from './FlowScreen'
 import { renderAt } from '../test/utils'
+import type { SessionDescriptor } from '../auth/session'
 
 afterEach(() => vi.restoreAllMocks())
+
+/** Prev/next need no capability, but the screen asks the session what to draw,
+ *  so these must answer with one: the stub below routes by URL and would
+ *  otherwise hand GET /api/auth/me a `Process`, off which `useCan` cannot read
+ *  capabilities. Seeded through `renderAt`, which is where the real app finds
+ *  it.
+ */
+const EDITOR: SessionDescriptor = {
+  username: '09120000001', displayName: 'مدیر', role: 'editor',
+  capabilities: ['view', 'comment', 'export_pdf', 'edit'], scopes: ['dept:cooking'],
+  supervisor: null, canSupervise: false, pendingApprovals: 0,
+}
 
 const base = {
   department: 'cooking', summary: '', parent: null,
@@ -28,7 +41,7 @@ function mock() {
 describe('FlowScreen prev/next navigation', () => {
   it('shows next/prev buttons in view mode and navigates to the sibling process', async () => {
     mock()
-    renderAt('/processes/:pid/flow', <FlowScreen />, '/processes/cooking-001/flow')
+    renderAt('/processes/:pid/flow', <FlowScreen />, '/processes/cooking-001/flow', EDITOR)
     // header shows the current process name
     expect(await screen.findByText('فرآیند یک')).toBeInTheDocument()
     const next = screen.getByRole('button', { name: /فرآیند بعدی/ })
@@ -45,7 +58,7 @@ describe('FlowScreen prev/next navigation', () => {
       const body = url.endsWith('/processes') ? [p1] : p1
       return Promise.resolve(new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } }))
     })
-    renderAt('/processes/:pid/flow', <FlowScreen />, '/processes/cooking-001/flow')
+    renderAt('/processes/:pid/flow', <FlowScreen />, '/processes/cooking-001/flow', EDITOR)
     expect(await screen.findByText('فرآیند یک')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /فرآیند بعدی/ })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /فرآیند قبلی/ })).not.toBeInTheDocument()

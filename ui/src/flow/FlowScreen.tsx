@@ -2,6 +2,8 @@ import { useNavigate, useParams, useLocation, Link } from 'react-router-dom'
 import { useState, useRef } from 'react'
 import { ReactFlowProvider, useReactFlow, type Connection } from '@xyflow/react'
 import { useProcess, useProcesses, usePutProcess, useRelayout, useCreateProcess, useResolvePending } from '../api/hooks'
+import { useSession } from '../auth/useSession'
+import { useCan } from '../auth/can'
 import { useFlowEditor } from './useFlowEditor'
 import { neighborProcess } from '../lib/process-nav'
 import { toFlowNodes, toFlowEdges } from './adapt'
@@ -28,6 +30,7 @@ function FlowEditor() {
   const nav = useNavigate()
   const { pathname } = useLocation()
   const { data: server } = useProcess(pid)
+  const can = useCan(useSession().data)
   const { data: siblings = [] } = useProcesses(server?.department ?? '', { enabled: !!server?.department })
   const ed = useFlowEditor(server)
   const put = usePutProcess(pid)
@@ -59,6 +62,26 @@ function FlowEditor() {
   // and is not a second answer to the question.
   const deptRoot = `/departments/${proc.department}`
   const backTo = readerBack(pathname, deptRoot) ?? deptRoot
+  // R5 — the edit control is not drawn to someone the edit path would refuse.
+  //
+  // Cosmetic only, like every other `useCan` on a screen (D48): PUT
+  // /api/processes/{pid}, POST .../relayout, DELETE and the pending resolver
+  // all re-derive `edit` from the session row and refuse regardless
+  // (`routers/processes.py:280,358,386,416`). What it fixes is the app leading
+  // a reader to that refusal: signed in as one, the complete set of controls
+  // this screen offers is «بازگشت», «ویرایش» and React Flow's three zoom
+  // buttons — so the one in-app action a reader was offered here was the one
+  // action they may not take.
+  //
+  // Asked about THIS process's department, not about the person, because
+  // `_pid_target` gates every one of those endpoints on `dept:{dept_of(pid)}`
+  // — the same question `Summary.tsx:67` and `ProcessList.tsx:42` ask. The
+  // scope argument is load-bearing and not decoration: without it the head of
+  // another department is handed a button whose save 403s, which is the same
+  // R5 defect one level in. (`session.ts`'s bare `can(descriptor, capability)`
+  // takes no target at all and would do exactly that; this is `auth/can.ts`'s
+  // `useCan`, which does.)
+  const mayEdit = can('edit', `dept:${proc.department}`)
 
   function onSave() {
     if (tombstoned) return
@@ -131,7 +154,7 @@ function FlowEditor() {
             : <input value={proc.name} onChange={(e) => ed.setName(e.target.value)} className="font-bold text-[15px] text-ink border-[1.5px] border-line rounded-lg px-2.5 py-1 outline-none focus:border-coral w-[280px]" />}
         </div>
         <div className="ms-auto flex items-center gap-2">
-          {tombstoned ? null : !editing ? (
+          {tombstoned || !mayEdit ? null : !editing ? (
             <Button variant="violet" onClick={ed.enter} className="px-4 py-2 text-[13px]" data-testid="enter-edit">ویرایش</Button>
           ) : (
             <>

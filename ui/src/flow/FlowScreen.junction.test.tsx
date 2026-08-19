@@ -2,8 +2,20 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { screen, fireEvent } from '@testing-library/react'
 import { FlowScreen } from './FlowScreen'
 import { renderAt } from '../test/utils'
+import type { SessionDescriptor } from '../auth/session'
 
 afterEach(() => vi.restoreAllMocks())
+/** Both cases below enter edit mode, which is gated on `edit` over the
+ *  process's own department (R5). Seeded through `renderAt` rather than served
+ *  by the stub, which answers every URL — GET /api/auth/me included — with the
+ *  process document.
+ */
+const EDITOR: SessionDescriptor = {
+  username: '09120000001', displayName: 'مدیر', role: 'editor',
+  capabilities: ['view', 'comment', 'export_pdf', 'edit'], scopes: ['dept:cooking'],
+  supervisor: null, canSupervise: false, pendingApprovals: 0,
+}
+
 const proc = { id: 'cooking-001', department: 'cooking', name: 'p', summary: '', parent: null,
   source: { type: 'manual', ref: null, run: null }, created_at: '', updated_at: '',
   idef0: { inputs: [], controls: [], outputs: [], mechanisms: [] }, kpis: [], pending: [],
@@ -13,7 +25,7 @@ const proc = { id: 'cooking-001', department: 'cooking', name: 'p', summary: '',
 describe('FlowScreen junction', () => {
   it('clicking a junction in edit mode opens the drawer with the gate selector', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify(proc), { status: 200, headers: { 'Content-Type': 'application/json' } }))
-    renderAt('/processes/:pid/flow', <FlowScreen />, '/processes/cooking-001/flow')
+    renderAt('/processes/:pid/flow', <FlowScreen />, '/processes/cooking-001/flow', EDITOR)
     fireEvent.click(await screen.findByTestId('enter-edit'))
     // The junction diamond shows its type label "XOR"; click it (first one, in the node, not the legend).
     const xorElements = screen.getAllByText('XOR')
@@ -24,7 +36,7 @@ describe('FlowScreen junction', () => {
 
   it('a node is deleted from its detail drawer (not a toolbar button)', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify(proc), { status: 200, headers: { 'Content-Type': 'application/json' } }))
-    renderAt('/processes/:pid/flow', <FlowScreen />, '/processes/cooking-001/flow')
+    renderAt('/processes/:pid/flow', <FlowScreen />, '/processes/cooking-001/flow', EDITOR)
     fireEvent.click(await screen.findByTestId('enter-edit'))
     // delete now lives in the node's detail drawer, not the toolbar
     expect(screen.queryByRole('button', { name: 'حذف' })).not.toBeInTheDocument()

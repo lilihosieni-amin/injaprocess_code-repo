@@ -2,8 +2,24 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { screen } from '@testing-library/react'
 import { FlowScreen } from './FlowScreen'
 import { renderAt } from '../test/utils'
+import type { SessionDescriptor } from '../auth/session'
 
 afterEach(() => vi.restoreAllMocks())
+
+/** «ویرایش» is gated on `edit` over the process's own department (R5), so the
+ *  first case below needs a session that holds it — and every case needs *a*
+ *  session, seeded rather than served: `renderAt`'s fourth argument puts the
+ *  descriptor in the ['session'] key before the screen mounts, which is where
+ *  the real app finds it (RequireAuth resolved it first). Without it the
+ *  blanket `fetch` stub answers GET /api/auth/me with the process document and
+ *  `useCan` reads `capabilities` off a `Process` — so a control's absence would
+ *  mean a crashed screen rather than a refused person.
+ */
+const EDITOR: SessionDescriptor = {
+  username: '09120000001', displayName: 'مدیر', role: 'editor',
+  capabilities: ['view', 'comment', 'export_pdf', 'edit'], scopes: ['dept:cooking'],
+  supervisor: null, canSupervise: false, pendingApprovals: 0,
+}
 
 const proc = {
   id: 'cooking-001', department: 'cooking', name: 'خرید و پرداخت', summary: '', parent: null,
@@ -19,7 +35,7 @@ const proc = {
 describe('FlowScreen (view)', () => {
   it('renders the process nodes and the toolbar with the Edit button', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify(proc), { status: 200, headers: { 'Content-Type': 'application/json' } }))
-    renderAt('/processes/:pid/flow', <FlowScreen />, '/processes/cooking-001/flow')
+    renderAt('/processes/:pid/flow', <FlowScreen />, '/processes/cooking-001/flow', EDITOR)
     expect(await screen.findByText('ثبت درخواست')).toBeInTheDocument()
     expect(screen.getByText('خرید و پرداخت')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /ویرایش/ })).toBeInTheDocument()
@@ -38,7 +54,7 @@ describe('FlowScreen (view)', () => {
     // department or the department LIST — either of which skips a level and both
     // of which compile.
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify(proc), { status: 200, headers: { 'Content-Type': 'application/json' } }))
-    renderAt('/processes/:pid/flow', <FlowScreen />, '/processes/cooking-001/flow')
+    renderAt('/processes/:pid/flow', <FlowScreen />, '/processes/cooking-001/flow', EDITOR)
     await screen.findByText('ثبت درخواست')
     const back = screen.getByRole('link', { name: 'بازگشت' })
     expect(back).toHaveAttribute('href', '/processes/cooking-001')
