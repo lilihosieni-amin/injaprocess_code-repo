@@ -155,15 +155,25 @@ describe('Sheet', () => {
     expect(onClose).toHaveBeenCalledOnce()
   })
 
-  it('anchors to the inline start above the breakpoint, using logical properties', async () => {
+  it('anchors to the inline end above the breakpoint, using logical properties', async () => {
     // Was `className.toMatch(/md:me-auto/)`, twice — a string match that says
     // nothing about WHICH breakpoint, which is precisely how the sheet kept
     // Tailwind's md (768) while the scrim beside it moved to the design's 760
     // and nothing went red. Read out of the compiled sheet instead.
+    //
+    // **Owner ruling R45 — the END, and this pair used to say start.** Both
+    // spellings are legal logical properties and both compile; only one of them
+    // puts the box on the edge the deliverables draw every off-canvas panel on
+    // (`left:0` at `Inja Panel.dc.html:804`, `:900`, `:1965`, `:1998` and four
+    // more in the reader), which is also the edge the shells put the control
+    // that opens it on. Which side a margin resolves to is not something jsdom
+    // can be asked, so `e2e/panel-shell.spec.ts` measures the box against the
+    // window and against the trigger; this pins the declaration that gets it
+    // there so a silent swap back cannot pass here.
     const { container } = render(<SheetHarness onClose={() => {}} />)
     const box = await paint(container.querySelector('[role="dialog"]')!.className)
-    expect(winner(box, 'margin-inline-end')).toBe('auto')
-    expect(winner(box, 'margin-inline-start')).toBe('0px')
+    expect(winner(box, 'margin-inline-start')).toBe('auto')
+    expect(winner(box, 'margin-inline-end')).toBe('0px')
   })
 
   it('is a drawer above the design’s breakpoint and a bottom sheet at or below it — one number, not two', async () => {
@@ -228,15 +238,20 @@ describe('Dialog vs Sheet — the two presentations cannot collapse into each ot
     // when the sheet's breakpoint was wrong.
     const box = await paint(container.querySelector('[role="dialog"]')!.className)
     expect(winner(box, 'max-width')).toBe('var(--width-dialog)')
-    expect(winner(box, 'margin-inline-end')).toBe('')
+    // The Sheet's anchor, absent. Read on the property the Sheet actually
+    // writes since R45 — `margin-inline-start` — or this stops being the
+    // contrast it is named for.
+    expect(winner(box, 'margin-inline-start')).toBe('')
     expect(winner(box, 'height')).toBe('')
   })
 
-  it("the Sheet is a fixed-width drawer anchored inline-start, not the Dialog's centred cap", async () => {
+  it("the Sheet is a fixed-width drawer anchored inline-end, not the Dialog's centred cap", async () => {
     const { container } = render(<SheetHarness onClose={() => {}} />)
     const box = await paint(container.querySelector('[role="dialog"]')!.className)
     expect(winner(box, 'max-width')).toBe('var(--width-drawer)')
-    expect(winner(box, 'margin-inline-end')).toBe('auto')
+    // R45 — the anchor is `margin-inline-start:auto`. The Dialog writes neither
+    // margin at all, which is what keeps the two presentations apart here.
+    expect(winner(box, 'margin-inline-start')).toBe('auto')
   })
 })
 

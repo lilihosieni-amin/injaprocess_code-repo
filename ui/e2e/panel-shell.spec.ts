@@ -269,6 +269,26 @@ test('the sheet’s rows read down the leading edge, not from the middle', async
   // build exits 0, jsdom reads the class name and reports the intent, and this
   // is the only place the difference exists. RTL, so the leading edge is the
   // right one.
+  //
+  /*
+   * **Owner ruling R45, and this is the second time.** The block below used to
+   * read `sheet.getByRole('link')`, and the sheet's rows are not all links:
+   * «صندوق بازبینی» and «خروج» are `<button>`s. Chrome's UA stylesheet writes
+   * `text-align:center` on a button and nothing in the sheet overrode it, so
+   * both of them drew their label centred while the four anchors beside them
+   * read down the edge — the anchors inherit `text-align`'s initial `start` and
+   * were never in question.
+   *
+   * The element is the whole difference, so the rows are collected BY ELEMENT
+   * and the count of each is pinned: a run that saw only anchors is the run that
+   * missed this, and it now fails rather than passes quietly. Both the computed
+   * `text-align` and the painted position of the label are read, because the
+   * declaration alone did not survive last time either.
+   *
+   * §6.0 writes `text-align:start` on those very buttons — `Inja Panel.dc.html`
+   * `:2083` for the menu rows and `:2093` for the administration ones — so this
+   * is the deliverable's own line, not a repair invented against a screenshot.
+   */
   await administrator(page)
   await page.goto('/departments/dining')
   await page.locator('[data-r-crumbbar]').waitFor()
@@ -276,26 +296,48 @@ test('the sheet’s rows read down the leading edge, not from the middle', async
   await page.locator('[data-r-crumbbar] [data-r-menu]').click()
   const sheet = page.getByRole('dialog')
   await expect(sheet).toBeVisible()
-  const rows = sheet.getByRole('link')
+  // Every row, by element. Scoped to the overlay's BODY, which is the only part
+  // of it a caller of `<Sheet/>` fills: the close button is the primitive's own
+  // and is not a row, and this drops it without naming it.
+  const body = sheet.getByTestId('dialog-body')
+  const counts = {
+    link: await body.locator('a').count(),
+    button: await body.locator('button').count(),
+  }
+  expect(counts.link, 'the sheet drew no destinations, so this test is about nothing')
+    .toBeGreaterThan(2)
+  expect(counts.button, 'the sheet drew no button rows, which is the half that broke')
+    .toBeGreaterThan(1)
+  const rows = body.locator('a, button')
   const n = await rows.count()
-  expect(n, 'the sheet drew no destinations, so this test is about nothing').toBeGreaterThan(2)
+  expect(n, 'the two element counts and the combined one disagree')
+    .toBe(counts.link + counts.button)
   for (let i = 0; i < n; i++) {
     const row = rows.nth(i)
-    await expect(row).toHaveCSS('justify-content', 'flex-start')
+    const what = `row ${i} (<${(await row.evaluate((el) => el.tagName)).toLowerCase()}> ` +
+      `«${((await row.textContent()) ?? '').trim()}»)`
+    await expect(row, what).toHaveCSS('justify-content', 'flex-start')
+    // The UA default lives here and nowhere a class name can be read: a
+    // `<button>` is `text-align:center` unless something says otherwise, and it
+    // inherits into the `flex:1` label span.
+    await expect(row, `${what} is not written from its leading edge`)
+      .toHaveCSS('text-align', 'start')
     // …and the label actually sits against the padding edge, which is the part
-    // a declaration alone cannot promise.
+    // a declaration alone cannot promise. Read off the label SPAN rather than
+    // the row: a button row may carry a count badge after it, and the union of
+    // the row's contents would then measure the badge too.
     const gap = await row.evaluate((el) => {
       const pad = parseFloat(getComputedStyle(el).paddingInlineStart)
       const box = el.getBoundingClientRect()
-      const label = (el.firstChild as Text | Element | null)
-      const range = document.createRange()
+      const label = el.firstElementChild
       if (label === null) return NaN
-      range.selectNodeContents(el)
+      const range = document.createRange()
+      range.selectNodeContents(label)
       const text = range.getBoundingClientRect()
       // RTL: the inline start of both boxes is their right edge.
       return box.right - text.right - pad
     })
-    expect(Math.abs(gap), `row ${i} is not sitting against its leading edge`).toBeLessThan(2)
+    expect(Math.abs(gap), `${what} is not sitting against its leading edge`).toBeLessThan(2)
   }
   // …and the rows span the sheet rather than sitting at the width of their own
   // words. Not an `inline-flex` check — the sheet's body is a flex column, so
@@ -434,9 +476,10 @@ test('the nav sheet is a drawer above 760 and a bottom sheet at or below it, wit
       expect(m.topLeft, `${width}: §5.2 draws the drawer-as-sheet at 22px (R35)`).toBe('22px')
       expect(m.bottomLeft, `${width}: a bottom sheet has no bottom corners`).toBe('0px')
     } else {
-      // A drawer: --width-drawer wide, full height, anchored to the inline
-      // start, radiused on all four corners. 764 is the band, and it is the
-      // reason this loop is not [760, 1080].
+      // A drawer: --width-drawer wide, full height, anchored to the inline end
+      // (owner ruling R45 — the side is measured in its own block below),
+      // radiused on all four corners. 764 is the band, and it is the reason this
+      // loop is not [760, 1080].
       expect(m.width, `${width}: not the drawer's own width`).toBe(340)
       expect(m.align, `${width}: the scrim is not centred`).toBe('center')
       expect(m.bottomGap, `${width}: a drawer is full height`).toBe(24)
@@ -444,6 +487,68 @@ test('the nav sheet is a drawer above 760 and a bottom sheet at or below it, wit
       expect(m.bottomLeft, `${width}: a drawer is the dialog radius on all four corners`).toBe('24px')
     }
   }
+})
+
+test('the nav sheet opens out of the same edge its opener sits on (R45)', async ({ page }) => {
+  /*
+   * **Owner ruling R45**, reported from a screenshot: the hamburger is at the
+   * top left and the menu flies out from the right.
+   *
+   * Both halves are the deliverable's and only one of them was wrong.
+   *
+   *   · The OPENER is at the inline END, and always was. `Inja Panel.dc.html:150`
+   *     opens the top bar's trailing cluster with `margin-inline-start:auto` and
+   *     `:165` is the hamburger inside it; `:189` opens the crumb strip's
+   *     cluster the same way. Under `dir="rtl"` the inline end is the physical
+   *     LEFT — which is exactly where the screenshot showed it. The shell
+   *     already agrees, so there was nothing to move.
+   *
+   *   · The SHEET was at the inline START, which is a side the deliverables
+   *     never put an off-canvas panel on. Every one of them is pinned to
+   *     `left:0` — `Inja Panel.dc.html:804`, `:900`, `:1965`, `:1998` and
+   *     `Inja Reader.dc.html:564`, `:659`, `:681`, `:904`, `:941` — and
+   *     `--shadow-drawer`, `20px 0 50px -30px`, casts to the RIGHT, which is the
+   *     shadow a panel standing on the left throws onto the page. `left` is the
+   *     inline end here, so the design's drawer and the design's hamburger stand
+   *     on one edge and the component stood on the other.
+   *
+   * Measured as a position, never as a class: `me-auto ms-0` is a readable pair
+   * of logical utilities that put the box on the wrong edge, and there is no
+   * `toHaveClass` anywhere that could have said so.
+   */
+  await administrator(page)
+  await page.goto('/departments/dining')
+  await page.locator('[data-r-crumbbar]').waitFor()
+  await pinPage(page, "goto('/departments/dining')")
+  // The crumb strip's opener, because §6.0 draws it at every width — the bar's
+  // is `hidden max1080:flex` and this block would grade nothing at 1440.
+  const opener = page.locator('[data-r-crumbbar] [data-r-menu]')
+  const trigger = (await opener.boundingBox())!
+  await opener.click()
+  const sheet = page.getByRole('dialog', { name: 'فهرست' })
+  await expect(sheet).toBeVisible()
+
+  const box = (await sheet.boundingBox())!
+  const viewport = page.viewportSize()!.width
+  const middle = trigger.x + trigger.width / 2
+  // `boundingBox()` has no `right`; reading one gives NaN and every comparison
+  // against it passes. Written out, so the two gaps below are numbers.
+  const boxRight = box.x + box.width
+
+  // The premise first: the trigger really is on the inline-end half. If a later
+  // change moves the hamburger this fails HERE, naming it, rather than quietly
+  // grading the sheet against a trigger that has walked across the window.
+  expect(middle, 'the opener is no longer on the inline-end half of the window')
+    .toBeLessThan(viewport / 2)
+
+  // The sheet reaches that same edge. At or below 760 it is a full-width bottom
+  // sheet and both gaps are zero, which is the right answer there rather than an
+  // exemption from the question.
+  expect(Math.round(box.x), 'the sheet is further from the edge its opener sits on than from the far one')
+    .toBeLessThanOrEqual(Math.round(viewport - boxRight))
+  // …and the opener is under the sheet rather than across the window from it.
+  expect(middle, 'the opener is outside the sheet horizontally').toBeGreaterThanOrEqual(box.x - 1)
+  expect(middle, 'the opener is outside the sheet horizontally').toBeLessThanOrEqual(boxRight + 1)
 })
 
 test('the «مدیریت» popover closes on Escape, from the keyboard alone', async ({ page }) => {
