@@ -136,7 +136,7 @@ interface OverlayProps {
    * *accidental* dismissal, which is the only one a stray click produces.
    */
   dismissOnScrim?: boolean
-  /** 'dialog' centres above the breakpoint; 'sheet' anchors to the inline start. */
+  /** 'dialog' centres above the breakpoint; 'sheet' anchors to the inline end. */
   presentation?: 'dialog' | 'sheet'
 }
 
@@ -249,9 +249,32 @@ function Overlay({
   // measures separately. Both are pinned by compiled value below, never by
   // class name: `rounded-panel` sets all four corners and each of these has to
   // BEAT it inside the media query.
+  //
+  // **Owner ruling R45 — the drawer stands on the inline END, not the start.**
+  // It was `me-auto ms-0`, which pins the box to the inline start: in this
+  // right-to-left document that is the physical RIGHT, while both shells draw
+  // the control that opens this sheet in a `margin-inline-start:auto` cluster on
+  // the LEFT. The owner saw the two on opposite sides of one screenshot.
+  //
+  // The deliverables settle it, and they are unanimous: every off-canvas panel
+  // either of them draws is pinned `left:0` — `Inja Panel.dc.html:804`, `:900`,
+  // `:1965`, `:1998`, `Inja Reader.dc.html:564`, `:659`, `:681`, `:904`, `:941`
+  // — and `left` in an RTL document is the inline END. `--shadow-drawer`,
+  // `20px 0 50px -30px`, corroborates it from the other direction: a shadow
+  // thrown to the RIGHT is what a panel standing on the left casts onto the
+  // page. So this is the shared rule corrected, not one caller patched — the
+  // side was wrong for every sheet, and the panel's nav happens to be the only
+  // one built yet.
+  //
+  // (The panel deliverable draws its own mobile menu as a full-width bottom
+  // sheet at every width — `Inja Panel.dc.html:2072-2073`, a scrim with
+  // `align-items:flex-end` over a `width:100%` box — so it never anchors that
+  // particular menu to a side at all. This component makes it a drawer above
+  // 760 instead, which is a stated deviation older than this ruling and is left
+  // standing; what R45 fixes is which edge that drawer stands on.)
   const shape =
     presentation === 'sheet'
-      ? 'max-w-drawer h-full me-auto ms-0 ' +
+      ? 'max-w-drawer h-full ms-auto me-0 ' +
         'max760:max-w-full max760:h-auto max760:max-h-[88vh] max760:rounded-t-sheet'
       : `${WIDTH[width]} max-h-[86vh] max760:max-w-full max760:max-h-[92vh] ` +
         'max760:rounded-t-feature'

@@ -52,7 +52,24 @@ const GHOST = 'inline-flex items-center justify-center bg-card text-violet borde
 // would have changed nothing while leaving the real hazard in place.) It is why
 // the three declarations §6.0 varies per row live in REST/HERE below rather
 // than being appended to this string as an override.
-const SHEET_ITEM = 'flex items-center justify-start gap-s6 px-s7 py-s7 rounded-tile border-hairline cursor-pointer no-underline text-fs-menu font-bold'
+//
+// **Owner ruling R45 — `text-start`, and it is the same trap a second time.**
+// §6.0 writes `text-align:start` on these rows (Panel :2083, :2093) and this
+// string did not. It did not have to, for four of the six: an `<a>` inherits
+// `text-align`'s initial `start` and reads down the leading edge. But «صندوق
+// بازبینی» and «خروج» are `<button>`s, and Chrome's UA stylesheet writes
+// `text-align:center` on a button — which then inherits into the `flex:1` label
+// span and centres the word inside a row that is otherwise perfectly correct.
+// `justify-start` cannot reach it: the span is the flex item and it is already
+// against the leading edge; what is centred is the TEXT inside the span.
+//
+// So the two element types drew differently while wearing one identical class
+// string, which is exactly why the class assertions could not see it — jsdom
+// has no UA stylesheet and paints nothing, so `toHaveClass` and even a compiled
+// `winner()` read the same answer for both. It is fixed HERE, on the one string
+// every row wears, rather than on the two buttons: the next row somebody adds
+// is a `<button>` half the time.
+const SHEET_ITEM = 'flex items-center justify-start text-start gap-s6 px-s7 py-s7 rounded-tile border-hairline cursor-pointer no-underline text-fs-menu font-bold'
 
 // §6.0's `{{ m.bg }}` / `{{ m.fg }}` / `{{ m.border }}` (Panel :2083), which is
 // the sheet's current-entry highlight — the same violet fill and card label the

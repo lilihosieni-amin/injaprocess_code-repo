@@ -1512,6 +1512,17 @@ describe('what the panel chrome’s class strings compile to', () => {
       'display: flex',
       'align-items: center',
       'justify-content: flex-start',
+      // Owner ruling R45. §6.0 writes `text-align:start` on these rows (Panel
+      // :2083, :2093) and this recipe did not — which cost nothing on the four
+      // `<a>` rows, since an anchor inherits the initial `start`, and centred
+      // the label on the two `<button>` ones, because Chrome's UA stylesheet
+      // writes `text-align:center` on a button and it inherits into the `flex:1`
+      // span. Nothing in this file can see that: `paint()` compiles the class
+      // string and jsdom has no UA stylesheet, so both elements read identically
+      // here whether the declaration is present or not. It is pinned as a
+      // DECLARATION here and measured as a painted position, per element type,
+      // in `e2e/panel-shell.spec.ts`.
+      'text-align: start',
       'gap: var(--space-6)',
       'padding-left: var(--space-7)',
       'padding-right: var(--space-7)',
