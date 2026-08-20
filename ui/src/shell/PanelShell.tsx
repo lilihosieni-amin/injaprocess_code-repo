@@ -110,42 +110,6 @@ export function PanelShell({ session }: { session: SessionDescriptor }) {
   const crumbs = panelCrumbs(pathname, (code) => departments.find((d) => d.code === code)?.name ?? code)
   const back = crumbs.length > 1 ? crumbs[crumbs.length - 2] : undefined
   const home = pathname === '/departments'
-  /*
-   * **R41.** The flowchart draws its own «بازگشت», so this strip does not.
-   *
-   * The owner's ruling was "some pages like flowchart have two of them", and on
-   * this surface there were: the strip's back and `FlowScreen`'s, one under the
-   * other, both pointing at `/processes/{pid}`.
-   *
-   * ## What each deliverable actually draws, because they differ
-   *
-   * `Inja Panel.dc.html:558-613` — the panel's flow toolbar. Its first child is
-   * `data-r-flownav`, the next/previous pair; there is **no back button in it**,
-   * and the strip above it carries the one (`showCrumbBar: screen !== 'depts'`).
-   * `Inja Reader.dc.html:312-316` — the reader's flow toolbar, whose first child
-   * IS «بازگشت» (`data-r-flowback`), above which `showBackBar: screen !== 'flow'`
-   * draws nothing at all.
-   *
-   * So the design's answer for this app's ONE `FlowScreen` component is two
-   * different answers, and the component is shared. Its toolbar back has to
-   * stay — it is the reader's only way off that screen (R21), and `src/flow/` is
-   * another task's file — so the duplicate that goes is this one.
-   *
-   * **That is a deviation from the panel deliverable and it is stated rather
-   * than smoothed over**: on the panel the design puts «بازگشت» in the strip and
-   * this shell leaves it in the toolbar. The count is the design's (one), the
-   * destination is the design's (`crumbs[length-2]` on this route is the process
-   * summary, which is exactly what `readerBack` hands `FlowScreen`), and the
-   * strip keeps its trail, «خانه» and the sheet opener. The design-exact repair
-   * is one `useSurface()` branch in `FlowScreen.tsx`; it is recorded in
-   * `.superpowers/sdd/task-R41-report.md` for whoever owns that file next.
-   *
-   * Anchored at both ends, and the same regex `ReaderShell:75` writes for the
-   * same reason: `/\/flow/` matches `/processes/flow-001` — a process in a
-   * department called `flow` — and would take the back control off a screen that
-   * is not the flowchart and has no toolbar to replace it with.
-   */
-  const onFlow = /^\/processes\/[^/]+\/flow\/?$/.test(pathname)
   // §6.0 labels the sheet's administration group. `useId` because the label is
   // what names the group to a screen reader, and two panel shells on one page
   // (the test file mounts several) must not both claim the same id.
@@ -403,9 +367,30 @@ export function PanelShell({ session }: { session: SessionDescriptor }) {
       data-r-crumbbar aria-label="مسیر"
       className="flex items-center gap-s5 px-topbar py-crumb-y bg-tile-v2 border-b border-line flex-none"
     >
-      {!onFlow && back?.to !== undefined && (
+      {back?.to !== undefined && (
         <Link to={back.to} className={`${GHOST} gap-s3 px-s6 py-back-y rounded-input text-fs-sm2 font-bold flex-none`}>
-          {/* RTL-correct as of Task 11: in a right-to-left reading what you came
+          {/* **R44** — "in flowchart screen, the back button should be on top
+              menu too. like other page." One route used to be excepted here,
+              and this guard is where: `!onFlow &&`, an anchored test for
+              `/processes/{pid}/flow`.
+
+              It was R41's answer to the OTHER half of the same owner's
+              complaint — "some pages like flowchart have two of them" — and it
+              got the count right by taking the wrong one away. Both deliverables
+              agree on one «بازگشت» per screen and disagree on where the
+              flowchart's goes: `Inja Panel.dc.html:558-613` is the panel's flow
+              toolbar and has no back button in it at all, its first child being
+              `data-r-flownav`, while `Inja Reader.dc.html:312-316` opens the
+              reader's with one (`data-r-flowback`) because
+              `showBackBar: screen !== 'flow'` leaves that surface no bar to put
+              it in (R21). One shared `FlowScreen`, so it now branches on
+              `useSurface()` and draws that button for the reader only — and
+              this strip draws the panel's, on the flow route exactly as on the
+              seven others. `crumbs[length-2]` on that route is the process
+              summary, which is what `readerBack` was already handing
+              `FlowScreen`, so nothing about the destination moved.
+
+              RTL-correct as of Task 11: in a right-to-left reading what you came
               from lies to the RIGHT, so the back control points right. The
               deliverable draws `M9 18l6-6-6-6` on this very button (Panel :177),
               which is `chevronStart`. */}

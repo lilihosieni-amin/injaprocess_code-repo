@@ -1,10 +1,17 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { screen } from '@testing-library/react'
+import type { ReactElement } from 'react'
 import { FlowScreen } from './FlowScreen'
+import { SurfaceProvider } from '../ui/surface'
 import { renderAt } from '../test/utils'
 import type { SessionDescriptor } from '../auth/session'
 
 afterEach(() => vi.restoreAllMocks())
+
+/** R44 — the reader's surface, which is the one this screen draws a toolbar
+ *  back button on. `AppShell` puts the real provider above every route; a bare
+ *  mount answers 'panel', so a reader case has to say so. */
+const reader = (node: ReactElement) => <SurfaceProvider surface="reader">{node}</SurfaceProvider>
 
 /** «ویرایش» is gated on `edit` over the process's own department (R5), so the
  *  first case below needs a session that holds it — and every case needs *a*
@@ -41,8 +48,8 @@ describe('FlowScreen (view)', () => {
     expect(screen.getByRole('button', { name: /ویرایش/ })).toBeInTheDocument()
   })
 
-  it('offers a way OFF the flowchart, at the toolbar’s inline start', async () => {
-    // R21 — `Inja Reader.dc.html:312-313`. The design puts «بازگشت» INSIDE this
+  it('offers a READER a way OFF the flowchart, at the toolbar’s inline start', async () => {
+    // R21 — `Inja Reader.dc.html:312-316`. The design puts «بازگشت» INSIDE this
     // toolbar, as its first child, and draws no bar of its own above it; that is
     // why `ReaderShell` renders no chrome on this route at all. Without this
     // control the screen is a dead end for a reader: signed in as one, the
@@ -54,7 +61,7 @@ describe('FlowScreen (view)', () => {
     // department or the department LIST — either of which skips a level and both
     // of which compile.
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify(proc), { status: 200, headers: { 'Content-Type': 'application/json' } }))
-    renderAt('/processes/:pid/flow', <FlowScreen />, '/processes/cooking-001/flow', EDITOR)
+    renderAt('/processes/:pid/flow', reader(<FlowScreen />), '/processes/cooking-001/flow', EDITOR)
     await screen.findByText('ثبت درخواست')
     const back = screen.getByRole('link', { name: 'بازگشت' })
     expect(back).toHaveAttribute('href', '/processes/cooking-001')
@@ -62,5 +69,39 @@ describe('FlowScreen (view)', () => {
     // The design draws it there (reader 313 is the toolbar's first child) and
     // nothing else in this file would notice it moving to the end.
     expect(back.parentElement!.firstElementChild).toBe(back)
+  })
+
+  it('draws no back button in the toolbar on the PANEL, whose strip has one', async () => {
+    // **R44** — "in flowchart screen, the back button should be on top menu too.
+    // like other page." One component, two deliverables that disagree about
+    // this one control, so it is drawn per surface rather than always:
+    //
+    //   `Inja Panel.dc.html:558-613`  the panel's flow toolbar; first child is
+    //                                 `data-r-flownav`, and there is no back
+    //                                 button anywhere in it. The crumb strip
+    //                                 above carries «بازگشت» on every route but
+    //                                 the home screen (`:3451`, `:3454`).
+    //   `Inja Reader.dc.html:312-316` the reader's; first child IS «بازگشت»
+    //                                 (`data-r-flowback`), above which
+    //                                 `showBackBar: screen !== 'flow'` (`:2684`)
+    //                                 draws nothing at all.
+    //
+    // Drawn on both, the panel has two — the defect R41 was raised for. Drawn on
+    // neither, the reader is stranded, which is R21 and the case above. So this
+    // is the assertion that says the branch exists and points the right way; the
+    // count of one on each composed surface, at three widths, is
+    // `one «بازگشت» per panel route, and never two` in e2e/panel-shell.spec.ts
+    // and its reader twin.
+    //
+    // No provider, because `useSurface()` outside one answers 'panel'
+    // (`src/ui/surface.tsx`) — which is what an export document or a bare mount
+    // gets, and neither has a toolbar back button in its deliverable either.
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify(proc), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+    const { container } = renderAt('/processes/:pid/flow', <FlowScreen />, '/processes/cooking-001/flow', EDITOR)
+    // The graph is drawn — this is a control that is absent, not a screen that
+    // failed to render.
+    expect(await screen.findByText('ثبت درخواست')).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'بازگشت' })).toBeNull()
+    expect(container.querySelector('[data-r-flowback]')).toBeNull()
   })
 })

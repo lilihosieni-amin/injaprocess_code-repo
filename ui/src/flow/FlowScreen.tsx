@@ -11,6 +11,7 @@ import { Canvas } from './Canvas'
 import { Button, Spinner } from '../ui/Button'
 import { Icon } from '../ui/Icon'
 import { readerBack } from '../shell/crumbs'
+import { useSurface } from '../ui/surface'
 import { IdBadge } from '../ui/IdBadge'
 import { DeleteNodeConfirm } from './DeleteNodeConfirm'
 import { DetailDrawer } from './DetailDrawer'
@@ -62,6 +63,9 @@ function FlowEditor() {
   // and is not a second answer to the question.
   const deptRoot = `/departments/${proc.department}`
   const backTo = readerBack(pathname, deptRoot) ?? deptRoot
+  // **R44** — which surface is asking, and therefore whether this toolbar draws
+  // the back button at all. The whole of the branch is at its one use below.
+  const onReader = useSurface() === 'reader'
   // R5 — the edit control is not drawn to someone the edit path would refuse.
   //
   // Cosmetic only, like every other `useCan` on a screen (D48): PUT
@@ -126,13 +130,30 @@ function FlowEditor() {
     // the one thing this screen does not do.
     <div data-r-flow className="flex-1 flex flex-col min-h-0 bg-bg">
       <div className="flex items-center gap-3 px-[22px] py-[11px] bg-white border-b border-warm shrink-0">
-        {/* R21 — `Inja Reader.dc.html:312-313`. On the flowchart the design puts
+        {/* R21 — `Inja Reader.dc.html:312-316`. On the flowchart the design puts
             «بازگشت» INSIDE this toolbar, as its first child, and draws no bar of
             its own above it; that is why `ReaderShell` renders no chrome on this
             route at all. Without this control the screen is a dead end for a
             reader: signed in as one, the complete set of controls rendered here
             is «ویرایش» and React Flow's three zoom buttons — no back, no home,
             no sign-out, no link of any kind.
+
+            **R44, and the reason this is the file's one surface branch.** The
+            owner's ruling was "in flowchart screen, the back button should be on
+            top menu too. like other page." That is the panel, and it is what its
+            own deliverable draws: `Inja Panel.dc.html:558-613` is the panel's
+            flow toolbar and there is no back button anywhere in it — its first
+            child is `data-r-flownav`, the next/previous pair — while the crumb
+            strip above carries «بازگشت» on every route but the home screen
+            (`canBack`/`showCrumbBar`, `:3451` and `:3454`). The two deliverables
+            genuinely disagree about this one control, and there is one
+            `FlowScreen`, so the answer cannot be a constant: drawn always, the
+            panel has two of them, which is the defect R41 was raised for; drawn
+            never, the reader is stranded, which is R21 above. `useSurface()` is
+            what tells them apart, and `PanelShell` drops the `!onFlow` guard
+            that used to stand in for this branch. The destination is untouched
+            either way — `crumbs[length-2]` on this route and `readerBack` are
+            the same process summary.
 
             `readerBack` rather than a literal `/processes/{pid}`, so the one
             function that answers "where does back go" stays the only one. On
@@ -145,14 +166,16 @@ function FlowEditor() {
             this file spells a value: F16 keeps `src/flow/` out of F6's token
             guard, and a token minted for one button on a frozen screen would be
             a fifth spelling of a colour this file already writes four ways. */}
-        <Link
-          to={backTo}
-          data-r-flowback
-          className="inline-flex items-center gap-1.5 px-[13px] py-[9px] rounded-[11px] font-bold text-[13px] bg-tile-v2 text-violet border-[1.5px] border-line flex-none no-underline"
-        >
-          <Icon name="chevronStart" px={15} stroke={2.4} />
-          بازگشت
-        </Link>
+        {onReader && (
+          <Link
+            to={backTo}
+            data-r-flowback
+            className="inline-flex items-center gap-1.5 px-[13px] py-[9px] rounded-[11px] font-bold text-[13px] bg-tile-v2 text-violet border-[1.5px] border-line flex-none no-underline"
+          >
+            <Icon name="chevronStart" px={15} stroke={2.4} />
+            بازگشت
+          </Link>
+        )}
         {!editing && (prevProc || nextProc) && (
           <div className="flex items-center gap-[3px] bg-tile-v2 rounded-xl p-[5px]">
             {/* next process — sits on the right in RTL (first in DOM), '>' icon */}

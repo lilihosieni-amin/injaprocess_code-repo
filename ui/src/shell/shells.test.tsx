@@ -214,42 +214,57 @@ describe('PanelShell chrome', () => {
     expect(inner.container.querySelector('[data-r-crumbbar]')).toBeInTheDocument()
   })
 
-  it('keeps the crumb strip on the flow screen, and gives its «بازگشت» to the toolbar', () => {
-    // §6.0 draws the strip here — `showCrumbBar: screen !== 'depts'` — and it
-    // stays: it is this screen's only «خانه» and its only sheet opener, and
-    // `Inja Panel.dc.html:558` puts neither in the flow toolbar.
+  it('draws the flow screen’s «بازگشت» in the crumb strip, like every other route', () => {
+    // §6.0 draws the strip here — `showCrumbBar: screen !== 'depts'` — and the
+    // back button in it: `canBack: s.hist.length > 0 && screen !== 'depts'`
+    // (`Inja Panel.dc.html:3451`) is exactly "not the home screen", and the
+    // panel deliverable's own flow toolbar has no back in it at all
+    // (`:558-613`, whose first child is `data-r-flownav`, the next/previous
+    // pair).
     //
-    // **R41.** What does NOT stay is the strip's own back button. The owner's
-    // ruling — "some pages like flowchart have two of them" — was this screen:
-    // `FlowScreen` draws «بازگشت» as its toolbar's first child (R21, the READER
-    // deliverable's `data-r-flowback` at `Inja Reader.dc.html:313`), and the
-    // strip drew a second one directly above it, both pointing at
-    // `/processes/{pid}`. The panel deliverable's own flow toolbar has no back
-    // in it at all (`:558-613`, whose first child is `data-r-flownav`) so the
-    // design's count here is one; `src/flow/` belongs to another task, and the
-    // reader would be stranded without the toolbar's, so the strip's gives way.
+    // **R44.** "in flowchart screen, the back button should be on top menu too.
+    // like other page." This route was the one exception, and the exception was
+    // a stated deviation rather than a reading of the panel deliverable: R41
+    // found `FlowScreen` drawing «بازگشت» as its toolbar's first child and the
+    // strip drawing a second directly above it, both pointing at
+    // `/processes/{pid}`, and — with `src/flow/` frozen to another task — took
+    // the strip's away to get the count to one. R44 unfroze the one line that
+    // makes the choice: `FlowScreen` branches on `useSurface()` and draws the
+    // toolbar button for the READER only, whose shell draws no bar on this
+    // route at all (`showBackBar: screen !== 'flow'`, `Inja Reader.dc.html:2684`
+    // — R21, and the reason that button may not simply be deleted). So the
+    // panel's «بازگشت» comes home to the strip and the count stays one.
     //
-    // **This file cannot see the pair.** `renderPanel` mounts `<p>محتوا</p>`
-    // behind every route, so the toolbar that draws the surviving «بازگشت» is
-    // not in this tree — which is exactly how two of them shipped. The count is
-    // taken on the composed page, in a browser, at three widths, by
-    // `one «بازگشت» per panel route, and never two` in e2e/panel-shell.spec.ts.
+    // **This file cannot see the count.** `renderPanel` mounts `<p>محتوا</p>`
+    // behind every route, so the toolbar that drew the other «بازگشت» is not in
+    // this tree — which is exactly how two of them shipped. One is asserted on
+    // the composed page, in a browser, at three widths, by
+    // `one «بازگشت» per panel route, and never two` in e2e/panel-shell.spec.ts,
+    // which also pins it to `[data-r-crumbbar]` so a revert cannot pass on
+    // count alone.
     const { container } = renderPanel(['view', 'edit'], '/processes/dining-003/flow')
-    expect(container.querySelector('[data-r-crumbbar]')).toBeInTheDocument()
-    expect(within(container).queryByRole('link', { name: 'بازگشت' })).toBeNull()
-    // The trail is untouched — only the button went — so the leaf still names
-    // the screen and the crumb before it is still the way back as a LINK.
+    const strip = container.querySelector('[data-r-crumbbar]') as HTMLElement
+    expect(strip).toBeInTheDocument()
+    expect(within(strip).getByRole('link', { name: 'بازگشت' }))
+      .toHaveAttribute('href', '/processes/dining-003')
+    // The trail is untouched, so the leaf still names the screen and the crumb
+    // before it is still the way back as a LINK as well as a button.
     expect(container.querySelector('[data-r-crumbs] [aria-current="page"]')).toHaveTextContent('فلوچارت')
     expect(within(container).getByRole('link', { name: 'dining-003' }))
       .toHaveAttribute('href', '/processes/dining-003')
   })
 
-  it('takes the strip’s «بازگشت» off the flowchart and off nothing else', () => {
-    // The regex, not `pathname.includes('/flow')`. `/processes/flow-001` is a
-    // process in a department called `flow`; matched loosely, its summary loses
-    // the one back control it has and gains no toolbar to replace it, which is
-    // the same dead end R21 closed on the reader. `ReaderShell:75` carries this
-    // note against the same regex, and this is the panel's half of it.
+  it('draws it on a process whose id merely looks like the flowchart’s', () => {
+    // `/processes/flow-001` is a process in a department called `flow`. The
+    // panel used to tell it apart from `/processes/{pid}/flow` with an anchored
+    // regex, because matched loosely it lost the one back control it has and
+    // gained no toolbar to replace it — the dead end R21 closed on the reader.
+    // R44 deletes that regex from this shell: the strip now draws «بازگشت»
+    // wherever `panelCrumbs` gives it somewhere to go, so there is no path for
+    // a loose match to take it off. The route stays asserted because the answer
+    // must not change, whatever the shell stops asking. `ReaderShell:75` still
+    // carries the regex and `takes the chrome away on the flowchart and NOT on
+    // a process whose id looks like one` below is that surface's half.
     const entry = '/processes/flow-001'
     const { container } = renderPanel(['view', 'edit'], entry)
     expect(within(container).getByRole('link', { name: 'بازگشت' }), entry).toBeInTheDocument()
@@ -689,10 +704,16 @@ describe('PanelShell chrome', () => {
  * green.
  *
  * **R41 has since given all three the back control the design draws on them**
- * (`crumbs.ts`, the leading «دپارتمان‌ها» that was missing), so the route that
- * now proves the opener is independent of the back button is the flowchart —
- * see `WITHOUT_BACK`. The list stays as it is: it is the route table, and every
- * test in this block is about all of it.
+ * (`crumbs.ts`, the leading «دپارتمان‌ها» that was missing), and **R44 the
+ * flowchart** — see `WITH_BACK`, which is now every route that has a strip at
+ * all. The mutation above is therefore no longer a mutation: `back?.to` is
+ * defined on every route this shell draws a strip on, so wrapping the opener in
+ * that guard changes nothing an assertion could observe. What used to catch it
+ * is now split across two tests that each catch half of the damage it did —
+ * `puts sign-out one control away on EVERY route` would lose the opener, and
+ * `draws the strip’s opener beside «بازگشت» on every route that has a strip`
+ * would lose it beside a back control that is still there. The list stays as it
+ * is: it is the route table, and every test in this block is about all of it.
  */
 const ROUTES = [
   '/departments',
@@ -707,17 +728,18 @@ const ROUTES = [
 ]
 
 /**
- * The routes whose crumb strip carries a back control, and the one whose strip
- * does not. Both exist, which is what keeps the test below about two branches.
+ * Every route whose crumb strip carries a back control — which, since R44, is
+ * every route that has a crumb strip.
  *
- * **R41 moved every route but one across.** `/users`, `/visibility` and
- * `/profile` now draw the «بازگشت» the design draws on them; the flowchart is
- * the route whose strip has none, because `FlowScreen` draws its own inside the
- * toolbar and two of them is the defect R41 was raised for. `/departments` is in
- * neither list: it wears the top bar, so it has no strip to hold either control.
+ * **R41 moved three across and R44 the fourth.** `/users`, `/visibility` and
+ * `/profile` had no back because `panelCrumbs` gave them a single crumb; the
+ * flowchart had none because `PanelShell` suppressed it there, `FlowScreen`
+ * having drawn one of its own inside the toolbar. `FlowScreen` now draws that
+ * button for the reader only, so nothing on this surface is drawn twice and
+ * nothing is left without. `/departments` is the one exclusion: it wears the
+ * top bar, so it has no strip to hold either control.
  */
-const WITHOUT_BACK = ['/processes/dining-003/flow']
-const WITH_BACK = ROUTES.filter((r) => r !== '/departments' && !WITHOUT_BACK.includes(r))
+const WITH_BACK = ROUTES.filter((r) => r !== '/departments')
 
 describe('PanelShell reachability', () => {
   it('puts sign-out one control away on EVERY route', async () => {
@@ -777,30 +799,34 @@ describe('PanelShell reachability', () => {
       .toEqual(['خانه', 'فهرست'])
   })
 
-  it('draws the strip’s opener on the screen that has no back control', () => {
-    // The strip draws no «بازگشت» here — R41 gives the flowchart's to the flow
-    // toolbar — and the opener beside «خانه» is the only thing on the screen
-    // that reaches sign-out, the inbox or any administration entry. A mutation
-    // that hung the opener off the back button's own guard empties it, and
-    // every OTHER route in ROUTES has a back control, so nothing else would see
-    // it. (Before R41 this said the same thing about `/users`, `/visibility`
-    // and `/profile`, which had no back control because they were missing one.)
-    for (const entry of WITHOUT_BACK) {
+  it('draws the strip’s opener beside «بازگشت» on every route that has a strip', () => {
+    // Three controls, on all eight of them: «خانه», the sheet opener — the only
+    // thing on these screens that reaches sign-out, the inbox or any
+    // administration entry — and the back button.
+    //
+    // **Both are asserted together because R44 left no route to tell them
+    // apart.** Until it landed, the flowchart's strip had no «بازگشت» (R41 gave
+    // that route's to the flow toolbar, and before R41 `/users`, `/visibility`
+    // and `/profile` had none either), so a mutation that hung the opener off
+    // the back button's own `back?.to !== undefined` guard emptied a real
+    // screen and this test saw it. Now `back?.to` is defined wherever a strip
+    // is drawn at all, so that mutation is equivalent code and no assertion can
+    // catch it — what it USED to break is covered instead by this test's third
+    // expectation and by `puts sign-out one control away on EVERY route`, which
+    // walks the same table and opens the sheet.
+    for (const entry of WITH_BACK) {
       const { container, unmount } = renderPanel(['view', 'edit'], entry)
       expect(container.querySelector('[data-r-crumbbar] a[href="/departments"][aria-label]'), entry)
         .toBeInTheDocument()
-      expect(within(container).queryByRole('link', { name: /بازگشت/ }), entry).toBeNull()
       expect(container.querySelector('[data-r-crumbbar] [data-r-menu]'), entry).toBeInTheDocument()
-      unmount()
-    }
-    // …and the other half: the routes that DO draw one still do, so this is a
-    // test about two branches rather than one that would pass with no back
-    // control anywhere.
-    for (const entry of WITH_BACK) {
-      const { container, unmount } = renderPanel(['view', 'edit'], entry)
       expect(within(container).getByRole('link', { name: /بازگشت/ }), entry).toBeInTheDocument()
       unmount()
     }
+    // …and the route with no strip has neither, so this is a test about two
+    // branches rather than one that would pass with a strip on every route.
+    const { container } = renderPanel(['view', 'edit'], '/departments')
+    expect(container.querySelector('[data-r-crumbbar]')).toBeNull()
+    expect(within(container).queryByRole('link', { name: /بازگشت/ })).toBeNull()
   })
 
   it('leaves the strip’s opener in the tab order, on every route it is drawn', () => {
