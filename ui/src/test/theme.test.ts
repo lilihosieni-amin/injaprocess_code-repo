@@ -651,6 +651,34 @@ const EXPECTED: Record<string, string | string[]> = {
   // and it compiles, paints identically, and moves the wrong element the day
   // the empty card or the reader's chrome changes.
   'px-toast-x': 'var(--pad-toast-x)',
+  // The flow-bar mint (owner ruling R47). Nine names for the flowchart screen,
+  // which F16 froze for the whole rebuild, and every one of them a number this
+  // theme already carries under another role — so every one of them is a pairing
+  // a set-membership test cannot see:
+  //   · `py-flowbar-y` is 11px and is a BAR's padding-y; `py-textarea-y`,
+  //     `py-dropdown-y-dialog`, `py-tick-nested-y`, `px-note-x`,
+  //     `py-option-y` and `gap-table-row-mobile` are the other six 11s.
+  //   · `py-flowbar-y-mobile`, `py-flowbar-action-y` and `py-flowback-y` are
+  //     three DIFFERENT 9px roles on one bar — the bar's own padding at ≤760,
+  //     its «ویرایش», and the reader's «بازگشت» — beside `py-crumb-y`,
+  //     `py-tab-y-audit`, `gap-option`, `py-note-y` and `py-dropdown-y-filter`.
+  //   · `py-confirm-y` is the fifth 7px and is NOT `py-back-y`, which is the
+  //     panel's chrome back button and whose own token comment says so.
+  //   · `min-w-menu-flow` is 225px and is NOT `min-w-menu`, which is 265px and
+  //     is the panel shell's «مدیریت» popover. Two menus, two floors.
+  //   · `px-flowback-x` is the fifth 13px, beside `px-search-x`, `p-compose`,
+  //     `px-dropdown-x-filter`, `px-inbox-x` and `py-table-row-y`.
+  //   · `w-flowback-mobile` is 38px and is NOT `w-menu-more-reader` (the reader
+  //     chrome's square button) and NOT `w-logo-bar` (the logo image). Three 38s.
+  'py-flowbar-y': 'var(--pad-flowbar-y)',
+  'py-flowbar-y-mobile': 'var(--pad-flowbar-y-mobile)',
+  'py-confirm-y': 'var(--pad-confirm-y)',
+  'py-flowbar-action-y': 'var(--pad-flowbar-action-y)',
+  'py-flowback-y': 'var(--pad-flowback-y)',
+  'px-flowback-x': 'var(--pad-flowback-x)',
+  'min-w-menu-flow': 'var(--width-menu-flow)',
+  'text-crumb-sep': 'var(--text-crumb-sep)',
+  'w-flowback-mobile': 'var(--width-flowback-mobile)',
   // Media query, not token — asserted by the breakpoint tests below.
   'max1080:hidden': 'display: none',
   'max760:hidden': 'display: none',
@@ -1405,13 +1433,14 @@ const consumed = (klass: string) => rendered().has(klass) || written(klass)
  * rebuilt yet — Tasks 13–24 — and every one of them deletes its own lines as it
  * lands", and it carried an instruction in capitals that Task 25 must turn the
  * test below into `expect(…).toEqual([])`. Task 25 arrived, every screen exists,
- * and 129 lines were still here — 124 after owner ruling R36. They are not late.
- * Emptying the list needs one of two things and neither is available:
+ * and 129 lines were still here — 124 after owner ruling R36, and **122 after
+ * owner ruling R47**. They are not late. Emptying the list needs one of two
+ * things and neither is available:
  *
  *   · **Give each one a consumer.** That means writing a class into a component
  *     because a test wants it there, which is the defect R11 exists to catch,
  *     stated backwards.
- *   · **Delete each one from the theme.** For 84 of the 124 that would strand
+ *   · **Delete each one from the theme.** For 82 of the 122 that would strand
  *     the token underneath, and `leaves no declared token without a utility
  *     name` above would go red — whose only fix is deleting the token, and the
  *     tokens live in `design/_ds/…/tokens/*.css`, which is READ-ONLY
@@ -1426,12 +1455,15 @@ const consumed = (klass: string) => rendered().has(klass) || written(klass)
  *     `base.css`'s own `var(--login-orb)`, `w-touch` beside the `min-w-touch`
  *     every primitive carries. Tailwind derives them from one theme key; the
  *     value is on screen, this spelling of it is not.
- *   · **84** are painted nowhere in `src/`, each for a reason declared in
- *     `UNPAINTED_BECAUSE` below: the flowchart (frozen by F16, and it writes hex
- *     literals rather than these), the exported document (`ui/export/**` is
- *     off-limits to this repo), a `_ds` semantic colour this product reconciled
- *     onto its own palette, two z rungs L-42 reserves, and rungs of ladders no
- *     screen has reached.
+ *   · **82** are painted nowhere in `src/`, each for a reason declared in
+ *     `UNPAINTED_BECAUSE` below: the flowchart's node and junction furniture
+ *     (still frozen by F16, and it writes hex literals rather than these), the
+ *     exported document (`ui/export/**` is off-limits to this repo), a `_ds`
+ *     semantic colour this product reconciled onto its own palette, two z rungs
+ *     L-42 reserves, rungs of ladders no screen has reached, and — new with
+ *     owner ruling R47 — two names minted for flow-bar elements whose design ink
+ *     is below the contrast floor that bar is graded at, and which are therefore
+ *     in front of the owner rather than in front of a task.
  *
  * Both counts are DERIVED, not typed: add an orphan and it lands in one bucket
  * or fails to land in either, and the test says which.
@@ -1443,7 +1475,11 @@ const UNPAINTED: string[] = [
   'bg-login-orb', 'bg-warn', 'bg-info', 'bg-violet-mid',
   'bg-violet-edge', 'bg-violet-on-dark', 'bg-violet-on-dark-body', 'bg-violet-on-violet',
   'bg-desk', 'bg-tile-ctl',
-  'bg-hair', 'bg-line-soft', 'bg-line-dashed', 'bg-border-danger',
+  // `bg-hair` came off here with owner ruling R47: the flow bar's ⋯ menu draws
+  // the design's own `height:1px; background:#F2ECE3` rule between its two
+  // groups (panel 590), which is --hair, "internal divider", painted as a
+  // background for the first time in this app.
+  'bg-line-soft', 'bg-line-dashed', 'bg-border-danger',
   'bg-border-dead', 'bg-border-ok', 'bg-strong',
   'bg-body-ink', 'bg-ghost', 'bg-dialog-ghost', 'bg-ink-current',
   'bg-ink-proposed', 'bg-on-dark', 'bg-disabled', 'bg-ok',
@@ -1457,7 +1493,11 @@ const UNPAINTED: string[] = [
   'text-danger', 'text-link', 'text-link-hover',
   'border-line-soft', 'border-border-ok',
   'border-steps-sub-border', 'border-steps-group-border',
-  'bg-tile-v5', 'bg-line-divider',
+  // …and `bg-line-divider` here, for the reason R46 measured and could not act
+  // on: the flow bar's next/previous group draws the `1px × 18px #D9CEF0` rule
+  // between its two buttons (panel 563), and the §9.8 correction that minted
+  // --line-divider named it "tool-group divider" — this group and no other.
+  'bg-tile-v5',
   'border-line-divider', 'bg-line-row', 'bg-line-filter', 'bg-border-pick', 'text-fs-h1',
   
   'text-fs-doc-base', 'text-fs-doc-h1',
@@ -1476,7 +1516,10 @@ const UNPAINTED: string[] = [
   'shadow-card-dark', 'shadow-stat-dark', 'shadow-guide-hover', 'shadow-ring-flash',
   'p-screen-x', 'p-screen-y',
   'p-topbar', 'p-half', 'gap-topbar',
-  'p-s2', 'p-s3', 'p-s14', 'p-s16',
+  // `p-s2` came off here with owner ruling R47: --space-2 is the 5px inset of
+  // the flow bar's next/previous group (panel 560), which --gap-tab-flow's own
+  // token comment names in the same breath as its 3px gap.
+  'p-s3', 'p-s14', 'p-s16',
   // `w-tile`/`h-tile` and the two glyph pairs came off here when Task 11's
   // src/ui/IconTile.tsx landed: R3 declares the tile as a role trio
   // (--role-tile 48/54, --role-tile-radius 14/16, --role-tile-glyph 24/26) and
@@ -1502,7 +1545,12 @@ const UNPAINTED: string[] = [
   'py-tick-nested-y', 'py-dropdown-y-dialog',
   'py-dropdown-y-filter', 'px-dropdown-x-filter',
   'my-stat-grid',
-  'gap-tab-flow',
+  // `gap-tab-flow` came off here with owner ruling R47, and it is the sharpest
+  // of the four. Its token comment reads "the flow nav group, `gap:3px;
+  // padding:5px`" — it was minted FOR that element in the §5.2 pass and had
+  // never once been writable, because the only file that would consume it was
+  // frozen by F16 and this list, which recorded its orphanhood, was frozen with
+  // it. Neither freeze was wrong; the pair of them was.
   // The single minting pass — 29 of its 30 classes. `z-canvas-overlay` is the
   // thirtieth and is NOT here: owner ruling R15 minted the rung and pointed its
   // one consumer at it in the same change, so src/flow/DetailDrawer.tsx writes
@@ -1559,6 +1607,29 @@ const UNPAINTED: string[] = [
   //   · `gap-table-row-mobile` was genuinely unconsumed, and its consumer was
   //     `src/ui/DataTable.tsx` writing `gap-[11px]` three lines under a comment
   //     saying the value had no name. It had had one since Task 9.
+  //
+  // The flow-bar mint (owner ruling R47) put TWO lines back on, and they are the
+  // event this list's docstring says a mint is: a name that has to exist before
+  // its consumer does. Seven of its nine landed with their consumer in the same
+  // commit; these two did not, and the reason is the same for both and is not
+  // "later".
+  //
+  //   · `py-confirm-y` is --pad-confirm-y 7px, the `padding:7px 12px` of the
+  //     design's confirm PILL (panel 599, reader 359). `tokens.css`'s
+  //     --pad-back-y comment had named that exact site and deferred it, so the
+  //     name was owed. The pill itself is not drawn: this build draws §6.3's
+  //     34px control behind §6.15's dialog, because the pill's label is
+  //     `#8a7db0` on white when unconfirmed and `#1F8A5B` on `#E4F6EC` when
+  //     confirmed — measured 3.72:1 and 3.86:1, both under the 4.5:1 floor
+  //     `e2e/flow.spec.ts` grades every run of text on that bar against.
+  //   · `text-crumb-sep` is --text-crumb-sep, the «/» between the reader flow
+  //     bar's department crumb and its title (reader 318). The crumb pair is not
+  //     drawn for the same reason, further out: the crumb is 3.72:1 and the
+  //     separator itself 1.44:1.
+  //
+  // Both are in R47's report, in front of the owner, with the measurements. They
+  // are not waiting on a task; they are waiting on a ruling.
+  'py-confirm-y', 'text-crumb-sep',
 ]
 
 /**
@@ -1635,7 +1706,31 @@ const UNPAINTED: string[] = [
 // Note for the record: 6be6662's message claimed a drop to 165 that never applied; the
 // value stayed at 239 until the commit before this one. The ratchet was looser than it
 // read, twice.
-const CEILING = 124
+//
+// LOWERED 2026-08-20 by owner ruling R47 to 122, and the arithmetic is written out
+// because a net of -2 hides a gross of six:
+//
+//   124  the count this line stood at
+//    -4  four utilities acquired their first consumer, all on the flow bar:
+//        `bg-line-divider` and `p-s2` and `gap-tab-flow` (the next/previous
+//        group's rule, inset and gap) and `bg-hair` (the ⋯ menu's divider).
+//        Three of the four are the ones R46 MEASURED as unwritable: their tokens
+//        existed, their utilities compiled, and the only file that would consume
+//        them was frozen by F16 while this list, which recorded their orphanhood,
+//        was frozen too. `gap-tab-flow`'s token comment had said "the flow nav
+//        group" since the §5.2 pass.
+//    +2  the flow-bar mint's two deferred names, `py-confirm-y` and
+//        `text-crumb-sep` — a legal raise under the rule stated above, and the
+//        only kind: a MINT adds an unconsumed line on purpose. Both are on the
+//        list with their measurement beside them.
+//   ---
+//   122  and this line is that number exactly, not that number plus room.
+//
+// The ratchet is only a ratchet if this line moves with the list. A task that lands
+// four consumers and leaves the number at 124 has silently granted itself four lines
+// of slack nobody earned, and the suite stays green either way — which has happened
+// on this file before (see the note above about 6be6662).
+const CEILING = 122
 
 describe('Owner ruling R11 — a named utility has a component that uses it', () => {
   it('reads a real, sizeable set of component files — tests AND test helpers excluded', () => {
@@ -1858,9 +1953,9 @@ describe('Owner ruling R11 — a named utility has a component that uses it', ()
           '|^text-fs-(h1|badge-sm|h1-reader-dept|body-reader)$',
           '|^(font-regular|leading-snug|leading-looser)$',
           '|^shadow-(sheet|drawer|card-dark|stat-dark|guide-hover|ring-flash)$',
-          '|^(p|gap)-topbar$|^p-s(2|3|14|16)$|^(w|h)-(avatar|logo-bar)$',
+          '|^(p|gap)-topbar$|^p-s(3|14|16)$|^(w|h)-(avatar|logo-bar)$',
           '|^max-w-(doc|steps|audit)$|^duration-(fast|row)$|^p-compose$',
-          '|^p[xy]?-dropdown-|^my-stat-grid$|^gap-tab-flow$',
+          '|^p[xy]?-dropdown-|^my-stat-grid$',
           // The nested OPTION's own `padding:11px 12px`. Owner ruling R36 gave
           // the nested tick BOX consumers, and this is not that: ScopePicker's
           // nested view menu draws `Checkbox`, whose row carries
@@ -1869,6 +1964,18 @@ describe('Owner ruling R11 — a named utility has a component that uses it', ()
           // `tick-(glyph-)?nested`, which was never the right reason for it.
           '|^py-tick-nested-y$',
         ].join('')),
+      },
+      { // Owner ruling R47's two deferred consumers. Not "a rung no screen has
+        // reached" — the screen is built, the element is drawn in the design,
+        // and the value is measured: what stops each of them is that the ink the
+        // design gives it is below the contrast floor `e2e/flow.spec.ts` grades
+        // the white flow bar at, and R46's census caught a real 1.74:1 defect on
+        // that bar the day it was written. Deviating on ink, or lowering the
+        // floor, is a decision for the owner rather than for the task that found
+        // it, so both names exist and neither is written. The numbers, and which
+        // element each belongs to, are beside the lines themselves above.
+        why: 'a flow-bar element R47 minted the name for and referred to the owner',
+        match: /^py-confirm-y$|^text-crumb-sep$/,
       },
     ]
 
@@ -1889,8 +1996,18 @@ describe('Owner ruling R11 — a named utility has a component that uses it', ()
 
     // Both halves of the census the docstring states, so a line that moves
     // between buckets is visible rather than absorbed.
+    // 40 / 82 after owner ruling R47, and the two halves moved for four
+    // different reasons in one commit — which is exactly why they are asserted
+    // separately rather than as one total:
+    //   · `bg-hair` left the SPELLING half (the ⋯ menu's divider paints --hair
+    //     as a background for the first time), and `border-line-divider`
+    //     arrived in it, because its sibling `bg-line-divider` now has a
+    //     consumer and therefore counts as a painter of --line-divider. Net 0.
+    //   · `bg-line-divider`, `p-s2` and `gap-tab-flow` left the painted-nowhere
+    //     half with their consumers, `border-line-divider` left it for the half
+    //     above, and R47's two deferred mints joined it. Net -2.
     expect(buckets.filter((b) => b.spelling).length).toBe(40)
-    expect(buckets.filter((b) => !b.spelling).length).toBe(84)
+    expect(buckets.filter((b) => !b.spelling).length).toBe(82)
 
     // A family that stops covering anything is an argument nobody is paying
     // for, and the next name added beside it inherits the same absence of
@@ -1912,5 +2029,23 @@ describe('Owner ruling R11 — a named utility has a component that uses it', ()
       'If a task has genuinely orphaned this many utilities, the theme should lose them rather ' +
       'than the number go up — this line may be LOWERED, never raised.',
     ).toBeLessThanOrEqual(CEILING)
+
+    // …and the ceiling IS the count, which the line above cannot say on its own.
+    //
+    // Added by owner ruling R47, because `<=` is not a ratchet in the direction
+    // that matters. A task that lands four consumers and leaves CEILING where it
+    // was passes this test twice over — 120 <= 124 — and has quietly granted
+    // itself four lines of slack that nobody earned, which is how the number sat
+    // at 239 through a commit whose own message claimed 165. There is no next
+    // task to keep headroom for: every screen has landed, and from Task 25 the
+    // docstring above has SAID the number is the count exactly. This is that
+    // sentence as an assertion, so the pair can only move together and a diff
+    // that touches the list without touching this line is red.
+    expect(
+      CEILING,
+      `CEILING is ${CEILING} and UNPAINTED is ${UNPAINTED.length} lines. The ceiling is the ` +
+      'count, exactly: take it DOWN with every line that comes off, in the same commit. ' +
+      'Slack here is a promise nobody has to keep.',
+    ).toBe(UNPAINTED.length)
   })
 })

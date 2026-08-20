@@ -483,4 +483,57 @@ describe('R1 — a correction records what it overrode and why', () => {
     expect(token('--lh-tight')).toBe('')               // frozen _ds, 1.2
     expect(token('--lh-lockup')).not.toBe(token('--lh-lockup-reader'))
   })
+
+  it('the flow-bar mint (R47) — the nine names the flowchart screen needed', () => {
+    // Owner ruling R47. `src/flow/` was frozen for the whole 25-task rebuild
+    // (F16), so the flowchart is the one screen that never had a conformance
+    // pass; R46 did it and stopped at eight values this file held no name for.
+    // Every one is read out of ui/design/** and cited by line, and every one is
+    // a number that ALREADY has an owner here under another role — which is why
+    // each is minted again rather than borrowed, the rule this whole file
+    // states.
+    const flowBar = {
+      '--pad-flowbar-y': '11px',          // panel 558 — the panel flow bar's padding-y
+      '--pad-flowbar-y-mobile': '9px',    // panel 93, reader 99 — the same bar at ≤760
+      '--pad-confirm-y': '7px',           // panel 599, reader 359 — the confirm box
+      '--pad-flowbar-action-y': '9px',    // panel 607, reader 367 — its «ویرایش»
+      '--width-menu-flow': '225px',       // panel 576, reader 336 — the ⋯ popover's floor
+      '--pad-flowback-y': '9px',          // reader 313 — the reader's flow-back button
+      '--pad-flowback-x': '13px',         // reader 313 — …and its inline half
+      '--text-crumb-sep': '#DCD3EC',      // reader 318 — the crumb separator's ink
+      '--width-flowback-mobile': '38px',  // reader 104 — that button, squared at ≤760
+    }
+    for (const [name, value] of Object.entries(flowBar)) expect(token(name), name).toBe(value)
+    expect(Object.keys(flowBar).length).toBe(9)
+    expect(Object.keys(flowBar).filter((n) => declarations(n) !== 1)).toEqual([])
+
+    // …and every owner the nine numbers already had still holds its own value.
+    // This is the half that makes minting different from "correcting the nearest
+    // token": had any of these been re-pointed instead, the assertion above
+    // would still pass and another screen would have moved.
+    expect(token('--pad-option-y')).toBe('11px')       // 11px — the large dropdown option
+    expect(token('--pad-note-x')).toBe('11px')         // 11px — the timeline note
+    expect(token('--gap-table-row-mobile')).toBe('11px') // 11px — the ≤760 table row gap
+    expect(token('--pad-crumb-y')).toBe('9px')         // 9px  — the PANEL breadcrumb strip
+    expect(token('--pad-tab-y-audit')).toBe('9px')     // 9px  — an audit tab
+    expect(token('--gap-option')).toBe('9px')          // 9px  — the option row's gap
+    expect(token('--pad-note-y')).toBe('9px')          // 9px  — the timeline note
+    expect(token('--pad-back-y')).toBe('7px')          // 7px  — the PANEL back button
+    expect(token('--pad-popover')).toBe('7px')         // 7px  — the popover's own inset
+    expect(token('--pad-inbox-x')).toBe('13px')        // 13px — the conflict-inbox button
+    expect(token('--pad-dropdown-x-filter')).toBe('13px') // 13px — the filter dropdown
+    expect(token('--pad-table-row-y')).toBe('13px')    // 13px — a table row
+    expect(token('--width-menu')).toBe('265px')        // the ANCHORED menu's floor, unmoved
+    expect(token('--size-menu-more-reader')).toBe('38px') // 38px — the reader's home square
+    expect(token('--space-14')).toBe('')               // frozen _ds, 38px
+
+    // The two deferred mints this file had already WRITTEN DOWN, and which R46
+    // was correctly forbidden from doing. Both comments named the exact design
+    // lines; neither may still read as an unfinished job.
+    expect(css, '--pad-back-y still defers the confirm box').toContain('--pad-confirm-y')
+    expect(css, '--width-menu still defers the flow menu').toContain('--width-menu-flow')
+    // `225` may no longer appear in this file as a number a later screen will
+    // mint: it IS minted. The sentence that promised it is gone.
+    expect(css).not.toContain('mints its own name; it does not re-value this one')
+  })
 })

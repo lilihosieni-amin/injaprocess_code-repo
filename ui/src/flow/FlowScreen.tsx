@@ -1,5 +1,5 @@
 import { useNavigate, useParams, useLocation, Link } from 'react-router-dom'
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { ReactFlowProvider, useReactFlow, type Connection } from '@xyflow/react'
 import { useConfirmations, useProcess, useProcesses, usePutProcess, useRelayout, useCreateProcess, useResolvePending } from '../api/hooks'
 import { useSession } from '../auth/useSession'
@@ -14,10 +14,29 @@ import { Icon } from '../ui/Icon'
 import { readerBack } from '../shell/crumbs'
 import { useSurface } from '../ui/surface'
 import { IdBadge } from '../ui/IdBadge'
+import { pushDismissible, popDismissible, isTopDismissible } from '../ui/dismissibleStack'
 import { DeleteNodeConfirm } from './DeleteNodeConfirm'
 import { DetailDrawer } from './DetailDrawer'
 import { JunctionLegend } from './JunctionLegend'
 import type { ActivityNode } from '../api/types'
+
+/**
+ * One row of the ⋯ menu — `Inja Panel.dc.html:578`, and identical at 586, 589
+ * and 592.
+ *
+ * `display:flex; align-items:center; gap:10px; padding:12px; border-radius:11px;
+ * font-size:13.5px; font-weight:600; color:#2A1D5E; text-align:start`, on
+ * `--tile-v2` when hovered. `min-h-touch` is F11's floor and is the app's, not
+ * the design's: 12px of padding round a 13.5px line is 40px drawn, and the
+ * design draws what is PAINTED while the floor is what is pressable.
+ *
+ * A constant rather than four copies, because four rows differing by nothing is
+ * four places one radius would have to be kept in step.
+ */
+const MENU_ROW =
+  'flex items-center gap-s5 p-s6 w-full min-h-touch border-0 bg-transparent '
+  + 'rounded-input cursor-pointer text-start text-fs-menu font-semibold text-ink '
+  + 'hover:bg-tile-v2 disabled:text-disabled disabled:cursor-default'
 
 export function FlowScreen() {
   return (
@@ -44,6 +63,52 @@ function FlowEditor() {
   const [mode, setMode] = useState<'pan' | 'select'>('pan')
   const rf = useReactFlow()
   const wrapRef = useRef<HTMLDivElement>(null)
+  // **R47 — the ⋯ menu, and the confirm question it shares with the toolbar.**
+  //
+  // Both pieces of state live HERE and not in a child, because the design puts
+  // them here: `Inja Panel.dc.html:3563` is `mConfirm: () => set({flowMenu:
+  // false, confirmDialog: true})` — one dialog, opened from two controls, and
+  // the menu closes behind it. A dialog owned by whichever control was pressed
+  // could not do that, and the ⋯'s trigger and its popover are not siblings
+  // either: the trigger is inside `data-r-flowtitle` (panel 571) and the
+  // popover is a child of the BAR (panel 576), because it is positioned against
+  // the bar's own box.
+  //
+  // **Above the in-flight early return**, like every other hook in this
+  // function — see the note on `useSurface` below, and R46's §4.
+  const [flowMenu, setFlowMenu] = useState(false)
+  const [asking, setAsking] = useState(false)
+  const moreRef = useRef<HTMLButtonElement>(null)
+  const popRef = useRef<HTMLDivElement>(null)
+  const menuIdentity = useRef(Symbol('flow-more')).current
+
+  // I7 — the ⋯ joins `Overlay`'s dismissible stack rather than listening to
+  // `document` on its own, so a menu opened underneath a dialog does not answer
+  // the same Escape the dialog does. `ProcessList`'s own ⋯ and `src/ui/Menu.tsx`
+  // share this stack for the same reason.
+  //
+  // Two refs and not one: the trigger and the popover have different parents
+  // (see above), so "outside" is the union of the two boxes and cannot be asked
+  // of a single wrapper the way `ProcessList` asks it.
+  useEffect(() => {
+    if (!flowMenu) return
+    pushDismissible(menuIdentity)
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape' && isTopDismissible(menuIdentity)) setFlowMenu(false)
+    }
+    function onDown(e: MouseEvent) {
+      const t = e.target as Node
+      if (moreRef.current?.contains(t) || popRef.current?.contains(t)) return
+      setFlowMenu(false)
+    }
+    document.addEventListener('keydown', onKey)
+    document.addEventListener('mousedown', onDown)
+    return () => {
+      popDismissible(menuIdentity)
+      document.removeEventListener('keydown', onKey)
+      document.removeEventListener('mousedown', onDown)
+    }
+  }, [flowMenu, menuIdentity])
 
   // **R46 — the process confirmation lives here, and the department is read
   // lexically off the id in the URL.**
@@ -169,18 +234,29 @@ function FlowEditor() {
       {/* **R3 — the two surfaces draw this bar at their own scale.** `padding:
           11px 22px; gap:12px` (panel 558) against `10px 20px; gap:10px` (reader
           312). The file drew the PANEL's numbers on both, as an arbitrary
-          `px-[22px] py-[11px]`; three of those four values have tokens and are
-          now written as tokens.
+          `px-[22px] py-[11px]`; all four now read the theme.
 
-          `py-[11px]` is the fourth and stays arbitrary. Eleven tokens in
-          `tokens.css` hold 11px — the textarea's padding, the dialog dropdown's,
-          the nested tick's, the note's inline padding, the ≤760 table-row gap,
-          `--radius-input`, `--fs-xxs`… — and not one of them is a bar's
-          padding-y. This file's own rule for that case is the one
-          `--gap-table-row-mobile` states: *mint again under its own name rather
-          than borrow*. Minting is not this task's to do (the token files are
-          frozen), so it is reported with its role instead of being pointed at a
-          neighbouring 11.
+          **`py-flowbar-y` — R47's mint, and R46's `py-[11px]`.** Eleven tokens
+          in `tokens.css` hold 11px — the textarea's padding, the dialog
+          dropdown's, the nested tick's, the note's inline padding, the ≤760
+          table-row gap… — and not one of them is a bar's padding-y. The file's
+          own rule for that case is the one `--gap-table-row-mobile` states:
+          *mint again under its own name rather than borrow*. R46 had no mint
+          authority and reported it; R47 minted it. The reader's 10px needed
+          nothing — it is `--space-5` — which is why only one surface names a
+          new token here.
+
+          **`max760:` — `padding:9px 12px; gap:8px` on BOTH surfaces** (panel 93,
+          reader 99), the one place the two converge. The 12 is `--space-6` and
+          the 8 `--space-4`; the 9 is `--pad-flowbar-y-mobile`, a third role at
+          that number on this bar alone (`--pad-flowbar-action-y` and
+          `--pad-flowback-y` are the other two).
+
+          **`relative`** — both deliverables declare `position:relative` on this
+          element (panel 558, reader 312), and it is load-bearing rather than
+          decorative: the ⋯ menu's popover is `position:absolute; top:calc(100%
+          + 6px); left:12px` against THIS box (panel 576). Without it the
+          popover would anchor to whatever ancestor happened to be positioned.
 
           **`flex-wrap`, and it is the whole of the owner's "it doesn't
           responsive".** `Inja Panel.dc.html:558` declares it on the element and
@@ -202,8 +278,9 @@ function FlowEditor() {
       <div
         data-r-flowbar
         className={
-          'flex items-center flex-wrap bg-card border-b border-warm shrink-0 '
-          + (onReader ? 'gap-s5 px-topbar-reader py-s5' : 'gap-s6 px-topbar py-[11px]')
+          'relative flex items-center flex-wrap bg-card border-b border-warm shrink-0 '
+          + 'max760:px-s6 max760:py-flowbar-y-mobile max760:gap-s4 '
+          + (onReader ? 'gap-s5 px-topbar-reader py-s5' : 'gap-s6 px-topbar py-flowbar-y')
         }
       >
         {/* R21 — `Inja Reader.dc.html:312-316`. On the flowchart the design puts
@@ -238,24 +315,27 @@ function FlowEditor() {
             can open this process can also reach — is a safe thing to hand it.
 
             Drawn at reader 313's own numbers (`9px 13px`, radius 11, 13px, the
-            lavender tile behind a 1.5px hairline). Radius, type, tile and
-            hairline now read the theme; the `9px 13px` does not, because no
-            token is a back button's padding — reader 157's chrome back button is
-            `10px 15px` and owns `--pad-back-y`/`--pad-button-x`, and this bar's
-            button is a different site. Reported with its role.
+            lavender tile behind a 1.5px hairline), and now every one of them
+            reads the theme. The `9px 13px` was the last pair left arbitrary:
+            no token was a back button's padding, because reader 157's CHROME
+            back button is `10px 15px` and owns `--pad-back-y`/`--pad-button-x`,
+            and this bar's button is a different site. R47 mints both halves.
 
-            **≤760 — `[data-r-backlabel]{display:none}` (reader 105).** The
-            button keeps its glyph and loses its word. The design also squares it
-            to `38px` with `padding:9px 0` (reader 104); 38px has four owners in
-            `tokens.css` and none is this, so that half is reported rather than
-            approximated — which is why the label rule lands here alone. */}
+            **≤760 — reader 104-105.** The button keeps its glyph and loses its
+            word (`[data-r-backlabel]{display:none}`) and squares to
+            `width:38px; padding:9px 0`. Three tokens hold 38px —
+            `--size-menu-more-reader` (the reader chrome's own square button),
+            `--size-logo-bar` (the logo IMAGE) and `--space-14` — and none is
+            this, so R47 mints `--width-flowback-mobile` rather than borrow one
+            of them. The vertical 9 is the same `--pad-flowback-y` the wide
+            state draws, which is why only the inline half is zeroed. */}
         {onReader && (
           <Link
             to={backTo}
             data-r-flowback
             aria-label="بازگشت"
             title="بازگشت"
-            className="inline-flex items-center gap-s3 px-[13px] py-[9px] rounded-input font-bold text-fs-sm bg-tile-v2 text-violet border-hairline border-line flex-none no-underline max760:order-first"
+            className="inline-flex items-center gap-s3 px-flowback-x py-flowback-y rounded-input font-bold text-fs-sm bg-tile-v2 text-violet border-hairline border-line flex-none no-underline max760:order-first max760:w-flowback-mobile max760:justify-center max760:px-0"
           >
             <Icon name="chevronStart" px={15} stroke={2.4} />
             <span data-r-backlabel className="inline max760:hidden">بازگشت</span>
@@ -267,25 +347,28 @@ function FlowEditor() {
             ≤760, and it is the one control here whose job the browser's own back
             gesture already does.
 
-            Three of this group's values are un-writable rather than un-named,
-            which is a different failure and is why they are still literals. The
+            **Three of this group's values were un-writable rather than
+            un-named, which is a different failure — and R47 closed it.** The
             3px gap is `--gap-tab-flow`, the 5px inset is `--space-2` and the
-            tool-group divider is `--line-divider` — all three tokens exist and
-            all three utilities sit on `theme.test.ts`'s `UNPAINTED`, whose guard
+            tool-group divider is `--line-divider`. All three tokens existed and
+            all three utilities sat on `theme.test.ts`'s `UNPAINTED`, whose guard
             fails the moment a class on it acquires a consumer ("Delete these
-            lines from the list and lower CEILING by the same number"). That
-            bookkeeping is in a file this task may not edit, so writing the
-            correct token here turns the suite red. Measured, not assumed — all
-            four are listed in this task's report. */}
+            lines from the list and lower CEILING by the same number") — and that
+            bookkeeping lived in a file R46 could not edit, so writing the
+            correct token here turned the suite red. `--gap-tab-flow`'s own
+            comment in `tokens.css` reads *"the flow nav group, `gap:3px;
+            padding:5px`"*: it was minted for THIS element and had never been
+            writable, because the only file that would consume it was frozen by
+            F16 and the list recording its orphanhood was frozen too. */}
         {!editing && (prevProc || nextProc) && (
-          <div data-r-flownav className="flex items-center gap-[3px] bg-tile-v2 rounded-button p-[5px] flex-none max760:hidden">
+          <div data-r-flownav className="flex items-center gap-tab-flow bg-tile-v2 rounded-button p-s2 flex-none max760:hidden">
             {/* next process — sits on the right in RTL (first in DOM), '>' icon */}
             <button onClick={() => nextProc && nav(`/processes/${nextProc.id}/flow`)} disabled={!nextProc}
               title={nextProc ? `فرآیند بعدی: ${nextProc.name}` : undefined} aria-label={nextProc ? `فرآیند بعدی: ${nextProc.name}` : undefined}
               className="w-tool h-tool flex items-center justify-center rounded-tool bg-card text-violet disabled:text-disabled disabled:cursor-default">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M9 6l6 6-6 6" /></svg>
             </button>
-            <div className="w-px h-s9 bg-[#D9CEF0]" />
+            <div className="w-px h-s9 bg-line-divider" />
             {/* previous process — on the left, '<' icon */}
             <button onClick={() => prevProc && nav(`/processes/${prevProc.id}/flow`)} disabled={!prevProc}
               title={prevProc ? `فرآیند قبلی: ${prevProc.name}` : undefined} aria-label={prevProc ? `فرآیند قبلی: ${prevProc.name}` : undefined}
@@ -317,14 +400,165 @@ function FlowEditor() {
             // would be a different screen from the one the design draws.
             ? <span data-r-pname className="font-bold text-fs-lg text-ink max760:truncate max760:min-w-0">{proc.name}</span>
             : <input value={proc.name} onChange={(e) => ed.setName(e.target.value)} className="font-bold text-fs-lg text-ink border-hairline border-line rounded-control px-s5 py-1 outline-none focus:border-coral w-[280px] max-w-full" />}
+          {/* **`data-r-flowmore` — R46's C7, unblocked by R47's mint.**
+              `Inja Panel.dc.html:571`: a 34×34 radius-10 lavender tile behind a
+              1.5px hairline, `display:none`, and `display:flex` at ≤760 (panel
+              102). It REPLACES the action group rather than supplementing it —
+              panel 99 takes `data-r-actions` and `data-r-flownav` off the bar at
+              the same breakpoint — so every act the bar offers is in here too.
+              That is the rule `ProcessList`'s own ⋯ states, and it is the mobile
+              behaviour the owner reported missing.
+
+              **`--size-tool`, not `--size-menu-more`.** Both are square boxes on
+              a top bar and they are 34 and 36; `ProcessList`'s ⋯ is the 36, the
+              panel's chrome squares are the 36, and this one is the 34 that
+              every other button on THIS bar is drawn at (panel 561).
+
+              **The panel only.** `Inja Reader.dc.html:118` forces it
+              `display:none` at the one width it could have appeared at, because
+              the reader's actions stay on the bar instead (reader 113). Drawn
+              never rather than drawn-and-hidden: a hook with no visible state on
+              a surface is a thing for a later reader to wonder about, and R44
+              already makes `useSurface()` this file's one surface branch.
+
+              **Not while editing.** The design has no edit mode to draw, so
+              panel 99's `display:none` is written about the VIEW state; applying
+              it to the edit toolbar would take undo, «ذخیره» and «انصراف» off a
+              phone entirely. `data-r-flownav` above is gated the same way. */}
+          {!onReader && !editing && (
+            <button
+              ref={moreRef}
+              type="button"
+              data-r-flowmore
+              aria-haspopup="menu"
+              aria-expanded={flowMenu}
+              aria-label="ابزارها"
+              title="ابزارها"
+              onClick={() => setFlowMenu((v) => !v)}
+              className={
+                'relative before:absolute before:content-[""] before:-inset-s2 '
+                + 'hidden max760:flex items-center justify-center flex-none ms-auto '
+                + 'w-tool h-tool rounded-control bg-tile-v2 border-hairline border-line '
+                + 'text-violet text-fs-lg font-bold cursor-pointer'
+              }
+            >
+              ⋯
+            </button>
+          )}
         </div>
+        {/* **The popover — R46's C8, and the 225px that blocked it.**
+            `position:absolute; top:calc(100% + 6px); left:12px; min-width:225px`
+            (panel 576). `left` in an RTL document is the inline END, so it is
+            written `end-s6`; `--space-6` is the 12 and `--space-3` the 6.
+
+            `min-w-menu-flow` is R47's mint. `tokens.css`'s `--width-menu`
+            comment had already written this line down — *"A later screen whose
+            menu genuinely wants 225 mints its own name; it does not re-value
+            this one"* — and `--width-menu` is 265px, the panel SHELL's «مدیریت»
+            popover. Two menus, two floors.
+
+            A sibling of `data-r-flowtitle` and a child of the BAR, which is what
+            the design draws and what the bar's `relative` is for. The design
+            also lays a `position:fixed; inset:0` catcher under it (panel 575);
+            this build dismisses through `dismissibleStack` instead, as
+            `ProcessList` and `src/ui/Menu.tsx` both do, so one Escape closes one
+            thing. */}
+        {flowMenu && (
+          <div
+            ref={popRef}
+            role="menu"
+            className={
+              'absolute top-full mt-s3 end-s6 z-dropdown min-w-menu-flow flex flex-col gap-half '
+              + 'bg-card border border-border-card rounded-card shadow-pop p-s4'
+            }
+          >
+            {/* «تأییدشده» — the same question the toolbar's control asks, and
+                the same dialog. Gated on `confirm` for this department, exactly
+                as `ConfirmAction` gates itself (R5): the row is absent for
+                someone the write would refuse, not disabled.
+
+                **Its own tick box, and not `TickBox`.** Ledger L-48 makes every
+                `TickBox` in the app violet and reserves green for this element
+                by name — *"the flow screen's confirmed mark keeps its green and
+                this box may not borrow it"* — so borrowing the primitive here is
+                the one thing that rule forbids. `--border-pick`'s own token
+                comment names "unchecked tick" as one of its three roles. */}
+            {mayConfirm && mark && (
+              <button
+                role="menuitem"
+                type="button"
+                onClick={() => { setFlowMenu(false); setAsking(true) }}
+                className={MENU_ROW}
+              >
+                <span
+                  data-testid="flowmenu-tick"
+                  className={
+                    'flex items-center justify-center flex-none w-tick h-tick rounded-tick '
+                    + 'border-hairline text-card '
+                    + (mark.confirmed ? 'bg-green border-green' : 'bg-card border-border-pick')
+                  }
+                >
+                  {mark.confirmed && <Icon name="check" px={13} stroke={3} />}
+                </span>
+                <span className="flex-1">تأییدشده</span>
+              </button>
+            )}
+            {mayEdit && !tombstoned && (
+              <button role="menuitem" type="button" onClick={() => { setFlowMenu(false); ed.enter() }} className={MENU_ROW}>
+                <span className="flex-1">ویرایش</span>
+              </button>
+            )}
+            {/* `height:1px; background:#F2ECE3; margin:6px 4px` (panel 590) —
+                `--hair`, whose own `_ds` comment reads "internal divider". Its
+                `bg-` spelling was the fourth utility R46 reported as named,
+                compiled and never writable. */}
+            {(prevProc || nextProc) && <div data-testid="flowmenu-rule" className="h-px bg-hair my-s3 mx-s1" />}
+            {(prevProc || nextProc) && (
+              <>
+                <button role="menuitem" type="button" disabled={!nextProc}
+                  onClick={() => { setFlowMenu(false); if (nextProc) nav(`/processes/${nextProc.id}/flow`) }}
+                  className={MENU_ROW}>
+                  <span className="flex-1">فرآیند بعدی</span>
+                </button>
+                <button role="menuitem" type="button" disabled={!prevProc}
+                  onClick={() => { setFlowMenu(false); if (prevProc) nav(`/processes/${prevProc.id}/flow`) }}
+                  className={MENU_ROW}>
+                  <span className="flex-1">فرآیند قبلی</span>
+                </button>
+              </>
+            )}
+          </div>
+        )}
         {/* **R46 — `data-r-actions`, the flow bar's own action group.**
             `Inja Panel.dc.html:597-608` and `Inja Reader.dc.html:357-368` draw
             it identically: `margin-inline-start:auto`, and inside it the
             process confirmation followed by «ویرایش». Naming the group is what
             lets the ≤760 rules below address it, and it is the same hook both
-            deliverables' own media queries use. */}
-        <div data-r-actions className="ms-auto flex items-center gap-s4 flex-wrap">
+            deliverables' own media queries use.
+
+            **R47 — and at ≤760 the two surfaces do OPPOSITE things with it.**
+            The panel takes the whole group off the bar (`[data-r-flowbar]
+            [data-r-flownav],[data-r-flowbar] [data-r-actions]{display:none
+            !important}`, panel 99) and puts its acts in the ⋯ above; the reader
+            keeps it and re-lays it (`order:2; margin-inline-start:0; flex:1 1
+            auto; justify-content:flex-end`, reader 113) and draws no ⋯ at all
+            (reader 118). This is the deliberate R3 disagreement, and it is the
+            "it doesn't responsive" the owner reported.
+
+            **The collapse is gated on `!editing`.** The design has no edit mode
+            to draw, so panel 99 is a rule about the VIEW state; this group holds
+            the whole edit toolbar when `editing`, and hiding it at ≤760 would
+            take undo, «ذخیره» and «انصراف» off a phone with nothing offering
+            them instead. */}
+        <div
+          data-r-actions
+          className={
+            'ms-auto flex items-center gap-s4 flex-wrap '
+            + (onReader
+              ? 'max760:order-2 max760:ms-0 max760:flex-auto max760:justify-end'
+              : editing ? '' : 'max760:hidden')
+          }
+        >
           {/* **The confirmation, moved off the information page (R46).**
 
               The owner's words were *"the each process accept or reject should
@@ -369,17 +603,34 @@ function FlowEditor() {
               design has no edit mode to draw it beside, and by FR-V3 a document
               being edited is one whose confirmation is about to be invalid
               anyway. */}
-          {!editing && <ConfirmAction row={mark} department={dept} />}
+          {/* **`render="trigger"` — R47.** The DIALOG is drawn at the screen
+              root instead, and the split is forced by the ≤760 rule three
+              comments up: `display:none` on this group takes a `position:fixed`
+              descendant with it, so a dialog opened from the ⋯ would render
+              inside a hidden box and never appear. `open`/`onOpenChange` are
+              this file's, which is also where the design keeps them
+              (`confirmDialog` is app state, panel 3563). */}
+          {!editing && (
+            <ConfirmAction row={mark} department={dept} render="trigger"
+              open={asking} onOpenChange={setAsking} />
+          )}
           {tombstoned || !mayEdit ? null : !editing ? (
-            <Button variant="violet" onClick={ed.enter} className="px-4 py-2 text-[13px]" data-testid="enter-edit">ویرایش</Button>
+            // `padding:9px 16px; font-size:13px` (panel 607, reader 367). It was
+            // `px-4 py-2` — Tailwind's own rem ladder, 16px and 8px, which is the
+            // scale the `s` prefix exists to keep out of this app and which no
+            // guard in the repo can see, because a t-shirt name is neither a hex
+            // nor an arbitrary value. The 16 is `--space-8`; the 9 is R47's
+            // `--pad-flowbar-action-y`, minted rather than borrowed from the five
+            // other 9px tokens, none of which is a toolbar button's padding-y.
+            <Button variant="violet" onClick={ed.enter} className="px-s8 py-flowbar-action-y text-fs-sm" data-testid="enter-edit">ویرایش</Button>
           ) : (
             <>
               {/* undo / redo */}
               <div className="flex items-center gap-[3px] bg-tile-v2 rounded-xl p-[5px]">
-                <button disabled={!ed.canUndo} onClick={ed.undo} title="واگرد" className="w-[34px] h-[34px] flex items-center justify-center rounded-[9px] bg-white text-violet disabled:text-[#cfc7e0] disabled:cursor-default">
+                <button disabled={!ed.canUndo} onClick={ed.undo} title="واگرد" className="w-[34px] h-[34px] flex items-center justify-center rounded-[9px] bg-white text-violet disabled:text-disabled disabled:cursor-default">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 14L4 9l5-5" /><path d="M4 9h11a5 5 0 0 1 0 10h-1" /></svg>
                 </button>
-                <button disabled={!ed.canRedo} onClick={ed.redo} title="ازنو" className="w-[34px] h-[34px] flex items-center justify-center rounded-[9px] bg-white text-violet disabled:text-[#cfc7e0] disabled:cursor-default">
+                <button disabled={!ed.canRedo} onClick={ed.redo} title="ازنو" className="w-[34px] h-[34px] flex items-center justify-center rounded-[9px] bg-white text-violet disabled:text-disabled disabled:cursor-default">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 14l5-5-5-5" /><path d="M20 9H9a5 5 0 0 0 0 10h1" /></svg>
                 </button>
               </div>
@@ -407,7 +658,7 @@ function FlowEditor() {
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"><path d="M12 3l9 9-9 9-9-9z" /></svg>اتصال
                 </button>
               </div>
-              <button onClick={ed.cancel} className="px-3.5 py-[9px] border-[1.5px] border-line bg-white rounded-[11px] font-semibold text-[12.5px] text-muted hover:bg-[#F4EFFB]">انصراف</button>
+              <button onClick={ed.cancel} data-testid="flow-cancel" className="px-3.5 py-[9px] border-[1.5px] border-line bg-white rounded-[11px] font-semibold text-[12.5px] text-muted hover:bg-tile-v2">انصراف</button>
               <button onClick={onSave} disabled={put.isPending} aria-busy={put.isPending || undefined} data-testid="save" className={`flex items-center gap-1.5 px-[18px] py-[9px] rounded-[11px] bg-green text-white font-bold text-[13px] shadow-green hover:brightness-105 ${put.isPending ? 'cursor-progress' : ''}`}>
                 {put.isPending
                   ? <Spinner />
@@ -420,7 +671,7 @@ function FlowEditor() {
       </div>
 
       {tombstoned && (
-        <div className="shrink-0 border-b border-warm bg-[#EDEAF3] px-[22px] py-2.5 text-[13px] text-muted flex flex-wrap items-center gap-2">
+        <div className="shrink-0 border-b border-warm bg-tile-dead px-[22px] py-2.5 text-[13px] text-muted flex flex-wrap items-center gap-2">
           <span className="font-bold text-ink">این فرآیند باطل شده است.</span>
           {(proc.superseded_by ?? []).length > 0 && (
             <>
@@ -473,6 +724,16 @@ function FlowEditor() {
           )
         })()}
       </div>
+      {/* §6.15's confirm-content dialog, drawn at the SCREEN root and reached
+          from two places — the toolbar's control and the ⋯ menu's «تأییدشده»
+          row. That is the design's own arrangement (`confirmDialog` is app
+          state, panel 3563) and here it is also a requirement: the action group
+          is `display:none` at ≤760 on the panel, and a `position:fixed`
+          descendant of a `display:none` box is not painted at all. */}
+      {!editing && (
+        <ConfirmAction row={mark} department={dept} render="dialog"
+          open={asking} onOpenChange={setAsking} />
+      )}
       {pendingDel && (() => {
         const n = proc.nodes.find((x) => x.id === pendingDel)
         const label = n && 'label' in n ? (n as { label: string }).label : pendingDel

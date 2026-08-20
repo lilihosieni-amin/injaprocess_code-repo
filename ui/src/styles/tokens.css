@@ -550,8 +550,13 @@
      the «مدیریت» menu in the panel's own top bar, the only menu popover either
      SHELL draws, and it is the widest — which for a FLOOR is the direction that
      cannot crop a label, the same reading --height-popover took when the design
-     gave it four caps and no rule. A later screen whose menu genuinely wants
-     225 mints its own name; it does not re-value this one. */
+     gave it four caps and no rule.
+
+     That paragraph ended by deferring the 225 to "a later screen whose menu
+     genuinely wants it", and the later screen has arrived: the flowchart's ⋯
+     menu is panel 576 and reader 336. Owner ruling R47 mints --width-menu-flow
+     for it, in the flow-bar block at the foot of this file. This token did not
+     move. */
   --width-menu: 265px;             /* was a raw 220px literal in the config */
 
   /* The offset of a hint line under the label it explains. Seven uses and one
@@ -614,6 +619,11 @@
      confirm box, panel 599 and reader 359; the role and scope pills, panel 1314
      and 1318), so it is named for this one and the other two mint their own
      when their screens are built.
+
+     One of those two has: owner ruling R47 mints --pad-confirm-y for the confirm
+     box, in the flow-bar block at the foot of this file. The role and scope
+     pills are still deferred, and are the only role of the three still without a
+     name of its own. This token did not move.
 
      The reader's back button is again NOT this token: `padding:10px 15px`
      (reader 157), whose vertical is --space-5. */
@@ -732,4 +742,116 @@
      never draws, and enshrining either as a token would make an invention
      permanent. */
   --pad-toast-x: 20px;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   The flow-bar mint — owner ruling R47, and the last block in this file.
+
+   `src/flow/` was frozen by F16 for the whole 25-task rebuild, so the flowchart
+   is the one screen that never had a design-conformance pass. R46 did that pass
+   and stopped at eight values with no name, exactly as it was instructed to
+   rather than minting on its own or leaving arbitrary numbers standing. This is
+   that mint. Its audit, value by value, is .superpowers/sdd/task-R46-report.md
+   §2.1; what was built on it is .superpowers/sdd/task-R47-report.md.
+
+   TWO of the nine were already written down as deferred mints in this file, and
+   both comments above have been updated so neither still reads as an unfinished
+   job: --pad-back-y named "the confirm box, panel 599 and reader 359" and
+   --width-menu named "panel 576 and reader 336". They were written for this
+   block.
+
+   Every number below already has an owner in this file under a different role,
+   which is why each is minted again under its own name rather than borrowed —
+   the rule --gap-table-row-mobile states and the one --gap-button-icon,
+   --pad-toast-x and --pad-crumb-y were each minted under. The owners are
+   asserted, one by one, in src/test/tokens.test.ts.
+
+   Numbers after a file name are line numbers in ui/design/Inja Panel.dc.html
+   and ui/design/Inja Reader.dc.html.
+   ───────────────────────────────────────────────────────────────────────── */
+:root {
+  /* The flow bar's own block padding, `padding:11px 22px` (panel 558); its 22px
+     is --pad-topbar, the bar sharing the panel top bar's gutter. The READER
+     draws this bar `10px 20px` (reader 312) and needs nothing new for it — 10px
+     is --space-5 and 20px is --pad-topbar-reader, both already writable, which
+     is why only the panel's vertical is here.
+
+     Eleven tokens in this file hold 11px — the textarea's padding-y, the dialog
+     dropdown's, the nested tick's, the timeline note's inline padding, the ≤760
+     table-row gap, the large option's padding-y — and not one of them is a
+     bar's padding-y. */
+  --pad-flowbar-y: 11px;
+
+  /* …and the same bar at ≤760, where BOTH surfaces converge on
+     `padding:9px 12px` (panel 93, reader 99). The 12px is --space-6; the 9 is
+     this. Named `-mobile` for the same reason --gap-table-row-mobile is: it is
+     one role's value inside one breakpoint, not a second role.
+
+     Nine tokens hold 9px and the nearest of them, --pad-crumb-y, is scoped by
+     its own comment to the PANEL's breadcrumb strip. */
+  --pad-flowbar-y-mobile: 9px;
+
+  /* The confirm box on that bar, `padding:7px 12px` (panel 599, reader 359) —
+     the site --pad-back-y's comment named and deferred. Its 12px is --space-6.
+     Four tokens hold 7px: the popover's inset, the 4-up stat label's margin-top,
+     the stat numeral's dot gap and the panel back button's padding-y, whose own
+     comment forbids the borrow this replaces.
+
+     UNCONSUMED as of R47, and deliberately so. This build draws §6.3's settled
+     control at that site — a --size-tool box behind §6.15's dialog — because the
+     design's pill carries a label whose ink is BELOW the contrast floor the flow
+     bar is graded against: measured in Chrome, its two states are 3.72:1 and
+     3.86:1 on this white toolbar. The name is minted because the deferral above
+     promised it and because the value is real; drawing the pill is a decision
+     for the owner, and R47's report puts the measurement in front of them. */
+  --pad-confirm-y: 7px;
+
+  /* «ویرایش» on that bar, `padding:9px 16px` (panel 607, reader 367); its 16px
+     is --space-8. The same 9 as --pad-flowbar-y-mobile above and as
+     --pad-crumb-y, --pad-tab-y-audit, --gap-option and --pad-note-y, and a
+     sixth role: a primary button standing in a toolbar's action group. It is not
+     --pad-button-x's partner either — that token is the INLINE half of a
+     different button at 15px. */
+  --pad-flowbar-action-y: 9px;
+
+  /* The flow menu popover's minimum width, `min-width:225px` (panel 576, reader
+     336) — the second site --width-menu's comment named and deferred. Zero other
+     tokens in this file hold 225px, and --width-menu is 265: a FLOOR, and the
+     one the panel's «مدیریت» popover in the SHELL is drawn at. Two menus, two
+     floors, and collapsing them would crop one label or pad the other. */
+  --width-menu-flow: 225px;
+
+  /* The reader's «بازگشت» on the flow bar, `padding:9px 13px` (reader 313).
+     BOTH halves are minted, because neither number is a back button's padding
+     today: reader 157's CHROME back button is `10px 15px` and owns --pad-back-y
+     (7px, the panel's) and --pad-button-x (15px). This is a third site.
+
+     The 13 joins four other owners — the search field, the compose drawer, the
+     filter dropdown and the table row — and the 9 joins the five above. */
+  --pad-flowback-y: 9px;
+  --pad-flowback-x: 13px;
+
+  /* The «/» between the reader flow bar's department crumb and the process
+     title (reader 318). An INK, so it takes the --text- prefix rule the config's
+     colour scale states, and the class is therefore the bare stem.
+
+     UNCONSUMED as of R47, with its element: R46 recorded the crumb pair as not
+     built, and the reason it stays unbuilt is the same measurement the confirm
+     box's is. The design draws the crumb in #8a7db0 at 12.5px and this separator
+     lighter still; on the white flow bar that is 3.72:1 and 1.44:1, and the
+     bar is graded at 4.5:1 by e2e/flow.spec.ts's contrast census — a census that
+     has already caught one real defect here. The name is minted so the element
+     is unblocked; whether it is drawn at the design's ink is the owner's. */
+  --text-crumb-sep: #DCD3EC;
+
+  /* …and that same «بازگشت» at ≤760, where the design squares it to
+     `width:38px; padding:9px 0` and drops its word (reader 104-105). A WIDTH and
+     not a size: the design sets no height on it, so it is carried on `width`
+     alone, exactly as --width-login is.
+
+     It is NOT --size-menu-more-reader, which is also 38px and is the reader's ⋯
+     and home SQUARE in the chrome (reader 162) — a box with a height, on another
+     bar. Nor --size-logo-bar, 38px again, which is the logo IMAGE. Three 38s,
+     three roles. */
+  --width-flowback-mobile: 38px;
 }

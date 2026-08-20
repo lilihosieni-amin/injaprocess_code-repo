@@ -140,3 +140,10 @@ px-toast-x
 # Written `rounded-t-sheet` at its one consumer, so the bare stem below is the
 # inventory entry and not the spelling any component uses.
 rounded-sheet
+# The flow-bar mint (owner ruling R47). `src/flow/` was frozen for the whole
+# 25-task rebuild (F16), so the flowchart is the one screen that never had a
+# conformance pass; these are the nine values R46's audit found with no name at
+# all. Two of them had been written down as deferred mints in tokens.css itself
+# — the confirm box's padding-y and the ⋯ menu's 225px floor.
+py-flowbar-y py-flowbar-y-mobile py-confirm-y py-flowbar-action-y
+py-flowback-y px-flowback-x min-w-menu-flow text-crumb-sep w-flowback-mobile

@@ -157,13 +157,44 @@ const RULE = {
  * see and therefore say nothing at all. Cosmetic either way — the endpoints
  * re-derive the capability and refuse regardless (D48).
  */
-export function ConfirmAction({ row, department }:
-  { row: Confirmation | undefined; department: string }) {
+export function ConfirmAction({ row, department, open, onOpenChange, render = 'both' }: {
+  row: Confirmation | undefined
+  department: string
+  /**
+   * **Controlled mode — owner ruling R47, and it exists because the design's
+   * own dialog is app-level state.**
+   *
+   * `Inja Panel.dc.html:3563` is `mConfirm: () => set({flowMenu:false,
+   * confirmDialog:true})`: the question is reached from the toolbar's control
+   * AND from the ⋯ menu's row, and the menu closes behind it. A dialog owned by
+   * whichever control was pressed cannot do that — closing the menu would
+   * unmount the dialog the menu had just opened.
+   *
+   * Omit both and the component is uncontrolled, exactly as it was: `Overview`
+   * and every existing call site pass neither and are unchanged.
+   */
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+  /**
+   * Which half to draw. `'both'` is the default and is every call site but one.
+   *
+   * The flow bar needs them apart because the panel hides its whole action
+   * group at ≤760 (`Inja Panel.dc.html:99`) and `display:none` takes a `fixed`
+   * descendant with it — so the TRIGGER belongs inside that group and the
+   * DIALOG must not. Splitting is not a second component: both halves read the
+   * same row, the same capability gate and the same label, and a `'trigger'`
+   * that drifted from its `'dialog'` would be two answers to one question.
+   */
+  render?: 'both' | 'trigger' | 'dialog'
+}) {
   const can = useCan(useSession().data)
   const set = useSetConfirmation(department)
   const revoke = useRevokeConfirmation(department)
-  const [asking, setAsking] = useState(false)
+  const [selfAsking, setSelfAsking] = useState(false)
   // Hooks first, then the early return — the same rule `ConfirmMark` keeps.
+  const controlled = onOpenChange !== undefined
+  const asking = controlled ? open === true : selfAsking
+  const setAsking = controlled ? onOpenChange : setSelfAsking
   if (!row || !can('confirm', `dept:${department}`)) return null
 
   const failure = set.error ?? revoke.error
@@ -185,7 +216,7 @@ export function ConfirmAction({ row, department }:
 
   return (
     <>
-      <IconButton
+      {render !== 'dialog' && <IconButton
         label={label}
         onClick={() => setAsking(true)}
         icon={
@@ -202,9 +233,9 @@ export function ConfirmAction({ row, department }:
             <Icon d={confirming ? CHECK : WARN} px={18} stroke={2.6} />
           </span>
         }
-      />
+      />}
 
-      {asking && (
+      {render !== 'trigger' && asking && (
         // §6.15 `confirmDialog` — `width:460px`, radius 24, padding 26, and a
         // 42x42 radius-14 tinted glyph tile beside the title. `Dialog` takes the
         // width by NAME (`sm` is `--width-dialog-sm`, 460) rather than as a

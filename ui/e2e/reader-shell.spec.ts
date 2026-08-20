@@ -279,7 +279,17 @@ test('the flow toolbar’s «بازگشت» is drawn at the design’s own numbe
   await pinPage(page, "goto('/processes/dining-003/flow')")
   const back = page.locator('[data-r-flowback]')
   await expect(back).toHaveCSS('padding-top', '9px')
-  await expect(back).toHaveCSS('padding-left', '13px')
+  // **The inline half is 13px above the breakpoint and 0 below it — reader 104.**
+  // `[data-r-flowback]{width:38px; justify-content:center; padding:9px 0}` is the
+  // design squaring this control to an icon once its word goes (reader 105), and
+  // owner ruling R47 minted `--width-flowback-mobile` for the 38 so it could be
+  // drawn. Before R47 the button kept its wide padding at every width, which is
+  // what this line used to pin; pinning it now would hold the screen to the one
+  // state the design does NOT draw on a phone. The square itself is measured in
+  // `e2e/flow.spec.ts`'s R47 block.
+  const wide = page.viewportSize()!.width > 760
+  await expect(back).toHaveCSS('padding-left', wide ? '13px' : '0px')
+  if (!wide) await expect(back).toHaveCSS('width', '38px')
   await expect(back).toHaveCSS('border-radius', '11px')
   await expect(back).toHaveCSS('font-size', '13px')
   await expect(back).toHaveCSS('font-weight', '700')

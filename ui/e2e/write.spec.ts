@@ -157,6 +157,19 @@ test('the confirm control is the design’s 34px inside the app’s 44px target'
   await reads(page, CONFIRMED)
   await flowchart(page)
 
+  // **Above 760 only, as of owner ruling R47.** The panel takes its whole action
+  // group off the flow bar at ≤760 (`Inja Panel.dc.html:99`) and replaces it
+  // with the ⋯ menu (panel 102), so below the breakpoint this control is not
+  // drawn at all and the act is a menu ROW instead — a different shape, with no
+  // 34px box to measure. That route is graded in `e2e/flow.spec.ts`'s R47 block,
+  // at the width where it is the only one. Skipping rather than asserting
+  // nothing, so a run at w760 says which check did not apply and why.
+  if (page.viewportSize()!.width <= 760) {
+    await expect(page.getByRole('button', { name: 'ابزارها' })).toBeVisible()
+    test.skip(true, 'the confirm control is inside the ⋯ menu at ≤760 — panel 99 and 102')
+    return
+  }
+
   const button = page.getByRole('button', { name: 'لغو تأیید' })
   const drawn = page.getByTestId('confirm-box')
   const [hit, painted] = await Promise.all([button.boundingBox(), drawn.boundingBox()])
@@ -214,9 +227,21 @@ test('the confirm-content dialog is §6.15’s, and its scrim is on the modal ru
   await reads(page)
   await flowchart(page)
 
-  await page.getByRole('button', { name: 'تأیید محتوا' }).click()
-  const box = page.getByRole('dialog', { name: 'تأیید محتوا' })
   const width = page.viewportSize()!.width
+  // **Two routes to one dialog, and this test takes whichever the width offers.**
+  // Owner ruling R47: at ≤760 the panel's flow bar replaces its action group
+  // with the ⋯ menu (`Inja Panel.dc.html:99` and `:102`), so the act is a menu
+  // row there. The dialog is the SAME dialog either way — the design keeps it in
+  // app state and opens it from both (`mConfirm`, panel 3563) — and this test
+  // must go on running at ≤760, because the rules it grades below are §5.2's
+  // bottom-sheet ones, which only exist at that width.
+  if (width > 760) {
+    await page.getByRole('button', { name: 'تأیید محتوا' }).click()
+  } else {
+    await page.getByRole('button', { name: 'ابزارها' }).click()
+    await page.getByRole('menuitem', { name: 'تأییدشده' }).click()
+  }
+  const box = page.getByRole('dialog', { name: 'تأیید محتوا' })
 
   // §6.15 — `width:460px; border-radius:24px; padding:26px`, and §5.2's ≤760
   // pass turns every modal into a bottom sheet with 20px top corners only.

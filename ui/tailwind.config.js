@@ -140,6 +140,14 @@ export default {
         // deliberately not named `--border-warn-edge`: the comment above reserves
         // that family for the long `border-border-<x>` form.
         'warn-edge': 'var(--warn-edge)',
+        // The flow-bar mint (R47) — the «/» between the reader flow bar's
+        // department crumb and the process title (reader 318). An INK, so the
+        // `--text-` prefix comes off by rule 4 and the class is `text-crumb-sep`.
+        // It sits on THIS scale and not on `textColor` for the reason every
+        // other ink here does: `colors` feeds text, background and border alike,
+        // and `textColor` is reserved for the four keys whose stem would collide
+        // if it were shared.
+        'crumb-sep': 'var(--text-crumb-sep)',
       },
       textColor: {
         'icom-input': 'var(--icom-input-fg)', 'icom-control': 'var(--icom-control-fg)',
@@ -346,6 +354,12 @@ export default {
         // and appears on `width` nowhere. 19px, not `count`'s 21px: that one is
         // the FAB's.
         'count-chrome': 'var(--size-count-chrome)', // 19px — the top-bar badge
+        // The flow-bar mint (R47). A second menu popover FLOOR: `menu` above is
+        // the 265px the panel shell's «مدیریت» popover is drawn at, and this is
+        // the 225px the flowchart's ⋯ menu is (panel 576, reader 336). Two
+        // menus, two floors — collapsing them would crop one label or pad the
+        // other, which is the reading `menu`'s own token comment took.
+        'menu-flow': 'var(--width-menu-flow)',   // 225px — the flow bar's ⋯ menu
       },
       // §5.2 Dropdown — the popover's scroll cap. On `maxHeight` and not on
       // `spacing`: a cap is not a step, the same reason the three search-icon
@@ -464,6 +478,20 @@ export default {
         // margin and the reader's chrome gutter. Its vertical 12 is `py-s6` and
         // needs nothing new.
         'toast-x': 'var(--pad-toast-x)',                      // 20px — the toast's inline padding
+        // The flow-bar mint (owner ruling R47) — six of the nine names the
+        // flowchart screen needed, and every one of them a number this scale
+        // already carries under another role. `flowbar-y` is the SIXTH 11px key,
+        // `flowbar-y-mobile`/`flowbar-action-y`/`flowback-y` the sixth, seventh
+        // and eighth 9px ones, `confirm-y` the fifth 7px and `flowback-x` the
+        // fifth 13px. The direction stays out of the key, as everywhere above,
+        // and the two `-mobile` suffixes mean what `table-row-mobile`'s does:
+        // one role's value inside one breakpoint, not a second role.
+        'flowbar-y': 'var(--pad-flowbar-y)',                  // 11px — the panel flow bar
+        'flowbar-y-mobile': 'var(--pad-flowbar-y-mobile)',    // 9px  — …the same bar at ≤760
+        'confirm-y': 'var(--pad-confirm-y)',                  // 7px  — the confirm box
+        'flowbar-action-y': 'var(--pad-flowbar-action-y)',    // 9px  — its «ویرایش»
+        'flowback-y': 'var(--pad-flowback-y)',                // 9px  — the reader's flow-back
+        'flowback-x': 'var(--pad-flowback-x)',                // 13px — …and its inline half
       },
       maxWidth: {
         departments: 'var(--width-departments)', list: 'var(--width-list)',
@@ -547,6 +575,11 @@ export default {
         dot: 'var(--size-dot)',                         // 9px  — the table state dot
         chev: 'var(--size-chev)',                       // 30px — the table chevron cell
         'glyph-tile': 'var(--size-glyph-tile)',         // 42px — §6.15's glyph tile
+        // The flow-bar mint (R47) — the reader's «بازگشت», squared to 38px at
+        // ≤760 (reader 104). On THIS scale only, for the reason `login` is: the
+        // design sets a width on it and no height. NOT `menu-more-reader`, which
+        // is 38px too and is the reader chrome's own square button.
+        'flowback-mobile': 'var(--width-flowback-mobile)', // 38px — at ≤760
       },
       height: {
         tile: 'var(--role-tile)', tool: 'var(--size-tool)', avatar: 'var(--size-avatar)',

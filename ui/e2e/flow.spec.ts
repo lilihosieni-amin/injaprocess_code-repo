@@ -263,6 +263,47 @@ function contrast(fg: string, bg: string): number {
 
 const barOf = (page: Page) => page.locator('[data-r-flowbar]')
 
+/**
+ * **The contrast census — every run of text under `root`, graded against the
+ * ground actually behind it.** Returns the ones below 4.5:1, already formatted.
+ *
+ * R46 wrote this inline for one test and it earned its keep immediately:
+ * `ConfirmMark`'s byline came back at **1.74:1** on this white toolbar, which is
+ * why the mark is deliberately not drawn here. R47 lifted it to a function
+ * because the ⋯ menu puts five more runs of text on the same ground and nothing
+ * had measured them — a census that only ever runs on the closed bar is a census
+ * of half the screen.
+ *
+ * Each run is compared against the first OPAQUE background in its ancestor
+ * chain, not against the bar's own white: the id badge's white type sits on its
+ * own violet tile and is correct, and grading everything against the bar would
+ * fail it.
+ */
+async function censusOf(page: Page, root: string): Promise<string[]> {
+  const runs = await page.locator(root).evaluate((el) => {
+    const groundOf = (n0: Element): string => {
+      for (let n: Element | null = n0; n; n = n.parentElement) {
+        const c = getComputedStyle(n).backgroundColor
+        const m = /^rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)\s*(?:[,/]\s*([\d.]+)\s*)?\)$/.exec(c)
+        if (m && (m[4] === undefined || Number(m[4]) >= 1)) return c
+      }
+      return 'rgb(255, 255, 255)'
+    }
+    return [...el.querySelectorAll('*')]
+      .filter((n) => n.children.length === 0 && (n.textContent ?? '').trim() !== '')
+      .map((n) => ({
+        text: (n.textContent ?? '').trim().slice(0, 24),
+        ink: getComputedStyle(n).color,
+        ground: groundOf(n),
+      }))
+  })
+  expect(runs.length, `${root} has no text to grade`).toBeGreaterThan(1)
+  return runs
+    .map((r) => ({ ...r, ratio: contrast(r.ink, r.ground) }))
+    .filter((r) => r.ratio < 4.5)
+    .map((r) => `«${r.text}» ${r.ink} on ${r.ground} = ${r.ratio.toFixed(2)}:1`)
+}
+
 /** The painted box of one control, rounded the way a person reads a ruler. */
 async function boxOf(page: Page, selector: string) {
   const b = await page.locator(selector).first().boundingBox()
@@ -391,36 +432,26 @@ test('R46 — the process confirmation is on the flowchart, at every width', asy
   // its own docstring says both its call sites are on the field "and never on
   // cream". Measured against what is really behind it rather than argued from
   // hex values.
-  const bar = barOf(page)
-  const runs = await bar.evaluate((root) => {
-    // Each run of text against the first OPAQUE background above it, which is
-    // what the eye sees. Comparing every ink to the BAR's own white would fail
-    // the id badge, whose white type sits on its own violet tile.
-    const groundOf = (el: Element): string => {
-      for (let n: Element | null = el; n; n = n.parentElement) {
-        const c = getComputedStyle(n).backgroundColor
-        const m = /^rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)\s*(?:[,/]\s*([\d.]+)\s*)?\)$/.exec(c)
-        if (m && (m[4] === undefined || Number(m[4]) >= 1)) return c
-      }
-      return 'rgb(255, 255, 255)'
-    }
-    return [...root.querySelectorAll('*')]
-      .filter((n) => n.children.length === 0 && (n.textContent ?? '').trim() !== '')
-      .map((n) => ({
-        text: (n.textContent ?? '').trim().slice(0, 24),
-        ink: getComputedStyle(n).color,
-        ground: groundOf(n),
-      }))
-  })
-  expect(runs.length, 'the toolbar has no text to grade').toBeGreaterThan(1)
-  const dim = runs
-    .map((r) => ({ ...r, ratio: contrast(r.ink, r.ground) }))
-    .filter((r) => r.ratio < 4.5)
-    .map((r) => `«${r.text}» ${r.ink} on ${r.ground} = ${r.ratio.toFixed(2)}:1`)
+  const dim = await censusOf(page, '[data-r-flowbar]')
   expect(dim, 'ink chosen for the violet field is being drawn on the white toolbar').toEqual([])
 
-  // …and the act, reachable — not merely present. `toBeVisible` passes for a
+  // **The act, reachable — not merely present.** `toBeVisible` passes for a
   // control painted under something else, so this presses it.
+  //
+  // **Above 760 only, as of owner ruling R47.** The panel's own ≤760 block takes
+  // this whole group off the bar (`[data-r-flowbar] [data-r-actions]{display:
+  // none !important}`, panel 99) and puts its acts in the ⋯ instead (panel 102);
+  // the act is measured through that route by the R47 block below, at the width
+  // where it is the only route. The title of this test still holds — the
+  // confirmation is on the flowchart at every width — but the CONTROL is not the
+  // same control at every width, and pretending otherwise is how a collapse
+  // ships half-done.
+  if (page.viewportSize()!.width <= 760) {
+    await expect(actions).toBeHidden()
+    await expect(page.getByRole('button', { name: 'ابزارها' })).toBeVisible()
+    return
+  }
+
   const act = page.getByRole('button', { name: 'لغو تأیید' })
   await expect(act).toBeVisible()
   const drawn = await boxOf(page, '[data-testid="confirm-box"]')
@@ -435,6 +466,148 @@ test('R46 — the process confirmation is on the flowchart, at every width', asy
   await expect(dialog).toContainText('برداشتن تأیید')
   await page.keyboard.press('Escape')
   await expect(dialog).toHaveCount(0)
+})
+
+/**
+ * **Owner ruling R47 — the ⋯ menu, and the panel's ≤760 action collapse.**
+ *
+ * R46 audited this as C7/C8 and could not build it: the popover's
+ * `min-width:225px` (panel 576, reader 336) had no token, and `tokens.css`'s own
+ * `--width-menu` comment had already written down *"A later screen whose menu
+ * genuinely wants 225 mints its own name; it does not re-value this one."* R47
+ * minted `--width-menu-flow`, and this is the block that measures what it
+ * unblocked.
+ *
+ * It is a REPLACEMENT and not an addition. `[data-r-flowbar] [data-r-flownav],
+ * [data-r-flowbar] [data-r-actions]{display:none !important}` at panel 99 and
+ * `[data-r-flowmore]{display:flex !important}` at panel 102 — so at ≤760 exactly
+ * one of the ⋯ and the action group is on screen, and every act the bar offered
+ * has to be inside the other one or it has stopped existing on a phone. That is
+ * the behaviour the owner reported missing, and it is why the assertions below
+ * are about BOTH halves at once rather than about the ⋯ alone.
+ */
+for (const surface of ['panel', 'reader'] as const) {
+  test(`R47 — exactly one of the ⋯ and the action group is on the bar — ${surface}`, async ({ page }) => {
+    const w = page.viewportSize()!.width
+    await flow(page, surface)
+    const more = page.locator('[data-r-flowmore]')
+    const actions = page.locator('[data-r-flowbar] [data-r-actions]')
+
+    if (surface === 'reader') {
+      // `[data-r-flowmore]{display:none !important}` (reader 118) at the one
+      // width it could have appeared at, because the reader's actions STAY —
+      // `order:2; margin-inline-start:0; flex:1 1 auto; justify-content:flex-end`
+      // (reader 113). R3: the two deliverables disagree here on purpose, and
+      // this build follows each of them on its own surface.
+      await expect(more).toHaveCount(0)
+      await expect(actions).toHaveCount(1)
+
+      // **…and on this surface the group is always EMPTY, which is a finding and
+      // not a gap.** The design gates its contents on `showEditTools`, and in
+      // this build that gate is the SHELL: `auth/session.ts`'s `selectShell`
+      // sends anyone holding `edit` or `confirm` to the panel (F2), so a session
+      // on the reader surface can never hold either. Reader 357-368 draws a
+      // confirm control and an «ویرایش» that nobody who reaches this bar could
+      // be offered. The hook and its ≤760 rules are kept because they are the
+      // design's and are graded as declarations by
+      // `src/flow/FlowScreen.more.test.tsx`; what cannot be measured here is a
+      // box, because there is nothing in it. Reported in R47's task report.
+      const kids = await actions.evaluate((el) => el.childElementCount)
+      expect(kids, 'the reader’s action group has contents — re-measure its ≤760 layout').toBe(0)
+      return
+    }
+
+    if (w <= 760) {
+      await expect(more, 'the ⋯ is not drawn on a phone').toBeVisible()
+      await expect(actions, 'the action group survives ≤760 beside the ⋯').toBeHidden()
+      // The DRAWN box is the design's 34, and the PRESSABLE one is the app's 44
+      // floor as a transparent ::before around it (F11) — never the box
+      // inflated. Both are measured, because only one of them is visible.
+      const drawn = await boxOf(page, '[data-r-flowmore]')
+      expect({ w: drawn.w, h: drawn.h }, 'the ⋯ is not --size-tool').toEqual({ w: 34, h: 34 })
+      const hit = await more.evaluate((el) => {
+        const r = getComputedStyle(el, '::before')
+        return { top: r.top, inset: r.insetInlineStart }
+      })
+      expect(hit.top, 'the ⋯ has no 44px target around its 34px box').toBe('-5px')
+    } else {
+      await expect(more, 'the ⋯ is drawn above the breakpoint too').toBeHidden()
+      await expect(actions).toBeVisible()
+    }
+  })
+}
+
+test('R47 — the ⋯ menu opens at the design’s 225px floor, inside the window', async ({ page }) => {
+  const w = page.viewportSize()!.width
+  await flow(page, 'panel')
+  if (w > 760) {
+    test.skip(true, 'the ⋯ is display:none above 760 — panel 571 against panel 102')
+    return
+  }
+  const trigger = page.getByRole('button', { name: 'ابزارها' })
+  await trigger.click()
+  const menu = page.getByRole('menu')
+  await expect(menu).toBeVisible()
+
+  // `min-width:225px` (panel 576). A FLOOR, so it is asserted as one — and the
+  // popover must still be inside the window at the narrowest width the design
+  // declares, which is the half a `min-width` can break.
+  const box = (await menu.boundingBox())!
+  expect(Math.round(box.width), 'the menu is narrower than its own floor')
+    .toBeGreaterThanOrEqual(225)
+  const bar = (await barOf(page).boundingBox())!
+  expect(box.x, 'the menu is painted off the left of the window').toBeGreaterThanOrEqual(-1)
+  expect(box.x + box.width, 'the menu is painted off the right of the window')
+    .toBeLessThanOrEqual(w + 1)
+  // …and it hangs BELOW the bar rather than over it: `top:calc(100% + 6px)`.
+  expect(box.y, 'the menu overlaps the bar it hangs from')
+    .toBeGreaterThanOrEqual(bar.y + bar.height - 1)
+
+  // Every act the collapsed bar took away is in here, which is what makes
+  // "replaces" true rather than "hides".
+  const rows = await menu.getByRole('menuitem').allInnerTexts()
+  expect(rows.map((t) => t.trim()))
+    .toEqual(['تأییدشده', 'ویرایش', 'فرآیند بعدی', 'فرآیند قبلی'])
+
+  // **The contrast census, run again with the menu OPEN.** R46's version graded
+  // the closed bar and caught `ConfirmMark`'s byline at 1.74:1; a menu is five
+  // more runs of text on the same white ground, and nothing had ever measured
+  // them. Same method: each run against the first OPAQUE background above it.
+  const dim = await censusOf(page, '[data-r-flowbar]')
+  expect(dim, 'ink on the ⋯ menu is below the floor the rest of this bar is held to')
+    .toEqual([])
+
+  await shot(page, 'flow-more-menu')
+
+  // …and the act is reachable from in here, not merely listed: this row and the
+  // toolbar's control open ONE dialog (panel 3563's `mConfirm` is
+  // `set({flowMenu:false, confirmDialog:true})`), and the menu closes behind it.
+  await menu.getByRole('menuitem', { name: 'تأییدشده' }).click()
+  await expect(page.getByRole('menu')).toHaveCount(0)
+  const dialog = page.getByRole('dialog')
+  await expect(dialog).toBeVisible()
+  await expect(dialog).toContainText('برداشتن تأیید')
+})
+
+test('R47 — the reader’s «بازگشت» becomes a 38px square on a phone', async ({ page }) => {
+  // `[data-r-flowback]{order:-1; width:38px; justify-content:center;
+  // padding:9px 0}` (reader 104). R46 drew the label half of this rule and
+  // reported the square, because three tokens hold 38px and none of them was
+  // this button; R47 mints --width-flowback-mobile.
+  const w = page.viewportSize()!.width
+  await flow(page, 'reader')
+  const back = await boxOf(page, '[data-r-flowback]')
+  if (w <= 760) {
+    expect(back.w, 'the back control is not the design’s 38px square').toBe(38)
+    // …and it is still the FIRST thing on the bar, which is R46's own
+    // `order-first` finding: both the title and this carry `order:-1`, so DOM
+    // order decides and a change to either can jump it.
+    const title = (await page.locator('[data-r-flowtitle]').boundingBox())!
+    const box = (await page.locator('[data-r-flowback]').boundingBox())!
+    expect(box.y, 'the back button is no longer on the first row').toBeLessThanOrEqual(title.y + 1)
+  } else {
+    expect(back.w, 'the back control is squared above the breakpoint too').toBeGreaterThan(38)
+  }
 })
 
 test('R46 — the process summary no longer acts on the confirmation', async ({ page }) => {
