@@ -615,13 +615,32 @@ test('the process id is still an island when the trail makes it a link', async (
  *
  * That includes the flow screen. **The panel deliverable's flow toolbar has no
  * back button in it** — Panel :558-613, whose first child is `data-r-flownav`,
- * the next/previous pair. The one in `src/flow/FlowScreen.tsx` is the READER
- * deliverable's (`Inja Reader.dc.html:313`, `data-r-flowback`), which the
- * reader needs because its shell draws no bar there at all; `src/flow/` is
- * another task's file, so the strip's own back is what gives way here. Same
- * count, same destination — `/processes/{pid}` either way — and the deviation
- * is recorded in `.superpowers/sdd/task-R41-report.md`.
+ * the next/previous pair — so on this surface the flowchart's «بازگشت» belongs
+ * in the strip with every other route's.
+ *
+ * **R44 put it there.** The owner's ruling was "in flowchart screen, the back
+ * button should be on top menu too. like other page." R41 had counted one on
+ * this route and drawn it in the flow toolbar instead: that is the READER
+ * deliverable's button (`Inja Reader.dc.html:312-316`, `data-r-flowback`, the
+ * toolbar's first child), which the reader needs because `showBackBar:
+ * screen !== 'flow'` (Reader :2684) leaves that surface no bar at all. One
+ * component, two deliverables, so `FlowScreen` now branches on `useSurface()`
+ * and draws it for the reader only. The count is unchanged — one, never two,
+ * which is the whole of R41 — and so is the destination; what moved is where
+ * the control is drawn, which is why `WHERE_BACK` below is asserted beside the
+ * count and not instead of it.
  */
+
+/**
+ * Where that one «بازگشت» is drawn, which the count alone cannot see.
+ *
+ * A count of 1 was true before R44 and is true after it, so a revert would
+ * leave `one «بازگشت» per panel route, and never two` entirely green with the
+ * flowchart's back button back down in the toolbar. Every panel route that has
+ * one draws it in the crumb strip — including the flowchart — and no panel
+ * route draws the reader's `data-r-flowback` at all.
+ */
+const WHERE_BACK = '[data-r-crumbbar]'
 const BACK_PER_ROUTE: ReadonlyArray<readonly [string, number]> = [
   ['/departments', 0],
   ['/departments/dining', 1],
@@ -697,6 +716,13 @@ test('one «بازگشت» per panel route, and never two', async ({ page }) => 
     if (url.endsWith('/flow')) await page.getByText('پذیرایی از مهمان').waitFor()
     await pinPage(page, `goto('${url}')`)
     await expect(page.getByRole('link', { name: 'بازگشت' }), url).toHaveCount(expected)
+    // R44 — and WHERE, because the count is blind to it. Every one of them is
+    // in the strip, the flowchart's included; the reader's `data-r-flowback`
+    // is drawn on no panel route at all, which is the assertion a revert
+    // trips.
+    await expect(page.locator(WHERE_BACK).getByRole('link', { name: 'بازگشت' }), url)
+      .toHaveCount(expected)
+    await expect(page.locator('[data-r-flowback]'), url).toHaveCount(0)
   }
 })
 

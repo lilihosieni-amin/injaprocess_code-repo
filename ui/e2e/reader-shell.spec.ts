@@ -565,6 +565,25 @@ for (const [who, depts, over, table] of [
         : page.locator('[data-r-topbar], [data-r-backbar]').first().waitFor())
       await pinPage(page, `goto('${url}')`)
       await expect(page.getByRole('link', { name: 'بازگشت' }), url).toHaveCount(expected)
+      // R44 — and WHERE, because the count is blind to it. R44 moved the
+      // PANEL's flowchart back into its crumb strip by branching `FlowScreen`
+      // on `useSurface()`; a branch written the wrong way round, or one that
+      // simply deleted the toolbar's button, would leave this surface's
+      // flowchart with no way off it at all and no bar to fall back on — the
+      // dead end R21 closed. So the reader's is pinned to the element the
+      // deliverable names (`Inja Reader.dc.html:313`, `data-r-flowback`), and
+      // every other route's to the back bar.
+      if (url.endsWith('/flow')) {
+        await expect(page.locator('[data-r-flowback]'), url).toHaveCount(1)
+        await expect(page.locator('[data-r-flowback]'), url).toHaveAccessibleName('بازگشت')
+        // …and no bar above it to have drawn a second: `showBackBar:
+        // screen !== 'flow'` (Reader :2684) and no crumb strip on this surface
+        // at all.
+        await expect(page.locator('[data-r-backbar], [data-r-crumbbar]'), url).toHaveCount(0)
+      } else if (expected > 0) {
+        await expect(page.locator('[data-r-backbar]').getByRole('link', { name: 'بازگشت' }), url)
+          .toHaveCount(expected)
+      }
     }
   })
 }
