@@ -4,7 +4,7 @@ import { useConfirmations, useProcess, usePutProcess } from '../api/hooks'
 import { useSession } from '../auth/useSession'
 import { useCan } from '../auth/can'
 import { useToast } from '../write/ToastProvider'
-import { ConfirmMark, ConfirmAction } from '../write/ConfirmMark'
+import { ConfirmMark } from '../write/ConfirmMark'
 import type { Process, Icom, Kpi } from '../api/types'
 import { Chip } from '../ui/Chip'
 import { Icon } from '../ui/Icon'
@@ -249,11 +249,24 @@ export function Summary() {
           <div data-r-actions className="flex items-center gap-s5 shrink-0 max760:flex-wrap">
             {!editing ? (
               <>
-                {/* §6.3 — the act belongs in the header's action group, not in
-                    the badge row beside the mark. `ConfirmMark` is a 22px pill
-                    and this is a 44px control; putting them on one line is
-                    what set the height of every process row (F1). */}
-                <ConfirmAction row={mark} department={dept} />
+                {/* **Owner ruling R46 — the act is not on this screen.**
+                    *"the each process accept or reject should be in flowchart
+                    page, not in information page. exactly like design."*
+
+                    The design says the same thing more precisely than the
+                    ruling does. This action group is `Inja Panel.dc.html:393-396`
+                    and it holds exactly one control, «ویرایش اطلاعات»; the
+                    confirm control is drawn on the flow bar instead, at
+                    `:597-608` and `Inja Reader.dc.html:357-368`. So
+                    `ConfirmAction` moved to `src/flow/FlowScreen.tsx` — which
+                    is also where a confirmation is most nearly true, since by
+                    FR-V3 moving a node invalidates it.
+
+                    The MARK above stays: `:389` draws a status pill on this
+                    screen's badge row under `isEditor`, so this screen states
+                    and the flowchart acts. That is why `useConfirmations` is
+                    still read here and why the import list still names one of
+                    the pair. */}
                 {mayEdit && !tombstoned && (
                   <Button variant="ghost" onClick={enter} className="px-s8 py-s6 text-fs-sm">ویرایش اطلاعات</Button>
                 )}

@@ -159,7 +159,27 @@ describe('the mark on the process summary', () => {
     mock()
     renderAt('/processes/:pid', <Summary />, '/processes/cooking-002', CONFIRMER)
     expect(await screen.findByText('تأیید شده')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'لغو تأیید' })).toBeInTheDocument()
+  })
+
+  it('states the confirmation here and no longer ACTS on it (owner ruling R46)', async () => {
+    // *"the each process accept or reject should be in flowchart page, not in
+    // information page."* The act moved to the flow toolbar, where both
+    // deliverables draw it (`Inja Panel.dc.html:597-608`,
+    // `Inja Reader.dc.html:357-368`); `src/flow/FlowScreen.confirm.test.tsx` is
+    // its new home and this is the other half of the same move.
+    //
+    // **The MARK stays**, and that is the design's reading rather than a
+    // softening of the ruling: `Inja Panel.dc.html:389` draws a status pill on
+    // this screen's badge row under `isEditor`, and the summary's own action
+    // group at `:393-396` holds only «ویرایش اطلاعات». So this screen states
+    // and the flowchart acts — which is also why the listing below is still
+    // read here.
+    mock()
+    renderAt('/processes/:pid', <Summary />, '/processes/cooking-002', CONFIRMER)
+    expect(await screen.findByText('تأیید شده')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'لغو تأیید' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'تأیید محتوا' })).toBeNull()
+    expect(screen.queryByTestId('confirm-box')).toBeNull()
   })
 
   it('reads the department off the id in the URL, before the document arrives', async () => {

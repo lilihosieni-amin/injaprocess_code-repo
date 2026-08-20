@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test'
 import type { Confirmation, Department, Process, ProcNode } from '../src/api/types'
-import { FIELD, serve, shot, signedIn, visit } from './_harness'
+import { FIELD, pinPage, serve, shot, signedIn, visit } from './_harness'
 
 /**
  * The write flows, in a browser.
@@ -87,6 +87,23 @@ async function reads(page: Page, marks: Confirmation[] = CONFIRMATIONS) {
   })
 }
 
+/**
+ * The flowchart, which is where the confirm control lives as of owner ruling
+ * R46 — *"the each process accept or reject should be in flowchart page, not in
+ * information page. exactly like design."* Both deliverables draw it in the flow
+ * bar's `data-r-actions` (panel 597-608, reader 357-368) and give the process
+ * summary's action group only «ویرایش اطلاعات» (panel 393-396).
+ *
+ * Not `visit()`: that waits on a `[data-screen]` and the flow route mounts none
+ * — see `FlowScreen.tsx`'s own note on `data-r-flow`.
+ */
+async function flowchart(page: Page) {
+  await page.goto(`/processes/${PID}/flow`)
+  await page.locator('[data-r-flowbar]').waitFor()
+  await page.locator('.react-flow__renderer').waitFor()
+  await pinPage(page, `goto('/processes/${PID}/flow')`)
+}
+
 /** The relative luminance of a `rgb(r, g, b)` string, per WCAG. */
 function luminance(colour: string): number {
   const [r, g, b] = (/rgba?\(([^)]+)\)/.exec(colour)?.[1] ?? '0,0,0')
@@ -134,9 +151,11 @@ test('a process row is as tall as its own type', async ({ page }) => {
 })
 
 test('the confirm control is the design’s 34px inside the app’s 44px target', async ({ page }) => {
+  // **R46 moved this control to the flowchart.** It is measured where it is
+  // drawn; the summary half of the move is asserted at the foot of this file.
   await signedIn(page)
   await reads(page, CONFIRMED)
-  await visit(page, `/processes/${PID}`, 'summary')
+  await flowchart(page)
 
   const button = page.getByRole('button', { name: 'لغو تأیید' })
   const drawn = page.getByTestId('confirm-box')
@@ -153,23 +172,47 @@ test('the confirm control is the design’s 34px inside the app’s 44px target'
   expect(hit!.width).toBeGreaterThanOrEqual(44)
   expect(hit!.height).toBeGreaterThanOrEqual(44)
 
-  // F4 — the byline, against what is really behind it. The finding said
-  // `--text-faint` on CREAM (2.27:1); both call sites are on the violet field,
-  // where the prescribed `--text-muted` would have measured 3.93 against the
-  // 5.88 it replaced. Read from the browser rather than argued from hex values.
+  // F4 was about the byline's ink against what is really behind it. The byline
+  // is not on this bar and must not be: `ConfirmMark` paints it in
+  // `--role-subtitle-on-field`, which is chosen for the violet field, and the
+  // flow toolbar is `--card` white — measured, 1.74:1. `e2e/flow.spec.ts` runs
+  // the contrast census that keeps it off.
+  await expect(page.getByTestId('confirm-by')).toHaveCount(0)
+
+  await shot(page, 'confirm-action')
+})
+
+test('the byline stays on the summary, and stays legible on the field it is drawn on', async ({ page }) => {
+  // **F4, kept where the byline is.** The finding said `--text-faint` on CREAM
+  // (2.27:1); the mark's one remaining call site on this route is the process
+  // summary's badge row, which is inside a `bg-ink` screen root, and there the
+  // prescribed `--text-muted` would have measured 3.93 against the 5.88 it
+  // replaced. Read from the browser rather than argued from hex values.
+  //
+  // R46 moved the ACT to the flowchart and left the MARK here, which is what
+  // `Inja Panel.dc.html:389` draws under `isEditor`. That split is the reason
+  // this assertion is now its own test: the control it used to travel with is
+  // measured on another screen.
+  await signedIn(page)
+  await reads(page, CONFIRMED)
+  await visit(page, `/processes/${PID}`, 'summary')
+
   const by = page.getByTestId('confirm-by')
   await expect(by).toBeVisible()
   const ink = await by.evaluate((el) => getComputedStyle(el).color)
   await expect(page.locator('[data-screen="summary"]')).toHaveCSS('background-color', FIELD)
   expect(contrast(ink, FIELD)).toBeGreaterThan(4.5)
 
-  await shot(page, 'confirm-action')
+  // …and the act really is gone from this screen, which is the other half of
+  // the ruling.
+  await expect(page.getByTestId('confirm-box')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'لغو تأیید' })).toHaveCount(0)
 })
 
 test('the confirm-content dialog is §6.15’s, and its scrim is on the modal rung', async ({ page }) => {
   await signedIn(page)
   await reads(page)
-  await visit(page, `/processes/${PID}`, 'summary')
+  await flowchart(page)
 
   await page.getByRole('button', { name: 'تأیید محتوا' }).click()
   const box = page.getByRole('dialog', { name: 'تأیید محتوا' })
