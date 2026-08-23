@@ -278,8 +278,21 @@ const barOf = (page: Page) => page.locator('[data-r-flowbar]')
  * chain, not against the bar's own white: the id badge's white type sits on its
  * own violet tile and is correct, and grading everything against the bar would
  * fail it.
+ *
+ * **`mustCover` — owner ruling R48, and the half that stops this going green
+ * for the wrong reason.** A census reports the runs it graded; it says nothing
+ * at all about a run it never saw, and every way an element leaves the DOM —
+ * a gate that flipped, a surface branch, a capability the session stopped
+ * holding — takes it out of this list silently. R48 draws three runs of text
+ * that were deliberately absent until now, so every caller declares what its
+ * census must have READ before the grading is allowed to mean anything.
+ *
+ * Hidden runs are graded too, and deliberately: `querySelectorAll` returns a
+ * `display:none` element and `getComputedStyle` still resolves its colour, so
+ * the panel's ≤760 action group and the reader's ≤1080 crumb pair are both
+ * covered at every width rather than only at the one that paints them.
  */
-async function censusOf(page: Page, root: string): Promise<string[]> {
+async function censusOf(page: Page, root: string, mustCover: readonly string[] = []): Promise<string[]> {
   const runs = await page.locator(root).evaluate((el) => {
     const groundOf = (n0: Element): string => {
       for (let n: Element | null = n0; n; n = n.parentElement) {
@@ -298,6 +311,15 @@ async function censusOf(page: Page, root: string): Promise<string[]> {
       }))
   })
   expect(runs.length, `${root} has no text to grade`).toBeGreaterThan(1)
+  const seen = runs.map((r) => r.text)
+  for (const want of mustCover) {
+    expect(
+      seen.some((t) => t.includes(want)),
+      `the census of ${root} never read «${want}», so it graded nothing about it and would `
+      + 'report this bar clean with the element missing. What it did read: '
+      + seen.map((t) => `«${t}»`).join(' · '),
+    ).toBe(true)
+  }
   return runs
     .map((r) => ({ ...r, ratio: contrast(r.ink, r.ground) }))
     .filter((r) => r.ratio < 4.5)
@@ -432,7 +454,12 @@ test('R46 — the process confirmation is on the flowchart, at every width', asy
   // its own docstring says both its call sites are on the field "and never on
   // cream". Measured against what is really behind it rather than argued from
   // hex values.
-  const dim = await censusOf(page, '[data-r-flowbar]')
+  //
+  // **R48 names what it must have read.** The pill's label is the run this
+  // ruling was raised about; before it was drawn, this census graded a bar the
+  // word was simply not on, and would have gone on doing so if a later gate
+  // took it back off.
+  const dim = await censusOf(page, '[data-r-flowbar]', ['تأییدشده'])
   expect(dim, 'ink chosen for the violet field is being drawn on the white toolbar').toEqual([])
 
   // **The act, reachable — not merely present.** `toBeVisible` passes for a
@@ -454,9 +481,42 @@ test('R46 — the process confirmation is on the flowchart, at every width', asy
 
   const act = page.getByRole('button', { name: 'لغو تأیید' })
   await expect(act).toBeVisible()
+
+  // **The design's pill, as of owner ruling R48 — not the 34px tool box.**
+  // R47 drew §6.3's settled control here and reported the pill as blocked: its
+  // label measured 3.72:1 unconfirmed and 3.86:1 confirmed on this white bar,
+  // and it referred the choice rather than shipping either. The owner ruled
+  // *"make the text darker so people can read it"*, so the box is drawn at
+  // panel 599's own numbers — `padding:7px 12px` around the 19px tick behind
+  // the app's hairline edge — and the label is read by the census above rather
+  // than by a class name.
+  //
+  // **35, and the missing pixel is Chrome rather than this build.** The
+  // deliverable's own arithmetic is 1.5 + 7 + 19 + 7 + 1.5 = 36; measured here,
+  // `getComputedStyle(...).borderTopWidth` on this element is **`1px`** —
+  // Chrome floors a 1.5px border to a whole device pixel at DPR 1 — so the
+  // painted box is 35. That is true of every `border-hairline` in this app and
+  // is reported rather than compensated for: padding the box back to 36 would
+  // be drawing a number the design does not give to hide a number the browser
+  // does. The label's own line box is 18.75 and loses to the 19px tick, so the
+  // tick governs the height exactly as the design intends.
   const drawn = await boxOf(page, '[data-testid="confirm-box"]')
-  expect({ w: drawn.w, h: drawn.h }, 'the confirm box is not --size-tool')
-    .toEqual({ w: 34, h: 34 })
+  expect(drawn.h, 'the confirm control is not the design’s 7px-12px pill').toBe(35)
+  await expect(act).toHaveText('تأییدشده')
+  const tick = await boxOf(page, '[data-testid="confirm-tick"]')
+  expect({ w: tick.w, h: tick.h }, 'the tick inside the pill is not --size-tick').toEqual({ w: 19, h: 19 })
+
+  // F11's 44px floor, kept as a transparent `::before` AROUND the 36px box and
+  // never by inflating it — the same idiom the ⋯ trigger uses, and the defect
+  // `write.spec.ts` documents about handing a sized control `min-h-touch`.
+  const target = await act.evaluate((el) => {
+    const b = getComputedStyle(el, '::before')
+    const r = el.getBoundingClientRect()
+    const px = (v: string) => Number.parseFloat(v) || 0
+    return { h: r.height - px(b.top) - px(b.bottom), w: r.width - px(b.left) - px(b.right) }
+  })
+  expect(target.h, 'the confirm pill’s hit target is under F11’s floor').toBeGreaterThanOrEqual(44)
+  expect(target.w, 'the confirm pill’s hit target is under F11’s floor').toBeGreaterThanOrEqual(44)
 
   await act.click()
   // §6.15's dialog, and the sentence FR-V2 / FR-V3 / AC-18 is stated in — the
@@ -573,7 +633,7 @@ test('R47 — the ⋯ menu opens at the design’s 225px floor, inside the windo
   // the closed bar and caught `ConfirmMark`'s byline at 1.74:1; a menu is five
   // more runs of text on the same white ground, and nothing had ever measured
   // them. Same method: each run against the first OPAQUE background above it.
-  const dim = await censusOf(page, '[data-r-flowbar]')
+  const dim = await censusOf(page, '[data-r-flowbar]', ['تأییدشده', 'فرآیند بعدی'])
   expect(dim, 'ink on the ⋯ menu is below the floor the rest of this bar is held to')
     .toEqual([])
 
@@ -608,6 +668,57 @@ test('R47 — the reader’s «بازگشت» becomes a 38px square on a phone',
   } else {
     expect(back.w, 'the back control is squared above the breakpoint too').toBeGreaterThan(38)
   }
+})
+
+/**
+ * **Owner ruling R48 — the reader flow bar's department crumb and its «/».**
+ *
+ * `<span data-r-hide>{{ deptName }}</span><span data-r-hide>/</span>` at reader
+ * 317-318, between «بازگشت» and the next/previous group. R47 measured them at
+ * **3.72:1** and **1.44:1** on this white bar and drew neither — the separator
+ * is below even the 2.0 `_harness.ts` calls "text the reader cannot see at
+ * all" — and referred the choice. The owner ruled that the text is to be
+ * readable, so both are drawn in `--text-body`.
+ *
+ * **This test is the reason the ruling could be shipped broken.** R46's census
+ * runs on the PANEL, and the panel's flow bar carries no crumb at any width:
+ * until this ran, the two runs of text the whole ruling is about were graded by
+ * nothing at all, on either surface.
+ */
+test('R48 — the reader’s department crumb and its «/» are drawn, and legible on this bar', async ({ page }) => {
+  const w = page.viewportSize()!.width
+  await flow(page, 'reader')
+
+  const pair = page.locator('[data-r-flowbar] [data-r-hide]')
+  await expect(pair, 'the reader flow bar draws no crumb pair').toHaveCount(2)
+  await expect(pair.nth(0), 'the crumb does not name the department').toHaveText('سالن')
+  await expect(pair.nth(1)).toHaveText('/')
+
+  // The census, on the surface these two live on, naming them so a run that
+  // stopped being drawn fails here instead of quietly emptying the list.
+  const dim = await censusOf(page, '[data-r-flowbar]', ['سالن', '/'])
+  expect(dim, 'ink on the reader flow bar is below the floor this bar is held to').toEqual([])
+
+  // `[data-r-topbar] [data-r-hide]{display:none}` — reader 35. The rule is
+  // written at these two children rather than by putting `data-r-topbar` on the
+  // bar: `reader-shell.spec.ts` counts that hook to assert the reader draws no
+  // chrome at all on this route, which is the whole of R21's arrangement.
+  if (w <= 1080) await expect(pair.first()).toBeHidden()
+  else await expect(pair.first()).toBeVisible()
+
+  // …and the crumb sits between the back button and the title, which is the
+  // order reader 313-320 draws and what makes it read as a trail rather than a
+  // label floating after the process name.
+  if (w > 1080) {
+    const back = (await page.locator('[data-r-flowback]').boundingBox())!
+    const crumb = (await pair.first().boundingBox())!
+    const title = (await page.locator('[data-r-flowtitle]').boundingBox())!
+    // RTL: the bar reads right to left, so "after" is a SMALLER x.
+    expect(crumb.x, 'the crumb is not between «بازگشت» and the title').toBeLessThan(back.x)
+    expect(crumb.x, 'the crumb is not between «بازگشت» and the title').toBeGreaterThan(title.x)
+  }
+
+  await shot(page, 'flow-reader-crumb')
 })
 
 test('R46 — the process summary no longer acts on the confirmation', async ({ page }) => {

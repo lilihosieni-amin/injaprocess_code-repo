@@ -56,6 +56,21 @@ const proc = {
   }],
   edges: [],
 }
+/**
+ * The department list, answered so `useDepartments` gets an ARRAY.
+ *
+ * `FlowScreen` reads it on the reader surface for R48's department crumb —
+ * `Process.department` is the code and the crumb the design draws is the name —
+ * and every mock in this file used to answer any unmatched URL with a process
+ * document, which made `departments.find` a call on an object. A stub that
+ * answers the wrong SHAPE is worse than one that answers nothing: it fails
+ * inside the component instead of at the boundary.
+ */
+const DEPARTMENTS = [
+  { code: 'cooking', name: 'پخت', count: 2, subs: 0 },
+  { code: 'dining', name: 'سالن', count: 1, subs: 0 },
+]
+
 const sibling = { ...proc, id: 'cooking-002', name: 'فرآیند دو' }
 
 const CONFIRMED: Confirmation = {
@@ -71,6 +86,7 @@ async function mount(surface: 'panel' | 'reader', marks: Confirmation[] = [CONFI
     { status: 200, headers: { 'Content-Type': 'application/json' } })
   vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
     const url = String(input)
+    if (url === '/api/departments') return Promise.resolve(json(DEPARTMENTS))
     if (url.startsWith('/api/confirmations')) return Promise.resolve(json(marks))
     if (url.endsWith('/processes')) return Promise.resolve(json([proc, sibling]))
     return Promise.resolve(json(proc))

@@ -157,7 +157,9 @@ const RULE = {
  * see and therefore say nothing at all. Cosmetic either way — the endpoints
  * re-derive the capability and refuse regardless (D48).
  */
-export function ConfirmAction({ row, department, open, onOpenChange, render = 'both' }: {
+export function ConfirmAction({
+  row, department, open, onOpenChange, render = 'both', shape = 'tool',
+}: {
   row: Confirmation | undefined
   department: string
   /**
@@ -186,6 +188,29 @@ export function ConfirmAction({ row, department, open, onOpenChange, render = 'b
    * that drifted from its `'dialog'` would be two answers to one question.
    */
   render?: 'both' | 'trigger' | 'dialog'
+  /**
+   * Which control the press is offered on — **owner ruling R48.**
+   *
+   * `'tool'` is the default and is §6.3's settled answer: a `--size-tool` icon
+   * button, which is what every action GROUP in this app draws and what
+   * `Overview` has drawn since it was rebuilt. Nothing about that call site
+   * moves.
+   *
+   * `'pill'` is the flow bar's, and it is the deliverable's own control there
+   * (panel 599, reader 359): a `7px 12px` box carrying a 19px tick, the word
+   * «تأییدشده» and the press. R47 measured that box and would not draw it,
+   * because the design's label ink lands at 3.72:1 unconfirmed and 3.86:1
+   * confirmed on that white toolbar, against the 4.5:1 `e2e/flow.spec.ts`
+   * grades every run of text on it. The owner ruled for the readable ink, so
+   * the label is drawn in `--ink` — the ink `Checkbox` gives every tick's label
+   * in this app — and the STATE is left to the three things that still switch
+   * with it: the tick's fill, the box's fill and the box's edge.
+   *
+   * One prop and not a second component: both shapes ask one question, of one
+   * row, behind one dialog, and a copy of this that drifted would be two
+   * answers to it.
+   */
+  shape?: 'tool' | 'pill'
 }) {
   const can = useCan(useSession().data)
   const set = useSetConfirmation(department)
@@ -216,24 +241,84 @@ export function ConfirmAction({ row, department, open, onOpenChange, render = 'b
 
   return (
     <>
-      {render !== 'dialog' && <IconButton
-        label={label}
-        onClick={() => setAsking(true)}
-        icon={
+      {render !== 'dialog' && (shape === 'pill' ? (
+        // **The deliverable's own control on the flow bar (panel 599, reader
+        // 359), drawn as of owner ruling R48.** `padding:7px 12px`, radius 12,
+        // a 1.5px edge, and inside it a 19px tick and the word «تأییدشده».
+        //
+        // The 44px touch floor is a transparent `::before` AROUND the drawn box
+        // and never `min-h-touch` on the box itself: `min-height` beats
+        // `height` whatever order the two are emitted in, so the second spelling
+        // repaints the design's control at 44 and passes every class-name
+        // assertion while doing it. The flow bar's own ⋯ trigger keeps the same
+        // idiom for the same reason, and at the same `--space-2` rung — the box
+        // is 35 tall as Chrome paints it (measured, see the e2e), and 35 + 2×5
+        // clears the floor where 35 + 2×4 does not.
+        //
+        // `aria-label` and not the visible word: «تأییدشده» is a constant, and
+        // the ACT is «تأیید محتوا» or «لغو تأیید» depending on the row. The
+        // state has lived in this control's accessible name since R46 measured
+        // that the byline is not legible on this bar, and the specs that press
+        // it press it by that name.
+        <button
+          type="button"
+          data-testid="confirm-box"
+          aria-label={label}
+          title={label}
+          onClick={() => setAsking(true)}
+          className={
+            'relative before:absolute before:content-[""] before:-inset-s2 '
+            + 'inline-flex items-center gap-confirm px-s6 py-confirm-y rounded-button '
+            + 'border-hairline cursor-pointer transition '
+            + (confirming ? 'bg-card border-line' : 'bg-tile-ok border-border-ok')
+          }
+        >
+          {/* Its own tick and NOT `TickBox`: ledger L-48 makes every `TickBox`
+              in this app violet and reserves green for this element by name.
+              `--border-pick`'s own token comment names "unchecked tick" as one
+              of its three roles, and the ⋯ menu's row — the other route to this
+              same question — draws the identical box. */}
           <span
-            data-testid="confirm-box"
+            data-testid="confirm-tick"
+            aria-hidden
             className={
-              'flex items-center justify-center w-tool h-tool rounded-button '
-              + 'border-hairline transition '
-              + (confirming
-                ? 'border-line text-violet'
-                : 'border-border-danger text-conflict')
+              'flex items-center justify-center flex-none w-tick h-tick rounded-tick '
+              + 'border-hairline text-card '
+              + (confirming ? 'bg-card border-border-pick' : 'bg-green border-green')
             }
           >
-            <Icon d={confirming ? CHECK : WARN} px={18} stroke={2.6} />
+            {!confirming && <Icon d={CHECK} px={13} stroke={3} />}
           </span>
-        }
-      />}
+          {/* **The run of text this whole ruling is about.** The design paints
+              it muted when the mark is off and green when it is on; measured on
+              this white bar those are 3.72:1 and 3.86:1, and the bar is graded
+              at 4.5:1. `--ink` is what `Checkbox.tsx` gives a tick's label
+              throughout this app, and what the ⋯ menu's own «تأییدشده» row has
+              been drawn at since R47 measured it at 14.63:1 here. */}
+          <span data-testid="confirm-label" className="text-fs-sm2 font-bold text-ink">
+            تأییدشده
+          </span>
+        </button>
+      ) : (
+        <IconButton
+          label={label}
+          onClick={() => setAsking(true)}
+          icon={
+            <span
+              data-testid="confirm-box"
+              className={
+                'flex items-center justify-center w-tool h-tool rounded-button '
+                + 'border-hairline transition '
+                + (confirming
+                  ? 'border-line text-violet'
+                  : 'border-border-danger text-conflict')
+              }
+            >
+              <Icon d={confirming ? CHECK : WARN} px={18} stroke={2.6} />
+            </span>
+          }
+        />
+      ))}
 
       {render !== 'trigger' && asking && (
         // §6.15 `confirmDialog` — `width:460px`, radius 24, padding 26, and a

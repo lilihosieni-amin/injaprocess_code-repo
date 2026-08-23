@@ -679,6 +679,15 @@ const EXPECTED: Record<string, string | string[]> = {
   'min-w-menu-flow': 'var(--width-menu-flow)',
   'text-crumb-sep': 'var(--text-crumb-sep)',
   'w-flowback-mobile': 'var(--width-flowback-mobile)',
+  // The one name owner ruling R48 had to add to draw the box R47 named and
+  // deferred: the confirm pill's tick-to-label `gap:9px` (panel 599, reader
+  // 359). A NINTH 9px role on this theme, beside the three the flow bar already
+  // holds and the five before them, and the only one of the nine that is a
+  // control's glyph-to-label distance rather than a padding or a row's inset.
+  // `gap-option` is the nearest by shape and is the dropdown's option row by its
+  // own comment; borrowing it would paint identically and move a menu the day
+  // that row changes, which is the pairing this whole table exists to catch.
+  'gap-confirm': 'var(--gap-confirm)',
   // Media query, not token — asserted by the breakpoint tests below.
   'max1080:hidden': 'display: none',
   'max760:hidden': 'display: none',
@@ -1491,7 +1500,13 @@ const UNPAINTED: string[] = [
   'text-strong', 'text-ghost',
   'text-ok',
   'text-danger', 'text-link', 'text-link-hover',
-  'border-line-soft', 'border-border-ok',
+  // `border-border-ok` left this list under owner ruling R48. R47 had kept it
+  // here on purpose and said why: its only site is the design's confirm PILL —
+  // `border:1.5px solid` the green edge when the mark is on (panel 599, 3585) —
+  // and that pill was not drawn, so deleting the line would have failed the
+  // ORPHANS half of the guard below exactly as leaving it now fails the STALE
+  // half. R48 draws the pill, so the line goes and `CEILING` goes with it.
+  'border-line-soft',
   'border-steps-sub-border', 'border-steps-group-border',
   // …and `bg-line-divider` here, for the reason R46 measured and could not act
   // on: the flow bar's next/previous group draws the `1px × 18px #D9CEF0` rule
@@ -1608,28 +1623,28 @@ const UNPAINTED: string[] = [
   //     `src/ui/DataTable.tsx` writing `gap-[11px]` three lines under a comment
   //     saying the value had no name. It had had one since Task 9.
   //
-  // The flow-bar mint (owner ruling R47) put TWO lines back on, and they are the
-  // event this list's docstring says a mint is: a name that has to exist before
-  // its consumer does. Seven of its nine landed with their consumer in the same
-  // commit; these two did not, and the reason is the same for both and is not
-  // "later".
+  // The flow-bar mint (owner ruling R47) put TWO lines back on, and they were
+  // the event this list's docstring says a mint is: a name that has to exist
+  // before its consumer does. Seven of its nine landed with their consumer in
+  // the same commit; those two did not, because the ink the design gives each
+  // of them is below the floor `e2e/flow.spec.ts` grades that bar at, and R47
+  // referred the choice rather than shipping unreadable text.
   //
-  //   · `py-confirm-y` is --pad-confirm-y 7px, the `padding:7px 12px` of the
-  //     design's confirm PILL (panel 599, reader 359). `tokens.css`'s
-  //     --pad-back-y comment had named that exact site and deferred it, so the
-  //     name was owed. The pill itself is not drawn: this build draws §6.3's
-  //     34px control behind §6.15's dialog, because the pill's label is
-  //     `#8a7db0` on white when unconfirmed and `#1F8A5B` on `#E4F6EC` when
-  //     confirmed — measured 3.72:1 and 3.86:1, both under the 4.5:1 floor
-  //     `e2e/flow.spec.ts` grades every run of text on that bar against.
-  //   · `text-crumb-sep` is --text-crumb-sep, the «/» between the reader flow
-  //     bar's department crumb and its title (reader 318). The crumb pair is not
-  //     drawn for the same reason, further out: the crumb is 3.72:1 and the
-  //     separator itself 1.44:1.
+  // **Owner ruling R48 answered it, and the two lines part company here.** The
+  // owner chose the readable ink over the design's — *"make the text darker so
+  // people can read it"* — so all three of R47's elements are now drawn:
   //
-  // Both are in R47's report, in front of the owner, with the measurements. They
-  // are not waiting on a task; they are waiting on a ruling.
-  'py-confirm-y', 'text-crumb-sep',
+  //   · `py-confirm-y` came OFF. The confirm pill is drawn at its own
+  //     `padding:7px 12px` (panel 599, reader 359), with the label in `--ink`.
+  //   · `text-crumb-sep` STAYS, and its reason has changed rather than
+  //     persisted. It is `--text-crumb-sep`, the «/» between the reader flow
+  //     bar's department crumb and its title (reader 318), and that separator IS
+  //     now drawn — in `--text-body`, beside the crumb, because the value this
+  //     token holds is the one the ruling overrode. It is a name R48 superseded,
+  //     not a name waiting for a screen, and it is left declared rather than
+  //     retired because retiring it is an edit to three frozen files that only
+  //     the owner should authorise. Reported.
+  'text-crumb-sep',
 ]
 
 /**
@@ -1730,7 +1745,28 @@ const UNPAINTED: string[] = [
 // four consumers and leaves the number at 124 has silently granted itself four lines
 // of slack nobody earned, and the suite stays green either way — which has happened
 // on this file before (see the note above about 6be6662).
-const CEILING = 122
+//
+// LOWERED 2026-08-23 by owner ruling R48 to 120, and this arithmetic is a net of -2
+// over a gross of two, with a third line that deliberately did NOT move:
+//
+//   122  the count this line stood at
+//    -1  `py-confirm-y` — the confirm PILL is drawn, at panel 599's own
+//        `padding:7px 12px`. R47 minted the name and left the box out because the
+//        label it carries measured 3.72:1 unconfirmed and 3.86:1 confirmed on this
+//        white bar; the owner ruled for the readable ink, so the box is drawn and
+//        the label takes --ink.
+//    -1  `border-border-ok` — the green edge that pill takes when the mark is on
+//        (panel 3585). Its ONLY site is that box, which is exactly why R47 refused
+//        to delete the line early: an unconsumed utility taken off this list fails
+//        the orphans half of the guard below, and a consumed one left on it fails
+//        the stale half. Both halves are satisfied in the same commit or neither is.
+//    ±0  `text-crumb-sep` STAYS. The «/» it was minted for is drawn now, but not in
+//        THIS token: its value is the 1.44:1 the ruling overrode. A name the ruling
+//        superseded is still an orphan, and its family in UNPAINTED_BECAUSE says so
+//        in those words rather than going on saying it is waiting for the owner.
+//   ---
+//   120  and this line is that number exactly.
+const CEILING = 120
 
 describe('Owner ruling R11 — a named utility has a component that uses it', () => {
   it('reads a real, sizeable set of component files — tests AND test helpers excluded', () => {
@@ -1965,17 +2001,30 @@ describe('Owner ruling R11 — a named utility has a component that uses it', ()
           '|^py-tick-nested-y$',
         ].join('')),
       },
-      { // Owner ruling R47's two deferred consumers. Not "a rung no screen has
-        // reached" — the screen is built, the element is drawn in the design,
-        // and the value is measured: what stops each of them is that the ink the
-        // design gives it is below the contrast floor `e2e/flow.spec.ts` grades
-        // the white flow bar at, and R46's census caught a real 1.74:1 defect on
-        // that bar the day it was written. Deviating on ink, or lowering the
-        // floor, is a decision for the owner rather than for the task that found
-        // it, so both names exist and neither is written. The numbers, and which
-        // element each belongs to, are beside the lines themselves above.
-        why: 'a flow-bar element R47 minted the name for and referred to the owner',
-        match: /^py-confirm-y$|^text-crumb-sep$/,
+      { // Owner ruling R48, and the shape of this family changed with it. R47
+        // put two names here and said both were *waiting on a ruling*: the ink
+        // the design gives each was below the floor `e2e/flow.spec.ts` grades
+        // the white flow bar at, and R46's census had caught a real 1.74:1
+        // defect on that bar the day it was written.
+        //
+        // The ruling came, and it went the way that DRAWS the elements: the
+        // owner chose readable ink over the deliverable's, because staff read
+        // this on phones, in a kitchen and on a floor (NFR-15). So `py-confirm-y`
+        // left this list with its pill, and what is left here is a different
+        // kind of orphan and is described as one.
+        //
+        // `--text-crumb-sep` is the design's own value for the «/» at reader
+        // 318, and that value is the 1.44:1 the ruling overrode — below even the
+        // 2.0 `e2e/_harness.ts` documents as "text the reader cannot see at
+        // all". The separator IS drawn, in `--text-body`, beside the crumb it
+        // separates; no element will reach for this token again. It is left
+        // declared rather than retired because retiring a name is an edit to
+        // `tokens.css`, `tailwind.config.js` and `tailwind-probe.txt`, all three
+        // of which this ruling froze, and because a token deleted by the task
+        // that made it redundant is a decision taken where the owner cannot see
+        // it. R48's report puts it in front of them.
+        why: 'a flow-bar ink whose value owner ruling R48 superseded — the name is spent',
+        match: /^text-crumb-sep$/,
       },
     ]
 
@@ -1996,18 +2045,22 @@ describe('Owner ruling R11 — a named utility has a component that uses it', ()
 
     // Both halves of the census the docstring states, so a line that moves
     // between buckets is visible rather than absorbed.
-    // 40 / 82 after owner ruling R47, and the two halves moved for four
+    // 41 / 79 after owner ruling R48, and the two halves moved for three
     // different reasons in one commit — which is exactly why they are asserted
     // separately rather than as one total:
-    //   · `bg-hair` left the SPELLING half (the ⋯ menu's divider paints --hair
-    //     as a background for the first time), and `border-line-divider`
-    //     arrived in it, because its sibling `bg-line-divider` now has a
-    //     consumer and therefore counts as a painter of --line-divider. Net 0.
-    //   · `bg-line-divider`, `p-s2` and `gap-tab-flow` left the painted-nowhere
-    //     half with their consumers, `border-line-divider` left it for the half
-    //     above, and R47's two deferred mints joined it. Net -2.
-    expect(buckets.filter((b) => b.spelling).length).toBe(40)
-    expect(buckets.filter((b) => !b.spelling).length).toBe(82)
+    //   · `bg-border-ok` ARRIVED in the spelling half. It is still painted
+    //     nowhere itself, but its sibling `border-border-ok` now has a consumer
+    //     — the confirm pill's edge — so --border-ok is painted, and this line
+    //     is a spelling of a token that reaches the screen rather than a token
+    //     that reaches nothing. Exactly the move `border-line-divider` made
+    //     under R47. Spelling +1, painted-nowhere -1.
+    //   · `border-border-ok` and `py-confirm-y` left the list entirely with the
+    //     pill that consumes them. Painted-nowhere -2.
+    //   · `text-crumb-sep` did not move: its element is drawn, in another
+    //     token, so it stays exactly where it was under a reason that now says
+    //     the ruling spent it. Net 0.
+    expect(buckets.filter((b) => b.spelling).length).toBe(41)
+    expect(buckets.filter((b) => !b.spelling).length).toBe(79)
 
     // A family that stops covering anything is an argument nobody is paying
     // for, and the next name added beside it inherits the same absence of

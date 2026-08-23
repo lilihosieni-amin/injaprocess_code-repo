@@ -2,8 +2,17 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { fetchJson } from './client'
 import type { Confirmation, Department, DepartmentOrder, ExportKind, ExportResult, Me, Overview, PendingItem, PolicyField, Process, VisibilityPolicy } from './types'
 
-export const useDepartments = () =>
-  useQuery({ queryKey: ['departments'], queryFn: () => fetchJson<Department[]>('/api/departments') })
+export const useDepartments = (opts?: { enabled?: boolean }) =>
+  useQuery({
+    queryKey: ['departments'],
+    queryFn: () => fetchJson<Department[]>('/api/departments'),
+    // Optional, and defaulted so every existing caller is unchanged. R48's
+    // reader flow bar needs the department's NAME — the one thing the process
+    // document does not carry, since `Process.department` is its code — and it
+    // needs it on one surface only, so it says so rather than asking for a
+    // department list on the panel's flowchart as well.
+    enabled: opts?.enabled ?? true,
+  })
 
 export const useProcesses = (code: string, opts?: { enabled?: boolean }) =>
   useQuery({

@@ -489,6 +489,11 @@ export default {
         'flowbar-y': 'var(--pad-flowbar-y)',                  // 11px — the panel flow bar
         'flowbar-y-mobile': 'var(--pad-flowbar-y-mobile)',    // 9px  — …the same bar at ≤760
         'confirm-y': 'var(--pad-confirm-y)',                  // 7px  — the confirm box
+        // …and R48's one mint: that box's tick-to-label gap. A NINTH 9px key,
+        // and the only one of the nine that is a control's glyph-to-label
+        // distance rather than a padding or a row's own inset — `gap-option`,
+        // the nearest by shape, is the dropdown's option row by its own comment.
+        confirm: 'var(--gap-confirm)',                        // 9px  — …its tick to its label
         'flowbar-action-y': 'var(--pad-flowbar-action-y)',    // 9px  — its «ویرایش»
         'flowback-y': 'var(--pad-flowback-y)',                // 9px  — the reader's flow-back
         'flowback-x': 'var(--pad-flowback-x)',                // 13px — …and its inline half

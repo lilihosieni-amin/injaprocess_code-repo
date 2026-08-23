@@ -536,4 +536,45 @@ describe('R1 — a correction records what it overrode and why', () => {
     // mint: it IS minted. The sentence that promised it is gone.
     expect(css).not.toContain('mints its own name; it does not re-value this one')
   })
+
+  it('the confirm pill’s gap (R48) — the one value drawing it left un-owned', () => {
+    // Owner ruling R48 draws the confirm box R47 minted `--pad-confirm-y` for
+    // and did not draw. Its padding and its 12px inline half both had names;
+    // the tick-to-label `gap:9px` (panel 599, reader 359) did not, and no
+    // borrow was honest. Six tokens hold 9px and every one of them is a
+    // PADDING or a row's own gap under a different role — `--gap-option`, the
+    // nearest by shape, is scoped by its own comment to the dropdown's option
+    // row — so it is minted again here, which is the rule the flow-bar mint
+    // above states and the reason it minted nine rather than borrow eight.
+    expect(token('--gap-confirm')).toBe('9px')
+    expect(declarations('--gap-confirm')).toBe(1)
+
+    // …and the six that already held the number still hold it. Same half as
+    // above: re-pointing one of them would satisfy the line above and move a
+    // control on another screen.
+    expect(token('--gap-option')).toBe('9px')            // the dropdown option row
+    expect(token('--pad-crumb-y')).toBe('9px')           // the panel breadcrumb strip
+    expect(token('--pad-tab-y-audit')).toBe('9px')       // an audit tab
+    expect(token('--pad-note-y')).toBe('9px')            // the timeline note
+    expect(token('--pad-dropdown-y-filter')).toBe('9px') // the filter chip
+    expect(token('--pad-flowbar-y-mobile')).toBe('9px')  // the flow bar at ≤760
+    expect(token('--pad-flowback-y')).toBe('9px')        // the reader's flow-back
+    expect(token('--pad-flowbar-action-y')).toBe('9px')  // its «ویرایش»
+
+    // **The separator's ink keeps its value and loses its consumer.** R47
+    // minted `--text-crumb-sep` at the design's own value and left it
+    // unwritten because that value measures 1.44:1 on the white flow bar —
+    // below even the app-wide floor. R48 draws the separator in `--text-body`
+    // instead, so this token is now a name the ruling superseded rather than a
+    // name waiting for a screen. It is NOT re-valued here: a token whose value
+    // is edited to match a decision is indistinguishable from one edited to
+    // match a mistake, and `theme.test.ts` carries the account of why nothing
+    // paints it.
+    // Its value is pinned by the R47 block above and is deliberately unmoved
+    // here; what this adds is that the ink the separator is now drawn in is a
+    // DIFFERENT token, so "the ruling was applied by quietly re-valuing the
+    // one that was already there" fails rather than passes.
+    expect(declarations('--text-crumb-sep')).toBe(1)
+    expect(token('--text-crumb-sep')).not.toBe(token('--text-body'))
+  })
 })

@@ -797,14 +797,25 @@
      the stat numeral's dot gap and the panel back button's padding-y, whose own
      comment forbids the borrow this replaces.
 
-     UNCONSUMED as of R47, and deliberately so. This build draws §6.3's settled
-     control at that site — a --size-tool box behind §6.15's dialog — because the
-     design's pill carries a label whose ink is BELOW the contrast floor the flow
-     bar is graded against: measured in Chrome, its two states are 3.72:1 and
-     3.86:1 on this white toolbar. The name is minted because the deferral above
-     promised it and because the value is real; drawing the pill is a decision
-     for the owner, and R47's report puts the measurement in front of them. */
+     R47 minted this name and did NOT draw the box: the design's pill carries a
+     label whose ink is below the contrast floor the flow bar is graded against —
+     measured in Chrome, its two states are 3.72:1 and 3.86:1 on that white
+     toolbar — and choosing between the deliverable's ink and a readable one was
+     the owner's call. **Owner ruling R48 made it, for the readable one**, so the
+     pill is drawn and this value is written. The label takes --ink, which is the
+     ink Checkbox gives every tick's label in this app. */
   --pad-confirm-y: 7px;
+
+  /* The tick-to-label gap inside that same box, `gap:9px` (panel 599, reader
+     359) — the one value drawing the pill left with no owner at all. Eight
+     tokens hold 9px and every one of them is a padding or a menu row's own
+     inset under a different role: --pad-crumb-y (the panel breadcrumb strip),
+     --pad-tab-y-audit, --pad-note-y, --pad-dropdown-y-filter, --gap-option (the
+     dropdown's option row, by its own comment), and this bar's own
+     --pad-flowbar-y-mobile, --pad-flowback-y and --pad-flowbar-action-y. None
+     is a control's glyph-to-label distance, so this is minted again rather than
+     borrowed — the same rule the nine names above were minted under. */
+  --gap-confirm: 9px;
 
   /* «ویرایش» on that bar, `padding:9px 16px` (panel 607, reader 367); its 16px
      is --space-8. The same 9 as --pad-flowbar-y-mobile above and as
@@ -835,13 +846,20 @@
      title (reader 318). An INK, so it takes the --text- prefix rule the config's
      colour scale states, and the class is therefore the bare stem.
 
-     UNCONSUMED as of R47, with its element: R46 recorded the crumb pair as not
-     built, and the reason it stays unbuilt is the same measurement the confirm
-     box's is. The design draws the crumb in #8a7db0 at 12.5px and this separator
-     lighter still; on the white flow bar that is 3.72:1 and 1.44:1, and the
-     bar is graded at 4.5:1 by e2e/flow.spec.ts's contrast census — a census that
-     has already caught one real defect here. The name is minted so the element
-     is unblocked; whether it is drawn at the design's ink is the owner's. */
+     **UNCONSUMED, and now permanently so — read this before reaching for it.**
+     R47 minted it at the design's own value and left it unwritten because that
+     value measures 1.44:1 on the white flow bar: not merely under the 4.5:1
+     e2e/flow.spec.ts grades that bar at, but under the 2.0 e2e/_harness.ts
+     documents as the app-wide floor for "text the reader cannot see at all".
+     **Owner ruling R48 drew the separator anyway — in --text-body**, with the
+     crumb it separates, because the owner chose readable ink over the
+     deliverable's and no token in this file is both lighter than --text-body and
+     above the floor under a role that is a separator's.
+
+     So the element exists and this token is not what paints it. The name is kept
+     rather than retired because a value the owner overrode is a decision they
+     should be able to see, and because retiring it is an edit to three files
+     this ruling froze. theme.test.ts's UNPAINTED carries the same account. */
   --text-crumb-sep: #DCD3EC;
 
   /* …and that same «بازگشت» at ≤760, where the design squares it to

@@ -1,7 +1,7 @@
 import { useNavigate, useParams, useLocation, Link } from 'react-router-dom'
 import { useState, useRef, useEffect } from 'react'
 import { ReactFlowProvider, useReactFlow, type Connection } from '@xyflow/react'
-import { useConfirmations, useProcess, useProcesses, usePutProcess, useRelayout, useCreateProcess, useResolvePending } from '../api/hooks'
+import { useConfirmations, useDepartments, useProcess, useProcesses, usePutProcess, useRelayout, useCreateProcess, useResolvePending } from '../api/hooks'
 import { useSession } from '../auth/useSession'
 import { useCan } from '../auth/can'
 import { ConfirmAction } from '../write/ConfirmMark'
@@ -143,6 +143,19 @@ function FlowEditor() {
   // taken, which is why the nine test files already here never saw it.
   const onReader = useSurface() === 'reader'
 
+  // **R48 — the name behind the reader's department crumb (reader 317).**
+  //
+  // `Process.department` is the CODE, and the crumb the design draws is the
+  // department's name; nothing else on this screen carries it. Read from the
+  // one endpoint that answers it, gated to the surface that draws the crumb so
+  // the panel's flowchart does not ask a question it has no use for — and on
+  // the reader it is a cache hit either way, because `ReaderShell` reads the
+  // same list to decide R4's one-department landing.
+  //
+  // Above the in-flight early return, like every other hook here.
+  const { data: departments } = useDepartments({ enabled: onReader })
+  const deptName = departments?.find((d) => d.code === dept)?.name
+
   function centerPos() {
     const el = wrapRef.current
     if (!el) return { x: 120, y: 120 }
@@ -272,9 +285,11 @@ function FlowEditor() {
           only ≤1080 rule the design addresses to `[data-r-topbar]` is
           `[data-r-topbar] [data-r-hide]`, and the two `data-r-hide` children it
           governs here — the reader's department crumb and its «/» separator
-          (reader 317-318) — are not drawn by this build at all. So the hook
-          would buy nothing today and would break a shell contract; it belongs
-          with those two children, whenever they are built. Reported. */}
+          (reader 317-318) — are drawn as of owner ruling R48. So the rule is
+          written **at those two children**, as `max1080:hidden`, which is where
+          R7 says the design's attribute rules belong in this codebase anyway.
+          Putting `data-r-topbar` on the bar to reach them through the selector
+          would buy the same behaviour and break a shell contract. */}
       <div
         data-r-flowbar
         className={
@@ -340,6 +355,51 @@ function FlowEditor() {
             <Icon name="chevronStart" px={15} stroke={2.4} />
             <span data-r-backlabel className="inline max760:hidden">بازگشت</span>
           </Link>
+        )}
+        {/* **The department crumb and its «/» — reader 317-318, drawn by owner
+            ruling R48.**
+
+            R46 reported the pair as not built and R47 measured why it left them
+            that way: the design paints the crumb `#8a7db0` — which IS a token,
+            `--text-muted`, and is the ink the panel's own breadcrumb strip gives
+            an ancestor crumb — and the separator lighter still. On that strip's
+            lavender ground those are graded at the app-wide floor of 2 and pass;
+            on THIS white bar they are **3.72:1** and **1.44:1**, and the second
+            is under even that floor, which `e2e/_harness.ts` documents as the
+            line for "text the reader cannot see at all". R47 put both numbers in
+            front of the owner rather than shipping them, and the owner ruled for
+            the readable ink.
+
+            **Both take `--text-body`, §9.9's "all secondary body copy".** One
+            ink for the pair rather than the design's two, because nothing in the
+            token set is both lighter than `--text-body` and above the floor
+            under a role that is a separator's — `--text-dialog-ghost` and
+            `--violet-mid` clear it on the number and are a dialog's ghost button
+            and a scrollbar thumb — and picking one of those, or inventing a
+            fifth grey, is choosing a colour by its number. The hierarchy the
+            design draws between the pair and the title survives anyway: the
+            title beside them is `--ink`, bold, and larger.
+
+            `--text-crumb-sep` therefore stays unconsumed. It is R47's name for
+            this separator at the value the ruling overrode, and it is reported
+            rather than retired.
+
+            **Reader only.** Panel 558-613 draws no crumb on this bar at all —
+            the panel's trail is `PanelShell`'s own `data-r-crumbs` strip above,
+            and a second one here would be the doubling R41 was raised for.
+
+            `aria-hidden` on the «/», as `PanelShell`'s strip already marks its
+            own: it is punctuation between two labels, and read aloud it is
+            noise. The census still grades it — a run of text is a run of text
+            whatever the accessibility tree makes of it, which is exactly why it
+            could not be left at 1.44:1 and waived. */}
+        {onReader && deptName !== undefined && (
+          <>
+            <span data-r-hide className="text-fs-sm2 text-body-ink flex-none max1080:hidden">
+              {deptName}
+            </span>
+            <span data-r-hide aria-hidden className="text-body-ink flex-none max1080:hidden">/</span>
+          </>
         )}
         {/* **`data-r-flownav` — the next/previous pair, and the first thing that
             goes on a phone.** `[data-r-flowbar] [data-r-flownav]{display:none
@@ -610,8 +670,18 @@ function FlowEditor() {
               inside a hidden box and never appear. `open`/`onOpenChange` are
               this file's, which is also where the design keeps them
               (`confirmDialog` is app state, panel 3563). */}
+          {/* **`shape="pill"` — owner ruling R48.** R47 drew §6.3's 34px tool
+              box here and reported the design's own pill as blocked: its label
+              lands at 3.72:1 unconfirmed and 3.86:1 confirmed on this white
+              toolbar, against the 4.5:1 the census below the bar grades every
+              run of text on it against, and deviating from the deliverable's
+              ink was the owner's call rather than a task's. The owner made it —
+              *"make the text darker so people can read it"* — so this is panel
+              599's box now, with its label in `--ink`. `Overview` passes no
+              `shape` and keeps the tool box, which is what its own action group
+              draws. */}
           {!editing && (
-            <ConfirmAction row={mark} department={dept} render="trigger"
+            <ConfirmAction row={mark} department={dept} render="trigger" shape="pill"
               open={asking} onOpenChange={setAsking} />
           )}
           {tombstoned || !mayEdit ? null : !editing ? (

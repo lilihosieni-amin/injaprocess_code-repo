@@ -150,7 +150,7 @@ test('a process row is as tall as its own type', async ({ page }) => {
   await shot(page, 'process-list-row')
 })
 
-test('the confirm control is the design’s 34px inside the app’s 44px target', async ({ page }) => {
+test('the confirm control is the design’s pill inside the app’s 44px target', async ({ page }) => {
   // **R46 moved this control to the flowchart.** It is measured where it is
   // drawn; the summary half of the move is asserted at the foot of this file.
   await signedIn(page)
@@ -160,8 +160,8 @@ test('the confirm control is the design’s 34px inside the app’s 44px target'
   // **Above 760 only, as of owner ruling R47.** The panel takes its whole action
   // group off the flow bar at ≤760 (`Inja Panel.dc.html:99`) and replaces it
   // with the ⋯ menu (panel 102), so below the breakpoint this control is not
-  // drawn at all and the act is a menu ROW instead — a different shape, with no
-  // 34px box to measure. That route is graded in `e2e/flow.spec.ts`'s R47 block,
+  // painted at all and the act is a menu ROW instead — a different shape, with
+  // no drawn box to measure. That route is graded in `e2e/flow.spec.ts`'s R47 block,
   // at the width where it is the only one. Skipping rather than asserting
   // nothing, so a run at w760 says which check did not apply and why.
   if (page.viewportSize()!.width <= 760) {
@@ -172,18 +172,38 @@ test('the confirm control is the design’s 34px inside the app’s 44px target'
 
   const button = page.getByRole('button', { name: 'لغو تأیید' })
   const drawn = page.getByTestId('confirm-box')
-  const [hit, painted] = await Promise.all([button.boundingBox(), drawn.boundingBox()])
+  const painted = await drawn.boundingBox()
 
-  // §5.2's rule for every rung of the design's 30/32/34/36/40/42 ladder, and the
-  // one a class list cannot express: the DRAWN box is the design's `--size-tool`
-  // 34 and the 44px accessibility floor is padding around it. A `w-tool h-tool`
-  // handed to `Button` instead compiles to a class that is written and never
-  // painted, because `min-height` beats `height` whatever order they are emitted
-  // in — which is exactly what `ProcessList` documents about its delete square.
-  expect(painted!.width).toBe(34)
-  expect(painted!.height).toBe(34)
-  expect(hit!.width).toBeGreaterThanOrEqual(44)
-  expect(hit!.height).toBeGreaterThanOrEqual(44)
+  // **Owner ruling R48 — this is the design's pill now, not §6.3's 34px tool
+  // box.** R47 drew the tool box here and reported why it could not draw the
+  // pill: the label the pill carries measured 3.72:1 unconfirmed and 3.86:1
+  // confirmed on the white flow bar, against the 4.5:1 that bar is graded at,
+  // and choosing between the design's ink and a readable one was the owner's
+  // call rather than a task's. The owner made it — *"make the text darker so
+  // people can read it"* — so panel 599's own box is drawn: `padding:7px 12px`
+  // around a 19px tick behind the app's hairline edge.
+  //
+  // **35 and not the deliverable's 36**, because Chrome's used value for a
+  // 1.5px border is 1px at DPR 1 — measured on this element, not assumed. The
+  // number is asserted as painted rather than as designed; `e2e/flow.spec.ts`
+  // carries the same measurement and the reason.
+  expect(painted!.height).toBe(35)
+  await expect(button).toHaveText('تأییدشده')
+
+  // §5.2's rule survives the change of shape, and it is the one a class list
+  // cannot express: the DRAWN box is the design's and the 44px accessibility
+  // floor is a transparent `::before` around it. A `min-h-touch` handed to a
+  // sized control instead repaints it at 44, because `min-height` beats
+  // `height` whatever order they are emitted in — which is exactly what
+  // `ProcessList` documents about its delete square.
+  const hit = await button.evaluate((el) => {
+    const b = getComputedStyle(el, '::before')
+    const r = el.getBoundingClientRect()
+    const px = (v: string) => Number.parseFloat(v) || 0
+    return { w: r.width - px(b.left) - px(b.right), h: r.height - px(b.top) - px(b.bottom) }
+  })
+  expect(hit.w).toBeGreaterThanOrEqual(44)
+  expect(hit.h).toBeGreaterThanOrEqual(44)
 
   // F4 was about the byline's ink against what is really behind it. The byline
   // is not on this bar and must not be: `ConfirmMark` paints it in

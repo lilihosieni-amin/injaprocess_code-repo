@@ -147,3 +147,6 @@ rounded-sheet
 # — the confirm box's padding-y and the ⋯ menu's 225px floor.
 py-flowbar-y py-flowbar-y-mobile py-confirm-y py-flowbar-action-y
 py-flowback-y px-flowback-x min-w-menu-flow text-crumb-sep w-flowback-mobile
+# Owner ruling R48 draws the confirm box those nine left named and unbuilt, and
+# the one value it needed that nothing owned: the tick-to-label gap inside it.
+gap-confirm
