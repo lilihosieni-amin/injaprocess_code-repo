@@ -1,4 +1,4 @@
-import { useId, type ReactNode } from 'react'
+import { useEffect, useId, type ReactNode } from 'react'
 import { roleLabel } from '../lib/roles'
 import { Checkbox } from '../ui/Checkbox'
 import { Dropdown } from '../ui/Dropdown'
@@ -19,6 +19,23 @@ export const PASSWORD_NOTE =
 /** D51 — an org-chart fact and not a capability, in §6.8's own words. */
 export const CAN_SUPERVISE_NOTE =
   'این پرچم هیچ دسترسی نمی‌دهد؛ فقط او را در فهرست سرپرست‌های قابل انتخاب می‌آورد.'
+
+/**
+ * The two roles the flag is not a question for — owner ruling: *"the editor and
+ * admin allways can be supervisor. so it shouln't show سرپرست شدن check box for
+ * this users."*
+ *
+ * Stored role IDENTIFIERS, matched against `Role.name`, never the Persian
+ * labels: `roleLabel` is presentation and `lib/roles.ts` says in as many words
+ * that nothing decides anything from its output. `«ادیتور»` was `«تحلیل‌گر»`
+ * one commit ago, and a rule keyed on that string would have silently stopped
+ * applying.
+ *
+ * A role seeded ahead of this build is not on the list and keeps the checkbox,
+ * which is the safe direction: the flag then stays an explicit decision rather
+ * than being granted to a role nobody here has heard of.
+ */
+const ALWAYS_SUPERVISES = ['editor', 'admin']
 
 /**
  * One §6.14 section: a tinted sub-panel at 16px with a caption that is also its
@@ -97,6 +114,38 @@ export function UserFields({
   const numberId = useId()
   const passwordId = useId()
 
+  // `Role.name`, not the label beside it — see `ALWAYS_SUPERVISES`. `undefined`
+  // while the role list is in flight or nothing is chosen yet, which is not one
+  // of the two and so keeps the box: the create form opens on exactly that
+  // state and must not offer a flag that vanishes when a role is picked.
+  const roleName = roles.find((r) => r.id === draft.roleId)?.name
+  const alwaysSupervises = roleName !== undefined && ALWAYS_SUPERVISES.includes(roleName)
+
+  /**
+   * **Hiding the control is not enough — the value has to move with it.**
+   *
+   * `can_supervise` is not decoration: `delegation.py:468` reads
+   * `if not (row["can_supervise"] or "*" in their)` when it decides who may
+   * supervise whom, so an editor stored with the flag off is refused as somebody
+   * else's supervisor by the server whatever this form draws. Withdrawing the
+   * checkbox alone would leave every such account exactly as it was and make the
+   * refusal unexplainable — the one control that could have fixed it is gone.
+   *
+   * So this is where the ruling is actually implemented, and the checkbox below
+   * merely stops asking a question that now has one answer. It fires on the edit
+   * form for a stored editor whose flag is off (the case the ruling is about) as
+   * well as on the role select, so neither dialog needs its own copy: `draftPatch`
+   * sends `canSupervise` because it differs from `was`, and `NewUserDialog` posts
+   * the draft it is holding.
+   *
+   * Idempotent by its own guard rather than by its dependency list — `onChange`
+   * hands back a new object every time, so an effect keyed on `draft` re-runs on
+   * every keystroke and the `!draft.canSupervise` test is what stops it looping.
+   */
+  useEffect(() => {
+    if (alwaysSupervises && !draft.canSupervise) onChange({ ...draft, canSupervise: true })
+  }, [alwaysSupervises, draft, onChange])
+
   return (
     <>
       {/* §6.14 section 1. */}
@@ -160,10 +209,15 @@ export function UserFields({
             allowNone={draft.scopes.includes('*')}
             staysPut={supervisorStaysPut} preferred={preferred}
             pending={candidatesPending} />
-          <Checkbox checked={draft.canSupervise}
-            onChange={(v) => onChange({ ...draft, canSupervise: v })}
-            label="سرپرست‌شدن"
-            hint={CAN_SUPERVISE_NOTE} />
+          {/* Absent, not disabled: R5's own rule. A ticked box nobody may untick
+              is a control that leads nowhere, and it would invite the reading
+              that some editors are supervisors and some are not. */}
+          {!alwaysSupervises && (
+            <Checkbox checked={draft.canSupervise}
+              onChange={(v) => onChange({ ...draft, canSupervise: v })}
+              label="سرپرست‌شدن"
+              hint={CAN_SUPERVISE_NOTE} />
+          )}
         </div>
       </Section>
     </>

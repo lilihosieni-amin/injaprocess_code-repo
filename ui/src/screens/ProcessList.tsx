@@ -1,10 +1,9 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useConfirmations, useDepartments, useProcesses } from '../api/hooks'
 import { useSession } from '../auth/useSession'
 import { useCan } from '../auth/can'
 import { deriveTag, toFa } from '../lib/format'
-import { countActivities } from '../lib/counts'
 import { hasPublishedDetail } from '../lib/published'
 import { IdBadge } from '../ui/IdBadge'
 import { Button } from '../ui/Button'
@@ -20,7 +19,16 @@ import { ReorderModal } from '../write/ReorderModal'
 import { ExportMenu } from '../write/ExportMenu'
 import { refusalStatus } from '../api/client'
 import { RefusalScreen } from './Refusal'
-import type { Process } from '../api/types'
+
+/**
+ * The row menu's glyph — `Inja Panel.dc.html:356`, three filled dots stacked.
+ *
+ * A path through `Icon`'s `d` (§5.1.2) rather than three `<circle>`s: `Icon`
+ * draws one `<path>` and the design's own r=1.8 dots are what a 3.2-wide round
+ * cap on a zero-length segment paints. `ExportMenu` already draws the
+ * horizontal spelling of this from the same recipe.
+ */
+const KEBAB = 'M12 5h.01M12 12h.01M12 19h.01'
 
 /**
  * §6.2's chip metrics, shared by the three chips the meta row draws.
@@ -81,7 +89,23 @@ interface Act { key: string; label: string; run: () => void }
  * though: this shares `dismissibleStack`, so a `⋯` opened inside a dialog still
  * answers Escape before the dialog does (I7).
  */
-function OverflowMenu({ actions }: { actions: Act[] }) {
+function OverflowMenu({ actions, label, className, children, glyph, hook }: {
+  actions: Act[]
+  /** The trigger's accessible name — and its `title`. */
+  label: string
+  /** Where and at what width the trigger is drawn. The two call sites disagree
+   *  about both: the header's ⋯ REPLACES the action bar below 760 and is
+   *  `display:none` above it, while the row's ⋮ is drawn at every width. */
+  className: string
+  /** The trigger's own box, so a 36px `⋯` and a 34px `⋮` stay two drawings. */
+  glyph: string
+  /** §6.16 addresses its mobile rules to `data-r-` attributes, and the two call
+   *  sites are two different elements to it. Named rather than spread: React
+   *  passes `data-*` through on an intrinsic element and not through a component
+   *  prop, and a `Record<string,string>` here would let any attribute in. */
+  hook?: 'plistmore' | 'prowmenu'
+  children: ReactNode
+}) {
   const [open, setOpen] = useState(false)
   const box = useRef<HTMLDivElement>(null)
   const identity = useRef(Symbol('plist-more')).current
@@ -105,22 +129,22 @@ function OverflowMenu({ actions }: { actions: Act[] }) {
   }, [open, identity])
 
   return (
-    <div ref={box} data-r-plistmore className="hidden max760:inline-flex relative ms-auto flex-none">
+    <div
+      ref={box}
+      className={className}
+      data-r-plistmore={hook === 'plistmore' ? '' : undefined}
+      data-r-prowmenu={hook === 'prowmenu' ? '' : undefined}
+    >
       <button
         type="button"
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label="کارهای بیشتر"
-        title="کارهای بیشتر"
+        aria-label={label}
+        title={label}
         onClick={() => setOpen((v) => !v)}
-        className={
-          'relative before:absolute before:content-[""] before:-inset-[4px] '
-          + 'inline-flex items-center justify-center flex-none w-menu-more h-menu-more '
-          + 'rounded-control border-hairline border-line bg-tile-v2 text-violet '
-          + 'text-fs-h5 font-bold cursor-pointer'
-        }
+        className={glyph}
       >
-        ⋯
+        {children}
       </button>
       {open && (
         <div
@@ -205,7 +229,6 @@ export function ProcessList() {
 
   const query = q.trim()
   const list = procs.filter((p) => !query || p.name.includes(query) || p.id.includes(query))
-  const activityCount = (p: Process) => countActivities(p.nodes)
 
   // Positions come from the full ordered list, not the filtered one, so searching
   // never renumbers. Tombstones hold no position (ARD §4.6).
@@ -287,7 +310,20 @@ export function ProcessList() {
                 </h1>
                 {/* §6.2 puts the mobile ⋯ in the TITLE row, not in the bar it
                     replaces — the bar is gone at that width. */}
-                <OverflowMenu actions={actions} />
+                <OverflowMenu
+                  actions={actions}
+                  hook="plistmore"
+                  label="کارهای بیشتر"
+                  className="hidden max760:inline-flex relative ms-auto flex-none"
+                  glyph={
+                    'relative before:absolute before:content-[""] before:-inset-[4px] '
+                    + 'inline-flex items-center justify-center flex-none w-menu-more h-menu-more '
+                    + 'rounded-control border-hairline border-line bg-tile-v2 text-violet '
+                    + 'text-fs-h5 font-bold cursor-pointer'
+                  }
+                >
+                  ⋯
+                </OverflowMenu>
               </div>
               <p data-body className="text-role-dense text-role-subtitle-on-field mt-s4 leading-normal">
                 {toFa(dept?.count ?? procs.length)} فرآیند مستندشده · برای مشاهدهٔ کارت خلاصه و فلوچارت روی هر فرآیند بزنید.
@@ -327,6 +363,20 @@ export function ProcessList() {
             const tag = deriveTag(p)
             const tombstoned = !!p.tombstoned
             const mark = markOf.get(p.id)
+            // R5 — an act this caller may not perform is not in the menu at
+            // all, so `length === 0` is exactly "this row has no menu".
+            const rowActions: Act[] = [
+              ...(mayEdit || hasPublishedDetail(p)
+                ? [{ key: 'summary', label: 'اطلاعات کلی', run: () => nav(`/processes/${p.id}`) }]
+                : []),
+              ...(mayEdit
+                ? [{
+                    key: 'delete',
+                    label: tombstoned ? 'حذف دائمی فرآیند' : 'حذف فرآیند',
+                    run: () => setDelTarget({ pid: p.id, name: p.name }),
+                  }]
+                : []),
+            ]
             return (
               <Card
                 key={p.id}
@@ -347,24 +397,42 @@ export function ProcessList() {
                     )}
                     <span className="font-bold text-fs-h4 text-ink truncate">{p.name}</span>
                   </div>
+                  {/* **The meta line, and what the owner took out of it.**
+                      *"in process list page, it shouldn't have 11 فعالیت
+                      tag.remove it."* — and, for the reader, *"we shouldnt show
+                      process id and 11 فعالیت in process card. just show
+                      زیرفرایند if it is."*
+
+                      The activity chip was never one of §6.2's three; it was
+                      this app's own addition, argued for on the grounds that
+                      dropping the number would take information no other screen
+                      carries. The owner has ruled the other way on both
+                      surfaces, and `countActivities` keeps its two remaining
+                      callers in the exported documents.
+
+                      **The reader keeps exactly one chip.** The reader
+                      deliverable draws no meta line at all
+                      (`Inja Reader.dc.html:215-221` is a position tile, a name
+                      and two buttons), and the ruling is more generous than
+                      that: «زیرفرآیند» stays, because a sub-process a reader
+                      cannot tell from a top-level one is the one fact this row
+                      has to carry. `deriveTag` answers four kinds and only that
+                      one can reach a reader anyway — a tombstone never leaves
+                      the server for them, `pending` is emptied by
+                      `visibility.filtered`, and «دارای KPI» is an editor's
+                      bookkeeping — so the guard below is belt-and-braces, and
+                      it is written rather than reasoned about. */}
                   <div data-r-pmeta data-testid={`meta-${p.id}`}
                     className="flex items-center gap-s4 flex-wrap mt-s4 ps-s11 max760:hidden">
-                    <IdBadge>{p.id}</IdBadge>
-                    {tag && <span className={`${CHIP} ${TAG_TONE[tag.kind]}`}>{tag.label}</span>}
+                    {!reader && <IdBadge>{p.id}</IdBadge>}
+                    {tag && (!reader || tag.kind === 'sub') && (
+                      <span className={`${CHIP} ${TAG_TONE[tag.kind]}`}>{tag.label}</span>
+                    )}
                     {mark && (
                       <span className={`${CHIP} ${mark.confirmed ? 'bg-tile-ok text-green' : 'bg-tile-warn text-warn'}`}>
                         {mark.confirmed ? 'تأیید شده' : 'تأیید نشده'}
                       </span>
                     )}
-                    {/* Not one of §6.2's three chips: the design has no activity
-                        column and no activity chip, and dropping the number
-                        outright would take information no other screen carries
-                        at a glance. It is drawn on this app's own count-chip
-                        recipe — the one `Departments.tsx` already uses — rather
-                        than invented a third time. */}
-                    <span className="inline-flex items-center gap-s2 text-fs-xs font-semibold text-dialog-ghost bg-tile-v3 px-s5 py-s1 rounded-pill">
-                      <span data-testid={`activity-count-${p.id}`}>{toFa(activityCount(p))}</span> فعالیت
-                    </span>
                     {tombstoned && (p.superseded_by ?? []).map((h) => (
                       <span key={h} className="text-fs-xs text-muted">
                         جانشین:{' '}
@@ -378,72 +446,70 @@ export function ProcessList() {
                   </div>
                 </div>
                 <div data-r-pactions className="flex items-center gap-s4 flex-none max760:self-stretch max760:w-full">
-                  {/* R39, which is R5 one screen removed: never draw a control
-                      that leads somewhere with nothing on it.
+                  {/* **«گام‌به‌گام» — owner ruling: *"where is step by step
+                      bottumn? i have it in design, but in currebt version no.
+                      add it"*.**
 
-                      «اطلاعات کلی» opens `Summary`, and when the department's
-                      three content switches are all off that screen is its
-                      header and nothing else: owner ruling R43 withdrew the
-                      §6.3 card that used to explain the absence, so there is no
-                      longer even a sentence there to have walked a reader to.
-                      Offering the button anyway walks every reader in that
-                      department into an empty page.
+                      Both deliverables draw it and neither draws it the same
+                      way: `Inja Panel.dc.html:352` gives the panel a white
+                      ghost beside a violet «فلوچارت», and
+                      `Inja Reader.dc.html:222` gives the reader two violet
+                      buttons, because on that surface the steps view is the
+                      *primary* way in — `openSteps` is what its lead sentence
+                      («روی هر فرآیند بزنید تا گام‌هایش را ببینید») promises.
+                      One row, so it branches on `useSurface()` like the header
+                      above it.
 
-                      **The same question `Summary.tsx` answers**, asked here
-                      once rather than restated three times. R43 left that screen
-                      with no branch that calls this predicate — each section
-                      guards on its own field — so the two are no longer coupled
-                      by construction and are coupled by assertion instead:
-                      `Summary.test.tsx`'s «what counts as published detail»
-                      walks all eight combinations of the three fields and
-                      requires what that screen draws for a non-editor to equal
-                      `hasPublishedDetail` of the same bytes. Two spellings of
-                      one rule is how this project got its worst bugs, and an OR
-                      that had drifted from a per-field test was Task 16's own
-                      defect.
-
-                      **And it discloses nothing (NFR-12 / AC-25).**
-                      `GET /api/departments/{code}/processes` runs
-                      `shown.redact(d, code)` over every row — the same
-                      `Disclosure` the single-process endpoint runs — so each row
-                      here is byte-identical to what the summary screen would be
-                      served for it. Nothing new crosses the wire, no count is
-                      asked for, and the button is withdrawn identically for
-                      "withheld" and for "never recorded", which is why it cannot
-                      become a signal about the policy.
-
-                      `mayEdit` is this DEPARTMENT's question (line 195), not the
-                      person's, and that is load-bearing here too: `Disclosure`
-                      passes `editor=self.edits(dept)`, so an editor of another
-                      department is filtered exactly as a reader is and must lose
-                      the button exactly as a reader does. */}
-                  {(mayEdit || hasPublishedDetail(p)) && (
-                    <Button variant="ghost" onClick={() => nav(`/processes/${p.id}`)}
-                      className="px-s7 py-s4 text-fs-sm2 max760:flex-1">اطلاعات کلی</Button>
-                  )}
+                      It goes first in the DOM, which in RTL puts it on the
+                      right: the design's own order, and the reading order a
+                      reader who was told to look for steps expects. */}
+                  <Button variant={reader ? 'violet' : 'ghost'}
+                    onClick={() => nav(`/processes/${p.id}/steps`)}
+                    className="px-s7 py-s4 text-fs-sm2 max760:flex-1">گام‌به‌گام</Button>
                   <Button variant="violet" onClick={() => nav(`/processes/${p.id}/flow`)}
                     className="px-s7 py-s4 text-fs-sm2 max760:flex-1">فلوچارت</Button>
-                  {mayEdit && (
-                    // The design's 34px square, with F11's target grown around
-                    // it (34 + 2×5 = 44). NOT `<Button variant="danger">`:
-                    // `Button`'s own BASE carries `min-h-touch min-w-touch`, and
-                    // a min- beats a width whatever the emitted order is, so a
-                    // `w-tool h-tool` passed through it paints 44×44 and the
-                    // class that says 34 is never drawn.
-                    <button
-                      type="button"
-                      onClick={() => setDelTarget({ pid: p.id, name: p.name })}
-                      title={tombstoned ? 'حذف دائمی فرآیند' : 'حذف فرآیند'}
-                      aria-label={tombstoned ? 'حذف دائمی فرآیند' : 'حذف فرآیند'}
-                      className={
+                  {/* **The row menu — owner ruling: *"add ather buttomn in card
+                      to : menue"* — and `Inja Panel.dc.html:354-366`.**
+
+                      A 34px kebab holding «اطلاعات کلی» and, for an editor,
+                      «حذف فرآیند». Both were loose controls on this row before:
+                      the summary as a third ghost button, and the delete as a
+                      bare red square that put the most destructive act in the
+                      product one mis-tap from «فلوچارت» — on a phone the two
+                      were `flex-1` neighbours. The design puts the same two
+                      behind one press.
+
+                      **Drawn only when it has something in it**, which is R39
+                      one control further in: `rowMenuDisplay: isEditor` at panel
+                      3515 says the same thing for a deliverable whose admin
+                      sees neither row, and this app's non-editor reaches
+                      «اطلاعات کلی» whenever the process has published detail.
+                      An empty menu is a control that leads nowhere.
+
+                      **`mayEdit` is the DEPARTMENT's question** (line 195), not
+                      the person's — an editor of another department is filtered
+                      by `Disclosure` exactly as a reader is, and must lose the
+                      delete exactly as a reader does.
+
+                      §6.8's own `<Menu/>` is not used here for the reason
+                      `OverflowMenu` above records: it renders its label as the
+                      trigger's TEXT and pins a 44×44 box, so the design's 34px
+                      glyph would come out as «کارهای بیشتر» in words. */}
+                  {rowActions.length > 0 && (
+                    <OverflowMenu
+                      actions={rowActions}
+                      hook="prowmenu"
+                      label={`کارهای «${p.name}»`}
+                      className="relative flex-none"
+                      glyph={
                         'relative before:absolute before:content-[""] before:-inset-[5px] '
                         + 'inline-flex items-center justify-center flex-none w-tool h-tool '
-                        + 'rounded-input border-hairline border-border-danger bg-tile-c2 '
-                        + 'text-conflict cursor-pointer'
+                        + 'rounded-input border-hairline border-line bg-card text-violet '
+                        + 'cursor-pointer'
                       }
                     >
-                      <Icon name="trash" px={16} />
-                    </button>
+                      <Icon d={KEBAB} px={16} stroke={3.2} />
+                    </OverflowMenu>
                   )}
                 </div>
               </Card>

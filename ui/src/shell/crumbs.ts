@@ -16,6 +16,12 @@ export interface Crumb {
 
 const HOME = 'دپارتمان‌ها'
 
+/** The two views a process has of its own, and what the trail calls each. */
+const VIEW: Record<string, string> = {
+  flow: 'فلوچارت',
+  steps: 'گام‌به‌گام',
+}
+
 const FLAT: Record<string, string> = {
   users: 'کاربران',
   visibility: 'سیاست نمایش محتوا',
@@ -60,8 +66,14 @@ export function panelCrumbs(pathname: string, deptName: (code: string) => string
     if (DEPT_CODES.includes(code)) {
       trail.push({ label: `دپارتمان ${deptName(code)}`, to: `/departments/${code}` })
     }
-    if (parts[2] === 'flow') {
-      trail.push({ label: pid, to: `/processes/${pid}`, mono: true }, { label: 'فلوچارت' })
+    // The two ways of reading one document — the canvas and «گام‌به‌گام» — take
+    // the same shape of trail, with the process summary as their parent. Written
+    // as a lookup rather than two branches so the pair cannot drift: a third
+    // view added to `routes.tsx` and not to this map gets the SHORTER trail,
+    // which is a correct trail that stops early, never a wrong one.
+    const view = VIEW[parts[2] ?? '']
+    if (view !== undefined) {
+      trail.push({ label: pid, to: `/processes/${pid}`, mono: true }, { label: view })
     } else {
       trail.push({ label: pid, mono: true })
     }
@@ -139,6 +151,16 @@ export function readerBack(pathname: string, root: string): string | undefined {
 
   if (parts[0] === 'processes' && parts[1] !== undefined) {
     const pid = parts[1]
+    // **The flowchart goes up to the summary; «گام‌به‌گام» goes up to the
+    // department, and the difference is R4 rather than an inconsistency.** A
+    // reader is sent to the steps view from the process list — it is the violet
+    // button on their row (`Inja Reader.dc.html:222`) and their lead sentence
+    // promises it — so the list is what "up" means from there. The summary is
+    // the flowchart's parent because the flowchart is what that screen's own
+    // «مشاهدهٔ فلوچارت» opens.
+    //
+    // Either way this is only the FALLBACK now: `canGoBack` puts the entry the
+    // person actually came from ahead of it on both process views.
     if (parts[2] === 'flow') return `/processes/${pid}`
     const code = pid.slice(0, pid.lastIndexOf('-'))
     return DEPT_CODES.includes(code) ? `/departments/${code}` : home

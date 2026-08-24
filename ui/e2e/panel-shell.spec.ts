@@ -1020,6 +1020,16 @@ test('the 34px sign-out control catches a pointer 44px wide', async ({ page }) =
   // the drawn edge, which is inside the 5px overlay, must resolve to this
   // control and to nothing else.
   await home(page)
+  // **Owner ruling — the bar's sign-out stands down at ≤1080.** *"in mobile
+  // version, we have signout in hambergure manu and in topof menu. we should
+  // have just in hambergure menmu. remove its icon in top menu."* The sheet's
+  // opener appears at exactly that width and the sheet carries «خروج», so below
+  // 1080 the two were one act behind two doors ten pixels apart. The test above
+  // this one is the other half of the same rule: it presses through the sheet
+  // and reaches sign-out at EVERY width, so what this width skips is the icon,
+  // never the reachability.
+  test.skip(page.viewportSize()!.width <= 1080,
+    'the bar’s sign-out is withdrawn at this width; the sheet carries it')
   const out = page.getByRole('button', { name: 'خروج' })
   await expect(out).toBeVisible()
   const box = (await out.boundingBox())!

@@ -934,9 +934,45 @@ def test_a_successful_render_puts_the_pdf_beside_the_html(data_root, tmp_path, m
     # printed from the document that was just written, not from some other file
     assert seen["html"] == html
     assert seen["chromium"] == cfg.chromium_path
-    # …and the response says nothing about it (D18)
+    # **Owner ruling: the response NAMES the PDF now** — *"the export button
+    # should just create pdf. not html. we doen't need html at all."* The panel's
+    # export dialog hands over `pdf_url` and nothing else, so the field has to
+    # travel; D18's "the response says nothing about it" was written when the
+    # document was the deliverable and the PDF an enhancement the exported page's
+    # own button reached by swapping an extension.
+    #
+    # `url` is unchanged and deliberately so: it is what `/exports` serves a
+    # reader, what the cache key identifies, and what that button is a sibling of.
+    assert set(r.json()) == {"url", "pdf_url", "generated_at"}
+    assert r.json()["pdf_url"] == f"/exports/{pdf.relative_to(cfg.export_dir).as_posix()}"
+
+
+def test_no_pdf_url_comes_back_when_no_pdf_was_printed(data_root, tmp_path, monkeypatch):
+    """The other half of the ruling, and the one a dead link would come out of.
+
+    The render is best effort by design (D21): an unconfigured `CHROMIUM_PATH`, a
+    browser that crashed, a print that timed out, and a `render_pdf` that returned
+    without writing anything all leave a published document with no PDF beside it.
+    The document is still written and still served — that has not changed — but
+    the response must not name a `.pdf` that is not there, because the panel builds
+    its one link out of that field and would otherwise offer a 404.
+
+    Rendered-but-empty is the case a path-guessing implementation gets wrong: the
+    call returned, no exception, and there is still nothing on disk.
+    """
+    cfg = _with_chromium(_cfg(data_root, tmp_path), tmp_path)
+    confirm_everything(cfg, "cooking")
+
+    def render_nothing(chromium, html_path, out_path, **kw):
+        return None
+
+    monkeypatch.setattr(pdf_mod, "render_pdf", render_nothing)
+    r = _client(cfg).post("/api/departments/cooking/exports/flowchart")
+
+    assert r.status_code == 200
     assert set(r.json()) == {"url", "generated_at"}
-    assert ".pdf" not in json.dumps(r.json())
+    # …and the document itself is published regardless (D21).
+    assert (cfg.export_dir / r.json()["url"][len("/exports/"):]).is_file()
 
 
 def test_no_pdf_is_served_beside_the_new_html_while_the_render_is_still_running(

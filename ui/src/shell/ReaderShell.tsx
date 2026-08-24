@@ -1,4 +1,5 @@
-import { Link, Navigate, Outlet, useLocation } from 'react-router-dom'
+import { useState } from 'react'
+import { Link, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import type { SessionDescriptor } from '../auth/session'
 import { useDepartments, useLogout } from '../api/hooks'
 import { SurfaceProvider } from '../ui/surface'
@@ -7,6 +8,8 @@ import { Logo } from '../ui/Logo'
 import { toFa } from '../lib/format'
 import { roleLabel } from '../lib/roles'
 import { readerBack, readerHere } from './crumbs'
+import { canGoBack, isProcessView } from './back'
+import { SignOutConfirm } from './SignOutConfirm'
 
 // Every control on both reader bars is the violet tile behind a 1.5px --line
 // hairline with a --violet label (reader 142, 148, 157, 162). Values by token
@@ -40,6 +43,11 @@ const GHOST = 'inline-flex items-center justify-center bg-tile-v2 text-violet bo
 // to the same five pixels and leaves that helper with nothing to measure.
 const HIT = 'relative before:absolute before:content-[""] before:-inset-[5px]'
 
+/** The back bar's own control, reader 157 — `10px 15px`, radius 12, 13.5px.
+ *  One string because R48's ruling made it two elements. */
+const BACK_BAR_BTN =
+  `${GHOST} ${HIT} gap-button-icon px-button-x py-s5 rounded-button text-fs-menu font-bold flex-none`
+
 /**
  * Roomier density, one screen at a time.
  *
@@ -51,7 +59,11 @@ const HIT = 'relative before:absolute before:content-[""] before:-inset-[5px]'
  */
 export function ReaderShell({ session }: { session: SessionDescriptor }) {
   const logout = useLogout()
+  // Owner ruling — sign-out asks first. One control on this surface, and the
+  // same question `PanelShell` raises from its two.
+  const [signingOut, setSigningOut] = useState(false)
   const { pathname } = useLocation()
+  const nav = useNavigate()
   const { data: departments, isPending } = useDepartments()
 
   // R4 — decided by scope and never by content. `GET /api/departments` already
@@ -187,7 +199,7 @@ export function ReaderShell({ session }: { session: SessionDescriptor }) {
                   it, drawn on the neighbouring button's metrics. Owner question,
                   the same one PanelShell records. */}
               <button
-                type="button" onClick={() => logout.mutate()} aria-label="خروج"
+                type="button" onClick={() => setSigningOut(true)} aria-label="خروج"
                 className={`${GHOST} ${HIT} w-iconbtn h-iconbtn rounded-button`}
               >
                 <Icon name="logout" px={19} stroke={2.2} />
@@ -214,10 +226,29 @@ export function ReaderShell({ session }: { session: SessionDescriptor }) {
               // `chevronStart`, which is the `M9 18l6-6-6-6` the deliverable
               // draws on this very button: in a right-to-left reading what you
               // came from lies to the RIGHT.
-              <Link to={back} className={`${GHOST} ${HIT} gap-button-icon px-button-x py-s5 rounded-button text-fs-menu font-bold flex-none`}>
-                <Icon name="chevronStart" px={16} stroke={2.4} />
-                بازگشت
-              </Link>
+              // **Owner ruling — on a process view this answers history.** *"it
+              // should go to last page user be there."* The reader reaches
+              // «گام‌به‌گام» from the row in their process list, so the
+              // URL-derived `readerBack` is a screen they may never have been on;
+              // it stays as the fallback, for the deep link and the reload.
+              // `FlowScreen` carries the same pair for the flowchart, which on
+              // this surface draws its own back inside the toolbar (R21) and
+              // never reaches this bar.
+              //
+              // One class string, two elements. NOT a `<Link>` with an
+              // `onClick`: that would go on advertising to the middle button and
+              // to «copy link address» exactly the URL the ruling calls wrong.
+              isProcessView(pathname) && canGoBack() ? (
+                <button type="button" onClick={() => nav(-1)} className={BACK_BAR_BTN}>
+                  <Icon name="chevronStart" px={16} stroke={2.4} />
+                  بازگشت
+                </button>
+              ) : (
+                <Link to={back} className={BACK_BAR_BTN}>
+                  <Icon name="chevronStart" px={16} stroke={2.4} />
+                  بازگشت
+                </Link>
+              )
             }
             {/* reader 160 — the one piece of text on this bar, and the thing
                 that says which document you are in. `min-w-0` is what makes
@@ -239,6 +270,13 @@ export function ReaderShell({ session }: { session: SessionDescriptor }) {
         <main className="flex-1 min-h-0 flex flex-col">
           <Outlet />
         </main>
+        {signingOut && (
+          <SignOutConfirm
+            pending={logout.isPending}
+            onConfirm={() => logout.mutate()}
+            onClose={() => setSigningOut(false)}
+          />
+        )}
       </div>
     </SurfaceProvider>
   )

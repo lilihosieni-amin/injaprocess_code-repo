@@ -8,6 +8,18 @@
 
 @layer components {
   .id-badge {
+    /* **An id is one latin token and must never break in the middle of itself.**
+       `dining-003` split across two lines is not a process id any more — it is
+       two strings, one of which looks like a department and one like a number,
+       in a run of type §8 has already pinned LTR inside an RTL page. Measured on
+       the flow bar the moment «ویرایش» let the name input take the row's free
+       width: the badge shrank to its `min-content` and wrapped at the hyphen.
+       `flex-none` is the same statement for the layout that produced it — the
+       design writes `flex:none` on this very span (`Inja Panel.dc.html:569`) —
+       and it is inert wherever the badge is not a flex item. Both belong here
+       rather than at one call site: the id badge has six of them and the rule is
+       about what an id IS. */
+    @apply flex-none whitespace-nowrap;
     font-family: var(--font-mono);
     font-size: var(--fs-xxs);
     padding-inline: var(--space-4);

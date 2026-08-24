@@ -138,7 +138,7 @@ export function ExportModal({ title, status, url, error, onRetry, onClose }: Exp
 
       {state === 'ready' && url && (
         <>
-          <div className="text-fs-sm2 text-muted mb-s5">لینک فایل HTML خروجی:</div>
+          <div className="text-fs-sm2 text-muted mb-s5">لینک فایل PDF خروجی:</div>
           <div className="flex gap-s5 items-center">
             <input value={url} readOnly dir="ltr" aria-label="لینک فایل خروجی"
               className="flex-1 min-w-0 box-border px-s6 py-s6 border-hairline border-line rounded-button font-mono text-fs-caption text-ink bg-card outline-none" />
@@ -146,7 +146,14 @@ export function ExportModal({ title, status, url, error, onRetry, onClose }: Exp
               className="shrink-0 px-s8 text-fs-sm"
               icon={<Icon d={COPY} px={15} />}>{copied ? 'کپی شد' : 'کپی لینک'}</Button>
           </div>
-          <p className="text-fs-xs text-faint mt-s6 leading-loose m-0">این فایل کاملاً مستقل است و بدون اینترنت هم باز می‌شود.</p>
+          {/* Owner ruling — this is a PDF, and the sentence has to be about a
+              PDF. The old one («این فایل کاملاً مستقل است و بدون اینترنت هم باز
+              می‌شود») was written for the standalone HTML document, whose whole
+              point was that it opened offline by double-click; said about a PDF
+              it is true of every PDF and tells the reader nothing. What is worth
+              saying is that this one is printed and fixed, which is what
+              distinguishes it from the interactive document it was printed from. */}
+          <p className="text-fs-xs text-faint mt-s6 leading-loose m-0">فایل PDF چاپ‌شده از سند رسمی است؛ برای چاپ و بایگانی آماده است.</p>
           {/* The screen where the admin decides who to hand the link to, so it
               states the gate the recipient will really meet (D25): the shared
               export credential, which is not the panel's own login.

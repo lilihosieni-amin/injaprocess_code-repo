@@ -38,6 +38,16 @@ export const TITLE_ON_FIELD = 'rgb(255, 255, 255)'
  * until Task 14 repaints it.
  */
 export const SUBTITLE_ON_FIELD = 'rgb(201, 190, 238)'
+/**
+ * `--ink` `#2A1D5E` — the ink of body prose **on a card**.
+ *
+ * The same string as `FIELD`, and deliberately a third name beside `SURFACE`
+ * and `TITLE_ON_FIELD`: the field is `--ink` used as a GROUND, this is `--ink`
+ * used as TYPE, and a screen that repainted one has no business dragging the
+ * other with it. A row writing `FIELD` where it means the colour of a sentence
+ * would read as a 1.00-contrast bug rather than as the value it is.
+ */
+export const INK = 'rgb(42, 29, 94)'
 /** §6.13 / ledger L-15 — the sub-panel edge `#EDE5F5` (`--border-current`). */
 export const SUBPANEL_BORDER = 'rgb(237, 229, 245)'
 /** §1.2 — `--surface-sub` `#FBF9FE`, THE sub-panel fill (see `profile` below). */
@@ -732,10 +742,16 @@ export const DESIGN = {
     // nine; `--fs-h1`'s 23px stays the audit stat numeral. The plan's own Task 16
     // step still quotes 23 — L-02 supersedes it.
     h1: { size: '22px', weight: '800', color: TITLE_ON_FIELD },
-    // 15px, `--fs-lg`. Not one of ledger L-27's four body steps and not
-    // normalised by anything: it is the screen subtitle the design gives this
-    // one screen, `max-width:640px`, `line-height:1.75`.
-    body: { size: '15px', color: SUBTITLE_ON_FIELD },
+    // **Owner ruling — the summary moved off the field and into a card.** *"the
+    // information in top of this page, i want to put this text in white box like
+    // IDEF0 box, exactly like department information page."* So `[data-body]` is
+    // no longer the 15px `--fs-lg` subtitle the design draws on the violet
+    // (`Inja Panel.dc.html:392`); it is the prose inside the screen's first
+    // card, drawn on `Overview`'s own «شرح دپارتمان» recipe — `--fs-body` 14px
+    // in `--ink`, justified. `align` is required here and nowhere else in this
+    // table for exactly that reason: every other `[data-body]` is a lead line
+    // and this one is a paragraph.
+    body: { size: '14px', color: INK, align: 'justify' },
     // The A-0 card: `border-radius:18px;padding:24px`. The deliverable's own
     // border is `1px solid #EFE7DC`; ledger **L-15** retires that for
     // `rgba(42,29,94,.07)`, which is what Task 16 builds and what `CARD_BORDER`

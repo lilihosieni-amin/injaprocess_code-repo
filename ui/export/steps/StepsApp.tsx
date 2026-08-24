@@ -1,6 +1,6 @@
 import { useLayoutEffect, useEffect, useMemo, useRef, useState } from 'react'
-import { linearize, countSteps, groupTitle } from './linearize'
-import type { Block } from './linearize'
+import { linearize, countSteps, groupTitle } from '../../src/lib/linearize'
+import type { Block } from '../../src/lib/linearize'
 import { toFa } from '../../src/lib/format'
 import type { ExportPayload } from '../shared/payload'
 import type { ActivityNode, ReadableProcess } from '../../src/api/types'

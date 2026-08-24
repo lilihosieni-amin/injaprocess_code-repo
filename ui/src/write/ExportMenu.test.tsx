@@ -35,13 +35,35 @@ function renderMenu(session: SessionDescriptor = EXPORTER) {
   return render(<QueryClientProvider client={client}><ExportMenu department="dining" /></QueryClientProvider>)
 }
 
-function body(url: string) {
-  return new Response(JSON.stringify({ url, generated_at: '2026-07-26T09:00:00Z' }),
+/**
+ * A successful export — **the document AND the PDF printed from it.**
+ *
+ * Owner ruling: *"the export button should just create pdf. not html. we doen't
+ * need html at all."* The endpoint still answers `url` (the document is what
+ * `/exports` serves a reader and what the cache key identifies) and now answers
+ * `pdf_url` beside it — **only when a PDF really landed**. The dialog hands over
+ * `pdf_url` and nothing else, so a body with the `.pdf` missing is the failure
+ * state, which is what `noPdf()` below is for.
+ */
+// `null`, not `undefined`, for "no PDF": a default parameter is applied when the
+// argument IS `undefined`, so `body(url, undefined)` would quietly hand back the
+// success payload and this file's failure fixture would test nothing.
+function body(url: string, pdfUrl: string | null = url.replace(/\.html$/, '.pdf')) {
+  const payload = pdfUrl === null
+    ? { url, generated_at: '2026-07-26T09:00:00Z' }
+    : { url, pdf_url: pdfUrl, generated_at: '2026-07-26T09:00:00Z' }
+  return new Response(JSON.stringify(payload),
     { status: 200, headers: { 'Content-Type': 'application/json' } })
 }
 
 function ok(url = '/exports/dining/flowchart-0123456789abcdef.html') {
   return vi.spyOn(globalThis, 'fetch').mockResolvedValue(body(url))
+}
+
+/** A 2xx whose render did not produce a PDF — an unconfigured `CHROMIUM_PATH`,
+ *  a browser that crashed, a print that timed out. */
+function noPdf(url = '/exports/dining/flowchart-0123456789abcdef.html') {
+  return vi.spyOn(globalThis, 'fetch').mockResolvedValue(body(url, null))
 }
 
 /** A fetch that stays in flight until `settle()` is called, so the pending
@@ -123,7 +145,33 @@ describe('ExportMenu', () => {
     fireEvent.click(screen.getByRole('button', { name: 'خروجی‌ها' }))
     fireEvent.click(screen.getByText('خروجی مستندات کامل'))
     await screen.findByText('خروجی آماده شد')
-    expect(screen.getByDisplayValue(`${window.location.origin}/exports/dining/flowchart-0123456789abcdef.html`)).toBeInTheDocument()
+    // The **PDF**, absolute — owner ruling. The document's own url is in the
+    // same response and is deliberately not what this dialog hands over.
+    expect(screen.getByDisplayValue(`${window.location.origin}/exports/dining/flowchart-0123456789abcdef.pdf`)).toBeInTheDocument()
+    expect(screen.queryByDisplayValue(/\.html$/)).toBeNull()
+  })
+
+  it('calls a 2xx with no PDF a failure, and says why', async () => {
+    // **Owner ruling: *"the export button should just create pdf. not html. we
+    // doen't need html at all."*** The PDF is the deliverable now, so "the
+    // export ran and printed nothing" is a failed export — not a success whose
+    // link quietly points at the interactive document instead.
+    //
+    // The old arrangement had no such state to get wrong: the response's one
+    // `url` was the HTML and was always there, so a browser that was missing,
+    // crashed or timed out cost the reader nothing the panel could see. `D21`
+    // still stands on the server — the document is written and published
+    // whatever the render does — and this is where that best-effort stops being
+    // good enough for the person who pressed the button.
+    noPdf()
+    renderMenu()
+    fireEvent.click(screen.getByRole('button', { name: 'خروجی‌ها' }))
+    fireEvent.click(screen.getByText('خروجی مستندات کامل'))
+    expect(await screen.findByText('خروجی گرفته نشد')).toBeInTheDocument()
+    expect(screen.getByText(/فایل PDF آن روی سرور تولید نشد/)).toBeInTheDocument()
+    // …and no link at all, rather than the document's own url standing in for it.
+    expect(screen.queryByRole('link', { name: /باز کردن خروجی/ })).toBeNull()
+    expect(screen.getByRole('button', { name: 'تلاش دوباره' })).toBeInTheDocument()
   })
 
   it('closes the dropdown on an outside click', () => {
@@ -190,7 +238,7 @@ describe('ExportMenu', () => {
     fireEvent.click(screen.getByText('خروجی راهنمای گام‌به‌گام'))
     expect(screen.getByText('در حال آماده‌سازی خروجی…')).toBeInTheDocument()
     await screen.findByText('خروجی آماده شد')
-    expect(screen.getByDisplayValue(`${window.location.origin}/exports/dining/steps-fedcba9876543210.html`)).toBeInTheDocument()
+    expect(screen.getByDisplayValue(`${window.location.origin}/exports/dining/steps-fedcba9876543210.pdf`)).toBeInTheDocument()
   })
 
   it('surfaces a backend failure and retries', async () => {

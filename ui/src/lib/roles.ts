@@ -18,8 +18,11 @@
  * fact. Quoted is legible; erased is a lie.
  */
 const ROLE_LABELS: Record<string, string> = {
-  // The process analyst — the only role that changes anything (PRD §2).
-  editor: 'تحلیل‌گر',
+  // The process analyst — the only role that changes anything (PRD §2). Owner
+  // ruling: «ادیتور» everywhere, which is the word both deliverables use for
+  // this role in their own prose (`Inja Panel.dc.html:405`) and the word the
+  // owner uses for it. «تحلیل‌گر» was this file's invention.
+  editor: 'ادیتور',
   // Sees everything, manages users, reads the activity reports, edits nothing.
   admin: 'مدیر',
   reader: 'خواننده',

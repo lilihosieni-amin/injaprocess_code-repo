@@ -968,15 +968,41 @@ function signedOut(): number {
     .length
 }
 
+/**
+ * Owner ruling — sign-out asks first, so every «خروج» is two presses now.
+ *
+ * The dialog's own button is «خروج از حساب» and the trigger is «خروج»; the two
+ * accessible names are different strings, so a `getByRole(…, { name: 'خروج' })`
+ * still finds exactly the trigger and never the confirmation.
+ */
+async function confirmSignOut() {
+  await userEvent.click(await screen.findByRole('button', { name: 'خروج از حساب' }))
+}
+
 /** The inbox modal's own subtitle — a string no button in either chrome carries. */
 const INBOX_BODY = /مقدار فعلی در برابر پیشنهاد/
 
 describe('PanelShell controls', () => {
-  it('signs out when the top bar’s «خروج» is pressed', async () => {
+  it('signs out when the top bar’s «خروج» is pressed — after confirming', async () => {
     renderPanel(['view', 'edit'], '/departments')
     expect(signedOut()).toBe(0)
     await userEvent.click(screen.getByRole('button', { name: 'خروج' }))
+    // **The press alone does not end the session.** Owner ruling: *"when user
+    // click on sign out bottumn, it should first see pop up that ask are you
+    // sure. then sign out."* This half is the one worth pinning — a
+    // confirmation that renders and does not gate is the same bug wearing a
+    // dialog.
+    expect(signedOut()).toBe(0)
+    await confirmSignOut()
     await waitFor(() => expect(signedOut()).toBe(1))
+  })
+
+  it('lets «انصراف» call the sign-out off', async () => {
+    renderPanel(['view', 'edit'], '/departments')
+    await userEvent.click(screen.getByRole('button', { name: 'خروج' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'انصراف' }))
+    expect(screen.queryByRole('button', { name: 'خروج از حساب' })).toBeNull()
+    expect(signedOut()).toBe(0)
   })
 
   it('signs out when the sheet’s «خروج» is pressed', async () => {
@@ -984,6 +1010,11 @@ describe('PanelShell controls', () => {
     renderAdmin()
     await userEvent.click(screen.getByRole('button', { name: 'فهرست' }))
     await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'خروج' }))
+    // The sheet shuts on the way, so the confirmation is the only dismissible
+    // left standing — otherwise Escape would answer the dialog and leave the
+    // sheet covering the screen it returned to.
+    expect(signedOut()).toBe(0)
+    await confirmSignOut()
     await waitFor(() => expect(signedOut()).toBe(1))
   })
 
@@ -2642,12 +2673,15 @@ describe('ReaderShell reachability', () => {
     expect(screen.queryByRole('link', { name: 'نمایه' })).toBeNull()
   })
 
-  it('signs out when the top bar’s «خروج» is pressed', async () => {
-    // A control asserted only to exist is not asserted. This one is wired.
+  it('signs out when the top bar’s «خروج» is pressed — after confirming', async () => {
+    // A control asserted only to exist is not asserted. This one is wired, and
+    // it is wired through the same confirmation the panel raises.
     renderReader(THREE, '/departments')
     await screen.findByText('فهرست دپارتمان‌ها')
     expect(signedOut()).toBe(0)
     await userEvent.click(screen.getByRole('button', { name: 'خروج' }))
+    expect(signedOut()).toBe(0)
+    await confirmSignOut()
     await waitFor(() => expect(signedOut()).toBe(1))
   })
 

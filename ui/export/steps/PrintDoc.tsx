@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
-import { linearize, groupTitle } from './linearize'
-import type { Block } from './linearize'
+import { linearize, groupTitle } from '../../src/lib/linearize'
+import type { Block } from '../../src/lib/linearize'
 import { toFa } from '../../src/lib/format'
 import type { ExportPayload } from '../shared/payload'
 import type { ActivityNode, ReadableProcess } from '../../src/api/types'

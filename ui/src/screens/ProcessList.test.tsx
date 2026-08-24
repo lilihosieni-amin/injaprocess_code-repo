@@ -5,6 +5,7 @@ import { screen, fireEvent, within } from '@testing-library/react'
 import { ProcessList } from './ProcessList'
 import { renderAt } from '../test/utils'
 import { ToastProvider } from '../write/ToastProvider'
+import { SurfaceProvider } from '../ui/surface'
 import type { SessionDescriptor } from '../auth/session'
 import { declarations, paint, winner } from '../test/paint'
 import { expectExpandedHitArea } from '../test/a11y'
@@ -20,6 +21,18 @@ const MOBILE = '(max-width: 760px)'
  *  Node's, and the two are not the same constructor — so the URL form throws
  *  «Received an instance of URL» in this environment. */
 const SOURCE = join(process.cwd(), 'src/screens/ProcessList.tsx')
+
+/**
+ * Opens one row's `⋮` — owner ruling: *"add ather buttomn in card to : menue"*,
+ * and `Inja Panel.dc.html:354-366`.
+ *
+ * «اطلاعات کلی» and the delete are behind it now, so every assertion that used
+ * to reach for them directly goes through here. Named by the process, because a
+ * list draws one of these per row and `getByRole` would find three.
+ */
+function openRowMenu(name: string) {
+  fireEvent.click(screen.getByRole('button', { name: `کارهای «${name}»` }))
+}
 
 afterEach(() => vi.restoreAllMocks())
 
@@ -61,17 +74,40 @@ function mock(procs: unknown[] = PROCS) {
 }
 
 describe('ProcessList', () => {
-  it('renders cards with derived tags and activity counts', async () => {
+  it('renders cards with derived tags and no activity count', async () => {
     mock()
     renderAt('/departments/:code', <ProcessList />, '/departments/cooking', EDITOR)
     expect(await screen.findByText('خرید و پرداخت')).toBeInTheDocument()
     expect(screen.getByText('دارای KPI')).toBeInTheDocument()   // cooking-001
     expect(screen.getByText('زیرفرآیند')).toBeInTheDocument()   // cooking-014
-    // cooking-014 has 1 activity node, and its position badge is also ۱ (it's first
-    // in curated order) — the same ۱ text appears twice on its card. Disambiguate via
-    // the activity-count testid rather than a cosmetic font-size selector.
-    expect(screen.getByTestId('activity-count-cooking-014')).toHaveTextContent('۱')
-    expect(screen.getByTestId('activity-count-cooking-001')).toHaveTextContent('۱')
+    // **Owner ruling: *"in process list page, it shouldn't have 11 فعالیت
+    // tag.remove it."*** The chip was never one of §6.2's three — this app added
+    // it, on the argument that dropping the number would take information no
+    // other screen carries — and the owner has decided against that argument.
+    // Asserted by the testid AND by the word, so a chip that came back with its
+    // hook renamed is still caught.
+    expect(screen.queryByTestId('activity-count-cooking-014')).toBeNull()
+    expect(screen.queryByText(/فعالیت/)).toBeNull()
+  })
+
+  it('shows a reader the sub-process tag and nothing else on the meta line', async () => {
+    // **Owner ruling: *"in reader process list, we shouldnt show process id and
+    // 11 فعالیت in process card. just show زیرفرایند if it is."*** The reader
+    // deliverable draws no meta line at all (`Inja Reader.dc.html:215-221`); the
+    // ruling is more generous by exactly one chip, because a sub-process a reader
+    // cannot tell from a top-level one is the one fact this row has to carry.
+    mock()
+    renderAt('/departments/:code',
+      <SurfaceProvider surface="reader"><ProcessList /></SurfaceProvider>,
+      '/departments/cooking', READER)
+    await screen.findByText('پرداخت هزینه')
+    const sub = screen.getByTestId('meta-cooking-014')
+    expect(within(sub).getByText('زیرفرآیند')).toBeInTheDocument()
+    expect(within(sub).queryByText('cooking-014')).toBeNull()
+    // …and a row that is not a sub-process draws an empty meta line, not an id.
+    const plain = screen.getByTestId('meta-cooking-001')
+    expect(within(plain).queryByText('cooking-001')).toBeNull()
+    expect(plain.textContent).toBe('')
   })
 
   it('filters by id', async () => {
@@ -95,8 +131,9 @@ describe('ProcessList', () => {
     const row = screen.getByText('فرآیند قدیمی').closest('[data-r-prow]') as HTMLElement
     expect(row).toBeTruthy()
     expect(within(row).getByRole('button', { name: 'فلوچارت' })).toBeInTheDocument()
-    // permanent delete stays available
-    expect(within(row).getByTitle('حذف دائمی فرآیند')).toBeInTheDocument()
+    // permanent delete stays available — behind the row's ⋮ as of the ruling
+    openRowMenu('فرآیند قدیمی')
+    expect(screen.getByRole('menuitem', { name: 'حذف دائمی فرآیند' })).toBeInTheDocument()
   })
 
   it('numbers active processes in the order the API returned', async () => {
@@ -131,8 +168,15 @@ describe('ProcessList', () => {
     expect(await screen.findByText('خرید و پرداخت')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'فرآیند جدید' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'ترتیب فرآیندها' })).toBeInTheDocument()
-    // one per row, tombstone included — the permanent-delete affordance
-    expect(screen.queryAllByTitle(/حذف/)).toHaveLength(PROCS.length)
+    // One ⋮ per row, tombstone included, and a delete inside each of them: the
+    // affordance moved behind a press, it did not go. Counted per row rather
+    // than in total, so a menu drawn on one row and not the others still fails.
+    expect(screen.queryAllByRole('button', { name: /^کارهای «/ })).toHaveLength(PROCS.length)
+    for (const p of PROCS) {
+      openRowMenu(p.name)
+      expect(screen.getByRole('menuitem', { name: /حذف/ })).toBeInTheDocument()
+      fireEvent.keyDown(document, { key: 'Escape' })
+    }
   })
 
   it('draws no create, reorder or delete control for a reader', async () => {
@@ -409,17 +453,35 @@ describe('the row, the empty state and the mobile overflow', () => {
     expect(winner(await paint(pos.className), 'display', '', MOBILE)).toBe('none')
   })
 
-  it('draws the delete control at the design’s 34px and grows only its target', async () => {
+  it('draws the row menu at the design’s 34px and grows only its target', async () => {
+    // `Inja Panel.dc.html:355` — `width:34px;height:34px;border:1.5px solid
+    // #E3D8F5;background:#fff;border-radius:11px;color:#4A25A9`. The same rung
+    // the trash square used to draw at, which is why the swap is a swap and not
+    // a resize; F11's 44px floor is a transparent ::before around it (34+2×5).
     mock()
     renderAt('/departments/:code', <ProcessList />, '/departments/cooking', EDITOR)
-    const del = (await screen.findAllByTitle('حذف فرآیند'))[0]
-    expectExpandedHitArea(del)
-    const painted = await paint(del.className)
+    await screen.findByText('خرید و پرداخت')
+    const more = screen.getAllByRole('button', { name: /^کارهای «/ })[0]
+    expectExpandedHitArea(more)
+    const painted = await paint(more.className)
     expect(winner(painted, 'width')).toBe('var(--size-tool)')
     expect(winner(painted, 'height')).toBe('var(--size-tool)')
-    expect(winner(painted, 'background-color')).toBe('var(--tile-c2)')
-    expect(winner(painted, 'color')).toBe('var(--conflict)')
-    expect(winner(painted, 'border-color')).toBe('var(--border-danger)')
+    expect(winner(painted, 'background-color')).toBe('var(--card)')
+    expect(winner(painted, 'color')).toBe('var(--violet)')
+    expect(winner(painted, 'border-color')).toBe('var(--line)')
+  })
+
+  it('puts «گام‌به‌گام» beside «فلوچارت» on every row', async () => {
+    // **Owner ruling: *"where is step by step bottumn? i have it in design, but
+    // in currebt version no. add it"*** — `Inja Panel.dc.html:352`. It goes
+    // first in the DOM, which in RTL puts it on the right, which is the
+    // deliverable's own order.
+    mock()
+    renderAt('/departments/:code', <ProcessList />, '/departments/cooking', EDITOR)
+    await screen.findByText('خرید و پرداخت')
+    const row = screen.getByText('خرید و پرداخت').closest('[data-r-prow]') as HTMLElement
+    const labels = within(row).getAllByRole('button').map((b) => b.textContent)
+    expect(labels.slice(0, 2)).toEqual(['گام‌به‌گام', 'فلوچارت'])
   })
 
   it('leaves no literal value in the file', () => {
@@ -468,7 +530,11 @@ describe('R39 — the list stops offering a summary that would be empty', () => 
     mock([WITHHELD])
     renderAt('/departments/:code', <ProcessList />, '/departments/cooking', READER)
     await screen.findByText('فرآیند بی‌جزئیات')
-    expect(screen.queryByRole('button', { name: 'اطلاعات کلی' })).toBeNull()
+    // Not merely missing from an open menu — the ⋮ itself is gone, because
+    // «اطلاعات کلی» was the only thing a reader could have found in it and a
+    // menu with nothing in it is a control that leads nowhere.
+    expect(screen.queryByRole('button', { name: /^کارهای «/ })).toBeNull()
+    expect(screen.queryByRole('menuitem', { name: 'اطلاعات کلی' })).toBeNull()
     // …and the row is not gutted: «فلوچارت» is a screen that IS served to this
     // reader — §6.3's own card says so in as many words — so it stays.
     expect(screen.getByRole('button', { name: 'فلوچارت' })).toBeInTheDocument()
@@ -488,7 +554,8 @@ describe('R39 — the list stops offering a summary that would be empty', () => 
       mock([{ ...WITHHELD, ...survivor }])
       renderAt('/departments/:code', <ProcessList />, '/departments/cooking', READER)
       await screen.findByText('فرآیند بی‌جزئیات')
-      expect(screen.getByRole('button', { name: 'اطلاعات کلی' })).toBeInTheDocument()
+      openRowMenu('فرآیند بی‌جزئیات')
+      expect(screen.getByRole('menuitem', { name: 'اطلاعات کلی' })).toBeInTheDocument()
     })
   }
 
@@ -501,7 +568,8 @@ describe('R39 — the list stops offering a summary that would be empty', () => 
     mock([WITHHELD])
     renderAt('/departments/:code', <ProcessList />, '/departments/cooking', EDITOR)
     await screen.findByText('فرآیند بی‌جزئیات')
-    expect(screen.getByRole('button', { name: 'اطلاعات کلی' })).toBeInTheDocument()
+    openRowMenu('فرآیند بی‌جزئیات')
+    expect(screen.getByRole('menuitem', { name: 'اطلاعات کلی' })).toBeInTheDocument()
   })
 
   it('asks about THIS department: an editor of another one is served the reader’s document', async () => {
@@ -512,7 +580,7 @@ describe('R39 — the list stops offering a summary that would be empty', () => 
     mock([WITHHELD])
     renderAt('/departments/:code', <ProcessList />, '/departments/cooking', OTHER_DEPT_EDITOR)
     await screen.findByText('فرآیند بی‌جزئیات')
-    expect(screen.queryByRole('button', { name: 'اطلاعات کلی' })).toBeNull()
+    expect(screen.queryByRole('button', { name: /^کارهای «/ })).toBeNull()
   })
 
   it('decides per row, not per screen', async () => {
@@ -523,7 +591,10 @@ describe('R39 — the list stops offering a summary that would be empty', () => 
     mock([WITHHELD, { ...WITHHELD, id: 'cooking-008', name: 'فرآیند پرجزئیات', summary: 'خلاصهٔ منتشرشده' }])
     renderAt('/departments/:code', <ProcessList />, '/departments/cooking', READER)
     await screen.findByText('فرآیند پرجزئیات')
-    const offered = screen.getAllByRole('button', { name: 'اطلاعات کلی' })
+    // The ⋮ is the door now, and for a reader «اطلاعات کلی» is the only thing
+    // behind it — so "one menu on two rows" is the same claim the button count
+    // used to make, read one control further out.
+    const offered = screen.getAllByRole('button', { name: /^کارهای «/ })
     expect(offered).toHaveLength(1)
     const rows = [...document.querySelectorAll('[data-r-prow]')]
     const withDoor = rows.find((r) => r.contains(offered[0]))!

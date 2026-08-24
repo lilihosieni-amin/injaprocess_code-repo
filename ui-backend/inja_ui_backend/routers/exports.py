@@ -93,14 +93,25 @@ def _drop_stale_pdf(path: Path, code: str, kind: str) -> None:
                      "with the document beside it: %s: %s", code, kind, path, e)
 
 
-def _render_pdf_beside(cfg, code: str, kind: str, token: str, html_path: Path) -> None:
-    """Print the freshly written document to a PDF next to it — best effort (D21).
+def _render_pdf_beside(cfg, code: str, kind: str, token: str,
+                      html_path: Path) -> Path | None:
+    """Print the freshly written document to a PDF next to it — and say whether it
+    worked.
 
-    The HTML is the product and the PDF an enhancement, so nothing in here may
-    raise: a browser that is missing, crashes, times out, or prints nothing costs
-    the reader the PDF button and nothing else. The response is unchanged either
-    way — the link is never surfaced by the app, only by the document's own button
-    (D18).
+    **Owner ruling: *"the export button should just create pdf. not html. we
+    doen't need html at all."*** The PDF is what the panel hands over now, so
+    this function's answer is no longer only a side effect on disk: it returns
+    the path when a PDF is genuinely there and `None` when there is not, and the
+    caller puts that in `pdf_url` or leaves the field out. A response that named a
+    `.pdf` which had not been printed would be a dead link in an export dialog.
+
+    **Nothing in here may raise, and that has not changed.** A browser that is
+    missing, crashes, times out or prints nothing is a *deployment* fault, and the
+    document itself is already written and published by the time this runs — the
+    reader-facing `/exports` link, the exported page's own «چاپ / PDF» button and
+    the whole cache key are unaffected either way (D18, D21). What the caller does
+    with a `None` is the caller's decision; what this must never do is lose the
+    document over the enhancement.
 
     This runs inside a *sync* path operation, which FastAPI dispatches to its
     worker threadpool. That is deliberate and load-bearing: `pdf.render_pdf`
@@ -117,9 +128,13 @@ def _render_pdf_beside(cfg, code: str, kind: str, token: str, html_path: Path) -
         logger.warning("%s/%s: CHROMIUM_PATH is not configured, so the export has "
                        "no PDF", code, kind)
         _drop_stale_pdf(pdf_path, code, kind)
-        return
+        return None
     try:
         pdf.render_pdf(cfg.chromium_path, html_path, pdf_path)
+        # `render_pdf` returning is not proof a file landed: it drives a browser
+        # over CDP and the last step is a write. The answer this function gives is
+        # about a file the client will be sent to, so it is read off the disk.
+        return pdf_path if pdf_path.is_file() else None
     except Exception as e:  # noqa: BLE001
         # Deliberately every exception, not the two the renderer means to raise.
         # D21 is a promise about the *export*, and narrowing this to
@@ -139,6 +154,7 @@ def _render_pdf_beside(cfg, code: str, kind: str, token: str, html_path: Path) -
                        "itself is published: %s: %s",
                        code, kind, type(e).__name__, e)
         _drop_stale_pdf(pdf_path, code, kind)
+        return None
 
 
 @router.post("/{code}/exports/{kind}")
@@ -304,9 +320,22 @@ def create_export(code: str, kind: str, request: Request,
 
     # After the document is on disk and before the link goes out, so a reader who
     # follows it straight away finds the PDF already there. Never raises (D21).
-    _render_pdf_beside(cfg, code, kind, token, written)
+    rendered = _render_pdf_beside(cfg, code, kind, token, written)
 
     # Both segments come from the path that was actually written, resolved against
     # the mount root, so the served URL cannot drift from the layout on disk.
-    return {"url": f"/exports/{written.relative_to(cfg.export_dir).as_posix()}",
-            "generated_at": generated_at}
+    #
+    # **`pdf_url` is present only when a PDF is genuinely on disk** — owner
+    # ruling, *"the export button should just create pdf"*. It is the field the
+    # panel's export dialog hands over; `url` stays the document, because that is
+    # what `/exports` serves to a reader, what the cache key identifies, and what
+    # the exported page's own «چاپ / PDF» button is a sibling of. Absent rather
+    # than null, and never a guessed `.pdf` beside a render that did not run: a
+    # dialog offering a link to a file that is not there is worse than a dialog
+    # that says the export failed, which is what the panel now draws when this
+    # field does not come back.
+    body: dict = {"url": f"/exports/{written.relative_to(cfg.export_dir).as_posix()}",
+                  "generated_at": generated_at}
+    if rendered is not None:
+        body["pdf_url"] = f"/exports/{rendered.relative_to(cfg.export_dir).as_posix()}"
+    return body

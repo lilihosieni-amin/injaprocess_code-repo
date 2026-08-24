@@ -1,0 +1,55 @@
+/**
+ * Whether «بازگشت» has a page of this app's own to go back to.
+ *
+ * **Owner ruling, about the flowchart:** *"when in flowchart page and click on
+ * back bottomn, it goes to process information page. but it shouldn't be like
+ * this. it should go to last page user be there."*
+ *
+ * Both shells derive that control's destination from the URL — `panelCrumbs`
+ * answers `crumbs[length-2]` and `readerBack` answers the same process summary —
+ * which is *hierarchical* navigation, not history. On this one route the two
+ * disagree in practice almost every time: the flowchart is reached from the
+ * department's process list («فلوچارت» is the row's primary button, and now the
+ * step view's sibling), so "up" is a screen the reader was never on and "back"
+ * lands them two presses from where they were.
+ *
+ * `history.state.idx` is React Router's own counter — `createBrowserHistory`
+ * writes `{ usr, key, idx }` on every push and increments `idx` — so it answers
+ * exactly the question `history.length` cannot: **how many entries of THIS app
+ * are behind us.** `history.length` counts the whole tab, including the page the
+ * user was on before they ever arrived here, so `-1` on a fresh deep link or a
+ * reload would walk them out of the application entirely.
+ *
+ * Absent or not a number means "assume not": a `MemoryRouter` (every unit test),
+ * a hash router, an entry pushed by something other than the router. The caller
+ * then draws the URL-derived link it always drew, which is a destination that
+ * exists rather than a press that does nothing.
+ *
+ * Read at render rather than held in state, deliberately. Both callers already
+ * re-render on every navigation (`useLocation`), which is the only moment the
+ * answer can change, and a `useState` seeded once would go stale the first time
+ * the person moved.
+ */
+export function canGoBack(): boolean {
+  const state = window.history.state as { idx?: unknown } | null
+  return typeof state?.idx === 'number' && state.idx > 0
+}
+
+/**
+ * The two routes where the ruling above applies — `/processes/{pid}/flow` and
+ * `/processes/{pid}/steps`.
+ *
+ * Anchored, so `/processes/x/flowchart` and a path with anything after the view
+ * are not these routes; a trailing slash is.
+ *
+ * **Scoped to the two process views and not written for every route**, which is
+ * the whole of the reasoning. The ruling names the flowchart, and «گام‌به‌گام»
+ * is the same document read another way and is reached the same way — from the
+ * row in the process list, never by walking down from the summary. On the other
+ * seven routes the trail's own answer IS where the person came from (the
+ * department list leads to the department, which leads to the process), so
+ * widening this would be re-deciding six screens nobody reported.
+ */
+export function isProcessView(pathname: string): boolean {
+  return /^\/processes\/[^/]+\/(flow|steps)\/?$/.test(pathname)
+}

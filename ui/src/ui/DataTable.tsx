@@ -6,6 +6,40 @@ interface DataColumnBase<Row> {
   /** Empty for a column whose head carries no label (the status dot, the chevron). */
   head: string
   cell: (row: Row) => ReactNode
+  /**
+   * **The one column that takes the leftover width once the row is a flex row.**
+   *
+   * `Inja Panel.dc.html:61` — `[data-r-trow] > div:nth-child(2){flex:1 1 auto;
+   * min-width:0}`. At ≤760 `COLLAPSE` below turns the grid into a flex row, and
+   * a flex item's default is `flex:0 1 auto`: every cell then sizes to its own
+   * content, so the row's free space piles up after the last of them. Measured
+   * at 760 before this flag: the name sat hard against the state dot, the role
+   * pill was crushed to «مد» and «خ..», and the open chevron floated in the
+   * middle of the row with ~200px of nothing beyond it.
+   *
+   * Named rather than positional. The design says "the second child", and a
+   * `nth-child(2)` here would silently move to whatever column a later screen
+   * happens to put second — including a 16px status dot.
+   */
+  grow?: boolean
+  /**
+   * **The one column that may not grow, and may not take more than 42% of the
+   * row** — `Inja Panel.dc.html:64`, `[data-r-trow] [data-r-trole]{flex:none
+   * !important; max-width:42% !important}`.
+   *
+   * The cap belongs on the CELL and nowhere else. Written on the element INSIDE
+   * the cell it looks identical and paints something quite different: a
+   * percentage max-width resolves against the containing block, so on the inner
+   * span that is the cell — whose own width, the cell being an `auto`-basis flex
+   * item, is the span's max-content. 42% of the thing it is capping. Measured at
+   * 390 with it there: «مدیر» came out «مد» and «خواننده» came out «خ..», on a
+   * row with room to spare. On the cell the containing block is the ROW, which
+   * is what the design means and what makes the number a real cap.
+   *
+   * `flex-none` beside it because a capped cell must not absorb shrink either —
+   * without it the pill gives way to the name long before the cap is reached.
+   */
+  cap?: boolean
   /** `false` drops the column at ≤760px, where the grid collapses (§6.7). */
   mobile?: boolean
 }
@@ -235,7 +269,12 @@ export function DataTable<Row>({
                 key={c.key}
                 data-col={c.key}
                 role={openable ? 'gridcell' : 'cell'}
-                className={`min-w-0 ${c.mobile === false ? 'max760:hidden' : ''}`}
+                className={
+                  'min-w-0 '
+                  + (c.grow ? 'max760:flex-1 ' : '')
+                  + (c.cap ? 'max760:flex-none max760:max-w-[42%] ' : '')
+                  + (c.mobile === false ? 'max760:hidden' : '')
+                }
               >
                 {c.cell(row)}
               </div>

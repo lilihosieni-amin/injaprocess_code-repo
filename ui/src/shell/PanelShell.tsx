@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react'
-import { Link, Outlet, useLocation } from 'react-router-dom'
+import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { can, type SessionDescriptor } from '../auth/session'
 import { administrationRefusal, useCan } from '../auth/can'
 import { usePending, useLogout, useDepartments } from '../api/hooks'
@@ -7,10 +7,12 @@ import { InboxModal } from '../write/InboxModal'
 import { Sheet } from '../ui/Overlay'
 import { pushDismissible, popDismissible, isTopDismissible } from '../ui/dismissibleStack'
 import { SurfaceProvider } from '../ui/surface'
+import { SignOutConfirm } from './SignOutConfirm'
 import { Icon } from '../ui/Icon'
 import { Logo } from '../ui/Logo'
 import { toFa } from '../lib/format'
 import { panelCrumbs } from './crumbs'
+import { canGoBack, isProcessView } from './back'
 
 // §6.0 — the nav tray's shell. These entries *navigate*, so they are links in a
 // `<nav>` rather than a NavTabTray: the tray is a `tablist` and these are not
@@ -112,7 +114,12 @@ export function PanelShell({ session }: { session: SessionDescriptor }) {
   const [inboxOpen, setInboxOpen] = useState(false)
   const [adminOpen, setAdminOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
+  // Owner ruling: sign-out asks first. The state is here rather than in
+  // `SignOutConfirm` because the mutation is here and because two call sites —
+  // the bar and the ≤1080 sheet — raise the same one question.
+  const [signingOut, setSigningOut] = useState(false)
   const { pathname } = useLocation()
+  const nav = useNavigate()
   const canEdit = can(session, 'edit')
   // Scope-aware, unlike `can` above, which reads the capability list and
   // nothing else. Used by the one nav entry whose screen checks a scope.
@@ -127,6 +134,9 @@ export function PanelShell({ session }: { session: SessionDescriptor }) {
   const crumbs = panelCrumbs(pathname, (code) => departments.find((d) => d.code === code)?.name ?? code)
   const back = crumbs.length > 1 ? crumbs[crumbs.length - 2] : undefined
   const home = pathname === '/departments'
+  /** Where «بازگشت» answers history instead of the trail — owner ruling; the
+   *  predicate and its reasoning live in `./back`. */
+  const onFlow = isProcessView(pathname)
   // §6.0 labels the sheet's administration group. `useId` because the label is
   // what names the group to a screen reader, and two panel shells on one page
   // (the test file mounts several) must not both claim the same id.
@@ -356,10 +366,20 @@ export function PanelShell({ session }: { session: SessionDescriptor }) {
         {/* Neither deliverable has a sign-out affordance anywhere — the two gaps
             in the deliverable's right cluster are where it is not. The app has
             one and must keep it, drawn on §5.2's icon-button metrics. It is the
-            one control in this bar the design has no line for. Owner question. */}
+            one control in this bar the design has no line for. Owner question.
+
+            **`max1080:hidden` — owner ruling.** *"in mobile version, we have
+            signout in hambergure manu and in topof menu. we should have just in
+            hambergure menmu. remove its icon in top menu."* `data-r-menu`
+            below is `hidden max1080:flex`, and the sheet it opens carries
+            «خروج» — so under 1080 this button and that row are two doors to one
+            act, ten pixels apart, and one of them is a 34px icon with no label.
+            Exactly the complement of that variant, so the two can never both be
+            drawn and can never both be gone: above 1080 the sheet has no opener
+            in this bar at all and this is the only way out. */}
         <button
-          type="button" onClick={() => logout.mutate()} aria-label="خروج"
-          className={`${GHOST} ${HIT} w-tool h-tool rounded-control flex-none`}
+          type="button" onClick={() => setSigningOut(true)} aria-label="خروج"
+          className={`${GHOST} ${HIT} w-tool h-tool rounded-control flex-none max1080:hidden`}
         >
           <Icon name="logout" px={17} stroke={2.2} />
         </button>
@@ -384,7 +404,20 @@ export function PanelShell({ session }: { session: SessionDescriptor }) {
       data-r-crumbbar aria-label="مسیر"
       className="flex items-center gap-s5 px-topbar py-crumb-y bg-tile-v2 border-b border-line flex-none"
     >
-      {back?.to !== undefined && (
+      {back?.to !== undefined && (onFlow && canGoBack() ? (
+        /* Same box, same glyph, same word — a `<button>` only because there is
+           no href that means "the entry before this one". A `<Link>` whose
+           `onClick` called `nav(-1)` would still advertise a URL to the middle
+           button and to «copy link address», and the URL it advertised would be
+           the one the ruling says is wrong. */
+        <button
+          type="button" onClick={() => nav(-1)}
+          className={`${GHOST} gap-s3 px-s6 py-back-y rounded-input text-fs-sm2 font-bold flex-none cursor-pointer`}
+        >
+          <Icon name="chevronStart" px={15} stroke={2.4} />
+          بازگشت
+        </button>
+      ) : (
         <Link to={back.to} className={`${GHOST} gap-s3 px-s6 py-back-y rounded-input text-fs-sm2 font-bold flex-none`}>
           {/* **R44** — "in flowchart screen, the back button should be on top
               menu too. like other page." One route used to be excepted here,
@@ -414,7 +447,7 @@ export function PanelShell({ session }: { session: SessionDescriptor }) {
           <Icon name="chevronStart" px={15} stroke={2.4} />
           بازگشت
         </Link>
-      )}
+      ))}
       <ol data-r-crumbs className="flex flex-wrap items-center gap-s3 min-w-0 list-none m-0 p-0 text-fs-sm2 max760:hidden">
         {crumbs.map((c, i) => (
           <li key={`${c.label}-${i}`} className="flex items-center gap-s3">
@@ -487,6 +520,13 @@ export function PanelShell({ session }: { session: SessionDescriptor }) {
           <Outlet />
         </main>
         {inboxOpen && <InboxModal onClose={() => setInboxOpen(false)} />}
+        {signingOut && (
+          <SignOutConfirm
+            pending={logout.isPending}
+            onConfirm={() => logout.mutate()}
+            onClose={() => setSigningOut(false)}
+          />
+        )}
         {/* §6.0's mobile menu (Panel :2071-2100), and — because this shell draws
             the strip's opener at every width — the app's only route to sign-out,
             to the conflict inbox and to every administration screen on six of
@@ -533,7 +573,12 @@ export function PanelShell({ session }: { session: SessionDescriptor }) {
                 </Link>
               ))}
             </div>
-            <button type="button" onClick={() => logout.mutate()} className={`${SHEET_ITEM} ${SHEET_REST}`}>
+            {/* Closes the sheet before it asks: a `position:fixed` dialog
+                raised from inside an open sheet would be the second dismissible
+                on the stack, so Escape would answer the dialog and leave the
+                sheet standing over the screen it returned to. */}
+            <button type="button" onClick={() => { setMenuOpen(false); setSigningOut(true) }}
+              className={`${SHEET_ITEM} ${SHEET_REST}`}>
               <span className="flex-1">خروج</span>
             </button>
           </div>

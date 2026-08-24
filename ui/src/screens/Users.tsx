@@ -181,17 +181,21 @@ const COLUMNS = (names: Record<string, string>): TemplatedColumn<AdminUser>[] =>
     ),
   },
   {
-    key: 'name', head: 'نام',
+    // §6.7's `1.4fr` column, and — once the row is a flex row at ≤760 — the one
+    // that takes the leftover width (`Inja Panel.dc.html:61`). See `grow`.
+    key: 'name', head: 'نام', grow: true,
     cell: (u) => (
       <span className="block truncate text-body font-bold text-ink">{u.displayName}</span>
     ),
   },
   {
-    key: 'role', head: 'نقش',
+    // `Inja Panel.dc.html:64` caps this at 42% of the ROW at ≤760, so a long
+    // role name cannot push the chevron off a phone — see `cap`, and why the
+    // number has to be written on the cell rather than on the pill inside it.
+    key: 'role', head: 'نقش', cap: true,
     cell: (u) => (
       <span className={`inline-block truncate max-w-full px-s5 py-s1 rounded-control
-                        text-fs-sm2 font-semibold ${roleTone(u.role)}
-                        max760:max-w-[42%]`}>
+                        text-fs-sm2 font-semibold ${roleTone(u.role)}`}>
         {roleLabel(u.role)}
       </span>
     ),

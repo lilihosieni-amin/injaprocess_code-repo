@@ -204,6 +204,92 @@ describe('R47 — what is in the menu (C8)', () => {
   })
 })
 
+/**
+ * **Owner ruling — the edit toolbar collapses too.** *"in flowchart page, the
+ * topmenue isn't responsive"*, said about edit mode.
+ *
+ * R47 read panel 99 as a rule about the VIEW state and gated the ⋯ on
+ * `!editing`, on the argument that hiding `data-r-actions` while editing would
+ * take undo, «ذخیره» and «انصراف» off a phone with nothing offering them
+ * instead. The argument was right about the acts and wrong about the remedy: it
+ * left seven tools plus both commitments on one bar, which wraps to three rows
+ * at 390 and pushes the canvas down by a third of the screen.
+ *
+ * The split it should have made is between the TOOLS and the two acts that END
+ * the edit. The tools go in the ⋯ (they are repeatable, and a menu is a fine
+ * place for them); «انصراف» and «ذخیره» stay on the bar at every width, because
+ * one of them discards work and neither belongs behind a press on the screen
+ * where the edit is hardest to make.
+ */
+describe('the ≤760 edit-toolbar collapse', () => {
+  /** Enters edit mode through the ⋯, which is the only door at ≤760. */
+  async function edit() {
+    await mount('panel')
+    await userEvent.click(more())
+    await userEvent.click(screen.getByRole('menuitem', { name: 'ویرایش' }))
+  }
+
+  it('keeps drawing the ⋯ once the edit has started', async () => {
+    // It used to disappear at exactly the moment the bar got seven more
+    // controls on it, which is the defect in one sentence.
+    await edit()
+    expect(document.querySelector('[data-r-flowmore]')).not.toBeNull()
+  })
+
+  it('holds every tool the bar draws, and holds them only in edit mode', async () => {
+    await edit()
+    await userEvent.click(more())
+    expect(screen.getAllByRole('menuitem').map((n) => n.textContent?.trim())).toEqual([
+      'واگرد', 'ازنو', 'حالت جابه‌جایی', 'حالت انتخاب',
+      'چیدمان خودکار', 'افزودن فعالیت', 'افزودن اتصال',
+    ])
+  })
+
+  it('offers no act that would abandon the edit', async () => {
+    // «تأییدشده» and «ویرایش» are the state being edited and the door already
+    // walked through; the next/previous pair would navigate away from unsaved
+    // work. All four are view-mode rows and none belongs here.
+    await edit()
+    await userEvent.click(more())
+    for (const gone of ['تأییدشده', 'ویرایش', 'فرآیند بعدی', 'فرآیند قبلی']) {
+      expect(screen.queryByRole('menuitem', { name: gone }), gone).toBeNull()
+    }
+  })
+
+  it('marks which mouse mode is on, because it is a setting and not a command', async () => {
+    await edit()
+    await userEvent.click(more())
+    await userEvent.click(screen.getByRole('menuitem', { name: 'حالت انتخاب' }))
+    // The press closes the menu — there is nothing to repeat about a setting —
+    // so the state is read on the next opening.
+    await userEvent.click(more())
+    const rows = screen.getAllByRole('menuitem')
+    const select = rows.find((r) => r.textContent?.includes('حالت انتخاب'))!
+    const pan = rows.find((r) => r.textContent?.includes('جابه‌جایی'))!
+    expect(winner(await paint(select.firstElementChild!.className), 'background-color'))
+      .toBe('var(--violet)')
+    expect(winner(await paint(pan.firstElementChild!.className), 'background-color'))
+      .toBe('var(--card)')
+  })
+
+  it('takes the tool groups off the bar at ≤760 and leaves the commitments on it', async () => {
+    // The whole point of a collapse: exactly one of the two is on screen at any
+    // width. A `contents`/`hidden` wrapper is what says it once for all four
+    // groups without changing the flex layout above the breakpoint — measured by
+    // VALUE at both widths, because an appended `hidden` reads identically in a
+    // class string and paints one of them everywhere.
+    await edit()
+    const tools = document.querySelector('[data-r-actions] > div.contents') as HTMLElement
+    expect(tools, 'the edit tool groups are not wrapped, so nothing can collapse them').not.toBeNull()
+    const painted = await paint(tools.className)
+    expect(winner(painted, 'display')).toBe('contents')
+    expect(winner(painted, 'display', '', MOBILE)).toBe('none')
+    // …and «ذخیره»/«انصراف» are outside it, so they survive the breakpoint.
+    expect(tools.contains(screen.getByTestId('save'))).toBe(false)
+    expect(tools.contains(screen.getByTestId('flow-cancel'))).toBe(false)
+  })
+})
+
 describe('R47 — the ≤760 action collapse', () => {
   it('takes the panel’s action group off the bar at ≤760 and leaves the reader’s on', async () => {
     // panel 99 against reader 113. The two deliverables disagree deliberately

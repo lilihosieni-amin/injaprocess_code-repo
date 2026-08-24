@@ -35,7 +35,7 @@ const READER: SessionDescriptor = {
 }
 
 /** An Editor: §6.13's own screenshot signs in as one, and Step 5's
- *  «تحلیل‌گر» role label only ever comes from this role (`lib/roles.ts`). */
+ *  «ادیتور» role label only ever comes from this role (`lib/roles.ts`). */
 const EDITOR: SessionDescriptor = {
   username: '09123334455', displayName: 'ویدا مهرآیین', role: 'editor',
   capabilities: ['view', 'comment', 'edit', 'confirm'],
@@ -673,7 +673,7 @@ describe('the profile header (§6.13)', () => {
     expect(h1).toHaveTextContent('ویدا مهرآیین')
     expect(screen.queryByRole('heading', { name: 'نمایه' })).toBeNull()
     const meta = screen.getByTestId('profile-meta')
-    expect(meta).toHaveTextContent('تحلیل‌گر')
+    expect(meta).toHaveTextContent('ادیتور')
     // The number is a latin-digit run on a violet field: mono, pinned ltr.
     const number = within(meta).getByText(EDITOR.username)
     expect(number).toHaveAttribute('dir', 'ltr')

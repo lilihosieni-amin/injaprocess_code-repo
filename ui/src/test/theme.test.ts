@@ -1480,6 +1480,16 @@ const consumed = (klass: string) => rendered().has(klass) || written(klass)
 // In tailwind-probe.txt's own order, which groups them by the scale each is
 // minted on, so a whole family landing at once deletes contiguous lines.
 const UNPAINTED: string[] = [
+  // **Nine came off this list with the «گام‌به‌گام» screen.** `--steps-sub-*`,
+  // `--steps-group-*`, `--tile-v5`, `--fs-steps-title` and `--width-steps` were
+  // all minted FOR that screen — `--tile-v5`'s own token comment names its site
+  // in as many words, "steps hint strip" — and none of them had ever been
+  // writable, because the only file that would consume them did not exist. That
+  // is the same shape as `gap-tab-flow` below: a token minted for an element,
+  // recorded here as an orphan, and orphaned only because its screen was not
+  // built yet. `leading-snug` and `leading-looser` are the two line heights that
+  // screen's step label and its long prose take. CEILING follows them down by
+  // nine.
   'bg-muted', 'bg-faint', 'bg-line',
   'bg-login-orb', 'bg-warn', 'bg-info', 'bg-violet-mid',
   'bg-violet-edge', 'bg-violet-on-dark', 'bg-violet-on-dark-body', 'bg-violet-on-violet',
@@ -1494,8 +1504,7 @@ const UNPAINTED: string[] = [
   'bg-ink-proposed', 'bg-on-dark', 'bg-disabled', 'bg-ok',
   'bg-danger', 'bg-warn-soft', 'bg-info-soft', 'bg-ok-soft',
   'bg-danger-soft', 'bg-toast-check', 'bg-junction-xor', 'bg-junction-and',
-  'bg-junction-or', 'bg-dept-numeral-violet', 'bg-dept-numeral-coral', 'bg-steps-sub',
-  'bg-steps-sub-border', 'bg-steps-sub-hover', 'bg-steps-group', 'bg-steps-group-border',
+  'bg-junction-or', 'bg-dept-numeral-violet', 'bg-dept-numeral-coral',   'bg-steps-sub-border', 'bg-steps-sub-hover', 'bg-steps-group-border',
   'bg-link', 'bg-link-hover', 'text-violet-on-dark', 'text-violet-on-dark-body',
   'text-strong', 'text-ghost',
   'text-ok',
@@ -1507,18 +1516,15 @@ const UNPAINTED: string[] = [
   // ORPHANS half of the guard below exactly as leaving it now fails the STALE
   // half. R48 draws the pill, so the line goes and `CEILING` goes with it.
   'border-line-soft',
-  'border-steps-sub-border', 'border-steps-group-border',
-  // …and `bg-line-divider` here, for the reason R46 measured and could not act
+    // …and `bg-line-divider` here, for the reason R46 measured and could not act
   // on: the flow bar's next/previous group draws the `1px × 18px #D9CEF0` rule
   // between its two buttons (panel 563), and the §9.8 correction that minted
   // --line-divider named it "tool-group divider" — this group and no other.
-  'bg-tile-v5',
-  'border-line-divider', 'bg-line-row', 'bg-line-filter', 'bg-border-pick', 'text-fs-h1',
+    'border-line-divider', 'bg-line-row', 'bg-line-filter', 'bg-border-pick', 'text-fs-h1',
   
   'text-fs-doc-base', 'text-fs-doc-h1',
   'text-fs-doc-title', 'text-fs-doc-step', 'text-fs-doc-body',
-  'text-fs-steps-title',
-  'text-fs-badge-sm',
+    'text-fs-badge-sm',
   'text-fs-h1-reader-list', 'text-fs-h1-reader-dept',
   'text-fs-body-reader', 'text-prose',
   // Named only in a docstring in src/ui/fieldFrame.ts, which explains why the
@@ -1526,8 +1532,7 @@ const UNPAINTED: string[] = [
   // reading comments, and prose stopped counting as a consumer.
   'text-role-body',
   'text-role-hero',
-  'font-sans', 'font-regular', 'leading-snug', 'leading-looser',
-  'shadow-sheet', 'shadow-drawer',
+  'font-sans', 'font-regular',   'shadow-sheet', 'shadow-drawer',
   'shadow-card-dark', 'shadow-stat-dark', 'shadow-guide-hover', 'shadow-ring-flash',
   'p-screen-x', 'p-screen-y',
   'p-topbar', 'p-half', 'gap-topbar',
@@ -1554,8 +1559,7 @@ const UNPAINTED: string[] = [
   // view menu and Dropdown's multi-select option both draw it now that a tick
   // takes the rung its site calls for. CEILING below follows them down by five.
   'h-fab-reader', 'max-w-doc',
-  'max-w-steps',
-  'max-w-audit', 'duration-fast',
+    'max-w-audit', 'duration-fast',
   'p-compose',
   'py-tick-nested-y', 'py-dropdown-y-dialog',
   'py-dropdown-y-filter', 'px-dropdown-x-filter',
@@ -1766,7 +1770,7 @@ const UNPAINTED: string[] = [
 //        in those words rather than going on saying it is waiting for the owner.
 //   ---
 //   120  and this line is that number exactly.
-const CEILING = 120
+const CEILING = 111
 
 describe('Owner ruling R11 — a named utility has a component that uses it', () => {
   it('reads a real, sizeable set of component files — tests AND test helpers excluded', () => {
@@ -1958,11 +1962,21 @@ describe('Owner ruling R11 — a named utility has a component that uses it', ()
         why: 'the flowchart, frozen by F16',
         match: /^bg-junction-|^bg-dept-numeral-/,
       },
-      { // `ui/export/**` is off-limits to this repo (ARD §2.1): the standalone
-        // HTML document the engine emits is where the doc type scale and the
-        // steps blocks are drawn, and nothing under `src/` may draw them.
-        why: 'the exported document, built under ui/export/ which this repo does not own',
-        match: /^text-fs-doc-|^text-fs-steps-title$|steps-(sub|group)/,
+      { // The doc TYPE SCALE is the printed staff guide's, drawn in
+        // `ui/export/**` against its own CSS modules; nothing under `src/` sets
+        // type at those steps.
+        //
+        // **The steps COLOURS left this family with the «گام‌به‌گام» screen.**
+        // `--steps-sub-bg`, `--steps-group-bg` and both borders are painted by
+        // `src/screens/Steps.tsx` now, and `--fs-steps-title` is its H1 — the
+        // reason written here was true for exactly as long as the screen those
+        // tokens were minted for did not exist. What is left of the family is
+        // `--steps-sub-hover`: a HOVER fill, and this screen's step cards do not
+        // change colour under the pointer — the deliverable draws that state for
+        // the exported guide's own list, where a row is the only control on the
+        // page.
+        why: 'the exported staff guide’s own type scale and hover state',
+        match: /^text-fs-doc-|steps-sub-hover/,
       },
       { // The `_ds` ships a full semantic palette; this product reconciled it
         // onto its own (F7/F8) — `--conflict` for danger, `--green` for ok,
@@ -2045,22 +2059,25 @@ describe('Owner ruling R11 — a named utility has a component that uses it', ()
 
     // Both halves of the census the docstring states, so a line that moves
     // between buckets is visible rather than absorbed.
-    // 41 / 79 after owner ruling R48, and the two halves moved for three
-    // different reasons in one commit — which is exactly why they are asserted
-    // separately rather than as one total:
-    //   · `bg-border-ok` ARRIVED in the spelling half. It is still painted
-    //     nowhere itself, but its sibling `border-border-ok` now has a consumer
-    //     — the confirm pill's edge — so --border-ok is painted, and this line
-    //     is a spelling of a token that reaches the screen rather than a token
-    //     that reaches nothing. Exactly the move `border-line-divider` made
-    //     under R47. Spelling +1, painted-nowhere -1.
-    //   · `border-border-ok` and `py-confirm-y` left the list entirely with the
-    //     pill that consumes them. Painted-nowhere -2.
-    //   · `text-crumb-sep` did not move: its element is drawn, in another
-    //     token, so it stays exactly where it was under a reason that now says
-    //     the ruling spent it. Net 0.
-    expect(buckets.filter((b) => b.spelling).length).toBe(41)
-    expect(buckets.filter((b) => !b.spelling).length).toBe(79)
+    //
+    // **43 / 68 after the «گام‌به‌گام» screen**, from 41 / 79, and the eleven
+    // lines moved for two different reasons in one commit — which is exactly why
+    // the halves are asserted separately rather than as one total:
+    //   · **Nine left the list entirely.** `bg-steps-sub`, `bg-steps-group`,
+    //     `border-steps-sub-border`, `border-steps-group-border`, `bg-tile-v5`,
+    //     `text-fs-steps-title`, `max-w-steps`, `leading-snug` and
+    //     `leading-looser` are consumed by `src/screens/Steps.tsx`. Every one of
+    //     them was minted FOR that screen and had never been writable, because
+    //     the only file that would consume them did not exist yet — the same
+    //     shape as `gap-tab-flow` under R47. Painted-nowhere −9.
+    //   · **Two ARRIVED in the spelling half.** `bg-steps-sub-border` and
+    //     `bg-steps-group-border` are still painted nowhere themselves, but
+    //     their `border-` siblings now have a consumer, so the TOKEN under each
+    //     reaches the screen and the line is a spelling rather than an orphan.
+    //     Exactly the move `bg-border-ok` made under R48. Spelling +2,
+    //     painted-nowhere −2.
+    expect(buckets.filter((b) => b.spelling).length).toBe(43)
+    expect(buckets.filter((b) => !b.spelling).length).toBe(68)
 
     // A family that stops covering anything is an argument nobody is paying
     // for, and the next name added beside it inherits the same absence of

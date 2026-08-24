@@ -5,7 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { CANDIDATES_UNREADABLE, DEPARTMENTS_UNREADABLE, ROLES_UNREADABLE } from '../lib/userDraft'
 import { EVERY_DEPARTMENT } from '../lib/scopes'
-import { UNDRAWABLE_SCOPES } from './ScopePicker'
+import { ALL_REPORTS, UNDRAWABLE_SCOPES } from './ScopePicker'
 import { UserDetail } from './UserDetail'
 import type { AdminUser, Role, SupervisorCandidate } from '../api/users'
 import type { SessionDescriptor } from '../auth/session'
@@ -583,8 +583,12 @@ describe('the scope fieldset', () => {
     await openViews('سالن')
     expect(screen.getByRole('checkbox', { name: STEPS })).toBeChecked()
     // …and not as the whole department, which is what the obvious "repair" of a
-    // blank fieldset would have made her.
-    expect(screen.getByRole('checkbox', { name: 'سالن' })).not.toBeChecked()
+    // blank fieldset would have made her. The tile's own tick says she reaches
+    // «سالن» — owner ruling, *"the checkbox near of department name is always
+    // on"* — and «همهٔ گزارش‌ها» inside the popover is where whole-or-narrowed
+    // is now answered.
+    expect(screen.getByRole('checkbox', { name: 'سالن' })).toBeChecked()
+    expect(screen.getByRole('checkbox', { name: ALL_REPORTS })).not.toBeChecked()
     expect(screen.getByRole('checkbox', { name: FLOW })).not.toBeChecked()
     expect(screen.getByRole('checkbox', { name: 'کل سامانه' })).not.toBeChecked()
     expect(screen.queryByText(new RegExp(UNDRAWABLE_SCOPES))).toBeNull()
@@ -625,21 +629,28 @@ describe('the scope fieldset', () => {
     await openDialog()
     expect(screen.getByRole('checkbox', { name: 'پخت' })).toBeChecked()
     await openViews('پخت')
+    expect(screen.getByRole('checkbox', { name: ALL_REPORTS })).toBeChecked()
     await userEvent.click(screen.getByRole('checkbox', { name: STEPS }))
-    expect(screen.getByRole('checkbox', { name: 'پخت' })).not.toBeChecked()
+    // The department is still reached — the tick follows the department — and
+    // it is the WIDE grant that came off, which is what the popover now states.
+    expect(screen.getByRole('checkbox', { name: 'پخت' })).toBeChecked()
+    expect(screen.getByRole('checkbox', { name: ALL_REPORTS })).not.toBeChecked()
     await save()
     await waitFor(() => expect(seen.writes).toHaveLength(1))
     expect(seen.writes[0].body.scopes).toEqual(['dept:cooking/report:steps'])
   })
 
-  it('widens a report scope to the whole department only when the department itself is ticked', async () => {
-    // The widening act, and it is one press on a box labelled with the whole
-    // department — never a side effect of clearing a narrower one.
+  it('widens a report scope to the whole department only when «همهٔ گزارش‌ها» is ticked', async () => {
+    // The widening act, and it is one press on a box labelled with every report
+    // of the department — never a side effect of clearing a narrower one.
+    // Owner ruling moved that press from the tile's tick into the popover: the
+    // tick is already on for a report-scoped account, so pressing it there is a
+    // subtraction.
     const seen = stubServer(RAHA)
     mountDetail(11)
     await openDialog()
-    await userEvent.click(screen.getByRole('checkbox', { name: 'سالن' }))
     await openViews('سالن')
+    await userEvent.click(screen.getByRole('checkbox', { name: ALL_REPORTS }))
     expect(screen.getByRole('checkbox', { name: STEPS })).not.toBeChecked()
     await save()
     await waitFor(() => expect(seen.writes).toHaveLength(1))
@@ -895,14 +906,47 @@ describe('what the edit form sends', () => {
     mountDetail(9)
     await openDialog()
     await userEvent.type(screen.getByLabelText('نام و نام خانوادگی'), 'ی')
+    // **The role moves first, and it has to.** Homa is an Admin, and under the
+    // owner's ruling an Admin is not asked whether they may supervise — the box
+    // is not on the form at all until she is a Reader. Reaching for it before
+    // the role changed is reaching for a control that is not there.
+    await chooseRole('خواننده')
     await userEvent.click(screen.getByRole('checkbox', { name: 'سرپرست‌شدن' }))
     await chooseSupervisor('بدون سرپرست')
-    await chooseRole('خواننده')
     await save()
     await waitFor(() => expect(seen.writes).toHaveLength(1))
     expect(seen.writes[0].body).toEqual({
       displayName: 'هما نیک‌روشی', roleId: 4, canSupervise: false, supervisorId: null,
     })
+  })
+
+  /**
+   * **Owner ruling — «the editor and admin allways can be supervisor. so it
+   * shouln't show سرپرست شدن check box for this users.»**
+   *
+   * Two halves, and the second is the one that matters: withdrawing the control
+   * while leaving the stored flag alone would make the ruling a lie in the only
+   * place it is read. `delegation.py:468` gates candidacy on
+   * `can_supervise OR '*' in scopes`, so an Editor stored with the flag off is
+   * refused as somebody's supervisor by the server — and with the checkbox gone
+   * there would be no way left to mend it.
+   */
+  it('never asks an admin whether they may supervise, and stores that they may', async () => {
+    // «مدیر» rather than «ادیتور» because the actor in this file is an Admin and
+    // `/api/roles` returns only the roles they may confer — `editor` is not one
+    // of them (see `ROLES`). The rule is one list of two identifiers, so either
+    // arm exercises it; `NewUserDialog.test.tsx` is where the Editor arm sits.
+    const seen = stubServer(SAHAR)
+    mountDetail(7)
+    await openDialog()
+    // Sahar is a Reader with the flag off, so the box is on the form…
+    expect(screen.getByRole('checkbox', { name: 'سرپرست‌شدن' })).not.toBeChecked()
+    await chooseRole('مدیر')
+    // …and it is gone the moment she is an Admin.
+    expect(screen.queryByRole('checkbox', { name: 'سرپرست‌شدن' })).toBeNull()
+    await save()
+    await waitFor(() => expect(seen.writes).toHaveLength(1))
+    expect(seen.writes[0].body.canSupervise).toBe(true)
   })
 
   it('puts a null on no field at all when every one of them is edited', async () => {

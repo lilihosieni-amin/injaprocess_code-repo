@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { linearize, countSteps, groupTitle } from './linearize'
 import type { Block, GroupBlock, StepBlock } from './linearize'
-import type { Process, ProcNode } from '../../src/api/types'
+import type { Process, ProcNode } from '../api/types'
 
 const act = (id: string, label = id): ProcNode => ({
   id, type: 'activity', label, description: '', actor: '',

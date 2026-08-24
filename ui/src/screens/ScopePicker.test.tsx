@@ -45,9 +45,41 @@ describe('ScopePicker', () => {
     // only route to a single department is to turn it off first (which leaves
     // nothing behind — see the two-step test below). `toggleDepartment` still
     // filters `*` out defensively; what is asserted here is what a person can do.
+    //
+    // **The widening act is «همهٔ گزارش‌ها» now, not the tile's tick** — owner
+    // ruling. The tick answers "does this account reach this department at all",
+    // which a report-scoped department already does, so pressing it here is a
+    // subtraction (the test below). The wide grant is the popover's first row.
     const onChange = draw(['dept:dining/report:steps', 'dept:cashier'])
-    await userEvent.click(await screen.findByRole('checkbox', { name: 'سالن' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'نماهای سالن' }))
+    await userEvent.click(screen.getByRole('checkbox', { name: 'همهٔ گزارش‌ها' }))
     expect(onChange).toHaveBeenCalledWith(['dept:cashier', 'dept:dining'])
+  })
+
+  it('the tile’s tick takes the department away in every shape it is held in', async () => {
+    // Owner ruling: *"the checkbox near of department name is always on"* — the
+    // tick follows the DEPARTMENT, so unticking it has to mean "this account no
+    // longer reaches this department", not "drop the wide grant and leave the
+    // narrowings standing". `toggleDepartment(code, false)` does the second, and
+    // used on a report-scoped tile it would clear a grant that was not there and
+    // leave the tile ticked, tinted and unchanged under the hand that pressed it.
+    const onChange = draw(['dept:dining', 'dept:dining/report:steps', 'dept:cashier'])
+    await userEvent.click(await screen.findByRole('checkbox', { name: 'سالن' }))
+    expect(onChange).toHaveBeenCalledWith(['dept:cashier'])
+  })
+
+  it('never lets «همهٔ گزارش‌ها» and a single report be on together', async () => {
+    // The other half of the ruling: *"we shouldn't have option the both of
+    // checkbox (all report and each report) be on."* Neither direction is
+    // enforced in the view — `toggleReport` drops the wide grant and
+    // `toggleDepartment` drops every narrowing — so this asserts the grammar's
+    // own exclusivity through the two controls that now express it.
+    const onChange = draw(['dept:dining'])
+    await userEvent.click(await screen.findByRole('button', { name: 'نماهای سالن' }))
+    expect(screen.getByRole('checkbox', { name: 'همهٔ گزارش‌ها' })).toBeChecked()
+    expect(screen.getByRole('checkbox', { name: 'راهنمای گام‌به‌گام' })).not.toBeChecked()
+    await userEvent.click(screen.getByRole('checkbox', { name: 'راهنمای گام‌به‌گام' }))
+    expect(onChange).toHaveBeenCalledWith(['dept:dining/report:steps'])
   })
 
   it('leaves nothing behind when «کل سامانه» comes off, so the grid opens empty', async () => {
@@ -119,14 +151,17 @@ describe('ScopePicker', () => {
     // and "on" here has to mean "reaches this department", not "reaches the
     // whole of it": a report-scoped department painted exactly like an ungranted
     // one is the picture that made D11's «Report reader» read as an account with
-    // no departments at all. The TICK still says whole-or-not — drawn ticked,
-    // the tile would report more reach than the account holds.
+    // no departments at all. The TICK says the same thing as of the owner's
+    // ruling — *"the checkbox near of department name is always on"* — so the
+    // two halves of the tile agree; which reports are reached is the popover's
+    // question, and the tile states the narrowing in words below.
     draw(['dept:dining/report:steps'])
     const dining = (await screen.findByRole('checkbox', { name: 'سالن' })).closest('label')!
     const cashier = screen.getByRole('checkbox', { name: 'صندوق' }).closest('label')!
     expect(dining).toHaveClass('bg-tile-v4', 'border-line-dashed')
     expect(cashier).toHaveClass('bg-card', 'border-warm')
-    expect(screen.getByRole('checkbox', { name: 'سالن' })).not.toBeChecked()
+    expect(screen.getByRole('checkbox', { name: 'سالن' })).toBeChecked()
+    expect(screen.getByRole('checkbox', { name: 'صندوق' })).not.toBeChecked()
   })
 
   it('keeps a scope it can draw no control for, and says so', async () => {
@@ -145,12 +180,14 @@ describe('ScopePicker', () => {
     draw(['dept:dining/report:steps'])
     await screen.findByRole('checkbox', { name: 'سالن' })
     const grid = screen.getByRole('group', { name: 'دپارتمان' })
-    expect(within(grid).getByRole('checkbox', { name: 'سالن' })).not.toBeChecked()
+    expect(within(grid).getByRole('checkbox', { name: 'سالن' })).toBeChecked()
     // …and it is legible without opening anything: the tile names the narrowing.
     expect(within(grid).getByText(/فقط راهنمای گام‌به‌گام/)).toBeInTheDocument()
     await userEvent.click(within(grid).getByRole('button', { name: 'نماهای سالن' }))
     expect(screen.getByRole('checkbox', { name: 'راهنمای گام‌به‌گام' })).toBeChecked()
     expect(screen.getByRole('checkbox', { name: 'مستندات کامل' })).not.toBeChecked()
+    // …and the wide grant is off, which is what "only these reports" means.
+    expect(screen.getByRole('checkbox', { name: 'همهٔ گزارش‌ها' })).not.toBeChecked()
   })
 
   it('takes the last report away without handing back the department it belonged to', async () => {

@@ -31,6 +31,20 @@ const KINDS: { kind: ExportKind; label: string; hint: string; tile: string; icon
  *  design draws three filled dots, so it is a path. */
 const DOTS = 'M5 12h.01M12 12h.01M19 12h.01'
 
+/**
+ * What the dialog says when the department was documented and the PDF was not
+ * printed — owner ruling, *"the export button should just create pdf"*.
+ *
+ * The old arrangement had no such state: the response's one `url` was the HTML
+ * and it was always there, so a failed render cost the reader nothing the panel
+ * could see. Now the PDF **is** the deliverable, so "the export ran and produced
+ * no PDF" is a failure and is said as one. It is a deployment fault (a browser
+ * that is missing, crashed or timed out) rather than anything the person
+ * pressing the button did, so the sentence points at the operator and still
+ * offers «تلاش دوباره», which is the right act if the browser was merely busy.
+ */
+const NO_PDF = 'سند ساخته شد ولی فایل PDF آن روی سرور تولید نشد؛ دوباره تلاش کنید و اگر تکرار شد به مدیر سامانه بگویید.'
+
 /** The title shown in the modal header — the export being built. */
 const TITLE: Record<ExportKind, string> = {
   flowchart: 'خروجی مستندات کامل — سند رسمی',
@@ -59,7 +73,14 @@ export function ExportMenu({ department }: { department: string }) {
     create.mutate(k)
   }
 
-  const status = create.isPending ? 'pending' : create.isError ? 'failed' : create.isSuccess ? 'ready' : 'pending'
+  // A 2xx with no `pdf_url` is a failure now — see `NO_PDF`. `ExportModal`
+  // degrades `ready` with no `url` to `failed` on its own, so this only has to
+  // supply the reason; stating it here rather than there keeps that component
+  // about the three states and this one about what an export is.
+  const noPdf = create.isSuccess && create.data?.pdf_url === undefined
+  const status = create.isPending ? 'pending'
+    : create.isError || noPdf ? 'failed'
+      : create.isSuccess ? 'ready' : 'pending'
 
   // Cosmetic only: POST /api/departments/{code}/exports/{kind} re-derives
   // `export_pdf` from the session row and refuses regardless of what is drawn.
@@ -125,9 +146,10 @@ export function ExportMenu({ department }: { department: string }) {
         <ExportModal
           title={TITLE[kind]}
           status={status}
-          // absolute so the copied text is worth pasting, and correct on any host (D16)
-          url={create.data ? `${window.location.origin}${create.data.url}` : undefined}
-          error={create.error?.message}
+          // **The PDF, never the document** — owner ruling. Absolute so the
+          // copied text is worth pasting, and correct on any host (D16).
+          url={create.data?.pdf_url ? `${window.location.origin}${create.data.pdf_url}` : undefined}
+          error={create.error?.message ?? (noPdf ? NO_PDF : undefined)}
           onRetry={() => create.mutate(kind)}
           // Closing only dismisses the modal. Resetting a still-pending
           // mutation would flip isPending to false and re-enable the trigger

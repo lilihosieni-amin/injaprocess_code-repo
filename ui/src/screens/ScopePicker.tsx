@@ -20,6 +20,21 @@ export const UNDRAWABLE_SCOPES =
   'این دامنه‌ها را این فرم نمی‌تواند نشان دهد و دست‌نخورده باقی می‌مانند:'
 
 /**
+ * The first row of «نماها», and the one the grammar spells as the *absence* of a
+ * narrowing — owner ruling: *"in نماها we should have 3 option. two of them is
+ * report and first is all report option. … we shouldn't have option the both of
+ * checkbox (all report and each report) be on."*
+ *
+ * `dept:{code}` **is** "every report of this department", including kinds added
+ * after the grant — that is what `scopes.contains` gives and what a list of
+ * today's two kinds would not. It had no control of its own here: the whole
+ * grant was expressed by the tile's own tick, so the popover offered two
+ * narrowings and no way back to the wide grant without closing it again. Naming
+ * it in the popover puts all three mutually exclusive states in one place.
+ */
+export const ALL_REPORTS = 'همهٔ گزارش‌ها'
+
+/**
  * Which departments an account reaches, drawn as §6.8's tile grid.
  *
  * **This is the whole reason the dialog was 2207px tall.** The grammar has
@@ -81,6 +96,30 @@ export function ScopePicker({ scopes, onChange }: {
     const narrower = `${whole}/report:`
     onChange([...scopes.filter((s) =>
       s !== '*' && s !== whole && !s.startsWith(narrower)), whole].sort())
+  }
+
+  /**
+   * The TILE's tick — "does this account reach this department at all".
+   *
+   * **Owner ruling: it follows the department, not the wide grant.** *"the
+   * checkbox near of department name is always on"*, i.e. on whenever anything
+   * inside the department is granted. It used to be `checked={whole}`, so a
+   * report-scoped department drew an unticked box beside a tinted tile and the
+   * word «فقط راهنمای گام‌به‌گام» — an account was shown as reaching the
+   * department and not reaching it in the same row.
+   *
+   * Ticking it grants the whole department, which is `toggleDepartment`'s
+   * widening and its clearing of `*` and of every narrowing. Unticking it is the
+   * only act here that has to be written fresh: `toggleDepartment(code, false)`
+   * removes the wide grant alone, which would leave a report-scoped department
+   * ticked, tinted and untouched under the hand that just cleared it. This
+   * removes the department in every shape it is held in.
+   */
+  function toggleHeld(code: string, on: boolean) {
+    if (on) { toggleDepartment(code, true); return }
+    const whole = `dept:${code}`
+    const narrower = `${whole}/report:`
+    onChange(scopes.filter((s) => s !== whole && !s.startsWith(narrower)))
   }
 
   /**
@@ -163,13 +202,13 @@ export function ScopePicker({ scopes, onChange }: {
                                  ${held ? 'border-line-dashed bg-tile-v4' : 'border-warm bg-card'}`}>
                 <input
                   type="checkbox"
-                  checked={whole}
+                  checked={held}
                   disabled={every}
                   aria-label={d.name}
-                  onChange={(e) => toggleDepartment(d.code, e.target.checked)}
+                  onChange={(e) => toggleHeld(d.code, e.target.checked)}
                   className="peer sr-only"
                 />
-                <TickBox on={whole} rung="scope" className="peer-focus-visible:border-coral" />
+                <TickBox on={held} rung="scope" className="peer-focus-visible:border-coral" />
                 <span className={`min-w-0 flex-1 truncate text-fs-sm font-semibold ${deptMeta(d.code).accentText}`}>
                   {d.name}
                 </span>
@@ -203,6 +242,19 @@ export function ScopePicker({ scopes, onChange }: {
                 // kinds need no department in their accessible names.
                 <div className="absolute z-dropdown top-full start-0 end-0 mt-s3 flex flex-col
                                 gap-s2 bg-card border border-border-card rounded-card shadow-pop p-popover">
+                  {/* First, and it is the wide grant rather than a third kind —
+                      see `ALL_REPORTS`. Exclusivity is not enforced here and
+                      must not be: `toggleDepartment` already drops every
+                      narrowing of this department and `toggleReport` already
+                      drops the wide grant, which is the same rule the server's
+                      `_clean_scopes` keeps. A second enforcement in the view
+                      would be a second reading of the grammar — the copy that
+                      comes to disagree. */}
+                  <Checkbox
+                    rung="nested"
+                    checked={whole}
+                    onChange={(v) => toggleDepartment(d.code, v)}
+                    label={ALL_REPORTS} />
                   {REPORT_KINDS.map((kind) => (
                     <Checkbox key={kind}
                       // Panel 1386 — an option inside the popover that hangs off

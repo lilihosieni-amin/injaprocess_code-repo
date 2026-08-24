@@ -10,6 +10,7 @@ import { Chip } from '../ui/Chip'
 import { Icon } from '../ui/Icon'
 import { IdBadge } from '../ui/IdBadge'
 import { Button } from '../ui/Button'
+import { Card } from '../ui/Card'
 import { SectionCard } from '../ui/SectionCard'
 import { TextField } from '../ui/TextField'
 import { toFa } from '../lib/format'
@@ -209,7 +210,21 @@ export function Summary() {
     <div data-screen="summary" data-r-pad
       className="flex-1 overflow-auto bg-ink py-screen-y px-screen-x max760:px-s7 max760:py-s9">
       <div data-col className="max-w-summary mx-auto">
-        <div data-r-stack className="flex items-start justify-between gap-s8 mb-s10">
+        {/* §6.16 gives every `[data-r-stack]` the same collapse at ≤760 —
+            `flex-direction:column; align-items:stretch; gap:12px` — plus
+            `[data-r-stack] [data-r-actions]{flex-wrap:wrap}` and
+            `> button{flex:1 1 45%}` for the group inside it. This screen carried
+            the attribute and owed all three: measured at 390, «ویرایش اطلاعات»
+            and «مشاهدهٔ فلوچارت» sat beside a title that had nowhere left to
+            wrap. `Overview.tsx` and `Departments.tsx` already write them.
+            Owner ruling: *"each process isn't responsive in mobile اطلاعات کلی"*. */}
+        <div
+          data-r-stack
+          className={
+            'flex items-start justify-between gap-s8 mb-s10 '
+            + 'max760:flex-col max760:items-stretch max760:gap-s6'
+          }
+        >
           <div className="min-w-0">
             <div className="flex items-center flex-wrap gap-s5 mb-s4">
               <IdBadge tone="violet">{proc.id}</IdBadge>
@@ -240,13 +255,10 @@ export function Summary() {
                     the field is white (`--role-title-on-field`), not the cream
                     `--text-on-dark` that L-01 retired. */}
                 <h1 data-h1 className="font-extrabold text-fs-h2 text-role-title-on-field m-0">{proc.name}</h1>
-                {proc.summary.trim() !== '' && (
-                  <p data-body className="text-fs-lg text-role-subtitle-on-field mt-s4 leading-relaxed m-0">{proc.summary}</p>
-                )}
               </>
             )}
           </div>
-          <div data-r-actions className="flex items-center gap-s5 shrink-0 max760:flex-wrap">
+          <div data-r-actions className="flex items-center gap-s5 shrink-0 max760:flex-wrap max760:[&>button]:flex-1">
             {!editing ? (
               <>
                 {/* **Owner ruling R46 — the act is not on this screen.**
@@ -316,6 +328,46 @@ export function Summary() {
              other two sections down with it — was a real defect; each guard here
              reads its own field and nothing else. */
           <>
+            {/* **Owner ruling — the summary is a card, not a line on the field.**
+                *"in اطلاعات کلی each process, the information in top of this
+                page, i want to put this text in white box like IDEF0 box,
+                exactly like department information page."*
+
+                «exactly like» is a real instruction and not an approximation:
+                `Overview.tsx`'s own «شرح دپارتمان» is `Card radius="doc"
+                padding="feature"` under an `--fs-xxs`/700/`--text-muted` eyebrow,
+                with the prose justified, `text-wrap:pretty` and
+                `white-space:pre-line`. Those are the same five declarations here,
+                reached through the same primitive — a second hand-rolled
+                `bg-card border …` div (which is what the IDEF0 block below still
+                is) would be a third spelling of one card.
+
+                It stops being `[data-body]`: that hook is the screen's lead
+                paragraph *on the field*, and `_harness.ts`'s census grades its
+                ink against the violet behind it. On white the same ink is wrong,
+                and the card's own body colour is `--ink`.
+
+                **The R43 guard travels with it.** `visibility.filtered` blanks
+                `summary` for a non-editor under `process_summary`, and R43's rule
+                is that a withheld section is simply absent — no card, no eyebrow,
+                no sentence saying so. So the card is drawn for a non-editor only
+                when there is prose in it; an editor keeps the empty frame,
+                because it is theirs to fill and nothing was withheld from them.
+                That is `Overview`'s arrangement too, and `hasPublishedDetail`
+                already counts `summary` for the button that walks people here. */}
+            {(mayEdit || proc.summary.trim() !== '') && (
+              <Card data-card radius="doc" padding="feature" className="mb-s9">
+                <div className="text-fs-xxs font-bold text-muted mb-s6">خلاصهٔ فرآیند</div>
+                {proc.summary.trim() !== '' ? (
+                  <p data-body className="text-fs-body text-ink leading-loose text-justify [text-wrap:pretty] whitespace-pre-line m-0">
+                    {proc.summary}
+                  </p>
+                ) : (
+                  <p className="text-fs-sm2 text-faint m-0">خلاصه‌ای ثبت نشده است.</p>
+                )}
+              </Card>
+            )}
+
             {(mayEdit || hasIcom(proc.idef0)) && (
               <div data-card className="bg-card border border-border-card rounded-doc p-s11 mb-s9 shadow-card">
                 <div className="font-bold text-fs-body text-violet mb-s9 flex items-center gap-s4">

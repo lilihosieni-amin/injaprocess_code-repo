@@ -6,8 +6,8 @@ import type { ProcNode } from '../../src/api/types'
 // A counting wrapper around the real `linearize`, so the assertions below are
 // about *how often* the model is built, never about what it contains.
 const seen = vi.hoisted(() => ({ calls: 0 }))
-vi.mock('./linearize', async (importOriginal) => {
-  const real = await importOriginal<typeof import('./linearize')>()
+vi.mock('../../src/lib/linearize', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../../src/lib/linearize')>()
   return {
     ...real,
     linearize: (p: Parameters<typeof real.linearize>[0]) => {

@@ -135,7 +135,19 @@ export interface Me { username: string }
 export type DepartmentOrder = { order: string[] }
 
 export type ExportKind = 'flowchart' | 'steps'
-export interface ExportResult { url: string; generated_at: string }
+/**
+ * What `POST /api/departments/{code}/exports/{kind}` answers.
+ *
+ * `url` is the document; `pdf_url` is the printed PDF **and it is absent when
+ * one was not printed** — an unconfigured `CHROMIUM_PATH`, a browser that
+ * crashed, a render that timed out. Optional in the type for exactly that
+ * reason: the panel hands over the PDF (owner ruling, *"the export button should
+ * just create pdf. not html"*) and has to be able to tell "there is one" from
+ * "there is not" rather than build a `.pdf` href by swapping an extension and
+ * hoping. Two fields, because the document is still what `/exports` serves to a
+ * reader and what the export's own «چاپ / PDF» button is a sibling of.
+ */
+export interface ExportResult { url: string; pdf_url?: string; generated_at: string }
 
 /** The six switchable fields (spec D17). A node has no KPIs: `process_kpis` is
  *  `process.kpis[]`, and what a node carries is ICOM. */

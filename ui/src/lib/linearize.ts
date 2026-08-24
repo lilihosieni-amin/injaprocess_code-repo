@@ -1,4 +1,4 @@
-import type { ActivityNode, ProcNode, ReadableProcess } from '../../src/api/types'
+import type { ActivityNode, ProcNode, ReadableProcess } from '../api/types'
 
 export type Junction = 'AND' | 'OR' | 'XOR'
 /** One "go back to step N" edge. `num` is absent when the target is not a

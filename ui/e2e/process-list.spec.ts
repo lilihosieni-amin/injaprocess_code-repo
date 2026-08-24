@@ -125,11 +125,18 @@ test('process list — the panel', async ({ page }) => {
   } else {
     await expect(meta).toBeVisible()
     await expect(pos).toBeVisible()
-    // The design's 34px delete square, on the same "never inflate" rule as the
-    // `⋯`: `Button`'s BASE carries `min-h-touch min-w-touch`, and a min- beats a
-    // width whatever the emitted order is, so a `w-tool h-tool` passed through
-    // it would paint 44×44 with the class that says 34 never drawn.
-    expect(await box(page, '[data-r-pactions] button[title="حذف فرآیند"]')).toEqual({ w: 34, h: 34 })
+    // **The 34px square on this row is the ⋮ now** — owner ruling, *"add ather
+    // buttomn in card to : menue"*, and `Inja Panel.dc.html:355`. The delete
+    // moved inside it, with «اطلاعات کلی»: both were loose controls before, and
+    // on a phone the most destructive act in the product was a `flex-1`
+    // neighbour of «فلوچارت».
+    //
+    // Same rung, same "never inflate" rule as the header's `⋯`: `Button`'s BASE
+    // carries `min-h-touch min-w-touch`, and a min- beats a width whatever the
+    // emitted order is, so a `w-tool h-tool` passed through it would paint 44×44
+    // with the class that says 34 never drawn. That is why this is a bare
+    // `<button>` and not a `Button`.
+    expect(await box(page, '[data-r-pactions] [data-r-prowmenu] button')).toEqual({ w: 34, h: 34 })
   }
 
   // §8 — RTL text, right-hand scrollbar. The box is `ltr` and EVERY immediate

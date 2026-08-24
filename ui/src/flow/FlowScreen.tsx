@@ -12,6 +12,7 @@ import { Canvas } from './Canvas'
 import { Button, Spinner } from '../ui/Button'
 import { Icon } from '../ui/Icon'
 import { readerBack } from '../shell/crumbs'
+import { canGoBack } from '../shell/back'
 import { useSurface } from '../ui/surface'
 import { IdBadge } from '../ui/IdBadge'
 import { pushDismissible, popDismissible, isTopDismissible } from '../ui/dismissibleStack'
@@ -33,10 +34,54 @@ import type { ActivityNode } from '../api/types'
  * A constant rather than four copies, because four rows differing by nothing is
  * four places one radius would have to be kept in step.
  */
+/** The flow bar's own «بازگشت», reader 313. One string, because R48's ruling
+ *  made it two elements — a `<button>` when there is history behind us and a
+ *  `<Link>` when there is not — and a box drawn twice is a box that drifts. */
+const FLOW_BACK =
+  'inline-flex items-center gap-s3 px-flowback-x py-flowback-y rounded-input font-bold '
+  + 'text-fs-sm bg-tile-v2 text-violet border-hairline border-line flex-none no-underline '
+  + 'cursor-pointer max760:order-first max760:w-flowback-mobile max760:justify-center max760:px-0'
+
 const MENU_ROW =
   'flex items-center gap-s5 p-s6 w-full min-h-touch border-0 bg-transparent '
   + 'rounded-input cursor-pointer text-start text-fs-menu font-semibold text-ink '
   + 'hover:bg-tile-v2 disabled:text-disabled disabled:cursor-default'
+
+/**
+ * The 19px box a stateful menu row wears — `Inja Panel.dc.html:578`.
+ *
+ * Two rows carry one: «تأییدشده», and each half of the mouse-mode pair the ≤760
+ * toolbar collapse moved in here. A menu row that TOGGLES something has to say
+ * which way it is set, or it reads as a command and the person presses it to
+ * find out.
+ *
+ * **Not `TickBox`.** `src/ui/Checkbox.tsx` paints its box in the app violet and
+ * its own docstring reserves green for this element by name — *"the flow
+ * screen's confirmed mark keeps its green and this box may not borrow it"* — so
+ * borrowing the primitive here is the one thing that rule forbids. `--green` for
+ * the confirmation, `--violet` for a mode: two states of two different kinds,
+ * and a reader who sees green for both learns nothing from the colour.
+ */
+function Tick({ on, tone = 'violet', testid }: {
+  on: boolean
+  tone?: 'green' | 'violet'
+  testid?: string
+}) {
+  return (
+    <span
+      data-testid={testid}
+      className={
+        'flex items-center justify-center flex-none w-tick h-tick rounded-tick '
+        + 'border-hairline text-card '
+        + (on
+          ? tone === 'green' ? 'bg-green border-green' : 'bg-violet border-violet'
+          : 'bg-card border-border-pick')
+      }
+    >
+      {on && <Icon name="check" px={13} stroke={3} />}
+    </span>
+  )
+}
 
 export function FlowScreen() {
   return (
@@ -209,11 +254,43 @@ function FlowEditor() {
 
   function onRelayout() { relayout.mutate(proc, { onSuccess: (laid) => ed.adopt(laid) }) }
 
+  /**
+   * **Owner ruling: *"when we have not in editor, when i click on each node, we
+   * should show the details pop up (if node not link to subprocess)."***
+   *
+   * The whole node was already a click target — it just did nothing for the one
+   * case that is by far the commonest. Before this, a reader's only way into an
+   * activity's actor, description and ICOM was the 17px `⋯` in the box's own
+   * corner (`nodes/ActivityNode.tsx`), which is under half F11's 44px floor and
+   * is the least likely thing on the canvas to be hit on a phone. Pressing the
+   * box itself — the obvious gesture, and the one the design's own «روی هر
+   * مرحله بزنید تا توضیح کامل و مسئول آن را ببینید» teaches — was inert.
+   *
+   * The order of the three arms is the whole of the rule and none of it is
+   * arbitrary:
+   *
+   * 1. A junction opens its drawer on both surfaces, as it always did.
+   * 2. **In edit mode, selection wins.** A drawer that opened on every press
+   *    while nodes are being dragged would cover the canvas being edited; the
+   *    editor's route to the same panel is the `⋯`, which is what it is there
+   *    for.
+   * 3. A subprocess link wins over the drawer — *"if node not link to
+   *    subprocess"*, verbatim. The green «برای ورود کلیک کنید» pill on that node
+   *    is a promise, and a drawer would break it.
+   *
+   * `start`/`end` fall through to nothing, deliberately: `DetailDrawer`'s
+   * fallback arm for a node with no fields draws its label and an empty panel,
+   * which is a drawer that says nothing opening over a diagram that was saying
+   * something. No stored process carries either type today.
+   */
   function onNodeClick(id: string) {
     const n = proc.nodes.find((x) => x.id === id)
     if (n && n.type === 'junction') { if (editing) ed.select(id); setDetailId(id); return }
     if (editing) { ed.select(id); return }
-    if (n && n.type === 'activity' && (n as ActivityNode).subprocess) nav(`/processes/${(n as ActivityNode).subprocess}/flow`)
+    if (!n || n.type !== 'activity') return
+    const sub = (n as ActivityNode).subprocess
+    if (sub) { nav(`/processes/${sub}/flow`); return }
+    setDetailId(id)
   }
 
   return (
@@ -344,18 +421,37 @@ function FlowEditor() {
             this, so R47 mints `--width-flowback-mobile` rather than borrow one
             of them. The vertical 9 is the same `--pad-flowback-y` the wide
             state draws, which is why only the inline half is zeroed. */}
-        {onReader && (
-          <Link
-            to={backTo}
+        {/* **Owner ruling — this control answers history, not the trail.** *"it
+            should go to last page user be there."* `readerBack` still supplies
+            the destination and is still the one function that answers "where
+            does back go"; it is now the FALLBACK, for the deep link and the
+            reload, where there is no entry of this app's own behind us
+            (`canGoBack`). `PanelShell`'s strip carries the same pair for the
+            panel's own «بازگشت» on this route.
+
+            A `<button>` in that case and a `<Link>` otherwise, drawn from one
+            class string: the same box, the same glyph, the same word. Not a
+            `<Link>` with an `onClick`, which would keep advertising to the
+            middle button and to «copy link address» exactly the URL the ruling
+            says is the wrong one. */}
+        {onReader && (canGoBack() ? (
+          <button
+            type="button"
+            onClick={() => nav(-1)}
             data-r-flowback
             aria-label="بازگشت"
             title="بازگشت"
-            className="inline-flex items-center gap-s3 px-flowback-x py-flowback-y rounded-input font-bold text-fs-sm bg-tile-v2 text-violet border-hairline border-line flex-none no-underline max760:order-first max760:w-flowback-mobile max760:justify-center max760:px-0"
+            className={FLOW_BACK}
           >
             <Icon name="chevronStart" px={15} stroke={2.4} />
             <span data-r-backlabel className="inline max760:hidden">بازگشت</span>
+          </button>
+        ) : (
+          <Link to={backTo} data-r-flowback aria-label="بازگشت" title="بازگشت" className={FLOW_BACK}>
+            <Icon name="chevronStart" px={15} stroke={2.4} />
+            <span data-r-backlabel className="inline max760:hidden">بازگشت</span>
           </Link>
-        )}
+        ))}
         {/* **The department crumb and its «/» — reader 317-318, drawn by owner
             ruling R48.**
 
@@ -451,7 +547,17 @@ function FlowEditor() {
             `min-width` is `auto`, so without it the name refuses to shrink below
             its own text and the ellipsis below never fires — the bar simply
             grows and the controls after it leave the screen. */}
-        <div data-r-flowtitle className="flex items-center gap-s5 min-w-0 max760:order-first max760:flex-auto max760:min-w-0">
+        {/* `flex-1` while editing — owner ruling, see the input below. In view
+            mode the group stays intrinsically sized, which is what the design
+            draws and what leaves `data-r-actions`'s `ms-auto` a gap to push
+            against. */}
+        <div
+          data-r-flowtitle
+          className={
+            'flex items-center gap-s5 min-w-0 max760:order-first max760:flex-auto max760:min-w-0 '
+            + (editing ? 'flex-1' : '')
+          }
+        >
           <IdBadge tone="violet">{proc.id}</IdBadge>
           {!editing
             // `max760:truncate`, not a bare `truncate`: panel 95 and reader 111
@@ -459,7 +565,44 @@ function FlowEditor() {
             // bar wraps instead of clipping, and a name silently cut at 1440
             // would be a different screen from the one the design draws.
             ? <span data-r-pname className="font-bold text-fs-lg text-ink max760:truncate max760:min-w-0">{proc.name}</span>
-            : <input value={proc.name} onChange={(e) => ed.setName(e.target.value)} className="font-bold text-fs-lg text-ink border-hairline border-line rounded-control px-s5 py-1 outline-none focus:border-coral w-[280px] max-w-full" />}
+            : (
+              /**
+               * **Owner ruling: *"the title of process text box should be able
+               * to Stretch it horizontally and make it bigger."* Both halves.**
+               *
+               * The box was `w-[280px]`, a fixed 280px whatever the bar had
+               * spare — a process name of any real length was edited three or
+               * four words at a time, on a toolbar with hundreds of pixels of
+               * white space beside it.
+               *
+               * **Why a wrapper and not `resize-x` on the input.** CSS `resize`
+               * has no effect on an `<input>` at all, and swapping in a
+               * `<textarea>` to get it would put a newline into a field the
+               * schema says is one line. So the drag handle belongs to a box
+               * *around* the input — `resize` needs only a non-`visible`
+               * overflow to apply — and the input fills that box.
+               *
+               * **Why `w-full` and not `flex-1`.** The two requests fight:
+               * `flex: 1 1 0%` computes the used width from the free space and
+               * IGNORES `width`, so the inline `width` a drag writes would paint
+               * nothing and the handle would be dead. A block child at
+               * `width:100%` of a `flex-1` parent fills exactly the same space by
+               * default — and the moment the handle writes `width: 620px` inline,
+               * that beats the class and the drag holds. Default wide, draggable
+               * from there, one declaration each.
+               *
+               * `max-w-full` keeps a dragged width from pushing the toolbar off
+               * a phone; `min-w-0` is what lets it shrink there at all.
+               */
+              <span className="block w-full min-w-0 max-w-full resize-x overflow-hidden">
+                <input
+                  value={proc.name}
+                  onChange={(e) => ed.setName(e.target.value)}
+                  aria-label="نام فرآیند"
+                  className="block w-full font-bold text-fs-lg text-ink border-hairline border-line rounded-control px-s5 py-1 outline-none focus:border-coral"
+                />
+              </span>
+            )}
           {/* **`data-r-flowmore` — R46's C7, unblocked by R47's mint.**
               `Inja Panel.dc.html:571`: a 34×34 radius-10 lavender tile behind a
               1.5px hairline, `display:none`, and `display:flex` at ≤760 (panel
@@ -485,7 +628,7 @@ function FlowEditor() {
               panel 99's `display:none` is written about the VIEW state; applying
               it to the edit toolbar would take undo, «ذخیره» and «انصراف» off a
               phone entirely. `data-r-flownav` above is gated the same way. */}
-          {!onReader && !editing && (
+          {!onReader && (
             <button
               ref={moreRef}
               type="button"
@@ -543,27 +686,67 @@ function FlowEditor() {
                 this box may not borrow it"* — so borrowing the primitive here is
                 the one thing that rule forbids. `--border-pick`'s own token
                 comment names "unchecked tick" as one of its three roles. */}
-            {mayConfirm && mark && (
+            {!editing && mayConfirm && mark && (
               <button
                 role="menuitem"
                 type="button"
                 onClick={() => { setFlowMenu(false); setAsking(true) }}
                 className={MENU_ROW}
               >
-                <span
-                  data-testid="flowmenu-tick"
-                  className={
-                    'flex items-center justify-center flex-none w-tick h-tick rounded-tick '
-                    + 'border-hairline text-card '
-                    + (mark.confirmed ? 'bg-green border-green' : 'bg-card border-border-pick')
-                  }
-                >
-                  {mark.confirmed && <Icon name="check" px={13} stroke={3} />}
-                </span>
+                <Tick on={mark.confirmed} tone="green" testid="flowmenu-tick" />
                 <span className="flex-1">تأییدشده</span>
               </button>
             )}
-            {mayEdit && !tombstoned && (
+            {/* **The edit toolbar, at ≤760 — owner ruling.** Every tool the bar
+                draws above this breakpoint, in the order the bar draws them, so
+                the menu really does replace the group rather than sample it.
+                The two mouse modes carry a `Tick` because they are a SETTING and
+                the rest are commands; undo and redo keep their disabled states,
+                which is what tells you there is nothing to undo without pressing
+                to find out.
+
+                The menu stays open on a tool that changes the canvas — «فعالیت»,
+                «اتصال», «چیدمان», undo, redo — because the next thing a person
+                does after adding an activity is add another, and a menu that
+                dismissed itself would be re-opened every time. It closes on the
+                mode switch, which is a setting: there is nothing to repeat. */}
+            {editing && (
+              <>
+                <button role="menuitem" type="button" disabled={!ed.canUndo}
+                  onClick={ed.undo} className={MENU_ROW}>
+                  <span className="flex-1">واگرد</span>
+                </button>
+                <button role="menuitem" type="button" disabled={!ed.canRedo}
+                  onClick={ed.redo} className={MENU_ROW}>
+                  <span className="flex-1">ازنو</span>
+                </button>
+                <div className="h-px bg-hair my-s3 mx-s1" />
+                <button role="menuitem" type="button"
+                  onClick={() => { setMode('pan'); setFlowMenu(false) }} className={MENU_ROW}>
+                  <Tick on={mode === 'pan'} />
+                  <span className="flex-1">حالت جابه‌جایی</span>
+                </button>
+                <button role="menuitem" type="button"
+                  onClick={() => { setMode('select'); setFlowMenu(false) }} className={MENU_ROW}>
+                  <Tick on={mode === 'select'} />
+                  <span className="flex-1">حالت انتخاب</span>
+                </button>
+                <div className="h-px bg-hair my-s3 mx-s1" />
+                <button role="menuitem" type="button" disabled={relayout.isPending}
+                  onClick={onRelayout} className={MENU_ROW}>
+                  <span className="flex-1">چیدمان خودکار</span>
+                </button>
+                <button role="menuitem" type="button"
+                  onClick={() => ed.addActivity(centerPos())} className={MENU_ROW}>
+                  <span className="flex-1">افزودن فعالیت</span>
+                </button>
+                <button role="menuitem" type="button"
+                  onClick={() => ed.addJunction(centerPos())} className={MENU_ROW}>
+                  <span className="flex-1">افزودن اتصال</span>
+                </button>
+              </>
+            )}
+            {!editing && mayEdit && !tombstoned && (
               <button role="menuitem" type="button" onClick={() => { setFlowMenu(false); ed.enter() }} className={MENU_ROW}>
                 <span className="flex-1">ویرایش</span>
               </button>
@@ -572,8 +755,11 @@ function FlowEditor() {
                 `--hair`, whose own `_ds` comment reads "internal divider". Its
                 `bg-` spelling was the fourth utility R46 reported as named,
                 compiled and never writable. */}
-            {(prevProc || nextProc) && <div data-testid="flowmenu-rule" className="h-px bg-hair my-s3 mx-s1" />}
-            {(prevProc || nextProc) && (
+            {/* Not offered mid-edit: walking to another process would abandon
+                unsaved work, and the two acts that end an edit are «انصراف» and
+                «ذخیره», which are on the bar. */}
+            {!editing && (prevProc || nextProc) && <div data-testid="flowmenu-rule" className="h-px bg-hair my-s3 mx-s1" />}
+            {!editing && (prevProc || nextProc) && (
               <>
                 <button role="menuitem" type="button" disabled={!nextProc}
                   onClick={() => { setFlowMenu(false); if (nextProc) nav(`/processes/${nextProc.id}/flow`) }}
@@ -695,6 +881,24 @@ function FlowEditor() {
             <Button variant="violet" onClick={ed.enter} className="px-s8 py-flowbar-action-y text-fs-sm" data-testid="enter-edit">ویرایش</Button>
           ) : (
             <>
+              {/* **`display:contents` above the breakpoint, `display:none` below
+                  it — owner ruling.** The four tool groups are ONE thing to the
+                  ≤760 rule and four flex children to the bar, and this wrapper is
+                  how both stay true: `contents` makes it no box at all, so the
+                  groups remain direct flex items of `data-r-actions` and the
+                  layout above 760 is unchanged to the pixel; `hidden` at ≤760
+                  takes all four off in one statement, which is what panel 99 does
+                  to the whole group in the VIEW state.
+
+                  The alternative — the variant on each of the four — is the same
+                  rule written four times, and the failure it invites is a fifth
+                  group added later without it: a tool drawn on a phone and
+                  duplicated in the ⋯, or drawn there and nowhere else.
+
+                  «انصراف» and «ذخیره» are deliberately OUTSIDE this wrapper. See
+                  the ⋯'s own comment: they end the edit, one of them discards
+                  work, and neither belongs behind a press. */}
+              <div className="contents max760:hidden">
               {/* undo / redo */}
               <div className="flex items-center gap-[3px] bg-tile-v2 rounded-xl p-[5px]">
                 <button disabled={!ed.canUndo} onClick={ed.undo} title="واگرد" className="w-[34px] h-[34px] flex items-center justify-center rounded-[9px] bg-white text-violet disabled:text-disabled disabled:cursor-default">
@@ -727,6 +931,7 @@ function FlowEditor() {
                 <button onClick={() => ed.addJunction(centerPos())} className="flex items-center gap-1.5 px-[11px] py-[7px] rounded-[9px] bg-white text-[12px] font-semibold text-violet">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"><path d="M12 3l9 9-9 9-9-9z" /></svg>اتصال
                 </button>
+              </div>
               </div>
               <button onClick={ed.cancel} data-testid="flow-cancel" className="px-3.5 py-[9px] border-[1.5px] border-line bg-white rounded-[11px] font-semibold text-[12.5px] text-muted hover:bg-tile-v2">انصراف</button>
               <button onClick={onSave} disabled={put.isPending} aria-busy={put.isPending || undefined} data-testid="save" className={`flex items-center gap-1.5 px-[18px] py-[9px] rounded-[11px] bg-green text-white font-bold text-[13px] shadow-green hover:brightness-105 ${put.isPending ? 'cursor-progress' : ''}`}>

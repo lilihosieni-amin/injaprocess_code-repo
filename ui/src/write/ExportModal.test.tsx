@@ -71,14 +71,20 @@ describe('ExportModal', () => {
 
   it('shows the link, opens it in a new tab, and states the caveats', () => {
     const onClose = vi.fn()
-    const url = 'https://inja.example/exports/dining/steps-0123456789abcdef.html'
+    const url = 'https://inja.example/exports/dining/steps-0123456789abcdef.pdf'
     render(<ExportModal title={TITLE} status="ready" url={url} onRetry={() => {}} onClose={onClose} />)
     expect(screen.getByText('خروجی آماده شد')).toBeInTheDocument()
     expect(screen.getByDisplayValue(url)).toHaveAttribute('readonly')
     const open = screen.getByRole('link', { name: /باز کردن خروجی/ })
     expect(open).toHaveAttribute('href', url)
     expect(open).toHaveAttribute('target', '_blank')
-    expect(screen.getByText('این فایل کاملاً مستقل است و بدون اینترنت هم باز می‌شود.')).toBeInTheDocument()
+    // Owner ruling — the export hands over a PDF now, so both lines this dialog
+    // writes about the file are about a PDF. The old sentence («کاملاً مستقل …
+    // بدون اینترنت») was written for the standalone HTML document, whose whole
+    // point was opening offline by double-click; said of a PDF it is true of
+    // every PDF and tells the reader nothing.
+    expect(screen.getByText('لینک فایل PDF خروجی:')).toBeInTheDocument()
+    expect(screen.getByText('فایل PDF چاپ‌شده از سند رسمی است؛ برای چاپ و بایگانی آماده است.')).toBeInTheDocument()
     // The admin decides here who to send the link to, so this line must state the
     // gate the recipient will actually meet (D25) — it said the opposite until the
     // export password landed. It is about the *recipient* because the admin reading

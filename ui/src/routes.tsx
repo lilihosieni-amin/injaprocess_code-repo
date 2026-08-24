@@ -5,6 +5,7 @@ import { Departments } from './screens/Departments'
 import { ProcessList } from './screens/ProcessList'
 import { Overview } from './screens/Overview'
 import { Summary } from './screens/Summary'
+import { Steps } from './screens/Steps'
 import { FlowScreen } from './flow/FlowScreen'
 import { Visibility } from './screens/Visibility'
 import { Users } from './screens/Users'
@@ -25,6 +26,11 @@ export const appRoutes: RouteObject[] = [
       { path: '/departments/:code/overview', element: <Overview /> },
       { path: '/processes/:pid', element: <Summary /> },
       { path: '/processes/:pid/flow', element: <FlowScreen /> },
+      // «گام‌به‌گام» — a route rather than the deliverable's `flowView: 'steps'`
+      // mode, for the three reasons `screens/Steps.tsx` records. A sibling of
+      // `/flow` because it is the same document read another way, and because
+      // `panelCrumbs` and `readerBack` can then answer both with one rule.
+      { path: '/processes/:pid/steps', element: <Steps /> },
       { path: '/visibility', element: <Visibility /> },
       { path: '/users', element: <Users /> },
       // Before nothing and after nothing in particular: react-router matches by

@@ -376,8 +376,8 @@ describe('the role picker on the create form', () => {
     const list = await screen.findByRole('listbox')
     await waitFor(() => expect(within(list).getAllByRole('option')).toHaveLength(3))
     // Both spellings: the option is drawn in Persian, so asking only about the
-    // identifier would pass on a screen that offered «تحلیل‌گر».
-    expect(within(list).queryByRole('option', { name: 'تحلیل‌گر' })).toBeNull()
+    // identifier would pass on a screen that offered «ادیتور».
+    expect(within(list).queryByRole('option', { name: 'ادیتور' })).toBeNull()
     expect(within(list).queryByRole('option', { name: 'editor' })).toBeNull()
   })
 

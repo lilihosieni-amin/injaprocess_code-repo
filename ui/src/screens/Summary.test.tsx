@@ -414,11 +414,32 @@ describe('the values the browser gate grades, named where jsdom can see them', (
     expect(card.className).toContain('bg-card')
   })
 
-  it('writes the subtitle in the colour ledger L-28 decided', async () => {
+  /**
+   * **Owner ruling — the summary is prose in a card, not a subtitle on the
+   * field.** *"the information in top of this page, i want to put this text in
+   * white box like IDEF0 box, exactly like department information page."*
+   *
+   * So ledger L-28's `--role-subtitle-on-field` no longer applies to it: that
+   * colour is for type on the violet, and this paragraph is on white. «exactly
+   * like» is checked against `Overview.tsx`'s own «شرح دپارتمان» recipe rather
+   * than against a remembered list — the five classes below are that
+   * paragraph's, and `DESIGN.summary.body` grades the paint they compile to.
+   */
+  it('draws the summary as card prose on Overview’s own recipe', async () => {
     mock(withKpi)
     renderAt('/processes/:pid', <Summary />, '/processes/cooking-002', EDITOR)
     await screen.findByText('نمای IDEF0 سطح فرآیند (A-0)')
-    expect(document.querySelector('[data-body]')!.className).toContain('text-role-subtitle-on-field')
+    const body = document.querySelector('[data-body]')!
+    expect(body.className).toContain('text-fs-body')
+    expect(body.className).toContain('text-ink')
+    expect(body.className).toContain('leading-loose')
+    expect(body.className).toContain('text-justify')
+    expect(body.className).not.toContain('text-role-subtitle-on-field')
+    // …and it is inside the screen's FIRST card, above the A-0 block, which is
+    // what «in white box like IDEF0 box» asks for and what `DESIGN.summary.card`
+    // grades `.first()` of.
+    const card = document.querySelector('[data-card]')!
+    expect(card.contains(body)).toBe(true)
   })
 
   it('keeps the A-0 box violet with the mono id as an LTR island', async () => {
