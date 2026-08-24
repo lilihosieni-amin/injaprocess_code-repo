@@ -25,6 +25,46 @@ function SheetHarness({ onClose }: { onClose: () => void }) {
 }
 
 describe('Overlay', () => {
+  /**
+   * **Owner ruling — a dialog's error is pinned under its header.** *"the errors
+   * it shows appear at the bottom of the popup, so if the user doesn't scroll
+   * down, they don't notice the error at all."*
+   *
+   * The ruling says "higher z-index" and the cause is one layer earlier: nothing
+   * painted over the message, it was the last child of the box that SCROLLS. On
+   * the new-user dialog «شمارهٔ موبایل معتبر نیست» arrived a screen and a half
+   * below the fold while the button that produced it sat pinned in the footer.
+   */
+  describe('the pinned alert', () => {
+    it('sits outside the scrolling body, above it', () => {
+      render(
+        <Dialog open onClose={() => {}} title="کاربر جدید" alert="شمارهٔ موبایل معتبر نیست">
+          <p>محتوا</p>
+        </Dialog>,
+      )
+      const band = screen.getByTestId('dialog-alert')
+      const body = screen.getByTestId('dialog-body')
+      // Not inside the box that scrolls — which is the whole fix, and the one
+      // thing a «the text is on screen» assertion cannot tell apart.
+      expect(body.contains(band)).toBe(false)
+      // …and before it in the box, so it reads as a header and not a footnote.
+      expect(band.compareDocumentPosition(body) & Node.DOCUMENT_POSITION_FOLLOWING)
+        .toBeTruthy()
+      expect(band).toHaveClass('flex-none')
+    })
+
+    it('announces itself, because it arrives after the press that caused it', () => {
+      render(<Dialog open onClose={() => {}} title="ک" alert="خطا"><p>م</p></Dialog>)
+      expect(screen.getByRole('alert')).toHaveTextContent('خطا')
+    })
+
+    it('is nothing at all when there is nothing wrong', () => {
+      render(<Dialog open onClose={() => {}} title="ک"><p>م</p></Dialog>)
+      expect(screen.queryByTestId('dialog-alert')).toBeNull()
+      expect(screen.queryByRole('alert')).toBeNull()
+    })
+  })
+
   it('exposes itself as a dialog with an accessible name', () => {
     render(<Harness onClose={() => {}} />)
     expect(screen.getByRole('dialog', { name: 'حذف فرآیند' })).toBeInTheDocument()
@@ -143,6 +183,46 @@ describe('Overlay', () => {
 })
 
 describe('Sheet', () => {
+  /**
+   * **Owner ruling — a dialog's error is pinned under its header.** *"the errors
+   * it shows appear at the bottom of the popup, so if the user doesn't scroll
+   * down, they don't notice the error at all."*
+   *
+   * The ruling says "higher z-index" and the cause is one layer earlier: nothing
+   * painted over the message, it was the last child of the box that SCROLLS. On
+   * the new-user dialog «شمارهٔ موبایل معتبر نیست» arrived a screen and a half
+   * below the fold while the button that produced it sat pinned in the footer.
+   */
+  describe('the pinned alert', () => {
+    it('sits outside the scrolling body, above it', () => {
+      render(
+        <Dialog open onClose={() => {}} title="کاربر جدید" alert="شمارهٔ موبایل معتبر نیست">
+          <p>محتوا</p>
+        </Dialog>,
+      )
+      const band = screen.getByTestId('dialog-alert')
+      const body = screen.getByTestId('dialog-body')
+      // Not inside the box that scrolls — which is the whole fix, and the one
+      // thing a «the text is on screen» assertion cannot tell apart.
+      expect(body.contains(band)).toBe(false)
+      // …and before it in the box, so it reads as a header and not a footnote.
+      expect(band.compareDocumentPosition(body) & Node.DOCUMENT_POSITION_FOLLOWING)
+        .toBeTruthy()
+      expect(band).toHaveClass('flex-none')
+    })
+
+    it('announces itself, because it arrives after the press that caused it', () => {
+      render(<Dialog open onClose={() => {}} title="ک" alert="خطا"><p>م</p></Dialog>)
+      expect(screen.getByRole('alert')).toHaveTextContent('خطا')
+    })
+
+    it('is nothing at all when there is nothing wrong', () => {
+      render(<Dialog open onClose={() => {}} title="ک"><p>م</p></Dialog>)
+      expect(screen.queryByTestId('dialog-alert')).toBeNull()
+      expect(screen.queryByRole('alert')).toBeNull()
+    })
+  })
+
   it('exposes itself as a dialog with an accessible name', () => {
     render(<SheetHarness onClose={() => {}} />)
     expect(screen.getByRole('dialog', { name: 'فیلترها' })).toBeInTheDocument()

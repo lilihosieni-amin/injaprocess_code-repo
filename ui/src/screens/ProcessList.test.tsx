@@ -78,8 +78,11 @@ describe('ProcessList', () => {
     mock()
     renderAt('/departments/:code', <ProcessList />, '/departments/cooking', EDITOR)
     expect(await screen.findByText('خرید و پرداخت')).toBeInTheDocument()
-    expect(screen.getByText('دارای KPI')).toBeInTheDocument()   // cooking-001
     expect(screen.getByText('زیرفرآیند')).toBeInTheDocument()   // cooking-014
+    // …and «دارای KPI» is not a tag any more — owner ruling, *"delete kpi tag
+    // too"*. cooking-001 in this fixture carries one KPI, so a row that still
+    // derived the tag would draw it here.
+    expect(screen.queryByText('دارای KPI')).toBeNull()
     // **Owner ruling: *"in process list page, it shouldn't have 11 فعالیت
     // tag.remove it."*** The chip was never one of §6.2's three — this app added
     // it, on the argument that dropping the number would take information no
@@ -88,6 +91,55 @@ describe('ProcessList', () => {
     // hook renamed is still caught.
     expect(screen.queryByTestId('activity-count-cooking-014')).toBeNull()
     expect(screen.queryByText(/فعالیت/)).toBeNull()
+  })
+
+  it('paints a sub-process card cream and leaves every other one white', async () => {
+    // **Owner ruling** — *"for the ones that are sub-processes, in addition to
+    // the sub-process tag, I want the entire box — instead of white — to be a
+    // very light cream color."* The value they named is `--tile-warn`, which the
+    // palette already calls "amber tint: sub-process tags".
+    //
+    // Driven off `deriveTag`'s own answer, so the tint and the chip can never
+    // disagree about which rows are sub-processes: cooking-014 has a parent,
+    // cooking-001 does not.
+    mock()
+    renderAt('/departments/:code', <ProcessList />, '/departments/cooking', EDITOR)
+    await screen.findByText('خرید و پرداخت')
+    const card = (name: string) =>
+      screen.getByText(name).closest('[data-r-prow]') as HTMLElement
+    expect(card('پرداخت هزینه').className).toContain('bg-tile-warn')
+    expect(card('خرید و پرداخت').className).toContain('bg-card')
+  })
+
+  it('gives «تأیید نشده» a skin of its own, not the sub-process tag’s', async () => {
+    // *"I want the 'not approved' tag's color to be different from the
+    // sub-process tag's color."* They were the same pair —
+    // `--tile-warn`/`--warn` — so the two commonest chips on this screen were
+    // one chip. Now: violet for the sub tag (the chip `Inja Panel.dc.html:389`
+    // already gives that word), filled amber for the unconfirmed mark.
+    //
+    // A tint would not have done: the sub-process CARD is `--tile-warn` now, so
+    // a `--tile-warn` chip on it is invisible.
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input)
+      const body = url.includes('/confirmations')
+        ? [{ target: 'cooking-014', kind: 'process', fingerprint: 'a', confirmed: false }]
+        : url.includes('/processes') ? PROCS
+          : [{ code: 'cooking', name: 'پخت', count: 2 }]
+      return Promise.resolve(new Response(JSON.stringify(body),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }))
+    })
+    // `confirm` on this department, or the row never asks for the marks and the
+    // chip this test is about is not drawn at all.
+    const CONFIRMER: SessionDescriptor = {
+      ...EDITOR, capabilities: [...EDITOR.capabilities, 'confirm'],
+    }
+    renderAt('/departments/:code', <ProcessList />, '/departments/cooking', CONFIRMER)
+    const unconfirmed = await screen.findByText('تأیید نشده')
+    const sub = screen.getByText('زیرفرآیند')
+    expect(sub.className).toContain('bg-tile-v')
+    expect(unconfirmed.className).toContain('bg-warn')
+    expect(unconfirmed.className).not.toContain('bg-tile-warn')
   })
 
   it('shows a reader the sub-process tag and nothing else on the meta line', async () => {
@@ -327,6 +379,37 @@ describe('the row, the empty state and the mobile overflow', () => {
     expect(screen.queryByText('فرآیندی با این نام پیدا نشد')).not.toBeInTheDocument()
   })
 
+  it('says it is loading instead of saying the department is empty', async () => {
+    // **Owner ruling — the sharpest of the six loading screens, and the only one
+    // that was not merely blank.** *"i want to add load status for page that
+    // makes time like process list."*
+    //
+    // While `GET /api/departments/{code}/processes` was in flight this screen
+    // drew its header and, under it, «فرآیندی برای این دپارتمان ثبت نشده است» —
+    // the EMPTY state. A department with sixteen processes announced that it had
+    // none, every time somebody opened it, for as long as the request took.
+    // `isPending` is the difference between "the answer is nothing" and "there
+    // is no answer yet".
+    let release: (r: Response) => void = () => {}
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input: RequestInfo | URL) => {
+      if (String(input).includes('/processes')) {
+        return new Promise<Response>((resolve) => { release = resolve })
+      }
+      return Promise.resolve(new Response(JSON.stringify([{ code: 'cooking', name: 'پخت', count: 2 }]),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }))
+    })
+    renderAt('/departments/:code', <ProcessList />, '/departments/cooking', EDITOR)
+
+    expect(await screen.findByTestId('screen-skeleton')).toBeInTheDocument()
+    expect(screen.getByRole('status', { name: 'در حال بارگذاری' })).toHaveAttribute('aria-busy', 'true')
+    expect(screen.queryByText('فرآیندی برای این دپارتمان ثبت نشده است.')).toBeNull()
+
+    release(new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+    // …and once the answer really is «nothing», the sentence is the right one.
+    expect(await screen.findByText('فرآیندی برای این دپارتمان ثبت نشده است.')).toBeInTheDocument()
+    expect(screen.queryByTestId('screen-skeleton')).toBeNull()
+  })
+
   it('keeps the search-miss sentence for a search that misses', async () => {
     mock()
     renderAt('/departments/:code', <ProcessList />, '/departments/cooking', EDITOR)
@@ -394,14 +477,39 @@ describe('the row, the empty state and the mobile overflow', () => {
     expect(screen.queryByRole('menuitem', { name: 'ترتیب فرآیندها' })).not.toBeInTheDocument()
   })
 
-  it('offers an editor the same three acts in the ⋯ that the bar holds', async () => {
+  it('offers an editor every act the bar holds, exports included', async () => {
     // The other half of R5: the overflow REPLACES the bar at ≤760, so an act
     // the bar offers and the ⋯ drops is an act that stops existing on a phone.
+    //
+    // **The two export kinds were exactly that** — owner ruling, *"in mobile
+    // version we don't have download buttomn in : menu.add it."* The bar's
+    // fourth control is `ExportMenu`, and it was the one act the ⋯ never
+    // mirrored, so a person on a phone could not take a document out of the
+    // product at all.
     mock()
     renderAt('/departments/:code', <ProcessList />, '/departments/cooking', EDITOR)
     fireEvent.click(await screen.findByRole('button', { name: 'کارهای بیشتر' }))
-    expect(screen.getAllByRole('menuitem').map((m) => m.textContent))
-      .toEqual(['ترتیب فرآیندها', 'اطلاعات دپارتمان', 'فرآیند جدید'])
+    expect(screen.getAllByRole('menuitem').map((m) => m.textContent)).toEqual([
+      'ترتیب فرآیندها', 'اطلاعات دپارتمان', 'فرآیند جدید',
+      'خروجی مستندات کامل', 'خروجی راهنمای گام‌به‌گام',
+    ])
+  })
+
+  it('offers no export in the ⋯ to somebody who may not take one', async () => {
+    // `reader_no_download` holds no `export_pdf`, and that role exists for
+    // exactly this: the affordance must never be drawn for them. `READER` here
+    // holds it, so the pairing is what proves the row is gated rather than
+    // absent — a menu that never drew exports would pass the second half alone.
+    mock()
+    const { unmount } = renderAt('/departments/:code', <ProcessList />, '/departments/cooking', READER)
+    fireEvent.click(await screen.findByRole('button', { name: 'کارهای بیشتر' }))
+    expect(screen.getByRole('menuitem', { name: 'خروجی مستندات کامل' })).toBeInTheDocument()
+    unmount()
+
+    const NO_DOWNLOAD: SessionDescriptor = { ...READER, capabilities: ['view', 'comment'] }
+    renderAt('/departments/:code', <ProcessList />, '/departments/cooking', NO_DOWNLOAD)
+    fireEvent.click(await screen.findByRole('button', { name: 'کارهای بیشتر' }))
+    expect(screen.queryByRole('menuitem', { name: /^خروجی/ })).toBeNull()
   })
 
   it('opens the reorder panel from the ⋯ as well as from the bar', async () => {

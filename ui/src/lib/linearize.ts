@@ -28,6 +28,40 @@ type IndexedEdge = { from: string; to: string; label: string; i: number }
  *  Every traversal breaks ties on the node's original index, so the same
  *  process always linearises the same way — the export is a pure transform.
  */
+/**
+ * Where the process begins — the node a reader should be looking at first.
+ *
+ * Three rules, in order, and each is the fallback for the one before it. A
+ * `start` node is the schema's own answer and outranks everything; no stored
+ * process carries one today, so in practice it is the second rule that fires —
+ * the node nothing points at. A graph where every node has an incoming edge is
+ * a closed loop with no entrance, and there the document's own first node is
+ * the only defensible answer.
+ *
+ * Exported because two very different things need the same answer and must not
+ * each invent one: this file numbers the steps from it, and the flow canvas's
+ * focus control (`Canvas`, owner ruling *"the first node (the start node) is
+ * positioned exactly in the top-left corner"*) scrolls to it. A second rule
+ * living in the canvas would put «مرحلهٔ ۱» in the step view and a different box
+ * under the focus button, on one process, with nothing to say which was right.
+ *
+ * `removed` nodes are out, and so are the EDGES that touch one — which is the
+ * whole of the second rule's correctness. A soft-deleted node stays in the JSON
+ * (`removed: true`) so a later merge can tell «never existed» from «taken out»,
+ * and its edges stay with it; counting one of those as an incoming edge makes
+ * the node after a deleted start look like the middle of a chain, and the walk
+ * begins at whatever happens to be first in the array instead.
+ */
+export function entryNode(p: ReadableProcess): ProcNode | undefined {
+  const nodes = p.nodes.filter((n) => !('removed' in n && n.removed))
+  const live = new Set(nodes.map((n) => n.id))
+  const targets = new Set(
+    p.edges.filter((e) => live.has(e.from) && live.has(e.to)).map((e) => e.to))
+  return nodes.find((n) => n.type === 'start')
+    ?? nodes.find((n) => !targets.has(n.id))
+    ?? nodes[0]
+}
+
 function graphOf(p: ReadableProcess) {
   const nodes = p.nodes.filter((n) => !('removed' in n && n.removed))
   const edges: IndexedEdge[] = p.edges.map((e, i) => ({ from: e.from, to: e.to, label: e.label ?? '', i }))
@@ -42,9 +76,7 @@ function graphOf(p: ReadableProcess) {
   })
   out.forEach((list) => list.sort((a, b) => a.i - b.i))
 
-  const start = nodes.find((n) => n.type === 'start')
-    ?? nodes.find((n) => (inn.get(n.id) ?? []).length === 0)
-    ?? nodes[0]
+  const start = entryNode(p)
 
   // back edges via DFS in stable order — an edge to a node still on the stack
   const color = new Map<string, number>()

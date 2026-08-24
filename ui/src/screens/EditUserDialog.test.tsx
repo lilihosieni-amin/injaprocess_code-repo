@@ -85,10 +85,12 @@ const HOMA: AdminUser = {
 }
 
 const KEYVAN: SupervisorCandidate = {
+  role: 'reader',
   id: 33, username: '09123333333', displayName: 'کیوان مرادی',
   scopes: ['*'], canSupervise: false,
 }
 const ARASH: SupervisorCandidate = {
+  role: 'reader',
   id: 31, username: '09121212121', displayName: 'آرش تهرانی',
   scopes: ['dept:cooking'], canSupervise: true,
 }

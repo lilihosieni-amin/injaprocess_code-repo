@@ -90,9 +90,14 @@ test('process list — the panel', async ({ page }) => {
     const trigger = page.getByRole('button', { name: 'کارهای بیشتر' })
     expect(await box(page, '[data-r-plistmore] button')).toEqual({ w: 36, h: 36 })
     await trigger.click()
-    await expect(page.getByRole('menuitem')).toHaveText(
-      ['ترتیب فرآیندها', 'اطلاعات دپارتمان', 'فرآیند جدید'],
-    )
+    // The exports are in here as of the owner's ruling — *"in mobile version we
+    // don't have download buttomn in : menu.add it."* The bar's fourth control
+    // is `ExportMenu`, and it was the one act the ⋯ never mirrored, so at this
+    // width a person could not take a document out of the product at all.
+    await expect(page.getByRole('menuitem')).toHaveText([
+      'ترتیب فرآیندها', 'اطلاعات دپارتمان', 'فرآیند جدید',
+      'خروجی مستندات کامل', 'خروجی راهنمای گام‌به‌گام',
+    ])
     await page.keyboard.press('Escape')
     await expect(page.getByRole('menuitem')).toHaveCount(0)
     // …and hand the keyboard focus back. Escape sets the keyboard modality, so

@@ -296,6 +296,27 @@ function reservedEdge(painted: Painted[]): 'start' | 'end' | undefined {
   return undefined
 }
 
+/**
+ * A logical edge resolved against a direction — `left` or `right`.
+ *
+ * **The two elements this file compares no longer share one.** Owner ruling:
+ * *"the password input should also be left-to-right (LTR), just like the mobile
+ * number field."* `PasswordField` pins `dir="ltr"` on its INPUT and leaves the
+ * wrapper right-to-left, so `start` means the right-hand edge to the button and
+ * the left-hand edge to the input, and the room and the pin now carry OPPOSITE
+ * logical names while sitting on the same physical side of the field.
+ *
+ * That is the whole reason this helper exists rather than the two names being
+ * compared directly. The invariant was never about the words: it is that the
+ * eye and the 46px of room are on ONE side, and the defect it was written for —
+ * the eye over the last 25px of the value with the room empty on the other side
+ * — is a PHYSICAL fact. Comparing the words was only ever a proxy, correct for
+ * as long as both elements read right-to-left.
+ */
+function physical(edge: 'start' | 'end', dir: 'ltr' | 'rtl'): 'left' | 'right' {
+  return (edge === 'start') === (dir === 'rtl') ? 'right' : 'left'
+}
+
 function on(surface: 'panel' | 'reader', node: ReactNode) {
   return render(<SurfaceProvider surface={surface}>{node}</SurfaceProvider>)
 }
@@ -868,14 +889,20 @@ describe('PasswordField', () => {
     // hint and drop it below the field.
     on('panel', <PasswordField label="گذرواژه" value="" onChange={() => {}} hint="دست‌کم ۸ نویسه" />)
     const el = screen.getByLabelText('گذرواژه')
-    expect(el).toHaveClass('ps-reveal')
+    // **The input is left-to-right and the wrapper is not** — owner ruling; a
+    // password is a latin token and the caret belongs at the left. So the room
+    // is reserved on the input's inline END, which is the same physical edge the
+    // button has always been pinned to. See `physical` above.
+    expect(el).toHaveAttribute('dir', 'ltr')
+    expect(el).toHaveClass('pe-reveal')
     const p = await paint(el.className)
-    expect(winner(p, 'padding-inline-start')).toBe('var(--pad-reveal)')
+    expect(winner(p, 'padding-inline-end')).toBe('var(--pad-reveal)')
     // The reserved edge must not be undone by a physical px-* landing after it
-    // — in RTL both resolve to padding-right and Tailwind's output order, not
-    // the class string's, decides which wins. So there is no padding-right.
+    // — Tailwind's output order, not the class string's, decides which wins. So
+    // neither physical edge is written at all.
     expect(winner(p, 'padding-right')).toBe('')
-    expect(winner(p, 'padding-inline-end')).toBe('var(--space-7)')
+    expect(winner(p, 'padding-left')).toBe('')
+    expect(winner(p, 'padding-inline-start')).toBe('var(--space-7)')
     // Reserving the room on one edge is not the same box as the other four
     // sides keeping theirs: `py-s6` -> nothing leaves the password field 25.8px
     // tall, shorter than the 32px eye standing in it, and every assertion about
@@ -890,9 +917,15 @@ describe('PasswordField', () => {
     // eye sat over the last 25px of the value and 46px of empty room sat on the
     // other side of the field.
     const reserved = reservedEdge(p)
-    expect(reserved).toBe('start')
+    expect(reserved).toBe('end')
     const pin = await expectPinnedInField(screen.getByRole('button', { name: 'نمایش گذرواژه' }), el)
-    expect(pin.edge).toBe(reserved)
+    expect(pin.edge).toBe('start')
+    // …and those two words are ONE side of the field, because the two elements
+    // read in opposite directions. This is the assertion the file exists for and
+    // it is now made in the units the defect actually lives in: the room and the
+    // eye on the same physical edge.
+    expect(physical(reserved!, 'ltr')).toBe(physical(pin.edge!, 'rtl'))
+    expect(physical(reserved!, 'ltr')).toBe('right')
   })
 
   it('draws the reveal button the design draws', async () => {

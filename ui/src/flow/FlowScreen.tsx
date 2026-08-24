@@ -7,6 +7,7 @@ import { useCan } from '../auth/can'
 import { ConfirmAction } from '../write/ConfirmMark'
 import { useFlowEditor } from './useFlowEditor'
 import { neighborProcess } from '../lib/process-nav'
+import { entryNode } from '../lib/linearize'
 import { toFlowNodes, toFlowEdges } from './adapt'
 import { Canvas } from './Canvas'
 import { Button, Spinner } from '../ui/Button'
@@ -554,11 +555,26 @@ function FlowEditor() {
         <div
           data-r-flowtitle
           className={
-            'flex items-center gap-s5 min-w-0 max760:order-first max760:flex-auto max760:min-w-0 '
+            // `flex-1` and not `flex-auto` at ≤760 — owner ruling, *"make back
+            // buttomn and title in one row"*. `flex: 1 1 auto` takes its base
+            // size from the CONTENT, and a process name is wider than a phone,
+            // so the flex line overflowed and `flex-wrap` put this group on a
+            // row of its own with the back button alone above it. `flex: 1 1 0%`
+            // has no base size to overflow with: the group takes what the bar
+            // has left and the name ellipsises inside it, which is what
+            // `max760:truncate` on the name was always for.
+            'flex items-center gap-s5 min-w-0 max760:order-first max760:flex-1 max760:min-w-0 '
             + (editing ? 'flex-1' : '')
           }
         >
-          <IdBadge tone="violet">{proc.id}</IdBadge>
+          {/* **Not on the reader — owner ruling.** *"in reader view, in
+              flowchart page we don't need show process id.remove it."* A
+              process id is an editor's handle: it is what «فرآیند بعدی» is
+              keyed on, what the conflict inbox names and what an export
+              filename carries. A reader is given the department and the name
+              and has nothing to do with the id — and on their bar it was the
+              one thing standing between the back button and the title. */}
+          {!onReader && <IdBadge tone="violet">{proc.id}</IdBadge>}
           {!editing
             // `max760:truncate`, not a bare `truncate`: panel 95 and reader 111
             // put the ellipsis INSIDE the ≤760 block. Above the breakpoint the
@@ -796,10 +812,30 @@ function FlowEditor() {
             the whole edit toolbar when `editing`, and hiding it at ≤760 would
             take undo, «ذخیره» and «انصراف» off a phone with nothing offering
             them instead. */}
+        {/* **`empty:hidden` — owner ruling, and it is a layout fact rather than
+            a tidiness one.** *"in reder view in flowchart page, the title shows
+            with … but it has space to shpw ather part of title."*
+
+            On the reader this group is EMPTY: `ConfirmAction` returns null
+            without `confirm`, and the «ویرایش» beside it is gated on `edit`, so
+            a reader's flow bar renders `<div data-r-actions>` with no child
+            nodes at all. It still carried `flex:1 1 auto` from reader 113 —
+            and so did the title group, once its own `flex-1` landed. Two
+            growing items split the free space evenly: measured at 390, the
+            title was 156px wide with a 156px EMPTY box beside it, and a name
+            that needed 410 ellipsised into half a bar for nothing.
+
+            `:empty` is the exact question — has this group any children to lay
+            out — and it is asked in CSS rather than in a `kinds.length` the way
+            `ExportMenu` asks it, because the two things that fill this group
+            are gated one level down inside their own components. Written for
+            every width and both surfaces: a group with nothing in it is a box
+            holding space for controls this caller does not have, which is R5
+            one step out. */}
         <div
           data-r-actions
           className={
-            'ms-auto flex items-center gap-s4 flex-wrap '
+            'ms-auto empty:hidden flex items-center gap-s4 flex-wrap '
             + (onReader
               ? 'max760:order-2 max760:ms-0 max760:flex-auto max760:justify-end'
               : editing ? '' : 'max760:hidden')
@@ -962,6 +998,10 @@ function FlowEditor() {
       <div ref={wrapRef} className="flex-1 min-h-0 relative">
         <Canvas
           docNodes={toFlowNodes(proc)} docEdges={toFlowEdges(proc)} revision={ed.revision} editing={editing} mode={mode}
+          // Owner ruling — the focus control goes to the START of the process,
+          // not to a frame around all of it. `entryNode` is the one rule for
+          // "where does this process begin", shared with the step view.
+          focusId={entryNode(proc)?.id}
           onNodeClick={onNodeClick}
           onConnect={(c: Connection) => c.source && c.target && ed.connect(c.source, c.target)}
           onOpenDetail={setDetailId}

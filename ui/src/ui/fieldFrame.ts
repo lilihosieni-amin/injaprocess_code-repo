@@ -98,7 +98,25 @@ export const FIELD_PAD = 'py-s6 px-s7'
  * cut of this component reserved one edge and pinned the button to the other,
  * and two independent assertions both passed while the eye sat over the value.
  */
-export const FIELD_PAD_REVEAL = 'py-s6 ps-reveal pe-s7'
+/**
+ * **`pe-` and `ps-` are the other way round to that description, and the input's
+ * own `dir` is why** — owner ruling: *"the password input should also be
+ * left-to-right (LTR), just like the mobile number field."*
+ *
+ * `PasswordField` pins the direction left-to-right on its INPUT and nowhere
+ * else, because a password is a latin token and the caret belongs at the left.
+ * The reveal button is positioned by the WRAPPER, which stays right-to-left, so
+ * the button is still at the visual right — and `padding-inline-start` on the
+ * input is no longer that edge:
+ * inside an LTR box it is the left, which would leave the reserved 46px on the
+ * empty side and the eye sitting over the value. The same defect the paragraph
+ * above records, reached from the other direction.
+ *
+ * The button does not move, so the text now starts at the same edge as the
+ * mobile number field above it on the sign-in form — which is the pair the
+ * ruling asks to match.
+ */
+export const FIELD_PAD_REVEAL = 'py-s6 pe-reveal ps-s7'
 
 /**
  * `11px 12px` — the one part of the field that falls off the spacing ladder,

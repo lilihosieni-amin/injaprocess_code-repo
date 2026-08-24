@@ -13,7 +13,7 @@ import { TextField } from '../ui/TextField'
 import { useToast } from '../write/ToastProvider'
 import { ConfirmMark, ConfirmAction } from '../write/ConfirmMark'
 import { refusalStatus } from '../api/client'
-import { LoadFailedScreen } from '../ui/states'
+import { LoadFailedScreen, ScreenSkeleton } from '../ui/states'
 import { RefusalScreen } from './Refusal'
 import type { Overview as OverviewT } from '../api/types'
 
@@ -97,7 +97,10 @@ export function Overview() {
   // not inherit, which is the very reason every rebuilt `[data-screen]` repeats
   // `bg-ink`. Measured in Chrome: a full-viewport cream flash on every first
   // navigation to this screen.
-  if (!data) return <div className="flex-1 bg-ink" />
+  // Owner ruling — a screen that is still arriving says so. Three cards,
+  // which is what this screen draws: the description, the sub-units and the
+  // roles.
+  if (!data) return <ScreenSkeleton column="list" cards={3} />
 
   function enter() {
     setDraft({
@@ -178,7 +181,20 @@ export function Overview() {
             // the title row beside `ConfirmMark`, where a 44px control set the
             // height of a 22px line of badges (F1).
             <div className="flex items-center gap-s5 flex-none">
-              <ConfirmAction row={marks.find((mark) => mark.target === code)} department={code} />
+              {/* **`shape="pill"` — owner ruling: *"in departmant details page
+                  the confirm buttomn should be excatly like flowhcart page
+                  confirm butttomn."***
+
+                  This drew §6.3's 34px tool box, which is a red-edged square
+                  with a warning triangle in it: on a header that also carries
+                  «تأیید شده» as a status pill, the one control that CHANGES that
+                  status looked like an error. The flow bar draws the
+                  deliverable's own pill (panel 599) — a tick, the word
+                  «تأییدشده», and its fill and edge switching with the mark — and
+                  R48 settled its ink. One question, one control, wherever it is
+                  asked. */}
+              <ConfirmAction row={marks.find((mark) => mark.target === code)}
+                department={code} shape="pill" />
               {mayEdit && (
                 <Button variant="violet" onClick={enter} className="flex-none px-s8 py-s5 text-fs-sm">ویرایش</Button>
               )}

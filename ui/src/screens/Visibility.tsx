@@ -2,7 +2,7 @@ import { useSession } from '../auth/useSession'
 import { visibilityRefusal } from '../auth/can'
 import { useVisibility, useSetVisibilityField } from '../api/hooks'
 import { refusalStatus } from '../api/client'
-import { LoadFailedScreen } from '../ui/states'
+import { LoadFailedScreen, ScreenSkeleton } from '../ui/states'
 import { RefusalScreen } from './Refusal'
 import { Card } from '../ui/Card'
 import { TickBox } from '../ui/Checkbox'
@@ -121,7 +121,9 @@ export function Visibility() {
   // `background-color` does not inherit, which is the very reason the root below
   // repeats `bg-ink`. Measured in Chrome at 1440x1000 with the policy read hung:
   // a full-viewport cream block over the violet field.
-  if (!data) return <div className="flex-1 bg-ink" />
+  // Owner ruling — see `ScreenSkeleton`. One card, which is what this screen
+  // is: a single panel of switches.
+  if (!data) return <ScreenSkeleton column="access" cards={1} />
 
   const fields = data.fields as Record<string, boolean>
   const rows = [

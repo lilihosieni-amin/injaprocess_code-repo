@@ -51,24 +51,45 @@ const TITLE: Record<ExportKind, string> = {
   steps: 'راهنمای گام‌به‌گام کار — برای پرسنل',
 }
 
-export function ExportMenu({ department }: { department: string }) {
-  const [open, setOpen] = useState(false)
+/**
+ * **The exports a caller may take from one department, and the dialog that
+ * reports one** — everything about an export except where the control is drawn.
+ *
+ * Split out of `ExportMenu` for owner ruling *"in process list page, in mobile
+ * version we don't have download buttomn in : menu.add it."* §6.2's ⋯ REPLACES
+ * the action bar below 760, and the export trigger lives on that bar — so under
+ * the breakpoint the whole feature stopped existing, which is the same defect
+ * that ⋯'s own docstring is about and the reason it lists every act the bar
+ * offers.
+ *
+ * The mobile menu cannot simply reuse the mounted `ExportMenu`: that component
+ * is inside `[data-r-plistactions]`, which is `display:none` at ≤760, and a
+ * `position:fixed` dialog inside a `display:none` box is not painted at all —
+ * the trap `FlowScreen` records for its own confirm dialog. So the menu's caller
+ * holds this hook itself and renders `modal` at the screen root.
+ *
+ * Two callers therefore hold two mutation observers, and that is correct rather
+ * than wasteful: exactly one of the two controls is on screen at any width, each
+ * reports the export IT started, and neither can show a dialog for a press made
+ * through the other.
+ */
+export function useExportActions(department: string) {
   const [kind, setKind] = useState<ExportKind | null>(null)
-  const wrap = useRef<HTMLDivElement>(null)
   const create = useCreateExport(department)
   const can = useCan(useSession().data)
 
-  useEffect(() => {
-    if (!open) return
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false) }
-    const onDown = (e: MouseEvent) => { if (!wrap.current?.contains(e.target as Node)) setOpen(false) }
-    window.addEventListener('keydown', onKey)
-    document.addEventListener('mousedown', onDown)
-    return () => { window.removeEventListener('keydown', onKey); document.removeEventListener('mousedown', onDown) }
-  }, [open])
+  // Cosmetic only: POST /api/departments/{code}/exports/{kind} re-derives
+  // `export_pdf` from the session row and refuses regardless of what is drawn.
+  // Asked per kind, with the same target the route gates on
+  // (`dept:{code}/report:{kind}` — see `_report_target` in routers/exports.py):
+  // a department-wide grant covers every kind, while a report-scoped one covers
+  // exactly its own, so asking about the bare department instead would hide a
+  // steps export from someone the server would happily serve it to.
+  // `reader_no_download` holds no `export_pdf` at all and gets nothing — which
+  // is the whole purpose of that role, and the one affordance it must never see.
+  const kinds = KINDS.filter((k) => can('export_pdf', `dept:${department}/report:${k.kind}`))
 
   function run(k: ExportKind) {
-    setOpen(false)
     setKind(k)
     create.mutate(k)
   }
@@ -82,16 +103,45 @@ export function ExportMenu({ department }: { department: string }) {
     : create.isError || noPdf ? 'failed'
       : create.isSuccess ? 'ready' : 'pending'
 
-  // Cosmetic only: POST /api/departments/{code}/exports/{kind} re-derives
-  // `export_pdf` from the session row and refuses regardless of what is drawn.
-  // Asked per kind, with the same target the route gates on
-  // (`dept:{code}/report:{kind}` — see `_report_target` in routers/exports.py):
-  // a department-wide grant covers every kind, while a report-scoped one covers
-  // exactly its own, so asking about the bare department instead would hide a
-  // steps export from someone the server would happily serve it to.
-  // `reader_no_download` holds no `export_pdf` at all and gets no menu — which
-  // is the whole purpose of that role, and the one affordance it must never see.
-  const kinds = KINDS.filter((k) => can('export_pdf', `dept:${department}/report:${k.kind}`))
+  return {
+    kinds,
+    run,
+    pending: create.isPending,
+    modal: kind === null ? null : (
+      <ExportModal
+        title={TITLE[kind]}
+        status={status}
+        // **The PDF, never the document** — owner ruling. Absolute so the
+        // copied text is worth pasting, and correct on any host (D16).
+        url={create.data?.pdf_url ? `${window.location.origin}${create.data.pdf_url}` : undefined}
+        error={create.error?.message ?? (noPdf ? NO_PDF : undefined)}
+        onRetry={() => create.mutate(kind)}
+        // Closing only dismisses the modal. Resetting a still-pending mutation
+        // would flip isPending to false and re-enable the trigger mid-flight —
+        // nothing aborts the POST (D-abort), so a second export would race the
+        // first for the same deterministic filename and the older write could
+        // land last. The observer is left alone until the request settles; the
+        // next `run` replaces its state anyway.
+        onClose={() => { setKind(null); if (!create.isPending) create.reset() }}
+      />
+    ),
+  }
+}
+
+export function ExportMenu({ department }: { department: string }) {
+  const [open, setOpen] = useState(false)
+  const wrap = useRef<HTMLDivElement>(null)
+  const { kinds, run, pending, modal } = useExportActions(department)
+
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false) }
+    const onDown = (e: MouseEvent) => { if (!wrap.current?.contains(e.target as Node)) setOpen(false) }
+    window.addEventListener('keydown', onKey)
+    document.addEventListener('mousedown', onDown)
+    return () => { window.removeEventListener('keydown', onKey); document.removeEventListener('mousedown', onDown) }
+  }, [open])
+
   if (kinds.length === 0) return null
 
   return (
@@ -110,7 +160,7 @@ export function ExportMenu({ department }: { department: string }) {
       <IconButton
         label="خروجی‌ها"
         onClick={() => setOpen((v) => !v)}
-        disabled={create.isPending}
+        disabled={pending}
         aria-haspopup="menu"
         aria-expanded={open}
         className="disabled:opacity-60"
@@ -128,7 +178,7 @@ export function ExportMenu({ department }: { department: string }) {
             // to carry. It happened to look correct only because two physical
             // offsets cancelled; in an LTR locale the label would align to the
             // far side of a tile that had not moved with it.
-            <button key={k.kind} role="menuitem" type="button" onClick={() => run(k.kind)}
+            <button key={k.kind} role="menuitem" type="button" onClick={() => { setOpen(false); run(k.kind) }}
               className="flex items-start gap-option w-full text-start px-s6 py-option-y rounded-control border-0 bg-transparent cursor-pointer hover:bg-tile-v2">
               <span className={`w-tool h-tool shrink-0 rounded-control flex items-center justify-center ${k.tile}`}>
                 <Icon d={k.icon} px={17} />
@@ -142,24 +192,7 @@ export function ExportMenu({ department }: { department: string }) {
         </div>
       )}
 
-      {kind && (
-        <ExportModal
-          title={TITLE[kind]}
-          status={status}
-          // **The PDF, never the document** — owner ruling. Absolute so the
-          // copied text is worth pasting, and correct on any host (D16).
-          url={create.data?.pdf_url ? `${window.location.origin}${create.data.pdf_url}` : undefined}
-          error={create.error?.message ?? (noPdf ? NO_PDF : undefined)}
-          onRetry={() => create.mutate(kind)}
-          // Closing only dismisses the modal. Resetting a still-pending
-          // mutation would flip isPending to false and re-enable the trigger
-          // mid-flight — nothing aborts the POST (D-abort), so a second export
-          // would race the first for the same deterministic filename and the
-          // older write could land last. The observer is left alone until the
-          // request settles; the next run() replaces its state anyway.
-          onClose={() => { setKind(null); if (!create.isPending) create.reset() }}
-        />
-      )}
+      {modal}
     </div>
   )
 }

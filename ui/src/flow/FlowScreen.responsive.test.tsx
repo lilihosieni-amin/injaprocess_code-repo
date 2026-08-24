@@ -126,13 +126,21 @@ describe('R46 — the flow toolbar at ≤760', () => {
 
   it('gives the process name the first row, and lets it shrink', async () => {
     // `[data-r-flowtitle]{order:-1; flex:1 1 auto; min-width:0}` — panel 94/103,
-    // reader 110/119, where the later `flex:1 1 auto` is what the cascade lands
-    // on. `order-first` is Tailwind's reachable spelling of a negative order;
-    // against the default 0 it orders identically.
+    // reader 110/119. `order-first` is Tailwind's reachable spelling of a
+    // negative order; against the default 0 it orders identically.
+    //
+    // **`1 1 0%` and not the deliverables' `1 1 auto` — owner ruling.** *"make
+    // back buttomn and title in one row."* `auto` takes the base size from the
+    // CONTENT, and a process name is wider than a phone, so the flex line
+    // overflowed and `flex-wrap` on the bar put this group on a row of its own
+    // with the back button stranded above it. `0%` has no base size to overflow
+    // with: the group takes whatever the bar has left and the name ellipsises
+    // inside it, which is what the `truncate` asserted two tests down was always
+    // for. The deliverables draw a bar that never had to hold a real name.
     const { title } = await mount('panel')
     const painted = await paint(title.className)
     expect(winner(painted, 'order', '', MOBILE)).toBe('-9999')
-    expect(winner(painted, 'flex', '', MOBILE)).toBe('1 1 auto')
+    expect(winner(painted, 'flex', '', MOBILE)).toBe('1 1 0%')
     // `min-width:0` is the load-bearing half: a flex item's default `min-width`
     // is `auto`, so without it the name refuses to shrink below its own text and
     // the ellipsis below never fires.

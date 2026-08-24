@@ -67,22 +67,29 @@ export function formatConflictValue(v: unknown): string {
   return String(v)
 }
 
-export type TagKind = 'sub' | 'conflict' | 'kpi' | 'tombstone'
+export type TagKind = 'sub' | 'conflict' | 'tombstone'
 
 /**
  * Owner ruling R28, ledger L-12 — a plain process draws NO tag, so this returns
- * null for it rather than a fifth kind.
+ * null for it rather than a further kind.
  *
- * A tag marks an exception: a sub-process, a conflict, a KPI, a tombstone. One
- * that says «مستند» on a screen where every row is a document marks nothing,
- * and its skin was byte-identical to the KPI tag, so two of the five tags were
+ * A tag marks an exception: a sub-process, a conflict, a tombstone. One that
+ * says «مستند» on a screen where every row is a document marks nothing, and its
+ * skin was byte-identical to the KPI tag, so two of the five tags were
  * indistinguishable. Returning null makes the rule structural: no screen can
  * render the tag by reaching for a tone that no longer exists.
+ *
+ * **«دارای KPI» is gone too, by a later ruling** — *"delete kpi tag too"*, in
+ * the same breath as the sub-process card and the confirmation chip. It is the
+ * one kind that marked no exception at all: having a KPI is what a documented
+ * process is *supposed* to have, so the tag fired on the ordinary case and
+ * stayed dark on the one worth noticing. R28's own argument, one tag further
+ * along. `--tile-v`/`--violet` — the pair it wore — go back to being the
+ * department glyph's, and this file names three kinds where it named four.
  */
 export function deriveTag(p: Process): { label: string; kind: TagKind } | null {
   if (p.tombstoned) return { label: 'باطل‌شده', kind: 'tombstone' }
   if (p.parent) return { label: 'زیرفرآیند', kind: 'sub' }
   if (p.pending && p.pending.length) return { label: `${toFa(p.pending.length)} تعارض`, kind: 'conflict' }
-  if (p.kpis && p.kpis.length) return { label: 'دارای KPI', kind: 'kpi' }
   return null
 }

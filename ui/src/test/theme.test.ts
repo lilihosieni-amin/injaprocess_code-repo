@@ -503,7 +503,7 @@ const EXPECTED: Record<string, string | string[]> = {
   // not five names for one token.
   'py-textarea-y': 'var(--pad-textarea-y)',
   'p-compose': 'var(--pad-compose)',
-  'ps-reveal': 'var(--pad-reveal)',
+  'pe-reveal': 'var(--pad-reveal)',
   'w-reveal': 'var(--size-reveal)',
   'h-reveal': 'var(--size-reveal)',
   'w-reveal-glyph': 'var(--size-reveal-glyph)',
@@ -1491,7 +1491,7 @@ const UNPAINTED: string[] = [
   // screen's step label and its long prose take. CEILING follows them down by
   // nine.
   'bg-muted', 'bg-faint', 'bg-line',
-  'bg-login-orb', 'bg-warn', 'bg-info', 'bg-violet-mid',
+  'bg-login-orb', 'bg-info', 'bg-violet-mid',
   'bg-violet-edge', 'bg-violet-on-dark', 'bg-violet-on-dark-body', 'bg-violet-on-violet',
   'bg-desk', 'bg-tile-ctl',
   // `bg-hair` came off here with owner ruling R47: the flow bar's ⋯ menu draws
@@ -1585,6 +1585,24 @@ const UNPAINTED: string[] = [
   // Task 8's Dropdown and TextField landed and consumed them, which is the
   // mechanism working — a line comes off when its consumer arrives.
   'z-popover', 'z-tooltip', 'duration-row',
+  /*
+   * **Three lines the owner's deletions put back, and they are a third case the
+   * paragraph above CEILING does not name.**
+   *
+   * `border-warn-edge` and `text-warn-fg` were minted for §6.6's amber notice on
+   * the profile screen — `tokens.css` says so beside both, "§6.6's amber notice
+   * edge / ink" — and that notice is gone: *"in profile page, i want to delete
+   * text «با عوض شدن گذرواژه…»"*. `text-fs-h4` was the process list's row name
+   * and the same batch took it to `--fs-lg`: *"in desktop small text is better"*.
+   *
+   * Neither is "a screen that is not finished", which is what the ratchet's
+   * dichotomy assumes an unconsumed line means. They are elements a RULING
+   * removed, and the utilities outlived them. Deleting the theme keys instead is
+   * not open either: `R1 — every design token has a utility name` requires
+   * `--fs-h4` to stay reachable, and `--warn-fg` is what `--role-awaiting`
+   * resolves to in roles.css.
+   */
+  'text-fs-h4', 'border-warn-edge', 'text-warn-fg',
   'bg-warn-edge',
   // The type-on-the-violet-field group came off here when Task 14's departments
   // screen landed: its READER title takes `text-role-title-on-field`, both
@@ -1770,7 +1788,37 @@ const UNPAINTED: string[] = [
 //        in those words rather than going on saying it is waiting for the owner.
 //   ---
 //   120  and this line is that number exactly.
-const CEILING = 111
+//
+// RAISED 2026-08-24 to 113 by the owner's second review, and it is the first
+// raise on this line that is not a mint. Read the arithmetic before judging it:
+//
+//   111  the count this line stood at
+//    -1  `bg-warn` acquired its first consumer: the process list's «تأیید نشده»
+//        chip is filled amber now, because the ruling *"I want the 'not
+//        approved' tag's color to be different from the sub-process tag's
+//        color"* took `--tile-warn`/`--warn` off it and a tint of `--tile-warn`
+//        is invisible on the sub-process card, which is that colour.
+//    +3  `text-fs-h4`, `border-warn-edge` and `text-warn-fg` lost their last
+//        consumer — see the note beside them in the list above.
+//   ---
+//   113  and this line is that number exactly.
+//
+// **Why this is a legal raise, when the paragraph above says a raise belongs
+// only to a mint.** That paragraph names two ways the number can be pushed up
+// and forbids both: a screen that has not finished writing the classes it was
+// minted for, and a theme key added with no consumer. This is neither. It is the
+// third case, the one the headroom used to absorb silently before Task 25
+// removed it: an ELEMENT the owner decided to delete, whose utility outlives it.
+// The alternative — deleting the theme keys — is closed by two other tests in
+// this very file: `R1 — every design token has a utility name` requires
+// `--fs-h4` to stay reachable, and `--warn-fg` is what `--role-awaiting`
+// resolves to.
+//
+// So the ratchet is not being slackened; it is recording a deletion it has no
+// other vocabulary for. The list is still exactly the orphans, every one of them
+// is still explained by a family, and the next task that consumes one of these
+// three lowers this line again.
+const CEILING = 113
 
 describe('Owner ruling R11 — a named utility has a component that uses it', () => {
   it('reads a real, sizeable set of component files — tests AND test helpers excluded', () => {
@@ -2015,6 +2063,13 @@ describe('Owner ruling R11 — a named utility has a component that uses it', ()
           '|^py-tick-nested-y$',
         ].join('')),
       },
+      { // The amber notice and the 17px row name, both deleted by owner ruling
+        // — see the note beside these three in the list above. `bg-warn-edge`
+        // joins them from the other direction: it was always a spelling of a
+        // token only the notice's BORDER painted, and now nothing paints it.
+        why: 'an element an owner ruling deleted, whose utility outlived it',
+        match: /^(border|bg)-warn-edge$|^text-warn-fg$|^text-fs-h4$/,
+      },
       { // Owner ruling R48, and the shape of this family changed with it. R47
         // put two names here and said both were *waiting on a ruling*: the ink
         // the design gives each was below the floor `e2e/flow.spec.ts` grades
@@ -2076,8 +2131,16 @@ describe('Owner ruling R11 — a named utility has a component that uses it', ()
     //     reaches the screen and the line is a spelling rather than an orphan.
     //     Exactly the move `bg-border-ok` made under R48. Spelling +2,
     //     painted-nowhere −2.
-    expect(buckets.filter((b) => b.spelling).length).toBe(43)
-    expect(buckets.filter((b) => !b.spelling).length).toBe(68)
+    // **42 / 71 after the owner's second review**, from 43 / 68:
+    //   · `bg-warn` LEFT the list — it has a consumer now (the process list's
+    //     filled «تأیید نشده» chip). It was in the spelling half, because
+    //     `text-warn` already painted `--warn`. Spelling −1.
+    //   · `text-fs-h4`, `border-warn-edge` and `text-warn-fg` ARRIVED in the
+    //     painted-nowhere half: the row name went to `--fs-lg` and the profile's
+    //     amber notice was deleted, and nothing else reaches either token.
+    //     Painted-nowhere +3.
+    expect(buckets.filter((b) => b.spelling).length).toBe(42)
+    expect(buckets.filter((b) => !b.spelling).length).toBe(71)
 
     // A family that stops covering anything is an argument nobody is paying
     // for, and the next name added beside it inherits the same absence of

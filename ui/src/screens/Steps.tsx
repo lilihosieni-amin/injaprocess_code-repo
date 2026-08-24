@@ -5,7 +5,7 @@ import { linearize, groupTitle, type Block, type Junction } from '../lib/lineari
 import { toFa } from '../lib/format'
 import { refusalStatus } from '../api/client'
 import { Icon } from '../ui/Icon'
-import { LoadFailedScreen } from '../ui/states'
+import { LoadFailedScreen, ScreenSkeleton } from '../ui/states'
 import { RefusalScreen } from './Refusal'
 import type { ActivityNode } from '../api/types'
 
@@ -251,7 +251,9 @@ export function Steps() {
     return <LoadFailedScreen message="مراحل این فرآیند بارگذاری نشد." error={error}
       onRetry={() => { void refetch() }} />
   }
-  if (!proc) return <div className="flex-1 bg-ink" />
+  // Owner ruling — see `ScreenSkeleton`. Five, because a step list is the one
+  // screen here whose content is a long run of same-shaped rows.
+  if (!proc) return <ScreenSkeleton column="steps" cards={5} />
 
   const blocks = linearize(proc)
 

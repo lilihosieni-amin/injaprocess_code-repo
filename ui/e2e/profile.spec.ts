@@ -92,8 +92,11 @@ test('profile — 700 wide, paired fields, violet labels', async ({ page }) => {
   expect(button!.x + button!.width).toBeLessThanOrEqual(inlineStart)
   expect(button!.x).toBeGreaterThan(inlineStart - 46)
 
-  await expect(page.getByRole('note', { name: 'هشدار' }))
-    .toHaveCSS('background-color', 'rgb(251, 238, 220)')
+  // **The amber notice is gone** — owner ruling, *"in profile page, i want to
+  // delete text «با عوض شدن گذرواژه…»"*. Its «همهٔ دستگاه‌های دیگر از این حساب
+  // بیرون آمدند» twin still runs after the change succeeds; what went is the
+  // warning before it.
+  await expect(page.getByRole('note', { name: 'هشدار' })).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'ذخیرهٔ گذرواژه' }))
     .toHaveCSS('background-color', 'rgb(74, 37, 169)')
 

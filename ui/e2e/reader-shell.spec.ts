@@ -303,10 +303,17 @@ test('the flow toolbar’s «بازگشت» is drawn at the design’s own numbe
   await expect(glyph.locator('path')).toHaveAttribute('d', 'M9 18l6-6-6-6')
   // It is the INLINE-START control on that toolbar (reader 313 is the bar's
   // first child), which in RTL means it sits to the right of everything else.
+  //
+  // Measured against the process NAME, because the process id it used to be
+  // measured against is not on this bar any more — owner ruling, *"in reader
+  // view, in flowchart page we don't need show process id.remove it."* The
+  // claim is unchanged: whatever else the bar holds, «بازگشت» is to the right
+  // of it.
   const box = (await back.boundingBox())!
-  const id = (await page.getByText('dining-003').boundingBox())!
+  await expect(page.getByText('dining-003')).toHaveCount(0)
+  const title = (await page.locator('[data-r-pname]').boundingBox())!
   expect(box.x, '«بازگشت» is not the inline-start control on the flow toolbar')
-    .toBeGreaterThan(id.x)
+    .toBeGreaterThan(title.x)
 })
 
 test('the back bar keeps its 20px gutter at every width, and the field does not show through', async ({ page }) => {

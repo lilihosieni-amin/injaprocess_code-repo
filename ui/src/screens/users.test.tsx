@@ -943,23 +943,35 @@ describe('one person\'s record', () => {
       .toBeInTheDocument()
   })
 
-  it('says the supervisor flag is an org-chart fact that grants nothing (D51)', async () => {
-    // `can_supervise` routes comment approval and confers no capability, no
-    // scope and no rank. Drawn as «دسترسی سرپرستی» beside the role it reads as a
-    // permission, and an administrator would then set it to give somebody
-    // something — or refuse to set it to withhold something.
+  it('names the supervisor and explains nothing — owner ruling', async () => {
+    // *"On the user details page, the helper/description texts are excessive and
+    // unnecessary (like «سرپرست جایگاهی در نمودار سازمانی است…»). Remove all of
+    // them."*
+    //
+    // D51's clause — the flag routes comment approval and grants nothing — was
+    // written here so an administrator would not read «سرپرست» as a permission
+    // and set it to give somebody something. It is still true and it is no
+    // longer said on this panel: what the panel shows is the one thing it is
+    // for, which is WHO. The rule survives where it is enforced
+    // (`delegation.py`) and where it is chosen (the edit dialog, whose checkbox
+    // the same review removed for editors and admins because they always carry
+    // it).
     renderDetail(EDITOR, NADER)
     const sup = await screen.findByRole('group', { name: 'سرپرست' })
-    expect(within(sup).getByText(/هیچ\s*دسترسی‌ای نمی‌دهد/)).toBeInTheDocument()
-    expect(within(sup).getByText(/این کاربر خودش می‌تواند سرپرست دیگران باشد/))
-      .toBeInTheDocument()
+    expect(within(sup).queryByText(/هیچ\s*دسترسی‌ای نمی‌دهد/)).toBeNull()
+    expect(within(sup).queryByText(/می‌تواند سرپرست دیگران باشد/)).toBeNull()
+    expect(within(sup).queryByText(/این کاربر سرپرست کسی نمی‌شود/)).toBeNull()
   })
 
-  it('does not claim the flag for somebody who does not carry it', async () => {
-    renderDetail(EDITOR, SAHAR)
+  it('still states a gap the account really has — a disabled supervisor', async () => {
+    // The one line on this panel that is NOT an explanation: D14 leaves a
+    // disabled supervisor in place rather than quietly repointing subordinates,
+    // so the gap is stated here or nowhere. It survives the removal above, and
+    // this is what says the removal was a reading of the panel and not a sweep
+    // of everything under a heading.
+    renderDetail(EDITOR, { ...NADER, supervisor: { ...NADER.supervisor!, disabled: true } })
     const sup = await screen.findByRole('group', { name: 'سرپرست' })
-    expect(within(sup).getByText(/این کاربر سرپرست کسی نمی‌شود/)).toBeInTheDocument()
-    expect(within(sup).queryByText(/می‌تواند سرپرست دیگران باشد/)).toBeNull()
+    expect(within(sup).getByText(/این سرپرست غیرفعال است/)).toBeInTheDocument()
   })
 
   it('shows the not-found surface for an id the server does not know', async () => {

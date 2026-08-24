@@ -53,11 +53,13 @@ const ROLES: Role[] = [
 ]
 
 const SAHAR: SupervisorCandidate = {
+  role: 'reader',
   id: 32, username: '09122222222', displayName: 'سحر بیات',
   scopes: ['dept:dining'], canSupervise: true,
 }
 /** The actor themselves, and eligible: the form defaults to them. */
 const KAMRAN: SupervisorCandidate = {
+  role: 'reader',
   id: 30, username: ADMIN.username, displayName: 'کامران راد',
   scopes: ['*'], canSupervise: true,
 }

@@ -13,6 +13,7 @@ import { Logo } from '../ui/Logo'
 import { toFa } from '../lib/format'
 import { panelCrumbs } from './crumbs'
 import { canGoBack, isProcessView } from './back'
+import { useScrollMemory } from './scroll'
 
 // §6.0 — the nav tray's shell. These entries *navigate*, so they are links in a
 // `<nav>` rather than a NavTabTray: the tray is a `tablist` and these are not
@@ -141,6 +142,12 @@ export function PanelShell({ session }: { session: SessionDescriptor }) {
   // what names the group to a screen reader, and two panel shells on one page
   // (the test file mounts several) must not both claim the same id.
   const adminGroup = useId()
+
+  // Owner ruling — «بازگشت» returns to the offset it left. One hook for every
+  // route, because every screen's root is this element's only child; see
+  // `useScrollMemory`.
+  const mainRef = useRef<HTMLElement>(null)
+  useScrollMemory(mainRef)
 
   /** A sheet row's own three declarations: §6.0's current entry, or its resting one. */
   const sheetRow = (to: string) => `${SHEET_ITEM} ${pathname === to ? SHEET_HERE : SHEET_REST}`
@@ -516,7 +523,7 @@ export function PanelShell({ session }: { session: SessionDescriptor }) {
             ancestor with min-h-0: FlowScreen's own root is `flex-1 flex flex-col
             min-h-0`, and its canvas resolves `h-full` against this chain. Adding
             padding here re-breaks the flow canvas — screens own their padding. */}
-        <main className="flex-1 min-h-0 flex flex-col">
+        <main ref={mainRef} className="flex-1 min-h-0 flex flex-col">
           <Outlet />
         </main>
         {inboxOpen && <InboxModal onClose={() => setInboxOpen(false)} />}

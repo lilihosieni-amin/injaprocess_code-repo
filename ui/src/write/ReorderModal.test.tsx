@@ -203,6 +203,28 @@ describe('ReorderModal', () => {
   })
 })
 
+describe('ReorderModal — the row is as tall as its text', () => {
+  it('lays the two move buttons side by side, not stacked — owner ruling', () => {
+    // *"the high og each box is much.fit with text."* Measured at 106px per row
+    // for one 12.5px line of type, and the arithmetic is the whole of it:
+    // `IconButton` carries F11's `min-h-touch`, so two of them in a COLUMN are
+    // 88px of control under a 19px name. In a row they are 44 — the floor, and
+    // not a choice: shrinking them would put the two commonest controls in this
+    // dialog under the minimum a finger can hit, in the one dialog whose whole
+    // purpose is repeated presses.
+    //
+    // The height itself is measured in `e2e/behaviour.spec.ts`; jsdom lays
+    // nothing out, so here the CAUSE is pinned rather than the symptom.
+    wrap(<ReorderModal department="cooking" departmentName="پخت" processes={THREE} onClose={() => {}} />)
+    const up = screen.getAllByRole('button', { name: /به بالا/ })[0]
+    const group = up.parentElement!
+    expect(group.className).toContain('flex')
+    expect(group.className).not.toContain('flex-col')
+    // …and the row gives back the padding that column no longer needs.
+    expect(screen.getAllByTestId('reorder-row')[0].className).toContain('py-s2')
+  })
+})
+
 describe('ReorderModal — one dialog, one scrim, one direction (P3, O1, O7)', () => {
   it('is a real dialog: escape closes it, focus is trapped, and the scrim is the primitive\u2019s', async () => {
     const onClose = vi.fn()

@@ -1,6 +1,5 @@
-import { useEffect, useMemo, useRef } from 'react'
-import { useDepartments } from '../api/hooks'
-import { scopesLabel } from '../lib/scopes'
+import { useEffect, useRef } from 'react'
+import { roleLabel } from '../lib/roles'
 import { Dropdown } from '../ui/Dropdown'
 import type { SupervisorCandidate } from '../api/users'
 
@@ -16,20 +15,22 @@ export const NO_SUPERVISOR = 'بدون سرپرست'
 export const SUPERVISOR_OFF_LIST =
   'سرپرست کنونی در این فهرست نیست؛ تا وقتی تغییرش ندهید همان‌جا می‌ماند.'
 
-/** §6.14's own closing rule statement, plus D51's clause.
+/*
+ * **§6.14's closing rule statement is gone — owner ruling, and this is the one
+ * removal that was a judgement call.**
  *
- *  The two design sentences are why the list is as short as it is. The third is
- *  this product's. It routes comment approval (D34) and grants nothing whatever
- *  — a Reader may supervise a Reader.
+ * The ruling names the USER DETAIL page — *"the helper/description texts are
+ * excessive and unnecessary … Remove all of them"* — and this paragraph is in
+ * the dialog that page opens, not on the page. It goes anyway, because the same
+ * message asks for the dialog's errors to be visible *"so the user notices"*,
+ * and two sentences of prose above the submit are two sentences of the reason
+ * they were not. R32 settled its CONTENT (the design's two sentences, no third);
+ * nothing settled that it had to be on screen.
  *
- *  **Owner ruling R32: the rule statement is the design's TWO sentences, and no
- *  third.** A clause saying the choice grants no access was added here and the
- *  owner removed it: the deliverable wins on content (R1/R22), and this file is
- *  not where a permission model gets explained. The test below pins the absence
- *  as well as the presence, so it cannot drift back in. */
-export const SUPERVISOR_RULE =
-  'سرپرست باید بالاتر از این کاربر باشد و دپارتمانش دپارتمان او را پوشش دهد. '
-  + 'خوانندهٔ گزارش نمی‌تواند سرپرست کسی باشد، چون کامنتی را تأیید نمی‌کند.'
+ * What it explained is still answered, and answered where it is asked: an empty
+ * list says `NO_CANDIDATE`, and a search that misses says `NO_SEARCH_HIT`. Those
+ * are the two moments somebody wonders why the list is short.
+ */
 
 /** §6.14 — what the popover says when the server offered nobody. Distinct from
  *  the search miss below, which is a different fact with different advice. */
@@ -96,10 +97,6 @@ export function SupervisorPicker({
   pending: boolean
 }) {
   const defaulted = useRef(false)
-  const { data: departments } = useDepartments()
-  const names = useMemo(
-    () => Object.fromEntries((departments ?? []).map((d) => [d.code, d.name])),
-    [departments])
 
   useEffect(() => {
     // Never over a choice already made, and never twice: the second condition
@@ -118,10 +115,19 @@ export function SupervisorPicker({
     ...(allowNone ? [{ value: '', label: NO_SUPERVISOR }] : []),
     ...candidates.map((c) => ({
       value: String(c.id),
-      // D52 — the scope goes beside the name because past thirty users the
-      // reason somebody is on this list is otherwise invisible, and picking
-      // blindly is how a chain ends up routed somewhere nobody intended.
-      label: `${c.displayName} — ${scopesLabel(c.scopes, names)}`,
+      // **The ROLE beside the name — owner ruling.** *"the person's name and
+      // role should be displayed. There's no need to display their
+      // department."* D52 put the scope here on the argument that past thirty
+      // users the reason somebody is on the list is otherwise invisible; the
+      // department turned out to be the wrong answer to that, because the list
+      // is ALREADY filtered to people whose departments cover this account's —
+      // so it printed the same fact against every name. The role is the thing
+      // that differs, and it is what an administrator is choosing between.
+      //
+      // `roleLabel`, so «ادیتور» here is the same word the users table, the
+      // role select and the profile draw, and a role this build has no wording
+      // for is quoted rather than blanked.
+      label: `${c.displayName} — ${roleLabel(c.role)}`,
       note: c.username,
     })),
   ]
@@ -149,9 +155,6 @@ export function SupervisorPicker({
       {staysPut && value !== null && !candidates.some((c) => c.id === value) && (
         <p className="text-fs-xs font-semibold text-warn m-0">{SUPERVISOR_OFF_LIST}</p>
       )}
-      {/* §6.14's closing rule statement, in its own register: 11.5px, faint,
-          lh 1.8. It is the whole answer to "why is this list this short". */}
-      <p className="text-fs-xs text-faint leading-sub m-0">{SUPERVISOR_RULE}</p>
     </div>
   )
 }

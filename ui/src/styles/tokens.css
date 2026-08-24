@@ -78,8 +78,37 @@
      Two independent files drifting the same way is a moved design, not a typo.
      Counts are panel + reader occurrences of the literal. */
   --border-ok: #BFE5D0;           /* was #C4E7D3 — green ghost-button border, 5+6 */
-  --steps-group-bg: #FDF1F0;      /* was #FFF4F3 — junction-group card fill, 1+1 */
-  --steps-group-border: #F8DDDA;  /* was #F5CFCB — junction-group card border, 1+1 */
+  /* **Owner ruling — the two tinted boxes of the step view are re-cut onto the
+     palette's own tile tints.** *"I want the red (orange) boxes to be a bit more
+     saturated/darker, so their difference from the fully white box is
+     noticeable."*
+
+     Both were one step paler than anything else in the product: the junction
+     group at #FDF1F0 and the sub-process step at #FDF3E4, each drawn beside
+     `--card` white, each measured on screen as very nearly it. The palette
+     already holds the pair a step down — `--tile-c`, "coral tile", and
+     `--tile-warn`, "amber tint: sub-process tags", the second of which is the
+     exact value the same owner named for the sub-process CARD on the process
+     list. So the two surfaces now agree on what a sub-process looks like, and
+     no fifth and sixth tint is invented to say it.
+
+     Written as `var()` aliases and not as copies of the two hex values: one
+     name, one place, and the day the coral tile is re-cut these move with it.
+
+     The group's BORDER moves with its fill — at #F8DDDA it was *lighter* than
+     the new #FFE9E7 and would have read as a highlight round the box rather
+     than an edge. `--border-danger` is the coral family's own border and is the
+     one it was reaching for. `--steps-sub-border` #EBD3A8 is already darker
+     than #FBEEDC and stays where it is.
+
+     **Both hops are recorded, and the §9.8 one is not erased.** That pass moved
+     these two from the `_ds` values to the ones the deliverables actually paint;
+     the deliverables still paint those, and this product no longer does. A
+     reader who finds #FDF1F0 in a mockup and #FFE9E7 on the screen is looking at
+     a decision, in the order it was taken. */
+  --steps-group-bg: var(--tile-c);              /* was #FDF1F0 — §9.8, was #FFF4F3 */
+  --steps-group-border: var(--border-danger);   /* was #F8DDDA — §9.8, was #F5CFCB */
+  --steps-sub-bg: var(--tile-warn);             /* was #FDF3E4 */
   --tile-v5: #F3EEFC;             /* new — sub-process node fill, steps hint strip;
                                      hard-coded identically in S1, S2 and the design
                                      system's own ActivityNode. Nearest tokens are

@@ -30,6 +30,27 @@ export interface PasswordFieldProps {
 }
 
 /** TextField's frame plus §5.2's reveal affordance. */
+/**
+ * **Every password box in this app is left-to-right** — owner ruling: *"In the
+ * login page, the password input should also be left-to-right (LTR), just like
+ * the mobile number field."*
+ *
+ * No prop, and that is the decision rather than an omission. A password is never
+ * Persian prose — it is a latin/digit token, and in an RTL box the caret starts
+ * at the right and the bullets grow leftwards, which is wrong on the login form
+ * and equally wrong on the three other boxes this component draws (the profile's
+ * current/new/repeat trio, the administrator's password reset). One question,
+ * one answer, no call site to get it wrong.
+ *
+ * §8's rule for a latin island is `dir="ltr"` and a monospaced face; only the
+ * first half applies here, because bullets have no face and a revealed password
+ * is not an identifier being read back to anybody.
+ *
+ * `src/ui/PasswordField.tsx` is declared in `guards.test.ts`'s ISLANDS for this.
+ * Spreading a `{ dir: 'ltr' }` object so the string `dir=` never appears would
+ * defeat that scan without changing a pixel of the markup, so the attribute is
+ * written literally below — where a reviewer and the guard both see it.
+ */
 export function PasswordField({
   label, value, onChange, hint, invalid = false, ground = 'card',
   placeholder = '••••••••',
@@ -52,16 +73,24 @@ export function PasswordField({
           aria-invalid={invalid || undefined}
           aria-describedby={hint === undefined ? undefined : hintId}
           onChange={(e) => onChange(e.target.value)}
+          dir="ltr"
           className={`${FIELD_FRAME} ${FIELD_TYPE} ${edge} ${FIELD_PAD_REVEAL} ${fieldGround(ground)}`}
         />
-        {/* §8 — the button sits at the INLINE START, the edge FIELD_PAD_REVEAL
-            reserves 46px on. The design writes the pin as a physical `left:8px`
-            and the reserve as `padding-inline-start`, and in an RTL app those
-            are opposite edges: taking the physical one literally put the eye
-            over the value while the reserved room sat empty on the other side.
-            The 46px is 8 + 32 + 6, which can only be the button's own edge, so
-            the logical spelling of the RESERVE is the one that is right and the
-            button follows it — as SearchField's magnifier already does.
+        {/* §8 — the button sits at the WRAPPER's inline start, which in this
+            RTL app is the right-hand edge, and `FIELD_PAD_REVEAL` reserves its
+            46px on the same edge of the input. The design writes the pin as a
+            physical `left:8px` and the reserve as `padding-inline-start`, and in
+            an RTL app those are opposite edges: taking the physical one
+            literally put the eye over the value while the reserved room sat
+            empty on the other side. The 46px is 8 + 32 + 6, which can only be
+            the button's own edge.
+
+            **The two are on the same edge and named differently, and that is
+            not an oversight.** The input is `dir="ltr"` (see this component's
+            docstring) and the wrapper is not, so `start` means opposite things
+            to the two of them — `start-s4` here and `pe-reveal` there are one
+            edge. `fieldFrame.ts` records the pair; changing either alone puts
+            the eye back over the value.
 
             The pin is on this wrapper and not on the button because the button
             needs `relative` for its hit area (below), and `relative` and

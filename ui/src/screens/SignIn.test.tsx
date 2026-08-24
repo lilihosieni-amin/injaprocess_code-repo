@@ -59,6 +59,63 @@ describe('SignIn', () => {
     expect(field).toHaveAttribute('autoComplete', 'current-password')
   })
 
+  it('runs the password left-to-right too — owner ruling', async () => {
+    // *"In the login page, the password input should also be left-to-right
+    // (LTR), just like the mobile number field."* `PasswordField` pins it on
+    // its own input with no prop, because a password is a latin token in every
+    // one of the four boxes this product draws — never Persian prose — and in a
+    // right-to-left box the caret starts on the wrong side and the bullets grow
+    // the wrong way.
+    const Wrapper = createWrapper()
+    render(<Wrapper><SignIn /></Wrapper>)
+    expect(screen.getByLabelText('گذرواژه')).toHaveAttribute('dir', 'ltr')
+    // …and it is NOT set in the mono face. §8's rule for a latin island is the
+    // direction and the face together; only the first half is about a value
+    // nobody reads back, which is what a row of bullets is.
+    expect(screen.getByLabelText('گذرواژه')).not.toHaveClass('font-mono')
+  })
+
+  it('moves to the password the moment the number is complete', async () => {
+    // *"when the user fully enters their mobile number, it should automatically
+    // move focus to the password input."*
+    const Wrapper = createWrapper()
+    render(<Wrapper><SignIn /></Wrapper>)
+    const number = screen.getByLabelText('شمارهٔ موبایل')
+    await userEvent.click(number)
+    await userEvent.type(number, '0912345678')
+    expect(number).toHaveFocus()          // ten digits: not a number yet
+    await userEvent.type(number, '9')
+    expect(screen.getByLabelText('گذرواژه')).toHaveFocus()
+  })
+
+  it('advances on any spelling sign-in itself accepts, not just on 09…', async () => {
+    // `normalisePhone` takes nine spellings and the form accepts all of them, so
+    // a hand-off keyed on the raw string would advance for one person and not
+    // for the next.
+    const Wrapper = createWrapper()
+    render(<Wrapper><SignIn /></Wrapper>)
+    const number = screen.getByLabelText('شمارهٔ موبایل')
+    await userEvent.click(number)
+    await userEvent.type(number, '+989123456789')
+    expect(screen.getByLabelText('گذرواژه')).toHaveFocus()
+  })
+
+  it('does not snatch the caret back while a complete number is being corrected', async () => {
+    // The transition, not the state. Editing a digit in the middle of a
+    // complete number leaves it complete, so a check on "is it valid now"
+    // would fire on every keystroke of the correction and throw the caret out
+    // of the field being corrected.
+    const Wrapper = createWrapper()
+    render(<Wrapper><SignIn /></Wrapper>)
+    const number = screen.getByLabelText('شمارهٔ موبایل')
+    await userEvent.click(number)
+    await userEvent.type(number, '09123456789')
+    await userEvent.click(number)
+    await userEvent.type(number, '0')          // twelve digits — no longer valid
+    await userEvent.keyboard('{Backspace}')    // …and valid again
+    expect(number).toHaveFocus()
+  })
+
   it('refuses a malformed number locally, and says so', async () => {
     // The one thing the server cannot tell you. Under D56 its refusal is
     // deliberately identical for an unknown number and a wrong password, so

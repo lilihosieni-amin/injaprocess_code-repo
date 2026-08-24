@@ -16,8 +16,9 @@ import { isTopDismissible, popDismissible, pushDismissible } from '../ui/dismiss
 import { CreateProcessModal } from '../write/CreateProcessModal'
 import { DeleteProcessConfirm } from '../write/DeleteProcessConfirm'
 import { ReorderModal } from '../write/ReorderModal'
-import { ExportMenu } from '../write/ExportMenu'
+import { ExportMenu, useExportActions } from '../write/ExportMenu'
 import { refusalStatus } from '../api/client'
+import { ScreenSkeleton } from '../ui/states'
 import { RefusalScreen } from './Refusal'
 
 /**
@@ -48,18 +49,31 @@ const KEBAB = 'M12 5h.01M12 12h.01M12 19h.01'
 const CHIP = 'inline-flex items-center gap-s1 text-fs-tag font-semibold px-s4 py-half rounded-pill'
 
 /**
- * The four tags `deriveTag` derives, by the role each one carries (R8). A
+ * The three tags `deriveTag` derives, by the role each one carries (R8). A
  * plain process draws none at all — owner ruling R28, ledger L-12.
  *
- * Token names, never literals: the four hex pairs this map used to hold were
+ * Token names, never literals: the hex pairs this map used to hold were
  * `--tile-warn`/`--warn`, `--tile-c`/`--conflict`, `--tile-v`/`--violet` and
- * `--tile-dead`/`--text-muted` written out, which is a second place for four
- * values the theme already keeps.
+ * `--tile-dead`/`--text-muted` written out, which is a second place for values
+ * the theme already keeps.
+ *
+ * **`sub` moved from amber to violet, and `kpi` is gone** — one owner ruling,
+ * two consequences. The card of a sub-process is now `--tile-warn` itself, so
+ * an amber chip on it would be a chip the colour of the thing it sits on; and
+ * the same message asks for the confirmation chip to stop sharing the
+ * sub-process's colour, which amber was the reason for. Violet is not a
+ * substitution of convenience — `Inja Panel.dc.html:389` draws «زیرفرآیند» in
+ * exactly `--violet` on `--tile-v` on the summary screen, so this is the row
+ * adopting the chip the design already gives that word elsewhere. The pair is
+ * free because `kpi`, which held it, is the tag the same ruling deleted.
+ *
+ * Every one of the five chips this row can draw is now a different pair:
+ * violet (sub) · coral (conflict) · grey (tombstone) · green (confirmed) ·
+ * solid amber (unconfirmed, below).
  */
 const TAG_TONE: Record<string, string> = {
-  sub: 'bg-tile-warn text-warn',            // --role-awaiting
+  sub: 'bg-tile-v text-violet',             // --role-primary
   conflict: 'bg-tile-c text-conflict',      // --role-danger
-  kpi: 'bg-tile-v text-violet',             // --role-primary
   tombstone: 'bg-tile-dead text-muted',     // --role-dead
 }
 
@@ -89,7 +103,7 @@ interface Act { key: string; label: string; run: () => void }
  * though: this shares `dismissibleStack`, so a `⋯` opened inside a dialog still
  * answers Escape before the dialog does (I7).
  */
-function OverflowMenu({ actions, label, className, children, glyph, hook }: {
+function OverflowMenu({ actions, label, className, children, glyph, hook, onOpenChange }: {
   actions: Act[]
   /** The trigger's accessible name — and its `title`. */
   label: string
@@ -104,11 +118,33 @@ function OverflowMenu({ actions, label, className, children, glyph, hook }: {
    *  passes `data-*` through on an intrinsic element and not through a component
    *  prop, and a `Record<string,string>` here would let any attribute in. */
   hook?: 'plistmore' | 'prowmenu'
+  /** Told when the popover opens and closes, for a caller whose own box has to
+   *  move out of the way — see `menuRow` in `ProcessList`. The state stays here
+   *  because dismissal is this component's job (Escape, outside press, the
+   *  shared stack); this only reports it. */
+  onOpenChange?: (open: boolean) => void
   children: ReactNode
 }) {
   const [open, setOpen] = useState(false)
   const box = useRef<HTMLDivElement>(null)
   const identity = useRef(Symbol('plist-more')).current
+
+  /**
+   * Reported from an effect and not from the press, so the two ways this closes
+   * that are NOT a press — Escape and an outside click — are reported too.
+   *
+   * **On the TRANSITION only.** `onOpenChange` is an inline arrow at the call
+   * site, so a bare effect keyed on it re-runs every render — and with one of
+   * these per row, every closed menu would then report `false` immediately
+   * after the open one reported `true`, wiping it. The ref is what makes the
+   * effect fire on a change of `open` and on nothing else.
+   */
+  const reported = useRef(open)
+  useEffect(() => {
+    if (reported.current === open) return
+    reported.current = open
+    onOpenChange?.(open)
+  }, [open, onOpenChange])
 
   useEffect(() => {
     if (!open) return
@@ -209,7 +245,25 @@ export function ProcessList() {
   const [creating, setCreating] = useState(false)
   const [reordering, setReordering] = useState(false)
   const [delTarget, setDelTarget] = useState<{ pid: string; name: string } | null>(null)
-  const { data: procs = [], error } = useProcesses(code)
+  /**
+   * Which row has its ⋮ open — and it is here rather than inside `OverflowMenu`
+   * because of what the CARD does on hover.
+   *
+   * §6.2 lifts a row 2px under the pointer (`hoverLift` → `translateY(-2px)`),
+   * and a `transform` other than `none` makes an element a **stacking
+   * context**. Opening the ⋮ requires the pointer to be on that card, so at the
+   * moment the popover appears its own card is a stacking context and the
+   * popover's `z-dropdown` is confined inside it — the rows after it, painted
+   * later in document order, then cover it. Measured: the menu was clipped by
+   * the next card halfway down.
+   *
+   * No z-index on the popover can escape a stacking context, so the CARD is
+   * what has to rise. `relative` because `z-index` does nothing to a static
+   * box, and the pair is written only while the menu is open, so nothing about
+   * the resting list's paint order changes.
+   */
+  const [menuRow, setMenuRow] = useState<string | null>(null)
+  const { data: procs = [], error, isPending } = useProcesses(code)
   const { data: depts = [] } = useDepartments()
   const dept = depts.find((d) => d.code === code)
   // Cosmetic only: PUT/POST/DELETE on this department re-derive `edit` from the
@@ -223,6 +277,17 @@ export function ProcessList() {
   // here, so asking anyway would put a refusal in the console on every load.
   const mayConfirm = can('confirm', `dept:${code}`)
   const { data: marks = [] } = useConfirmations(code, { enabled: mayConfirm })
+  /**
+   * The exports, for the ⋯ that replaces the bar at ≤760 — owner ruling: *"in
+   * process list page, in mobile version we don't have download buttomn in :
+   * menu.add it."*
+   *
+   * `ExportMenu` draws the bar's own trigger and holds a second copy of this
+   * hook; the two are deliberate rather than duplicated, because exactly one of
+   * them is on screen at any width and a dialog raised from inside
+   * `[data-r-plistactions]` — `display:none` below the breakpoint — would not
+   * paint at all. See `useExportActions`. */
+  const exports = useExportActions(code)
   // `mark`, not `m`: `m` used to be this department's tile metadata, which
   // `IconTile` now reads for itself.
   const markOf = new Map(marks.map((mark) => [mark.target, mark]))
@@ -235,22 +300,38 @@ export function ProcessList() {
   const orderPos = new Map<string, number>()
   procs.filter((p) => !p.tombstoned).forEach((p, i) => orderPos.set(p.id, i + 1))
 
-  // Preserve the list's scroll position across visiting a process and coming back.
-  const scrollRef = useRef<HTMLDivElement>(null)
-  const restored = useRef(false)
-  const scrollKey = `plist-scroll-${code}`
-  useEffect(() => {
-    const el = scrollRef.current
-    if (el && procs.length && !restored.current) {
-      el.scrollTop = Number(sessionStorage.getItem(scrollKey) ?? 0)
-      restored.current = true
-    }
-  }, [procs, scrollKey])
+  /*
+   * **This screen's own scroll memory is gone** — the shells restore every
+   * screen now (`shell/scroll.ts`), by owner ruling: *"the back button should
+   * always and everywhere return to the same scroll position it was at."*
+   *
+   * What stood here was keyed by DEPARTMENT and stored in `sessionStorage`, so
+   * it restored the same offset however you arrived — including on a fresh visit
+   * from the department list, which then opened halfway down a list you had not
+   * read — and it had no way to tell «back» from any other navigation. The
+   * shared one is keyed by the history entry and only restores on POP.
+   */
 
   // A department outside this person's scope answers 404 for its process list.
   // Placed after every hook above, so the early return never changes hook order.
   const refused = refusalStatus(error)
   if (refused) return <RefusalScreen status={refused} />
+
+  /**
+   * **Owner ruling — the wait says so, instead of lying about the answer.**
+   * *"i want to add load status for page that makes time like process list."*
+   *
+   * This screen was the sharpest case of the six and the only one that did not
+   * go blank: it drew its header and, under it, «فرآیندی برای این دپارتمان ثبت
+   * نشده است» — the empty state — for as long as the request took. A department
+   * with sixteen processes announced, every single time it was opened, that it
+   * had none. `isPending` is the difference between "the answer is nothing" and
+   * "there is no answer yet", and the empty card below is only ever the first.
+   *
+   * Placed after every hook and after the refusal, so the early return changes
+   * no hook order and a 404 still gets the surface it earned.
+   */
+  if (isPending) return <ScreenSkeleton column={reader ? 'reader' : 'list'} cards={5} />
 
   // R5 — the overflow is the action bar, not a superset of it, so both are
   // built from one list. An act a caller may not perform is in neither.
@@ -258,14 +339,16 @@ export function ProcessList() {
     ...(mayEdit ? [{ key: 'order', label: 'ترتیب فرآیندها', run: () => setReordering(true) }] : []),
     { key: 'overview', label: 'اطلاعات دپارتمان', run: () => nav(`/departments/${code}/overview`) },
     ...(mayEdit ? [{ key: 'new', label: 'فرآیند جدید', run: () => setCreating(true) }] : []),
+    // The bar's fourth control. `useExportActions` has already dropped every
+    // kind this caller may not take, so `reader_no_download` sees no export row
+    // here for the same reason they see no trigger on the bar.
+    ...exports.kinds.map((k) => ({ key: `export-${k.kind}`, label: k.label, run: () => exports.run(k.kind) })),
   ]
 
   return (
     <div
       data-screen={reader ? 'processListReader' : 'processList'}
       data-r-pad
-      ref={scrollRef}
-      onScroll={(e) => sessionStorage.setItem(scrollKey, String(e.currentTarget.scrollTop))}
       // §6.16 gives every `[data-r-pad]` the same `18px 14px` at ≤760, so the
       // mobile pair is written once for both surfaces and only the desktop set
       // branches. The variant beats the utilities beside it because Tailwind
@@ -385,7 +468,16 @@ export function ProcessList() {
                 hoverLift
                 radius="card"
                 padding="card"
-                className={`flex items-center gap-s8 max760:flex-col max760:items-start max760:gap-s6 max760:p-s7 ${tombstoned ? 'opacity-60' : ''}`}
+                // Owner ruling — a sub-process is cream, not white, *"in
+                // addition to the sub-process tag"*. `deriveTag`'s own answer
+                // decides it, so the tint and the chip can never disagree about
+                // which rows are sub-processes.
+                ground={tag?.kind === 'sub' ? 'warn' : 'card'}
+                className={
+                  'flex items-center gap-s8 max760:flex-col max760:items-start max760:gap-s6 max760:p-s7 '
+                  + (tombstoned ? 'opacity-60 ' : '')
+                  + (menuRow === p.id ? 'relative z-dropdown' : '')
+                }
               >
                 <div data-r-pmain className="flex-1 min-w-0 max760:w-full">
                   <div data-testid={`title-${p.id}`} className="flex items-center gap-s5 min-w-0">
@@ -395,7 +487,28 @@ export function ProcessList() {
                         {toFa(orderPos.get(p.id)!)}
                       </span>
                     )}
-                    <span className="font-bold text-fs-h4 text-ink truncate">{p.name}</span>
+                    {/* **The whole name, at both widths — owner ruling.** *"i
+                        want to show process name completely … i think two lines
+                        is better for mobile amd in desktop small text is better."*
+                        It was `text-fs-h4` (17px) behind `truncate`, so a real
+                        process name — «تسویه حساب میهمان و صدور صورتحساب نهایی و
+                        دریافت وجه…» — was a fragment ending in an ellipsis, on
+                        the one screen whose job is to let somebody find it.
+
+                        Both halves of the ruling, and they are one declaration
+                        each. The desktop drops to `--fs-lg` 15px, which is two
+                        steps of the panel scale and the size that fits the
+                        longest name in the seed on one line at the 920px column.
+                        The phone lets it wrap: `truncate` is gone, so the line
+                        box grows instead of clipping, and `[text-wrap:pretty]`
+                        is what stops a two-line name breaking after one word.
+
+                        `min-w-0` moves off the ROW and onto this span, because
+                        the thing that has to be allowed to shrink is now the
+                        text and not the row that used to clip it. */}
+                    <span className="min-w-0 font-bold text-fs-lg text-ink leading-snug [text-wrap:pretty]">
+                      {p.name}
+                    </span>
                   </div>
                   {/* **The meta line, and what the owner took out of it.**
                       *"in process list page, it shouldn't have 11 فعالیت
@@ -428,8 +541,18 @@ export function ProcessList() {
                     {tag && (!reader || tag.kind === 'sub') && (
                       <span className={`${CHIP} ${TAG_TONE[tag.kind]}`}>{tag.label}</span>
                     )}
+                    {/* **Solid amber for «تأیید نشده» — owner ruling.** *"I want
+                        the 'not approved' tag's color to be different from the
+                        sub-process tag's color."* It was `--tile-warn` on
+                        `--warn`, the very pair the sub tag wore, so the two most
+                        common chips on this screen were the same chip.
+                        Inverted rather than re-tinted: a tint of `--tile-warn`
+                        is invisible on a sub-process's card, which is now that
+                        colour, and an unconfirmed process is hidden from every
+                        non-editor — a strong state, and the one chip here that
+                        earns a filled skin. «تأیید شده» keeps the green tint. */}
                     {mark && (
-                      <span className={`${CHIP} ${mark.confirmed ? 'bg-tile-ok text-green' : 'bg-tile-warn text-warn'}`}>
+                      <span className={`${CHIP} ${mark.confirmed ? 'bg-tile-ok text-green' : 'bg-warn text-card'}`}>
                         {mark.confirmed ? 'تأیید شده' : 'تأیید نشده'}
                       </span>
                     )}
@@ -499,6 +622,7 @@ export function ProcessList() {
                     <OverflowMenu
                       actions={rowActions}
                       hook="prowmenu"
+                      onOpenChange={(open) => setMenuRow(open ? p.id : null)}
                       label={`کارهای «${p.name}»`}
                       className="relative flex-none"
                       glyph={
@@ -520,6 +644,10 @@ export function ProcessList() {
       {creating && <CreateProcessModal department={code} departmentName={dept?.name ?? ''} onClose={() => setCreating(false)} />}
       {reordering && <ReorderModal department={code} departmentName={dept?.name ?? ''} processes={procs} onClose={() => setReordering(false)} />}
       {delTarget && <DeleteProcessConfirm pid={delTarget.pid} name={delTarget.name} onClose={() => setDelTarget(null)} />}
+      {/* At the SCREEN root, not inside the ⋯: the menu unmounts on the press
+          that starts the export, and `[data-r-plistactions]` — where the bar's
+          own copy lives — is `display:none` at the width this one is used at. */}
+      {exports.modal}
     </div>
   )
 }

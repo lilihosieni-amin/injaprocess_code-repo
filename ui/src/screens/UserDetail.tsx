@@ -15,7 +15,7 @@ import { Button } from '../ui/Button'
 import { Icon } from '../ui/Icon'
 import { PasswordField } from '../ui/PasswordField'
 import { SectionCard } from '../ui/SectionCard'
-import { LoadFailedScreen } from '../ui/states'
+import { LoadFailedScreen, ScreenSkeleton } from '../ui/states'
 import { EditUserDialog } from './EditUserDialog'
 import { RefusalScreen } from './Refusal'
 
@@ -97,7 +97,9 @@ export function UserDetail() {
     return <LoadFailedScreen message="اطلاعات این کاربر بارگذاری نشد." error={error}
       onRetry={() => { void refetch() }} />
   }
-  if (!user) return <div className="flex-1 bg-ink" />
+  // Owner ruling — see `ScreenSkeleton`. Four panels: the record, the
+  // supervisor, the password and the disable boundary.
+  if (!user) return <ScreenSkeleton column="access" cards={4} />
 
   const manageable = mayManage(session, user)
   const disableLabel = user.disabled ? 'فعال‌سازی کاربر' : 'غیرفعال‌سازی کاربر'
@@ -210,13 +212,17 @@ export function UserDetail() {
               این سرپرست غیرفعال است — کامنت‌های این کاربر یک پله بالاتر می‌روند.
             </p>
           )}
-          <p className="text-fs-xs text-faint leading-normal mt-s1">
-            سرپرست جایگاهی در نمودار سازمانی است، تأیید نظرها را مسیر می‌دهد و هیچ
-            دسترسی‌ای نمی‌دهد.
-            {user.canSupervise
-              ? ' این کاربر خودش می‌تواند سرپرست دیگران باشد.'
-              : ' این کاربر سرپرست کسی نمی‌شود.'}
-          </p>
+          {/* **Owner ruling — the explanatory paragraphs go, on all three
+              panels.** *"the helper/description texts are excessive and
+              unnecessary … Remove all of them."*
+
+              Each was §6.8's own rule statement, and each explained a thing the
+              screen already shows: this one told an administrator what a
+              supervisor IS, on a panel whose heading is «سرپرست» and whose one
+              line of content is the supervisor's name. What is NOT removed is
+              the disabled-supervisor line above — that is a fact about this
+              account (D14 leaves a disabled supervisor in place) and appears on
+              no other screen. */}
         </Panel>
 
         {manageable && (
@@ -234,11 +240,6 @@ export function UserDetail() {
               <h2 className="text-fs-menu font-bold text-ink">
                 بازنشانی گذرواژهٔ {user.displayName}
               </h2>
-              <p className="text-fs-caption text-muted leading-sub max-w-prose mt-s2">
-                گذرواژهٔ تازه را خودتان انتخاب می‌کنید و به این شخص می‌گویید؛ پیوند
-                بازیابی‌ای در کار نیست. با ثبت آن، همهٔ نشست‌های باز این کاربر بسته
-                می‌شود.
-              </p>
               <div className="flex items-end gap-s5 flex-wrap mt-s8
                               max760:flex-col max760:items-stretch">
                 {/* F16/F35 — the bare `<input>` and its wrapping `<label>` that
@@ -294,10 +295,6 @@ export function UserDetail() {
                 </Button>
               }>
               <h2 className="text-fs-menu font-bold text-conflict">{disableLabel}</h2>
-              <p className="text-fs-caption text-muted leading-sub max-w-prose mt-s2">
-                غیرفعال کردن یک حساب همهٔ نشست‌های آن را می‌بندد. شمارهٔ کاربر نزد خودش
-                می‌ماند و به کس دیگری داده نمی‌شود.
-              </p>
               {setDisabled.error && (
                 <p role="alert" className="text-fs-xs font-semibold text-conflict mt-s5">
                   {refusalText(setDisabled.error)}

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Link, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import type { SessionDescriptor } from '../auth/session'
 import { useDepartments, useLogout } from '../api/hooks'
@@ -9,6 +9,7 @@ import { toFa } from '../lib/format'
 import { roleLabel } from '../lib/roles'
 import { readerBack, readerHere } from './crumbs'
 import { canGoBack, isProcessView } from './back'
+import { useScrollMemory } from './scroll'
 import { SignOutConfirm } from './SignOutConfirm'
 
 // Every control on both reader bars is the violet tile behind a 1.5px --line
@@ -64,6 +65,10 @@ export function ReaderShell({ session }: { session: SessionDescriptor }) {
   const [signingOut, setSigningOut] = useState(false)
   const { pathname } = useLocation()
   const nav = useNavigate()
+  // Owner ruling — see `useScrollMemory`. The reader needs it most: their way
+  // into a process is a long list they have scrolled through.
+  const mainRef = useRef<HTMLElement>(null)
+  useScrollMemory(mainRef)
   const { data: departments, isPending } = useDepartments()
 
   // R4 — decided by scope and never by content. `GET /api/departments` already
@@ -267,7 +272,7 @@ export function ReaderShell({ session }: { session: SessionDescriptor }) {
             ancestor with min-h-0: FlowScreen's own root is `flex-1 flex flex-col
             min-h-0`, and its canvas resolves `h-full` against this chain. Adding
             padding here re-breaks the flow canvas — screens own their padding. */}
-        <main className="flex-1 min-h-0 flex flex-col">
+        <main ref={mainRef} className="flex-1 min-h-0 flex flex-col">
           <Outlet />
         </main>
         {signingOut && (

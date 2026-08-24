@@ -946,10 +946,28 @@ def test_the_candidates_are_the_eligible_ones_with_their_scopes(world):
     assert unflagged not in got
     assert gone not in got
 
-    # The scope beside the name — D52's own requirement for the picker.
+    # **The ROLE beside the name** — owner ruling: *"the person's name and role
+    # should be displayed. There's no need to display their department."* D52
+    # put the SCOPE on the option, on the argument that past thirty users the
+    # reason somebody is on the list is otherwise invisible; the department was
+    # the wrong answer to that, because `eligible_supervisors` has already
+    # filtered the list to people whose scopes cover the wanted ones, so it
+    # printed the same fact against every name.
     entry = next(row for row in r.json() if row["id"] == head)
     assert entry["displayName"] == "سرپرست سالن"
+    assert entry["role"] == "reader"
+    assert next(row for row in r.json() if row["id"] == boss)["role"] == "admin"
+
+    # …and `scopes` still travels. It is not decoration for the label: the edit
+    # form re-asks eligibility from it and the picker reads it to tell a stored
+    # supervisor who has left the list from one who is on it. What the ruling
+    # changed is what the picker DRAWS.
     assert entry["scopes"] == ["dept:dining"]
+
+    # The projection is an allow-list, so a field added to `users` does not
+    # reach a picker by accident. Pinned by name rather than by absence.
+    assert set(entry) == {"id", "username", "displayName", "role", "scopes",
+                          "canSupervise"}
 
     # Two scopes are an intersection over candidates: a user holding both is one
     # user (D10), so the person who supervises them must reach both — which in

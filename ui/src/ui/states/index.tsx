@@ -2,6 +2,91 @@ import { retryQuery } from '../../api/client'
 import { Button } from '../Button'
 import { Card } from '../Card'
 
+/**
+ * The columns the skeleton can stand in, by the screen that draws them.
+ *
+ * Named rather than taken as a class string: a screen's column is one of six
+ * settled widths, and a caller free to pass any `max-w-*` could quietly give a
+ * loading screen a different shape from the screen it is standing in for.
+ */
+const COLUMN = {
+  list: 'max-w-list',
+  summary: 'max-w-summary',
+  steps: 'max-w-steps',
+  access: 'max-w-access',
+  departments: 'max-w-departments',
+  reader: 'max-w-reader',
+} as const
+
+/** One pulsing block. Height and radius come off the token scale; the WIDTH is
+ *  a fraction of its row, which no token can hold and none should — a
+ *  skeleton's width is a proportion of the line it stands in. */
+function Block({ h, w = 'w-full', r = 'rounded-card' }: { h: string; w?: string; r?: string }) {
+  return <span className={`block ${h} ${w} ${r} bg-tile-v2 animate-pulse`} />
+}
+
+/**
+ * **What a screen shows while it is still arriving** — owner ruling: *"i want to
+ * add load status for page that makes time like process list.or departmant
+ * details page.actually i want Skeleton Loading for each page."*
+ *
+ * Six screens returned `<div className="flex-1 bg-ink" />` while their query was
+ * in flight: a violet rectangle, indistinguishable from a screen that had
+ * finished and had nothing on it. On a phone against a real deployment that is
+ * most of a second of a page that looks broken. `ProcessList` was worse than
+ * blank — it drew its header and «فرآیندی برای این دپارتمان ثبت نشده است», so a
+ * department with sixteen processes announced that it had none, every time.
+ *
+ * **It is the screen's own shell**, not a spinner in the middle of one: the same
+ * field, the same gutters, the same column, so nothing moves sideways when the
+ * content replaces it. What is drawn is a title, a lead line and `cards` blocks,
+ * which is the shape every one of these screens has; the block heights are one
+ * rung of the space scale rather than a measurement of each screen's real rows,
+ * because a skeleton is an impression of a layout and not a copy of it.
+ *
+ * `role="status"` + `aria-busy` and a Persian name, so the wait is announced to
+ * somebody who cannot see the pulse — which is the half of "loading state" a
+ * shimmer alone never gives.
+ */
+export function ScreenSkeleton({ column, cards = 3, lead = true }: {
+  column: keyof typeof COLUMN
+  cards?: number
+  lead?: boolean
+}) {
+  return (
+    <div
+      data-r-pad
+      data-testid="screen-skeleton"
+      className="flex-1 overflow-auto bg-ink py-screen-y px-screen-x max760:px-s7 max760:py-s9"
+    >
+      <div className={`${COLUMN[column]} mx-auto`}>
+        {/* **`opacity-40`, and it is what makes this read as a placeholder.**
+            Drawn at full strength the blocks are `--tile-v2` on the violet
+            field — which is very nearly the white card each one stands in for,
+            so five of them look like a screen that has finished loading and has
+            five blank rows on it. At 40% they are the ghost of that card.
+
+            Nested with `animate-pulse` rather than replacing it: opacities
+            multiply, so the pulse still runs between 40% and 20% and the
+            SHIMMER is what says "still coming" while the weight says "not yet
+            content". A dimmer token instead of an opacity was the alternative
+            and every candidate was a borrowed role — `--login-orb` is the login
+            field's, `--violet-mid` the scrollbar thumb's — for a value that is
+            not a colour decision at all. */}
+        <div role="status" aria-busy="true" aria-label="در حال بارگذاری" className="opacity-40">
+          <div className="flex flex-col gap-s5 mb-s10">
+            <Block h="h-s11" w="w-1/3" r="rounded-button" />
+            {lead && <Block h="h-s8" w="w-2/3" r="rounded-badge" />}
+          </div>
+          <div className="flex flex-col gap-s6">
+            {Array.from({ length: cards }, (_, i) => <Block key={i} h="h-s16" />)}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function LoadingState({ rows = 3 }: { rows?: number }) {
   // F12 — skeletons shaped like the content, so nothing shifts when data lands.
   return (

@@ -145,15 +145,24 @@ export const useRoles = () =>
 /**
  * One entry of the supervisor picker (`routers/users._candidate`).
  *
- * Shorter than `AdminUser` and deliberately so: a picker needs the name, the
- * scope beside it (D52) and nothing else. `canSupervise` travels because it is
- * *why* somebody is on the list — a `*` holder without the flag is eligible
- * too — and not because it grants anything, which it does not (D51).
+ * Shorter than `AdminUser` and deliberately so: a picker needs the name, what
+ * that person is, and nothing else. `canSupervise` travels because it is *why*
+ * somebody is on the list — a `*` holder without the flag is eligible too — and
+ * not because it grants anything, which it does not (D51).
+ *
+ * `role` is what the option is LABELLED with, by owner ruling. `scopes` is not
+ * drawn any more and still travels: the picker reads it to tell a stored
+ * supervisor who has left the list from one who is on it, which is a different
+ * question from what the option says.
+ *
+ * `null` for an account whose role row is missing — unreachable under the
+ * schema, and `roleLabel` renders it as «—» rather than as a blank.
  */
 export interface SupervisorCandidate {
   id: number
   username: string
   displayName: string
+  role: string | null
   scopes: Scope[]
   canSupervise: boolean
 }

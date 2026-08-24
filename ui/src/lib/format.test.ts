@@ -43,9 +43,11 @@ describe('deriveTag', () => {
     expect(deriveTag({ ...base, pending: [{}, {}] } as never))
       .toEqual({ label: '۲ تعارض', kind: 'conflict' })
   })
-  it('flags has-KPI', () => {
-    expect(deriveTag({ ...base, kpis: [{ name: 'k' }] } as never))
-      .toEqual({ label: 'دارای KPI', kind: 'kpi' })
+  it('no longer flags has-KPI — owner ruling, *"delete kpi tag too"*', () => {
+    // The one kind that marked no exception: having a KPI is what a documented
+    // process is supposed to have, so the tag fired on the ordinary case and
+    // stayed dark on the one worth noticing. R28's own argument, one tag along.
+    expect(deriveTag({ ...base, kpis: [{ name: 'k' }] } as never)).toBeNull()
   })
   it('gives a plain process no tag at all — owner ruling R28, ledger L-12', () => {
     // A tag marks an exception. «مستند» on a screen where every row is a
@@ -54,7 +56,7 @@ describe('deriveTag', () => {
     // ruling made structural: there is no `plain` kind left to render.
     expect(deriveTag(base as never)).toBeNull()
   })
-  it('labels a tombstoned process باطل‌شده, outranking sub/conflict/kpi', () => {
+  it('labels a tombstoned process باطل‌شده, outranking sub and conflict', () => {
     const p = { ...base, tombstoned: true, parent: { process: 'a', node: 'n' }, kpis: [{ name: 'k' }] }
     expect(deriveTag(p as never)).toEqual({ label: 'باطل‌شده', kind: 'tombstone' })
   })

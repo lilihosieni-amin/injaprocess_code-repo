@@ -49,14 +49,17 @@ function stubDepartments() {
  * a reversed comparator is the commonest way to get an order wrong.
  */
 const SAHAR: SupervisorCandidate = {
+  role: 'reader',
   id: 32, username: '09122222222', displayName: 'سحر بیات',
   scopes: ['dept:dining'], canSupervise: true,
 }
 const KEYVAN: SupervisorCandidate = {
+  role: 'admin',
   id: 33, username: '09123333333', displayName: 'کیوان مرادی',
   scopes: ['*'], canSupervise: false,
 }
 const ARASH: SupervisorCandidate = {
+  role: 'editor',
   id: 31, username: '09121111111', displayName: 'آرش تهرانی',
   scopes: ['dept:warehouse'], canSupervise: true,
 }
@@ -64,36 +67,22 @@ const ARASH: SupervisorCandidate = {
 /** A head of two departments. Only a `*` holder covers both, which is why he is
  *  drawn with both of his scopes rather than with the first one. */
 const KAVEH: SupervisorCandidate = {
+  role: 'admin',
   id: 34, username: '09124444444', displayName: 'کاوه سالاری',
   scopes: ['dept:cashier', 'dept:dining'], canSupervise: true,
 }
 
-/** Somebody scoped to **one report of one department** — the third shape of the
- *  grammar. `eligible_supervisors` really can return one: containment is what
- *  the rule asks, so a report-scoped account may supervise somebody holding the
- *  same report. */
-const RAHA: SupervisorCandidate = {
-  id: 35, username: '09126666666', displayName: 'رها فرجی',
-  scopes: ['dept:dining/report:steps'], canSupervise: true,
-}
-
-/**
- * Somebody holding a scope **the grammar refuses**, which is a stored row and
- * not a hypothesis: `user_scopes.scope` is `TEXT NOT NULL` with no CHECK, so
- * `''`, `dept:Dining` and this — a bare `admin`, the shape a role name written
- * into the scope column would take — are all reachable today.
+/*
+ * **`RAHA` and `MINA` are gone from this file.**
  *
- * Distinct from `RAHA` above on the one axis that matters here. Hers is a
- * *well-formed* scope carrying a kind this build has no wording for, so it
- * exercises `reportLabel`; this one `parseScope` refuses outright, which is a
- * different branch of `scopeLabel` and the one whose mutant is dangerous:
- * rendered as `EVERY_DEPARTMENT`, an account covered by **nothing** is offered
- * to an administrator as one that reaches **everything**.
+ * They were a report-scoped account and one holding a scope the grammar
+ * refuses, and they existed to drive two branches of `scopeLabel` through the
+ * option labels this picker used to draw. The owner's ruling replaced those
+ * labels with the ROLE, so neither fixture can reach the branch it was written
+ * for from here any more. The assertions moved with the function they were
+ * about — `src/lib/scopes.test.ts` — where they no longer need a rendered
+ * dropdown to be read off.
  */
-const MINA: SupervisorCandidate = {
-  id: 36, username: '09127777777', displayName: 'مینا دهقان',
-  scopes: ['admin'], canSupervise: true,
-}
 
 /** Forty of them, for the height claim. */
 function many(n: number): SupervisorCandidate[] {
@@ -101,6 +90,7 @@ function many(n: number): SupervisorCandidate[] {
     id: 100 + i,
     username: `0912${String(1000000 + i).slice(0, 7)}`,
     displayName: `سرپرست ${i}`,
+    role: 'reader',
     scopes: ['*'],
     canSupervise: true,
   }))
@@ -184,62 +174,49 @@ describe('the supervisor picker', () => {
     expect(screen.queryByText('برای این نقش سرپرستی در دسترس نیست')).toBeNull()
   })
 
-  it('writes each candidate\'s own scope beside their own name (D52)', async () => {
-    // Past thirty users the reason somebody is on this list is otherwise
-    // invisible. The pairing is the assertion: a picker that draws every
-    // candidate against the *first* candidate's scope passes every «is سالن on
-    // screen» check and fails only this.
+  it('writes each candidate\'s own ROLE beside their own name', async () => {
+    // **Owner ruling** — *"the person's name and role should be displayed."*
+    // D52 put the SCOPE here, on the argument that past thirty users the reason
+    // somebody is on this list is otherwise invisible. It was the wrong answer
+    // to a real question: `eligible_supervisors` has already filtered the list
+    // to people whose departments cover this account's, so the department
+    // printed the same fact against every name.
+    //
+    // The pairing is still the assertion: a picker that draws every candidate
+    // against the FIRST candidate's role passes every «is مدیر on screen» check
+    // and fails only this.
     mount({ candidates: [SAHAR, KEYVAN, ARASH] })
     const list = await openList()
     await waitFor(() =>
-      expect(within(list).getByRole('option', { name: /سحر بیات\s*—\s*سالن/ })).toBeInTheDocument())
-    expect(within(list).getByRole('option', { name: /کیوان مرادی\s*—\s*همهٔ دپارتمان‌ها/ })).toBeInTheDocument()
-    expect(within(list).getByRole('option', { name: /آرش تهرانی\s*—\s*انبار/ })).toBeInTheDocument()
+      expect(within(list).getByRole('option', { name: /سحر بیات\s*—\s*خواننده/ })).toBeInTheDocument())
+    expect(within(list).getByRole('option', { name: /کیوان مرادی\s*—\s*مدیر/ })).toBeInTheDocument()
+    expect(within(list).getByRole('option', { name: /آرش تهرانی\s*—\s*ادیتور/ })).toBeInTheDocument()
     // …and nobody carries somebody else's.
-    expect(within(list).queryByRole('option', { name: /سحر بیات\s*—\s*انبار/ })).toBeNull()
-    expect(within(list).queryByRole('option', { name: /آرش تهرانی\s*—\s*سالن/ })).toBeNull()
+    expect(within(list).queryByRole('option', { name: /سحر بیات\s*—\s*مدیر/ })).toBeNull()
+    expect(within(list).queryByRole('option', { name: /آرش تهرانی\s*—\s*خواننده/ })).toBeNull()
   })
 
-  it('names every scope a candidate holds, not just the first', async () => {
-    // A head of two departments who is shown as covering one of them is a
-    // person an administrator will believe covers less than they do — and the
-    // single-scope majority makes `scopes[0]` look right everywhere else.
+  it('writes no department at all — not even for a head of two', async () => {
+    // *"There's no need to display their department."* Asserted on the fixture
+    // that made the old label longest, so a half-done change that merely
+    // shortened it would still fail here.
     mount({ candidates: [KAVEH] })
     const list = await openList()
-    await waitFor(() => expect(within(list).getByRole('option', { name: /صندوق/ })).toBeInTheDocument())
-    expect(within(list).getByRole('option', { name: /کاوه سالاری/ })).toHaveAccessibleName(/سالن/)
+    const option = () => within(list).getByRole('option', { name: /کاوه سالاری/ })
+    await waitFor(() => expect(option()).toHaveAccessibleName(/مدیر/))
+    expect(option()).not.toHaveAccessibleName(/صندوق/)
+    expect(option()).not.toHaveAccessibleName(/سالن/)
   })
 
-  it('names a report scope in Persian rather than quoting the stored string', async () => {
-    // The third shape of the grammar, and the only fixture in this file that
-    // reaches it: `scopeLabel` used to render `dept:dining/report:steps` as
-    // «سالن/report:steps» — the department translated and the report left in the
-    // stored spelling, half a sentence in each language beside somebody's name.
-    mount({ candidates: [RAHA] })
+  it('quotes a role this build has no wording for, rather than blanking it', async () => {
+    // `roleLabel` is presentation and a role seeded ahead of the UI keeps its
+    // identifier: «—», or an empty run after the dash, would tell an
+    // administrator the account has no role, which is a different and false
+    // fact. The same rule `lib/roles.ts` states, checked where it is read.
+    mount({ candidates: [{ ...SAHAR, role: 'inspector' }] })
     const list = await openList()
-    // Waited for the *label*, not merely for the row: `/api/departments` is this
-    // component's one request, and until it lands `scopeLabel` falls back to the
-    // code — «dining (فقط …)» — which is the honest thing to draw and not what
-    // this test is about.
-    await waitFor(() => expect(within(list).getByRole('option', { name: /رها فرجی/ }))
-      .toHaveAccessibleName(/سالن \(فقط راهنمای گام‌به‌گام\)/))
-    // …and not as the whole department, which is more than she reaches.
-    expect(within(list).queryByRole('option', { name: /رها فرجی\s*—\s*سالن$/ })).toBeNull()
-  })
-
-  it('quotes a scope the grammar refuses, rather than calling it everything', async () => {
-    // **The fourth shape, and the only one whose mutant is an escalation on
-    // screen.** `scopeLabel`'s refused branch returning `EVERY_DEPARTMENT`
-    // instead of the stored string left the whole frontend suite green while
-    // writing «مینا دهقان — همهٔ دپارتمان‌ها» beside somebody covered by
-    // nothing at all — in the one list an administrator picks an org-chart edge
-    // out of, where a `*` holder is exactly who they are looking for.
-    mount({ candidates: [MINA] })
-    const list = await openList()
-    await waitFor(() => expect(within(list).getByRole('option', { name: /مینا دهقان/ }))
-      .toHaveAccessibleName(/—\s*admin/))
-    expect(within(list).getByRole('option', { name: /مینا دهقان/ }))
-      .not.toHaveAccessibleName(/همهٔ دپارتمان‌ها/)
+    await waitFor(() => expect(within(list).getByRole('option', { name: /سحر بیات/ }))
+      .toHaveAccessibleName(/—\s*inspector/))
   })
 
   it('keeps the server\'s order, re-sorting nothing', async () => {
@@ -373,21 +350,16 @@ describe('the supervisor picker', () => {
     expect(screen.queryByText(/سرپرست کنونی در این فهرست نیست/)).toBeNull()
   })
 
-  it('states the rule that makes this list this short (§6.14)', async () => {
+  it('states no rule paragraph any more — owner ruling', () => {
+    // §6.14's two sentences («سرپرست باید بالاتر…», «خوانندهٔ گزارش…») are gone
+    // with `SUPERVISOR_RULE`. The ruling names the user-detail page's helper
+    // texts, and the same message asks for this dialog's errors to be where a
+    // person notices them — two sentences of prose above the submit were part
+    // of why they were not. What the paragraph explained is still answered
+    // where it is asked: an empty list says `NO_CANDIDATE`, a search that
+    // misses says `NO_SEARCH_HIT`.
     mount({ candidates: [SAHAR] })
-    expect(await screen.findByText(/دپارتمانش دپارتمان او را پوشش دهد/)).toBeInTheDocument()
-    expect(screen.getByText(/کامنتی را تأیید نمی‌کند/)).toBeInTheDocument()
-  })
-
-  it('states §6.14’s two sentences and no third — owner ruling R32', async () => {
-    // A third clause saying the choice grants no access was written here and
-    // the owner removed it: the deliverable wins on content, and this picker is
-    // not where a permission model gets explained. Pinned in BOTH directions —
-    // the two sentences must be present AND the removed one absent — because a
-    // later reader of D51 would otherwise have every reason to add it back.
-    mount({ candidates: [SAHAR] })
-    expect(await screen.findByText(/دپارتمانش دپارتمان او را پوشش دهد/)).toBeInTheDocument()
-    expect(screen.getByText(/کامنتی را تأیید نمی‌کند/)).toBeInTheDocument()
-    expect(screen.queryByText(/هیچ دسترسی‌ای نمی‌دهد/)).toBeNull()
+    expect(screen.queryByText(/دپارتمانش دپارتمان او را پوشش دهد/)).toBeNull()
+    expect(screen.queryByText(/کامنتی را تأیید نمی‌کند/)).toBeNull()
   })
 })

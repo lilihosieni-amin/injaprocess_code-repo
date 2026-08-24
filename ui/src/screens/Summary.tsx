@@ -24,7 +24,7 @@ import { toFa } from '../lib/format'
 // three fields, in `Summary.test.tsx`'s «what counts as published detail».
 import { hasIcom } from '../lib/published'
 import { refusalStatus } from '../api/client'
-import { LoadFailedScreen } from '../ui/states'
+import { LoadFailedScreen, ScreenSkeleton } from '../ui/states'
 import { RefusalScreen } from './Refusal'
 
 /**
@@ -170,7 +170,9 @@ export function Summary() {
   // `bg-ink`. Measured in Chrome: a full-viewport cream flash on every first
   // navigation to this screen, invisible to every test by construction — jsdom
   // paints nothing and every e2e stubs the read so the window never opens.
-  if (!p) return <div className="flex-1 bg-ink" />
+  // Owner ruling — see `ScreenSkeleton`. Two cards: the summary and the A-0
+  // block, which is what a non-editor's populated screen holds.
+  if (!p) return <ScreenSkeleton column="summary" cards={2} />
 
   const proc: Process = p
   const mark = marks.find((m) => m.target === proc.id)

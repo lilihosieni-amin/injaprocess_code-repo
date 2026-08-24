@@ -158,20 +158,13 @@ export function Profile() {
                 autoComplete="new-password" ground="sub" value={repeat} onChange={setRepeat} />
             </div>
 
-            {/* Said before the change and not after it. A security action whose
-                effects are invisible is one people avoid, and «your other
-                devices were signed out» in the confirmation is news rather
-                than a warning — about a tablet in the kitchen somebody else is
-                holding. §6.6's amber notice is the design's surface for
-                exactly this: `--tile-warn` on `1px --warn-edge` at radius 10,
-                `12px --warn-fg lh 1.7`. */}
-            <p role="note" aria-label="هشدار"
-              className="bg-tile-warn border border-warn-edge rounded-control
-                         px-s6 py-s5 text-fs-caption text-warn-fg leading-normal m-0">
-              با عوض شدن گذرواژه، همهٔ دستگاه‌های دیگری که با این حساب وارد شده‌اند
-              بیرون می‌آیند؛ همین دستگاه باز می‌ماند.
-            </p>
-
+            {/* **Owner ruling — the amber notice is gone.** It said the other
+                devices would be signed out, before the change, on the argument
+                that a security effect nobody is warned about is one people
+                avoid. The owner has read it on the screen and decided it is not
+                worth the room: the success line below already says it («همهٔ
+                دستگاه‌های دیگر از این حساب بیرون آمدند»), which makes the notice
+                the same sentence twice — once as a warning and once as news. */}
             {/* §6.13's closing rule statement. The design's third clause is
                 about a reset link this product does not have (D15, ledger
                 A1/P2), so it states what actually happens instead. */}

@@ -532,14 +532,23 @@ describe('what the profile screen says about itself', () => {
     expect(await screen.findByText(/فقط خودتان می‌توانید تغییر دهید/)).toBeInTheDocument()
   })
 
-  it('warns that changing it signs the other devices out, before it is changed', async () => {
-    // A security action whose effects are invisible is one people avoid. Said
-    // only in the confirmation it is not a warning at all — it is news, after
-    // the fact, about a tablet in the kitchen somebody else is holding.
+  it('says the other devices were signed out AFTER it is changed, and not before', async () => {
+    // **Owner ruling — the amber warning is gone.** *"in profile page, i want to
+    // delete text «با عوض شدن گذرواژه…»"*.
+    //
+    // It was argued for on the grounds that a security action whose effects are
+    // invisible is one people avoid, and that said only in the confirmation it
+    // is news rather than a warning. The owner has read both sentences on the
+    // screen and decided one of them is enough — which is the half that fires
+    // when something actually happened. The success line below is asserted in
+    // `Profile.test.tsx`'s own change-password block; here the point is that
+    // NOTHING says it up front any more.
     stubServer()
     mountProfile()
-    expect(await screen.findByText(/دستگاه‌های دیگری که با این حساب وارد شده‌اند بیرون می‌آیند/))
-      .toBeInTheDocument()
+    await screen.findByText(/فقط خودتان می‌توانید تغییر دهید/)
+    expect(screen.queryByText(/دستگاه‌های دیگری که با این حساب وارد شده‌اند بیرون می‌آیند/))
+      .toBeNull()
+    expect(screen.queryByRole('note', { name: 'هشدار' })).toBeNull()
     expect(screen.queryByRole('status')).toBeNull()
   })
 
@@ -697,14 +706,16 @@ describe('the profile header (§6.13)', () => {
     expect(within(card).getByRole('button', { name: 'ذخیرهٔ گذرواژه' })).toBeInTheDocument()
   })
 
-  it('gives the sign-out warning a surface instead of a third grey paragraph', async () => {
+  it('draws one closing paragraph under the form, not three', async () => {
+    // F47 counted three consecutive 12.5px paragraphs — grey, amber and lilac at
+    // 6px separation — and gave the amber one a surface, because it was the only
+    // consequential sentence and visually the second weakest. The owner has
+    // since deleted that sentence outright, which answers F47 the shorter way:
+    // there is no stack of three to rank any more.
     drawProfile(EDITOR)
-    // F47 — three consecutive 12.5px paragraphs in grey, amber and lilac at 6px
-    // separation, of which the amber one is the only consequential sentence and
-    // visually the second weakest.
-    const warn = await screen.findByRole('note', { name: 'هشدار' })
-    expect(warn).toHaveClass('bg-tile-warn', 'border-warn-edge')
-    expect(warn).toHaveTextContent(/همهٔ دستگاه‌های دیگری که با این حساب وارد شده‌اند/)
+    await screen.findByRole('heading', { level: 1 })
+    expect(screen.queryByRole('note', { name: 'هشدار' })).toBeNull()
+    expect(document.querySelectorAll('form ~ p, form p').length).toBeLessThan(3)
   })
 
   it('takes the ledger-corrected 22px title role and the sub-panel card recipe', async () => {

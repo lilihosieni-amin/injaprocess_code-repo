@@ -66,6 +66,10 @@ export function UserDialogShell({
       onClose={onClose}
       title={title}
       width="md"
+      // Owner ruling — the refusal goes under the header, where it cannot
+      // scroll away from the footer button that produced it. See `alert` on
+      // `Overlay`; the reasoning belongs to that layout, not to this form.
+      alert={alert}
       footer={
         <div data-testid="dialog-footer" className="flex-none flex gap-s5">
           {/* §5.2 — two equal-width buttons at `padding:13px; radius 12px;
@@ -96,17 +100,15 @@ export function UserDialogShell({
         </div>
       }
     >
+      {/* §4.6 states errors "in copy: a 11.5px/600 --conflict line under the
+          offending control", and the line that used to sit at the foot of this
+          form was that rule read as "at the end of the form". The refusals this
+          dialog reports are not about one control — «شمارهٔ موبایل معتبر نیست»,
+          «این شخص نمی‌تواند سرپرست این کاربر باشد», a 409 from the server — so
+          they belong to the BOX, and the box now has a place for them that
+          cannot scroll away. */}
       <form id={FORM} onSubmit={onSubmit} className="flex flex-col gap-s6">
         {children}
-        {alert && (
-          // §4.6 — "there is no field-level error style in S1; errors are stated
-          // in copy: a 11.5px/600 --conflict line under the offending control."
-          // role="alert" because this text appears after the press that caused
-          // it, when a screen reader is elsewhere on the page.
-          <p role="alert" className="text-fs-xs font-semibold text-conflict m-0">
-            {alert}
-          </p>
-        )}
       </form>
     </Dialog>
   )

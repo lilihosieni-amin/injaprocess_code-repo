@@ -120,6 +120,27 @@ interface OverlayProps {
   icon?: ReactNode
   /** A pinned action bar. Its children go `flex:1`, as the design's do. */
   footer?: ReactNode
+  /**
+   * **What went wrong, pinned under the header** — owner ruling: *"the errors it
+   * shows appear at the bottom of the popup, so if the user doesn't scroll down,
+   * they don't notice the error at all. It would be better for the error to be
+   * shown at the top of the popup … so the user notices."*
+   *
+   * The ruling says "higher z-index", and the cause is one layer earlier than
+   * that: nothing was painted over the message, it was simply the last child of
+   * a form inside `dialog-body`, which is the box that scrolls. On the new-user
+   * dialog — an identity block, a role select, a nine-tile scope grid and a
+   * supervisor picker — «شمارهٔ موبایل معتبر نیست» arrived a screen and a half
+   * below the fold, while the button that produced it sat pinned in the footer
+   * the whole time. So this is a `flex-none` band between the header and the
+   * body, in the one region of the box that cannot scroll away.
+   *
+   * On the OVERLAY and not in each caller, because the argument is about this
+   * component's own three-part layout and applies to every dialog that can
+   * fail. `role="alert"` travels with it: the text arrives after the press that
+   * caused it, so a screen reader is elsewhere in the box when it does.
+   */
+  alert?: ReactNode
   /** §3.3 — one of the five widths. Ignored by `sheet`, which is --width-drawer. */
   width?: keyof typeof WIDTH
   /** §4.5 — `blur(3px)`. The export dialog is the only case in the design. */
@@ -141,7 +162,7 @@ interface OverlayProps {
 }
 
 function Overlay({
-  open, onClose, title, children, subtitle, icon, footer,
+  open, onClose, title, children, subtitle, icon, footer, alert,
   width = 'md', blurScrim = false, dismissOnScrim = true, presentation = 'dialog',
 }: OverlayProps) {
   const box = useRef<HTMLDivElement>(null)
@@ -319,6 +340,21 @@ function Overlay({
           </div>
           <CloseButton onClick={onClose} />
         </div>
+        {alert !== undefined && alert !== false && alert !== null && (
+          // Drawn as a banner rather than as a red line: this is the one piece
+          // of text in the box that arrived because something failed, and at
+          // `--fs-xs` with no ground it read as a caption. `--tile-c2` behind
+          // `--border-danger` under `--conflict` is `Button`'s own destructive
+          // skin, which is the pairing this product already means by "this went
+          // wrong".
+          <div
+            data-testid="dialog-alert"
+            role="alert"
+            className="flex-none mb-s7 rounded-control border border-border-danger bg-tile-c2 px-s7 py-s6 text-fs-sm2 font-semibold text-conflict"
+          >
+            {alert}
+          </div>
+        )}
         <div data-testid="dialog-body" className="flex-1 overflow-auto">{children}</div>
         {footer && (
           // §5.2 — "two equal buttons" is the footer's doing here, not every

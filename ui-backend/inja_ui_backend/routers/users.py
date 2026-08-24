@@ -317,14 +317,38 @@ def _candidate(conn: sqlite3.Connection, row: sqlite3.Row) -> dict:
     """One entry of the supervisor picker.
 
     A projection of its own rather than `_user`, and shorter than it: a picker
-    needs the name, the scope beside it (D52 — past thirty users the reason
-    somebody is on the list is otherwise invisible) and nothing else. It runs
-    over `eligible_supervisors`' `SELECT *` rows, which carry `password_hash`.
+    needs the name, what that person IS, and nothing else. It runs over
+    `eligible_supervisors`' `SELECT *` rows, which carry `password_hash`, so the
+    allow-list is the guarantee here exactly as it is in `_user`.
+
+    **`role` travels as of the owner's ruling** — *"in the 'Supervisor'
+    dropdown, the person's name and role should be displayed. There's no need to
+    display their department."* D52's argument for the scope was that past thirty
+    users the reason somebody is on the list is otherwise invisible; the owner
+    has read the list and decided the role answers that better. It does: the list
+    is already filtered to people whose departments cover this account's, so the
+    department beside each name is the same fact repeated, while «مدیر» against
+    «خواننده» is the distinction an administrator is actually choosing between.
+
+    `scopes` STAYS on the wire. It is not decoration for the label — the edit
+    form re-asks eligibility from it, and `SupervisorPicker` reads it to decide
+    whether a stored supervisor is still on the list. What changed is what the
+    picker DRAWS.
+
+    One query per candidate, like `_user`'s. A picker is a page of names, not a
+    report, and a join here would be a second way of reading a row this module
+    already knows how to read.
     """
+    role = conn.execute("SELECT name FROM roles WHERE id = ?",
+                        (row["role_id"],)).fetchone()
     return {
         "id": row["id"],
         "username": row["username"],
         "displayName": row["display_name"],
+        # `None` for a role row that is not there — unreachable under
+        # `NOT NULL REFERENCES roles(id)`, and the alternative is a 500 on a
+        # whole picker because one row is odd. `_user` answers the same way.
+        "role": role["name"] if role is not None else None,
         "scopes": list(scopes_of(conn, row)),
         "canSupervise": bool(row["can_supervise"]),
     }

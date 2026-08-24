@@ -400,6 +400,13 @@ describe('F10 — RTL is structural', () => {
       // — this scan reads the text, and so does a reviewer.
       'src/ui/TextField.tsx',
       'src/screens/SignIn.tsx',
+      // **Every password box, by owner ruling** — *"the password input should
+      // also be left-to-right (LTR), just like the mobile number field."* A
+      // password is a latin token, never Persian prose, so `PasswordField` pins
+      // the direction on its own input with no prop for a caller to get wrong.
+      // Only the input: the wrapper stays RTL, which is what keeps the reveal
+      // button on the edge the design draws it on.
+      'src/ui/PasswordField.tsx',
       // The crumb strip pins a process id LTR and monospaced — §8's rule for
       // every latin island in an RTL app, and the only `dir=` in either shell.
       // `src/shell/crumbs.ts`, which decides WHICH crumb is one, is deliberately

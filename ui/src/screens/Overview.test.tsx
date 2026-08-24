@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { screen, fireEvent } from '@testing-library/react'
+import { screen, fireEvent, within } from '@testing-library/react'
 import { Overview } from './Overview'
 import { renderAt } from '../test/utils'
 import { deptMeta } from '../lib/departments'
@@ -97,6 +97,41 @@ describe('Overview', () => {
     at(OTHER_DEPT_EDITOR)
     expect(await screen.findByText('خلاصهٔ دپارتمان پخت')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'ویرایش' })).not.toBeInTheDocument()
+  })
+})
+
+describe('the confirm control', () => {
+  /** A session that may confirm this department — without it `ConfirmAction`
+   *  returns null and there is nothing to look at (R5). */
+  const CONFIRMER: SessionDescriptor = {
+    username: '09120000001', displayName: 'مدیر', role: 'editor',
+    capabilities: ['view', 'comment', 'export_pdf', 'edit', 'confirm'],
+    scopes: ['dept:cooking'], supervisor: null, canSupervise: false, pendingApprovals: 0,
+  }
+
+  it('is the flowchart’s pill, not a red tool box — owner ruling', async () => {
+    // *"in departmant details page the confirm buttomn should be excatly like
+    // flowhcart page confirm butttomn."* It drew §6.3's 34px `--size-tool` box,
+    // which on a header that already carries «تأیید شده» as a STATUS pill read
+    // as an error beside it: a red-edged square with a warning triangle, for the
+    // one control that changes that status. `shape="pill"` is the deliverable's
+    // own control (panel 599) — a tick, the word, and a fill and edge that
+    // switch with the mark.
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input: RequestInfo | URL) => {
+      const body = String(input).includes('/confirmations')
+        ? [{ target: 'cooking', kind: 'department', fingerprint: 'a', confirmed: true,
+             confirmed_by: '09120000001', confirmed_at: 1770000000 }]
+        : OV
+      return Promise.resolve(new Response(JSON.stringify(body),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }))
+    })
+    at(CONFIRMER)
+    // The pill's own hook. The tool box carries none, so this separates the two
+    // shapes rather than describing one of them.
+    const box = await screen.findByTestId('confirm-box')
+    expect(within(box).getByTestId('confirm-label')).toHaveTextContent('تأییدشده')
+    expect(box.className).toContain('rounded-button')
+    expect(box.className).not.toContain('w-tool')
   })
 })
 

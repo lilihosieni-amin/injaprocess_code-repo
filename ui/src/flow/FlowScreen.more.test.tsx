@@ -290,6 +290,43 @@ describe('the ≤760 edit-toolbar collapse', () => {
   })
 })
 
+describe('the reader’s flow bar', () => {
+  it('draws no action group at all when it has nothing in it — owner ruling', async () => {
+    // *"in reder view in flowchart page, the title shows with … but it has
+    // space to shpw ather part of title."*
+    //
+    // On the reader this group is EMPTY — `ConfirmAction` returns null without
+    // `confirm` and «ویرایش» is gated on `edit` — and it carried `flex:1 1 auto`
+    // from reader 113 while the title beside it carried `flex:1 1 0%`. Two
+    // growing items split the free space: measured at 390, a 156px title beside
+    // a 156px empty box, and a name needing 410 ellipsised for nothing.
+    //
+    // `:empty` is a CSS state jsdom does not resolve, so what is pinned here is
+    // that the class is WRITTEN; `e2e/behaviour.spec.ts` measures the width it
+    // buys, in a browser, on the surface that has the bug.
+    await mount('reader')
+    const group = document.querySelector('[data-r-actions]') as HTMLElement
+    expect(group.className).toContain('empty:hidden')
+  })
+
+
+  it('draws no process id — owner ruling', async () => {
+    // *"in reader view, in flowchart page we don't need show process id.remove
+    // it. and then make back buttomn and title in one row."* The id is an
+    // editor's handle — it keys «فرآیند بعدی», names a row in the conflict
+    // inbox, and carries an export's filename. A reader is given the department
+    // and the name, and on their bar the badge was the one thing standing
+    // between the back button and the title.
+    await mount('reader')
+    const bar = document.querySelector('[data-r-flowbar]') as HTMLElement
+    expect(bar.textContent).not.toContain('cooking-001')
+    // …and the panel keeps it, so this is a surface branch and not a deletion.
+    await mount('panel')
+    expect((document.querySelector('[data-r-flowbar]') as HTMLElement).textContent)
+      .toContain('cooking-001')
+  })
+})
+
 describe('R47 — the ≤760 action collapse', () => {
   it('takes the panel’s action group off the bar at ≤760 and leaves the reader’s on', async () => {
     // panel 99 against reader 113. The two deliverables disagree deliberately

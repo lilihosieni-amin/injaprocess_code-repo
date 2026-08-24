@@ -49,6 +49,7 @@ const CANDIDATES: SupervisorCandidate[] = Array.from({ length: 40 }, (_, i) => (
   id: 100 + i,
   username: `0912${String(1000000 + i)}`.slice(0, 11),
   displayName: `سرپرست شمارهٔ ${i + 1}`,
+  role: 'reader',
   scopes: ['*'],
   canSupervise: true,
 }))

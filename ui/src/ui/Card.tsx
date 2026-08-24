@@ -10,6 +10,26 @@ const RADIUS = {
 } as const
 
 /** §5.2 — the interiors the design uses. `none` is for a card that is a shell. */
+/**
+ * The card's own ground.
+ *
+ * `card` is white and is every card in the product but one. `warn` is the cream
+ * `--tile-warn`, and it exists for owner ruling *"for the ones that are
+ * sub-processes … I want the entire box — instead of white — to be a very light
+ * cream color"* — the value they named is that token exactly, the one the
+ * palette already calls "amber tint: sub-process tags".
+ *
+ * A named prop and not a `bg-` class through `className`, because which of two
+ * background utilities wins is decided by TAILWIND's emitted order and not by
+ * the class attribute: `bg-card` and `bg-tile-warn` are siblings on one scale,
+ * and a caller appending the second would be relying on the order of the keys
+ * in `tailwind.config.js`. Here exactly one of them is ever written.
+ */
+const GROUND = {
+  card: 'bg-card',
+  warn: 'bg-tile-warn',
+} as const
+
 const PADDING = {
   none: '',
   tight: 'p-s8',     // 16px — a sub-card inside a dialog
@@ -31,11 +51,13 @@ const PADDING = {
  * unaffected.
  */
 export function Card({
-  className = '', radius = 'card', padding = 'none', hoverLift = false, ...props
+  className = '', radius = 'card', padding = 'none', hoverLift = false,
+  ground = 'card', ...props
 }: HTMLAttributes<HTMLDivElement> & {
   radius?: keyof typeof RADIUS
   padding?: keyof typeof PADDING
   hoverLift?: boolean
+  ground?: keyof typeof GROUND
 }) {
   // §4.6 — the one hover the design gives a surface: -2px, a deeper shadow and
   // a --border-pick edge, over .16s. Two surfaces use it: the department card and
@@ -45,7 +67,7 @@ export function Card({
     : ''
   return (
     <div
-      className={`bg-card border border-border-card shadow-card ${RADIUS[radius]} ${PADDING[padding]} ${lift} ${className}`}
+      className={`${GROUND[ground]} border border-border-card shadow-card ${RADIUS[radius]} ${PADDING[padding]} ${lift} ${className}`}
       {...props}
     />
   )

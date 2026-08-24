@@ -1,4 +1,4 @@
-import { useId, useState, type FormEvent } from 'react'
+import { useId, useRef, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '../ui/Button'
 import { TextField } from '../ui/TextField'
@@ -22,8 +22,41 @@ export function SignIn() {
   const [number, setNumber] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
+  /** Whether the caret has already been handed on. See `onNumber`. */
+  const handedOn = useRef(false)
   const login = useLogin()
   const navigate = useNavigate()
+
+  /**
+   * **The number is finished, so the caret moves on** — owner ruling: *"when the
+   * user fully enters their mobile number, it should automatically move focus to
+   * the password input."*
+   *
+   * **Once per form, and that is the whole of the rule.** "Became complete" is
+   * not a state anybody can be in twice on purpose: somebody who comes BACK to
+   * correct a finished number passes through it on every keystroke — delete a
+   * digit, type one, it is eleven again — and a hand-off keyed on the
+   * transition alone would throw the caret out of the field they are fixing,
+   * every time, while they are looking at it.
+   *
+   * Through `normalisePhone`, so «۰۹۱۲…» and «+98 912 …» advance exactly as
+   * `09…` does — the same nine spellings sign-in itself accepts. Guarded on the
+   * number field still being the focused element, so a paste from the browser's
+   * own autofill, which fills both boxes and may leave the caret anywhere, does
+   * not get taken over.
+   */
+  function onNumber(next: string) {
+    setNumber(next)
+    if (handedOn.current || !CANONICAL_NUMBER.test(normalisePhone(next))) return
+    if (document.activeElement?.id !== numberId) return
+    handedOn.current = true
+    // By id, and not through a ref threaded into `PasswordField`: the id is
+    // already the contract between that component's `<label htmlFor>` and its
+    // input, so this is the association the browser itself uses and it costs
+    // the shared field no new prop. `useId` produces `:r5:`-shaped strings,
+    // which `getElementById` takes literally — it is not a selector.
+    document.getElementById(passwordId)?.focus()
+  }
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
@@ -90,7 +123,7 @@ export function SignIn() {
           // correctly-typed phone. USERNAME_RE is what says no, after
           // normalisation, where the answer can be honest.
           value={number}
-          onChange={setNumber}
+          onChange={onNumber}
           className="mb-s8"
         />
 

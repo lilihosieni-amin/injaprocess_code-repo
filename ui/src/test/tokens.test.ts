@@ -43,10 +43,27 @@ describe('the reader this file is asserted with', () => {
 describe('R1 — the deliverable wins over the extracted token', () => {
   it('§9.8 — corrects the four values both deliverables paint', () => {
     expect(token('--border-ok')).toBe('#BFE5D0')
-    expect(token('--steps-group-bg')).toBe('#FDF1F0')
-    expect(token('--steps-group-border')).toBe('#F8DDDA')
     expect(token('--tile-v5')).toBe('#F3EEFC')
     expect(token('--line-divider')).toBe('#D9CEF0')
+  })
+
+  it('the step view’s two tinted boxes are the palette’s own tiles — owner ruling', () => {
+    // *"I want the red (orange) boxes to be a bit more saturated/darker, so
+    // their difference from the fully white box is noticeable."* §9.8 had these
+    // at #FDF1F0 and #FDF3E4, which is what the deliverables paint and is very
+    // nearly the `--card` white they are drawn beside. They are now the coral
+    // and amber tiles the palette already holds — the second of which is the
+    // exact value the same ruling names for the sub-process CARD on the process
+    // list, so the two surfaces agree on what a sub-process looks like.
+    //
+    // Asserted as the ALIAS and not as the resolved hex: one name, one place.
+    // The hex each resolves to is pinned where it is declared, on `--tile-c` and
+    // `--tile-warn` in the read-only `_ds`.
+    expect(token('--steps-group-bg')).toBe('var(--tile-c)')
+    expect(token('--steps-sub-bg')).toBe('var(--tile-warn)')
+    // The group's border moves with its fill: at #F8DDDA it was LIGHTER than the
+    // new #FFE9E7 and would have read as a highlight round the box.
+    expect(token('--steps-group-border')).toBe('var(--border-danger)')
   })
 
   it('§9.9 — re-points the three tokens named for a role they do not serve', () => {
@@ -191,6 +208,11 @@ describe('R1 — a correction records what it overrode and why', () => {
     ['--border-ok', '#C4E7D3'],
     ['--steps-group-bg', '#FFF4F3'],
     ['--steps-group-border', '#F5CFCB'],
+    // …and the second hop, by owner ruling. A token re-valued twice records
+    // both, in the order the two decisions were taken.
+    ['--steps-group-bg', '#FDF1F0'],
+    ['--steps-group-border', '#F8DDDA'],
+    ['--steps-sub-bg', '#FDF3E4'],
     ['--text-body', '#4A3F6B'],
     ['--violet-on-dark-body', '#B7A6E0'],
     ['--radius-pill', '20px'],

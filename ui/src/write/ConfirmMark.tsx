@@ -344,6 +344,13 @@ export function ConfirmAction({
             </span>
           }
           subtitle={WHY[tone]}
+          // The same pinned band every dialog uses now — see `alert` on
+          // `Overlay`. This box is short enough that the old inline line was
+          // visible, and it is routed here anyway: one place in the product
+          // where a dialog says a write failed, not two that drift apart.
+          alert={failure && !outlived
+            ? (moved ? MOVED : status === 403 ? GONE : FAILED)
+            : undefined}
           footer={
             <div className="flex gap-s5">
               <Button
@@ -370,14 +377,6 @@ export function ConfirmAction({
           {/* §6.15's `confDlgNote` — 12.5px `--text-muted` at lh 1.8. This is
               where FR-V2 is stated, so it is body copy and not a footnote. */}
           <p className="text-fs-sm2 text-muted leading-sub m-0">{RULE[tone]}</p>
-          {failure && !outlived && (
-            // role="alert": this text appears after the press that caused it,
-            // so a screen reader is elsewhere when it arrives. On its own line
-            // inside the dialog rather than inline in a process row (F3).
-            <p role="alert" className="text-fs-xs font-semibold text-conflict mt-s5 mb-0">
-              {moved ? MOVED : status === 403 ? GONE : FAILED}
-            </p>
-          )}
         </Dialog>
       )}
     </>

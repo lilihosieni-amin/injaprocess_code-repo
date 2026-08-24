@@ -101,12 +101,33 @@ export function ReorderModal({ department, departmentName, processes, onClose }:
               onDragOver={(e) => { e.preventDefault(); setOverIndex(i) }}
               onDrop={() => { if (dragFrom !== null) moveTo(dragFrom, i); endDrag() }}
               onDragEnd={endDrag}
-              className={`bg-card border border-warm rounded-button px-s6 py-s4 flex items-center gap-s5 cursor-grab ${dragFrom === i ? 'opacity-40 border-coral' : ''}`}
+              // **`py-s2` and not `py-s4` — owner ruling: *"the high og each box
+              // is much.fit with text."*** The row's height was never its
+              // padding, it was the two move buttons STACKED (see below); with
+              // them side by side the padding is what is left to give back, and
+              // 5px round a 44px control is the same rhythm the rest of the box
+              // keeps.
+              className={`bg-card border border-warm rounded-button px-s6 py-s2 flex items-center gap-s5 cursor-grab ${dragFrom === i ? 'opacity-40 border-coral' : ''}`}
             >
               {/* §5.2 sanctions this glyph as a character rather than an SVG,
                   so it stays — but it is decoration now, not the only handle. */}
               <span className="text-faint text-fs-lg leading-none select-none" aria-hidden>⣿</span>
-              <div className="flex flex-col shrink-0">
+              {/* **Side by side, not stacked — owner ruling.** *"the high og
+                  each box is much.fit with text."*
+
+                  Measured at 106px per row for one 12.5px line of type, and the
+                  arithmetic is the whole of it: `IconButton` carries F11's
+                  `min-h-touch`, so two of them in a column are 88px of control
+                  under a name that is 19px tall. Nothing about the padding or
+                  the type was wrong.
+
+                  In a row they are 44px, which is the floor and not a choice —
+                  shrinking the buttons is the other way to reach the same
+                  height and it would put the two commonest controls in this
+                  dialog under the minimum a finger can hit, on the one screen
+                  whose whole purpose is repeated presses. ↑ beside ↓ is what a
+                  reorder list draws when the row is a row. */}
+              <div className="flex shrink-0">
                 <IconButton label={`بردن «${p.name}» به بالا`}
                   disabled={i === 0} onClick={() => moveTo(i, i - 1)}
                   icon={<Icon name="chevronUp" px={14} stroke={2.4} />} />
