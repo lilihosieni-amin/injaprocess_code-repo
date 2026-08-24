@@ -1,11 +1,9 @@
-import { Fragment, useState } from 'react'
+import { Fragment, useState, type KeyboardEvent } from 'react'
 import { useSaveOrder } from '../api/hooks'
 import { ApiError } from '../api/client'
 import { useToast } from './ToastProvider'
 import { Button } from '../ui/Button'
 import { Dialog } from '../ui/Overlay'
-import { Icon } from '../ui/Icon'
-import { IconButton } from '../ui/IconButton'
 import { IdBadge } from '../ui/IdBadge'
 import { toFa } from '../lib/format'
 import type { Process } from '../api/types'
@@ -15,10 +13,22 @@ import type { Process } from '../api/types'
  *
  * **O4 — dragging is not the only way in.** The rows were `draggable` with four
  * drag handlers and nothing else, so a keyboard or screen-reader user could open
- * this box, read the order, and save it exactly as they found it. Every row now
- * carries a labelled pair of move buttons beside the `⣿` handle, and the label
- * names the row it moves — «بردن «نام» به بالا» — because "up" alone is the same
- * accessible name on every row in the list.
+ * this box, read the order, and save it exactly as they found it.
+ *
+ * **Owner ruling — the move BUTTONS go, and the capability does not.** *"remove
+ * top and dpwn buttomn in order popup."* They were the widest thing on the row
+ * and the reason it was 106px tall before the last pass halved it; on a list of
+ * sixteen they are thirty-two controls nobody drags with.
+ *
+ * What replaces them is the thing this dialog's own subtitle has claimed since
+ * it was written — *«یا با کلیدهای بالا و پایین جابه‌جا کنید»*. That sentence
+ * was describing the buttons, which move on Enter and not on an arrow key, so
+ * the promise was never literally true; now the row itself is focusable and
+ * ArrowUp/ArrowDown move it. O4 is satisfied by a keystroke instead of a
+ * control, the accessible name still names the row rather than the direction,
+ * and focus follows the row it moved — without that last part the second press
+ * of an arrow key moves whatever row happened to slide into the focused
+ * position, which is a reorder tool that reorders the wrong thing.
  *
  * FR-I3 — nothing is written by moving a row. `seq` is a draft, and only
  * «ذخیرهٔ ترتیب» sends it.
@@ -31,6 +41,10 @@ export function ReorderModal({ department, departmentName, processes, onClose }:
 }) {
   // `processes` arrives already ordered from the backend; tombstones hold no position.
   const [seq, setSeq] = useState<Process[]>(() => processes.filter((p) => !p.tombstoned))
+  /** The row to put the caret back on after a keyboard move — see the docstring.
+   *  Cleared as soon as it is honoured, so an unrelated re-render never steals
+   *  focus back from wherever the person has since gone. */
+  const [focusPid, setFocusPid] = useState<string | null>(null)
   const [dragFrom, setDragFrom] = useState<number | null>(null)
   const [overIndex, setOverIndex] = useState<number | null>(null)
   const save = useSaveOrder(department)
@@ -42,6 +56,22 @@ export function ReorderModal({ department, departmentName, processes, onClose }:
     const [row] = next.splice(from, 1)
     next.splice(to, 0, row)
     setSeq(next)
+  }
+
+  /**
+   * ArrowUp / ArrowDown on a row — the keyboard path the buttons used to be.
+   *
+   * `preventDefault` because both keys scroll the dialog's own body otherwise,
+   * and the row would move out from under the caret while the box scrolled the
+   * other way. Home and End are not bound: the design offers no "send to top",
+   * and a key that silently reorders sixteen rows is not one to invent here.
+   */
+  function onRowKey(e: KeyboardEvent<HTMLDivElement>, i: number, pid: string) {
+    const to = e.key === 'ArrowUp' ? i - 1 : e.key === 'ArrowDown' ? i + 1 : null
+    if (to === null || to < 0 || to >= seq.length) return
+    e.preventDefault()
+    moveTo(i, to)
+    setFocusPid(pid)
   }
 
   function endDrag() {
@@ -97,44 +127,30 @@ export function ReorderModal({ department, departmentName, processes, onClose }:
               data-testid="reorder-row"
               data-pid={p.id}
               draggable
+              tabIndex={0}
+              // The row IS the control now, so it carries the name the buttons
+              // used to: «نام» and its place, not "row" and not "up".
+              aria-label={`${p.name} — جایگاه ${toFa(i + 1)} از ${toFa(seq.length)}`}
+              ref={(el) => {
+                if (el !== null && focusPid === p.id) { el.focus(); setFocusPid(null) }
+              }}
+              onKeyDown={(e) => onRowKey(e, i, p.id)}
               onDragStart={() => setDragFrom(i)}
               onDragOver={(e) => { e.preventDefault(); setOverIndex(i) }}
               onDrop={() => { if (dragFrom !== null) moveTo(dragFrom, i); endDrag() }}
               onDragEnd={endDrag}
               // **`py-s2` and not `py-s4` — owner ruling: *"the high og each box
-              // is much.fit with text."*** The row's height was never its
-              // padding, it was the two move buttons STACKED (see below); with
-              // them side by side the padding is what is left to give back, and
-              // 5px round a 44px control is the same rhythm the rest of the box
-              // keeps.
+              // is much.fit with text."*** The row was 106px for one 12.5px
+              // line: `IconButton` carries F11's `min-h-touch`, so the two move
+              // controls stacked in a column were 88px of button under a 19px
+              // name. Nothing about the padding was wrong — but with those
+              // controls gone entirely (the ruling after it) the padding is what
+              // is left to give back, and the row is now as tall as its text.
               className={`bg-card border border-warm rounded-button px-s6 py-s2 flex items-center gap-s5 cursor-grab ${dragFrom === i ? 'opacity-40 border-coral' : ''}`}
             >
               {/* §5.2 sanctions this glyph as a character rather than an SVG,
                   so it stays — but it is decoration now, not the only handle. */}
               <span className="text-faint text-fs-lg leading-none select-none" aria-hidden>⣿</span>
-              {/* **Side by side, not stacked — owner ruling.** *"the high og
-                  each box is much.fit with text."*
-
-                  Measured at 106px per row for one 12.5px line of type, and the
-                  arithmetic is the whole of it: `IconButton` carries F11's
-                  `min-h-touch`, so two of them in a column are 88px of control
-                  under a name that is 19px tall. Nothing about the padding or
-                  the type was wrong.
-
-                  In a row they are 44px, which is the floor and not a choice —
-                  shrinking the buttons is the other way to reach the same
-                  height and it would put the two commonest controls in this
-                  dialog under the minimum a finger can hit, on the one screen
-                  whose whole purpose is repeated presses. ↑ beside ↓ is what a
-                  reorder list draws when the row is a row. */}
-              <div className="flex shrink-0">
-                <IconButton label={`بردن «${p.name}» به بالا`}
-                  disabled={i === 0} onClick={() => moveTo(i, i - 1)}
-                  icon={<Icon name="chevronUp" px={14} stroke={2.4} />} />
-                <IconButton label={`بردن «${p.name}» به پایین`}
-                  disabled={i === seq.length - 1} onClick={() => moveTo(i, i + 1)}
-                  icon={<Icon name="chevronDown" px={14} stroke={2.4} />} />
-              </div>
               <span className="font-extrabold text-fs-caption text-violet min-w-s10 text-center">{toFa(i + 1)}</span>
               <IdBadge>{p.id}</IdBadge>
               <span className="font-bold text-fs-sm2 text-ink flex-1 min-w-0 truncate">{p.name}</span>

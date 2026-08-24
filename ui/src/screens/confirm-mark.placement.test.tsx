@@ -70,11 +70,24 @@ function mock(marks: Confirmation[] = MARKS) {
 }
 
 describe('the mark on the department overview', () => {
-  it('draws the department’s own row for a holder of confirm', async () => {
+  it('draws the department’s own row for a holder of confirm — as the CONTROL, not a badge', async () => {
+    // **Owner ruling — the status badge is gone from this header.** *"remove
+    // confirm tag in departmandetail page.it has vheckbox.doesn't need tag
+    // too."* After the ruling that made the act a PILL, `ConfirmMark` and
+    // `ConfirmAction` sat six inches apart saying the same thing: «تأیید نشده»
+    // in a badge beside the title, and an empty tick over «تأییدشده» in the
+    // action group. The one that only STATES is the one that went.
+    //
+    // What this test is really about is unchanged: this row, for this
+    // department, reaches this screen. It is now read off the control, whose
+    // accessible name IS the state — «تأیید محتوا» only when the mark is off.
     mock()
     renderAt('/departments/:code/overview', <Overview />, '/departments/cooking/overview', CONFIRMER)
-    expect(await screen.findByText('تأیید نشده')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'تأیید محتوا' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'تأیید محتوا' })).toBeInTheDocument()
+    expect(screen.queryByText('تأیید نشده')).toBeNull()
+    // …and the pill's own label, which is a constant and says nothing about the
+    // state — the state is the tick, the fill and the name above.
+    expect(screen.getByTestId('confirm-label')).toHaveTextContent('تأییدشده')
   })
 
   it('keeps the last-updated date, which every reader is still sent', async () => {

@@ -128,7 +128,11 @@ export function useScrollMemory(main: RefObject<HTMLElement | null>) {
     function step() {
       const el = scroller()
       if (el !== null) {
-        el.scrollTop = want
+        // Only when it has drifted. Assigning `scrollTop` the value it already
+        // holds is not free — it queues a `scroll` event, and this loop runs
+        // every frame — so the box would announce a move it did not make, sixty
+        // times a second, to a listener whose whole job is to record moves.
+        if (Math.abs(el.scrollTop - want) >= 1) el.scrollTop = want
         // **Settled means the box has content AND is where it should be.** The
         // second half alone is trivially true of a reset — the placeholder is
         // already at 0 — and stopping there is exactly the bug: the browser

@@ -9,6 +9,7 @@ import { StartNode } from './nodes/StartNode'
 import { EndNode } from './nodes/EndNode'
 import { JunctionNode } from './nodes/JunctionNode'
 import { LabeledEdge } from './edges/LabeledEdge'
+import { A4Lane } from './A4Lane'
 
 const nodeTypes = { activity: ActivityNode, start: StartNode, end: EndNode, junction: JunctionNode }
 const edgeTypes = { labeled: LabeledEdge }
@@ -136,6 +137,11 @@ export function Canvas({ docNodes, docEdges, revision, editing, mode = 'pan', fo
         panOnDrag={editing && mode === 'select' ? [1, 2] : true}
         fitView proOptions={{ hideAttribution: true }}
       >
+        {/* **Only while it is being edited** — owner ruling: *"it just show in
+            editor of flowchrt.in edit mode.not read mode."* A reader has nothing
+            to do with the page the export prints on, and the exported document
+            mounts this same canvas. */}
+        {editing && <A4Lane />}
         <Background />
         {/* **`showFitView={false}` and our own button in its place — and the
             reason is a race, not a preference.** `ControlsComponent`'s handler

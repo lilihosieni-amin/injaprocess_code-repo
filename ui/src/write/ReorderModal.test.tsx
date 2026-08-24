@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ReorderModal } from './ReorderModal'
 import { ToastProvider } from './ToastProvider'
@@ -56,18 +56,31 @@ describe('ReorderModal', () => {
     // بالا» / «انتقال به پایین» — names this component has never used — so it
     // passed whether or not any move buttons existed, and would have gone on
     // passing if the ones added here were deleted again.
+    //
+    // **Owner ruling — the move BUTTONS are gone and the capability is not.**
+    // *"remove top and dpwn buttomn in order popup."* Thirty-two controls on a
+    // list of sixteen, for the path nobody drags with. What replaces them is
+    // the thing this dialog's subtitle has claimed since it was written —
+    // «یا با کلیدهای بالا و پایین جابه‌جا کنید» — which was describing buttons
+    // that move on Enter, so the promise was never literally true. Now the row
+    // is focusable and the arrow keys move it.
     const spy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(JSON.stringify({ order: [] }),
         { status: 200, headers: { 'Content-Type': 'application/json' } }))
     const onClose = vi.fn()
     wrap(<ReorderModal department="cooking" departmentName="پخت" processes={THREE} onClose={onClose} />)
-    // The label names the ROW, not the direction: «به بالا» alone is the same
-    // accessible name on every row in the list.
-    expect(screen.getByRole('button', { name: 'بردن «یک» به بالا' })).toBeDisabled()
-    fireEvent.click(screen.getByRole('button', { name: 'بردن «سه» به بالا' }))
-    fireEvent.click(screen.getByRole('button', { name: 'بردن «سه» به بالا' }))
+    // The accessible name still names the ROW and its place, not the direction:
+    // "row" alone is the same name on every row in the list.
+    const row = (name: string) => screen.getByRole('generic', { name: new RegExp(`^${name} —`) })
+    expect(row('سه')).toHaveAttribute('tabindex', '0')
+    fireEvent.keyDown(row('سه'), { key: 'ArrowUp' })
+    fireEvent.keyDown(row('سه'), { key: 'ArrowUp' })
     expect(screen.getAllByTestId('reorder-row').map((r) => r.getAttribute('data-pid')))
       .toEqual(['cooking-003', 'cooking-001', 'cooking-004'])
+    // …and the caret went with it. Without that, the next arrow press moves
+    // whatever row slid into the focused position — a reorder tool that
+    // reorders the wrong thing.
+    expect(row('سه')).toHaveFocus()
     fireEvent.click(screen.getByRole('button', { name: /ذخیره/ }))
     await waitFor(() => expect(spy).toHaveBeenCalled())
     // …and what is SAVED is what is on screen. A move that redrew the list from
@@ -76,11 +89,19 @@ describe('ReorderModal', () => {
       .toEqual({ order: ['cooking-003', 'cooking-001', 'cooking-004'] })
   })
 
-  it('cannot move the last row down', () => {
+  it('does not move a row off either end of the list', () => {
+    // The buttons said this by being `disabled`; the keyboard says it by doing
+    // nothing. Both ends, because an off-by-one at the top and one at the
+    // bottom are different mistakes and `moveTo`'s guard covers them separately.
     const onClose = vi.fn()
     wrap(<ReorderModal department="cooking" departmentName="پخت" processes={THREE} onClose={onClose} />)
-    expect(screen.getByRole('button', { name: 'بردن «سه» به پایین' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'بردن «یک» به پایین' })).toBeEnabled()
+    const order = () => screen.getAllByTestId('reorder-row').map((r) => r.getAttribute('data-pid'))
+    const before = order()
+    const row = (name: string) => screen.getByRole('generic', { name: new RegExp(`^${name} —`) })
+    fireEvent.keyDown(row('یک'), { key: 'ArrowUp' })
+    expect(order()).toEqual(before)
+    fireEvent.keyDown(row('سه'), { key: 'ArrowDown' })
+    expect(order()).toEqual(before)
   })
 
   it('marks the gap the row would drop into when dragging upward', () => {
@@ -204,24 +225,20 @@ describe('ReorderModal', () => {
 })
 
 describe('ReorderModal — the row is as tall as its text', () => {
-  it('lays the two move buttons side by side, not stacked — owner ruling', () => {
-    // *"the high og each box is much.fit with text."* Measured at 106px per row
-    // for one 12.5px line of type, and the arithmetic is the whole of it:
-    // `IconButton` carries F11's `min-h-touch`, so two of them in a COLUMN are
-    // 88px of control under a 19px name. In a row they are 44 — the floor, and
-    // not a choice: shrinking them would put the two commonest controls in this
-    // dialog under the minimum a finger can hit, in the one dialog whose whole
-    // purpose is repeated presses.
+  it('carries no move buttons at all — owner ruling', () => {
+    // *"the high og each box is much.fit with text."* then *"remove top and dpwn
+    // buttomn in order popup."* The row was 106px for one 12.5px line, and the
+    // arithmetic was the whole of it: `IconButton` carries F11's `min-h-touch`,
+    // so the two move controls stacked in a column were 88px of button under a
+    // 19px name. The first ruling laid them out in a row; the second took them
+    // away, and the padding they no longer need went with them.
     //
     // The height itself is measured in `e2e/behaviour.spec.ts`; jsdom lays
     // nothing out, so here the CAUSE is pinned rather than the symptom.
     wrap(<ReorderModal department="cooking" departmentName="پخت" processes={THREE} onClose={() => {}} />)
-    const up = screen.getAllByRole('button', { name: /به بالا/ })[0]
-    const group = up.parentElement!
-    expect(group.className).toContain('flex')
-    expect(group.className).not.toContain('flex-col')
-    // …and the row gives back the padding that column no longer needs.
-    expect(screen.getAllByTestId('reorder-row')[0].className).toContain('py-s2')
+    const row = screen.getAllByTestId('reorder-row')[0]
+    expect(within(row).queryAllByRole('button')).toEqual([])
+    expect(row.className).toContain('py-s2')
   })
 })
 

@@ -96,17 +96,17 @@ test('«بازگشت» returns to the offset it left', async ({ page }) => {
   // nothing to restore and React Router v6 restores nothing at all. The
   // position lived nowhere.
   await list(page)
-  // **Set it in a poll, not once.** Arriving here is itself a navigation, so
-  // `useScrollMemory` is holding this box at 0 until its content is there —
-  // deliberately, because the browser re-applies an old offset the moment a
-  // reused container grows. A single programmatic write can land inside that
-  // window and be corrected; a real person's wheel or finger ends the loop, and
-  // a test has neither.
+  // **Scrolled the way a person does, and that is not fussiness.** Arriving here
+  // is itself a navigation, so `useScrollMemory` is holding this box at 0 until
+  // its content is there — deliberately, because the browser re-applies an old
+  // offset the moment a reused container grows. What ends that hold is a wheel,
+  // a finger or a key; a bare `scrollTop =` is none of them, and the loop's next
+  // frame puts it back. Instrumented, the sequence was exactly that: the write
+  // landed, the loop corrected it, and the correction is what got remembered.
   const box = scroller(page)
-  await expect.poll(async () => {
-    await box.evaluate((el) => { el.scrollTop = 400 })
-    return box.evaluate((el) => el.scrollTop)
-  }).toBeGreaterThan(100)
+  await box.hover()
+  await page.mouse.wheel(0, 400)
+  await expect.poll(() => box.evaluate((el) => el.scrollTop)).toBeGreaterThan(100)
   const left = await box.evaluate((el) => el.scrollTop)
 
   // **Left by a control in the CHROME, not by one in the list.** Playwright
@@ -132,10 +132,9 @@ test('a new screen opens at the top, even when it reuses the one before it', asy
   // the child opened halfway down itself. Exercised here on the department
   // route, which has the same shape and a fixture tall enough to scroll.
   await list(page)
-  await expect.poll(async () => {
-    await scroller(page).evaluate((el) => { el.scrollTop = 400 })
-    return scroller(page).evaluate((el) => el.scrollTop)
-  }).toBeGreaterThan(100)
+  await scroller(page).hover()
+  await page.mouse.wheel(0, 400)
+  await expect.poll(() => scroller(page).evaluate((el) => el.scrollTop)).toBeGreaterThan(100)
 
   await page.getByRole('link', { name: 'خانه' }).click()
   await page.locator('[data-screen="departments"]').waitFor()
@@ -165,13 +164,14 @@ test('a sub-process opens at the top of itself, not at the bottom', async ({ pag
   await visit(page, '/processes/dining-020/steps')
   await page.getByText('گام شمارهٔ 1 از فرآیند').waitFor()
 
-  // Polled for the reason the first test in this file records: the reset loop
-  // is still holding this box at 0 until the parent's own content is there.
+  // Scrolled with the wheel for the reason the first test in this file records:
+  // the reset loop holds this box at 0 until the parent's own content is there,
+  // and only a real gesture ends it.
   const box = scroller(page)
-  await expect.poll(async () => {
-    await box.evaluate((el) => { el.scrollTop = el.scrollHeight })
-    return box.evaluate((el) => el.scrollTop)
-  }, { message: 'the parent is not tall enough to scroll — the test proves nothing' })
+  await box.hover()
+  await page.mouse.wheel(0, 4000)
+  await expect.poll(() => box.evaluate((el) => el.scrollTop),
+    { message: 'the parent is not tall enough to scroll — the test proves nothing' })
     .toBeGreaterThan(100)
 
   await page.getByText('گام شمارهٔ 12 از فرآیند').click()
@@ -255,11 +255,45 @@ test('a reorder row is as tall as its text, not as two stacked buttons', async (
   const box = (await row.boundingBox())!
   expect(Math.round(box.height), 'the row is back to a stacked pair of buttons')
     .toBeLessThan(70)
-  // …and neither control fell below the touch floor to get there.
-  for (const name of [/به بالا/, /به پایین/]) {
-    const b = (await row.getByRole('button', { name }).boundingBox())!
-    expect(Math.round(b.height)).toBeGreaterThanOrEqual(44)
-  }
+  // …and it got there by LOSING those controls, not by shrinking them under the
+  // touch floor: *"remove top and dpwn buttomn in order popup."* The keyboard
+  // path they used to be is the row itself, which `ReorderModal.test.tsx` pins.
+  await expect(row.getByRole('button')).toHaveCount(0)
+  await expect(row).toHaveAttribute('tabindex', '0')
+})
+
+test('the A4 width is drawn while editing, and only while editing', async ({ page }) => {
+  // **Owner ruling** — *"in export pdf, the flowchart should be in A4 page.so in
+  // edit flowchart page i want to show the width of A4 to editor see and try to
+  // input nodes in A4 width.it just show in editor of flowchrt.in edit mode.not
+  // read mode."*
+  //
+  // The width is derived, not chosen: `PRINT.W` is A4 portrait less the `@page`
+  // margins `print.css` declares, and `PrintDiagrams` pads the diagram by
+  // `PRINT.PAD` a side before `planBands` computes `min(1, PRINT.W / width)`.
+  // `export/print/a4-lane.test.ts` ties the lane to that arithmetic; this is
+  // where it is checked that the lane appears at all, and where.
+  await signedIn(page, EDITOR)
+  await serve(page, STUBS)
+  await page.goto('/processes/dining-001/flow')
+  await page.locator('.react-flow__renderer').waitFor()
+  // A reader — and an editor who has not pressed «ویرایش» — sees nothing.
+  await expect(page.locator('[data-a4-lane]')).toHaveCount(0)
+
+  const more = page.locator('[data-r-flowmore]')
+  if (await more.isVisible()) {
+    await more.click()
+    await page.getByRole('menuitem', { name: 'ویرایش' }).click()
+  } else await page.getByTestId('enter-edit').click()
+
+  const lane = page.locator('[data-a4-lane]')
+  await expect(lane).toBeVisible()
+  // 635 flow px, and at zoom 1 that is 635 on screen. `FLOW`'s two nodes are
+  // 1400 apart, so this diagram is over — which is the state the ruling exists
+  // for and the one a same-coloured lane would let an editor scroll past.
+  await expect(lane).toHaveAttribute('data-over', 'true')
+  // It is furniture, not a control: a press goes through it to the canvas.
+  await expect(lane).toHaveCSS('pointer-events', 'none')
 })
 
 test('an open row menu paints over the rows after it', async ({ page }) => {

@@ -11,7 +11,7 @@ import { Icon } from '../ui/Icon'
 import { IconTile } from '../ui/IconTile'
 import { TextField } from '../ui/TextField'
 import { useToast } from '../write/ToastProvider'
-import { ConfirmMark, ConfirmAction } from '../write/ConfirmMark'
+import { ConfirmAction } from '../write/ConfirmMark'
 import { refusalStatus } from '../api/client'
 import { LoadFailedScreen, ScreenSkeleton } from '../ui/states'
 import { RefusalScreen } from './Refusal'
@@ -163,9 +163,23 @@ export function Overview() {
                 <h1 data-h1 className="font-extrabold text-fs-h2 text-role-title-on-field">
                   خلاصهٔ {data.name}
                 </h1>
-                {/* `mark`, not `m`: two different one-letter names in one JSX
-                    block is a rename waiting to go to the wrong one. */}
-                <ConfirmMark row={marks.find((mark) => mark.target === code)} department={code} />
+                {/* **The status pill is gone — owner ruling: *"remove confirm
+                    tag in departmandetail page.it has vheckbox.doesn't need tag
+                    too."***
+
+                    `ConfirmMark` and `ConfirmAction` were both on this header,
+                    six inches apart, and after the ruling that made the act a
+                    PILL they said the same thing twice: «تأیید شده» in a green
+                    badge beside the title, and a green tick over «تأییدشده» in
+                    the action group. The one that goes is the one that only
+                    states — the control states it too, in its fill, its edge and
+                    its tick, and it is also the thing you press.
+
+                    `Summary.tsx` keeps its own `ConfirmMark` and that is not an
+                    inconsistency: the design draws a status pill on that
+                    screen's badge row (`:389`) and the ACT is not there at all —
+                    R46 moved it to the flow bar. One surface, one statement;
+                    where the control lives, the badge does not. */}
               </div>
               <p data-body className="mt-s4 text-fs-sm text-role-subtitle-on-field leading-normal">
                 آخرین به‌روزرسانی: {jalali(data.updated_at)}
