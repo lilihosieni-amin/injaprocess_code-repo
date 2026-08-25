@@ -111,6 +111,10 @@ def check_response(resp):
 
     A half transcript that lands on disk looking whole would silently truncate
     every downstream extraction, so every incomplete outcome raises instead.
+
+    STOP is the only finish reason that means "finished": an allow-list, because a
+    deny-list missed SPII, OTHER and seven more of FinishReason's 18 members, each of
+    which ends the response holding partial text. An unset reason stays permissive.
     """
     candidates = getattr(resp, "candidates", None) or []
     if not candidates:
@@ -119,8 +123,9 @@ def check_response(resp):
     if "MAX_TOKENS" in reason:
         raise RuntimeError("the transcript hit the model's output ceiling and is incomplete — "
                            "split this meeting's audio and transcribe the parts")
-    if any(word in reason for word in ("SAFETY", "BLOCK", "PROHIBITED", "RECITATION")):
-        raise RuntimeError(f"Vertex blocked the response (finish_reason={reason})")
+    if reason and "STOP" not in reason:
+        raise RuntimeError("Vertex did not finish the response — blocked or cut short "
+                           f"(finish_reason={reason})")
     text = getattr(resp, "text", None)
     if not text or not text.strip():
         raise RuntimeError("Vertex returned an empty transcript")

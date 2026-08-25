@@ -164,6 +164,17 @@ def test_check_response_refuses_blocked():
         T.check_response(_resp("x", finish="SAFETY"))
 
 
+def test_check_response_refuses_any_non_stop_reason():
+    # SPII is a live risk for staff-name-heavy meeting audio, and it is not on any deny-list
+    with pytest.raises(RuntimeError, match="SPII"):
+        T.check_response(_resp("نیمه", finish="FinishReason.SPII"))
+
+
+def test_check_response_accepts_an_unset_finish_reason():
+    # absence is not a refusal — only a value that says the model stopped for another reason
+    assert T.check_response(_resp("گوینده ۱: سلام", finish=None)) == "گوینده ۱: سلام"
+
+
 def test_transcribe_sends_inline_and_returns_text(tmp_path, monkeypatch):
     audio = tmp_path / "cooking.m4a"
     audio.write_bytes(b"raw")
