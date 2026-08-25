@@ -47,6 +47,20 @@ def test_elapsed_uses_persian_digits():
     assert tx.fa_elapsed(9) == "۰:۰۹"
 
 
+def test_stage_with_a_counter_keeps_it_in_persian_digits():
+    """`stage: transcribing 3/6` — the counter is the whole point of the breadcrumb."""
+    assert tx.fa_stage("transcribing 3/6") == "رونویسی ۳/۶"
+
+
+def test_stage_without_a_counter_is_unchanged():
+    assert tx.fa_stage("transcoding") == "فشرده‌سازی صدا"
+    assert tx.fa_stage("uploading") == "بارگذاری فایل"
+
+
+def test_an_unknown_stage_is_shown_as_it_came():
+    assert tx.fa_stage("polishing 2/3") == "polishing 2/3"
+
+
 def test_success_writes_raw_and_reports_done(data_root, monkeypatch):
     raw = tx.raw_path(data_root, "cooking-1405-04-19")
     monkeypatch.setattr(tx, "TICK", 0.01)

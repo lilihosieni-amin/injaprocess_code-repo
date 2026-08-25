@@ -61,6 +61,20 @@ def fa_elapsed(seconds):
     return f"{m}:{s:02d}".translate(_FA)
 
 
+def fa_stage(stage):
+    """«رونویسی ۳/۶» — the engine's breadcrumb in Persian, counter and all.
+
+    The chunked transcriber reports `transcribing 3/6`; the name is translated and the
+    counter kept, because on a long meeting it is the only sign of movement. Anything
+    the map does not know is shown exactly as it arrived.
+    """
+    name, _, counter = stage.partition(" ")
+    label = STAGES.get(name)
+    if label is None:
+        return stage
+    return f"{label} {counter.translate(_FA)}" if counter else label
+
+
 async def _edit(message, text, parse_mode=None):
     try:
         await message.edit_text(text, parse_mode=parse_mode)
@@ -89,7 +103,7 @@ async def _ticker(message, state, started):
     while True:
         await asyncio.sleep(TICK)
         await _edit(message, RUNNING.format(
-            stage=STAGES.get(state["stage"], state["stage"]),
+            stage=fa_stage(state["stage"]),
             elapsed=fa_elapsed(time.monotonic() - started)))
 
 
