@@ -47,6 +47,10 @@ def test_elapsed_uses_persian_digits():
     assert tx.fa_elapsed(9) == "۰:۰۹"
 
 
+def test_elapsed_past_an_hour_grows_an_hours_field():
+    assert tx.fa_elapsed(3725) == "۱:۰۲:۰۵"
+
+
 def test_stage_with_a_counter_keeps_it_in_persian_digits():
     """`stage: transcribing 3/6` — the counter is the whole point of the breadcrumb."""
     assert tx.fa_stage("transcribing 3/6") == "رونویسی ۳/۶"

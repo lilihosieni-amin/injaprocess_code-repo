@@ -9,12 +9,17 @@ from upload_bot.naming import normalize_date, voice_basename
 from upload_bot.registry import department_choices, is_valid_department
 from upload_bot.session import FileBatch, VoiceUpload
 from upload_bot.staging import discard, finalize, stage
-from upload_bot.transcription import UNAVAILABLE
+from upload_bot.transcription import UNAVAILABLE, edit_quietly, fa, fa_elapsed
 from upload_bot.transcription import schedule as schedule_transcription
 
 logger = logging.getLogger(__name__)
 
 CHOOSE_KIND, V_DATE, V_DEPTS, V_FILE, F_DEPT, F_COLLECT = range(6)
+
+# Sent the moment the voice arrives and edited into the saved confirmation later: the
+# local Bot API server fetches the whole file (up to 2 GB) before get_file() returns, so
+# without this the user stares at silence for minutes after hitting send.
+ACK = "● صوت{detail} دریافت شد — در حال ذخیره‌سازی…"
 
 
 def _discard_staged(ctx):
@@ -93,6 +98,11 @@ def build_handlers(config):
             return ConversationHandler.END
         v = ctx.user_data["voice"]
         tg = update.message.voice or update.message.audio
+        try:
+            ack = await ctx.bot.send_message(update.effective_chat.id, _ack_text(tg))
+        except Exception:                 # noqa: BLE001 - the recording outranks the cosmetics
+            logger.exception("could not acknowledge the incoming voice")
+            ack = None
         data = bytes(await (await tg.get_file()).download_as_bytearray())
         staged = stage(root, data, hint="voice")
         base = voice_basename(v.departments, v.date, root)
@@ -102,8 +112,11 @@ def build_handlers(config):
         except Exception:
             discard([staged])
             raise
-        await update.message.reply_text(
-            "ذخیره شد ✅\nرونویسی خودکار شروع شد؛ چند دقیقه طول می‌کشد و همین‌جا خبر می‌دهم.")
+        saved = "ذخیره شد ✅\nرونویسی خودکار شروع شد؛ چند دقیقه طول می‌کشد و همین‌جا خبر می‌دهم."
+        if ack is None:
+            await update.message.reply_text(saved)
+        else:
+            await edit_quietly(ack, saved)
         # Transcription runs in the background (D13): the conversation ends now so the
         # next voice can be uploaded immediately. The `Start /process-voice` line is NOT
         # in the message above any more — it rides on the transcription's own last
@@ -170,6 +183,17 @@ def build_handlers(config):
     return {"start": start, "choose_kind": choose_kind, "v_date": v_date,
             "v_depts": v_depts, "v_file": v_file, "f_dept": f_dept,
             "f_collect": f_collect, "f_done": f_done, "cancel": cancel}
+
+
+def _ack_text(tg):
+    """Telegram sends duration and size with the message itself — both optional, so a
+    field that did not arrive is left out rather than printed as «None»."""
+    parts = []
+    if getattr(tg, "duration", None):
+        parts.append(fa_elapsed(tg.duration))
+    if getattr(tg, "file_size", None):
+        parts.append("(" + fa(f"{tg.file_size / 1048576:.1f}") + " مگابایت)")
+    return ACK.format(detail="".join(" " + p for p in parts))
 
 
 def _dept_kb(data_root, prefix, multi=False, chosen=()):

@@ -56,9 +56,16 @@ def raw_path(root, basename):
     return Path(root) / "meetings" / "transcripts" / "raw" / f"{basename}.txt"
 
 
+def fa(text):
+    """Persian digits. The bot never shows an ASCII digit to the user."""
+    return str(text).translate(_FA)
+
+
 def fa_elapsed(seconds):
-    m, s = divmod(int(seconds), 60)
-    return f"{m}:{s:02d}".translate(_FA)
+    """m:ss, or h:mm:ss once there is an hour to show."""
+    h, rest = divmod(int(seconds), 3600)
+    m, s = divmod(rest, 60)
+    return fa(f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}")
 
 
 def fa_stage(stage):
@@ -72,10 +79,10 @@ def fa_stage(stage):
     label = STAGES.get(name)
     if label is None:
         return stage
-    return f"{label} {counter.translate(_FA)}" if counter else label
+    return f"{label} {fa(counter)}" if counter else label
 
 
-async def _edit(message, text, parse_mode=None):
+async def edit_quietly(message, text, parse_mode=None):
     try:
         await message.edit_text(text, parse_mode=parse_mode)
     except Exception:                     # noqa: BLE001 - progress is never worth failing over
@@ -94,15 +101,15 @@ async def _read_stderr(stream, state, tail):
 
 async def _fail(message, basename, detail):
     """Both failure paths, so the scrub and the Start line cannot drift apart."""
-    await _edit(message, FAILED.format(detail=detail.translate(_MD_UNSAFE)[:300].strip()
-                                       or "خطای نامشخص", base=basename),
-                parse_mode="Markdown")
+    await edit_quietly(message, FAILED.format(detail=detail.translate(_MD_UNSAFE)[:300].strip()
+                                              or "خطای نامشخص", base=basename),
+                       parse_mode="Markdown")
 
 
 async def _ticker(message, state, started):
     while True:
         await asyncio.sleep(TICK)
-        await _edit(message, RUNNING.format(
+        await edit_quietly(message, RUNNING.format(
             stage=fa_stage(state["stage"]),
             elapsed=fa_elapsed(time.monotonic() - started)))
 
@@ -131,7 +138,7 @@ async def run(message, root, basename):
             code = await asyncio.wait_for(proc.wait(), timeout=TIMEOUT)
         except asyncio.TimeoutError:
             proc.kill()
-            code, tail = 1, [f"از {str(TIMEOUT // 60).translate(_FA)} دقیقه گذشت و پاسخی نیامد"]
+            code, tail = 1, [f"از {fa(TIMEOUT // 60)} دقیقه گذشت و پاسخی نیامد"]
         finally:
             ticker.cancel()
             # A killed CLI can leave ffmpeg holding stderr, and then that pipe never reaches
@@ -143,7 +150,7 @@ async def run(message, root, basename):
                                  return_exceptions=True)
 
         if code == 0:
-            await _edit(message, DONE.format(base=basename), parse_mode="Markdown")
+            await edit_quietly(message, DONE.format(base=basename), parse_mode="Markdown")
             return True
         await _fail(message, basename, " ".join(tail))
         return False
