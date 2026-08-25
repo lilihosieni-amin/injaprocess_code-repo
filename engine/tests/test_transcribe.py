@@ -393,22 +393,15 @@ def test_chunk_bounds_last_chunk_is_short_when_duration_is_not_a_multiple():
     assert bounds[-1][1] == duration
 
 
-def test_a_tail_shorter_than_the_minimum_is_folded_into_the_previous_chunk():
-    """40 seconds of people packing up is not lost content — it must not fail the meeting.
-
-    check_response treats an empty chunk as a fault (D23), so a 40-second tail of room
-    noise would abort a 90-minute transcription that had otherwise succeeded.
+def test_a_short_tail_keeps_its_own_chunk():
+    """Measured: a 41-second final chunk captured the end of the meeting; folding it into
+    the 13-minute chunk before it lost «گام به گام بریم جلو» entirely. Short is correct.
     """
     duration = 1600.0                       # 2 full chunks and a 40-second tail
     bounds = T.chunk_bounds(duration)
-    assert len(bounds) == 2                 # not three
-    assert bounds[-1] == (780.0, 1600.0)    # the previous chunk simply runs to the end
-    T.assert_coverage(bounds, duration)     # and the tiling is still exact
-
-
-def test_a_tail_at_the_minimum_keeps_its_own_chunk():
-    bounds = T.chunk_bounds(1560.0 + T.MIN_TAIL_SECONDS)
-    assert len(bounds) == 3 and bounds[-1][0] == 1560.0
+    assert len(bounds) == 3                 # the tail is its own chunk, however short
+    assert bounds[-1] == (1560.0, 1600.0)
+    T.assert_coverage(bounds, duration)
 
 
 def test_audio_shorter_than_the_minimum_tail_is_still_transcribed():
@@ -510,6 +503,49 @@ def test_an_empty_chunk_fails_the_whole_run(monkeypatch):
     client = ScriptedClient(_resp("یک"), _resp("   "))
     with pytest.raises(RuntimeError, match="empty"):
         _chunked(monkeypatch, client).transcribe("meeting.m4a")
+
+
+def test_a_short_final_chunk_that_comes_back_empty_is_treated_as_silence(monkeypatch):
+    """Forty seconds of people packing up transcribing to nothing is a fact, not a fault.
+
+    The narrowest exception the evidence supports: final, shorter than MIN_TAIL_SECONDS,
+    and empty. It contributes nothing and the meeting still succeeds.
+    """
+    client = ScriptedClient(_resp("یک"), _resp("دو"), _resp("   "))
+    text = _chunked(monkeypatch, client, duration=1600.0).transcribe("meeting.m4a")
+    assert client.calls == 3                          # the tail was transcribed, not skipped
+    assert "یک" in text and "دو" in text
+    assert not text.rstrip().endswith("\n")           # no empty block glued on the end
+
+
+def test_a_short_final_chunk_that_returns_text_keeps_it(monkeypatch):
+    client = ScriptedClient(_resp("یک"), _resp("دو"), _resp("گام به گام بریم جلو"))
+    text = _chunked(monkeypatch, client, duration=1600.0).transcribe("meeting.m4a")
+    assert text.endswith("گام به گام بریم جلو")        # the ending is the whole point
+
+
+def test_a_long_final_chunk_that_comes_back_empty_still_fails_the_run(monkeypatch):
+    """1860s leaves a 5-minute final chunk — far too long for silence to be plausible."""
+    client = ScriptedClient(_resp("یک"), _resp("دو"), _resp(""))
+    with pytest.raises(RuntimeError, match="empty"):
+        _chunked(monkeypatch, client, duration=1860.0).transcribe("meeting.m4a")
+
+
+def test_a_short_but_not_final_chunk_that_comes_back_empty_still_fails(monkeypatch):
+    client = ScriptedClient(_resp("   "), _resp("دو"))
+    tr = _chunked(monkeypatch, client, duration=100.0)
+    monkeypatch.setattr(T, "chunk_bounds", lambda d: [(0.0, 40.0), (30.0, 100.0)])
+    with pytest.raises(RuntimeError, match="empty"):
+        tr.transcribe("meeting.m4a")
+
+
+def test_check_response_returns_empty_text_when_silence_is_allowed():
+    assert T.check_response(_resp("   "), allow_empty=True) == ""
+
+
+def test_check_response_still_refuses_a_blocked_response_when_silence_is_allowed():
+    with pytest.raises(RuntimeError, match="blocked"):
+        T.check_response(_resp("", finish="SAFETY"), allow_empty=True)
 
 
 def test_a_failed_chunk_leaves_no_transcript_on_disk(data_root, tmp_path, monkeypatch):

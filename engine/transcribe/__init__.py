@@ -30,9 +30,10 @@ INLINE_LIMIT = 16 * 1024 * 1024
 # seam cannot fall between two chunks — duplication is recoverable, loss is not.
 CHUNK_SECONDS = 13 * 60
 CHUNK_OVERLAP = 10
-# A tail this short gets folded into the chunk before it instead of becoming a chunk of
-# its own: meetings end with people packing up, an empty chunk is a failure under D23,
-# and failing a 90-minute transcription over 40 seconds of room noise is a false alarm.
+# Not a fold threshold — the length below which an empty FINAL chunk is forgiven rather
+# than failed (D23). Folding a short tail into the chunk before it was measured losing the
+# end of the meeting: a 41-second final chunk captured «گام به گام بریم جلو», and the same
+# audio with that tail merged into a 13.5-minute chunk dropped it. Short tails stay.
 MIN_TAIL_SECONDS = 90
 # Container and stream durations that disagree by more than this are worth saying out loud.
 DURATION_DISAGREEMENT = 2.0
@@ -98,13 +99,12 @@ def probe_duration(path, run=subprocess.run):
     return max(values)
 
 
-def chunk_bounds(duration, chunk=CHUNK_SECONDS, overlap=CHUNK_OVERLAP,
-                 min_tail=MIN_TAIL_SECONDS):
+def chunk_bounds(duration, chunk=CHUNK_SECONDS, overlap=CHUNK_OVERLAP):
     """(start, end) seconds for every chunk, advancing by `chunk` and ending `overlap` late.
 
-    The last chunk is usually short; that is normal. A tail under `min_tail` is folded into
-    the chunk before it, which still tiles [0, duration] exactly — a 13-minute chunk with
-    90 seconds on the end is nowhere near any output limit.
+    A fixed interval, and the last chunk is however short it turns out to be — measured, a
+    41-second final chunk reproduced the end of the meeting exactly, and merging it into
+    the chunk before it lost the ending. Short is correct; it is not an error to fix.
     """
     bounds, start = [], 0.0
     while start < duration:
@@ -113,9 +113,6 @@ def chunk_bounds(duration, chunk=CHUNK_SECONDS, overlap=CHUNK_OVERLAP,
         if end >= duration:
             break
         start += chunk
-    if len(bounds) > 1 and bounds[-1][1] - bounds[-1][0] < min_tail:
-        tail_end = bounds.pop()[1]
-        bounds[-1] = (bounds[-1][0], tail_end)
     return bounds
 
 
@@ -223,8 +220,12 @@ def run_transcribe(basename, transcriber, root=None):
     return transcriber.transcribe(str(audio)), True
 
 
-def check_response(resp):
+def check_response(resp, allow_empty=False):
     """Refuse a transcript the model did not finish (D6).
+
+    `allow_empty` is the one exception (D23) and the caller decides when it applies:
+    a final chunk shorter than MIN_TAIL_SECONDS may legitimately be silence. Every other
+    guard still holds — a blocked or truncated short tail fails like any other chunk.
 
     A half transcript that lands on disk looking whole would silently truncate
     every downstream extraction, so every incomplete outcome raises instead.
@@ -245,6 +246,8 @@ def check_response(resp):
                            f"(finish_reason={reason})")
     text = getattr(resp, "text", None)
     if not text or not text.strip():
+        if allow_empty:
+            return ""
         raise RuntimeError("Vertex returned an empty transcript")
     return text
 
@@ -293,10 +296,16 @@ class VertexTranscriber:
             stage("transcoding")
             for i, (start, end) in enumerate(bounds, 1):
                 label = f"chunk {i}/{total} ({clock(start)}–{clock(end)})"
-                texts.append(self._chunk(audio_path, tmp, i, total, start, end, label))
+                # Thirteen minutes of a staff meeting transcribing to nothing is a fault;
+                # forty seconds of people packing up transcribing to nothing is a fact.
+                # As narrow as the evidence: final, short, and empty — nothing else.
+                silence_ok = i == total and end - start < MIN_TAIL_SECONDS
+                text = self._chunk(audio_path, tmp, i, total, start, end, label, silence_ok)
+                if text:
+                    texts.append(text)
         return "\n\n".join(texts)
 
-    def _chunk(self, audio_path, tmp, i, total, start, end, label):
+    def _chunk(self, audio_path, tmp, i, total, start, end, label, silence_ok=False):
         # Named after the meeting and the chunk, not the temp dir: the GCS object
         # inherits this name, and two chunks staging `audio.ogg` would collide.
         ogg = Path(tmp) / f"{Path(audio_path).stem}-{i:02d}.ogg"
@@ -309,12 +318,12 @@ class VertexTranscriber:
         uri = value if kind == "uri" else None
         try:
             stage(f"transcribing {i}/{total}")
-            return with_retry(lambda: self._call(kind, value), label)
+            return with_retry(lambda: self._call(kind, value, silence_ok), label)
         finally:
             if uri:
                 gcs_delete(uri)
 
-    def _call(self, kind, value):
+    def _call(self, kind, value, silence_ok=False):
         # A plain dict, not types.GenerateContentConfig: keeps the SDK import
         # lazy. max_output_tokens is left unset — the default IS the model
         # maximum, and naming a number here could only lower it.
@@ -326,4 +335,4 @@ class VertexTranscriber:
         resp = client.models.generate_content(
             model=self.model, contents=[PROMPT, build_part(kind, value)],
             config={"temperature": 0})
-        return check_response(resp)              # D23: every chunk is guarded
+        return check_response(resp, allow_empty=silence_ok)   # D23: every chunk

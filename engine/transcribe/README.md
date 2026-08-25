@@ -18,10 +18,10 @@ Gemini-on-Vertex transcription with idempotency pre-check (ARD §5.1, FR-P2):
   a whole meeting was measured thinning the transcript throughout and stopping two
   minutes early *while reporting a normal finish*; the same audio in chunks produced
   28% more text. The overlap duplicates a few words at each seam on purpose —
-  duplication is recoverable, loss is not. A final tail under `MIN_TAIL_SECONDS` (90) is
-  folded into the chunk before it rather than becoming a chunk of its own — meetings end
-  with people packing up, and an empty chunk is a failure (D23), so a 40-second tail of
-  room noise must not fail a 90-minute meeting.
+  duplication is recoverable, loss is not. Measured: a 13-minute chunk transcribes right
+  to its end, so 10 seconds is enough and the overlap should not be widened on a hunch.
+  The final chunk is however short it turns out to be — merging a 41-second tail into the
+  chunk before it was measured **losing the end of the meeting**.
 - Duration comes from `ffprobe`, so **ffmpeg and ffprobe must both be on PATH**. Both the
   container and the stream duration are read and the **longer** wins: a header that
   under-reports while the stream runs on would shorten the last chunk with the coverage
@@ -43,7 +43,12 @@ Gemini-on-Vertex transcription with idempotency pre-check (ARD §5.1, FR-P2):
   above that through `gs://$GCS_BUCKET`, deleted after that chunk's call (NFR-2).
   At the default bitrate a chunk is ~1.5 MB, so in practice every chunk goes inline.
 - An incomplete response (output ceiling, safety block, empty) fails that chunk and
-  therefore the whole run (D23) rather than writing a truncated transcript.
+  therefore the whole run (D23) rather than writing a truncated transcript. One narrow
+  exception: a **final** chunk shorter than `MIN_TAIL_SECONDS` (90) that comes back empty
+  is silence, not a fault — it contributes nothing and the run continues. Thirteen minutes
+  of a staff meeting transcribing to nothing is a fault; forty seconds of people packing up
+  transcribing to nothing is a fact. A short final chunk that returns text keeps it, and a
+  blocked or truncated short tail still fails like any other chunk.
 - Env: `VERTEX_PROJECT`, `VERTEX_LOCATION`, `GEMINI_MODEL`, `GCS_BUCKET`,
   `TRANSCODE_BITRATE` (see `config/engine.env.example`).
 - Output: Persian transcript with speaker labels; the Gemini system prompt lives
