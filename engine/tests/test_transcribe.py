@@ -204,7 +204,7 @@ def test_check_response_accepts_an_unset_finish_reason():
 
 def test_transcribe_sends_inline_and_returns_text(monkeypatch):
     client = ScriptedClient(_resp("گوینده ۱: سلام"))
-    tr = _chunked(monkeypatch, client, duration=300.0)      # one chunk of audio
+    tr = _chunked(monkeypatch, client, duration=60.0)      # one chunk of audio
     assert tr.transcribe("cooking.m4a") == "گوینده ۱: سلام"
     assert client.calls == 1
 
@@ -217,7 +217,7 @@ def test_transcribe_sends_the_prompt_and_the_audio_part(monkeypatch):
             seen.update(model=model, contents=contents, config=config)
             return super()._generate(model, contents, config)
 
-    _chunked(monkeypatch, Recorder(), duration=300.0).transcribe("cooking.m4a")
+    _chunked(monkeypatch, Recorder(), duration=60.0).transcribe("cooking.m4a")
     assert seen["model"] == "gemini-x"
     assert seen["contents"][0] == T.PROMPT
     assert seen["contents"][1] == ("part", "inline", b"xxxxx")
@@ -231,7 +231,7 @@ def test_transcribe_keeps_the_client_alive_for_the_whole_request(monkeypatch):
     closes the transport and every real transcription dies with "Cannot send a request,
     as the client has been closed." Binding the client to a local is the whole fix.
     """
-    tr = _chunked(monkeypatch, None, duration=300.0)
+    tr = _chunked(monkeypatch, None, duration=60.0)
     tr._client_factory = lambda: ClosingClient(_resp("گوینده ۱: سلام"))
     assert tr.transcribe("cooking.m4a") == "گوینده ۱: سلام"
 
@@ -244,7 +244,8 @@ def test_each_chunk_over_the_inline_limit_goes_to_gcs_and_is_deleted(monkeypatch
     tr.transcribe("cooking.m4a")                     # 1600s of audio: three chunks
     assert deleted == ["gs://buck/transcribe/cooking-01.ogg",
                        "gs://buck/transcribe/cooking-02.ogg",
-                       "gs://buck/transcribe/cooking-03.ogg"]
+                       "gs://buck/transcribe/cooking-03.ogg",
+                       "gs://buck/transcribe/cooking-04.ogg"]
 
 
 def test_a_staged_chunk_is_deleted_even_when_its_call_fails(monkeypatch):
@@ -420,6 +421,64 @@ def test_audio_shorter_than_one_chunk_is_a_single_chunk():
     assert T.chunk_bounds(300.0) == [(0.0, 300.0)]
 
 
+MEETING = 3890.99          # dining-1405-04-11, the run this was measured on
+
+
+def test_the_final_primary_chunk_is_not_reliably_short():
+    """The arithmetic never promised a short tail — it advances by 780 and spans 790.
+
+    dining-1405-04-11's last primary chunk is 771 seconds, and that long final chunk both
+    dropped «هفتاد دقیقه شد» and produced «باعث افتخاره بنده است», which is nowhere in the
+    audio. A short clip of the same ending reproduced it exactly. Hence the tail chunk.
+    """
+    primary = T.chunk_bounds(MEETING)
+    assert len(primary) == 5
+    assert primary[-1][1] - primary[-1][0] > 700       # not short, and nothing said it would be
+
+
+def test_a_tail_chunk_always_covers_the_last_ninety_seconds(monkeypatch):
+    fake = FakeTranscode()
+    tr = _chunked(monkeypatch, ScriptedClient(), duration=MEETING)
+    monkeypatch.setattr(T, "transcode", fake)
+    tr.transcribe("meeting.m4a")
+    assert len(fake.calls) == 6                        # five primary chunks and the tail
+    assert fake.calls[-1] == (MEETING - T.TAIL_SECONDS, float(T.TAIL_SECONDS))
+
+
+def test_no_tail_chunk_when_the_recording_is_shorter_than_the_tail(monkeypatch):
+    fake = FakeTranscode()
+    tr = _chunked(monkeypatch, ScriptedClient(), duration=60.0)
+    monkeypatch.setattr(T, "transcode", fake)
+    tr.transcribe("meeting.m4a")
+    assert fake.calls == [(0.0, 60.0)]                 # one chunk already covers everything
+
+
+def test_the_tail_chunk_is_counted_in_the_stage_progress(monkeypatch, capsys):
+    _chunked(monkeypatch, ScriptedClient(), duration=MEETING).transcribe("meeting.m4a")
+    assert "stage: transcribing 6/6" in capsys.readouterr().err
+
+
+def test_a_failing_tail_chunk_fails_the_whole_run(monkeypatch):
+    """The tail is a chunk like any other for D21: it cannot be quietly dropped."""
+    client = ScriptedClient(*[_resp("متن")] * 3, _transient(), _transient(), _transient())
+    with pytest.raises(RuntimeError, match=r"chunk 4/4 \(25:10–26:40\)"):
+        _chunked(monkeypatch, client, duration=1600.0).transcribe("meeting.m4a")
+
+
+def test_an_empty_tail_chunk_is_forgiven(monkeypatch):
+    """Ninety seconds of goodbyes can genuinely transcribe to nothing (D23's exception)."""
+    client = ScriptedClient(*[_resp("متن")] * 3, _resp("   "))
+    text = _chunked(monkeypatch, client, duration=1600.0).transcribe("meeting.m4a")
+    assert text.count("متن") == 3
+
+
+def test_a_transcription_that_is_empty_all_through_still_fails(monkeypatch):
+    """The silence exception must never add up to an empty transcript on disk (D21)."""
+    client = ScriptedClient(_resp("   "))
+    with pytest.raises(RuntimeError, match="nothing"):
+        _chunked(monkeypatch, client, duration=60.0).transcribe("meeting.m4a")
+
+
 def test_coverage_check_rejects_a_gap_between_chunks():
     with pytest.raises(RuntimeError, match="gap"):
         T.assert_coverage([(0.0, 700.0), (780.0, 1560.0)], 1560.0)
@@ -445,10 +504,10 @@ def test_transcribe_asserts_coverage_before_calling_vertex(monkeypatch):
 
 
 def test_transcribe_joins_every_chunk_in_order(monkeypatch):
-    client = ScriptedClient(_resp("یک"), _resp("دو"), _resp("سه"))
+    client = ScriptedClient(_resp("یک"), _resp("دو"), _resp("سه"), _resp("چهار"))
     text = _chunked(monkeypatch, client).transcribe("meeting.m4a")
-    assert client.calls == 3
-    assert text.index("یک") < text.index("دو") < text.index("سه")
+    assert client.calls == 4                          # three chunks and the tail
+    assert text.index("یک") < text.index("دو") < text.index("سه") < text.index("چهار")
     assert "یک" in text and "دو" in text and "سه" in text
 
 
@@ -457,20 +516,21 @@ def test_transcribe_cuts_each_chunks_own_time_range(monkeypatch):
     tr = _chunked(monkeypatch, ScriptedClient())
     monkeypatch.setattr(T, "transcode", fake)
     tr.transcribe("meeting.m4a")
-    assert fake.calls == [(0.0, 790.0), (780.0, 790.0), (1560.0, 300.0)]
+    assert fake.calls == [(0.0, 790.0), (780.0, 790.0), (1560.0, 300.0),
+                          (1770.0, 90.0)]      # …and the last 90 seconds again
 
 
 def test_stage_reports_the_chunk_counter(monkeypatch, capsys):
     _chunked(monkeypatch, ScriptedClient()).transcribe("meeting.m4a")
     err = capsys.readouterr().err
-    assert "stage: transcribing 1/3" in err
-    assert "stage: transcribing 3/3" in err
+    assert "stage: transcribing 1/4" in err
+    assert "stage: transcribing 4/4" in err            # the tail chunk is counted too
 
 
 def test_a_transient_failure_is_retried_and_the_transcript_is_complete(monkeypatch):
-    client = ScriptedClient(_transient(), _resp("یک"), _resp("دو"), _resp("سه"))
+    client = ScriptedClient(_transient(), _resp("یک"), _resp("دو"), _resp("سه"), _resp("چهار"))
     text = _chunked(monkeypatch, client).transcribe("meeting.m4a")
-    assert client.calls == 4                # 1 failed attempt + 3 chunks
+    assert client.calls == 5                # 1 failed attempt + 3 chunks + the tail
     assert "یک" in text and "دو" in text and "سه" in text
 
 
@@ -483,7 +543,7 @@ def test_a_non_transient_failure_is_not_retried(monkeypatch):
 
 def test_a_chunk_that_exhausts_its_retries_names_the_chunk_and_the_time_range(monkeypatch):
     client = ScriptedClient(_resp("یک"), _transient(), _transient(), _transient())
-    with pytest.raises(RuntimeError, match=r"chunk 2/3 \(13:00–26:10\)"):
+    with pytest.raises(RuntimeError, match=r"chunk 2/4 \(13:00–26:10\)"):
         _chunked(monkeypatch, client).transcribe("meeting.m4a")
     assert client.calls == 4                # chunk 1, then 3 bounded attempts at chunk 2
 
@@ -498,15 +558,15 @@ def test_a_repetition_loop_is_retried_and_the_transcript_completes(monkeypatch):
     A ceiling on identical audio is non-deterministic, so it is the model getting stuck,
     not the meeting being too long — and one unlucky chunk must not cost a 90-minute run.
     """
-    client = ScriptedClient(_ceiling(), _resp("یک"), _resp("دو"), _resp("سه"))
+    client = ScriptedClient(_ceiling(), _resp("یک"), _resp("دو"), _resp("سه"), _resp("چهار"))
     text = _chunked(monkeypatch, client).transcribe("meeting.m4a")
-    assert client.calls == 4
+    assert client.calls == 5
     assert "یک" in text and "دو" in text and "سه" in text
 
 
 def test_the_retry_after_a_repetition_loop_bumps_the_temperature(monkeypatch):
     """Replaying the identical greedy path would land in the identical loop."""
-    client = ScriptedClient(_ceiling(), _resp("یک"), _resp("دو"), _resp("سه"))
+    client = ScriptedClient(_ceiling(), _resp("یک"), _resp("دو"), _resp("سه"), _resp("چهار"))
     _chunked(monkeypatch, client).transcribe("meeting.m4a")
     assert client.configs[0] == {"temperature": 0}
     assert client.configs[1] == {"temperature": T.RETRY_TEMPERATURE}
@@ -517,20 +577,20 @@ def test_the_retry_after_a_repetition_loop_bumps_the_temperature(monkeypatch):
 def test_a_network_retry_stays_at_temperature_zero(monkeypatch):
     """A 503 is not the model's fault; determinism is worth keeping where it is free."""
     client = ScriptedClient(_transient(), _resp("یک"))
-    _chunked(monkeypatch, client, duration=300.0).transcribe("meeting.m4a")
+    _chunked(monkeypatch, client, duration=60.0).transcribe("meeting.m4a")
     assert client.configs == [{"temperature": 0}, {"temperature": 0}]
 
 
 def test_no_max_output_tokens_is_ever_sent(monkeypatch):
     """The default cap is the circuit breaker that turns a runaway into a loud failure."""
     client = ScriptedClient(_resp("یک"))
-    _chunked(monkeypatch, client, duration=300.0).transcribe("meeting.m4a")
+    _chunked(monkeypatch, client, duration=60.0).transcribe("meeting.m4a")
     assert "max_output_tokens" not in client.configs[0]
 
 
 def test_a_repetition_loop_on_every_attempt_fails_the_whole_run(monkeypatch):
     client = ScriptedClient(_ceiling(), _ceiling(), _ceiling())
-    with pytest.raises(RuntimeError, match=r"chunk 1/3 \(0:00–13:10\).*output limit"):
+    with pytest.raises(RuntimeError, match=r"chunk 1/4 \(0:00–13:10\).*output limit"):
         _chunked(monkeypatch, client).transcribe("meeting.m4a")
     assert client.calls == 3                            # the bounded budget, not forever
 
@@ -566,15 +626,16 @@ def test_a_short_final_chunk_that_comes_back_empty_is_treated_as_silence(monkeyp
     The narrowest exception the evidence supports: final, shorter than MIN_TAIL_SECONDS,
     and empty. It contributes nothing and the meeting still succeeds.
     """
-    client = ScriptedClient(_resp("یک"), _resp("دو"), _resp("   "))
+    client = ScriptedClient(_resp("یک"), _resp("دو"), _resp("   "), _resp("   "))
     text = _chunked(monkeypatch, client, duration=1600.0).transcribe("meeting.m4a")
-    assert client.calls == 3                          # the tail was transcribed, not skipped
+    assert client.calls == 4                          # the tail was transcribed, not skipped
     assert "یک" in text and "دو" in text
     assert not text.rstrip().endswith("\n")           # no empty block glued on the end
 
 
 def test_a_short_final_chunk_that_returns_text_keeps_it(monkeypatch):
-    client = ScriptedClient(_resp("یک"), _resp("دو"), _resp("گام به گام بریم جلو"))
+    client = ScriptedClient(_resp("یک"), _resp("دو"), _resp("سه"),
+                            _resp("گام به گام بریم جلو"))
     text = _chunked(monkeypatch, client, duration=1600.0).transcribe("meeting.m4a")
     assert text.endswith("گام به گام بریم جلو")        # the ending is the whole point
 

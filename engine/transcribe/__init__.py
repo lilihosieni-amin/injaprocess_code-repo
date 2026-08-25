@@ -30,10 +30,16 @@ INLINE_LIMIT = 16 * 1024 * 1024
 # seam cannot fall between two chunks — duplication is recoverable, loss is not.
 CHUNK_SECONDS = 13 * 60
 CHUNK_OVERLAP = 10
-# Not a fold threshold — the length below which an empty FINAL chunk is forgiven rather
-# than failed (D23). Folding a short tail into the chunk before it was measured losing the
-# end of the meeting: a 41-second final chunk captured «گام به گام بریم جلو», and the same
-# audio with that tail merged into a 13.5-minute chunk dropped it. Short tails stay.
+# One extra chunk covering the last TAIL_SECONDS of every recording, on top of the primary
+# boundaries (D20). Not an optimisation — a long final chunk was measured *losing* the end
+# of the meeting («هفتاد دقیقه شد» missing) and *inventing* a closing line that is nowhere
+# in the audio, while a short clip of the same ending reproduced it exactly. The primary
+# boundaries cannot promise a short final chunk: they advance by CHUNK_SECONDS and span
+# CHUNK_SECONDS + CHUNK_OVERLAP, so how short the last one lands is luck against the file's
+# duration — dining-1405-04-11's was 771 seconds. This makes the ending deterministic.
+TAIL_SECONDS = 90
+# The length below which an empty chunk that reaches the END of the recording is forgiven
+# rather than failed (D23): ninety seconds of goodbyes can genuinely transcribe to nothing.
 MIN_TAIL_SECONDS = 90
 # Container and stream durations that disagree by more than this are worth saying out loud.
 DURATION_DISAGREEMENT = 2.0
@@ -106,9 +112,11 @@ def probe_duration(path, run=subprocess.run):
 def chunk_bounds(duration, chunk=CHUNK_SECONDS, overlap=CHUNK_OVERLAP):
     """(start, end) seconds for every chunk, advancing by `chunk` and ending `overlap` late.
 
-    A fixed interval, and the last chunk is however short it turns out to be — measured, a
-    41-second final chunk reproduced the end of the meeting exactly, and merging it into
-    the chunk before it lost the ending. Short is correct; it is not an error to fix.
+    These are the PRIMARY boundaries and they tile [0, duration]. The final one may be any
+    length — it advances by `chunk` but spans `chunk + overlap`, so whether it lands short
+    or nearly full is luck against the file's duration, and an earlier docstring here
+    claimed a short final chunk the arithmetic never delivered. Capturing the ending is not
+    left to that: `transcribe` appends a dedicated TAIL_SECONDS chunk on top of these.
     """
     bounds, start = [], 0.0
     while start < duration:
@@ -309,7 +317,13 @@ class VertexTranscriber:
         """
         duration = probe_duration(audio_path)
         bounds = chunk_bounds(duration)
-        assert_coverage(bounds, duration)
+        assert_coverage(bounds, duration)      # D24, on the primary bounds and only those
+        if duration > TAIL_SECONDS:
+            # Unconditional, whatever the primary boundaries did. The last 90 seconds are
+            # transcribed twice and both copies are kept: de-duplicating them would need
+            # alignment logic that could delete real speech to tidy an ending, and this
+            # design already answered that trade — duplication is recoverable, loss is not.
+            bounds.append((duration - TAIL_SECONDS, duration))
         total = len(bounds)
         texts = []
         with tempfile.TemporaryDirectory() as tmp:
@@ -317,12 +331,17 @@ class VertexTranscriber:
             for i, (start, end) in enumerate(bounds, 1):
                 label = f"chunk {i}/{total} ({clock(start)}–{clock(end)})"
                 # Thirteen minutes of a staff meeting transcribing to nothing is a fault;
-                # forty seconds of people packing up transcribing to nothing is a fact.
-                # As narrow as the evidence: final, short, and empty — nothing else.
-                silence_ok = i == total and end - start < MIN_TAIL_SECONDS
+                # ninety seconds of people packing up transcribing to nothing is a fact.
+                # As narrow as the evidence: short, touching the end of the recording, and
+                # empty. That covers the tail chunk and a short final primary chunk, which
+                # are the same silence heard twice; nothing mid-meeting qualifies.
+                silence_ok = end >= duration and end - start <= MIN_TAIL_SECONDS
                 text = self._chunk(audio_path, tmp, i, total, start, end, label, silence_ok)
                 if text:
                     texts.append(text)
+        if not texts:
+            # Forgiven silence must never add up to an empty file on disk (D21).
+            raise RuntimeError("every chunk came back empty — nothing was transcribed")
         return "\n\n".join(texts)
 
     def _chunk(self, audio_path, tmp, i, total, start, end, label, silence_ok=False):

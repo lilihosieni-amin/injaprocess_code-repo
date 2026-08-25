@@ -20,8 +20,15 @@ Gemini-on-Vertex transcription with idempotency pre-check (ARD §5.1, FR-P2):
   28% more text. The overlap duplicates a few words at each seam on purpose —
   duplication is recoverable, loss is not. Measured: a 13-minute chunk transcribes right
   to its end, so 10 seconds is enough and the overlap should not be widened on a hunch.
-  The final chunk is however short it turns out to be — merging a 41-second tail into the
-  chunk before it was measured **losing the end of the meeting**.
+- **One extra tail chunk covering the last `TAIL_SECONDS` (90) is always appended** for any
+  recording longer than that. The primary boundaries cannot promise a short final chunk —
+  they advance by `CHUNK_SECONDS` and span `CHUNK_SECONDS + CHUNK_OVERLAP`, so the last one
+  lands wherever the file's duration puts it (771 s for `dining-1405-04-11`). That long
+  final chunk was measured **dropping the real ending** («هفتاد دقیقه شد» missing) and
+  **inventing a closing line** that appears nowhere in the audio, while 41-second and
+  60-second clips of the same ending reproduced it exactly. The last 90 seconds therefore
+  appear twice in the transcript, deliberately: de-duplicating them needs alignment logic
+  that could delete real speech to tidy an ending.
 - Duration comes from `ffprobe`, so **ffmpeg and ffprobe must both be on PATH**. Both the
   container and the stream duration are read and the **longer** wins: a header that
   under-reports while the stream runs on would shorten the last chunk with the coverage
@@ -53,8 +60,11 @@ Gemini-on-Vertex transcription with idempotency pre-check (ARD §5.1, FR-P2):
 - An incomplete response (output limit on every attempt, safety block, empty) fails that
   chunk and
   therefore the whole run (D23) rather than writing a truncated transcript. One narrow
-  exception: a **final** chunk shorter than `MIN_TAIL_SECONDS` (90) that comes back empty
-  is silence, not a fault — it contributes nothing and the run continues. Thirteen minutes
+  exception: a chunk that **reaches the end of the recording** and is no longer than
+  `MIN_TAIL_SECONDS` (90) — the tail chunk, and a short final primary chunk, which are the
+  same silence heard twice — is silence, not a fault when it comes back empty; it
+  contributes nothing and the run continues. If *every* chunk comes back empty the run
+  fails anyway: forgiven silence must never add up to an empty file on disk. Thirteen minutes
   of a staff meeting transcribing to nothing is a fault; forty seconds of people packing up
   transcribing to nothing is a fact. A short final chunk that returns text keeps it, and a
   blocked or truncated short tail still fails like any other chunk.
