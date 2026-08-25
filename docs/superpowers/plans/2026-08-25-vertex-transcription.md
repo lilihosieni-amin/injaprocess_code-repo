@@ -38,6 +38,7 @@ Pure functions with no SDK involvement: turn any audio into one uniform Opus fil
   - `INLINE_LIMIT: int` — `16 * 1024 * 1024`
   - `transcode(src, dst, bitrate=None, run=subprocess.run) -> pathlib.Path`
   - `audio_source(path, bucket, inline_limit=INLINE_LIMIT, uploader=None) -> tuple[str, bytes | str]` returning `("inline", data)` or `("uri", "gs://…")`
+  - `gcs_upload(path, bucket, name) -> str`, `gcs_delete(uri) -> None`
   - `stage(name) -> None` — writes `stage: {name}` to stderr
 
 - [ ] **Step 1: Branch off main**
@@ -206,9 +207,32 @@ def audio_source(path, bucket, inline_limit=INLINE_LIMIT, uploader=None):
             "inline limit, and GCS_BUCKET is not set")
     upload = uploader or gcs_upload
     return ("uri", upload(path, bucket, f"transcribe/{path.name}"))
+
+
+def gcs_upload(path, bucket, name):
+    """Stage oversize audio for Vertex (D3). Lazy import: only this branch needs it."""
+    from google.cloud import storage
+    blob = storage.Client().bucket(bucket).blob(name)
+    blob.upload_from_filename(str(path), content_type="audio/ogg")
+    return f"gs://{bucket}/{name}"
+
+
+def gcs_delete(uri):
+    """Best-effort cleanup; the bucket's 1-day lifecycle rule is the backstop (D3).
+
+    A failed delete must never turn a finished transcription into a failure.
+    """
+    from google.cloud import storage
+    bucket, _, name = uri[len("gs://"):].partition("/")
+    try:
+        storage.Client().bucket(bucket).blob(name).delete()
+    except Exception as e:                      # noqa: BLE001 - cleanup is advisory
+        print(f"warning: could not delete {uri}: {e}", file=sys.stderr)
 ```
 
-`gcs_upload` is referenced here and defined in Task 2; it is only reached on the oversize branch, which every test in this task injects around.
+These two are thin SDK wrappers with nothing to unit-test without credentials — they live
+here, beside the `audio_source` branch that calls them, so this module never references a
+name it does not define (ruff's F821). Task 9 exercises them against the real bucket.
 
 - [ ] **Step 5: Run the tests to verify they pass**
 
@@ -232,10 +256,10 @@ git commit -m "feat(engine): transcode to mono opus and route audio inline or vi
 - Test: `engine/tests/test_transcribe.py`
 
 **Interfaces:**
-- Consumes: `transcode`, `audio_source`, `stage`, `INLINE_LIMIT` from Task 1.
+- Consumes: `transcode`, `audio_source`, `stage`, `INLINE_LIMIT`, `gcs_delete` from Task 1.
 - Produces:
   - `check_response(resp) -> str` — returns the transcript text or raises
-  - `gcs_upload(path, bucket, name) -> str`, `gcs_delete(uri) -> None`
+  - `build_part(kind, value)` — the lazy SDK wrapper for the audio part
   - `VertexTranscriber(project, location, model, bucket=None, inline_limit=INLINE_LIMIT, client_factory=None)` with `.transcribe(audio_path) -> str`
 
 - [ ] **Step 1: Write the failing tests**
@@ -367,27 +391,6 @@ def build_part(kind, value):
     if kind == "inline":
         return types.Part.from_bytes(data=value, mime_type="audio/ogg")
     return types.Part.from_uri(file_uri=value, mime_type="audio/ogg")
-
-
-def gcs_upload(path, bucket, name):
-    """Stage oversize audio for Vertex (D3). Lazy import: only this branch needs it."""
-    from google.cloud import storage
-    blob = storage.Client().bucket(bucket).blob(name)
-    blob.upload_from_filename(str(path), content_type="audio/ogg")
-    return f"gs://{bucket}/{name}"
-
-
-def gcs_delete(uri):
-    """Best-effort cleanup; the bucket's 1-day lifecycle rule is the backstop (D3).
-
-    A failed delete must never turn a finished transcription into a failure.
-    """
-    from google.cloud import storage
-    bucket, _, name = uri[len("gs://"):].partition("/")
-    try:
-        storage.Client().bucket(bucket).blob(name).delete()
-    except Exception as e:                      # noqa: BLE001 - cleanup is advisory
-        print(f"warning: could not delete {uri}: {e}", file=sys.stderr)
 
 
 class VertexTranscriber:
