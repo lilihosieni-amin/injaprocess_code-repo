@@ -36,13 +36,22 @@ Gemini-on-Vertex transcription with idempotency pre-check (ARD §5.1, FR-P2):
   tile the audio from 0 to its full duration, so a rounding bug cannot skip a segment.
   A short final chunk is normal.
 - Each chunk retries up to 3 times with a short backoff on transient failures only —
-  5xx, 429, timeouts, connection resets (D22). A blocked response or an invalid
-  argument fails immediately; repeating it only costs time and money.
+  5xx, 429, timeouts, connection resets, **and `MAX_TOKENS`** (D22). A blocked response or
+  an invalid argument fails immediately; repeating it only costs time and money.
+- `MAX_TOKENS` is retryable because it was measured non-deterministic: the same chunk
+  failed that way once and finished twice, at ~4,000 output tokens each time — a repetition
+  loop, not a chunk that is too long. Retries after a `MAX_TOKENS` (and only those) use
+  `RETRY_TEMPERATURE` (0.2) instead of 0, because greedy decoding replays the identical
+  path into the identical loop. Network retries stay at 0.
+- `max_output_tokens` is **deliberately unset** — not an omission. Setting it explicitly
+  changed nothing in measurement, and the default cap is the circuit breaker that turns a
+  runaway repetition into a loud, retryable failure instead of pages of rubbish.
 - Every audio is transcoded to mono Opus at `TRANSCODE_BITRATE` (default 16k)
   first. Vertex has **no Files API** — each chunk travels inline under 16 MiB, and
   above that through `gs://$GCS_BUCKET`, deleted after that chunk's call (NFR-2).
   At the default bitrate a chunk is ~1.5 MB, so in practice every chunk goes inline.
-- An incomplete response (output ceiling, safety block, empty) fails that chunk and
+- An incomplete response (output limit on every attempt, safety block, empty) fails that
+  chunk and
   therefore the whole run (D23) rather than writing a truncated transcript. One narrow
   exception: a **final** chunk shorter than `MIN_TAIL_SECONDS` (90) that comes back empty
   is silence, not a fault — it contributes nothing and the run continues. Thirteen minutes

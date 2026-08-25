@@ -41,6 +41,10 @@ DURATION_DISAGREEMENT = 2.0
 # Bounded retry per chunk (D22).
 RETRIES = 3
 RETRY_BACKOFF = 2.0
+# Only after a runaway (MAX_TOKENS), never after a network error: greedy decoding replays
+# the identical path into the identical repetition loop, so the retry needs to be nudged
+# off it. Network failures are not the model's fault and keep temperature 0.
+RETRY_TEMPERATURE = 0.2
 
 
 def stage(name):
@@ -131,6 +135,15 @@ def clock(seconds):
     return f"{int(seconds) // 60}:{int(seconds) % 60:02d}"
 
 
+class OutputCeiling(RuntimeError):
+    """The model generated until it hit its output cap — measured non-deterministic.
+
+    The same 13-minute chunk failed this way once and finished twice at ~4,000 output
+    tokens, nowhere near any limit, so this is a repetition loop the model fell into and
+    not a chunk that is too long. That makes it worth another attempt.
+    """
+
+
 # Retried: a blip the same request could survive next time. Everything else — a blocked
 # response, an invalid argument, a truncated one — fails on the first try, because
 # repeating it only costs time and money (D22).
@@ -141,7 +154,7 @@ TRANSIENT_MARKERS = ("unavailable", "deadline", "timeout", "timed out", "tempora
 
 
 def is_transient(exc):
-    if isinstance(exc, (TimeoutError, ConnectionError)):
+    if isinstance(exc, (OutputCeiling, TimeoutError, ConnectionError)):
         return True
     code = getattr(exc, "code", None) or getattr(exc, "status_code", None)
     if isinstance(code, int) and code in TRANSIENT_CODES:
@@ -151,13 +164,20 @@ def is_transient(exc):
 
 
 def with_retry(fn, label, attempts=RETRIES):
-    """Run `fn`, retrying transient failures; every exit path names the chunk (D21/D22)."""
+    """Run `fn(temperature)`, retrying transient failures; every exit names the chunk (D21/D22).
+
+    The temperature is part of the retry because one failure mode is the model's own
+    determinism: a runaway repetition replays exactly at 0 and needs a different roll.
+    """
+    temperature = 0
     for attempt in range(1, attempts + 1):
         try:
-            return fn()
+            return fn(temperature)
         except Exception as e:                  # noqa: BLE001 - re-raised, labelled
             if attempt >= attempts or not is_transient(e):
                 raise RuntimeError(f"{label} failed: {e}") from e
+            if isinstance(e, OutputCeiling):
+                temperature = RETRY_TEMPERATURE
             time.sleep(RETRY_BACKOFF * attempt)
 
 
@@ -239,8 +259,8 @@ def check_response(resp, allow_empty=False):
         raise RuntimeError("Vertex returned no candidates (blocked or empty response)")
     reason = str(getattr(candidates[0], "finish_reason", "") or "")
     if "MAX_TOKENS" in reason:
-        raise RuntimeError("the transcript hit the model's output ceiling and is incomplete — "
-                           "split this meeting's audio and transcribe the parts")
+        raise OutputCeiling("the model ran past its output limit on every attempt — most "
+                            "likely a repetition loop; listen to that stretch of the recording")
     if reason and "STOP" not in reason:
         raise RuntimeError("Vertex did not finish the response — blocked or cut short "
                            f"(finish_reason={reason})")
@@ -318,15 +338,21 @@ class VertexTranscriber:
         uri = value if kind == "uri" else None
         try:
             stage(f"transcribing {i}/{total}")
-            return with_retry(lambda: self._call(kind, value, silence_ok), label)
+            return with_retry(
+                lambda temp: self._call(kind, value, silence_ok, temp), label)
         finally:
             if uri:
                 gcs_delete(uri)
 
-    def _call(self, kind, value, silence_ok=False):
-        # A plain dict, not types.GenerateContentConfig: keeps the SDK import
-        # lazy. max_output_tokens is left unset — the default IS the model
-        # maximum, and naming a number here could only lower it.
+    def _call(self, kind, value, silence_ok=False, temperature=0):
+        # A plain dict, not types.GenerateContentConfig: keeps the SDK import lazy.
+        #
+        # max_output_tokens is deliberately NOT set, and this is not an omission to fix.
+        # A 13-minute chunk needs ~4,000 output tokens and setting the limit explicitly
+        # was measured to change nothing; what the default cap buys is a circuit breaker.
+        # When the model falls into a repetition loop it runs into that cap and comes back
+        # as MAX_TOKENS — a loud failure this code retries. Raise the cap and the same loop
+        # just generates more rubbish before anyone notices.
         # Bound to a local, not chained off `self._client()`: LOAD_ATTR pops the
         # temporary as soon as `.models` is read, and the SDK's finalizer closes
         # the transport under the request ("client has been closed"). Still one
@@ -334,5 +360,5 @@ class VertexTranscriber:
         client = self._client()
         resp = client.models.generate_content(
             model=self.model, contents=[PROMPT, build_part(kind, value)],
-            config={"temperature": 0})
+            config={"temperature": temperature})
         return check_response(resp, allow_empty=silence_ok)   # D23: every chunk

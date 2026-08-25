@@ -172,7 +172,7 @@ def test_check_response_returns_text():
 
 
 def test_check_response_refuses_truncation():
-    with pytest.raises(RuntimeError, match="output ceiling"):
+    with pytest.raises(RuntimeError, match="output limit"):
         T.check_response(_resp("نیمه", finish="FinishReason.MAX_TOKENS"))
 
 
@@ -251,7 +251,7 @@ def test_a_staged_chunk_is_deleted_even_when_its_call_fails(monkeypatch):
     deleted = []
     monkeypatch.setattr(T, "gcs_upload", lambda p, b, n: f"gs://{b}/{n}")
     monkeypatch.setattr(T, "gcs_delete", lambda uri: deleted.append(uri))
-    client = ScriptedClient(_resp("x", finish="MAX_TOKENS"))
+    client = ScriptedClient(_resp("x", finish="SAFETY"))
     tr = _chunked(monkeypatch, client, size=10, bucket="buck", inline_limit=5)
     with pytest.raises(RuntimeError):
         tr.transcribe("cooking.m4a")
@@ -353,11 +353,12 @@ class ScriptedClient:
     """A fake client driven by a script: each entry is a response or an exception."""
 
     def __init__(self, *script):
-        self.script, self.calls = list(script), 0
+        self.script, self.calls, self.configs = list(script), 0, []
         self.models = SimpleNamespace(generate_content=self._generate)
 
     def _generate(self, model=None, contents=None, config=None):
         self.calls += 1
+        self.configs.append(config)
         item = self.script.pop(0) if self.script else _resp()
         if isinstance(item, BaseException):
             raise item
@@ -487,16 +488,70 @@ def test_a_chunk_that_exhausts_its_retries_names_the_chunk_and_the_time_range(mo
     assert client.calls == 4                # chunk 1, then 3 bounded attempts at chunk 2
 
 
-def test_a_truncated_chunk_fails_the_whole_run(monkeypatch):
-    client = ScriptedClient(_resp("یک"), _resp("نیمه", finish="FinishReason.MAX_TOKENS"))
-    with pytest.raises(RuntimeError, match="output ceiling"):
+def _ceiling(text="نیمه نیمه نیمه"):
+    return _resp(text, finish="FinishReason.MAX_TOKENS")
+
+
+def test_a_repetition_loop_is_retried_and_the_transcript_completes(monkeypatch):
+    """Measured: the same chunk hit MAX_TOKENS once and finished twice, ~4,000 tokens each.
+
+    A ceiling on identical audio is non-deterministic, so it is the model getting stuck,
+    not the meeting being too long — and one unlucky chunk must not cost a 90-minute run.
+    """
+    client = ScriptedClient(_ceiling(), _resp("یک"), _resp("دو"), _resp("سه"))
+    text = _chunked(monkeypatch, client).transcribe("meeting.m4a")
+    assert client.calls == 4
+    assert "یک" in text and "دو" in text and "سه" in text
+
+
+def test_the_retry_after_a_repetition_loop_bumps_the_temperature(monkeypatch):
+    """Replaying the identical greedy path would land in the identical loop."""
+    client = ScriptedClient(_ceiling(), _resp("یک"), _resp("دو"), _resp("سه"))
+    _chunked(monkeypatch, client).transcribe("meeting.m4a")
+    assert client.configs[0] == {"temperature": 0}
+    assert client.configs[1] == {"temperature": T.RETRY_TEMPERATURE}
+    assert T.RETRY_TEMPERATURE > 0
+    assert client.configs[2] == {"temperature": 0}      # a fresh chunk starts greedy again
+
+
+def test_a_network_retry_stays_at_temperature_zero(monkeypatch):
+    """A 503 is not the model's fault; determinism is worth keeping where it is free."""
+    client = ScriptedClient(_transient(), _resp("یک"))
+    _chunked(monkeypatch, client, duration=300.0).transcribe("meeting.m4a")
+    assert client.configs == [{"temperature": 0}, {"temperature": 0}]
+
+
+def test_no_max_output_tokens_is_ever_sent(monkeypatch):
+    """The default cap is the circuit breaker that turns a runaway into a loud failure."""
+    client = ScriptedClient(_resp("یک"))
+    _chunked(monkeypatch, client, duration=300.0).transcribe("meeting.m4a")
+    assert "max_output_tokens" not in client.configs[0]
+
+
+def test_a_repetition_loop_on_every_attempt_fails_the_whole_run(monkeypatch):
+    client = ScriptedClient(_ceiling(), _ceiling(), _ceiling())
+    with pytest.raises(RuntimeError, match=r"chunk 1/3 \(0:00–13:10\).*output limit"):
         _chunked(monkeypatch, client).transcribe("meeting.m4a")
+    assert client.calls == 3                            # the bounded budget, not forever
+
+
+def test_a_repetition_loop_on_every_attempt_leaves_no_transcript_on_disk(data_root, tmp_path,
+                                                                        monkeypatch):
+    """D21 outlives the retry: an unfixable ceiling still writes nothing at all."""
+    (data_root / "meetings/audio/dining-1405-04-11.ogg").write_bytes(b"x")
+    client = ScriptedClient(_resp("یک"), _ceiling(), _ceiling(), _ceiling())
+    tr = _chunked(monkeypatch, client)
+    monkeypatch.setattr(cli, "VertexTranscriber", lambda *a, **k: tr)
+    out = tmp_path / "raw" / "dining-1405-04-11.txt"
+    assert cli.main(["--out", str(out), "dining-1405-04-11"]) == 1
+    assert not out.exists()
 
 
 def test_a_blocked_chunk_fails_the_whole_run(monkeypatch):
     client = ScriptedClient(_resp("یک"), _resp("x", finish="SAFETY"))
     with pytest.raises(RuntimeError, match="blocked"):
         _chunked(monkeypatch, client).transcribe("meeting.m4a")
+    assert client.calls == 2                            # chunk 1, then chunk 2 once, no retry
 
 
 def test_an_empty_chunk_fails_the_whole_run(monkeypatch):
