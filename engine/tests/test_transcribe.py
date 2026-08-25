@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 import transcribe as T
-from transcribe import find_audio, run_transcribe, transcript_path
+from transcribe import cli, find_audio, run_transcribe, transcript_path
 
 
 class FakeTranscriber:
@@ -219,3 +219,56 @@ def test_transcribe_deletes_the_object_even_when_the_call_fails(tmp_path, monkey
     with pytest.raises(RuntimeError):
         tr.transcribe(str(audio))
     assert deleted == ["gs://buck/transcribe/cooking.ogg"]     # no orphan left in the bucket
+
+
+def test_out_writes_the_transcript_atomically(data_root, tmp_path, monkeypatch):
+    (data_root / "meetings/audio/cooking-1405-04-19.ogg").write_bytes(b"x")
+    monkeypatch.setattr(cli, "VertexTranscriber",
+                        lambda *a, **k: FakeTranscriber())
+    out = tmp_path / "raw" / "cooking-1405-04-19.txt"
+    assert cli.main(["--out", str(out), "cooking-1405-04-19"]) == 0
+    assert out.read_text(encoding="utf-8") == "گوینده مرد ۱: سلام"
+    assert not list(out.parent.glob("*.tmp"))          # no temp left behind
+
+
+def test_out_is_skipped_when_it_already_exists(data_root, tmp_path, monkeypatch):
+    (data_root / "meetings/audio/cooking-1405-04-19.ogg").write_bytes(b"x")
+    fake = FakeTranscriber()
+    monkeypatch.setattr(cli, "VertexTranscriber", lambda *a, **k: fake)
+    out = tmp_path / "cooking-1405-04-19.txt"
+    out.write_text("already here", encoding="utf-8")
+    assert cli.main(["--out", str(out), "cooking-1405-04-19"]) == 0
+    assert fake.calls == 0                              # FR-P2, mirrored for --out
+    assert out.read_text(encoding="utf-8") == "already here"
+
+
+def test_failure_returns_1_and_writes_nothing(data_root, tmp_path, monkeypatch):
+    (data_root / "meetings/audio/cooking-1405-04-19.ogg").write_bytes(b"x")
+
+    class Boom:
+        def transcribe(self, path):
+            raise RuntimeError("the transcript hit the model's output ceiling")
+
+    monkeypatch.setattr(cli, "VertexTranscriber", lambda *a, **k: Boom())
+    out = tmp_path / "cooking-1405-04-19.txt"
+    assert cli.main(["--out", str(out), "cooking-1405-04-19"]) == 1
+    assert not out.exists()
+
+
+def test_failure_message_goes_to_stderr(data_root, tmp_path, monkeypatch, capsys):
+    (data_root / "meetings/audio/cooking-1405-04-19.ogg").write_bytes(b"x")
+
+    class Boom:
+        def transcribe(self, path):
+            raise RuntimeError("ffmpeg failed (127): not found")
+
+    monkeypatch.setattr(cli, "VertexTranscriber", lambda *a, **k: Boom())
+    cli.main(["--out", str(tmp_path / "x.txt"), "cooking-1405-04-19"])
+    assert "ffmpeg failed" in capsys.readouterr().err
+
+
+def test_write_text_atomic_creates_parents(tmp_path):
+    from engine_common import write_text_atomic
+    target = tmp_path / "a" / "b" / "c.txt"
+    write_text_atomic(target, "متن")
+    assert target.read_text(encoding="utf-8") == "متن"

@@ -40,6 +40,26 @@ def write_json_atomic(path, obj):
         raise
 
 
+def write_text_atomic(path, text):
+    """Same guarantee as write_json_atomic, for plain text (transcripts).
+
+    A killed process must never leave a partial transcript at the destination —
+    the idempotency pre-check would later read it as a finished one.
+    """
+    path = pathlib.Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(text)
+        os.replace(tmp, path)
+    except BaseException:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+        raise
+    return path
+
+
 _VALIDATORS = {}
 
 
