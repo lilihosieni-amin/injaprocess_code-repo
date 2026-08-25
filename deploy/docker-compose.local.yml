@@ -61,8 +61,13 @@ services:
       APPROVED_DIRECTORY: /data
       CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1"
       CLAUDE_MAX_TURNS: "300"
-      BASH_DEFAULT_TIMEOUT_MS: "600000"
-      BASH_MAX_TIMEOUT_MS: "600000"
+      # Per-Bash-command timeout: the default is 120s, and `transcribe` is the command
+      # that needs the budget. It is chunked now (13-minute segments, one Vertex call
+      # each, sequential), which runs about 8.6 min per 65 min of audio — so a 90-minute
+      # meeting takes roughly 12 min and would be killed mid-run at the old 10 min.
+      # 30 min covers ~3.5 hours of audio; Bot 1's own watchdog is 30 min too.
+      BASH_DEFAULT_TIMEOUT_MS: "1800000"
+      BASH_MAX_TIMEOUT_MS: "1800000"
       # Same Vertex settings as upload-bot: the pipeline transcribes any recording
       # that arrived without a raw transcript.
       VERTEX_PROJECT: injafood

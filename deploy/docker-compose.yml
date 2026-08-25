@@ -76,10 +76,13 @@ services:
       # Headroom for the long single-turn pipeline (audit: 200 vs ~100–150 real turns
       # is a thin margin on bigger voices). Overrides CLAUDE_MAX_TURNS from the env_file.
       CLAUDE_MAX_TURNS: "300"
-      # Per-Bash-command timeout: default is 120s, but `transcribe` on a fresh long
-      # audio (Vertex) can exceed 2 min and would otherwise be killed mid-command.
-      BASH_DEFAULT_TIMEOUT_MS: "600000"
-      BASH_MAX_TIMEOUT_MS: "600000"
+      # Per-Bash-command timeout: the default is 120s, and `transcribe` is the command
+      # that needs the budget. It is chunked now (13-minute segments, one Vertex call
+      # each, sequential), which runs about 8.6 min per 65 min of audio — so a 90-minute
+      # meeting takes roughly 12 min and would be killed mid-run at the old 10 min.
+      # 30 min covers ~3.5 hours of audio; Bot 1's own watchdog is 30 min too.
+      BASH_DEFAULT_TIMEOUT_MS: "1800000"
+      BASH_MAX_TIMEOUT_MS: "1800000"
       # The pipeline transcribes any recording that arrived without a raw transcript,
       # so Bot 2 needs the same Vertex settings as Bot 1 (design 2026-08-25).
       VERTEX_PROJECT: injafood
