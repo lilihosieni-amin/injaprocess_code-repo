@@ -146,7 +146,10 @@ GEMINI_MODEL=gemini-3.1-pro-preview
 already env-driven, so if `global` does not serve this model the change is one
 line — fall back to `us-central1`, or to `gemini-2.5-pro` if the preview model is
 withdrawn. Generation config: `temperature=0` (this is transcription, not
-composition) and the model's maximum output budget.
+composition) and **`max_output_tokens` left unset** — see the amendment's D26, which
+corrects the earlier claim that this was chosen because "the default is the model
+maximum". It was never verified, and the reason to keep it unset turns out to be a
+different and better one.
 
 ### D5 — Prompt unchanged
 
@@ -162,11 +165,15 @@ After the call, raise (CLI exits non-zero, nothing is written) when:
 - the response is empty or has no candidate,
 - the response was blocked by a safety filter.
 
-A 73-minute meeting produces ~58 000 characters of Persian, roughly 30 K output
-tokens against a 64 K ceiling. A 2½-hour meeting can cross it. A half transcript
-that lands on disk looking whole would silently truncate every downstream
-extraction, so this fails loudly instead. The error message names the audio and
-says the meeting must be split.
+A half transcript that lands on disk looking whole would silently truncate every
+downstream extraction, so this fails loudly instead.
+
+**Superseded in part by D26.** The length reasoning here — ~58 000 characters for a
+73-minute meeting, roughly 30 K output tokens against a 64 K ceiling, crossed by a
+2½-hour meeting — described a single call for a whole meeting and no longer applies:
+chunks are transcribed at ~4 000 output tokens each. `MAX_TOKENS` on a chunk is a
+repetition loop, not a long meeting, and it is retried rather than refused outright. The
+error message no longer tells the user to split the audio — it is already split.
 
 ---
 
@@ -466,8 +473,9 @@ transcribes right to its end.** Ground truth for audio 1490–1550 s ends «ای
 content. Ten seconds is enough, and the seams hide nothing.
 
 This supersedes §3's single-call shape. It also retires the output-ceiling problem D6 was written
-for: a 13-minute segment cannot approach the model's output limit, so no meeting length is
-inherently unsupported and the "split the audio" error message becomes unreachable.
+for *as a length problem*: a 13-minute segment does not approach the model's output limit, so no
+meeting length is inherently unsupported. `MAX_TOKENS` can still occur for an unrelated reason —
+see D26.
 
 ### D21 — All or nothing: any failed chunk fails the whole transcription
 
@@ -487,9 +495,9 @@ absent, never partial.
 ### D22 — Bounded retry per chunk, on transient failures only
 
 Each chunk retries up to 3 times with a short backoff on transient conditions (5xx, 429,
-timeouts, connection resets). A chunk that exhausts its retries triggers D21. Non-transient
-failures — a blocked response, an invalid argument — fail immediately without retrying, because
-repeating them only wastes time and money.
+timeouts, connection resets, and — per D26 — `MAX_TOKENS`). A chunk that exhausts its retries
+triggers D21. Non-transient failures — a blocked response, an empty response, an invalid
+argument — fail immediately without retrying, because repeating them only wastes time and money.
 
 ### D23 — The existing response guard applies per chunk
 
@@ -519,6 +527,41 @@ amendment exists to prevent, so it is checked rather than trusted.
 Stage breadcrumbs become `stage: transcribing 3/6` so Bot 1's progress message and the pipeline's
 logs both show real movement through a long meeting rather than a single opaque wait. Bot 1's
 `STAGES` mapping must render this in Persian without losing the counter.
+
+### D26 — `MAX_TOKENS` is a repetition loop, and it is retried (2026-08-25, measured)
+
+A live run of `dining-1405-04-11` failed at chunk 4/5 (39:00–52:10) with D6's `MAX_TOKENS`
+message. D21 behaved exactly as designed — the run failed, the chunk and its range were named,
+nothing was written — but the diagnosis behind D6 was wrong. That same chunk, extracted and
+transcribed twice:
+
+| config | finish | chars | output tokens |
+|---|---|---|---|
+| `{temperature: 0}` | `STOP` | 13 311 | 4 603 |
+| `{temperature: 0, max_output_tokens: 65535}` | `STOP` | 12 280 | 3 938 |
+
+Both succeeded. **The failure was non-deterministic on identical input**: the same audio failed
+once and completed twice, at ~4 000 output tokens — nowhere near any ceiling. That is the
+signature of a runaway repetition loop, which greedy decoding at `temperature: 0` makes more
+likely, not of a chunk that is too long to transcribe.
+
+So `MAX_TOKENS` is transient and joins D22's retry budget. **Retries that follow a `MAX_TOKENS`,
+and only those, run at `RETRY_TEMPERATURE` (0.2)** — replaying the identical greedy path would
+land in the identical loop. Network retries stay at `temperature: 0`; those are not the model's
+fault and determinism is worth keeping where it is free. Blocked and empty responses remain
+non-retryable under D23.
+
+If the ceiling survives every attempt, **D21 is unchanged**: the run fails, nothing is written,
+and the error names the chunk and its time range. The message no longer advises splitting the
+meeting's audio — that advice predates chunking and is now wrong — it says the model kept running
+past its output limit and points at the stretch to listen to.
+
+**`max_output_tokens` stays unset, for a corrected reason.** §3 claimed it was left unset because
+"the default IS the model maximum"; that was an assumption and was never verified. The measurement
+above shows setting it explicitly changes nothing. The real reason to leave it alone is that the
+default cap is a **circuit breaker**: a repetition loop runs into it and comes back as `MAX_TOKENS`,
+a loud failure this code can retry. Raising it would only let a runaway generate more rubbish
+before anything noticed.
 
 ### 11.2 What this costs
 
