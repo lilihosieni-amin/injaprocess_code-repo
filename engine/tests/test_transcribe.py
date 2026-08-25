@@ -368,7 +368,7 @@ def _transient(msg="503 UNAVAILABLE: backend unreachable"):
     return RuntimeError(msg)
 
 
-def _chunked(monkeypatch, client, duration=1600.0, size=5, **kw):
+def _chunked(monkeypatch, client, duration=1860.0, size=5, **kw):
     """A VertexTranscriber wired to fakes: no ffmpeg, no ffprobe, no SDK."""
     monkeypatch.setattr(T, "RETRY_BACKOFF", 0)
     monkeypatch.setattr(T, "probe_duration", lambda p: duration)
@@ -386,11 +386,33 @@ def test_chunk_bounds_tile_an_exact_multiple_of_the_chunk_length():
 
 
 def test_chunk_bounds_last_chunk_is_short_when_duration_is_not_a_multiple():
-    duration = 1600.0                       # 2 full chunks and a 40-second tail
+    duration = 1860.0                       # 2 full chunks and a 5-minute tail
     bounds = T.chunk_bounds(duration)
     assert len(bounds) == 3
-    assert bounds[-1] == (1560.0, 1600.0)   # short, and that is normal
+    assert bounds[-1] == (1560.0, 1860.0)   # short, and that is normal
     assert bounds[-1][1] == duration
+
+
+def test_a_tail_shorter_than_the_minimum_is_folded_into_the_previous_chunk():
+    """40 seconds of people packing up is not lost content — it must not fail the meeting.
+
+    check_response treats an empty chunk as a fault (D23), so a 40-second tail of room
+    noise would abort a 90-minute transcription that had otherwise succeeded.
+    """
+    duration = 1600.0                       # 2 full chunks and a 40-second tail
+    bounds = T.chunk_bounds(duration)
+    assert len(bounds) == 2                 # not three
+    assert bounds[-1] == (780.0, 1600.0)    # the previous chunk simply runs to the end
+    T.assert_coverage(bounds, duration)     # and the tiling is still exact
+
+
+def test_a_tail_at_the_minimum_keeps_its_own_chunk():
+    bounds = T.chunk_bounds(1560.0 + T.MIN_TAIL_SECONDS)
+    assert len(bounds) == 3 and bounds[-1][0] == 1560.0
+
+
+def test_audio_shorter_than_the_minimum_tail_is_still_transcribed():
+    assert T.chunk_bounds(30.0) == [(0.0, 30.0)]     # nothing to fold it into
 
 
 def test_chunk_bounds_leave_no_gap_and_overlap_at_the_seams():
@@ -441,7 +463,7 @@ def test_transcribe_cuts_each_chunks_own_time_range(monkeypatch):
     tr = _chunked(monkeypatch, ScriptedClient())
     monkeypatch.setattr(T, "transcode", fake)
     tr.transcribe("meeting.m4a")
-    assert fake.calls == [(0.0, 790.0), (780.0, 790.0), (1560.0, 40.0)]
+    assert fake.calls == [(0.0, 790.0), (780.0, 790.0), (1560.0, 300.0)]
 
 
 def test_stage_reports_the_chunk_counter(monkeypatch, capsys):
@@ -507,23 +529,52 @@ def test_a_failed_chunk_leaves_no_transcript_on_disk(data_root, tmp_path, monkey
     assert not out.parent.exists() or not list(out.parent.glob("*"))
 
 
-def test_probe_duration_reads_the_length_from_ffprobe(tmp_path):
-    class Probe:
-        def __call__(self, argv, capture_output=False, text=False):
-            self.argv = argv
-            return subprocess.CompletedProcess(argv, 0, "3888.024000\n", "")
+def _probe(stdout, returncode=0, stderr=""):
+    def run(argv, capture_output=False, text=False):
+        run.argv = argv
+        return subprocess.CompletedProcess(argv, returncode, stdout, stderr)
+    return run
 
-    probe = Probe()
-    assert T.probe_duration(tmp_path / "a.m4a", run=probe) == pytest.approx(3888.024)
-    assert probe.argv[0] == "ffprobe"
+
+def test_probe_duration_reads_the_length_from_ffprobe(tmp_path):
+    run = _probe("3888.024000\n")
+    assert T.probe_duration(tmp_path / "a.m4a", run=run) == pytest.approx(3888.024)
+    assert run.argv[0] == "ffprobe"
+    assert "format=duration:stream=duration" in run.argv    # both, not just the container
+
+
+def test_probe_duration_trusts_the_longer_of_stream_and_container(tmp_path, capsys):
+    """A header that under-reports is the one way audio can still be skipped silently.
+
+    The last chunk would stop early and D24's arithmetic would agree with itself, so the
+    stream's own length wins and the disagreement is on the record.
+    """
+    run = _probe("3888.024000\n3600.000000\n")            # stream longer than container
+    assert T.probe_duration(tmp_path / "a.m4a", run=run) == pytest.approx(3888.024)
+    err = capsys.readouterr().err
+    assert "3600.0" in err and "3888.0" in err and "warning" in err
+
+
+def test_probe_duration_stays_quiet_when_the_two_agree(tmp_path, capsys):
+    run = _probe("3888.024000\n3888.100000\n")
+    assert T.probe_duration(tmp_path / "a.m4a", run=run) == pytest.approx(3888.1)
+    assert capsys.readouterr().err == ""
+
+
+def test_probe_duration_ignores_a_stream_without_a_duration(tmp_path):
+    assert T.probe_duration(tmp_path / "a.m4a",
+                            run=_probe("N/A\n3888.024000\n")) == pytest.approx(3888.024)
+
+
+def test_probe_duration_raises_when_neither_value_is_usable(tmp_path):
+    with pytest.raises(RuntimeError, match="ffprobe"):
+        T.probe_duration(tmp_path / "a.m4a", run=_probe("N/A\n\n"))
 
 
 def test_probe_duration_raises_when_ffprobe_fails(tmp_path):
-    def failing(argv, capture_output=False, text=False):
-        return subprocess.CompletedProcess(argv, 1, "", "moov atom not found")
-
     with pytest.raises(RuntimeError, match="ffprobe"):
-        T.probe_duration(tmp_path / "a.m4a", run=failing)
+        T.probe_duration(tmp_path / "a.m4a", run=_probe("", returncode=1,
+                                                        stderr="moov atom not found"))
 
 
 def test_transcode_cuts_a_time_range(tmp_path):

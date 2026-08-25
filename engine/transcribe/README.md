@@ -18,8 +18,15 @@ Gemini-on-Vertex transcription with idempotency pre-check (ARD §5.1, FR-P2):
   a whole meeting was measured thinning the transcript throughout and stopping two
   minutes early *while reporting a normal finish*; the same audio in chunks produced
   28% more text. The overlap duplicates a few words at each seam on purpose —
-  duplication is recoverable, loss is not. Duration comes from `ffprobe`, so **ffmpeg
-  and ffprobe must both be on PATH**.
+  duplication is recoverable, loss is not. A final tail under `MIN_TAIL_SECONDS` (90) is
+  folded into the chunk before it rather than becoming a chunk of its own — meetings end
+  with people packing up, and an empty chunk is a failure (D23), so a 40-second tail of
+  room noise must not fail a 90-minute meeting.
+- Duration comes from `ffprobe`, so **ffmpeg and ffprobe must both be on PATH**. Both the
+  container and the stream duration are read and the **longer** wins: a header that
+  under-reports while the stream runs on would shorten the last chunk with the coverage
+  check none the wiser. A disagreement over `DURATION_DISAGREEMENT` (2 s) prints a warning
+  naming both values; no usable number at all is a failure, never a guess.
 - **All or nothing (D21).** Every chunk's text is held in memory and `--out` is written
   only after all of them succeed. If any chunk fails after its retries, the run raises,
   exits 1, writes nothing, and the message names the chunk and its time range

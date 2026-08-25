@@ -30,6 +30,12 @@ INLINE_LIMIT = 16 * 1024 * 1024
 # seam cannot fall between two chunks — duplication is recoverable, loss is not.
 CHUNK_SECONDS = 13 * 60
 CHUNK_OVERLAP = 10
+# A tail this short gets folded into the chunk before it instead of becoming a chunk of
+# its own: meetings end with people packing up, an empty chunk is a failure under D23,
+# and failing a 90-minute transcription over 40 seconds of room noise is a false alarm.
+MIN_TAIL_SECONDS = 90
+# Container and stream durations that disagree by more than this are worth saying out loud.
+DURATION_DISAGREEMENT = 2.0
 
 # Bounded retry per chunk (D22).
 RETRIES = 3
@@ -67,22 +73,38 @@ def transcode(src, dst, bitrate=None, start=None, duration=None, run=subprocess.
 
 
 def probe_duration(path, run=subprocess.run):
-    """Length of the source audio in seconds — the input to the chunk arithmetic."""
-    proc = run(["ffprobe", "-v", "error", "-show_entries", "format=duration",
+    """Length of the source audio in seconds — the input to the chunk arithmetic.
+
+    Both the container header and the audio stream are asked, and the longer answer wins.
+    A header that under-reports while the stream runs on would shorten the last chunk with
+    the coverage check (D24) none the wiser — the one remaining way audio could still be
+    dropped in silence. A disagreement is left on the record for whoever reads the log.
+    """
+    proc = run(["ffprobe", "-v", "error", "-show_entries", "format=duration:stream=duration",
                 "-of", "default=noprint_wrappers=1:nokey=1", str(path)],
                capture_output=True, text=True)
-    out = (proc.stdout or "").strip()
-    if proc.returncode != 0 or not out:
+    values = []
+    for line in (proc.stdout or "").splitlines():
+        try:
+            values.append(float(line.strip()))
+        except ValueError:                  # "N/A", or the blank line between sections
+            pass
+    if proc.returncode != 0 or not values:
         detail = (proc.stderr or "").strip()[:500]
         raise RuntimeError(f"ffprobe could not read the duration of {Path(path).name}: {detail}")
-    return float(out)
+    if max(values) - min(values) > DURATION_DISAGREEMENT:
+        print(f"warning: {Path(path).name} reports {min(values):.1f}s in one place and "
+              f"{max(values):.1f}s in another; using the longer", file=sys.stderr)
+    return max(values)
 
 
-def chunk_bounds(duration, chunk=CHUNK_SECONDS, overlap=CHUNK_OVERLAP):
+def chunk_bounds(duration, chunk=CHUNK_SECONDS, overlap=CHUNK_OVERLAP,
+                 min_tail=MIN_TAIL_SECONDS):
     """(start, end) seconds for every chunk, advancing by `chunk` and ending `overlap` late.
 
-    The last chunk is usually short; that is normal. A tail shorter than the overlap is
-    not given a chunk of its own — the previous chunk already reaches past the end.
+    The last chunk is usually short; that is normal. A tail under `min_tail` is folded into
+    the chunk before it, which still tiles [0, duration] exactly — a 13-minute chunk with
+    90 seconds on the end is nowhere near any output limit.
     """
     bounds, start = [], 0.0
     while start < duration:
@@ -91,6 +113,9 @@ def chunk_bounds(duration, chunk=CHUNK_SECONDS, overlap=CHUNK_OVERLAP):
         if end >= duration:
             break
         start += chunk
+    if len(bounds) > 1 and bounds[-1][1] - bounds[-1][0] < min_tail:
+        tail_end = bounds.pop()[1]
+        bounds[-1] = (bounds[-1][0], tail_end)
     return bounds
 
 
