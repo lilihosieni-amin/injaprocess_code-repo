@@ -603,3 +603,57 @@ built, since the server has 2 CPUs and one Vertex quota.
 one segment is not necessarily the same person as in the next. Feeding each chunk the previous
 chunk's tail would fix it, at the cost of more tokens and a failure mode where one bad chunk
 poisons every label after it. Deferred until the seams prove to be a practical problem.
+
+### 11.3 Accepted limitation — coverage is guaranteed, fidelity is not
+
+Measured on two real meetings after the tail chunk (D20) landed, against the known-good
+references in the existing corpus:
+
+| meeting | reference | new output | vs reference |
+|---|---|---|---|
+| `dining-1405-04-11` (64.8 min) | 44 577 chars | 61 427 | 138% |
+| `cooking-1405-05-21` (89.1 min) | 70 811 chars | 77 388 | 109% |
+
+`cooking-1405-05-21` is the meeting that previously died at `503 UNAVAILABLE` after 11 minutes.
+It now completes in 11 m 40 s across 8 chunks (7 primary + tail): the transient retry (D22) and
+the `MAX_TOKENS` retry (D26) each did their job on a real run.
+
+**What this design guarantees.** Every second of audio is assigned to a chunk; the boundaries are
+asserted arithmetically to tile 0 → duration (D24); the last 90 seconds are additionally covered
+by their own chunk (D20); and no chunk can be silently dropped — one that fails after its retries
+fails the whole run, names itself and its time range, and writes nothing (D21).
+
+**What it does not guarantee: that the model transcribes each chunk faithfully.** Two distinct
+failures have been observed, both of which pass every guard in this design — a `STOP` finish,
+non-empty, plausible Persian:
+
+1. *The closing seconds are captured on most runs, not all.* On the `cooking-1405-05-21` run the
+   transcript ends «سپاس از شما که مدیریت هم شد در راس یک ساعت تموم شد» while the audio continues
+   for roughly 30 more seconds («ممنون از شما. خسته نباشید… هر چی مونده فرداست»). The tail chunk's
+   boundaries were verified correct — for a 5348 s file `(duration - TAIL_SECONDS, duration)` is
+   exactly `(5258.0, 5348.0)` — and transcribing that identical 90-second window in isolation
+   reached the end **twice**. So this is run-to-run variance inside a correct window, not a
+   boundary or coverage bug. Padding the window with silence (90 s clip + 45 s of ffmpeg `apad`)
+   was tried as a mitigation and made no difference: padded and unpadded both reached the end in
+   that trial.
+2. *Unclear speech is rendered as plausible but wrong text.* Measured: «هفتاد دقیقه شد»
+   transcribed as «هفته آینده‌ست»; «مرحله به مرحله گام به گام بریم جلو» as «مپ بیاریم بالا.
+   کاملاً درسته»; and on an earlier run a closing sentence, «باعث افتخاره بنده است», that appears
+   nowhere in the audio at all.
+
+**Why this is accepted.** The loss is confined to the closing seconds, where participants are
+saying goodbye; no process is ever extracted from that material. The transcripts are already
+substantially more complete than the corpus they replace (138% and 109% of the references above).
+The user's binding requirement was that a thirteen-minute segment must never go missing without
+anyone noticing, and that is met by D21 and D24. Confabulation is a property of the model, not of
+the chunking, and no arrangement of boundaries addresses it.
+
+**What would close it, if it ever matters.** Transcribe the tail window twice and keep the longer
+output — for one fixed short window, longer genuinely does mean it reached further — or run
+sampled ground-truth comparisons to characterise fidelity properly. Neither is built.
+
+**On reading length as evidence.** Comparing two transcriptions *of the same window* by length is
+valid: same input, so more characters means more of it was reproduced. Comparing lengths *across
+different content* is not evidence of completeness, and that mistake is exactly what let the
+original single-call truncation pass review — 98.2% of the known-good length read as healthy while
+the output was missing its final two minutes and thinned throughout (§11.1).
