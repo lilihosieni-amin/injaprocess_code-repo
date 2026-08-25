@@ -1,5 +1,6 @@
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import transcribe as T
@@ -119,3 +120,91 @@ def test_stage_writes_to_stderr(capsys):
     captured = capsys.readouterr()
     assert captured.err.strip() == "stage: transcoding"
     assert captured.out == ""          # stdout stays pure transcript
+
+
+def _resp(text="متن", finish="STOP"):
+    return SimpleNamespace(text=text,
+                           candidates=[SimpleNamespace(finish_reason=finish)])
+
+
+class FakeClient:
+    """Mimics google-genai's client surface without importing it."""
+
+    def __init__(self, resp=None):
+        self.resp = resp or _resp()
+        self.contents = self.model = self.config = None
+        self.models = SimpleNamespace(generate_content=self._generate)
+
+    def _generate(self, model=None, contents=None, config=None):
+        self.model, self.contents, self.config = model, contents, config
+        return self.resp
+
+
+def test_check_response_returns_text():
+    assert T.check_response(_resp("گوینده ۱: سلام")) == "گوینده ۱: سلام"
+
+
+def test_check_response_refuses_truncation():
+    with pytest.raises(RuntimeError, match="output ceiling"):
+        T.check_response(_resp("نیمه", finish="FinishReason.MAX_TOKENS"))
+
+
+def test_check_response_refuses_empty():
+    with pytest.raises(RuntimeError, match="empty"):
+        T.check_response(_resp("   "))
+
+
+def test_check_response_refuses_no_candidates():
+    with pytest.raises(RuntimeError, match="no candidates"):
+        T.check_response(SimpleNamespace(text="x", candidates=[]))
+
+
+def test_check_response_refuses_blocked():
+    with pytest.raises(RuntimeError, match="blocked"):
+        T.check_response(_resp("x", finish="SAFETY"))
+
+
+def test_transcribe_sends_inline_and_returns_text(tmp_path, monkeypatch):
+    audio = tmp_path / "cooking.m4a"
+    audio.write_bytes(b"raw")
+    client = FakeClient(_resp("گوینده ۱: سلام"))
+    monkeypatch.setattr(T, "transcode",
+                        lambda src, dst: Path(dst).write_bytes(b"small") or Path(dst))
+    monkeypatch.setattr(T, "build_part", lambda kind, value: ("part", kind))
+    tr = T.VertexTranscriber("p", "global", "gemini-x", client_factory=lambda: client)
+    assert tr.transcribe(str(audio)) == "گوینده ۱: سلام"
+    assert client.model == "gemini-x"
+    assert client.contents[0] == T.PROMPT
+    assert client.contents[1] == ("part", "inline")
+    assert client.config == {"temperature": 0}      # transcription, not composition (D4)
+
+
+def test_transcribe_uses_gcs_and_deletes_the_object(tmp_path, monkeypatch):
+    audio = tmp_path / "cooking.m4a"
+    audio.write_bytes(b"raw")
+    deleted = []
+    monkeypatch.setattr(T, "transcode",
+                        lambda src, dst: Path(dst).write_bytes(b"0123456789") or Path(dst))
+    monkeypatch.setattr(T, "gcs_upload", lambda p, b, n: f"gs://{b}/{n}")
+    monkeypatch.setattr(T, "gcs_delete", lambda uri: deleted.append(uri))
+    monkeypatch.setattr(T, "build_part", lambda kind, value: ("part", kind, value))
+    tr = T.VertexTranscriber("p", "global", "gemini-x", bucket="buck", inline_limit=5,
+                             client_factory=lambda: FakeClient())
+    tr.transcribe(str(audio))
+    assert deleted == ["gs://buck/transcribe/cooking.ogg"]
+
+
+def test_transcribe_deletes_the_object_even_when_the_call_fails(tmp_path, monkeypatch):
+    audio = tmp_path / "cooking.m4a"
+    audio.write_bytes(b"raw")
+    deleted = []
+    monkeypatch.setattr(T, "transcode",
+                        lambda src, dst: Path(dst).write_bytes(b"0123456789") or Path(dst))
+    monkeypatch.setattr(T, "gcs_upload", lambda p, b, n: f"gs://{b}/{n}")
+    monkeypatch.setattr(T, "gcs_delete", lambda uri: deleted.append(uri))
+    monkeypatch.setattr(T, "build_part", lambda kind, value: ("part", kind, value))
+    tr = T.VertexTranscriber("p", "global", "gemini-x", bucket="buck", inline_limit=5,
+                             client_factory=lambda: FakeClient(_resp("x", finish="MAX_TOKENS")))
+    with pytest.raises(RuntimeError):
+        tr.transcribe(str(audio))
+    assert deleted == ["gs://buck/transcribe/cooking.ogg"]     # no orphan left in the bucket

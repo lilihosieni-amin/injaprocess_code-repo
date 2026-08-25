@@ -1,6 +1,7 @@
 import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 from engine_common import data_root
@@ -105,18 +106,75 @@ def run_transcribe(basename, transcriber, root=None):
     return transcriber.transcribe(str(audio)), True
 
 
-class VertexTranscriber:
-    """Real Gemini-on-Vertex transcriber. Lazy-imports google.genai so unit
-    tests (which use a fake) never require the dependency or credentials."""
+def check_response(resp):
+    """Refuse a transcript the model did not finish (D6).
 
-    def __init__(self, project, location, model):
+    A half transcript that lands on disk looking whole would silently truncate
+    every downstream extraction, so every incomplete outcome raises instead.
+    """
+    candidates = getattr(resp, "candidates", None) or []
+    if not candidates:
+        raise RuntimeError("Vertex returned no candidates (blocked or empty response)")
+    reason = str(getattr(candidates[0], "finish_reason", "") or "")
+    if "MAX_TOKENS" in reason:
+        raise RuntimeError("the transcript hit the model's output ceiling and is incomplete — "
+                           "split this meeting's audio and transcribe the parts")
+    if any(word in reason for word in ("SAFETY", "BLOCK", "PROHIBITED", "RECITATION")):
+        raise RuntimeError(f"Vertex blocked the response (finish_reason={reason})")
+    text = getattr(resp, "text", None)
+    if not text or not text.strip():
+        raise RuntimeError("Vertex returned an empty transcript")
+    return text
+
+
+def build_part(kind, value):
+    """Wrap the audio for the SDK. Lazy import: unit tests never reach this."""
+    from google.genai import types
+    if kind == "inline":
+        return types.Part.from_bytes(data=value, mime_type="audio/ogg")
+    return types.Part.from_uri(file_uri=value, mime_type="audio/ogg")
+
+
+class VertexTranscriber:
+    """Gemini-on-Vertex transcription (ARD §5.1, D1-D6).
+
+    Vertex has no Files API — audio travels inline or as a gs:// URI. Everything
+    that talks to the SDK is imported lazily so the unit suite needs neither the
+    dependency nor credentials.
+    """
+
+    def __init__(self, project, location, model, bucket=None,
+                 inline_limit=INLINE_LIMIT, client_factory=None):
         self.project, self.location, self.model = project, location, model
+        self.bucket, self.inline_limit = bucket, inline_limit
+        self._client_factory = client_factory
+
+    def _client(self):
+        if self._client_factory:
+            return self._client_factory()
+        from google import genai
+        return genai.Client(vertexai=True, project=self.project, location=self.location)
 
     def transcribe(self, audio_path):
-        from google import genai  # lazy
-        client = genai.Client(vertexai=True, project=self.project,
-                              location=self.location)
-        uploaded = client.files.upload(file=audio_path)   # large files via upload
-        resp = client.models.generate_content(
-            model=self.model, contents=[PROMPT, uploaded])
-        return resp.text
+        with tempfile.TemporaryDirectory() as tmp:
+            # Named after the meeting, not the temp dir: the GCS object inherits this
+            # name, and two runs staging `audio.ogg` would collide in the bucket.
+            ogg = Path(tmp) / f"{Path(audio_path).stem}.ogg"
+            stage("transcoding")
+            transcode(audio_path, ogg)
+            if ogg.stat().st_size > self.inline_limit:
+                stage("uploading")
+            kind, value = audio_source(ogg, self.bucket, self.inline_limit)
+            uri = value if kind == "uri" else None
+            try:
+                stage("transcribing")
+                # A plain dict, not types.GenerateContentConfig: keeps the SDK import
+                # lazy. max_output_tokens is left unset — the default IS the model
+                # maximum, and naming a number here could only lower it.
+                resp = self._client().models.generate_content(
+                    model=self.model, contents=[PROMPT, build_part(kind, value)],
+                    config={"temperature": 0})
+                return check_response(resp)
+            finally:
+                if uri:
+                    gcs_delete(uri)

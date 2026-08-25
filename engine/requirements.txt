@@ -1,6 +1,7 @@
 # Deterministic engine CLIs (ARD §8)
 # allocate-id / merge / layout: stdlib only, no model
-# transcribe: Gemini on Vertex AI (ARD §5.1)
-google-genai~=1.16
+# transcribe: Gemini on Vertex AI (ARD §5.1) + GCS staging for oversize audio (D3)
+google-genai~=2.19
+google-cloud-storage~=2.18
 # extract-attachment: docx → text (pure-python, no network)
 python-docx~=1.1
