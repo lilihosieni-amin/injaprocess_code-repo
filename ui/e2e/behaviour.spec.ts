@@ -268,11 +268,15 @@ test('the A4 width is drawn while editing, and only while editing', async ({ pag
   // input nodes in A4 width.it just show in editor of flowchrt.in edit mode.not
   // read mode."*
   //
-  // The width is derived, not chosen: `PRINT.W` is A4 portrait less the `@page`
+  // The width is derived, not chosen: `PRINT.W` is the page box less the `@page`
   // margins `print.css` declares, and `PrintDiagrams` pads the diagram by
   // `PRINT.PAD` a side before `planBands` computes `min(1, PRINT.W / width)`.
   // `export/print/a4-lane.test.ts` ties the lane to that arithmetic; this is
   // where it is checked that the lane appears at all, and where.
+  //
+  // A later ruling widened it — *"just two node can be in one line.but i want to
+  // at lest 4-5 nodes be in one line.can you make it bigger but it be still
+  // A4?"* — by turning the sheet, which is the only way an A4 page gets wider.
   await signedIn(page, EDITOR)
   await serve(page, STUBS)
   await page.goto('/processes/dining-001/flow')
@@ -288,12 +292,93 @@ test('the A4 width is drawn while editing, and only while editing', async ({ pag
 
   const lane = page.locator('[data-a4-lane]')
   await expect(lane).toBeVisible()
-  // 635 flow px, and at zoom 1 that is 635 on screen. `FLOW`'s two nodes are
-  // 1400 apart, so this diagram is over — which is the state the ruling exists
-  // for and the one a same-coloured lane would let an editor scroll past.
+  // 1250 flow px — `engine/layout`'s own five-column band. Asserted on the box the
+  // browser actually lays out rather than on the constant, because the constant
+  // being right is what `a4-lane.test.ts` covers and this is the half only a
+  // browser can see.
+  await expect(lane).toHaveCSS('width', '1250px')
+  // And how many cards that is, measured against a card the browser really drew
+  // rather than against the 170 in the stylesheet. Both boxes are inside the same
+  // `ViewportPortal` transform, so the *ratio* is zoom-invariant even though
+  // neither width is — which is why this is a ratio and not two widths. At w760
+  // React Flow zooms the canvas out far enough that the lane measures only a
+  // couple of cards' worth of screen pixels; it still holds five of them.
+  const laneW = (await lane.boundingBox())!.width
+  const cardW = (await page.locator('.react-flow__node').first().boundingBox())!.width
+  expect(Math.floor(laneW / cardW)).toBeGreaterThanOrEqual(5)
+
+  // `FLOW`'s two nodes are 1400 apart, so this diagram is still over — which is
+  // the state the ruling exists for and the one a same-coloured lane would let
+  // an editor scroll past.
   await expect(lane).toHaveAttribute('data-over', 'true')
   // It is furniture, not a control: a press goes through it to the canvas.
   await expect(lane).toHaveCSS('pointer-events', 'none')
+})
+
+test('the A4 lane stays put while the diagram is dragged around under it', async ({ page }) => {
+  // **Owner ruling** — *"in edit mode when i in حالت انتخاب mouse, the A4 line can
+  // be move.but i don't want it.it's location should be fix."*
+  //
+  // The lane used to anchor to the nodes' own bounding box, so dragging a node
+  // left dragged the lane left with it — a ruler that moves with the thing it is
+  // measuring can never be overrun, and told the editor nothing. It is pinned to
+  // the flow origin now, and only its height follows the content.
+  //
+  // Only a browser can see this: the anchor is computed from React Flow's node
+  // store, which is populated by real pointer events and real measurement, and
+  // jsdom has neither.
+  await signedIn(page, EDITOR)
+  await serve(page, STUBS)
+  await page.goto('/processes/dining-001/flow')
+  await page.locator('.react-flow__renderer').waitFor()
+  const more = page.locator('[data-r-flowmore]')
+  if (await more.isVisible()) {
+    await more.click()
+    await page.getByRole('menuitem', { name: 'ویرایش' }).click()
+  } else await page.getByTestId('enter-edit').click()
+
+  const lane = page.locator('[data-a4-lane]')
+  await expect(lane).toBeVisible()
+
+  // Measured as the gap between the lane's left rail and a node that is NOT
+  // dragged, rather than as the lane's screen position. Dragging inside a canvas
+  // can pan the viewport, which moves the lane and every node together by the
+  // same amount — a screen-position assertion cannot tell that apart from the bug,
+  // and a first draft of this test failed on exactly that. A distance between two
+  // things in the same `ViewportPortal` is invariant under both pan and zoom, so
+  // it changes only if the lane really did re-anchor itself.
+  const moved = page.locator('.react-flow__node').first()
+  const still = page.locator('.react-flow__node').nth(1)
+  const gap = async () => {
+    const l = (await lane.boundingBox())!
+    const s = (await still.boundingBox())!
+    return { dx: s.x - l.x, dy: s.y - l.y, w: l.width }
+  }
+  const before = await gap()
+  const stillBefore = (await still.boundingBox())!
+  const nb = (await moved.boundingBox())!
+
+  // Drag one node a long way left and up — the direction that used to drag the
+  // lane's own left rail along with it.
+  await page.mouse.move(nb.x + nb.width / 2, nb.y + nb.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(nb.x + nb.width / 2 - 220, nb.y + nb.height / 2 - 90, { steps: 12 })
+  await page.mouse.up()
+
+  // The precondition: that really did move one node *relative to the other*, and
+  // was not the whole canvas panning under a missed grab. Without this the
+  // assertions below can pass on a drag that never happened.
+  const na = (await moved.boundingBox())!
+  const stillAfter = (await still.boundingBox())!
+  const relBefore = nb.x - stillBefore.x
+  const relAfter = na.x - stillAfter.x
+  expect(Math.abs(relAfter - relBefore)).toBeGreaterThan(50)
+
+  // …and the lane did not follow it. Within a pixel, at the same width.
+  const after = await gap()
+  expect(Math.abs(after.dx - before.dx)).toBeLessThanOrEqual(1)
+  expect(Math.abs(after.dy - before.dy)).toBeLessThanOrEqual(1)
+  expect(Math.abs(after.w - before.w)).toBeLessThanOrEqual(1)
 })
 
 test('an open row menu paints over the rows after it', async ({ page }) => {

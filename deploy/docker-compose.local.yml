@@ -1,14 +1,14 @@
 # LOCAL TESTING stack — run from code-repo/deploy:
 #   docker compose -f docker-compose.local.yml up -d --build upload-bot
 #   docker compose -f docker-compose.local.yml up -d --build control-bot
-#   docker compose -f docker-compose.local.yml up -d --build ui-backend   # UI at http://localhost:8000
+#   docker compose -f docker-compose.local.yml up -d --build ui-backend   # UI at http://localhost:8001
 #
 # Fully isolated from the server stack (deploy/docker-compose.yml):
 #   - distinct project name + its own local volumes
 #   - local ./local/*.env (test bot tokens, gitignored) instead of /opt/inja/secrets
 #   - the sibling ../../data-repo mounted at /data (no /opt/inja paths)
 #   - public Telegram Bot API (<=20MB); no telegram-bot-api, git-push
-#   - ui-backend served over plain HTTP on :8000 (no Caddy/TLS proxy — the login
+#   - ui-backend served over plain HTTP on :8001 (no Caddy/TLS proxy — the login
 #     cookie has no Secure flag, so http://localhost works for local testing)
 # Nothing here touches the server host or the production bots.
 name: inja-food-process-local
@@ -85,13 +85,13 @@ services:
     image: inja-ui-backend-local
     restart: unless-stopped
     logging: *default-logging
-    # Plain HTTP for local testing — browse http://localhost:8000. No Caddy/TLS.
+    # Plain HTTP for local testing — browse http://localhost:8001. No Caddy/TLS.
     # Both session cookies DO carry `Secure`; login works here only because
     # `localhost` is a potentially trustworthy origin. Reach this stack at a LAN IP
     # over plain HTTP instead and login silently stops working — 200 on the POST,
     # 401 on everything after. See deploy/local/README.md § Access.
     ports:
-      - "8000:8000"
+      - "8001:8000"
     # SESSION_SIGNING_KEY, plus EXPORT_USERNAME + EXPORT_PASSWORD_HASH (argon2) if you
     # want to exercise the export login locally. Omit both and /exports answers 401
     # to everyone but a signed-in UI user; nothing else changes. (local, gitignored)
@@ -110,7 +110,7 @@ services:
       #     inja-seed --db /state/app.db --username 09123456789 \
       #               --name "…" --password "…"
       APP_DB: /state/app.db
-      # 0, and deliberately: this stack has NO proxy — ui-backend publishes 8000
+      # 0, and deliberately: this stack has NO proxy — ui-backend publishes 8001
       # itself, so there is no X-Forwarded-For entry the caller could not have
       # written, and the TCP peer is the honest answer. The server stack sets 1
       # because Caddy sits in front of it there. Stated rather than left to the

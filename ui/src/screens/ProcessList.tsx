@@ -333,16 +333,21 @@ export function ProcessList() {
    */
   if (isPending) return <ScreenSkeleton column={reader ? 'reader' : 'list'} cards={5} />
 
+  // The bar's fourth control, and the reader's only one. `useExportActions` has
+  // already dropped every kind this caller may not take, so `reader_no_download`
+  // gets an empty list here for the same reason they see no trigger on the bar —
+  // and the reader's ⋮ below is not drawn at all rather than drawn and empty.
+  const exportActs: Act[] = exports.kinds.map(
+    (k) => ({ key: `export-${k.kind}`, label: k.label, run: () => exports.run(k.kind) }),
+  )
+
   // R5 — the overflow is the action bar, not a superset of it, so both are
   // built from one list. An act a caller may not perform is in neither.
   const actions: Act[] = [
     ...(mayEdit ? [{ key: 'order', label: 'ترتیب فرآیندها', run: () => setReordering(true) }] : []),
     { key: 'overview', label: 'اطلاعات دپارتمان', run: () => nav(`/departments/${code}/overview`) },
     ...(mayEdit ? [{ key: 'new', label: 'فرآیند جدید', run: () => setCreating(true) }] : []),
-    // The bar's fourth control. `useExportActions` has already dropped every
-    // kind this caller may not take, so `reader_no_download` sees no export row
-    // here for the same reason they see no trigger on the bar.
-    ...exports.kinds.map((k) => ({ key: `export-${k.kind}`, label: k.label, run: () => exports.run(k.kind) })),
+    ...exportActs,
   ]
 
   return (
@@ -375,9 +380,43 @@ export function ProcessList() {
             <p data-body className="text-role-dense text-role-subtitle-on-field mt-s5 leading-sub text-center">
               روی هر فرآیند بزنید تا گام‌هایش را ببینید.
             </p>
-            <div className="flex justify-center mt-s10">
+            {/* **A reader who may download had nowhere to do it** — owner ruling:
+                *"in reader view with dowanload permission, it doesn't show any
+                download option.add ⋮menu in left of اطلاعات دپارتمان buttomn in
+                center."* The panel carries its exports on the action bar and, at
+                ≤760, in the title row's ⋯; the reader has neither of those — this
+                branch drew the one centred button and nothing else — so the
+                permission was real and unreachable.
+
+                The ⋮ comes AFTER the button in source and therefore to its LEFT:
+                this document is RTL, so the row starts at the right edge. It holds
+                the export rows ONLY. «اطلاعات دپارتمان» is the button it sits
+                beside and R48's ruling stands — one control says a thing once. */}
+            <div className="flex items-center justify-center gap-s5 mt-s10">
               <Button variant="ghost" onClick={() => nav(`/departments/${code}/overview`)}
                 className="px-s9 text-fs-menu">اطلاعات دپارتمان</Button>
+              {exportActs.length > 0 && (
+                <OverflowMenu
+                  actions={exportActs}
+                  label="دریافت خروجی"
+                  className="relative flex-none"
+                  // The reader's own square, `--size-menu-more-reader` 38×38
+                  // radius 11 (reader 162) — the R3 sibling of the panel's 36px
+                  // `w-menu-more`, the same relationship as --size-iconbtn 40 /
+                  // --size-iconbtn-reader 42. Painted `bg-card` and not the
+                  // shell chrome's `bg-tile-v2`, because it stands beside a
+                  // `variant="ghost"` button on the violet field and the two are
+                  // one control pair.
+                  glyph={
+                    'relative before:absolute before:content-[""] before:-inset-[5px] '
+                    + 'inline-flex items-center justify-center flex-none '
+                    + 'w-menu-more-reader h-menu-more-reader rounded-input '
+                    + 'border-hairline border-line bg-card text-violet cursor-pointer'
+                  }
+                >
+                  <Icon d={KEBAB} px={16} stroke={3.2} />
+                </OverflowMenu>
+              )}
             </div>
           </div>
         ) : (

@@ -512,6 +512,46 @@ describe('the row, the empty state and the mobile overflow', () => {
     expect(screen.queryByRole('menuitem', { name: /^خروجی/ })).toBeNull()
   })
 
+  it('gives a reader who may download somewhere to do it, beside the centred button', async () => {
+    // **Owner ruling** — *"in reader view with dowanload permission, it doesn't
+    // show any download option.add ⋮menu in left of اطلاعات دپارتمان buttomn in
+    // center."* The panel carries its exports on the action bar and, at ≤760, in
+    // the title row's ⋯. The reader surface has neither: it drew one centred
+    // «اطلاعات دپارتمان» and nothing else, so `export_pdf` was a permission with
+    // no affordance anywhere on the screen.
+    //
+    // The surface has to be provided explicitly. `renderAt` sets the SESSION, and
+    // `useSurface` reads a context that defaults to the panel — which is why the
+    // ⋯ tests above pass a reader session and still exercise the panel layout.
+    mock()
+    renderAt('/departments/:code',
+      <SurfaceProvider surface="reader"><ProcessList /></SurfaceProvider>,
+      '/departments/cooking', READER)
+    await screen.findByText('پرداخت هزینه')
+    fireEvent.click(screen.getByRole('button', { name: 'دریافت خروجی' }))
+    expect(screen.getAllByRole('menuitem').map((m) => m.textContent)).toEqual([
+      'خروجی مستندات کامل', 'خروجی راهنمای گام‌به‌گام',
+    ])
+    // R48 — the button beside it already says this, and one control says a thing
+    // once. The panel's ⋯ mirrors its whole bar; the reader's carries exports only.
+    expect(screen.queryByRole('menuitem', { name: 'اطلاعات دپارتمان' })).toBeNull()
+  })
+
+  it('draws no ⋮ at all for a reader who may not download', async () => {
+    // R5 — absent, not drawn and inert. The pairing with the test above is what
+    // proves the trigger is gated rather than simply never built: an empty menu
+    // button would satisfy neither half.
+    mock()
+    const NO_DOWNLOAD: SessionDescriptor = { ...READER, capabilities: ['view', 'comment'] }
+    renderAt('/departments/:code',
+      <SurfaceProvider surface="reader"><ProcessList /></SurfaceProvider>,
+      '/departments/cooking', NO_DOWNLOAD)
+    await screen.findByText('پرداخت هزینه')
+    expect(screen.queryByRole('button', { name: 'دریافت خروجی' })).toBeNull()
+    // …and the control it stands beside is untouched.
+    expect(screen.getByRole('button', { name: 'اطلاعات دپارتمان' })).toBeInTheDocument()
+  })
+
   it('opens the reorder panel from the ⋯ as well as from the bar', async () => {
     // A menu whose rows are drawn and inert is the failure a "the row exists"
     // assertion cannot see.

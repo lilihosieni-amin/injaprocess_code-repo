@@ -26,7 +26,7 @@ Nothing here touches the server host or the production bots.
 |---|---|---|---|
 | `upload-bot` | `inja-upload-bot-local` | Bot 1 — raw voice/file intake | Telegram `@uploadtestinjsbot` |
 | `control-bot` | `inja-control-bot-local` | Bot 2 — runs the `/process-voice` pipeline (Claude Code) | Telegram `@aiprocessTestinjabo` |
-| `ui-backend` | `inja-ui-backend-local` | FastAPI + built frontend | http://localhost:8000 |
+| `ui-backend` | `inja-ui-backend-local` | FastAPI + built frontend | http://localhost:8001 |
 
 The UI is served over **plain HTTP** on `:8000` — no Caddy/TLS locally. The login
 cookie **is** `Secure` (it always is), and login still works because `localhost`
@@ -282,7 +282,7 @@ reach Hub with `docker save` / `docker load`.
 
 ## Access
 
-- **UI:** http://localhost:8000 — log in with the mobile number and password you
+- **UI:** http://localhost:8001 — log in with the mobile number and password you
   seeded in [step 3](#3-seed-a-local-account-login).
 
 > **Why plain HTTP still logs you in.** Both session cookies — `inja_session` for
