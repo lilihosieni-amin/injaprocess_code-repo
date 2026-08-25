@@ -2,6 +2,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 from engine_common import data_root
@@ -23,28 +24,119 @@ Rules:
 # along with the audio, so route to GCS well before that (D2).
 INLINE_LIMIT = 16 * 1024 * 1024
 
+# Tuning knobs (D20). One call for a whole meeting silently thinned the transcript and
+# stopped two minutes early while reporting a normal finish; 13-minute chunks of the same
+# audio produced 28% more text and reached the end. The overlap exists so a sentence on a
+# seam cannot fall between two chunks — duplication is recoverable, loss is not.
+CHUNK_SECONDS = 13 * 60
+CHUNK_OVERLAP = 10
+
+# Bounded retry per chunk (D22).
+RETRIES = 3
+RETRY_BACKOFF = 2.0
+
 
 def stage(name):
     """Progress breadcrumb for Bot 1; stdout stays pure transcript (D8)."""
     print(f"stage: {name}", file=sys.stderr, flush=True)
 
 
-def transcode(src, dst, bitrate=None, run=subprocess.run):
-    """Down-mix any input to mono Opus (D1).
+def transcode(src, dst, bitrate=None, start=None, duration=None, run=subprocess.run):
+    """Down-mix any input to mono Opus (D1), optionally cutting one time range (D20).
 
     Unconditional, for every input: one code path and one MIME type instead of a
     format-to-MIME table for the m4a/mp3/ogg/wav mix Telegram and the corpus
-    produce. A 73-minute meeting comes out around 9 MB.
+    produce. A 13-minute chunk comes out around 1.5 MB at the default bitrate.
+
+    `-ss` goes before `-i` — input seeking, so cutting minute 60 of a long meeting
+    does not decode the first 59; it is frame-accurate here because we re-encode.
     """
     bitrate = bitrate or os.environ.get("TRANSCODE_BITRATE") or "16k"
-    proc = run(["ffmpeg", "-nostdin", "-v", "error", "-y", "-i", str(src),
-                "-vn", "-ac", "1", "-c:a", "libopus", "-b:a", bitrate,
-                "-f", "ogg", str(dst)],
-               capture_output=True, text=True)
+    argv = ["ffmpeg", "-nostdin", "-v", "error", "-y"]
+    if start is not None:
+        argv += ["-ss", f"{start:.3f}"]
+    argv += ["-i", str(src)]
+    if duration is not None:
+        argv += ["-t", f"{duration:.3f}"]
+    argv += ["-vn", "-ac", "1", "-c:a", "libopus", "-b:a", bitrate, "-f", "ogg", str(dst)]
+    proc = run(argv, capture_output=True, text=True)
     if proc.returncode != 0:
         detail = (proc.stderr or "").strip()[:500]
         raise RuntimeError(f"ffmpeg failed ({proc.returncode}): {detail}")
     return Path(dst)
+
+
+def probe_duration(path, run=subprocess.run):
+    """Length of the source audio in seconds — the input to the chunk arithmetic."""
+    proc = run(["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                "-of", "default=noprint_wrappers=1:nokey=1", str(path)],
+               capture_output=True, text=True)
+    out = (proc.stdout or "").strip()
+    if proc.returncode != 0 or not out:
+        detail = (proc.stderr or "").strip()[:500]
+        raise RuntimeError(f"ffprobe could not read the duration of {Path(path).name}: {detail}")
+    return float(out)
+
+
+def chunk_bounds(duration, chunk=CHUNK_SECONDS, overlap=CHUNK_OVERLAP):
+    """(start, end) seconds for every chunk, advancing by `chunk` and ending `overlap` late.
+
+    The last chunk is usually short; that is normal. A tail shorter than the overlap is
+    not given a chunk of its own — the previous chunk already reaches past the end.
+    """
+    bounds, start = [], 0.0
+    while start < duration:
+        end = min(float(duration), start + chunk + overlap)
+        bounds.append((start, end))
+        if end >= duration:
+            break
+        start += chunk
+    return bounds
+
+
+def assert_coverage(bounds, duration, tolerance=1e-6):
+    """D24: the boundaries must tile [0, duration]. A skipped segment is an invisible gap."""
+    if not bounds or bounds[0][0] > tolerance or bounds[-1][1] < duration - tolerance:
+        raise RuntimeError(f"chunk boundaries do not cover the {duration:.1f}s of audio: "
+                           f"{bounds}")
+    for (_, prev_end), (start, _) in zip(bounds, bounds[1:]):
+        if start > prev_end + tolerance:
+            raise RuntimeError(f"chunk boundaries leave a gap between {prev_end:.1f}s and "
+                               f"{start:.1f}s")
+
+
+def clock(seconds):
+    return f"{int(seconds) // 60}:{int(seconds) % 60:02d}"
+
+
+# Retried: a blip the same request could survive next time. Everything else — a blocked
+# response, an invalid argument, a truncated one — fails on the first try, because
+# repeating it only costs time and money (D22).
+TRANSIENT_CODES = {408, 429, 500, 502, 503, 504}
+TRANSIENT_MARKERS = ("unavailable", "deadline", "timeout", "timed out", "temporarily",
+                     "connection reset", "connection aborted", "connection error",
+                     "resource_exhausted", "internal server error", "server error")
+
+
+def is_transient(exc):
+    if isinstance(exc, (TimeoutError, ConnectionError)):
+        return True
+    code = getattr(exc, "code", None) or getattr(exc, "status_code", None)
+    if isinstance(code, int) and code in TRANSIENT_CODES:
+        return True
+    msg = str(exc).lower()
+    return any(marker in msg for marker in TRANSIENT_MARKERS)
+
+
+def with_retry(fn, label, attempts=RETRIES):
+    """Run `fn`, retrying transient failures; every exit path names the chunk (D21/D22)."""
+    for attempt in range(1, attempts + 1):
+        try:
+            return fn()
+        except Exception as e:                  # noqa: BLE001 - re-raised, labelled
+            if attempt >= attempts or not is_transient(e):
+                raise RuntimeError(f"{label} failed: {e}") from e
+            time.sleep(RETRY_BACKOFF * attempt)
 
 
 def audio_source(path, bucket, inline_limit=INLINE_LIMIT, uploader=None):
@@ -161,30 +253,52 @@ class VertexTranscriber:
         return genai.Client(vertexai=True, project=self.project, location=self.location)
 
     def transcribe(self, audio_path):
+        """Transcribe the whole meeting in chunks, all or nothing (D20-D25).
+
+        Every chunk's text is held in memory and returned only once all of them have
+        succeeded, so a failure anywhere leaves the caller with an exception instead of a
+        transcript that is quietly missing its last thirteen minutes.
+        """
+        duration = probe_duration(audio_path)
+        bounds = chunk_bounds(duration)
+        assert_coverage(bounds, duration)
+        total = len(bounds)
+        texts = []
         with tempfile.TemporaryDirectory() as tmp:
-            # Named after the meeting, not the temp dir: the GCS object inherits this
-            # name, and two runs staging `audio.ogg` would collide in the bucket.
-            ogg = Path(tmp) / f"{Path(audio_path).stem}.ogg"
             stage("transcoding")
-            transcode(audio_path, ogg)
-            if ogg.stat().st_size > self.inline_limit:
-                stage("uploading")
-            kind, value = audio_source(ogg, self.bucket, self.inline_limit)
-            uri = value if kind == "uri" else None
-            try:
-                stage("transcribing")
-                # A plain dict, not types.GenerateContentConfig: keeps the SDK import
-                # lazy. max_output_tokens is left unset — the default IS the model
-                # maximum, and naming a number here could only lower it.
-                # Bound to a local, not chained off `self._client()`: LOAD_ATTR pops the
-                # temporary as soon as `.models` is read, and the SDK's finalizer closes
-                # the transport under the request ("client has been closed"). Still one
-                # client per call — it just has to outlive the call.
-                client = self._client()
-                resp = client.models.generate_content(
-                    model=self.model, contents=[PROMPT, build_part(kind, value)],
-                    config={"temperature": 0})
-                return check_response(resp)
-            finally:
-                if uri:
-                    gcs_delete(uri)
+            for i, (start, end) in enumerate(bounds, 1):
+                label = f"chunk {i}/{total} ({clock(start)}–{clock(end)})"
+                texts.append(self._chunk(audio_path, tmp, i, total, start, end, label))
+        return "\n\n".join(texts)
+
+    def _chunk(self, audio_path, tmp, i, total, start, end, label):
+        # Named after the meeting and the chunk, not the temp dir: the GCS object
+        # inherits this name, and two chunks staging `audio.ogg` would collide.
+        ogg = Path(tmp) / f"{Path(audio_path).stem}-{i:02d}.ogg"
+        transcode(audio_path, ogg, start=start, duration=end - start)
+        if ogg.stat().st_size > self.inline_limit:
+            stage("uploading")
+        # Per chunk now: a 13-minute chunk fits inline at any sane bitrate, but the
+        # routing still has to hold if the bitrate or the chunk length is raised.
+        kind, value = audio_source(ogg, self.bucket, self.inline_limit)
+        uri = value if kind == "uri" else None
+        try:
+            stage(f"transcribing {i}/{total}")
+            return with_retry(lambda: self._call(kind, value), label)
+        finally:
+            if uri:
+                gcs_delete(uri)
+
+    def _call(self, kind, value):
+        # A plain dict, not types.GenerateContentConfig: keeps the SDK import
+        # lazy. max_output_tokens is left unset — the default IS the model
+        # maximum, and naming a number here could only lower it.
+        # Bound to a local, not chained off `self._client()`: LOAD_ATTR pops the
+        # temporary as soon as `.models` is read, and the SDK's finalizer closes
+        # the transport under the request ("client has been closed"). Still one
+        # client per call — it just has to outlive the call.
+        client = self._client()
+        resp = client.models.generate_content(
+            model=self.model, contents=[PROMPT, build_part(kind, value)],
+            config={"temperature": 0})
+        return check_response(resp)              # D23: every chunk is guarded
