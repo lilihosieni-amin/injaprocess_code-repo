@@ -40,12 +40,21 @@ services:
     environment:
       DATA_ROOT: /data
       TELEGRAM_API_BASE_URL: http://telegram-bot-api:8081
+      # Automatic transcription at upload (design 2026-08-25). VERTEX_PROJECT unset
+      # would turn the whole feature off, which is the only switch it has (D17).
+      VERTEX_PROJECT: injafood
+      VERTEX_LOCATION: global
+      GEMINI_MODEL: gemini-3.1-pro-preview
+      GCS_BUCKET: injafood-transcribe-staging
+      GOOGLE_APPLICATION_CREDENTIALS: /secrets/vertex-sa.json
     volumes:
       - /opt/inja/data-repo:/data
       # local-mode Bot API downloads land in the bot-api server's data dir and
       # getFile returns an absolute path there — mount it (ro) so upload-bot can
       # read the file at that path.
       - telegram-bot-api-data:/var/lib/telegram-bot-api:ro
+      # Vertex service-account key — outside both repos, read-only.
+      - /opt/inja/secrets/vertex-sa.json:/secrets/vertex-sa.json:ro
 
   control-bot:
     build:
@@ -67,10 +76,20 @@ services:
       # Headroom for the long single-turn pipeline (audit: 200 vs ~100–150 real turns
       # is a thin margin on bigger voices). Overrides CLAUDE_MAX_TURNS from the env_file.
       CLAUDE_MAX_TURNS: "300"
-      # Per-Bash-command timeout: default is 120s, but `transcribe` on a fresh long
-      # audio (Vertex) can exceed 2 min and would otherwise be killed mid-command.
-      BASH_DEFAULT_TIMEOUT_MS: "600000"
-      BASH_MAX_TIMEOUT_MS: "600000"
+      # Per-Bash-command timeout: the default is 120s, and `transcribe` is the command
+      # that needs the budget. It is chunked now (13-minute segments, one Vertex call
+      # each, sequential), which runs about 8.6 min per 65 min of audio — so a 90-minute
+      # meeting takes roughly 12 min and would be killed mid-run at the old 10 min.
+      # 30 min covers ~3.5 hours of audio; Bot 1's own watchdog is 30 min too.
+      BASH_DEFAULT_TIMEOUT_MS: "1800000"
+      BASH_MAX_TIMEOUT_MS: "1800000"
+      # The pipeline transcribes any recording that arrived without a raw transcript,
+      # so Bot 2 needs the same Vertex settings as Bot 1 (design 2026-08-25).
+      VERTEX_PROJECT: injafood
+      VERTEX_LOCATION: global
+      GEMINI_MODEL: gemini-3.1-pro-preview
+      GCS_BUCKET: injafood-transcribe-staging
+      GOOGLE_APPLICATION_CREDENTIALS: /secrets/vertex-sa.json
     # AC-7 is enforced by the Phase-3 in-container hooks + the bot's can_use_tool
     # callback (setting_sources=["project"], approved_directory=/data): the agent's
     # file operations are confined to /data, and the engine CLIs/code are baked
@@ -83,6 +102,9 @@ services:
       - /opt/inja/data-repo:/data
       - claude-credentials:/root/.claude   # subscription credential (rw)
       - control-bot-state:/state           # bot SQLite state — DATABASE_URL=sqlite:////state/bot.db
+      # Vertex service-account key — outside both repos, read-only, and outside
+      # /data so the agent's own file operations cannot reach it (AC-7 above).
+      - /opt/inja/secrets/vertex-sa.json:/secrets/vertex-sa.json:ro
 
   ui-backend:
     build:

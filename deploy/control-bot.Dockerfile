@@ -3,7 +3,7 @@
 FROM python:3.11-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      git curl ca-certificates patch nodejs npm \
+      git curl ca-certificates patch nodejs npm ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 # Claude Code CLI (the pipeline runs inside this container). PINNED on purpose:
@@ -23,7 +23,9 @@ ENV PATH="/root/.local/bin:${PATH}"
 # Engine CLIs on PATH — baked, outside APPROVED_DIRECTORY (INV-1/INV-2)
 COPY engine/ /opt/engine/
 COPY schemas/ /opt/schemas/
-RUN pip install --no-cache-dir /opt/engine
+# [vertex] is load-bearing: without it google-genai is absent from this image and
+# the pipeline's own `transcribe` fails on import, which is the state before this change.
+RUN pip install --no-cache-dir "/opt/engine[vertex]"
 ENV SCHEMA_DIR=/opt/schemas
 
 # Pinned bot + SOCKS backend

@@ -1,3 +1,10 @@
+import os
+import subprocess
+import sys
+import tempfile
+import time
+from pathlib import Path
+
 from engine_common import data_root
 
 PROMPT = """You are a precise audio transcriber. Reproduce ONLY the spoken content of the
@@ -11,6 +18,214 @@ Rules:
 - Do not add any preamble, conclusion, heading, commentary, or sentence of your
   own. The output must be the transcript and nothing else.
 - Do not remove, summarize, or edit anything; reproduce exactly what was said."""
+
+
+# Vertex caps the WHOLE request near 20 MB — prompt and protocol overhead ride
+# along with the audio, so route to GCS well before that (D2).
+INLINE_LIMIT = 16 * 1024 * 1024
+
+# Tuning knobs (D20). One call for a whole meeting silently thinned the transcript and
+# stopped two minutes early while reporting a normal finish; 13-minute chunks of the same
+# audio produced 28% more text and reached the end. The overlap exists so a sentence on a
+# seam cannot fall between two chunks — duplication is recoverable, loss is not.
+CHUNK_SECONDS = 13 * 60
+CHUNK_OVERLAP = 10
+# One extra chunk covering the last TAIL_SECONDS of every recording, on top of the primary
+# boundaries (D20). Not an optimisation — a long final chunk was measured *losing* the end
+# of the meeting («هفتاد دقیقه شد» missing) and *inventing* a closing line that is nowhere
+# in the audio, while a short clip of the same ending reproduced it exactly. The primary
+# boundaries cannot promise a short final chunk: they advance by CHUNK_SECONDS and span
+# CHUNK_SECONDS + CHUNK_OVERLAP, so how short the last one lands is luck against the file's
+# duration — dining-1405-04-11's was 771 seconds. This makes the ending deterministic.
+TAIL_SECONDS = 90
+# The length below which an empty chunk that reaches the END of the recording is forgiven
+# rather than failed (D23): ninety seconds of goodbyes can genuinely transcribe to nothing.
+MIN_TAIL_SECONDS = 90
+# Container and stream durations that disagree by more than this are worth saying out loud.
+DURATION_DISAGREEMENT = 2.0
+
+# Bounded retry per chunk (D22).
+RETRIES = 3
+RETRY_BACKOFF = 2.0
+# Only after a runaway (MAX_TOKENS), never after a network error: greedy decoding replays
+# the identical path into the identical repetition loop, so the retry needs to be nudged
+# off it. Network failures are not the model's fault and keep temperature 0.
+RETRY_TEMPERATURE = 0.2
+
+
+def stage(name):
+    """Progress breadcrumb for Bot 1; stdout stays pure transcript (D8)."""
+    print(f"stage: {name}", file=sys.stderr, flush=True)
+
+
+def transcode(src, dst, bitrate=None, start=None, duration=None, run=subprocess.run):
+    """Down-mix any input to mono Opus (D1), optionally cutting one time range (D20).
+
+    Unconditional, for every input: one code path and one MIME type instead of a
+    format-to-MIME table for the m4a/mp3/ogg/wav mix Telegram and the corpus
+    produce. A 13-minute chunk comes out around 1.5 MB at the default bitrate.
+
+    `-ss` goes before `-i` — input seeking, so cutting minute 60 of a long meeting
+    does not decode the first 59; it is frame-accurate here because we re-encode.
+    """
+    bitrate = bitrate or os.environ.get("TRANSCODE_BITRATE") or "16k"
+    argv = ["ffmpeg", "-nostdin", "-v", "error", "-y"]
+    if start is not None:
+        argv += ["-ss", f"{start:.3f}"]
+    argv += ["-i", str(src)]
+    if duration is not None:
+        argv += ["-t", f"{duration:.3f}"]
+    argv += ["-vn", "-ac", "1", "-c:a", "libopus", "-b:a", bitrate, "-f", "ogg", str(dst)]
+    proc = run(argv, capture_output=True, text=True)
+    if proc.returncode != 0:
+        detail = (proc.stderr or "").strip()[:500]
+        raise RuntimeError(f"ffmpeg failed ({proc.returncode}): {detail}")
+    return Path(dst)
+
+
+def probe_duration(path, run=subprocess.run):
+    """Length of the source audio in seconds — the input to the chunk arithmetic.
+
+    Both the container header and the audio stream are asked, and the longer answer wins.
+    A header that under-reports while the stream runs on would shorten the last chunk with
+    the coverage check (D24) none the wiser — the one remaining way audio could still be
+    dropped in silence. A disagreement is left on the record for whoever reads the log.
+    """
+    proc = run(["ffprobe", "-v", "error", "-show_entries", "format=duration:stream=duration",
+                "-of", "default=noprint_wrappers=1:nokey=1", str(path)],
+               capture_output=True, text=True)
+    values = []
+    for line in (proc.stdout or "").splitlines():
+        try:
+            values.append(float(line.strip()))
+        except ValueError:                  # "N/A", or the blank line between sections
+            pass
+    if proc.returncode != 0 or not values:
+        detail = (proc.stderr or "").strip()[:500]
+        raise RuntimeError(f"ffprobe could not read the duration of {Path(path).name}: {detail}")
+    if max(values) - min(values) > DURATION_DISAGREEMENT:
+        print(f"warning: {Path(path).name} reports {min(values):.1f}s in one place and "
+              f"{max(values):.1f}s in another; using the longer", file=sys.stderr)
+    return max(values)
+
+
+def chunk_bounds(duration, chunk=CHUNK_SECONDS, overlap=CHUNK_OVERLAP):
+    """(start, end) seconds for every chunk, advancing by `chunk` and ending `overlap` late.
+
+    These are the PRIMARY boundaries and they tile [0, duration]. The final one may be any
+    length — it advances by `chunk` but spans `chunk + overlap`, so whether it lands short
+    or nearly full is luck against the file's duration, and an earlier docstring here
+    claimed a short final chunk the arithmetic never delivered. Capturing the ending is not
+    left to that: `transcribe` appends a dedicated TAIL_SECONDS chunk on top of these.
+    """
+    bounds, start = [], 0.0
+    while start < duration:
+        end = min(float(duration), start + chunk + overlap)
+        bounds.append((start, end))
+        if end >= duration:
+            break
+        start += chunk
+    return bounds
+
+
+def assert_coverage(bounds, duration, tolerance=1e-6):
+    """D24: the boundaries must tile [0, duration]. A skipped segment is an invisible gap."""
+    if not bounds or bounds[0][0] > tolerance or bounds[-1][1] < duration - tolerance:
+        raise RuntimeError(f"chunk boundaries do not cover the {duration:.1f}s of audio: "
+                           f"{bounds}")
+    for (_, prev_end), (start, _) in zip(bounds, bounds[1:]):
+        if start > prev_end + tolerance:
+            raise RuntimeError(f"chunk boundaries leave a gap between {prev_end:.1f}s and "
+                               f"{start:.1f}s")
+
+
+def clock(seconds):
+    return f"{int(seconds) // 60}:{int(seconds) % 60:02d}"
+
+
+class OutputCeiling(RuntimeError):
+    """The model generated until it hit its output cap — measured non-deterministic.
+
+    The same 13-minute chunk failed this way once and finished twice at ~4,000 output
+    tokens, nowhere near any limit, so this is a repetition loop the model fell into and
+    not a chunk that is too long. That makes it worth another attempt.
+    """
+
+
+# Retried: a blip the same request could survive next time. Everything else — a blocked
+# response, an invalid argument, a truncated one — fails on the first try, because
+# repeating it only costs time and money (D22).
+TRANSIENT_CODES = {408, 429, 500, 502, 503, 504}
+TRANSIENT_MARKERS = ("unavailable", "deadline", "timeout", "timed out", "temporarily",
+                     "connection reset", "connection aborted", "connection error",
+                     "resource_exhausted", "internal server error", "server error")
+
+
+def is_transient(exc):
+    if isinstance(exc, (OutputCeiling, TimeoutError, ConnectionError)):
+        return True
+    code = getattr(exc, "code", None) or getattr(exc, "status_code", None)
+    if isinstance(code, int) and code in TRANSIENT_CODES:
+        return True
+    msg = str(exc).lower()
+    return any(marker in msg for marker in TRANSIENT_MARKERS)
+
+
+def with_retry(fn, label, attempts=RETRIES):
+    """Run `fn(temperature)`, retrying transient failures; every exit names the chunk (D21/D22).
+
+    The temperature is part of the retry because one failure mode is the model's own
+    determinism: a runaway repetition replays exactly at 0 and needs a different roll.
+    """
+    temperature = 0
+    for attempt in range(1, attempts + 1):
+        try:
+            return fn(temperature)
+        except Exception as e:                  # noqa: BLE001 - re-raised, labelled
+            if attempt >= attempts or not is_transient(e):
+                raise RuntimeError(f"{label} failed: {e}") from e
+            if isinstance(e, OutputCeiling):
+                temperature = RETRY_TEMPERATURE
+            time.sleep(RETRY_BACKOFF * attempt)
+
+
+def audio_source(path, bucket, inline_limit=INLINE_LIMIT, uploader=None):
+    """Decide how the transcoded audio reaches Vertex (D2).
+
+    Returns ("inline", bytes) or ("uri", "gs://..."). Kept free of the SDK so the
+    routing decision is testable without credentials.
+    """
+    path = Path(path)
+    size = path.stat().st_size
+    if size <= inline_limit:
+        return ("inline", path.read_bytes())
+    if not bucket:
+        raise RuntimeError(
+            f"{path.name} is {size} bytes after transcoding, over the {inline_limit}-byte "
+            "inline limit, and GCS_BUCKET is not set")
+    upload = uploader or gcs_upload
+    return ("uri", upload(path, bucket, f"transcribe/{path.name}"))
+
+
+def gcs_upload(path, bucket, name):
+    """Stage oversize audio for Vertex (D3). Lazy import: only this branch needs it."""
+    from google.cloud import storage
+    blob = storage.Client().bucket(bucket).blob(name)
+    blob.upload_from_filename(str(path), content_type="audio/ogg")
+    return f"gs://{bucket}/{name}"
+
+
+def gcs_delete(uri):
+    """Best-effort cleanup; the bucket's 1-day lifecycle rule is the backstop (D3).
+
+    A failed delete must never turn a finished transcription into a failure.
+    """
+    from google.cloud import storage
+    bucket, _, name = uri[len("gs://"):].partition("/")
+    try:
+        storage.Client().bucket(bucket).blob(name).delete()
+    except Exception as e:                      # noqa: BLE001 - cleanup is advisory
+        print(f"warning: could not delete {uri}: {e}", file=sys.stderr)
 
 
 def transcript_path(root, basename):
@@ -33,18 +248,136 @@ def run_transcribe(basename, transcriber, root=None):
     return transcriber.transcribe(str(audio)), True
 
 
-class VertexTranscriber:
-    """Real Gemini-on-Vertex transcriber. Lazy-imports google.genai so unit
-    tests (which use a fake) never require the dependency or credentials."""
+def check_response(resp, allow_empty=False):
+    """Refuse a transcript the model did not finish (D6).
 
-    def __init__(self, project, location, model):
+    `allow_empty` is the one exception (D23) and the caller decides when it applies:
+    a final chunk shorter than MIN_TAIL_SECONDS may legitimately be silence. Every other
+    guard still holds — a blocked or truncated short tail fails like any other chunk.
+
+    A half transcript that lands on disk looking whole would silently truncate
+    every downstream extraction, so every incomplete outcome raises instead.
+
+    STOP is the only finish reason that means "finished": an allow-list, because a
+    deny-list missed SPII, OTHER and seven more of FinishReason's 18 members, each of
+    which ends the response holding partial text. An unset reason stays permissive.
+    """
+    candidates = getattr(resp, "candidates", None) or []
+    if not candidates:
+        raise RuntimeError("Vertex returned no candidates (blocked or empty response)")
+    reason = str(getattr(candidates[0], "finish_reason", "") or "")
+    if "MAX_TOKENS" in reason:
+        raise OutputCeiling("the model ran past its output limit on every attempt — most "
+                            "likely a repetition loop; listen to that stretch of the recording")
+    if reason and "STOP" not in reason:
+        raise RuntimeError("Vertex did not finish the response — blocked or cut short "
+                           f"(finish_reason={reason})")
+    text = getattr(resp, "text", None)
+    if not text or not text.strip():
+        if allow_empty:
+            return ""
+        raise RuntimeError("Vertex returned an empty transcript")
+    return text
+
+
+def build_part(kind, value):
+    """Wrap the audio for the SDK. Lazy import: unit tests never reach this."""
+    from google.genai import types
+    if kind == "inline":
+        return types.Part.from_bytes(data=value, mime_type="audio/ogg")
+    return types.Part.from_uri(file_uri=value, mime_type="audio/ogg")
+
+
+class VertexTranscriber:
+    """Gemini-on-Vertex transcription (ARD §5.1, D1-D6).
+
+    Vertex has no Files API — audio travels inline or as a gs:// URI. Everything
+    that talks to the SDK is imported lazily so the unit suite needs neither the
+    dependency nor credentials.
+    """
+
+    def __init__(self, project, location, model, bucket=None,
+                 inline_limit=INLINE_LIMIT, client_factory=None):
         self.project, self.location, self.model = project, location, model
+        self.bucket, self.inline_limit = bucket, inline_limit
+        self._client_factory = client_factory
+
+    def _client(self):
+        if self._client_factory:
+            return self._client_factory()
+        from google import genai
+        return genai.Client(vertexai=True, project=self.project, location=self.location)
 
     def transcribe(self, audio_path):
-        from google import genai  # lazy
-        client = genai.Client(vertexai=True, project=self.project,
-                              location=self.location)
-        uploaded = client.files.upload(file=audio_path)   # large files via upload
+        """Transcribe the whole meeting in chunks, all or nothing (D20-D25).
+
+        Every chunk's text is held in memory and returned only once all of them have
+        succeeded, so a failure anywhere leaves the caller with an exception instead of a
+        transcript that is quietly missing its last thirteen minutes.
+        """
+        duration = probe_duration(audio_path)
+        bounds = chunk_bounds(duration)
+        assert_coverage(bounds, duration)      # D24, on the primary bounds and only those
+        if duration > TAIL_SECONDS:
+            # Unconditional, whatever the primary boundaries did. The last 90 seconds are
+            # transcribed twice and both copies are kept: de-duplicating them would need
+            # alignment logic that could delete real speech to tidy an ending, and this
+            # design already answered that trade — duplication is recoverable, loss is not.
+            bounds.append((duration - TAIL_SECONDS, duration))
+        total = len(bounds)
+        texts = []
+        with tempfile.TemporaryDirectory() as tmp:
+            stage("transcoding")
+            for i, (start, end) in enumerate(bounds, 1):
+                label = f"chunk {i}/{total} ({clock(start)}–{clock(end)})"
+                # Thirteen minutes of a staff meeting transcribing to nothing is a fault;
+                # ninety seconds of people packing up transcribing to nothing is a fact.
+                # As narrow as the evidence: short, touching the end of the recording, and
+                # empty. That covers the tail chunk and a short final primary chunk, which
+                # are the same silence heard twice; nothing mid-meeting qualifies.
+                silence_ok = end >= duration and end - start <= MIN_TAIL_SECONDS
+                text = self._chunk(audio_path, tmp, i, total, start, end, label, silence_ok)
+                if text:
+                    texts.append(text)
+        if not texts:
+            # Forgiven silence must never add up to an empty file on disk (D21).
+            raise RuntimeError("every chunk came back empty — nothing was transcribed")
+        return "\n\n".join(texts)
+
+    def _chunk(self, audio_path, tmp, i, total, start, end, label, silence_ok=False):
+        # Named after the meeting and the chunk, not the temp dir: the GCS object
+        # inherits this name, and two chunks staging `audio.ogg` would collide.
+        ogg = Path(tmp) / f"{Path(audio_path).stem}-{i:02d}.ogg"
+        transcode(audio_path, ogg, start=start, duration=end - start)
+        if ogg.stat().st_size > self.inline_limit:
+            stage("uploading")
+        # Per chunk now: a 13-minute chunk fits inline at any sane bitrate, but the
+        # routing still has to hold if the bitrate or the chunk length is raised.
+        kind, value = audio_source(ogg, self.bucket, self.inline_limit)
+        uri = value if kind == "uri" else None
+        try:
+            stage(f"transcribing {i}/{total}")
+            return with_retry(
+                lambda temp: self._call(kind, value, silence_ok, temp), label)
+        finally:
+            if uri:
+                gcs_delete(uri)
+
+    def _call(self, kind, value, silence_ok=False, temperature=0):
+        # A plain dict, not types.GenerateContentConfig: keeps the SDK import lazy.
+        #
+        # max_output_tokens is deliberately NOT set, and this is not an omission to fix.
+        # A 13-minute chunk needs ~4,000 output tokens and setting the limit explicitly
+        # was measured to change nothing; what the default cap buys is a circuit breaker.
+        # When the model falls into a repetition loop it runs into that cap and comes back
+        # as MAX_TOKENS — a loud failure this code retries. Raise the cap and the same loop
+        # just generates more rubbish before anyone notices.
+        # Bound to a local, not chained off `self._client()`: LOAD_ATTR pops the
+        # temporary as soon as `.models` is read, and the SDK's finalizer closes
+        # the transport under the request ("client has been closed"). Still one
+        # client per call — it just has to outlive the call.
+        client = self._client()
         resp = client.models.generate_content(
-            model=self.model, contents=[PROMPT, uploaded])
-        return resp.text
+            model=self.model, contents=[PROMPT, build_part(kind, value)],
+            config={"temperature": temperature})
+        return check_response(resp, allow_empty=silence_ok)   # D23: every chunk
