@@ -1,3 +1,5 @@
+import logging
+
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes, ConversationHandler
 
@@ -7,6 +9,9 @@ from upload_bot.naming import normalize_date, voice_basename
 from upload_bot.registry import department_choices, is_valid_department
 from upload_bot.session import FileBatch, VoiceUpload
 from upload_bot.staging import discard, finalize, stage
+from upload_bot.transcription import schedule as schedule_transcription
+
+logger = logging.getLogger(__name__)
 
 CHOOSE_KIND, V_DATE, V_DEPTS, V_FILE, F_DEPT, F_COLLECT = range(6)
 
@@ -99,6 +104,14 @@ def build_handlers(config):
         await update.message.reply_text(
             f"ذخیره شد ✅\nبرای شروع پردازش این را در ربات کنترل بفرستید:\n"
             f"`Start /process-voice {base}`", parse_mode="Markdown")
+        # Transcription runs in the background (D13): the conversation ends now so
+        # the next voice can be uploaded immediately. The Start line above stays in
+        # this message on purpose — if transcription fails, the pipeline still
+        # transcribes the recording itself.
+        try:
+            await schedule_transcription(ctx, root, base, update.effective_chat.id)
+        except Exception:                 # noqa: BLE001 - the audio is already safe
+            logger.exception("could not schedule transcription for %s", base)
         ctx.user_data.pop("voice", None)
         return ConversationHandler.END
 
