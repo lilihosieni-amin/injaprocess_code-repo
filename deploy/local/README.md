@@ -38,13 +38,24 @@ plain HTTP and it stops. See [Access](#access).
 ## Prerequisites (host machine)
 
 1. **Docker + Docker Compose** (`docker --version`, `docker compose version`).
-2. **A host SOCKS proxy on `127.0.0.1:2080`** — Telegram is blocked here, so both
-   bots reach it through this proxy (`host.docker.internal:2080` from inside the
-   containers). Make sure it is running before you start the bots.
-3. **A logged-in Claude subscription on the host** (`~/.claude/.credentials.json`
+2. **No proxy — and do not configure one.** Telegram, Anthropic, Vertex and GCS
+   are all reached **directly** from this machine, and neither bot service sets a
+   proxy variable. Do not reintroduce one: a SOCKS `ALL_PROXY`/`HTTPS_PROXY` breaks
+   `transcribe` outright. `httpx` builds its SOCKS transport the moment the client
+   is constructed, and `socksio` is not installed for the interpreter the engine
+   runs under, so `google-genai` raises `ImportError` before `NO_PROXY` is ever
+   consulted — a bypass entry cannot rescue it.
+3. **Google ADC on the host**, for Vertex transcription — `~/.config/gcloud` is
+   mounted **read-only** into both bots at `/root/.config/gcloud`. If a Vertex call
+   fails on the quota project, set it once:
+
+   ```bash
+   gcloud auth application-default set-quota-project injafood
+   ```
+4. **A logged-in Claude subscription on the host** (`~/.claude/.credentials.json`
    present and valid) — the `control-bot` reuses it (see
    [Claude credentials](#4-seed-claude-credentials-control-bot)).
-4. **Docker Hub reachable _or_ an offline build path** — `ui-backend.Dockerfile`
+5. **Docker Hub reachable _or_ an offline build path** — `ui-backend.Dockerfile`
    pulls two bases (`node:20-slim`, `python:3.11-slim`). See
    [Offline build](#offline-build-docker-hub-unreachable).
 
@@ -56,7 +67,7 @@ All gitignored. Create them once (below).
 
 | File | Holds | Ignored by |
 |---|---|---|
-| `upload-bot.env` | `TELEGRAM_BOT_TOKEN` (test), `ALLOWED_USER_IDS`, `DATA_ROOT`, `TELEGRAM_PROXY` | `*.env` |
+| `upload-bot.env` | `TELEGRAM_BOT_TOKEN` (test), `ALLOWED_USER_IDS`, `DATA_ROOT` | `*.env` |
 | `control-bot.env` | `TELEGRAM_BOT_TOKEN` (test), `ALLOWED_USERS`, budgets, feature flags, `DATABASE_URL`, … | `*.env` |
 | `ui-backend.env` | `SESSION_SIGNING_KEY`, `SESSION_TTL`, and optionally `EXPORT_USERNAME` + `EXPORT_PASSWORD_HASH` | `*.env` |
 
@@ -83,8 +94,12 @@ Telegram user id:
 cp config/upload-bot.env.example       deploy/local/upload-bot.env
 cp control-bot/runtime.env.example     deploy/local/control-bot.env
 # then edit both: TELEGRAM_BOT_TOKEN=<test token>, ALLOWED_USER(S)=<your id>
-# upload-bot.env also needs: DATA_ROOT=/data and TELEGRAM_PROXY=socks5h://host.docker.internal:2080
+# upload-bot.env also needs: DATA_ROOT=/data
 ```
+
+If an existing `upload-bot.env` still carries a `TELEGRAM_PROXY=` line from the
+old proxied setup, **remove it** — the bot cannot start while it points at a proxy
+that is not there.
 
 `control-bot.env` must **not** set `ANTHROPIC_API_KEY` — auth comes from the
 subscription credentials in step 4.
@@ -273,10 +288,9 @@ npm --prefix ../ui run build
 
 #### If a new Python dependency really is needed
 
-Neither case helps — you must reach a registry. Pull the base through your proxy
-(`HTTPS_PROXY=socks5h://127.0.0.1:2080 docker pull python:3.11-slim`, if your
-docker daemon is configured for it) or copy the image from a machine that can
-reach Hub with `docker save` / `docker load`.
+Neither case helps — you must reach a registry. Pull the base through whatever
+egress your docker daemon has, or copy the image from a machine that can reach
+Hub with `docker save` / `docker load`.
 
 ---
 
@@ -391,14 +405,22 @@ docker run --rm -v inja-food-process-local_local-claude-credentials:/c alpine \
 
 ### Bots don't connect to Telegram
 
-Confirm the host SOCKS proxy is listening on `127.0.0.1:2080`:
+There is no proxy in this stack — the bots reach `api.telegram.org` directly.
+Confirm the host can:
 
 ```bash
-timeout 3 bash -c "</dev/tcp/127.0.0.1/2080" && echo "proxy up" || echo "proxy DOWN"
+curl -s -o /dev/null -w '%{http_code}\n' https://api.telegram.org   # expect 302
 ```
 
-The control-bot log should show `Proxy configured … socks5h://host.docker.internal:2080`
-followed by Telegram `getMe … 200 OK` and `getUpdates … 200 OK`.
+A bot that dies on startup with `telegram.error.NetworkError: httpx.ConnectError:
+All connection attempts failed` is almost always a leftover
+`TELEGRAM_PROXY=socks5h://host.docker.internal:2080` line in
+`deploy/local/upload-bot.env`, pointing at a proxy that no longer runs — and
+`host.docker.internal` no longer resolves either, since no service declares
+`extra_hosts` any more. Delete the line and restart.
+
+A healthy control-bot log shows Telegram `getMe … 200 OK` followed by
+`getUpdates … 200 OK`.
 
 ### `… context deadline exceeded` / `failed to resolve source metadata` during build
 

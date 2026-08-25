@@ -31,16 +31,23 @@ services:
     image: inja-upload-bot-local
     restart: unless-stopped
     logging: *default-logging
-    # Reach the host SOCKS proxy (Telegram is blocked locally). Docker Desktop maps the
-    # host to host.docker.internal; TELEGRAM_PROXY points there.
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     env_file: [./local/upload-bot.env]     # test token @uploadtestinjsbot
     environment:
       DATA_ROOT: /data
       # (No TELEGRAM_API_BASE_URL -> uses public api.telegram.org, 20MB file cap.)
+      VERTEX_PROJECT: injafood
+      VERTEX_LOCATION: global
+      GEMINI_MODEL: gemini-3.1-pro-preview
+      GCS_BUCKET: injafood-transcribe-staging
+      # The host's own gcloud ADC, read-only. Needs a quota project set once:
+      #   gcloud auth application-default set-quota-project injafood
+      GOOGLE_APPLICATION_CREDENTIALS: /root/.config/gcloud/application_default_credentials.json
+      GOOGLE_CLOUD_PROJECT: injafood
+      # No proxy vars, deliberately: every outbound host this bot talks to —
+      # Telegram, Vertex, GCS — is reached directly from this machine.
     volumes:
       - "../../data-repo:/data"
+      - "${HOME}/.config/gcloud:/root/.config/gcloud:ro"
 
   control-bot:
     build:
@@ -49,9 +56,6 @@ services:
     image: inja-control-bot-local
     restart: unless-stopped
     logging: *default-logging
-    # Reach the host SOCKS proxy for Telegram (blocked locally); Anthropic stays direct.
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     env_file: [./local/control-bot.env]    # test token @aiprocessTestinjabo
     environment:
       APPROVED_DIRECTORY: /data
@@ -59,13 +63,23 @@ services:
       CLAUDE_MAX_TURNS: "300"
       BASH_DEFAULT_TIMEOUT_MS: "600000"
       BASH_MAX_TIMEOUT_MS: "600000"
-      # Telegram (python httpx bot) goes through the host SOCKS proxy; Claude Code
-      # reaches *.anthropic.com DIRECTLY (not blocked) via NO_PROXY. (control-bot/README.md)
-      ALL_PROXY: "socks5h://host.docker.internal:2080"
-      HTTPS_PROXY: "socks5h://host.docker.internal:2080"
-      NO_PROXY: "api.anthropic.com,.anthropic.com,localhost,127.0.0.1"
+      # Same Vertex settings as upload-bot: the pipeline transcribes any recording
+      # that arrived without a raw transcript.
+      VERTEX_PROJECT: injafood
+      VERTEX_LOCATION: global
+      GEMINI_MODEL: gemini-3.1-pro-preview
+      GCS_BUCKET: injafood-transcribe-staging
+      # The host's own gcloud ADC, read-only. Needs a quota project set once:
+      #   gcloud auth application-default set-quota-project injafood
+      GOOGLE_APPLICATION_CREDENTIALS: /root/.config/gcloud/application_default_credentials.json
+      GOOGLE_CLOUD_PROJECT: injafood
+      # No proxy vars, deliberately: every outbound host — Telegram, Anthropic,
+      # Vertex, GCS — is reached directly from this machine. A SOCKS ALL_PROXY here
+      # also breaks `transcribe`: httpx builds the SOCKS transport at client
+      # construction, and socksio lives in the bot's uv tool venv, not this python.
     volumes:
       - "../../data-repo:/data"
+      - "${HOME}/.config/gcloud:/root/.config/gcloud:ro"
       # Live schemas overlay the image-baked /opt/schemas so the engine `validate`
       # CLI (run by the summarize/process-voice pipeline) picks up schema edits on
       # restart — no image rebuild needed for local iteration.
