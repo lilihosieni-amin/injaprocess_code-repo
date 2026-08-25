@@ -454,6 +454,17 @@ each with the unchanged `PROMPT`, and concatenate. The overlap exists so a sente
 boundary cannot fall between two chunks; the resulting duplication at seams is deliberate,
 because **duplication is recoverable and loss is not**.
 
+Segments are a fixed interval and **the final chunk is however short it turns out to be** — it
+is not merged into the chunk before it. Measured (2026-08-25): a 41-second final chunk
+reproduced the end of the meeting exactly, and the same audio with that tail folded into a
+13.5-minute chunk lost the ending («گام به گام بریم جلو» absent). A short final chunk is
+correct, not a rounding artefact to tidy away.
+
+Also measured, so that nobody widens the overlap later on a hunch: **a 13-minute chunk
+transcribes right to its end.** Ground truth for audio 1490–1550 s ends «این آخرین بازنگریش مال
+عید همین امساله»; chunk 1 (770–1550 s) ends «اینا همین بازنگریش مال عید همین امساله» — the same
+content. Ten seconds is enough, and the seams hide nothing.
+
 This supersedes §3's single-call shape. It also retires the output-ceiling problem D6 was written
 for: a 13-minute segment cannot approach the model's output limit, so no meeting length is
 inherently unsupported and the "split the audio" error message becomes unreachable.
@@ -487,6 +498,15 @@ response, or any non-`STOP` finish fails that chunk and therefore the whole run 
 empty chunk is treated as a failure rather than as silence: thirteen minutes of a staff meeting
 that transcribe to nothing is far more likely to be a fault than a genuinely silent recording,
 and D21's logic applies — loud is better than quiet.
+
+**One narrow exception**, added 2026-08-25 with the short-tail measurement above: a chunk that
+is **final**, **shorter than `MIN_TAIL_SECONDS` (90 s)**, and comes back **empty** is treated as
+genuine silence — it contributes nothing and the run continues. Thirteen minutes transcribing to
+nothing is a fault; forty seconds of people packing up transcribing to nothing is a fact. The
+exception is exactly as narrow as the evidence: a short final chunk that returns *text* keeps it,
+a final chunk longer than the threshold still fails when empty, a short chunk that is not the
+last still fails, and a blocked or truncated short tail fails like any other chunk. This replaces
+the folding of short tails that was briefly tried and measured losing the end of the meeting.
 
 ### D24 — Coverage is asserted arithmetically, not assumed
 
