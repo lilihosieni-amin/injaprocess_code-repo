@@ -549,8 +549,12 @@ def test_probe_duration_trusts_the_longer_of_stream_and_container(tmp_path, caps
     The last chunk would stop early and D24's arithmetic would agree with itself, so the
     stream's own length wins and the disagreement is on the record.
     """
-    run = _probe("3888.024000\n3600.000000\n")            # stream longer than container
-    assert T.probe_duration(tmp_path / "a.m4a", run=run) == pytest.approx(3888.024)
+    # ffprobe prints the stream first and the container second; either of the two can be
+    # the one that under-reports, so the longer must win whichever line it arrives on.
+    short_second = _probe("3888.024000\n3600.000000\n")
+    short_first = _probe("3600.000000\n3888.024000\n")
+    assert T.probe_duration(tmp_path / "a.m4a", run=short_second) == pytest.approx(3888.024)
+    assert T.probe_duration(tmp_path / "a.m4a", run=short_first) == pytest.approx(3888.024)
     err = capsys.readouterr().err
     assert "3600.0" in err and "3888.0" in err and "warning" in err
 
