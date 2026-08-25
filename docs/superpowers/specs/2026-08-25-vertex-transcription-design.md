@@ -461,11 +461,40 @@ each with the unchanged `PROMPT`, and concatenate. The overlap exists so a sente
 boundary cannot fall between two chunks; the resulting duplication at seams is deliberate,
 because **duplication is recoverable and loss is not**.
 
-Segments are a fixed interval and **the final chunk is however short it turns out to be** — it
-is not merged into the chunk before it. Measured (2026-08-25): a 41-second final chunk
-reproduced the end of the meeting exactly, and the same audio with that tail folded into a
-13.5-minute chunk lost the ending («گام به گام بریم جلو» absent). A short final chunk is
-correct, not a rounding artefact to tidy away.
+Segments are a fixed interval and the final one is **not** merged into the chunk before it.
+Measured (2026-08-25): a 41-second final chunk reproduced the end of the meeting exactly, and
+the same audio with that tail folded into a 13.5-minute chunk lost the ending («گام به گام بریم
+جلو» absent).
+
+**The primary boundaries cannot promise a short final chunk, so the ending gets its own.** They
+advance by `CHUNK_SECONDS` while each span is `CHUNK_SECONDS + CHUNK_OVERLAP`, so the last chunk
+clamps to the end of the audio at whatever length the duration leaves — for `dining-1405-04-11`
+(3890.99 s) that is **771 seconds**, not short at all. A short tail was luck, not arithmetic, and
+an earlier version of this section claimed otherwise.
+
+That long final chunk was measured getting the ending wrong **in both directions**. Ground truth
+for the final 60 seconds ends «بله خسته نباشید. هفتاد دقیقه شد. … مرحله به مرحله گام به گام بریم
+جلو». The completed full run is missing «هفتاد دقیقه شد» entirely and ends «حتما. خیلی هم عالی.
+باعث افتخاره بنده است» — a phrase that **appears nowhere in that final minute of audio**. A
+41-second clip and a 60-second clip of the same ending each reproduced it exactly.
+
+So after the primary bounds are computed and checked, **one more chunk covering the last
+`TAIL_SECONDS` (90 s) of the audio is appended unconditionally**, however the preceding
+boundaries landed. Audio shorter than `TAIL_SECONDS` is already covered by its single chunk and
+gets no tail. The last 90 seconds are therefore transcribed twice and **both copies are kept**:
+de-duplicating them would need alignment logic that could delete real speech to tidy an ending,
+and this design already made that trade — duplication is recoverable, loss is not. The tail is an
+ordinary chunk for D21 (a failure fails the run) and for D23 (an empty one is forgiven, since it
+reaches the end of the recording and is short).
+
+D24's coverage assertion applies to the **primary** bounds only: the tail overlaps rather than
+extends, and the assertion is not weakened to accommodate it.
+
+**Unverified, and worth stating plainly:** «باعث افتخاره بنده است» is a confabulation — a `STOP`
+finish, non-empty, plausible Persian, and not in the audio. Nothing in this design detects that;
+`check_response` cannot. The tail chunk mitigates it **at the ending only**. Mid-meeting fidelity
+has never been checked against ground truth, and establishing it would need sampled comparisons
+of clip transcriptions against the full run's corresponding passages.
 
 Also measured, so that nobody widens the overlap later on a hunch: **a 13-minute chunk
 transcribes right to its end.** Ground truth for audio 1490–1550 s ends «این آخرین بازنگریش مال
