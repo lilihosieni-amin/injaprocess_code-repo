@@ -109,6 +109,23 @@ def test_second_upload_waits_for_the_first(data_root, monkeypatch):
     assert order == ["start:a", "start:b"]      # serialized, not interleaved
 
 
+def test_lock_is_not_bound_to_an_earlier_test_loop(data_root, monkeypatch):
+    """asyncio.Lock binds to the loop that first *contends* on it (3.10+).
+
+    The test above already contended in its own asyncio.run() loop, so without a fresh
+    lock per test this second contention raises "bound to a different event loop" — a
+    RuntimeError that reads as a bug in run() rather than in the fixtures.
+    """
+    monkeypatch.setattr(tx, "TICK", 0.01)
+    monkeypatch.setattr(tx, "_exec", AsyncMock(return_value=FakeProc(delay=0.05)))
+
+    async def both():
+        await asyncio.gather(tx.run(_message(), data_root, "a"),
+                             tx.run(_message(), data_root, "b"))
+
+    asyncio.run(both())
+
+
 def test_timeout_kills_the_process(data_root, monkeypatch):
     proc = FakeProc(delay=5)
     monkeypatch.setattr(tx, "TICK", 0.01)
@@ -117,6 +134,17 @@ def test_timeout_kills_the_process(data_root, monkeypatch):
     msg = _message()
     assert asyncio.run(tx.run(msg, data_root, "cooking-1405-04-19")) is False
     assert proc.killed
+
+
+def test_timeout_detail_uses_persian_digits(data_root, monkeypatch):
+    """Every digit this module shows the user is Persian; the watchdog detail is no exception."""
+    monkeypatch.setattr(tx, "TICK", 0.01)
+    monkeypatch.setattr(tx, "TIMEOUT", 0.05)
+    monkeypatch.setattr(tx, "_exec", AsyncMock(return_value=FakeProc(delay=5)))
+    msg = _message()
+    asyncio.run(tx.run(msg, data_root, "cooking-1405-04-19"))
+    said = msg.edit_text.await_args.args[0]
+    assert not any(c.isdigit() and c.isascii() for c in said), said
 
 
 def test_timeout_ends_the_run_when_a_grandchild_holds_stderr(data_root, monkeypatch):

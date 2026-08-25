@@ -72,7 +72,10 @@ async def _ticker(message, state, started):
 
 
 async def run(message, root, basename):
-    """Transcribe one recording. Returns True on success. Never raises."""
+    """Transcribe one recording. Returns True on success.
+
+    Never raises — except CancelledError, which propagates when the bot shuts down.
+    """
     async with _LOCK:
         state, tail = {"stage": "transcoding"}, []
         started = time.monotonic()
@@ -92,7 +95,7 @@ async def run(message, root, basename):
             code = await asyncio.wait_for(proc.wait(), timeout=TIMEOUT)
         except asyncio.TimeoutError:
             proc.kill()
-            code, tail = 1, [f"از {TIMEOUT // 60} دقیقه گذشت و پاسخی نیامد"]
+            code, tail = 1, [f"از {str(TIMEOUT // 60).translate(_FA)} دقیقه گذشت و پاسخی نیامد"]
         finally:
             ticker.cancel()
             # A killed CLI can leave ffmpeg holding stderr, and then that pipe never reaches
