@@ -1,4 +1,6 @@
+import gc
 import subprocess
+import weakref
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -140,6 +142,31 @@ class FakeClient:
         return self.resp
 
 
+class ClosingClient:
+    """Reproduces google-genai's real failure mode.
+
+    The SDK closes its httpx transport from the client's finalizer, so a client built
+    as a temporary is already closed by the time the request goes out. `models` holds
+    only a weak reference back, exactly like that: the request works while the caller
+    still holds the client, and raises the production error once it has been dropped.
+    """
+
+    def __init__(self, resp=None):
+        self.resp = resp or _resp()
+        self.contents = self.model = self.config = None
+        ref = weakref.ref(self)                 # no strong ref back — a bound method would keep
+
+        def generate_content(model=None, contents=None, config=None):
+            gc.collect()                        # leave no doubt about when the temporary died
+            client = ref()
+            if client is None:
+                raise RuntimeError("Cannot send a request, as the client has been closed.")
+            client.model, client.contents, client.config = model, contents, config
+            return client.resp
+
+        self.models = SimpleNamespace(generate_content=generate_content)
+
+
 def test_check_response_returns_text():
     assert T.check_response(_resp("گوینده ۱: سلام")) == "گوینده ۱: سلام"
 
@@ -188,6 +215,23 @@ def test_transcribe_sends_inline_and_returns_text(tmp_path, monkeypatch):
     assert client.contents[0] == T.PROMPT
     assert client.contents[1] == ("part", "inline")
     assert client.config == {"temperature": 0}      # transcription, not composition (D4)
+
+
+def test_transcribe_keeps_the_client_alive_for_the_whole_request(tmp_path, monkeypatch):
+    """`self._client().models.generate_content(...)` drops the client before it sends.
+
+    LOAD_ATTR pops the temporary as soon as `.models` is read; the SDK's finalizer then
+    closes the transport and every real transcription dies with "Cannot send a request,
+    as the client has been closed." Binding the client to a local is the whole fix.
+    """
+    audio = tmp_path / "cooking.m4a"
+    audio.write_bytes(b"raw")
+    monkeypatch.setattr(T, "transcode",
+                        lambda src, dst: Path(dst).write_bytes(b"small") or Path(dst))
+    monkeypatch.setattr(T, "build_part", lambda kind, value: ("part", kind))
+    tr = T.VertexTranscriber("p", "global", "gemini-x",
+                             client_factory=lambda: ClosingClient(_resp("گوینده ۱: سلام")))
+    assert tr.transcribe(str(audio)) == "گوینده ۱: سلام"
 
 
 def test_transcribe_uses_gcs_and_deletes_the_object(tmp_path, monkeypatch):

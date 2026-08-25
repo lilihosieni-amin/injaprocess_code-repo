@@ -176,7 +176,12 @@ class VertexTranscriber:
                 # A plain dict, not types.GenerateContentConfig: keeps the SDK import
                 # lazy. max_output_tokens is left unset — the default IS the model
                 # maximum, and naming a number here could only lower it.
-                resp = self._client().models.generate_content(
+                # Bound to a local, not chained off `self._client()`: LOAD_ATTR pops the
+                # temporary as soon as `.models` is read, and the SDK's finalizer closes
+                # the transport under the request ("client has been closed"). Still one
+                # client per call — it just has to outlive the call.
+                client = self._client()
+                resp = client.models.generate_content(
                     model=self.model, contents=[PROMPT, build_part(kind, value)],
                     config={"temperature": 0})
                 return check_response(resp)
