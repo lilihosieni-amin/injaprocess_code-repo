@@ -419,3 +419,95 @@ document that will not track it.
 | Vertex cannot read the GCS object | Grant the Vertex service agent `objectViewer` on the bucket (D3) |
 | Bot restarts mid-transcription | Raw transcript absent; the pipeline transcribes as it always has |
 | ffmpeg absent from an image | Caught by 8.3 before the server move; the failure message names it |
+
+---
+
+## 11. Amendment (2026-08-25, after live verification) — chunked transcription
+
+Tasks 9 and 10 ran this design against real meetings. Two findings invalidate §3 as written.
+
+### 11.1 What was measured
+
+**Single-call transcription silently loses content.** `dining-1405-04-11` (64.8 min) transcribed
+in one call produced 43,759 characters and stopped roughly two minutes before the end of the
+audio. The lost tail was verified by transcribing the final six minutes separately: the meeting
+genuinely ends «هفتاد دقیقه شد … گام به گام بریم جلو», and neither phrase appears in the
+full-file output. The model reported a **normal finish**, not `MAX_TOKENS`, so `check_response`
+(D6) passed it.
+
+The same audio in 13-minute chunks produced **56,212 characters — 28% more** — and ends exactly
+where the audio ends. So the single call was not merely dropping a tail; it was thinning
+throughout.
+
+**A length check is not a coverage check.** The single-call output was 98.2% of the known-good
+transcript's length, which read as healthy and was not. Aggregate size can never evidence
+completeness for a sequential artifact; only comparing the end of the output against the end of
+the input can.
+
+**Transient failures discard whole meetings.** `cooking-1405-05-21` (89.1 min) failed after
+11 minutes with `503 UNAVAILABLE`. There is no retry, so one service blip costs the entire call.
+
+### D20 — Transcribe in chunks, not in one call
+
+Split the transcoded audio into **13-minute segments with 10 seconds of overlap**, transcribe
+each with the unchanged `PROMPT`, and concatenate. The overlap exists so a sentence spanning a
+boundary cannot fall between two chunks; the resulting duplication at seams is deliberate,
+because **duplication is recoverable and loss is not**.
+
+This supersedes §3's single-call shape. It also retires the output-ceiling problem D6 was written
+for: a 13-minute segment cannot approach the model's output limit, so no meeting length is
+inherently unsupported and the "split the audio" error message becomes unreachable.
+
+### D21 — All or nothing: any failed chunk fails the whole transcription
+
+**The binding rule of this amendment.** If any chunk cannot be transcribed after its retries, the
+entire run fails, nothing is written, and the error names which chunk and its time range.
+
+The reason is not tidiness. A transcript missing its final two minutes is invisible — nobody
+reading a 56,000-character Persian document notices that a passage was never written. Downstream,
+every process extracted from that meeting is silently built on an incomplete record, and the gap
+can never be found again because nothing records that it existed. A loud failure costs one re-run;
+a quiet gap corrupts the data permanently. **Partial output is worse than no output.**
+
+Concretely: accumulate every chunk's text in memory, and write the `--out` file only after all
+chunks have succeeded. The existing atomic write (D7) then guarantees the file is complete or
+absent, never partial.
+
+### D22 — Bounded retry per chunk, on transient failures only
+
+Each chunk retries up to 3 times with a short backoff on transient conditions (5xx, 429,
+timeouts, connection resets). A chunk that exhausts its retries triggers D21. Non-transient
+failures — a blocked response, an invalid argument — fail immediately without retrying, because
+repeating them only wastes time and money.
+
+### D23 — The existing response guard applies per chunk
+
+`check_response` (D6) runs on every chunk, so `MAX_TOKENS`, a blocked response, an empty
+response, or any non-`STOP` finish fails that chunk and therefore the whole run under D21. An
+empty chunk is treated as a failure rather than as silence: thirteen minutes of a staff meeting
+that transcribe to nothing is far more likely to be a fault than a genuinely silent recording,
+and D21's logic applies — loud is better than quiet.
+
+### D24 — Coverage is asserted arithmetically, not assumed
+
+Before transcribing, assert the computed chunk boundaries tile the whole audio from 0 to its
+full duration. A rounding error that skipped a segment would produce exactly the silent gap this
+amendment exists to prevent, so it is checked rather than trusted.
+
+### D25 — Progress reports chunk position
+
+Stage breadcrumbs become `stage: transcribing 3/6` so Bot 1's progress message and the pipeline's
+logs both show real movement through a long meeting rather than a single opaque wait. Bot 1's
+`STAGES` mapping must render this in Persian without losing the counter.
+
+### 11.2 What this costs
+
+Six calls instead of one for a 65-minute meeting; 8.6 minutes of wall-clock against 7.2 for the
+single call that was losing content. Audio input tokens are unchanged apart from ~1% of overlap.
+Chunks are transcribed sequentially — parallelism would cut wall-clock but is deliberately not
+built, since the server has 2 CPUs and one Vertex quota.
+
+**Known limitation, accepted for now:** speaker labels restart per chunk, so «گوینده مرد ۱» in
+one segment is not necessarily the same person as in the next. Feeding each chunk the previous
+chunk's tail would fix it, at the cost of more tokens and a failure mode where one bad chunk
+poisons every label after it. Deferred until the seams prove to be a practical problem.
