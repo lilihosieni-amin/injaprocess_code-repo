@@ -50,3 +50,5 @@ def test_v_file_still_saves_when_scheduling_fails(data_root, monkeypatch):
 
     assert asyncio.run(v_file(update, ctx)) == ConversationHandler.END
     assert (data_root / "meetings/audio/cooking-1405-04-19.ogg").exists()
+    # A saved file the user was never told about is not a successful upload.
+    assert "ذخیره شد" in update.message.reply_text.await_args.args[0]
