@@ -56,7 +56,11 @@ def test_success_writes_raw_and_reports_done(data_root, monkeypatch):
     msg = _message()
     assert asyncio.run(tx.run(msg, data_root, "cooking-1405-04-19")) is True
     assert raw.read_text(encoding="utf-8") == "گوینده ۱: سلام"
-    assert msg.edit_text.await_args.args[0] == tx.DONE
+    said = msg.edit_text.await_args
+    assert said.args[0] == tx.DONE.format(base="cooking-1405-04-19")
+    # Now — not on the «ذخیره شد» reply — is when starting the pipeline is right.
+    assert "`Start /process-voice cooking-1405-04-19`" in said.args[0]
+    assert said.kwargs["parse_mode"] == "Markdown"          # or the code span is literal
 
 
 def test_failure_reports_the_last_stderr_line_and_keeps_the_audio(data_root, monkeypatch):
@@ -70,6 +74,9 @@ def test_failure_reports_the_last_stderr_line_and_keeps_the_audio(data_root, mon
     said = msg.edit_text.await_args.args[0]
     assert "رونویسی خودکار انجام نشد" in said
     assert "empty transcript" in said
+    # The pipeline transcribing it itself is the recovery path, so the user gets the line.
+    assert "`Start /process-voice cooking-1405-04-19`" in said
+    assert msg.edit_text.await_args.kwargs["parse_mode"] == "Markdown"
     assert audio.exists()
     assert not tx.raw_path(data_root, "cooking-1405-04-19").exists()
 
@@ -143,7 +150,8 @@ def test_timeout_detail_uses_persian_digits(data_root, monkeypatch):
     monkeypatch.setattr(tx, "_exec", AsyncMock(return_value=FakeProc(delay=5)))
     msg = _message()
     asyncio.run(tx.run(msg, data_root, "cooking-1405-04-19"))
-    said = msg.edit_text.await_args.args[0]
+    # Only up to the Start line: the basename in it is a command argument, not prose.
+    said = msg.edit_text.await_args.args[0].split("برای شروع")[0]
     assert not any(c.isdigit() and c.isascii() for c in said), said
 
 
@@ -178,6 +186,25 @@ def test_timeout_ends_the_run_when_a_grandchild_holds_stderr(data_root, monkeypa
     assert asyncio.run(bounded()) is False
     assert not tx._LOCK.locked()
     assert "رونویسی خودکار انجام نشد" in msg.edit_text.await_args.args[0]
+
+
+def test_progress_messages_do_not_invite_a_second_transcription():
+    """Queued and in-progress mean "wait", not "start the pipeline"."""
+    assert "process-voice" not in tx.QUEUED
+    assert "process-voice" not in tx.RUNNING
+
+
+def test_markdown_in_the_stderr_detail_cannot_swallow_the_start_line(data_root, monkeypatch):
+    """The detail is untrusted CLI stderr; Telegram rejects a message it cannot parse."""
+    monkeypatch.setattr(tx, "TICK", 0.01)
+    monkeypatch.setattr(tx, "_exec", AsyncMock(return_value=FakeProc(
+        returncode=1, stderr=b"error: 403 PERMISSION_DENIED on vertex_ai [projects/x]\n")))
+    msg = _message()
+    asyncio.run(tx.run(msg, data_root, "cooking-1405-04-19"))
+    said = msg.edit_text.await_args.args[0]
+    detail, _, start = said.partition("برای شروع")
+    assert not set(detail) & set("*_`[\\")                   # scrubbed out of the detail
+    assert start and said.endswith("`Start /process-voice cooking-1405-04-19`")
 
 
 def test_schedule_is_a_noop_without_vertex_project(monkeypatch, tmp_path):

@@ -248,12 +248,18 @@ coming for it.
 
 ### D13 — Transcription is a background task; the conversation does not wait
 
-`v_file` finalizes the audio and replies «ذخیره شد ✅» with the
-`Start /process-voice {base}` line **exactly as today**, then schedules the
-transcription through `ctx.application.create_task` and ends the conversation. The
-user can immediately upload the next voice. The `Start` line is deliberately left
-in the first message: if transcription fails, the pipeline still works — it will
-transcribe the recording itself.
+`v_file` finalizes the audio, replies «ذخیره شد ✅» and that transcription is under
+way, then schedules the transcription through `ctx.application.create_task` and ends
+the conversation. The user can immediately upload the next voice.
+
+> **Amended after the final branch review (2026-08-25).** The `Start /process-voice
+> {base}` line was originally left in this first reply. It is not any more: that
+> message lands minutes before the transcription finishes, so a user who acts on it
+> has Bot 2 encoding and transcribing the same audio at the same time as Bot 1 — the
+> `_LOCK` only serializes inside Bot 1's process. The line now rides on whichever
+> message is the last word about the recording: the success edit, the failure edit
+> (recovery still needs it), or, when `VERTEX_PROJECT` is unset and no transcription
+> is coming at all (D17), a follow-up to the saved reply.
 
 New module `upload_bot/transcription.py` owns the task, the lock, and the message
 text; `handlers.py` gains one call.
@@ -277,8 +283,14 @@ Terminal states, same message:
 
 | | |
 |---|---|
-| Success | `✅ رونویسی آماده شد` |
-| Failure | `⚠️ رونویسی خودکار انجام نشد؛ صوت ذخیره شده و خط لوله خودش رونویسی می‌کند.` plus the last stderr line, truncated, sent as plain text (it is untrusted and may contain Markdown) |
+| Success | `✅ رونویسی آماده شد` plus the `Start /process-voice {base}` line |
+| Failure | `⚠️ رونویسی خودکار انجام نشد؛ صوت ذخیره شده و خط لوله خودش رونویسی می‌کند.` plus the last stderr line, truncated, plus the `Start /process-voice {base}` line |
+
+Both terminal messages are sent as Markdown, for the code span around the `Start`
+line. The stderr detail is untrusted and may contain Markdown of its own, so the
+metacharacters are replaced with spaces before it goes in — Telegram rejects a whole
+message it cannot parse, and that would swallow the `Start` line with it. The queued
+and in-progress messages stay plain text and carry no `Start` line.
 
 ### D15 — One transcription at a time
 

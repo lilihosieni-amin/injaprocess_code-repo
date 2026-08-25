@@ -24,11 +24,26 @@ TICK = 8               # seconds between progress edits; well under Telegram's e
 TIMEOUT = 30 * 60      # watchdog: a run past this is hung, not slow
 READER_GRACE = 5       # how long stderr may keep draining after the CLI is gone
 
+# The line the user copies into the control bot. It rides on the LAST word about a
+# recording — never on the «ذخیره شد» reply, which lands minutes before this
+# transcription finishes and would have Bot 2 re-encoding and re-transcribing the
+# same audio alongside us.
+START = ("برای شروع پردازش این را در ربات کنترل بفرستید:\n"
+         "`Start /process-voice {base}`")
+
 QUEUED = "⏳ در صف رونویسی…"
 RUNNING = "⏳ در حال {stage} — {elapsed} گذشته"
-DONE = "✅ رونویسی آماده شد"
+DONE = "✅ رونویسی آماده شد\n" + START
+# Failure carries it too: the pipeline transcribing the recording itself is exactly
+# the recovery path, so this is the one message that must not strand the user.
 FAILED = ("⚠️ رونویسی خودکار انجام نشد؛ صوت ذخیره شده و خط لوله خودش رونویسی می‌کند.\n"
-          "{detail}")
+          "{detail}\n" + START)
+UNAVAILABLE = ("رونویسی خودکار در دسترس نیست؛ خط لوله خودش رونویسی می‌کند.\n" + START)
+
+# Telegram rejects a whole message whose Markdown does not parse, and {detail} is the
+# CLI's own stderr — one stray underscore in a Vertex error would swallow the Start
+# line along with it.
+_MD_UNSAFE = str.maketrans({c: " " for c in "*_`[\\"})
 
 STAGES = {"transcoding": "فشرده‌سازی صدا",
           "uploading": "بارگذاری فایل",
@@ -46,9 +61,9 @@ def fa_elapsed(seconds):
     return f"{m}:{s:02d}".translate(_FA)
 
 
-async def _edit(message, text):
+async def _edit(message, text, parse_mode=None):
     try:
-        await message.edit_text(text)
+        await message.edit_text(text, parse_mode=parse_mode)
     except Exception:                     # noqa: BLE001 - progress is never worth failing over
         logger.debug("progress edit failed", exc_info=True)
 
@@ -61,6 +76,13 @@ async def _read_stderr(stream, state, tail):
         elif line:
             tail.append(line)
             del tail[:-3]                 # keep the last few lines, not the whole log
+
+
+async def _fail(message, basename, detail):
+    """Both failure paths, so the scrub and the Start line cannot drift apart."""
+    await _edit(message, FAILED.format(detail=detail.translate(_MD_UNSAFE)[:300].strip()
+                                       or "خطای نامشخص", base=basename),
+                parse_mode="Markdown")
 
 
 async def _ticker(message, state, started):
@@ -86,7 +108,7 @@ async def run(message, root, basename):
                                stdout=asyncio.subprocess.DEVNULL,
                                stderr=asyncio.subprocess.PIPE)
         except Exception as e:            # noqa: BLE001 - e.g. the CLI is not on PATH
-            await _edit(message, FAILED.format(detail=str(e)[:300]))
+            await _fail(message, basename, str(e))
             return False
 
         reader = asyncio.create_task(_read_stderr(proc.stderr, state, tail))
@@ -107,10 +129,9 @@ async def run(message, root, basename):
                                  return_exceptions=True)
 
         if code == 0:
-            await _edit(message, DONE)
+            await _edit(message, DONE.format(base=basename), parse_mode="Markdown")
             return True
-        # Plain text, never Markdown: the detail is the CLI's own stderr.
-        await _edit(message, FAILED.format(detail=" ".join(tail)[:300] or "خطای نامشخص"))
+        await _fail(message, basename, " ".join(tail))
         return False
 
 
