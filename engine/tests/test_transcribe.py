@@ -267,6 +267,30 @@ def test_failure_message_goes_to_stderr(data_root, tmp_path, monkeypatch, capsys
     assert "ffmpeg failed" in capsys.readouterr().err
 
 
+def test_unwritable_out_reports_an_error_not_a_traceback(data_root, tmp_path, monkeypatch,
+                                                         capsys):
+    """A write failure is a failure like any other: one `error:` line and exit 1."""
+    (data_root / "meetings/audio/cooking-1405-04-19.ogg").write_bytes(b"x")
+    monkeypatch.setattr(cli, "VertexTranscriber", lambda *a, **k: FakeTranscriber())
+    blocked = tmp_path / "raw"
+    blocked.write_text("not a directory", encoding="utf-8")   # so --out can never be created
+    assert cli.main(["--out", str(blocked / "cooking-1405-04-19.txt"),
+                     "cooking-1405-04-19"]) == 1
+    captured = capsys.readouterr()
+    assert captured.err.startswith("error: ")
+    assert captured.out == ""                                 # no half-transcript on stdout
+
+
+def test_out_pointing_at_a_directory_reports_an_error(data_root, tmp_path, monkeypatch, capsys):
+    """The idempotency pre-check reads --out; a directory there must not raise either."""
+    (data_root / "meetings/audio/cooking-1405-04-19.ogg").write_bytes(b"x")
+    monkeypatch.setattr(cli, "VertexTranscriber", lambda *a, **k: FakeTranscriber())
+    out = tmp_path / "raw"
+    out.mkdir()
+    assert cli.main(["--out", str(out), "cooking-1405-04-19"]) == 1
+    assert capsys.readouterr().err.startswith("error: ")
+
+
 def test_write_text_atomic_creates_parents(tmp_path):
     from engine_common import write_text_atomic
     target = tmp_path / "a" / "b" / "c.txt"
