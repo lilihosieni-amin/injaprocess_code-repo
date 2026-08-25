@@ -54,8 +54,8 @@ ANTHROPIC_API_KEY=       # LEAVE BLANK — we use subscription auth (see step 3)
 
 ```
 SESSION_SIGNING_KEY=     # generate — see below
-EXPORT_USERNAME=         # the one shared login for published exports
-EXPORT_PASSWORD_HASH=    # its argon2 hash — see step 2 (never the plaintext)
+EXPORT_USERNAME=         # LEAVE UNSET — see "The export credential" below
+EXPORT_PASSWORD_HASH=    # LEAVE UNSET — see "The export credential" below
 ```
 
 `DATA_ROOT`, `EXPORT_DIR`, `APP_DB` and `TRUSTED_PROXY_HOPS` are set by compose,
@@ -77,10 +77,30 @@ published department export (`/exports/…html` and the `.pdf` beside it). It is
 deliberately separate from the UI users above: an export login opens exports and
 nothing else, and it is shared by everyone you hand an export link to.
 
-Leaving both blank is safe and is the default: with no credential configured the
-export URLs answer `401` to everyone except a signed-in UI user (who already sees
-everything), and no login form is offered. There is no fallback to open access —
-an unset credential closes the gate, it never opens it. The rest of the UI starts
+**Leave both blank. That is the standing decision for this deployment, not just
+the default.** With no credential configured the export URLs answer `401` to
+everyone except a signed-in UI user (who already sees everything), and no login
+form is offered. There is no fallback to open access — an unset credential closes
+the gate, it never opens it.
+
+The reason to keep it that way is specific. Every other route asks D12's two
+questions — *is this caller's scope allowed to reach it*, then *may they take this
+action* — and `routers/export_files.py::_authorise` asks both of them for the
+download too. It cannot ask either of a caller holding this credential, because
+that credential **carries no identity**: there is no scope to re-derive and no
+role to read `export_pdf` from. So one shared password, handed to whoever needs an
+export link, is served every department's exports and is asked for no capability —
+including from a `reader_no_download` holder, the role that exists precisely so
+download can be withheld. Spec D24 (sub-project P2) retires the credential
+outright and is what closes this; until it lands, unset is the configuration with
+no hole in it.
+
+Nothing is lost by it. Everyone who needs an export reads it through their own
+account, where scope and `export_pdf` are enforced properly.
+
+Step 2 below still documents how to generate the hash. It is kept for whoever
+reverses this decision on purpose — it is not a step in a normal deploy, and you
+should not need it. The rest of the UI starts
 and serves normally either way, so these two are optional in exactly the way
 `EXPORT_DIR` is.
 

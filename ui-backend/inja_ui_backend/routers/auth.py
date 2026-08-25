@@ -14,6 +14,7 @@ from ..auth import (
     current_user,
     descriptor,
     get_conn,
+    login_retry_after,
     record,
     request_origin,
     require_session,
@@ -34,6 +35,31 @@ _VERIFY_LIMITER = VERIFY_LIMITER
 async def login(body: LoginBody, request: Request, response: Response):
     cfg = request.app.state.cfg
     conn = get_conn(request)
+
+    # **The throttle, and it runs before the password is looked at** (spec §13's
+    # first open item). `_VERIFY_LIMITER` below bounds what guessing costs this
+    # host; it has never bounded what guessing achieves. Checked here rather than
+    # after the verify so a refused attempt costs no argon2 at all.
+    #
+    # The refusal is recorded as `login.throttled` and **not** as another
+    # `login.failure`, which is load-bearing rather than tidy: the counter behind
+    # `login_retry_after` counts failures in a sliding window, so a throttled
+    # attempt that recorded one would push the window forward on every retry and
+    # an account under attack would never be let back in — including by the person
+    # who owns it. A distinct action also makes the attack legible in the record,
+    # which one buried among ordinary typos would not be.
+    actor = attempted_actor(body.username)
+    wait = login_retry_after(conn, actor, int(time.time()))
+    if wait is not None:
+        record(request, "login.throttled", actor=actor, outcome="fail",
+               detail={"retry_after": wait})
+        # 429 and not 401: the caller is being refused for *how often* they asked,
+        # and answering 401 would tell somebody who had just typed their password
+        # correctly that it was wrong. `Retry-After` is the one thing that makes
+        # this recoverable without support — the sign-in screen reads it.
+        raise HTTPException(status_code=429, detail="too many attempts",
+                            headers={"Retry-After": str(wait)})
+
     # Off the event loop and no more than `_VERIFY_LIMITER` at a time. `async` +
     # `to_thread.run_sync` rather than the plain `def` FastAPI would put in the
     # default threadpool for us, because only this form can carry a limiter of its
@@ -52,7 +78,7 @@ async def login(body: LoginBody, request: Request, response: Response):
         # One response for a wrong password, an unknown number and a disabled
         # account (D56); three reasons in the record (D42), because an
         # ex-employee trying to get back in is worth being able to see.
-        record(request, "login.failure", actor=attempted_actor(body.username),
+        record(request, "login.failure", actor=actor,
                outcome="fail", detail={"reason": reason})
         raise HTTPException(status_code=401, detail="invalid credentials")
 

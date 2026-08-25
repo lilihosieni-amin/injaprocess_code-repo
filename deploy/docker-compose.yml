@@ -104,9 +104,12 @@ services:
     # EXPORT_USERNAME + EXPORT_PASSWORD_HASH (argon2, see docs/runbooks/02-secrets-and-auth.md).
     # No user credential lives here any more: people are rows in app.db on the
     # ui-state volume, created by `inja-seed` (docs/runbooks/06-changing-users.md).
-    # The export pair is optional: absent, /exports answers 401 to everyone but a
-    # signed-in UI user, and the rest of the UI is unaffected — an unset credential
-    # closes the gate, it never opens it and never blocks startup.
+    # The export pair is optional AND IS DELIBERATELY LEFT UNSET on this host:
+    # absent, /exports answers 401 to everyone but a signed-in UI user, and the
+    # rest of the UI is unaffected — an unset credential closes the gate, it never
+    # opens it and never blocks startup. Setting it would reopen the one hole in
+    # D12's gate, because that credential carries no identity and so is asked for
+    # neither scope nor capability. See config/ui-backend.env.example.
     # `format: raw` is load-bearing, not tidiness. Compose interpolates env_file
     # values by default, and an argon2 hash is `$argon2id$v=19$m=...$salt$hash` —
     # every `$` reads as a variable reference, so the hash arrives in the container

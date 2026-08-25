@@ -79,9 +79,23 @@ export function SignIn() {
       // undo that. But a 500 or a dropped connection is not a refusal, and
       // saying "your password is wrong" during an outage sends people to reset
       // a password that was always correct. D56 governs 401 and nothing else.
-      const refused = e instanceof ApiError && e.status === 401
-      setError(refused
-        ? 'شماره یا گذرواژه درست نیست.'
+      const status = e instanceof ApiError ? e.status : 0
+      // **429 is its own message, and it has to be.** The sign-in throttle
+      // (`auth.login_retry_after`, three failures a minute) refuses the *correct*
+      // password too while the window holds — that is the point of it — so
+      // reusing the 401 copy here would tell somebody who had just typed their
+      // own password correctly that it was wrong, and send them to ask for a
+      // reset they do not need. It gives no wait in seconds because the response
+      // header does and this does not read it: the window is a minute at its
+      // longest, so "up to a minute" is the true statement that needs nothing
+      // plumbed through `ApiError`.
+      //
+      // It leaks nothing D56 protects. The throttle counts attempts against a
+      // number whether or not it names an account, so this sentence appears for
+      // an unknown number on exactly the same terms as for a real one.
+      setError(
+        status === 429 ? 'تلاش‌های ناموفق بیش از حد بوده است. تا یک دقیقه صبر کنید و دوباره تلاش کنید.'
+        : status === 401 ? 'شماره یا گذرواژه درست نیست.'
         : 'ارتباط با سامانه برقرار نشد. دوباره تلاش کنید.')
     }
   }

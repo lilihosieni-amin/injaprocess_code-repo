@@ -191,6 +191,58 @@ def apply_password_change(conn: sqlite3.Connection, user: sqlite3.Row,
     return None
 
 
+#: How many sign-ins one account may fail inside `LOGIN_WINDOW_S` before the next
+#: attempt is refused unverified — the owner's ceiling: three a minute.
+#:
+#: The gap this closes is spec §13's first open item. `VERIFY_LIMITER` below bounds
+#: what guessing *costs* the host — two argon2 verifies at a time — and never what
+#: it *achieves*; at roughly thirty attempts a second, a six-character password
+#: (D58's floor, with no complexity rule) over a username that is a mobile number
+#: and therefore guessable by construction (D57) is a few hours of unattended work.
+#: Three a minute is 4,320 a day, which turns those hours into months.
+LOGIN_MAX_FAILURES = 3
+
+#: The window the count is taken over, sliding rather than fixed: the wait ends
+#: when the oldest failure ages out, not on a minute boundary an attacker could
+#: synchronise to and get a burst at every tick.
+LOGIN_WINDOW_S = 60
+
+
+def login_retry_after(conn: sqlite3.Connection, actor: str,
+                      now: int) -> int | None:
+    """Seconds this account must wait, or None if the attempt may be verified.
+
+    **Keyed on the account, not the address.** D57 makes usernames guessable, so
+    the attack this is built for is a stream of guesses at one number, and the key
+    that stops it is that number. Keying on IP as well was considered and left
+    out: staff behind one office NAT share an address, so a three-a-minute ceiling
+    on it would lock out the building the first time somebody mistyped. What the
+    account key does not catch is spraying — one password tried across many
+    numbers — which is a real vector here for the same reason, and is a rate limit
+    at the proxy rather than a rule this function can express.
+
+    The cost of that choice is the usual one for per-account lockout: somebody can
+    keep another person's account refused by failing it three times a minute. The
+    window is sixty seconds and never escalates, so it is an annoyance rather than
+    a denial, and it is the trade the spec's own wording ("a lockout after N
+    failures per username") already chose.
+
+    Read through `attempted_actor`'s canonical form, so guesses at one account
+    group together however each was typed — `09121112233`, `+989121112233` and
+    `989121112233` are one key here exactly as they are one row in the record.
+
+    Called **before** the password is verified, which is the half that saves the
+    host the argon2 work as well as refusing the guess.
+    """
+    seen, oldest = audit.recent_failures(conn, actor=actor,
+                                         since=now - LOGIN_WINDOW_S)
+    if seen < LOGIN_MAX_FAILURES or oldest is None:
+        return None
+    # At least a second: a wait the client reads as zero is one it retries
+    # immediately, and `Retry-After: 0` is a header that invites a hot loop.
+    return max(1, oldest + LOGIN_WINDOW_S - now)
+
+
 def attempted_actor(username: str) -> str:
     """Who a failed sign-in is recorded against.
 

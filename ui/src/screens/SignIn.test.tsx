@@ -144,6 +144,25 @@ describe('SignIn', () => {
     expect(alert).toHaveTextContent('ارتباط با سامانه برقرار نشد. دوباره تلاش کنید.')
   })
 
+  it('tells a throttled person to wait rather than that their password is wrong', async () => {
+    // The sign-in throttle refuses the CORRECT password too while its window
+    // holds — three failures a minute, `auth.login_retry_after` — so 429 cannot
+    // borrow the 401 copy. Somebody who has just typed their own password
+    // correctly must not be told it is wrong and sent to ask for a reset.
+    mockFetch(429, { detail: 'too many attempts' })
+    const Wrapper = createWrapper()
+    render(<Wrapper><SignIn /></Wrapper>)
+    await userEvent.type(screen.getByLabelText('شمارهٔ موبایل'), '09123456789')
+    await userEvent.type(screen.getByLabelText('گذرواژه'), 'sixchars')
+    await userEvent.click(screen.getByRole('button', { name: 'ورود' }))
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('تلاش‌های ناموفق بیش از حد بوده است. تا یک دقیقه صبر کنید و دوباره تلاش کنید.')
+    // …and neither of the other two branches, which is what makes this a third
+    // state rather than a reworded one.
+    expect(alert).not.toHaveTextContent('گذرواژه درست نیست')
+    expect(alert).not.toHaveTextContent('ارتباط با سامانه برقرار نشد')
+  })
+
   it('sends the number in canonical form however it was typed', async () => {
     const spy = mockFetch(200, { username: '09123456789' })
     const Wrapper = createWrapper()
