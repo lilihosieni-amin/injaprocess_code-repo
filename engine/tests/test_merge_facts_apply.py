@@ -1,61 +1,8 @@
 import copy, json, pathlib, subprocess, sys
 
+from facts_helpers import _const_delta, _root, _run_dir, _seed_units, _units_delta, _write
 from merge_facts import load_store
 from merge_facts.apply import apply
-
-def _root(tmp_path):
-    (tmp_path / "facts").mkdir()
-    (tmp_path / "departments").mkdir()
-    (tmp_path / "departments" / "registry.json").write_text(json.dumps(
-        {"departments": [{"code": "cooking", "name": "آشپزخانه"},
-                         {"code": "management", "name": "مدیریت"}]}),
-        encoding="utf-8")
-    (tmp_path / "attachments" / "sheets").mkdir(parents=True)
-    (tmp_path / "attachments" / "sheets" / "manifest.json").write_text(json.dumps(
-        {"schema_version": 1,
-         "branches": [{"code": "chalebagh", "name": "چاله‌باغ"}],
-         "workbooks": []}), encoding="utf-8")
-    return tmp_path
-
-def _run_dir(tmp_path, n="20260901-101500"):
-    d = tmp_path / "runs" / "facts" / "cooking" / n
-    d.mkdir(parents=True)
-    return d
-
-def _units_delta():
-    return {"schema_version": 1, "entries": [{
-        "id": "T-1", "kind": "record", "key": "units", "title": "واحدها",
-        "statement": "جدول واحدها", "scope": {"departments": [], "branches": []},
-        "source": [{"type": "chat", "ref": None}], "retired": False,
-        "data": {"medium": "native", "role": "config", "location": {},
-                 "primaryKey": ["symbol"],
-                 "fields": [{"key": "symbol", "title": "نماد", "type": "string"},
-                            {"key": "dimension", "title": "بُعد", "type": "string"},
-                            {"key": "factor_to_base", "title": "ضریب", "type": "number"},
-                            {"key": "unit_title", "title": "عنوان", "type": "string"}],
-                 "rows": [{"key": "g", "symbol": "g", "dimension": "mass",
-                           "factor_to_base": 1, "unit_title": "گرم"},
-                          {"key": "kg", "symbol": "kg", "dimension": "mass",
-                           "factor_to_base": 1000, "unit_title": "کیلوگرم"},
-                          {"key": "pcs", "symbol": "pcs", "dimension": "count",
-                           "factor_to_base": 1, "unit_title": "عدد"}]}}]}
-
-def _const_delta(value=5, key="tol", dept="cooking"):
-    return {"schema_version": 1, "entries": [{
-        "id": "T-1", "kind": "rule", "key": key, "title": "تلورانس " + key,
-        "statement": "حد مجاز", "scope": {"departments": [dept], "branches": []},
-        "source": [{"type": "voice", "ref": "meetings/transcripts/c.txt", "lines": "11"}],
-        "retired": False,
-        "data": {"inputs": [], "outputs": [{"key": "v", "title": "مقدار",
-                 "unit": "g", "nature": "limit", "value": value}]}}]}
-
-def _write(tmp_path, name, delta):
-    p = tmp_path / name
-    p.write_text(json.dumps(delta, ensure_ascii=False), encoding="utf-8")
-    return p
-
-def _seed_units(root):
-    apply(root, _write(root, "d0.json", _units_delta()), _run_dir(root, "20260901-000000"))
 
 def test_create_then_idempotent_reapply_is_byte_identical(tmp_path):
     root = _root(tmp_path); _seed_units(root)

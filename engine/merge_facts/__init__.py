@@ -117,6 +117,26 @@ def path_exists(entry, path):
     except (KeyError, TypeError):
         return False
 
+def set_path(entry, path, value):
+    """Write `value` at the QF-7 path `path` — the mirror of `get_path`. The
+    walk to the parent container is identical (`_step`, segment by segment);
+    only the last segment differs, an assignment instead of a read."""
+    node = entry
+    segs = path.split("/")
+    for seg in segs[:-1]:
+        node = _step(node, seg)
+    last = segs[-1]
+    if isinstance(node, dict):
+        node[last] = value
+    elif isinstance(node, list):
+        for i, member in enumerate(node):
+            if isinstance(member, dict) and member.get("key") == last:
+                node[i] = value
+                return
+        raise KeyError(last)
+    else:
+        raise TypeError(f"{path!r} is not addressable")
+
 def account_id(field, statement, value, source):
     locator = source.get("cell") or source.get("lines") or source.get("function") \
         or source.get("node") or (str(source.get("page")) if source.get("page") else "")

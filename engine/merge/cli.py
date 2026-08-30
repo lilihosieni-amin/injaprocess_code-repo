@@ -6,6 +6,10 @@ from engine_common import data_root, read_json, write_json_atomic
 from merge import (attach_subprocess, build_new, build_update, remove_process,
                    resolve_pending, restructure)
 from merge_facts.apply import apply as apply_facts
+from merge_facts.verbs import export as export_facts
+from merge_facts.verbs import promote as promote_facts
+from merge_facts.verbs import resolve as resolve_facts
+from merge_facts.verbs import retire as retire_facts
 from order import reconcile as reconcile_order
 
 
@@ -61,7 +65,8 @@ def _require(cond, msg):
 def _facts(args):
     """`merge facts …` — the facts store's verbs (spec §12), which share the
     process verbs' contract: exit 2 on a failed precondition with nothing
-    written. Only `apply` is wired; the rest refuse until their task lands."""
+    written. `apply`, `resolve`, `retire`, `promote` and `export` are wired;
+    `revert`/`audit`/`check` refuse until their task lands."""
     try:
         if args.facts_cmd == "apply":
             report = apply_facts(data_root(), args.delta, args.run)
@@ -69,6 +74,19 @@ def _facts(args):
                 print(f"created {fid}")
             for fid in report["updated"]:
                 print(f"updated {fid}")
+        elif args.facts_cmd == "resolve":
+            resolve_facts(data_root(), args.id, args.field, args.account, args.run)
+            print(f"resolved {args.id} {args.field}")
+        elif args.facts_cmd == "retire":
+            retire_facts(data_root(), args.id, args.heir, args.run, date=args.date)
+            print(f"retired {args.id}")
+        elif args.facts_cmd == "promote":
+            promote_facts(data_root(), args.id, args.kind, args.key, args.run)
+            print(f"promoted {args.id} to {args.kind}")
+        elif args.facts_cmd == "export":
+            out = args.out or str(data_root() / f"{args.record}.csv")
+            path = export_facts(data_root(), args.record, out, include_retired=args.all)
+            print(str(path))
         else:
             _require(False, "not implemented yet")
     except ValueError as e:
@@ -114,8 +132,26 @@ def main(argv=None):
     fap = fsub.add_parser("apply")
     fap.add_argument("--delta", required=True)
     fap.add_argument("--run", required=True)
-    for verb in ("resolve", "retire", "promote", "export", "revert", "audit",
-                 "check"):
+    fre = fsub.add_parser("resolve")
+    fre.add_argument("--id", required=True)
+    fre.add_argument("--field", required=True)
+    fre.add_argument("--account", required=True)
+    fre.add_argument("--run", required=True)
+    frt = fsub.add_parser("retire")
+    frt.add_argument("--id", required=True)
+    frt.add_argument("--heir")
+    frt.add_argument("--run", required=True)
+    frt.add_argument("--date")
+    fpr = fsub.add_parser("promote")
+    fpr.add_argument("--id", required=True)
+    fpr.add_argument("--kind", required=True)
+    fpr.add_argument("--key")
+    fpr.add_argument("--run", required=True)
+    fex = fsub.add_parser("export")
+    fex.add_argument("--record", required=True)
+    fex.add_argument("--out")
+    fex.add_argument("--all", action="store_true")
+    for verb in ("revert", "audit", "check"):
         fsub.add_parser(verb)          # a stub arm until that verb's task lands
     args = ap.parse_args(argv)
 
