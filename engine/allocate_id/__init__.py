@@ -1,7 +1,36 @@
 import json
+import pathlib
 import re
 
 from engine_common import data_root
+
+
+def _fact_ledger_path(root):
+    return root / "facts" / ".id-seq.json"
+
+
+def _read_fact_ledger(root):
+    p = _fact_ledger_path(root)
+    try:
+        return int(json.loads(p.read_text(encoding="utf-8")).get("fact", 0))
+    except (OSError, ValueError):
+        return 0
+
+
+def peek_fact_id(root=None):
+    """Stateless preview — does NOT persist the ledger."""
+    root = pathlib.Path(root) if root else data_root()
+    return f"F-{_read_fact_ledger(root) + 1:05d}"
+
+
+def next_fact_id(root=None):
+    """Minter — allocates and persists the global facts ledger high-water mark."""
+    root = pathlib.Path(root) if root else data_root()
+    nxt = _read_fact_ledger(root) + 1
+    p = _fact_ledger_path(root)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps({"fact": nxt}) + "\n", encoding="utf-8")
+    return f"F-{nxt:05d}"
 
 
 def _id_seq_path(root, dept):
