@@ -48,6 +48,17 @@ done alongside an append-only migration note added here:
 - **v1** (2026-08-30, Task 1 of quantitative-facts) — initial version:
   envelope + five kinds (`item`, `record`, `measurement`, `rule`, `note`).
 
+**`workbooks[].short` uniqueness (`manifest.schema.json`).** JSON Schema has
+no way to assert cross-row uniqueness (no `uniqueItems`-style constraint
+over one field of an array of objects), so `manifest.schema.json` only
+constrains each `workbooks[].short` to the pattern
+`^[a-z][a-z0-9]*(_[a-z0-9]+)*$` — it cannot reject a `short` value repeated
+across two workbook rows. `short` must nonetheless be unique across the
+whole manifest: it is the workbook shorthand minted keys are built from
+(design §7, QF-33), so a collision would silently conflate two workbooks'
+facts. `merge facts` (Task 5) and `dump-workbook` (Task 10) are responsible
+for enforcing that uniqueness at write/import time.
+
 ## Known gaps (to reconcile in later phases)
 
 - **node `source`**: the process schema uses the ARD §4.3 object shape `{created_by, touched_by}`; the UI design prototype currently emits a plain string — the Phase-6 UI must adopt the object shape when it deserializes `process.json`.
