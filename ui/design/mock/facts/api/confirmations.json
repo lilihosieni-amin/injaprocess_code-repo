@@ -1,0 +1,233 @@
+[
+  {
+    "target": "F-00001",
+    "fingerprint": "sha256:95828ed8cca1d6ddf78b5272dc9f18b40e956f80256aa867423b189b32274368",
+    "confirmed_by": "lili",
+    "confirmed_at": "2026-09-10T09:00:00Z",
+    "data_repo_commit": "ecd6aa0"
+  },
+  {
+    "target": "F-00003",
+    "fingerprint": "sha256:9b6ed4bfbb43eed325230ac297917a8f75f168571533ab92017f19a4c1e87ef2",
+    "confirmed_by": "lili",
+    "confirmed_at": "2026-09-10T09:00:00Z",
+    "data_repo_commit": "ecd6aa0"
+  },
+  {
+    "target": "F-00007",
+    "fingerprint": "sha256:42de6eab6fade446263cd66b7c289bbcd43f20eef9e677352a12630cb9d0d444",
+    "confirmed_by": "lili",
+    "confirmed_at": "2026-09-10T09:00:00Z",
+    "data_repo_commit": "ecd6aa0"
+  },
+  {
+    "target": "F-00008",
+    "fingerprint": "sha256:c250477cfdb0a331ece7538490d615845ec4c0eaded91e52504a5e9a86fef45c",
+    "confirmed_by": "lili",
+    "confirmed_at": "2026-09-10T09:00:00Z",
+    "data_repo_commit": "ecd6aa0"
+  },
+  {
+    "target": "F-00009",
+    "fingerprint": "sha256:9bf93bf4361040082e5000d33207d0e42aa7d7afa131cd91323bbc24523bd8db",
+    "confirmed_by": "lili",
+    "confirmed_at": "2026-09-10T09:00:00Z",
+    "data_repo_commit": "ecd6aa0"
+  },
+  {
+    "target": "F-00012",
+    "fingerprint": "sha256:54e781662f21eb6c856f4ff6e637cf20c07d79c67ba28fd9d7d09d13b5470bc5",
+    "confirmed_by": "lili",
+    "confirmed_at": "2026-09-10T09:00:00Z",
+    "data_repo_commit": "ecd6aa0"
+  },
+  {
+    "target": "F-00013",
+    "fingerprint": "sha256:b4e3dd05de8e04afb1ecf824e11899495b97195717876a32e8de39c2616f7ee3",
+    "confirmed_by": "lili",
+    "confirmed_at": "2026-09-10T09:00:00Z",
+    "data_repo_commit": "ecd6aa0"
+  },
+  {
+    "target": "F-00015",
+    "fingerprint": "sha256:fc10747149538920d34e395cc6e331160e695eb474f1e9cc5da0e9858bdde92c",
+    "confirmed_by": "lili",
+    "confirmed_at": "2026-09-10T09:00:00Z",
+    "data_repo_commit": "ecd6aa0"
+  },
+  {
+    "target": "F-00017",
+    "fingerprint": "sha256:3546e5aaa07dfb973ae62db97f23ad807e1f2584b35d3c87c3c79a91d8d1f458",
+    "confirmed_by": "lili",
+    "confirmed_at": "2026-09-10T09:00:00Z",
+    "data_repo_commit": "ecd6aa0"
+  },
+  {
+    "target": "F-00018",
+    "fingerprint": "sha256:c32e8d35b190f6cfbeb18eb0911ea4c5a942b0b0de69522e6235fddde79a869d",
+    "confirmed_by": "lili",
+    "confirmed_at": "2026-09-10T09:00:00Z",
+    "data_repo_commit": "ecd6aa0"
+  },
+  {
+    "target": "F-00019",
+    "fingerprint": "sha256:7d3ae37a7969f538b765700971ca1a13f7bcde481c0d1259322b5deca6760fcf",
+    "confirmed_by": "lili",
+    "confirmed_at": "2026-09-10T09:00:00Z",
+    "data_repo_commit": "ecd6aa0"
+  },
+  {
+    "target": "F-00023",
+    "fingerprint": "sha256:fe5af7b42dbb9c1ec0e05d8d27c536d57f552f8fc92a5041f41039bc4166d88d",
+    "confirmed_by": "lili",
+    "confirmed_at": "2026-09-10T09:00:00Z",
+    "data_repo_commit": "ecd6aa0"
+  },
+  {
+    "target": "F-00026",
+    "fingerprint": "sha256:5bd61e815959ac1b3db14d75e2ea50591cc54c54b228e91638807ccf6c3b462d",
+    "confirmed_by": "lili",
+    "confirmed_at": "2026-09-10T09:00:00Z",
+    "data_repo_commit": "ecd6aa0"
+  },
+  {
+    "target": "F-00027",
+    "fingerprint": "sha256:db52c7dc3a51b8596beac41d6279e35454d5c4955fe213d11e334886c7d1268b",
+    "confirmed_by": "lili",
+    "confirmed_at": "2026-09-10T09:00:00Z",
+    "data_repo_commit": "ecd6aa0"
+  },
+  {
+    "target": "F-00031",
+    "fingerprint": "sha256:ef3e8e4c527f65db0dde417386f2ef902db49c7491b069d2c975ee68d972aea1",
+    "confirmed_by": "lili",
+    "confirmed_at": "2026-09-10T09:00:00Z",
+    "data_repo_commit": "ecd6aa0"
+  },
+  {
+    "target": "F-00032",
+    "fingerprint": "sha256:b97238d8f9b7276be07a47bf42645b39da54636528d6998142c50b9fd8cf07a3",
+    "confirmed_by": "lili",
+    "confirmed_at": "2026-09-10T09:00:00Z",
+    "data_repo_commit": "ecd6aa0"
+  },
+  {
+    "target": "F-00033",
+    "fingerprint": "sha256:869bffbdd34b8574678e2da497a9f120aa2a130192f75345a990b97a45b39cbb",
+    "confirmed_by": "lili",
+    "confirmed_at": "2026-09-10T09:00:00Z",
+    "data_repo_commit": "ecd6aa0"
+  },
+  {
+    "target": "F-00034",
+    "fingerprint": "sha256:bc1531974543b73e44d7b79e22d1ccadce3638c5e72fa107e1c64d3bd8f32ec5",
+    "confirmed_by": "lili",
+    "confirmed_at": "2026-09-10T09:00:00Z",
+    "data_repo_commit": "ecd6aa0"
+  },
+  {
+    "target": "F-00036",
+    "fingerprint": "sha256:b02fabacb8609047f2cd0aa92c81540d048b568a74002caa2d63c9e196253dd0",
+    "confirmed_by": "lili",
+    "confirmed_at": "2026-09-10T09:00:00Z",
+    "data_repo_commit": "ecd6aa0"
+  },
+  {
+    "target": "F-00038",
+    "fingerprint": "sha256:302ba66d1e1d04bdf29c00b236e8719202bec5c4ab14983d802c3e513804e7e5",
+    "confirmed_by": "lili",
+    "confirmed_at": "2026-09-10T09:00:00Z",
+    "data_repo_commit": "ecd6aa0"
+  },
+  {
+    "target": "F-00039",
+    "fingerprint": "sha256:f5fd9c8248ae3fe8b7b086a43b793690177950b5c83d7e16418485f4ee54fa94",
+    "confirmed_by": "lili",
+    "confirmed_at": "2026-09-10T09:00:00Z",
+    "data_repo_commit": "ecd6aa0"
+  },
+  {
+    "target": "F-00041",
+    "fingerprint": "sha256:d6ace80a02753c05cd56599f6ef2aac98fd32ca2ea97c7de2501680afc82140c",
+    "confirmed_by": "lili",
+    "confirmed_at": "2026-09-10T09:00:00Z",
+    "data_repo_commit": "ecd6aa0"
+  },
+  {
+    "target": "F-00050",
+    "fingerprint": "sha256:e65303d8134cc488c20a10447eb168877480b7c8090e2c1ed77a2cbeb4caf20b",
+    "confirmed_by": "lili",
+    "confirmed_at": "2026-09-10T09:00:00Z",
+    "data_repo_commit": "ecd6aa0"
+  },
+  {
+    "target": "F-00051",
+    "fingerprint": "sha256:c288215ded9c5d6d871b9047d757b1d43a2d7cef1c26fe32a765afabcfd89a54",
+    "confirmed_by": "lili",
+    "confirmed_at": "2026-09-10T09:00:00Z",
+    "data_repo_commit": "ecd6aa0"
+  },
+  {
+    "target": "F-00043",
+    "fingerprint": "sha256:abbca2c5e6d2f52ee04cb6e46f538085efdf7ff29dacf2742c5561112938fb14",
+    "confirmed_by": "lili",
+    "confirmed_at": "2026-09-10T09:00:00Z",
+    "data_repo_commit": "ecd6aa0"
+  },
+  {
+    "target": "F-00044",
+    "fingerprint": "sha256:b1e8eb801a199f6e79d63b1a2c398a2191d9b975a82991abb610e1d1b4765bec",
+    "confirmed_by": "lili",
+    "confirmed_at": "2026-09-10T09:00:00Z",
+    "data_repo_commit": "ecd6aa0"
+  },
+  {
+    "target": "F-00047",
+    "fingerprint": "sha256:02eba6f3e4c98e5acf578824bda80627da24f6d0d96b51938a97b9e3297b6650",
+    "confirmed_by": "lili",
+    "confirmed_at": "2026-09-10T09:00:00Z",
+    "data_repo_commit": "ecd6aa0"
+  },
+  {
+    "target": "F-00049",
+    "fingerprint": "sha256:f83f2bbe75ea5b9108ecef0f807083fe2ce58cf4307158bba4a82b99baf87454",
+    "confirmed_by": "lili",
+    "confirmed_at": "2026-09-10T09:00:00Z",
+    "data_repo_commit": "ecd6aa0"
+  },
+  {
+    "target": "F-00052",
+    "fingerprint": "sha256:d82f0c56d40ddb5581803e40d8dccac3c00adce71cb104e35876094d10d25dcb",
+    "confirmed_by": "lili",
+    "confirmed_at": "2026-09-10T09:00:00Z",
+    "data_repo_commit": "ecd6aa0"
+  },
+  {
+    "target": "F-00048",
+    "fingerprint": "sha256:21988e4c47c6bad66c53f081f8fc00ef3faedd5aadf4cc56611f3321629e8696",
+    "confirmed_by": "lili",
+    "confirmed_at": "2026-09-10T09:00:00Z",
+    "data_repo_commit": "ecd6aa0"
+  },
+  {
+    "target": "F-00005",
+    "fingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "confirmed_by": "lili",
+    "confirmed_at": "2026-09-05T09:00:00Z",
+    "data_repo_commit": "0f60b69"
+  },
+  {
+    "target": "F-00053",
+    "fingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "confirmed_by": "lili",
+    "confirmed_at": "2026-09-05T09:00:00Z",
+    "data_repo_commit": "0f60b69"
+  },
+  {
+    "target": "F-00042",
+    "fingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "confirmed_by": "lili",
+    "confirmed_at": "2026-09-05T09:00:00Z",
+    "data_repo_commit": "0f60b69"
+  }
+]

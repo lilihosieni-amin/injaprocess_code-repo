@@ -1,0 +1,1632 @@
+{
+  "schema_version": 1,
+  "entries": [
+    {
+      "id": "F-00026",
+      "kind": "rule",
+      "key": "gozaresh_cb__pizza__deviation_tol__tolerance_per_food_gr",
+      "title": "تلورانس هر واحد — پیتزا",
+      "aliases": [],
+      "statement": "تلورانس مجاز انحراف به ازای هر واحد فروش، ۵ گرم؛ از فرمول ستون L گزارش مرکزی.",
+      "scope": {
+        "departments": [
+          "management"
+        ],
+        "branches": [
+          "chalebagh"
+        ]
+      },
+      "source": [
+        {
+          "type": "sheet",
+          "ref": "attachments/sheets/MandeShab__ChaleBagh__Gozaresh markazi/Gozaresh markazi.xlsx",
+          "sheet": "پیتزا",
+          "cell": "L6",
+          "hash": "sha256:1c3948664316827236249892c73415559388efdee9d5a9a9c16bc39ee8db0db8",
+          "run": "runs/facts/management/20260901-101500"
+        }
+      ],
+      "status": "confirmed",
+      "field_status": {},
+      "accounts": [],
+      "valid_from": null,
+      "valid_to": null,
+      "supersedes": null,
+      "superseded_by": null,
+      "retired": false,
+      "issues": [],
+      "processes": [],
+      "updated_at": "2026-09-16T14:05:00Z",
+      "data": {
+        "inputs": [],
+        "outputs": [
+          {
+            "key": "tolerance_g",
+            "unit": "g",
+            "per": "unit_sold",
+            "nature": "limit",
+            "value": 5
+          }
+        ],
+        "calls": [],
+        "port": false,
+        "edge_cases": []
+      }
+    },
+    {
+      "id": "F-00027",
+      "kind": "rule",
+      "key": "raw_equivalent_factor_grilled_chicken",
+      "title": "ضریب تبدیل مرغ پخته به خام",
+      "aliases": [
+        "۳۰ درصد اضافه"
+      ],
+      "statement": "مرغ خام تحویل می‌شود و پخته باقی می‌ماند؛ افت پخت ۲۸ تا ۳۲ درصد اندازه‌گیری شده و برای کنترل ۳۰ درصد (ضریب ۱٫۳۰) قرار داده شده است.",
+      "scope": {
+        "departments": [
+          "cooking"
+        ],
+        "branches": []
+      },
+      "source": [
+        {
+          "type": "voice",
+          "ref": "meetings/transcripts/cooking-1405-05-22.txt",
+          "lines": "546",
+          "hash": "sha256:b80ed474fd8cde20871cea49020be7fd7cb64aa22cca3b64994c033d97667ece",
+          "run": "runs/facts/cooking/20260902-153000"
+        },
+        {
+          "type": "voice",
+          "ref": "meetings/transcripts/cooking-1405-05-26.txt",
+          "lines": "155-173",
+          "hash": "sha256:189ff7ba7cd49a4170259146c74d27e19e5642e96db00c9acc82c47a4840a564",
+          "run": "runs/facts/cooking/20260902-153000"
+        },
+        {
+          "type": "pdf",
+          "ref": "departments/cooking/attachments/kitchen-quantitative-report.pdf",
+          "page": "7-8",
+          "hash": "sha256:bc7bfdf21573ec398bf9bc110fec6f95d33f7944614297c50836e6c0e7082dfc",
+          "run": "runs/facts/cooking/20260915-110000"
+        }
+      ],
+      "status": "confirmed",
+      "field_status": {},
+      "accounts": [],
+      "valid_from": null,
+      "valid_to": null,
+      "supersedes": null,
+      "superseded_by": null,
+      "retired": false,
+      "issues": [],
+      "processes": [
+        {
+          "ref": "cooking-001"
+        }
+      ],
+      "updated_at": "2026-09-16T14:05:00Z",
+      "data": {
+        "inputs": [],
+        "outputs": [
+          {
+            "key": "factor",
+            "unit": "ratio",
+            "per": "kg_cooked",
+            "of": {
+              "ref": "F-00049"
+            },
+            "nature": "standard",
+            "value": 1.3
+          },
+          {
+            "key": "loss_share",
+            "unit": "ratio",
+            "nature": "observed",
+            "range": {
+              "min": 0.28,
+              "max": 0.32
+            }
+          }
+        ],
+        "calls": [],
+        "port": false,
+        "edge_cases": []
+      }
+    },
+    {
+      "id": "F-00028",
+      "kind": "rule",
+      "key": "deviation_tolerance_lugme",
+      "title": "تلورانس انحراف لقمه",
+      "aliases": [],
+      "statement": "حد مجاز انحراف تعداد لقمه؛ در جلسه گفته شد ۴ و ۷ شاید در تلورانس باشد و −۱۱۰ مجاز نیست، اما عددی تعیین نشد.",
+      "scope": {
+        "departments": [
+          "cooking"
+        ],
+        "branches": []
+      },
+      "source": [
+        {
+          "type": "voice",
+          "ref": "meetings/transcripts/cooking-1405-06-01.txt",
+          "lines": "11",
+          "hash": "sha256:fd0d8c03a88fb43f4c54ae19c4843ff2bcf508f092c970f4d69d0a5381d0dff1",
+          "run": "runs/facts/cooking/20260902-153000"
+        }
+      ],
+      "status": "unknown",
+      "field_status": {},
+      "accounts": [],
+      "valid_from": null,
+      "valid_to": null,
+      "supersedes": null,
+      "superseded_by": null,
+      "retired": false,
+      "issues": [],
+      "processes": [],
+      "updated_at": "2026-09-16T14:05:00Z",
+      "data": {
+        "inputs": [],
+        "outputs": [
+          {
+            "key": "tolerance_pcs",
+            "unit": "pcs",
+            "per": "night",
+            "nature": "limit",
+            "value": null
+          }
+        ],
+        "calls": [],
+        "port": false,
+        "edge_cases": []
+      }
+    },
+    {
+      "id": "F-00029",
+      "kind": "rule",
+      "key": "recheck_threshold_pieces",
+      "title": "آستانهٔ بازشماری",
+      "aliases": [],
+      "statement": "عرفاً وقتی انحراف به حدود ۳۰۰ عدد می‌رسد، می‌گویند دوباره بشمارید.",
+      "scope": {
+        "departments": [
+          "cooking"
+        ],
+        "branches": []
+      },
+      "source": [
+        {
+          "type": "voice",
+          "ref": "meetings/transcripts/cooking-1405-06-01.txt",
+          "lines": "27",
+          "hash": "sha256:fd0d8c03a88fb43f4c54ae19c4843ff2bcf508f092c970f4d69d0a5381d0dff1",
+          "run": "runs/facts/cooking/20260902-153000"
+        }
+      ],
+      "status": "informal",
+      "field_status": {
+        "data/outputs/threshold_pcs/value": "informal"
+      },
+      "accounts": [],
+      "valid_from": null,
+      "valid_to": null,
+      "supersedes": null,
+      "superseded_by": null,
+      "retired": false,
+      "issues": [],
+      "processes": [],
+      "updated_at": "2026-09-16T14:05:00Z",
+      "data": {
+        "inputs": [],
+        "outputs": [
+          {
+            "key": "threshold_pcs",
+            "unit": "pcs",
+            "per": "night",
+            "nature": "limit",
+            "value": 300
+          }
+        ],
+        "calls": [],
+        "port": false,
+        "edge_cases": []
+      }
+    },
+    {
+      "id": "F-00030",
+      "kind": "rule",
+      "key": "gozaresh_cb__pizza__declared_use",
+      "title": "مصرف اعلامی پیتزا",
+      "aliases": [
+        "مصرف اعلام‌شده"
+      ],
+      "statement": "مصرف اعلامی = موجودی اول شب + دریافت از انبار − موجودی آخر شب",
+      "scope": {
+        "departments": [
+          "management"
+        ],
+        "branches": [
+          "chalebagh"
+        ]
+      },
+      "source": [
+        {
+          "type": "sheet",
+          "ref": "attachments/sheets/MandeShab__ChaleBagh__Gozaresh markazi/Gozaresh markazi.xlsx",
+          "sheet": "پیتزا",
+          "cell": "H6",
+          "hash": "sha256:1c3948664316827236249892c73415559388efdee9d5a9a9c16bc39ee8db0db8",
+          "run": "runs/facts/management/20260901-101500"
+        },
+        {
+          "type": "voice",
+          "ref": "meetings/transcripts/cooking-1405-06-01.txt",
+          "lines": "40",
+          "hash": "sha256:fd0d8c03a88fb43f4c54ae19c4843ff2bcf508f092c970f4d69d0a5381d0dff1",
+          "run": "runs/facts/cooking/20260902-153000"
+        },
+        {
+          "type": "process",
+          "ref": "departments/cooking/processes/cooking-001.json",
+          "node": "cooking-001-n010",
+          "quote": "مصرف اعلامی از مانده اول شب، دریافت از انبار و مانده آخر شب محاسبه می‌شود",
+          "hash": "sha256:448548f2c6ed20342c3aca3419c160b3768e8943dc5438663587e0c444b43d3e",
+          "run": "runs/facts/cooking/20260902-153000"
+        }
+      ],
+      "status": "disputed",
+      "field_status": {},
+      "accounts": [
+        {
+          "id": "d8379975",
+          "field": "data/expr",
+          "statement": "=MINUS(SUM(F6,E6),G6)",
+          "value": "declared_use = start + received - end",
+          "source": {
+            "type": "sheet",
+            "ref": "attachments/sheets/MandeShab__ChaleBagh__Gozaresh markazi/Gozaresh markazi.xlsx",
+            "sheet": "پیتزا",
+            "cell": "H6"
+          },
+          "speaker_role": null,
+          "status": "open"
+        },
+        {
+          "id": "abbe139f",
+          "field": "data/expr",
+          "statement": "ببینید مصرف اعلامیشون در واقع تفاوت بین مانده اول شب و آخر شبشونه خب؟ که این میزان مصرف انبار ازش کم می‌شه.",
+          "value": "declared_use = start - end - received",
+          "source": {
+            "type": "voice",
+            "ref": "meetings/transcripts/cooking-1405-06-01.txt",
+            "lines": "40"
+          },
+          "speaker_role": null,
+          "status": "open"
+        }
+      ],
+      "valid_from": null,
+      "valid_to": null,
+      "supersedes": null,
+      "superseded_by": null,
+      "retired": false,
+      "issues": [],
+      "processes": [
+        {
+          "ref": "cooking-001"
+        }
+      ],
+      "updated_at": "2026-09-16T14:05:00Z",
+      "data": {
+        "inputs": [
+          {
+            "key": "start",
+            "unit": "kg",
+            "from": {
+              "ref": "F-00016",
+              "field": "start_stock"
+            }
+          },
+          {
+            "key": "received",
+            "unit": "kg",
+            "from": {
+              "ref": "F-00016",
+              "field": "received"
+            }
+          },
+          {
+            "key": "end",
+            "unit": "kg",
+            "from": {
+              "ref": "F-00016",
+              "field": "end_stock"
+            }
+          }
+        ],
+        "outputs": [
+          {
+            "key": "declared_use",
+            "unit": "kg",
+            "nature": "observed",
+            "writes_to": {
+              "ref": "F-00016",
+              "field": "declared_use"
+            }
+          }
+        ],
+        "expr": "declared_use = start + received - end",
+        "lang": "feel",
+        "original_ref": "facts/originals/F-00030.txt",
+        "calls": [],
+        "port": false,
+        "edge_cases": []
+      }
+    },
+    {
+      "id": "F-00031",
+      "kind": "rule",
+      "key": "gozaresh_cb__pizza__standard_use",
+      "title": "مصرف استاندارد پیتزا",
+      "aliases": [],
+      "statement": "مصرف استاندارد = مجموع (تعداد فروش هر محصول × گرم مادهٔ اولیه در آن محصول) روی BOM.",
+      "scope": {
+        "departments": [
+          "management"
+        ],
+        "branches": [
+          "chalebagh"
+        ]
+      },
+      "source": [
+        {
+          "type": "sheet",
+          "ref": "attachments/sheets/MandeShab__ChaleBagh__Gozaresh markazi/Gozaresh markazi.xlsx",
+          "sheet": "پیتزا",
+          "cell": "I6",
+          "hash": "sha256:1c3948664316827236249892c73415559388efdee9d5a9a9c16bc39ee8db0db8",
+          "run": "runs/facts/management/20260901-101500"
+        },
+        {
+          "type": "script",
+          "ref": "attachments/sheets/MandeShab__ChaleBagh__Gozaresh markazi/Gozaresh markazi.gs",
+          "function": "getTotalFoodsIngredient",
+          "hash": "sha256:8ab02436d9351515972268cf9db848a5be9a9336fd60ab0cdf6028eeb22a3e99",
+          "run": "runs/facts/management/20260901-101500"
+        }
+      ],
+      "status": "confirmed",
+      "field_status": {},
+      "accounts": [],
+      "valid_from": null,
+      "valid_to": null,
+      "supersedes": null,
+      "superseded_by": null,
+      "retired": false,
+      "issues": [],
+      "processes": [],
+      "updated_at": "2026-09-16T14:05:00Z",
+      "data": {
+        "inputs": [
+          {
+            "key": "bom",
+            "unit": "g",
+            "from": {
+              "ref": "F-00014",
+              "field": "grams"
+            }
+          },
+          {
+            "key": "sales",
+            "unit": "pcs",
+            "from": {
+              "ref": "F-00047",
+              "field": "count"
+            }
+          }
+        ],
+        "outputs": [
+          {
+            "key": "standard_use",
+            "unit": "g",
+            "nature": "standard",
+            "writes_to": {
+              "ref": "F-00016",
+              "field": "actual_use"
+            }
+          }
+        ],
+        "expr": "standard_use = sum over bom of (sales.count * bom.grams)",
+        "lang": "feel",
+        "original_ref": "facts/originals/F-00031.txt",
+        "calls": [
+          {
+            "ref": "F-00036"
+          }
+        ],
+        "port": false,
+        "edge_cases": []
+      }
+    },
+    {
+      "id": "F-00032",
+      "kind": "rule",
+      "key": "weekday_coefficient",
+      "title": "ضریب روز هفته",
+      "aliases": [],
+      "statement": "ضریب سفارش بر اساس روز هفته: چهارشنبه ۱٫۱، پنجشنبه ۱٫۲، جمعه ۱٫۱۵، سایر روزها ۱.",
+      "scope": {
+        "departments": [
+          "management"
+        ],
+        "branches": []
+      },
+      "source": [
+        {
+          "type": "script",
+          "ref": "attachments/sheets/Gozareshat/Gozareshat.gs",
+          "function": "getWeekDayCoefficient",
+          "hash": "sha256:756a636ae31a935ee3e61f523e8511dcc63b0bcae0020afb2012aceab22f8d50",
+          "run": "runs/facts/management/20260901-101500"
+        }
+      ],
+      "status": "confirmed",
+      "field_status": {},
+      "accounts": [],
+      "valid_from": null,
+      "valid_to": null,
+      "supersedes": null,
+      "superseded_by": null,
+      "retired": false,
+      "issues": [],
+      "processes": [],
+      "updated_at": "2026-09-16T14:05:00Z",
+      "data": {
+        "inputs": [
+          {
+            "key": "weekday",
+            "unit": "pcs",
+            "from": "calendar"
+          }
+        ],
+        "outputs": [
+          {
+            "key": "coefficient",
+            "unit": "ratio",
+            "nature": "standard"
+          }
+        ],
+        "lang": "table",
+        "original_ref": "facts/originals/F-00032.txt",
+        "table": {
+          "inputs": [
+            "weekday"
+          ],
+          "outputs": [
+            "coefficient"
+          ],
+          "hit": "first",
+          "default": {
+            "coefficient": 1.0
+          },
+          "rows": [
+            {
+              "when": {
+                "weekday": "wed"
+              },
+              "then": {
+                "coefficient": 1.1
+              }
+            },
+            {
+              "when": {
+                "weekday": "thu"
+              },
+              "then": {
+                "coefficient": 1.2
+              }
+            },
+            {
+              "when": {
+                "weekday": "fri"
+              },
+              "then": {
+                "coefficient": 1.15
+              }
+            }
+          ]
+        },
+        "calls": [],
+        "port": false,
+        "edge_cases": []
+      }
+    },
+    {
+      "id": "F-00033",
+      "kind": "rule",
+      "key": "event_coefficients",
+      "title": "ضرایب رویداد",
+      "aliases": [],
+      "statement": "چهار ضریب رویداد که اپراتور هنگام ثبت سفارش انتخاب می‌کند و در هم ضرب می‌شوند.",
+      "scope": {
+        "departments": [
+          "management"
+        ],
+        "branches": []
+      },
+      "source": [
+        {
+          "type": "script",
+          "ref": "attachments/sheets/Gozareshat/Gozareshat.gs",
+          "function": "saveOrders",
+          "hash": "sha256:756a636ae31a935ee3e61f523e8511dcc63b0bcae0020afb2012aceab22f8d50",
+          "run": "runs/facts/management/20260901-101500"
+        }
+      ],
+      "status": "confirmed",
+      "field_status": {},
+      "accounts": [],
+      "valid_from": null,
+      "valid_to": null,
+      "supersedes": null,
+      "superseded_by": null,
+      "retired": false,
+      "issues": [],
+      "processes": [],
+      "updated_at": "2026-09-16T14:05:00Z",
+      "data": {
+        "inputs": [
+          {
+            "key": "events",
+            "unit": "pcs",
+            "from": "operator"
+          }
+        ],
+        "outputs": [
+          {
+            "key": "coefficient",
+            "unit": "ratio",
+            "nature": "standard"
+          }
+        ],
+        "lang": "table",
+        "original_ref": "facts/originals/F-00033.txt",
+        "table": {
+          "inputs": [
+            "events"
+          ],
+          "outputs": [
+            "coefficient"
+          ],
+          "hit": "collect",
+          "aggregate": "product",
+          "default": {
+            "coefficient": 1.0
+          },
+          "rows": [
+            {
+              "when": {
+                "events": "tomorrow_holiday"
+              },
+              "then": {
+                "coefficient": 1.1
+              }
+            },
+            {
+              "when": {
+                "events": "mourning"
+              },
+              "then": {
+                "coefficient": 0.9
+              }
+            },
+            {
+              "when": {
+                "events": "ramadan"
+              },
+              "then": {
+                "coefficient": 0.8
+              }
+            },
+            {
+              "when": {
+                "events": "competitor_holiday"
+              },
+              "then": {
+                "coefficient": 1.05
+              }
+            }
+          ]
+        },
+        "calls": [],
+        "port": false,
+        "edge_cases": []
+      }
+    },
+    {
+      "id": "F-00034",
+      "kind": "rule",
+      "key": "tracking_policy_rial_value",
+      "title": "سیاست ردیابی بر اساس ارزش ریالی",
+      "aliases": [],
+      "statement": "معیار ما برای اندازه‌گیری مواد، آیتم‌ها، میزان اهمیت و ارزش ریالیشونه؛ اقلام کم‌ارزش (قاشق سس، بسته‌بندی) در مانده شب ثبت نمی‌شوند.",
+      "scope": {
+        "departments": [
+          "cooking"
+        ],
+        "branches": []
+      },
+      "source": [
+        {
+          "type": "voice",
+          "ref": "meetings/transcripts/cooking-1405-05-26.txt",
+          "lines": "55-62",
+          "hash": "sha256:189ff7ba7cd49a4170259146c74d27e19e5642e96db00c9acc82c47a4840a564",
+          "run": "runs/facts/cooking/20260902-153000"
+        },
+        {
+          "type": "pdf",
+          "ref": "departments/cooking/attachments/kitchen-quantitative-report.pdf",
+          "page": "3-4",
+          "hash": "sha256:bc7bfdf21573ec398bf9bc110fec6f95d33f7944614297c50836e6c0e7082dfc",
+          "run": "runs/facts/cooking/20260915-110000"
+        }
+      ],
+      "status": "confirmed",
+      "field_status": {},
+      "accounts": [],
+      "valid_from": null,
+      "valid_to": null,
+      "supersedes": null,
+      "superseded_by": null,
+      "retired": false,
+      "issues": [],
+      "processes": [
+        {
+          "ref": "cooking-001"
+        }
+      ],
+      "updated_at": "2026-09-16T14:05:00Z",
+      "data": {
+        "inputs": [
+          {
+            "key": "threshold",
+            "unit": "irr",
+            "from": {
+              "ref": "F-00035"
+            }
+          }
+        ],
+        "outputs": [
+          {
+            "key": "tracked",
+            "unit": "pcs",
+            "nature": "standard"
+          }
+        ],
+        "lang": "text",
+        "original_ref": "facts/originals/F-00034.txt",
+        "calls": [],
+        "port": false,
+        "edge_cases": []
+      }
+    },
+    {
+      "id": "F-00035",
+      "kind": "rule",
+      "key": "tracking_threshold_irr",
+      "title": "آستانهٔ ریالی ردیابی",
+      "aliases": [],
+      "statement": "ارزشی که زیر آن قلم در مانده شب ثبت نمی‌شود؛ هرگز عددی گفته نشد.",
+      "scope": {
+        "departments": [
+          "cooking"
+        ],
+        "branches": []
+      },
+      "source": [
+        {
+          "type": "voice",
+          "ref": "meetings/transcripts/cooking-1405-05-26.txt",
+          "lines": "57",
+          "hash": "sha256:189ff7ba7cd49a4170259146c74d27e19e5642e96db00c9acc82c47a4840a564",
+          "run": "runs/facts/cooking/20260902-153000"
+        }
+      ],
+      "status": "unknown",
+      "field_status": {},
+      "accounts": [],
+      "valid_from": null,
+      "valid_to": null,
+      "supersedes": null,
+      "superseded_by": null,
+      "retired": false,
+      "issues": [],
+      "processes": [],
+      "updated_at": "2026-09-16T14:05:00Z",
+      "data": {
+        "inputs": [],
+        "outputs": [
+          {
+            "key": "threshold",
+            "unit": "irr",
+            "per": "kg",
+            "nature": "limit",
+            "value": null
+          }
+        ],
+        "calls": [],
+        "port": false,
+        "edge_cases": []
+      }
+    },
+    {
+      "id": "F-00036",
+      "kind": "rule",
+      "key": "get_value_by_id",
+      "title": "getValueById",
+      "aliases": [],
+      "statement": "ستون را با جستجوی زیررشته‌ای «#کد» در سربرگ پیدا می‌کند و مقدار اولین ردیف نتیجه را برمی‌گرداند.",
+      "scope": {
+        "departments": [],
+        "branches": []
+      },
+      "source": [
+        {
+          "type": "script",
+          "ref": "attachments/sheets/MandeShab__ChaleBagh__Gozaresh markazi/Gozaresh markazi.gs",
+          "function": "getValueById",
+          "hash": "sha256:8ab02436d9351515972268cf9db848a5be9a9336fd60ab0cdf6028eeb22a3e99",
+          "run": "runs/facts/management/20260901-101500"
+        }
+      ],
+      "status": "confirmed",
+      "field_status": {},
+      "accounts": [],
+      "valid_from": null,
+      "valid_to": null,
+      "supersedes": null,
+      "superseded_by": null,
+      "retired": false,
+      "issues": [],
+      "processes": [],
+      "updated_at": "2026-09-16T14:05:00Z",
+      "data": {
+        "inputs": [
+          {
+            "key": "id",
+            "unit": "pcs",
+            "from": "operator"
+          },
+          {
+            "key": "data",
+            "unit": "pcs",
+            "from": {
+              "ref": "F-00015",
+              "field": "end_stock"
+            }
+          }
+        ],
+        "outputs": [
+          {
+            "key": "value",
+            "unit": "g",
+            "nature": "observed"
+          }
+        ],
+        "lang": "gs",
+        "identifier": "getValueById",
+        "original_ref": "facts/originals/F-00036.txt",
+        "calls": [],
+        "port": true,
+        "edge_cases": [
+          {
+            "input": "id=1 با سربرگ‌های ##1 و ##10",
+            "expected": "اولین سربرگی که «#1» در آن باشد",
+            "why": "تطبیق زیررشته‌ای، اولین برد"
+          },
+          {
+            "input": "کد یافت نشد",
+            "expected": "رشتهٔ \"ID not found\"",
+            "why": "خروجی رشته‌ای نه خطا"
+          },
+          {
+            "input": "سلول \"#N/A\"",
+            "expected": "0",
+            "why": "این بدنه #N/A را صفر می‌کند"
+          }
+        ]
+      }
+    },
+    {
+      "id": "F-00037",
+      "kind": "rule",
+      "key": "get_value_by_id__gozareshat",
+      "title": "getValueById (داشبورد)",
+      "aliases": [],
+      "statement": "همان تابع با بدنه‌ای که به‌جای #N/A، رشتهٔ خالی را صفر می‌کند.",
+      "scope": {
+        "departments": [
+          "management"
+        ],
+        "branches": []
+      },
+      "source": [
+        {
+          "type": "script",
+          "ref": "attachments/sheets/Gozareshat/Gozareshat.gs",
+          "function": "getValueById",
+          "hash": "sha256:756a636ae31a935ee3e61f523e8511dcc63b0bcae0020afb2012aceab22f8d50",
+          "run": "runs/facts/management/20260901-101500"
+        }
+      ],
+      "status": "confirmed",
+      "field_status": {},
+      "accounts": [],
+      "valid_from": null,
+      "valid_to": null,
+      "supersedes": null,
+      "superseded_by": null,
+      "retired": false,
+      "issues": [],
+      "processes": [],
+      "updated_at": "2026-09-16T14:05:00Z",
+      "data": {
+        "inputs": [
+          {
+            "key": "id",
+            "unit": "pcs",
+            "from": "operator"
+          },
+          {
+            "key": "data",
+            "unit": "pcs",
+            "from": {
+              "ref": "F-00015",
+              "field": "end_stock"
+            }
+          }
+        ],
+        "outputs": [
+          {
+            "key": "value",
+            "unit": "g",
+            "nature": "observed"
+          }
+        ],
+        "lang": "gs",
+        "identifier": "getValueById",
+        "original_ref": "facts/originals/F-00037.txt",
+        "calls": [],
+        "port": true,
+        "template_of": {
+          "ref": "F-00036"
+        },
+        "divergence": "drift",
+        "edge_cases": [
+          {
+            "input": "سلول خالی",
+            "expected": "0",
+            "why": "این بدنه \"\" را صفر می‌کند و #N/A را عبور می‌دهد"
+          }
+        ]
+      }
+    },
+    {
+      "id": "F-00038",
+      "kind": "rule",
+      "key": "gozaresh_nk__pizza__declared_use",
+      "title": "مصرف اعلامی پیتزا (ناهارخوران)",
+      "aliases": [],
+      "statement": "همان فرمول گزارش چاله‌باغ در کاربرگ ناهارخوران.",
+      "scope": {
+        "departments": [
+          "management"
+        ],
+        "branches": [
+          "naharkhoran"
+        ]
+      },
+      "source": [
+        {
+          "type": "sheet",
+          "ref": "attachments/sheets/MandeShab__Naharkhoran__Gozaresh naharkhoran/Gozaresh naharkhoran.xlsx",
+          "sheet": "پیتزا",
+          "cell": "H6",
+          "hash": "sha256:8e67a4c844262a48792134e18a186ce69609f3df1e5691b67ba8014d6390cf4d",
+          "run": "runs/facts/management/20260901-101500"
+        }
+      ],
+      "status": "confirmed",
+      "field_status": {},
+      "accounts": [],
+      "valid_from": null,
+      "valid_to": null,
+      "supersedes": null,
+      "superseded_by": null,
+      "retired": false,
+      "issues": [],
+      "processes": [],
+      "updated_at": "2026-09-16T14:05:00Z",
+      "data": {
+        "inputs": [
+          {
+            "key": "start",
+            "unit": "kg",
+            "from": {
+              "ref": "F-00021",
+              "field": "start_stock"
+            }
+          },
+          {
+            "key": "received",
+            "unit": "kg",
+            "from": {
+              "ref": "F-00021",
+              "field": "received"
+            }
+          },
+          {
+            "key": "end",
+            "unit": "kg",
+            "from": {
+              "ref": "F-00021",
+              "field": "end_stock"
+            }
+          }
+        ],
+        "outputs": [
+          {
+            "key": "declared_use",
+            "unit": "kg",
+            "nature": "observed"
+          }
+        ],
+        "expr": "declared_use = start + received - end",
+        "lang": "feel",
+        "original_ref": "facts/originals/F-00038.txt",
+        "template_of": {
+          "ref": "F-00030"
+        },
+        "divergence": "none",
+        "calls": [],
+        "port": false,
+        "edge_cases": []
+      }
+    },
+    {
+      "id": "F-00039",
+      "kind": "rule",
+      "key": "raste_yield",
+      "title": "بازدهی راسته",
+      "aliases": [],
+      "statement": "۲۹٫۲ کیلو راسته به استیک رولی، فیلادلفیا، خرده راسته و ضایعات تبدیل می‌شود؛ سهم‌ها لات به لات فرق می‌کند.",
+      "scope": {
+        "departments": [
+          "preparation"
+        ],
+        "branches": []
+      },
+      "source": [
+        {
+          "type": "comment",
+          "ref": "attachments/sheets/Anbar__Anbar/Anbar.xlsx",
+          "sheet": "خروجی انبار به آماده سازی",
+          "cell": "L452",
+          "hash": "sha256:bfd0b5bc634f938412a2aff8e815bd54053f44a6c9e3af4cf3ca90a9df505fe3",
+          "run": "runs/facts/preparation/20260903-090000"
+        },
+        {
+          "type": "voice",
+          "ref": "meetings/transcripts/preparation-1405-06-02-02.txt",
+          "lines": "107",
+          "hash": "sha256:8080a933e05c77b9c8e05c2cd65a5e6335c4e81480f25c9534b70468659b03c4",
+          "run": "runs/facts/preparation/20260903-090000"
+        }
+      ],
+      "status": "informal",
+      "field_status": {
+        "data/outputs/steak_roll/share": "informal",
+        "data/outputs/philadelphia/share": "informal",
+        "data/outputs/trimmings/share": "informal",
+        "data/outputs/waste/share": "informal"
+      },
+      "accounts": [],
+      "valid_from": null,
+      "valid_to": null,
+      "supersedes": null,
+      "superseded_by": null,
+      "retired": false,
+      "issues": [],
+      "processes": [],
+      "updated_at": "2026-09-16T14:05:00Z",
+      "data": {
+        "inputs": [
+          {
+            "key": "input_kg",
+            "unit": "kg",
+            "from": {
+              "ref": "F-00019",
+              "field": "raste_in"
+            }
+          }
+        ],
+        "outputs": [
+          {
+            "key": "steak_roll",
+            "unit": "kg",
+            "nature": "observed",
+            "share": 0.356
+          },
+          {
+            "key": "philadelphia",
+            "unit": "kg",
+            "nature": "observed",
+            "share": 0.185
+          },
+          {
+            "key": "trimmings",
+            "unit": "kg",
+            "nature": "observed",
+            "share": 0.384
+          },
+          {
+            "key": "waste",
+            "unit": "kg",
+            "nature": "observed",
+            "share": 0.061
+          }
+        ],
+        "expr": "steak_roll = input_kg * 0.356; philadelphia = input_kg * 0.185; trimmings = input_kg * 0.384; waste = input_kg * 0.061",
+        "lang": "feel",
+        "original_ref": "facts/originals/F-00039.txt",
+        "calls": [],
+        "port": false,
+        "edge_cases": []
+      }
+    },
+    {
+      "id": "F-00040",
+      "kind": "rule",
+      "key": "salon_cb__receipts__deviation",
+      "title": "انحراف تعداد فیش — سالن چاله‌باغ",
+      "aliases": [],
+      "statement": "فرمول شیت که هدف روز را از «اهداف فروش» می‌خواند و از تعداد فیش کم می‌کند.",
+      "scope": {
+        "departments": [
+          "dining"
+        ],
+        "branches": [
+          "chalebagh"
+        ]
+      },
+      "source": [
+        {
+          "type": "sheet",
+          "ref": "attachments/sheets/Salon__Salon - Chalebagh/Salon - Chalebagh.xlsx",
+          "sheet": "تعداد فیش هرشب",
+          "cell": "B3",
+          "hash": "sha256:98484d81ed66b3f1a3d733957cee041b58f24e860dd76124dc165acc56e640aa",
+          "run": "runs/facts/management/20260901-101500"
+        }
+      ],
+      "status": "confirmed",
+      "field_status": {},
+      "accounts": [],
+      "valid_from": null,
+      "valid_to": null,
+      "supersedes": null,
+      "superseded_by": null,
+      "retired": false,
+      "issues": [
+        {
+          "kind": "bug",
+          "field": "data/original_ref",
+          "from_date": "1404-07-01",
+          "description": "«اهداف فروش» فقط یک ردیف (مهر ۱۴۰۴) دارد؛ فرمول برای سایر ماه‌ها #N/A می‌دهد.",
+          "affects": [
+            {
+              "ref": "F-00020"
+            }
+          ]
+        }
+      ],
+      "processes": [],
+      "updated_at": "2026-09-16T14:05:00Z",
+      "data": {
+        "inputs": [
+          {
+            "key": "receipts",
+            "unit": "pcs",
+            "from": {
+              "ref": "F-00047",
+              "field": "count"
+            }
+          },
+          {
+            "key": "target",
+            "unit": "pcs",
+            "from": {
+              "ref": "F-00020",
+              "field": "target_salon_cb"
+            }
+          }
+        ],
+        "outputs": [
+          {
+            "key": "deviation",
+            "unit": "pcs",
+            "nature": "observed"
+          }
+        ],
+        "lang": "sheets",
+        "original_ref": "facts/originals/F-00040.txt",
+        "calls": [
+          {
+            "ref": "F-00036"
+          }
+        ],
+        "port": false,
+        "edge_cases": []
+      }
+    },
+    {
+      "id": "F-00041",
+      "kind": "rule",
+      "key": "order_packs_from_par",
+      "title": "محاسبهٔ سفارش پنه بر اساس پرس",
+      "aliases": [],
+      "statement": "تعداد بستهٔ سفارش = (پرس مورد نیاز روز − پرس موجود) ÷ پرس در هر بسته.",
+      "scope": {
+        "departments": [
+          "cooking"
+        ],
+        "branches": []
+      },
+      "source": [
+        {
+          "type": "voice",
+          "ref": "meetings/transcripts/cooking-1405-05-26.txt",
+          "lines": "212-218",
+          "hash": "sha256:189ff7ba7cd49a4170259146c74d27e19e5642e96db00c9acc82c47a4840a564",
+          "run": "runs/facts/cooking/20260902-153000"
+        },
+        {
+          "type": "pdf",
+          "ref": "departments/cooking/attachments/kitchen-quantitative-report.pdf",
+          "page": "9",
+          "hash": "sha256:bc7bfdf21573ec398bf9bc110fec6f95d33f7944614297c50836e6c0e7082dfc",
+          "run": "runs/facts/cooking/20260915-110000"
+        }
+      ],
+      "status": "confirmed",
+      "field_status": {},
+      "accounts": [],
+      "valid_from": null,
+      "valid_to": null,
+      "supersedes": null,
+      "superseded_by": null,
+      "retired": false,
+      "issues": [],
+      "processes": [],
+      "updated_at": "2026-09-16T14:05:00Z",
+      "data": {
+        "inputs": [
+          {
+            "key": "par",
+            "unit": "portion",
+            "from": {
+              "ref": "F-00050"
+            }
+          },
+          {
+            "key": "stock_packs",
+            "unit": "pack",
+            "from": {
+              "ref": "F-00012",
+              "field": "requested"
+            },
+            "via": {
+              "ref": "F-00051"
+            }
+          },
+          {
+            "key": "weekday",
+            "unit": "pcs",
+            "from": "calendar"
+          }
+        ],
+        "outputs": [
+          {
+            "key": "order_packs",
+            "unit": "pack",
+            "nature": "standard"
+          }
+        ],
+        "expr": "order_packs = round((par - stock_packs) / 5)",
+        "lang": "feel",
+        "original_ref": "facts/originals/F-00041.txt",
+        "calls": [
+          {
+            "ref": "F-00050"
+          }
+        ],
+        "port": false,
+        "edge_cases": []
+      }
+    },
+    {
+      "id": "F-00050",
+      "kind": "rule",
+      "key": "par_portions_penne_by_weekday",
+      "title": "حد نگهداری پنه بر اساس روز هفته",
+      "aliases": [],
+      "statement": "روز عادی ۴۰ پرس، پنجشنبه و جمعه ۶۵ پرس.",
+      "scope": {
+        "departments": [
+          "cooking"
+        ],
+        "branches": []
+      },
+      "source": [
+        {
+          "type": "voice",
+          "ref": "meetings/transcripts/cooking-1405-05-26.txt",
+          "lines": "212",
+          "hash": "sha256:189ff7ba7cd49a4170259146c74d27e19e5642e96db00c9acc82c47a4840a564",
+          "run": "runs/facts/cooking/20260902-153000"
+        }
+      ],
+      "status": "confirmed",
+      "field_status": {},
+      "accounts": [],
+      "valid_from": null,
+      "valid_to": null,
+      "supersedes": null,
+      "superseded_by": null,
+      "retired": false,
+      "issues": [],
+      "processes": [],
+      "updated_at": "2026-09-16T14:05:00Z",
+      "data": {
+        "inputs": [
+          {
+            "key": "weekday",
+            "unit": "pcs",
+            "from": "calendar"
+          }
+        ],
+        "outputs": [
+          {
+            "key": "par",
+            "unit": "portion",
+            "nature": "target"
+          }
+        ],
+        "lang": "table",
+        "table": {
+          "inputs": [
+            "weekday"
+          ],
+          "outputs": [
+            "par"
+          ],
+          "hit": "first",
+          "default": {
+            "par": 40
+          },
+          "rows": [
+            {
+              "when": {
+                "weekday": "thu"
+              },
+              "then": {
+                "par": 65
+              }
+            },
+            {
+              "when": {
+                "weekday": "fri"
+              },
+              "then": {
+                "par": 65
+              }
+            }
+          ]
+        },
+        "calls": [],
+        "port": false,
+        "edge_cases": []
+      }
+    },
+    {
+      "id": "F-00051",
+      "kind": "rule",
+      "key": "portions_per_pack_penne",
+      "title": "پرس در هر بستهٔ پنه",
+      "aliases": [],
+      "statement": "بستهٔ ۱۲۰۰ گرمی ÷ پرس ۲۴۰ گرمی = ۵ پرس.",
+      "scope": {
+        "departments": [
+          "cooking"
+        ],
+        "branches": []
+      },
+      "source": [
+        {
+          "type": "voice",
+          "ref": "meetings/transcripts/cooking-1405-05-26.txt",
+          "lines": "218",
+          "hash": "sha256:189ff7ba7cd49a4170259146c74d27e19e5642e96db00c9acc82c47a4840a564",
+          "run": "runs/facts/cooking/20260902-153000"
+        }
+      ],
+      "status": "confirmed",
+      "field_status": {},
+      "accounts": [],
+      "valid_from": null,
+      "valid_to": null,
+      "supersedes": null,
+      "superseded_by": null,
+      "retired": false,
+      "issues": [],
+      "processes": [],
+      "updated_at": "2026-09-16T14:05:00Z",
+      "data": {
+        "inputs": [],
+        "outputs": [
+          {
+            "key": "portions",
+            "unit": "portion",
+            "per": "pack",
+            "nature": "standard",
+            "value": 5
+          }
+        ],
+        "calls": [],
+        "port": false,
+        "edge_cases": []
+      }
+    },
+    {
+      "id": "F-00042",
+      "kind": "rule",
+      "key": "pack_g_parmesan",
+      "title": "وزن بستهٔ پارمسان",
+      "aliases": [],
+      "statement": "پارمسان در بسته‌های ۲۰۰ گرمی می‌آمد.",
+      "scope": {
+        "departments": [
+          "cooking"
+        ],
+        "branches": []
+      },
+      "source": [
+        {
+          "type": "voice",
+          "ref": "meetings/transcripts/cooking-1405-05-26.txt",
+          "lines": "149",
+          "hash": "sha256:189ff7ba7cd49a4170259146c74d27e19e5642e96db00c9acc82c47a4840a564",
+          "run": "runs/facts/cooking/20260902-153000"
+        }
+      ],
+      "status": "confirmed",
+      "field_status": {},
+      "accounts": [],
+      "valid_from": "1404-01-01",
+      "valid_to": "1405-05-26",
+      "supersedes": null,
+      "superseded_by": {
+        "ref": "F-00043"
+      },
+      "retired": false,
+      "issues": [],
+      "processes": [],
+      "updated_at": "2026-09-02T15:31:00Z",
+      "data": {
+        "inputs": [],
+        "outputs": [
+          {
+            "key": "pack_g",
+            "unit": "g",
+            "per": "pack",
+            "nature": "standard",
+            "value": 200
+          }
+        ],
+        "calls": [],
+        "port": false,
+        "edge_cases": []
+      }
+    },
+    {
+      "id": "F-00043",
+      "kind": "rule",
+      "key": "pack_g_parmesan",
+      "title": "وزن بستهٔ پارمسان",
+      "aliases": [],
+      "statement": "پارمسان اکنون در بسته‌های ۱۰۰ گرمی می‌آید («۲۰۰ بود الان ۱۰۰ گرمی شده»).",
+      "scope": {
+        "departments": [
+          "cooking"
+        ],
+        "branches": []
+      },
+      "source": [
+        {
+          "type": "voice",
+          "ref": "meetings/transcripts/cooking-1405-05-26.txt",
+          "lines": "155",
+          "hash": "sha256:189ff7ba7cd49a4170259146c74d27e19e5642e96db00c9acc82c47a4840a564",
+          "run": "runs/facts/cooking/20260902-153000"
+        }
+      ],
+      "status": "confirmed",
+      "field_status": {},
+      "accounts": [],
+      "valid_from": "1405-05-26",
+      "valid_to": null,
+      "supersedes": {
+        "ref": "F-00042"
+      },
+      "superseded_by": null,
+      "retired": false,
+      "issues": [],
+      "processes": [],
+      "updated_at": "2026-09-16T14:05:00Z",
+      "data": {
+        "inputs": [],
+        "outputs": [
+          {
+            "key": "pack_g",
+            "unit": "g",
+            "per": "pack",
+            "nature": "standard",
+            "value": 100
+          }
+        ],
+        "calls": [],
+        "port": false,
+        "edge_cases": []
+      }
+    },
+    {
+      "id": "F-00044",
+      "kind": "rule",
+      "key": "start_stock_carryover",
+      "title": "مانده اول شب = مانده آخر شب دیشب",
+      "aliases": [],
+      "statement": "موجودی اول شب هر روز همان موجودی آخر شب روز قبل است، به‌علاوهٔ دریافتی انبار.",
+      "scope": {
+        "departments": [
+          "cooking"
+        ],
+        "branches": []
+      },
+      "source": [
+        {
+          "type": "voice",
+          "ref": "meetings/transcripts/cooking-1405-06-01.txt",
+          "lines": "52-60",
+          "hash": "sha256:fd0d8c03a88fb43f4c54ae19c4843ff2bcf508f092c970f4d69d0a5381d0dff1",
+          "run": "runs/facts/cooking/20260902-153000"
+        },
+        {
+          "type": "process",
+          "ref": "departments/cooking/processes/cooking-002.json",
+          "node": "cooking-002-n003",
+          "quote": "مانده اول شب از برگهٔ شب قبل برداشته می‌شود",
+          "hash": "sha256:05dcffc1ac84d191b35325e7cc4d84f9d8b691a5a0b39085f8272501cf1ecf5e",
+          "run": "runs/facts/cooking/20260902-153000"
+        }
+      ],
+      "status": "confirmed",
+      "field_status": {},
+      "accounts": [],
+      "valid_from": null,
+      "valid_to": null,
+      "supersedes": null,
+      "superseded_by": null,
+      "retired": false,
+      "issues": [],
+      "processes": [
+        {
+          "ref": "cooking-002"
+        }
+      ],
+      "updated_at": "2026-09-16T14:05:00Z",
+      "data": {
+        "inputs": [
+          {
+            "key": "end_prev",
+            "unit": "kg",
+            "from": {
+              "ref": "F-00013",
+              "field": "end_stock"
+            }
+          }
+        ],
+        "outputs": [
+          {
+            "key": "start",
+            "unit": "kg",
+            "nature": "observed",
+            "writes_to": {
+              "ref": "F-00016",
+              "field": "start_stock"
+            }
+          }
+        ],
+        "expr": "start = end_prev",
+        "lang": "feel",
+        "original_ref": "facts/originals/F-00044.txt",
+        "calls": [],
+        "port": false,
+        "edge_cases": []
+      }
+    },
+    {
+      "id": "F-00046",
+      "kind": "rule",
+      "key": "gozaresh_cb__mavad__dough_single_literal",
+      "title": "ضریب خمیر سینگل در گزارش",
+      "aliases": [],
+      "statement": "گزارش مرکزی خمیر پیتزای سینگل را در ۱ ضرب می‌کند؛ BOM می‌گوید ۱۸۰ گرم.",
+      "scope": {
+        "departments": [
+          "management"
+        ],
+        "branches": []
+      },
+      "source": [
+        {
+          "type": "sheet",
+          "ref": "attachments/sheets/Gozareshat/Gozareshat.xlsx",
+          "sheet": "مواد اولیه",
+          "cell": "P31",
+          "hash": "sha256:a69e9e3859cccf118416e70d91136c908771c0fadd37930d620861fb2421250b",
+          "run": "runs/facts/management/20260901-101500"
+        }
+      ],
+      "status": "confirmed",
+      "field_status": {},
+      "accounts": [],
+      "valid_from": null,
+      "valid_to": null,
+      "supersedes": null,
+      "superseded_by": null,
+      "retired": false,
+      "issues": [
+        {
+          "kind": "bug",
+          "field": "data/outputs/dough_g/value",
+          "description": "مقدار ۱ با ۱۸۰ گرم BOM نمی‌خواند؛ احتمالاً ضریب فراموش‌شده.",
+          "affects": [
+            {
+              "ref": "F-00014"
+            }
+          ]
+        }
+      ],
+      "processes": [],
+      "updated_at": "2026-09-16T14:05:00Z",
+      "data": {
+        "inputs": [],
+        "outputs": [
+          {
+            "key": "dough_g",
+            "unit": "g",
+            "per": "pizza",
+            "nature": "standard",
+            "value": 1
+          }
+        ],
+        "calls": [],
+        "port": false,
+        "edge_cases": []
+      }
+    }
+  ]
+}

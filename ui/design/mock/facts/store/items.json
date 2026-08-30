@@ -1,0 +1,726 @@
+{
+  "schema_version": 1,
+  "entries": [
+    {
+      "id": "F-00001",
+      "kind": "item",
+      "key": "ing_1",
+      "title": "پنیر پیتزا",
+      "aliases": [
+        "موزارلا",
+        "پنیر"
+      ],
+      "statement": "پنیر موزارلای پیتزا؛ به گرم وزن می‌شود، کارتن ۱۰ کیلویی.",
+      "scope": {
+        "departments": [],
+        "branches": []
+      },
+      "source": [
+        {
+          "type": "sheet",
+          "ref": "attachments/sheets/MandeShab__Mavade Avalie/Mavade Avalie.xlsx",
+          "sheet": "پیتزا ایتالیایی",
+          "cell": "B1",
+          "hash": "sha256:2f5ec95d155f785b913c409b7853caaecdba7a439da4999ccf2fe3c2cde35a7d",
+          "run": "runs/facts/management/20260901-101500"
+        },
+        {
+          "type": "voice",
+          "ref": "meetings/transcripts/cooking-1405-05-26.txt",
+          "lines": "92",
+          "hash": "sha256:189ff7ba7cd49a4170259146c74d27e19e5642e96db00c9acc82c47a4840a564",
+          "run": "runs/facts/cooking/20260902-153000"
+        }
+      ],
+      "status": "confirmed",
+      "field_status": {},
+      "accounts": [],
+      "valid_from": null,
+      "valid_to": null,
+      "supersedes": null,
+      "superseded_by": null,
+      "retired": false,
+      "issues": [],
+      "processes": [
+        {
+          "ref": "cooking-001"
+        }
+      ],
+      "updated_at": "2026-09-16T14:05:00Z",
+      "data": {
+        "code": "##1",
+        "code_absent": false,
+        "category": "ingredient",
+        "group": "cheese",
+        "state": "raw",
+        "unit": "g",
+        "unit_raw": "گرم",
+        "units": [
+          {
+            "pack_unit": "carton",
+            "factor_to_base": 10000
+          }
+        ],
+        "pack": {
+          "size": 10,
+          "unit": "kg"
+        },
+        "tracked": []
+      }
+    },
+    {
+      "id": "F-00002",
+      "kind": "item",
+      "key": "prod_61",
+      "title": "اینجا پیتزا",
+      "aliases": [],
+      "statement": "محصول کد #61؛ پیتزای ایتالیایی اختصاصی.",
+      "scope": {
+        "departments": [],
+        "branches": []
+      },
+      "source": [
+        {
+          "type": "sheet",
+          "ref": "attachments/sheets/MandeShab__Mavade Avalie/Mavade Avalie.xlsx",
+          "sheet": "پیتزا ایتالیایی",
+          "cell": "A2",
+          "hash": "sha256:2f5ec95d155f785b913c409b7853caaecdba7a439da4999ccf2fe3c2cde35a7d",
+          "run": "runs/facts/management/20260901-101500"
+        }
+      ],
+      "status": "confirmed",
+      "field_status": {},
+      "accounts": [],
+      "valid_from": null,
+      "valid_to": null,
+      "supersedes": null,
+      "superseded_by": null,
+      "retired": false,
+      "issues": [],
+      "processes": [],
+      "updated_at": "2026-09-16T14:05:00Z",
+      "data": {
+        "code": "#61",
+        "code_absent": false,
+        "category": "product",
+        "group": "italian_pizza",
+        "unit": "pcs",
+        "unit_raw": "عدد",
+        "units": [],
+        "tracked": []
+      }
+    },
+    {
+      "id": "F-00003",
+      "kind": "item",
+      "key": "ing_15",
+      "title": "بیکن ورقه‌ای",
+      "aliases": [
+        "بیکن"
+      ],
+      "statement": "بیکن از انبار به تعداد (۳۰ یا ۱۵ عدد) دریافت و در مانده شب به وزن ثبت می‌شود؛ هر ۳۰ ورق بین ۹۰۰ تا ۹۸۰ گرم.",
+      "scope": {
+        "departments": [
+          "cooking"
+        ],
+        "branches": []
+      },
+      "source": [
+        {
+          "type": "voice",
+          "ref": "meetings/transcripts/cooking-1405-05-26.txt",
+          "lines": "188-200",
+          "hash": "sha256:189ff7ba7cd49a4170259146c74d27e19e5642e96db00c9acc82c47a4840a564",
+          "run": "runs/facts/cooking/20260902-153000"
+        },
+        {
+          "type": "sheet",
+          "ref": "attachments/sheets/MandeShab__ChaleBagh__Amar__Pitza/Pitza.xlsx",
+          "sheet": "موجودی اول شب",
+          "cell": "O1",
+          "hash": "sha256:c77078f2571044c8fd790f83058676fd4012bfb03e2bc532022a7b774c94c14b",
+          "run": "runs/facts/cooking/20260902-153000"
+        }
+      ],
+      "status": "confirmed",
+      "field_status": {},
+      "accounts": [],
+      "valid_from": null,
+      "valid_to": null,
+      "supersedes": null,
+      "superseded_by": null,
+      "retired": false,
+      "issues": [
+        {
+          "kind": "unit_kind",
+          "field": "data/unit",
+          "from_date": "1404-11-14",
+          "description": "در فرنگی از ۱۴ بهمن ۱۴۰۴ به‌جای گرم، تعداد ورق ثبت شده است (۱۱۶۵ → ۷۱).",
+          "fix": {
+            "op": "ignore"
+          },
+          "affects": [
+            {
+              "ref": "F-00013"
+            }
+          ]
+        }
+      ],
+      "processes": [],
+      "updated_at": "2026-09-16T14:05:00Z",
+      "data": {
+        "code": "##15",
+        "code_absent": false,
+        "category": "ingredient",
+        "group": "cold_cuts",
+        "state": "raw",
+        "unit": "g",
+        "unit_raw": "گرم",
+        "units": [
+          {
+            "pack_unit": "pcs",
+            "factor_to_base": {
+              "min": 30.0,
+              "max": 32.7
+            }
+          }
+        ],
+        "pack": {
+          "size": 30,
+          "unit": "pcs"
+        },
+        "tracked": []
+      }
+    },
+    {
+      "id": "F-00004",
+      "kind": "item",
+      "key": "gouda_cup",
+      "title": "گودا لیوانی",
+      "aliases": [],
+      "statement": "پنیر گودای لیوانی که در فرم مانده شب فرنگی ردیف دارد؛ کد انبار برای آن یافت نشد.",
+      "scope": {
+        "departments": [
+          "cooking"
+        ],
+        "branches": []
+      },
+      "source": [
+        {
+          "type": "photo",
+          "ref": "departments/cooking/attachments/photo_2026-08-29_14-23-51.jpg",
+          "hash": "sha256:bf95f1094055b45f52430c3721804f3789be670e93410249015293fbddca0ae5",
+          "run": "runs/facts/cooking/20260902-153000"
+        }
+      ],
+      "status": "confirmed",
+      "field_status": {},
+      "accounts": [],
+      "valid_from": null,
+      "valid_to": null,
+      "supersedes": null,
+      "superseded_by": null,
+      "retired": false,
+      "issues": [],
+      "processes": [],
+      "updated_at": "2026-09-16T14:05:00Z",
+      "data": {
+        "code_absent": true,
+        "category": "ingredient",
+        "group": "cheese",
+        "unit": "pcs",
+        "unit_raw": "عدد",
+        "units": [],
+        "tracked": []
+      }
+    },
+    {
+      "id": "F-00005",
+      "kind": "item",
+      "key": "meat_27",
+      "title": "میت",
+      "aliases": [],
+      "statement": "پیتزای میت، کد #27 — همان کد برای «سیب زمینی ویژه» هم به کار رفته است.",
+      "scope": {
+        "departments": [],
+        "branches": []
+      },
+      "source": [
+        {
+          "type": "script",
+          "ref": "attachments/sheets/MandeShab__ChaleBagh__Amar__Tedade Fooroosh markazi/Tedade Fooroosh markazi.gs",
+          "function": "foodIdToCategory",
+          "hash": "sha256:fa13e933309f433b5164dfe68848c7ee1e7391cbef58272cd3f94dac25b28867",
+          "run": "runs/facts/management/20260901-101500"
+        }
+      ],
+      "status": "confirmed",
+      "field_status": {},
+      "accounts": [],
+      "valid_from": null,
+      "valid_to": null,
+      "supersedes": null,
+      "superseded_by": null,
+      "retired": false,
+      "issues": [
+        {
+          "kind": "code_collision",
+          "field": "data/code",
+          "description": "کد #27 در «تعداد فروش» دو بار تعریف شده (americanPizza و starter)؛ فروش میت در واردکننده گم می‌شود.",
+          "affects": [
+            {
+              "ref": "F-00006"
+            }
+          ]
+        }
+      ],
+      "processes": [],
+      "updated_at": "2026-09-15T11:02:00Z",
+      "data": {
+        "code": "#27",
+        "code_absent": false,
+        "category": "product",
+        "group": "american_pizza",
+        "unit": "pcs",
+        "units": [],
+        "tracked": []
+      }
+    },
+    {
+      "id": "F-00006",
+      "kind": "item",
+      "key": "potato_special_27",
+      "title": "سیب زمینی ویژه",
+      "aliases": [],
+      "statement": "استارتر با کد #27 — کد مشترک با «میت».",
+      "scope": {
+        "departments": [],
+        "branches": []
+      },
+      "source": [
+        {
+          "type": "script",
+          "ref": "attachments/sheets/MandeShab__ChaleBagh__Amar__Tedade Fooroosh markazi/Tedade Fooroosh markazi.gs",
+          "function": "foodIdToCategory",
+          "hash": "sha256:fa13e933309f433b5164dfe68848c7ee1e7391cbef58272cd3f94dac25b28867",
+          "run": "runs/facts/management/20260901-101500"
+        }
+      ],
+      "status": "confirmed",
+      "field_status": {},
+      "accounts": [],
+      "valid_from": null,
+      "valid_to": null,
+      "supersedes": null,
+      "superseded_by": null,
+      "retired": false,
+      "issues": [
+        {
+          "kind": "code_collision",
+          "field": "data/code",
+          "description": "کد #27 مشترک با «میت».",
+          "affects": [
+            {
+              "ref": "F-00005"
+            }
+          ]
+        }
+      ],
+      "processes": [],
+      "updated_at": "2026-09-16T14:05:00Z",
+      "data": {
+        "code": "#27",
+        "code_absent": false,
+        "category": "product",
+        "group": "starter",
+        "unit": "pcs",
+        "units": [],
+        "tracked": []
+      }
+    },
+    {
+      "id": "F-00007",
+      "kind": "item",
+      "key": "ing_41",
+      "title": "قارچ",
+      "aliases": [],
+      "statement": "قارچ تازه؛ روزانه حدود ۲۰ کیلو به سوخاری تحویل می‌شود و در مانده شب ثبت نمی‌شود.",
+      "scope": {
+        "departments": [
+          "cooking"
+        ],
+        "branches": []
+      },
+      "source": [
+        {
+          "type": "voice",
+          "ref": "meetings/transcripts/cooking-1405-05-26.txt",
+          "lines": "262",
+          "hash": "sha256:189ff7ba7cd49a4170259146c74d27e19e5642e96db00c9acc82c47a4840a564",
+          "run": "runs/facts/cooking/20260902-153000"
+        }
+      ],
+      "status": "confirmed",
+      "field_status": {},
+      "accounts": [],
+      "valid_from": null,
+      "valid_to": null,
+      "supersedes": null,
+      "superseded_by": null,
+      "retired": false,
+      "issues": [],
+      "processes": [],
+      "updated_at": "2026-09-16T14:05:00Z",
+      "data": {
+        "code": "##41",
+        "code_absent": false,
+        "category": "ingredient",
+        "group": "vegetables",
+        "state": "raw",
+        "unit": "kg",
+        "unit_raw": "کیلو",
+        "units": [],
+        "tracked": [
+          {
+            "record": {
+              "ref": "F-00013"
+            },
+            "value": false,
+            "reason": "قارچ درشت/ریز/پشت‌باز به آماده‌سازی برمی‌گردد و اسلایس می‌شود؛ مانده‌ی ساده تصویر واقعی نمی‌دهد."
+          }
+        ]
+      }
+    },
+    {
+      "id": "F-00008",
+      "kind": "item",
+      "key": "place_warehouse",
+      "title": "انبار",
+      "aliases": [],
+      "statement": "انبار مرکزی؛ مبدأ و مقصد انتقال‌ها.",
+      "scope": {
+        "departments": [],
+        "branches": []
+      },
+      "source": [
+        {
+          "type": "sheet",
+          "ref": "attachments/sheets/Anbar__Anbar/Anbar.xlsx",
+          "sheet": "خروجی انبار به آماده سازی",
+          "cell": "A1",
+          "hash": "sha256:bfd0b5bc634f938412a2aff8e815bd54053f44a6c9e3af4cf3ca90a9df505fe3",
+          "run": "runs/facts/management/20260901-101500"
+        }
+      ],
+      "status": "confirmed",
+      "field_status": {},
+      "accounts": [],
+      "valid_from": null,
+      "valid_to": null,
+      "supersedes": null,
+      "superseded_by": null,
+      "retired": false,
+      "issues": [],
+      "processes": [],
+      "updated_at": "2026-09-16T14:05:00Z",
+      "data": {
+        "category": "place",
+        "unit": "pcs",
+        "units": [],
+        "tracked": []
+      }
+    },
+    {
+      "id": "F-00009",
+      "kind": "item",
+      "key": "place_prep",
+      "title": "آماده‌سازی",
+      "aliases": [],
+      "statement": "واحد آماده‌سازی؛ تبدیل مواد در آن انجام می‌شود.",
+      "scope": {
+        "departments": [],
+        "branches": []
+      },
+      "source": [
+        {
+          "type": "sheet",
+          "ref": "attachments/sheets/Anbar__Anbar/Anbar.xlsx",
+          "sheet": "خروجی انبار به آماده سازی",
+          "cell": "A1",
+          "hash": "sha256:bfd0b5bc634f938412a2aff8e815bd54053f44a6c9e3af4cf3ca90a9df505fe3",
+          "run": "runs/facts/management/20260901-101500"
+        }
+      ],
+      "status": "confirmed",
+      "field_status": {},
+      "accounts": [],
+      "valid_from": null,
+      "valid_to": null,
+      "supersedes": null,
+      "superseded_by": null,
+      "retired": false,
+      "issues": [],
+      "processes": [],
+      "updated_at": "2026-09-16T14:05:00Z",
+      "data": {
+        "category": "place",
+        "unit": "pcs",
+        "units": [],
+        "tracked": []
+      }
+    },
+    {
+      "id": "F-00010",
+      "kind": "item",
+      "key": "ing_22",
+      "title": "گوشت چرخ‌کرده",
+      "aliases": [],
+      "statement": "دیگر استفاده نمی‌شود («کباب ترکی حذف شده»).",
+      "scope": {
+        "departments": [
+          "cooking"
+        ],
+        "branches": []
+      },
+      "source": [
+        {
+          "type": "voice",
+          "ref": "meetings/transcripts/cooking-1405-05-26.txt",
+          "lines": "107",
+          "hash": "sha256:189ff7ba7cd49a4170259146c74d27e19e5642e96db00c9acc82c47a4840a564",
+          "run": "runs/facts/cooking/20260902-153000"
+        }
+      ],
+      "status": "confirmed",
+      "field_status": {},
+      "accounts": [],
+      "valid_from": null,
+      "valid_to": "1405-05-26",
+      "supersedes": null,
+      "superseded_by": null,
+      "retired": true,
+      "issues": [],
+      "processes": [],
+      "updated_at": "2026-09-02T15:40:00Z",
+      "data": {
+        "code": "##22",
+        "code_absent": false,
+        "category": "ingredient",
+        "group": "meat",
+        "state": "raw",
+        "unit": "g",
+        "units": [],
+        "tracked": []
+      }
+    },
+    {
+      "id": "F-00048",
+      "kind": "item",
+      "key": "ing_77",
+      "title": "روغن سرخ‌کردنی",
+      "aliases": [],
+      "statement": "روغن سرخ‌کن؛ مهم‌ترین مادهٔ مصرفی سوخاری که در مانده شب ثبت نمی‌شود.",
+      "scope": {
+        "departments": [
+          "cooking"
+        ],
+        "branches": []
+      },
+      "source": [
+        {
+          "type": "voice",
+          "ref": "meetings/transcripts/cooking-1405-05-26.txt",
+          "lines": "270",
+          "hash": "sha256:189ff7ba7cd49a4170259146c74d27e19e5642e96db00c9acc82c47a4840a564",
+          "run": "runs/facts/cooking/20260902-153000"
+        },
+        {
+          "type": "pdf",
+          "ref": "departments/cooking/attachments/kitchen-quantitative-report.pdf",
+          "page": "11",
+          "hash": "sha256:bc7bfdf21573ec398bf9bc110fec6f95d33f7944614297c50836e6c0e7082dfc",
+          "run": "runs/facts/cooking/20260915-110000"
+        }
+      ],
+      "status": "confirmed",
+      "field_status": {},
+      "accounts": [],
+      "valid_from": null,
+      "valid_to": null,
+      "supersedes": null,
+      "superseded_by": null,
+      "retired": false,
+      "issues": [],
+      "processes": [],
+      "updated_at": "2026-09-16T14:05:00Z",
+      "data": {
+        "code": "##77",
+        "code_absent": false,
+        "category": "consumable",
+        "group": "oil",
+        "unit": "l",
+        "unit_raw": "لیتر",
+        "units": [
+          {
+            "pack_unit": "pack",
+            "factor_to_base": 17
+          }
+        ],
+        "pack": {
+          "size": 17,
+          "unit": "l"
+        },
+        "tracked": [
+          {
+            "record": {
+              "ref": "F-00013"
+            },
+            "value": false,
+            "reason": "جذب، پاشش و خروج همراه غذا مصرف را غیرقابل تطبیق می‌کند"
+          }
+        ]
+      }
+    },
+    {
+      "id": "F-00049",
+      "kind": "item",
+      "key": "ing_18",
+      "title": "مرغ گریل / مرغ پاستا",
+      "aliases": [],
+      "statement": "سینهٔ مرغ که خام تحویل و در فرنگی گریل می‌شود.",
+      "scope": {
+        "departments": [
+          "cooking"
+        ],
+        "branches": []
+      },
+      "source": [
+        {
+          "type": "voice",
+          "ref": "meetings/transcripts/cooking-1405-05-26.txt",
+          "lines": "155",
+          "hash": "sha256:189ff7ba7cd49a4170259146c74d27e19e5642e96db00c9acc82c47a4840a564",
+          "run": "runs/facts/cooking/20260902-153000"
+        }
+      ],
+      "status": "confirmed",
+      "field_status": {},
+      "accounts": [],
+      "valid_from": null,
+      "valid_to": null,
+      "supersedes": null,
+      "superseded_by": null,
+      "retired": false,
+      "issues": [],
+      "processes": [],
+      "updated_at": "2026-09-16T14:05:00Z",
+      "data": {
+        "code": "##18",
+        "code_absent": false,
+        "category": "ingredient",
+        "group": "chicken",
+        "state": "cooked",
+        "unit": "g",
+        "units": [],
+        "tracked": []
+      }
+    },
+    {
+      "id": "F-00053",
+      "kind": "item",
+      "key": "ing_9",
+      "title": "پنیر پارمسان",
+      "aliases": [],
+      "statement": "پارمسان بسته‌ای؛ مانده بر اساس وزن ثبت می‌شود.",
+      "scope": {
+        "departments": [
+          "cooking"
+        ],
+        "branches": []
+      },
+      "source": [
+        {
+          "type": "voice",
+          "ref": "meetings/transcripts/cooking-1405-05-26.txt",
+          "lines": "149-155",
+          "hash": "sha256:189ff7ba7cd49a4170259146c74d27e19e5642e96db00c9acc82c47a4840a564",
+          "run": "runs/facts/cooking/20260902-153000"
+        }
+      ],
+      "status": "confirmed",
+      "field_status": {},
+      "accounts": [],
+      "valid_from": null,
+      "valid_to": null,
+      "supersedes": null,
+      "superseded_by": null,
+      "retired": false,
+      "issues": [],
+      "processes": [],
+      "updated_at": "2026-09-15T11:00:00Z",
+      "data": {
+        "code": "##9",
+        "code_absent": false,
+        "category": "ingredient",
+        "group": "cheese",
+        "unit": "g",
+        "units": [
+          {
+            "pack_unit": "pack",
+            "factor_to_base": 100
+          }
+        ],
+        "pack": {
+          "size": 100,
+          "unit": "g"
+        },
+        "tracked": []
+      }
+    },
+    {
+      "id": "F-00054",
+      "kind": "item",
+      "key": "ing_26",
+      "title": "خمیر پیتزا",
+      "aliases": [],
+      "statement": "خمیر پیتزا؛ ایتالیایی ۲۸۰ گرم، امریکایی ۲۳۰ گرم، سینگل ۱۸۰ گرم به ازای هر پیتزا (BOM).",
+      "scope": {
+        "departments": [],
+        "branches": []
+      },
+      "source": [
+        {
+          "type": "sheet",
+          "ref": "attachments/sheets/MandeShab__Mavade Avalie/Mavade Avalie.xlsx",
+          "sheet": "پیتزا ایتالیایی",
+          "cell": "L1",
+          "hash": "sha256:2f5ec95d155f785b913c409b7853caaecdba7a439da4999ccf2fe3c2cde35a7d",
+          "run": "runs/facts/management/20260901-101500"
+        }
+      ],
+      "status": "confirmed",
+      "field_status": {},
+      "accounts": [],
+      "valid_from": null,
+      "valid_to": null,
+      "supersedes": null,
+      "superseded_by": null,
+      "retired": false,
+      "issues": [],
+      "processes": [],
+      "updated_at": "2026-09-16T14:05:00Z",
+      "data": {
+        "code": "##26",
+        "code_absent": false,
+        "category": "ingredient",
+        "group": "dough",
+        "state": "prepared",
+        "unit": "g",
+        "unit_raw": "گرم",
+        "units": [],
+        "tracked": []
+      }
+    }
+  ]
+}
