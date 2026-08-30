@@ -28,15 +28,15 @@ from datetime import datetime, timezone
 
 from allocate_id import next_fact_id
 from engine_common import read_json, validate, write_json_atomic, write_text_atomic
-from merge_facts import (KIND_FILES, KIND_ORDER, canonical_scope, derive_status,
-                         facts_dir, find_match, is_open, iter_ref_objects,
-                         load_store, save_store, sha256_file)
-# `_equal` and `_is_keyed_list` are the ladder's own definitions of "the same
-# value" and "a list merged member by member". Supersession has to ask the
-# ladder's question one step early ("would this dispute?"), and a successor's
-# copy has to walk the same shapes, so they are borrowed rather than restated.
-from merge_facts.ladder import (DEDUP_KEYS, PROSE_LEAVES, TOP_SKIP, UNION_FIELDS,
-                                _equal, _is_keyed_list, merge_entry)
+from merge_facts import (KIND_FILES, KIND_ORDER, _sheet_identity, canonical_scope,
+                         derive_status, facts_dir, find_match, is_open,
+                         iter_ref_objects, load_store, save_store, sha256_file)
+# `_is_keyed_list` and `keyfn_for` are the ladder's own answers to "is this a
+# list merged member by member, and what matches its members" — a successor's
+# copy walks the same shapes, so they are borrowed rather than restated. The
+# dispute question is the ladder's too: `would_dispute` runs it.
+from merge_facts.ladder import (TOP_SKIP, UNION_FIELDS, _is_keyed_list,
+                                keyfn_for, merge_entry, would_dispute)
 
 SEGMENT_RE = re.compile(r"^[a-z][a-z0-9]*(_[a-z0-9]+)*$")
 KEY_RE = re.compile(r"^[a-z][a-z0-9]*(_[a-z0-9]+)*(__[a-z][a-z0-9]*(_[a-z0-9]+)*)*$")
@@ -130,6 +130,12 @@ def _substitute_ref_items(store, by_temp, data):
 
 
 def _derive_row_keys(data):
+    # Only a reference table's rows are keyed by their primaryKey join (§9). A
+    # log's or a config table's rows are minted once and kept as written — the
+    # unit table's `g` is a key, not a derivation, and re-keying it under merge
+    # would move the rows the unit precondition reads.
+    if data.get("role") != "reference":
+        return
     pk, rows = data.get("primaryKey"), data.get("rows")
     if not (isinstance(pk, list) and pk and isinstance(rows, list)):
         return
@@ -281,9 +287,12 @@ def _preconditions(root, store, entries, run_dir):
     delta schema has no place for any of them.
     """
     out = []
-    # QF-15: two open entries sharing a natural key is a store-integrity
-    # failure, and a delta carrying both would create it in one write.
-    seen = set()
+    # QF-15: two open entries sharing an identity is a store-integrity failure,
+    # and a delta carrying both would create it in one write. A sheet record is
+    # identified by its (spreadsheetId, sheet) pair as well as by its natural
+    # key, and it is the pair that catches a tab written up twice under two
+    # keys — which is what a re-derived key would otherwise become.
+    seen, sheets = set(), set()
     for entry in entries:
         if not is_open(entry):
             continue
@@ -291,6 +300,11 @@ def _preconditions(root, store, entries, run_dir):
         if nk in seen:
             out.append(f"duplicate natural key {entry.get('key')} in delta")
         seen.add(nk)
+        ident = _sheet_identity(entry)
+        if ident is not None:
+            if ident in sheets:
+                out.append(f"duplicate sheet identity {ident[0]}/{ident[1]} in delta")
+            sheets.add(ident)
     # QF-43: a run creates only in its own department, or at empty scope. It
     # may still *add* to any entry it matches — that is how a cross-department
     # contradiction surfaces, which is QF-2's whole point.
@@ -340,43 +354,19 @@ def _preconditions(root, store, entries, run_dir):
 #    miss mints
 # --------------------------------------------------------------------------- #
 
-def _leaf_differs(current, incoming, skip):
-    """True when some non-prose scalar leaf of `incoming` disagrees with what
-    `current` already holds — the ladder's dispute trigger, asked one step
-    early so `apply` can supersede instead (§11)."""
-    if not isinstance(current, dict):
-        return False
-    for k, v in incoming.items():
-        if k in skip or k in PROSE_LEAVES or k not in current:
-            continue
-        held = current[k]
-        if held is None or held == "":
-            continue                                 # a fill, not a disagreement
-        if _is_keyed_list(v, k) and isinstance(held, list):
-            keyfn = DEDUP_KEYS.get(k, lambda m: m.get("key"))
-            for member in v:
-                twin = next((m for m in held if keyfn(m) == keyfn(member)), None)
-                if twin is not None and _leaf_differs(twin, member, {"key"}):
-                    return True
-        elif isinstance(v, dict) and isinstance(held, dict):
-            if _leaf_differs(held, v, frozenset()):
-                return True
-        elif not _equal(held, v):
-            return True
-    return False
-
-
-def _is_supersession(match, incoming):
-    """§11: a differing value that carries a **later** `valid_from` is a
-    successor, not a dispute. Jalali is fixed-width (QF-41), so the dates
-    compare as strings; an incumbent with no `valid_from` counts as earlier."""
+def _is_supersession(match, incoming, source):
+    """§11: a value that would be *disputed* but carries a **later**
+    `valid_from` is a successor instead. Jalali is fixed-width (QF-41), so the
+    dates compare as strings; an incumbent with no `valid_from` counts as
+    earlier. "Would be disputed" is the ladder's own verdict, asked on copies —
+    prose never disputes, so a re-worded statement never supersedes."""
     valid_from = incoming.get("valid_from")
     if not valid_from:
         return False
     held = match.get("valid_from")
     if held is not None and str(valid_from) <= str(held):
         return False
-    return _leaf_differs(match, incoming, TOP_SKIP)
+    return would_dispute(match, incoming, source)
 
 
 def _workbook_stub(store, entry):
@@ -422,6 +412,37 @@ def _fill_stub(entry, incoming, identity):
     return entry != before
 
 
+def _strip_stub_markers(incoming):
+    """`data.stub`, and `data.grain` where it is the workbook marker rather than
+    a record's prose grain, never reach the ladder from a delta — the same
+    lifting `data.original` gets. Left in place they would be re-created on the
+    entry `_fill_stub` has just cleared, and every re-read would count as a
+    change."""
+    data = incoming.get("data") or {}
+    data.pop("stub", None)
+    if data.get("grain") == "workbook":
+        data.pop("grain", None)
+
+
+def _union_sources(entry, incoming):
+    """Set-union of `source[]` alone (§11), for a stub delta that meets an
+    entry: the citation is all it has to offer."""
+    keyfn = UNION_FIELDS["source"]
+    current = entry.setdefault("source", [])
+    seen = {keyfn(m) for m in current}
+    added = False
+    for member in incoming.get("source") or []:
+        if keyfn(member) not in seen:
+            current.append(copy.deepcopy(member))
+            seen.add(keyfn(member))
+            added = True
+    return added
+
+
+def _first_source(entry):
+    return (entry.get("source") or [{}])[0]
+
+
 def _rederive_measurements(store, record_ids):
     """After an adoption, every measurement keyed through the old record key is
     re-keyed through the new one (QF-20). Yields the entries that moved."""
@@ -450,10 +471,11 @@ def _plan(root, store, entries):
                 action, fid = "create", next_fact_id(root)
             else:
                 action, fid = "adopt", match["id"]   # the stub's id, no mint
-        elif _is_stub(match):
-            # a stub is filled outright — never disputed, never superseded
+        elif _is_stub(match) or _is_stub(entry):
+            # a stub is filled outright, and a stub delta meeting an entry
+            # carries no reading to dispute — neither ever supersedes
             action, fid = "merge", match["id"]
-        elif _is_supersession(match, entry):
+        elif _is_supersession(match, entry, _first_source(entry)):
             action, fid = "supersede", next_fact_id(root)
         else:
             action, fid = "merge", match["id"]
@@ -496,7 +518,7 @@ def _overwrite(dst, src, skip):
             continue
         held = dst.get(k)
         if _is_keyed_list(v, k) and isinstance(held, list):
-            keyfn = DEDUP_KEYS.get(k, lambda m: m.get("key"))
+            keyfn = keyfn_for(k)
             for member in v:
                 twin = next((m for m in held if keyfn(m) == keyfn(member)), None)
                 if twin is None:
@@ -549,14 +571,23 @@ def _upsert(store, plans):
             touched.append({"entry": match, "id": match["id"], "created": False,
                             "changed": True, "original": None})
             changed = True
+        elif _is_stub(incoming):
+            # A stub delta meeting an existing entry (QF-20): a stub writes
+            # nothing but identity, and its title and location are boilerplate
+            # rather than a reading — so it adds its citation and nothing else.
+            # Re-running it must not re-stub a record the owning run has filled.
+            entry = match
+            changed = _union_sources(match, incoming)
         else:                                        # merge, or adopt a stub
             entry = match
             filled = (_fill_stub(match, incoming, action == "adopt")
                       if _is_stub(match) else False)
             if action == "adopt":
                 adopted.append(match["id"])
-            source = (incoming.get("source") or [{}])[0]
-            changes = merge_entry(match, incoming, source)
+            # Only `_fill_stub` and a creation may set the stub markers; the
+            # ladder must never re-create the flag it has just cleared.
+            _strip_stub_markers(incoming)
+            changes = merge_entry(match, incoming, _first_source(incoming))
             changed = filled or any(act != "noop" for _, act in changes)
         touched.append({"entry": entry, "id": fid,
                         "created": action in ("create", "supersede"),

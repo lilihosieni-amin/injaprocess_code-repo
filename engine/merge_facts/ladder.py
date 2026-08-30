@@ -1,4 +1,6 @@
 """§11 write ladder — identical for every caller; there is no owner."""
+import copy
+
 from merge_facts import account_id
 
 PROSE_LEAVES = frozenset({"statement", "grain", "method", "exceptions",
@@ -37,6 +39,12 @@ IMMUTABLE = frozenset({"id", "kind", "key", "status", "updated_at",
 # (IMMUTABLE), set-union fields (handled separately, before this dispatch
 # runs), and accounts (handled separately, after).
 TOP_SKIP = IMMUTABLE | frozenset(UNION_FIELDS) | frozenset({"accounts"})
+
+
+def keyfn_for(name):
+    """The dedup key a member of collection `name` matches on (§11) — every
+    keyed collection either has a dedicated matcher or is keyed by `key`."""
+    return DEDUP_KEYS.get(name, lambda m: m.get("key"))
 
 
 def _equal(a, b):
@@ -101,7 +109,7 @@ def _merge_scalar(entry, holder, name, path, incoming_value, source, changes):
 
 
 def _merge_collection(entry, current, incoming, name, path, source, changes):
-    keyfn = DEDUP_KEYS.get(name, lambda m: m.get("key"))
+    keyfn = keyfn_for(name)
     for member in incoming:
         match = next((m for m in current if keyfn(m) == keyfn(member)), None)
         if match is None:
@@ -170,3 +178,18 @@ def merge_entry(existing, incoming, incoming_source):
                           incoming["accounts"], "accounts", "accounts",
                           incoming_source, changes)
     return changes
+
+
+def would_dispute(existing, incoming, incoming_source):
+    """Would applying `incoming` raise a dispute? — the question `apply` has to
+    ask before it merges, so a differing value carrying a later `valid_from`
+    can supersede instead of disputing (§11).
+
+    Answered by running this same ladder on deep copies and looking for a
+    `dispute` action, never by a second traversal of its own: a private copy of
+    "which leaves disagree" drifts from the one that writes, and those two
+    disagreeing is exactly how a filled value would come to be overwritten.
+    """
+    return any(action == "dispute" for _, action in
+               merge_entry(copy.deepcopy(existing), copy.deepcopy(incoming),
+                           incoming_source))

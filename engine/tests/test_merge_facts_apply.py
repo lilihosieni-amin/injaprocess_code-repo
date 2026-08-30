@@ -490,3 +490,102 @@ def test_duplicate_natural_key_in_one_delta_is_refused(tmp_path):
     except SystemExit as e:
         assert e.code == 2
     assert {p.name: p.read_bytes() for p in (root / "facts").glob("*.json")} == before
+
+
+def test_duplicate_sheet_identity_in_one_delta_is_refused(tmp_path):
+    root = _root(tmp_path); _seed_units(root)
+    d = _record_stub_delta(stub=False)
+    twin = copy.deepcopy(d["entries"][0])                # same tab, second key
+    twin["id"], twin["key"] = "T-2", "s__ruzane_dobare"
+    twin["title"] = "همان تب، کلید دیگر"
+    d["entries"].append(twin)
+    before = {p.name: p.read_bytes() for p in (root / "facts").glob("*.json")}
+    try:
+        apply(root, _write(root, "dx.json", d), _run_dir(root, "9"))
+        assert False, "expected SystemExit"
+    except SystemExit as e:
+        assert e.code == 2
+    assert {p.name: p.read_bytes() for p in (root / "facts").glob("*.json")} == before
+
+
+# --- a stub delta re-read, minted row keys, and the ladder's dispute verdict - #
+
+def test_stub_delta_reapplied_is_byte_identical(tmp_path):
+    root = _root(tmp_path); _seed_units(root)
+    d = _write(root, "d1.json", _record_stub_delta())
+    apply(root, d, _run_dir(root, "1"))
+    _freeze(root, "records.json")
+    before = {p.name: p.read_bytes() for p in (root / "facts").glob("*.json")}
+    apply(root, d, _run_dir(root, "2"))
+    after = {p.name: p.read_bytes() for p in (root / "facts").glob("*.json")}
+    assert before == after
+
+
+def test_a_stale_stub_delta_never_restubs_a_filled_record(tmp_path):
+    root = _root(tmp_path); _seed_units(root)
+    stub = _write(root, "d1.json", _record_stub_delta())
+    apply(root, stub, _run_dir(root, "1"))
+    apply(root, _write(root, "d2.json", _record_stub_delta(stub=False)),
+          _run_dir(root, "2"))
+    _freeze(root, "records.json")
+    before = {p.name: p.read_bytes() for p in (root / "facts").glob("*.json")}
+    apply(root, stub, _run_dir(root, "3"))           # the old stub delta, again
+    after = {p.name: p.read_bytes() for p in (root / "facts").glob("*.json")}
+    assert before == after
+    rec = [e for e in load_store(root)["record"]["entries"]
+           if e["key"] == "s__ruzane"][0]
+    assert "stub" not in rec["data"]
+    assert rec["title"] == "گزارش روزانه"             # the stale title disputed nothing
+    assert rec.get("accounts", []) == [] and rec["status"] == "confirmed"
+    index = json.loads((root / "facts" / ".index.json").read_text(encoding="utf-8"))
+    assert [r for r in index["entries"] if r["id"] == rec["id"]][0]["stub"] is False
+
+
+def _log_record_delta():
+    return {"schema_version": 1, "entries": [
+        {"id": "T-1", "kind": "record", "key": "barge_shab", "title": "برگه شب",
+         "statement": "s", "scope": {"departments": ["cooking"], "branches": []},
+         "source": [{"type": "photo",
+                     "ref": "departments/cooking/attachments/p.jpg"}],
+         "retired": False,
+         "data": {"medium": "paper", "role": "log", "location": {"path": "x"},
+                  "primaryKey": ["item"],
+                  "fields": [{"key": "item", "title": "قلم", "type": "string"},
+                             {"key": "qty", "title": "تعداد", "type": "number",
+                              "unit": "g"}],
+                  "rows": [{"key": "row_one", "item": "borger", "qty": 1},
+                           {"key": "row_two", "item": "pitza", "qty": 2}]}}]}
+
+
+def test_minted_row_keys_on_a_log_record_survive(tmp_path):
+    root = _root(tmp_path); _seed_units(root)
+    d = _write(root, "d1.json", _log_record_delta())
+    apply(root, d, _run_dir(root, "1"))
+    apply(root, d, _run_dir(root, "2"))              # and a second apply too
+    rec = [e for e in load_store(root)["record"]["entries"]
+           if e["key"] == "barge_shab"][0]
+    assert [r["key"] for r in rec["data"]["rows"]] == ["row_one", "row_two"]
+
+
+def test_config_table_row_keys_are_not_rederived(tmp_path):
+    root = _root(tmp_path)
+    d = _units_delta()
+    d["entries"][0]["data"]["rows"] = [
+        {"key": "gram", "symbol": "g", "dimension": "mass",
+         "factor_to_base": 1, "unit_title": "گرم"}]
+    apply(root, _write(root, "d0.json", d), _run_dir(root, "0"))
+    rec = load_store(root)["record"]["entries"][0]
+    assert rec["data"]["rows"][0]["key"] == "gram"   # not re-keyed to `g`
+
+
+def test_prose_only_change_with_a_later_valid_from_does_not_supersede(tmp_path):
+    root = _root(tmp_path); _seed_units(root)
+    apply(root, _write(root, "d1.json", _const_delta(5)), _run_dir(root, "1"))
+    d = _const_delta(5)
+    d["entries"][0]["statement"] = "حد مجاز، به بیان دیگر"
+    d["entries"][0]["valid_from"] = "1405-01-01"
+    apply(root, _write(root, "d2.json", d), _run_dir(root, "2"))
+    rules = [e for e in load_store(root)["rule"]["entries"] if e["key"] == "tol"]
+    assert len(rules) == 1                           # prose never disputes ...
+    assert rules[0]["statement"] == "حد مجاز"        # ... and is never rewritten
+    assert rules[0]["valid_to"] is None
