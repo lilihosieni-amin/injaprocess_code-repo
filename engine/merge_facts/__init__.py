@@ -64,7 +64,13 @@ def _walk(value, prefix, out):
                       f"{prefix}/{member['key']}", out)
 
 def null_paths(entry):
-    """QF-6: a null leaf inside data is unknown; an absent key is not."""
+    """QF-6: a null leaf inside data is unknown; an absent key is not.
+
+    Counts addressable null leaves per the QF-7 path grammar (dict fields and
+    keyed-array members only). A null inside a non-keyed array member has no
+    addressable path — it cannot be disputed, resolved, or named in
+    field_status — and is deliberately not counted here.
+    """
     out = []
     _walk(entry.get("data") or {}, "data", out)
     return out
@@ -149,7 +155,14 @@ def sha256_file(path):
 
 def iter_ref_objects(obj):
     """Every nested dict whose keys are a subset of {ref, field, row} with ref
-    (QF-37's shape test), in document order."""
+    (QF-37's shape test), in document order.
+
+    Yields EVERY ref-shaped object, including processes[] and supersession
+    links (supersedes/superseded_by) — these share the same {ref, field, row}
+    shape but a different id namespace (process refs vs. F-/T- refs, per
+    QF-37's ^(F-[0-9]{5}|T-[0-9]+)$ pattern). Callers must filter by id prefix
+    or scope the call to entry['data'] if they only want fact/transcript refs.
+    """
     if isinstance(obj, dict):
         if "ref" in obj and set(obj) <= {"ref", "field", "row"}:
             yield obj

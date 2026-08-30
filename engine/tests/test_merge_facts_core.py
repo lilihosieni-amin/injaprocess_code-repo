@@ -93,3 +93,25 @@ def test_iter_ref_objects_by_shape():
                      "outputs": [], "calls": [{"ref": "T-2"}]})
     refs = [r["ref"] for r in iter_ref_objects(e)]
     assert refs == ["F-00031", "T-2"]
+
+def test_null_in_non_keyed_array_is_not_a_red_path():
+    """Ruling on Finding 1 (2026-08-31 review): a null inside a non-keyed
+    array member has no addressable path per the QF-7 grammar (only dict
+    fields and keyed-array members are addressable) — it cannot be disputed,
+    resolved, or named in field_status, so it is deliberately not a red
+    `unknown` path."""
+    e = _entry(data={"calls": [{"ref": "T-2", "qty": None}]})
+    assert null_paths(e) == []
+    assert derive_status(e) == "confirmed"
+
+def test_iter_ref_objects_yields_process_refs_too():
+    """Ruling on Finding 2 (2026-08-31 review): iter_ref_objects yields EVERY
+    ref-shaped object, including processes[] and supersession links, mixing
+    the fact/transcript id namespace (F-/T-) with the process namespace —
+    callers must filter by id prefix (per QF-37's
+    ^(F-[0-9]{5}|T-[0-9]+)$) or scope the call to entry['data'] if they only
+    want fact/transcript refs."""
+    e = _entry(processes=[{"ref": "cooking-001"}], supersedes={"ref": "F-00002"})
+    refs = [r["ref"] for r in iter_ref_objects(e)]
+    assert "cooking-001" in refs
+    assert "F-00002" in refs
