@@ -40,16 +40,22 @@ from merge_facts import (
 from merge_facts.apply import KEY_RE
 
 _KIND_DATA_STUBS = {
-    # The structural keys facts.schema.json's per-kind `oneOf` requires
-    # present under `data`, defaulted only when `promote` moves an entry into
-    # a kind whose shape it doesn't already have (a note's `data` starts
-    # empty). The schema constrains presence, not type, so `None` is a valid
-    # placeholder for a scalar the promoting operator hasn't filled in yet.
-    "item": {"category": None, "unit": None},
-    "record": {"medium": None, "role": None, "location": {}},
-    "measurement": {"quantity": None, "unit": None},
+    # Neutral containers `promote` may inject — empty, so nothing is
+    # fabricated: `rule`'s `inputs`/`outputs` start as empty lists (a later
+    # apply or edit fills them), and `note`'s own `data` needs nothing extra.
+    # item/record/measurement are deliberately absent: their schema-required
+    # keys (`_KIND_REQUIRED_KEYS` below) are facts about the world — category,
+    # unit, medium, role, location, quantity — and `promote` must never guess
+    # at one. A note promoted to one of those three kinds is only accepted
+    # when its own `data` already carries them.
     "rule": {"inputs": [], "outputs": []},
     "note": {},
+}
+
+_KIND_REQUIRED_KEYS = {
+    "item": ("category", "unit"),
+    "record": ("medium", "role", "location"),
+    "measurement": ("quantity", "unit"),
 }
 
 
@@ -150,10 +156,11 @@ def retire(root, fact_id, heir, run_dir, date=None):
 
 def promote(root, fact_id, kind, key, run_dir):
     """Move a note into a real kind, in place: the id stays, the kind and key
-    change, and `data` is topped up with whatever bare structural keys that
-    kind's schema requires and a note never carried. Only a note is
-    promotable, and its hash key never carries over — `key` is always
-    required."""
+    change. `data` gets only neutral, empty containers a promote may add
+    without inventing a fact (see `_KIND_DATA_STUBS`) — for item/record/
+    measurement, the note's own `data` must already carry the target kind's
+    schema-required keys, or promotion is refused. Only a note is promotable,
+    and its hash key never carries over — `key` is always required."""
     root = pathlib.Path(root)
     store = load_store(root)
     src_kind, entry = _find(store, fact_id)
@@ -167,6 +174,12 @@ def promote(root, fact_id, kind, key, run_dir):
         _fail(f"key {key!r} is not a minted key")
     if any(e["key"] == key and is_open(e) for e in store[kind]["entries"]):
         _fail(f"key {key!r} is already used by an open entry of kind {kind!r}")
+    required = _KIND_REQUIRED_KEYS.get(kind)
+    if required is not None:
+        data = entry.get("data") or {}
+        missing = [k for k in required if k not in data]
+        if missing:
+            _fail(f"promoting to {kind} requires data keys {', '.join(missing)}")
     store["note"]["entries"].remove(entry)
     entry["kind"] = kind
     entry["key"] = key
@@ -177,7 +190,14 @@ def promote(root, fact_id, kind, key, run_dir):
     entry["status"] = derive_status(entry)
     entry["updated_at"] = _now()
     store[kind]["entries"].append(entry)
-    save_store(root, store)
+    # Belt: every precondition above is checked before this point, but a
+    # residual schema failure (a shape `_KIND_REQUIRED_KEYS` doesn't cover)
+    # must still exit clean rather than traceback. `save_store` validates
+    # all five files before writing any, so the store is untouched either way.
+    try:
+        save_store(root, store)
+    except ValueError as e:
+        _fail(str(e))
     _append_delta(run_dir, "promote", {"id": fact_id, "kind": kind, "key": key})
 
 

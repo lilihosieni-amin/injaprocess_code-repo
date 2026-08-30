@@ -4,6 +4,10 @@ from merge_facts.apply import apply
 from merge_facts.verbs import export, promote, resolve, retire
 import pytest
 
+# json: only the two locking tests below need it, to read `.index.json` back
+# and to snapshot the five facts files for a byte-identical check.
+import json
+
 def _disputed(root):
     apply(root, _write(root, "d1.json", _const_delta(5)), _run_dir(root, "1"))
     apply(root, _write(root, "d2.json", _const_delta(4)), _run_dir(root, "2"))
@@ -60,3 +64,43 @@ def test_export_reference_record_csv(tmp_path):
     assert "g,g,mass,1," in text
     with pytest.raises(SystemExit):
         export(root, "units", root / "facts" / "u.csv", include_retired=False)  # under facts/
+
+
+# --- coordinator ruling on task-6 review finding I2: promote must never ---
+# --- fabricate item/record/measurement data; it refuses, cleanly, instead ---
+
+def _bare_note(root, note_id, key, run_n, data=None):
+    note = {"schema_version": 1, "entries": [{
+        "id": "T-1", "kind": "note", "key": key,
+        "title": "یادداشت", "statement": "s",
+        "scope": {"departments": ["cooking"], "branches": []},
+        "source": [{"type": "voice", "ref": "meetings/transcripts/c.txt", "lines": "9"}],
+        "retired": False, "data": data or {}}]}
+    r = apply(root, _write(root, f"{note_id}.json", note), _run_dir(root, run_n))
+    return r["id_map"]["T-1"]
+
+
+def test_promote_to_item_refuses_missing_category_and_unit_nothing_written(tmp_path, capsys):
+    root = _root(tmp_path); _seed_units(root)
+    nid = _bare_note(root, "dn2", "note_ab12cd34ef57", "1")
+    before = {p.name: p.read_bytes() for p in (root / "facts").glob("*.json")}
+    with pytest.raises(SystemExit) as exc:
+        promote(root, nid, "item", "ing_new", _run_dir(root, "2"))
+    assert exc.value.code == 2
+    err = capsys.readouterr().err
+    assert "category" in err and "unit" in err           # message names the missing keys
+    after = {p.name: p.read_bytes() for p in (root / "facts").glob("*.json")}
+    assert before == after                               # five files byte-identical
+
+
+def test_promote_to_item_succeeds_when_data_already_has_category_and_unit(tmp_path):
+    root = _root(tmp_path); _seed_units(root)
+    nid = _bare_note(root, "dn3", "note_ab12cd34ef58", "1",
+                     data={"category": "ingredient", "unit": "g"})
+    promote(root, nid, "item", "ing_olive_oil", _run_dir(root, "2"))
+    store = load_store(root)
+    e = [x for x in store["item"]["entries"] if x["id"] == nid][0]
+    assert e["id"] == nid and e["kind"] == "item" and e["key"] == "ing_olive_oil"
+    index = json.loads((root / "facts" / ".index.json").read_text(encoding="utf-8"))
+    row = [r for r in index["entries"] if r["id"] == nid][0]
+    assert row["kind"] == "item"
