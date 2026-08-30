@@ -64,7 +64,7 @@ def apply(root, delta_path, run_dir):
     # it: a measurement matched on its delta's advisory key would miss its own
     # entry on the next run and mint a duplicate.
     _derive_keys(store, entries)
-    problems = _preconditions(root, store, entries)                  # 2
+    problems = _preconditions(root, store, entries, run_dir)         # 2
     if problems:
         for msg in problems:
             print(f"precondition failed: {msg}", file=sys.stderr)
@@ -186,16 +186,14 @@ def _collect_units(value, name, out, skip):
 
 
 def _unit_symbols(entry):
-    """Every symbol this entry cites as a unit (QF-40).
+    """Every symbol this entry cites as a unit (QF-40) — every leaf named
+    `unit` under `data`, an item's own default included.
 
-    `pack` and `units[]` hold pack sizes, which the unit check does not walk,
-    and an `item`'s own `data.unit` is a default rather than an authoritative
-    citation — `record.fields[].unit` is the authoritative one.
+    The one exclusion is the pair §10 names outright: `pack` and `units[]` hold
+    pack sizes, "which the unit check does not walk".
     """
     out, skip = [], frozenset({"pack", "units"})
     for k, v in (entry.get("data") or {}).items():
-        if k == "unit" and entry.get("kind") == "item":
-            continue
         _collect_units(v, k, out, skip)
     return [s for s in out if s and s != UNKNOWN_UNIT]
 
@@ -271,13 +269,32 @@ def _title_twin(store, entry):
     return None
 
 
-def _preconditions(root, store, entries):
+def _natural_key(entry):
+    return (entry["kind"], entry.get("key"),
+            tuple(entry["scope"]["departments"]), tuple(entry["scope"]["branches"]))
+
+
+def _preconditions(root, store, entries, run_dir):
     """Human-readable messages, empty when the delta may be written.
 
     `status`, `source[].hash` and `data.original_ref` need no check here: the
     delta schema has no place for any of them.
     """
     out = []
+    # QF-15: two open entries sharing a natural key is a store-integrity
+    # failure, and a delta carrying both would create it in one write.
+    seen = set()
+    for entry in entries:
+        if not is_open(entry):
+            continue
+        nk = _natural_key(entry)
+        if nk in seen:
+            out.append(f"duplicate natural key {entry.get('key')} in delta")
+        seen.add(nk)
+    # QF-43: a run creates only in its own department, or at empty scope. It
+    # may still *add* to any entry it matches — that is how a cross-department
+    # contradiction surfaces, which is QF-2's whole point.
+    run_dept = pathlib.Path(run_dir).parent.name
     by_temp = {e["id"]: e for e in entries if e.get("id")}
     unit_rows = _unit_row_keys(store, entries)
     departments = _registered(root / "departments" / "registry.json", "departments")
@@ -301,6 +318,8 @@ def _preconditions(root, store, entries):
                            f"the units record")
         match = find_match(store, entry)
         if match is None:
+            if not set(entry["scope"]["departments"]) <= {run_dept}:  # QF-43
+                out.append(f"entry {entry.get('key')} scoped to another department")
             if entry["kind"] != "note":                              # QF-34
                 twin = _title_twin(store, entry)
                 if twin is not None:
@@ -360,24 +379,88 @@ def _is_supersession(match, incoming):
     return _leaf_differs(match, incoming, TOP_SKIP)
 
 
+def _workbook_stub(store, entry):
+    """QF-20: the workbook stub standing in for this record's spreadsheet — the
+    `ext_…` entry a formula's Drive id created before the workbook joined the
+    manifest. Only the **first** real record for that id meets one; adoption
+    clears the stub, so later records for the same workbook are new entries."""
+    if entry["kind"] != "record":
+        return None
+    sid = ((entry.get("data") or {}).get("location") or {}).get("spreadsheetId")
+    if not sid:
+        return None
+    for other in store["record"]["entries"]:
+        data = other.get("data") or {}
+        if (is_open(other) and data.get("stub") and data.get("grain") == "workbook"
+                and (data.get("location") or {}).get("spreadsheetId") == sid):
+            return other
+    return None
+
+
+def _fill_stub(entry, incoming, identity):
+    """§11/QF-20: the owning run adopts a stub outright rather than disputing
+    its emptiness — `stub` cleared, `title` and `location` overwritten,
+    `source[]` kept (the ladder unions the incoming citation in afterwards).
+
+    `identity` is the workbook case: the stub also hands over its **id**, and
+    its `ext_…` key and scope are replaced by the delta's. That, with the
+    measurement keys re-derived through it, is one of QF-34's two sanctioned
+    key changes.
+    """
+    before = copy.deepcopy(entry)
+    data = entry.setdefault("data", {})
+    data.pop("stub", None)
+    if identity:
+        data.pop("grain", None)
+        entry["key"] = incoming["key"]
+        entry["scope"] = copy.deepcopy(incoming["scope"])
+    if incoming.get("title") is not None:
+        entry["title"] = incoming["title"]
+    location = (incoming.get("data") or {}).get("location")
+    if location is not None:
+        data["location"] = copy.deepcopy(location)
+    return entry != before
+
+
+def _rederive_measurements(store, record_ids):
+    """After an adoption, every measurement keyed through the old record key is
+    re-keyed through the new one (QF-20). Yields the entries that moved."""
+    for m in store["measurement"]["entries"]:
+        writes_to = (m.get("data") or {}).get("writes_to") or {}
+        if writes_to.get("ref") not in record_ids:
+            continue
+        derived = _measurement_key(store, {}, m.get("data") or {})
+        if derived and derived != m["key"]:
+            m["key"] = derived
+            yield m
+
+
 def _plan(root, store, entries):
     """Decide each entry's target id before anything is merged. `id_map` holds
     only the ids this run mints — it is what `revert` reads to know what the run
-    created; `resolution` additionally maps a temp id onto the entry it hit, so
-    the second pass can rewrite refs to it."""
+    created, so an adoption, which hands over an existing id, is not in it;
+    `resolution` additionally maps a temp id onto the entry it hit, so the
+    second pass can rewrite refs to it."""
     plans, id_map, resolution = [], {}, {}
     for entry in sorted(entries, key=lambda e: KIND_ORDER.index(e["kind"])):
         match = find_match(store, entry)
-        if match is not None and _is_supersession(match, entry):
-            action, fid = "supersede", next_fact_id(root)
-        elif match is not None:
+        if match is None:
+            match = _workbook_stub(store, entry)
+            if match is None:
+                action, fid = "create", next_fact_id(root)
+            else:
+                action, fid = "adopt", match["id"]   # the stub's id, no mint
+        elif _is_stub(match):
+            # a stub is filled outright — never disputed, never superseded
             action, fid = "merge", match["id"]
+        elif _is_supersession(match, entry):
+            action, fid = "supersede", next_fact_id(root)
         else:
-            action, fid = "create", next_fact_id(root)
+            action, fid = "merge", match["id"]
         plans.append((action, match, entry, fid))
         if entry.get("id"):
             resolution[entry["id"]] = fid
-            if action != "merge":
+            if action in ("create", "supersede"):
                 id_map[entry["id"]] = fid
     return plans, id_map, resolution
 
@@ -451,7 +534,7 @@ def _upsert(store, plans):
     """Create, merge or supersede. Returns one record per touched entry; the
     `original` payload rides along to `_finalise`, lifted out of the incoming
     entry before the ladder could install it inline (QF-31)."""
-    touched = []
+    touched, adopted = [], []
     for action, match, incoming, fid in plans:
         original = (incoming.get("data") or {}).pop("original", None)
         if action == "create":
@@ -466,14 +549,26 @@ def _upsert(store, plans):
             touched.append({"entry": match, "id": match["id"], "created": False,
                             "changed": True, "original": None})
             changed = True
-        else:
+        else:                                        # merge, or adopt a stub
             entry = match
+            filled = (_fill_stub(match, incoming, action == "adopt")
+                      if _is_stub(match) else False)
+            if action == "adopt":
+                adopted.append(match["id"])
             source = (incoming.get("source") or [{}])[0]
             changes = merge_entry(match, incoming, source)
-            changed = any(act != "noop" for _, act in changes)
+            changed = filled or any(act != "noop" for _, act in changes)
         touched.append({"entry": entry, "id": fid,
                         "created": action in ("create", "supersede"),
                         "changed": changed, "original": original})
+    if adopted:
+        # after the whole loop, so a measurement this same delta created is
+        # re-keyed too
+        known = {id(t["entry"]) for t in touched}
+        for m in _rederive_measurements(store, set(adopted)):
+            if id(m) not in known:
+                touched.append({"entry": m, "id": m["id"], "created": False,
+                                "changed": True, "original": None})
     return touched
 
 

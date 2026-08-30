@@ -36,7 +36,9 @@ def _units_delta():
                  "rows": [{"key": "g", "symbol": "g", "dimension": "mass",
                            "factor_to_base": 1, "unit_title": "گرم"},
                           {"key": "kg", "symbol": "kg", "dimension": "mass",
-                           "factor_to_base": 1000, "unit_title": "کیلوگرم"}]}}]}
+                           "factor_to_base": 1000, "unit_title": "کیلوگرم"},
+                          {"key": "pcs", "symbol": "pcs", "dimension": "count",
+                           "factor_to_base": 1, "unit_title": "عدد"}]}}]}
 
 def _const_delta(value=5, key="tol", dept="cooking"):
     return {"schema_version": 1, "entries": [{
@@ -358,3 +360,133 @@ def test_updated_at_moves_only_when_the_run_changes_the_entry(tmp_path):
     entry = load_store(root)["rule"]["entries"][0]
     assert entry["updated_at"] != frozen
     assert entry["status"] == "disputed"
+
+
+# --- QF-43 scope creation, QF-20 stubs, QF-15 duplicate natural key -------- #
+
+def test_creating_for_another_department_is_refused_but_adding_to_it_is_not(tmp_path):
+    root = _root(tmp_path); _seed_units(root)
+    before = {p.name: p.read_bytes() for p in (root / "facts").glob("*.json")}
+    try:                                        # a cooking run, an accounting fact
+        apply(root, _write(root, "dx.json", _const_delta(dept="management")),
+              _run_dir(root, "9"))
+        assert False, "expected SystemExit"
+    except SystemExit as e:
+        assert e.code == 2
+    assert {p.name: p.read_bytes() for p in (root / "facts").glob("*.json")} == before
+    mrun = root / "runs" / "facts" / "management" / "1"      # its own run may
+    mrun.mkdir(parents=True)
+    apply(root, _write(root, "dm.json", _const_delta(dept="management")), mrun)
+    apply(root, _write(root, "d2.json", _const_delta(4, dept="management")),
+          _run_dir(root, "3"))                  # and cooking may contradict it
+    entry = [e for e in load_store(root)["rule"]["entries"] if e["key"] == "tol"][0]
+    assert entry["status"] == "disputed"
+    assert len([a for a in entry["accounts"] if a["status"] == "open"]) == 2
+
+
+def _record_stub_delta(stub=True):
+    data = {"medium": "sheet", "role": "log",
+            "location": {"spreadsheetId": "S", "sheetId": 3, "sheet": "روزانه",
+                         "hidden": False}}
+    if stub:
+        data["stub"] = True
+    else:
+        data["location"]["sheetId"] = 4          # the positional hint drifted
+        data["fields"] = [{"key": "end_stock", "title": "مانده", "type": "number",
+                           "unit": "g"}]
+    return {"schema_version": 1, "entries": [
+        {"id": "T-1", "kind": "record", "key": "s__ruzane",
+         "title": "برگه" if stub else "گزارش روزانه", "statement": "s",
+         "scope": {"departments": ["cooking"], "branches": []},
+         "source": [{"type": "sheet", "ref": "attachments/sheets/S/S.xlsx"}],
+         "retired": False, "data": data}]}
+
+
+def test_record_stub_is_created_once_and_filled_once_with_no_key_change(tmp_path):
+    root = _root(tmp_path); _seed_units(root)
+    created = apply(root, _write(root, "d1.json", _record_stub_delta()),
+                    _run_dir(root, "1"))
+    fid = created["id_map"]["T-1"]
+    filled = apply(root, _write(root, "d2.json", _record_stub_delta(stub=False)),
+                   _run_dir(root, "2"))
+    assert filled["id_map"] == {} and filled["updated"] == [fid]   # no second entry
+    records = [e for e in load_store(root)["record"]["entries"] if e["id"] == fid]
+    assert len(records) == 1
+    rec = records[0]
+    assert rec["key"] == "s__ruzane"                     # QF-34: no key change
+    assert "stub" not in rec["data"]
+    assert rec["title"] == "گزارش روزانه"                 # overwritten outright
+    assert rec["data"]["location"]["sheetId"] == 4        # and so is location
+    assert rec["data"]["fields"][0]["key"] == "end_stock"
+    assert rec.get("accounts", []) == []                 # the empty stub disputed nothing
+    assert rec["status"] == "confirmed"
+
+
+def _workbook_stub_seed():
+    src = {"type": "script", "ref": "attachments/sheets/G/G.gs", "function": "pull"}
+    return {"schema_version": 1, "entries": [
+        {"id": "T-1", "kind": "item", "key": "ing_7", "title": "روغن",
+         "statement": "s", "scope": {"departments": [], "branches": []},
+         "source": [dict(src)], "retired": False,
+         "data": {"category": "ingredient", "unit": "g"}},
+        {"id": "T-2", "kind": "record", "key": "ext_9f1c2d3e4a5b",
+         "title": "کتاب ناشناخته", "statement": "s",
+         "scope": {"departments": ["cooking"], "branches": []},
+         "source": [dict(src)], "retired": False,
+         "data": {"stub": True, "grain": "workbook", "medium": "sheet",
+                  "role": "log", "location": {"spreadsheetId": "W"}}},
+        {"id": "T-3", "kind": "measurement", "key": "advisory", "title": "ثبت روغن",
+         "statement": "s", "scope": {"departments": ["cooking"], "branches": []},
+         "source": [dict(src)], "retired": False,
+         "data": {"of": {"ref": "T-1"}, "quantity": "mass", "unit": "g",
+                  "writes_to": {"ref": "T-2", "field": "masraf"}}}]}
+
+
+def _real_record_delta():
+    return {"schema_version": 1, "entries": [
+        {"id": "T-1", "kind": "record", "key": "w__ruzane", "title": "روزانه انبار",
+         "statement": "s", "scope": {"departments": ["cooking"], "branches": []},
+         "source": [{"type": "sheet", "ref": "attachments/sheets/W/W.xlsx"}],
+         "retired": False,
+         "data": {"medium": "sheet", "role": "log",
+                  "location": {"spreadsheetId": "W", "sheetId": 1,
+                               "sheet": "روزانه", "hidden": False},
+                  "fields": [{"key": "masraf", "title": "مصرف", "type": "number",
+                              "unit": "g"}]}}]}
+
+
+def test_workbook_stub_is_adopted_and_measurement_keys_are_rederived(tmp_path):
+    root = _root(tmp_path); _seed_units(root)
+    seed = apply(root, _write(root, "d1.json", _workbook_stub_seed()),
+                 _run_dir(root, "1"))
+    stub_id, measurement_id = seed["id_map"]["T-2"], seed["id_map"]["T-3"]
+    store = load_store(root)
+    assert store["measurement"]["entries"][0]["key"] == \
+        "ing_7__ext_9f1c2d3e4a5b__masraf"
+    report = apply(root, _write(root, "d2.json", _real_record_delta()),
+                   _run_dir(root, "2"))
+    assert report["id_map"] == {}                        # the stub's id is reused
+    assert set(report["updated"]) == {stub_id, measurement_id}
+    store = load_store(root)
+    records = [e for e in store["record"]["entries"] if e["id"] == stub_id]
+    assert len(records) == 1 and len(store["record"]["entries"]) == 2   # units + it
+    rec = records[0]
+    assert rec["key"] == "w__ruzane"                     # QF-34's other key change
+    assert "stub" not in rec["data"] and "grain" not in rec["data"]
+    assert rec["data"]["fields"][0]["key"] == "masraf"
+    assert store["measurement"]["entries"][0]["key"] == "ing_7__w__ruzane__masraf"
+
+
+def test_duplicate_natural_key_in_one_delta_is_refused(tmp_path):
+    root = _root(tmp_path); _seed_units(root)
+    d = _const_delta()
+    twin = copy.deepcopy(d["entries"][0])
+    twin["id"], twin["title"] = "T-2", "تلورانس دیگر"     # same kind, key and scope
+    d["entries"].append(twin)
+    before = {p.name: p.read_bytes() for p in (root / "facts").glob("*.json")}
+    try:
+        apply(root, _write(root, "dx.json", d), _run_dir(root, "9"))
+        assert False, "expected SystemExit"
+    except SystemExit as e:
+        assert e.code == 2
+    assert {p.name: p.read_bytes() for p in (root / "facts").glob("*.json")} == before
