@@ -2,6 +2,7 @@ from facts_helpers import _root, _seed_units, _const_delta, _write, _run_dir
 from merge_facts import load_store
 from merge_facts.apply import apply
 from merge_facts.revert import revert
+from merge_facts.verbs import retire
 import pytest
 
 # Scoped to the five store files (KIND_FILES) rather than every "*.json" in
@@ -97,3 +98,38 @@ def test_revert_refuses_workbook_stub_adoption(tmp_path, capsys):
     after = {p.name: p.read_bytes() for p in (root / "facts").glob("*.json")
              if not p.name.startswith(".")}
     assert before == after
+
+# --- Task 7 review, C1: `_snapshot` must be once-per-run-dir — two writing- ---
+# --- verb calls sharing one run_dir (`_append_delta`'s growing-list design) ---
+# --- must not let the second call's snapshot clobber the first's ---
+
+def test_revert_restores_both_entries_when_two_verb_calls_share_one_run_dir(tmp_path):
+    root = _root(tmp_path); _seed_units(root)
+    apply(root, _write(root, "d1.json", _const_delta(5, key="a")), _run_dir(root, "1"))
+    apply(root, _write(root, "d2.json", _const_delta(5, key="b")), _run_dir(root, "2"))
+    store = load_store(root)
+    a = [x for x in store["rule"]["entries"] if x["key"] == "a"][0]
+    b = [x for x in store["rule"]["entries"] if x["key"] == "b"][0]
+    run3 = _run_dir(root, "3")
+    retire(root, a["id"], None, run3)
+    retire(root, b["id"], None, run3)            # SAME run_dir, second call
+    revert(root, run3)
+    store = load_store(root)
+    a2 = [x for x in store["rule"]["entries"] if x["id"] == a["id"]][0]
+    b2 = [x for x in store["rule"]["entries"] if x["id"] == b["id"]][0]
+    assert a2["retired"] is False and a2["valid_to"] is None
+    assert b2["retired"] is False and b2["valid_to"] is None
+
+# --- Task 7 review, I2: adoption is recorded at write time, on the run ---
+# --- that adopted — not inferred at revert time by comparing a run's own ---
+# --- snapshot against whatever the CURRENT store happens to look like ---
+
+def test_revert_unrelated_run_not_blocked_by_later_adoption(tmp_path):
+    root = _root(tmp_path); _seed_units(root)
+    apply(root, _write(root, "d1.json", _workbook_stub_seed()), _run_dir(root, "1"))
+    run2 = _run_dir(root, "2")
+    apply(root, _write(root, "d2.json", _const_delta(5, key="unrelated")), run2)
+    apply(root, _write(root, "d3.json", _real_record_delta()), _run_dir(root, "3"))
+    revert(root, run2)               # run2 never touched the stub — must succeed
+    store = load_store(root)
+    assert [x for x in store["rule"]["entries"] if x["key"] == "unrelated"] == []

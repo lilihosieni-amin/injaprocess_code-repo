@@ -33,18 +33,24 @@ identity (a full spreadsheetId+sheet pair) back to the stub's id — the
 stub's `location` never carried a `sheet` — so the stub would never land in
 `matched`, and an entry-level restore has no way to undo the adoption (the
 stub's key/scope were overwritten in place, and any measurement re-keyed
-through it now points at the adopted record). Controller ruling (coordinator
-review after Task 7's first pass): detect it instead — the run's own
-`facts-before/` snapshot names an entry as `stub`/`grain: "workbook"` whose
-id is, in the CURRENT store, an open record without those markers — and
-refuse (see `_adopted_stub_ids`).
+through it now points at the adopted record).
+
+Detection reads `{run_dir}/adopted.json` (`apply`'s own artifact, written by
+`_finalise` — Task 7 review, I2), never the store: an EARLIER attempt
+compared the run's `facts-before/` snapshot against the CURRENT store, which
+is wrong — a run whose snapshot merely happened to contain a stub that some
+LATER, unrelated run went on to adopt would look, at revert time, exactly
+like the run that did the adopting. Recording the adopted ids at write time,
+on the run that actually performed the adoption, has no such blind spot.
+
+ponytail: adoption revert is deliberately unsupported — `revert` refuses
+rather than guessing at an undo (see `_adopted_ids` and its use in `revert`).
 """
 import pathlib
 import sys
 
 from engine_common import read_json
-from merge_facts import (KIND_FILES, KIND_ORDER, find_match, is_open,
-                         load_store, save_store)
+from merge_facts import KIND_FILES, KIND_ORDER, find_match, load_store, save_store
 
 
 def _load_snapshot_store(run_dir):
@@ -102,32 +108,16 @@ def _touched(run_dir):
     return created, matched
 
 
-def _is_workbook_stub(entry):
-    data = entry.get("data") or {}
-    return bool(data.get("stub")) and data.get("grain") == "workbook"
-
-
-def _adopted_stub_ids(root, run_dir):
-    """Ids this run adopted (QF-20): a record that was a `stub`/
-    `grain: "workbook"` right before this run wrote (per its OWN
-    `facts-before/` snapshot) and is now, in the current store, an open
-    record with neither marker. Only `_fill_stub`'s adoption clears both at
-    once, and the snapshot is taken right before THIS run's own write, so no
-    other run could be the one that cleared them.
-
-    ponytail: adoption revert is deliberately unsupported — see the module
-    docstring. `revert` refuses instead of guessing at an undo.
-    """
-    before_store = _load_snapshot_store(run_dir)
-    store = load_store(root)
-    out = set()
-    for e in before_store["record"]["entries"]:
-        if not _is_workbook_stub(e):
-            continue
-        kind, current = _find_by_id(store, e["id"])
-        if kind == "record" and is_open(current) and not _is_workbook_stub(current):
-            out.add(e["id"])
-    return out
+def _adopted_ids(run_dir):
+    """The ids this run adopted (QF-20), exactly as `apply`'s `_finalise`
+    recorded them at write time — `{run_dir}/adopted.json`. A verbs run
+    never writes this file (a `resolve`/`retire`/`promote` call can never
+    perform an adoption — that's `_plan`'s own machinery, `apply`-only), and
+    an `apply` run from before this artifact existed won't have it either;
+    both cases mean "nothing to refuse over", so a missing file reads the
+    same as an empty list."""
+    path = pathlib.Path(run_dir) / "adopted.json"
+    return set(read_json(path)) if path.is_file() else set()
 
 
 def revert(root, run_dir):
@@ -140,7 +130,7 @@ def revert(root, run_dir):
     touched = created | matched
     stamp = run_dir.name
     problems = []
-    for fid in sorted(_adopted_stub_ids(root, run_dir)):
+    for fid in sorted(_adopted_ids(run_dir)):
         problems.append(f"run adopted workbook stub {fid}; revert cannot "
                         f"restore an adoption — revert the data-repo commit instead")
     for delta_path in sorted((root / "runs" / "facts").rglob("facts-delta.json")):

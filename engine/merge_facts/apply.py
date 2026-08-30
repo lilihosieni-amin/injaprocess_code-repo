@@ -11,8 +11,13 @@ Re-reading the same material yields nothing but `noop` actions, so applying one
 delta twice leaves the five files byte-identical.
 
 `revert` (§12) restores from `{run_dir}/facts-before/`, the snapshot of the five
-files this verb takes before it writes; the run directory is the provenance
-(QF-7) and also keeps `facts-delta.json` and `id-map.json`.
+files this verb takes before it writes (once per run directory — see
+`_snapshot`'s own docstring); the run directory is the provenance (QF-7) and
+also keeps `facts-delta.json`, `id-map.json`, and `adopted.json` — the ids of
+every workbook stub (QF-20) this run adopted, always written (`[]` when none),
+so `revert` can refuse an adoption without re-deriving it from the store
+later, after other runs may have changed what the adopted record looks like
+(Task 7 review, I2).
 
 ponytail: five shared files, one writer, no lock. If concurrency ever becomes
 real, shard by a hash of the key (`facts/{kind}/{NN}.json`) so one key always
@@ -71,9 +76,10 @@ def apply(root, delta_path, run_dir):
         raise SystemExit(2)
     plans, id_map, resolution = _plan(root, store, entries)          # 3
     _rewrite_refs(entries, resolution)                               # 4
-    touched = _upsert(store, plans)                                  # 6
+    touched, adopted = _upsert(store, plans)                         # 6
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    report = _finalise(root, store, run_dir, delta_path, id_map, touched, now)
+    report = _finalise(root, store, run_dir, delta_path, id_map, touched, now,
+                       adopted)
     report["id_map"] = id_map
     return report
 
@@ -553,9 +559,12 @@ def _successor(match, incoming, fid):
 
 
 def _upsert(store, plans):
-    """Create, merge or supersede. Returns one record per touched entry; the
-    `original` payload rides along to `_finalise`, lifted out of the incoming
-    entry before the ladder could install it inline (QF-31)."""
+    """Create, merge or supersede. Returns `(touched, adopted)`: one record
+    per touched entry — the `original` payload rides along to `_finalise`,
+    lifted out of the incoming entry before the ladder could install it
+    inline (QF-31) — and `adopted`, the ids of every workbook stub (QF-20)
+    this run adopted, which `_finalise` writes to `{run_dir}/adopted.json`
+    so `revert` can refuse an adoption without ever re-deriving it."""
     touched, adopted = [], []
     for action, match, incoming, fid in plans:
         original = (incoming.get("data") or {}).pop("original", None)
@@ -600,7 +609,7 @@ def _upsert(store, plans):
             if id(m) not in known:
                 touched.append({"entry": m, "id": m["id"], "created": False,
                                 "changed": True, "original": None})
-    return touched
+    return touched, adopted
 
 
 # --------------------------------------------------------------------------- #
@@ -643,9 +652,21 @@ def _stamp_sources(root, entry, run_ref):
 
 def _snapshot(root, run_dir):
     """The five files as they stand before this run writes — `revert` reads
-    them back (§12). The directory is made even when the store is empty."""
+    them back (§12). The directory is made even when the store is empty.
+
+    Once per run directory (Task 7 review, C1): `verbs.py`'s writing verbs
+    can share one run dir across several calls (`_append_delta` grows one
+    list there), and each call runs `apply`'s own `_snapshot`. A second call
+    must NOT re-copy — the store has already been mutated by the first call
+    by the time the second one runs, so re-snapshotting would silently
+    overwrite the true "before this run" state with an already-mutated one.
+    A `facts-before/` dir that already EXISTS is that guard, tested on
+    existence alone (never on its contents) — an existing-but-empty dir is
+    itself a valid snapshot, of a store that had no files yet."""
     before = run_dir / "facts-before"
-    before.mkdir(parents=True, exist_ok=True)
+    if before.exists():
+        return
+    before.mkdir(parents=True)
     for name in KIND_FILES.values():
         path = facts_dir(root) / name
         if path.is_file():
@@ -659,7 +680,7 @@ def _run_ref(root, run_dir):
         return str(run_dir)
 
 
-def _finalise(root, store, run_dir, delta_path, id_map, touched, now):
+def _finalise(root, store, run_dir, delta_path, id_map, touched, now, adopted):
     run_ref = _run_ref(root, run_dir)
     created, updated = [], []
     for record in touched:
@@ -682,4 +703,11 @@ def _finalise(root, store, run_dir, delta_path, id_map, touched, now):
     if not (kept.exists() and kept.samefile(delta_path)):
         shutil.copy2(delta_path, kept)
     write_json_atomic(run_dir / "id-map.json", id_map)
+    # QF-20, Task 7 review (I2): the ids this run adopted, recorded HERE, at
+    # write time, rather than left for `revert` to infer later from store
+    # comparison — a later run's own changes to an adopted record would have
+    # made that inference wrong. Always written, `[]` when nothing was
+    # adopted, so a MISSING file unambiguously means "a run that predates
+    # this artifact" rather than "nothing adopted".
+    write_json_atomic(run_dir / "adopted.json", sorted(adopted))
     return {"created": created, "updated": updated}
