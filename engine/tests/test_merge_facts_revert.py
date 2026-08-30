@@ -47,3 +47,53 @@ def test_ids_never_reused_after_revert(tmp_path):
     revert(root, run)
     r2 = apply(root, _write(root, "d2.json", _const_delta(key="b")), _run_dir(root, "2"))
     assert r2["id_map"]["T-1"] != r1["id_map"]["T-1"]
+
+# --- coordinator ruling after Task 7's first pass: revert must REFUSE a ---
+# --- workbook-stub-adoption run rather than half-restore it (QF-20) ---
+
+def _workbook_stub_seed():
+    src = {"type": "script", "ref": "attachments/sheets/G/G.gs", "function": "pull"}
+    return {"schema_version": 1, "entries": [
+        {"id": "T-1", "kind": "item", "key": "ing_7", "title": "روغن",
+         "statement": "s", "scope": {"departments": [], "branches": []},
+         "source": [dict(src)], "retired": False,
+         "data": {"category": "ingredient", "unit": "g"}},
+        {"id": "T-2", "kind": "record", "key": "ext_9f1c2d3e4a5b",
+         "title": "کتاب ناشناخته", "statement": "s",
+         "scope": {"departments": ["cooking"], "branches": []},
+         "source": [dict(src)], "retired": False,
+         "data": {"stub": True, "grain": "workbook", "medium": "sheet",
+                  "role": "log", "location": {"spreadsheetId": "W"}}},
+        {"id": "T-3", "kind": "measurement", "key": "advisory", "title": "ثبت روغن",
+         "statement": "s", "scope": {"departments": ["cooking"], "branches": []},
+         "source": [dict(src)], "retired": False,
+         "data": {"of": {"ref": "T-1"}, "quantity": "mass", "unit": "g",
+                  "writes_to": {"ref": "T-2", "field": "masraf"}}}]}
+
+def _real_record_delta():
+    return {"schema_version": 1, "entries": [
+        {"id": "T-1", "kind": "record", "key": "w__ruzane", "title": "روزانه انبار",
+         "statement": "s", "scope": {"departments": ["cooking"], "branches": []},
+         "source": [{"type": "sheet", "ref": "attachments/sheets/W/W.xlsx"}],
+         "retired": False,
+         "data": {"medium": "sheet", "role": "log",
+                  "location": {"spreadsheetId": "W", "sheetId": 1,
+                               "sheet": "روزانه", "hidden": False},
+                  "fields": [{"key": "masraf", "title": "مصرف", "type": "number",
+                              "unit": "g"}]}}]}
+
+def test_revert_refuses_workbook_stub_adoption(tmp_path, capsys):
+    root = _root(tmp_path); _seed_units(root)
+    apply(root, _write(root, "d1.json", _workbook_stub_seed()), _run_dir(root, "1"))
+    run2 = _run_dir(root, "2")
+    apply(root, _write(root, "d2.json", _real_record_delta()), run2)
+    before = {p.name: p.read_bytes() for p in (root / "facts").glob("*.json")
+             if not p.name.startswith(".")}
+    with pytest.raises(SystemExit) as e:
+        revert(root, run2)
+    assert e.value.code == 2
+    err = capsys.readouterr().err
+    assert "adopted workbook stub" in err
+    after = {p.name: p.read_bytes() for p in (root / "facts").glob("*.json")
+             if not p.name.startswith(".")}
+    assert before == after
