@@ -42,7 +42,9 @@ Decisions taken since, all folded in below:
   viewed by the agent itself; `extract-attachment` becomes a dispatcher that
   reports what it cannot read (QF-30).
 - The store has a lifecycle: `valid_from`/`valid_to`, `supersedes`, retire,
-  revert (QF-35). `status` and `accounts[]` are per field (QF-6). One reference
+  revert (QF-35). Epistemic status is per field but mostly derived — a `null`
+  leaf is unknown, an open account is disputed, and only inferred/informal
+  values are written down, in a sparse map (QF-6). One reference
   notation, `{ref, field?, row?}` (QF-37). Exactly one writer, `merge` (QF-2).
 - **Five kinds, not six.** A parameter is a rule with no inputs; the
   `parameter` kind is merged into `rule` (§7). A table of definitions is a
@@ -144,8 +146,8 @@ The only monetary figures are per-incident waste values in the two cashier
 logs (`Sandogh - Chalebagh!ضایعات!C`, `Sandogh - NaharKhoran!ضایعات!C`, «جمع
 ریالی ضایعات»), which are observations, not definitions. A missing dimension
 the ERP needs is recorded as seeded constant rules whose output `value` is
-`null` with `field_status` `unknown` (§7) so the readiness screen shows it,
-rather than reading green over it.
+`null` — which is what `unknown` looks like on disk (§7) — so the readiness
+screen shows it, rather than reading green over it.
 
 ---
 
@@ -335,9 +337,9 @@ across 12 tabs — add roughly 100 KB to `records.json`. `original` (§7,
 `data.original_ref` in the entry, so the payload files stay small, and
 `facts/.index.json` — `{id, kind, key, title, aliases, scope, status,
 field_status_counts, processes, retired, valid_to, updated_at}` per entry, where
-`field_status_counts` is `{disputed, unknown, informal, inferred, confirmed}`
-as counts (the full path map stays on the entry, because one reference record
-carries a path per cell) — lets the audit, the agent, `edit-fact` and the UI
+`field_status_counts` is `{disputed, unknown, informal, inferred}` as counts,
+derived from open accounts, `null` leaves and the sparse `field_status` map
+(QF-6) — lets the audit, the agent, `edit-fact` and the UI
 list without loading payloads; a consumer needing the paths loads the entry.
 A size ceiling of
 2 MB per file is marked with a `ponytail:` comment in `merge`, naming the
@@ -486,10 +488,7 @@ Every entry in every fact file has the same envelope. The envelope is
       "hash": "sha256:…", "run": "runs/facts/cooking/20260902-153000" }
   ],
   "status": "disputed",
-  "field_status": { "title": "confirmed", "statement": "confirmed", "data/expr": "disputed",
-                    "data/inputs/start/unit": "confirmed", "data/inputs/received/unit": "confirmed",
-                    "data/inputs/end/unit": "confirmed", "data/outputs/declared_use/unit": "confirmed",
-                    "data/outputs/declared_use/nature": "confirmed", "data/lang": "confirmed" },
+  "field_status": {},
   "accounts": [
     { "id": "a1f0c3d9", "field": "data/expr", "statement": "=MINUS(SUM(F6,E6),G6)",
       "value": "declared_use = start + received - end",
@@ -530,9 +529,11 @@ transcript labels the speaker only «گوینده مرد ۲»; roles come from t
 participant list, never from transcript labels.
 
 **Required envelope fields:** `id, kind, key, title, scope, source, status,
-field_status, retired, updated_at, data`. Everything else may be absent;
-absent `valid_from`/`valid_to`/`supersedes`/`superseded_by` is `null`, absent
-`aliases`/`accounts`/`issues`/`processes` is `[]`.
+retired, updated_at, data`. Everything else may be absent; absent
+`valid_from`/`valid_to`/`supersedes`/`superseded_by` is `null`, absent
+`aliases`/`accounts`/`issues`/`processes` is `[]`, absent `field_status` is
+`{}`. The example's `status` is `disputed` because `data/expr` has open
+accounts — nothing else marks it.
 
 **QF-5. `source` is a list, with a hash.** A well-sourced fact cites several
 places — the sheet formula *and* the meeting where it was explained. `type` is
@@ -561,22 +562,31 @@ git); any other unresolvable path fails `apply`. `.structure.md` and
 | `disputed` | accounts conflict | the declared-use formula in the sheet vs the meeting |
 | `unknown` | applies, is needed, has no answer | the deviation tolerance («۴، ۷ شاید جزو تلورانسمون باشه… منفی ۱۱۰ دیگه نمی‌شه مجاز», cooking-1405-06-01:11) |
 
-An `unknown` leaf is written explicitly: the key is present with the JSON
-value `null` and `field_status[path]` is `unknown`; a key absent from `data`
-altogether means the leaf does not apply. That is the whole of the
-present-but-unknown / absent distinction on disk, and `validate` rejects a
-`null` leaf whose path carries any other status.
+Three of the five values are read off the entry itself, and only two are
+written down — the ones nothing else in the entry can carry:
 
-`field_status` maps a field path (QF-7's grammar) to a value. `merge` writes
-a `field_status` for every path a delta carried; a path absent from it has
-never been written. A path the delta does not classify defaults
-to `confirmed` when the write cites a source and `inferred` when it does not.
-The entry-level `status` is **derived** by `merge` as the worst of them
-(`disputed` > `unknown` > `informal` > `inferred` > `confirmed`; `confirmed`
-for an empty map), stored only so the index and the UI can filter without
-loading payloads; a `status` present in a delta is a precondition failure. A
-record with nineteen sourced columns and one invented unit is then a confirmed
-record with one unknown column, not a blocker and not a lie.
+- **`unknown` is a `null` leaf.** The key is present with the JSON value
+  `null`; a key absent from `data` altogether means the leaf does not apply.
+  That is the whole of the present-but-unknown / absent distinction on disk.
+- **`disputed` is an open account.** Every account carries its `field`, so
+  "which field is disputed" is `accounts[]` with `status: open`.
+- **`confirmed` is the default** for a stated, cited value and is never
+  written.
+- **`inferred` and `informal` are written**, in `field_status` — a sparse
+  map from a field path (QF-7's grammar) to one of those two values, listing
+  only the paths whose value nobody stated: the 10-per-portion factor derived
+  from «۳۱۳ تا می‌شه ۳۱ پرس», the ~300 recheck threshold that is a habit. A
+  typical entry has an empty map; a record with nineteen sourced columns and
+  one inferred unit has one line, and the reviewer sees which.
+
+The entry-level `status` is **derived** by `merge`, in this order:
+`disputed` if any account is open; else `unknown` if any leaf is `null`;
+else `informal`, then `inferred`, if the map says so; else `confirmed`. It is
+stored only so the index and the UI can filter without loading payloads; a
+`status` present in a delta is a precondition failure, and so is a
+`field_status` value other than `inferred`/`informal` or a path that does
+not exist. A record with nineteen sourced columns and one invented unit is
+then a confirmed record with one unknown column, not a blocker and not a lie.
 
 `accounts[]` holds competing statements — `{id, field, statement, value?,
 unit?, source, speaker_role?, status: open | chosen | rejected}` — so a human
@@ -781,9 +791,9 @@ The blank form «مانده شب فرنگی و برگر» (photo 1), which print
 }
 ```
 
-with `field_status` carrying `data/fields/start_stock/unit: unknown` (and the
-same for the other three): the form prints no unit, an inferred gram would be
-fabrication, so the unit is written `null`, classified `unknown`, and appears
+— the four `"unit": null` are the point: the form prints no unit, an
+inferred gram would be fabrication, so the unit is written `null`, which *is*
+`unknown` (QF-6), and appears
 on the worklist (QF-6).
 
 The requisition form «درخواست کالا بخش کانتر آشپزخانه» (photo 2) adds what a
@@ -850,7 +860,8 @@ record every declared field that is not `derived` is present on every open
 row — `null` where the source cell is empty. `rows[]` is one field for two
 uses: a log's fixed rows carry a key, a title and whatever the form prints
 per row; a reference table's rows carry a value for each declared column, and
-each cell is a leaf with its own `field_status`
+each cell is a leaf with its own state — `null` when unknown, an open
+account when disputed, a `field_status` line when inferred
 (`data/rows/prod_61__ing_1/grams`). A row has a lifecycle of its own (§9):
 `retired`, `valid_to` and `supersedes` on the row object. A two-row banded
 header is carried on `fields[].group` (`{key, title}`); where the band is a
@@ -946,9 +957,9 @@ output. `per` is a minted key naming the basis (`pizza`, `portion`,
 keeps a prescribed dough weight and an observed conversion beside each other,
 and they must not collide. A constant stated as a habit carries
 `field_status.data/outputs/<key>/value: informal`; the threshold nobody
-stated is a constant whose output `value` is `null` with `field_status`
-`unknown` (QF-6). A constant read from a formula literal is its own rule, one
-per formula group, keyed by QF-32.
+stated is a constant whose output `value` is `null` (QF-6). A constant read
+from a formula literal is its own rule, one per formula group, keyed by
+QF-32.
 
 A computed rule with several outputs — the butchery yield stated in a
 warehouse cell comment («29.200Kg راسته گوساله بوده که تبدیل به: … 10.400Kg
@@ -1079,9 +1090,8 @@ as a constant; the butchery yield → 1; the 84-entry code→category dictionary
 → 6; the quality scale `خوب/متوسط/بد` → 4; «۲۵۰ گرم پنیر» said in a meeting
 about a product that has a BOM row → not a new constant but a second source
 (or account) on that **cell** — `data/rows/prod_61__ing_1/grams` — by QF-34;
-par levels → 8 (`nature: target`, `value: null` with `field_status`
-`unknown` — the «حداقل (۳ روز)»/«سطح هدف (۵ روز)» columns of `مواد عادی` are
-headers with no formula and no data).
+par levels → 8 (`nature: target`, `value: null` — the «حداقل (۳ روز)»/«سطح
+هدف (۵ روز)» columns of `مواد عادی` are headers with no formula and no data).
 
 ---
 
@@ -1098,7 +1108,7 @@ workbooks are mirrors and carry none — and a value said in a meeting that
 belongs to a table cell is attached to that cell as a source or an account,
 not minted beside it. Rows of a reference table are keyed by the `__`-join of
 the `primaryKey` values (QF-32; a log's fixed rows are minted), so each cell
-is a leaf: `field_status` and the write ladder (§11) both reach
+is a leaf the write ladder (§11) reaches at
 `data/rows/prod_61__ing_1/grams`, and a meeting that says 250 g
 where the BOM says 280 g is a dispute on that cell. The tabs whose cells are
 dumped for this are the ones a manifest row names in `reference_tabs[]`
@@ -1113,8 +1123,8 @@ changes (a corrected `primaryKey` cell) is the old key retired and the new
 appended, linked by `supersedes` on the row. `merge facts audit` reports store
 rows absent from the latest dump and retired rows with live `{ref, field,
 row}` edges into them. Retired rows are omitted by `export`, excluded from the
-rollup, the worklist and QF-44's readiness test, and their `field_status`
-paths leave the red set.
+rollup, the worklist and QF-44's readiness test, and their `null` cells and
+open accounts leave the red set.
 
 What the describing record adds that a bare table cannot carry: `mirror_of` on
 every cached copy — the BOM exists once in `Mavade Avalie` and three more
@@ -1191,8 +1201,9 @@ per **leaf field**, by field class:
   the successor with `supersedes`, link back;
 - present, filled, different, no later `valid_from` → on the first dispute for
   this path, materialise the incumbent as an account (its value and the
-  `source[]` entry that carried it), then append the challenger, set
-  `field_status[path]: disputed`. **Never overwrite.**
+  `source[]` entry that carried it), then append the challenger — the field
+  is disputed by virtue of its open accounts, nothing else is written.
+  **Never overwrite.**
 
 *Pure union fields* (`source[]`, `aliases[]`, `processes[]`): set-union on a
 dedup key — `source`: `(type, ref, locator)`; `processes`: the ref.
@@ -1218,8 +1229,8 @@ re-disputes a resolved field.
 leaf.
 
 *Stubs* (QF-20): the owning run **adopts** a stub outright — clears `stub`,
-overwrites `title`, `field_status` and `location`, keeps `source[]`; `status`
-is re-derived as always.
+overwrites `title` and `location`, keeps `source[]`; `status` is re-derived
+as always.
 
 This is the process side's fill-empty discipline carried on the entry instead
 of in a separate queue, and it satisfies INV-4 and INV-5 by construction:
@@ -1240,7 +1251,7 @@ they did into it; the reporting verbs (`audit`, `check`, `export`) take no
 | verb | does |
 |---|---|
 | `apply --delta <path>` | precondition pass over the whole delta: schema; keys (pattern, immutability, title guard); every `{ref}` resolvable and every `field`/`row` declared or deferred (QF-37); branches registered in the manifest and departments in `departments/registry.json`; unit symbols declared by the `units` record; no `status`, `hash` or `original_ref` present; no unknown kind; scope creation rule (QF-43). Then upsert: allocate `F-` ids only on a key miss, in the order `item → record → measurement → rule → note` so a hit is found before a miss mints; publish one delta-wide temp→real map to `{run_dir}/id-map.json`; rewrite every `{ref}` and every `refItems` cell in a second pass; derive measurement keys, and row keys wherever QF-32's condition holds (a minted row key is kept as written); apply §11; move `original` to `originals/`; compute source hashes; derive `status`; write the five files and `.index.json`; run `validate facts` |
-| `resolve --id F-… --field <path> --account <id>` | mark that account `chosen`, the rest for that field `rejected`, set `field_status[path]: confirmed` |
+| `resolve --id F-… --field <path> --account <id>` | mark that account `chosen`, the rest for that field `rejected`; with no open account left the field is no longer disputed and `status` is re-derived |
 | `retire --id F-… [--heir F-…]` | `retired: true`, `valid_to` today, `superseded_by` the heir; refuses if the heir is retired |
 | `revert` | read the run's `facts-delta.json` and `id-map.json`; remove every entry the run created and restore every path it wrote from the commit before the run's; a successor the run created is removed and its predecessor's `valid_to` reopened; refuses (exit 2) if any later run's delta touched one of the same paths |
 | `promote --id F-… --kind <kind> [--key <key>]` | keep the id, change `kind`, set the key — recomputed by QF-32 where that table derives one, otherwise taken from `--key`, which is then required — re-derive `status`; a missing `--key` where the table mints, a key failing the pattern, a key collision, or a non-`note` source is a precondition failure |
@@ -1262,12 +1273,12 @@ content pass after the schema: `expr` tokens (§7), unit edges and symbols
 `primaryKey`/`foreignKeys`/`section`/`row` membership and the reserved row
 member names (§7), every declared column present on every open row of a
 reference record, share sums, constant-rule shape (no inputs ⇒ no `expr` and
-no `lang`, every output carries `value` — `null` allowed only with
-`field_status` `unknown` on that path — or `range`; inputs ⇒ `lang` with
-`expr` or `original`, and no `value` or `range` on any output), a `null` leaf
-anywhere paired with any status but `unknown`, `reconciled_against` pairs
-(cell declared here, `against` resolving to a rule with no inputs), date
-patterns, and the `source[]` type exclusions. The schema runner already
+no `lang`, every output carries `value` — `null` meaning unknown — or
+`range`; inputs ⇒ `lang` with `expr` or `original`, and no `value` or `range`
+on any output), `field_status` naming only existing paths and only
+`inferred`/`informal`, `reconciled_against` pairs (cell declared here,
+`against` resolving to a rule with no inputs), date patterns, and the
+`source[]` type exclusions. The schema runner already
 resolves any schema name from `SCHEMA_DIR`.
 
 **Guard.** `data-repo/.claude/hooks/guard.py` gains `FACTS_REL_RE =
@@ -1397,8 +1408,9 @@ every source, IDs only from `allocate-id`. Its obligations in full mode:
    a new constant; a stated change is a successor with `supersedes`;
    competing statements are `accounts[]`; a habit is `informal`; a hedged
    value is `unknown` with the candidates as accounts.
-6. Classify with §8 in order; set `field_status` per QF-6; cite every
-   source with its locator; roles, never names.
+6. Classify with §8 in order; write `null` for a needed value nobody gave and
+   a `field_status` line for a value it inferred or heard as a habit (QF-6);
+   cite every source with its locator; roles, never names.
 7. Cross-check before writing: units agree on every reference edge or the edge
    names a `via`; every `{ref}` resolves to a temp or real id. It records the
    numbers as stated; arithmetic consistency is the audit's job (§12), not the
@@ -1428,8 +1440,7 @@ what it read", and both writing nothing but identity:
 - A reference to a record of a workbook that **is** in the manifest but has
   no entry yet (a cross-department pull) creates a **record stub**: key
   derived from the dump by QF-32, `title` from the tab, `location`,
-  `data.stub: true`, no `fields[]`, `field_status.title: unknown`, scope of
-  the workbook's manifest row. The owning run fills it by natural key with no
+  `data.stub: true`, no `fields[]`, scope of the workbook's manifest row. The owning run fills it by natural key with no
   key change; edges into it are deferred (QF-37) until then.
 - A Drive id referenced from a formula with **no manifest row and no file**
   creates a **workbook stub**: `kind: record`, `data.stub: true`,
@@ -1540,12 +1551,13 @@ API, not a seed-script change.
 | green | confirmed, fingerprint matches, no red field | `confirmations` |
 | amber | never confirmed | no `confirmations` row for the id |
 | struck amber | was confirmed; a later write changed the entry | `stale_since` in the listing |
-| red | any field's `field_status` is `disputed` or `unknown` | the entry's derived `status` |
+| red | an open account or a `null` leaf anywhere in the entry | the entry's derived `status` |
 
 Red wins: an entry with a red field is red however it is marked and cannot
 be ticked (QF-24). Inside the entry, each field — each cell of a reference
-table — is drawn with its own `field_status` colour so the reviewer sees
-*where* the red is; there is no per-field tick. Every state has a Persian
+table — is drawn by its own state (red for a `null` or an open account, a
+marker for inferred or informal) so the reviewer sees *where* the red is;
+there is no per-field tick. Every state has a Persian
 word beside its colour, and red is split into «متعارض» and «بی‌پاسخ», which
 are different jobs for different people.
 
@@ -1581,8 +1593,8 @@ with role, source and value; choosing one posts `resolve`, which the ui-backend
 runs as `merge facts resolve` under a run directory it creates
 (`origin: ui`) — the service never edits `facts/*.json` itself, so the run
 record and the audit trail are the same as from chat. A reference table is
-shown as a grid with per-cell `field_status` colour and one confirmation for
-the whole table. The canvas does not gain a badge (§18).
+shown as a grid with per-cell state colour and one confirmation for the
+whole table. The canvas does not gain a badge (§18).
 
 **QF-26. Content visibility extends the policy table** with six rows —
 `fact_items`, `fact_records`, `fact_measurements`, `fact_rules`, `fact_notes`,
@@ -1606,9 +1618,14 @@ dataset exists to be read against a sheet cell and by a machine; only chrome
 counts and dates use `toFa()`. Every new screen that pins `dir="ltr"` on such
 an island is declared in `guards.test.ts`'s `ISLANDS` so the F10 sweep still
 passes. Every numeric input runs `toLatinDigits` before it reaches the API.
-`kind`, `status`, `lang`, `role`, `medium`, `nature` and `quantity` have a
-Persian label table in the UI. The raw-JSON view for a `data` key the forms do
-not know is read-only in v1 (§18).
+**Everything the UI shows is Persian**: every kind, status, enumeration value,
+field name and row class has a Persian label, given in Appendix D and held in
+one file, `ui/src/lib/factsLabels.ts`; a test asserts that every enumeration
+member the schemas declare has a label, so a value added to a schema without
+one fails the build rather than leaking an English word onto a screen. The
+stored values stay English (QF-32); labels are presentation only. The
+raw-JSON view for a `data` key the forms do not know is read-only in v1
+(§18).
 
 **Export.** The department PDF does not include facts in v1 (§18).
 
@@ -1716,12 +1733,13 @@ not know is read-only in v1 (§18).
   reader (`store/manifest.py`), the commit-id column (`db.py`, one
   migration), `tests/test_endpoint_matrix.py` and `test_policy_store.py`.
 - ui: the data section — list with kind/scope/branch filters, per-kind detail
-  forms (five) including the table grid with per-cell `field_status` colour,
+  forms (five) including the table grid with per-cell state colour,
   one `ConfirmMark` per entry, the worklist with the coverage line and
   scope/kind grouping, dispute resolution, the evidence viewer, the read-only
-  raw view; `auth/can.ts` (`canConfirmFact`), `api/types.ts`,
-  `ConfirmMark.tsx`, shell tray/crumbs, `e2e/_harness.ts` DESIGN rows,
-  `Visibility.tsx` labels, `guards.test.ts` ISLANDS.
+  raw view; `lib/factsLabels.ts` (Appendix D) and its schema-coverage test;
+  `auth/can.ts` (`canConfirmFact`), `api/types.ts`, `ConfirmMark.tsx`, shell
+  tray/crumbs, `e2e/_harness.ts` DESIGN rows, `Visibility.tsx` labels,
+  `guards.test.ts` ISLANDS.
 
 **Changed — data-repo**
 - `.claude/skills/process-voice/SKILL.md` (Stage 9) and
@@ -1785,8 +1803,10 @@ Scoped runs only — the full sweep is not warranted.
   that referenced it are re-derived; a delta creating an item, a record and a
   measurement in one call resolves in dependency order and burns no id on a
   hit; **running the same delta twice leaves the five files byte-identical**;
-  a failed precondition writes nothing; `field_status` is written for every
-  path the delta carried and no other; `original` lands in `originals/`; row
+  a failed precondition writes nothing; `status` is derived — an open
+  account makes it `disputed`, a `null` leaf `unknown`, a `field_status`
+  line `informal` or `inferred`, else `confirmed`; `original` lands in
+  `originals/`; row
   keys are derived from `primaryKey` on a reference record, and a paper log's
   minted row keys survive a second `apply` unchanged; a re-dump that drops a
   BOM row retires it (a write to the entry, so its confirmation goes stale);
@@ -1800,8 +1820,8 @@ Scoped runs only — the full sweep is not warranted.
   target is a stub; an entry scoped to another department is refused; a
   `primaryKey` naming an undeclared field fails validation; a rule with
   inputs and an output carrying `value` or `range`, a rule without inputs
-  carrying `expr` or `lang`, and a constant with `value: null` and
-  `field_status` `confirmed` all fail validation; a reference row carrying an
+  carrying `expr` or `lang`, and a `field_status` naming a missing path or a
+  value other than `inferred`/`informal` all fail validation; a reference row carrying an
   undeclared column, or missing a declared one, fails validation; a `refItems`
   cell naming no open item fails validation.
 - **Keys and ledger:** two rules with different titles and the same output
@@ -1853,7 +1873,7 @@ Scoped runs only — the full sweep is not warranted.
   cells as rows, not 300 constants; `Salon - Chalebagh` must yield between 3
   and 5 rules containing the receipt import, the deviation and the target
   lookup, not 574; photo 1 must yield one record, key
-  `mande_shab_farangi_burger`, with `field_status` `unknown` on every unit;
+  `mande_shab_farangi_burger`, with every column's `unit` written `null`;
   `cooking-1405-06-01` must yield the declared-use dispute with both accounts,
   the 10-per-portion `inferred` constant and the ~300 `informal` threshold.
   Scored on kind + key + status exact match; `expr` up to normalisation.
@@ -1871,7 +1891,11 @@ Scoped runs only — the full sweep is not warranted.
   route refuses a path outside either root; the endpoint matrix covers the
   new routes; the commit-id column is written at set time.
 - **ui:** a value typed in Persian digits reaches the API as ASCII (unit test
-  on the input path); the F10 sweep passes with the new ISLANDS entries.
+  on the input path); the F10 sweep passes with the new ISLANDS entries;
+  every `enum`/`const` member of `facts.schema.json`,
+  `manifest.schema.json` and `facts-run-meta.schema.json` has a label in
+  `lib/factsLabels.ts` (Appendix D), and a label lookup on an unknown value
+  throws in development.
 
 ---
 
@@ -2034,3 +2058,164 @@ are dumped. Formulas wrapped in
 source by joining the `"&"` 255-character splits and un-doubling the inner
 quotes, with the cached value kept beside them. Implemented with the standard
 library so the engine gains no dependency.
+
+## Appendix D — Persian labels
+
+The UI shows nothing in English except ids, keys, codes, formulas and
+numbers (QF-42). Every label below lives in `ui/src/lib/factsLabels.ts`; the
+stored value is the English key on the left. Where the estate's own staff
+have a word for a thing, that word is used («آیتم», «مانده شب», «تلورانس»),
+so the reviewer reads the vocabulary of the meetings, not a translation of a
+schema.
+
+**Kinds**
+
+| value | label | shown as, by shape |
+|---|---|---|
+| `item` | آیتم | |
+| `record` | جدول | `role: log` → «جدول ثبت»; `reference` → «جدول مرجع»; `mirror` → «نسخهٔ پیوندی»; `report` → «گزارش»; `config` → «تنظیمات» |
+| `measurement` | اندازه‌گیری | |
+| `rule` | قاعده | no inputs → «مقدار ثابت»; `lang: feel` → «فرمول»; `table` → «جدول تصمیم»; `text` → «ضابطه»; `sheets` → «فرمول شیت»; `gs` → «اسکریپت» |
+| `note` | یادداشت | |
+
+**Epistemic status of a field — distinct from the confirmation tick** (a
+`null` leaf is بی‌پاسخ, an open account is متعارض, a `field_status` line is
+استنباطی or عرفی, anything else is صریح — QF-6)
+
+| value | label |
+|---|---|
+| `confirmed` | صریح |
+| `inferred` | استنباطی |
+| `informal` | عرفی |
+| `disputed` | متعارض |
+| `unknown` | بی‌پاسخ |
+
+**Confirmation state of an entry (QF-25)**
+
+| state | label |
+|---|---|
+| green | تأییدشده |
+| amber | تأییدنشده |
+| struck amber | تغییرکرده پس از تأیید |
+| red (`disputed`) | متعارض |
+| red (`unknown`) | بی‌پاسخ |
+| universal, not confirmable by this reviewer | نیازمند تأیید سراسری |
+| stub | پیش‌ثبت |
+
+**Enumerations**
+
+| field | value → label |
+|---|---|
+| `item.category` | `ingredient` مادهٔ اولیه · `product` محصول · `packaging` بسته‌بندی · `consumable` مصرفی · `place` محل نگهداری · `other` سایر |
+| `item.state` | `raw` خام · `cooked` پخته · `frozen` منجمد · `prepared` آماده‌شده |
+| `record.medium` | `sheet` کاربرگ · `paper` فرم کاغذی · `external` سامانهٔ بیرونی · `native` داخلی |
+| `record.role` | `log` جدول ثبت · `reference` جدول مرجع · `mirror` نسخهٔ پیوندی · `report` گزارش · `config` تنظیمات |
+| `record.cadence` | `nightly` هر شب · `shift` هر شیفت · `daily` روزانه · `weekly` هفتگی · `monthly` ماهانه · `ad_hoc` موردی |
+| `fields[].type` | `string` متن · `number` عدد · `integer` عدد صحیح · `boolean` بله/خیر · `date` تاریخ |
+| `measurement.quantity` | `mass` وزن · `count` تعداد · `volume` حجم · `duration` مدت · `money` مبلغ · `ratio` نسبت · `other` سایر |
+| `outputs[].nature` | `standard` استاندارد · `target` هدف · `observed` مشاهده‌شده · `limit` حد مجاز |
+| `rule.lang` | `feel` فرمول · `table` جدول تصمیم · `text` ضابطه · `sheets` فرمول شیت · `gs` اسکریپت |
+| `table.hit` | `first` اولین سطر · `unique` تنها سطر · `collect` همهٔ سطرها |
+| `table.aggregate` | `sum` جمع · `product` حاصل‌ضرب · `min` کمینه · `max` بیشینه |
+| `rule.divergence` | `none` یکسان با الگو · `intentional` تفاوت عمدی · `drift` انحراف از الگو · `unknown` نامشخص |
+| `accounts[].status` | `open` باز · `chosen` انتخاب‌شده · `rejected` ردشده |
+| `issues[].kind` | `scale` تغییر مقیاس · `unit_kind` تغییر نوع واحد · `column_shift` جابه‌جایی ستون · `junk` دادهٔ نامعتبر · `bug` خطای فرمول یا اسکریپت · `cross_record` ناسازگاری بین دو جدول · `code_collision` تداخل کد |
+| `issues[].fix.op` | `multiply` ضرب در · `divide` تقسیم بر · `shift_columns` جابه‌جایی ستون‌ها · `ignore` نادیده گرفتن |
+| `source[].type` | `sheet` کاربرگ · `script` اسکریپت · `comment` یادداشت سلول · `validation` اعتبارسنجی · `cf` قالب‌بندی شرطی · `photo` عکس · `pdf` PDF · `docx` سند Word · `voice` جلسه · `process` فرایند · `chat` گفتگو |
+| `inputs[].from` literals | `operator` انتخاب اپراتور · `calendar` تقویم |
+| `meta.origin` | `pipeline` اجرای خودکار · `chat` گفتگو · `ui` پنل |
+
+**Envelope fields**
+
+| field | label |
+|---|---|
+| `id` | شناسه |
+| `key` | کلید |
+| `title` | عنوان |
+| `aliases` | نام‌های دیگر |
+| `statement` | بیان |
+| `scope` / `departments` / `branches` | دامنه / دپارتمان‌ها / شعبه‌ها |
+| `source` | منابع |
+| `status` | وضعیت |
+| `field_status` | وضعیت فیلدها |
+| `accounts` | روایت‌ها |
+| `accounts[].speaker_role` | گوینده (نقش) |
+| `valid_from` / `valid_to` | معتبر از / معتبر تا |
+| `supersedes` / `superseded_by` | جایگزینِ / جایگزین‌شده با |
+| `retired` | بازنشسته |
+| `issues` | نقص‌ها |
+| `processes` | فرایندهای مرتبط |
+| `updated_at` | آخرین تغییر |
+
+**Payload fields**
+
+| field | label |
+|---|---|
+| `inputs` / `outputs` | ورودی‌ها / خروجی‌ها |
+| `expr` | فرمول |
+| `value` / `range` (`min`, `max`) | مقدار / بازه (کمینه، بیشینه) |
+| `unit` / `unit_raw` | واحد / واحد به نوشتهٔ منبع |
+| `per` | به ازای هر |
+| `of` | برای |
+| `writes_to` | ثبت در |
+| `from` | از |
+| `via` | با تبدیل |
+| `share` | سهم |
+| `calls` | فراخوانی‌ها |
+| `identifier` | نام تابع |
+| `original` / `original_ref` | متن اصلی |
+| `port` | باید عیناً در ERP پیاده شود |
+| `edge_cases` (`input`, `expected`, `why`) | موارد خاص (ورودی، خروجی مورد انتظار، چرا) |
+| `template_of` / `divergence` | الگو / تفاوت با الگو |
+| `fields` / `header_fields` / `rows` / `sections` / `signatures` | ستون‌ها / فیلدهای سربرگ / ردیف‌ها / بخش‌ها / امضاها |
+| `fields[].title` / `key` / `type` / `constraints` / `derived` / `group` / `filled_by` / `refItems` | عنوان / کلید / نوع / محدودیت‌ها / محاسبه‌شده با / گروه / تکمیل‌کننده / ارجاع به آیتم |
+| `constraints.enum` / `readOnly` / `required` / `minimum` / `maximum` | مقادیر مجاز / فقط‌خواندنی / اجباری / کمینه / بیشینه |
+| `rows[].section` / `when` / `open` | بخش / فقط در / ردیف باز |
+| `sections[].doc_number_field` | فیلد شمارهٔ سند |
+| `signatures[].role` / `row_range` | نقش امضاکننده / ردیف‌ها |
+| `primaryKey` / `foreignKeys` / `reference_fields` / `transform` | کلید اصلی / ارتباط با جدول دیگر / ستون‌های مقابل / تبدیل |
+| `location` (`path`, `spreadsheetId`, `sheet`, `sheetId`, `hidden`, `identifier_scheme`) | محل (مسیر، شناسهٔ فایل، برگه، شمارهٔ برگه، مخفی، شیوهٔ شناسه) |
+| `blank_master` | فرم خام |
+| `grain` | هر ردیف یعنی |
+| `cadence` | تناوب |
+| `day_boundary` | مرز روز کاری |
+| `approved_by` | تأییدکنندهٔ فرم |
+| `mirror_of` | نسخه‌ای از |
+| `reconciled_against` (`cell`, `against`) | تطبیق با (سلول، مقدار ثابت) |
+| `movement` (`from`, `to`, `reason`) | انتقال (از، به، دلیل) |
+| `method` / `when` / `by` / `exceptions` | روش / زمان / توسط / استثناها |
+| `code` / `code_absent` | کد / بدون کد |
+| `category` / `group` / `state` / `grade` | دسته / گروه / حالت / درجه |
+| `pack` (`size`, `unit`) / `units` (`pack_unit`, `factor_to_base`) | بسته (تعداد، واحد) / واحدهای بسته‌بندی (واحد بسته، ضریب تبدیل به واحد پایه) |
+| `tracked` (`record`, `value`, `reason`) | ردیابی (در جدول، می‌شود/نمی‌شود، دلیل) |
+| `stub` | پیش‌ثبت |
+
+**Screens, row classes and actions**
+
+| thing | label |
+|---|---|
+| the section | داده‌های کمّی |
+| the worklist | کارهای باز |
+| blocker | مسدودکننده |
+| coverage line | «{n} از {m} کاربرگ خوانده شده» |
+| red-path count on a worklist row | «{n} سلول بی‌پاسخ» / «{n} سلول متعارض» |
+| orphaned reference | ارجاع بی‌مقصد |
+| moved source | منبع تغییرکرده |
+| link to a tombstoned process | اشاره به فرایند بازنشسته (جایگزین: {heir}) |
+| link whose node is gone | گرهٔ ارجاع‌شده حذف شده |
+| confirm entry | تأیید این مورد |
+| revoke confirmation | لغو تأیید |
+| resolve a dispute — choose an account | انتخاب این روایت |
+| open the evidence | مشاهدهٔ منبع |
+| consumers of an entry (reverse index) | استفاده‌کنندگان |
+| raw view | نمای خام (فقط‌خواندنی) |
+| filters: kind / scope / branch | نوع / دپارتمان / شعبه |
+| `stale_since` byline | «تأییدشده در {date}؛ پس از آن تغییر کرده» |
+
+Rules for the file: one exported map per enumeration, keyed by the English
+value; one exported map for field names; a `label(kind, value)` helper that
+throws in development on a missing key; and the test of QF-42, which reads
+every `enum` and `const` in `facts.schema.json`, `manifest.schema.json` and
+`facts-run-meta.schema.json` and asserts a label for each. Adding a value to a
+schema without a label fails the build. A label may be changed at any time
+without touching the store.
