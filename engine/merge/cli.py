@@ -6,6 +6,7 @@ from engine_common import data_root, read_json, write_json_atomic
 from merge import (attach_subprocess, build_new, build_update, remove_process,
                    resolve_pending, restructure)
 from merge_facts.apply import apply as apply_facts
+from merge_facts.revert import revert as revert_facts
 from merge_facts.verbs import export as export_facts
 from merge_facts.verbs import promote as promote_facts
 from merge_facts.verbs import resolve as resolve_facts
@@ -65,8 +66,8 @@ def _require(cond, msg):
 def _facts(args):
     """`merge facts …` — the facts store's verbs (spec §12), which share the
     process verbs' contract: exit 2 on a failed precondition with nothing
-    written. `apply`, `resolve`, `retire`, `promote` and `export` are wired;
-    `revert`/`audit`/`check` refuse until their task lands."""
+    written. `apply`, `resolve`, `retire`, `promote`, `export` and `revert`
+    are wired; `audit`/`check` refuse until their task lands."""
     try:
         if args.facts_cmd == "apply":
             report = apply_facts(data_root(), args.delta, args.run)
@@ -87,6 +88,12 @@ def _facts(args):
             out = args.out or str(data_root() / f"{args.record}.csv")
             path = export_facts(data_root(), args.record, out, include_retired=args.all)
             print(str(path))
+        elif args.facts_cmd == "revert":
+            report = revert_facts(data_root(), args.run)
+            for fid in report["removed"]:
+                print(f"removed {fid}")
+            for fid in report["restored"]:
+                print(f"restored {fid}")
         else:
             _require(False, "not implemented yet")
     except ValueError as e:
@@ -151,7 +158,9 @@ def main(argv=None):
     fex.add_argument("--record", required=True)
     fex.add_argument("--out")
     fex.add_argument("--all", action="store_true")
-    for verb in ("revert", "audit", "check"):
+    frv = fsub.add_parser("revert")
+    frv.add_argument("--run", required=True)
+    for verb in ("audit", "check"):
         fsub.add_parser(verb)          # a stub arm until that verb's task lands
     args = ap.parse_args(argv)
 

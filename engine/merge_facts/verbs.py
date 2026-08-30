@@ -5,11 +5,15 @@ an operator (or a downstream tool) already made.
 
 Every *writing* verb (`resolve`, `retire`, `promote`) shares one shape:
 `load_store`, find the entry, mutate it, `entry["status"] = derive_status
-(entry)`, stamp `updated_at` on the touched entry only, `save_store` (which
-rebuilds `.index.json`), and append `{"verb": ..., "args": {...}}` to
+(entry)`, stamp `updated_at` on the touched entry only, snapshot the five
+files to `{run_dir}/facts-before/` (`apply`'s own `_snapshot`, Task 5 — taken
+right before the write, same as `apply`'s), `save_store` (which rebuilds
+`.index.json`), and append `{"verb": ..., "args": {...}}` to
 `{run_dir}/facts-delta.json` — a run directory each call gets to itself
 (never `apply`'s own run dir, whose `facts-delta.json` is the applied delta
-verbatim, not a list). `export` is read-only and takes no run directory.
+verbatim, not a list). The snapshot is what lets `revert` (Task 7) undo one of
+these calls the same way it undoes an `apply`. `export` is read-only and
+takes no run directory.
 
 `retire`'s default `valid_to` is "today" in the Jalali calendar, Latin
 digits — QF-41's stored business-date type, the same convention
@@ -37,7 +41,14 @@ from merge_facts import (
     save_store,
     set_path,
 )
-from merge_facts.apply import KEY_RE
+# `_snapshot` is `apply`'s own (Task 5): the five files as they stand right
+# before a write, kept at `{run_dir}/facts-before/` so `revert` (Task 7) can
+# restore an entry wholesale. Every *writing* verb here needs the same
+# snapshot for the same reason — its run directory is just as revertible as
+# an `apply` run's, and the controller ruling for `revert` treats a verbs
+# run's `args["id"]` targets as ordinary matched entries, which only works if
+# there is something to restore them from.
+from merge_facts.apply import KEY_RE, _snapshot
 
 _KIND_DATA_STUBS = {
     # Neutral containers `promote` may inject — empty, so nothing is
@@ -122,6 +133,7 @@ def resolve(root, fact_id, field, account_id, run_dir):
     set_path(entry, field, chosen.get("value"))
     entry["status"] = derive_status(entry)
     entry["updated_at"] = _now()
+    _snapshot(root, pathlib.Path(run_dir))
     save_store(root, store)
     _append_delta(run_dir, "resolve",
                   {"id": fact_id, "field": field, "account": account_id})
@@ -149,6 +161,7 @@ def retire(root, fact_id, heir, run_dir, date=None):
         entry["superseded_by"] = {"ref": heir}
     entry["status"] = derive_status(entry)
     entry["updated_at"] = _now()
+    _snapshot(root, pathlib.Path(run_dir))
     save_store(root, store)
     _append_delta(run_dir, "retire",
                   {"id": fact_id, "heir": heir, "date": entry["valid_to"]})
@@ -195,6 +208,7 @@ def promote(root, fact_id, kind, key, run_dir):
     # must still exit clean rather than traceback. `save_store` validates
     # all five files before writing any, so the store is untouched either way.
     try:
+        _snapshot(root, pathlib.Path(run_dir))
         save_store(root, store)
     except ValueError as e:
         _fail(str(e))
