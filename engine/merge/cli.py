@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from engine_common import data_root, read_json, write_json_atomic
 from merge import (attach_subprocess, build_new, build_update, remove_process,
                    resolve_pending, restructure)
+from merge_facts.apply import apply as apply_facts
 from order import reconcile as reconcile_order
 
 
@@ -57,6 +58,25 @@ def _require(cond, msg):
         raise SystemExit(2)
 
 
+def _facts(args):
+    """`merge facts …` — the facts store's verbs (spec §12), which share the
+    process verbs' contract: exit 2 on a failed precondition with nothing
+    written. Only `apply` is wired; the rest refuse until their task lands."""
+    try:
+        if args.facts_cmd == "apply":
+            report = apply_facts(data_root(), args.delta, args.run)
+            for fid in report["created"]:
+                print(f"created {fid}")
+            for fid in report["updated"]:
+                print(f"updated {fid}")
+        else:
+            _require(False, "not implemented yet")
+    except ValueError as e:
+        print(f"merge: {e}", file=sys.stderr)
+        raise SystemExit(2)
+    return 0
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="merge")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -89,7 +109,18 @@ def main(argv=None):
     at.add_argument("--child", required=True)
     at.add_argument("--run", required=True)
     at.add_argument("--now")
+    fa = sub.add_parser("facts")
+    fsub = fa.add_subparsers(dest="facts_cmd", required=True)
+    fap = fsub.add_parser("apply")
+    fap.add_argument("--delta", required=True)
+    fap.add_argument("--run", required=True)
+    for verb in ("resolve", "retire", "promote", "export", "revert", "audit",
+                 "check"):
+        fsub.add_parser(verb)          # a stub arm until that verb's task lands
     args = ap.parse_args(argv)
+
+    if args.cmd == "facts":            # its own clock — merge facts stamps UTC
+        return _facts(args)
 
     # One clock for the whole invocation: the process files and order.json must
     # not land a second apart when --now is omitted.

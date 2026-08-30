@@ -1,0 +1,360 @@
+import copy, json, pathlib, subprocess, sys
+
+from merge_facts import load_store
+from merge_facts.apply import apply
+
+def _root(tmp_path):
+    (tmp_path / "facts").mkdir()
+    (tmp_path / "departments").mkdir()
+    (tmp_path / "departments" / "registry.json").write_text(json.dumps(
+        {"departments": [{"code": "cooking", "name": "آشپزخانه"},
+                         {"code": "management", "name": "مدیریت"}]}),
+        encoding="utf-8")
+    (tmp_path / "attachments" / "sheets").mkdir(parents=True)
+    (tmp_path / "attachments" / "sheets" / "manifest.json").write_text(json.dumps(
+        {"schema_version": 1,
+         "branches": [{"code": "chalebagh", "name": "چاله‌باغ"}],
+         "workbooks": []}), encoding="utf-8")
+    return tmp_path
+
+def _run_dir(tmp_path, n="20260901-101500"):
+    d = tmp_path / "runs" / "facts" / "cooking" / n
+    d.mkdir(parents=True)
+    return d
+
+def _units_delta():
+    return {"schema_version": 1, "entries": [{
+        "id": "T-1", "kind": "record", "key": "units", "title": "واحدها",
+        "statement": "جدول واحدها", "scope": {"departments": [], "branches": []},
+        "source": [{"type": "chat", "ref": None}], "retired": False,
+        "data": {"medium": "native", "role": "config", "location": {},
+                 "primaryKey": ["symbol"],
+                 "fields": [{"key": "symbol", "title": "نماد", "type": "string"},
+                            {"key": "dimension", "title": "بُعد", "type": "string"},
+                            {"key": "factor_to_base", "title": "ضریب", "type": "number"},
+                            {"key": "unit_title", "title": "عنوان", "type": "string"}],
+                 "rows": [{"key": "g", "symbol": "g", "dimension": "mass",
+                           "factor_to_base": 1, "unit_title": "گرم"},
+                          {"key": "kg", "symbol": "kg", "dimension": "mass",
+                           "factor_to_base": 1000, "unit_title": "کیلوگرم"}]}}]}
+
+def _const_delta(value=5, key="tol", dept="cooking"):
+    return {"schema_version": 1, "entries": [{
+        "id": "T-1", "kind": "rule", "key": key, "title": "تلورانس " + key,
+        "statement": "حد مجاز", "scope": {"departments": [dept], "branches": []},
+        "source": [{"type": "voice", "ref": "meetings/transcripts/c.txt", "lines": "11"}],
+        "retired": False,
+        "data": {"inputs": [], "outputs": [{"key": "v", "title": "مقدار",
+                 "unit": "g", "nature": "limit", "value": value}]}}]}
+
+def _write(tmp_path, name, delta):
+    p = tmp_path / name
+    p.write_text(json.dumps(delta, ensure_ascii=False), encoding="utf-8")
+    return p
+
+def _seed_units(root):
+    apply(root, _write(root, "d0.json", _units_delta()), _run_dir(root, "20260901-000000"))
+
+def test_create_then_idempotent_reapply_is_byte_identical(tmp_path):
+    root = _root(tmp_path); _seed_units(root)
+    d = _write(root, "d1.json", _const_delta())
+    apply(root, d, _run_dir(root, "20260901-101501"))
+    before = {p.name: p.read_bytes() for p in (root / "facts").glob("*.json")}
+    apply(root, d, _run_dir(root, "20260901-101502"))
+    after = {p.name: p.read_bytes() for p in (root / "facts").glob("*.json")}
+    assert before == after
+
+def test_ids_allocated_only_on_miss_and_id_map_written(tmp_path):
+    root = _root(tmp_path); _seed_units(root)
+    run = _run_dir(root, "20260901-101501")
+    report = apply(root, _write(root, "d1.json", _const_delta()), run)
+    assert report["id_map"]["T-1"] == "F-00002"          # F-00001 was units
+    assert json.loads((run / "id-map.json").read_text())["T-1"] == "F-00002"
+    report2 = apply(root, _write(root, "d2.json", _const_delta(value=5)),
+                    _run_dir(root, "20260901-101502"))
+    assert report2["id_map"] == {}                        # hit burns no id
+
+def test_disagreeing_value_disputes_never_overwrites(tmp_path):
+    root = _root(tmp_path); _seed_units(root)
+    apply(root, _write(root, "d1.json", _const_delta(5)), _run_dir(root, "1"))
+    apply(root, _write(root, "d2.json", _const_delta(4)), _run_dir(root, "2"))
+    store = load_store(root)
+    e = [x for x in store["rule"]["entries"] if x["key"] == "tol"][0]
+    assert e["data"]["outputs"][0]["value"] == 5
+    assert e["status"] == "disputed"
+    assert len([a for a in e["accounts"] if a["status"] == "open"]) == 2
+
+def test_later_valid_from_supersedes(tmp_path):
+    root = _root(tmp_path); _seed_units(root)
+    apply(root, _write(root, "d1.json", _const_delta(5)), _run_dir(root, "1"))
+    d = _const_delta(4)
+    d["entries"][0]["valid_from"] = "1405-01-01"
+    apply(root, _write(root, "d2.json", d), _run_dir(root, "2"))
+    store = load_store(root)
+    rules = [x for x in store["rule"]["entries"] if x["key"] == "tol"]
+    old = [r for r in rules if r["valid_to"] is not None][0]
+    new = [r for r in rules if r["valid_to"] is None][0]
+    assert new["supersedes"]["ref"] == old["id"]
+    assert old["superseded_by"]["ref"] == new["id"]
+    assert new["data"]["outputs"][0]["value"] == 4
+
+def test_unregistered_branch_or_department_refused_nothing_written(tmp_path):
+    root = _root(tmp_path); _seed_units(root)
+    d = _const_delta(); d["entries"][0]["scope"]["branches"] = ["tehran"]
+    before = {p.name: p.read_bytes() for p in (root / "facts").glob("*.json")}
+    try:
+        apply(root, _write(root, "dx.json", d), _run_dir(root, "9"))
+        assert False, "expected SystemExit"
+    except SystemExit as e:
+        assert e.code == 2
+    after = {p.name: p.read_bytes() for p in (root / "facts").glob("*.json")}
+    assert before == after
+
+def test_unit_symbol_must_be_declared_and_message_names_it(tmp_path, capsys):
+    root = _root(tmp_path); _seed_units(root)
+    d = _const_delta(); d["entries"][0]["data"]["outputs"][0]["unit"] = "lb"
+    try:
+        apply(root, _write(root, "dx.json", d), _run_dir(root, "9"))
+        assert False
+    except SystemExit:
+        pass
+    assert "lb" in capsys.readouterr().err
+
+def test_title_guard_same_kind_and_scope(tmp_path):
+    root = _root(tmp_path); _seed_units(root)
+    apply(root, _write(root, "d1.json", _const_delta(5, key="tol")), _run_dir(root, "1"))
+    d = _const_delta(5, key="other_key")
+    d["entries"][0]["title"] = "تلورانس tol"      # byte-equal title, new key
+    try:
+        apply(root, _write(root, "d2.json", d), _run_dir(root, "2"))
+        assert False
+    except SystemExit as e:
+        assert e.code == 2
+
+def test_original_moves_to_originals(tmp_path):
+    root = _root(tmp_path); _seed_units(root)
+    d = _const_delta()
+    e = d["entries"][0]
+    e["data"]["inputs"] = [{"key": "x", "title": "ایکس", "unit": "g",
+                            "from": "operator"}]
+    e["data"]["expr"] = "v = x"
+    e["data"]["lang"] = "feel"
+    e["data"]["original"] = "=X6"
+    report = apply(root, _write(root, "d1.json", d), _run_dir(root, "1"))
+    fid = report["id_map"]["T-1"]
+    assert (root / "facts" / "originals" / f"{fid}.txt").read_text() == "=X6"
+    store = load_store(root)
+    entry = [x for x in store["rule"]["entries"] if x["id"] == fid][0]
+    assert entry["data"]["original_ref"] == f"facts/originals/{fid}.txt"
+    assert "original" not in entry["data"]
+
+def test_dependency_order_item_record_measurement_in_one_delta(tmp_path):
+    root = _root(tmp_path); _seed_units(root)
+    delta = {"schema_version": 1, "entries": [
+        {"id": "T-3", "kind": "measurement", "key": "advisory",
+         "title": "ثبت وزنی", "statement": "s",
+         "scope": {"departments": ["cooking"], "branches": []},
+         "source": [{"type": "voice", "ref": "meetings/transcripts/c.txt", "lines": "1"}],
+         "retired": False,
+         "data": {"of": {"ref": "T-1"}, "quantity": "mass", "unit": "g",
+                  "writes_to": {"ref": "T-2", "field": "end_stock"}}},
+        {"id": "T-1", "kind": "item", "key": "ing_15", "title": "بیکن",
+         "statement": "s", "scope": {"departments": [], "branches": []},
+         "source": [{"type": "voice", "ref": "meetings/transcripts/c.txt", "lines": "2"}],
+         "retired": False, "data": {"category": "ingredient", "unit": "g"}},
+        {"id": "T-2", "kind": "record", "key": "mande_shab", "title": "مانده شب",
+         "statement": "s", "scope": {"departments": ["cooking"], "branches": []},
+         "source": [{"type": "photo", "ref": "departments/cooking/attachments/p.jpg"}],
+         "retired": False,
+         "data": {"medium": "paper", "role": "log", "location": {"path": "x"},
+                  "fields": [{"key": "end_stock", "title": "مانده آخر",
+                              "type": "number", "unit": "g"}]}}]}
+    report = apply(root, _write(root, "d1.json", delta), _run_dir(root, "1"))
+    store = load_store(root)
+    m = store["measurement"]["entries"][0]
+    assert m["key"] == "ing_15__mande_shab__end_stock"     # derived by merge
+    assert m["data"]["of"]["ref"] == report["id_map"]["T-1"]
+    assert m["data"]["writes_to"]["ref"] == report["id_map"]["T-2"]
+
+def test_row_keys_derived_on_reference_record(tmp_path):
+    root = _root(tmp_path); _seed_units(root)
+    delta = {"schema_version": 1, "entries": [
+        {"id": "T-1", "kind": "item", "key": "prod_61", "title": "پیتزا",
+         "statement": "s", "scope": {"departments": [], "branches": []},
+         "source": [{"type": "sheet", "ref": "attachments/sheets/M/M.xlsx"}],
+         "retired": False, "data": {"category": "product", "unit": "pcs"}},
+        {"id": "T-2", "kind": "item", "key": "ing_1", "title": "پنیر",
+         "statement": "s", "scope": {"departments": [], "branches": []},
+         "source": [{"type": "sheet", "ref": "attachments/sheets/M/M.xlsx"}],
+         "retired": False, "data": {"category": "ingredient", "unit": "g"}},
+        {"id": "T-4", "kind": "record", "key": "mavad__pizza", "title": "BOM",
+         "statement": "s", "scope": {"departments": [], "branches": []},
+         "source": [{"type": "sheet", "ref": "attachments/sheets/M/M.xlsx"}],
+         "retired": False,
+         "data": {"medium": "sheet", "role": "reference",
+                  "location": {"spreadsheetId": "S", "sheetId": 2, "sheet": "پیتزا",
+                               "hidden": False},
+                  "primaryKey": ["product", "ingredient"],
+                  "fields": [
+                      {"key": "product", "title": "محصول", "type": "string",
+                       "refItems": {"namespace": "#", "resolved_by": "code"}},
+                      {"key": "ingredient", "title": "ماده", "type": "string",
+                       "refItems": {"namespace": "##", "resolved_by": "code"}},
+                      {"key": "grams", "title": "گرم", "type": "number", "unit": "g"}],
+                  "rows": [{"key": "r1", "product": "prod_61",
+                            "ingredient": "ing_1", "grams": 250}]}}]}
+    apply(root, _write(root, "d1.json", delta), _run_dir(root, "1"))
+    store = load_store(root)
+    rec = [e for e in store["record"]["entries"] if e["key"] == "mavad__pizza"][0]
+    assert rec["data"]["rows"][0]["key"] == "prod_61__ing_1"   # derived, delta's advisory
+
+def test_cli_apply_via_subprocess(tmp_path):
+    root = _root(tmp_path); _seed_units(root)
+    d = _write(root, "d1.json", _const_delta())
+    run = _run_dir(root, "20260901-121500")
+    proc = subprocess.run([sys.executable, "-m", "merge.cli", "facts", "apply",
+                           "--delta", str(d), "--run", str(run)],
+                          capture_output=True, text=True,
+                          env={"DATA_ROOT": str(root), "PATH": ""}
+                          | {"SCHEMA_DIR": str(pathlib.Path(__file__).resolve().parents[2] / "schemas"),
+                             "SYSTEMROOT": ""})
+    assert proc.returncode == 0, proc.stderr
+
+
+# --- checklist items the §17 cases above do not reach ---------------------- #
+
+def _stub_delta():
+    return {"schema_version": 1, "entries": [
+        {"id": "T-9", "kind": "record", "key": "ext_abc", "title": "کتاب ناشناخته",
+         "statement": "s", "scope": {"departments": ["cooking"], "branches": []},
+         "source": [{"type": "script", "ref": "attachments/sheets/G/G.gs"}],
+         "retired": False,
+         "data": {"stub": True, "grain": "workbook", "medium": "sheet",
+                  "role": "log", "location": {"spreadsheetId": "S"}}},
+        {"id": "T-1", "kind": "rule", "key": "uses_stub", "title": "خواندن از دور",
+         "statement": "s", "scope": {"departments": ["cooking"], "branches": []},
+         "source": [{"type": "script", "ref": "attachments/sheets/G/G.gs",
+                     "function": "f"}],
+         "retired": False,
+         "data": {"inputs": [{"key": "x", "title": "ایکس", "unit": "g",
+                              "from": {"ref": "T-9", "field": "col_x"}}],
+                  "outputs": [{"key": "v", "title": "مقدار", "unit": "g",
+                               "nature": "limit"}],
+                  "lang": "feel", "expr": "v = x"}}]}
+
+
+def test_run_directory_keeps_the_delta_the_id_map_and_a_before_snapshot(tmp_path):
+    root = _root(tmp_path); _seed_units(root)
+    run = _run_dir(root, "20260901-101501")
+    d = _write(root, "d1.json", _const_delta())
+    apply(root, d, run)
+    assert json.loads((run / "facts-delta.json").read_text(encoding="utf-8")) \
+        == json.loads(d.read_text(encoding="utf-8"))
+    assert json.loads((run / "id-map.json").read_text(encoding="utf-8")) == \
+        {"T-1": "F-00002"}
+    before = run / "facts-before"                      # Task 7's revert reads it
+    assert sorted(p.name for p in before.glob("*.json")) == [
+        "items.json", "measurements.json", "notes.json", "records.json",
+        "rules.json"]
+    # the snapshot is the store as it stood BEFORE this run
+    assert json.loads((before / "rules.json").read_text(encoding="utf-8"))["entries"] == []
+
+
+def test_delta_already_in_the_run_directory_is_kept_pristine(tmp_path):
+    root = _root(tmp_path); _seed_units(root)
+    run = _run_dir(root, "20260901-101501")
+    d = run / "facts-delta.json"          # where the pipeline itself writes it
+    d.write_text(json.dumps(_const_delta(), ensure_ascii=False), encoding="utf-8")
+    report = apply(root, d, run)
+    assert report["created"] == ["F-00002"]
+    written = json.loads(d.read_text(encoding="utf-8"))
+    assert written["entries"][0]["id"] == "T-1"          # not rewritten in place
+
+
+def _freeze(root, name="rules.json", when="2000-01-01T00:00:00Z"):
+    """Stamp a time no clock in this test can produce, so a second apply that
+    rewrites an untouched entry cannot hide inside the same wall-clock second
+    as the first (`updated_at` has one-second resolution)."""
+    def _rewrite(path, ids=None):
+        doc = json.loads(path.read_text(encoding="utf-8"))
+        for e in doc["entries"]:
+            if ids is None or e["id"] in ids:
+                e["updated_at"] = when
+        path.write_text(json.dumps(doc, ensure_ascii=False, indent=2) + "\n",
+                        encoding="utf-8")
+        return {e["id"] for e in doc["entries"]}
+
+    ids = _rewrite(root / "facts" / name)
+    _rewrite(root / "facts" / ".index.json", ids)   # the index carries it too
+    return when
+
+
+def test_delta_carrying_an_original_is_idempotent(tmp_path):
+    root = _root(tmp_path); _seed_units(root)
+    d = _const_delta()
+    d["entries"][0]["data"].update({"inputs": [{"key": "x", "title": "ایکس",
+                                                "unit": "g", "from": "operator"}],
+                                    "expr": "v = x", "lang": "feel",
+                                    "original": "=X6"})
+    p = _write(root, "d1.json", d)
+    apply(root, p, _run_dir(root, "1"))
+    _freeze(root)
+    before = {q.name: q.read_bytes() for q in (root / "facts").glob("*.json")}
+    apply(root, p, _run_dir(root, "2"))
+    after = {q.name: q.read_bytes() for q in (root / "facts").glob("*.json")}
+    assert before == after
+
+
+def test_deferred_edge_into_a_stub_is_allowed(tmp_path):
+    root = _root(tmp_path); _seed_units(root)
+    report = apply(root, _write(root, "d1.json", _stub_delta()), _run_dir(root, "1"))
+    rule = [e for e in load_store(root)["rule"]["entries"] if e["key"] == "uses_stub"][0]
+    assert rule["data"]["inputs"][0]["from"]["ref"] == report["id_map"]["T-9"]
+
+
+def test_reference_to_no_entry_is_refused(tmp_path):
+    root = _root(tmp_path); _seed_units(root)
+    d = _stub_delta()
+    d["entries"] = [d["entries"][1]]                   # the stub itself is gone
+    d["entries"][0]["data"]["inputs"][0]["from"] = {"ref": "F-99999"}
+    try:
+        apply(root, _write(root, "dx.json", d), _run_dir(root, "9"))
+        assert False, "expected SystemExit"
+    except SystemExit as e:
+        assert e.code == 2
+
+
+def test_key_is_immutable_for_a_matched_sheet_record(tmp_path):
+    root = _root(tmp_path); _seed_units(root)
+
+    def sheet_record(key):
+        return {"schema_version": 1, "entries": [
+            {"id": "T-1", "kind": "record", "key": key, "title": "گزارش " + key,
+             "statement": "s", "scope": {"departments": ["cooking"], "branches": []},
+             "source": [{"type": "sheet", "ref": "attachments/sheets/G/G.xlsx"}],
+             "retired": False,
+             "data": {"medium": "sheet", "role": "log",
+                      "location": {"spreadsheetId": "S", "sheetId": 1,
+                                   "sheet": "روزانه", "hidden": False}}}]}
+
+    apply(root, _write(root, "d1.json", sheet_record("g__ruzane")), _run_dir(root, "1"))
+    try:
+        apply(root, _write(root, "d2.json", sheet_record("g__daily")),
+              _run_dir(root, "2"))
+        assert False, "expected SystemExit"
+    except SystemExit as e:
+        assert e.code == 2
+
+
+def test_updated_at_moves_only_when_the_run_changes_the_entry(tmp_path):
+    root = _root(tmp_path); _seed_units(root)
+    d = _write(root, "d1.json", _const_delta(key="tol"))
+    apply(root, d, _run_dir(root, "1"))
+    frozen = _freeze(root)
+    apply(root, d, _run_dir(root, "2"))                  # the same delta again
+    assert load_store(root)["rule"]["entries"][0]["updated_at"] == frozen
+    apply(root, _write(root, "d2.json", _const_delta(4, key="tol")),
+          _run_dir(root, "3"))                           # now it disputes
+    entry = load_store(root)["rule"]["entries"][0]
+    assert entry["updated_at"] != frozen
+    assert entry["status"] == "disputed"
