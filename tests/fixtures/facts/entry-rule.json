@@ -1,0 +1,53 @@
+{
+  "id": "F-00042",
+  "kind": "rule",
+  "key": "gozaresh_cb__pizza__declared_use",
+  "title": "مصرف اعلامی پیتزا",
+  "aliases": ["مصرف اعلام‌شده"],
+  "statement": "مصرف اعلامی = موجودی اول شب + دریافت از انبار − موجودی آخر شب",
+  "scope": { "departments": ["management"], "branches": ["chalebagh"] },
+  "source": [
+    { "type": "sheet", "ref": "attachments/sheets/MandeShab__ChaleBagh__Gozaresh markazi/Gozaresh markazi.xlsx",
+      "sheet": "پیتزا", "cell": "H6", "hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "run": "runs/facts/management/20260901-101500" },
+    { "type": "voice", "ref": "meetings/transcripts/cooking-1405-06-01.txt", "lines": "40",
+      "hash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "run": "runs/facts/cooking/20260902-153000" },
+    { "type": "process", "ref": "departments/cooking/processes/cooking-001.json", "node": "cooking-001-n010",
+      "quote": "مصرف اعلامی از مانده اول شب، دریافت از انبار و مانده آخر شب محاسبه می‌شود",
+      "hash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "run": "runs/facts/cooking/20260902-153000" }
+  ],
+  "status": "disputed",
+  "field_status": {},
+  "accounts": [
+    { "id": "a1f0c3d9", "field": "data/expr", "statement": "=MINUS(SUM(F6,E6),G6)",
+      "value": "declared_use = start + received - end",
+      "source": { "type": "sheet", "ref": "attachments/sheets/MandeShab__ChaleBagh__Gozaresh markazi/Gozaresh markazi.xlsx", "sheet": "پیتزا", "cell": "H6" },
+      "speaker_role": null, "status": "open" },
+    { "id": "7be2a4c1", "field": "data/expr",
+      "statement": "ببینید مصرف اعلامیشون در واقع تفاوت بین مانده اول شب و آخر شبشونه خب؟ که این میزان مصرف انبار ازش کم می‌شه.",
+      "value": "declared_use = start - end - received",
+      "source": { "type": "voice", "ref": "meetings/transcripts/cooking-1405-06-01.txt", "lines": "40" },
+      "speaker_role": null, "status": "open" }
+  ],
+  "valid_from": "1404-09-01",
+  "valid_to": null,
+  "supersedes": null,
+  "superseded_by": null,
+  "retired": false,
+  "issues": [],
+  "processes": [{ "ref": "cooking-001" }],
+  "updated_at": "2026-09-02T15:31:07Z",
+  "data": {
+    "inputs": [ { "key": "start",    "title": "موجودی اول شب",   "unit": "kg", "from": { "ref": "F-00031", "field": "start_stock" } },
+                { "key": "received", "title": "دریافت از انبار", "unit": "kg", "from": { "ref": "F-00032", "field": "amount" } },
+                { "key": "end",      "title": "موجودی آخر شب",   "unit": "kg", "from": { "ref": "F-00031", "field": "end_stock" } } ],
+    "outputs": [ { "key": "declared_use", "title": "مصرف اعلامی", "unit": "kg", "nature": "observed",
+                   "writes_to": { "ref": "F-00040", "field": "declared_use" } } ],
+    "expr": "declared_use = start + received - end",
+    "lang": "feel",
+    "original_ref": "facts/originals/F-00042.txt",
+    "calls": [], "port": false, "edge_cases": []
+  }
+}

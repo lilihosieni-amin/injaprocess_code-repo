@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "manifest-proposal.schema.json",
+  "title": "Manifest proposal — agent-proposed manifest rows awaiting confirmation (design §7 QF-33)",
+  "type": "object",
+  "additionalProperties": { "$ref": "#/$defs/proposal" },
+  "$defs": {
+    "proposedValue": { "oneOf": [ { "const": "?" }, { "type": "string" } ] },
+    "proposal": { "type": "object", "additionalProperties": false,
+      "required": ["departments", "branches", "reference_tabs", "reasons"],
+      "properties": {
+        "departments": { "type": "array", "items": { "$ref": "#/$defs/proposedValue" } },
+        "branches": { "type": "array", "items": { "$ref": "#/$defs/proposedValue" } },
+        "reference_tabs": { "type": "array", "items": { "$ref": "#/$defs/proposedValue" } },
+        "reasons": { "type": "object", "additionalProperties": { "type": "string" } } } }
+  }
+}

@@ -1,0 +1,47 @@
+{
+  "id": "F-00002",
+  "kind": "record",
+  "key": "monde_shab_bergerforontagi",
+  "title": "مانده شب فرنگی و برگر",
+  "aliases": [],
+  "statement": "فرم کاغذی مانده شب، یک ردیف به ازای هر کالا، یک برگ به ازای هر شیفت؛ توسط مسئول واحد پر می‌شود.",
+  "scope": { "departments": ["cooking"], "branches": ["chalebagh"] },
+  "source": [
+    { "type": "photo", "ref": "departments/cooking/attachments/photo_2026-08-29_14-23-51.jpg" }
+  ],
+  "status": "confirmed",
+  "field_status": {},
+  "accounts": [],
+  "valid_from": null,
+  "valid_to": null,
+  "supersedes": null,
+  "superseded_by": null,
+  "retired": false,
+  "issues": [],
+  "processes": [],
+  "updated_at": "2026-09-01T09:05:00Z",
+  "data": {
+    "medium": "paper",
+    "role": "log",
+    "location": { "path": "departments/cooking/attachments/photo_2026-08-29_14-23-51.jpg" },
+    "blank_master": true,
+    "grain": "one row per item, one sheet per shift",
+    "cadence": "nightly",
+    "day_boundary": "01:15",
+    "header_fields": [ { "key": "date", "title": "تاریخ" }, { "key": "operator", "title": "نام متصدی" } ],
+    "fields": [
+      { "key": "row_no", "title": "ردیف", "type": "integer" },
+      { "key": "item", "title": "نام کالا", "type": "string", "refItems": { "namespace": "##", "resolved_by": "title" } },
+      { "key": "start_stock", "title": "مانده اول شب", "type": "number", "unit": null, "filled_by": "مسئول واحد" },
+      { "key": "received", "title": "درخواست دریافتی", "type": "number", "unit": null,
+        "constraints": { "readOnly": true }, "description": "خانه‌ی سایه‌دار — «چیزی ننویسید»" },
+      { "key": "end_stock", "title": "مانده آخر شب", "type": "number", "unit": null },
+      { "key": "delta", "title": "اختلاف روز", "type": "number", "unit": null, "derived": { "ref": "F-00051" } }
+    ],
+    "rows": [ { "key": "burger", "title": "برگر" }, { "key": "mini_burger", "title": "مینی برگر" } ],
+    "signatures": [ { "role": "مسئول واحد", "row_range": "1-5" }, { "role": "انبار دار", "row_range": "6-10" } ],
+    "primaryKey": ["date", "item"],
+    "foreignKeys": [],
+    "approved_by": "انبار دار"
+  }
+}

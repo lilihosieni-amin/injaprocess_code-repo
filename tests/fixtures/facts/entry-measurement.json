@@ -1,0 +1,31 @@
+{
+  "id": "F-00003",
+  "kind": "measurement",
+  "key": "goda_livani_end_weight",
+  "title": "توزین پایان شیفت پنیر گودا لیوانی",
+  "aliases": [],
+  "statement": "پنیر گودا لیوانی در پایان شیفت با ترازو توزین می‌شود و در ستون مانده آخر شب ثبت می‌گردد.",
+  "scope": { "departments": ["cooking"], "branches": ["chalebagh"] },
+  "source": [
+    { "type": "voice", "ref": "meetings/transcripts/cooking-1405-06-01.txt", "lines": "12" }
+  ],
+  "status": "confirmed",
+  "field_status": {},
+  "accounts": [],
+  "valid_from": null,
+  "valid_to": null,
+  "supersedes": null,
+  "superseded_by": null,
+  "retired": false,
+  "issues": [],
+  "processes": [],
+  "updated_at": "2026-09-01T09:10:00Z",
+  "data": {
+    "of": { "ref": "F-00001" },
+    "quantity": "mass", "unit": "g",
+    "method": "ترازو؛ اقلام کارتنی بر اساس تعداد کارتن × وزن اسمی",
+    "when": "پایان شیفت", "by": "سرلاین",
+    "writes_to": { "ref": "F-00002", "field": "end_stock" },
+    "exceptions": "آرد وزن‌کشی نمی‌شود؛ ضایعات زیر ۲۰ گرم ثبت نمی‌شود"
+  }
+}

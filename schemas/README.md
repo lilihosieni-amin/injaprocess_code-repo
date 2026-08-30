@@ -16,12 +16,37 @@ these); kept in `code-repo` so runtime (INV-2) cannot weaken validation.
 | `run-meta.schema.json` | per-run metadata (ARD §2.2) | process-voice | audit |
 | `conflicts.schema.json` | per-run conflicts (ARD §2.2) | merge | Telegram report, UI inbox |
 | `consolidation.schema.json` | consolidation review suggestions (design §4.3) | consolidate agent | process-voice Stage 10 |
+| `facts.schema.json` | the facts store — envelope + five kinds (quantitative-facts design §6/§7) | merge facts | ui-backend, UI, later runs |
+| `facts-delta.schema.json` | agent-proposed changes to the facts store (design §4) | facts extract agent | merge facts |
+| `facts-index.schema.json` | flattened, filterable rows over the facts store (design §7) | merge facts | ui-backend, UI |
+| `facts-idseq.schema.json` | facts id sequence counter state | allocate-id | allocate-id |
+| `facts-run-meta.schema.json` | per-run metadata for a facts pipeline/chat/UI run (design §4) | process-facts | audit |
+| `manifest.schema.json` | registered branches and confirmed workbooks the facts store draws from (design §7, QF-33) | maintained by hand / `merge facts` on confirm | facts extract agent, merge facts |
+| `manifest-proposal.schema.json` | agent-proposed manifest rows awaiting confirmation (design §7, QF-33) | facts extract agent | human review, `merge facts` |
 
 Golden fixtures conforming to each live in `../tests/fixtures/`. Run `make test`
 to validate every fixture against its schema.
 
 **Convention:** stored data uses ISO-8601 UTC timestamps and Latin digits.
 Persian numerals and Jalali dates are UI-only presentation (Phase 6).
+
+**Dates (QF-41 — amends the line above for the facts store).** The facts
+store is the one place Jalali dates are *stored*, not just displayed:
+`valid_from`/`valid_to`/`issues[].from_date`/`issues[].to_date` are Latin-digit
+Jalali `YYYY-MM-DD` or `YYYY-MM` (business validity has no natural Gregorian
+form in this domain). Every other timestamp — `updated_at`, run directory
+stamps, `facts-run-meta.schema.json`'s `started_at`/`finished_at` — stays
+ISO-8601 UTC, Latin digits, as everywhere else in the system.
+
+**`schema_version` migration (QF-45).** `facts.schema.json`,
+`facts-delta.schema.json`, `facts-index.schema.json` and `manifest.schema.json`
+each carry a top-level `schema_version` (currently `1`, `const` in the
+schema). A reader refuses a file whose `schema_version` is higher than the
+one it knows; it is never silently upgraded. Bumping the constant is only
+done alongside an append-only migration note added here:
+
+- **v1** (2026-08-30, Task 1 of quantitative-facts) — initial version:
+  envelope + five kinds (`item`, `record`, `measurement`, `rule`, `note`).
 
 ## Known gaps (to reconcile in later phases)
 
