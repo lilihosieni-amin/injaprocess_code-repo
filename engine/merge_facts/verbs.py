@@ -11,17 +11,14 @@ rebuilds `.index.json`), and append `{"verb": ..., "args": {...}}` to
 (never `apply`'s own run dir, whose `facts-delta.json` is the applied delta
 verbatim, not a list). `export` is read-only and takes no run directory.
 
-Jalali gap (see the task-6 report for the full note): `retire`'s default
-`valid_to` needs "today" in the Jalali calendar, Latin digits, the same
-convention `upload_bot.naming.normalize_date` writes. `engine`'s own
-`pyproject.toml` does not depend on `jdatetime` — only `upload-bot`'s does —
-so `_today_jalali` below borrows it the same defensive way `naming.py` does
-(a lazy import, so importing this module never requires the package), but
-unlike `naming.py` it is reaching for a dependency `engine` never declared.
-It works in this shared dev venv because `jdatetime` leaks in from
-`upload-bot`'s install; a standalone `pip install -e engine` deploy would not
-have it, and `retire()` would exit 2 pointing at `--date` instead of
-silently guessing wrong. `--date` is the escape hatch either way.
+`retire`'s default `valid_to` is "today" in the Jalali calendar, Latin
+digits — QF-41's stored business-date type, the same convention
+`upload_bot.naming.normalize_date` writes. `engine/pyproject.toml` declares
+`jdatetime` (a coordinator ruling on task 6: this is core engine behaviour, a
+standalone `pip install -e engine` must compute it without upload-bot alongside
+it), so it is imported at module level like any other dependency. `--date`
+stays as an explicit override for a caller that needs a specific date on the
+record rather than the day the verb ran.
 """
 import copy
 import csv
@@ -29,6 +26,7 @@ import pathlib
 import sys
 from datetime import datetime, timezone
 
+import jdatetime
 from engine_common import read_json, write_json_atomic
 from merge_facts import (
     KIND_FILES,
@@ -73,12 +71,6 @@ def _now():
 
 
 def _today_jalali():
-    try:
-        import jdatetime  # lazy: see the module docstring's Jalali gap note
-    except ImportError:
-        _fail("no Jalali calendar library is available to compute retire's "
-              "default valid_to (engine does not depend on jdatetime) — pass "
-              "--date explicitly")
     return jdatetime.date.today().strftime("%Y-%m-%d")
 
 
