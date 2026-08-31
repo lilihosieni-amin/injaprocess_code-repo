@@ -25,8 +25,22 @@ _FILES: dict[str, str] = {
 
 
 def load_index(root: Path) -> dict:
-    """`facts/.index.json`, as stored — no derived additions."""
-    return storage.read_json(Path(root) / "facts" / ".index.json")
+    """`facts/.index.json`, as stored — no derived additions.
+
+    An absent file reads as an empty store rather than raising: every
+    deployment is in exactly this state until the first `merge facts` run,
+    and this sits inside the confirm gate (`_fact_departments`), before any
+    scope decision — a crash there is a 500, not the uniform 404 an absent id
+    must answer (`access.py`'s own rule: a crash is a denial of service, and
+    an unanswerable question is a value, never an exception). A fresh dict
+    each call, like `storage.read_json`'s own return — never a shared
+    module-level default a caller's `["entries"].append(...)` could corrupt
+    for every later call in the process.
+    """
+    path = Path(root) / "facts" / ".index.json"
+    if not path.is_file():
+        return {"schema_version": 1, "entries": []}
+    return storage.read_json(path)
 
 
 def load_entry(root: Path, fact_id: str) -> dict | None:
@@ -38,14 +52,21 @@ def load_entry(root: Path, fact_id: str) -> dict | None:
     answer anything about what is inside it. `None`, never an exception, both
     when the id is absent from the index and when the file the index row
     points at does not carry it — a caller (the confirm gate among them) can
-    treat "not found" as one case rather than two.
+    treat "not found" as one case rather than two. That same "never an
+    exception" holds for a malformed row too — one missing `id` or naming a
+    `kind` outside the five (a hand-edited or partially-migrated store) reads
+    as "not found" rather than a `KeyError`, for the same reason: the gate
+    that calls this must fail closed, not crash.
     """
-    row = next((r for r in load_index(root)["entries"] if r["id"] == fact_id),
+    row = next((r for r in load_index(root)["entries"] if r.get("id") == fact_id),
               None)
     if row is None:
         return None
-    path = Path(root) / "facts" / _FILES[row["kind"]]
+    filename = _FILES.get(row.get("kind"))
+    if filename is None:
+        return None
+    path = Path(root) / "facts" / filename
     if not path.is_file():
         return None
     doc = storage.read_json(path)
-    return next((e for e in doc.get("entries", []) if e["id"] == fact_id), None)
+    return next((e for e in doc.get("entries", []) if e.get("id") == fact_id), None)

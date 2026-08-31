@@ -12,10 +12,11 @@ at a time.
 import copy
 import itertools
 import json
+import shutil
 import subprocess
 
 from fastapi.testclient import TestClient
-from inja_ui_backend import db, seed
+from inja_ui_backend import db, facts_store, seed
 from inja_ui_backend.access import NOT_FOUND
 from inja_ui_backend.app import create_app
 from inja_ui_backend.auth import hash_password
@@ -297,6 +298,38 @@ def test_absent_id_uniform_404(data_root, tmp_path):
     r = client.post("/api/confirmations/F-09999", json={"fingerprint": "a" * 64})
     assert (r.status_code, r.json()) == (404, {"detail": NOT_FOUND})
     assert client.delete("/api/confirmations/F-09999").status_code == 404
+
+
+def test_absent_facts_store_is_uniform_404_not_500(data_root, tmp_path):
+    """Every deployment is in this state until the first `merge facts` run
+    (spec §16). The gate (`_fact_departments`) reads `facts/.index.json`
+    before any scope decision, so a bare `read_text` there would 500 the
+    whole route instead of failing closed — `access.py`'s own rule is that a
+    crash is a denial of service and an unanswerable question is a value,
+    never an exception.
+    """
+    shutil.rmtree(data_root / "facts")
+    client = _client_as(data_root, tmp_path, "editor", "*")
+    r = client.post(f"/api/confirmations/{RULE}", json={"fingerprint": "a" * 64})
+    assert (r.status_code, r.json()) == (404, {"detail": NOT_FOUND})
+    assert client.delete(f"/api/confirmations/{RULE}").status_code == 404
+
+
+def test_load_index_absent_file_reads_as_empty_store(tmp_path):
+    assert facts_store.load_index(tmp_path) == {"schema_version": 1, "entries": []}
+
+
+def test_load_entry_tolerates_a_malformed_index_row(data_root):
+    """A row missing `id`, or naming a `kind` outside the five the store
+    defines, must read as "not found" — `KeyError`, like any other
+    exception, is a 500 to whoever is on the other end of the gate."""
+    index_path = data_root / "facts" / ".index.json"
+    index = json.loads(index_path.read_text(encoding="utf-8"))
+    index["entries"].append({"id": "F-00098", "kind": "not_a_real_kind"})
+    index["entries"].append({"kind": "rule"})  # no id at all
+    index_path.write_text(json.dumps(index, ensure_ascii=False) + "\n",
+                          encoding="utf-8")
+    assert facts_store.load_entry(data_root, "F-00098") is None
 
 
 # --- the commit-id column ---
