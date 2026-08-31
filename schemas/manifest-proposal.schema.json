@@ -5,7 +5,7 @@
   "type": "object",
   "additionalProperties": { "$ref": "#/$defs/proposal" },
   "$defs": {
-    "proposedValue": { "oneOf": [ { "const": "?" }, { "type": "string" } ] },
+    "proposedValue": { "anyOf": [ { "const": "?" }, { "type": "string" } ] },
     "proposal": { "type": "object", "additionalProperties": false,
       "required": ["departments", "branches", "reference_tabs", "reasons"],
       "properties": {

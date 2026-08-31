@@ -103,3 +103,17 @@ def test_bad_jalali_date_fails(validate):
     e = _load("entry-rule.json")
     e["valid_from"] = "1404/09/01"
     assert validate("facts.schema.json", _wrap(e)) != []
+
+
+def test_manifest_proposal_admits_question_mark(validate):
+    # Gate M / QF-19: the quantify agent (manifest mode) writes "?" in any
+    # of the three judgement lists where it cannot decide.
+    p = {
+        "1abc": {
+            "departments": ["?"],
+            "branches": ["chalebagh", "?"],
+            "reference_tabs": ["پیتزا"],
+            "reasons": {"chalebagh": "دایرکتوری ChaleBagh"}
+        }
+    }
+    assert validate("manifest-proposal.schema.json", p) == []
