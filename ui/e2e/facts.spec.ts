@@ -215,10 +215,13 @@ test('facts — the four filters, and the link that clears them', async ({ page 
   await expect(rows).toHaveCount(1)
   await expect(rowFor(page, 'پنیر پیتزا')).toBeVisible()
 
-  /* ---- R5: the clear link is ABSENT until something is set, and it is the
-         design's `--conflict` (:1032) ---- */
+  /* ---- R5: the clear link is ABSENT until something is set, and it is
+         **ledger L-06's `--violet-mid`, not the `--conflict` the design paints**
+         (:1032) — the owner's ruling on this exact control, settled on
+         semantics: clearing a filter destroys nothing. The same value
+         `UsersFilters` writes, so the two screens cannot drift apart again. ---- */
   const clear = page.getByRole('button', { name: 'پاک کردن همهٔ فیلترها' })
-  await expect(clear).toHaveCSS('color', 'rgb(226, 61, 53)')
+  await expect(clear).toHaveCSS('color', 'rgb(122, 82, 208)')
   await clear.click()
   await expect(rows).toHaveCount(6)
   await expect(clear).toHaveCount(0)

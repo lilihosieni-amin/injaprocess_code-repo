@@ -165,14 +165,21 @@ function FactsBody({ entries }: { entries: FactListRow[] }) {
           options={blankFirst('filter_confirmation', Object.keys(CONFIRMATION_LABELS)
             .map((value) => ({ value, label: label(CONFIRMATION_LABELS, value) })))} />
 
-        {/* R5 — absent, not disabled, until there is something to clear. The
-            design paints this link `--conflict` (:1032), which is where it and
-            ledger L-06 (`--role-link-quiet` on the users screen) disagree; the
-            design of record is followed and the conflict is reported. */}
+        {/* R5 — absent, not disabled, until there is something to clear.
+            **`--violet-mid`, not the `--conflict` the design paints (:1032).**
+            Ledger L-06 is the owner's veto point for exactly this control and
+            exactly this contradiction: Users drew the link `--violet-mid` and
+            User activity drew it `--conflict`, and the ruling settled it on
+            semantics —
+            *"`--conflict` is declared destructive and conflicts, and clearing a
+            filter destroys nothing."* The facts design repeats the variant that
+            lost. `--role-link-quiet` is the role name for it (`roles.css:73`);
+            `text-violet-mid` is the class `UsersFilters` writes, and one screen
+            red beside another violet is the inconsistency L-06 removed. */}
         {clearable && (
           <button type="button" onClick={() => { setFilters(NO_FILTERS); setQ('') }}
             className="col-span-full justify-self-start border-0 bg-transparent p-s1
-                       text-fs-sm2 font-bold text-conflict underline underline-offset-4
+                       text-fs-sm2 font-bold text-violet-mid underline underline-offset-4
                        cursor-pointer min-h-touch">
             {label(SCREEN_LABELS, 'clear_filters')}
           </button>
