@@ -18,6 +18,17 @@ def _tracked(cfg: Settings, path: Path) -> bool:
     return _git(cfg, "ls-files", "--error-unmatch", "--", str(path)).returncode == 0
 
 
+def head(cfg: Settings) -> str:
+    """`git rev-parse HEAD` in the data-repo — the commit id a confirmation is
+    taken against (QF-24), so a post-restore reconciliation can tell backup
+    skew from genuine drift. `''` when the repo has no commits yet, rather
+    than raising: a fresh, uncommitted data-repo is a real state this reads
+    against, not an error.
+    """
+    r = _git(cfg, "rev-parse", "HEAD")
+    return r.stdout.strip() if r.returncode == 0 else ""
+
+
 def commit(cfg: Settings, paths: list[Path], pid: str, action: str) -> None:
     # A path git can't stage — absent from disk *and* never tracked — has no
     # pathspec `git add` can match, and would abort the whole add, failing a

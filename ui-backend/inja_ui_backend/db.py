@@ -95,6 +95,15 @@ MIGRATIONS: list[tuple[int, str]] = [
             visible INTEGER NOT NULL CHECK (visible IN (0, 1))
         );
     """),
+    (3, """
+        -- The data-repo's `HEAD` at the moment of the vouch (QF-24), so a
+        -- post-restore reconciliation can tell backup skew — the confirmation
+        -- is fine, only `app.db` was restored from an older snapshot than the
+        -- data-repo — from genuine drift, where the content really has moved
+        -- on since. Nullable: a row written before this migration carries
+        -- none, and that is a fact about it, not an error.
+        ALTER TABLE confirmations ADD COLUMN data_repo_commit TEXT;
+    """),
 ]
 
 SCHEMA_VERSION = MIGRATIONS[-1][0]

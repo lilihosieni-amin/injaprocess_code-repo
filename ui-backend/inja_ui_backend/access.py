@@ -313,3 +313,46 @@ def requires(capability: str, target: str | Callable[[Request], str]):
         request.state.user = user
         return user
     return dependency
+
+
+def requires_every(capability: str, targets: Callable[[Request], list[str] | None]):
+    """Like `requires`, but for a target whose scope requirement is an AND
+    over several scope strings rather than one — the facts confirm gate
+    (QF-27, D56 generalised). An entry scoped to `["cooking", "accounting"]`
+    needs `capability` at *both*, and `contains` only ever answers one string
+    at a time, so `requires`'s single `target` cannot express it.
+
+    `targets` resolves the request to the list of scope strings every one of
+    which must be covered — `["dept:cooking", "dept:accounting"]`, or `["*"]`
+    for a universal entry — or `None` when the entry itself does not exist,
+    which answers the same uniform 404 an out-of-scope target gets: an id
+    nobody minted and an id somebody is not scoped to must be indistinguishable
+    (D56).
+
+    **Scope before capability, same as `requires` and for the same reason.**
+    A caller out of scope for even one required department is refused before
+    the capability check ever runs, so they are never told "this exists, but
+    not for you" about a department they hold no scope in at all. The scope
+    loop below writes no `access.denied` row per department it fails on —
+    checking several departments must not turn one refusal into several audit
+    rows — and the capability check, exactly like `requires`, writes one only
+    when it is the reason.
+    """
+    def dependency(request: Request, user=Depends(require_session)):
+        conn = request.app.state.db
+        resolved = targets(request)
+        if resolved is None:
+            raise HTTPException(status_code=404, detail=NOT_FOUND)
+        scopes = scopes_of(conn, user)
+        if not all(any(contains(s, r) for s in scopes) for r in resolved):
+            log_out_of_scope(request, user, ",".join(resolved))
+            raise HTTPException(status_code=404, detail=NOT_FOUND)
+        if capability not in capabilities_of(conn, user):
+            record(request, "access.denied", actor=user["username"],
+                   session_id=getattr(request.state, "session_id", None),
+                   target=",".join(resolved), outcome="denied",
+                   detail={"capability": capability})
+            raise HTTPException(status_code=403, detail=FORBIDDEN)
+        request.state.user = user
+        return user
+    return dependency
