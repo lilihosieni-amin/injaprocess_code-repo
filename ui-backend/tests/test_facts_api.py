@@ -30,7 +30,7 @@ from inja_ui_backend import db, seed
 from inja_ui_backend.access import NOT_FOUND
 from inja_ui_backend.app import create_app
 from inja_ui_backend.auth import hash_password
-from inja_ui_backend.fingerprint import fact_fingerprint
+from inja_ui_backend.fingerprint import fact_fingerprint, fingerprint
 from inja_ui_backend.routers import facts as facts_router
 from inja_ui_backend.store import confirmations, policy, users
 from inja_ui_backend.tests_helpers import cfg_for
@@ -140,7 +140,15 @@ ENTRIES = [
                        # guard is unkillable, because a row naming nothing is
                        # not masked whether the guard is there or not.
                        {"key": "row_total", "title": "جمع کل",
-                        "ing": "test_ghaarch", "grams": 100}]}},
+                        "ing": "test_ghaarch", "grams": 100},
+                       # A row with **neither** a title of its own nor a
+                       # `refItems` column to compose from: `row_titles` falls
+                       # back to the row key, which is wholly this entry's own
+                       # content. Its `note` cell holds a string that happens
+                       # to equal an item key — the shape that used to draw the
+                       # restricted marker over a label no neighbour touched.
+                       {"key": "row_loose", "note": "test_ghaarch",
+                        "grams": 5}]}},
 ]
 
 _FILES = {"item": "items.json", "record": "records.json",
@@ -274,6 +282,24 @@ def _confirm(client, *fact_ids):
             confirmations.set_confirmation(
                 conn, target=fid, fingerprint=fact_fingerprint(entry),
                 by="09190000000", at=1770000000)
+    finally:
+        conn.close()
+
+
+def _confirm_process(client, data_root, pid):
+    """The same, for a **process** document — `fingerprint`, not
+    `fact_fingerprint`: D21's deep canonicaliser is what `Disclosure.may_serve`
+    compares against for a process, and the two are different functions on
+    purpose (QF-24)."""
+    dept = pid.rsplit("-", 1)[0]
+    doc = json.loads(
+        (data_root / "departments" / dept / "processes" / f"{pid}.json")
+        .read_text(encoding="utf-8"))
+    conn = db.connect(client.app_db)
+    try:
+        confirmations.set_confirmation(conn, target=pid,
+                                       fingerprint=fingerprint(doc),
+                                       by="09190000000", at=1770000000)
     finally:
         conn.close()
 
@@ -672,6 +698,34 @@ def test_a_malformed_store_answers_rather_than_crashing(data_root, tmp_path):
     assert _ids(r.json()) == []
 
 
+def test_a_neighbour_that_is_not_a_fact_is_masked_rather_than_named(data_root,
+                                                                    tmp_path):
+    """`is_fact` is an arm of `_served`, so it reaches the mask too.
+
+    An entry whose stored `kind` is outside the five is one the detail route
+    404s (`_reachable`), so naming it as a neighbour would be the same drift
+    the process arm had: the route refuses it and the bundle hands over its
+    title. Reached here by corrupting the item's `kind` and reading the rule
+    that consumes it — the store is hand-editable and `load_all` returns what
+    is in the files.
+    """
+    _plant(data_root)
+    client = _client_as(data_root, tmp_path, "editor", "*")
+    assert client.get(f"/api/facts/{RULE}").json()["resolved"][ITEM][
+        "title"] == "قارچ"          # premise
+
+    items = json.loads((data_root / "facts" / "items.json").read_text(
+        encoding="utf-8"))
+    items["entries"][0]["kind"] = "process"
+    (data_root / "facts" / "items.json").write_text(
+        json.dumps(items, ensure_ascii=False), encoding="utf-8")
+
+    assert client.get(f"/api/facts/{ITEM}").status_code == 404
+    body = client.get(f"/api/facts/{RULE}").json()
+    assert body["resolved"][ITEM] == {"restricted": True}
+    assert "قارچ" not in json.dumps(body, ensure_ascii=False)
+
+
 # --------------------------------------------------------------------------
 # The two filters, through Task 18's reverse walk
 # --------------------------------------------------------------------------
@@ -938,6 +992,95 @@ def test_an_unconfirmed_neighbour_is_masked_for_an_admin(data_root, tmp_path):
     assert admin.get(f"/api/facts/{RULE}").json()["resolved"][ITEM]["title"] == "قارچ"
 
 
+def test_a_tombstoned_process_neighbour_is_masked_for_a_non_editor(data_root,
+                                                                   tmp_path):
+    """The process arm asks the **process route's** conjunction, not half of it.
+
+    `GET /api/processes/{pid}` refuses on scope *and* on `may_serve` — a
+    tombstone (D17) or a missing confirmation (D22). A mask that asked only
+    `Disclosure.sees` served an admin the name, the tombstone state and the
+    heir id of a process that route 404s them off, which is the exact triple
+    the masked-row rule exists to withhold.
+
+    The process is **confirmed** here, so the tombstone is the only reason left
+    — otherwise this would pass on the missing mark and say nothing about D17.
+    """
+    _plant(data_root)
+    _plant_process(data_root, "dining-002", "ترخیص میز",
+                   tombstoned=True, heir="warehouse-004")
+    admin = _client_as(data_root, tmp_path, "admin", "*")
+    editor = _client_as(data_root, tmp_path, "editor", "*", app_db=admin.app_db)
+    _confirm(admin, RULE)
+    _confirm_process(admin, data_root, "dining-002")
+
+    # The premise, from the route the mask is supposed to agree with.
+    assert admin.get("/api/processes/dining-002").status_code == 404
+    assert editor.get("/api/processes/dining-002").status_code == 200
+
+    body = admin.get(f"/api/facts/{RULE}").json()
+    assert _rows(body["processes"])["dining-002"] == {"ref": "dining-002",
+                                                      "restricted": True}
+    assert body["resolved"]["dining-002"] == {"restricted": True}
+    assert "ترخیص" not in json.dumps(body, ensure_ascii=False)
+    assert "warehouse-004" not in json.dumps(body, ensure_ascii=False)
+
+    # And the editor, who *can* fetch it, is told all of it.
+    seen = _rows(editor.get(f"/api/facts/{RULE}").json()["processes"])
+    assert seen["dining-002"]["title"] == "ترخیص میز"
+    assert seen["dining-002"]["heir"] == "warehouse-004"
+
+
+def test_a_process_in_another_department_is_masked_even_when_servable(data_root,
+                                                                      tmp_path):
+    """The **`sees`** half of the same conjunction, on its own.
+
+    Every other process-mask test here has a second reason working — the
+    process is tombstoned, or unconfirmed — so dropping `sees` from the arm
+    would still mask and none of them would notice. Here the document is alive
+    *and* confirmed, so `may_serve` says yes and scope is the only thing left
+    that can refuse.
+    """
+    _plant(data_root)
+    _plant_process(data_root, "dining-002", "ترخیص میز")
+    cooking = _client_as(data_root, tmp_path, "editor", "dept:cooking")
+    _confirm_process(cooking, data_root, "dining-002")
+
+    body = cooking.get(f"/api/facts/{RULE}").json()
+    assert _rows(body["processes"])["dining-002"] == {"ref": "dining-002",
+                                                      "restricted": True}
+    assert body["resolved"]["dining-002"] == {"restricted": True}
+    assert "ترخیص" not in json.dumps(body, ensure_ascii=False)
+
+
+def test_an_unconfirmed_process_neighbour_is_masked_for_a_non_editor(data_root,
+                                                                     tmp_path):
+    """D22's half of the same conjunction, on a process that is not tombstoned.
+
+    `cooking-001` is `conftest`'s planted process and starts unconfirmed, so an
+    admin is 404'd off it by the record gate alone — and naming it must wait
+    for the mark, not for the tombstone clause.
+    """
+    _plant(data_root)
+    admin = _client_as(data_root, tmp_path, "admin", "*")
+    editor = _client_as(data_root, tmp_path, "editor", "*", app_db=admin.app_db)
+    _confirm(admin, RULE)
+
+    assert admin.get("/api/processes/cooking-001").status_code == 404  # premise
+    body = admin.get(f"/api/facts/{RULE}").json()
+    assert _rows(body["processes"])["cooking-001"] == {"ref": "cooking-001",
+                                                       "restricted": True}
+    assert body["resolved"]["cooking-001"] == {"restricted": True}
+    # The editor is exempt from the record gate and is told the name.
+    assert _rows(editor.get(f"/api/facts/{RULE}").json()["processes"])[
+        "cooking-001"]["title"]
+
+    _confirm_process(admin, data_root, "cooking-001")
+    assert admin.get("/api/processes/cooking-001").status_code == 200
+    named = _rows(admin.get(f"/api/facts/{RULE}").json()["processes"])
+    assert named["cooking-001"]["title"]
+    assert "restricted" not in named["cooking-001"]
+
+
 def test_a_composed_row_title_is_named_when_its_items_are(data_root, tmp_path):
     """The paired half again, and the shape the two masking tests below move.
 
@@ -949,7 +1092,8 @@ def test_a_composed_row_title_is_named_when_its_items_are(data_root, tmp_path):
     _plant(data_root)
     client = _client_as(data_root, tmp_path, "editor", "*")
     body = client.get(f"/api/facts/{BOM}").json()
-    assert body["row_titles"] == {"row_ing_41": "قارچ", "row_total": "جمع کل"}
+    assert body["row_titles"] == {"row_ing_41": "قارچ", "row_total": "جمع کل",
+                                  "row_loose": "row_loose"}
     assert body["path_labels"]["data/rows/row_ing_41/grams"] == "گرم — قارچ"
 
 
@@ -968,7 +1112,8 @@ def test_a_composed_row_title_is_masked_whole_when_its_item_is(data_root,
     assert client.get(f"/api/facts/{ITEM}").status_code == 404       # premise
     body = client.get(f"/api/facts/{BOM}").json()
     assert body["row_titles"] == {"row_ing_41": {"restricted": True},
-                                  "row_total": "جمع کل"}
+                                  "row_total": "جمع کل",
+                                  "row_loose": "row_loose"}
     assert body["path_labels"]["data/rows/row_ing_41/grams"] == {
         "restricted": True}
     assert "قارچ" not in json.dumps(body, ensure_ascii=False)
@@ -987,13 +1132,15 @@ def test_switching_fact_items_off_masks_every_composed_row_for_an_admin(
     admin = _client_as(data_root, tmp_path, "admin", "*")
     _confirm(admin, BOM, ITEM)
     assert admin.get(f"/api/facts/{BOM}").json()["row_titles"] == {
-        "row_ing_41": "قارچ", "row_total": "جمع کل"}
+        "row_ing_41": "قارچ", "row_total": "جمع کل",
+        "row_loose": "row_loose"}
 
     _switch(admin, "fact_items", False)
     assert admin.get(f"/api/facts/{ITEM}").status_code == 404        # premise
     body = admin.get(f"/api/facts/{BOM}").json()
     assert body["row_titles"] == {"row_ing_41": {"restricted": True},
-                                  "row_total": "جمع کل"}
+                                  "row_total": "جمع کل",
+                                  "row_loose": "row_loose"}
     assert body["path_labels"]["data/rows/row_ing_41/grams"] == {
         "restricted": True}
     # The record itself is still served in full — the switch is the item's.

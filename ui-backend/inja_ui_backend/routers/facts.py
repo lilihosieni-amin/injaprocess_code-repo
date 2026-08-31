@@ -45,7 +45,7 @@ import re
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
-from .. import facts_store, visibility
+from .. import facts_store, storage, visibility
 from ..access import NOT_FOUND, capabilities_of, log_out_of_scope, permits
 from ..auth import require_session
 from ..disclosure import Disclosure
@@ -181,9 +181,16 @@ def _served(shown: Disclosure, reach, entry: dict, mark: str | None) -> bool:
     away here. That is deliberate: asking "is this kind on?" by building the
     body this caller would receive is what stops the mask from growing its own
     reading of the policy table.
+
+    `is_fact` is the fourth arm, and it belongs here and not only in
+    `_reachable`: a document whose `kind` is outside the five is one the route
+    answers 404 for, so this is not "the detail route's conjunction" without
+    it. `load_all` hands back whatever is in the five kind files, so a
+    hand-edited store really can put such a document in front of the mask.
     """
     targets = _targets(entry.get("scope"))
-    return (reach(targets)
+    return (visibility.is_fact(entry)
+            and reach(targets)
             and shown.may_serve_fact(entry, targets, mark)
             and bool(shown.redact_fact(entry, targets)))
 
@@ -234,7 +241,23 @@ def _neighbour_visibility(conn, root, shown: Disclosure, reach):
         if not isinstance(name, str):
             return False
         if _PROC_ID_RE.fullmatch(name):
-            return shown.sees(name)
+            # `GET /api/processes/{pid}`'s own conjunction, both halves:
+            # `sees` for the scope gate, `may_serve` for the record gate a
+            # tombstone or a missing confirmation closes (D17, D22). `sees`
+            # alone was the first version and it was wrong in exactly the way
+            # this round's rule forbids — the process route 404'd an admin off
+            # a tombstoned `dining-002` while this bundle handed them its
+            # name, its tombstone state and its heir id.
+            #
+            # `{}` for a process with no file, so an absent one answers like an
+            # unconfirmed one. That is the route's behaviour rather than a
+            # simplification: `get_process` 404s both, and D22 exists so that a
+            # non-editor cannot tell "nobody has confirmed this" from "it is
+            # gone". Distinguishing them here would hand back the very
+            # enumeration that 404 is conflating.
+            doc = facts_store._process_doc(root, name)
+            return (shown.sees(name)
+                    and shown.may_serve(doc or {}, storage.dept_of(name), name))
         found = by_name.get(name)
         return bool(found) and all(
             _served(shown, reach, e, stored.get(e.get("id"))) for e in found)
@@ -277,11 +300,21 @@ def _masked_rows(entry: dict, titles: dict, visible, names_a_fact) -> set[str]:
     that column choice is `facts_store`'s private business, and a mask that
     restated it would be the second copy of a rule this round exists to avoid.
 
-    # ponytail: the wider test over-masks if a column that is *not* a
-    # `refItems` one happens to hold a string equal to some item's key. It
-    # cannot under-mask, which is the direction that matters. Narrow it by
-    # having `facts_store.row_titles` report which rows it composed, if a real
-    # store ever trips it.
+    **And a row whose title never composed is not masked either.** When no cell
+    resolves to an item, `row_titles` falls back to the row's own key, so
+    `titles[key] == key` says "nothing was composed here" — and marking such a
+    row restricted would draw «خارج از دسترسی شما» over a label that is wholly
+    this entry's own. The check reads the *output* rather than re-deriving which
+    columns compose, which is the whole point: it closes the over-masking
+    without restating the column rule this function deliberately does not know.
+    A genuinely composed title cannot collide with it — composition joins
+    Persian titles with « — » and a row key is an ASCII minted key.
+
+    # ponytail: what survives is a row whose title really did compose and whose
+    # *non*-`refItems` cell happens to hold a string equal to some item's key —
+    # over-masked, never under-masked, which is the direction that matters.
+    # Narrow it by having `facts_store.row_titles` report which rows it
+    # composed, if a real store ever trips it.
     """
     out = set()
     for row in (entry.get("data") or {}).get("rows") or []:
@@ -291,6 +324,8 @@ def _masked_rows(entry: dict, titles: dict, visible, names_a_fact) -> set[str]:
         if not isinstance(key, str) or key not in titles:
             continue
         if isinstance(row.get("title"), str) and row["title"]:
+            continue
+        if titles[key] == key:
             continue
         if any(names_a_fact(cell) and not visible(cell)
                for cell in row.values()):
