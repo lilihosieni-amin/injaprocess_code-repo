@@ -357,15 +357,21 @@ def _path_label(entry: dict, path: str, titles: dict) -> str:
 
 
 def path_labels(root: Path, entry: dict) -> dict:
-    """Every red path, account field and reconciled cell → a Persian label.
+    """Every red path, `field_status` line, account field and reconciled cell
+    → a Persian label.
 
-    Exactly those three sources, and not every path in the entry: these are
-    the paths a screen names out loud — the red cards, the accounts card
-    grouped by disputed field (§14.4), and the reconciliation row.
+    Exactly those four sources, and not every path in the entry: these are the
+    paths a screen names out loud — the red cards, the استنباطی/عرفی markers
+    (§14.8, which the design computed and never rendered), the accounts card
+    grouped by disputed field (§14.4), and the reconciliation row. A marker
+    drawn beside a path with no label is the raw-key fallback §17 forbids,
+    which is why `field_status` is here and not only in the red set: its lines
+    are `inferred`/`informal`, never red, so `red_paths` does not carry them.
     """
     data = entry.get("data") or {}
     red = red_paths(entry)
     paths = set(red["unknown"]) | set(red["disputed"])
+    paths |= {p for p in entry.get("field_status") or {} if isinstance(p, str)}
     paths |= {a["field"] for a in entry.get("accounts") or []
               if isinstance(a, dict) and isinstance(a.get("field"), str)}
     for pair in data.get("reconciled_against") or []:
@@ -377,42 +383,57 @@ def path_labels(root: Path, entry: dict) -> dict:
 
 
 def _consumes(data: dict, fact_id: str, item_key: str | None) -> bool:
-    """Does this payload read from, write to, or otherwise consume the target?
+    """Does this payload use the target?
 
-    QF-37's seven consuming edges, and no others: `of`, `mirror_of` and
-    `supersedes` point at a target too but do not *use* it, and this list
-    exists to answer "what breaks if this changes".
+    QF-8 enumerates the typed edges itself — `inputs[].from`, `writes_to`,
+    `of`, `via`, `calls[]`, `mirror_of`, `template_of`, `derived`,
+    `reconciled_against`, `supersedes` — and every one of them but
+    `supersedes` is a *use*, so every one of them but `supersedes` is here,
+    plus the `refItems` cell, which is an edge carried as a bare key rather
+    than a `{ref}` (QF-37's one exception).
+
+    Two deliberate exclusions. `supersedes`/`superseded_by` link two versions
+    of one thing rather than one entry consuming another, and `processes[]`
+    is the other id namespace and is already served by `process_links`.
+    Everything else stays in, because this list answers "what breaks if this
+    changes" — retire a template rule whose `template_of` instances are not
+    counted and the answer comes back "nothing depends on this" while
+    something does.
     """
     def hits(obj) -> bool:
         return isinstance(obj, dict) and obj.get("ref") == fact_id
 
-    for member in data.get("inputs") or []:                    # 1 from, 2 via
+    for member in data.get("inputs") or []:                    # from, via
         if isinstance(member, dict) and (hits(member.get("from"))
                                          or hits(member.get("via"))):
             return True
-    if any(hits(c) for c in data.get("calls") or []):          # 3 calls[]
+    if any(hits(c) for c in data.get("calls") or []):          # calls[]
         return True
-    if hits(data.get("writes_to")):                            # 4 writes_to —
-        return True                                            # a measurement's
-    for member in data.get("outputs") or []:                   # 4 writes_to —
-        if isinstance(member, dict) and hits(member.get("writes_to")):
-            return True                                        # a rule output's
-    for member in data.get("fields") or []:                    # 5 derived
+    if hits(data.get("writes_to")) or hits(data.get("of")):    # a measurement's
+        return True                                            # writes_to / of
+    for member in data.get("outputs") or []:                   # a rule output's
+        if isinstance(member, dict) and (hits(member.get("writes_to"))
+                                         or hits(member.get("of"))):
+            return True
+    if hits(data.get("mirror_of")) or hits(data.get("template_of")):
+        return True
+    for member in data.get("fields") or []:                    # derived
         if isinstance(member, dict) and hits(member.get("derived")):
             return True
-    if item_key:                                               # 6 refItems cell
+    if item_key:                                               # refItems cell
         for column in _ref_item_columns(data):
             if any(isinstance(r, dict) and r.get(column) == item_key
                    for r in data.get("rows") or []):
                 return True
-    for pair in data.get("reconciled_against") or []:          # 7 reconciled
+    for pair in data.get("reconciled_against") or []:          # reconciled
         if isinstance(pair, dict) and hits(pair.get("against")):
             return True
     return False
 
 
 def consumers(root: Path, fact_id: str) -> list:
-    """`[{"id", "title"}]` — the entries that read or write this one.
+    """`[{"id", "title"}]` — the entries that use this one (QF-39's reverse
+    index, derived server-side).
 
     Ordered by id, so two calls over one store answer in the same order. The
     `refItems` join is on the target's **key**, not its id (QF-37's one

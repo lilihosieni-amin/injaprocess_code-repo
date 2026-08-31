@@ -98,6 +98,14 @@ FORM = _entry(
               {"key": "mini_burger", "title": "مینی برگر"}]},
     status="unknown")
 
+#: The BOM's cached copy in the report workbook (§7): `role: mirror`,
+#: `mirror_of` the table, and no rows of its own.
+MIRROR = _entry(
+    "F-00022", "record", "gozaresh_cb__table_ingredients", "نسخهٔ پیوندی مواد اولیه",
+    {"medium": "sheet", "role": "mirror", "mirror_of": {"ref": "F-00020"},
+     "location": {"spreadsheetId": GOZARESH, "sheetId": 7,
+                  "sheet": "Table_Ingredients_Pizza", "hidden": True}})
+
 #: The reader: one rule naming five different targets through five edges.
 RULE = _entry(
     "F-00030", "rule", "gozaresh_cb__pizza__standard_use", "مصرف استاندارد",
@@ -115,11 +123,17 @@ RULE = _entry(
                "status": "chosen"}],
     processes=[{"ref": "cooking-003"}])
 
+#: A constant, whose single output is *of* an item (§7) and whose value is
+#: `informal` — a `field_status` line, which is never red and still needs a
+#: label (§14.8).
 CONSTANT = _entry("F-00031", "rule", "mushroom_g_per_pizza", "قارچ هر پیتزا",
                   {"inputs": [],
                    "outputs": [{"key": "mushroom_g", "title": "قارچ",
-                                "unit": "g", "nature": "standard", "value": 180}],
-                   "calls": [], "port": False, "edge_cases": []})
+                                "unit": "g", "nature": "standard", "value": 180,
+                                "of": {"ref": "F-00013"}}],
+                   "calls": [], "port": False, "edge_cases": []},
+                  status="informal",
+                  field_status={"data/outputs/mushroom_g/value": "informal"})
 VIA = _entry("F-00032", "rule", "kg_to_g", "تبدیل کیلوگرم به گرم",
              {"inputs": [{"key": "kg", "title": "کیلوگرم", "unit": "kg"}],
               "outputs": [{"key": "g", "title": "گرم", "unit": "g"}],
@@ -130,6 +144,18 @@ CALLED = _entry("F-00033", "rule", "get_value_by_id", "getValueById",
                  "outputs": [{"key": "value", "title": "مقدار"}],
                  "expr": "value = id", "lang": "feel", "calls": [],
                  "port": True, "edge_cases": []})
+#: The other branch's copy of the reader (QF-4): `template_of` the rule
+#: above, with the drift the audit reports.
+INSTANCE = _entry(
+    "F-00035", "rule", "gozaresh_nk__pizza__standard_use",
+    "مصرف استاندارد (ناهارخوران)",
+    {"inputs": [{"key": "bom_g", "title": "گرم هر محصول", "unit": "g"}],
+     "outputs": [{"key": "standard_use", "title": "مصرف استاندارد", "unit": "g",
+                  "nature": "standard"}],
+     "expr": "standard_use = bom_g * 1.02", "lang": "feel", "calls": [],
+     "template_of": {"ref": "F-00030"}, "divergence": "drift",
+     "port": False, "edge_cases": []})
+
 DERIVED = _entry("F-00034", "rule", "farangi__delta", "اختلاف روز",
                  {"inputs": [{"key": "start", "title": "اول شب"}],
                   "outputs": [{"key": "delta", "title": "اختلاف"}],
@@ -150,8 +176,8 @@ STUB = _entry("F-00050", "record", "ext_1dmh8tcqouqn", "کاربرگ پیتزا"
               {"medium": "sheet", "role": "reference", "stub": True,
                "grain": "workbook", "location": {"spreadsheetId": PITZA}})
 
-ENTRIES = ITEMS + [BOM, FORM, RULE, CONSTANT, VIA, CALLED, DERIVED,
-                   MEASUREMENT, STUB]
+ENTRIES = ITEMS + [BOM, FORM, MIRROR, RULE, CONSTANT, VIA, CALLED, DERIVED,
+                   INSTANCE, MEASUREMENT, STUB]
 
 PROCESSES = [
     {"id": "cooking-001", "department": "cooking", "name": "پخت پیتزا",
@@ -233,6 +259,7 @@ def _referenced(entry):
                  for column in ref_columns if isinstance(row.get(column), str)}
     row_keys = {row["key"] for row in data.get("rows") or []}
     red = {p for paths in facts_store.red_paths(entry).values() for p in paths}
+    red |= set(entry.get("field_status") or {})
     red |= {a["field"] for a in entry.get("accounts") or []}
     red |= {f"data/rows/{rc['cell']['row']}/{rc['cell']['field']}"
             for rc in data.get("reconciled_against") or []}
@@ -305,13 +332,24 @@ def test_path_label_of_a_reference_cell_is_column_then_row(root):
     assert labels["data/rows/prod_61__ing_26/grams"] == "گرم — اینجا پیتزا — خمیر پیتزا"
 
 
-def test_path_labels_cover_the_three_sources_and_nothing_else(root):
-    """Red paths, account fields and reconciled cells — the entry's other
-    paths are not labelled here (task 19 and the UI ask for what they show)."""
+def test_path_labels_cover_the_four_sources_and_nothing_else(root):
+    """Red paths, `field_status` lines, account fields and reconciled cells —
+    the entry's other paths are not labelled here (task 19 and the UI ask for
+    what they show)."""
     labels = facts_store.path_labels(root, facts_store.load_entry(root, "F-00020"))
     assert set(labels) == {"data/rows/prod_61__ing_1/grams",    # open account
                            "data/rows/prod_61__ing_26/grams",   # null cell
                            "data/rows/prod_61__ing_41/grams"}   # reconciled
+
+
+def test_path_labels_include_a_field_status_line(root):
+    """§14.8: the استنباطی/عرفی markers are drawn, and a marker beside an
+    unlabelled path is the raw-key fallback §17 forbids. An `informal` line is
+    never red, so `red_paths` does not carry it."""
+    entry = facts_store.load_entry(root, "F-00031")
+    assert facts_store.red_paths(entry) == {"unknown": [], "disputed": []}
+    assert facts_store.path_labels(root, entry) == {
+        "data/outputs/mushroom_g/value": "قارچ › مقدار"}
 
 
 def test_path_label_of_a_column_leaf_names_the_column(root):
@@ -356,8 +394,9 @@ def _consumer_ids(root, fact_id):
 
 def test_consumers_finds_an_inputs_from_edge(root):
     assert facts_store.consumers(root, "F-00020") == [
-        {"id": "F-00030", "title": "مصرف استاندارد"},
-        {"id": "F-00040", "title": "وزن پنیر پیتزا"}]
+        {"id": "F-00022", "title": "نسخهٔ پیوندی مواد اولیه"},  # mirror_of
+        {"id": "F-00030", "title": "مصرف استاندارد"},           # inputs[].from
+        {"id": "F-00040", "title": "وزن پنیر پیتزا"}]           # writes_to
 
 
 def test_consumers_finds_a_via_edge(root):
@@ -385,11 +424,51 @@ def test_consumers_finds_a_fields_derived_edge(root):
 def test_consumers_finds_a_ref_items_cell(root):
     """A `refItems` cell holds the item's **key** (QF-37's one exception), so
     the join is on the target's key, not on its id."""
-    assert _consumer_ids(root, "F-00013") == ["F-00020"]
+    assert _consumer_ids(root, "F-00013") == ["F-00020",   # a refItems cell
+                                              "F-00031"]  # an output's `of`
+
+
+def test_consumers_finds_a_rule_output_of_edge(root):
+    """`outputs[].of` names the item an output is *of* (§7) — a use, and one
+    of QF-8's typed edges."""
+    assert "F-00031" in _consumer_ids(root, "F-00013")
+
+
+def test_consumers_finds_a_measurement_of_edge(root):
+    """A measurement's `of` is at the top of `data`, like its `writes_to`."""
+    assert _consumer_ids(root, "F-00011") == ["F-00020",   # a refItems cell
+                                              "F-00040"]  # the measurement's `of`
+
+
+def test_consumers_finds_a_mirror_of_edge(root):
+    """Change the table and its cached copies are affected — a mirror reads
+    its source (QF-10)."""
+    assert "F-00022" in _consumer_ids(root, "F-00020")
+
+
+def test_consumers_finds_a_template_of_edge(root):
+    """QF-4's branch instance. Without this edge, retiring a template answers
+    «nothing depends on this» while its instances still do."""
+    assert _consumer_ids(root, "F-00030") == ["F-00035"]
 
 
 def test_consumers_finds_a_reconciled_against_edge(root):
     assert _consumer_ids(root, "F-00031") == ["F-00020"]
+
+
+def test_consumers_excludes_lifecycle_links_and_process_refs(root):
+    """`supersedes`/`superseded_by` relate two versions of one thing rather
+    than one entry using another, and `processes[]` is the other id namespace
+    — `process_links` serves it."""
+    entry = facts_store.load_entry(root, "F-00035")
+    entry["supersedes"] = {"ref": "F-00033"}
+    entry["data"].pop("template_of")
+    _dump(root / "facts" / "rules.json",
+          {"schema_version": 1,
+           "entries": [entry if e["id"] == "F-00035" else e
+                       for e in ENTRIES if e["kind"] == "rule"]})
+    assert _consumer_ids(root, "F-00033") == ["F-00030"]   # the `calls[]` edge only
+    assert facts_store.consumers(root, "cooking-001") == []
 
 
 def test_consumers_of_an_unread_entry_is_empty(root):
@@ -426,9 +505,10 @@ def test_process_links_of_an_entry_that_links_none(root):
 # --------------------------------------------------------------------------- #
 
 def test_coverage_counts_workbooks_a_non_stub_record_cites(root):
-    """`PITZA` is named only by a stub — identity and nothing else (QF-20) —
-    so it is not read; `GOZARESH` is named by nothing."""
-    assert facts_store.coverage(root) == {"read": 1, "total": 3}
+    """`MAVAD` is read by the BOM and `GOZARESH` by its mirror; `PITZA` is
+    named only by a stub — identity and nothing else (QF-20) — so it is not
+    read."""
+    assert facts_store.coverage(root) == {"read": 2, "total": 3}
 
 
 def test_manifest_reads_branches_and_counts_workbooks(root):
