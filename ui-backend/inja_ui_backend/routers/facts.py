@@ -73,7 +73,7 @@ from ..disclosure import Disclosure
 from ..fingerprint import fact_fingerprint
 from ..models import ResolveFactBody
 from ..scopes import contains
-from ..store import confirmations, manifest, policy
+from ..store import confirmations, manifest
 
 router = APIRouter(prefix="/api/facts")
 
@@ -741,6 +741,78 @@ def _source(root: Path, raw: str) -> tuple[Path, str | None] | None:
     return None
 
 
+def _cited_files(entry: dict):
+    """Every file an entry cites: `source[]` and `accounts[].source`.
+
+    Both, because both are provenance and QF-26 strips both together — an
+    account's source is the evidence for one side of a dispute, which is
+    exactly what the reviewer opening a red row is going to ask for.
+
+    A `ref` that is not a string is skipped rather than guessed at: `sourceLoc`
+    allows `null` (a source with no file behind it, a `chat` citation with
+    nothing to download), and nothing revalidates a stored entry on read.
+    """
+    sources = list(entry.get("source") or [])
+    sources += [a.get("source") for a in entry.get("accounts") or []
+                if isinstance(a, dict)]
+    for src in sources:
+        if isinstance(src, dict) and isinstance(src.get("ref"), str):
+            yield src["ref"]
+
+
+def _cites(conn, root: Path, user, target: Path) -> bool:
+    """Does any entry this caller **may be served** cite `target`?
+
+    The download's disclosure arm, and the user's ruling of 2026-08-31 applied
+    to the strongest case there is. That ruling — *keep the row, hide the name*
+    — withholds a neighbour's Persian **title** across a scope boundary; a
+    route that handed the same caller the whole transcript the neighbour was
+    extracted from would contradict it by orders of magnitude. So a file is
+    reachable through the entry that cites it, and by no other road.
+
+    **Citation and not scope, because two of the three roots have no
+    department to be scoped by.** A workbook's manifest row can name
+    `departments: []` and a meeting is cross-departmental by nature, so
+    `attachments/sheets/**` and `meetings/transcripts/**` admit no scope
+    predicate at all — where the entry that cites them always has one. It is
+    also the same discipline as everywhere else in this module: the question is
+    `_served`, the route's own answer, asked again rather than restated.
+
+    `redact_fact` **after** `_served`, and reading the citations off the
+    *served* body rather than off the stored entry, is what makes QF-26 fall
+    out instead of being re-implemented: with `fact_sources` down a non-editor's
+    served entry carries no `source[]` and no `accounts[].source`, so it cites
+    nothing and the file is 404 — while an editor, whom that switch has never
+    governed, still holds a body that cites it. One rule, applied where it
+    already lives.
+
+    Nothing here is scoped to the *requested* entry: the caller may have
+    arrived from any of the entries citing this file, and requiring the one
+    they clicked would mean a fact id in the query string that the design does
+    not draw.
+
+    # ponytail: one `resolve()` per cited ref of every served entry, per
+    # download — a few thousand path calls on a store far larger than today's.
+    # Index refs by resolved path if a download is ever measurably slow.
+    """
+    shown = Disclosure(conn, user)
+    reach = _reach(conn, user)
+    entries = facts_store.load_all(root)
+    stored = confirmations.stored_for(
+        conn, [e["id"] for e in entries if isinstance(e.get("id"), str)])
+    for entry in entries:
+        if not _served(shown, reach, entry, stored.get(entry.get("id"))):
+            continue
+        served = shown.redact_fact(entry, _targets(entry.get("scope")))
+        for ref in _cited_files(served):
+            try:
+                if (root / ref).resolve() == target:
+                    return True
+            except (ValueError, OSError):
+                continue
+    return False
+
+
 @router.get("/source")
 def download_source(request: Request, user=Depends(panel_session)):
     """One cited file, downloaded — and **never rendered** (QF-39).
@@ -760,24 +832,26 @@ def download_source(request: Request, user=Depends(panel_session)):
       names a department (§15: gated by scope *and* by `export_pdf`). Scope
       before capability, or a caller who fails both halves is told 403 about a
       department they were never to learn of;
+    * **cited by no entry this caller may be served** — the same 404 again,
+      and the arm that actually closes the estate (`_cites`). The other two
+      roots name no department, so without it any Panel member holding
+      `export_pdf` could pull every meeting transcript and every workbook dump
+      in the restaurant — while the *titles* of the entries drawn from them
+      stay masked three routes away (the ruling of 2026-08-31). QF-26's
+      `fact_sources` is inside this arm rather than beside it: a caller whose
+      served body has had its provenance stripped cites nothing, and an editor,
+      whom that switch never governed, still does;
     * **without `export_pdf`** — 403, the download split (D25): this caller is
-      in the Panel and may read the entry that cites the file, so what is
-      refused is the action. Recorded as `access.denied` (D42) and only here,
-      because that event is high-signal precisely while it is rare;
-    * **with `fact_sources` off** — 404 before any of it. QF-26 strips
-      provenance from every served body when that switch is down, and a route
-      that still handed the file over would be the strip undone by a second
-      request. It is asked of the deployment rather than of the caller: an
-      editor is exempt from the *entry* switches because the entry has a scope
-      to be the editor of, and a file on disk has none.
+      in the Panel and is being served an entry that cites the file, so what is
+      refused is the action, not the knowledge. Recorded as `access.denied`
+      (D42) and only here, because that event is high-signal precisely while it
+      is rare.
 
     `Cache-Control: private, no-cache` for `serve_export`'s reason: the file is
     behind a session now, so no shared cache may keep a copy for the next
     person, and the browser must ask before reusing its own.
     """
     conn = request.app.state.db
-    if not policy.current(conn)["fact_sources"]:
-        raise HTTPException(status_code=404, detail=NOT_FOUND)
     root = request.app.state.cfg.data_root.resolve()
     raw = request.query_params.get("path", "")
     found = _source(root, raw)
@@ -787,6 +861,11 @@ def download_source(request: Request, user=Depends(panel_session)):
     if dept is not None and not any(contains(s, f"dept:{dept}")
                                     for s in scopes_of(conn, user)):
         log_out_of_scope(request, user, f"dept:{dept}")
+        raise HTTPException(status_code=404, detail=NOT_FOUND)
+    # Before the capability, like every other refusal that is about what this
+    # caller may **know**: a 403 for a file no entry of theirs cites would say
+    # "this exists" about provenance they are not being shown.
+    if not _cites(conn, root, user, target):
         raise HTTPException(status_code=404, detail=NOT_FOUND)
     if "export_pdf" not in capabilities_of(conn, user):
         # `getattr` for `access._require_capability`'s reason: `State` raises

@@ -54,8 +54,29 @@ _FILES = {"item": "items.json", "record": "records.json",
           "measurement": "measurements.json", "rule": "rules.json",
           "note": "notes.json"}
 
+#: The cited files. One per root, so containment is asserted per root — and one
+#: cited **only by an account**, because `accounts[].source` is the other half
+#: of what an entry cites and a reviewer opening a disputed row is asking for
+#: exactly that half.
+SHEET = "attachments/sheets/gozareshat/w-01.json"
+PHOTO = "departments/cooking/attachments/form-01.txt"
+TRANSCRIPT = "meetings/transcripts/cooking-1405-06-01.txt"
+ACCOUNT_ONLY = "meetings/transcripts/cooking-1405-06-02.txt"
 
-def _entry(fid, dept, key, title):
+#: Cited **only by the dining entry**, and under a root whose path names no
+#: department — so nothing but the citation arm can refuse a cooking caller it.
+DINING_SOURCE = "meetings/transcripts/dining-1405-06-03.txt"
+
+#: In a root, on disk, and cited by nobody: the file a caller can name and
+#: still not be given.
+ORPHAN = "meetings/transcripts/orphan-1405-06-04.txt"
+
+SOURCES = {SHEET: '{"tab": "پیتزا"}', PHOTO: "عکس فرم",
+           TRANSCRIPT: "متن جلسه", ACCOUNT_ONLY: "متن جلسهٔ دوم",
+           DINING_SOURCE: "متن جلسهٔ سالن", ORPHAN: "متن بی‌صاحب"}
+
+
+def _entry(fid, dept, key, title, sources, account_refs):
     """One disputed entry a real `merge facts resolve` accepts.
 
     Hand-written, like `conftest`'s (CLAUDE.md's merge-only rule binds the live
@@ -67,17 +88,14 @@ def _entry(fid, dept, key, title):
         "id": fid, "kind": "item", "key": key, "title": title,
         "statement": "بیانیهٔ آزمایشی",
         "scope": {"departments": [dept], "branches": []},
-        "source": [{"type": "chat",
-                    "ref": "meetings/transcripts/cooking-1405-06-01.txt"}],
+        "source": [{"type": t, "ref": ref} for t, ref in sources],
         "accounts": [
             {"id": CHOSEN, "field": FIELD, "statement": "روایت آشپز",
              "value": "kg", "speaker_role": "chef", "status": "open",
-             "source": {"type": "chat",
-                        "ref": "meetings/transcripts/cooking-1405-06-01.txt"}},
+             "source": {"type": "chat", "ref": account_refs[0]}},
             {"id": OTHER, "field": FIELD, "statement": "روایت انباردار",
              "value": "g", "speaker_role": "storekeeper", "status": "open",
-             "source": {"type": "chat",
-                        "ref": "meetings/transcripts/cooking-1405-06-02.txt"}},
+             "source": {"type": "chat", "ref": account_refs[1]}},
         ],
         "status": "disputed", "retired": False,
         "updated_at": "2026-07-06T10:00:00Z",
@@ -85,13 +103,24 @@ def _entry(fid, dept, key, title):
     }
 
 
-ENTRIES = [_entry(COOKING, "cooking", "test_ghaarch", "قارچ"),
-           _entry(DINING, "dining", "test_livaan", "لیوان")]
+ENTRIES = [
+    _entry(COOKING, "cooking", "test_ghaarch", "قارچ",
+           [("chat", TRANSCRIPT), ("sheet", SHEET), ("photo", PHOTO)],
+           [TRANSCRIPT, ACCOUNT_ONLY]),
+    # It cites cooking's field material as well as its own transcript — the
+    # shape QF-43 describes when a run adds a source to an entry outside its
+    # own department, and the only shape that can pin the **department** arm on
+    # its own: a caller the citation arm admits and the scope arm must refuse.
+    _entry(DINING, "dining", "test_livaan", "لیوان",
+           [("chat", DINING_SOURCE), ("photo", PHOTO)],
+           [DINING_SOURCE, DINING_SOURCE]),
+]
 
 #: A **universal** entry — `scope.departments` empty, so it binds the whole
 #: restaurant and is reachable only at `*` (QF-4, QF-27). Planted only by the
 #: test that asks where its run directory goes.
-UNIVERSAL = {**_entry("F-00003", "cooking", "test_jahaani", "جهانی"),
+UNIVERSAL = {**_entry("F-00003", "cooking", "test_jahaani", "جهانی",
+                      [("chat", TRANSCRIPT)], [TRANSCRIPT, TRANSCRIPT]),
              "scope": {"departments": [], "branches": []}}
 
 
@@ -176,6 +205,14 @@ def _confirm(client, fid):
         confirmations.set_confirmation(conn, target=fid,
                                        fingerprint=fact_fingerprint(entry),
                                        by="09190000000", at=1770000000)
+    finally:
+        conn.close()
+
+
+def _switch(client, field, visible):
+    conn = db.connect(client.cfg.app_db)
+    try:
+        policy.set_field(conn, field, visible)
     finally:
         conn.close()
 
@@ -485,15 +522,6 @@ def test_nothing_the_service_cannot_serve_is_writable(data_root, tmp_path,
 # GET /api/facts/source — the download, and nothing rendered (QF-39)
 # --------------------------------------------------------------------------
 
-#: The three roots, one file in each. Exactly three: a source that resolves
-#: anywhere else is not a source this route serves.
-SOURCES = {
-    "attachments/sheets/gozareshat/w-01.json": '{"tab": "پیتزا"}',
-    "departments/cooking/attachments/form-01.txt": "عکس فرم",
-    "meetings/transcripts/cooking-1405-06-01.txt": "متن جلسه",
-}
-
-
 def _plant_sources(data_root):
     for rel, text in SOURCES.items():
         path = data_root / rel
@@ -505,15 +533,20 @@ def _get(client, path):
     return client.get("/api/facts/source", params={"path": path})
 
 
-@pytest.mark.parametrize("rel", sorted(SOURCES))
-def test_a_file_under_each_root_downloads_as_an_attachment(data_root, tmp_path,
-                                                           rel):
+@pytest.mark.parametrize("rel", [SHEET, PHOTO, TRANSCRIPT, ACCOUNT_ONLY,
+                                 DINING_SOURCE])
+def test_a_cited_file_downloads_as_an_attachment(data_root, tmp_path, rel):
     """One click, one download, and **nothing rendered** (QF-39).
 
     `content-disposition: attachment` is asserted beside the status because it
     is the whole of the rule: a transcript or a photo served inline is a
     viewer, and the Panel does not have one. A status-only test passes on a
     route that renders every one of these in the browser.
+
+    One file per root, plus `ACCOUNT_ONLY`, which no `source[]` names and one
+    `accounts[].source` does — the half of an entry's citations a reviewer
+    opening a *disputed* row is reaching for, and the half a `_cited_files`
+    that read only the envelope would drop.
     """
     _plant(data_root)
     _plant_sources(data_root)
@@ -523,6 +556,73 @@ def test_a_file_under_each_root_downloads_as_an_attachment(data_root, tmp_path,
     assert r.headers["content-disposition"].startswith("attachment"), (
         f"{rel} was served with {r.headers.get('content-disposition')!r}")
     assert r.text == SOURCES[rel]
+
+
+def test_a_file_no_entry_cites_is_not_served(data_root, tmp_path):
+    """Inside a root, on disk, and reachable by nobody: the estate is not a
+    file server (QF-39, and the ruling of 2026-08-31).
+
+    Two of the three roots name no department — a workbook's manifest row can
+    be `departments: []` and a meeting is cross-departmental — so citation is
+    the only predicate there is for them, and without it a Panel member holding
+    `export_pdf` could walk every transcript in the restaurant while the
+    *titles* of the entries drawn from them stay masked three routes away.
+    """
+    _plant(data_root)
+    _plant_sources(data_root)
+    client = _client_as(data_root, tmp_path, "editor", "*")
+    r = _get(client, ORPHAN)
+    assert r.status_code == 404, r.text
+    assert r.json()["detail"] == NOT_FOUND
+
+
+def test_a_source_cited_only_by_an_entry_outside_the_scope_is_not_served(
+        data_root, tmp_path):
+    """The citation arm carrying the scope boundary into a root that has none.
+
+    `DINING_SOURCE` is a transcript — no department anywhere in its path — and
+    only the dining entry cites it. So the pair is a statement about *whose
+    entry cites it* and about nothing else: the dining editor is served it, and
+    the cooking editor, who is refused the citing entry itself, is answered the
+    same uniform 404 they get for a file that was never there.
+    """
+    _plant(data_root)
+    _plant_sources(data_root)
+    cooking = _client_as(data_root, tmp_path, "editor", "dept:cooking")
+    r = _get(cooking, DINING_SOURCE)
+    assert r.status_code == 404, r.text
+    assert r.json()["detail"] == NOT_FOUND
+    dining = _client_as(data_root, tmp_path, "editor", "dept:dining")
+    assert _get(dining, DINING_SOURCE).status_code == 200
+
+
+def test_an_unconfirmed_entry_hides_the_files_it_cites(data_root, tmp_path):
+    """D22 reaching the download. An admin is a non-editor, so an entry
+    carrying no valid confirmation is one they may not be told exists — and
+    neither, therefore, is the transcript it was extracted from. Confirmed, the
+    same request is served, which is what makes the 404 a statement about the
+    mark rather than about the file."""
+    _plant(data_root)
+    _plant_sources(data_root)
+    client = _client_as(data_root, tmp_path, "admin", "*")
+    assert _get(client, TRANSCRIPT).status_code == 404
+    _confirm(client, COOKING)
+    assert _get(client, TRANSCRIPT).status_code == 200
+
+
+def test_a_kind_switched_off_hides_the_files_it_cites(data_root, tmp_path):
+    """QF-26's *withheld whole* reaching the download. With `fact_items` down
+    an admin is served no item at all, so the only entries citing this file are
+    entries they are not being shown — and the file goes with them."""
+    _plant(data_root)
+    _plant_sources(data_root)
+    client = _client_as(data_root, tmp_path, "admin", "*")
+    _confirm(client, COOKING)
+    assert _get(client, TRANSCRIPT).status_code == 200
+    _switch(client, "fact_items", False)
+    r = _get(client, TRANSCRIPT)
+    assert r.status_code == 404, r.text
+    assert r.json()["detail"] == NOT_FOUND
 
 
 @pytest.mark.parametrize("rel", [
@@ -587,24 +687,41 @@ def test_a_view_only_holder_cannot_reach_the_download(data_root, tmp_path):
     assert r.json()["detail"] == NOT_FOUND
 
 
-def test_with_fact_sources_off_the_download_is_404(data_root, tmp_path):
-    """QF-26: with the switch off, `source[]` is stripped from every served
-    body and this route answers 404 — the provenance is not served by this
-    deployment, and a route that still handed the file over would be the strip
-    undone by a second request."""
+def test_with_fact_sources_off_a_non_editor_is_refused_the_file(data_root,
+                                                                tmp_path):
+    """QF-26: with the switch down, a non-editor's served body carries no
+    `source[]` and no `accounts[].source` — so it cites nothing, and the file
+    it used to cite is 404. Not a branch of its own: the strip is
+    `redact_fact`'s, and the download reads the citations off the body this
+    caller is actually served."""
+    _plant(data_root)
+    _plant_sources(data_root)
+    client = _client_as(data_root, tmp_path, "admin", "*")
+    _confirm(client, COOKING)
+    assert _get(client, TRANSCRIPT).status_code == 200
+    _switch(client, "fact_sources", False)
+    r = _get(client, TRANSCRIPT)
+    assert r.status_code == 404, r.text
+    assert r.json()["detail"] == NOT_FOUND
+
+
+def test_an_editor_is_exempt_from_the_fact_sources_switch(data_root, tmp_path):
+    """The other half, and the reason the switch is not asked of the route.
+
+    D17's column is headed *"Non-editor default"* and QF-26's switches follow
+    it: an editor of every department the entry names is the person the
+    provenance is *for*, and `visibility.filtered` has never stripped it from
+    them. A route that asked `policy.current(...)["fact_sources"]` of the
+    deployment instead of reading the served body would be harsher here than
+    the entry the file belongs to — a rule with two implementations, which is
+    how the two come to disagree.
+    """
     _plant(data_root)
     _plant_sources(data_root)
     client = _client_as(data_root, tmp_path, "editor", "*")
-    rel = "meetings/transcripts/cooking-1405-06-01.txt"
-    assert _get(client, rel).status_code == 200
-    conn = db.connect(client.cfg.app_db)
-    try:
-        policy.set_field(conn, "fact_sources", False)
-    finally:
-        conn.close()
-    r = _get(client, rel)
-    assert r.status_code == 404, r.text
-    assert r.json()["detail"] == NOT_FOUND
+    _switch(client, "fact_sources", False)
+    assert _get(client, TRANSCRIPT).status_code == 200
+    assert client.get(f"/api/facts/{COOKING}").status_code == 200
 
 
 def test_an_attachment_is_gated_on_the_department_in_its_path(data_root,
@@ -612,16 +729,19 @@ def test_an_attachment_is_gated_on_the_department_in_its_path(data_root,
     """The scope half (§15: *gated by scope and by `export_pdf`*).
 
     `departments/{dept}/attachments/**` is the one root that names a
-    department, so it takes one: a dining editor is answered the uniform 404
-    for cooking's field material, and the pair is what makes that a statement
-    about the department rather than about the file being absent.
+    department, so it takes one — **and this is the pair that says so on its
+    own**: the dining entry cites cooking's photograph, so the dining editor
+    passes the citation arm and is refused by the department in the path
+    alone. Refuse them with a file only cooking's entry cited and the two arms
+    would be indistinguishable, with either one able to go missing unnoticed.
     """
     _plant(data_root)
     _plant_sources(data_root)
-    rel = "departments/cooking/attachments/form-01.txt"
     dining = _client_as(data_root, tmp_path, "editor", "dept:dining")
-    r = _get(dining, rel)
+    assert _get(dining, DINING_SOURCE).status_code == 200, (
+        "the premise: this caller is served the entry that cites the photo")
+    r = _get(dining, PHOTO)
     assert r.status_code == 404, r.text
     assert r.json()["detail"] == NOT_FOUND
     cooking = _client_as(data_root, tmp_path, "editor", "dept:cooking")
-    assert _get(cooking, rel).status_code == 200
+    assert _get(cooking, PHOTO).status_code == 200

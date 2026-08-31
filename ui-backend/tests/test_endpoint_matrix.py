@@ -61,16 +61,31 @@ SOURCE = f"/api/facts/source?path={SOURCE_FILE}"
 
 @pytest.fixture(autouse=True)
 def _a_source_to_download(data_root):
-    """The file the download row asks for, in every test in this file.
+    """The file the download row asks for — **and the entry that cites it**.
 
-    Without it the route's honest answer to an in-scope caller is 404 — a
-    missing file — and `test_a_role_with_the_capability_is_not_refused_in_scope`
-    would read that as over-gating, which is a diagnosis about the wrong thing
-    entirely. Autouse, because the table is static and every test below drives
-    the same rows.
+    Two halves, because the route needs both: it serves a file only when some
+    entry the caller may be served cites it (QF-39), so a planted file nobody
+    cites is a 404 for everybody and a planted citation with no file is a 404
+    for everybody. Either way
+    `test_a_role_with_the_capability_is_not_refused_in_scope` would read the
+    refusal as over-gating, which is a diagnosis about the wrong thing
+    entirely.
+
+    `F-00001` is `conftest`'s cooking-scoped rule, so the citation lands on an
+    entry whose own scope matches the department in the path. Only the kind
+    file is rewritten: `source[]` is not an index column.
+
+    Autouse, because the table is static and every test below drives the same
+    rows.
     """
     (data_root / "departments" / "cooking" / "attachments"
      / "probe.txt").write_text("متن آزمایشی", encoding="utf-8")
+    rules = data_root / "facts" / "rules.json"
+    doc = json.loads(rules.read_text(encoding="utf-8"))
+    for entry in doc["entries"]:
+        if entry["id"] == "F-00001":
+            entry["source"] = [{"type": "photo", "ref": SOURCE_FILE}]
+    rules.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
 
 
 #: The twenty-eight gated routes: (method, path, body, the capability each needs).
@@ -238,15 +253,19 @@ OUTSIDE_THE_PANEL = tuple(
     name for name, caps in seed.ROLES.items()
     if not set(caps) & set(facts_router.PANEL_CAPABILITIES))
 
-#: `WITH`'s role for a row that the Panel gate would 404 it out of.
+#: `WITH`'s role for a row the shared table's role cannot speak for.
 #:
 #: `WITH["export_pdf"]` is the Reader — the narrowest seeded holder, and the
 #: right answer for the export routes — but a Reader holds no Panel capability,
-#: so on the download row their 404 says nothing about `export_pdf`. The Admin
-#: is the narrowest seeded role that is both in the Panel and a holder of
-#: `export_pdf`; `edit`'s own `WITH` (the Editor) is already in the Panel and
-#: needs no entry here.
-PANEL_WITH = {SOURCE: "admin"}
+#: so on the download row their 404 says nothing about `export_pdf`. The
+#: **Editor**, and not the Admin who is narrower: the download also requires an
+#: entry citing the file that this caller may be *served*, and an Admin is a
+#: non-editor, so D22 would withhold `F-00001` from them until somebody vouched
+#: for it — a fact confirmation this file does not write, for a refusal that
+#: has nothing to do with `export_pdf`. Nothing is lost by the wider role:
+#: `test_a_role_holding_every_other_capability_is_403` names the capability
+#: exactly, and it is the test that can.
+PANEL_WITH = {SOURCE: "editor"}
 
 #: The seeded roles that do NOT hold each capability, for the refusal direction.
 #: A tuple, because more than one real role can lack one and each is worth its

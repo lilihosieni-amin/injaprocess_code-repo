@@ -1117,7 +1117,9 @@ NOT_SWEPT: dict[tuple[str, str], str] = {
         " pinned where it lives — the Panel gate, the department in the"
         " requested path and `export_pdf` in test_endpoint_matrix.py, and the"
         " containment, the `attachment` disposition, the `access.denied` row"
-        " and the `fact_sources` switch in test_facts_write_and_download.py."),
+        " and the citation arm (a file is served only to a caller some entry"
+        " citing it is served to, which carries scope, D22 and QF-26's two"
+        " switches onto this route) in test_facts_write_and_download.py."),
     ("GET", "/exports/{file_path:path}"): (
         "**PARTLY RESOLVED — do not delete this entry without reading D56's "
         "Downloads row.** Both halves of D12 are now asked, in D56's order, by "
