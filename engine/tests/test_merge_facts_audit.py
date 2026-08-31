@@ -140,6 +140,30 @@ def test_duplicate_output_two_rules_writing_one_field(tmp_path):
     assert all(i in found[0]["message"] for i in ids)
 
 
+def test_two_scripts_writing_rows_into_one_record_are_not_a_duplicate(tmp_path):
+    """§7: a sheet-writing script "writes rows into a record" — `writes_to`
+    with no `field`. Two of them on one log is the estate as it is; the
+    finding §12 names is two rules writing one *field*."""
+    root = _root(tmp_path); _seed_units(root)
+    record = _entry("T-1", "record", "log_a", "دفتر", {
+        "medium": "sheet", "role": "log",
+        "location": {"spreadsheetId": "S", "sheetId": 1, "sheet": "روزانه",
+                     "hidden": False},
+        "fields": [{"key": "col_x", "title": "ستون", "type": "number", "unit": "g"}]})
+
+    def script(tid, key, title, identifier):
+        return _entry(tid, "rule", key, title, {
+            "inputs": [{"key": "x", "title": "ایکس", "unit": "g", "from": "operator"}],
+            "outputs": [{"key": "rows", "title": "ردیف‌ها", "unit": "g",
+                         "nature": "observed", "writes_to": {"ref": "T-1"}}],
+            "identifier": identifier, "lang": "gs", "expr": "rows = x"})
+
+    _apply(root, [record, script("T-2", "save_orders", "ثبت سفارش", "saveOrders"),
+                  script("T-3", "update_food_count", "به‌روزرسانی شمارش",
+                         "updateFoodCount")], "1")
+    assert "duplicate_output" not in _codes(audit(root))
+
+
 def test_lookalike_title_folds_space_and_zwnj(tmp_path):
     root = _root(tmp_path); _seed_units(root)
     a = _const_delta(5, key="tol_a"); a["entries"][0]["title"] = "تلورانس روزانه"

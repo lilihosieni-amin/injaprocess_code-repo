@@ -136,23 +136,30 @@ def _beyond(value, reference):
 
 def _duplicate_output(walk):
     """Two rules whose outputs write one `{ref, field}` — the ERP would not
-    know which one filled the cell."""
+    know which one filled the cell.
+
+    A `writes_to` with **no** `field` is skipped, not grouped: §7 gives that
+    shape to the sheet-writing scripts (`saveOrders`, `updateFoodCount`),
+    which "write rows into a record", and several scripts appending rows to
+    one log is the estate as it is, not a contradiction. The check §12 names
+    is "two rules writing one *field*".
+    """
     writers = {}
     for rule in _rules(walk):
         for out in _data(rule).get("outputs") or []:
             target = out.get("writes_to") if isinstance(out, dict) else None
-            if isinstance(target, dict) and target.get("ref"):
-                writers.setdefault((target["ref"], target.get("field")),
+            if isinstance(target, dict) and target.get("ref") \
+                    and target.get("field"):
+                writers.setdefault((target["ref"], target["field"]),
                                    []).append(rule["id"])
     items = []
     for (ref, field), ids in writers.items():
         if len(ids) < 2:
             continue
-        where = f"{ref}/{field}" if field else ref
         writing = sorted(set(ids))
         who = ", ".join(writing) if len(writing) > 1 else f"{writing[0]} twice"
         items.append(_finding("duplicate_output", writing[0],
-                              f"{where} is written by {who}"))
+                              f"{ref}/{field} is written by {who}"))
     return items
 
 
