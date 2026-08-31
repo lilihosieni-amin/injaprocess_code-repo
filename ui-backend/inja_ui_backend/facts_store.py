@@ -21,38 +21,92 @@ Two disciplines run through all of it:
   target that is gone.
 - **Persian is copied, never composed from English.** Every label here comes
   from the entry itself (`fields[].title`, `outputs[].title`, an item's
-  `title`) or verbatim from Appendix D. A leaf the appendix does not name
-  keeps its ASCII key rather than gaining a translation nobody approved.
+  `title`) or verbatim from Appendix D, whose payload-field table is
+  transcribed whole rather than sampled — the appendix decides which names
+  have a label, not which ones a red path happened to need. A name it does
+  not carry keeps its ASCII key rather than gaining a translation nobody
+  approved, but no path is ever printed raw: `_path_label` composes one out
+  of the segments it can name.
 """
 from __future__ import annotations
 
 import re
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from . import storage
 from .store import manifest
 
-#: QF-37's two id namespaces, anchored — a `{ref}` is a fact reference or a
-#: process reference by its id grammar, never by a prefix test.
-_FACT_ID_RE = re.compile(r"^(F-[0-9]{5}|T-[0-9]+)$")
-_PROC_ID_RE = re.compile(r"^[a-z]+-[0-9]{3}$")
+#: QF-37's two id namespaces — a `{ref}` is a fact reference or a process
+#: reference by its id grammar, never by a prefix test. Matched with
+#: `fullmatch` and written without anchors: `re.match` on `…$` still accepts a
+#: trailing newline, which is anchored-but-one-character-loose.
+_FACT_ID_RE = re.compile(r"F-[0-9]{5}|T-[0-9]+")
+_PROC_ID_RE = re.compile(r"[a-z]+-[0-9]{3}")
 
 #: The payload groups whose members carry `{key, title}` — a path's second
 #: segment when the path names a column, an input or an output.
 _KEYED_GROUPS = ("fields", "header_fields", "inputs", "outputs")
 
-#: Appendix D's payload-field labels, for a red path whose leaf no `fields[]`,
-#: `inputs[]` or `outputs[]` member names. Verbatim from the appendix; a leaf
-#: it does not label keeps its key (see the module docstring).
+#: Appendix D's payload-field table, transcribed **whole** and verbatim: every
+#: name it labels, so that no path a screen names out loud can come out as an
+#: ASCII key. A name the appendix does not carry keeps its key rather than
+#: gaining a translation nobody approved (see the module docstring) — but the
+#: appendix is the authority on which names those are, not what a red path
+#: happened to need on the day this was written.
 _LEAF_LABELS: dict[str, str] = {
-    "unit": "واحد", "unit_raw": "واحد به نوشتهٔ منبع",
+    # rule
+    "inputs": "ورودی‌ها", "outputs": "خروجی‌ها", "expr": "فرمول",
     "value": "مقدار", "range": "بازه", "min": "کمینه", "max": "بیشینه",
-    "share": "سهم", "per": "به ازای هر", "of": "برای", "expr": "فرمول",
-    "from": "خوانده می‌شود از", "via": "با تبدیل واحد",
+    "unit": "واحد", "unit_raw": "واحد به نوشتهٔ منبع",
+    "per": "به ازای هر", "of": "برای", "writes_to": "ثبت در",
+    "from": "خوانده می‌شود از", "via": "با تبدیل واحد", "share": "سهم",
     "calls": "فراخوانی‌ها", "identifier": "نام تابع",
     "original": "متن اصلی", "original_ref": "متن اصلی",
     "port": "باید عیناً در ERP پیاده شود",
+    "edge_cases": "موارد خاص", "input": "ورودی",
+    "expected": "خروجی مورد انتظار", "why": "چرا",
     "template_of": "الگو", "divergence": "تفاوت با الگو",
+    # record — structure
+    "fields": "ستون‌ها", "header_fields": "فیلدهای سربرگ", "rows": "ردیف‌ها",
+    "sections": "بخش‌ها", "signatures": "امضاها",
+    "title": "عنوان", "key": "کلید", "type": "نوع",
+    "constraints": "محدودیت‌ها", "derived": "محاسبه‌شده با", "group": "گروه",
+    "filled_by": "تکمیل‌کننده", "refItems": "ارجاع به آیتم",
+    "enum": "مقادیر مجاز", "readOnly": "فقط‌خواندنی", "required": "اجباری",
+    "minimum": "کمینه", "maximum": "بیشینه",
+    "section": "بخش", "when": "زمان", "open": "ردیف باز",
+    "doc_number_field": "فیلد شمارهٔ سند",
+    "primaryKey": "کلید اصلی", "foreignKeys": "ارتباط با جدول دیگر",
+    "reference_fields": "ستون‌های مقابل", "transform": "تبدیل",
+    # record — place and lifecycle
+    "location": "محل", "path": "مسیر", "spreadsheetId": "شناسهٔ فایل",
+    "sheet": "برگه", "sheetId": "شمارهٔ برگه", "hidden": "مخفی",
+    "identifier_scheme": "شیوهٔ شناسه",
+    "blank_master": "برگهٔ خالی برای پر کردن", "grain": "هر ردیف یعنی",
+    "cadence": "تناوب", "day_boundary": "مرز روز کاری",
+    "approved_by": "تأییدکنندهٔ فرم", "mirror_of": "نسخه‌ای از",
+    "reconciled_against": "تطبیق با مقدار ثابت", "cell": "سلول",
+    "against": "مقدار ثابت",
+    "movement": "انتقال", "to": "به", "reason": "دلیل",
+    # measurement
+    "method": "روش", "by": "توسط", "exceptions": "استثناها",
+    # item
+    "code": "کد", "code_absent": "بدون کد", "category": "دسته",
+    "state": "حالت", "grade": "درجه",
+    "pack": "بسته", "size": "تعداد", "units": "واحدهای بسته‌بندی",
+    "pack_unit": "واحد بسته", "factor_to_base": "ضریب تبدیل به واحد پایه",
+    "tracked": "ردیابی", "record": "در جدول",
+    "stub": "پیش‌ثبت",
+}
+
+#: The three names Appendix D labels twice, once per context — `(group, name)`,
+#: where `group` is the path's second segment. Both readings are the
+#: appendix's own; picking one and using it everywhere would be the paraphrase
+#: QF-42 forbids.
+_CONTEXT_LABELS: dict[tuple[str, str], str] = {
+    ("outputs", "writes_to"): "نوشته می‌شود در",   # a measurement's is «ثبت در»
+    ("rows", "when"): "فقط در",                    # a measurement's is «زمان»
+    ("movement", "from"): "از",                    # an input's is «خوانده…»
 }
 
 #: Kind -> file, the plural of the kind name (spec §4, "Storage layout").
@@ -233,7 +287,7 @@ def _process_doc(root: Path, process_id: str) -> dict | None:
     Live, and not from anything cached in the fact entry: the whole point of
     the link is to notice that the process has since been tombstoned.
     """
-    if not _PROC_ID_RE.match(process_id or ""):
+    if not _PROC_ID_RE.fullmatch(process_id or ""):
         return None
     path = storage.proc_path(root, process_id)
     if not path.is_file():
@@ -259,7 +313,28 @@ def _heir(doc: dict) -> str | None:
 def _process_refs(entry: dict) -> list[str]:
     return [p["ref"] for p in entry.get("processes") or []
             if isinstance(p, dict) and isinstance(p.get("ref"), str)
-            and _PROC_ID_RE.match(p["ref"])]
+            and _PROC_ID_RE.fullmatch(p["ref"])]
+
+
+def _cited_nodes(entry: dict) -> dict[str, set]:
+    """`{process id: {node ids}}` — the nodes the entry's `process` sources
+    cite (QF-8: a process link is a claim, and the node is its evidence).
+
+    The process id comes from the source's file path, the way the engine's
+    audit reads it, because that is the only place the source names a
+    process.
+    """
+    out: dict[str, set] = {}
+    for source in entry.get("source") or []:
+        if not isinstance(source, dict) or source.get("type") != "process":
+            continue
+        node, ref = source.get("node"), source.get("ref")
+        if not node or not isinstance(ref, str):
+            continue
+        process_id = PurePosixPath(ref).stem
+        if _PROC_ID_RE.fullmatch(process_id):
+            out.setdefault(process_id, set()).add(node)
+    return out
 
 
 def _ref_item_columns(data: dict) -> list[str]:
@@ -282,7 +357,7 @@ def resolved_map(root: Path, entry: dict) -> dict:
     found = {}
     for obj in iter_ref_objects(entry):
         ref = obj.get("ref")
-        if isinstance(ref, str) and _FACT_ID_RE.match(ref) and ref in labels:
+        if isinstance(ref, str) and _FACT_ID_RE.fullmatch(ref) and ref in labels:
             found[ref] = labels[ref]
     data = entry.get("data") or {}
     for column in _ref_item_columns(data):
@@ -327,33 +402,63 @@ def row_titles(root: Path, entry: dict) -> dict:
     return out
 
 
+def _member_title(data: dict, group: str, key: str) -> str | None:
+    """The Persian `title` of the keyed member `data[group][key]`, if any.
+
+    One helper for both readings of a path segment that names a keyed member:
+    a declared column (`_field_title`) and any other keyed list a path walks
+    through (`sections`, and whatever a later kind adds).
+    """
+    for member in data.get(group) or []:
+        if isinstance(member, dict) and member.get("key") == key:
+            title = member.get("title")
+            if isinstance(title, str) and title:
+                return title
+    return None
+
+
 def _field_title(entry: dict, key: str) -> str:
     """A column's, input's or output's Persian title — the entry's own word
     for it (QF-42), falling back to Appendix D and then to the key."""
     data = entry.get("data") or {}
     for group in _KEYED_GROUPS:
-        for member in data.get(group) or []:
-            if isinstance(member, dict) and member.get("key") == key:
-                title = member.get("title")
-                if isinstance(title, str) and title:
-                    return title
+        title = _member_title(data, group, key)
+        if title:
+            return title
     return _LEAF_LABELS.get(key, key)
 
 
+def _segment_label(data: dict, seg: list[str], i: int) -> str:
+    """Segment `i` of a QF-7 path in Persian: the keyed member's own title
+    where the segment names one, else Appendix D's label for the name (in the
+    context of the group it sits in), else the segment as written."""
+    member = _member_title(data, seg[i - 1], seg[i]) if i >= 2 else None
+    return (member or _CONTEXT_LABELS.get((seg[1], seg[i]))
+            or _LEAF_LABELS.get(seg[i], seg[i]))
+
+
 def _path_label(entry: dict, path: str, titles: dict) -> str:
-    """One QF-7 path → what a reviewer reads instead of it."""
+    """One QF-7 path → what a reviewer reads instead of it.
+
+    The last branch is the general case and exists so that **no** path falls
+    through as itself: `data/location/path`, `data/pack/size`,
+    `data/movement/reason` and every other payload shape outside the keyed
+    groups are composed segment by segment («محل › مسیر»), because a path
+    printed raw on a Persian-only screen is exactly what §17 forbids.
+    """
     seg = path.split("/")
-    leaf = _LEAF_LABELS.get(seg[-1], seg[-1])
-    if seg[:2] == ["data", "rows"] and len(seg) >= 4:
+    data = entry.get("data") or {}
+    if seg[0] != "data" or len(seg) < 2:
+        return path                      # not a payload path; nothing to compose
+    if seg[1] == "rows" and len(seg) >= 4:
         # «ستون — ردیف» (Appendix D): the reference-table cell, which is the
         # shape the red cards and the accounts card are built around.
         return f"{_field_title(entry, seg[3])} — {titles.get(seg[2], seg[2])}"
-    if seg[0] == "data" and len(seg) >= 3 and seg[1] in _KEYED_GROUPS:
+    if len(seg) >= 3 and seg[1] in _KEYED_GROUPS:
         column = _field_title(entry, seg[2])
-        return column if len(seg) == 3 else f"{column} › {leaf}"
-    if seg[0] == "data" and len(seg) == 2:
-        return leaf
-    return path
+        return (column if len(seg) == 3
+                else f"{column} › {_segment_label(data, seg, len(seg) - 1)}")
+    return " › ".join(_segment_label(data, seg, i) for i in range(1, len(seg)))
 
 
 def path_labels(root: Path, entry: dict) -> dict:
@@ -453,20 +558,31 @@ def consumers(root: Path, fact_id: str) -> list:
 
 
 def process_links(root: Path, entry: dict) -> list:
-    """`[{"ref", "title", "tombstoned", "heir"}]` — the entry's process links,
-    resolved against `departments/**` as it is now (QF-8 §2).
+    """`[{"ref", "title", "tombstoned", "heir", "missing_nodes"}]` — the
+    entry's process links, resolved against `departments/**` as it is now
+    (QF-8 §2).
 
     A tombstoned process carries its heir, so the screen can offer the
     re-point the audit proposes; a link whose file is gone answers with a
     `None` title, which is what "the process this cites is no longer there"
     looks like to a reader.
+
+    `missing_nodes` is §14.7's «گرهٔ ارجاع‌شده حذف شده» orphan class, and this
+    is its only server-side source: `validate` checks a cited node exists when
+    the link is *written*, so a node a later restructure removed is invisible
+    to everything downstream unless it is recomputed against the live file —
+    which this walk is already reading.
     """
+    cited = _cited_nodes(entry)
     out = []
     for ref in _process_refs(entry):
         doc = _process_doc(root, ref) or {}
+        live = {n.get("id") for n in doc.get("nodes") or []
+                if isinstance(n, dict) and not n.get("removed")}
         out.append({"ref": ref, "title": doc.get("name"),
                     "tombstoned": bool(doc.get("tombstoned")),
-                    "heir": _heir(doc) if doc.get("tombstoned") else None})
+                    "heir": _heir(doc) if doc.get("tombstoned") else None,
+                    "missing_nodes": sorted(cited.get(ref, set()) - live)})
     return out
 
 

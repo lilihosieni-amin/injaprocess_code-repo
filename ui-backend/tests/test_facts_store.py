@@ -15,6 +15,7 @@ report rule — so the Persian labels asserted here are the spec's own, not
 invented for the test.
 """
 import json
+import re
 
 import pytest
 from inja_ui_backend import facts_store
@@ -49,6 +50,13 @@ ITEMS = [
     _item("F-00011", "ing_1", "پنیر پیتزا", "##1", "ingredient"),
     _item("F-00012", "ing_26", "خمیر پیتزا", "##26", "ingredient"),
     _item("F-00013", "ing_41", "قارچ", "##41", "ingredient"),
+    #: An item whose estate code nobody stated and whose carton count is not
+    #: printed: two `null` leaves outside the keyed groups, one at the top of
+    #: `data` and one a level down.
+    _entry("F-00015", "item", "oil_fry", "روغن سرخ‌کن",
+           {"code": None, "code_absent": False, "category": "consumable",
+            "unit": "l", "pack": {"size": None, "unit": "pcs"}},
+           status="unknown"),
 ]
 
 #: The BOM (§7's reference record): one disputed cell, one `null` cell, one
@@ -81,6 +89,13 @@ BOM = _entry(
                "statement": "«۲۵۰ گرم پنیر»", "value": 250,
                "source": {"type": "voice", "ref": "meetings/cooking-1405-05-26.md"},
                "speaker_role": "سرلاین", "status": "open"}],
+    # QF-8: each process link is evidenced by a `process` source naming a
+    # node. `n1` is still in the file; `n9` was removed by a restructure.
+    source=[{"type": "sheet", "ref": "attachments/sheets/x.xlsx"},
+            {"type": "process", "ref": "departments/cooking/processes/cooking-001.json",
+             "node": "n1", "quote": "گرم هر ماده در دستور پیتزا"},
+            {"type": "process", "ref": "departments/cooking/processes/cooking-001.json",
+             "node": "n9", "quote": "وزن‌کشی مواد"}],
     processes=[{"ref": "cooking-001"}, {"ref": "cooking-002"}])
 
 #: The «مانده شب» form (§7): fixed rows carrying their own title, and a
@@ -248,12 +263,17 @@ def _refs_anywhere(node, out):
     return out
 
 
+#: The two id grammars, anchored (`fullmatch`, never `startswith`) — a
+#: `startswith("cooking-")` filter would quietly exempt a link to any other
+#: department from the coverage demand, in the very test that pins it.
+_ID_RE = re.compile(r"F-[0-9]{5}|T-[0-9]+|[a-z]+-[0-9]{3}")
+
+
 def _referenced(entry):
     """What the served maps must between them cover: ids, item keys, row keys
     and red paths."""
     data = entry["data"]
-    ids = {r for r in _refs_anywhere(entry, set())
-           if r.startswith(("F-", "T-")) or r.startswith("cooking-")}
+    ids = {r for r in _refs_anywhere(entry, set()) if _ID_RE.fullmatch(r)}
     ref_columns = [f["key"] for f in data.get("fields") or [] if "refItems" in f]
     item_keys = {row[column] for row in data.get("rows") or []
                  for column in ref_columns if isinstance(row.get(column), str)}
@@ -283,10 +303,14 @@ def test_served_maps_cover_every_key_an_entry_references(root, fact_id):
     assert row_keys == set(titles), f"{fact_id}: row keys missing from row_titles"
     assert red <= set(labels), f"{fact_id}: red paths missing from path_labels"
 
-    # Covered means labelled, not merely present.
+    # Covered means *labelled*, not merely present. `path_labels` always emits
+    # a key for every path it is given, and a raw path is truthy — so a
+    # membership test alone cannot fail on the defect §17 names. The label
+    # must differ from the path it labels.
     for key, label in resolved.items():
         assert label.get("title"), f"{fact_id}: {key} resolved to no title"
-    assert all(labels.values()), f"{fact_id}: an empty path label"
+    for path, label in labels.items():
+        assert label and label != path, f"{fact_id}: {path} labelled with itself"
 
 
 def test_resolved_carries_kind_title_and_an_item_code(root):
@@ -355,6 +379,15 @@ def test_path_labels_include_a_field_status_line(root):
 def test_path_label_of_a_column_leaf_names_the_column(root):
     labels = facts_store.path_labels(root, facts_store.load_entry(root, "F-00021"))
     assert labels["data/fields/start_stock/unit"] == "مانده اول شب › واحد"
+
+
+def test_path_labels_of_leaves_outside_the_keyed_groups(root):
+    """The general branch: a payload path that names no column still reads as
+    Persian. `data/code` is the canonical one — an item whose estate code
+    nobody stated — and `data/pack/size` walks a plain nested object, where
+    the whole path used to come back raw."""
+    labels = facts_store.path_labels(root, facts_store.load_entry(root, "F-00015"))
+    assert labels == {"data/code": "کد", "data/pack/size": "بسته › تعداد"}
 
 
 def test_path_labels_include_a_settled_account_field(root):
@@ -481,19 +514,30 @@ def test_consumers_of_an_unread_entry_is_empty(root):
 # --------------------------------------------------------------------------- #
 
 def test_process_links_marks_a_tombstoned_process_with_its_heir(root):
+    """And the node a restructure removed since the link was written: `n1` is
+    still in `cooking-001`, `n9` is not (§14.7's «گرهٔ ارجاع‌شده حذف شده»,
+    which nothing else can see — `validate` checked the node at write time)."""
     links = facts_store.process_links(root, facts_store.load_entry(root, "F-00020"))
     assert links == [
         {"ref": "cooking-001", "title": "پخت پیتزا", "tombstoned": False,
-         "heir": None},
+         "heir": None, "missing_nodes": ["n9"]},
         {"ref": "cooking-002", "title": "پخت قدیمی", "tombstoned": True,
-         "heir": "cooking-003"}]
+         "heir": "cooking-003", "missing_nodes": []}]
 
 
 def test_process_links_of_an_absent_file_is_a_value_not_an_exception(root):
     entry = facts_store.load_entry(root, "F-00020")
     entry["processes"] = [{"ref": "dining-404"}]
+    entry["source"] = [s for s in entry["source"] if s["type"] != "process"]
     assert facts_store.process_links(root, entry) == [
-        {"ref": "dining-404", "title": None, "tombstoned": False, "heir": None}]
+        {"ref": "dining-404", "title": None, "tombstoned": False, "heir": None,
+         "missing_nodes": []}]
+
+
+def test_a_cited_node_that_is_still_there_is_not_missing(root):
+    entry = facts_store.load_entry(root, "F-00020")
+    entry["source"] = [s for s in entry["source"] if s.get("node") != "n9"]
+    assert facts_store.process_links(root, entry)[0]["missing_nodes"] == []
 
 
 def test_process_links_of_an_entry_that_links_none(root):
@@ -515,6 +559,19 @@ def test_manifest_reads_branches_and_counts_workbooks(root):
     assert manifest.branches(root) == MANIFEST["branches"]
     assert manifest.workbook_count(root) == 3
     assert manifest.read_manifest(root)["workbooks"][0]["short"] == "mavad"
+
+
+def test_an_absent_manifest_hands_out_no_shared_lists(tmp_path):
+    """A caller that appends to the empty answer must not reach the next
+    caller's — the failure a shallow copy of a module-level default gives, and
+    an equality assertion never catches."""
+    first = manifest.read_manifest(tmp_path)
+    first["workbooks"].append({"spreadsheetId": "x"})
+    first["branches"].append({"code": "x", "name": "x"})
+    assert manifest.read_manifest(tmp_path) == {"schema_version": 1,
+                                                "branches": [], "workbooks": []}
+    assert manifest.workbook_count(tmp_path) == 0
+    assert manifest.branches(tmp_path) == []
 
 
 # --------------------------------------------------------------------------- #

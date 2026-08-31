@@ -16,24 +16,28 @@ from pathlib import Path
 
 from .. import storage
 
-_EMPTY: dict = {"schema_version": 1, "branches": [], "workbooks": []}
+
+def _empty() -> dict:
+    """A fresh empty manifest — new dict *and* new lists.
+
+    Built each call rather than copied from a module-level default: a shallow
+    copy of such a default shares its `branches`/`workbooks` lists, so one
+    caller's `["workbooks"].append(...)` on a deployment with no manifest
+    would show up in every later call for the life of the process.
+    """
+    return {"schema_version": 1, "branches": [], "workbooks": []}
 
 
 def read_manifest(root: Path) -> dict:
-    """The manifest as stored, or an empty one.
-
-    A fresh dict each call (`_EMPTY` is copied, never handed out), so a
-    caller's `["workbooks"].append(...)` cannot corrupt every later call in
-    the process.
-    """
+    """The manifest as stored, or an empty one."""
     path = Path(root) / "attachments" / "sheets" / "manifest.json"
     if not path.is_file():
-        return dict(_EMPTY)
+        return _empty()
     try:
         doc = storage.read_json(path)
     except (OSError, ValueError):
-        return dict(_EMPTY)
-    return doc if isinstance(doc, dict) else dict(_EMPTY)
+        return _empty()
+    return doc if isinstance(doc, dict) else _empty()
 
 
 def branches(root: Path) -> list:
