@@ -98,6 +98,38 @@ def test_aggregate_form_requires_whole_table_edge_with_no_row():
     assert any("sum over bom_row" in m for m in msgs)
 
 
+# --- Task 9 review round 2: the from-shape check must fire on EVERY -------- #
+# --- aggregate match, even one with no parenthesised body — the F2 --------- #
+# --- refactor had accidentally gated it on `_aggregate_spans`, which only -- #
+# --- produces a span when `of` is immediately followed by `(` ------------- #
+
+def test_aggregate_without_parens_and_illegal_row_from_fails_shape():
+    rule = _rule(data={"inputs": [{"key": "bom_row", "title": "b", "unit": "g",
+                                   "from": {"ref": "T-2", "field": "grams",
+                                           "row": "p1"}}],
+                       "outputs": [{"key": "total", "title": "t", "unit": "g"}],
+                       "lang": "feel",
+                       "expr": "total = sum over bom_row of bom_row"})
+    msgs = check_document(_doc(rule), "facts-delta")
+    assert any("sum over bom_row" in m for m in msgs)
+
+
+def test_aggregate_without_parens_and_legal_from_has_no_shape_message():
+    bom = _record(id_="T-2", key="bom", role="reference",
+                  data={"primaryKey": ["product"],
+                        "fields": [{"key": "product", "title": "p",
+                                   "type": "string"},
+                                  {"key": "grams", "title": "g",
+                                   "type": "number", "unit": "g"}],
+                        "rows": [{"key": "p1", "product": "p1", "grams": 10}]})
+    rule = _rule(data={"inputs": [{"key": "bom_row", "title": "b", "unit": "g",
+                                   "from": {"ref": "T-2", "field": "grams"}}],
+                       "outputs": [{"key": "total", "title": "t", "unit": "g"}],
+                       "lang": "feel",
+                       "expr": "total = sum over bom_row of bom_row"})
+    assert check_document(_doc(bom, rule), "facts-delta") == []
+
+
 def test_aggregate_form_passes_with_whole_table_edge():
     bom = _record(id_="T-2", key="bom", role="reference",
                   data={"primaryKey": ["product"],

@@ -110,8 +110,12 @@ def _aggregate_spans(expr):
     `sum over <input> of (...)` aggregate's parenthesised body, found right
     after the `of` (skipping whitespace); `end` is past the matching close
     paren. No span is produced when the form isn't followed by `(...)` at
-    all — the shape check below still fires on `AGGREGATE_RE` directly, this
-    is only for carving the body out of the generic identifier walk."""
+    all — the `<input>.from` shape check runs separately, unconditionally,
+    over every `AGGREGATE_RE` match directly (Task 9 review round 2: gating
+    it on this function's output let a malformed `from` on a paren-less
+    aggregate pass silently, since no span existed for it to hang the
+    message off). This function is only for carving the body out of the
+    generic identifier walk, for the aggregates that HAVE one."""
     spans = []
     for m in AGGREGATE_RE.finditer(expr):
         i = m.end()
@@ -138,6 +142,11 @@ def _target_fields(target):
            if isinstance(f, dict) and f.get("key")}
 
 
+def _aggregate_shape_ok(frm):
+    return isinstance(frm, dict) and "ref" in frm and "field" in frm \
+        and "row" not in frm
+
+
 def _check_expr(entry, by_id, messages, label):
     data = entry.get("data") or {}
     expr = data.get("expr")
@@ -154,30 +163,39 @@ def _check_expr(entry, by_id, messages, label):
               if isinstance(o, dict) and o.get("key")}
     base_allowed = set(inputs_by_key) | outputs | _call_keys(by_id, entry)
 
-    # The aggregate form (§7): "<a>/<b> are columns of that table or inputs
-    # joined on the row key" — so, ONLY inside `(<a> * <b>)`, the referenced
-    # record's declared `fields[].key` are allowed too (F2). When `<input>`'s
-    # shape is wrong, or its target is unresolvable in `by_id` (a standalone
-    # CLI run on a delta whose target lives in the store — `apply` re-runs
-    # this with `store` set and closes the gap then), the body is checked
-    # against `base_allowed` alone rather than skipped outright, EXCEPT the
-    # one case F2 names explicitly: a valid shape with an unresolvable target
-    # skips the body check for that aggregate entirely.
-    spans = _aggregate_spans(expr)
-    for start, end, input_key in spans:
+    # §7: `<input>`'s `from` must be `{ref, field}` with no `row` — asserted
+    # for EVERY aggregate match, unconditionally, independent of whether a
+    # parenthesised body follows it (Task 9 review round 2: this used to be
+    # gated on `_aggregate_spans`, which only produces a span when `of` is
+    # immediately followed by `(`, so a paren-less aggregate with an illegal
+    # `row` on its `from` — `sum over bom_row of bom_row` — passed silently).
+    for m in AGGREGATE_RE.finditer(expr):
+        input_key = m.group(1)
         frm = (inputs_by_key.get(input_key) or {}).get("from")
-        shape_ok = (isinstance(frm, dict) and "ref" in frm and "field" in frm
-                   and "row" not in frm)
-        if not shape_ok:
+        if not _aggregate_shape_ok(frm):
             messages.append(f"{label}: aggregate 'sum over {input_key} of' "
                             f"requires {input_key!r}'s from to be "
                             f"{{ref, field}} with no row")
-            body_allowed = base_allowed
-        else:
+
+    # The aggregate form (§7): "<a>/<b> are columns of that table or inputs
+    # joined on the row key" — so, ONLY inside a `(<a> * <b>)` body that
+    # actually follows `of`, the referenced record's declared `fields[].key`
+    # are allowed too (F2), resolved through `by_id` (document, then store
+    # when `check_document` was given one). A malformed `from` (already
+    # messaged above) still gets its body checked against `base_allowed`
+    # alone; a well-shaped but unresolvable target (cross-store, no `store`
+    # given) skips the body check entirely for that aggregate — `apply`
+    # re-runs with `store` and closes the gap.
+    spans = _aggregate_spans(expr)
+    for start, end, input_key in spans:
+        frm = (inputs_by_key.get(input_key) or {}).get("from")
+        if _aggregate_shape_ok(frm):
             target = by_id.get(frm["ref"])
             if target is None:
                 continue                  # unresolvable — F2: skip this body
             body_allowed = base_allowed | _target_fields(target)
+        else:
+            body_allowed = base_allowed
         for tok in TOKEN_RE.finditer(expr[start:end]):
             text = tok.group()
             if text[0].isdigit() or text in KEYWORDS or text in body_allowed:
