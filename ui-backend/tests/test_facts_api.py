@@ -24,12 +24,14 @@ import copy
 import itertools
 import json
 
+import pytest
 from fastapi.testclient import TestClient
 from inja_ui_backend import db, seed
 from inja_ui_backend.access import NOT_FOUND
 from inja_ui_backend.app import create_app
 from inja_ui_backend.auth import hash_password
 from inja_ui_backend.fingerprint import fact_fingerprint
+from inja_ui_backend.routers import facts as facts_router
 from inja_ui_backend.store import confirmations, policy, users
 from inja_ui_backend.tests_helpers import cfg_for
 
@@ -141,12 +143,22 @@ def _manifest(data_root, workbooks, branches=()):
         encoding="utf-8")
 
 
-def _client_as(data_root, tmp_path, role, *scopes, app_db=None):
+def _client_as(data_root, tmp_path, role, *scopes, app_db=None,
+               capabilities=None):
     """A signed-in client for a fresh account.
 
     Its own `app.db` by default; `app_db` puts a second caller on the first
     one, for the tests that need two roles to see the same confirmation marks
     and the same visibility policy.
+
+    `capabilities` inserts `role` as a **new** role holding exactly those —
+    `test_endpoint_matrix._client_as`' idiom, and here for the same reason it
+    exists there. No seeded role separates one member of `PANEL_CAPABILITIES`
+    from another (`seed.ROLES`: the Editor holds `edit`, `confirm` and
+    `set_visibility` together, the Admin `manage_users` and `view_audit`
+    together), so the four seeded roles cannot say which members of the OR are
+    load-bearing. It is a probe, not a fixture: no such role exists or can be
+    created through any API (D11, D50).
     """
     n = next(_seq)
     username = f"0915{n:07d}"
@@ -156,6 +168,9 @@ def _client_as(data_root, tmp_path, role, *scopes, app_db=None):
         db.migrate(conn)
         seed.seed(conn, editor_username="09190000000", editor_display_name="e",
                   editor_password_hash=hash_password(PW))
+        if capabilities is not None:
+            conn.execute("INSERT INTO roles (name, capabilities) VALUES (?, ?)",
+                         (role, json.dumps(sorted(capabilities))))
         rid = conn.execute("SELECT id FROM roles WHERE name = ?",
                            (role,)).fetchone()[0]
         uid = users.create(conn, username=username, display_name="u",
@@ -230,13 +245,107 @@ def test_an_admin_is_in_the_panel_and_reads_facts(data_root, tmp_path):
     """The other half of the OR: `manage_users`/`view_audit` are Panel
     capabilities, so an admin is served — which is what makes the reader's 404
     above a statement about the Panel rather than about capabilities in
-    general."""
+    general.
+
+    Both read surfaces an admin can reach without an entry in hand, because the
+    `view`-only test above refuses *every* facts route and a served side pinned
+    on one of them would leave the others' 404 unattributable — `branches`
+    especially, which has no entry, no scope and therefore nothing but the
+    Panel gate deciding it.
+    """
     client = _client_as(data_root, tmp_path, "admin", "*")
     _plant(data_root)
+    _manifest(data_root, [], branches=[{"code": "shab", "name": "شعبهٔ شب"}])
     _confirm(client, RULE)
     r = client.get("/api/facts")
     assert r.status_code == 200, r.text
     assert RULE in _ids(r.json())
+    r = client.get("/api/facts/branches")
+    assert r.status_code == 200, r.text
+    assert r.json() == [{"code": "shab", "name": "شعبهٔ شب"}]
+    assert client.get(f"/api/facts/{RULE}").status_code == 200
+
+
+#: `routers/facts.PANEL_CAPABILITIES`, written out here rather than imported.
+#:
+#: A test parametrised over the module's own tuple cannot see a member being
+#: **deleted** from it: the case simply stops being generated, and the mutant
+#: the test exists to kill takes the test with it. Verified — the first draft of
+#: this file did exactly that, and all five deletions "passed". Same principle
+#: as `test_visibility.test_the_public_key_tuple_is_pinned_against_an_independent_literal`:
+#: a key set that only ever checks itself agrees with itself whatever it loses.
+PANEL = ("edit", "confirm", "set_visibility", "manage_users", "view_audit")
+
+
+def test_the_panel_capability_set_is_pinned_against_an_independent_literal():
+    """Membership and count, not order — a reordering changes no answer, and a
+    duplicate would make `len` disagree. This is what makes the parametrised
+    test below able to notice a deletion at all."""
+    assert sorted(facts_router.PANEL_CAPABILITIES) == sorted(PANEL)
+    assert len(facts_router.PANEL_CAPABILITIES) == len(PANEL)
+    # And the literal is the real access model's vocabulary, not five strings
+    # somebody typed: a capability renamed in `seed` fails here.
+    assert set(PANEL) <= set(seed.ROLES["editor"])
+
+
+@pytest.mark.parametrize("capability", PANEL)
+def test_every_panel_capability_on_its_own_opens_the_facts_routes(
+        data_root, tmp_path, capability):
+    """*Which* capabilities are in the OR — the four seeded roles cannot say.
+
+    `seed.ROLES` holds them in blocks: the Editor has `edit`, `confirm` and
+    `set_visibility` together and the Admin has `manage_users` and `view_audit`
+    together, so **deleting any single member of `PANEL_CAPABILITIES` is
+    invisible to every other test in this suite** — the editor still holds two
+    of the remaining three, the admin still holds the other one. The pair of
+    role tests above pins that the OR is neither empty nor universal; only a
+    role built to hold exactly one member can say that this member is in it.
+
+    A probe, not a claim about a shipping role (D11, D50: no such role exists
+    or can be created through any API) — the same licence
+    `test_endpoint_matrix.test_a_role_holding_every_other_capability_is_403`
+    takes, and for the same reason.
+
+    Both read surfaces, and the entry is confirmed first: four of the five
+    members carry no `edit`, so their holder is a non-editor and `may_serve`
+    would withhold an unconfirmed entry for a reason that has nothing to do
+    with the gate under test.
+    """
+    _plant(data_root)
+    client = _client_as(data_root, tmp_path, f"only-{capability}", "*",
+                        capabilities={capability})
+    _confirm(client, RULE)
+    assert client.get(f"/api/facts/{RULE}").status_code == 200, capability
+    listed = client.get("/api/facts")
+    assert listed.status_code == 200, listed.text
+    assert RULE in _ids(listed.json()), capability
+    assert client.get("/api/facts/branches").status_code == 200, capability
+
+
+def test_holding_every_capability_outside_the_panel_set_opens_nothing(
+        data_root, tmp_path):
+    """The closing direction: `PANEL_CAPABILITIES` must not be *widened* either.
+
+    Stronger than the Reader above, who lacks `manage_peers`: this caller holds
+    every capability the service has **except** the five, at `*` scope, so the
+    only thing that can refuse them is membership of the set itself. A sixth
+    member added to it without a decision fails here.
+    """
+    _plant(data_root)
+    # The literal again, so this test answers only the widening question: read
+    # off the module's tuple, deleting a member would quietly *add* that
+    # capability to `outside` and make this test the narrowing detector too,
+    # which is the parametrised one's job and is done there properly.
+    outside = set(seed.ROLES["editor"]) - set(PANEL)
+    assert outside == {"view", "comment", "export_pdf", "manage_peers"}, (
+        f"the capability model changed under this test: {sorted(outside)}")
+    client = _client_as(data_root, tmp_path, "everything-but-the-panel", "*",
+                        capabilities=outside)
+    _confirm(client, RULE)
+    for path in ("/api/facts", "/api/facts/branches", f"/api/facts/{RULE}"):
+        r = client.get(path)
+        assert r.status_code == 404, f"{path} answered {r.status_code}"
+        assert r.json()["detail"] == NOT_FOUND, path
 
 
 # --------------------------------------------------------------------------

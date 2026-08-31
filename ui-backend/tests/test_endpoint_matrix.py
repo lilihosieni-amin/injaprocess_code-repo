@@ -29,6 +29,7 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 from inja_ui_backend import db, seed
+from inja_ui_backend.access import NOT_FOUND
 from inja_ui_backend.app import create_app
 from inja_ui_backend.auth import hash_password
 from inja_ui_backend.fingerprint import fingerprint
@@ -142,12 +143,28 @@ FILTERED = ["/api/departments", "/api/pending", "/api/facts",
 #: question the gate asks is "is this caller in the Panel?", which an admin
 #: (`manage_users`, `view_audit`) answers as well as an editor does; and its
 #: refusal is a 404 because a 403 would tell a `view`-only holder that facts
-#: exist. Both of this file's 403 tests exist to name *one* capability — they
-#: cannot express an OR, and against these routes they would assert a status the
-#: spec forbids. So they skip, and the OR is pinned instead by
-#: `test_facts_api.py::test_a_view_only_holder_is_404_on_every_facts_route` and
-#: `::test_an_admin_is_in_the_panel_and_reads_facts`, which are a pair in exactly
-#: the way described at the top of this file.
+#: exist. Both of this file's 403 tests exist to name *one* capability, and
+#: neither can express an OR.
+#:
+#: They are handled differently, and the difference is the point:
+#:
+#: * `test_a_role_without_the_capability_is_403_on_a_visible_target` **asserts
+#:   the 404** for the Reader instead of skipping, so the row stays live and
+#:   this exemption is a checked claim rather than a comment. Only the Reader —
+#:   the Admin `WITHOUT` also names is inside the OR and legitimately served.
+#: * `test_a_role_holding_every_other_capability_is_403` genuinely cannot say
+#:   anything here: a caller holding everything but one still holds four other
+#:   Panel capabilities, so it skips.
+#:
+#: What that second skip would have killed — *which* capabilities are in the OR,
+#: member by member — is pinned in `test_facts_api.py` instead, by
+#: `test_every_panel_capability_on_its_own_opens_the_facts_routes` (a role
+#: holding exactly one member, parametrised over all five: deleting any member
+#: from `routers/facts.PANEL_CAPABILITIES` fails) and
+#: `test_holding_every_capability_outside_the_panel_set_opens_nothing` (a role
+#: holding every capability except the five: widening the set fails). Those two
+#: need a role the four seeded ones cannot express, which is why they live
+#: beside the routes rather than here.
 #:
 #: Everything else this file says about a route still holds for them, and is
 #: what earns their row: 401 for a stranger, 404 (never 403) out of scope in
@@ -356,8 +373,19 @@ def test_a_role_without_the_capability_is_403_on_a_visible_target(
     passing does not test it.
     """
     if path in PANEL_404:
-        pytest.skip(f"{path} refuses with the uniform 404 rather than 403 — see"
-                    f" PANEL_404")
+        # Asserted, not skipped: the row stays live and the exemption becomes a
+        # checked claim rather than a comment. The **Reader** only — `WITHOUT`
+        # names the Admin too, and an Admin holds `manage_users` and
+        # `view_audit`, so they are inside this OR and legitimately served (see
+        # `PANEL_404`). What is pinned here is that being outside it costs the
+        # uniform 404 and not the 403 every other row in this table asserts.
+        client = _client_as(data_root, tmp_path, "reader", _in_scope_for(path))
+        r = _call(client, method, path, body)
+        assert (r.status_code, r.json()) == (404, {"detail": NOT_FOUND}), (
+            f"{method} {path} answered {r.status_code} to a reader in scope; a"
+            f" Panel route must be indistinguishable from a typo to a holder of"
+            f" `view` alone (QF-23, §18)")
+        return
     roles = WITHOUT[capability]
     if not roles:
         pytest.skip(f"no seeded role lacks {capability}; the route is pinned by"
