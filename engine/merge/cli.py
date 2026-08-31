@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from engine_common import data_root, read_json, write_json_atomic
 from merge import (attach_subprocess, build_new, build_update, remove_process,
                    resolve_pending, restructure)
+from merge_facts import facts_dir
 from merge_facts.apply import apply as apply_facts
 from merge_facts.audit import audit as audit_facts
 from merge_facts.audit import check as check_facts
@@ -64,6 +65,25 @@ def _require(cond, msg):
     if not cond:
         print(f"precondition failed: {msg}", file=sys.stderr)
         raise SystemExit(2)
+
+
+def _facts_referencing(root, pid):
+    """QF-8 "At the tombstone": index rows in facts/.index.json whose
+    `processes` names `pid` — read-only (never written here; the merge-only
+    rule binds the five facts store files, not this lookup) and empty when
+    the index file is absent, so a fresh/facts-less data root stays silent.
+    """
+    idx_path = facts_dir(root) / ".index.json"
+    if not idx_path.is_file():
+        return []
+    return [row for row in read_json(idx_path).get("entries", [])
+            if pid in (row.get("processes") or [])]
+
+
+def _print_facts_warnings(pid, superseded_by):
+    heir = f" (heir {', '.join(superseded_by)})" if superseded_by else ""
+    for row in _facts_referencing(data_root(), pid):
+        print(f"facts: {row['id']} «{row['title']}» → {pid}{heir}")
 
 
 def _facts(args):
@@ -223,6 +243,7 @@ def main(argv=None):
             proc = remove_process(read_json(path), now)
             write_json_atomic(path, proc)
             print(f"tombstoned {args.process}")
+            _print_facts_warnings(args.process, proc.get("superseded_by"))
             _sync_order({_dept_of(args.process)}, now)
         elif args.cmd == "restructure":
             _require(pathlib_exists(args.plan), "plan file must exist")
@@ -233,6 +254,7 @@ def main(argv=None):
             for t in tombstoned:
                 write_json_atomic(_proc_path(t["id"]), t)
                 print(f"tombstoned {t['id']}")
+                _print_facts_warnings(t["id"], t.get("superseded_by"))
             for h in heirs:
                 for n in h["nodes"]:
                     if n.get("type") == "activity" and n.get("subprocess"):
