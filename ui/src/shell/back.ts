@@ -81,9 +81,53 @@ export function isProcessView(pathname: string): boolean {
  * right.
  */
 export function traySection(pathname: string): string | null {
-  const inSection = (root: string) => pathname === root || pathname.startsWith(`${root}/`)
-  if (inSection('/facts')) return '/facts'
+  if (inSection(pathname, '/facts')) return '/facts'
   // The three administration targets `PanelShell`'s own `adminItems` lists;
   // `/users/{id}` is inside `/users` by the same section test the tray uses.
-  return ['/users', '/visibility', '/profile'].some(inSection) ? null : '/departments'
+  return ADMIN.some((root) => inSection(pathname, root)) ? null : '/departments'
+}
+
+/** The three administration destinations `PanelShell`'s `adminItems` draws. */
+const ADMIN = ['/users', '/visibility', '/profile']
+
+/**
+ * Is `pathname` inside the section rooted at `root`?
+ *
+ * The separator is what makes it a section test rather than a prefix match:
+ * without it `/factsheet` is inside `/facts` and `/profiles` inside `/profile`.
+ */
+function inSection(pathname: string, root: string): boolean {
+  return pathname === root || pathname.startsWith(`${root}/`)
+}
+
+/**
+ * Whether the mobile sheet draws a row as the one you are on.
+ *
+ * **The sheet and the tray answer the same rule, and that is the design's, not
+ * a convenience.** §6.0 builds its sheet rows from `navDefs` and paints them
+ * `inScreen(m.id)` — `menuItems`, `Inja Panel.dc.html:5097` — the very predicate
+ * `navTabs` uses one line below it. So a sheet whose «دپارتمان‌ها» row went dark
+ * on a process view would disagree with the design and with its own top bar at
+ * once.
+ *
+ * The disjunction is two rules, not a widened one:
+ *
+ * * `traySection(...) === to` is §6.0's `inScreen` for the two rows that are
+ *   tray sections. It is what carries «دپارتمان‌ها» across the process views,
+ *   which no prefix test can do — `/processes/{pid}` does not start with
+ *   `/departments`.
+ * * `inSection(...)` is for the three administration rows, which §6.0 paints
+ *   white with no current state at all (`adminItems`, :5094, binds no `bg`)
+ *   because its own popover carries that group's state and this shell has no
+ *   reachable popover to carry it. So "you are here" on those three is this
+ *   app's addition — see `SHEET_HERE` — and it was written as an exact route
+ *   match, which left «کاربران» dark on `/users/{id}`, a row the sheet draws
+ *   ON the screen it leads to. A section test is the same rule the other three
+ *   rows already follow.
+ *
+ * The two never contradict: `inSection` can only be true for a tray root on a
+ * path `traySection` already answers with that same root.
+ */
+export function sheetHere(pathname: string, to: string): boolean {
+  return traySection(pathname) === to || inSection(pathname, to)
 }

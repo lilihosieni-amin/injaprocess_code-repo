@@ -12,7 +12,7 @@ import { Icon } from '../ui/Icon'
 import { Logo } from '../ui/Logo'
 import { toFa } from '../lib/format'
 import { panelCrumbs } from './crumbs'
-import { canGoBack, isProcessView, traySection } from './back'
+import { canGoBack, isProcessView, sheetHere, traySection } from './back'
 import { useScrollMemory } from './scroll'
 
 // §6.0 — the nav tray's shell. These entries *navigate*, so they are links in a
@@ -165,8 +165,13 @@ export function PanelShell({ session }: { session: SessionDescriptor }) {
   const mainRef = useRef<HTMLElement>(null)
   useScrollMemory(mainRef)
 
-  /** A sheet row's own three declarations: §6.0's current entry, or its resting one. */
-  const sheetRow = (to: string) => `${SHEET_ITEM} ${pathname === to ? SHEET_HERE : SHEET_REST}`
+  /** A sheet row's own three declarations: §6.0's current entry, or its resting
+   *  one. `sheetHere` is a SECTION test — the design binds these rows with the
+   *  same `inScreen` the tray uses (`menuItems`, :5097) — and it is in
+   *  `./back` with a test, because this was an exact route match and left
+   *  «کاربران» dark on `/users/{id}`: a row the sheet draws on the very screen
+   *  it leads to. */
+  const sheetRow = (to: string) => `${SHEET_ITEM} ${sheetHere(pathname, to) ? SHEET_HERE : SHEET_REST}`
 
   // R5 — an entry whose target this caller cannot reach is absent, not
   // disabled, not explained. Each of the three gates below is the SAME
