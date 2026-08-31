@@ -62,8 +62,12 @@ const TABLE = bundleOf('rule', {
   outputs: [{ key: 'coefficient', title: 'ضریب' }],
   table: {
     inputs: ['weekday'], outputs: ['coefficient'], hit: 'first', aggregate: 'sum',
-    rows: [{ when: { weekday: 'thu' }, then: { coefficient: 1.2 } }],
-    default: { coefficient: 1 },
+    // `F-00032`'s own rows — the estate stores the SHORT weekday spelling.
+    rows: [
+      { when: { weekday: 'thu' }, then: { coefficient: 1.2 } },
+      { when: { weekday: 'wed' }, then: { coefficient: 1.1 } },
+    ],
+    default: { coefficient: 1, par: 40 },
   },
 })
 
@@ -102,6 +106,24 @@ describe('the rule’s value cards', () => {
     expect(within(table).getByText('روز هفته')).toBeInTheDocument()
     expect(within(table).getByText('ضریب')).toBeInTheDocument()
     expect(screen.getByText('در غیر این صورت')).toBeInTheDocument()
+  })
+
+  it('writes a weekday cell in Persian — the store holds «thu», the screen shows «پنجشنبه»', () => {
+    render(<RuleValueCards bundle={TABLE} onOpen={vi.fn()} />)
+    const table = screen.getByRole('table', { name: 'جدول تصمیم' })
+    // `WD_FA` (`Inja Panel.dc.html:4691`), which note 9 moves into
+    // `factsLabels.ts`. Without it a Persian-only screen ships «thu».
+    expect(within(table).getByText('پنجشنبه')).toBeInTheDocument()
+    expect(within(table).getByText('چهارشنبه')).toBeInTheDocument()
+    expect(table).not.toHaveTextContent('thu')
+    expect(table).not.toHaveTextContent('wed')
+    // …and a number is untouched: it is an LTR island in Latin digits (QF-42).
+    expect(within(table).getByText('1.2')).toHaveAttribute('dir', 'ltr')
+  })
+
+  it('joins the default band with the design’s own separator (:4862)', () => {
+    render(<RuleValueCards bundle={TABLE} onOpen={vi.fn()} />)
+    expect(screen.getByText('coefficient = 1، par = 40')).toBeInTheDocument()
   })
 })
 

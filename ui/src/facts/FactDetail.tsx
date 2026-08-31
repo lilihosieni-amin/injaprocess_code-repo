@@ -247,7 +247,9 @@ function SourcesCard({ bundle, onOpen, onOpenProcess }: {
           <div className="px-s9 pt-s6 pb-s1 text-fs-xxs font-bold text-muted">
             {label(SCREEN_LABELS, 'heading_processes')}
           </div>
-          {bundle.processes.map((p) => <ProcessRow key={p.ref} link={p} />)}
+          {bundle.processes.map((p) => (
+            <ProcessRow key={p.ref} link={p} onOpenProcess={onOpenProcess} />
+          ))}
         </>
       )}
 
@@ -335,8 +337,22 @@ function spreadsheetId(entry: FactEntry): string | undefined {
   return loc?.spreadsheetId
 }
 
-/** One «فرایندهای مرتبط» row, with whichever orphan class applies (note 7). */
-function ProcessRow({ link }: { link: FactProcessLink }) {
+/**
+ * One «فرایندهای مرتبط» row, with whichever orphan class applies (note 7) —
+ * **and the press the design gives it** (`:1721`: `onClick`, `cursor:pointer`,
+ * a `--surface-sub` hover and a dotted underline on the ref).
+ *
+ * **Drawn as a press only for a HEALTHY link**, which is R5 rather than a
+ * shortcut: a masked one is a process the caller may not open at all, and the
+ * other three orphan classes are the row saying the destination is not there —
+ * a tombstone, a reference to nothing, a node a restructure removed. Offering a
+ * press on any of those is offering a navigation the row has just said would
+ * fail. So the four inert classes keep the design's markup without its
+ * interaction, and the ordinary link keeps both.
+ */
+function ProcessRow({ link, onOpenProcess }: {
+  link: FactProcessLink; onOpenProcess: (pid: string) => void
+}) {
   // Narrowed inline, not through a boolean: a masked link carries `ref` and
   // nothing else — no `title`, no `tombstoned`, no `missing_nodes` — and the
   // union is what makes reading one of them a compile error.
@@ -349,11 +365,24 @@ function ProcessRow({ link }: { link: FactProcessLink }) {
       : link.title === null ? label(SCREEN_LABELS, 'orphan_reference')
         : link.missing_nodes.length > 0 ? label(SCREEN_LABELS, 'missing_node')
           : undefined
-  return (
-    <div className="flex items-center gap-s5 px-s9 py-s5 flex-wrap border-b border-line-row">
-      <Mono className="flex-none text-fs-xxs text-violet">{link.ref}</Mono>
-      <span style={PX.procName} className="flex-1 text-fs-sm text-ink">{name}</span>
-      {orphan !== undefined && <Pill tone="warn">{orphan}</Pill>}
-    </div>
+  const openable = !isRestricted(link) && orphan === undefined
+
+  const body = (
+    <>
+      <Mono className={`flex-none text-fs-xxs text-violet
+                        ${openable ? 'underline decoration-dotted underline-offset-4' : ''}`}>
+        {link.ref}
+      </Mono>
+      <span style={PX.procName} className="flex-1 text-fs-sm text-ink text-start">{name}</span>
+      {orphan !== undefined && <Pill tone="warn" fs="text-fs-micro">{orphan}</Pill>}
+    </>
   )
+  const line = 'flex items-center gap-s5 px-s9 py-s5 flex-wrap border-b border-line-row'
+  return openable ? (
+    <button type="button" onClick={() => onOpenProcess(link.ref)}
+      className={`${line} w-full border-0 bg-transparent font-sans cursor-pointer
+                  hover:bg-surface-sub`}>
+      {body}
+    </button>
+  ) : <div className={line}>{body}</div>
 }

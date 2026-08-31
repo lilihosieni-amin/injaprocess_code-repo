@@ -539,36 +539,36 @@ export const SCREEN_LABELS: Record<string, string> = {
   column_count: '{n} ستون',                                // :1371
   grid_legend: 'خانهٔ قرمز یعنی مقدارش در منبع ثبت نشده یا سرِ آن اختلاف است', // :1347
   row_key_column: 'کلید ردیف',                             // :4898
-  column_title_head: 'عنوان ستون',                         // :1376
+  column_title_head: 'عنوان ستون',                         // :1375
   printed_rows_lede:
     'این {n} قلم از قبل روی برگه نوشته شده‌اند؛ کارمند فقط عدد جلوی هرکدام را پر می‌کند.', // :1406
-  printed_row_unit: 'با چه واحدی',                         // :1419
-  printed_row_section: 'در کدام بخش فرم',                  // :1426
-  printed_row_day: 'چه روزی',                              // :1432
-  printed_row_day_value: 'فقط {n}‌ها پر می‌شود',            // :1433
-  printed_row_open_value: 'اسم قلم روی فرم چاپ نشده — کارمند خودش می‌نویسد', // :1439
-  blank_master_hint: 'ستون‌ها روی برگه چاپ شده‌اند و خانه‌ها خالی‌اند',       // :1465
+  printed_row_unit: 'با چه واحدی',                         // :1418
+  printed_row_section: 'در کدام بخش فرم',                  // :1425
+  printed_row_day: 'چه روزی',                              // :1431
+  printed_row_day_value: 'فقط {n}‌ها پر می‌شود',            // :1432
+  printed_row_open_value: 'اسم قلم روی فرم چاپ نشده — کارمند خودش می‌نویسد', // :1438
+  blank_master_hint: 'ستون‌ها روی برگه چاپ شده‌اند و خانه‌ها خالی‌اند',       // :1464
   day_boundary_value:
-    'روز کاری تا ساعت {n} بامداد ادامه دارد؛ ثبت بعد از آن مال فردا است',    // :1464
-  section_has_doc: 'شمارهٔ سند خودش را دارد',              // :1496
-  signature_range: 'ردیف {n} را امضا می‌کند',              // :1509
-  movement_value: 'از {n} به {m} — {r}',                    // :1518
-  accounts_lede: 'دو منبع دو چیز می‌گویند. یکی را انتخاب کنید تا فیلد صریح شود.', // :1677
-  measurement_quantity: 'کمیت و واحد',                     // :1623
-  measurement_when_by: 'زمان · توسط',                      // :1634
-  tracked_yes: 'ردیابی می‌شود',                            // :5024
-  tracked_no: 'ردیابی نمی‌شود',                            // :5024
-  location_sheet: 'برگهٔ {n}',                             // :4958
-  location_format: 'قالب {n}',                             // :4960
+    'روز کاری تا ساعت {n} بامداد ادامه دارد؛ ثبت بعد از آن مال فردا است',    // :1463
+  section_has_doc: 'شمارهٔ سند خودش را دارد',              // :1495
+  signature_range: 'ردیف {n} را امضا می‌کند',              // :1508
+  movement_value: 'از {n} به {m} — {r}',                    // :1517
+  accounts_lede: 'دو منبع دو چیز می‌گویند. یکی را انتخاب کنید تا فیلد صریح شود.', // :1676
+  measurement_quantity: 'کمیت و واحد',                     // :1622
+  measurement_when_by: 'زمان · توسط',                      // :1633
+  tracked_yes: 'ردیابی می‌شود',                            // :5019
+  tracked_no: 'ردیابی نمی‌شود',                            // :5019
+  location_sheet: 'برگهٔ {n}',                             // :4953
+  location_format: 'قالب {n}',                             // :4955
 
   // Where a source was read — `sfSources.at` (:4807) and an account's `srcAt`
   // (:5038), which compose the same five phrases.
-  source_at_sheet: 'برگهٔ {n}',                            // :4807
-  source_at_sheet_cell: 'برگهٔ {n}، خانهٔ {m}',            // :4807
-  source_at_lines: 'خط {n}',                               // :4807
-  source_at_node: 'گرهٔ {n}',                              // :4807
-  source_at_function: 'تابع {n}',                          // :4807
-  source_at_page: 'صفحهٔ {n}',                             // :4807
+  source_at_sheet: 'برگهٔ {n}',                            // :5052
+  source_at_sheet_cell: 'برگهٔ {n}، خانهٔ {m}',            // :5052
+  source_at_lines: 'خط {n}',                               // :5052
+  source_at_node: 'گرهٔ {n}',                              // :5052
+  source_at_function: 'تابع {n}',                          // :5052
+  source_at_page: 'صفحهٔ {n}',                             // :5052
 
   // The «متن اصلی» block the owner approved on 2026-08-31 (audit §6.1). The
   // three sentences are `sfOriginalNote` (:4885), which the design computes and
@@ -592,6 +592,12 @@ export const SCREEN_LABELS: Record<string, string> = {
   confirm_dialog_ok: 'تأیید می‌کنم',                                            // :5076
   account_dialog_ok: 'انتخاب می‌کنم',                                           // :5042
 
+  // Two joins the design writes as literals and Appendix D gives no field for.
+  // They are punctuation rather than copy, and they are here for the reason
+  // everything else in this block is: a component may hold no Persian.
+  range_to: '{n} تا {m}',                                                       // :4943
+  list_separator: '، ',                                                         // :4862
+
   // The two placeholders the design puts where a value would be. «؟» is a leaf
   // the source never answered (:4842, and the record grid's own `؟` at :4909);
   // «—» is a field the entry does not carry at all. They are different states
@@ -602,7 +608,60 @@ export const SCREEN_LABELS: Record<string, string> = {
   // «{pct}٪» — the share of an input an output takes (:1318). The design writes
   // «{pct} از ورودی»; Appendix D gives `share` the label «سهم», which is what
   // stands in front of it, so this entry carries the sign alone.
-  percent: '{n}٪',                                                              // :1318, :4844
+  percent: '{n}٪',                                                              // :1318, :4838
+}
+
+/**
+ * Weekdays, in **both spellings the store actually holds** — and the reason
+ * this map exists at all is that without it the screen ships English.
+ *
+ * The design carries the same seven days twice, because two different parts of
+ * the payload spell them differently and it never reconciled them:
+ *
+ * * `WD_FA` (`Inja Panel.dc.html:4691`) — the SHORT form, which a decision
+ *   table's `when` cell holds: `F-00032`'s `{weekday: 'wed'}` and `F-00050`'s
+ *   `{weekday: 'thu'}` are the estate's own rows.
+ * * the inline `WD` inside `sfLogRows` (`:4928`) — the LONG form, which a
+ *   printed form row's `when` holds: `F-00012`'s `staff_sugar` carries
+ *   `"when": "thursday"`.
+ *
+ * One map with both key sets, rather than two maps or a normalising function:
+ * the two are not variants of one value, they are two stored vocabularies, and
+ * QF-42 requires a Persian label for **every** enumeration member the store
+ * holds. A single lookup is also what keeps a component from deciding which
+ * spelling it is looking at.
+ *
+ * `weekday` / `weekend` / `any` come from `WD_FA` too — a decision table's
+ * `when` may name a class of days rather than one. `otherwise` is deliberately
+ * NOT here: it is `SCREEN_LABELS.table_default`, the same sentence, and the
+ * design's own `WD_FA` duplicating it is the kind of second definition this
+ * file exists to prevent.
+ *
+ * **Read with `?? value`, never through `label()`.** A decision-table cell is
+ * an open string — a weekday, an enumeration this file has no map for, or a
+ * number — so a miss is ordinary and `label()`'s throw would be wrong. That is
+ * exactly what the design's own `enumFa` does: `WD_FA[v] || … || v`.
+ */
+export const WEEKDAY_LABELS: Record<string, string> = {
+  // `WD_FA` (:4691) — a decision table's cell
+  sat: 'شنبه',
+  sun: 'یکشنبه',
+  mon: 'دوشنبه',
+  tue: 'سه‌شنبه',
+  wed: 'چهارشنبه',
+  thu: 'پنجشنبه',
+  fri: 'جمعه',
+  weekday: 'روز هفته',
+  weekend: 'آخر هفته',
+  any: 'هر روز',
+  // the inline `WD` (:4928) — a printed form row's «فقط …‌ها پر می‌شود»
+  saturday: 'شنبه',
+  sunday: 'یکشنبه',
+  monday: 'دوشنبه',
+  tuesday: 'سه‌شنبه',
+  wednesday: 'چهارشنبه',
+  thursday: 'پنجشنبه',
+  friday: 'جمعه',
 }
 
 /**

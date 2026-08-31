@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import {
-  CADENCE_LABELS, FIELD_TYPE_LABELS, PAYLOAD_FIELD_LABELS, SCREEN_LABELS, label,
+  CADENCE_LABELS, FIELD_TYPE_LABELS, PAYLOAD_FIELD_LABELS, SCREEN_LABELS,
+  WEEKDAY_LABELS, label,
 } from '../../lib/factsLabels'
 import { toFa } from '../../lib/format'
 import {
@@ -49,6 +50,26 @@ const LOG_KEYS = new Set([
   'key', 'title', 'unit', 'unit_raw', 'section', 'when', 'open', 'retired', 'note',
 ])
 
+/**
+ * Whether the record's rows are DATA (a grid) or printed items on a form.
+ *
+ * The design's `recHasGrid` (:4667) is a three-way disjunct and this is two of
+ * the three: `r.cells` is a shape no served entry uses, and
+ * `Object.keys(r).some(k => !LOGKEYS[k])` is the general test — a row with any
+ * non-bookkeeping key is a data row.
+ *
+ * **The third disjunct is deliberately not here, and `F-00012` is why.**
+ * `recFieldKeys.some(k => r[k] !== undefined)` asks "does this row have a value
+ * for a declared column", which is a strict subset of the general test EXCEPT
+ * where a column key happens to be spelled like a bookkeeping key. `F-00012`
+ * («درخواست کالا بخش کانتر آشپزخانه») is exactly that: a paper request form
+ * whose columns include one keyed `unit`, and whose printed rows each carry a
+ * bookkeeping `unit`. Under the design's own expression that coincidence of
+ * names makes the form a grid — four rows by five columns, four of them «؟» —
+ * and suppresses «قلم‌های چاپ‌شده روی فرم» entirely. Pinned by
+ * `RecordCard.test.tsx`'s *reads a paper form with a column keyed `unit`…* so
+ * the divergence is asserted rather than argued.
+ */
 const hasGrid = (d: RecordData) =>
   (d.fields ?? []).length > 0
   && (d.rows ?? []).some((r) => Object.keys(r).some((k) => !LOG_KEYS.has(k)))
@@ -241,17 +262,27 @@ function ColumnsTable({ bundle, data, onOpen }: {
               {
                 node: (
                   <div>
+                    {/* :1385 — this one is NOT the screen's pill: the design
+                        draws it `2px 8px` at `--radius-badge`, which is `Tag`'s
+                        geometry at the badge radius rather than `Pill`'s
+                        `999px`. Drawn through `Pill` it also took `Pill`'s
+                        11.5px where the design writes 12.5, which is how the
+                        shape mismatch surfaced. */}
                     {missing
-                      ? <Pill tone="danger">{label(SCREEN_LABELS, 'unit_missing')}</Pill>
+                      ? <UnitBadge tone="bg-tile-c text-conflict">
+                        {label(SCREEN_LABELS, 'unit_missing')}
+                      </UnitBadge>
                       : f.unit_raw !== undefined
                         // The source's own word for the unit, when it wrote one.
-                        ? <Pill tone="violet2">{f.unit_raw}</Pill>
+                        ? <UnitBadge tone="bg-tile-v2 text-violet">{f.unit_raw}</UnitBadge>
                         : f.unit == null
                           ? <span className="text-fs-sm2 text-muted">{none()}</span>
                           // …otherwise the stored symbol, as its own island
                           // (:4981's `unitDir`/`unitFont` switch, read through
                           // note 6: a symbol is latin and stays latin).
-                          : <Pill tone="violet2"><Mono>{f.unit}</Mono></Pill>}
+                          : <UnitBadge tone="bg-tile-v2 text-violet">
+                            <Mono>{f.unit}</Mono>
+                          </UnitBadge>}
                     {f.type !== undefined && (
                       <div className="text-fs-xxs text-faint mt-s2">
                         {label(FIELD_TYPE_LABELS, f.type)}
@@ -267,6 +298,27 @@ function ColumnsTable({ bundle, data, onOpen }: {
       />
     </DetailCard>
   )
+}
+
+/** :1385 — the columns table's own unit box: `12.5px/700`, `2px 8px`, at
+ *  `--radius-badge`. Local to this card, because it is the one site the design
+ *  draws it and it is a different shape from the screen's pill. */
+function UnitBadge({ tone, children }: { tone: string; children: ReactNode }) {
+  return (
+    <span className={`inline-flex items-center py-half px-s4 rounded-badge
+                      text-fs-sm2 font-bold ${tone}`}>
+      {children}
+    </span>
+  )
+}
+
+/** :4943 — «۱ تا ۵». The hyphen is a latin range operator and the design
+ *  replaces it before the digits are converted. */
+function rowRange(range: string): string {
+  const [from, to] = range.split('-')
+  return to === undefined
+    ? toFa(range)
+    : label(SCREEN_LABELS, 'range_to').replace('{n}', toFa(from)).replace('{m}', toFa(to))
 }
 
 /**
@@ -315,7 +367,10 @@ function PrintedRows({ data }: { data: RecordData }) {
         </div>
       </div>
       {rows.map((r) => {
-        const unit = (r.unit_raw ?? r.unit) as string | undefined
+        // :4934 — the source's own word for the unit, else the stored symbol.
+        const unitRaw = r.unit_raw as string | undefined
+        const symbol = r.unit as string | undefined
+        const unit = unitRaw ?? symbol
         const section = sections.find((s) => s.key === r.section)?.title
           ?? (r.section as string | undefined)
         const when = r.when as string | undefined
@@ -335,8 +390,12 @@ function PrintedRows({ data }: { data: RecordData }) {
                 {unit !== undefined && (
                   <PrintedDetail text={label(SCREEN_LABELS, 'printed_row_unit')}>
                     <span className="text-fs-menu font-semibold text-ink">{unit}</span>
-                    {r.unit !== undefined && (
-                      <Mono className="text-fs-micro text-faint">{String(r.unit)}</Mono>
+                    {/* The symbol beside the phrase, and only when they are two
+                        different things (:1421). With no `unit_raw` the design's
+                        `unitPhrase` falls back to the symbol itself and draws it
+                        twice — a defect note 9 surfaces by deleting `UNIT_FA`. */}
+                    {symbol !== undefined && symbol !== unit && (
+                      <Mono className="text-fs-micro text-faint">{symbol}</Mono>
                     )}
                   </PrintedDetail>
                 )}
@@ -347,8 +406,12 @@ function PrintedRows({ data }: { data: RecordData }) {
                 )}
                 {when !== undefined && (
                   <PrintedDetail text={label(SCREEN_LABELS, 'printed_row_day')}>
+                    {/* :4932 — the day is Persian. `F-00012`'s `staff_sugar`
+                        holds `"when": "thursday"`, which the design maps through
+                        its inline `WD`; unmapped it reads «فقط thursday‌ها». */}
                     <span className="text-fs-menu font-semibold text-warn-fg">
-                      {label(SCREEN_LABELS, 'printed_row_day_value').replace('{n}', when)}
+                      {label(SCREEN_LABELS, 'printed_row_day_value')
+                        .replace('{n}', WEEKDAY_LABELS[when] ?? when)}
                     </span>
                   </PrintedDetail>
                 )}
@@ -388,12 +451,22 @@ function StructureCard({ bundle, data, onOpen }: {
   const where = loc.path !== undefined ? loc.path.split('/').pop()
     : loc.sheet !== undefined ? label(SCREEN_LABELS, 'location_sheet').replace('{n}', loc.sheet)
       : loc.identifier_scheme?.authority ?? none()
+  // :4955 — `sfRecLocExtra`'s SECOND half. Note 6 deletes its first («شناسهٔ
+  // فایل {spreadsheetId}», the bidi mix); «قالب {format}» is a Persian word in
+  // front of a scheme's own format string and carries no such mix, so it stays.
+  // `F-00018` (the Sepidz till) is the entry that exercises it.
+  const format = loc.identifier_scheme?.format
   const mirror = refTitle(bundle, data.mirror_of)
   return (
     <DetailCard className="mt-s7">
       <HeadBand>{label(SCREEN_LABELS, 'heading_record_structure')}</HeadBand>
       <LabelRow text={L('location')}>
         <span className="text-fs-menu font-semibold text-ink">{where}</span>
+        {format !== undefined && (
+          <span className="text-fs-micro text-faint">
+            {label(SCREEN_LABELS, 'location_format').replace('{n}', format)}
+          </span>
+        )}
       </LabelRow>
       {data.grain !== undefined && (
         <LabelRow text={L('grain')}>
@@ -463,8 +536,11 @@ function StructureCard({ bundle, data, onOpen }: {
             <div key={s.role} className="flex items-center gap-s5 py-s3">
               <span className="text-fs-menu font-semibold text-ink">{s.role}</span>
               {s.row_range !== undefined && (
+                // :4943 — the design replaces the hyphen with « تا », so a
+                // reviewer reads «ردیف ۱ تا ۵ را امضا می‌کند» rather than a
+                // latin range operator inside a Persian sentence.
                 <span className="text-fs-caption text-muted">
-                  {label(SCREEN_LABELS, 'signature_range').replace('{n}', toFa(s.row_range))}
+                  {label(SCREEN_LABELS, 'signature_range').replace('{n}', rowRange(s.row_range))}
                 </span>
               )}
             </div>
@@ -494,6 +570,9 @@ function StructureCard({ bundle, data, onOpen }: {
             <div key={fk.fields.join('+')} style={PX.rowY7}
               className="flex items-center gap-s4 flex-wrap">
               <Mono className="text-fs-xs text-body-ink">{fk.fields.join(' + ')}</Mono>
+              {/* :1534 — the relation mark between the two sides. A directional
+                  glyph in a data row, not an icon standing in for one. */}
+              <span aria-hidden className="text-fs-xxs text-faint">←</span>
               <RefLink named={refTitle(bundle, fk.reference)} onOpen={onOpen}
                 className="text-fs-sm">
                 <Mono className="text-fs-xxs text-faint">
@@ -515,6 +594,13 @@ function StructureCard({ bundle, data, onOpen }: {
                 <span className="text-fs-sm font-semibold text-ink">
                   {[row?.text, column].filter((x) => x !== undefined).join(' › ')}
                 </span>
+                {/* :1548 — the machine cell beside its Persian name, as the
+                    small mono hint §17 allows. */}
+                <Mono className="text-fs-nano text-faint">
+                  {[r.cell.row, r.cell.field].filter((x) => x !== undefined).join(' › ')}
+                </Mono>
+                {/* :1549 — «this cell is reconciled AGAINST that constant». */}
+                <span aria-hidden className="text-fs-xxs text-faint">↔</span>
                 <RefLink named={refTitle(bundle, r.against)} onOpen={onOpen}
                   className="text-fs-sm" />
               </div>

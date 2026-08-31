@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { FactDetail } from './FactDetail'
 import { bundleOf } from './cards/fixture'
@@ -8,6 +9,13 @@ import type { Branch, Department, FactBundle } from '../api/types'
 const fact = vi.fn()
 const branches = vi.fn()
 const departments = vi.fn()
+/** Where a press goes. Spied at the router rather than at the screen, so the
+ *  path is asserted as the URL a reader would land on. */
+const navigate = vi.fn()
+vi.mock('react-router-dom', async () => ({
+  ...await vi.importActual<typeof import('react-router-dom')>('react-router-dom'),
+  useNavigate: () => navigate,
+}))
 vi.mock('../api/hooks', () => ({
   useFact: (fid: string) => fact(fid),
   useFactBranches: () => branches(),
@@ -23,6 +31,7 @@ const DEPARTMENTS: Department[] = [
 const BRANCHES: Branch[] = [{ code: 'chalebagh', name: 'چاله‌باغ' }]
 
 beforeEach(() => {
+  navigate.mockReset()
   branches.mockReturnValue({ data: BRANCHES })
   departments.mockReturnValue({ data: DEPARTMENTS })
 })
@@ -84,6 +93,27 @@ describe('the fact detail screen', () => {
     expect(screen.getByText('اشاره به فرایند بازنشسته (جایگزین: cooking-007)')).toBeInTheDocument()
     expect(screen.getByText('ارجاع بی‌مقصد')).toBeInTheDocument()
     expect(screen.getByText('گرهٔ ارجاع‌شده حذف شده')).toBeInTheDocument()
+  })
+
+  it('opens a healthy process link, and offers no press on one that leads nowhere', async () => {
+    const user = userEvent.setup()
+    draw(PAPER)
+    // :1721 — the design's row carries `onClick`, `cursor:pointer` and a hover
+    // fill. `cooking-001` is the healthy one.
+    const healthy = screen.getByRole('button', { name: /وزن‌کشی مانده شب/ })
+    await user.click(healthy)
+    expect(navigate).toHaveBeenCalledWith('/processes/cooking-001')
+
+    // R5 — the other four say the destination is not there (a tombstone, a
+    // reference to nothing, a node a restructure removed) or may not be opened
+    // at all, so none of them is a press.
+    for (const name of ['شمارش انبار', 'ثبت فیش', 'ارجاع بی‌مقصد']) {
+      expect(screen.getByText(name).closest('button'), name).toBeNull()
+    }
+    // …and both masked neighbours, the process link and the consumer chip.
+    for (const el of screen.getAllByText('خارج از دسترسی شما')) {
+      expect(el.closest('button')).toBeNull()
+    }
   })
 
   it('renders a masked neighbour as «خارج از دسترسی شما», and never as a link', () => {

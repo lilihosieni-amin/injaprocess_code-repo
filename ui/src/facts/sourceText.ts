@@ -47,7 +47,10 @@ export function sourceFile(s: FactSource): string {
  * to be there: a `chat` row carries `ref: null` and there is nothing to fetch.
  */
 export const isDownloadable = (s: FactSource) => s.type !== 'process' && s.type !== 'chat'
-  && s.ref !== null && s.ref !== ''
+  // Truthiness, not `!== null`: `ref` is `string | null` in the schema, and a
+  // body that omitted it altogether would reach `download('')` — a press that
+  // asks the gated route for the empty path.
+  && !!s.ref
 
 /** `departments/cooking/processes/cooking-001.json` → `cooking-001`. */
 export function processIdOf(s: FactSource): string | undefined {

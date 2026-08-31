@@ -13,8 +13,12 @@ import type { FactBundle } from '../../api/types'
  * `refItems` cells hold item keys and whose `grams` column is red twice over.
  */
 
-/** F-00011 — `medium: paper`, `role: log`; rows are printed items, not data. */
-const PAPER = (over: Partial<FactBundle> = {}): FactBundle => bundleOf('record', {
+/** F-00011 — `medium: paper`, `role: log`; rows are printed items, not data.
+ *  `fields` is overridable for the one test that needs `F-00012`'s `unit`-keyed
+ *  column, which is what `hasGrid` is about. */
+const PAPER = (
+  over: Partial<FactBundle> = {}, fields?: Record<string, unknown>[],
+): FactBundle => bundleOf('record', {
   medium: 'paper', role: 'log',
   location: { path: 'departments/cooking/attachments/photo_2026-08-29_14-23-51.jpg' },
   grain: 'هر ردیف یک قلم، هر برگ یک شیفت',
@@ -25,13 +29,19 @@ const PAPER = (over: Partial<FactBundle> = {}): FactBundle => bundleOf('record',
   header_fields: [{ key: 'date', title: 'تاریخ' }],
   signatures: [{ role: 'مسئول واحد', row_range: '1-5' }],
   primaryKey: ['date', 'item'],
-  fields: [
+  fields: fields ?? [
     // No `unit` key at all — "not applicable", and NOT red (note 3).
     { key: 'row_no', title: 'ردیف', type: 'integer' },
     // Present and `null` — «بی‌پاسخ», and red (note 3).
     { key: 'start_stock', title: 'مانده اول شب', type: 'number', unit: null, filled_by: 'مسئول واحد' },
   ],
-  rows: [{ key: 'burger', title: 'برگر' }, { key: 'bacon', title: 'بیکن ورقه ای', retired: true }],
+  rows: [
+    { key: 'burger', title: 'برگر' },
+    { key: 'bacon', title: 'بیکن ورقه ای', retired: true },
+    // `F-00012`'s `staff_sugar`, verbatim: a long-form weekday, and a `unit`
+    // with no `unit_raw` beside it.
+    { key: 'staff_sugar', title: 'قند پرسنلی', unit: 'pack', when: 'thursday' },
+  ],
 }, {
   red_paths: { unknown: ['data/fields/start_stock/unit'], disputed: [] },
   row_titles: { burger: 'برگر', bacon: 'بیکن ورقه ای' },
@@ -128,6 +138,50 @@ describe('the record card', () => {
     const location = screen.getByText('محل').parentElement!
     expect(location).toHaveTextContent('پیتزا ایتالیایی')
     expect(location.textContent).not.toContain('15M2ovUmQ7kX3nR9pLwT2aB8cD4eF6gH1')
+  })
+
+  it('writes a printed row’s day in Persian — «thursday» is not a Persian word', () => {
+    draw(PAPER())
+    // The design's inline `WD` (`Inja Panel.dc.html:4928`), which note 9 moves
+    // into `factsLabels.ts` beside the decision table's short spelling.
+    expect(screen.getByText('فقط پنجشنبه‌ها پر می‌شود')).toBeInTheDocument()
+    expect(screen.queryByText(/thursday/)).toBeNull()
+  })
+
+  it('draws a printed row’s unit once when the source wrote no word for it', () => {
+    draw(PAPER())
+    // `unit: 'pack'` with no `unit_raw`: the phrase and the symbol are the same
+    // string, and the design draws both (:1420-1421). One is enough.
+    expect(screen.getAllByText('pack')).toHaveLength(1)
+  })
+
+  it('reads a paper form with a column keyed `unit` as a form, not a grid', () => {
+    // **A deliberate divergence from `recHasGrid` (:4667), and `F-00012` is the
+    // entry it is about.** Its columns include one keyed `unit` and its printed
+    // rows each carry a bookkeeping `unit`; the design's `recFieldKeys` disjunct
+    // fires on that coincidence of names and turns the form into a grid of
+    // mostly-«؟» cells, suppressing the printed-rows card entirely.
+    draw(PAPER({}, [
+      { key: 'item', title: 'نام کالا', type: 'string' },
+      { key: 'unit', title: 'واحد', type: 'string' },
+    ]))
+    expect(screen.getByText('قلم‌های چاپ‌شده روی فرم')).toBeInTheDocument()
+    expect(screen.queryByRole('table', { name: /ردیف/ })).toBeNull()
+  })
+
+  it('says which rows a signature covers without a latin range operator', () => {
+    draw(PAPER())
+    expect(screen.getByText('ردیف ۱ تا ۵ را امضا می‌کند')).toBeInTheDocument()
+  })
+
+  it('draws the scheme’s «قالب» beside the location — `sfRecLocExtra`’s surviving half', () => {
+    draw(bundleOf('record', {
+      medium: 'external', role: 'log',
+      location: { identifier_scheme: { authority: 'Sepidz', format: 'receipt number' } },
+    }))
+    const location = screen.getByText('محل').parentElement!
+    expect(location).toHaveTextContent('Sepidz')
+    expect(location).toHaveTextContent('قالب receipt number')
   })
 
   it('draws the structure card’s rows from the served payload', () => {

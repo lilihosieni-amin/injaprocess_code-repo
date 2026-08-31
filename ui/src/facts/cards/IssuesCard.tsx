@@ -5,7 +5,7 @@ import {
 import { toFa } from '../../lib/format'
 import type { FactBundle } from '../../api/types'
 import { pathLabel, refTitle } from '../bundle'
-import { DetailCard, HeadBand, Mono, PX, RefLink } from './parts'
+import { DetailCard, HeadBand, Mono, RefLink } from './parts'
 
 /**
  * The two halves of **conformance note 8** the design computes and never draws.
@@ -34,8 +34,11 @@ export function IssuesCard({ bundle, onOpen }: {
         // Audit §2.1 — the design's body ink here is a darker olive that no
         // token holds; `--warn-fg` is the amber family's own ink and is what
         // this card's eyebrow already takes. Recorded as a deviation.
-        <div key={i} style={PX.head1620}
-          className="bg-tile-warn border border-warn-edge rounded-card mb-s5">
+        //
+        // :1695 — `16px 18px`, both on the ladder. It was `PX.head1620`, the
+        // printed-rows head's `16px 20px`, borrowed by its number.
+        <div key={i}
+          className="px-s9 py-s8 bg-tile-warn border border-warn-edge rounded-card mb-s5">
           <div className="flex items-baseline gap-s5 flex-wrap">
             <span className="text-fs-xs font-bold text-warn-fg">
               {label(SCREEN_LABELS, 'issue_prefix')

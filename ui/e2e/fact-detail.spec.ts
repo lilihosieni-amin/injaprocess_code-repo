@@ -149,6 +149,8 @@ const PAPER = bundle('F-00011', 'record', 'مانده شب فرنگی و برگ�
   rows: [
     { key: 'burger', title: 'برگر' },
     { key: 'bacon', title: 'بیکن ورقه ای', retired: true },
+    // `F-00012`'s `staff_sugar`: a weekday the store spells in English.
+    { key: 'staff_sugar', title: 'قند پرسنلی', unit: 'pack', when: 'thursday' },
   ],
 }, {
   red_paths: {
@@ -317,6 +319,15 @@ test('fact detail — the design’s screen on the violet field, at three widths
   await expect(page.getByText('ارجاع بی‌مقصد')).toBeVisible()
   await expect(page.getByText('گرهٔ ارجاع‌شده حذف شده')).toBeVisible()
 
+  /* ---- a healthy process link opens; the three dead classes do not ----
+         :1721 gives the row an `onClick`, a hover fill and a dotted ref. R5
+         keeps it off the rows that have just said the destination is gone. */
+  const healthy = page.getByRole('button', { name: /وزن‌کشی و ثبت مانده شب/ })
+  await expect(healthy).toHaveCSS('cursor', 'pointer')
+  for (const dead of ['شمارش انبار', 'ثبت فیش']) {
+    await expect(page.getByRole('button', { name: new RegExp(dead) })).toHaveCount(0)
+  }
+
   /* ---- the masked consumer: a name it may not show, and no press ---- */
   const masked = page.getByText('خارج از دسترسی شما')
   await expect(masked).toHaveCount(1)
@@ -428,6 +439,14 @@ test('fact detail — the paper form: printed rows, and only a null unit is red'
   await expect(page.getByText('دیگر استفاده نمی‌شود')).toBeVisible()
   await expect(page.getByText('ساختار و مکان جدول')).toBeVisible()
   await expect(page.getByText('برگهٔ خالی برای پر کردن')).toBeVisible()
+
+  /* ---- every word on a Persian-only screen (QF-42) ----
+         The store spells this day «thursday»; the design maps it through its
+         inline `WD` (:4928) and note 9 moves that map into `factsLabels.ts`.
+         Asserted in the browser as well as in jsdom, because "no English on
+         the screen" is a claim about the rendered page. */
+  await expect(page.getByText('فقط پنجشنبه‌ها پر می‌شود')).toBeVisible()
+  await expect(page.getByText('thursday')).toHaveCount(0)
 
   /* ---- the source download popup (QF-39) — download-only, and asked first ----
          **The transfer is observed as a DOWNLOAD, not as a request.** A

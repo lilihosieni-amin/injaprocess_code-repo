@@ -36,8 +36,11 @@ import type { Named } from '../bundle'
  *   table's own unit pill (:1385) drawn exactly, and the I/O pills' `2px 9px`
  *   (:1288) normalised onto it, one rung away.
  * * a **table shell band** is `px-s9 py-s7` (18×14) — `src/ui/DataTable.tsx`'s
- *   `LINE`, which R8 already fixed for the head of every table in the app, and
- *   which `FactsList.tsx` cites for the design's own `13px 18px`.
+ *   `HEAD`, which is `LINE` plus `py-s6`. `LINE` itself carries no vertical
+ *   value at all, and an earlier draft of this note cited it for one. The
+ *   design's `13px` ROWS do not round: `--pad-table-row-y` holds 13px exactly
+ *   (`tokens.css:395`), so the I/O rows write `py-table-row-y`, as
+ *   `FactsList.tsx:215` already does.
  * * an **eyebrow's gap** is `mb-s4` (8px). The design draws 8 six times
  *   (:1481, :1490, :1503, :1516, :1528, :1541) and 9 twice (:1267, :1592);
  *   R8 resolves that by dominance.
@@ -294,14 +297,38 @@ const TONE = {
 
 export type Tone = keyof typeof TONE
 
-/** A pill — see `PX`'s note on why one padding serves the design's three. */
-export function Pill({ tone, title, children }: {
-  tone: Tone; title?: string; children: ReactNode
+/**
+ * A pill — see `PX`'s note on why one padding serves the design's three.
+ *
+ * ## `fs` — the type size, and why it is a parameter rather than a knob
+ *
+ * The design draws this shape at four sizes: `11.5px` seven times (the header
+ * chips :1112-1116, the nature and «به ازای هر» pills :1152-1154, the decision
+ * table's two :1188-1189), `11px` three times (:1229, :1413, :1465), `13px`
+ * once (the item's category, :1560) and `10.5px` once (the tombstone, :1723).
+ * R8 gives the role its dominant value, `--fs-xs`, and that is the default here
+ * — but the two single-site steps are *the design's own*, and flattening them
+ * was a real loss: the category chip sits beside a 26px code and the tombstone
+ * inside an 11px row.
+ *
+ * **This is not the density prop F4/F8 forbids**, and the distinction is
+ * `Button`'s: *"still no horizontal padding or type size here. Nineteen call
+ * sites set their own."* A density prop offers a component two SCALES of
+ * itself; this offers one step of the type scale to a caller that has one, and
+ * every value is a `--fs-*` token the design names at that site.
+ *
+ * A parameter rather than a `className` for a reason this theme has been bitten
+ * by: two font-size utilities on one element are resolved by Tailwind's emitted
+ * order, not by the class string's, so a caller "overriding" the default would
+ * be relying on key order in `tailwind.config.js`.
+ */
+export function Pill({ tone, fs = 'text-fs-xs', title, children }: {
+  tone: Tone; fs?: string; title?: string; children: ReactNode
 }) {
   return (
     <span title={title}
       className={`inline-flex items-center flex-none py-s1 px-s5 rounded-pill
-                  text-fs-xs font-semibold ${TONE[tone]}`}>
+                  ${fs} font-semibold ${TONE[tone]}`}>
       {children}
     </span>
   )
