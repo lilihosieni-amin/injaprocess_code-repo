@@ -88,6 +88,33 @@ def test_merge_remove_silent_when_index_absent(data_root):
     assert "facts:" not in r.stdout
 
 
+def test_merge_remove_warns_and_continues_on_corrupt_index(data_root):
+    _write_proc(data_root, "cooking-001")
+    # a second, untouched active process so the department's order.json is
+    # non-lazily written by _sync_order (an all-tombstoned department stays
+    # fileless — see order.reconcile's lazy-empty guard) — that write is the
+    # proof _sync_order still ran to completion after the corrupt-index warning.
+    _write_proc(data_root, "cooking-002")
+    facts_dir = data_root / "facts"
+    facts_dir.mkdir(parents=True, exist_ok=True)
+    (facts_dir / ".index.json").write_text("{not json", encoding="utf-8")
+
+    r = _run(["remove", "--process", "cooking-001", "--run", "runs/x",
+              "--now", NOW], data_root)
+
+    assert r.returncode == 0, r.stderr
+    assert "tombstoned cooking-001" in r.stdout
+    assert "facts:" not in r.stdout
+    assert "warning: facts index unreadable" in r.stderr
+    assert "Traceback" not in r.stderr
+    # the crash this guards against used to land *before* _sync_order in the
+    # remove arm, so a corrupt index blocked order.json too — confirm the
+    # sync still ran to completion.
+    order = json.loads((data_root / "departments/cooking/order.json")
+                       .read_text(encoding="utf-8"))
+    assert order["order"] == ["cooking-002"]
+
+
 def test_merge_remove_silent_after_index_deleted(data_root):
     _write_proc(data_root, "cooking-001")
     _write_index(data_root, [_row("F-00001", "پنیر پیتزا", ["cooking-001"])])

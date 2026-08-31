@@ -72,18 +72,27 @@ def _facts_referencing(root, pid):
     `processes` names `pid` — read-only (never written here; the merge-only
     rule binds the five facts store files, not this lookup) and empty when
     the index file is absent, so a fresh/facts-less data root stays silent.
+
+    A present-but-corrupt index must not make the tombstone fatal — same
+    contract as `_sync_order`'s derived-state warning: catch and warn on
+    stderr, treat it as no referencing facts.
     """
     idx_path = facts_dir(root) / ".index.json"
     if not idx_path.is_file():
         return []
-    return [row for row in read_json(idx_path).get("entries", [])
-            if pid in (row.get("processes") or [])]
+    try:
+        entries = read_json(idx_path).get("entries", [])
+        return [row for row in entries if pid in (row.get("processes") or [])]
+    except (ValueError, OSError, KeyError) as e:
+        print(f"merge: warning: facts index unreadable — tombstone warnings "
+              f"skipped: {e}", file=sys.stderr)
+        return []
 
 
 def _print_facts_warnings(pid, superseded_by):
     heir = f" (heir {', '.join(superseded_by)})" if superseded_by else ""
     for row in _facts_referencing(data_root(), pid):
-        print(f"facts: {row['id']} «{row['title']}» → {pid}{heir}")
+        print(f"facts: {row.get('id')} «{row.get('title')}» → {pid}{heir}")
 
 
 def _facts(args):
