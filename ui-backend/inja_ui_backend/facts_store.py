@@ -76,6 +76,12 @@ _LEAF_LABELS: dict[str, str] = {
     "minimum": "کمینه", "maximum": "بیشینه",
     "section": "بخش", "when": "زمان", "open": "ردیف باز",
     "doc_number_field": "فیلد شمارهٔ سند",
+    # A row's own lifecycle (§9). Appendix D lists these in its *envelope*
+    # table, but a `rows[]` member carries them as its own leaves, where they
+    # are ordinary payload paths — `data/rows/{key}/valid_to` is a red path
+    # like any other, and was reading as its ASCII key.
+    "retired": "بازنشسته", "valid_from": "معتبر از", "valid_to": "معتبر تا",
+    "supersedes": "جایگزینِ", "superseded_by": "جایگزین‌شده با",
     "primaryKey": "کلید اصلی", "foreignKeys": "ارتباط با جدول دیگر",
     "reference_fields": "ستون‌های مقابل", "transform": "تبدیل",
     # record — place and lifecycle

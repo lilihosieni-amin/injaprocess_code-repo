@@ -113,7 +113,9 @@ FORM = _entry(
      # `null` on a row's own reserved `when`, which Appendix D labels «فقط در»
      # in a row's context and «زمان» in a measurement's.
      "rows": [{"key": "burger", "title": "برگر"},
-              {"key": "mini_burger", "title": "مینی برگر"},
+              # A row's own lifecycle leaf (§9), carrying the key with no
+              # value — QF-6's `unknown`, and a red path like any other.
+              {"key": "mini_burger", "title": "مینی برگر", "valid_to": None},
               {"key": "staff_sugar", "title": "قند پرسنلی (پنجشنبه‌ها)",
                "when": None}]},
     status="unknown")
@@ -416,6 +418,52 @@ def test_path_labels_include_a_settled_account_field(root):
 # red_paths
 # --------------------------------------------------------------------------- #
 
+def test_path_label_of_a_rows_lifecycle_leaf(root):
+    """A row's `valid_to` is Appendix D's «معتبر تا» — an envelope-table name
+    that is a payload leaf at row level (§9), and read as `valid_to` before
+    it was transcribed."""
+    labels = facts_store.path_labels(root, facts_store.load_entry(root, "F-00021"))
+    assert labels["data/rows/mini_burger/valid_to"] == "معتبر تا — مینی برگر"
+
+
+#: §7's reservation: the names a row object keeps for its own structure, which
+#: no `fields[].key` may take (`engine/merge_facts/content.py` enforces it).
+#: Every one of them can therefore be a `null` leaf of a row.
+RESERVED_ROW_NAMES = ("key", "title", "unit", "unit_raw", "section", "when",
+                      "open", "retired", "valid_to", "supersedes")
+
+
+def test_every_reserved_row_name_reads_as_persian(root):
+    """The guard against a fifth trip: `_field_title`'s last fallback is the
+    ASCII key, so a reserved name missing from Appendix D's transcription
+    shows up on a Persian-only screen. `key` is the one exception — QF-7
+    addresses a keyed member *by* its key, so `_null_paths` strips it and
+    `data/rows/r/key` is not a path that exists."""
+    row = {name: None for name in RESERVED_ROW_NAMES}
+    row["key"] = "r"
+    entry = {"data": {"rows": [row]}}
+    labels = facts_store.path_labels(root, entry)
+
+    assert set(labels) == {f"data/rows/r/{n}" for n in RESERVED_ROW_NAMES
+                           if n != "key"}
+    for path, label in labels.items():
+        leaf = path.rsplit("/", 1)[1]
+        assert leaf not in label, f"{path} labelled with its own ASCII key"
+
+
+def test_path_labels_leave_an_envelope_path_alone(root):
+    """The row-lifecycle labels above are envelope-table names, so this pins
+    the boundary they must not cross: `path_labels` composes labels out of
+    `data/…` paths only, and an account field naming an envelope path is
+    passed through untouched (§17's guarantee is about the red set, which is
+    `data`-rooted; an envelope-level label is task 19's call, not this
+    module's)."""
+    entry = {"data": {}, "accounts": [{"id": "deadbeef", "field": "title",
+                                       "statement": "…", "status": "open",
+                                       "source": {"type": "chat", "ref": None}}]}
+    assert facts_store.path_labels(root, entry) == {"title": "title"}
+
+
 def test_red_paths_split_null_leaves_from_open_accounts(root):
     assert facts_store.red_paths(facts_store.load_entry(root, "F-00020")) == {
         "unknown": ["data/rows/prod_61__ing_26/grams"],
@@ -425,6 +473,7 @@ def test_red_paths_split_null_leaves_from_open_accounts(root):
 def test_red_paths_of_a_form_field(root):
     assert facts_store.red_paths(facts_store.load_entry(root, "F-00021")) == {
         "unknown": ["data/fields/start_stock/unit",
+                    "data/rows/mini_burger/valid_to",
                     "data/rows/staff_sugar/when"], "disputed": []}
 
 
