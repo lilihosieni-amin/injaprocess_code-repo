@@ -45,6 +45,7 @@ ITEM = "F-00003"          # cooking + accounting — the AND case
 NOTE = "F-00004"          # dining only
 MEASUREMENT = "F-00005"   # cooking, retired + stub
 DINING_RULE = "F-00006"   # dining, consumes the item — the masked consumer
+BOM = "F-00007"           # cooking, a reference table whose row titles compose
 
 #: The planted store. Hand-written, like `conftest`'s: CLAUDE.md's merge-only
 #: rule binds the live `facts/**`, not a served fixture.
@@ -114,6 +115,32 @@ ENTRIES = [
      "data": {"inputs": [{"key": "stock", "title": "موجودی",
                           "from": {"ref": ITEM}}],
               "outputs": []}},
+    # A reference table (§9): its row carries **no title of its own**, so
+    # `row_titles` composes one out of the `refItems` cell's item title —
+    # «قارچ». That composition is the second road a neighbour's Persian
+    # travels, and the fixture that exercises it. The `null` cell gives
+    # `path_labels` a red path naming the same row.
+    {"id": BOM, "kind": "record", "key": "test_bom",
+     "title": "جدول مواد", "statement": "بیانیهٔ جدول",
+     "scope": {"departments": ["cooking"], "branches": []},
+     "source": [], "status": "unknown", "retired": False,
+     "updated_at": "2026-07-06T10:00:00Z",
+     "data": {"medium": "sheet", "role": "reference",
+              "fields": [{"key": "ing", "title": "قلم", "refItems": True},
+                         {"key": "grams", "title": "گرم"}],
+              "primaryKey": ["ing"],
+              "rows": [{"key": "row_ing_41", "ing": "test_ghaarch",
+                        "grams": None},
+                       # A row with a title of its own: not composed, so never
+                       # masked — the entry's own content, and the control that
+                       # stops the mask from blanking a log's fixed rows.
+                       #
+                       # It names the **same unreachable item** as the row
+                       # above, deliberately: without that cell the own-title
+                       # guard is unkillable, because a row naming nothing is
+                       # not masked whether the guard is there or not.
+                       {"key": "row_total", "title": "جمع کل",
+                        "ing": "test_ghaarch", "grams": 100}]}},
 ]
 
 _FILES = {"item": "items.json", "record": "records.json",
@@ -133,7 +160,12 @@ def _index_row(entry: dict) -> dict:
             "scope": entry["scope"], "status": entry["status"],
             "field_status_counts": {
                 "disputed": sum(1 for a in accounts if a.get("status") == "open"),
-                "unknown": sum(1 for k, v in data.items() if v is None),
+                # Top-level nulls and keyed-row nulls both, so the fixture's
+                # index agrees with what `red_paths` derives from the entry.
+                "unknown": (sum(1 for v in data.values() if v is None)
+                            + sum(1 for r in data.get("rows") or []
+                                  if isinstance(r, dict)
+                                  for v in r.values() if v is None)),
                 "informal": 0, "inferred": 0},
             "processes": [p["ref"] for p in entry.get("processes") or []],
             "retired": entry.get("retired", False),
@@ -649,8 +681,10 @@ def test_the_consumes_filter_returns_the_consuming_rule(data_root, tmp_path):
     asking what consumes the item answers with the rule and nothing else."""
     _plant(data_root)
     client = _client_as(data_root, tmp_path, "editor", "*")
-    assert _ids(client.get(f"/api/facts?consumes={ITEM}").json()) == [RULE,
-                                                                     DINING_RULE]
+    # Two `{ref}` edges and one `refItems` cell — QF-37's one exception, where
+    # the join is on the item's key rather than its id.
+    assert _ids(client.get(f"/api/facts?consumes={ITEM}").json()) == [
+        RULE, DINING_RULE, BOM]
     assert _ids(client.get(f"/api/facts?consumes={NOTE}").json()) == []
     # An id the grammar refuses reaches nothing rather than everything.
     assert _ids(client.get("/api/facts?consumes=F-1").json()) == []
@@ -699,7 +733,7 @@ def test_the_bundle_carries_every_map_a_screen_needs(data_root, tmp_path):
     assert body["consumers"] == []
     # And the reverse edge, from the item's own bundle.
     item = client.get(f"/api/facts/{ITEM}").json()
-    assert [c["id"] for c in item["consumers"]] == [RULE, DINING_RULE]
+    assert [c["id"] for c in item["consumers"]] == [RULE, DINING_RULE, BOM]
 
 
 def test_a_red_entry_cannot_be_confirmed_and_says_so(data_root, tmp_path):
@@ -794,7 +828,7 @@ def test_a_neighbour_the_caller_can_reach_is_named_in_all_three_maps(data_root,
 
     item = client.get(f"/api/facts/{ITEM}").json()
     assert [c["title"] for c in item["consumers"]] == ["قانون آزمایشی",
-                                                       "قانون سالن"]
+                                                       "قانون سالن", "جدول مواد"]
 
 
 def test_a_fact_neighbour_the_caller_cannot_fetch_is_a_row_with_no_name(
@@ -814,10 +848,11 @@ def test_a_fact_neighbour_the_caller_cannot_fetch_is_a_row_with_no_name(
     assert client.get(f"/api/facts/{DINING_RULE}").status_code == 404  # premise
 
     item = client.get(f"/api/facts/{ITEM}").json()
-    assert [c["id"] for c in item["consumers"]] == [RULE, DINING_RULE]
-    named, masked = item["consumers"]
+    assert [c["id"] for c in item["consumers"]] == [RULE, DINING_RULE, BOM]
+    named, masked, also_named = item["consumers"]
     assert named == {"id": RULE, "title": "قانون آزمایشی"}
     assert masked == {"id": DINING_RULE, "restricted": True}
+    assert also_named == {"id": BOM, "title": "جدول مواد"}
 
     # And the same neighbour through `resolved`, from the dining rule's own
     # side of the edge: the cooking caller reading the rule sees the item named.
@@ -901,6 +936,68 @@ def test_an_unconfirmed_neighbour_is_masked_for_an_admin(data_root, tmp_path):
 
     _confirm(admin, ITEM)
     assert admin.get(f"/api/facts/{RULE}").json()["resolved"][ITEM]["title"] == "قارچ"
+
+
+def test_a_composed_row_title_is_named_when_its_items_are(data_root, tmp_path):
+    """The paired half again, and the shape the two masking tests below move.
+
+    `row_titles` composes a reference row's title from its `refItems` cell —
+    «قارچ» — and `path_labels` renders «گرم — قارچ» out of that same title. A
+    caller who may read the item gets both, and the row that carries its own
+    title is its own either way.
+    """
+    _plant(data_root)
+    client = _client_as(data_root, tmp_path, "editor", "*")
+    body = client.get(f"/api/facts/{BOM}").json()
+    assert body["row_titles"] == {"row_ing_41": "قارچ", "row_total": "جمع کل"}
+    assert body["path_labels"]["data/rows/row_ing_41/grams"] == "گرم — قارچ"
+
+
+def test_a_composed_row_title_is_masked_whole_when_its_item_is(data_root,
+                                                               tmp_path):
+    """The cross-scope road. A cooking editor reads the table and not the item
+    it names (the item binds accounting too), so the composed title is the
+    marker — **whole**, not «— قارچ» with the reachable half kept.
+
+    The row with its own title is the control: it is this entry's content, not
+    a neighbour's, and must survive untouched. A mask that blanked every row
+    would pass every absence assertion here without it.
+    """
+    _plant(data_root)
+    client = _client_as(data_root, tmp_path, "editor", "dept:cooking")
+    assert client.get(f"/api/facts/{ITEM}").status_code == 404       # premise
+    body = client.get(f"/api/facts/{BOM}").json()
+    assert body["row_titles"] == {"row_ing_41": {"restricted": True},
+                                  "row_total": "جمع کل"}
+    assert body["path_labels"]["data/rows/row_ing_41/grams"] == {
+        "restricted": True}
+    assert "قارچ" not in json.dumps(body, ensure_ascii=False)
+
+
+def test_switching_fact_items_off_masks_every_composed_row_for_an_admin(
+        data_root, tmp_path):
+    """The common road, and it is not cross-department scope at all.
+
+    An admin with `fact_items` off is 404'd off every item (QF-26's *withheld
+    whole*), and **every** reference-table row title composes from item titles
+    — so that one switch masks all of them. Recorded in the task report as a
+    consequence of the ruling the user has not yet seen on screen.
+    """
+    _plant(data_root)
+    admin = _client_as(data_root, tmp_path, "admin", "*")
+    _confirm(admin, BOM, ITEM)
+    assert admin.get(f"/api/facts/{BOM}").json()["row_titles"] == {
+        "row_ing_41": "قارچ", "row_total": "جمع کل"}
+
+    _switch(admin, "fact_items", False)
+    assert admin.get(f"/api/facts/{ITEM}").status_code == 404        # premise
+    body = admin.get(f"/api/facts/{BOM}").json()
+    assert body["row_titles"] == {"row_ing_41": {"restricted": True},
+                                  "row_total": "جمع کل"}
+    assert body["path_labels"]["data/rows/row_ing_41/grams"] == {
+        "restricted": True}
+    # The record itself is still served in full — the switch is the item's.
+    assert body["entry"]["title"] == "جدول مواد"
 
 
 def test_a_masked_row_carries_no_persian_and_no_key(data_root, tmp_path):

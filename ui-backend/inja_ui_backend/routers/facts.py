@@ -216,6 +216,9 @@ def _neighbour_visibility(conn, root, shown: Disclosure, reach):
 
     One `load_all` and one `stored_for` for the whole bundle, resolved before
     the maps are walked, so this is not a read per neighbour.
+
+    Returns the pair `(visible, names_a_fact)` — see `names_a_fact` for why the
+    second one exists.
     """
     entries = facts_store.load_all(root)
     by_name: dict[str, list[dict]] = {}
@@ -236,7 +239,63 @@ def _neighbour_visibility(conn, root, shown: Disclosure, reach):
         return bool(found) and all(
             _served(shown, reach, e, stored.get(e.get("id"))) for e in found)
 
-    return visible
+    def names_a_fact(value: object) -> bool:
+        """Is this string an id or an item key the **store** knows?
+
+        Beside `visible` because the two answer different questions, and
+        `_masked_rows` needs both: `visible` is `False` for a name nobody
+        minted as much as for one this caller may not be told about, and a
+        row's cells are full of strings that are neither — a unit, a date, a
+        number. Only a cell that really names an entry can mask a row.
+        """
+        return isinstance(value, str) and value in by_name
+
+    return visible, names_a_fact
+
+
+def _masked_rows(entry: dict, titles: dict, visible, names_a_fact) -> set[str]:
+    """Row keys whose title is **composed** out of a neighbour this caller may
+    not be told about (owner's ruling, extended 2026-08-31).
+
+    A reference table's row has no title of its own: the row *is* its cells, so
+    `facts_store.row_titles` builds one out of the titles of the items those
+    cells name — «اینجا پیتزا — قارچ» (§9). That is a neighbour's Persian
+    reaching the caller by composition rather than through `resolved`, and it
+    is the same boundary by a different path, so it takes the same answer:
+    masked **whole**, with the marker already approved, and never composed from
+    the half the caller may see. A partly-composed row is a screen state the
+    design does not draw.
+
+    A row that carries its **own** `title` is not composed — that title is this
+    entry's content, and this entry is one the caller was served — so it is
+    never masked. Same for a row whose cells resolve to nothing: `row_titles`
+    falls back to the row key, which names no neighbour.
+
+    The test is "does any cell of this row name a fact this caller may not be
+    told about", over **every** cell rather than over the `refItems` columns in
+    `primaryKey` order that `row_titles` actually composes from. Deliberate:
+    that column choice is `facts_store`'s private business, and a mask that
+    restated it would be the second copy of a rule this round exists to avoid.
+
+    # ponytail: the wider test over-masks if a column that is *not* a
+    # `refItems` one happens to hold a string equal to some item's key. It
+    # cannot under-mask, which is the direction that matters. Narrow it by
+    # having `facts_store.row_titles` report which rows it composed, if a real
+    # store ever trips it.
+    """
+    out = set()
+    for row in (entry.get("data") or {}).get("rows") or []:
+        if not isinstance(row, dict):
+            continue
+        key = row.get("key")
+        if not isinstance(key, str) or key not in titles:
+            continue
+        if isinstance(row.get("title"), str) and row["title"]:
+            continue
+        if any(names_a_fact(cell) and not visible(cell)
+               for cell in row.values()):
+            out.add(key)
+    return out
 
 
 #: The marker a masked neighbour carries in place of everything it would have
@@ -470,7 +529,9 @@ def get_fact(fid: str, request: Request, user=Depends(panel_session)):
     if not _served(shown, reach, entry, mark):
         raise HTTPException(status_code=404, detail=NOT_FOUND)
     served = shown.redact_fact(entry, targets)
-    visible = _neighbour_visibility(conn, root, shown, reach)
+    visible, names_a_fact = _neighbour_visibility(conn, root, shown, reach)
+    titles = facts_store.row_titles(root, entry)
+    hidden_rows = _masked_rows(entry, titles, visible, names_a_fact)
     may_confirm = permits(conn, user, "confirm")
     return {
         "entry": served,
@@ -513,8 +574,19 @@ def get_fact(fid: str, request: Request, user=Depends(panel_session)):
         "resolved": {name: (label if visible(name) else {_RESTRICTED: True})
                      for name, label in
                      facts_store.resolved_map(root, entry).items()},
-        "row_titles": facts_store.row_titles(root, entry),
-        "path_labels": facts_store.path_labels(root, entry),
+        # A composed row title is a neighbour's Persian reaching the caller by
+        # another road, so it takes the same marker — whole, never half of a
+        # composition (`_masked_rows`).
+        "row_titles": {k: (v if k not in hidden_rows else {_RESTRICTED: True})
+                       for k, v in titles.items()},
+        # And `path_labels` renders «ستون — ردیف» out of those same row
+        # titles, so a path that **names** a masked row inherits the mask. The
+        # test is segment-wise — does this path name that row — rather than a
+        # second reading of QF-7's path grammar.
+        "path_labels": {p: (label if hidden_rows.isdisjoint(p.split("/"))
+                            else {_RESTRICTED: True})
+                        for p, label in
+                        facts_store.path_labels(root, entry).items()},
         "consumers": [c if visible(c.get("id"))
                       else {"id": c.get("id"), _RESTRICTED: True}
                       for c in facts_store.consumers(root, fid)],
