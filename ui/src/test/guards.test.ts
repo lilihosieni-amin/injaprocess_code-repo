@@ -569,7 +569,21 @@ describe('F4/F8 — density comes from the shell', () => {
     // a card, a dashed block, a line inside a table — not a density. Named here
     // rather than loosening the pattern for every file, exactly as Button's
     // colour `variant` is.
-    const EXCEPTIONS = ['src/ui/Button.tsx', 'src/ui/states/index.tsx']
+    // `factsLabels.ts` has no props at all — it is one map per enumeration,
+    // keyed by the value the schemas freeze (QF-32). Two of those values are
+    // `scale` (`issues[].kind`, a change of measurement scale in the source
+    // data) and `size` (`pack.size`, how many base units are in a pack), and
+    // neither can be renamed to please a scan: the key IS the stored value, and
+    // changing it would stop matching what the store holds. Named here rather
+    // than loosened for everyone, exactly as Button's colour `variant` is.
+    // `api/types.ts` is the same case at the other end of the wire: `ItemData`
+    // types `pack.size` — how many base units are in one pack — because that is
+    // the key `facts.schema.json` froze. Neither file declares a component prop
+    // of any kind, which is what this guard is about.
+    const EXCEPTIONS = [
+      'src/ui/Button.tsx', 'src/ui/states/index.tsx',
+      'src/lib/factsLabels.ts', 'src/api/types.ts',
+    ]
     const hits = files()
       .filter((f) => !EXCEPTIONS.includes(f.rel))
       .flatMap((f) =>
