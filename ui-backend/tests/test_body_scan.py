@@ -669,6 +669,25 @@ GLOBAL_READS = (
     Route("GET", "/api/users/supervisor-candidates", None,
           "/api/users/supervisor-candidates", 200),
     Route("GET", "/api/roles", None, "/api/roles", 200),
+    #: The three facts reads (QF-23). Global rather than departmental because
+    #: an entry's scope is a *list* of departments and a universal entry names
+    #: none, so there is no `{d}` to fill: the store spans the estate and the
+    #: list is filtered per row, exactly like `/api/departments`.
+    #:
+    #: They are swept for the same reason every other read here is. A fact
+    #: entry's body carries `processes[]` — process ids out of any department
+    #: — and the served bundle resolves them to their **names**, which is the
+    #: shape `FOREIGN_PARENT`/`LEAKNAME` exist to catch; and the whole surface
+    #: is 404 for the Reader roles this file sweeps, which is a decision (§18)
+    #: rather than an accident and is worth walking.
+    #:
+    #: `F-00001` is `conftest`'s cooking-scoped rule, so it is out of `MINE`
+    #: and reachable only through the `*` scope the expectation client also
+    #: holds — which is what makes its 200 a statement about the route rather
+    #: than about `dining`.
+    Route("GET", "/api/facts", None, "/api/facts", 200),
+    Route("GET", "/api/facts/branches", None, "/api/facts/branches", 200),
+    Route("GET", "/api/facts/F-00001", None, "/api/facts/{fid}", 200),
 )
 
 #: Read routes that name a department. Swept for the caller's own department and

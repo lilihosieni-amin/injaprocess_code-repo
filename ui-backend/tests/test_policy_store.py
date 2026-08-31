@@ -12,8 +12,16 @@ def _conn(tmp_path):
 def test_the_defaults_are_exactly_d17s_table(tmp_path):
     """The whole point of the defaults is that nothing becomes visible at
     migration that is not visible today, so they are pinned as an equality
-    rather than as six `in` checks — a seventh field added without a decision
-    fails here."""
+    rather than as twelve `in` checks — a thirteenth field added without a
+    decision fails here.
+
+    **The two halves default in opposite directions, deliberately** (QF-26).
+    D17's "nothing becomes visible at migration" guards the *reader* view,
+    which is what the six process switches govern; facts never reach the reader
+    view (QF-23, §18), so the six fact switches govern what an **admin** sees
+    and the user's decision is that admins see facts. Harmonising the two
+    columns would be reversing a decision, not tidying a table.
+    """
     assert policy.current(_conn(tmp_path)) == {
         "node_description": True,
         "node_actor": True,
@@ -21,9 +29,19 @@ def test_the_defaults_are_exactly_d17s_table(tmp_path):
         "process_idef0": False,
         "process_kpis": False,
         "node_icom": False,
+        "fact_items": True,
+        "fact_records": True,
+        "fact_measurements": True,
+        "fact_rules": True,
+        "fact_notes": True,
+        "fact_sources": True,
     }
     assert set(policy.FIELDS) == set(policy.DEFAULTS)
-    assert len(policy.FIELDS) == 6
+    assert len(policy.FIELDS) == 12
+    # The two groups partition the table: a switch in neither, or in both, is a
+    # switch no test above can attribute to a rule.
+    assert policy.FIELDS == policy.PROCESS_FIELDS + policy.FACT_FIELDS
+    assert not set(policy.PROCESS_FIELDS) & set(policy.FACT_FIELDS)
 
 
 def test_an_absent_row_reads_as_its_default(tmp_path):

@@ -47,6 +47,13 @@ read, and Task 10 serves the same shape from an unauthenticated link — so a
 field that appears in a file before anyone here has heard of it must arrive
 dropped rather than published.
 
+**And a fact is the second document this filter shapes** (QF-26). Its rules are
+shorter and differently shaped: a *kind* whose switch is off is withheld whole
+rather than blanked — one claim, not a bag of fields — and `fact_sources` strips
+provenance from the envelope and from every account at once. It is not published
+to any unauthenticated surface, so it needs no whitelist; `is_fact` and
+`_public_fact` below carry the rest of the reasoning.
+
 **A node has no KPIs.** `$defs.activityNode` carries `id`, `type`, `label`,
 `description`, `actor`, `icom`, `subprocess`, `position`, `layout`, `source` and
 `removed` — nothing else. What a node carries is ICOM, which is IDEF0
@@ -55,6 +62,7 @@ are separate switches.
 """
 from __future__ import annotations
 
+import re
 from typing import Callable
 
 #: The exact top-level key set a non-editor's copy of a process carries.
@@ -95,6 +103,28 @@ PUBLIC_NODE_KEYS: tuple[str, ...] = (
     "id", "type", "label", "description", "actor", "icom", "subprocess",
     "position", "layout", "source", "removed", "junctionType", "direction",
 )
+
+#: Which of QF-26's switches governs which fact kind. The five kinds of the
+#: facts store, and nothing else is a fact.
+#:
+#: Public, because the switch a kind answers to is one table read from two
+#: places — this module's own fact branch, and `routers/facts`' list, which has
+#: to omit an off kind's rows without building a second body for each one. Two
+#: copies of this mapping is how the list and the detail would come to disagree
+#: about which entries exist.
+FACT_SWITCH: dict[str, str] = {
+    "item": "fact_items",
+    "record": "fact_records",
+    "measurement": "fact_measurements",
+    "rule": "fact_rules",
+    "note": "fact_notes",
+}
+
+#: QF-24's fact id grammar. Matched with `fullmatch` and written without
+#: anchors, like `facts_store`'s own: a prefix test would read a process id
+#: beginning `F-` as a fact, and `re.match` on `…$` still accepts a trailing
+#: newline.
+_FACT_ID_RE = re.compile(r"F-[0-9]{5}")
 
 #: Which switch governs which process key, and the blank it becomes when off.
 _PROCESS_SWITCH: dict[str, tuple[str, Callable[[], object]]] = {}
@@ -263,14 +293,80 @@ def _public_process(doc: dict, policy: dict[str, bool]) -> dict:
     return out
 
 
+def is_fact(doc: dict) -> bool:
+    """Is this a facts-store entry rather than a process document?
+
+    **Both halves, and the id half is anchored.** A process id is
+    `{dept}-{nnn}` and cannot match the fact grammar, so the id alone would
+    almost do — but a stored document is never revalidated on read, and this
+    function chooses which set of rules shapes a body. An `F-` id carrying a
+    `kind` outside the five is a document neither branch understands, and it
+    must not be handed to the fact branch merely because its id looked right:
+    `FACT_SWITCH[kind]` would then be the `KeyError` that answers 500. It falls
+    to the process branch instead, where the whitelist drops everything it does
+    not recognise — the fail-closed direction.
+    """
+    return (isinstance(doc.get("id"), str)
+            and _FACT_ID_RE.fullmatch(doc["id"]) is not None
+            and doc.get("kind") in FACT_SWITCH)
+
+
+def _public_fact(doc: dict, policy: dict[str, bool]) -> dict:
+    """A fact entry as a non-editor may receive it (QF-26).
+
+    Two switches, and they act differently on purpose. A **kind** switch is
+    all-or-nothing: `{}` is the answer, and the route turns it into the uniform
+    404, because a fact is one claim and an entry with its payload removed is a
+    different claim rather than a smaller one. **`fact_sources`** is a strip,
+    because the claim stands without its provenance: `source[]` on the envelope
+    and `source` on each account go, and everything else about the account —
+    the field it disputes, its `speaker_role`, its statement — stays, since the
+    accounts card is how a dispute is read and the switch is about where the
+    words came from.
+
+    No whitelist, unlike `_public_process`. That one exists because the process
+    shape is also published to an unauthenticated export link, so a field
+    nobody here has heard of must arrive dropped; facts reach no such surface
+    (§18: not in the reader view, not in the department PDF), and an entry's
+    payload is per-kind and open-ended by design (`data` is a free object),
+    so a key set could not be written down without freezing the store.
+
+    `policy[...]`, never `.get(...)`: an absent switch is a caller that
+    invented its own policy dict, and a `KeyError` in that caller's own test
+    run is cheaper than guessing either way.
+    """
+    if not policy[FACT_SWITCH[doc["kind"]]]:
+        return {}
+    if policy["fact_sources"]:
+        return dict(doc)
+    out = {k: v for k, v in doc.items() if k != "source"}
+    accounts = out.get("accounts")
+    if isinstance(accounts, list):
+        out["accounts"] = [{k: v for k, v in a.items() if k != "source"}
+                           if isinstance(a, dict) else a for a in accounts]
+    return out
+
+
 def filtered(doc: dict, *, policy: dict[str, bool],
              sees: Callable[[object], bool], editor: bool) -> dict:
-    """**The** filter. Every body carrying a process document comes through here.
+    """**The** filter. Every body carrying a process document or a fact entry
+    comes through here.
 
     The link rule runs for both stances; the field rule runs for non-editors
     only, because D17's column is headed "Non-editor default" and an Editor is
-    the person the hidden content is *for*.
+    the person the hidden content is *for*. QF-26's fact switches follow the
+    same rule for the same reason.
+
+    A fact takes its own branch **before** `links_only`, and does not merely
+    fall through it. `links_only` acts on `parent` and `nodes`, neither of which
+    a fact envelope has, so running it would be a no-op that reads as a
+    decision; and a fact's own references — `{ref}` edges, `processes[]` — are
+    not withheld from anyone (`Disclosure.sees` withholds a link's *content*,
+    never its id, and the reverse index QF-39 asks for is an id list by
+    definition).
     """
+    if is_fact(doc):
+        return dict(doc) if editor else _public_fact(doc, policy)
     out = links_only(doc, sees)
     return out if editor else _public_process(out, policy)
 

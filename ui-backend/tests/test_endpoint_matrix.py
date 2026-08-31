@@ -1,11 +1,12 @@
 """Every endpoint, read through the permission gate (spec D56, §11 tests 6 and 10).
 
-Twenty-seven routes. Twenty-five are gated on one capability at one target; two
-span departments and are filtered per row rather than gated, because a list that
-refuses outright would take a two-department head's whole screen away over one
-department they cannot reach.
+Thirty routes. Twenty-six are gated on one capability at one target; four are
+not — three span departments and are filtered per row rather than gated, because
+a list that refuses outright would take a two-department head's whole screen away
+over one department they cannot reach, and one reads the estate's workbook roll,
+which belongs to no department.
 
-Fifteen of the twenty-five name a department. The other ten name `*`: the two
+Sixteen of the twenty-six name a department. The other ten name `*`: the two
 visibility routes, because there is one global policy (D16) and so no department
 to gate them on, and the eight of the user-administration surface, because all
 user administration is at `*` scope (D11) and a department-scoped Admin is meant
@@ -47,7 +48,7 @@ BASE = "https://testserver"
 #: like the mis-gating this file exists to detect.
 VICTIM = 3
 
-#: The twenty-five gated routes: (method, path, body, the capability each needs).
+#: The twenty-six gated routes: (method, path, body, the capability each needs).
 #: `body` is what a well-formed request carries — a malformed one would be
 #: refused by validation on some routes and by the gate on others, and this
 #: table exists to compare gates, not validators.
@@ -62,6 +63,20 @@ GATED = [
     ("POST", "/api/confirmations/cooking-001", {"fingerprint": "a" * 64},
      "confirm"),
     ("DELETE", "/api/confirmations/cooking-001", None, "confirm"),
+    #: The fact detail route. Its target is not in the path at all: the gate
+    #: loads the entry and requires reach in **every** department its
+    #: `scope.departments` names (QF-27), so `F-00001` — the `conftest`
+    #: fixture's cooking-scoped rule — is a `dept:cooking` target like the
+    #: other fifteen, arrived at by a callable rather than by `dept_of`.
+    #:
+    #: **The capability column does not name this route's gate**, which is an
+    #: OR over `PANEL_CAPABILITIES` and cannot be written in one word — the row
+    #: is in `PANEL_404` below and the two 403 tests skip it for that reason.
+    #: What `confirm` selects is `WITH["confirm"]`, the Editor, for the
+    #: non-refusal direction: the narrowest seeded role that is in the Panel
+    #: *and* holds the department, which is the strongest thing this table can
+    #: say about a route it cannot gate-check by name.
+    ("GET", "/api/facts/F-00001", None, "confirm"),
     ("GET", "/api/departments/cooking/overview", None, "view"),
     ("PUT", "/api/departments/cooking/overview", {}, "edit"),
     ("PUT", "/api/departments/cooking/order", {"order": []}, "edit"),
@@ -113,9 +128,31 @@ GLOBAL_TARGET = ("/api/visibility", "/api/visibility/node_actor",
                  "/api/users/supervisor-candidates", "/api/roles",
                  f"/api/users/{VICTIM}/password", f"/api/users/{VICTIM}/disabled")
 
-#: The two that filter instead of gating. They span every department, so there is
-#: no single target to gate them on.
-FILTERED = ["/api/departments", "/api/pending"]
+#: The routes that filter instead of gating. The first three span every
+#: department, so there is no single target to gate them on; `/api/facts/branches`
+#: reads the estate's workbook roll, which belongs to no department at all
+#: (QF-4). All four still refuse a stranger, which is what this list is for.
+FILTERED = ["/api/departments", "/api/pending", "/api/facts",
+            "/api/facts/branches"]
+
+#: The facts routes, whose capability arm is an **OR over `PANEL_CAPABILITIES`**
+#: answering the uniform **404** — not a single capability answering 403.
+#:
+#: Facts are a Panel surface and are not in the reader view (QF-23, §18), so the
+#: question the gate asks is "is this caller in the Panel?", which an admin
+#: (`manage_users`, `view_audit`) answers as well as an editor does; and its
+#: refusal is a 404 because a 403 would tell a `view`-only holder that facts
+#: exist. Both of this file's 403 tests exist to name *one* capability — they
+#: cannot express an OR, and against these routes they would assert a status the
+#: spec forbids. So they skip, and the OR is pinned instead by
+#: `test_facts_api.py::test_a_view_only_holder_is_404_on_every_facts_route` and
+#: `::test_an_admin_is_in_the_panel_and_reads_facts`, which are a pair in exactly
+#: the way described at the top of this file.
+#:
+#: Everything else this file says about a route still holds for them, and is
+#: what earns their row: 401 for a stranger, 404 (never 403) out of scope in
+#: both directions, and no over-gating of a caller who is inside.
+PANEL_404 = ("/api/facts/F-00001",)
 
 #: The seeded roles that do NOT hold each capability, for the refusal direction.
 #: A tuple, because more than one real role can lack one and each is worth its
@@ -318,6 +355,9 @@ def test_a_role_without_the_capability_is_403_on_a_visible_target(
     could edit content is the failure D50 is written to prevent and a Reader
     passing does not test it.
     """
+    if path in PANEL_404:
+        pytest.skip(f"{path} refuses with the uniform 404 rather than 403 — see"
+                    f" PANEL_404")
     roles = WITHOUT[capability]
     if not roles:
         pytest.skip(f"no seeded role lacks {capability}; the route is pinned by"
@@ -354,6 +394,10 @@ def test_a_role_holding_every_other_capability_is_403(
     docstring and the mapping claim, and what stops a fifth role added later
     from silently opening a route it should not.
     """
+    if path in PANEL_404:
+        pytest.skip(f"{path} is gated on an OR over PANEL_CAPABILITIES, which a"
+                    f" caller holding every capability but one still satisfies —"
+                    f" see PANEL_404")
     client = _client_as(data_root, tmp_path, "all-but-this", _in_scope_for(path),
                         capabilities=ALL_CAPABILITIES - {capability})
     r = _call(client, method, path, body)

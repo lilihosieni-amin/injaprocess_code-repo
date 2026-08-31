@@ -1,4 +1,4 @@
-"""The content-visibility policy (spec D16, D17, D19).
+"""The content-visibility policy (spec D16, D17, D19, QF-26).
 
 **One global policy, and deliberately not a grant.** What is shown of a process
 applies identically to every non-editor: not per-role, not per-department, not
@@ -10,6 +10,12 @@ the action to a privileged account, because it depends on no account's identity.
 
 What varies between users is *which departments and reports they can reach* —
 never *which fields*.
+
+**The facts store *is* here** (QF-26), and it is the same mechanism rather than a
+second one: six more rows, set at `*` with `set_visibility` like the rest. What
+differs is the audience — facts are a Panel surface and never reach the reader
+view (QF-23), so those six govern what an **admin** sees — and, following from
+that, the direction they default in. `DEFAULTS` carries the argument.
 
 **The department overview is not here** (D55). It is shown in its entirety, with
 no per-field switches and no policy table; only scope and confirmation gate it.
@@ -34,7 +40,7 @@ import sqlite3
 
 #: The six switchable fields of D17, in the order the policy screen lists them:
 #: the process's own record first, then a node's.
-FIELDS: tuple[str, ...] = (
+PROCESS_FIELDS: tuple[str, ...] = (
     "process_summary",
     "process_idef0",
     "process_kpis",
@@ -43,8 +49,36 @@ FIELDS: tuple[str, ...] = (
     "node_icom",
 )
 
-#: D17's non-editor defaults. They match what the export publishes today, so
-#: nothing becomes visible at migration that is not visible now.
+#: QF-26's six, one per fact kind plus one for provenance. A kind whose switch
+#: is off is withheld **whole** from a non-editor rather than blanked, because
+#: a fact is a claim and an emptied claim is a different claim; `fact_sources`
+#: strips `source[]` and `accounts[].source` from every kind at once.
+FACT_FIELDS: tuple[str, ...] = (
+    "fact_items",
+    "fact_records",
+    "fact_measurements",
+    "fact_rules",
+    "fact_notes",
+    "fact_sources",
+)
+
+#: The whole vocabulary. Two tuples rather than one literal because the two
+#: halves answer to different rules and are read by different documents: a
+#: process body never consults `fact_rules`, and the tests that pin "a policy
+#: missing a switch raises rather than guessing" have to know which switches a
+#: given document reads.
+FIELDS: tuple[str, ...] = PROCESS_FIELDS + FACT_FIELDS
+
+#: The non-editor defaults.
+#:
+#: **The two halves default in opposite directions, and that is the decision
+#: rather than an inconsistency.** D17's rule is that nothing becomes visible at
+#: migration which is not visible now, and what it guards is the *reader* view —
+#: the six process switches, which match what the export publishes today. Facts
+#: never reach the reader view (QF-23, §18): their switches govern what an
+#: **admin** sees inside the Panel, and QF-26 records the ruling that admins see
+#: facts. So they default shown. Harmonising the columns would reverse a
+#: decision, not tidy a table.
 DEFAULTS: dict[str, bool] = {
     "process_summary": False,
     "process_idef0": False,
@@ -52,6 +86,12 @@ DEFAULTS: dict[str, bool] = {
     "node_description": True,
     "node_actor": True,
     "node_icom": False,
+    "fact_items": True,
+    "fact_records": True,
+    "fact_measurements": True,
+    "fact_rules": True,
+    "fact_notes": True,
+    "fact_sources": True,
 }
 
 
