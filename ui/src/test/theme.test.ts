@@ -1504,7 +1504,11 @@ const UNPAINTED: string[] = [
   'bg-ink-proposed', 'bg-on-dark', 'bg-disabled', 'bg-ok',
   'bg-danger', 'bg-warn-soft', 'bg-info-soft', 'bg-ok-soft',
   'bg-danger-soft', 'bg-toast-check', 'bg-junction-xor', 'bg-junction-and',
-  'bg-junction-or', 'bg-dept-numeral-violet', 'bg-dept-numeral-coral',   'bg-steps-sub-border', 'bg-steps-sub-hover', 'bg-steps-group-border',
+  // `bg-junction-or` came off here with Task 22: the facts list's «تأییدنشده»
+  // dot is `--junction-or` (`Inja Panel.dc.html:4625`, `CONF.amber.dot`), which
+  // is the first time this product paints that token as a background outside
+  // the frozen flowchart. CEILING follows it down.
+  'bg-dept-numeral-violet', 'bg-dept-numeral-coral',   'bg-steps-sub-border', 'bg-steps-sub-hover', 'bg-steps-group-border',
   'bg-link', 'bg-link-hover', 'text-violet-on-dark', 'text-violet-on-dark-body',
   'text-strong', 'text-ghost',
   'text-ok',
@@ -1602,7 +1606,10 @@ const UNPAINTED: string[] = [
    * `--fs-h4` to stay reachable, and `--warn-fg` is what `--role-awaiting`
    * resolves to in roles.css.
    */
-  'text-fs-h4', 'border-warn-edge', 'text-warn-fg',
+  // …and `text-warn-fg` came off with Task 22, from the other direction to the
+  // two beside it: the notice it was minted for is still deleted, but the facts
+  // list's «تأییدنشده» chip is `CONF.amber.fg` (:4625), which is that token.
+  'text-fs-h4', 'border-warn-edge',
   'bg-warn-edge',
   // The type-on-the-violet-field group came off here when Task 14's departments
   // screen landed: its READER title takes `text-role-title-on-field`, both
@@ -1801,7 +1808,19 @@ const UNPAINTED: string[] = [
 //    +3  `text-fs-h4`, `border-warn-edge` and `text-warn-fg` lost their last
 //        consumer — see the note beside them in the list above.
 //   ---
-//   113  and this line is that number exactly.
+//   113  the count that line stood at
+//
+// LOWERED 2026-08-31 to 111 by Task 22, which is the direction the ratchet is
+// for and needs no argument beyond the arithmetic:
+//
+//   113  the count this line stood at
+//    -1  `bg-junction-or` acquired its first consumer outside the frozen
+//        flowchart: the facts list's «تأییدنشده» dot is `CONF.amber.dot`.
+//    -1  `text-warn-fg` acquired one for the first time since the owner deleted
+//        the amber notice it was minted for: the same chip's label is
+//        `CONF.amber.fg`.
+//   ---
+//   111  and this line is that number exactly.
 //
 // **Why this is a legal raise, when the paragraph above says a raise belongs
 // only to a mint.** That paragraph names two ways the number can be pushed up
@@ -1818,7 +1837,7 @@ const UNPAINTED: string[] = [
 // other vocabulary for. The list is still exactly the orphans, every one of them
 // is still explained by a family, and the next task that consumes one of these
 // three lowers this line again.
-const CEILING = 113
+const CEILING = 111
 
 describe('Owner ruling R11 — a named utility has a component that uses it', () => {
   it('reads a real, sizeable set of component files — tests AND test helpers excluded', () => {
@@ -2139,8 +2158,13 @@ describe('Owner ruling R11 — a named utility has a component that uses it', ()
     //     painted-nowhere half: the row name went to `--fs-lg` and the profile's
     //     amber notice was deleted, and nothing else reaches either token.
     //     Painted-nowhere +3.
+    // **42 / 69 after Task 22**, from 42 / 71: `bg-junction-or` and
+    //   `text-warn-fg` both LEFT the painted-nowhere half, because the facts
+    //   list's «تأییدنشده» chip is `CONF.amber` — `--junction-or` for the dot
+    //   and `--warn-fg` for the label (`Inja Panel.dc.html:4625`) — and neither
+    //   token had a consumer in `src/` before it. Painted-nowhere −2.
     expect(buckets.filter((b) => b.spelling).length).toBe(42)
-    expect(buckets.filter((b) => !b.spelling).length).toBe(71)
+    expect(buckets.filter((b) => !b.spelling).length).toBe(69)
 
     // A family that stops covering anything is an argument nobody is paying
     // for, and the next name added beside it inherits the same absence of

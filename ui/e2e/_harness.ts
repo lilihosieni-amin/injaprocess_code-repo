@@ -441,8 +441,24 @@ export interface ScreenDesign {
   direction?: Partial<Record<ContentHook, PerWidth<'rtl' | 'ltr'>>>
   /** computed on `[data-h1]` */
   h1: Measured & { weight: PerWidth<string> }
-  /** computed on `[data-body]` */
-  body: Measured
+  /**
+   * computed on `[data-body]` — **optional, for the screens that draw no second
+   * line at all**.
+   *
+   * It was required, and two screens have now paid for it. `users.spec.ts` says
+   * so in as many words: that screen has no `DESIGN` row *because* the design
+   * draws no subtitle there and a row could not be written without inventing
+   * one. `facts` is the second, and its empty slot is not an accident either —
+   * §14 put «{n} از {m} کاربرگ خوانده شده» in the list header and the owner
+   * refused it on 2026-08-31 (facts-design-audit §6, C1), so the screen goes to
+   * its card straight from the title, deliberately.
+   *
+   * The alternative was a hook on some other run of type, which is the failure
+   * mode this whole table exists to stop: a row that grades the wrong element
+   * measures the wrong number and reports it as the design's. Absent is the
+   * honest answer, and it costs one assertion rather than the row.
+   */
+  body?: Measured
   /**
    * The card grid's track count per width — §6.16's only structural rule.
    *
@@ -890,6 +906,47 @@ export const DESIGN = {
     // The three `PasswordField`s are the screen's inputs; the first is «گذرواژهٔ
     // فعلی». §4.6: a coral border, no ring, no glow.
     focus: 'input',
+  },
+
+  /**
+   * Task 22, «داده‌های کمّی» — `Inja Panel.dc.html:999`, and every number below
+   * is read out of `docs/superpowers/plans/facts-design-audit.md` §1.1 rather
+   * than out of the file a second time. Panel only: the reader holds no Panel
+   * capability, so `routers/facts.py` answers them the uniform 404 and there is
+   * no reader row to write.
+   *
+   * **No `body`.** The design goes from the `22px/800` title straight to the
+   * card through a bare spacer; the one line §14 proposed for that gap —
+   * «{n} از {m} کاربرگ خوانده شده» — the owner refused (audit §6, C1), and the
+   * design itself computes `factsCoverage` and renders it nowhere. See
+   * `ScreenDesign.body`.
+   */
+  facts: {
+    field: FIELD,
+    column: '960px',                       // --width-summary, as on `summary`
+    // 960 caps at 1440 and 1080 (1000 available); at 760 the `18px 14px` pass
+    // leaves 732 and the column is uncapped.
+    columnWidth: { 1440: '960px', 1080: '960px', 760: '732px' },
+    padding: { 1440: '30px 40px', 1080: '30px 40px', 760: '18px 14px' },
+    h1: { size: '22px', weight: '800', color: TITLE_ON_FIELD },
+    // The filter band — `repeat(4,1fr)` at `--space-4`, two stretched columns at
+    // ≤760 (`[data-r-afilters]`, :1016 and the design's own `@media` block). The
+    // list grid is not this hook: `1.7fr .8fr .9fr 1.1fr 1.1fr 34px` has no
+    // token and is asserted track by track in `facts.spec.ts`, where the six
+    // tracks can be counted rather than reduced to a number.
+    grid: {
+      selector: '[data-r-afilters]',
+      columns: { 1440: 4, 1080: 4, 760: 2 },
+      gap: '8px',
+    },
+    // The one card on the screen: `--radius-doc` 18, the card hairline and the
+    // two-layer neutral shadow, white (:1005).
+    card: { radius: '18px', shadow: CARD_SHADOW, border: CARD_BORDER, background: SURFACE },
+    // The search field is the screen's first input. §4.6: a coral border, no
+    // ring, no glow.
+    focus: 'input',
+    // No `lift`: F7's row hover is a FILL (`hover:bg-surface-sub`, the design's
+    // own `#FBF9FE`), not a transform — §4.6 lifts cards, not rows inside one.
   },
 } satisfies Record<string, ScreenDesign>
 
@@ -2162,14 +2219,26 @@ export async function expectDesign(page: Page, screen: keyof typeof DESIGN) {
   expect(await css(page, h1, 'color'), `${screen}: h1 colour`).toBe(at(d.h1.color))
   await type('h1', h1, d.h1)
 
-  const body = within('[data-body]')
-  await grade('body', 'data-body', body)
-  expect(await css(page, body, 'font-size'), `${screen}: body size`).toBe(at(d.body.size))
-  expect(await css(page, body, 'color'), `${screen}: body colour`).toBe(at(d.body.color))
-  if (d.body.weight !== undefined) {
-    expect(await css(page, body, 'font-weight'), `${screen}: body weight`).toBe(at(d.body.weight))
+  if (d.body) {
+    const body = within('[data-body]')
+    await grade('body', 'data-body', body)
+    expect(await css(page, body, 'font-size'), `${screen}: body size`).toBe(at(d.body.size))
+    expect(await css(page, body, 'color'), `${screen}: body colour`).toBe(at(d.body.color))
+    if (d.body.weight !== undefined) {
+      expect(await css(page, body, 'font-weight'), `${screen}: body weight`).toBe(at(d.body.weight))
+    }
+    await type('body', body, d.body)
+  } else {
+    // A row that omits `body` is claiming the screen draws no second line, and
+    // the claim is checked: a `[data-body]` that appears later would otherwise
+    // go ungraded for ever, which is the same silence the optional field was
+    // opened to avoid.
+    expect(
+      await page.locator(within('[data-body]')).count(),
+      `${screen}: the row declares no \`body\`, but the screen draws a \`[data-body]\`. ` +
+      'Grade it or remove the hook — an ungraded run of type is a number nobody is keeping.',
+    ).toBe(0)
   }
-  await type('body', body, d.body)
 
   if (d.grid) {
     const grid = within(d.grid.selector ?? '[data-grid]')

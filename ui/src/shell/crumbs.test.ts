@@ -90,7 +90,7 @@ describe('panelCrumbs', () => {
     for (const path of [
       '/departments/dining', '/departments/dining/overview',
       '/processes/dining-003', '/processes/dining-003/flow',
-      '/users', '/users/09120000000', '/visibility', '/profile',
+      '/users', '/users/09120000000', '/visibility', '/profile', '/facts',
     ]) {
       const trail = panelCrumbs(path, name)
       expect(trail.length, path).toBeGreaterThan(1)
@@ -166,7 +166,7 @@ describe('panelCrumbs', () => {
     for (const path of [
       '/departments', '/departments/dining', '/departments/dining/overview',
       '/processes/dining-003', '/processes/dining-003/flow', '/processes/abc',
-      '/users', '/users/09120000000', '/visibility', '/profile', '/nowhere', '/',
+      '/users', '/users/09120000000', '/visibility', '/profile', '/facts', '/nowhere', '/',
     ]) {
       const trail = panelCrumbs(path, name)
       expect(trail.length, path).toBeGreaterThan(0)

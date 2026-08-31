@@ -467,6 +467,34 @@ export const SCREEN_LABELS: Record<string, string> = {
   filter_scope: 'دپارتمان',
   filter_branch: 'شعبه',
   filter_confirmation: 'وضعیت تأیید',
+  // …and the «سراسری» option the «دپارتمان» menu carries beside the department
+  // codes (:4639). It is not a department: it asks for the entries that name
+  // none, which is `factsFilter.UNIVERSAL`.
+  filter_scope_universal: 'سراسری',
+
+  // the list screen (:1004–1069). The five column heads are written out rather
+  // than borrowed from `filter_kind` / `filter_scope` and `ENVELOPE_FIELD_LABELS`:
+  // the head «وضعیت» is the confirmation chip's column and `envelope.status` is
+  // the entry's epistemic status (QF-6), which is a different fact in the same
+  // word — exactly the collision this file's per-map shape exists to prevent.
+  column_title: 'عنوان',
+  column_id: 'شناسه',
+  column_kind: 'نوع',
+  column_scope: 'دپارتمان',
+  column_confirmation: 'وضعیت',
+  // What an entry bound to no department and no branch says in the scope cell
+  // (`scopeLine`, :4634) — the whole installation, not a blank.
+  scope_universal: 'کل سامانه',
+  // The search field. Two strings because F11 binds a NAME to the input and the
+  // design draws only a placeholder, which vanishes on focus and is announced to
+  // nobody; `ProcessList` and `UsersFilters` carry the same pair.
+  search_label: 'جست‌وجوی عنوان داده',
+  search_placeholder: 'جست‌وجوی عنوان داده…',
+  clear_filters: 'پاک کردن همهٔ فیلترها',
+  empty_filtered: 'با این فیلترها داده‌ای نیست',
+  // The screen's own load failure — not the design's (it draws no failure
+  // state), but the app's, in the shape `LoadFailedScreen` takes everywhere.
+  load_failed: 'فهرست داده‌های کمّی بارگذاری نشد.',
 
   // the confirm dialog
   confirm_dialog_title: 'کل این داده تأیید شود؟',

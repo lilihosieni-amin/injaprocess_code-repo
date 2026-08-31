@@ -424,6 +424,11 @@ describe('F10 — RTL is structural', () => {
       // scrolling region: that is `[data-r-pad]`, whose direction pair lives in
       // `src/styles/base.css` with every other screen's.
       'src/screens/Summary.tsx',
+      // The facts list's id cell — `F-00011`, a mono latin run in an otherwise
+      // Persian row, pinned exactly as the design pins it
+      // (`Inja Panel.dc.html:1056`). The screen's other latin content is the
+      // filter machinery's stored values, none of which is rendered.
+      'src/facts/FactsList.tsx',
       // The policy version digest, a mono latin run that can hold a `-` or a `_`
       // and bidi-reorders inside the Persian sentence around it. Not the label
       // beside it — that used to sit inside the same `font-mono` span and fell

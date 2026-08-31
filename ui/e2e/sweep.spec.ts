@@ -1,5 +1,7 @@
 import { test, expect } from '@playwright/test'
-import type { Department, Overview, Process, VisibilityPolicy } from '../src/api/types'
+import type {
+  Branch, Department, FactsListResponse, Overview, Process, VisibilityPolicy,
+} from '../src/api/types'
 import type { AdminUser } from '../src/api/users'
 import { FIELD, FONT_SANS, RTL, serve, shot, signedIn, visit } from './_harness'
 
@@ -69,6 +71,34 @@ const SAHAR: AdminUser = {
   canSupervise: false, disabled: false, createdAt: 1_700_000_000,
 }
 
+/**
+ * §14's list, at the two rows the sweep needs: one universal and confirmed, one
+ * scoped and red. The id is the screen's only latin run, and it is pinned
+ * `dir="ltr"` — which is exactly what the §2.7 check below is written to admit
+ * and what a screen that forgot the attribute would fail on.
+ */
+const FACTS: FactsListResponse = {
+  entries: [
+    {
+      id: 'F-00001', kind: 'item', key: 'ing_1', title: 'پنیر پیتزا', aliases: [],
+      scope: { departments: [], branches: [] },
+      status: 'confirmed', retired: false, stub: false,
+      red_counts: { unknown: 0, disputed: 0 },
+      fingerprint: 'f1', confirmed: true, updated_at: '2026-09-16T14:05:00Z',
+    },
+    {
+      id: 'F-00011', kind: 'record', key: 'mande_shab', title: 'مانده شب فرنگی و برگر',
+      aliases: [], scope: { departments: ['cooking'], branches: ['chalebagh'] },
+      status: 'unknown', retired: false, stub: false,
+      red_counts: { unknown: 4, disputed: 0 },
+      fingerprint: 'f2', confirmed: false, updated_at: '2026-09-16T14:05:00Z',
+    },
+  ],
+  coverage: { read: 19, total: 28 },
+}
+
+const BRANCHES: Branch[] = [{ code: 'chalebagh', name: 'چاله‌باغ' }]
+
 const POLICY: VisibilityPolicy = {
   version: 'v3_a1b2c3',
   fields: {
@@ -94,6 +124,8 @@ const STUBS: Record<string, unknown> = {
   '/api/users': [SAHAR],
   '/api/users/2': SAHAR,
   '/api/visibility': POLICY,
+  '/api/facts': FACTS,
+  '/api/facts/branches': BRANCHES,
 }
 
 /**
@@ -118,6 +150,7 @@ const ROUTES = [
   ['/users/2', 'access'],
   ['/profile', 'profile'],
   ['/visibility', 'policy'],
+  ['/facts', 'facts'],
 ] as const
 
 for (const [route, name] of ROUTES) {

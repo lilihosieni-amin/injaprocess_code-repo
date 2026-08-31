@@ -22,10 +22,22 @@ const VIEW: Record<string, string> = {
   steps: 'گام‌به‌گام',
 }
 
+/**
+ * The flat routes — one label each, under the leading «دپارتمان‌ها».
+ *
+ * `facts` is here rather than as a branch of its own, and that is a **deliberate
+ * departure from the design**: `Inja Panel.dc.html:4764` does `crumbs.length = 0`
+ * before pushing «داده‌های کمّی», so the facts trail is a single crumb with no
+ * home ahead of it. `PanelShell` draws «بازگشت» only on a trail of more than
+ * one, so a one-crumb facts screen is a screen with no way back in its chrome —
+ * which is exactly the "some pages don't have it at all" that owner ruling R41
+ * fixed by seeding every trail with «دپارتمان‌ها».
+ */
 const FLAT: Record<string, string> = {
   users: 'کاربران',
   visibility: 'سیاست نمایش محتوا',
   profile: 'پروفایل و گذرواژه',
+  facts: 'داده‌های کمّی',
 }
 
 /**
