@@ -167,14 +167,20 @@ def _reachable(request: Request, user, fid: str) -> dict:
 
 
 def _served(shown: Disclosure, reach, entry: dict, mark: str | None) -> bool:
-    """Would `GET /api/facts/{id}` hand this entry to this caller?
+    """May this caller be told what `GET /api/facts/{id}` would tell them?
 
     **The** predicate, and it has exactly two callers: `get_fact`, which is the
     route it describes, and `_neighbour_visibility`, which decides whether a
-    neighbour's title may be named. One implementation rather than three
-    parallel conditions, because the three it composes — reach, the record gate
-    and the kind switch — are each free to change, and a mask that restated
-    them would start disagreeing with the route the first time one did.
+    neighbour's title may be named. One implementation rather than four
+    parallel conditions, because the four it composes — `is_fact`, reach, the
+    record gate and the kind switch — are each free to change, and a mask that
+    restated them would start disagreeing with the route the first time one did.
+
+    `is_fact` is one of the four and belongs here rather than only in
+    `_reachable`: a document whose `kind` is outside the five is one the route
+    answers 404 for, so this is not the route's conjunction without it.
+    `load_all` hands back whatever is in the five kind files, so a hand-edited
+    store really can put such a document in front of the mask.
 
     `redact_fact` is called for its emptiness alone (`{}` is a kind whose
     switch is off, QF-26's *withheld whole*), and the body it builds is thrown
@@ -182,11 +188,20 @@ def _served(shown: Disclosure, reach, entry: dict, mark: str | None) -> bool:
     body this caller would receive is what stops the mask from growing its own
     reading of the policy table.
 
-    `is_fact` is the fourth arm, and it belongs here and not only in
-    `_reachable`: a document whose `kind` is outside the five is one the route
-    answers 404 for, so this is not "the detail route's conjunction" without
-    it. `load_all` hands back whatever is in the five kind files, so a
-    hand-edited store really can put such a document in front of the mask.
+    **Access exactly; existence index-first — and the second half is not a
+    literal "would the route return it".** The route reaches an entry through
+    `facts_store.load_entry`, which finds the id in `.index.json` and uses the
+    row's `kind` to pick a file; `_neighbour_visibility` builds its map from
+    `load_all`, which reads the five files directly. An entry present in
+    `items.json` but absent from the index is therefore 404 from its own route
+    and *named* by the mask. Documented rather than closed, and the ruling
+    (2026-08-31) gives three reasons: `load_entry` consults no scope, no
+    confirmation and no policy, so what diverges is "does the route find it at
+    all" and never who may have it; the divergence needs an index and a store
+    that disagree, which only `merge facts` writes and it writes both in one
+    `save_store`; and closing it means a file read per neighbour, on a bundle
+    that already reads the store twice. Every arm this predicate *does* run —
+    scope, the record gate, the kind switch — is the route's own, to the call.
     """
     targets = _targets(entry.get("scope"))
     return (visibility.is_fact(entry)
@@ -207,14 +222,20 @@ def _neighbour_visibility(conn, root, shown: Disclosure, reach):
     Two id namespaces, one predicate over both (QF-37):
 
     * a **fact** — an `F-` id, or an item's key, which `resolved` uses as a key
-      too (QF-37's one exception) — is named iff `_served` says its own detail
-      route would serve it. That composes reach, `may_serve_fact` and the kind
-      switch in one place;
-    * a **process** is named iff `Disclosure.sees` says so, which is the
-      service's existing rule for a referenced process id and the same one
-      `visibility.links_only` runs over a `parent` or a `subprocess`. It is
-      scope and not the record gate, which is `sees`' own documented decision
-      and not a gap here.
+      too (QF-37's one exception) — is named iff `_served` says so, which is
+      `is_fact`, reach, `may_serve_fact` and the kind switch in one place;
+    * a **process** is named iff `Disclosure.sees` **and**
+      `Disclosure.may_serve` both say so — scope *and* the record gate a
+      tombstone (D17) or a missing confirmation (D22) closes, which together
+      are `GET /api/processes/{pid}`'s own conjunction.
+
+    Each arm is its namespace's route asked whole, and the second one says so
+    because it once did not: `sees` alone stood here, defended as "scope and
+    not the record gate, which is `sees`' own documented decision" — and that
+    defence was wrong. `sees` governs whether a link's *id* travels; the maps
+    carry a neighbour's name, tombstone state and heir, which is content, and
+    an admin the process route 404s was being handed all three. Half a route's
+    conjunction is not a decision about disclosure, it is a gap.
 
     An item key naming more than one entry — the store admits two items with
     one key under different scopes — is named only if **every** one of them is
@@ -241,13 +262,8 @@ def _neighbour_visibility(conn, root, shown: Disclosure, reach):
         if not isinstance(name, str):
             return False
         if _PROC_ID_RE.fullmatch(name):
-            # `GET /api/processes/{pid}`'s own conjunction, both halves:
-            # `sees` for the scope gate, `may_serve` for the record gate a
-            # tombstone or a missing confirmation closes (D17, D22). `sees`
-            # alone was the first version and it was wrong in exactly the way
-            # this round's rule forbids — the process route 404'd an admin off
-            # a tombstoned `dining-002` while this bundle handed them its
-            # name, its tombstone state and its heir id.
+            # Both halves — see the docstring for which, and for what half of
+            # them once let through.
             #
             # `{}` for a process with no file, so an absent one answers like an
             # unconfirmed one. That is the route's behaviour rather than a
@@ -300,15 +316,24 @@ def _masked_rows(entry: dict, titles: dict, visible, names_a_fact) -> set[str]:
     that column choice is `facts_store`'s private business, and a mask that
     restated it would be the second copy of a rule this round exists to avoid.
 
-    **And a row whose title never composed is not masked either.** When no cell
-    resolves to an item, `row_titles` falls back to the row's own key, so
-    `titles[key] == key` says "nothing was composed here" — and marking such a
-    row restricted would draw «خارج از دسترسی شما» over a label that is wholly
-    this entry's own. The check reads the *output* rather than re-deriving which
-    columns compose, which is the whole point: it closes the over-masking
-    without restating the column rule this function deliberately does not know.
-    A genuinely composed title cannot collide with it — composition joins
-    Persian titles with « — » and a row key is an ASCII minted key.
+    **And a row whose served title is its own key is not masked either.** The
+    common way to reach `titles[key] == key` is `row_titles`' fallback, which
+    fires when no cell resolved — nothing composed, so marking the row
+    restricted would draw «خارج از دسترسی شما» over a label wholly this
+    entry's own. The check reads the *output* rather than re-deriving which
+    columns compose: that closes the over-masking without restating the column
+    rule this function deliberately does not know.
+
+    It is **not** a test for "did this compose". A single-`refItems` row whose
+    item's title is byte-equal to the row key composes to the key, and this
+    skips it — verified against a built store, so the earlier claim here that
+    Persian composition cannot collide with an ASCII minted key was simply
+    false: neither `data.rows[].key` nor an item's `title` is constrained to a
+    character set by the schema. The guard is right for a stronger reason than
+    the one it used to give. What it withholds is a *value*, and the value in
+    that case is byte-identical to the map key the caller already holds, so
+    nothing crosses the boundary that was not already on the wire. Masking it
+    would cost a legible label and buy nothing.
 
     # ponytail: what survives is a row whose title really did compose and whose
     # *non*-`refItems` cell happens to hold a string equal to some item's key —
