@@ -75,6 +75,31 @@ def null_paths(entry):
     _walk(entry.get("data") or {}, "data", out)
     return out
 
+def collect_leaves(data, want, skip=frozenset()):
+    """Every string leaf named `want` anywhere under `data`, in document order,
+    skipping the subtrees whose key is in `skip`.
+
+    Two callers, one walk: `apply`'s unit precondition (`unit`, skipping the
+    pack levels §10 excludes) and the audit's `unit_raw` and role checks.
+    """
+    out = []
+
+    def walk(value, name):
+        if name in skip:
+            return
+        if isinstance(value, dict):
+            for k, v in value.items():
+                walk(v, k)
+        elif isinstance(value, list):
+            for member in value:
+                walk(member, name)
+        elif name == want and isinstance(value, str):
+            out.append(value)
+
+    for k, v in (data or {}).items():
+        walk(v, k)
+    return out
+
 def derive_status(entry):
     if any(a.get("status") == "open" for a in entry.get("accounts") or []):
         return "disputed"

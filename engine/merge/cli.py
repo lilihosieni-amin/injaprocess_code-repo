@@ -6,6 +6,9 @@ from engine_common import data_root, read_json, write_json_atomic
 from merge import (attach_subprocess, build_new, build_update, remove_process,
                    resolve_pending, restructure)
 from merge_facts.apply import apply as apply_facts
+from merge_facts.audit import audit as audit_facts
+from merge_facts.audit import check as check_facts
+from merge_facts.audit import coverage as facts_coverage
 from merge_facts.revert import revert as revert_facts
 from merge_facts.verbs import export as export_facts
 from merge_facts.verbs import promote as promote_facts
@@ -64,10 +67,14 @@ def _require(cond, msg):
 
 
 def _facts(args):
-    """`merge facts …` — the facts store's verbs (spec §12), which share the
-    process verbs' contract: exit 2 on a failed precondition with nothing
-    written. `apply`, `resolve`, `retire`, `promote`, `export` and `revert`
-    are wired; `audit`/`check` refuse until their task lands."""
+    """`merge facts …` — the facts store's verbs (spec §12).
+
+    The writing verbs share the process verbs' contract: exit 2 on a failed
+    precondition with nothing written. The reporting verbs (`audit`, `check`,
+    `export`) take no `--run` and write nothing under `DATA_ROOT`; `audit` and
+    `check` print one line per finding and exit 0 whatever they found — a
+    finding is a line for a human to approve at stage C, not a failure.
+    """
     try:
         if args.facts_cmd == "apply":
             report = apply_facts(data_root(), args.delta, args.run)
@@ -94,6 +101,18 @@ def _facts(args):
                 print(f"removed {fid}")
             for fid in report["restored"]:
                 print(f"restored {fid}")
+        elif args.facts_cmd in ("audit", "check"):
+            root = data_root()
+            findings = (audit_facts(root) if args.facts_cmd == "audit"
+                        else check_facts(root))
+            for item in findings:
+                print(f"{item['code']} {item['id'] or ''} {item['message']}")
+            if args.facts_cmd == "check":
+                # last stdout line, verbatim — the ui-backend re-serves it in
+                # Persian and QF-44 reads it as the readiness test
+                counts = facts_coverage(root)
+                print(f"coverage: {counts['read']} of {counts['total']} "
+                      f"workbooks read")
         else:
             _require(False, "not implemented yet")
     except ValueError as e:
@@ -161,7 +180,7 @@ def main(argv=None):
     frv = fsub.add_parser("revert")
     frv.add_argument("--run", required=True)
     for verb in ("audit", "check"):
-        fsub.add_parser(verb)          # a stub arm until that verb's task lands
+        fsub.add_parser(verb)          # reporting: no --run, nothing written
     args = ap.parse_args(argv)
 
     if args.cmd == "facts":            # its own clock — merge facts stamps UTC

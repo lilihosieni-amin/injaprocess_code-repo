@@ -39,8 +39,9 @@ from datetime import datetime, timezone
 from allocate_id import next_fact_id
 from engine_common import read_json, validate, write_json_atomic, write_text_atomic
 from merge_facts import (KIND_FILES, KIND_ORDER, _sheet_identity, canonical_scope,
-                         derive_status, facts_dir, find_match, is_open,
-                         iter_ref_objects, load_store, save_store, sha256_file)
+                         collect_leaves, derive_status, facts_dir, find_match,
+                         is_open, iter_ref_objects, load_store, save_store,
+                         sha256_file)
 # `_is_keyed_list` and `keyfn_for` are the ladder's own answers to "is this a
 # list merged member by member, and what matches its members" — a successor's
 # copy walks the same shapes, so they are borrowed rather than restated. The
@@ -55,6 +56,9 @@ TEMP_ID_RE = re.compile(r"^T-[0-9]+$")
 PROC_ID_RE = re.compile(r"^[a-z]+-[0-9]{3}$")
 UNITS_KEY = "units"
 UNKNOWN_UNIT = "—"
+# §10: `pack` and `item.units[]` carry pack sizes, not units — "which the unit
+# check does not walk". The audit's `unit_raw` walk skips the same pair.
+PACK_KEYS = frozenset({"pack", "units"})
 SUCCESSION_SKIP = TOP_SKIP | frozenset({"supersedes", "superseded_by"})
 
 
@@ -189,19 +193,6 @@ def _is_stub(entry):
     return bool((entry.get("data") or {}).get("stub"))
 
 
-def _collect_units(value, name, out, skip):
-    if name in skip:
-        return
-    if isinstance(value, dict):
-        for k, v in value.items():
-            _collect_units(v, k, out, skip)
-    elif isinstance(value, list):
-        for member in value:
-            _collect_units(member, name, out, skip)
-    elif name == "unit" and isinstance(value, str):
-        out.append(value)
-
-
 def _unit_symbols(entry):
     """Every symbol this entry cites as a unit (QF-40) — every leaf named
     `unit` under `data`, an item's own default included.
@@ -209,9 +200,7 @@ def _unit_symbols(entry):
     The one exclusion is the pair §10 names outright: `pack` and `units[]` hold
     pack sizes, "which the unit check does not walk".
     """
-    out, skip = [], frozenset({"pack", "units"})
-    for k, v in (entry.get("data") or {}).items():
-        _collect_units(v, k, out, skip)
+    out = collect_leaves(entry.get("data") or {}, "unit", PACK_KEYS)
     return [s for s in out if s and s != UNKNOWN_UNIT]
 
 
