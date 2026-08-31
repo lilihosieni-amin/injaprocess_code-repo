@@ -44,6 +44,7 @@ RECORD = "F-00002"        # universal, disputed (red)
 ITEM = "F-00003"          # cooking + accounting — the AND case
 NOTE = "F-00004"          # dining only
 MEASUREMENT = "F-00005"   # cooking, retired + stub
+DINING_RULE = "F-00006"   # dining, consumes the item — the masked consumer
 
 #: The planted store. Hand-written, like `conftest`'s: CLAUDE.md's merge-only
 #: rule binds the live `facts/**`, not a served fixture.
@@ -52,12 +53,22 @@ ENTRIES = [
      "title": "قانون آزمایشی", "aliases": ["مصرف اعلامی"],
      "statement": "بیانیهٔ آزمایشی",
      "scope": {"departments": ["cooking"], "branches": []},
-     "source": [{"type": "chat", "ref": "meetings/transcripts/t-01.md"}],
+     # The second source is a `process` citation (QF-8: a link is a claim and
+     # the cited node is its evidence) — it is what gives `process_links` a
+     # non-empty `missing_nodes` to withhold, since that field is derived from
+     # `source[]` and never from `processes[]`.
+     "source": [{"type": "chat", "ref": "meetings/transcripts/t-01.md"},
+                {"type": "process",
+                 "ref": "departments/dining/processes/dining-002.json",
+                 "node": "dining-002-n010"}],
      "accounts": [{"account_id": "a1", "field": "title", "status": "rejected",
                    "statement": "روایت رد شده", "speaker_role": "chef",
                    "source": {"type": "chat",
                               "ref": "meetings/transcripts/t-02.md"}}],
-     "processes": [{"ref": "cooking-001", "node": "cooking-001-n010"}],
+     # Two links, one in the rule's own department and one outside it: the mask
+     # is only an assertion when a fixture has both sides of the boundary.
+     "processes": [{"ref": "cooking-001", "node": "cooking-001-n010"},
+                   {"ref": "dining-002", "node": "dining-002-n010"}],
      "status": "confirmed", "retired": False,
      "updated_at": "2026-07-06T10:00:00Z",
      "data": {"inputs": [{"key": "stock", "title": "موجودی",
@@ -91,6 +102,18 @@ ENTRIES = [
      "source": [], "status": "confirmed", "retired": True,
      "updated_at": "2026-07-06T10:00:00Z",
      "data": {"quantity": "mass", "unit": "g", "stub": True}},
+    # A second consumer of the item, in a department the cooking/accounting
+    # caller cannot reach — so the item's `consumers` has one row to name and
+    # one to mask, which is the only shape that can pin the rule from both
+    # sides at once.
+    {"id": DINING_RULE, "kind": "rule", "key": "test_dining_use",
+     "title": "قانون سالن", "statement": "بیانیهٔ سالن",
+     "scope": {"departments": ["dining"], "branches": []},
+     "source": [], "status": "confirmed", "retired": False,
+     "updated_at": "2026-07-06T10:00:00Z",
+     "data": {"inputs": [{"key": "stock", "title": "موجودی",
+                          "from": {"ref": ITEM}}],
+              "outputs": []}},
 ]
 
 _FILES = {"item": "items.json", "record": "records.json",
@@ -132,6 +155,21 @@ def _plant(data_root, entries=None):
         json.dumps({"schema_version": 1,
                     "entries": [_index_row(e) for e in entries]},
                    ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def _plant_process(data_root, pid, name, *, tombstoned=False, heir=None):
+    """A process document on disk, so `resolved` and `process_links` have a
+    **name** to withhold. Without one they carry a `None` title and the mask
+    would be asserting against an absence."""
+    dept = pid.rsplit("-", 1)[0]
+    doc = {"id": pid, "department": dept, "name": name,
+           "nodes": [{"id": f"{pid}-n001", "type": "activity", "label": "گام"}],
+           "edges": []}
+    if tombstoned:
+        doc["tombstoned"] = True
+        doc["superseded_by"] = [heir] if heir else []
+    (data_root / "departments" / dept / "processes" / f"{pid}.json").write_text(
+        json.dumps(doc, ensure_ascii=False), encoding="utf-8")
 
 
 def _manifest(data_root, workbooks, branches=()):
@@ -611,7 +649,8 @@ def test_the_consumes_filter_returns_the_consuming_rule(data_root, tmp_path):
     asking what consumes the item answers with the rule and nothing else."""
     _plant(data_root)
     client = _client_as(data_root, tmp_path, "editor", "*")
-    assert _ids(client.get(f"/api/facts?consumes={ITEM}").json()) == [RULE]
+    assert _ids(client.get(f"/api/facts?consumes={ITEM}").json()) == [RULE,
+                                                                     DINING_RULE]
     assert _ids(client.get(f"/api/facts?consumes={NOTE}").json()) == []
     # An id the grammar refuses reaches nothing rather than everything.
     assert _ids(client.get("/api/facts?consumes=F-1").json()) == []
@@ -621,7 +660,10 @@ def test_the_process_filter_returns_the_entries_that_link_it(data_root, tmp_path
     _plant(data_root)
     client = _client_as(data_root, tmp_path, "editor", "*")
     assert _ids(client.get("/api/facts?process=cooking-001").json()) == [RULE]
-    assert _ids(client.get("/api/facts?process=dining-002").json()) == []
+    # The rule links this one too — the filter reads the entry's declared links,
+    # not the department the process happens to be in.
+    assert _ids(client.get("/api/facts?process=dining-002").json()) == [RULE]
+    assert _ids(client.get("/api/facts?process=dining-009").json()) == []
     assert _ids(client.get("/api/facts?process=nonsense").json()) == []
 
 
@@ -653,11 +695,11 @@ def test_the_bundle_carries_every_map_a_screen_needs(data_root, tmp_path):
     # Persian titles — §17's "nothing served is a bare key".
     assert body["resolved"][ITEM]["title"] == "قارچ"
     assert body["resolved"]["cooking-001"]["kind"] == "process"
-    assert [p["ref"] for p in body["processes"]] == ["cooking-001"]
+    assert [p["ref"] for p in body["processes"]] == ["cooking-001", "dining-002"]
     assert body["consumers"] == []
     # And the reverse edge, from the item's own bundle.
     item = client.get(f"/api/facts/{ITEM}").json()
-    assert [c["id"] for c in item["consumers"]] == [RULE]
+    assert [c["id"] for c in item["consumers"]] == [RULE, DINING_RULE]
 
 
 def test_a_red_entry_cannot_be_confirmed_and_says_so(data_root, tmp_path):
@@ -724,6 +766,158 @@ def test_a_served_fingerprint_round_trips_through_the_confirm_endpoint(
     # one string it never computed.
     rows = {x["id"]: x for x in client.get("/api/facts").json()["entries"]}
     assert rows[RULE]["confirmed"] is True and rows[ITEM]["confirmed"] is True
+
+
+# --------------------------------------------------------------------------
+# The resolution maps: keep the row, hide the name (owner's ruling 2026-08-31)
+# --------------------------------------------------------------------------
+
+def _rows(body, key="ref"):
+    return {r[key]: r for r in body}
+
+
+def test_a_neighbour_the_caller_can_reach_is_named_in_all_three_maps(data_root,
+                                                                     tmp_path):
+    """The half that makes the masking tests below mean something.
+
+    A test that only asserts absence passes against a server that returns
+    nothing at all, so every mask assertion in this section is paired with this
+    one, over the same fixture and the same maps.
+    """
+    _plant(data_root)
+    client = _client_as(data_root, tmp_path, "editor", "*")
+    body = client.get(f"/api/facts/{RULE}").json()
+    assert body["resolved"][ITEM]["title"] == "قارچ"
+    assert body["resolved"]["cooking-001"]["title"]      # the process's name
+    assert "restricted" not in body["resolved"][ITEM]
+    assert _rows(body["processes"])["cooking-001"]["tombstoned"] is False
+
+    item = client.get(f"/api/facts/{ITEM}").json()
+    assert [c["title"] for c in item["consumers"]] == ["قانون آزمایشی",
+                                                       "قانون سالن"]
+
+
+def test_a_fact_neighbour_the_caller_cannot_fetch_is_a_row_with_no_name(
+        data_root, tmp_path):
+    """`resolved` and `consumers`, from a caller who is inside one entry and
+    outside its neighbour.
+
+    A `dept:cooking` + `dept:accounting` editor reads the item; the dining rule
+    that consumes it is one they would be 404'd off (`test_…needs_reach_in_both`
+    and `…only_at_the_wildcard` pin that gate). The row survives so the count
+    stays honest — retiring this item still looks as unsafe as it is — and
+    everything the row would have said about the neighbour is gone.
+    """
+    _plant(data_root)
+    client = _client_as(data_root, tmp_path, "editor", "dept:cooking",
+                        "dept:accounting")
+    assert client.get(f"/api/facts/{DINING_RULE}").status_code == 404  # premise
+
+    item = client.get(f"/api/facts/{ITEM}").json()
+    assert [c["id"] for c in item["consumers"]] == [RULE, DINING_RULE]
+    named, masked = item["consumers"]
+    assert named == {"id": RULE, "title": "قانون آزمایشی"}
+    assert masked == {"id": DINING_RULE, "restricted": True}
+
+    # And the same neighbour through `resolved`, from the dining rule's own
+    # side of the edge: the cooking caller reading the rule sees the item named.
+    body = client.get(f"/api/facts/{RULE}").json()
+    assert body["resolved"][ITEM]["title"] == "قارچ"
+
+
+def test_a_process_neighbour_outside_the_scope_is_a_row_with_no_name(data_root,
+                                                                     tmp_path):
+    """`processes` and `resolved`, over the other id namespace (QF-37).
+
+    The rule links `cooking-001` and `dining-002`. A cooking editor may be told
+    what the first is and not the second — and `tombstoned`, `heir` and
+    `missing_nodes` go with the name, because a tombstone state is a statement
+    about a process this caller may not see and `heir` is a bare id disclosure
+    of one that may be in a third department again.
+
+    The dining process is **planted, retired and superseded**, so all four
+    fields really have something to say: unplanted it carries a `None` title
+    and the mask would be asserting against an absence.
+    """
+    _plant(data_root)
+    _plant_process(data_root, "dining-002", "ترخیص میز",
+                   tombstoned=True, heir="warehouse-004")
+    client = _client_as(data_root, tmp_path, "editor", "dept:cooking")
+    wild = _client_as(data_root, tmp_path, "editor", "*")
+
+    # The control: to a `*` holder the row says all four things.
+    seen = _rows(wild.get(f"/api/facts/{RULE}").json()["processes"])["dining-002"]
+    assert seen["title"] == "ترخیص میز" and seen["tombstoned"] is True
+    assert seen["heir"] == "warehouse-004"
+    assert seen["missing_nodes"] == ["dining-002-n010"]
+
+    body = client.get(f"/api/facts/{RULE}").json()
+    rows = _rows(body["processes"])
+    assert [p["ref"] for p in body["processes"]] == ["cooking-001", "dining-002"]
+    assert set(rows["cooking-001"]) == {"ref", "title", "tombstoned", "heir",
+                                        "missing_nodes"}
+    assert rows["dining-002"] == {"ref": "dining-002", "restricted": True}
+    # `resolved` carries process names too, and takes the same rule.
+    assert body["resolved"]["cooking-001"]["kind"] == "process"
+    assert body["resolved"]["dining-002"] == {"restricted": True}
+    assert wild.get(f"/api/facts/{RULE}").json()[
+        "resolved"]["dining-002"]["title"] == "ترخیص میز"
+    # Nothing about the neighbour survives anywhere in the body.
+    assert "ترخیص" not in json.dumps(body, ensure_ascii=False)
+    assert "warehouse-004" not in json.dumps(body, ensure_ascii=False)
+
+
+def test_a_kind_switched_off_masks_the_neighbour_for_an_admin(data_root,
+                                                              tmp_path):
+    """QF-26's *withheld whole* reaches the maps too.
+
+    An admin who is 404'd off the item's own detail route because `fact_items`
+    is off must not read the item's title out of the rule that consumes it —
+    the switch would otherwise hide the entry and publish its name.
+    """
+    _plant(data_root)
+    admin = _client_as(data_root, tmp_path, "admin", "*")
+    _confirm(admin, RULE, ITEM)
+    assert admin.get(f"/api/facts/{RULE}").json()["resolved"][ITEM]["title"] == "قارچ"
+
+    _switch(admin, "fact_items", False)
+    assert admin.get(f"/api/facts/{ITEM}").status_code == 404      # premise
+    assert admin.get(f"/api/facts/{RULE}").json()["resolved"][ITEM] == {
+        "restricted": True}
+
+
+def test_an_unconfirmed_neighbour_is_masked_for_an_admin(data_root, tmp_path):
+    """The record gate (D22) reaches the maps by the same one predicate.
+
+    The admin can fetch the rule, whose mark is valid, and not the item, whose
+    is not — so the item is a row without a name, and confirming it names it.
+    """
+    _plant(data_root)
+    admin = _client_as(data_root, tmp_path, "admin", "*")
+    _confirm(admin, RULE)
+    assert admin.get(f"/api/facts/{ITEM}").status_code == 404      # premise
+    assert admin.get(f"/api/facts/{RULE}").json()["resolved"][ITEM] == {
+        "restricted": True}
+
+    _confirm(admin, ITEM)
+    assert admin.get(f"/api/facts/{RULE}").json()["resolved"][ITEM]["title"] == "قارچ"
+
+
+def test_a_masked_row_carries_no_persian_and_no_key(data_root, tmp_path):
+    """The marker is a **flag**, not a sentence.
+
+    «خارج از دسترسی شما» is rendered by the UI from `lib/factsLabels.ts`
+    (§14 note 9), and QF-32 keeps Persian out of keys — so a masked row is
+    `restricted` plus the id that makes it a row, and carries no Persian at
+    all: not a title, not an item's estate `code`, not even its `kind`.
+    """
+    _plant(data_root)
+    client = _client_as(data_root, tmp_path, "editor", "dept:cooking")
+    body = client.get(f"/api/facts/{RULE}").json()
+    masked = _rows(body["processes"])["dining-002"]
+    assert masked == {"ref": "dining-002", "restricted": True}
+    assert all(ch.isascii() for ch in json.dumps(masked))
+    assert "خارج" not in json.dumps(body, ensure_ascii=False)
 
 
 def test_an_id_that_is_not_in_the_store_is_the_uniform_404(data_root, tmp_path):

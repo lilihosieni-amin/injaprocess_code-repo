@@ -166,6 +166,88 @@ def _reachable(request: Request, user, fid: str) -> dict:
     return entry
 
 
+def _served(shown: Disclosure, reach, entry: dict, mark: str | None) -> bool:
+    """Would `GET /api/facts/{id}` hand this entry to this caller?
+
+    **The** predicate, and it has exactly two callers: `get_fact`, which is the
+    route it describes, and `_neighbour_visibility`, which decides whether a
+    neighbour's title may be named. One implementation rather than three
+    parallel conditions, because the three it composes — reach, the record gate
+    and the kind switch — are each free to change, and a mask that restated
+    them would start disagreeing with the route the first time one did.
+
+    `redact_fact` is called for its emptiness alone (`{}` is a kind whose
+    switch is off, QF-26's *withheld whole*), and the body it builds is thrown
+    away here. That is deliberate: asking "is this kind on?" by building the
+    body this caller would receive is what stops the mask from growing its own
+    reading of the policy table.
+    """
+    targets = _targets(entry.get("scope"))
+    return (reach(targets)
+            and shown.may_serve_fact(entry, targets, mark)
+            and bool(shown.redact_fact(entry, targets)))
+
+
+def _neighbour_visibility(conn, root, shown: Disclosure, reach):
+    """`id or item key -> may this caller be told what it names?`
+
+    The user's ruling on the bundle's three resolution maps (2026-08-31):
+    **keep the row, hide the name.** An entry the caller cannot reach still
+    appears in `consumers`, `resolved` and `processes` — so a count stays
+    honest and retiring a fact still looks as unsafe as it is — carrying its id
+    and nothing else. What it *is* stays withheld.
+
+    Two id namespaces, one predicate over both (QF-37):
+
+    * a **fact** — an `F-` id, or an item's key, which `resolved` uses as a key
+      too (QF-37's one exception) — is named iff `_served` says its own detail
+      route would serve it. That composes reach, `may_serve_fact` and the kind
+      switch in one place;
+    * a **process** is named iff `Disclosure.sees` says so, which is the
+      service's existing rule for a referenced process id and the same one
+      `visibility.links_only` runs over a `parent` or a `subprocess`. It is
+      scope and not the record gate, which is `sees`' own documented decision
+      and not a gap here.
+
+    An item key naming more than one entry — the store admits two items with
+    one key under different scopes — is named only if **every** one of them is
+    served. Fail closed: the label the map carries is one of them, and there is
+    no way to tell which from outside.
+
+    One `load_all` and one `stored_for` for the whole bundle, resolved before
+    the maps are walked, so this is not a read per neighbour.
+    """
+    entries = facts_store.load_all(root)
+    by_name: dict[str, list[dict]] = {}
+    for e in entries:
+        if isinstance(e.get("id"), str):
+            by_name.setdefault(e["id"], []).append(e)
+        if e.get("kind") == "item" and isinstance(e.get("key"), str):
+            by_name.setdefault(e["key"], []).append(e)
+    stored = confirmations.stored_for(
+        conn, [e["id"] for e in entries if isinstance(e.get("id"), str)])
+
+    def visible(name: object) -> bool:
+        if not isinstance(name, str):
+            return False
+        if _PROC_ID_RE.fullmatch(name):
+            return shown.sees(name)
+        found = by_name.get(name)
+        return bool(found) and all(
+            _served(shown, reach, e, stored.get(e.get("id"))) for e in found)
+
+    return visible
+
+
+#: The marker a masked neighbour carries in place of everything it would have
+#: said about itself. A **flag, not a sentence**: «خارج از دسترسی شما» is the
+#: UI's, rendered from `lib/factsLabels.ts` (§14 note 9 — labels come from
+#: `factsLabels` and the registries, never inline), and QF-32 keeps Persian out
+#: of keys. Absent rather than `false` on an unmasked row, so a typed client has
+#: to narrow before reading a title it may not have.
+_RESTRICTED = "restricted"
+
+
 def _count(counts: object, name: str) -> int:
     """One of the index row's counts, or zero — never an exception.
 
@@ -365,20 +447,30 @@ def get_fact(fid: str, request: Request, user=Depends(panel_session)):
     (`may_serve_fact`); its kind is switched off for a non-editor
     (`redact_fact` answering `{}`). D56 again — a caller learns which of their
     guesses exist from nothing, the visibility policy included.
+
+    **And the maps name only the neighbours this caller could fetch.** The
+    user's ruling (2026-08-31): keep the row, hide the name — see
+    `_neighbour_visibility`. The rule is the route's own answer applied to each
+    neighbour, so a title appears here exactly when a `GET` of that id would
+    have returned the entry behind it.
     """
     conn = request.app.state.db
     root = request.app.state.cfg.data_root
     entry = _reachable(request, user, fid)
     targets = _targets(entry.get("scope"))
     shown = Disclosure(conn, user)
+    reach = _reach(conn, user)
     row = confirmations.get(conn, fid)
     mark = row["fingerprint"] if row is not None else None
     now = fact_fingerprint(entry)
-    if not shown.may_serve_fact(entry, targets, mark):
+    # `_served` and not the three conditions inline, though `_reachable` has
+    # already run the first of them: this is the predicate the mask below asks
+    # of every neighbour, and the route has to be its first caller or "would a
+    # GET of that entry return it" stops being a fact about this route.
+    if not _served(shown, reach, entry, mark):
         raise HTTPException(status_code=404, detail=NOT_FOUND)
     served = shown.redact_fact(entry, targets)
-    if not served:
-        raise HTTPException(status_code=404, detail=NOT_FOUND)
+    visible = _neighbour_visibility(conn, root, shown, reach)
     may_confirm = permits(conn, user, "confirm")
     return {
         "entry": served,
@@ -404,9 +496,29 @@ def get_fact(fid: str, request: Request, user=Depends(panel_session)):
         # `fact_sources` withholds provenance from a body without changing what
         # is disputed or unanswered inside it.
         "red_paths": facts_store.red_paths(entry),
-        "resolved": facts_store.resolved_map(root, entry),
+        # The three resolution maps, masked. `facts_store` builds them from the
+        # whole store because §17 and QF-39 require them complete — it knows no
+        # caller — so the withholding is here, in the layer that does.
+        #
+        # A masked row keeps **only what makes it a row** — the key of
+        # `resolved`, the `id` of a consumer, the `ref` of a process link — and
+        # gains `restricted`. Everything else goes, with no per-field
+        # judgement: not the title, not an item's estate `code`, not the `kind`.
+        # For a process that means `tombstoned`, `heir` and `missing_nodes` go
+        # too, and deliberately: a tombstone state is a statement about a
+        # process this caller may not see, and `heir` is a bare id disclosure of
+        # a process that may be in a third department again. A row that says
+        # "there is one more, and it is not yours to read" is the whole of what
+        # the ruling asks for.
+        "resolved": {name: (label if visible(name) else {_RESTRICTED: True})
+                     for name, label in
+                     facts_store.resolved_map(root, entry).items()},
         "row_titles": facts_store.row_titles(root, entry),
         "path_labels": facts_store.path_labels(root, entry),
-        "consumers": facts_store.consumers(root, fid),
-        "processes": facts_store.process_links(root, entry),
+        "consumers": [c if visible(c.get("id"))
+                      else {"id": c.get("id"), _RESTRICTED: True}
+                      for c in facts_store.consumers(root, fid)],
+        "processes": [p if visible(p.get("ref"))
+                      else {"ref": p.get("ref"), _RESTRICTED: True}
+                      for p in facts_store.process_links(root, entry)],
     }

@@ -358,12 +358,25 @@ def filtered(doc: dict, *, policy: dict[str, bool],
     same rule for the same reason.
 
     A fact takes its own branch **before** `links_only`, and does not merely
-    fall through it. `links_only` acts on `parent` and `nodes`, neither of which
-    a fact envelope has, so running it would be a no-op that reads as a
-    decision; and a fact's own references — `{ref}` edges, `processes[]` — are
-    not withheld from anyone (`Disclosure.sees` withholds a link's *content*,
-    never its id, and the reverse index QF-39 asks for is an id list by
-    definition).
+    fall through it. Two reasons, and the second is the interesting one.
+
+    `links_only` acts on `parent` and `nodes`, neither of which a fact envelope
+    has, so running it would be a no-op that reads as a decision.
+
+    And a fact's references are governed by a **different boundary from a
+    process's**, decided by the project owner on 2026-08-31. `links_only`
+    *erases* an out-of-scope `parent` or `subprocess` — the id does not travel
+    at all — because a process link is one optional edge and a reader loses
+    nothing they can count. A fact's references are the opposite: §17 requires
+    the served maps to cover every id the entry names, and QF-39's reverse
+    index is a *count* of what would break if this entry changed, so a row
+    dropped for being out of scope makes retiring a fact look safer than it is.
+    The ruling is therefore **keep the row, hide the name**: the id travels,
+    and what the neighbour *is* — its title, its estate code, a process's name
+    and tombstone state — is withheld unless the caller could fetch that entry
+    themselves. That withholding is `routers/facts._neighbour_visibility`,
+    because it is the router that knows the caller; this branch's job is only
+    to leave the references alone on the way past.
     """
     if is_fact(doc):
         return dict(doc) if editor else _public_fact(doc, policy)
