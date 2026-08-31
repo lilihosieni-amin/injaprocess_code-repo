@@ -109,8 +109,13 @@ FORM = _entry(
           "unit": None},
          {"key": "delta", "title": "اختلاف روز", "type": "number",
           "derived": {"ref": "F-00034"}}],
+     # §7's weekday-conditional row, whose condition nobody wrote down: a
+     # `null` on a row's own reserved `when`, which Appendix D labels «فقط در»
+     # in a row's context and «زمان» in a measurement's.
      "rows": [{"key": "burger", "title": "برگر"},
-              {"key": "mini_burger", "title": "مینی برگر"}]},
+              {"key": "mini_burger", "title": "مینی برگر"},
+              {"key": "staff_sugar", "title": "قند پرسنلی (پنجشنبه‌ها)",
+               "when": None}]},
     status="unknown")
 
 #: The BOM's cached copy in the report workbook (§7): `role: mirror`,
@@ -345,7 +350,8 @@ def test_reference_rows_compose_from_ref_items_in_primary_key_order(root):
 
 def test_a_log_rows_own_title_wins(root):
     titles = facts_store.row_titles(root, facts_store.load_entry(root, "F-00021"))
-    assert titles == {"burger": "برگر", "mini_burger": "مینی برگر"}
+    assert titles == {"burger": "برگر", "mini_burger": "مینی برگر",
+                      "staff_sugar": "قند پرسنلی (پنجشنبه‌ها)"}
 
 
 def test_path_label_of_a_reference_cell_is_column_then_row(root):
@@ -381,6 +387,15 @@ def test_path_label_of_a_column_leaf_names_the_column(root):
     assert labels["data/fields/start_stock/unit"] == "مانده اول شب › واحد"
 
 
+def test_path_label_of_a_rows_reserved_leaf_takes_the_rows_reading(root):
+    """A row's own `when` is «فقط در» (Appendix D), not the measurement's
+    «زمان». The row branch names a declared column for its leaf, and the
+    reserved row-structure names — which no `fields[].key` may take — are the
+    exception it has to consult the context map for."""
+    labels = facts_store.path_labels(root, facts_store.load_entry(root, "F-00021"))
+    assert labels["data/rows/staff_sugar/when"] == "فقط در — قند پرسنلی (پنجشنبه‌ها)"
+
+
 def test_path_labels_of_leaves_outside_the_keyed_groups(root):
     """The general branch: a payload path that names no column still reads as
     Persian. `data/code` is the canonical one — an item whose estate code
@@ -409,7 +424,8 @@ def test_red_paths_split_null_leaves_from_open_accounts(root):
 
 def test_red_paths_of_a_form_field(root):
     assert facts_store.red_paths(facts_store.load_entry(root, "F-00021")) == {
-        "unknown": ["data/fields/start_stock/unit"], "disputed": []}
+        "unknown": ["data/fields/start_stock/unit",
+                    "data/rows/staff_sugar/when"], "disputed": []}
 
 
 def test_a_settled_account_is_not_disputed(root):

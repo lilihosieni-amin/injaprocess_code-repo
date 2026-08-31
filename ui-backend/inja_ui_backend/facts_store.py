@@ -452,8 +452,15 @@ def _path_label(entry: dict, path: str, titles: dict) -> str:
         return path                      # not a payload path; nothing to compose
     if seg[1] == "rows" and len(seg) >= 4:
         # «ستون — ردیف» (Appendix D): the reference-table cell, which is the
-        # shape the red cards and the accounts card are built around.
-        return f"{_field_title(entry, seg[3])} — {titles.get(seg[2], seg[2])}"
+        # shape the red cards and the accounts card are built around. The leaf
+        # is a declared column — except for the names a row object reserves
+        # for its own structure (`when`, `section`, `open`, …), which no
+        # `fields[].key` may take (§7's reservation, enforced by `validate`)
+        # and which Appendix D labels in the row's context: a row's `when` is
+        # «فقط در», a measurement's is «زمان». Hence the context lookup first;
+        # it cannot shadow a column, because no column can be named that.
+        leaf = _CONTEXT_LABELS.get(("rows", seg[3])) or _field_title(entry, seg[3])
+        return f"{leaf} — {titles.get(seg[2], seg[2])}"
     if len(seg) >= 3 and seg[1] in _KEYED_GROUPS:
         column = _field_title(entry, seg[2])
         return (column if len(seg) == 3
