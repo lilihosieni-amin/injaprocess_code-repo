@@ -1,8 +1,12 @@
-"""Reading the facts store over HTTP (spec §17, QF-23, QF-26, QF-39).
+"""The facts store over HTTP (spec §17, QF-23, QF-26, QF-39).
 
-Three reads, one gate, and no writes: `facts/**` is written by `merge facts`
-and by nothing else (QF-2), so every path in this file is a read of the store
-plus the confirmation marks in `app.db`.
+Three reads, a resolve and a download — and **still no write of the store**:
+`facts/**` is written by `merge facts` and by nothing else (QF-2). The resolve
+route makes a run directory, records who is running what in its `meta.json`
+and shells the verb; the store change is the engine's, and what is left behind
+is the same run record and the same revertibility a chat edit leaves. So every
+path in this file reads the store, the confirmation marks in `app.db`, or a
+file the store cites.
 
 **The gate is not the one the rest of this service runs, in two ways.**
 
@@ -27,6 +31,13 @@ route here so a route added later cannot forget either. `panel_session` is the
 cheap one and runs as a dependency, before anything touches the disk;
 `_reachable` needs the entry, so it runs where the entry is loaded.
 
+**The two write routes add a third arm, and it is one named capability** —
+`edit` for the resolve, `export_pdf` for the download — asked *after* the
+Panel gate has spoken. That ordering is what keeps QF-23 intact: a holder of
+`view` alone is answered the uniform 404 on all five routes, and only a caller
+already inside the Panel can ever be told 403. It is also §17's "an admin
+denied on the write routes": an admin reads facts, and writes none.
+
 **An admin is a non-editor**, and the two existing non-editor rules apply
 unchanged: `Disclosure.may_serve_fact` withholds an entry with no valid
 confirmation (D22, now per entry since confirmation is), and QF-26's switches
@@ -42,15 +53,27 @@ gate is a denial of service (`access.py`'s rule).
 from __future__ import annotations
 
 import re
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import FileResponse
 
-from .. import facts_store, storage, visibility
-from ..access import NOT_FOUND, capabilities_of, log_out_of_scope, permits
-from ..auth import require_session
+from .. import engine, facts_store, gitcommit, storage, visibility
+from ..access import (
+    FORBIDDEN,
+    NOT_FOUND,
+    capabilities_of,
+    log_out_of_scope,
+    permits,
+    requires_every,
+    scopes_of,
+)
+from ..auth import record, require_session
 from ..disclosure import Disclosure
 from ..fingerprint import fact_fingerprint
-from ..store import confirmations, manifest
+from ..models import ResolveFactBody
+from ..scopes import contains
+from ..store import confirmations, manifest, policy
 
 router = APIRouter(prefix="/api/facts")
 
@@ -550,9 +573,15 @@ def list_branches(request: Request, _=Depends(panel_session)):
     return manifest.branches(request.app.state.cfg.data_root)
 
 
-@router.get("/{fid}")
-def get_fact(fid: str, request: Request, user=Depends(panel_session)):
+def _bundle(request: Request, user, fid: str) -> dict:
     """One entry, with every map a screen needs to render it without a raw key.
+
+    **The body of `GET /api/facts/{fid}`, and what `POST …/resolve` answers
+    with**, which is why it is a function rather than the route. A resolve
+    returns the entry *as it now stands* — re-read from disk, re-gated, and
+    re-masked — so the screen that settled a dispute is handed the same
+    document it would get by asking for it again, rather than a second shape
+    assembled by the write path.
 
     §17's closing promise is that `resolved`, `row_titles` and `path_labels`
     between them cover every id, item key, row key and red path the entry
@@ -654,3 +683,259 @@ def get_fact(fid: str, request: Request, user=Depends(panel_session)):
                       else {"ref": p.get("ref"), _RESTRICTED: True}
                       for p in facts_store.process_links(root, entry)],
     }
+
+
+def _source_roots(root: Path) -> list[tuple[Path, str | None]]:
+    """QF-39's three roots, each with the department it names or `None`.
+
+    **Exactly three, and a fourth is a decision rather than an oversight**: the
+    estate's workbooks (`attachments/sheets/`), a department's field material
+    (`departments/{dept}/attachments/`) and the transcripts, which are the
+    file behind a `voice` source since the audio is not kept. A source citing
+    anything else — a process document, a store file, `meetings/audio/` —
+    resolves outside all three and is not served.
+
+    The middle root is one per department **read off the tree** rather than off
+    the registry, so it is the same set of directories the upload bot writes
+    into; a `departments/` that is not there at all raises inside `_source`'s
+    guard and answers the same 404 as everything else it refuses.
+
+    The department comes back beside the root because it is the only one of the
+    three that names one, and it is what the scope arm asks about. `None` for
+    the other two is not "no scope needed" phrased as an absence — the estate's
+    workbook roll belongs to no department (QF-4, and `/api/facts/branches`
+    takes the same view), and a transcript's path carries no department at all.
+    """
+    return [(root / "attachments" / "sheets", None),
+            (root / "meetings" / "transcripts", None),
+            *((d / "attachments", d.name)
+              for d in sorted((root / "departments").iterdir()) if d.is_dir())]
+
+
+def _source(root: Path, raw: str) -> tuple[Path, str | None] | None:
+    """The file `raw` names and the department it belongs to, or `None`.
+
+    `resolve()` on **both sides**, `routers/export_files.serve_export`'s idiom
+    and for its reasons: a `..` segment that survived URL decoding and a
+    symlink pointing out of a root are refused by the same comparison, and an
+    absolute path escapes the join rather than the containment — `root / "/etc/
+    passwd"` *is* `/etc/passwd`, which is inside no root.
+
+    Everything is inside the guard because this is where untrusted input
+    becomes a filesystem path, and it fails in more ways than "not there":
+    `resolve()` raises `ValueError` on an embedded NUL (which a URL can carry
+    as `%00`) and `OSError` on a symlink loop. An escaping exception here would
+    be a 500 and a traceback for a malformed query string.
+
+    Existence is **not** asked. Containment is a property of the path, so the
+    refusal below cannot depend on whether the file is there — which is what
+    keeps the capability refusal from becoming an existence probe.
+    """
+    try:
+        target = (root / raw).resolve()
+        for base, dept in _source_roots(root):
+            if target.is_relative_to(base.resolve()):
+                return target, dept
+    except (ValueError, OSError):
+        pass
+    return None
+
+
+@router.get("/source")
+def download_source(request: Request, user=Depends(panel_session)):
+    """One cited file, downloaded — and **never rendered** (QF-39).
+
+    A reviewer's procedure for a red row is to look at the evidence, and the
+    Panel has no viewer: every file-backed source is one confirmation popup and
+    then a download. So the response is `content-disposition: attachment`
+    without exception. Streaming a transcript or a photograph inline would put
+    a document nobody gated the *contents* of onto a screen, and «فایل منبع
+    دانلود شود؟» would be asking about something that had already happened.
+
+    Four refusals, in D56's order, and only one of them is a 403:
+
+    * **outside the three roots** — the bare uniform 404, exactly as for a
+      source whose file has been moved away (`_source`);
+    * **outside the caller's department** — the same 404, for the one root that
+      names a department (§15: gated by scope *and* by `export_pdf`). Scope
+      before capability, or a caller who fails both halves is told 403 about a
+      department they were never to learn of;
+    * **without `export_pdf`** — 403, the download split (D25): this caller is
+      in the Panel and may read the entry that cites the file, so what is
+      refused is the action. Recorded as `access.denied` (D42) and only here,
+      because that event is high-signal precisely while it is rare;
+    * **with `fact_sources` off** — 404 before any of it. QF-26 strips
+      provenance from every served body when that switch is down, and a route
+      that still handed the file over would be the strip undone by a second
+      request. It is asked of the deployment rather than of the caller: an
+      editor is exempt from the *entry* switches because the entry has a scope
+      to be the editor of, and a file on disk has none.
+
+    `Cache-Control: private, no-cache` for `serve_export`'s reason: the file is
+    behind a session now, so no shared cache may keep a copy for the next
+    person, and the browser must ask before reusing its own.
+    """
+    conn = request.app.state.db
+    if not policy.current(conn)["fact_sources"]:
+        raise HTTPException(status_code=404, detail=NOT_FOUND)
+    root = request.app.state.cfg.data_root.resolve()
+    raw = request.query_params.get("path", "")
+    found = _source(root, raw)
+    if found is None:
+        raise HTTPException(status_code=404, detail=NOT_FOUND)
+    target, dept = found
+    if dept is not None and not any(contains(s, f"dept:{dept}")
+                                    for s in scopes_of(conn, user)):
+        log_out_of_scope(request, user, f"dept:{dept}")
+        raise HTTPException(status_code=404, detail=NOT_FOUND)
+    if "export_pdf" not in capabilities_of(conn, user):
+        # `getattr` for `access._require_capability`'s reason: `State` raises
+        # for a key it does not hold, and a gate that raises answers 500
+        # instead of 403. Written before the raise, so the refusal cannot be
+        # lost to the exception on its way out.
+        record(request, "access.denied", actor=user["username"],
+               session_id=getattr(request.state, "session_id", None),
+               target=raw[:120], outcome="denied",
+               detail={"capability": "export_pdf"})
+        raise HTTPException(status_code=403, detail=FORBIDDEN)
+    try:
+        present = target.is_file()
+    except OSError:
+        present = False
+    if not present:
+        raise HTTPException(status_code=404, detail=NOT_FOUND)
+    return FileResponse(target, filename=target.name,
+                        headers={"Cache-Control": "private, no-cache"})
+
+
+@router.get("/{fid}")
+def get_fact(fid: str, request: Request, user=Depends(panel_session)):
+    """One entry and its maps — `_bundle`, which `POST …/resolve` also serves.
+
+    Declared **after** `/source`, because FastAPI matches in declaration order
+    and `source` is not an `F-` id: the other way round this route would claim
+    that path and answer the uniform 404, and every download would 404 with
+    nothing to say why (`list_branches` carries the same note).
+    """
+    return _bundle(request, user, fid)
+
+
+def _entry_targets(request: Request) -> list[str] | None:
+    """The scope strings the write gate needs for the `F-` id in the path.
+
+    `_targets` of the entry's scope — every department it names, or `["*"]`
+    when it names none — and `None` when the id is not one this service can
+    serve at all, which `requires_every` turns into the same uniform 404 an
+    out-of-scope target gets (D56).
+
+    `is_fact` as well as "is there", for `_reachable`'s reason: an `F-` id
+    carrying a kind outside the five is a document this service cannot shape,
+    and it must not become a *writable* one merely because its id looked right.
+
+    No grammar check of its own, unlike `_reachable`'s: `load_entry` finds an
+    id in `.index.json` and never builds a path out of it, so an id the
+    grammar refuses is simply an id the index does not carry — and a second
+    copy of the pattern here would be an arm no test could ever see removed.
+    """
+    fid = request.path_params["fid"]
+    entry = facts_store.load_entry(request.app.state.cfg.data_root, fid)
+    if entry is None or not visibility.is_fact(entry):
+        return None
+    return _targets(entry.get("scope"))
+
+
+def _write_gate(request: Request, user=Depends(panel_session)):
+    """The Panel, then `edit` at every department the entry names (QF-27).
+
+    Composed rather than stacked as two dependencies so the order is written
+    down where it is read: `panel_session` is the sub-dependency, so it has
+    already spoken by the time this body runs. That is what makes the refusal a
+    404 for everyone outside the Panel and a 403 only for someone inside it —
+    the admin of §17, who reads facts and writes none.
+
+    `requires_every` and not `requires`: an entry may bind several departments
+    and `contains` answers one string at a time, so a fact's requirement cannot
+    be reduced to the single target `requires` compares. Same call the confirm
+    gate makes (`routers/confirmations._confirm_gate`).
+    """
+    return requires_every("edit", _entry_targets)(request, user)
+
+
+#: Where a UI run is filed when the entry names no department at all.
+#: QF-43's own answer rather than a new one: the bootstrap seeds the universal
+#: entries "under `management`", so a universal fact's runs already have a
+#: home, and `revert` finds this one where it finds those.
+_UNIVERSAL_RUN_DEPARTMENT = "management"
+
+#: A department code as `facts.schema.json` patterns it. Checked here because
+#: the run directory is a **path segment** built from a stored value, and the
+#: store is a file on disk that nothing revalidates on read.
+_DEPT_RE = re.compile(r"^[a-z]+$")
+
+
+def _run_department(entry: dict) -> str:
+    """The department this entry's run directory is filed under.
+
+    The first of its `scope.departments` in sorted order, so a two-department
+    entry lands in the same place every time whatever order the store happens
+    to hold them in; `management` for an entry that names none.
+
+    A stored value that is not a department code is dropped rather than
+    escaped: a run directory is a path, and `..` reaching one is not something
+    to leave to the join. That filter is **unkillable past the gate** — a
+    department the grammar refuses produces a target no scope contains, `*`
+    holders included, so `_write_gate` has already answered 404 — and it is
+    kept for the reason `access.reachable_departments` keeps its own: it is
+    what stops a malformed value entering a *path* if the gate above ever
+    moves, or if a second write verb calls this from somewhere else.
+    """
+    scope = entry.get("scope")
+    departments = scope.get("departments") if isinstance(scope, dict) else None
+    named = sorted(d for d in departments or []
+                   if isinstance(d, str) and _DEPT_RE.fullmatch(d))
+    return named[0] if named else _UNIVERSAL_RUN_DEPARTMENT
+
+
+@router.post("/{fid}/resolve")
+def resolve_fact(fid: str, body: ResolveFactBody, request: Request,
+                 user=Depends(_write_gate)):
+    """Settle one disputed field by choosing an account (QF-39, §12).
+
+    **The service never edits `facts/*.json`** (QF-2). It opens a run
+    directory, writes the `meta.json` that says who is doing this and when, and
+    runs `merge facts resolve` — which snapshots the store into
+    `{run_dir}/facts-before/`, installs the chosen account's value, marks the
+    losers `rejected`, re-derives `status` and appends what it did to the run's
+    delta. The record is therefore the one `merge facts revert` reads, and a
+    resolve from the Panel is undone exactly like a resolve from chat.
+
+    **422 for a failed precondition**, carrying the engine's own message: exit
+    2 means nothing was written, so there is nothing to roll back and the body
+    was well formed — what refused it is the state (the account is not on that
+    field, or not on that entry at all). The message is the engine's rather
+    than a translation of it, because the account and field it names are the
+    two things the caller sent.
+
+    The commit is `gitcommit`'s, over `facts/` and this run directory: the
+    store and the record of why it moved land in one commit, which is what a
+    confirmation's `data_repo_commit` column is later reconciled against.
+
+    No activity-record event of its own. The run directory *is* the record
+    QF-39 asks for — "the run record and the audit trail are the same as from
+    chat" — and D42's catalogue is not something a route invents a row in.
+    """
+    cfg = request.app.state.cfg
+    # Loaded again rather than carried out of the gate: `requires_every` hands
+    # back the user, not the entry, and the alternative — a gate that stashes a
+    # document on `request.state` — is how the thing that was gated and the
+    # thing that is written come apart.
+    entry = _reachable(request, user, fid)
+    run = engine.facts_run_dir(cfg, _run_department(entry), user["username"])
+    try:
+        engine.merge_facts_resolve(cfg, fid, body.field, body.account, run)
+    except engine.EngineError as e:
+        raise HTTPException(status_code=422, detail=e.message)
+    engine.finish_facts_run(run)
+    gitcommit.commit(cfg, [cfg.data_root / "facts", run], fid,
+                     f"facts resolve {body.field}")
+    return _bundle(request, user, fid)

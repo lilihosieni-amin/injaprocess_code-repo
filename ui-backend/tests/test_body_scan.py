@@ -1096,6 +1096,28 @@ NOT_SWEPT: dict[tuple[str, str], str] = {
     ("PATCH", "/api/users/{user_id}"): "see POST /api/users above.",
     ("POST", "/api/users/{user_id}/password"): "see POST /api/users above.",
     ("POST", "/api/users/{user_id}/disabled"): "see POST /api/users above.",
+    ("POST", "/api/facts/{fid}/resolve"): (
+        "the facts write (QF-39). Excluded for the same reason as the four user"
+        " writes above, and it is the same reason twice over: its success body"
+        " is `routers/facts._bundle` — byte for byte what"
+        " `GET /api/facts/F-00001` returns, which this file already sweeps,"
+        " built by the same function — and running it would rewrite the very"
+        " store the three facts reads above are asserted against, through a"
+        " `merge facts resolve` subprocess, mid-sweep. What it could leak it"
+        " cannot: the bundle's neighbour maps are masked by `_neighbour_"
+        "visibility`, which is the read route's own code and is swept there."
+        " Its gate is pinned in test_endpoint_matrix.py (both 403 directions,"
+        " the out-of-scope 404 and the stranger's 401) and its behaviour end to"
+        " end in test_facts_write_and_download.py."),
+    ("GET", "/api/facts/source"): (
+        "the source download (QF-39) — the `/exports/{file_path:path}` case"
+        " again, and excluded on that entry's reasoning: what this file scans"
+        " is response bodies for foreign ids, and this route's body is an"
+        " opaque file. The authorisation is the whole question, and it is"
+        " pinned where it lives — the Panel gate, the department in the"
+        " requested path and `export_pdf` in test_endpoint_matrix.py, and the"
+        " containment, the `attachment` disposition, the `access.denied` row"
+        " and the `fact_sources` switch in test_facts_write_and_download.py."),
     ("GET", "/exports/{file_path:path}"): (
         "**PARTLY RESOLVED — do not delete this entry without reading D56's "
         "Downloads row.** Both halves of D12 are now asked, in D56's order, by "
