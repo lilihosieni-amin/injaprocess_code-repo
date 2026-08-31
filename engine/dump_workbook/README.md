@@ -50,7 +50,10 @@ nothing here writes them.
 It writes no `rows.tsv` for a row nobody has confirmed — but it does re-dump one
 for a row that *is* already confirmed (a new workbook sends Gate M round again,
 §3), so a directory never holds a freshly hashed `meta.json` beside a `rows.tsv`
-from an older export.
+from an older export. For the same reason a run that dumps no reference cells at
+all **removes** any `rows.tsv` it finds: a tab renamed, emptied, or taken out of
+`reference_tabs[]` must not leave rows behind for `merge facts audit` to read as
+current.
 
 `short` is minted from the file name, and on a collision from one directory
 segment at a time working outwards (`farangi`, then `amar_farangi`). When every
@@ -68,7 +71,10 @@ cost the estate its dump.
 
 Two failure modes exit 2 rather than raising: a file that is not a zip or has no
 `xl/workbook.xml` (a failed download left in place), and a `.structure.md` with
-no id line.
+no id line. A tab whose worksheet part cannot be resolved — a dangling `r:id`, a
+part the zip does not carry — is still emitted as an empty tab, but with a
+`warning:` line on stderr: silence there would make it indistinguishable from a
+genuinely empty tab, and a confirmed reference tab could vanish without a word.
 
 ## Re-export and drift (QF-29)
 
@@ -102,9 +108,14 @@ Copied from the estate's own exports, and covered by
   non-threaded comments; the `tc={guid}` / `[Threaded comment]` placeholders it
   carries for the threaded ones are discarded.
 - **The header row** is the first of the first five rows that is mostly
-  non-numeric text (half or more of its non-empty cells). Blank rows and merged
-  title bands are skipped — 39 of the estate's 316 tabs have one above the
-  header.
+  non-numeric text (half or more of its non-empty cells). Blank rows and title
+  bands are skipped — the estate's tabs put a banner above their header often
+  enough to matter. A *band* is a row that a column-spanning merge covers, where
+  every such merge holds at most one non-empty cell (a real merge keeps only the
+  anchor's value, so a value in each merged cell means a header that happens to
+  be merged), and that is sparse — no more non-empty cells than half its width.
+  Skipping every merged row instead cost 15 tabs their header entirely, among
+  them `Gozaresh naharkhoran!پیتزا`, whose header is row 5.
 - **`<dimension>`** is absent from every Google export, so `dimension` falls back
   to the measured extent (`A1:K34`, matching the `.structure.md`'s `34×11`).
 

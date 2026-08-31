@@ -452,24 +452,45 @@ def _extent(sheet):
     return f"A1:{_col_letters(sheet['max_col'])}{sheet['max_row']}"
 
 
-def _banded_rows(merges):
-    """Rows covered by a merge that spans columns — the title band 39 of the
-    estate's 316 tabs carry above their header."""
-    rows = set()
+def _is_title_band(index, row, merges):
+    """Is this row a title band — the thing 39 of the estate's 316 tabs carry
+    above their header?
+
+    Two things must hold. A merge spanning columns covers the row and **every**
+    such merge holds at most one non-empty cell — a real merge keeps only the
+    anchor's value, so a merge with a value in each of its cells is a header
+    that happens to be merged, not a band. And the row is **sparse**: no more
+    non-empty cells than half its width, because a band is a handful of
+    captions over a row of titles.
+
+    Merely being merged is not enough — skipping every row a wide merge touched
+    voided the header on such tabs, which silently sent `rows.tsv` to letter
+    columns and emitted the header as data. Neither is any rule about one merge
+    covering most of the row: `Amadesazi!خروجی آماده سازی به انبار` banners six
+    captions over 23 columns, five of them merged and the sixth — a
+    single-column group — not merged at all. Counting what the row *says* holds
+    where counting what the merges *cover* does not.
+    """
+    bands = 0
     for ref in merges:
         box = _box(ref)
-        if box and box[2] > box[0]:
-            rows.update(range(box[1], box[3] + 1))
-    return rows
+        if not box or not (box[1] <= index <= box[3]) or box[2] - box[0] < 1:
+            continue
+        inside = [v for col, v in enumerate(row, start=1)
+                  if v.strip() and box[0] <= col <= box[2]]
+        if len(inside) > 1:
+            return False             # a value in every merged cell: a header
+        bands += 1
+    filled = [v for v in row if v.strip()]
+    return bool(bands) and len(filled) * 2 <= len(row)
 
 
 def header_row(head, merges=()):
     """The first of the first five rows that is mostly non-numeric text — half
-    or more of its non-empty cells. Blank rows and merged bands are skipped."""
-    banded = _banded_rows(merges)
+    or more of its non-empty cells. Blank rows and title bands are skipped."""
     for index, row in enumerate(head, start=1):
         cells = [v for v in row if v.strip()]
-        if not cells or index in banded:
+        if not cells or _is_title_band(index, row, merges):
             continue
         text = [v for v in cells if not _is_number(v)]
         if len(text) * 2 >= len(cells):
@@ -687,6 +708,12 @@ def dump_workbook(xlsx_path, structure_md_path, out_dir, reference_tabs=(),
         columns, reference_rows = [], []
         for tab in tabs:
             if not tab["part"] or tab["part"] not in zf.namelist():
+                # A dangling `r:id`, or a part the zip does not carry. The stub
+                # keeps the tab in `sheets.json`, but silence here would make it
+                # indistinguishable from a genuinely empty tab — and a confirmed
+                # reference tab could go missing without a word.
+                print(f"dump-workbook: warning: sheet {tab['name']}: worksheet "
+                      "part unresolved — emitted as empty", file=sys.stderr)
                 sheets.append({"sheetId": tab["sheetId"], "name": tab["name"],
                                "hidden": tab["hidden"], "dimension": "",
                                "rows": 0, "cols": 0, "head": [],
@@ -760,6 +787,12 @@ def dump_workbook(xlsx_path, structure_md_path, out_dir, reference_tabs=(),
     if columns:
         write_text_atomic(out / "rows.tsv",
                           _tsv(["sheet", "row"] + columns, reference_rows))
+    else:
+        # This run dumped no reference cells, so any `rows.tsv` here is from an
+        # older one — a tab renamed, emptied, or taken out of `reference_tabs[]`.
+        # Leaving it would hand `merge facts audit` half of one export and half
+        # of another, and it would read the stale half as current.
+        (out / "rows.tsv").unlink(missing_ok=True)
 
     return {"spreadsheetId": spreadsheet_id, "out_dir": str(out),
             "sheets": sheets, "drift": drift, "formulas": formulas,

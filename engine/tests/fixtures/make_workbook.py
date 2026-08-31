@@ -179,10 +179,13 @@ def _workbook(names, lambda_name):
             f'<definedNames>{"".join(defined)}</definedNames></workbook>')
 
 
-def _workbook_rels():
+def _workbook_rels(dangling_rel=False):
+    """`dangling_rel` drops the last tab's relationship, so its `r:id` resolves
+    to nothing — a part the dumper cannot open."""
     rels = "".join(
         f'<Relationship Id="rId{i + 1}" Type="{DOC_RELS}/worksheet" '
-        f'Target="worksheets/sheet{i + 1}.xml"/>' for i in range(len(SHEETS)))
+        f'Target="worksheets/sheet{i + 1}.xml"/>'
+        for i in range(len(SHEETS) - (1 if dangling_rel else 0)))
     rels += (f'<Relationship Id="rId90" Type="{DOC_RELS}/styles" '
              'Target="styles.xml"/>'
              f'<Relationship Id="rId91" Type="{DOC_RELS}/sharedStrings" '
@@ -280,7 +283,8 @@ def make_workbook(path, *, shared_formula=True, dummyfunction=True,
                   lambda_name=True, threaded_comment=True,
                   merged_band_header=True, reference_tab=True,
                   structure_md=True, spreadsheet_id="TESTID01",
-                  sheet_names=None, exported="2026-08-29T10:38:50.643Z"):
+                  sheet_names=None, exported="2026-08-29T10:38:50.643Z",
+                  dangling_rel=False):
     """Write a minimal but standards-shaped `.xlsx` at `path`.
 
     `sheet_names` overrides the four tab names in workbook order (a renamed tab
@@ -305,7 +309,7 @@ def make_workbook(path, *, shared_formula=True, dummyfunction=True,
                         'officeDocument" Target="xl/workbook.xml"/>'
                         "</Relationships>"),
         "xl/workbook.xml": _workbook(names, lambda_name),
-        "xl/_rels/workbook.xml.rels": _workbook_rels(),
+        "xl/_rels/workbook.xml.rels": _workbook_rels(dangling_rel),
         "xl/worksheets/sheet1.xml": _sheet_report(
             shared_formula, dummyfunction, merged_band_header),
         "xl/worksheets/sheet2.xml": reference,

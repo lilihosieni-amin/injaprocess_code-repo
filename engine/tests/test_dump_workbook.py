@@ -8,7 +8,7 @@ import re
 import zipfile
 
 import pytest
-from dump_workbook import dump_workbook, init_manifest
+from dump_workbook import dump_workbook, header_row, init_manifest
 from dump_workbook.cli import main
 from engine_common import validate
 from fixtures.make_workbook import DUMMY_SOURCE, LAMBDA_BODY, REFERENCE_ROWS, make_workbook
@@ -172,6 +172,53 @@ def test_without_the_band_row_one_is_the_header(tmp_path):
     assert sheets["آمار"]["header_row"] == 1
 
 
+def test_a_merged_header_row_is_still_the_header():
+    """Only a title band is skipped. A header that happens to be merged is a
+    header — skipping it sent `rows.tsv` to letter columns and emitted the
+    header as data."""
+    assert header_row([["کد", "نام"], ["1", "2"]], ["A1:B1"]) == 1
+
+
+def test_a_tall_merge_does_not_void_the_header():
+    """A merge down ten rows used to band every row it touched, so no row of
+    the head was eligible and the tab lost its header entirely."""
+    head = [["کد", "نام", "گرم"], ["prod_61", "پنیر", "250"]]
+    assert header_row(head, ["A1:B10"]) == 1
+
+
+def test_a_title_band_is_skipped_but_only_the_band():
+    """One caption across most of the row, nothing beside it: the shape the
+    estate's 39 banded tabs have."""
+    head = [["گزارش روزانه", "", "", ""], ["کد", "نام", "مقدار", "بازدهی"]]
+    assert header_row(head, ["A1:D1"]) == 2
+    assert header_row(head, []) == 1                  # without the merge, row 1
+
+
+def test_two_captions_over_one_row_are_still_a_band():
+    """`Anbar!خروجی انبار به آماده سازی` banners «برگر (وزن)» and «مرغ (وزن)»
+    over one row and puts the column titles below it — no single merge covers
+    that row, so a per-merge test would take the banner for the header."""
+    head = [["", "برگر (وزن)", "", "مرغ (وزن)", ""],
+            ["تاریخ", "مغز ران", "سردست", "سینه", "فیله"]]
+    assert header_row(head, ["B1:C1", "D1:E1"]) == 2
+
+
+def test_a_band_whose_last_caption_is_not_merged_is_still_a_band():
+    """`Amadesazi!خروجی آماده سازی به انبار` banners six captions over 23
+    columns and leaves the last — a single-column group — unmerged. A band is
+    recognised by being sparse, not by what its merges happen to cover."""
+    head = [["", "برگر", "", "سینه مرغ", "", "", "", "گوشت پخته"],
+            ["تاریخ", "مینی برگر", "برگر", "لقمه", "وزن", "پیتزا", "کل", "off"]]
+    assert header_row(head, ["B1:C1", "D1:G1"]) == 2
+
+
+def test_a_dense_header_carrying_one_merged_group_is_not_a_band():
+    """The other side of sparsity: a row of titles with one merged pair in it
+    is a header, and must not be skipped."""
+    head = [["تاریخ", "گروه", "", "نام", "وزن"], ["1", "2", "3", "4", "5"]]
+    assert header_row(head, ["B1:C1"]) == 1
+
+
 def test_sheets_json_carries_hidden_dimensions_codes_and_the_empty_flag(tmp_path):
     _, out = _dump(tmp_path)
     sheets = {s["name"]: s for s in _json(out / "sheets.json")["sheets"]}
@@ -221,6 +268,19 @@ def test_a_missing_structure_md_is_exit_2_naming_the_file(tmp_path, capsys):
         dump_workbook(book, book.parent / "Test.structure.md", tmp_path / ".dump")
     assert e.value.code == 2
     assert "Test.structure.md" in capsys.readouterr().err
+
+
+def test_an_unresolved_worksheet_part_is_reported_not_passed_off_as_empty(
+        tmp_path, capsys):
+    """A dangling `r:id` still yields a stub row — but silently, that stub is
+    indistinguishable from a genuinely empty tab, and a confirmed reference tab
+    could go missing without a word."""
+    _, out = _dump(tmp_path, dangling_rel=True)
+    err = capsys.readouterr().err
+    assert "worksheet part unresolved" in err and "شمارش" in err
+    sheets = {s["name"]: s for s in _json(out / "sheets.json")["sheets"]}
+    assert sheets["شمارش"]["empty"] is True
+    assert sheets["مواد اولیه"]["empty"] is False     # the others are unharmed
 
 
 def test_a_file_that_is_not_a_workbook_is_exit_2_not_a_traceback(tmp_path, capsys):
@@ -279,6 +339,35 @@ def test_a_reference_tab_yields_rows_tsv_verbatim(tmp_path):
     assert [r["کد"] for r in rows] == ["prod_61", "prod_62", "prod_63"]
     assert rows[0] == {"sheet": "مواد اولیه", "row": "2",
                        "کد": "prod_61", "نام": "پنیر", "گرم": "250"}
+
+
+def test_a_rows_tsv_does_not_outlive_the_tab_it_was_dumped_from(tmp_path):
+    """A tab renamed, emptied, or taken out of `reference_tabs[]` leaves a
+    `rows.tsv` that `merge facts audit` would read as current. The run that
+    dumps no reference cells removes it."""
+    book = tmp_path / "wb" / "Test.xlsx"
+    md = tmp_path / "wb" / "Test.structure.md"
+    out = tmp_path / ".dump" / "TESTID01"
+    make_workbook(book)
+    dump_workbook(book, md, tmp_path / ".dump", reference_tabs=["مواد اولیه"])
+    assert (out / "rows.tsv").is_file()
+
+    dump_workbook(book, md, tmp_path / ".dump", reference_tabs=[])
+    assert not (out / "rows.tsv").exists()
+    assert (out / "sheets.json").is_file()            # the rest still written
+
+
+def test_a_renamed_reference_tab_takes_its_rows_tsv_with_it(tmp_path, capsys):
+    book = tmp_path / "wb" / "Test.xlsx"
+    md = tmp_path / "wb" / "Test.structure.md"
+    out = tmp_path / ".dump" / "TESTID01"
+    make_workbook(book)
+    dump_workbook(book, md, tmp_path / ".dump", reference_tabs=["مواد اولیه"])
+    make_workbook(book, sheet_names=["آمار", "مواد اولیهٔ نو",
+                                     "Refresher", "شمارش"])
+    dump_workbook(book, md, tmp_path / ".dump", reference_tabs=["مواد اولیه"])
+    assert not (out / "rows.tsv").exists()
+    assert "reference_tabs is stale" in capsys.readouterr().err
 
 
 def test_a_tab_not_listed_yields_no_rows_even_when_full_of_numbers(tmp_path):
