@@ -373,6 +373,31 @@ def test_init_manifest_mode_dumps_structure_but_no_rows(tmp_path, monkeypatch, c
     assert sorted(w["spreadsheetId"] for w in manifest["workbooks"]) == ["SID1", "SID2"]
 
 
+def test_init_manifest_re_dumps_an_already_confirmed_rows_tsv(tmp_path, monkeypatch,
+                                                              capsys):
+    """A new workbook sends Gate M round again (§3). The `--init-manifest` that
+    precedes it must not leave a `rows.tsv` from an older export beside a
+    freshly hashed `meta.json` — a confirmed row's tabs are dumped again."""
+    root = _estate(tmp_path)
+    monkeypatch.setenv("DATA_ROOT", str(root))
+    sheets = root / "attachments" / "sheets"
+    main(["--init-manifest"])
+    manifest = _json(sheets / "manifest.json")
+    for workbook in manifest["workbooks"]:
+        workbook["confirmed"] = True
+        workbook["reference_tabs"] = ["مواد اولیه"]
+    (sheets / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False),
+                                          encoding="utf-8")
+    main(["--manifest"])
+    rows = (sheets / ".dump" / "SID1" / "rows.tsv").read_text(encoding="utf-8")
+
+    make_workbook(sheets / "Amar__Farangi" / "Farangi.xlsx", spreadsheet_id="SID3")
+    capsys.readouterr()
+    assert main(["--init-manifest"]) == 0
+    assert (sheets / ".dump" / "SID1" / "rows.tsv").read_text(encoding="utf-8") == rows
+    assert not (sheets / ".dump" / "SID3" / "rows.tsv").exists()   # not confirmed
+
+
 def test_manifest_mode_dumps_rows_only_for_confirmed_reference_tabs(
         tmp_path, monkeypatch, capsys):
     root = _estate(tmp_path)

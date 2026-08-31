@@ -47,6 +47,11 @@ mechanical columns refreshed, and a workbook with no row is appended with
 `reference_tabs`) are proposed by the `quantify` agent and confirmed at Gate M;
 nothing here writes them.
 
+It writes no `rows.tsv` for a row nobody has confirmed — but it does re-dump one
+for a row that *is* already confirmed (a new workbook sends Gate M round again,
+§3), so a directory never holds a freshly hashed `meta.json` beside a `rows.tsv`
+from an older export.
+
 `short` is minted from the file name, and on a collision from one directory
 segment at a time working outwards (`farangi`, then `amar_farangi`). When every
 candidate is taken it is left **empty** rather than proposed twice (Appendix B)

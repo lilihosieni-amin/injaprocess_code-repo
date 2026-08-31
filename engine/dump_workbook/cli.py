@@ -45,6 +45,29 @@ def _read_manifest(sheets_root):
     return manifest
 
 
+def _confirmed_reference_tabs(sheets_root, books):
+    """`{xlsx: reference_tabs}` for the rows a person has already confirmed.
+
+    Read leniently and never validated: `--init-manifest` is the pass that
+    repairs the manifest, so a manifest it cannot read is a reason to dump
+    nothing extra, not a reason to refuse.
+    """
+    path = sheets_root / "manifest.json"
+    if not path.is_file():
+        return {}
+    try:
+        rows = {row["spreadsheetId"]: row
+                for row in read_json(path)["workbooks"] if row.get("confirmed")}
+    except (ValueError, KeyError, TypeError):
+        return {}
+    out = {}
+    for xlsx in books:
+        row = rows.get(read_spreadsheet_id(structure_md_for(xlsx)))
+        if row and row.get("reference_tabs"):
+            out[xlsx] = row["reference_tabs"]
+    return out
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(
         prog="dump-workbook",
@@ -63,6 +86,12 @@ def main(argv=None):
     books = workbook_files(sheets_root)
 
     reference_tabs = {}
+    if args.init_manifest:
+        # Gate M has not run for the workbooks this pass is here for — but if it
+        # ran for others, their reference tabs are re-dumped rather than left
+        # behind: a directory holding a fresh `sheets.json` and a `rows.tsv`
+        # from an older file is worse than one holding neither.
+        reference_tabs = _confirmed_reference_tabs(sheets_root, books)
     if args.manifest:
         manifest = _read_manifest(sheets_root)
         rows = {row["spreadsheetId"]: row for row in manifest["workbooks"]}
