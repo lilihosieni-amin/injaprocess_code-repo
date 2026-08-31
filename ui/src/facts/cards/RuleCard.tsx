@@ -287,12 +287,13 @@ export function RuleCard({ bundle, onOpen }: {
             ))}
           </DetailCard>
           <DetailCard>
-            {/* Audit §2.1 — the design's outputs head is a paler green than
-                anything the token set holds, over a paler edge, and this task
-                may not mint either; the head takes the affirmative family's own
-                pair instead. Recorded as a deviation. */}
+            {/* :1308 — the head is a paler green than the unit pill inside the
+                card, and both were `--tile-ok` until the owner ruled on it
+                (2026-09-01): drawn the same, the two bands flatten together and
+                the card loses its hierarchy. `--tile-ok2` / `--border-ok2` are
+                that ruling, minted in `tokens.css` on the family's own ladder. */}
             <IoHead heading="heading_outputs" hint="heading_outputs_hint"
-              fill="bg-tile-ok border-border-ok" ink="text-green" />
+              fill="bg-tile-ok2 border-border-ok2" ink="text-green" />
             {(d.outputs ?? []).map((o) => (
               <OutputRow key={o.key} bundle={bundle} output={o} onOpen={onOpen} />
             ))}

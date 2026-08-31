@@ -218,11 +218,22 @@ goes back on it only for *a value the design draws that nothing holds*, with its
 role and its design line, **and it goes to the owner in the same breath**. This
 is that list. Nothing below is minted here.
 
+**Two rows have since left it.** The owner ruled on 2026-09-01, shown the
+rendered screen rather than the swatches, that the outputs card's header must
+read as the paler band she drew rather than flattening into the unit pills
+below it — so `#F1FAF5` and `#DDEFE5` were **minted by Task 23** as
+`--tile-ok2` / `--border-ok2`, named on the `--tile-v2…--tile-v5` / `--tile-c2`
+ladder the palette already uses for "the paler second tint of this hue". They
+are struck through below rather than deleted, so the reference still records
+what was asked and what was answered. The other three colour rows were shown to
+her in the same pass and **accepted as they are** — each is within a shade of
+the family token the screen substitutes.
+
 | value | role | design line |
 |---|---|---|
 | `#F8DDDA` | the accounts card's 1.5px edge (`--border-danger` is `#FDD9D6`, a different value; `--steps-group-border` aliases `--border-danger` and its comment records `#F8DDDA` as a *previous* value) | 1673 |
-| `#F1FAF5` | the outputs card head fill | 1308 |
-| `#DDEFE5` | the outputs card head border | 1308 |
+| ~~`#F1FAF5`~~ | ~~the outputs card head fill~~ — **minted 2026-09-01 as `--tile-ok2`** | 1308 |
+| ~~`#DDEFE5`~~ | ~~the outputs card head border~~ — **minted 2026-09-01 as `--border-ok2`** | 1308 |
 | `#5a4a1e` | the issue card's body ink on `--tile-warn` | 1698 |
 | `#F3D9D7` | the disabled (red) tick's inner border | 5065 |
 | `rgba(255,255,255,.16)` | the kind and confirmation chips on the violet header | 1112–1113 |

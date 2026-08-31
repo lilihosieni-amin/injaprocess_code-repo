@@ -573,36 +573,36 @@ export const SCREEN_LABELS: Record<string, string> = {
   // The «متن اصلی» block the owner approved on 2026-08-31 (audit §6.1). The
   // three sentences are `sfOriginalNote` (:4885), which the design computes and
   // renders nowhere — one per `lang`, the third for every other value.
-  original_note_gs: 'بدنهٔ اسکریپت عیناً در همین فایل نگه داشته شده است.',
-  original_note_sheets: 'فرمول شیت عیناً در همین فایل نگه داشته شده است.',
-  original_note: 'متن اصلی عیناً در همین فایل نگه داشته شده است.',
+  original_note_gs: 'بدنهٔ اسکریپت عیناً در همین فایل نگه داشته شده است.',      // :4885
+  original_note_sheets: 'فرمول شیت عیناً در همین فایل نگه داشته شده است.',      // :4886
+  original_note: 'متن اصلی عیناً در همین فایل نگه داشته شده است.',              // :4887
 
   // The tick's own `title` (:1120) — the two hints `sfTickLabel` binds (:5071).
-  tick_hint_confirmed: 'تأییدشده — اثر انگشت با محتوای فعلی می‌خواند',
-  tick_hint_unconfirmed: 'با یک تیک، کل این داده تأیید می‌شود',
+  tick_hint_confirmed: 'تأییدشده — اثر انگشت با محتوای فعلی می‌خواند',          // :5070
+  tick_hint_unconfirmed: 'با یک تیک، کل این داده تأیید می‌شود',                 // :5070
 
   // The other two dialogs of :5073-5078; the confirm one is above.
-  revoke_dialog_title: 'تأیید این داده برداشته شود؟',
-  revoke_dialog_body: 'داده به حالت تأییدنشده برمی‌گردد.',
-  account_dialog_title: 'این روایت انتخاب شود؟',
+  revoke_dialog_title: 'تأیید این داده برداشته شود؟',                           // :5075
+  revoke_dialog_body: 'داده به حالت تأییدنشده برمی‌گردد.',                      // :5075
+  account_dialog_title: 'این روایت انتخاب شود؟',                                // :5042
   account_dialog_body:
-    'روایت انتخابی «انتخاب‌شده» و بقیه «ردشده» علامت می‌خورند و وضعیت فیلد صریح می‌شود.',
+    'روایت انتخابی «انتخاب‌شده» و بقیه «ردشده» علامت می‌خورند و وضعیت فیلد صریح می‌شود.', // :5042
   // The word on each dialog's affirmative button (:5074-5078). The revoke
   // dialog's is `revoke` above — «برداشتن تأیید», the act's own name.
-  confirm_dialog_ok: 'تأیید می‌کنم',
-  account_dialog_ok: 'انتخاب می‌کنم',
+  confirm_dialog_ok: 'تأیید می‌کنم',                                            // :5076
+  account_dialog_ok: 'انتخاب می‌کنم',                                           // :5042
 
   // The two placeholders the design puts where a value would be. «؟» is a leaf
   // the source never answered (:4842, and the record grid's own `؟` at :4909);
   // «—» is a field the entry does not carry at all. They are different states
   // and the design draws them differently, so they are two entries.
-  value_unknown: '؟',
-  value_none: '—',
+  value_unknown: '؟',                                                           // :4845, :4912
+  value_none: '—',                                                              // :4845
 
   // «{pct}٪» — the share of an input an output takes (:1318). The design writes
   // «{pct} از ورودی»; Appendix D gives `share` the label «سهم», which is what
   // stands in front of it, so this entry carries the sign alone.
-  percent: '{n}٪',
+  percent: '{n}٪',                                                              // :1318, :4844
 }
 
 /**

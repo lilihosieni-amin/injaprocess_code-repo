@@ -298,6 +298,20 @@ test('fact detail — the design’s screen on the violet field, at three widths
   // One of the two `from` literals (:4744).
   await expect(page.getByText('انتخاب اپراتور')).toBeVisible()
 
+  /* ---- the outputs head is its OWN green, not the unit pill's ----
+         Owner ruling of 2026-09-01, and the whole reason `--tile-ok2` /
+         `--border-ok2` were minted: drawn at `--tile-ok` the head and the
+         «کیلوگرم» pill inside the card are one band and the card loses its
+         hierarchy. Asserted as the exact pair, so a revert to the shared token
+         is a red rather than a flattening nobody notices. */
+  const outputsHead = page.getByText('چه چیزی می‌سازد').locator('..')
+  await expect(outputsHead).toHaveCSS('background-color', 'rgb(241, 250, 245)')
+  await expect(outputsHead).toHaveCSS('border-bottom-color', 'rgb(221, 239, 229)')
+  // …and the inputs head keeps its violet pair, so this is a two-card contrast
+  // rather than one card repainted.
+  const inputsHead = page.getByText('چه چیزهایی لازم دارد').locator('..')
+  await expect(inputsHead).toHaveCSS('background-color', 'rgb(248, 244, 254)')  // --tile-v4
+
   /* ---- note 7: every orphan class, not only the tombstoned one ---- */
   await expect(page.getByText('اشاره به فرایند بازنشسته (جایگزین: cooking-007)')).toBeVisible()
   await expect(page.getByText('ارجاع بی‌مقصد')).toBeVisible()

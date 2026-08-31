@@ -25,6 +25,9 @@ border-steps-sub-border border-steps-group-border border-coral border-violet
 # (the fifth of the --border-* family), `border-card` is the white `--card`
 # surface, drawn as a cut-out ring round a badge that overlaps something.
 border-border-card border-card
+# Task 23's mint (owner ruling, 2026-09-01) — the fact detail's outputs card
+# head, which --tile-ok / --border-ok flatten into the unit pill below it.
+bg-tile-ok2 border-border-ok2
 # Task 3's colours. `--border-pick` is the sixth of the --border-* family and
 # takes the family's long form, so `border-border-pick`; the three --line-*
 # tokens get both forms, as --line-soft and --line-dashed already do.

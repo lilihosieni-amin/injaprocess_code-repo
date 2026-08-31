@@ -66,7 +66,8 @@ export default {
         conflict: 'var(--conflict)', muted: 'var(--text-muted)', faint: 'var(--text-faint)',
         warm: 'var(--warm)', line: 'var(--line)',
         'tile-v': 'var(--tile-v)', 'tile-v2': 'var(--tile-v2)', 'tile-c': 'var(--tile-c)',
-        'tile-ok': 'var(--tile-ok)', 'tile-warn': 'var(--tile-warn)', 'tile-dead': 'var(--tile-dead)',
+        'tile-ok': 'var(--tile-ok)', 'tile-ok2': 'var(--tile-ok2)',
+        'tile-warn': 'var(--tile-warn)', 'tile-dead': 'var(--tile-dead)',
         'login-bg': 'var(--login-bg)', 'login-orb': 'var(--login-orb)',
         scrim: 'var(--scrim)',
         warn: 'var(--warn)', info: 'var(--info)', 'tile-info': 'var(--tile-info)',
@@ -91,6 +92,7 @@ export default {
         // ring. One token, one name; `border-card` is the white surface.
         'border-danger': 'var(--border-danger)', 'border-dead': 'var(--border-dead)',
         'border-current': 'var(--border-current)', 'border-ok': 'var(--border-ok)',
+        'border-ok2': 'var(--border-ok2)',
         'border-card': 'var(--border-card)',
         // `ink-current`/`ink-proposed`, not `current`/`proposed`: `text-current`
         // is one of Tailwind's own built-ins (currentColor) and shadowing it

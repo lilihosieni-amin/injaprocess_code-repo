@@ -163,6 +163,9 @@ const EXPECTED: Record<string, string | string[]> = {
   'bg-tile-v2': 'var(--tile-v2)',
   'bg-tile-c': 'var(--tile-c)',
   'bg-tile-ok': 'var(--tile-ok)',
+  // Task 23's mint, owner ruling of 2026-09-01: the fact detail's outputs
+  // head is a paler green than the unit pill inside the same card.
+  'bg-tile-ok2': 'var(--tile-ok2)',
   'bg-tile-warn': 'var(--tile-warn)',
   'bg-tile-dead': 'var(--tile-dead)',
   'bg-login-bg': 'var(--login-bg)',
@@ -248,6 +251,7 @@ const EXPECTED: Record<string, string | string[]> = {
   'border-border-dead': 'var(--border-dead)',
   'border-border-current': 'var(--border-current)',
   'border-border-ok': 'var(--border-ok)',
+  'border-border-ok2': 'var(--border-ok2)',
   'border-hair': 'var(--hair)',
   'border-steps-sub-border': 'var(--steps-sub-border)',
   'border-steps-group-border': 'var(--steps-group-border)',
