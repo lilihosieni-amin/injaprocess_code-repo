@@ -53,3 +53,37 @@ export function canGoBack(): boolean {
 export function isProcessView(pathname: string): boolean {
   return /^\/processes\/[^/]+\/(flow|steps)\/?$/.test(pathname)
 }
+
+/**
+ * Which nav-tray entry the pill sits under — §6.0's `inScreen`
+ * (`Inja Panel.dc.html:4787-4788`), which is a **section** test and not a route
+ * comparison.
+ *
+ * ```js
+ * inScreen = (id) => id === 'depts' ? (screen !== 'comments' && !inAdmin && !inFacts)
+ *          : id === 'facts' ? inFacts : screen === 'comments'
+ * ```
+ *
+ * So «دپارتمان‌ها» is lit on the department list, one department, its overview
+ * and all three process views — six routes, one section — and «داده‌های کمّی»
+ * on the facts list and on any entry's detail. `null` is the administration
+ * screens, where the design lights the «مدیریت» trigger instead and neither
+ * tray entry. «صندوق کامنت‌ها», the design's third entry, is not built (R5: no
+ * such screen), so nothing here answers for it.
+ *
+ * This was written as `pathname === n.to` when the second tray entry landed,
+ * which is the same answer **only on `/departments`** — the one route the shell
+ * actually draws this bar on today (`home ? topBar() : crumbStrip()`), and the
+ * one route `shells.test.tsx` grades the pill on. That made the defect both
+ * unreachable and ungradable through a render, which is why the predicate is a
+ * pure function with a test of its own rather than a ternary inside the
+ * component: the day the bar is drawn on a second route, the pill is already
+ * right.
+ */
+export function traySection(pathname: string): string | null {
+  const inSection = (root: string) => pathname === root || pathname.startsWith(`${root}/`)
+  if (inSection('/facts')) return '/facts'
+  // The three administration targets `PanelShell`'s own `adminItems` lists;
+  // `/users/{id}` is inside `/users` by the same section test the tray uses.
+  return ['/users', '/visibility', '/profile'].some(inSection) ? null : '/departments'
+}

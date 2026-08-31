@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest'
-import { canGoBack, isProcessView } from './back'
+import { canGoBack, isProcessView, traySection } from './back'
 
 /** Replace `window.history.state` without navigating, which jsdom's own
  *  `pushState` would also have to be given a URL for. */
@@ -60,5 +60,47 @@ describe('isProcessView', () => {
     expect(isProcessView('/processes/dining-003/flow/extra')).toBe(false)
     expect(isProcessView('/departments/dining')).toBe(false)
     expect(isProcessView('/users')).toBe(false)
+  })
+})
+
+describe('traySection', () => {
+  // §6.0's `inScreen` is a SECTION test, and this is the assertion that says so
+  // — `PanelShell` shipped `pathname === n.to` for one commit, which agrees with
+  // the design on `/departments` and disagrees on every other route in the
+  // section. It could not be caught through a render: the tray is drawn only on
+  // `/departments` (`home ? topBar() : crumbStrip()`), so the one route a
+  // rendered test can reach is the one route the two predicates agree on.
+  it('lights «دپارتمان‌ها» across the whole department section, not just its list', () => {
+    for (const path of [
+      '/departments',
+      '/departments/dining',
+      '/departments/dining/overview',
+      '/processes/dining-003',
+      '/processes/dining-003/flow',
+      '/processes/dining-003/steps',
+    ]) {
+      expect(traySection(path), path).toBe('/departments')
+    }
+  })
+
+  it('lights «داده‌های کمّی» on the facts list and on one entry', () => {
+    // The second is Task 23's route, and it is pinned here rather than left to
+    // that task: a detail screen that arrives with an unlit tray is exactly the
+    // defect this function was written for.
+    expect(traySection('/facts')).toBe('/facts')
+    expect(traySection('/facts/F-00011')).toBe('/facts')
+  })
+
+  it('lights neither on an administration screen, where the design lights «مدیریت»', () => {
+    for (const path of ['/users', '/users/7', '/visibility', '/profile']) {
+      expect(traySection(path), path).toBeNull()
+    }
+  })
+
+  it('does not read a sibling whose name merely starts the same way', () => {
+    // A bare `startsWith` without the separator would put `/factsheet` in the
+    // facts section and `/profiles` in administration.
+    expect(traySection('/factsheet')).toBe('/departments')
+    expect(traySection('/profiles')).toBe('/departments')
   })
 })

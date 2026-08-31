@@ -12,7 +12,7 @@ import { Icon } from '../ui/Icon'
 import { Logo } from '../ui/Logo'
 import { toFa } from '../lib/format'
 import { panelCrumbs } from './crumbs'
-import { canGoBack, isProcessView } from './back'
+import { canGoBack, isProcessView, traySection } from './back'
 import { useScrollMemory } from './scroll'
 
 // §6.0 — the nav tray's shell. These entries *navigate*, so they are links in a
@@ -340,14 +340,18 @@ export function PanelShell({ session }: { session: SessionDescriptor }) {
       <span aria-hidden className="w-px h-s11 mx-s1 bg-border-current max1080:hidden" />
       <nav data-r-nav aria-label="بخش‌های اصلی" className={`${TRAY} max1080:hidden`}>
         {/* §6.0's `navDefs` (`Inja Panel.dc.html:4784`), minus «صندوق کامنت‌ها»:
-            there is no such screen, and R5 draws no entry to one. The pill is
-            computed rather than pinned to «دپارتمان‌ها» — `showTopBar: screen
-            === 'depts'` means only the home entry is ever lit today, and a
-            hard-coded fill would put the violet under the wrong word the moment
-            that changes. `inScreen` (:4787) is the same predicate. */}
+            there is no such screen, and R5 draws no entry to one.
+
+            The pill is computed rather than pinned to «دپارتمان‌ها», because a
+            hard-coded fill puts the violet under the wrong word the moment a
+            second entry exists. `traySection` is §6.0's `inScreen` (:4787), and
+            the important word is SECTION: it lights «دپارتمان‌ها» on all six
+            routes of that section, not on `/departments` alone. This line was
+            `pathname === n.to` for one commit, which is the same answer only on
+            the single route the bar is drawn on — see `shell/back.ts`. */}
         {NAV.map((n) => (
           <Link key={n.to} to={n.to}
-            className={`${TRAY_ITEM} ${pathname === n.to ? 'bg-violet text-card' : 'bg-transparent text-violet'}`}>
+            className={`${TRAY_ITEM} ${traySection(pathname) === n.to ? 'bg-violet text-card' : 'bg-transparent text-violet'}`}>
             {n.label}
           </Link>
         ))}

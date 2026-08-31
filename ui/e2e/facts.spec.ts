@@ -123,6 +123,17 @@ test('facts — the design’s list on the violet field, at three widths', async
     const tracks = await head.evaluate((el) => getComputedStyle(el).gridTemplateColumns)
     expect(tracks).toMatch(/ 34px$/)
     expect(trackCount(tracks)).toBe(6)
+    // **The five ratios, not merely five tracks.** `1fr 1fr 1fr 1fr 1fr 34px`
+    // passes the two lines above and is a different table: the title column is
+    // more than twice the id's, and that proportion is the whole of what
+    // `1.7fr .8fr .9fr 1.1fr 1.1fr` says. The used values are px, so the ratios
+    // come back out of them — normalised against the `.8fr` track, which is the
+    // smallest and therefore the one a rounding error moves most. This is the
+    // design's most conspicuous untokenised value; nothing else can hold it.
+    const px = tracks.split(' ').map(parseFloat)
+    for (const [i, want] of [1.7, 0.8, 0.9, 1.1, 1.1].map((f) => f / 0.8).entries()) {
+      expect(px[i] / px[1], `track ${i} of \`${tracks}\``).toBeCloseTo(want, 1)
+    }
     // …and the row is laid on the SAME six. A head and a body that disagree is
     // the one defect a grid table has that no single cell reveals.
     expect(await row.evaluate((el) => getComputedStyle(el).gridTemplateColumns)).toBe(tracks)
@@ -180,6 +191,15 @@ test('facts — the design’s list on the violet field, at three widths', async
   // The slot's own type ramp (:1064) — 10.5px in `--text-faint`, one line.
   await expect(row.getByText('۴ بی‌پاسخ')).toHaveCSS('font-size', '10.5px')
   await expect(row.getByText('۴ بی‌پاسخ')).toHaveCSS('color', 'rgb(169, 159, 196)')
+
+  /* ---- the chevron disc (:1067) — the row's one piece of furniture, and the
+         cell a reader aims at. Asserted because it is shipped correct and
+         nothing else would notice it drifting. ---- */
+  const disc = row.locator('[data-col="open"] > span')
+  await expect(disc).toHaveCSS('width', '30px')
+  await expect(disc).toHaveCSS('height', '30px')
+  await expect(disc).toHaveCSS('background-color', 'rgb(243, 237, 252)')   // --disc-violet
+  await expect(disc).toHaveCSS('color', 'rgb(74, 37, 169)')                // --violet
 
   /* ---- the row has NO confirm tick (:1052-1070) ---- */
   await expect(row.getByRole('button')).toHaveCount(0)
@@ -265,7 +285,15 @@ test('facts — the four filters, and the link that clears them', async ({ page 
   await expect(rowFor(page, 'پنیر پیتزا')).toBeVisible()
   await search.fill('چیزی که نیست')
   await expect(rows).toHaveCount(0)
-  await expect(page.locator('[data-r-empty]')).toHaveText('با این فیلترها داده‌ای نیست')
+  const empty = page.locator('[data-r-empty]')
+  await expect(empty).toHaveText('با این فیلترها داده‌ای نیست')
+  // :1047 — «emptiness is a fact, not an apology», at the design's own weight:
+  // `44px 20px`, 13px, `--text-faint`, centred. The only state on this screen
+  // with no row to compare it against, so nothing else would catch it drifting.
+  await expect(empty).toHaveCSS('padding', '44px 20px')
+  await expect(empty).toHaveCSS('font-size', '13px')
+  await expect(empty).toHaveCSS('color', 'rgb(169, 159, 196)')
+  await expect(empty).toHaveCSS('text-align', 'center')
 
   // C1 — the coverage line is served and drawn nowhere. Asserted at the end,
   // over the whole screen, because the refusal is about the SCREEN and not

@@ -250,7 +250,19 @@ function FactsBody({ entries }: { entries: FactListRow[] }) {
               </span>
             </Cell>
             <Cell k="confirmation">
-              <span className="flex items-center gap-s3">
+              {/* The design's `gap:7px` (:1060), exact and inline — **not the
+                  nearest rung**. 7px is off the `--space-*` ladder and no token
+                  holds it for this role: `tokens.css:513-544` audits the
+                  design's twenty-two `gap:7px` sites into five roles, mints
+                  `--gap-stat-dot` for one of them and then forbids borrowing it
+                  by name, leaving the chip-row role "the row's to name" and
+                  unnamed. Minting one is closed to a screen task, so the value
+                  is filed as an `UNTOKENISED` candidate for the owner — and
+                  until they name it, an inline `style` is the honest place for
+                  it: it mints nothing, and the alternative (`gap-s3`) is a
+                  design value quietly changed to 6px because 6px had a name.
+                  Same escape hatch, same reason, as `TRACKS` below. */}
+              <span style={{ gap: '7px' }} className="flex items-center">
                 {/* F11 — the state is a word beside the dot, never a colour
                     alone. Two values and two only: `CONF` (:4624) folds red,
                     stub and universal to «تأییدنشده», and the «سه حالت» comment
