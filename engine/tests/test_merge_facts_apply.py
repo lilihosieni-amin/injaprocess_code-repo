@@ -86,6 +86,8 @@ def test_original_moves_to_originals(tmp_path):
     e = d["entries"][0]
     e["data"]["inputs"] = [{"key": "x", "title": "ایکس", "unit": "g",
                             "from": "operator"}]
+    del e["data"]["outputs"][0]["value"]   # Task 9 content check #7: a rule
+                                            # with inputs carries no output value
     e["data"]["expr"] = "v = x"
     e["data"]["lang"] = "feel"
     e["data"]["original"] = "=X6"
@@ -241,6 +243,9 @@ def _freeze(root, name="rules.json", when="2000-01-01T00:00:00Z"):
 def test_delta_carrying_an_original_is_idempotent(tmp_path):
     root = _root(tmp_path); _seed_units(root)
     d = _const_delta()
+    del d["entries"][0]["data"]["outputs"][0]["value"]   # Task 9 content check
+                                                          # #7: inputs != [] ⇒
+                                                          # no output value
     d["entries"][0]["data"].update({"inputs": [{"key": "x", "title": "ایکس",
                                                 "unit": "g", "from": "operator"}],
                                     "expr": "v = x", "lang": "feel",

@@ -42,6 +42,7 @@ from merge_facts import (KIND_FILES, KIND_ORDER, _sheet_identity, canonical_scop
                          collect_leaves, derive_status, facts_dir, find_match,
                          is_open, iter_ref_objects, load_store, save_store,
                          sha256_file)
+from merge_facts.content import check_document
 # `_is_keyed_list` and `keyfn_for` are the ladder's own answers to "is this a
 # list merged member by member, and what matches its members" — a successor's
 # copy walks the same shapes, so they are borrowed rather than restated. The
@@ -343,9 +344,14 @@ def _preconditions(root, store, entries, run_dir):
             out.append(f"{label}: keys are immutable — {match['id']} is keyed "
                        f"{match['key']!r}, this delta carries {entry['key']!r}")
         out.extend(_reference_problems(store, by_temp, entry, label))
-        # ponytail: content pass wired in Task 9 — merge_facts.content
-        # .check_document(entry, "facts-delta.schema.json") lands here, its
-        # messages appended to `out` like any other precondition.
+    # Task 9: the content pass runs once over the whole delta (its checks are
+    # document-wide — e.g. an intra-file unit edge needs the sibling entry),
+    # on `entries` as they stand HERE: canonical scope applied, row keys
+    # derived and `refItems` cells already substituted by `_derive_keys`, but
+    # `{ref}` objects still carrying temp ids (`_rewrite_refs` runs later) —
+    # exactly the shape every other precondition above already reasons about.
+    out.extend(check_document({"schema_version": 1, "entries": entries},
+                              "facts-delta"))
     return out
 
 

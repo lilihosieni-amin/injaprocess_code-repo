@@ -315,11 +315,16 @@ def test_component_sum_shares_drift_past_one_percent(tmp_path):
     root = _root(tmp_path); _seed_units(root)
 
     def yield_rule(outputs):
+        # Task 9 content check #1: expr identifiers must be declared by THIS
+        # delta's own inputs/outputs — derived from whichever `outputs` this
+        # call actually carries, rather than a fixed two-output expr that a
+        # later, single-output delta (below) would no longer match.
+        assigns = "; ".join(f"{o['key']} = input_kg * {o['share']}"
+                            for o in outputs)
         return _entry("T-1", "rule", "butchery", "بازدهی راسته", {
             "inputs": [{"key": "input_kg", "title": "ورودی", "unit": "kg",
                         "from": "operator"}],
-            "outputs": outputs, "lang": "feel",
-            "expr": "steak = input_kg * 0.5; philly = input_kg * 0.5"})
+            "outputs": outputs, "lang": "feel", "expr": assigns})
 
     def out(key, title, share):
         return {"key": key, "title": title, "unit": "kg", "nature": "observed",

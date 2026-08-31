@@ -2,6 +2,13 @@ import argparse
 import sys
 
 from engine_common import read_json, schema_dir, validate
+from merge_facts.content import check_document
+
+# spec §12's `validate facts` paragraph: "need no engine change beyond a
+# content pass after the schema". The schema name (already normalised to its
+# `.schema.json` form below) maps onto `check_document`'s `kind_of_file`.
+CONTENT_PASS_SCHEMAS = {"facts.schema.json": "facts",
+                        "facts-delta.schema.json": "facts-delta"}
 
 
 def main(argv=None):
@@ -23,6 +30,13 @@ def main(argv=None):
     except ValueError as e:
         print(str(e), file=sys.stderr)
         raise SystemExit(2)
+    kind_of_file = CONTENT_PASS_SCHEMAS.get(name)
+    if kind_of_file:
+        findings = check_document(instance, kind_of_file)
+        if findings:
+            for msg in findings:
+                print(msg, file=sys.stderr)
+            raise SystemExit(2)          # same failure surface as a schema mismatch
     print(f"OK: {args.file} conforms to {name}")
     return 0
 
