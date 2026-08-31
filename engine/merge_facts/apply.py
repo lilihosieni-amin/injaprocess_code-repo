@@ -38,10 +38,10 @@ from datetime import datetime, timezone
 
 from allocate_id import next_fact_id
 from engine_common import read_json, validate, write_json_atomic, write_text_atomic
-from merge_facts import (KIND_FILES, KIND_ORDER, _sheet_identity, canonical_scope,
-                         collect_leaves, derive_status, facts_dir, find_match,
-                         is_open, iter_ref_objects, load_store, save_store,
-                         sha256_file)
+from merge_facts import (KEY_RE, KIND_FILES, KIND_ORDER, PROC_ID_RE, SEGMENT_RE,
+                         _sheet_identity, canonical_scope, collect_leaves,
+                         derive_status, facts_dir, find_match, is_open,
+                         iter_ref_objects, load_store, save_store, sha256_file)
 from merge_facts.content import check_document
 # `_is_keyed_list` and `keyfn_for` are the ladder's own answers to "is this a
 # list merged member by member, and what matches its members" — a successor's
@@ -50,11 +50,8 @@ from merge_facts.content import check_document
 from merge_facts.ladder import (TOP_SKIP, UNION_FIELDS, _is_keyed_list,
                                 keyfn_for, merge_entry, would_dispute)
 
-SEGMENT_RE = re.compile(r"^[a-z][a-z0-9]*(_[a-z0-9]+)*$")
-KEY_RE = re.compile(r"^[a-z][a-z0-9]*(_[a-z0-9]+)*(__[a-z][a-z0-9]*(_[a-z0-9]+)*)*$")
 FACT_ID_RE = re.compile(r"^F-[0-9]{5}$")
 TEMP_ID_RE = re.compile(r"^T-[0-9]+$")
-PROC_ID_RE = re.compile(r"^[a-z]+-[0-9]{3}$")
 UNITS_KEY = "units"
 UNKNOWN_UNIT = "—"
 # §10: `pack` and `item.units[]` carry pack sizes, not units — "which the unit
@@ -350,8 +347,11 @@ def _preconditions(root, store, entries, run_dir):
     # derived and `refItems` cells already substituted by `_derive_keys`, but
     # `{ref}` objects still carrying temp ids (`_rewrite_refs` runs later) —
     # exactly the shape every other precondition above already reasons about.
+    # `store` (Task 9 review, F1/F2) lets the expr check's `calls[]` and
+    # aggregate-table-column resolution reach an entry from an EARLIER
+    # applied delta, not just this one — the common QF-12 shared-function case.
     out.extend(check_document({"schema_version": 1, "entries": entries},
-                              "facts-delta"))
+                              "facts-delta", store))
     return out
 
 

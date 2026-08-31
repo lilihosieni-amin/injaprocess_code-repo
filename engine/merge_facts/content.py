@@ -1,17 +1,27 @@
 """`validate facts` / `validate facts-delta` content pass (spec §12's
 `validate facts` paragraph). Schema carries shape and enum membership;
 `check_document` carries what the schema cannot express — cross-field and
-cross-entry consistency **within one file**. Cross-store resolution (a `{ref}`
-naming an entry that lives in the store rather than in this same document) is
-`apply`'s job (its own `_reference_problems`), not this pass's — every check
-below is answered by walking `doc["entries"]` alone.
+cross-entry consistency. Most checks are intra-document only (a `{ref}`
+naming an entry that lives in the store rather than in this same document is
+left alone — `apply`'s own `_reference_problems` already resolves it); two
+of them (the `expr` identifier check's `calls[]` resolution, and the
+aggregate form's table-column identifiers, both under #1) ALSO resolve
+against an optional `store` (Task 9 review, F1/F2) — the standalone CLI never
+has one, so those two stay best-effort there; `apply` passes the store it
+already holds, closing the gap for the common case (a new rule calling an
+already-applied one).
 
 `doc` is a whole file object (`{"schema_version", "entries"}`) — the delta
 `apply` is about to write, or a whole `facts.json`/`facts-delta.json` handed
-to `validate` directly — never a single entry, because two checks need the
-sibling list: unit edges to another entry in the same file (#2), and an
-`expr` identifier resolving to a `calls[]` target's key (#1) both require
-looking a `{ref}` up among `doc["entries"]`.
+to `validate` directly — never a single entry, because several checks need
+the sibling list: unit edges to another entry in the same file (#2), and an
+`expr` identifier resolving to a `calls[]` target's key or an aggregate's
+table column (#1) both start from a `{ref}` walk over `doc["entries"]`.
+`store` is the same shape `merge_facts.load_store` returns
+(`{kind: {"entries": [...]}}`) — never consulted by the two checks above
+unless the document alone leaves an identifier or a `{ref}` unresolved, and
+never consulted at all by any other check (#2's unit edges stay strictly
+intra-file, unchanged from the frozen interface).
 
 `kind_of_file` is `"facts"` or `"facts-delta"` — the one place behaviour
 differs is the constant-rule shape (#7): a delta's verbatim body is still
@@ -20,11 +30,8 @@ and become `data.original_ref` (§4, QF-31).
 """
 import re
 
-from merge_facts import path_exists
+from merge_facts import KEY_RE, KIND_ORDER, PROC_ID_RE, SEGMENT_RE, is_open, path_exists
 
-SEGMENT_RE = re.compile(r"^[a-z][a-z0-9]*(_[a-z0-9]+)*$")
-KEY_RE = re.compile(r"^[a-z][a-z0-9]*(_[a-z0-9]+)*(__[a-z][a-z0-9]*(_[a-z0-9]+)*)*$")
-PROC_ID_RE = re.compile(r"^[a-z]+-[0-9]{3}$")
 JALALI_RE = re.compile(r"^[0-9]{4}-[0-9]{2}(-[0-9]{2})?$")
 
 # §7 FEEL subset keywords — never checked against inputs/outputs/calls.
@@ -40,19 +47,29 @@ RESERVED_ROW_NAMES = frozenset({"key", "title", "unit", "unit_raw", "section",
                                 "supersedes"})
 
 
-def check_document(doc, kind_of_file):
+def check_document(doc, kind_of_file, store=None):
     """Every content-pass message for `doc`, empty when it may pass. Never
     raises on a malformed shape — a missing/wrong-typed field is the schema's
-    job to have already refused; this pass only adds messages."""
+    job to have already refused; this pass only adds messages.
+
+    `store`, when given, extends resolution for check #1 ONLY (`calls[]` and
+    the aggregate form's table columns — F1/F2) beyond `doc["entries"]`;
+    every other check, including #2's unit edges, stays scoped to `doc_by_id`
+    exactly as before — passing `store` must not change their behaviour."""
     entries = doc.get("entries") or []
-    by_id = {e["id"]: e for e in entries if isinstance(e, dict) and e.get("id")}
+    doc_by_id = {e["id"]: e for e in entries if isinstance(e, dict) and e.get("id")}
+    combined_by_id = dict(doc_by_id)
+    if store:
+        for kind in KIND_ORDER:
+            for e in (store.get(kind) or {}).get("entries") or []:
+                combined_by_id.setdefault(e.get("id"), e)
     messages = []
     for entry in entries:
         if not isinstance(entry, dict):
             continue
         label = entry.get("id") or entry.get("key") or "?"
-        _check_expr(entry, by_id, messages, label)
-        _check_unit_edges(entry, by_id, messages, label)
+        _check_expr(entry, combined_by_id, messages, label)
+        _check_unit_edges(entry, doc_by_id, messages, label)
         _check_keys(entry, messages, label)
         _check_process_grammar(entry, messages, label)
         _check_record_shape(entry, messages, label)
@@ -71,12 +88,13 @@ def check_document(doc, kind_of_file):
 # --------------------------------------------------------------------------- #
 
 def _call_keys(by_id, entry):
-    """The keys an `expr` may call, resolved only against `calls[]` members
-    whose `{ref}` names an entry present in THIS document — a call whose
-    target lives in the store rather than the delta is unresolved here (that
-    is cross-store, apply's job), and an identifier that depends on it fails
-    this pass. Decision recorded in the task report: the brief is silent on
-    this exact edge, so an unresolved call rescues nothing."""
+    """The keys an `expr` may call, resolved against `calls[]` members whose
+    `{ref}` names an entry present in `by_id` — this document's own entries
+    always, plus the store's when the caller (`check_document`) was given
+    one (Task 9 review, F1: the common QF-12 shared-function case is a NEW
+    rule calling one from an EARLIER applied delta, which only the store
+    holds). A call that resolves in neither rescues nothing — that identifier
+    fails this pass."""
     out = set()
     for call in (entry.get("data") or {}).get("calls") or []:
         if not isinstance(call, dict):
@@ -85,6 +103,39 @@ def _call_keys(by_id, entry):
         if target and target.get("key"):
             out.add(target["key"])
     return out
+
+
+def _aggregate_spans(expr):
+    """`[(start, end, input_key)]` — the half-open character span of each
+    `sum over <input> of (...)` aggregate's parenthesised body, found right
+    after the `of` (skipping whitespace); `end` is past the matching close
+    paren. No span is produced when the form isn't followed by `(...)` at
+    all — the shape check below still fires on `AGGREGATE_RE` directly, this
+    is only for carving the body out of the generic identifier walk."""
+    spans = []
+    for m in AGGREGATE_RE.finditer(expr):
+        i = m.end()
+        while i < len(expr) and expr[i].isspace():
+            i += 1
+        if i >= len(expr) or expr[i] != "(":
+            continue
+        depth, j = 0, i
+        while j < len(expr):
+            if expr[j] == "(":
+                depth += 1
+            elif expr[j] == ")":
+                depth -= 1
+                if depth == 0:
+                    j += 1
+                    break
+            j += 1
+        spans.append((i, j, m.group(1)))
+    return spans
+
+
+def _target_fields(target):
+    return {f["key"] for f in (target.get("data") or {}).get("fields") or []
+           if isinstance(f, dict) and f.get("key")}
 
 
 def _check_expr(entry, by_id, messages, label):
@@ -97,27 +148,53 @@ def _check_expr(entry, by_id, messages, label):
     # `feel` bullet specifically.
     if not isinstance(expr, str) or not expr or data.get("lang") != "feel":
         return
-    inputs = {i["key"] for i in data.get("inputs") or []
-             if isinstance(i, dict) and i.get("key")}
+    inputs_by_key = {i["key"]: i for i in data.get("inputs") or []
+                     if isinstance(i, dict) and i.get("key")}
     outputs = {o["key"] for o in data.get("outputs") or []
               if isinstance(o, dict) and o.get("key")}
-    allowed = inputs | outputs | _call_keys(by_id, entry)
-    for tok in TOKEN_RE.finditer(expr):
-        text = tok.group()
-        if text[0].isdigit() or text in KEYWORDS or text in allowed:
-            continue
-        messages.append(f"{label}: expr identifier {text!r} is not declared "
-                        f"by inputs, outputs or a resolvable call")
-    for m in AGGREGATE_RE.finditer(expr):
-        input_key = m.group(1)
-        input_def = next((i for i in data.get("inputs") or []
-                          if isinstance(i, dict) and i.get("key") == input_key), None)
-        frm = (input_def or {}).get("from")
-        if not (isinstance(frm, dict) and "ref" in frm and "field" in frm
-                and "row" not in frm):
+    base_allowed = set(inputs_by_key) | outputs | _call_keys(by_id, entry)
+
+    # The aggregate form (§7): "<a>/<b> are columns of that table or inputs
+    # joined on the row key" — so, ONLY inside `(<a> * <b>)`, the referenced
+    # record's declared `fields[].key` are allowed too (F2). When `<input>`'s
+    # shape is wrong, or its target is unresolvable in `by_id` (a standalone
+    # CLI run on a delta whose target lives in the store — `apply` re-runs
+    # this with `store` set and closes the gap then), the body is checked
+    # against `base_allowed` alone rather than skipped outright, EXCEPT the
+    # one case F2 names explicitly: a valid shape with an unresolvable target
+    # skips the body check for that aggregate entirely.
+    spans = _aggregate_spans(expr)
+    for start, end, input_key in spans:
+        frm = (inputs_by_key.get(input_key) or {}).get("from")
+        shape_ok = (isinstance(frm, dict) and "ref" in frm and "field" in frm
+                   and "row" not in frm)
+        if not shape_ok:
             messages.append(f"{label}: aggregate 'sum over {input_key} of' "
                             f"requires {input_key!r}'s from to be "
                             f"{{ref, field}} with no row")
+            body_allowed = base_allowed
+        else:
+            target = by_id.get(frm["ref"])
+            if target is None:
+                continue                  # unresolvable — F2: skip this body
+            body_allowed = base_allowed | _target_fields(target)
+        for tok in TOKEN_RE.finditer(expr[start:end]):
+            text = tok.group()
+            if text[0].isdigit() or text in KEYWORDS or text in body_allowed:
+                continue
+            messages.append(f"{label}: expr identifier {text!r} is not "
+                            f"declared by inputs, outputs, a resolvable "
+                            f"call, or the aggregate's table columns")
+
+    for tok in TOKEN_RE.finditer(expr):
+        s, e = tok.span()
+        if any(s >= a and e <= b for a, b, _ in spans):
+            continue                      # already handled (or skipped) above
+        text = tok.group()
+        if text[0].isdigit() or text in KEYWORDS or text in base_allowed:
+            continue
+        messages.append(f"{label}: expr identifier {text!r} is not declared "
+                        f"by inputs, outputs or a resolvable call")
 
 
 # --------------------------------------------------------------------------- #
@@ -227,10 +304,6 @@ def _check_process_grammar(entry, messages, label):
 #    every non-derived declared field present on every open reference row
 # --------------------------------------------------------------------------- #
 
-def _row_open(row):
-    return not row.get("retired", False) and row.get("valid_to") is None
-
-
 def _check_record_shape(entry, messages, label):
     if entry.get("kind") != "record":
         return
@@ -273,7 +346,7 @@ def _check_record_shape(entry, messages, label):
     if data.get("role") == "reference":
         non_derived = {f["key"] for f in fields if f.get("key") and not f.get("derived")}
         for row in rows:
-            if not _row_open(row):
+            if not is_open(row):
                 continue
             for key in sorted(non_derived):
                 if key not in row:

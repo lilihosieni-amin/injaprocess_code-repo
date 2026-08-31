@@ -121,6 +121,70 @@ def test_aggregate_form_passes_with_whole_table_edge():
     assert check_document(_doc(bom, rule), "facts-delta") == []
 
 
+# --- Task 9 review, F2: aggregate body identifiers also allow the ---------- #
+# --- referenced record's own declared columns (spec's own BOM example) ---- #
+
+def test_aggregate_form_allows_the_target_records_own_columns():
+    # spec §7 verbatim: "standard use = Σ sales × grams per product" over the
+    # BOM — `grams` is a COLUMN of the referenced table, not a rule input.
+    bom = _record(id_="T-2", key="bom", role="reference",
+                  data={"primaryKey": ["product"],
+                        "fields": [{"key": "product", "title": "p",
+                                   "type": "string"},
+                                  {"key": "grams", "title": "g",
+                                   "type": "number", "unit": "g"}],
+                        "rows": [{"key": "p1", "product": "p1", "grams": 10}]})
+    rule = _rule(data={"inputs": [{"key": "bom_row", "title": "b", "unit": "g",
+                                   "from": {"ref": "T-2", "field": "grams"}},
+                                  {"key": "sales", "title": "s", "unit": "pcs",
+                                   "from": "operator"}],
+                       "outputs": [{"key": "standard_use", "title": "su",
+                                   "unit": "g"}],
+                       "lang": "feel",
+                       "expr": "standard_use = sum over bom_row of "
+                              "(sales * grams)"})
+    assert check_document(_doc(bom, rule), "facts-delta") == []
+
+
+def test_aggregate_body_identifier_neither_input_nor_column_fails_when_target_resolvable():
+    bom = _record(id_="T-2", key="bom", role="reference",
+                  data={"primaryKey": ["product"],
+                        "fields": [{"key": "product", "title": "p",
+                                   "type": "string"},
+                                  {"key": "grams", "title": "g",
+                                   "type": "number", "unit": "g"}],
+                        "rows": [{"key": "p1", "product": "p1", "grams": 10}]})
+    rule = _rule(data={"inputs": [{"key": "bom_row", "title": "b", "unit": "g",
+                                   "from": {"ref": "T-2", "field": "grams"}}],
+                       "outputs": [{"key": "total", "title": "t", "unit": "g"}],
+                       "lang": "feel",
+                       "expr": "total = sum over bom_row of (grams * mystery)"})
+    msgs = check_document(_doc(bom, rule), "facts-delta")
+    assert any("mystery" in m for m in msgs)
+
+
+def test_aggregate_target_unresolvable_without_store_resolves_with_store():
+    store = {"record": {"entries": [
+        {"id": "F-00002", "kind": "record", "key": "bom",
+         "data": {"medium": "sheet", "role": "reference",
+                  "location": {}, "primaryKey": ["product"],
+                  "fields": [{"key": "product", "title": "p", "type": "string"},
+                             {"key": "grams", "title": "g", "type": "number",
+                              "unit": "g"}],
+                  "rows": []}}]}}
+    rule = _rule(data={"inputs": [{"key": "bom_row", "title": "b", "unit": "g",
+                                   "from": {"ref": "F-00002", "field": "grams"}},
+                                  {"key": "sales", "title": "s", "unit": "pcs",
+                                   "from": "operator"}],
+                       "outputs": [{"key": "standard_use", "title": "su",
+                                   "unit": "g"}],
+                       "lang": "feel",
+                       "expr": "standard_use = sum over bom_row of "
+                              "(sales * grams)"})
+    assert check_document(_doc(rule), "facts-delta") == []           # skipped, unresolvable
+    assert check_document(_doc(rule), "facts-delta", store) == []    # resolved via store
+
+
 def test_unresolved_call_identifier_fails():
     # A `calls[]` member is `{ref}`; when the target is not in this document
     # (cross-store), its key is unknowable here — decision recorded in the
@@ -146,6 +210,24 @@ def test_intra_document_call_identifier_resolves():
                        "lang": "feel", "expr": "v = helper_fn(x)",
                        "calls": [{"ref": "T-2"}]})
     assert check_document(_doc(helper, rule), "facts-delta") == []
+
+
+# --- Task 9 review, F1: `calls[]` also resolves against an optional `store` - #
+
+def test_call_unresolved_without_store_resolves_with_store():
+    store = {"rule": {"entries": [
+        {"id": "F-00001", "kind": "rule", "key": "helper_fn",
+         "data": {"inputs": [{"key": "a", "title": "a", "unit": "g",
+                              "from": "operator"}],
+                  "outputs": [{"key": "h", "title": "h", "unit": "g"}],
+                  "lang": "feel", "expr": "h = a"}}]}}
+    rule = _rule(data={"inputs": [{"key": "x", "title": "x", "unit": "g",
+                                   "from": "operator"}],
+                       "outputs": [{"key": "v", "title": "v", "unit": "g"}],
+                       "lang": "feel", "expr": "v = helper_fn(x)",
+                       "calls": [{"ref": "F-00001"}]})
+    assert check_document(_doc(rule), "facts-delta") != []           # no store
+    assert check_document(_doc(rule), "facts-delta", store) == []    # with store
 
 
 # --------------------------------------------------------------------------- #
@@ -656,3 +738,81 @@ def test_cli_apply_via_subprocess_still_ok_with_content_pass(tmp_path):
                           | {"SCHEMA_DIR": str(pathlib.Path(__file__).resolve().parents[2] / "schemas"),
                              "SYSTEMROOT": ""})
     assert proc.returncode == 0, proc.stderr
+
+
+# --------------------------------------------------------------------------- #
+# Task 9 review — F1/F2 locking tests: apply passes its store into
+# check_document, so a new delta may call, or aggregate over, an entry an
+# EARLIER delta already applied (the common case both findings were about).
+# --------------------------------------------------------------------------- #
+
+def test_apply_resolves_calls_against_a_rule_from_an_earlier_delta(tmp_path):
+    root = _root(tmp_path)
+    _seed_units(root)
+    helper_delta = {"schema_version": 1, "entries": [
+        {"id": "T-1", "kind": "rule", "key": "helper_fn", "title": "کمکی",
+         "statement": "s", "scope": {"departments": ["cooking"], "branches": []},
+         "source": [{"type": "voice", "ref": "meetings/transcripts/c.txt",
+                     "lines": "1"}],
+         "retired": False,
+         "data": {"inputs": [{"key": "a", "title": "a", "unit": "g",
+                              "from": "operator"}],
+                  "outputs": [{"key": "h", "title": "h", "unit": "g"}],
+                  "lang": "feel", "expr": "h = a"}}]}
+    r1 = apply(root, _write(root, "d1.json", helper_delta), _run_dir(root, "1"))
+    helper_id = r1["id_map"]["T-1"]
+
+    caller_delta = {"schema_version": 1, "entries": [
+        {"id": "T-1", "kind": "rule", "key": "caller_fn", "title": "صدازننده",
+         "statement": "s", "scope": {"departments": ["cooking"], "branches": []},
+         "source": [{"type": "voice", "ref": "meetings/transcripts/c.txt",
+                     "lines": "2"}],
+         "retired": False,
+         "data": {"inputs": [{"key": "x", "title": "x", "unit": "g",
+                              "from": "operator"}],
+                  "outputs": [{"key": "v", "title": "v", "unit": "g"}],
+                  "lang": "feel", "expr": "v = helper_fn(x)",
+                  "calls": [{"ref": helper_id}]}}]}
+    r2 = apply(root, _write(root, "d2.json", caller_delta), _run_dir(root, "2"))
+    assert r2["id_map"]["T-1"]
+
+
+def test_apply_resolves_aggregate_table_columns_against_an_earlier_delta(tmp_path):
+    root = _root(tmp_path)
+    _seed_units(root)
+    bom_delta = {"schema_version": 1, "entries": [
+        {"id": "T-1", "kind": "record", "key": "bom", "title": "بام",
+         "statement": "s", "scope": {"departments": ["cooking"], "branches": []},
+         "source": [{"type": "sheet", "ref": "attachments/sheets/M/M.xlsx"}],
+         "retired": False,
+         "data": {"medium": "sheet", "role": "reference",
+                  "location": {"spreadsheetId": "M", "sheetId": 1,
+                               "sheet": "s", "hidden": False},
+                  "primaryKey": ["product"],
+                  "fields": [{"key": "product", "title": "p", "type": "string"},
+                             {"key": "grams", "title": "g", "type": "number",
+                              "unit": "g"}],
+                  "rows": []}}]}
+    r1 = apply(root, _write(root, "d1.json", bom_delta), _run_dir(root, "1"))
+    bom_id = r1["id_map"]["T-1"]
+
+    # spec §7 verbatim: "standard use = Σ sales × grams per product" over the
+    # BOM — `grams` is the reference record's own column, not a rule input.
+    rule_delta = {"schema_version": 1, "entries": [
+        {"id": "T-1", "kind": "rule", "key": "standard_use",
+         "title": "مصرف استاندارد", "statement": "s",
+         "scope": {"departments": ["cooking"], "branches": []},
+         "source": [{"type": "voice", "ref": "meetings/transcripts/c.txt",
+                     "lines": "1"}],
+         "retired": False,
+         "data": {"inputs": [{"key": "bom_row", "title": "r", "unit": "g",
+                              "from": {"ref": bom_id, "field": "grams"}},
+                             {"key": "sales", "title": "s", "unit": "pcs",
+                              "from": "operator"}],
+                  "outputs": [{"key": "standard_use", "title": "su",
+                              "unit": "g"}],
+                  "lang": "feel",
+                  "expr": "standard_use = sum over bom_row of "
+                         "(sales * grams)"}}]}
+    r2 = apply(root, _write(root, "d2.json", rule_delta), _run_dir(root, "2"))
+    assert r2["id_map"]["T-1"]

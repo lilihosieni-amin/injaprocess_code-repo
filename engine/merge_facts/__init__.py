@@ -2,6 +2,7 @@
 import hashlib
 import json
 import pathlib
+import re
 
 from engine_common import read_json, validate, write_json_atomic
 
@@ -9,6 +10,13 @@ KIND_FILES = {"item": "items.json", "record": "records.json",
               "measurement": "measurements.json", "rule": "rules.json",
               "note": "notes.json"}
 KIND_ORDER = ["item", "record", "measurement", "rule", "note"]
+
+# QF-32's key grammars — shared by `apply` (preconditions, key derivation) and
+# `content` (Task 9's content pass), hoisted here (Task 9 review, F3) so
+# neither redefines them.
+SEGMENT_RE = re.compile(r"^[a-z][a-z0-9]*(_[a-z0-9]+)*$")
+KEY_RE = re.compile(r"^[a-z][a-z0-9]*(_[a-z0-9]+)*(__[a-z][a-z0-9]*(_[a-z0-9]+)*)*$")
+PROC_ID_RE = re.compile(r"^[a-z]+-[0-9]{3}$")
 
 def facts_dir(root):
     return pathlib.Path(root) / "facts"
