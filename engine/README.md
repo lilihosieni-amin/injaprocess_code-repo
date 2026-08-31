@@ -2,13 +2,14 @@
 
 Eight console scripts, installed editable into the repo `.venv` (`pip install -e engine`,
 done automatically by `make test`). All are deterministic and LLM-free except
-`transcribe`, which calls Gemini-on-Vertex behind a seam.
+`transcribe`, and `extract-attachment`'s `.pdf`/image rows, both of which call
+Gemini-on-Vertex behind a seam.
 
 | Command | Job | Key rules |
 |---|---|---|
 | `allocate-id` | the ONLY source of IDs (INV-1) | scan disk, max+1; removed nodes keep their id |
 | `dump-workbook` | the sheets estate's structure → `attachments/sheets/.dump/{spreadsheetId}/` | stdlib-only zip+XML read; `--init-manifest` fills the manifest's mechanical columns, `--manifest` adds `rows.tsv` for confirmed reference tabs; plain cells never dumped (QF-1); missing `- spreadsheetId:` line → exit 2 |
-| `extract-attachment` | department `.docx` attachments → cached `.text/*.txt` | idempotent: an up-to-date cache is left alone |
+| `extract-attachment` | dispatcher (QF-30): `.docx`/`.pdf`/image attachments → cached `.text/*`; `--path <dir>` for any non-department root | hash-gated cache (a `{output}.sha256` sidecar; a touched-but-unchanged source is not reconverted); `.pdf`/image rows go through Vertex (needs the `vertex` extra, else advisory-skipped); `.xlsx` always skipped (dump-workbook's job); exit 0 all converted, exit 3 some skipped but every convertible one converted (advisory — process-voice Stage 5a relays and continues), exit 2 only a precondition failure with nothing written |
 | `layout` | layered flowchart positions (ARD §9) | manual nodes preserved; full vs local re-layout |
 | `merge` | apply candidate/delta, resolve pending | enrich empty-only; conflict→pending (FR-M3); flag-removed never deletes (INV-4); validates against schemas/ before write |
 | `order` | the department's curated process order (ARD §4.6) | sole writer of `order.json`; `show`/`sync`/`check` read or derive, `set`/`move` curate (UI-only — hook-blocked for the runtime); `set` refuses anything but the exact active set; `--all` sweeps every department and exits 2 if any failed |
@@ -17,7 +18,10 @@ done automatically by `make test`). All are deterministic and LLM-free except
 
 Runtime env: `DATA_ROOT` (data location), `SCHEMA_DIR` (optional; defaults to the repo
 `schemas/`), and for `transcribe`: `VERTEX_PROJECT`/`VERTEX_LOCATION`/`GEMINI_MODEL` +
-GCP credentials outside the repos. The real Vertex call has a deferred integration test
-(`-m integration`, skipped) — wire it up when GCP is set up.
+GCP credentials outside the repos. `extract-attachment`'s `.pdf`/image rows share
+`VERTEX_PROJECT`/`VERTEX_LOCATION` and the same credentials, but pin their own model via
+`VERTEX_VISION_MODEL` (separate from `GEMINI_MODEL` so transcription and vision can move
+independently). The real Vertex call has a deferred integration test (`-m integration`,
+skipped) — wire it up when GCP is set up.
 
 Run tests: `make test` (from repo root).
