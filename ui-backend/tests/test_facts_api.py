@@ -402,14 +402,16 @@ def test_the_list_row_carries_exactly_the_declared_columns(data_root, tmp_path):
     body = client.get("/api/facts").json()
     row = next(r for r in body["entries"] if r["id"] == RULE)
     assert set(row) == {"id", "kind", "key", "title", "aliases", "scope",
-                        "status", "retired", "stub", "red_counts", "confirmed",
-                        "updated_at"}
+                        "status", "retired", "stub", "red_counts",
+                        "fingerprint", "confirmed", "updated_at"}
     assert row["kind"] == "rule" and row["key"] == "test_declared_use"
     assert row["title"] == "قانون آزمایشی" and row["aliases"] == ["مصرف اعلامی"]
     assert row["scope"] == {"departments": ["cooking"], "branches": []}
     assert row["status"] == "confirmed"
     assert row["retired"] is False and row["stub"] is False
     assert row["confirmed"] is False
+    assert row["fingerprint"] == fact_fingerprint(
+        next(e for e in ENTRIES if e["id"] == RULE))
     assert row["updated_at"] == "2026-07-06T10:00:00Z"
 
 
@@ -533,7 +535,10 @@ def test_the_bundle_carries_every_map_a_screen_needs(data_root, tmp_path):
     assert set(body) == {"entry", "confirmation", "red_paths", "resolved",
                          "row_titles", "path_labels", "consumers", "processes"}
     assert body["entry"]["id"] == RULE
-    assert body["confirmation"] == {"confirmed": False, "can_confirm": True}
+    assert body["confirmation"] == {
+        "fingerprint": fact_fingerprint(
+            next(e for e in ENTRIES if e["id"] == RULE)),
+        "confirmed": False, "can_confirm": True}
     assert body["red_paths"] == {"unknown": [], "disputed": []}
     # The item the rule reads, and the process it cites, both resolved to their
     # Persian titles — §17's "nothing served is a bare key".
@@ -552,7 +557,12 @@ def test_a_red_entry_cannot_be_confirmed_and_says_so(data_root, tmp_path):
     _plant(data_root)
     client = _client_as(data_root, tmp_path, "editor", "*")
     body = client.get(f"/api/facts/{RECORD}").json()
-    assert body["confirmation"] == {"confirmed": False, "can_confirm": False}
+    # The print is served even for a red entry — the state is reported, and it
+    # is the *endpoint* that refuses the tick with 409.
+    assert body["confirmation"] == {
+        "fingerprint": fact_fingerprint(
+            next(e for e in ENTRIES if e["id"] == RECORD)),
+        "confirmed": False, "can_confirm": False}
     assert body["red_paths"] == {"unknown": ["data/grain"],
                                  "disputed": ["data/cadence"]}
     assert set(body["path_labels"]) == {"data/grain", "data/cadence"}
@@ -563,7 +573,48 @@ def test_an_admin_holds_no_confirm_and_the_bundle_says_so(data_root, tmp_path):
     admin = _client_as(data_root, tmp_path, "admin", "*")
     _confirm(admin, RULE)
     body = admin.get(f"/api/facts/{RULE}").json()
-    assert body["confirmation"] == {"confirmed": True, "can_confirm": False}
+    assert body["confirmation"] == {
+        "fingerprint": fact_fingerprint(
+            next(e for e in ENTRIES if e["id"] == RULE)),
+        "confirmed": True, "can_confirm": False}
+
+
+def test_a_served_fingerprint_round_trips_through_the_confirm_endpoint(
+        data_root, tmp_path):
+    """The point of serving the print at all: the tick has to be **pressable**.
+
+    `POST /api/confirmations/{fid}` refuses any print but the entry's current
+    one (409), and QF-24 forbids the client computing one — so a screen can
+    only act on a print this service handed it. Both surfaces hand one over
+    (which is a pressable tick is a Task 21 design question), so both are
+    round-tripped here rather than only the one that happens to be wired first.
+
+    The 200 is the assertion. A hard-coded string, or a print taken from
+    anywhere but these two bodies, would answer 409 — which is exactly what
+    Task 23 would have hit.
+    """
+    _plant(data_root)
+    client = _client_as(data_root, tmp_path, "editor", "*")
+
+    row = next(r for r in client.get("/api/facts").json()["entries"]
+               if r["id"] == RULE)
+    r = client.post(f"/api/confirmations/{RULE}",
+                    json={"fingerprint": row["fingerprint"]})
+    assert r.status_code == 200, r.text
+    assert r.json()["confirmed"] is True
+
+    # And the bundle's, on a second entry, so neither surface is passing on the
+    # other's work.
+    bundle = client.get(f"/api/facts/{ITEM}").json()
+    r = client.post(f"/api/confirmations/{ITEM}",
+                    json={"fingerprint": bundle["confirmation"]["fingerprint"]})
+    assert r.status_code == 200, r.text
+
+    # And the listing now reports both as confirmed — the state the client was
+    # shown, the act it performed, and the state it is shown next, all keyed on
+    # one string it never computed.
+    rows = {x["id"]: x for x in client.get("/api/facts").json()["entries"]}
+    assert rows[RULE]["confirmed"] is True and rows[ITEM]["confirmed"] is True
 
 
 def test_an_id_that_is_not_in_the_store_is_the_uniform_404(data_root, tmp_path):

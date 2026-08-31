@@ -243,7 +243,10 @@ def list_facts(request: Request, user=Depends(panel_session)):
     **The confirmation state is resolved in one statement** for the whole
     listing (`confirmations.stored_for`), not one query per row: D56 wants the
     records a caller may see filtered in the query and never client-side, and
-    `Disclosure.servable` resolves a department the same way.
+    `Disclosure.servable` resolves a department the same way. Each row carries
+    the entry's current `fingerprint` beside `confirmed`, for the reason
+    `routers/confirmations._row` carries both: a tick drawn from this listing
+    has to be pressable, and QF-24 forbids the client computing a print.
 
     The rows come from `.index.json`, which is what that file is for — the
     flattened, filterable projection of the store — joined to the entries,
@@ -304,6 +307,7 @@ def list_facts(request: Request, user=Depends(panel_session)):
             continue
         if not shown.redact_fact(entry, targets):
             continue
+        now = fact_fingerprint(entry)
         out.append({
             "id": row["id"],
             "kind": entry.get("kind"),
@@ -315,7 +319,14 @@ def list_facts(request: Request, user=Depends(panel_session)):
             "retired": bool(row.get("retired")),
             "stub": bool(row.get("stub")),
             "red_counts": _red_counts(row, entry),
-            "confirmed": mark is not None and mark == fact_fingerprint(entry),
+            # Both, exactly as `routers/confirmations._row` reports both for a
+            # process: `fingerprint` is the entry's **current** print — what a
+            # `POST /api/confirmations/{fid}` must echo — and `confirmed` is
+            # whether the stored mark equals it. Reporting the pair is what lets
+            # a screen show the state and act on it without ever computing a
+            # print of its own, which QF-24 forbids the client doing.
+            "fingerprint": now,
+            "confirmed": mark is not None and mark == now,
             "updated_at": row.get("updated_at"),
         })
     return {"entries": out, "coverage": facts_store.coverage(root)}
@@ -362,6 +373,7 @@ def get_fact(fid: str, request: Request, user=Depends(panel_session)):
     shown = Disclosure(conn, user)
     row = confirmations.get(conn, fid)
     mark = row["fingerprint"] if row is not None else None
+    now = fact_fingerprint(entry)
     if not shown.may_serve_fact(entry, targets, mark):
         raise HTTPException(status_code=404, detail=NOT_FOUND)
     served = shown.redact_fact(entry, targets)
@@ -371,7 +383,13 @@ def get_fact(fid: str, request: Request, user=Depends(panel_session)):
     return {
         "entry": served,
         "confirmation": {
-            "confirmed": mark is not None and mark == fact_fingerprint(entry),
+            # The entry's **current** print, and what a
+            # `POST /api/confirmations/{fid}` must echo — QF-24 forbids the
+            # client computing one, and no other route serves a fact's. Beside
+            # `confirmed` for the reason `routers/confirmations._row` reports
+            # the same pair: the state, and the means to act on it, in one body.
+            "fingerprint": now,
+            "confirmed": mark is not None and mark == now,
             # What the tick may do, not what it would say: `confirm` at every
             # department the entry names (QF-27), and not a red entry — which
             # `POST /api/confirmations/{fid}` answers 409 for, because red wins
