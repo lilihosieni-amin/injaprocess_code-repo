@@ -522,6 +522,87 @@ export const SCREEN_LABELS: Record<string, string> = {
   issue_prefix: 'نقص: {kind}',
   heading_sources: 'منابع',
   heading_processes: 'فرایندهای مرتبط',
+
+  // ── The detail screen's own copy (Task 23).
+  //
+  // **Every string below is the design's own, transcribed verbatim from the
+  // facts-detail markup with its line beside it.** Appendix D names the labels
+  // an enumeration or a field needs; it does not carry the sentences and the
+  // count phrases the detail screen draws around them, and conformance note 9
+  // forbids a component holding a Persian literal. So the words move here
+  // unchanged — this block invents no copy, it only gives the design's copy the
+  // one home the note requires. `{n}` / `{m}` are substituted by the caller.
+  //
+  // Design lines are `ui/design/Inja Panel.dc.html`.
+  row_count: '{n} ردیف',                                   // :1345
+  row_count_live: '{n} فعال از {m}',                       // :4893
+  column_count: '{n} ستون',                                // :1371
+  grid_legend: 'خانهٔ قرمز یعنی مقدارش در منبع ثبت نشده یا سرِ آن اختلاف است', // :1347
+  row_key_column: 'کلید ردیف',                             // :4898
+  column_title_head: 'عنوان ستون',                         // :1376
+  printed_rows_lede:
+    'این {n} قلم از قبل روی برگه نوشته شده‌اند؛ کارمند فقط عدد جلوی هرکدام را پر می‌کند.', // :1406
+  printed_row_unit: 'با چه واحدی',                         // :1419
+  printed_row_section: 'در کدام بخش فرم',                  // :1426
+  printed_row_day: 'چه روزی',                              // :1432
+  printed_row_day_value: 'فقط {n}‌ها پر می‌شود',            // :1433
+  printed_row_open_value: 'اسم قلم روی فرم چاپ نشده — کارمند خودش می‌نویسد', // :1439
+  blank_master_hint: 'ستون‌ها روی برگه چاپ شده‌اند و خانه‌ها خالی‌اند',       // :1465
+  day_boundary_value:
+    'روز کاری تا ساعت {n} بامداد ادامه دارد؛ ثبت بعد از آن مال فردا است',    // :1464
+  section_has_doc: 'شمارهٔ سند خودش را دارد',              // :1496
+  signature_range: 'ردیف {n} را امضا می‌کند',              // :1509
+  movement_value: 'از {n} به {m} — {r}',                    // :1518
+  accounts_lede: 'دو منبع دو چیز می‌گویند. یکی را انتخاب کنید تا فیلد صریح شود.', // :1677
+  measurement_quantity: 'کمیت و واحد',                     // :1623
+  measurement_when_by: 'زمان · توسط',                      // :1634
+  tracked_yes: 'ردیابی می‌شود',                            // :5024
+  tracked_no: 'ردیابی نمی‌شود',                            // :5024
+  location_sheet: 'برگهٔ {n}',                             // :4958
+  location_format: 'قالب {n}',                             // :4960
+
+  // Where a source was read — `sfSources.at` (:4807) and an account's `srcAt`
+  // (:5038), which compose the same five phrases.
+  source_at_sheet: 'برگهٔ {n}',                            // :4807
+  source_at_sheet_cell: 'برگهٔ {n}، خانهٔ {m}',            // :4807
+  source_at_lines: 'خط {n}',                               // :4807
+  source_at_node: 'گرهٔ {n}',                              // :4807
+  source_at_function: 'تابع {n}',                          // :4807
+  source_at_page: 'صفحهٔ {n}',                             // :4807
+
+  // The «متن اصلی» block the owner approved on 2026-08-31 (audit §6.1). The
+  // three sentences are `sfOriginalNote` (:4885), which the design computes and
+  // renders nowhere — one per `lang`, the third for every other value.
+  original_note_gs: 'بدنهٔ اسکریپت عیناً در همین فایل نگه داشته شده است.',
+  original_note_sheets: 'فرمول شیت عیناً در همین فایل نگه داشته شده است.',
+  original_note: 'متن اصلی عیناً در همین فایل نگه داشته شده است.',
+
+  // The tick's own `title` (:1120) — the two hints `sfTickLabel` binds (:5071).
+  tick_hint_confirmed: 'تأییدشده — اثر انگشت با محتوای فعلی می‌خواند',
+  tick_hint_unconfirmed: 'با یک تیک، کل این داده تأیید می‌شود',
+
+  // The other two dialogs of :5073-5078; the confirm one is above.
+  revoke_dialog_title: 'تأیید این داده برداشته شود؟',
+  revoke_dialog_body: 'داده به حالت تأییدنشده برمی‌گردد.',
+  account_dialog_title: 'این روایت انتخاب شود؟',
+  account_dialog_body:
+    'روایت انتخابی «انتخاب‌شده» و بقیه «ردشده» علامت می‌خورند و وضعیت فیلد صریح می‌شود.',
+  // The word on each dialog's affirmative button (:5074-5078). The revoke
+  // dialog's is `revoke` above — «برداشتن تأیید», the act's own name.
+  confirm_dialog_ok: 'تأیید می‌کنم',
+  account_dialog_ok: 'انتخاب می‌کنم',
+
+  // The two placeholders the design puts where a value would be. «؟» is a leaf
+  // the source never answered (:4842, and the record grid's own `؟` at :4909);
+  // «—» is a field the entry does not carry at all. They are different states
+  // and the design draws them differently, so they are two entries.
+  value_unknown: '؟',
+  value_none: '—',
+
+  // «{pct}٪» — the share of an input an output takes (:1318). The design writes
+  // «{pct} از ورودی»; Appendix D gives `share` the label «سهم», which is what
+  // stands in front of it, so this entry carries the sign alone.
+  percent: '{n}٪',
 }
 
 /**

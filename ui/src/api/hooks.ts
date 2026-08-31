@@ -404,6 +404,57 @@ export const useFactBranches = (opts?: { enabled?: boolean }) =>
  * `mutationFn` is typed with it — a caller may read the settled entry straight
  * out of the mutation result while the invalidated query is in flight.
  */
+/**
+ * Vouch for one entry at the fingerprint the caller was shown (QF-24), and
+ * withdraw that mark again (D61).
+ *
+ * **The same endpoint `ConfirmAction` uses**, and deliberately so: QF-24 says
+ * confirmation "reuses `app.db.confirmations`", the target is the entry id
+ * exactly as a process document's target is its id, and
+ * `routers/confirmations._kind` grew a third value for it. Nothing here computes
+ * a fingerprint — the client is forbidden from it (QF-24), so the served one
+ * goes straight back and a stale screen is answered 409 rather than marking
+ * bytes nobody read as reviewed.
+ *
+ * **Its own pair rather than `useSetConfirmation`**, whose `code` parameter is a
+ * *department* and whose invalidation is that department's confirmations listing
+ * and the department board. A fact belongs to neither: what moves when one is
+ * ticked is the entry's own bundle and the facts listing that carries every
+ * entry's `confirmed` flag.
+ *
+ * `onSettled`, not `onSuccess` — the rule `useResolveFact` and
+ * `useSetConfirmation` already follow. The one failure this endpoint has is a
+ * 409, which means the fingerprint on screen is stale *precisely* when the
+ * request failed; refreshing only on success would leave the reviewer
+ * re-submitting the bytes that were already refused.
+ */
+function factConfirmationKeys(qc: ReturnType<typeof useQueryClient>, fid: string) {
+  qc.invalidateQueries({ queryKey: ['fact', fid] })
+  qc.invalidateQueries({ queryKey: ['facts'] })
+}
+
+export function useSetFactConfirmation(fid: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ fingerprint }: { fingerprint: string }) =>
+      fetchJson<Confirmation>(`/api/confirmations/${fid}`,
+        { method: 'POST', body: JSON.stringify({ fingerprint }) }),
+    onSettled: () => { factConfirmationKeys(qc, fid) },
+  })
+}
+
+/** No fingerprint: withdrawing says *"whatever is there is wrong"*, which does
+ *  not depend on which version it was — `useRevokeConfirmation`'s own reasoning,
+ *  and the reason the DELETE takes no body. */
+export function useRevokeFactConfirmation(fid: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () =>
+      fetchJson<Confirmation>(`/api/confirmations/${fid}`, { method: 'DELETE' }),
+    onSettled: () => { factConfirmationKeys(qc, fid) },
+  })
+}
+
 export function useResolveFact(fid: string) {
   const qc = useQueryClient()
   return useMutation({

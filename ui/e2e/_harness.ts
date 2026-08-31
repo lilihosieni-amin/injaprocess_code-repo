@@ -948,6 +948,50 @@ export const DESIGN = {
     // No `lift`: F7's row hover is a FILL (`hover:bg-surface-sub`, the design's
     // own `#FBF9FE`), not a transform — §4.6 lifts cards, not rows inside one.
   },
+
+  /**
+   * Task 23, one entry in full — `Inja Panel.dc.html:1107`, and every number
+   * below is read out of `docs/superpowers/plans/facts-design-audit.md` §1.2
+   * rather than out of the file a second time. Panel only, for the reason
+   * `facts` above is: the reader holds no Panel capability.
+   *
+   * **`body` is the scope line**, not a subtitle under the title: the design
+   * puts «آشپزخانه · چاله‌باغ» in the header chip row (:1114) at `12px` in
+   * `--violet-on-violet`, and it is the one run of secondary type this screen
+   * draws on the field.
+   *
+   * **`grid` is `[data-r-2col]`**, the rule's inputs/outputs pair (:1278) — two
+   * equal columns at `--space-7`, one at ≤760 through the design's own `@media`
+   * block. `fact-detail.spec.ts` therefore calls `expectDesign` on the rule
+   * fixture, which is the only kind that draws it.
+   *
+   * **`card` is the statement card** (:1128) — the one card every kind of entry
+   * draws, at `--radius-doc` with the card hairline and the two-layer neutral
+   * shadow. Its 4px violet inline-start edge does not disturb `border-top-*`,
+   * which is what this record grades.
+   */
+  factDetail: {
+    field: FIELD,
+    // 880px — the audit's `UNTOKENISED` row for it: `--width-doc` is 860 and
+    // `--width-summary` 960, and neither is this.
+    column: '880px',
+    // 880 caps at 1440 and 1080 (1000 available); at 760 the `18px 14px` pass
+    // leaves 732 and the column is uncapped.
+    columnWidth: { 1440: '880px', 1080: '880px', 760: '732px' },
+    padding: { 1440: '26px 40px 40px', 1080: '26px 40px 40px', 760: '18px 14px' },
+    // :1119 — `25px/800` white on the violet field. 25 is `--fs-display-hand`.
+    h1: { size: '25px', weight: '800', color: TITLE_ON_FIELD },
+    body: { size: '12px', color: SUBTITLE_ON_FIELD },
+    grid: {
+      selector: '[data-r-2col]',
+      columns: { 1440: 2, 1080: 2, 760: 1 },
+      gap: '14px',
+    },
+    card: { radius: '18px', shadow: CARD_SHADOW, border: CARD_BORDER, background: SURFACE },
+    // No `focus` and no `lift`, and both by fact rather than by omission: this
+    // screen draws no input at all — every control on it is a button or a link
+    // — and F7's only hover here is the consumer chip's FILL, not a transform.
+  },
 } satisfies Record<string, ScreenDesign>
 
 /* ------------------------------------------------------------------ *

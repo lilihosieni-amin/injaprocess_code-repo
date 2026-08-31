@@ -97,6 +97,28 @@ export function panelCrumbs(pathname: string, deptName: (code: string) => string
   }
 
   /*
+   * `/facts/{fid}` — the entry's own screen.
+   *
+   * **The leaf is the id, not the title, and that is the design's instruction
+   * read literally.** `Inja Panel.dc.html:4766` carries one crumb for the whole
+   * section with a comment saying so in as many words: *«عنوان داده در سرصفحه
+   * با اندازهٔ ۲۵ می‌آید؛ در مسیر راهنما تکرار نمی‌شود»* — the title is drawn
+   * at 25px in the header and is not repeated in the trail. A leaf is needed
+   * all the same: `PanelShell` draws «بازگشت» from `crumbs[length-2]`, so a
+   * two-crumb detail would send it to `/departments` instead of back to the
+   * list. The id is what `/processes/{pid}` already puts in that position
+   * (`mono: true`, the shell's own LTR island), so this borrows a shape the
+   * strip has rather than inventing a Persian word Appendix D does not carry.
+   */
+  if (parts[0] === 'facts' && parts[1] !== undefined) {
+    return [
+      { label: HOME, to: '/departments' },
+      { label: FLAT.facts, to: '/facts' },
+      { label: parts[1], mono: true },
+    ]
+  }
+
+  /*
    * **R41.** The three flat administration screens, and the fix for "some pages
    * don't have it at all".
    *

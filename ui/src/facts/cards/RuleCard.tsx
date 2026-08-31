@@ -1,0 +1,489 @@
+import { useId, useState } from 'react'
+import {
+  AGGREGATE_LABELS, DIVERGENCE_LABELS, FROM_LITERAL_LABELS, HIT_LABELS, NATURE_LABELS,
+  PAYLOAD_FIELD_LABELS, SCREEN_LABELS, label,
+} from '../../lib/factsLabels'
+import { toFa } from '../../lib/format'
+import { Icon } from '../../ui/Icon'
+import {
+  isRule, type FactBundle, type RuleData, type RuleInput, type RuleOutput,
+} from '../../api/types'
+import { refTitle } from '../bundle'
+import {
+  CountBand, DetailCard, Eyebrow, FactGrid, FieldName, HeadBand, LabelRow, Mono, PX, Pill,
+  RefLink, Tag, none, unanswered, type GridCell,
+} from './parts'
+
+/**
+ * The `rule` kind — `Inja Panel.dc.html:1141-1207`, `:1243-1339` and `:1656`.
+ *
+ * **Two components, because the design interleaves one cross-kind card.** The
+ * lifecycle card (:1212) sits *between* the decision table and «نام تابع», so a
+ * single rule component could not be dropped into the screen in the design's own
+ * order. `RuleValueCards` is what stands above the lifecycle card and `RuleCard`
+ * is what stands below it; `FactDetail` renders the three in that order and the
+ * DOM matches the deliverable line for line. Nothing else on the screen is
+ * interleaved — a rule draws no record, item or measurement card, so the edge
+ * cases (:1656) follow the I/O pair directly.
+ *
+ * Titles are the entry's own (`inputs[].title`, `outputs[].title`,
+ * `unit_title`) — conformance note 2 — and every other Persian word comes from
+ * `lib/factsLabels.ts` (note 9).
+ */
+
+/** What a value slot shows: the number itself, «؟» for a `null`, «—» for absent. */
+function valueText(o: RuleOutput): { text: string; unanswered: boolean } {
+  if (o.value === null) return { text: unanswered(), unanswered: true }
+  if (o.value !== undefined) return { text: String(o.value), unanswered: false }
+  if (o.range) return { text: `${o.range.min}–${o.range.max}`, unanswered: false }
+  return { text: none(), unanswered: false }
+}
+
+/** The unit as the entry names it, falling back to the stored symbol (note 2). */
+const unitOf = (f: { unit?: string | null; unit_title?: string }) =>
+  f.unit_title ?? (f.unit ?? undefined) ?? undefined
+
+export function RuleValueCards({ bundle, onOpen }: {
+  bundle: FactBundle; onOpen: (id: string) => void
+}) {
+  const { entry } = bundle
+  if (!isRule(entry)) return null
+  const d = entry.data
+  const constant = (d.inputs ?? []).length === 0
+  return (
+    <>
+      {constant && (d.outputs ?? []).length > 0 && (
+        <ConstantCard bundle={bundle} outputs={d.outputs} onOpen={onOpen} />
+      )}
+      {d.expr !== undefined && d.expr !== '' && <FormulaCard expr={d.expr} />}
+      {d.table !== undefined && <DecisionTable data={d} />}
+    </>
+  )
+}
+
+/** :1142 — one big number per output, with what it is of and where it is written. */
+function ConstantCard({ bundle, outputs, onOpen }: {
+  bundle: FactBundle; outputs: RuleOutput[]; onOpen: (id: string) => void
+}) {
+  return (
+    <DetailCard clip={false} style={PX.card24} className="mt-s10">
+      {outputs.map((o) => {
+        const value = valueText(o)
+        const unit = unitOf(o)
+        const of = refTitle(bundle, o.of)
+        const writes = refTitle(bundle, o.writes_to)
+        return (
+          <div key={o.key}>
+            <div style={PX.gap9} className="flex items-baseline flex-wrap mb-s5">
+              <FieldName title={o.title} name={o.key} />
+            </div>
+            <div className="flex items-baseline gap-s6 flex-wrap">
+              {/* QF-42 — a value is an LTR island in Latin digits. `--fs-numeral`
+                  is 46px and belongs to the department card's ghosted index, so
+                  the design's 44 is written out (`PX.bigValue`). */}
+              <Mono style={PX.bigValue}
+                className={`font-extrabold leading-none ${value.unanswered ? 'text-conflict' : 'text-ink'}`}>
+                {value.text}
+              </Mono>
+              {unit !== undefined && (
+                <span className="text-fs-h5 font-bold text-muted">{unit}</span>
+              )}
+              <span style={PX.gap7} className="ms-auto flex flex-wrap">
+                {o.nature !== undefined && (
+                  <Pill tone="violet">{label(NATURE_LABELS, o.nature)}</Pill>
+                )}
+                {o.per !== undefined && (
+                  <Pill tone="quiet">
+                    {label(PAYLOAD_FIELD_LABELS, 'per')} {o.per}
+                  </Pill>
+                )}
+              </span>
+            </div>
+            {of !== undefined && (
+              <div style={{ ...PX.gap9, ...PX.pt13 }}
+                className="flex items-center flex-wrap mt-s7 border-t border-line-soft">
+                <span style={PX.label70} className="flex-none text-fs-sm2 text-muted">
+                  {label(PAYLOAD_FIELD_LABELS, 'of')}
+                </span>
+                <RefLink named={of} onOpen={onOpen} />
+              </div>
+            )}
+            {writes !== undefined && (
+              <div style={{ ...PX.gap9, ...PX.mt11 }} className="flex items-baseline flex-wrap">
+                <span style={PX.label70} className="flex-none text-fs-sm2 text-muted">
+                  {label(PAYLOAD_FIELD_LABELS, 'writes_to')}
+                </span>
+                <RefLink named={writes} onOpen={onOpen}>
+                  {o.writes_to?.field !== undefined && (
+                    <Mono className="text-fs-micro text-faint">{o.writes_to.field}</Mono>
+                  )}
+                </RefLink>
+              </div>
+            )}
+          </div>
+        )
+      })}
+    </DetailCard>
+  )
+}
+
+/** :1174 — the expression, the one place §17 lets keys stand on their own. */
+function FormulaCard({ expr }: { expr: string }) {
+  return (
+    <DetailCard clip={false} className="mt-s10 p-s10">
+      <div className="flex items-center gap-s4 mb-s7">
+        <span className="text-fs-xxs font-bold text-muted">
+          {label(PAYLOAD_FIELD_LABELS, 'expr')}
+        </span>
+      </div>
+      <Mono style={PX.formula}
+        className="block text-fs-lg leading-looser text-ink bg-surface-sub
+                   border border-border-current rounded-tile overflow-x-auto">
+        {expr}
+      </Mono>
+    </DetailCard>
+  )
+}
+
+/** A decision-table cell. A number stays a Latin island (QF-42); an enumerated
+ *  value has no served label, so the stored word is what there is to show. */
+function tableCell(v: unknown, output: boolean): GridCell {
+  const ink = output ? 'font-extrabold text-violet' : 'font-semibold text-ink'
+  if (v === undefined || v === null) {
+    return {
+      node: <span className={`text-fs-sm ${ink}`}>{label(SCREEN_LABELS, 'table_default')}</span>,
+    }
+  }
+  const text = String(v)
+  const numeric = text !== '' && !Number.isNaN(Number(text))
+  return {
+    node: numeric
+      ? <Mono className={`text-fs-sm ${ink}`}>{text}</Mono>
+      : <span className={`text-fs-sm ${ink}`}>{text}</span>,
+  }
+}
+
+/** :1183 — «جدول تصمیم», its hit rule, its rows and its default band. */
+function DecisionTable({ data }: { data: RuleData }) {
+  const t = data.table
+  if (t === undefined) return null
+  const ins = t.inputs ?? []
+  const outs = t.outputs ?? []
+  const columns = [...ins, ...outs]
+  // Note 2 — a column's head is the rule's own title for that key.
+  const titleOf = (key: string) =>
+    (data.inputs ?? []).find((i) => i.key === key)?.title
+    ?? (data.outputs ?? []).find((o) => o.key === key)?.title
+  const heading = label(SCREEN_LABELS, 'heading_decision_table')
+  return (
+    <DetailCard className="mt-s10">
+      <CountBand>
+        <span className="text-fs-sm font-bold text-ink">{heading}</span>
+        {t.hit !== undefined && <Pill tone="violet">{label(HIT_LABELS, t.hit)}</Pill>}
+        {t.aggregate !== undefined && (
+          <Pill tone="warn">{label(AGGREGATE_LABELS, t.aggregate)}</Pill>
+        )}
+      </CountBand>
+      <FactGrid
+        label={heading}
+        // :4854 — one `minmax(120px,1fr)` per column. No token holds a track.
+        tracks={{ gridTemplateColumns: columns.map(() => 'minmax(120px,1fr)').join(' ') }}
+        head={columns.map((k) => {
+          const title = titleOf(k)
+          return title === undefined
+            ? <Mono key={k}>{k}</Mono>
+            : <span key={k}>{title}</span>
+        })}
+        rows={(t.rows ?? []).map((row, i) => ({
+          key: String(i),
+          cells: [
+            ...ins.map((k) => tableCell(row.when?.[k], false)),
+            ...outs.map((k) => tableCell(row.then?.[k], true)),
+          ],
+        }))}
+      />
+      {t.default !== undefined && (
+        <div className="flex items-center gap-s6 px-s9 py-s6 bg-surface-sub flex-wrap">
+          <span className="flex-none text-fs-caption text-muted">
+            {label(SCREEN_LABELS, 'table_default')}
+          </span>
+          <Mono className="text-fs-sm font-bold text-violet">
+            {Object.entries(t.default).map(([k, v]) => `${k} = ${String(v)}`).join(' · ')}
+          </Mono>
+        </div>
+      )}
+    </DetailCard>
+  )
+}
+
+export function RuleCard({ bundle, onOpen }: {
+  bundle: FactBundle; onOpen: (id: string) => void
+}) {
+  const { entry } = bundle
+  if (!isRule(entry)) return null
+  const d = entry.data
+  const template = refTitle(bundle, d.template_of)
+  const hasIO = (d.inputs ?? []).length > 0
+  return (
+    <>
+      {(d.identifier !== undefined || d.original !== undefined
+        || d.original_ref !== undefined) && (
+        <DetailCard className="mt-s7">
+          {d.identifier !== undefined && (
+            <LabelRow text={label(PAYLOAD_FIELD_LABELS, 'identifier')}
+              last={d.original === undefined && d.original_ref === undefined}>
+              <Mono className="text-fs-lg font-extrabold text-violet">{d.identifier}</Mono>
+            </LabelRow>
+          )}
+          <OriginalBlock original={d.original} ref_={d.original_ref} lang={d.lang} />
+        </DetailCard>
+      )}
+
+      {d.template_of !== undefined && (
+        <DetailCard clip={false} className="mt-s7 px-s9 py-s8">
+          <div className="flex items-center gap-s7 flex-wrap">
+            <span style={PX.label120} className="flex-none text-fs-sm2 text-muted">
+              {label(PAYLOAD_FIELD_LABELS, 'template_of')}
+            </span>
+            <RefLink named={template} onOpen={onOpen} />
+            {d.divergence !== undefined && (
+              <span className={`ms-auto text-fs-xs font-bold ${DIVERGENCE_INK[d.divergence]}`}>
+                {label(DIVERGENCE_LABELS, d.divergence)}
+              </span>
+            )}
+          </div>
+        </DetailCard>
+      )}
+
+      {(d.calls ?? []).length > 0 && (
+        <DetailCard clip={false} className="mt-s7 px-s9 py-s8">
+          <Eyebrow>{label(PAYLOAD_FIELD_LABELS, 'calls')}</Eyebrow>
+          <div className="flex gap-s4 flex-wrap">
+            {(d.calls ?? []).map((c) => {
+              const named = refTitle(bundle, c)
+              return (
+                <button key={c.ref} type="button" style={PX.chip7}
+                  onClick={() => { if (named?.id !== undefined) onOpen(named.id) }}
+                  className="inline-flex items-center gap-button-icon font-sans text-fs-sm2
+                             font-semibold text-ink bg-surface-sub border border-border-current
+                             rounded-input cursor-pointer hover:border-border-pick hover:bg-tile-v2">
+                  <Mono className="text-fs-micro text-muted">{c.ref}</Mono>
+                  {named?.text ?? ''}
+                </button>
+              )
+            })}
+          </div>
+        </DetailCard>
+      )}
+
+      {hasIO && (
+        // :1278 — `[data-r-2col]`, two equal columns collapsing to one at ≤760.
+        <div data-r-2col className="grid grid-cols-2 gap-s7 mt-s7 max760:grid-cols-1">
+          <DetailCard>
+            <IoHead heading="heading_inputs" hint="heading_inputs_hint"
+              fill="bg-tile-v4 border-border-current" ink="text-violet" />
+            {(d.inputs ?? []).map((i) => (
+              <InputRow key={i.key} bundle={bundle} input={i} onOpen={onOpen} />
+            ))}
+          </DetailCard>
+          <DetailCard>
+            {/* Audit §2.1 — the design's outputs head is a paler green than
+                anything the token set holds, over a paler edge, and this task
+                may not mint either; the head takes the affirmative family's own
+                pair instead. Recorded as a deviation. */}
+            <IoHead heading="heading_outputs" hint="heading_outputs_hint"
+              fill="bg-tile-ok border-border-ok" ink="text-green" />
+            {(d.outputs ?? []).map((o) => (
+              <OutputRow key={o.key} bundle={bundle} output={o} onOpen={onOpen} />
+            ))}
+          </DetailCard>
+        </div>
+      )}
+
+      {(d.edge_cases ?? []).length > 0 && (
+        <DetailCard className="mt-s7">
+          <HeadBand>{label(SCREEN_LABELS, 'heading_edge_cases')}</HeadBand>
+          <FactGrid
+            label={label(SCREEN_LABELS, 'heading_edge_cases')}
+            tracks={PX.edgesGrid}
+            headFill="bg-surface-sub"
+            head={[
+              label(PAYLOAD_FIELD_LABELS, 'input'),
+              label(PAYLOAD_FIELD_LABELS, 'expected'),
+              label(PAYLOAD_FIELD_LABELS, 'why'),
+            ]}
+            rows={(d.edge_cases ?? []).map((e, i) => ({
+              key: String(i),
+              cells: [
+                { node: <span className="text-fs-sm2 text-ink leading-sub">{e.input ?? ''}</span> },
+                { node: <span className="text-fs-sm2 font-semibold text-green">{e.expected ?? ''}</span> },
+                { node: <span className="text-fs-caption text-faint">{e.why ?? ''}</span> },
+              ],
+            }))}
+          />
+        </DetailCard>
+      )}
+    </>
+  )
+}
+
+/** :1257 — drift is `--conflict`, an intentional difference `--warn-fg`,
+ *  anything else `--green`. */
+const DIVERGENCE_INK: Record<string, string> = {
+  drift: 'text-conflict',
+  intentional: 'text-warn-fg',
+  none: 'text-green',
+  unknown: 'text-green',
+}
+
+/** :1281 / :1307 — the two heads of the I/O pair, a heading over a hint. */
+function IoHead({ heading, hint, fill, ink }: {
+  heading: string; hint: string; fill: string; ink: string
+}) {
+  return (
+    <div className={`px-s9 py-s7 border-b ${fill}`}>
+      <div className={`text-fs-sm font-extrabold ${ink}`}>{label(SCREEN_LABELS, heading)}</div>
+      <div className="text-fs-xs text-muted leading-sub mt-s2">{label(SCREEN_LABELS, hint)}</div>
+    </div>
+  )
+}
+
+function InputRow({ bundle, input, onOpen }: {
+  bundle: FactBundle; input: RuleInput; onOpen: (id: string) => void
+}) {
+  const unit = unitOf(input)
+  const literal = typeof input.from === 'string' ? input.from : undefined
+  const from = typeof input.from === 'object' ? refTitle(bundle, input.from) : undefined
+  const via = refTitle(bundle, input.via)
+  return (
+    <div className="px-s9 py-s7 border-b border-line-row">
+      <div title={input.key} className="flex items-baseline gap-s4 flex-wrap">
+        <FieldName title={input.title} name={input.key} />
+        {unit !== undefined && <Tag tone="violet2">{unit}</Tag>}
+      </div>
+      <div style={PX.mt7} className="flex items-baseline gap-s3 flex-wrap">
+        <span className="text-fs-sm2 text-muted">{label(PAYLOAD_FIELD_LABELS, 'from')}</span>
+        {literal !== undefined
+          ? <span className="text-fs-sm2 font-bold text-muted">
+            {label(FROM_LITERAL_LABELS, literal)}
+          </span>
+          : <RefLink named={from} onOpen={onOpen} className="text-fs-sm2" />}
+        {via !== undefined && (
+          <>
+            <span className="text-fs-sm2 text-muted">{label(PAYLOAD_FIELD_LABELS, 'via')}</span>
+            <RefLink named={via} onOpen={onOpen} className="text-fs-sm2" />
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function OutputRow({ bundle, output, onOpen }: {
+  bundle: FactBundle; output: RuleOutput; onOpen: (id: string) => void
+}) {
+  const unit = unitOf(output)
+  const of = refTitle(bundle, output.of)
+  const writes = refTitle(bundle, output.writes_to)
+  return (
+    <div className="px-s9 py-s7 border-b border-line-row">
+      <div title={output.key} className="flex items-baseline gap-s4 flex-wrap">
+        <FieldName title={output.title} name={output.key} />
+        {unit !== undefined && <Tag tone="ok">{unit}</Tag>}
+        {output.share !== undefined && (
+          <Tag tone="violet2">
+            {label(PAYLOAD_FIELD_LABELS, 'share')}{' '}
+            {label(SCREEN_LABELS, 'percent')
+              .replace('{n}', toFa(Math.round(output.share * 1000) / 10))}
+          </Tag>
+        )}
+      </div>
+      {output.nature !== undefined && (
+        <div style={PX.mt7} className="text-fs-sm2 text-muted">
+          {label(NATURE_LABELS, output.nature)}
+        </div>
+      )}
+      {of !== undefined && (
+        <div className="flex items-center gap-s3 mt-s3 flex-wrap">
+          <span style={PX.label96} className="flex-none text-fs-caption text-faint">
+            {label(PAYLOAD_FIELD_LABELS, 'of')}
+          </span>
+          <RefLink named={of} onOpen={onOpen} className="text-fs-caption" />
+        </div>
+      )}
+      {writes !== undefined && (
+        <div className="flex items-baseline gap-s3 mt-s3 flex-wrap">
+          <span style={PX.label96} className="flex-none text-fs-caption text-faint">
+            {label(PAYLOAD_FIELD_LABELS, 'writes_to_output')}
+          </span>
+          <RefLink named={writes} onOpen={onOpen} className="text-fs-caption">
+            {output.writes_to?.field !== undefined && (
+              <Mono className="text-fs-nano text-faint">{output.writes_to.field}</Mono>
+            )}
+          </RefLink>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * «متن اصلی» — **the owner's decision of 2026-08-31** (facts-design-audit §6.1),
+ * and conformance note 8's "reachable as a collapsed block".
+ *
+ * Closed by default is part of the decision and not a detail: the block holds a
+ * raw formula or a script body, which is the one place §17 lets keys stand on
+ * their own, and it must not push the entry's Persian off the first screen.
+ *
+ * The design computes `sfHasOriginalRef` / `sfOriginalRef` (:4883) and
+ * `sfOriginalNote` (:4885) and renders none of them; this is the card they were
+ * computed for, beside the «نام تابع» row that is the only other consumer of
+ * `rl.original*`. The note is the design's own sentence, one per `lang`.
+ */
+function OriginalBlock({ original, ref_, lang }: {
+  original?: string; ref_?: string; lang?: string
+}) {
+  const [open, setOpen] = useState(false)
+  const panelId = useId()
+  if (original === undefined && ref_ === undefined) return null
+  const note = lang === 'gs' ? 'original_note_gs'
+    : lang === 'sheets' ? 'original_note_sheets' : 'original_note'
+  return (
+    <div>
+      <button type="button" onClick={() => setOpen(!open)} aria-expanded={open}
+        aria-controls={open ? panelId : undefined}
+        className="w-full min-h-touch flex items-center gap-s7 px-s9 py-s6
+                   bg-transparent border-0 cursor-pointer text-start">
+        <span style={PX.label120} className="flex-none text-fs-sm2 text-muted">
+          {label(PAYLOAD_FIELD_LABELS, 'original')}
+        </span>
+        {/* The chevron sits at the inline END of the row, as every disclosure in
+            this app draws it (`src/ui/Accordion.tsx`), with the label's own
+            120px column on the start — the width the card's other row keeps. */}
+        <span aria-hidden
+          className={`ms-auto flex-none flex text-muted transition-transform duration-chev
+                      ease-css ${open ? 'rotate-90' : 'rotate-0'}`}>
+          <Icon name="chevronEnd" px={14} stroke={2.4} />
+        </span>
+      </button>
+      {open && (
+        <div id={panelId} className="px-s9 pb-s6">
+          {original !== undefined && (
+            <Mono style={PX.formula}
+              className="block text-fs-sm2 leading-looser text-ink bg-surface-sub
+                         border border-border-current rounded-tile overflow-x-auto
+                         whitespace-pre-wrap">
+              {original}
+            </Mono>
+          )}
+          {ref_ !== undefined && (
+            <Mono className="block text-fs-xs text-muted mt-s4">{ref_}</Mono>
+          )}
+          <p className="text-fs-sm2 text-muted leading-sub m-0 mt-s4">
+            {label(SCREEN_LABELS, note)}
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}

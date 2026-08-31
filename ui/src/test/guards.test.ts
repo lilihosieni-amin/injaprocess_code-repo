@@ -429,6 +429,14 @@ describe('F10 — RTL is structural', () => {
       // (`Inja Panel.dc.html:1056`). The screen's other latin content is the
       // filter machinery's stored values, none of which is rendered.
       'src/facts/FactsList.tsx',
+      // The fact detail's TWO islands, and only two — every mono run on that
+      // screen (a key, a code, a value, a formula, a file path, an id) goes
+      // through `Mono`, and an account's verbatim `statement` through
+      // `Statement`, which picks the direction from whether the string holds
+      // Persian (`Inja Panel.dc.html:1687`). Eight card files draw those runs
+      // and not one of them writes the attribute, which is the point of routing
+      // them through one module.
+      'src/facts/cards/parts.tsx',
       // The policy version digest, a mono latin run that can hold a `-` or a `_`
       // and bidi-reorders inside the Persian sentence around it. Not the label
       // beside it — that used to sit inside the same `font-mono` span and fell

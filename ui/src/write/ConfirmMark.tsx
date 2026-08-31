@@ -19,7 +19,7 @@ import type { Confirmation } from '../api/types'
  *  *try again*, which would send the editor back at the very bytes that were
  *  refused. Written here rather than echoed from the response body so the
  *  distinction is this component's and can be tested as this component's. */
-const MOVED = 'این محتوا از زمانی که آن را دیدید تغییر کرده است؛ دوباره بررسی کنید.'
+export const MOVED = 'این محتوا از زمانی که آن را دیدید تغییر کرده است؛ دوباره بررسی کنید.'
 /** What a 403 means — settled too, and for the same reason not phrased as a retry.
  *
  *  Two things answer 403 on these routes and the status cannot tell them apart:
@@ -33,9 +33,9 @@ const MOVED = 'این محتوا از زمانی که آن را دیدید تغ�
  *  Deliberately does not name the tombstone. Echoing the server's own sentence
  *  would tell an editor their process was deleted when in fact their permissions
  *  moved; reloading is the one act that is right for both. */
-const GONE = 'این مورد دیگر قابل تأیید نیست؛ صفحه را تازه کنید.'
+export const GONE = 'این مورد دیگر قابل تأیید نیست؛ صفحه را تازه کنید.'
 /** Everything else: a 5xx, a dropped connection, a body that would not parse. */
-const FAILED = 'انجام نشد؛ دوباره تلاش کنید.'
+export const FAILED = 'انجام نشد؛ دوباره تلاش کنید.'
 
 /**
  * Whether an Editor has vouched for this exact document, and the two acts that

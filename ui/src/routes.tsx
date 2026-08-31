@@ -12,6 +12,7 @@ import { Users } from './screens/Users'
 import { UserDetail } from './screens/UserDetail'
 import { Profile } from './screens/Profile'
 import { FactsList } from './facts/FactsList'
+import { FactDetail } from './facts/FactDetail'
 
 export const appRoutes: RouteObject[] = [
   { path: '/login', element: <SignIn /> },
@@ -40,6 +41,10 @@ export const appRoutes: RouteObject[] = [
       // the catch-all below sends every unknown path to /departments, so a
       // missing route is a silent redirect and not a blank page.
       { path: '/facts', element: <FactsList /> },
+      // §14's detail screen. A sibling rather than a child route: it replaces
+      // the list rather than sitting inside it, exactly as `/users/:id` does,
+      // and react-router matches by specificity so `/facts` is not swallowed.
+      { path: '/facts/:fid', element: <FactDetail /> },
       { path: '/visibility', element: <Visibility /> },
       { path: '/users', element: <Users /> },
       // Before nothing and after nothing in particular: react-router matches by
