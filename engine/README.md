@@ -1,12 +1,13 @@
 # engine/ — deterministic CLIs (ARD §8)
 
-Seven console scripts, installed editable into the repo `.venv` (`pip install -e engine`,
+Eight console scripts, installed editable into the repo `.venv` (`pip install -e engine`,
 done automatically by `make test`). All are deterministic and LLM-free except
 `transcribe`, which calls Gemini-on-Vertex behind a seam.
 
 | Command | Job | Key rules |
 |---|---|---|
 | `allocate-id` | the ONLY source of IDs (INV-1) | scan disk, max+1; removed nodes keep their id |
+| `dump-workbook` | the sheets estate's structure → `attachments/sheets/.dump/{spreadsheetId}/` | stdlib-only zip+XML read; `--init-manifest` fills the manifest's mechanical columns, `--manifest` adds `rows.tsv` for confirmed reference tabs; plain cells never dumped (QF-1); missing `- spreadsheetId:` line → exit 2 |
 | `extract-attachment` | department `.docx` attachments → cached `.text/*.txt` | idempotent: an up-to-date cache is left alone |
 | `layout` | layered flowchart positions (ARD §9) | manual nodes preserved; full vs local re-layout |
 | `merge` | apply candidate/delta, resolve pending | enrich empty-only; conflict→pending (FR-M3); flag-removed never deletes (INV-4); validates against schemas/ before write |

@@ -306,10 +306,21 @@ def _process_link(walk):
     return items
 
 
+DUMP_BOOKKEEPING = ("sheet", "row")
+
+
 def _dump_rows(root, spreadsheet_id, sheet):
     """The latest dump's `rows.tsv` for one workbook, as dicts keyed by its
     header, narrowed to one tab when the dump names the tab (Appendix C).
-    `None` when the workbook has no dump at all."""
+    `None` when the workbook has no dump at all.
+
+    `dump-workbook` writes one file per workbook — `sheet`, `row`, then one
+    column per header cell of every dumped reference tab. The first two are
+    bookkeeping and are dropped once they have done their narrowing: they are
+    not cells, and a store row keyed `2` or `پیتزا` must not be counted present
+    because a row index or a tab name happens to say so. (The dumper never mints
+    a reference column called `sheet` or `row`, so nothing else is lost.)
+    """
     path = (root / "attachments" / "sheets" / ".dump" / spreadsheet_id
             / "rows.tsv")
     if not path.is_file():
@@ -322,7 +333,8 @@ def _dump_rows(root, spreadsheet_id, sheet):
     rows = [dict(zip(header, line.split("\t"))) for line in lines[1:]]
     if sheet and "sheet" in header:
         rows = [r for r in rows if r.get("sheet") == sheet]
-    return rows
+    return [{k: v for k, v in row.items() if k not in DUMP_BOOKKEEPING}
+            for row in rows]
 
 
 def _item_labels(walk):

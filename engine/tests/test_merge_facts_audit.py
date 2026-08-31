@@ -100,10 +100,11 @@ def _workbook(sid, short):
             "branches": [], "reference_tabs": [], "confirmed": True}
 
 
-def _reference_record(tid="T-1", key="mavad__pizza", sid="M", rows=None):
+def _reference_record(tid="T-1", key="mavad__pizza", sid="M", rows=None,
+                      sheet="پیتزا"):
     return _entry(tid, "record", key, "ب.او.ام پیتزا", {
         "medium": "sheet", "role": "reference",
-        "location": {"spreadsheetId": sid, "sheetId": 2, "sheet": "پیتزا",
+        "location": {"spreadsheetId": sid, "sheetId": 2, "sheet": sheet,
                      "hidden": False},
         "grain": "یک ردیف برای هر ماده",
         "fields": [{"key": "code", "title": "کد", "type": "string"},
@@ -262,6 +263,46 @@ def test_row_gone_needs_a_dump_and_reports_dump_missing_without_one(tmp_path):
     found = _of(audit(root), "row_gone")
     assert "dump_missing" not in _codes(audit(root))
     assert len(found) == 1 and "prod_62" in found[0]["message"]
+
+
+def test_the_dumps_bookkeeping_columns_are_not_cells(tmp_path):
+    """`rows.tsv` is one file per workbook: `sheet`, `row`, then the tab's own
+    columns (Appendix C). The first two narrow the read and are then dropped —
+    a row keyed for the tab name or a row index is not a row that is *in* the
+    dump, and reporting it present would hide a withdrawn definition."""
+    root = _root(tmp_path); _seed_units(root)
+    _apply(root, [_reference_record(rows=[
+        {"key": "named_for_the_tab", "code": "پیتزا", "grams": 1},
+        {"key": "named_for_a_row_index", "code": "2", "grams": 2}])], "1")
+    dump = root / "attachments" / "sheets" / ".dump" / "M"
+    dump.mkdir(parents=True)
+    (dump / "rows.tsv").write_text("sheet\trow\tcode\tgrams\nپیتزا\t2\tprod_61\t250\n",
+                                   encoding="utf-8")
+    gone = {f["message"] for f in _of(audit(root), "row_gone")}
+    assert len(gone) == 2, gone
+
+
+def test_a_real_dump_of_a_reference_tab_reads_back_row_by_row(tmp_path):
+    """The dumper and this reader are one contract: what `dump-workbook` writes
+    for a confirmed reference tab is what `audit` narrows and matches."""
+    from dump_workbook import dump_workbook
+    from fixtures.make_workbook import make_workbook
+
+    root = _root(tmp_path); _seed_units(root)
+    book = make_workbook(root / "attachments" / "sheets" / "Mavad" / "M.xlsx",
+                         spreadsheet_id="M")
+    dump_workbook(book, book.with_name("M.structure.md"),
+                  root / "attachments" / "sheets" / ".dump",
+                  reference_tabs=["مواد اولیه"])
+    rows = audit_mod._dump_rows(root, "M", "مواد اولیه")
+    assert [r["کد"] for r in rows] == ["prod_61", "prod_62", "prod_63"]
+    assert "sheet" not in rows[0] and "row" not in rows[0]
+
+    _apply(root, [_reference_record(sid="M", sheet="مواد اولیه", rows=[
+        {"code": "prod_61", "grams": 250},
+        {"code": "prod_99", "grams": 10}])], "1")
+    found = _of(audit(root), "row_gone")
+    assert len(found) == 1 and "prod_99" in found[0]["message"]
 
 
 def test_retired_row_live_edges(tmp_path):
