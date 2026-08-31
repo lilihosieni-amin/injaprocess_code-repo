@@ -22,10 +22,21 @@
  * registry, branches from `GET /api/facts/branches`, units from the entry's own
  * served `unit_title`.
  *
- * `factsLabels.test.ts` reads `facts.schema.json`, `manifest.schema.json` and
- * `facts-run-meta.schema.json` and asserts every `enum` member and `const` in
- * them has a label here. **A value added to a schema without a label fails the
- * build** rather than leaking an English word onto a Persian screen.
+ * `factsLabels.test.ts` reads the five schemas that mention a fact and asserts
+ * every `enum` member and `const` in them has a label here. **A value added to
+ * one of those enumerations without a label fails the build** rather than
+ * leaking an English word onto a Persian screen.
+ *
+ * **Know how far that reaches.** The walk finds 118 members across the five
+ * files, which are 37 distinct values — the five
+ * kinds, the five statuses, the two `field_status` values, the eleven source
+ * types, the three account statuses, the seven issue kinds, the four fix ops
+ * and the three run origins. It does **not** cover the payload enumerations —
+ * `category`, `state`, `medium`, `role`, `cadence`, `fields[].type`,
+ * `quantity`, `nature`, `lang`, `hit`, `aggregate`, `divergence` — because
+ * `facts.schema.json` types `data` as an unconstrained object (`:104`) and
+ * freezing a key set there would freeze the store. Those maps are transcribed
+ * from Appendix D and §7 and are guarded by review, not by the test.
  */
 
 /** The five kinds (§7). */
@@ -312,6 +323,12 @@ export const ENVELOPE_FIELD_LABELS: Record<string, string> = {
  *   the top-level `value` and with the `record` kind.
  */
 export const PAYLOAD_FIELD_LABELS: Record<string, string> = {
+  // `fields[].title` / `key` — the same two words `ENVELOPE_FIELD_LABELS`
+  // carries for the entry itself, and needed on both maps because a caller
+  // renders a column's field names from this one and `label()` throws in dev
+  // on a key that is not on the map it was handed.
+  title: 'عنوان',
+  key: 'کلید',
   inputs: 'ورودی‌ها',
   outputs: 'خروجی‌ها',
   expr: 'فرمول',
@@ -439,6 +456,11 @@ export const SCREEN_LABELS: Record<string, string> = {
   cancel: 'انصراف',
   consumers: 'استفاده‌کنندگان',
   raw_view: 'نمای خام (فقط‌خواندنی)',
+  // What a `{ restricted: true }` neighbour renders instead of a name — the
+  // owner's ruling of 2026-08-31, *keep the row, hide the name*.
+  // `routers/facts.py:345` states that this string is the UI's and comes from
+  // this file; it is in Appendix D under *Screens, row classes and actions*.
+  restricted_neighbour: 'خارج از دسترسی شما',
 
   // the four filters, in the design's own order (Inja Panel.dc.html:4640)
   filter_kind: 'نوع',

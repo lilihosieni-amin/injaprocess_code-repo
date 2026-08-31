@@ -21,8 +21,10 @@ Regions read for this audit:
 | mock data the design renders | `ui/design/mock/facts/api/*.json` |
 
 Nothing in this file is invented. Where the design has no home for something
-the spec or the plan asks for, it is listed in **§6 Consult items** and
-**not drawn**.
+the spec or the plan asks for, it went to the user as a consult item. **All
+five came back answered on 2026-08-31 and §6 now records the decisions** — two
+refused and to be left undrawn, two approved with the shape she gave them, one
+settled. §6 is authority for Tasks 22–24; nothing in it is still open.
 
 ---
 
@@ -70,7 +72,7 @@ the spec or the plan asks for, it is listed in **§6 Consult items** and
 | row · note line | | shown on `{{ r.hasNote }}`: `font-size:10.5px;color:#a99fc4;margin-top:4px`, ellipsis — **the node exists, the binding does not; see §5** |
 | row · chevron | | `width:30px;height:30px;border-radius:50%;background:#F3EDFC;color:#4A25A9`; icon 14×14 `stroke-width="2.4"` `M15 18l-6-6 6-6` |
 
-Filter definitions (`fFilterDefs`, 4640–4645) — four, in this order:
+Filter definitions (`fFilterDefs`, 4637–4642) — four, in this order:
 
 | key | blank label | options |
 |---|---|---|
@@ -80,7 +82,7 @@ Filter definitions (`fFilterDefs`, 4640–4645) — four, in this order:
 | `fconf` | وضعیت تأیید | `CONF` — «تأییدشده» / «تأییدنشده» |
 
 The blank option is prepended to every menu with the blank label as its text.
-Search matches `title` by substring and `id` case-insensitively (4648).
+Search matches `title` by substring and `id` case-insensitively (4645).
 
 ### 1.2 Detail screen (`isFactDetail`, markup 1107–1750)
 
@@ -131,7 +133,7 @@ Card shadow is the list's, everywhere. Card border is
 | confirm button | `background:{factAsk.okBg};color:#fff` |
 | cancel button | `border:1.5px solid #E3D8F5;background:#fff;color:#4A25A9` — «انصراف» |
 
-Three dialogs the design opens (4996, 5073–5078):
+Three dialogs the design opens (5042, 5073–5078):
 
 | trigger | title | body | ok | okBg |
 |---|---|---|---|---|
@@ -139,7 +141,7 @@ Three dialogs the design opens (4996, 5073–5078):
 | revoke | تأیید این داده برداشته شود؟ | داده به حالت تأییدنشده برمی‌گردد. | برداشتن تأیید | `#FA5A52` |
 | choose account | این روایت انتخاب شود؟ | روایت انتخابی «انتخاب‌شده» و بقیه «ردشده» علامت می‌خورند و وضعیت فیلد صریح می‌شود. | انتخاب می‌کنم | `#4A25A9` |
 
-### 1.4 The confirmation map (4624–4630)
+### 1.4 The confirmation map (4624–4631)
 
 ```
 CONF = {
@@ -247,14 +249,14 @@ Each row is what a component must do *instead of* what the design does.
 | note | the design does | the implementation must |
 |---|---|---|
 | 1 | `factRow` (4650–4653) emits only `chipLabel/chipFg/dot/staleStrike`; the `r.hasNote` slot at 1063–1064 is never populated | populate that slot: red counts «{n} بی‌پاسخ · {n} متعارض» from the served `red_counts`, and «پیش‌ثبت» / «بازنشسته» badges from `stub` / `retired`. Chip stays two-valued and carries none of it |
-| 2 | Persian titles from the inline `KEY_FA` (4694), `UNIT_FA` (4680), `GROUP_FA` (4684), `ENUM_FA` (4687), `WD_FA`, `NATURE_FA`, `LEAF_FA` (4720) dictionaries | take titles from the served data: `inputs[].title` / `outputs[].title` / `fields[].title` / `unit_title`, and the bundle's `resolved` / `row_titles` / `path_labels`. Measurement «ثبت در» renders the record's title and the column title, not `F-00011 end_stock` (design: 5027 renders `sfMeasWrId` + `sfMeasWrField` raw) |
+| 2 | Persian titles from the inline `KEY_FA` (4696), `UNIT_FA` (4680), `GROUP_FA` (4684), `ENUM_FA` (4688), `WD_FA`, `NATURE_FA`, `LEAF_FA` (4716) dictionaries | take titles from the served data: `inputs[].title` / `outputs[].title` / `fields[].title` / `unit_title`, and the bundle's `resolved` / `row_titles` / `path_labels`. Measurement «ثبت در» renders the record's title and the column title, not `F-00011 end_stock` (design: 5027 renders `sfMeasWrId` + `sfMeasWrField` raw) |
 | 3 | `sfRecFields` (4978–4980) paints «واحد ثبت نشده» red on **every** numeric column without a `unit` when `role` is not `config`/`reference` | red is the served `red_paths` and nothing else. An omitted `unit` is "not applicable"; only `unit: null` is «بی‌پاسخ» |
 | 4 | `sfAccounts` (5031) is a flat list of open accounts, no grouping, no `speaker_role` | group by disputed field under the field's `path_labels` label; show `speaker_role` on each account |
-| 5 | the list shows every entry to every role (`shownFacts`, 4646) | the list is what the server serves — `may_serve`-filtered for an admin (QF-23). The client filters nothing on visibility |
+| 5 | the list shows every entry to every role (`shownFacts`, 4644) | the list is what the server serves — `may_serve`-filtered for an admin (QF-23). The client filters nothing on visibility |
 | 6 | «محل» (1452–1454) puts `sfRecLocExtra` — «شناسهٔ فایل {spreadsheetId}» — a Persian label inside an `dir="ltr"` mono span | the «محل» row carries no bidi mix; the spreadsheet id lives in the footer chip only |
 | 7 | only the tombstoned-process class is drawn (`p.tomb`, 1723) | draw every orphan class of Appendix D: «ارجاع بی‌مقصد», «منبع تغییرکرده», «اشاره به فرایند بازنشسته (جایگزین: {heir})», «گرهٔ ارجاع‌شده حذف شده» (the last from the bundle's `processes[].missing_nodes`) |
-| 8 | `excRows`/`sfHasExceptions`/`sfFields` (4673, 5044–5045) are computed and **rendered nowhere** | draw the `field_status` markers («استنباطی» / «عرفی») on the field; an issue shows its `from_date`, `fix` and `affects`. **`original`/`original_ref` as a collapsed «متن اصلی» block has no home in the design → consult item, §6** |
-| 9 | inline maps everywhere: `FKIND`, `FROLE`, `FLANG`, `FCADENCE`, `FMEDIUM`, `FSRC`, `FCAT`, `FQTY`, `FNATURE`, `FST`, `FSTFG`, `FISSUE` (3304–3318), plus the seven dictionaries note 2 names, plus `DEPT_FA` (4631) and `BRANCH_FA` (4632) | labels come from `ui/src/lib/factsLabels.ts` and the registries — departments from the existing department registry, branches from `GET /api/facts/branches`, units from the units record. No inline map in a component |
+| 8 | `excRows`/`sfHasExceptions`/`sfFields` (4675, 5044–5045) are computed and **rendered nowhere** | draw the `field_status` markers («استنباطی» / «عرفی») on the field; an issue shows its `from_date`, `fix` and `affects`. `original` / `original_ref` become a collapsed, closed-by-default «متن اصلی» block in the «نام تابع» card — **approved by the user 2026-08-31, §6.1** |
+| 9 | inline maps everywhere: `FKIND`, `FROLE`, `FLANG`, `FCADENCE`, `FMEDIUM`, `FSRC`, `FCAT`, `FQTY`, `FNATURE`, `FST`, `FSTFG`, `FISSUE` (3304–3318), plus the seven dictionaries note 2 names, plus `DEPT_FA` (4632) and `BRANCH_FA` (4633) | labels come from `ui/src/lib/factsLabels.ts` and the registries — departments from the existing department registry, branches from `GET /api/facts/branches`, units from the units record. No inline map in a component |
 | 10 | six «کاربرگ‌ها» blocks (265, 407, 1074, 2105, 2683, 2914) and the inline `BOOKS`/`FACTS` arrays are still in the file | do not build any of it. There is no workbook screen in v1; their presence in the design file is not authority |
 
 Two more corrections the notes imply and the design shows plainly:
@@ -285,16 +287,16 @@ the five object bindings). 155 bindings; 145 rendered.
 
 | binding | defined | verdict |
 |---|---|---|
-| `factsCoverage` (4798) | `(s.fCov || {}).label` — the mock supplies «۱۹ از ۲۸ کاربرگ خوانده شده» | **no consuming node anywhere in the file.** §14 puts the coverage line in the list header. → **consult item** |
+| `factsCoverage` (4798) | `(s.fCov || {}).label` — the mock supplies «۱۹ از ۲۸ کاربرگ خوانده شده» | **no consuming node anywhere in the file.** §14 puts the coverage line in the list header; the user **REFUSED** it (§6, C1). The design is right as it stands — do not draw, do not re-propose |
 | `factCount` (4809) | `toFa(shownFacts.length)` | no consuming node. Nothing in the spec asks for a result count either → dead in the design, do not draw |
 | `filtersDisplay` (4811) | the constant string `'flex'` | dead constant, do not carry it forward |
 | `sfDot` (4819) | `enConf.dot` | the detail header chip has no dot in the markup (only the list row does). Dead → do not draw |
-| `sfHasOriginalRef` / `sfOriginalRef` (4883) | `rl.original_ref` | no consuming node. Note 8 wants `original`/`original_ref` reachable → **consult item** |
-| `sfOriginalNote` (4885) | «بدنهٔ اسکریپت عیناً در همین فایل نگه داشته شده است.» etc. | no consuming node. Same block, same consult item |
+| `sfHasOriginalRef` / `sfOriginalRef` (4883) | `rl.original_ref` | no consuming node. Note 8 wants them reachable and the user **approved** the block → **draw it** (§6.1) |
+| `sfOriginalNote` (4885) | «بدنهٔ اسکریپت عیناً در همین فایل نگه داشته شده است.» etc. | no consuming node. Same block, same approval (§6.1) |
 | `sfItemCodeAbsent` (5004) | `d.code_absent` | not consumed as a flag; the fallback string «بدون کد» is inlined into `sfItem.code` (5006) instead, which **is** rendered. Not a gap — the state is drawn, by another route |
 | `sfHasExceptions` (5044) | `excRows.length > 0` | no consuming node |
 | `sfFields` (5045) | the per-path list with `stLabel` / `stFg` / `dotBg` — red paths **and** `field_status` | no consuming node. **This is exactly the failure conformance note 8 records.** Note 8 corrects it → the `field_status` markers get drawn |
-| `sfRec.medium` / `sfRec.role` (4896) | `FMEDIUM` / `FROLE` labels | computed, never rendered. `sfKind` (4814) already folds `role` into the header chip («جدول ثبت» etc., Appendix D's "shown as, by shape"), so `role` is covered by another route. **`medium` is not shown anywhere** — and Appendix D gives it labels. → **consult item** |
+| `sfRec.medium` / `sfRec.role` (4896) | `FMEDIUM` / `FROLE` labels | computed, never rendered. `sfKind` (4814) already folds `role` into the header chip («جدول ثبت» etc., Appendix D's "shown as, by shape"), so `role` is covered by another route. **`medium` is not shown anywhere** — and Appendix D gives it labels. The user **approved** appending it to the kind·role line → **draw it** (§6.2) |
 
 Member-level dead values inside rendered maps (smaller, recorded for
 completeness — none of them is a state the design draws by another route, and
@@ -339,18 +341,50 @@ The counterpart values, from Appendix D: «{n} بی‌پاسخ» · «{n} متع
 
 ---
 
-## 6. Consult items — nothing below is built, and no placeholder is improvised
+## 6. The five consult items — **answered by the user, 2026-08-31**
 
-| # | what needs it | why the design has no home | the smallest thing that unblocks it |
+**These are decisions, not open questions. Nothing here is to be re-proposed.**
+Two are refused and stay undrawn; two are approved deltas and are authority for
+Tasks 22–24, to be built exactly as described; one was settled without a
+re-ask.
+
+| # | item | decision | what that means for the build |
 |---|---|---|---|
-| C1 | **The coverage line in the list header.** §14 (QF-25's "no worklist screen" paragraph) and Appendix D's «{n} از {m} کاربرگ خوانده شده» | `factsCoverage` (4798) is computed from `coverage.json` and consumed by **no node in the file** — verified over all 5416 lines. The list header holds the section title and nothing else | "put the coverage line under the title, {size}/{colour}" — or "leave it out of v1". Either answer is one line |
-| C2 | **The raw-JSON view.** Appendix D: «نمای خام (فقط‌خواندنی)»; §17's closing sentence; §18 | no screen, no control, no state in the design | "add a «نمای خام» disclosure at the foot of the detail page" — or "not in v1" |
-| C3 | **The «متن اصلی» block** (`original` / `original_ref`), conformance note 8 | `sfHasOriginalRef`, `sfOriginalRef` and `sfOriginalNote` are computed (4883–4887) and rendered nowhere; the only drawn part of that card is «نام تابع» (1246–1249) | "a collapsed row under «نام تابع», same card" is enough to build it. Note 8 asks for it, so this is a *how*, not a *whether* |
-| C4 | **«خارج از دسترسی شما»** — the label a masked neighbour renders (`{"restricted": true}` in `resolved` / `row_titles` / `path_labels` / `consumers` / `processes`) | approved by the user 2026-08-31, but **not in Appendix D**, and no such state is drawn in the design. `routers/facts.py:390` already directs it to `lib/factsLabels.ts` | "add «خارج از دسترسی شما» to Appendix D under Screens/row classes" — after which it is one map entry and one branch per neighbour list |
-| C5 | **`record.medium`** — «کاربرگ / فرم کاغذی / سامانهٔ بیرونی / داخلی» | Appendix D gives it labels; `sfRec.medium` is computed (4896) and rendered nowhere; the «ساختار و مکان جدول» card shows محل / هر ردیف یعنی / تناوب / کلید اصلی / تأییدکنندهٔ فرم and not the medium | "show medium as a chip beside «محل»" — or "the location line already says it, drop it" |
+| C1 | the coverage line in the list header — «{n} از {m} کاربرگ خوانده شده» | **REFUSED** | Do not draw it. The number stays served by `GET /api/facts` → `coverage` and goes unrendered, which is exactly what the design does with `factsCoverage` (4798). `SCREEN_LABELS.coverage` stays in `factsLabels.ts` because Appendix D declares it; no component reads it. **Do not re-propose.** |
+| C2 | the raw-JSON view — «نمای خام (فقط‌خواندنی)» | **REFUSED** | Do not draw it. It is a developer's debugging aid with English field names and adds nothing to running the restaurant; the panel stays fully Persian with no developer surface. `SCREEN_LABELS.raw_view` stays for the same reason as C1. **Do not re-propose.** |
+| C3 | the «متن اصلی» block (`original` / `original_ref`) | **APPROVED** — see the delta below | Build it. |
+| C5 | `record.medium` | **APPROVED** — see the delta below | Build it. |
+| C4 | «خارج از دسترسی شما» | **SETTLED** — the user approved this exact wording on 2026-08-31 when she chose the masked-neighbour option whose preview carried it | The copy is authority. It is now in `SCREEN_LABELS.restricted_neighbour` and has been added to spec Appendix D under *Screens, row classes and actions* — `routers/facts.py:345` already promises the string is "the UI's, rendered from `lib/factsLabels.ts`", and a string the UI ships must live in the authority file. |
 
-C1 and C5 are new here; C2, C3 and C4 were already known and are restated so
-the list is one list.
+### 6.1 Approved delta — the «متن اصلی» block (C3, conformance note 8)
+
+A **collapsed, closed-by-default** block on the detail page holding `original`
+and `original_ref`. The user's reason, in her terms: seeing exactly what was
+said when a number looks wrong.
+
+This satisfies note 8's "reachable as a collapsed «متن اصلی» block", and its
+data is three of the ten NOT RENDERED bindings — `sfHasOriginalRef` /
+`sfOriginalRef` (4883) and `sfOriginalNote` (4885). It belongs in the card the
+design already draws for «نام تابع» (markup 1243–1252), which is the only other
+consumer of `rl.original*`; the label is `PAYLOAD_FIELD_LABELS.original`
+(«متن اصلی»).
+
+Closed by default is part of the decision, not a detail: the block holds a raw
+formula or script body, which is the one place §17 lets keys stand on their own,
+and it must not push the entry's Persian off the first screen.
+
+### 6.2 Approved delta — `record.medium` (C5)
+
+Appended to the line that **already** carries the kind and the role, using the
+same «·» separator that line already uses:
+
+> «جدول/فرم · دفتر ثبت · برگهٔ کاغذی»
+
+That line is `sfKind` (4814), which today emits `FKIND[kind]` plus
+`' · ' + FROLE[role]` for a record. The delta adds a third segment,
+`MEDIUM_LABELS[medium]`, with the same separator. It is not a chip and not a
+new row in the «ساختار و مکان جدول» card — the user placed it on the line that
+already answers "what kind of thing is this".
 
 ---
 
@@ -363,7 +397,7 @@ the list is one list.
 | The list row has **no** confirm tick; the tick is on the detail screen only | **confirmed**. The row's six cells are title, id, kind, scope, the status block, the chevron (1052–1070). The tick is `sfCanTick` at 1120, and `this._factAct` at 5073 is its dialog handler. **Task 22 has no tick.** |
 | `r.hasNote` / `r.noteLine` is the second line under the status cell, and the only drawn home for note 1's counts and badges | **confirmed as a node** (1063–1064) — **and the binding is missing** (`factRow`, 4650, emits neither). See §5. The node is real; the wiring is note 1's job |
 | `factsCoverage` (4798) is computed and never rendered | **confirmed** — one occurrence in 5416 lines, its definition. Added to the consult list as C1 |
-| `assets/facts/labels.json` → `fLabels` anticipates server-served labels | **confirmed**, `loadFacts` at 3880–3890 fetches it and `refTitle` (4737) prefers `bundle.resolved` → `en.resolved` → `s.fLabels` in that order — which is precisely note 2's direction |
+| `assets/facts/labels.json` → `fLabels` anticipates server-served labels | **confirmed**, `loadFacts` at 3880–3890 fetches it and `refTitle` (4742) prefers `bundle.resolved` → `en.resolved` → `s.fLabels` in that order — which is precisely note 2's direction |
 | `isBooksTab` / «کاربرگ‌ها» are still in the file but note 10 deletes them | **confirmed** — six blocks (265, 407, 1074, 2105, 2683, 2914). Not built |
 
 **No seed fact disagreed with the file.** The one refinement is the
@@ -381,21 +415,21 @@ was there.
 | design map | line | replaced by |
 |---|---|---|
 | `this.FKIND` | 3304 | `KIND_LABELS` + `KIND_SHAPE_LABELS` |
-| `this.FROLE` / `FMEDIUM` / `FCADENCE` / `FCAT` / `FQTY` / `FNATURE` / `FSRC` / `FISSUE` / `FLANG` | 3305–3318 | the same-named maps in `factsLabels.ts`. **`FNATURE` (3310) is shorter than Appendix D** — «استاندارد» / «مشاهده‌شده» against Appendix D's «استاندارد تعیین‌شده» / «مشاهده‌شده در عمل». The design's own `NATURE_FA` (4693) already carries the Appendix D wording and is preferred at render time (4837). Appendix D wins |
+| `this.FROLE` / `FMEDIUM` / `FCADENCE` / `FCAT` / `FQTY` / `FNATURE` / `FSRC` / `FISSUE` / `FLANG` | 3305–3318 | the same-named maps in `factsLabels.ts`. **`FNATURE` (3310) is shorter than Appendix D** — «استاندارد» / «مشاهده‌شده» against Appendix D's «استاندارد تعیین‌شده» / «مشاهده‌شده در عمل». The design's own `NATURE_FA` (4694) already carries the Appendix D wording and is preferred at render time (4837). Appendix D wins |
 | `this.FST` / `this.FSTFG` | 3313 / 3317 | `FIELD_STATUS_LABELS` (the colours stay in the component, token-backed: `#1F8A5B` صریح, `#4A25A9` استنباطی, `#8A5A00` عرفی, `#E23D35` متعارض and بی‌پاسخ) |
 | `CONF` | 4624 | `CONFIRMATION_LABELS` |
-| `DEPT_FA` | 4631 | the department registry (`lib/departments.ts` / `GET /api/departments`) |
-| `BRANCH_FA` | 4632 | `GET /api/facts/branches` |
+| `DEPT_FA` | 4632 | the department registry (`lib/departments.ts` / `GET /api/departments`) |
+| `BRANCH_FA` | 4633 | `GET /api/facts/branches` |
 | `UNIT_FA` / `unitFa` | 4680 | the units record served with the entry (`unit_title`) |
 | `GROUP_FA` | 4684 | `resolved` / the group's own `title` |
-| `ENUM_FA` / `WD_FA` / `enumFa` | 4687–4692 | the per-enumeration maps in `factsLabels.ts` |
-| `NATURE_FA` | 4693 | `NATURE_LABELS` |
-| `KEY_FA` / `keyFa` | 4694–4726 | served titles (`inputs[].title`, `outputs[].title`, `fields[].title`) — note 2 |
-| `LEAF_FA` / `pathFa` | 4720–4735 | the bundle's `path_labels` |
-| the four inline enum objects for `table.hit`, `table.aggregate`, `divergence`, `fields[].type` | 4850–4877, 4983 | `HIT_LABELS`, `AGGREGATE_LABELS`, `DIVERGENCE_LABELS`, `FIELD_TYPE_LABELS` |
+| `ENUM_FA` / `WD_FA` / `enumFa` | 4688–4693 | the per-enumeration maps in `factsLabels.ts` |
+| `NATURE_FA` | 4694 | `NATURE_LABELS` |
+| `KEY_FA` / `keyFa` | 4696–4713 | served titles (`inputs[].title`, `outputs[].title`, `fields[].title`) — note 2 |
+| `LEAF_FA` / `pathFa` | 4716–4730 | the bundle's `path_labels` |
+| the four inline enum objects for `table.hit`, `table.aggregate`, `divergence`, `fields[].type` | 4850–4877, 4982 | `HIT_LABELS`, `AGGREGATE_LABELS`, `DIVERGENCE_LABELS`, `FIELD_TYPE_LABELS` |
 | the inline `{ raw, cooked, frozen, prepared }` state map | 5011 | `STATE_LABELS` |
-| the inline `WD` weekday map inside `sfLogRows` | 4927 | not in Appendix D; the served row's own text |
+| the inline `WD` weekday map inside `sfLogRows` | 4928 | not in Appendix D; the served row's own text |
 
 Formatters worth keeping (they are behaviour, not labels):
 `toFa` for chrome counts and dates only (QF-42), `faNum` (Persian decimal
-separator «٫», 4732), `jalali` (`fa-IR-u-ca-persian`, 4735).
+separator «٫», 4732), `jalali` (`fa-IR-u-ca-persian`, 4734).

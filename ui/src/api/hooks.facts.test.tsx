@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { renderHook, waitFor } from '@testing-library/react'
+import { QueryClient } from '@tanstack/react-query'
 import { useFacts, useFact, useFactBranches, useResolveFact } from './hooks'
 import { createWrapper } from '../test/utils'
 import { isRestricted } from './types'
@@ -107,11 +108,40 @@ describe('useResolveFact', () => {
     expect(result.current.data?.entry.id).toBe('F-00042')
   })
 
+  it('invalidates both the listing and the entry after a 200', async () => {
+    const invalidateSpy = vi.spyOn(QueryClient.prototype, 'invalidateQueries')
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(json(BUNDLE))
+    const { result } = renderHook(() => useResolveFact('F-00042'), { wrapper: createWrapper() })
+    result.current.mutate({ field: 'data/outputs/deviation/value', account: 'a1b2c3d4' })
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+
+    // Both, and `['facts']` is the half easy to forget: a resolve moves that
+    // row's `red_counts`, its `status`, and — the entry having changed at all —
+    // its `fingerprint`, so `confirmed` moves with it.
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['facts'] })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['fact', 'F-00042'] })
+  })
+
   it('surfaces the engine’s own message on a refused precondition', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(json({ detail: 'account a1b2c3d4 is not on field …' }, 422))
     const { result } = renderHook(() => useResolveFact('F-00042'), { wrapper: createWrapper() })
     result.current.mutate({ field: 'data/outputs/x/value', account: 'a1b2c3d4' })
     await waitFor(() => expect(result.current.isError).toBe(true))
     expect(result.current.error?.message).toContain('a1b2c3d4')
+  })
+
+  it('invalidates after a 422 too, because it settles on onSettled not onSuccess', async () => {
+    const invalidateSpy = vi.spyOn(QueryClient.prototype, 'invalidateQueries')
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(json({ detail: 'account a1b2c3d4 is not on field …' }, 422))
+    const { result } = renderHook(() => useResolveFact('F-00042'), { wrapper: createWrapper() })
+    result.current.mutate({ field: 'data/outputs/x/value', account: 'a1b2c3d4' })
+    await waitFor(() => expect(result.current.isError).toBe(true))
+
+    // The whole reason for `onSettled`: the engine refuses (exit 2, nothing
+    // written) precisely when the state on screen is the state that refused it,
+    // and `onSuccess` would leave the reviewer choosing the same stale account
+    // forever. Same rule, same shape as `hooks.order.test.tsx`'s 409 case.
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['facts'] })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['fact', 'F-00042'] })
   })
 })

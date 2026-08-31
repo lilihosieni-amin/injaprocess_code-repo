@@ -14,7 +14,16 @@ import { label } from './factsLabels'
  * a `?raw` import so the test fails loudly on a moved file instead of at
  * bundle time, and so no schema ends up inside the app bundle.
  */
-const SCHEMAS = ['facts.schema.json', 'manifest.schema.json', 'facts-run-meta.schema.json']
+const SCHEMAS = [
+  'facts.schema.json', 'manifest.schema.json', 'facts-run-meta.schema.json',
+  // The other two files that mention a fact. Every member in them is a
+  // duplicate of one above today — `.index.json` projects the entry's own
+  // `kind`/`status`, a delta names the same five kinds — so these two add no
+  // coverage this minute. They are named so that they cannot silently stop
+  // being duplicates: an enumeration that grows on the index or the delta
+  // alone is exactly the kind of value that reaches a screen with no label.
+  'facts-index.schema.json', 'facts-delta.schema.json',
+]
 
 /** `process.cwd()` is `ui/`, the package vitest runs from — the same anchor
  *  `src/test/guards.test.ts` uses. `new URL(…, import.meta.url)` is not: under

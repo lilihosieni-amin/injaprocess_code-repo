@@ -559,7 +559,16 @@ describe('F4/F8 — density comes from the shell', () => {
     // (?<!-) keeps kebab-case CSS declarations like `font-size:` out of a scan
     // that broadened past src/ui/ into src/styles/ — a TS/JSX prop name is never
     // preceded by a hyphen, so this excludes only the false positive.
-    const BAD = /(?<!-)\b(density|size|scale|compact|dense|roomy|variant)\??:\s*('|"|[A-Za-z])/
+    // The `(?!\p{Script=Arabic})` after the quote is the second narrowing, and it
+    // is narrower than the file-level exemption it replaced. `factsLabels.ts`
+    // maps the value the store holds to the word a Persian screen shows, and
+    // two of those stored values are `scale` (`issues[].kind`) and `size`
+    // (`pack.size`) — keys that cannot be renamed to please a scan, because the
+    // key IS the stored value (QF-32). A density prop is never a Persian string
+    // literal, so excluding that one right-hand side costs this guard nothing
+    // and keeps the whole file policed for a real prop, which exempting it by
+    // name would not have.
+    const BAD = /(?<!-)\b(density|size|scale|compact|dense|roomy|variant)\??:\s*(['"](?!\p{Script=Arabic})|[A-Za-z])/u
     // Button's own `variant` selects a colour theme (coral/violet/green/ghost) —
     // a real, load-bearing axis distinct from density, not a size in disguise.
     // Allowlisted by file, the same pattern F10 below uses for IdBadge's
@@ -569,21 +578,15 @@ describe('F4/F8 — density comes from the shell', () => {
     // a card, a dashed block, a line inside a table — not a density. Named here
     // rather than loosening the pattern for every file, exactly as Button's
     // colour `variant` is.
-    // `factsLabels.ts` has no props at all — it is one map per enumeration,
-    // keyed by the value the schemas freeze (QF-32). Two of those values are
-    // `scale` (`issues[].kind`, a change of measurement scale in the source
-    // data) and `size` (`pack.size`, how many base units are in a pack), and
-    // neither can be renamed to please a scan: the key IS the stored value, and
-    // changing it would stop matching what the store holds. Named here rather
-    // than loosened for everyone, exactly as Button's colour `variant` is.
-    // `api/types.ts` is the same case at the other end of the wire: `ItemData`
-    // types `pack.size` — how many base units are in one pack — because that is
-    // the key `facts.schema.json` froze. Neither file declares a component prop
+    // `api/types.ts` is the same stored key at the other end of the wire, and it
+    // needs the exemption because its right-hand side is a TYPE, not a Persian
+    // string: `ItemData` writes `pack?: { size: number }`. The authority for
+    // that key is **spec §7's `item` payload**
+    // (`docs/superpowers/specs/2026-08-29-quantitative-facts-design.md:756`),
+    // not `facts.schema.json` — which types `data` as an unconstrained object
+    // (`:104`) and names no `pack` at all. The file declares no component prop
     // of any kind, which is what this guard is about.
-    const EXCEPTIONS = [
-      'src/ui/Button.tsx', 'src/ui/states/index.tsx',
-      'src/lib/factsLabels.ts', 'src/api/types.ts',
-    ]
+    const EXCEPTIONS = ['src/ui/Button.tsx', 'src/ui/states/index.tsx', 'src/api/types.ts']
     const hits = files()
       .filter((f) => !EXCEPTIONS.includes(f.rel))
       .flatMap((f) =>

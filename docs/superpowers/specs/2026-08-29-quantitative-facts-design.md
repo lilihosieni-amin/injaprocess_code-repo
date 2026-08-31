@@ -2360,6 +2360,7 @@ beside the chip, never inside it
 | download a source file — the popup | «فایل منبع دانلود شود؟» · دانلود · انصراف |
 | consumers of an entry (reverse index) | استفاده‌کنندگان |
 | raw view | نمای خام (فقط‌خواندنی) |
+| a neighbour the caller may not open — `{"restricted": true}` in `resolved` / `row_titles` / `path_labels` / `consumers` / `processes` | خارج از دسترسی شما |
 | filters: kind / scope / branch / confirmation | نوع / دپارتمان / شعبه / وضعیت تأیید |
 | confirm dialog | «کل این داده تأیید شود؟» — «اثر انگشت از کل داده گرفته می‌شود؛ هر تغییر بعدی تأیید را باطل می‌کند.» |
 
