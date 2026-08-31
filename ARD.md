@@ -112,14 +112,25 @@ data-repo/
 ├── meetings/
 │   ├── audio/                    # raw voice files
 │   └── transcripts/              # transcription output, same name as the voice
+├── attachments/sheets/           # the Google Sheets estate, one dir per workbook (quantitative facts)
+│   ├── manifest.json              # one row per spreadsheetId — dept/branch/reference_tabs
+│   ├── NAMED_FUNCTIONS.md  _LOG.md
+│   ├── .dump/{spreadsheetId}/…    # dump-workbook's structure output (committed)
+│   └── {workbook dir}/            # {name}.xlsx (ignored by git, QF-28); {name}.structure.md, {name}.gs (committed)
+├── facts/                        # global fact store, written only by `merge facts` (INV-2-style)
+│   ├── .id-seq.json                the global F- ledger
+│   ├── .index.json                 one row per entry, rebuilt on every write
+│   ├── items.json  records.json  measurements.json  rules.json  notes.json
+│   └── originals/{id}.txt          verbatim formula/script bodies, out of line
 ├── runs/                         # per-run intermediate artifacts (permanent)
-│   └── {department}/{stamp}/      # stamp = UTC YYYYMMDD-HHMMSS (the attempt key; no attempt-NN)
-│       ├── segments.json
-│       ├── candidates/            # candidate graphs
-│       ├── deltas/                # extract deltas (input to merge)
-│       ├── restructure/           # restructure plans (merge/split heirs)
-│       ├── conflicts.json
-│       └── meta.json
+│   ├── {department}/{stamp}/      # stamp = UTC YYYYMMDD-HHMMSS (the attempt key; no attempt-NN)
+│   │   ├── segments.json
+│   │   ├── candidates/            # candidate graphs
+│   │   ├── deltas/                # extract deltas (input to merge)
+│   │   ├── restructure/           # restructure plans (merge/split heirs)
+│   │   ├── conflicts.json
+│   │   └── meta.json
+│   └── facts/{department}/{stamp}/ # one facts run: meta.json, facts-delta.json, id-map.json
 ├── .staging/                     # upload buffer until confirmation (in .gitignore)
 └── .gitignore
 ```
@@ -435,7 +446,7 @@ Runs as the **final stage** of every `/process-voice` run (after `summarize`/com
 - **Gate C** (§5.3) presents the numbered report and takes **per-item** approval.
 - **apply mode** — an approved item becomes a `restructure` plan (merge) or is re-parented (`attach-subprocess`), then a **soundness pass** repairs the seam and removes any cross-level/flat duplicate nodes (no-duplicate doctrine, ADR 0013). Uses **only existing `merge` verbs** — no new engine CLI. The artifact is validated by `consolidation.schema.json` (§8).
 
-Its apply commits (and Stage-8's pipeline commit) stage `departments`/`runs` **only** — never `git add -A`, which once swept uncommitted `.claude` prompt edits into a data commit.
+Its apply commits (and Stage-8's pipeline commit) stage `departments`/`runs` **only** — never `git add -A`, which once swept uncommitted `.claude` prompt edits into a data commit. The `quantify`/`edit-fact` facts pipeline (the quantitative-facts design's own §13) widens this for its own commits only: `departments runs facts attachments` — `facts` because a facts run writes the store, `attachments` because the first run to touch a given workbook also writes under `attachments/sheets/` (manifest updates, the structure dump). The process pipeline's own commit is unaffected.
 
 ---
 
@@ -707,8 +718,8 @@ EXPORT_DIR/{dept}/{kind}-{fingerprint}.pdf      # its printable form, same stem
 
 ## 15. Versioning, Commit & Push
 
-- **Committed:** `departments/**`, `meetings/audio/**` (or a reference to them), `meetings/transcripts/**`, `runs/**`, `.claude/**`, `CLAUDE.md`.
-- **In `.gitignore`:** `.staging/`, secret/env files.
+- **Committed:** `departments/**`, `meetings/audio/**` (or a reference to them), `meetings/transcripts/**`, `runs/**`, `facts/**`, `attachments/sheets/**` except its `*.xlsx` (below), `.claude/**`, `CLAUDE.md`.
+- **In `.gitignore`:** `.staging/`, secret/env files, `attachments/sheets/**/*.xlsx` (QF-28 — the workbooks are deployment assets placed by hand, on the audio precedent; the manifest, `.structure.md`, `.gs` files and `dump-workbook`'s structure dump under `.dump/` are committed).
 - The extraction brain (`.claude`) is also versioned; improving a skill = a commit, and the next runtime run picks up the new version itself.
 
 ### When it commits — the three write paths

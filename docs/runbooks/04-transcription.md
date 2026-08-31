@@ -48,6 +48,7 @@ Required in the env of **both** `upload-bot` and `control-bot` (see `deploy/dock
 | `VERTEX_PROJECT` | `injafood` |
 | `VERTEX_LOCATION` | `global` |
 | `GEMINI_MODEL` | `gemini-3.1-pro-preview` |
+| `VERTEX_VISION_MODEL` | `gemini-3.1-pro-preview` — `extract-attachment`'s `.pdf`/image rows (QF-30), same project/location/credentials but a separate model pin so vision and transcription can move independently |
 | `GCS_BUCKET` | `injafood-transcribe-staging` |
 | `GOOGLE_APPLICATION_CREDENTIALS` | `/secrets/vertex-sa.json` (mounted read-only from `/opt/inja/secrets/`) |
 | `TRANSCODE_BITRATE` | optional, default `16k` |
