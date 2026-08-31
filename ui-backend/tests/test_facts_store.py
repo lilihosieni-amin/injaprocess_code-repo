@@ -192,6 +192,23 @@ MEASUREMENT = _entry(
      "method": "ترازو", "when": "پایان شیفت", "by": "سرلاین",
      "writes_to": {"ref": "F-00020", "field": "grams"}})
 
+#: §11's contested scalar: the incumbent materialised beside the challenger,
+#: so the entry is disputed on an **envelope** path — QF-7 lists `title` and
+#: `scope` as leaves beside `data/expr`, and `red_paths` carries an account's
+#: field with no prefix filter. Nothing else in this store disputes one, which
+#: is why the raw pass-through survived a round.
+DISPUTED_TITLE = _entry(
+    "F-00060", "note", "note_farangi_naming", "نام قلم در فرم انبار", {},
+    status="disputed",
+    accounts=[{"id": "11112222", "field": "title",
+               "statement": "«اسمش توی فرم انبار خمیر آماده است»",
+               "source": {"type": "voice", "ref": "meetings/warehouse.md"},
+               "speaker_role": "انبار دار", "status": "open"},
+              {"id": "33334444", "field": "scope/departments",
+               "statement": "«این فقط مال آشپزخانه نیست، انبار هم دارد»",
+               "source": {"type": "voice", "ref": "meetings/warehouse.md"},
+               "speaker_role": "انبار دار", "status": "open"}])
+
 #: A workbook stub (QF-20): identity and nothing else, so it never makes its
 #: workbook "read".
 STUB = _entry("F-00050", "record", "ext_1dmh8tcqouqn", "کاربرگ پیتزا",
@@ -199,7 +216,7 @@ STUB = _entry("F-00050", "record", "ext_1dmh8tcqouqn", "کاربرگ پیتزا"
                "grain": "workbook", "location": {"spreadsheetId": PITZA}})
 
 ENTRIES = ITEMS + [BOM, FORM, MIRROR, RULE, CONSTANT, VIA, CALLED, DERIVED,
-                   INSTANCE, MEASUREMENT, STUB]
+                   INSTANCE, MEASUREMENT, DISPUTED_TITLE, STUB]
 
 PROCESSES = [
     {"id": "cooking-001", "department": "cooking", "name": "پخت پیتزا",
@@ -451,17 +468,22 @@ def test_every_reserved_row_name_reads_as_persian(root):
         assert leaf not in label, f"{path} labelled with its own ASCII key"
 
 
-def test_path_labels_leave_an_envelope_path_alone(root):
-    """The row-lifecycle labels above are envelope-table names, so this pins
-    the boundary they must not cross: `path_labels` composes labels out of
-    `data/…` paths only, and an account field naming an envelope path is
-    passed through untouched (§17's guarantee is about the red set, which is
-    `data`-rooted; an envelope-level label is task 19's call, not this
-    module's)."""
-    entry = {"data": {}, "accounts": [{"id": "deadbeef", "field": "title",
-                                       "statement": "…", "status": "open",
-                                       "source": {"type": "chat", "ref": None}}]}
-    assert facts_store.path_labels(root, entry) == {"title": "title"}
+def test_path_labels_of_an_envelope_path(root):
+    """§17 says «every red path», with no `data`-rooted qualifier, and QF-7
+    lists `title` and `scope` beside `data/expr`. A disputed title is §11's
+    own mechanism, not a hypothetical, so these must read as Persian like any
+    payload path. `scope/departments` composes from the two envelope names
+    rather than needing a compound label of its own."""
+    labels = facts_store.path_labels(root, facts_store.load_entry(root, "F-00060"))
+    assert labels == {"title": "عنوان",
+                      "scope/departments": "دامنه › دپارتمان‌ها"}
+
+
+def test_an_envelope_account_is_red(root):
+    """The half that makes the label reachable: `red_paths`'s `disputed` is
+    every open account's field, whatever it names."""
+    assert facts_store.red_paths(facts_store.load_entry(root, "F-00060")) == {
+        "unknown": [], "disputed": ["scope/departments", "title"]}
 
 
 def test_red_paths_split_null_leaves_from_open_accounts(root):

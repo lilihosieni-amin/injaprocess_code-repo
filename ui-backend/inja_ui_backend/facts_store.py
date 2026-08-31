@@ -47,9 +47,9 @@ _PROC_ID_RE = re.compile(r"[a-z]+-[0-9]{3}")
 #: segment when the path names a column, an input or an output.
 _KEYED_GROUPS = ("fields", "header_fields", "inputs", "outputs")
 
-#: Appendix D's payload-field table, transcribed **whole** and verbatim: every
-#: name it labels, so that no path a screen names out loud can come out as an
-#: ASCII key. A name the appendix does not carry keeps its key rather than
+#: Appendix D's payload-field **and envelope** tables, transcribed whole and
+#: verbatim: every name they label, so that no path a screen names out loud
+#: can come out as an ASCII key. A name the appendix does not carry keeps its key rather than
 #: gaining a translation nobody approved (see the module docstring) — but the
 #: appendix is the authority on which names those are, not what a red path
 #: happened to need on the day this was written.
@@ -103,6 +103,18 @@ _LEAF_LABELS: dict[str, str] = {
     "pack_unit": "واحد بسته", "factor_to_base": "ضریب تبدیل به واحد پایه",
     "tracked": "ردیابی", "record": "در جدول",
     "stub": "پیش‌ثبت",
+    # envelope — QF-7 lists `title` and `scope` as leaves beside `data/expr`,
+    # and §11 disputes a title through the same ladder as a table cell, so an
+    # open account's `field` reaches `red_paths` with no `data/` prefix at
+    # all. `scope`, `departments` and `branches` are three entries rather than
+    # one compound label, so `scope/departments` composes as «دامنه ›
+    # دپارتمان‌ها» through the same join every other nested path uses.
+    "id": "شناسه", "aliases": "نام‌های دیگر", "statement": "بیان",
+    "scope": "دامنه", "departments": "دپارتمان‌ها", "branches": "شعبه‌ها",
+    "source": "منابع", "status": "وضعیت", "field_status": "وضعیت فیلدها",
+    "accounts": "روایت‌ها", "speaker_role": "گوینده (نقش)",
+    "issues": "نقص‌ها", "processes": "فرایندهای مرتبط",
+    "updated_at": "آخرین تغییر",
 }
 
 #: The three names Appendix D labels twice, once per context — `(group, name)`,
@@ -446,8 +458,8 @@ def _segment_label(data: dict, seg: list[str], i: int) -> str:
 def _path_label(entry: dict, path: str, titles: dict) -> str:
     """One QF-7 path → what a reviewer reads instead of it.
 
-    The last branch is the general case and exists so that **no** path falls
-    through as itself: `data/location/path`, `data/pack/size`,
+    No path falls through as itself, envelope paths included. The last branch
+    is the general case for a payload path: `data/location/path`, `data/pack/size`,
     `data/movement/reason` and every other payload shape outside the keyed
     groups are composed segment by segment («محل › مسیر»), because a path
     printed raw on a Persian-only screen is exactly what §17 forbids.
@@ -455,7 +467,12 @@ def _path_label(entry: dict, path: str, titles: dict) -> str:
     seg = path.split("/")
     data = entry.get("data") or {}
     if seg[0] != "data" or len(seg) < 2:
-        return path                      # not a payload path; nothing to compose
+        # An envelope path: `title`, `scope/departments`, `valid_to`. Not a
+        # hypothetical — §11's write ladder disputes a scalar by materialising
+        # the incumbent as an account, so a contested title is an open account
+        # whose `field` is the bare string `title`, and `red_paths` carries it
+        # with no prefix filter. Appendix D's envelope table labels every one.
+        return " › ".join(_LEAF_LABELS.get(name, name) for name in seg)
     if seg[1] == "rows" and len(seg) >= 4:
         # «ستون — ردیف» (Appendix D): the reference-table cell, which is the
         # shape the red cards and the accounts card are built around. The leaf
