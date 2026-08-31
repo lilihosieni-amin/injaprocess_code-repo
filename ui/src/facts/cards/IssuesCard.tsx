@@ -35,7 +35,7 @@ export function IssuesCard({ bundle, onOpen }: {
         // token holds; `--warn-fg` is the amber family's own ink and is what
         // this card's eyebrow already takes. Recorded as a deviation.
         //
-        // :1695 — `16px 18px`, both on the ladder. It was `PX.head1620`, the
+        // :1698 — `16px 18px`, both on the ladder. It was `PX.head1620`, the
         // printed-rows head's `16px 20px`, borrowed by its number.
         <div key={i}
           className="px-s9 py-s8 bg-tile-warn border border-warn-edge rounded-card mb-s5">

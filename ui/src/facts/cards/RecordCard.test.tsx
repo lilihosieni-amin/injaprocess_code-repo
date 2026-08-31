@@ -17,7 +17,9 @@ import type { FactBundle } from '../../api/types'
  *  `fields` is overridable for the one test that needs `F-00012`'s `unit`-keyed
  *  column, which is what `hasGrid` is about. */
 const PAPER = (
-  over: Partial<FactBundle> = {}, fields?: Record<string, unknown>[],
+  over: Partial<FactBundle> = {},
+  fields?: Record<string, unknown>[],
+  rows?: Record<string, unknown>[],
 ): FactBundle => bundleOf('record', {
   medium: 'paper', role: 'log',
   location: { path: 'departments/cooking/attachments/photo_2026-08-29_14-23-51.jpg' },
@@ -35,7 +37,7 @@ const PAPER = (
     // Present and `null` — «بی‌پاسخ», and red (note 3).
     { key: 'start_stock', title: 'مانده اول شب', type: 'number', unit: null, filled_by: 'مسئول واحد' },
   ],
-  rows: [
+  rows: rows ?? [
     { key: 'burger', title: 'برگر' },
     { key: 'bacon', title: 'بیکن ورقه ای', retired: true },
     // `F-00012`'s `staff_sugar`, verbatim: a long-form weekday, and a `unit`
@@ -76,6 +78,26 @@ const BOM = (over: Partial<FactBundle> = {}): FactBundle => bundleOf('record', {
     ing_41: { kind: 'item', title: 'قارچ', code: '##41' },
   },
   ...over,
+})
+
+/**
+ * F-00017 — «واحدها», the units record. `hasGrid` reads it as a grid, and its
+ * `dimension` column is the entry that proves the record grid needs `enumFa`
+ * too: seven English words, on a Persian-only screen.
+ */
+const UNITS = bundleOf('record', {
+  medium: 'native', role: 'config', location: {},
+  fields: [
+    { key: 'symbol', title: 'نماد', type: 'string' },
+    { key: 'dimension', title: 'بُعد', type: 'string' },
+    { key: 'unit_title', title: 'عنوان', type: 'string' },
+  ],
+  rows: [
+    { key: 'g', symbol: 'g', dimension: 'mass', unit_title: 'گرم' },
+    { key: 'ml', symbol: 'ml', dimension: 'volume', unit_title: 'میلی‌لیتر' },
+    { key: 'carton', symbol: 'carton', dimension: 'pack', unit_title: 'کارتن' },
+    { key: 'percent', symbol: 'percent', dimension: 'dimensionless', unit_title: 'درصد' },
+  ],
 })
 
 const draw = (bundle: FactBundle) =>
@@ -129,7 +151,7 @@ describe('the record card', () => {
     draw(PAPER())
     expect(screen.getByText('قلم‌های چاپ‌شده روی فرم')).toBeInTheDocument()
     expect(screen.getByText('برگر')).toBeInTheDocument()
-    // A retired printed row says so (:1413).
+    // A retired printed row says so (:1412).
     expect(screen.getByText('دیگر استفاده نمی‌شود')).toBeInTheDocument()
   })
 
@@ -140,6 +162,31 @@ describe('the record card', () => {
     expect(location.textContent).not.toContain('15M2ovUmQ7kX3nR9pLwT2aB8cD4eF6gH1')
   })
 
+  it('writes a grid cell’s enumerated value in Persian — `enumFa`’s second site', () => {
+    draw(UNITS)
+    const grid = screen.getByRole('table', { name: /ردیف/ })
+    // :4912 — the design runs every non-numeric grid cell through `enumFa`, and
+    // the units record is what that is for.
+    for (const word of ['جرم', 'حجم', 'بسته', 'بی‌بعد']) {
+      expect(within(grid).getByText(word), word).toBeInTheDocument()
+    }
+    for (const english of ['mass', 'volume', 'dimensionless']) {
+      expect(grid, english).not.toHaveTextContent(english)
+    }
+  })
+
+  it('leaves an id-shaped column latin — a symbol is a code, not a word', () => {
+    draw(UNITS)
+    // :4909 — `symbol`, `key`, `code` and `id` are machine identifiers, and
+    // QF-42 makes them LTR islands. `pack` in a `dimension` cell is «بسته»;
+    // `carton` in a `symbol` cell stays `carton`.
+    // Twice: the row-key column (`primaryKey` is empty here, so it is drawn)
+    // and the `symbol` cell. Both are islands, which is the assertion.
+    const drawn = screen.getAllByText('carton')
+    expect(drawn).toHaveLength(2)
+    for (const el of drawn) expect(el).toHaveAttribute('dir', 'ltr')
+  })
+
   it('writes a printed row’s day in Persian — «thursday» is not a Persian word', () => {
     draw(PAPER())
     // The design's inline `WD` (`Inja Panel.dc.html:4928`), which note 9 moves
@@ -148,11 +195,23 @@ describe('the record card', () => {
     expect(screen.queryByText(/thursday/)).toBeNull()
   })
 
-  it('draws a printed row’s unit once when the source wrote no word for it', () => {
+  it('draws a printed row’s unit once, and as an island when it is only a symbol', () => {
     draw(PAPER())
-    // `unit: 'pack'` with no `unit_raw`: the phrase and the symbol are the same
-    // string, and the design draws both (:1420-1421). One is enough.
-    expect(screen.getAllByText('pack')).toHaveLength(1)
+    // `unit: 'pack'` with no `unit_raw` — the one row in the whole mock in that
+    // state. The design writes `unit_raw || UNIT_FA[unit] || unit` (:4934) and
+    // note 9 deletes the middle; with no served `unit_title` on a ROW, the
+    // symbol is a code and is drawn as one rather than as Persian prose.
+    const symbol = screen.getAllByText('pack')
+    expect(symbol).toHaveLength(1)
+    expect(symbol[0]).toHaveAttribute('dir', 'ltr')
+  })
+
+  it('draws the source’s own word for a unit when it wrote one, and no symbol beside it', () => {
+    draw(PAPER({}, undefined, [
+      { key: 'burger_box', title: 'جعبه برگر', unit: 'carton', unit_raw: 'کارتن ۱۰۰تایی' },
+    ]))
+    expect(screen.getByText('کارتن ۱۰۰تایی')).toBeInTheDocument()
+    expect(screen.queryByText('carton')).toBeNull()
   })
 
   it('reads a paper form with a column keyed `unit` as a form, not a grid', () => {

@@ -1,7 +1,7 @@
 import { useId, useState } from 'react'
 import {
   AGGREGATE_LABELS, DIVERGENCE_LABELS, FROM_LITERAL_LABELS, HIT_LABELS, NATURE_LABELS,
-  PAYLOAD_FIELD_LABELS, SCREEN_LABELS, WEEKDAY_LABELS, label,
+  PAYLOAD_FIELD_LABELS, SCREEN_LABELS, cellLabel, label,
 } from '../../lib/factsLabels'
 import { toFa } from '../../lib/format'
 import { Icon } from '../../ui/Icon'
@@ -148,15 +148,14 @@ function FormulaCard({ expr }: { expr: string }) {
 /**
  * A decision-table cell.
  *
- * A number stays a Latin island (QF-42). **A weekday is Persian** — the estate's
- * own tables hold `wed` / `thu` / `fri` (`F-00032`, `F-00050`), which the design
- * maps through `WD_FA` (:4691) and which would otherwise render an English word
- * inside a Persian table. Read with `?? text`, never through `label()`: a cell
- * is an open string and a miss is ordinary, which is what the design's own
- * `enumFa` does.
+ * A number stays a Latin island (QF-42). Everything else goes through
+ * `cellLabel`, which is the design's own `enumFa` (:4693) — the estate's tables
+ * hold `wed` / `thu` / `fri` (`F-00032`, `F-00050`) and would otherwise render
+ * an English word inside a Persian table.
  *
- * A value that is neither has no served label and no map, so the stored word is
- * what there is to show — the `KEY_FA`-free half of note 2.
+ * **The same function as the record grid's cell**, deliberately: the design
+ * applies `enumFa` at both sites (:4860 and :4912) and covering one of them is
+ * what let «wed» ship while «mass» was still English two cards away.
  */
 function tableCell(v: unknown, output: boolean): GridCell {
   const ink = output ? 'font-extrabold text-violet' : 'font-semibold text-ink'
@@ -168,7 +167,7 @@ function tableCell(v: unknown, output: boolean): GridCell {
   const text = String(v)
   const numeric = text !== '' && !Number.isNaN(Number(text))
   if (numeric) return { node: <Mono className={`text-fs-sm ${ink}`}>{text}</Mono> }
-  return { node: <span className={`text-fs-sm ${ink}`}>{WEEKDAY_LABELS[text] ?? text}</span> }
+  return { node: <span className={`text-fs-sm ${ink}`}>{cellLabel(text)}</span> }
 }
 
 /** :1183 — «جدول تصمیم», its hit rule, its rows and its default band. */
@@ -367,7 +366,7 @@ function InputRow({ bundle, input, onOpen }: {
   const from = typeof input.from === 'object' ? refTitle(bundle, input.from) : undefined
   const via = refTitle(bundle, input.via)
   return (
-    // :1287 — `13px 18px`, and 13px HAS a token: `--pad-table-row-y`
+    // :1288 — `13px 18px`, and 13px HAS a token: `--pad-table-row-y`
     // (`tokens.css:395`), which `FactsList.tsx:215` already writes for the
     // design's own 13px. An exact token beats a rounding.
     <div className="px-s9 py-table-row-y border-b border-line-row">
@@ -400,7 +399,7 @@ function OutputRow({ bundle, output, onOpen }: {
   const of = refTitle(bundle, output.of)
   const writes = refTitle(bundle, output.writes_to)
   return (
-    // :1313 — the same `13px 18px` as the input row above.
+    // :1314 — the same `13px 18px` as the input row above.
     <div className="px-s9 py-table-row-y border-b border-line-row">
       <div title={output.key} className="flex items-baseline gap-s4 flex-wrap">
         <FieldName title={output.title} name={output.key} />

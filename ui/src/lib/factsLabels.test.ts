@@ -139,3 +139,42 @@ describe('label()', () => {
     expect(label(labels.KIND_LABELS, undefined)).toBe('')
   })
 })
+
+/**
+ * `cellLabel` — the design's `enumFa` (`Inja Panel.dc.html:4693`), which two
+ * cards read every open cell through. One check for the whole chain, because
+ * the failure it exists to stop is a stored English word reaching a
+ * Persian-only screen and it does not matter which of the four maps was meant
+ * to catch it.
+ */
+describe('the Persian for an open cell value', () => {
+  it('reads the four maps in the design’s own order', () => {
+    // WD_FA, both spellings the store holds
+    expect(labels.cellLabel('thu')).toBe('پنجشنبه')
+    expect(labels.cellLabel('thursday')).toBe('پنجشنبه')
+    // ENUM_FA's dimension half — `F-00017`'s own column
+    expect(labels.cellLabel('mass')).toBe('جرم')
+    expect(labels.cellLabel('dimensionless')).toBe('بی‌بعد')
+    // …its state and category halves, through the maps Appendix D already names
+    expect(labels.cellLabel('cooked')).toBe('پخته')
+    expect(labels.cellLabel('ingredient')).toBe('مادهٔ اولیه')
+    // GROUP_FA
+    expect(labels.cellLabel('italian_pizza')).toBe('پیتزا ایتالیایی')
+    // …and the design's own fallback: the stored value, never a throw.
+    expect(labels.cellLabel('prod_61')).toBe('prod_61')
+  })
+
+  it('takes Appendix D’s word where the design and the appendix differ', () => {
+    // `place` is «مکان» in the design's `ENUM_FA` (:4690) and «محل نگهداری» in
+    // Appendix D's `item.category`. The appendix wins (note 9).
+    expect(labels.cellLabel('place')).toBe('محل نگهداری')
+    // …and a unit's DIMENSION keeps the design's word, because a measurement's
+    // `quantity` is a different enumeration that happens to share four keys.
+    expect(labels.cellLabel('duration')).toBe('زمان')
+    expect(labels.QUANTITY_LABELS.duration).toBe('مدت')
+  })
+
+  it('carries «در غیر این صورت» once, as a reference', () => {
+    expect(labels.cellLabel('otherwise')).toBe(labels.SCREEN_LABELS.table_default)
+  })
+})

@@ -211,7 +211,7 @@ function scopeLine(
  * card every kind ends with (:1708-1748).
  *
  * **Conformance note 7 lives here.** The design draws one orphan class, the
- * tombstoned process (`p.tomb`, :1723); Appendix D declares four, and a process
+ * tombstoned process (`p.tomb`, :1725); Appendix D declares four, and a process
  * link can be any of them:
  *
  * | served | drawn |

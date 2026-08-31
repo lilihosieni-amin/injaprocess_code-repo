@@ -27,7 +27,7 @@ export function ItemCard({ bundle }: { bundle: FactBundle }) {
         <Mono className="text-fs-steps-title font-extrabold text-ink">
           {d.code ?? (d.code_absent === true ? L('code_absent') : none())}
         </Mono>
-        {/* :1560 — 13px here, beside a 26px code, and not the pill's own
+        {/* :1559 — 13px here, beside a 26px code, and not the pill's own
             11.5px. See `Pill`'s `fs`. */}
         <Pill tone="violet" fs="text-fs-sm">{label(CATEGORY_LABELS, d.category)}</Pill>
         <span className="ms-auto inline-flex items-baseline gap-s3">
@@ -76,7 +76,7 @@ export function ItemCard({ bundle }: { bundle: FactBundle }) {
                            rounded-input">
                 <Mono className="text-fs-sm font-bold text-violet">{u.pack_unit}</Mono>
                 <span aria-hidden className="text-fs-xxs text-faint">=</span>
-                {/* :1600 — the chip ends at the factor. The base unit is the
+                {/* :1598 — the chip ends at the factor. The base unit is the
                     card's own header row and is not repeated on every chip. */}
                 <Mono className="text-fs-sm2 text-ink">{factor(u.factor_to_base)}</Mono>
               </span>

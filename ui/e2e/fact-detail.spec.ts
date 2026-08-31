@@ -194,6 +194,29 @@ const MEASUREMENT = bundle('F-00023', 'measurement', 'وزن‌کشی پنیر �
   },
 })
 
+/** F-00017 — «واحدها», the units record. Its rows carry cells, so it is a grid,
+ *  and its `dimension` column is what proves the grid needs `enumFa` too. */
+const UNITS = bundle('F-00017', 'record', 'واحدها', {
+  medium: 'native', role: 'config', location: {},
+  grain: 'هر ردیف یک واحد',
+  fields: [
+    { key: 'symbol', title: 'نماد', type: 'string' },
+    { key: 'dimension', title: 'بُعد', type: 'string' },
+    { key: 'factor_to_base', title: 'ضریب به واحد پایه', type: 'number' },
+    { key: 'unit_title', title: 'عنوان', type: 'string' },
+  ],
+  rows: [
+    { key: 'g', symbol: 'g', dimension: 'mass', factor_to_base: 1, unit_title: 'گرم' },
+    { key: 'ml', symbol: 'ml', dimension: 'volume', factor_to_base: 1, unit_title: 'میلی‌لیتر' },
+    { key: 'pcs', symbol: 'pcs', dimension: 'count', factor_to_base: 1, unit_title: 'عدد' },
+    { key: 'carton', symbol: 'carton', dimension: 'pack', factor_to_base: null, unit_title: 'کارتن' },
+    { key: 'min', symbol: 'min', dimension: 'duration', factor_to_base: 1, unit_title: 'دقیقه' },
+    { key: 'irr', symbol: 'irr', dimension: 'money', factor_to_base: 1, unit_title: 'ریال' },
+    { key: 'percent', symbol: 'percent', dimension: 'dimensionless', factor_to_base: 0.01,
+      unit_title: 'درصد' },
+  ],
+})
+
 /** F-00021 — a stub, and F-00010 — a retired item. Neither draws a tick. */
 const STUB = bundle('F-00021', 'record', 'موجودی آخر شب — پیتزا (ناهارخوران)', {
   medium: 'sheet', role: 'log', location: { sheet: 'پیتزا' }, stub: true,
@@ -251,6 +274,7 @@ async function open(page: Page, id: string) {
     '/api/facts/F-00026': CONSTANT,
     '/api/facts/F-00048': ITEM,
     '/api/facts/F-00023': MEASUREMENT,
+    '/api/facts/F-00017': UNITS,
     '/api/facts/F-00021': STUB,
     '/api/facts/F-00010': RETIRED,
     '/api/facts/branches': BRANCHES,
@@ -506,6 +530,22 @@ test('fact detail — the constant, the item and the measurement', async ({ page
   await expect(page.getByRole('button', { name: 'مانده شب فرنگی و برگر' })).toBeVisible()
   await expect(page.getByText('F-00011')).toHaveCount(0)
   await expect(page.getByText('end_stock')).toBeVisible()
+})
+
+test('fact detail — the units record’s dimension column is Persian', async ({ page }) => {
+  await open(page, 'F-00017')
+  const grid = page.getByRole('table', { name: /ردیف/ })
+  // :4912 — `enumFa`'s SECOND site, which the first fix pass missed. Seven
+  // English words reached this column on a Persian-only screen; asserted in the
+  // browser so the regression cannot come back through a jsdom-only check.
+  for (const word of ['جرم', 'حجم', 'تعداد', 'بسته', 'زمان', 'پول', 'بی‌بعد']) {
+    await expect(grid.getByText(word, { exact: true }), word).toBeVisible()
+  }
+  for (const english of ['mass', 'volume', 'count', 'duration', 'money', 'dimensionless']) {
+    await expect(grid.getByText(english, { exact: true }), english).toHaveCount(0)
+  }
+  // …and the machine columns stay latin: a symbol is a code (QF-42, :4909).
+  await expect(grid.getByText('percent', { exact: true }).first()).toHaveAttribute('dir', 'ltr')
 })
 
 test('fact detail — a stub and a retired entry draw no tick at all', async ({ page }) => {

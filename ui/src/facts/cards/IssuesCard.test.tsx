@@ -29,7 +29,7 @@ describe('the issues card', () => {
     render(<IssuesCard bundle={SCALED} onOpen={vi.fn()} />)
     expect(screen.getByText('نقص: تغییر مقیاس')).toBeInTheDocument()
     expect(screen.getByText(/مقادیر به گرم ثبت شده‌اند/)).toBeInTheDocument()
-    // The design computes none of these and draws none of them (:1695-1697).
+    // The design computes none of these and draws none of them (:1698-1700).
     expect(screen.getByText('۱۴۰۴-۰۹-۱۶')).toBeInTheDocument()
     expect(screen.getByText(/ضرب در/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'گزارش مرکزی — پیتزا' })).toBeInTheDocument()

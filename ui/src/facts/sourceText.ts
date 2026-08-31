@@ -4,7 +4,7 @@ import type { FactSource } from '../api/types'
 
 /**
  * Where a source was read, in the design's own five phrases (`sfSources`,
- * `Inja Panel.dc.html:4807`, and an account's `srcAt`, :5038 — one composition,
+ * `Inja Panel.dc.html:5050`, and an account's `srcAt`, :5033 — one composition,
  * used twice).
  *
  * Which locator applies is decided by `type`, which is why the schema makes all

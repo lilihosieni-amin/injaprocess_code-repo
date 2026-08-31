@@ -561,8 +561,8 @@ export const SCREEN_LABELS: Record<string, string> = {
   location_sheet: 'برگهٔ {n}',                             // :4953
   location_format: 'قالب {n}',                             // :4955
 
-  // Where a source was read — `sfSources.at` (:4807) and an account's `srcAt`
-  // (:5038), which compose the same five phrases.
+  // Where a source was read — `sfSources.at` (:5050) and an account's `srcAt`
+  // (:5033), which compose the same five phrases.
   source_at_sheet: 'برگهٔ {n}',                            // :5052
   source_at_sheet_cell: 'برگهٔ {n}، خانهٔ {m}',            // :5052
   source_at_lines: 'خط {n}',                               // :5052
@@ -654,6 +654,13 @@ export const WEEKDAY_LABELS: Record<string, string> = {
   weekday: 'روز هفته',
   weekend: 'آخر هفته',
   any: 'هر روز',
+  // A REFERENCE and not a second definition: `SCREEN_LABELS.table_default` is
+  // the same sentence the decision table's own default band draws, and this map
+  // already holds seven duplicate VALUES (`sat`/`saturday`) because two stored
+  // vocabularies are in play. Nothing in the estate stores `otherwise` in a
+  // `when` today; `WD_FA` (:4692) carries it, so a cell that ever did would
+  // otherwise read English.
+  otherwise: SCREEN_LABELS.table_default,
   // the inline `WD` (:4928) — a printed form row's «فقط …‌ها پر می‌شود»
   saturday: 'شنبه',
   sunday: 'یکشنبه',
@@ -662,6 +669,96 @@ export const WEEKDAY_LABELS: Record<string, string> = {
   wednesday: 'چهارشنبه',
   thursday: 'پنجشنبه',
   friday: 'جمعه',
+}
+
+/**
+ * The units record's `dimension` column — `ENUM_FA`'s first seven members
+ * (`Inja Panel.dc.html:4688`), which `F-00017` («واحدها») holds in the estate.
+ *
+ * **Its own enumeration, and NOT `QUANTITY_LABELS`**, though four keys overlap:
+ * a measurement's `quantity` is «وزن / مدت / مبلغ» (Appendix D) and a unit's
+ * dimension is «جرم / زمان / پول» (the design). Same English word, two
+ * enumerations, two Persian words — exactly the collision this file's per-map
+ * shape exists to keep apart, and the reason a flat dictionary would ship the
+ * wrong word in one of the two places.
+ *
+ * Appendix D has no table for it, because `facts.schema.json` types `data` as
+ * an unconstrained object and a config record's column set is not frozen; the
+ * design is the source, transcribed.
+ */
+export const DIMENSION_LABELS: Record<string, string> = {
+  mass: 'جرم',
+  volume: 'حجم',
+  count: 'تعداد',
+  pack: 'بسته',
+  duration: 'زمان',
+  money: 'پول',
+  dimensionless: 'بی‌بعد',
+}
+
+/**
+ * An item's `group` — `GROUP_FA` (`:4684`), transcribed.
+ *
+ * Conformance note 9 says this map is replaced by *"`resolved` / the group's own
+ * `title`"*, and **neither is served**: `facts_store._labels` maps ids and item
+ * keys only (`facts_store.py:291`), and a group key is neither. So the design's
+ * own map is what is left, and it goes here rather than into a component, which
+ * is the half of note 9 that still binds.
+ */
+export const GROUP_LABELS: Record<string, string> = {
+  cold_cuts: 'کالباس و فرآورده',
+  dough: 'خمیر',
+  cheese: 'پنیر',
+  sauce: 'سس',
+  bread: 'نان',
+  vegetable: 'سبزیجات',
+  meat: 'گوشت',
+  chicken: 'مرغ',
+  potato: 'سیب‌زمینی',
+  drink: 'نوشیدنی',
+  packaging: 'بسته‌بندی',
+  starter: 'پیش‌غذا',
+  american_pizza: 'پیتزا امریکایی',
+  italian_pizza: 'پیتزا ایتالیایی',
+  burger: 'برگر',
+  sandwich: 'ساندویچ',
+  side: 'مخلفات',
+  spice: 'ادویه',
+}
+
+/**
+ * The Persian for one **open** cell value — the design's `enumFa` (`:4693`),
+ * which is `WD_FA || ENUM_FA || GROUP_FA || v`.
+ *
+ * ## Why this is a chain and not a `label()` call
+ *
+ * A decision-table cell (`:4857`, `:4860`) and a record-grid cell (`:4912`) hold
+ * whatever the source wrote: a weekday, a dimension, a group, a product name, a
+ * number. There is no enumeration to name, so `label()`'s throw would fire on
+ * ordinary data. The design's own fallback is the stored value and so is this
+ * one — which is also what keeps a screen honest: an English word here means the
+ * store holds a value no map covers, and it is visible rather than blank.
+ *
+ * ## Why the order is the design's
+ *
+ * `WD_FA` first, then `ENUM_FA`, then `GROUP_FA`. Two keys are in more than one
+ * map and the order decides them: `pack` is a dimension here and «بسته‌بندی» is
+ * `packaging` in the group map, so they do not collide; `place` is `ENUM_FA`'s
+ * «مکان» and `CATEGORY_LABELS`' «محل نگهداری», and **Appendix D wins** — a
+ * category is an enumeration the appendix names, so `CATEGORY_LABELS` is
+ * consulted for it rather than a transcription of the design's word.
+ *
+ * `STATE_LABELS` and `CATEGORY_LABELS` cover `ENUM_FA`'s remaining seven members
+ * (`raw`/`cooked`/`prepared`, `ingredient`/`product`/`place`/`consumable`)
+ * without restating one of them.
+ */
+export function cellLabel(value: string): string {
+  return WEEKDAY_LABELS[value]
+    ?? DIMENSION_LABELS[value]
+    ?? STATE_LABELS[value]
+    ?? CATEGORY_LABELS[value]
+    ?? GROUP_LABELS[value]
+    ?? value
 }
 
 /**

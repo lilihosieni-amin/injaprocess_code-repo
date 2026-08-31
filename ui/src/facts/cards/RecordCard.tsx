@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import {
   CADENCE_LABELS, FIELD_TYPE_LABELS, PAYLOAD_FIELD_LABELS, SCREEN_LABELS,
-  WEEKDAY_LABELS, label,
+  cellLabel, label,
 } from '../../lib/factsLabels'
 import { toFa } from '../../lib/format'
 import {
@@ -195,14 +195,24 @@ function cellOf(
     }
   }
   const numeric = raw !== '' && !Number.isNaN(Number(raw))
-  return {
-    node: numeric
-      // QF-42 — a number is an LTR island in Latin digits.
-      ? <Mono className={cls}>{raw}</Mono>
-      : <span className={cls}>{raw}</span>,
-    className: paint,
+  if (numeric) {
+    // QF-42 — a number is an LTR island in Latin digits.
+    return { node: <Mono className={cls}>{raw}</Mono>, className: paint }
   }
+  // :4912 — the design runs every non-numeric cell through `enumFa`, and this
+  // is the second of that function's two sites. `F-00017` («واحدها») is the
+  // entry that proves it matters: its `dimension` column holds `mass`,
+  // `volume`, `count`, `pack`, `duration`, `money` and `dimensionless`, which
+  // reached a Persian-only screen as seven English words.
+  //
+  // An id-shaped column stays latin — a symbol or a key is a code (QF-42), and
+  // `cellLabel` would leave it alone anyway; the island is what says so.
+  if (ID_COLUMNS.has(f.key)) return { node: <Mono className={cls}>{raw}</Mono>, className: paint }
+  return { node: <span className={cls}>{cellLabel(raw)}</span>, className: paint }
 }
+
+/** :4909 — the columns whose cells are machine identifiers, not words. */
+const ID_COLUMNS = new Set(['symbol', 'key', 'code', 'id'])
 
 /**
  * :1368 — the columns of a record with no grid, and the one place «واحد ثبت
@@ -262,7 +272,7 @@ function ColumnsTable({ bundle, data, onOpen }: {
               {
                 node: (
                   <div>
-                    {/* :1385 — this one is NOT the screen's pill: the design
+                    {/* :1393 — this one is NOT the screen's pill: the design
                         draws it `2px 8px` at `--radius-badge`, which is `Tag`'s
                         geometry at the badge radius rather than `Pill`'s
                         `999px`. Drawn through `Pill` it also took `Pill`'s
@@ -300,7 +310,7 @@ function ColumnsTable({ bundle, data, onOpen }: {
   )
 }
 
-/** :1385 — the columns table's own unit box: `12.5px/700`, `2px 8px`, at
+/** :1393 — the columns table's own unit box: `12.5px/700`, `2px 8px`, at
  *  `--radius-badge`. Local to this card, because it is the one site the design
  *  draws it and it is a different shape from the screen's pill. */
 function UnitBadge({ tone, children }: { tone: string; children: ReactNode }) {
@@ -389,14 +399,23 @@ function PrintedRows({ data }: { data: RecordData }) {
               <div style={{ ...PX.gap7, ...PX.mt9 }} className="flex flex-col">
                 {unit !== undefined && (
                   <PrintedDetail text={label(SCREEN_LABELS, 'printed_row_unit')}>
-                    <span className="text-fs-menu font-semibold text-ink">{unit}</span>
-                    {/* The symbol beside the phrase, and only when they are two
-                        different things (:1421). With no `unit_raw` the design's
-                        `unitPhrase` falls back to the symbol itself and draws it
-                        twice — a defect note 9 surfaces by deleting `UNIT_FA`. */}
-                    {symbol !== undefined && symbol !== unit && (
-                      <Mono className="text-fs-micro text-faint">{symbol}</Mono>
-                    )}
+                    {/* **One rule for a unit symbol on this screen**, and the
+                        columns table's unit cell already keeps it: the source's
+                        own word when it wrote one, otherwise the stored symbol
+                        as a latin island. Never the symbol dressed as Persian
+                        prose, and never both at once.
+                        The design writes `unit_raw || UNIT_FA[unit] || unit`
+                        (:4934) — nine units mapped to Persian in the middle —
+                        and note 9 deletes that inline map. Its sanctioned
+                        replacement is the served units record's `unit_title`,
+                        which the bundle does not carry for a ROW: `RecordField`
+                        has `unit_raw` and `rows[]` has nothing, where
+                        `RuleInput`/`RuleOutput` both have `unit_title`. Filed
+                        in the report as the one served-shape gap this screen
+                        still has. */}
+                    {unitRaw !== undefined
+                      ? <span className="text-fs-menu font-semibold text-ink">{unitRaw}</span>
+                      : <Mono className="text-fs-menu font-semibold text-ink">{symbol}</Mono>}
                   </PrintedDetail>
                 )}
                 {section !== undefined && (
@@ -411,7 +430,7 @@ function PrintedRows({ data }: { data: RecordData }) {
                         its inline `WD`; unmapped it reads «فقط thursday‌ها». */}
                     <span className="text-fs-menu font-semibold text-warn-fg">
                       {label(SCREEN_LABELS, 'printed_row_day_value')
-                        .replace('{n}', WEEKDAY_LABELS[when] ?? when)}
+                        .replace('{n}', cellLabel(when))}
                     </span>
                   </PrintedDetail>
                 )}
@@ -570,7 +589,7 @@ function StructureCard({ bundle, data, onOpen }: {
             <div key={fk.fields.join('+')} style={PX.rowY7}
               className="flex items-center gap-s4 flex-wrap">
               <Mono className="text-fs-xs text-body-ink">{fk.fields.join(' + ')}</Mono>
-              {/* :1534 — the relation mark between the two sides. A directional
+              {/* :1533 — the relation mark between the two sides. A directional
                   glyph in a data row, not an icon standing in for one. */}
               <span aria-hidden className="text-fs-xxs text-faint">←</span>
               <RefLink named={refTitle(bundle, fk.reference)} onOpen={onOpen}
@@ -594,12 +613,12 @@ function StructureCard({ bundle, data, onOpen }: {
                 <span className="text-fs-sm font-semibold text-ink">
                   {[row?.text, column].filter((x) => x !== undefined).join(' › ')}
                 </span>
-                {/* :1548 — the machine cell beside its Persian name, as the
+                {/* :1545 — the machine cell beside its Persian name, as the
                     small mono hint §17 allows. */}
                 <Mono className="text-fs-nano text-faint">
                   {[r.cell.row, r.cell.field].filter((x) => x !== undefined).join(' › ')}
                 </Mono>
-                {/* :1549 — «this cell is reconciled AGAINST that constant». */}
+                {/* :1547 — «this cell is reconciled AGAINST that constant». */}
                 <span aria-hidden className="text-fs-xxs text-faint">↔</span>
                 <RefLink named={refTitle(bundle, r.against)} onOpen={onOpen}
                   className="text-fs-sm" />

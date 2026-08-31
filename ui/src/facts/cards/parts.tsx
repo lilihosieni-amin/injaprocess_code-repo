@@ -28,17 +28,20 @@ import type { Named } from '../bundle'
  *
  * * a **pill** is `py-s1 px-s5` (4×10). The design draws `4px 11px` (the header
  *   chips, :1112), `3px 10px` (the status pills, :1188) and `4px 12px` (the item
- *   category, :1560) for one role, which R8 makes a defect rather than three
+ *   category, :1559) for one role, which R8 makes a defect rather than three
  *   roles. `src/ui/Accordion.tsx:99-104` already normalised `3px 10px` onto this
  *   exact pair, with its own note that the 3px rung does not exist and that
  *   ledger P3-4 put the department card's chips here.
  * * an **inline tag** inside a row is `py-half px-s4` (2×8) — the columns
- *   table's own unit pill (:1385) drawn exactly, and the I/O pills' `2px 9px`
- *   (:1288) normalised onto it, one rung away.
- * * a **table shell band** is `px-s9 py-s7` (18×14) — `src/ui/DataTable.tsx`'s
- *   `HEAD`, which is `LINE` plus `py-s6`. `LINE` itself carries no vertical
- *   value at all, and an earlier draft of this note cited it for one. The
- *   design's `13px` ROWS do not round: `--pad-table-row-y` holds 13px exactly
+ *   table's own unit box (:1393) drawn exactly, and the I/O pills' `2px 9px`
+ *   (:1318) normalised onto it, one rung away.
+ * * a **card's title band** is `px-s9 py-s7` (18×14), and it **needs no
+ *   sanctioning call site at all**: `14px 18px` is what the design itself
+ *   draws (`:1450`, `:1708`) and both rungs are on the ladder. Two earlier
+ *   drafts of this note cited `DataTable`'s `LINE` and then its `HEAD` for the
+ *   pair; `LINE` carries no vertical value and `HEAD` is `LINE` plus `py-s6`,
+ *   which is 18×12. Neither said what was claimed. The design's `13px` ROWS do
+ *   not round either: `--pad-table-row-y` holds 13px exactly
  *   (`tokens.css:395`), so the I/O rows write `py-table-row-y`, as
  *   `FactsList.tsx:215` already does.
  * * an **eyebrow's gap** is `mb-s4` (8px). The design draws 8 six times
@@ -290,9 +293,9 @@ const TONE = {
   violet: 'bg-tile-v text-violet',       // the kind chip, the nature pill (:1152)
   quiet: 'bg-tile-v2 text-muted',        // «به ازای هر …» (:1153)
   violet2: 'bg-tile-v2 text-violet',     // an input's unit, a share (:1288, :1318)
-  danger: 'bg-tile-c text-conflict',     // «بازنشسته», «واحد ثبت نشده» (:1116, :1385)
-  warn: 'bg-tile-warn text-warn-fg',     // an aggregate, a tombstone (:1189, :1723)
-  ok: 'bg-tile-ok text-green',           // an output's unit (:1315)
+  danger: 'bg-tile-c text-conflict',     // «بازنشسته», «واحد ثبت نشده» (:1116, :1393)
+  warn: 'bg-tile-warn text-warn-fg',     // an aggregate, a tombstone (:1188, :1725)
+  ok: 'bg-tile-ok text-green',           // an output's unit (:1316)
 } as const
 
 export type Tone = keyof typeof TONE
@@ -303,9 +306,9 @@ export type Tone = keyof typeof TONE
  * ## `fs` — the type size, and why it is a parameter rather than a knob
  *
  * The design draws this shape at four sizes: `11.5px` seven times (the header
- * chips :1112-1116, the nature and «به ازای هر» pills :1152-1154, the decision
- * table's two :1188-1189), `11px` three times (:1229, :1413, :1465), `13px`
- * once (the item's category, :1560) and `10.5px` once (the tombstone, :1723).
+ * chips :1112-1116, the nature and «به ازای هر» pills :1153-1154, the decision
+ * table's two :1187-1188), `11px` three times (:1224, :1412, :1464), `13px`
+ * once (the item's category, :1559) and `10.5px` once (the tombstone, :1725).
  * R8 gives the role its dominant value, `--fs-xs`, and that is the default here
  * — but the two single-site steps are *the design's own*, and flattening them
  * was a real loss: the category chip sits beside a 26px code and the tombstone
