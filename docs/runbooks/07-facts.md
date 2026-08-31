@@ -334,6 +334,54 @@ the live `attachments/sheets/` tree, or from its off-site snapshot once the
 section already lists `attachments/sheets/` as a server-snapshot item for
 exactly this reason).
 
+## 8. Comments review — cell-comment authorship
+
+`dump-workbook` writes every sheet cell comment to `comments.tsv` with its
+author reduced to a **role**, never a display name — the `personId` a
+threaded comment carries is looked up in a role table the caller supplies,
+and anyone absent from it, or absent from any table at all, comes back
+`unknown` (Appendix C; `dump_workbook`'s own `roles=` keyword).
+
+**Today the CLI wires no role table at all**, so on the real estate every
+comment author reads `unknown` — a known state, not a bug: Task 10's run
+over the full 28-workbook export found 102 comments, and all 102 came back
+`unknown` author. There is no `--roles` flag on `dump-workbook` yet; the
+table only exists as a keyword argument on the Python `dump_workbook(...)`
+call.
+
+What to do about it:
+
+- **If comment authorship needs to matter** (a warehouse cell comment
+  carrying a yield decomposition is a case the estate actually has), the
+  role table has to be supplied or extended at the call site — today that
+  is a code change (`dump_workbook(..., roles={personId: "role", …})`),
+  not an operator-facing switch. Note it for whoever owns `engine/` if a
+  reviewer keeps needing to know who wrote a given comment.
+- **Otherwise, review comment-derived facts as they are.** An entry (or an
+  open account) whose `source[].type` is `comment` will normally carry
+  `speaker_role: null` — that is the honest state of the source, not a
+  missing field to chase down. Where the identity of the commenter
+  genuinely matters, the comment/transcript text itself, reached through
+  `source`, is the sanctioned place to look (ARD's "roles, not names"
+  rule) — never a display name written into the fact.
+
+## 9. Deliberate ceilings (سقف‌های عمدی)
+
+Two ceilings from the design (§18) have no code site to carry a `ponytail:`
+comment, so this file is their only documentation:
+
+- **No canvas badge for facts.** `src/flow/**` stays frozen — it is shared
+  with the department PDF export, and facts get no marker on a flowchart
+  node. A fact's link to a process is discoverable the other way round: its
+  reverse index («استفاده‌کنندگان») on the fact's own detail view, once the
+  Panel ships (§4).
+- **Facts are not a comment target.** FR-K1's four targets stand as they
+  are — a process step, a whole process, a department's process list, a
+  department's information page — and gain no fifth. A reviewer who finds a
+  gap while reading a fact closes it as an editor working from the facts
+  list (resolving a dispute, filling an `unknown`, editing through
+  `edit-fact`), not by leaving a comment on the entry.
+
 ## Next
 
 See [`05-operations.md`](05-operations.md) for logs, health, and backups, and
