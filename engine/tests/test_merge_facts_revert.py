@@ -1,3 +1,5 @@
+import json
+
 from facts_helpers import _root, _seed_units, _const_delta, _write, _run_dir
 from merge_facts import load_store
 from merge_facts.apply import apply
@@ -133,3 +135,42 @@ def test_revert_unrelated_run_not_blocked_by_later_adoption(tmp_path):
     revert(root, run2)               # run2 never touched the stub — must succeed
     store = load_store(root)
     assert [x for x in store["rule"]["entries"] if x["key"] == "unrelated"] == []
+
+# --- Task 7 review, round 2: id-map.json and adopted.json must be write- ---
+# --- once per run dir too — a RETRY of the same delta into the SAME run ---
+# --- dir must not let a second apply() recompute them from the now- ---
+# --- already-written store and silently erase the first call's record ---
+
+def test_retried_apply_does_not_erase_id_map_or_adopted_json(tmp_path, capsys):
+    root = _root(tmp_path); _seed_units(root)
+    apply(root, _write(root, "d1.json", _workbook_stub_seed()), _run_dir(root, "1"))
+    run2 = _run_dir(root, "2")
+    # Adopts the stub AND mints a fresh id in the same delta, so the first
+    # call's id-map.json is genuinely non-empty — not just trivially {} on
+    # both calls, which an adoption-only delta would give either way.
+    delta = _real_record_delta()
+    delta["entries"].append({
+        "id": "T-2", "kind": "rule", "key": "unrelated_mint", "title": "قانون",
+        "statement": "s", "scope": {"departments": ["cooking"], "branches": []},
+        "source": [{"type": "voice", "ref": "meetings/transcripts/c.txt", "lines": "1"}],
+        "retired": False,
+        "data": {"inputs": [], "outputs": [{"key": "v", "title": "مقدار",
+                 "unit": "g", "nature": "limit", "value": 1}]}})
+    d2 = _write(root, "d2.json", delta)
+    report1 = apply(root, d2, run2)
+    id_map_1 = json.loads((run2 / "id-map.json").read_text())
+    adopted_1 = json.loads((run2 / "adopted.json").read_text())
+    assert id_map_1 == report1["id_map"] and id_map_1["T-2"]   # the real mint
+    assert adopted_1 != []                               # the stub really was adopted
+
+    report2 = apply(root, d2, run2)                       # SAME run_dir, SAME delta
+    id_map_2 = json.loads((run2 / "id-map.json").read_text())
+    adopted_2 = json.loads((run2 / "adopted.json").read_text())
+    assert id_map_2 == id_map_1                            # not silently flipped to {}
+    assert adopted_2 == adopted_1                           # not silently flipped to []
+    assert report2["id_map"] == {}                        # the retry itself sees only hits
+
+    with pytest.raises(SystemExit) as e:
+        revert(root, run2)
+    assert e.value.code == 2
+    assert "adopted workbook stub" in capsys.readouterr().err

@@ -17,7 +17,12 @@ also keeps `facts-delta.json`, `id-map.json`, and `adopted.json` — the ids of
 every workbook stub (QF-20) this run adopted, always written (`[]` when none),
 so `revert` can refuse an adoption without re-deriving it from the store
 later, after other runs may have changed what the adopted record looks like
-(Task 7 review, I2).
+(Task 7 review, I2). `id-map.json` and `adopted.json` are, like the snapshot,
+written once per run directory (`_write_once`, Task 7 review round 2): a
+RETRY of the same delta into the same run dir must not recompute either from
+the now-already-written store and silently erase the first call's true
+record — every entry would now read as a hit, not a miss, and an
+already-adopted stub has nothing left to adopt.
 
 ponytail: five shared files, one writer, no lock. If concurrency ever becomes
 real, shard by a hash of the key (`facts/{kind}/{NN}.json`) so one key always
@@ -673,6 +678,23 @@ def _snapshot(root, run_dir):
             shutil.copy2(path, before / name)
 
 
+def _write_once(path, obj):
+    """Write `obj` to `path` as JSON, but only the FIRST time (Task 7 review,
+    round 2): a run dir reused for a RETRY of the same delta must not let a
+    second `apply()` call recompute `id_map`/`adopted` from the now-already-
+    written store and silently overwrite the run's true, original record —
+    every entry would now be a hit rather than a miss, flipping `id_map` to
+    `{}`, and an already-adopted stub has nothing left to adopt, flipping
+    `adopted` to `[]` — each erasing exactly the artifact `revert` depends
+    on. Tested on existence alone, like `_snapshot`'s own guard (same Task 7
+    review, C1). A reused run dir applying a DIFFERENT delta keeps the first
+    call's now-stale artifacts; that is an accepted cost, not a bug — reusing
+    a run dir at all is unsupported."""
+    if path.exists():
+        return
+    write_json_atomic(path, obj)
+
+
 def _run_ref(root, run_dir):
     try:
         return run_dir.resolve().relative_to(root.resolve()).as_posix()
@@ -702,12 +724,14 @@ def _finalise(root, store, run_dir, delta_path, id_map, touched, now, adopted):
     # elsewhere — `edit-fact`, the ui-backend — hands us one to copy in.
     if not (kept.exists() and kept.samefile(delta_path)):
         shutil.copy2(delta_path, kept)
-    write_json_atomic(run_dir / "id-map.json", id_map)
+    _write_once(run_dir / "id-map.json", id_map)
     # QF-20, Task 7 review (I2): the ids this run adopted, recorded HERE, at
     # write time, rather than left for `revert` to infer later from store
     # comparison — a later run's own changes to an adopted record would have
     # made that inference wrong. Always written, `[]` when nothing was
     # adopted, so a MISSING file unambiguously means "a run that predates
-    # this artifact" rather than "nothing adopted".
-    write_json_atomic(run_dir / "adopted.json", sorted(adopted))
+    # this artifact" rather than "nothing adopted". `_write_once` (Task 7
+    # review, round 2): a retried `apply()` into the same run dir must not
+    # recompute and silently erase the first call's true record.
+    _write_once(run_dir / "adopted.json", sorted(adopted))
     return {"created": created, "updated": updated}
