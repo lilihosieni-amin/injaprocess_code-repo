@@ -23,8 +23,10 @@ five kind files come back byte-identical.
 of the three roots — a transcript streamed inline is the failure this route
 exists to prevent, and it would pass a status-only test.
 """
+import inspect
 import itertools
 import json
+import logging
 import pathlib
 import re
 import subprocess
@@ -37,6 +39,7 @@ from inja_ui_backend.access import FORBIDDEN, NOT_FOUND
 from inja_ui_backend.app import create_app
 from inja_ui_backend.auth import hash_password
 from inja_ui_backend.fingerprint import fact_fingerprint
+from inja_ui_backend.routers import facts as facts_router
 from inja_ui_backend.store import confirmations, policy, users
 from inja_ui_backend.tests_helpers import cfg_for
 
@@ -71,9 +74,18 @@ DINING_SOURCE = "meetings/transcripts/dining-1405-06-03.txt"
 #: still not be given.
 ORPHAN = "meetings/transcripts/orphan-1405-06-04.txt"
 
+#: **Cited, on disk, and outside every root** — a `voice` source whose `ref`
+#: still points at the recording. QF-39 makes a voice source's file the
+#: *transcript*, since the audio is not kept, so a `meetings/audio/` ref is the
+#: realistic stale citation and exactly what containment exists to refuse. It
+#: is the one path that reaches the containment check with the citation arm
+#: already satisfied, which is what makes that check testable at all.
+STALE_AUDIO = "meetings/audio/cooking-1405-06-01.ogg"
+
 SOURCES = {SHEET: '{"tab": "پیتزا"}', PHOTO: "عکس فرم",
            TRANSCRIPT: "متن جلسه", ACCOUNT_ONLY: "متن جلسهٔ دوم",
-           DINING_SOURCE: "متن جلسهٔ سالن", ORPHAN: "متن بی‌صاحب"}
+           DINING_SOURCE: "متن جلسهٔ سالن", ORPHAN: "متن بی‌صاحب",
+           STALE_AUDIO: "صدای جلسه"}
 
 
 def _entry(fid, dept, key, title, sources, account_refs):
@@ -105,7 +117,8 @@ def _entry(fid, dept, key, title, sources, account_refs):
 
 ENTRIES = [
     _entry(COOKING, "cooking", "test_ghaarch", "قارچ",
-           [("chat", TRANSCRIPT), ("sheet", SHEET), ("photo", PHOTO)],
+           [("chat", TRANSCRIPT), ("sheet", SHEET), ("photo", PHOTO),
+            ("voice", STALE_AUDIO)],
            [TRANSCRIPT, ACCOUNT_ONLY]),
     # It cites cooking's field material as well as its own transcript — the
     # shape QF-43 describes when a run adds a source to an entry outside its
@@ -378,7 +391,14 @@ def test_a_failed_precondition_is_422_carrying_the_engines_message(
         data_root, tmp_path, monkeypatch):
     """Exit 2 with nothing written is the engine's whole contract, so the
     service has nothing to undo — it forwards the message and answers 422:
-    the body was well formed and the **state** refused it."""
+    the body was well formed and the **state** refused it.
+
+    And the run directory is left saying so. `finished_at: null` with
+    `merged: false` is what a run that was attempted and did not merge looks
+    like, which is the whole point of writing the file before the verb: patched
+    on the way out regardless, this directory would claim a store change that
+    never happened, and a resume or a `revert` reading it would believe it.
+    """
     _plant(data_root)
     before = _store(data_root)
     client = _client_as(data_root, tmp_path, "editor", "dept:cooking")
@@ -392,6 +412,10 @@ def test_a_failed_precondition_is_422_carrying_the_engines_message(
     assert r.status_code == 422, r.text
     assert r.json()["detail"] == message
     assert _store(data_root) == before
+    runs = _runs(data_root)
+    assert len(runs) == 1, runs
+    meta = _meta(runs[0])
+    assert (meta["finished_at"], meta["merged"]) == (None, False), meta
 
 
 def test_the_service_never_writes_the_store_itself(data_root, tmp_path,
@@ -428,6 +452,27 @@ def test_the_resolve_route_reaches_the_engine_with_all_four_flags(
     assert args[args.index("--field") + 1] == FIELD
     assert args[args.index("--account") + 1] == CHOSEN
     assert args[args.index("--run") + 1] == str(_runs(data_root)[0])
+
+
+def test_the_resolve_route_is_not_run_in_a_worker_thread():
+    """The half of the store lock that can be reverted quietly.
+
+    `merge_facts/apply.py` says what it is holding up — *"five shared files,
+    one writer, no lock"* — and FastAPI runs a **sync** handler in a worker
+    thread, so two resolves would interleave `load_store` → `save_store`:
+    one update lost, and two `facts-before/` snapshots each taken of a store
+    the other had already moved, which is a `revert` that restores the wrong
+    bytes. An `async def` handler runs on the event loop and cannot interleave
+    with itself, and `storage.file_lock` is what keeps that true the day this
+    body gains an `await` — the shape `routers/processes.save` already has.
+
+    Asserted here rather than by racing two requests, and the reason is worth
+    writing down: in-process the two are indistinguishable, because a
+    sync-bodied `async def` never yields, so a race test would pass with the
+    lock removed. `async with` inside a plain `def` is a `SyntaxError`, so the
+    two halves cannot come apart silently — this pins the one that can.
+    """
+    assert inspect.iscoroutinefunction(facts_router.resolve_fact)
 
 
 def test_a_view_only_holder_cannot_reach_the_resolve_route(data_root, tmp_path):
@@ -625,12 +670,38 @@ def test_a_kind_switched_off_hides_the_files_it_cites(data_root, tmp_path):
     assert r.json()["detail"] == NOT_FOUND
 
 
+def test_a_cited_file_outside_the_roots_is_still_refused(data_root, tmp_path):
+    """**The containment check, on its own.**
+
+    Every other path this file asks for is refused by the citation arm before
+    containment is ever consulted, so none of them can say whether the roots
+    are checked at all. This one can: the cooking entry cites `STALE_AUDIO` — a
+    `voice` source still pointing at the recording, which QF-39 says is not the
+    file to serve (the transcript is, since the audio is not kept) — the file
+    is on disk, and the caller is served the entry that cites it. The only
+    thing left that can refuse them is the root list.
+
+    The premise is asserted rather than assumed: if a later edit stops the
+    fixture citing this path, this test fails *here*, saying so, instead of
+    passing for the wrong reason and leaving containment unpinned.
+    """
+    _plant(data_root)
+    _plant_sources(data_root)
+    assert STALE_AUDIO in [s["ref"] for s in ENTRIES[0]["source"]], (
+        "the premise: an entry this caller is served cites this path")
+    client = _client_as(data_root, tmp_path, "editor", "*")
+    assert _get(client, TRANSCRIPT).status_code == 200, (
+        "the premise: this caller is served that entry's other sources")
+    r = _get(client, STALE_AUDIO)
+    assert r.status_code == 404, r.text
+    assert r.json()["detail"] == NOT_FOUND
+
+
 @pytest.mark.parametrize("rel", [
     "../../etc/passwd",
     "/etc/passwd",
     "departments/cooking/attachments/../../processes/cooking-001.json",
     "attachments/sheets/../../facts/items.json",
-    "meetings/audio/cooking-1405-06-01.ogg",
     "facts/items.json",
     "departments/cooking/processes/cooking-001.json",
     "",
@@ -639,7 +710,13 @@ def test_nothing_outside_the_three_roots_is_served(data_root, tmp_path, rel):
     """`resolve()` on both sides, so a `..` that survived URL decoding and a
     symlink out of the root are refused by the same check — and refused with
     the **bare 404** a missing file gets, never a 403: a caller learns nothing
-    from a refusal about what is on the other side of it."""
+    from a refusal about what is on the other side of it.
+
+    **Belt and braces, and knowing which is which**: no entry cites any of
+    these, so the citation arm refuses them first and none of these cases can
+    kill a containment mutant. What they do pin is that none of these spellings
+    is a 500 or a 403 — the test above is the one that pins containment.
+    """
     _plant(data_root)
     _plant_sources(data_root)
     client = _client_as(data_root, tmp_path, "editor", "*")
@@ -675,16 +752,33 @@ def test_the_download_needs_export_pdf(data_root, tmp_path):
     assert json.loads(rows[0]["detail"])["capability"] == "export_pdf"
 
 
-def test_a_view_only_holder_cannot_reach_the_download(data_root, tmp_path):
+def test_a_view_only_holder_cannot_reach_the_download(data_root, tmp_path,
+                                                      caplog):
     """A Reader holds `export_pdf` — and is still 404'd, because the Panel gate
     speaks first (QF-23, §18). Without it this route is a file server over the
-    transcripts of every department, open to anyone who may download a PDF."""
+    transcripts of every department, open to anyone who may download a PDF.
+
+    **The log line is asserted, and that is what makes this about the Panel
+    gate.** The citation arm would refuse this caller too — `_served` runs the
+    same `PANEL_CAPABILITIES` OR — so the status alone cannot tell the two
+    apart, and `panel_session` could be dropped from this route without a
+    single test noticing. What only it leaves is `log_out_of_scope`'s line
+    (D42's trade: the 404 is unrecorded in the activity table and legible in
+    the application log), so asserting the line is asserting the gate.
+    `test_requires.test_a_404_writes_nothing` is the same assertion for the
+    same reason.
+    """
     _plant(data_root)
     _plant_sources(data_root)
     client = _client_as(data_root, tmp_path, "reader", "*")
-    r = _get(client, "meetings/transcripts/cooking-1405-06-01.txt")
+    with caplog.at_level(logging.INFO):
+        r = _get(client, TRANSCRIPT)
     assert r.status_code == 404, r.text
     assert r.json()["detail"] == NOT_FOUND
+    lines = [rec.getMessage() for rec in caplog.records
+             if rec.name == "inja_ui_backend.access"]
+    assert len(lines) == 1, lines
+    assert "/api/facts/source" in lines[0] and client.username in lines[0]
 
 
 def test_with_fact_sources_off_a_non_editor_is_refused_the_file(data_root,

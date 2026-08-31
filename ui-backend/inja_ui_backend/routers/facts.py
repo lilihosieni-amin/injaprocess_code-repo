@@ -976,8 +976,8 @@ def _run_department(entry: dict) -> str:
 
 
 @router.post("/{fid}/resolve")
-def resolve_fact(fid: str, body: ResolveFactBody, request: Request,
-                 user=Depends(_write_gate)):
+async def resolve_fact(fid: str, body: ResolveFactBody, request: Request,
+                       user=Depends(_write_gate)):
     """Settle one disputed field by choosing an account (QF-39, §12).
 
     **The service never edits `facts/*.json`** (QF-2). It opens a run
@@ -1009,12 +1009,26 @@ def resolve_fact(fid: str, body: ResolveFactBody, request: Request,
     # document on `request.state` — is how the thing that was gated and the
     # thing that is written come apart.
     entry = _reachable(request, user, fid)
-    run = engine.facts_run_dir(cfg, _run_department(entry), user["username"])
-    try:
-        engine.merge_facts_resolve(cfg, fid, body.field, body.account, run)
-    except engine.EngineError as e:
-        raise HTTPException(status_code=422, detail=e.message)
-    engine.finish_facts_run(run)
-    gitcommit.commit(cfg, [cfg.data_root / "facts", run], fid,
-                     f"facts resolve {body.field}")
+    # One writer at a time, over the whole store — `routers/processes.save`'s
+    # own shape (`async def` plus the lock around the write *and* the commit),
+    # and `merge_facts/apply.py` states the assumption it is holding up:
+    # "five shared files, one writer, no lock". This route is the only thing
+    # that can break it, because FastAPI runs a sync handler in a worker
+    # thread and two resolves would then interleave `load_store` →
+    # `save_store` — losing an update, and taking two `facts-before/`
+    # snapshots of a store the other has already moved, which is a `revert`
+    # that restores the wrong bytes.
+    #
+    # The commit is inside for the reason it is inside there: the store and
+    # the record of why it moved must not be split by another writer's commit.
+    async with storage.file_lock(cfg.data_root / "facts"):
+        run = engine.facts_run_dir(cfg, _run_department(entry),
+                                   user["username"])
+        try:
+            engine.merge_facts_resolve(cfg, fid, body.field, body.account, run)
+        except engine.EngineError as e:
+            raise HTTPException(status_code=422, detail=e.message)
+        engine.finish_facts_run(run)
+        gitcommit.commit(cfg, [cfg.data_root / "facts", run], fid,
+                         f"facts resolve {body.field}")
     return _bundle(request, user, fid)
