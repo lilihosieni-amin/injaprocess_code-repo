@@ -29,8 +29,15 @@ describe('a source row', () => {
   it('names the source in Persian and shows where in the file it was read', () => {
     render(<SourceRow source={SHEET} />)
     expect(screen.getByText('کاربرگ')).toBeInTheDocument()
-    expect(screen.getByText('برگهٔ پیتزا ایتالیایی، خانهٔ B1')).toBeInTheDocument()
-    // The row shows the file's own name, not the whole stored path (:4806).
+    // The locator's sentence is Persian and its VALUES are decided one by one:
+    // «پیتزا ایتالیایی» is a Persian sheet name and stays prose, `B1` is a cell
+    // reference and is its own island (QF-42). Asserted as the composed line
+    // plus the island, so a regression to one flat string is visible.
+    const at = screen.getByText(/برگهٔ/)
+    expect(at).toHaveTextContent('برگهٔ پیتزا ایتالیایی، خانهٔ B1')
+    const cell = screen.getByText('B1')
+    expect(cell).toHaveAttribute('dir', 'ltr')
+    // The row shows the file's own name, not the whole stored path (:5051).
     expect(screen.getByText('Mavade Avalie.xlsx')).toBeInTheDocument()
   })
 

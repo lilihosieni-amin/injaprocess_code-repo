@@ -4,7 +4,7 @@ import { Button } from '../ui/Button'
 import { Dialog } from '../ui/Overlay'
 import type { FactSource } from '../api/types'
 import { isDownloadable, processIdOf, sourceAt, sourceFile } from './sourceText'
-import { Mono, PX } from './cards/parts'
+import { Filled, Mono, PX } from './cards/parts'
 
 /**
  * One row of «منابع» — `Inja Panel.dc.html:1709-1714` — and **QF-39's
@@ -43,7 +43,9 @@ export function SourceRow({ source, onOpenProcess }: {
       <div className="overflow-hidden">
         <Mono className="block truncate text-fs-xs text-ink">{file}</Mono>
       </div>
-      {at !== '' && <div className="text-fs-xxs text-faint mt-s1">{at}</div>}
+      {at !== undefined && (
+        <Filled {...at} className="block text-fs-xxs text-faint mt-s1" />
+      )}
     </div>
   )
 

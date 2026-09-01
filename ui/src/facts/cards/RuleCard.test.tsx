@@ -25,7 +25,7 @@ const CONSTANT = (over: Partial<FactBundle> = {}) => bundleOf('rule', {
   }],
 }, { resolved: { 'F-00016': { kind: 'record', title: 'گزارش مرکزی — پیتزا' } }, ...over })
 
-/** The same shape with a `null` value — «؟» in `--conflict` (:4842). */
+/** The same shape with a `null` value — «؟» in `--conflict` (:4845-4846). */
 const UNANSWERED = bundleOf('rule', {
   inputs: [],
   outputs: [{ key: 'threshold', title: 'آستانه', unit: 'pcs', value: null, nature: 'limit' }],
@@ -87,7 +87,7 @@ describe('the rule’s value cards', () => {
     expect(basis).toHaveAttribute('dir', 'ltr')
   })
 
-  it('paints a `null` value «؟» in the conflict ink (:4843)', () => {
+  it('paints a `null` value «؟» in the conflict ink (:4846)', () => {
     render(<RuleValueCards bundle={UNANSWERED} onOpen={vi.fn()} />)
     const value = screen.getByText('؟')
     expect(value.className).toContain('text-conflict')

@@ -225,6 +225,45 @@ export function Mono({ className = '', title, style, children }: {
 }
 
 /**
+ * Does this run hold Persian? The design's own test (`a.dir`/`a.mono`, :1686),
+ * and the one place this file writes a Persian character class.
+ */
+const PERSIAN = /[؀-ۿ]/
+
+/**
+ * One `SCREEN_LABELS` sentence with its «{n}»-shaped holes filled — and every
+ * filled value that is **not** Persian drawn as its own LTR island.
+ *
+ * The sentences this screen wraps around stored values are Persian prose, and
+ * the values are not always Persian: a scheme's `format` is «receipt number», a
+ * sheet is `Pizza` as often as «پیتزا», a cell is `A1:G2`, a node is
+ * `cooking-001-n010`. Substituted into the sentence as text, each is a latin run
+ * inside an RTL text node — the bidi mix note 6 is about, and the same defect
+ * the item's pack and the constant's `per` carried until it was islanded.
+ *
+ * The design substitutes them raw, and this is a deliberate override on QF-42's
+ * authority: QF-42 is a global constraint, not one of the ten notes, and it says
+ * a code is an LTR island wherever it appears. A value that IS Persian is drawn
+ * as prose, because an island around «پیتزا» would be wrong in the other
+ * direction.
+ */
+export function Filled({ text, values, className = '' }: {
+  text: string
+  values: Record<string, string>
+  className?: string
+}) {
+  return (
+    <span className={className}>
+      {text.split(/(\{[a-z]\})/).map((piece, i) => {
+        const v = /^\{[a-z]\}$/.test(piece) ? values[piece.slice(1, -1)] : undefined
+        if (v === undefined) return piece
+        return PERSIAN.test(v) ? v : <Mono key={i}>{v}</Mono>
+      })}
+    </span>
+  )
+}
+
+/**
  * A run that is Persian prose or a latin run, decided by what is in it (:1686).
  *
  * An account's `statement` is verbatim source text: «ببینید مصرف اعلامیشون…»
@@ -233,7 +272,7 @@ export function Mono({ className = '', title, style, children }: {
  * does this.
  */
 export function Statement({ text, className = '' }: { text: string; className?: string }) {
-  const persian = /[؀-ۿ]/.test(text)
+  const persian = PERSIAN.test(text)
   return (
     <div dir={persian ? 'rtl' : 'ltr'} className={`${persian ? '' : 'font-mono '}${className}`}>
       {text}

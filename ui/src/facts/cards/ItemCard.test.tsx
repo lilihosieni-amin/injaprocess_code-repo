@@ -4,7 +4,7 @@ import { ItemCard } from './ItemCard'
 import { bundleOf } from './fixture'
 
 /** F-00048's ranged factor and F-00001's flat one, on one item so the two forms
- *  are proved together (`sfItemPacks`, :5017). */
+ *  are proved together (`sfItemPacks`, :5013). */
 const OIL = bundleOf('item', {
   code: '##77', category: 'consumable', unit: 'l', unit_raw: 'لیتر',
   group: 'oil', state: 'raw', grade: 'درجه یک',
@@ -36,7 +36,7 @@ describe('the item card', () => {
     expect(code).toHaveAttribute('dir', 'ltr')
     expect(screen.getByText('مصرفی')).toBeInTheDocument()
     expect(screen.getByText('واحد پایه')).toBeInTheDocument()
-    // The source's own word for the unit rides beside the symbol (:1564).
+    // The source's own word for the unit rides beside the symbol (:1563).
     expect(screen.getByText(/لیتر/)).toBeInTheDocument()
   })
 

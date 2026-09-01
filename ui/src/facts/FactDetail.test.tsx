@@ -89,7 +89,7 @@ describe('the fact detail screen', () => {
 
   it('draws every orphan class of Appendix D, not only the tombstoned one', () => {
     draw(PAPER)
-    // note 7 — the design draws `p.tomb` alone (:1725).
+    // note 7 — the design draws `p.tomb` alone (:1724).
     expect(screen.getByText('اشاره به فرایند بازنشسته (جایگزین: cooking-007)')).toBeInTheDocument()
     expect(screen.getByText('ارجاع بی‌مقصد')).toBeInTheDocument()
     expect(screen.getByText('گرهٔ ارجاع‌شده حذف شده')).toBeInTheDocument()

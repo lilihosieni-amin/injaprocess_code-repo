@@ -15,20 +15,27 @@ import type { FactSource } from '../api/types'
  * `toFa` on the line and page numbers because they are Persian-facing counts,
  * which is the one thing QF-42 sends through it — the file name beside them is
  * the LTR island, not this.
+ *
+ * **The sentence and its values, not the two joined.** A locator is as often
+ * latin as Persian — `A1:G2`, `cooking-001-n010`, `getValueById`, and a sheet
+ * that is `Pizza` here and «پیتزا» there — so substituting it into «برگهٔ {n}»
+ * as text puts a latin run inside Persian prose. `Filled` decides that per
+ * value; this function's job is to say which sentence and which values, and the
+ * caller's is to draw them.
  */
-export function sourceAt(s: FactSource): string {
-  const L = (k: string, n: string) => label(SCREEN_LABELS, k).replace('{n}', n)
+export function sourceAt(s: FactSource): { text: string; values: Record<string, string> } | undefined {
+  const at = (k: string, values: Record<string, string>) =>
+    ({ text: label(SCREEN_LABELS, k), values })
   if (s.sheet !== undefined) {
     return s.cell === undefined
-      ? L('source_at_sheet', s.sheet)
-      : label(SCREEN_LABELS, 'source_at_sheet_cell')
-        .replace('{n}', s.sheet).replace('{m}', s.cell)
+      ? at('source_at_sheet', { n: s.sheet })
+      : at('source_at_sheet_cell', { n: s.sheet, m: s.cell })
   }
-  if (s.lines !== undefined) return L('source_at_lines', toFa(s.lines))
-  if (s.node !== undefined) return L('source_at_node', s.node)
-  if (s.function !== undefined) return L('source_at_function', s.function)
-  if (s.page !== undefined) return L('source_at_page', toFa(s.page))
-  return ''
+  if (s.lines !== undefined) return at('source_at_lines', { n: toFa(s.lines) })
+  if (s.node !== undefined) return at('source_at_node', { n: s.node })
+  if (s.function !== undefined) return at('source_at_function', { n: s.function })
+  if (s.page !== undefined) return at('source_at_page', { n: toFa(s.page) })
+  return undefined
 }
 
 /** The file's own name — the design shows the last segment of the stored path

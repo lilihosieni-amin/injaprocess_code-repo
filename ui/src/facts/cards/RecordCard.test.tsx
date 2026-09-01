@@ -271,6 +271,20 @@ describe('the record card', () => {
     const location = screen.getByText('محل').parentElement!
     expect(location).toHaveTextContent('Sepidz')
     expect(location).toHaveTextContent('قالب receipt number')
+    // …and both stored values are islands rather than English inside Persian
+    // prose. `F-00018` (the Sepidz till) drew «قالب receipt number» as one text
+    // node — the same defect the item's pack and the constant's `per` carried.
+    expect(within(location).getByText('Sepidz')).toHaveAttribute('dir', 'ltr')
+    expect(within(location).getByText('receipt number')).toHaveAttribute('dir', 'ltr')
+  })
+
+  it('writes the day boundary in Persian digits, as the signature row does', () => {
+    draw(PAPER())
+    // The design disagrees with itself — `sfRecBoundary` (:4957) is raw and
+    // `sfRecSigs.range` (:4943) is `toFa`. A number inside a Persian sentence is
+    // prose on this screen, so both are Persian digits and neither is an island.
+    expect(screen.getByText(/روز کاری/)).toHaveTextContent('۰۱:۱۵')
+    expect(screen.queryByText(/01:15/)).toBeNull()
   })
 
   it('draws the structure card’s rows from the served payload', () => {

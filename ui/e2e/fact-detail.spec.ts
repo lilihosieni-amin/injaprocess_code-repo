@@ -321,7 +321,7 @@ test('fact detail — the design’s screen on the violet field, at three widths
   await expect(page.getByText('آشپزخانه · چاله‌باغ')).toBeVisible()
   await expect(page.getByRole('heading', { name: 'مصرف اعلامی پیتزا' })).toBeVisible()
 
-  /* ---- the statement card (:1128) ---- */
+  /* ---- the statement card (:1129) ---- */
   const statement = page.locator('[data-card]')
   await expect(statement.getByText('بیان', { exact: true })).toBeVisible()
   await expect(statement).toHaveCSS('border-inline-start-width', '4px')
@@ -340,7 +340,7 @@ test('fact detail — the design’s screen on the violet field, at three widths
   // Note 2 — the entry's own titles, and its own `unit_title`, never a `KEY_FA`.
   await expect(page.getByText('موجودی اول شب')).toBeVisible()
   await expect(page.getByText('کیلوگرم').first()).toBeVisible()
-  // One of the two `from` literals (:4744).
+  // One of the two `from` literals (:4752).
   await expect(page.getByText('انتخاب اپراتور')).toBeVisible()
 
   /* ---- the outputs head is its OWN green, not the unit pill's ----
@@ -422,7 +422,7 @@ test('fact detail — the disputed rule: accounts grouped by field, and the reso
   await expect(tick).toHaveText(/قابل تأیید نیست/)
   await expect(tick).toBeDisabled()
 
-  /* ---- choosing goes through the design's own dialog (:5077) ---- */
+  /* ---- choosing goes through the design's own dialog (:5042) ---- */
   const before = reads.length
   await group.getByRole('button', { name: 'انتخاب این روایت' }).first().click()
   const dialog = page.getByRole('dialog', { name: 'این روایت انتخاب شود؟' })
@@ -483,6 +483,14 @@ test('fact detail — the paper form: printed rows, and only a null unit is red'
   await expect(page.getByText('ساختار و مکان جدول')).toBeVisible()
   await expect(page.getByText('برگهٔ خالی برای پر کردن')).toBeVisible()
 
+  /* ---- «محل» and «تناوب» carry stored values, and each takes its own rule ----
+         A file name is a code and is an island; a closing time inside a Persian
+         sentence is prose and is written in Persian digits, as the signature row
+         one card down already wrote its range. */
+  const where = page.getByText('محل', { exact: true }).locator('..')
+  await expect(where.getByText('photo.jpg')).toHaveAttribute('dir', 'ltr')
+  await expect(page.getByText(/روز کاری/)).toContainText('۰۱:۱۵')
+
   /* ---- every word on a Persian-only screen (QF-42) ----
          The store spells this day «thursday»; the design maps it through its
          inline `WD` (:4928) and note 9 moves that map into `factsLabels.ts`.
@@ -536,7 +544,7 @@ test('fact detail — the paper form: printed rows, and only a null unit is red'
 
 test('fact detail — the constant, the item and the measurement', async ({ page }) => {
   await open(page, 'F-00026')
-  /* ---- the big number (:1148): 44px, mono, an LTR island in Latin digits ---- */
+  /* ---- the big number (:1150): 44px, mono, an LTR island in Latin digits ---- */
   const value = page.getByText('5', { exact: true })
   await expect(value).toHaveAttribute('dir', 'ltr')
   await expect(value).toHaveCSS('font-size', '44px')

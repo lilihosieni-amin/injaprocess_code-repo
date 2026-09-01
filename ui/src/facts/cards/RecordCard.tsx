@@ -9,7 +9,7 @@ import {
 } from '../../api/types'
 import { redPath, refTitle, resolvedTitle, rowCount, rowTitle } from '../bundle'
 import {
-  CountBand, DetailCard, Eyebrow, FactGrid, HeadBand, LabelRow, Mono, PX, Pill, RefLink,
+  CountBand, DetailCard, Eyebrow, FactGrid, Filled, HeadBand, LabelRow, Mono, PX, Pill, RefLink,
   none, unanswered, type GridCell,
 } from './parts'
 
@@ -45,6 +45,16 @@ import {
  * behaviour rather than a conformance note's correction, and no entry in the
  * mock exercises it (`F-00014`'s retired row carries `valid_to` and cells both).
  * Recorded in the task report rather than quietly widened here.
+ *
+ * **`unit_title` is the same trap, and it is the one this build has ASKED for.**
+ * A row's unit symbol has no served Persian (report §13.6 row 27); serving
+ * `rows[].unit_title` is the fix, and the day it is served every printed row
+ * gains a key this set does not know, so `F-00011` and `F-00012` become grids of
+ * mostly-«؟» cells. It is deliberately not pre-added: `unit_title` is already a
+ * real COLUMN key in the estate (`F-00017`'s third column), so putting it here
+ * would widen the very coincidence-of-names hazard §5.9's proposed note is
+ * about. Whoever serves the field adds it here in the same change — which is
+ * why the request in the report says so rather than leaving it to be found.
  */
 const LOG_KEYS = new Set([
   'key', 'title', 'unit', 'unit_raw', 'section', 'when', 'open', 'retired', 'note',
@@ -499,24 +509,41 @@ function StructureCard({ bundle, data, onOpen }: {
   const loc = data.location ?? {}
   // Note 6 — the file name, the sheet or the authority; NEVER the spreadsheet id
   // beside a Persian word inside one LTR run. The id is in the footer chip.
-  const where = loc.path !== undefined ? loc.path.split('/').pop()
-    : loc.sheet !== undefined ? label(SCREEN_LABELS, 'location_sheet').replace('{n}', loc.sheet)
-      : loc.identifier_scheme?.authority ?? none()
+  //
+  // **Every one of the three is a stored value, and none is reliably Persian**:
+  // a path's last segment is `photo.jpg`, a sheet is `Pizza` as often as
+  // «پیتزا», and the only authority in the estate is `Sepidz`. So each is drawn
+  // through the same rule the rest of this screen keeps — `Filled` for a value
+  // inside a sentence, `Mono` for a value standing alone.
+  const where = loc.path !== undefined
+    ? <Mono className="text-fs-menu font-semibold text-ink">{loc.path.split('/').pop()}</Mono>
+    : loc.sheet !== undefined
+      ? (
+        <Filled text={label(SCREEN_LABELS, 'location_sheet')} values={{ n: loc.sheet }}
+          className="text-fs-menu font-semibold text-ink" />
+      )
+      : loc.identifier_scheme?.authority !== undefined
+        ? (
+          <Mono className="text-fs-menu font-semibold text-ink">
+            {loc.identifier_scheme.authority}
+          </Mono>
+        )
+        : <span className="text-fs-menu font-semibold text-ink">{none()}</span>
   // :4955 — `sfRecLocExtra`'s SECOND half. Note 6 deletes its first («شناسهٔ
-  // فایل {spreadsheetId}», the bidi mix); «قالب {format}» is a Persian word in
-  // front of a scheme's own format string and carries no such mix, so it stays.
-  // `F-00018` (the Sepidz till) is the entry that exercises it.
+  // فایل {spreadsheetId}», the bidi mix); «قالب {format}» keeps the Persian word
+  // and islands the format string, which is the SAME mix one field over —
+  // `F-00018` (the Sepidz till) drew «قالب receipt number», two English words at
+  // a Persian prose node.
   const format = loc.identifier_scheme?.format
   const mirror = refTitle(bundle, data.mirror_of)
   return (
     <DetailCard className="mt-s7">
       <HeadBand>{label(SCREEN_LABELS, 'heading_record_structure')}</HeadBand>
       <LabelRow text={L('location')}>
-        <span className="text-fs-menu font-semibold text-ink">{where}</span>
+        {where}
         {format !== undefined && (
-          <span className="text-fs-micro text-faint">
-            {label(SCREEN_LABELS, 'location_format').replace('{n}', format)}
-          </span>
+          <Filled text={label(SCREEN_LABELS, 'location_format')} values={{ n: format }}
+            className="text-fs-micro text-faint" />
         )}
       </LabelRow>
       {data.grain !== undefined && (
@@ -531,8 +558,20 @@ function StructureCard({ bundle, data, onOpen }: {
           {data.cadence === undefined ? none() : label(CADENCE_LABELS, data.cadence)}
         </span>
         {data.day_boundary !== undefined && (
+          // **The design disagrees with itself here and this picks a side.**
+          // `sfRecBoundary` (:4957) is the raw string, while `sfRecSigs.range`
+          // (:4943) runs the same kind of number through `toFa` — so «۰۱:۱۵» and
+          // «۱ تا ۵» could not both be the design's rule.
+          //
+          // The rule taken, stated against QF-42: Latin digits are for a VALUE,
+          // a code, a key or a formula — what a reader copies or types, and what
+          // an island is around. A number inside a Persian sentence is prose,
+          // and this screen has sent those through `toFa` since round 1
+          // («{n} ردیف», «صفحهٔ ۱۱», «خط ۷۴», «ردیف ۱ تا ۵»). A closing time in a
+          // sentence is the second kind. The two rows now agree, and the latin
+          // run leaves the prose without needing an island.
           <span className="text-fs-caption text-faint">
-            {label(SCREEN_LABELS, 'day_boundary_value').replace('{n}', data.day_boundary)}
+            {label(SCREEN_LABELS, 'day_boundary_value').replace('{n}', toFa(data.day_boundary))}
           </span>
         )}
         {data.blank_master === true && (

@@ -8,7 +8,7 @@ import { useResolveFact } from '../../api/hooks'
 import { FAILED } from '../../write/ConfirmMark'
 import type { FactAccount, FactBundle } from '../../api/types'
 import { pathLabel } from '../bundle'
-import { DetailCard, Mono, PX, Statement } from './parts'
+import { DetailCard, Filled, Mono, PX, Statement } from './parts'
 import { sourceAt, sourceFile } from '../sourceText'
 
 /**
@@ -83,7 +83,13 @@ export function AccountsCard({ bundle }: { bundle: FactBundle }) {
                         <>
                           <span className="text-fs-xxs text-faint">
                             {label(SOURCE_TYPE_LABELS, a.source.type)}
-                            {sourceAt(a.source) === '' ? '' : ` · ${sourceAt(a.source)}`}
+                            {/* :5033 — the same five phrases the source rows
+                                compose, and the same rule: a locator that is not
+                                Persian (`A1:G2`, `getValueById`) is its own
+                                island rather than a latin run in this line. */}
+                            {sourceAt(a.source) !== undefined && (
+                              <> · <Filled {...sourceAt(a.source)!} /></>
+                            )}
                           </span>
                           <Mono className="text-fs-micro text-muted">
                             {sourceFile(a.source)}
