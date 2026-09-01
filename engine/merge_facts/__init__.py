@@ -59,17 +59,39 @@ def find_match(store, entry):
             return e
     return None
 
-def _walk(value, prefix, out):
+def _walk(value, prefix, out, retired):
     if value is None:
         out.append(prefix)
     elif isinstance(value, dict):
         for k, v in value.items():
-            _walk(v, f"{prefix}/{k}", out)
+            _walk(v, f"{prefix}/{k}", out, retired)
     elif isinstance(value, list):
         for member in value:
             if isinstance(member, dict) and "key" in member:
+                path = f"{prefix}/{member['key']}"
+                if member.get("retired"):
+                    # §9: a retired row is withdrawn, not removed. Its subtree
+                    # is not walked — the whole path is collected instead, so
+                    # the accounts filter below can see it.
+                    retired.append(path)
+                    continue
                 _walk({k: v for k, v in member.items() if k != "key"},
-                      f"{prefix}/{member['key']}", out)
+                      path, out, retired)
+
+def _red(entry):
+    """`(null paths, retired member prefixes)` — one walk, both answers.
+
+    §9: "Retired rows are omitted by `export`, excluded from the red rollup and
+    QF-44's readiness test, and their `null` cells and open accounts leave the
+    red set." Both halves of that need the same walk, so it runs once and the
+    two callers below take a half each. Retirement is read off the member
+    itself (`retired: true`), the same marker `export` and `_unit_row_keys`
+    read, and it is not restricted to `rows[]`: any keyed member that carries
+    the marker is withdrawn with it.
+    """
+    nulls, retired = [], []
+    _walk(entry.get("data") or {}, "data", nulls, retired)
+    return nulls, retired
 
 def null_paths(entry):
     """QF-6: a null leaf inside data is unknown; an absent key is not.
@@ -77,11 +99,30 @@ def null_paths(entry):
     Counts addressable null leaves per the QF-7 path grammar (dict fields and
     keyed-array members only). A null inside a non-keyed array member has no
     addressable path — it cannot be disputed, resolved, or named in
-    field_status — and is deliberately not counted here.
+    field_status — and is deliberately not counted here. Nor is one inside a
+    RETIRED member (§9): a withdrawn row's blank cell is not a question anyone
+    is still owed an answer to, and counting it left a record with retired rows
+    permanently `unknown` — never green, so QF-44's readiness never arrives.
     """
-    out = []
-    _walk(entry.get("data") or {}, "data", out)
-    return out
+    return _red(entry)[0]
+
+def open_accounts(entry):
+    """Every open account — minus the ones a retired row took with it (§9).
+
+    The mirror of `null_paths`' own exclusion, and for the same reason: a
+    dispute about a cell of a withdrawn row is a dispute about a definition
+    nobody reads any more. `facts_store.red_paths` filters the same set on the
+    ui-backend side, and the two are pinned against each other.
+    """
+    _, retired = _red(entry)
+    return [a for a in entry.get("accounts") or []
+            if isinstance(a, dict) and a.get("status") == "open"
+            and not _withdrawn(a.get("field"), retired)]
+
+def _withdrawn(field, retired):
+    """Does this QF-7 path name, or sit inside, a retired member?"""
+    return isinstance(field, str) and any(
+        field == prefix or field.startswith(prefix + "/") for prefix in retired)
 
 def collect_leaves(data, want, skip=frozenset()):
     """Every string leaf named `want` anywhere under `data`, in document order,
@@ -109,7 +150,7 @@ def collect_leaves(data, want, skip=frozenset()):
     return out
 
 def derive_status(entry):
-    if any(a.get("status") == "open" for a in entry.get("accounts") or []):
+    if open_accounts(entry):
         return "disputed"
     if null_paths(entry):
         return "unknown"
@@ -122,8 +163,7 @@ def derive_status(entry):
 
 def field_status_counts(entry):
     fs = entry.get("field_status") or {}
-    return {"disputed": sum(1 for a in entry.get("accounts") or []
-                            if a.get("status") == "open"),
+    return {"disputed": len(open_accounts(entry)),
             "unknown": len(null_paths(entry)),
             "informal": sum(1 for v in fs.values() if v == "informal"),
             "inferred": sum(1 for v in fs.values() if v == "inferred")}

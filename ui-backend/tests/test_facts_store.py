@@ -504,6 +504,71 @@ def test_a_settled_account_is_not_disputed(root):
         "unknown": [], "disputed": []}
 
 
+#: §9's shape: one withdrawn row carrying a blank cell and a dispute on it,
+#: one live row carrying a dispute of its own. Hand-written rather than added
+#: to the store fixture above, because half the assertions in this file are
+#: whole-store equalities that a sixth record would move.
+def _retired_row_entry() -> dict:
+    return {
+        "id": "F-00099", "kind": "record", "key": "bom_retired",
+        "title": "جدول با ردیف بازنشسته", "statement": "بیان",
+        "scope": {"departments": ["cooking"], "branches": []},
+        "source": [], "status": "unknown", "retired": False, "updated_at": NOW,
+        "accounts": [
+            {"id": "aaaaaaaa", "field": "data/rows/dead/grams",
+             "statement": "۹", "value": 9, "source": {"type": "chat"},
+             "status": "open"},
+            {"id": "bbbbbbbb", "field": "data/rows/live/grams",
+             "statement": "۸", "value": 8, "source": {"type": "chat"},
+             "status": "open"}],
+        "data": {"medium": "sheet", "role": "reference", "location": {},
+                 "fields": [{"key": "grams", "title": "گرم", "type": "number"}],
+                 "rows": [{"key": "dead", "grams": None, "retired": True,
+                           "valid_to": "1404-01-01"},
+                          {"key": "live", "grams": 180}]}}
+
+
+def test_a_retired_rows_nulls_and_open_accounts_leave_the_red_set():
+    """§9: "Retired rows are omitted by `export`, excluded from the red rollup
+    and QF-44's readiness test, and their `null` cells and open accounts leave
+    the red set." Counted, they made the record permanently red on a screen
+    whose engine-derived `status` said the same — both sides agreed, and both
+    were wrong."""
+    assert facts_store.red_paths(_retired_row_entry()) == {
+        "unknown": [], "disputed": ["data/rows/live/grams"]}
+
+
+def test_the_same_row_alive_is_red_on_both_counts():
+    """The control: the retirement is what does the work above, not a fixture
+    that happens to carry no red."""
+    entry = _retired_row_entry()
+    del entry["data"]["rows"][0]["retired"]
+    assert facts_store.red_paths(entry) == {
+        "unknown": ["data/rows/dead/grams"],
+        "disputed": ["data/rows/dead/grams", "data/rows/live/grams"]}
+
+
+def test_the_red_set_is_the_engines_own(root):
+    """THE SEAM. `facts_store` reimplements the engine's walk rather than
+    importing it (CLAUDE.md: the ui-backend never imports the engine package),
+    so nothing but this test stops the two drifting — and the red count a
+    reviewer reads here is the one `merge facts` derived the entry's `status`
+    from. The import is the TEST's, not the service's; `test_invariants.py`
+    pins that the package itself stays clean.
+
+    Every entry of the fixture store, plus the retired-row shape §9 turns on.
+    """
+    from merge_facts import null_paths, open_accounts       # test-only import
+
+    entries = facts_store.load_all(root) + [_retired_row_entry()]
+    assert len(entries) > 5
+    for entry in entries:
+        red = facts_store.red_paths(entry)
+        assert red["unknown"] == null_paths(entry), entry["id"]
+        assert red["disputed"] == sorted({a["field"] for a in open_accounts(entry)}), \
+            entry["id"]
+
+
 # --------------------------------------------------------------------------- #
 # consumers — one sub-test per edge kind (QF-37's seven)
 # --------------------------------------------------------------------------- #

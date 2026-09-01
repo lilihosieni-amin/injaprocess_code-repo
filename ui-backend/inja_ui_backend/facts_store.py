@@ -232,32 +232,51 @@ def iter_ref_objects(obj):
             yield from iter_ref_objects(member)
 
 
-def _null_paths(entry: dict) -> list[str]:
-    """QF-6: a `null` leaf inside `data` is `unknown`; an absent key is not.
+def _red(entry: dict) -> tuple[list[str], list[str]]:
+    """`(null paths, retired member prefixes)` — one walk, both answers.
 
+    QF-6: a `null` leaf inside `data` is `unknown`; an absent key is not.
     QF-7's path grammar addresses dict fields and keyed array members only, so
-    a `null` inside a member with no `key` has no path and is not counted —
-    it cannot be disputed, resolved, or named in `field_status`. The engine's
-    `null_paths` counts exactly the same set; the two must agree, because the
-    red count a reviewer sees here is the one `merge facts` derived `status`
-    from.
+    a `null` inside a member with no `key` has no path and is not counted — it
+    cannot be disputed, resolved, or named in `field_status`.
+
+    §9 takes one more set out: "Retired rows are omitted by `export`, excluded
+    from the red rollup and QF-44's readiness test, and their `null` cells and
+    open accounts leave the red set." A retired member's subtree is therefore
+    not walked, and its path is collected instead so `red_paths` can drop the
+    accounts that sit inside it.
+
+    The engine's `merge_facts._red` answers exactly the same two lists; the
+    two must agree, because the red count a reviewer sees here is the one
+    `merge facts` derived `status` from — and `ui-backend/tests/
+    test_facts_store.py` pins them against each other rather than trusting the
+    prose.
     """
-    out: list[str] = []
+    nulls: list[str] = []
+    retired: list[str] = []
 
     def walk(value, prefix):
         if value is None:
-            out.append(prefix)
+            nulls.append(prefix)
         elif isinstance(value, dict):
             for key, member in value.items():
                 walk(member, f"{prefix}/{key}")
         elif isinstance(value, list):
             for member in value:
                 if isinstance(member, dict) and "key" in member:
-                    walk({k: v for k, v in member.items() if k != "key"},
-                         f"{prefix}/{member['key']}")
+                    path = f"{prefix}/{member['key']}"
+                    if member.get("retired"):
+                        retired.append(path)
+                        continue
+                    walk({k: v for k, v in member.items() if k != "key"}, path)
 
     walk(entry.get("data") or {}, "data")
-    return out
+    return nulls, retired
+
+
+def _null_paths(entry: dict) -> list[str]:
+    """Every addressable `null` leaf under `data` — see `_red`."""
+    return _red(entry)[0]
 
 
 def red_paths(entry: dict) -> dict:
@@ -267,14 +286,20 @@ def red_paths(entry: dict) -> dict:
     `null` leaf, `disputed` every **open** account's field. A `chosen` or
     `rejected` account is settled and is not red (it still gets a
     `path_labels` label, because the accounts card shows the settled ones
-    too).
+    too). A retired row's cells are in neither (§9), which is `_red`'s subject.
     """
-    accounts = entry.get("accounts") or []
+    nulls, retired = _red(entry)
+
+    def withdrawn(field: str) -> bool:
+        return any(field == prefix or field.startswith(prefix + "/")
+                   for prefix in retired)
+
     return {
-        "unknown": _null_paths(entry),
-        "disputed": sorted({a["field"] for a in accounts
+        "unknown": nulls,
+        "disputed": sorted({a["field"] for a in entry.get("accounts") or []
                             if isinstance(a, dict) and a.get("status") == "open"
-                            and isinstance(a.get("field"), str)}),
+                            and isinstance(a.get("field"), str)
+                            and not withdrawn(a["field"])}),
     }
 
 
