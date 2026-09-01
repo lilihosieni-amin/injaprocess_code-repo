@@ -12,7 +12,7 @@ import { DetailCard, Mono, PX, Statement } from './parts'
 import { sourceAt, sourceFile } from '../sourceText'
 
 /**
- * «روایت‌های متعارض» — `Inja Panel.dc.html:1672-1690`, corrected by
+ * «روایت‌های متعارض» — `Inja Panel.dc.html:1673-1692`, corrected by
  * **conformance note 4**.
  *
  * The design draws `sfAccounts` (:5031) as one flat list of every open account

@@ -175,6 +175,29 @@ describe('the record card', () => {
     }
   })
 
+  it('writes a column’s allowed values in the same Persian its cells take', () => {
+    // The fourth place a stored enumeration reaches this screen, found by the
+    // sweep rather than by a finding: `F-00017`'s `dimension` column DECLARES
+    // the seven words its cells hold. Nothing serves it today — that record has
+    // cells, so it is drawn as a grid and never as a columns table — which is
+    // why the class is pinned here instead of being left to a fourth round.
+    draw(PAPER({}, [
+      { key: 'dimension', title: 'بُعد', type: 'string',
+        constraints: { enum: ['mass', 'volume'] } },
+    ]))
+    expect(screen.getByText(/مقادیر مجاز/)).toHaveTextContent('جرم · حجم')
+  })
+
+  it('keeps the stored value as a translated cell’s tooltip', () => {
+    draw(UNITS)
+    // :4914 — `title: (!isId && enumFa(raw) !== raw) ? raw : ''`. «بسته» has to
+    // be able to say `pack`; a cell the maps do not touch carries no tooltip,
+    // because its own text already IS the stored value.
+    expect(screen.getByTitle('pack')).toHaveTextContent('بسته')
+    expect(screen.getByTitle('mass')).toHaveTextContent('جرم')
+    expect(screen.queryByTitle('گرم')).toBeNull()
+  })
+
   it('leaves an id-shaped column latin — a symbol is a code, not a word', () => {
     draw(UNITS)
     // :4909 — `symbol`, `key`, `code` and `id` are machine identifiers, and
@@ -206,12 +229,19 @@ describe('the record card', () => {
     expect(symbol[0]).toHaveAttribute('dir', 'ltr')
   })
 
-  it('draws the source’s own word for a unit when it wrote one, and no symbol beside it', () => {
+  it('draws the source’s own word for a unit AND the design’s raw-symbol hint beside it', () => {
+    // `F-00012`'s `burger_box`, verbatim. The design draws two nodes (:1419-1420)
+    // — the phrase, then the stored symbol as a 10.5px mono LTR hint — and the
+    // hint is unconditional there. An earlier round deleted it by borrowing the
+    // COLUMNS table's «never both» rule (:4981 → :1393), which belongs to that
+    // one-node cell and not to this row.
     draw(PAPER({}, undefined, [
       { key: 'burger_box', title: 'جعبه برگر', unit: 'carton', unit_raw: 'کارتن ۱۰۰تایی' },
     ]))
     expect(screen.getByText('کارتن ۱۰۰تایی')).toBeInTheDocument()
-    expect(screen.queryByText('carton')).toBeNull()
+    const hint = screen.getByText('carton')
+    expect(hint).toHaveAttribute('dir', 'ltr')
+    expect(hint.className).toContain('text-fs-micro')
   })
 
   it('reads a paper form with a column keyed `unit` as a form, not a grid', () => {

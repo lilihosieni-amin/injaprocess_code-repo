@@ -26,7 +26,7 @@ import { FieldStatusCard, IssuesCard } from './cards/IssuesCard'
  *
  * ## The card order is the design's, and it interleaves
  *
- * The lifecycle card (:1212) sits between the rule's decision table and its
+ * The lifecycle card (:1213) sits between the rule's decision table and its
  * «نام تابع» card, so the rule is drawn in two pieces (`RuleValueCards` /
  * `RuleCard`) with the lifecycle card between them. On every other kind that
  * simply means the lifecycle card comes first. Nothing else on the screen is
@@ -126,7 +126,7 @@ function Detail({ bundle, onOpen, onOpenProcess }: {
         <FactConfirm bundle={bundle} />
       </div>
 
-      {/* :1128 — the statement, behind the design's 4px violet edge. */}
+      {/* :1129 — the statement, behind the design's 4px violet edge. */}
       <DetailCard data-card radius="doc" clip={false}
         style={{ ...PX.statement, ...PX.statementEdge }} className="mt-s8">
         <div style={PX.eyebrowGap} className="text-fs-xxs font-bold text-muted">
@@ -211,7 +211,7 @@ function scopeLine(
  * card every kind ends with (:1708-1748).
  *
  * **Conformance note 7 lives here.** The design draws one orphan class, the
- * tombstoned process (`p.tomb`, :1725); Appendix D declares four, and a process
+ * tombstoned process (`p.tomb`, :1724); Appendix D declares four, and a process
  * link can be any of them:
  *
  * | served | drawn |
@@ -318,7 +318,7 @@ function SourcesCard({ bundle, onOpen, onOpenProcess }: {
 }
 
 /**
- * The «|» between the footer's three runs (:1744).
+ * The «|» between the footer's three runs (:1743).
  *
  * **`--text-body`, not the design's own `--text-crumb-sep`** — ledger **L-59**,
  * owner ruling **R48**, about this exact glyph in this exact role: the design's

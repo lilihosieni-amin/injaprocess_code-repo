@@ -26,7 +26,7 @@ export interface Named {
    * An item's estate code — `##1`, `#61` — **kept apart from the title**.
    *
    * §17 renders it beside the title, and the design composes the two into one
-   * string (`refTitle`, :4747). That string is a latin run inside a Persian text
+   * string (`refTitle`, :4742). That string is a latin run inside a Persian text
    * node and the browser reorders it: «پنیر پیتزا ##1» is drawn «پنیر پیتزا
    * 1##». It is conformance note 6's defect in a second place, so the code
    * travels separately and every renderer draws it as its own island.
@@ -41,7 +41,7 @@ export interface Named {
    * omission: `facts_store._labels` maps an item's key to `{kind, title, code?}`
    * with **no id** (`facts_store.py:291`), so a `refItems` cell can be *named*
    * and cannot be *opened*. The design navigates from one (`refGo((s.fLabels
-   * [raw] || {}).id || raw)`, :4906) because its own fixture carries an `id`
+   * [raw] || {}).id || raw)`, :4916) because its own fixture carries an `id`
    * the route does not serve.
    */
   id?: string

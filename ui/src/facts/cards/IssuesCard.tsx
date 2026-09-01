@@ -10,8 +10,8 @@ import { DetailCard, HeadBand, Mono, RefLink } from './parts'
 /**
  * The two halves of **conformance note 8** the design computes and never draws.
  *
- * `IssuesCard` is the design's own card (`:1694-1698`) with the three fields the
- * note adds — `from_date`, `fix` and `affects` — which `sfIssues` (:5047) drops.
+ * `IssuesCard` is the design's own card (`:1695-1701`) with the three fields the
+ * note adds — `from_date`, `fix` and `affects` — which `sfIssues` (:5048) drops.
  * `FieldStatusCard` is `sfFields` (:5045), computed with a label, an ink and a
  * dot per path and consumed by no node in the file; the note says to draw it.
  *

@@ -14,7 +14,7 @@ import {
 } from './parts'
 
 /**
- * The `record` kind — `Inja Panel.dc.html:1341-1552`.
+ * The `record` kind — `Inja Panel.dc.html:1342-1552`.
  *
  * Four cards in the design's own order: the reference grid, the columns table
  * for a record with no grid, the printed rows of a paper form, and «ساختار و
@@ -38,7 +38,7 @@ import {
 
 /**
  * The bookkeeping keys a printed form's row carries; anything else is a cell
- * (`LOGKEYS`, :4664). A row with a cell makes the record a grid.
+ * (`LOGKEYS`, :4663). A row with a cell makes the record a grid.
  *
  * **The design's set, exactly.** `valid_to` is NOT on it, and a printed row that
  * carried one would flip a paper form into grid mode — but that is the design's
@@ -208,8 +208,25 @@ function cellOf(
   // An id-shaped column stays latin — a symbol or a key is a code (QF-42), and
   // `cellLabel` would leave it alone anyway; the island is what says so.
   if (ID_COLUMNS.has(f.key)) return { node: <Mono className={cls}>{raw}</Mono>, className: paint }
-  return { node: <span className={cls}>{cellLabel(raw)}</span>, className: paint }
+  const named = cellLabel(raw)
+  return {
+    // :4913 — `latin`: a value no map covers stays an LTR island rather than a
+    // latin run inside an RTL text node (QF-42), which is the same rule the
+    // `refItems` branch above keeps for an unresolved key.
+    node: named === raw && LATIN_VALUE.test(raw)
+      ? <Mono className={cls}>{raw}</Mono>
+      : <span className={cls}>{named}</span>,
+    className: paint,
+    // :4914 — the stored value is the cell's tooltip wherever the label differs
+    // from it. It is the only place the machine value survives on a translated
+    // cell: «بسته» has to be able to say `pack`, exactly as the `refItems`
+    // branch shows the item key behind a resolved title.
+    title: named === raw ? undefined : raw,
+  }
 }
+
+/** :4913 — the design's own test for "this text is still a machine value". */
+const LATIN_VALUE = /^[a-z_0-9.\-+]+$/i
 
 /** :4909 — the columns whose cells are machine identifiers, not words. */
 const ID_COLUMNS = new Set(['symbol', 'key', 'code', 'id'])
@@ -332,7 +349,7 @@ function rowRange(range: string): string {
 }
 
 /**
- * :4986 — everything the design writes into a column's note line, as
+ * :4983 — everything the design writes into a column's note line, as
  * `label: value` pairs.
  *
  * The design composes sentences («این ستون را {x} پر می‌کند», «مقادیر مجاز: …»);
@@ -349,7 +366,12 @@ function columnNotes(f: RecordField): string {
   if (f.constraints?.readOnly === true) parts.push(L('readOnly'))
   if (f.constraints?.required === true) parts.push(L('required'))
   if (f.constraints?.enum !== undefined) {
-    parts.push(`${L('enum')}: ${f.constraints.enum.join(' · ')}`)
+    // A column's allowed values are the same open vocabulary its CELLS hold, so
+    // they take the same map — «مقادیر مجاز: جرم · حجم», never the seven English
+    // words `F-00017`'s `dimension` column declares. No served entry reaches
+    // this line today (`F-00017` has cells, so it is drawn as a grid rather than
+    // as a columns table), which is exactly why it is pinned by a test.
+    parts.push(`${L('enum')}: ${f.constraints.enum.map(cellLabel).join(' · ')}`)
   }
   if (f.constraints?.minimum !== undefined) {
     parts.push(`${L('minimum')} ${toFa(f.constraints.minimum)}`)
@@ -399,23 +421,33 @@ function PrintedRows({ data }: { data: RecordData }) {
               <div style={{ ...PX.gap7, ...PX.mt9 }} className="flex flex-col">
                 {unit !== undefined && (
                   <PrintedDetail text={label(SCREEN_LABELS, 'printed_row_unit')}>
-                    {/* **One rule for a unit symbol on this screen**, and the
-                        columns table's unit cell already keeps it: the source's
-                        own word when it wrote one, otherwise the stored symbol
-                        as a latin island. Never the symbol dressed as Persian
-                        prose, and never both at once.
-                        The design writes `unit_raw || UNIT_FA[unit] || unit`
-                        (:4934) — nine units mapped to Persian in the middle —
-                        and note 9 deletes that inline map. Its sanctioned
-                        replacement is the served units record's `unit_title`,
-                        which the bundle does not carry for a ROW: `RecordField`
-                        has `unit_raw` and `rows[]` has nothing, where
-                        `RuleInput`/`RuleOutput` both have `unit_title`. Filed
-                        in the report as the one served-shape gap this screen
-                        still has. */}
+                    {/* **TWO nodes, as the design draws them** (:1419-1420): the
+                        unit phrase, and the raw symbol beside it as a 10.5px
+                        mono LTR hint. The hint is the design's own element and
+                        an earlier round deleted it on the columns table's rule
+                        — «never both» belongs to that ONE-node cell (:4981 →
+                        :1393) and was never this row's. `F-00012`'s `burger_box`
+                        and `cup_lid` are the two rows it cost: «کارتن ۱۰۰تایی»
+                        with `carton` nowhere on the screen.
+                        The phrase itself: `unit_raw` when the source wrote one,
+                        otherwise the stored symbol as its own island. The design
+                        writes `unit_raw || UNIT_FA[unit] || unit` (:4934) and
+                        note 2 deletes that inline map; its sanctioned
+                        replacement is the units record's `unit_title`, which the
+                        bundle does not carry for a ROW — `RecordField` has
+                        `unit_raw`, `rows[]` has neither, and
+                        `RuleInput`/`RuleOutput` both have `unit_title`. Filed in
+                        the report as the one served-shape gap this screen has.
+                        The hint is then skipped for exactly the case where it
+                        would repeat the phrase verbatim (`F-00012`'s
+                        `staff_sugar`, `pack` with no `unit_raw`) — that is one
+                        string drawn once, not the deleted element. */}
                     {unitRaw !== undefined
                       ? <span className="text-fs-menu font-semibold text-ink">{unitRaw}</span>
                       : <Mono className="text-fs-menu font-semibold text-ink">{symbol}</Mono>}
+                    {unitRaw !== undefined && symbol !== undefined && (
+                      <Mono className="text-fs-micro text-faint">{symbol}</Mono>
+                    )}
                   </PrintedDetail>
                 )}
                 {section !== undefined && (
@@ -459,7 +491,7 @@ function PrintedDetail({ text, children }: { text: string; children: ReactNode }
   )
 }
 
-/** :1448 — «ساختار و مکان جدول», which every record draws. */
+/** :1450 — «ساختار و مکان جدول», which every record draws. */
 function StructureCard({ bundle, data, onOpen }: {
   bundle: FactBundle; data: RecordData; onOpen: (id: string) => void
 }) {
@@ -527,7 +559,12 @@ function StructureCard({ bundle, data, onOpen }: {
               <span key={h.key}
                 className="text-fs-sm font-semibold text-ink bg-surface-sub
                            border border-border-current px-s6 py-s3 rounded-control">
-                {h.title ?? h.key}
+                {/* :4938 writes `x.title || keyFa(x.key)`; note 2 deletes
+                    `KEY_FA`, so a header field the estate never titled falls
+                    back to its latin key — and a key is an island, not Persian
+                    prose. Every header field in the mock carries a title, so
+                    this is the class closed rather than an instance fixed. */}
+                {h.title ?? <Mono>{h.key}</Mono>}
               </span>
             ))}
           </div>
@@ -589,7 +626,7 @@ function StructureCard({ bundle, data, onOpen }: {
             <div key={fk.fields.join('+')} style={PX.rowY7}
               className="flex items-center gap-s4 flex-wrap">
               <Mono className="text-fs-xs text-body-ink">{fk.fields.join(' + ')}</Mono>
-              {/* :1533 — the relation mark between the two sides. A directional
+              {/* :1532 — the relation mark between the two sides. A directional
                   glyph in a data row, not an icon standing in for one. */}
               <span aria-hidden className="text-fs-xxs text-faint">←</span>
               <RefLink named={refTitle(bundle, fk.reference)} onOpen={onOpen}
@@ -618,7 +655,7 @@ function StructureCard({ bundle, data, onOpen }: {
                 <Mono className="text-fs-nano text-faint">
                   {[r.cell.row, r.cell.field].filter((x) => x !== undefined).join(' › ')}
                 </Mono>
-                {/* :1547 — «this cell is reconciled AGAINST that constant». */}
+                {/* :1546 — «this cell is reconciled AGAINST that constant». */}
                 <span aria-hidden className="text-fs-xxs text-faint">↔</span>
                 <RefLink named={refTitle(bundle, r.against)} onOpen={onOpen}
                   className="text-fs-sm" />

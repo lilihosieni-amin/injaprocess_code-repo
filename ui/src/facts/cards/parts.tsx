@@ -45,7 +45,7 @@ import type { Named } from '../bundle'
  *   (`tokens.css:395`), so the I/O rows write `py-table-row-y`, as
  *   `FactsList.tsx:215` already does.
  * * an **eyebrow's gap** is `mb-s4` (8px). The design draws 8 six times
- *   (:1481, :1490, :1503, :1516, :1528, :1541) and 9 twice (:1267, :1592);
+ *   (:1480, :1490, :1503, :1516, :1528, :1541) and 9 twice (:1267, :1591);
  *   R8 resolves that by dominance.
  * * `underline-offset-4` for the design's `text-underline-offset:3px` —
  *   `FactsList.tsx`'s clear-filters link, same offset, same reason.
@@ -56,71 +56,71 @@ import type { Named } from '../bundle'
 export const PX = {
   /** :1109 — the detail column. `--width-doc` is 860 and `--width-summary` 960. */
   column: { maxWidth: '880px' } as CSSProperties,
-  /** :1111 / :1120 — the header chip row's gutter, and the tick's. */
+  /** :1111 / :1121 — the header chip row's gutter, and the tick's. */
   gap9: { gap: '9px' } as CSSProperties,
   /** :1415 — the printed-row detail column. */
   gap7: { gap: '7px' } as CSSProperties,
-  /** :1120 — the confirm tick's box. */
+  /** :1121 — the confirm tick's box. */
   tick: { padding: '11px 16px' } as CSSProperties,
-  /** :1128 — the statement card. */
+  /** :1129 — the statement card. */
   statement: { padding: '20px 22px' } as CSSProperties,
-  /** :1129 — the eyebrow's gap to the sentence under it. */
+  /** :1130 — the eyebrow's gap to the sentence under it. */
   eyebrowGap: { marginBottom: '9px' } as CSSProperties,
-  /** :1130 — the statement's leading. L-17's census names 1.95 and 2, not this. */
+  /** :1131 — the statement's leading. L-17's census names 1.95 and 2, not this. */
   statementLh: { lineHeight: '2.15' } as CSSProperties,
   /** :1119 — the detail title's leading. */
   titleLh: { lineHeight: '1.55' } as CSSProperties,
-  /** :1133 / :1156 — a rule inside a card, and the block it separates. */
+  /** :1133 / :1158 — a rule inside a card, and the block it separates. */
   pt13: { paddingTop: '13px' } as CSSProperties,
-  /** :1163 — the constant's second sub-row. */
+  /** :1164 — the constant's second sub-row. */
   mt11: { marginTop: '11px' } as CSSProperties,
-  /** :1267 / :1595 — a chip button, and an item's pack chip. */
+  /** :1270 / :1594 — a chip button, and an item's pack chip. */
   chip7: { padding: '7px 12px' } as CSSProperties,
-  /** :1711 — one source row. */
+  /** :1710 — one source row. */
   sourceRow: { padding: '11px 18px' } as CSSProperties,
   /** :1143 — the constant card. 24px has one owner in tokens.css: the dialog. */
   card24: { padding: '24px' } as CSSProperties,
-  /** :1148 — the constant's numeral. `--fs-numeral` is 46px, a different role. */
+  /** :1150 — the constant's numeral. `--fs-numeral` is 46px, a different role. */
   bigValue: { fontSize: '44px' } as CSSProperties,
-  /** :1178 — the formula block. */
+  /** :1179 — the formula block. */
   formula: { padding: '18px 20px' } as CSSProperties,
   /** :1185 / :1344 / :1370 — a counted table's head band. */
   band: { padding: '15px 18px' } as CSSProperties,
-  /** :1196 / :1357 / :1379 — one body cell of a grid. */
+  /** :1199 / :1358 / :1379 — one body cell of a grid. */
   cell: { padding: '11px 12px' } as CSSProperties,
   /** :1404 — the printed-rows card's head. */
   head1620: { padding: '16px 20px' } as CSSProperties,
-  /** :1409 / :1606 — a printed-form row, and the item's tracked block. */
+  /** :1409 / :1605 — a printed-form row, and the item's tracked block. */
   row1420: { padding: '14px 20px' } as CSSProperties,
-  /** :1567 — an item row. */
+  /** :1566 — an item row. */
   row1320: { padding: '13px 20px' } as CSSProperties,
-  /** :1558 — the item card's head. */
+  /** :1557 — the item card's head. */
   head1820: { padding: '18px 20px' } as CSSProperties,
-  /** :1675 — the accounts card. */
+  /** :1674 — the accounts card. */
   accounts: { padding: '20px' } as CSSProperties,
-  /** :1531 / :1544 — a foreign-key and a reconciliation row. */
+  /** :1530 / :1543 — a foreign-key and a reconciliation row. */
   rowY7: { paddingBlock: '7px' } as CSSProperties,
-  /** :1291 / :1626 — the gap under a title line. */
+  /** :1294 / :1623 — the gap under a title line. */
   mt7: { marginTop: '7px' } as CSSProperties,
   /** :1415 — the printed row's detail block. */
   mt9: { marginTop: '9px' } as CSSProperties,
-  /** :1410 — a retired printed row. */
+  /** :1409 — a retired printed row. */
   retired: { opacity: '.55' } as CSSProperties,
-  /** :1721 — the process row's name cell. */
+  /** :1723 — the process row's name cell. */
   procName: { minWidth: '110px' } as CSSProperties,
-  /** :1372 / :1377 — the columns table. */
+  /** :1374 / :1378 — the columns table. */
   columnsGrid: { gridTemplateColumns: '1.6fr .8fr 1fr' } as CSSProperties,
-  /** :1659 / :1663 — the edge-cases table. */
+  /** :1660 / :1664 — the edge-cases table. */
   edgesGrid: { gridTemplateColumns: '1fr 1fr 1.2fr' } as CSSProperties,
   /**
    * The five label-column widths the design pins on a `flex:none` span. None is
    * on the `--space-*` ladder and none has a token of any kind.
    */
-  label70: { width: '70px' } as CSSProperties,    // :1157 — the constant's rows
-  label96: { width: '96px' } as CSSProperties,    // :1320 — the output sub-rows
-  label104: { width: '104px' } as CSSProperties,  // :1419 — the printed-row rows
-  label110: { width: '110px' } as CSSProperties,  // :1568 — the item rows
-  label120: { width: '120px' } as CSSProperties,  // :1219 — every other card
+  label70: { width: '70px' } as CSSProperties,    // :1159 — the constant's rows
+  label96: { width: '96px' } as CSSProperties,    // :1324 — the output sub-rows
+  label104: { width: '104px' } as CSSProperties,  // :1418 — the printed-row rows
+  label110: { width: '110px' } as CSSProperties,  // :1567 — the item rows
+  label120: { width: '120px' } as CSSProperties,  // :1229 — every other card
   /**
    * The three translucent whites on the violet header (:1112, :5067, :5069).
    *
@@ -135,7 +135,7 @@ export const PX = {
   chipOnField: { background: 'color-mix(in srgb, var(--card) 16%, transparent)' } as CSSProperties,
   tickRedChip: { background: 'color-mix(in srgb, var(--card) 8%, transparent)' } as CSSProperties,
   tickRedOuter: { borderColor: 'color-mix(in srgb, var(--card) 20%, transparent)' } as CSSProperties,
-  /** :1128 — the statement card's 4px violet edge, on the inline start. */
+  /** :1129 — the statement card's 4px violet edge, on the inline start. */
   statementEdge: { borderInlineStart: '4px solid var(--violet)' } as CSSProperties,
 } as const
 
@@ -144,8 +144,8 @@ export const PX = {
  * hairline and the two-layer neutral shadow, which `Card` already is.
  *
  * `overflow-hidden` by default: every one of these clips a head fill or a row
- * rule to the radius (:1185, :1214, :1343). The two that do not — the statement
- * (:1128) and the accounts card (:1673) — are padded boxes with nothing to clip.
+ * rule to the radius (:1184, :1214, :1343). The two that do not — the statement
+ * (:1129) and the accounts card (:1674) — are padded boxes with nothing to clip.
  */
 export function DetailCard({ radius = 'feature', clip = true, className = '', children, ...rest }:
   { radius?: 'feature' | 'doc'; clip?: boolean; children: ReactNode }
@@ -159,7 +159,7 @@ export function DetailCard({ radius = 'feature', clip = true, className = '', ch
 
 /**
  * A card's title band — `padding:14px 18px`, `12px/700` ink on `--tile-v4` over
- * the `--border-current` rule (:1214, :1449, :1657).
+ * the `--border-current` rule (:1215, :1450, :1659).
  */
 export function HeadBand({ children }: { children: ReactNode }) {
   return (
@@ -172,7 +172,7 @@ export function HeadBand({ children }: { children: ReactNode }) {
 
 /**
  * The head band of a counted table — «{n} ردیف» and what stands beside it
- * (:1344, :1370, :1184). A wrapping flex line at `--space-5`, over the same rule.
+ * (:1344, :1370, :1185). A wrapping flex line at `--space-5`, over the same rule.
  */
 export function CountBand({ children }: { children: ReactNode }) {
   return (
@@ -185,7 +185,7 @@ export function CountBand({ children }: { children: ReactNode }) {
 
 /**
  * One `label · value` row — the shape almost every card of this screen repeats
- * (:1216, :1244, :1450, :1566). `padding:12px 18px` over `--line-row`, a
+ * (:1216, :1228, :1451, :1467). `padding:12px 18px` over `--line-row`, a
  * `--space-7` gutter, and a `flex:none` label at the card's own column width.
  */
 export function LabelRow({ text, width = PX.label120, last = false, className = '', children }: {
@@ -225,7 +225,7 @@ export function Mono({ className = '', title, style, children }: {
 }
 
 /**
- * A run that is Persian prose or a latin run, decided by what is in it (:1687).
+ * A run that is Persian prose or a latin run, decided by what is in it (:1686).
  *
  * An account's `statement` is verbatim source text: «ببینید مصرف اعلامیشون…»
  * from a transcript, or `=MINUS(SUM(F6,E6),G6)` from a cell. The design chooses
@@ -290,9 +290,9 @@ export function RefLink({ named, onOpen, className = 'text-fs-body', children }:
 
 /** The six pill tones the facts detail paints, resolved to tokens by audit §2. */
 const TONE = {
-  violet: 'bg-tile-v text-violet',       // the kind chip, the nature pill (:1152)
-  quiet: 'bg-tile-v2 text-muted',        // «به ازای هر …» (:1153)
-  violet2: 'bg-tile-v2 text-violet',     // an input's unit, a share (:1288, :1318)
+  violet: 'bg-tile-v text-violet',       // the kind chip, the nature pill (:1153)
+  quiet: 'bg-tile-v2 text-muted',        // «به ازای هر …» (:1154)
+  violet2: 'bg-tile-v2 text-violet',     // an input's unit, a share (:1291, :1318)
   danger: 'bg-tile-c text-conflict',     // «بازنشسته», «واحد ثبت نشده» (:1116, :1393)
   warn: 'bg-tile-warn text-warn-fg',     // an aggregate, a tombstone (:1188, :1725)
   ok: 'bg-tile-ok text-green',           // an output's unit (:1316)
@@ -337,7 +337,7 @@ export function Pill({ tone, fs = 'text-fs-xs', title, children }: {
   )
 }
 
-/** The smaller pill that sits inside a run of type — a unit, a share (:1288). */
+/** The smaller pill that sits inside a run of type — a unit, a share (:1291). */
 export function Tag({ tone, children }: { tone: Tone; children: ReactNode }) {
   return (
     <span className={`inline-flex items-center flex-none py-half px-s4 rounded-pill
@@ -347,7 +347,7 @@ export function Tag({ tone, children }: { tone: Tone; children: ReactNode }) {
   )
 }
 
-/** A card's small section label — `12.5px/--text-muted` (:1267, :1481). */
+/** A card's small section label — `12.5px/--text-muted` (:1267, :1480). */
 export function Eyebrow({ children }: { children: ReactNode }) {
   return <div className="text-fs-sm2 text-muted mb-s4">{children}</div>
 }
@@ -362,7 +362,7 @@ export interface GridCell {
 
 /**
  * The grid the decision table, the record grid, the columns table and the
- * edge-cases table are all drawn on (:1191, :1350, :1372, :1659).
+ * edge-cases table are all drawn on (:1191, :1350, :1374, :1660).
  *
  * **Extracted rather than copied a third time.** `DataTable` cannot serve them:
  * it puts the padding on the ROW and gives a cell no ground of its own, and the
@@ -377,7 +377,7 @@ export function FactGrid({
   tracks: CSSProperties
   head: ReactNode[]
   rows: { key: string; cells: GridCell[] }[]
-  /** :1662 — the edge-cases head is `--surface-sub`, not `--tile-v4`. */
+  /** :1660 — the edge-cases head is `--surface-sub`, not `--tile-v4`. */
   headFill?: string
   rowClassName?: string
 }) {
@@ -413,7 +413,7 @@ export function FactGrid({
  *  never answered; the design draws the two differently and so does this. */
 export const none = () => label(SCREEN_LABELS, 'value_none')
 
-/** «؟» — a leaf the source never answered (:4842, :4909). */
+/** «؟» — a leaf the source never answered (:4845, :4912). */
 export const unanswered = () => label(SCREEN_LABELS, 'value_unknown')
 
 /**

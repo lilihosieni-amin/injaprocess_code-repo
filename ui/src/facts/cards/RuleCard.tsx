@@ -15,16 +15,16 @@ import {
 } from './parts'
 
 /**
- * The `rule` kind — `Inja Panel.dc.html:1141-1207`, `:1243-1339` and `:1656`.
+ * The `rule` kind — `Inja Panel.dc.html:1142-1211`, `:1244-1340` and `:1657`.
  *
  * **Two components, because the design interleaves one cross-kind card.** The
- * lifecycle card (:1212) sits *between* the decision table and «نام تابع», so a
+ * lifecycle card (:1213) sits *between* the decision table and «نام تابع», so a
  * single rule component could not be dropped into the screen in the design's own
  * order. `RuleValueCards` is what stands above the lifecycle card and `RuleCard`
  * is what stands below it; `FactDetail` renders the three in that order and the
  * DOM matches the deliverable line for line. Nothing else on the screen is
  * interleaved — a rule draws no record, item or measurement card, so the edge
- * cases (:1656) follow the I/O pair directly.
+ * cases (:1657) follow the I/O pair directly.
  *
  * Titles are the entry's own (`inputs[].title`, `outputs[].title`,
  * `unit_title`) — conformance note 2 — and every other Persian word comes from
@@ -94,7 +94,12 @@ function ConstantCard({ bundle, outputs, onOpen }: {
                 )}
                 {o.per !== undefined && (
                   <Pill tone="quiet">
-                    {label(PAYLOAD_FIELD_LABELS, 'per')} {o.per}
+                    {/* :4847 — the design writes `keyFa(o.per)` and note 2
+                        deletes `KEY_FA`, so the basis stays its stored key:
+                        `unit_sold`, `kg_cooked`, `pizza`. Every other key on
+                        this screen is an island, and a latin run inside
+                        «به ازای هر …» is the bidi mix note 6 is about. */}
+                    {label(PAYLOAD_FIELD_LABELS, 'per')} <Mono>{o.per}</Mono>
                   </Pill>
                 )}
               </span>
@@ -286,7 +291,7 @@ export function RuleCard({ bundle, onOpen }: {
       )}
 
       {hasIO && (
-        // :1278 — `[data-r-2col]`, two equal columns collapsing to one at ≤760.
+        // :1279 — `[data-r-2col]`, two equal columns collapsing to one at ≤760.
         <div data-r-2col className="grid grid-cols-2 gap-s7 mt-s7 max760:grid-cols-1">
           <DetailCard>
             <IoHead heading="heading_inputs" hint="heading_inputs_hint"
@@ -337,7 +342,7 @@ export function RuleCard({ bundle, onOpen }: {
   )
 }
 
-/** :1257 — drift is `--conflict`, an intentional difference `--warn-fg`,
+/** :1260 — drift is `--conflict`, an intentional difference `--warn-fg`,
  *  anything else `--green`. */
 const DIVERGENCE_INK: Record<string, string> = {
   drift: 'text-conflict',
@@ -346,7 +351,7 @@ const DIVERGENCE_INK: Record<string, string> = {
   unknown: 'text-green',
 }
 
-/** :1281 / :1307 — the two heads of the I/O pair, a heading over a hint. */
+/** :1282 / :1308 — the two heads of the I/O pair, a heading over a hint. */
 function IoHead({ heading, hint, fill, ink }: {
   heading: string; hint: string; fill: string; ink: string
 }) {
@@ -366,7 +371,7 @@ function InputRow({ bundle, input, onOpen }: {
   const from = typeof input.from === 'object' ? refTitle(bundle, input.from) : undefined
   const via = refTitle(bundle, input.via)
   return (
-    // :1288 — `13px 18px`, and 13px HAS a token: `--pad-table-row-y`
+    // :1287 — `13px 18px`, and 13px HAS a token: `--pad-table-row-y`
     // (`tokens.css:395`), which `FactsList.tsx:215` already writes for the
     // design's own 13px. An exact token beats a rounding.
     <div className="px-s9 py-table-row-y border-b border-line-row">
@@ -399,7 +404,7 @@ function OutputRow({ bundle, output, onOpen }: {
   const of = refTitle(bundle, output.of)
   const writes = refTitle(bundle, output.writes_to)
   return (
-    // :1314 — the same `13px 18px` as the input row above.
+    // :1313 — the same `13px 18px` as the input row above.
     <div className="px-s9 py-table-row-y border-b border-line-row">
       <div title={output.key} className="flex items-baseline gap-s4 flex-wrap">
         <FieldName title={output.title} name={output.key} />

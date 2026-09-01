@@ -30,7 +30,7 @@ export function MeasurementCard({ bundle, onOpen }: {
   const writes = refTitle(bundle, d.writes_to)
   return (
     <DetailCard className="mt-s10">
-      {/* :1621 — `[data-r-2col]`, `repeat(2,1fr)`, one column at ≤760. */}
+      {/* :1620 — `[data-r-2col]`, `repeat(2,1fr)`, one column at ≤760. */}
       <div data-r-2col className="grid grid-cols-2 max760:grid-cols-1">
         <Pane text={label(SCREEN_LABELS, 'measurement_quantity')} edge>
           <span className="text-fs-h5 font-extrabold text-ink">
@@ -70,7 +70,7 @@ function Pane({ text, edge = false, children }: {
 }) {
   return (
     // A logical inline-end edge, never a physical one: F10 makes every side
-    // logical, and the design's own `border-inline-end` (:1622) already is.
+    // logical, and the design's own `border-inline-end` (:1621) already is.
     <div className={`px-s9 py-s8 border-b border-line-row ${edge ? 'border-e' : ''}`}>
       <div className="text-fs-xxs text-faint">{text}</div>
       <div style={PX.mt7} className="flex items-baseline gap-s4 flex-wrap">{children}</div>

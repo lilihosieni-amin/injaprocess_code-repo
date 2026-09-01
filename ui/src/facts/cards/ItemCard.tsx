@@ -1,11 +1,11 @@
 import {
-  CATEGORY_LABELS, PAYLOAD_FIELD_LABELS, SCREEN_LABELS, STATE_LABELS, label,
+  CATEGORY_LABELS, GROUP_LABELS, PAYLOAD_FIELD_LABELS, SCREEN_LABELS, STATE_LABELS, label,
 } from '../../lib/factsLabels'
 import { isItem, type FactBundle, type ItemData } from '../../api/types'
 import { DetailCard, Eyebrow, LabelRow, Mono, PX, Pill, none, unanswered } from './parts'
 
 /**
- * The `item` kind — `Inja Panel.dc.html:1554-1613`.
+ * The `item` kind — `Inja Panel.dc.html:1555-1616`.
  *
  * The estate code, the category and the base unit on one line; then the pack,
  * the group, the grade, the state, the packaging units and the tracking rows.
@@ -40,17 +40,40 @@ export function ItemCard({ bundle }: { bundle: FactBundle }) {
       </div>
 
       <LabelRow text={L('pack')} width={PX.label110}>
-        <span className="text-fs-body font-semibold text-ink">
-          {d.pack === undefined ? none() : `${d.pack.size} ${d.pack.unit}`}
-        </span>
+        {d.pack === undefined
+          ? <span className="text-fs-body font-semibold text-ink">{none()}</span>
+          // :5008 writes `toFa(size) + ' ' + unitFa(unit)` — Persian digits and
+          // a Persian unit word. **QF-42 is a global constraint and overrides
+          // the design for the digits**: a number is Latin, and `unitFa` is the
+          // map note 2 deletes with nothing served to replace a PACK unit
+          // (`RuleInput`/`RuleOutput` carry `unit_title`; `ItemData.pack` does
+          // not). Both halves are therefore latin, and «16 l» inside a Persian
+          // row is the bidi mix note 6 is about — so it is one island.
+          : (
+            <Mono className="text-fs-body font-semibold text-ink">
+              {`${d.pack.size} ${d.pack.unit}`}
+            </Mono>
+          )}
       </LabelRow>
 
       {d.group !== undefined && (
         <LabelRow text={L('group')} width={PX.label110}>
-          {/* No served title: `resolved` carries ids and item keys, never a
-              group key, so the stored key is what there is to show and it is an
-              island (§17). The design's `GROUP_FA` is deleted by note 9. */}
-          <Mono className="text-fs-menu text-ink">{d.group}</Mono>
+          {/* :1573-1574 — **two nodes**: the group's Persian word at 13.5px,
+              then the stored key as a 10.5px mono hint. `GROUP_LABELS` is the
+              design's own `GROUP_FA` (:4684) moved into `factsLabels.ts`, and
+              an earlier draft of this row deleted it on a false claim: note 2's
+              replacement — `resolved`, or the group's own title — is **not
+              served** (`facts_store._labels` maps ids and item keys only,
+              `facts_store.py:291`), so what still binds is note 9's other half,
+              "not in a component". Read with `??` and not `label()`: `oil` and
+              `vegetables` are in the estate and in neither map, and a miss is
+              ordinary data rather than a schema defect. Where there is no
+              Persian word the key stands ALONE rather than twice, and never at
+              the prose node — the rule the printed row's unit already keeps. */}
+          {GROUP_LABELS[d.group] !== undefined && (
+            <span className="text-fs-menu font-semibold text-ink">{GROUP_LABELS[d.group]}</span>
+          )}
+          <Mono className="text-fs-micro text-faint">{d.group}</Mono>
         </LabelRow>
       )}
       {d.grade !== undefined && (
@@ -107,7 +130,7 @@ export function ItemCard({ bundle }: { bundle: FactBundle }) {
   )
 }
 
-/** :5018 — a flat factor, a range, or a leaf nobody answered. */
+/** :5014 — a flat factor, a range, or a leaf nobody answered. */
 function factor(v: number | null | { min: number; max: number } | undefined): string {
   if (v === null || v === undefined) return unanswered()
   return typeof v === 'object' ? `${v.min}–${v.max}` : String(v)

@@ -5,7 +5,7 @@ import { refTitle } from '../bundle'
 import { DetailCard, HeadBand, LabelRow, Mono, Pill, RefLink } from './parts'
 
 /**
- * «اعتبار زمانی» — `Inja Panel.dc.html:1212-1241`, drawn for every kind.
+ * «اعتبار زمانی» — `Inja Panel.dc.html:1213-1242`, drawn for every kind.
  *
  * Where it sits is the design's and is not obvious: **between the rule's
  * decision table and «نام تابع»**, so on a record or an item it is the first

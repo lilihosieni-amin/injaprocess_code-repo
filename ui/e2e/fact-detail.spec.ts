@@ -151,6 +151,9 @@ const PAPER = bundle('F-00011', 'record', 'مانده شب فرنگی و برگ�
     { key: 'bacon', title: 'بیکن ورقه ای', retired: true },
     // `F-00012`'s `staff_sugar`: a weekday the store spells in English.
     { key: 'staff_sugar', title: 'قند پرسنلی', unit: 'pack', when: 'thursday' },
+    // `F-00012`'s `burger_box`: the source's own word for the unit AND the
+    // stored symbol, which the design draws as two nodes (:1419-1420).
+    { key: 'burger_box', title: 'جعبه برگر', unit: 'carton', unit_raw: 'کارتن ۱۰۰تایی' },
   ],
 }, {
   red_paths: {
@@ -176,9 +179,24 @@ const CONSTANT = bundle('F-00026', 'rule', 'تلورانس هر واحد — پ�
 /** F-00048 — the item, with a RANGED `factor_to_base` (§7). */
 const ITEM = bundle('F-00048', 'item', 'روغن سرخ‌کردنی', {
   code: '##77', category: 'consumable', unit: 'l', unit_raw: 'لیتر',
+  // F-00048's own group, and one of the only two in the mock that `GROUP_FA`
+  // does not map — the trimmed fixture had dropped it, which is why no browser
+  // check could see the group row at all.
+  group: 'oil',
   pack: { size: 16, unit: 'l' }, state: 'raw',
   units: [{ pack_unit: 'carton', factor_to_base: { min: 0.28, max: 0.32 } }],
   tracked: [{ value: true, reason: 'ارزش ریالی بالا' }],
+})
+
+/** F-00001 («پنیر پیتزا»), verbatim — the entry the GROUP row needs.
+ *
+ *  `enumFa`'s third site is `sfItemGroup` (:5009), and F-00048's `oil` is one of
+ *  the only two groups in the whole mock that `GROUP_FA` does not map. Asserting
+ *  the row on F-00048 alone is what let the defect live through three rounds. */
+const CHEESE = bundle('F-00001', 'item', 'پنیر پیتزا', {
+  code: '##1', category: 'ingredient', group: 'cheese', state: 'raw',
+  unit: 'g', unit_raw: 'گرم', pack: { size: 10, unit: 'kg' },
+  units: [{ pack_unit: 'carton', factor_to_base: 10000 }],
 })
 
 /** F-00023 — the measurement, whose «ثبت در» is note 2's correction. */
@@ -273,6 +291,7 @@ async function open(page: Page, id: string) {
     '/api/facts/F-00011': PAPER,
     '/api/facts/F-00026': CONSTANT,
     '/api/facts/F-00048': ITEM,
+    '/api/facts/F-00001': CHEESE,
     '/api/facts/F-00023': MEASUREMENT,
     '/api/facts/F-00017': UNITS,
     '/api/facts/F-00021': STUB,
@@ -472,6 +491,16 @@ test('fact detail — the paper form: printed rows, and only a null unit is red'
   await expect(page.getByText('فقط پنجشنبه‌ها پر می‌شود')).toBeVisible()
   await expect(page.getByText('thursday')).toHaveCount(0)
 
+  /* ---- :1419-1420 — the unit phrase AND the raw symbol beside it ----
+         Two nodes, and the hint is the design's own element: an earlier round
+         deleted it by borrowing the columns table's one-node «never both» rule
+         (:4981 → :1393). Asserted in the browser because it is a claim about
+         what is on the page, not about what a branch returns. */
+  await expect(page.getByText('کارتن ۱۰۰تایی')).toBeVisible()
+  const symbolHint = page.getByText('carton', { exact: true })
+  await expect(symbolHint).toHaveAttribute('dir', 'ltr')
+  await expect(symbolHint).toHaveCSS('font-size', '10.5px')
+
   /* ---- the source download popup (QF-39) — download-only, and asked first ----
          **The transfer is observed as a DOWNLOAD, not as a request.** A
          `<a download>` is fetched by Chromium's download manager rather than by
@@ -523,6 +552,22 @@ test('fact detail — the constant, the item and the measurement', async ({ page
   await expect(ranged).toHaveAttribute('dir', 'ltr')
   await expect(page.getByText('واحد پایه')).toBeVisible()
   await expect(page.getByText('ردیابی می‌شود')).toHaveCSS('color', 'rgb(31, 138, 91)') // --green
+  // `oil` is in neither `GROUP_FA` nor this build's map: the key stands alone,
+  // as an island, and never at the Persian prose node.
+  await expect(page.getByText('oil', { exact: true })).toHaveAttribute('dir', 'ltr')
+
+  await open2(page, 'F-00001')
+  /* ---- `enumFa`'s THIRD site: the item's group, in the design's two nodes ---- */
+  const group = page.getByText('گروه', { exact: true }).locator('..')
+  // :1573 — the Persian word at 13.5px…
+  await expect(group.getByText('پنیر', { exact: true })).toBeVisible()
+  // …and :1574 — the stored key beside it, a 10.5px mono LTR hint.
+  const groupKey = group.getByText('cheese', { exact: true })
+  await expect(groupKey).toHaveAttribute('dir', 'ltr')
+  await expect(groupKey).toHaveCSS('font-size', '10.5px')
+  // QF-42 over the design's `toFa(size) + unitFa(unit)` (:5008): Latin digits,
+  // and one island rather than a latin run inside a Persian row.
+  await expect(page.getByText('10 kg', { exact: true })).toHaveAttribute('dir', 'ltr')
 
   await open2(page, 'F-00023')
   /* ---- note 2: «ثبت در» is the record's TITLE, never `F-00011 end_stock` ---- */

@@ -577,7 +577,7 @@ export const SCREEN_LABELS: Record<string, string> = {
   original_note_sheets: 'فرمول شیت عیناً در همین فایل نگه داشته شده است.',      // :4886
   original_note: 'متن اصلی عیناً در همین فایل نگه داشته شده است.',              // :4887
 
-  // The tick's own `title` (:1120) — the two hints `sfTickLabel` binds (:5071).
+  // The tick's own `title` (:1121) — the two hints `sfTickLabel` binds (:5070).
   tick_hint_confirmed: 'تأییدشده — اثر انگشت با محتوای فعلی می‌خواند',          // :5070
   tick_hint_unconfirmed: 'با یک تیک، کل این داده تأیید می‌شود',                 // :5070
 
@@ -599,7 +599,7 @@ export const SCREEN_LABELS: Record<string, string> = {
   list_separator: '، ',                                                         // :4862
 
   // The two placeholders the design puts where a value would be. «؟» is a leaf
-  // the source never answered (:4842, and the record grid's own `؟` at :4909);
+  // the source never answered (:4845, and the record grid's own `؟` at :4912);
   // «—» is a field the entry does not carry at all. They are different states
   // and the design draws them differently, so they are two entries.
   value_unknown: '؟',                                                           // :4845, :4912
@@ -632,10 +632,12 @@ export const SCREEN_LABELS: Record<string, string> = {
  * spelling it is looking at.
  *
  * `weekday` / `weekend` / `any` come from `WD_FA` too — a decision table's
- * `when` may name a class of days rather than one. `otherwise` is deliberately
- * NOT here: it is `SCREEN_LABELS.table_default`, the same sentence, and the
- * design's own `WD_FA` duplicating it is the kind of second definition this
- * file exists to prevent.
+ * `when` may name a class of days rather than one. So does `otherwise`, which
+ * **is** in the map, three lines below this paragraph: it is a *reference* to
+ * `SCREEN_LABELS.table_default` and not a second copy of that sentence. An
+ * earlier draft argued it out of the map and then took it, and this paragraph
+ * kept the argument — see the note beside the entry for the reasoning that
+ * stands.
  *
  * **Read with `?? value`, never through `label()`.** A decision-table cell is
  * an open string — a weekday, an enumeration this file has no map for, or a

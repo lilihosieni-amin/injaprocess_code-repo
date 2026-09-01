@@ -81,6 +81,10 @@ describe('the rule’s value cards', () => {
     expect(screen.getByText('گرم')).toBeInTheDocument()
     expect(screen.getByText('حد مجاز')).toBeInTheDocument()
     expect(screen.getByText(/به ازای هر/)).toBeInTheDocument()
+    // :4847 — `keyFa(o.per)` with `KEY_FA` deleted by note 2 leaves the stored
+    // key, and a key is an island like every other key on this screen.
+    const basis = screen.getByText('unit_sold')
+    expect(basis).toHaveAttribute('dir', 'ltr')
   })
 
   it('paints a `null` value «؟» in the conflict ink (:4843)', () => {
