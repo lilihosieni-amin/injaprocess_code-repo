@@ -123,6 +123,32 @@ describe('routing', () => {
     await waitFor(() => expect(screen.getByLabelText('شمارهٔ موبایل')).toBeInTheDocument())
   })
 
+  /**
+   * **Conformance note 10, and the only place it can be pinned.** The note says
+   * there is no workbook screen in v1 — the manifest is edited by hand
+   * (Appendix B) — and the design still carries six «کاربرگ‌ها» blocks (:265,
+   * :407, :1074, :2105, :2683, :2914) with inline `BOOKS`/`FACTS` arrays behind
+   * them. Nothing else fails when somebody builds one: a new screen with a new
+   * route passes every other test in this repo, including its own.
+   *
+   * So the app's whole route surface is asserted as an exact list — not just the
+   * two that say «fact», because a workbook screen would as likely be spelled
+   * `/workbooks`. The facts section is two routes, the list and one entry, and a
+   * third screen of any name is a decision the owner takes rather than a file
+   * somebody adds.
+   */
+  it('has no workbook screen — the app’s route surface is this list (note 10)', () => {
+    const paths = appRoutes.flatMap((r) => (r.children ?? [r]).map((c) => c.path))
+    expect(paths).toEqual([
+      '/login',
+      '/', '/departments', '/departments/:code', '/departments/:code/overview',
+      '/processes/:pid', '/processes/:pid/flow', '/processes/:pid/steps',
+      '/facts', '/facts/:fid',
+      '/visibility', '/users', '/users/:id', '/profile',
+      '*',
+    ])
+  })
+
   it('routes /users/:id to one person\'s record', async () => {
     // A separate entry, and a separate assertion: `/users/7` matches no route at
     // all without it and lands on the departments grid, so every row of the list

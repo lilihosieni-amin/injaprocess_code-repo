@@ -6,7 +6,12 @@ and here took them from the file — never from memory.**
 Source of authority: the facts section of `ui/design/Inja Panel.dc.html`
 (5416 lines, landed 2026-08-30, 22:44 save), corrected **only** by the ten
 "Design conformance notes" at the end of spec §14
-(`docs/superpowers/specs/2026-08-29-quantitative-facts-design.md:1688–1730`).
+(`docs/superpowers/specs/2026-08-29-quantitative-facts-design.md:1688–1726`),
+the owner's recorded decisions (§6 and §6.3 below) and
+`docs/superpowers/ui-normalisation-ledger.md`. Nothing else corrects it.
+
+**§9 is the closure table**: for each of the ten notes, the test that fails when
+it regresses, and the mutant that proved so.
 
 Regions read for this audit:
 
@@ -205,11 +210,22 @@ Every colour the facts section paints, resolved against the token set.
 | radius `6px` (tick box) | `--radius-tick` (= `--radius-badge`) | tokens.css |
 | fs `9 / 10 / 10.5 / 11 / 11.5 / 12 / 12.5 / 13 / 13.5 / 14 / 14.5 / 15 / 16 / 17 / 22 / 25 / 26` | `--fs-tag` / `--fs-nano` / `--fs-micro` / `--fs-xxs` / `--fs-xs` / `--fs-caption` / `--fs-sm2` / `--fs-sm` / `--fs-menu` / `--fs-body` / `--fs-body-lead` / `--fs-lg` / `--fs-h5` / `--fs-h4` / `--fs-h2` / `--fs-display-hand` / `--fs-steps-title` | typography.css + tokens.css |
 | lh `1.6 / 1.7 / 1.75 / 1.8 / 1.9 / 2.1 / 1` | `--lh-snug` / `--lh-normal` / `--lh-relaxed` / `--lh-sub` / `--lh-loose` / `--lh-looser` / `--lh-none` | typography.css + tokens.css |
-| pad steps `4 / 5 / 6 / 8 / 10 / 12 / 14 / 16 / 18 / 20 / 22 / 26 / 30 / 38 / 40` | `--space-1 … --space-16` | spacing.css |
+| pad steps `4 / 5 / 6 / 8 / 10 / 12 / 14 / 16 / 18 / 22 / 26 / 30 / 38 / 40` | `--space-1 … --space-16` (fourteen rungs: `s1…s12, s14, s16`) | spacing.css |
 | `1.5px` control border | `--border-hairline` | tokens.css |
 | `.14s ease` row hover | `--duration-row` + `--ease-css` | tokens.css |
 | `#F3EDFC` chevron tile, `30px` box | `--disc-violet`, `--size-chev` | tokens.css |
 | `34px` last grid track | `--size-pager` value; the users grid already ends `… 34px` | tokens.css |
+
+> **Corrected 2026-09-01 (Task 24).** The pad-step row above used to list a
+> `20px` rung. **There is none.** The frozen ladder is
+> `4, 5, 6, 8, 10, 12, 14, 16, 18, 22, 26, 30, 38, 40` — fourteen values, and
+> `tailwind.config.js` emits `s1…s12, s14, s16` accordingly. The detail screen
+> draws a `20px` padding at **five** sites, and every one of them is written
+> **exact and inline** in `cards/parts.tsx`'s `PX` rather than rounded to 18 or
+> 22 (Task 23 report §7). `20px` is on the
+> `UNTOKENISED` list below for the owner and is the row worth her attention:
+> it is the detail screen's commonest card padding, and `tokens.css` already
+> records that the value has four owners, none of them a card.
 
 ### 2.1 `UNTOKENISED` candidates — **for the owner, not for this task to mint**
 
@@ -250,6 +266,34 @@ the family token the screen substitutes.
 | `1.95` / `2` | «هر ردیف یعنی» and the tracked-reason line-heights | 1460, 1610 |
 | `212px` | the filter menu's scroll cap (`--height-popover` is 280px, the dialogs' cap) | 1021 |
 | `z-index:37` / `z-index:62` | the filter menu and the facts dialog (the token ladder has `--z-dropdown:1000` and `--z-modal:1055`; the design's raw numbers are a *different scale*, not a different intent — map to the tokens, and this row records that they were not equal) | 1021, 1754 |
+
+**The detail screen's own rows, filed by Task 23 and folded in here 2026-09-01
+(Task 24) so this table is the whole list rather than the list as of Task 21.**
+Every line number below was re-derived by grep in Task 23's fix round 4; the
+values are unchanged. None is minted — each is written exact and inline in
+`cards/parts.tsx`'s `PX`, with its design line beside it.
+
+| value | role | design line |
+|---|---|---|
+| `20px` | **the one worth the owner's attention** — the detail screen's commonest card padding, at five sites; `tokens.css` already records that `20px` has four owners, none of them a card | 1404, 1409, 1557, 1566, 1674 |
+| `9px` | the header chip row's gutter, and the tick's | 1111, 1121 |
+| `7px` | the printed-row detail column's gutter; a foreign-key and a reconciliation row's block padding | 1415, 1530, 1543 |
+| `7px` / `9px` margin-top | under a title line; the printed row's detail block | 1294, 1415 |
+| `11px 16px` | the confirm tick's box | 1121 |
+| `20px 22px` | the statement card | 1129 |
+| `9px` margin | an eyebrow's gap to its sentence | 1130 |
+| `13px` | a rule's gap inside a card (aliases, the constant's «برای») | 1133, 1158 |
+| `11px` margin | the constant's second sub-row | 1164 |
+| `7px 12px` | a chip button, and an item's pack chip | 1270, 1594 |
+| `11px 18px` | one source row | 1710 |
+| `24px` | the constant card | 1143 |
+| `18px 20px` | the formula block | 1179 |
+| `15px 18px` | a counted table's head band | 1185, 1344, 1370 |
+| `11px 12px` | one body cell of a grid | 1199, 1358, 1379 |
+| `.55` | a retired printed row's opacity | 1409 |
+| `110px` | the process row's name cell floor | 1723 |
+| `70 / 96 / 104 / 110 / 120px` | the five label-column widths | 1159, 1324, 1418, 1567, 1229 |
+| `4px` | the statement card's inline-start edge | 1129 |
 
 ---
 
@@ -397,6 +441,25 @@ That line is `sfKind` (4814), which today emits `FKIND[kind]` plus
 new row in the «ساختار و مکان جدول» card — the user placed it on the line that
 already answers "what kind of thing is this".
 
+### 6.3 The four later rulings, folded in 2026-09-01 (Task 24)
+
+§6's five consult items are answered above and closed. Four more decisions were
+taken *during* the build, are shipped, and belong in the same record — a reader
+who takes this file as authority must not have to read three task reports to
+find them.
+
+| ruling | date | what it means |
+|---|---|---|
+| **The «متن اصلی» block is closed by default.** | 2026-08-31 (part of C3) | Not a detail: the block holds a raw formula or script body — the one place §17 lets keys stand on their own — and it must not push the entry's Persian off the first screen. Pinned by `e2e/fact-detail.spec.ts` › *«متن اصلی» is collapsed and closed until it is asked for*. |
+| **`FieldStatusCard` sits between the accounts card and the issues card.** | Task 23 | The design draws no box for `field_status` at all (`sfFields`, :5045, is computed and rendered nowhere), so there is no markup to copy. The position is the design's own binding order — `sfFields` is defined immediately before `sfIssues` — and the box is the screen's plainest card: Appendix D's «وضعیت فیلدها» over one dot-plus-word row per marked path (F11). |
+| **The clear-filters link is `--role-link-quiet`, not the `#E23D35` the design paints (:1033).** | ledger **L-06**, the owner's ruling on this exact control | Settled on semantics: *«`--conflict` is declared destructive and conflicts, and clearing a filter destroys nothing.»* `Users` already drew it this way and `User activity` drew it `--conflict`; the ruling settled the contradiction and the facts design repeats the losing variant. `roles.css:73` is the role name. |
+| **Two greens minted: `--tile-ok2` (`#F1FAF5`) and `--border-ok2` (`#DDEFE5`).** | 2026-09-01, shown the rendered screen rather than the swatches | The outputs card's header must read as the paler band the design drew rather than flattening into the unit pills below it. Named on the `--tile-v2…--tile-v5` / `--tile-c2` ladder the palette already uses for "the paler second tint of this hue". Struck through in §2.1 rather than deleted, so this file still records what was asked and what was answered. The other three colour rows were shown in the same pass and **accepted as they are**. |
+
+One more that is a *rounding* rather than a decision, recorded because it is
+the closest call in the build: a pill's weight. The design writes `700` six
+times and `600` seven for the same role, and R8's dominance rule takes the `600`
+— **semibold pills everywhere** on these two screens.
+
 ---
 
 ## 7. The seed facts I was handed, verified against the file
@@ -444,3 +507,119 @@ was there.
 Formatters worth keeping (they are behaviour, not labels):
 `toFa` for chrome counts and dates only (QF-42), `faNum` (Persian decimal
 separator «٫», 4732), `jalali` (`fa-IR-u-ca-persian`, 4734).
+
+---
+
+## 9. Conformance closure — the test that fails when each note regresses
+
+**Written by Task 24, 2026-09-01.** §3 says what each of spec §14's ten notes
+requires *instead of* the design. This says what breaks when somebody undoes it.
+
+**Every pin below was mutation-checked**, because a test that would still pass
+with the behaviour removed is not a pin, and this plan has caught four tests
+that asserted nothing — three of them by mutation. The «mutant killed» column
+is the change that was actually made to the tree and the assertion that went
+red; each mutant was reverted immediately after. A note this task could not pin
+honestly says so, in its own row, with what is missing.
+
+| # | the note demands | the test that fails if it regresses | mutant killed |
+|---|---|---|---|
+| **1** | the red counts and the two badges beside the two-value chip, never inside it | `ui/e2e/facts.spec.ts` › *facts — the design’s list on the violet field, at three widths*; `src/facts/FactsList.test.tsx` › *shows the red counts beside the chip, in Persian digits* / *badges a pre-registered and a retired entry* / *shows no count line at all for a row with nothing to say* | `noteLine()` stopped emitting counts and badges → e2e red at «۴ بی‌پاسخ» (`facts.spec.ts:195`) |
+| **2** | Persian titles from the served data — `inputs[].title`, `unit_title`, `resolved` / `row_titles` / `path_labels`; «ثبت در» is the record’s title, not `F-00011 end_stock` | `src/facts/cards/MeasurementCard.test.tsx` › *renders «ثبت در» as the record’s title and the column, never as `F-00011 end_stock`*; `cards/RecordCard.test.tsx` › *shows a refItems cell as its resolved title, with the key as the tooltip*; `ui/e2e/fact-detail.spec.ts` › *the constant, the item and the measurement* | «ثبت در» drawn as the raw `writes_to.ref` (the design's `sfMeasWrId`, :5027) → e2e red at `fact-detail.spec.ts:583` |
+| **3** | red is the served `red_paths` and nothing else; an omitted `unit` is "not applicable" | `src/facts/bundle.test.ts` › *reads red out of `red_paths` and out of nothing else*; `cards/RecordCard.test.tsx` › *paints «واحد ثبت نشده» on a present-and-null unit and NOT on an omitted one*; `ui/e2e/fact-detail.spec.ts` › *the paper form: printed rows, and only a null unit is red* | `missing` restored to the design's `sfRecFields` rule (:4978 — every numeric column with no unit) → e2e red, «واحد ثبت نشده» 2 → **3** |
+| **4** | accounts grouped by disputed field under its `path_labels` label, each with `speaker_role` | `src/facts/cards/AccountsCard.test.tsx` › *groups the accounts by disputed field, under the field’s `path_labels` label* / *shows `speaker_role` on the account that has one*; `ui/e2e/fact-detail.spec.ts` › *the disputed rule: accounts grouped by field, and the resolve* | two mutants: the group's `aria-label` set to the raw path, and the speaker label dropped → both vitest tests red |
+| **5** | an admin's list is `may_serve`-filtered (QF-23); the client filters nothing on visibility | `ui-backend/tests/test_facts_api.py::test_an_admins_list_omits_an_entry_with_no_valid_confirmation` (the list) and `::test_an_admin_is_404d_off_an_entry_with_no_valid_confirmation` (one entry) | two mutants: `may_serve_fact` removed from the list loop (`routers/facts.py:530`) → the first red; removed from `_servable` (`:232`) → the second red, with three more beside it. **The two sites are separate and each needed its own mutant** — the first attempt struck `_servable` and the list test stayed green |
+| **6** | the «محل» row carries no bidi mix; the spreadsheet id lives in the footer chip only | `src/facts/cards/RecordCard.test.tsx` › *keeps the spreadsheet id out of the «محل» row — note 6*; `ui/e2e/fact-detail.spec.ts` › *the BOM grid paints red from `red_paths` and nothing else* (the id is asserted `toHaveCount(1)` over the whole page, then located in the footer) | `location.spreadsheetId` put back on the «محل» row → e2e red, id count 1 → **2** |
+| **7** | every orphan class of Appendix D is drawn, not only the tombstoned process | `ui/e2e/fact-detail.spec.ts` › *the design’s screen on the violet field, at three widths* — «اشاره به فرایند بازنشسته (جایگزین: …)», «ارجاع بی‌مقصد», «گرهٔ ارجاع‌شده حذف شده», and the masked consumer with no press | the two classes the design does not draw returned to `undefined` → e2e red at `fact-detail.spec.ts:362` |
+| **7b** | «منبع تغییرکرده» — the fourth class | **KNOWINGLY UNPINNED.** See below. | — |
+| **8** | `field_status` markers drawn; `original` / `original_ref` reachable as a collapsed, closed «متن اصلی»; an issue shows `from_date`, `fix`, `affects` | `src/facts/cards/IssuesCard.test.tsx` › *shows the defect, its kind, and note 8’s `from_date`, `fix` and `affects`* and *the field-status card > draws a marker per `field_status` path, under the path’s Persian label*; `ui/e2e/fact-detail.spec.ts` › *«متن اصلی» is collapsed and closed until it is asked for* | three mutants: the three issue fields gated off → the issues test red; `FieldStatusCard` returning `null` always → the field-status test red; `useState(true)` on the disclosure → e2e red, `aria-expanded` `false` → **`true`** |
+| **9** | labels come from `lib/factsLabels.ts` and the registries — no inline map in a component | **NEW, Task 24:** `src/test/guards.test.ts` › *§14 note 9 — the facts screens hold no Persian of their own > no file under src/facts/ writes a Persian string*. Beside it: `src/lib/factsLabels.test.ts` › *every enum member and const the three schemas declare has a Persian label* (the file is complete) and `src/facts/FactsList.test.tsx` › *writes the scope from the two registries, never from an inline map* | `const SOURCE_FA = { sheet: 'کاربرگ' }` added to `cards/RuleCard.tsx` → the guard red. **Nothing pinned this before**: the labels test proves `factsLabels.ts` is complete, and completeness says nothing about whether a card grew a map of its own beside it |
+| **10** | no workbook screen in v1; the six «کاربرگ‌ها» blocks and the inline `BOOKS`/`FACTS` arrays are not built | **NEW, Task 24:** `src/routes.test.tsx` › *has no workbook screen — the app’s route surface is this list (note 10)* | `{ path: '/workbooks', … }` added to `appRoutes` → red. Asserted over the WHOLE route list rather than the two paths that say «fact», because a workbook screen is as likely to be spelled `/workbooks` |
+
+### 9.1 The one note that is knowingly unpinned, and the request that would fix it
+
+**Note 7's «منبع تغییرکرده» is a backend gap, not a screen gap, and no
+client-side heuristic may stand in for it.**
+
+`merge facts audit`/`check` already computes it: `engine/merge_facts/audit.py`
+compares each `source[].hash` against the file on disk and emits a
+`source_moved` finding when they differ (or when a non-estate `ref` has gone).
+Nothing carries that verdict through to the Panel — `FactSource.hash` is *what
+was read*, not what is there now, and the bundle has no field that says a source
+has moved. `SCREEN_LABELS.moved_source` («منبع تغییرکرده») is in
+`factsLabels.ts` because Appendix D declares it, and no component reads it.
+
+**The request, written out so it can be picked up whole.**
+
+> `GET /api/facts/{fid}` gains one flag per source — `source[].moved: boolean` —
+> set by the same comparison `audit.py` makes (`sha256_file(path) != held`, and
+> `True` for a non-estate `ref` that is no longer a file). The source row then
+> draws `SCREEN_LABELS.moved_source` as a warn pill, exactly as the three
+> process-link orphan classes are drawn one card down, and a test in
+> `SourceRow.test.tsx` pins it. Estate workbooks are outside git (QF-28) and
+> their absence is `estate_absent`, not `source_moved`, so the flag must keep
+> that distinction rather than reporting every missing workbook as moved.
+
+Until that field is served, this note stays open and this row stays honest.
+
+### 9.2 A proposed ELEVENTH note — the owner's to accept or reject
+
+**Carried forward from Task 23's report §5.9. It is not accepted, it is not
+implemented as though accepted, and it is not dropped.**
+
+> **Proposed note 11.** A record's rows are printed items on a form, not data,
+> whenever every key they carry is a bookkeeping key — even where a declared
+> column happens to be *named* like one. `recHasGrid`'s middle disjunct
+> (`Inja Panel.dc.html:4667`) asks only whether a row has a value under some
+> declared column key, and answers "grid" on a coincidence of names.
+
+**The evidence, as measured.**
+
+* The design's expression is `(r.cells||[]).length > 0 ||
+  recFieldKeys.some(k => r[k] !== undefined) ||
+  Object.keys(r).some(k => !LOGKEYS[k])`.
+* Its middle disjunct is a strict SUBSET of its third, **except** where the
+  column keys and the bookkeeping keys overlap.
+* `F-00012` («درخواست کالا بخش کانتر آشپزخانه», a paper request form) is that
+  overlap: its columns are `item / unit / requested / delivered /
+  warehouse_tick`, and each of its four printed rows carries a bookkeeping
+  `unit`. Under the design's own expression the form draws as a **grid** —
+  four rows by five columns, four of them «؟» — and «قلم‌های چاپ‌شده روی فرم»
+  is suppressed with everything on it.
+* **The design contradicts itself here and its own comment is the tiebreaker.**
+  `:4664` reads «ردیف فرم فقط کلیدهای دفترداری دارد» — *a form's row has only
+  bookkeeping keys* — which is the third disjunct exactly, and is what the build
+  implements.
+* **Blast radius, measured rather than assumed** (and reproduced independently
+  by Task 23's reviewer): `F-00012` is the **only** entry in the whole mock
+  where the two expressions disagree.
+
+**What the tree does today:** `hasGrid` in `cards/RecordCard.tsx` is the two
+disjuncts that agree with the design's comment, with the middle one left out,
+and it is pinned by `RecordCard.test.tsx` › *reads a paper form with a column
+keyed `unit` as a form, not a grid*.
+
+**The one-line reversal, if the owner rejects the note:** add
+`|| (d.fields ?? []).some((f) => (d.rows ?? []).some((r) => r[f.key] !== undefined))`
+to `hasGrid`, and delete that test. Nothing else moves.
+
+### 9.3 What Task 24 added, beyond the two new note pins
+
+| pin | what it stops | mutant killed |
+|---|---|---|
+| `ui/e2e/facts.spec.ts` — `column-gap: 7px` on the status-dot row | the one untokenised value on the list that nothing pinned, while its sibling (the `fr` ratios) was asserted | `style={{ gap: '7px' }}` → `gap-s3` → red, `7px` → **`6px`**: the exact substitution the code comment warns about |
+| `ui/e2e/facts.spec.ts` — `border-radius: 50%` on the chevron disc | a 30px violet **square** where the design draws a disc; every other assertion on that element still passes | `rounded-round` → `rounded-md` → red, `50%` → **`6px`** |
+| `src/facts/cards/AccountsCard.test.tsx` — *names where each account was read, in the design’s own phrase* | the account card's source line, which was covered only by proxy in `SourceRow.test.tsx` — the same `sourceAt` + `Filled` pair (:5033), drawn from a different card | the `Filled` render dropped → red |
+| `ui/e2e/sweep.spec.ts` — `sweep — factDetail` | the detail screen was **not** in the cross-screen sweep: the field, Vazirmatn, RTL, a sideways scroll at 760, a latin digit outside a declared island, a console error | (not a mutation pin — it is the cross-screen sweep, whose own six checks are each a defect that shipped on other screens) |
+
+### 9.4 Where the mutation pass found the pins weaker than assumed
+
+* **Note 5 has two sites, not one.** Striking `may_serve_fact` out of
+  `_servable` (`routers/facts.py:232`) left
+  `test_an_admins_list_omits_an_entry_with_no_valid_confirmation` **green** —
+  that predicate answers the bundle and its neighbours, and the list route makes
+  its own call at `:530`. Both are pinned; each needed its own mutant to say so.
+* **Note 9 had no pin at all before this task**, only a completeness test for
+  the label file, which a component with its own inline map passes.
+* **Note 10 had no pin at all before this task.** Nothing failed when a screen
+  was added.

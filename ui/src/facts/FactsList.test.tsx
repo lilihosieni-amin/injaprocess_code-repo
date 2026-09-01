@@ -168,7 +168,7 @@ describe('the filters', () => {
   })
 
   it('hides the clear-filters link until something is set, and clears with it', async () => {
-    // R5 — absent, not disabled. `hasFactFilters` counts the query too (:4809).
+    // R5 — absent, not disabled. `hasFactFilters` counts the query too (:4807).
     draw()
     expect(screen.queryByRole('button', { name: 'پاک کردن همهٔ فیلترها' })).toBeNull()
 

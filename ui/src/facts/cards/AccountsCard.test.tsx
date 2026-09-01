@@ -76,6 +76,30 @@ describe('the accounts card', () => {
     expect(screen.getByText(/گوینده \(نقش\): سرپرست گزارش‌ها/)).toBeInTheDocument()
   })
 
+  /**
+   * The source line, which was covered only by proxy in `SourceRow.test.tsx`
+   * until Task 24. It is the same `sourceAt` + `Filled` pair as a «منابع» row
+   * (:5033 is the design's own second use of that composition) and it is drawn
+   * from a DIFFERENT card, so a change to either one has to be seen here too.
+   */
+  it('names where each account was read, in the design’s own phrase', () => {
+    render(<AccountsCard bundle={DISPUTED()} />)
+    // A sheet source: the type word, then «برگهٔ {n}، خانهٔ {m}» filled in.
+    const sheet = screen.getByText(/کاربرگ/)
+    expect(sheet).toHaveTextContent('برگهٔ پیتزا، خانهٔ H6')
+    // `Filled`, not a joined string: «پیتزا» is Persian and stands as prose,
+    // `H6` is a latin locator and is its own mono island inside the sentence.
+    expect(within(sheet).getByText('H6').tagName).toBe('SPAN')
+    expect(within(sheet).getByText('H6')).toHaveClass('font-mono')
+    expect(within(sheet).queryByText('پیتزا')).toBeNull()
+    // …the file name beside it, last segment only (`sourceFile`).
+    expect(screen.getByText('Gozaresh markazi.xlsx')).toBeInTheDocument()
+    // A transcript: a line number, and it is a Persian-facing count (QF-42).
+    expect(screen.getByText(/جلسه/)).toHaveTextContent('خط ۴۰')
+    // A PDF: a page, also Persian.
+    expect(screen.getByText(/PDF/)).toHaveTextContent('صفحهٔ ۱۵')
+  })
+
   it('drops a settled account', () => {
     render(<AccountsCard bundle={DISPUTED()} />)
     expect(screen.queryByText('چیز دیگری')).toBeNull()

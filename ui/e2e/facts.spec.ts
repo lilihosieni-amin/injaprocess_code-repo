@@ -180,6 +180,15 @@ test('facts — the design’s list on the violet field, at three widths', async
   await expect(dot(row)).toHaveCSS('background-color', 'rgb(232, 163, 61)') // --junction-or
   await expect(dot(row)).toHaveCSS('width', '8px')
 
+  // :1059 — the dot row's `gap:7px`, the one untokenised value on this screen
+  // that nothing else pins. Its sibling (the `fr` ratios above) is asserted, and
+  // a whole fix round was fought for this exact number: written `gap-s3` it
+  // becomes 6px, which is a design value quietly changed because 6px had a name.
+  // `column-gap`, not the `gap` shorthand: Chrome reports the shorthand as
+  // `normal` on a flex row that sets only the inline axis.
+  await expect(row.locator('[data-col="confirmation"] > span').first())
+    .toHaveCSS('column-gap', '7px')
+
   /* ---- conformance note 1: the counts and the badges, beside the chip ---- */
   // Persian digits, the design's own separator, and a count only when there is
   // one — «۰ بی‌پاسخ» on a clean row would be noise on every row in the list.
@@ -198,6 +207,10 @@ test('facts — the design’s list on the violet field, at three widths', async
   const disc = row.locator('[data-col="open"] > span')
   await expect(disc).toHaveCSS('width', '30px')
   await expect(disc).toHaveCSS('height', '30px')
+  // …and it is a DISC. `border-radius:50%` on a 30px box is the whole shape;
+  // `--radius-round` dropped for a `--radius-*` rung would leave a violet
+  // square that every other assertion here still passes.
+  await expect(disc).toHaveCSS('border-top-left-radius', '50%')
   await expect(disc).toHaveCSS('background-color', 'rgb(243, 237, 252)')   // --disc-violet
   await expect(disc).toHaveCSS('color', 'rgb(74, 37, 169)')                // --violet
 

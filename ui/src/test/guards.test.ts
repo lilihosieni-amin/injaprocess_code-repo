@@ -426,7 +426,7 @@ describe('F10 — RTL is structural', () => {
       'src/screens/Summary.tsx',
       // The facts list's id cell — `F-00011`, a mono latin run in an otherwise
       // Persian row, pinned exactly as the design pins it
-      // (`Inja Panel.dc.html:1056`). The screen's other latin content is the
+      // (`Inja Panel.dc.html:1055`). The screen's other latin content is the
       // filter machinery's stored values, none of which is rendered.
       'src/facts/FactsList.tsx',
       // The fact detail's TWO islands, and only two — every mono run on that
@@ -623,5 +623,77 @@ describe('F4/F8 — density comes from the shell', () => {
       idle,
       'these files are excepted from F4/F8 but no longer trip it — delete the line',
     ).toEqual([])
+  })
+})
+
+/**
+ * **§14 conformance note 9, and the only check that fails when it regresses.**
+ *
+ * The note replaces the design's inline dictionaries — `FKIND`, `FROLE`,
+ * `FLANG`, `FCADENCE`, `FMEDIUM`, `FSRC`, `FCAT`, `FQTY`, `FNATURE`, `FST`,
+ * `FSTFG`, `FISSUE` (`Inja Panel.dc.html:3304-3318`), `DEPT_FA` (:4632),
+ * `BRANCH_FA` (:4633) and the seven `*_FA` maps note 2 names — with
+ * `lib/factsLabels.ts` and the registries. `factsLabels.test.ts` proves that
+ * file is COMPLETE (every schema enumeration has a Persian word); nothing
+ * proved it was the ONLY source, and the failure the note exists to stop is a
+ * component growing a map of its own beside it. One inline
+ * `{ sheet: 'کاربرگ' }` in a card is invisible to every screen test, because
+ * the screen renders the same word either way.
+ *
+ * So a Persian *code* line under `src/facts/` is the defect, whatever shape it
+ * takes — a map, a JSX text node, a ternary's two branches. Comments are
+ * stripped first (`codeLines`), because every file here quotes the design's own
+ * copy in « » to say what it is drawing, and a check that failed on those would
+ * teach the next person to delete the explanation.
+ *
+ * Scoped to `src/facts/`: this is note 9's rule for the facts section, not a new
+ * app-wide policy. `lib/factsLabels.ts` is the authority file and sits outside
+ * the scan by construction.
+ */
+describe('§14 note 9 — the facts screens hold no Persian of their own', () => {
+  /**
+   * `cards/fixture.ts` is the eight card tests' shared `bundleOf`, and its
+   * Persian is a served entry's own `title` and `statement` — the data a fact
+   * arrives with, not a label the screen chose. It is named here rather than
+   * skipped by a `/fixture\.ts$/` rule, because a category exemption admits the
+   * next file that happens to be called one; `files()` above drops
+   * `*.test.tsx` for the same reason and cannot see this one, which is a plain
+   * module the tests import.
+   */
+  const FIXTURES = ['src/facts/cards/fixture.ts']
+
+  /** Two or more, so a Persian WORD is the subject. The one run of exactly one
+   *  under `src/facts/` is `parts.tsx`'s `/[؀-ۿ]/` — a character-class RANGE
+   *  whose two ends are separated by a hyphen, which is the guard's own test
+   *  for "is this string Persian" and not a word on any screen. */
+  const PERSIAN_WORD = /[؀-ۿ]{2,}/
+
+  it('no file under src/facts/ writes a Persian string', () => {
+    const hits = codeLines()
+      .filter(({ rel }) => rel.startsWith('src/facts/') && !FIXTURES.includes(rel))
+      .filter(({ line }) => PERSIAN_WORD.test(line))
+    expect(
+      report(hits),
+      'every Persian word on these screens comes from lib/factsLabels.ts and the registries',
+    ).toEqual([])
+  })
+
+  it('the fixture exemption still earns its line', () => {
+    // The same rule every other list in this file follows: an exemption for a
+    // file that no longer trips the check is an absence of scrutiny the next
+    // file added beside it inherits.
+    const idle = FIXTURES.filter((rel) => !codeLines()
+      .some((l) => l.rel === rel && PERSIAN_WORD.test(l.line)))
+    expect(idle, 'exempted from note 9 but no longer Persian — delete the line')
+      .toEqual([])
+  })
+
+  it('reads the facts files at all', () => {
+    // Guards the guard: scoped to a directory, a typo in the prefix would make
+    // the check above pass by scanning nothing.
+    const scanned = new Set(codeLines()
+      .filter(({ rel }) => rel.startsWith('src/facts/')).map(({ rel }) => rel))
+    expect(scanned.size).toBeGreaterThan(10)
+    expect(scanned).toContain('src/facts/FactsList.tsx')
   })
 })

@@ -75,7 +75,7 @@ describe('matches — the four filters', () => {
   })
 
   it('answers «سراسری» with the entries that name no department at all', () => {
-    // `Inja Panel.dc.html:4648` — the `__u` option is not a department code, it
+    // `Inja Panel.dc.html:4647` — the `__u` option is not a department code, it
     // is the absence of one, and an entry bound to a department is not universal
     // however many branches it also names.
     expect(kept('', { ...NO_FILTERS, dept: UNIVERSAL })).toEqual(['F-00001'])

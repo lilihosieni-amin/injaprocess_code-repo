@@ -117,8 +117,12 @@ function inSection(pathname: string, root: string): boolean {
  *   which no prefix test can do — `/processes/{pid}` does not start with
  *   `/departments`.
  * * `inSection(...)` is for the three administration rows, which §6.0 paints
- *   white with no current state at all (`adminItems`, :5094, binds no `bg`)
- *   because its own popover carries that group's state and this shell has no
+ *   white with no current state at all: the sheet's own row hard-codes a plain
+ *   white `background` and ignores the `bg` it is handed (:3003, inside the
+ *   `adminItems` loop at :3002-3006). The binding is not the omission —
+ *   `adminItems` DOES compute one (:5094) and the DESKTOP popover consumes it
+ *   (`background:{{ a.bg }}`, :143); the sheet is where it is dropped, because
+ *   that popover carries the group's state and this shell has no
  *   reachable popover to carry it. So "you are here" on those three is this
  *   app's addition — see `SHEET_HERE` — and it was written as an exact route
  *   match, which left «کاربران» dark on `/users/{id}`, a row the sheet draws

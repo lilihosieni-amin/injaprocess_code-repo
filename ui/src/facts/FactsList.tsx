@@ -129,7 +129,7 @@ function FactsBody({ entries }: { entries: FactListRow[] }) {
           placeholder={label(SCREEN_LABELS, 'search_placeholder')} />
       </div>
 
-      {/* :1016 — `repeat(4,1fr)` at 8px, dropping to two stretched columns at
+      {/* :1013 — `repeat(4,1fr)` at 8px, dropping to two stretched columns at
           12px on a phone. Nothing is hidden there: a filter you cannot reach is
           a row you cannot find. */}
       <div data-r-afilters
@@ -159,14 +159,15 @@ function FactsBody({ entries }: { entries: FactListRow[] }) {
           value={filters.confirmation ?? undefined}
           // Narrowed rather than cast: `Dropdown` hands back a `string` and
           // these are the only two values this field has a meaning for — which
-          // is `CONF`'s whole key set (:4627), everything else folded to amber.
+          // is `CONF_KEYS` entire (:4629), everything else folded to amber.
           onChange={(v) => set('confirmation',
             v === 'confirmed' || v === 'unconfirmed' ? v : null)}
           options={blankFirst('filter_confirmation', Object.keys(CONFIRMATION_LABELS)
             .map((value) => ({ value, label: label(CONFIRMATION_LABELS, value) })))} />
 
         {/* R5 — absent, not disabled, until there is something to clear.
-            **`--violet-mid`, not the `--conflict` the design paints (:1032).**
+            **`--violet-mid`, not the `--conflict` the design paints (:1033;
+            the `hasFactFilters` gate above it is :1032).**
             Ledger L-06 is the owner's veto point for exactly this control and
             exactly this contradiction: Users drew the link `--violet-mid` and
             User activity drew it `--conflict`, and the ruling settled it on
@@ -250,7 +251,8 @@ function FactsBody({ entries }: { entries: FactListRow[] }) {
               </span>
             </Cell>
             <Cell k="confirmation">
-              {/* The design's `gap:7px` (:1060), exact and inline — **not the
+              {/* The design's `gap:7px` (:1059 — the dot row's own flex line;
+                  :1060 is the dot inside it), exact and inline — **not the
                   nearest rung**. 7px is off the `--space-*` ladder and no token
                   holds it for this role: `tokens.css:513-544` audits the
                   design's twenty-two `gap:7px` sites into five roles, mints
@@ -304,7 +306,7 @@ function FactsBody({ entries }: { entries: FactListRow[] }) {
 }
 
 /**
- * The six tracks of :1036 and :1051, written inline because no token holds them.
+ * The six tracks of :1037 and :1051, written inline because no token holds them.
  *
  * `--grid-users`, `--grid-audit` and `--grid-activity` are the three the theme
  * mints and a `--grid-facts` beside them is on the audit's `UNTOKENISED`
@@ -320,7 +322,7 @@ const LINE = 'grid items-center gap-s6 px-s9'
 const INTERACTIVE =
   'a[href],button,input,select,textarea,[role="button"],[role="link"],[role="menuitem"]'
 
-/** The five heads the design labels, and the sixth it leaves empty (:1037-1043). */
+/** The five heads the design labels, and the sixth it leaves empty (:1038-1043). */
 const HEADS: { key: string; head: string | null }[] = [
   { key: 'title', head: 'column_title' },
   { key: 'id', head: 'column_id' },
@@ -343,7 +345,7 @@ function Cell({ k, mobile = true, className = '', children }: {
 }
 
 /** A menu's blank first option — the design prepends one to every filter, with
- *  the filter's own name as its text (:4805), and it is the only way to unset
+ *  the filter's own name as its text (:4804), and it is the only way to unset
  *  one without clearing all four. */
 function blankFirst(blank: string, options: { value: string; label: string }[]) {
   return [{ value: '', label: label(SCREEN_LABELS, blank) }, ...options]

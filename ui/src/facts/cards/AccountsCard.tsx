@@ -61,52 +61,53 @@ export function AccountsCard({ bundle }: { bundle: FactBundle }) {
               <div className="text-fs-xs font-bold text-muted mb-s3">
                 {named?.text ?? field}
               </div>
-              {open.filter((a) => a.field === field).map((a) => (
-                <div key={a.id}
-                  className="border border-border-current rounded-tile px-s8 py-s7 mb-s5">
-                  <div className="flex items-baseline gap-s5 flex-wrap mb-s5">
-                    <Mono className="text-fs-h5 font-extrabold text-violet">
-                      {a.value === undefined || a.value === null
-                        ? label(SCREEN_LABELS, 'value_none')
-                        : String(a.value)}
-                    </Mono>
-                    <span className="ms-auto inline-flex items-baseline gap-s3 flex-wrap">
-                      {/* Note 4 — who said it. The design shows no speaker at
-                          all, and on a dispute between a transcript and a cell
-                          that is the whole of what settles it. */}
-                      {a.speaker_role != null && a.speaker_role !== '' && (
-                        <span className="text-fs-xxs text-muted">
-                          {label(ENVELOPE_FIELD_LABELS, 'speaker_role')}: {a.speaker_role}
-                        </span>
-                      )}
-                      {a.source !== undefined && (
-                        <>
-                          <span className="text-fs-xxs text-faint">
-                            {label(SOURCE_TYPE_LABELS, a.source.type)}
-                            {/* :5033 — the same five phrases the source rows
-                                compose, and the same rule: a locator that is not
-                                Persian (`A1:G2`, `getValueById`) is its own
-                                island rather than a latin run in this line. */}
-                            {sourceAt(a.source) !== undefined && (
-                              <> · <Filled {...sourceAt(a.source)!} /></>
-                            )}
+              {open.filter((a) => a.field === field).map((a) => {
+                const at = a.source === undefined ? undefined : sourceAt(a.source)
+                return (
+                  <div key={a.id}
+                    className="border border-border-current rounded-tile px-s8 py-s7 mb-s5">
+                    <div className="flex items-baseline gap-s5 flex-wrap mb-s5">
+                      <Mono className="text-fs-h5 font-extrabold text-violet">
+                        {a.value === undefined || a.value === null
+                          ? label(SCREEN_LABELS, 'value_none')
+                          : String(a.value)}
+                      </Mono>
+                      <span className="ms-auto inline-flex items-baseline gap-s3 flex-wrap">
+                        {/* Note 4 — who said it. The design shows no speaker at
+                            all, and on a dispute between a transcript and a cell
+                            that is the whole of what settles it. */}
+                        {a.speaker_role != null && a.speaker_role !== '' && (
+                          <span className="text-fs-xxs text-muted">
+                            {label(ENVELOPE_FIELD_LABELS, 'speaker_role')}: {a.speaker_role}
                           </span>
-                          <Mono className="text-fs-micro text-muted">
-                            {sourceFile(a.source)}
-                          </Mono>
-                        </>
-                      )}
-                    </span>
+                        )}
+                        {a.source !== undefined && (
+                          <>
+                            <span className="text-fs-xxs text-faint">
+                              {label(SOURCE_TYPE_LABELS, a.source.type)}
+                              {/* :5033 — the same five phrases the source rows
+                                  compose, and the same rule: a locator that is not
+                                  Persian (`A1:G2`, `getValueById`) is its own
+                                  island rather than a latin run in this line. */}
+                              {at !== undefined && <> · <Filled {...at} /></>}
+                            </span>
+                            <Mono className="text-fs-micro text-muted">
+                              {sourceFile(a.source)}
+                            </Mono>
+                          </>
+                        )}
+                      </span>
+                    </div>
+                    <Statement text={a.statement}
+                      className="text-fs-body-lead text-ink leading-looser text-justify
+                                 [text-wrap:pretty]" />
+                    <Button variant="violet" className="mt-s6 px-s7 text-fs-caption"
+                      onClick={() => setAsking(a)}>
+                      {label(SCREEN_LABELS, 'choose_account')}
+                    </Button>
                   </div>
-                  <Statement text={a.statement}
-                    className="text-fs-body-lead text-ink leading-looser text-justify
-                               [text-wrap:pretty]" />
-                  <Button variant="violet" className="mt-s6 px-s7 text-fs-caption"
-                    onClick={() => setAsking(a)}>
-                    {label(SCREEN_LABELS, 'choose_account')}
-                  </Button>
-                </div>
-              ))}
+                )
+              })}
             </section>
           )
         })}

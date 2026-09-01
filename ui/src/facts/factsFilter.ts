@@ -37,7 +37,7 @@ export const NO_FILTERS: FactFilters =
   { kind: null, dept: null, branch: null, confirmation: null }
 
 /**
- * Is anything narrowing the list — `hasFactFilters` (`:4809`), which counts the
+ * Is anything narrowing the list — `hasFactFilters` (`:4807`), which counts the
  * search box as a fifth filter because clearing "everything" that left a query
  * behind would be a link that visibly does not do what it says.
  *
@@ -52,7 +52,7 @@ export function anyActive(f: FactFilters, q: string): boolean {
 /**
  * **The search is over the title, the id and the aliases.**
  *
- * The title and the id are the design's own two (`:4646`). The aliases are the
+ * The title and the id are the design's own two (`:4645`). The aliases are the
  * third because «نام‌های دیگر» is what the estate's staff called the thing before
  * anybody titled it — the served row carries them for this — and a search that
  * misses them answers «با این فیلترها داده‌ای نیست» about an entry that is right

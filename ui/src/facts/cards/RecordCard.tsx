@@ -51,7 +51,8 @@ import {
  * `rows[].unit_title` is the fix, and the day it is served every printed row
  * gains a key this set does not know, so `F-00011` and `F-00012` become grids of
  * mostly-«؟» cells. It is deliberately not pre-added: `unit_title` is already a
- * real COLUMN key in the estate (`F-00017`'s third column), so putting it here
+ * real COLUMN key in the estate (`F-00017`'s FOURTH field — `symbol`,
+ * `dimension`, `factor_to_base`, `unit_title`), so putting it here
  * would widen the very coincidence-of-names hazard §5.9's proposed note is
  * about. Whoever serves the field adds it here in the same change — which is
  * why the request in the report says so rather than leaving it to be found.
