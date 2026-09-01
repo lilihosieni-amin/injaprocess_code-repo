@@ -449,10 +449,24 @@ def test_holding_every_capability_outside_the_panel_set_opens_nothing(
 # --------------------------------------------------------------------------
 
 def test_an_entry_binding_two_departments_needs_reach_in_both(data_root, tmp_path):
+    """QF-27's AND — asserted against the arm that is supposed to answer it.
+
+    **One `app.db` and the entry CONFIRMED on it**, and both halves of that are
+    load-bearing. There are two independent ANDs over an entry's departments in
+    this service: `_reach`, the gate, and `Disclosure.edits_fact`, which decides
+    whether an unconfirmed entry may be shown at all (D22). Give each client its
+    own db and leave the entry unconfirmed — as this test used to — and
+    `edits_fact` refuses the cooking-only caller first, so `_reach` is never the
+    reason and `any(all(…))` can be mutated to `any(any(…))` with this test
+    still green. Confirmed, on a db both clients read, D22 has nothing to say
+    and the only thing left to refuse is the gate.
+    """
     _plant(data_root)
-    one = _client_as(data_root, tmp_path, "editor", "dept:cooking")
     both = _client_as(data_root, tmp_path, "editor", "dept:cooking",
                       "dept:accounting")
+    one = _client_as(data_root, tmp_path, "editor", "dept:cooking",
+                     app_db=both.app_db)
+    _confirm(both, ITEM)
     assert one.get(f"/api/facts/{ITEM}").status_code == 404
     assert ITEM not in _ids(one.get("/api/facts").json())
     assert both.get(f"/api/facts/{ITEM}").status_code == 200

@@ -129,6 +129,17 @@ ENTRIES = [
            [DINING_SOURCE, DINING_SOURCE]),
 ]
 
+#: An entry binding **two** departments — the AND of QF-27 on the write route.
+#: Zero overlap is refused by any reading of the rule (`DINING`, below);
+#: PARTIAL overlap is the only shape that tells `all(any(…))` from `any(any(…))`
+#: in `access.requires_every`, and nothing here asked for it. Planted only by
+#: the test that needs it, so the whole-store assertions elsewhere do not move.
+CROSS = "F-00004"
+CROSS_ENTRY = {**_entry(CROSS, "cooking", "test_namak", "نمک",
+                        [("chat", TRANSCRIPT)], [TRANSCRIPT, TRANSCRIPT]),
+               "scope": {"departments": ["accounting", "cooking"],
+                         "branches": []}}
+
 #: A **universal** entry — `scope.departments` empty, so it binds the whole
 #: restaurant and is reachable only at `*` (QF-4, QF-27). Planted only by the
 #: test that asks where its run directory goes.
@@ -511,6 +522,40 @@ def test_an_editor_outside_the_entrys_scope_is_404(data_root, tmp_path):
     assert r.status_code == 404, r.text
     assert r.json()["detail"] == NOT_FOUND
     assert _runs(data_root, "dining") == []
+
+
+def test_an_editor_of_only_one_of_the_entrys_departments_is_404(data_root,
+                                                                tmp_path):
+    """PARTIAL overlap, which is the only shape that pins the conjunction.
+
+    The test above (zero overlap) passes under `any(any(…))` just as it does
+    under `all(any(…))`: a cooking editor covers neither of a dining entry's
+    requirements, so either reading refuses. An entry binding cooking AND
+    accounting is the case the two readings disagree about — and it is the case
+    QF-27 is written for. Both directions, because "refuses everyone" would
+    satisfy the first half alone.
+
+    This route runs the conjunction **twice** — `_write_gate`'s
+    `access.requires_every` and, inside the handler, `_reachable`'s `_reach` —
+    so breaking either one alone leaves the other refusing and no test here can
+    see it. That redundancy is deliberate (the handler re-loads the entry
+    rather than carrying it out of the gate), and it is why this is a
+    route-level pin: with both conjunctions turned into `any(any(…))` a
+    cooking-only editor resolves the entry for real and leaves a run directory
+    under `accounting/`, which is what the second half's assertions catch.
+    """
+    _plant(data_root, ENTRIES + [CROSS_ENTRY])
+    one = _client_as(data_root, tmp_path, "editor", "dept:cooking")
+    r = _resolve(one, fid=CROSS)
+    assert r.status_code == 404, r.text
+    assert r.json()["detail"] == NOT_FOUND
+    assert _runs(data_root, "accounting") == []
+
+    both = _client_as(data_root, tmp_path, "editor", "dept:cooking",
+                      "dept:accounting")
+    r = _resolve(both, fid=CROSS)
+    assert r.status_code == 200, r.text
+    assert len(_runs(data_root, "accounting")) == 1
 
 
 #: A document the index calls an item and whose own `kind` is outside the five
