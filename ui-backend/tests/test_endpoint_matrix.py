@@ -1,11 +1,12 @@
 """Every endpoint, read through the permission gate (spec D56, §11 tests 6 and 10).
 
-Twenty-seven routes. Twenty-five are gated on one capability at one target; two
-span departments and are filtered per row rather than gated, because a list that
-refuses outright would take a two-department head's whole screen away over one
-department they cannot reach.
+Thirty-two routes. Twenty-eight are gated on one capability at one target; four
+are not — three span departments and are filtered per row rather than gated,
+because a list that refuses outright would take a two-department head's whole
+screen away over one department they cannot reach, and one reads the estate's
+workbook roll, which belongs to no department.
 
-Fifteen of the twenty-five name a department. The other ten name `*`: the two
+Eighteen of the twenty-eight name a department. The other ten name `*`: the two
 visibility routes, because there is one global policy (D16) and so no department
 to gate them on, and the eight of the user-administration surface, because all
 user administration is at `*` scope (D11) and a department-scoped Admin is meant
@@ -28,9 +29,11 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 from inja_ui_backend import db, seed
+from inja_ui_backend.access import NOT_FOUND
 from inja_ui_backend.app import create_app
 from inja_ui_backend.auth import hash_password
 from inja_ui_backend.fingerprint import fingerprint
+from inja_ui_backend.routers import facts as facts_router
 from inja_ui_backend.store import confirmations, users
 from inja_ui_backend.tests_helpers import cfg_for
 
@@ -47,7 +50,45 @@ BASE = "https://testserver"
 #: like the mis-gating this file exists to detect.
 VICTIM = 3
 
-#: The twenty-five gated routes: (method, path, body, the capability each needs).
+#: The one file `GET /api/facts/source` is asked for below, and the department
+#: it names. Under `departments/{code}/attachments/`, which is the only one of
+#: QF-39's three roots that names a department — so it is the only shape that
+#: can say anything about this route's *target*, which is what half this file
+#: is about. `_a_source_to_download` plants it.
+SOURCE_FILE = "departments/cooking/attachments/probe.txt"
+SOURCE = f"/api/facts/source?path={SOURCE_FILE}"
+
+
+@pytest.fixture(autouse=True)
+def _a_source_to_download(data_root):
+    """The file the download row asks for — **and the entry that cites it**.
+
+    Two halves, because the route needs both: it serves a file only when some
+    entry the caller may be served cites it (QF-39), so a planted file nobody
+    cites is a 404 for everybody and a planted citation with no file is a 404
+    for everybody. Either way
+    `test_a_role_with_the_capability_is_not_refused_in_scope` would read the
+    refusal as over-gating, which is a diagnosis about the wrong thing
+    entirely.
+
+    `F-00001` is `conftest`'s cooking-scoped rule, so the citation lands on an
+    entry whose own scope matches the department in the path. Only the kind
+    file is rewritten: `source[]` is not an index column.
+
+    Autouse, because the table is static and every test below drives the same
+    rows.
+    """
+    (data_root / "departments" / "cooking" / "attachments"
+     / "probe.txt").write_text("متن آزمایشی", encoding="utf-8")
+    rules = data_root / "facts" / "rules.json"
+    doc = json.loads(rules.read_text(encoding="utf-8"))
+    for entry in doc["entries"]:
+        if entry["id"] == "F-00001":
+            entry["source"] = [{"type": "photo", "ref": SOURCE_FILE}]
+    rules.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
+
+
+#: The twenty-eight gated routes: (method, path, body, the capability each needs).
 #: `body` is what a well-formed request carries — a malformed one would be
 #: refused by validation on some routes and by the gate on others, and this
 #: table exists to compare gates, not validators.
@@ -62,6 +103,40 @@ GATED = [
     ("POST", "/api/confirmations/cooking-001", {"fingerprint": "a" * 64},
      "confirm"),
     ("DELETE", "/api/confirmations/cooking-001", None, "confirm"),
+    #: The fact detail route. Its target is not in the path at all: the gate
+    #: loads the entry and requires reach in **every** department its
+    #: `scope.departments` names (QF-27), so `F-00001` — the `conftest`
+    #: fixture's cooking-scoped rule — is a `dept:cooking` target like the
+    #: other fifteen, arrived at by a callable rather than by `dept_of`.
+    #:
+    #: **The capability column does not name this route's gate**, which is an
+    #: OR over `PANEL_CAPABILITIES` and cannot be written in one word — the row
+    #: is in `PANEL_404` below and the two 403 tests skip it for that reason.
+    #: What `confirm` selects is `WITH["confirm"]`, the Editor, for the
+    #: non-refusal direction: the narrowest seeded role that is in the Panel
+    #: *and* holds the department, which is the strongest thing this table can
+    #: say about a route it cannot gate-check by name.
+    ("GET", "/api/facts/F-00001", None, "confirm"),
+    #: The two facts **writes** (QF-39, §17). Unlike the read above, each is
+    #: gated on **one named capability** — so the capability column really
+    #: names their gate and both 403 tests run against them for real. What they
+    #: also carry is the same Panel gate, which speaks first; `PANEL_WRITE`
+    #: below is the whole of what that changes and why it is asserted rather
+    #: than skipped.
+    #:
+    #: The resolve's body is well formed and its account is deliberately one
+    #: `F-00001` does not carry: this file compares gates, and the 422 the
+    #: engine's failed precondition produces is proof the gate let the request
+    #: through — the same trick the stale `POST /api/confirmations` body plays
+    #: with its 409.
+    ("POST", "/api/facts/F-00001/resolve",
+     {"field": "data/base_unit", "account": "a1b2c3d4"}, "edit"),
+    #: The download's target *is* a department, read out of the requested path
+    #: (`departments/{code}/attachments/**`, §15) rather than out of a path
+    #: parameter — which is why it belongs on this side of `GLOBAL_TARGET`
+    #: with the other sixteen. `_a_source_to_download` plants the file, so the
+    #: in-scope half is a real 200 and not a missing-file 404.
+    ("GET", SOURCE, None, "export_pdf"),
     ("GET", "/api/departments/cooking/overview", None, "view"),
     ("PUT", "/api/departments/cooking/overview", {}, "edit"),
     ("PUT", "/api/departments/cooking/order", {"order": []}, "edit"),
@@ -113,9 +188,84 @@ GLOBAL_TARGET = ("/api/visibility", "/api/visibility/node_actor",
                  "/api/users/supervisor-candidates", "/api/roles",
                  f"/api/users/{VICTIM}/password", f"/api/users/{VICTIM}/disabled")
 
-#: The two that filter instead of gating. They span every department, so there is
-#: no single target to gate them on.
-FILTERED = ["/api/departments", "/api/pending"]
+#: The routes that filter instead of gating. The first three span every
+#: department, so there is no single target to gate them on; `/api/facts/branches`
+#: reads the estate's workbook roll, which belongs to no department at all
+#: (QF-4). All four still refuse a stranger, which is what this list is for.
+FILTERED = ["/api/departments", "/api/pending", "/api/facts",
+            "/api/facts/branches"]
+
+#: The facts routes, whose capability arm is an **OR over `PANEL_CAPABILITIES`**
+#: answering the uniform **404** — not a single capability answering 403.
+#:
+#: Facts are a Panel surface and are not in the reader view (QF-23, §18), so the
+#: question the gate asks is "is this caller in the Panel?", which an admin
+#: (`manage_users`, `view_audit`) answers as well as an editor does; and its
+#: refusal is a 404 because a 403 would tell a `view`-only holder that facts
+#: exist. Both of this file's 403 tests exist to name *one* capability, and
+#: neither can express an OR.
+#:
+#: They are handled differently, and the difference is the point:
+#:
+#: * `test_a_role_without_the_capability_is_403_on_a_visible_target` **asserts
+#:   the 404** for the Reader instead of skipping, so the row stays live and
+#:   this exemption is a checked claim rather than a comment. Only the Reader —
+#:   the Admin `WITHOUT` also names is inside the OR and legitimately served.
+#: * `test_a_role_holding_every_other_capability_is_403` genuinely cannot say
+#:   anything here: a caller holding everything but one still holds four other
+#:   Panel capabilities, so it skips.
+#:
+#: What that second skip would have killed — *which* capabilities are in the OR,
+#: member by member — is pinned in `test_facts_api.py` instead, by
+#: `test_every_panel_capability_on_its_own_opens_the_facts_routes` (a role
+#: holding exactly one member, parametrised over all five: deleting any member
+#: from `routers/facts.PANEL_CAPABILITIES` fails) and
+#: `test_holding_every_capability_outside_the_panel_set_opens_nothing` (a role
+#: holding every capability except the five: widening the set fails). Those two
+#: need a role the four seeded ones cannot express, which is why they live
+#: beside the routes rather than here.
+#:
+#: Everything else this file says about a route still holds for them, and is
+#: what earns their row: 401 for a stranger, 404 (never 403) out of scope in
+#: both directions, and no over-gating of a caller who is inside.
+PANEL_404 = ("/api/facts/F-00001",)
+
+#: The two facts **write** routes, which are *not* in `PANEL_404` and must not
+#: be put there: each is gated on one named capability, so both 403 tests run
+#: against them for real — `edit` refused to the Admin below is §17's "an admin
+#: denied on the write routes", and the built role of
+#: `test_a_role_holding_every_other_capability_is_403` names the capability
+#: exactly on both.
+#:
+#: What they do carry is the same Panel gate the read route carries (QF-23),
+#: and it speaks **before** the capability. So a seeded role that holds no Panel
+#: capability at all is answered the uniform 404 rather than a 403, whatever
+#: else it holds — which is the whole point of that gate and not an exemption
+#: from this one. It is asserted per role rather than skipped (`PANEL_404`'s
+#: rule), so the claim stays checked: a route that answered 403 to a Reader
+#: here would be telling a holder of `view` alone that `F-00001` exists.
+PANEL_WRITE = ("/api/facts/F-00001/resolve", SOURCE)
+
+#: The seeded roles outside `PANEL_CAPABILITIES`, derived from the access model
+#: rather than listed — a fifth role lands here on the day it is added, and a
+#: capability moved into a Reader's set takes it out.
+OUTSIDE_THE_PANEL = tuple(
+    name for name, caps in seed.ROLES.items()
+    if not set(caps) & set(facts_router.PANEL_CAPABILITIES))
+
+#: `WITH`'s role for a row the shared table's role cannot speak for.
+#:
+#: `WITH["export_pdf"]` is the Reader — the narrowest seeded holder, and the
+#: right answer for the export routes — but a Reader holds no Panel capability,
+#: so on the download row their 404 says nothing about `export_pdf`. The
+#: **Editor**, and not the Admin who is narrower: the download also requires an
+#: entry citing the file that this caller may be *served*, and an Admin is a
+#: non-editor, so D22 would withhold `F-00001` from them until somebody vouched
+#: for it — a fact confirmation this file does not write, for a refusal that
+#: has nothing to do with `export_pdf`. Nothing is lost by the wider role:
+#: `test_a_role_holding_every_other_capability_is_403` names the capability
+#: exactly, and it is the test that can.
+PANEL_WITH = {SOURCE: "editor"}
 
 #: The seeded roles that do NOT hold each capability, for the refusal direction.
 #: A tuple, because more than one real role can lack one and each is worth its
@@ -318,6 +468,20 @@ def test_a_role_without_the_capability_is_403_on_a_visible_target(
     could edit content is the failure D50 is written to prevent and a Reader
     passing does not test it.
     """
+    if path in PANEL_404:
+        # Asserted, not skipped: the row stays live and the exemption becomes a
+        # checked claim rather than a comment. The **Reader** only — `WITHOUT`
+        # names the Admin too, and an Admin holds `manage_users` and
+        # `view_audit`, so they are inside this OR and legitimately served (see
+        # `PANEL_404`). What is pinned here is that being outside it costs the
+        # uniform 404 and not the 403 every other row in this table asserts.
+        client = _client_as(data_root, tmp_path, "reader", _in_scope_for(path))
+        r = _call(client, method, path, body)
+        assert (r.status_code, r.json()) == (404, {"detail": NOT_FOUND}), (
+            f"{method} {path} answered {r.status_code} to a reader in scope; a"
+            f" Panel route must be indistinguishable from a typo to a holder of"
+            f" `view` alone (QF-23, §18)")
+        return
     roles = WITHOUT[capability]
     if not roles:
         pytest.skip(f"no seeded role lacks {capability}; the route is pinned by"
@@ -325,6 +489,17 @@ def test_a_role_without_the_capability_is_403_on_a_visible_target(
     for role in roles:
         client = _client_as(data_root, tmp_path, role, _in_scope_for(path))
         r = _call(client, method, path, body)
+        if path in PANEL_WRITE and role in OUTSIDE_THE_PANEL:
+            # The Panel gate, which runs first and answers 404 — see
+            # `PANEL_WRITE`. Asserted rather than skipped, so this stays a
+            # checked claim: what is pinned here is that a role outside the
+            # Panel is told nothing at all, while the ones inside it (the
+            # Admin, on the resolve row) really do get the 403.
+            assert (r.status_code, r.json()) == (404, {"detail": NOT_FOUND}), (
+                f"{method} {path} answered {r.status_code} to a {role} in"
+                f" scope; a facts route must be indistinguishable from a typo"
+                f" to a caller outside the Panel (QF-23, §18)")
+            continue
         assert r.status_code == 403, (
             f"{method} {path} answered {r.status_code} to a {role} in scope; it"
             f" is supposed to need {capability}, which no {role} holds")
@@ -354,6 +529,10 @@ def test_a_role_holding_every_other_capability_is_403(
     docstring and the mapping claim, and what stops a fifth role added later
     from silently opening a route it should not.
     """
+    if path in PANEL_404:
+        pytest.skip(f"{path} is gated on an OR over PANEL_CAPABILITIES, which a"
+                    f" caller holding every capability but one still satisfies —"
+                    f" see PANEL_404")
     client = _client_as(data_root, tmp_path, "all-but-this", _in_scope_for(path),
                         capabilities=ALL_CAPABILITIES - {capability})
     r = _call(client, method, path, body)
@@ -397,11 +576,11 @@ def test_a_role_with_the_capability_is_not_refused_in_scope(
     refusal. The handler's own answer is not asserted here (some 422, some 409,
     the export 503 for want of an EXPORT_DIR); only that the gate let it run.
     """
-    client = _client_as(data_root, tmp_path, WITH[capability],
-                        _in_scope_for(path))
+    role = PANEL_WITH.get(path, WITH[capability])
+    client = _client_as(data_root, tmp_path, role, _in_scope_for(path))
     r = _call(client, method, path, body)
     assert r.status_code not in REFUSALS, (
-        f"{method} {path} answered {r.status_code} to a {WITH[capability]} in"
+        f"{method} {path} answered {r.status_code} to a {role} in"
         f" scope who holds {capability}: the route is gated on more than it needs")
 
 

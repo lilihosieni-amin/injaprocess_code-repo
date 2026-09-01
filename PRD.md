@@ -271,7 +271,7 @@ The audience here is **not only the analyst**. It is the department's own staff 
 - **NFR-13 (a failed printable form never costs the report):** Producing the printable form is an enhancement. If it fails, the report is still readable; the failure is recorded for the operator rather than shown to the user as a broken report.
 - **NFR-14 (the activity record is complete and tamper-resistant):** Every action listed in §7.11 is recorded, with the person who took it. The record is kept where no automated part of the system can reach it, and there is no path — for any role — to alter or delete an entry.
 - **NFR-15 (usable on a phone):** The application works on the devices its users actually have. Staff read and comment on phones; the interface must be built for that rather than adapted to it.
-- **NFR-16 (people-data is backed up too):** Users, permissions, comments and the activity record are backed up on the same schedule as the process data. The existing history mechanism does not cover them, so NFR-7's promise is met for them by a separate path or not at all.
+- **NFR-16 (people-data is backed up too):** Users, permissions, comments, confirmations and the activity record are backed up on the same schedule as the process data. The existing history mechanism does not cover them, so NFR-7's promise is met for them by a separate path or not at all.
 
 ---
 

@@ -1,0 +1,767 @@
+{
+  "rows": [
+    {
+      "id": "F-00014",
+      "kind": "record",
+      "title": "مواد اولیه — پیتزا ایتالیایی (BOM)",
+      "scope": {
+        "departments": [],
+        "branches": []
+      },
+      "state": "red_disputed",
+      "state_label": "متعارض",
+      "red_counts": {
+        "unknown": 1,
+        "disputed": 1
+      },
+      "count_label": "1 سلول بی‌پاسخ · 1 مورد متعارض",
+      "blocker": true,
+      "orphans": [],
+      "universal": true
+    },
+    {
+      "id": "F-00030",
+      "kind": "rule",
+      "title": "مصرف اعلامی پیتزا",
+      "scope": {
+        "departments": [
+          "management"
+        ],
+        "branches": [
+          "chalebagh"
+        ]
+      },
+      "state": "red_disputed",
+      "state_label": "متعارض",
+      "red_counts": {
+        "unknown": 0,
+        "disputed": 1
+      },
+      "count_label": "1 مورد متعارض",
+      "blocker": true,
+      "orphans": [],
+      "universal": false
+    },
+    {
+      "id": "F-00035",
+      "kind": "rule",
+      "title": "آستانهٔ ریالی ردیابی",
+      "scope": {
+        "departments": [
+          "cooking"
+        ],
+        "branches": []
+      },
+      "state": "red_unknown",
+      "state_label": "بی‌پاسخ",
+      "red_counts": {
+        "unknown": 1,
+        "disputed": 0
+      },
+      "count_label": "1 سلول بی‌پاسخ",
+      "blocker": true,
+      "orphans": [],
+      "universal": false
+    },
+    {
+      "id": "F-00011",
+      "kind": "record",
+      "title": "مانده شب فرنگی و برگر",
+      "scope": {
+        "departments": [
+          "cooking"
+        ],
+        "branches": [
+          "chalebagh"
+        ]
+      },
+      "state": "red_unknown",
+      "state_label": "بی‌پاسخ",
+      "red_counts": {
+        "unknown": 4,
+        "disputed": 0
+      },
+      "count_label": "4 سلول بی‌پاسخ",
+      "blocker": false,
+      "orphans": [],
+      "universal": false
+    },
+    {
+      "id": "F-00028",
+      "kind": "rule",
+      "title": "تلورانس انحراف لقمه",
+      "scope": {
+        "departments": [
+          "cooking"
+        ],
+        "branches": []
+      },
+      "state": "red_unknown",
+      "state_label": "بی‌پاسخ",
+      "red_counts": {
+        "unknown": 1,
+        "disputed": 0
+      },
+      "count_label": "1 سلول بی‌پاسخ",
+      "blocker": false,
+      "orphans": [],
+      "universal": false
+    },
+    {
+      "id": "F-00002",
+      "kind": "item",
+      "title": "اینجا پیتزا",
+      "scope": {
+        "departments": [],
+        "branches": []
+      },
+      "state": "amber",
+      "state_label": "تأییدنشده",
+      "red_counts": {
+        "unknown": 0,
+        "disputed": 0
+      },
+      "count_label": "",
+      "blocker": false,
+      "orphans": [],
+      "universal": true
+    },
+    {
+      "id": "F-00004",
+      "kind": "item",
+      "title": "گودا لیوانی",
+      "scope": {
+        "departments": [
+          "cooking"
+        ],
+        "branches": []
+      },
+      "state": "amber",
+      "state_label": "تأییدنشده",
+      "red_counts": {
+        "unknown": 0,
+        "disputed": 0
+      },
+      "count_label": "",
+      "blocker": false,
+      "orphans": [],
+      "universal": false
+    },
+    {
+      "id": "F-00005",
+      "kind": "item",
+      "title": "میت",
+      "scope": {
+        "departments": [],
+        "branches": []
+      },
+      "state": "stale",
+      "state_label": "تغییرکرده پس از تأیید",
+      "red_counts": {
+        "unknown": 0,
+        "disputed": 0
+      },
+      "count_label": "",
+      "blocker": false,
+      "orphans": [],
+      "universal": true
+    },
+    {
+      "id": "F-00006",
+      "kind": "item",
+      "title": "سیب زمینی ویژه",
+      "scope": {
+        "departments": [],
+        "branches": []
+      },
+      "state": "amber",
+      "state_label": "تأییدنشده",
+      "red_counts": {
+        "unknown": 0,
+        "disputed": 0
+      },
+      "count_label": "",
+      "blocker": false,
+      "orphans": [],
+      "universal": true
+    },
+    {
+      "id": "F-00016",
+      "kind": "record",
+      "title": "گزارش مرکزی — پیتزا (چاله‌باغ)",
+      "scope": {
+        "departments": [
+          "management"
+        ],
+        "branches": [
+          "chalebagh"
+        ]
+      },
+      "state": "amber",
+      "state_label": "تأییدنشده",
+      "red_counts": {
+        "unknown": 0,
+        "disputed": 0
+      },
+      "count_label": "",
+      "blocker": false,
+      "orphans": [],
+      "universal": false
+    },
+    {
+      "id": "F-00020",
+      "kind": "record",
+      "title": "اهداف فروش",
+      "scope": {
+        "departments": [
+          "accounting"
+        ],
+        "branches": []
+      },
+      "state": "amber",
+      "state_label": "تأییدنشده",
+      "red_counts": {
+        "unknown": 0,
+        "disputed": 0
+      },
+      "count_label": "",
+      "blocker": false,
+      "orphans": [
+        {
+          "class": "process_tombstoned",
+          "label": "اشاره به فرایند بازنشسته",
+          "ref": "accounting-003",
+          "heir": "accounting-011",
+          "heir_title": "برنامه‌ریزی فروش ماهانه"
+        }
+      ],
+      "universal": false
+    },
+    {
+      "id": "F-00024",
+      "kind": "measurement",
+      "title": "ثبت وزنی بیکن در مانده شب فرنگی",
+      "scope": {
+        "departments": [
+          "cooking"
+        ],
+        "branches": []
+      },
+      "state": "amber",
+      "state_label": "تأییدنشده",
+      "red_counts": {
+        "unknown": 0,
+        "disputed": 0
+      },
+      "count_label": "",
+      "blocker": false,
+      "orphans": [],
+      "universal": false
+    },
+    {
+      "id": "F-00025",
+      "kind": "measurement",
+      "title": "گزارش شفاهی تعویض روغن",
+      "scope": {
+        "departments": [
+          "cooking"
+        ],
+        "branches": []
+      },
+      "state": "amber",
+      "state_label": "تأییدنشده",
+      "red_counts": {
+        "unknown": 0,
+        "disputed": 0
+      },
+      "count_label": "",
+      "blocker": false,
+      "orphans": [],
+      "universal": false
+    },
+    {
+      "id": "F-00026",
+      "kind": "rule",
+      "title": "تلورانس هر واحد — پیتزا",
+      "scope": {
+        "departments": [
+          "management"
+        ],
+        "branches": [
+          "chalebagh"
+        ]
+      },
+      "state": "stale",
+      "state_label": "تغییرکرده پس از تأیید",
+      "red_counts": {
+        "unknown": 0,
+        "disputed": 0
+      },
+      "count_label": "",
+      "blocker": false,
+      "orphans": [],
+      "universal": false
+    },
+    {
+      "id": "F-00027",
+      "kind": "rule",
+      "title": "ضریب تبدیل مرغ پخته به خام",
+      "scope": {
+        "departments": [
+          "cooking"
+        ],
+        "branches": []
+      },
+      "state": "stale",
+      "state_label": "تغییرکرده پس از تأیید",
+      "red_counts": {
+        "unknown": 0,
+        "disputed": 0
+      },
+      "count_label": "",
+      "blocker": false,
+      "orphans": [],
+      "universal": false
+    },
+    {
+      "id": "F-00029",
+      "kind": "rule",
+      "title": "آستانهٔ بازشماری",
+      "scope": {
+        "departments": [
+          "cooking"
+        ],
+        "branches": []
+      },
+      "state": "amber",
+      "state_label": "تأییدنشده",
+      "red_counts": {
+        "unknown": 0,
+        "disputed": 0
+      },
+      "count_label": "",
+      "blocker": false,
+      "orphans": [],
+      "universal": false
+    },
+    {
+      "id": "F-00031",
+      "kind": "rule",
+      "title": "مصرف استاندارد پیتزا",
+      "scope": {
+        "departments": [
+          "management"
+        ],
+        "branches": [
+          "chalebagh"
+        ]
+      },
+      "state": "stale",
+      "state_label": "تغییرکرده پس از تأیید",
+      "red_counts": {
+        "unknown": 0,
+        "disputed": 0
+      },
+      "count_label": "",
+      "blocker": false,
+      "orphans": [],
+      "universal": false
+    },
+    {
+      "id": "F-00032",
+      "kind": "rule",
+      "title": "ضریب روز هفته",
+      "scope": {
+        "departments": [
+          "management"
+        ],
+        "branches": []
+      },
+      "state": "stale",
+      "state_label": "تغییرکرده پس از تأیید",
+      "red_counts": {
+        "unknown": 0,
+        "disputed": 0
+      },
+      "count_label": "",
+      "blocker": false,
+      "orphans": [],
+      "universal": false
+    },
+    {
+      "id": "F-00033",
+      "kind": "rule",
+      "title": "ضرایب رویداد",
+      "scope": {
+        "departments": [
+          "management"
+        ],
+        "branches": []
+      },
+      "state": "stale",
+      "state_label": "تغییرکرده پس از تأیید",
+      "red_counts": {
+        "unknown": 0,
+        "disputed": 0
+      },
+      "count_label": "",
+      "blocker": false,
+      "orphans": [],
+      "universal": false
+    },
+    {
+      "id": "F-00034",
+      "kind": "rule",
+      "title": "سیاست ردیابی بر اساس ارزش ریالی",
+      "scope": {
+        "departments": [
+          "cooking"
+        ],
+        "branches": []
+      },
+      "state": "stale",
+      "state_label": "تغییرکرده پس از تأیید",
+      "red_counts": {
+        "unknown": 0,
+        "disputed": 0
+      },
+      "count_label": "",
+      "blocker": false,
+      "orphans": [],
+      "universal": false
+    },
+    {
+      "id": "F-00036",
+      "kind": "rule",
+      "title": "getValueById",
+      "scope": {
+        "departments": [],
+        "branches": []
+      },
+      "state": "stale",
+      "state_label": "تغییرکرده پس از تأیید",
+      "red_counts": {
+        "unknown": 0,
+        "disputed": 0
+      },
+      "count_label": "",
+      "blocker": false,
+      "orphans": [],
+      "universal": true
+    },
+    {
+      "id": "F-00037",
+      "kind": "rule",
+      "title": "getValueById (داشبورد)",
+      "scope": {
+        "departments": [
+          "management"
+        ],
+        "branches": []
+      },
+      "state": "amber",
+      "state_label": "تأییدنشده",
+      "red_counts": {
+        "unknown": 0,
+        "disputed": 0
+      },
+      "count_label": "",
+      "blocker": false,
+      "orphans": [],
+      "universal": false
+    },
+    {
+      "id": "F-00038",
+      "kind": "rule",
+      "title": "مصرف اعلامی پیتزا (ناهارخوران)",
+      "scope": {
+        "departments": [
+          "management"
+        ],
+        "branches": [
+          "naharkhoran"
+        ]
+      },
+      "state": "stale",
+      "state_label": "تغییرکرده پس از تأیید",
+      "red_counts": {
+        "unknown": 0,
+        "disputed": 0
+      },
+      "count_label": "",
+      "blocker": false,
+      "orphans": [],
+      "universal": false
+    },
+    {
+      "id": "F-00039",
+      "kind": "rule",
+      "title": "بازدهی راسته",
+      "scope": {
+        "departments": [
+          "preparation"
+        ],
+        "branches": []
+      },
+      "state": "stale",
+      "state_label": "تغییرکرده پس از تأیید",
+      "red_counts": {
+        "unknown": 0,
+        "disputed": 0
+      },
+      "count_label": "",
+      "blocker": false,
+      "orphans": [],
+      "universal": false
+    },
+    {
+      "id": "F-00040",
+      "kind": "rule",
+      "title": "انحراف تعداد فیش — سالن چاله‌باغ",
+      "scope": {
+        "departments": [
+          "dining"
+        ],
+        "branches": [
+          "chalebagh"
+        ]
+      },
+      "state": "amber",
+      "state_label": "تأییدنشده",
+      "red_counts": {
+        "unknown": 0,
+        "disputed": 0
+      },
+      "count_label": "",
+      "blocker": false,
+      "orphans": [
+        {
+          "class": "moved_source",
+          "label": "منبع تغییرکرده",
+          "ref": "attachments/sheets/Salon__Salon - Chalebagh/Salon - Chalebagh.xlsx"
+        }
+      ],
+      "universal": false
+    },
+    {
+      "id": "F-00041",
+      "kind": "rule",
+      "title": "محاسبهٔ سفارش پنه بر اساس پرس",
+      "scope": {
+        "departments": [
+          "cooking"
+        ],
+        "branches": []
+      },
+      "state": "stale",
+      "state_label": "تغییرکرده پس از تأیید",
+      "red_counts": {
+        "unknown": 0,
+        "disputed": 0
+      },
+      "count_label": "",
+      "blocker": false,
+      "orphans": [],
+      "universal": false
+    },
+    {
+      "id": "F-00042",
+      "kind": "rule",
+      "title": "وزن بستهٔ پارمسان",
+      "scope": {
+        "departments": [
+          "cooking"
+        ],
+        "branches": []
+      },
+      "state": "stale",
+      "state_label": "تغییرکرده پس از تأیید",
+      "red_counts": {
+        "unknown": 0,
+        "disputed": 0
+      },
+      "count_label": "",
+      "blocker": false,
+      "orphans": [],
+      "universal": false
+    },
+    {
+      "id": "F-00043",
+      "kind": "rule",
+      "title": "وزن بستهٔ پارمسان",
+      "scope": {
+        "departments": [
+          "cooking"
+        ],
+        "branches": []
+      },
+      "state": "stale",
+      "state_label": "تغییرکرده پس از تأیید",
+      "red_counts": {
+        "unknown": 0,
+        "disputed": 0
+      },
+      "count_label": "",
+      "blocker": false,
+      "orphans": [],
+      "universal": false
+    },
+    {
+      "id": "F-00044",
+      "kind": "rule",
+      "title": "مانده اول شب = مانده آخر شب دیشب",
+      "scope": {
+        "departments": [
+          "cooking"
+        ],
+        "branches": []
+      },
+      "state": "stale",
+      "state_label": "تغییرکرده پس از تأیید",
+      "red_counts": {
+        "unknown": 0,
+        "disputed": 0
+      },
+      "count_label": "",
+      "blocker": false,
+      "orphans": [
+        {
+          "class": "node_gone",
+          "label": "گرهٔ ارجاع‌شده حذف شده",
+          "ref": "departments/cooking/processes/cooking-002.json",
+          "node": "cooking-002-n003"
+        }
+      ],
+      "universal": false
+    },
+    {
+      "id": "F-00045",
+      "kind": "note",
+      "title": "استیک یخ‌زده برش می‌خورد",
+      "scope": {
+        "departments": [
+          "cooking"
+        ],
+        "branches": []
+      },
+      "state": "amber",
+      "state_label": "تأییدنشده",
+      "red_counts": {
+        "unknown": 0,
+        "disputed": 0
+      },
+      "count_label": "",
+      "blocker": false,
+      "orphans": [],
+      "universal": false
+    },
+    {
+      "id": "F-00046",
+      "kind": "rule",
+      "title": "ضریب خمیر سینگل در گزارش",
+      "scope": {
+        "departments": [
+          "management"
+        ],
+        "branches": []
+      },
+      "state": "amber",
+      "state_label": "تأییدنشده",
+      "red_counts": {
+        "unknown": 0,
+        "disputed": 0
+      },
+      "count_label": "",
+      "blocker": false,
+      "orphans": [],
+      "universal": false
+    },
+    {
+      "id": "F-00050",
+      "kind": "rule",
+      "title": "حد نگهداری پنه بر اساس روز هفته",
+      "scope": {
+        "departments": [
+          "cooking"
+        ],
+        "branches": []
+      },
+      "state": "stale",
+      "state_label": "تغییرکرده پس از تأیید",
+      "red_counts": {
+        "unknown": 0,
+        "disputed": 0
+      },
+      "count_label": "",
+      "blocker": false,
+      "orphans": [],
+      "universal": false
+    },
+    {
+      "id": "F-00051",
+      "kind": "rule",
+      "title": "پرس در هر بستهٔ پنه",
+      "scope": {
+        "departments": [
+          "cooking"
+        ],
+        "branches": []
+      },
+      "state": "stale",
+      "state_label": "تغییرکرده پس از تأیید",
+      "red_counts": {
+        "unknown": 0,
+        "disputed": 0
+      },
+      "count_label": "",
+      "blocker": false,
+      "orphans": [],
+      "universal": false
+    },
+    {
+      "id": "F-00053",
+      "kind": "item",
+      "title": "پنیر پارمسان",
+      "scope": {
+        "departments": [
+          "cooking"
+        ],
+        "branches": []
+      },
+      "state": "stale",
+      "state_label": "تغییرکرده پس از تأیید",
+      "red_counts": {
+        "unknown": 0,
+        "disputed": 0
+      },
+      "count_label": "",
+      "blocker": false,
+      "orphans": [],
+      "universal": false
+    },
+    {
+      "id": "F-00054",
+      "kind": "item",
+      "title": "خمیر پیتزا",
+      "scope": {
+        "departments": [],
+        "branches": []
+      },
+      "state": "amber",
+      "state_label": "تأییدنشده",
+      "red_counts": {
+        "unknown": 0,
+        "disputed": 0
+      },
+      "count_label": "",
+      "blocker": false,
+      "orphans": [],
+      "universal": true
+    }
+  ],
+  "coverage": {
+    "read": 19,
+    "total": 28,
+    "label": "۱۹ از ۲۸ کاربرگ خوانده شده"
+  }
+}

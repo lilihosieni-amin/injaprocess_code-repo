@@ -12,7 +12,7 @@ import { Icon } from '../ui/Icon'
 import { Logo } from '../ui/Logo'
 import { toFa } from '../lib/format'
 import { panelCrumbs } from './crumbs'
-import { canGoBack, isProcessView } from './back'
+import { canGoBack, isProcessView, sheetHere, traySection } from './back'
 import { useScrollMemory } from './scroll'
 
 // §6.0 — the nav tray's shell. These entries *navigate*, so they are links in a
@@ -21,6 +21,22 @@ import { useScrollMemory } from './scroll'
 // views where there is a set of destinations.
 const TRAY = 'inline-flex items-center gap-s1 p-s1 rounded-button bg-tile-v2'
 const TRAY_ITEM = 'px-s7 py-s4 rounded-tool border-0 no-underline cursor-pointer text-fs-sm2 font-bold'
+
+/**
+ * The two sections of §6.0's nav tray, in the design's own order
+ * (`Inja Panel.dc.html:4784`). Its third entry, «صندوق کامنت‌ها», is absent
+ * under R5 — this app has no comments inbox, and an entry to a screen that does
+ * not exist is a control that can only refuse.
+ *
+ * Ungated, both of them: `/departments` is every panel session's home, and the
+ * facts routes are gated on holding *any* Panel capability — which is the same
+ * list `selectShell` picks this shell from, so everyone who sees this bar can
+ * reach them.
+ */
+const NAV = [
+  { to: '/departments', label: 'دپارتمان‌ها' },
+  { to: '/facts', label: 'داده‌های کمّی' },
+]
 
 // §5.2 — icon buttons are the white card, the brand violet and a 1.5px --line
 // hairline. Audit S1's fix lives in this one string: the bar behind these
@@ -149,8 +165,13 @@ export function PanelShell({ session }: { session: SessionDescriptor }) {
   const mainRef = useRef<HTMLElement>(null)
   useScrollMemory(mainRef)
 
-  /** A sheet row's own three declarations: §6.0's current entry, or its resting one. */
-  const sheetRow = (to: string) => `${SHEET_ITEM} ${pathname === to ? SHEET_HERE : SHEET_REST}`
+  /** A sheet row's own three declarations: §6.0's current entry, or its resting
+   *  one. `sheetHere` is a SECTION test — the design binds these rows with the
+   *  same `inScreen` the tray uses (`menuItems`, :5097) — and it is in
+   *  `./back` with a test, because this was an exact route match and left
+   *  «کاربران» dark on `/users/{id}`: a row the sheet draws on the very screen
+   *  it leads to. */
+  const sheetRow = (to: string) => `${SHEET_ITEM} ${sheetHere(pathname, to) ? SHEET_HERE : SHEET_REST}`
 
   // R5 — an entry whose target this caller cannot reach is absent, not
   // disabled, not explained. Each of the three gates below is the SAME
@@ -323,10 +344,22 @@ export function PanelShell({ session }: { session: SessionDescriptor }) {
       </Link>
       <span aria-hidden className="w-px h-s11 mx-s1 bg-border-current max1080:hidden" />
       <nav data-r-nav aria-label="بخش‌های اصلی" className={`${TRAY} max1080:hidden`}>
-        {/* Always the active pill: this bar is drawn on the home screen and
-            nowhere else (§6.0's `showTopBar: screen === 'depts'`), so the
-            deliverable's `{{ t.bg }}` has exactly one value here. */}
-        <Link to="/departments" className={`${TRAY_ITEM} bg-violet text-card`}>دپارتمان‌ها</Link>
+        {/* §6.0's `navDefs` (`Inja Panel.dc.html:4784`), minus «صندوق کامنت‌ها»:
+            there is no such screen, and R5 draws no entry to one.
+
+            The pill is computed rather than pinned to «دپارتمان‌ها», because a
+            hard-coded fill puts the violet under the wrong word the moment a
+            second entry exists. `traySection` is §6.0's `inScreen` (:4787), and
+            the important word is SECTION: it lights «دپارتمان‌ها» on all six
+            routes of that section, not on `/departments` alone. This line was
+            `pathname === n.to` for one commit, which is the same answer only on
+            the single route the bar is drawn on — see `shell/back.ts`. */}
+        {NAV.map((n) => (
+          <Link key={n.to} to={n.to}
+            className={`${TRAY_ITEM} ${traySection(pathname) === n.to ? 'bg-violet text-card' : 'bg-transparent text-violet'}`}>
+            {n.label}
+          </Link>
+        ))}
         {adminMenu()}
       </nav>
       <div className="ms-auto flex items-center gap-s5">
@@ -546,9 +579,14 @@ export function PanelShell({ session }: { session: SessionDescriptor }) {
               <p className="m-0 text-fs-body font-bold text-ink">{session.displayName}</p>
               <p className="m-0 mt-half text-fs-xs text-muted">{session.role}</p>
             </div>
-            <Link to="/departments" onClick={() => setMenuOpen(false)} className={sheetRow('/departments')}>
-              <span className="flex-1">دپارتمان‌ها</span>
-            </Link>
+            {/* The tray's two entries again — this sheet is the ≤1080 stand-in
+                for a bar that is hidden there, so a section reachable from the
+                tray and not from here would be unreachable on a phone. */}
+            {NAV.map((n) => (
+              <Link key={n.to} to={n.to} onClick={() => setMenuOpen(false)} className={sheetRow(n.to)}>
+                <span className="flex-1">{n.label}</span>
+              </Link>
+            ))}
             {canEdit && (
               <button type="button" onClick={() => { setMenuOpen(false); setInboxOpen(true) }} className={`${SHEET_ITEM} ${SHEET_REST}`}>
                 <span className="flex-1">صندوق بازبینی</span>

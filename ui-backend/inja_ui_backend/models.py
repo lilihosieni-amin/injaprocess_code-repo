@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class LoginBody(BaseModel):
@@ -30,6 +30,25 @@ class ConfirmBody(BaseModel):
     #: the concurrency check — an Editor confirming a document that moved under
     #: them is refused rather than left vouching for bytes they never read.
     fingerprint: str
+
+
+class ResolveFactBody(BaseModel):
+    """Which account settles which disputed field (spec §12's `resolve` row).
+
+    Both values are handed to `merge facts resolve` and to nothing else — the
+    service never edits `facts/*.json` itself (QF-2) — so the engine is what
+    decides whether this account is on this field and refuses (exit 2, nothing
+    written) when it is not.
+
+    `field` is a QF-7 path (`data/rows/row_ing_41/grams`) and is deliberately
+    unpatterned here: the grammar is the engine's, and a second reading of it
+    in this file would start disagreeing with the first. `account` **is**
+    patterned, because it is the one value with a fixed shape — the first eight
+    hex of `merge_facts.account_id`'s digest — and an anchored check is what
+    keeps unbounded caller text out of the argv the shell-out builds.
+    """
+    field: str
+    account: str = Field(pattern=r"^[0-9a-f]{8}$")
 
 
 class VisibilityBody(BaseModel):

@@ -1,0 +1,165 @@
+{
+  "schema_version": 1,
+  "entries": [
+    {
+      "id": "F-00023",
+      "kind": "measurement",
+      "key": "ing_1__pitza_cb__end_of_night__end_stock",
+      "title": "وزن‌کشی پنیر پیتزا در پایان شب",
+      "aliases": [],
+      "statement": "سرلاین پیتزا از ساعت ۱:۱۵ همهٔ اقلام وزنی را وزن می‌کند؛ کارتن‌ها به تعداد × وزن اسمی، فله با ترازو، به گرم.",
+      "scope": {
+        "departments": [
+          "cooking"
+        ],
+        "branches": [
+          "chalebagh"
+        ]
+      },
+      "source": [
+        {
+          "type": "voice",
+          "ref": "meetings/transcripts/cooking-1405-05-26.txt",
+          "lines": "92-107",
+          "hash": "sha256:189ff7ba7cd49a4170259146c74d27e19e5642e96db00c9acc82c47a4840a564",
+          "run": "runs/facts/cooking/20260902-153000"
+        },
+        {
+          "type": "process",
+          "ref": "departments/cooking/processes/cooking-001.json",
+          "node": "cooking-001-n010",
+          "quote": "در پایان شیفت، سرلاین موجودی پنیر را وزن می‌کند و در برگهٔ آخر شب می‌نویسد",
+          "hash": "sha256:448548f2c6ed20342c3aca3419c160b3768e8943dc5438663587e0c444b43d3e",
+          "run": "runs/facts/cooking/20260902-153000"
+        }
+      ],
+      "status": "confirmed",
+      "field_status": {},
+      "accounts": [],
+      "valid_from": null,
+      "valid_to": null,
+      "supersedes": null,
+      "superseded_by": null,
+      "retired": false,
+      "issues": [],
+      "processes": [
+        {
+          "ref": "cooking-001"
+        }
+      ],
+      "updated_at": "2026-09-16T14:05:00Z",
+      "data": {
+        "of": {
+          "ref": "F-00001"
+        },
+        "quantity": "mass",
+        "unit": "g",
+        "method": "ترازو؛ کارتن بر اساس تعداد × وزن اسمی",
+        "when": "پایان شیفت، از ۱:۱۵",
+        "by": "سرلاین",
+        "writes_to": {
+          "ref": "F-00013",
+          "field": "end_stock"
+        },
+        "exceptions": "آرد وزن نمی‌شود"
+      }
+    },
+    {
+      "id": "F-00024",
+      "kind": "measurement",
+      "key": "ing_15__mande_shab_farangi_burger__end_stock",
+      "title": "ثبت وزنی بیکن در مانده شب فرنگی",
+      "aliases": [],
+      "statement": "بیکن با اینکه به تعداد دریافت می‌شود، در مانده شب به وزن ثبت می‌شود تا ورق‌ها شمرده نشوند.",
+      "scope": {
+        "departments": [
+          "cooking"
+        ],
+        "branches": []
+      },
+      "source": [
+        {
+          "type": "voice",
+          "ref": "meetings/transcripts/cooking-1405-05-26.txt",
+          "lines": "188",
+          "hash": "sha256:189ff7ba7cd49a4170259146c74d27e19e5642e96db00c9acc82c47a4840a564",
+          "run": "runs/facts/cooking/20260902-153000"
+        }
+      ],
+      "status": "inferred",
+      "field_status": {
+        "data/method": "inferred"
+      },
+      "accounts": [],
+      "valid_from": null,
+      "valid_to": null,
+      "supersedes": null,
+      "superseded_by": null,
+      "retired": false,
+      "issues": [],
+      "processes": [],
+      "updated_at": "2026-09-16T14:05:00Z",
+      "data": {
+        "of": {
+          "ref": "F-00003"
+        },
+        "quantity": "mass",
+        "unit": "g",
+        "method": "ترازو",
+        "when": "پایان شیفت",
+        "by": "مسئول واحد",
+        "writes_to": {
+          "ref": "F-00011",
+          "field": "end_stock"
+        }
+      }
+    },
+    {
+      "id": "F-00025",
+      "kind": "measurement",
+      "key": "verbal_oil_change_report",
+      "title": "گزارش شفاهی تعویض روغن",
+      "aliases": [],
+      "statement": "مسئول سوخاری شفاهی می‌گوید کدام سرخ‌کن تعویض شده؛ جایی ثبت نمی‌شود.",
+      "scope": {
+        "departments": [
+          "cooking"
+        ],
+        "branches": []
+      },
+      "source": [
+        {
+          "type": "voice",
+          "ref": "meetings/transcripts/cooking-1405-05-26.txt",
+          "lines": "270",
+          "hash": "sha256:189ff7ba7cd49a4170259146c74d27e19e5642e96db00c9acc82c47a4840a564",
+          "run": "runs/facts/cooking/20260902-153000"
+        }
+      ],
+      "status": "informal",
+      "field_status": {
+        "data/method": "informal",
+        "data/when": "informal"
+      },
+      "accounts": [],
+      "valid_from": null,
+      "valid_to": null,
+      "supersedes": null,
+      "superseded_by": null,
+      "retired": false,
+      "issues": [],
+      "processes": [],
+      "updated_at": "2026-09-16T14:05:00Z",
+      "data": {
+        "of": {
+          "ref": "F-00048"
+        },
+        "quantity": "volume",
+        "unit": "l",
+        "method": "چشمی",
+        "when": "هر دو شب",
+        "by": "مسئول سوخاری"
+      }
+    }
+  ]
+}

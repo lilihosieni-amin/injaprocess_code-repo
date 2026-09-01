@@ -57,16 +57,21 @@ def test_idempotent_reuses_cache(data_root):
     assert dst.stat().st_mtime == first_mtime   # not rewritten
 
 
-def test_reconverts_when_docx_is_newer(data_root):
+def test_reconverts_when_docx_content_changes(data_root):
+    # Task 11 (QF-30): the cache moved from an mtime gate to a hash gate, so a
+    # merely-touched file with unchanged bytes is no longer reconverted — see
+    # test_touched_but_unchanged_docx_not_reconverted in
+    # test_extract_attachment_dispatch.py for that half of the contract. This
+    # test keeps the other half: real content changes still trigger reconversion.
     adir = _mk_attachments(data_root, "dining")
     src = adir / "host.docx"
     src.write_bytes(b"dummy")
     conv = CountingConvert()
     run_extract_attachment("dining", root=data_root, convert=conv)
     dst = text_dir(data_root, "dining") / "host.txt"
-    # make the source newer than the cache
     future = dst.stat().st_mtime + 10
     os.utime(src, (future, future))
+    src.write_bytes(b"dummy, but different now")   # real content change, not just mtime
     run_extract_attachment("dining", root=data_root, convert=conv)
     assert conv.calls == 2                      # re-converted
 
@@ -124,5 +129,7 @@ def test_cli_reports_errors_and_exits_nonzero(data_root, capsys, monkeypatch):
     monkeypatch.setattr("extract_attachment.cli.docx_to_text", boom, raising=False)
     rc = cli_main(["dining"])
     err = capsys.readouterr().err
-    assert rc == 1
+    # Task 11 (QF-30): exit 1 retired — a per-file failure is an advisory skip (exit 3),
+    # not the CLI's old undifferentiated non-zero.
+    assert rc == 3
     assert "bad.docx" in err

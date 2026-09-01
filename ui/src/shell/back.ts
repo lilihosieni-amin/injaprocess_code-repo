@@ -53,3 +53,85 @@ export function canGoBack(): boolean {
 export function isProcessView(pathname: string): boolean {
   return /^\/processes\/[^/]+\/(flow|steps)\/?$/.test(pathname)
 }
+
+/**
+ * Which nav-tray entry the pill sits under — §6.0's `inScreen`
+ * (`Inja Panel.dc.html:4787-4788`), which is a **section** test and not a route
+ * comparison.
+ *
+ * ```js
+ * inScreen = (id) => id === 'depts' ? (screen !== 'comments' && !inAdmin && !inFacts)
+ *          : id === 'facts' ? inFacts : screen === 'comments'
+ * ```
+ *
+ * So «دپارتمان‌ها» is lit on the department list, one department, its overview
+ * and all three process views — six routes, one section — and «داده‌های کمّی»
+ * on the facts list and on any entry's detail. `null` is the administration
+ * screens, where the design lights the «مدیریت» trigger instead and neither
+ * tray entry. «صندوق کامنت‌ها», the design's third entry, is not built (R5: no
+ * such screen), so nothing here answers for it.
+ *
+ * This was written as `pathname === n.to` when the second tray entry landed,
+ * which is the same answer **only on `/departments`** — the one route the shell
+ * actually draws this bar on today (`home ? topBar() : crumbStrip()`), and the
+ * one route `shells.test.tsx` grades the pill on. That made the defect both
+ * unreachable and ungradable through a render, which is why the predicate is a
+ * pure function with a test of its own rather than a ternary inside the
+ * component: the day the bar is drawn on a second route, the pill is already
+ * right.
+ */
+export function traySection(pathname: string): string | null {
+  if (inSection(pathname, '/facts')) return '/facts'
+  // The three administration targets `PanelShell`'s own `adminItems` lists;
+  // `/users/{id}` is inside `/users` by the same section test the tray uses.
+  return ADMIN.some((root) => inSection(pathname, root)) ? null : '/departments'
+}
+
+/** The three administration destinations `PanelShell`'s `adminItems` draws. */
+const ADMIN = ['/users', '/visibility', '/profile']
+
+/**
+ * Is `pathname` inside the section rooted at `root`?
+ *
+ * The separator is what makes it a section test rather than a prefix match:
+ * without it `/factsheet` is inside `/facts` and `/profiles` inside `/profile`.
+ */
+function inSection(pathname: string, root: string): boolean {
+  return pathname === root || pathname.startsWith(`${root}/`)
+}
+
+/**
+ * Whether the mobile sheet draws a row as the one you are on.
+ *
+ * **The sheet and the tray answer the same rule, and that is the design's, not
+ * a convenience.** §6.0 builds its sheet rows from `navDefs` and paints them
+ * `inScreen(m.id)` — `menuItems`, `Inja Panel.dc.html:5097` — the very predicate
+ * `navTabs` uses one line below it. So a sheet whose «دپارتمان‌ها» row went dark
+ * on a process view would disagree with the design and with its own top bar at
+ * once.
+ *
+ * The disjunction is two rules, not a widened one:
+ *
+ * * `traySection(...) === to` is §6.0's `inScreen` for the two rows that are
+ *   tray sections. It is what carries «دپارتمان‌ها» across the process views,
+ *   which no prefix test can do — `/processes/{pid}` does not start with
+ *   `/departments`.
+ * * `inSection(...)` is for the three administration rows, which §6.0 paints
+ *   white with no current state at all: the sheet's own row hard-codes a plain
+ *   white `background` and ignores the `bg` it is handed (:3003, inside the
+ *   `adminItems` loop at :3002-3006). The binding is not the omission —
+ *   `adminItems` DOES compute one (:5094) and the DESKTOP popover consumes it
+ *   (`background:{{ a.bg }}`, :143); the sheet is where it is dropped, because
+ *   that popover carries the group's state and this shell has no
+ *   reachable popover to carry it. So "you are here" on those three is this
+ *   app's addition — see `SHEET_HERE` — and it was written as an exact route
+ *   match, which left «کاربران» dark on `/users/{id}`, a row the sheet draws
+ *   ON the screen it leads to. A section test is the same rule the other three
+ *   rows already follow.
+ *
+ * The two never contradict: `inSection` can only be true for a tray root on a
+ * path `traySection` already answers with that same root.
+ */
+export function sheetHere(pathname: string, to: string): boolean {
+  return traySection(pathname) === to || inSection(pathname, to)
+}

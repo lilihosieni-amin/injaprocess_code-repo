@@ -270,6 +270,25 @@ const BOUND: [string, Set<string>][] = DELIVERABLES.map(([name, src]) => [
   new Set([...src.matchAll(/'(M-?[\d.][^']*)'/g)].map((m) => m[1])),
 ])
 
+/**
+ * THE FOUR STRINGS THE TWO DELIVERABLES DISAGREE ABOUT, since `207485c`
+ * replaced the panel.
+ *
+ * The panel's script was rewritten: the change-password reveal's lens is
+ * re-pathed (rounder, and no closing `z`) and the export menu's two glyphs are
+ * gone — its `x.icon` site is fed a DEPARTMENT glyph now. The reader is
+ * untouched and still binds the older set, which is the one `ICONS` quotes.
+ *
+ * Named here rather than inline because two tests below and the census read
+ * the same strings, and a census that agreed with a typo would say nothing.
+ */
+const STRIKE = 'M3 3l18 18'
+const PANEL_LENS = 'M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6'
+const READER_LENS = 'M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7z'
+const EXPORT_DOC =
+  'M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8zM14 3v5h5M9 13h6M9 17h4'
+const EXPORT_LIST = 'M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01'
+
 /** The names a deliverable interpolates into a `d`, in the order it draws them. */
 function boundSites(src: string): string[] {
   return [...src.matchAll(/<path d="\{\{ ([^}]+?) \}\}"/g)].map((m) => m[1])
@@ -397,12 +416,18 @@ function drawnIn(name: keyof typeof ICONS): string[] {
 }
 
 /**
- * The two `d`s the design's change-password reveal binds, and the node it draws
- * beside them (Panel :1860 and :3762, Reader :2914).
+ * The two `d`s the PANEL's change-password reveal binds, and the node it draws
+ * beside them (markup :2741, script :5269 — both moved when `207485c` replaced
+ * the file).
  *
  * The reveal is the one place the design ships an eye, and it ships it as a
  * BOUND STRING rather than as markup — `newPwIcon: shown ? '…' : '…'` — which is
  * why a scan for `<path d="…">` reports the deliverable as drawing none.
+ *
+ * `shown` and `hidden` name the STATE each branch is bound in, not the glyph:
+ * `shown` is what the design draws when `newPwShow` is true and the password is
+ * legible. Which of the two carries the strike is the question the test below
+ * asks, and it is the question the deliverable changed its mind about.
  */
 function revealGlyphs(): { shown: string; hidden: string; beside: string } {
   const src = DELIVERABLES[0][1]
@@ -775,11 +800,19 @@ describe('Icon', () => {
     expect(boundSites(DELIVERABLES[1][1])).toEqual([
       'd.icon', 'p.chevron', 'bs.chevron', 'st.chevron', 'e.d',
     ])
-    // …and the strings those sites are fed. Both files carry the same
-    // seventeen, which is itself the finding: the reader binds `confDlgIcon`
-    // and `newPwIcon` in its state without drawing either.
-    for (const [name, ds] of BOUND) expect(ds.size, name).toBe(17)
-    expect([...BOUND[0][1]].sort()).toEqual([...BOUND[1][1]].sort())
+    // …and the strings those sites are fed. They USED to be the same seventeen
+    // in both files, which was itself a finding: the reader binds `confDlgIcon`
+    // and `newPwIcon` in its state without drawing either. `207485c` replaced
+    // the panel and they parted — so the assertion is the DIFFERENCE, not a
+    // count: a count goes green again the first time one glyph leaves and
+    // another arrives, and the four strings below are exactly what a reader of
+    // this file needs to know before quoting either deliverable.
+    expect(BOUND.map(([n, ds]) => [n, ds.size])).toEqual([['panel', 15], ['reader', 17]])
+    const only = (a: number, b: number) =>
+      [...BOUND[a][1]].filter((d) => !BOUND[b][1].has(d)).sort()
+    expect(only(0, 1)).toEqual([PANEL_LENS, PANEL_LENS + STRIKE].sort())
+    expect(only(1, 0)).toEqual(
+      [READER_LENS, READER_LENS + STRIKE, EXPORT_DOC, EXPORT_LIST].sort())
 
     // WHAT THIS SET TAKES FROM THE BOUND DIALECT. Four keys, and every one of
     // them was called authored or undrawn at some point in this file's history.
@@ -791,7 +824,10 @@ describe('Icon', () => {
       check: ['panel', 'reader'],       // the confirm dialog's OK arm
       search: [], user: [], userBust: [], dots: [], file: [], inbox: [], logout: [],
       home: [], menu: [], comment: [], funnel: [], trash: [],
-      eye: ['panel', 'reader'], eyeOff: ['panel', 'reader'],
+      // The reader alone since `207485c` re-pathed the panel's lens. The set
+      // still quotes a deliverable rather than drawing its own — see the
+      // eyeOff test below, and the audit's §6.3 for the owner's ruling.
+      eye: ['reader'], eyeOff: ['reader'],
     })
 
     // CHEVRON-UP IS DRAWN SIX TIMES, and the note that said "the deliverable
@@ -818,15 +854,16 @@ describe('Icon', () => {
     expect(canonical(ds.get('warning')!)).toBe(asPath(warning))
     // `document` and `list` — the export menu binds one of each, and NEITHER is
     // the design-system key of that name. That is a ruling to ask for, not a
-    // blank to fill: the two records disagree.
-    const exportDoc = 'M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8zM14 3v5h5M9 13h6M9 17h4'
-    const exportList = 'M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01'
-    for (const [name, bound] of BOUND) {
-      expect(bound.has(exportDoc), name).toBe(true)
-      expect(bound.has(exportList), name).toBe(true)
-    }
-    expect(canonical(ds.get('document')!)).not.toBe(asPath(exportDoc))
-    expect(canonical(ds.get('list')!)).not.toBe(asPath(exportList))
+    // blank to fill: the two records disagree. The READER is now the only
+    // record of either: the replaced panel feeds its `x.icon` site a department
+    // glyph and binds neither, so a task that reads only the panel would find
+    // the blank and fill it — which is the trip this whole test exists to stop.
+    expect(BOUND[1][1].has(EXPORT_DOC)).toBe(true)
+    expect(BOUND[1][1].has(EXPORT_LIST)).toBe(true)
+    expect(BOUND[0][1].has(EXPORT_DOC)).toBe(false)
+    expect(BOUND[0][1].has(EXPORT_LIST)).toBe(false)
+    expect(canonical(ds.get('document')!)).not.toBe(asPath(EXPORT_DOC))
+    expect(canonical(ds.get('list')!)).not.toBe(asPath(EXPORT_LIST))
     // `info` — neither dialect of either deliverable carries it, so `InjaIcons`
     // really is the only record, and THAT is the sentence L-39 supports.
     const info = /<path d="([^"]+)"/.exec(ds.get('info')!)![1]
@@ -981,13 +1018,40 @@ describe('Icon', () => {
     const { shown, hidden, beside } = revealGlyphs()
     // eyeOff IS eye with the strike appended — in the deliverable's own bytes,
     // not as a convention this file invented.
-    expect(hidden).toBe(`${shown}M3 3l18 18`)
+    expect(shown).toBe(`${hidden}${STRIKE}`)
+    expect(hidden).toBe(PANEL_LENS)
     expect(beside).toBe('<circle cx="12" cy="12" r="3"></circle>')
+
+    /* THE BINDING, AND THE OWNER'S RULING (2026-09-01, audit §6.3).
+
+       `shown` above is the branch the panel takes when the password is
+       LEGIBLE, and it is the struck one — a plain eye means "click to reveal",
+       a struck eye means "click to hide". That is the app's binding too
+       (`PasswordField`: `name={shown ? 'eyeOff' : 'eye'}`, pinned end to end by
+       src/ui/fields.test.tsx › *shows the struck eye only while the value is
+       showing*), and it is what the key names say.
+
+       It was NOT the old panel's: `9fc9c13` bound `newPwShow ? plain : struck`,
+       the other way round, and this test was written against that — which is
+       why replacing the deliverable broke it. The owner ruled the app right and
+       the old ternary the defect; `207485c` has since brought the deliverable
+       into line, so what follows asserts one convention against both. */
+    expect(pathsOf('eyeOff').join('')).toBe(pathsOf('eye').join('') + STRIKE)
     // Subpaths of one `d` and sibling <path>s paint identically, so the set
     // keeps the strike separate: src/ui/fields.test.tsx reads it as a `d` of its
     // own in both states, and joining them back up is the comparison.
-    expect(pathsOf('eye').join('')).toBe(shown)
-    expect(pathsOf('eyeOff').join('')).toBe(hidden)
+    expect(pathsOf('eyeOff')).toContain(STRIKE)
+    expect(pathsOf('eye')).not.toContain(STRIKE)
+    expect(pathsOf('eyeOff').length).toBeGreaterThan(1)
+
+    // THE LENS IS STILL QUOTED, and from the reader — `207485c` re-pathed the
+    // panel's and nobody has ruled on adopting the new drawing, so this set
+    // keeps the one it copied. Asserted against both files rather than against
+    // a literal, or "quotes a deliverable" would decay into "used to".
+    expect(pathsOf('eye').join('')).toBe(READER_LENS)
+    expect(BOUND[1][1].has(READER_LENS)).toBe(true)
+    expect(BOUND[0][1].has(READER_LENS)).toBe(false)
+
     // …and the iris the design draws beside the lens, which is the node the
     // strike assertion cannot see: `r="0.2"` leaves both joins above
     // byte-identical and takes the pupil out of the eye.
@@ -996,11 +1060,6 @@ describe('Icon', () => {
       expect(container.innerHTML, name).toContain(beside)
       unmount()
     }
-    // The strike is the whole difference a SIGHTED user has to tell the reveal's
-    // two states apart — `aria-pressed` and the label carry it for everyone else.
-    expect(pathsOf('eyeOff')).toContain('M3 3l18 18')
-    expect(pathsOf('eye')).not.toContain('M3 3l18 18')
-    expect(pathsOf('eyeOff').length).toBeGreaterThan(1)
   })
 
   it('draws the kebab vertically, the way S1 does, and SOLID', () => {

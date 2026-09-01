@@ -669,6 +669,25 @@ GLOBAL_READS = (
     Route("GET", "/api/users/supervisor-candidates", None,
           "/api/users/supervisor-candidates", 200),
     Route("GET", "/api/roles", None, "/api/roles", 200),
+    #: The three facts reads (QF-23). Global rather than departmental because
+    #: an entry's scope is a *list* of departments and a universal entry names
+    #: none, so there is no `{d}` to fill: the store spans the estate and the
+    #: list is filtered per row, exactly like `/api/departments`.
+    #:
+    #: They are swept for the same reason every other read here is. A fact
+    #: entry's body carries `processes[]` — process ids out of any department
+    #: — and the served bundle resolves them to their **names**, which is the
+    #: shape `FOREIGN_PARENT`/`LEAKNAME` exist to catch; and the whole surface
+    #: is 404 for the Reader roles this file sweeps, which is a decision (§18)
+    #: rather than an accident and is worth walking.
+    #:
+    #: `F-00001` is `conftest`'s cooking-scoped rule, so it is out of `MINE`
+    #: and reachable only through the `*` scope the expectation client also
+    #: holds — which is what makes its 200 a statement about the route rather
+    #: than about `dining`.
+    Route("GET", "/api/facts", None, "/api/facts", 200),
+    Route("GET", "/api/facts/branches", None, "/api/facts/branches", 200),
+    Route("GET", "/api/facts/F-00001", None, "/api/facts/{fid}", 200),
 )
 
 #: Read routes that name a department. Swept for the caller's own department and
@@ -1077,6 +1096,30 @@ NOT_SWEPT: dict[tuple[str, str], str] = {
     ("PATCH", "/api/users/{user_id}"): "see POST /api/users above.",
     ("POST", "/api/users/{user_id}/password"): "see POST /api/users above.",
     ("POST", "/api/users/{user_id}/disabled"): "see POST /api/users above.",
+    ("POST", "/api/facts/{fid}/resolve"): (
+        "the facts write (QF-39). Excluded for the same reason as the four user"
+        " writes above, and it is the same reason twice over: its success body"
+        " is `routers/facts._bundle` — byte for byte what"
+        " `GET /api/facts/F-00001` returns, which this file already sweeps,"
+        " built by the same function — and running it would rewrite the very"
+        " store the three facts reads above are asserted against, through a"
+        " `merge facts resolve` subprocess, mid-sweep. What it could leak it"
+        " cannot: the bundle's neighbour maps are masked by `_neighbour_"
+        "visibility`, which is the read route's own code and is swept there."
+        " Its gate is pinned in test_endpoint_matrix.py (both 403 directions,"
+        " the out-of-scope 404 and the stranger's 401) and its behaviour end to"
+        " end in test_facts_write_and_download.py."),
+    ("GET", "/api/facts/source"): (
+        "the source download (QF-39) — the `/exports/{file_path:path}` case"
+        " again, and excluded on that entry's reasoning: what this file scans"
+        " is response bodies for foreign ids, and this route's body is an"
+        " opaque file. The authorisation is the whole question, and it is"
+        " pinned where it lives — the Panel gate, the department in the"
+        " requested path and `export_pdf` in test_endpoint_matrix.py, and the"
+        " containment, the `attachment` disposition, the `access.denied` row"
+        " and the citation arm (a file is served only to a caller some entry"
+        " citing it is served to, which carries scope, D22 and QF-26's two"
+        " switches onto this route) in test_facts_write_and_download.py."),
     ("GET", "/exports/{file_path:path}"): (
         "**PARTLY RESOLVED — do not delete this entry without reading D56's "
         "Downloads row.** Both halves of D12 are now asked, in D56's order, by "

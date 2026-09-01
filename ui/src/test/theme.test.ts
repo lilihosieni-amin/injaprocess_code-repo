@@ -163,6 +163,9 @@ const EXPECTED: Record<string, string | string[]> = {
   'bg-tile-v2': 'var(--tile-v2)',
   'bg-tile-c': 'var(--tile-c)',
   'bg-tile-ok': 'var(--tile-ok)',
+  // Task 23's mint, owner ruling of 2026-09-01: the fact detail's outputs
+  // head is a paler green than the unit pill inside the same card.
+  'bg-tile-ok2': 'var(--tile-ok2)',
   'bg-tile-warn': 'var(--tile-warn)',
   'bg-tile-dead': 'var(--tile-dead)',
   'bg-login-bg': 'var(--login-bg)',
@@ -248,6 +251,7 @@ const EXPECTED: Record<string, string | string[]> = {
   'border-border-dead': 'var(--border-dead)',
   'border-border-current': 'var(--border-current)',
   'border-border-ok': 'var(--border-ok)',
+  'border-border-ok2': 'var(--border-ok2)',
   'border-hair': 'var(--hair)',
   'border-steps-sub-border': 'var(--steps-sub-border)',
   'border-steps-group-border': 'var(--steps-group-border)',
@@ -1504,7 +1508,11 @@ const UNPAINTED: string[] = [
   'bg-ink-proposed', 'bg-on-dark', 'bg-disabled', 'bg-ok',
   'bg-danger', 'bg-warn-soft', 'bg-info-soft', 'bg-ok-soft',
   'bg-danger-soft', 'bg-toast-check', 'bg-junction-xor', 'bg-junction-and',
-  'bg-junction-or', 'bg-dept-numeral-violet', 'bg-dept-numeral-coral',   'bg-steps-sub-border', 'bg-steps-sub-hover', 'bg-steps-group-border',
+  // `bg-junction-or` came off here with Task 22: the facts list's «تأییدنشده»
+  // dot is `--junction-or` (`Inja Panel.dc.html:4625`, `CONF.amber.dot`), which
+  // is the first time this product paints that token as a background outside
+  // the frozen flowchart. CEILING follows it down.
+  'bg-dept-numeral-violet', 'bg-dept-numeral-coral',   'bg-steps-sub-border', 'bg-steps-sub-hover', 'bg-steps-group-border',
   'bg-link', 'bg-link-hover', 'text-violet-on-dark', 'text-violet-on-dark-body',
   'text-strong', 'text-ghost',
   'text-ok',
@@ -1515,7 +1523,11 @@ const UNPAINTED: string[] = [
   // and that pill was not drawn, so deleting the line would have failed the
   // ORPHANS half of the guard below exactly as leaving it now fails the STALE
   // half. R48 draws the pill, so the line goes and `CEILING` goes with it.
-  'border-line-soft',
+  //
+  // …and `border-line-soft` came off with Task 23, the same way: `--line-soft`
+  // is the rule the fact detail draws under a statement before its aliases
+  // (`Inja Panel.dc.html:1133`) and above the constant card's «برای» row
+  // (:1156), and both are now drawn.
     // …and `bg-line-divider` here, for the reason R46 measured and could not act
   // on: the flow bar's next/previous group draws the `1px × 18px #D9CEF0` rule
   // between its two buttons (panel 563), and the §9.8 correction that minted
@@ -1532,7 +1544,12 @@ const UNPAINTED: string[] = [
   // reading comments, and prose stopped counting as a consumer.
   'text-role-body',
   'text-role-hero',
-  'font-sans', 'font-regular',   'shadow-sheet', 'shadow-drawer',
+  // `font-sans` came off with Task 23: the fact detail draws six controls as
+  // bare `<button>`s (a ref link, a call chip, a consumer chip, a source row,
+  // the disclosure, the tick), and Chrome's UA stylesheet gives a button its
+  // OWN font — so the app's stack has to be written back on each of them, which
+  // is the one place in the product where naming the family is not redundant.
+  'font-regular',   'shadow-sheet', 'shadow-drawer',
   'shadow-card-dark', 'shadow-stat-dark', 'shadow-guide-hover', 'shadow-ring-flash',
   'p-screen-x', 'p-screen-y',
   'p-topbar', 'p-half', 'gap-topbar',
@@ -1602,7 +1619,12 @@ const UNPAINTED: string[] = [
    * `--fs-h4` to stay reachable, and `--warn-fg` is what `--role-awaiting`
    * resolves to in roles.css.
    */
-  'text-fs-h4', 'border-warn-edge', 'text-warn-fg',
+  // …and `text-warn-fg` came off with Task 22, from the other direction to the
+  // two beside it: the notice it was minted for is still deleted, but the facts
+  // list's «تأییدنشده» chip is `CONF.amber.fg` (:4625), which is that token.
+  // `text-fs-h4` came off with Task 23 — 17px is the statement's body size on
+  // the fact detail (:1130), which is a run of prose rather than a dialog
+  // title; and `border-warn-edge` with it, as the issue card's own edge (:1695).
   'bg-warn-edge',
   // The type-on-the-violet-field group came off here when Task 14's departments
   // screen landed: its READER title takes `text-role-title-on-field`, both
@@ -1801,7 +1823,19 @@ const UNPAINTED: string[] = [
 //    +3  `text-fs-h4`, `border-warn-edge` and `text-warn-fg` lost their last
 //        consumer — see the note beside them in the list above.
 //   ---
-//   113  and this line is that number exactly.
+//   113  the count that line stood at
+//
+// LOWERED 2026-08-31 to 111 by Task 22, which is the direction the ratchet is
+// for and needs no argument beyond the arithmetic:
+//
+//   113  the count this line stood at
+//    -1  `bg-junction-or` acquired its first consumer outside the frozen
+//        flowchart: the facts list's «تأییدنشده» dot is `CONF.amber.dot`.
+//    -1  `text-warn-fg` acquired one for the first time since the owner deleted
+//        the amber notice it was minted for: the same chip's label is
+//        `CONF.amber.fg`.
+//   ---
+//   111  and this line is that number exactly.
 //
 // **Why this is a legal raise, when the paragraph above says a raise belongs
 // only to a mint.** That paragraph names two ways the number can be pushed up
@@ -1818,7 +1852,7 @@ const UNPAINTED: string[] = [
 // other vocabulary for. The list is still exactly the orphans, every one of them
 // is still explained by a family, and the next task that consumes one of these
 // three lowers this line again.
-const CEILING = 113
+const CEILING = 107
 
 describe('Owner ruling R11 — a named utility has a component that uses it', () => {
   it('reads a real, sizeable set of component files — tests AND test helpers excluded', () => {
@@ -2139,8 +2173,25 @@ describe('Owner ruling R11 — a named utility has a component that uses it', ()
     //     painted-nowhere half: the row name went to `--fs-lg` and the profile's
     //     amber notice was deleted, and nothing else reaches either token.
     //     Painted-nowhere +3.
-    expect(buckets.filter((b) => b.spelling).length).toBe(42)
-    expect(buckets.filter((b) => !b.spelling).length).toBe(71)
+    // **42 / 69 after Task 22**, from 42 / 71: `bg-junction-or` and
+    //   `text-warn-fg` both LEFT the painted-nowhere half, because the facts
+    //   list's «تأییدنشده» chip is `CONF.amber` — `--junction-or` for the dot
+    //   and `--warn-fg` for the label (`Inja Panel.dc.html:4625`) — and neither
+    //   token had a consumer in `src/` before it. Painted-nowhere −2.
+    // **43 / 64 after Task 23**, from 42 / 69, and again the halves move for two
+    //   reasons in one commit:
+    //   · **Four left the list entirely.** `border-line-soft` (the rule above a
+    //     statement's aliases and inside the constant card), `text-fs-h4` (the
+    //     statement's own 17px body), `border-warn-edge` (the issue card's edge)
+    //     and `font-sans` — the last for a reason peculiar to this screen: the
+    //     fact detail draws six controls as bare `<button>`s, and Chrome's UA
+    //     stylesheet gives a button its own font, so the app's stack has to be
+    //     written back on each. Painted-nowhere −4.
+    //   · **One ARRIVED in the spelling half.** `bg-warn-edge` is still painted
+    //     nowhere itself, but `border-warn-edge` now has a consumer, so the
+    //     token under it reaches the screen. Spelling +1, painted-nowhere −1.
+    expect(buckets.filter((b) => b.spelling).length).toBe(43)
+    expect(buckets.filter((b) => !b.spelling).length).toBe(64)
 
     // A family that stops covering anything is an argument nobody is paying
     // for, and the next name added beside it inherits the same absence of

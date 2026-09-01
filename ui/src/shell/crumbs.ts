@@ -22,10 +22,22 @@ const VIEW: Record<string, string> = {
   steps: 'گام‌به‌گام',
 }
 
+/**
+ * The flat routes — one label each, under the leading «دپارتمان‌ها».
+ *
+ * `facts` is here rather than as a branch of its own, and that is a **deliberate
+ * departure from the design**: `Inja Panel.dc.html:4764` does `crumbs.length = 0`
+ * before pushing «داده‌های کمّی», so the facts trail is a single crumb with no
+ * home ahead of it. `PanelShell` draws «بازگشت» only on a trail of more than
+ * one, so a one-crumb facts screen is a screen with no way back in its chrome —
+ * which is exactly the "some pages don't have it at all" that owner ruling R41
+ * fixed by seeding every trail with «دپارتمان‌ها».
+ */
 const FLAT: Record<string, string> = {
   users: 'کاربران',
   visibility: 'سیاست نمایش محتوا',
   profile: 'پروفایل و گذرواژه',
+  facts: 'داده‌های کمّی',
 }
 
 /**
@@ -82,6 +94,28 @@ export function panelCrumbs(pathname: string, deptName: (code: string) => string
 
   if (parts[0] === 'users' && parts[1] !== undefined) {
     return [{ label: 'کاربران', to: '/users' }, { label: 'دسترسی' }]
+  }
+
+  /*
+   * `/facts/{fid}` — the entry's own screen.
+   *
+   * **The leaf is the id, not the title, and that is the design's instruction
+   * read literally.** `Inja Panel.dc.html:4766` carries one crumb for the whole
+   * section with a comment saying so in as many words: *«عنوان داده در سرصفحه
+   * با اندازهٔ ۲۵ می‌آید؛ در مسیر راهنما تکرار نمی‌شود»* — the title is drawn
+   * at 25px in the header and is not repeated in the trail. A leaf is needed
+   * all the same: `PanelShell` draws «بازگشت» from `crumbs[length-2]`, so a
+   * two-crumb detail would send it to `/departments` instead of back to the
+   * list. The id is what `/processes/{pid}` already puts in that position
+   * (`mono: true`, the shell's own LTR island), so this borrows a shape the
+   * strip has rather than inventing a Persian word Appendix D does not carry.
+   */
+  if (parts[0] === 'facts' && parts[1] !== undefined) {
+    return [
+      { label: HOME, to: '/departments' },
+      { label: FLAT.facts, to: '/facts' },
+      { label: parts[1], mono: true },
+    ]
   }
 
   /*

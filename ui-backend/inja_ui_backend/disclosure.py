@@ -38,6 +38,14 @@ answered with a 404 rather than a 403 for the reason `sees` is lexical, which is
 D56's Existence row: a status that distinguishes "not for you" from "not there"
 is an oracle.
 
+**The same three rules again for a fact entry** (`edits_fact`, `may_serve_fact`,
+`redact_fact`), because a fact is the second document this service serves and the
+questions do not change — only what "a department" is. A process has one, read
+lexically from its id; a fact names a *list* in `scope.departments`, and every
+one of them has to agree (QF-27), with `*` standing for an entry that names none.
+So the fact trio takes the gate's scope strings where the process trio takes a
+code, and the AND over them is the whole of the difference.
+
 **Every department here is derived lexically from an id** —
 `storage.dept_of(pid)` is `pid.rsplit("-", 1)[0]`, pure string arithmetic — and
 never by loading the referenced file. That is the same rule the routers' targets
@@ -61,7 +69,7 @@ import sqlite3
 
 from . import storage, visibility
 from .access import permits
-from .fingerprint import fingerprint
+from .fingerprint import fact_fingerprint, fingerprint
 from .store import confirmations, policy
 
 
@@ -145,6 +153,69 @@ class Disclosure:
             return False
         row = confirmations.get(self._conn, target)
         return row is not None and row["fingerprint"] == fingerprint(doc)
+
+    def edits_fact(self, targets: list[str]) -> bool:
+        """May this caller edit **every** department a fact entry names?
+
+        `targets` is the entry's gate requirement as the router derived it —
+        `["dept:cooking", "dept:accounting"]`, or `["*"]` for a universal entry
+        — and the answer is an AND over it (QF-27), the same conjunction the
+        confirm gate runs: a cooking editor does not vouch for, and is not the
+        editor of, an entry that also binds accounting.
+
+        Scope strings rather than bare department codes, which is why this is
+        not `edits` in a loop: `edits` formats `dept:{code}`, and a universal
+        entry's requirement is `*`, which no code produces.
+
+        `_may_edit` directly for the same reason `permits` exists at all — a
+        listing asks this over every row, and neither the capabilities nor the
+        scopes can change inside one request.
+        """
+        return all(self._may_edit(t) for t in targets)
+
+    def may_serve_fact(self, entry: dict, targets: list[str],
+                       stored: str | None) -> bool:
+        """May this caller be told that this **fact entry** exists (QF-23, D22)?
+
+        `may_serve`'s rule, per entry rather than per department, and with one
+        clause fewer: a fact has no tombstone. A `retired` entry is still
+        served — retirement is a lifecycle fact the screen draws as a badge,
+        not a deletion — so what remains is D22's: an entry carrying no valid
+        confirmation does not appear for anyone who cannot edit it.
+
+        Unconfirmed content is therefore editor-only by construction, which is
+        what makes QF-26's switches an *admin's* rule rather than a reader's.
+
+        `stored` is the stored **fingerprint**, passed in rather than looked up
+        here, because the list resolves the whole store in one statement
+        (`confirmations.stored_for`) exactly as `servable` does — D56's
+        "filtered in the query, never client-side". `None` for an entry with no
+        row, so the comparison fails closed for an unconfirmed target and for a
+        nonsense one alike.
+
+        The comparison is `stored == fact_fingerprint(entry)` and never `stored
+        is not None`, for `may_serve`'s reason: a mark that no longer matches
+        its document is not a weaker mark, it is a mark for a document that no
+        longer exists. `fact_fingerprint` and not `fingerprint` — the process
+        canonicaliser drops `source` at every depth, which on a fact is content
+        (QF-24).
+        """
+        if self.edits_fact(targets):
+            return True
+        return stored is not None and stored == fact_fingerprint(entry)
+
+    def redact_fact(self, entry: dict, targets: list[str]) -> dict:
+        """`entry` as this caller may receive it, or `{}` when its kind is
+        switched off (QF-26).
+
+        `redact`'s twin, and `targets` is passed in for the same reason `dept`
+        is there: it is the string the route was gated on, not one re-derived
+        from the document. The shaping is `visibility.filtered` and nothing
+        here — one filter over every response, so the two document types cannot
+        grow two answers to "what may a non-editor have".
+        """
+        return visibility.filtered(entry, policy=self._policy, sees=self.sees,
+                                   editor=self.edits_fact(targets))
 
     def servable(self, docs: list[dict], dept: str) -> list[dict]:
         """`docs` reduced to the records this caller may be told exist.

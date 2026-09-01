@@ -1,0 +1,24 @@
+{
+  "id": "F-00005",
+  "kind": "note",
+  "key": "note_3f9a2b1c",
+  "title": "معیار ما برای اندازه‌گیری مواد، آیتم‌ها، میزان اهمیت",
+  "aliases": [],
+  "statement": "معیار ما برای اندازه‌گیری مواد، آیتم‌ها، میزان اهمیت و ارزش ریالیشونه.",
+  "scope": {},
+  "source": [
+    { "type": "chat", "ref": null }
+  ],
+  "status": "informal",
+  "field_status": {},
+  "accounts": [],
+  "valid_from": null,
+  "valid_to": null,
+  "supersedes": null,
+  "superseded_by": null,
+  "retired": false,
+  "issues": [],
+  "processes": [],
+  "updated_at": "2026-09-01T09:20:00Z",
+  "data": {}
+}

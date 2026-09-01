@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { fetchJson } from './client'
-import type { Confirmation, Department, DepartmentOrder, ExportKind, ExportResult, Me, Overview, PendingItem, PolicyField, Process, VisibilityPolicy } from './types'
+import type { Branch, Confirmation, Department, DepartmentOrder, ExportKind, ExportResult, FactBundle, FactsListResponse, Me, Overview, PendingItem, PolicyField, Process, VisibilityPolicy } from './types'
 
 export const useDepartments = (opts?: { enabled?: boolean }) =>
   useQuery({
@@ -328,5 +328,145 @@ export function useCreateExport(code: string) {
   return useMutation({
     mutationFn: (kind: ExportKind) =>
       fetchJson<ExportResult>(`/api/departments/${code}/exports/${kind}`, { method: 'POST' }),
+  })
+}
+
+// ─────────────────────────── quantitative facts (spec §14) ──────────────────
+
+/**
+ * Every entry this caller may be told exists, with the coverage count (QF-25).
+ *
+ * **One request for the whole section**, not one per department: the store
+ * spans departments and the server filters per row, so there is no code to key
+ * this by. Filtering, searching and the «وضعیت تأیید» dropdown all run over
+ * this one answer client-side — which is what the design does (`shownFacts`,
+ * `Inja Panel.dc.html:4646`), and what the route's own shape assumes.
+ *
+ * `coverage` rides along in the same body rather than in a second query. It is
+ * a property of the estate and not of the list, but it is computed from the
+ * same `load_all` the rows come from, and asking twice would read the store
+ * twice to render one line.
+ */
+export const useFacts = (opts?: { enabled?: boolean }) =>
+  useQuery({
+    queryKey: ['facts'],
+    queryFn: () => fetchJson<FactsListResponse>('/api/facts'),
+    enabled: opts?.enabled ?? true,
+  })
+
+/**
+ * One entry with every map a screen needs to render it without a bare key
+ * (§17): `resolved`, `row_titles`, `path_labels`, plus `red_paths`, the
+ * reverse index and the confirmation pair.
+ *
+ * `enabled` because the detail screen mounts from a route parameter, and a
+ * screen with no id in hand must not fire `/api/facts/undefined` — which the
+ * server would answer with the uniform 404 and put a refusal in the console.
+ */
+export const useFact = (fid: string, opts?: { enabled?: boolean }) =>
+  useQuery({
+    queryKey: ['fact', fid],
+    queryFn: () => fetchJson<FactBundle>(`/api/facts/${fid}`),
+    enabled: (opts?.enabled ?? true) && !!fid,
+  })
+
+/**
+ * The registered branches (QF-4) — the «شعبه» filter's options.
+ *
+ * Its own query rather than a field on the list response: branches are estate
+ * configuration, they change when the manifest does and not when a fact does,
+ * and a resolve invalidating `['facts']` has no business re-reading them.
+ */
+export const useFactBranches = (opts?: { enabled?: boolean }) =>
+  useQuery({
+    queryKey: ['fact-branches'],
+    queryFn: () => fetchJson<Branch[]>('/api/facts/branches'),
+    enabled: opts?.enabled ?? true,
+  })
+
+/** What moves when a fact's confirmation mark moves: the entry's own bundle,
+ *  and the listing that carries every entry's `confirmed` flag. */
+function factConfirmationKeys(qc: ReturnType<typeof useQueryClient>, fid: string) {
+  qc.invalidateQueries({ queryKey: ['fact', fid] })
+  qc.invalidateQueries({ queryKey: ['facts'] })
+}
+
+/**
+ * Vouch for one entry at the fingerprint the caller was shown (QF-24), and
+ * withdraw that mark again (D61) — `useRevokeFactConfirmation` below is the
+ * other half of the pair this documents.
+ *
+ * **The same endpoint `ConfirmAction` uses**, and deliberately so: QF-24 says
+ * confirmation "reuses `app.db.confirmations`", the target is the entry id
+ * exactly as a process document's target is its id, and
+ * `routers/confirmations._kind` grew a third value for it. Nothing here computes
+ * a fingerprint — the client is forbidden from it (QF-24), so the served one
+ * goes straight back and a stale screen is answered 409 rather than marking
+ * bytes nobody read as reviewed.
+ *
+ * **Its own pair rather than `useSetConfirmation`**, whose `code` parameter is a
+ * *department* and whose invalidation is that department's confirmations listing
+ * and the department board. A fact belongs to neither: what moves when one is
+ * ticked is the entry's own bundle and the facts listing that carries every
+ * entry's `confirmed` flag.
+ *
+ * `onSettled`, not `onSuccess` — the rule `useResolveFact` and
+ * `useSetConfirmation` already follow. The one failure this endpoint has is a
+ * 409, which means the fingerprint on screen is stale *precisely* when the
+ * request failed; refreshing only on success would leave the reviewer
+ * re-submitting the bytes that were already refused.
+ */
+export function useSetFactConfirmation(fid: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ fingerprint }: { fingerprint: string }) =>
+      fetchJson<Confirmation>(`/api/confirmations/${fid}`,
+        { method: 'POST', body: JSON.stringify({ fingerprint }) }),
+    onSettled: () => { factConfirmationKeys(qc, fid) },
+  })
+}
+
+/** No fingerprint: withdrawing says *"whatever is there is wrong"*, which does
+ *  not depend on which version it was — `useRevokeConfirmation`'s own reasoning,
+ *  and the reason the DELETE takes no body. */
+export function useRevokeFactConfirmation(fid: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () =>
+      fetchJson<Confirmation>(`/api/confirmations/${fid}`, { method: 'DELETE' }),
+    onSettled: () => { factConfirmationKeys(qc, fid) },
+  })
+}
+
+/**
+ * Settle one disputed field by choosing an account (QF-39).
+ *
+ * **Both keys, and `['facts']` is the half that is easy to miss.** A resolve
+ * installs the chosen value, marks the losers `rejected` and re-derives the
+ * entry's `status`, which moves that row's `red_counts` and `status` — and,
+ * the entry having changed at all, its `fingerprint`, so `confirmed` moves with
+ * it. The listing carries all four.
+ *
+ * **`onSettled`, not `onSuccess`**, the rule `useSaveOrder` and
+ * `useSetConfirmation` already follow: the one failure this endpoint has is a
+ * 422 from the engine — the account is not on that field, or not on that entry
+ * — and the state that refused it is precisely the state on screen. Refreshing
+ * only on success would leave the reviewer choosing the same stale account
+ * forever.
+ *
+ * The route answers with the whole bundle re-read, re-gated and re-masked, so
+ * `mutationFn` is typed with it — a caller may read the settled entry straight
+ * out of the mutation result while the invalidated query is in flight.
+ */
+export function useResolveFact(fid: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ field, account }: { field: string; account: string }) =>
+      fetchJson<FactBundle>(`/api/facts/${fid}/resolve`,
+        { method: 'POST', body: JSON.stringify({ field, account }) }),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ['facts'] })
+      qc.invalidateQueries({ queryKey: ['fact', fid] })
+    },
   })
 }

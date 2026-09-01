@@ -21,18 +21,29 @@ person who can act on it.
 """
 from __future__ import annotations
 
+import re
 import time
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
-from .. import storage
-from ..access import NOT_FOUND, requires
-from ..auth import record
-from ..fingerprint import fingerprint
+from .. import facts_store, gitcommit, storage
+from ..access import NOT_FOUND, requires, requires_every
+from ..auth import record, require_session
+from ..fingerprint import fact_fingerprint, fingerprint
 from ..models import ConfirmBody
 from ..store import confirmations
 
+# The scope requirement of a fact entry, derived once for both gates — see
+# `_fact_departments`. `routers/facts` imports nothing from here, so there is
+# no cycle.
+from .facts import _targets as fact_targets
+
 router = APIRouter(prefix="/api/confirmations")
+
+#: Anchored, not a `startswith` check — a department literally named `F`, or
+#: a process id that merely begins with `F-`, must not collide with a real
+#: 5-digit fact id (QF-24's global id grammar).
+_FACT_ID_RE = re.compile(r"^F-[0-9]{5}$")
 
 
 def _target_scope(request: Request) -> str:
@@ -67,8 +78,53 @@ def _query_scope(request: Request) -> str:
 
 
 def _kind(target: str) -> str:
-    """`process` or `department`, from the shape of the id and nothing else."""
+    """`process`, `department` or `fact`, from the shape of the id and nothing
+    else. Tested against the anchored regex rather than a prefix check — see
+    `_FACT_ID_RE`."""
+    if _FACT_ID_RE.fullmatch(target):
+        return "fact"
     return "process" if "-" in target else "department"
+
+
+def _fingerprint_of(target: str, doc: dict) -> str:
+    """The canonicaliser `target`'s kind is confirmed under: `fact_fingerprint`
+    for an `F-` id (QF-24's top-level-only exclusion), `fingerprint` — D21's
+    deep one — for a process or a department."""
+    return fact_fingerprint(doc) if _kind(target) == "fact" else fingerprint(doc)
+
+
+def _fact_departments(request: Request) -> list[str] | None:
+    """The scope strings `requires_every` needs for the `F-` target in the
+    path (QF-27): every department in the entry's `scope.departments`, or
+    `["*"]` when it names none — a universal entry needs `confirm` at `*`.
+    `None` when the id is not in the store, which `requires_every` turns into
+    the same uniform 404 an out-of-scope target gets.
+
+    The derivation is `routers/facts._targets` **called**, not restated. The
+    two copies had already drifted: this one read `entry.get("scope", {})`,
+    which answers `None.get` — a 500 — on a stored `"scope": null`, where the
+    read gate's `isinstance(scope, dict)` answered the uniform 404. A gate that
+    crashes has stopped refusing, and one function is the only way two gates
+    stay one answer.
+    """
+    cfg = request.app.state.cfg
+    entry = facts_store.load_entry(cfg.data_root, request.path_params["target"])
+    if entry is None:
+        return None
+    return fact_targets(entry.get("scope"))
+
+
+def _confirm_gate(request: Request, user=Depends(require_session)):
+    """`confirm` on the path's `target` — `requires`'s single-string gate for
+    a process or department id, `requires_every`'s AND-over-departments gate
+    for an `F-` id (QF-27): a fact's required scope cannot be reduced to the
+    one string `requires` compares against a held scope, since an entry may
+    name several departments that all have to agree.
+    """
+    dep = (requires_every("confirm", _fact_departments)
+           if _kind(request.path_params["target"]) == "fact"
+           else requires("confirm", _target_scope))
+    return dep(request, user)
 
 
 def _row(conn, target: str, doc: dict) -> dict:
@@ -79,7 +135,7 @@ def _row(conn, target: str, doc: dict) -> dict:
     lets the client show the state and act on it without ever computing a
     fingerprint of its own.
     """
-    now = fingerprint(doc)
+    now = _fingerprint_of(target, doc)
     stored = confirmations.get(conn, target)
     ok = stored is not None and stored["fingerprint"] == now
     return {
@@ -97,12 +153,24 @@ def _load(cfg, target: str) -> dict:
 
     Safe to touch the filesystem here because the gate has already run: nobody
     outside `dept:{dept_of(target)}` reaches this line, so what is or is not on
-    disk is only ever disclosed to someone already inside the department.
+    disk is only ever disclosed to someone already inside the department. For a
+    fact the gate has already loaded the entry too (`_fact_departments`), so
+    this branch's own 404 is unreachable in practice through these two routes —
+    kept because `_load` is a general-purpose helper and "absent reads as the
+    uniform 404" is a property it must hold on its own, not one borrowed from
+    whichever caller happens to check first.
 
-    Shared by `POST` and `DELETE` — but the tombstone refusal is not, and does
-    not belong here. See `set_confirmation` for why it is checked there alone.
+    Shared by `POST` and `DELETE` — but the tombstone/red-entry refusal is not,
+    and does not belong here. See `set_confirmation` for why it is checked
+    there alone.
     """
-    path = (storage.overview_path(cfg.data_root, target) if _kind(target) == "department"
+    kind = _kind(target)
+    if kind == "fact":
+        entry = facts_store.load_entry(cfg.data_root, target)
+        if entry is None:
+            raise HTTPException(status_code=404, detail=NOT_FOUND)
+        return entry
+    path = (storage.overview_path(cfg.data_root, target) if kind == "department"
             else storage.proc_path(cfg.data_root, target))
     if not path.is_file():
         raise HTTPException(status_code=404, detail=NOT_FOUND)
@@ -149,7 +217,7 @@ def list_confirmations(request: Request,
 
 @router.post("/{target}")
 def set_confirmation(target: str, body: ConfirmBody, request: Request,
-                     user=Depends(requires("confirm", _target_scope))):
+                     user=Depends(_confirm_gate)):
     """Vouch for `target` at exactly the fingerprint the caller was shown.
 
     **409 when the fingerprints disagree**, and that is the point rather than a
@@ -184,10 +252,23 @@ def set_confirmation(target: str, body: ConfirmBody, request: Request,
     # visible again on a fingerprint nobody re-affirmed, with withdrawal the
     # only thing that can clear it first. A blanket refusal in `_load` would
     # take that tool away from exactly the records that need it.
-    if doc.get("tombstoned"):
+    #
+    # A fact takes the equivalent refusal on its `status` instead of on
+    # `tombstoned` — a red entry (`disputed` or `unknown`, QF-6) is not "gone",
+    # it is "not yet reconciled", and 409 rather than 403 says that: the state
+    # conflicts with what confirming means, the same reason a stale fingerprint
+    # is 409 and not something else. Checked before the fingerprint comparison
+    # so a caller cannot dodge it by echoing whatever print they were shown —
+    # red wins over green regardless of which bytes were read (QF-25).
+    if _kind(target) == "fact":
+        if doc.get("status") in ("disputed", "unknown"):
+            raise HTTPException(
+                status_code=409,
+                detail="دادهٔ قرمز قابل تأیید نیست — اول تعارض یا بی‌پاسخی را رفع کنید")
+    elif doc.get("tombstoned"):
         raise HTTPException(status_code=403,
                             detail="این فرآیند حذف شده و دیگر قابل تأیید نیست")
-    now = fingerprint(doc)
+    now = _fingerprint_of(target, doc)
     if body.fingerprint != now:
         raise HTTPException(
             status_code=409,
@@ -200,7 +281,8 @@ def set_confirmation(target: str, body: ConfirmBody, request: Request,
     # is there* and a silent forgery the moment it is loosened. The source of the
     # stored value is not something to leave depending on a guard three lines up.
     confirmations.set_confirmation(conn, target=target, fingerprint=now,
-                                   by=user["username"], at=int(time.time()))
+                                   by=user["username"], at=int(time.time()),
+                                   data_repo_commit=gitcommit.head(request.app.state.cfg))
     record(request, "confirmation.set", actor=user["username"],
            session_id=request.state.session_id, target=target,
            detail={"fingerprint": now, "kind": _kind(target)})
@@ -209,7 +291,7 @@ def set_confirmation(target: str, body: ConfirmBody, request: Request,
 
 @router.delete("/{target}")
 def revoke_confirmation(target: str, request: Request,
-                        user=Depends(requires("confirm", _target_scope))):
+                        user=Depends(_confirm_gate)):
     """Withdraw the mark (D61). Deliberate, and recorded as such.
 
     No fingerprint in the body: withdrawing says *"whatever is there is wrong"*,

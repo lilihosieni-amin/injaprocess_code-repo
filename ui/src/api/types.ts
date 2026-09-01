@@ -162,3 +162,339 @@ export interface VisibilityPolicy {
   fields: Record<PolicyField, boolean>
   version: string
 }
+
+// ─────────────────────────── quantitative facts (spec §6/§7, §14) ───────────
+
+/** The five kinds an entry can be (§7). */
+export type FactKind = 'item' | 'record' | 'measurement' | 'rule' | 'note'
+
+/** Epistemic status of a field, and of the entry as a whole (QF-6).
+ *  **Not** the confirmation tick, which is one boolean (QF-25). */
+export type FactStatus = 'confirmed' | 'inferred' | 'informal' | 'disputed' | 'unknown'
+
+/** Which departments and branches an entry binds. **Both arrays are optional**:
+ *  the schema's `scope` requires neither, an entry that names no department is
+ *  universal, and the list route serves `entry.get("scope") or {}` — so an
+ *  entry with no scope object at all reaches the client as `{}`. */
+export interface FactScope { departments?: string[]; branches?: string[] }
+
+/** A `{ref}` edge (§6). `field` and `row` narrow it to one cell. */
+export interface FactRef { ref: string; field?: string; row?: string }
+
+/**
+ * One provenance row (`source[]`), and the shape an account's `source` takes.
+ *
+ * `ref` is `string | null` in the schema — a `chat` source has no file — and
+ * the seven locators are each optional because which of them applies is decided
+ * by `type`: a sheet has `sheet`/`cell`, a script has `lines`/`function`, a PDF
+ * has `page`, a process has `node`.
+ */
+export interface FactSource {
+  type: 'sheet' | 'script' | 'comment' | 'validation' | 'cf' | 'photo' | 'pdf'
+      | 'docx' | 'voice' | 'process' | 'chat'
+  ref: string | null
+  sheet?: string; cell?: string; lines?: string; page?: number
+  function?: string; node?: string; quote?: string
+  hash?: string | null; run?: string
+}
+
+/**
+ * One of two or more competing readings of a field (§6, QF-39).
+ *
+ * `source` is **optional** and that is not defensive typing: with the
+ * `fact_sources` switch off, `visibility._public_fact` strips `source` from the
+ * envelope and from every account while leaving the rest of the account intact,
+ * because the dispute is still readable without its provenance.
+ *
+ * `value` is `unknown`: an account's value is whatever the source said — a
+ * number, a string, a range object — and the schema leaves it untyped.
+ */
+export interface FactAccount {
+  id: string
+  field: string
+  statement: string
+  status: 'open' | 'chosen' | 'rejected'
+  value?: unknown
+  unit?: string
+  speaker_role?: string | null
+  source?: FactSource
+}
+
+/** A known defect in the data (§6). `affects` is required by the schema; `fix`
+ *  carries `factor` only for `multiply`/`divide`. */
+export interface FactIssue {
+  kind: 'scale' | 'unit_kind' | 'column_shift' | 'junk' | 'bug' | 'cross_record' | 'code_collision'
+  description: string
+  affects: FactRef[]
+  field?: string
+  from_date?: string
+  to_date?: string
+  fix?: { op: 'multiply' | 'divide' | 'shift_columns' | 'ignore'; factor?: number }
+}
+
+/** `item.data` (§7). `category` and `unit` are the schema's two required keys. */
+export interface ItemData {
+  category: 'ingredient' | 'product' | 'packaging' | 'consumable' | 'place' | 'other'
+  unit: string
+  unit_raw?: string
+  code?: string
+  code_absent?: boolean
+  group?: string
+  state?: 'raw' | 'cooked' | 'frozen' | 'prepared'
+  grade?: string
+  pack?: { size: number; unit: string }
+  units?: { pack_unit: string; factor_to_base: number | null | { min: number; max: number } }[]
+  tracked?: { record?: FactRef; value: boolean; reason?: string }[]
+  stub?: boolean
+}
+
+/** One column of a `record` (§7). */
+export interface RecordField {
+  key: string
+  title: string
+  type?: 'string' | 'number' | 'integer' | 'boolean' | 'date'
+  /** Present and `null` is «بی‌پاسخ»; **absent is "not applicable"** and is not
+   *  red — conformance note 3, which is where the design got this wrong. */
+  unit?: string | null
+  unit_raw?: string
+  description?: string
+  filled_by?: string
+  group?: { key?: string; title?: string }
+  derived?: FactRef
+  refItems?: { namespace?: string }
+  constraints?: {
+    enum?: string[]; readOnly?: boolean; required?: boolean
+    minimum?: number; maximum?: number
+  }
+}
+
+/**
+ * `record.data` (§7). `medium`, `role` and `location` are required.
+ *
+ * A row is `{ key, … }` plus one property per column, so it cannot be typed
+ * more tightly than `Record<string, unknown>` without freezing the store —
+ * the same reason the schema leaves `data` an open object.
+ */
+export interface RecordData {
+  medium: 'sheet' | 'paper' | 'external' | 'native'
+  role: 'log' | 'reference' | 'mirror' | 'report' | 'config'
+  location: {
+    path?: string; spreadsheetId?: string; sheet?: string; sheetId?: number
+    hidden?: boolean
+    identifier_scheme?: { authority?: string; format?: string }
+  }
+  fields?: RecordField[]
+  rows?: (Record<string, unknown> & { key?: string; title?: string; retired?: boolean })[]
+  header_fields?: { key: string; title?: string }[]
+  sections?: { key: string; title: string; doc_number_field?: string }[]
+  signatures?: { role: string; row_range?: string }[]
+  primaryKey?: string[]
+  foreignKeys?: { fields: string[]; reference: FactRef; reference_fields?: string[]; transform?: string }[]
+  reconciled_against?: { cell: { row?: string; field?: string }; against: FactRef }[]
+  movement?: { from?: FactRef; to?: FactRef; reason?: string }
+  mirror_of?: FactRef
+  grain?: string
+  cadence?: 'nightly' | 'shift' | 'daily' | 'weekly' | 'monthly' | 'ad_hoc'
+  day_boundary?: string
+  approved_by?: string
+  blank_master?: boolean
+  stub?: boolean
+}
+
+/** `measurement.data` (§7). `quantity` and `unit` are required. */
+export interface MeasurementData {
+  quantity: 'mass' | 'count' | 'volume' | 'duration' | 'money' | 'ratio' | 'other'
+  unit: string
+  of?: FactRef
+  writes_to?: FactRef
+  when?: string
+  by?: string
+  method?: string
+  exceptions?: string
+  stub?: boolean
+}
+
+/** One value a rule reads. `from` is a `{ref}` or one of two string literals —
+ *  `operator`, `calendar` — which is why it is a union and not a `FactRef`. */
+export interface RuleInput {
+  key: string
+  title?: string
+  unit?: string | null
+  unit_title?: string
+  from?: FactRef | 'operator' | 'calendar'
+  via?: FactRef
+}
+
+/** One value a rule produces. `value: null` is «بی‌پاسخ»; `range` is the
+ *  two-ended form; `share` is a fraction of the input. */
+export interface RuleOutput {
+  key: string
+  title?: string
+  unit?: string | null
+  unit_title?: string
+  value?: unknown
+  range?: { min: number; max: number }
+  nature?: 'standard' | 'target' | 'observed' | 'limit'
+  per?: string
+  share?: number
+  of?: FactRef
+  writes_to?: FactRef
+}
+
+/** `rule.data` (§7). `inputs` and `outputs` are required — a constant is a rule
+ *  with `inputs: []`, which is what the header chip calls «مقدار ثابت». */
+export interface RuleData {
+  inputs: RuleInput[]
+  outputs: RuleOutput[]
+  lang?: 'feel' | 'table' | 'text' | 'sheets' | 'gs'
+  expr?: string
+  identifier?: string
+  original?: string
+  original_ref?: string
+  port?: boolean
+  calls?: FactRef[]
+  template_of?: FactRef
+  divergence?: 'none' | 'intentional' | 'drift' | 'unknown'
+  edge_cases?: { input?: string; expected?: string; why?: string }[]
+  table?: {
+    inputs?: string[]; outputs?: string[]
+    rows?: { when?: Record<string, unknown>; then?: Record<string, unknown> }[]
+    hit?: 'first' | 'unique' | 'collect'
+    aggregate?: 'sum' | 'product' | 'min' | 'max'
+    default?: Record<string, unknown>
+  }
+  stub?: boolean
+}
+
+/**
+ * One entry, as `GET /api/facts/{fid}` serves it inside `bundle.entry`.
+ *
+ * `data` is `Record<string, unknown>` on the envelope and narrowed per kind by
+ * the four guards below, because the schema types `data` as an open object and
+ * a discriminated union on `kind` would be a promise about the part of the
+ * payload no schema constrains.
+ *
+ * `source` is **optional**: with `fact_sources` off it is stripped whole
+ * (`visibility._public_fact`), which is a different body from one carrying an
+ * empty array, and the type says so.
+ */
+export interface FactEntry {
+  id: string
+  kind: FactKind
+  key: string
+  title: string
+  statement: string
+  scope: FactScope
+  status: FactStatus
+  retired: boolean
+  updated_at: string
+  data: Record<string, unknown>
+  source?: FactSource[]
+  aliases?: string[]
+  field_status?: Record<string, 'inferred' | 'informal'>
+  accounts?: FactAccount[]
+  valid_from?: string | null
+  valid_to?: string | null
+  supersedes?: FactRef | null
+  superseded_by?: FactRef | null
+  issues?: FactIssue[]
+  processes?: { ref: string }[]
+}
+
+export const isItem = (e: FactEntry): e is FactEntry & { data: ItemData } => e.kind === 'item'
+export const isRecordFact = (e: FactEntry): e is FactEntry & { data: RecordData } => e.kind === 'record'
+export const isMeasurement = (e: FactEntry): e is FactEntry & { data: MeasurementData } => e.kind === 'measurement'
+export const isRule = (e: FactEntry): e is FactEntry & { data: RuleData } => e.kind === 'rule'
+
+/**
+ * One row of `GET /api/facts` (§14).
+ *
+ * `fingerprint` is the entry's **current** print and `confirmed` is whether the
+ * stored mark equals it — the pair `routers/confirmations._row` reports for a
+ * process, and for the same reason: a tick drawn from this listing has to be
+ * pressable, and QF-24 forbids the client computing a print.
+ *
+ * `red_counts` is what the row's second line renders — «{n} بی‌پاسخ ·
+ * {n} متعارض» — and is served rather than derived, because the client never
+ * holds the entry those counts are over.
+ */
+export interface FactListRow {
+  id: string
+  kind: FactKind
+  key: string
+  title: string
+  aliases: string[]
+  scope: FactScope
+  status: FactStatus
+  retired: boolean
+  stub: boolean
+  red_counts: { unknown: number; disputed: number }
+  fingerprint: string
+  confirmed: boolean
+  updated_at: string
+}
+
+/** How much of the estate has been read — `merge facts check`'s own count,
+ *  rendered as «{n} از {m} کاربرگ خوانده شده». */
+export interface FactsCoverage { read: number; total: number }
+
+export interface FactsListResponse { entries: FactListRow[]; coverage: FactsCoverage }
+
+/** A registered branch, from the manifest and from nowhere else (QF-4). */
+export interface Branch { code: string; name: string }
+
+/**
+ * **A neighbour the caller may not open.** The owner's ruling of 2026-08-31 is
+ * *keep the row, hide the name*: the entry stays in `resolved`, `row_titles`,
+ * `path_labels`, `consumers` and `processes` so a count stays honest, carrying
+ * its id and this flag and nothing else — no title, no `code`, no `kind`, and
+ * for a process no `tombstoned`, `heir` or `missing_nodes`.
+ *
+ * A union rather than "title is optional and hope": every reader has to narrow
+ * before reading a name it may not have been given, and `restricted` being
+ * **absent** on an unmasked row — never `false` — is what makes that narrowing
+ * total.
+ */
+export interface Restricted { restricted: true }
+
+export const isRestricted = (v: unknown): v is Restricted =>
+  typeof v === 'object' && v !== null && (v as { restricted?: unknown }).restricted === true
+
+/** `resolved` — every id, item key and process id the entry references, → a
+ *  Persian label. `code` is the estate code rendered beside an item's title. */
+export interface FactLabel { kind: string; title: string; code?: string }
+
+/** One entry the reverse index says uses this one (QF-39). */
+export type FactConsumer = { id: string; title: string | null } | ({ id: string } & Restricted)
+
+/**
+ * One process link, resolved against `departments/**` as it stands now (QF-8).
+ *
+ * `title: null` is «the process this cites is no longer there»; `missing_nodes`
+ * is conformance note 7's «گرهٔ ارجاع‌شده حذف شده», recomputed server-side
+ * because a node a later restructure removed is invisible to everything
+ * downstream.
+ */
+export type FactProcessLink =
+  | { ref: string; title: string | null; tombstoned: boolean; heir: string | null; missing_nodes: string[] }
+  | ({ ref: string } & Restricted)
+
+/**
+ * The body of `GET /api/facts/{fid}` — and what `POST …/resolve` answers with,
+ * so a screen that settled a dispute is handed the document it would get by
+ * asking for it again.
+ *
+ * `can_confirm` is what the tick may do, not what it says: `confirm` at every
+ * department the entry names (QF-27), **and** not a red entry, because red wins
+ * over green (QF-25) and `POST /api/confirmations/{fid}` answers 409 for one.
+ */
+export interface FactBundle {
+  entry: FactEntry
+  confirmation: { confirmed: boolean; can_confirm: boolean; fingerprint: string }
+  red_paths: { unknown: string[]; disputed: string[] }
+  resolved: Record<string, FactLabel | Restricted>
+  row_titles: Record<string, string | Restricted>
+  path_labels: Record<string, string | Restricted>
+  consumers: FactConsumer[]
+  processes: FactProcessLink[]
+}

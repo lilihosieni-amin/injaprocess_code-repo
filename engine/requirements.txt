@@ -5,3 +5,5 @@ google-genai~=2.19
 google-cloud-storage~=2.18
 # extract-attachment: docx → text (pure-python, no network)
 python-docx~=1.1
+# merge facts retire: Jalali "today" for the default valid_to (QF-41)
+jdatetime~=5.0

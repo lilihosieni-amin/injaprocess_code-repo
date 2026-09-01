@@ -116,6 +116,24 @@
                                      both already taken, neither this. */
   --line-divider: #D9CEF0;        /* new — tool-group divider; same three sources */
 
+  /* §14 / Task 23 — the fact detail's outputs card, `Inja Panel.dc.html:1308`.
+     **Owner ruling of 2026-09-01**, taken on the screen rather than the
+     swatch: *the header should read as the paler band she drew, rather than
+     flattening into the unit pills below it.*
+
+     The card's head and the unit pill inside it are two greens in the design
+     and one token in the palette — `--tile-ok` #E4F6EC is the PILL (:1315), and
+     drawn on the head as well the two bands merge and the card loses its
+     hierarchy. Same for the edge: `--border-ok` #BFE5D0 is a full step darker
+     than the hairline the design draws under that head.
+
+     Named on the family's own ladder, exactly as --tile-v2…--tile-v5 and
+     --tile-c2 are: the stem plus `2` is "the paler second tint of this hue".
+     The border keeps the --border-* family's long form, so its utility is
+     `border-border-ok2`. */
+  --tile-ok2: #F1FAF5;            /* new — the outputs card's head fill */
+  --border-ok2: #DDEFE5;          /* new — and the hairline under it */
+
   /* §1.2 / §4.3 — three more S1 introduces that no token holds (24 / 4 / 1 uses).
      The fourth of that set, --border-card, is declared once above. */
   --surface-sub: #FBF9FE;         /* new — THE sub-panel surface */

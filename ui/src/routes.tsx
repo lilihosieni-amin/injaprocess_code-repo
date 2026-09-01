@@ -11,6 +11,8 @@ import { Visibility } from './screens/Visibility'
 import { Users } from './screens/Users'
 import { UserDetail } from './screens/UserDetail'
 import { Profile } from './screens/Profile'
+import { FactsList } from './facts/FactsList'
+import { FactDetail } from './facts/FactDetail'
 
 export const appRoutes: RouteObject[] = [
   { path: '/login', element: <SignIn /> },
@@ -31,6 +33,18 @@ export const appRoutes: RouteObject[] = [
       // `/flow` because it is the same document read another way, and because
       // `panelCrumbs` and `readerBack` can then answer both with one rule.
       { path: '/processes/:pid/steps', element: <Steps /> },
+      // §14 — «داده‌های کمّی». Under `RequireAuth` with every other screen and
+      // gated by nothing else here: all five facts routes answer the uniform
+      // 404 to a caller holding no Panel capability, so the screen renders the
+      // refusal the server gave rather than a predicate this tree re-derives.
+      // It needs its own entry for the reason `/visibility` and `/users` do —
+      // the catch-all below sends every unknown path to /departments, so a
+      // missing route is a silent redirect and not a blank page.
+      { path: '/facts', element: <FactsList /> },
+      // §14's detail screen. A sibling rather than a child route: it replaces
+      // the list rather than sitting inside it, exactly as `/users/:id` does,
+      // and react-router matches by specificity so `/facts` is not swallowed.
+      { path: '/facts/:fid', element: <FactDetail /> },
       { path: '/visibility', element: <Visibility /> },
       { path: '/users', element: <Users /> },
       // Before nothing and after nothing in particular: react-router matches by

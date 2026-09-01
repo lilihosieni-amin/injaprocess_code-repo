@@ -1,0 +1,38 @@
+{
+  "cooking-001": {
+    "id": "cooking-001",
+    "title": "وزن‌کشی و ثبت مانده شب پیتزا",
+    "tombstoned": false,
+    "superseded_by": null,
+    "nodes": [
+      "cooking-001-n010",
+      "cooking-001-n011"
+    ]
+  },
+  "cooking-002": {
+    "id": "cooking-002",
+    "title": "آماده‌سازی ابتدای شیفت",
+    "tombstoned": false,
+    "superseded_by": null,
+    "nodes": [
+      "cooking-002-n001",
+      "cooking-002-n002"
+    ]
+  },
+  "accounting-003": {
+    "id": "accounting-003",
+    "title": "تعیین اهداف فروش",
+    "tombstoned": true,
+    "superseded_by": "accounting-011",
+    "nodes": []
+  },
+  "accounting-011": {
+    "id": "accounting-011",
+    "title": "برنامه‌ریزی فروش ماهانه",
+    "tombstoned": false,
+    "superseded_by": null,
+    "nodes": [
+      "accounting-011-n001"
+    ]
+  }
+}

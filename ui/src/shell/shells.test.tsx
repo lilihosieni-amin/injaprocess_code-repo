@@ -537,6 +537,28 @@ describe('PanelShell chrome', () => {
     expect(within(sheet).getByRole('link', { name: /پروفایل و گذرواژه/ })).toHaveAttribute('href', '/profile')
   })
 
+  it('marks the sheet row you are on by SECTION, not by exact route', async () => {
+    // §6.0 builds these rows from `navDefs` and paints them `inScreen(m.id)`
+    // (`menuItems`, Inja Panel.dc.html:5097) — a section test, and the same one
+    // its top bar uses. This shell wrote `pathname === to`, which is the same
+    // answer only on a section's own root, so the sheet went dark on `/users/7`
+    // — a screen it draws a «کاربران» row ON — and would have done the same on
+    // Task 23's `/facts/{id}`. `sheetHere` is the predicate; `back.test.ts`
+    // covers its cases, and this covers the wiring.
+    renderAdmin('/users/7')
+    await userEvent.click(screen.getByRole('button', { name: 'فهرست' }))
+    const sheet = screen.getByRole('dialog')
+    const here = within(sheet).getByRole('link', { name: /کاربران/ })
+    expect(here.className).toMatch(/\bbg-violet\b/)
+    expect(here.className).toMatch(/\btext-card\b/)
+    // …and only that one. A predicate that lit every row would pass the three
+    // lines above and say nothing.
+    for (const name of [/دپارتمان‌ها/, /سیاست نمایش محتوا/, /پروفایل و گذرواژه/]) {
+      expect(within(sheet).getByRole('link', { name }).className, String(name))
+        .toMatch(/\bbg-card\b/)
+    }
+  })
+
   /* R5 in the sheet. Every fixture that had ever opened it was `renderAdmin()`
      — an editor holding both administration capabilities, scoped `*` — so the
      surface that carries them all on six of the eight routes was graded by one
@@ -1623,17 +1645,27 @@ describe('what the panel chrome’s class strings compile to', () => {
     }
   })
 
-  it('marks nothing at all on a route the sheet does not lead to', async () => {
-    // The negative half of the pair above. Without it a highlight spelled
-    // `true` — or one keyed off something the fixture always satisfies — paints
-    // every row violet and satisfies every "the current row is violet" line.
+  it('marks one row deep inside a section, and every other one rests', async () => {
+    // **This test used to say the opposite, and the design says it was wrong.**
+    // It asserted that `/processes/{pid}/flow` marks NOTHING — which is what an
+    // exact route match does, and §6.0 paints these rows `inScreen(m.id)`
+    // (`menuItems`, Inja Panel.dc.html:5097), a SECTION test: a process view is
+    // inside the department section, so «دپارتمان‌ها» is the row you are
+    // standing on there. Under that rule no reachable panel route marks nothing,
+    // so "nothing is marked" is not a state this sheet has.
+    //
+    // The claim it was written for survives, and is now stronger. It killed one
+    // mutant — a highlight spelled `true`, which lights all five rows. This
+    // kills that one AND the exact-match it was itself encoding, which lights
+    // none: the assertion is that exactly one is lit and it is the section's.
     renderAdmin('/processes/dining-003/flow')
     await userEvent.click(screen.getByRole('button', { name: 'فهرست' }))
     const rows = within(screen.getByRole('dialog')).getAllByRole('link')
     expect(rows.length).toBeGreaterThan(3)
     for (const row of rows) {
+      const here = (row.textContent ?? '').includes('دپارتمان‌ها')
       expect(winner(await paint(row.className), 'background-color'), row.textContent ?? '')
-        .toBe('var(--card)')
+        .toBe(here ? 'var(--violet)' : 'var(--card)')
     }
   })
 

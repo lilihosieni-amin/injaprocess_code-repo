@@ -118,3 +118,60 @@ def canonical_json(doc: dict) -> str:
 def fingerprint(doc: dict) -> str:
     """SHA-256 of the canonical form — 64 lowercase hex characters."""
     return hashlib.sha256(canonical_json(doc).encode("utf-8")).hexdigest()
+
+
+#: Excluded from the fact hash at the envelope's **top level only** — never
+#: deep, unlike `EXCLUDED` above (spec QF-24). `updated_at` is the envelope's
+#: own bookkeeping timestamp; a nested `updated_at` — a `data` key, a record
+#: column genuinely named `updated_at` — is content and must change the
+#: print. `source` is not excluded at all: on a process it is pipeline
+#: provenance, but on a fact it is the account trail a reviewer is vouching
+#: for, so it counts as content like everything else in the envelope.
+FACT_EXCLUDED_TOP_LEVEL: tuple[str, ...] = ("updated_at",)
+
+
+def _fact_value(value):
+    """`canonical`'s NFC-normalisation and integral-float narrowing, with no
+    key exclusion at any depth — `fact_canonical` applies the one top-level
+    exclusion itself, once, before recursing into this."""
+    if isinstance(value, dict):
+        return {unicodedata.normalize("NFC", k): _fact_value(v)
+                for k, v in value.items()}
+    if isinstance(value, list):
+        return [_fact_value(v) for v in value]
+    if isinstance(value, str):
+        return unicodedata.normalize("NFC", value)
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    return value
+
+
+def fact_canonical(doc: dict) -> dict:
+    """`doc` with its top-level `updated_at` gone and nothing else excluded.
+
+    A separate function from `canonical` rather than a shared one taking a
+    parametrised exclusion set: `canonical`'s exclusion is deep by design
+    (D21), and every caller of it today is the process path this task must
+    leave untouched. A shared implementation is one future edit away from
+    quietly making a fact's exclusion deep too — un-confirming every entry
+    that ever gets a `data` key or a record column named `source` or
+    `updated_at`. Two short functions that cannot drift into each other's
+    behaviour is the safer shape.
+    """
+    return {unicodedata.normalize("NFC", k): _fact_value(v)
+            for k, v in doc.items() if k not in FACT_EXCLUDED_TOP_LEVEL}
+
+
+def fact_canonical_json(doc: dict) -> str:
+    """The exact text a fact's fingerprint hashes. Public so a test can read
+    it, exactly like `canonical_json`."""
+    return json.dumps(fact_canonical(doc), sort_keys=True, separators=(",", ":"),
+                      ensure_ascii=False)
+
+
+def fact_fingerprint(doc: dict) -> str:
+    """SHA-256 of the fact canonical form — 64 lowercase hex characters
+    (QF-24)."""
+    return hashlib.sha256(fact_canonical_json(doc).encode("utf-8")).hexdigest()

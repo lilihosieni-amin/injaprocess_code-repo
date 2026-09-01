@@ -72,6 +72,10 @@ def test_the_policy_reads_back_d17s_defaults(data_root, tmp_path):
     assert body["fields"] == {
         "process_summary": False, "process_idef0": False, "process_kpis": False,
         "node_description": True, "node_actor": True, "node_icom": False,
+        # QF-26's six, defaulting **shown**: they govern the admin's facts view,
+        # which is not the reader view D17's column is written about.
+        "fact_items": True, "fact_records": True, "fact_measurements": True,
+        "fact_rules": True, "fact_notes": True, "fact_sources": True,
     }
     assert len(body["version"]) == 16
 

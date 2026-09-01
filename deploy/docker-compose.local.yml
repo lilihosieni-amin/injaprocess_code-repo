@@ -73,6 +73,10 @@ services:
       VERTEX_PROJECT: injafood
       VERTEX_LOCATION: global
       GEMINI_MODEL: gemini-3.1-pro-preview
+      # extract-attachment's .pdf/image rows (QF-30) — control-bot runs it via
+      # process-voice Stage 5a and the quantify playbook; a separate pin from
+      # GEMINI_MODEL on purpose.
+      VERTEX_VISION_MODEL: gemini-3.1-pro-preview
       GCS_BUCKET: injafood-transcribe-staging
       # The host's own gcloud ADC, read-only. Needs a quota project set once:
       #   gcloud auth application-default set-quota-project injafood

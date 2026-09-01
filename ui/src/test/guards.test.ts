@@ -424,6 +424,19 @@ describe('F10 — RTL is structural', () => {
       // scrolling region: that is `[data-r-pad]`, whose direction pair lives in
       // `src/styles/base.css` with every other screen's.
       'src/screens/Summary.tsx',
+      // The facts list's id cell — `F-00011`, a mono latin run in an otherwise
+      // Persian row, pinned exactly as the design pins it
+      // (`Inja Panel.dc.html:1055`). The screen's other latin content is the
+      // filter machinery's stored values, none of which is rendered.
+      'src/facts/FactsList.tsx',
+      // The fact detail's TWO islands, and only two — every mono run on that
+      // screen (a key, a code, a value, a formula, a file path, an id) goes
+      // through `Mono`, and an account's verbatim `statement` through
+      // `Statement`, which picks the direction from whether the string holds
+      // Persian (`Inja Panel.dc.html:1686`). Eight card files draw those runs
+      // and not one of them writes the attribute, which is the point of routing
+      // them through one module.
+      'src/facts/cards/parts.tsx',
       // The policy version digest, a mono latin run that can hold a `-` or a `_`
       // and bidi-reorders inside the Persian sentence around it. Not the label
       // beside it — that used to sit inside the same `font-mono` span and fell
@@ -559,7 +572,16 @@ describe('F4/F8 — density comes from the shell', () => {
     // (?<!-) keeps kebab-case CSS declarations like `font-size:` out of a scan
     // that broadened past src/ui/ into src/styles/ — a TS/JSX prop name is never
     // preceded by a hyphen, so this excludes only the false positive.
-    const BAD = /(?<!-)\b(density|size|scale|compact|dense|roomy|variant)\??:\s*('|"|[A-Za-z])/
+    // The `(?!\p{Script=Arabic})` after the quote is the second narrowing, and it
+    // is narrower than the file-level exemption it replaced. `factsLabels.ts`
+    // maps the value the store holds to the word a Persian screen shows, and
+    // two of those stored values are `scale` (`issues[].kind`) and `size`
+    // (`pack.size`) — keys that cannot be renamed to please a scan, because the
+    // key IS the stored value (QF-32). A density prop is never a Persian string
+    // literal, so excluding that one right-hand side costs this guard nothing
+    // and keeps the whole file policed for a real prop, which exempting it by
+    // name would not have.
+    const BAD = /(?<!-)\b(density|size|scale|compact|dense|roomy|variant)\??:\s*(['"](?!\p{Script=Arabic})|[A-Za-z])/u
     // Button's own `variant` selects a colour theme (coral/violet/green/ghost) —
     // a real, load-bearing axis distinct from density, not a size in disguise.
     // Allowlisted by file, the same pattern F10 below uses for IdBadge's
@@ -569,7 +591,15 @@ describe('F4/F8 — density comes from the shell', () => {
     // a card, a dashed block, a line inside a table — not a density. Named here
     // rather than loosening the pattern for every file, exactly as Button's
     // colour `variant` is.
-    const EXCEPTIONS = ['src/ui/Button.tsx', 'src/ui/states/index.tsx']
+    // `api/types.ts` is the same stored key at the other end of the wire, and it
+    // needs the exemption because its right-hand side is a TYPE, not a Persian
+    // string: `ItemData` writes `pack?: { size: number }`. The authority for
+    // that key is **spec §7's `item` payload**
+    // (`docs/superpowers/specs/2026-08-29-quantitative-facts-design.md:756`),
+    // not `facts.schema.json` — which types `data` as an unconstrained object
+    // (`:104`) and names no `pack` at all. The file declares no component prop
+    // of any kind, which is what this guard is about.
+    const EXCEPTIONS = ['src/ui/Button.tsx', 'src/ui/states/index.tsx', 'src/api/types.ts']
     const hits = files()
       .filter((f) => !EXCEPTIONS.includes(f.rel))
       .flatMap((f) =>
@@ -593,5 +623,85 @@ describe('F4/F8 — density comes from the shell', () => {
       idle,
       'these files are excepted from F4/F8 but no longer trip it — delete the line',
     ).toEqual([])
+  })
+})
+
+/**
+ * **§14 conformance note 9, and the only check that fails when it regresses.**
+ *
+ * The note replaces the design's inline dictionaries — `FKIND`, `FROLE`,
+ * `FLANG`, `FCADENCE`, `FMEDIUM`, `FSRC`, `FCAT`, `FQTY`, `FNATURE`, `FST`,
+ * `FSTFG`, `FISSUE` (`Inja Panel.dc.html:3304-3318`), `DEPT_FA` (:4632),
+ * `BRANCH_FA` (:4633) and the seven `*_FA` maps note 2 names — with
+ * `lib/factsLabels.ts` and the registries. `factsLabels.test.ts` proves that
+ * file is COMPLETE (every schema enumeration has a Persian word); nothing
+ * proved it was the ONLY source, and the failure the note exists to stop is a
+ * component growing a map of its own beside it. One inline
+ * `{ sheet: 'کاربرگ' }` in a card is invisible to every screen test, because
+ * the screen renders the same word either way.
+ *
+ * So a Persian *code* line under `src/facts/` is the defect, whatever shape it
+ * takes — a map, a JSX text node, a ternary's two branches. Comments are
+ * stripped first (`codeLines`), because every file here quotes the design's own
+ * copy in « » to say what it is drawing, and a check that failed on those would
+ * teach the next person to delete the explanation.
+ *
+ * Scoped to `src/facts/`: this is note 9's rule for the facts section, not a new
+ * app-wide policy. `lib/factsLabels.ts` is the authority file and sits outside
+ * the scan by construction.
+ *
+ * **Known ceiling.** `stripComments` above is a lexer, not a parser: it treats
+ * `//` and the opening of a block comment as comment starts wherever they
+ * appear, string literals included. So a Persian label sharing a line with a
+ * string that holds `//` — a URL, a path — would be blanked and invisible to
+ * this scan. No such line exists under `src/facts/` today, and the same ceiling
+ * is already load-bearing for every F6 check that reads `codeLines()`; fixing
+ * it means a real tokeniser, which is not worth it until a line needs one.
+ */
+describe('§14 note 9 — the facts screens hold no Persian of their own', () => {
+  /**
+   * `cards/fixture.ts` is the eight card tests' shared `bundleOf`, and its
+   * Persian is a served entry's own `title` and `statement` — the data a fact
+   * arrives with, not a label the screen chose. It is named here rather than
+   * skipped by a `/fixture\.ts$/` rule, because a category exemption admits the
+   * next file that happens to be called one; `files()` above drops
+   * `*.test.tsx` for the same reason and cannot see this one, which is a plain
+   * module the tests import.
+   */
+  const FIXTURES = ['src/facts/cards/fixture.ts']
+
+  /** Two or more, so a Persian WORD is the subject. The one run of exactly one
+   *  under `src/facts/` is `parts.tsx`'s `/[؀-ۿ]/` — a character-class RANGE
+   *  whose two ends are separated by a hyphen, which is the guard's own test
+   *  for "is this string Persian" and not a word on any screen. */
+  const PERSIAN_WORD = /[؀-ۿ]{2,}/
+
+  it('no file under src/facts/ writes a Persian string', () => {
+    const hits = codeLines()
+      .filter(({ rel }) => rel.startsWith('src/facts/') && !FIXTURES.includes(rel))
+      .filter(({ line }) => PERSIAN_WORD.test(line))
+    expect(
+      report(hits),
+      'every Persian word on these screens comes from lib/factsLabels.ts and the registries',
+    ).toEqual([])
+  })
+
+  it('the fixture exemption still earns its line', () => {
+    // The same rule every other list in this file follows: an exemption for a
+    // file that no longer trips the check is an absence of scrutiny the next
+    // file added beside it inherits.
+    const idle = FIXTURES.filter((rel) => !codeLines()
+      .some((l) => l.rel === rel && PERSIAN_WORD.test(l.line)))
+    expect(idle, 'exempted from note 9 but no longer Persian — delete the line')
+      .toEqual([])
+  })
+
+  it('reads the facts files at all', () => {
+    // Guards the guard: scoped to a directory, a typo in the prefix would make
+    // the check above pass by scanning nothing.
+    const scanned = new Set(codeLines()
+      .filter(({ rel }) => rel.startsWith('src/facts/')).map(({ rel }) => rel))
+    expect(scanned.size).toBeGreaterThan(10)
+    expect(scanned).toContain('src/facts/FactsList.tsx')
   })
 })

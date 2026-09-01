@@ -17,27 +17,36 @@ from typing import Iterable
 
 
 def set_confirmation(conn: sqlite3.Connection, *, target: str, fingerprint: str,
-                     by: str, at: int) -> None:
+                     by: str, at: int, data_repo_commit: str = "") -> None:
     """Vouch for `target` at exactly `fingerprint`, replacing any earlier mark.
 
     Upsert rather than insert, because there is one answer to "does the current
     fingerprint match?" and two rows would give two — one of them stale, which is
     the failure the fingerprint exists to prevent. Re-confirming after an edit is
     the ordinary path, not the exception.
+
+    `data_repo_commit` is the data-repo's `HEAD` at the moment of the vouch
+    (QF-24, `gitcommit.head`) — what makes a post-restore reconciliation able
+    to tell backup skew from genuine drift. Defaulted to `""` rather than
+    required so the callers that predate this column — there are a couple of
+    dozen, across the suite — keep working unmodified; a real confirmation
+    always supplies it.
     """
     conn.execute(
-        "INSERT INTO confirmations (target, fingerprint, confirmed_by, confirmed_at)"
-        " VALUES (?, ?, ?, ?)"
+        "INSERT INTO confirmations"
+        " (target, fingerprint, confirmed_by, confirmed_at, data_repo_commit)"
+        " VALUES (?, ?, ?, ?, ?)"
         " ON CONFLICT(target) DO UPDATE SET"
         " fingerprint = excluded.fingerprint,"
         " confirmed_by = excluded.confirmed_by,"
-        " confirmed_at = excluded.confirmed_at",
-        (target, fingerprint, by, at))
+        " confirmed_at = excluded.confirmed_at,"
+        " data_repo_commit = excluded.data_repo_commit",
+        (target, fingerprint, by, at, data_repo_commit))
 
 
 def get(conn: sqlite3.Connection, target: str) -> sqlite3.Row | None:
     return conn.execute(
-        "SELECT target, fingerprint, confirmed_by, confirmed_at"
+        "SELECT target, fingerprint, confirmed_by, confirmed_at, data_repo_commit"
         " FROM confirmations WHERE target = ?", (target,)).fetchone()
 
 

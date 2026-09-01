@@ -109,6 +109,26 @@ def _default():
     return dict(policy.DEFAULTS)
 
 
+def _fact(kind: str = "rule") -> dict:
+    """A fact envelope with both things the switches act on genuinely
+    populated: an entry-level `source[]` and an account carrying one of its
+    own. A fixture with either missing cannot tell a working strip from an
+    absent one."""
+    return {
+        "id": "F-00042", "kind": kind, "key": "test_fact", "title": "عنوان",
+        "statement": "بیانیه",
+        "scope": {"departments": ["cooking"], "branches": []},
+        "source": [{"type": "chat", "ref": "meetings/transcripts/ENTRYSOURCE.md"}],
+        "accounts": [{"account_id": "a1", "field": "title", "status": "open",
+                      "statement": "روایت", "speaker_role": "chef",
+                      "source": {"type": "chat",
+                                 "ref": "meetings/transcripts/ACCOUNTSOURCE.md"}}],
+        "status": "disputed", "retired": False,
+        "updated_at": "2026-07-06T10:00:00Z",
+        "data": {"inputs": [], "outputs": []},
+    }
+
+
 # --- the riskiest first: a filter that stops filtering ---
 
 @pytest.mark.parametrize("field", ["process_summary", "process_idef0",
@@ -464,7 +484,7 @@ def test_the_public_key_tuple_is_pinned_against_an_independent_literal():
     assert len(visibility.PUBLIC_PROCESS_KEYS) == len(expected)
 
 
-@pytest.mark.parametrize("field", list(policy.FIELDS))
+@pytest.mark.parametrize("field", list(policy.PROCESS_FIELDS))
 def test_a_policy_missing_a_switch_raises_rather_than_guessing(field):
     """The only two ways to read a switch that is not in the dict are "assume
     visible", which publishes the field the caller never decided to publish, and
@@ -474,10 +494,30 @@ def test_a_policy_missing_a_switch_raises_rather_than_guessing(field):
     keyed off `FIELDS` and therefore complete — so an absent key means a caller
     invented its own policy dict, and a `KeyError` in that caller's own test run
     is cheaper than either guess in production.
+
+    Parametrised over `PROCESS_FIELDS` rather than the whole table because the
+    document decides which switches are read: a process body never consults
+    `fact_rules`. The fact half is the test below, over a fact body.
     """
     incomplete = {f: v for f, v in _default().items() if f != field}
     with pytest.raises(KeyError):
         visibility.filtered(_doc(), policy=incomplete, sees=_sees_dining,
+                            editor=False)
+
+
+@pytest.mark.parametrize("field", list(policy.FACT_FIELDS))
+def test_a_policy_missing_a_fact_switch_raises_rather_than_guessing(field):
+    """The same rule over the fact branch (QF-26), and the same reason.
+
+    Each kind switch is only read for its own kind, so the document is chosen
+    from the switch under test; `fact_sources` is read for every kind, and the
+    note stands in for it.
+    """
+    kind_of = {switch: kind for kind, switch in visibility.FACT_SWITCH.items()}
+    doc = _fact(kind_of.get(field, "note"))
+    incomplete = {f: v for f, v in _default().items() if f != field}
+    with pytest.raises(KeyError):
+        visibility.filtered(doc, policy=incomplete, sees=_sees_dining,
                             editor=False)
 
 
@@ -589,3 +629,74 @@ def test_the_overview_filter_does_not_mutate_its_argument():
           "sub_units": [], "personnel": [], "updated_at": "2026-07-06T10:00:00Z"}
     visibility.public_overview(ov, editor=False)
     assert "updated_at" in ov
+
+
+# --- the fact branch (spec QF-26) ---
+
+def test_a_fact_is_recognised_by_its_id_and_its_kind():
+    """Both halves, because either alone claims a document this branch must not
+    shape: a process id is `dining-001`, and a stored document is never
+    revalidated on read, so an `F-` id carrying a kind outside the five is not a
+    fact this module knows how to filter."""
+    assert visibility.is_fact(_fact())
+    assert not visibility.is_fact(_doc())
+    assert not visibility.is_fact({**_fact(), "kind": "process"})
+    assert not visibility.is_fact({**_fact(), "id": "cooking-001"})
+    # Anchored, never a prefix test: `F-1` and `F-000420` are not fact ids.
+    assert not visibility.is_fact({**_fact(), "id": "F-1"})
+    assert not visibility.is_fact({**_fact(), "id": "F-000420"})
+
+
+@pytest.mark.parametrize("kind,switch", sorted(visibility.FACT_SWITCH.items()))
+def test_a_kind_whose_switch_is_off_is_withheld_whole(kind, switch):
+    """"Withheld whole", not blanked: the route answers the uniform 404 for it,
+    so the filter's job is to hand back nothing at all rather than an entry with
+    its content removed."""
+    doc = _fact(kind)
+    assert visibility.filtered(doc, policy={**_default(), switch: False},
+                               sees=_sees_dining, editor=False) == {}
+    kept = visibility.filtered(doc, policy={**_default(), switch: True},
+                               sees=_sees_dining, editor=False)
+    assert kept["id"] == "F-00042"
+    # And an editor is never withheld from: the switches are the non-editor
+    # rule, exactly as D17's column is.
+    assert visibility.filtered(doc, policy={**_default(), switch: False},
+                               sees=_sees_dining, editor=True) == doc
+
+
+def test_one_kinds_switch_does_not_hide_another_kind():
+    """A single shared "facts" switch would pass every assertion above; this is
+    what makes the five separate."""
+    out = visibility.filtered(_fact("note"),
+                              policy={**_default(), "fact_rules": False},
+                              sees=_sees_dining, editor=False)
+    assert out["kind"] == "note"
+
+
+def test_with_fact_sources_off_both_source_carriers_are_stripped():
+    doc = _fact()
+    out = visibility.filtered(doc, policy={**_default(), "fact_sources": False},
+                              sees=_sees_dining, editor=False)
+    assert "source" not in out
+    assert "source" not in out["accounts"][0]
+    assert "ENTRYSOURCE" not in _text(out) and "ACCOUNTSOURCE" not in _text(out)
+    # The account itself survives — the switch withholds provenance, not the
+    # dispute it belongs to.
+    assert out["accounts"][0]["speaker_role"] == "chef"
+    assert out["accounts"][0]["field"] == "title"
+
+
+def test_with_fact_sources_on_the_entry_travels_whole():
+    doc = _fact()
+    out = visibility.filtered(doc, policy=_default(), sees=_sees_dining,
+                              editor=False)
+    assert out == doc
+
+
+def test_the_fact_branch_does_not_mutate_its_argument():
+    doc = _fact()
+    before = copy.deepcopy(doc)
+    visibility.filtered(doc, policy={**_default(), "fact_sources": False},
+                        sees=_sees_dining, editor=False)
+    visibility.filtered(doc, policy=_default(), sees=_sees_dining, editor=True)
+    assert doc == before

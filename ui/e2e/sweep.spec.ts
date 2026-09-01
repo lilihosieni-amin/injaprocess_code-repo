@@ -1,12 +1,15 @@
 import { test, expect } from '@playwright/test'
-import type { Department, Overview, Process, VisibilityPolicy } from '../src/api/types'
+import type {
+  Branch, Department, FactBundle, FactsListResponse, Overview, Process,
+  VisibilityPolicy,
+} from '../src/api/types'
 import type { AdminUser } from '../src/api/users'
 import { FIELD, FONT_SANS, RTL, serve, shot, signedIn, visit } from './_harness'
 
 /**
  * Every screen, three widths, one file.
  *
- * The eight per-screen specs beside this one each assert their own numbers —
+ * The per-screen specs beside this one each assert their own numbers —
  * this one asserts the things that are true of *every* page and were wrong on
  * all nine. Every check here is a defect that actually shipped in this rebuild
  * and that no per-screen spec was looking for:
@@ -69,6 +72,67 @@ const SAHAR: AdminUser = {
   canSupervise: false, disabled: false, createdAt: 1_700_000_000,
 }
 
+/**
+ * §14's list, at the two rows the sweep needs: one universal and confirmed, one
+ * scoped and red. The id is the screen's only latin run, and it is pinned
+ * `dir="ltr"` — which is exactly what the §2.7 check below is written to admit
+ * and what a screen that forgot the attribute would fail on.
+ */
+const FACTS: FactsListResponse = {
+  entries: [
+    {
+      id: 'F-00001', kind: 'item', key: 'ing_1', title: 'پنیر پیتزا', aliases: [],
+      scope: { departments: [], branches: [] },
+      status: 'confirmed', retired: false, stub: false,
+      red_counts: { unknown: 0, disputed: 0 },
+      fingerprint: 'f1', confirmed: true, updated_at: '2026-09-16T14:05:00Z',
+    },
+    {
+      id: 'F-00011', kind: 'record', key: 'mande_shab', title: 'مانده شب فرنگی و برگر',
+      aliases: [], scope: { departments: ['cooking'], branches: ['chalebagh'] },
+      status: 'unknown', retired: false, stub: false,
+      red_counts: { unknown: 4, disputed: 0 },
+      fingerprint: 'f2', confirmed: false, updated_at: '2026-09-16T14:05:00Z',
+    },
+  ],
+  coverage: { read: 19, total: 28 },
+}
+
+const BRANCHES: Branch[] = [{ code: 'chalebagh', name: 'چاله‌باغ' }]
+
+/**
+ * §14's detail screen, at the one entry the sweep needs.
+ *
+ * The list joined this file when it was built; the DETAIL screen did not, and it
+ * is the larger of the two — sixteen cards, the only screen in the app with a
+ * formula island, and the only one whose header carries a control. Every defect
+ * the checks below exist for (the field, the family, RTL, a sideways scroll at
+ * 760, a latin digit in Persian prose, a console error) is one this screen can
+ * have on its own.
+ *
+ * A rule rather than a record: it draws the formula block, which is the app's
+ * one deliberate wall of latin text and therefore the strongest case for the
+ * §2.7 walk below — pinned `dir="ltr"`, so a screen that forgot the attribute
+ * fails here rather than merely looking odd.
+ */
+const RULE: FactBundle = {
+  entry: {
+    id: 'F-00030', kind: 'rule', key: 'masraf_elami', title: 'مصرف اعلامی پیتزا',
+    statement: 'مصرف اعلامی هر شب از تفاوت مانده اول و آخر شب به دست می‌آید.',
+    scope: { departments: ['cooking'], branches: ['chalebagh'] },
+    status: 'confirmed', retired: false, updated_at: '2026-09-16T14:05:00Z',
+    data: {
+      lang: 'feel',
+      expr: 'declared_use = start + received - end',
+      inputs: [{ key: 'start', title: 'موجودی اول شب', unit: 'kg', unit_title: 'کیلوگرم' }],
+      outputs: [{ key: 'declared_use', title: 'مصرف اعلامی', nature: 'observed' }],
+    },
+  },
+  confirmation: { confirmed: true, can_confirm: true, fingerprint: 'sha256:abc' },
+  red_paths: { unknown: [], disputed: [] },
+  resolved: {}, row_titles: {}, path_labels: {}, consumers: [], processes: [],
+}
+
 const POLICY: VisibilityPolicy = {
   version: 'v3_a1b2c3',
   fields: {
@@ -78,7 +142,7 @@ const POLICY: VisibilityPolicy = {
 }
 
 /**
- * One table for all eight routes.
+ * One table for all ten routes.
  *
  * `expectEveryEndpointStubbed` — which `shot` calls — aborts anything a screen
  * or a shell asks for that nothing here answered, so an over-broad table costs
@@ -94,6 +158,9 @@ const STUBS: Record<string, unknown> = {
   '/api/users': [SAHAR],
   '/api/users/2': SAHAR,
   '/api/visibility': POLICY,
+  '/api/facts': FACTS,
+  '/api/facts/branches': BRANCHES,
+  '/api/facts/F-00030': RULE,
 }
 
 /**
@@ -118,6 +185,8 @@ const ROUTES = [
   ['/users/2', 'access'],
   ['/profile', 'profile'],
   ['/visibility', 'policy'],
+  ['/facts', 'facts'],
+  ['/facts/F-00030', 'factDetail'],
 ] as const
 
 for (const [route, name] of ROUTES) {

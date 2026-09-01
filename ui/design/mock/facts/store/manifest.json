@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "branches": [
+    {
+      "code": "chalebagh",
+      "name": "چاله‌باغ"
+    },
+    {
+      "code": "naharkhoran",
+      "name": "ناهارخوران"
+    }
+  ],
+  "workbooks": [
+    {
+      "spreadsheetId": "1dmH8tCqOuqNr2nt4AwJrHC2cq-rv0tIBHc4kk05bWtU",
+      "dir": "MandeShab__ChaleBagh__Amar__Pitza",
+      "file": "Pitza.xlsx",
+      "short": "pitza_cb",
+      "scripts": [],
+      "departments": [
+        "cooking"
+      ],
+      "branches": [
+        "chalebagh"
+      ],
+      "reference_tabs": [],
+      "confirmed": true
+    },
+    {
+      "spreadsheetId": "1shXFbKyvEkpA_R6Bf4vSU1Nx_1vAhRxj8lfFYSvtG5s",
+      "dir": "MandeShab__ChaleBagh__Gozaresh markazi",
+      "file": "Gozaresh markazi.xlsx",
+      "short": "gozaresh_cb",
+      "scripts": [
+        "MandeShab__ChaleBagh__Gozaresh markazi/Gozaresh markazi.gs"
+      ],
+      "departments": [
+        "management"
+      ],
+      "branches": [
+        "chalebagh"
+      ],
+      "reference_tabs": [],
+      "confirmed": true
+    },
+    {
+      "spreadsheetId": "15M2ovUmQ7kX3nR9pLwT2aB8cD4eF6gH1",
+      "dir": "MandeShab__Mavade Avalie",
+      "file": "Mavade Avalie.xlsx",
+      "short": "mavad",
+      "scripts": [],
+      "departments": [],
+      "branches": [],
+      "reference_tabs": [
+        "پیتزا ایتالیایی",
+        "پیتزا امریکایی",
+        "پیتزا سینگل"
+      ],
+      "confirmed": true
+    },
+    {
+      "spreadsheetId": "1PiTzAnK7yX6wV5uT4sR3qP2oN1mL0kJ9",
+      "dir": "MandeShab__Naharkhoran__Amar__Pitza",
+      "file": "Pitza.xlsx",
+      "short": "pitza_nk",
+      "scripts": [],
+      "departments": [],
+      "branches": [],
+      "reference_tabs": [],
+      "confirmed": false
+    }
+  ]
+}
