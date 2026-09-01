@@ -268,7 +268,8 @@ function FactsBody({ entries }: { entries: FactListRow[] }) {
                 {/* F11 — the state is a word beside the dot, never a colour
                     alone. Two values and two only: `CONF` (:4624) folds red,
                     stub and universal to «تأییدنشده», and the «سه حالت» comment
-                    above it is stale prose the code does not implement. */}
+                    BELOW it (:4628, above `CONF_KEYS`) is stale prose the code
+                    does not implement. */}
                 <span aria-hidden className={`w-s4 h-s4 rounded-round flex-none
                   ${r.confirmed ? 'bg-green' : 'bg-junction-or'}`} />
                 <span className={`block truncate text-fs-sm2 font-semibold

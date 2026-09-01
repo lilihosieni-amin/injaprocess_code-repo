@@ -2,7 +2,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
 import { render } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { RouterProvider, createMemoryRouter } from 'react-router-dom'
+import { RouterProvider, createMemoryRouter, type RouteObject } from 'react-router-dom'
 import { appRoutes } from './routes'
 
 afterEach(() => vi.restoreAllMocks())
@@ -136,10 +136,17 @@ describe('routing', () => {
    * `/workbooks`. The facts section is two routes, the list and one entry, and a
    * third screen of any name is a decision the owner takes rather than a file
    * somebody adds.
+   *
+   * `walk` RECURSES. A one-level `(r.children ?? [r])` reads correctly against
+   * today's flat tree and would let a screen added as a *grandchild* — under a
+   * future layout route — escape an assertion whose name says "the whole route
+   * surface". A pathless route (`RequireAuth`, which renders the shell)
+   * contributes nothing and is walked through.
    */
   it('has no workbook screen — the app’s route surface is this list (note 10)', () => {
-    const paths = appRoutes.flatMap((r) => (r.children ?? [r]).map((c) => c.path))
-    expect(paths).toEqual([
+    const walk = (rs: RouteObject[]): string[] => rs.flatMap((r) =>
+      [...(r.path === undefined ? [] : [r.path]), ...walk(r.children ?? [])])
+    expect(walk(appRoutes)).toEqual([
       '/login',
       '/', '/departments', '/departments/:code', '/departments/:code/overview',
       '/processes/:pid', '/processes/:pid/flow', '/processes/:pid/steps',

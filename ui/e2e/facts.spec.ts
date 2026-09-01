@@ -116,7 +116,7 @@ test('facts — the design’s list on the violet field, at three widths', async
   const row = rowFor(page, 'مانده شب فرنگی و برگر')
 
   if (w > 760) {
-    // :1036 and :1051 — the exact template, not "six of something". The two
+    // :1037 and :1051 — the exact template, not "six of something". The two
     // fixed rails survive into the used value; the four `fr` tracks resolve to
     // px, so they are counted rather than matched. No `--grid-facts` exists to
     // name them: it is on the audit's `UNTOKENISED` list for the owner.
@@ -240,7 +240,8 @@ test('facts — the four filters, and the link that clears them', async ({ page 
   await expect(rows).toHaveCount(6)
 
   /* ---- «وضعیت تأیید» offers TWO values, whatever the design's stale comment
-         above `CONF` says about three (:4626) ---- */
+         between `CONF` and `CONF_KEYS` says about three (:4628 — it sits BELOW
+         `CONF`, :4624-4627, and above `CONF_KEYS`, :4629) ---- */
   await page.getByRole('button', { name: /وضعیت تأیید/ }).click()
   const conf = page.getByRole('listbox', { name: 'وضعیت تأیید' })
   await expect(conf.getByRole('option')).toHaveText(['وضعیت تأیید', 'تأییدشده', 'تأییدنشده'])
@@ -250,7 +251,8 @@ test('facts — the four filters, and the link that clears them', async ({ page 
 
   /* ---- R5: the clear link is ABSENT until something is set, and it is
          **ledger L-06's `--violet-mid`, not the `--conflict` the design paints**
-         (:1032) — the owner's ruling on this exact control, settled on
+         (:1033; :1032 is the `hasFactFilters` gate above it) — the owner’s
+         ruling on this exact control, settled on
          semantics: clearing a filter destroys nothing. The same value
          `UsersFilters` writes, so the two screens cannot drift apart again. ---- */
   const clear = page.getByRole('button', { name: 'پاک کردن همهٔ فیلترها' })

@@ -433,7 +433,7 @@ describe('F10 — RTL is structural', () => {
       // screen (a key, a code, a value, a formula, a file path, an id) goes
       // through `Mono`, and an account's verbatim `statement` through
       // `Statement`, which picks the direction from whether the string holds
-      // Persian (`Inja Panel.dc.html:1687`). Eight card files draw those runs
+      // Persian (`Inja Panel.dc.html:1686`). Eight card files draw those runs
       // and not one of them writes the attribute, which is the point of routing
       // them through one module.
       'src/facts/cards/parts.tsx',
@@ -649,6 +649,14 @@ describe('F4/F8 — density comes from the shell', () => {
  * Scoped to `src/facts/`: this is note 9's rule for the facts section, not a new
  * app-wide policy. `lib/factsLabels.ts` is the authority file and sits outside
  * the scan by construction.
+ *
+ * **Known ceiling.** `stripComments` above is a lexer, not a parser: it treats
+ * `//` and the opening of a block comment as comment starts wherever they
+ * appear, string literals included. So a Persian label sharing a line with a
+ * string that holds `//` — a URL, a path — would be blanked and invisible to
+ * this scan. No such line exists under `src/facts/` today, and the same ceiling
+ * is already load-bearing for every F6 check that reads `codeLines()`; fixing
+ * it means a real tokeniser, which is not worth it until a line needs one.
  */
 describe('§14 note 9 — the facts screens hold no Persian of their own', () => {
   /**
