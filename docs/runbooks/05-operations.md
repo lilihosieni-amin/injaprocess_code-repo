@@ -64,6 +64,38 @@ Expected: the CLIs resolve under `/usr/local/bin` (not under `/data`), `/data/.c
 exists (the hooks are present), and any denied file operation appears in the log if
 the agent ever tries to write outside `/data`.
 
+## Bot 2 says "Failed to authenticate. API Error: 401 OAuth access token has expired."
+
+Nothing is misconfigured — the credential in the `claude-credentials` volume is an
+OAuth **pair**, not a permanent key. The access token is short-lived and Claude Code
+refreshes it silently in the background; what you are seeing is the day the
+**refresh** failed, so `02-secrets-and-auth.md` § 4 calling the login "one-time" is
+true only for as long as that refresh keeps working. It stops working when the
+refresh token expires (long stretch with no successful refresh), is revoked (a
+subscription or password change), or is rotated out from under this host because the
+same account was logged in somewhere else.
+
+The fix is the same login, plus a restart — the running container holds the token in
+memory, so re-logging in alone does **not** unstick it:
+
+```bash
+cd /opt/inja/code-repo/deploy
+docker compose run --rm -it control-bot claude auth login   # open URL, paste code
+docker compose restart control-bot
+docker compose logs -f --tail=50 control-bot
+```
+
+Two things to check while you are there, in this order:
+
+```bash
+docker volume inspect deploy_claude-credentials   # gone => `down -v` wiped it; that is the whole story
+docker compose exec control-bot env | grep ANTHROPIC   # must print nothing
+```
+
+`ANTHROPIC_API_KEY` must stay unset (`02-secrets-and-auth.md` § 3): a stray key
+would not cause *this* error, but it silently bills the API instead of the
+subscription, so rule it out now rather than on the invoice.
+
 ## Backup & restore
 
 Three separate things need backing up, and `git-push` covers only the first.

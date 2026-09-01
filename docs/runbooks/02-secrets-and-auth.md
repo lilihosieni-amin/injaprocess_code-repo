@@ -270,6 +270,11 @@ a URL — open it, authorize, and paste the code back. Because credentials live 
 the volume, you do **not** need to repeat this on every deploy, and you do **not**
 set `ANTHROPIC_API_KEY`.
 
+One-time means per deploy, not forever: the credential is an OAuth pair whose
+refresh token eventually expires or is revoked, and the bot then answers *"401 OAuth
+access token has expired"*. Recovery is this same command plus a restart —
+[`05-operations.md`](05-operations.md).
+
 ## 5. The first Editor (and why `app.db` is not a secret file)
 
 Every UI account — username, argon2 hash, role, scope, sessions, and the activity
