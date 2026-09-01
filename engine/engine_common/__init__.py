@@ -21,6 +21,21 @@ def schema_dir():
     return pathlib.Path(__file__).resolve().parents[2] / "schemas"
 
 
+def under(path, base):
+    """Is `path` inside `base`, once both are resolved?
+
+    The containment test every CLI that turns a caller-supplied string into a
+    filesystem location owes DATA_ROOT — `merge facts export`'s `--out` and
+    `extract-attachment`'s `--path`. Resolved on both sides, so `..` and a
+    symlink are answered rather than spelled around.
+    """
+    try:
+        pathlib.Path(path).resolve().relative_to(pathlib.Path(base).resolve())
+        return True
+    except ValueError:
+        return False
+
+
 def read_json(path):
     return json.loads(pathlib.Path(path).read_text(encoding="utf-8"))
 

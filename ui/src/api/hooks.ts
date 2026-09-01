@@ -384,29 +384,17 @@ export const useFactBranches = (opts?: { enabled?: boolean }) =>
     enabled: opts?.enabled ?? true,
   })
 
-/**
- * Settle one disputed field by choosing an account (QF-39).
- *
- * **Both keys, and `['facts']` is the half that is easy to miss.** A resolve
- * installs the chosen value, marks the losers `rejected` and re-derives the
- * entry's `status`, which moves that row's `red_counts` and `status` — and,
- * the entry having changed at all, its `fingerprint`, so `confirmed` moves with
- * it. The listing carries all four.
- *
- * **`onSettled`, not `onSuccess`**, the rule `useSaveOrder` and
- * `useSetConfirmation` already follow: the one failure this endpoint has is a
- * 422 from the engine — the account is not on that field, or not on that entry
- * — and the state that refused it is precisely the state on screen. Refreshing
- * only on success would leave the reviewer choosing the same stale account
- * forever.
- *
- * The route answers with the whole bundle re-read, re-gated and re-masked, so
- * `mutationFn` is typed with it — a caller may read the settled entry straight
- * out of the mutation result while the invalidated query is in flight.
- */
+/** What moves when a fact's confirmation mark moves: the entry's own bundle,
+ *  and the listing that carries every entry's `confirmed` flag. */
+function factConfirmationKeys(qc: ReturnType<typeof useQueryClient>, fid: string) {
+  qc.invalidateQueries({ queryKey: ['fact', fid] })
+  qc.invalidateQueries({ queryKey: ['facts'] })
+}
+
 /**
  * Vouch for one entry at the fingerprint the caller was shown (QF-24), and
- * withdraw that mark again (D61).
+ * withdraw that mark again (D61) — `useRevokeFactConfirmation` below is the
+ * other half of the pair this documents.
  *
  * **The same endpoint `ConfirmAction` uses**, and deliberately so: QF-24 says
  * confirmation "reuses `app.db.confirmations`", the target is the entry id
@@ -428,11 +416,6 @@ export const useFactBranches = (opts?: { enabled?: boolean }) =>
  * request failed; refreshing only on success would leave the reviewer
  * re-submitting the bytes that were already refused.
  */
-function factConfirmationKeys(qc: ReturnType<typeof useQueryClient>, fid: string) {
-  qc.invalidateQueries({ queryKey: ['fact', fid] })
-  qc.invalidateQueries({ queryKey: ['facts'] })
-}
-
 export function useSetFactConfirmation(fid: string) {
   const qc = useQueryClient()
   return useMutation({
@@ -455,6 +438,26 @@ export function useRevokeFactConfirmation(fid: string) {
   })
 }
 
+/**
+ * Settle one disputed field by choosing an account (QF-39).
+ *
+ * **Both keys, and `['facts']` is the half that is easy to miss.** A resolve
+ * installs the chosen value, marks the losers `rejected` and re-derives the
+ * entry's `status`, which moves that row's `red_counts` and `status` — and,
+ * the entry having changed at all, its `fingerprint`, so `confirmed` moves with
+ * it. The listing carries all four.
+ *
+ * **`onSettled`, not `onSuccess`**, the rule `useSaveOrder` and
+ * `useSetConfirmation` already follow: the one failure this endpoint has is a
+ * 422 from the engine — the account is not on that field, or not on that entry
+ * — and the state that refused it is precisely the state on screen. Refreshing
+ * only on success would leave the reviewer choosing the same stale account
+ * forever.
+ *
+ * The route answers with the whole bundle re-read, re-gated and re-masked, so
+ * `mutationFn` is typed with it — a caller may read the settled entry straight
+ * out of the mutation result while the invalidated query is in flight.
+ */
 export function useResolveFact(fid: string) {
   const qc = useQueryClient()
   return useMutation({

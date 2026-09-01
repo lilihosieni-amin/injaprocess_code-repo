@@ -130,9 +130,11 @@ def _targets(scope: object) -> list[str]:
     happens to be missing", it is a fact that binds the whole restaurant, and
     only a `*` holder may have it.
 
-    Same derivation as `routers/confirmations._fact_departments`, which is the
-    confirm gate's; kept as a plain function of the scope object rather than of
-    the request, because this one is asked once per row of a listing.
+    THE derivation, not one of two: `routers/confirmations._fact_departments`
+    calls this rather than restating it, after its own copy drifted into a 500
+    on a stored `"scope": null`. Kept as a plain function of the scope object
+    rather than of the request, because this one is asked once per row of a
+    listing and the confirm gate's is asked once per request.
     """
     departments = (scope or {}).get("departments") if isinstance(scope, dict) else None
     departments = [d for d in departments or [] if isinstance(d, str)]

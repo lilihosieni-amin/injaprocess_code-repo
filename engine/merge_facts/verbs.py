@@ -31,7 +31,7 @@ import sys
 from datetime import datetime, timezone
 
 import jdatetime
-from engine_common import read_json, write_json_atomic
+from engine_common import read_json, under, write_json_atomic
 from merge_facts import (
     KIND_FILES,
     KIND_ORDER,
@@ -99,14 +99,6 @@ def _append_delta(run_dir, verb, args):
     doc = read_json(path) if path.exists() else []
     doc.append({"verb": verb, "args": args})
     write_json_atomic(path, doc)
-
-
-def _under(path, base):
-    try:
-        pathlib.Path(path).resolve().relative_to(pathlib.Path(base).resolve())
-        return True
-    except ValueError:
-        return False
 
 
 def resolve(root, fact_id, field, account_id, run_dir):
@@ -230,7 +222,7 @@ def export(root, record_key, out, include_retired):
     role = (entry.get("data") or {}).get("role")
     if role not in ("reference", "config"):
         _fail(f"record {record_key!r} has role {role!r}, not reference/config")
-    if _under(out, root / "facts") or _under(out, root / "runs"):
+    if under(out, root / "facts") or under(out, root / "runs"):
         _fail(f"export path {out} must not be under facts/ or runs/")
     fields = [f["key"] for f in (entry.get("data") or {}).get("fields") or []
              if isinstance(f, dict) and f.get("key")]

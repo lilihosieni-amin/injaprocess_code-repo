@@ -332,6 +332,35 @@ def test_load_entry_tolerates_a_malformed_index_row(data_root):
     assert facts_store.load_entry(data_root, "F-00098") is None
 
 
+def test_a_stored_null_scope_is_the_uniform_404_not_a_500(data_root, tmp_path):
+    """The store is a file on disk that nothing revalidates on read, so a
+    hand-edited or partially-migrated entry can carry `"scope": null`.
+
+    `access.py`'s rule holds inside the confirm gate too: a crash is a denial
+    of service, and an unanswerable question is a value. The read routes
+    already answered 404 here; the confirm gate answered 500, because its copy
+    of the derivation read `entry.get("scope", {})` — which returns the stored
+    `None`, not the default. It now calls the read gate's own `_targets`, so
+    there is one answer rather than two.
+    """
+    path = data_root / "facts" / "rules.json"
+    doc = json.loads(path.read_text(encoding="utf-8"))
+    doc["entries"][0]["scope"] = None
+    path.write_text(json.dumps(doc, ensure_ascii=False) + "\n", encoding="utf-8")
+
+    client = _client_as(data_root, tmp_path, "editor", "dept:cooking")
+    r = client.post(f"/api/confirmations/{RULE}", json={"fingerprint": "x" * 64})
+    assert (r.status_code, r.json()) == (404, {"detail": NOT_FOUND})
+    # …and it is the *uniform* 404: a `*` holder, who reaches every target
+    # there is, is answered the same thing, because a null scope names no
+    # department and `_targets`' explicit disjunct makes that `["*"]`… which
+    # they do hold. So they get past the gate and are refused by the stale
+    # fingerprint instead — the point being that neither caller sees a 500.
+    wild = _client_as(data_root, tmp_path, "editor", "*")
+    assert wild.post(f"/api/confirmations/{RULE}",
+                     json={"fingerprint": "x" * 64}).status_code == 409
+
+
 # --- the commit-id column ---
 
 def test_commit_id_column_written_at_set_time(data_root, tmp_path):

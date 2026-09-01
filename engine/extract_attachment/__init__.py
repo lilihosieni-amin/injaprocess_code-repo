@@ -1,6 +1,6 @@
 import hashlib
 
-from engine_common import data_root, write_text_atomic
+from engine_common import data_root, under, write_text_atomic
 
 from . import vision
 
@@ -108,9 +108,20 @@ def run_extract_attachment(dept, root=None, path=None, convert=None, describe=No
     `errors` is `(name, reason)` pairs — both genuine conversion failures and
     advisory skips (unsupported extension, `.xlsx`, missing `vertex` extra)
     land here, since the CLI reports every one of them the same way.
+
+    Raises `ValueError` for a `--path` that leaves DATA_ROOT — a structural
+    precondition failure, not a per-file skip, which the CLI turns into
+    `error: …` and exit 2 rather than the 3 an unconvertible file gets.
     """
     root = root or data_root()
     adir = (root / path) if path is not None else attachments_dir(root, dept)
+    # `--path` is a caller-supplied string joined onto DATA_ROOT, so it gets
+    # the same containment test `merge facts export`'s `--out` gets — and
+    # BEFORE any work: without it an escaping `--path` wrote a whole `.text/`
+    # tree outside the store and only then failed, one file at a time, on the
+    # `dst.relative_to(root)` below.
+    if not under(adir, root):
+        raise ValueError(f"--path {path} must stay under DATA_ROOT")
     tdir = adir / ".text"
     docx_convert = convert or docx_to_text
     ok, errors = [], []

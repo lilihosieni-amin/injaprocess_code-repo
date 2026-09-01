@@ -33,6 +33,11 @@ from ..fingerprint import fact_fingerprint, fingerprint
 from ..models import ConfirmBody
 from ..store import confirmations
 
+# The scope requirement of a fact entry, derived once for both gates — see
+# `_fact_departments`. `routers/facts` imports nothing from here, so there is
+# no cycle.
+from .facts import _targets as fact_targets
+
 router = APIRouter(prefix="/api/confirmations")
 
 #: Anchored, not a `startswith` check — a department literally named `F`, or
@@ -94,13 +99,19 @@ def _fact_departments(request: Request) -> list[str] | None:
     `["*"]` when it names none — a universal entry needs `confirm` at `*`.
     `None` when the id is not in the store, which `requires_every` turns into
     the same uniform 404 an out-of-scope target gets.
+
+    The derivation is `routers/facts._targets` **called**, not restated. The
+    two copies had already drifted: this one read `entry.get("scope", {})`,
+    which answers `None.get` — a 500 — on a stored `"scope": null`, where the
+    read gate's `isinstance(scope, dict)` answered the uniform 404. A gate that
+    crashes has stopped refusing, and one function is the only way two gates
+    stay one answer.
     """
     cfg = request.app.state.cfg
     entry = facts_store.load_entry(cfg.data_root, request.path_params["target"])
     if entry is None:
         return None
-    departments = entry.get("scope", {}).get("departments") or []
-    return [f"dept:{d}" for d in departments] if departments else ["*"]
+    return fact_targets(entry.get("scope"))
 
 
 def _confirm_gate(request: Request, user=Depends(require_session)):

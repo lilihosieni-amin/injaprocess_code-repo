@@ -133,6 +133,41 @@ def test_path_flag_roots_elsewhere(data_root):
     assert ok == ["attachments/sheets/.text/form.pdf.md"]
 
 
+def test_a_path_that_escapes_the_data_root_is_refused_before_any_work(data_root,
+                                                                     tmp_path):
+    """`--path` is a caller-supplied string joined onto DATA_ROOT, so it owes
+    the containment test `merge facts export`'s `--out` pays (`engine_common.
+    under`).
+
+    Before the guard the escape was not even reported as one: the run converted
+    every file it found, wrote a `.text/` tree beside them **outside the
+    store**, and only then failed per file on `dst.relative_to(root)` — an
+    error list that names the attachments and never the reason.
+    """
+    outside = tmp_path / "elsewhere"
+    outside.mkdir()
+    (outside / "form.pdf").write_bytes(b"%PDF-1.4 fake")
+    escape = os.path.relpath(outside, data_root)          # "../…/elsewhere"
+    fake = FakeDescriber()
+    try:
+        run_extract_attachment(None, root=data_root, path=escape, describe=fake)
+        assert False, "expected the escaping --path to be refused"
+    except ValueError as e:
+        assert "DATA_ROOT" in str(e)
+    assert fake.calls == 0
+    assert not (outside / ".text").exists()
+
+
+def test_the_cli_reports_an_escaping_path_as_exit_2(data_root, tmp_path, capsys):
+    """The CLI's own contract for a structural precondition failure — `error:`
+    on stderr and exit 2, never the 3 an unconvertible file gets."""
+    outside = tmp_path / "elsewhere"
+    outside.mkdir()
+    rc = cli_main(["--path", os.path.relpath(outside, data_root)])
+    assert rc == 2
+    assert "DATA_ROOT" in capsys.readouterr().err
+
+
 def test_missing_vertex_extra_reports_skip(monkeypatch, data_root, capsys):
     adir = _mk_attachments(data_root, "dining")
     (adir / "form.pdf").write_bytes(b"%PDF-1.4 fake")
