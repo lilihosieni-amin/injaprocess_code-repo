@@ -454,6 +454,53 @@ find them.
 | **`FieldStatusCard` sits between the accounts card and the issues card.** | Task 23 | The design draws no box for `field_status` at all (`sfFields`, :5045, is computed and rendered nowhere), so there is no markup to copy. The position is the design's own binding order — `sfFields` is defined immediately before `sfIssues` — and the box is the screen's plainest card: Appendix D's «وضعیت فیلدها» over one dot-plus-word row per marked path (F11). |
 | **The clear-filters link is `--role-link-quiet`, not the `#E23D35` the design paints (:1033).** | ledger **L-06**, the owner's ruling on this exact control | Settled on semantics: *«`--conflict` is declared destructive and conflicts, and clearing a filter destroys nothing.»* `Users` already drew it this way and `User activity` drew it `--conflict`; the ruling settled the contradiction and the facts design repeats the losing variant. `roles.css:73` is the role name. |
 | **Two greens minted: `--tile-ok2` (`#F1FAF5`) and `--border-ok2` (`#DDEFE5`).** | 2026-09-01, shown the rendered screen rather than the swatches | The outputs card's header must read as the paler band the design drew rather than flattening into the unit pills below it. Named on the `--tile-v2…--tile-v5` / `--tile-c2` ladder the palette already uses for "the paler second tint of this hue". Struck through in §2.1 rather than deleted, so this file still records what was asked and what was answered. The other three colour rows were shown in the same pass and **accepted as they are**. |
+| **The password reveal's two glyphs: a plain eye means "click to reveal", a struck-through eye means "click to hide". The app's binding is right and does not change.** | 2026-09-01 | See §6.4 — the deliverable had bound them the other way round, and the icon test was written against that. |
+
+### 6.4 The password reveal's eye — a defect in the deliverable, and which one
+
+**The ruling (2026-09-01).** A plain eye means *"click to reveal"*; a
+struck-through eye means *"click to hide"*. That is the app's behaviour today
+(`ui/src/ui/PasswordField.tsx:130`, `name={shown ? 'eyeOff' : 'eye'}`) and it is
+what the icon set's own `eye` / `eyeOff` names say. **The app does not change.**
+
+**What the deliverables actually bind.** The reveal is the one place the design
+ships an eye, and it ships it as a bound string rather than as markup, so a scan
+for `<path d="…">` reports it as drawing none:
+
+| record | `newPwShow` (password legible) | otherwise | agrees with the app |
+|---|---|---|---|
+| Panel, **before** `207485c` (`9fc9c13`, :3762) | plain lens | lens **+ strike** | **no** — inverted |
+| Panel, today (`207485c`, :5269) | lens **+ strike** | plain lens | yes |
+| Reader (`design/Inja Reader.dc.html`, :2914) | plain lens | lens **+ strike** | **no** — inverted |
+| `ui/src/ui/icons/index.tsx` + `PasswordField` | `eyeOff` (lens + strike) | `eye` (plain lens) | — |
+
+So the defect the ruling names is the **old panel's ternary, which the reader
+still carries**. `207485c` replaced the panel and, along with re-pathing the
+lens, corrected the ternary — the new panel and the app agree. The two
+deliverables now disagree with each other, and the reader is the one that is
+wrong. *(The review that raised this read the change the other way round, as the
+panel having introduced the swap; the ruling it produced is unaffected — the app
+was to stay as it is either way.)*
+
+**Two branch-introduced test failures came out of the same commit**, both in
+`ui/src/ui/icons.test.tsx`, and both are now green:
+
+* *draws eyeOff as eye struck through* asserted the OLD panel's ternary
+  (`hidden === shown + strike`). It now asserts the convention the ruling
+  states, against the panel's bytes and the app's paths together.
+* *reads the `d`s the design BINDS* asserted that both deliverables carry the
+  same seventeen bound `d`s. `207485c` also **dropped the export menu's two
+  glyphs** from the panel (its `x.icon` site is fed a department glyph now), so
+  the panel binds fifteen and the reader still seventeen. The test now asserts
+  the four-string *difference* rather than a count.
+
+**Left as it is, deliberately:** the panel's re-pathed lens
+(`M2 12s3.5-6 10-6 …`, rounder and unclosed) is *not* adopted. `ICONS.eye` still
+quotes the reader's `M2 12s4-7 10-7 … z`, which is what it has always drawn.
+Adopting the new drawing moves pixels in the product on nobody's ruling; the
+test pins which record is quoted, so the choice is visible rather than
+accidental. **Two questions for the owner, neither blocking:** adopt the panel's
+new lens? and is the reader deliverable to be corrected, or is it now stale?
 
 One more that is a *rounding* rather than a decision, recorded because it is
 the closest call in the build: a pill's weight. The design writes `700` six
