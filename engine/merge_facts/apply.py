@@ -48,7 +48,8 @@ from merge_facts.content import check_document
 # copy walks the same shapes, so they are borrowed rather than restated. The
 # dispute question is the ladder's too: `would_dispute` runs it.
 from merge_facts.ladder import (TOP_SKIP, UNION_FIELDS, _is_keyed_list,
-                                keyfn_for, merge_entry, would_dispute)
+                                keyfn_for, merge_entry, with_account_id,
+                                would_dispute)
 
 FACT_ID_RE = re.compile(r"^F-[0-9]{5}$")
 TEMP_ID_RE = re.compile(r"^T-[0-9]+$")
@@ -507,6 +508,11 @@ def _rewrite_refs(entries, resolution):
 def _new_entry(incoming, fid):
     entry = copy.deepcopy(incoming)
     entry["id"] = fid
+    if entry.get("accounts"):
+        # QF-43: a delta may declare accounts on an entry it creates, and the
+        # delta schema omits `accounts[].id` — the ladder's minter fills it in,
+        # exactly as it does for an account merged onto an existing entry.
+        entry["accounts"] = [with_account_id(a) for a in entry["accounts"]]
     entry.setdefault("valid_from", None)
     entry.setdefault("valid_to", None)
     entry.setdefault("retired", False)
@@ -551,6 +557,21 @@ def _successor(match, incoming, fid):
                 current.append(copy.deepcopy(member))
                 seen.add(keyfn(member))
     _overwrite(successor, incoming, SUCCESSION_SKIP)
+    # §11: the superseded era's accounts do NOT come along. An account is a
+    # competing reading of the *old* value, and the successor's value is a
+    # different one — so an inherited account is a dispute that is not the
+    # successor's, which would (a) be born `disputed` and never confirmable and
+    # (b) hand `resolve` a dead era's number to write over the live one
+    # (`verbs.resolve` installs `chosen["value"]` whatever its status). Settled
+    # ones are dropped for that same second reason, and nothing is lost: the
+    # predecessor keeps every one of them, and `supersedes`/`superseded_by`
+    # link the two. What the successor may carry is the incoming delta's own
+    # accounts — competing readings of the NEW era, stated by this very run.
+    accounts = [with_account_id(a) for a in incoming.get("accounts") or []]
+    if accounts:
+        successor["accounts"] = accounts
+    else:
+        successor.pop("accounts", None)
     successor["valid_from"] = incoming.get("valid_from")
     successor["valid_to"] = None
     successor["supersedes"] = {"ref": match["id"]}

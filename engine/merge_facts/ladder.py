@@ -47,6 +47,26 @@ def keyfn_for(name):
     return DEDUP_KEYS.get(name, lambda m: m.get("key"))
 
 
+def with_account_id(member):
+    """One incoming account, carrying the `id` the store's schema requires.
+
+    QF-43 lets a run add accounts to any entry, and `facts-delta.schema.json`
+    deliberately omits `accounts[].id` — the agent does not mint ids (INV-1).
+    `facts.schema.json` requires one, so a delta-declared account has to gain
+    it somewhere, and it is minted here by the same `account_id` `_dispute`
+    uses on the ones the ladder raises: two accounts that say the same thing
+    from the same source therefore carry the same id whichever road they came
+    in by. Already-identified members (the store's own) pass through
+    untouched.
+    """
+    if "id" in member:
+        return member
+    return {**member, "id": account_id(member.get("field"),
+                                       member.get("statement"),
+                                       member.get("value"),
+                                       member.get("source") or {})}
+
+
 def _equal(a, b):
     if isinstance(a, (int, float)) and isinstance(b, (int, float)):
         return float(a) == float(b)
@@ -175,8 +195,8 @@ def merge_entry(existing, incoming, incoming_source):
     # incoming accounts (the agent may state competing readings itself)
     if incoming.get("accounts"):
         _merge_collection(existing, existing.setdefault("accounts", []),
-                          incoming["accounts"], "accounts", "accounts",
-                          incoming_source, changes)
+                          [with_account_id(a) for a in incoming["accounts"]],
+                          "accounts", "accounts", incoming_source, changes)
     return changes
 
 

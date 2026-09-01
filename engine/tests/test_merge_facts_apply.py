@@ -1,7 +1,7 @@
 import copy, json, pathlib, subprocess, sys
 
 from facts_helpers import _const_delta, _root, _run_dir, _seed_units, _units_delta, _write
-from merge_facts import load_store
+from merge_facts import account_id, load_store
 from merge_facts.apply import apply
 
 def test_create_then_idempotent_reapply_is_byte_identical(tmp_path):
@@ -541,3 +541,85 @@ def test_prose_only_change_with_a_later_valid_from_does_not_supersede(tmp_path):
     assert len(rules) == 1                           # prose never disputes ...
     assert rules[0]["statement"] == "حد مجاز"        # ... and is never rewritten
     assert rules[0]["valid_to"] is None
+
+
+# --------------------------------------------------------------------------- #
+# accounts: whose era they belong to, and where their id comes from
+# --------------------------------------------------------------------------- #
+
+VALUE_PATH = "data/outputs/v/value"
+
+
+def _account(value, lines="12"):
+    """One account as a DELTA writes it — no `id`: `facts-delta.schema.json`
+    omits `accounts[].id` on purpose (the agent mints no ids, INV-1)."""
+    return {"field": VALUE_PATH, "statement": str(value), "value": value,
+            "source": {"type": "voice", "ref": "meetings/transcripts/c.txt",
+                       "lines": lines},
+            "status": "open"}
+
+
+def _tol(store):
+    return [e for e in store["rule"]["entries"] if e["key"] == "tol"]
+
+
+def test_a_successor_does_not_inherit_the_superseded_eras_accounts(tmp_path):
+    """§11: an account is a competing reading of the value the successor has
+    just replaced, so it stays with the predecessor.
+
+    Inherited, it made the successor `disputed` on a dispute that is not its
+    own — never confirmable, since the confirm gate refuses a red entry — and
+    it handed `resolve` the dead era's number to install over the live one.
+    """
+    root = _root(tmp_path); _seed_units(root)
+    apply(root, _write(root, "d1.json", _const_delta(5)), _run_dir(root, "1"))
+    apply(root, _write(root, "d2.json", _const_delta(9)), _run_dir(root, "2"))
+    d = _const_delta(12); d["entries"][0]["valid_from"] = "1405-01-01"
+    apply(root, _write(root, "d3.json", d), _run_dir(root, "3"))
+
+    rules = _tol(load_store(root))
+    old = [r for r in rules if r["valid_to"] is not None][0]
+    new = [r for r in rules if r["valid_to"] is None][0]
+    assert new.get("accounts", []) == []
+    assert new["status"] == "confirmed"              # not born disputed
+    assert new["data"]["outputs"][0]["value"] == 12
+    # …and the predecessor keeps its own, which is where the record lives on.
+    assert [a["value"] for a in old["accounts"]] == [5, 9]
+    assert all(a["status"] == "open" for a in old["accounts"])
+    assert old["status"] == "disputed"
+
+
+def test_a_successor_keeps_the_accounts_its_own_delta_states(tmp_path):
+    """The other half: dropping the old era's accounts must not swallow the
+    competing readings the superseding run itself brought."""
+    root = _root(tmp_path); _seed_units(root)
+    apply(root, _write(root, "d1.json", _const_delta(5)), _run_dir(root, "1"))
+    d = _const_delta(12)
+    d["entries"][0]["valid_from"] = "1405-01-01"
+    d["entries"][0]["accounts"] = [_account(11)]
+    apply(root, _write(root, "d2.json", d), _run_dir(root, "2"))
+    new = [r for r in _tol(load_store(root)) if r["valid_to"] is None][0]
+    assert [a["value"] for a in new["accounts"]] == [11]
+    assert new["accounts"][0]["id"] == account_id(
+        VALUE_PATH, "11", 11, _account(11)["source"])
+
+
+def test_a_delta_carrying_an_account_applies_and_the_id_is_minted(tmp_path):
+    """QF-43: a run may add an account to any entry. The delta schema omits
+    `accounts[].id` and `facts.schema.json` requires one, so `save_store`
+    refused the whole run — exit 2, nothing written — until the ladder minted
+    it, on a create and on a merge alike."""
+    root = _root(tmp_path); _seed_units(root)
+    d = _const_delta(5)
+    d["entries"][0]["accounts"] = [_account(4)]
+    apply(root, _write(root, "d1.json", d), _run_dir(root, "1"))      # create
+    entry = _tol(load_store(root))[0]
+    minted = account_id(VALUE_PATH, "4", 4, _account(4)["source"])
+    assert [a["id"] for a in entry["accounts"]] == [minted]
+
+    d2 = _const_delta(5)
+    d2["entries"][0]["accounts"] = [_account(3, lines="13")]
+    apply(root, _write(root, "d2.json", d2), _run_dir(root, "2"))     # merge
+    entry = _tol(load_store(root))[0]
+    assert [a["id"] for a in entry["accounts"]] == [
+        minted, account_id(VALUE_PATH, "3", 3, _account(3, lines="13")["source"])]
