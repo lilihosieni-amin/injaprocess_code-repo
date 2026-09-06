@@ -634,3 +634,292 @@ def item_candidates(estate, department, instances):
                                                  key=lambda p: (-p[1], p[0])) if t],
                                "sites": sites}})
     return out
+
+
+# --------------------------------------------------------------------------
+# the candidates: rule columns — one per output header, with their variants,
+# their bindings and the exclusions (§2.3)
+
+ISSUE_TEXT.update({
+    "unheaded_formula": "در تب «{sheet}» ستون {column} فرمول دارد ولی عنوانی "
+                        "ندارد؛ سطرهای {rows}.",
+    "no_rule_applies": "در تب «{sheet}» خانه‌های {rows} از ستون {column} فقط "
+                       "مقدار خانهٔ دیگری را نشان می‌دهند.",
+    "broken_formula": "فرمول ستون {column} تب «{sheet}» در محدودهٔ {rows} خطای "
+                      "{error} می‌دهد.",
+    "cached_error": "آخرین نتیجهٔ ذخیره‌شدهٔ ستون {column} تب «{sheet}» در "
+                    "محدودهٔ {rows} خطای {error} است؛ فرمول سر جای خود است.",
+    "hand_maintained_index": "فهرست غذاهای ستون {column} تب «{sheet}» داخل خود "
+                             "فرمول نگهداری می‌شود، در حالی که همان نگاشت در "
+                             "جدول نسخه‌ها هم هست.",
+    "per_cell_mirror": "تب «{sheet}» خانه‌به‌خانه از جای دیگری کپی می‌شود.",
+})
+# §2.3 gives `broken_formula` the spreadsheet's own error kind. A formula
+# `normalise` refuses — a `LET` binding one name twice — has none, so this
+# stands in its place; the sentence still says what is wrong with the formula.
+_REBOUND = "تعریف دوبارهٔ یک نام"
+
+_BROKEN = ("#REF!", "#NUM!")
+_CACHED = ("#NAME?", "#N/A", "Loading...")
+_CELL_REF = re.compile(r"^\$?([A-Z]{1,3})\$?([0-9]+|N)$")
+_GS_FUNCTION = re.compile(r"^function\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(", re.M)
+_GS_LOGIC = re.compile(r"[-+*/%]|\bif\s*\(|\?")
+# ponytail: "reads a table or a sheet range" as one regex over the body — the
+# five spellings the estate uses. A sixth spelling means one more alternative.
+_TABLE_READER = re.compile(r"Table_|IMPORT_FROM_SHEET|IMPORTRANGE"
+                           r"|getRangeByName|getSheetByName|getRange\(")
+# §2.3: the estate names a row's ingredient exactly once, as this LET local.
+ITEM_PARAM = "ingredientId"
+
+
+def _bodies(estate):
+    """Every function body in the estate: the named functions from `names.tsv`
+    and the script functions from the `.gs` files the manifest points at."""
+    out = {}
+    for dump in estate.values():
+        for name, formula in dump["names"].items():
+            if formula.startswith("LAMBDA("):
+                out.setdefault(name, formula)
+        for script in dump["row"].get("scripts") or []:
+            path = dump["sheets_root"] / script
+            if not path.exists():
+                continue
+            text = path.read_text(encoding="utf-8")
+            starts = [(m.group(1), m.start()) for m in _GS_FUNCTION.finditer(text)]
+            for i, (name, start) in enumerate(starts):
+                end = starts[i + 1][1] if i + 1 < len(starts) else len(text)
+                out.setdefault(name, text[start:end].strip())
+    return out
+
+
+def table_reading_functions(estate):
+    """The functions whose body reads a table or a sheet range. §2.3 groups the
+    variants of a column that calls one by the *set of called functions*, not by
+    shape: their inlined food-id sets vary per row and are not parameters."""
+    return frozenset(name for name, body in _bodies(estate).items()
+                     if _TABLE_READER.search(body))
+
+
+def called_names(estate):
+    """Every function name anything calls — a cell formula, a named function's
+    body or a script body. What is in here is plumbing, not a rule (§2.3)."""
+    called = set()
+    for dump in estate.values():
+        for row in dump["formulas"]:
+            text = row.get("formula", "")
+            try:
+                called |= normalise(text, table_refs={}).functions
+            except ValueError:      # a LET binding one name twice — read raw
+                called |= {m.group(1) for m in _FUNC.finditer(text)} - {"LET"}
+    for body in _bodies(estate).values():
+        # The `function name(` header is a declaration, not a call — left in,
+        # every script function would call itself and none would be a rule.
+        called |= {m.group(1) for m in
+                   _FUNC.finditer(_GS_FUNCTION.sub("", body, count=1))}
+    return frozenset(called)
+
+
+def _table_refs(dump, instances):
+    """`Table_*` → the template it names, when `names.tsv` resolves it to a tab
+    that is an instance of this run; otherwise the bare name."""
+    by_sheet = {(i["spreadsheetId"], i["sheet"]): i["template"] for i in instances}
+    out = {}
+    for name, formula in dump["names"].items():
+        sheet = formula.split("!")[0].strip("'") if "!" in formula else None
+        template = by_sheet.get((dump["row"]["spreadsheetId"], sheet))
+        out[name] = {"ref": template} if template else {"table": name}
+    return out
+
+
+def _column_of(span):
+    m = _CELL_REF.match(span.split(":")[0].replace("$", ""))
+    return m.group(1).lower() if m else None
+
+
+def _first_row(span):
+    m = _CELL_REF.match(span.split(":")[0].replace("$", ""))
+    return int(m.group(2)) if m and m.group(2) != "N" else None
+
+
+def _rows_of(span):
+    parts = span.replace("$", "").split(":")
+    first, last = _first_row(parts[0]), _first_row(parts[-1])
+    return list(range(first, (last or first) + 1)) if first else []
+
+
+def _resolve(locator, inst, fields_by_letter):
+    """A reference that points at a column of this tab's own template becomes
+    `{ref, field}`; anything else stays the locator §2.3 (d) recorded."""
+    if locator.get("sheet"):
+        return locator
+    letter = _column_of(locator["cell"])
+    field = fields_by_letter.get((inst["key"], letter))
+    return {"ref": inst["template"], "field": field} if field else locator
+
+
+def rule_columns(estate, department, templates, instances, table_functions):
+    """One candidate per output header over the department's non-reference tabs
+    (§2.3). Every candidate carries `applies_to[]` — one member per (instance,
+    column, row range) — so one concept is one entry however many books run it.
+    """
+    fields_by_letter, by_template = {}, {t["id"]: t for t in templates}
+    for template in templates:
+        for field in template["payload"]["fields"]:
+            for inst_key, letter in field["columns"].items():
+                fields_by_letter[(inst_key, letter)] = field["key"]
+    columns, issues = collections.defaultdict(list), []
+    for inst in instances:
+        template = by_template[inst["template"]]
+        if template["render"]["reference"]:
+            continue
+        dump = estate[inst["spreadsheetId"]]
+        sheet = dump["sheets"][inst["sheet"]]
+        header = sheet["head"][sheet["header_row"] - 1]
+        titles = {_letters(col): fold(cell)
+                  for col, cell in enumerate(header, start=1)}
+        labels = (template["render"]["row_labels"] or {}).get(inst["key"], {})
+        refs = _table_refs(dump, instances)
+        shaped = []
+        for row in _sheet_formulas(dump, inst["sheet"]):
+            try:
+                shaped.append((row, normalise(row["formula"], table_refs=refs)))
+            except ValueError:      # a LET binding one name twice: no shape
+                shaped.append((row, None))
+        items = {}
+        for row, shape in shaped:
+            if shape and ITEM_PARAM in shape.params:
+                for number in _rows_of(row["range"]):
+                    items.setdefault(number, {})[_column_of(row["range"])] = \
+                        "##%s" % shape.params[ITEM_PARAM]
+        for row, shape in shaped:
+            letter = _column_of(row["range"])
+            title = titles.get(letter, "")
+            span = f"{inst['sheet']}!{letter}"
+            if (not title or _PLACEHOLDER.match(title) or _is_number(title)
+                    or title in _MONTHS):
+                issues.append(_issue("unheaded_formula", instance=inst["key"],
+                                     target=span, sheet=inst["sheet"],
+                                     column=(letter or "").upper(),
+                                     rows=row["range"]))
+                continue
+            if shape is None:
+                issues.append(_issue("broken_formula", instance=inst["key"],
+                                     target=span, sheet=inst["sheet"],
+                                     column=letter.upper(), rows=row["range"],
+                                     error=_REBOUND))
+                continue
+            columns[title].append((inst, row, shape, letter,
+                                   _rows_of(row["range"]), labels, items))
+    candidates = []
+    for title in sorted(columns):
+        bindings, variants, blocks = [], [], []
+        for inst, row, shape, letter, rows, labels, items in columns[title]:
+            error = (row.get("error") or "").strip()
+            span = f"{inst['sheet']}!{letter}"
+            if error in _BROKEN:
+                issues.append(_issue("broken_formula", instance=inst["key"],
+                                     target=span, sheet=inst["sheet"],
+                                     column=letter.upper(), rows=row["range"],
+                                     error=error))
+                continue
+            if is_bare_reference(shape.text):
+                issues.append(_issue("no_rule_applies", instance=inst["key"],
+                                     target=span, sheet=inst["sheet"],
+                                     column=letter.upper(), rows=row["range"]))
+                continue
+            if error in _CACHED:
+                issues.append(_issue("cached_error", instance=inst["key"],
+                                     target=span, sheet=inst["sheet"],
+                                     column=letter.upper(), rows=row["range"],
+                                     error=error))
+            reads_a_table = bool(shape.functions & table_functions)
+            mark = (sorted(shape.functions) if reads_a_table else shape.text)
+            variant = next((v for v in variants if v["mark"] == mark), None)
+            if variant is None:
+                variant = {"key": f"v{len(variants) + 1}", "mark": mark,
+                           "shape": shape.text,
+                           "functions": sorted(shape.functions),
+                           "table_reader": reads_a_table}
+                variants.append(variant)
+                blocks.append((row["range"], inst, row["formula"]))
+            params = dict(shape.params)
+            for key, value in params.items():
+                if isinstance(value, dict) and "cell" in value:
+                    params[key] = _resolve(value, inst, fields_by_letter)
+            first = rows[0] if rows else 1
+            bindings.append({
+                "key": f"{inst['key']}__{letter}__r{first}",
+                "record": {"ref": inst["template"],
+                           "field": fields_by_letter.get((inst["key"], letter))},
+                "variant": variant["key"], "range": row["range"],
+                "params": params,
+                "rows": [{"key": f"r{n}", "row": n,
+                          "label": labels.get(str(n)),
+                          "item": next((items.get(n, {})[c] for c in
+                                        sorted(items.get(n, {}))), None)}
+                         for n in rows] if labels else []})
+        if not bindings:
+            continue
+        for variant in variants:
+            variant.pop("mark")
+        original = "\n\n".join(
+            f"# {inst['key']}__{_column_of(span)}__r{(_rows_of(span) or [1])[0]}\n"
+            + formula.replace("\\n", "\n").replace("\\t", "\t")
+            for span, inst, formula in blocks)
+        if any(v["table_reader"] for v in variants):
+            first_inst, first_letter = columns[title][0][0], columns[title][0][3]
+            issues.append(_issue("hand_maintained_index",
+                                 instance=first_inst["key"],
+                                 sheet=first_inst["sheet"],
+                                 column=first_letter.upper()))
+        heads = []
+        for binding in bindings:
+            for value in binding["params"].values():
+                if isinstance(value, dict) and value.get("field"):
+                    field = next(f for f in by_template[binding["record"]["ref"]]
+                                 ["payload"]["fields"] if f["key"] == value["field"])
+                    if field["title"] and field["title"] not in heads:
+                        heads.append(field["title"])
+        candidates.append({
+            "id": _sid("r", department, title), "kind": "rule", "unit": None,
+            "payload": {"original": original,
+                        "applies_to": sorted(bindings, key=lambda b: b["key"])},
+            "render": {"output": title, "variants": variants,
+                       "input_headers": heads,
+                       "calls": sorted({f for v in variants
+                                        for f in v["functions"]})}})
+    return candidates, issues
+
+
+def script_rules(estate, department, called):
+    """A `.gs` function no sheet formula calls, containing arithmetic or a
+    conditional, is a rule candidate in the unit of the workbook that owns the
+    script (§2.3). Everything else is library only.
+
+    ponytail: "arithmetic or a conditional" is one regex, so a plumbing routine
+    with a loop counter is minted too and the unit drops it under U1. Tighten
+    only if the drop rate is what a run complains about.
+    """
+    out = []
+    for _, dump in sorted(estate.items()):
+        row = dump["row"]
+        if department not in (row.get("departments") or []):
+            continue
+        for script in row.get("scripts") or []:
+            path = dump["sheets_root"] / script
+            if not path.exists():
+                continue
+            text = path.read_text(encoding="utf-8")
+            starts = [(m.group(1), m.start()) for m in _GS_FUNCTION.finditer(text)]
+            for i, (name, start) in enumerate(starts):
+                end = starts[i + 1][1] if i + 1 < len(starts) else len(text)
+                body = text[start:end].strip()
+                if name in called or not _GS_LOGIC.search(body):
+                    continue
+                out.append({"id": _sid("gs", row["short"], name), "kind": "rule",
+                            "unit": None,
+                            "payload": {"original": body, "applies_to": []},
+                            "render": {"output": name, "variants": [],
+                                       "input_headers": [], "calls": [],
+                                       "script": script}})
+    return out

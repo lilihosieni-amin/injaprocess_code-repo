@@ -48,6 +48,9 @@ TOLERANCE_PER_KG = (
     r"LET(\ntolerancePerKilogramGr, 140,\nteloranc, MULTIPLY("
     r"tolerancePerKilogramGr,GN),\ntelorancKg, CONVERT_GR_TO_KG(teloranc),"
     r"\nMINUS(HN , telorancKg)\n)")
+# A real slip the estate is entitled to hold: one `LET` binding a name twice.
+# `normalise` refuses it, so the column is reported and mints nothing.
+REBOUND_LET = r"LET(\nteloranc, 1,\nteloranc, 2,\nMINUS(DN , teloranc)\n)"
 MIRROR = (r'LET(\nsheetName, "مواد",\ndataRange,"A:D",'
           r'\nIMPORT_FROM_SHEET(SheetsFileId_Bom,sheetName,dataRange)\n)')
 
@@ -119,6 +122,7 @@ FORMULAS = {
     "SPCH": [
         ["پیتزا", "B4", "", r"'تاریخ'!CN", 1, "29", ""],
         ["پیتزا", "C4", "", r"'تاریخ'!DN", 1, "مرداد", ""],
+        ["پیتزا", "E6", "", REBOUND_LET, 1, "0", ""],
         ["پیتزا", "F6:F8", "1", "MINUS(DN,EN)", 3, "0.05", ""],
         ["پیتزا", "G6", "", ACTUAL_USE.format(id=1), 1, "52.93", ""],
         ["پیتزا", "G7", "", ACTUAL_USE.format(id=26), 1, "4.175", ""],
