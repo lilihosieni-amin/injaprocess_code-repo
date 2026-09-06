@@ -537,6 +537,17 @@ function StructureCard({ bundle, data, onOpen }: {
   // a Persian prose node.
   const format = loc.identifier_scheme?.format
   const mirror = refTitle(bundle, data.mirror_of)
+  // **Owner report, 2026-09-06:** every stored `foreignKeys` member is an
+  // import descriptor — `{spreadsheetId, sheet, range, target}` — where the
+  // spec's `{fields, reference, …}` (:903) belongs, and the row below joined
+  // `fk.fields` unguarded, so the mirrors would not open at all. The content
+  // pass refuses that shape now; a member with neither side describes no join,
+  // so it is skipped rather than half-drawn — a row naming no columns and no
+  // table is worse than its absence. This is the same never-raise reading every
+  // other value on this screen already gets.
+  const foreignKeys = (data.foreignKeys ?? []).filter(
+    (fk) => Array.isArray(fk?.fields) && fk.fields.length > 0 && fk.reference?.ref,
+  )
   return (
     <DetailCard className="mt-s7">
       <HeadBand>{label(SCREEN_LABELS, 'heading_record_structure')}</HeadBand>
@@ -659,10 +670,10 @@ function StructureCard({ bundle, data, onOpen }: {
           <RefLink named={mirror} onOpen={onOpen} className="text-fs-menu" />
         </LabelRow>
       )}
-      {(data.foreignKeys ?? []).length > 0 && (
+      {foreignKeys.length > 0 && (
         <div className="px-s9 py-s6 border-b border-line-row">
           <Eyebrow>{L('foreignKeys')}</Eyebrow>
-          {(data.foreignKeys ?? []).map((fk) => (
+          {foreignKeys.map((fk) => (
             <div key={fk.fields.join('+')} style={PX.rowY7}
               className="flex items-center gap-s4 flex-wrap">
               <Mono className="text-fs-xs text-body-ink">{fk.fields.join(' + ')}</Mono>

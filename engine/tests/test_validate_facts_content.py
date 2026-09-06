@@ -423,6 +423,54 @@ def test_row_member_not_a_declared_field_fails():
     assert any("not_a_field" in m for m in msgs)
 
 
+def test_foreign_key_without_its_two_sides_fails():
+    # The shape 84 stored records carry, verbatim from `F-00216`: an IMPORT
+    # descriptor written into `foreignKeys`, where §8 puts `{fields, reference,
+    # reference_fields, transform?}`. The membership loop below iterated
+    # `fk.get("fields") or []`, so an absent `fields` was an empty list and the
+    # member passed — every one of the 84 validated cleanly and then crashed the
+    # screen that drew it. A key that names neither its own columns nor the
+    # table it points at declares no join.
+    record = _record(role="mirror",
+                     data={"mirror_of": {"ref": "F-00193"},
+                           "foreignKeys": [{"spreadsheetId": "S",
+                                            "sheet": "singlePizza",
+                                            "range": "A:X",
+                                            "target": {"ref": "F-00193"}}]})
+    msgs = check_document(_doc(record), "facts-delta")
+    assert any("foreignKeys" in m for m in msgs)
+
+
+def test_foreign_key_missing_either_side_alone_fails():
+    # The stored 84 lack both halves, so the test above cannot tell which check
+    # caught them. One record per half, so each is load-bearing on its own.
+    def one(fk):
+        return _record(role="reference",
+                       data={"fields": [{"key": "code", "title": "c",
+                                        "type": "string"}],
+                             "rows": [{"key": "p1", "code": "p1"}],
+                             "foreignKeys": [fk]})
+    no_reference = one({"fields": ["code"], "reference_fields": ["key"]})
+    assert any("reference" in m
+               for m in check_document(_doc(no_reference), "facts-delta"))
+    no_fields = one({"reference": {"ref": "F-00007"},
+                     "reference_fields": ["key"]})
+    assert any("fields" in m
+               for m in check_document(_doc(no_fields), "facts-delta"))
+
+
+def test_foreign_key_with_both_sides_passes():
+    record = _record(role="reference",
+                     data={"primaryKey": ["code"],
+                           "fields": [{"key": "code", "title": "c",
+                                      "type": "string"}],
+                           "rows": [{"key": "p1", "code": "p1"}],
+                           "foreignKeys": [{"fields": ["code"],
+                                            "reference": {"ref": "F-00007"},
+                                            "reference_fields": ["key"]}]})
+    assert check_document(_doc(record), "facts-delta") == []
+
+
 def test_reserved_row_name_as_field_key_fails():
     record = _record(data={"fields": [{"key": "unit", "title": "u",
                                        "type": "string"}]})

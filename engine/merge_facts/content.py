@@ -342,10 +342,29 @@ def _check_record_shape(entry, messages, label):
         if m not in declared_all:
             messages.append(f"{label}: primaryKey member {m!r} is not a "
                             f"declared field")
+    # §8's shape — `{fields, reference, reference_fields, transform?}` — and both
+    # halves are required: a key naming neither its own columns nor the entry it
+    # points at declares no join at all. 84 stored records carried an IMPORT
+    # descriptor here instead (`{spreadsheetId, sheet, range, target}`), and the
+    # membership loop below read `fk.get("fields") or []`, so an absent `fields`
+    # was an empty list and every one of them passed this pass cleanly. A mirror
+    # has no `fields[]` to join on in the first place; its `mirror_of` and
+    # `import` already say where it comes from.
     for fk in data.get("foreignKeys") or []:
         if not isinstance(fk, dict):
+            messages.append(f"{label}: foreignKeys member is not an object")
             continue
-        for m in fk.get("fields") or []:
+        members = fk.get("fields")
+        if (not isinstance(members, list) or not members
+                or not all(isinstance(m, str) for m in members)):
+            messages.append(f"{label}: foreignKeys member declares no fields "
+                            f"naming the columns it joins on")
+            members = []
+        reference = fk.get("reference")
+        if not isinstance(reference, dict) or not reference.get("ref"):
+            messages.append(f"{label}: foreignKeys member declares no reference "
+                            f"naming the entry it points at")
+        for m in members:
             if m not in declared_all:
                 messages.append(f"{label}: foreignKeys field {m!r} is not a "
                                 f"declared field")
