@@ -437,21 +437,42 @@ export function FactGrid({
   return (
     <div className="overflow-x-auto">
       <div role="table" aria-label={name} className="min-w-full">
-        <div role="row" style={tracks}
-          className={`grid min-w-full ${headFill} border-b border-border-current`}>
+        {/* The head fill and both rules are painted on the CELLS, not on the
+            row — **owner report, 2026-09-06:** «Starting from a certain column
+            onward, the table has neither a colored header nor the lines drawn
+            between rows.»
+
+            A row's tracks are `minmax(110px,1fr)`, so a grid with more columns
+            than fit overflows its own box; `min-width:100%` sizes that box to
+            the SCROLL CONTAINER, never to the tracks, and a background and a
+            `border-bottom` paint the box. Everything past the container's edge
+            was therefore bare — nothing missing from those columns, the row
+            simply was not as wide as its own contents.
+
+            The design paints on the row (:1349, :1356) and has the same defect;
+            its mock never carries a table wide enough to show it. Widening the
+            row instead was measured and rejected: `width:max-content` re-sizes
+            every track through the `1fr`, which equalises them all to the
+            widest column — `140 + 10×110` became `11×140`, 300px wider, for a
+            bug about paint. The cells ARE the tracks, so painting there covers
+            exactly the right area and moves nothing. The grid has no `gap`,
+            which is what makes per-cell rules read as one line. */}
+        <div role="row" style={tracks} className="grid min-w-full">
           {head.map((cell, i) => (
             <span key={i} role="columnheader"
-              className={`px-s6 py-s5 text-fs-xxs font-bold text-muted whitespace-nowrap ${text}`}>
+              className={`px-s6 py-s5 text-fs-xxs font-bold text-muted whitespace-nowrap
+                          border-b border-border-current ${headFill} ${text}`}>
               {cell}
             </span>
           ))}
         </div>
         {rows.map((row) => (
           <div key={row.key} role="row" style={tracks}
-            className={`grid min-w-full border-b border-line-row ${rowClassName}`}>
+            className={`grid min-w-full ${rowClassName}`}>
             {row.cells.map((cell, i) => (
               <div key={i} role="cell" title={cell.title} style={PX.cell}
-                className={`min-w-0 overflow-hidden ${text} ${cell.className ?? ''}`}>
+                className={`min-w-0 overflow-hidden border-b border-line-row
+                            ${text} ${cell.className ?? ''}`}>
                 {cell.node}
               </div>
             ))}
