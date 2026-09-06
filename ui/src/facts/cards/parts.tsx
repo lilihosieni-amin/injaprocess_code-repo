@@ -411,6 +411,7 @@ export interface GridCell {
  */
 export function FactGrid({
   label: name, tracks, head, rows, headFill = 'bg-tile-v4', rowClassName = '',
+  align = 'start',
 }: {
   label: string
   tracks: CSSProperties
@@ -419,7 +420,20 @@ export function FactGrid({
   /** :1660 — the edge-cases head is `--surface-sub`, not `--tile-v4`. */
   headFill?: string
   rowClassName?: string
+  /**
+   * Where a head and its cells sit in their track.
+   *
+   * `start` is the design's own answer for all four tables (:1198, :1358,
+   * :1379, :1660). `center` is the **owner's correction**, 2026-09-06, and it
+   * is opt-in rather than the default because it belongs to the two grids whose
+   * columns hold VALUES — the decision table and the record grid. The columns
+   * table and the edge-cases table each carry a column of wrapped Persian prose
+   * (a field's notes, an edge case's «چرا»), and a centred paragraph is a
+   * different thing from a centred value.
+   */
+  align?: 'start' | 'center'
 }) {
+  const text = align === 'center' ? 'text-center' : 'text-start'
   return (
     <div className="overflow-x-auto">
       <div role="table" aria-label={name} className="min-w-full">
@@ -427,7 +441,7 @@ export function FactGrid({
           className={`grid min-w-full ${headFill} border-b border-border-current`}>
           {head.map((cell, i) => (
             <span key={i} role="columnheader"
-              className="px-s6 py-s5 text-fs-xxs font-bold text-muted whitespace-nowrap text-start">
+              className={`px-s6 py-s5 text-fs-xxs font-bold text-muted whitespace-nowrap ${text}`}>
               {cell}
             </span>
           ))}
@@ -437,7 +451,7 @@ export function FactGrid({
             className={`grid min-w-full border-b border-line-row ${rowClassName}`}>
             {row.cells.map((cell, i) => (
               <div key={i} role="cell" title={cell.title} style={PX.cell}
-                className={`min-w-0 overflow-hidden ${cell.className ?? ''}`}>
+                className={`min-w-0 overflow-hidden ${text} ${cell.className ?? ''}`}>
                 {cell.node}
               </div>
             ))}
@@ -447,6 +461,20 @@ export function FactGrid({
     </div>
   )
 }
+
+/**
+ * The design's truncation idiom for a grid cell (:1358, :1396), and the reason
+ * it is a named constant rather than four literals.
+ *
+ * `inline-block` + `max-width:100%` truncates exactly as `block truncate` does,
+ * but keeps the span in its cell's inline flow so the CELL decides where it
+ * sits. A block box makes its own alignment context, and `text-align: start`
+ * then resolves against the span's OWN `dir` — which sent every `dir="ltr"`
+ * island (a symbol, a number) to the left of its column while every Persian
+ * cell stayed right. That was the owner's 2026-09-06 report, and this is the
+ * shape that cannot reproduce it.
+ */
+export const CELL_TRUNCATE = 'inline-block max-w-full truncate align-middle'
 
 /** «—» — a field the entry does not carry. Not «؟», which is a leaf the source
  *  never answered; the design draws the two differently and so does this. */
