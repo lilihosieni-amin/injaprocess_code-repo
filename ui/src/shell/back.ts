@@ -54,6 +54,37 @@ export function isProcessView(pathname: string): boolean {
   return /^\/processes\/[^/]+\/(flow|steps)\/?$/.test(pathname)
 }
 
+/** An entry's own screen — `/facts/{fid}`, and nothing under it. */
+const FACT_ENTRY = /^\/facts\/[^/]+\/?$/
+
+/**
+ * Every route whose «بازگشت» answers **history** rather than the trail.
+ *
+ * `isProcessView`'s own note explains why it was scoped to two routes and not
+ * written for every one: *"on the other seven routes the trail's own answer IS
+ * where the person came from"*. That was true when it was written and it is not
+ * true of `/facts/{fid}`, which is why this exists rather than a widened
+ * `isProcessView` — that predicate is shared with `ReaderShell`, and the reader
+ * has no facts screens to re-decide.
+ *
+ * A fact cites other facts: an item's screen links to the rule that consumes it,
+ * that rule's inputs link back to items, and every one of those destinations is
+ * `/facts/{fid}` with the trail «دپارتمان‌ها» → «داده‌های کمّی» → the entry.
+ * So «آیتم → قاعده» and «فهرست → قاعده» are the same url and the same
+ * `crumbs[length-2]`, and the trail cannot tell them apart — owner report,
+ * 2026-09-06: *"if we went from an item's page into a rule's page, pressing back
+ * should go to the item's page, not to the quantitative data page."*
+ *
+ * **The list is deliberately not here.** It is reached from the tray, so its
+ * trail IS its origin; answering history there would walk back out of the
+ * section. And this is also what restores the list's scroll: `useScrollMemory`
+ * keys its restore on a POP, so a `<Link>` — a PUSH — could never have brought
+ * the offset back, however the list itself was written.
+ */
+export function answersHistory(pathname: string): boolean {
+  return isProcessView(pathname) || FACT_ENTRY.test(pathname)
+}
+
 /**
  * Which nav-tray entry the pill sits under — §6.0's `inScreen`
  * (`Inja Panel.dc.html:4787-4788`), which is a **section** test and not a route

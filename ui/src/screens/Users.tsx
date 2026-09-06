@@ -16,6 +16,7 @@ import { RefusalScreen } from './Refusal'
 import { UsersFilters } from './UsersFilters'
 import { NO_FILTERS, matches, type UserFilters } from './usersFilter'
 import type { AdminUser } from '../api/users'
+import { useHistoryState } from '../shell/historyState'
 
 /** What D14 surfaces instead of repointing. Written once and used on both
  *  screens, so the row and the record cannot come to word it differently. */
@@ -122,8 +123,11 @@ export function Users() {
  * request happens only for somebody the gate has already let through.
  */
 function UsersBody({ users, isPending }: { users: AdminUser[]; isPending: boolean }) {
-  const [q, setQ] = useState('')
-  const [filters, setFilters] = useState<UserFilters>(NO_FILTERS)
+  // Same loss as the facts list had, and the same fix: opening a user unmounts
+  // this screen, so the filters have to live on the history entry rather than
+  // the mount. See `shell/historyState`.
+  const [q, setQ] = useHistoryState('users:q', '')
+  const [filters, setFilters] = useHistoryState<UserFilters>('users:filters', NO_FILTERS)
   const navigate = useNavigate()
   const { data: departments } = useDepartments()
   const names = Object.fromEntries((departments ?? []).map((d) => [d.code, d.name]))

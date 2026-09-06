@@ -1,4 +1,4 @@
-import { useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
+import { type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useDepartments, useFactBranches, useFacts } from '../api/hooks'
 import { refusalStatus } from '../api/client'
@@ -14,6 +14,7 @@ import { LoadFailedScreen, LoadingState } from '../ui/states'
 import { RefusalScreen } from '../screens/Refusal'
 import { NO_FILTERS, UNIVERSAL, anyActive, matches, type FactFilters } from './factsFilter'
 import type { FactListRow, FactScope } from '../api/types'
+import { useHistoryState } from '../shell/historyState'
 
 /**
  * §14's «داده‌های کمّی» — every quantitative fact the estate has been read for,
@@ -87,8 +88,11 @@ export function FactsList() {
  * Mounted here, both registries are read only once the listing has arrived.
  */
 function FactsBody({ entries }: { entries: FactListRow[] }) {
-  const [q, setQ] = useState('')
-  const [filters, setFilters] = useState<FactFilters>(NO_FILTERS)
+  // Kept against the history entry, not the mount — opening an entry unmounts
+  // this screen, and «بازگشت» must hand back the list the person narrowed
+  // rather than a fresh one. See `shell/historyState`.
+  const [q, setQ] = useHistoryState('facts:q', '')
+  const [filters, setFilters] = useHistoryState<FactFilters>('facts:filters', NO_FILTERS)
   const navigate = useNavigate()
   // Conformance note 9 — the design's inline `DEPT_FA` (:4632) and `BRANCH_FA`
   // (:4633) are replaced by the registries, so a department renamed in the

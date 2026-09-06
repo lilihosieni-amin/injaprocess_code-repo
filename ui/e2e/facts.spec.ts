@@ -315,3 +315,81 @@ test('facts — the four filters, and the link that clears them', async ({ page 
   // about one band of it.
   await expect(page.getByText(/کاربرگ خوانده شده/)).toHaveCount(0)
 })
+
+/**
+ * A listing long enough to scroll, and one entry to open out of it.
+ *
+ * The six-row fixture above fits on the screen at every width this spec runs, so
+ * it can never show an offset being kept or lost.
+ */
+const MANY: FactsListResponse = {
+  entries: Array.from({ length: 40 }, (_, i) => ({
+    id: `F-${String(i + 100).padStart(5, '0')}`,
+    kind: 'item' as const,
+    key: `ing_${i}`,
+    title: `قلم شمارهٔ ${i}`,
+    aliases: [],
+    scope: { departments: [], branches: [] },
+    status: 'confirmed' as const,
+    retired: false,
+    stub: false,
+    red_counts: { unknown: 0, disputed: 0 },
+    fingerprint: `p${i}`,
+    confirmed: true,
+    updated_at: '2026-09-16T14:05:00Z',
+  })),
+  coverage: { read: 1, total: 1 },
+}
+
+/** The thinnest bundle `FactDetail` will render — this test opens an entry only
+ *  to come back from it, and asserts nothing about what it drew. */
+const ONE = {
+  entry: {
+    id: 'F-00120', kind: 'item' as const, key: 'ing_20', title: 'قلم شمارهٔ 20',
+    statement: 'یک قلم.', scope: { departments: [], branches: [] },
+    status: 'confirmed' as const, retired: false,
+    updated_at: '2026-09-16T14:05:00Z', data: {}, source: [],
+  },
+  confirmation: { confirmed: true, can_confirm: false, fingerprint: 'p20' },
+  red_paths: { unknown: [], disputed: [] },
+  resolved: {}, row_titles: {}, path_labels: {}, consumers: [], processes: [],
+}
+
+test('facts — «بازگشت» hands back the list it left, filtered and where it was', async ({ page }) => {
+  // Owner report, 2026-09-06: *"when we go back to the quantitative data page,
+  // it should show from the exact scroll position we were at, and any filters we
+  // had applied before should still be in place."*
+  //
+  // **This is the half no unit test can reach.** The offset lives in
+  // `useScrollMemory`, which restores on a POP and on nothing else, so the
+  // regression this guards is the back control going back to being a `<Link>` —
+  // a PUSH — which would leave both halves looking exactly like a fresh visit.
+  await signedIn(page)
+  await serve(page, {
+    '/api/facts': MANY,
+    '/api/facts/F-00120': ONE,
+    '/api/facts/branches': BRANCHES,
+    '/api/departments': DEPARTMENTS,
+    '/api/pending': [],
+  })
+  await visit(page, '/facts', 'facts')
+
+  // A filter that still leaves the list longer than the screen.
+  await page.getByRole('searchbox').fill('قلم')
+  const box = page.locator('[data-r-pad]')
+  await box.evaluate((el) => { el.scrollTop = 600 })
+  const before = await box.evaluate((el) => el.scrollTop)
+  expect(before).toBeGreaterThan(0)
+
+  await page.getByRole('row').filter({ hasText: 'قلم شمارهٔ 20' }).first().click()
+  await expect(page).toHaveURL(/\/facts\/F-00120$/)
+
+  await page.getByRole('button', { name: 'بازگشت' }).click()
+  await expect(page).toHaveURL(/\/facts$/)
+
+  // The filter the person set, still set…
+  await expect(page.getByRole('searchbox')).toHaveValue('قلم')
+  // …and the offset they left, within a pixel or two of itself.
+  await expect.poll(async () => box.evaluate((el) => el.scrollTop))
+    .toBeGreaterThan(before - 3)
+})

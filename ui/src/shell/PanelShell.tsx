@@ -12,7 +12,7 @@ import { Icon } from '../ui/Icon'
 import { Logo } from '../ui/Logo'
 import { toFa } from '../lib/format'
 import { panelCrumbs } from './crumbs'
-import { canGoBack, isProcessView, sheetHere, traySection } from './back'
+import { answersHistory, canGoBack, sheetHere, traySection } from './back'
 import { useScrollMemory } from './scroll'
 
 // §6.0 — the nav tray's shell. These entries *navigate*, so they are links in a
@@ -152,8 +152,9 @@ export function PanelShell({ session }: { session: SessionDescriptor }) {
   const back = crumbs.length > 1 ? crumbs[crumbs.length - 2] : undefined
   const home = pathname === '/departments'
   /** Where «بازگشت» answers history instead of the trail — owner ruling; the
-   *  predicate and its reasoning live in `./back`. */
-  const onFlow = isProcessView(pathname)
+   *  predicate and its reasoning live in `./back`. Two process views and an
+   *  entry's own facts screen: the routes whose trail cannot know the way in. */
+  const byHistory = answersHistory(pathname)
   // §6.0 labels the sheet's administration group. `useId` because the label is
   // what names the group to a screen reader, and two panel shells on one page
   // (the test file mounts several) must not both claim the same id.
@@ -444,7 +445,7 @@ export function PanelShell({ session }: { session: SessionDescriptor }) {
       data-r-crumbbar aria-label="مسیر"
       className="flex items-center gap-s5 px-topbar py-crumb-y bg-tile-v2 border-b border-line flex-none"
     >
-      {back?.to !== undefined && (onFlow && canGoBack() ? (
+      {back?.to !== undefined && (byHistory && canGoBack() ? (
         /* Same box, same glyph, same word — a `<button>` only because there is
            no href that means "the entry before this one". A `<Link>` whose
            `onClick` called `nav(-1)` would still advertise a URL to the middle
