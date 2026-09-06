@@ -17,6 +17,7 @@ from dump_workbook import (
     init_manifest,
     is_ids_tab,
     is_mirror_tab,
+    manifest_reconcile,
     row_labels,
 )
 from dump_workbook.cli import main
@@ -59,12 +60,12 @@ def _sheet(columns, max_row):
 
 
 def _estate(tmp_path, books=(("Amar__Pitza", "Pitza.xlsx", "SID1"),
-                             ("Amar__Kanter", "Kanter.xlsx", "SID2"))):
+                             ("Amar__Kanter", "Kanter.xlsx", "SID2")), **kw):
     """A DATA_ROOT with `attachments/sheets/{dir}/{file}` for each book."""
     root = tmp_path / "data"
     sheets = root / "attachments" / "sheets"
     for directory, name, sid in books:
-        make_workbook(sheets / directory / name, spreadsheet_id=sid)
+        make_workbook(sheets / directory / name, spreadsheet_id=sid, **kw)
     return root
 
 
@@ -604,7 +605,7 @@ def test_init_manifest_is_idempotent_and_touches_nothing_confirmed(tmp_path):
     sheets = root / "attachments" / "sheets"
     first = init_manifest(sheets)
     first["workbooks"][0].update(confirmed=True, departments=["cooking"],
-                                 branches=["chalebagh"],
+                                 branches=["chalebagh"], unresolved=[],
                                  reference_tabs=["مواد اولیه"], short="pitza_cb")
     first["branches"] = [{"code": "chalebagh", "name": "چاله‌باغ"}]
     (sheets / "manifest.json").write_text(json.dumps(first, ensure_ascii=False),
@@ -618,9 +619,109 @@ def test_init_manifest_is_idempotent_and_touches_nothing_confirmed(tmp_path):
     make_workbook(sheets / "Amar__Farangi" / "Farangi.xlsx", spreadsheet_id="SID3")
     third = init_manifest(sheets)
     assert len(third["workbooks"]) == len(first["workbooks"]) + 1
-    assert third["workbooks"][:len(first["workbooks"])] == first["workbooks"]
+    # …against the second pass, not the first: confirming Kanter as cooking is
+    # what §2.2 proposes cooking to its sibling Pitza from, so pass 2 is where
+    # the fixpoint is. A new workbook must not disturb either row.
+    assert third["workbooks"][:len(again["workbooks"])] == again["workbooks"]
     new = third["workbooks"][-1]
     assert new["spreadsheetId"] == "SID3" and new["confirmed"] is False
+
+
+def test_manifest_reconcile_drops_the_three_kinds_of_wrong_reference_tab():
+    """The owner answered the question that was put at Gate M, and the question
+    never mentioned that a tab whose only formula is a whole-tab import is an
+    edge (QF-48). The row is repaired in place and silently (§2.2)."""
+    row = {"spreadsheetId": "SID1", "confirmed": True,
+           "reference_tabs": ["SheetsFileIds", "Table_Ingredients_Pizza",
+                              "مواد حساس", "پیتزا امریکایی"]}
+    dump = {"sheets": {"sheets": []},
+            "formulas": [["Table_Ingredients_Pizza", "A1", "", MIRROR_FORMULA,
+                          1, "نام", ""],
+                         ["مواد حساس", "G6", "", "MINUS(FN,EN)", 1, "10", ""]]}
+    issues = manifest_reconcile(row, dump)
+    assert row["reference_tabs"] == ["پیتزا امریکایی"]
+    assert row["confirmed"] is True             # reconciled, never re-asked
+    assert [(i["kind"], i["sheet"]) for i in issues] == [
+        ("reference_tab_is_ids", "SheetsFileIds"),
+        ("reference_tab_is_mirror", "Table_Ingredients_Pizza"),
+        ("reference_tab_computes", "مواد حساس")]
+    assert all(i["run_only"] and i["spreadsheetId"] == "SID1" for i in issues)
+
+
+def test_init_manifest_proposes_the_bom_tab_and_nothing_dated(tmp_path, monkeypatch,
+                                                              capsys):
+    """§2.2's reference-tab proposal: item codes, no formulas, no date column.
+    The line tab carries codes and no formulas too — the date header is the
+    only thing that separates a nightly log from a definition table."""
+    root = _estate(tmp_path, v3_tabs=True)
+    monkeypatch.setenv("DATA_ROOT", str(root))
+    assert main(["--init-manifest"]) == 0
+    manifest = _json(root / "attachments" / "sheets" / "manifest.json")
+    validate("manifest.schema.json", manifest)
+    row = next(w for w in manifest["workbooks"] if w["spreadsheetId"] == "SID1")
+    assert row["reference_tabs"] == ["پیتزا امریکایی"]
+    assert row["departments"] == [] and row["branches"] == []
+    assert row["unresolved"] == ["departments", "branches"]
+    assert row["confirmed"] is False
+
+
+def test_the_branch_token_in_the_path_is_proposed(tmp_path, monkeypatch, capsys):
+    root = _estate(tmp_path, books=(
+        ("MandeShab__ChaleBagh__Amar__Farangi", "Farangi.xlsx", "SID1"),
+        ("Sandogh__Sandogh - NaharKhoran", "Sandogh.xlsx", "SID2")))
+    monkeypatch.setenv("DATA_ROOT", str(root))
+    main(["--init-manifest"])
+    rows = {w["spreadsheetId"]: w for w in
+            _json(root / "attachments" / "sheets" / "manifest.json")["workbooks"]}
+    assert rows["SID1"]["branches"] == ["chalebagh"]
+    assert rows["SID2"]["branches"] == ["naharkhoran"]
+    assert "branches" not in rows["SID1"]["unresolved"]
+
+
+def test_the_department_is_proposed_only_when_the_confirmed_siblings_agree(
+        tmp_path, monkeypatch, capsys):
+    """The tree does not determine a department — `…__Amar__Kanter` is cooking
+    and `…__Amar__Anbar markazi` is warehouse — so agreement is the whole
+    test."""
+    root = _estate(tmp_path, books=(("Amar__Pitza", "Pitza.xlsx", "SID1"),
+                                    ("Amar__Kanter", "Kanter.xlsx", "SID2"),
+                                    ("Anbar__Anbar", "Anbar.xlsx", "SID3")))
+    sheets = root / "attachments" / "sheets"
+    monkeypatch.setenv("DATA_ROOT", str(root))
+    main(["--init-manifest"])
+    manifest = _json(sheets / "manifest.json")
+    for workbook in manifest["workbooks"]:
+        if workbook["spreadsheetId"] == "SID1":
+            workbook.update(departments=["cooking"], branches=["chalebagh"],
+                            reference_tabs=[], unresolved=[], confirmed=True)
+    (sheets / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False),
+                                          encoding="utf-8")
+    main(["--init-manifest"])
+    rows = {w["spreadsheetId"]: w for w in
+            _json(sheets / "manifest.json")["workbooks"]}
+    assert rows["SID2"]["departments"] == ["cooking"]   # same first segment
+    assert rows["SID3"]["departments"] == []            # a different one
+
+
+def test_a_confirmed_row_keeps_its_answers_and_is_never_re_proposed(
+        tmp_path, monkeypatch, capsys):
+    """An empty judgement column on a confirmed row is the owner's «none».
+    Re-proposing it would send all 28 estate rows back to Gate M."""
+    root = _estate(tmp_path, v3_tabs=True)
+    sheets = root / "attachments" / "sheets"
+    monkeypatch.setenv("DATA_ROOT", str(root))
+    main(["--init-manifest"])
+    manifest = _json(sheets / "manifest.json")
+    for workbook in manifest["workbooks"]:
+        workbook.update(departments=["cooking"], branches=["chalebagh"],
+                        reference_tabs=[], unresolved=[], confirmed=True)
+    (sheets / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False),
+                                          encoding="utf-8")
+    main(["--init-manifest"])
+    rows = {w["spreadsheetId"]: w for w in
+            _json(sheets / "manifest.json")["workbooks"]}
+    assert rows["SID1"]["reference_tabs"] == []
+    assert rows["SID1"]["unresolved"] == [] and rows["SID1"]["confirmed"] is True
 
 
 # --------------------------------------------------------------------------

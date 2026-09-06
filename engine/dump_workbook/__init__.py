@@ -1051,15 +1051,100 @@ def structure_md_for(xlsx_path):
     return xlsx_path.with_name(xlsx_path.stem + ".structure.md")
 
 
-def init_manifest(sheets_root):
-    """Fill the manifest's mechanical columns from the folder and write it.
+_JUDGEMENT = ("departments", "branches", "reference_tabs")
+_BRANCH_CODES = ("chalebagh", "naharkhoran")
 
-    Idempotent: an existing row is matched by `spreadsheetId`; a confirmed row is
-    left exactly as it is, an unconfirmed one has its mechanical columns
-    refreshed (a rename is mechanical), and a workbook with no row at all is
-    appended with `confirmed: false`. The judgement columns — `departments`,
-    `branches`, `reference_tabs` — are nobody's business here: the `quantify`
-    agent proposes them and a person confirms them at Gate M (§3).
+
+def _first_segment(directory):
+    """`MandeShab__ChaleBagh__Amar__Pitza` → `MandeShab`. The estate's paths
+    join their segments with `__` inside one directory name as often as with
+    `/`, so both separate."""
+    return next((s for part in (directory or "").split("/")
+                 for s in part.split("__") if s), "")
+
+
+def manifest_reconcile(row, dump):
+    """Take out of a row's `reference_tabs` the tabs that cannot be a reference
+    record, and say which and why (§2.2).
+
+    Three of the estate's confirmed rows name a tab that is not a table: an ids
+    tab, a mirror (QF-48) and a tab that computes — procurement's «مواد حساس»
+    and «مواد عادی». A person answered the question that was put at Gate M and
+    the question mentioned none of this, so the row is repaired in place and
+    silently; the issues come back for the run to report once, and none of them
+    makes the row unresolved. `dump` is `{"sheets": <the sheets.json
+    document>, "formulas": <the formulas.tsv rows>}`.
+    """
+    by_tab = {}
+    for formula in dump.get("formulas") or []:
+        by_tab.setdefault(formula[0], []).append(formula)
+    issues, kept = [], []
+    for name in row.get("reference_tabs") or []:
+        if is_ids_tab(name):
+            kind = "reference_tab_is_ids"
+        elif is_mirror_tab(by_tab.get(name) or []):
+            kind = "reference_tab_is_mirror"
+        elif by_tab.get(name):
+            kind = "reference_tab_computes"
+        else:
+            kept.append(name)
+            continue
+        issues.append({"kind": kind, "sheet": name, "run_only": True,
+                       "spreadsheetId": row.get("spreadsheetId")})
+    row["reference_tabs"] = kept
+    return issues
+
+
+def _reference_tab_proposal(dump):
+    """Tabs that read as definition tables: item codes in the head, no formula
+    of their own, no date column in the header (§2.2). The line-inventory and
+    sales tabs carry no formulas either, so the no-formula test alone does not
+    separate them — the date column does. A mirror always carries its one
+    formula, so the same test excludes it."""
+    computing = {formula[0] for formula in dump.get("formulas") or []}
+    out = []
+    for sheet in (dump.get("sheets") or {}).get("sheets") or []:
+        head, index = sheet.get("head") or [], sheet.get("header_row")
+        if (not sheet.get("codes") or sheet["name"] in computing
+                or is_ids_tab(sheet["name"])
+                or has_date_header(head[index - 1] if index else [])):
+            continue
+        out.append(sheet["name"])
+    return out
+
+
+def _propose(row, dump, workbooks):
+    """Write §2.2's proposal into each judgement column that is still empty. A
+    filled column is never re-proposed, and a proposal that comes out empty
+    leaves the column for Gate M to answer."""
+    if not row.get("departments"):
+        head = _first_segment(row.get("dir"))
+        seen = {tuple(w.get("departments") or []) for w in workbooks
+                if w is not row and w.get("confirmed")
+                and _first_segment(w.get("dir")) == head}
+        seen.discard(())
+        if len(seen) == 1:
+            row["departments"] = list(seen.pop())
+    if not row.get("branches"):
+        folded = (row.get("dir") or "").lower()
+        row["branches"] = [code for code in _BRANCH_CODES if code in folded]
+    if not row.get("reference_tabs") and dump:
+        row["reference_tabs"] = _reference_tab_proposal(dump)
+
+
+def init_manifest(sheets_root, dumps=None):
+    """Fill the manifest's mechanical columns from the folder, propose the
+    judgement columns from the dumps, and write it (§2.2).
+
+    Idempotent, and the two states are different: a **confirmed** row keeps
+    every answer it holds — an empty judgement column there is the owner's
+    «none», not a gap — and only has its reference tabs reconciled. An
+    unconfirmed or new row has its mechanical columns refreshed (a rename is
+    mechanical) and a proposal written into every judgement column still empty;
+    `unresolved[]` then names the columns no proposal could fill and
+    `confirmed` is derived from it, so the two can never disagree. `dumps` is
+    `{spreadsheetId: {"sheets": …, "formulas": …}}` from the same invocation's
+    dump; a workbook missing from it simply gets no proposal.
     """
     sheets_root = pathlib.Path(sheets_root)
     path = sheets_root / "manifest.json"
@@ -1076,23 +1161,29 @@ def init_manifest(sheets_root):
         directory = xlsx.parent.relative_to(sheets_root).as_posix()
         scripts = sorted(f"{directory}/{gs.name}" for gs in xlsx.parent.glob("*.gs"))
         row = rows.get(spreadsheet_id)
-        if row is not None and row.get("confirmed"):
-            continue
         if row is None:
             row = {"spreadsheetId": spreadsheet_id, "short": "",
                    "departments": [], "branches": [], "reference_tabs": [],
-                   "confirmed": False}
+                   "unresolved": [], "confirmed": False}
             rows[spreadsheet_id] = row
             manifest["workbooks"].append(row)
+        dump = (dumps or {}).get(spreadsheet_id)
+        for issue in (manifest_reconcile(row, dump) if dump else []):
+            print(f"dump-workbook: warning: {xlsx.name}: {issue['sheet']} is not "
+                  f"a reference table ({issue['kind']}) — removed", file=sys.stderr)
+        if row.get("confirmed"):
+            row["unresolved"] = []
+            continue
         row["dir"], row["file"], row["scripts"] = directory, xlsx.name, scripts
         if not row.get("short"):
             row["short"] = _mint_short(directory, xlsx.stem, taken)
             if row["short"]:
                 taken.add(row["short"])
-        row.setdefault("confirmed", False)
-        for key, default in (("departments", []), ("branches", []),
-                             ("reference_tabs", [])):
-            row.setdefault(key, list(default))
+        for key in _JUDGEMENT:
+            row.setdefault(key, [])
+        _propose(row, dump, manifest["workbooks"])
+        row["unresolved"] = [key for key in _JUDGEMENT if not row[key]]
+        row["confirmed"] = not row["unresolved"]
 
     write_json_atomic(path, manifest)
     return manifest

@@ -110,18 +110,22 @@ def main(argv=None):
                 print(f"dump-workbook: {line}", file=sys.stderr)
             raise SystemExit(2)
 
+    dumps = {}
     for xlsx in books:
         summary = dump_workbook(xlsx, structure_md_for(xlsx), dump_root,
                                 reference_tabs=reference_tabs.get(xlsx, ()))
+        # `init_manifest` proposes from this same invocation's dump (§2.2) — the
+        # summary is what was just written, so nothing is read back off disk.
+        dumps[summary["spreadsheetId"]] = {"sheets": {"sheets": summary["sheets"]},
+                                           "formulas": summary["formulas"]}
         print(f"{summary['spreadsheetId']}\t{xlsx.name}\t"
               f"{summary['meta']['sheet_count']} tabs")
 
     if args.init_manifest:
-        manifest = init_manifest(sheets_root)
-        unconfirmed = [row for row in manifest["workbooks"]
-                       if not row.get("confirmed")]
+        manifest = init_manifest(sheets_root, dumps)
+        unresolved = [row for row in manifest["workbooks"] if row.get("unresolved")]
         print(f"manifest: {len(manifest['workbooks'])} workbooks, "
-              f"{len(unconfirmed)} awaiting Gate M")
+              f"{len(unresolved)} awaiting Gate M")
     return 0
 
 
