@@ -18,7 +18,7 @@ import sys
 from engine_common import (read_json, validate, write_json_atomic,
                            write_text_atomic)
 from merge_facts import (KIND_ORDER, _sheet_identities, canonical_scope,
-                         iter_ref_objects, load_store, null_paths)
+                         iter_ref_objects, load_store, null_paths, set_path)
 from merge_facts.audit import flags_over
 from merge_facts.content import lint_prose
 
@@ -254,6 +254,17 @@ def _fa(value):
     return str(value).translate(_DIGITS)
 
 
+def _account(field, side):
+    """One side of a disagreement, in the shape §2.6 gives an open account: no
+    `id` — `apply` mints those — and the value in the owner's digits. Step 7
+    writes two of these for a cross-source disagreement, and the reviewer's
+    `account` resolution (step 0) writes the same two off the same record."""
+    return {"field": field, "value": side["value"], "status": "open",
+            "speaker_role": None,
+            "statement": "مقدار ثبت‌شده برای این خانه: " + _fa(side["value"]),
+            "source": side["source"]}
+
+
 def _address(entry):
     """`(kind, key, canonical scope)` — how the review addresses an assembled
     entry, and how two units are found to have minted the same one (§2.6)."""
@@ -354,8 +365,28 @@ def _fold_review(run_dir, state, draft, scratch):
     address = {}
     for entry in draft:
         address.setdefault(_address(entry), []).append(entry)
-    folded = []
+    folded, settled = [], []
     for decision in doc["decisions"]:
+        if decision.get("action") == "contradiction":
+            # The fifth action, `review`-only: the reviewer settles a
+            # `unit_drift` the cross-unit pass flagged — `fix` writes the leaf,
+            # `account` keeps both readings open for the owner. It settles a
+            # record rather than deciding a candidate, so it never joins
+            # `folded`: merged onto a decision it would replace the `keep` and
+            # the entry would leave the delta altogether. The flags are the
+            # ones `scratch` carries, which are the ones `review/input.md` was
+            # rendered from — a field none of them names is an address the
+            # reviewer invented, and an invented address discards the whole
+            # document (QF-52).
+            addr = _address(decision["entry"]) if decision.get("entry") else None
+            flag = next((f for f in scratch["flags"]
+                         if f["code"] == "unit_drift"
+                         and f["field"] == decision["field"]
+                         and _address(f["entry"]) == addr), None)
+            if flag is None:
+                return "discarded"
+            settled.append((flag, decision))
+            continue
         # `into` may be an address too (`facts-unit.schema.json`'s `entryAddr`),
         # and `_target_of` walks skeleton ids — so it is resolved here or the
         # document is discarded, never handed on as a dict nothing can follow.
@@ -383,7 +414,24 @@ def _fold_review(run_dir, state, draft, scratch):
                                  if v is not None}}
         merged["unit"] = previous.get("unit", "review")
         state["by_skeleton"][decision["skeleton"]] = merged
+    state["settled"] = settled
     return "applied"
+
+
+def _settle(entries, state):
+    """The `contradiction`s of step 0, applied over step 7's survivors — the
+    only review action that waits for the merge, because the entry it settles
+    is the one the merge leaves behind."""
+    by_address = {_address(entry): entry for entry in entries}
+    for flag, decision in state.get("settled") or []:
+        entry = by_address.get(_address(decision["entry"]))
+        if entry is None:               # the same review renamed what it settled
+            continue
+        if decision["resolution"] == "fix":
+            set_path(entry, decision["field"], decision["value"])
+        else:
+            entry.setdefault("accounts", []).extend(
+                _account(decision["field"], side) for side in flag["sides"])
 
 
 def _unwrap(value, prefix, status):
@@ -811,12 +859,7 @@ def _cross_unit(root, entries, state):
                                   "field": path, "sides": sides})
                     continue
                 for side in sides:
-                    keeper.setdefault("accounts", []).append(
-                        {"field": path, "value": side["value"], "status": "open",
-                         "speaker_role": None,
-                         "statement": "مقدار ثبت‌شده برای این خانه: "
-                                      + _fa(side["value"]),
-                         "source": side["source"]})
+                    keeper.setdefault("accounts", []).append(_account(path, side))
         survivors.append(keeper)
     flags += _template_split(survivors) + _wrapper_variants(survivors, state)
     flags += flags_over(root, [{k: v for k, v in e.items()
@@ -924,6 +967,7 @@ def assemble(root, run_dir, *, review=False):
     run_dir, skeleton, state = _prepare(root, run_dir, review)
     entries = _build_entries(root, skeleton, state)
     _cross_unit(root, entries, state)
+    _settle(entries, state)
     problems = _lint_entries(entries, skeleton.get("unit_symbols") or [])
     if problems:
         for line in problems:

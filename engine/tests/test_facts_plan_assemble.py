@@ -534,6 +534,58 @@ def test_a_review_rewrite_reaches_a_new_entry(tmp_path):
     assert fresh["key"] == note["key"]      # §3.1 mints it from about[] + question
 
 
+def test_a_review_merge_into_folds_a_new_entry_away(tmp_path):
+    """The `new[]` handle is a merge source as well as a target: the note the
+    reviewer folds into the rule leaves nothing of its own in the delta."""
+    root, run_dir, note = _run_with_a_note(tmp_path)
+    _write_review(run_dir, [{"entry": {"kind": "note", "key": note["key"],
+                                       "scope": note["scope"]},
+                             "action": "merge_into", "reason_code": "duplicate",
+                             "into": {"kind": "rule", "key": "enheraf",
+                                      "scope": {"departments": ["cooking"],
+                                                "branches": ["chalebagh"]}}}])
+    assert assemble(root, run_dir, review=True)["review_status"] == "applied"
+    delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
+    assert [e["kind"] for e in delta["entries"] if e["kind"] == "note"] == []
+    assert any(e["key"] == "enheraf" for e in delta["entries"])
+
+
+def test_a_review_split_reaches_a_new_entry(tmp_path):
+    """One `new[]` item the reviewer reads as two — split over the pseudo
+    candidate, whose payload each part is written over."""
+    root = _root(tmp_path)
+    rule = _rule_out()
+    rule["new"] = [{"kind": "item", "key": "panir", "title": "پنیر",
+                    "statement": "پنیری که آشپز روی پیتزا می‌ریزد.",
+                    "data": {"category": "ingredient", "unit": "kg"}}]
+    run_dir = _run(root, {"u-a": _record_out(), "u-b": rule})
+    assemble(root, run_dir)
+    digest(root, run_dir)
+    _write_review(run_dir, [{"entry": {"kind": "item", "key": "panir",
+                                       "scope": {"departments": ["cooking"],
+                                                 "branches": []}},
+                             "action": "split", "reason_code": "other",
+                             "into": [
+                                 {"key": "panir_pitza", "title": "پنیر پیتزا",
+                                  "statement": "پنیری که با کیلوگرم شمرده "
+                                               "می‌شود.",
+                                  "takes": ["x"],
+                                  "data": {"category": "ingredient",
+                                           "unit": "kg"}},
+                                 {"key": "panir_varaqei",
+                                  "title": "پنیر ورقه‌ای",
+                                  "statement": "پنیری که با بسته شمرده می‌شود.",
+                                  "takes": ["x"],
+                                  "data": {"category": "ingredient",
+                                           "unit": "pack"}}]}])
+    assert assemble(root, run_dir, review=True)["review_status"] == "applied"
+    delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
+    items = {e["key"]: e for e in delta["entries"] if e["kind"] == "item"}
+    assert "panir" not in items
+    assert items["panir_pitza"]["data"]["unit"] == "kg"
+    assert items["panir_varaqei"]["data"]["unit"] == "pack"
+
+
 def test_two_records_on_one_tab_are_flagged_template_split(tmp_path):
     """§2.6 step 7 / §3.2 — `find_match` will not rename and `apply` refuses
     the pair, so the reviewer hears about it here."""
@@ -627,3 +679,80 @@ def test_the_delta_is_schema_valid_and_survives_a_simulated_apply(tmp_path):
              json.loads(delta.read_text(encoding="utf-8")))
     _store, problems = simulate(root, delta, run_dir)
     assert problems == []
+
+
+def _tol_new(value):
+    """A rule two units mint alike but for one number — step 7's `unit_drift`,
+    which no source kind separates and only the reviewer settles (§2.6)."""
+    return {"kind": "rule", "key": "tol", "title": "حد مجاز انحراف مصرف",
+            "statement": "حد مجاز انحراف مصرف که سرآشپز تعیین کرده است.",
+            "data": {"inputs": [],
+                     "outputs": [{"key": "v", "title": "حد مجاز",
+                                  "unit": "kg", "value": value}]}}
+
+
+def _drifted_run(tmp_path):
+    """A run whose two units read one transcript and wrote one rule a number
+    apart, digested so a review may be folded onto it."""
+    root = _root(tmp_path)
+    record, rule = _record_out(), _rule_out()
+    record["new"], rule["new"] = [_tol_new(6)], [_tol_new(5)]
+    plan = _plan()
+    plan["units"][0]["inputs"] = ["meetings/transcripts/c.txt#L1-L20"]
+    run_dir = _run(root, {"u-a": record, "u-b": rule}, plan=plan)
+    assert "unit_drift" in digest(root, run_dir).read_text(encoding="utf-8")
+    return root, run_dir
+
+
+def _contradiction(**over):
+    return dict({"entry": {"kind": "rule", "key": "tol",
+                           "scope": {"departments": ["cooking"], "branches": []}},
+                 "action": "contradiction", "field": "data/outputs/v/value",
+                 "reason": "واحد دوم عدد را درست خوانده است."}, **over)
+
+
+def _tol(run_dir):
+    delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
+    return next(e for e in delta["entries"] if e["key"] == "tol")
+
+
+def test_contradiction_fix_sets_the_leaf(tmp_path):
+    root, run_dir = _drifted_run(tmp_path)
+    _write_review(run_dir, [_contradiction(resolution="fix", value=5)])
+    assert assemble(root, run_dir, review=True)["review_status"] == "applied"
+    rule = _tol(run_dir)
+    assert rule["data"]["outputs"][0]["value"] == 5
+    assert "accounts" not in rule
+    # The reviewer settles the leaf of the entry step 7 kept — it does not
+    # unseat it, which is what a `contradiction` folded onto the decisions as
+    # if it were a fifth action would do.
+    assembly = json.loads((run_dir / "assembly.json").read_text(encoding="utf-8"))
+    assert assembly["provenance"][rule["id"]] == "u-a"
+
+
+def test_contradiction_account_writes_both_sides(tmp_path):
+    root, run_dir = _drifted_run(tmp_path)
+    _write_review(run_dir, [_contradiction(resolution="account",
+                                           reason="هر دو خوانش دفاع‌پذیر است.")])
+    assert assemble(root, run_dir, review=True)["review_status"] == "applied"
+    rule = _tol(run_dir)
+    assert sorted(a["value"] for a in rule["accounts"]) == [5, 6]
+    assert all(a["status"] == "open" and "id" not in a
+               and a["speaker_role"] is None
+               and a["field"] == "data/outputs/v/value"
+               and a["source"]["type"] == "voice"
+               for a in rule["accounts"])
+    assert sorted(a["statement"][-1] for a in rule["accounts"]) == ["۵", "۶"]
+    assert rule["data"]["outputs"][0]["value"] == 6      # the keeper's reading
+    validate("facts-delta.schema.json",
+             json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8")))
+
+
+def test_contradiction_on_a_field_with_no_drift_discards_the_review(tmp_path):
+    root, run_dir = _drifted_run(tmp_path)
+    _write_review(run_dir, [_contradiction(field="data/outputs/v/unit",
+                                           resolution="fix", value="kg")])
+    assemble(root, run_dir, review=True)
+    assembly = json.loads((run_dir / "assembly.json").read_text(encoding="utf-8"))
+    assert assembly["review_status"] == "discarded"
+    assert _tol(run_dir)["data"]["outputs"][0]["value"] == 6
