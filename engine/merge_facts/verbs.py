@@ -203,9 +203,13 @@ def promote(root, fact_id, kind, key, run_dir):
     entry["kind"] = kind
     entry["key"] = key
     data = entry.setdefault("data", {})
-    for k in ("about", "question"):     # QF-9: the note's own payload is a
-        data.pop(k, None)               # pointer and a question, and neither
-                                        # survives into another kind's closed payload
+    if kind != "note":                  # QF-9: the note's own payload is a
+        for k in ("about", "question"): # pointer and a question, and neither
+            data.pop(k, None)           # survives into ANOTHER kind's closed
+                                        # payload. A note→note rekey stays a
+                                        # note, so it keeps both — dropping them
+                                        # would leave a payload `noteData`
+                                        # requires and `save_store` refuses.
     for k, default in _KIND_DATA_STUBS.get(kind, {}).items():
         data.setdefault(k, copy.deepcopy(default) if isinstance(default, (list, dict))
                         else default)

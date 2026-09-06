@@ -219,6 +219,20 @@ def test_a_note_cannot_carry_another_kinds_payload(tmp_path):
         apply(root, _write(root, "dn3.json", note), _run_dir(root, "1"))
 
 
+def test_promote_note_to_note_is_a_rekey_that_keeps_the_payload(tmp_path):
+    # `--kind note` with a new key is a rekey, not a change of kind: the entry
+    # stays a note, so QF-9's `about`/`question` — which is what a note IS, and
+    # what `noteData` requires — must survive. Clearing them here would make
+    # `save_store` refuse the very entry the verb just wrote.
+    root = _root(tmp_path); _seed_units(root)
+    nid = _bare_note(root, "dn4", "note_ab12cd34ef59", "1")
+    promote(root, nid, "note", "note_ff11ee22dd33", _run_dir(root, "2"))
+    e = [x for x in load_store(root)["note"]["entries"] if x["id"] == nid][0]
+    assert e["key"] == "note_ff11ee22dd33"
+    assert e["data"] == {"about": [{"ref": "F-00001"}],
+                         "question": "این عدد کجا ثبت می‌شود؟"}
+
+
 # --- repair-source-refs: a citation is a PATH (QF-5), and 598 of the ---
 # --- store's were an id or a path that had lost its root             ---
 
