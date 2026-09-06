@@ -2,9 +2,10 @@
 
 They read; they never write. No `--run`, nothing under `DATA_ROOT` touched, and
 exit 0 whatever they find: a finding is a line for a human to approve at the
-playbook's stage C, not a failed precondition. Each verb returns a list of
-`{"code", "id", "message", "proposal"}` — `id` is the entry the reader should
-open (`None` where the finding is about the manifest rather than an entry) and
+playbook's stage C, not a failed precondition. `audit` returns a list of
+`{"code", "id", "message", "proposal"}` and `check` returns that list under
+`findings` beside QF-44 (v3)'s readiness answers — `id` is the entry the reader
+should open (`None` where the finding is about the manifest rather than an entry) and
 `proposal` is filled where the audit can name the repair — the `superseded_by`
 heir of a tombstoned process (QF-8) — or the bare word `info`, which says the
 line is information rather than a defect (§4's `unconsumed_constant`).
@@ -42,6 +43,12 @@ from merge_facts import (KIND_ORDER, canonical_scope, collect_leaves, is_open,
                          sha256_file)
 from merge_facts.apply import (FACT_ID_RE, PROC_ID_RE, TEMP_ID_RE,
                                _declared_fields, _declared_rows, _is_stub)
+from merge_facts.content import lint_prose
+# `_unit_row_keys` is `preconditions`' own (Task 5 moved it there; `apply`
+# re-exports the neighbours above but not this one), and it answers the same
+# question `_lint_failures` has to ask: which Latin symbols the units record
+# licenses.
+from merge_facts.preconditions import _unit_row_keys
 
 TOLERANCE = 0.01          # 1 % — §12's reconciliation and component-sum bound
 STALE_RUNS = 3            # §12: "untouched for three facts runs"
@@ -1107,17 +1114,65 @@ def _sorted(items):
     return sorted(items, key=lambda i: (i["code"], i["id"] or "", i["message"]))
 
 
-def audit(root):
-    """§12's `audit` row, every check of it, over one read of the store."""
+#: One Persian sentence per finding kind (§2.1 stage C). The playbook prints
+#: these and nothing else — the owner never sees a code, an id, a path or a
+#: column letter, and the coordinator composes no prose of its own (QF-54).
+PERSIAN = {
+    "two_writers": "دو قاعده روی یک ستون کار می‌کنند: «{title}»",
+    "duplicate_title": "عنوان تکراری: «{title}»",
+    "note_overlap": "یادداشت‌های هم‌شکل: «{title}»",
+    "equal_expr": "دو قاعده یک محاسبه را می‌گویند: «{title}»",
+    "duplicate_code": "یک کد برای دو قلم: «{title}»",
+    "edge_disagreement": "برای یک نمونه دو پاسخ آمده است: «{title}»",
+    "orphan_ref": "ارجاع بی‌مقصد: «{title}»",
+    "dangling_ref_items": "ارجاع به قلمی که دیگر نیست: «{title}»",
+    "process_link": "پیوند با فرایندی که تغییر کرده است: «{title}»",
+    "row_gone": "ردیفی که دیگر در فایل نیست: «{title}»",
+    "dump_missing": "فایل این جدول هنوز خوانده نشده است: «{title}»",
+    "binding_gone": "فرمولی که دیگر در فایل نیست: «{title}»",
+    "expr_missing": "قاعده‌ای که محاسبه‌اش نوشته نشده است: «{title}»",
+    "retired_row_live_edges": "ردیف بازنشسته که هنوز خوانده می‌شود: «{title}»",
+    "template_drift": "نمونه‌ای که از الگویش فاصله گرفته است: «{title}»",
+    "reconciliation": "عدد جدول با عدد قاعده نمی‌خواند: «{title}»",
+    "component_sum": "جمع سهم‌ها یک نمی‌شود: «{title}»",
+    "unconsumed_constant": "عددی که هیچ قاعده‌ای آن را نمی‌خواند: «{title}»",
+    "no_consumer": "قلمی که هیچ‌جا استفاده نشده است: «{title}»",
+    "quantity_off_enum": "نوع کمیت شناخته نیست: «{title}»",
+    "note_targets_retired": "یادداشتی دربارهٔ مورد بازنشسته: «{title}»",
+    "import_unresolved": "ورودی از فایلی که هنوز خوانده نشده است: «{title}»",
+    "stale_prose": "شرح با مقدار تعیین‌شده نمی‌خواند: «{title}»",
+    "stale_stub": "فایلی که هیچ‌وقت خوانده نشد: «{title}»",
+    "natural_key_dup": "یک کلید برای دو مورد: «{title}»",
+    "scope_shadow": "همین کلید در دامنهٔ عمومی هم هست: «{title}»",
+    "unknown_role": "نقشی که در فرایندها نیامده است: «{title}»",
+    "source_moved": "پروندهٔ استنادشده عوض شده است: «{title}»",
+    "estate_absent": "پروندهٔ اکسل روی این دستگاه نیست: «{title}»",
+    "uncited_workbook": "فایلی که هیچ جدولی از آن خوانده نشده است: «{title}»",
+}
+
+
+def audit(root, persian=False):
+    """§12's `audit` row, every check of it, over one read of the store.
+
+    `persian=True` re-renders each finding for stage C from the entry's own
+    title and the finding's kind — the message a code has no template for falls
+    back to the title alone, which is still owner-safe."""
     walk = _Walk(pathlib.Path(root), load_store(root))
     items = []
     for check_fn in AUDIT_CHECKS:
         items.extend(check_fn(walk))
-    return _sorted(items)
+    items = _sorted(items)
+    if persian:
+        for item in items:
+            title = (walk.by_id.get(item["id"]) or {}).get("title") or "—"
+            item["message"] = PERSIAN.get(item["code"],
+                                          "بررسی لازم است: «{title}»").format(
+                title=title)
+    return items
 
 
 # --------------------------------------------------------------------------- #
-# check — the sources on disk, and the manifest's coverage
+# check — the sources on disk, and QF-44 (v3)'s readiness
 # --------------------------------------------------------------------------- #
 
 def _is_estate(ref):
@@ -1146,21 +1201,58 @@ def _cited_workbooks(store):
     return cited
 
 
-def coverage(root):
-    """`{"read": n, "total": m}` — manifest workbooks cited by a non-stub
-    record, over every manifest workbook. QF-44's readiness test reads it."""
-    root = pathlib.Path(root)
-    cited = _cited_workbooks(load_store(root))
-    workbooks = [w for w in _manifest(root).get("workbooks") or []
-                 if isinstance(w, dict)]
-    read = [w for w in workbooks if w.get("spreadsheetId") in cited]
-    return {"read": len(read), "total": len(workbooks)}
+def _latest_runs(root):
+    """The newest run directory of every department under `runs/facts/` — the
+    run whose units and review answer QF-44 (v3)."""
+    base = root / "runs" / "facts"
+    out = []
+    if not base.is_dir():
+        return out
+    for department in sorted(p for p in base.iterdir() if p.is_dir()):
+        stamps = sorted(p for p in department.iterdir() if p.is_dir())
+        if stamps:
+            out.append(stamps[-1])
+    return out
+
+
+def _run_units(run_dir):
+    try:
+        return read_json(run_dir / "meta.json").get("units") or []
+    except (OSError, ValueError):
+        return []
+
+
+def _lint_failures(walk):
+    """Entries whose own prose fails §5.2's lint, counted per ENTRY — QF-44
+    (v3) asks that no entry carries a failure, not how many words each one
+    broke. «ستون», «تب» and «سلول» are allowed in a record's own statement
+    (QF-50), so records are linted with the sheet words admitted."""
+    exemptions = _unit_row_keys(walk.store, [])
+    failing = 0
+    for entry in walk.open:
+        problems = lint_prose(entry.get("title") or "", exemptions=exemptions)
+        problems += lint_prose(entry.get("statement") or "",
+                               exemptions=exemptions,
+                               allow_sheet_words=entry["kind"] == "record")
+        if problems:
+            failing += 1
+    return failing
 
 
 def check(root):
-    """§12's `check` row: re-hash every cited file, report the sources that
-    moved and the estate files that are not here, and the manifest workbooks
-    no record has read."""
+    """§12's `check` row and QF-44 (v3)'s readiness in one dict.
+
+    `findings` is what it always was — the citations that moved, the estate
+    files that are not here, the manifest workbooks nothing has read. Beside it
+    are the five readiness answers. The workbook-coverage metric is withdrawn
+    (§4): a department is ready when its units are done, its review has run,
+    and nothing is lint-failing, expression-less or still disputed — none of
+    which a denominator over the manifest ever measured.
+
+    With no run directory at all both `units_done` and `review_ran` answer over
+    an empty set, so they are vacuously true and false respectively: nothing is
+    pending, and no review has run.
+    """
     root = pathlib.Path(root)
     store = load_store(root)
     walk = _Walk(root, store)
@@ -1200,4 +1292,12 @@ def check(root):
             "uncited_workbook", None,
             f"workbook {workbook.get('short') or spreadsheet} "
             f"({spreadsheet}) is cited by no non-stub record"))
-    return _sorted(items)
+    runs = _latest_runs(root)
+    units = [u for run in runs for u in _run_units(run)]
+    return {"findings": _sorted(items),
+            "units_done": all(u.get("state") == "done" for u in units),
+            "review_ran": all((run / "review" / "out.json").is_file()
+                              for run in runs) if runs else False,
+            "lint_failures": _lint_failures(walk),
+            "expr_missing": len(_expr_missing(walk)),
+            "open_disputes": sum(len(open_accounts(e)) for e in walk.open)}

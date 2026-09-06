@@ -23,7 +23,7 @@ from facts_helpers import _const_delta, _root, _run_dir, _seed_units, _write
 import merge_facts.audit as audit_mod
 from merge_facts import load_store
 from merge_facts.apply import apply
-from merge_facts.audit import audit, check, coverage, flags_over
+from merge_facts.audit import PERSIAN, audit, check, flags_over
 from merge_facts.verbs import resolve, retire
 
 SCHEMAS = pathlib.Path(__file__).resolve().parents[2] / "schemas"
@@ -194,7 +194,7 @@ def test_two_scripts_writing_rows_into_one_record_are_not_a_duplicate(tmp_path):
     _apply(root, [record, script("T-2", "save_orders", "ثبت سفارش", "saveOrders"),
                   script("T-3", "update_food_count", "به‌روزرسانی شمارش",
                          "updateFoodCount")], "1")
-    assert "duplicate_output" not in _codes(audit(root))
+    assert "two_writers" not in _codes(audit(root))
 
 
 def test_duplicate_title_folds_space_zwnj_and_digits(tmp_path):
@@ -741,9 +741,9 @@ def test_check_reports_a_moved_source(tmp_path):
     root = _root(tmp_path); _seed_units(root)
     transcript = _cite(root)
     apply(root, _write(root, "a.json", _const_delta()), _run_dir(root, "1"))
-    assert "source_moved" not in _codes(check(root))
+    assert "source_moved" not in _codes(check(root)["findings"])
     transcript.write_text("متن بازنویسی‌شده", encoding="utf-8")
-    found = _of(check(root), "source_moved")
+    found = _of(check(root)["findings"], "source_moved")
     assert len(found) == 1 and "meetings/transcripts/c.txt" in found[0]["message"]
 
 
@@ -756,12 +756,12 @@ def test_check_reports_an_absent_estate_file_under_its_own_code(tmp_path):
     record["source"] = [{"type": "sheet",
                          "ref": "attachments/sheets/G/G.xlsx", "sheet": "روزانه"}]
     _apply(root, [record], "1")
-    found = _of(check(root), "estate_absent")
+    found = _of(check(root)["findings"], "estate_absent")
     assert len(found) == 1 and "G.xlsx" in found[0]["message"]
-    assert "source_moved" not in _codes(check(root))
+    assert "source_moved" not in _codes(check(root)["findings"])
 
 
-def test_check_uncited_workbook_and_the_coverage_count(tmp_path):
+def test_check_uncited_workbook_has_no_denominator(tmp_path):
     root = _root(tmp_path); _seed_units(root)
     _manifest(root, [_workbook("S1", "cited_wb"), _workbook("S2", "quiet_wb")])
     read = _entry("T-1", "record", "cited__ruzane", "روزانه", {
@@ -772,9 +772,73 @@ def test_check_uncited_workbook_and_the_coverage_count(tmp_path):
         "stub": True, "grain": "workbook", "medium": "sheet", "role": "log",
         "location": {"spreadsheetId": "S2"}})
     _apply(root, [read, stub], "1")
-    found = _of(check(root), "uncited_workbook")
-    assert len(found) == 1 and "quiet_wb" in found[0]["message"]  # a stub is not read
-    assert coverage(root) == {"read": 1, "total": 2}
+    report = check(root)
+    found = [i for i in report["findings"] if i["code"] == "uncited_workbook"]
+    assert len(found) == 1 and "quiet_wb" in found[0]["message"]
+    assert "coverage" not in report                 # §4: the metric is withdrawn
+
+
+def test_check_reports_qf44_v3_readiness(tmp_path):
+    root = _root(tmp_path); _seed_units(root)
+    _apply(root, [_template(),
+                  _bound_rule("T-2", "enheraf", "انحراف", "gz__s11__j__r6",
+                              "J6:J15")], "20260906-101500")
+    run = root / "runs" / "facts" / "cooking" / "20260906-101500"
+    (run / "meta.json").write_text(json.dumps(
+        {"units": [{"id": "u-wb-gozaresh", "type": "workbook", "state": "done",
+                    "attempts": 1},
+                   {"id": "u-tr-a-l1", "type": "transcript", "state": "pending",
+                    "attempts": 0}]}), encoding="utf-8")
+    report = check(root)
+    assert report["units_done"] is False
+    assert report["review_ran"] is False
+    assert report["expr_missing"] == 0
+    assert report["open_disputes"] == 0
+    assert report["lint_failures"] == 0
+
+    (run / "meta.json").write_text(json.dumps(
+        {"units": [{"id": "u-wb-gozaresh", "type": "workbook", "state": "done",
+                    "attempts": 1}]}), encoding="utf-8")
+    (run / "review").mkdir()
+    (run / "review" / "out.json").write_text("{}", encoding="utf-8")
+    report = check(root)
+    assert report["units_done"] is True and report["review_ran"] is True
+
+
+def test_check_counts_a_lint_failure_and_a_missing_expression(tmp_path):
+    root = _root(tmp_path); _seed_units(root)
+    bound = _bound_rule("T-2", "enheraf", "انحراف", "gz__s11__j__r6", "J6:J15")
+    bound["data"].pop("expr")
+    bound["data"]["lang"] = "sheets"
+    bound["data"]["original"] = "=I6-H6"
+    _apply(root, [_template(), bound], "1")
+    # §5.2's lint is `apply`'s own precondition (Task 6), so no delta can put a
+    # failing sentence in the store — and the estate's prose predates the door.
+    # Writing it straight into the file is the only way to reproduce what
+    # `check` has to count.
+    path = root / "facts" / "rules.json"
+    doc = json.loads(path.read_text(encoding="utf-8"))
+    entry = [e for e in doc["entries"] if e["key"] == "enheraf"][0]
+    entry["statement"] = "ستون J6 منهای ستون I6 است"       # §5.2: a reference token
+    path.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
+    report = check(root)
+    assert report["expr_missing"] == 1
+    assert report["lint_failures"] == 1
+
+
+def test_audit_persian_renders_every_code_from_the_entrys_title(tmp_path):
+    root = _root(tmp_path); _seed_units(root)
+    apply(root, _write(root, "a.json", _const_delta()), _run_dir(root, "1"))
+    items = audit(root, persian=True)
+    assert items
+    for item in items:
+        assert "F-" not in item["message"] and "/" not in item["message"]
+        entry = [e for e in load_store(root)["rule"]["entries"]
+                 if e["id"] == item["id"]]
+        if entry:
+            assert entry[0]["title"] in item["message"]
+    codes = {i["code"] for i in audit_mod.AUDIT_CHECKS and audit(root)}
+    assert codes <= set(PERSIAN)                    # every code has a template
 
 
 # --------------------------------------------------------------------------- #
@@ -799,8 +863,20 @@ def test_cli_audit_and_check_print_one_line_each_and_exit_zero(tmp_path):
     lines = proc.stdout.splitlines()
     assert lines and any(line.startswith("unconsumed_constant F-") for line in lines)
 
+    proc = _cli(root, "audit", "--persian")
+    assert proc.returncode == 0, proc.stderr
+    assert all("F-" not in line.split(" ", 2)[2] for line in
+               proc.stdout.splitlines())
+
     proc = _cli(root, "check")
     assert proc.returncode == 0, proc.stderr
     lines = proc.stdout.splitlines()
-    assert lines[-1] == "coverage: 0 of 2 workbooks read"
+    assert lines[-1] == ("readiness: units_done=True review_ran=False "
+                         "lint_failures=0 expr_missing=0 open_disputes=0")
     assert any(line.startswith("uncited_workbook  ") for line in lines)  # id blank
+
+
+def test_cli_has_no_repair_foreign_keys_verb(tmp_path):
+    root = _root(tmp_path); _seed_units(root)
+    proc = _cli(root, "repair-foreign-keys", "--run", str(_run_dir(root, "9")))
+    assert proc.returncode == 2 and "invalid choice" in proc.stderr

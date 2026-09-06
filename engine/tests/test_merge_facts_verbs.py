@@ -1,11 +1,10 @@
 from facts_helpers import _root, _seed_units, _const_delta, _write, _run_dir
 from merge_facts import load_store
 from merge_facts.apply import apply
-from merge_facts.content import check_document
 from merge_facts.revert import revert
 from merge_facts.apply import _source_path_problems
-from merge_facts.verbs import (export, promote, repair_foreign_keys,
-                               repair_source_refs, resolve, retire)
+from merge_facts.verbs import (export, promote, repair_source_refs, resolve,
+                               retire)
 import pytest
 
 # json: only the two locking tests below need it, to read `.index.json` back
@@ -69,106 +68,6 @@ def test_export_reference_record_csv(tmp_path):
     assert "g,g,mass,1," in text
     with pytest.raises(SystemExit):
         export(root, "units", root / "facts" / "u.csv", include_retired=False)  # under facts/
-
-
-# --- repair-foreign-keys: the one write that removes, and why it has to be ---
-# --- a verb at all (the ladder has no action that takes a key back out) ---
-
-def _with_foreign_keys(root, members):
-    """`units` in the store, carrying `members` on `foreignKeys` — written
-    straight into the file because no supported path can put them there.
-    A delta cannot: `apply` runs the content pass, which refuses the shape
-    outright. That is the point — the store's 84 predate the check, and the
-    only way to reproduce their arrival is to bypass the door that now stops
-    them."""
-    path = root / "facts" / "records.json"
-    doc = json.loads(path.read_text(encoding="utf-8"))
-    entry = [e for e in doc["entries"] if e["key"] == "units"][0]
-    entry["data"]["foreignKeys"] = members
-    path.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
-    return entry["id"]
-
-
-# `F-00216`'s member, verbatim: an IMPORT descriptor written where §8 puts a
-# foreign key.
-_IMPORT_DESCRIPTOR = {"spreadsheetId": "1AIjH", "sheet": "singlePizza",
-                      "range": "A:X", "target": {"ref": "F-00193"}}
-_REAL_KEY = {"fields": ["symbol"], "reference": {"ref": "F-00001"},
-             "reference_fields": ["key"]}
-
-
-# v3 §3.3 removes `record.foreignKeys` from the payload and retires this verb
-# with it — but the retirement is Task 8's step, not this one's. Until then the
-# two cases below are the ones that leave a foreign key STANDING in the store,
-# which `save_store` can no longer write: v2's closed `recordData` has no such
-# member. The four beside them still pass, because a repair that removes the
-# collection outright leaves a store the new schema accepts. Task 8 deletes the
-# whole block; these markers go with it.
-_RETIRED_WITH_FOREIGN_KEYS = pytest.mark.xfail(
-    strict=True, raises=ValueError,
-    reason="v3 §3.3: a stored foreignKeys member no longer validates; the verb "
-           "retires in Task 8")
-
-
-@_RETIRED_WITH_FOREIGN_KEYS
-def test_repair_drops_the_malformed_member_and_keeps_the_declared_one(tmp_path):
-    root = _root(tmp_path); _seed_units(root)
-    fid = _with_foreign_keys(root, [_IMPORT_DESCRIPTOR, _REAL_KEY])
-    assert repair_foreign_keys(root, _run_dir(root, "20260902-101500")) == [(fid, 1)]
-    e = [x for x in load_store(root)["record"]["entries"] if x["id"] == fid][0]
-    assert e["data"]["foreignKeys"] == [_REAL_KEY]      # the real one survives
-
-
-def test_repair_drops_the_collection_with_its_last_member(tmp_path):
-    # A record left holding `foreignKeys: []` would still say it joins
-    # something. Nothing is what it has.
-    root = _root(tmp_path); _seed_units(root)
-    fid = _with_foreign_keys(root, [_IMPORT_DESCRIPTOR])
-    repair_foreign_keys(root, _run_dir(root, "20260902-101500"))
-    e = [x for x in load_store(root)["record"]["entries"] if x["id"] == fid][0]
-    assert "foreignKeys" not in e["data"]
-
-
-def test_repair_leaves_a_clean_store_untouched_byte_for_byte(tmp_path):
-    # Idempotence, and the guard against a repair that "tidies" anything else:
-    # a second run must find nothing and write nothing at all.
-    root = _root(tmp_path); _seed_units(root)
-    _with_foreign_keys(root, [_IMPORT_DESCRIPTOR])
-    repair_foreign_keys(root, _run_dir(root, "20260902-101500"))
-    before = {p.name: p.read_bytes() for p in (root / "facts").glob("*.json")}
-    run_two = _run_dir(root, "20260902-101600")
-    assert repair_foreign_keys(root, run_two) == []
-    assert {p.name: p.read_bytes() for p in (root / "facts").glob("*.json")} == before
-    # And no snapshot either: a run directory holding `facts-before/` with no
-    # delta beside it is a live `revert` target that would restore a store from
-    # after this repair — undoing whatever came next instead of undoing this.
-    assert not (run_two / "facts-delta.json").exists()
-    assert not (run_two / "facts-before").exists()
-
-
-@_RETIRED_WITH_FOREIGN_KEYS
-def test_repair_is_revertible_from_its_own_snapshot(tmp_path):
-    # The reason this is a verb rather than a script: it leaves a run
-    # directory `revert` can undo, like every other writing verb.
-    root = _root(tmp_path); _seed_units(root)
-    fid = _with_foreign_keys(root, [_IMPORT_DESCRIPTOR])
-    run = _run_dir(root, "20260902-101500")
-    repair_foreign_keys(root, run)
-    revert(root, run)
-    e = [x for x in load_store(root)["record"]["entries"] if x["id"] == fid][0]
-    assert e["data"]["foreignKeys"] == [_IMPORT_DESCRIPTOR]
-
-
-def test_repair_leaves_the_store_passing_the_pass_that_refused_it(tmp_path):
-    # The two are wired to one predicate; this is the assertion that they
-    # actually agree on a real store rather than in principle.
-    root = _root(tmp_path); _seed_units(root)
-    _with_foreign_keys(root, [_IMPORT_DESCRIPTOR])
-    doc = json.loads((root / "facts" / "records.json").read_text(encoding="utf-8"))
-    assert any("foreignKeys" in m for m in check_document(doc, "facts"))
-    repair_foreign_keys(root, _run_dir(root, "20260902-101500"))
-    doc = json.loads((root / "facts" / "records.json").read_text(encoding="utf-8"))
-    assert [m for m in check_document(doc, "facts") if "foreignKeys" in m] == []
 
 
 # --- coordinator ruling on task-6 review finding I2: promote must never ---
@@ -334,3 +233,22 @@ def test_repair_is_revertible_and_its_result_passes_apply_s_own_check(tmp_path):
     revert(root, run)
     e = [x for x in load_store(root)["record"]["entries"] if x["id"] == fid][0]
     assert e["source"][0]["ref"] == "12Q9yQ"
+
+
+def test_resolving_a_unit_clears_the_stale_unit_ref_beside_it(tmp_path):
+    root = _root(tmp_path); _seed_units(root)
+    a = _const_delta(5, key="tol"); a["entries"][0]["data"]["outputs"][0]["unit"] = "g"
+    apply(root, _write(root, "a.json", a), _run_dir(root, "1"))
+    b = _const_delta(5, key="tol"); b["entries"][0]["data"]["outputs"][0]["unit"] = "kg"
+    apply(root, _write(root, "b.json", b), _run_dir(root, "2"))
+    store = load_store(root)
+    entry = [e for e in store["rule"]["entries"] if e["key"] == "tol"][0]
+    entry["data"]["outputs"][0]["unit_ref"] = {"ref": "F-00001", "row": "g"}
+    (root / "facts" / "rules.json").write_text(
+        json.dumps(store["rule"], ensure_ascii=False), encoding="utf-8")
+    chosen = [x for x in entry["accounts"] if x["value"] == "kg"][0]
+    resolve(root, entry["id"], "data/outputs/v/unit", chosen["id"],
+            _run_dir(root, "3"))
+    after = [e for e in load_store(root)["rule"]["entries"]
+             if e["key"] == "tol"][0]["data"]["outputs"][0]
+    assert after["unit"] == "kg" and "unit_ref" not in after
