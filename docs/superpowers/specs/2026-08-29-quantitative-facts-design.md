@@ -1329,9 +1329,17 @@ facts/.+` used with `fullmatch` in `_check_write_path` (everything under
 `data-repo/CLAUDE.md`'s hard-rules block names `facts/**` as merge-only.
 
 **QF-44. Readiness and handover.** A scope is ready to hand over when,
-restricted to that scope: `check` reports full manifest coverage, and every
-non-retired entry is green for a `confirm` holder — which by QF-25 already
-excludes every `disputed` or `unknown` field. The handover artefact is a
+restricted to that scope: `check` reports full manifest coverage, every
+non-retired entry is confirmed for a `confirm` holder, **and no non-retired
+entry is `disputed` or `unknown`**.
+
+That last clause used to be implicit: QF-25 refused the tick to a red entry, so
+"confirmed" carried "not red" inside it. The owner's 2026-09-06 ruling separated
+the two — a red entry is now confirmable — and readiness therefore has to ask
+for both in its own words. Written out rather than left to follow, because the
+alternative is a scope that hands over green with its disputes still open. The
+two questions were always distinct: confirming is a reviewer saying they have
+read an entry, and readiness is the estate saying it has no open questions left. The handover artefact is a
 **git tag** on `data-repo` naming `facts/`, `attachments/sheets/` (manifest,
 dumps, `.gs`, `.structure.md`) and the run directories that produced them; the
 `.xlsx` are server-local and are copied alongside from the snapshot. Runbook
@@ -1559,9 +1567,19 @@ server-side from the stored fingerprint (the client is forbidden from
 computing one); a stored mark whose fingerprint no longer matches counts as
 *not confirmed*, exactly as for a process, and the listing does not
 distinguish it from an entry never ticked (the confirmations table and the
-audit trail keep the history). An entry whose `status` is `disputed` or `unknown` cannot be
-confirmed: the endpoint answers 409 and the UI draws the control disabled,
-labelled «قابل تأیید نیست», because red wins over green (QF-25). Each confirmation row also records the `data-repo`
+audit trail keep the history). **An entry whose `status` is `disputed` or
+`unknown` is confirmable like any other** — owner ruling, 2026-09-06: «each of
+the quantitative items should be confirmable, regardless of whether it has an
+issue or not.» This replaces the rule that stood here, under which red won over
+green: the endpoint answered 409 and the UI drew the control disabled, labelled
+«قابل تأیید نیست». The reasoning it was written on — that a signature should
+not vouch for an unreconciled fact — is answered by what an `unknown` leaf
+actually is: a question for the SOURCE, which nothing a reviewer does on that
+screen can settle. The refusal therefore withheld the signature without moving
+the thing it was waiting on, and did so on precisely the entries most in need of
+a reviewer. Confirming says "I have read this and it is what the source says";
+the red marks stay drawn beside the tick and say the rest, and confirming
+neither clears them nor changes `status`. Each confirmation row also records the `data-repo`
 commit id it was taken against (one column, one migration), so a
 post-restore reconciliation can tell backup skew from genuine drift. The
 audit events (`confirmation.set` / `.revoked`) apply unchanged; the detail

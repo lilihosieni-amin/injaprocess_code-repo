@@ -122,7 +122,11 @@ export const PX = {
   label110: { width: '110px' } as CSSProperties,  // :1567 — the item rows
   label120: { width: '120px' } as CSSProperties,  // :1229 — every other card
   /**
-   * The three translucent whites on the violet header (:1112, :5067, :5069).
+   * The translucent white on the violet header (:1112).
+   *
+   * Was three. `:5067` and `:5069` were the disabled tick's outer edge and chip
+   * fill, and they went with the disabled tick itself — the owner's 2026-09-06
+   * ruling that a red entry is confirmable leaves no refused state to paint.
    *
    * Written as a mix of `--card` with `transparent` rather than as an `rgba()`
    * literal, which guard F6 forbids outright. This is the design's own value and
@@ -133,8 +137,6 @@ export const PX = {
    * owner, and no token in any family can approximate a translucent fill.
    */
   chipOnField: { background: 'color-mix(in srgb, var(--card) 16%, transparent)' } as CSSProperties,
-  tickRedChip: { background: 'color-mix(in srgb, var(--card) 8%, transparent)' } as CSSProperties,
-  tickRedOuter: { borderColor: 'color-mix(in srgb, var(--card) 20%, transparent)' } as CSSProperties,
   /** :1129 — the statement card's 4px violet edge, on the inline start. */
   statementEdge: { borderInlineStart: '4px solid var(--violet)' } as CSSProperties,
 } as const

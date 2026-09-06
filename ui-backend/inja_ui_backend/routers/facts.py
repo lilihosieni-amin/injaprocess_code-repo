@@ -635,13 +635,15 @@ def _bundle(request: Request, user, fid: str) -> dict:
             "fingerprint": now,
             "confirmed": mark is not None and mark == now,
             # What the tick may do, not what it would say: `confirm` at every
-            # department the entry names (QF-27), and not a red entry — which
-            # `POST /api/confirmations/{fid}` answers 409 for, because red wins
-            # over green (QF-25). Both halves are the endpoint's own rules, read
-            # here so the control is drawn in the state the endpoint will
-            # honour.
-            "can_confirm": (all(may_confirm(t) for t in targets)
-                            and entry.get("status") not in ("disputed", "unknown")),
+            # department the entry names (QF-27), and nothing else. The second
+            # half — "and not a red entry", QF-25's red-over-green — was
+            # **overturned by the owner on 2026-09-06**: «each of the
+            # quantitative items should be confirmable, regardless of whether it
+            # has an issue or not.» `POST /api/confirmations/{fid}` dropped the
+            # matching 409 in the same change, so this stays what it has always
+            # been: the endpoint's own rules, read here so the control is drawn
+            # in the state the endpoint will honour.
+            "can_confirm": all(may_confirm(t) for t in targets),
         },
         # From the stored entry, never from `served`: the red set, the labels
         # and the reverse index are statements about the content as it is, and
