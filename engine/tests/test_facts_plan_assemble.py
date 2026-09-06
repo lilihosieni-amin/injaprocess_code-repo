@@ -319,7 +319,7 @@ def test_the_reviewers_own_prose_is_linted_too(tmp_path, capsys):
     with pytest.raises(SystemExit) as excinfo:
         assemble(root, run_dir, review=True)
     assert excinfo.value.code == 2
-    assert "enheraf/statement" in capsys.readouterr().err
+    assert "enheraf: statement" in capsys.readouterr().err
 
 
 def test_a_note_key_is_stable_across_runs(tmp_path):
@@ -460,6 +460,130 @@ def test_a_review_document_in_a_unit_directory_is_refused(tmp_path):
                                ensure_ascii=False), encoding="utf-8")
     problems = validate_unit(root, run_dir, path)
     assert len(problems) == 1 and "units/u-a" in problems[0]
+
+
+def _note_new():
+    return {"kind": "note", "key": "x", "title": "پرسش دربارهٔ تلورانس",
+            "statement": "تلورانس انحراف هنوز تعیین نشده است.",
+            "data": {"about": [{"ref": "S-r-000000000002"}],
+                     "question": "تلورانس چند گرم است؟"}}
+
+
+def _run_with_a_note(tmp_path):
+    """A run whose `u-b` reports one `new[]` note, assembled once so the test
+    knows the key §3.1 minted for it and the scope §3.2 gave it."""
+    root = _root(tmp_path)
+    rule = _rule_out()
+    rule["new"] = [_note_new()]
+    run_dir = _run(root, {"u-a": _record_out(), "u-b": rule})
+    assemble(root, run_dir)
+    delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
+    note = next(e for e in delta["entries"] if e["kind"] == "note")
+    digest(root, run_dir)
+    return root, run_dir, note
+
+
+def test_a_new_entry_takes_the_scope_of_what_it_is_about(tmp_path):
+    """§3.2 — a `new` entry takes the union of the scopes of the entries it
+    attaches to; the note's only `about[]` target is the rule, which sits on
+    the چاله‌باغ tab."""
+    _root_, _run_dir, note = _run_with_a_note(tmp_path)
+    assert note["scope"] == {"departments": ["cooking"],
+                             "branches": ["chalebagh"]}
+
+
+def test_a_new_entry_attached_to_nothing_is_department_wide(tmp_path):
+    root = _root(tmp_path)
+    rule = _rule_out()
+    rule["new"] = [{"kind": "measurement", "key": "vazn_panir",
+                    "title": "وزن پنیر", "statement": "پنیر را سرآشپز می‌کشد.",
+                    "data": {"quantity": "mass", "unit": "kg",
+                             "by": "سرآشپز", "when": "هر شب"}}]
+    run_dir = _run(root, {"u-a": _record_out(), "u-b": rule})
+    assemble(root, run_dir)
+    delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
+    measurement = next(e for e in delta["entries"] if e["kind"] == "measurement")
+    assert measurement["scope"] == {"departments": ["cooking"], "branches": []}
+
+
+def test_a_review_drop_removes_a_new_entry(tmp_path):
+    """Step 0 — a `new[]` entry is addressed exactly like a candidate, so the
+    reviewer's four actions reach the notes and measurements too."""
+    root, run_dir, note = _run_with_a_note(tmp_path)
+    _write_review(run_dir, [{"entry": {"kind": "note", "key": note["key"],
+                                       "scope": note["scope"]},
+                             "action": "drop", "reason_code": "duplicate"}])
+    assert assemble(root, run_dir, review=True)["review_status"] == "applied"
+    delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
+    assert [e["kind"] for e in delta["entries"] if e["kind"] == "note"] == []
+    doc = json.loads((run_dir / "assembly.json").read_text(encoding="utf-8"))
+    assert [d["reason_code"] for d in doc["dropped"]] == ["duplicate"]
+
+
+def test_a_review_rewrite_reaches_a_new_entry(tmp_path):
+    root, run_dir, note = _run_with_a_note(tmp_path)
+    _write_review(run_dir, [{"entry": {"kind": "note", "key": note["key"],
+                                       "scope": note["scope"]},
+                             "action": "keep", "key": note["key"],
+                             "title": "پرسش دربارهٔ حد مجاز انحراف",
+                             "statement": "حد مجاز انحراف هنوز تعیین نشده است."}])
+    assert assemble(root, run_dir, review=True)["review_status"] == "applied"
+    delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
+    fresh = next(e for e in delta["entries"] if e["kind"] == "note")
+    assert fresh["title"] == "پرسش دربارهٔ حد مجاز انحراف"
+    assert fresh["key"] == note["key"]      # §3.1 mints it from about[] + question
+
+
+def test_two_records_on_one_tab_are_flagged_template_split(tmp_path):
+    """§2.6 step 7 / §3.2 — `find_match` will not rename and `apply` refuses
+    the pair, so the reviewer hears about it here."""
+    root = _root(tmp_path)
+    skeleton = _skeleton()
+    twin = json.loads(json.dumps(skeleton["candidates"][0]))
+    twin["id"], twin["unit"] = "S-rec-000000000005", "u-b"
+    skeleton["candidates"].append(twin)
+    plan = _plan()
+    plan["units"][1]["candidates"].append("S-rec-000000000005")
+    rule = _rule_out()
+    rule["decisions"].append(dict(_record_out()["decisions"][0],
+                                  skeleton="S-rec-000000000005",
+                                  key="gozaresh_shabane_digar",
+                                  title="گزارش شبانهٔ دیگر"))
+    run_dir = _run(root, {"u-a": _record_out(), "u-b": rule},
+                   skeleton=skeleton, plan=plan)
+    text = digest(root, run_dir).read_text(encoding="utf-8")
+    assert "template_split · T-2 · T-2 (gozaresh_shabane_pitza) and T-3 " \
+           "(gozaresh_shabane_digar) both claim SID/پیتزا" in text
+
+
+def test_a_ref_into_an_undecided_candidate_names_both_units(tmp_path, capsys):
+    """1a — the candidate is neither kept nor dropped because its unit never
+    returned; the message still has to say which unit that was."""
+    root = _root(tmp_path)
+    run_dir = _run(root, {"u-b": _rule_out()})           # u-a never returned
+    with pytest.raises(SystemExit) as excinfo:
+        assemble(root, run_dir)
+    assert excinfo.value.code == 2
+    err = capsys.readouterr().err
+    assert "u-b: ref S-rec-000000000001 names a candidate unit u-a" in err
+
+
+def test_merge_into_a_dropped_target_names_both_units(tmp_path, capsys):
+    root = _root(tmp_path)
+    record = _record_out()
+    record["decisions"][0] = {"skeleton": "S-rec-000000000001",
+                              "action": "drop", "reason_code": "cosmetic"}
+    rule = _rule_out()
+    rule["decisions"][0] = {"skeleton": "S-r-000000000002",
+                            "action": "merge_into",
+                            "into": "S-rec-000000000001",
+                            "reason_code": "duplicate"}
+    run_dir = _run(root, {"u-a": record, "u-b": rule})
+    with pytest.raises(SystemExit) as excinfo:
+        assemble(root, run_dir)
+    assert excinfo.value.code == 2
+    err = capsys.readouterr().err
+    assert "unit u-b" in err and "unit u-a" in err
 
 
 def test_a_ref_into_a_dropped_candidate_names_both_units(tmp_path, capsys):
