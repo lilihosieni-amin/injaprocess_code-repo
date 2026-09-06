@@ -14,6 +14,12 @@ def _run(tmp_path, units=("u-a", "u-b")):
          "units": [{"id": u, "type": "workbook", "inputs": [], "candidates": [],
                     "nodes": [], "est_tokens_in": 1, "est_tokens_out": 1}
                    for u in units]}), encoding="utf-8")
+    # `unit_states`'s default check is `validate facts-unit`, which reads the
+    # run's skeleton — `build` writes both files, so a run dir has both.
+    (run_dir / "skeleton.json").write_text(json.dumps(
+        {"schema_version": 1, "department": "cooking", "run": "r",
+         "unit_symbols": [], "candidates": [], "instances": [],
+         "imports": [], "issues": []}), encoding="utf-8")
     for u in units:
         (run_dir / "units" / u).mkdir()
     return run_dir
@@ -74,7 +80,8 @@ def test_the_cli_prints_one_line_per_unit_then_the_summary(tmp_path, monkeypatch
 def test_check_rebuild_refuses_a_plan_whose_unit_is_done(tmp_path, capsys):
     run_dir = _run(tmp_path)
     check_rebuild(tmp_path, run_dir, False)             # nothing has run yet
-    _out(run_dir, "u-a", 1, '{"schema_version": 1, "unit": "u-a"}')
+    _out(run_dir, "u-a", 1, '{"schema_version": 1, "unit": "u-a", '
+                            '"attempt": 1, "decisions": []}')
     with pytest.raises(SystemExit) as excinfo:
         check_rebuild(tmp_path, run_dir, False)
     assert excinfo.value.code == 2

@@ -98,12 +98,14 @@ def unit_states(root, run_dir, units, check=None):
 
     A truncated or unparseable attempt is **deleted** here and costs no
     attempt: a crashed dispatch must not spend one of the two a unit gets.
-    `check(path) -> list[str]` is the validator; with none, a parsing attempt
-    counts as done.
-
-    ponytail: `check` defaults to nothing so this lands before T14 — T14 wires
-    `validate_unit` in as the default and this comment goes with it.
+    `check(path) -> list[str]` is the validator; with none, it is
+    `validate facts-unit`'s own pass, which is what makes `done` mean the
+    output `assemble` will fold.
     """
+    if check is None:
+        from facts_plan.assemble import validate_unit
+        def check(path):
+            return validate_unit(root, run_dir, path)
     run_dir = pathlib.Path(run_dir)
     out = []
     for unit in units:

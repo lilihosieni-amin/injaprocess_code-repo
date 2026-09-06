@@ -27,6 +27,21 @@ def main(argv=None):
         print("validate: --store takes facts-delta and --run <run_dir>",
               file=sys.stderr)
         raise SystemExit(2)
+    if name == "facts-unit.schema.json":
+        # `validate_unit` reads and schema-checks the file itself — it is the
+        # same function `facts-plan status` and `assemble` call, so the CLI
+        # only relays it (§4).
+        if not args.run:
+            print("validate: facts-unit needs --run <run_dir>", file=sys.stderr)
+            raise SystemExit(2)
+        from facts_plan.assemble import validate_unit
+        problems = validate_unit(data_root(), args.run, args.file)
+        for line in group_messages(problems):
+            print(line, file=sys.stderr)
+        if problems:
+            raise SystemExit(2)
+        print(f"OK: {args.file} conforms to {name}")
+        return 0
     try:
         instance = read_json(args.file)
     except FileNotFoundError:

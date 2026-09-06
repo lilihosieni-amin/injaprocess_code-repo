@@ -8,7 +8,8 @@ nothing here asks a model anything.
 `facts_plan` imports `merge_facts`; never the reverse.
 
 The package re-exports nothing: `assemble.validate_unit` (`validate
-facts-unit`) does not exist until T14 lands it, and an eager re-export here
-would make `import facts_plan` fail until then. T14 adds the line if it wants
-the short name.
+facts-unit`) is imported from `facts_plan.assemble` by the two callers that
+want it (`validate.cli`, `facts_plan.cli.unit_states`), and an eager
+re-export here would drag `build`'s dump readers into every
+`import facts_plan`.
 """
