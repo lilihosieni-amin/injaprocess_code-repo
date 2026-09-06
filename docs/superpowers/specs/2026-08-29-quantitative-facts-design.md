@@ -1652,7 +1652,15 @@ transcript since audio is not kept — is a click that opens one confirmation
 popup («فایل منبع دانلود شود؟», with the file name, «دانلود» / «انصراف»)
 and then downloads the file. Nothing is shown inline: no image or PDF
 viewer, no transcript excerpt, no cell preview. A `process` source navigates
-to the process; a `chat` source is inert. The download is served by one
+to that process's **flowchart** (`/processes/{pid}/flow`), not to its summary
+— owner ruling, 2026-09-06: «when you click on a process from within a
+quantitative-data item, it should open that process's flowchart page — not the
+process's general data.» A fact cites a process because one of its steps
+produces or consumes the value, and the diagram is where a step is a thing you
+can point at. It also settles where «بازگشت» goes: the flowchart is one of the
+routes whose back control answers **history** rather than the crumb trail, so
+the reviewer lands back on the entry they came from — where the summary's trail
+would have taken them out of the section entirely. A `chat` source is inert. The download is served by one
 auth- and scope-gated route over the attachment roots —
 `attachments/sheets/**` and `departments/{dept}/attachments/**` — and the
 transcript directory, with `resolve()`-both-sides containment against each

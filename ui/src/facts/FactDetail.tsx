@@ -77,8 +77,21 @@ export function FactDetail() {
             <Detail
               bundle={data}
               onOpen={(id) => navigate(`/facts/${id}`)}
-              // QF-39 — «A `process` source navigates to the process.»
-              onOpenProcess={(pid) => navigate(`/processes/${pid}`)}
+              // QF-39 — «A `process` source navigates to the process.» To its
+              // **flowchart**, by the owner's ruling of 2026-09-06: «when you
+              // click on a process from within a quantitative-data item, it
+              // should open that process's flowchart page — not the process's
+              // general data.» A fact cites a process because one of its steps
+              // produces or consumes the value, and the diagram is where a step
+              // is a thing you can point at.
+              //
+              // This is also the whole of the report's second half. «بازگشت»
+              // answers history on `/processes/{pid}/flow` (`isProcessView`,
+              // R44) and the trail on `/processes/{pid}` — and that trail is
+              // «دپارتمان‌ها» → the department, which is out of the section the
+              // reader was in and has no way back to the entry. One change
+              // moves both.
+              onOpenProcess={(pid) => navigate(`/processes/${pid}/flow`)}
             />
           )}
       </div>
