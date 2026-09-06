@@ -15,8 +15,9 @@ import math
 import pathlib
 import re
 
-from dump_workbook import is_ids_tab, is_mirror_tab
-from engine_common import read_json
+from dump_workbook import is_ids_tab, is_mirror_tab, manifest_reconcile
+from engine_common import read_json, write_json_atomic
+from merge_facts import is_open
 
 Shape = collections.namedtuple("Shape", "text params functions refs")
 
@@ -325,7 +326,13 @@ def load_estate(root):
             "formulas": _tsv(dump / "formulas.tsv"),
             "rows": _tsv(dump / "rows.tsv"),
             "names": {n["name"]: n["formula"] for n in _tsv(dump / "names.tsv")},
-            "validations": _tsv(dump / "validations.tsv")}
+            "validations": _tsv(dump / "validations.tsv"),
+            # The context §2.3 lists (T12) and the dump's own bookkeeping. A
+            # dump written before these files existed simply has none.
+            "cf": _tsv(dump / "cf.tsv"),
+            "comments": _tsv(dump / "comments.tsv"),
+            "meta": (read_json(dump / "meta.json")
+                     if (dump / "meta.json").exists() else {})}
     return estate
 
 
@@ -684,11 +691,8 @@ def _bodies(estate):
             path = dump["sheets_root"] / script
             if not path.exists():
                 continue
-            text = path.read_text(encoding="utf-8")
-            starts = [(m.group(1), m.start()) for m in _GS_FUNCTION.finditer(text)]
-            for i, (name, start) in enumerate(starts):
-                end = starts[i + 1][1] if i + 1 < len(starts) else len(text)
-                out.setdefault(name, text[start:end].strip())
+            for name, body in _script_functions(path.read_text(encoding="utf-8")):
+                out.setdefault(name, body)
     return out
 
 
@@ -923,11 +927,7 @@ def script_rules(estate, department, called):
             path = dump["sheets_root"] / script
             if not path.exists():
                 continue
-            text = path.read_text(encoding="utf-8")
-            starts = [(m.group(1), m.start()) for m in _GS_FUNCTION.finditer(text)]
-            for i, (name, start) in enumerate(starts):
-                end = starts[i + 1][1] if i + 1 < len(starts) else len(text)
-                body = text[start:end].strip()
+            for name, body in _script_functions(path.read_text(encoding="utf-8")):
                 if name in called or not _GS_LOGIC.search(body):
                     continue
                 out.append({"id": _sid("gs", row["short"], name), "kind": "rule",
@@ -937,3 +937,423 @@ def script_rules(estate, department, called):
                                        "input_headers": [], "calls": [],
                                        "script": script}})
     return out
+
+
+# --------------------------------------------------------------------------
+# T12: import edges, context, the two slices, the function library and the
+# skeleton (§2.3). Comparison folding is `fold` above; nothing here redeclares
+# it, and nothing here reads a file the estate does not already carry.
+
+ISSUE_TEXT.update({
+    "unused_mirror": "تب «{sheet}» کپی می‌گیرد ولی هیچ فرمولی از آن نمی‌خواند.",
+    "unknown_source": "تب «{sheet}» از فایلی کپی می‌گیرد که در فهرست فایل‌ها "
+                      "نیست.",
+    "column_shift": "ستون‌های «{columns}» در کپی تب «{sheet}» جا افتاده‌اند.",
+    "leading_offset": "ستون اول جدول مبدأ («{sheet}») نام ندارد و ستون‌های "
+                      "تاریخ یکی جابه‌جا خوانده می‌شوند.",
+    "reference_tab_is_mirror": "تب «{sheet}» در «{workbook}» جدول مرجع علامت "
+                               "خورده بود ولی فقط کپی جدولی در جای دیگر است.",
+    "reference_tab_is_ids": "تب «{sheet}» در «{workbook}» جدول مرجع علامت خورده "
+                            "بود ولی فهرست شناسهٔ فایل‌هاست.",
+    "reference_tab_computes": "تب «{sheet}» در «{workbook}» جدول مرجع علامت "
+                              "خورده بود ولی خودش فرمول دارد.",
+})
+
+# A maximal run of identifier characters. `name in _IDENT_TOKEN.findall(text)`
+# is `_ident(text, name)` for every name at once, which is what keeps the
+# consumer scan and the caller scan linear in the estate rather than
+# names × formulas.
+_IDENT_TOKEN = re.compile(r"[A-Za-z0-9_]+")
+
+
+def _plain(formula):
+    """`normalise` step (a) alone: the dump's `\\n`/`\\t` escapes as spaces.
+
+    Without it the estate's own spelling — `LET(\\nsheetName,"خمیر",` — reads
+    as the single identifier `nsheetName`, and every identifier that opens a
+    line of a `LET` goes unseen."""
+    return formula.replace("\\n", " ").replace("\\t", " ")
+
+
+def _tokens(text):
+    """The words a slice ranks on — folded, and short ones dropped so «و» and
+    «به» do not decide which entry the unit gets to reuse."""
+    return {t for t in re.split(r"\W+", fold(text).casefold()) if len(t) > 2}
+
+
+def _col_index(letters):
+    """`A` → 1, `AA` → 27 — the inverse of `_letters`."""
+    n = 0
+    for ch in letters.upper():
+        n = n * 26 + ord(ch) - 64
+    return n
+
+
+def _ident(formula, name):
+    """Does `formula` name `name` as an identifier — not as a fragment of a
+    longer one (`Salon_Recipts_Chalebagh` must not match `Salon_Recipts`)? The
+    dump's escapes go first, or the `n` of a `\\n` counts as a leading letter
+    and a name at the head of a `LET` line is never found."""
+    return re.search(rf"(?<![A-Za-z0-9_]){re.escape(name)}(?![A-Za-z0-9_])",
+                     _plain(formula)) is not None
+
+
+# --------------------------------------------------------------------------
+# import edges (QF-48) — a mirror tab is an edge, never an entry.
+
+_IMPORT_CALL = re.compile(r"IMPORT_FROM_SHEET\s*\(\s*([^,()]+?)\s*,\s*"
+                          r"([^,()]+?)\s*,\s*([^,()]+?)\s*\)")
+_IDS_CELL = re.compile(r"^'?([^'!]+?)'?!\$?([A-Z]{1,3})\$?([0-9]+)$")
+_WHOLE_TAB = re.compile(r"^'?([^'!]+?)'?!\$?[A-Z]{0,3}\$?[0-9]*"
+                        r"(?::\$?[A-Z]{0,3}\$?[0-9]*)?$")
+_DATE_FN = re.compile(r"FORMAT_PERSIAN_DATE|FILTER_BY_DATE|"
+                      r"GET_(?:CELL_VALUE|ROW)_BY_PERSIAN_DATE")
+
+
+def _import_only(row):
+    """`is_mirror_tab`'s body test without its A1 test — a cell whose whole
+    formula is one `IMPORT_FROM_SHEET`. On a tab that is not a whole mirror
+    such a cell copies one cell, which is §2.3's `per_cell_mirror`."""
+    probe = [row.get(c, "") for c in _FORMULA_COLUMNS]
+    probe[1] = "A1"
+    return is_mirror_tab([probe])
+
+
+def _argument(formula, arg):
+    """An `IMPORT_FROM_SHEET` argument as a value: a quoted literal is itself,
+    a bare identifier is the literal the same `LET` bound to it — the estate
+    always writes `sheetName,"خمیر"` and passes `sheetName`."""
+    arg = arg.strip()
+    if arg.startswith('"'):
+        return arg.strip('"')
+    m = re.search(rf'(?<![A-Za-z0-9_]){re.escape(arg)}\s*,\s*"([^"]*)"', formula)
+    return m.group(1) if m else arg
+
+
+def _column_name(dump, tab, letters):
+    """`rows.tsv` names its columns by header text, so a `$B$7` is read back
+    through the header row of the same tab; an empty header cell falls back to
+    the column letter, exactly as `dump_workbook._reference_rows` does."""
+    sheet = dump["sheets"].get(tab) or {}
+    head = sheet.get("head") or []
+    header = sheet.get("header_row")
+    row = head[header - 1] if header and header <= len(head) else []
+    index = _col_index(letters)
+    return (row[index - 1].strip() if index <= len(row) else "") or letters
+
+
+def resolve_source(dump, named_range):
+    """The three hops of §2.3: a named range → a cell of the ids tab → the
+    spreadsheetId that cell holds. `None` when any hop misses."""
+    m = _IDS_CELL.match((dump["names"].get(named_range) or "").strip())
+    if not m:
+        return None
+    tab, letters, row = m.group(1), m.group(2), m.group(3)
+    column = _column_name(dump, tab, letters)
+    for line in dump["rows"]:
+        if line.get("sheet") == tab and str(line.get("row")) == row:
+            return (line.get(column) or "").strip() or None
+    return None
+
+
+def mirror_names(dump, tab):
+    """The names a consumer formula can call a mirror by — a whole-tab defined
+    name, plus the tab's own name when it is a `Table_*` identifier (§2.3(e)
+    rewrites that one to `$T`). Nothing else reaches a mirrored table."""
+    out = set()
+    for name, formula in dump["names"].items():
+        m = _WHOLE_TAB.match(formula.strip())
+        if m and m.group(1) == tab:
+            out.add(name)
+    if tab.startswith("Table_"):
+        out.add(tab)
+    return sorted(out)
+
+
+def _range_columns(rng, width):
+    """`A:D` → `(1, 4)`; a range naming no column covers the whole header."""
+    letters = re.findall(r"[A-Z]{1,3}", (rng or "").upper())
+    if not letters:
+        return 1, width
+    return _col_index(letters[0]), _col_index(letters[-1])
+
+
+def _range_issues(source_dump, sheet_name, rng, instance, date_logic):
+    """What the pull drops, and whether it starts one column late (§2.3). An
+    empty or `Column \\d+` header is not a named column, so dropping it costs
+    the consumer nothing and raises nothing."""
+    sheet = (source_dump or {}).get("sheets", {}).get(sheet_name)
+    if not sheet or not sheet.get("header_row"):
+        return []
+    header = (sheet["head"] or [[]])[sheet["header_row"] - 1]
+    first, last = _range_columns(rng, len(header))
+    dropped = [h.strip() for i, h in enumerate(header, start=1)
+               if not first <= i <= last and h.strip()
+               and not _PLACEHOLDER.match(h.strip())]
+    out = []
+    if dropped:
+        out.append(_issue("column_shift", instance=instance, sheet=sheet_name,
+                          columns="»، «".join(dropped)))
+    lead = header[0].strip() if header else ""
+    if date_logic and first == 1 and (not lead or _PLACEHOLDER.match(lead)):
+        out.append(_issue("leading_offset", instance=instance, sheet=sheet_name))
+    return out
+
+
+def import_edges(estate, refs, department=None):
+    """`(imports[], issues[])` for every mirror tab of the department (QF-48).
+
+    `refs` maps `(spreadsheetId, sheet)` onto the ref the source record already
+    has — `S-rec-…` for a template of this run, `F-…` for one in the store; a
+    pair missing from it leaves the edge on its locator, which every reader
+    accepts (§10). One member is written per consumer instance, because that is
+    where `imports[]` lives on the entry. A mirror and the formulas that read
+    it always sit in one workbook, so `department` filters the outer loop while
+    the whole estate stays available for the source side of a hop.
+    """
+    edges, issues = [], []
+    for sid, dump in sorted(estate.items()):
+        if department is not None and \
+                department not in (dump["row"].get("departments") or []):
+            continue
+        short = dump["short"]
+        by_tab, scan = {}, []
+        for row in dump["formulas"]:
+            by_tab.setdefault(row.get("sheet"), []).append(row)
+            scan.append((row.get("sheet"), row,
+                         set(_IDENT_TOKEN.findall(_plain(row.get("formula", ""))))))
+        for tab, sheet in sorted(dump["sheets"].items()):
+            rows = by_tab.get(tab, [])
+            here = f'{short}__s{sheet["sheetId"]}'
+            if not _is_mirror(rows):
+                if any(_import_only(row) for row in rows):
+                    issues.append(_issue("per_cell_mirror", instance=here,
+                                         sheet=tab))
+                continue
+            text = _plain(rows[0].get("formula", ""))
+            call = _IMPORT_CALL.search(text)
+            if call is None:
+                continue
+            named_range = call.group(1).strip()
+            source_id = resolve_source(dump, named_range)
+            if source_id is None or source_id not in estate:
+                issues.append(_issue("unknown_source", instance=here, sheet=tab))
+                continue
+            source_sheet = _argument(text, call.group(2))
+            rng = _argument(text, call.group(3))
+            names = set(mirror_names(dump, tab))
+            reading = [(name, row) for name, row, idents in scan
+                       if name != tab and idents & names]
+            consumers = sorted({f'{short}__s{dump["sheets"][name]["sheetId"]}'
+                                for name, _ in reading if name in dump["sheets"]})
+            if not consumers:
+                issues.append(_issue("unused_mirror", instance=here, sheet=tab))
+            source = refs.get((source_id, source_sheet)) \
+                or {"spreadsheetId": source_id, "sheet": source_sheet}
+            for consumer in consumers:
+                edges.append({"consumer": consumer, "source": source,
+                              "range": rng, "named_range": named_range})
+            issues += _range_issues(estate.get(source_id), source_sheet, rng,
+                                    here,
+                                    any(_DATE_FN.search(row.get("formula", ""))
+                                        for _, row in reading))
+    return edges, issues
+
+
+def reference_tab_issues(estate, department=None):
+    """§2.2's three `reference_tab_*` findings, over a **copy** of each manifest
+    row: the estate on disk is already reconciled, so a real run finds nothing,
+    but a row confirmed before its tab became a mirror still has to reach
+    `skeleton.json` once. The row itself is never repaired from here — that is
+    `dump-workbook`'s job, and `build` only reports."""
+    out = []
+    for sid, dump in sorted(estate.items()):
+        row = dump["row"]
+        if department is not None and \
+                department not in (row.get("departments") or []):
+            continue
+        copy = {**row, "reference_tabs": list(row.get("reference_tabs") or [])}
+        for issue in manifest_reconcile(copy, {
+                "sheets": {"sheets": list(dump["sheets"].values())},
+                "formulas": [[f.get(c, "") for c in _FORMULA_COLUMNS]
+                             for f in dump["formulas"]]}):
+            sheet = dump["sheets"].get(issue["sheet"]) or {}
+            out.append(_issue(
+                issue["kind"], sheet=issue["sheet"],
+                instance=f'{dump["short"]}__s{sheet.get("sheetId")}',
+                workbook=pathlib.Path(row.get("file") or "").stem))
+    return out
+
+
+# --------------------------------------------------------------------------
+# context, the two slices, the library
+
+_NEEDS_TAB = fold("نیازمندیها و مشکلات")
+
+
+def _business_threshold(row):
+    """A colour rule earns its place when it matches text or compares against a
+    number that is not zero — a sign test at zero is formatting, not a rule."""
+    kind = row.get("type", "")
+    if "containsText" in kind or '"' in kind:
+        return True
+    try:
+        return float(row.get("formula", "")) != 0
+    except ValueError:
+        return False
+
+
+def context_items(estate, sids):
+    """The context §2.3 lists — cell comments, the conditional formats that
+    carry a business threshold, and the «نیازمندیها و مشکلات» rows. A sign test
+    at zero and a rule with no format are filtered out here, so the model never
+    spends a decision on them, and none of this is ever a candidate."""
+    out = []
+    for sid in sorted(sids):
+        dump = estate[sid]
+        for row in dump["comments"]:
+            out.append({"kind": "comment", "sheet": row.get("sheet", ""),
+                        "where": row.get("cell", ""),
+                        "text": row.get("text", "")})
+        for row in dump["cf"]:
+            if row.get("format", "").strip() and _business_threshold(row):
+                out.append({"kind": "cf", "sheet": row.get("sheet", ""),
+                            "where": row.get("range", ""),
+                            "text": f'{row.get("type", "")} '
+                                    f'{row.get("formula", "")} → {row["format"]}'})
+        for name, sheet in sorted(dump["sheets"].items()):
+            if fold(name) != _NEEDS_TAB:
+                continue
+            for line in sheet.get("head") or []:
+                text = " | ".join(c for c in line if c.strip())
+                if text:
+                    out.append({"kind": "note_tab", "sheet": name,
+                                "where": "", "text": text})
+    return out
+
+
+def rank(rows, tokens, cap, text):
+    """First `cap` rows by tokens shared with the unit, ties by the caller's own
+    order — which is why the reuse slice sorts its rows by id first (§2.3)."""
+    scored = sorted(enumerate(rows),
+                    key=lambda pair: (-len(tokens & _tokens(text(pair[1]))),
+                                      pair[0]))
+    return [row for _, row in scored[:cap]]
+
+
+def reuse_slice(own, index, item_units, department, tokens, cap=40):
+    """This run's own record and item candidates first, unranked, then the
+    store's open entries in this department or the universal scope, ranked and
+    capped. The unit reuses a key off these lines or mints a new one; it never
+    searches (§2.4)."""
+    lines = [f'{c["id"]} · {c["kind"]} · {c["label"]}' for c in own]
+    rows = sorted((r for r in index
+                   if not r.get("retired")
+                   and department in ((r.get("scope") or {}).get("departments")
+                                      or [department])),
+                  key=lambda r: r["id"])
+    for row in rank(rows, tokens, cap,
+                    lambda r: " ".join([r["title"], r["key"]]
+                                       + (r.get("aliases") or []))):
+        lines.append(" · ".join(x for x in [
+            row["id"], row["kind"], row["key"], row["title"],
+            "، ".join(row.get("aliases") or []), item_units.get(row["id"])] if x))
+    return lines
+
+
+def process_index(root, department):
+    """`{process, node, label}` for every labelled node of the department's
+    processes — the whole index a citation is checked against; the unit sees a
+    ranked slice of it (§2.3)."""
+    out = []
+    directory = pathlib.Path(root) / "departments" / department / "processes"
+    for path in sorted(directory.glob("*.json")):
+        doc = read_json(path)
+        for node in doc.get("nodes") or []:
+            if node.get("label"):
+                out.append({"process": doc["id"], "node": node["id"],
+                            "label": node["label"]})
+    return out
+
+
+def _script_functions(text):
+    """`[(name, body)]` from a `.gs` file — each `function name(` header up to
+    the next one, which is how the estate's four scripts are written."""
+    starts = [(m.group(1), m.start()) for m in _GS_FUNCTION.finditer(text)]
+    return [(name, text[start:(starts[i + 1][1] if i + 1 < len(starts)
+                               else len(text))].strip())
+            for i, (name, start) in enumerate(starts)]
+
+
+def _add_section(sections, name, kind, definer, body):
+    """One section per (folded body, name) — that is what makes one function
+    defined in nine workbooks one section with nine definers."""
+    section = sections.setdefault(("".join(body.split()), name),
+                                  {"name": name, "kind": kind, "definers": [],
+                                   "body": body})
+    if definer not in section["definers"]:
+        section["definers"].append(definer)
+
+
+def function_library(estate):
+    """`functions.md`'s body (§3.4) — one section per distinct body over the
+    whole estate: name, kind, definers, callers, the verbatim body. The estate
+    already knows where its scripts are, so this takes no second argument."""
+    sections = {}
+    for sid, dump in sorted(estate.items()):
+        for name, formula in sorted(dump["names"].items()):
+            if formula.lstrip().upper().startswith("LAMBDA("):
+                _add_section(sections, name, "named", dump["short"], formula)
+        for script in dump["row"].get("scripts") or []:
+            path = dump["sheets_root"] / script
+            if not path.exists():
+                continue
+            for name, body in _script_functions(path.read_text(encoding="utf-8")):
+                _add_section(sections, name, "script", script, body)
+    names = {s["name"] for s in sections.values()}
+    calls = {name: [] for name in names}
+    for sid, dump in sorted(estate.items()):
+        for row in dump["formulas"]:
+            hits = names & set(_IDENT_TOKEN.findall(_plain(row.get("formula", ""))))
+            for name in sorted(hits):
+                calls[name].append(f'{dump["short"]} · '
+                                   f'{row.get("sheet")}!{row.get("range")}')
+    out = ["# کتابخانهٔ توابع", "",
+           "این فایل توسط `facts-plan build` ساخته می‌شود و هیچ ورودی‌ای در "
+           "انبارهٔ داده‌ها ندارد.", ""]
+    for section in sorted(sections.values(),
+                          key=lambda s: (s["name"], s["body"])):
+        out += [f'## {section["name"]} ({section["kind"]})', "",
+                "تعریف‌شده در: " + "، ".join(section["definers"]), "",
+                "فراخوانی: " + ("، ".join(calls[section["name"]][:20]) or "—"), "",
+                "```", section["body"], "```", ""]
+    return "\n".join(out)
+
+
+# --------------------------------------------------------------------------
+# what the store lends the build
+
+def unit_symbols(root):
+    """The open row keys of the `units` record — the lint's exemption list
+    (§2.3), and one of the only two payload facts `build` reads off the store."""
+    try:
+        doc = read_json(pathlib.Path(root) / "facts" / "records.json")
+    except (OSError, ValueError):
+        return []
+    for entry in doc.get("entries") or []:
+        if entry.get("key") == "units" and is_open(entry):
+            return sorted(r["key"] for r in (entry.get("data") or {}).get("rows")
+                          or [] if r.get("key") and is_open(r))
+    return []
+
+
+def write_skeleton(run_dir, department, run, symbols, candidates, instances,
+                   imports, issues):
+    """`skeleton.json` — the only place the mechanical payload lives (§2.3);
+    `plan.json` carries ids alone."""
+    path = pathlib.Path(run_dir) / "skeleton.json"
+    write_json_atomic(path, {"schema_version": 1, "department": department,
+                             "run": run, "unit_symbols": symbols,
+                             "candidates": candidates, "instances": instances,
+                             "imports": imports, "issues": issues})
+    return path
