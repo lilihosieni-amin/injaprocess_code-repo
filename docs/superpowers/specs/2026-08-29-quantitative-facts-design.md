@@ -1280,7 +1280,8 @@ nothing is deleted and nothing filled is overwritten without a human verb.
 All under `merge facts`, deterministic, `DATA_ROOT`-relative, exit 2 on a
 failed precondition with nothing written — the contract every existing verb
 keeps, so a pipeline that retries on exit 2 cannot double-apply. The writing
-verbs (`apply`, `resolve`, `retire`, `revert`, `promote`) each take `--run
+verbs (`apply`, `resolve`, `retire`, `revert`, `promote`,
+`repair-foreign-keys`) each take `--run
 <run_dir>` (the run directory that records the write, QF-7) and write what
 they did into it; the reporting verbs (`audit`, `check`, `export`) take no
 `--run` and write nothing under `DATA_ROOT`.
@@ -1292,6 +1293,7 @@ they did into it; the reporting verbs (`audit`, `check`, `export`) take no
 | `retire --id F-… [--heir F-…]` | `retired: true`, `valid_to` today, `superseded_by` the heir; refuses if the heir is retired |
 | `revert` | read the run's `facts-delta.json` and `id-map.json`; remove every entry the run created and restore every path it wrote from the commit before the run's; a successor the run created is removed and its predecessor's `valid_to` reopened; refuses (exit 2) if any later run's delta touched one of the same paths |
 | `promote --id F-… --kind <kind> [--key <key>]` | keep the id, change `kind`, set the key — recomputed by QF-32 where that table derives one, otherwise taken from `--key`, which is then required — re-derive `status`; a missing `--key` where the table mints, a key failing the pattern, a key collision, or a non-`note` source is a precondition failure |
+| `repair-foreign-keys` | drop every `foreignKeys` member that names neither the columns it joins on nor the entry it points at, and the collection with the last of them; touches no other key and re-derives no status; writes nothing at all when the store is already clean, so a second run leaves no snapshot for `revert` to act on. The one verb that removes: §11 has no action that takes a key back out, and QF-2 admits no writer but this one, so a collection the store should never have held has no other way out of it |
 | `export --record <key> [--out <path>] [--all]` | write the record's `rows[]` as a CSV whose header is `key` followed by the declared `fields[].key` in order, retired rows omitted unless `--all`; refuses (exit 2) a record whose `role` is not `reference` or `config`, and any `--out` under `facts/` or `runs/` — the CSV is a derived view and is never committed |
 | `audit` | report, never write: duplicate outputs (two rules writing one field); look-alike titles and keys; orphaned `{ref}`s, `{ref, field, row}` edges whose target no longer declares the field or row (including every deferred edge a stub fill has just made checkable), and `refItems` cells whose item is retired or gone; process links whose cited node is no longer in the file or whose process is tombstoned, with the `superseded_by` heir proposed as an approvable re-point; store rows absent from the latest dump, and retired rows with live edges into them; instances whose `expr` differs from their `template_of`; reference-table cells disagreeing beyond 1 % with the constant-rule output their `reconciled_against` pair names; component sums differing from a stated total by more than 1 %; constants no rule consumes and no record field derives; recurring note shapes; stubs untouched for three facts runs in their creating department or older than 30 days; two open entries sharing a natural key; a non-empty-scope entry whose key exists at empty scope; `unit_raw` strings no `units` row covers; role strings in `speaker_role`/`filled_by`/`approved_by`/`by`/`signatures[].role` that appear in no process's `actor` or `mechanisms` |
 | `check` | re-hash every cited file; report entries whose source moved and sources whose estate file is not present; report manifest workbooks that no non-stub `record` cites (the coverage denominator: "read") |
@@ -1430,7 +1432,10 @@ every source, IDs only from `allocate-id`. Its obligations in full mode:
    threshold constant; per cell comment a constant rule or note with
    `source.type: comment`; per `#N`/`##N` code found in a header or in the
    row-label column of a BOM tab an item; per `IMPORT_FROM_SHEET` a
-   `foreignKeys` row and `mirror_of`.
+   `mirror_of` and the rule that performs the pull — never a `foreignKeys`
+   member, which QF-9 gives a mirror no `fields[]` to build one from.
+   `foreignKeys` is for a tab that joins another table on named columns, and
+   every member carries both of its sides.
 3. Walk each `.gs` paired with the department's workbooks: one `rule lang: gs`
    per function, `port` by the QF-12 criterion with `edge_cases[]`.
 4. Walk each described image and view it: one `record medium: paper` per
@@ -1780,7 +1785,7 @@ follows is what remains:
   idempotent) and `--manifest` (full dump, `rows.tsv` for confirmed reference
   tabs); the sheetId-drift diff.
 - `engine/merge/facts.py` — `apply, resolve, retire, revert, promote, export,
-  audit, check`.
+  audit, check, repair-foreign-keys`.
 - `tests/fixtures/facts/kitchen-quantitative-report.pdf` — the hand-written
   summary of the cooking recordings, the acceptance reference of §17.
 - `docs/runbooks/07-facts.md` — where the store lives, what commits it, the

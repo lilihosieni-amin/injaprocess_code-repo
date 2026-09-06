@@ -322,6 +322,31 @@ def _check_process_grammar(entry, messages, label):
 #    every non-derived declared field present on every open reference row
 # --------------------------------------------------------------------------- #
 
+def _fk_fields_ok(fk):
+    members = fk.get("fields")
+    return (isinstance(members, list) and bool(members)
+            and all(isinstance(m, str) for m in members))
+
+
+def _fk_reference_ok(fk):
+    reference = fk.get("reference")
+    return isinstance(reference, dict) and bool(reference.get("ref"))
+
+
+def foreign_key_declares_a_join(fk):
+    """Whether a `foreignKeys` member names both of its sides (§8): the columns
+    it joins on, and the entry it points at.
+
+    Public because `merge facts repair-foreign-keys` drops exactly the members
+    this answers `False` for. Sharing the predicate is what keeps the repair and
+    this pass from ever disagreeing about which members are malformed — a repair
+    that dropped fewer would leave the store failing its own validator, and one
+    that dropped more would delete facts nobody asked it to.
+    """
+    return (isinstance(fk, dict) and _fk_fields_ok(fk)
+            and _fk_reference_ok(fk))
+
+
 def _check_record_shape(entry, messages, label):
     if entry.get("kind") != "record":
         return
@@ -354,14 +379,11 @@ def _check_record_shape(entry, messages, label):
         if not isinstance(fk, dict):
             messages.append(f"{label}: foreignKeys member is not an object")
             continue
-        members = fk.get("fields")
-        if (not isinstance(members, list) or not members
-                or not all(isinstance(m, str) for m in members)):
+        members = fk.get("fields") if _fk_fields_ok(fk) else []
+        if not members:
             messages.append(f"{label}: foreignKeys member declares no fields "
                             f"naming the columns it joins on")
-            members = []
-        reference = fk.get("reference")
-        if not isinstance(reference, dict) or not reference.get("ref"):
+        if not _fk_reference_ok(fk):
             messages.append(f"{label}: foreignKeys member declares no reference "
                             f"naming the entry it points at")
         for m in members:

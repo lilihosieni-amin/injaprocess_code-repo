@@ -13,6 +13,7 @@ from merge_facts.audit import coverage as facts_coverage
 from merge_facts.revert import revert as revert_facts
 from merge_facts.verbs import export as export_facts
 from merge_facts.verbs import promote as promote_facts
+from merge_facts.verbs import repair_foreign_keys as repair_facts_foreign_keys
 from merge_facts.verbs import resolve as resolve_facts
 from merge_facts.verbs import retire as retire_facts
 from order import reconcile as reconcile_order
@@ -120,6 +121,11 @@ def _facts(args):
         elif args.facts_cmd == "promote":
             promote_facts(data_root(), args.id, args.kind, args.key, args.run)
             print(f"promoted {args.id} to {args.kind}")
+        elif args.facts_cmd == "repair-foreign-keys":
+            repaired = repair_facts_foreign_keys(data_root(), args.run)
+            for fid, dropped in repaired:
+                print(f"repaired {fid} — dropped {dropped}")
+            print(f"repaired {len(repaired)} entries")
         elif args.facts_cmd == "export":
             out = args.out or str(data_root() / f"{args.record}.csv")
             path = export_facts(data_root(), args.record, out, include_retired=args.all)
@@ -202,6 +208,8 @@ def main(argv=None):
     fpr.add_argument("--kind", required=True)
     fpr.add_argument("--key")
     fpr.add_argument("--run", required=True)
+    frf = fsub.add_parser("repair-foreign-keys")
+    frf.add_argument("--run", required=True)
     fex = fsub.add_parser("export")
     fex.add_argument("--record", required=True)
     fex.add_argument("--out")
