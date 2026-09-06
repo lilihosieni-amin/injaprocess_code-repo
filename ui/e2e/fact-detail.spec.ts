@@ -235,6 +235,30 @@ const UNITS = bundle('F-00017', 'record', 'واحدها', {
   ],
 })
 
+/**
+ * F-00099 — a BOM wide enough to scroll, modelled on «مواد اولیه پیتزا
+ * امریکایی»: ten ingredient columns at `minmax(110px,1fr)` is 1100px of tracks
+ * inside an 880px card, so the grid overflows its own box at every width this
+ * spec runs. No other fixture here does — which is why the head band and the
+ * row rules could stop halfway across a table for as long as they did.
+ */
+const INGREDIENTS = [
+  'مرغ پیتزا', 'گوشت چرخ کرده', 'کباب ترکی', 'سوسیس کراکاف', 'خمیر پیتزا',
+  'فلفل دلمه میکس', 'قارچ اسلایس شده', 'سس گوجه کنسروی', 'پنیر پیتزا', 'زیتون',
+]
+const WIDE = bundle('F-00099', 'record', 'مواد اولیه پیتزا امریکایی', {
+  medium: 'sheet', role: 'reference',
+  location: { spreadsheetId: '15M2ovUmQ7kX3nR9pLwT2aB8cD4eF6gH1', sheet: 'امریکایی' },
+  grain: 'یک ردیف به ازای هر آیتم منو',
+  fields: INGREDIENTS.map((title, i) => ({
+    key: `ing_${i}`, title, type: 'number', unit: 'g',
+  })),
+  rows: Array.from({ length: 12 }, (_, r) => ({
+    key: `menu_${r}`,
+    ...Object.fromEntries(INGREDIENTS.map((_, i) => [`ing_${i}`, (r + i) * 10])),
+  })),
+})
+
 /** F-00021 — a stub, and F-00010 — a retired item. Neither draws a tick. */
 const STUB = bundle('F-00021', 'record', 'موجودی آخر شب — پیتزا (ناهارخوران)', {
   medium: 'sheet', role: 'log', location: { sheet: 'پیتزا' }, stub: true,
@@ -294,6 +318,7 @@ async function open(page: Page, id: string) {
     '/api/facts/F-00001': CHEESE,
     '/api/facts/F-00023': MEASUREMENT,
     '/api/facts/F-00017': UNITS,
+    '/api/facts/F-00099': WIDE,
     '/api/facts/F-00021': STUB,
     '/api/facts/F-00010': RETIRED,
     '/api/facts/branches': BRANCHES,
@@ -685,6 +710,48 @@ test('fact detail — a value grid centres every cell in its column, whatever it
         + `${o.end.toFixed(1)}px from the other`).toBeLessThan(2)
     }
   }
+})
+
+test('fact detail — a grid wider than its card paints its head and rules the whole way', async ({ page }) => {
+  // **Owner report, 2026-09-06:** «Starting from a certain column onward, the
+  // table has neither a colored header nor the lines drawn between rows.»
+  //
+  // A row is a grid whose tracks are `minmax(110px,1fr)`. Given more columns
+  // than fit, the tracks overflow the row's own box — but `min-width:100%` sizes
+  // that box to the SCROLL CONTAINER, not to the tracks. Background and
+  // border-bottom paint the box, so both stop exactly where the container ends
+  // and every column past it is bare. Nothing is missing from those columns;
+  // the row simply is not as wide as its own contents.
+  //
+  // Asserted per CELL — "is this cell's ground painted, and is its rule drawn"
+  // — rather than against the row's box or a pixel width. The paint may live on
+  // the cell or on the row; what the report is about is whether it reaches the
+  // cell at all. That question survives either implementation, which the row's
+  // own geometry does not.
+  await open(page, 'F-00099')
+  const grid = page.getByRole('table', { name: /ردیف/ })
+  const bare = await grid.getByRole('row').evaluateAll((rows) => {
+    const painted = (el: Element, prop: 'background-color' | 'border-bottom-width') => {
+      const v = getComputedStyle(el).getPropertyValue(prop)
+      return prop === 'background-color'
+        ? v !== 'rgba(0, 0, 0, 0)' && v !== 'transparent'
+        : parseFloat(v) > 0
+    }
+    const covers = (outer: Element, inner: Element) => {
+      const o = outer.getBoundingClientRect()
+      const i = inner.getBoundingClientRect()
+      return o.left <= i.left + 0.5 && o.right >= i.right - 0.5
+    }
+    return rows.flatMap((row, r) => [...row.children].flatMap((cell, c) => {
+      // The head's ground, and every row's rule — each drawn either on the cell
+      // itself or on a row wide enough to reach it.
+      const want = r === 0 ? 'background-color' as const : 'border-bottom-width' as const
+      const ok = painted(cell, want) || (painted(row, want) && covers(row, cell))
+      return ok ? [] : [{ row: r, cell: c, want }]
+    }))
+  })
+  expect(bare, `${bare.length} cells are unpainted — first at row ${bare[0]?.row}`
+    + ` column ${bare[0]?.cell} (${bare[0]?.want})`).toEqual([])
 })
 
 test('fact detail — a start-aligned grid puts a latin cell where its header is', async ({ page }) => {
