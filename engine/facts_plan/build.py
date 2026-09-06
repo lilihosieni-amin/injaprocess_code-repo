@@ -252,6 +252,19 @@ def _issue(kind, *, instance=None, target=None, **fields):
             "description": ISSUE_TEXT[kind].format(**fields)}
 
 
+def _where(inst, estate):
+    """One tab as the **owner** names it: the workbook's file title, its branch
+    in Persian, and the tab name. `instance` on the issue is the key the engine
+    matches on; `description` reaches `gate-b.md` and `report.md`, so nothing in
+    it may be an id (§2.7). Two books of one line share a file title, which is
+    why the branch is here."""
+    dump = estate[inst["spreadsheetId"]]
+    book = pathlib.Path(dump["row"].get("file") or "").stem
+    branch = "، ".join(dump.get("branches_fa") or [])
+    return (f"«{book}»" + (f" ({branch})" if branch else "")
+            + f' تب «{inst["sheet"]}»')
+
+
 def _sid(prefix, *parts):
     body = "\x00".join(str(p) for p in parts)
     return f"S-{prefix}-{hashlib.sha256(body.encode('utf-8')).hexdigest()[:12]}"
@@ -316,13 +329,20 @@ def load_estate(root):
     estate-wide; the department filter lives at the call site, so `build` never
     forgets that candidates are the department's own (§2.3)."""
     sheets_root = pathlib.Path(root) / "attachments" / "sheets"
+    manifest = read_json(sheets_root / "manifest.json")
+    # The branch's own Persian name, carried per workbook so an owner-facing
+    # issue description can say which of two identically named books it means
+    # without naming an instance key (§2.7).
+    branch_names = {b["code"]: b["name"] for b in manifest.get("branches") or []}
     estate = {}
-    for row in read_json(sheets_root / "manifest.json")["workbooks"]:
+    for row in manifest["workbooks"]:
         dump = sheets_root / ".dump" / row["spreadsheetId"]
         if not (dump / "sheets.json").exists():
             continue
         estate[row["spreadsheetId"]] = {
             "row": row, "short": row["short"], "sheets_root": sheets_root,
+            "branches_fa": [branch_names.get(c, c)
+                            for c in row.get("branches") or []],
             "sheets": {s["name"]: s
                        for s in read_json(dump / "sheets.json")["sheets"]},
             "formulas": _tsv(dump / "formulas.tsv"),
@@ -476,6 +496,7 @@ def _fields(group, estate):
     the same column sits at different letters in two books (kanter and its twin
     are two apart), and `columns` is what records that."""
     fields, order, issues = {}, [], []
+    named = {inst["key"]: _where(inst, estate) for inst in group}
     for inst in group:
         dump = estate[inst["spreadsheetId"]]
         sheet = dump["sheets"][inst["sheet"]]
@@ -508,10 +529,11 @@ def _fields(group, estate):
             field["constraints"] = {"enum": keep}
             if any(e != enums[0][1] for _, e in enums):
                 issues.append(_issue("cross_record", field=title or "—",
-                                     detail=" / ".join(k for k, _ in enums)))
+                                     detail="، ".join(named[k]
+                                                      for k, _ in enums)))
         letters = sorted(set(field["columns"].values()))
         if len(letters) > 1:
-            detail = ", ".join(f"{k}: {v}"
+            detail = "، ".join(f"{named[k]}: {v}"
                                for k, v in sorted(field["columns"].items()))
             issues.append(_issue("column_offset", field=title or "—",
                                  detail=detail))
@@ -531,7 +553,7 @@ def _row_labels(group, estate):
             continue
         labels[inst["key"]] = sheet["row_labels"]
         headers.add(fold(sheet["head"][sheet["header_row"] - 1][col - 1]))
-    detail = ", ".join(i["key"] for i in group)
+    detail = "، ".join(_where(i, estate) for i in group)
     if missing and labels:
         return None, [_issue("row_labels_partial", detail=detail)]
     if len(headers) > 1:

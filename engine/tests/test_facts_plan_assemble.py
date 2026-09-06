@@ -748,6 +748,37 @@ def test_contradiction_account_writes_both_sides(tmp_path):
              json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8")))
 
 
+def test_a_new_entry_is_referenceable_in_the_same_run(tmp_path):
+    """§2.6 step 6's `N-<unit>-<n>` handle resolves like a skeleton id, so a
+    unit can mint a `place` item and point at it — a record's `movement` ends
+    are place items, and nothing in the sheets mints one."""
+    root = _root(tmp_path)
+    record = _record_out()
+    record["decisions"][0]["data"]["movement"] = {
+        "from": {"ref": "N-u-b-0"},                      # another unit's new[]
+        "reason": "باقی‌ماندهٔ لاین در پایان شب به انبار برگردانده می‌شود."}
+    rule = _rule_out(new=[
+        {"kind": "item", "key": "anbar_markazi", "title": "انبار مرکزی",
+         "statement": "انباری که اقلام از آنجا به لاین‌ها تحویل می‌شود.",
+         "data": {"category": "place", "unit": None}},
+        {"kind": "note", "key": "note_placeholder", "title": "ساعت تحویل",
+         "statement": "ساعت تحویل اقلام به انبار پرسیده نشده است.",
+         "data": {"about": [{"ref": "N-u-b-0"}],          # its own unit's new[]
+                  "question": "تحویل شبانه چه ساعتی انجام می‌شود؟"}}])
+    run_dir = _run(root, {"u-a": record, "u-b": rule})
+
+    assemble(root, run_dir)
+
+    delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
+    by_key = {e["key"]: e for e in delta["entries"]}
+    place = by_key["anbar_markazi"]
+    assert by_key["gozaresh_shabane_pitza"]["data"]["movement"]["from"] \
+        == {"ref": place["id"]}
+    note = next(e for e in delta["entries"] if e["kind"] == "note")
+    assert note["data"]["about"] == [{"ref": place["id"]}]
+    validate("facts-delta.schema.json", delta)
+
+
 def test_contradiction_on_a_field_with_no_drift_discards_the_review(tmp_path):
     root, run_dir = _drifted_run(tmp_path)
     _write_review(run_dir, [_contradiction(field="data/outputs/v/unit",

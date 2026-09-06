@@ -47,11 +47,10 @@ estate.
   data repo's committed seed. `apply` refuses any unit symbol no row of it
   declares, so the items' `kg`/`pcs` need it; `build` reads its row keys as the
   run's `unit_symbols[]`.
-* `items.json` — two `place` items, `F-00002` «لاین سوخاری» and `F-00003`
-  «انبار مرکزی». A `movement`'s ends are place items (v2 §7), and a unit
-  cannot mint one for this purpose: a `new[]` entry's handle is `N-…`, which
-  `_resolve_refs` never rewrites, so nothing can point at it.
-* `.id-seq.json` — at 3, so `apply` does not re-mint an id the seed holds.
+* everything else is empty, and `.id-seq.json` is at 1 so `apply` does not
+  re-mint `F-00001`. The two `place` items a `movement`'s ends must be (v2 §7)
+  are minted by the unit that needs them, as `new[]` entries addressed by their
+  `N-u-wb-fried-0` / `-1` handles.
 
 ## The three unit outputs (`units/`)
 
@@ -64,7 +63,8 @@ back off the directory name:
   salad, the mini-Mac bread and packaging, the nine of v2 §17.
 * `u-wb-mavade_avalie.json` — the twelve BOM reference records.
 * `u-wb-fried.json` — the fried/sokhari line's two night-count records; the
-  «موجودی آخر شب» one carries `day_boundary: "01:15"` and the `movement`.
+  «موجودی آخر شب» one carries `day_boundary: "01:15"` and the `movement`, whose
+  ends are the two `place` items the same document mints in `new[]`.
 
 v2 §17 puts the night-stock record on the **transcript** unit. The engine does
 not allow that: §2.3 gives a candidate to its own unit, and

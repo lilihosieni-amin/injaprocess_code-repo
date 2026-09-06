@@ -29,10 +29,9 @@ def _build(tmp_path):
     (root / "meetings" / "transcripts").mkdir(parents=True)
     (root / "meetings" / "transcripts" / "transcript.txt").write_text(
         (FIX / "transcript.txt").read_text(encoding="utf-8"), encoding="utf-8")
-    # The store the run starts from: empty but for the two `place` items a
-    # movement's ends have to be (v2 §7 — «انتقال» ends are place items, and a
-    # `new[]` entry has no id anything can point at), and the ledger that says
-    # so. `.id-seq.json` also keeps `apply` from re-minting F-00001.
+    # The store the run starts from: the estate's `units` record and nothing
+    # else. `apply` refuses a unit symbol no row of it declares, and `build`
+    # reads its row keys as the run's `unit_symbols[]`.
     shutil.copytree(FIX / "facts", root / "facts")
     (root / "departments" / "cooking" / "processes").mkdir(parents=True)
     # `build` never reads the registry; `gate_b` and `report` name the

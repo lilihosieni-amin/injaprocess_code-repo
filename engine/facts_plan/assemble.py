@@ -757,7 +757,13 @@ def _resolve_refs(entries, state):
     provisional field key is rewritten to the one the record decision minted.
     An `imports[].source` whose target was dropped falls back to its locator;
     anything else naming a dropped or failed candidate is an error naming both
-    units."""
+    units.
+
+    An `N-<unit>-<n>` handle — the one §2.6 step 6 gives a `new[]` entry —
+    resolves exactly as an `S-` id does, so a unit can mint an entity and point
+    at it in the same run: a record's `movement` ends are `place` items, and
+    nothing in the sheets mints those.
+    """
     by_skeleton = {e["_skeleton"]: e for e in entries if e["_skeleton"]}
     dropped = {d["skeleton"]: d["unit"] for d in state["dropped"]}
     for entry in entries:
@@ -773,7 +779,7 @@ def _resolve_refs(entries, state):
             ref = obj.get("ref")
             if not isinstance(ref, str):
                 continue
-            if ref.startswith("S-"):
+            if ref.startswith(("S-", "N-")):
                 target = by_skeleton.get(ref)
                 if target is None:
                     # Dropped, or left undecided by a unit that never returned

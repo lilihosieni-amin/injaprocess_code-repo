@@ -3,11 +3,16 @@
 then `apply` and the owner's `report.md`."""
 import json
 import pathlib
+import re
 
 from facts_plan.assemble import assemble, report
 from test_facts_plan_fixture import _build
 
 UNITS = pathlib.Path(__file__).parent / "fixtures" / "facts-plan" / "units"
+
+#: An instance key, a skeleton or `new[]` handle, a unit id, a path — none of
+#: them may reach a file the owner reads (data-repo § Language, §2.7).
+LEAK = re.compile(r"__s|S-|N-|u-|/")
 
 
 def _delta(tmp_path):
@@ -54,6 +59,10 @@ def test_the_delta_validates_and_gate_b_is_owner_ready(tmp_path):
     assert "تأیید می‌کنید؟" in text
     for banned in ("T-", "S-", "u-wb", "/", "merge "):
         assert banned not in text
+    # The engine's own issue descriptions are printed verbatim here (§2.7), so
+    # the leak check is over the whole file, line by line.
+    for line in text.splitlines():
+        assert not LEAK.search(line), line
 
 
 def test_apply_then_the_report_the_owner_reads(tmp_path):
@@ -64,6 +73,7 @@ def test_apply_then_the_report_the_owner_reads(tmp_path):
     text = report(root, run).read_text(encoding="utf-8")
     assert "گزارش پایان اجرا — آشپزخانه" in text
     assert "بازبینی اجرا نشد." in text          # no review ran
-    for banned in ("F-000", "S-rec", "T-", "u-wb", "u-items", "merge ",
-                   "runs/", "cooking"):
+    for banned in ("F-000", "T-", "merge ", "cooking"):
         assert banned not in text
+    for line in text.splitlines():
+        assert not LEAK.search(line), line

@@ -1,7 +1,11 @@
 """`facts-plan build`'s record templates, reference rows and items, over the
 mini estate in `fixtures/facts_plan/make_dump.py`."""
+import json
+import re
+
 import pytest
 from facts_plan.build import (
+    build,
     code_key,
     header_notes,
     item_candidates,
@@ -129,6 +133,45 @@ def test_items_are_one_per_code_with_labels_by_instance_count(estate):
     assert set(items) == {"##1", "##26", "##33", "#71", "#61"}
     assert items["##1"]["render"]["labels"] == ["پنیر پیتزا", "پنیر پیتزا میکس"]
     assert ("mini_bom__s1", "b") in items["##1"]["render"]["sites"]
+
+
+#: What an owner-facing sentence may never contain — an instance key, a
+#: skeleton or `new[]` handle, a unit id, or a path (data-repo § Language).
+LEAK = re.compile(r"__s|S-|N-|u-|/")
+
+
+def test_no_issue_description_names_an_id_or_a_path(tmp_path):
+    """Every `ISSUE_TEXT` kind, rendered over the mini estate. `description`
+    reaches `gate-b.md` and `report.md` verbatim, so a column letter and a tab
+    name are all the locating it may do."""
+    from facts_plan.build import ISSUE_TEXT, _row_labels
+    from facts_plan_helpers import estate as whole_estate
+
+    root = tmp_path / "e"
+    est = whole_estate(root)
+    (root / "meetings" / "transcripts").mkdir(parents=True)
+    (root / "meetings" / "transcripts" / "x.txt").write_text(
+        "سطر ۱: موجودی را شمردیم.\n", encoding="utf-8")
+    (root / "departments" / "cooking" / "processes").mkdir(parents=True)
+    run = root / "runs" / "facts" / "cooking" / "20260906-101500"
+    build(root, "cooking", run, ["x"])
+    issues = json.loads((run / "skeleton.json").read_text(
+        encoding="utf-8"))["issues"]
+
+    # The three kinds the mini estate cannot raise through `build`.
+    _, instances, _ = record_templates(est, "cooking")
+    by_key = {i["key"]: i for i in instances}
+    labelled = [i for i in instances
+                if est[i["spreadsheetId"]]["sheets"][i["sheet"]].get("row_labels")]
+    issues += _row_labels([labelled[0], by_key["mini_kanter_ch__s1"]], est)[1]
+    sheet = est[labelled[1]["spreadsheetId"]]["sheets"][labelled[1]["sheet"]]
+    sheet["head"][sheet["header_row"] - 1][0] = "ردیف"      # a second header
+    issues += _row_labels(labelled[:2], est)[1]
+    issues += reference_rows(est["SBOM"], "مواد", ["نام", "نام"], [])[2]
+
+    assert {i["kind"] for i in issues} == set(ISSUE_TEXT)
+    for issue in issues:
+        assert not LEAK.search(issue["description"]), issue
 
 
 def test_ids_are_stable_across_two_builds(tmp_path):
