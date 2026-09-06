@@ -5,6 +5,7 @@ shapes; every element in it was copied from the estate's own export.
 """
 import json
 import re
+import shutil
 import zipfile
 
 import pytest
@@ -755,8 +756,8 @@ def test_init_manifest_re_dumps_an_already_confirmed_rows_tsv(tmp_path, monkeypa
     main(["--init-manifest"])
     manifest = _json(sheets / "manifest.json")
     for workbook in manifest["workbooks"]:
-        workbook["confirmed"] = True
-        workbook["reference_tabs"] = ["مواد اولیه"]
+        workbook.update(confirmed=True, unresolved=[],
+                        reference_tabs=["مواد اولیه"])
     (sheets / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False),
                                           encoding="utf-8")
     main(["--manifest"])
@@ -777,7 +778,7 @@ def test_manifest_mode_dumps_rows_only_for_confirmed_reference_tabs(
     main(["--init-manifest"])
     manifest = _json(sheets / "manifest.json")
     for workbook in manifest["workbooks"]:
-        workbook["confirmed"] = True
+        workbook.update(confirmed=True, unresolved=[])
         if workbook["spreadsheetId"] == "SID1":
             workbook["reference_tabs"] = ["مواد اولیه"]
     (sheets / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False),
@@ -788,15 +789,29 @@ def test_manifest_mode_dumps_rows_only_for_confirmed_reference_tabs(
     assert not (sheets / ".dump" / "SID2" / "rows.tsv").exists()
 
 
-def test_manifest_mode_refuses_an_unconfirmed_row(tmp_path, monkeypatch, capsys):
+def test_manifest_mode_skips_an_unresolved_row_and_dumps_the_rest(
+        tmp_path, monkeypatch, capsys):
+    """Gate M never blocks (§2.2): the workbook nobody has placed is left out
+    of the pass, warned about once, and named in the report."""
     root = _estate(tmp_path)
     monkeypatch.setenv("DATA_ROOT", str(root))
+    sheets = root / "attachments" / "sheets"
     main(["--init-manifest"])
+    manifest = _json(sheets / "manifest.json")
+    for workbook in manifest["workbooks"]:
+        if workbook["spreadsheetId"] == "SID1":
+            workbook.update(departments=["cooking"], branches=["chalebagh"],
+                            reference_tabs=["مواد اولیه"], unresolved=[],
+                            confirmed=True)
+    (sheets / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False),
+                                          encoding="utf-8")
+    shutil.rmtree(sheets / ".dump")
     capsys.readouterr()
-    with pytest.raises(SystemExit) as e:
-        main(["--manifest"])
-    assert e.value.code == 2
-    assert "Pitza.xlsx" in capsys.readouterr().err
+
+    assert main(["--manifest"]) == 0
+    assert "Kanter.xlsx skipped (unresolved)" in capsys.readouterr().err
+    assert (sheets / ".dump" / "SID1" / "rows.tsv").is_file()
+    assert not (sheets / ".dump" / "SID2").exists()
 
 
 def test_manifest_mode_refuses_a_workbook_with_no_row(tmp_path, monkeypatch, capsys):
@@ -808,7 +823,7 @@ def test_manifest_mode_refuses_a_workbook_with_no_row(tmp_path, monkeypatch, cap
     manifest["workbooks"] = [w for w in manifest["workbooks"]
                              if w["spreadsheetId"] != "SID2"]
     for workbook in manifest["workbooks"]:
-        workbook["confirmed"] = True
+        workbook.update(confirmed=True, unresolved=[])
     (sheets / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False),
                                           encoding="utf-8")
     capsys.readouterr()
