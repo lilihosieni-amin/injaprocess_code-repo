@@ -736,3 +736,50 @@ test('R46 — the process summary no longer acts on the confirmation', async ({ 
   await expect(page.getByRole('button', { name: 'لغو تأیید' })).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'تأیید محتوا' })).toHaveCount(0)
 })
+
+
+/**
+ * A fact citing `dining-003`, thin enough that only the process row matters.
+ * `visit` is not used to reach it — the point of the test is the journey.
+ */
+const CITING_FACT = {
+  entry: {
+    id: 'F-00077', kind: 'rule' as const, key: 'welcome_time',
+    title: 'زمان پذیرایی', statement: 'یک قاعده.',
+    scope: { departments: ['dining'], branches: [] },
+    status: 'confirmed' as const, retired: false,
+    updated_at: '2026-09-16T14:05:00Z',
+    data: { inputs: [], outputs: [] }, source: [],
+  },
+  confirmation: { confirmed: false, can_confirm: true, fingerprint: 'sha256:f77' },
+  red_paths: { unknown: [], disputed: [] },
+  resolved: { 'dining-003': { kind: 'process', title: 'پذیرایی از میهمان' } },
+  row_titles: {}, path_labels: {}, consumers: [],
+  processes: [{ ref: 'dining-003', title: 'پذیرایی از میهمان',
+                tombstoned: false, heir: null, missing_nodes: [] }],
+}
+
+test('a process cited by a fact opens its FLOWCHART, and «بازگشت» returns to the fact', async ({ page }) => {
+  // **Owner ruling, 2026-09-06**, both halves of one report: «when you click on
+  // a process from within a quantitative-data item, it should open that
+  // process's flowchart page — not the process's general data. Also … pressing
+  // back should return you to the quantitative-data item, not send you to the
+  // app's home page.»
+  //
+  // The second half is why this is an e2e and not two unit assertions:
+  // «بازگشت» answers history only when `canGoBack()` sees React Router's
+  // `history.state.idx`, which a `MemoryRouter` does not have — so in jsdom the
+  // control is always the crumb LINK and the regression this guards is
+  // invisible. Only a real browser has the history to walk back through.
+  await signedIn(page, { capabilities: ['view', 'comment', 'export_pdf', 'edit'], scopes: ['*'] })
+  await serve(page, { ...STUBS, '/api/facts/F-00077': CITING_FACT })
+  await page.goto('/facts/F-00077')
+
+  await page.getByRole('button', { name: /پذیرایی از میهمان/ }).click()
+  // The flowchart, not `/processes/dining-003`.
+  await expect(page).toHaveURL(/\/processes\/dining-003\/flow$/)
+  await page.locator('.react-flow__renderer').waitFor()
+
+  await page.getByRole('button', { name: 'بازگشت' }).click()
+  await expect(page).toHaveURL(/\/facts\/F-00077$/)
+})

@@ -762,6 +762,31 @@ test('fact detail — a grid wider than its card paints its head and rules the w
     + ` column ${bare[0]?.cell} (${bare[0]?.want})`).toEqual([])
 })
 
+test('fact detail — a row’s rule is one straight line across every column', async ({ page }) => {
+  // **Owner report, 2026-09-06:** «The table's lines aren't displaying
+  // correctly. They're not aligned.» — a regression from the fix one commit
+  // earlier, and the columns table is where it shows.
+  //
+  // That fix moved the rule from the row onto the cells, because a row's box
+  // stops at the scroll container while its tracks do not. The columns table's
+  // row is ALSO `align-items:start` (the design's own, :1378), so its cells are
+  // each their own content's height — and a border painted per cell then sits
+  // at four different heights down one row. The design never saw it because its
+  // rule was on the row, which has one height by definition.
+  //
+  // Measured as "every cell of a row ends at the same y", which is what a rule
+  // being one line means, and which holds whichever element paints it.
+  await open(page, 'F-00011')
+  const ragged = await page.getByRole('table', { name: /ستون/ })
+    .getByRole('row').evaluateAll((rows) => rows.flatMap((row, i) => {
+      const bottoms = [...row.children].map((c) => c.getBoundingClientRect().bottom)
+      const spread = Math.max(...bottoms) - Math.min(...bottoms)
+      return spread > 0.5 ? [{ row: i, spread: Math.round(spread) }] : []
+    }))
+  expect(ragged, `${ragged.length} rows end at more than one height`
+    + ` — e.g. row ${ragged[0]?.row} spans ${ragged[0]?.spread}px`).toEqual([])
+})
+
 test('fact detail — a start-aligned grid puts a latin cell where its header is', async ({ page }) => {
   // The same defect, on the grid the owner's centring correction does NOT
   // reach — and so the test that actually pins the repair rather than the

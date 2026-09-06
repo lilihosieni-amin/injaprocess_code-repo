@@ -102,7 +102,19 @@ describe('the fact detail screen', () => {
     // fill. `cooking-001` is the healthy one.
     const healthy = screen.getByRole('button', { name: /وزن‌کشی مانده شب/ })
     await user.click(healthy)
-    expect(navigate).toHaveBeenCalledWith('/processes/cooking-001')
+    // **The FLOWCHART, not the process's summary** — owner ruling, 2026-09-06:
+    // «when you click on a process from within a quantitative-data item, it
+    // should open that process's flowchart page — not the process's general
+    // data.» A fact cites a process because a step of it produces or consumes
+    // the value, and the diagram is where a step is a thing you can point at.
+    //
+    // It also settles the second half of the same report. `/processes/{pid}`
+    // is not in `answersHistory`, so «بازگشت» there follows the crumb trail
+    // out of the section — «دپارتمان‌ها» or the department, never the entry
+    // the reader came from. `/processes/{pid}/flow` has been in
+    // `isProcessView` since R44, so this one change makes back a history
+    // press and it lands on the fact.
+    expect(navigate).toHaveBeenCalledWith('/processes/cooking-001/flow')
 
     // R5 — the other four say the destination is not there (a tombstone, a
     // reference to nothing, a node a restructure removed) or may not be opened

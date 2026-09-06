@@ -102,7 +102,11 @@ def null_paths(entry):
     field_status — and is deliberately not counted here. Nor is one inside a
     RETIRED member (§9): a withdrawn row's blank cell is not a question anyone
     is still owed an answer to, and counting it left a record with retired rows
-    permanently `unknown` — never green, so QF-44's readiness never arrives.
+    permanently `unknown`. (That used to end "never green, so QF-44's readiness
+    never arrives"; since the owner's 2026-09-06 ruling readiness asks only for
+    the confirmation, so the stake is now the entry's own colour rather than the
+    scope's handover — the exclusion is right either way, and for the first
+    reason, not the second.)
     """
     return _red(entry)[0]
 

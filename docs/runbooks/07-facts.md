@@ -297,22 +297,34 @@ when, restricted to that scope (QF-44):
 
 1. **`merge facts check` reports full coverage** — the coverage line reads
    `{n} of {n}`, not `{n} of {m}` with `m > n`.
-2. **Every non-retired entry in scope is green.** Today, before the Panel's
-   red counts ship (design QF-25), read this off `facts/.index.json`
-   directly — no non-retired, in-scope row has `status` `disputed` or
-   `unknown`, and no row's `field_status_counts.disputed`/`.unknown` is
-   above zero:
+2. **Every non-retired entry in scope is confirmed.** A reviewer's tick, and
+   nothing else.
+
+   **Redness is not part of this test** — owner ruling, 2026-09-06: «whatever
+   gets confirmed means it's complete, period. Whether it's red or not
+   shouldn't matter at all.» This step used to read "every entry is green" and
+   list the `disputed`/`unknown` query below, which was the right test only
+   while a red entry could not be ticked at all. It can now, and a red leaf is
+   an unanswered question about the SOURCE — some of which are simply how the
+   restaurant is, and would make handover wait on facts that will never
+   resolve. The reviewer who ticks an entry with a red leaf has read that leaf
+   and is saying this is what the source says.
+
+   Read the confirmations off the Panel (§4), which is where a tick lives —
+   `facts/.index.json` carries no confirmation state, so there is no `jq` for
+   this one.
+
+   The red counts are still worth *looking* at before you tag, not as a gate
+   but so a scope never hands over with open questions nobody knew about:
 
    ```bash
    jq '.entries[] | select(.retired == false)
        | select(.status == "disputed" or .status == "unknown"
                  or (.field_status_counts.disputed // 0) > 0
-                 or (.field_status_counts.unknown // 0) > 0)' \
+                 or (.field_status_counts.unknown // 0) > 0)
+       | {id, key, status}' \
      /opt/inja/data-repo/facts/.index.json
    ```
-
-   An empty result is green. Once Phase 3 ships, the Panel's red counts and
-   confirmation state (§4) are the same information read the intended way.
 
 Once both hold, the handover artefact is a **git tag** on `data-repo`, at the
 commit that carries everything the scope needs — `facts/`, `attachments/
