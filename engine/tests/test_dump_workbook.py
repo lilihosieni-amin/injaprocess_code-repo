@@ -243,6 +243,19 @@ def test_a_dense_header_carrying_one_merged_group_is_not_a_band():
     assert header_row(head, ["B1:C1"]) == 1
 
 
+def test_sparsity_is_judged_against_the_head_rows_own_extent():
+    """`Gozareshat!ضایعات`: five columns of head on a tab fifteen wide. The band
+    test divides by the row's width, and `_head_grid` pads every row to the
+    tab's `max_col` — dividing by the padding would call the date header sparse
+    and skip it, voiding a header §7 says may never move."""
+    head = [[""] * 15,
+            ["", "تاریخ", "", "", "ضایعات"] + [""] * 10,
+            ["", "روز", "ماه", "سال", ""] + [""] * 10,
+            ["", "3", "شهریور", "1405", ""] + [""] * 10,
+            [""] * 15]
+    assert header_row(head, ["B2:D2", "E2:O4"]) == 3
+
+
 def test_sheets_json_carries_hidden_dimensions_codes_and_the_empty_flag(tmp_path):
     _, out = _dump(tmp_path)
     sheets = {s["name"]: s for s in _json(out / "sheets.json")["sheets"]}

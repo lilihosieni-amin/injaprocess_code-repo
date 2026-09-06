@@ -505,10 +505,21 @@ def _is_title_band(index, row, merges):
 
 def header_row(head, merges=()):
     """The first of the first five rows that is mostly non-numeric text — half
-    or more of its non-empty cells. Blank rows and title bands are skipped."""
-    for index, row in enumerate(head[:_HEAD_ROWS], start=1):
+    or more of its non-empty cells. Blank rows and title bands are skipped.
+
+    A band is judged against the **searched rows' own extent**, not the width
+    `_head_grid` hands over: that grid is padded to the tab's `max_col`, which
+    rows further down can push far past anything the head says, and the band
+    test's sparsity half is a fraction of the row's width. `Gozareshat!ضایعات`
+    heads five columns on a tab fifteen wide — divided by fifteen its date
+    header reads sparse, and the tab loses a header it has (§7).
+    """
+    rows = head[:_HEAD_ROWS]
+    extent = max((col for row in rows
+                  for col, v in enumerate(row, start=1) if v.strip()), default=0)
+    for index, row in enumerate(rows, start=1):
         cells = [v for v in row if v.strip()]
-        if not cells or _is_title_band(index, row, merges):
+        if not cells or _is_title_band(index, row[:extent], merges):
             continue
         text = [v for v in cells if not _is_number(v)]
         if len(text) * 2 >= len(cells):
