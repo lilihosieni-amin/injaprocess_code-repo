@@ -1281,7 +1281,7 @@ All under `merge facts`, deterministic, `DATA_ROOT`-relative, exit 2 on a
 failed precondition with nothing written — the contract every existing verb
 keeps, so a pipeline that retries on exit 2 cannot double-apply. The writing
 verbs (`apply`, `resolve`, `retire`, `revert`, `promote`,
-`repair-foreign-keys`) each take `--run
+`repair-foreign-keys`, `repair-source-refs`) each take `--run
 <run_dir>` (the run directory that records the write, QF-7) and write what
 they did into it; the reporting verbs (`audit`, `check`, `export`) take no
 `--run` and write nothing under `DATA_ROOT`.
@@ -1294,6 +1294,7 @@ they did into it; the reporting verbs (`audit`, `check`, `export`) take no
 | `revert` | read the run's `facts-delta.json` and `id-map.json`; remove every entry the run created and restore every path it wrote from the commit before the run's; a successor the run created is removed and its predecessor's `valid_to` reopened; refuses (exit 2) if any later run's delta touched one of the same paths |
 | `promote --id F-… --kind <kind> [--key <key>]` | keep the id, change `kind`, set the key — recomputed by QF-32 where that table derives one, otherwise taken from `--key`, which is then required — re-derive `status`; a missing `--key` where the table mints, a key failing the pattern, a key collision, or a non-`note` source is a precondition failure |
 | `repair-foreign-keys` | drop every `foreignKeys` member that names neither the columns it joins on nor the entry it points at, and the collection with the last of them; touches no other key and re-derives no status; writes nothing at all when the store is already clean, so a second run leaves no snapshot for `revert` to act on. The one verb that removes: §11 has no action that takes a key back out, and QF-2 admits no writer but this one, so a collection the store should never have held has no other way out of it |
+| `repair-source-refs` | rewrite every `source[].ref` that names no file into the path this section requires, using the manifest's `dir`/`file` for a bare `spreadsheetId` and the estate root for a path that lost it; a ref it cannot place is left exactly as it is and reported, never guessed. `hash` and `run` are untouched — the hash was `null` because the file could not be found, and `check` is what fills it. The second verb that exists because §11 cannot rewrite a value in place: a corrected `ref` is a different member of a union field, so a delta would add a second citation beside the broken one |
 | `export --record <key> [--out <path>] [--all]` | write the record's `rows[]` as a CSV whose header is `key` followed by the declared `fields[].key` in order, retired rows omitted unless `--all`; refuses (exit 2) a record whose `role` is not `reference` or `config`, and any `--out` under `facts/` or `runs/` — the CSV is a derived view and is never committed |
 | `audit` | report, never write: duplicate outputs (two rules writing one field); look-alike titles and keys; orphaned `{ref}`s, `{ref, field, row}` edges whose target no longer declares the field or row (including every deferred edge a stub fill has just made checkable), and `refItems` cells whose item is retired or gone; process links whose cited node is no longer in the file or whose process is tombstoned, with the `superseded_by` heir proposed as an approvable re-point; store rows absent from the latest dump, and retired rows with live edges into them; instances whose `expr` differs from their `template_of`; reference-table cells disagreeing beyond 1 % with the constant-rule output their `reconciled_against` pair names; component sums differing from a stated total by more than 1 %; constants no rule consumes and no record field derives; recurring note shapes; stubs untouched for three facts runs in their creating department or older than 30 days; two open entries sharing a natural key; a non-empty-scope entry whose key exists at empty scope; `unit_raw` strings no `units` row covers; role strings in `speaker_role`/`filled_by`/`approved_by`/`by`/`signatures[].role` that appear in no process's `actor` or `mechanisms` |
 | `check` | re-hash every cited file; report entries whose source moved and sources whose estate file is not present; report manifest workbooks that no non-stub `record` cites (the coverage denominator: "read") |
@@ -1329,9 +1330,17 @@ facts/.+` used with `fullmatch` in `_check_write_path` (everything under
 `data-repo/CLAUDE.md`'s hard-rules block names `facts/**` as merge-only.
 
 **QF-44. Readiness and handover.** A scope is ready to hand over when,
-restricted to that scope: `check` reports full manifest coverage, and every
-non-retired entry is green for a `confirm` holder — which by QF-25 already
-excludes every `disputed` or `unknown` field. The handover artefact is a
+restricted to that scope: `check` reports full manifest coverage, every
+non-retired entry is confirmed for a `confirm` holder, **and no non-retired
+entry is `disputed` or `unknown`**.
+
+That last clause used to be implicit: QF-25 refused the tick to a red entry, so
+"confirmed" carried "not red" inside it. The owner's 2026-09-06 ruling separated
+the two — a red entry is now confirmable — and readiness therefore has to ask
+for both in its own words. Written out rather than left to follow, because the
+alternative is a scope that hands over green with its disputes still open. The
+two questions were always distinct: confirming is a reviewer saying they have
+read an entry, and readiness is the estate saying it has no open questions left. The handover artefact is a
 **git tag** on `data-repo` naming `facts/`, `attachments/sheets/` (manifest,
 dumps, `.gs`, `.structure.md`) and the run directories that produced them; the
 `.xlsx` are server-local and are copied alongside from the snapshot. Runbook
@@ -1559,9 +1568,19 @@ server-side from the stored fingerprint (the client is forbidden from
 computing one); a stored mark whose fingerprint no longer matches counts as
 *not confirmed*, exactly as for a process, and the listing does not
 distinguish it from an entry never ticked (the confirmations table and the
-audit trail keep the history). An entry whose `status` is `disputed` or `unknown` cannot be
-confirmed: the endpoint answers 409 and the UI draws the control disabled,
-labelled «قابل تأیید نیست», because red wins over green (QF-25). Each confirmation row also records the `data-repo`
+audit trail keep the history). **An entry whose `status` is `disputed` or
+`unknown` is confirmable like any other** — owner ruling, 2026-09-06: «each of
+the quantitative items should be confirmable, regardless of whether it has an
+issue or not.» This replaces the rule that stood here, under which red won over
+green: the endpoint answered 409 and the UI drew the control disabled, labelled
+«قابل تأیید نیست». The reasoning it was written on — that a signature should
+not vouch for an unreconciled fact — is answered by what an `unknown` leaf
+actually is: a question for the SOURCE, which nothing a reviewer does on that
+screen can settle. The refusal therefore withheld the signature without moving
+the thing it was waiting on, and did so on precisely the entries most in need of
+a reviewer. Confirming says "I have read this and it is what the source says";
+the red marks stay drawn beside the tick and say the rest, and confirming
+neither clears them nor changes `status`. Each confirmation row also records the `data-repo`
 commit id it was taken against (one column, one migration), so a
 post-restore reconciliation can tell backup skew from genuine drift. The
 audit events (`confirmation.set` / `.revoked`) apply unchanged; the detail
@@ -1785,7 +1804,7 @@ follows is what remains:
   idempotent) and `--manifest` (full dump, `rows.tsv` for confirmed reference
   tabs); the sheetId-drift diff.
 - `engine/merge/facts.py` — `apply, resolve, retire, revert, promote, export,
-  audit, check, repair-foreign-keys`.
+  audit, check, repair-foreign-keys, repair-source-refs`.
 - `tests/fixtures/facts/kitchen-quantitative-report.pdf` — the hand-written
   summary of the cooking recordings, the acceptance reference of §17.
 - `docs/runbooks/07-facts.md` — where the store lives, what commits it, the

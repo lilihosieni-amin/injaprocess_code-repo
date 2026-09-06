@@ -112,18 +112,19 @@ export const CONFIRMATION_LABELS: Record<string, string> = {
 }
 
 /**
- * Badges, counts and the disabled tick — **properties of the entry, shown
- * beside the chip, never inside it** (QF-25, conformance note 1).
+ * Badges and counts — **properties of the entry, shown beside the chip, never
+ * inside it** (conformance note 1).
  *
  * `{n}` is substituted by the caller. A universal entry the reviewer cannot
- * tick has no control and no label at all, so there is nothing here for it.
+ * tick has no control and no label at all, so there is nothing here for it —
+ * and since the owner's 2026-09-06 ruling that a red entry is confirmable too,
+ * neither is there a `cannot_confirm`: no tick is ever drawn disabled.
  */
 export const BADGE_LABELS: Record<string, string> = {
   stub: 'پیش‌ثبت',
   retired: 'بازنشسته',
   unknown_count: '{n} بی‌پاسخ',
   disputed_count: '{n} متعارض',
-  cannot_confirm: 'قابل تأیید نیست',
 }
 
 /** `item.category`. */

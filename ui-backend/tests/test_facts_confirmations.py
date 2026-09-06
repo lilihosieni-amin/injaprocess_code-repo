@@ -182,27 +182,35 @@ def test_retick_stale_fingerprint_409(data_root, tmp_path):
     assert len(_events(client, "confirmation.set")) == 1
 
 
-def test_tick_on_red_entry_409(data_root, tmp_path):
-    """`F-00002`'s `status` is `disputed` — red wins over green (QF-25), and
-    the endpoint refuses before it even reaches the fingerprint check."""
+def test_tick_on_red_entry_is_allowed(data_root, tmp_path):
+    """`F-00002`'s `status` is `disputed`, and it is confirmable anyway.
+
+    **Owner ruling, 2026-09-06:** «each of the quantitative items should be
+    confirmable, regardless of whether it has an issue or not.» This replaces
+    QF-25's red-over-green refusal, which made the entries most in need of a
+    reviewer's attention the only ones a reviewer could not sign — an
+    `unknown` leaf is a question for the source, and nothing the reviewer does
+    on this screen can answer it.
+    """
     client = _client_as(data_root, tmp_path, "editor", "*")
     entry = _entry(data_root, "records.json", RECORD)
     fp = fact_fingerprint(entry)
     r = client.post(f"/api/confirmations/{RECORD}", json={"fingerprint": fp})
-    assert r.status_code == 409
-    assert r.json()["detail"] == \
-        "دادهٔ قرمز قابل تأیید نیست — اول تعارض یا بی‌پاسخی را رفع کنید"
-    assert _events(client, "confirmation.set") == []
+    assert r.status_code == 200
+    assert len(_events(client, "confirmation.set")) == 1
 
 
-def test_tick_on_red_entry_409_even_with_wrong_fingerprint(data_root, tmp_path):
-    """Red wins regardless of what fingerprint was echoed — the 409 for a
-    disputed/unknown entry is not the stale-fingerprint 409, and must not be
-    confused with it by only ever testing the correct print."""
+def test_red_entry_still_refuses_a_stale_fingerprint(data_root, tmp_path):
+    """The other half of the ruling, and the reason the old pair of tests is
+    replaced rather than deleted: dropping the red refusal must not drop the
+    stale-print one underneath it. A red entry confirmed against a print
+    nobody read is still 409 — and now says so in the stale-print words, which
+    is what tells the two apart."""
     client = _client_as(data_root, tmp_path, "editor", "*")
     r = client.post(f"/api/confirmations/{RECORD}", json={"fingerprint": "0" * 64})
     assert r.status_code == 409
-    assert "قرمز" in r.json()["detail"]
+    assert "قرمز" not in r.json()["detail"]
+    assert _events(client, "confirmation.set") == []
 
 
 # --- the gate: AND over every department in scope ---

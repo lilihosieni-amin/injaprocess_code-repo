@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { BADGE_LABELS, CONFIRMATION_LABELS, SCREEN_LABELS, label } from '../lib/factsLabels'
+import { CONFIRMATION_LABELS, SCREEN_LABELS, label } from '../lib/factsLabels'
 import { ApiError } from '../api/client'
 import { useRevokeFactConfirmation, useSetFactConfirmation } from '../api/hooks'
 import { Button } from '../ui/Button'
@@ -22,17 +22,28 @@ import { PX } from './cards/parts'
  *
  * | state | drawn |
  * |---|---|
- * | red (`status` is `disputed` or `unknown`) | the disabled control, «قابل تأیید نیست» |
  * | retired, or a stub | **nothing** — the design's `sfCanTick` excludes both |
  * | `can_confirm: false` | **nothing** — a universal entry the reviewer holds no `*` for (QF-27). Appendix D: *no control, no label* |
  * | otherwise | the live tick, green when `confirmed` |
  *
- * Red is read off `entry.status` and not off `can_confirm`, because both a red
- * entry and an out-of-scope one arrive with `can_confirm: false` and they are
- * drawn oppositely: one is a **statement about the data** the reviewer has to
- * act on, the other is a control that should not exist for them. The server
- * partitions them the same way — `set_confirmation` answers 409 for a red entry
- * and the gate refuses the other before the handler runs.
+ * ## The state that used to be here, and the ruling that removed it
+ *
+ * A red entry — `status` of `disputed` or `unknown` — was a fourth row: the
+ * design's translucent palette (`:5065-5069`) drawn as a DISABLED control
+ * labelled «قابل تأیید نیست», because QF-25 had red winning over green and
+ * `POST /api/confirmations/{fid}` answering 409 for one.
+ *
+ * **The owner overturned that on 2026-09-06:** «each of the quantitative items
+ * should be confirmable, regardless of whether it has an issue or not.» An
+ * `unknown` leaf is a question for the SOURCE, so the refusal blocked the
+ * reviewer's signature without moving the thing it was waiting on — and it did
+ * so on exactly the entries most in need of a reviewer. The red marks stay
+ * drawn beside the tick and say the rest.
+ *
+ * So `red` is gone from this file entirely, rather than kept and ignored:
+ * `can_confirm` now carries one meaning (QF-27 scope) instead of two that were
+ * drawn oppositely, and there is no disabled state left for a stale branch to
+ * resurrect.
  *
  * ## The fingerprint
  *
@@ -49,43 +60,40 @@ export function FactConfirm({ bundle }: { bundle: FactBundle }) {
   const revoke = useRevokeFactConfirmation(entry.id)
   const [asking, setAsking] = useState(false)
 
-  const red = entry.status === 'disputed' || entry.status === 'unknown'
   const stub = (entry.data as { stub?: unknown }).stub === true
   if (entry.retired || stub) return null
-  if (!red && !confirmation.can_confirm) return null
+  // `can_confirm` alone now — **owner ruling, 2026-09-06**, overturning QF-25:
+  // «each of the quantitative items should be confirmable, regardless of
+  // whether it has an issue or not.» A red entry used to arrive with
+  // `can_confirm: false` and be drawn as a disabled control; it now arrives
+  // `true` and takes the ordinary road. What is left of the flag is QF-27
+  // alone — a caller out of scope — which is still «no control, no label».
+  if (!confirmation.can_confirm) return null
 
   const on = confirmation.confirmed
   const failure = set.error ?? revoke.error
   const status = failure instanceof ApiError ? failure.status : 0
   const moved = status === 409
 
-  // :5062 — three palettes, one box. Green when the stored mark is for these
-  // bytes; the plain violet box when it is not; the translucent one on a red
-  // entry, which is a control the design draws and disables rather than hides.
-  const skin = red
-    // :5065-5069 — the outer edge and the chip fill are the two translucent
-    // whites; the tick box inside stays WHITE (`sfTickBg`'s else-branch) behind
-    // a red hairline, so the control reads as present-and-refused rather than
-    // as absent.
-    ? { outer: 'border-transparent', chip: 'text-line-filter', box: 'border-border-danger bg-card' }
-    : on
-      ? { outer: 'border-border-ok bg-tile-ok', chip: 'text-green', box: 'border-green bg-green' }
-      : { outer: 'border-card bg-card', chip: 'text-violet', box: 'border-border-pick bg-card' }
+  // :5062 — two palettes, one box. Green when the stored mark is for these
+  // bytes, the plain violet box when it is not. The design's THIRD palette —
+  // the translucent one for a red entry, :5065-5069 — goes with the rule that
+  // drew it: there is no refused state left for it to paint.
+  const skin = on
+    ? { outer: 'border-border-ok bg-tile-ok', chip: 'text-green', box: 'border-green bg-green' }
+    : { outer: 'border-card bg-card', chip: 'text-violet', box: 'border-border-pick bg-card' }
 
-  const action = red ? label(BADGE_LABELS, 'cannot_confirm')
-    : on ? label(CONFIRMATION_LABELS, 'confirmed')
-      : label(SCREEN_LABELS, 'confirm')
+  const action = on ? label(CONFIRMATION_LABELS, 'confirmed')
+    : label(SCREEN_LABELS, 'confirm')
 
   return (
     <>
       <button
         type="button"
         data-testid="fact-tick"
-        disabled={red}
         title={label(SCREEN_LABELS, on ? 'tick_hint_confirmed' : 'tick_hint_unconfirmed')}
         onClick={() => setAsking(true)}
-        style={red ? { ...PX.tick, ...PX.gap9, ...PX.tickRedChip, ...PX.tickRedOuter }
-          : { ...PX.tick, ...PX.gap9 }}
+        style={{ ...PX.tick, ...PX.gap9 }}
         // `max760:self-start` is the design's own ≤760 rule for a button inside
         // `[data-r-stack]`: `width:auto; flex:0 0 auto; align-self:flex-start`.
         // Without it the stacked column's `align-items:stretch` pulls the tick

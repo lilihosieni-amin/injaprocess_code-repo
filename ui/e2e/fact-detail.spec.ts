@@ -52,7 +52,10 @@ const RULE = bundle('F-00030', 'rule', 'مصرف اعلامی پیتزا', {
   }],
   calls: [{ ref: 'F-00031' }],
 }, {
-  confirmation: { confirmed: false, can_confirm: false, fingerprint: 'sha256:r30' },
+  // `can_confirm: true` on a DISPUTED entry — what the route serves since the
+  // owner's 2026-09-06 ruling. It used to serve `false` here, and the tick was
+  // drawn disabled; both halves moved together, so the fixture moves with them.
+  confirmation: { confirmed: false, can_confirm: true, fingerprint: 'sha256:r30' },
   red_paths: { unknown: [], disputed: ['data/expr'] },
   path_labels: { 'data/expr': 'فرمول' },
   resolved: {
@@ -442,10 +445,15 @@ test('fact detail — the disputed rule: accounts grouped by field, and the reso
   // A reviewer never reads the machine path (§17).
   await expect(page.getByText('data/expr')).toHaveCount(0)
 
-  /* ---- the red entry's tick: drawn, disabled, and named (QF-25) ---- */
+  /* ---- the red entry's tick: the ordinary live one (owner ruling, 2026-09-06) ---- */
+  // «each of the quantitative items should be confirmable, regardless of
+  // whether it has an issue or not» — so this entry, whose `data/expr` is
+  // disputed and drawn as such two assertions above, offers the same tick a
+  // green one does. The red marks and the tick are independent now, and this
+  // test asserts both on one screen, which is the pairing that matters.
   const tick = page.getByTestId('fact-tick')
-  await expect(tick).toHaveText(/قابل تأیید نیست/)
-  await expect(tick).toBeDisabled()
+  await expect(tick).toHaveText(/تأیید این مورد/)
+  await expect(tick).toBeEnabled()
 
   /* ---- choosing goes through the design's own dialog (:5042) ---- */
   const before = reads.length

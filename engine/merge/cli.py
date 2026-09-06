@@ -14,6 +14,7 @@ from merge_facts.revert import revert as revert_facts
 from merge_facts.verbs import export as export_facts
 from merge_facts.verbs import promote as promote_facts
 from merge_facts.verbs import repair_foreign_keys as repair_facts_foreign_keys
+from merge_facts.verbs import repair_source_refs as repair_facts_source_refs
 from merge_facts.verbs import resolve as resolve_facts
 from merge_facts.verbs import retire as retire_facts
 from order import reconcile as reconcile_order
@@ -126,6 +127,14 @@ def _facts(args):
             for fid, dropped in repaired:
                 print(f"repaired {fid} — dropped {dropped}")
             print(f"repaired {len(repaired)} entries")
+        elif args.facts_cmd == "repair-source-refs":
+            repaired, stuck = repair_facts_source_refs(data_root(), args.run)
+            for fid, n in repaired:
+                print(f"repaired {fid} — rewrote {n}")
+            for fid, ref in stuck:
+                print(f"left alone {fid} — {ref} names no file and the manifest "
+                      f"maps it nowhere", file=sys.stderr)
+            print(f"repaired {len(repaired)} entries")
         elif args.facts_cmd == "export":
             out = args.out or str(data_root() / f"{args.record}.csv")
             path = export_facts(data_root(), args.record, out, include_retired=args.all)
@@ -210,6 +219,8 @@ def main(argv=None):
     fpr.add_argument("--run", required=True)
     frf = fsub.add_parser("repair-foreign-keys")
     frf.add_argument("--run", required=True)
+    frs = fsub.add_parser("repair-source-refs")
+    frs.add_argument("--run", required=True)
     fex = fsub.add_parser("export")
     fex.add_argument("--record", required=True)
     fex.add_argument("--out")

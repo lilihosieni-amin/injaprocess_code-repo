@@ -804,18 +804,21 @@ def test_the_bundle_carries_every_map_a_screen_needs(data_root, tmp_path):
     assert [c["id"] for c in item["consumers"]] == [RULE, DINING_RULE, BOM]
 
 
-def test_a_red_entry_cannot_be_confirmed_and_says_so(data_root, tmp_path):
-    """QF-25: red wins over green, so the bundle reports the tick as
-    unavailable — the same state the confirm endpoint answers 409 for."""
+def test_a_red_entry_is_confirmable_and_still_reports_its_red(data_root, tmp_path):
+    """**Owner ruling, 2026-09-06**, overturning QF-25's red-over-green: «each
+    of the quantitative items should be confirmable, regardless of whether it
+    has an issue or not.» The tick is offered — and the entry does not stop
+    being red to earn it. `red_paths` below is the assertion that matters
+    beside `can_confirm`: the two are independent now, where they used to be
+    one state, and a change that quietly cleared the red to allow the tick
+    would satisfy the first half alone."""
     _plant(data_root)
     client = _client_as(data_root, tmp_path, "editor", "*")
     body = client.get(f"/api/facts/{RECORD}").json()
-    # The print is served even for a red entry — the state is reported, and it
-    # is the *endpoint* that refuses the tick with 409.
     assert body["confirmation"] == {
         "fingerprint": fact_fingerprint(
             next(e for e in ENTRIES if e["id"] == RECORD)),
-        "confirmed": False, "can_confirm": False}
+        "confirmed": False, "can_confirm": True}
     assert body["red_paths"] == {"unknown": ["data/grain"],
                                  "disputed": ["data/cadence"]}
     assert set(body["path_labels"]) == {"data/grain", "data/cadence"}

@@ -253,19 +253,20 @@ def set_confirmation(target: str, body: ConfirmBody, request: Request,
     # only thing that can clear it first. A blanket refusal in `_load` would
     # take that tool away from exactly the records that need it.
     #
-    # A fact takes the equivalent refusal on its `status` instead of on
-    # `tombstoned` — a red entry (`disputed` or `unknown`, QF-6) is not "gone",
-    # it is "not yet reconciled", and 409 rather than 403 says that: the state
-    # conflicts with what confirming means, the same reason a stale fingerprint
-    # is 409 and not something else. Checked before the fingerprint comparison
-    # so a caller cannot dodge it by echoing whatever print they were shown —
-    # red wins over green regardless of which bytes were read (QF-25).
-    if _kind(target) == "fact":
-        if doc.get("status") in ("disputed", "unknown"):
-            raise HTTPException(
-                status_code=409,
-                detail="دادهٔ قرمز قابل تأیید نیست — اول تعارض یا بی‌پاسخی را رفع کنید")
-    elif doc.get("tombstoned"):
+    # **A fact takes no equivalent refusal.** QF-25 used to answer 409 here for
+    # a `disputed` or `unknown` entry — red wins over green — and the owner
+    # overturned it on 2026-09-06: «each of the quantitative items should be
+    # confirmable, regardless of whether it has an issue or not.» The rule made
+    # the entries most in need of a reviewer the only ones a reviewer could not
+    # sign, and an `unknown` leaf is a question for the SOURCE: nothing anyone
+    # does on that screen can answer it, so the refusal blocked the signature
+    # without moving the thing it was waiting on. A confirmation says "I have
+    # read this and it is what the source says", which a red entry can satisfy
+    # — the red marks stay drawn beside it and say the rest.
+    #
+    # A tombstoned PROCESS is still refused: that is a document that no longer
+    # exists, not one with an open question in it.
+    if _kind(target) != "fact" and doc.get("tombstoned"):
         raise HTTPException(status_code=403,
                             detail="این فرآیند حذف شده و دیگر قابل تأیید نیست")
     now = _fingerprint_of(target, doc)

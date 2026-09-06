@@ -1,5 +1,7 @@
 import copy, json, pathlib, subprocess, sys
 
+import pytest
+
 from facts_helpers import _const_delta, _root, _run_dir, _seed_units, _units_delta, _write
 from merge_facts import account_id, load_store
 from merge_facts.apply import apply
@@ -623,3 +625,61 @@ def test_a_delta_carrying_an_account_applies_and_the_id_is_minted(tmp_path):
     entry = _tol(load_store(root))[0]
     assert [a["id"] for a in entry["accounts"]] == [
         minted, account_id(VALUE_PATH, "3", 3, _account(3, lines="13")["source"])]
+
+
+# --- QF-5: a `source[].ref` is a PATH relative to data-repo, and an ---
+# --- unresolvable one fails apply — except an estate .xlsx, which is ---
+# --- server-local and whose absence is `check`'s report to make      ---
+
+def _cited(ref, kind="sheet"):
+    d = _const_delta(5)
+    d["entries"][0]["source"] = [{"type": kind, "ref": ref}]
+    return d
+
+
+def test_a_source_ref_that_is_not_a_path_fails_apply(tmp_path, capsys):
+    """The shape 575 stored citations carry: a bare Google Drive spreadsheet
+    id where QF-5 puts a path. It resolves to no file, so the Panel's one
+    download route can serve nothing for it — «File wasn't available on site»,
+    the owner's report of 2026-09-06. QF-5 has always said this fails `apply`;
+    until now nothing implemented it, which is how they were written."""
+    root = _root(tmp_path); _seed_units(root)
+    with pytest.raises(SystemExit):
+        apply(root, _write(root, "d.json",
+                           _cited("12Q9yQLrfJaWkasZfeK8ACp131CBgjhJ8mRkvQYC04P8")),
+              _run_dir(root, "1"))
+    assert "source" in capsys.readouterr().err
+
+
+def test_a_missing_estate_xlsx_still_applies(tmp_path):
+    """The one exemption, and it has to be tested or the check above would be
+    satisfied by refusing everything: an `.xlsx` under `attachments/sheets/`
+    is server-local and not in git, so its absence is reported by `check` as
+    "estate not present" and never fails a write."""
+    root = _root(tmp_path); _seed_units(root)
+    apply(root, _write(root, "d.json", _cited("attachments/sheets/M/M.xlsx")),
+          _run_dir(root, "1"))
+    assert _tol(load_store(root))[0]["source"][0]["hash"] is None
+
+
+def test_a_missing_script_beside_it_does_not_get_the_exemption(tmp_path):
+    """`.gs` and `.structure.md` live in git beside the workbook, so only the
+    binary is exempt. Written because the natural way to implement the rule —
+    "anything under attachments/sheets/" — passes the test above while leaving
+    23 of the store's broken citations unrefused."""
+    root = _root(tmp_path); _seed_units(root)
+    with pytest.raises(SystemExit):
+        apply(root, _write(root, "d.json",
+                           _cited("attachments/sheets/M/M.gs", kind="script")),
+              _run_dir(root, "1"))
+
+
+def test_an_accounts_source_is_checked_too(tmp_path):
+    """`accounts[].source` is evidence for one side of a dispute and is cited
+    on the same screen through the same route, so it takes the same rule."""
+    root = _root(tmp_path); _seed_units(root)
+    d = _const_delta(5)
+    d["entries"][0]["accounts"] = [_account(4)]
+    d["entries"][0]["accounts"][0]["source"] = {"type": "sheet", "ref": "nowhere/x.xlsx"}
+    with pytest.raises(SystemExit):
+        apply(root, _write(root, "d.json", d), _run_dir(root, "1"))

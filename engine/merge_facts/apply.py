@@ -279,6 +279,57 @@ def _natural_key(entry):
             tuple(entry["scope"]["departments"]), tuple(entry["scope"]["branches"]))
 
 
+#: An estate workbook — the one citation whose absence is not a failure.
+#: `.xlsx` exactly, and not "anything under `attachments/sheets/`": the `.gs`
+#: scripts and the `.structure.md` dumps live in git beside the binary (QF-44
+#: tags them), so only the binary is server-local.
+_ESTATE_BINARY = re.compile(r"^attachments/sheets/.+\.xlsx$")
+
+
+def _source_path_problems(root, entry, label):
+    """QF-5's own sentence, finally enforced: *"`ref` is a path relative to
+    `data-repo/`… any other unresolvable path fails `apply`"*.
+
+    Nothing implemented it, and `_hash_of` quietly answers `null` for a file
+    that is not there — so a citation that named no file at all was written,
+    hashed as nothing, and only failed years later at the one place it is
+    used. The owner's report of 2026-09-06 is that place: «the worksheets
+    aren't downloadable», because `GET /api/facts/source` resolves a ref
+    against three roots and a bare Google Drive id is inside none of them.
+    575 stored citations carry an id where a path belongs, and 23 more carry a
+    path missing its `attachments/sheets/` root.
+
+    `accounts[].source` is checked beside `source[]`: it is the evidence for
+    one side of a dispute, drawn on the same screen and fetched through the
+    same route, so a broken one fails in exactly the same way.
+
+    Containment as well as existence — a `ref` of `../../etc/passwd` that
+    happens to exist is not a citation into this repo.
+    """
+    problems = []
+    sources = list(entry.get("source") or [])
+    sources += [a.get("source") for a in entry.get("accounts") or []
+                if isinstance(a, dict)]
+    for src in sources:
+        if not isinstance(src, dict):
+            continue
+        ref = src.get("ref")
+        if not isinstance(ref, str) or not ref:
+            continue                      # `chat` cites no file, and says so
+        if _ESTATE_BINARY.match(ref):
+            continue
+        try:
+            target = (root / ref).resolve()
+            inside = target.is_relative_to(root.resolve()) and target.exists()
+        except (ValueError, OSError):
+            inside = False
+        if not inside:
+            problems.append(f"{label}: source ref {ref!r} names no file in "
+                            f"this repo — a ref is a path relative to "
+                            f"data-repo (QF-5)")
+    return problems
+
+
 def _preconditions(root, store, entries, run_dir):
     """Human-readable messages, empty when the delta may be written.
 
@@ -342,6 +393,7 @@ def _preconditions(root, store, entries, run_dir):
             out.append(f"{label}: keys are immutable — {match['id']} is keyed "
                        f"{match['key']!r}, this delta carries {entry['key']!r}")
         out.extend(_reference_problems(store, by_temp, entry, label))
+        out.extend(_source_path_problems(root, entry, label))
     # Task 9: the content pass runs once over the whole delta (its checks are
     # document-wide — e.g. an intra-file unit edge needs the sibling entry),
     # on `entries` as they stand HERE: canonical scope applied, row keys

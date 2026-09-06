@@ -50,23 +50,39 @@ describe('the confirm tick', () => {
     expect(revoke.mutate).toHaveBeenCalled()
   })
 
-  it('draws the disabled control on a red entry, and no dialog behind it', async () => {
+  it('offers the live tick on a red entry, like any other', async () => {
+    // **Owner ruling, 2026-09-06**, overturning QF-25: «each of the
+    // quantitative items should be confirmable, regardless of whether it has
+    // an issue or not.» The disabled «قابل تأیید نیست» control the design
+    // draws (`sfCanTick`, :5062) is gone with the rule it drew, and a red
+    // entry now takes the same road as a green one, dialog included.
     const user = userEvent.setup()
     render(<FactConfirm bundle={entry({
-      confirmation: { confirmed: false, can_confirm: false, fingerprint: 'sha256:abc' },
+      confirmation: { confirmed: false, can_confirm: true, fingerprint: 'sha256:abc' },
     }, { status: 'disputed' })} />)
-    const tick = screen.getByRole('button', { name: 'قابل تأیید نیست' })
-    expect(tick).toBeDisabled()
-    await user.click(tick)
-    expect(screen.queryByRole('dialog')).toBeNull()
-    expect(set.mutate).not.toHaveBeenCalled()
+    expect(screen.queryByText('قابل تأیید نیست')).toBeNull()
+    await user.click(screen.getByRole('button', { name: 'تأیید این مورد' }))
+    expect(screen.getByRole('dialog', { name: 'کل این داده تأیید شود؟' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'تأیید می‌کنم' }))
+    expect(set.mutate).toHaveBeenCalled()
   })
 
-  it('draws the disabled control for `unknown` too — red is both halves', () => {
+  it('offers it for `unknown` too — red was both halves', () => {
     render(<FactConfirm bundle={entry({
-      confirmation: { confirmed: false, can_confirm: false, fingerprint: 'sha256:abc' },
+      confirmation: { confirmed: false, can_confirm: true, fingerprint: 'sha256:abc' },
     }, { status: 'unknown' })} />)
-    expect(screen.getByRole('button', { name: 'قابل تأیید نیست' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'تأیید این مورد' })).toBeEnabled()
+  })
+
+  it('still draws nothing when the SERVER says this caller may not confirm', () => {
+    // The half that survives: `can_confirm: false` no longer means "red", it
+    // means out of scope (QF-27) — and that is still no control at all. A fix
+    // that simply ignored `can_confirm` to let red through would draw a tick
+    // the endpoint refuses.
+    const { container } = render(<FactConfirm bundle={entry({
+      confirmation: { confirmed: false, can_confirm: false, fingerprint: 'sha256:abc' },
+    }, { status: 'disputed' })} />)
+    expect(container).toBeEmptyDOMElement()
   })
 
   it('draws no control at all when the caller may not confirm this entry', () => {
