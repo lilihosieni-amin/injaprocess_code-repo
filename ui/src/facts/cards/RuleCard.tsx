@@ -198,6 +198,9 @@ function DecisionTable({ data }: { data: RuleData }) {
       </CountBand>
       <FactGrid
         label={heading}
+        // Owner's correction, 2026-09-06 — see `FactGrid`'s `align`. The
+        // decision table's cells are one value each, like the record grid's.
+        align="center"
         // :4854 — one `minmax(120px,1fr)` per column. No token holds a track.
         tracks={{ gridTemplateColumns: columns.map(() => 'minmax(120px,1fr)').join(' ') }}
         head={columns.map((k) => {

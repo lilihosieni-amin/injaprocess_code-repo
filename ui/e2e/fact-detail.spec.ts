@@ -617,3 +617,94 @@ test('fact detail — a stub and a retired entry draw no tick at all', async ({ 
 async function open2(page: Page, id: string) {
   await visit(page, `/facts/${id}`, 'factDetail')
 }
+
+/**
+ * How far each element's own TEXT sits from its content box on either side.
+ *
+ * The text, deliberately, and not the element's box: a `display:block` child
+ * fills its parent's width whatever its text is doing inside, so a box
+ * measurement reports every cell perfectly placed while the glyphs sit against
+ * one edge — which is exactly the defect this measures. A `Range` over the
+ * contents bounds the glyph runs themselves.
+ */
+async function textOffsets(cells: import('@playwright/test').Locator) {
+  return (await cells.evaluateAll((nodes) => nodes.map((node) => {
+    // Over the TEXT NODES, one range each, and not `selectNodeContents(cell)`:
+    // a range spanning a block-level child reports that child's full-width box,
+    // so a cell whose glyphs are jammed against one edge measures as perfectly
+    // placed. That is the very shape being tested, and the first version of this
+    // helper passed under a mutation that restored the bug because of it.
+    const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT)
+    let left = Infinity
+    let right = -Infinity
+    while (walker.nextNode()) {
+      const range = document.createRange()
+      range.selectNodeContents(walker.currentNode)
+      const r = range.getBoundingClientRect()
+      if (r.width === 0) continue
+      left = Math.min(left, r.left)
+      right = Math.max(right, r.right)
+    }
+    if (right < left) return null                // an empty cell places nothing
+    const box = node.getBoundingClientRect()
+    const style = getComputedStyle(node)
+    return {
+      text: node.textContent ?? '',
+      start: left - (box.left + parseFloat(style.paddingLeft)),
+      end: (box.right - parseFloat(style.paddingRight)) - right,
+    }
+  }))).filter((o): o is { text: string; start: number; end: number } => o !== null)
+}
+
+test('fact detail — a value grid centres every cell in its column, whatever its dir', async ({ page }) => {
+  // **Owner report, 2026-09-06:** «the table content doesn't show correctly …
+  // the data should be center of column». On the units grid, `g` and `1` sat
+  // against the LEFT of their columns while `جرم`, `گرم` and every header sat
+  // against the right — the split falling exactly on which cells are `dir="ltr"`
+  // islands (QF-42) and which are Persian.
+  //
+  // The cause was a `display:block` span: a block box makes its own alignment
+  // context, so `text-align: start` resolved against the span's OWN direction
+  // and flipped to the left. The design has never done this — every grid cell
+  // there is `inline-block`, which stays in the parent cell's inline flow and
+  // is placed by the parent whatever the span's `dir` says.
+  //
+  // Centring is the owner's own correction to the design (which start-aligns);
+  // it is asserted here on the two grids whose columns hold VALUES, and
+  // deliberately not on the columns table or edge cases, whose columns hold
+  // wrapped Persian prose.
+  await open(page, 'F-00017')
+  const grid = page.getByRole('table', { name: /ردیف/ })
+
+  for (const role of ['columnheader', 'cell'] as const) {
+    for (const o of await textOffsets(grid.getByRole(role))) {
+      // Sub-pixel text metrics differ per glyph run, so this is "centred", not
+      // "centred to the pixel". A cell against an edge is off by tens of px.
+      expect(Math.abs(o.start - o.end),
+        `${role} «${o.text}» sits ${o.start.toFixed(1)}px from one edge and `
+        + `${o.end.toFixed(1)}px from the other`).toBeLessThan(2)
+    }
+  }
+})
+
+test('fact detail — a start-aligned grid puts a latin cell where its header is', async ({ page }) => {
+  // The same defect, on the grid the owner's centring correction does NOT
+  // reach — and so the test that actually pins the repair rather than the
+  // correction. Centring hides a block cell's misplacement (a block child
+  // inherits `text-align: center` and centres its text anyway); start
+  // alignment does not, because that is the case where the block box resolves
+  // `start` against its own `dir` and flips.
+  //
+  // The columns table's «کلید» column is a `dir="ltr"` key under a Persian
+  // header. Both must sit against the same edge — `end` is the distance from
+  // the start edge, which is the right one on an RTL page.
+  await open(page, 'F-00011')
+  const columns = page.getByRole('table', { name: /ستون/ })
+  for (const role of ['columnheader', 'cell'] as const) {
+    for (const o of await textOffsets(columns.getByRole(role))) {
+      expect(o.end,
+        `${role} «${o.text}» sits ${o.end.toFixed(1)}px from the start edge`)
+        .toBeLessThan(2)
+    }
+  }
+})

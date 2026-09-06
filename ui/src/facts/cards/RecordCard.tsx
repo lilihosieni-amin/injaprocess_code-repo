@@ -9,7 +9,8 @@ import {
 } from '../../api/types'
 import { redPath, refTitle, resolvedTitle, rowCount, rowTitle } from '../bundle'
 import {
-  CountBand, DetailCard, Eyebrow, FactGrid, Filled, HeadBand, LabelRow, Mono, PX, Pill, RefLink,
+  CELL_TRUNCATE, CountBand, DetailCard, Eyebrow, FactGrid, Filled, HeadBand, LabelRow, Mono,
+  PX, Pill, RefLink,
   none, unanswered, type GridCell,
 } from './parts'
 
@@ -128,6 +129,10 @@ function RecordGrid({ bundle, data }: { bundle: FactBundle; data: RecordData }) 
       </CountBand>
       <FactGrid
         label={heading}
+        // Owner's correction, 2026-09-06: a value sits in the middle of its
+        // column. Every cell here is one value, which is what makes this grid
+        // (and the decision table) the two the correction applies to.
+        align="center"
         // :4899 — `minmax(140px,1fr)` for the row key, `minmax(110px,1fr)` per
         // column. No token holds a track; see `FactsList`'s `TRACKS`.
         tracks={{
@@ -182,7 +187,7 @@ function cellOf(
   const paint = red === 'disputed' ? 'bg-tile-c'
     : red === 'unknown' ? 'bg-tile-warn' : ''
   const ink = red !== undefined ? 'text-conflict font-extrabold' : 'text-ink font-semibold'
-  const cls = `text-fs-sm2 block truncate ${ink}`
+  const cls = `text-fs-sm2 ${CELL_TRUNCATE} ${ink}`
 
   if (value === null || value === undefined) {
     return { node: <span className={cls}>{unanswered()}</span>, className: paint }
@@ -329,7 +334,7 @@ function ColumnsTable({ bundle, data, onOpen }: {
                   </div>
                 ),
               },
-              { node: <Mono className="block truncate text-fs-xxs text-muted">{f.key}</Mono> },
+              { node: <Mono className={`${CELL_TRUNCATE} text-fs-xxs text-muted`}>{f.key}</Mono> },
             ],
           }
         })}
