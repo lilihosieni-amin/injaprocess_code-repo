@@ -4,7 +4,7 @@ import pytest
 
 from engine_common import read_json, validate
 from facts_helpers import _const_delta, _root, _run_dir, _seed_units, _units_delta, _write
-from merge_facts import account_id, load_store
+from merge_facts import account_id, is_open, load_store
 from merge_facts.apply import apply, simulate, used
 from validate.cli import main as validate_main
 
@@ -750,3 +750,212 @@ def test_validate_store_run_groups_one_rule_into_one_line(tmp_path, capsys,
     err = capsys.readouterr().err
     assert err.count("is not in attachments/sheets/manifest.json") == 1
     assert "2 entries: T-1, T-2" in err
+
+
+# --- v3: record templates, instance identity, the used marker -------------- #
+
+_TABS = {"pz__s10": ("P0", 10, "chalebagh"), "pz__s11": ("P1", 11, "chalebagh"),
+         "pz__s12": ("P2", 12, "naharkhoran")}
+
+
+def _template_delta(key="gozaresh_shabane_pitza", instances=("pz__s11", "pz__s12"),
+                    branches=("chalebagh", "naharkhoran"), location="pz__s12"):
+    """A v3 record template (QF-47): one entry, one `instances[]` member per tab
+    it repeats on. `location` is still required by the delta schema, and is
+    written here as the WRONG instance on purpose — `apply` recomputes it."""
+    members = [{"key": k, "spreadsheetId": _TABS[k][0], "sheetId": _TABS[k][1],
+                "sheet": "پیتزا", "branch": _TABS[k][2], "hidden": False}
+               for k in instances]
+    pointed = _TABS[location]
+    return {"schema_version": 2, "entries": [{
+        "id": "T-1", "kind": "record", "key": key,
+        "title": "گزارش شبانهٔ پیتزا",
+        "statement": "گزارش هر شب لاین پیتزا را ثبت می‌کند.",
+        "scope": {"departments": ["cooking"], "branches": list(branches)},
+        "source": [{"type": "sheet", "ref": "attachments/sheets/G/G.xlsx",
+                    "sheet": "پیتزا"}],
+        "retired": False,
+        "data": {"medium": "sheet", "role": "report",
+                 "location": {"spreadsheetId": pointed[0], "sheetId": pointed[1],
+                              "sheet": "پیتزا", "hidden": False},
+                 "instances": members,
+                 "fields": [{"key": "masraf_elami", "title": "مصرف اعلامی",
+                             "type": "number", "unit": "g",
+                             "columns": {k: "H" for k in instances}}]}}]}
+
+
+def _record(root, key="gozaresh_shabane_pitza"):
+    return [e for e in load_store(root)["record"]["entries"] if e["key"] == key][0]
+
+
+def test_a_template_scoped_to_both_branches_applies_and_location_is_derived(tmp_path):
+    root = _root(tmp_path); _seed_units(root)
+    apply(root, _write(root, "d1.json", _template_delta()), _run_dir(root, "1"))
+    rec = _record(root)
+    assert rec["scope"]["branches"] == ["chalebagh", "naharkhoran"]
+    assert [i["key"] for i in rec["data"]["instances"]] == ["pz__s11", "pz__s12"]
+    # the first instance in ascending key order, not the delta's own pointer
+    assert rec["data"]["location"] == {"spreadsheetId": "P1", "sheetId": 11,
+                                       "sheet": "پیتزا", "hidden": False}
+
+
+def test_a_second_run_over_another_instance_extends_and_raises_no_account(tmp_path):
+    root = _root(tmp_path); _seed_units(root)
+    apply(root, _write(root, "d1.json", _template_delta()), _run_dir(root, "1"))
+    apply(root, _write(root, "d2.json",
+                       _template_delta(instances=("pz__s10", "pz__s11"),
+                                       location="pz__s10")),
+          _run_dir(root, "2"))
+    rec = _record(root)
+    assert len(load_store(root)["record"]["entries"]) == 2      # units + it
+    assert [i["key"] for i in rec["data"]["instances"]] == \
+        ["pz__s11", "pz__s12", "pz__s10"]
+    assert rec["data"]["location"]["spreadsheetId"] == "P0"     # recomputed
+    assert rec.get("accounts", []) == []                        # §4: no dispute
+    assert rec["status"] == "confirmed"
+
+
+def test_an_instance_match_under_another_key_is_refused_nothing_written(tmp_path):
+    root = _root(tmp_path); _seed_units(root)
+    apply(root, _write(root, "d1.json", _template_delta()), _run_dir(root, "1"))
+    before = {p.name: p.read_bytes() for p in (root / "facts").glob("*.json")}
+    try:
+        apply(root, _write(root, "d2.json", _template_delta(key="gozaresh_pitza")),
+              _run_dir(root, "2"))
+        assert False, "expected SystemExit"
+    except SystemExit as e:
+        assert e.code == 2
+    assert {p.name: p.read_bytes() for p in (root / "facts").glob("*.json")} == before
+
+
+def test_a_crash_before_the_id_map_still_marks_the_run_directory(tmp_path,
+                                                                 monkeypatch):
+    """Task 5 review: `used` keyed on `id-map.json` alone, and `_write` writes
+    that AFTER `save_store` — so a crash in between left a mutated store in a
+    run directory nothing marked, and the retry applied the same delta twice.
+    The snapshot is the FIRST artefact `_write` makes, so it is the marker."""
+    root = _root(tmp_path); _seed_units(root)
+    run = _run_dir(root, "20260901-101501")
+    # The id ledger is deliberately out of this comparison: a crashed run burns
+    # the id it minted, which is the cheap half. The five store files are the
+    # expensive half, and they must not have moved.
+    def _store_files():
+        return {p.name: p.read_bytes() for p in (root / "facts").glob("*.json")
+                if p.name != ".id-seq.json"}
+
+    before = _store_files()
+
+    def _boom(*_a, **_k):
+        raise OSError("no space left on device")
+
+    monkeypatch.setattr("merge_facts.apply.save_store", _boom)
+    with pytest.raises(OSError):
+        apply(root, _write(root, "d1.json", _const_delta(key="tol2")), run)
+    assert (run / "facts-before").exists()                      # the snapshot
+    assert not (run / "id-map.json").exists()                   # never reached
+    assert _store_files() == before
+    assert used(run)
+    monkeypatch.undo()
+    with pytest.raises(SystemExit) as exc:
+        apply(root, _write(root, "d2.json", _const_delta(key="tol2")), run)
+    assert exc.value.code == 2
+
+
+def _note_delta(key, title):
+    return {"schema_version": 2, "entries": [{
+        "id": "T-1", "kind": "note", "key": key, "title": title,
+        "statement": "واحد این مقدار در جدول واحدها نیامده است.",
+        "scope": {"departments": ["cooking"], "branches": []},
+        "source": [{"type": "voice", "ref": "meetings/transcripts/c.txt",
+                    "lines": "7"}],
+        "retired": False,
+        "data": {"about": [{"ref": "F-00001"}],
+                 "question": "واحد این مقدار چیست؟"}}]}
+
+
+def test_the_title_twin_guard_covers_notes(tmp_path):
+    root = _root(tmp_path); _seed_units(root)
+    apply(root, _write(root, "n1.json", _note_delta("note_aa11bb22cc33", "واحد نامعلوم")),
+          _run_dir(root, "1"))
+    with pytest.raises(SystemExit) as exc:
+        apply(root, _write(root, "n2.json",
+                           _note_delta("note_aa11bb22cc34", "واحد نامعلوم")),
+              _run_dir(root, "2"))
+    assert exc.value.code == 2
+
+
+def test_a_supersession_with_no_valid_from_closes_with_the_run_date(tmp_path):
+    import jdatetime
+    root = _root(tmp_path); _seed_units(root)
+    first = apply(root, _write(root, "d1.json", _const_delta(5)), _run_dir(root, "1"))
+    old_id = first["id_map"]["T-1"]
+    d = _const_delta(4)
+    d["entries"][0]["supersedes"] = {"ref": old_id}      # no valid_from at all
+    apply(root, _write(root, "d2.json", d), _run_dir(root, "2"))
+    rules = [e for e in load_store(root)["rule"]["entries"] if e["key"] == "tol"]
+    old = [r for r in rules if r["id"] == old_id][0]
+    new = [r for r in rules if r["id"] != old_id][0]
+    assert old["valid_to"] == jdatetime.date.today().strftime("%Y-%m-%d")
+    assert old["superseded_by"]["ref"] == new["id"]
+    assert not is_open(old) and is_open(new)
+    assert new["data"]["outputs"][0]["value"] == 4
+
+
+def test_is_open_is_false_once_superseded_by_is_set():
+    assert is_open({"retired": False, "valid_to": None})
+    assert not is_open({"retired": False, "valid_to": None,
+                        "superseded_by": {"ref": "F-00009"}})
+
+
+def _bound_rule_delta():
+    """A v3 rule: `applies_to[]` bindings the engine wrote, one parameter that
+    is a column reference, and an input reading that parameter (§2.5)."""
+    return {"schema_version": 2, "entries": [{
+        "id": "T-2", "kind": "rule", "key": "enheraf_ba_tolerance",
+        "title": "انحراف با تلورانس",
+        "statement": "انحراف مصرف پس از کسر تلورانس هر پرس محاسبه می‌شود.",
+        "scope": {"departments": ["cooking"], "branches": ["chalebagh"]},
+        "source": [{"type": "sheet", "ref": "attachments/sheets/G/G.xlsx",
+                    "sheet": "پیتزا", "cell": "L6"}],
+        "retired": False,
+        "data": {"inputs": [
+                     {"key": "enheraf", "title": "انحراف", "unit": "g",
+                      "from": {"ref": "T-1", "field": "masraf_elami"}},
+                     {"key": "tolerance_gr", "title": "تلورانس", "unit": "g",
+                      "from": {"param": "tolerancePerFoodGr"}}],
+                 "outputs": [{"key": "v", "title": "مقدار", "unit": "g",
+                              "nature": "observed"}],
+                 "lang": "feel", "expr": "v = enheraf - tolerance_gr",
+                 "applies_to": [
+                     {"key": "pz__s11__l__r6", "record": {"ref": "T-1",
+                                                          "field": "masraf_elami"},
+                      "variant": 1, "range": "L6:L15",
+                      "params": {"tolerancePerFoodGr": 5,
+                                 "ref_1": {"ref": "T-1", "field": "masraf_elami"}},
+                      "rows": [{"key": "r6", "row": 6, "label": "پنیر پیتزا",
+                                "item": "##1"}]}]}}]}
+
+
+def test_apply_accepts_the_v3_rule_members_and_checks_their_field_refs(tmp_path):
+    root = _root(tmp_path); _seed_units(root)
+    d = _template_delta(instances=("pz__s11",), branches=("chalebagh",),
+                        location="pz__s11")
+    d["entries"].append(_bound_rule_delta()["entries"][0])
+    apply(root, _write(root, "d1.json", d), _run_dir(root, "1"))
+    rule = [e for e in load_store(root)["rule"]["entries"]
+            if e["key"] == "enheraf_ba_tolerance"][0]
+    record_id = _record(root)["id"]
+    binding = rule["data"]["applies_to"][0]
+    assert binding["record"]["ref"] == record_id                  # temp id rewritten
+    assert binding["params"]["ref_1"]["ref"] == record_id         # inside params too
+    assert binding["params"]["tolerancePerFoodGr"] == 5
+    assert rule["data"]["inputs"][1]["from"] == {"param": "tolerancePerFoodGr"}
+
+    bad = _template_delta(instances=("pz__s11",), branches=("chalebagh",),
+                          location="pz__s11")
+    rule_entry = _bound_rule_delta()["entries"][0]
+    rule_entry["data"]["applies_to"][0]["params"]["ref_1"]["field"] = "nadarad"
+    bad["entries"].append(rule_entry)
+    with pytest.raises(SystemExit) as exc:
+        apply(root, _write(root, "d2.json", bad), _run_dir(root, "2"))
+    assert exc.value.code == 2

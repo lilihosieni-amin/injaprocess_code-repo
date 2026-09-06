@@ -36,7 +36,7 @@ stub's key/scope were overwritten in place, and any measurement re-keyed
 through it now points at the adopted record).
 
 Detection reads `{run_dir}/adopted.json` (`apply`'s own artifact, written by
-`_finalise` — Task 7 review, I2), never the store: an EARLIER attempt
+`_write` — Task 7 review, I2), never the store: an EARLIER attempt
 compared the run's `facts-before/` snapshot against the CURRENT store, which
 is wrong — a run whose snapshot merely happened to contain a stub that some
 LATER, unrelated run went on to adopt would look, at revert time, exactly
@@ -110,7 +110,7 @@ def _touched(run_dir):
 
 
 def _adopted_ids(run_dir):
-    """The ids this run adopted (QF-20), exactly as `apply`'s `_finalise`
+    """The ids this run adopted (QF-20), exactly as `apply`'s `_write`
     recorded them at write time — `{run_dir}/adopted.json`. A verbs run
     never writes this file (a `resolve`/`retire`/`promote` call can never
     perform an adoption — that's `_plan`'s own machinery, `apply`-only), and

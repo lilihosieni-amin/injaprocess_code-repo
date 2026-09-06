@@ -17,7 +17,7 @@ import pathlib
 import re
 
 from engine_common import read_json
-from merge_facts import (KEY_RE, KIND_ORDER, PROC_ID_RE, _sheet_identity,
+from merge_facts import (KEY_RE, KIND_ORDER, PROC_ID_RE, _sheet_identities,
                          canonical_scope, collect_leaves, find_match, is_open,
                          iter_ref_objects)
 from merge_facts.content import check_document
@@ -141,8 +141,13 @@ def _title_twin(store, entry):
 
 
 def _natural_key(entry):
+    # `canonical_scope` rather than `entry["scope"][...]`: a delta's entry has
+    # been canonicalised by the time this pass runs, but the STORE entry the
+    # instance guard below compares against has only the schema's word for it,
+    # and the schema requires neither half of `scope`.
+    scope = canonical_scope(entry.get("scope"))
     return (entry["kind"], entry.get("key"),
-            tuple(entry["scope"]["departments"]), tuple(entry["scope"]["branches"]))
+            tuple(scope["departments"]), tuple(scope["branches"]))
 
 
 #: An estate workbook — the one citation whose absence is not a failure.
@@ -216,8 +221,7 @@ def preconditions(root, store, entries, run_dir):
         if nk in seen:
             out.append(f"duplicate natural key {entry.get('key')} in delta")
         seen.add(nk)
-        ident = _sheet_identity(entry)
-        if ident is not None:
+        for ident in _sheet_identities(entry):
             if ident in sheets:
                 out.append(f"duplicate sheet identity {ident[0]}/{ident[1]} in delta")
             sheets.add(ident)
@@ -227,6 +231,13 @@ def preconditions(root, store, entries, run_dir):
     run_dept = pathlib.Path(run_dir).parent.name
     by_temp = {e["id"]: e for e in entries if e.get("id")}
     unit_rows = _unit_row_keys(store, entries)
+    # §3.2: one open record per instance. `find_match` answers None for an
+    # instance match under another key so `apply` never renames — which would
+    # leave it free to MINT a second record on the same tab, so the refusal
+    # lands here instead, naming both. A stub is exempt: filling it is exactly
+    # how a tab acquires its real key (QF-20).
+    held_by = {ident: e for e in store["record"]["entries"] if is_open(e)
+               for ident in _sheet_identities(e)}
     departments = _registered(root / "departments" / "registry.json", "departments")
     branches = _registered(root / "attachments" / "sheets" / "manifest.json",
                            "branches")
@@ -250,14 +261,21 @@ def preconditions(root, store, entries, run_dir):
         if match is None:
             if not set(entry["scope"]["departments"]) <= {run_dept}:  # QF-43
                 out.append(f"entry {entry.get('key')} scoped to another department")
-            if entry["kind"] != "note":                              # QF-34
-                twin = _title_twin(store, entry)
-                if twin is not None:
-                    out.append(f"{label}: title {entry.get('title')!r} is already "
-                               f"{twin['id']}'s in this kind and scope")
+            twin = _title_twin(store, entry)                          # QF-34
+            if twin is not None:
+                out.append(f"{label}: title {entry.get('title')!r} is already "
+                           f"{twin['id']}'s in this kind and scope")
         elif match["key"] != entry["key"] and not _is_stub(match):
             out.append(f"{label}: keys are immutable — {match['id']} is keyed "
                        f"{match['key']!r}, this delta carries {entry['key']!r}")
+        for ident in _sheet_identities(entry):
+            other = held_by.get(ident)
+            if other is None or _is_stub(other) or other is match:
+                continue
+            if _natural_key(other) != _natural_key(entry):
+                out.append(f"{label}: tab {ident[0]}/{ident[1]} already belongs "
+                           f"to {other['id']} ({other['key']!r}) — keys are "
+                           f"immutable (QF-34)")
         out.extend(_reference_problems(store, by_temp, entry, label))
         out.extend(_source_path_problems(root, entry, label))
     # Task 9: the content pass runs once over the whole delta (its checks are

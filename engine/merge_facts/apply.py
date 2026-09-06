@@ -36,6 +36,7 @@ import sys
 from datetime import datetime, timezone
 from functools import partial
 
+import jdatetime
 from allocate_id import next_fact_id, peek_fact_id
 from engine_common import (read_json, validate, write_json_atomic,
                            write_text_atomic)
@@ -61,6 +62,9 @@ from merge_facts.preconditions import (FACT_ID_RE, PACK_KEYS, TEMP_ID_RE,
                                        _source_path_problems, preconditions)
 
 SUCCESSION_SKIP = TOP_SKIP | frozenset({"supersedes", "superseded_by"})
+
+#: The leaves `location` keeps once it is derived from `instances[0]` (§4).
+LOCATION_KEYS = ("spreadsheetId", "sheetId", "sheet", "hidden")
 
 
 def apply(root, delta_path, run_dir):
@@ -109,18 +113,53 @@ def apply(root, delta_path, run_dir):
 
 
 def used(run_dir):
-    """§4: a run directory holding an `id-map.json` has already applied its
-    delta, and `apply` refuses a second one.
+    """§4: a run directory `apply` has already written into, and refuses a
+    second delta from — marked by either of the two artefacts `_write` leaves,
+    the `facts-before/` snapshot it takes first or the `id-map.json` it writes
+    last.
 
     The postmortem reproduced what the absence of this cost: two applies into
     one run dir both exit 0, `id-map.json` keeps only the first call's map
     (`_write_once`) while `facts-delta.json` is overwritten by the second, so
-    `revert` strands every id the second call minted. A retry AFTER a
-    precondition failure is unaffected — nothing was written, so there is no
-    `id-map.json`. `resolve`, `retire` and the repairs share their own run
-    dirs and never come through `apply`.
+    `revert` strands every id the second call minted. The snapshot is read
+    here too (Task 5 review) because `id-map.json` is written AFTER
+    `save_store`: a crash in that window leaves a mutated store behind an
+    unmarked run dir, and the retry would apply the same delta a second time.
+    Marking on the FIRST artefact instead closes that window — at the cost of
+    refusing a retry of a run that crashed before `save_store`, which is the
+    safe side of a question `revert` can answer and a double apply cannot.
+
+    A retry AFTER a precondition failure is unaffected — nothing at all is
+    written until the preconditions pass, snapshot included. `resolve`,
+    `retire` and the repairs take their own run dirs and never come through
+    `apply`.
     """
-    return (pathlib.Path(run_dir) / "id-map.json").exists()
+    run_dir = pathlib.Path(run_dir)
+    return (run_dir / "id-map.json").exists() or (run_dir / "facts-before").exists()
+
+
+def _today_jalali():
+    """Today as QF-41's business date — Latin-digit Jalali. `verbs.retire`
+    imports this one rather than keeping its own, so the two dates a run can
+    write into `valid_to` come from a single definition."""
+    return jdatetime.date.today().strftime("%Y-%m-%d")
+
+
+def _recompute_location(entry):
+    """§4: `location` is a derived pointer — the first `instances[]` member in
+    ascending instance-key order. The ladder skips the leaf (`ladder.DERIVED`),
+    so this is its one writer. A record with no instances (paper, external,
+    native, a stub) keeps the location its delta gave it."""
+    data = entry.get("data") or {}
+    instances = [i for i in data.get("instances") or [] if isinstance(i, dict)]
+    if not instances:
+        return False
+    first = min(instances, key=lambda i: i.get("key") or "")
+    location = {k: first[k] for k in LOCATION_KEYS if k in first}
+    if data.get("location") == location:
+        return False
+    data["location"] = location
+    return True
 
 
 class _MemoryMinter:
@@ -260,15 +299,17 @@ def _measurement_key(store, by_temp, data):
 
 def _is_supersession(match, incoming, source):
     """§11: a value that would be *disputed* but carries a **later**
-    `valid_from` is a successor instead. Jalali is fixed-width (QF-41), so the
-    dates compare as strings; an incumbent with no `valid_from` counts as
-    earlier. "Would be disputed" is the ladder's own verdict, asked on copies —
-    prose never disputes, so a re-worded statement never supersedes."""
+    `valid_from` — or a delta that names the match in `supersedes` outright —
+    is a successor instead. Jalali is fixed-width (QF-41), so the dates compare
+    as strings; an incumbent with no `valid_from` counts as earlier. "Would be
+    disputed" is the ladder's own verdict, asked on copies — prose never
+    disputes, so a re-worded statement never supersedes."""
+    declared = (incoming.get("supersedes") or {}).get("ref") == match["id"]
     valid_from = incoming.get("valid_from")
-    if not valid_from:
+    if not valid_from and not declared:
         return False
     held = match.get("valid_from")
-    if held is not None and str(valid_from) <= str(held):
+    if valid_from and held is not None and str(valid_from) <= str(held):
         return False
     return would_dispute(match, incoming, source)
 
@@ -498,7 +539,10 @@ def _upsert(store, plans):
         elif action == "supersede":
             entry = _successor(match, incoming, fid)
             store[entry["kind"]]["entries"].append(entry)
-            match["valid_to"] = incoming.get("valid_from")
+            # §4: a supersession that names no `valid_from` still closes the
+            # predecessor — with the run's own date, so an era always has an
+            # end and `is_open` never sees two live ones for a key.
+            match["valid_to"] = incoming.get("valid_from") or _today_jalali()
             match["superseded_by"] = {"ref": fid}
             touched.append({"entry": match, "id": match["id"], "created": False,
                             "changed": True, "original": None})
@@ -521,6 +565,8 @@ def _upsert(store, plans):
             _strip_stub_markers(incoming)
             changes = merge_entry(match, incoming, _first_source(incoming))
             changed = filled or any(act != "noop" for _, act in changes)
+        if _recompute_location(entry):
+            changed = True
         touched.append({"entry": entry, "id": fid,
                         "created": action in ("create", "supersede"),
                         "changed": changed, "original": original})

@@ -40,27 +40,63 @@ def canonical_scope(scope):
             "branches": sorted(set(scope.get("branches") or []))}
 
 def is_open(entry):
-    return not entry.get("retired", False) and entry.get("valid_to") is None
+    """Open = not retired, not closed by a `valid_to`, and not superseded.
 
-def _sheet_identity(entry):
-    loc = (entry.get("data") or {}).get("location") or {}
-    if entry.get("kind") == "record" and loc.get("spreadsheetId") and loc.get("sheet"):
-        return (loc["spreadsheetId"], loc["sheet"])
-    return None
+    `superseded_by` is read here (§4) because a supersession that carried no
+    `valid_from` used to leave `valid_to` null: the predecessor stayed open,
+    `find_match` kept matching it, and one key had two live eras.
+    """
+    return (not entry.get("retired", False) and entry.get("valid_to") is None
+            and not entry.get("superseded_by"))
+
+def _sheet_identities(entry):
+    """Every (spreadsheetId, sheet) this record occupies — one per `instances[]`
+    member (QF-47: one template, one entry, however many tabs it repeats on),
+    plus `location` for a record that has no instances (a paper log, a stub, or
+    an entry written before v3).
+
+    Deduped, order kept: a v3 record's `location` is derived from one of its own
+    `instances[]` and so names a tab the list already holds — and an entry can
+    never collide with itself, so the callers that ask "who else claims this
+    tab" (`preconditions`) must not be handed the same tab twice."""
+    if entry.get("kind") != "record":
+        return []
+    data = entry.get("data") or {}
+    out = []
+    for instance in data.get("instances") or []:
+        if isinstance(instance, dict) and instance.get("spreadsheetId") \
+                and instance.get("sheet"):
+            out.append((instance["spreadsheetId"], instance["sheet"]))
+    location = data.get("location") or {}
+    if location.get("spreadsheetId") and location.get("sheet"):
+        out.append((location["spreadsheetId"], location["sheet"]))
+    return list(dict.fromkeys(out))
+
+def _nk(entry):
+    return (entry["key"], json.dumps(canonical_scope(entry.get("scope")),
+                                     sort_keys=True))
 
 def find_match(store, entry):
-    """Sheet records match on (spreadsheetId, sheet) first (QF-15), then the
-    natural key (kind, key, canonical scope) among open entries."""
+    """Sheet records match on ANY instance identity first (QF-47), then the
+    natural key (kind, key, canonical scope) among open entries.
+
+    §3.2: an instance match whose natural key disagrees is **not** a match —
+    `apply` never renames, and `digest` has already reported the pair to the
+    reviewer as `template_split`. `apply`'s own precondition then refuses the
+    delta rather than minting a second record on one tab. The one exception is
+    a stub (QF-20): it is identity and nothing else, and the owning run fills
+    it whatever key it carries.
+    """
     kind = entry["kind"]
-    ident = _sheet_identity(entry)
-    if ident:
+    idents = set(_sheet_identities(entry))
+    nk = _nk(entry)
+    if idents:
         for e in store[kind]["entries"]:
-            if is_open(e) and _sheet_identity(e) == ident:
-                return e
-    nk = (entry["key"], json.dumps(canonical_scope(entry.get("scope")), sort_keys=True))
+            if is_open(e) and idents & set(_sheet_identities(e)):
+                return e if (_nk(e) == nk or (e.get("data") or {}).get("stub")) \
+                    else None
     for e in store[kind]["entries"]:
-        if is_open(e) and (e["key"], json.dumps(canonical_scope(e.get("scope")),
-                                                sort_keys=True)) == nk:
+        if is_open(e) and _nk(e) == nk:
             return e
     return None
 

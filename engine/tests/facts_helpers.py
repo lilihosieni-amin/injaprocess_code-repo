@@ -20,7 +20,8 @@ def _root(tmp_path):
     (tmp_path / "attachments" / "sheets").mkdir(parents=True)
     (tmp_path / "attachments" / "sheets" / "manifest.json").write_text(json.dumps(
         {"schema_version": 1,
-         "branches": [{"code": "chalebagh", "name": "چاله‌باغ"}],
+         "branches": [{"code": "chalebagh", "name": "چاله‌باغ"},
+                      {"code": "naharkhoran", "name": "ناهارخوران"}],
          "workbooks": []}), encoding="utf-8")
     # The files these fixtures' deltas cite, actually present.
     #

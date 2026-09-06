@@ -32,7 +32,9 @@ digits — QF-41's stored business-date type, the same convention
 `upload_bot.naming.normalize_date` writes. `engine/pyproject.toml` declares
 `jdatetime` (a coordinator ruling on task 6: this is core engine behaviour, a
 standalone `pip install -e engine` must compute it without upload-bot alongside
-it), so it is imported at module level like any other dependency. `--date`
+it). The date itself is `apply._today_jalali`, imported here rather than
+restated: `apply` writes the same date into a superseded entry's `valid_to`
+(v3 §4), and two definitions of "today" is one too many. `--date`
 stays as an explicit override for a caller that needs a specific date on the
 record rather than the day the verb ran.
 """
@@ -42,7 +44,6 @@ import pathlib
 import sys
 from datetime import datetime, timezone
 
-import jdatetime
 from engine_common import read_json, under, write_json_atomic
 from merge_facts import (
     KIND_FILES,
@@ -60,7 +61,7 @@ from merge_facts import (
 # an `apply` run's, and the controller ruling for `revert` treats a verbs
 # run's `args["id"]` targets as ordinary matched entries, which only works if
 # there is something to restore them from.
-from merge_facts.apply import KEY_RE, _snapshot
+from merge_facts.apply import KEY_RE, _snapshot, _today_jalali
 from merge_facts.audit import _manifest
 from merge_facts.content import foreign_key_declares_a_join
 
@@ -99,10 +100,6 @@ def _find(store, fact_id):
 
 def _now():
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
-def _today_jalali():
-    return jdatetime.date.today().strftime("%Y-%m-%d")
 
 
 def _append_delta(run_dir, verb, args):
