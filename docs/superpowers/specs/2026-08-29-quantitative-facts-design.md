@@ -1330,17 +1330,25 @@ facts/.+` used with `fullmatch` in `_check_write_path` (everything under
 `data-repo/CLAUDE.md`'s hard-rules block names `facts/**` as merge-only.
 
 **QF-44. Readiness and handover.** A scope is ready to hand over when,
-restricted to that scope: `check` reports full manifest coverage, every
-non-retired entry is confirmed for a `confirm` holder, **and no non-retired
-entry is `disputed` or `unknown`**.
+restricted to that scope: `check` reports full manifest coverage, and every
+non-retired entry is confirmed for a `confirm` holder.
 
-That last clause used to be implicit: QF-25 refused the tick to a red entry, so
-"confirmed" carried "not red" inside it. The owner's 2026-09-06 ruling separated
-the two — a red entry is now confirmable — and readiness therefore has to ask
-for both in its own words. Written out rather than left to follow, because the
-alternative is a scope that hands over green with its disputes still open. The
-two questions were always distinct: confirming is a reviewer saying they have
-read an entry, and readiness is the estate saying it has no open questions left. The handover artefact is a
+**Redness does not enter into it** — owner ruling, 2026-09-06: «whatever gets
+confirmed means it's complete, period. Whether it's red or not shouldn't matter
+at all.» This settles a question the same day's earlier ruling opened. Until
+then QF-25 refused the tick to a red entry, so "confirmed" carried "not red"
+silently inside it; once a red entry became confirmable, readiness either had to
+ask for the absence of red in its own words or stop asking for it. It stops.
+
+A confirmation is a person's signature, and the signature is the whole test. Red
+marks an unanswered question about the SOURCE — a value nobody wrote down, or
+two people who disagree — and some of those are simply how the restaurant is;
+requiring them all resolved would make handover wait on facts that will never
+resolve. The reviewer who signs an entry with a red leaf on it is saying they
+have read the entry INCLUDING that leaf and that this is what the source says.
+Nothing is hidden by the ruling: the red counts still ship on every listing row
+(QF-25) and the marks are still drawn beside the tick, so a scope that hands
+over with open questions hands them over visibly. The handover artefact is a
 **git tag** on `data-repo` naming `facts/`, `attachments/sheets/` (manifest,
 dumps, `.gs`, `.structure.md`) and the run directories that produced them; the
 `.xlsx` are server-local and are copied alongside from the snapshot. Runbook
