@@ -1725,6 +1725,21 @@ design does, but never as the only text; `expr` is the one place keys
 appear on their own, as an LTR formula island. The raw-JSON view
 for a `data` key the forms do not know is read-only in v1 (§18).
 
+The bundle also carries **`original`**, the verbatim body `data.original_ref`
+names, read out of `facts/originals/` — owner request, 2026-09-06: «in section
+متن اصلی i want to show the file data there.» QF-31 moves a delta's inline
+`data.original` into that directory and leaves the path behind, so without this
+the screen has a file's NAME and none of its contents to draw. It sits beside
+the entry and never inside it: `entry` is what QF-24 fingerprints, and a field
+arriving from a second file would change the print of every rule in the store at
+once. `null` for an entry with no original and for a `ref` that names no
+readable file inside `facts/originals/` — the two are not distinguished, and the
+path is drawn either way. It takes no gate of its own, because the inline form
+is already served to exactly the callers who reach the entry and `fact_sources`
+does not touch it: that switch strips where the words came FROM, not the words.
+The screen draws it in a fixed-height scrolling box («th box wit fix hight and
+scollable»), at the app's existing scroll cap.
+
 **Design conformance notes (review of 2026-08-30, updated against the
 design's 22:44 save).** The design of record is followed exactly, with these
 corrections, each a defect found against the mock data

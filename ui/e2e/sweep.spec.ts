@@ -131,6 +131,7 @@ const RULE: FactBundle = {
   confirmation: { confirmed: true, can_confirm: true, fingerprint: 'sha256:abc' },
   red_paths: { unknown: [], disputed: [] },
   resolved: {}, row_titles: {}, path_labels: {}, consumers: [], processes: [],
+  original: null,
 }
 
 const POLICY: VisibilityPolicy = {

@@ -575,6 +575,47 @@ def list_branches(request: Request, _=Depends(panel_session)):
     return manifest.branches(request.app.state.cfg.data_root)
 
 
+def _original_text(root: Path, entry: dict) -> str | None:
+    """The verbatim body behind `data.original_ref`, or `None`.
+
+    **Owner request, 2026-09-06:** «in section متن اصلی i want to show the file
+    data there». QF-31 moves a delta's `data.original` out of the entry into
+    `facts/originals/` and leaves an `original_ref` behind, so every entry in a
+    real store carries the path and none carries the text — and the screen had
+    only the path to draw. A reviewer opening «متن اصلی» was shown the name of a
+    file and none of its contents.
+
+    Read here rather than served by a route of its own: there are 140 of these
+    and the largest is 1.6 KB, so an endpoint plus a hook, a loading state and
+    an error state inside a collapsed panel would be more machinery than the
+    thing it fetches.
+
+    **No gate of its own, deliberately.** The inline `data.original` a delta
+    carries is already served to exactly the callers who reach this entry, and
+    `fact_sources` does not touch it — that switch strips `source[]` and each
+    account's `source`, which is where the words came FROM, not the words. A
+    second rule here would make one shape of the same field disclose
+    differently from the other.
+
+    Containment, because a stored string that has been tampered with is still
+    untrusted the moment it becomes a path — `download_source`'s idiom, resolved
+    on both sides. Anything outside `facts/originals/` reads as an absence, and
+    so does a file that is not there: an `original_ref` naming nothing must not
+    take down the whole screen the reviewer came for.
+    """
+    ref = (entry.get("data") or {}).get("original_ref")
+    if not isinstance(ref, str) or not ref:
+        return None
+    base = (root / "facts" / "originals").resolve()
+    try:
+        target = (root / ref).resolve()
+        if not target.is_relative_to(base) or not target.is_file():
+            return None
+        return target.read_text(encoding="utf-8")
+    except (ValueError, OSError):
+        return None
+
+
 def _bundle(request: Request, user, fid: str) -> dict:
     """One entry, with every map a screen needs to render it without a raw key.
 
@@ -680,6 +721,11 @@ def _bundle(request: Request, user, fid: str) -> dict:
                             else {_RESTRICTED: True})
                         for p, label in
                         facts_store.path_labels(root, entry).items()},
+        # «متن اصلی» — the body `data.original_ref` names, beside the entry and
+        # never inside it: `entry` is what QF-24 fingerprints, and a field
+        # arriving from a second file would change the print of every rule in
+        # the store at once, un-confirming all of them for a change to nothing.
+        "original": _original_text(root, entry),
         "consumers": [c if visible(c.get("id"))
                       else {"id": c.get("id"), _RESTRICTED: True}
                       for c in facts_store.consumers(root, fid)],
