@@ -1,9 +1,17 @@
-"""`merge facts resolve|retire|promote|export` — the four verbs that mutate an
-already-applied entry by hand rather than by re-reading a source (spec §12,
-rows 2-5). `apply` is the only verb that reads a delta; these read a decision
-an operator (or a downstream tool) already made.
+"""`merge facts resolve|retire|promote|export|repair-foreign-keys` — the verbs
+that mutate an already-applied entry by hand rather than by re-reading a source
+(spec §12, rows 2-5). `apply` is the only verb that reads a delta; these read a
+decision an operator (or a downstream tool) already made.
 
-Every *writing* verb (`resolve`, `retire`, `promote`) shares one shape:
+`repair-foreign-keys` is the one that removes rather than writes, and the only
+verb here that takes no entry id: §11's ladder has no action that takes a key
+back out, so a collection the store should never have accepted cannot be undone
+by any delta, and QF-2 leaves `merge facts` the only thing allowed to write
+`facts/**` at all. See its own docstring for why `revert` could not serve
+instead.
+
+Every *writing* verb (`resolve`, `retire`, `promote`, `repair-foreign-keys`)
+shares one shape:
 `load_store`, find the entry, mutate it, `entry["status"] = derive_status
 (entry)`, stamp `updated_at` on the touched entry only, snapshot the five
 files to `{run_dir}/facts-before/` (`apply`'s own `_snapshot`, Task 5 — taken
@@ -49,6 +57,7 @@ from merge_facts import (
 # run's `args["id"]` targets as ordinary matched entries, which only works if
 # there is something to restore them from.
 from merge_facts.apply import KEY_RE, _snapshot
+from merge_facts.content import foreign_key_declares_a_join
 
 _KIND_DATA_STUBS = {
     # Neutral containers `promote` may inject — empty, so nothing is
@@ -205,6 +214,65 @@ def promote(root, fact_id, kind, key, run_dir):
     except ValueError as e:
         _fail(str(e))
     _append_delta(run_dir, "promote", {"id": fact_id, "kind": kind, "key": key})
+
+
+def repair_foreign_keys(root, run_dir):
+    """Drop every `foreignKeys` member that declares no join, and the empty
+    collection with the last of them. Returns `[(id, dropped)]`, entry order.
+
+    **Why a verb and not a delta.** §11's ladder creates, fills, disputes,
+    appends and unions; it has no action that removes, so no delta can take a
+    key back out — and QF-2 leaves `merge facts` as the only thing permitted to
+    write `facts/**` at all. `revert` cannot serve either: the 84 members this
+    was written for came in across nine departments' seeding runs, whose ids
+    later runs also touch, and reverting them would undo the estate rather than
+    the defect.
+
+    What counts as malformed is `content.foreign_key_declares_a_join` and
+    nothing local, so this verb and the pass that refuses the shape cannot
+    drift apart.
+
+    `status` is deliberately NOT re-derived. A member declaring no join is not
+    a value anyone gave, so it cannot be what QF-6 reads; recomputing here
+    would let an unrelated status flip ride along inside a repair, on entries
+    nobody was looking at. `updated_at` IS stamped on each touched entry, the
+    way every writing verb stamps it — and QF-24 excludes it from a fact's
+    fingerprint, so the stamp alone un-confirms nothing. **The drop itself
+    does**: `data` is content, so an entry someone had confirmed comes back
+    unconfirmed, which is the fingerprint working rather than failing.
+    """
+    root = pathlib.Path(root)
+    store = load_store(root)
+    repaired = []
+    for kind in KIND_ORDER:
+        for entry in store[kind]["entries"]:
+            data = entry.get("data") or {}
+            members = data.get("foreignKeys")
+            if not isinstance(members, list):
+                continue
+            kept = [m for m in members if foreign_key_declares_a_join(m)]
+            if len(kept) == len(members):
+                continue
+            if kept:
+                data["foreignKeys"] = kept
+            else:
+                del data["foreignKeys"]
+            entry["updated_at"] = _now()
+            repaired.append((entry["id"], len(members) - len(kept)))
+    # Idempotent: a second run finds nothing, and writes nothing — no
+    # snapshot, no store write, no delta record. A run directory with no
+    # `facts-delta.json` is one `revert` has nothing to undo, which is the
+    # honest description of a repair that changed nothing.
+    if repaired:
+        _snapshot(root, pathlib.Path(run_dir))
+        save_store(root, store)
+        # One record per entry, `args["id"]` singular — the shape `revert`
+        # already reads off a verbs run. A single record listing every id
+        # would leave this the one verb its own `revert` silently skips.
+        for fid, dropped in repaired:
+            _append_delta(run_dir, "repair-foreign-keys",
+                          {"id": fid, "dropped": dropped})
+    return repaired
 
 
 def export(root, record_key, out, include_retired):

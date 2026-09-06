@@ -295,4 +295,49 @@ describe('the record card', () => {
     expect(screen.getByText('انبار دار')).toBeInTheDocument()
     expect(screen.getByText('برگهٔ خالی برای پر کردن')).toBeInTheDocument()
   })
+
+  it('skips a foreign key it cannot describe, rather than throwing on it', () => {
+    // **Owner report, 2026-09-06:** the single-pizza mirror opened as
+    // "Cannot read properties of undefined (reading 'join')". `F-00216` and 83
+    // others carry an import descriptor — `{spreadsheetId, sheet, range,
+    // target}` — where the spec's `{fields, reference, …}` (:903) belongs, and
+    // this row joined `fk.fields` unguarded.
+    //
+    // A member with neither side describes no join, so it is dropped rather
+    // than half-drawn: a «ارتباط با جدول دیگر» row naming no columns and no
+    // table is worse than its absence. The engine refuses the shape now, and a
+    // mirror carries `mirror_of` instead — this guard is only what keeps an
+    // already-stored one readable.
+    draw(bundleOf('record', {
+      medium: 'sheet', role: 'mirror', location: {},
+      mirror_of: { ref: 'F-00193' },
+      foreignKeys: [{
+        spreadsheetId: '1AIjH-sWVc6t5bXnEKiYrmrpX1TPtEbKtwZA0tjr-5bI',
+        sheet: 'singlePizza', range: 'A:X', target: { ref: 'F-00193' },
+      }],
+    }, { resolved: { 'F-00193': { kind: 'record', title: 'دستور پیتزا تکی' } } }))
+    expect(screen.queryByText('ارتباط با جدول دیگر')).toBeNull()
+    // …and the mirror it really is still says so.
+    expect(screen.getByText('دستور پیتزا تکی')).toBeInTheDocument()
+  })
+
+  it('draws a foreign key that carries both of its sides', () => {
+    // The other half of the guard: dropping the malformed ones must not drop
+    // the shape the spec defines. `role: reference` is where it is expressible
+    // at all — a mirror has no `fields[]` to join on.
+    draw(bundleOf('record', {
+      medium: 'sheet', role: 'reference', location: {},
+      fields: [{ key: 'ingredient', title: 'ماده اولیه', type: 'string' }],
+      foreignKeys: [{
+        fields: ['ingredient'],
+        reference: { ref: 'F-00007' },
+        reference_fields: ['key'],
+      }],
+    }, { resolved: { 'F-00007': { kind: 'record', title: 'فهرست مواد اولیه' } } }))
+    // Scoped to the block: `ingredient` is also a column of the grid above it.
+    const fks = screen.getByText('ارتباط با جدول دیگر').parentElement!
+    expect(fks).toHaveTextContent('ingredient')
+    expect(fks).toHaveTextContent('فهرست مواد اولیه')
+    expect(fks).toHaveTextContent('key')
+  })
 })
