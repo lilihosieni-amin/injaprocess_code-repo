@@ -135,5 +135,7 @@ def test_estimate_tokens_counts_persian_dearer():
 
 
 def test_cli_reports_an_unlanded_verb_instead_of_a_traceback(capsys):
-    assert main(["status", "--run", "runs/facts/cooking/x"]) == 2
+    # `status` landed with T13, so the still-unlanded `digest` carries the
+    # test now — the point is the console script, not which verb is missing.
+    assert main(["digest", "--run", "runs/facts/cooking/x"]) == 2
     assert "not implemented" in capsys.readouterr().err

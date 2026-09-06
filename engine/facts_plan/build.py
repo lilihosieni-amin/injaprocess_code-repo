@@ -14,10 +14,12 @@ import hashlib
 import math
 import pathlib
 import re
+import sys
+import textwrap
 
 from dump_workbook import is_ids_tab, is_mirror_tab, manifest_reconcile
-from engine_common import read_json, write_json_atomic
-from merge_facts import is_open
+from engine_common import read_json, write_json_atomic, write_text_atomic
+from merge_facts import is_open, sha256_file
 
 Shape = collections.namedtuple("Shape", "text params functions refs")
 
@@ -1357,3 +1359,522 @@ def write_skeleton(run_dir, department, run, symbols, candidates, instances,
                              "candidates": candidates, "instances": instances,
                              "imports": imports, "issues": issues})
     return path
+
+
+# --------------------------------------------------------------------------
+# T13: units of work (QF-51) — the grouping is fixed, not packed.
+
+_BRANCH_TOKEN = re.compile(r"chale ?bagh|nahar ?khoran", re.I)
+IN_BUDGET, OUT_BUDGET = 20000, 20000
+MAX_LINES, MAX_LINE = 1800, 1900
+EST_OUT = {"item": 120, "rule": 250, "script": 250}
+
+
+def group_key(row):
+    """The workbook group §2.3 fixes: the manifest `dir` with the branch token
+    taken out **wherever it sits** — the estate spells it as its own segment
+    (`MandeShab__ChaleBagh__Amar__Kanter`) and inside one (`Ashpazkhne -
+    Chalebagh`), and both spellings have to land on one group."""
+    bare = _BRANCH_TOKEN.sub("", row["dir"])
+    return re.sub(r"[_\s-]+", "_", bare).strip("_").lower()
+
+
+def is_reference_workbook(row, dump):
+    """Every computing or tabular tab is a confirmed reference tab — the BOM
+    book. It groups alone: its templates have no branch twin to merge with."""
+    named = set(row.get("reference_tabs") or [])
+    computing = {f.get("sheet") for f in dump["formulas"]}
+    rest = [name for name, sheet in dump["sheets"].items()
+            if not sheet.get("empty") and name not in named
+            and not is_ids_tab(name) and name in computing]
+    return bool(named) and not rest
+
+
+def workbook_groups(manifest, department, reference_only=()):
+    """`{group key: [manifest rows]}` — the fixed grouping, the `twin_of` pairs
+    the estate needs for the two unnamed twins, and a reference workbook alone.
+
+    ponytail: `twin_of` is resolved in one pass over pairs; the estate has two
+    twins and no chains, and a union-find for two pairs is a joke.
+    """
+    rows = [w for w in manifest["workbooks"]
+            if department in (w.get("departments") or []) and w.get("confirmed")]
+    key_of = {w["short"]: (w["short"] if w["short"] in reference_only
+                           else group_key(w)) for w in rows}
+    for w in rows:
+        twin = w.get("twin_of")
+        if twin in key_of:
+            key_of[w["short"]] = key_of[twin] = min(key_of[w["short"]],
+                                                    key_of[twin])
+    groups = {}
+    for w in sorted(rows, key=lambda r: r["short"]):
+        groups.setdefault(key_of[w["short"]], []).append(w)
+    return groups
+
+
+def transcript_chunks(text, budget=18000):
+    """Line-aligned chunks under `budget` (§2.3). The rendered input carries the
+    cards and the slices too, so a chunk's own budget is below the unit's."""
+    lines = text.splitlines()
+    if not lines:
+        return [(1, 1)]
+    chunks, first, size = [], 1, 0
+    for n, line in enumerate(lines, start=1):
+        cost = estimate_tokens(line) + 1
+        if size and size + cost > budget:
+            chunks.append((first, n - 1))
+            first, size = n, 0
+        size += cost
+    chunks.append((first, len(lines)))
+    return chunks
+
+
+def est_tokens_out(candidates, est_tokens_in, is_transcript):
+    """§2.3's estimator. The constants are frozen in `expected.json` (§7), so a
+    retune shows up as a fixture diff and never as a silent resize."""
+    total = 0
+    for c in candidates:
+        if c["kind"] == "record":
+            total += 150 + 60 * len(c["payload"].get("fields") or [])
+        else:
+            total += EST_OUT[c["kind"]]
+    return total + (int(est_tokens_in * 0.4) if is_transcript else 0)
+
+
+def _view(candidate):
+    """A candidate's `payload` laid over its `render` extras. The payload is
+    exactly the mechanical `data` subset §2.5 leaves to the engine, so a rule's
+    output header and variants and an item's labels live in `render` — only
+    `input.md` needs them. Everything that reads one candidate *as a person
+    sees it* wants the two merged, the payload winning."""
+    return {**(candidate.get("render") or {}), **candidate["payload"]}
+
+
+def label_of(candidate):
+    """The candidate as a person reads it in a list — a record by its tab, a
+    rule by the column header it computes, an item by its code."""
+    payload = _view(candidate)
+    if candidate["kind"] == "record":
+        return (payload.get("instances") or [{}])[0].get("sheet", "")
+    if candidate["kind"] == "item":
+        return f'{payload.get("code", "")} ' \
+               f'{(payload.get("labels") or [""])[0]}'.strip()
+    return payload.get("output") or payload.get("name") or ""
+
+
+def candidate_instances(candidate):
+    """The instance keys a candidate sits on — a record's own, a rule's through
+    its bindings, whose key is `<instance>__<column>__r<row>`."""
+    payload = candidate["payload"]
+    if candidate["kind"] == "record":
+        return [i["key"] for i in payload.get("instances") or []]
+    return ["__".join(m["key"].split("__")[:2])
+            for m in payload.get("applies_to") or []]
+
+
+def _code_slug(code):
+    """`##1` → `ing1`, `#1` → `food1` — a unit id becomes a directory name and a
+    log line, and `#` belongs in neither."""
+    digits = code.lstrip("#")
+    return ("ing" if code.startswith("##") else "food") + digits
+
+
+def fits(unit, text):
+    lines = text.split("\n")
+    return (estimate_tokens(text) <= IN_BUDGET
+            and unit["est_tokens_out"] <= OUT_BUDGET
+            and len(lines) <= MAX_LINES and max(map(len, lines)) <= MAX_LINE)
+
+
+def _axis_parts(unit, skeleton):
+    """`[(axis, [candidate ids])]` — the natural sub-axis of a unit over
+    budget: a workbook by the tab its candidates sit on, items by half their
+    code range, a transcript by half its line range."""
+    by_id = {c["id"]: c for c in skeleton["candidates"]}
+    if unit["type"] == "workbook":
+        sheet_of = {i["key"]: i["sheetId"] for i in skeleton["instances"]}
+        parts = {}
+        for cid in unit["candidates"]:
+            keys = candidate_instances(by_id[cid])
+            axis = f's{min((sheet_of.get(k, 0) for k in keys), default=0)}'
+            parts.setdefault(axis, []).append(cid)
+        return sorted(parts.items())
+    if unit["type"] == "items":
+        ids = sorted(unit["candidates"])
+        half = len(ids) // 2
+        if not half:
+            return []
+        return [(_code_slug(by_id[part[0]]["payload"]["code"]), part)
+                for part in (ids[:half], ids[half:])]
+    first, last = (int(n[1:]) for n in
+                   unit["inputs"][0].rsplit("#", 1)[1].split("-"))
+    if last <= first:
+        return []
+    middle = (first + last) // 2
+    path = unit["inputs"][0].rsplit("#", 1)[0]
+    return [(f"l{a}", [f"{path}#L{a}-L{b}"])
+            for a, b in ((first, middle), (middle + 1, last))]
+
+
+def split_unit(unit, skeleton, render):
+    """A unit over a bound splits along its axis and each part is named after
+    it (`u-wb-gozaresh-s41`); a part with one axis value left cannot split, and
+    `build` exits 2 rather than dispatch a unit that will be truncated."""
+    parts = _axis_parts(unit, skeleton)
+    if len(parts) < 2:
+        print(f"facts-plan: unit {unit['id']} is over budget and has no axis "
+              "left to split on", file=sys.stderr)
+        raise SystemExit(2)
+    by_id = {c["id"]: c for c in skeleton["candidates"]}
+    out = []
+    for axis, members in parts:
+        if unit["type"] == "workbook":
+            part = dict(unit, id=f'{unit["id"]}-{axis}', candidates=members)
+        elif unit["type"] == "items":
+            part = dict(unit, id=f"u-items-{axis}", candidates=members)
+        else:
+            head = unit["id"].rsplit("-l", 1)[0]
+            part = dict(unit, id=f"{head}-{axis}", inputs=members)
+        text = render(part)
+        part["est_tokens_in"] = estimate_tokens(text)
+        part["est_tokens_out"] = est_tokens_out(
+            [by_id[c] for c in part["candidates"]], part["est_tokens_in"],
+            part["type"] == "transcript")
+        out += [part] if fits(part, text) else split_unit(part, skeleton, render)
+    return out
+
+
+def plan_units(skeleton, groups, chunks, items, attachments, render=lambda u: ""):
+    """`plan.json`'s `units[]` (§2.3) and, as a side effect, each candidate's
+    `unit` — the two have to agree, so one function writes both.
+
+    `chunks` is `[(recording, path, (first, last), text)]`, `items` the item
+    candidate ids in code order, `attachments` the cached `.text`/`.md` paths;
+    they are appended to the last transcript unit, or become one unit when the
+    owner chose no recording (§2.3).
+    """
+    by_id = {c["id"]: c for c in skeleton["candidates"]}
+    units = []
+    instance_book = {i["key"]: i["key"].split("__")[0]
+                     for i in skeleton.get("instances") or []}
+    for key, rows in sorted(groups.items()):
+        mine = sorted(w["short"] for w in rows)
+        # A script rule sits on no instance: it belongs to the workbook whose
+        # manifest row names the `.gs` file its body was read out of (§2.3).
+        scripts = {s for w in rows for s in (w.get("scripts") or [])}
+        members = sorted(
+            cid for cid, c in by_id.items()
+            if any(instance_book.get(k) in mine for k in candidate_instances(c))
+            or (c.get("render") or {}).get("script") in scripts)
+        if members:
+            units.append({"id": f"u-wb-{mine[0]}", "type": "workbook",
+                          "inputs": [w["file"] for w in rows],
+                          "candidates": members, "nodes": [],
+                          "est_tokens_in": 0, "est_tokens_out": 0})
+    for recording, path, (first, last), text in chunks:
+        units.append({"id": f"u-tr-{recording}-l{first}", "type": "transcript",
+                      "inputs": [f"{path}#L{first}-L{last}"], "candidates": [],
+                      "nodes": [], "est_tokens_in": estimate_tokens(text),
+                      "est_tokens_out": 0})
+    if items:
+        units.append({"id": f"u-items-{_code_slug(by_id[items[0]]['payload']['code'])}",
+                      "type": "items", "inputs": [], "candidates": list(items),
+                      "nodes": [], "est_tokens_in": 0, "est_tokens_out": 0})
+    if attachments:
+        transcripts = [u for u in units if u["type"] == "transcript"]
+        if transcripts:
+            transcripts[-1]["inputs"] += list(attachments)
+        else:
+            units.append({"id": "u-attachments", "type": "attachment",
+                          "inputs": list(attachments), "candidates": [],
+                          "nodes": [], "est_tokens_in": 0, "est_tokens_out": 0})
+    out = []
+    for unit in units:
+        unit["est_tokens_out"] = est_tokens_out(
+            [by_id[c] for c in unit["candidates"]], unit["est_tokens_in"],
+            unit["type"] == "transcript")
+        text = render(unit)
+        unit["est_tokens_in"] = max(unit["est_tokens_in"], estimate_tokens(text))
+        out += [unit] if fits(unit, text) else split_unit(unit, skeleton, render)
+    for unit in out:
+        for cid in unit["candidates"]:
+            by_id[cid]["unit"] = unit["id"]
+    return out
+
+
+def write_plan(run_dir, department, hashes, units):
+    """`plan.json` — immutable build output: ids, budgets, and the digests
+    `status` re-checks to report `plan_stale`."""
+    path = pathlib.Path(run_dir) / "plan.json"
+    write_json_atomic(path, {"schema_version": 1, "department": department,
+                             "hashes": hashes, "units": units})
+    return path
+
+
+# --------------------------------------------------------------------------
+# what a unit is allowed to know: `units/<u>/input.md` and the two cards (§2.4)
+
+_CARDS = pathlib.Path(__file__).resolve().parent / "cards"
+
+
+def cards():
+    """The expression and style cards, verbatim (§2.4). Files in the package,
+    not string literals: the prompt is reviewable as prose, and a test can diff
+    the expression card against the checker it was transcribed from."""
+    return ((_CARDS / "expression.md").read_text(encoding="utf-8"),
+            (_CARDS / "style.md").read_text(encoding="utf-8"))
+
+
+def _render_candidate(candidate, skeleton):
+    payload, kind = _view(candidate), candidate["kind"]
+    if kind in ("rule", "script"):
+        variants = payload.get("variants") or [{}]
+        params = sorted({k for m in payload.get("applies_to") or []
+                         for k in (m.get("params") or {})})
+        # One shape per line: the estate's five-variant columns run to nearly
+        # 4,000 characters joined, and §2.3's 1,900-character line is a bound
+        # no split can relieve — the axis divides candidates, never a line.
+        return "\n".join(
+            [f'{candidate["id"]} · «{label_of(candidate)}» · '
+             f'{len(variants)} variant · '
+             f'{len(payload.get("applies_to") or [])} bindings · '
+             f'params: {"، ".join(params) or "—"}']
+            + [f'    {v.get("shape", "")}' for v in variants])
+    if kind == "record":
+        instances = "، ".join(f'{i["key"]} ({i.get("branch") or "—"})'
+                              for i in payload.get("instances") or [])
+        fields = "، ".join(
+            f'{f["key"]}={f.get("title") or "—"}[{f.get("type") or "?"}]'
+            for f in payload.get("fields") or [])
+        notes = " | ".join(f'{n["column"]}: {n["text"]}'
+                           for n in payload.get("header_notes") or [])
+        # `row_labels` is per instance (`{instance key: {row: label}}`); one
+        # tab's two branch copies label the same rows, so the union reads once.
+        labels = {f"r{row}={label}"
+                  for mapping in (payload.get("row_labels") or {}).values()
+                  for row, label in mapping.items()}
+        return (f'{candidate["id"]} · «{label_of(candidate)}» · {instances}\n'
+                f'    fields: {fields}\n'
+                f'    header notes: {notes or "—"}\n'
+                f'    row labels: {"، ".join(sorted(labels)) or "—"}')
+    return (f'{candidate["id"]} · {payload.get("code")} · '
+            f'{"، ".join(payload.get("labels") or [])}')
+
+
+def render_input(unit, skeleton, extras):
+    """`units/<u>/input.md` — everything the unit is allowed to know (§2.3). It
+    reads this file and the schema, and nothing else: what is not here is a
+    `drop` with `insufficient_context`, never a search (§2.4)."""
+    by_id = {c["id"]: c for c in skeleton["candidates"]}
+    expression, style = cards()
+    out = [f'# {unit["id"]}', "",
+           f'نوع: {unit["type"]} — {len(unit["candidates"])} نامزد تصمیم', "",
+           "## نامزدها", ""]
+    out += [_render_candidate(by_id[c], skeleton) for c in unit["candidates"]] or ["—"]
+    if extras.get("text"):
+        out += ["", "## متن", "", extras["text"]]
+    for title, key in (("## زمینه", "context"), ("## جدول‌های مرتبط", "field_tables"),
+                       ("## ورودی‌های قابل استفادهٔ مجدد", "reuse"),
+                       ("## گره‌های فرایند", "processes")):
+        rows = [r if isinstance(r, str)
+                else f'{r["kind"]} · {r["sheet"]}!{r["where"]} · {r["text"]}'
+                for r in extras.get(key) or []]
+        out += ["", title, ""] + (rows or ["—"])
+    out += ["", expression, "", style]
+    return "\n".join(out)
+
+
+# --------------------------------------------------------------------------
+# the orchestrator (§2.3) — `facts-plan build <department> --run <run_dir>`.
+# Everything above is a pure function of what it is handed; this is the one
+# place that reads the estate and writes the run directory.
+
+
+def _chunks(root, recordings):
+    """`[(recording, path, (first, last), text)]` — the chosen transcripts,
+    each cut into line-aligned chunks, in the order the owner named them."""
+    out = []
+    for recording in recordings:
+        rel = f"meetings/transcripts/{recording}.txt"
+        path = pathlib.Path(root) / rel
+        if not path.is_file():
+            print(f"facts-plan: no transcript for {recording}", file=sys.stderr)
+            continue
+        lines = path.read_text(encoding="utf-8").splitlines()
+        for first, last in transcript_chunks("\n".join(lines)):
+            out.append((recording, rel, (first, last),
+                        "\n".join(lines[first - 1:last])))
+    return out
+
+
+def _attachment_texts(root, department):
+    """The department's cached attachment texts (`extract-attachment`'s
+    `.text/`), never the originals — `build` reads no `.docx` and no image."""
+    root = pathlib.Path(root)
+    directory = root / "departments" / department / "attachments" / ".text"
+    return [str(p.relative_to(root)) for p in sorted(directory.glob("*"))
+            if p.suffix in (".txt", ".md")]
+
+
+def _wrap(line):
+    """One transcript line is one speaker's turn, and the estate's longest runs
+    to 5,924 characters — §2.3 bounds a rendered line at 1,900, and the split
+    axis divides lines, never a line. So the quote is folded on word
+    boundaries: every word and its order survive, and the chunk's `#L` span
+    still names the source file's own lines.
+
+    ponytail: `textwrap` at a fixed width, not a token-aware filler. Widen it
+    if a reader ever complains; nothing downstream reads a column.
+    """
+    return textwrap.wrap(line, width=1500, break_long_words=False,
+                         break_on_hyphens=False) or [""]
+
+
+def _unit_text(root, unit):
+    """The text a unit carries: its transcript chunk's lines and any attachment
+    appended to it, wrapped and otherwise verbatim. A workbook unit's `inputs`
+    name `.xlsx` files, which are not text and are never read."""
+    root, parts = pathlib.Path(root), []
+    for ref in unit["inputs"]:
+        rel, _, span = ref.partition("#")
+        path = root / rel
+        if path.suffix not in (".txt", ".md") or not path.is_file():
+            continue
+        lines = path.read_text(encoding="utf-8").splitlines()
+        if span:
+            first, last = (int(n[1:]) for n in span.split("-"))
+            lines = lines[first - 1:last]
+        parts.append("\n".join(w for line in lines for w in _wrap(line)))
+    return "\n\n".join(parts)
+
+
+def _store_slice(root):
+    """`(the index rows, {item id: its unit})` — the only two things §2.3 lets
+    `build` read off the store, and a store that does not exist yet lends
+    neither."""
+    def load(name):
+        try:
+            return read_json(pathlib.Path(root) / "facts" / name)
+        except (OSError, ValueError):
+            return {}
+    index = load(".index.json").get("entries") or []
+    units = {e["id"]: (e.get("data") or {}).get("unit")
+             for e in load("items.json").get("entries") or []
+             if (e.get("data") or {}).get("unit")}
+    return index, units
+
+
+def _field_tables(unit, skeleton):
+    """§2.3's one-line field table for every template **outside** this unit
+    that one of its bindings or import edges points at — the only place the
+    unit sees a field key it did not mint itself."""
+    by_id = {c["id"]: c for c in skeleton["candidates"]}
+    mine = [by_id[c] for c in unit["candidates"] if c in by_id]
+    wanted, keys = set(), {k for c in mine for k in candidate_instances(c)}
+    for candidate in mine:
+        for member in candidate["payload"].get("applies_to") or []:
+            wanted.add((member.get("record") or {}).get("ref"))
+            wanted |= {v.get("ref") for v in (member.get("params") or {}).values()
+                       if isinstance(v, dict)}
+    for edge in skeleton.get("imports") or []:
+        if edge["consumer"] in keys and isinstance(edge.get("source"), dict):
+            wanted.add(edge["source"].get("ref"))
+    lines = []
+    for ref in sorted(wanted - set(unit["candidates"]) - {None}):
+        template = by_id.get(ref)
+        if not template or template["kind"] != "record":
+            continue
+        fields = _view(template).get("fields") or []
+        lines.append(f'{ref} · «{label_of(template)}» · ' + "، ".join(
+            f'{f["key"]}={f.get("title") or "—"}' for f in fields))
+    return lines
+
+
+def _hashes(root, estate, texts):
+    """The digests `plan.json` carries and `status` re-checks (§2.3): every
+    dump file the estate was loaded from, plus every transcript chunk or
+    cached attachment a unit quotes."""
+    root = pathlib.Path(root)
+    sheets_root = root / "attachments" / "sheets"
+    paths = [sheets_root / "manifest.json"]
+    for sid in sorted(estate):
+        paths += sorted((sheets_root / ".dump" / sid).glob("*"))
+    paths += [root / rel for rel in sorted(set(texts))]
+    return {str(p.relative_to(root)): sha256_file(p)
+            for p in paths if p.is_file()}
+
+
+def build(root, department, run_dir, recordings, *, rebuild=False):
+    """§2.3 end to end: the candidates, `skeleton.json`, `functions.md`,
+    `plan.json` and one `units/<u>/input.md`. Returns what the coordinator
+    prints — `{"units": n, "candidates": {kind: count}}`.
+
+    Nothing here writes to the store and nothing asks a model anything; the
+    only mutable output is the run directory, and a plan whose units have
+    already run is refused unless `--rebuild` says otherwise.
+    """
+    from facts_plan.cli import check_rebuild  # cli imports build lazily
+    root, run_dir = pathlib.Path(root), pathlib.Path(run_dir)
+    check_rebuild(root, run_dir, rebuild)
+
+    estate = load_estate(root)
+    manifest = read_json(root / "attachments" / "sheets" / "manifest.json")
+    templates, instances, issues = record_templates(estate, department)
+    items = item_candidates(estate, department, instances)
+    rules, rule_issues = rule_columns(estate, department, templates, instances,
+                                      table_reading_functions(estate))
+    scripts = script_rules(estate, department, called_names(estate))
+    imports, import_issues = import_edges(
+        estate, {(i["spreadsheetId"], i["sheet"]): {"ref": i["template"]}
+                 for i in instances}, department)
+    issues += rule_issues + import_issues + reference_tab_issues(estate, department)
+    candidates = templates + items + rules + scripts
+    skeleton = {"unit_symbols": unit_symbols(root), "candidates": candidates,
+                "instances": instances, "imports": imports}
+
+    index, item_units = _store_slice(root)
+    nodes = process_index(root, department)
+    own = [{"id": c["id"], "kind": c["kind"], "label": label_of(c)}
+           for c in templates + items]
+    instance_by_key = {i["key"]: i for i in instances}
+    by_id = {c["id"]: c for c in candidates}
+    rendered = {}
+
+    def render(unit):
+        mine = [by_id[c] for c in unit["candidates"] if c in by_id]
+        sids = sorted({instance_by_key[k]["spreadsheetId"]
+                       for c in mine for k in candidate_instances(c)
+                       if k in instance_by_key})
+        text = _unit_text(root, unit)
+        tokens = _tokens(" ".join([label_of(c) for c in mine] + [text]))
+        rendered[unit["id"]] = render_input(unit, skeleton, {
+            "text": text,
+            "context": context_items(estate, sids),
+            "field_tables": _field_tables(unit, skeleton),
+            "reuse": reuse_slice(own, index, item_units, department, tokens),
+            "processes": [f'{n["process"]} · {n["node"]} · {n["label"]}'
+                          for n in rank(nodes, tokens, 40,
+                                        lambda n: n["label"])]})
+        return rendered[unit["id"]]
+
+    chunks = _chunks(root, recordings)
+    attachments = _attachment_texts(root, department)
+    units = plan_units(skeleton, workbook_groups(manifest, department, [
+        w["short"] for w in manifest["workbooks"]
+        if w["spreadsheetId"] in estate
+        and is_reference_workbook(w, estate[w["spreadsheetId"]])]),
+        chunks, [c["id"] for c in items], attachments, render=render)
+
+    # After `plan_units`, not before: `skeleton.json`'s candidates carry the
+    # unit they were planned into, and that is what `plan_units` assigns.
+    write_skeleton(run_dir, department, run_dir.name, skeleton["unit_symbols"],
+                   candidates, instances, imports, issues)
+    write_text_atomic(run_dir / "functions.md", function_library(estate))
+    write_plan(run_dir, department,
+               _hashes(root, estate, [rel for _, rel, _, _ in chunks] + attachments),
+               units)
+    for unit in units:
+        write_text_atomic(run_dir / "units" / unit["id"] / "input.md",
+                          rendered.get(unit["id"]) or render(unit))
+    counts = collections.Counter(c["kind"] for c in candidates)
+    return {"units": len(units), "candidates": dict(sorted(counts.items()))}

@@ -26,3 +26,8 @@ validate = "validate.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["engine_common*", "allocate_id*", "dump_workbook*", "extract_attachment*", "facts_plan*", "layout*", "merge*", "merge_facts*", "order*", "transcribe*", "validate*"]
+
+# The expression and style cards are prose the units read, kept as files so the
+# prompt is reviewable and testable against the checker it transcribes (§2.4).
+[tool.setuptools.package-data]
+facts_plan = ["cards/*.md"]
