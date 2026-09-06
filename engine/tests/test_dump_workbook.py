@@ -8,7 +8,7 @@ import re
 import zipfile
 
 import pytest
-from dump_workbook import dump_workbook, header_row, init_manifest
+from dump_workbook import _read_sheet, dump_workbook, header_row, init_manifest
 from dump_workbook.cli import main
 from engine_common import validate
 from fixtures.make_workbook import DUMMY_SOURCE, LAMBDA_BODY, REFERENCE_ROWS, make_workbook
@@ -227,13 +227,45 @@ def test_sheets_json_carries_hidden_dimensions_codes_and_the_empty_flag(tmp_path
     assert sheets["آمار"]["sheetId"] == 1
     assert sheets["آمار"]["dimension"] == "A1:H7"
     assert sheets["آمار"]["codes"] == ["##RPT-1"]
-    assert len(sheets["آمار"]["head"]) == 5
+    assert len(sheets["آمار"]["head"]) == 6
+
+
+def test_the_head_is_the_header_row_and_the_four_rows_below_it(tmp_path):
+    """§4 — deep enough for `build` to sample a column's type, and no deeper."""
+    _, out = _dump(tmp_path, v3_tabs=True)
+    sheets = {s["name"]: s for s in _json(out / "sheets.json")["sheets"]}
+    report = sheets["گزارش پیتزا"]
+    assert report["header_row"] == 5
+    assert len(report["head"]) == 9                  # 5 + 4, of the tab's 15
+    assert report["head"][5][1] == "پنیر پیتزا"      # row 6, column B
+    assert sheets["آمار"]["header_row"] == 2 and len(sheets["آمار"]["head"]) == 6
+
+
+def test_every_head_row_is_the_tab_s_full_width(tmp_path):
+    _, out = _dump(tmp_path, v3_tabs=True)
+    for sheet in _json(out / "sheets.json")["sheets"]:
+        assert {len(row) for row in sheet["head"]} <= {sheet["cols"]}, sheet["name"]
+
+
+def test_header_row_still_searches_only_the_first_five_rows():
+    """The head is nine rows deep now; the header is still found where it was
+    or nowhere at all — no estate tab may change its header row (§7)."""
+    assert header_row([["1"], ["2"], ["3"], ["4"], ["5"], ["کد", "نام"]]) is None
+
+
+def test_read_sheet_keeps_every_cell_of_the_two_left_most_non_empty_columns(tmp_path):
+    book = make_workbook(tmp_path / "wb" / "Test.xlsx", v3_tabs=True)
+    sheet = _read_sheet(zipfile.ZipFile(book).read("xl/worksheets/sheet5.xml"), [])
+    assert sorted(sheet["columns"]) == [2, 3]        # column A is empty
+    assert sheet["columns"][2][6] == "پنیر پیتزا"    # below the head, and kept
+    assert sheet["columns"][2][15] == "خمیر پیتزا"
 
 
 def test_no_plain_cell_of_a_non_reference_tab_reaches_the_dump(tmp_path):
     """QF-1 — with no reference tab confirmed there is no `rows.tsv` at all, and
-    a tab\'s cells appear nowhere else. (`sheets.json` keeps the first \u2264 5 rows
-    of every tab: Appendix C asks for them, and the header row is found in them.)"""
+    a tab\'s cells appear nowhere else. (`sheets.json` keeps the header row and
+    four rows below it for every tab: the header row is found in them and
+    `build` samples types from them.)"""
     _, out = _dump(tmp_path)
     assert not (out / "rows.tsv").exists()
     for name in ("formulas.tsv", "names.tsv", "validations.tsv", "cf.tsv",

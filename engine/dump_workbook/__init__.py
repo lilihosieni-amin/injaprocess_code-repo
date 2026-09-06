@@ -7,10 +7,12 @@ sake of 28 workbooks read a handful of times.
 
 What is dumped, and what is deliberately not: **plain cell values are not**
 (QF-1) — the estate's cells are nightly values, not definitions. What comes out
-is the shape of each tab (`sheets.json`, first ≤ 5 rows so a header row can be
-found), its formulas with their cached results (`formulas.tsv`), defined names
-(`names.tsv`), validations (`validations.tsv`), conditional formats (`cf.tsv`)
-and cell comments with the author reduced to a role (`comments.tsv`). The one
+is the shape of each tab (`sheets.json`, the header row and the four rows below
+it, plus every cell of the two left-most non-empty columns (§4) — deep enough
+for the header row to be found and a column's type to be sampled), its formulas
+with their cached results (`formulas.tsv`), defined names (`names.tsv`),
+validations (`validations.tsv`), conditional formats (`cf.tsv`) and cell
+comments with the author reduced to a role (`comments.tsv`). The one
 exception is a tab a person confirmed in `reference_tabs[]` at Gate M: its cells
 *are* definitions (§9), and they land in `rows.tsv`.
 
@@ -44,7 +46,9 @@ SCHEMA_VERSION = 1
 REL_COMMENTS = "/relationships/comments"
 REL_THREADED = "/relationships/threadedComment"
 
-_HEAD_ROWS = 5                      # rows kept per tab, and searched for a header
+_HEAD_ROWS = 5                      # rows searched for a header row
+_KEEP_ROWS = 9                      # rows kept: a header at row 5, plus four
+_LABEL_COLS = 2                     # left-most non-empty columns kept whole
 _CODE = re.compile(r"#{1,2}[^\s#]+")
 # `#NAME?` is a cached error, not a code — Google leaves plenty of them behind.
 _ERROR_NAME = re.compile(r"^#(REF|NAME|DIV|VALUE|NULL|NUM|N/A|ERROR|GETTING_DATA)",
@@ -273,13 +277,15 @@ def _cell_value(c, strings):
     return _text_of(holder) if holder is not None else ""
 
 
-def _read_sheet(data, strings, keep_rows=False):
-    """One worksheet part → the pieces the dump needs. Cells are kept only for
-    the first `_HEAD_ROWS` rows unless `keep_rows` (a confirmed reference tab)."""
+def _read_sheet(data, strings, keep_rows=False, keep_cols=_LABEL_COLS):
+    """One worksheet part → the pieces the dump needs. Cells are kept for the
+    first `_KEEP_ROWS` rows and, in `columns`, for the `keep_cols` left-most
+    non-empty columns whole; every cell only with `keep_rows` (a confirmed
+    reference tab)."""
     root = ET.fromstring(data)
     dimension = _child(root, "dimension")
     sheet = {"dimension": (dimension.get("ref") if dimension is not None else ""),
-             "head": {}, "rows": {}, "formulas": [], "merges": [],
+             "head": {}, "rows": {}, "columns": {}, "formulas": [], "merges": [],
              "validations": [], "cf": [], "max_row": 0, "max_col": 0,
              "empty": True}
     sheet_data = _child(root, "sheetData")
@@ -301,10 +307,20 @@ def _read_sheet(data, strings, keep_rows=False):
                 sheet["max_row"] = max(sheet["max_row"], r)
                 sheet["max_col"] = max(sheet["max_col"], col)
             if value != "":
-                if r <= _HEAD_ROWS:
+                if r <= _KEEP_ROWS:
                     sheet["head"].setdefault(r, {})[col] = value
                 if keep_rows:
                     sheet["rows"].setdefault(r, {})[col] = value
+                if keep_cols:
+                    # Which two columns are the left-most *non-empty* ones is
+                    # only known once the sheet has gone by — a column further
+                    # left can turn up at any row. Dropping the right-most as
+                    # each new one arrives keeps two columns in memory instead
+                    # of the tab (QF-1: none of this is written unless
+                    # `row_labels` says the column names rows).
+                    sheet["columns"].setdefault(col, {})[r] = value
+                    for extra in sorted(sheet["columns"])[keep_cols:]:
+                        del sheet["columns"][extra]
             if f is not None:
                 sheet["formulas"].append(
                     {"ref": ref, "col": col, "row": r, "value": value,
@@ -435,11 +451,13 @@ def _persons(zf):
 
 
 def _head_grid(sheet):
-    """The first ≤ 5 rows as a rectangle of strings, row 1 first."""
+    """The first ≤ 9 rows as a rectangle of strings at the tab's full width,
+    row 1 first. `dump_workbook` trims it to the header row plus four."""
     if not sheet["head"]:
         return []
-    last_row = min(_HEAD_ROWS, max(sheet["max_row"], max(sheet["head"])))
-    width = max((max(cols) for cols in sheet["head"].values() if cols), default=0)
+    last_row = min(_KEEP_ROWS, max(sheet["max_row"], max(sheet["head"])))
+    width = max([sheet["max_col"]]
+                + [max(cols) for cols in sheet["head"].values() if cols])
     return [[sheet["head"].get(r, {}).get(c, "") for c in range(1, width + 1)]
             for r in range(1, last_row + 1)]
 
@@ -488,7 +506,7 @@ def _is_title_band(index, row, merges):
 def header_row(head, merges=()):
     """The first of the first five rows that is mostly non-numeric text — half
     or more of its non-empty cells. Blank rows and title bands are skipped."""
-    for index, row in enumerate(head, start=1):
+    for index, row in enumerate(head[:_HEAD_ROWS], start=1):
         cells = [v for v in row if v.strip()]
         if not cells or _is_title_band(index, row, merges):
             continue
@@ -723,6 +741,10 @@ def dump_workbook(xlsx_path, structure_md_path, out_dir, reference_tabs=(),
             sheet = _read_sheet(zf.read(tab["part"]), strings, keep_rows=keep)
             head = _head_grid(sheet)
             index = header_row(head, sheet["merges"])
+            # A tab's head is its header row and the four below it — enough for
+            # `build` to sample a column's type. A tab with no header keeps the
+            # five rows the header search looked at.
+            head = head[:index + 4] if index else head[:_HEAD_ROWS]
             sheets.append({"sheetId": tab["sheetId"], "name": tab["name"],
                            "hidden": tab["hidden"],
                            "dimension": sheet["dimension"] or _extent(sheet),
