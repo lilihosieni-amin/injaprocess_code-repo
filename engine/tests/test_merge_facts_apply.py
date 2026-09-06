@@ -815,16 +815,22 @@ def test_a_second_run_over_another_instance_extends_and_raises_no_account(tmp_pa
     assert rec["status"] == "confirmed"
 
 
-def test_an_instance_match_under_another_key_is_refused_nothing_written(tmp_path):
+def test_an_instance_match_under_another_key_is_refused_nothing_written(tmp_path,
+                                                                        capsys):
     root = _root(tmp_path); _seed_units(root)
     apply(root, _write(root, "d1.json", _template_delta()), _run_dir(root, "1"))
     before = {p.name: p.read_bytes() for p in (root / "facts").glob("*.json")}
-    try:
-        apply(root, _write(root, "d2.json", _template_delta(key="gozaresh_pitza")),
-              _run_dir(root, "2"))
-        assert False, "expected SystemExit"
-    except SystemExit as e:
-        assert e.code == 2
+    d = _template_delta(key="gozaresh_pitza")
+    # A DIFFERENT title as well as a different key: the same-title road is the
+    # title twin's (QF-34), and it would refuse this delta before the instance
+    # guard was ever asked — hiding the one §3.2 case this test is for.
+    d["entries"][0]["title"] = "گزارش پیتزا"
+    with pytest.raises(SystemExit) as exc:
+        apply(root, _write(root, "d2.json", d), _run_dir(root, "2"))
+    assert exc.value.code == 2
+    err = capsys.readouterr().err
+    assert "already belongs to" in err                  # the instance guard's
+    assert "in this kind and scope" not in err          # not the title twin's
     assert {p.name: p.read_bytes() for p in (root / "facts").glob("*.json")} == before
 
 
