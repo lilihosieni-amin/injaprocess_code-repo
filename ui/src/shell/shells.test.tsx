@@ -24,6 +24,11 @@ import type { Department } from '../api/types'
  */
 
 afterEach(() => vi.restoreAllMocks())
+// `canGoBack` reads `window.history.state.idx`, which a test may stub to put the
+// shell on its history branch. Cleared here rather than at the end of that test:
+// a failing assertion returns before its own cleanup, and the stub would then
+// decide the back control for every test after it.
+afterEach(() => Object.defineProperty(window.history, 'state', { value: null, configurable: true }))
 
 function session(capabilities: Capability[]): SessionDescriptor {
   return {
@@ -143,6 +148,12 @@ function renderPanel(
             <Route path="/users/:id" element={<p>محتوا</p>} />
             <Route path="/visibility" element={<p>محتوا</p>} />
             <Route path="/profile" element={<p>محتوا</p>} />
+            {/* The two facts routes. Absent until 2026-09-06 — the screens
+                landed without reaching this harness, so no shell test could see
+                a facts route at all, which is how «بازگشت» went unexamined
+                there. */}
+            <Route path="/facts" element={<p>محتوا</p>} />
+            <Route path="/facts/:fid" element={<p>محتوا</p>} />
           </Route>
         </Routes>
       </MemoryRouter>
@@ -212,6 +223,32 @@ describe('PanelShell chrome', () => {
     const inner = renderPanel(['view', 'edit'], '/departments/dining')
     expect(inner.container.querySelector('[data-r-topbar]')).toBeNull()
     expect(inner.container.querySelector('[data-r-crumbbar]')).toBeInTheDocument()
+  })
+
+  it('answers history on an entry’s own screen, and the trail on the list', () => {
+    // Owner report, 2026-09-06: *"if we went from an item's page into a rule's
+    // page, pressing back should go to the item's page, not to the quantitative
+    // data page."* A fact cites other facts, so both journeys end on
+    // `/facts/{fid}` with the same trail and `crumbs[length-2]` is «داده‌های
+    // کمّی» either way — the trail cannot tell them apart, so this route asks
+    // history instead. `answersHistory` carries the reasoning and the unit tests.
+    //
+    // This also restores the list's scroll, and that is not a second mechanism:
+    // `useScrollMemory` keys its restore on a POP, so the `<Link>` this replaces
+    // — a PUSH — could never have brought the offset back.
+    Object.defineProperty(window.history, 'state', { value: { idx: 2 }, configurable: true })
+    const entry = renderPanel(['view', 'edit'], '/facts/F-00042')
+    const entryStrip = entry.container.querySelector('[data-r-crumbbar]') as HTMLElement
+    expect(within(entryStrip).getByRole('button', { name: 'بازگشت' })).toBeInTheDocument()
+    expect(within(entryStrip).queryByRole('link', { name: 'بازگشت' })).toBeNull()
+    entry.unmount()
+
+    // The list is reached from the tray, so its own trail IS its origin. A
+    // history answer here would walk back out of the section.
+    const list = renderPanel(['view', 'edit'], '/facts')
+    const listStrip = list.container.querySelector('[data-r-crumbbar]') as HTMLElement
+    expect(within(listStrip).getByRole('link', { name: 'بازگشت' }))
+      .toHaveAttribute('href', '/departments')
   })
 
   it('draws the flow screen’s «بازگشت» in the crumb strip, like every other route', () => {

@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest'
-import { canGoBack, isProcessView, sheetHere, traySection } from './back'
+import { answersHistory, canGoBack, isProcessView, sheetHere, traySection } from './back'
 
 /** Replace `window.history.state` without navigating, which jsdom's own
  *  `pushState` would also have to be given a URL for. */
@@ -60,6 +60,36 @@ describe('isProcessView', () => {
     expect(isProcessView('/processes/dining-003/flow/extra')).toBe(false)
     expect(isProcessView('/departments/dining')).toBe(false)
     expect(isProcessView('/users')).toBe(false)
+  })
+})
+
+describe('answersHistory', () => {
+  it('covers an entry’s own screen, where the trail cannot know the way in', () => {
+    // The reason this predicate is wider than `isProcessView`. A fact links to
+    // other facts through its `resolved` refs, so «آیتم → قاعده» and
+    // «فهرست → قاعده» end on the SAME url with the SAME trail — the one route
+    // family where `crumbs[length-2]` is not where the person came from.
+    expect(answersHistory('/facts/F-00042')).toBe(true)
+    expect(answersHistory('/facts/F-00042/')).toBe(true)
+  })
+
+  it('still covers the two process views it inherited', () => {
+    expect(answersHistory('/processes/dining-003/flow')).toBe(true)
+    expect(answersHistory('/processes/dining-003/steps')).toBe(true)
+  })
+
+  it('leaves the facts list itself on the trail', () => {
+    // «داده‌های کمّی» is reached one way — from the tray — so its own trail is
+    // its origin, and a history answer there would walk back out of the section.
+    expect(answersHistory('/facts')).toBe(false)
+    expect(answersHistory('/facts/')).toBe(false)
+  })
+
+  it('covers nothing else', () => {
+    expect(answersHistory('/facts/F-00042/extra')).toBe(false)
+    expect(answersHistory('/departments/dining')).toBe(false)
+    expect(answersHistory('/processes/dining-003')).toBe(false)
+    expect(answersHistory('/users/7')).toBe(false)
   })
 })
 
