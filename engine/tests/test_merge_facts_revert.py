@@ -139,7 +139,9 @@ def test_revert_unrelated_run_not_blocked_by_later_adoption(tmp_path):
 # --- Task 7 review, round 2: id-map.json and adopted.json must be write- ---
 # --- once per run dir too — a RETRY of the same delta into the SAME run ---
 # --- dir must not let a second apply() recompute them from the now- ---
-# --- already-written store and silently erase the first call's record ---
+# --- already-written store and silently erase the first call's record. ---
+# --- Task 5 (v3 §4) settles it harder: `apply` now REFUSES a run dir that ---
+# --- already holds an id-map.json, so `_write_once` is never reached. ---
 
 def test_retried_apply_does_not_erase_id_map_or_adopted_json(tmp_path, capsys):
     root = _root(tmp_path); _seed_units(root)
@@ -163,12 +165,16 @@ def test_retried_apply_does_not_erase_id_map_or_adopted_json(tmp_path, capsys):
     assert id_map_1 == report1["id_map"] and id_map_1["T-2"]   # the real mint
     assert adopted_1 != []                               # the stub really was adopted
 
-    report2 = apply(root, d2, run2)                       # SAME run_dir, SAME delta
+    # `used` (Task 5) is the stronger form of the same protection: the second
+    # call never gets as far as recomputing anything, so the two artifacts
+    # stand exactly as the first call wrote them.
+    with pytest.raises(SystemExit) as retry:
+        apply(root, d2, run2)                             # SAME run_dir, SAME delta
+    assert retry.value.code == 2
     id_map_2 = json.loads((run2 / "id-map.json").read_text())
     adopted_2 = json.loads((run2 / "adopted.json").read_text())
     assert id_map_2 == id_map_1                            # not silently flipped to {}
     assert adopted_2 == adopted_1                           # not silently flipped to []
-    assert report2["id_map"] == {}                        # the retry itself sees only hits
 
     with pytest.raises(SystemExit) as e:
         revert(root, run2)

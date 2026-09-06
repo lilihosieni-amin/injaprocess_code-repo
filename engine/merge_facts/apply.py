@@ -31,18 +31,20 @@ contradiction QF-2 exists to prevent.
 """
 import copy
 import pathlib
-import re
 import shutil
 import sys
 from datetime import datetime, timezone
+from functools import partial
 
-from allocate_id import next_fact_id
-from engine_common import read_json, validate, write_json_atomic, write_text_atomic
-from merge_facts import (KEY_RE, KIND_FILES, KIND_ORDER, PROC_ID_RE, SEGMENT_RE,
-                         _sheet_identity, canonical_scope, collect_leaves,
-                         derive_status, facts_dir, find_match, is_open,
-                         iter_ref_objects, load_store, save_store, sha256_file)
-from merge_facts.content import check_document
+from allocate_id import next_fact_id, peek_fact_id
+from engine_common import (read_json, validate, write_json_atomic,
+                           write_text_atomic)
+# `KEY_RE` and `PROC_ID_RE` are unused here and imported anyway: `verbs.py`
+# and `audit.py` read them off this module.
+from merge_facts import (KEY_RE, KIND_FILES, KIND_ORDER, PROC_ID_RE,
+                         SEGMENT_RE, canonical_scope, derive_status, facts_dir,
+                         find_match, is_open, iter_ref_objects, load_store,
+                         save_store, sha256_file)
 # `_is_keyed_list` and `keyfn_for` are the ladder's own answers to "is this a
 # list merged member by member, and what matches its members" — a successor's
 # copy walks the same shapes, so they are borrowed rather than restated. The
@@ -50,14 +52,14 @@ from merge_facts.content import check_document
 from merge_facts.ladder import (TOP_SKIP, UNION_FIELDS, _is_keyed_list,
                                 keyfn_for, merge_entry, with_account_id,
                                 would_dispute)
+# The precondition pass and the helpers that moved with it (v3 §4). Imported,
+# not re-declared — and re-exported by being imported.
+from merge_facts.preconditions import (FACT_ID_RE, PACK_KEYS, TEMP_ID_RE,
+                                       UNITS_KEY, UNKNOWN_UNIT,
+                                       _declared_fields, _declared_rows,
+                                       _is_stub, _lookup,
+                                       _source_path_problems, preconditions)
 
-FACT_ID_RE = re.compile(r"^F-[0-9]{5}$")
-TEMP_ID_RE = re.compile(r"^T-[0-9]+$")
-UNITS_KEY = "units"
-UNKNOWN_UNIT = "—"
-# §10: `pack` and `item.units[]` carry pack sizes, not units — "which the unit
-# check does not walk". The audit's `unit_raw` walk skips the same pair.
-PACK_KEYS = frozenset({"pack", "units"})
 SUCCESSION_SKIP = TOP_SKIP | frozenset({"supersedes", "superseded_by"})
 
 
@@ -65,6 +67,11 @@ def apply(root, delta_path, run_dir):
     """Apply one delta to the store. Returns `{created, updated, id_map}`."""
     root, delta_path, run_dir = (pathlib.Path(root), pathlib.Path(delta_path),
                                  pathlib.Path(run_dir))
+    if used(run_dir):
+        print(f"precondition failed: run directory {run_dir} has already "
+              f"applied a delta — its id-map.json is the record of it",
+              file=sys.stderr)
+        raise SystemExit(2)
     delta = read_json(delta_path)
     validate("facts-delta.schema.json", delta)                       # 1
     # The ladder installs incoming subtrees by reference; every entry is copied
@@ -77,34 +84,104 @@ def apply(root, delta_path, run_dir):
     # it: a measurement matched on its delta's advisory key would miss its own
     # entry on the next run and mint a duplicate.
     _derive_keys(store, entries)
-    problems = _preconditions(root, store, entries, run_dir)         # 2
+    problems = preconditions(root, store, entries, run_dir)          # 2
     if problems:
         for msg in problems:
             print(f"precondition failed: {msg}", file=sys.stderr)
         raise SystemExit(2)
-    plans, id_map, resolution = _plan(root, store, entries)          # 3
+    # `partial`, not the bare `next_fact_id`: `_plan` calls its minter with no
+    # arguments, and a bare `next_fact_id()` would resolve the root from
+    # DATA_ROOT instead of the one this call was handed.
+    plans, id_map, resolution = _plan(root, store, entries,
+                                      partial(next_fact_id, root))   # 3
     _rewrite_refs(entries, resolution)                               # 4
     touched, adopted = _upsert(store, plans)                         # 6
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    report = _finalise(root, store, run_dir, delta_path, id_map, touched, now,
-                       adopted)
-    report["id_map"] = id_map
-    return report
+    _stamp(root, store, touched, now)                                # 7
+    originals = [(root / t["original_ref"], t["original"]) for t in touched
+                 if t.get("original_ref")]
+    _write(root, store, run_dir, delta_path, id_map, touched, adopted,
+           originals)                                                # 8-9
+    return {"created": [t["id"] for t in touched if t["changed"] and t["created"]],
+            "updated": [t["id"] for t in touched
+                        if t["changed"] and not t["created"]],
+            "id_map": id_map}
+
+
+def used(run_dir):
+    """§4: a run directory holding an `id-map.json` has already applied its
+    delta, and `apply` refuses a second one.
+
+    The postmortem reproduced what the absence of this cost: two applies into
+    one run dir both exit 0, `id-map.json` keeps only the first call's map
+    (`_write_once`) while `facts-delta.json` is overwritten by the second, so
+    `revert` strands every id the second call minted. A retry AFTER a
+    precondition failure is unaffected — nothing was written, so there is no
+    `id-map.json`. `resolve`, `retire` and the repairs share their own run
+    dirs and never come through `apply`.
+    """
+    return (pathlib.Path(run_dir) / "id-map.json").exists()
+
+
+class _MemoryMinter:
+    """`next_fact_id` with the ledger left alone. `validate --store --run`
+    must leave `facts/.id-seq.json` byte-identical — it is a preview, not a
+    run — so it mints from a counter seeded off the ledger through the public
+    peek and never writes back."""
+
+    def __init__(self, root):
+        self._next = peek_fact_id(root)
+
+    def __call__(self):
+        fid = self._next
+        self._next = f"F-{int(fid[2:]) + 1:05d}"
+        return fid
+
+
+def simulate(root, delta_path, run_dir, now="2026-01-01T00:00:00Z"):
+    """The whole of `apply` on a copy of the store, writing nothing. Returns
+    `(store_after, problems)`; `problems` is empty exactly when this delta may
+    be applied.
+
+    §4: a delta that reaches Gate B must be one `apply` cannot refuse, and the
+    2026-09-02 run proved that validating the delta alone does not establish
+    that — the store it would WRITE is what `apply` validates on the way out.
+    So this runs the same pipeline over `copy.deepcopy(load_store(root))` with
+    an in-memory minter, stamps the derived leaves, and validates the result
+    against `facts.schema.json`.
+
+    The delta's own schema is the caller's first step (`validate` runs it
+    before this, `apply` runs it itself); this starts where both leave off.
+    """
+    root, delta_path = pathlib.Path(root), pathlib.Path(delta_path)
+    delta = read_json(delta_path)
+    entries = [copy.deepcopy(e) for e in delta.get("entries") or []]
+    for e in entries:
+        e["scope"] = canonical_scope(e.get("scope"))
+    # `load_store` re-parses from disk, so the copy guards nothing today; it
+    # states the guarantee rather than resting on that.
+    store = copy.deepcopy(load_store(root))
+    _derive_keys(store, entries)
+    problems = preconditions(root, store, entries, run_dir)
+    if problems:
+        return store, problems
+    plans, _id_map, resolution = _plan(root, store, entries,
+                                       _MemoryMinter(root))
+    _rewrite_refs(entries, resolution)
+    touched, _adopted = _upsert(store, plans)
+    _stamp(root, store, touched, now)
+    for kind in KIND_ORDER:
+        try:
+            validate("facts.schema.json", store[kind])
+        except ValueError as exc:
+            problems.append(f"{kind}: the store this delta would write is "
+                            f"invalid: {exc}")
+    return store, problems
 
 
 # --------------------------------------------------------------------------- #
 # 5. the keys merge derives
 # --------------------------------------------------------------------------- #
-
-def _lookup(store, by_temp, ref_id):
-    """The entry a `{ref}` names — this delta's, or the store's."""
-    if ref_id in by_temp:
-        return by_temp[ref_id]
-    for kind in KIND_ORDER:
-        for e in store[kind]["entries"]:
-            if e["id"] == ref_id:
-                return e
-    return None
 
 
 def _derive_keys(store, entries):
@@ -174,238 +251,6 @@ def _measurement_key(store, by_temp, data):
     if item is None or record is None:
         return None
     return f"{item['key']}__{record['key']}__{writes_to['field']}"
-
-
-# --------------------------------------------------------------------------- #
-# 2. preconditions — all of them before the first write
-# --------------------------------------------------------------------------- #
-
-def _registered(path, plural):
-    try:
-        doc = read_json(path)
-    except (OSError, ValueError):
-        return set()
-    return {row.get("code") for row in doc.get(plural) or [] if isinstance(row, dict)}
-
-
-def _is_stub(entry):
-    return bool((entry.get("data") or {}).get("stub"))
-
-
-def _unit_symbols(entry):
-    """Every symbol this entry cites as a unit (QF-40) — every leaf named
-    `unit` under `data`, an item's own default included.
-
-    The one exclusion is the pair §10 names outright: `pack` and `units[]` hold
-    pack sizes, "which the unit check does not walk".
-    """
-    out = collect_leaves(entry.get("data") or {}, "unit", PACK_KEYS)
-    return [s for s in out if s and s != UNKNOWN_UNIT]
-
-
-def _unit_row_keys(store, entries):
-    """The open row keys of the `units` record — the store's, plus this delta's
-    (the delta that creates or extends the table declares its own symbols)."""
-    keys = set()
-    for record in list(store["record"]["entries"]) + list(entries):
-        if record.get("kind") != "record" or record.get("key") != UNITS_KEY:
-            continue
-        for row in (record.get("data") or {}).get("rows") or []:
-            if isinstance(row, dict) and row.get("key") and is_open(row):
-                keys.add(row["key"])
-    return keys
-
-
-def _declared_fields(entry):
-    data = entry.get("data") or {}
-    out = set()
-    for name in ("fields", "header_fields", "outputs"):
-        for member in data.get(name) or []:
-            if isinstance(member, dict) and member.get("key"):
-                out.add(member["key"])
-    return out
-
-
-def _declared_rows(entry):
-    return {r["key"] for r in (entry.get("data") or {}).get("rows") or []
-            if isinstance(r, dict) and r.get("key")}
-
-
-def _reference_problems(store, by_temp, entry, label):
-    """QF-37: every `{ref}` resolves, and every `field`/`row` it names is
-    declared by its target — unless the target is a stub, in which case the
-    edge is deferred and becomes checkable when the stub is filled (QF-20)."""
-    out = []
-    for obj in iter_ref_objects(entry):
-        ref = obj.get("ref")
-        if not isinstance(ref, str):
-            continue
-        if not (FACT_ID_RE.fullmatch(ref) or TEMP_ID_RE.fullmatch(ref)):
-            if not PROC_ID_RE.fullmatch(ref):     # a process link (QF-8) is fine
-                out.append(f"{label}: reference {ref!r} matches no id grammar")
-            continue
-        target = _lookup(store, by_temp, ref)
-        if target is None:
-            out.append(f"{label}: reference {ref!r} names no entry in the store "
-                       f"or in this delta")
-            continue
-        if _is_stub(target):
-            continue                              # a deferred edge
-        field, row = obj.get("field"), obj.get("row")
-        if field and field not in _declared_fields(target):
-            out.append(f"{label}: {ref} declares no field {field!r}")
-        if row and row not in _declared_rows(target):
-            out.append(f"{label}: {ref} declares no row {row!r}")
-    return out
-
-
-def _title_twin(store, entry):
-    """QF-34's exact-match guard: an open entry of the same kind and canonical
-    scope whose title byte-equals this one's.
-
-    ponytail: Persian is compared byte-wise here, by decision — no NFC, ZWNJ,
-    ی/ي or digit folding. A re-typed title reads as a new one; the audit's
-    look-alike report is the backstop.
-    """
-    for other in store[entry["kind"]]["entries"]:
-        if (is_open(other) and other.get("title") == entry.get("title")
-                and canonical_scope(other.get("scope")) == entry["scope"]):
-            return other
-    return None
-
-
-def _natural_key(entry):
-    return (entry["kind"], entry.get("key"),
-            tuple(entry["scope"]["departments"]), tuple(entry["scope"]["branches"]))
-
-
-#: An estate workbook — the one citation whose absence is not a failure.
-#: `.xlsx` exactly, and not "anything under `attachments/sheets/`": the `.gs`
-#: scripts and the `.structure.md` dumps live in git beside the binary (QF-44
-#: tags them), so only the binary is server-local.
-_ESTATE_BINARY = re.compile(r"^attachments/sheets/.+\.xlsx$")
-
-
-def _source_path_problems(root, entry, label):
-    """QF-5's own sentence, finally enforced: *"`ref` is a path relative to
-    `data-repo/`… any other unresolvable path fails `apply`"*.
-
-    Nothing implemented it, and `_hash_of` quietly answers `null` for a file
-    that is not there — so a citation that named no file at all was written,
-    hashed as nothing, and only failed years later at the one place it is
-    used. The owner's report of 2026-09-06 is that place: «the worksheets
-    aren't downloadable», because `GET /api/facts/source` resolves a ref
-    against three roots and a bare Google Drive id is inside none of them.
-    575 stored citations carry an id where a path belongs, and 23 more carry a
-    path missing its `attachments/sheets/` root.
-
-    `accounts[].source` is checked beside `source[]`: it is the evidence for
-    one side of a dispute, drawn on the same screen and fetched through the
-    same route, so a broken one fails in exactly the same way.
-
-    Containment as well as existence — a `ref` of `../../etc/passwd` that
-    happens to exist is not a citation into this repo.
-    """
-    problems = []
-    sources = list(entry.get("source") or [])
-    sources += [a.get("source") for a in entry.get("accounts") or []
-                if isinstance(a, dict)]
-    for src in sources:
-        if not isinstance(src, dict):
-            continue
-        ref = src.get("ref")
-        if not isinstance(ref, str) or not ref:
-            continue                      # `chat` cites no file, and says so
-        if _ESTATE_BINARY.match(ref):
-            continue
-        try:
-            target = (root / ref).resolve()
-            inside = target.is_relative_to(root.resolve()) and target.exists()
-        except (ValueError, OSError):
-            inside = False
-        if not inside:
-            problems.append(f"{label}: source ref {ref!r} names no file in "
-                            f"this repo — a ref is a path relative to "
-                            f"data-repo (QF-5)")
-    return problems
-
-
-def _preconditions(root, store, entries, run_dir):
-    """Human-readable messages, empty when the delta may be written.
-
-    `status`, `source[].hash` and `data.original_ref` need no check here: the
-    delta schema has no place for any of them.
-    """
-    out = []
-    # QF-15: two open entries sharing an identity is a store-integrity failure,
-    # and a delta carrying both would create it in one write. A sheet record is
-    # identified by its (spreadsheetId, sheet) pair as well as by its natural
-    # key, and it is the pair that catches a tab written up twice under two
-    # keys — which is what a re-derived key would otherwise become.
-    seen, sheets = set(), set()
-    for entry in entries:
-        if not is_open(entry):
-            continue
-        nk = _natural_key(entry)
-        if nk in seen:
-            out.append(f"duplicate natural key {entry.get('key')} in delta")
-        seen.add(nk)
-        ident = _sheet_identity(entry)
-        if ident is not None:
-            if ident in sheets:
-                out.append(f"duplicate sheet identity {ident[0]}/{ident[1]} in delta")
-            sheets.add(ident)
-    # QF-43: a run creates only in its own department, or at empty scope. It
-    # may still *add* to any entry it matches — that is how a cross-department
-    # contradiction surfaces, which is QF-2's whole point.
-    run_dept = pathlib.Path(run_dir).parent.name
-    by_temp = {e["id"]: e for e in entries if e.get("id")}
-    unit_rows = _unit_row_keys(store, entries)
-    departments = _registered(root / "departments" / "registry.json", "departments")
-    branches = _registered(root / "attachments" / "sheets" / "manifest.json",
-                           "branches")
-    for entry in entries:
-        label = entry.get("id") or entry.get("key")
-        if not KEY_RE.fullmatch(entry.get("key") or ""):
-            out.append(f"{label}: key {entry.get('key')!r} is not a minted key")
-        for dept in entry["scope"]["departments"]:                   # QF-33
-            if dept not in departments:
-                out.append(f"{label}: department {dept!r} is not in "
-                           f"departments/registry.json")
-        for branch in entry["scope"]["branches"]:
-            if branch not in branches:
-                out.append(f"{label}: branch {branch!r} is not in "
-                           f"attachments/sheets/manifest.json")
-        for symbol in _unit_symbols(entry):                          # QF-40
-            if symbol not in unit_rows:
-                out.append(f"{label}: unit {symbol!r} is declared by no row of "
-                           f"the units record")
-        match = find_match(store, entry)
-        if match is None:
-            if not set(entry["scope"]["departments"]) <= {run_dept}:  # QF-43
-                out.append(f"entry {entry.get('key')} scoped to another department")
-            if entry["kind"] != "note":                              # QF-34
-                twin = _title_twin(store, entry)
-                if twin is not None:
-                    out.append(f"{label}: title {entry.get('title')!r} is already "
-                               f"{twin['id']}'s in this kind and scope")
-        elif match["key"] != entry["key"] and not _is_stub(match):
-            out.append(f"{label}: keys are immutable — {match['id']} is keyed "
-                       f"{match['key']!r}, this delta carries {entry['key']!r}")
-        out.extend(_reference_problems(store, by_temp, entry, label))
-        out.extend(_source_path_problems(root, entry, label))
-    # Task 9: the content pass runs once over the whole delta (its checks are
-    # document-wide — e.g. an intra-file unit edge needs the sibling entry),
-    # on `entries` as they stand HERE: canonical scope applied, row keys
-    # derived and `refItems` cells already substituted by `_derive_keys`, but
-    # `{ref}` objects still carrying temp ids (`_rewrite_refs` runs later) —
-    # exactly the shape every other precondition above already reasons about.
-    # `store` (Task 9 review, F1/F2) lets the expr check's `calls[]` and
-    # aggregate-table-column resolution reach an entry from an EARLIER
-    # applied delta, not just this one — the common QF-12 shared-function case.
-    out.extend(check_document({"schema_version": 1, "entries": entries},
-                              "facts-delta", store))
-    return out
 
 
 # --------------------------------------------------------------------------- #
@@ -515,19 +360,24 @@ def _rederive_measurements(store, record_ids):
             yield m
 
 
-def _plan(root, store, entries):
+def _plan(root, store, entries, minter):
     """Decide each entry's target id before anything is merged. `id_map` holds
     only the ids this run mints — it is what `revert` reads to know what the run
     created, so an adoption, which hands over an existing id, is not in it;
     `resolution` additionally maps a temp id onto the entry it hit, so the
-    second pass can rewrite refs to it."""
+    second pass can rewrite refs to it.
+
+    `minter` is the id source (§4): `apply` passes the ledger's, `simulate` an
+    in-memory counter. `root` is kept in the signature because the plan reads
+    as "for this store under this root"; nothing here uses it any more.
+    """
     plans, id_map, resolution = [], {}, {}
     for entry in sorted(entries, key=lambda e: KIND_ORDER.index(e["kind"])):
         match = find_match(store, entry)
         if match is None:
             match = _workbook_stub(store, entry)
             if match is None:
-                action, fid = "create", next_fact_id(root)
+                action, fid = "create", minter()
             else:
                 action, fid = "adopt", match["id"]   # the stub's id, no mint
         elif _is_stub(match) or _is_stub(entry):
@@ -535,7 +385,7 @@ def _plan(root, store, entries):
             # carries no reading to dispute — neither ever supersedes
             action, fid = "merge", match["id"]
         elif _is_supersession(match, entry, _first_source(entry)):
-            action, fid = "supersede", next_fact_id(root)
+            action, fid = "supersede", minter()
         else:
             action, fid = "merge", match["id"]
         plans.append((action, match, entry, fid))
@@ -568,7 +418,7 @@ def _new_entry(incoming, fid):
     entry.setdefault("valid_from", None)
     entry.setdefault("valid_to", None)
     entry.setdefault("retired", False)
-    entry["status"] = "unknown"          # re-derived in `_finalise`, always
+    entry["status"] = "unknown"          # re-derived in `_stamp`, always
     entry["updated_at"] = None
     return entry
 
@@ -633,10 +483,10 @@ def _successor(match, incoming, fid):
 
 def _upsert(store, plans):
     """Create, merge or supersede. Returns `(touched, adopted)`: one record
-    per touched entry — the `original` payload rides along to `_finalise`,
+    per touched entry — the `original` payload rides along to `_stamp`,
     lifted out of the incoming entry before the ladder could install it
     inline (QF-31) — and `adopted`, the ids of every workbook stub (QF-20)
-    this run adopted, which `_finalise` writes to `{run_dir}/adopted.json`
+    this run adopted, which `_write` writes to `{run_dir}/adopted.json`
     so `revert` can refuse an adoption without ever re-deriving it."""
     touched, adopted = [], []
     for action, match, incoming, fid in plans:
@@ -688,19 +538,6 @@ def _upsert(store, plans):
 # --------------------------------------------------------------------------- #
 # 7-9. originals, hashes, status, updated_at, the five files, the run directory
 # --------------------------------------------------------------------------- #
-
-def _store_original(root, entry, fid, original):
-    """QF-31: the verbatim body lives in `facts/originals/{id}.txt` and the
-    entry keeps a path. Returns True when this run moved or changed it."""
-    rel = f"facts/originals/{fid}.txt"
-    path = root / rel
-    if ((entry.get("data") or {}).get("original_ref") == rel and path.is_file()
-            and path.read_text(encoding="utf-8") == original):
-        return False
-    write_text_atomic(path, original)
-    entry.setdefault("data", {})["original_ref"] = rel
-    return True
-
 
 def _hash_of(root, ref):
     """`sha256:…` for a citation whose file is here; `null` for one that is not
@@ -770,21 +607,48 @@ def _run_ref(root, run_dir):
         return str(run_dir)
 
 
-def _finalise(root, store, run_dir, delta_path, id_map, touched, now, adopted):
-    run_ref = _run_ref(root, run_dir)
-    created, updated = [], []
+def _stamp(root, store, touched, now):
+    """The derived half of what used to be `_finalise`: `data.original_ref`,
+    `status` and `updated_at` — and not one byte on disk.
+
+    Split off (§4) so `validate facts-delta --store --run` can run the whole
+    apply in memory and validate the store it WOULD write. These are exactly
+    the leaves `facts.schema.json` requires: a store validated before this ran
+    fails on every creation's null `updated_at` and proves nothing.
+
+    A record whose verbatim body must move to `facts/originals/` gets its
+    `original_ref` here and the path recorded on the touched record; `_write`
+    puts the bytes there. `store` is the subject of the two lines above and is
+    named for that; nothing here reads it.
+    """
     for record in touched:
         entry = record["entry"]
-        if record["original"] is not None and _store_original(
-                root, entry, record["id"], record["original"]):
-            record["changed"] = True
-        if record["changed"]:
-            _stamp_sources(root, entry, run_ref)
+        if record["original"] is not None:
+            rel = f"facts/originals/{record['id']}.txt"
+            path = root / rel
+            if not ((entry.get("data") or {}).get("original_ref") == rel
+                    and path.is_file()
+                    and path.read_text(encoding="utf-8") == record["original"]):
+                record["original_ref"] = rel     # `_write` writes the body
+                record["changed"] = True
+            entry.setdefault("data", {})["original_ref"] = rel
         # The stored status may never disagree with the derived one.
         entry["status"] = derive_status(entry)
         if record["changed"]:
             entry["updated_at"] = now
-            (created if record["created"] else updated).append(record["id"])
+
+
+def _write(root, store, run_dir, delta_path, id_map, touched, adopted, originals):
+    """The writing half: the originals `_stamp` named, the source stamps, the
+    snapshot, the five files, and the run directory's own records. Nothing
+    here derives anything — `_stamp` has run, and `validate --store --run`
+    stops before this line is reached."""
+    run_ref = _run_ref(root, run_dir)
+    for path, body in originals:
+        write_text_atomic(path, body)
+    for record in touched:
+        if record["changed"]:
+            _stamp_sources(root, record["entry"], run_ref)
     _snapshot(root, run_dir)
     save_store(root, store)
     kept = run_dir / "facts-delta.json"
@@ -798,8 +662,5 @@ def _finalise(root, store, run_dir, delta_path, id_map, touched, now, adopted):
     # comparison — a later run's own changes to an adopted record would have
     # made that inference wrong. Always written, `[]` when nothing was
     # adopted, so a MISSING file unambiguously means "a run that predates
-    # this artifact" rather than "nothing adopted". `_write_once` (Task 7
-    # review, round 2): a retried `apply()` into the same run dir must not
-    # recompute and silently erase the first call's true record.
+    # this artifact" rather than "nothing adopted".
     _write_once(run_dir / "adopted.json", sorted(adopted))
-    return {"created": created, "updated": updated}

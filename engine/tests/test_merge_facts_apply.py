@@ -2,9 +2,11 @@ import copy, json, pathlib, subprocess, sys
 
 import pytest
 
+from engine_common import read_json, validate
 from facts_helpers import _const_delta, _root, _run_dir, _seed_units, _units_delta, _write
 from merge_facts import account_id, load_store
-from merge_facts.apply import apply
+from merge_facts.apply import apply, simulate, used
+from validate.cli import main as validate_main
 
 def test_create_then_idempotent_reapply_is_byte_identical(tmp_path):
     root = _root(tmp_path); _seed_units(root)
@@ -683,3 +685,68 @@ def test_an_accounts_source_is_checked_too(tmp_path):
     d["entries"][0]["accounts"][0]["source"] = {"type": "sheet", "ref": "nowhere/x.xlsx"}
     with pytest.raises(SystemExit):
         apply(root, _write(root, "d.json", d), _run_dir(root, "1"))
+
+
+# --- v3 §4: the precondition module, the in-memory apply, the used guard --- #
+
+def test_simulate_leaves_the_store_and_the_id_ledger_byte_identical(tmp_path):
+    root = _root(tmp_path); _seed_units(root)
+    ledger = root / "facts" / ".id-seq.json"
+    before_ledger = ledger.read_bytes()
+    before = {p.name: p.read_bytes() for p in (root / "facts").glob("*.json")}
+    d = _write(root, "d1.json", _const_delta())
+    store, problems = simulate(root, d, _run_dir(root, "20260901-101501"))
+    assert problems == []
+    assert ledger.read_bytes() == before_ledger        # minted in memory only
+    assert {p.name: p.read_bytes() for p in (root / "facts").glob("*.json")} == before
+    assert [e["id"] for e in store["rule"]["entries"]] == ["F-00002"]
+
+
+def test_simulate_catches_a_store_schema_failure_the_delta_passes(tmp_path):
+    root = _root(tmp_path); _seed_units(root)
+    d = _write(root, "d1.json", _const_delta())
+    validate("facts-delta.schema.json", read_json(d))       # the delta is fine
+    # `_upsert` leaves every creation with `updated_at: null`, which
+    # `facts.schema.json` refuses — only `_stamp` turns it into a timestamp.
+    # That is why the derived half was split off the writing half, and why
+    # `--store --run` validates the STORE the delta would write, not the delta.
+    _, problems = simulate(root, d, _run_dir(root, "20260901-101501"),
+                           now="the ninth of Shahrivar")
+    assert any("would write is invalid" in p for p in problems)
+    store, problems = simulate(root, d, _run_dir(root, "20260901-101502"))
+    assert problems == []
+    assert store["rule"]["entries"][0]["updated_at"] == "2026-01-01T00:00:00Z"
+
+
+def test_apply_refuses_a_second_delta_into_a_used_run_directory(tmp_path, capsys):
+    root = _root(tmp_path); _seed_units(root)
+    run = _run_dir(root, "20260901-101501")
+    apply(root, _write(root, "d1.json", _const_delta()), run)
+    assert used(run)
+    assert not used(_run_dir(root, "20260901-101502"))
+    before = {p.name: p.read_bytes() for p in (root / "facts").glob("*.json")}
+    with pytest.raises(SystemExit) as e:
+        apply(root, _write(root, "d2.json", _const_delta(key="tol2")), run)
+    assert e.value.code == 2
+    assert "already" in capsys.readouterr().err
+    after = {p.name: p.read_bytes() for p in (root / "facts").glob("*.json")}
+    assert before == after
+
+
+def test_validate_store_run_groups_one_rule_into_one_line(tmp_path, capsys,
+                                                          monkeypatch):
+    root = _root(tmp_path); _seed_units(root)
+    monkeypatch.setenv("DATA_ROOT", str(root))
+    d = _const_delta()
+    d["entries"][0]["scope"]["branches"] = ["tehran"]       # not in the manifest
+    second = copy.deepcopy(d["entries"][0])
+    second.update({"id": "T-2", "key": "tol2", "title": "تلورانس دوم"})
+    d["entries"].append(second)
+    path = _write(root, "dx.json", d)
+    run = _run_dir(root, "20260901-101501")
+    with pytest.raises(SystemExit) as e:
+        validate_main(["facts-delta", str(path), "--store", "--run", str(run)])
+    assert e.value.code == 2
+    err = capsys.readouterr().err
+    assert err.count("is not in attachments/sheets/manifest.json") == 1
+    assert "2 entries: T-1, T-2" in err

@@ -552,3 +552,35 @@ def _check_process_links(entry, messages, label):
         if not cited:
             messages.append(f"{label}: processes[] link to {proc_id!r} has "
                             f"no process-type source naming its file")
+
+
+# --------------------------------------------------------------------------- #
+# grouped output — one line per rule, never one per cell (§4)
+# --------------------------------------------------------------------------- #
+
+_QUOTED_RE = re.compile(r"'[^']*'")
+GROUP_IDS_SHOWN = 5
+
+
+def group_messages(messages):
+    """One line per rule the document breaks, with the count and the ids —
+    the shape §4 asks for, against the run that relayed 2,068 one-per-cell
+    errors nobody could read.
+
+    A message is `"<label>: <rule stated with its specifics quoted>"`, so two
+    messages state the same rule exactly when their bodies differ only inside
+    the quotes: the quoted spans fold to `…`, and the fold is the group key.
+    Insertion order is kept, so the output is deterministic.
+    """
+    groups = {}
+    for msg in messages:
+        label, sep, body = msg.partition(": ")
+        if not sep:
+            label, body = "", msg
+        groups.setdefault(_QUOTED_RE.sub("…", body), []).append(label)
+    out = []
+    for rule, labels in groups.items():
+        shown = ", ".join(labels[:GROUP_IDS_SHOWN])
+        tail = " …" if len(labels) > GROUP_IDS_SHOWN else ""
+        out.append(f"{rule} — {len(labels)} entries: {shown}{tail}")
+    return out
