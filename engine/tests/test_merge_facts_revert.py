@@ -130,7 +130,10 @@ def test_revert_unrelated_run_not_blocked_by_later_adoption(tmp_path):
     root = _root(tmp_path); _seed_units(root)
     apply(root, _write(root, "d1.json", _workbook_stub_seed()), _run_dir(root, "1"))
     run2 = _run_dir(root, "2")
-    apply(root, _write(root, "d2.json", _const_delta(5, key="unrelated")), run2)
+    unrelated = _const_delta(5, key="unrelated")
+    # `_const_delta` builds its title from the key; §5.2 keeps Latin out of one.
+    unrelated["entries"][0]["title"] = "تلورانس نامرتبط"
+    apply(root, _write(root, "d2.json", unrelated), run2)
     apply(root, _write(root, "d3.json", _real_record_delta()), _run_dir(root, "3"))
     revert(root, run2)               # run2 never touched the stub — must succeed
     store = load_store(root)

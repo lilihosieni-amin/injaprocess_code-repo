@@ -307,7 +307,7 @@ def test_a_real_dump_of_a_reference_tab_reads_back_row_by_row(tmp_path):
 
 def test_retired_row_live_edges(tmp_path):
     root = _root(tmp_path); _seed_units(root)
-    reader = _entry("T-2", "rule", "reads_row", "خواندن سلول", {
+    reader = _entry("T-2", "rule", "reads_row", "خواندن مقدار", {
         "inputs": [{"key": "g", "title": "گرم", "unit": "g",
                     "from": {"ref": "T-1", "field": "grams", "row": "prod_61"}}],
         "outputs": [{"key": "v", "title": "مقدار", "unit": "g", "nature": "observed"}],

@@ -287,7 +287,7 @@ def test_key_is_immutable_for_a_matched_sheet_record(tmp_path):
 
     def sheet_record(key):
         return {"schema_version": 2, "entries": [
-            {"id": "T-1", "kind": "record", "key": key, "title": "گزارش " + key,
+            {"id": "T-1", "kind": "record", "key": key, "title": "گزارش روزانه",
              "statement": "s", "scope": {"departments": ["cooking"], "branches": []},
              "source": [{"type": "sheet", "ref": "attachments/sheets/G/G.xlsx"}],
              "retired": False,

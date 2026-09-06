@@ -47,7 +47,7 @@ RESERVED_ROW_NAMES = frozenset({"key", "title", "unit", "unit_raw", "section",
                                 "supersedes"})
 
 
-def check_document(doc, kind_of_file, store=None):
+def check_document(doc, kind_of_file, store=None, unit_symbols=None):
     """Every content-pass message for `doc`, empty when it may pass. Never
     raises on a malformed shape — a missing/wrong-typed field is the schema's
     job to have already refused; this pass only adds messages.
@@ -55,7 +55,11 @@ def check_document(doc, kind_of_file, store=None):
     `store`, when given, extends resolution for check #1 ONLY (`calls[]` and
     the aggregate form's table columns — F1/F2) beyond `doc["entries"]`;
     every other check, including #2's unit edges, stays scoped to `doc_by_id`
-    exactly as before — passing `store` must not change their behaviour."""
+    exactly as before — passing `store` must not change their behaviour.
+
+    `unit_symbols`, when given, is the run's declared unit symbols
+    (`skeleton.json`'s `unit_symbols[]`), exempted from the §5.2 lint's Latin
+    rule — every other caller passes none and gets the bare rule."""
     entries = doc.get("entries") or []
     doc_by_id = {e["id"]: e for e in entries if isinstance(e, dict) and e.get("id")}
     combined_by_id = dict(doc_by_id)
@@ -80,6 +84,7 @@ def check_document(doc, kind_of_file, store=None):
         _check_issue_dates(entry, messages, label)
         _check_source_exclusions(entry, messages, label)
         _check_process_links(entry, messages, label)
+        _check_prose(entry, unit_symbols, messages, label)
     return messages
 
 
@@ -157,6 +162,10 @@ def _check_expr(entry, by_id, messages, label):
     # `feel` bullet specifically.
     if not isinstance(expr, str) or not expr or data.get("lang") != "feel":
         return
+    # An input whose `from` is `{"param": "<applies_to params key>"}` (§2.5's
+    # tolerance bindings) is declared exactly like any other: the identifier
+    # the expression reads is its `key`, and where the value comes from is
+    # `applies_to[]`'s business, not the tokeniser's.
     inputs_by_key = {i["key"]: i for i in data.get("inputs") or []
                      if isinstance(i, dict) and i.get("key")}
     outputs = {o["key"] for o in data.get("outputs") or []
@@ -402,7 +411,12 @@ def _check_record_shape(entry, messages, label):
             if member not in declared_fields:
                 messages.append(f"{label}: row {row.get('key')!r} member "
                                 f"{member!r} is not a declared field")
-    if data.get("role") == "reference":
+    # v3 §4: only a record the model typed — a paper form, an external system,
+    # the native `units` table. A sheet-derived record's rows ARE the dump's,
+    # and `build` omits a cell the dump left empty (§2.3), so a missing member
+    # is a blank in the sheet, not an unanswered question. `instances[]` is
+    # what says the rows came off a dump.
+    if data.get("role") == "reference" and not data.get("instances"):
         non_derived = {f["key"] for f in fields if f.get("key") and not f.get("derived")}
         for row in rows:
             if not is_open(row):
@@ -448,7 +462,10 @@ def _check_constant_shape(entry, kind_of_file, messages, label):
     inputs = data.get("inputs")
     outputs = data.get("outputs") or []
     if inputs == []:
-        if data.get("expr") is not None or data.get("lang") is not None:
+        # v3 §5.3: a policy with no formula is `lang: text` and no inputs — a
+        # rule, not a malformed constant. Only a computed shape contradicts
+        # "no inputs": an `expr`, or a `lang` that declares one.
+        if data.get("expr") is not None or data.get("lang") in ("feel", "table"):
             messages.append(f"{label}: a constant (no inputs) carries "
                             f"expr/lang")
         for o in outputs:
@@ -584,3 +601,141 @@ def group_messages(messages):
         tail = " …" if len(labels) > GROUP_IDS_SHOWN else ""
         out.append(f"{rule} — {len(labels)} entries: {shown}{tail}")
     return out
+
+
+# --------------------------------------------------------------------------- #
+# 13. the style card (§5.2), mechanically — QF-50
+# --------------------------------------------------------------------------- #
+
+#: An A1 reference, with §2.3(d)'s guards: not preceded by an identifier
+#: character and not followed by one or by `(`, so `MIN(`, `ROUND(` and every
+#: other function name are left alone; optionally sheet-qualified and ranged.
+#: The normaliser (`facts_plan.build`) and the agent's style card quote this
+#: string verbatim, which is why it is a module constant and not inline.
+REF_TOKEN = (r"(?:'[^']+'!)?(?<![A-Za-z0-9_$])\$?[A-Z]{1,3}\$?(?:N|\d{1,5})"
+             r"(?![A-Za-z0-9_(])(?::\$?[A-Z]{1,3}\$?(?:N|\d{1,5}))?")
+PIPELINE_WORDS = ("پاس", "اسکلت", "بخش از داده‌ها", "واحد کاری", "بچ",
+                  "original", "bindings", "FEEL", "account", "expr")
+COLLOQUIAL = ("می‌زنن", "می‌کنن", "داشته باشن", "بگیم", "می‌گیم")
+#: Allowed only in a record's own `statement` and a field's `description`.
+SHEET_WORDS = ("ستون", "تب", "سلول")
+#: The Latin the register keeps: the two words the owner uses untranslated,
+#: and `sheet`. Anything else Latin and four letters or longer is a leak.
+LATIN_KEPT = frozenset({"csv", "excel", "sheet"})
+QUOTE_WORDS = 8
+
+REF_TOKEN_RE = re.compile(REF_TOKEN)
+ARTEFACT_RE = re.compile(r"\.xlsx\b|\.gs\b|Table_|IMPORT_FROM_SHEET|\bLET\(|LAMBDA")
+LATIN_WORD_RE = re.compile(r"[A-Za-z]{4,}")
+QUOTED_SPAN_RE = re.compile(r"«([^»]*)»")
+
+
+def _whole_word_re(words):
+    """Persian gives `re` no `\\b` to work with, and these words are short:
+    «تب» sits inside «مرتب», «پاس» inside «پاسخ» — which the owner's own
+    report uses («بی‌پاسخ»). So a word counts only when no letter touches it
+    on either side."""
+    body = "|".join(re.escape(w) for w in words)
+    return re.compile(rf"(?<![^\W\d_])(?:{body})(?![^\W\d_])")
+
+
+PIPELINE_RE = _whole_word_re(PIPELINE_WORDS)
+COLLOQUIAL_RE = _whole_word_re(COLLOQUIAL)
+SHEET_WORDS_RE = _whole_word_re(SHEET_WORDS)
+
+
+def lint_prose(text, *, exemptions, allow_sheet_words=False):
+    """§5.2's style card as a check: the messages a sentence earns, empty when
+    it may be stored. One message per rule broken, not one per occurrence.
+
+    QF-50's reason for existing: `title` and `statement` are definitions, and
+    a definition that says «ستون J تب پیتزا» is a locator wearing a
+    definition's clothes — it stops being true the day the column moves. The
+    locator already has a home (`source[]`) and so does the quotation
+    (`source[].quote`); what is left is the meaning, which is the field.
+
+    `exemptions` is the run's unit symbols (`skeleton.json`'s
+    `unit_symbols[]`) — a symbol the units record declares is vocabulary, not
+    a Latin leak. `allow_sheet_words` is QF-50's one exception: «ستون», «تب»
+    and «سلول» belong in a record's own `statement` and in a field's
+    `description`, which describe a table to someone who will open it.
+    """
+    if not isinstance(text, str) or not text:
+        return []
+    out = []
+    hit = REF_TOKEN_RE.search(text)
+    if hit:
+        out.append(f"names cell or range {hit.group()!r} — a locator belongs "
+                   f"in source[], not in prose (QF-50)")
+    hit = ARTEFACT_RE.search(text)
+    if hit:
+        out.append(f"names {hit.group()!r} — a file, table or formula name "
+                   f"belongs in source[], not in prose (QF-50)")
+    # The three Persian rules quote the match literally rather than with `!r`:
+    # a ZWNJ («می‌زنن», «بخش از داده‌ها» carry one) is category Cf, so `repr`
+    # escapes it to a six-character code — unreadable to the unit that has to
+    # fix the sentence. The ASCII quotes are kept so `group_messages` still
+    # folds the span. The three rules above match ASCII only: `!r` is fine.
+    hit = PIPELINE_RE.search(text)
+    if hit:
+        out.append(f"uses the pipeline's own word '{hit.group()}', which "
+                   f"names nothing in the restaurant")
+    hit = COLLOQUIAL_RE.search(text)
+    if hit:
+        out.append(f"uses the spoken ending '{hit.group()}', not the register "
+                   f"of a written procedure")
+    if not allow_sheet_words:
+        hit = SHEET_WORDS_RE.search(text)
+        if hit:
+            out.append(f"uses '{hit.group()}', which belongs only to a "
+                       f"record's own statement and a field's description "
+                       f"(QF-50)")
+    kept = LATIN_KEPT | {str(s).lower() for s in exemptions or ()}
+    for hit in LATIN_WORD_RE.finditer(text):
+        if hit.group().lower() not in kept:
+            out.append(f"carries the Latin word {hit.group()!r}")
+            break
+    for hit in QUOTED_SPAN_RE.finditer(text):
+        words = len(hit.group(1).split())
+        if words > QUOTE_WORDS:
+            out.append(f"quotes {words} words — a quotation belongs in "
+                       f"source[].quote, not in a definition")
+            break
+    return out
+
+
+def _check_prose(entry, unit_symbols, messages, label):
+    """The lint at the field that carries the sentence, so the unit that wrote
+    a failing one is the unit told to fix it (QF-50). The targets are §5.2's
+    list; an `issues[].description` the ENGINE templated is exempt, because it
+    must name the columns that went missing — that is the whole finding."""
+    is_record = entry.get("kind") == "record"
+    targets = [("title", entry.get("title"), False),
+               ("statement", entry.get("statement"), is_record)]
+    for i, alias in enumerate(entry.get("aliases") or []):
+        targets.append((f"aliases/{i}", alias, False))
+    data = entry.get("data") or {}
+    for name in ("grain", "method", "exceptions"):
+        # `grain: "workbook"` is not prose: it is the workbook-stub marker
+        # `apply._workbook_stub` matches on and `_strip_stub_markers` lifts off
+        # the delta — and this pass runs from `preconditions`, before that
+        # lifting. A record's real, Persian grain is still linted.
+        if name == "grain" and data.get(name) == "workbook":
+            continue
+        targets.append((f"data/{name}", data.get(name), False))
+    for field in data.get("fields") or []:
+        if isinstance(field, dict):
+            targets.append((f"data/fields/{field.get('key')}/description",
+                            field.get("description"), True))
+    for i, tracked in enumerate(data.get("tracked") or []):
+        if isinstance(tracked, dict):
+            targets.append((f"data/tracked/{i}/reason", tracked.get("reason"),
+                            False))
+    for i, issue in enumerate(entry.get("issues") or []):
+        if isinstance(issue, dict) and not issue.get("engine"):
+            targets.append((f"issues/{i}/description", issue.get("description"),
+                            False))
+    for path, text, allow_sheet_words in targets:
+        for msg in lint_prose(text, exemptions=unit_symbols or (),
+                              allow_sheet_words=allow_sheet_words):
+            messages.append(f"{label}: {path} {msg}")

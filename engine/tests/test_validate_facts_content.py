@@ -12,7 +12,7 @@ import pathlib
 import pytest
 from facts_helpers import _const_delta, _root, _run_dir, _seed_units, _write
 from merge_facts.apply import apply
-from merge_facts.content import check_document
+from merge_facts.content import check_document, group_messages, lint_prose
 from validate.cli import main
 
 
@@ -896,3 +896,156 @@ def test_apply_resolves_aggregate_table_columns_against_an_earlier_delta(tmp_pat
                          "(sales * grams)"}}]}
     r2 = apply(root, _write(root, "d2.json", rule_delta), _run_dir(root, "2"))
     assert r2["id_map"]["T-1"]
+
+
+# --------------------------------------------------------------------------- #
+# 13. the §5.2 prose lint
+# --------------------------------------------------------------------------- #
+
+def _constant(**extra):
+    return _rule(data={"inputs": [], "outputs": [{"key": "v", "title": "مقدار",
+                                                  "unit": "g", "value": 5}]},
+                 **extra)
+
+
+def test_a_statement_naming_a_cell_or_a_file_fails():
+    msgs = check_document(_doc(_constant(
+        statement="انحراف در J6 نوشته می‌شود و از Pitza.xlsx می‌آید.")),
+        "facts-delta")
+    assert any("statement" in m and "J6" in m for m in msgs)
+    assert any(".xlsx" in m for m in msgs)
+
+
+def test_a_title_naming_a_table_fails():
+    msgs = check_document(_doc(_constant(title="تلورانس Table_BOM")),
+                          "facts-delta")
+    assert any("title" in m and "Table_" in m for m in msgs)
+
+
+def test_a_pipeline_word_fails_but_a_word_that_contains_one_passes():
+    msgs = check_document(_doc(_constant(
+        statement="این مقدار در پاس دوم به دست آمد.")), "facts-delta")
+    assert any("پاس" in m for m in msgs)
+    assert check_document(_doc(_constant(
+        statement="پرسش بی‌پاسخ در پنل تعیین تکلیف می‌شود.")),
+        "facts-delta") == []
+
+
+def test_the_sheet_words_belong_to_a_record_statement_and_a_field_description():
+    record = _record(data={"fields": [
+        {"key": "masraf", "title": "مصرف", "type": "number", "unit": "g",
+         "description": "ستون مصرف اعلامی لاین."}]},
+        title="مصرف اعلامی",
+        statement="ستون مصرف اعلامی هر شب توسط سرپرست لاین پر می‌شود.")
+    assert check_document(_doc(record), "facts-delta") == []
+    assert any("ستون" in m and "title" in m for m in check_document(
+        _doc(_record(title="ستون مصرف")), "facts-delta"))
+
+
+def test_a_declared_unit_symbol_is_not_a_latin_leak():
+    rule = _constant(statement="هر پرس ۶۰ gram است.")
+    assert any("gram" in m for m in check_document(_doc(rule), "facts-delta"))
+    assert check_document(_doc(rule), "facts-delta",
+                          unit_symbols=["gram"]) == []
+
+
+def test_a_spoken_ending_and_a_long_quotation_fail():
+    assert any("می‌زنن" in m for m in check_document(
+        _doc(_constant(statement="آشپزها معمولاً بیشتر می‌زنن.")),
+        "facts-delta"))
+    assert any("quot" in m for m in check_document(_doc(_constant(
+        statement="«یک عدد قارچ حدود ده تا پانزده گرم وزن دارد گاهی»")),
+        "facts-delta"))
+
+
+def test_an_engine_written_issue_description_may_name_the_column():
+    issue = {"kind": "column_shift", "affects": [], "engine": True,
+             "description": "ستون K6 در نسخهٔ کپی‌شده جا افتاده است."}
+    assert check_document(_doc(_constant(issues=[issue])), "facts-delta") == []
+    unit_written = {k: v for k, v in issue.items() if k != "engine"}
+    assert any("K6" in m for m in check_document(
+        _doc(_constant(issues=[unit_written])), "facts-delta"))
+
+
+def test_the_workbook_stub_marker_is_not_linted_as_prose():
+    record = _record(data={"stub": True, "grain": "workbook"})
+    assert check_document(_doc(record), "facts-delta") == []
+    record["data"]["grain"] = "nightly"
+    assert any("grain" in m and "nightly" in m for m in
+               check_document(_doc(record), "facts-delta"))
+
+
+def test_lint_prose_is_empty_for_a_definition_in_the_written_register():
+    assert lint_prose("انحراف مصرف هر مادهٔ اولیه در پایان شب برابر است با "
+                      "مصرف واقعی منهای مصرف اعلامی لاین.",
+                      exemptions=()) == []
+
+
+def test_group_messages_folds_one_rule_into_one_line():
+    a = _constant(id_="T-1", key="tol", statement="انحراف برابر است با J6.")
+    b = _constant(id_="T-2", key="tol2", statement="مصرف برابر است با K7.")
+    lines = group_messages(check_document(_doc(a, b), "facts-delta"))
+    assert len(lines) == 1
+    assert lines[0].endswith("— 2 entries: T-1, T-2")
+
+
+# --------------------------------------------------------------------------- #
+# 7 (v3). a policy rule is `lang: text` with no inputs
+# --------------------------------------------------------------------------- #
+
+def test_a_policy_rule_with_no_inputs_and_lang_text_passes():
+    rule = _rule(data={"inputs": [], "lang": "text",
+                       "text": "شمارش آخر شب فقط پس از بستن خط انجام می‌شود.",
+                       "outputs": [{"key": "hadd", "title": "حد", "unit": "g",
+                                    "value": None}]})
+    assert check_document(_doc(rule), "facts-delta") == []
+    rule["data"]["lang"] = "feel"
+    assert any("expr/lang" in m for m in
+               check_document(_doc(rule), "facts-delta"))
+
+
+# --------------------------------------------------------------------------- #
+# 5 (v3). reference rows are checked only where the model typed them
+# --------------------------------------------------------------------------- #
+
+def test_a_sheet_records_reference_rows_are_not_checked_for_completeness():
+    record = _record(role="reference", data={
+        "instances": [{"key": "gozaresh__s1", "spreadsheetId": "S",
+                       "sheetId": 1, "sheet": "پیتزا", "branch": "chalebagh",
+                       "hidden": False}],
+        "primaryKey": ["code"],
+        "fields": [{"key": "code", "title": "کد", "type": "string"},
+                   {"key": "grams", "title": "گرم", "type": "number",
+                    "unit": "g"}],
+        "rows": [{"key": "p1", "code": "p1"}]})
+    assert check_document(_doc(record), "facts-delta") == []
+    del record["data"]["instances"]
+    assert any("grams" in m for m in
+               check_document(_doc(record), "facts-delta"))
+
+
+# --------------------------------------------------------------------------- #
+# 1 (v3). a parameter input is an ordinary declared identifier
+# --------------------------------------------------------------------------- #
+
+def test_a_param_input_is_an_ordinary_declared_identifier():
+    rule = _rule(data={"inputs": [
+        {"key": "enheraf", "title": "انحراف", "unit": "g", "from": "operator"},
+        {"key": "tolerance_gr", "title": "تلورانس", "unit": "g",
+         "from": {"param": "tolerancePerFoodGr"}}],
+        "outputs": [{"key": "enheraf_ba_tolerance", "title": "انحراف با تلورانس",
+                     "unit": "g"}],
+        "lang": "feel",
+        "expr": "enheraf_ba_tolerance = enheraf - tolerance_gr"})
+    assert check_document(_doc(rule), "facts-delta") == []
+
+
+def test_apply_refuses_a_statement_that_names_a_cell(tmp_path, capsys):
+    root = _root(tmp_path)
+    _seed_units(root)
+    d = _const_delta()
+    d["entries"][0]["statement"] = "حد مجاز در J6 نوشته شده است."
+    with pytest.raises(SystemExit) as e:
+        apply(root, _write(root, "dx.json", d), _run_dir(root, "9"))
+    assert e.value.code == 2
+    assert "J6" in capsys.readouterr().err
