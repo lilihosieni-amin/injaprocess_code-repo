@@ -252,3 +252,29 @@ def test_resolving_a_unit_clears_the_stale_unit_ref_beside_it(tmp_path):
     after = [e for e in load_store(root)["rule"]["entries"]
              if e["key"] == "tol"][0]["data"]["outputs"][0]
     assert after["unit"] == "kg" and "unit_ref" not in after
+
+
+def test_resolving_a_unit_to_a_ref_is_refused_and_writes_nothing(tmp_path):
+    """The shape `_clear_unit_ref` used to spare — a chosen account whose value
+    is a `{ref}` rather than a symbol — cannot reach the store at all: every
+    `unit` leaf is `string | null` (facts.schema.json:67, 122, 143, 172, 185,
+    204, 217, 269) and every payload is closed. `save_store` validates all five
+    files before writing any, so the refusal leaves the store as it was."""
+    root = _root(tmp_path); _seed_units(root)
+    a = _const_delta(5, key="tol"); a["entries"][0]["data"]["outputs"][0]["unit"] = "g"
+    apply(root, _write(root, "a.json", a), _run_dir(root, "1"))
+    b = _const_delta(5, key="tol"); b["entries"][0]["data"]["outputs"][0]["unit"] = "kg"
+    apply(root, _write(root, "b.json", b), _run_dir(root, "2"))
+    entry = [e for e in load_store(root)["rule"]["entries"] if e["key"] == "tol"][0]
+    chosen = [x for x in entry["accounts"] if x["value"] == "kg"][0]
+    chosen["value"] = {"ref": "F-00001", "row": "g"}     # a ref where a symbol goes
+    path = root / "facts" / "rules.json"
+    doc = json.loads(path.read_text(encoding="utf-8"))
+    [e for e in doc["entries"] if e["key"] == "tol"][0]["accounts"] = entry["accounts"]
+    path.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
+
+    before = {q.name: q.read_bytes() for q in (root / "facts").glob("*.json")}
+    with pytest.raises(ValueError):
+        resolve(root, entry["id"], "data/outputs/v/unit", chosen["id"],
+                _run_dir(root, "3"))
+    assert {q.name: q.read_bytes() for q in (root / "facts").glob("*.json")} == before

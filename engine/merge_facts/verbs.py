@@ -110,14 +110,20 @@ def _append_delta(run_dir, verb, args):
     write_json_atomic(path, doc)
 
 
-def _clear_unit_ref(entry, field, chosen):
-    """§4: resolving a `unit` leaf drops the `unit_ref` written beside it —
-    unless the chosen account names one itself (its value is a `{ref}` rather
-    than a symbol). The pair is written together, so a settled symbol left
-    sitting next to the ref of the reading that lost is worse than no ref."""
+def _clear_unit_ref(entry, field):
+    """§4: resolving a `unit` leaf drops the `unit_ref` written beside it. The
+    pair is written together, so a settled symbol left sitting next to the ref
+    of the reading that lost is worse than no ref.
+
+    v3 §3.3 closed every payload (`additionalProperties: false`), and
+    `unit_ref` is declared in none of them — the estate's 137 of them are the
+    cooking run's invented key. So this pop is also what lets an entry still
+    carrying one be saved at all, and there is no "unless the chosen account
+    names one itself" case to spare: every `unit` leaf in the schema is typed
+    `string | null` (facts.schema.json:67, 122, 143, 172, 185, 204, 217, 269),
+    so a `{ref}` installed at one fails `save_store` whatever this does.
+    """
     if field.rsplit("/", 1)[-1] != "unit" or "/" not in field:
-        return
-    if isinstance(chosen.get("value"), dict) and chosen["value"].get("ref"):
         return
     holder = get_path(entry, field.rsplit("/", 1)[0])
     if isinstance(holder, dict):
@@ -146,7 +152,7 @@ def resolve(root, fact_id, field, account_id, run_dir):
         if a is not chosen and a.get("field") == field:
             a["status"] = "rejected"
     set_path(entry, field, chosen.get("value"))
-    _clear_unit_ref(entry, field, chosen)
+    _clear_unit_ref(entry, field)
     entry["status"] = derive_status(entry)
     entry["updated_at"] = _now()
     _snapshot(root, pathlib.Path(run_dir))

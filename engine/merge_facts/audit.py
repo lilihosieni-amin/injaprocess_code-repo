@@ -1146,7 +1146,7 @@ PERSIAN = {
     "scope_shadow": "همین کلید در دامنهٔ عمومی هم هست: «{title}»",
     "unknown_role": "نقشی که در فرایندها نیامده است: «{title}»",
     "source_moved": "پروندهٔ استنادشده عوض شده است: «{title}»",
-    "estate_absent": "پروندهٔ اکسل روی این دستگاه نیست: «{title}»",
+    "estate_absent": "پروندهٔ Excel روی این دستگاه نیست: «{title}»",
     "uncited_workbook": "فایلی که هیچ جدولی از آن خوانده نشده است: «{title}»",
 }
 
