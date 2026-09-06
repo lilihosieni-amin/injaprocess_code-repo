@@ -1,0 +1,25 @@
+sheet	range	type	values
+پیتزا امریکایی	B2:H13	custom	AND(ISNUMBER(B2),(NOT(OR(NOT(ISERROR(DATEVALUE(B2))), AND(ISNUMBER(B2), LEFT(CELL("format", B2))="D")))))
+پیتزا امریکایی	A2:A13		
+پیتزا ایتالیایی	B2:J14	custom	AND(ISNUMBER(B2),(NOT(OR(NOT(ISERROR(DATEVALUE(B2))), AND(ISNUMBER(B2), LEFT(CELL("format", B2))="D")))))
+پیتزا ایتالیایی	A2:A14		
+پیتزا سینگل	B2:H7	custom	AND(ISNUMBER(B2),(NOT(OR(NOT(ISERROR(DATEVALUE(B2))), AND(ISNUMBER(B2), LEFT(CELL("format", B2))="D")))))
+پیتزا سینگل	A2:A7		
+لازانیا	B2:D3	custom	AND(ISNUMBER(B2),(NOT(OR(NOT(ISERROR(DATEVALUE(B2))), AND(ISNUMBER(B2), LEFT(CELL("format", B2))="D")))))
+لازانیا	A2:A3		
+فرنگی	B2:B3 D2:D3	custom	AND(ISNUMBER(B2),(NOT(OR(NOT(ISERROR(DATEVALUE(B2))), AND(ISNUMBER(B2), LEFT(CELL("format", B2))="D")))))
+فرنگی	A2:A3		
+پاستا	B2:C3	custom	AND(ISNUMBER(B2),(NOT(OR(NOT(ISERROR(DATEVALUE(B2))), AND(ISNUMBER(B2), LEFT(CELL("format", B2))="D")))))
+پاستا	A2:A3		
+ساندویچ	B2:J14	custom	AND(ISNUMBER(B2),(NOT(OR(NOT(ISERROR(DATEVALUE(B2))), AND(ISNUMBER(B2), LEFT(CELL("format", B2))="D")))))
+ساندویچ	A2:A14		
+سوخاری	B2:C8 E2:E8 I2:J8	custom	AND(ISNUMBER(B2),(NOT(OR(NOT(ISERROR(DATEVALUE(B2))), AND(ISNUMBER(B2), LEFT(CELL("format", B2))="D")))))
+سوخاری	A2:A8		
+سالاد	B2:D4	custom	AND(ISNUMBER(B2),(NOT(OR(NOT(ISERROR(DATEVALUE(B2))), AND(ISNUMBER(B2), LEFT(CELL("format", B2))="D")))))
+سالاد	A2:A4		
+استارتر	B2:E8 K2:K8	custom	AND(ISNUMBER(B2),(NOT(OR(NOT(ISERROR(DATEVALUE(B2))), AND(ISNUMBER(B2), LEFT(CELL("format", B2))="D")))))
+استارتر	A2:A8		
+استیک	B2	custom	AND(ISNUMBER(B2),(NOT(OR(NOT(ISERROR(DATEVALUE(B2))), AND(ISNUMBER(B2), LEFT(CELL("format", B2))="D")))))
+استیک	A2		
+پرسنلی	B2:C2	custom	AND(ISNUMBER(B2),(NOT(OR(NOT(ISERROR(DATEVALUE(B2))), AND(ISNUMBER(B2), LEFT(CELL("format", B2))="D")))))
+پرسنلی	A2		

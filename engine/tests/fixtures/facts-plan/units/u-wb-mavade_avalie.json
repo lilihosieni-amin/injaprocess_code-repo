@@ -1,0 +1,175 @@
+{
+ "schema_version": 1,
+ "unit": "u-wb-mavade_avalie",
+ "attempt": 1,
+ "decisions": [
+  {
+   "skeleton": "S-rec-00a1c269f6e5",
+   "action": "keep",
+   "key": "mavad_pitza_italiaei",
+   "title": "مواد اولیهٔ پیتزا ایتالیایی",
+   "statement": "مقدار هر ماده اولیه برای هر غذای گروه پیتزا ایتالیایی در این جدول نگهداری می‌شود.",
+   "data": {
+    "role": "reference",
+    "primaryKey": [
+     "c_a"
+    ],
+    "grain": "هر غذای این گروه"
+   }
+  },
+  {
+   "skeleton": "S-rec-0f92162ffcfc",
+   "action": "keep",
+   "key": "mavad_personeli",
+   "title": "مواد اولیهٔ پرسنلی",
+   "statement": "مقدار هر ماده اولیه برای هر غذای گروه پرسنلی در این جدول نگهداری می‌شود.",
+   "data": {
+    "role": "reference",
+    "primaryKey": [
+     "c_a"
+    ],
+    "grain": "هر غذای این گروه"
+   }
+  },
+  {
+   "skeleton": "S-rec-24886a08d4ab",
+   "action": "keep",
+   "key": "mavad_pasta",
+   "title": "مواد اولیهٔ پاستا",
+   "statement": "مقدار هر ماده اولیه برای هر غذای گروه پاستا در این جدول نگهداری می‌شود.",
+   "data": {
+    "role": "reference",
+    "primaryKey": [
+     "c_a"
+    ],
+    "grain": "هر غذای این گروه"
+   }
+  },
+  {
+   "skeleton": "S-rec-3ac3b278cadf",
+   "action": "keep",
+   "key": "mavad_esteyk",
+   "title": "مواد اولیهٔ استیک",
+   "statement": "مقدار هر ماده اولیه برای هر غذای گروه استیک در این جدول نگهداری می‌شود.",
+   "data": {
+    "role": "reference",
+    "primaryKey": [
+     "c_a"
+    ],
+    "grain": "هر غذای این گروه"
+   }
+  },
+  {
+   "skeleton": "S-rec-58512a0deeb4",
+   "action": "keep",
+   "key": "mavad_pitza_amrikaei",
+   "title": "مواد اولیهٔ پیتزا امریکایی",
+   "statement": "مقدار هر ماده اولیه برای هر غذای گروه پیتزا امریکایی در این جدول نگهداری می‌شود.",
+   "data": {
+    "role": "reference",
+    "primaryKey": [
+     "c_a"
+    ],
+    "grain": "هر غذای این گروه"
+   }
+  },
+  {
+   "skeleton": "S-rec-6f06c2309913",
+   "action": "keep",
+   "key": "mavad_sandvich",
+   "title": "مواد اولیهٔ ساندویچ",
+   "statement": "مقدار هر ماده اولیه برای هر غذای گروه ساندویچ در این جدول نگهداری می‌شود.",
+   "data": {
+    "role": "reference",
+    "primaryKey": [
+     "c_a"
+    ],
+    "grain": "هر غذای این گروه"
+   }
+  },
+  {
+   "skeleton": "S-rec-87b94d2711a8",
+   "action": "keep",
+   "key": "mavad_sokhari",
+   "title": "مواد اولیهٔ سوخاری",
+   "statement": "مقدار هر ماده اولیه برای هر غذای گروه سوخاری در این جدول نگهداری می‌شود.",
+   "data": {
+    "role": "reference",
+    "primaryKey": [
+     "c_a"
+    ],
+    "grain": "هر غذای این گروه"
+   }
+  },
+  {
+   "skeleton": "S-rec-bf477559ad68",
+   "action": "keep",
+   "key": "mavad_pitza_singel",
+   "title": "مواد اولیهٔ پیتزا سینگل",
+   "statement": "مقدار هر ماده اولیه برای هر غذای گروه پیتزا سینگل در این جدول نگهداری می‌شود.",
+   "data": {
+    "role": "reference",
+    "primaryKey": [
+     "c_a"
+    ],
+    "grain": "هر غذای این گروه"
+   }
+  },
+  {
+   "skeleton": "S-rec-d8a25df7d5be",
+   "action": "keep",
+   "key": "mavad_salad",
+   "title": "مواد اولیهٔ سالاد",
+   "statement": "مقدار هر ماده اولیه برای هر غذای گروه سالاد در این جدول نگهداری می‌شود.",
+   "data": {
+    "role": "reference",
+    "primaryKey": [
+     "c_a"
+    ],
+    "grain": "هر غذای این گروه"
+   }
+  },
+  {
+   "skeleton": "S-rec-ddf68f27bc5d",
+   "action": "keep",
+   "key": "mavad_farangi",
+   "title": "مواد اولیهٔ فرنگی",
+   "statement": "مقدار هر ماده اولیه برای هر غذای گروه فرنگی در این جدول نگهداری می‌شود.",
+   "data": {
+    "role": "reference",
+    "primaryKey": [
+     "c_a"
+    ],
+    "grain": "هر غذای این گروه"
+   }
+  },
+  {
+   "skeleton": "S-rec-ecd3c0bb1713",
+   "action": "keep",
+   "key": "mavad_lazania",
+   "title": "مواد اولیهٔ لازانیا",
+   "statement": "مقدار هر ماده اولیه برای هر غذای گروه لازانیا در این جدول نگهداری می‌شود.",
+   "data": {
+    "role": "reference",
+    "primaryKey": [
+     "c_a"
+    ],
+    "grain": "هر غذای این گروه"
+   }
+  },
+  {
+   "skeleton": "S-rec-f344ac88fcd5",
+   "action": "keep",
+   "key": "mavad_starter",
+   "title": "مواد اولیهٔ استارتر",
+   "statement": "مقدار هر ماده اولیه برای هر غذای گروه استارتر در این جدول نگهداری می‌شود.",
+   "data": {
+    "role": "reference",
+    "primaryKey": [
+     "c_a"
+    ],
+    "grain": "هر غذای این گروه"
+   }
+  }
+ ]
+}

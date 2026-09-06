@@ -1,0 +1,2 @@
+sheet	range	type	formula	format
+موجودی اول شب	H128:H226	notContainsBlanks	LEN(TRIM(H128))>0	fill=FFB7E1CD

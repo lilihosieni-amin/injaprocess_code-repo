@@ -1,0 +1,23 @@
+sheet	range	type	values
+americanPizza	B2:J187	custom	AND(ISNUMBER(B2),(NOT(OR(NOT(ISERROR(DATEVALUE(B2))), AND(ISNUMBER(B2), LEFT(CELL("format", B2))="D")))))
+americanPizza	A2:A187		
+singlePizza	B2:D138 F2:F138	custom	AND(ISNUMBER(B2),(NOT(OR(NOT(ISERROR(DATEVALUE(B2))), AND(ISNUMBER(B2), LEFT(CELL("format", B2))="D")))))
+singlePizza	A2:A138		
+italianPizza	B2:L192	custom	AND(ISNUMBER(B2),(NOT(OR(NOT(ISERROR(DATEVALUE(B2))), AND(ISNUMBER(B2), LEFT(CELL("format", B2))="D")))))
+italianPizza	A2:A192		
+farangi	B2:C192	custom	AND(ISNUMBER(B2),(NOT(OR(NOT(ISERROR(DATEVALUE(B2))), AND(ISNUMBER(B2), LEFT(CELL("format", B2))="D")))))
+farangi	A2:A192		
+pasta	B2:E192	custom	AND(ISNUMBER(B2),(NOT(OR(NOT(ISERROR(DATEVALUE(B2))), AND(ISNUMBER(B2), LEFT(CELL("format", B2))="D")))))
+pasta	A2:A192		
+sandwich	B2:L192	custom	AND(ISNUMBER(B2),(NOT(OR(NOT(ISERROR(DATEVALUE(B2))), AND(ISNUMBER(B2), LEFT(CELL("format", B2))="D")))))
+sandwich	A2:A192		
+fried	B2:F192 H2:H192	custom	AND(ISNUMBER(B2),(NOT(OR(NOT(ISERROR(DATEVALUE(B2))), AND(ISNUMBER(B2), LEFT(CELL("format", B2))="D")))))
+fried	A2:A192		
+salad	B2:C192	custom	AND(ISNUMBER(B2),(NOT(OR(NOT(ISERROR(DATEVALUE(B2))), AND(ISNUMBER(B2), LEFT(CELL("format", B2))="D")))))
+salad	A2:A192		
+starter	B2:G192 K2:K192 M2:M192 Q2:R192	custom	AND(ISNUMBER(B2),(NOT(OR(NOT(ISERROR(DATEVALUE(B2))), AND(ISNUMBER(B2), LEFT(CELL("format", B2))="D")))))
+starter	A2:A192		
+steak	B2:B192	custom	AND(ISNUMBER(B2),(NOT(OR(NOT(ISERROR(DATEVALUE(B2))), AND(ISNUMBER(B2), LEFT(CELL("format", B2))="D")))))
+steak	A2:A192		
+personel	B2:B193	custom	AND(ISNUMBER(B2),(NOT(OR(NOT(ISERROR(DATEVALUE(B2))), AND(ISNUMBER(B2), LEFT(CELL("format", B2))="D")))))
+personel	A2:A193		

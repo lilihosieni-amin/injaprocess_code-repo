@@ -1,0 +1,65 @@
+{
+ "schema_version": 2,
+ "entries": [
+  {
+   "id": "F-00002",
+   "kind": "item",
+   "key": "line_sokhari",
+   "title": "لاین سوخاری",
+   "statement": "محل پخت و نگهداری اقلام سوخاری در آشپزخانه.",
+   "scope": {
+    "departments": [
+     "cooking"
+    ],
+    "branches": [
+     "chalebagh",
+     "naharkhoran"
+    ]
+   },
+   "source": [
+    {
+     "type": "chat",
+     "ref": null
+    }
+   ],
+   "status": "confirmed",
+   "retired": false,
+   "valid_to": null,
+   "updated_at": "2026-09-01T08:00:00Z",
+   "data": {
+    "category": "place",
+    "unit": null
+   }
+  },
+  {
+   "id": "F-00003",
+   "kind": "item",
+   "key": "anbar_markazi",
+   "title": "انبار مرکزی",
+   "statement": "انباری که اقلام از آنجا به لاین‌های آشپزخانه تحویل می‌شود.",
+   "scope": {
+    "departments": [
+     "cooking"
+    ],
+    "branches": [
+     "chalebagh",
+     "naharkhoran"
+    ]
+   },
+   "source": [
+    {
+     "type": "chat",
+     "ref": null
+    }
+   ],
+   "status": "confirmed",
+   "retired": false,
+   "valid_to": null,
+   "updated_at": "2026-09-01T08:00:00Z",
+   "data": {
+    "category": "place",
+    "unit": null
+   }
+  }
+ ]
+}

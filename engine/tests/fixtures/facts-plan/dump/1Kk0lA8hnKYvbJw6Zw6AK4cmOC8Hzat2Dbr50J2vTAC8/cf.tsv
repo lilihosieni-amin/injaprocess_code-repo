@@ -1,0 +1,9 @@
+sheet	range	type	formula	format
+پیتزا	L6:L14	cellIs greaterThan	0	
+پیتزا	L6:L14	cellIs lessThan	0	
+فرنگی	L6:L14	cellIs greaterThan	0	
+فرنگی	L6:L14	cellIs lessThan	0	
+سوخاری	J6:J11	cellIs greaterThan	0	
+سوخاری	J6:J11	cellIs lessThan	0	
+کانتر	J6:J10	cellIs lessThan	0	
+کانتر	J6:J10	cellIs greaterThan	0	

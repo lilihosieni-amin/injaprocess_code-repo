@@ -1,0 +1,11 @@
+sheet	range	type	formula	format
+پیتزا امریکایی	B2:S13	cellIs equal	0	color=FFCCCCCC
+پیتزا ایتالیایی	B2:W14	cellIs equal	0	color=FFCCCCCC
+پیتزا سینگل	B2:S7	cellIs equal	0	color=FFCCCCCC
+لازانیا	B2:H3	cellIs equal	0	color=FFCCCCCC
+فرنگی	B2:E3	cellIs equal	0	color=FFCCCCCC
+پاستا	B2:F3	cellIs equal	0	color=FFCCCCCC
+ساندویچ	B2:N14	cellIs equal	0	color=FFCCCCCC
+سوخاری	B2:K8	cellIs equal	0	color=FFCCCCCC
+سالاد	B2:I4	cellIs equal	0	color=FFCCCCCC
+استارتر	B2:P8	cellIs equal	0	color=FFCCCCCC

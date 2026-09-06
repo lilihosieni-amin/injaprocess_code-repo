@@ -1,0 +1,505 @@
+{
+  "schema_version": 1,
+  "branches": [
+    {
+      "code": "chalebagh",
+      "name": "چاله‌باغ"
+    },
+    {
+      "code": "naharkhoran",
+      "name": "ناهارخوران"
+    }
+  ],
+  "workbooks": [
+    {
+      "spreadsheetId": "1fAFZ5SbwDIoulj33mPIyyrpvSRBV6EUVQsorQ8MN2Ag",
+      "short": "amadesazi",
+      "departments": [
+        "preparation"
+      ],
+      "branches": [
+        "chalebagh",
+        "naharkhoran"
+      ],
+      "reference_tabs": [],
+      "confirmed": true,
+      "dir": "Amadesazi__Amadesazi",
+      "file": "Amadesazi.xlsx",
+      "scripts": [],
+      "unresolved": []
+    },
+    {
+      "spreadsheetId": "1Lvzs0LpP_IO8aZ1ojJst6YAS9WVeR9_4urnbvVv8L90",
+      "short": "anbar",
+      "departments": [
+        "warehouse"
+      ],
+      "branches": [
+        "chalebagh",
+        "naharkhoran"
+      ],
+      "reference_tabs": [],
+      "confirmed": true,
+      "dir": "Anbar__Anbar",
+      "file": "Anbar.xlsx",
+      "scripts": [],
+      "unresolved": []
+    },
+    {
+      "spreadsheetId": "12Q9yQLrfJaWkasZfeK8ACp131CBgjhJ8mRkvQYC04P8",
+      "short": "ashpazkhne_chalebagh",
+      "departments": [
+        "cooking"
+      ],
+      "branches": [
+        "chalebagh"
+      ],
+      "reference_tabs": [],
+      "confirmed": true,
+      "dir": "Ashpazkhane__Ashpazkhne - Chalebagh",
+      "file": "Ashpazkhne - Chalebagh.xlsx",
+      "scripts": [],
+      "unresolved": []
+    },
+    {
+      "spreadsheetId": "1AuKUUFs6nvBzHlZ0IDFoYNeP5fXFCbYqGFDPVe6Cl_8",
+      "short": "ashpazkhne_naharkhoran",
+      "departments": [
+        "cooking"
+      ],
+      "branches": [
+        "naharkhoran"
+      ],
+      "reference_tabs": [],
+      "confirmed": true,
+      "dir": "Ashpazkhane__Ashpazkhne - Naharkhoran",
+      "file": "Ashpazkhne - Naharkhoran.xlsx",
+      "scripts": [],
+      "unresolved": []
+    },
+    {
+      "spreadsheetId": "1gev9f9ymiBuzqOzPH2epWWIvJx3hV8fxPxpdeAxNEs4",
+      "short": "gozareshat",
+      "departments": [
+        "management"
+      ],
+      "branches": [
+        "chalebagh",
+        "naharkhoran"
+      ],
+      "reference_tabs": [],
+      "confirmed": true,
+      "dir": "Gozareshat",
+      "file": "Gozareshat.xlsx",
+      "scripts": [
+        "Gozareshat/Gozareshat.gs"
+      ],
+      "unresolved": []
+    },
+    {
+      "spreadsheetId": "1MRTM9BV9y0bHGM79QxkE6pHhCdy45aT9hSQXGKJOWHo",
+      "short": "hesabdari",
+      "departments": [
+        "accounting"
+      ],
+      "branches": [
+        "chalebagh",
+        "naharkhoran"
+      ],
+      "reference_tabs": [
+        "اهداف فروش"
+      ],
+      "confirmed": true,
+      "dir": "Hesabdari__Hesabdari",
+      "file": "Hesabdari.xlsx",
+      "scripts": [],
+      "unresolved": []
+    },
+    {
+      "spreadsheetId": "1HU-BLILTttXZCa2KiR5sjSSLn_8cbiVUmzyK5ffoOnU",
+      "short": "logestic_chalebagh",
+      "departments": [
+        "logistics"
+      ],
+      "branches": [
+        "chalebagh"
+      ],
+      "reference_tabs": [],
+      "confirmed": true,
+      "dir": "Logestic__Logestic - Chalebagh",
+      "file": "Logestic - Chalebagh.xlsx",
+      "scripts": [],
+      "unresolved": []
+    },
+    {
+      "spreadsheetId": "1t1NLNpeG6pyk7dNd_Cxb0DynTiCjBqCXkqEmI4r3FaQ",
+      "short": "logestic_naharkhoran",
+      "departments": [
+        "logistics"
+      ],
+      "branches": [
+        "naharkhoran"
+      ],
+      "reference_tabs": [],
+      "confirmed": true,
+      "dir": "Logestic__Logestic - Naharkhoran",
+      "file": "Logestic - Naharkhoran.xlsx",
+      "scripts": [],
+      "unresolved": []
+    },
+    {
+      "spreadsheetId": "1crVTmnxyXx4w_mwr0kJKsv8f_P0xKmuEj1YAEok6FkE",
+      "short": "anbar_markazi",
+      "departments": [
+        "warehouse"
+      ],
+      "branches": [
+        "chalebagh"
+      ],
+      "reference_tabs": [],
+      "confirmed": true,
+      "dir": "MandeShab__ChaleBagh__Amar__Anbar markazi",
+      "file": "Anbar markazi.xlsx",
+      "scripts": [],
+      "unresolved": []
+    },
+    {
+      "spreadsheetId": "1M_iuhWUW9901F_66pv_g8r0W0QVMzLDrEQJp6GQgnuQ",
+      "short": "farangi",
+      "departments": [
+        "cooking"
+      ],
+      "branches": [
+        "chalebagh"
+      ],
+      "reference_tabs": [],
+      "confirmed": true,
+      "dir": "MandeShab__ChaleBagh__Amar__Farangi",
+      "file": "Farangi.xlsx",
+      "scripts": [],
+      "unresolved": []
+    },
+    {
+      "spreadsheetId": "19jHmcKHJm8aOOef8kuiTRuGrswmUs4TKDaM1aAchwRk",
+      "short": "kanter",
+      "departments": [
+        "cooking"
+      ],
+      "branches": [
+        "chalebagh"
+      ],
+      "reference_tabs": [],
+      "confirmed": true,
+      "dir": "MandeShab__ChaleBagh__Amar__Kanter",
+      "file": "Kanter.xlsx",
+      "scripts": [],
+      "unresolved": []
+    },
+    {
+      "spreadsheetId": "1dmH8tCqOuqNr2nt4AwJrHC2cq-rv0tIBHc4kk05bWtU",
+      "short": "pitza",
+      "departments": [
+        "cooking"
+      ],
+      "branches": [
+        "chalebagh"
+      ],
+      "reference_tabs": [],
+      "confirmed": true,
+      "dir": "MandeShab__ChaleBagh__Amar__Pitza",
+      "file": "Pitza.xlsx",
+      "scripts": [],
+      "unresolved": []
+    },
+    {
+      "spreadsheetId": "1Xy-f9VYXMlPLyibBsEh_oUHSOqjxXou1CJdOG4CPtbQ",
+      "short": "sokhari",
+      "departments": [
+        "cooking"
+      ],
+      "branches": [
+        "chalebagh"
+      ],
+      "reference_tabs": [],
+      "confirmed": true,
+      "dir": "MandeShab__ChaleBagh__Amar__Sokhari",
+      "file": "Sokhari.xlsx",
+      "scripts": [],
+      "unresolved": []
+    },
+    {
+      "spreadsheetId": "1AIjH-sWVc6t5bXnEKiYrmrpX1TPtEbKtwZA0tjr-5bI",
+      "short": "tedade_fooroosh_markazi",
+      "departments": [
+        "cashier"
+      ],
+      "branches": [
+        "chalebagh"
+      ],
+      "reference_tabs": [],
+      "confirmed": true,
+      "dir": "MandeShab__ChaleBagh__Amar__Tedade Fooroosh markazi",
+      "file": "Tedade Fooroosh markazi.xlsx",
+      "scripts": [
+        "MandeShab__ChaleBagh__Amar__Tedade Fooroosh markazi/Tedade Fooroosh markazi.gs"
+      ],
+      "unresolved": []
+    },
+    {
+      "spreadsheetId": "1shXFbKyvEkpA_R6Bf4vSU1Nx_1vAhRxj8lfFYSvtG5s",
+      "short": "gozaresh_markazi",
+      "departments": [
+        "cooking"
+      ],
+      "branches": [
+        "chalebagh"
+      ],
+      "reference_tabs": [],
+      "confirmed": true,
+      "dir": "MandeShab__ChaleBagh__Gozaresh markazi",
+      "file": "Gozaresh markazi.xlsx",
+      "scripts": [
+        "MandeShab__ChaleBagh__Gozaresh markazi/Gozaresh markazi.gs"
+      ],
+      "unresolved": []
+    },
+    {
+      "spreadsheetId": "15M2ovUmBvK3AMzGxeq-ijwE_KOQBjOZakLvQCs-eE10",
+      "short": "mavade_avalie",
+      "departments": [
+        "cooking"
+      ],
+      "branches": [
+        "chalebagh",
+        "naharkhoran"
+      ],
+      "reference_tabs": [
+        "پیتزا امریکایی",
+        "پیتزا ایتالیایی",
+        "پیتزا سینگل",
+        "لازانیا",
+        "فرنگی",
+        "پاستا",
+        "ساندویچ",
+        "سوخاری",
+        "سالاد",
+        "استارتر",
+        "استیک",
+        "پرسنلی"
+      ],
+      "confirmed": true,
+      "dir": "MandeShab__Mavade Avalie",
+      "file": "Mavade Avalie.xlsx",
+      "scripts": [],
+      "unresolved": []
+    },
+    {
+      "spreadsheetId": "1Te8IMhl4aRipHLBRmPELxAvokSxXKyfpeYqW-z7S364",
+      "short": "anbar_shobe_2",
+      "departments": [
+        "warehouse"
+      ],
+      "branches": [
+        "naharkhoran"
+      ],
+      "reference_tabs": [],
+      "confirmed": true,
+      "dir": "MandeShab__Naharkhoran__Amar__Anbar shobe 2",
+      "file": "Anbar shobe 2.xlsx",
+      "scripts": [],
+      "unresolved": []
+    },
+    {
+      "spreadsheetId": "1Ga0Y9ixsj1t3qLUeOOIF5uT67-K2rPRyqiOGftuxIVU",
+      "short": "fried",
+      "twin_of": "sokhari",
+      "departments": [
+        "cooking"
+      ],
+      "branches": [
+        "naharkhoran"
+      ],
+      "reference_tabs": [],
+      "confirmed": true,
+      "dir": "MandeShab__Naharkhoran__Amar__FRIED🍤",
+      "file": "FRIED🍤.xlsx",
+      "scripts": [],
+      "unresolved": []
+    },
+    {
+      "spreadsheetId": "1hGDv6eoGTiQWE_9c6uoJyTXWYQVxBwHhClcB7VPL8CU",
+      "short": "amar_farangi",
+      "departments": [
+        "cooking"
+      ],
+      "branches": [
+        "naharkhoran"
+      ],
+      "reference_tabs": [],
+      "confirmed": true,
+      "dir": "MandeShab__Naharkhoran__Amar__Farangi",
+      "file": "Farangi.xlsx",
+      "scripts": [],
+      "unresolved": []
+    },
+    {
+      "spreadsheetId": "1IconyhmlvTqNvs3xVNKrfZrawZCL0t8OzES6ffP5O2I",
+      "short": "amar_kanter",
+      "departments": [
+        "cooking"
+      ],
+      "branches": [
+        "naharkhoran"
+      ],
+      "reference_tabs": [],
+      "confirmed": true,
+      "dir": "MandeShab__Naharkhoran__Amar__Kanter",
+      "file": "Kanter.xlsx",
+      "scripts": [
+        "MandeShab__Naharkhoran__Amar__Kanter/Kanter.gs"
+      ],
+      "unresolved": []
+    },
+    {
+      "spreadsheetId": "18Q3QHGFwhC7RqFn2Zhg3y1V94RM2cQ6h_T9LtSKj9Ns",
+      "short": "amar_pitza",
+      "departments": [
+        "cooking"
+      ],
+      "branches": [
+        "naharkhoran"
+      ],
+      "reference_tabs": [],
+      "confirmed": true,
+      "dir": "MandeShab__Naharkhoran__Amar__Pitza",
+      "file": "Pitza.xlsx",
+      "scripts": [],
+      "unresolved": []
+    },
+    {
+      "spreadsheetId": "10JsukIEuvl6SeDcaCmkypLwMDmGZ4ujE8Zh19fjbs8A",
+      "short": "tedade_fooroosh_naharkhoran",
+      "departments": [
+        "cashier"
+      ],
+      "branches": [
+        "naharkhoran"
+      ],
+      "reference_tabs": [],
+      "confirmed": true,
+      "dir": "MandeShab__Naharkhoran__Amar__Tedade Fooroosh naharkhoran",
+      "file": "Tedade Fooroosh naharkhoran.xlsx",
+      "scripts": [
+        "MandeShab__Naharkhoran__Amar__Tedade Fooroosh naharkhoran/Tedade Fooroosh naharkhoran.gs"
+      ],
+      "unresolved": []
+    },
+    {
+      "spreadsheetId": "1Kk0lA8hnKYvbJw6Zw6AK4cmOC8Hzat2Dbr50J2vTAC8",
+      "short": "gozaresh_naharkhoran",
+      "twin_of": "gozaresh_markazi",
+      "departments": [
+        "cooking"
+      ],
+      "branches": [
+        "naharkhoran"
+      ],
+      "reference_tabs": [],
+      "confirmed": true,
+      "dir": "MandeShab__Naharkhoran__Gozaresh naharkhoran",
+      "file": "Gozaresh naharkhoran.xlsx",
+      "scripts": [
+        "MandeShab__Naharkhoran__Gozaresh naharkhoran/Gozaresh naharkhoran.gs"
+      ],
+      "unresolved": []
+    },
+    {
+      "spreadsheetId": "1ZDpoSy5EIzSUQ1bTEqIm-BS07q_CmbRaLDBgz3LgI-M",
+      "short": "control_gozareshat",
+      "departments": [
+        "procurement"
+      ],
+      "branches": [
+        "chalebagh"
+      ],
+      "reference_tabs": [],
+      "confirmed": true,
+      "dir": "MandeShab__control__Gozareshat",
+      "file": "Gozareshat.xlsx",
+      "scripts": [],
+      "unresolved": []
+    },
+    {
+      "spreadsheetId": "1BzP-hyVqHVgkZekkycaPKpSDFcrdACV34oQJjb_VU9E",
+      "short": "salon_chalebagh",
+      "departments": [
+        "dining"
+      ],
+      "branches": [
+        "chalebagh"
+      ],
+      "reference_tabs": [],
+      "confirmed": true,
+      "dir": "Salon__Salon - Chalebagh",
+      "file": "Salon - Chalebagh.xlsx",
+      "scripts": [
+        "Salon__Salon - Chalebagh/Salon - Chalebagh.gs"
+      ],
+      "unresolved": []
+    },
+    {
+      "spreadsheetId": "1CSidDar4ql88gHKCQT5q7mJg0Qt3LCL9_Ar_pB5pugg",
+      "short": "salon_naharkhoran",
+      "departments": [
+        "dining"
+      ],
+      "branches": [
+        "naharkhoran"
+      ],
+      "reference_tabs": [],
+      "confirmed": true,
+      "dir": "Salon__Salon - Naharkhoran",
+      "file": "Salon - Naharkhoran.xlsx",
+      "scripts": [
+        "Salon__Salon - Naharkhoran/Salon - Naharkhoran.gs"
+      ],
+      "unresolved": []
+    },
+    {
+      "spreadsheetId": "1XSoT0g0qz-ym70FFFtrs-kdJfFla5YGpQUl8gdpiEk0",
+      "short": "sandogh_chalebagh",
+      "departments": [
+        "cashier"
+      ],
+      "branches": [
+        "chalebagh"
+      ],
+      "reference_tabs": [],
+      "confirmed": true,
+      "dir": "Sandogh__Sandogh - Chalebagh",
+      "file": "Sandogh - Chalebagh.xlsx",
+      "scripts": [
+        "Sandogh__Sandogh - Chalebagh/Sandogh - Chalebagh.gs"
+      ],
+      "unresolved": []
+    },
+    {
+      "spreadsheetId": "1KtuTDdlFqrTOzWbIJwbjOkxGJFwu93Eo6cVZWvcu8Jk",
+      "short": "sandogh_naharkhoran",
+      "departments": [
+        "cashier"
+      ],
+      "branches": [
+        "naharkhoran"
+      ],
+      "reference_tabs": [],
+      "confirmed": true,
+      "dir": "Sandogh__Sandogh - NaharKhoran",
+      "file": "Sandogh - NaharKhoran.xlsx",
+      "scripts": [
+        "Sandogh__Sandogh - NaharKhoran/Sandogh - NaharKhoran.gs"
+      ],
+      "unresolved": []
+    }
+  ]
+}
