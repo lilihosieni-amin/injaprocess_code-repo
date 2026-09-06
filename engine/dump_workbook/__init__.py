@@ -791,16 +791,21 @@ def _sha256(path):
 
 
 def dump_workbook(xlsx_path, structure_md_path, out_dir, reference_tabs=(),
-                  prev_sheets=None, roles=None):
+                  ids_tabs=(), prev_sheets=None, roles=None):
     """Dump one workbook under `out_dir/{spreadsheetId}/` and report sheetId
     drift on stdout.
 
     `out_dir` is the `.dump` root, not the per-workbook directory: the id that
     names the directory is read from `structure_md_path` here, so no caller can
     know it beforehand. `reference_tabs` are the tab names a **confirmed**
-    manifest row lists — the only tabs whose cells are dumped (QF-1). `roles`
-    maps a `personId` (or a legacy comment's author) to a role string; anyone
-    absent from it is `unknown`, which is the default for everyone.
+    manifest row lists — the only tabs whose cells are dumped (QF-1).
+    An **ids tab** is dumped to `rows.tsv` too, whether or not any manifest row
+    names it: its rows are the only place a named range resolves to a
+    spreadsheetId, which is hop two of every import edge (§2.2). It is found by
+    name (`is_ids_tab`), because no caller can know a workbook's tab names
+    before it is opened; `ids_tabs` names any further tab to dump the same way.
+    `roles` maps a `personId` (or a legacy comment's author) to a role string;
+    anyone absent from it is `unknown`, which is the default for everyone.
     `prev_sheets` is the previous dump's `{sheetId: name}`; when it is None the
     map is read from the `sheets.json` already in place, so a re-dump reports
     drift without being told anything (QF-29).
@@ -879,7 +884,8 @@ def dump_workbook(xlsx_path, structure_md_path, out_dir, reference_tabs=(),
                                "rows": 0, "cols": 0, "head": [],
                                "header_row": None, "codes": [], "empty": True})
                 continue
-            keep = tab["name"] in wanted
+            keep = (tab["name"] in wanted or tab["name"] in (ids_tabs or ())
+                    or is_ids_tab(tab["name"]))
             sheet = _read_sheet(zf.read(tab["part"]), strings, keep_rows=keep)
             head = _head_grid(sheet)
             index = header_row(head, sheet["merges"])
@@ -919,11 +925,12 @@ def dump_workbook(xlsx_path, structure_md_path, out_dir, reference_tabs=(),
                 columns, reference_rows = _merge_columns(
                     columns, reference_rows, tab_columns, rows)
 
-    missing = [name for name in wanted
-               if name not in {tab["name"] for tab in tabs}]
-    for name in missing:
+    present = {tab["name"] for tab in tabs}
+    missing = [name for name in wanted if name not in present]
+    for name in missing + [n for n in (ids_tabs or ()) if n not in present]:
+        which = "reference_tabs" if name in wanted else "ids_tabs"
         print(f"dump-workbook: {xlsx_path.name} has no tab named {name!r} — "
-              "reference_tabs is stale", file=sys.stderr)
+              f"{which} is stale", file=sys.stderr)
 
     drift = []
     for sheet in sheets:

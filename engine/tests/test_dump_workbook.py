@@ -513,6 +513,50 @@ def test_a_tab_not_listed_yields_no_rows_even_when_full_of_numbers(tmp_path):
     assert "شمارش" not in text and "933" not in text
 
 
+def test_an_ids_tab_is_dumped_to_rows_tsv_without_being_a_reference_tab(tmp_path):
+    """The three hops of an import edge start here: the named range is only in
+    this tab, and no manifest row will ever confirm it as a table (§2.2)."""
+    _, out = _dump(tmp_path, v3_tabs=True)
+    rows = _tsv(out / "rows.tsv")
+    assert {r["sheet"] for r in rows} == {"SheetsFileIds"}
+    assert [r["Range Name Associated"] for r in rows] == ["SheetsFileId_Pizza",
+                                                          "SheetsFileId_Kanter"]
+    assert rows[0]["Sheets File Id"] == "SIDPIZZA"
+
+
+def test_both_estate_spellings_of_the_ids_tab_are_dumped(tmp_path):
+    from fixtures.make_workbook import SHEETS, V3_SHEETS
+    names = [name for name, _ in SHEETS + V3_SHEETS]
+    names[5] = "SheetsFileIDs"
+    _, out = _dump(tmp_path, v3_tabs=True, sheet_names=names)
+    assert {r["sheet"] for r in _tsv(out / "rows.tsv")} == {"SheetsFileIDs"}
+
+
+def test_a_reference_tab_and_the_ids_tab_share_one_rows_tsv(tmp_path):
+    _, out = _dump(tmp_path, v3_tabs=True, reference_tabs=["پیتزا امریکایی"])
+    by_sheet = {}
+    for row in _tsv(out / "rows.tsv"):
+        by_sheet.setdefault(row["sheet"], []).append(row)
+    assert sorted(by_sheet) == ["SheetsFileIds", "پیتزا امریکایی"]
+    assert by_sheet["پیتزا امریکایی"][0]["نام"] == "رستبیف #71"
+
+
+def test_no_other_tab_s_cells_ride_along_with_the_ids_rows(tmp_path):
+    _, out = _dump(tmp_path, v3_tabs=True)
+    text = (out / "rows.tsv").read_text(encoding="utf-8")
+    assert "933" not in text and "پنیر پیتزا" not in text    # QF-1 still holds
+
+
+def test_a_stale_ids_tabs_name_warns_under_its_own_list(tmp_path, capsys):
+    """A name given in `ids_tabs` that no tab carries is stale the same way a
+    `reference_tabs` name is — and the warning has to say which list to fix."""
+    book = tmp_path / "wb" / "Test.xlsx"
+    make_workbook(book)
+    dump_workbook(book, book.parent / "Test.structure.md", tmp_path / ".dump",
+                  ids_tabs=["SheetsFileIds"])
+    assert "ids_tabs is stale" in capsys.readouterr().err
+
+
 # --------------------------------------------------------------------------
 # --init-manifest
 
