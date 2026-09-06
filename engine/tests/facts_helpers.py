@@ -22,6 +22,29 @@ def _root(tmp_path):
         {"schema_version": 1,
          "branches": [{"code": "chalebagh", "name": "چاله‌باغ"}],
          "workbooks": []}), encoding="utf-8")
+    # The files these fixtures' deltas cite, actually present.
+    #
+    # QF-5 has always said a `source[].ref` is a path relative to `data-repo/`
+    # and that an unresolvable one fails `apply` — but nothing implemented it,
+    # so every delta here could cite a transcript that was never written. When
+    # the check went in (2026-09-06, after 575 stored citations turned out to
+    # hold a bare Drive id where a path belongs), these fixtures were the first
+    # thing it caught, which is the point: a fixture that cites what does not
+    # exist cannot exercise the rule that says it must.
+    #
+    # `attachments/sheets/M/M.xlsx` is deliberately NOT created — an estate
+    # `.xlsx` is server-local and its absence is `check`'s report, never a
+    # precondition failure, so its being missing here is what keeps that
+    # exemption honest.
+    (tmp_path / "meetings" / "transcripts").mkdir(parents=True)
+    (tmp_path / "meetings" / "transcripts" / "c.txt").write_text("x", encoding="utf-8")
+    (tmp_path / "attachments" / "sheets" / "G").mkdir()
+    (tmp_path / "attachments" / "sheets" / "G" / "G.gs").write_text("x", encoding="utf-8")
+    (tmp_path / "departments" / "cooking" / "attachments").mkdir(parents=True)
+    (tmp_path / "departments" / "cooking" / "attachments" / "p.jpg").write_bytes(b"x")
+    (tmp_path / "departments" / "cooking" / "processes").mkdir()
+    (tmp_path / "departments" / "cooking" / "processes" / "cooking-001.json").write_text(
+        "{}", encoding="utf-8")
     return tmp_path
 
 

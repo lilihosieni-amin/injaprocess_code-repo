@@ -3,7 +3,9 @@ from merge_facts import load_store
 from merge_facts.apply import apply
 from merge_facts.content import check_document
 from merge_facts.revert import revert
-from merge_facts.verbs import export, promote, repair_foreign_keys, resolve, retire
+from merge_facts.apply import _source_path_problems
+from merge_facts.verbs import (export, promote, repair_foreign_keys,
+                               repair_source_refs, resolve, retire)
 import pytest
 
 # json: only the two locking tests below need it, to read `.index.json` back
@@ -191,3 +193,106 @@ def test_promote_to_item_succeeds_when_data_already_has_category_and_unit(tmp_pa
     index = json.loads((root / "facts" / ".index.json").read_text(encoding="utf-8"))
     row = [r for r in index["entries"] if r["id"] == nid][0]
     assert row["kind"] == "item"
+
+
+# --- repair-source-refs: a citation is a PATH (QF-5), and 598 of the ---
+# --- store's were an id or a path that had lost its root             ---
+
+WORKBOOK = {"spreadsheetId": "12Q9yQ", "short": "kitchen", "dir": "K__Kitchen",
+            "file": "Kitchen.xlsx", "departments": ["cooking"], "branches": [],
+            "reference_tabs": [], "confirmed": True, "scripts": []}
+
+
+def _estate(root):
+    """The manifest row and the files behind it, as `dump-workbook` leaves
+    them: the workbook directory holds the binary and its script."""
+    man = root / "attachments" / "sheets" / "manifest.json"
+    doc = json.loads(man.read_text(encoding="utf-8"))
+    doc["workbooks"] = [WORKBOOK]
+    man.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
+    d = root / "attachments" / "sheets" / "K__Kitchen"
+    d.mkdir()
+    (d / "Kitchen.xlsx").write_bytes(b"x")
+    (d / "Kitchen.gs").write_text("x", encoding="utf-8")
+
+
+def _cite(root, ref, kind="sheet"):
+    """`units` in the store citing `ref` — written into the file, because
+    `apply` now refuses exactly this shape at the door. That is the point: the
+    store's 598 predate the check."""
+    path = root / "facts" / "records.json"
+    doc = json.loads(path.read_text(encoding="utf-8"))
+    entry = [e for e in doc["entries"] if e["key"] == "units"][0]
+    entry["source"] = [{"type": kind, "ref": ref, "hash": None, "run": "r"}]
+    path.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
+    return entry["id"]
+
+
+def test_repair_turns_a_drive_id_into_the_workbook_path(tmp_path):
+    root = _root(tmp_path); _seed_units(root); _estate(root)
+    fid = _cite(root, "12Q9yQ")
+    repaired, stuck = repair_source_refs(root, _run_dir(root, "20260902-101500"))
+    assert (repaired, stuck) == ([(fid, 1)], [])
+    e = [x for x in load_store(root)["record"]["entries"] if x["id"] == fid][0]
+    assert e["source"][0]["ref"] == "attachments/sheets/K__Kitchen/Kitchen.xlsx"
+
+
+def test_repair_gives_a_rootless_path_its_root(tmp_path):
+    # The other 23: a real path, written without `attachments/sheets/` in
+    # front of it. Expressed as "does prefixing name a file" rather than as a
+    # rule about `.gs`, so it is the file on disk that decides.
+    root = _root(tmp_path); _seed_units(root); _estate(root)
+    fid = _cite(root, "K__Kitchen/Kitchen.gs", kind="script")
+    repair_source_refs(root, _run_dir(root, "20260902-101500"))
+    e = [x for x in load_store(root)["record"]["entries"] if x["id"] == fid][0]
+    assert e["source"][0]["ref"] == "attachments/sheets/K__Kitchen/Kitchen.gs"
+
+
+def test_repair_leaves_a_ref_it_cannot_place_and_reports_it(tmp_path):
+    """A repair that guessed would cite evidence nobody checked. An id the
+    manifest does not carry is left exactly as it is and named to the caller,
+    which is the difference between a repair and a rewrite."""
+    root = _root(tmp_path); _seed_units(root); _estate(root)
+    fid = _cite(root, "notAnIdWeKnow")
+    repaired, stuck = repair_source_refs(root, _run_dir(root, "20260902-101500"))
+    assert repaired == []
+    assert stuck == [(fid, "notAnIdWeKnow")]
+    e = [x for x in load_store(root)["record"]["entries"] if x["id"] == fid][0]
+    assert e["source"][0]["ref"] == "notAnIdWeKnow"
+
+
+def test_repair_leaves_a_citation_that_already_resolves_alone(tmp_path):
+    root = _root(tmp_path); _seed_units(root); _estate(root)
+    _cite(root, "meetings/transcripts/c.txt", kind="voice")
+    before = {p.name: p.read_bytes() for p in (root / "facts").glob("*.json")}
+    run = _run_dir(root, "20260902-101500")
+    assert repair_source_refs(root, run) == ([], [])
+    assert {p.name: p.read_bytes() for p in (root / "facts").glob("*.json")} == before
+    assert not (run / "facts-before").exists()
+
+
+def test_repair_does_not_stamp_a_hash_it_never_computed(tmp_path):
+    """`hash` was `null` because the file could not be found, and filling it
+    here would record this repair run as the reader of a file it never opened.
+    `merge facts check` re-hashes every citation and is what should fill it."""
+    root = _root(tmp_path); _seed_units(root); _estate(root)
+    fid = _cite(root, "12Q9yQ")
+    repair_source_refs(root, _run_dir(root, "20260902-101500"))
+    e = [x for x in load_store(root)["record"]["entries"] if x["id"] == fid][0]
+    assert e["source"][0]["hash"] is None
+    assert e["source"][0]["run"] == "r"
+
+
+def test_repair_is_revertible_and_its_result_passes_apply_s_own_check(tmp_path):
+    """The two ends: `revert` puts the broken ref back, and what the repair
+    wrote is what `apply`'s QF-5 precondition would now accept — the check and
+    the repair agreeing on one definition of a good citation."""
+    root = _root(tmp_path); _seed_units(root); _estate(root)
+    fid = _cite(root, "12Q9yQ")
+    run = _run_dir(root, "20260902-101500")
+    repair_source_refs(root, run)
+    e = [x for x in load_store(root)["record"]["entries"] if x["id"] == fid][0]
+    assert _source_path_problems(root, e, "x") == []
+    revert(root, run)
+    e = [x for x in load_store(root)["record"]["entries"] if x["id"] == fid][0]
+    assert e["source"][0]["ref"] == "12Q9yQ"

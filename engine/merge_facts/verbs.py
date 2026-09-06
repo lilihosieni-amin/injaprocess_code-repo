@@ -1,16 +1,20 @@
-"""`merge facts resolve|retire|promote|export|repair-foreign-keys` — the verbs
+"""`merge facts resolve|retire|promote|export|repair-foreign-keys|repair-source-refs`
+— the verbs
 that mutate an already-applied entry by hand rather than by re-reading a source
 (spec §12, rows 2-5). `apply` is the only verb that reads a delta; these read a
 decision an operator (or a downstream tool) already made.
 
-`repair-foreign-keys` is the one that removes rather than writes, and the only
-verb here that takes no entry id: §11's ladder has no action that takes a key
-back out, so a collection the store should never have accepted cannot be undone
-by any delta, and QF-2 leaves `merge facts` the only thing allowed to write
-`facts/**` at all. See its own docstring for why `revert` could not serve
-instead.
+The two `repair-*` verbs are the ones that take no entry id, and they exist for
+one reason between them: §11's ladder can only create, fill, dispute, append and
+union. It cannot take a key back out (`repair-foreign-keys`) and it cannot
+rewrite a value in place (`repair-source-refs` — a corrected `ref` is a
+different member of a union field, so a delta would add a second citation beside
+the broken one). QF-2 leaves `merge facts` the only thing allowed to write
+`facts/**` at all, so what a delta cannot express has to be a verb or nothing.
+Each one's own docstring carries the bug it was written for and why `revert`
+could not serve instead.
 
-Every *writing* verb (`resolve`, `retire`, `promote`, `repair-foreign-keys`)
+Every *writing* verb (`resolve`, `retire`, `promote`, and both `repair-*`)
 shares one shape:
 `load_store`, find the entry, mutate it, `entry["status"] = derive_status
 (entry)`, stamp `updated_at` on the touched entry only, snapshot the five
@@ -57,6 +61,7 @@ from merge_facts import (
 # run's `args["id"]` targets as ordinary matched entries, which only works if
 # there is something to restore them from.
 from merge_facts.apply import KEY_RE, _snapshot
+from merge_facts.audit import _manifest
 from merge_facts.content import foreign_key_declares_a_join
 
 _KIND_DATA_STUBS = {
@@ -273,6 +278,91 @@ def repair_foreign_keys(root, run_dir):
             _append_delta(run_dir, "repair-foreign-keys",
                           {"id": fid, "dropped": dropped})
     return repaired
+
+
+def _repaired_ref(root, manifest_by_id, ref):
+    """The path QF-5 requires for a `ref` that names no file, or `None`.
+
+    Two shapes, both read off what is actually on disk rather than guessed:
+
+    * a bare Google Drive **spreadsheet id** — the manifest maps it to the
+      workbook's directory and file, which is the whole reason the manifest
+      carries `dir` and `file` beside `spreadsheetId`;
+    * a path that **lost its root** — `Gozaresh markazi/Gozaresh markazi.gs`
+      instead of `attachments/sheets/Gozaresh markazi/…`. Written as "does
+      prefixing the estate root name a file that exists" rather than as a rule
+      about `.gs`, because it is the same slip whatever the extension.
+
+    Anything else answers `None` and is left exactly as it is. A repair that
+    guessed would put a citation on an entry pointing at evidence nobody
+    checked, which is worse than the broken one it replaced.
+    """
+    if (root / ref).exists():
+        return None                                  # already a real path
+    workbook = manifest_by_id.get(ref)
+    if workbook and workbook.get("dir") and workbook.get("file"):
+        return f"attachments/sheets/{workbook['dir']}/{workbook['file']}"
+    rooted = f"attachments/sheets/{ref}"
+    return rooted if (root / rooted).is_file() else None
+
+
+def repair_source_refs(root, run_dir):
+    """Rewrite every `source[].ref` that names no file into the path QF-5
+    requires. Returns `[(id, rewritten)]`, entry order.
+
+    **The bug this exists for.** QF-5 says a `ref` is a path relative to
+    `data-repo/` and that an unresolvable one fails `apply` — but nothing
+    implemented that until 2026-09-06, and `_hash_of` answers `null` for a file
+    that is not there rather than complaining. So 575 citations were written
+    holding a bare Drive spreadsheet id and 23 holding a path with its
+    `attachments/sheets/` root missing, all hashed as nothing. They failed at
+    the single place a ref is ever used: `GET /api/facts/source` resolves it
+    against three roots, an id is inside none of them, and the reviewer gets
+    «File wasn't available on site» — the owner's report.
+
+    A verb for `repair-foreign-keys`' reasons: §11's ladder cannot rewrite a
+    value in place (a corrected `ref` is a different member of a union field,
+    so a delta would ADD a second citation beside the broken one), and QF-2
+    admits no other writer of `facts/**`.
+
+    `hash` and `run` are deliberately left alone. The hash was `null` because
+    the file could not be found, and re-hashing here would stamp this repair
+    run as the reader of a file it never opened — `merge facts check` re-hashes
+    every citation and is the thing that should fill them, on its own terms.
+    """
+    root = pathlib.Path(root)
+    store = load_store(root)
+    by_id = {w["spreadsheetId"]: w for w in _manifest(root).get("workbooks") or []
+             if isinstance(w, dict) and w.get("spreadsheetId")}
+    repaired, unrepairable = [], []
+    for kind in KIND_ORDER:
+        for entry in store[kind]["entries"]:
+            done = 0
+            sources = list(entry.get("source") or [])
+            sources += [a.get("source") for a in entry.get("accounts") or []
+                        if isinstance(a, dict)]
+            for src in sources:
+                if not isinstance(src, dict):
+                    continue
+                ref = src.get("ref")
+                if not isinstance(ref, str) or not ref:
+                    continue
+                fixed = _repaired_ref(root, by_id, ref)
+                if fixed is None:
+                    if not (root / ref).exists():
+                        unrepairable.append((entry["id"], ref))
+                    continue
+                src["ref"] = fixed
+                done += 1
+            if done:
+                entry["updated_at"] = _now()
+                repaired.append((entry["id"], done))
+    if repaired:
+        _snapshot(root, pathlib.Path(run_dir))
+        save_store(root, store)
+        for fid, n in repaired:
+            _append_delta(run_dir, "repair-source-refs", {"id": fid, "rewritten": n})
+    return repaired, unrepairable
 
 
 def export(root, record_key, out, include_retired):
