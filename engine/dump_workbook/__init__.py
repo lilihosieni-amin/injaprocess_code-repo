@@ -7,9 +7,9 @@ sake of 28 workbooks read a handful of times.
 
 What is dumped, and what is deliberately not: **plain cell values are not**
 (QF-1) — the estate's cells are nightly values, not definitions. What comes out
-is the shape of each tab (`sheets.json`, the header row and the four rows below
-it, plus every cell of the two left-most non-empty columns (§4) — deep enough
-for the header row to be found and a column's type to be sampled), its formulas
+is the shape of each tab (`sheets.json`, rows 1 through `header_row + 4`, plus
+every cell of the two left-most non-empty columns (§4) — deep enough for the
+header row to be found and a column's type to be sampled), its formulas
 with their cached results (`formulas.tsv`), defined names (`names.tsv`),
 validations (`validations.tsv`), conditional formats (`cf.tsv`) and cell
 comments with the author reduced to a role (`comments.tsv`). The one
@@ -516,6 +516,148 @@ def header_row(head, merges=()):
     return None
 
 
+# --------------------------------------------------------------------------
+# what a tab is, and what its rows are called
+
+_MONTHS = ("فروردین", "اردیبهشت", "خرداد", "تیر", "مرداد", "شهریور",
+           "مهر", "آبان", "آذر", "دی", "بهمن", "اسفند")
+_DATE_WORDS = ("تاریخ", "روز", "ماه", "سال")
+_DATE_VALUE = re.compile(r"^\d{1,4}/\d{1,2}/\d{1,4}$")   # 1405/04/18, 16/4/1405
+_LABEL_ROWS = 60        # above this a tab logs nightly values, not a table
+_LABEL_CHARS = 40       # a label names a thing; longer is a sentence
+_IDS_TAB = re.compile(r"sheetsfileids?", re.I)
+_BLANKS = re.compile(r"\s|\\n|\\t")
+
+
+def _one_call(text):
+    """`F(a,b)` → `("F", "a,b")` when the whole string is that one call, else
+    `None` — `F(a)+1` and `F(a)+G(b)` are not one call."""
+    match = re.match(r"([A-Za-z_][A-Za-z0-9_.]*)\(", text)
+    if not match:
+        return None
+    depth, in_string = 0, False
+    for i in range(match.end() - 1, len(text)):
+        ch = text[i]
+        if in_string:
+            in_string = ch != '"'
+        elif ch == '"':
+            in_string = True
+        elif ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+            if depth == 0:
+                return (match.group(1), text[match.end():i]) \
+                    if i == len(text) - 1 else None
+    return None
+
+
+def _top_args(inner):
+    """A call's arguments, split on the commas at depth zero."""
+    out, depth, in_string, current = [], 0, False, ""
+    for ch in inner:
+        if in_string:
+            current += ch
+            in_string = ch != '"'
+            continue
+        if ch == '"':
+            in_string = True
+        elif ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+        elif ch == "," and depth == 0:
+            out.append(current)
+            current = ""
+            continue
+        current += ch
+    out.append(current)
+    return out
+
+
+def is_mirror_tab(formulas_for_tab):
+    """QF-48 — exactly one formula, at A1, whose body is a single
+    `IMPORT_FROM_SHEET` call, bare or as a `LET`'s result expression. Such a tab
+    is an edge between two records, never a record: it produces no entry and no
+    rule. A formula that merely *contains* an import inside a larger
+    computation (the salon and sandogh row lookups) is an ordinary rule, which
+    is why the body is parsed and not searched. Rows are `_formula_rows`'
+    output: `[sheet, range, group, formula, count, cached, error]`.
+    """
+    if len(formulas_for_tab) != 1:
+        return False
+    span, text = formulas_for_tab[0][1] or "", formulas_for_tab[0][3] or ""
+    if span.replace("$", "") != "A1":
+        return False
+    call = _one_call(_BLANKS.sub("", text))
+    if call and call[0].upper() == "LET":
+        call = _one_call(_top_args(call[1])[-1])
+    return bool(call) and call[0].upper() == "IMPORT_FROM_SHEET"
+
+
+def is_ids_tab(name):
+    """The tab that maps a named range to a spreadsheetId. The estate spells it
+    `SheetsFileIds` and `SheetsFileIDs`; both are the same tab (§2.2)."""
+    return bool(_IDS_TAB.fullmatch((name or "").strip()))
+
+
+def has_date_header(head_row):
+    """Does this header row name a date column? «تاریخ», or two of «روز»,
+    «ماه», «سال» — a definition table is keyed by a name, a nightly log by a
+    date (§2.2). Two of the three rather than «روز» plus one, because
+    `Anbar markazi!فرنگی` heads its day column `Column 1` and still logs a
+    date."""
+    cells = [str(v).strip() for v in (head_row or [])]
+    if any("تاریخ" in cell for cell in cells):
+        return True
+    return sum(any(word in cell for cell in cells)
+               for word in ("روز", "ماه", "سال")) >= 2
+
+
+def _majority(values, test):
+    return sum(1 for value in values if test(value)) * 2 > len(values)
+
+
+def row_labels(sheet, head, header_index):
+    """`{row: text}` for the tab's label column, or `{}` — the rows of a small
+    table named down its side (§4).
+
+    Only the two columns `_read_sheet` kept are candidates, and only the rows
+    below the header: above it sits whatever date block the tab carries. Every
+    guard says the same thing from a different side — a label names a thing,
+    and whatever changes nightly is a value (QF-1, which §4 amends for this one
+    field): a date part (a month name, a `1405/04/18` or `16/4/1405` value, a
+    column headed «تاریخ»/«روز»/«ماه»/«سال»), a column of numbers, a column of
+    sentences and a column that repeats itself are all values wearing a label's
+    hat. The caller adds the two tab-level guards this cannot see: a mirror
+    tab's spilled values and an ids tab's range names name the rows of nothing.
+    """
+    if not sheet["max_row"] or sheet["max_row"] >= _LABEL_ROWS:
+        return {}
+    header = head[header_index - 1] if header_index else []
+    for col in sorted(sheet["columns"]):
+        cells = {row: str(value).strip()
+                 for row, value in sheet["columns"][col].items()
+                 if row > (header_index or 0) and str(value).strip()}
+        if not cells:
+            continue
+        title = header[col - 1] if col <= len(header) else ""
+        values = list(cells.values())
+        if any(word in title for word in _DATE_WORDS):
+            continue
+        if not _majority(values, lambda v: not _is_number(v)):
+            continue
+        if _majority(values,
+                     lambda v: v in _MONTHS or bool(_DATE_VALUE.match(v))):
+            continue
+        if max(len(value) for value in values) > _LABEL_CHARS:
+            continue
+        if len(set(values)) * 2 < len(values):
+            continue
+        return {str(row): cells[row] for row in sorted(cells)}
+    return {}
+
+
 def _codes(head):
     """The `##`/`#` codes printed in a tab's first rows — the estate labels its
     tables that way. A cached `#DIV/0!` is not one of them."""
@@ -741,17 +883,24 @@ def dump_workbook(xlsx_path, structure_md_path, out_dir, reference_tabs=(),
             sheet = _read_sheet(zf.read(tab["part"]), strings, keep_rows=keep)
             head = _head_grid(sheet)
             index = header_row(head, sheet["merges"])
-            # A tab's head is its header row and the four below it — enough for
-            # `build` to sample a column's type. A tab with no header keeps the
-            # five rows the header search looked at.
+            # A tab's head is rows 1 through `header_row + 4`: whatever date
+            # block sits above the header, the header, and four rows below it —
+            # enough for `build` to sample a column's type. A tab with no header
+            # keeps the five rows the header search looked at.
             head = head[:index + 4] if index else head[:_HEAD_ROWS]
-            sheets.append({"sheetId": tab["sheetId"], "name": tab["name"],
-                           "hidden": tab["hidden"],
-                           "dimension": sheet["dimension"] or _extent(sheet),
-                           "rows": sheet["max_row"], "cols": sheet["max_col"],
-                           "head": head, "header_row": index,
-                           "codes": _codes(head), "empty": sheet["empty"]})
-            formulas += _formula_rows(tab["name"], sheet)
+            tab_formulas = _formula_rows(tab["name"], sheet)
+            entry = {"sheetId": tab["sheetId"], "name": tab["name"],
+                     "hidden": tab["hidden"],
+                     "dimension": sheet["dimension"] or _extent(sheet),
+                     "rows": sheet["max_row"], "cols": sheet["max_col"],
+                     "head": head, "header_row": index,
+                     "codes": _codes(head), "empty": sheet["empty"]}
+            labels = ({} if is_ids_tab(tab["name"]) or is_mirror_tab(tab_formulas)
+                      else row_labels(sheet, head, index))
+            if labels:
+                entry["row_labels"] = labels
+            sheets.append(entry)
+            formulas += tab_formulas
             validations += [[tab["name"], v["range"], v["type"], v["values"]]
                             for v in sheet["validations"]]
             for rule in sheet["cf"]:

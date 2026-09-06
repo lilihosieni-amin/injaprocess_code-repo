@@ -8,10 +8,27 @@ import re
 import zipfile
 
 import pytest
-from dump_workbook import _read_sheet, dump_workbook, header_row, init_manifest
+from dump_workbook import (
+    _head_grid,
+    _read_sheet,
+    dump_workbook,
+    has_date_header,
+    header_row,
+    init_manifest,
+    is_ids_tab,
+    is_mirror_tab,
+    row_labels,
+)
 from dump_workbook.cli import main
 from engine_common import validate
-from fixtures.make_workbook import DUMMY_SOURCE, LAMBDA_BODY, REFERENCE_ROWS, make_workbook
+from fixtures.make_workbook import (
+    DUMMY_SOURCE,
+    LAMBDA_BODY,
+    MIRROR_FORMULA,
+    REFERENCE_ROWS,
+    REPORT_LABELS,
+    make_workbook,
+)
 
 # --------------------------------------------------------------------------
 # helpers
@@ -34,6 +51,11 @@ def _dump(tmp_path, reference_tabs=(), **kw):
     summary = dump_workbook(book, book.parent / "Test.structure.md", out,
                             reference_tabs=reference_tabs)
     return summary, out / summary["spreadsheetId"]
+
+
+def _sheet(columns, max_row):
+    """The two members of a `_read_sheet` result that `row_labels` reads."""
+    return {"max_row": max_row, "columns": columns}
 
 
 def _estate(tmp_path, books=(("Amar__Pitza", "Pitza.xlsx", "SID1"),
@@ -259,6 +281,89 @@ def test_read_sheet_keeps_every_cell_of_the_two_left_most_non_empty_columns(tmp_
     assert sorted(sheet["columns"]) == [2, 3]        # column A is empty
     assert sheet["columns"][2][6] == "پنیر پیتزا"    # below the head, and kept
     assert sheet["columns"][2][15] == "خمیر پیتزا"
+
+
+def test_head_rows_are_padded_to_a_max_col_no_head_row_reaches():
+    """`_head_grid` widens to `sheet["max_col"]`, not to the widest head row —
+    a formula-only cell far to the right, below the head, still sets the tab's
+    width and every head row must reach it."""
+    grid = _head_grid({"head": {1: {1: "کد", 2: "نام"}}, "max_row": 12,
+                       "max_col": 8})
+    assert {len(row) for row in grid} == {8}
+    assert grid[0] == ["کد", "نام", "", "", "", "", "", ""]
+
+
+# --------------------------------------------------------------------------
+# row_labels and the three predicates that guard it
+
+
+def test_row_labels_are_written_for_a_report_tab_and_a_bom_tab(tmp_path):
+    _, out = _dump(tmp_path, v3_tabs=True)
+    sheets = {s["name"]: s for s in _json(out / "sheets.json")["sheets"]}
+    assert sheets["گزارش پیتزا"]["row_labels"] == {
+        str(6 + i): label for i, label in enumerate(REPORT_LABELS)}
+    assert sheets["پیتزا امریکایی"]["row_labels"] == {
+        "2": "رستبیف #71", "3": "تگزاس #309", "4": "مخلوط #74"}
+
+
+def test_no_row_labels_on_a_month_column_a_mirror_or_an_ids_tab(tmp_path):
+    """A mirror's spilled values and an ids tab's range names read exactly like
+    labels; a month column reads like one too. None of them names a row."""
+    _, out = _dump(tmp_path, v3_tabs=True)
+    sheets = {s["name"]: s for s in _json(out / "sheets.json")["sheets"]}
+    for name in ("موجودی اول شب", "Table_Ingredients_Pizza", "SheetsFileIds"):
+        assert "row_labels" not in sheets[name], name
+
+
+def test_a_column_of_sentences_is_not_a_label_column():
+    """`Hesabdari!نیازمندیها و مشکلات` — a label names a thing, a sentence is a
+    nightly note (QF-1)."""
+    note = "در یخچال از یک طرف افتاده و باید تعمیر شود"
+    cells = {r: f"{note} {r}" for r in range(2, 6)}
+    assert row_labels(_sheet({2: cells}, 5), [["تاریخ", "مشکل"]], 1) == {}
+
+
+def test_a_column_that_repeats_itself_is_not_a_label_column():
+    cells = {r: "تعمیر" for r in range(2, 6)}
+    assert row_labels(_sheet({2: cells}, 5), [["تاریخ", "مشکل"]], 1) == {}
+
+
+def test_a_month_column_with_no_header_is_still_a_date_part():
+    cells = {2: "آذر", 3: "دی", 4: "بهمن", 5: "اسفند"}
+    assert row_labels(_sheet({2: cells}, 5), [["", ""]], 1) == {}
+
+
+def test_a_column_of_dates_in_either_estate_form_is_not_a_label_column():
+    cells = {2: "1405/04/18", 3: "16/4/1405", 4: "1405/04/20", 5: "1405/04/21"}
+    assert row_labels(_sheet({2: cells}, 5), [["", ""]], 1) == {}
+
+
+def test_a_tab_over_sixty_rows_gets_no_labels():
+    cells = {r: f"قلم {r}" for r in range(2, 61)}
+    assert row_labels(_sheet({1: cells}, 60), [["نام"]], 1) == {}
+
+
+def test_is_mirror_tab_only_for_a_whole_tab_import():
+    at_a1 = [["t", "A1", "", MIRROR_FORMULA, 1, "نام", ""]]
+    assert is_mirror_tab(at_a1)
+    assert not is_mirror_tab([])
+    assert not is_mirror_tab([["t", "B2", "", MIRROR_FORMULA, 1, "", ""]])
+    assert not is_mirror_tab(at_a1 + [["t", "A2", "", "SUM(AN)", 1, "", ""]])
+    assert not is_mirror_tab(                      # an import inside a rule
+        [["t", "A1", "", "SUM(IMPORT_FROM_SHEET(A,B,C),1)", 1, "", ""]])
+
+
+def test_is_ids_tab_takes_both_spellings_the_estate_uses():
+    assert is_ids_tab("SheetsFileIds") and is_ids_tab("SheetsFileIDs")
+    assert is_ids_tab(" sheetsfileid ")
+    assert not is_ids_tab("Table_Ingredients_Pizza")
+
+
+def test_has_date_header_names_a_date_column():
+    assert has_date_header(["تاریخ", "رستبیف #71"])
+    assert has_date_header(["روز", "ماه", "سال", "وزن پنیر پیتزا ##1"])
+    assert has_date_header(["Column 1", "ماه", "سال"])   # Anbar markazi!فرنگی
+    assert not has_date_header(["نام", "پنیر پیتزا ##1"])
 
 
 def test_no_plain_cell_of_a_non_reference_tab_reaches_the_dump(tmp_path):
