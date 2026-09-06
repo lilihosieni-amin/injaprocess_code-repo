@@ -8,13 +8,21 @@ can fold in without asking the model anything twice.
 The verbs land here as the tasks that implement them do; `cli.py` reports a
 verb whose function is not here yet rather than failing to import.
 """
+import copy
+import hashlib
+import json
 import pathlib
 import re
+import sys
 
-from engine_common import read_json, validate
+from engine_common import (read_json, validate, write_json_atomic,
+                           write_text_atomic)
+from merge_facts import (KIND_ORDER, canonical_scope, iter_ref_objects,
+                         load_store, null_paths)
+from merge_facts.audit import flags_over
 from merge_facts.content import lint_prose
 
-from facts_plan.build import process_index
+from facts_plan.build import estimate_tokens, label_of, process_index
 
 #: A template field the record unit has not renamed yet — §2.5's `c_h`. The
 #: `c_` prefix is what marks a ref provisional, so a field wearing it in any
@@ -91,11 +99,20 @@ def validate_unit(root, run_dir, path):
     node_ids = {f'{n["process"]}::{n["node"]}' for n in nodes} \
         | {f'{n["process"]}::{n["node"].rsplit("-", 1)[-1]}' for n in nodes}
     problems, seen, unit = list(caps), [], None
-    if doc["unit"] != "review":
+    in_units = path.parent.parent.name == "units"
+    if doc["unit"] == "review":
+        # A review lives at `review/out.json` and addresses assembled entries.
+        # One written into a unit's directory used to skip both checks below —
+        # so the unit went `done` having decided none of its candidates, and
+        # `assemble` sent every one of them to `undecided[]`.
+        if in_units:
+            problems.append(f'{path.name}: is a review document, but it sits in '
+                            f'units/{path.parent.name}/, whose candidates it '
+                            "decides none of")
+    else:
         # A document belongs to the unit whose directory it sits in, never to
         # the one it names: a document declaring a zero-candidate sibling would
         # otherwise decide nothing and still be `done`.
-        in_units = path.parent.parent.name == "units"
         dir_unit = path.parent.name if in_units else None
         unit = next((u for u in plan["units"] if u["id"] == dir_unit), None)
         if not in_units:
@@ -194,3 +211,695 @@ def _lint_decision(decision, label, symbols):
                                           exemptions=symbols):
                     out.append(f"{label}: issues: {message}")
     return out
+
+
+# --------------------------------------------------------------------------
+# T15 step 0 (§2.6): the units' documents, the review folded onto them, and
+# the two shapes every later step reads — the `(kind, key, scope)` address and
+# the `{value, inferred}` wrapper the model writes on a leaf.
+
+#: A candidate's kind as the store spells it — a `.gs` script is a rule.
+KIND_OF = {"record": "record", "item": "item", "rule": "rule", "script": "rule",
+           "gs": "rule"}
+_DIGITS = str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹")
+
+#: §2.3's two attempts per unit — a unit that has used both is `failed`, and
+#: its candidates go to `undecided[]` rather than blocking the assembly.
+ATTEMPTS = 2
+
+#: §2.6's ceiling on the reviewer's input — one unit's budget, spent on the
+#: whole run at once.
+DIGEST_CEILING = 50000
+
+#: The reason codes of §2.5 in the owner's words (§2.7) — `gate-b.md` names the
+#: commonest, `report` (T16) renders the whole list.
+REASON_FA = {"not_a_fact": "دربارهٔ کار نیست",
+             "date_passthrough": "فقط تاریخ را جابه‌جا می‌کند",
+             "cosmetic": "فقط ظاهر است",
+             "duplicate": "تکراری است",
+             "has_a_home": "جای دیگری ثبت شده است",
+             "insufficient_context": "اطلاعات کافی نبود",
+             "other": "دلیل دیگر"}
+
+#: §2.6 step 7's `wrapper_variants`: a variant that only converts or totals the
+#: reading beneath it is the same rule, not a second one.
+#: ponytail: these three names and the `CONVERT_` family are what the estate
+#: spells today; widen the tuple when a run meets a wrapper it does not know.
+WRAPPERS = ("SUM", "ROUND", "IFERROR")
+
+
+def _fa(value):
+    """Latin digits to Persian — every number in an owner-facing file (§2.7)."""
+    return str(value).translate(_DIGITS)
+
+
+def _address(entry):
+    """`(kind, key, canonical scope)` — how the review addresses an assembled
+    entry, and how two units are found to have minted the same one (§2.6)."""
+    return (entry["kind"], entry["key"],
+            json.dumps(canonical_scope(entry.get("scope")), sort_keys=True))
+
+
+def _outputs(root, run_dir, plan):
+    """`[(unit, path, doc)]` for the units that returned something usable, in
+    ascending unit id — the only order `assemble` has, and the reason it is
+    deterministic.
+
+    A latest attempt that is present and does not validate is refused here,
+    naming the unit: QF-51 checks a document the moment it returns, and one
+    nobody has fixed since must not be folded in silently. The exception is the
+    unit that has spent both its attempts — that is the `failed` unit step 5
+    sends to `undecided[]`, and the run finishes without it.
+    """
+    out, problems = [], []
+    for unit in sorted(plan["units"], key=lambda u: u["id"]):
+        attempts = sorted((run_dir / "units" / unit["id"]).glob("out.*.json"))
+        for path in reversed(attempts):
+            try:
+                doc = read_json(path)
+            except (OSError, ValueError):
+                continue
+            found = validate_unit(root, run_dir, path)
+            if not found:
+                out.append((unit, path, doc))
+            elif len(attempts) < ATTEMPTS:
+                problems += [f'{unit["id"]}: {message}' for message in found]
+            break
+    if problems:
+        for line in problems:
+            print(f"facts-plan: {line}", file=sys.stderr)
+        raise SystemExit(2)
+    return out
+
+
+def _collect(root, run_dir, plan, skeleton):
+    """The units' decisions keyed by skeleton id, their `new[]` entries, and the
+    units that returned nothing this run can use."""
+    state = {"by_skeleton": {}, "new": [], "failed": set(),
+             "review_status": "absent", "dropped": [], "undecided": [],
+             "provenance": {}, "flags": []}
+    returned = set()
+    for unit, _path, doc in _outputs(root, run_dir, plan):
+        returned.add(unit["id"])
+        for decision in doc["decisions"]:
+            state["by_skeleton"][decision["skeleton"]] = dict(decision,
+                                                              unit=unit["id"])
+        for entry in doc.get("new") or []:
+            state["new"].append(dict(entry, _unit=unit["id"]))
+    state["failed"] = {u["id"] for u in plan["units"] if u["id"] not in returned}
+    return state
+
+
+def _fold_review(run_dir, state, draft, scratch):
+    """Step 0 (§2.6). The digest hash must still match the assembly the reviewer
+    read, and an address hitting zero or more than one entry discards the whole
+    document: one round, no negotiation (§10)."""
+    path = run_dir / "review" / "out.json"
+    stamp = run_dir / "review" / "input.sha256"
+    if not path.is_file() or not stamp.is_file():
+        return "absent"
+    text = _digest_text(scratch, draft)
+    if stamp.read_text(encoding="utf-8").strip() != \
+            hashlib.sha256(text.encode("utf-8")).hexdigest():
+        return "discarded"
+    doc = read_json(path)
+    address = {}
+    for entry in draft:
+        address.setdefault(_address(entry), []).append(entry)
+    folded = []
+    for decision in doc["decisions"]:
+        if decision.get("skeleton"):
+            folded.append(decision)
+            continue
+        hit = address.get(_address(decision["entry"]), [])
+        if len(hit) != 1:
+            return "discarded"
+        folded.append(dict(decision, skeleton=hit[0]["_skeleton"]))
+    for decision in folded:
+        previous = state["by_skeleton"].get(decision["skeleton"], {})
+        merged = {**previous, **{k: v for k, v in decision.items()
+                                 if v is not None}}
+        merged["unit"] = previous.get("unit", "review")
+        state["by_skeleton"][decision["skeleton"]] = merged
+    return "applied"
+
+
+def _unwrap(value, prefix, status):
+    """Strip every `{"value", "inferred"}` wrapper and record its QF-7 path —
+    §2.5: the model marks the leaf, assemble writes the path."""
+    if isinstance(value, dict):
+        if set(value) == {"value", "inferred"} and value["inferred"] is True:
+            status[prefix] = "inferred"
+            return _unwrap(value["value"], prefix, status)
+        return {k: _unwrap(v, f"{prefix}/{k}", status) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_unwrap(m, f'{prefix}/{m["key"]}'
+                        if isinstance(m, dict) and "key" in m else prefix, status)
+                for m in value]
+    return value
+
+
+def _rename_fields(mechanical, written):
+    """`{provisional key: minted key}` and the merged `fields[]`. A field the
+    record unit leaves unrenamed keeps `c_h` (§2.5)."""
+    by_from = {f["from"]: f for f in written if f.get("from")}
+    renames, fields = {}, []
+    for field in mechanical:
+        theirs = dict(by_from.get(field["key"]) or {})
+        theirs.pop("from", None)
+        key = theirs.pop("key", None) or field["key"]
+        renames[field["key"]] = key
+        fields.append({**field, **theirs, "key": key})
+    return renames, fields
+
+
+# --------------------------------------------------------------------------
+# T15 steps 2–6 (§2.6): the envelope a decision earns, the merge target, the
+# split parts and the `new[]` entries — then step 1, which mints the temp ids
+# over all of them at once and resolves every ref and provisional field key.
+
+
+def _source_of(instance, paths):
+    return {"type": "sheet", "ref": paths.get(instance["spreadsheetId"], ""),
+            "sheet": instance["sheet"]}
+
+
+def _process_sources(written, department):
+    """§2.5's `processes[]` citations as `source[]` members."""
+    out = []
+    for citation in written.get("processes") or []:
+        source = {"type": "process",
+                  "ref": f'departments/{department}/processes/'
+                         f'{citation["process"]}.json',
+                  "node": citation["node"]}
+        if citation.get("quote"):
+            source["quote"] = citation["quote"]
+        out.append(source)
+    return out
+
+
+def _unit_sources(unit):
+    """What a unit that read text cites: its transcript chunk, by lines. A unit
+    that read only a workbook has already cited the tab through its instances,
+    and one that read nothing at all cites the chat, which QF-5 admits with a
+    null ref."""
+    out = []
+    for ref in (unit or {}).get("inputs") or []:
+        rel, _, span = ref.partition("#")
+        if not rel.endswith((".txt", ".md")):
+            continue
+        source = {"type": "voice", "ref": rel}
+        if span:
+            source["lines"] = "-".join(n.lstrip("L") for n in span.split("-"))
+        out.append(source)
+    return out or [{"type": "chat", "ref": None}]
+
+
+def _scope_of(candidate, department, decision, by_id):
+    """§3.2 — a sheet-derived entry sits on the branches of the tabs it is
+    written on: its own instances, and for a rule the instances of every record
+    its bindings name. With no tab of its own it takes the branches the decision
+    names, and otherwise the whole department."""
+    branches = {i["branch"] for i in candidate["payload"].get("instances") or []
+                if i.get("branch")}
+    for member in candidate["payload"].get("applies_to") or []:
+        record = by_id.get((member.get("record") or {}).get("ref")) or {}
+        branches |= {i["branch"] for i in
+                     (record.get("payload") or {}).get("instances") or []
+                     if i.get("branch")}
+    return {"departments": [department],
+            "branches": sorted(branches or set(decision.get("branches") or []))}
+
+
+def _entry(candidate, decision, state, part=None):
+    """Step 2 — the envelope §2.6 describes: the skeleton's mechanical payload
+    under the unit's own fields, `source[]` from every instance and binding,
+    `scope` per §3.2, the `inferred` wrappers expanded into `field_status`."""
+    written = part or decision
+    status = {}
+    data = copy.deepcopy(candidate["payload"])
+    given = _unwrap(written.get("data") or {}, "data", status)
+    renames, fields = _rename_fields(data.pop("fields", []),
+                                     given.pop("fields", []))
+    data.update(given)
+    if fields:
+        data["fields"] = fields
+    takes = written.get("takes")
+    if takes is not None:
+        for collection in ("applies_to", "instances"):
+            if data.get(collection):
+                data[collection] = [m for m in data[collection]
+                                    if m["key"] in takes]
+    sources = [_source_of(i, state["paths"]) for i in data.get("instances") or []]
+    location = data.get("location") or {}
+    if not sources and location.get("spreadsheetId"):
+        sources.append({"type": "sheet",
+                        "ref": state["paths"].get(location["spreadsheetId"], ""),
+                        "sheet": location.get("sheet", "")})
+    # The citations hang off the decision, never off a split part (§2.5's
+    # `splitPart` has no `processes`), so both parts of a split inherit them.
+    sources += _process_sources(decision, state["department"])
+    entry = {"kind": KIND_OF[candidate["kind"]], "key": written["key"],
+             "title": written["title"], "statement": written["statement"],
+             "scope": _scope_of(candidate, state["department"], decision,
+                                state["candidates"]),
+             "source": sources
+             or _unit_sources(state["units"].get(decision["unit"])),
+             "retired": False, "data": data,
+             "_skeleton": candidate["id"], "_unit": decision["unit"],
+             "_renames": renames}
+    if written.get("aliases"):
+        entry["aliases"] = written["aliases"]
+    if status:
+        entry["field_status"] = status
+    for issue in state["issues"]:
+        if issue.get("target") == candidate["id"] and not issue["run_only"]:
+            # `affects` names the entry itself, through the candidate id step 1
+            # rewrites to the temp id: the schema requires the link, and an
+            # issue attached to no fact is one nobody ever reads.
+            entry.setdefault("issues", []).append(
+                {"kind": issue["kind"], "instance": issue["instance"],
+                 "description": issue["description"], "engine": True,
+                 "affects": [{"ref": candidate["id"]}]})
+    return entry
+
+
+def _absorb(target, candidate):
+    """Step 3 — the merge target gains the candidate's bindings and instances;
+    a keyed member the target already carries is left alone (§11's union)."""
+    for collection in ("applies_to", "instances"):
+        held = {m["key"] for m in target["data"].get(collection) or []}
+        for member in candidate["payload"].get(collection) or []:
+            if member["key"] not in held:
+                target["data"].setdefault(collection, []).append(member)
+
+
+def _target_of(state, skid):
+    """`merge_into` to a fixpoint, ascending (unit id, skeleton id) — a cycle
+    is an error naming both units."""
+    seen = []
+    while True:
+        decision = state["by_skeleton"].get(skid)
+        if not decision or decision["action"] != "merge_into":
+            return skid
+        if skid in seen:
+            raise _fail(f'{skid}: merge_into cycle across units '
+                        f'{", ".join(sorted({state["by_skeleton"][s]["unit"] for s in seen}))}')
+        seen.append(skid)
+        skid = decision["into"]
+
+
+def _fail(message):
+    print(f"facts-plan: {message}", file=sys.stderr)
+    return SystemExit(2)
+
+
+def _note_key(entry, by_temp):
+    """§3.1 — minted from the sorted `(kind, key)` pairs of `about[]` and the
+    normalised question, so the same note built twice mints the same key
+    whether its target was created in this delta or found in the store."""
+    pairs = []
+    for about in entry["data"]["about"]:
+        target = by_temp.get(about["ref"])
+        pairs.append(f'{target["kind"]}:{target["key"]}' if target
+                     else about["ref"])
+    blob = "‖".join(sorted(pairs)) + "‖" + \
+        " ".join((entry["data"].get("question") or "").split())
+    return "note_" + hashlib.sha256(blob.encode("utf-8")).hexdigest()[:12]
+
+
+def _build_entries(root, skeleton, state):
+    """Steps 2–6 with step 1 in the middle: the bodies are built, then the temp
+    ids are minted in kind order over all of them, then every `{ref}` and every
+    provisional field key is resolved (1a, 1b)."""
+    by_id = {c["id"]: c for c in skeleton["candidates"]}
+    state["candidates"] = by_id
+    state["dropped"], state["undecided"], state["provenance"] = [], [], {}
+    kept = {}
+    for cid, candidate in sorted(by_id.items()):
+        decision = state["by_skeleton"].get(cid)
+        label = label_of(candidate)
+        if decision is None or candidate.get("unit") in state["failed"]:
+            state["undecided"].append({"skeleton": cid, "kind": candidate["kind"],
+                                       "label": label,
+                                       "unit": candidate.get("unit")})
+            continue
+        if decision["action"] == "drop":
+            state["dropped"].append({"skeleton": cid, "kind": candidate["kind"],
+                                     "label": label,
+                                     "reason_code": decision["reason_code"],
+                                     "unit": decision["unit"]})
+        elif decision["action"] == "keep":
+            kept[cid] = _entry(candidate, decision, state)
+        elif decision["action"] == "split":
+            for n, part in enumerate(decision["into"], start=1):
+                kept[f"{cid}#{n}"] = _entry(candidate, decision, state, part=part)
+    for cid in sorted(state["by_skeleton"],
+                      key=lambda k: (state["by_skeleton"][k]["unit"], k)):
+        decision = state["by_skeleton"][cid]
+        if decision["action"] != "merge_into":
+            continue
+        target = _target_of(state, cid)
+        if target not in kept:
+            raise _fail(f'{cid} (unit {decision["unit"]}) merges into {target}, '
+                        "which no unit kept")
+        _absorb(kept[target], by_id[cid])
+    entries = list(kept.values())
+    for entry in state["new"]:
+        # Step 6, with §3.2 and QF-5 for an entry no candidate stands behind:
+        # the unit says what it is and names its `branches` and `processes`,
+        # and those two leave here as the `scope` and the `source[]` the delta
+        # has a place for.
+        body = {k: v for k, v in entry.items()
+                if k not in ("_unit", "branches", "processes")}
+        body["scope"] = {"departments": [state["department"]],
+                         "branches": sorted(set(entry.get("branches") or []))}
+        body["source"] = _process_sources(entry, state["department"]) \
+            or _unit_sources(state["units"].get(entry["_unit"]))
+        body["retired"] = False
+        body["_skeleton"] = None
+        body["_unit"] = entry["_unit"]
+        body["_renames"] = {}
+        entries.append(body)
+    entries.sort(key=lambda e: (KIND_ORDER.index(e["kind"]),
+                                e["_skeleton"] or "", e["key"]))
+    for n, entry in enumerate(entries, start=1):
+        entry["id"] = f"T-{n}"
+        state["provenance"][entry["id"]] = entry["_unit"]
+    _resolve_refs(entries, state)
+    by_temp = {e["id"]: e for e in entries}
+    for entry in entries:
+        if entry["kind"] == "note":
+            entry["key"] = _note_key(entry, by_temp)
+    return entries
+
+
+def _resolve_refs(entries, state):
+    """1a and 1b in one walk: an `S-` ref becomes the temp id of that
+    candidate's kept entry, an `F-` ref is checked against the store, and a
+    provisional field key is rewritten to the one the record decision minted.
+    An `imports[].source` whose target was dropped falls back to its locator;
+    anything else naming a dropped or failed candidate is an error naming both
+    units."""
+    by_skeleton = {e["_skeleton"]: e for e in entries if e["_skeleton"]}
+    dropped = {d["skeleton"]: d["unit"] for d in state["dropped"]}
+    for entry in entries:
+        for source in (member.get("source")
+                       for instance in entry["data"].get("instances") or []
+                       for member in instance.get("imports") or []):
+            ref = (source or {}).get("ref")
+            if isinstance(ref, str) and ref.startswith("S-") \
+                    and ref not in by_skeleton:
+                source.pop("ref", None)
+                source.update(state["locators"].get(ref, {}))
+        for obj in iter_ref_objects(entry):
+            ref = obj.get("ref")
+            if not isinstance(ref, str):
+                continue
+            if ref.startswith("S-"):
+                target = by_skeleton.get(ref)
+                if target is None:
+                    raise _fail(f'{entry["_unit"]}: ref {ref} names a candidate '
+                                f'unit {dropped.get(ref, "?")} did not keep')
+                obj["ref"] = target["id"]
+                if obj.get("field") in (target.get("_renames") or {}):
+                    obj["field"] = target["_renames"][obj["field"]]
+            elif ref.startswith("F-") and ref not in state["store_ids"]:
+                raise _fail(f'{entry["_unit"]}: ref {ref} is in no store entry')
+
+
+# --------------------------------------------------------------------------
+# T15 steps 7–9 (§2.6): the cross-unit pass and its flags, the §5.2 lint, and
+# the files the run leaves behind — `facts-delta.json`, `assembly.json` and the
+# owner's `gate-b.md`, with `review/input.md` beside them.
+
+
+def _leaves(data, prefix="data"):
+    """`{QF-7 path: value}` for every scalar under `data` — what step 7 compares
+    when two units describe one entry."""
+    out = {}
+    if isinstance(data, dict):
+        for key, value in data.items():
+            out.update(_leaves(value, f"{prefix}/{key}"))
+    elif isinstance(data, list):
+        for member in data:
+            if isinstance(member, dict) and "key" in member:
+                out.update(_leaves({k: v for k, v in member.items() if k != "key"},
+                                   f'{prefix}/{member["key"]}'))
+    elif data is not None:
+        out[prefix] = data
+    return out
+
+
+def _bare(shape):
+    """A formula shape with the wrapper calls and their punctuation removed."""
+    for name in WRAPPERS:
+        shape = shape.replace(name, "")
+    return re.sub(r"CONVERT_[A-Z0-9_]*", "", shape) \
+             .translate(str.maketrans("", "", "() \t\n"))
+
+
+def _wrapper_variants(entries, state):
+    """§2.6 step 7's run-scoped flag: a candidate whose variants read the same
+    thing under a unit conversion or a total is one rule, not several — and the
+    reviewer is told so before a unit makes it two."""
+    out = []
+    for entry in entries:
+        variants = ((state["candidates"].get(entry["_skeleton"]) or {})
+                    .get("render") or {}).get("variants") or []
+        shapes = {v.get("shape") for v in variants if v.get("shape")}
+        if len(shapes) > 1 and len({_bare(shape) for shape in shapes}) == 1:
+            out.append({"code": "wrapper_variants", "id": entry["id"],
+                        "message": "variants differ only by a wrapper: "
+                                   + "، ".join(sorted(shapes))})
+    return out
+
+
+def _cross_unit(root, entries, state):
+    """Step 7 — two `keep`s minting one `(kind, key, scope)` are merged with the
+    lowest unit's prose; a scalar the two disagree on becomes two accounts when
+    their sources differ in kind, and `unit_drift` for the reviewer when they do
+    not. `apply` mints the account ids, which is why none is written here."""
+    groups = {}
+    for entry in entries:
+        groups.setdefault(_address(entry), []).append(entry)
+    survivors, flags = [], []
+    for members in groups.values():
+        members.sort(key=lambda e: (e["_unit"], e["id"]))
+        keeper = members[0]
+        for other in members[1:]:
+            entries.remove(other)
+            flags.append({"code": "duplicate_title", "id": keeper["id"],
+                          "message": f'{other["_unit"]} wrote another wording '
+                                     f'for «{keeper["title"]}»'})
+            mine, theirs = _leaves(keeper["data"]), _leaves(other["data"])
+            for path, value in sorted(theirs.items()):
+                if path not in mine or mine[path] == value:
+                    continue
+                kinds = {keeper["source"][0]["type"], other["source"][0]["type"]}
+                sides = [{"unit": holder["_unit"], "value": held,
+                          "source": holder["source"][0]}
+                         for holder, held in ((keeper, mine[path]), (other, value))]
+                if len(kinds) == 1:
+                    # One artefact read twice: nobody is quoting a different
+                    # document, so there is nothing for the owner to choose
+                    # between. T15b's reviewer settles it off this record.
+                    flags.append({"code": "unit_drift", "id": keeper["id"],
+                                  "message": f'{path}: {mine[path]!r} '
+                                             f'({keeper["_unit"]}) vs '
+                                             f'{value!r} ({other["_unit"]})',
+                                  "entry": {"kind": keeper["kind"],
+                                            "key": keeper["key"],
+                                            "scope": keeper["scope"]},
+                                  "field": path, "sides": sides})
+                    continue
+                for side in sides:
+                    keeper.setdefault("accounts", []).append(
+                        {"field": path, "value": side["value"], "status": "open",
+                         "speaker_role": None,
+                         "statement": "مقدار ثبت‌شده برای این خانه: "
+                                      + _fa(side["value"]),
+                         "source": side["source"]})
+        survivors.append(keeper)
+    flags += _wrapper_variants(survivors, state)
+    flags += flags_over(root, [{k: v for k, v in e.items()
+                                if not k.startswith("_")} for e in survivors])
+    state["flags"] = flags
+
+
+def _lint_entries(entries, symbols):
+    """Step 8 — the §5.2 lint over every prose field; a failing value is refused,
+    never stored, and the message names the unit that wrote it."""
+    out = []
+    for entry in entries:
+        for key in ("title", "statement"):
+            for message in lint_prose(entry.get(key) or "", exemptions=symbols):
+                out.append(f'{entry["_unit"]}: {entry["key"]}/{key}: {message}')
+        for field in entry["data"].get("fields") or []:
+            for message in lint_prose(field.get("description") or "",
+                                      exemptions=symbols, allow_sheet_words=True):
+                out.append(f'{entry["_unit"]}: {entry["key"]}/'
+                           f'{field.get("key")}: {message}')
+    return out
+
+
+def _digest_text(state, entries):
+    """`review/input.md` (§2.6) — one line per assembled entry, the flags, and
+    the dropped candidates with their reason codes."""
+    lines = ["# digest",
+             f"decisions ≤ {REVIEW_DECISIONS}, statement rewrites ≤ "
+             f"{REVIEW_REWRITES}", "", "## entries", ""]
+    for entry in entries:
+        data = entry["data"]
+        tail = {"rule": f'expr: {data.get("expr")}',
+                "record": "fields: " + "، ".join(
+                    f'{f["key"]}[{f.get("unit") or "—"}]'
+                    for f in data.get("fields") or []),
+                "item": f'{data.get("code")} · {data.get("unit")} · '
+                        f'{data.get("category")}'}.get(entry["kind"], "")
+        lines.append(" · ".join([entry["kind"], entry["key"],
+                                 _address(entry)[2], entry["title"],
+                                 entry["statement"], tail]))
+    lines += ["", "## flags", ""]
+    lines += [f'{f["code"]} · {f["id"]} · {f["message"]}'
+              for f in state["flags"]] or ["—"]
+    lines += ["", "## dropped", ""]
+    lines += [f'{d["skeleton"]} · {d["kind"]} · {d["label"]} · {d["reason_code"]}'
+              for d in state["dropped"]] or ["—"]
+    return "\n".join(lines) + "\n"
+
+
+def _prepare(root, run_dir, review):
+    """Everything both verbs share: the run's files, the store, and the units'
+    decisions with the review folded in when asked for."""
+    run_dir = pathlib.Path(run_dir)
+    skeleton = read_json(run_dir / "skeleton.json")
+    plan = read_json(run_dir / "plan.json")
+    manifest = read_json(pathlib.Path(root) / "attachments" / "sheets" /
+                         "manifest.json")
+    store = load_store(root)
+    state = _collect(root, run_dir, plan, skeleton)
+    state.update({
+        "department": skeleton["department"], "issues": skeleton["issues"],
+        "units": {u["id"]: u for u in plan["units"]},
+        "paths": {w["spreadsheetId"]: f'attachments/sheets/{w["dir"]}/{w["file"]}'
+                  for w in manifest["workbooks"]},
+        "locators": {i["source"].get("ref"): {k: v for k, v in i["source"].items()
+                                              if k != "ref"}
+                     for i in skeleton["imports"] if i["source"].get("ref")},
+        "store_ids": {e["id"] for kind in KIND_ORDER
+                      for e in store[kind]["entries"]}})
+    if review:
+        # The reviewer read the assembly as it stood *before* the review, flags
+        # and all — so the hash is checked against that same document, rebuilt
+        # here on a copy nothing folded in can touch.
+        scratch = copy.deepcopy(state)
+        draft = _build_entries(root, skeleton, scratch)
+        _cross_unit(root, draft, scratch)
+        state["review_status"] = _fold_review(run_dir, state, draft, scratch)
+    return run_dir, skeleton, state
+
+
+def digest(root, run_dir):
+    """`review/input.md` + `review/input.sha256` — steps 1–7 in memory, the temp
+    ids discarded. Above 50 K tokens the run proceeds without a review (§2.6)."""
+    run_dir, skeleton, state = _prepare(root, run_dir, False)
+    entries = _build_entries(root, skeleton, state)
+    _cross_unit(root, entries, state)
+    text = _digest_text(state, entries)
+    path = run_dir / "review" / "input.md"
+    tokens = estimate_tokens(text)
+    if tokens > DIGEST_CEILING:
+        print(f"facts-plan: digest is {tokens} tokens, over the "
+              f"{DIGEST_CEILING} ceiling — the run proceeds without a review",
+              file=sys.stderr)
+        return path
+    write_text_atomic(path, text)
+    write_text_atomic(run_dir / "review" / "input.sha256",
+                      hashlib.sha256(text.encode("utf-8")).hexdigest() + "\n")
+    return path
+
+
+def assemble(root, run_dir, *, review=False):
+    """Steps 0–9 once over the merged decision set (§2.6). Deterministic:
+    ascending unit id, ascending skeleton id, ids minted in kind order."""
+    run_dir, skeleton, state = _prepare(root, run_dir, review)
+    entries = _build_entries(root, skeleton, state)
+    _cross_unit(root, entries, state)
+    problems = _lint_entries(entries, skeleton.get("unit_symbols") or [])
+    if problems:
+        for line in problems:
+            print(f"facts-plan: {line}", file=sys.stderr)
+        raise SystemExit(2)
+    clean = [{k: v for k, v in e.items() if not k.startswith("_")}
+             for e in entries]
+    write_json_atomic(run_dir / "facts-delta.json",
+                      {"schema_version": 2, "entries": clean})
+    write_json_atomic(run_dir / "assembly.json",
+                      {"dropped": state["dropped"], "undecided": state["undecided"],
+                       "provenance": state["provenance"],
+                       "review_status": state["review_status"]})
+    write_text_atomic(run_dir / "gate-b.md", gate_b(root, skeleton, entries, state))
+    return {"entries": len(clean), "dropped": len(state["dropped"]),
+            "undecided": len(state["undecided"]),
+            "review_status": state["review_status"]}
+
+
+def _rule_line(entry):
+    """A rule as the owner reads it: its own title, and the numeric values its
+    bindings carry — never a formula, a column or a table name (§2.5)."""
+    numbers = []
+    for member in entry["data"].get("applies_to") or []:
+        for _key, value in sorted((member.get("params") or {}).items()):
+            if isinstance(value, (int, float)) and value not in numbers:
+                numbers.append(value)
+    line = f'  • {entry["title"]}'
+    return line + (": " + "، ".join(_fa(n) for n in numbers) if numbers else "")
+
+
+def gate_b(root, skeleton, entries, state):
+    """`gate-b.md` (§2.7) — a finished Persian message the playbook sends
+    verbatim. No id, no path, no code, no command; an entry is its title."""
+    registry = read_json(pathlib.Path(root) / "departments" / "registry.json")
+    name = next((d["name"] for d in registry["departments"]
+                 if d["code"] == state["department"]), state["department"])
+    counts = {kind: sum(1 for e in entries if e["kind"] == kind)
+              for kind in KIND_ORDER}
+    rules = [e for e in entries if e["kind"] == "rule"]
+    accounts = [(e, a) for e in entries for a in e.get("accounts") or []]
+    unknown = sum(len(null_paths(e)) for e in entries)
+    issues = [i for i in skeleton["issues"]]
+    reasons = []
+    for dropped in state["dropped"]:
+        word = REASON_FA.get(dropped["reason_code"])
+        if word and word not in reasons:
+            reasons.append(word)
+    out = [f"خلاصهٔ اعداد {name} — برای تأیید", "",
+           f'ثبت می‌شود: {_fa(counts["rule"])} قاعده، {_fa(counts["record"])} '
+           f'جدول، {_fa(counts["item"])} قلم، {_fa(counts["measurement"])} '
+           f'اندازه‌گیری، {_fa(counts["note"])} یادداشت.',
+           f'کنار گذاشته شد: {_fa(len(state["dropped"]))} مورد'
+           + (f' ({"، ".join(reasons[:3])})' if reasons else "")
+           + " — فهرست کامل در گزارش پایان اجرا.",
+           f'بررسی‌نشده: {_fa(len(state["undecided"]))} مورد.', ""]
+    if rules:
+        out.append("قاعده‌ها:")
+        out += [_rule_line(r) for r in rules[:3]]
+        if len(rules) > 3:
+            out.append(f"  … ({_fa(len(rules) - 3)} مورد دیگر)")
+        out.append("")
+    if accounts:
+        out.append(f"اختلاف بین دو منبع: {_fa(len(accounts) // 2)} مورد "
+                   "(در پنل هم قابل تعیین تکلیف است)")
+        for n, (entry, account) in enumerate(accounts[::2], start=1):
+            twin = next(a for a in entry["accounts"] if a is not account)
+            out.append(f'  {_fa(n)} — «{entry["title"]}»: الف) '
+                       f'{_fa(account["value"])}  ب) {_fa(twin["value"])}')
+        out.append("")
+    if issues:
+        out.append(f"ایرادهای یافته‌شده در فایل‌ها: {_fa(len(issues))} مورد — "
+                   "سه مورد مهم:")
+        out += [f'  • {i["description"]}' for i in issues[:3]]
+        out.append("")
+    out += [f"بی‌پاسخ: {_fa(unknown)} خانه — در پنل.", "", "تأیید می‌کنید؟", ""]
+    return "\n".join(out)
