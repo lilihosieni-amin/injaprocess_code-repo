@@ -252,7 +252,13 @@ export function RuleCard({ bundle, onOpen }: {
               <Mono className="text-fs-lg font-extrabold text-violet">{d.identifier}</Mono>
             </LabelRow>
           )}
-          <OriginalBlock original={d.original} ref_={d.original_ref} lang={d.lang} />
+          {/* `bundle.original` is the file's own text, read out of
+              `facts/originals/` by the route; `d.original` is the inline form a
+              delta carries before QF-31 moves it. Either is "the original", and
+              the served one wins where both somehow exist — it is the body that
+              is actually in the store. */}
+          <OriginalBlock original={bundle.original ?? d.original}
+            ref_={d.original_ref} lang={d.lang} />
         </DetailCard>
       )}
 
@@ -463,11 +469,11 @@ function OutputRow({ bundle, output, onOpen }: {
  * `rl.original*`. The note is the design's own sentence, one per `lang`.
  */
 function OriginalBlock({ original, ref_, lang }: {
-  original?: string; ref_?: string; lang?: string
+  original?: string | null; ref_?: string; lang?: string
 }) {
   const [open, setOpen] = useState(false)
   const panelId = useId()
-  if (original === undefined && ref_ === undefined) return null
+  if ((original === undefined || original === null) && ref_ === undefined) return null
   const note = lang === 'gs' ? 'original_note_gs'
     : lang === 'sheets' ? 'original_note_sheets' : 'original_note'
   return (
@@ -490,11 +496,18 @@ function OriginalBlock({ original, ref_, lang }: {
       </button>
       {open && (
         <div id={panelId} className="px-s9 pb-s6">
-          {original !== undefined && (
+          {original !== undefined && original !== null && (
+            // **Owner request, 2026-09-06:** «th box wit fix hight and
+            // scollable». Capped at `--height-popover`, this app's existing
+            // scroll cap (the dropdown's), rather than a new length: a formula
+            // file is a few dozen lines and a card that grows to fit one pushes
+            // everything the reviewer came for off the screen. `overflow-auto`
+            // and not `-y`: a long unwrapped line needs the other axis too, and
+            // `auto` draws neither bar until it is needed.
             <Mono style={PX.formula}
               className="block text-fs-sm2 leading-looser text-ink bg-surface-sub
-                         border border-border-current rounded-tile overflow-x-auto
-                         whitespace-pre-wrap">
+                         border border-border-current rounded-tile
+                         max-h-popover overflow-auto whitespace-pre-wrap">
               {original}
             </Mono>
           )}

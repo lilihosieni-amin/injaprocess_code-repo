@@ -786,7 +786,8 @@ def test_the_bundle_carries_every_map_a_screen_needs(data_root, tmp_path):
     client = _client_as(data_root, tmp_path, "editor", "*")
     body = client.get(f"/api/facts/{RULE}").json()
     assert set(body) == {"entry", "confirmation", "red_paths", "resolved",
-                         "row_titles", "path_labels", "consumers", "processes"}
+                         "row_titles", "path_labels", "consumers", "processes",
+                         "original"}
     assert body["entry"]["id"] == RULE
     assert body["confirmation"] == {
         "fingerprint": fact_fingerprint(
@@ -1232,3 +1233,77 @@ def test_reading_facts_writes_nothing_to_the_store(data_root, tmp_path):
     client.get("/api/facts/branches")
     assert {p.name: p.read_bytes()
             for p in (data_root / "facts").iterdir()} == before
+
+
+# --- «متن اصلی»: the body QF-31 moved out of the entry, served back beside it ---
+
+ORIGINAL = "=MINUS(SUM(F6,E6),G6)\n=IF(H6>0, H6*I6, 0)\n"
+
+
+def _plant_original(data_root, fid, text=ORIGINAL):
+    d = data_root / "facts" / "originals"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / f"{fid}.txt").write_text(text, encoding="utf-8")
+
+
+def _with_original_ref(fid):
+    """`ENTRIES` with `fid` carrying the store's own shape: QF-31 moves a
+    delta's verbatim `data.original` to `facts/originals/` and leaves an
+    `original_ref` behind, so this — not the inline form — is what every entry
+    in the real store looks like."""
+    out = []
+    for e in ENTRIES:
+        e = json.loads(json.dumps(e))
+        if e["id"] == fid:
+            e["data"]["original_ref"] = f"facts/originals/{fid}.txt"
+        out.append(e)
+    return out
+
+
+def test_the_bundle_carries_the_original_text_not_only_its_path(data_root, tmp_path):
+    """**Owner request, 2026-09-06:** «in section متن اصلی i want to show the
+    file data there.» The screen had only `original_ref` to draw — a path — so
+    the panel showed a reviewer the name of a file and none of its contents.
+
+    Beside the entry rather than inside it: `entry` is what QF-24 fingerprints,
+    and a body that arrives from a second file would otherwise change the print
+    of every rule in the store at once.
+    """
+    _plant(data_root, _with_original_ref(RULE))
+    _plant_original(data_root, RULE)
+    client = _client_as(data_root, tmp_path, "editor", "*")
+    body = client.get(f"/api/facts/{RULE}").json()
+    assert body["original"] == ORIGINAL
+    assert "original" not in body["entry"]
+
+
+def test_a_missing_original_file_is_an_absence_not_a_failure(data_root, tmp_path):
+    """The estate is restored from git and `facts/originals/` travels with it,
+    but a hand-edited store, a half-restored one or an `original_ref` naming a
+    file nobody wrote must not take the whole entry down with it — the reviewer
+    still needs everything else on the screen."""
+    _plant(data_root, _with_original_ref(RULE))          # no file planted
+    client = _client_as(data_root, tmp_path, "editor", "*")
+    body = client.get(f"/api/facts/{RULE}").json()
+    assert body["original"] is None
+    assert body["entry"]["id"] == RULE                   # the rest still serves
+
+
+def test_an_original_ref_outside_the_store_is_refused(data_root, tmp_path):
+    """`original_ref` is a stored string, and a stored string that has been
+    tampered with is still untrusted input the moment it becomes a path. Only
+    `facts/originals/` is readable through this — the same containment
+    `download_source` applies to its three roots."""
+    entries = json.loads(json.dumps(ENTRIES))
+    for e in entries:
+        if e["id"] == RULE:
+            e["data"]["original_ref"] = "../../../etc/passwd"
+    _plant(data_root, entries)
+    client = _client_as(data_root, tmp_path, "editor", "*")
+    assert client.get(f"/api/facts/{RULE}").json()["original"] is None
+
+
+def test_an_entry_with_no_original_says_so(data_root, tmp_path):
+    _plant(data_root)
+    client = _client_as(data_root, tmp_path, "editor", "*")
+    assert client.get(f"/api/facts/{RULE}").json()["original"] is None

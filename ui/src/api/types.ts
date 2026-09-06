@@ -497,4 +497,15 @@ export interface FactBundle {
   path_labels: Record<string, string | Restricted>
   consumers: FactConsumer[]
   processes: FactProcessLink[]
+  /**
+   * «متن اصلی» — the verbatim body `data.original_ref` names, read out of
+   * `facts/originals/` by the route (QF-31 moves it there, so an entry carries
+   * the path and never the text).
+   *
+   * Beside the entry and not inside it: `entry` is what QF-24 fingerprints, and
+   * a field arriving from a second file would change the print of every rule in
+   * the store at once. `null` for an entry with no original, and for a `ref`
+   * that names no readable file — the screen draws the path either way.
+   */
+  original: string | null
 }

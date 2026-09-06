@@ -143,6 +143,44 @@ describe('the rule card', () => {
     expect(screen.getByText('facts/originals/F-00030.txt')).toBeInTheDocument()
   })
 
+  it('shows the served file’s text, in a box that scrolls rather than grows', async () => {
+    // **Owner request, 2026-09-06:** «in section متن اصلی i want to show the
+    // file data there. th box wit fix hight and scollable».
+    //
+    // Until the route served it there was nothing to show: QF-31 moves a
+    // delta's verbatim `data.original` into `facts/originals/` and leaves an
+    // `original_ref` behind, so every entry in a real store carries the path
+    // and none carries the text. The panel drew the path — the name of a file
+    // and none of its contents.
+    const user = userEvent.setup()
+    const text = '=MINUS(SUM(F6,E6),G6)\n=IF(H6>0, H6*I6, 0)'
+    const { container } = render(
+      <RuleCard bundle={{ ...FORMULA, original: text }} onOpen={vi.fn()} />)
+    await user.click(screen.getByRole('button', { name: 'متن اصلی' }))
+
+    // A cap and a scroller, not a card that grows to whatever the file is —
+    // `--height-popover` is this app's existing scroll cap. Queried by that
+    // class rather than a `data-testid`, because the box is a `Mono` and
+    // widening its props to carry one would be production API for a test.
+    const box = container.querySelector('.max-h-popover')
+    expect(box).toHaveTextContent('=MINUS(SUM(F6,E6),G6)')
+    expect(box!.className).toContain('overflow-auto')
+    // The path stays under it: the text answers "what does it say", the path
+    // answers "which file", and the reviewer is owed both.
+    expect(screen.getByText('facts/originals/F-00030.txt')).toBeInTheDocument()
+  })
+
+  it('draws the path alone when the file behind it could not be read', async () => {
+    // `original: null` is an entry with no original AND an `original_ref` that
+    // names nothing readable — the route does not distinguish them, and neither
+    // does this. What must not happen is an empty box implying an empty file.
+    const user = userEvent.setup()
+    const { container } = render(<RuleCard bundle={FORMULA} onOpen={vi.fn()} />)
+    await user.click(screen.getByRole('button', { name: 'متن اصلی' }))
+    expect(container.querySelector('.max-h-popover')).toBeNull()
+    expect(screen.getByText('facts/originals/F-00030.txt')).toBeInTheDocument()
+  })
+
   it('draws the inputs and outputs from the served titles, with their unit titles', () => {
     render(<RuleCard bundle={FORMULA} onOpen={vi.fn()} />)
     expect(screen.getByText('چه چیزهایی لازم دارد')).toBeInTheDocument()
