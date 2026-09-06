@@ -10,8 +10,13 @@ must come out as a **parameter**, so one concept is one entry with many
 bindings (QF-47) instead of one entry per cell.
 """
 import collections
+import hashlib
 import math
+import pathlib
 import re
+
+from dump_workbook import is_ids_tab, is_mirror_tab
+from engine_common import read_json
 
 Shape = collections.namedtuple("Shape", "text params functions refs")
 
@@ -204,3 +209,428 @@ def normalise(formula, *, table_refs):
         return symbol
 
     return Shape(_SLOT.sub(mint, text), params, functions, refs)
+
+
+# --------------------------------------------------------------------------
+# the candidates: record templates, their reference rows, and the items
+
+_CODE_IN_TEXT = re.compile(r"#{1,2}[0-9]+")
+_PLACEHOLDER = re.compile(r"^Column [0-9]+$")
+_MONTHS = ("فروردین", "اردیبهشت", "خرداد", "تیر", "مرداد", "شهریور",
+           "مهر", "آبان", "آذر", "دی", "بهمن", "اسفند")
+_BRANCH_TOKENS = ("چاله باغ", "ناهارخوران", "ناهار خوران",
+                  "chalebagh", "chale bagh", "naharkhoran", "nahar khoran")
+# `formulas.tsv`'s columns, in the order `dump_workbook._formula_rows` writes
+# them — `_tsv` hands a row back as a dict, and `is_mirror_tab` reads the list.
+_FORMULA_COLUMNS = ("sheet", "range", "group", "formula", "count", "cached",
+                    "error")
+
+# §2.3: these six describe a tab that becomes no record or a cell that becomes
+# no rule, so they are reported and counted but never attached to an entry.
+RUN_ONLY = frozenset({"reference_tab_is_mirror", "reference_tab_is_ids",
+                      "reference_tab_computes", "row_labels_ambiguous",
+                      "row_labels_partial", "unheaded_formula"})
+
+# One Persian sentence per issue kind — `gate-b.md` and `report.md` print these
+# verbatim, so no caller ever composes owner-facing prose (QF-54).
+ISSUE_TEXT = {
+    "column_offset": "ستون «{field}» در نسخه‌های مختلف در جای یکسانی نیست: {detail}.",
+    "cross_record": "فهرست مقادیر مجاز ستون «{field}» بین نسخه‌ها یکی نیست: {detail}.",
+    "ambiguous_row_header": "عنوان «{field}» در تب «{sheet}» دوبار تکرار شده و "
+                            "سطرها به آن وصل نشدند.",
+    "row_labels_partial": "نام سطرها فقط در بعضی نسخه‌ها ثبت شده است: {detail}.",
+    "row_labels_ambiguous": "ستون نام سطرها در نسخه‌ها یکسان نیست: {detail}.",
+}
+
+
+def _issue(kind, *, instance=None, target=None, **fields):
+    return {"kind": kind, "instance": instance, "target": target,
+            "engine": True, "run_only": kind in RUN_ONLY,
+            "description": ISSUE_TEXT[kind].format(**fields)}
+
+
+def _sid(prefix, *parts):
+    body = "\x00".join(str(p) for p in parts)
+    return f"S-{prefix}-{hashlib.sha256(body.encode('utf-8')).hexdigest()[:12]}"
+
+
+def _letters(n):
+    """1 → `a`, 27 → `aa`. A field key is `c_<letter>`, always lowercase."""
+    out = ""
+    while n:
+        n, rem = divmod(n - 1, 26)
+        out = chr(97 + rem) + out
+    return out
+
+
+def fold(text):
+    return _WS.sub(" ", (text or "").replace("\n", " ")).strip()
+
+
+def strip_branch(name):
+    """The tab name with a branch token removed — «کانتر ناهارخوران» in one book
+    and «کانتر» in another are the same tab (QF-47). ZWNJ folds to a space so
+    «چاله‌باغ» and «چاله باغ» are one token."""
+    folded = fold(name.replace("‌", " ")).lower()
+    for token in _BRANCH_TOKENS:
+        folded = folded.replace(token, " ")
+    return _WS.sub(" ", folded).strip()
+
+
+def code_key(code):
+    """`##1` → `ing_1`, `#71` → `food_71`. A store key is ASCII and matches
+    `SEGMENT_RE`; `#` does not (QF-32), so the code itself lives in
+    `item.data.code` and this is what a row is keyed by."""
+    return (f"ing_{code[2:]}" if code.startswith("##") else f"food_{code[1:]}")
+
+
+def _is_number(text):
+    try:
+        float(str(text).replace(",", ""))
+        return True
+    except (TypeError, ValueError):
+        return False
+
+
+def _tsv(path):
+    """A dump TSV as dicts. Nothing is unescaped — `formulas.tsv` keeps the
+    `\\n` the dumper wrote, and `normalise` step (a) is what consumes it. A
+    short line simply lacks its trailing columns, which is the same as a blank:
+    an omission, never an unanswered leaf."""
+    if not path.exists():
+        return []
+    lines = path.read_text(encoding="utf-8").splitlines()
+    if not lines:
+        return []
+    header = lines[0].split("\t")
+    return [dict(zip(header, line.split("\t"))) for line in lines[1:] if line]
+
+
+def load_estate(root):
+    """Every dumped workbook the manifest names, keyed by spreadsheetId.
+
+    The whole estate is loaded because the library and the import hops are
+    estate-wide; the department filter lives at the call site, so `build` never
+    forgets that candidates are the department's own (§2.3)."""
+    sheets_root = pathlib.Path(root) / "attachments" / "sheets"
+    estate = {}
+    for row in read_json(sheets_root / "manifest.json")["workbooks"]:
+        dump = sheets_root / ".dump" / row["spreadsheetId"]
+        if not (dump / "sheets.json").exists():
+            continue
+        estate[row["spreadsheetId"]] = {
+            "row": row, "short": row["short"], "sheets_root": sheets_root,
+            "sheets": {s["name"]: s
+                       for s in read_json(dump / "sheets.json")["sheets"]},
+            "formulas": _tsv(dump / "formulas.tsv"),
+            "rows": _tsv(dump / "rows.tsv"),
+            "names": {n["name"]: n["formula"] for n in _tsv(dump / "names.tsv")},
+            "validations": _tsv(dump / "validations.tsv")}
+    return estate
+
+
+def template_signature(tab_name, head_row):
+    """(folded tab name, the header row's item codes in order). An empty cell,
+    a `Column N` placeholder and an un-coded column contribute nothing."""
+    codes = []
+    for cell in head_row or []:
+        text = fold(cell)
+        if text and not _PLACEHOLDER.match(text):
+            codes += _CODE_IN_TEXT.findall(text)
+    return (strip_branch(tab_name), tuple(codes))
+
+
+def _label_column(sheet):
+    """The column `row_labels` came from. The dumper records the texts but not
+    the column; since Task 4 the head reaches four rows past the header, so the
+    first label is findable in it."""
+    labels = sheet.get("row_labels") or {}
+    head = sheet.get("head") or []
+    for row in sorted(labels, key=int):
+        line = head[int(row) - 1] if int(row) <= len(head) else []
+        for col, cell in enumerate(line, start=1):
+            if fold(cell) == fold(labels[row]):
+                return col
+    return None
+
+
+def header_notes(sheet):
+    """The rows above the header row, as the unit sees them.
+
+    A caption over a column that *has* a header names that column («تمام وزن‌ها
+    به کیلوگرم است»); a caption over a column with none is the date band, and
+    the numbers and month names under it are last night's date.
+
+    ponytail: §2.3 words the third test as an exclusion, which taken literally
+    drops the very sentence the same clause promises to keep. It is read here
+    as the keeping test. Flip it if a real note ever sits over an unheaded
+    column.
+    """
+    index = sheet.get("header_row")
+    head = sheet.get("head") or []
+    if not index:
+        return []
+    header = head[index - 1]
+    notes = []
+    for line in head[:index - 1]:
+        for col, cell in enumerate(line, start=1):
+            text = fold(cell)
+            if not text or _is_number(text) or text in _MONTHS:
+                continue
+            if col > len(header) or not fold(header[col - 1]):
+                continue
+            notes.append({"column": _letters(col), "text": text})
+    return notes
+
+
+def _sheet_formulas(dump, name):
+    return [f for f in dump["formulas"] if f.get("sheet") == name]
+
+
+def _is_mirror(formula_rows):
+    """`dump_workbook.is_mirror_tab` reads `_formula_rows`' positional row,
+    while `_tsv` hands the same seven columns back as a dict — so the row is
+    rebuilt by column name, never by whatever order a dump's header carries."""
+    return is_mirror_tab([[row.get(c, "") for c in _FORMULA_COLUMNS]
+                          for row in formula_rows])
+
+
+def _instances(estate, department):
+    """One member per (spreadsheetId, tab) that can carry a record. A one-cell
+    tab, a tab with no header row, a tab with no row below it, a mirror tab and
+    an ids tab produce none (§2.3)."""
+    out = []
+    for sid, dump in sorted(estate.items()):
+        row = dump["row"]
+        if department not in (row.get("departments") or []):
+            continue
+        for name, sheet in sorted(dump["sheets"].items()):
+            index = sheet.get("header_row")
+            if (sheet.get("empty") or not index or is_ids_tab(name)
+                    or _is_mirror(_sheet_formulas(dump, name))
+                    or (sheet.get("rows", 0) <= 1 and sheet.get("cols", 0) <= 1)
+                    or sheet.get("rows", 0) <= index):
+                continue
+            branches = row.get("branches") or []
+            out.append({
+                "key": f"{dump['short']}__s{sheet['sheetId']}",
+                "spreadsheetId": sid, "sheetId": sheet["sheetId"], "sheet": name,
+                "branch": branches[0] if len(branches) == 1 else None,
+                "hidden": bool(sheet.get("hidden")),
+                "reference": name in (row.get("reference_tabs") or []),
+                "signature": template_signature(
+                    name, sheet["head"][index - 1])})
+    return sorted(out, key=lambda i: i["key"])
+
+
+def _groups(instances):
+    """Tabs group into one template when the folded names are equal and the code
+    lists are equal or one is a NON-EMPTY subset of the other; two tabs in one
+    spreadsheet never group, and a reference tab is always alone (§2.3).
+
+    ponytail: a candidate is compared against the group's first member only.
+    Instances are visited in ascending key, so the result is deterministic; a
+    transitive-closure pass is the upgrade if a third code list ever needs it.
+    """
+    groups = []
+    for inst in instances:
+        name, codes = inst["signature"]
+        for group in groups:
+            head = group[0]
+            if (head["signature"][0] != name or head["reference"]
+                    or inst["reference"]):
+                continue
+            if any(g["spreadsheetId"] == inst["spreadsheetId"] for g in group):
+                continue
+            a, b = set(codes), set(head["signature"][1])
+            if a == b or (a and b and (a < b or b < a)):
+                group.append(inst)
+                break
+        else:
+            groups.append([inst])
+    return groups
+
+
+def _enum(dump, sheet_name, letter):
+    for v in dump["validations"]:
+        if v.get("sheet") != sheet_name or v.get("type") != "list":
+            continue
+        if v.get("range", "").split(":")[0].strip("$").rstrip("0123456789").lower() \
+                != letter:
+            continue
+        return [p.strip() for p in v.get("values", "").strip('"').split(",") if p]
+    return None
+
+
+def _fields(group, estate):
+    """One field per header cell, matched across instances by header **text** —
+    the same column sits at different letters in two books (kanter and its twin
+    are two apart), and `columns` is what records that."""
+    fields, order, issues = {}, [], []
+    for inst in group:
+        dump = estate[inst["spreadsheetId"]]
+        sheet = dump["sheets"][inst["sheet"]]
+        header = sheet["head"][sheet["header_row"] - 1]
+        label_col = _label_column(sheet)
+        for col, cell in enumerate(header, start=1):
+            title = fold(cell)
+            if _PLACEHOLDER.match(title) or (not title and col != label_col):
+                continue
+            letter = _letters(col)
+            if title not in fields:
+                fields[title] = {"key": f"c_{letter}", "title": title or None,
+                                 "columns": {}, "type": "string"}
+                order.append(title)
+            fields[title]["columns"][inst["key"]] = letter
+            samples = [row[col - 1] for row in sheet["head"][sheet["header_row"]:]
+                       if col <= len(row) and str(row[col - 1]).strip()]
+            if samples and all(_is_number(s) for s in samples):
+                fields[title]["type"] = "number"
+            values = _enum(dump, inst["sheet"], letter)
+            if values is not None:
+                seen = fields[title].setdefault("_enums", [])
+                seen.append((inst["key"], values))
+    out = []
+    for title in order:
+        field = fields[title]
+        enums = field.pop("_enums", [])
+        if enums:
+            keep = [v for v in enums[0][1] if all(v in e for _, e in enums)]
+            field["constraints"] = {"enum": keep}
+            if any(e != enums[0][1] for _, e in enums):
+                issues.append(_issue("cross_record", field=title or "—",
+                                     detail=" / ".join(k for k, _ in enums)))
+        letters = sorted(set(field["columns"].values()))
+        if len(letters) > 1:
+            detail = ", ".join(f"{k}: {v}"
+                               for k, v in sorted(field["columns"].items()))
+            issues.append(_issue("column_offset", field=title or "—",
+                                 detail=detail))
+        out.append(field)
+    return out, issues
+
+
+def _row_labels(group, estate):
+    """Row labels are the template's only when every instance has them and every
+    instance's label column carries the same header text (§2.3)."""
+    labels, headers, missing = {}, set(), []
+    for inst in group:
+        sheet = estate[inst["spreadsheetId"]]["sheets"][inst["sheet"]]
+        col = _label_column(sheet)
+        if not sheet.get("row_labels") or not col:
+            missing.append(inst["key"])
+            continue
+        labels[inst["key"]] = sheet["row_labels"]
+        headers.add(fold(sheet["head"][sheet["header_row"] - 1][col - 1]))
+    detail = ", ".join(i["key"] for i in group)
+    if missing and labels:
+        return None, [_issue("row_labels_partial", detail=detail)]
+    if len(headers) > 1:
+        return None, [_issue("row_labels_ambiguous", detail=detail)]
+    return (labels or None), []
+
+
+def reference_rows(dump, sheet_name, header_row, fields):
+    """A reference tab's `rows.tsv` lines, matched to fields by header text.
+    `primaryKey` is the column whose cells carry an item code; a cell the dump
+    left empty is omitted, so a blank is never an unanswered leaf (QF-46)."""
+    titles = [fold(c) for c in header_row if fold(c)]
+    issues = [_issue("ambiguous_row_header", sheet=sheet_name, field=t)
+              for t in sorted({t for t in titles if titles.count(t) > 1})]
+    by_title = {f["title"]: f["key"] for f in fields if f["title"]}
+    lines = [r for r in dump["rows"] if r.get("sheet") == sheet_name]
+    key_title = next((t for t in titles if t in by_title
+                      and any(_CODE_IN_TEXT.search(line.get(t, "") or "")
+                              for line in lines)), None)
+    rows = []
+    for line in lines:
+        code = (_CODE_IN_TEXT.search(line.get(key_title, "") or "")
+                if key_title else None)
+        if not code:
+            continue
+        row = {"key": code_key(code.group(0))}
+        for title, value in line.items():
+            if title in by_title and str(value).strip():
+                row[by_title[title]] = value
+        rows.append(row)
+    return rows, ([by_title[key_title]] if key_title else []), issues
+
+
+def record_templates(estate, department):
+    """The record-template candidates, their instances and the issues the
+    grouping found. `payload` is exactly the mechanical `data` subset §2.5
+    leaves to the engine; `render` is what only `input.md` needs."""
+    candidates, instances, issues = [], [], []
+    for group in _groups(_instances(estate, department)):
+        head_inst = group[0]
+        dump = estate[head_inst["spreadsheetId"]]
+        sheet = dump["sheets"][head_inst["sheet"]]
+        header = sheet["head"][sheet["header_row"] - 1]
+        fields, field_issues = _fields(group, estate)
+        labels, label_issues = _row_labels(group, estate)
+        tid = _sid("rec", head_inst["signature"][0],
+                   *head_inst["signature"][1], head_inst["key"])
+        row = dump["row"]
+        payload = {
+            "medium": "sheet",
+            "location": {"path": f"attachments/sheets/{row['dir']}/{row['file']}",
+                         "spreadsheetId": head_inst["spreadsheetId"],
+                         "sheet": head_inst["sheet"]},
+            "instances": [{k: i[k] for k in
+                           ("key", "spreadsheetId", "sheetId", "sheet",
+                            "branch", "hidden")} for i in group],
+            "fields": fields}
+        if head_inst["reference"]:
+            rows, primary, row_issues = reference_rows(
+                dump, head_inst["sheet"], header, fields)
+            payload["rows"], payload["primaryKey"] = rows, primary
+            issues += row_issues
+        candidates.append({"id": tid, "kind": "record", "unit": None,
+                           "payload": payload,
+                           "render": {"sheet": head_inst["sheet"],
+                                      "signature": list(head_inst["signature"]),
+                                      "header_notes": header_notes(sheet),
+                                      "row_labels": labels,
+                                      "reference": head_inst["reference"]}})
+        issues += field_issues + label_issues
+        for inst in group:
+            instances.append(dict(inst, template=tid))
+    return candidates, instances, issues
+
+
+def item_candidates(estate, department, instances):
+    """One per distinct code across the department's header rows, its row labels
+    and its reference rows' key column. Labels are ordered by how many instances
+    carry each, so the unit's first choice is the estate's."""
+    seen = collections.defaultdict(lambda: (collections.Counter(), []))
+    for inst in instances:
+        dump = estate[inst["spreadsheetId"]]
+        sheet = dump["sheets"][inst["sheet"]]
+        header = sheet["head"][sheet["header_row"] - 1]
+        cells = [(_letters(col), fold(cell))
+                 for col, cell in enumerate(header, start=1)]
+        label_col = _label_column(sheet)
+        cells += [(_letters(label_col), fold(text))
+                  for text in (sheet.get("row_labels") or {}).values()
+                  if label_col]
+        cells += [(None, fold(str(v))) for line in dump["rows"]
+                  if line.get("sheet") == inst["sheet"] for v in line.values()]
+        for letter, text in cells:
+            for code in _CODE_IN_TEXT.findall(text):
+                labels, sites = seen[code]
+                labels[fold(text.replace(code, ""))] += 1
+                if letter and (inst["key"], letter) not in sites:
+                    sites.append((inst["key"], letter))
+    out = []
+    for code in sorted(seen, key=lambda c: (len(c) - len(c.lstrip("#")),
+                                            int(c.lstrip("#")))):
+        labels, sites = seen[code]
+        marker = "##" if code.startswith("##") else "#"
+        out.append({"id": _sid("i", "item", marker, code.lstrip("#")),
+                    "kind": "item", "unit": None,
+                    "payload": {"code": code},
+                    "render": {"labels": [t for t, _ in
+                                          sorted(labels.items(),
+                                                 key=lambda p: (-p[1], p[0])) if t],
+                               "sites": sites}})
+    return out
