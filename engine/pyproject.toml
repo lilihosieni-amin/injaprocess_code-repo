@@ -17,6 +17,7 @@ vertex = ["google-genai~=2.19", "google-cloud-storage~=2.18"]
 allocate-id = "allocate_id.cli:main"
 dump-workbook = "dump_workbook.cli:main"
 extract-attachment = "extract_attachment.cli:main"
+facts-plan = "facts_plan.cli:main"
 layout = "layout.cli:main"
 merge = "merge.cli:main"
 order = "order.cli:main"
@@ -24,4 +25,4 @@ transcribe = "transcribe.cli:main"
 validate = "validate.cli:main"
 
 [tool.setuptools.packages.find]
-include = ["engine_common*", "allocate_id*", "dump_workbook*", "extract_attachment*", "layout*", "merge*", "merge_facts*", "order*", "transcribe*", "validate*"]
+include = ["engine_common*", "allocate_id*", "dump_workbook*", "extract_attachment*", "facts_plan*", "layout*", "merge*", "merge_facts*", "order*", "transcribe*", "validate*"]
