@@ -10,6 +10,7 @@ import pytest
 from facts_plan.build import (
     called_names,
     load_estate,
+    normalise,
     record_templates,
     rule_columns,
     script_rules,
@@ -137,6 +138,23 @@ def test_table_reading_variants_group_by_their_called_functions(built):
         "CONVERT_GR_TO_KG", "getTotalFoodsIngredient"]
     assert len(actual["payload"]["applies_to"]) == 4
     assert "hand_maintained_index" in _kinds(issues)
+
+
+def test_a_function_that_reads_its_table_through_a_helper_folds_too(built):
+    """The estate's real shape: `getTotalFoodsIngredient` reads no range itself,
+    it calls `getIngredientValue`, which does. Read only its own body and the
+    «مصرف واقعی» column keeps one variant per inlined food-id set."""
+    estate, _, _, candidates, _ = built
+    readers = table_reading_functions(estate)
+    assert "getIngredientValue" in readers        # reads the range itself
+    assert "getTotalFoodsIngredient" in readers   # only through its callee
+    assert "getWeekDayCoefficient" not in readers
+    shapes = {normalise(f["formula"], table_refs={}).text
+              for f in estate["SPCH"]["formulas"] if f["range"].startswith("G")}
+    assert len(shapes) == 2                       # one row inlines a scalar
+    actual = _by_output(candidates, "مصرف واقعی")
+    assert len(actual["render"]["variants"]) == 1
+    assert {b["variant"] for b in actual["payload"]["applies_to"]} == {"v1"}
 
 
 def test_original_is_one_body_headed_by_each_variant_key(built):

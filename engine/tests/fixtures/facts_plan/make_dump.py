@@ -38,9 +38,10 @@ PITZA_HEAD = [
 ]
 PITZA_LABELS = {"6": "پنیر پیتزا ##1", "7": "خمیر پیتزا ##26", "8": "سس گوجه ##33"}
 ACTUAL_USE = (
-    r'LET(\ningredientId, {id},\namFoodIds, {{71, 309}},\namTotal, '
+    r'LET(\ningredientId, {id},\namFoodIds, {foods},\namTotal, '
     r'getTotalFoodsIngredient(amFoodIds,ingredientId,SalesData,'
     r'"Table_Ingredients_Pizza",Refresher),\nCONVERT_GR_TO_KG(amTotal)\n)')
+FOODS = "{71, 309}"
 TOLERANCE_PER_FOOD = (
     r"LET(\ntolerancePerFoodGr, 5,\ntelorancKg, CONVERT_GR_TO_KG(IN * "
     r"tolerancePerFoodGr),\nMINUS(HN , telorancKg)\n)")
@@ -55,11 +56,17 @@ MIRROR = (r'LET(\nsheetName, "مواد",\ndataRange,"A:D",'
           r'\nIMPORT_FROM_SHEET(SheetsFileId_Bom,sheetName,dataRange)\n)')
 
 SCRIPT = """\
-function getTotalFoodsIngredient(foodIds, ingredientId, salesData, namedRange) {
+function getIngredientValue(foodId, ingredientId, namedRange) {
   var table = SpreadsheetApp.getActiveSpreadsheet()
       .getRangeByName(namedRange).getValues();
+  return table[foodId][ingredientId];
+}
+
+function getTotalFoodsIngredient(foodIds, ingredientId, salesData, namedRange) {
   var total = 0;
-  for (var i = 0; i < foodIds.length; i++) { total = total + table[i][1]; }
+  for (var i = 0; i < foodIds.length; i++) {
+    total = total + getIngredientValue(foodIds[i], ingredientId, namedRange);
+  }
   return total;
 }
 
@@ -124,9 +131,9 @@ FORMULAS = {
         ["پیتزا", "C4", "", r"'تاریخ'!DN", 1, "مرداد", ""],
         ["پیتزا", "E6", "", REBOUND_LET, 1, "0", ""],
         ["پیتزا", "F6:F8", "1", "MINUS(DN,EN)", 3, "0.05", ""],
-        ["پیتزا", "G6", "", ACTUAL_USE.format(id=1), 1, "52.93", ""],
-        ["پیتزا", "G7", "", ACTUAL_USE.format(id=26), 1, "4.175", ""],
-        ["پیتزا", "G8", "", ACTUAL_USE.format(id=33), 1, "8.72", ""],
+        ["پیتزا", "G6", "", ACTUAL_USE.format(id=1, foods=FOODS), 1, "52.93", ""],
+        ["پیتزا", "G7", "", ACTUAL_USE.format(id=26, foods=FOODS), 1, "4.175", ""],
+        ["پیتزا", "G8", "", ACTUAL_USE.format(id=33, foods="71"), 1, "8.72", ""],
         ["پیتزا", "H6:H8", "2", "MINUS(GN,FN)", 3, "52.88", ""],
         ["پیتزا", "J6", "", TOLERANCE_PER_FOOD, 1, "51.305", ""],
         ["پیتزا", "J7", "", TOLERANCE_PER_KG, 1, "3.588", ""],
@@ -135,7 +142,7 @@ FORMULAS = {
     ],
     "SPNK": [
         ["پیتزا", "F6:F8", "1", "MINUS(DN,EN)", 3, "0.04", ""],
-        ["پیتزا", "G6", "", ACTUAL_USE.format(id=1), 1, "40.1", ""],
+        ["پیتزا", "G6", "", ACTUAL_USE.format(id=1, foods=FOODS), 1, "40.1", ""],
         ["پیتزا", "H6:H8", "2", "MINUS(GN,FN)", 3, "39.9", ""],
         ["پیتزا", "J6", "", TOLERANCE_PER_FOOD, 1, "38.0", ""],
         ["پیتزا", "J7:J8", "3", "ROUND(DIVIDE(HN,IN),3)", 2, "#NUM!", "#NUM!"],

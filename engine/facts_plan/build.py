@@ -692,12 +692,29 @@ def _bodies(estate):
     return out
 
 
+def _calls(body):
+    """The names a body calls. A `function name(` header is a declaration, not
+    a call — left in, every script function would call itself."""
+    return {m.group(1)
+            for m in _FUNC.finditer(_GS_FUNCTION.sub("", body, count=1))}
+
+
 def table_reading_functions(estate):
-    """The functions whose body reads a table or a sheet range. §2.3 groups the
-    variants of a column that calls one by the *set of called functions*, not by
-    shape: their inlined food-id sets vary per row and are not parameters."""
-    return frozenset(name for name, body in _bodies(estate).items()
-                     if _TABLE_READER.search(body))
+    """The functions that read a table or a sheet range — their own body does,
+    or something they call does. §2.3 groups the variants of a column that
+    calls one by the *set of called functions*, not by shape: their inlined
+    food-id sets vary per row and are not parameters. The estate reads its
+    tables one hop away (`getTotalFoodsIngredient` → `getIngredientValue` →
+    `getRangeByName`), so the relation has to be the closure or the sentence
+    catches almost nothing."""
+    bodies = _bodies(estate)
+    calls = {name: _calls(body) for name, body in bodies.items()}
+    readers = {n for n, b in bodies.items() if _TABLE_READER.search(b)}
+    while True:
+        grown = readers | {n for n, c in calls.items() if c & readers}
+        if grown == readers:
+            return frozenset(readers)
+        readers = grown
 
 
 def called_names(estate):
@@ -712,10 +729,7 @@ def called_names(estate):
             except ValueError:      # a LET binding one name twice — read raw
                 called |= {m.group(1) for m in _FUNC.finditer(text)} - {"LET"}
     for body in _bodies(estate).values():
-        # The `function name(` header is a declaration, not a call — left in,
-        # every script function would call itself and none would be a rule.
-        called |= {m.group(1) for m in
-                   _FUNC.finditer(_GS_FUNCTION.sub("", body, count=1))}
+        called |= _calls(body)
     return frozenset(called)
 
 
