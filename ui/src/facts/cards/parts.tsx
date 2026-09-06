@@ -412,8 +412,7 @@ export interface GridCell {
  * over `--line-row` — and nothing else in the app draws it.
  */
 export function FactGrid({
-  label: name, tracks, head, rows, headFill = 'bg-tile-v4', rowClassName = '',
-  align = 'start',
+  label: name, tracks, head, rows, headFill = 'bg-tile-v4', align = 'start',
 }: {
   label: string
   tracks: CSSProperties
@@ -421,7 +420,6 @@ export function FactGrid({
   rows: { key: string; cells: GridCell[] }[]
   /** :1660 — the edge-cases head is `--surface-sub`, not `--tile-v4`. */
   headFill?: string
-  rowClassName?: string
   /**
    * Where a head and its cells sit in their track.
    *
@@ -470,7 +468,18 @@ export function FactGrid({
         </div>
         {rows.map((row) => (
           <div key={row.key} role="row" style={tracks}
-            className={`grid min-w-full ${rowClassName}`}>
+            // **No caller-supplied class, and `align-items` is why.** The
+            // columns table used to pass the design's own `items-start`
+            // (:1378), which is harmless while the RULE is on the row — a row
+            // has one height — and ruinous now that it is on the cells: each
+            // cell becomes its own content's height and the rule lands at four
+            // different heights down one row. That was the owner's «the
+            // table's lines aren't aligned», 2026-09-06. Stretched cells are
+            // also visually identical here, because a cell's block content
+            // starts at the top either way. The prop is deleted rather than
+            // documented, so the hazard cannot be reintroduced one call site
+            // at a time.
+            className="grid min-w-full">
             {row.cells.map((cell, i) => (
               <div key={i} role="cell" title={cell.title} style={PX.cell}
                 className={`min-w-0 overflow-hidden border-b border-line-row

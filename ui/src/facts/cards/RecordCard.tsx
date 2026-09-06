@@ -273,7 +273,6 @@ function ColumnsTable({ bundle, data, onOpen }: {
           label(PAYLOAD_FIELD_LABELS, 'unit'),
           label(PAYLOAD_FIELD_LABELS, 'key'),
         ]}
-        rowClassName="items-start"
         rows={fields.map((f) => {
           const derived = refTitle(bundle, f.derived)
           const notes = columnNotes(f)
