@@ -28,6 +28,9 @@
         "departments": { "type": "array", "items": { "type": "string", "pattern": "^[a-z]+$" } },
         "branches": { "type": "array", "items": { "type": "string", "pattern": "^[a-z]+$" } },
         "reference_tabs": { "type": "array", "items": { "type": "string" } },
+        "unresolved": { "type": "array",
+          "items": { "enum": ["departments", "branches", "reference_tabs"] } },
+        "twin_of": { "type": "string", "pattern": "^[a-z][a-z0-9]*(_[a-z0-9]+)*$" },
         "confirmed": { "type": "boolean" } } }
   }
 }

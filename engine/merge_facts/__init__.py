@@ -18,6 +18,11 @@ SEGMENT_RE = re.compile(r"^[a-z][a-z0-9]*(_[a-z0-9]+)*$")
 KEY_RE = re.compile(r"^[a-z][a-z0-9]*(_[a-z0-9]+)*(__[a-z][a-z0-9]*(_[a-z0-9]+)*)*$")
 PROC_ID_RE = re.compile(r"^[a-z]+-[0-9]{3}$")
 
+# QF-45: the store's version marker. Bumped to 2 with the v3 payload contract
+# (design §3.3); `save_store` validates against `facts.schema.json`, which pins
+# the same number, so the two can never drift apart silently.
+STORE_SCHEMA_VERSION = 2
+
 def facts_dir(root):
     return pathlib.Path(root) / "facts"
 
@@ -26,7 +31,7 @@ def load_store(root):
     for kind, name in KIND_FILES.items():
         p = facts_dir(root) / name
         out[kind] = (read_json(p) if p.exists()
-                     else {"schema_version": 1, "entries": []})
+                     else {"schema_version": STORE_SCHEMA_VERSION, "entries": []})
     return out
 
 def canonical_scope(scope):
@@ -234,7 +239,7 @@ def build_index(store):
                          "valid_to": e.get("valid_to"),
                          "stub": bool((e.get("data") or {}).get("stub")),
                          "updated_at": e["updated_at"]})
-    return {"schema_version": 1, "entries": rows}
+    return {"schema_version": STORE_SCHEMA_VERSION, "entries": rows}
 
 def save_store(root, store):
     for kind, name in KIND_FILES.items():

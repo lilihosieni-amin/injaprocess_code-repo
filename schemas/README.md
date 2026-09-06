@@ -18,6 +18,7 @@ these); kept in `code-repo` so runtime (INV-2) cannot weaken validation.
 | `consolidation.schema.json` | consolidation review suggestions (design §4.3) | consolidate agent | process-voice Stage 10 |
 | `facts.schema.json` | the facts store — envelope + five kinds (quantitative-facts design §6/§7) | merge facts | ui-backend, UI, later runs |
 | `facts-delta.schema.json` | agent-proposed changes to the facts store (design §4) | facts extract agent | merge facts |
+| `facts-unit.schema.json` | one unit's decisions over its candidates (v3 design §2.5) | quantify agent (unit/review mode) | `validate facts-unit`, `facts-plan assemble` |
 | `facts-index.schema.json` | flattened, filterable rows over the facts store (design §7) | merge facts | ui-backend, UI |
 | `facts-idseq.schema.json` | facts id sequence counter state | allocate-id | allocate-id |
 | `facts-run-meta.schema.json` | per-run metadata for a facts pipeline/chat/UI run (design §4) | process-facts | audit |
@@ -40,13 +41,22 @@ ISO-8601 UTC, Latin digits, as everywhere else in the system.
 
 **`schema_version` migration (QF-45).** `facts.schema.json`,
 `facts-delta.schema.json`, `facts-index.schema.json` and `manifest.schema.json`
-each carry a top-level `schema_version` (currently `1`, `const` in the
-schema). A reader refuses a file whose `schema_version` is higher than the
-one it knows; it is never silently upgraded. Bumping the constant is only
-done alongside an append-only migration note added here:
+each carry a top-level `schema_version` (`const` in the schema — `2` on the
+first three, `1` on `manifest.schema.json`). A reader refuses a file whose
+`schema_version` is higher than the one it knows; it is never silently
+upgraded. Bumping the constant is only done alongside an append-only
+migration note added here:
 
 - **v1** (2026-08-30, Task 1 of quantitative-facts) — initial version:
   envelope + five kinds (`item`, `record`, `measurement`, `rule`, `note`).
+- **v2** (2026-09-06, v3 design §3.3) — closed per-kind payloads
+  (`additionalProperties: false`, the prose enums as schema enums),
+  `record.instances[]` with `imports[]`, `fields[].columns`, `rule.applies_to[]`
+  with `params`, `note.about[]` + `question`, the new `issues[].kind` members and
+  `issues[].instance`/`engine`, `source[].quote` on `voice`/`comment`/`sheet` as
+  well as `process`. Removed: `record.mirror_of`, `role: mirror`,
+  `record.foreignKeys`, `rule.port`. `facts-index.schema.json` moves with them;
+  `manifest.schema.json` stays at 1 (its two new members are optional).
 
 **`workbooks[].short` uniqueness (`manifest.schema.json`).** JSON Schema has
 no way to assert cross-row uniqueness (no `uniqueItems`-style constraint

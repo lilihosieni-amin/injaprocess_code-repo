@@ -41,6 +41,6 @@
     "expr": "declared_use = start + received - end",
     "lang": "feel",
     "original": "ببینید مصرف اعلامیشون در واقع تفاوت بین مانده اول شب و آخر شبشونه خب؟ که این میزان مصرف انبار ازش کم می‌شه.",
-    "calls": [], "port": false, "edge_cases": []
+    "calls": [], "edge_cases": []
   }
 }

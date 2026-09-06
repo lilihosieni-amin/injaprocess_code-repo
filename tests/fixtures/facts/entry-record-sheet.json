@@ -1,0 +1,60 @@
+{
+  "id": "F-00040",
+  "kind": "record",
+  "key": "gozaresh_shabane_pitza",
+  "title": "گزارش شبانه پیتزا",
+  "aliases": [],
+  "statement": "جدول گزارش شبانهٔ لاین پیتزا؛ هر ردیف یک مادهٔ اولیه و هر ستون یکی از مقادیر شب است. سرلاین آن را پر می‌کند.",
+  "scope": { "departments": ["management"], "branches": ["chalebagh", "naharkhoran"] },
+  "source": [
+    { "type": "sheet", "ref": "attachments/sheets/MandeShab__ChaleBagh__Gozaresh markazi/Gozaresh markazi.xlsx",
+      "sheet": "پیتزا" },
+    { "type": "sheet", "ref": "attachments/sheets/MandeShab__NaharKhoran__Gozaresh naharkhoran/Gozaresh naharkhoran.xlsx",
+      "sheet": "پیتزا" }
+  ],
+  "status": "confirmed",
+  "field_status": {},
+  "accounts": [],
+  "valid_from": null,
+  "valid_to": null,
+  "supersedes": null,
+  "superseded_by": null,
+  "retired": false,
+  "issues": [
+    { "kind": "column_shift", "description": "در نسخهٔ ناهارخوران ستون «مصرف واقعی» جا افتاده است.",
+      "instance": "gozaresh_nk__s0", "engine": true, "affects": [{ "ref": "F-00040" }] }
+  ],
+  "processes": [],
+  "updated_at": "2026-09-06T09:00:00Z",
+  "data": {
+    "medium": "sheet",
+    "role": "report",
+    "location": { "spreadsheetId": "1abc", "sheetId": 0, "sheet": "پیتزا" },
+    "instances": [
+      { "key": "gozaresh_cb__s0", "spreadsheetId": "1abc", "sheetId": 0, "sheet": "پیتزا",
+        "branch": "chalebagh", "hidden": false,
+        "imports": [
+          { "key": "gozaresh_cb__s0__forush", "source": { "ref": "F-00051" },
+            "range": "A1:X200", "named_range": "SheetsFileId_Pizza" }
+        ] },
+      { "key": "gozaresh_nk__s0", "spreadsheetId": "2def", "sheetId": 0, "sheet": "پیتزا",
+        "branch": "naharkhoran", "hidden": false,
+        "imports": [
+          { "key": "gozaresh_nk__s0__forush",
+            "source": { "spreadsheetId": "9zzz", "sheet": "singlePizza" },
+            "range": "A1:X200" }
+        ] }
+    ],
+    "fields": [
+      { "key": "masraf_elami", "title": "مصرف اعلامی",
+        "columns": { "gozaresh_cb__s0": "H", "gozaresh_nk__s0": "J" },
+        "type": "number", "unit": "kg" },
+      { "key": "masraf_vaqei", "title": "مصرف واقعی",
+        "columns": { "gozaresh_cb__s0": "I" },
+        "type": "number", "unit": "kg" }
+    ],
+    "grain": "یک ردیف به ازای هر مادهٔ اولیه، یک برگ به ازای هر شب",
+    "cadence": "nightly",
+    "day_boundary": "01:15"
+  }
+}

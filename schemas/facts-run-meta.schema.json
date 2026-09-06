@@ -18,6 +18,13 @@
     "delta": { "type": "string" },
     "merged": { "type": "boolean" },
     "ids_created": { "type": "array", "items": { "type": "string" } },
+    "units": { "type": "array", "items": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "type", "state"],
+      "properties": { "id": { "type": "string" },
+                      "type": { "enum": ["workbook", "transcript", "items", "attachment"] },
+                      "state": { "enum": ["pending", "done", "failed"] },
+                      "attempts": { "type": "integer", "minimum": 0 } } } },
     "instruction": { "type": "string" }
   },
   "$defs": {

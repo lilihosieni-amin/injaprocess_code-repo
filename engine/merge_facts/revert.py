@@ -50,7 +50,8 @@ import pathlib
 import sys
 
 from engine_common import read_json
-from merge_facts import KIND_FILES, KIND_ORDER, find_match, load_store, save_store
+from merge_facts import (KIND_FILES, KIND_ORDER, STORE_SCHEMA_VERSION, find_match,
+                         load_store, save_store)
 
 
 def _load_snapshot_store(run_dir):
@@ -64,7 +65,7 @@ def _load_snapshot_store(run_dir):
     for kind, name in KIND_FILES.items():
         p = before / name
         out[kind] = (read_json(p) if p.is_file()
-                     else {"schema_version": 1, "entries": []})
+                     else {"schema_version": STORE_SCHEMA_VERSION, "entries": []})
     return out
 
 

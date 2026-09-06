@@ -48,6 +48,6 @@
     "expr": "declared_use = start + received - end",
     "lang": "feel",
     "original_ref": "facts/originals/F-00042.txt",
-    "calls": [], "port": false, "edge_cases": []
+    "calls": [], "edge_cases": []
   }
 }

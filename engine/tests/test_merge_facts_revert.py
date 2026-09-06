@@ -56,7 +56,7 @@ def test_ids_never_reused_after_revert(tmp_path):
 
 def _workbook_stub_seed():
     src = {"type": "script", "ref": "attachments/sheets/G/G.gs", "function": "pull"}
-    return {"schema_version": 1, "entries": [
+    return {"schema_version": 2, "entries": [
         {"id": "T-1", "kind": "item", "key": "ing_7", "title": "روغن",
          "statement": "s", "scope": {"departments": [], "branches": []},
          "source": [dict(src)], "retired": False,
@@ -74,7 +74,7 @@ def _workbook_stub_seed():
                   "writes_to": {"ref": "T-2", "field": "masraf"}}}]}
 
 def _real_record_delta():
-    return {"schema_version": 1, "entries": [
+    return {"schema_version": 2, "entries": [
         {"id": "T-1", "kind": "record", "key": "w__ruzane", "title": "روزانه انبار",
          "statement": "s", "scope": {"departments": ["cooking"], "branches": []},
          "source": [{"type": "sheet", "ref": "attachments/sheets/W/W.xlsx"}],

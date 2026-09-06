@@ -103,7 +103,7 @@ def test_path_grammar():
     assert not path_exists(e, "data/fields/nope/unit")
 
 def test_find_match_prefers_sheet_identity_then_natural_key():
-    store = {k: {"schema_version": 1, "entries": []} for k in KIND_ORDER}
+    store = {k: {"schema_version": 2, "entries": []} for k in KIND_ORDER}
     a = _entry(kind="record", key="old_key",
                data={"medium": "sheet", "role": "reference",
                      "location": {"spreadsheetId": "S1", "sheet": "پیتزا"}})

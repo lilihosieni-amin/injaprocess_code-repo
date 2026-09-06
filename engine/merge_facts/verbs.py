@@ -203,6 +203,9 @@ def promote(root, fact_id, kind, key, run_dir):
     entry["kind"] = kind
     entry["key"] = key
     data = entry.setdefault("data", {})
+    for k in ("about", "question"):     # QF-9: the note's own payload is a
+        data.pop(k, None)               # pointer and a question, and neither
+                                        # survives into another kind's closed payload
     for k, default in _KIND_DATA_STUBS.get(kind, {}).items():
         data.setdefault(k, copy.deepcopy(default) if isinstance(default, (list, dict))
                         else default)

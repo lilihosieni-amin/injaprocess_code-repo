@@ -103,7 +103,7 @@ def test_original_moves_to_originals(tmp_path):
 
 def test_dependency_order_item_record_measurement_in_one_delta(tmp_path):
     root = _root(tmp_path); _seed_units(root)
-    delta = {"schema_version": 1, "entries": [
+    delta = {"schema_version": 2, "entries": [
         {"id": "T-3", "kind": "measurement", "key": "advisory",
          "title": "ثبت وزنی", "statement": "s",
          "scope": {"departments": ["cooking"], "branches": []},
@@ -131,7 +131,7 @@ def test_dependency_order_item_record_measurement_in_one_delta(tmp_path):
 
 def test_row_keys_derived_on_reference_record(tmp_path):
     root = _root(tmp_path); _seed_units(root)
-    delta = {"schema_version": 1, "entries": [
+    delta = {"schema_version": 2, "entries": [
         {"id": "T-1", "kind": "item", "key": "prod_61", "title": "پیتزا",
          "statement": "s", "scope": {"departments": [], "branches": []},
          "source": [{"type": "sheet", "ref": "attachments/sheets/M/M.xlsx"}],
@@ -177,7 +177,7 @@ def test_cli_apply_via_subprocess(tmp_path):
 # --- checklist items the §17 cases above do not reach ---------------------- #
 
 def _stub_delta():
-    return {"schema_version": 1, "entries": [
+    return {"schema_version": 2, "entries": [
         {"id": "T-9", "kind": "record", "key": "ext_abc", "title": "کتاب ناشناخته",
          "statement": "s", "scope": {"departments": ["cooking"], "branches": []},
          "source": [{"type": "script", "ref": "attachments/sheets/G/G.gs"}],
@@ -284,7 +284,7 @@ def test_key_is_immutable_for_a_matched_sheet_record(tmp_path):
     root = _root(tmp_path); _seed_units(root)
 
     def sheet_record(key):
-        return {"schema_version": 1, "entries": [
+        return {"schema_version": 2, "entries": [
             {"id": "T-1", "kind": "record", "key": key, "title": "گزارش " + key,
              "statement": "s", "scope": {"departments": ["cooking"], "branches": []},
              "source": [{"type": "sheet", "ref": "attachments/sheets/G/G.xlsx"}],
@@ -348,7 +348,7 @@ def _record_stub_delta(stub=True):
         data["location"]["sheetId"] = 4          # the positional hint drifted
         data["fields"] = [{"key": "end_stock", "title": "مانده", "type": "number",
                            "unit": "g"}]
-    return {"schema_version": 1, "entries": [
+    return {"schema_version": 2, "entries": [
         {"id": "T-1", "kind": "record", "key": "s__ruzane",
          "title": "برگه" if stub else "گزارش روزانه", "statement": "s",
          "scope": {"departments": ["cooking"], "branches": []},
@@ -378,7 +378,7 @@ def test_record_stub_is_created_once_and_filled_once_with_no_key_change(tmp_path
 
 def _workbook_stub_seed():
     src = {"type": "script", "ref": "attachments/sheets/G/G.gs", "function": "pull"}
-    return {"schema_version": 1, "entries": [
+    return {"schema_version": 2, "entries": [
         {"id": "T-1", "kind": "item", "key": "ing_7", "title": "روغن",
          "statement": "s", "scope": {"departments": [], "branches": []},
          "source": [dict(src)], "retired": False,
@@ -397,7 +397,7 @@ def _workbook_stub_seed():
 
 
 def _real_record_delta():
-    return {"schema_version": 1, "entries": [
+    return {"schema_version": 2, "entries": [
         {"id": "T-1", "kind": "record", "key": "w__ruzane", "title": "روزانه انبار",
          "statement": "s", "scope": {"departments": ["cooking"], "branches": []},
          "source": [{"type": "sheet", "ref": "attachments/sheets/W/W.xlsx"}],
@@ -496,7 +496,7 @@ def test_a_stale_stub_delta_never_restubs_a_filled_record(tmp_path):
 
 
 def _log_record_delta():
-    return {"schema_version": 1, "entries": [
+    return {"schema_version": 2, "entries": [
         {"id": "T-1", "kind": "record", "key": "barge_shab", "title": "برگه شب",
          "statement": "s", "scope": {"departments": ["cooking"], "branches": []},
          "source": [{"type": "photo",

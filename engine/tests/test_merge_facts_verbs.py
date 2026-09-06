@@ -44,12 +44,13 @@ def test_retire_sets_flags_and_refuses_retired_heir(tmp_path):
 
 def test_promote_keeps_id_recomputes_key_refuses_collision(tmp_path):
     root = _root(tmp_path); _seed_units(root)
-    note = {"schema_version": 1, "entries": [{
+    note = {"schema_version": 2, "entries": [{
         "id": "T-1", "kind": "note", "key": "note_ab12cd34ef56",
         "title": "یادداشت", "statement": "هر پرس ۶۰ گرم",
         "scope": {"departments": ["cooking"], "branches": []},
         "source": [{"type": "voice", "ref": "meetings/transcripts/c.txt", "lines": "5"}],
-        "retired": False, "data": {}}]}
+        "retired": False, "data": {"about": [{"ref": "F-00001"}],
+                                   "question": "این عدد کجا ثبت می‌شود؟"}}]}
     r = apply(root, _write(root, "dn.json", note), _run_dir(root, "1"))
     nid = r["id_map"]["T-1"]
     promote(root, nid, "rule", "portion_g_roast_beef", _run_dir(root, "2"))
@@ -96,6 +97,20 @@ _REAL_KEY = {"fields": ["symbol"], "reference": {"ref": "F-00001"},
              "reference_fields": ["key"]}
 
 
+# v3 §3.3 removes `record.foreignKeys` from the payload and retires this verb
+# with it — but the retirement is Task 8's step, not this one's. Until then the
+# two cases below are the ones that leave a foreign key STANDING in the store,
+# which `save_store` can no longer write: v2's closed `recordData` has no such
+# member. The four beside them still pass, because a repair that removes the
+# collection outright leaves a store the new schema accepts. Task 8 deletes the
+# whole block; these markers go with it.
+_RETIRED_WITH_FOREIGN_KEYS = pytest.mark.xfail(
+    strict=True, raises=ValueError,
+    reason="v3 §3.3: a stored foreignKeys member no longer validates; the verb "
+           "retires in Task 8")
+
+
+@_RETIRED_WITH_FOREIGN_KEYS
 def test_repair_drops_the_malformed_member_and_keeps_the_declared_one(tmp_path):
     root = _root(tmp_path); _seed_units(root)
     fid = _with_foreign_keys(root, [_IMPORT_DESCRIPTOR, _REAL_KEY])
@@ -131,6 +146,7 @@ def test_repair_leaves_a_clean_store_untouched_byte_for_byte(tmp_path):
     assert not (run_two / "facts-before").exists()
 
 
+@_RETIRED_WITH_FOREIGN_KEYS
 def test_repair_is_revertible_from_its_own_snapshot(tmp_path):
     # The reason this is a verb rather than a script: it leaves a run
     # directory `revert` can undo, like every other writing verb.
@@ -159,12 +175,14 @@ def test_repair_leaves_the_store_passing_the_pass_that_refused_it(tmp_path):
 # --- fabricate item/record/measurement data; it refuses, cleanly, instead ---
 
 def _bare_note(root, note_id, key, run_n, data=None):
-    note = {"schema_version": 1, "entries": [{
+    note = {"schema_version": 2, "entries": [{
         "id": "T-1", "kind": "note", "key": key,
         "title": "یادداشت", "statement": "s",
         "scope": {"departments": ["cooking"], "branches": []},
         "source": [{"type": "voice", "ref": "meetings/transcripts/c.txt", "lines": "9"}],
-        "retired": False, "data": data or {}}]}
+        "retired": False,
+        "data": data or {"about": [{"ref": "F-00001"}],
+                         "question": "این عدد کجا ثبت می‌شود؟"}}]}
     r = apply(root, _write(root, f"{note_id}.json", note), _run_dir(root, run_n))
     return r["id_map"]["T-1"]
 
@@ -182,17 +200,23 @@ def test_promote_to_item_refuses_missing_category_and_unit_nothing_written(tmp_p
     assert before == after                               # five files byte-identical
 
 
-def test_promote_to_item_succeeds_when_data_already_has_category_and_unit(tmp_path):
+def test_a_note_cannot_carry_another_kinds_payload(tmp_path):
+    # QF-9 closes the note payload to `about[]` + `question`, so the keys
+    # `promote` requires for item/record/measurement can never sit on one: those
+    # three promotions are now always refused for want of them, and `rule` —
+    # whose stubs are empty containers — is the only reachable target.
     root = _root(tmp_path); _seed_units(root)
-    nid = _bare_note(root, "dn3", "note_ab12cd34ef58", "1",
-                     data={"category": "ingredient", "unit": "g"})
-    promote(root, nid, "item", "ing_olive_oil", _run_dir(root, "2"))
-    store = load_store(root)
-    e = [x for x in store["item"]["entries"] if x["id"] == nid][0]
-    assert e["id"] == nid and e["kind"] == "item" and e["key"] == "ing_olive_oil"
-    index = json.loads((root / "facts" / ".index.json").read_text(encoding="utf-8"))
-    row = [r for r in index["entries"] if r["id"] == nid][0]
-    assert row["kind"] == "item"
+    note = {"schema_version": 2, "entries": [{
+        "id": "T-1", "kind": "note", "key": "note_ab12cd34ef58",
+        "title": "یادداشت", "statement": "s",
+        "scope": {"departments": ["cooking"], "branches": []},
+        "source": [{"type": "voice", "ref": "meetings/transcripts/c.txt", "lines": "9"}],
+        "retired": False, "data": {"about": [{"ref": "F-00001"}], "question": "؟",
+                                   "category": "ingredient", "unit": "g"}}]}
+    # `apply` step 1 is the schema; it raises before any precondition runs, so
+    # this is a ValueError out of `validate`, not the exit-2 of a precondition.
+    with pytest.raises(ValueError):
+        apply(root, _write(root, "dn3.json", note), _run_dir(root, "1"))
 
 
 # --- repair-source-refs: a citation is a PATH (QF-5), and 598 of the ---

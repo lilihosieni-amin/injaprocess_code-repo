@@ -49,7 +49,7 @@ _seq = itertools.count()
 
 COOKING = "F-00001"   # cooking-scoped, one field disputed by two open accounts
 DINING = "F-00002"    # dining-scoped, disputed — the out-of-scope case
-FIELD = "data/base_unit"
+FIELD = "data/unit"
 CHOSEN = "a1b2c3d4"
 OTHER = "e5f6a7b8"
 
@@ -111,7 +111,7 @@ def _entry(fid, dept, key, title, sources, account_refs):
         ],
         "status": "disputed", "retired": False,
         "updated_at": "2026-07-06T10:00:00Z",
-        "data": {"category": "ingredient", "unit": "kg", "base_unit": "g"},
+        "data": {"category": "ingredient", "unit": "g"},
     }
 
 
@@ -156,10 +156,10 @@ def _plant(data_root, entries=None):
         by_kind.setdefault(entry["kind"], []).append(entry)
     for kind, filename in _FILES.items():
         (data_root / "facts" / filename).write_text(
-            json.dumps({"schema_version": 1, "entries": by_kind.get(kind, [])},
+            json.dumps({"schema_version": 2, "entries": by_kind.get(kind, [])},
                        ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     (data_root / "facts" / ".index.json").write_text(
-        json.dumps({"schema_version": 1, "entries": [
+        json.dumps({"schema_version": 2, "entries": [
             {"id": e["id"], "kind": e["kind"], "key": e["key"],
              "title": e["title"], "aliases": [], "scope": e["scope"],
              "status": e["status"],
@@ -279,14 +279,14 @@ def test_a_resolve_runs_the_engine_and_serves_the_settled_entry(data_root,
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["entry"]["status"] == "confirmed"
-    assert body["entry"]["data"]["base_unit"] == "kg"
+    assert body["entry"]["data"]["unit"] == "kg"
     assert body["red_paths"]["disputed"] == []
     statuses = {a["id"]: a["status"] for a in body["entry"]["accounts"]}
     assert statuses == {CHOSEN: "chosen", OTHER: "rejected"}
     # …and the store on disk really moved, which is the engine's doing.
     items = json.loads(
         (data_root / "facts" / "items.json").read_text(encoding="utf-8"))
-    assert items["entries"][0]["data"]["base_unit"] == "kg"
+    assert items["entries"][0]["data"]["unit"] == "kg"
     # …and both halves are committed. The store and the run directory that
     # says why it moved land in one commit, which is what a confirmation's
     # `data_repo_commit` column is later reconciled against (QF-24); a store

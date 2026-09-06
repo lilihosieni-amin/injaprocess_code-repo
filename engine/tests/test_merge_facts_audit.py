@@ -45,7 +45,7 @@ def _entry(tid, kind, key, title, data, scope=("cooking",), **extra):
 
 def _apply(root, entries, n):
     return apply(root, _write(root, f"d{n}.json",
-                              {"schema_version": 1, "entries": entries}),
+                              {"schema_version": 2, "entries": entries}),
                  _run_dir(root, n))
 
 
@@ -407,7 +407,8 @@ def test_recurring_note_shape(tmp_path):
     root = _root(tmp_path); _seed_units(root)
 
     def note(tid, key, statement):
-        return _entry(tid, "note", key, statement[:60], {}) | {"statement": statement}
+        return _entry(tid, "note", key, statement[:60],
+                      {"about": [{"ref": "F-00001"}], "question": "؟"}) | {"statement": statement}
 
     _apply(root, [note("T-1", "note_aa11bb22cc33", "هر پرس ۶۰ گرم است"),
                   note("T-2", "note_aa11bb22cc34", "هر پرس ۷۰ گرم است")], "1")

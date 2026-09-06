@@ -21,7 +21,7 @@ from validate.cli import main
 # --------------------------------------------------------------------------- #
 
 def _doc(*entries):
-    return {"schema_version": 1, "entries": list(entries)}
+    return {"schema_version": 2, "entries": list(entries)}
 
 
 def _rule(id_="T-1", key="tol", data=None, **extra):
@@ -829,7 +829,7 @@ def test_cli_apply_via_subprocess_still_ok_with_content_pass(tmp_path):
 def test_apply_resolves_calls_against_a_rule_from_an_earlier_delta(tmp_path):
     root = _root(tmp_path)
     _seed_units(root)
-    helper_delta = {"schema_version": 1, "entries": [
+    helper_delta = {"schema_version": 2, "entries": [
         {"id": "T-1", "kind": "rule", "key": "helper_fn", "title": "کمکی",
          "statement": "s", "scope": {"departments": ["cooking"], "branches": []},
          "source": [{"type": "voice", "ref": "meetings/transcripts/c.txt",
@@ -842,7 +842,7 @@ def test_apply_resolves_calls_against_a_rule_from_an_earlier_delta(tmp_path):
     r1 = apply(root, _write(root, "d1.json", helper_delta), _run_dir(root, "1"))
     helper_id = r1["id_map"]["T-1"]
 
-    caller_delta = {"schema_version": 1, "entries": [
+    caller_delta = {"schema_version": 2, "entries": [
         {"id": "T-1", "kind": "rule", "key": "caller_fn", "title": "صدازننده",
          "statement": "s", "scope": {"departments": ["cooking"], "branches": []},
          "source": [{"type": "voice", "ref": "meetings/transcripts/c.txt",
@@ -860,7 +860,7 @@ def test_apply_resolves_calls_against_a_rule_from_an_earlier_delta(tmp_path):
 def test_apply_resolves_aggregate_table_columns_against_an_earlier_delta(tmp_path):
     root = _root(tmp_path)
     _seed_units(root)
-    bom_delta = {"schema_version": 1, "entries": [
+    bom_delta = {"schema_version": 2, "entries": [
         {"id": "T-1", "kind": "record", "key": "bom", "title": "بام",
          "statement": "s", "scope": {"departments": ["cooking"], "branches": []},
          "source": [{"type": "sheet", "ref": "attachments/sheets/M/M.xlsx"}],
@@ -878,7 +878,7 @@ def test_apply_resolves_aggregate_table_columns_against_an_earlier_delta(tmp_pat
 
     # spec §7 verbatim: "standard use = Σ sales × grams per product" over the
     # BOM — `grams` is the reference record's own column, not a rule input.
-    rule_delta = {"schema_version": 1, "entries": [
+    rule_delta = {"schema_version": 2, "entries": [
         {"id": "T-1", "kind": "rule", "key": "standard_use",
          "title": "مصرف استاندارد", "statement": "s",
          "scope": {"departments": ["cooking"], "branches": []},
