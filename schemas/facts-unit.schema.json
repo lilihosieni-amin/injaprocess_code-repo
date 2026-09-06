@@ -127,7 +127,9 @@
                     "properties": { "into": { "type": "array", "minItems": 2,
                                               "items": { "$ref": "#/$defs/splitPart" } } } } },
         { "if": { "properties": { "action": { "const": "contradiction" } }, "required": ["action"] },
-          "then": { "required": ["field", "resolution"] } } ] },
+          "then": { "required": ["field", "resolution"] } },
+        { "if": { "properties": { "action": { "const": "contradiction" } }, "required": ["action"] },
+          "then": { "required": ["entry"] } } ] },
     "newEntry": { "type": "object", "additionalProperties": false,
       "required": ["kind", "key", "title", "statement", "data"],
       "properties": {

@@ -233,14 +233,36 @@ ATTEMPTS = 2
 DIGEST_CEILING = 50000
 
 #: The reason codes of §2.5 in the owner's words (§2.7) — `gate-b.md` names the
-#: commonest, `report` (T16) renders the whole list.
-REASON_FA = {"not_a_fact": "دربارهٔ کار نیست",
-             "date_passthrough": "فقط تاریخ را جابه‌جا می‌کند",
-             "cosmetic": "فقط ظاهر است",
-             "duplicate": "تکراری است",
-             "has_a_home": "جای دیگری ثبت شده است",
+#: commonest, `report` renders the whole list. Past tense: both files are read
+#: after the run, and the owner is being told what happened, not what happens.
+REASON_FA = {"not_a_fact": "واقعیت کمّی نبود",
+             "date_passthrough": "فقط تاریخ را منتقل می‌کرد",
+             "cosmetic": "ظاهری بود (رنگ و قالب)",
+             "duplicate": "تکراری بود",
+             "has_a_home": "جای دیگری ثبت شد",
              "insufficient_context": "اطلاعات کافی نبود",
-             "other": "دلیل دیگر"}
+             "other": "دلایل دیگر"}
+
+#: Every issue kind `build` can raise (§2.3), grouped for the owner. `report`
+#: prints the kind's words once and the engine's own Persian descriptions
+#: beneath it — the description names the sheet, never a path or an id.
+ISSUE_FA = {"column_shift": "ستون جاافتاده در جدول کپی‌شده",
+            "leading_offset": "جابه‌جایی ستون‌های تاریخ",
+            "unknown_source": "منبع ناشناخته",
+            "unused_mirror": "کپی بدون استفاده",
+            "broken_formula": "فرمول خراب",
+            "cached_error": "خطای ذخیره‌شده در فایل",
+            "no_rule_applies": "خانهٔ بدون قاعده",
+            "hand_maintained_index": "فهرست دستی",
+            "per_cell_mirror": "کپی خانه‌به‌خانه",
+            "column_offset": "اختلاف ستون بین نسخه‌ها",
+            "ambiguous_row_header": "عنوان تکراری در سطر",
+            "unheaded_formula": "فرمول بدون عنوان ستون",
+            "row_labels_ambiguous": "برچسب سطرها قابل تشخیص نبود",
+            "row_labels_partial": "برچسب سطرها ناقص بود",
+            "reference_tab_is_mirror": "تب مرجع در واقع کپی بود",
+            "reference_tab_is_ids": "تب مرجع در واقع فهرست شناسه‌ها بود",
+            "reference_tab_computes": "تب مرجع فرمول دارد"}
 
 #: §2.6 step 7's `wrapper_variants`: a variant that only converts or totals the
 #: reading beneath it is the same rule, not a second one.
@@ -421,17 +443,31 @@ def _fold_review(run_dir, state, draft, scratch):
 def _settle(entries, state):
     """The `contradiction`s of step 0, applied over step 7's survivors — the
     only review action that waits for the merge, because the entry it settles
-    is the one the merge leaves behind."""
+    is the one the merge leaves behind.
+
+    A settled flag leaves `state["flags"]`: a drift the reviewer has answered
+    is not an open one, and everything downstream that reads the flags — the
+    owner's report among them — would otherwise report it as still open.
+    """
     by_address = {_address(entry): entry for entry in entries}
     for flag, decision in state.get("settled") or []:
         entry = by_address.get(_address(decision["entry"]))
-        if entry is None:               # the same review renamed what it settled
+        if entry is None:
+            # The same review renamed what it settled — the `keep` won and the
+            # address the reviewer wrote no longer exists. Not fatal (the
+            # rename is the reviewer's own), but silent was wrong: say which
+            # address went unsettled, in `_lint_entries`' form.
+            kind, key, scope = _address(decision["entry"])
+            print(f"facts-plan: review: contradiction on {kind}/{key} "
+                  f"{scope} · {decision['field']}: renamed by the same "
+                  "review, not settled", file=sys.stderr)
             continue
         if decision["resolution"] == "fix":
             set_path(entry, decision["field"], decision["value"])
         else:
             entry.setdefault("accounts", []).extend(
                 _account(decision["field"], side) for side in flag["sides"])
+        state["flags"] = [f for f in state["flags"] if f is not flag]
 
 
 def _unwrap(value, prefix, status):
@@ -1045,3 +1081,70 @@ def gate_b(root, skeleton, entries, state):
         out.append("")
     out += [f"بی‌پاسخ: {_fa(unknown)} خانه — در پنل.", "", "تأیید می‌کنید؟", ""]
     return "\n".join(out)
+
+
+def report(root, run_dir):
+    """`report.md` (§2.7) — written after `apply`, from `assembly.json`, the
+    run's `id-map.json` and the store. Every entry is named by its Persian
+    title; the disputes are lettered so the owner can answer «۱ الف» and the
+    playbook runs `merge facts resolve` itself."""
+    root, run_dir = pathlib.Path(root), pathlib.Path(run_dir)
+    skeleton = read_json(run_dir / "skeleton.json")
+    assembly = read_json(run_dir / "assembly.json")
+    id_map = read_json(run_dir / "id-map.json")
+    registry = read_json(root / "departments" / "registry.json")
+    name = next((d["name"] for d in registry["departments"]
+                 if d["code"] == skeleton["department"]), skeleton["department"])
+    store = load_store(root)
+    touched = set(id_map.values())
+    entries = [e for kind in KIND_ORDER for e in store[kind]["entries"]
+               if e["id"] in touched]
+
+    disputes = [(e, [a for a in e.get("accounts") or []
+                     if a.get("status") == "open"]) for e in entries]
+    disputes = [(e, a) for e, a in disputes if a]
+    unknown = [(e, null_paths(e)) for e in entries]
+    unknown = [(e, p) for e, p in unknown if p]
+
+    out = [f"گزارش پایان اجرا — {name}", "",
+           f'ثبت شد: {_fa(len(entries))} مورد. '
+           f'کنار گذاشته شد: {_fa(len(assembly["dropped"]))} مورد. '
+           f'{_fa(len(assembly["undecided"]))} مورد بررسی‌نشده.', ""]
+    if disputes:
+        out.append("اختلاف‌ها — شمارهٔ مورد و حرف گزینه را بفرستید، مثلاً «۱ الف»:")
+        for n, (entry, accounts) in enumerate(disputes, start=1):
+            out.append(f'اختلاف {_fa(n)} — «{entry["title"]}»')
+            for letter, account in zip("الف ب ج د".split(), accounts):
+                out.append(f'  {letter}) {account["statement"]}')
+        out.append("")
+    if unknown:
+        out.append(f"خانه‌های بی‌پاسخ ({_fa(sum(len(p) for _e, p in unknown))} "
+                   "مورد) — همه در پنل قابل تکمیل‌اند:")
+        out += [f'  • «{entry["title"]}»: {_fa(len(paths))} خانه'
+                for entry, paths in unknown[:10]]
+        out.append("")
+    if assembly["dropped"]:
+        out.append("چه چیزهایی ثبت نشد:")
+        counted = {}
+        for row in assembly["dropped"]:
+            counted[row["reason_code"]] = counted.get(row["reason_code"], 0) + 1
+        out += [f'  • {REASON_FA.get(code, REASON_FA["other"])}: {_fa(n)} مورد'
+                for code, n in sorted(counted.items())]
+        out.append("")
+    if skeleton["issues"]:
+        out.append("ایرادهای یافته‌شده در فایل‌ها:")
+        grouped = {}
+        for issue in skeleton["issues"]:
+            grouped.setdefault(issue["kind"], []).append(issue["description"])
+        for kind, described in sorted(grouped.items()):
+            out.append(f'  {ISSUE_FA.get(kind, "ایراد")} ({_fa(len(described))} مورد):')
+            out += [f"    • {d}" for d in described[:5]]
+        out.append("")
+    if assembly["undecided"]:
+        out.append("یک بخش از داده‌ها ناتمام ماند و در اجرای بعدی تکمیل می‌شود.")
+    out.append({"applied": "بازبینی انجام شد.",
+                "discarded": "بازبینی انجام نشد و نتیجه بدون آن ثبت شد.",
+                "absent": "بازبینی اجرا نشد."}[assembly["review_status"]])
+    path = run_dir / "report.md"
+    write_text_atomic(path, "\n".join(out) + "\n")
+    return path

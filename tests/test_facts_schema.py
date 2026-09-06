@@ -245,6 +245,16 @@ def test_contradiction_only_in_a_review_document(validate):
     assert validate("facts-unit.schema.json", d) != []
 
 
+def test_contradiction_addressed_by_a_skeleton_id_fails(validate):
+    # `_fold_review` matches a contradiction against the flags by the entry
+    # address, so one addressed by a skeleton id is always discarded — the
+    # schema says so rather than letting the whole review die for it.
+    d = _review_doc()
+    d["decisions"][1].pop("entry")
+    d["decisions"][1]["skeleton"] = "S-r-999999999999"
+    assert validate("facts-unit.schema.json", d) != []
+
+
 def test_review_over_sixty_decisions_fails(validate):
     d = _review_doc()
     d["decisions"] = d["decisions"] * 31          # 62

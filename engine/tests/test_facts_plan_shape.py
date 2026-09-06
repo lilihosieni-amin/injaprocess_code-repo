@@ -134,9 +134,11 @@ def test_estimate_tokens_counts_persian_dearer():
     assert estimate_tokens("سلام") == 3
 
 
-def test_cli_reports_an_unlanded_verb_instead_of_a_traceback(capsys):
-    # `status` landed with T13 and `digest`/`assemble` with T15, so the
-    # still-unlanded `report` carries the test now — the point is the console
-    # script, not which verb is missing.
+def test_cli_reports_an_unlanded_verb_instead_of_a_traceback(capsys, monkeypatch):
+    # Every verb has landed now (`report` was the last, with T16), so the
+    # mechanism is exercised by hiding one: the point is the console script,
+    # which must stay installable while a verb is still missing.
+    import facts_plan.assemble
+    monkeypatch.delattr(facts_plan.assemble, "report")
     assert main(["report", "--run", "runs/facts/cooking/x"]) == 2
     assert "not implemented" in capsys.readouterr().err
