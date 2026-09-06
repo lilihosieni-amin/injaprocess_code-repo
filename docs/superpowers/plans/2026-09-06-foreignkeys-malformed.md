@@ -1,8 +1,14 @@
 # Malformed `foreignKeys[]` — crash, validation gap, bad data
 
-> **Written before a context compaction.** Everything needed to execute is here.
-> The investigation is DONE and its evidence is recorded below — **do not
-> re-investigate**, and do not re-derive the root cause. Start at Task 1.
+> **DONE, 2026-09-06** — `5862498` (screen + content pass), `4a513f5` (the
+> repair verb), data-repo `bc53b2d` (the 72 records and the playbook). Kept for
+> the evidence and the route argument, not as work outstanding. Two things the
+> plan got wrong, corrected in place below: the 84 malformed members sit on
+> **72** records, not 84; and the playbook was transcribing a **spec** checklist
+> that contradicted the spec's own §8, so the correction had to land there too.
+>
+> Written before a context compaction. The investigation was already done and
+> its evidence is recorded below.
 
 **Reported (owner, 2026-09-06):** opening some facts entries — named
 `Table_Ingredients_SinglePizza`, the single-pizza-recipe mirror — shows
@@ -72,7 +78,7 @@ The store holds, on every one of them (example `F-00216`):
 
 A different object, not a missing optional.
 
-- **84 malformed members across 84 records: 70 `role: mirror`, 14 `role: reference`.**
+- **84 malformed members across 72 records: 70 `role: mirror`, 14 `role: reference` (the 14 sit on just two id-registry tabs).**
 - **Zero** members in the whole store carry the spec's shape.
 - It is also redundant: `F-00216` already carries `mirror_of: {ref: F-00193}`
   **and** `import: {file_id_named_range, source_sheet, range}` correctly. The
@@ -174,7 +180,7 @@ than repairs. Do not write a check that forces a mirror to grow a foreign key.
 commands, paths, ids or English department codes in user-facing text; keep
 **csv**, **Excel**, **sheet** untranslated.
 
-## Task 4 — repair the 84 records (data-repo)
+## Task 4 — repair the 84 members (data-repo)
 
 `facts/**` is written **only** by `merge facts` (QF-2) — no hand-editing, no
 script writing those five files directly.
