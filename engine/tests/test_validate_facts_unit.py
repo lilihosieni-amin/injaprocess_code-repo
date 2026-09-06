@@ -28,6 +28,9 @@ def _run(tmp_path, candidates=("S-r-000000000001",)):
         {"schema_version": 1, "department": "cooking", "hashes": {},
          "units": [{"id": "u-wb-pitza", "type": "workbook", "inputs": [],
                     "candidates": list(candidates), "nodes": [],
+                    "est_tokens_in": 1, "est_tokens_out": 1},
+                   {"id": "u-wb-other", "type": "workbook", "inputs": [],
+                    "candidates": [], "nodes": [],
                     "est_tokens_in": 1, "est_tokens_out": 1}]}), encoding="utf-8")
     return root, run_dir
 
@@ -73,6 +76,23 @@ def test_a_candidate_decided_twice_and_an_unknown_skeleton(tmp_path):
     assert any("decisions[2]" in p and "S-r-000000000009" in p for p in problems)
 
 
+def test_a_document_naming_another_unit_is_refused(tmp_path):
+    # The unit a document belongs to is the directory it sits in: a document
+    # naming a zero-candidate sibling would otherwise decide nothing and pass.
+    root, run_dir = _run(tmp_path)
+    problems = validate_unit(root, run_dir,
+                             _write(run_dir, _doc(unit="u-wb-other", decisions=[])))
+    assert any("u-wb-other" in p and "u-wb-pitza" in p for p in problems)
+    assert any("S-r-000000000001" in p and "no decision" in p for p in problems)
+
+
+def test_a_document_outside_a_unit_directory_is_refused(tmp_path):
+    root, run_dir = _run(tmp_path)
+    path = run_dir / "out.1.json"
+    path.write_text(json.dumps(_doc(), ensure_ascii=False), encoding="utf-8")
+    assert any("units/" in p for p in validate_unit(root, run_dir, path))
+
+
 def test_node_citation_checked_against_the_whole_index(tmp_path):
     root, run_dir = _run(tmp_path)
     doc = _doc()
@@ -83,6 +103,16 @@ def test_node_citation_checked_against_the_whole_index(tmp_path):
                                          "node": "n999", "quote": "شمارش"}]
     assert any("n999" in p for p in
                validate_unit(root, run_dir, _write(run_dir, doc, "out.2.json")))
+
+
+def test_a_new_entrys_citation_is_checked_too(tmp_path):
+    root, run_dir = _run(tmp_path)
+    doc = _doc(new=[{"kind": "note", "key": "shomaresh", "title": "شمارش شبانه",
+                     "statement": "شمارش موجودی در پایان شب انجام می‌شود.",
+                     "data": {},
+                     "processes": [{"process": "cooking-030", "node": "n999"}]}])
+    assert any("new[0]" in p and "n999" in p
+               for p in validate_unit(root, run_dir, _write(run_dir, doc)))
 
 
 def test_provisional_field_ref_shape(tmp_path):
@@ -151,6 +181,40 @@ def test_the_cli_prints_ok_for_a_document_that_passes(tmp_path, capsys, monkeypa
     assert main(["facts-unit", str(_write(run_dir, _doc())),
                  "--run", str(run_dir)]) == 0
     assert capsys.readouterr().out.startswith("OK: ")
+
+
+def _review(run_dir, decisions, **over):
+    doc = {"schema_version": 1, "unit": "review", "attempt": 1,
+           "decisions": decisions, "new": []}
+    doc.update(over)
+    (run_dir / "review").mkdir(exist_ok=True)
+    path = run_dir / "review" / "out.json"
+    path.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
+    return path
+
+
+def test_the_rewrite_cap_is_the_second_one(tmp_path):
+    root, run_dir = _run(tmp_path)
+    rewrites = [{"entry": {"kind": "rule", "key": f"k{n}"}, "action": "keep",
+                 "key": f"k{n}", "title": "انحراف مصرف",
+                 "statement": "مصرف واقعی هر شب ثبت می‌شود."} for n in range(21)]
+    assert any("rewrites" in p and "20" in p
+               for p in validate_unit(root, run_dir, _review(run_dir, rewrites)))
+    assert validate_unit(root, run_dir, _review(run_dir, rewrites[:20])) == []
+
+
+def test_a_schema_error_survives_beside_the_cap_message(tmp_path):
+    root, run_dir = _run(tmp_path)
+    doc = {"schema_version": 1, "unit": "review",
+           "decisions": [{"entry": {"kind": "rule", "key": f"k{n}"},
+                          "action": "drop", "reason_code": "duplicate"}
+                         for n in range(61)]}      # …and no `attempt`
+    path = run_dir / "review" / "out.json"
+    (run_dir / "review").mkdir(exist_ok=True)
+    path.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
+    problems = validate_unit(root, run_dir, path)
+    assert any("60" in p for p in problems)
+    assert any("attempt" in p for p in problems)
 
 
 def test_a_review_document_is_not_checked_for_completeness(tmp_path):

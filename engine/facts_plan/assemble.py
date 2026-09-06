@@ -57,24 +57,31 @@ def _review_caps(doc):
 def validate_unit(root, run_dir, path):
     """Every message for one `facts-unit` document, empty when it may pass.
 
-    Checks, in order: the review's two caps; the schema; every candidate of
-    the unit's `plan.json` list decided exactly once (a plan unit only — the
-    review addresses assembled entries, which do not exist yet); `S-` refs
-    naming a candidate of this run; node ids in the department's **whole**
-    process index; the provisional field grammar; the §5.2 lint on every
-    prose field with `skeleton.json`'s `unit_symbols[]` exempted; and a
-    `unit` written onto a field that is not a number.
+    Checks, in order: the review's two caps; the schema; the `units/<id>/`
+    directory the document sits in against the `unit` it declares, and every
+    candidate of **that** unit's `plan.json` list decided exactly once (a plan
+    unit only — the review addresses assembled entries, which do not exist
+    yet); `S-` refs naming a candidate of this run; node ids in the
+    department's **whole** process index, in `decisions[]` and `new[]` alike;
+    the provisional field grammar; the §5.2 lint on every prose field with
+    `skeleton.json`'s `unit_symbols[]` exempted; and a `unit` written onto a
+    field that is not a number.
     """
     root, run_dir, path = pathlib.Path(root), pathlib.Path(run_dir), pathlib.Path(path)
     try:
         doc = read_json(path)
     except (OSError, ValueError) as exc:
         return [f"{path.name}: not readable as JSON ({exc})"]
-    caps = _review_caps(doc) if doc.get("unit") == "review" else []
+    caps = _review_caps(doc) if isinstance(doc, dict) \
+        and doc.get("unit") == "review" else []
+    # The schema carries the 60 cap too, and its `maxItems` message is the
+    # whole decisions array on one line (§4). Checking the trimmed document
+    # keeps that line out and every other schema error in.
+    checked = dict(doc, decisions=doc["decisions"][:REVIEW_DECISIONS]) if caps else doc
     try:
-        validate("facts-unit.schema.json", doc)
+        validate("facts-unit.schema.json", checked)
     except ValueError as exc:
-        return caps or [str(exc)]
+        return caps + [str(exc)]
 
     skeleton = read_json(run_dir / "skeleton.json")
     plan = read_json(run_dir / "plan.json")
@@ -83,8 +90,22 @@ def validate_unit(root, run_dir, path):
     nodes = process_index(root, skeleton["department"])
     node_ids = {f'{n["process"]}::{n["node"]}' for n in nodes} \
         | {f'{n["process"]}::{n["node"].rsplit("-", 1)[-1]}' for n in nodes}
-    unit = next((u for u in plan["units"] if u["id"] == doc["unit"]), None)
-    problems, seen = list(caps), []
+    problems, seen, unit = list(caps), [], None
+    if doc["unit"] != "review":
+        # A document belongs to the unit whose directory it sits in, never to
+        # the one it names: a document declaring a zero-candidate sibling would
+        # otherwise decide nothing and still be `done`.
+        in_units = path.parent.parent.name == "units"
+        dir_unit = path.parent.name if in_units else None
+        unit = next((u for u in plan["units"] if u["id"] == dir_unit), None)
+        if not in_units:
+            problems.append(f"{path.name}: is in no units/<unit id>/ directory of "
+                            "the run, so no plan entry says what it must decide")
+        elif unit is None:
+            problems.append(f"{path.name}: {dir_unit} is no unit of this run's plan")
+        elif doc["unit"] != dir_unit:
+            problems.append(f'{path.name}: unit {doc["unit"]} does not match its '
+                            f"directory {dir_unit}")
 
     for n, decision in enumerate(doc["decisions"]):
         entry = decision.get("entry") or {}
@@ -107,11 +128,7 @@ def validate_unit(root, run_dir, path):
                     and not PROVISIONAL_FIELD.match(field):
                 problems.append(f"{label}: provisional field {field!r} is not "
                                 "c_<column letter, lowercase>")
-        for citation in decision.get("processes") or []:
-            key = f'{citation["process"]}::{citation["node"]}'
-            if key not in node_ids:
-                problems.append(f'{label}: node {citation["node"]} is in no '
-                                f'process of {skeleton["department"]}')
+        problems += _citations(decision, label, node_ids, skeleton["department"])
         for field in _members(decision.get("data") or {}, "fields"):
             if field.get("unit") and field.get("type") not in (None, "number"):
                 problems.append(f'{label}: field {field.get("key")} is '
@@ -119,13 +136,23 @@ def validate_unit(root, run_dir, path):
         problems += _lint_decision(decision, label, symbols)
 
     for n, entry in enumerate(doc.get("new") or []):
-        problems += _lint_decision(entry, f'new[{n}] {entry.get("key")}', symbols)
+        label = f'new[{n}] {entry.get("key")}'
+        problems += _citations(entry, label, node_ids, skeleton["department"]) \
+            + _lint_decision(entry, label, symbols)
 
     if unit is not None:
         for cid in unit["candidates"]:
             if cid not in seen:
-                problems.append(f'{doc["unit"]}: {cid} has no decision')
+                problems.append(f'{unit["id"]}: {cid} has no decision')
     return problems
+
+
+def _citations(entry, label, node_ids, department):
+    """§2.5 — a `processes[]` node id not in the department's index is an
+    error, wherever the citation sits."""
+    return [f'{label}: node {c["node"]} is in no process of {department}'
+            for c in entry.get("processes") or []
+            if f'{c["process"]}::{c["node"]}' not in node_ids]
 
 
 def _members(data, key):
