@@ -5,8 +5,9 @@ exit 0 whatever they find: a finding is a line for a human to approve at the
 playbook's stage C, not a failed precondition. Each verb returns a list of
 `{"code", "id", "message", "proposal"}` — `id` is the entry the reader should
 open (`None` where the finding is about the manifest rather than an entry) and
-`proposal` is filled only where the audit can name the repair, which today is
-the `superseded_by` heir of a tombstoned process (QF-8).
+`proposal` is filled where the audit can name the repair — the `superseded_by`
+heir of a tombstoned process (QF-8) — or the bare word `info`, which says the
+line is information rather than a defect (§4's `unconsumed_constant`).
 
 One small function per finding code, each a pure walk over the store, the
 manifest, `departments/**` and — for `row_gone` — the workbook dump. The list
@@ -37,15 +38,15 @@ import unicodedata
 
 from engine_common import read_json
 from merge_facts import (KIND_ORDER, canonical_scope, collect_leaves, is_open,
-                         iter_ref_objects, load_store, sha256_file)
-from merge_facts.apply import (FACT_ID_RE, PACK_KEYS, PROC_ID_RE, TEMP_ID_RE,
-                               UNITS_KEY, _declared_fields, _declared_rows,
-                               _is_stub)
+                         iter_ref_objects, load_store, open_accounts,
+                         sha256_file)
+from merge_facts.apply import (FACT_ID_RE, PROC_ID_RE, TEMP_ID_RE,
+                               _declared_fields, _declared_rows, _is_stub)
 
 TOLERANCE = 0.01          # 1 % — §12's reconciliation and component-sum bound
 STALE_RUNS = 3            # §12: "untouched for three facts runs"
 STALE_DAYS = 30           # §12: "or older than 30 days"
-NOTE_OVERLAP = 0.7        # token overlap at which two notes are one shape
+NOTE_OVERLAP = 0.35       # §4: a third of the tokens is one shape
 RUN_STAMP = "%Y%m%d-%H%M%S"
 ESTATE_DIR = "attachments/sheets/"
 # Role-bearing leaves (§15). `signatures[].role` is read on its own because a
@@ -134,40 +135,73 @@ def _beyond(value, reference):
 # audit — §12's list, in its order
 # --------------------------------------------------------------------------- #
 
-def _duplicate_output(walk):
-    """Two rules whose outputs write one `{ref, field}` — the ERP would not
-    know which one filled the cell.
+_A1_RANGE = re.compile(r"([A-Z]{1,3})(\d+)(?::[A-Z]{1,3}(\d+))?\s*$")
 
-    A `writes_to` with **no** `field` is skipped, not grouped: §7 gives that
-    shape to the sheet-writing scripts (`saveOrders`, `updateFoodCount`),
-    which "write rows into a record", and several scripts appending rows to
-    one log is the estate as it is, not a contradiction. The check §12 names
-    is "two rules writing one *field*".
+
+def _bindings(rule):
+    """Every (instance, column, first row, last row, key) a rule runs on, read
+    off `applies_to[]` — whose key is `<instance>__<column>__r<first row>`
+    (§3.1) and whose `range` carries the span.
+
+    ponytail: the span is an A1 regex over the end of the range; a whole-column
+    or whole-sheet range answers one row, the one its key names. Widen it if
+    the estate ever grows a column-wide formula.
     """
-    writers = {}
-    for rule in _rules(walk):
-        for out in _data(rule).get("outputs") or []:
-            target = out.get("writes_to") if isinstance(out, dict) else None
-            if isinstance(target, dict) and target.get("ref") \
-                    and target.get("field"):
-                writers.setdefault((target["ref"], target["field"]),
-                                   []).append(rule["id"])
-    items = []
-    for (ref, field), ids in writers.items():
-        if len(ids) < 2:
+    out = []
+    for member in _data(rule).get("applies_to") or []:
+        if not isinstance(member, dict) or not isinstance(member.get("key"), str):
             continue
-        writing = sorted(set(ids))
-        who = ", ".join(writing) if len(writing) > 1 else f"{writing[0]} twice"
-        items.append(_finding("duplicate_output", writing[0],
-                              f"{ref}/{field} is written by {who}"))
+        parts = member["key"].rsplit("__", 2)
+        if len(parts) != 3:
+            continue
+        instance, column, row = parts
+        found = _A1_RANGE.search(str(member.get("range") or ""))
+        first = int(found.group(2)) if found else int(row.lstrip("r") or 0)
+        last = int(found.group(3)) if found and found.group(3) else first
+        out.append((instance, column, first, last, member["key"]))
+    return out
+
+
+def _duplicate_output(walk):
+    """§2.6 step 7's `two_writers`: two rules whose `applies_to` bindings
+    overlap on one instance, one column and meeting row ranges — the ERP would
+    not know which one computed the cell.
+
+    Keyed on the binding, not on `(ref, field)` (§4): one column of one tab is
+    written by one rule per band, and two rules over one band is the
+    contradiction. The old `writes_to` grouping said nothing about which rows,
+    so a report column computed by two rules over two disjoint bands — the
+    estate as it is — read as a defect.
+
+    ponytail: O(n²) over the bindings of one department's rules; a store-wide
+    index by (instance, column) is the upgrade if the estate outgrows it.
+    """
+    items = []
+    bound = [(rule["id"], b) for rule in _rules(walk) for b in _bindings(rule)]
+    for index, (left_id, left) in enumerate(bound):
+        for right_id, right in bound[index + 1:]:
+            if left_id == right_id or left[:2] != right[:2]:
+                continue
+            if left[3] < right[2] or right[3] < left[2]:
+                continue                       # the bands do not meet
+            items.append(_finding(
+                "two_writers", min(left_id, right_id),
+                f"{left_id} ({left[4]}) and {right_id} ({right[4]}) both write "
+                f"column {left[1].upper()} of {left[0]}"))
     return items
 
 
 def _lookalike_title(walk):
     """The backstop for the byte-wise comparison §18 keeps: titles (and keys)
-    that differ only in spacing, digits, case or ی/ي."""
+    that differ only in spacing, digits, case or ی/ي.
+
+    The title folds digit RUNS as well (§4) — «تلورانس ۵ گرم» and «تلورانس ۷
+    گرم» are one concept with a parameter, not two rules. The key does not: a
+    note's key is `note_` plus twelve hex, and collapsing its digits would make
+    two unrelated notes look alike.
+    """
     items = []
-    for attr, fold in (("title", _fold),
+    for attr, fold in (("title", _shape),
                        ("key", lambda v: _fold(str(v).replace("_", "")))):
         groups = {}
         for entry in walk.open:
@@ -178,7 +212,7 @@ def _lookalike_title(walk):
                 continue
             members = sorted(members, key=lambda m: m["id"])
             spelled = ", ".join(f"{m['id']} {m.get(attr)!r}" for m in members)
-            items.append(_finding("lookalike_title", members[0]["id"],
+            items.append(_finding("duplicate_title", members[0]["id"],
                                   f"{kind} {attr}s look alike: {spelled}"))
     return items
 
@@ -380,34 +414,107 @@ def _row_present(record, row, dump_rows, labels):
     return False
 
 
+def _record_locations(record):
+    """Every (spreadsheetId, sheet, instance key) a record's rows may be dumped
+    under — its `instances[]` (QF-47), or its `location` for a record that has
+    none."""
+    data = _data(record)
+    out = [(i.get("spreadsheetId"), i.get("sheet"), i.get("key"))
+           for i in data.get("instances") or []
+           if isinstance(i, dict) and i.get("spreadsheetId")]
+    if out:
+        return out
+    location = data.get("location") or {}
+    if location.get("spreadsheetId"):
+        return [(location["spreadsheetId"], location.get("sheet"), None)]
+    return []
+
+
 def _row_gone(walk):
-    """§9: a re-dump that no longer carries a row the store holds. With no dump
-    for the workbook there is nothing to compare, and the audit says so once
-    per workbook rather than once per row."""
-    items, missing = [], {}
+    """§9 over §4's instances: a re-dump that no longer carries a row the store
+    holds. A template repeats across its instances, so a row present in ANY
+    instance's dump is present; `dump_missing` is reported per (entry,
+    instance) whose workbook has no `rows.tsv` at all, because that instance —
+    not the record — is what nobody has dumped."""
+    items = []
     labels = _item_labels(walk)
     for record in _records(walk):
-        data = _data(record)
-        spreadsheet = (data.get("location") or {}).get("spreadsheetId")
         rows = [r for r in _rows(record) if is_open(r)]
-        if not spreadsheet or not rows or _is_stub(record):
+        places = _record_locations(record)
+        if not rows or not places or _is_stub(record):
             continue
-        dump_rows = _dump_rows(walk.root, spreadsheet,
-                               (data.get("location") or {}).get("sheet"))
-        if dump_rows is None:
-            missing.setdefault(spreadsheet, []).append(record["id"])
-            continue
+        dumps = []
+        for spreadsheet, sheet, key in places:
+            dump_rows = _dump_rows(walk.root, spreadsheet, sheet)
+            if dump_rows is None:
+                items.append(_finding(
+                    "dump_missing", record["id"],
+                    f"no attachments/sheets/.dump/{spreadsheet}/rows.tsv — the "
+                    f"rows of {record['id']}"
+                    + (f" instance {key}" if key else "")
+                    + " cannot be checked"))
+            else:
+                dumps.extend(dump_rows)
+        if not dumps:
+            continue                       # nothing at all to compare against
         for row in rows:
-            if not _row_present(record, row, dump_rows, labels):
+            if not _row_present(record, row, dumps, labels):
                 items.append(_finding(
                     "row_gone", record["id"],
                     f"row {row.get('key')!r} is in no row of the latest dump of "
-                    f"{spreadsheet}"))
-    for spreadsheet, ids in missing.items():
-        items.append(_finding(
-            "dump_missing", sorted(ids)[0],
-            f"no attachments/sheets/.dump/{spreadsheet}/rows.tsv — the rows of "
-            f"{', '.join(sorted(ids))} cannot be checked"))
+                    f"{', '.join(sorted({p[0] for p in places}))}"))
+    return items
+
+
+def _formula_ranges(root, spreadsheet_id):
+    """The (sheet, range) pairs the latest dump holds for one workbook —
+    `formulas.tsv`, one row per (sheet, range) (§4). `None` when the workbook
+    has no dump at all."""
+    path = (root / "attachments" / "sheets" / ".dump" / spreadsheet_id
+            / "formulas.tsv")
+    if not path.is_file():
+        return None
+    lines = [line for line in path.read_text(encoding="utf-8").splitlines()
+             if line.strip()]
+    if not lines:
+        return set()
+    header = lines[0].split("\t")
+    return {(row.get("sheet"), row.get("range")) for row in
+            (dict(zip(header, line.split("\t"))) for line in lines[1:])}
+
+
+def _instances_by_key(record):
+    return {i["key"]: i for i in _data(record).get("instances") or []
+            if isinstance(i, dict) and i.get("key")}
+
+
+def _binding_gone(walk):
+    """§3.1: a binding is never removed automatically — the audit reports one
+    the dump no longer computes and `edit-fact` takes it out. The binding names
+    its instance in its own key, the record it points at carries that instance,
+    and `formulas.tsv` is the record of what the tab computes. A workbook with
+    no dump is silent here: `dump_missing` already says so once."""
+    items, ranges = [], {}
+    for rule in _rules(walk):
+        for member in _data(rule).get("applies_to") or []:
+            if not isinstance(member, dict) or not member.get("range"):
+                continue
+            record = walk.by_id.get((member.get("record") or {}).get("ref"))
+            instance = (_instances_by_key(record).get(
+                str(member.get("key")).rsplit("__", 2)[0]) if record else None)
+            if not instance or not instance.get("spreadsheetId"):
+                continue                   # `_orphan_ref` owns the dangle
+            spreadsheet = instance["spreadsheetId"]
+            if spreadsheet not in ranges:
+                ranges[spreadsheet] = _formula_ranges(walk.root, spreadsheet)
+            held = ranges[spreadsheet]
+            if held is None or (instance.get("sheet"), member["range"]) in held:
+                continue
+            items.append(_finding(
+                "binding_gone", rule["id"],
+                f"binding {member['key']} reads {member['range']} of "
+                f"{instance.get('sheet')} in {spreadsheet}, which the latest "
+                f"dump no longer computes"))
     return items
 
 
@@ -550,10 +657,212 @@ def _unconsumed_constant(walk):
             continue
         if consumers.get(rule["id"], set()) - {rule["id"]}:
             continue
+        # §5.1's consumer contract: "a settings constant — a par level, a
+        # tolerance, a conversion factor, a threshold; a consumer is not
+        # required". So this is a line for a reader, not a defect, and
+        # `proposal: "info"` is how stage C tells the two apart.
         items.append(_finding(
             "unconsumed_constant", rule["id"],
             f"constant {rule['key']} is read by no rule and derives no "
-            "record field"))
+            "record field", "info"))
+    return items
+
+
+QUANTITIES = ("mass", "count", "volume", "duration", "money", "ratio", "other")
+UNRESOLVED_WORDS = ("نامشخص", "مشخص نیست", "معلوم نیست")
+
+
+def _expr_missing(walk):
+    """§5.3: `original` alone is not a legal state — a rule bound to a formula
+    states the business computation as `expr`, a `table`, or `lang: text`. This
+    is the count Gate B carries and QF-44 (v3) reads."""
+    items = []
+    for rule in _rules(walk):
+        data = _data(rule)
+        if not data.get("applies_to"):
+            continue
+        if data.get("expr") or data.get("table") or data.get("text"):
+            continue
+        items.append(_finding("expr_missing", rule["id"],
+                              f"rule {rule['key']} is bound to "
+                              f"{len(data['applies_to'])} formulas and states "
+                              f"no expression"))
+    return items
+
+
+def _equal_expr(walk):
+    """§2.6 step 7: two rules stating one computation in one scope. U5 says one
+    entry with all its bindings, so the second is either a duplicate the
+    reviewer should merge or a divergence nobody declared."""
+    groups = {}
+    for rule in _rules(walk):
+        expr = _data(rule).get("expr")
+        if not isinstance(expr, str) or not expr.strip():
+            continue
+        scope = canonical_scope(rule.get("scope"))
+        groups.setdefault(("".join(expr.split()), tuple(scope["departments"]),
+                           tuple(scope["branches"])), []).append((rule["id"],
+                                                                  expr))
+    items = []
+    for _key, stated in groups.items():
+        if len(stated) < 2:
+            continue
+        # The expression as the lowest-id rule spells it, not the whitespace-
+        # stripped grouping key: the reader has to find this sentence in the
+        # entry, and «v=x» is not what the entry says.
+        stated = sorted(stated)
+        items.append(_finding("equal_expr", stated[0][0],
+                              f"{', '.join(i for i, _e in stated)} state one "
+                              f"expression: {stated[0][1]}"))
+    return items
+
+
+def _duplicate_code(walk):
+    """`#N` and `##N` are the estate's own identifiers (§2.3); two open items
+    answering to one of them is a merge the reviewer missed."""
+    groups = {}
+    for item in walk.open:
+        code = _data(item).get("code") if item["kind"] == "item" else None
+        if code:
+            groups.setdefault(str(code), []).append(item["id"])
+    items = []
+    for code, ids in groups.items():
+        if len(ids) < 2:
+            continue
+        items.append(_finding("duplicate_code", sorted(ids)[0],
+                              f"code {code} is carried by "
+                              f"{', '.join(sorted(ids))}"))
+    return items
+
+
+def _edge_disagreement(walk):
+    """Two edge cases stating one input and expecting two different answers —
+    within one rule, or between a rule and the template it declares. The ladder
+    dedups `edge_cases` on `input`, so a pair like this arrives only from one
+    assembly merging two units' readings, which is exactly the contradiction
+    the reviewer is there to settle."""
+    items = []
+    for rule in _rules(walk):
+        family = [rule]
+        target = walk.by_id.get((_data(rule).get("template_of") or {}).get("ref"))
+        if target is not None and target.get("kind") == "rule":
+            family.append(target)
+        stated = {}
+        for member in family:
+            for case in _data(member).get("edge_cases") or []:
+                if isinstance(case, dict) and case.get("input") is not None:
+                    stated.setdefault(_fold(case["input"]), set()).add(
+                        str(case.get("expected")))
+        for shape, expected in sorted(stated.items()):
+            if len(expected) < 2:
+                continue
+            items.append(_finding(
+                "edge_disagreement", rule["id"],
+                f"edge case {shape!r} expects {' and '.join(sorted(expected))}"))
+    return items
+
+
+def _no_consumer(walk):
+    """§4: an item nothing references — no rule reads it, no measurement
+    measures it, no `refItems` cell resolves to it. Either the estate stopped
+    using it, or it is a code minted with no home."""
+    referenced = {obj["ref"] for entry in walk.open
+                  for obj in iter_ref_objects(entry)
+                  if isinstance(obj.get("ref"), str)}
+    keys = set()
+    for record in _records(walk):
+        columns = [f["key"] for f in _data(record).get("fields") or []
+                   if isinstance(f, dict) and f.get("refItems") and f.get("key")]
+        for row in _rows(record):
+            for column in columns:
+                if isinstance(row.get(column), str):
+                    keys.add(row[column])
+    items = []
+    for item in walk.open:
+        if item["kind"] != "item" or item["id"] in referenced \
+                or item["key"] in keys:
+            continue
+        items.append(_finding("no_consumer", item["id"],
+                              f"item {item['key']} is read by no rule, record "
+                              f"or measurement"))
+    return items
+
+
+def _quantity_off_enum(walk):
+    """§3.3 closes `measurement.quantity` to a KIND of quantity. The schema
+    refuses a new one at the door; this reports one the store already holds —
+    including the v2 failure of writing a number where the kind belongs."""
+    items = []
+    for entry in walk.open:
+        if entry["kind"] != "measurement":
+            continue
+        quantity = _data(entry).get("quantity")
+        if quantity in QUANTITIES:
+            continue
+        items.append(_finding("quantity_off_enum", entry["id"],
+                              f"quantity {quantity!r} is not one of "
+                              f"{', '.join(QUANTITIES)}"))
+    return items
+
+
+def _note_targets_retired(walk):
+    """QF-9 (v3): a note points at entries and asks something. One whose target
+    is closed asks about a definition nobody reads any more."""
+    items = []
+    for note in walk.open:
+        if note["kind"] != "note":
+            continue
+        for target in _data(note).get("about") or []:
+            ref = target.get("ref") if isinstance(target, dict) else None
+            entry = walk.by_id.get(ref)
+            if entry is None or is_open(entry):
+                continue                   # `_orphan_ref` owns the dangle
+            items.append(_finding(
+                "note_targets_retired", note["id"],
+                f"note {note['key']} asks about {ref}, retired "
+                f"{entry.get('valid_to') or ''}".rstrip()))
+    return items
+
+
+def _import_unresolved(walk):
+    """QF-48: an `imports[].source` still a locator. §10 lets one stand
+    indefinitely — the source department may never run — so this is a line for
+    whoever wants the edge closed, not a defect."""
+    items = []
+    for record in _records(walk):
+        for instance in _data(record).get("instances") or []:
+            if not isinstance(instance, dict):
+                continue
+            for member in instance.get("imports") or []:
+                source = member.get("source") if isinstance(member, dict) else None
+                if not isinstance(source, dict) or source.get("ref"):
+                    continue
+                items.append(_finding(
+                    "import_unresolved", record["id"],
+                    f"instance {instance.get('key')} imports "
+                    f"{source.get('sheet')} of {source.get('spreadsheetId')} "
+                    f"by locator, not by reference"))
+    return items
+
+
+def _stale_prose(walk):
+    """§4: a field somebody settled whose statement still calls it unresolved.
+    `resolve` writes the chosen value into the leaf, and §11's prose rule
+    writes a statement once and never rewrites it — so the panel ends up
+    showing a settled number under a sentence saying nobody knows."""
+    words = [_fold(w) for w in UNRESOLVED_WORDS]
+    items = []
+    for entry in walk.open:
+        settled = any(a.get("status") == "chosen"
+                      for a in entry.get("accounts") or [] if isinstance(a, dict))
+        if not settled or open_accounts(entry):
+            continue
+        statement = _fold(entry.get("statement") or "")
+        if not any(word in statement for word in words):
+            continue
+        items.append(_finding("stale_prose", entry["id"],
+                              f"{entry['key']}'s statement still calls a "
+                              f"settled field unresolved"))
     return items
 
 
@@ -580,7 +889,7 @@ def _recurring_note_shape(walk):
             continue
         ids = [m["id"] for m in group["members"]]
         items.append(_finding(
-            "recurring_note_shape", ids[0],
+            "note_overlap", ids[0],
             f"{', '.join(ids)} repeat one shape: "
             f"{group['members'][0].get('statement')!r}"))
     return items
@@ -708,40 +1017,6 @@ def _scope_shadow(walk):
     return items
 
 
-def _unit_rows(walk):
-    """Every string the `units` record covers — its row keys, symbols and
-    Persian titles (§10)."""
-    covered = set()
-    for record in walk.store["record"]["entries"]:
-        if record.get("key") != UNITS_KEY or not is_open(record):
-            continue
-        for row in _rows(record):
-            if not is_open(row):
-                continue
-            for name in ("key", "symbol", "unit_title"):
-                if isinstance(row.get(name), str):
-                    covered.add(_fold(row[name]))
-    return covered
-
-
-def _unit_raw_uncovered(walk):
-    """§10: every place the estate wrote a unit keeps the verbatim string, and
-    a string no `units` row covers is a symbol the registry still needs."""
-    covered = _unit_rows(walk)
-    items = []
-    for entry in walk.open:
-        seen = set()
-        for raw in collect_leaves(_data(entry), "unit_raw", PACK_KEYS):
-            folded = _fold(raw)
-            if not folded or folded in covered or folded in seen:
-                continue
-            seen.add(folded)
-            items.append(_finding(
-                "unit_raw_uncovered", entry["id"],
-                f"unit_raw {raw!r} is covered by no row of the units record"))
-    return items
-
-
 def _process_roles(root):
     """The vocabulary the process side already holds: every `actor` and every
     `mechanisms` member of every process file (§15)."""
@@ -797,12 +1072,35 @@ def _unknown_role(walk):
     return items
 
 
-AUDIT_CHECKS = (_duplicate_output, _lookalike_title, _orphan_ref,
-                _dangling_ref_items, _process_link, _row_gone,
-                _retired_row_live_edges, _template_drift, _reconciliation,
-                _component_sum, _unconsumed_constant, _recurring_note_shape,
-                _stale_stub, _natural_key_dup, _scope_shadow,
-                _unit_raw_uncovered, _unknown_role)
+#: The six §2.6 step 7 flags — every one of them reads nothing off disk, so
+#: `assemble` can run them over the store plus the entries it is about to
+#: write. One implementation, one set of codes: the audit and the digest
+#: cannot drift.
+FLAG_CHECKS = (_duplicate_output, _lookalike_title, _recurring_note_shape,
+               _equal_expr, _duplicate_code, _edge_disagreement)
+
+AUDIT_CHECKS = FLAG_CHECKS + (
+    _orphan_ref, _dangling_ref_items, _process_link, _row_gone, _binding_gone,
+    _expr_missing, _retired_row_live_edges, _template_drift, _reconciliation,
+    _component_sum, _unconsumed_constant, _no_consumer, _quantity_off_enum,
+    _note_targets_retired, _import_unresolved, _stale_prose, _stale_stub,
+    _natural_key_dup, _scope_shadow, _unknown_role)
+
+
+def flags_over(root, entries):
+    """§2.6 step 7: the six disk-free checks over `load_store` plus the entries
+    an assembly is about to write. `entries` must already carry ids (the
+    assembly's temp ids are fine — that is why step 1 mints them first). The
+    store is read and never written."""
+    root = pathlib.Path(root)
+    store = load_store(root)
+    for entry in entries:
+        store[entry["kind"]]["entries"].append(entry)
+    walk = _Walk(root, store)
+    items = []
+    for check_fn in FLAG_CHECKS:
+        items.extend(check_fn(walk))
+    return _sorted(items)
 
 
 def _sorted(items):
