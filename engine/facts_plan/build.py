@@ -118,7 +118,11 @@ def _let_rename(text, slot):
         return text
     alias = {}
     for i, name in enumerate(names, 1):
-        alias.setdefault(name, f"v{i}")
+        if name in alias:
+            raise ValueError(
+                f"LET binds {name!r} twice in one formula: one alias for two "
+                "bindings would drop a parameter silently")
+        alias[name] = f"v{i}"
     edits = [(m.start(), m.end(), a)
              for name, a in alias.items()
              for m in re.finditer(r"(?<![A-Za-z0-9_])" + re.escape(name)
@@ -158,7 +162,9 @@ def normalise(formula, *, table_refs):
         return "\x00%d\x00" % (len(literals) - 1)
 
     text = _WS.sub("", _LITERAL.sub(mask, text))
-    functions = frozenset(m.group(1) for m in _FUNC.finditer(text))
+    # `LET` is the binding form, not a called function — it would otherwise be
+    # in two thirds of the estate's `functions` sets and say nothing.
+    functions = frozenset(m.group(1) for m in _FUNC.finditer(text)) - {"LET"}
     slots = []
 
     def slot(symbol, value, key=None):

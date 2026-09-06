@@ -49,6 +49,10 @@ def test_let_locals_are_renamed_and_lend_their_names_to_literals():
     assert shape.params["ref_1"] == {"cell": "KN"}
     assert shape.params["ref_2"] == {"cell": "JN"}
     assert shape.refs == [{"cell": "KN"}, {"cell": "JN"}]
+    # `LET` is the binding form, not a called library function; T11/T12 group
+    # and document by `functions`, and every LET formula would carry it.
+    assert "LET" not in shape.functions
+    assert shape.functions == frozenset({"CONVERT_GR_TO_KG", "MINUS"})
 
 
 def test_the_two_tolerance_forms_are_two_shapes_with_their_own_keys():
@@ -110,6 +114,19 @@ def test_bare_references():
 def test_a_sheet_qualified_reference_keeps_its_sheet_in_the_locator():
     shape = normalise(r"'تاریخ'!CN", table_refs={})
     assert shape.params["ref_1"] == {"cell": "CN", "sheet": "تاریخ"}
+
+
+def test_a_rebound_let_name_is_refused_rather_than_folded():
+    """Two bindings of one name must never collapse into one `v<n>` — that
+    would drop a parameter silently. Task 11 turns the refusal into a
+    `broken_formula` issue for the column."""
+    with pytest.raises(ValueError, match="a"):
+        normalise("LET(a,1,LET(a,2,a))", table_refs={})
+
+
+def test_a_sequentially_rebound_let_name_is_refused_too():
+    with pytest.raises(ValueError, match="a"):
+        normalise("LET(a,1,b,LET(a,2,a),a+b)", table_refs={})
 
 
 def test_estimate_tokens_counts_persian_dearer():
