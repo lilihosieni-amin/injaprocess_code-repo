@@ -93,6 +93,26 @@ def test_a_group_over_budget_splits_on_its_tabs_and_keeps_the_axis_in_the_id():
     assert all(p["est_tokens_out"] <= 20000 for p in parts)
 
 
+def test_a_template_spanning_two_groups_exits_2(capsys):
+    """One template over two workbooks the manifest keeps apart would put its
+    candidate in two units. `build` refuses instead, and names the remedy."""
+    skeleton = {"candidates": [
+        {"id": "S-rec-000000000001", "kind": "record",
+         "payload": {"instances": [{"key": "sokhari__s1", "sheet": "t"},
+                                   {"key": "fried__s1", "sheet": "t"}],
+                     "fields": []}}],
+        "instances": [{"key": "sokhari__s1", "sheetId": 1},
+                      {"key": "fried__s1", "sheetId": 1}]}
+    manifest = {"workbooks": [
+        _wb("sokhari", "MandeShab__ChaleBagh__Amar__Sokhari"),
+        _wb("fried", "MandeShab__Naharkhoran__Amar__FRIED")]}
+    with pytest.raises(SystemExit) as excinfo:
+        plan_units(skeleton, workbook_groups(manifest, "cooking"), [], [], [])
+    assert excinfo.value.code == 2
+    err = capsys.readouterr().err
+    assert "sokhari" in err and "fried" in err and "twin_of" in err
+
+
 def test_an_unsplittable_group_exits_2(capsys):
     skeleton = {"candidates": [
         {"id": "S-rec-000000000001", "kind": "record",
@@ -154,7 +174,7 @@ def test_build_writes_the_four_artefacts_over_the_mini_estate(tmp_path):
     transcripts = tmp_path / "meetings" / "transcripts"
     transcripts.mkdir(parents=True)
     (transcripts / "cooking-1405-05-26.txt").write_text(
-        "\n".join(f"سطر {n}: موجودی پنیر پیتزا را آخر شب شمردیم."
+        "\n".join(f"سطر {n}: موجودی پنیر پیتزا را آخر شب شمردیم.  "
                   for n in range(1, 40)), encoding="utf-8")
     processes = tmp_path / "departments" / "cooking" / "processes"
     processes.mkdir(parents=True)
@@ -190,7 +210,13 @@ def test_build_writes_the_four_artefacts_over_the_mini_estate(tmp_path):
                                                 for c in skeleton["candidates"]),
                                   "rule": sum(c["kind"] == "rule"
                                               for c in skeleton["candidates"])}}
-    assert all(c["unit"] for c in skeleton["candidates"])   # none orphaned
+    # exactly one unit per candidate — neither orphaned nor listed twice.
+    placed = [cid for u in plan["units"] for cid in u["candidates"]]
+    assert sorted(placed) == sorted(c["id"] for c in skeleton["candidates"])
+    assert all(c["unit"] for c in skeleton["candidates"])
+
+    # the ranked process nodes the unit was actually shown
+    assert plan["units"][0]["nodes"] == ["cooking-030-n001"]
 
     for unit in plan["units"]:
         text = (run_dir / "units" / unit["id"] / "input.md").read_text(
@@ -202,5 +228,15 @@ def test_build_writes_the_four_artefacts_over_the_mini_estate(tmp_path):
         assert "Expression card" in text and "Style card" in text
     chunk = next(u for u in plan["units"] if u["type"] == "transcript")
     assert chunk["inputs"] == ["meetings/transcripts/cooking-1405-05-26.txt#L1-L39"]
-    assert "سطر 39" in (run_dir / "units" / chunk["id"] / "input.md").read_text(
+    # a line under the cap is quoted byte for byte, trailing spaces included
+    assert "سطر 39: موجودی پنیر پیتزا را آخر شب شمردیم.  \n" in (
+        run_dir / "units" / chunk["id"] / "input.md").read_text(encoding="utf-8")
+
+    # §2.3's context row: the bodies of the functions this unit's own
+    # candidates call, and no such section for a unit that calls none.
+    pitza = (run_dir / "units" / "u-wb-mini_pitza_ch" / "input.md").read_text(
+        encoding="utf-8")
+    assert "getTotalFoodsIngredient" in pitza and "getIngredientValue(foodIds[i]" in pitza
+    items = next(u for u in plan["units"] if u["type"] == "items")
+    assert "## توابع" not in (run_dir / "units" / items["id"] / "input.md").read_text(
         encoding="utf-8")

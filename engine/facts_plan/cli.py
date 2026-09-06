@@ -58,6 +58,17 @@ def main(argv=None):
         result = verb(root, run, new_turn=args.new_turn)
     else:
         result = verb(root, run)
+    if args.verb == "status":
+        # The coordinator reads this table, not a JSON blob: one line per unit,
+        # then the run's own line. `status()` still returns the dict.
+        for unit in result["units"]:
+            print(f'{unit["id"]} · {unit["type"]} · {unit["state"]} · '
+                  f'{unit["attempts"]}')
+        print(f'stage {result["stage"]} · '
+              f'plan_stale {str(result["plan_stale"]).lower()} · '
+              f'elapsed_s {result["elapsed_s"]} · '
+              f'yield {str(result["yield"]).lower()}')
+        return 0
     print(json.dumps(result, ensure_ascii=False, sort_keys=True)
           if isinstance(result, dict) else result)
     return 0

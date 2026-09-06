@@ -3,7 +3,7 @@ read back off the filesystem and nowhere else."""
 import json
 
 import pytest
-from facts_plan.cli import check_rebuild, status, unit_states
+from facts_plan.cli import check_rebuild, main, status, unit_states
 
 
 def _run(tmp_path, units=("u-a", "u-b")):
@@ -57,6 +57,18 @@ def test_two_refused_attempts_are_failed_one_is_pending(tmp_path):
     assert state["state"] == "failed" and state["attempts"] == 2
     assert unit_states(tmp_path, run_dir, units,
                        check=lambda path: [])[0]["state"] == "done"
+
+
+def test_the_cli_prints_one_line_per_unit_then_the_summary(tmp_path, monkeypatch,
+                                                           capsys):
+    run_dir = _run(tmp_path)
+    monkeypatch.setenv("DATA_ROOT", str(tmp_path))
+    monkeypatch.setenv("SOURCE_DATE_EPOCH", "1000000")
+    assert main(["status", "--run", str(run_dir)]) == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[:2] == ["u-a · workbook · pending · 0",
+                         "u-b · workbook · pending · 0"]
+    assert lines[2] == "stage U · plan_stale false · elapsed_s 0 · yield false"
 
 
 def test_check_rebuild_refuses_a_plan_whose_unit_is_done(tmp_path, capsys):

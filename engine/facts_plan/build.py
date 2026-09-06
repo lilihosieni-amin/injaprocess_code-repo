@@ -1301,17 +1301,7 @@ def function_library(estate):
     """`functions.md`'s body (§3.4) — one section per distinct body over the
     whole estate: name, kind, definers, callers, the verbatim body. The estate
     already knows where its scripts are, so this takes no second argument."""
-    sections = {}
-    for sid, dump in sorted(estate.items()):
-        for name, formula in sorted(dump["names"].items()):
-            if formula.lstrip().upper().startswith("LAMBDA("):
-                _add_section(sections, name, "named", dump["short"], formula)
-        for script in dump["row"].get("scripts") or []:
-            path = dump["sheets_root"] / script
-            if not path.exists():
-                continue
-            for name, body in _script_functions(path.read_text(encoding="utf-8")):
-                _add_section(sections, name, "script", script, body)
+    sections = library_sections(estate)
     names = {s["name"] for s in sections.values()}
     calls = {name: [] for name in names}
     for sid, dump in sorted(estate.items()):
@@ -1557,19 +1547,35 @@ def plan_units(skeleton, groups, chunks, items, attachments, render=lambda u: ""
     units = []
     instance_book = {i["key"]: i["key"].split("__")[0]
                      for i in skeleton.get("instances") or []}
+    key_of_short = {w["short"]: key for key, rows in groups.items() for w in rows}
+    # A script rule sits on no instance: it belongs to the workbook whose
+    # manifest row names the `.gs` file its body was read out of (§2.3).
+    key_of_script = {s: key for key, rows in groups.items()
+                     for w in rows for s in w.get("scripts") or []}
+    members = collections.defaultdict(list)
+    for cid, candidate in sorted(by_id.items()):
+        homes = {}
+        for instance in candidate_instances(candidate):
+            short = instance_book.get(instance)
+            if short in key_of_short:
+                homes.setdefault(key_of_short[short], short)
+        if len(homes) > 1:
+            first, second = sorted(homes.values())[:2]
+            print(f"facts-plan: candidate {cid} sits in both {first} and "
+                  f"{second}, which the manifest keeps in two groups — one "
+                  f"decision cannot live in two units; set twin_of on "
+                  f"{first}/{second} in the manifest", file=sys.stderr)
+            raise SystemExit(2)
+        home = next(iter(homes), None) or key_of_script.get(
+            (candidate.get("render") or {}).get("script"))
+        if home:
+            members[home].append(cid)
     for key, rows in sorted(groups.items()):
         mine = sorted(w["short"] for w in rows)
-        # A script rule sits on no instance: it belongs to the workbook whose
-        # manifest row names the `.gs` file its body was read out of (§2.3).
-        scripts = {s for w in rows for s in (w.get("scripts") or [])}
-        members = sorted(
-            cid for cid, c in by_id.items()
-            if any(instance_book.get(k) in mine for k in candidate_instances(c))
-            or (c.get("render") or {}).get("script") in scripts)
-        if members:
+        if members.get(key):
             units.append({"id": f"u-wb-{mine[0]}", "type": "workbook",
                           "inputs": [w["file"] for w in rows],
-                          "candidates": members, "nodes": [],
+                          "candidates": sorted(members[key]), "nodes": [],
                           "est_tokens_in": 0, "est_tokens_out": 0})
     for recording, path, (first, last), text in chunks:
         units.append({"id": f"u-tr-{recording}-l{first}", "type": "transcript",
@@ -1599,6 +1605,15 @@ def plan_units(skeleton, groups, chunks, items, attachments, render=lambda u: ""
     for unit in out:
         for cid in unit["candidates"]:
             by_id[cid]["unit"] = unit["id"]
+    # The plan's one invariant, checked in both directions: a candidate
+    # decided twice contradicts itself at assemble, and one decided nowhere is
+    # silently lost work.
+    placed = collections.Counter(cid for unit in out for cid in unit["candidates"])
+    twice = sorted(cid for cid, n in placed.items() if n > 1)
+    nowhere = sorted(set(by_id) - set(placed))
+    assert not twice and not nowhere, (
+        f"plan_units: {len(twice)} candidate(s) in two units {twice[:3]}, "
+        f"{len(nowhere)} in none {nowhere[:3]}")
     return out
 
 
@@ -1615,6 +1630,39 @@ def write_plan(run_dir, department, hashes, units):
 # what a unit is allowed to know: `units/<u>/input.md` and the two cards (§2.4)
 
 _CARDS = pathlib.Path(__file__).resolve().parent / "cards"
+
+
+def library_sections(estate):
+    """`{(folded body, name): section}` over the whole estate — what
+    `functions.md` renders in full, and what a unit's input quotes the few
+    lines of. One pass, two readers."""
+    sections = {}
+    for sid, dump in sorted(estate.items()):
+        for name, formula in sorted(dump["names"].items()):
+            if formula.lstrip().upper().startswith("LAMBDA("):
+                _add_section(sections, name, "named", dump["short"], formula)
+        for script in dump["row"].get("scripts") or []:
+            path = dump["sheets_root"] / script
+            if not path.exists():
+                continue
+            for name, body in _script_functions(path.read_text(encoding="utf-8")):
+                _add_section(sections, name, "script", script, body)
+    return sections
+
+
+def called_bodies(sections, names):
+    """The library sections a unit's own candidates call, verbatim (§2.3's
+    context row) — the unit is deciding the caller, so it must be able to read
+    what the caller computes without opening a file.
+
+    ponytail: direct calls only. The estate's one two-hop chain
+    (`getTotalFoodsIngredient` → `getIngredientValue`) is the reason the
+    variant grouping exists at all, and pulling closures in would put the whole
+    66 K library in a 20 K unit. Widen it if a unit ever drops for it.
+    """
+    names = set(names)
+    return [f'### {s["name"]} ({s["kind"]})\n```\n{s["body"]}\n```'
+            for _, s in sorted(sections.items()) if s["name"] in names]
 
 
 def cards():
@@ -1673,6 +1721,10 @@ def render_input(unit, skeleton, extras):
     out += [_render_candidate(by_id[c], skeleton) for c in unit["candidates"]] or ["—"]
     if extras.get("text"):
         out += ["", "## متن", "", extras["text"]]
+    if extras.get("functions"):
+        # No section at all when the unit's candidates call nothing — an empty
+        # heading is one more thing to read and nothing to decide.
+        out += ["", "## توابع فراخوانی‌شده", ""] + list(extras["functions"])
     for title, key in (("## زمینه", "context"), ("## جدول‌های مرتبط", "field_tables"),
                        ("## ورودی‌های قابل استفادهٔ مجدد", "reuse"),
                        ("## گره‌های فرایند", "processes")):
@@ -1719,13 +1771,16 @@ def _attachment_texts(root, department):
 def _wrap(line):
     """One transcript line is one speaker's turn, and the estate's longest runs
     to 5,924 characters — §2.3 bounds a rendered line at 1,900, and the split
-    axis divides lines, never a line. So the quote is folded on word
-    boundaries: every word and its order survive, and the chunk's `#L` span
-    still names the source file's own lines.
+    axis divides lines, never a line. So a line **over the cap** is folded on
+    word boundaries: every word and its order survive, and the chunk's `#L`
+    span still names the source file's own lines. Every other line — nearly
+    all of them — is quoted byte for byte, trailing spaces included.
 
     ponytail: `textwrap` at a fixed width, not a token-aware filler. Widen it
     if a reader ever complains; nothing downstream reads a column.
     """
+    if len(line) <= MAX_LINE:
+        return [line]
     return textwrap.wrap(line, width=1500, break_long_words=False,
                          break_on_hyphens=False) or [""]
 
@@ -1834,6 +1889,7 @@ def build(root, department, run_dir, recordings, *, rebuild=False):
 
     index, item_units = _store_slice(root)
     nodes = process_index(root, department)
+    sections = library_sections(estate)
     own = [{"id": c["id"], "kind": c["kind"], "label": label_of(c)}
            for c in templates + items]
     instance_by_key = {i["key"]: i for i in instances}
@@ -1847,14 +1903,20 @@ def build(root, department, run_dir, recordings, *, rebuild=False):
                        if k in instance_by_key})
         text = _unit_text(root, unit)
         tokens = _tokens(" ".join([label_of(c) for c in mine] + [text]))
+        ranked = rank(nodes, tokens, 40, lambda n: n["label"])
+        # `nodes[]` records the slice the unit was actually shown, so a
+        # citation can be read back against what it could see (§2.3).
+        unit["nodes"] = [n["node"] for n in ranked]
         rendered[unit["id"]] = render_input(unit, skeleton, {
             "text": text,
+            "functions": called_bodies(
+                sections, {name for c in mine
+                           for name in (c.get("render") or {}).get("calls") or []}),
             "context": context_items(estate, sids),
             "field_tables": _field_tables(unit, skeleton),
             "reuse": reuse_slice(own, index, item_units, department, tokens),
             "processes": [f'{n["process"]} · {n["node"]} · {n["label"]}'
-                          for n in rank(nodes, tokens, 40,
-                                        lambda n: n["label"])]})
+                          for n in ranked]})
         return rendered[unit["id"]]
 
     chunks = _chunks(root, recordings)
