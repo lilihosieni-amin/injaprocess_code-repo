@@ -124,6 +124,17 @@ def validate_unit(root, run_dir, path):
             problems.append(f'{path.name}: is a review document, but it sits in '
                             f'units/{path.parent.name}/, whose candidates it '
                             "decides none of")
+        elif (run_dir / "review" / "input.sha256").is_file():
+            # The review's gate is the fold's own judgement (I1 for the
+            # reviewer): an address that lands nowhere or a contradiction no
+            # flag covers is refused here, per decision, instead of the whole
+            # document being discarded at `assemble` with no word to anyone.
+            # Without a digest stamp the fold reads no review, so there is
+            # nothing to judge it against.
+            _run, skel, st = _prepare(root, run_dir, False)
+            draft = _build_entries(root, skel, st)
+            _cross_unit(root, draft, st)
+            problems += _review_problems(run_dir, doc, st, draft, st)
     else:
         # A document belongs to the unit whose directory it sits in, never to
         # the one it names: a document declaring a zero-candidate sibling would
@@ -528,22 +539,79 @@ def _collect(root, run_dir, plan, skeleton):
     return state
 
 
+def _review_hits(draft):
+    """`hits(ref) -> [entry]` for an `entryAddr`. `scope` is optional there:
+    without it, kind + key is the address, and it has to name exactly one
+    assembled entry across every scope."""
+    address = {}
+    for entry in draft:
+        address.setdefault(_address(entry), []).append(entry)
+
+    def hits(ref):
+        if ref.get("scope") is not None:
+            return address.get(_address(ref), [])
+        return [e for a, es in address.items() for e in es
+                if a[:2] == (ref["kind"], ref["key"])]
+    return hits
+
+
+def _review_problems(run_dir, doc, state, draft, scratch):
+    """Every reason the fold would discard this review, one line per decision —
+    the review's gate (`validate facts-unit review/out.json`) and `_fold_review`
+    judge by this one function, so what the gate admits the fold applies. The
+    flags are the ones `scratch` carries, which are the ones `review/input.md`
+    was rendered from — a field none of them names is an address the reviewer
+    invented (QF-52)."""
+    out = []
+    stamp = run_dir / "review" / "input.sha256"
+    text = _digest_text(scratch, draft)
+    if stamp.read_text(encoding="utf-8").strip() != \
+            hashlib.sha256(text.encode("utf-8")).hexdigest():
+        out.append("out.json: the digest changed since this review was written")
+    hits = _review_hits(draft)
+
+    def name(ref):
+        return f'{ref["kind"]} {ref["key"]}'
+    for n, decision in enumerate(doc["decisions"]):
+        label = f"decisions[{n}]"
+        if decision.get("action") == "contradiction":
+            named = {_address(e) for e in hits(decision["entry"])} \
+                if decision.get("entry") else set()
+            if not any(f["code"] == "unit_drift"
+                       and f["field"] == decision["field"]
+                       and _address(f["entry"]) in named
+                       for f in scratch["flags"]):
+                out.append(f'{label}: contradiction: no drift flag on '
+                           f'{decision["field"]} for {name(decision["entry"])}')
+            continue
+        if isinstance(decision.get("into"), dict):
+            k = len(hits(decision["into"]))
+            if k != 1:
+                out.append(f'{label}: into: {name(decision["into"])} names '
+                           f"{k} assembled entries")
+        if decision.get("skeleton"):
+            if decision["skeleton"] not in state["by_skeleton"]:
+                out.append(f'{label}: skeleton {decision["skeleton"]} is '
+                           "decided by no unit")
+            continue
+        k = len(hits(decision["entry"]))
+        if k != 1:
+            out.append(f'{label}: entry: {name(decision["entry"])} names {k} '
+                       "assembled entries")
+    return out
+
+
 def _fold_review(run_dir, state, draft, scratch):
     """Step 0 (§2.6). The digest hash must still match the assembly the reviewer
     read, and an address hitting zero or more than one entry discards the whole
     document: one round, no negotiation (§10)."""
     path = run_dir / "review" / "out.json"
-    stamp = run_dir / "review" / "input.sha256"
-    if not path.is_file() or not stamp.is_file():
+    if not path.is_file() or not (run_dir / "review" / "input.sha256").is_file():
         return "absent"
-    text = _digest_text(scratch, draft)
-    if stamp.read_text(encoding="utf-8").strip() != \
-            hashlib.sha256(text.encode("utf-8")).hexdigest():
-        return "discarded"
     doc = read_json(path)
-    address = {}
-    for entry in draft:
-        address.setdefault(_address(entry), []).append(entry)
+    if _review_problems(run_dir, doc, state, draft, scratch):
+        return "discarded"
+    hits = _review_hits(draft)
     folded, settled = [], []
     for decision in doc["decisions"]:
         if decision.get("action") == "contradiction":
@@ -552,41 +620,29 @@ def _fold_review(run_dir, state, draft, scratch):
             # `account` keeps both readings open for the owner. It settles a
             # record rather than deciding a candidate, so it never joins
             # `folded`: merged onto a decision it would replace the `keep` and
-            # the entry would leave the delta altogether. The flags are the
-            # ones `scratch` carries, which are the ones `review/input.md` was
-            # rendered from — a field none of them names is an address the
-            # reviewer invented, and an invented address discards the whole
-            # document (QF-52).
-            addr = _address(decision["entry"]) if decision.get("entry") else None
-            flag = next((f for f in scratch["flags"]
-                         if f["code"] == "unit_drift"
-                         and f["field"] == decision["field"]
-                         and _address(f["entry"]) == addr), None)
-            if flag is None:
-                return "discarded"
-            settled.append((flag, decision))
+            # the entry would leave the delta altogether.
+            hit = hits(decision["entry"])[0]
+            flag = next(f for f in scratch["flags"]
+                        if f["code"] == "unit_drift"
+                        and f["field"] == decision["field"]
+                        and _address(f["entry"]) == _address(hit))
+            # `_settle` finds the entry by its full address, so a scope the
+            # reviewer left out is filled in from the entry it named.
+            settled.append((flag, dict(decision, entry={
+                "kind": hit["kind"], "key": hit["key"],
+                "scope": hit.get("scope")})))
             continue
         # `into` may be an address too (`facts-unit.schema.json`'s `entryAddr`),
-        # and `_target_of` walks skeleton ids — so it is resolved here or the
-        # document is discarded, never handed on as a dict nothing can follow.
+        # and `_target_of` walks skeleton ids — so it is resolved here, never
+        # handed on as a dict nothing can follow.
         if isinstance(decision.get("into"), dict):
-            target = address.get(_address(decision["into"]), [])
-            if len(target) != 1:
-                return "discarded"
-            decision = dict(decision, into=target[0]["_skeleton"])
+            decision = dict(decision,
+                            into=hits(decision["into"])[0]["_skeleton"])
         if decision.get("skeleton"):
-            # A skeleton no unit decided is an address the reviewer invented:
-            # folding it would report `applied` for a decision that lands
-            # nowhere. (A *dropped* candidate is decided, so §2.6's reinstating
-            # `keep` still works.)
-            if decision["skeleton"] not in state["by_skeleton"]:
-                return "discarded"
             folded.append(decision)
             continue
-        hit = address.get(_address(decision["entry"]), [])
-        if len(hit) != 1:
-            return "discarded"
-        folded.append(dict(decision, skeleton=hit[0]["_skeleton"]))
+        folded.append(dict(decision,
+                           skeleton=hits(decision["entry"])[0]["_skeleton"]))
     for decision in folded:
         previous = state["by_skeleton"].get(decision["skeleton"], {})
         merged = {**previous, **{k: v for k, v in decision.items()
