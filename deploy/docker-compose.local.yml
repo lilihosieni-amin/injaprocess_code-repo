@@ -59,6 +59,7 @@ services:
     env_file: [./local/control-bot.env]    # test token @aiprocessTestinjabo
     environment:
       APPROVED_DIRECTORY: /data
+      DATA_ROOT: /data
       CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1"
       CLAUDE_MAX_TURNS: "300"
       # Per-Bash-command timeout: the default is 120s, and `transcribe` is the command
