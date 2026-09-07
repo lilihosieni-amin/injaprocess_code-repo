@@ -865,8 +865,11 @@ def test_cli_audit_and_check_print_one_line_each_and_exit_zero(tmp_path):
 
     proc = _cli(root, "audit", "--persian")
     assert proc.returncode == 0, proc.stderr
-    assert all("F-" not in line.split(" ", 2)[2] for line in
-               proc.stdout.splitlines())
+    # `--persian` is the one the playbook forwards to the owner, so the line is
+    # the sentence alone: no code token in front of it and no id inside it.
+    lines = proc.stdout.splitlines()
+    assert lines and all("F-" not in line for line in lines)
+    assert [line for line in lines if line.split(" ", 1)[0] in PERSIAN] == []
 
     proc = _cli(root, "check")
     assert proc.returncode == 0, proc.stderr

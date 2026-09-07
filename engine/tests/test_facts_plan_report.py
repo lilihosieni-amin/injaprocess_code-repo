@@ -1,6 +1,6 @@
 import json
 
-from facts_plan.assemble import ISSUE_FA, report
+from facts_plan.assemble import ISSUE_FA, gate_b, report
 from facts_plan.build import ISSUE_TEXT
 
 
@@ -90,3 +90,46 @@ def test_report_letters_disputes_and_speaks_persian(tmp_path):
     for banned in ("F-00487", "a1", "S-r-1", "u-a", "merge ", "runs/",
                    "date_passthrough"):
         assert banned not in text
+
+
+def _account(aid, field, statement, value):
+    return {"id": aid, "field": field, "statement": statement, "value": value,
+            "status": "open", "source": {"type": "sheet", "ref": "x"}}
+
+
+def _disputed(accounts):
+    return [{"id": "F-00487", "kind": "rule", "key": "enheraf",
+             "title": "انحراف مصرف", "statement": "…",
+             "scope": {"departments": ["cooking"], "branches": []},
+             "status": "disputed", "retired": False, "valid_to": None,
+             "updated_at": "2026-09-06T10:00:00Z",
+             "source": [{"type": "sheet", "ref": "x", "sheet": "پیتزا"}],
+             "accounts": accounts,
+             "data": {"inputs": [],
+                      "outputs": [{"key": "v", "title": "مقدار", "unit": "g"},
+                                  {"key": "w", "title": "حد", "unit": "g"}]}}]
+
+
+def test_two_disagreed_fields_on_one_entry_are_two_disputes_numbered_alike(tmp_path):
+    """The owner answers «۱ الف» at Gate B and the playbook resolves what that
+    number names — so a dispute is one FIELD, not one entry and not every other
+    account in a flat list, and `gate-b.md` and `report.md` have to number the
+    same list the same way."""
+    run_dir = _run(tmp_path)
+    accounts = [_account("a1", "data/outputs/v/value", "۲۱۵ گرم", 215),
+                _account("a2", "data/outputs/v/value", "۱۰ گرم", 10),
+                _account("a3", "data/outputs/w/value", "۷ گرم", 7),
+                _account("a4", "data/outputs/w/value", "۹ گرم", 9)]
+    entries = _disputed(accounts)
+    _store(tmp_path, entries)
+    text = report(tmp_path, run_dir).read_text(encoding="utf-8")
+    assert "اختلاف ۱ — «انحراف مصرف»\n  الف) ۲۱۵ گرم\n  ب) ۱۰ گرم" in text
+    assert "اختلاف ۲ — «انحراف مصرف»\n  الف) ۷ گرم\n  ب) ۹ گرم" in text
+    assert "ج)" not in text                       # never four sides in one
+
+    skeleton = json.loads((run_dir / "skeleton.json").read_text(encoding="utf-8"))
+    gate = gate_b(tmp_path, skeleton, entries,
+                  {"department": "cooking", "dropped": [], "undecided": []})
+    assert "اختلاف بین دو منبع: ۲ مورد" in gate
+    assert "۱ — «انحراف مصرف»: الف) ۲۱۵  ب) ۱۰" in gate
+    assert "۲ — «انحراف مصرف»: الف) ۷  ب) ۹" in gate

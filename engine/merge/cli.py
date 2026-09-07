@@ -147,10 +147,15 @@ def _facts(args):
                 report = check_facts(root)
                 findings = report["findings"]
             for item in findings:
-                print(f"{item['code']} {item['id'] or ''} {item['message']}")
+                # `--persian` is what the playbook forwards to the owner, so
+                # the line is the sentence and nothing else: a code token and an
+                # `F-` id are both things the owner never sees (QF-54).
+                print(item["message"] if getattr(args, "persian", False)
+                      else f"{item['code']} {item['id'] or ''} {item['message']}")
             if report is not None:
                 # last stdout line, verbatim — QF-44 (v3)'s readiness, with no
-                # workbook denominator; the ui-backend re-serves it in Persian
+                # workbook denominator. The playbook reads it; nothing serves it
+                # to the panel, which counts its own coverage.
                 print("readiness: " + " ".join(
                     f"{name}={report[name]}" for name in
                     ("units_done", "review_ran", "lint_failures",

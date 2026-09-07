@@ -235,6 +235,10 @@ KIND_OF = {"record": "record", "item": "item", "rule": "rule", "script": "rule",
            "gs": "rule"}
 _DIGITS = str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹")
 
+#: A dispute's sides, lettered — the owner answers «۱ الف» (§2.7), so
+#: `gate-b.md` and `report.md` letter one list the same way.
+LETTERS_FA = ("الف", "ب", "ج", "د")
+
 #: §2.3's two attempts per unit — a unit that has used both is `failed`, and
 #: its candidates go to `undecided[]` rather than blocking the assembly.
 ATTEMPTS = 2
@@ -1066,6 +1070,25 @@ def _rule_line(entry):
     return line + (": " + "، ".join(_fa(n) for n in numbers) if numbers else "")
 
 
+def _disputes(entries):
+    """The open accounts grouped by `(entry, field)` — one dispute per field
+    two sources disagree on, in one order.
+
+    The owner answers «۱ الف» at Gate B and the playbook resolves what that
+    number named, so `gate-b.md` and `report.md` have to number the same list
+    the same way — and two differing leaves on one entry are two disputes with
+    two sides each, never one dispute with four.
+    """
+    out = []
+    for entry in entries:
+        by_field = {}
+        for account in entry.get("accounts") or []:
+            if account.get("status") == "open":
+                by_field.setdefault(account.get("field"), []).append(account)
+        out += [(entry, sides) for sides in by_field.values()]
+    return out
+
+
 def gate_b(root, skeleton, entries, state):
     """`gate-b.md` (§2.7) — a finished Persian message the playbook sends
     verbatim. No id, no path, no code, no command; an entry is its title."""
@@ -1075,7 +1098,7 @@ def gate_b(root, skeleton, entries, state):
     counts = {kind: sum(1 for e in entries if e["kind"] == kind)
               for kind in KIND_ORDER}
     rules = [e for e in entries if e["kind"] == "rule"]
-    accounts = [(e, a) for e in entries for a in e.get("accounts") or []]
+    disputes = _disputes(entries)
     unknown = sum(len(null_paths(e)) for e in entries)
     issues = [i for i in skeleton["issues"]]
     reasons = []
@@ -1097,13 +1120,13 @@ def gate_b(root, skeleton, entries, state):
         if len(rules) > 3:
             out.append(f"  … ({_fa(len(rules) - 3)} مورد دیگر)")
         out.append("")
-    if accounts:
-        out.append(f"اختلاف بین دو منبع: {_fa(len(accounts) // 2)} مورد "
+    if disputes:
+        out.append(f"اختلاف بین دو منبع: {_fa(len(disputes))} مورد "
                    "(در پنل هم قابل تعیین تکلیف است)")
-        for n, (entry, account) in enumerate(accounts[::2], start=1):
-            twin = next(a for a in entry["accounts"] if a is not account)
-            out.append(f'  {_fa(n)} — «{entry["title"]}»: الف) '
-                       f'{_fa(account["value"])}  ب) {_fa(twin["value"])}')
+        for n, (entry, sides) in enumerate(disputes, start=1):
+            out.append(f'  {_fa(n)} — «{entry["title"]}»: '
+                       + "  ".join(f'{letter}) {_fa(side["value"])}'
+                                   for letter, side in zip(LETTERS_FA, sides)))
         out.append("")
     if issues:
         out.append(f"ایرادهای یافته‌شده در فایل‌ها: {_fa(len(issues))} مورد — "
@@ -1151,9 +1174,7 @@ def report(root, run_dir):
             + " و ".join(UNRESOLVED_FA.get(c, c) for c in row["unresolved"])
             + " مشخص نشده است.")
 
-    disputes = [(e, [a for a in e.get("accounts") or []
-                     if a.get("status") == "open"]) for e in entries]
-    disputes = [(e, a) for e, a in disputes if a]
+    disputes = _disputes(entries)
     unknown = [(e, null_paths(e)) for e in entries]
     unknown = [(e, p) for e, p in unknown if p]
 
@@ -1165,7 +1186,7 @@ def report(root, run_dir):
         out.append("اختلاف‌ها — شمارهٔ مورد و حرف گزینه را بفرستید، مثلاً «۱ الف»:")
         for n, (entry, accounts) in enumerate(disputes, start=1):
             out.append(f'اختلاف {_fa(n)} — «{entry["title"]}»')
-            for letter, account in zip("الف ب ج د".split(), accounts):
+            for letter, account in zip(LETTERS_FA, accounts):
                 out.append(f'  {letter}) {account["statement"]}')
         out.append("")
     if unknown:
