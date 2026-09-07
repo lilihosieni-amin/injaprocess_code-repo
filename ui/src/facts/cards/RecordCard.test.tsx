@@ -396,4 +396,35 @@ describe('the record card', () => {
     expect(screen.getByText('ستون «مصرف واقعی» در این نسخه جا افتاده است.'))
       .toBeInTheDocument()
   })
+
+  /** §3.3 — a paper form's closed `location`: where the forms are kept and who
+   *  holds them. The 2026-09-07 run wrote two of these with no `location` at
+   *  all and invented keys instead, and the panel had nothing to draw. */
+  const KEPT = (over: Record<string, unknown> = {}): FactBundle => bundleOf('record', {
+    medium: 'paper', role: 'log',
+    location: { kept_at: 'قفسهٔ دفتر انبار', holder: 'مسئول انبار' },
+    cadence: 'nightly',
+    ...over,
+  })
+
+  it('draws a paper form’s «نگهداری» and «مسئول» where a sheet draws its path', () => {
+    draw(KEPT())
+    expect(screen.getByText('نگهداری')).toBeInTheDocument()
+    expect(screen.getByText('قفسهٔ دفتر انبار')).toBeInTheDocument()
+    expect(screen.getByText('مسئول')).toBeInTheDocument()
+    expect(screen.getByText('مسئول انبار')).toBeInTheDocument()
+    // Both are Persian prose, so neither is an LTR island (note 6 / QF-42):
+    // `Mono` is for a stored latin run, and there is none here.
+    expect(screen.getByText('قفسهٔ دفتر انبار')).not.toHaveAttribute('dir')
+    // …and the empty «محل» row is gone rather than drawn as «—».
+    expect(screen.queryByText('محل')).toBeNull()
+  })
+
+  it('names the outside system for an external table', () => {
+    draw(KEPT({ medium: 'external', location: { system: 'سپیدز', kept_at: 'گزارش فروش روزانه' } }))
+    expect(screen.getByText('سامانه')).toBeInTheDocument()
+    expect(screen.getByText('سپیدز')).toBeInTheDocument()
+    expect(screen.getByText('نگهداری')).toBeInTheDocument()
+    expect(screen.queryByText('مسئول')).toBeNull()
+  })
 })

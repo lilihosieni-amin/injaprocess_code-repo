@@ -5,8 +5,9 @@ import {
 } from '../../lib/factsLabels'
 import { toFa } from '../../lib/format'
 import {
-  isRecordFact, type FactBundle, type RecordData, type RecordField,
-  type RecordInstance,
+  isRecordFact, type ExternalLocation, type FactBundle, type NativeLocation,
+  type PaperLocation, type RecordData, type RecordField, type RecordInstance,
+  type SheetLocation,
 } from '../../api/types'
 import { redPath, refTitle, resolvedTitle, rowCount, rowTitle } from '../bundle'
 import {
@@ -512,7 +513,12 @@ function StructureCard({ bundle, data, onOpen }: {
   bundle: FactBundle; data: RecordData; onOpen: (id: string) => void
 }) {
   const L = (k: string) => label(PAYLOAD_FIELD_LABELS, k)
-  const loc = data.location ?? {}
+  // The union's four shapes read flat: `medium` is the discriminant and it is
+  // one level up, so narrowing here would mean turning `RecordData` into a
+  // union and narrowing it in every card. Authors are held to the union in
+  // `types.ts`; this one reader takes the widened view.
+  const loc: Partial<SheetLocation & PaperLocation & ExternalLocation & NativeLocation> =
+    data.location ?? {}
   const instances = data.instances ?? []
   // Note 6 — the file name, the sheet or the authority; NEVER the spreadsheet id
   // beside a Persian word inside one LTR run. The id is in the footer chip.
@@ -542,6 +548,11 @@ function StructureCard({ bundle, data, onOpen }: {
   // `F-00018` (the Sepidz till) drew «قالب receipt number», two English words at
   // a Persian prose node.
   const format = loc.identifier_scheme?.format
+  // §3.3 — a paper form, an external table and a native one have no locator at
+  // all; `where` would be «—» and say nothing. Draw «محل» only when it has
+  // something to carry, and the kept-at rows in its place when it does not.
+  const hasWhere = loc.path !== undefined || loc.sheet !== undefined
+    || loc.identifier_scheme?.authority !== undefined
   // **Owner report, 2026-09-06:** every stored `foreignKeys` member is an
   // import descriptor — `{spreadsheetId, sheet, range, target}` — where the
   // spec's `{fields, reference, …}` (:903) belongs, and the row below joined
@@ -556,13 +567,28 @@ function StructureCard({ bundle, data, onOpen }: {
   return (
     <DetailCard className="mt-s7">
       <HeadBand>{label(SCREEN_LABELS, 'heading_record_structure')}</HeadBand>
-      {instances.length === 0 && (
+      {instances.length === 0 && (hasWhere || loc.kept_at === undefined) && (
         <LabelRow text={L('location')}>
           {where}
           {format !== undefined && (
             <Filled text={label(SCREEN_LABELS, 'location_format')} values={{ n: format }}
               className="text-fs-micro text-faint" />
           )}
+        </LabelRow>
+      )}
+      {instances.length === 0 && loc.system !== undefined && (
+        <LabelRow text={L('system')}>
+          <span className="text-fs-menu font-semibold text-ink">{loc.system}</span>
+        </LabelRow>
+      )}
+      {instances.length === 0 && loc.kept_at !== undefined && (
+        <LabelRow text={L('kept_at')}>
+          <span className="text-fs-menu text-ink">{loc.kept_at}</span>
+        </LabelRow>
+      )}
+      {instances.length === 0 && loc.holder !== undefined && (
+        <LabelRow text={L('holder')}>
+          <span className="text-fs-menu text-ink">{loc.holder}</span>
         </LabelRow>
       )}
       {instances.length > 0 && (
@@ -733,8 +759,9 @@ function StructureCard({ bundle, data, onOpen }: {
  * location line would name the first of them and silently hide the rest — which
  * is the whole reason the row is gone.
  *
- * A paper form and an external table keep the old row: they have a `location`
- * and no instances, and nothing else says where they are.
+ * A paper form, an external table and a native one keep this region without
+ * instances: a `location` chosen by `medium` (§3.3), drawn as «محل» when it
+ * carries a locator and as «نگهداری» / «مسئول» / «سامانه» when it does not.
  *
  * Each instance's `imports[]` renders directly beneath it as «ورودی از» — the
  * source record's title and a link when it is a `{ref}`, the workbook's title

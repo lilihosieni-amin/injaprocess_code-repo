@@ -307,15 +307,37 @@ export interface RecordImport {
  * A row is `{ key, … }` plus one property per column, so it cannot be typed
  * more tightly than `Record<string, unknown>` without freezing the store —
  * the same reason the schema leaves `data` an open object.
+ *
+ * `location` is the exception, as of the 2026-09-07 addendum §3.3: it is an
+ * `if/then` on `medium` in the schema, and the four shapes below are that
+ * `if/then`. The discriminant sits on the parent, so a reader narrows on
+ * `medium` and not on the location object.
  */
+/** The schema leaves this an open object; these are the keys the store writes. */
+export interface IdentifierScheme {
+  authority?: string; format?: string; example?: string
+}
+/** `medium: 'sheet'` — engine-written, and the only shape with a locator. */
+export interface SheetLocation {
+  path?: string; spreadsheetId?: string; sheet?: string
+  sheetId?: number | string | null
+  hidden?: boolean
+}
+/** `medium: 'paper'` — where the blank and filled forms are kept, who holds them. */
+export interface PaperLocation { kept_at: string; holder: string }
+/** `medium: 'external'` — the outside system, and where inside it. */
+export interface ExternalLocation {
+  system: string; kept_at: string; identifier_scheme?: IdentifierScheme
+}
+/** `medium: 'native'` — a table the estate keeps itself. */
+export interface NativeLocation { kept_at?: string; identifier_scheme?: IdentifierScheme }
+export type RecordLocation =
+  SheetLocation | PaperLocation | ExternalLocation | NativeLocation
+
 export interface RecordData {
   medium: 'sheet' | 'paper' | 'external' | 'native'
   role: 'log' | 'reference' | 'report' | 'config'
-  location: {
-    path?: string; spreadsheetId?: string; sheet?: string; sheetId?: number
-    hidden?: boolean
-    identifier_scheme?: { authority?: string; format?: string }
-  }
+  location: RecordLocation
   instances?: RecordInstance[]
   fields?: RecordField[]
   rows?: (Record<string, unknown> & { key?: string; title?: string; retired?: boolean })[]
