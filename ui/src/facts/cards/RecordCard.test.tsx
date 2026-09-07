@@ -22,7 +22,9 @@ const PAPER = (
   rows?: Record<string, unknown>[],
 ): FactBundle => bundleOf('record', {
   medium: 'paper', role: 'log',
-  location: { path: 'departments/cooking/attachments/photo_2026-08-29_14-23-51.jpg' },
+  // §3.3 — `medium: paper` closes `location` to where the forms are kept and
+  // who holds them; a path is a sheet's shape, and the schema now refuses it.
+  location: { kept_at: 'زونکن دفتر آشپزخانه', holder: 'سرآشپز' },
   grain: 'هر ردیف یک قلم، هر برگ یک شیفت',
   cadence: 'nightly',
   blank_master: true,
@@ -372,9 +374,10 @@ describe('the record card', () => {
 
   it('keeps the single location line for a record with no instances', () => {
     // A paper form and an external table have a `location` and no `instances[]`,
-    // and that row is the only thing that says where they are.
+    // and that row is the only thing that says where they are — «نگهداری» for
+    // the paper form, since §3.3 leaves it no locator to put under «محل».
     draw(PAPER())
-    expect(screen.getByText('محل')).toBeInTheDocument()
+    expect(screen.getByText('نگهداری')).toBeInTheDocument()
     expect(screen.queryByText('نسخه‌ها')).toBeNull()
   })
 
@@ -426,5 +429,24 @@ describe('the record card', () => {
     expect(screen.getByText('سپیدز')).toBeInTheDocument()
     expect(screen.getByText('نگهداری')).toBeInTheDocument()
     expect(screen.queryByText('مسئول')).toBeNull()
+  })
+
+  it('lets «سامانه» replace the authority instead of drawing both rows', () => {
+    // `F-00018` in the mock, exactly: a `system` and a `kept_at` beside an
+    // `identifier_scheme.authority` naming that same outside system in latin.
+    // The scheme is not a second location.
+    draw(KEPT({
+      medium: 'external',
+      location: {
+        system: 'سپیدز', kept_at: 'صندوق شعبه',
+        identifier_scheme: { authority: 'Sepidz', format: 'receipt number' },
+      },
+    }))
+    expect(screen.getByText('سامانه')).toBeInTheDocument()
+    expect(screen.getByText('نگهداری')).toBeInTheDocument()
+    expect(screen.queryByText('محل')).toBeNull()
+    expect(screen.queryByText('Sepidz')).toBeNull()
+    // «قالب» describes the scheme, not the row that is gone — it stays.
+    expect(screen.getByText('receipt number')).toBeInTheDocument()
   })
 })

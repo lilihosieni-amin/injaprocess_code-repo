@@ -548,11 +548,21 @@ function StructureCard({ bundle, data, onOpen }: {
   // `F-00018` (the Sepidz till) drew «قالب receipt number», two English words at
   // a Persian prose node.
   const format = loc.identifier_scheme?.format
+  const formatChip = format !== undefined && (
+    <Filled text={label(SCREEN_LABELS, 'location_format')} values={{ n: format }}
+      className="text-fs-micro text-faint" />
+  )
   // §3.3 — a paper form, an external table and a native one have no locator at
   // all; `where` would be «—» and say nothing. Draw «محل» only when it has
   // something to carry, and the kept-at rows in its place when it does not.
+  //
+  // The authority is the weakest of the three, and the only one the new rows
+  // overlap: `F-00018` carries `system: «سپیدز»` and `authority: Sepidz`, the
+  // same outside system written twice. Where the location says where it is
+  // kept, that IS the location, and the scheme is not a second one.
+  const kept = loc.system !== undefined || loc.kept_at !== undefined
   const hasWhere = loc.path !== undefined || loc.sheet !== undefined
-    || loc.identifier_scheme?.authority !== undefined
+    || (!kept && loc.identifier_scheme?.authority !== undefined)
   // **Owner report, 2026-09-06:** every stored `foreignKeys` member is an
   // import descriptor — `{spreadsheetId, sheet, range, target}` — where the
   // spec's `{fields, reference, …}` (:903) belongs, and the row below joined
@@ -567,23 +577,24 @@ function StructureCard({ bundle, data, onOpen }: {
   return (
     <DetailCard className="mt-s7">
       <HeadBand>{label(SCREEN_LABELS, 'heading_record_structure')}</HeadBand>
-      {instances.length === 0 && (hasWhere || loc.kept_at === undefined) && (
+      {instances.length === 0 && (hasWhere || !kept) && (
         <LabelRow text={L('location')}>
           {where}
-          {format !== undefined && (
-            <Filled text={label(SCREEN_LABELS, 'location_format')} values={{ n: format }}
-              className="text-fs-micro text-faint" />
-          )}
+          {formatChip}
         </LabelRow>
       )}
       {instances.length === 0 && loc.system !== undefined && (
         <LabelRow text={L('system')}>
           <span className="text-fs-menu font-semibold text-ink">{loc.system}</span>
+          {/* «قالب» describes the scheme, not the row it used to hang off. */}
+          {!hasWhere && kept && formatChip}
         </LabelRow>
       )}
       {instances.length === 0 && loc.kept_at !== undefined && (
         <LabelRow text={L('kept_at')}>
           <span className="text-fs-menu text-ink">{loc.kept_at}</span>
+          {/* …and a native table has no «سامانه» row for it to ride. */}
+          {!hasWhere && loc.system === undefined && formatChip}
         </LabelRow>
       )}
       {instances.length === 0 && loc.holder !== undefined && (
