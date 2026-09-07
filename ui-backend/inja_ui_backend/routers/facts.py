@@ -721,6 +721,13 @@ def _bundle(request: Request, user, fid: str) -> dict:
                             else {_RESTRICTED: True})
                         for p, label in
                         facts_store.path_labels(root, entry).items()},
+        # The two maps the «محل اجرا» and «نسخه‌ها» sections need and the entry
+        # cannot carry: a workbook's title is the manifest's, and a binding's
+        # sheet and branch live on the record the rule points at. Unmasked —
+        # both are estate structure, not a neighbour's Persian (`resolved` is
+        # where a neighbour's name is masked, and these carry no title of one).
+        "workbook_titles": manifest.workbook_titles(root),
+        "binding_labels": facts_store.binding_labels(root, entry),
         # «متن اصلی» — the body `data.original_ref` names, beside the entry and
         # never inside it: `entry` is what QF-24 fingerprints, and a field
         # arriving from a second file would change the print of every rule in

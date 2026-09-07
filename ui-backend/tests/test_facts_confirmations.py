@@ -324,7 +324,7 @@ def test_absent_facts_store_is_uniform_404_not_500(data_root, tmp_path):
 
 
 def test_load_index_absent_file_reads_as_empty_store(tmp_path):
-    assert facts_store.load_index(tmp_path) == {"schema_version": 1, "entries": []}
+    assert facts_store.load_index(tmp_path) == {"schema_version": 2, "entries": []}
 
 
 def test_load_entry_tolerates_a_malformed_index_row(data_root):
