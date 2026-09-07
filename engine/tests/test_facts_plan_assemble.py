@@ -45,7 +45,11 @@ def _root(tmp_path):
 
 def _skeleton():
     return {"schema_version": 1, "department": "cooking", "run": "r",
-            "unit_symbols": ["kg"], "instances": [], "imports": [],
+            # `pack` is the second symbol these fixtures actually write (the
+            # review's `panir_varaqei`), and the assembly now holds an entry's
+            # units to this list — a symbol the run never declared is refused
+            # here rather than at Stage V.
+            "unit_symbols": ["kg", "pack"], "instances": [], "imports": [],
             "issues": [{"kind": "column_shift", "instance": "pitza__s5",
                         "description": "ستون «قیمت» جا افتاده است",
                         "run_only": False, "target": "S-rec-000000000001"}],
@@ -231,19 +235,34 @@ def test_merge_into_and_split(tmp_path):
 
 def test_merge_into_moves_the_bindings_and_mints_no_entry(tmp_path):
     """Step 3 — the merged candidate leaves nothing of its own behind, and the
-    target gains its bindings."""
+    target gains its bindings.
+
+    The target is a rule, as a rule's merge target has to be: `_absorb` moves
+    `applies_to`/`instances` across verbatim, and `recordData` has no such key —
+    this used to merge the rule into the record and mint an entry
+    `facts-delta.schema.json` refuses, which nothing checked until the assembly
+    started validating what it writes.
+    """
     root = _root(tmp_path)
+    skeleton, plan = _skeleton(), _plan()
+    twin = json.loads(json.dumps(skeleton["candidates"][1]))     # the rule
+    twin["id"] = "S-r-000000000004"
+    skeleton["candidates"].append(twin)
+    plan["units"][1]["candidates"].append(twin["id"])
     rule = _rule_out()
+    kept = dict(rule["decisions"][0], skeleton=twin["id"])
     rule["decisions"][0] = {"skeleton": "S-r-000000000002",
                             "action": "merge_into",
-                            "into": "S-rec-000000000001",
+                            "into": twin["id"],
                             "reason_code": "duplicate"}
-    run_dir = _run(root, {"u-a": _record_out(), "u-b": rule})
+    rule["decisions"].append(kept)
+    run_dir = _run(root, {"u-a": _record_out(), "u-b": rule},
+                   skeleton=skeleton, plan=plan)
     assemble(root, run_dir)
     delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
-    assert [e["kind"] for e in delta["entries"]] == ["item", "record"]
-    record = next(e for e in delta["entries"] if e["kind"] == "record")
-    assert [m["key"] for m in record["data"]["applies_to"]] == ["pitza__s5__j__r6"]
+    assert [e["kind"] for e in delta["entries"]] == ["item", "record", "rule"]
+    merged = next(e for e in delta["entries"] if e["kind"] == "rule")
+    assert [m["key"] for m in merged["data"]["applies_to"]] == ["pitza__s5__j__r6"]
 
 
 def test_two_units_one_key_merge_with_the_lowest_units_prose(tmp_path):
@@ -621,16 +640,24 @@ def test_a_ref_into_an_undecided_candidate_names_both_units(tmp_path, capsys):
 
 
 def test_merge_into_a_dropped_target_names_both_units(tmp_path, capsys):
+    # The target is a rule of u-a's: a merge across kinds is refused at the unit
+    # gate now, so it can no longer stand in for one whose target was dropped.
     root = _root(tmp_path)
+    skeleton, plan = _skeleton(), _plan()
+    twin = json.loads(json.dumps(skeleton["candidates"][1]))     # the rule
+    twin["id"], twin["unit"] = "S-r-000000000004", "u-a"
+    skeleton["candidates"].append(twin)
+    plan["units"][0]["candidates"].append(twin["id"])
     record = _record_out()
-    record["decisions"][0] = {"skeleton": "S-rec-000000000001",
-                              "action": "drop", "reason_code": "cosmetic"}
+    record["decisions"].append({"skeleton": twin["id"], "action": "drop",
+                                "reason_code": "cosmetic"})
     rule = _rule_out()
     rule["decisions"][0] = {"skeleton": "S-r-000000000002",
                             "action": "merge_into",
-                            "into": "S-rec-000000000001",
+                            "into": twin["id"],
                             "reason_code": "duplicate"}
-    run_dir = _run(root, {"u-a": record, "u-b": rule})
+    run_dir = _run(root, {"u-a": record, "u-b": rule},
+                   skeleton=skeleton, plan=plan)
     with pytest.raises(SystemExit) as excinfo:
         assemble(root, run_dir)
     assert excinfo.value.code == 2
@@ -679,6 +706,66 @@ def test_the_delta_is_schema_valid_and_survives_a_simulated_apply(tmp_path):
              json.loads(delta.read_text(encoding="utf-8")))
     _store, problems = simulate(root, delta, run_dir)
     assert problems == []
+
+
+def test_what_the_unit_gate_passes_is_never_refused_downstream(tmp_path):
+    """I1 — a document `validate facts-unit` accepts is one `assemble` folds and
+    `simulate` applies without a per-entry refusal. A refusal after the unit's
+    gate is a defect, and this is the test that says so."""
+    root = _root(tmp_path)
+    _seed_units(root)
+    run_dir = _run(root, {"u-a": _record_out(), "u-b": _rule_out()})
+    for unit, name in (("u-a", "u-a"), ("u-b", "u-b")):
+        assert validate_unit(root, run_dir,
+                             run_dir / "units" / name / "out.1.json") == []
+    assemble(root, run_dir)
+    delta = run_dir / "facts-delta.json"
+    validate("facts-delta.schema.json",
+             json.loads(delta.read_text(encoding="utf-8")))
+    _store, problems = simulate(root, delta, run_dir)
+    assert problems == []
+
+
+def test_a_messages_own_colon_dot_survives_the_rename():
+    """`_renamed` tidies the seam it just made — `<label>:` followed by the
+    path's leading `.` — and nothing else on the line. A rule text that carries
+    a `:.` of its own keeps it."""
+    from facts_plan.assemble import _renamed
+    line = 'entries[0].data.location: does not match "^[a-z]+:.[a-z]+$"'
+    assert _renamed(line, ["new[0] mande_shab"]) == \
+        'new[0] mande_shab: data.location: does not match "^[a-z]+:.[a-z]+$"'
+
+
+def test_the_sidecar_suffixes_are_the_ones_extract_attachment_writes():
+    """`SIDECAR_TYPES` is `CONVERTERS` read backwards by hand — a suffix added
+    on one side and not the other reads a real sidecar as a transcript."""
+    from extract_attachment import CONVERTERS
+    from facts_plan.assemble import SIDECAR_TYPES
+    assert set(dict(SIDECAR_TYPES)) == set(CONVERTERS.values())
+
+
+def test_an_attachment_sidecar_is_cited_by_the_kind_of_file_it_came_from(tmp_path):
+    """Ruling 3 — a `.text/` sidecar cites `docx`/`pdf`/`photo` by its suffix;
+    only a transcript is `voice`. A photographed form written up as a `new[]`
+    record used to claim the meeting's audio as its evidence."""
+    root = _root(tmp_path)
+    sidecar = "departments/cooking/attachments/.text/form.image.md"
+    plan, rule = _plan(), _rule_out()
+    plan["units"][1]["inputs"] = [sidecar]
+    rule["new"] = [_second_record(key="mande_shab")]
+    run_dir = _run(root, {"u-a": _record_out(), "u-b": rule}, plan=plan)
+    assemble(root, run_dir)
+    delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
+    assert next(e for e in delta["entries"]
+                if e["key"] == "mande_shab")["source"] == \
+        [{"type": "photo", "ref": sidecar}]
+
+    plan["units"][1]["inputs"] = ["meetings/transcripts/c.txt#L1-L20"]
+    (run_dir / "plan.json").write_text(json.dumps(plan), encoding="utf-8")
+    assemble(root, run_dir)
+    delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
+    assert next(e for e in delta["entries"]
+                if e["key"] == "mande_shab")["source"][0]["type"] == "voice"
 
 
 def _tol_new(value):
@@ -835,3 +922,87 @@ def test_contradiction_on_a_field_with_no_drift_discards_the_review(tmp_path):
     assembly = json.loads((run_dir / "assembly.json").read_text(encoding="utf-8"))
     assert assembly["review_status"] == "discarded"
     assert _tol(run_dir)["data"]["outputs"][0]["value"] == 6
+
+
+def test_a_call_into_another_units_rule_is_not_an_undeclared_identifier(tmp_path):
+    """A `calls[]` ref the gate cannot resolve becomes `T-0`, so every key that
+    call declares read as undeclared — a rule the assembly and `simulate` both
+    accept was refused at its own gate. An identifier nothing declares still is.
+    """
+    root = _root(tmp_path)
+    _seed_units(root)
+    record, rule = _record_out(), _rule_out()
+    record["new"] = [_tol_new(5)]                       # u-a mints `tol`
+    rule["decisions"][0]["data"]["expr"] = \
+        "enheraf = masraf_vaqei - masraf_elami - tol"
+    rule["decisions"][0]["data"]["calls"] = [{"ref": "N-u-a-0"}]
+    run_dir = _run(root, {"u-a": record, "u-b": rule})
+    for unit in ("u-a", "u-b"):
+        assert validate_unit(root, run_dir,
+                             run_dir / "units" / unit / "out.1.json") == []
+    assemble(root, run_dir)
+    _store, problems = simulate(root, run_dir / "facts-delta.json", run_dir)
+    assert problems == []
+
+    del rule["decisions"][0]["data"]["calls"]
+    path = run_dir / "units" / "u-b" / "out.1.json"
+    path.write_text(json.dumps(rule, ensure_ascii=False), encoding="utf-8")
+    assert any("'tol'" in p for p in validate_unit(root, run_dir, path))
+
+
+def test_a_merge_into_across_kinds_is_refused_at_the_unit_gate(tmp_path):
+    """I1 — `_absorb` moves `applies_to`/`instances` across verbatim, so a rule
+    merged into a record mints a record `facts-delta.schema.json` refuses. The
+    unit that wrote it is told while it still has an attempt, instead of the
+    assembly dying on a shape nobody asked for."""
+    root = _root(tmp_path)
+    skeleton, plan = _skeleton(), _plan()
+    twin = json.loads(json.dumps(skeleton["candidates"][1]))     # the rule
+    twin["id"] = "S-r-000000000004"
+    skeleton["candidates"].append(twin)
+    plan["units"][1]["candidates"].append(twin["id"])
+    rule = _rule_out()
+    rule["decisions"].append(dict(rule["decisions"][0], skeleton=twin["id"]))
+    rule["decisions"][0] = {"skeleton": "S-r-000000000002",
+                            "action": "merge_into",
+                            "into": "S-rec-000000000001",       # a record
+                            "reason_code": "duplicate"}
+    run_dir = _run(root, {"u-a": _record_out(), "u-b": rule},
+                   skeleton=skeleton, plan=plan)
+    path = run_dir / "units" / "u-b" / "out.1.json"
+    assert any("decisions[0] S-r-000000000002" in p and "merge_into:" in p
+               and "a rule cannot merge into a record" in p
+               for p in validate_unit(root, run_dir, path))
+
+    rule["decisions"][0]["into"] = twin["id"]                   # a rule
+    path.write_text(json.dumps(rule, ensure_ascii=False), encoding="utf-8")
+    assert validate_unit(root, run_dir, path) == []
+
+
+def _review_keep(**field):
+    """The reviewer rewriting the record's one column — the shape half of a
+    review decision, which no unit gate ever sees."""
+    return {"entry": {"kind": "record", "key": "gozaresh_shabane_pitza",
+                      "scope": {"departments": ["cooking"],
+                                "branches": ["chalebagh"]}},
+            "action": "keep", "key": "gozaresh_shabane_pitza",
+            "title": "گزارش شبانهٔ لاین پیتزا",
+            "statement": "جدولی که سرلاین پیتزا هر شب پر می‌کند.",
+            "data": {"fields": [dict({"from": "c_h", "key": "masraf_elami"},
+                                     **field)]}}
+
+
+def test_the_review_is_held_to_the_store_contract_too(tmp_path, capsys):
+    """Ruling 5 — the review is the one document no unit gate ever saw, so the
+    shape check hangs where the assembly reads it: nothing is written and the
+    line names the field."""
+    root, run_dir = _drifted_run(tmp_path)
+    _write_review(run_dir, [_review_keep(type="text")])
+    with pytest.raises(SystemExit) as excinfo:
+        assemble(root, run_dir, review=True)
+    assert excinfo.value.code == 2
+    assert "data.fields[0].type" in capsys.readouterr().err
+    assert not (run_dir / "facts-delta.json").is_file()
+
+    _write_review(run_dir, [_review_keep(type="number")])
+    assert assemble(root, run_dir, review=True)["review_status"] == "applied"

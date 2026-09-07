@@ -11,6 +11,7 @@ bindings (QF-47) instead of one entry per cell.
 """
 import collections
 import hashlib
+import json
 import math
 import pathlib
 import re
@@ -18,7 +19,8 @@ import sys
 import textwrap
 
 from dump_workbook import is_ids_tab, is_mirror_tab, manifest_reconcile
-from engine_common import read_json, write_json_atomic, write_text_atomic
+from engine_common import (read_json, schema_dir, write_json_atomic,
+                           write_text_atomic)
 from merge_facts import is_open, sha256_file
 
 Shape = collections.namedtuple("Shape", "text params functions refs")
@@ -228,11 +230,13 @@ _BRANCH_TOKENS = ("چاله باغ", "ناهارخوران", "ناهار خور�
 _FORMULA_COLUMNS = ("sheet", "range", "group", "formula", "count", "cached",
                     "error")
 
-# §2.3: these six describe a tab that becomes no record or a cell that becomes
-# no rule, so they are reported and counted but never attached to an entry.
+# §2.3: these describe a tab that becomes no record, a cell that becomes no
+# rule, or (§3.7) a file nothing read, so they are reported and counted but
+# never attached to an entry.
 RUN_ONLY = frozenset({"reference_tab_is_mirror", "reference_tab_is_ids",
                       "reference_tab_computes", "row_labels_ambiguous",
-                      "row_labels_partial", "unheaded_formula"})
+                      "row_labels_partial", "unheaded_formula",
+                      "unread_attachment"})
 
 # One Persian sentence per issue kind — `gate-b.md` and `report.md` print these
 # verbatim, so no caller ever composes owner-facing prose (QF-54).
@@ -1722,6 +1726,233 @@ def cards():
             (_CARDS / "style.md").read_text(encoding="utf-8"))
 
 
+# --------------------------------------------------------------------------
+# the shape card (§3.2) — the store's closed contract, rendered from the schema
+# it is checked against. The 2026-09-07 run refused 52 entries on shape alone
+# because the unit was shown the expression and style cards and never the
+# payload; a card typed out by hand would have drifted from the checker inside
+# a release, so this is generated and the test holds it to the schema.
+
+#: The `$defs` name of each kind's payload, in the order the card prints them.
+KIND_DATA = {"item": "itemData", "record": "recordData",
+             "measurement": "measurementData", "rule": "ruleData",
+             "note": "noteData"}
+
+#: The Persian word for each kind — the section headings are read by a model
+#: writing Persian prose, so the heading names the thing in both languages.
+KIND_FA = {"item": "قلم", "record": "جدول یا فرم", "measurement": "اندازه‌گیری",
+           "rule": "قاعده", "note": "یادداشت"}
+
+#: Every kind a unit may write. §2.5's `new[]` row restricts no unit to a kind
+#: — the frozen `u-wb-fried.json` mints two `place` items from a workbook unit —
+#: so every unit is shown all five.
+WRITABLE_KINDS = ("item", "record", "measurement", "rule", "note")
+
+#: `$defs` that are one line wherever they appear. Spelling `ref` out at each of
+#: its twenty sites tripled the card and taught nothing the first site did not.
+TERSE = {"ref": '{"ref": "S-…"} (+ field, row)',
+         "refOrNull": '{"ref": "S-…"} یا null',
+         "procRef": '{"ref": "cooking-030"}',
+         "localCell": "{field, row}",
+         "mintedKey": "key", "mintedSegment": "segment",
+         "factId": "F-00001", "jalali": "1405-05-26",
+         "iso": "2026-09-07T10:00:00Z"}
+
+
+def _def_name(node):
+    """The `$defs` name a node refers to, or `None` for an inline node."""
+    return (node.get("$ref") or "").rsplit("/", 1)[-1] or None
+
+
+def _deref(node, defs, seen):
+    """The definition a `$ref` names, unless it is one of the short forms or one
+    this branch already spelled out — those stay a `$ref` for `_atom` to print,
+    which is also what stops a recursive `$defs` graph from recursing."""
+    name = _def_name(node)
+    if name and name not in TERSE and name not in seen:
+        return defs[name], seen | {name}
+    return node, seen
+
+
+def _atom(node, seen):
+    """One line's worth of a node, or `None` when it needs a block of its own."""
+    name = _def_name(node)
+    if name in TERSE:
+        return TERSE[name]
+    if name:
+        return f"→ {name}، مثل بالا"
+    if "enum" in node:
+        return "یکی از: " + " | ".join("null" if v is None else str(v)
+                                       for v in node["enum"])
+    if node.get("oneOf"):
+        parts = [_atom(branch, seen) for branch in node["oneOf"]]
+        return " یا ".join(parts) if all(p is not None for p in parts) else None
+    if node.get("properties"):
+        return None
+    kind = node.get("type")
+    if kind == "array":
+        return None
+    return " | ".join(kind) if isinstance(kind, list) else (kind or "any")
+
+
+def _block(node, defs, indent, seen):
+    """Every key of one closed object, sorted, required ones marked `*`."""
+    required = set(node.get("required") or [])
+    out = []
+    for key, sub in sorted((node.get("properties") or {}).items()):
+        mark = "*" if key in required else " "
+        sub, sub_seen = _deref(sub, defs, seen)
+        tail = ""
+        if sub.get("type") == "array":
+            tail = "[]"
+            sub, sub_seen = _deref(sub.get("items") or {}, defs, sub_seen)
+        atom = _atom(sub, sub_seen)
+        if atom is not None:
+            out.append(f"{indent}{mark} {key}{tail}: {atom}")
+            continue
+        if sub.get("oneOf"):
+            # A leaf the schema gives more than one shape (`ruleInput.from`):
+            # every shape is spelled, because the one the card leaves out is the
+            # one the unit invents a key for.
+            out.append(f"{indent}{mark} {key}{tail}: یکی از این شکل‌ها —")
+            for choice in sub["oneOf"]:
+                choice, choice_seen = _deref(choice, defs, sub_seen)
+                one = _atom(choice, choice_seen)
+                if one is not None:
+                    out.append(f"{indent}    - {one}")
+                else:
+                    out.append(f"{indent}    -")
+                    out += _block(choice, defs, indent + "      ", choice_seen)
+            continue
+        out.append(f"{indent}{mark} {key}{tail}:")
+        out += _block(sub, defs, indent + "    ", sub_seen)
+    return out
+
+
+def _location_lines(record, indent):
+    """§3.3's `location`, one line per `medium` — read off the `if`/`then` pairs
+    the schema chooses the shape with, never a table typed here."""
+    out = [f"{indent}`location` بر حسب `medium`:"]
+    for branch in record.get("allOf") or []:
+        medium = ((branch.get("if") or {}).get("properties")
+                  or {}).get("medium", {}).get("const")
+        shape = ((branch.get("then") or {}).get("properties") or {}).get("location")
+        if not medium or not shape:
+            continue
+        required = set(shape.get("required") or [])
+        out.append(f"{indent}  medium={medium}: " + "، ".join(
+            key + ("*" if key in required else "")
+            for key in sorted(shape.get("properties") or {})))
+    return out
+
+
+#: Three `new[]` entries a unit can copy — a paper form (the case the first run
+#: had no shape for), a measurement, and a rule reading its parameters. A test
+#: validates all three against `facts-delta.schema.json`, so an example the
+#: schema would refuse cannot ship.
+EXAMPLES = [
+    {"kind": "record", "key": "form_tahvil_anbar",
+     "title": "فرم تحویل کالا از انبار",
+     "statement": "فرم کاغذی که هنگام تحویل هر قلم از انبار به لاین پر می‌شود و "
+                  "مقدار تحویلی و تحویل‌گیرنده را ثبت می‌کند.",
+     "data": {"medium": "paper", "role": "log",
+              "location": {"kept_at": "دفتر انبار", "holder": "سرپرست انبار"},
+              "cadence": "daily", "grain": "هر تحویل",
+              "filled_by": "انباردار", "approved_by": "سرپرست آشپزخانه",
+              "blank_master": True,
+              "fields": [
+                  {"key": "tarikh", "title": "تاریخ", "type": "date"},
+                  {"key": "qalam", "title": "نام کالا", "type": "string",
+                   "refItems": {"namespace": "##", "resolved_by": "title"}},
+                  {"key": "meqdar", "title": "مقدار", "type": "number",
+                   "unit": "kg"},
+                  {"key": "tahvil_girande", "title": "تحویل‌گیرنده",
+                   "type": "string"}],
+              "signatures": [{"role": "انباردار"},
+                             {"role": "سرپرست آشپزخانه"}],
+              "primaryKey": ["tarikh", "qalam"]}},
+    {"kind": "measurement", "key": "vazn_morgh_vorudi",
+     "title": "وزن مرغ ورودی",
+     "statement": "وزن هر محموله مرغ هنگام تحویل با ترازوی انبار اندازه گرفته "
+                  "می‌شود و در فرم تحویل ثبت می‌شود.",
+     "data": {"quantity": "mass", "unit": "kg",
+              "method": "ترازوی دیجیتال انبار", "when": "هنگام تحویل محموله",
+              "by": "انباردار",
+              "exceptions": "محموله‌های بسته‌بندی‌شده با وزن چاپی دوباره وزن "
+                            "نمی‌شوند."}},
+    {"kind": "rule", "key": "enheraf_ba_tolerance",
+     "title": "انحراف مصرف با تلورانس",
+     "statement": "انحراف مصرف هر ماده اولیه پس از کسر تلورانس مجاز به دست "
+                  "می‌آید؛ مقدار مثبت یعنی مصرف بیش از انتظار بوده است.",
+     "data": {"lang": "feel",
+              "expr": "enheraf_ba_tolerance = enheraf - tolerance_gr / 1000 * basis",
+              "inputs": [
+                  {"key": "enheraf", "title": "انحراف مصرف", "unit": "kg"},
+                  {"key": "tolerance_gr", "title": "تلورانس", "unit": "g",
+                   "from": {"param": "tolerancePerFoodGr"}},
+                  {"key": "basis", "title": "مبنای تلورانس",
+                   "from": {"param": "ref_1"}}],
+              "outputs": [{"key": "enheraf_ba_tolerance",
+                           "title": "انحراف با تلورانس", "unit": "kg",
+                           "nature": "observed"}]}}]
+
+
+def shape_card(kinds, schema):
+    """The shape section (§3.2) for `kinds`, rendered from `schema`.
+
+    The agent's rule, stated at the top of the card: a key not listed here is
+    refused. Everything below the heading is generated — the key lists, the
+    required marks, the enums, the column types, `location` per medium — so the
+    card and `validate facts-unit` cannot disagree.
+    """
+    defs = schema["$defs"]
+    wanted = set(kinds)
+    out = ["# Shape card", "",
+           "قرارداد بستهٔ انبار، ساخته‌شده از همان طرحواره‌ای که خروجی این واحد",
+           "در برابر آن بررسی می‌شود. کلیدی که اینجا نیامده باشد پذیرفته",
+           "نمی‌شود؛ هیچ کلیدی ساخته نمی‌شود و مقداری بیرون از فهرست مجاز هم",
+           "رد می‌شود.",
+           "`*` یعنی کلید الزامی است؛ `key` یک کلید ضرب‌شده (`a_b__c_d`) و",
+           "`segment` یک بخش از آن (`a_b`) است.", ""]
+    for kind, data_def in KIND_DATA.items():
+        if kind not in wanted:
+            continue
+        data = defs[data_def]
+        out += [f"## {kind} — data ({KIND_FA[kind]})", ""]
+        out += _block(data, defs, "", {data_def})
+        if kind == "record":
+            out += [""] + _location_lines(data, "")
+        out.append("")
+    out += ["## نمونه‌های کامل `new[]`", ""]
+    for example in EXAMPLES:
+        if example["kind"] in wanted:
+            out += ["```json",
+                    json.dumps(example, ensure_ascii=False, indent=2),
+                    "```", ""]
+    return "\n".join(out)
+
+
+def shape_section():
+    """`shape_card` over the schema on disk, for every kind a unit may write.
+
+    The **delta** schema, not the store's: a unit writes a delta entry and
+    `validate_unit` validates it against `facts-delta.schema.json`, so that is
+    the contract it is held to. The two files are the same definitions but for
+    what `merge facts apply` writes rather than reads: `original`/`original_ref`
+    (a unit hands over a rule's verbatim text as `original` and `apply` turns it
+    into the store's `original_ref`), the store-required `rows[].key` (derived
+    at apply for a reference table, refused at the unit gate for every other
+    role) and the envelope keys apply stamps (`id` as a real fact id, `status`,
+    `updated_at`, `source[].hash`/`run`, `accounts[].id`). A card off the store
+    schema would show the unit keys its own gate refuses.
+
+    ponytail: the schema is re-read once per unit (fifteen 12 KB reads a run).
+    Cache it when a build ever spends measurable time here.
+    """
+    return shape_card(WRITABLE_KINDS,
+                      read_json(schema_dir() / "facts-delta.schema.json"))
+
+
 def _render_candidate(candidate, skeleton):
     payload, kind = _view(candidate), candidate["kind"]
     if kind in ("rule", "script"):
@@ -1781,7 +2012,10 @@ def render_input(unit, skeleton, extras):
                 else f'{r["kind"]} · {r["sheet"]}!{r["where"]} · {r["text"]}'
                 for r in extras.get(key) or []]
         out += ["", title, ""] + (rows or ["—"])
-    out += ["", expression, "", style]
+    # §3.2: the contract goes after the expression card and before the style
+    # card — how to write the value, then what the shape may be, then how the
+    # prose beside it reads.
+    out += ["", expression, "", shape_section(), "", style]
     return "\n".join(out)
 
 
@@ -1808,13 +2042,72 @@ def _chunks(root, recordings):
     return out
 
 
-def _attachment_texts(root, department):
-    """The department's cached attachment texts (`extract-attachment`'s
-    `.text/`), never the originals — `build` reads no `.docx` and no image."""
+#: §3.7's two halves of one sentence. One issue kind, two reasons: the owner is
+#: told the file was not read and why, in words that name no path, no dispatch
+#: table and no extension they did not type themselves.
+UNREAD_NO_READER = "سامانه فایل‌هایی از این نوع را نمی‌خواند"
+UNREAD_NOT_READY = "متن این فایل هنوز آماده نشده بود"
+
+ISSUE_TEXT.update({
+    "unread_attachment": "فایل «{file}» در این اجرا خوانده نشد؛ {why}.",
+})
+
+
+def _attachment_state(root, department):
+    """Invariant I2 over the department's attachments, in one pass:
+    `(texts, issues)` — the cached texts a unit may be shown, and the files this
+    run will not read, sorted by file name.
+
+    The two answers are ONE decision, which is why one loop makes both. The
+    earlier code asked twice: this listed `.text/*` by a glob and the issues
+    came off `extract-attachment`'s own hash gate, so a `.docx` edited after its
+    text was cached was named unread to the owner AND had its stale text handed
+    to a unit — the run improvising over the file the sentence had just said it
+    could not read.
+
+    So a `.text/` entry is served only for a source that is still there and
+    whose digest still matches its sidecar. `build` reads no `.docx` and no
+    image, only the cache; a leftover cache whose source is gone is nobody's
+    text and is served to nobody.
+
+    `.csv`/`.md`/`.txt`/`.gs` need no conversion and `.xlsx` belongs to
+    `dump-workbook`, whose unplaced rows are named under the very same heading
+    (§2.1 Stage 2) — naming an `.xlsx` here would be the same file twice.
+    """
+    from extract_attachment import (CONVERTERS, PASSTHROUGH_EXTENSIONS,
+                                    find_attachments, needs_conversion)
     root = pathlib.Path(root)
-    directory = root / "departments" / department / "attachments" / ".text"
-    return [str(p.relative_to(root)) for p in sorted(directory.glob("*"))
-            if p.suffix in (".txt", ".md")]
+    adir = root / "departments" / department / "attachments"
+    texts, issues = [], []
+    for src in find_attachments(adir):
+        ext = src.suffix.lower()
+        if ext in PASSTHROUGH_EXTENSIONS or ext == ".xlsx":
+            continue
+        suffix = CONVERTERS.get(ext)
+        if suffix is None:
+            why = UNREAD_NO_READER
+        else:
+            dst = adir / ".text" / (src.stem + suffix)
+            if not needs_conversion(src, dst):
+                texts.append(str(dst.relative_to(root)))
+                continue
+            why = UNREAD_NOT_READY
+        # `target` is the file's own name, never a path: it is what `gate-b.md`
+        # and `report.md` print, and §2.7 admits no path in either.
+        issues.append(_issue("unread_attachment", target=src.name,
+                             file=src.name, why=why))
+    return sorted(texts), issues
+
+
+def unread_attachments(root, department):
+    """The files this run will not read (§3.7) — `_attachment_state`'s issues.
+
+    `extract-attachment` reads the extensions in its dispatch table and nothing
+    else, and the 2026-09-02 run improvised over the rest. A file outside the
+    table, or one inside it whose cached text is missing or stale, is named to
+    the owner once and left out of every unit.
+    """
+    return _attachment_state(root, department)[1]
 
 
 def _wrap(line):
@@ -1908,42 +2201,22 @@ def _hashes(root, estate, texts):
             for p in paths if p.is_file()}
 
 
-def build(root, department, run_dir, recordings, *, rebuild=False):
-    """§2.3 end to end: the candidates, `skeleton.json`, `functions.md`,
-    `plan.json` and one `units/<u>/input.md`. Returns what the coordinator
-    prints — `{"units": n, "candidates": {kind: count}}`.
+def _renderer(root, department, estate, skeleton, rendered):
+    """`render(unit) -> input.md`, closed over the estate, the process index and
+    the store slice so `plan_units` can re-render a unit it splits without
+    reading any of them again.
 
-    Nothing here writes to the store and nothing asks a model anything; the
-    only mutable output is the run directory, and a plan whose units have
-    already run is refused unless `--rebuild` says otherwise.
+    `build` and `refresh_inputs` share it: the second re-runs it over a plan
+    already on disk, which is the only way a card added mid-run reaches a run
+    whose units have started (§4).
     """
-    from facts_plan.cli import check_rebuild  # cli imports build lazily
-    root, run_dir = pathlib.Path(root), pathlib.Path(run_dir)
-    check_rebuild(root, run_dir, rebuild)
-
-    estate = load_estate(root)
-    manifest = read_json(root / "attachments" / "sheets" / "manifest.json")
-    templates, instances, issues = record_templates(estate, department)
-    items = item_candidates(estate, department, instances)
-    rules, rule_issues = rule_columns(estate, department, templates, instances,
-                                      table_reading_functions(estate))
-    scripts = script_rules(estate, department, called_names(estate))
-    imports, import_issues = import_edges(
-        estate, {(i["spreadsheetId"], i["sheet"]): {"ref": i["template"]}
-                 for i in instances}, department)
-    issues += rule_issues + import_issues + reference_tab_issues(estate, department)
-    candidates = templates + items + rules + scripts
-    skeleton = {"unit_symbols": unit_symbols(root), "candidates": candidates,
-                "instances": instances, "imports": imports}
-
     index, item_units = _store_slice(root)
     nodes = process_index(root, department)
     sections = library_sections(estate)
     own = [{"id": c["id"], "kind": c["kind"], "label": label_of(c)}
-           for c in templates + items]
-    instance_by_key = {i["key"]: i for i in instances}
-    by_id = {c["id"]: c for c in candidates}
-    rendered = {}
+           for c in skeleton["candidates"] if c["kind"] in ("record", "item")]
+    instance_by_key = {i["key"]: i for i in skeleton["instances"]}
+    by_id = {c["id"]: c for c in skeleton["candidates"]}
 
     def render(unit):
         mine = [by_id[c] for c in unit["candidates"] if c in by_id]
@@ -1968,8 +2241,72 @@ def build(root, department, run_dir, recordings, *, rebuild=False):
                           for n in ranked]})
         return rendered[unit["id"]]
 
+    return render
+
+
+def refresh_inputs(root, run_dir):
+    """§4 — re-render every `units/<u>/input.md` of a run already planned.
+
+    `check_rebuild` rightly refuses `--rebuild` once a unit is done, because
+    the unit ids are a function of the estimate and a re-estimate would
+    renumber the directories a finished output sits in. So a card added
+    mid-run arrives this way instead: the plan and every attempt are left
+    byte for byte as they are, nothing splits, and a unit whose input no
+    longer `fits` is *reported* — the decision to split it is the plan
+    author's, not this verb's.
+    """
+    root, run_dir = pathlib.Path(root), pathlib.Path(run_dir)
+    skeleton = read_json(run_dir / "skeleton.json")
+    units = read_json(run_dir / "plan.json")["units"]
+    render = _renderer(root, skeleton["department"], load_estate(root),
+                       skeleton, {})
+    over = []
+    for unit in units:
+        text = render(unit)
+        write_text_atomic(run_dir / "units" / unit["id"] / "input.md", text)
+        if not fits(unit, text):
+            over.append(unit["id"])
+            print(f'facts-plan: {unit["id"]} input over budget '
+                  f'({estimate_tokens(text)})', file=sys.stderr)
+    return {"refreshed": len(units), "over_budget": over}
+
+
+def build(root, department, run_dir, recordings, *, rebuild=False):
+    """§2.3 end to end: the candidates, `skeleton.json`, `functions.md`,
+    `plan.json` and one `units/<u>/input.md`. Returns what the coordinator
+    prints — `{"units": n, "candidates": {kind: count}}`.
+
+    Nothing here writes to the store and nothing asks a model anything; the
+    only mutable output is the run directory, and a plan whose units have
+    already run is refused unless `--rebuild` says otherwise.
+    """
+    from facts_plan.cli import check_rebuild  # cli imports build lazily
+    root, run_dir = pathlib.Path(root), pathlib.Path(run_dir)
+    check_rebuild(root, run_dir, rebuild)
+
+    estate = load_estate(root)
+    manifest = read_json(root / "attachments" / "sheets" / "manifest.json")
+    templates, instances, issues = record_templates(estate, department)
+    items = item_candidates(estate, department, instances)
+    rules, rule_issues = rule_columns(estate, department, templates, instances,
+                                      table_reading_functions(estate))
+    scripts = script_rules(estate, department, called_names(estate))
+    imports, import_issues = import_edges(
+        estate, {(i["spreadsheetId"], i["sheet"]): {"ref": i["template"]}
+                 for i in instances}, department)
+    # One pass, two answers (I2): what a unit may be shown and what the owner
+    # is told was not read. Asking twice is what let the two disagree.
+    attachments, unread = _attachment_state(root, department)
+    issues += (rule_issues + import_issues
+               + reference_tab_issues(estate, department) + unread)
+    candidates = templates + items + rules + scripts
+    skeleton = {"unit_symbols": unit_symbols(root), "candidates": candidates,
+                "instances": instances, "imports": imports}
+
+    rendered = {}
+    render = _renderer(root, department, estate, skeleton, rendered)
+
     chunks = _chunks(root, recordings)
-    attachments = _attachment_texts(root, department)
     units = plan_units(skeleton, workbook_groups(manifest, department, [
         w["short"] for w in manifest["workbooks"]
         if w["spreadsheetId"] in estate

@@ -103,7 +103,7 @@ BOM = _entry(
 FORM = _entry(
     "F-00021", "record", "mande_shab_farangi", "مانده شب فرنگی",
     {"medium": "paper", "role": "log",
-     "location": {"path": "departments/cooking/attachments/photo.jpg"},
+     "location": {"kept_at": "زونکن دفتر", "holder": "سرآشپز"},
      "fields": [
          {"key": "start_stock", "title": "مانده اول شب", "type": "number",
           "unit": None},

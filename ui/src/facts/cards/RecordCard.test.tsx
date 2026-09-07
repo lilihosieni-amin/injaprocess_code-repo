@@ -22,7 +22,9 @@ const PAPER = (
   rows?: Record<string, unknown>[],
 ): FactBundle => bundleOf('record', {
   medium: 'paper', role: 'log',
-  location: { path: 'departments/cooking/attachments/photo_2026-08-29_14-23-51.jpg' },
+  // §3.3 — `medium: paper` closes `location` to where the forms are kept and
+  // who holds them; a path is a sheet's shape, and the schema now refuses it.
+  location: { kept_at: 'زونکن دفتر آشپزخانه', holder: 'سرآشپز' },
   grain: 'هر ردیف یک قلم، هر برگ یک شیفت',
   cadence: 'nightly',
   blank_master: true,
@@ -372,9 +374,10 @@ describe('the record card', () => {
 
   it('keeps the single location line for a record with no instances', () => {
     // A paper form and an external table have a `location` and no `instances[]`,
-    // and that row is the only thing that says where they are.
+    // and that row is the only thing that says where they are — «نگهداری» for
+    // the paper form, since §3.3 leaves it no locator to put under «محل».
     draw(PAPER())
-    expect(screen.getByText('محل')).toBeInTheDocument()
+    expect(screen.getByText('نگهداری')).toBeInTheDocument()
     expect(screen.queryByText('نسخه‌ها')).toBeNull()
   })
 
@@ -395,5 +398,55 @@ describe('the record card', () => {
     draw(TEMPLATE())
     expect(screen.getByText('ستون «مصرف واقعی» در این نسخه جا افتاده است.'))
       .toBeInTheDocument()
+  })
+
+  /** §3.3 — a paper form's closed `location`: where the forms are kept and who
+   *  holds them. The 2026-09-07 run wrote two of these with no `location` at
+   *  all and invented keys instead, and the panel had nothing to draw. */
+  const KEPT = (over: Record<string, unknown> = {}): FactBundle => bundleOf('record', {
+    medium: 'paper', role: 'log',
+    location: { kept_at: 'قفسهٔ دفتر انبار', holder: 'مسئول انبار' },
+    cadence: 'nightly',
+    ...over,
+  })
+
+  it('draws a paper form’s «نگهداری» and «مسئول» where a sheet draws its path', () => {
+    draw(KEPT())
+    expect(screen.getByText('نگهداری')).toBeInTheDocument()
+    expect(screen.getByText('قفسهٔ دفتر انبار')).toBeInTheDocument()
+    expect(screen.getByText('مسئول')).toBeInTheDocument()
+    expect(screen.getByText('مسئول انبار')).toBeInTheDocument()
+    // Both are Persian prose, so neither is an LTR island (note 6 / QF-42):
+    // `Mono` is for a stored latin run, and there is none here.
+    expect(screen.getByText('قفسهٔ دفتر انبار')).not.toHaveAttribute('dir')
+    // …and the empty «محل» row is gone rather than drawn as «—».
+    expect(screen.queryByText('محل')).toBeNull()
+  })
+
+  it('names the outside system for an external table', () => {
+    draw(KEPT({ medium: 'external', location: { system: 'سپیدز', kept_at: 'گزارش فروش روزانه' } }))
+    expect(screen.getByText('سامانه')).toBeInTheDocument()
+    expect(screen.getByText('سپیدز')).toBeInTheDocument()
+    expect(screen.getByText('نگهداری')).toBeInTheDocument()
+    expect(screen.queryByText('مسئول')).toBeNull()
+  })
+
+  it('lets «سامانه» replace the authority instead of drawing both rows', () => {
+    // `F-00018` in the mock, exactly: a `system` and a `kept_at` beside an
+    // `identifier_scheme.authority` naming that same outside system in latin.
+    // The scheme is not a second location.
+    draw(KEPT({
+      medium: 'external',
+      location: {
+        system: 'سپیدز', kept_at: 'صندوق شعبه',
+        identifier_scheme: { authority: 'Sepidz', format: 'receipt number' },
+      },
+    }))
+    expect(screen.getByText('سامانه')).toBeInTheDocument()
+    expect(screen.getByText('نگهداری')).toBeInTheDocument()
+    expect(screen.queryByText('محل')).toBeNull()
+    expect(screen.queryByText('Sepidz')).toBeNull()
+    // «قالب» describes the scheme, not the row that is gone — it stays.
+    expect(screen.getByText('receipt number')).toBeInTheDocument()
   })
 })

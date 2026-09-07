@@ -14,6 +14,7 @@ from facts_plan.build import (
     group_key,
     label_of,
     plan_units,
+    refresh_inputs,
     render_input,
     split_unit,
     transcript_chunks,
@@ -242,6 +243,9 @@ def test_build_writes_the_four_artefacts_over_the_mini_estate(tmp_path):
         assert unit["est_tokens_out"] <= OUT_BUDGET
         assert len(lines) <= MAX_LINES and max(map(len, lines)) <= MAX_LINE
         assert "Expression card" in text and "Style card" in text
+        # §3.2: every unit is shown the closed payload contract, and it fits
+        # inside the same budget the rest of the input does.
+        assert "Shape card" in text and "medium=paper: holder*، kept_at*" in text
     chunk = next(u for u in plan["units"] if u["type"] == "transcript")
     assert chunk["inputs"] == ["meetings/transcripts/cooking-1405-05-26.txt#L1-L39"]
     # a line under the cap is quoted byte for byte, trailing spaces included
@@ -256,3 +260,167 @@ def test_build_writes_the_four_artefacts_over_the_mini_estate(tmp_path):
     items = next(u for u in plan["units"] if u["type"] == "items")
     assert "## توابع" not in (run_dir / "units" / items["id"] / "input.md").read_text(
         encoding="utf-8")
+
+
+def test_refresh_inputs_rewrites_the_inputs_and_touches_nothing_else(
+        tmp_path, monkeypatch):
+    """A run whose units have started cannot be rebuilt (`check_rebuild`), so a
+    card added mid-run reaches it this way: the inputs are re-rendered from the
+    plan already on disk, and the plan and the attempts are left alone."""
+    estate(tmp_path)
+    run_dir = tmp_path / "runs" / "facts" / "cooking" / "20260906-101500"
+    build(tmp_path, "cooking", run_dir, [])
+    plan_bytes = (run_dir / "plan.json").read_bytes()
+    unit = json.loads(plan_bytes.decode("utf-8"))["units"][0]["id"]
+    attempt = run_dir / "units" / unit / "out.1.json"
+    attempt.write_text('{"schema_version": 2}', encoding="utf-8")
+    path = run_dir / "units" / unit / "input.md"
+    before = path.read_text(encoding="utf-8")
+    path.write_text(before.split("# Shape card")[0], encoding="utf-8")
+
+    result = refresh_inputs(tmp_path, run_dir)
+
+    assert path.read_text(encoding="utf-8") == before
+    assert "medium=paper: holder*، kept_at*" in before
+    assert result["refreshed"] == len(json.loads(plan_bytes)["units"])
+    assert result["over_budget"] == []
+    assert (run_dir / "plan.json").read_bytes() == plan_bytes
+    assert attempt.read_text(encoding="utf-8") == '{"schema_version": 2}'
+
+    # and the same thing through the verb the coordinator actually types
+    from facts_plan.cli import main
+    path.write_text("", encoding="utf-8")
+    monkeypatch.setenv("DATA_ROOT", str(tmp_path))
+    assert main(["build", "cooking", "--run", str(run_dir),
+                 "--refresh-inputs"]) == 0
+    assert path.read_text(encoding="utf-8") == before
+
+
+def test_refresh_inputs_and_rebuild_together_are_refused():
+    from facts_plan.cli import main
+    with pytest.raises(SystemExit) as caught:
+        main(["build", "cooking", "--run", "x", "--refresh-inputs", "--rebuild"])
+    assert caught.value.code == 2
+
+
+def _attachment(root, name, text=None, suffix=None):
+    """One department attachment, and its `.text/` cache when `text` is given —
+    in the exact two files `extract-attachment` writes: `.text/<stem><suffix>`
+    and `.text/<stem><suffix>.sha256` holding the SOURCE file's digest."""
+    import hashlib
+    adir = root / "departments" / "cooking" / "attachments"
+    adir.mkdir(parents=True, exist_ok=True)
+    src = adir / name
+    src.write_bytes(name.encode("utf-8"))
+    if text is not None:
+        dst = adir / ".text" / (src.stem + suffix)
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        dst.write_text(text, encoding="utf-8")
+        (dst.parent / (dst.name + ".sha256")).write_text(
+            hashlib.sha256(src.read_bytes()).hexdigest() + "\n", encoding="utf-8")
+    return src
+
+
+def test_an_attachment_with_no_converter_is_an_issue_named_by_its_file(tmp_path):
+    """I2 — `extract-attachment` reads the extensions in its dispatch table and
+    nothing else, and a file it cannot read is never improvised over."""
+    from facts_plan.build import unread_attachments
+    _attachment(tmp_path, "چیدمان-انبار.xyz")
+    issues = unread_attachments(tmp_path, "cooking")
+    assert [i["kind"] for i in issues] == ["unread_attachment"]
+    assert issues[0]["target"] == "چیدمان-انبار.xyz"
+    assert issues[0]["run_only"] is True and issues[0]["engine"] is True
+    assert "چیدمان-انبار.xyz" in issues[0]["description"]
+    assert "attachments" not in issues[0]["description"]     # no path, ever
+
+
+def test_a_supported_attachment_with_no_cached_text_is_an_issue(tmp_path):
+    from facts_plan.build import UNREAD_NOT_READY, unread_attachments
+    _attachment(tmp_path, "فرم-تحویل.docx")
+    issues = unread_attachments(tmp_path, "cooking")
+    assert len(issues) == 1
+    assert UNREAD_NOT_READY in issues[0]["description"]
+    assert "فرم-تحویل.docx" in issues[0]["description"]
+
+
+def test_a_read_attachment_and_a_workbook_raise_nothing(tmp_path):
+    """A converted file, a passthrough one and an `.xlsx` are all accounted
+    for: the first by its cache, the second because it needs none, the third by
+    the manifest, which names an unplaced workbook in the same block already."""
+    from facts_plan.build import unread_attachments
+    _attachment(tmp_path, "فرم-تحویل.docx", text="متن فرم", suffix=".txt")
+    _attachment(tmp_path, "شمارش.csv")
+    _attachment(tmp_path, "گزارش.xlsx")
+    assert unread_attachments(tmp_path, "cooking") == []
+
+
+def test_a_stale_cached_text_is_an_issue(tmp_path):
+    """The gate is `extract-attachment`'s own: a source edited after its text
+    was cached has not been read in the form this run would use."""
+    from facts_plan.build import unread_attachments
+    src = _attachment(tmp_path, "فرم-تحویل.docx", text="متن فرم", suffix=".txt")
+    src.write_bytes(b"a different document")
+    assert len(unread_attachments(tmp_path, "cooking")) == 1
+
+
+def test_a_department_with_no_attachments_dir_raises_nothing(tmp_path):
+    from facts_plan.build import unread_attachments
+    assert unread_attachments(tmp_path, "cooking") == []
+
+
+def test_build_records_the_unread_files_in_the_skeleton(tmp_path):
+    """End to end over the mini estate: the two unread files reach
+    `skeleton.json`, and no unit's `input.md` names either of them."""
+    import json as _json
+    from facts_plan.build import build
+    estate(tmp_path)
+    _attachment(tmp_path, "چیدمان-انبار.xyz")
+    _attachment(tmp_path, "فرم-تحویل.docx")
+    _attachment(tmp_path, "فرم-ضایعات.pdf", text="متن فرم ضایعات",
+                suffix=".pdf.md")
+    run_dir = tmp_path / "runs" / "facts" / "cooking" / "20260907-101500"
+
+    build(tmp_path, "cooking", run_dir, [])
+
+    skeleton = _json.loads((run_dir / "skeleton.json").read_text(encoding="utf-8"))
+    unread = [i for i in skeleton["issues"] if i["kind"] == "unread_attachment"]
+    assert {i["target"] for i in unread} == {"چیدمان-انبار.xyz",
+                                             "فرم-تحویل.docx"}
+    everything = "".join(p.read_text(encoding="utf-8")
+                         for p in (run_dir / "units").rglob("input.md"))
+    assert "چیدمان-انبار" not in everything and "فرم-تحویل" not in everything
+    assert "متن فرم ضایعات" in everything          # the one that WAS read
+
+
+def test_a_stale_cached_text_reaches_no_unit(tmp_path):
+    """I2 has two halves and they are one decision. A `.docx` converted once
+    and then edited on disk is named unread — and the text cached from the
+    version nobody edited must not be handed to a unit behind that sentence,
+    which is exactly what a `.text/` glob with no freshness gate did."""
+    import json as _json
+    from facts_plan.build import build
+    estate(tmp_path)
+    src = _attachment(tmp_path, "فرم-تحویل.docx", text="نشانهٔ متن کهنه",
+                      suffix=".txt")
+    src.write_bytes(b"a different document")
+    run_dir = tmp_path / "runs" / "facts" / "cooking" / "20260907-101500"
+
+    build(tmp_path, "cooking", run_dir, [])
+
+    everything = "".join(p.read_text(encoding="utf-8")
+                         for p in (run_dir / "units").rglob("input.md"))
+    assert "نشانهٔ متن کهنه" not in everything
+    # nor cited by the plan, whose hashes are what a re-render reads back
+    assert "فرم-تحویل" not in (run_dir / "plan.json").read_text(encoding="utf-8")
+    skeleton = _json.loads((run_dir / "skeleton.json").read_text(encoding="utf-8"))
+    assert [i["target"] for i in skeleton["issues"]
+            if i["kind"] == "unread_attachment"] == ["فرم-تحویل.docx"]
+
+
+def test_an_orphan_cached_text_is_served_to_nobody(tmp_path):
+    """`.text/` is a cache, not a source: a file whose original is gone is a
+    leftover of some earlier run and no unit is shown it."""
+    from facts_plan.build import _attachment_state
+    src = _attachment(tmp_path, "فرم-تحویل.docx", text="متن فرم", suffix=".txt")
+    src.unlink()
+    assert _attachment_state(tmp_path, "cooking") == ([], [])

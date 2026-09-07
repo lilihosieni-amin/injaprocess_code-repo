@@ -1028,6 +1028,8 @@
         "medium": "external",
         "role": "log",
         "location": {
+          "system": "سپیدز",
+          "kept_at": "صندوق شعبه",
           "identifier_scheme": {
             "authority": "Sepidz",
             "format": "receipt number",

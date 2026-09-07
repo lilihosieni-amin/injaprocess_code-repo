@@ -167,6 +167,11 @@ def test_no_issue_description_names_an_id_or_a_path(tmp_path):
     (root / "meetings" / "transcripts" / "x.txt").write_text(
         "سطر ۱: موجودی را شمردیم.\n", encoding="utf-8")
     (root / "departments" / "cooking" / "processes").mkdir(parents=True)
+    # §3.7: an attachment no row of the dispatch table takes, so `build` raises
+    # `unread_attachment` too and its sentence is held to the same rule.
+    attachments = root / "departments" / "cooking" / "attachments"
+    attachments.mkdir(parents=True)
+    (attachments / "چیدمان-انبار.xyz").write_bytes(b"x")
     run = root / "runs" / "facts" / "cooking" / "20260906-101500"
     build(root, "cooking", run, ["x"])
     issues = json.loads((run / "skeleton.json").read_text(

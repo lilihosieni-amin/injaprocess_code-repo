@@ -709,6 +709,12 @@ def _check_prose(entry, unit_symbols, messages, label):
         if name == "grain" and data.get(name) == "workbook":
             continue
         targets.append((f"data/{name}", data.get(name), False))
+    # §3.3 — where a paper form is kept, who holds it, which external system it
+    # lives in: three sentences an owner reads, so three sentences §5.2 lints.
+    location = data.get("location")
+    if isinstance(location, dict):
+        for name in ("kept_at", "holder", "system"):
+            targets.append((f"data/location/{name}", location.get(name), False))
     for field in data.get("fields") or []:
         if isinstance(field, dict):
             targets.append((f"data/fields/{field.get('key')}/description",

@@ -32,7 +32,8 @@ _FACT_ENTRIES = [
      "scope": {"departments": [], "branches": []}, "source": [],
      "status": "disputed", "retired": False,
      "updated_at": "2026-07-06T10:00:00Z",
-     "data": {"medium": "paper", "role": "log", "location": {}}},
+     "data": {"medium": "paper", "role": "log",
+              "location": {"kept_at": "زونکن دفتر", "holder": "سرآشپز"}}},
 ]
 
 

@@ -23,7 +23,7 @@
   "data": {
     "medium": "paper",
     "role": "log",
-    "location": { "path": "departments/cooking/attachments/photo_2026-08-29_14-23-51.jpg" },
+    "location": { "kept_at": "زونکن دفتر آشپزخانه", "holder": "سرآشپز شیفت" },
     "blank_master": true,
     "grain": "one row per item, one sheet per shift",
     "cadence": "nightly",

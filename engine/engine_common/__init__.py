@@ -1,6 +1,7 @@
 import json
 import os
 import pathlib
+import re
 import tempfile
 
 from jsonschema import Draft202012Validator
@@ -76,6 +77,85 @@ def write_text_atomic(path, text):
 
 
 _VALIDATORS = {}
+_SCHEMAS = {}
+
+#: Every integer index of a rendered path, so two entries breaking one rule
+#: group onto one line (§3.4).
+_INDEX_RE = re.compile(r"\[[0-9]+\]")
+
+#: §3.4's ceiling: a pathological document stays readable.
+LINE_CAP = 80
+
+
+def _path(parts):
+    """A jsonschema error path as `entries[3].data.fields[2].type`."""
+    out = ""
+    for part in parts:
+        out += f"[{part}]" if isinstance(part, int) else (f".{part}" if out else part)
+    return out or "<document>"
+
+
+def _entry_branches(schema):
+    """The per-kind branches of `$defs.entry`'s `oneOf`, found by scanning the
+    `allOf` — `facts.schema.json` has two members and `facts-delta.schema.json`
+    three, so the index is not the same in both files."""
+    for member in (schema.get("$defs", {}).get("entry", {}).get("allOf") or []):
+        if "oneOf" in member:
+            return member["oneOf"]
+    return []
+
+
+def _branch_of(schema, entry):
+    """The branch whose `kind` matches this entry's, as a schema of its own.
+    `$defs` travels with it so its `#/$defs/…` refs still resolve."""
+    for branch in _entry_branches(schema):
+        kind = branch.get("properties", {}).get("kind", {})
+        if entry.get("kind") in ([kind["const"]] if "const" in kind
+                                 else kind.get("enum") or []):
+            return {**branch, "$defs": schema["$defs"],
+                    "$schema": schema["$schema"]}
+    return None
+
+
+def _expand(schema, instance, errors):
+    """`[(path, message)]` — an `entries[N]` that fails `oneOf` says only that
+    the whole entry matched nothing, and its `message` is the entry dumped. It
+    is re-validated against the branch of its own `kind` so the failure is
+    reported where it is: `entries[3].data.fields[2].type`."""
+    out = []
+    for error in errors:
+        entry = (instance["entries"][error.path[1]]
+                 if error.validator == "oneOf" and len(error.path) == 2
+                 and error.path[0] == "entries" else None)
+        if not isinstance(entry, dict):
+            # A non-object entry (a stray string in `entries`) matches every
+            # branch's `properties` vacuously, so `oneOf` fails with "valid
+            # under each of". It has no `kind` to look a branch up by: keep
+            # jsonschema's own message rather than asking a str for one.
+            entry = None
+        branch = _branch_of(schema, entry) if entry is not None else None
+        found = list(Draft202012Validator(branch).iter_errors(entry)) if branch else []
+        if found:
+            out += [(_path(list(error.path) + list(f.path)), f.message) for f in found]
+        elif entry is not None:
+            out.append((_path(error.path),
+                        f"kind {entry.get('kind')!r} matches no payload shape"))
+        else:
+            out.append((_path(error.path), error.message))
+    return out
+
+
+def _error_lines(schema, instance, errors):
+    """One line per distinct `(path with its indices generalised, rule)`, with
+    the count and the first three concrete paths (§3.4)."""
+    groups = {}
+    for path, message in _expand(schema, instance, errors):
+        groups.setdefault((_INDEX_RE.sub("[N]", path), message), []).append(path)
+    lines = [f"{paths[0]}: {message}" if len(paths) == 1 else
+             f"{generic}: {message} ({len(paths)} places: {', '.join(paths[:3])})"
+             for (generic, message), paths in groups.items()]
+    return lines[:LINE_CAP] + [f"… and {len(lines) - LINE_CAP} more"] \
+        if len(lines) > LINE_CAP else lines
 
 
 def validate(schema_name, instance):
@@ -84,11 +164,15 @@ def validate(schema_name, instance):
         schema = read_json(schema_dir() / schema_name)
         Draft202012Validator.check_schema(schema)
         v = Draft202012Validator(schema)
-        _VALIDATORS[schema_name] = v
-    errors = sorted(v.iter_errors(instance), key=lambda e: list(e.path))
+        _VALIDATORS[schema_name], _SCHEMAS[schema_name] = v, schema
+    # Sorted by the RENDERED path, not by `list(e.path)`: a path mixes `str`
+    # and `int` members, and comparing `['entries', 0]` against
+    # `['schema_version']` is a TypeError waiting for the first document that
+    # breaks a top-level rule and an entry rule at once.
+    errors = sorted(v.iter_errors(instance), key=lambda e: _path(e.path))
     if errors:
-        msg = "; ".join(e.message for e in errors[:5])
-        raise ValueError(f"{schema_name} validation failed: {msg}")
+        lines = _error_lines(_SCHEMAS[schema_name], instance, errors)
+        raise ValueError(f"{schema_name} validation failed:\n" + "\n".join(lines))
 
 
 def is_empty(value):

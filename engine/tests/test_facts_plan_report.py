@@ -1,4 +1,5 @@
 import json
+import re
 
 from facts_helpers import _const_delta, _root, _run_dir, _seed_units, _write
 from facts_plan.assemble import ISSUE_FA, _disputes, gate_b, report
@@ -208,3 +209,52 @@ def test_a_superseded_predecessor_is_not_in_the_run_the_owner_reads(tmp_path):
     text = report(root, run_dir).read_text(encoding="utf-8")
     assert "ثبت شد: ۱ مورد" in text
     assert "اختلاف" not in text
+
+
+def _unread(name, why):
+    from facts_plan.build import ISSUE_TEXT
+    return {"kind": "unread_attachment", "instance": None, "target": name,
+            "engine": True, "run_only": True,
+            "description": ISSUE_TEXT["unread_attachment"].format(file=name,
+                                                                  why=why)}
+
+
+def test_gate_b_and_the_report_name_the_unread_files_under_one_heading(tmp_path):
+    """§3.7 — an unplaced workbook and a file nothing could read are the same
+    sentence to the owner, so they are one list under one heading, in both
+    files. Each file is named as the owner's own file is named — its own name,
+    extension included — and neither line may leak a path or an id."""
+    from facts_plan.build import UNREAD_NO_READER, UNREAD_NOT_READY
+    root = _root(tmp_path); _seed_units(root)
+    run_dir = _run_dir(root, "20260907-101500")
+    apply(root, _write(root, "d1.json", _const_delta(5)), run_dir)
+    _plan_files(run_dir)
+    skeleton = json.loads((run_dir / "skeleton.json").read_text(encoding="utf-8"))
+    skeleton["issues"] += [_unread("چیدمان-انبار.xyz", UNREAD_NO_READER),
+                           _unread("فرم-تحویل.docx", UNREAD_NOT_READY)]
+    (run_dir / "skeleton.json").write_text(json.dumps(skeleton, ensure_ascii=False),
+                                           encoding="utf-8")
+    entry = next(e for e in load_store(root)["rule"]["entries"] if e["key"] == "tol")
+
+    gate = gate_b(root, skeleton, [entry],
+                  {"department": "cooking", "dropped": [], "undecided": []})
+    text = report(root, run_dir).read_text(encoding="utf-8")
+
+    for produced in (gate, text):
+        assert "فایل‌هایی که در این اجرا خوانده نشدند (۲ مورد)" in produced
+        assert "«چیدمان-انبار.xyz»" in produced and UNREAD_NO_READER in produced
+        assert "«فرم-تحویل.docx»" in produced and UNREAD_NOT_READY in produced
+        # not a second time, under the file-problems heading
+        assert produced.count("چیدمان-انبار.xyz") == 1
+        for line in produced.splitlines():
+            assert not re.search(r"__s|S-|N-|u-|/", line), line
+
+
+def test_neither_file_grows_the_heading_when_everything_was_read(tmp_path):
+    run_dir = _run(tmp_path)
+    _store(tmp_path, [])
+    text = report(tmp_path, run_dir).read_text(encoding="utf-8")
+    skeleton = json.loads((run_dir / "skeleton.json").read_text(encoding="utf-8"))
+    gate = gate_b(tmp_path, skeleton, [],
+                  {"department": "cooking", "dropped": [], "undecided": []})
+    assert "خوانده نشدند" not in text and "خوانده نشدند" not in gate

@@ -247,6 +247,7 @@ export const ISSUE_KIND_LABELS: Record<string, string> = {
   per_cell_mirror: 'پیوند خانه‌به‌خانه',
   ambiguous_row_header: 'سرستون تکراری در یک برگه',
   binding_gone: 'محل اجرا دیگر وجود ندارد',
+  unread_attachment: 'فایل خوانده‌نشده',
 }
 
 /** `issues[].fix.op` — the repair the issue proposes. */
@@ -412,6 +413,12 @@ export const PAYLOAD_FIELD_LABELS: Record<string, string> = {
   reference_fields: 'ستون‌های مقابل',
   transform: 'تبدیل',
   location: 'محل',
+  // §3.3 — `location`'s non-sheet shapes. A paper form and an external table
+  // have no path and no tab; what says where they are is where they are kept
+  // and who holds them.
+  kept_at: 'نگهداری',
+  holder: 'مسئول',
+  system: 'سامانه',
   path: 'مسیر',
   spreadsheetId: 'شناسهٔ فایل',
   sheet: 'برگه',

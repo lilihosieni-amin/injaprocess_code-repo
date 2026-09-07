@@ -204,7 +204,7 @@ describe('the v3 payload vocabulary', () => {
                         'broken_formula', 'cached_error', 'leading_offset',
                         'unused_mirror', 'unknown_source', 'column_offset',
                         'per_cell_mirror', 'ambiguous_row_header',
-                        'binding_gone']) {
+                        'binding_gone', 'unread_attachment']) {
       expect(labels.ISSUE_KIND_LABELS[kind]).toMatch(/[؀-ۿ]/)
     }
   })

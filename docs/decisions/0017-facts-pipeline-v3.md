@@ -144,3 +144,53 @@ what the engine does, so each belongs here rather than in a task report:
   shape a person can review.
 - **A coordinator with no artefact to send will write one.** The fix is not to
   tell it not to; it is to hand it a finished file and forbid it the inputs.
+
+## Addendum — 2026-09-07: the unit gate closes
+
+The first real v3 run (cooking, `20260907-052345`) reached the end of the
+pipeline: fourteen units and the review passed their gates, `assemble` produced
+220 entries, and the final validation refused **52 of them** — 17 records, 5
+measurements, 30 rules — on shape alone. Column types written as `text`; a
+computed column marked yes/no instead of a reference; `cadence` and `quantity`
+in Persian words rather than their enum values; rules with no
+`inputs`/`outputs`; and two paper forms photographed in the meeting written as
+records with invented keys and no `location`. The content was right. Three
+causes, all of them structural:
+
+- `facts-unit.schema.json` closes a decision's **keys** and leaves its
+  **values** open, and `validate facts-unit` never checked the entry a decision
+  would become — so the store's closed contract was first applied after every
+  unit and the reviewer had spent their attempts.
+- The unit was never shown that contract: `input.md` carried the expression and
+  style cards, not the payload shapes, so a record with no workbook candidate —
+  a paper form, whatever medium it arrived in — was authored freehand.
+- `engine_common.validate` reported the first five errors on one line, and for
+  an `entries[N]` `oneOf` failure that line was the whole entry. The
+  coordinator chased five at a time, re-dispatched a unit past the two-attempt
+  cap (one reached `out.3.json`), ran engine internals from Python to dry-run
+  the fold, and ended by asking the owner to lift the cap — postmortem causes D
+  and H, unchanged by v3 because v3 had made neither cap mechanical.
+
+The remedy is two invariants, designed in
+`docs/superpowers/specs/2026-09-07-quantitative-facts-v3-gate-design.md`.
+**I1 — the output side is closed at the unit's gate:** whatever a unit writes is
+validated there against the same per-entry contract `apply` enforces — the store
+schema in its delta form (`facts-delta.schema.json`, the store's shapes with
+`original` in place of `original_ref`, without the store-required `rows[].key` —
+derived at apply for a reference table, refused at the gate for every other
+role — and without the envelope keys apply writes: `id` as a real fact id,
+`status`, `updated_at`, `source[].hash`/`run`, `accounts[].id`) and the content
+pass, plus branch codes
+off the sheets manifest, unit symbols off the units record, `fields[].from`
+against the candidate's columns and a cross-kind `merge_into` — and a per-entry
+refusal after it is a defect. **I2 — the intake is explicit:** a file
+`extract-attachment` cannot read, or one whose cached text is missing or stale,
+is recorded as an `unread_attachment` issue and named once to the owner in both
+`gate-b.md` and `report.md`, never improvised over. With them: the shape section
+rendered into every `input.md` from the delta schema itself, `location` closed
+per `medium` (paper `{kept_at, holder}`, external `{system, kept_at}` plus an
+optional `identifier_scheme`, native an optional `{kept_at}` and the same
+`identifier_scheme`, sheet the engine's own optional keys), field-path error
+lines with no truncation and an 80-line cap, the attempt cap and the yield stop
+enforced by the engine, and a guard that blocks driving the engine from Python.
+No new file-type branch anywhere in the units — I1 and I2 are the mechanism.
