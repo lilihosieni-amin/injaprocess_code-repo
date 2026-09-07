@@ -23,7 +23,8 @@ from merge_facts.audit import flags_over
 from merge_facts.content import _check_prose, check_document
 from merge_facts.preconditions import _registered, _unit_symbols
 
-from facts_plan.build import estimate_tokens, label_of, process_index
+from facts_plan.build import (estimate_tokens, label_of, process_index,
+                              shape_section)
 
 #: A template field the record unit has not renamed yet — §2.5's `c_h`. The
 #: `c_` prefix is what marks a ref provisional, so a field wearing it in any
@@ -1202,6 +1203,9 @@ def _digest_text(state, entries):
     lines += ["", "## dropped", ""]
     lines += [f'{d["skeleton"]} · {d["kind"]} · {d["label"]} · {d["reason_code"]}'
               for d in state["dropped"]] or ["—"]
+    # The reviewer rewrites `title`/`statement` and may `keep` with `data`, so
+    # it is held to the same closed contract the units are (§3.2).
+    lines += ["", shape_section()]
     return "\n".join(lines) + "\n"
 
 

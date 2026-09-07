@@ -14,6 +14,7 @@ from facts_plan.build import (
     group_key,
     label_of,
     plan_units,
+    refresh_inputs,
     render_input,
     split_unit,
     transcript_chunks,
@@ -242,6 +243,9 @@ def test_build_writes_the_four_artefacts_over_the_mini_estate(tmp_path):
         assert unit["est_tokens_out"] <= OUT_BUDGET
         assert len(lines) <= MAX_LINES and max(map(len, lines)) <= MAX_LINE
         assert "Expression card" in text and "Style card" in text
+        # §3.2: every unit is shown the closed payload contract, and it fits
+        # inside the same budget the rest of the input does.
+        assert "Shape card" in text and "medium=paper: holder*، kept_at*" in text
     chunk = next(u for u in plan["units"] if u["type"] == "transcript")
     assert chunk["inputs"] == ["meetings/transcripts/cooking-1405-05-26.txt#L1-L39"]
     # a line under the cap is quoted byte for byte, trailing spaces included
@@ -256,3 +260,44 @@ def test_build_writes_the_four_artefacts_over_the_mini_estate(tmp_path):
     items = next(u for u in plan["units"] if u["type"] == "items")
     assert "## توابع" not in (run_dir / "units" / items["id"] / "input.md").read_text(
         encoding="utf-8")
+
+
+def test_refresh_inputs_rewrites_the_inputs_and_touches_nothing_else(
+        tmp_path, monkeypatch):
+    """A run whose units have started cannot be rebuilt (`check_rebuild`), so a
+    card added mid-run reaches it this way: the inputs are re-rendered from the
+    plan already on disk, and the plan and the attempts are left alone."""
+    estate(tmp_path)
+    run_dir = tmp_path / "runs" / "facts" / "cooking" / "20260906-101500"
+    build(tmp_path, "cooking", run_dir, [])
+    plan_bytes = (run_dir / "plan.json").read_bytes()
+    unit = json.loads(plan_bytes.decode("utf-8"))["units"][0]["id"]
+    attempt = run_dir / "units" / unit / "out.1.json"
+    attempt.write_text('{"schema_version": 2}', encoding="utf-8")
+    path = run_dir / "units" / unit / "input.md"
+    before = path.read_text(encoding="utf-8")
+    path.write_text(before.split("# Shape card")[0], encoding="utf-8")
+
+    result = refresh_inputs(tmp_path, run_dir)
+
+    assert path.read_text(encoding="utf-8") == before
+    assert "medium=paper: holder*، kept_at*" in before
+    assert result["refreshed"] == len(json.loads(plan_bytes)["units"])
+    assert result["over_budget"] == []
+    assert (run_dir / "plan.json").read_bytes() == plan_bytes
+    assert attempt.read_text(encoding="utf-8") == '{"schema_version": 2}'
+
+    # and the same thing through the verb the coordinator actually types
+    from facts_plan.cli import main
+    path.write_text("", encoding="utf-8")
+    monkeypatch.setenv("DATA_ROOT", str(tmp_path))
+    assert main(["build", "cooking", "--run", str(run_dir),
+                 "--refresh-inputs"]) == 0
+    assert path.read_text(encoding="utf-8") == before
+
+
+def test_refresh_inputs_and_rebuild_together_are_refused():
+    from facts_plan.cli import main
+    with pytest.raises(SystemExit) as caught:
+        main(["build", "cooking", "--run", "x", "--refresh-inputs", "--rebuild"])
+    assert caught.value.code == 2

@@ -30,7 +30,11 @@ def _parser():
     build.add_argument("department")
     build.add_argument("--run", required=True)
     build.add_argument("--recordings", default="")
-    build.add_argument("--rebuild", action="store_true")
+    # `--refresh-inputs` re-renders an existing run's inputs and `--rebuild`
+    # replaces the plan; asking for both is asking for two different runs.
+    how = build.add_mutually_exclusive_group()
+    how.add_argument("--rebuild", action="store_true")
+    how.add_argument("--refresh-inputs", action="store_true")
     for name in ("digest", "assemble", "report", "status"):
         verb = sub.add_parser(name)
         verb.add_argument("--run", required=True)
@@ -48,7 +52,10 @@ def main(argv=None):
               file=sys.stderr)
         return 2
     root, run = data_root(), pathlib.Path(args.run)
-    if args.verb == "build":
+    if args.verb == "build" and args.refresh_inputs:
+        from facts_plan.build import refresh_inputs
+        result = refresh_inputs(root, run)
+    elif args.verb == "build":
         result = verb(root, args.department, run,
                       [r for r in args.recordings.split(",") if r],
                       rebuild=args.rebuild)
