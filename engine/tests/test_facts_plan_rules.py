@@ -83,6 +83,18 @@ def test_the_offset_twin_binds_the_same_field_key_at_a_different_letter(built):
                       {"ref": kanter["id"], "field": "c_b"}]
 
 
+def test_no_binding_ever_carries_a_null_field(built):
+    """`facts-delta.schema.json` refuses `record.field: null`, so a lookup that
+    misses omits the key. The rule in the FIRST of two like-headed columns is
+    the case that used to miss (`مغایرت` at B, its twin at D)."""
+    _, _, _, candidates, _ = built
+    bindings = [b for c in candidates for b in c["payload"]["applies_to"]]
+    assert bindings and all(b["record"].get("field", "") is not None
+                            for b in bindings)
+    binding = _by_output(candidates, "مغایرت")["payload"]["applies_to"][0]
+    assert binding["record"]["field"] == "c_b"
+
+
 def test_a_date_passthrough_above_the_header_mints_no_candidate(built):
     _, _, _, candidates, issues = built
     assert not any(c["render"]["output"] in ("تاریخ", "روز", "ماه")

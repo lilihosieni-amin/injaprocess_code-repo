@@ -104,6 +104,11 @@ TABS = {
                               ["SheetsFileId_Bom", "SBOM"]], 1, None),
         (4, "شمارش چاله‌باغ", [["نام", "پنیر پیتزا میکس ##1"]], 1, None),
         (5, "شمارش ناهارخوران", [["نام", "پنیر پیتزا میکس ##1"]], 1, None),
+        # One tab heading two columns alike — `gozareshat!مغایرت` in management
+        # heads both G and K «مغایرت», and the FIRST of the two is where the
+        # formula sits, so an overwrite loses that column its field.
+        (6, "مغایرت", [["نام", "مغایرت", "تلورانس", "مغایرت"],
+                       ["پنیر پیتزا ##1", "1", "2", "3"]], 1, None),
     ],
     "SPNK": [(1, "پیتزا", PITZA_HEAD, 5, PITZA_LABELS)],
     "SKCH": [
@@ -139,6 +144,7 @@ FORMULAS = {
         ["پیتزا", "J7", "", TOLERANCE_PER_KG, 1, "3.588", ""],
         ["پیتزا", "J8", "", "HN", 1, "8.71", ""],
         ["Table_Bom", "A1", "", MIRROR, 1, "نام", ""],
+        ["مغایرت", "B2", "", "MINUS(CN,DN)", 1, "1", ""],
     ],
     "SPNK": [
         ["پیتزا", "F6:F8", "1", "MINUS(DN,EN)", 3, "0.04", ""],

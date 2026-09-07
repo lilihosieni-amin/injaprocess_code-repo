@@ -51,7 +51,7 @@ def test_a_mirror_tab_and_an_ids_tab_are_not_templates(estate):
     candidates, _, _ = record_templates(estate, "cooking")
     sheets = {c["render"]["sheet"] for c in candidates}
     assert "Table_Bom" not in sheets and "SheetsFileIDs" not in sheets
-    assert len(candidates) == 7
+    assert len(candidates) == 8
 
 
 def test_two_tabs_in_one_spreadsheet_never_share_a_template(estate):
@@ -79,6 +79,20 @@ def test_the_offset_twin_keeps_one_field_and_records_the_offset(estate):
                                 "mini_kanter_nk__s1": "d"}
     assert first["key"] == "c_b"
     assert any(i["kind"] == "column_offset" for i in issues)
+
+
+def test_two_columns_under_one_header_are_two_fields_and_an_issue(estate):
+    """A tab that heads two of its columns alike keeps a field for each: keyed
+    by title alone, the later letter overwrote the earlier one, and the column
+    that carried the formula was left with no field at all."""
+    candidates, _, issues = record_templates(estate, "cooking")
+    tab = _by_sheet(candidates, "مغایرت")[0]
+    twice = [f for f in tab["payload"]["fields"] if f["title"] == "مغایرت"]
+    assert [f["key"] for f in twice] == ["c_b", "c_d"]
+    assert [f["columns"] for f in twice] == [{"mini_pitza_ch__s6": "b"},
+                                             {"mini_pitza_ch__s6": "d"}]
+    said = [i["description"] for i in issues if i["kind"] == "ambiguous_row_header"]
+    assert len(said) == 1 and "B" in said[0] and "D" in said[0]
 
 
 def test_enum_is_the_intersection_and_the_difference_is_cross_record(estate):

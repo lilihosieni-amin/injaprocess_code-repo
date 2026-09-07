@@ -702,6 +702,24 @@ def test_simulate_leaves_the_store_and_the_id_ledger_byte_identical(tmp_path):
     assert [e["id"] for e in store["rule"]["entries"]] == ["F-00002"]
 
 
+def test_a_declared_unit_symbol_in_a_statement_survives_the_content_pass(tmp_path):
+    """QF-40's symbols are the run's own vocabulary. `preconditions` already
+    computes them for its unit check, and the content pass has to be handed the
+    same list — otherwise a statement naming one is a Latin leak at Stage V,
+    after `validate facts-unit` and `assemble` both passed it, and the unit
+    burns its second attempt on a sentence that was never wrong."""
+    root = _root(tmp_path); _seed_units(root)
+    delta = _units_delta()
+    delta["entries"][0]["data"]["rows"].append(
+        {"key": "portion", "symbol": "portion", "dimension": "count",
+         "factor_to_base": 1, "unit_title": "پرس"})
+    rule = _const_delta()["entries"][0]
+    rule["id"], rule["statement"] = "T-2", "حد مجاز برای هر portion است."
+    delta["entries"].append(rule)
+    d = _write(root, "d1.json", delta)
+    assert simulate(root, d, _run_dir(root, "20260901-101501"))[1] == []
+
+
 def test_simulate_catches_a_store_schema_failure_the_delta_passes(tmp_path):
     root = _root(tmp_path); _seed_units(root)
     d = _write(root, "d1.json", _const_delta())

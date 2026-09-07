@@ -239,8 +239,8 @@ RUN_ONLY = frozenset({"reference_tab_is_mirror", "reference_tab_is_ids",
 ISSUE_TEXT = {
     "column_offset": "ستون «{field}» در نسخه‌های مختلف در جای یکسانی نیست: {detail}.",
     "cross_record": "فهرست مقادیر مجاز ستون «{field}» بین نسخه‌ها یکی نیست: {detail}.",
-    "ambiguous_row_header": "عنوان «{field}» در تب «{sheet}» دوبار تکرار شده و "
-                            "سطرها به آن وصل نشدند.",
+    "ambiguous_row_header": "عنوان «{field}» در تب «{sheet}» روی بیش از یک "
+                            "ستون تکرار شده است: {detail}.",
     "row_labels_partial": "نام سطرها فقط در بعضی نسخه‌ها ثبت شده است: {detail}.",
     "row_labels_ambiguous": "ستون نام سطرها در نسخه‌ها یکسان نیست: {detail}.",
 }
@@ -507,22 +507,39 @@ def _fields(group, estate):
             if _PLACEHOLDER.match(title) or (not title and col != label_col):
                 continue
             letter = _letters(col)
-            if title not in fields:
-                fields[title] = {"key": f"c_{letter}", "title": title or None,
+            # A tab may head two of its own columns alike — `gozareshat!مغایرت`
+            # heads both G and K «مغایرت». Keyed by title alone the second one
+            # overwrote the first's letter, so the first column lost its field
+            # and the rule bound to it was left with none: an occurrence of a
+            # title this instance already has mints a field of its own.
+            occurrence = 0
+            while (title, occurrence) in fields \
+                    and inst["key"] in fields[(title, occurrence)]["columns"]:
+                occurrence += 1
+            ident = (title, occurrence)
+            if ident not in fields:
+                fields[ident] = {"key": f"c_{letter}", "title": title or None,
                                  "columns": {}, "type": "string"}
-                order.append(title)
-            fields[title]["columns"][inst["key"]] = letter
+                order.append(ident)
+            if occurrence:
+                before = fields[(title, occurrence - 1)]["columns"][inst["key"]]
+                issues.append(_issue("ambiguous_row_header",
+                                     instance=inst["key"], sheet=inst["sheet"],
+                                     field=title or "—",
+                                     detail="، ".join((before.upper(),
+                                                       letter.upper()))))
+            fields[ident]["columns"][inst["key"]] = letter
             samples = [row[col - 1] for row in sheet["head"][sheet["header_row"]:]
                        if col <= len(row) and str(row[col - 1]).strip()]
             if samples and all(_is_number(s) for s in samples):
-                fields[title]["type"] = "number"
+                fields[ident]["type"] = "number"
             values = _enum(dump, inst["sheet"], letter)
             if values is not None:
-                seen = fields[title].setdefault("_enums", [])
+                seen = fields[ident].setdefault("_enums", [])
                 seen.append((inst["key"], values))
     out = []
-    for title in order:
-        field = fields[title]
+    for ident in order:
+        field, title = fields[ident], ident[0]
         enums = field.pop("_enums", [])
         if enums:
             keep = [v for v in enums[0][1] if all(v in e for _, e in enums)]
@@ -566,8 +583,13 @@ def reference_rows(dump, sheet_name, header_row, fields):
     `primaryKey` is the column whose cells carry an item code; a cell the dump
     left empty is omitted, so a blank is never an unanswered leaf (QF-46)."""
     titles = [fold(c) for c in header_row if fold(c)]
-    issues = [_issue("ambiguous_row_header", sheet=sheet_name, field=t)
-              for t in sorted({t for t in titles if titles.count(t) > 1})]
+    repeated = collections.defaultdict(list)
+    for col, cell in enumerate(header_row, start=1):
+        if fold(cell):
+            repeated[fold(cell)].append(_letters(col).upper())
+    issues = [_issue("ambiguous_row_header", sheet=sheet_name, field=title,
+                     detail="، ".join(letters))
+              for title, letters in sorted(repeated.items()) if len(letters) > 1]
     by_title = {f["title"]: f["key"] for f in fields if f["title"]}
     lines = [r for r in dump["rows"] if r.get("sheet") == sheet_name]
     key_title = next((t for t in titles if t in by_title
@@ -889,10 +911,14 @@ def rule_columns(estate, department, templates, instances, table_functions):
                 if isinstance(value, dict) and "cell" in value:
                     params[key] = _resolve(value, inst, fields_by_letter)
             first = rows[0] if rows else 1
+            # `facts-delta.schema.json` refuses `field: null`, and a delta that
+            # carries one is refused whole at Stage V — a lookup that misses
+            # leaves the key out and the binding names the record alone.
+            field = fields_by_letter.get((inst["key"], letter))
             bindings.append({
                 "key": f"{inst['key']}__{letter}__r{first}",
                 "record": {"ref": inst["template"],
-                           "field": fields_by_letter.get((inst["key"], letter))},
+                           **({"field": field} if field else {})},
                 "variant": variant["key"], "range": row["range"],
                 "params": params,
                 "rows": [{"key": f"r{n}", "row": n,

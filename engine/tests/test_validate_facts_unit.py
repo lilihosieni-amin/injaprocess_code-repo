@@ -8,7 +8,7 @@ from facts_plan.assemble import validate_unit
 from validate.cli import main
 
 
-def _run(tmp_path, candidates=("S-r-000000000001",)):
+def _run(tmp_path, candidates=("S-r-000000000001",), kind="rule"):
     root = tmp_path
     (root / "departments" / "cooking" / "processes").mkdir(parents=True)
     (root / "departments" / "cooking" / "processes" / "cooking-030.json").write_text(
@@ -20,7 +20,7 @@ def _run(tmp_path, candidates=("S-r-000000000001",)):
     (run_dir / "skeleton.json").write_text(json.dumps(
         {"schema_version": 1, "department": "cooking", "run": "r",
          "unit_symbols": ["kg", "portion"],
-         "candidates": [{"id": c, "kind": "rule", "unit": "u-wb-pitza",
+         "candidates": [{"id": c, "kind": kind, "unit": "u-wb-pitza",
                          "payload": {"output": "انحراف"}} for c in candidates],
          "instances": [], "imports": [], "issues": []}, ensure_ascii=False),
         encoding="utf-8")
@@ -130,6 +130,25 @@ def test_lint_runs_with_the_unit_symbols_exempted(tmp_path):
     assert any("H6" in p for p in validate_unit(root, run_dir, _write(run_dir, doc)))
     doc["decisions"][0]["statement"] = "مصرف بر حسب kg و portion ثبت می‌شود."
     assert validate_unit(root, run_dir, _write(run_dir, doc, "out.2.json")) == []
+
+
+def test_sheet_words_belong_to_a_records_own_statement(tmp_path):
+    """QF-50 — `content._check_prose` allows «ستون»/«تب»/«سلول» in a record's
+    own `statement` and nowhere else, and the unit-level lint has to say the
+    same: a record that follows its card was being refused here, re-dispatched
+    with the same message, and its candidates lost to `undecided[]`."""
+    sentence = "شمارش هر شب در تب «کانتر» ثبت می‌شود."
+    root, run_dir = _run(tmp_path / "rec", kind="record")
+    doc = _doc()
+    doc["decisions"][0]["statement"] = sentence
+    assert validate_unit(root, run_dir, _write(run_dir, doc)) == []
+    titled = _doc()
+    titled["decisions"][0]["title"] = sentence
+    assert any("title" in p for p in
+               validate_unit(root, run_dir, _write(run_dir, titled, "out.2.json")))
+    root, run_dir = _run(tmp_path / "rule")
+    assert any("statement" in p for p in
+               validate_unit(root, run_dir, _write(run_dir, doc)))
 
 
 def test_a_unit_written_on_a_non_numeric_field_is_an_error(tmp_path):

@@ -287,6 +287,11 @@ def preconditions(root, store, entries, run_dir):
     # `store` (Task 9 review, F1/F2) lets the expr check's `calls[]` and
     # aggregate-table-column resolution reach an entry from an EARLIER
     # applied delta, not just this one — the common QF-12 shared-function case.
+    # `unit_rows` is the same list `build.unit_symbols` writes into
+    # `skeleton.json` and `validate facts-unit` lints against (QF-40): without
+    # it here a statement naming a declared symbol passes both earlier gates
+    # and is refused only at Stage V, spending the unit's second attempt on a
+    # sentence that was never wrong. `audit._lint_failures` already passes them.
     out.extend(check_document({"schema_version": 1, "entries": entries},
-                              "facts-delta", store))
+                              "facts-delta", store, unit_symbols=unit_rows))
     return out

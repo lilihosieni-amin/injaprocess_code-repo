@@ -93,7 +93,11 @@ def validate_unit(root, run_dir, path):
 
     skeleton = read_json(run_dir / "skeleton.json")
     plan = read_json(run_dir / "plan.json")
-    known = {c["id"] for c in skeleton["candidates"]}
+    # The candidate's store kind, not just its id: `_lint_decision` needs it to
+    # know whose `statement` may name a column (QF-50).
+    kinds = {c["id"]: KIND_OF.get(c["kind"], c["kind"])
+             for c in skeleton["candidates"]}
+    known = set(kinds)
     symbols = skeleton.get("unit_symbols") or []
     nodes = process_index(root, skeleton["department"])
     node_ids = {f'{n["process"]}::{n["node"]}' for n in nodes} \
@@ -150,12 +154,13 @@ def validate_unit(root, run_dir, path):
             if field.get("unit") and field.get("type") not in (None, "number"):
                 problems.append(f'{label}: field {field.get("key")} is '
                                 f'{field.get("type")} and carries a unit')
-        problems += _lint_decision(decision, label, symbols)
+        problems += _lint_decision(decision, label, symbols,
+                                   kinds.get(skid) or entry.get("kind"))
 
     for n, entry in enumerate(doc.get("new") or []):
         label = f'new[{n}] {entry.get("key")}'
         problems += _citations(entry, label, node_ids, skeleton["department"]) \
-            + _lint_decision(entry, label, symbols)
+            + _lint_decision(entry, label, symbols, entry.get("kind"))
 
     if unit is not None:
         for cid in unit["candidates"]:
@@ -180,15 +185,21 @@ def _members(data, key):
     return [m for m in value if isinstance(m, dict)] if isinstance(value, list) else []
 
 
-def _lint_decision(decision, label, symbols):
+def _lint_decision(decision, label, symbols, kind=None):
     """§5.2 at unit level (QF-50) — the unit that wrote a failing sentence is
     the one that fixes it, which is only true while the decision is still
-    addressable by its own index."""
+    addressable by its own index.
+
+    `kind` is the store kind the decision lands as, and it decides one rule:
+    «ستون»/«تب»/«سلول» belong in a **record's** own `statement`, which is what
+    `content._check_prose` allows at Stage V and what the style card and the
+    unit's own card ask for. A title is strict whatever the kind."""
     out = []
     parts = decision.get("into") if decision.get("action") == "split" else [decision]
     for part in parts or []:
-        for key in ("title", "statement"):
-            for message in lint_prose(part.get(key) or "", exemptions=symbols):
+        for key, sheet_words in (("title", False), ("statement", kind == "record")):
+            for message in lint_prose(part.get(key) or "", exemptions=symbols,
+                                      allow_sheet_words=sheet_words):
                 out.append(f"{label}: {key}: {message}")
         for alias in part.get("aliases") or []:
             for message in lint_prose(alias, exemptions=symbols):
@@ -934,7 +945,7 @@ def _lint_entries(entries, symbols):
     return [message for entry in entries
             for message in _lint_decision(entry,
                                           f'{entry["_unit"]}: {entry["key"]}',
-                                          symbols)]
+                                          symbols, entry.get("kind"))]
 
 
 def _digest_text(state, entries):
