@@ -438,6 +438,26 @@ grep -n 'model:' ../data-repo/.claude/agents/quantify.md
 (d) the playbook uses only `Read, Write, Edit, Bash, Glob, Grep, Task` — the
 bot's own allowlist — so nothing authored on the laptop breaks on the server.
 
+Two more items joined the list on 2026-09-07, and neither is a check to
+run: they are rules the engine now enforces, listed here because the
+console is where someone would try to work around them.
+
+(e) two rules of the run are the **engine's**, not the operator's, and neither
+is liftable from the playbook or from this checklist (design addendum
+2026-09-07, §3.5): a unit gets **two attempts per run** — `validate facts-unit`
+refuses a third output with `out.3.json: attempt cap: two per run`,
+`facts-plan status` reports that unit `failed`, and `assemble` continues without
+it — and `yield: true` **ends the turn**: the coordinator sends its progress
+line and stops. A request to lift either is a bug report, not a decision to take
+at the console.
+
+(f) the guard hook blocks driving the engine from Python: a `python`,
+`python3` or `uv run python` invocation that imports `facts_plan`, `merge_facts`
+or `engine_common`, and any script under `runs/`, is refused with one message.
+The seven engine CLIs — `facts-plan`, `validate`, `merge`, `dump-workbook`,
+`extract-attachment`, `transcribe`, `allocate-id` — stay allowed, and they are
+the only way in.
+
 For a run through the **local test bot**, check the same flag inside the
 container: `/root/.claude` there is a volume seeded from the host's `~/.claude`,
 so a flag file on the laptop reaches the container with it.
@@ -459,6 +479,24 @@ either file.
 |---|---|---|---|
 | `{run_dir}/gate-b.md` | `facts-plan assemble` | the facts checkpoint, before anything is written | counts per kind; the first three rules in one sentence each; how many were dropped and the commonest reasons; how many went unexamined; the disputes numbered with lettered options; how many issues were found in the files, three of them named; how many cells are unanswered; and the one question «تأیید می‌کنید؟» |
 | `{run_dir}/report.md` | `facts-plan report` | after the apply and the commit | what was recorded, dropped and left unexamined; the open disputes numbered with lettered options; the unanswered cells grouped per entry; the dropped list by reason in the owner's own words; every engine-found issue grouped by kind; whether a part was left unfinished; and whether the review ran |
+
+A third line runs through both files: **a file this run could not read is named
+once.** An extension `extract-attachment` has no converter for, or a supported
+file whose cached text is missing or stale, becomes an `unread_attachment` issue
+and is listed under «فایل‌هایی که در این اجرا خوانده نشدند» — in `gate-b.md` as
+well as `report.md`, so the owner learns at approval time and not only at the
+end — beside an unplaced workbook, by the owner-visible name of the file and
+never by a path. An `.xlsx` is the dumper's and is named by the workbook line
+instead; passthrough text (`.csv`, `.md`, `.txt`, `.gs`) is read directly and is
+never "unread". No unit ever sees such a file, and nothing is improvised over it
+(design addendum 2026-09-07, invariant I2).
+
+Validator output has the opposite contract and is **never** owner-facing: one
+line per distinct rule with the field path — `entries[3].data.fields[2].type:
+'text' is not one of ['string','number','integer','boolean','date']`, with the
+entry renamed to the decision that wrote it — no entry dumps, and a cap of 80
+lines closed by `… and N more`. It is read by the coordinator, pasted into a
+re-dispatch, and quoted to nobody.
 
 **No other question is put to the owner at the checkpoint.** Approval applies the
 delta with the disputes still open; the owner answers a dispute right there
@@ -486,6 +524,100 @@ for name in ('gate-b.md', 'report.md'):
 `clean` on both lines is the pass; anything else names the token that leaked —
 a path-shaped token, an 8-hex id, a department code, or one of the pipeline's
 own words.
+
+## 12. The unit gate (design addendum 2026-09-07)
+
+`docs/superpowers/specs/2026-09-07-quantitative-facts-v3-gate-design.md` is the
+design; this section is the operator's side of it.
+
+On 2026-09-07 the cooking run assembled 220 entries and the final validation
+refused 52 of them — 17 records, 5 measurements, 30 rules — on **shape** alone:
+a column type written as `text`, a computed column marked yes/no instead of a
+reference, a cadence written in Persian words instead of its enum value, rules
+with no inputs or outputs, two paper forms with invented keys and no location.
+Nothing was wrong with the content, and by then every unit and the reviewer had
+spent their attempts. The store's closed contract was being applied for the
+first time after the last gate that could act on it.
+
+**The output side is closed at the unit's gate now.** Whatever a unit writes,
+from whatever evidence — a sheet, a transcript, a `.docx`, a `.pdf`, a
+photograph, something said out loud — is validated at `validate facts-unit`
+against the same per-entry contract `merge facts apply` enforces: the store
+contract in its delta form (`facts-delta.schema.json`, which differs from the
+store's only in carrying `original` where the store carries `original_ref`) and
+the content pass, plus a branch code off the sheets manifest, a unit symbol off
+the units record, `fields[].from` against the candidate's columns, and a
+`merge_into` across kinds. `assemble` re-runs the same contract over the
+assembly and over the review's rewrites, whose lines are labelled
+`review: <key>`. The final validation keeps only what is genuinely cross-entry —
+twin titles, instance ownership, references between units, the reviewer's caps —
+and each of those already names the unit that caused it.
+
+So the operator's reading of a failure changes: **a per-entry error at the final
+validation is a defect in the engine, not a unit to re-dispatch.** Stop the run
+before the checkpoint, record the message as it is, and report it. There is
+nothing to hand-repair — the delta is the assembly of every unit, and a
+hand-edited delta is how the 2026-09-02 run ended.
+
+### Re-validating an existing run under the new gate
+
+`status` re-derives every unit's state from the filesystem, so an older run is
+re-judged by simply asking:
+
+```bash
+docker compose exec control-bot sh -c \
+  'DATA_ROOT=/data facts-plan status --run /data/runs/facts/cooking/20260907-052345'
+# u-wb-gozaresh · workbook · failed · 2
+# u-tr-r03-l1 · transcript · pending · 1
+# stage U · plan_stale false · elapsed_s 0 · yield false
+```
+
+`failed` is a unit with two parsing attempts whose latest one the gate refuses;
+one attempt and a refusal is still `pending`. The messages themselves come from
+the validator, on the failing unit's latest output:
+
+```bash
+docker compose exec control-bot sh -c \
+  'DATA_ROOT=/data validate facts-unit \
+     /data/runs/facts/cooking/20260907-052345/units/u-wb-gozaresh/out.2.json \
+     --run /data/runs/facts/cooking/20260907-052345'
+# decisions[1] S-r-…: data.fields[2].type: 'text' is not one of [...]
+```
+
+A unit at the cap looks the same either way: a third output is refused before it
+is read (`out.3.json: attempt cap: two per run`), the unit stays `failed`, and
+`assemble` folds the run without it. A unit already at two attempts is re-run in
+a **fresh run directory**, never as a third file, and nothing at the console
+lifts the cap.
+
+### Giving an already-planned run the shape section
+
+```bash
+docker compose exec control-bot sh -c \
+  'DATA_ROOT=/data facts-plan build cooking \
+     --run /data/runs/facts/cooking/20260907-052345 --refresh-inputs'
+# {"over_budget": [], "refreshed": 14}
+docker compose exec control-bot sh -c \
+  'DATA_ROOT=/data facts-plan digest --run /data/runs/facts/cooking/20260907-052345'
+```
+
+`--refresh-inputs` rewrites every `units/<id>/input.md` from the existing
+`skeleton.json` and `plan.json` and touches nothing else — never `plan.json`,
+never an `out.<n>.json`, never a split — which is what lets a run that has
+already spent attempts pick up a card added mid-flight. It is mutually exclusive
+with `--rebuild` (that one replaces the plan and renumbers unit directories), and
+a unit whose refreshed input no longer fits the budget is *reported* by id: the
+decision to split it is the plan author's. `review/input.md` is not this verb's
+business — `facts-plan digest` re-renders it.
+
+### The bind mount and host-side git
+
+Docker Desktop's `/host_mnt` cache serves a stale `.git/index` and `packed-refs`
+to the container after a host-side git operation on the data-repo. **After any
+host git operation on the data-repo, restart the control bot before it runs
+git**, and verify the state on both sides. **Never run host git on the data-repo
+while a bot run is in progress** — the run's commit is the bot's, and a
+concurrent host-side operation is how a run ends holding an index nobody wrote.
 
 ## Next
 
