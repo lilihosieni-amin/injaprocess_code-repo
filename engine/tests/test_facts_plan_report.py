@@ -1,7 +1,10 @@
 import json
 
-from facts_plan.assemble import ISSUE_FA, gate_b, report
+from facts_helpers import _const_delta, _root, _run_dir, _seed_units, _write
+from facts_plan.assemble import ISSUE_FA, _disputes, gate_b, report
 from facts_plan.build import ISSUE_TEXT
+from merge_facts import load_store
+from merge_facts.apply import apply
 
 
 def test_every_issue_kind_has_the_owner_s_words():
@@ -32,9 +35,9 @@ def _store(root, entries):
         encoding="utf-8")
 
 
-def _run(tmp_path):
-    run_dir = tmp_path / "runs" / "facts" / "cooking" / "20260906-101500"
-    run_dir.mkdir(parents=True)
+def _plan_files(run_dir):
+    """`skeleton.json` and `assembly.json` — what `report` reads beside the
+    store and the run's own record of what it touched."""
     (run_dir / "skeleton.json").write_text(json.dumps(
         {"schema_version": 1, "department": "cooking", "run": "r",
          "unit_symbols": [], "candidates": [], "instances": [], "imports": [],
@@ -53,6 +56,15 @@ def _run(tmp_path):
                         "unit": "u-b"}],
          "provenance": {"T-1": "u-a"}, "review_status": "discarded"},
         ensure_ascii=False), encoding="utf-8")
+    return run_dir
+
+
+def _run(tmp_path):
+    run_dir = tmp_path / "runs" / "facts" / "cooking" / "20260906-101500"
+    run_dir.mkdir(parents=True)
+    _plan_files(run_dir)
+    # No `touched.json`: this is a run directory of the shape `apply` wrote
+    # before the file existed, and `report` still has to work off the id map.
     (run_dir / "id-map.json").write_text(json.dumps({"T-1": "F-00487"}),
                                          encoding="utf-8")
     return run_dir
@@ -133,3 +145,40 @@ def test_two_disagreed_fields_on_one_entry_are_two_disputes_numbered_alike(tmp_p
     assert "اختلاف بین دو منبع: ۲ مورد" in gate
     assert "۱ — «انحراف مصرف»: الف) ۲۱۵  ب) ۱۰" in gate
     assert "۲ — «انحراف مصرف»: الف) ۷  ب) ۹" in gate
+
+
+def test_disputes_are_ordered_by_content_not_by_container_order():
+    """`gate_b` reads the assembled entries and `report` reads the store, and
+    the two are not one list in one order — so the numbering is derived from
+    the entry itself (kind, key, scope, field), never from position."""
+    first = _disputed([_account("a1", "data/outputs/v/value", "۵", 5),
+                       _account("a2", "data/outputs/v/value", "۴", 4)])[0]
+    second = dict(first, id="F-00488", key="kasri", title="کسری")
+    assert [e["key"] for e, _ in _disputes([first, second])] \
+        == [e["key"] for e, _ in _disputes([second, first])] == ["enheraf", "kasri"]
+
+
+def test_a_run_that_only_merged_still_reports_the_dispute_it_opened(tmp_path):
+    """`id-map.json` records the ids a run MINTED — `revert` depends on that
+    meaning, and a merge into an existing entry mints none. So a re-run into a
+    populated store left the entry the ladder had just disputed out of
+    `report.md` altogether: the dispute the owner was shown as «۱» at Gate B
+    was gone, and every later number had moved. `touched.json` is the run's
+    whole footprint, and `report` reads that."""
+    root = _root(tmp_path); _seed_units(root)
+    apply(root, _write(root, "d1.json", _const_delta(5)), _run_dir(root, "1"))
+    run_dir = _run_dir(root, "2")
+    apply(root, _write(root, "d2.json", _const_delta(4)), run_dir)
+    entry = next(e for e in load_store(root)["rule"]["entries"] if e["key"] == "tol")
+
+    assert json.loads((run_dir / "id-map.json").read_text(encoding="utf-8")) == {}
+    assert json.loads((run_dir / "touched.json").read_text(encoding="utf-8")) \
+        == [entry["id"]]
+
+    _plan_files(run_dir)
+    skeleton = json.loads((run_dir / "skeleton.json").read_text(encoding="utf-8"))
+    gate = gate_b(root, skeleton, [entry],
+                  {"department": "cooking", "dropped": [], "undecided": []})
+    assert f'۱ — «{entry["title"]}»' in gate
+    text = report(root, run_dir).read_text(encoding="utf-8")
+    assert f'اختلاف ۱ — «{entry["title"]}»' in text

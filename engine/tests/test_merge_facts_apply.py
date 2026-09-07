@@ -695,9 +695,11 @@ def test_simulate_leaves_the_store_and_the_id_ledger_byte_identical(tmp_path):
     before_ledger = ledger.read_bytes()
     before = {p.name: p.read_bytes() for p in (root / "facts").glob("*.json")}
     d = _write(root, "d1.json", _const_delta())
-    store, problems = simulate(root, d, _run_dir(root, "20260901-101501"))
+    run_dir = _run_dir(root, "20260901-101501")
+    store, problems = simulate(root, d, run_dir)
     assert problems == []
     assert ledger.read_bytes() == before_ledger        # minted in memory only
+    assert list(run_dir.iterdir()) == []               # and nothing in the run dir
     assert {p.name: p.read_bytes() for p in (root / "facts").glob("*.json")} == before
     assert [e["id"] for e in store["rule"]["entries"]] == ["F-00002"]
 

@@ -17,7 +17,10 @@ also keeps `facts-delta.json`, `id-map.json`, and `adopted.json` — the ids of
 every workbook stub (QF-20) this run adopted, always written (`[]` when none),
 so `revert` can refuse an adoption without re-deriving it from the store
 later, after other runs may have changed what the adopted record looks like
-(Task 7 review, I2). `id-map.json` and `adopted.json` are, like the snapshot,
+(Task 7 review, I2) — and `touched.json`, every id the run changed, merges
+included, which is what `facts-plan report` names the owner (`id-map.json`
+holds only the MINTED ids, and `revert` depends on it meaning exactly that).
+`id-map.json`, `touched.json` and `adopted.json` are, like the snapshot,
 written once per run directory (`_write_once`, Task 7 review round 2): a
 RETRY of the same delta into the same run dir must not recompute either from
 the now-already-written store and silently erase the first call's true
@@ -703,6 +706,12 @@ def _write(root, store, run_dir, delta_path, id_map, touched, adopted, originals
     if not (kept.exists() and kept.samefile(delta_path)):
         shutil.copy2(delta_path, kept)
     _write_once(run_dir / "id-map.json", id_map)
+    # The run's whole footprint, which `id-map.json` is NOT: that one holds the
+    # ids this run MINTED (create/supersede), because that is what `revert`
+    # needs and its meaning must not widen. A merge mints nothing, and the
+    # ladder can open a dispute during one — so `report.md`, which names what
+    # the owner has to answer, reads this list instead.
+    _write_once(run_dir / "touched.json", sorted({t["id"] for t in touched}))
     # QF-20, Task 7 review (I2): the ids this run adopted, recorded HERE, at
     # write time, rather than left for `revert` to infer later from store
     # comparison — a later run's own changes to an adopted record would have

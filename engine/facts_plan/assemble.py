@@ -1086,7 +1086,12 @@ def _disputes(entries):
             if account.get("status") == "open":
                 by_field.setdefault(account.get("field"), []).append(account)
         out += [(entry, sides) for sides in by_field.values()]
-    return out
+    # Ordered by what a dispute IS, never by where it sat in its container:
+    # `gate_b` is handed the assembled entries and `report` reads them back out
+    # of the store, and those are two lists in two orders.
+    return sorted(out, key=lambda d: (KIND_ORDER.index(d[0]["kind"]),
+                                      *_address(d[0])[1:],
+                                      d[1][0].get("field") or ""))
 
 
 def gate_b(root, skeleton, entries, state):
@@ -1155,7 +1160,12 @@ def report(root, run_dir):
     name = next((d["name"] for d in registry["departments"]
                  if d["code"] == skeleton["department"]), skeleton["department"])
     store = load_store(root)
-    touched = set(id_map.values())
+    # `apply` writes `touched.json`: every entry the run changed, merges
+    # included. `id-map.json` holds only the ids it minted, so a run that only
+    # merged would name nothing here — the fallback is for run directories
+    # written before `touched.json` existed.
+    footprint = run_dir / "touched.json"
+    touched = set(read_json(footprint) if footprint.exists() else id_map.values())
     entries = [e for kind in KIND_ORDER for e in store[kind]["entries"]
                if e["id"] in touched]
 
