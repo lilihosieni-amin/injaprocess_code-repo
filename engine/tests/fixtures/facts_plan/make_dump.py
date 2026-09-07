@@ -16,7 +16,15 @@ so what the tests assert is what cooking actually contains:
 * a reference tab (`مواد`, the BOM) with its rows and a blank cell;
 * a mirror tab (one `IMPORT_FROM_SHEET` at A1) and an ids tab
   (`SheetsFileIDs`), which produce no template at all.
+
+Two things beside the workbooks, written only when `make_estate(root,
+attachments=True)` asks for them (§3.8): a department attachment set with the
+`.text/` sidecars `extract-attachment` writes — `<stem>.txt` for a `.docx`,
+`<stem>.pdf.md`, `<stem>.image.md`, each with its `<name>.sha256` holding the
+SOURCE file's digest — describing three paper forms; and one file
+(`.xyz`) nothing can read. A fourth form exists only in `TRANSCRIPT`.
 """
+import hashlib
 import json
 import pathlib
 import re
@@ -185,6 +193,56 @@ VALIDATIONS = {
 }
 
 
+# The department's attachments, in the four states §3.8 needs: a `.docx` whose
+# text was cached, a `.pdf` and an image likewise, and one file with no
+# converter. `(name, cached suffix, cached text)`; a `None` suffix is a file
+# `extract-attachment` writes nothing for.
+ATTACHMENTS = (
+    ("فرم-تحویل-انبار.docx", ".txt",
+     "فرم تحویل کالا از انبار\n"
+     "ستون‌ها: تاریخ | نام کالا | مقدار (کیلوگرم) | تحویل‌گیرنده\n"
+     "نسخهٔ سفید در دفتر انبار نگهداری می‌شود و سرپرست انبار مسئول آن است.\n"
+     "پای فرم را انباردار و سرپرست آشپزخانه امضا می‌کنند.\n"),
+    ("فرم-ضایعات.pdf", ".pdf.md",
+     "# فرم ثبت ضایعات روزانه\n\n"
+     "ستون‌ها: تاریخ | نام کالا | مقدار دورریز (کیلوگرم) | علت\n"
+     "فرم‌های پرشده در کلاسور آشپزخانه نگهداری می‌شود و سرآشپز مسئول آن است.\n"),
+    ("فرم-شمارش-یخچال.png", ".image.md",
+     "# فرم شمارش یخچال\n\n"
+     "عکس یک فرم کاغذی با ستون‌های: نام کالا | تعداد | امضای شمارنده\n"
+     "فرم‌ها روی در یخچال نصب می‌شوند و مسئول شیفت آن‌ها را نگه می‌دارد.\n"),
+    ("چیدمان-انبار.xyz", None, None),
+)
+
+# The fourth form: nobody photographed it, and it exists only in what was said.
+TRANSCRIPT = (
+    "سرپرست انبار: یک فرم کاغذی هم داریم برای مرجوعی کالا به تأمین‌کننده.\n"
+    "سرپرست انبار: ستون‌هایش تاریخ، نام کالا، مقدار برگشتی و علت مرجوعی است.\n"
+    "سرپرست انبار: فرم‌های پرشده در زونکن دفتر انبار می‌ماند و خودم نگه می‌دارم.\n"
+    "مدیر: پای همان فرم را هم انباردار امضا می‌کند.\n"
+)
+
+
+def make_attachments(root, department=DEPARTMENT):
+    """The department's attachments and the `.text/` cache `extract-attachment`
+    would have written for them — `<stem><suffix>` beside `<stem><suffix>.sha256`
+    holding the sha256 of the SOURCE file, which is the gate `needs_conversion`
+    reads."""
+    adir = pathlib.Path(root) / "departments" / department / "attachments"
+    adir.mkdir(parents=True, exist_ok=True)
+    for name, suffix, text in ATTACHMENTS:
+        src = adir / name
+        src.write_bytes(name.encode("utf-8"))
+        if suffix is None:
+            continue
+        dst = adir / ".text" / (src.stem + suffix)
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        dst.write_text(text, encoding="utf-8")
+        (dst.parent / (dst.name + ".sha256")).write_text(
+            hashlib.sha256(src.read_bytes()).hexdigest() + "\n", encoding="utf-8")
+    return adir
+
+
 def _tsv(path, header, rows):
     lines = ["\t".join(header)]
     lines += ["\t".join(str(v) for v in row) for row in rows]
@@ -210,8 +268,14 @@ def _sheet(sheet_id, name, head, header_row, row_labels):
     return sheet
 
 
-def make_estate(root):
-    """Write the mini estate under `root/attachments/sheets/`."""
+def make_estate(root, *, attachments=False):
+    """Write the mini estate under `root/attachments/sheets/`.
+
+    `attachments=True` also writes the department's attachment set (§3.8). It is
+    off by default because every existing caller asserts over a run with no
+    attachment, and an attachment appended to the last transcript unit changes
+    that unit's `inputs` and the plan's hashes.
+    """
     sheets_root = pathlib.Path(root) / "attachments" / "sheets"
     workbooks = []
     for short, sid, directory, filename, branches, reference, scripts in WORKBOOKS:
@@ -245,4 +309,6 @@ def make_estate(root):
          "branches": [{"code": "chalebagh", "name": "چاله‌باغ"},
                       {"code": "naharkhoran", "name": "ناهارخوران"}],
          "workbooks": workbooks}, ensure_ascii=False), encoding="utf-8")
+    if attachments:
+        make_attachments(root)
     return sheets_root
