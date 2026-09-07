@@ -1,10 +1,10 @@
 """§7's `facts-plan build` fixture — the frozen cooking estate.
 
-`fixtures/facts-plan/` is the re-dumped estate copied byte for byte and
-`expected.json` is what the landed engine made of it; the only hand edits are
-the two `twin_of` lines the data repo's manifest does not carry yet
-(`fried → sokhari`, `gozaresh_naharkhoran → gozaresh_markazi`), without which
-`plan_units` exits 2. `fixtures/facts-plan/README.md` has the rest.
+`fixtures/facts-plan/` is the re-dumped estate copied byte for byte —
+`manifest.json` included, since T17 landed the two `twin_of` lines
+(`fried → sokhari`, `gozaresh_naharkhoran → gozaresh_markazi`) that this copy
+had to carry ahead of it — and `expected.json` is what the landed engine made
+of it. `fixtures/facts-plan/README.md` has the rest.
 """
 import json
 import pathlib

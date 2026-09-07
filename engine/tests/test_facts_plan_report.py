@@ -1,6 +1,15 @@
 import json
 
-from facts_plan.assemble import report
+from facts_plan.assemble import ISSUE_FA, report
+from facts_plan.build import ISSUE_TEXT
+
+
+def test_every_issue_kind_has_the_owner_s_words():
+    """`report` groups the issues by kind and prints the kind's words. A kind
+    `build` can raise and `ISSUE_FA` does not name comes out as «ایراد», which
+    tells the owner nothing — so the two tables are held equal here rather than
+    by whoever next adds an issue."""
+    assert set(ISSUE_FA) == set(ISSUE_TEXT)
 
 
 def _store(root, entries):

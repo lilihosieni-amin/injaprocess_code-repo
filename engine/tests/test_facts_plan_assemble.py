@@ -748,6 +748,54 @@ def test_contradiction_account_writes_both_sides(tmp_path):
              json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8")))
 
 
+def _settled(resolution="fix", address=None):
+    """One `unit_drift` and the `contradiction` that settles it, in the shapes
+    `_cross_unit` and `_fold_review` build — `flag` deliberately a *different
+    object* from the one in `state["flags"]`, because the digest's `_cross_unit`
+    pass runs over a deep copy and that is the whole bug."""
+    entry = {"kind": "rule", "key": "enheraf", "_unit": "u-a",
+             "scope": {"departments": ["cooking"], "branches": []},
+             "data": {"outputs": [{"key": "v", "unit": "g"}]}}
+    where = {"kind": "rule", "key": "enheraf",
+             "scope": {"departments": ["cooking"], "branches": []}}
+
+    def drift():
+        return {"code": "unit_drift", "id": "T-1", "message": "…",
+                "entry": dict(where), "field": "data/outputs/v/unit",
+                "sides": [{"unit": "u-a", "value": "g",
+                           "source": {"type": "sheet", "ref": "x"}},
+                          {"unit": "u-b", "value": "kg",
+                           "source": {"type": "sheet", "ref": "x"}}]}
+
+    decision = {"entry": address or dict(where), "action": "contradiction",
+                "field": "data/outputs/v/unit", "resolution": resolution,
+                "value": "kg"}
+    return [entry], {"flags": [drift(), {"code": "duplicate_title", "id": "T-1",
+                                         "message": "…"}],
+                     "settled": [(drift(), decision)]}
+
+
+def test_a_settled_drift_leaves_the_flags(tmp_path):
+    from facts_plan.assemble import _settle
+    entries, state = _settled()
+    _settle(entries, state)
+    assert entries[0]["data"]["outputs"][0]["unit"] == "kg"
+    assert [f["code"] for f in state["flags"]] == ["duplicate_title"]
+
+
+def test_a_contradiction_whose_address_the_review_renamed_is_named(capsys):
+    from facts_plan.assemble import _settle
+    entries, state = _settled(address={"kind": "rule", "key": "enheraf_now",
+                                       "scope": {"departments": ["cooking"],
+                                                 "branches": []}})
+    _settle(entries, state)
+    err = capsys.readouterr().err
+    assert "facts-plan: review: contradiction on rule/enheraf_now" in err
+    assert "not settled" in err
+    assert entries[0]["data"]["outputs"][0]["unit"] == "g"   # nothing settled
+    assert len(state["flags"]) == 2                          # nothing dropped
+
+
 def test_a_new_entry_is_referenceable_in_the_same_run(tmp_path):
     """§2.6 step 6's `N-<unit>-<n>` handle resolves like a skeleton id, so a
     unit can mint a `place` item and point at it — a record's `movement` ends

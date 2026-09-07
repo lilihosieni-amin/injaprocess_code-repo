@@ -246,7 +246,8 @@ REASON_FA = {"not_a_fact": "واقعیت کمّی نبود",
 #: Every issue kind `build` can raise (§2.3), grouped for the owner. `report`
 #: prints the kind's words once and the engine's own Persian descriptions
 #: beneath it — the description names the sheet, never a path or an id.
-ISSUE_FA = {"column_shift": "ستون جاافتاده در جدول کپی‌شده",
+ISSUE_FA = {"cross_record": "فهرست مقادیر مجاز بین نسخه‌ها یکی نیست",
+            "column_shift": "ستون جاافتاده در جدول کپی‌شده",
             "leading_offset": "جابه‌جایی ستون‌های تاریخ",
             "unknown_source": "منبع ناشناخته",
             "unused_mirror": "کپی بدون استفاده",
@@ -467,7 +468,15 @@ def _settle(entries, state):
         else:
             entry.setdefault("accounts", []).extend(
                 _account(decision["field"], side) for side in flag["sides"])
-        state["flags"] = [f for f in state["flags"] if f is not flag]
+        # By address, never by identity: `flag` came from the digest's own
+        # `_cross_unit` pass over a deep copy (`scratch`), so it is never the
+        # same object as the one in `state["flags"]` — `is not` left every
+        # settled drift in the list. This is `_fold_review`'s own predicate.
+        state["flags"] = [
+            f for f in state["flags"]
+            if not (f["code"] == "unit_drift" and f.get("entry")
+                    and f.get("field") == decision["field"]
+                    and _address(f["entry"]) == _address(decision["entry"]))]
 
 
 def _unwrap(value, prefix, status):
