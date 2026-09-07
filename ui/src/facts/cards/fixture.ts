@@ -28,6 +28,8 @@ export function bundleOf(
     resolved: {},
     row_titles: {},
     path_labels: {},
+    workbook_titles: {},
+    binding_labels: {},
     consumers: [],
     processes: [],
     // The route always sends the key; `null` is «no original», which is

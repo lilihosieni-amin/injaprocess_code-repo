@@ -31,11 +31,19 @@ const SCHEMAS = [
  *  refuses. */
 const schemaDir = join(process.cwd(), '..', 'schemas')
 
+/** The two `refItems.namespace` sigils, which are punctuation rather than
+ *  words: `#` and `##` are the id grammar's own marks, never drawn — nothing
+ *  in `ui/` reads `namespace` at all — and a Persian "label" for a hash would
+ *  be invented copy, which is the one thing QF-42 exists to stop. Exempted
+ *  here, by value, so a *third* sigil would still fail the gate. */
+const SIGILS = new Set(['#', '##'])
+
 /** Every `enum` member and every `const`, at any depth, as `path -> value`.
  *
  *  Non-strings are skipped and not silently dropped: `schema_version: 1` is a
  *  version number, not a value a person reads, and a label for it would be
- *  noise. Strings are the whole of what reaches a screen. */
+ *  noise. Strings are the whole of what reaches a screen — bar the two sigils
+ *  above, for the same reason. */
 function members(node: unknown, path: string, out: { path: string; value: string }[] = []) {
   if (Array.isArray(node)) {
     node.forEach((v, i) => members(v, `${path}/${i}`, out))
@@ -44,9 +52,13 @@ function members(node: unknown, path: string, out: { path: string; value: string
   if (node && typeof node === 'object') {
     const obj = node as Record<string, unknown>
     if (Array.isArray(obj.enum)) {
-      for (const v of obj.enum) if (typeof v === 'string') out.push({ path, value: v })
+      for (const v of obj.enum) {
+        if (typeof v === 'string' && !SIGILS.has(v)) out.push({ path, value: v })
+      }
     }
-    if (typeof obj.const === 'string') out.push({ path, value: obj.const })
+    if (typeof obj.const === 'string' && !SIGILS.has(obj.const)) {
+      out.push({ path, value: obj.const })
+    }
     for (const [k, v] of Object.entries(obj)) members(v, `${path}/${k}`, out)
   }
   return out
@@ -176,5 +188,32 @@ describe('the Persian for an open cell value', () => {
 
   it('carries «در غیر این صورت» once, as a reference', () => {
     expect(labels.cellLabel('otherwise')).toBe(labels.SCREEN_LABELS.table_default)
+  })
+})
+
+describe('the v3 payload vocabulary', () => {
+  it('names the three new structures and their two members', () => {
+    for (const key of ['applies_to', 'instances', 'imports', 'columns',
+                       'params', 'workbook', 'branch']) {
+      expect(labels.PAYLOAD_FIELD_LABELS[key]).toMatch(/[؀-ۿ]/)
+    }
+  })
+
+  it('names every issue kind the v3 engine raises', () => {
+    for (const kind of ['hand_maintained_index', 'no_rule_applies',
+                        'broken_formula', 'cached_error', 'leading_offset',
+                        'unused_mirror', 'unknown_source', 'column_offset',
+                        'per_cell_mirror', 'ambiguous_row_header',
+                        'binding_gone']) {
+      expect(labels.ISSUE_KIND_LABELS[kind]).toMatch(/[؀-ۿ]/)
+    }
+  })
+
+  it('has no word left for a mirror — QF-48 made it an edge, not a record', () => {
+    // The role and the pointer both left the schema. A label for a value no
+    // entry can carry is a word waiting to be drawn by mistake.
+    expect(labels.ROLE_LABELS_RECORD.mirror).toBeUndefined()
+    expect(labels.KIND_SHAPE_LABELS.mirror).toBeUndefined()
+    expect(labels.PAYLOAD_FIELD_LABELS.mirror_of).toBeUndefined()
   })
 })

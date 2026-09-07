@@ -52,7 +52,6 @@ export const KIND_LABELS: Record<string, string> = {
 export const ROLE_LABELS_RECORD: Record<string, string> = {
   log: 'جدول ثبت',
   reference: 'جدول مرجع',
-  mirror: 'نسخهٔ پیوندی',
   report: 'گزارش',
   config: 'تنظیمات',
 }
@@ -237,6 +236,17 @@ export const ISSUE_KIND_LABELS: Record<string, string> = {
   bug: 'خطای فرمول یا اسکریپت',
   cross_record: 'ناسازگاری بین دو جدول',
   code_collision: 'تداخل کد',
+  hand_maintained_index: 'فهرست دستی موازی',
+  no_rule_applies: 'خانه‌های بدون قاعده',
+  broken_formula: 'فرمول خراب',
+  cached_error: 'خطای ذخیره‌شده در فایل',
+  leading_offset: 'جابه‌جایی ستون‌های ابتدایی',
+  unused_mirror: 'نسخهٔ پیوندی بی‌استفاده',
+  unknown_source: 'منبع ناشناخته',
+  column_offset: 'اختلاف ستون بین نسخه‌ها',
+  per_cell_mirror: 'پیوند خانه‌به‌خانه',
+  ambiguous_row_header: 'سرستون تکراری در یک برگه',
+  binding_gone: 'محل اجرا دیگر وجود ندارد',
 }
 
 /** `issues[].fix.op` — the repair the issue proposes. */
@@ -279,6 +289,21 @@ export const ORIGIN_LABELS: Record<string, string> = {
   pipeline: 'اجرای خودکار',
   chat: 'گفتگو',
   ui: 'پنل',
+}
+
+/** `meta.units[].type` — what one resumable piece of a run is over. */
+export const UNIT_TYPE_LABELS: Record<string, string> = {
+  workbook: 'کاربرگ',
+  transcript: 'جلسه',
+  items: 'اقلام',
+  attachment: 'پیوست',
+}
+
+/** `meta.units[].state` — how far that piece got. */
+export const UNIT_STATE_LABELS: Record<string, string> = {
+  pending: 'در انتظار',
+  done: 'انجام‌شده',
+  failed: 'ناموفق',
 }
 
 /** The envelope's own field names (§6). */
@@ -395,7 +420,21 @@ export const PAYLOAD_FIELD_LABELS: Record<string, string> = {
   cadence: 'تناوب',
   day_boundary: 'مرز روز کاری',
   approved_by: 'تأییدکنندهٔ فرم',
-  mirror_of: 'نسخه‌ای از',
+  // The three v3 structures. Each doubles as its section heading, the way
+  // `header_fields` and `signatures` already do — one Persian string, one
+  // definition, and the heading cannot drift from the field it names.
+  applies_to: 'محل اجرا',
+  instances: 'نسخه‌ها',
+  imports: 'ورودی از',
+  columns: 'ستون در هر نسخه',
+  params: 'مقادیر',
+  workbook: 'فایل',
+  branch: 'شعبه',
+  named_range: 'نام محدوده',
+  // The manifest's own column for the tabs a workbook keeps as reference
+  // (QF-33's proposal carries the same name), so the schema gate has a word
+  // for it rather than an English one reaching a screen.
+  reference_tabs: 'برگه‌های مرجع',
   reconciled_against: 'تطبیق با مقدار ثابت',
   cell: 'سلول',
   against: 'مقدار ثابت',
