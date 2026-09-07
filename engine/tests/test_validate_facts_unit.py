@@ -306,7 +306,7 @@ def test_a_paper_locations_prose_is_linted(tmp_path):
             "data": {"medium": "paper", "role": "log",
                      "location": {"kept_at": "در سلول J6 دفتر آشپزخانه",
                                   "holder": "سرآشپز شیفت"}}}
-    assert any("data.location.kept_at" in p
+    assert any("data/location/kept_at" in p
                for p in validate_unit(root, run_dir,
                                       _write(run_dir, _doc(new=[form]))))
     form["data"]["location"]["kept_at"] = "در دفتر سرآشپز، کشوی اول"
@@ -336,6 +336,84 @@ def test_a_third_attempt_is_refused_by_the_cap(tmp_path):
     assert validate_unit(root, run_dir, _write(run_dir, _doc(), "out.3.json")) == \
         ["out.3.json: attempt cap: two per run"]
     assert validate_unit(root, run_dir, _write(run_dir, _doc(), "out.2.json")) == []
+
+
+def _manifest(root, *branches):
+    """The sheets manifest `preconditions` reads branch codes off — absent from
+    a bare test estate, and the gate skips the check when it is."""
+    (root / "attachments" / "sheets").mkdir(parents=True, exist_ok=True)
+    (root / "attachments" / "sheets" / "manifest.json").write_text(json.dumps(
+        {"schema_version": 1, "workbooks": [],
+         "branches": [{"code": c, "name": c} for c in branches]}), encoding="utf-8")
+
+
+def _paper(**over):
+    form = {"kind": "record", "key": "mande_shab", "title": "فرم مانده شب",
+            "statement": "فرم کاغذی مانده شب که هر شیفت پر می‌شود.",
+            "data": {"medium": "paper", "role": "log",
+                     "location": {"kept_at": "زونکن دفتر",
+                                  "holder": "سرآشپز شیفت"}}}
+    form.update(over)
+    return form
+
+
+def test_a_branch_the_sheets_manifest_never_heard_of_is_refused_at_the_gate(tmp_path):
+    """I1 — `preconditions` checks branch codes outside `check_document`, so an
+    invented branch used to pass the unit gate and die at Stage V."""
+    root, run_dir = _run(tmp_path)
+    _manifest(root, "chalebagh")
+    problems = validate_unit(root, run_dir,
+                             _write(run_dir, _doc(new=[_paper(branches=["nowhere"])])))
+    assert any("new[0] mande_shab" in p and "scope.branches[0]" in p
+               and "'nowhere'" in p for p in problems)
+    assert validate_unit(root, run_dir,
+                         _write(run_dir, _doc(new=[_paper(branches=["chalebagh"])]),
+                                "out.2.json")) == []
+
+
+def test_a_unit_symbol_the_run_never_declared_is_refused_at_the_gate(tmp_path):
+    """QF-40 — the same list `skeleton.json` carries and `preconditions` checks
+    against the units record. `lit` is nobody's symbol here."""
+    root, run_dir = _run(tmp_path)
+    item = {"kind": "item", "key": "panir", "title": "پنیر پیتزا",
+            "statement": "پنیر پیتزا که با کیلوگرم شمرده می‌شود.",
+            "data": {"category": "ingredient", "unit": "lit"}}
+    assert any("new[0] panir" in p and "'lit'" in p
+               for p in validate_unit(root, run_dir,
+                                      _write(run_dir, _doc(new=[item]))))
+    item["data"]["unit"] = "kg"
+    assert validate_unit(root, run_dir,
+                         _write(run_dir, _doc(new=[item]), "out.2.json")) == []
+
+
+def test_a_field_renamed_from_a_column_the_candidate_has_not_got_is_refused(tmp_path):
+    """`_rename_fields` walks the MECHANICAL columns, so a `fields[]` member
+    whose `from` names none of them was silently dropped — the unit's work
+    vanished and nothing said so."""
+    root, run_dir = _run(tmp_path, kind="record")
+    doc = _doc("record")
+    doc["decisions"][0]["data"] = {"fields": [
+        {"from": "c_h", "key": "masraf", "type": "number"},
+        {"from": "c_z", "key": "gomshode", "type": "number"}]}
+    problems = validate_unit(root, run_dir, _write(run_dir, doc))
+    assert any("decisions[0] S-r-000000000001" in p
+               and "data.fields[1].from" in p and "'c_z'" in p for p in problems)
+    del doc["decisions"][0]["data"]["fields"][1]
+    assert validate_unit(root, run_dir, _write(run_dir, doc, "out.2.json")) == []
+
+
+def test_one_prose_nit_and_one_shape_error_are_one_line_each(tmp_path):
+    """Ruling (e) — the gate runs even when something else was found, and the
+    decision lint and the content pass say a prose nit in the same words, so it
+    is reported once rather than twice with two spellings."""
+    root, run_dir = _run(tmp_path, kind="record")
+    doc = _doc("record")
+    doc["decisions"][0]["title"] = "گزارش H6"
+    doc["decisions"][0]["data"] = {
+        "role": "log", "fields": [{"from": "c_h", "key": "masraf", "type": "text"}]}
+    problems = validate_unit(root, run_dir, _write(run_dir, doc))
+    assert sum("H6" in p for p in problems) == 1
+    assert sum("'text' is not one of" in p for p in problems) == 1
 
 
 def test_status_reports_a_third_attempt_as_failed(tmp_path):

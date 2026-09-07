@@ -20,7 +20,8 @@ from engine_common import (read_json, validate, write_json_atomic,
 from merge_facts import (KIND_ORDER, _sheet_identities, canonical_scope,
                          iter_ref_objects, load_store, null_paths, set_path)
 from merge_facts.audit import flags_over
-from merge_facts.content import check_document, lint_prose
+from merge_facts.content import _check_prose, check_document
+from merge_facts.preconditions import _registered, _unit_symbols
 
 from facts_plan.build import estimate_tokens, label_of, process_index
 
@@ -29,12 +30,6 @@ from facts_plan.build import estimate_tokens, label_of, process_index
 #: case is held to the grammar; anything else is a minted key.
 PROVISIONAL_FIELD = re.compile(r"^c_[a-z]{1,3}$")
 REVIEW_DECISIONS, REVIEW_REWRITES = 60, 20
-PROSE_IN_DATA = ("grain", "method", "exceptions")
-
-#: §3.3's prose leaves inside `data.location` — where a paper form is kept, who
-#: holds it, which external system it lives in. `content._check_prose` reads the
-#: same three, so the unit's gate and `apply` say the same thing about them.
-PROSE_IN_LOCATION = ("kept_at", "holder", "system")
 
 
 def _refs(value):
@@ -107,8 +102,9 @@ def validate_unit(root, run_dir, path):
     plan = read_json(run_dir / "plan.json")
     # The candidate's store kind, not just its id: `_lint_decision` needs it to
     # know whose `statement` may name a column (QF-50).
-    kinds = {c["id"]: KIND_OF.get(c["kind"], c["kind"])
-             for c in skeleton["candidates"]}
+    candidates = {c["id"]: c for c in skeleton["candidates"]}
+    kinds = {cid: KIND_OF.get(c["kind"], c["kind"])
+             for cid, c in candidates.items()}
     known = set(kinds)
     symbols = skeleton.get("unit_symbols") or []
     nodes = process_index(root, skeleton["department"])
@@ -162,6 +158,18 @@ def validate_unit(root, run_dir, path):
                 problems.append(f"{label}: provisional field {field!r} is not "
                                 "c_<column letter, lowercase>")
         problems += _citations(decision, label, node_ids, skeleton["department"])
+        # `_rename_fields` walks the candidate's MECHANICAL columns and merges
+        # what the unit wrote onto them, so a member whose `from` names no such
+        # column is dropped without a word — the unit's work simply vanished
+        # between its gate and the delta. `_entry` cannot raise (`assemble` runs
+        # it too, over documents already gated); the refusal belongs here.
+        columns = {f.get("key") for f in
+                   _members(candidates.get(skid, {}).get("payload") or {}, "fields")}
+        for i, field in enumerate((decision.get("data") or {}).get("fields") or []):
+            written = isinstance(field, dict) and field.get("from")
+            if skid and written and written not in columns:
+                problems.append(f"{label}: data.fields[{i}].from: {written!r} "
+                                "names no column of this candidate")
         for field in _members(decision.get("data") or {}, "fields"):
             if field.get("unit") and field.get("type") not in (None, "number"):
                 problems.append(f'{label}: field {field.get("key")} is '
@@ -184,22 +192,37 @@ def validate_unit(root, run_dir, path):
     # the store schema per kind, then the content pass. A per-entry refusal
     # after this point is a defect, not a finding.
     #
-    # The review is not materialised: it decides assembled entries, which do not
-    # exist until `assemble` has run, and rebuilding the draft here would make
-    # every `facts-plan status` call re-run the assembly once per unit.
-    if doc["unit"] != "review" and not problems:
+    # The review is not materialised here: it decides assembled entries, which
+    # do not exist until `assemble` has run — `_lint_entries` gates it there.
+    # Everything else is gated whatever else was found, so a unit spends one
+    # attempt on the whole list rather than one attempt per class of mistake.
+    if doc["unit"] != "review":
         problems += _gate(root, run_dir, doc)
-    return problems
+    # The decision lint and the content pass walk the same prose leaves and now
+    # say the same words about them, so the same nit lands twice.
+    return list(dict.fromkeys(problems))
 
 
 def _gate(root, run_dir, doc):
-    """§3.1 steps 2–3 over the materialised entries: the store schema per kind,
-    then `check_document` exactly as `merge_facts.preconditions` runs it. Every
-    message names the decision, never the entry index the unit never wrote."""
+    """§3.1 steps 2–3 over the materialised entries, under the labels the unit's
+    other messages already use."""
     skeleton = read_json(pathlib.Path(run_dir) / "skeleton.json")
     entries = materialise(root, run_dir, doc)
     labels = _unit_labels(doc)
     named = [labels.get(e["_skeleton"], e["_skeleton"]) for e in entries]
+    return _contract_problems(root, entries, named,
+                              skeleton.get("unit_symbols") or [])
+
+
+def _contract_problems(root, entries, named, symbols):
+    """The whole per-entry contract `merge facts apply` enforces, over entries
+    something has already materialised: the store schema per kind, the two
+    `preconditions` checks that live OUTSIDE the content pass (a branch code
+    off the sheets manifest, a unit symbol off the run's list), then
+    `check_document` itself. `named[i]` is what entry `i` is reported under — a
+    decision at the unit's gate, `<unit>: <key>` at the assembly — so no message
+    ever cites the temp id the writer never saw.
+    """
     clean = [{k: v for k, v in e.items() if not k.startswith("_")} for e in entries]
     delta = {"schema_version": 2, "entries": clean}
     out = []
@@ -210,13 +233,36 @@ def _gate(root, run_dir, doc):
         # the unit is told which of ITS decisions to go back to (§3.1 step 2).
         for line in str(exc).splitlines()[1:]:
             out.append(_renamed(line, named))
+    # QF-33/QF-40. A bare test estate has no manifest and a fresh run may have
+    # no declared symbols; an empty list there means "nothing to check against",
+    # never "everything is wrong".
+    branches = _registered(pathlib.Path(root) / "attachments" / "sheets" /
+                           "manifest.json", "branches")
+    for entry, label in zip(clean, named):
+        for n, branch in enumerate(entry["scope"]["branches"]):
+            if branches and branch not in branches:
+                out.append(f"{label}: scope.branches[{n}]: branch {branch!r} is "
+                           "not in the sheets manifest")
+        for symbol in _unit_symbols(entry) if symbols else ():
+            if symbol not in symbols:
+                out.append(f"{label}: unit {symbol!r} is declared by no row of "
+                           "the units record")
+    # A `calls[]` ref this document could not resolve is `T-0`, so `_call_keys`
+    # rescues nothing and every identifier that call declares reads as
+    # undeclared. Cross-unit resolution is `_resolve_refs`' job — skip the expr
+    # line here the way `_check_unit_edges` skips a target it cannot see.
+    blind = {e["id"] for e in clean
+             if any(isinstance(c, dict) and c.get("ref") == "T-0"
+                    for c in (e["data"].get("calls") or []))}
     # `check_document` labels a message with the entry's id, and the temp ids
     # here are minted for the validation and nowhere else — `T-1` names nothing
-    # the unit ever wrote. Same rename as above, on the label instead of a path.
-    by_temp = dict(zip((e["id"] for e in entries), named))
+    # the writer ever wrote. Same rename as above, on the label instead of a path.
+    by_temp = dict(zip((e["id"] for e in clean), named))
     for message in check_document(delta, "facts-delta", load_store(root),
-                                  unit_symbols=skeleton.get("unit_symbols") or []):
+                                  unit_symbols=symbols):
         head, sep, tail = message.partition(": ")
+        if head in blind and tail.startswith("expr identifier "):
+            continue
         out.append(f"{by_temp.get(head, head)}{sep}{tail}")
     return out
 
@@ -260,38 +306,22 @@ def _lint_decision(decision, label, symbols, kind=None):
     `kind` is the store kind the decision lands as, and it decides one rule:
     «ستون»/«تب»/«سلول» belong in a **record's** own `statement`, which is what
     `content._check_prose` allows at Stage V and what the style card and the
-    unit's own card ask for. A title is strict whatever the kind."""
+    unit's own card ask for. A title is strict whatever the kind.
+
+    It IS `content._check_prose`, read over the decision as the entry it
+    becomes: the leaves are the same leaves, and a hand copy of them said the
+    same nit in different words («title: carries …» against «title carries …»),
+    which `group_messages` cannot fold — so the gate reported one mistake twice.
+    """
     out = []
     parts = decision.get("into") if decision.get("action") == "split" else [decision]
     for part in parts or []:
-        for key, sheet_words in (("title", False), ("statement", kind == "record")):
-            for message in lint_prose(part.get(key) or "", exemptions=symbols,
-                                      allow_sheet_words=sheet_words):
-                out.append(f"{label}: {key}: {message}")
-        for alias in part.get("aliases") or []:
-            for message in lint_prose(alias, exemptions=symbols):
-                out.append(f"{label}: aliases: {message}")
         data = part.get("data") or {}
-        for key in PROSE_IN_DATA:
-            for message in lint_prose(data.get(key) or "", exemptions=symbols):
-                out.append(f"{label}: {key}: {message}")
-        location = data.get("location")
-        for key in PROSE_IN_LOCATION if isinstance(location, dict) else ():
-            for message in lint_prose(location.get(key) or "", exemptions=symbols):
-                out.append(f"{label}: data.location.{key}: {message}")
-        for field in _members(data, "fields"):
-            for message in lint_prose(field.get("description") or "",
-                                      exemptions=symbols, allow_sheet_words=True):
-                out.append(f'{label}: fields/{field.get("key")}: {message}')
-        for tracked in _members(data, "tracked"):
-            for message in lint_prose(tracked.get("reason") or "",
-                                      exemptions=symbols):
-                out.append(f"{label}: tracked: {message}")
-        for issue in _members(data, "issues"):
-            if not issue.get("engine"):
-                for message in lint_prose(issue.get("description") or "",
-                                          exemptions=symbols):
-                    out.append(f"{label}: issues: {message}")
+        _check_prose({**part, "kind": kind,
+                      # A decision carries its issues under `data`; an assembled
+                      # entry carries them at the top, where `_check_prose` looks.
+                      "issues": part.get("issues") or data.get("issues") or []},
+                     symbols, out, label)
     return out
 
 
@@ -529,6 +559,9 @@ def _fold_review(run_dir, state, draft, scratch):
         merged["unit"] = previous.get("unit", "review")
         state["by_skeleton"][decision["skeleton"]] = merged
     state["settled"] = settled
+    # Whose mistake a refused entry is: the reviewer rewrote this one, so
+    # `_lint_entries` names the review rather than the unit it came from.
+    state["reviewed"] = {decision["skeleton"] for decision in folded}
     return "applied"
 
 
@@ -918,8 +951,8 @@ def materialise(root, run_dir, doc, *, for_validation=True):
 
 def _unit_labels(doc):
     """`{handle: the label validate_unit's other messages already use}`."""
-    out = {f'N-{doc["unit"]}-{n}': f"new[{n}]"
-           for n, _ in enumerate(doc.get("new") or [])}
+    out = {f'N-{doc["unit"]}-{n}': f'new[{n}] {entry.get("key")}'
+           for n, entry in enumerate(doc.get("new") or [])}
     for n, decision in enumerate(doc["decisions"]):
         if decision.get("skeleton"):
             out[decision["skeleton"]] = f'decisions[{n}] {decision["skeleton"]}'
@@ -1118,18 +1151,23 @@ def _cross_unit(root, entries, state):
     state["flags"] = flags
 
 
-def _lint_entries(entries, symbols):
-    """Step 8 — the §5.2 lint over every prose field; a failing value is refused,
-    never stored, and the message names the unit that wrote it.
+def _lint_entries(root, entries, symbols, reviewed=()):
+    """Step 8 — the §5.2 lint AND the store contract over every finished entry;
+    a failure is refused, never stored, and the message names who wrote it.
 
     An assembled entry has a decision's shape where the lint looks (title,
     statement, aliases, `data`), so this is QF-51's own pass run once more over
     what the delta would carry: the same surface, which is what makes it a real
-    gate for the one document no unit pass ever saw — the review's."""
-    return [message for entry in entries
-            for message in _lint_decision(entry,
-                                          f'{entry["_unit"]}: {entry["key"]}',
-                                          symbols, entry.get("kind"))]
+    gate for the one document no unit pass ever saw — the review's. Ruling 5:
+    the shape half is that document's gate too, which is why `_contract_problems`
+    runs here and not only at `validate_unit`."""
+    named = [f'review: {entry["key"]}' if entry["_skeleton"] in reviewed
+             else f'{entry["_unit"]}: {entry["key"]}' for entry in entries]
+    out = [message for entry, label in zip(entries, named)
+           for message in _lint_decision(entry, label, symbols,
+                                         entry.get("kind"))]
+    out += _contract_problems(root, entries, named, symbols)
+    return list(dict.fromkeys(out))
 
 
 def _digest_text(state, entries):
@@ -1219,7 +1257,8 @@ def assemble(root, run_dir, *, review=False):
     entries = _build_entries(root, skeleton, state)
     _cross_unit(root, entries, state)
     _settle(entries, state)
-    problems = _lint_entries(entries, skeleton.get("unit_symbols") or [])
+    problems = _lint_entries(root, entries, skeleton.get("unit_symbols") or [],
+                             state.get("reviewed") or ())
     if problems:
         for line in problems:
             print(f"facts-plan: {line}", file=sys.stderr)
