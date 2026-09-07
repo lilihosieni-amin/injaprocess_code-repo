@@ -247,22 +247,40 @@ creates (`06-changing-users.md`), whose one scope row is `*`.
    fingerprint) — re-read the fingerprint and retry. Repeat step 3 for every
    id step 2 listed.
 
-## 5. The coverage line, and what "read" means
+## 5. Readiness — what `check` reports
 
 ```bash
 docker compose exec control-bot sh -c 'DATA_ROOT=/data merge facts check'
 ```
 
-The last line is always `coverage: {n} of {m} workbooks read` — the same
-`{n}`/`{m}` the design's coverage line («{n} از {m} کاربرگ خوانده شده»)
-renders in the Panel once it ships. "Read" is `check`'s own definition
-(design §12):
-a manifest workbook counts once at least one **non-stub** `record` in the
-store cites it; a workbook present in the manifest but never turned into a
-record (or turned only into a stub, QF-20) is not counted, however many
-files were placed for it. Every other `check`/`audit` line above the
-coverage line is a finding for a human, not a failure — both verbs exit 0
-whatever they found.
+`check` reports a department's **readiness** (QF-44 v3) as its last stdout
+line — five answers, and no workbook denominator:
+
+```
+readiness: units_done=True review_ran=True lint_failures=0 expr_missing=0 open_disputes=0
+```
+
+Every unit of the last run is done; the review ran; no entry carries a lint
+failure; no rule bound to a formula is missing its expression; no dispute is
+still open. The last three are counts, so the ready state is `True True 0 0 0`.
+
+**The coverage line is gone**, and deliberately (v3 design §11, cause C —
+`docs/superpowers/specs/2026-09-06-quantitative-facts-v3-design.md`). It read
+`coverage: {n} of {m} workbooks read` and counted a workbook as read the moment
+one non-stub record cited it — which made "read the whole estate" a target and
+"mint a record per tab" the cheapest way to hit it. 486 entries later, the
+metric was measuring the defect. What replaces it is the run's own state: a
+department is ready when its units are done and its output survived review, and
+a workbook nobody had anything to say about is a fine outcome. (The workbook
+nothing cites is still *reported*, as an `uncited_workbook` finding — a line to
+read, never a denominator to close.)
+
+`merge facts repair-foreign-keys` is retired with the same change: `foreignKeys`
+is gone from the payload vocabulary, replaced by `imports[]` and
+`fields[].refItems`, so there is no collection left for it to repair.
+
+Every `check`/`audit` line is a finding for a human, not a failure — both verbs
+exit 0 whatever they found.
 
 ## 6. Undoing a run
 
@@ -295,8 +313,9 @@ data-repo commit that run made, past the point of no `merge facts` undo.
 A scope (a department, a branch, or the whole estate) is ready to hand over
 when, restricted to that scope (QF-44):
 
-1. **`merge facts check` reports full coverage** — the coverage line reads
-   `{n} of {n}`, not `{n} of {m}` with `m > n`.
+1. **`merge facts check` reports the scope ready** — every unit of its last run
+   done, the review run, no lint failure, no rule missing its expression, no
+   dispute still open (§5). Not a workbook count.
 2. **Every non-retired entry in scope is confirmed.** A reviewer's tick, and
    nothing else.
 
@@ -393,6 +412,80 @@ comment, so this file is their only documentation:
   gap while reading a fact closes it as an editor working from the facts
   list (resolving a dispute, filling an `unknown`, editing through
   `edit-fact`), not by leaving a comment on the entry.
+
+## 10. Before a facts run — the pre-run checklist (v3 design §6.1)
+
+On the **server** the control bot's environment already carries all of this and
+there is nothing to do. On a **laptop**, in a Claude Code terminal, four things
+have to be true before Stage U dispatches its first unit, and three of them were
+not true during the 2026-09-02 run:
+
+```bash
+# (a) a unit takes minutes; a backgrounded one is a lost unit (ADR 0006)
+export CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1
+
+# (b) the ponytail plugin's SubagentStart hook injects a coding-minimality
+#     persona into EVERY subagent while this flag exists, and its matcher is an
+#     opt-in allowlist that fails open — so removing the flag is the only fix.
+rm -f ~/.claude/.ponytail-active     # or: export PONYTAIL_DEFAULT_MODE=off
+test -f ~/.claude/.ponytail-active   # must exit 1 — the playbook checks this too
+
+# (c) the model, with the suffix. Plain `claude-opus-5` silently gets 200K.
+grep -n 'model:' ../data-repo/.claude/agents/quantify.md
+#   model: claude-opus-5[1m]
+```
+
+(d) the playbook uses only `Read, Write, Edit, Bash, Glob, Grep, Task` — the
+bot's own allowlist — so nothing authored on the laptop breaks on the server.
+
+For a run through the **local test bot**, check the same flag inside the
+container: `/root/.claude` there is a volume seeded from the host's `~/.claude`,
+so a flag file on the laptop reaches the container with it.
+
+```bash
+docker compose -f docker-compose.local.yml exec control-bot \
+  test -f /root/.claude/.ponytail-active     # must exit 1
+```
+
+## 11. What the owner sees — the two message contracts
+
+Two files, both written by the engine, both sent **verbatim** by the playbook.
+Neither carries a command, an account id, an entry id, a path, a unit id, a run
+directory or a department code; both name an entry by its Persian **title** and
+nothing else — the id the Panel shows in its «شناسه» column never appears in
+either file.
+
+| file | written by | sent at | carries |
+|---|---|---|---|
+| `{run_dir}/gate-b.md` | `facts-plan assemble` | the facts checkpoint, before anything is written | counts per kind; the first three rules in one sentence each; how many were dropped and the commonest reasons; how many went unexamined; the disputes numbered with lettered options; how many issues were found in the files, three of them named; how many cells are unanswered; and the one question «تأیید می‌کنید؟» |
+| `{run_dir}/report.md` | `facts-plan report` | after the apply and the commit | what was recorded, dropped and left unexamined; the open disputes numbered with lettered options; the unanswered cells grouped per entry; the dropped list by reason in the owner's own words; every engine-found issue grouped by kind; whether a part was left unfinished; and whether the review ran |
+
+**No other question is put to the owner at the checkpoint.** Approval applies the
+delta with the disputes still open; the owner answers a dispute right there
+(«۱ الف») or later in the Panel, and the playbook runs the resolve itself.
+
+The stage table these two sit in is **not duplicated here** — it lives in
+`data-repo/.claude/skills/quantify/SKILL.md` ("Stage ordering") and in v3 design
+§2.1, and a third copy would be the one that goes stale. What this runbook owns
+is the operator's side: the checklist above, and the readiness test in §5 and §7.
+
+Both files are lintable, and the lint is the same one the playbook's own
+owner-facing blocks pass:
+
+```bash
+cd /opt/inja/code-repo && .venv/bin/python -c "
+import sys, pathlib
+sys.path.insert(0, '../data-repo/.claude/hooks')
+from test_playbook_lint import problems
+run = pathlib.Path('../data-repo/runs/facts/cooking/20260906-101500')
+for name in ('gate-b.md', 'report.md'):
+    print(name, problems((run / name).read_text(encoding='utf-8')) or 'clean')
+"
+```
+
+`clean` on both lines is the pass; anything else names the token that leaked —
+a path-shaped token, an 8-hex id, a department code, or one of the pipeline's
+own words.
 
 ## Next
 

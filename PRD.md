@@ -241,6 +241,10 @@ The audience here is **not only the analyst**. It is the department's own staff 
 - **FR-L5 (who may read it):** Only users granted that permission.
 - **FR-L6 (the record cannot be edited):** No user, including the editor, can delete or alter an entry through the system. A record the top user can rewrite records nothing.
 
+### 7.12 Quantitative Facts
+
+- **FR-Q1 (what the facts store is for):** Alongside the processes, the system keeps the restaurant's **definitions** — what each column of each table means, in what unit, who fills it and when, what is computed from what, and what the settings are. It records only what stays true: a definition, never last night's number. Its purpose is to be **read by whatever runs the restaurant next**, so what may be recorded is fixed to eight artefacts and nothing else may be minted: an item-master row; a table column with a unit; a recipe or bill-of-materials row; a settings constant (a par level, a tolerance, a conversion factor, a threshold — no consumer is required for one to be worth keeping); a validation constraint; a computed field with its inputs and outputs; a join between two tables; and a known defect in the data. Anything that is not one of these eight — a colour, a note pointing at nothing, a date copied from one cell to another — is **not recorded at all**, and the system says so rather than keeping it. A statement is written the way a written procedure is written: nobody reading one is shown a cell address, a column letter, a file name or a formula.
+
 ---
 
 ## 8. User Flows
