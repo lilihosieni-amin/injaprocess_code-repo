@@ -19,6 +19,7 @@ from engine_common import (read_json, validate, write_json_atomic,
                            write_text_atomic)
 from merge_facts import (KIND_ORDER, _sheet_identities, canonical_scope,
                          iter_ref_objects, load_store, null_paths, set_path)
+from merge_facts.apply import _derive_row_keys
 from merge_facts.audit import flags_over
 from merge_facts.content import _check_prose, check_document
 from merge_facts.preconditions import (_registered, _unit_row_keys,
@@ -266,9 +267,13 @@ def _contract_problems(root, entries, named, symbols):
                            "the units record")
         # The store requires `rows[].key` and the delta schema cannot: a
         # reference table's keys are the primaryKey join `apply` derives (§9).
-        # Every other role brings its own, and this is where it is told so.
-        if entry["kind"] == "record" and entry["data"].get("role") != "reference":
-            for n, row in enumerate(entry["data"].get("rows") or []):
+        # Run that same derivation here, so whatever it would leave keyless —
+        # any other role, or a reference row whose key cell is not a segment —
+        # is refused where the unit can still fix it.
+        if entry["kind"] == "record":
+            data = copy.deepcopy(entry["data"])
+            _derive_row_keys(data)
+            for n, row in enumerate(data.get("rows") or []):
                 if isinstance(row, dict) and "key" not in row:
                     out.append(f"{label}: data.rows[{n}]: "
                                "'key' is a required property")

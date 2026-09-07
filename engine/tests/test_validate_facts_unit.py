@@ -445,6 +445,12 @@ def test_a_reference_tables_keyless_rows_pass_the_gate_and_the_apply(tmp_path):
     doc = _doc(new=[table])
     assert validate_unit(root, run_dir, _write(run_dir, doc)) == []
     assert _simulate(root, run_dir, doc) == []
+    # The same table with a key cell `apply` cannot turn into a segment gets no
+    # derived key, so the gate must refuse it where the unit can still fix it.
+    table["data"]["rows"] = [{"nam": "پنیر"}]
+    doc = _doc(new=[table])
+    assert validate_unit(root, run_dir, _write(run_dir, doc)) == [
+        "new[0] mavad: data.rows[0]: 'key' is a required property"]
 
 
 def test_a_symbol_this_document_adds_to_the_units_record_is_its_own(tmp_path):
