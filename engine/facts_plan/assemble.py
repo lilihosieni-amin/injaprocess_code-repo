@@ -157,6 +157,15 @@ def validate_unit(root, run_dir, path):
                     and not PROVISIONAL_FIELD.match(field):
                 problems.append(f"{label}: provisional field {field!r} is not "
                                 "c_<column letter, lowercase>")
+        # `_absorb` moves `applies_to`/`instances` onto the target verbatim, and
+        # no kind but a rule has those keys — a rule merged into a record mints
+        # a record `facts-delta.schema.json` refuses, at the assembly, where no
+        # unit can be asked to fix it. Same kind or nothing.
+        into = decision.get("into")
+        if decision.get("action") == "merge_into" and isinstance(into, str) \
+                and skid in kinds and into in kinds and kinds[skid] != kinds[into]:
+            problems.append(f"{label}: merge_into: a {kinds[skid]} cannot merge "
+                            f"into a {kinds[into]} ({into})")
         problems += _citations(decision, label, node_ids, skeleton["department"])
         # `_rename_fields` walks the candidate's MECHANICAL columns and merges
         # what the unit wrote onto them, so a member whose `from` names no such

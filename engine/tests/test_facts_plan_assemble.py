@@ -640,16 +640,24 @@ def test_a_ref_into_an_undecided_candidate_names_both_units(tmp_path, capsys):
 
 
 def test_merge_into_a_dropped_target_names_both_units(tmp_path, capsys):
+    # The target is a rule of u-a's: a merge across kinds is refused at the unit
+    # gate now, so it can no longer stand in for one whose target was dropped.
     root = _root(tmp_path)
+    skeleton, plan = _skeleton(), _plan()
+    twin = json.loads(json.dumps(skeleton["candidates"][1]))     # the rule
+    twin["id"], twin["unit"] = "S-r-000000000004", "u-a"
+    skeleton["candidates"].append(twin)
+    plan["units"][0]["candidates"].append(twin["id"])
     record = _record_out()
-    record["decisions"][0] = {"skeleton": "S-rec-000000000001",
-                              "action": "drop", "reason_code": "cosmetic"}
+    record["decisions"].append({"skeleton": twin["id"], "action": "drop",
+                                "reason_code": "cosmetic"})
     rule = _rule_out()
     rule["decisions"][0] = {"skeleton": "S-r-000000000002",
                             "action": "merge_into",
-                            "into": "S-rec-000000000001",
+                            "into": twin["id"],
                             "reason_code": "duplicate"}
-    run_dir = _run(root, {"u-a": record, "u-b": rule})
+    run_dir = _run(root, {"u-a": record, "u-b": rule},
+                   skeleton=skeleton, plan=plan)
     with pytest.raises(SystemExit) as excinfo:
         assemble(root, run_dir)
     assert excinfo.value.code == 2
@@ -922,6 +930,35 @@ def test_a_call_into_another_units_rule_is_not_an_undeclared_identifier(tmp_path
     path = run_dir / "units" / "u-b" / "out.1.json"
     path.write_text(json.dumps(rule, ensure_ascii=False), encoding="utf-8")
     assert any("'tol'" in p for p in validate_unit(root, run_dir, path))
+
+
+def test_a_merge_into_across_kinds_is_refused_at_the_unit_gate(tmp_path):
+    """I1 — `_absorb` moves `applies_to`/`instances` across verbatim, so a rule
+    merged into a record mints a record `facts-delta.schema.json` refuses. The
+    unit that wrote it is told while it still has an attempt, instead of the
+    assembly dying on a shape nobody asked for."""
+    root = _root(tmp_path)
+    skeleton, plan = _skeleton(), _plan()
+    twin = json.loads(json.dumps(skeleton["candidates"][1]))     # the rule
+    twin["id"] = "S-r-000000000004"
+    skeleton["candidates"].append(twin)
+    plan["units"][1]["candidates"].append(twin["id"])
+    rule = _rule_out()
+    rule["decisions"].append(dict(rule["decisions"][0], skeleton=twin["id"]))
+    rule["decisions"][0] = {"skeleton": "S-r-000000000002",
+                            "action": "merge_into",
+                            "into": "S-rec-000000000001",       # a record
+                            "reason_code": "duplicate"}
+    run_dir = _run(root, {"u-a": _record_out(), "u-b": rule},
+                   skeleton=skeleton, plan=plan)
+    path = run_dir / "units" / "u-b" / "out.1.json"
+    assert any("decisions[0] S-r-000000000002" in p and "merge_into:" in p
+               and "a rule cannot merge into a record" in p
+               for p in validate_unit(root, run_dir, path))
+
+    rule["decisions"][0]["into"] = twin["id"]                   # a rule
+    path.write_text(json.dumps(rule, ensure_ascii=False), encoding="utf-8")
+    assert validate_unit(root, run_dir, path) == []
 
 
 def _review_keep(**field):
