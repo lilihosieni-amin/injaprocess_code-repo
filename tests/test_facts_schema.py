@@ -132,6 +132,127 @@ def test_role_mirror_fails(validate):
     assert validate("facts.schema.json", _wrap(e)) != []
 
 
+def test_a_paper_records_location_is_where_it_is_kept_and_who_holds_it(validate):
+    """§3.3 — the paper branch is the controller's `{kept_at, holder}`. Two of
+    the 2026-09-07 run's refusals were photographed forms written with no
+    `location` at all, which an open `{"type": "object"}` could not refuse."""
+    e = _load("entry-record.json")
+    e["data"]["location"] = {}
+    assert validate("facts.schema.json", _wrap(e)) != []
+    e["data"]["location"] = {"kept_at": "زونکن دفتر آشپزخانه",
+                             "holder": "سرآشپز شیفت"}
+    assert validate("facts.schema.json", _wrap(e)) == []
+    e["data"]["location"]["path"] = "departments/cooking/attachments/photo.jpg"
+    assert validate("facts.schema.json", _wrap(e)) != []      # closed
+
+
+def test_the_other_three_media_close_too(validate):
+    e = _load("entry-record.json")
+    e["data"]["medium"] = "external"
+    e["data"]["location"] = {"system": "سپیدز", "kept_at": "شمارهٔ رسید"}
+    assert validate("facts.schema.json", _wrap(e)) == []
+    e["data"]["location"] = {"system": "سپیدز"}
+    assert validate("facts.schema.json", _wrap(e)) != []      # kept_at required
+    e["data"]["medium"] = "native"
+    e["data"]["location"] = {"kept_at": "خود سامانه"}
+    assert validate("facts.schema.json", _wrap(e)) == []
+    e["data"]["location"] = {"holder": "کسی"}
+    assert validate("facts.schema.json", _wrap(e)) != []      # closed
+
+
+def test_the_till_keeps_its_identifier_scheme(validate):
+    # Assembler's ruling 1: `external` and `native` carry an optional
+    # `identifier_scheme`. The Sepidz till (F-00018 in the UI's store mock) is
+    # `external` with nothing else in its location, and the leaf keeps the open
+    # shape `recordData.identifier_scheme` already had.
+    e = _load("entry-record.json")
+    e["data"]["medium"] = "external"
+    e["data"]["location"] = {"system": "سپیدز", "kept_at": "شمارهٔ فیش",
+                             "identifier_scheme": {"authority": "Sepidz",
+                                                   "format": "receipt number",
+                                                   "example": "R-140509-0231"}}
+    assert validate("facts.schema.json", _wrap(e)) == []
+    e["data"]["medium"] = "native"
+    e["data"]["location"] = {"identifier_scheme": {"authority": "خود سامانه"}}
+    assert validate("facts.schema.json", _wrap(e)) == []
+
+
+def test_a_sheet_records_location_keeps_its_engine_written_shape(validate):
+    # `facts_plan.build` writes `{path, spreadsheetId, sheet}` and the dumps
+    # that predate it wrote `{spreadsheetId, sheetId, sheet}`; both stay valid,
+    # and so does the empty one a `new[]` record is allowed to leave.
+    e = _load("entry-record-sheet.json")
+    assert validate("facts.schema.json", _wrap(e)) == []
+    e["data"]["location"] = {"path": "attachments/sheets/Pitza/pitza.xlsx",
+                             "spreadsheetId": "1abc", "sheet": "پیتزا"}
+    assert validate("facts.schema.json", _wrap(e)) == []
+    e["data"]["location"] = {}
+    assert validate("facts.schema.json", _wrap(e)) == []
+    e["data"]["location"] = {"kept_at": "جایی"}
+    assert validate("facts.schema.json", _wrap(e)) != []
+
+
+def test_a_sheet_location_admits_every_key_the_engine_writes(validate):
+    """`merge_facts.apply.LOCATION_KEYS` is the only writer of a sheet
+    record's location (`_recompute_location`), so the closed branch is exactly
+    that tuple plus `build.py`'s `path`. Pinned here because a branch narrower
+    than its writer would make `save_store` refuse what `apply` just wrote."""
+    from merge_facts.apply import LOCATION_KEYS
+    assert set(LOCATION_KEYS) == {"spreadsheetId", "sheetId", "sheet", "hidden"}
+    e = _load("entry-record-sheet.json")
+    e["data"]["location"] = {"spreadsheetId": "1abc", "sheetId": 0,
+                             "sheet": "پیتزا", "hidden": False}
+    assert validate("facts.schema.json", _wrap(e)) == []
+
+
+def test_unread_attachment_is_an_issue_kind(validate):
+    # I2 / §3.7: a file `extract-attachment` has no converter for is named,
+    # never improvised over.
+    e = _load("entry-record.json")
+    e["data"]["location"] = {"kept_at": "زونکن", "holder": "سرآشپز"}
+    e["issues"] = [{"kind": "unread_attachment", "description": "فایل خوانده نشد",
+                    "affects": [{"ref": "F-00002"}]}]
+    assert validate("facts.schema.json", _wrap(e)) == []
+    assert validate("facts-delta.schema.json", _wrap(
+        dict(e, id="T-1", data=dict(e["data"])))) != []       # store-only keys
+
+
+def test_quote_is_admitted_on_an_attachment_source(validate):
+    # Assembler's ruling 3: a form read from a `.docx`, a `.pdf` or a
+    # photograph cites its sidecar and may quote it, exactly as a transcript
+    # does. `chat` is still refused — nothing quotes an unrecorded remark.
+    for kind in ("docx", "pdf", "photo"):
+        e = _load("entry-rule.json")
+        e["source"].append({"type": kind, "ref": "attachments/form.txt",
+                            "quote": "شمارش شب"})
+        assert validate("facts.schema.json", _wrap(e)) == [], kind
+    e = _load("entry-rule.json")
+    e["source"].append({"type": "chat", "ref": None, "quote": "x"})
+    assert validate("facts.schema.json", _wrap(e)) != []
+
+
+def test_both_schemas_still_self_validate_and_agree_on_location(validate):
+    """The two files are kept in step by hand; this asserts the one thing that
+    matters here — `recordData` is identical between them but for the two keys
+    that are sanctioned to differ (`original` is delta-only, `original_ref` is
+    store-only; the two tests below assert each one's exclusivity)."""
+    import json
+    import pathlib
+    root = pathlib.Path(__file__).resolve().parents[1] / "schemas"
+    a = json.loads((root / "facts.schema.json").read_text(encoding="utf-8"))
+    b = json.loads((root / "facts-delta.schema.json").read_text(encoding="utf-8"))
+
+    def _shared(schema):
+        d = dict(schema["$defs"]["recordData"])
+        d["properties"] = {k: v for k, v in d["properties"].items()
+                           if k not in ("original", "original_ref")}
+        return d
+
+    assert _shared(a) == _shared(b)
+    assert a["$defs"]["issue"]["properties"]["kind"] == \
+        b["$defs"]["issue"]["properties"]["kind"]
+
+
 def test_note_without_about_fails(validate):
     # QF-9: a note points at something and asks something, or it is not a note.
     e = _load("entry-note.json")

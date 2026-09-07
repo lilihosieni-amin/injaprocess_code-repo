@@ -35,7 +35,8 @@ def test_status_ladder_order():
 
 def test_null_paths_walks_keyed_arrays_and_rows():
     e = _entry(kind="record", data={
-        "medium": "paper", "role": "log", "location": {"path": "p"},
+        "medium": "paper", "role": "log",
+        "location": {"kept_at": "زونکن دفتر", "holder": "سرآشپز"},
         "fields": [{"key": "start_stock", "title": "م", "type": "number", "unit": None}],
         "rows": [{"key": "burger", "title": "برگر", "grams": None}]})
     assert set(null_paths(e)) == {"data/fields/start_stock/unit",

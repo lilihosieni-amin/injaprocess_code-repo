@@ -121,7 +121,8 @@ def test_dependency_order_item_record_measurement_in_one_delta(tmp_path):
          "statement": "s", "scope": {"departments": ["cooking"], "branches": []},
          "source": [{"type": "photo", "ref": "departments/cooking/attachments/p.jpg"}],
          "retired": False,
-         "data": {"medium": "paper", "role": "log", "location": {"path": "x"},
+         "data": {"medium": "paper", "role": "log",
+                  "location": {"kept_at": "زونکن دفتر", "holder": "سرآشپز"},
                   "fields": [{"key": "end_stock", "title": "مانده آخر",
                               "type": "number", "unit": "g"}]}}]}
     report = apply(root, _write(root, "d1.json", delta), _run_dir(root, "1"))
@@ -504,7 +505,8 @@ def _log_record_delta():
          "source": [{"type": "photo",
                      "ref": "departments/cooking/attachments/p.jpg"}],
          "retired": False,
-         "data": {"medium": "paper", "role": "log", "location": {"path": "x"},
+         "data": {"medium": "paper", "role": "log",
+                  "location": {"kept_at": "زونکن دفتر", "holder": "سرآشپز"},
                   "primaryKey": ["item"],
                   "fields": [{"key": "item", "title": "قلم", "type": "string"},
                              {"key": "qty", "title": "تعداد", "type": "number",

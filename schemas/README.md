@@ -57,6 +57,26 @@ migration note added here:
   well as `process`. Removed: `record.mirror_of`, `role: mirror`,
   `record.foreignKeys`, `rule.port`. `facts-index.schema.json` moves with them;
   `manifest.schema.json` stays at 1 (its two new members are optional).
+- **v2.1** (2026-09-07, v3 gate addendum §3.3/§3.7) — `record.location` closes:
+  an `allOf` of `if`/`then` branches keyed by `medium` (`sheet` →
+  `{path, spreadsheetId, sheetId, sheet, hidden}`, engine-written and unchanged;
+  `paper` → `{kept_at, holder}`, both required; `external` →
+  `{system, kept_at}`, both required, plus an optional `identifier_scheme`;
+  `native` → `{kept_at}` plus an optional `identifier_scheme`), each branch
+  `additionalProperties: false`. `issues[].kind` gains `unread_attachment`
+  (I2 — a file `extract-attachment` has no converter for is named once, never
+  improvised over), and `source[].quote` is admitted on `docx`, `pdf` and
+  `photo` beside `voice`/`comment`/`sheet`/`process`: a form read from an
+  attachment cites its sidecar and may quote it. The `schema_version` constant
+  stays at `2`: nothing about the *reader* changed, and every store and delta
+  already in the tree validates under v2.1 except the paper records this commit
+  migrates. `native.kept_at` is deliberately **not** required — the store's
+  seed record `F-00001` and two run entries carry `location: {}`, and refusing
+  them would make the live store unloadable for a field nobody has been asked
+  for yet. `sheet.hidden` is in the branch because
+  `merge_facts.apply.LOCATION_KEYS` writes it (`_recompute_location` copies
+  `{spreadsheetId, sheetId, sheet, hidden}` off the first instance); a branch
+  narrower than its writer would make `save_store` refuse what `apply` wrote.
 
 **`workbooks[].short` uniqueness (`manifest.schema.json`).** JSON Schema has
 no way to assert cross-row uniqueness (no `uniqueItems`-style constraint
