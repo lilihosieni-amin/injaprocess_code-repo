@@ -231,26 +231,55 @@ def test_quote_is_admitted_on_an_attachment_source(validate):
     assert validate("facts.schema.json", _wrap(e)) != []
 
 
+#: The keys the store schema and the delta schema are sanctioned to differ in,
+#: definition by definition. Everything else is one contract in two files, and
+#: the earlier version of the test below compared only the payload defs — which
+#: `$ref` `row` rather than spelling it out, so `row`'s divergence was invisible
+#: until a keyless row passed the unit gate and died at Stage V.
+SANCTIONED = {
+    # `merge facts apply` writes these; a unit never sends them. `id` is a
+    # minted `factId` in the store and a `tempId` in the delta.
+    "envelope": {"id", "status", "updated_at"},
+    "account": {"id"},
+    "source": {"hash", "run"},
+    # a unit hands a rule's verbatim text over as `original`; `apply` writes the
+    # file and keeps the path as `original_ref`
+    "recordData": {"original", "original_ref"},
+    "ruleData": {"original", "original_ref"},
+    # the store requires a row key; the delta cannot, because a reference
+    # table's keys are the primaryKey join `apply._derive_row_keys` mints.
+    # For every other role the unit gate refuses a keyless row
+    # (`facts_plan.assemble._contract_problems`).
+    "row": {"key"},
+}
+
+
 def test_both_schemas_still_self_validate_and_agree_on_location(validate):
-    """The two files are kept in step by hand; this asserts the one thing that
-    matters here — `recordData` is identical between them but for the two keys
-    that are sanctioned to differ (`original` is delta-only, `original_ref` is
-    store-only; the two tests below assert each one's exclusivity)."""
+    """The two files are kept in step by hand, so every shared definition is
+    compared here, not just the payloads — with the sanctioned differences named
+    in `SANCTIONED` above and anything else failing."""
     import json
     import pathlib
     root = pathlib.Path(__file__).resolve().parents[1] / "schemas"
     a = json.loads((root / "facts.schema.json").read_text(encoding="utf-8"))
     b = json.loads((root / "facts-delta.schema.json").read_text(encoding="utf-8"))
 
-    def _shared(schema):
-        d = dict(schema["$defs"]["recordData"])
-        d["properties"] = {k: v for k, v in d["properties"].items()
-                           if k not in ("original", "original_ref")}
+    def _shared(schema, name):
+        d = dict(schema["$defs"][name])
+        drop = SANCTIONED.get(name, set())
+        d["properties"] = {k: v for k, v in (d.get("properties") or {}).items()
+                           if k not in drop}
+        d["required"] = [k for k in d.get("required") or [] if k not in drop]
         return d
 
-    assert _shared(a) == _shared(b)
-    assert a["$defs"]["issue"]["properties"]["kind"] == \
-        b["$defs"]["issue"]["properties"]["kind"]
+    for name in set(a["$defs"]) & set(b["$defs"]) - {"entry"}:
+        assert _shared(a, name) == _shared(b, name), name
+    # `entry` is the one def with no properties of its own: the delta adds a
+    # clause to the same `allOf`, banning the `original_ref` a unit may not send.
+    assert b["$defs"]["entry"]["allOf"][:2] == a["$defs"]["entry"]["allOf"]
+    assert b["$defs"]["entry"]["allOf"][2:] == \
+        [{"properties": {"data": {"not": {"required": ["original_ref"]}}}}]
+    assert set(b["$defs"]) - set(a["$defs"]) == {"tempId"}
 
 
 def test_note_without_about_fails(validate):

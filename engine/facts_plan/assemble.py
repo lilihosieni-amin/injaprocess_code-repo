@@ -21,7 +21,8 @@ from merge_facts import (KIND_ORDER, _sheet_identities, canonical_scope,
                          iter_ref_objects, load_store, null_paths, set_path)
 from merge_facts.audit import flags_over
 from merge_facts.content import _check_prose, check_document
-from merge_facts.preconditions import _registered, _unit_symbols
+from merge_facts.preconditions import (_registered, _unit_row_keys,
+                                       _unit_symbols)
 
 from facts_plan.build import (estimate_tokens, label_of, process_index,
                               shape_section)
@@ -248,6 +249,12 @@ def _contract_problems(root, entries, named, symbols):
     # never "everything is wrong".
     branches = _registered(pathlib.Path(root) / "attachments" / "sheets" /
                            "manifest.json", "branches")
+    store = load_store(root)
+    # The set `preconditions` will check against: the run's declared symbols
+    # plus the rows this document itself adds to the units record, or a
+    # document that extends the table is refused for using what it just added.
+    if symbols:
+        symbols = set(symbols) | _unit_row_keys(store, clean)
     for entry, label in zip(clean, named):
         for n, branch in enumerate(entry["scope"]["branches"]):
             if branches and branch not in branches:
@@ -257,6 +264,14 @@ def _contract_problems(root, entries, named, symbols):
             if symbol not in symbols:
                 out.append(f"{label}: unit {symbol!r} is declared by no row of "
                            "the units record")
+        # The store requires `rows[].key` and the delta schema cannot: a
+        # reference table's keys are the primaryKey join `apply` derives (§9).
+        # Every other role brings its own, and this is where it is told so.
+        if entry["kind"] == "record" and entry["data"].get("role") != "reference":
+            for n, row in enumerate(entry["data"].get("rows") or []):
+                if isinstance(row, dict) and "key" not in row:
+                    out.append(f"{label}: data.rows[{n}]: "
+                               "'key' is a required property")
     # A `calls[]` ref this document could not resolve is `T-0`, so `_call_keys`
     # rescues nothing and every identifier that call declares reads as
     # undeclared. Cross-unit resolution is `_resolve_refs`' job — skip the expr
@@ -268,7 +283,7 @@ def _contract_problems(root, entries, named, symbols):
     # here are minted for the validation and nowhere else — `T-1` names nothing
     # the writer ever wrote. Same rename as above, on the label instead of a path.
     by_temp = dict(zip((e["id"] for e in clean), named))
-    for message in check_document(delta, "facts-delta", load_store(root),
+    for message in check_document(delta, "facts-delta", store,
                                   unit_symbols=symbols):
         head, sep, tail = message.partition(": ")
         if head in blind and tail.startswith("expr identifier "):
@@ -278,8 +293,10 @@ def _contract_problems(root, entries, named, symbols):
 
 
 #: `entries[3]` / `entries[N]` at the head of a §3.4 line, and the concrete
-#: paths inside its `(n places: …)` tail.
-_ENTRY_AT = re.compile(r"entries\[([0-9]+|N)\]")
+#: paths inside its `(n places: …)` tail — with the `.` that opens the path, so
+#: the seam is tidied where it is made and a `:.` the rule text carries of its
+#: own is left alone.
+_ENTRY_AT = re.compile(r"entries\[([0-9]+|N)\](\.)?")
 
 
 def _renamed(line, named):
@@ -287,9 +304,11 @@ def _renamed(line, named):
     it. `entries[N]` — the generalised head of a grouped line — has no one
     decision, so it keeps its shape and the `(n places: …)` tail names them."""
     def swap(match):
-        n = match.group(1)
-        return f"{named[int(n)]}:" if n != "N" and int(n) < len(named) else "entries[N]"
-    return _ENTRY_AT.sub(swap, line).replace(":.", ": ")
+        n, dot = match.group(1), match.group(2) or ""
+        if n == "N" or int(n) >= len(named):
+            return f"entries[N]{dot}"
+        return f'{named[int(n)]}:{" " if dot else ""}'
+    return _ENTRY_AT.sub(swap, line)
 
 
 def _citations(entry, label, node_ids, department):

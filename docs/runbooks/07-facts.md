@@ -453,7 +453,7 @@ at the console.
 
 (f) the guard hook blocks driving the engine from Python: a `python`,
 `python3` or `uv run python` invocation that imports `facts_plan`, `merge_facts`
-or `engine_common`, and any script under `runs/`, is refused with one message.
+or `engine_common`, or runs a script under `runs/`, is refused with one message.
 The seven engine CLIs — `facts-plan`, `validate`, `merge`, `dump-workbook`,
 `extract-attachment`, `transcribe`, `allocate-id` — stay allowed, and they are
 the only way in.
@@ -544,7 +544,11 @@ from whatever evidence — a sheet, a transcript, a `.docx`, a `.pdf`, a
 photograph, something said out loud — is validated at `validate facts-unit`
 against the same per-entry contract `merge facts apply` enforces: the store
 contract in its delta form (`facts-delta.schema.json`, which differs from the
-store's only in carrying `original` where the store carries `original_ref`) and
+store's in carrying `original` where the store carries `original_ref`, in not
+requiring `rows[].key` — derived at apply for a reference table, refused at this
+gate for every other role — and in leaving out the envelope keys `apply` itself
+writes: `id` as a real fact id, `status`, `updated_at`, `source[].hash`/`run`
+and `accounts[].id`) and
 the content pass, plus a branch code off the sheets manifest, a unit symbol off
 the units record, `fields[].from` against the candidate's columns, and a
 `merge_into` across kinds. `assemble` re-runs the same contract over the

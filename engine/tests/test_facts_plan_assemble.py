@@ -726,6 +726,24 @@ def test_what_the_unit_gate_passes_is_never_refused_downstream(tmp_path):
     assert problems == []
 
 
+def test_a_messages_own_colon_dot_survives_the_rename():
+    """`_renamed` tidies the seam it just made — `<label>:` followed by the
+    path's leading `.` — and nothing else on the line. A rule text that carries
+    a `:.` of its own keeps it."""
+    from facts_plan.assemble import _renamed
+    line = 'entries[0].data.location: does not match "^[a-z]+:.[a-z]+$"'
+    assert _renamed(line, ["new[0] mande_shab"]) == \
+        'new[0] mande_shab: data.location: does not match "^[a-z]+:.[a-z]+$"'
+
+
+def test_the_sidecar_suffixes_are_the_ones_extract_attachment_writes():
+    """`SIDECAR_TYPES` is `CONVERTERS` read backwards by hand — a suffix added
+    on one side and not the other reads a real sidecar as a transcript."""
+    from extract_attachment import CONVERTERS
+    from facts_plan.assemble import SIDECAR_TYPES
+    assert set(dict(SIDECAR_TYPES)) == set(CONVERTERS.values())
+
+
 def test_an_attachment_sidecar_is_cited_by_the_kind_of_file_it_came_from(tmp_path):
     """Ruling 3 — a `.text/` sidecar cites `docx`/`pdf`/`photo` by its suffix;
     only a transcript is `voice`. A photographed form written up as a `new[]`

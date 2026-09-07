@@ -222,8 +222,8 @@ def _unread(name, why):
 def test_gate_b_and_the_report_name_the_unread_files_under_one_heading(tmp_path):
     """§3.7 — an unplaced workbook and a file nothing could read are the same
     sentence to the owner, so they are one list under one heading, in both
-    files. Neither may leak a path, an id or an extension the owner did not
-    type themselves."""
+    files. Each file is named as the owner's own file is named — its own name,
+    extension included — and neither line may leak a path or an id."""
     from facts_plan.build import UNREAD_NO_READER, UNREAD_NOT_READY
     root = _root(tmp_path); _seed_units(root)
     run_dir = _run_dir(root, "20260907-101500")

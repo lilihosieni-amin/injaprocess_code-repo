@@ -17,8 +17,8 @@ so what the tests assert is what cooking actually contains:
 * a mirror tab (one `IMPORT_FROM_SHEET` at A1) and an ids tab
   (`SheetsFileIDs`), which produce no template at all.
 
-Two things beside the workbooks, written only when `make_estate(root,
-attachments=True)` asks for them (§3.8): a department attachment set with the
+Two things beside the workbooks, written only when a test calls
+`make_attachments(root)` for them (§3.8): a department attachment set with the
 `.text/` sidecars `extract-attachment` writes — `<stem>.txt` for a `.docx`,
 `<stem>.pdf.md`, `<stem>.image.md`, each with its `<name>.sha256` holding the
 SOURCE file's digest — describing three paper forms; and one file
@@ -268,14 +268,8 @@ def _sheet(sheet_id, name, head, header_row, row_labels):
     return sheet
 
 
-def make_estate(root, *, attachments=False):
-    """Write the mini estate under `root/attachments/sheets/`.
-
-    `attachments=True` also writes the department's attachment set (§3.8). It is
-    off by default because every existing caller asserts over a run with no
-    attachment, and an attachment appended to the last transcript unit changes
-    that unit's `inputs` and the plan's hashes.
-    """
+def make_estate(root):
+    """Write the mini estate under `root/attachments/sheets/`."""
     sheets_root = pathlib.Path(root) / "attachments" / "sheets"
     workbooks = []
     for short, sid, directory, filename, branches, reference, scripts in WORKBOOKS:
@@ -309,6 +303,4 @@ def make_estate(root, *, attachments=False):
          "branches": [{"code": "chalebagh", "name": "چاله‌باغ"},
                       {"code": "naharkhoran", "name": "ناهارخوران"}],
          "workbooks": workbooks}, ensure_ascii=False), encoding="utf-8")
-    if attachments:
-        make_attachments(root)
     return sheets_root

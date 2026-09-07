@@ -402,6 +402,72 @@ def test_a_field_renamed_from_a_column_the_candidate_has_not_got_is_refused(tmp_
     assert validate_unit(root, run_dir, _write(run_dir, doc, "out.2.json")) == []
 
 
+def _simulate(root, run_dir, doc):
+    """What `merge facts apply` would do with the entries this document
+    materialises — the other half of I1, from the unit gate's own fixture."""
+    from facts_plan.assemble import materialise
+    from merge_facts.apply import simulate
+    (root / "departments" / "registry.json").write_text(json.dumps(
+        {"departments": [{"code": "cooking", "name": "آشپزخانه"}]},
+        ensure_ascii=False), encoding="utf-8")
+    entries = [{k: v for k, v in e.items() if not k.startswith("_")}
+               for e in materialise(root, run_dir, doc)]
+    path = run_dir / "facts-delta.json"
+    path.write_text(json.dumps({"schema_version": 2, "entries": entries},
+                               ensure_ascii=False), encoding="utf-8")
+    return simulate(root, path, run_dir)[1]
+
+
+def test_a_keyless_row_is_refused_unless_the_table_derives_its_keys(tmp_path):
+    """I1 — the store requires `rows[].key`; the delta schema cannot, because a
+    reference table's keys are derived at apply (`_derive_row_keys`). Every
+    other role has to bring its own, and the gate is what says so."""
+    root, run_dir = _run(tmp_path)
+    form = _paper()
+    form["data"]["rows"] = [{"title": "شیفت صبح"}]
+    assert "new[0] mande_shab: data.rows[0]: 'key' is a required property" in \
+        validate_unit(root, run_dir, _write(run_dir, _doc(new=[form])))
+    form["data"]["rows"][0]["key"] = "sobh"
+    assert validate_unit(root, run_dir,
+                         _write(run_dir, _doc(new=[form]), "out.2.json")) == []
+
+
+def test_a_reference_tables_keyless_rows_pass_the_gate_and_the_apply(tmp_path):
+    """The other half of the same rule: `role: reference` keys its rows by the
+    primaryKey join at apply, so a keyless row there is not a mistake — the
+    gate lets it through and `simulate` proves nothing downstream refuses it."""
+    root, run_dir = _run(tmp_path)
+    table = _paper(key="mavad", title="فهرست مواد",
+                   statement="فهرست کاغذی مواد اولیه که در انبار نگه‌داری می‌شود.")
+    table["data"].update({"role": "reference", "primaryKey": ["nam"],
+                          "fields": [{"key": "nam", "type": "string"}],
+                          "rows": [{"nam": "panir"}]})
+    doc = _doc(new=[table])
+    assert validate_unit(root, run_dir, _write(run_dir, doc)) == []
+    assert _simulate(root, run_dir, doc) == []
+
+
+def test_a_symbol_this_document_adds_to_the_units_record_is_its_own(tmp_path):
+    """QF-40 — `preconditions` checks a symbol against the store's units rows
+    PLUS the ones the delta itself declares, so the gate has to do the same or
+    a document that extends the table is refused for using what it just added.
+    """
+    root, run_dir = _run(tmp_path)
+    units = {"kind": "record", "key": "units", "title": "واحدها",
+             "statement": "جدول واحدها که نماد و بُعد هر واحد را نگه می‌دارد.",
+             "data": {"medium": "native", "role": "config", "location": {},
+                      "primaryKey": ["symbol"],
+                      "fields": [{"key": "symbol", "type": "string"},
+                                 {"key": "dimension", "type": "string"}],
+                      "rows": [{"key": "lit", "symbol": "lit",
+                                "dimension": "volume"}]}}
+    item = {"kind": "item", "key": "roghan", "title": "روغن سرخ‌کردنی",
+            "statement": "روغن سرخ‌کردنی که با لیتر شمرده می‌شود.",
+            "data": {"category": "ingredient", "unit": "lit"}}
+    assert validate_unit(root, run_dir,
+                         _write(run_dir, _doc(new=[units, item]))) == []
+
+
 def test_one_prose_nit_and_one_shape_error_are_one_line_each(tmp_path):
     """Ruling (e) — the gate runs even when something else was found, and the
     decision lint and the content pass say a prose nit in the same words, so it

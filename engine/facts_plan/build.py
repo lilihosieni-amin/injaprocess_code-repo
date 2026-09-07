@@ -1937,11 +1937,14 @@ def shape_section():
 
     The **delta** schema, not the store's: a unit writes a delta entry and
     `validate_unit` validates it against `facts-delta.schema.json`, so that is
-    the contract it is held to. The two payload definitions are the same one
-    everywhere but `original`/`original_ref` — a unit hands over a rule's
-    verbatim text as `original` and `merge facts apply` is what turns it into
-    the store's `original_ref` — and a card off the store schema would show the
-    unit a key its own gate refuses.
+    the contract it is held to. The two files are the same definitions but for
+    what `merge facts apply` writes rather than reads: `original`/`original_ref`
+    (a unit hands over a rule's verbatim text as `original` and `apply` turns it
+    into the store's `original_ref`), the store-required `rows[].key` (derived
+    at apply for a reference table, refused at the unit gate for every other
+    role) and the envelope keys apply stamps (`id` as a real fact id, `status`,
+    `updated_at`, `source[].hash`/`run`, `accounts[].id`). A card off the store
+    schema would show the unit keys its own gate refuses.
 
     ponytail: the schema is re-read once per unit (fifteen 12 KB reads a run).
     Cache it when a build ever spends measurable time here.

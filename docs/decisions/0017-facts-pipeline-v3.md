@@ -176,7 +176,11 @@ The remedy is two invariants, designed in
 **I1 — the output side is closed at the unit's gate:** whatever a unit writes is
 validated there against the same per-entry contract `apply` enforces — the store
 schema in its delta form (`facts-delta.schema.json`, the store's shapes with
-`original` in place of `original_ref`) and the content pass, plus branch codes
+`original` in place of `original_ref`, without the store-required `rows[].key` —
+derived at apply for a reference table, refused at the gate for every other
+role — and without the envelope keys apply writes: `id` as a real fact id,
+`status`, `updated_at`, `source[].hash`/`run`, `accounts[].id`) and the content
+pass, plus branch codes
 off the sheets manifest, unit symbols off the units record, `fields[].from`
 against the candidate's columns and a cross-kind `merge_into` — and a per-entry
 refusal after it is a defect. **I2 — the intake is explicit:** a file
