@@ -390,3 +390,37 @@ def test_build_records_the_unread_files_in_the_skeleton(tmp_path):
                          for p in (run_dir / "units").rglob("input.md"))
     assert "چیدمان-انبار" not in everything and "فرم-تحویل" not in everything
     assert "متن فرم ضایعات" in everything          # the one that WAS read
+
+
+def test_a_stale_cached_text_reaches_no_unit(tmp_path):
+    """I2 has two halves and they are one decision. A `.docx` converted once
+    and then edited on disk is named unread — and the text cached from the
+    version nobody edited must not be handed to a unit behind that sentence,
+    which is exactly what a `.text/` glob with no freshness gate did."""
+    import json as _json
+    from facts_plan.build import build
+    estate(tmp_path)
+    src = _attachment(tmp_path, "فرم-تحویل.docx", text="نشانهٔ متن کهنه",
+                      suffix=".txt")
+    src.write_bytes(b"a different document")
+    run_dir = tmp_path / "runs" / "facts" / "cooking" / "20260907-101500"
+
+    build(tmp_path, "cooking", run_dir, [])
+
+    everything = "".join(p.read_text(encoding="utf-8")
+                         for p in (run_dir / "units").rglob("input.md"))
+    assert "نشانهٔ متن کهنه" not in everything
+    # nor cited by the plan, whose hashes are what a re-render reads back
+    assert "فرم-تحویل" not in (run_dir / "plan.json").read_text(encoding="utf-8")
+    skeleton = _json.loads((run_dir / "skeleton.json").read_text(encoding="utf-8"))
+    assert [i["target"] for i in skeleton["issues"]
+            if i["kind"] == "unread_attachment"] == ["فرم-تحویل.docx"]
+
+
+def test_an_orphan_cached_text_is_served_to_nobody(tmp_path):
+    """`.text/` is a cache, not a source: a file whose original is gone is a
+    leftover of some earlier run and no unit is shown it."""
+    from facts_plan.build import _attachment_state
+    src = _attachment(tmp_path, "فرم-تحویل.docx", text="متن فرم", suffix=".txt")
+    src.unlink()
+    assert _attachment_state(tmp_path, "cooking") == ([], [])

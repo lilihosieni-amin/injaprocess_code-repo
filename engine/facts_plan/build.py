@@ -2039,15 +2039,6 @@ def _chunks(root, recordings):
     return out
 
 
-def _attachment_texts(root, department):
-    """The department's cached attachment texts (`extract-attachment`'s
-    `.text/`), never the originals — `build` reads no `.docx` and no image."""
-    root = pathlib.Path(root)
-    directory = root / "departments" / department / "attachments" / ".text"
-    return [str(p.relative_to(root)) for p in sorted(directory.glob("*"))
-            if p.suffix in (".txt", ".md")]
-
-
 #: §3.7's two halves of one sentence. One issue kind, two reasons: the owner is
 #: told the file was not read and why, in words that name no path, no dispatch
 #: table and no extension they did not type themselves.
@@ -2059,16 +2050,22 @@ ISSUE_TEXT.update({
 })
 
 
-def unread_attachments(root, department):
-    """Invariant I2 — every department attachment this run will not read, as an
-    issue, sorted by file name.
+def _attachment_state(root, department):
+    """Invariant I2 over the department's attachments, in one pass:
+    `(texts, issues)` — the cached texts a unit may be shown, and the files this
+    run will not read, sorted by file name.
 
-    `extract-attachment` reads the extensions in its dispatch table and nothing
-    else, and the 2026-09-02 run improvised over the rest. A file outside the
-    table, or one inside it whose cached text is missing or stale, is named to
-    the owner once and left out of every unit — `_attachment_texts` globs the
-    `.text/` cache, so an unread file is already invisible to a unit; this is
-    what makes it visible to the owner.
+    The two answers are ONE decision, which is why one loop makes both. The
+    earlier code asked twice: this listed `.text/*` by a glob and the issues
+    came off `extract-attachment`'s own hash gate, so a `.docx` edited after its
+    text was cached was named unread to the owner AND had its stale text handed
+    to a unit — the run improvising over the file the sentence had just said it
+    could not read.
+
+    So a `.text/` entry is served only for a source that is still there and
+    whose digest still matches its sidecar. `build` reads no `.docx` and no
+    image, only the cache; a leftover cache whose source is gone is nobody's
+    text and is served to nobody.
 
     `.csv`/`.md`/`.txt`/`.gs` need no conversion and `.xlsx` belongs to
     `dump-workbook`, whose unplaced rows are named under the very same heading
@@ -2076,8 +2073,9 @@ def unread_attachments(root, department):
     """
     from extract_attachment import (CONVERTERS, PASSTHROUGH_EXTENSIONS,
                                     find_attachments, needs_conversion)
-    adir = pathlib.Path(root) / "departments" / department / "attachments"
-    out = []
+    root = pathlib.Path(root)
+    adir = root / "departments" / department / "attachments"
+    texts, issues = [], []
     for src in find_attachments(adir):
         ext = src.suffix.lower()
         if ext in PASSTHROUGH_EXTENSIONS or ext == ".xlsx":
@@ -2085,15 +2083,28 @@ def unread_attachments(root, department):
         suffix = CONVERTERS.get(ext)
         if suffix is None:
             why = UNREAD_NO_READER
-        elif needs_conversion(src, adir / ".text" / (src.stem + suffix)):
-            why = UNREAD_NOT_READY
         else:
-            continue
+            dst = adir / ".text" / (src.stem + suffix)
+            if not needs_conversion(src, dst):
+                texts.append(str(dst.relative_to(root)))
+                continue
+            why = UNREAD_NOT_READY
         # `target` is the file's own name, never a path: it is what `gate-b.md`
         # and `report.md` print, and §2.7 admits no path in either.
-        out.append(_issue("unread_attachment", target=src.name,
-                          file=src.name, why=why))
-    return out
+        issues.append(_issue("unread_attachment", target=src.name,
+                             file=src.name, why=why))
+    return sorted(texts), issues
+
+
+def unread_attachments(root, department):
+    """The files this run will not read (§3.7) — `_attachment_state`'s issues.
+
+    `extract-attachment` reads the extensions in its dispatch table and nothing
+    else, and the 2026-09-02 run improvised over the rest. A file outside the
+    table, or one inside it whose cached text is missing or stale, is named to
+    the owner once and left out of every unit.
+    """
+    return _attachment_state(root, department)[1]
 
 
 def _wrap(line):
@@ -2280,9 +2291,11 @@ def build(root, department, run_dir, recordings, *, rebuild=False):
     imports, import_issues = import_edges(
         estate, {(i["spreadsheetId"], i["sheet"]): {"ref": i["template"]}
                  for i in instances}, department)
+    # One pass, two answers (I2): what a unit may be shown and what the owner
+    # is told was not read. Asking twice is what let the two disagree.
+    attachments, unread = _attachment_state(root, department)
     issues += (rule_issues + import_issues
-               + reference_tab_issues(estate, department)
-               + unread_attachments(root, department))
+               + reference_tab_issues(estate, department) + unread)
     candidates = templates + items + rules + scripts
     skeleton = {"unit_symbols": unit_symbols(root), "candidates": candidates,
                 "instances": instances, "imports": imports}
@@ -2291,7 +2304,6 @@ def build(root, department, run_dir, recordings, *, rebuild=False):
     render = _renderer(root, department, estate, skeleton, rendered)
 
     chunks = _chunks(root, recordings)
-    attachments = _attachment_texts(root, department)
     units = plan_units(skeleton, workbook_groups(manifest, department, [
         w["short"] for w in manifest["workbooks"]
         if w["spreadsheetId"] in estate
