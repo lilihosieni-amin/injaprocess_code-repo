@@ -301,3 +301,92 @@ def test_refresh_inputs_and_rebuild_together_are_refused():
     with pytest.raises(SystemExit) as caught:
         main(["build", "cooking", "--run", "x", "--refresh-inputs", "--rebuild"])
     assert caught.value.code == 2
+
+
+def _attachment(root, name, text=None, suffix=None):
+    """One department attachment, and its `.text/` cache when `text` is given —
+    in the exact two files `extract-attachment` writes: `.text/<stem><suffix>`
+    and `.text/<stem><suffix>.sha256` holding the SOURCE file's digest."""
+    import hashlib
+    adir = root / "departments" / "cooking" / "attachments"
+    adir.mkdir(parents=True, exist_ok=True)
+    src = adir / name
+    src.write_bytes(name.encode("utf-8"))
+    if text is not None:
+        dst = adir / ".text" / (src.stem + suffix)
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        dst.write_text(text, encoding="utf-8")
+        (dst.parent / (dst.name + ".sha256")).write_text(
+            hashlib.sha256(src.read_bytes()).hexdigest() + "\n", encoding="utf-8")
+    return src
+
+
+def test_an_attachment_with_no_converter_is_an_issue_named_by_its_file(tmp_path):
+    """I2 — `extract-attachment` reads the extensions in its dispatch table and
+    nothing else, and a file it cannot read is never improvised over."""
+    from facts_plan.build import unread_attachments
+    _attachment(tmp_path, "چیدمان-انبار.xyz")
+    issues = unread_attachments(tmp_path, "cooking")
+    assert [i["kind"] for i in issues] == ["unread_attachment"]
+    assert issues[0]["target"] == "چیدمان-انبار.xyz"
+    assert issues[0]["run_only"] is True and issues[0]["engine"] is True
+    assert "چیدمان-انبار.xyz" in issues[0]["description"]
+    assert "attachments" not in issues[0]["description"]     # no path, ever
+
+
+def test_a_supported_attachment_with_no_cached_text_is_an_issue(tmp_path):
+    from facts_plan.build import UNREAD_NOT_READY, unread_attachments
+    _attachment(tmp_path, "فرم-تحویل.docx")
+    issues = unread_attachments(tmp_path, "cooking")
+    assert len(issues) == 1
+    assert UNREAD_NOT_READY in issues[0]["description"]
+    assert "فرم-تحویل.docx" in issues[0]["description"]
+
+
+def test_a_read_attachment_and_a_workbook_raise_nothing(tmp_path):
+    """A converted file, a passthrough one and an `.xlsx` are all accounted
+    for: the first by its cache, the second because it needs none, the third by
+    the manifest, which names an unplaced workbook in the same block already."""
+    from facts_plan.build import unread_attachments
+    _attachment(tmp_path, "فرم-تحویل.docx", text="متن فرم", suffix=".txt")
+    _attachment(tmp_path, "شمارش.csv")
+    _attachment(tmp_path, "گزارش.xlsx")
+    assert unread_attachments(tmp_path, "cooking") == []
+
+
+def test_a_stale_cached_text_is_an_issue(tmp_path):
+    """The gate is `extract-attachment`'s own: a source edited after its text
+    was cached has not been read in the form this run would use."""
+    from facts_plan.build import unread_attachments
+    src = _attachment(tmp_path, "فرم-تحویل.docx", text="متن فرم", suffix=".txt")
+    src.write_bytes(b"a different document")
+    assert len(unread_attachments(tmp_path, "cooking")) == 1
+
+
+def test_a_department_with_no_attachments_dir_raises_nothing(tmp_path):
+    from facts_plan.build import unread_attachments
+    assert unread_attachments(tmp_path, "cooking") == []
+
+
+def test_build_records_the_unread_files_in_the_skeleton(tmp_path):
+    """End to end over the mini estate: the two unread files reach
+    `skeleton.json`, and no unit's `input.md` names either of them."""
+    import json as _json
+    from facts_plan.build import build
+    estate(tmp_path)
+    _attachment(tmp_path, "چیدمان-انبار.xyz")
+    _attachment(tmp_path, "فرم-تحویل.docx")
+    _attachment(tmp_path, "فرم-ضایعات.pdf", text="متن فرم ضایعات",
+                suffix=".pdf.md")
+    run_dir = tmp_path / "runs" / "facts" / "cooking" / "20260907-101500"
+
+    build(tmp_path, "cooking", run_dir, [])
+
+    skeleton = _json.loads((run_dir / "skeleton.json").read_text(encoding="utf-8"))
+    unread = [i for i in skeleton["issues"] if i["kind"] == "unread_attachment"]
+    assert {i["target"] for i in unread} == {"چیدمان-انبار.xyz",
+                                             "فرم-تحویل.docx"}
+    everything = "".join(p.read_text(encoding="utf-8")
+                         for p in (run_dir / "units").rglob("input.md"))
+    assert "چیدمان-انبار" not in everything and "فرم-تحویل" not in everything
+    assert "متن فرم ضایعات" in everything          # the one that WAS read

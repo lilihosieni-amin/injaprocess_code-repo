@@ -394,7 +394,8 @@ ISSUE_FA = {"cross_record": "فهرست مقادیر مجاز بین نسخه‌
             "row_labels_partial": "برچسب سطرها ناقص بود",
             "reference_tab_is_mirror": "تب مرجع در واقع کپی بود",
             "reference_tab_is_ids": "تب مرجع در واقع فهرست شناسه‌ها بود",
-            "reference_tab_computes": "تب مرجع فرمول دارد"}
+            "reference_tab_computes": "تب مرجع فرمول دارد",
+            "unread_attachment": "فایلی که خوانده نشد"}
 
 #: §2.6 step 7's `wrapper_variants`: a variant that only converts or totals the
 #: reading beneath it is the same rule, not a second one.
@@ -1326,6 +1327,49 @@ def _disputes(entries):
                                       d[1][0].get("field") or ""))
 
 
+#: §3.7. `report` groups every other issue kind under «ایرادهای یافته‌شده در
+#: فایل‌ها»; this one is not a problem inside a file, it is a file nobody read,
+#: and it belongs beside the workbook the owner has not placed.
+UNREAD_KIND = "unread_attachment"
+
+
+def _skipped_workbooks(root, department):
+    """§2.1's Stage 2 row: `dump-workbook --manifest` skips a row the owner has
+    not placed, and this is where that workbook is named — by its file title and
+    branch, the way `build._where` names a tab, never by an id or a path."""
+    manifest = read_json(pathlib.Path(root) / "attachments" / "sheets" /
+                         "manifest.json")
+    branch_fa = {b["code"]: b["name"] for b in manifest.get("branches") or []}
+    out = []
+    for row in manifest["workbooks"]:
+        departments = row.get("departments") or []
+        # An unplaced row belongs to no department, so no run would ever name it
+        # if this asked for a match alone.
+        if not row.get("unresolved") or (departments
+                                         and department not in departments):
+            continue
+        where = "، ".join(branch_fa.get(b, b) for b in row.get("branches") or [])
+        out.append(f'  • «{pathlib.Path(row.get("file") or "").stem}»'
+                   + (f" ({where})" if where else "") + ": "
+                   + " و ".join(UNRESOLVED_FA.get(c, c) for c in row["unresolved"])
+                   + " مشخص نشده است.")
+    return out
+
+
+def _unread_block(root, department, issues):
+    """The one list both owner-facing files print: the workbooks the owner has
+    not placed, and the attachments nothing could read (§3.7). One heading, one
+    implementation — `gate-b.md` and `report.md` cannot disagree about what was
+    left out of a run."""
+    rows = _skipped_workbooks(root, department) + [
+        f'  • {i["description"]}' for i in issues if i["kind"] == UNREAD_KIND]
+    if not rows:
+        return []
+    return [f"فایل‌هایی که در این اجرا خوانده نشدند ({_fa(len(rows))}"
+            " مورد) — پس از تعیین تکلیف، در اجرای بعدی خوانده می‌شوند:"] \
+        + rows + [""]
+
+
 def gate_b(root, skeleton, entries, state):
     """`gate-b.md` (§2.7) — a finished Persian message the playbook sends
     verbatim. No id, no path, no code, no command; an entry is its title."""
@@ -1337,7 +1381,9 @@ def gate_b(root, skeleton, entries, state):
     rules = [e for e in entries if e["kind"] == "rule"]
     disputes = _disputes(entries)
     unknown = sum(len(null_paths(e)) for e in entries)
-    issues = [i for i in skeleton["issues"]]
+    # An unread file is not an issue found *in* a file — it has its own block
+    # below, and counting it here would name it twice.
+    issues = [i for i in skeleton["issues"] if i["kind"] != UNREAD_KIND]
     reasons = []
     for dropped in state["dropped"]:
         word = REASON_FA.get(dropped["reason_code"])
@@ -1375,6 +1421,7 @@ def gate_b(root, skeleton, entries, state):
                       if len(issues) > len(shown) else ":"))
         out += [f'  • {i["description"]}' for i in shown]
         out.append("")
+    out += _unread_block(root, state["department"], skeleton["issues"])
     out += [f"بی‌پاسخ: {_fa(unknown)} خانه — در پنل.", "", "تأیید می‌کنید؟", ""]
     return "\n".join(out)
 
@@ -1401,26 +1448,6 @@ def report(root, run_dir):
     touched = set(read_json(footprint) if footprint.exists() else id_map.values())
     entries = [e for kind in KIND_ORDER for e in store[kind]["entries"]
                if e["id"] in touched]
-
-    # §2.1's Stage 2 row: `dump-workbook --manifest` skips a row the owner has
-    # not placed, and this is where that workbook is named — by its file title
-    # and branch, the way `build._where` names a tab, never by an id or a path.
-    manifest = read_json(root / "attachments" / "sheets" / "manifest.json")
-    branch_fa = {b["code"]: b["name"] for b in manifest.get("branches") or []}
-    skipped = []
-    for row in manifest["workbooks"]:
-        departments = row.get("departments") or []
-        # An unplaced row belongs to no department, so no run would ever name
-        # it if this asked for a match alone.
-        if not row.get("unresolved") or (departments
-                                         and skeleton["department"] not in departments):
-            continue
-        where = "، ".join(branch_fa.get(b, b) for b in row.get("branches") or [])
-        skipped.append(
-            f'  • «{pathlib.Path(row.get("file") or "").stem}»'
-            + (f" ({where})" if where else "") + ": "
-            + " و ".join(UNRESOLVED_FA.get(c, c) for c in row["unresolved"])
-            + " مشخص نشده است.")
 
     disputes = _disputes(entries)
     unknown = [(e, null_paths(e)) for e in entries]
@@ -1451,19 +1478,17 @@ def report(root, run_dir):
         out += [f'  • {REASON_FA.get(code, REASON_FA["other"])}: {_fa(n)} مورد'
                 for code, n in sorted(counted.items())]
         out.append("")
-    if skeleton["issues"]:
+    found = [i for i in skeleton["issues"] if i["kind"] != UNREAD_KIND]
+    if found:
         out.append("ایرادهای یافته‌شده در فایل‌ها:")
         grouped = {}
-        for issue in skeleton["issues"]:
+        for issue in found:
             grouped.setdefault(issue["kind"], []).append(issue["description"])
         for kind, described in sorted(grouped.items()):
             out.append(f'  {ISSUE_FA.get(kind, "ایراد")} ({_fa(len(described))} مورد):')
             out += [f"    • {d}" for d in described[:5]]
         out.append("")
-    if skipped:
-        out.append(f"فایل‌هایی که در این اجرا خوانده نشدند ({_fa(len(skipped))}"
-                   " مورد) — پس از تعیین تکلیف، در اجرای بعدی خوانده می‌شوند:")
-        out += skipped + [""]
+    out += _unread_block(root, skeleton["department"], skeleton["issues"])
     if assembly["undecided"]:
         out.append("یک بخش از داده‌ها ناتمام ماند و در اجرای بعدی تکمیل می‌شود.")
     out.append({"applied": "بازبینی انجام شد.",

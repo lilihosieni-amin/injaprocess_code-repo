@@ -230,11 +230,13 @@ _BRANCH_TOKENS = ("چاله باغ", "ناهارخوران", "ناهار خور�
 _FORMULA_COLUMNS = ("sheet", "range", "group", "formula", "count", "cached",
                     "error")
 
-# §2.3: these six describe a tab that becomes no record or a cell that becomes
-# no rule, so they are reported and counted but never attached to an entry.
+# §2.3: these describe a tab that becomes no record, a cell that becomes no
+# rule, or (§3.7) a file nothing read, so they are reported and counted but
+# never attached to an entry.
 RUN_ONLY = frozenset({"reference_tab_is_mirror", "reference_tab_is_ids",
                       "reference_tab_computes", "row_labels_ambiguous",
-                      "row_labels_partial", "unheaded_formula"})
+                      "row_labels_partial", "unheaded_formula",
+                      "unread_attachment"})
 
 # One Persian sentence per issue kind — `gate-b.md` and `report.md` print these
 # verbatim, so no caller ever composes owner-facing prose (QF-54).
@@ -2046,6 +2048,54 @@ def _attachment_texts(root, department):
             if p.suffix in (".txt", ".md")]
 
 
+#: §3.7's two halves of one sentence. One issue kind, two reasons: the owner is
+#: told the file was not read and why, in words that name no path, no dispatch
+#: table and no extension they did not type themselves.
+UNREAD_NO_READER = "سامانه فایل‌هایی از این نوع را نمی‌خواند"
+UNREAD_NOT_READY = "متن این فایل هنوز آماده نشده بود"
+
+ISSUE_TEXT.update({
+    "unread_attachment": "فایل «{file}» در این اجرا خوانده نشد؛ {why}.",
+})
+
+
+def unread_attachments(root, department):
+    """Invariant I2 — every department attachment this run will not read, as an
+    issue, sorted by file name.
+
+    `extract-attachment` reads the extensions in its dispatch table and nothing
+    else, and the 2026-09-02 run improvised over the rest. A file outside the
+    table, or one inside it whose cached text is missing or stale, is named to
+    the owner once and left out of every unit — `_attachment_texts` globs the
+    `.text/` cache, so an unread file is already invisible to a unit; this is
+    what makes it visible to the owner.
+
+    `.csv`/`.md`/`.txt`/`.gs` need no conversion and `.xlsx` belongs to
+    `dump-workbook`, whose unplaced rows are named under the very same heading
+    (§2.1 Stage 2) — naming an `.xlsx` here would be the same file twice.
+    """
+    from extract_attachment import (CONVERTERS, PASSTHROUGH_EXTENSIONS,
+                                    find_attachments, needs_conversion)
+    adir = pathlib.Path(root) / "departments" / department / "attachments"
+    out = []
+    for src in find_attachments(adir):
+        ext = src.suffix.lower()
+        if ext in PASSTHROUGH_EXTENSIONS or ext == ".xlsx":
+            continue
+        suffix = CONVERTERS.get(ext)
+        if suffix is None:
+            why = UNREAD_NO_READER
+        elif needs_conversion(src, adir / ".text" / (src.stem + suffix)):
+            why = UNREAD_NOT_READY
+        else:
+            continue
+        # `target` is the file's own name, never a path: it is what `gate-b.md`
+        # and `report.md` print, and §2.7 admits no path in either.
+        out.append(_issue("unread_attachment", target=src.name,
+                          file=src.name, why=why))
+    return out
+
+
 def _wrap(line):
     """One transcript line is one speaker's turn, and the estate's longest runs
     to 5,924 characters — §2.3 bounds a rendered line at 1,900, and the split
@@ -2230,7 +2280,9 @@ def build(root, department, run_dir, recordings, *, rebuild=False):
     imports, import_issues = import_edges(
         estate, {(i["spreadsheetId"], i["sheet"]): {"ref": i["template"]}
                  for i in instances}, department)
-    issues += rule_issues + import_issues + reference_tab_issues(estate, department)
+    issues += (rule_issues + import_issues
+               + reference_tab_issues(estate, department)
+               + unread_attachments(root, department))
     candidates = templates + items + rules + scripts
     skeleton = {"unit_symbols": unit_symbols(root), "candidates": candidates,
                 "instances": instances, "imports": imports}
