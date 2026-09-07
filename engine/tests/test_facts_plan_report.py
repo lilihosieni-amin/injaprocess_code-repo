@@ -182,3 +182,29 @@ def test_a_run_that_only_merged_still_reports_the_dispute_it_opened(tmp_path):
     assert f'۱ — «{entry["title"]}»' in gate
     text = report(root, run_dir).read_text(encoding="utf-8")
     assert f'اختلاف ۱ — «{entry["title"]}»' in text
+
+
+def test_a_superseded_predecessor_is_not_in_the_run_the_owner_reads(tmp_path):
+    """`touched` holds both sides of a supersession — the successor and the
+    predecessor the run closed. Naming the closed one in `report.md` counts it
+    as recorded and offers its dead era's dispute for an answer «۱ الف» that
+    `resolve` would then write into a closed entry. A run names what it left
+    open."""
+    root = _root(tmp_path); _seed_units(root)
+    apply(root, _write(root, "d1.json", _const_delta(5)), _run_dir(root, "1"))
+    apply(root, _write(root, "d2.json", _const_delta(9)), _run_dir(root, "2"))
+    era = _const_delta(4)
+    era["entries"][0]["valid_from"] = "1405-01-01"
+    run_dir = _run_dir(root, "3")
+    apply(root, _write(root, "d3.json", era), run_dir)
+    rules = [e for e in load_store(root)["rule"]["entries"] if e["key"] == "tol"]
+    old = next(r for r in rules if r["valid_to"] is not None)
+    new = next(r for r in rules if r["valid_to"] is None)
+    assert len([a for a in old["accounts"] if a["status"] == "open"]) == 2
+
+    assert json.loads((run_dir / "touched.json").read_text(encoding="utf-8")) \
+        == [new["id"]]
+    _plan_files(run_dir)
+    text = report(root, run_dir).read_text(encoding="utf-8")
+    assert "ثبت شد: ۱ مورد" in text
+    assert "اختلاف" not in text

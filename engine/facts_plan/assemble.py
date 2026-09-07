@@ -1160,10 +1160,11 @@ def report(root, run_dir):
     name = next((d["name"] for d in registry["departments"]
                  if d["code"] == skeleton["department"]), skeleton["department"])
     store = load_store(root)
-    # `apply` writes `touched.json`: every entry the run changed, merges
-    # included. `id-map.json` holds only the ids it minted, so a run that only
-    # merged would name nothing here — the fallback is for run directories
-    # written before `touched.json` existed.
+    # `apply` writes `touched.json`: every entry the run changed and left open,
+    # merges included. `id-map.json` holds only the ids it minted, so a run
+    # that only merged would name nothing here — the fallback is for run
+    # directories written before `touched.json` existed. Membership is the
+    # whole filter: what belongs in it was decided where it was written.
     footprint = run_dir / "touched.json"
     touched = set(read_json(footprint) if footprint.exists() else id_map.values())
     entries = [e for kind in KIND_ORDER for e in store[kind]["entries"]
