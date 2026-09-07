@@ -6,7 +6,8 @@ import {
 import { toFa } from '../../lib/format'
 import { Icon } from '../../ui/Icon'
 import {
-  isRule, type FactBundle, type RuleData, type RuleInput, type RuleOutput,
+  isRule, type FactBundle, type RuleBinding, type RuleData, type RuleInput,
+  type RuleOutput,
 } from '../../api/types'
 import { refTitle } from '../bundle'
 import {
@@ -278,6 +279,10 @@ export function RuleCard({ bundle, onOpen }: {
         </DetailCard>
       )}
 
+      {(d.applies_to ?? []).length > 0 && (
+        <AppliesTo bundle={bundle} bindings={d.applies_to ?? []} onOpen={onOpen} />
+      )}
+
       {(d.calls ?? []).length > 0 && (
         <DetailCard clip={false} className="mt-s7 px-s9 py-s8">
           <Eyebrow>{label(PAYLOAD_FIELD_LABELS, 'calls')}</Eyebrow>
@@ -351,6 +356,91 @@ export function RuleCard({ bundle, onOpen }: {
   )
 }
 
+/**
+ * «محل اجرا» — QF-47's `applies_to[]`, one row per binding.
+ *
+ * **Owner ruling, 2026-09-06: the structure is shown and the placement is
+ * delegated.** So this is the card's own `HeadBand` over the same `FactGrid`
+ * the decision table and the edge cases already draw, at the same tokens; no
+ * new design value is introduced. `align` stays `start`: a workbook title and a
+ * tab name are names, not values, and the centred variant belongs to the two
+ * grids whose columns hold one number each.
+ *
+ * The workbook, the tab and the branch come from `bundle.binding_labels` and
+ * not from the entry — a binding names a column of ANOTHER entry, and the
+ * workbook's title is the manifest's, so neither is reachable from here. A
+ * binding the server could not resolve draws the record's own title and no
+ * workbook, which is still a true statement about where the rule runs.
+ */
+function AppliesTo({ bundle, bindings, onOpen }: {
+  bundle: FactBundle; bindings: RuleBinding[]; onOpen: (id: string) => void
+}) {
+  const heading = label(PAYLOAD_FIELD_LABELS, 'applies_to')
+  return (
+    <DetailCard className="mt-s7">
+      <HeadBand>{heading}</HeadBand>
+      <FactGrid
+        label={heading}
+        tracks={{
+          gridTemplateColumns:
+            'minmax(140px,1fr) minmax(110px,1fr) minmax(90px,1fr) '
+            + 'minmax(100px,1fr) minmax(180px,1.4fr)',
+        }}
+        head={[
+          label(PAYLOAD_FIELD_LABELS, 'workbook'),
+          label(PAYLOAD_FIELD_LABELS, 'sheet'),
+          label(PAYLOAD_FIELD_LABELS, 'branch'),
+          label(PAYLOAD_FIELD_LABELS, 'rows'),
+          label(PAYLOAD_FIELD_LABELS, 'params'),
+        ]}
+        rows={bindings.map((b) => {
+          const where = bundle.binding_labels[b.key]
+          const record = refTitle(bundle, b.record)
+          return {
+            key: b.key,
+            cells: [
+              { node: where?.workbook
+                ? <Mono className="text-fs-sm2 text-ink">{where.workbook}</Mono>
+                : <RefLink named={record} onOpen={onOpen} className="text-fs-sm2" /> },
+              { node: <span className="text-fs-sm2 text-ink">{where?.sheet ?? none()}</span> },
+              { node: <span className="text-fs-sm2 text-muted">{where?.branch ?? none()}</span> },
+              { node: <Mono className="text-fs-sm2 text-faint">{b.range ?? none()}</Mono> },
+              { node: <Params bundle={bundle} params={b.params} /> },
+            ],
+          }
+        })}
+      />
+    </DetailCard>
+  )
+}
+
+/**
+ * A binding's parameters — the numbers, and nothing else raw.
+ *
+ * §2.5's rule, kept identically here and in `gate-b.md`: a **numeric** value is
+ * shown; a value that is a `{ref}` or a table name is shown as the referenced
+ * record's Persian title, or omitted. A `Table_*` string in front of a reader is
+ * exactly what the style card exists to prevent, and a parameter is the one
+ * place one could still reach a screen.
+ */
+function Params({ bundle, params }: {
+  bundle: FactBundle; params?: Record<string, unknown>
+}) {
+  const entries = Object.entries(params ?? {})
+  if (entries.length === 0) return <span className="text-fs-sm2 text-faint">{none()}</span>
+  const parts = entries.map(([key, value]) => {
+    if (typeof value === 'number') {
+      return <Mono key={key} className="text-fs-sm2 text-ink">{`${key} = ${value}`}</Mono>
+    }
+    const named = refTitle(bundle, value as never)
+    return named === undefined
+      ? null
+      : <span key={key} className="text-fs-sm2 text-muted">{named.text}</span>
+  }).filter((x) => x !== null)
+  if (parts.length === 0) return <span className="text-fs-sm2 text-faint">{none()}</span>
+  return <span className="flex flex-wrap gap-s4">{parts}</span>
+}
+
 /** :1260 — drift is `--conflict`, an intentional difference `--warn-fg`,
  *  anything else `--green`. */
 const DIVERGENCE_INK: Record<string, string> = {
@@ -377,7 +467,13 @@ function InputRow({ bundle, input, onOpen }: {
 }) {
   const unit = unitOf(input)
   const literal = typeof input.from === 'string' ? input.from : undefined
-  const from = typeof input.from === 'object' ? refTitle(bundle, input.from) : undefined
+  const edge = input.from !== null && typeof input.from === 'object' ? input.from : undefined
+  // QF-47's third form: the value differs per binding, so it is named here and
+  // its numbers are drawn per binding in «مقادیر». The name is the parameter's
+  // own — there is no Persian for it — so it is an LTR island (QF-42), never a
+  // dangling ref, which is what an empty «خوانده می‌شود از» would read as.
+  const param = edge !== undefined && 'param' in edge ? edge.param : undefined
+  const from = edge !== undefined && 'ref' in edge ? refTitle(bundle, edge) : undefined
   const via = refTitle(bundle, input.via)
   return (
     // :1287 — `13px 18px`, and 13px HAS a token: `--pad-table-row-y`
@@ -394,7 +490,9 @@ function InputRow({ bundle, input, onOpen }: {
           ? <span className="text-fs-sm2 font-bold text-muted">
             {label(FROM_LITERAL_LABELS, literal)}
           </span>
-          : <RefLink named={from} onOpen={onOpen} className="text-fs-sm2" />}
+          : param !== undefined
+            ? <Mono className="text-fs-sm2 text-ink">{param}</Mono>
+            : <RefLink named={from} onOpen={onOpen} className="text-fs-sm2" />}
         {via !== undefined && (
           <>
             <span className="text-fs-sm2 text-muted">{label(PAYLOAD_FIELD_LABELS, 'via')}</span>
