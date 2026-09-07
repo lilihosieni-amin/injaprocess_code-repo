@@ -690,11 +690,12 @@ def process_links(root: Path, entry: dict) -> list:
 def coverage(root: Path) -> dict:
     """`{"read": n, "total": m}` — how much of the estate has been read.
 
-    The same count `merge facts check` reports (§12), joined the same way: a
-    workbook is *read* when a **non-stub** `record` names its `spreadsheetId`
-    in `data.location`. A stub is identity and nothing else (QF-20), so it
-    reads nothing; a retired record still counts, because the reading did
-    happen and the tab going away does not un-read the workbook.
+    The panel's own count: `merge facts check` withdrew its workbook
+    denominator in v3, so nothing upstream reports this and the join is made
+    here. A workbook is *read* when a **non-stub** `record` names its
+    `spreadsheetId` in `data.location`. A stub is identity and nothing else
+    (QF-20), so it reads nothing; a retired record still counts, because the
+    reading did happen and the tab going away does not un-read the workbook.
     """
     cited = set()
     for entry in load_all(root):

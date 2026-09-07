@@ -342,20 +342,6 @@ def _fk_reference_ok(fk):
     return isinstance(reference, dict) and bool(reference.get("ref"))
 
 
-def foreign_key_declares_a_join(fk):
-    """Whether a `foreignKeys` member names both of its sides (§8): the columns
-    it joins on, and the entry it points at.
-
-    Public because `merge facts repair-foreign-keys` drops exactly the members
-    this answers `False` for. Sharing the predicate is what keeps the repair and
-    this pass from ever disagreeing about which members are malformed — a repair
-    that dropped fewer would leave the store failing its own validator, and one
-    that dropped more would delete facts nobody asked it to.
-    """
-    return (isinstance(fk, dict) and _fk_fields_ok(fk)
-            and _fk_reference_ok(fk))
-
-
 def _check_record_shape(entry, messages, label):
     if entry.get("kind") != "record":
         return

@@ -5,7 +5,7 @@ import json
 import pathlib
 import re
 
-from facts_plan.assemble import assemble, report
+from facts_plan.assemble import assemble, report, validate_unit
 from test_facts_plan_fixture import _build
 
 UNITS = pathlib.Path(__file__).parent / "fixtures" / "facts-plan" / "units"
@@ -20,8 +20,12 @@ def _delta(tmp_path):
     for path in UNITS.glob("*.json"):
         target = run / "units" / path.stem
         target.mkdir(parents=True, exist_ok=True)
-        (target / "out.1.json").write_text(path.read_text(encoding="utf-8"),
-                                           encoding="utf-8")
+        out = target / "out.1.json"
+        out.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
+        # The stage the real chain runs between the unit and `assemble` (§2.3,
+        # QF-51): a document `validate facts-unit` refuses is re-dispatched,
+        # never folded in — so the frozen three have to pass it here too.
+        assert validate_unit(root, run, out) == [], path.stem
     assemble(root, run)
     return root, run, json.loads((run / "facts-delta.json")
                                  .read_text(encoding="utf-8"))

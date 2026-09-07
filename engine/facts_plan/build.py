@@ -1659,9 +1659,10 @@ def plan_units(skeleton, groups, chunks, items, attachments, render=lambda u: ""
     placed = collections.Counter(cid for unit in out for cid in unit["candidates"])
     twice = sorted(cid for cid, n in placed.items() if n > 1)
     nowhere = sorted(set(by_id) - set(placed))
-    assert not twice and not nowhere, (
-        f"plan_units: {len(twice)} candidate(s) in two units {twice[:3]}, "
-        f"{len(nowhere)} in none {nowhere[:3]}")
+    if twice or nowhere:
+        print(f"facts-plan: {len(twice)} candidate(s) in two units {twice[:3]}, "
+              f"{len(nowhere)} in none {nowhere[:3]}", file=sys.stderr)
+        raise SystemExit(2)
     return out
 
 

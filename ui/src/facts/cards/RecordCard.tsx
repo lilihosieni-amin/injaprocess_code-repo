@@ -758,7 +758,10 @@ function Instances({ bundle, instances, onOpen }: {
           <div key={inst.key} style={PX.rowY7}>
             <div className="flex items-baseline gap-s5 flex-wrap">
               <Mono className="text-fs-menu font-semibold text-ink">
-                {where?.workbook ?? none()}
+                {/* Falsy, not nullish: an empty served title drew a blank cell
+                    where «—» says the title is the thing that is missing. It
+                    is the test «محل اجرا» already makes on the same label. */}
+                {where?.workbook || none()}
               </Mono>
               <span className="text-fs-sm2 text-ink">{inst.sheet ?? none()}</span>
               {where?.branch !== null && where?.branch !== undefined && (

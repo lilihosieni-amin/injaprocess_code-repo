@@ -390,7 +390,7 @@ function AppliesTo({ bundle, bindings, onOpen }: {
           label(PAYLOAD_FIELD_LABELS, 'workbook'),
           label(PAYLOAD_FIELD_LABELS, 'sheet'),
           label(PAYLOAD_FIELD_LABELS, 'branch'),
-          label(PAYLOAD_FIELD_LABELS, 'rows'),
+          label(PAYLOAD_FIELD_LABELS, 'cell_range'),
           label(PAYLOAD_FIELD_LABELS, 'params'),
         ]}
         rows={bindings.map((b) => {

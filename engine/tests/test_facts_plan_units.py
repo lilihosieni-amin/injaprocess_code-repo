@@ -113,6 +113,22 @@ def test_a_template_spanning_two_groups_exits_2(capsys):
     assert "sokhari" in err and "fried" in err and "twin_of" in err
 
 
+def test_a_candidate_no_unit_holds_exits_2(capsys):
+    """The plan's other invariant — a candidate decided nowhere is silently
+    lost work. It was a bare `assert`, which `python -O` drops and which reads
+    as a crash rather than as the refusal every other precondition is."""
+    skeleton = {"candidates": [
+        {"id": "S-rec-000000000001", "kind": "record",
+         "payload": {"instances": [{"key": "nowhere__s1", "sheet": "t"}],
+                     "fields": []}}],
+        "instances": [{"key": "nowhere__s1", "sheetId": 1}]}
+    with pytest.raises(SystemExit) as excinfo:
+        plan_units(skeleton, workbook_groups({"workbooks": []}, "cooking"),
+                   [], [], [])
+    assert excinfo.value.code == 2
+    assert "S-rec-000000000001" in capsys.readouterr().err
+
+
 def test_an_unsplittable_group_exits_2(capsys):
     skeleton = {"candidates": [
         {"id": "S-rec-000000000001", "kind": "record",

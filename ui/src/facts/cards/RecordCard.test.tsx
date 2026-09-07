@@ -357,6 +357,19 @@ describe('the record card', () => {
     expect(screen.getAllByText('مخفی')).toHaveLength(1)
   })
 
+  it('draws «—» for an instance whose workbook title came back empty', () => {
+    // `??` lets an empty string through, and the cell went blank — the reader
+    // cannot tell "no title" from "nothing drawn here". The falsy test is the
+    // one «محل اجرا» makes on the same label.
+    draw(TEMPLATE({ binding_labels: {
+      gozaresh_markazi__s0: { workbook: '', sheet: 'پیتزا', branch: 'چاله‌باغ' },
+      gozaresh_naharkhoran__s0: { workbook: 'Gozaresh naharkhoran',
+                                  sheet: 'پیتزا', branch: 'ناهارخوران' },
+    } }))
+    const versions = screen.getByText('نسخه‌ها').parentElement!
+    expect(versions).toHaveTextContent('—')
+  })
+
   it('keeps the single location line for a record with no instances', () => {
     // A paper form and an external table have a `location` and no `instances[]`,
     // and that row is the only thing that says where they are.

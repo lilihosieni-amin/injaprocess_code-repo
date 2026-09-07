@@ -385,6 +385,9 @@ export const PAYLOAD_FIELD_LABELS: Record<string, string> = {
   fields: 'ستون‌ها',
   header_fields: 'فیلدهای سربرگ',
   rows: 'ردیف‌ها',
+  // A binding's `range` — an A1 span («J6:J15»), which is a range and not a
+  // count of rows, so «محل اجرا»'s fourth column is headed with this.
+  cell_range: 'محدوده',
   sections: 'بخش‌ها',
   signatures: 'امضاها',
   type: 'نوع',

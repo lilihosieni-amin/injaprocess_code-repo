@@ -1129,9 +1129,14 @@ def gate_b(root, skeleton, entries, state):
                                    for letter, side in zip(LETTERS_FA, sides)))
         out.append("")
     if issues:
-        out.append(f"ایرادهای یافته‌شده در فایل‌ها: {_fa(len(issues))} مورد — "
-                   "سه مورد مهم:")
-        out += [f'  • {i["description"]}' for i in issues[:3]]
+        # The design's line says «سه مورد مهم», which a run with one issue
+        # printed over a single bullet. The count is what is true: the whole
+        # list when it fits, and how many of it are shown when it does not.
+        shown = issues[:3]
+        out.append(f"ایرادهای یافته‌شده در فایل‌ها: {_fa(len(issues))} مورد"
+                   + (f" — {_fa(len(shown))} مورد از آن‌ها:"
+                      if len(issues) > len(shown) else ":"))
+        out += [f'  • {i["description"]}' for i in shown]
         out.append("")
     out += [f"بی‌پاسخ: {_fa(unknown)} خانه — در پنل.", "", "تأیید می‌کنید؟", ""]
     return "\n".join(out)

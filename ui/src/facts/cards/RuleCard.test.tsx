@@ -254,6 +254,10 @@ describe('the rule card', () => {
     expect(within(table).getByText('پیتزا')).toBeInTheDocument()
     expect(within(table).getByText('چاله‌باغ')).toBeInTheDocument()
     expect(within(table).getByText('J6:J15')).toBeInTheDocument()
+    // That column shows `range` — an A1 span, not a count of rows, so «ردیف‌ها»
+    // named a column it does not draw.
+    expect(within(table).getByText('محدوده')).toBeInTheDocument()
+    expect(within(table).queryByText('ردیف‌ها')).toBeNull()
     // A number is an LTR island beside its parameter name (QF-42).
     expect(within(table).getByText(/tolerancePerFoodGr/)).toHaveAttribute('dir', 'ltr')
     expect(within(table).getByText(/140/)).toBeInTheDocument()

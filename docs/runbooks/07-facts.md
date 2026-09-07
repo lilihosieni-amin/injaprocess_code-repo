@@ -3,7 +3,7 @@
 The facts store (`data-repo/facts/`) holds the estate's definitions — units,
 constants, records, rules — built from the Google Sheets estate, paper forms
 and meeting transcripts by the `quantify`/`edit-fact` playbooks (design
-`docs/superpowers/specs/2026-08-29-quantitative-facts-design.md`). This
+`docs/superpowers/specs/2026-09-06-quantitative-facts-v3-design.md`). This
 runbook is the operator's side of it: placing the estate, bootstrapping the
 store, seeding the confirmations that have no reviewer to click them yet, and
 handing a scope over when it is done.
