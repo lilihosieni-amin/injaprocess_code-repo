@@ -1,0 +1,62 @@
+{
+ "schema_version": 1,
+ "unit": "u-wb-fried",
+ "attempt": 1,
+ "decisions": [
+  {
+   "skeleton": "S-rec-a1440cef3fb8",
+   "action": "keep",
+   "key": "mojudi_aval_shab_sokhari",
+   "title": "موجودی اول شب لاین سوخاری",
+   "statement": "شمارش موجودی اقلام لاین سوخاری در آغاز شب کاری.",
+   "data": {
+    "role": "log",
+    "cadence": "nightly",
+    "day_boundary": "01:15"
+   }
+  },
+  {
+   "skeleton": "S-rec-5d323801cf94",
+   "action": "keep",
+   "key": "mojudi_akhar_shab_sokhari",
+   "title": "موجودی آخر شب لاین سوخاری",
+   "statement": "شمارش موجودی اقلام لاین سوخاری در پایان شب، پس از بسته شدن رستوران.",
+   "data": {
+    "role": "log",
+    "cadence": "nightly",
+    "day_boundary": "01:15",
+    "movement": {
+     "from": {
+      "ref": "N-u-wb-fried-0"
+     },
+     "to": {
+      "ref": "N-u-wb-fried-1"
+     },
+     "reason": "باقی‌ماندهٔ اقلام لاین در پایان شب به انبار مرکزی برگردانده می‌شود."
+    }
+   }
+  }
+ ],
+ "new": [
+  {
+   "kind": "item",
+   "key": "line_sokhari",
+   "title": "لاین سوخاری",
+   "statement": "محل پخت و نگهداری اقلام سوخاری در آشپزخانه.",
+   "data": {
+    "category": "place",
+    "unit": null
+   }
+  },
+  {
+   "kind": "item",
+   "key": "anbar_markazi",
+   "title": "انبار مرکزی",
+   "statement": "انباری که اقلام از آنجا به لاین‌های آشپزخانه تحویل می‌شود.",
+   "data": {
+    "category": "place",
+    "unit": null
+   }
+  }
+ ]
+}

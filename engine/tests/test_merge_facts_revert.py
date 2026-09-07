@@ -56,7 +56,7 @@ def test_ids_never_reused_after_revert(tmp_path):
 
 def _workbook_stub_seed():
     src = {"type": "script", "ref": "attachments/sheets/G/G.gs", "function": "pull"}
-    return {"schema_version": 1, "entries": [
+    return {"schema_version": 2, "entries": [
         {"id": "T-1", "kind": "item", "key": "ing_7", "title": "روغن",
          "statement": "s", "scope": {"departments": [], "branches": []},
          "source": [dict(src)], "retired": False,
@@ -74,7 +74,7 @@ def _workbook_stub_seed():
                   "writes_to": {"ref": "T-2", "field": "masraf"}}}]}
 
 def _real_record_delta():
-    return {"schema_version": 1, "entries": [
+    return {"schema_version": 2, "entries": [
         {"id": "T-1", "kind": "record", "key": "w__ruzane", "title": "روزانه انبار",
          "statement": "s", "scope": {"departments": ["cooking"], "branches": []},
          "source": [{"type": "sheet", "ref": "attachments/sheets/W/W.xlsx"}],
@@ -130,7 +130,10 @@ def test_revert_unrelated_run_not_blocked_by_later_adoption(tmp_path):
     root = _root(tmp_path); _seed_units(root)
     apply(root, _write(root, "d1.json", _workbook_stub_seed()), _run_dir(root, "1"))
     run2 = _run_dir(root, "2")
-    apply(root, _write(root, "d2.json", _const_delta(5, key="unrelated")), run2)
+    unrelated = _const_delta(5, key="unrelated")
+    # `_const_delta` builds its title from the key; §5.2 keeps Latin out of one.
+    unrelated["entries"][0]["title"] = "تلورانس نامرتبط"
+    apply(root, _write(root, "d2.json", unrelated), run2)
     apply(root, _write(root, "d3.json", _real_record_delta()), _run_dir(root, "3"))
     revert(root, run2)               # run2 never touched the stub — must succeed
     store = load_store(root)
@@ -139,7 +142,9 @@ def test_revert_unrelated_run_not_blocked_by_later_adoption(tmp_path):
 # --- Task 7 review, round 2: id-map.json and adopted.json must be write- ---
 # --- once per run dir too — a RETRY of the same delta into the SAME run ---
 # --- dir must not let a second apply() recompute them from the now- ---
-# --- already-written store and silently erase the first call's record ---
+# --- already-written store and silently erase the first call's record. ---
+# --- Task 5 (v3 §4) settles it harder: `apply` now REFUSES a run dir that ---
+# --- already holds an id-map.json, so `_write_once` is never reached. ---
 
 def test_retried_apply_does_not_erase_id_map_or_adopted_json(tmp_path, capsys):
     root = _root(tmp_path); _seed_units(root)
@@ -163,12 +168,16 @@ def test_retried_apply_does_not_erase_id_map_or_adopted_json(tmp_path, capsys):
     assert id_map_1 == report1["id_map"] and id_map_1["T-2"]   # the real mint
     assert adopted_1 != []                               # the stub really was adopted
 
-    report2 = apply(root, d2, run2)                       # SAME run_dir, SAME delta
+    # `used` (Task 5) is the stronger form of the same protection: the second
+    # call never gets as far as recomputing anything, so the two artifacts
+    # stand exactly as the first call wrote them.
+    with pytest.raises(SystemExit) as retry:
+        apply(root, d2, run2)                             # SAME run_dir, SAME delta
+    assert retry.value.code == 2
     id_map_2 = json.loads((run2 / "id-map.json").read_text())
     adopted_2 = json.loads((run2 / "adopted.json").read_text())
     assert id_map_2 == id_map_1                            # not silently flipped to {}
     assert adopted_2 == adopted_1                           # not silently flipped to []
-    assert report2["id_map"] == {}                        # the retry itself sees only hits
 
     with pytest.raises(SystemExit) as e:
         revert(root, run2)

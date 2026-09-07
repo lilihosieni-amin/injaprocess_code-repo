@@ -100,6 +100,36 @@ const UNITS = bundleOf('record', {
   ],
 })
 
+/** A report template that sits in two workbooks and pulls one table in —
+ *  QF-47's `instances[]` and QF-48's import edge, in one entry. */
+const TEMPLATE = (over: Partial<FactBundle> = {}): FactBundle => bundleOf('record', {
+  medium: 'sheet', role: 'report', location: {},
+  fields: [{ key: 'c_j', title: 'انحراف', type: 'number', unit: 'kg' }],
+  instances: [
+    { key: 'gozaresh_markazi__s0', spreadsheetId: 'ID_CB', sheetId: 0,
+      sheet: 'پیتزا', branch: 'chalebagh', hidden: false,
+      imports: [{ key: 'im_1', source: { ref: 'F-00400' }, range: 'A:X' }] },
+    { key: 'gozaresh_naharkhoran__s0', spreadsheetId: 'ID_NK', sheetId: 0,
+      sheet: 'پیتزا', branch: 'naharkhoran', hidden: true,
+      imports: [{ key: 'im_2', source: { spreadsheetId: 'ID_SRC', sheet: 'singlePizza' },
+                  range: 'A:V' }] },
+  ],
+}, {
+  resolved: { 'F-00400': { kind: 'record', title: 'دستور پیتزا تکی' } },
+  workbook_titles: { ID_CB: 'Gozaresh markazi', ID_NK: 'Gozaresh naharkhoran',
+                     ID_SRC: 'Mavade Avalie' },
+  binding_labels: {
+    gozaresh_markazi__s0: { workbook: 'Gozaresh markazi', sheet: 'پیتزا', branch: 'چاله‌باغ' },
+    gozaresh_naharkhoran__s0: { workbook: 'Gozaresh naharkhoran', sheet: 'پیتزا',
+                                branch: 'ناهارخوران' },
+  },
+  ...over,
+}, {
+  issues: [{ kind: 'column_shift', instance: 'gozaresh_naharkhoran__s0',
+             description: 'ستون «مصرف واقعی» در این نسخه جا افتاده است.',
+             affects: [{ ref: 'F-00014' }] }],
+})
+
 const draw = (bundle: FactBundle) =>
   render(<RecordCard bundle={bundle} onOpen={vi.fn()} />)
 
@@ -296,31 +326,6 @@ describe('the record card', () => {
     expect(screen.getByText('برگهٔ خالی برای پر کردن')).toBeInTheDocument()
   })
 
-  it('skips a foreign key it cannot describe, rather than throwing on it', () => {
-    // **Owner report, 2026-09-06:** the single-pizza mirror opened as
-    // "Cannot read properties of undefined (reading 'join')". `F-00216` and 83
-    // others carry an import descriptor — `{spreadsheetId, sheet, range,
-    // target}` — where the spec's `{fields, reference, …}` (:903) belongs, and
-    // this row joined `fk.fields` unguarded.
-    //
-    // A member with neither side describes no join, so it is dropped rather
-    // than half-drawn: a «ارتباط با جدول دیگر» row naming no columns and no
-    // table is worse than its absence. The engine refuses the shape now, and a
-    // mirror carries `mirror_of` instead — this guard is only what keeps an
-    // already-stored one readable.
-    draw(bundleOf('record', {
-      medium: 'sheet', role: 'mirror', location: {},
-      mirror_of: { ref: 'F-00193' },
-      foreignKeys: [{
-        spreadsheetId: '1AIjH-sWVc6t5bXnEKiYrmrpX1TPtEbKtwZA0tjr-5bI',
-        sheet: 'singlePizza', range: 'A:X', target: { ref: 'F-00193' },
-      }],
-    }, { resolved: { 'F-00193': { kind: 'record', title: 'دستور پیتزا تکی' } } }))
-    expect(screen.queryByText('ارتباط با جدول دیگر')).toBeNull()
-    // …and the mirror it really is still says so.
-    expect(screen.getByText('دستور پیتزا تکی')).toBeInTheDocument()
-  })
-
   it('draws a foreign key that carries both of its sides', () => {
     // The other half of the guard: dropping the malformed ones must not drop
     // the shape the spec defines. `role: reference` is where it is expressible
@@ -339,5 +344,56 @@ describe('the record card', () => {
     expect(fks).toHaveTextContent('ingredient')
     expect(fks).toHaveTextContent('فهرست مواد اولیه')
     expect(fks).toHaveTextContent('key')
+  })
+
+  it('lists «نسخه‌ها» in place of the single location line', () => {
+    draw(TEMPLATE())
+    expect(screen.getByText('نسخه‌ها')).toBeInTheDocument()
+    expect(screen.queryByText('محل')).toBeNull()
+    expect(screen.getByText('Gozaresh markazi')).toBeInTheDocument()
+    expect(screen.getByText('Gozaresh naharkhoran')).toBeInTheDocument()
+    expect(screen.getByText('ناهارخوران')).toBeInTheDocument()
+    // The hidden tab says so; the visible one draws no marker.
+    expect(screen.getAllByText('مخفی')).toHaveLength(1)
+  })
+
+  it('draws «—» for an instance whose workbook title came back empty', () => {
+    // `??` lets an empty string through, and the cell went blank — the reader
+    // cannot tell "no title" from "nothing drawn here". The falsy test is the
+    // one «محل اجرا» makes on the same label.
+    draw(TEMPLATE({ binding_labels: {
+      gozaresh_markazi__s0: { workbook: '', sheet: 'پیتزا', branch: 'چاله‌باغ' },
+      gozaresh_naharkhoran__s0: { workbook: 'Gozaresh naharkhoran',
+                                  sheet: 'پیتزا', branch: 'ناهارخوران' },
+    } }))
+    const versions = screen.getByText('نسخه‌ها').parentElement!
+    expect(versions).toHaveTextContent('—')
+  })
+
+  it('keeps the single location line for a record with no instances', () => {
+    // A paper form and an external table have a `location` and no `instances[]`,
+    // and that row is the only thing that says where they are.
+    draw(PAPER())
+    expect(screen.getByText('محل')).toBeInTheDocument()
+    expect(screen.queryByText('نسخه‌ها')).toBeNull()
+  })
+
+  it('draws «ورودی از» under the instance that pulls the table in', () => {
+    draw(TEMPLATE())
+    const imports = screen.getAllByText('ورودی از')
+    expect(imports).toHaveLength(2)
+    // A `{ref}` source is the record's Persian title, and a link.
+    expect(screen.getByRole('button', { name: /دستور پیتزا تکی/ })).toBeInTheDocument()
+    // A locator source is the workbook's title and its tab — never a drive id.
+    expect(screen.getByText(/Mavade Avalie/)).toBeInTheDocument()
+    expect(screen.getByText(/singlePizza/)).toBeInTheDocument()
+    expect(screen.queryByText('ID_SRC')).toBeNull()
+    expect(screen.getByText('A:V')).toBeInTheDocument()
+  })
+
+  it('hangs a column_shift issue on the instance it names', () => {
+    draw(TEMPLATE())
+    expect(screen.getByText('ستون «مصرف واقعی» در این نسخه جا افتاده است.'))
+      .toBeInTheDocument()
   })
 })

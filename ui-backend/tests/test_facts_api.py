@@ -787,7 +787,7 @@ def test_the_bundle_carries_every_map_a_screen_needs(data_root, tmp_path):
     body = client.get(f"/api/facts/{RULE}").json()
     assert set(body) == {"entry", "confirmation", "red_paths", "resolved",
                          "row_titles", "path_labels", "consumers", "processes",
-                         "original"}
+                         "original", "workbook_titles", "binding_labels"}
     assert body["entry"]["id"] == RULE
     assert body["confirmation"] == {
         "fingerprint": fact_fingerprint(

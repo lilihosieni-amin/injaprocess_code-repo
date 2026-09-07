@@ -1,0 +1,166 @@
+{
+ "schema_version": 2,
+ "entries": [
+  {
+   "id": "F-00001",
+   "kind": "record",
+   "key": "units",
+   "title": "واحدها",
+   "statement": "جدول واحدها — رجیستری نمادها، بُعد، ضریب تبدیل به واحد پایه و عنوان فارسی هر واحد",
+   "scope": {
+    "departments": [],
+    "branches": []
+   },
+   "source": [
+    {
+     "type": "chat",
+     "ref": null,
+     "hash": null,
+     "run": "runs/facts/management/20260902-081500"
+    }
+   ],
+   "retired": false,
+   "data": {
+    "medium": "native",
+    "role": "config",
+    "location": {},
+    "primaryKey": [
+     "symbol"
+    ],
+    "fields": [
+     {
+      "key": "symbol",
+      "title": "نماد",
+      "type": "string"
+     },
+     {
+      "key": "dimension",
+      "title": "بُعد",
+      "type": "string"
+     },
+     {
+      "key": "factor_to_base",
+      "title": "ضریب",
+      "type": "number"
+     },
+     {
+      "key": "unit_title",
+      "title": "عنوان",
+      "type": "string"
+     }
+    ],
+    "rows": [
+     {
+      "key": "g",
+      "symbol": "g",
+      "dimension": "mass",
+      "factor_to_base": 1,
+      "unit_title": "گرم"
+     },
+     {
+      "key": "kg",
+      "symbol": "kg",
+      "dimension": "mass",
+      "factor_to_base": 1000,
+      "unit_title": "کیلوگرم"
+     },
+     {
+      "key": "ml",
+      "symbol": "ml",
+      "dimension": "volume",
+      "factor_to_base": 1,
+      "unit_title": "میلی‌لیتر"
+     },
+     {
+      "key": "l",
+      "symbol": "l",
+      "dimension": "volume",
+      "factor_to_base": 1000,
+      "unit_title": "لیتر"
+     },
+     {
+      "key": "pcs",
+      "symbol": "pcs",
+      "dimension": "count",
+      "factor_to_base": 1,
+      "unit_title": "عدد"
+     },
+     {
+      "key": "slice",
+      "symbol": "slice",
+      "dimension": "count",
+      "factor_to_base": 1,
+      "unit_title": "برش"
+     },
+     {
+      "key": "portion",
+      "symbol": "portion",
+      "dimension": "count",
+      "factor_to_base": 1,
+      "unit_title": "پرس"
+     },
+     {
+      "key": "carton",
+      "symbol": "carton",
+      "dimension": "pack",
+      "factor_to_base": null,
+      "unit_title": "کارتن"
+     },
+     {
+      "key": "pack",
+      "symbol": "pack",
+      "dimension": "pack",
+      "factor_to_base": null,
+      "unit_title": "بسته"
+     },
+     {
+      "key": "min",
+      "symbol": "min",
+      "dimension": "duration",
+      "factor_to_base": 1,
+      "unit_title": "دقیقه"
+     },
+     {
+      "key": "hour",
+      "symbol": "hour",
+      "dimension": "duration",
+      "factor_to_base": 60,
+      "unit_title": "ساعت"
+     },
+     {
+      "key": "day",
+      "symbol": "day",
+      "dimension": "duration",
+      "factor_to_base": 1440,
+      "unit_title": "روز"
+     },
+     {
+      "key": "irr",
+      "symbol": "irr",
+      "dimension": "money",
+      "factor_to_base": 1,
+      "unit_title": "ریال"
+     },
+     {
+      "key": "percent",
+      "symbol": "percent",
+      "dimension": "dimensionless",
+      "factor_to_base": 0.01,
+      "unit_title": "درصد"
+     },
+     {
+      "key": "ratio",
+      "symbol": "ratio",
+      "dimension": "dimensionless",
+      "factor_to_base": 1,
+      "unit_title": "نسبت"
+     }
+    ]
+   },
+   "valid_from": null,
+   "valid_to": null,
+   "status": "unknown",
+   "updated_at": "2026-09-02T08:17:10Z"
+  }
+ ]
+}

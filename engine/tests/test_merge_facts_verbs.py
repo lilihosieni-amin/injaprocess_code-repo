@@ -1,11 +1,10 @@
 from facts_helpers import _root, _seed_units, _const_delta, _write, _run_dir
 from merge_facts import load_store
 from merge_facts.apply import apply
-from merge_facts.content import check_document
 from merge_facts.revert import revert
 from merge_facts.apply import _source_path_problems
-from merge_facts.verbs import (export, promote, repair_foreign_keys,
-                               repair_source_refs, resolve, retire)
+from merge_facts.verbs import (export, promote, repair_source_refs, resolve,
+                               retire)
 import pytest
 
 # json: only the two locking tests below need it, to read `.index.json` back
@@ -44,12 +43,13 @@ def test_retire_sets_flags_and_refuses_retired_heir(tmp_path):
 
 def test_promote_keeps_id_recomputes_key_refuses_collision(tmp_path):
     root = _root(tmp_path); _seed_units(root)
-    note = {"schema_version": 1, "entries": [{
+    note = {"schema_version": 2, "entries": [{
         "id": "T-1", "kind": "note", "key": "note_ab12cd34ef56",
         "title": "یادداشت", "statement": "هر پرس ۶۰ گرم",
         "scope": {"departments": ["cooking"], "branches": []},
         "source": [{"type": "voice", "ref": "meetings/transcripts/c.txt", "lines": "5"}],
-        "retired": False, "data": {}}]}
+        "retired": False, "data": {"about": [{"ref": "F-00001"}],
+                                   "question": "این عدد کجا ثبت می‌شود؟"}}]}
     r = apply(root, _write(root, "dn.json", note), _run_dir(root, "1"))
     nid = r["id_map"]["T-1"]
     promote(root, nid, "rule", "portion_g_roast_beef", _run_dir(root, "2"))
@@ -70,101 +70,18 @@ def test_export_reference_record_csv(tmp_path):
         export(root, "units", root / "facts" / "u.csv", include_retired=False)  # under facts/
 
 
-# --- repair-foreign-keys: the one write that removes, and why it has to be ---
-# --- a verb at all (the ladder has no action that takes a key back out) ---
-
-def _with_foreign_keys(root, members):
-    """`units` in the store, carrying `members` on `foreignKeys` — written
-    straight into the file because no supported path can put them there.
-    A delta cannot: `apply` runs the content pass, which refuses the shape
-    outright. That is the point — the store's 84 predate the check, and the
-    only way to reproduce their arrival is to bypass the door that now stops
-    them."""
-    path = root / "facts" / "records.json"
-    doc = json.loads(path.read_text(encoding="utf-8"))
-    entry = [e for e in doc["entries"] if e["key"] == "units"][0]
-    entry["data"]["foreignKeys"] = members
-    path.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
-    return entry["id"]
-
-
-# `F-00216`'s member, verbatim: an IMPORT descriptor written where §8 puts a
-# foreign key.
-_IMPORT_DESCRIPTOR = {"spreadsheetId": "1AIjH", "sheet": "singlePizza",
-                      "range": "A:X", "target": {"ref": "F-00193"}}
-_REAL_KEY = {"fields": ["symbol"], "reference": {"ref": "F-00001"},
-             "reference_fields": ["key"]}
-
-
-def test_repair_drops_the_malformed_member_and_keeps_the_declared_one(tmp_path):
-    root = _root(tmp_path); _seed_units(root)
-    fid = _with_foreign_keys(root, [_IMPORT_DESCRIPTOR, _REAL_KEY])
-    assert repair_foreign_keys(root, _run_dir(root, "20260902-101500")) == [(fid, 1)]
-    e = [x for x in load_store(root)["record"]["entries"] if x["id"] == fid][0]
-    assert e["data"]["foreignKeys"] == [_REAL_KEY]      # the real one survives
-
-
-def test_repair_drops_the_collection_with_its_last_member(tmp_path):
-    # A record left holding `foreignKeys: []` would still say it joins
-    # something. Nothing is what it has.
-    root = _root(tmp_path); _seed_units(root)
-    fid = _with_foreign_keys(root, [_IMPORT_DESCRIPTOR])
-    repair_foreign_keys(root, _run_dir(root, "20260902-101500"))
-    e = [x for x in load_store(root)["record"]["entries"] if x["id"] == fid][0]
-    assert "foreignKeys" not in e["data"]
-
-
-def test_repair_leaves_a_clean_store_untouched_byte_for_byte(tmp_path):
-    # Idempotence, and the guard against a repair that "tidies" anything else:
-    # a second run must find nothing and write nothing at all.
-    root = _root(tmp_path); _seed_units(root)
-    _with_foreign_keys(root, [_IMPORT_DESCRIPTOR])
-    repair_foreign_keys(root, _run_dir(root, "20260902-101500"))
-    before = {p.name: p.read_bytes() for p in (root / "facts").glob("*.json")}
-    run_two = _run_dir(root, "20260902-101600")
-    assert repair_foreign_keys(root, run_two) == []
-    assert {p.name: p.read_bytes() for p in (root / "facts").glob("*.json")} == before
-    # And no snapshot either: a run directory holding `facts-before/` with no
-    # delta beside it is a live `revert` target that would restore a store from
-    # after this repair — undoing whatever came next instead of undoing this.
-    assert not (run_two / "facts-delta.json").exists()
-    assert not (run_two / "facts-before").exists()
-
-
-def test_repair_is_revertible_from_its_own_snapshot(tmp_path):
-    # The reason this is a verb rather than a script: it leaves a run
-    # directory `revert` can undo, like every other writing verb.
-    root = _root(tmp_path); _seed_units(root)
-    fid = _with_foreign_keys(root, [_IMPORT_DESCRIPTOR])
-    run = _run_dir(root, "20260902-101500")
-    repair_foreign_keys(root, run)
-    revert(root, run)
-    e = [x for x in load_store(root)["record"]["entries"] if x["id"] == fid][0]
-    assert e["data"]["foreignKeys"] == [_IMPORT_DESCRIPTOR]
-
-
-def test_repair_leaves_the_store_passing_the_pass_that_refused_it(tmp_path):
-    # The two are wired to one predicate; this is the assertion that they
-    # actually agree on a real store rather than in principle.
-    root = _root(tmp_path); _seed_units(root)
-    _with_foreign_keys(root, [_IMPORT_DESCRIPTOR])
-    doc = json.loads((root / "facts" / "records.json").read_text(encoding="utf-8"))
-    assert any("foreignKeys" in m for m in check_document(doc, "facts"))
-    repair_foreign_keys(root, _run_dir(root, "20260902-101500"))
-    doc = json.loads((root / "facts" / "records.json").read_text(encoding="utf-8"))
-    assert [m for m in check_document(doc, "facts") if "foreignKeys" in m] == []
-
-
 # --- coordinator ruling on task-6 review finding I2: promote must never ---
 # --- fabricate item/record/measurement data; it refuses, cleanly, instead ---
 
 def _bare_note(root, note_id, key, run_n, data=None):
-    note = {"schema_version": 1, "entries": [{
+    note = {"schema_version": 2, "entries": [{
         "id": "T-1", "kind": "note", "key": key,
         "title": "یادداشت", "statement": "s",
         "scope": {"departments": ["cooking"], "branches": []},
         "source": [{"type": "voice", "ref": "meetings/transcripts/c.txt", "lines": "9"}],
-        "retired": False, "data": data or {}}]}
+        "retired": False,
+        "data": data or {"about": [{"ref": "F-00001"}],
+                         "question": "این عدد کجا ثبت می‌شود؟"}}]}
     r = apply(root, _write(root, f"{note_id}.json", note), _run_dir(root, run_n))
     return r["id_map"]["T-1"]
 
@@ -182,17 +99,37 @@ def test_promote_to_item_refuses_missing_category_and_unit_nothing_written(tmp_p
     assert before == after                               # five files byte-identical
 
 
-def test_promote_to_item_succeeds_when_data_already_has_category_and_unit(tmp_path):
+def test_a_note_cannot_carry_another_kinds_payload(tmp_path):
+    # QF-9 closes the note payload to `about[]` + `question`, so the keys
+    # `promote` requires for item/record/measurement can never sit on one: those
+    # three promotions are now always refused for want of them, and `rule` —
+    # whose stubs are empty containers — is the only reachable target.
     root = _root(tmp_path); _seed_units(root)
-    nid = _bare_note(root, "dn3", "note_ab12cd34ef58", "1",
-                     data={"category": "ingredient", "unit": "g"})
-    promote(root, nid, "item", "ing_olive_oil", _run_dir(root, "2"))
-    store = load_store(root)
-    e = [x for x in store["item"]["entries"] if x["id"] == nid][0]
-    assert e["id"] == nid and e["kind"] == "item" and e["key"] == "ing_olive_oil"
-    index = json.loads((root / "facts" / ".index.json").read_text(encoding="utf-8"))
-    row = [r for r in index["entries"] if r["id"] == nid][0]
-    assert row["kind"] == "item"
+    note = {"schema_version": 2, "entries": [{
+        "id": "T-1", "kind": "note", "key": "note_ab12cd34ef58",
+        "title": "یادداشت", "statement": "s",
+        "scope": {"departments": ["cooking"], "branches": []},
+        "source": [{"type": "voice", "ref": "meetings/transcripts/c.txt", "lines": "9"}],
+        "retired": False, "data": {"about": [{"ref": "F-00001"}], "question": "؟",
+                                   "category": "ingredient", "unit": "g"}}]}
+    # `apply` step 1 is the schema; it raises before any precondition runs, so
+    # this is a ValueError out of `validate`, not the exit-2 of a precondition.
+    with pytest.raises(ValueError):
+        apply(root, _write(root, "dn3.json", note), _run_dir(root, "1"))
+
+
+def test_promote_note_to_note_is_a_rekey_that_keeps_the_payload(tmp_path):
+    # `--kind note` with a new key is a rekey, not a change of kind: the entry
+    # stays a note, so QF-9's `about`/`question` — which is what a note IS, and
+    # what `noteData` requires — must survive. Clearing them here would make
+    # `save_store` refuse the very entry the verb just wrote.
+    root = _root(tmp_path); _seed_units(root)
+    nid = _bare_note(root, "dn4", "note_ab12cd34ef59", "1")
+    promote(root, nid, "note", "note_ff11ee22dd33", _run_dir(root, "2"))
+    e = [x for x in load_store(root)["note"]["entries"] if x["id"] == nid][0]
+    assert e["key"] == "note_ff11ee22dd33"
+    assert e["data"] == {"about": [{"ref": "F-00001"}],
+                         "question": "این عدد کجا ثبت می‌شود؟"}
 
 
 # --- repair-source-refs: a citation is a PATH (QF-5), and 598 of the ---
@@ -296,3 +233,48 @@ def test_repair_is_revertible_and_its_result_passes_apply_s_own_check(tmp_path):
     revert(root, run)
     e = [x for x in load_store(root)["record"]["entries"] if x["id"] == fid][0]
     assert e["source"][0]["ref"] == "12Q9yQ"
+
+
+def test_resolving_a_unit_clears_the_stale_unit_ref_beside_it(tmp_path):
+    root = _root(tmp_path); _seed_units(root)
+    a = _const_delta(5, key="tol"); a["entries"][0]["data"]["outputs"][0]["unit"] = "g"
+    apply(root, _write(root, "a.json", a), _run_dir(root, "1"))
+    b = _const_delta(5, key="tol"); b["entries"][0]["data"]["outputs"][0]["unit"] = "kg"
+    apply(root, _write(root, "b.json", b), _run_dir(root, "2"))
+    store = load_store(root)
+    entry = [e for e in store["rule"]["entries"] if e["key"] == "tol"][0]
+    entry["data"]["outputs"][0]["unit_ref"] = {"ref": "F-00001", "row": "g"}
+    (root / "facts" / "rules.json").write_text(
+        json.dumps(store["rule"], ensure_ascii=False), encoding="utf-8")
+    chosen = [x for x in entry["accounts"] if x["value"] == "kg"][0]
+    resolve(root, entry["id"], "data/outputs/v/unit", chosen["id"],
+            _run_dir(root, "3"))
+    after = [e for e in load_store(root)["rule"]["entries"]
+             if e["key"] == "tol"][0]["data"]["outputs"][0]
+    assert after["unit"] == "kg" and "unit_ref" not in after
+
+
+def test_resolving_a_unit_to_a_ref_is_refused_and_writes_nothing(tmp_path):
+    """The shape `_clear_unit_ref` used to spare — a chosen account whose value
+    is a `{ref}` rather than a symbol — cannot reach the store at all: every
+    `unit` leaf is `string | null` (facts.schema.json:67, 122, 143, 172, 185,
+    204, 217, 269) and every payload is closed. `save_store` validates all five
+    files before writing any, so the refusal leaves the store as it was."""
+    root = _root(tmp_path); _seed_units(root)
+    a = _const_delta(5, key="tol"); a["entries"][0]["data"]["outputs"][0]["unit"] = "g"
+    apply(root, _write(root, "a.json", a), _run_dir(root, "1"))
+    b = _const_delta(5, key="tol"); b["entries"][0]["data"]["outputs"][0]["unit"] = "kg"
+    apply(root, _write(root, "b.json", b), _run_dir(root, "2"))
+    entry = [e for e in load_store(root)["rule"]["entries"] if e["key"] == "tol"][0]
+    chosen = [x for x in entry["accounts"] if x["value"] == "kg"][0]
+    chosen["value"] = {"ref": "F-00001", "row": "g"}     # a ref where a symbol goes
+    path = root / "facts" / "rules.json"
+    doc = json.loads(path.read_text(encoding="utf-8"))
+    [e for e in doc["entries"] if e["key"] == "tol"][0]["accounts"] = entry["accounts"]
+    path.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
+
+    before = {q.name: q.read_bytes() for q in (root / "facts").glob("*.json")}
+    with pytest.raises(ValueError):
+        resolve(root, entry["id"], "data/outputs/v/unit", chosen["id"],
+                _run_dir(root, "3"))
+    assert {q.name: q.read_bytes() for q in (root / "facts").glob("*.json")} == before

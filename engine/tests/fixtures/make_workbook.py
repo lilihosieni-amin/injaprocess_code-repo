@@ -34,7 +34,8 @@ TC_REL = "http://schemas.microsoft.com/office/2017/10/relationships/threadedComm
 
 XML = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
 
-# The four tabs, in workbook order. `SHEETS[i]` is (default name, hidden).
+# The four pre-v3 tabs, in workbook order. `SHEETS[i]` is (default name,
+# hidden); `v3_tabs=True` appends the five of `V3_SHEETS` below them.
 SHEETS = [("آمار", False), ("مواد اولیه", False),
           ("Refresher", True), ("شمارش", False)]
 
@@ -160,11 +161,111 @@ def _sheet_numbers():
             "<sheetData>" + "".join(rows) + "</sheetData></worksheet>")
 
 
-def _workbook(names, lambda_name):
-    sheets = "".join(
+# --------------------------------------------------------------------------
+# the v3 tabs (§2.2, §4) — behind `v3_tabs=False` so every pre-v3 test keeps
+# the four-tab workbook it was written against.
+
+V3_SHEETS = [("گزارش پیتزا", False), ("SheetsFileIds", False),
+             ("Table_Ingredients_Pizza", False), ("موجودی اول شب", False),
+             ("پیتزا امریکایی", False)]
+
+# The report tab's label column, B6:B15 — one ingredient per row, no header
+# cell of its own (`Gozaresh markazi!پیتزا` is shaped exactly this way).
+REPORT_LABELS = ["پنیر پیتزا", "گوشت رست بیف", "ژامبون سه گانه", "پپرونی",
+                 "مرغ پیتزا", "قارچ", "فلفل دلمه", "زیتون", "سس مخصوص",
+                 "خمیر پیتزا"]
+# The mirror tab's one formula: a LET whose *result* is a whole-tab import.
+MIRROR_FORMULA = ('LET(\nsheetName,"پیتزا امریکایی",\ndataRange,"A:C",\n'
+                  'IMPORT_FROM_SHEET(SheetsFileId_Pizza,sheetName,dataRange)\n)')
+IDS_ROWS = [["Range Name Associated", "Sheets File Id"],
+            ["SheetsFileId_Pizza", "SIDPIZZA"],
+            ["SheetsFileId_Kanter", "SIDKANTER"]]
+BOM_ROWS = [["نام", "پنیر پیتزا ##1", "گوشت رست بیف ##2"],
+            ["رستبیف #71", "180", "80"],
+            ["تگزاس #309", "180", "0"],
+            ["مخلوط #74", "150", "0"]]
+
+
+def _sheet_report_v3():
+    """Tab 5 — a date block banded over rows 2–4, the header on row 5, the row
+    labels in B6:B15 and column A empty from top to bottom."""
+    rows = ['<row r="2">' + _inline("B2", "تاریخ")
+            + _inline("E2", "پیتزا\n(تمام وزن ها به کیلوگرم است)") + "</row>",
+            '<row r="3">' + "".join(_inline(c + "3", t) for c, t in
+                                    zip("BCD", ["روز", "ماه", "سال"])) + "</row>",
+            '<row r="4">' + _num("B4", 29) + _inline("C4", "مرداد")
+            + _num("D4", 1405) + "</row>",
+            '<row r="5">' + "".join(
+                _inline(c + "5", t) for c, t in
+                zip("EFG", ["موجودی اول شب", "مصرف اعلامی", "انحراف"])) + "</row>"]
+    for i, label in enumerate(REPORT_LABELS):
+        r = 6 + i
+        rows.append(f'<row r="{r}">' + _inline(f"B{r}", label)
+                    + _num(f"E{r}", 10 + i) + _num(f"F{r}", 20 + i)
+                    + _formula(f"G{r}", f"MINUS(F{r},E{r})", "10") + "</row>")
+    return (f'{XML}<worksheet xmlns="{MAIN}"><dimension ref="A1:G15"/>'
+            "<sheetData>" + "".join(rows) + "</sheetData>"
+            '<mergeCells count="2"><mergeCell ref="B2:D2"/>'
+            '<mergeCell ref="E2:G4"/></mergeCells></worksheet>')
+
+
+def _sheet_ids():
+    """Tab 6 — the ids tab: a named range per row and the spreadsheetId it
+    resolves to. The estate spells it `SheetsFileIds` and `SheetsFileIDs`."""
+    rows = [f'<row r="{r}">' + "".join(_inline(f"{c}{r}", v)
+                                       for c, v in zip("AB", row)) + "</row>"
+            for r, row in enumerate(IDS_ROWS, start=1)]
+    return (f'{XML}<worksheet xmlns="{MAIN}"><dimension ref="A1:B3"/>'
+            "<sheetData>" + "".join(rows) + "</sheetData></worksheet>")
+
+
+def _sheet_mirror():
+    """Tab 7 — a mirror: one formula at A1 and the values Google spills beside
+    it. Its column A reads exactly like a label column, which is why a
+    predicate over the formula, not the shape of the values, has to decide."""
+    rows = [f'<row r="1">{_formula("A1", MIRROR_FORMULA, "نام", t="str")}'
+            + _inline("B1", "پنیر پیتزا ##1") + "</row>"]
+    for i, name in enumerate(["رستبیف #71", "تگزاس #309", "مخلوط #74"]):
+        r = 2 + i
+        rows.append(f'<row r="{r}">' + _inline(f"A{r}", name)
+                    + _num(f"B{r}", 180 + i) + "</row>")
+    return (f'{XML}<worksheet xmlns="{MAIN}"><dimension ref="A1:B4"/>'
+            "<sheetData>" + "".join(rows) + "</sheetData></worksheet>")
+
+
+def _sheet_line():
+    """Tab 8 — a line-inventory tab: `روز | ماه | سال` and a coded column. Six
+    rows, so the 60-row bound does not save it: the header words are what keep
+    its month column out of `row_labels`."""
+    rows = ['<row r="1">' + "".join(
+        _inline(f"{c}1", t) for c, t in
+        zip("ABCD", ["روز", "ماه", "سال", "وزن پنیر پیتزا ##1"])) + "</row>"]
+    for i, month in enumerate(["آذر", "دی", "بهمن", "اسفند", "فروردین"]):
+        r = 2 + i
+        rows.append(f'<row r="{r}">' + _num(f"A{r}", 8 + i)
+                    + _inline(f"B{r}", month) + _num(f"C{r}", 1404)
+                    + _num(f"D{r}", 39 + i) + "</row>")
+    return (f'{XML}<worksheet xmlns="{MAIN}"><dimension ref="A1:D6"/>'
+            "<sheetData>" + "".join(rows) + "</sheetData></worksheet>")
+
+
+def _sheet_bom():
+    """Tab 9 — a BOM tab as `Mavade Avalie` holds them: item codes in the
+    header, no formula of its own, no date column."""
+    rows = ['<row r="1">' + "".join(_inline(f"{c}1", t)
+                                    for c, t in zip("ABC", BOM_ROWS[0])) + "</row>"]
+    for r, row in enumerate(BOM_ROWS[1:], start=2):
+        rows.append(f'<row r="{r}">' + _inline(f"A{r}", row[0])
+                    + _num(f"B{r}", row[1]) + _num(f"C{r}", row[2]) + "</row>")
+    return (f'{XML}<worksheet xmlns="{MAIN}"><dimension ref="A1:C4"/>'
+            "<sheetData>" + "".join(rows) + "</sheetData></worksheet>")
+
+
+def _workbook(names, lambda_name, sheets=SHEETS):
+    sheets_xml = "".join(
         f'<sheet state="{"hidden" if hidden else "visible"}" '
         f'name="{esc(name)}" sheetId="{i + 1}" r:id="rId{i + 1}"/>'
-        for i, (name, (_, hidden)) in enumerate(zip(names, SHEETS)))
+        for i, (name, (_, hidden)) in enumerate(zip(names, sheets)))
     defined = [f'<definedName name="Refresher">{esc(names[2])}!$A$1</definedName>']
     if lambda_name:
         defined.append(f'<definedName name="FILTER_BY_DATE">'
@@ -175,17 +276,17 @@ def _workbook(names, lambda_name):
     defined.append('<definedName localSheetId="1" name="Kitchen_Dough">'
                    f"'{esc(names[1])}'!$A:$E</definedName>")
     return (f'{XML}<workbook xmlns="{MAIN}" xmlns:r="{DOC_RELS}">'
-            f"<workbookPr/><sheets>{sheets}</sheets>"
+            f"<workbookPr/><sheets>{sheets_xml}</sheets>"
             f'<definedNames>{"".join(defined)}</definedNames></workbook>')
 
 
-def _workbook_rels(dangling_rel=False):
+def _workbook_rels(dangling_rel=False, count=len(SHEETS)):
     """`dangling_rel` drops the last tab's relationship, so its `r:id` resolves
     to nothing — a part the dumper cannot open."""
     rels = "".join(
         f'<Relationship Id="rId{i + 1}" Type="{DOC_RELS}/worksheet" '
         f'Target="worksheets/sheet{i + 1}.xml"/>'
-        for i in range(len(SHEETS) - (1 if dangling_rel else 0)))
+        for i in range(count - (1 if dangling_rel else 0)))
     rels += (f'<Relationship Id="rId90" Type="{DOC_RELS}/styles" '
              'Target="styles.xml"/>'
              f'<Relationship Id="rId91" Type="{DOC_RELS}/sharedStrings" '
@@ -250,13 +351,13 @@ def _styles():
             "</styleSheet>")
 
 
-def _content_types(threaded_comment):
+def _content_types(threaded_comment, count=len(SHEETS)):
     parts = ['<Default Extension="rels" ContentType="application/'
              'vnd.openxmlformats-package.relationships+xml"/>',
              '<Default Extension="xml" ContentType="application/xml"/>',
              '<Override PartName="/xl/workbook.xml" ContentType="application/'
              'vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>']
-    for i in range(len(SHEETS)):
+    for i in range(count):
         parts.append(f'<Override PartName="/xl/worksheets/sheet{i + 1}.xml" '
                      'ContentType="application/vnd.openxmlformats-'
                      'officedocument.spreadsheetml.worksheet+xml"/>')
@@ -284,17 +385,20 @@ def make_workbook(path, *, shared_formula=True, dummyfunction=True,
                   merged_band_header=True, reference_tab=True,
                   structure_md=True, spreadsheet_id="TESTID01",
                   sheet_names=None, exported="2026-08-29T10:38:50.643Z",
-                  dangling_rel=False):
+                  dangling_rel=False, v3_tabs=False):
     """Write a minimal but standards-shaped `.xlsx` at `path`.
 
-    `sheet_names` overrides the four tab names in workbook order (a renamed tab
-    at the same `sheetId` is how the drift test is built). `structure_md=False`
-    writes no sibling file; `spreadsheet_id=None` writes one with no
-    `- spreadsheetId:` line. Both are exit-2 cases.
+    `sheet_names` overrides the tab names in workbook order, from the first
+    (a renamed tab at the same `sheetId` is how the drift test is built);
+    `structure_md=False` writes no sibling file; `spreadsheet_id=None` writes
+    one with no `- spreadsheetId:` line. Both are exit-2 cases. `v3_tabs`
+    appends the five v3 tabs (`V3_SHEETS`) to the four.
     """
     path = pathlib.Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    names = list(sheet_names or [name for name, _ in SHEETS])
+    layout = SHEETS + (V3_SHEETS if v3_tabs else [])
+    given = list(sheet_names or [])
+    names = given + [name for name, _ in layout[len(given):]]
 
     table = {}
 
@@ -303,13 +407,13 @@ def make_workbook(path, *, shared_formula=True, dummyfunction=True,
 
     reference = _sheet_reference(strings) if reference_tab else _sheet_empty()
     parts = {
-        "[Content_Types].xml": _content_types(threaded_comment),
+        "[Content_Types].xml": _content_types(threaded_comment, len(layout)),
         "_rels/.rels": (f'{XML}<Relationships xmlns="{PKG_RELS}">'
                         f'<Relationship Id="rId1" Type="{DOC_RELS}/'
                         'officeDocument" Target="xl/workbook.xml"/>'
                         "</Relationships>"),
-        "xl/workbook.xml": _workbook(names, lambda_name),
-        "xl/_rels/workbook.xml.rels": _workbook_rels(dangling_rel),
+        "xl/workbook.xml": _workbook(names, lambda_name, layout),
+        "xl/_rels/workbook.xml.rels": _workbook_rels(dangling_rel, len(layout)),
         "xl/worksheets/sheet1.xml": _sheet_report(
             shared_formula, dummyfunction, merged_band_header),
         "xl/worksheets/sheet2.xml": reference,
@@ -319,6 +423,12 @@ def make_workbook(path, *, shared_formula=True, dummyfunction=True,
         "xl/comments1.xml": _legacy_comments(threaded_comment),
         "xl/styles.xml": _styles(),
     }
+    if v3_tabs:
+        parts["xl/worksheets/sheet5.xml"] = _sheet_report_v3()
+        parts["xl/worksheets/sheet6.xml"] = _sheet_ids()
+        parts["xl/worksheets/sheet7.xml"] = _sheet_mirror()
+        parts["xl/worksheets/sheet8.xml"] = _sheet_line()
+        parts["xl/worksheets/sheet9.xml"] = _sheet_bom()
     if threaded_comment:
         parts["xl/threadedComments/threadedComment1.xml"] = _threaded_comments()
         parts["xl/persons/person.xml"] = _persons()

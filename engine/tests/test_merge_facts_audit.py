@@ -23,8 +23,8 @@ from facts_helpers import _const_delta, _root, _run_dir, _seed_units, _write
 import merge_facts.audit as audit_mod
 from merge_facts import load_store
 from merge_facts.apply import apply
-from merge_facts.audit import audit, check, coverage
-from merge_facts.verbs import retire
+from merge_facts.audit import PERSIAN, audit, check, flags_over
+from merge_facts.verbs import resolve, retire
 
 SCHEMAS = pathlib.Path(__file__).resolve().parents[2] / "schemas"
 
@@ -45,7 +45,7 @@ def _entry(tid, kind, key, title, data, scope=("cooking",), **extra):
 
 def _apply(root, entries, n):
     return apply(root, _write(root, f"d{n}.json",
-                              {"schema_version": 1, "entries": entries}),
+                              {"schema_version": 2, "entries": entries}),
                  _run_dir(root, n))
 
 
@@ -114,31 +114,63 @@ def _reference_record(tid="T-1", key="mavad__pizza", sid="M", rows=None,
             {"code": "prod_61", "grams": 250}, {"code": "prod_62", "grams": 300}]})
 
 
+def _template(tid="T-1", key="gozaresh_pitza", instance="gz__s11", sid="G",
+              sheet="پیتزا"):
+    return _entry(tid, "record", key, "گزارش پیتزا", {
+        "medium": "sheet", "role": "report",
+        "location": {"spreadsheetId": sid, "sheetId": 11, "sheet": sheet,
+                     "hidden": False},
+        "instances": [{"key": instance, "spreadsheetId": sid, "sheetId": 11,
+                       "sheet": sheet, "branch": "chalebagh", "hidden": False}],
+        "fields": [{"key": "enheraf", "title": "انحراف", "type": "number",
+                    "unit": "g", "columns": {instance: "J"}}]})
+
+
+def _bound_rule(tid, key, title, binding, rng, expr="v = x", record="T-1"):
+    return _entry(tid, "rule", key, title, {
+        "inputs": [{"key": "x", "title": "ایکس", "unit": "g", "from": "operator"}],
+        "outputs": [{"key": "v", "title": "مقدار", "unit": "g",
+                     "nature": "observed"}],
+        "lang": "feel", "expr": expr,
+        "applies_to": [{"key": binding, "record": {"ref": record,
+                                                   "field": "enheraf"},
+                        "variant": 1, "range": rng, "params": {}}]})
+
+
+def _note(tid, key, statement, about="F-00001"):
+    return _entry(tid, "note", key, statement[:60],
+                  {"about": [{"ref": about}], "question": "واحدش چیست؟"}) \
+        | {"statement": statement}
+
+
 # --------------------------------------------------------------------------- #
 # audit — one test per finding code
 # --------------------------------------------------------------------------- #
 
-def test_duplicate_output_two_rules_writing_one_field(tmp_path):
+def test_two_writers_on_overlapping_bindings(tmp_path):
+    """§4: keyed on the bindings, not on (ref, field) — two rules computing one
+    column of one tab over meeting row ranges is the contradiction; the same
+    column in two different row bands is the estate as it is."""
     root = _root(tmp_path); _seed_units(root)
-    record = _entry("T-1", "record", "log_a", "دفتر", {
-        "medium": "paper", "role": "log", "location": {"path": "x.jpg"},
-        "fields": [{"key": "col_x", "title": "ستون", "type": "number", "unit": "g"}]})
+    _apply(root, [_template(),
+                  _bound_rule("T-2", "enheraf", "انحراف", "gz__s11__j__r6",
+                              "J6:J15"),
+                  _bound_rule("T-3", "enheraf_dobare", "انحراف دوباره",
+                              "gz__s11__j__r10", "J10:J20", expr="v = x * 2")],
+           "1")
+    found = _of(audit(root), "two_writers")
+    assert len(found) == 1 and "J" in found[0]["message"]
 
-    def rule(tid, key, title):
-        return _entry(tid, "rule", key, title, {
-            "inputs": [{"key": "x", "title": "ایکس", "unit": "g", "from": "operator"}],
-            "outputs": [{"key": "v", "title": "مقدار", "unit": "g",
-                         "nature": "observed",
-                         "writes_to": {"ref": "T-1", "field": "col_x"}}],
-            "lang": "feel", "expr": "v = x"})
 
-    _apply(root, [record, rule("T-2", "rule_a", "قاعدهٔ الف"),
-                  rule("T-3", "rule_b", "قاعدهٔ ب")], "1")
-    found = _of(audit(root), "duplicate_output")
-    assert len(found) == 1
-    ids = {e["id"] for e in load_store(root)["rule"]["entries"]
-           if e["key"] in ("rule_a", "rule_b")}
-    assert all(i in found[0]["message"] for i in ids)
+def test_two_writers_is_quiet_on_bands_that_do_not_meet(tmp_path):
+    root = _root(tmp_path); _seed_units(root)
+    _apply(root, [_template(),
+                  _bound_rule("T-2", "enheraf", "انحراف", "gz__s11__j__r6",
+                              "J6:J9"),
+                  _bound_rule("T-3", "enheraf_payin", "انحراف پایین",
+                              "gz__s11__j__r10", "J10:J20", expr="v = x * 2")],
+           "1")
+    assert "two_writers" not in _codes(audit(root))
 
 
 def test_two_scripts_writing_rows_into_one_record_are_not_a_duplicate(tmp_path):
@@ -162,16 +194,16 @@ def test_two_scripts_writing_rows_into_one_record_are_not_a_duplicate(tmp_path):
     _apply(root, [record, script("T-2", "save_orders", "ثبت سفارش", "saveOrders"),
                   script("T-3", "update_food_count", "به‌روزرسانی شمارش",
                          "updateFoodCount")], "1")
-    assert "duplicate_output" not in _codes(audit(root))
+    assert "two_writers" not in _codes(audit(root))
 
 
-def test_lookalike_title_folds_space_and_zwnj(tmp_path):
+def test_duplicate_title_folds_space_zwnj_and_digits(tmp_path):
     root = _root(tmp_path); _seed_units(root)
-    a = _const_delta(5, key="tol_a"); a["entries"][0]["title"] = "تلورانس روزانه"
-    b = _const_delta(5, key="tol_b"); b["entries"][0]["title"] = "تلورانس‌روزانه"
+    a = _const_delta(5, key="tol_a"); a["entries"][0]["title"] = "تلورانس ۵ گرم"
+    b = _const_delta(7, key="tol_b"); b["entries"][0]["title"] = "تلورانس‌۷ گرم"
     apply(root, _write(root, "a.json", a), _run_dir(root, "1"))
     apply(root, _write(root, "b.json", b), _run_dir(root, "2"))
-    found = _of(audit(root), "lookalike_title")
+    found = _of(audit(root), "duplicate_title")
     ids = {e["id"] for e in load_store(root)["rule"]["entries"]
            if e["key"] in ("tol_a", "tol_b")}
     assert len(found) == 1 and all(i in found[0]["message"] for i in ids)
@@ -307,7 +339,7 @@ def test_a_real_dump_of_a_reference_tab_reads_back_row_by_row(tmp_path):
 
 def test_retired_row_live_edges(tmp_path):
     root = _root(tmp_path); _seed_units(root)
-    reader = _entry("T-2", "rule", "reads_row", "خواندن سلول", {
+    reader = _entry("T-2", "rule", "reads_row", "خواندن مقدار", {
         "inputs": [{"key": "g", "title": "گرم", "unit": "g",
                     "from": {"ref": "T-1", "field": "grams", "row": "prod_61"}}],
         "outputs": [{"key": "v", "title": "مقدار", "unit": "g", "nature": "observed"}],
@@ -401,18 +433,17 @@ def test_unconsumed_constant_is_reported_and_a_consumed_one_is_not(tmp_path):
     lonely_id = [e["id"] for e in load_store(root)["rule"]["entries"]
                  if e["key"] == "lonely_tol"][0]
     assert [i["id"] for i in found] == [lonely_id]
+    assert found[0]["proposal"] == "info"      # §4: information, not a defect
 
 
-def test_recurring_note_shape(tmp_path):
+def test_note_overlap_groups_at_a_third_of_the_tokens(tmp_path):
     root = _root(tmp_path); _seed_units(root)
-
-    def note(tid, key, statement):
-        return _entry(tid, "note", key, statement[:60], {}) | {"statement": statement}
-
-    _apply(root, [note("T-1", "note_aa11bb22cc33", "هر پرس ۶۰ گرم است"),
-                  note("T-2", "note_aa11bb22cc34", "هر پرس ۷۰ گرم است")], "1")
-    found = _of(audit(root), "recurring_note_shape")
-    assert len(found) == 1
+    _apply(root, [_note("T-1", "note_aa11bb22cc33",
+                        "وزن پنیر پیتزا در پایان شب ثبت نمی‌شود"),
+                  _note("T-2", "note_aa11bb22cc34",
+                        "وزن پنیر در انبار ثبت نمی‌شود")], "1")
+    found = _of(audit(root), "note_overlap")
+    assert len(found) == 1            # 5/9 tokens: over 0.35, under the old 0.7
 
 
 def test_stale_stub_after_three_runs_and_after_thirty_days(tmp_path, monkeypatch):
@@ -476,17 +507,6 @@ def test_scope_shadow(tmp_path):
     assert len(found) == 1 and "tol" in found[0]["message"]
 
 
-def test_unit_raw_uncovered(tmp_path):
-    root = _root(tmp_path); _seed_units(root)
-    covered = _entry("T-1", "item", "ing_1", "پنیر",
-                     {"category": "ingredient", "unit": "g", "unit_raw": "گرم"})
-    uncovered = _entry("T-2", "item", "ing_2", "روغن",
-                       {"category": "ingredient", "unit": "g", "unit_raw": "قاشق"})
-    _apply(root, [covered, uncovered], "1")
-    found = _of(audit(root), "unit_raw_uncovered")
-    assert len(found) == 1 and "قاشق" in found[0]["message"]
-
-
 def test_unknown_role(tmp_path):
     root = _root(tmp_path); _seed_units(root)
     _process(root, "cooking-006", nodes=["cooking-006-n001"], actor="مسئول واحد")
@@ -510,6 +530,202 @@ def test_findings_are_sorted_and_carry_the_four_keys(tmp_path):
                                                  i["message"]))
 
 
+# --- v3 detectors ---------------------------------------------------------- #
+
+def test_row_gone_is_quiet_when_one_instance_of_the_template_still_has_it(tmp_path):
+    root = _root(tmp_path); _seed_units(root)
+    record = _reference_record(sid="M", sheet="پیتزا")
+    record["data"]["instances"] = [
+        {"key": "m__s2", "spreadsheetId": "M", "sheetId": 2, "sheet": "پیتزا",
+         "branch": "chalebagh", "hidden": False},
+        {"key": "n__s2", "spreadsheetId": "N", "sheetId": 2, "sheet": "پیتزا",
+         "branch": "naharkhoran", "hidden": False}]
+    _apply(root, [record], "1")
+    for sid, rows in (("M", "پیتزا\t2\tprod_61\t250\n"),
+                      ("N", "پیتزا\t2\tprod_61\t250\nپیتزا\t3\tprod_62\t300\n")):
+        dump = root / "attachments" / "sheets" / ".dump" / sid
+        dump.mkdir(parents=True)
+        (dump / "rows.tsv").write_text("sheet\trow\tcode\tgrams\n" + rows,
+                                       encoding="utf-8")
+    codes = _codes(audit(root))
+    assert "row_gone" not in codes and "dump_missing" not in codes
+
+
+def test_dump_missing_names_the_instance_whose_workbook_has_no_rows(tmp_path):
+    root = _root(tmp_path); _seed_units(root)
+    record = _reference_record(sid="M", sheet="پیتزا")
+    record["data"]["instances"] = [
+        {"key": "m__s2", "spreadsheetId": "M", "sheetId": 2, "sheet": "پیتزا",
+         "branch": "chalebagh", "hidden": False},
+        {"key": "n__s2", "spreadsheetId": "N", "sheetId": 2, "sheet": "پیتزا",
+         "branch": "naharkhoran", "hidden": False}]
+    _apply(root, [record], "1")
+    dump = root / "attachments" / "sheets" / ".dump" / "M"
+    dump.mkdir(parents=True)
+    (dump / "rows.tsv").write_text(
+        "sheet\trow\tcode\tgrams\nپیتزا\t2\tprod_61\t250\nپیتزا\t3\tprod_62\t300\n",
+        encoding="utf-8")
+    found = _of(audit(root), "dump_missing")
+    assert len(found) == 1 and "n__s2" in found[0]["message"]
+    assert "row_gone" not in _codes(audit(root))
+
+
+def _formulas(root, sid, rows):
+    dump = root / "attachments" / "sheets" / ".dump" / sid
+    dump.mkdir(parents=True, exist_ok=True)
+    (dump / "formulas.tsv").write_text(
+        "sheet\trange\tgroup\tformula\tcount\tcached\terror\n" + rows,
+        encoding="utf-8")
+
+
+def test_binding_gone_when_the_dump_no_longer_computes_the_range(tmp_path):
+    root = _root(tmp_path); _seed_units(root)
+    _apply(root, [_template(),
+                  _bound_rule("T-2", "enheraf", "انحراف", "gz__s11__j__r6",
+                              "J6:J15")], "1")
+    _formulas(root, "G", "پیتزا\tJ6:J15\t1\t=I6-H6\t10\t5\t\n")
+    assert "binding_gone" not in _codes(audit(root))
+    _formulas(root, "G", "پیتزا\tK6:K15\t1\t=I6-H6\t10\t5\t\n")
+    found = _of(audit(root), "binding_gone")
+    assert len(found) == 1 and "J6:J15" in found[0]["message"]
+
+
+def test_expr_missing_on_a_rule_that_is_bound_but_states_nothing(tmp_path):
+    root = _root(tmp_path); _seed_units(root)
+    bound = _bound_rule("T-2", "enheraf", "انحراف", "gz__s11__j__r6", "J6:J15")
+    bound["data"].pop("expr")
+    bound["data"]["lang"] = "sheets"
+    bound["data"]["original"] = "=I6-H6"        # §5.3: original alone is illegal
+    _apply(root, [_template(), bound], "1")
+    found = _of(audit(root), "expr_missing")
+    assert len(found) == 1 and "enheraf" in found[0]["message"]
+
+
+def test_equal_expr_two_rules_stating_one_computation_in_one_scope(tmp_path):
+    root = _root(tmp_path); _seed_units(root)
+    _apply(root, [_template(),
+                  _bound_rule("T-2", "enheraf", "انحراف", "gz__s11__j__r6",
+                              "J6:J15", expr="v = x"),
+                  _bound_rule("T-3", "enheraf_lain", "انحراف لاین",
+                              "gz__s11__k__r6", "K6:K15", expr="v =  x")], "1")
+    found = _of(audit(root), "equal_expr")
+    assert len(found) == 1 and "v = x" in found[0]["message"].replace(" ", " ")
+
+
+def test_duplicate_code_two_items_answering_to_one_code(tmp_path):
+    root = _root(tmp_path); _seed_units(root)
+    _apply(root, [_entry("T-1", "item", "ing_1", "پنیر",
+                         {"category": "ingredient", "unit": "g", "code": "##1"}),
+                  _entry("T-2", "item", "ing_1_dobare", "پنیر پیتزا",
+                         {"category": "ingredient", "unit": "g", "code": "##1"})],
+           "1")
+    found = _of(audit(root), "duplicate_code")
+    assert len(found) == 1 and "##1" in found[0]["message"]
+
+
+def test_edge_disagreement_two_answers_for_one_edge_case(tmp_path):
+    root = _root(tmp_path); _seed_units(root)
+    rule = _entry("T-1", "rule", "sefaresh", "مقدار سفارش", {
+        "inputs": [{"key": "x", "title": "ایکس", "unit": "g", "from": "operator"}],
+        "outputs": [{"key": "v", "title": "مقدار", "unit": "g",
+                     "nature": "observed"}],
+        "lang": "gs", "expr": "v = x", "identifier": "orderQuantity",
+        "edge_cases": [{"input": "جمعه", "expected": 2, "why": "روز شلوغ"},
+                       {"input": "جمعه", "expected": 3, "why": "بازنویسی"}]})
+    _apply(root, [rule], "1")
+    found = _of(audit(root), "edge_disagreement")
+    assert len(found) == 1 and "جمعه" in found[0]["message"]
+
+
+def test_no_consumer_only_for_the_item_nothing_reads(tmp_path):
+    root = _root(tmp_path); _seed_units(root)
+    read = _entry("T-1", "item", "ing_1", "پنیر", {"category": "ingredient",
+                                                   "unit": "g"})
+    lonely = _entry("T-2", "item", "ing_2", "روغن", {"category": "ingredient",
+                                                     "unit": "g"})
+    measure = _entry("T-3", "measurement", "vazn_panir", "وزن پنیر",
+                     {"of": {"ref": "T-1"}, "quantity": "mass", "unit": "g",
+                      "by": "مسئول واحد", "when": "پایان شب"})
+    _apply(root, [read, lonely, measure], "1")
+    found = _of(audit(root), "no_consumer")
+    lonely_id = [e["id"] for e in load_store(root)["item"]["entries"]
+                 if e["key"] == "ing_2"][0]
+    assert [i["id"] for i in found] == [lonely_id]
+
+
+def test_quantity_off_enum(tmp_path):
+    root = _root(tmp_path); _seed_units(root)
+    apply(root, _write(root, "a.json", _const_delta()), _run_dir(root, "1"))
+    store = load_store(root)
+    store["measurement"]["entries"].append({
+        "id": "F-09999", "kind": "measurement", "key": "vazn", "title": "وزن",
+        "statement": "s", "scope": {"departments": ["cooking"], "branches": []},
+        "source": [], "retired": False, "status": "confirmed",
+        "updated_at": "2026-09-01T10:00:00Z",
+        "data": {"quantity": 215, "unit": "g", "by": "مسئول واحد",
+                 "when": "پایان شب"}})
+    found = audit_mod._quantity_off_enum(audit_mod._Walk(root, store))
+    assert [i["code"] for i in found] == ["quantity_off_enum"]
+
+
+def test_note_targets_retired(tmp_path):
+    root = _root(tmp_path); _seed_units(root)
+    item = _entry("T-1", "item", "ing_1", "پنیر", {"category": "ingredient",
+                                                   "unit": "g"})
+    report = _apply(root, [item], "1")
+    item_id = report["id_map"]["T-1"]
+    _apply(root, [_note("T-1", "note_aa11bb22cc33", "واحد این قلم روشن نیست",
+                        about=item_id)], "2")
+    assert "note_targets_retired" not in _codes(audit(root))
+    retire(root, item_id, None, _run_dir(root, "3"))
+    found = _of(audit(root), "note_targets_retired")
+    assert len(found) == 1 and item_id in found[0]["message"]
+
+
+def test_import_unresolved_only_while_the_source_is_a_locator(tmp_path):
+    root = _root(tmp_path); _seed_units(root)
+    record = _template()
+    record["data"]["instances"][0]["imports"] = [
+        {"key": "gz__s11__im1", "source": {"spreadsheetId": "W",
+                                           "sheet": "روزانه"},
+         "range": "A:X"}]
+    _apply(root, [record], "1")
+    found = _of(audit(root), "import_unresolved")
+    assert len(found) == 1 and "روزانه" in found[0]["message"]
+
+
+def test_stale_prose_after_a_field_is_settled(tmp_path):
+    root = _root(tmp_path); _seed_units(root)
+    a = _const_delta(5, key="tol"); a["entries"][0]["statement"] = "حد مجاز نامشخص است"
+    apply(root, _write(root, "a.json", a), _run_dir(root, "1"))
+    apply(root, _write(root, "b.json", _const_delta(4, key="tol")),
+          _run_dir(root, "2"))
+    assert "stale_prose" not in _codes(audit(root))       # still disputed
+    entry = [e for e in load_store(root)["rule"]["entries"] if e["key"] == "tol"][0]
+    chosen = [x for x in entry["accounts"] if x["value"] == 4][0]
+    resolve(root, entry["id"], "data/outputs/v/value", chosen["id"],
+            _run_dir(root, "3"))
+    found = _of(audit(root), "stale_prose")
+    assert len(found) == 1 and found[0]["id"] == entry["id"]
+
+
+def test_flags_over_sees_the_store_and_the_entries_together(tmp_path):
+    """§2.6 step 7: `assemble` calls the six disk-free checks over `load_store`
+    plus what it is about to write, so its flags and the audit's findings are
+    one implementation and cannot drift."""
+    root = _root(tmp_path); _seed_units(root)
+    _apply(root, [_template(),
+                  _bound_rule("T-2", "enheraf", "انحراف", "gz__s11__j__r6",
+                              "J6:J15")], "1")
+    stored = [e for e in load_store(root)["rule"]["entries"]
+              if e["key"] == "enheraf"][0]
+    incoming = dict(stored, id="T-4", key="enheraf_lain", title="انحراف لاین")
+    flags = flags_over(root, [incoming])
+    assert {f["code"] for f in flags} == {"equal_expr", "two_writers"}
+    assert all("T-4" in f["message"] for f in flags)
+    assert not (root / "facts" / "records.json").with_suffix(".tmp").exists()
+
+
 # --------------------------------------------------------------------------- #
 # check
 # --------------------------------------------------------------------------- #
@@ -525,9 +741,9 @@ def test_check_reports_a_moved_source(tmp_path):
     root = _root(tmp_path); _seed_units(root)
     transcript = _cite(root)
     apply(root, _write(root, "a.json", _const_delta()), _run_dir(root, "1"))
-    assert "source_moved" not in _codes(check(root))
+    assert "source_moved" not in _codes(check(root)["findings"])
     transcript.write_text("متن بازنویسی‌شده", encoding="utf-8")
-    found = _of(check(root), "source_moved")
+    found = _of(check(root)["findings"], "source_moved")
     assert len(found) == 1 and "meetings/transcripts/c.txt" in found[0]["message"]
 
 
@@ -540,12 +756,12 @@ def test_check_reports_an_absent_estate_file_under_its_own_code(tmp_path):
     record["source"] = [{"type": "sheet",
                          "ref": "attachments/sheets/G/G.xlsx", "sheet": "روزانه"}]
     _apply(root, [record], "1")
-    found = _of(check(root), "estate_absent")
+    found = _of(check(root)["findings"], "estate_absent")
     assert len(found) == 1 and "G.xlsx" in found[0]["message"]
-    assert "source_moved" not in _codes(check(root))
+    assert "source_moved" not in _codes(check(root)["findings"])
 
 
-def test_check_uncited_workbook_and_the_coverage_count(tmp_path):
+def test_check_uncited_workbook_has_no_denominator(tmp_path):
     root = _root(tmp_path); _seed_units(root)
     _manifest(root, [_workbook("S1", "cited_wb"), _workbook("S2", "quiet_wb")])
     read = _entry("T-1", "record", "cited__ruzane", "روزانه", {
@@ -556,9 +772,73 @@ def test_check_uncited_workbook_and_the_coverage_count(tmp_path):
         "stub": True, "grain": "workbook", "medium": "sheet", "role": "log",
         "location": {"spreadsheetId": "S2"}})
     _apply(root, [read, stub], "1")
-    found = _of(check(root), "uncited_workbook")
-    assert len(found) == 1 and "quiet_wb" in found[0]["message"]  # a stub is not read
-    assert coverage(root) == {"read": 1, "total": 2}
+    report = check(root)
+    found = [i for i in report["findings"] if i["code"] == "uncited_workbook"]
+    assert len(found) == 1 and "quiet_wb" in found[0]["message"]
+    assert "coverage" not in report                 # §4: the metric is withdrawn
+
+
+def test_check_reports_qf44_v3_readiness(tmp_path):
+    root = _root(tmp_path); _seed_units(root)
+    _apply(root, [_template(),
+                  _bound_rule("T-2", "enheraf", "انحراف", "gz__s11__j__r6",
+                              "J6:J15")], "20260906-101500")
+    run = root / "runs" / "facts" / "cooking" / "20260906-101500"
+    (run / "meta.json").write_text(json.dumps(
+        {"units": [{"id": "u-wb-gozaresh", "type": "workbook", "state": "done",
+                    "attempts": 1},
+                   {"id": "u-tr-a-l1", "type": "transcript", "state": "pending",
+                    "attempts": 0}]}), encoding="utf-8")
+    report = check(root)
+    assert report["units_done"] is False
+    assert report["review_ran"] is False
+    assert report["expr_missing"] == 0
+    assert report["open_disputes"] == 0
+    assert report["lint_failures"] == 0
+
+    (run / "meta.json").write_text(json.dumps(
+        {"units": [{"id": "u-wb-gozaresh", "type": "workbook", "state": "done",
+                    "attempts": 1}]}), encoding="utf-8")
+    (run / "review").mkdir()
+    (run / "review" / "out.json").write_text("{}", encoding="utf-8")
+    report = check(root)
+    assert report["units_done"] is True and report["review_ran"] is True
+
+
+def test_check_counts_a_lint_failure_and_a_missing_expression(tmp_path):
+    root = _root(tmp_path); _seed_units(root)
+    bound = _bound_rule("T-2", "enheraf", "انحراف", "gz__s11__j__r6", "J6:J15")
+    bound["data"].pop("expr")
+    bound["data"]["lang"] = "sheets"
+    bound["data"]["original"] = "=I6-H6"
+    _apply(root, [_template(), bound], "1")
+    # §5.2's lint is `apply`'s own precondition (Task 6), so no delta can put a
+    # failing sentence in the store — and the estate's prose predates the door.
+    # Writing it straight into the file is the only way to reproduce what
+    # `check` has to count.
+    path = root / "facts" / "rules.json"
+    doc = json.loads(path.read_text(encoding="utf-8"))
+    entry = [e for e in doc["entries"] if e["key"] == "enheraf"][0]
+    entry["statement"] = "ستون J6 منهای ستون I6 است"       # §5.2: a reference token
+    path.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
+    report = check(root)
+    assert report["expr_missing"] == 1
+    assert report["lint_failures"] == 1
+
+
+def test_audit_persian_renders_every_code_from_the_entrys_title(tmp_path):
+    root = _root(tmp_path); _seed_units(root)
+    apply(root, _write(root, "a.json", _const_delta()), _run_dir(root, "1"))
+    items = audit(root, persian=True)
+    assert items
+    for item in items:
+        assert "F-" not in item["message"] and "/" not in item["message"]
+        entry = [e for e in load_store(root)["rule"]["entries"]
+                 if e["id"] == item["id"]]
+        if entry:
+            assert entry[0]["title"] in item["message"]
+    codes = {i["code"] for i in audit_mod.AUDIT_CHECKS and audit(root)}
+    assert codes <= set(PERSIAN)                    # every code has a template
 
 
 # --------------------------------------------------------------------------- #
@@ -583,8 +863,23 @@ def test_cli_audit_and_check_print_one_line_each_and_exit_zero(tmp_path):
     lines = proc.stdout.splitlines()
     assert lines and any(line.startswith("unconsumed_constant F-") for line in lines)
 
+    proc = _cli(root, "audit", "--persian")
+    assert proc.returncode == 0, proc.stderr
+    # `--persian` is the one the playbook forwards to the owner, so the line is
+    # the sentence alone: no code token in front of it and no id inside it.
+    lines = proc.stdout.splitlines()
+    assert lines and all("F-" not in line for line in lines)
+    assert [line for line in lines if line.split(" ", 1)[0] in PERSIAN] == []
+
     proc = _cli(root, "check")
     assert proc.returncode == 0, proc.stderr
     lines = proc.stdout.splitlines()
-    assert lines[-1] == "coverage: 0 of 2 workbooks read"
+    assert lines[-1] == ("readiness: units_done=True review_ran=False "
+                         "lint_failures=0 expr_missing=0 open_disputes=0")
     assert any(line.startswith("uncited_workbook  ") for line in lines)  # id blank
+
+
+def test_cli_has_no_repair_foreign_keys_verb(tmp_path):
+    root = _root(tmp_path); _seed_units(root)
+    proc = _cli(root, "repair-foreign-keys", "--run", str(_run_dir(root, "9")))
+    assert proc.returncode == 2 and "invalid choice" in proc.stderr

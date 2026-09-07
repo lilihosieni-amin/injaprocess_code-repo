@@ -52,7 +52,7 @@ def _write_index(root, rows):
     facts_dir = root / "facts"
     facts_dir.mkdir(parents=True, exist_ok=True)
     (facts_dir / ".index.json").write_text(
-        json.dumps({"schema_version": 1, "entries": rows}, ensure_ascii=False),
+        json.dumps({"schema_version": 2, "entries": rows}, ensure_ascii=False),
         encoding="utf-8")
 
 

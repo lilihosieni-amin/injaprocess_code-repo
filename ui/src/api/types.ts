@@ -224,8 +224,15 @@ export interface FactAccount {
  *  carries `factor` only for `multiply`/`divide`. */
 export interface FactIssue {
   kind: 'scale' | 'unit_kind' | 'column_shift' | 'junk' | 'bug' | 'cross_record' | 'code_collision'
+    | 'hand_maintained_index' | 'no_rule_applies' | 'broken_formula' | 'cached_error'
+    | 'leading_offset' | 'unused_mirror' | 'unknown_source' | 'column_offset'
+    | 'per_cell_mirror' | 'ambiguous_row_header' | 'binding_gone'
   description: string
   affects: FactRef[]
+  /** The `instances[].key` this defect is about, when it is about one copy of
+   *  a template rather than the template — the card draws it with that
+   *  instance instead of in the issues list. */
+  instance?: string
   field?: string
   from_date?: string
   to_date?: string
@@ -261,11 +268,37 @@ export interface RecordField {
   filled_by?: string
   group?: { key?: string; title?: string }
   derived?: FactRef
+  /** `{instance key: column letter}` — the same column sits at a different
+   *  letter in each copy of the template (QF-47). */
+  columns?: Record<string, string>
   refItems?: { namespace?: string }
   constraints?: {
     enum?: string[]; readOnly?: boolean; required?: boolean
     minimum?: number; maximum?: number
   }
+}
+
+/** One place a record template actually sits — QF-47's `instances[]`. A tab
+ *  that repeats across workbooks is one entry with several of these, and the
+ *  branch scope is derived from them. */
+export interface RecordInstance {
+  key: string
+  spreadsheetId: string
+  sheetId?: number | string | null
+  sheet: string
+  branch?: string | null
+  hidden?: boolean
+  imports?: RecordImport[]
+}
+
+/** One table pulled in from elsewhere — QF-48's edge, which replaced the mirror
+ *  record. `source` is a `{ref}` once the source record exists in the store and
+ *  the locator until then, and every reader accepts both (spec §10). */
+export interface RecordImport {
+  key: string
+  source: FactRef | { spreadsheetId: string; sheet: string }
+  range?: string | null
+  named_range?: string | null
 }
 
 /**
@@ -277,12 +310,13 @@ export interface RecordField {
  */
 export interface RecordData {
   medium: 'sheet' | 'paper' | 'external' | 'native'
-  role: 'log' | 'reference' | 'mirror' | 'report' | 'config'
+  role: 'log' | 'reference' | 'report' | 'config'
   location: {
     path?: string; spreadsheetId?: string; sheet?: string; sheetId?: number
     hidden?: boolean
     identifier_scheme?: { authority?: string; format?: string }
   }
+  instances?: RecordInstance[]
   fields?: RecordField[]
   rows?: (Record<string, unknown> & { key?: string; title?: string; retired?: boolean })[]
   header_fields?: { key: string; title?: string }[]
@@ -292,7 +326,6 @@ export interface RecordData {
   foreignKeys?: { fields: string[]; reference: FactRef; reference_fields?: string[]; transform?: string }[]
   reconciled_against?: { cell: { row?: string; field?: string }; against: FactRef }[]
   movement?: { from?: FactRef; to?: FactRef; reason?: string }
-  mirror_of?: FactRef
   grain?: string
   cadence?: 'nightly' | 'shift' | 'daily' | 'weekly' | 'monthly' | 'ad_hoc'
   day_boundary?: string
@@ -314,14 +347,15 @@ export interface MeasurementData {
   stub?: boolean
 }
 
-/** One value a rule reads. `from` is a `{ref}` or one of two string literals —
- *  `operator`, `calendar` — which is why it is a union and not a `FactRef`. */
+/** One value a rule reads. `from` is a `{ref}`, a `{param}` naming a value that
+ *  differs per binding (QF-47), or one of two string literals — `operator`,
+ *  `calendar` — which is why it is a union and not a `FactRef`. */
 export interface RuleInput {
   key: string
   title?: string
   unit?: string | null
   unit_title?: string
-  from?: FactRef | 'operator' | 'calendar'
+  from?: FactRef | { param: string } | 'operator' | 'calendar' | null
   via?: FactRef
 }
 
@@ -341,11 +375,23 @@ export interface RuleOutput {
   writes_to?: FactRef
 }
 
+/** One (record instance, column, row range) a rule runs on — QF-47. A rule with
+ *  sixty bindings is one entry, and the per-binding numbers live in `params`. */
+export interface RuleBinding {
+  key: string
+  record: FactRef
+  variant?: number | string | null
+  range?: string | null
+  params?: Record<string, unknown>
+  rows?: { key: string; row?: number | null; label?: string | null; item?: string | null }[]
+}
+
 /** `rule.data` (§7). `inputs` and `outputs` are required — a constant is a rule
  *  with `inputs: []`, which is what the header chip calls «مقدار ثابت». */
 export interface RuleData {
   inputs: RuleInput[]
   outputs: RuleOutput[]
+  applies_to?: RuleBinding[]
   lang?: 'feel' | 'table' | 'text' | 'sheets' | 'gs'
   expr?: string
   identifier?: string
@@ -495,6 +541,13 @@ export interface FactBundle {
   resolved: Record<string, FactLabel | Restricted>
   row_titles: Record<string, string | Restricted>
   path_labels: Record<string, string | Restricted>
+  /** `{spreadsheetId: title}` — the manifest's file name without its
+   *  extension, which is the only name the estate has for a workbook. */
+  workbook_titles: Record<string, string>
+  /** Where a record instance or a rule binding sits, keyed by its own key. The
+   *  entry cannot carry it: a rule's binding names a column of another entry,
+   *  and the workbook's title is the manifest's. */
+  binding_labels: Record<string, { workbook: string; sheet: string; branch: string | null }>
   consumers: FactConsumer[]
   processes: FactProcessLink[]
   /**

@@ -232,9 +232,12 @@ MANIFEST = {
     "branches": [{"code": "chalebagh", "name": "چاله‌باغ"},
                  {"code": "naharkhoran", "name": "ناهارخوران"}],
     "workbooks": [
-        {"spreadsheetId": MAVAD, "short": "mavad", "confirmed": True},
-        {"spreadsheetId": PITZA, "short": "pitza_cb", "confirmed": True},
-        {"spreadsheetId": GOZARESH, "short": "gozaresh_cb", "confirmed": True}],
+        {"spreadsheetId": MAVAD, "short": "mavad", "confirmed": True,
+         "file": "Mavade Avalie.xlsx"},
+        {"spreadsheetId": PITZA, "short": "pitza_cb", "confirmed": True,
+         "file": "Pitza.xlsx"},
+        {"spreadsheetId": GOZARESH, "short": "gozaresh_cb", "confirmed": True,
+         "file": "Gozaresh markazi.xlsx"}],
 }
 
 _FILES = {"item": "items.json", "record": "records.json",
@@ -753,3 +756,51 @@ def test_a_malformed_store_file_is_skipped_not_raised(root):
         "F-00031": {"kind": "rule", "title": "قارچ هر پیتزا"},
         "cooking-001": {"kind": "process", "title": "پخت پیتزا"},
         "cooking-002": {"kind": "process", "title": "پخت قدیمی"}}
+
+
+def test_workbook_titles_are_the_file_name_without_its_extension(root):
+    assert manifest.workbook_titles(root)[MAVAD] == "Mavade Avalie"
+
+
+def test_binding_labels_name_a_record_instance_and_a_rule_binding(root):
+    record = {"id": "F-00300", "kind": "record", "key": "gozaresh_shabane",
+              "title": "گزارش شبانه", "statement": "…", "retired": False,
+              "scope": {"departments": ["cooking"], "branches": ["chalebagh"]},
+              "status": "confirmed", "updated_at": NOW,
+              "data": {"medium": "sheet", "role": "report", "location": {},
+                       "instances": [{"key": "pitza__s0", "spreadsheetId": MAVAD,
+                                      "sheetId": 0, "sheet": "پیتزا",
+                                      "branch": "chalebagh", "hidden": False}]}}
+    rule = {"id": "F-00301", "kind": "rule", "key": "enheraf",
+            "title": "انحراف مصرف", "statement": "…", "retired": False,
+            "scope": {"departments": ["cooking"], "branches": ["chalebagh"]},
+            "status": "confirmed", "updated_at": NOW,
+            "data": {"inputs": [], "outputs": [],
+                     "applies_to": [{"key": "pitza__s0__j__r6",
+                                     "record": {"ref": "F-00300", "field": "c_j"},
+                                     "variant": 0, "range": "J6:J15",
+                                     "params": {"tolerancePerFoodGr": 5}}]}}
+    _dump(root / "facts" / "records.json",
+          {"schema_version": 2, "entries": [record]})
+    _dump(root / "facts" / "rules.json",
+          {"schema_version": 2, "entries": [rule]})
+    _dump(root / "facts" / ".index.json",
+          {"schema_version": 2,
+           "entries": [{"id": e["id"], "kind": e["kind"], "key": e["key"],
+                        "title": e["title"], "scope": e["scope"],
+                        "status": e["status"], "retired": e["retired"],
+                        "updated_at": e["updated_at"]} for e in (record, rule)]})
+    one = {"workbook": "Mavade Avalie", "sheet": "پیتزا", "branch": "چاله‌باغ"}
+    assert facts_store.binding_labels(root, record) == {"pitza__s0": one}
+    assert facts_store.binding_labels(root, rule) == {"pitza__s0__j__r6": one}
+
+
+def test_a_v2_store_file_reads_exactly_as_a_v1_one_does(root):
+    """The marker moves to 2 in the same commit as the schema (§8 step 2); the
+    reader has never checked it and must not start now — an entry is an entry."""
+    doc = json.loads((root / "facts" / "items.json").read_text(encoding="utf-8"))
+    doc["schema_version"] = 2
+    _dump(root / "facts" / "items.json", doc)
+    assert facts_store.load_entry(root, doc["entries"][0]["id"]) is not None
+    assert facts_store.load_index(root / "nothing") == {
+        "schema_version": 2, "entries": []}

@@ -1,0 +1,14 @@
+sheet	range	type	values
+زمان تحویل و سنجش کیفیت	B2:B591	list	"خوب,متوسط,بد"
+زمان تحویل و سنجش کیفیت	C2:C591	list	"تا ۱۵ دقیقه,تا ۲۵ دقیقه,تا ۴۰ دقیقه,بیش از ۴۰ دقیقه"
+زمان تحویل و سنجش کیفیت	A2:A591	custom	OR(NOT(ISERROR(DATEVALUE(A2))), AND(ISNUMBER(A2), LEFT(CELL("format", A2))="D"))
+ضایعات	A2:A649	custom	OR(NOT(ISERROR(DATEVALUE(A2))), AND(ISNUMBER(A2), LEFT(CELL("format", A2))="D"))
+ضایعات	C2:C649	custom	AND(ISNUMBER(C2),(NOT(OR(NOT(ISERROR(DATEVALUE(C2))), AND(ISNUMBER(C2), LEFT(CELL("format", C2))="D")))))
+ضایعات	B2:B649 D2:D649		
+OFF اجرایی	A2:A647	custom	OR(NOT(ISERROR(DATEVALUE(A2))), AND(ISNUMBER(A2), LEFT(CELL("format", A2))="D"))
+OFF اجرایی	B2:C647	custom	AND(ISNUMBER(B2),(NOT(OR(NOT(ISERROR(DATEVALUE(B2))), AND(ISNUMBER(B2), LEFT(CELL("format", B2))="D")))))
+OFF اجرایی	D2:D647		
+نیازمندیها و مشکلات	A2:A635	custom	OR(NOT(ISERROR(DATEVALUE(A2))), AND(ISNUMBER(A2), LEFT(CELL("format", A2))="D"))
+نیازمندیها و مشکلات	B2:C635		
+خمیر	A2:A88	custom	OR(NOT(ISERROR(DATEVALUE(A2))), AND(ISNUMBER(A2), LEFT(CELL("format", A2))="D"))
+خمیر	B2:D88	custom	AND(ISNUMBER(B2),(NOT(OR(NOT(ISERROR(DATEVALUE(B2))), AND(ISNUMBER(B2), LEFT(CELL("format", B2))="D")))))

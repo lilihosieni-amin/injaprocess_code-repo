@@ -5,13 +5,32 @@ shapes; every element in it was copied from the estate's own export.
 """
 import json
 import re
+import shutil
 import zipfile
 
 import pytest
-from dump_workbook import dump_workbook, header_row, init_manifest
+from dump_workbook import (
+    _head_grid,
+    _read_sheet,
+    dump_workbook,
+    has_date_header,
+    header_row,
+    init_manifest,
+    is_ids_tab,
+    is_mirror_tab,
+    manifest_reconcile,
+    row_labels,
+)
 from dump_workbook.cli import main
 from engine_common import validate
-from fixtures.make_workbook import DUMMY_SOURCE, LAMBDA_BODY, REFERENCE_ROWS, make_workbook
+from fixtures.make_workbook import (
+    DUMMY_SOURCE,
+    LAMBDA_BODY,
+    MIRROR_FORMULA,
+    REFERENCE_ROWS,
+    REPORT_LABELS,
+    make_workbook,
+)
 
 # --------------------------------------------------------------------------
 # helpers
@@ -36,13 +55,18 @@ def _dump(tmp_path, reference_tabs=(), **kw):
     return summary, out / summary["spreadsheetId"]
 
 
+def _sheet(columns, max_row):
+    """The two members of a `_read_sheet` result that `row_labels` reads."""
+    return {"max_row": max_row, "columns": columns}
+
+
 def _estate(tmp_path, books=(("Amar__Pitza", "Pitza.xlsx", "SID1"),
-                             ("Amar__Kanter", "Kanter.xlsx", "SID2"))):
+                             ("Amar__Kanter", "Kanter.xlsx", "SID2")), **kw):
     """A DATA_ROOT with `attachments/sheets/{dir}/{file}` for each book."""
     root = tmp_path / "data"
     sheets = root / "attachments" / "sheets"
     for directory, name, sid in books:
-        make_workbook(sheets / directory / name, spreadsheet_id=sid)
+        make_workbook(sheets / directory / name, spreadsheet_id=sid, **kw)
     return root
 
 
@@ -219,6 +243,19 @@ def test_a_dense_header_carrying_one_merged_group_is_not_a_band():
     assert header_row(head, ["B1:C1"]) == 1
 
 
+def test_sparsity_is_judged_against_the_head_rows_own_extent():
+    """`Gozareshat!ضایعات`: five columns of head on a tab fifteen wide. The band
+    test divides by the row's width, and `_head_grid` pads every row to the
+    tab's `max_col` — dividing by the padding would call the date header sparse
+    and skip it, voiding a header §7 says may never move."""
+    head = [[""] * 15,
+            ["", "تاریخ", "", "", "ضایعات"] + [""] * 10,
+            ["", "روز", "ماه", "سال", ""] + [""] * 10,
+            ["", "3", "شهریور", "1405", ""] + [""] * 10,
+            [""] * 15]
+    assert header_row(head, ["B2:D2", "E2:O4"]) == 3
+
+
 def test_sheets_json_carries_hidden_dimensions_codes_and_the_empty_flag(tmp_path):
     _, out = _dump(tmp_path)
     sheets = {s["name"]: s for s in _json(out / "sheets.json")["sheets"]}
@@ -227,13 +264,128 @@ def test_sheets_json_carries_hidden_dimensions_codes_and_the_empty_flag(tmp_path
     assert sheets["آمار"]["sheetId"] == 1
     assert sheets["آمار"]["dimension"] == "A1:H7"
     assert sheets["آمار"]["codes"] == ["##RPT-1"]
-    assert len(sheets["آمار"]["head"]) == 5
+    assert len(sheets["آمار"]["head"]) == 6
+
+
+def test_the_head_is_the_header_row_and_the_four_rows_below_it(tmp_path):
+    """§4 — deep enough for `build` to sample a column's type, and no deeper."""
+    _, out = _dump(tmp_path, v3_tabs=True)
+    sheets = {s["name"]: s for s in _json(out / "sheets.json")["sheets"]}
+    report = sheets["گزارش پیتزا"]
+    assert report["header_row"] == 5
+    assert len(report["head"]) == 9                  # 5 + 4, of the tab's 15
+    assert report["head"][5][1] == "پنیر پیتزا"      # row 6, column B
+    assert sheets["آمار"]["header_row"] == 2 and len(sheets["آمار"]["head"]) == 6
+
+
+def test_every_head_row_is_the_tab_s_full_width(tmp_path):
+    _, out = _dump(tmp_path, v3_tabs=True)
+    for sheet in _json(out / "sheets.json")["sheets"]:
+        assert {len(row) for row in sheet["head"]} <= {sheet["cols"]}, sheet["name"]
+
+
+def test_header_row_still_searches_only_the_first_five_rows():
+    """The head is nine rows deep now; the header is still found where it was
+    or nowhere at all — no estate tab may change its header row (§7)."""
+    assert header_row([["1"], ["2"], ["3"], ["4"], ["5"], ["کد", "نام"]]) is None
+
+
+def test_read_sheet_keeps_every_cell_of_the_two_left_most_non_empty_columns(tmp_path):
+    book = make_workbook(tmp_path / "wb" / "Test.xlsx", v3_tabs=True)
+    sheet = _read_sheet(zipfile.ZipFile(book).read("xl/worksheets/sheet5.xml"), [])
+    assert sorted(sheet["columns"]) == [2, 3]        # column A is empty
+    assert sheet["columns"][2][6] == "پنیر پیتزا"    # below the head, and kept
+    assert sheet["columns"][2][15] == "خمیر پیتزا"
+
+
+def test_head_rows_are_padded_to_a_max_col_no_head_row_reaches():
+    """`_head_grid` widens to `sheet["max_col"]`, not to the widest head row —
+    a formula-only cell far to the right, below the head, still sets the tab's
+    width and every head row must reach it."""
+    grid = _head_grid({"head": {1: {1: "کد", 2: "نام"}}, "max_row": 12,
+                       "max_col": 8})
+    assert {len(row) for row in grid} == {8}
+    assert grid[0] == ["کد", "نام", "", "", "", "", "", ""]
+
+
+# --------------------------------------------------------------------------
+# row_labels and the three predicates that guard it
+
+
+def test_row_labels_are_written_for_a_report_tab_and_a_bom_tab(tmp_path):
+    _, out = _dump(tmp_path, v3_tabs=True)
+    sheets = {s["name"]: s for s in _json(out / "sheets.json")["sheets"]}
+    assert sheets["گزارش پیتزا"]["row_labels"] == {
+        str(6 + i): label for i, label in enumerate(REPORT_LABELS)}
+    assert sheets["پیتزا امریکایی"]["row_labels"] == {
+        "2": "رستبیف #71", "3": "تگزاس #309", "4": "مخلوط #74"}
+
+
+def test_no_row_labels_on_a_month_column_a_mirror_or_an_ids_tab(tmp_path):
+    """A mirror's spilled values and an ids tab's range names read exactly like
+    labels; a month column reads like one too. None of them names a row."""
+    _, out = _dump(tmp_path, v3_tabs=True)
+    sheets = {s["name"]: s for s in _json(out / "sheets.json")["sheets"]}
+    for name in ("موجودی اول شب", "Table_Ingredients_Pizza", "SheetsFileIds"):
+        assert "row_labels" not in sheets[name], name
+
+
+def test_a_column_of_sentences_is_not_a_label_column():
+    """`Hesabdari!نیازمندیها و مشکلات` — a label names a thing, a sentence is a
+    nightly note (QF-1)."""
+    note = "در یخچال از یک طرف افتاده و باید تعمیر شود"
+    cells = {r: f"{note} {r}" for r in range(2, 6)}
+    assert row_labels(_sheet({2: cells}, 5), [["تاریخ", "مشکل"]], 1) == {}
+
+
+def test_a_column_that_repeats_itself_is_not_a_label_column():
+    cells = {r: "تعمیر" for r in range(2, 6)}
+    assert row_labels(_sheet({2: cells}, 5), [["تاریخ", "مشکل"]], 1) == {}
+
+
+def test_a_month_column_with_no_header_is_still_a_date_part():
+    cells = {2: "آذر", 3: "دی", 4: "بهمن", 5: "اسفند"}
+    assert row_labels(_sheet({2: cells}, 5), [["", ""]], 1) == {}
+
+
+def test_a_column_of_dates_in_either_estate_form_is_not_a_label_column():
+    cells = {2: "1405/04/18", 3: "16/4/1405", 4: "1405/04/20", 5: "1405/04/21"}
+    assert row_labels(_sheet({2: cells}, 5), [["", ""]], 1) == {}
+
+
+def test_a_tab_over_sixty_rows_gets_no_labels():
+    cells = {r: f"قلم {r}" for r in range(2, 61)}
+    assert row_labels(_sheet({1: cells}, 60), [["نام"]], 1) == {}
+
+
+def test_is_mirror_tab_only_for_a_whole_tab_import():
+    at_a1 = [["t", "A1", "", MIRROR_FORMULA, 1, "نام", ""]]
+    assert is_mirror_tab(at_a1)
+    assert not is_mirror_tab([])
+    assert not is_mirror_tab([["t", "B2", "", MIRROR_FORMULA, 1, "", ""]])
+    assert not is_mirror_tab(at_a1 + [["t", "A2", "", "SUM(AN)", 1, "", ""]])
+    assert not is_mirror_tab(                      # an import inside a rule
+        [["t", "A1", "", "SUM(IMPORT_FROM_SHEET(A,B,C),1)", 1, "", ""]])
+
+
+def test_is_ids_tab_takes_both_spellings_the_estate_uses():
+    assert is_ids_tab("SheetsFileIds") and is_ids_tab("SheetsFileIDs")
+    assert is_ids_tab(" sheetsfileid ")
+    assert not is_ids_tab("Table_Ingredients_Pizza")
+
+
+def test_has_date_header_names_a_date_column():
+    assert has_date_header(["تاریخ", "رستبیف #71"])
+    assert has_date_header(["روز", "ماه", "سال", "وزن پنیر پیتزا ##1"])
+    assert has_date_header(["Column 1", "ماه", "سال"])   # Anbar markazi!فرنگی
+    assert not has_date_header(["نام", "پنیر پیتزا ##1"])
 
 
 def test_no_plain_cell_of_a_non_reference_tab_reaches_the_dump(tmp_path):
     """QF-1 — with no reference tab confirmed there is no `rows.tsv` at all, and
-    a tab\'s cells appear nowhere else. (`sheets.json` keeps the first \u2264 5 rows
-    of every tab: Appendix C asks for them, and the header row is found in them.)"""
+    a tab\'s cells appear nowhere else. (`sheets.json` keeps the header row and
+    four rows below it for every tab: the header row is found in them and
+    `build` samples types from them.)"""
     _, out = _dump(tmp_path)
     assert not (out / "rows.tsv").exists()
     for name in ("formulas.tsv", "names.tsv", "validations.tsv", "cf.tsv",
@@ -376,6 +528,50 @@ def test_a_tab_not_listed_yields_no_rows_even_when_full_of_numbers(tmp_path):
     assert "شمارش" not in text and "933" not in text
 
 
+def test_an_ids_tab_is_dumped_to_rows_tsv_without_being_a_reference_tab(tmp_path):
+    """The three hops of an import edge start here: the named range is only in
+    this tab, and no manifest row will ever confirm it as a table (§2.2)."""
+    _, out = _dump(tmp_path, v3_tabs=True)
+    rows = _tsv(out / "rows.tsv")
+    assert {r["sheet"] for r in rows} == {"SheetsFileIds"}
+    assert [r["Range Name Associated"] for r in rows] == ["SheetsFileId_Pizza",
+                                                          "SheetsFileId_Kanter"]
+    assert rows[0]["Sheets File Id"] == "SIDPIZZA"
+
+
+def test_both_estate_spellings_of_the_ids_tab_are_dumped(tmp_path):
+    from fixtures.make_workbook import SHEETS, V3_SHEETS
+    names = [name for name, _ in SHEETS + V3_SHEETS]
+    names[5] = "SheetsFileIDs"
+    _, out = _dump(tmp_path, v3_tabs=True, sheet_names=names)
+    assert {r["sheet"] for r in _tsv(out / "rows.tsv")} == {"SheetsFileIDs"}
+
+
+def test_a_reference_tab_and_the_ids_tab_share_one_rows_tsv(tmp_path):
+    _, out = _dump(tmp_path, v3_tabs=True, reference_tabs=["پیتزا امریکایی"])
+    by_sheet = {}
+    for row in _tsv(out / "rows.tsv"):
+        by_sheet.setdefault(row["sheet"], []).append(row)
+    assert sorted(by_sheet) == ["SheetsFileIds", "پیتزا امریکایی"]
+    assert by_sheet["پیتزا امریکایی"][0]["نام"] == "رستبیف #71"
+
+
+def test_no_other_tab_s_cells_ride_along_with_the_ids_rows(tmp_path):
+    _, out = _dump(tmp_path, v3_tabs=True)
+    text = (out / "rows.tsv").read_text(encoding="utf-8")
+    assert "933" not in text and "پنیر پیتزا" not in text    # QF-1 still holds
+
+
+def test_a_stale_ids_tabs_name_warns_under_its_own_list(tmp_path, capsys):
+    """A name given in `ids_tabs` that no tab carries is stale the same way a
+    `reference_tabs` name is — and the warning has to say which list to fix."""
+    book = tmp_path / "wb" / "Test.xlsx"
+    make_workbook(book)
+    dump_workbook(book, book.parent / "Test.structure.md", tmp_path / ".dump",
+                  ids_tabs=["SheetsFileIds"])
+    assert "ids_tabs is stale" in capsys.readouterr().err
+
+
 # --------------------------------------------------------------------------
 # --init-manifest
 
@@ -423,7 +619,7 @@ def test_init_manifest_is_idempotent_and_touches_nothing_confirmed(tmp_path):
     sheets = root / "attachments" / "sheets"
     first = init_manifest(sheets)
     first["workbooks"][0].update(confirmed=True, departments=["cooking"],
-                                 branches=["chalebagh"],
+                                 branches=["chalebagh"], unresolved=[],
                                  reference_tabs=["مواد اولیه"], short="pitza_cb")
     first["branches"] = [{"code": "chalebagh", "name": "چاله‌باغ"}]
     (sheets / "manifest.json").write_text(json.dumps(first, ensure_ascii=False),
@@ -437,9 +633,109 @@ def test_init_manifest_is_idempotent_and_touches_nothing_confirmed(tmp_path):
     make_workbook(sheets / "Amar__Farangi" / "Farangi.xlsx", spreadsheet_id="SID3")
     third = init_manifest(sheets)
     assert len(third["workbooks"]) == len(first["workbooks"]) + 1
-    assert third["workbooks"][:len(first["workbooks"])] == first["workbooks"]
+    # …against the second pass, not the first: confirming Kanter as cooking is
+    # what §2.2 proposes cooking to its sibling Pitza from, so pass 2 is where
+    # the fixpoint is. A new workbook must not disturb either row.
+    assert third["workbooks"][:len(again["workbooks"])] == again["workbooks"]
     new = third["workbooks"][-1]
     assert new["spreadsheetId"] == "SID3" and new["confirmed"] is False
+
+
+def test_manifest_reconcile_drops_the_three_kinds_of_wrong_reference_tab():
+    """The owner answered the question that was put at Gate M, and the question
+    never mentioned that a tab whose only formula is a whole-tab import is an
+    edge (QF-48). The row is repaired in place and silently (§2.2)."""
+    row = {"spreadsheetId": "SID1", "confirmed": True,
+           "reference_tabs": ["SheetsFileIds", "Table_Ingredients_Pizza",
+                              "مواد حساس", "پیتزا امریکایی"]}
+    dump = {"sheets": {"sheets": []},
+            "formulas": [["Table_Ingredients_Pizza", "A1", "", MIRROR_FORMULA,
+                          1, "نام", ""],
+                         ["مواد حساس", "G6", "", "MINUS(FN,EN)", 1, "10", ""]]}
+    issues = manifest_reconcile(row, dump)
+    assert row["reference_tabs"] == ["پیتزا امریکایی"]
+    assert row["confirmed"] is True             # reconciled, never re-asked
+    assert [(i["kind"], i["sheet"]) for i in issues] == [
+        ("reference_tab_is_ids", "SheetsFileIds"),
+        ("reference_tab_is_mirror", "Table_Ingredients_Pizza"),
+        ("reference_tab_computes", "مواد حساس")]
+    assert all(i["run_only"] and i["spreadsheetId"] == "SID1" for i in issues)
+
+
+def test_init_manifest_proposes_the_bom_tab_and_nothing_dated(tmp_path, monkeypatch,
+                                                              capsys):
+    """§2.2's reference-tab proposal: item codes, no formulas, no date column.
+    The line tab carries codes and no formulas too — the date header is the
+    only thing that separates a nightly log from a definition table."""
+    root = _estate(tmp_path, v3_tabs=True)
+    monkeypatch.setenv("DATA_ROOT", str(root))
+    assert main(["--init-manifest"]) == 0
+    manifest = _json(root / "attachments" / "sheets" / "manifest.json")
+    validate("manifest.schema.json", manifest)
+    row = next(w for w in manifest["workbooks"] if w["spreadsheetId"] == "SID1")
+    assert row["reference_tabs"] == ["پیتزا امریکایی"]
+    assert row["departments"] == [] and row["branches"] == []
+    assert row["unresolved"] == ["departments", "branches"]
+    assert row["confirmed"] is False
+
+
+def test_the_branch_token_in_the_path_is_proposed(tmp_path, monkeypatch, capsys):
+    root = _estate(tmp_path, books=(
+        ("MandeShab__ChaleBagh__Amar__Farangi", "Farangi.xlsx", "SID1"),
+        ("Sandogh__Sandogh - NaharKhoran", "Sandogh.xlsx", "SID2")))
+    monkeypatch.setenv("DATA_ROOT", str(root))
+    main(["--init-manifest"])
+    rows = {w["spreadsheetId"]: w for w in
+            _json(root / "attachments" / "sheets" / "manifest.json")["workbooks"]}
+    assert rows["SID1"]["branches"] == ["chalebagh"]
+    assert rows["SID2"]["branches"] == ["naharkhoran"]
+    assert "branches" not in rows["SID1"]["unresolved"]
+
+
+def test_the_department_is_proposed_only_when_the_confirmed_siblings_agree(
+        tmp_path, monkeypatch, capsys):
+    """The tree does not determine a department — `…__Amar__Kanter` is cooking
+    and `…__Amar__Anbar markazi` is warehouse — so agreement is the whole
+    test."""
+    root = _estate(tmp_path, books=(("Amar__Pitza", "Pitza.xlsx", "SID1"),
+                                    ("Amar__Kanter", "Kanter.xlsx", "SID2"),
+                                    ("Anbar__Anbar", "Anbar.xlsx", "SID3")))
+    sheets = root / "attachments" / "sheets"
+    monkeypatch.setenv("DATA_ROOT", str(root))
+    main(["--init-manifest"])
+    manifest = _json(sheets / "manifest.json")
+    for workbook in manifest["workbooks"]:
+        if workbook["spreadsheetId"] == "SID1":
+            workbook.update(departments=["cooking"], branches=["chalebagh"],
+                            reference_tabs=[], unresolved=[], confirmed=True)
+    (sheets / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False),
+                                          encoding="utf-8")
+    main(["--init-manifest"])
+    rows = {w["spreadsheetId"]: w for w in
+            _json(sheets / "manifest.json")["workbooks"]}
+    assert rows["SID2"]["departments"] == ["cooking"]   # same first segment
+    assert rows["SID3"]["departments"] == []            # a different one
+
+
+def test_a_confirmed_row_keeps_its_answers_and_is_never_re_proposed(
+        tmp_path, monkeypatch, capsys):
+    """An empty judgement column on a confirmed row is the owner's «none».
+    Re-proposing it would send all 28 estate rows back to Gate M."""
+    root = _estate(tmp_path, v3_tabs=True)
+    sheets = root / "attachments" / "sheets"
+    monkeypatch.setenv("DATA_ROOT", str(root))
+    main(["--init-manifest"])
+    manifest = _json(sheets / "manifest.json")
+    for workbook in manifest["workbooks"]:
+        workbook.update(departments=["cooking"], branches=["chalebagh"],
+                        reference_tabs=[], unresolved=[], confirmed=True)
+    (sheets / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False),
+                                          encoding="utf-8")
+    main(["--init-manifest"])
+    rows = {w["spreadsheetId"]: w for w in
+            _json(sheets / "manifest.json")["workbooks"]}
+    assert rows["SID1"]["reference_tabs"] == []
+    assert rows["SID1"]["unresolved"] == [] and rows["SID1"]["confirmed"] is True
 
 
 # --------------------------------------------------------------------------
@@ -473,8 +769,8 @@ def test_init_manifest_re_dumps_an_already_confirmed_rows_tsv(tmp_path, monkeypa
     main(["--init-manifest"])
     manifest = _json(sheets / "manifest.json")
     for workbook in manifest["workbooks"]:
-        workbook["confirmed"] = True
-        workbook["reference_tabs"] = ["مواد اولیه"]
+        workbook.update(confirmed=True, unresolved=[],
+                        reference_tabs=["مواد اولیه"])
     (sheets / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False),
                                           encoding="utf-8")
     main(["--manifest"])
@@ -495,7 +791,7 @@ def test_manifest_mode_dumps_rows_only_for_confirmed_reference_tabs(
     main(["--init-manifest"])
     manifest = _json(sheets / "manifest.json")
     for workbook in manifest["workbooks"]:
-        workbook["confirmed"] = True
+        workbook.update(confirmed=True, unresolved=[])
         if workbook["spreadsheetId"] == "SID1":
             workbook["reference_tabs"] = ["مواد اولیه"]
     (sheets / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False),
@@ -506,15 +802,29 @@ def test_manifest_mode_dumps_rows_only_for_confirmed_reference_tabs(
     assert not (sheets / ".dump" / "SID2" / "rows.tsv").exists()
 
 
-def test_manifest_mode_refuses_an_unconfirmed_row(tmp_path, monkeypatch, capsys):
+def test_manifest_mode_skips_an_unresolved_row_and_dumps_the_rest(
+        tmp_path, monkeypatch, capsys):
+    """Gate M never blocks (§2.2): the workbook nobody has placed is left out
+    of the pass, warned about once, and named in the report."""
     root = _estate(tmp_path)
     monkeypatch.setenv("DATA_ROOT", str(root))
+    sheets = root / "attachments" / "sheets"
     main(["--init-manifest"])
+    manifest = _json(sheets / "manifest.json")
+    for workbook in manifest["workbooks"]:
+        if workbook["spreadsheetId"] == "SID1":
+            workbook.update(departments=["cooking"], branches=["chalebagh"],
+                            reference_tabs=["مواد اولیه"], unresolved=[],
+                            confirmed=True)
+    (sheets / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False),
+                                          encoding="utf-8")
+    shutil.rmtree(sheets / ".dump")
     capsys.readouterr()
-    with pytest.raises(SystemExit) as e:
-        main(["--manifest"])
-    assert e.value.code == 2
-    assert "Pitza.xlsx" in capsys.readouterr().err
+
+    assert main(["--manifest"]) == 0
+    assert "Kanter.xlsx skipped (unresolved)" in capsys.readouterr().err
+    assert (sheets / ".dump" / "SID1" / "rows.tsv").is_file()
+    assert not (sheets / ".dump" / "SID2").exists()
 
 
 def test_manifest_mode_refuses_a_workbook_with_no_row(tmp_path, monkeypatch, capsys):
@@ -526,7 +836,7 @@ def test_manifest_mode_refuses_a_workbook_with_no_row(tmp_path, monkeypatch, cap
     manifest["workbooks"] = [w for w in manifest["workbooks"]
                              if w["spreadsheetId"] != "SID2"]
     for workbook in manifest["workbooks"]:
-        workbook["confirmed"] = True
+        workbook.update(confirmed=True, unresolved=[])
     (sheets / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False),
                                           encoding="utf-8")
     capsys.readouterr()

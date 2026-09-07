@@ -7,10 +7,12 @@ sake of 28 workbooks read a handful of times.
 
 What is dumped, and what is deliberately not: **plain cell values are not**
 (QF-1) — the estate's cells are nightly values, not definitions. What comes out
-is the shape of each tab (`sheets.json`, first ≤ 5 rows so a header row can be
-found), its formulas with their cached results (`formulas.tsv`), defined names
-(`names.tsv`), validations (`validations.tsv`), conditional formats (`cf.tsv`)
-and cell comments with the author reduced to a role (`comments.tsv`). The one
+is the shape of each tab (`sheets.json`, rows 1 through `header_row + 4`, plus
+every cell of the two left-most non-empty columns (§4) — deep enough for the
+header row to be found and a column's type to be sampled), its formulas
+with their cached results (`formulas.tsv`), defined names (`names.tsv`),
+validations (`validations.tsv`), conditional formats (`cf.tsv`) and cell
+comments with the author reduced to a role (`comments.tsv`). The one
 exception is a tab a person confirmed in `reference_tabs[]` at Gate M: its cells
 *are* definitions (§9), and they land in `rows.tsv`.
 
@@ -44,7 +46,9 @@ SCHEMA_VERSION = 1
 REL_COMMENTS = "/relationships/comments"
 REL_THREADED = "/relationships/threadedComment"
 
-_HEAD_ROWS = 5                      # rows kept per tab, and searched for a header
+_HEAD_ROWS = 5                      # rows searched for a header row
+_KEEP_ROWS = 9                      # rows kept: a header at row 5, plus four
+_LABEL_COLS = 2                     # left-most non-empty columns kept whole
 _CODE = re.compile(r"#{1,2}[^\s#]+")
 # `#NAME?` is a cached error, not a code — Google leaves plenty of them behind.
 _ERROR_NAME = re.compile(r"^#(REF|NAME|DIV|VALUE|NULL|NUM|N/A|ERROR|GETTING_DATA)",
@@ -273,13 +277,15 @@ def _cell_value(c, strings):
     return _text_of(holder) if holder is not None else ""
 
 
-def _read_sheet(data, strings, keep_rows=False):
-    """One worksheet part → the pieces the dump needs. Cells are kept only for
-    the first `_HEAD_ROWS` rows unless `keep_rows` (a confirmed reference tab)."""
+def _read_sheet(data, strings, keep_rows=False, keep_cols=_LABEL_COLS):
+    """One worksheet part → the pieces the dump needs. Cells are kept for the
+    first `_KEEP_ROWS` rows and, in `columns`, for the `keep_cols` left-most
+    non-empty columns whole; every cell only with `keep_rows` (a confirmed
+    reference tab)."""
     root = ET.fromstring(data)
     dimension = _child(root, "dimension")
     sheet = {"dimension": (dimension.get("ref") if dimension is not None else ""),
-             "head": {}, "rows": {}, "formulas": [], "merges": [],
+             "head": {}, "rows": {}, "columns": {}, "formulas": [], "merges": [],
              "validations": [], "cf": [], "max_row": 0, "max_col": 0,
              "empty": True}
     sheet_data = _child(root, "sheetData")
@@ -301,10 +307,20 @@ def _read_sheet(data, strings, keep_rows=False):
                 sheet["max_row"] = max(sheet["max_row"], r)
                 sheet["max_col"] = max(sheet["max_col"], col)
             if value != "":
-                if r <= _HEAD_ROWS:
+                if r <= _KEEP_ROWS:
                     sheet["head"].setdefault(r, {})[col] = value
                 if keep_rows:
                     sheet["rows"].setdefault(r, {})[col] = value
+                if keep_cols:
+                    # Which two columns are the left-most *non-empty* ones is
+                    # only known once the sheet has gone by — a column further
+                    # left can turn up at any row. Dropping the right-most as
+                    # each new one arrives keeps two columns in memory instead
+                    # of the tab (QF-1: none of this is written unless
+                    # `row_labels` says the column names rows).
+                    sheet["columns"].setdefault(col, {})[r] = value
+                    for extra in sorted(sheet["columns"])[keep_cols:]:
+                        del sheet["columns"][extra]
             if f is not None:
                 sheet["formulas"].append(
                     {"ref": ref, "col": col, "row": r, "value": value,
@@ -435,11 +451,13 @@ def _persons(zf):
 
 
 def _head_grid(sheet):
-    """The first ≤ 5 rows as a rectangle of strings, row 1 first."""
+    """The first ≤ 9 rows as a rectangle of strings at the tab's full width,
+    row 1 first. `dump_workbook` trims it to the header row plus four."""
     if not sheet["head"]:
         return []
-    last_row = min(_HEAD_ROWS, max(sheet["max_row"], max(sheet["head"])))
-    width = max((max(cols) for cols in sheet["head"].values() if cols), default=0)
+    last_row = min(_KEEP_ROWS, max(sheet["max_row"], max(sheet["head"])))
+    width = max([sheet["max_col"]]
+                + [max(cols) for cols in sheet["head"].values() if cols])
     return [[sheet["head"].get(r, {}).get(c, "") for c in range(1, width + 1)]
             for r in range(1, last_row + 1)]
 
@@ -487,15 +505,168 @@ def _is_title_band(index, row, merges):
 
 def header_row(head, merges=()):
     """The first of the first five rows that is mostly non-numeric text — half
-    or more of its non-empty cells. Blank rows and title bands are skipped."""
-    for index, row in enumerate(head, start=1):
+    or more of its non-empty cells. Blank rows and title bands are skipped.
+
+    A band is judged against the **searched rows' own extent**, not the width
+    `_head_grid` hands over: that grid is padded to the tab's `max_col`, which
+    rows further down can push far past anything the head says, and the band
+    test's sparsity half is a fraction of the row's width. `Gozareshat!ضایعات`
+    heads five columns on a tab fifteen wide — divided by fifteen its date
+    header reads sparse, and the tab loses a header it has (§7).
+    """
+    rows = head[:_HEAD_ROWS]
+    extent = max((col for row in rows
+                  for col, v in enumerate(row, start=1) if v.strip()), default=0)
+    for index, row in enumerate(rows, start=1):
         cells = [v for v in row if v.strip()]
-        if not cells or _is_title_band(index, row, merges):
+        if not cells or _is_title_band(index, row[:extent], merges):
             continue
         text = [v for v in cells if not _is_number(v)]
         if len(text) * 2 >= len(cells):
             return index
     return None
+
+
+# --------------------------------------------------------------------------
+# what a tab is, and what its rows are called
+
+_MONTHS = ("فروردین", "اردیبهشت", "خرداد", "تیر", "مرداد", "شهریور",
+           "مهر", "آبان", "آذر", "دی", "بهمن", "اسفند")
+_DATE_WORDS = ("تاریخ", "روز", "ماه", "سال")
+_DATE_VALUE = re.compile(r"^\d{1,4}/\d{1,2}/\d{1,4}$")   # 1405/04/18, 16/4/1405
+_LABEL_ROWS = 60        # above this a tab logs nightly values, not a table
+_LABEL_CHARS = 40       # a label names a thing; longer is a sentence
+_IDS_TAB = re.compile(r"sheetsfileids?", re.I)
+_BLANKS = re.compile(r"\s|\\n|\\t")
+
+
+def _one_call(text):
+    """`F(a,b)` → `("F", "a,b")` when the whole string is that one call, else
+    `None` — `F(a)+1` and `F(a)+G(b)` are not one call."""
+    match = re.match(r"([A-Za-z_][A-Za-z0-9_.]*)\(", text)
+    if not match:
+        return None
+    depth, in_string = 0, False
+    for i in range(match.end() - 1, len(text)):
+        ch = text[i]
+        if in_string:
+            in_string = ch != '"'
+        elif ch == '"':
+            in_string = True
+        elif ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+            if depth == 0:
+                return (match.group(1), text[match.end():i]) \
+                    if i == len(text) - 1 else None
+    return None
+
+
+def _top_args(inner):
+    """A call's arguments, split on the commas at depth zero."""
+    out, depth, in_string, current = [], 0, False, ""
+    for ch in inner:
+        if in_string:
+            current += ch
+            in_string = ch != '"'
+            continue
+        if ch == '"':
+            in_string = True
+        elif ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+        elif ch == "," and depth == 0:
+            out.append(current)
+            current = ""
+            continue
+        current += ch
+    out.append(current)
+    return out
+
+
+def is_mirror_tab(formulas_for_tab):
+    """QF-48 — exactly one formula, at A1, whose body is a single
+    `IMPORT_FROM_SHEET` call, bare or as a `LET`'s result expression. Such a tab
+    is an edge between two records, never a record: it produces no entry and no
+    rule. A formula that merely *contains* an import inside a larger
+    computation (the salon and sandogh row lookups) is an ordinary rule, which
+    is why the body is parsed and not searched. Rows are `_formula_rows`'
+    output: `[sheet, range, group, formula, count, cached, error]`.
+    """
+    if len(formulas_for_tab) != 1:
+        return False
+    span, text = formulas_for_tab[0][1] or "", formulas_for_tab[0][3] or ""
+    if span.replace("$", "") != "A1":
+        return False
+    call = _one_call(_BLANKS.sub("", text))
+    if call and call[0].upper() == "LET":
+        call = _one_call(_top_args(call[1])[-1])
+    return bool(call) and call[0].upper() == "IMPORT_FROM_SHEET"
+
+
+def is_ids_tab(name):
+    """The tab that maps a named range to a spreadsheetId. The estate spells it
+    `SheetsFileIds` and `SheetsFileIDs`; both are the same tab (§2.2)."""
+    return bool(_IDS_TAB.fullmatch((name or "").strip()))
+
+
+def has_date_header(head_row):
+    """Does this header row name a date column? «تاریخ», or two of «روز»,
+    «ماه», «سال» — a definition table is keyed by a name, a nightly log by a
+    date (§2.2). Two of the three rather than «روز» plus one, because
+    `Anbar markazi!فرنگی` heads its day column `Column 1` and still logs a
+    date."""
+    cells = [str(v).strip() for v in (head_row or [])]
+    if any("تاریخ" in cell for cell in cells):
+        return True
+    return sum(any(word in cell for cell in cells)
+               for word in ("روز", "ماه", "سال")) >= 2
+
+
+def _majority(values, test):
+    return sum(1 for value in values if test(value)) * 2 > len(values)
+
+
+def row_labels(sheet, head, header_index):
+    """`{row: text}` for the tab's label column, or `{}` — the rows of a small
+    table named down its side (§4).
+
+    Only the two columns `_read_sheet` kept are candidates, and only the rows
+    below the header: above it sits whatever date block the tab carries. Every
+    guard says the same thing from a different side — a label names a thing,
+    and whatever changes nightly is a value (QF-1, which §4 amends for this one
+    field): a date part (a month name, a `1405/04/18` or `16/4/1405` value, a
+    column headed «تاریخ»/«روز»/«ماه»/«سال»), a column of numbers, a column of
+    sentences and a column that repeats itself are all values wearing a label's
+    hat. The caller adds the two tab-level guards this cannot see: a mirror
+    tab's spilled values and an ids tab's range names name the rows of nothing.
+    """
+    if not sheet["max_row"] or sheet["max_row"] >= _LABEL_ROWS:
+        return {}
+    header = head[header_index - 1] if header_index else []
+    for col in sorted(sheet["columns"]):
+        cells = {row: str(value).strip()
+                 for row, value in sheet["columns"][col].items()
+                 if row > (header_index or 0) and str(value).strip()}
+        if not cells:
+            continue
+        title = header[col - 1] if col <= len(header) else ""
+        values = list(cells.values())
+        if any(word in title for word in _DATE_WORDS):
+            continue
+        if not _majority(values, lambda v: not _is_number(v)):
+            continue
+        if _majority(values,
+                     lambda v: v in _MONTHS or bool(_DATE_VALUE.match(v))):
+            continue
+        if max(len(value) for value in values) > _LABEL_CHARS:
+            continue
+        if len(set(values)) * 2 < len(values):
+            continue
+        return {str(row): cells[row] for row in sorted(cells)}
+    return {}
 
 
 def _codes(head):
@@ -631,16 +802,21 @@ def _sha256(path):
 
 
 def dump_workbook(xlsx_path, structure_md_path, out_dir, reference_tabs=(),
-                  prev_sheets=None, roles=None):
+                  ids_tabs=(), prev_sheets=None, roles=None):
     """Dump one workbook under `out_dir/{spreadsheetId}/` and report sheetId
     drift on stdout.
 
     `out_dir` is the `.dump` root, not the per-workbook directory: the id that
     names the directory is read from `structure_md_path` here, so no caller can
     know it beforehand. `reference_tabs` are the tab names a **confirmed**
-    manifest row lists — the only tabs whose cells are dumped (QF-1). `roles`
-    maps a `personId` (or a legacy comment's author) to a role string; anyone
-    absent from it is `unknown`, which is the default for everyone.
+    manifest row lists — the only tabs whose cells are dumped (QF-1).
+    An **ids tab** is dumped to `rows.tsv` too, whether or not any manifest row
+    names it: its rows are the only place a named range resolves to a
+    spreadsheetId, which is hop two of every import edge (§2.2). It is found by
+    name (`is_ids_tab`), because no caller can know a workbook's tab names
+    before it is opened; `ids_tabs` names any further tab to dump the same way.
+    `roles` maps a `personId` (or a legacy comment's author) to a role string;
+    anyone absent from it is `unknown`, which is the default for everyone.
     `prev_sheets` is the previous dump's `{sheetId: name}`; when it is None the
     map is read from the `sheets.json` already in place, so a re-dump reports
     drift without being told anything (QF-29).
@@ -719,17 +895,29 @@ def dump_workbook(xlsx_path, structure_md_path, out_dir, reference_tabs=(),
                                "rows": 0, "cols": 0, "head": [],
                                "header_row": None, "codes": [], "empty": True})
                 continue
-            keep = tab["name"] in wanted
+            keep = (tab["name"] in wanted or tab["name"] in (ids_tabs or ())
+                    or is_ids_tab(tab["name"]))
             sheet = _read_sheet(zf.read(tab["part"]), strings, keep_rows=keep)
             head = _head_grid(sheet)
             index = header_row(head, sheet["merges"])
-            sheets.append({"sheetId": tab["sheetId"], "name": tab["name"],
-                           "hidden": tab["hidden"],
-                           "dimension": sheet["dimension"] or _extent(sheet),
-                           "rows": sheet["max_row"], "cols": sheet["max_col"],
-                           "head": head, "header_row": index,
-                           "codes": _codes(head), "empty": sheet["empty"]})
-            formulas += _formula_rows(tab["name"], sheet)
+            # A tab's head is rows 1 through `header_row + 4`: whatever date
+            # block sits above the header, the header, and four rows below it —
+            # enough for `build` to sample a column's type. A tab with no header
+            # keeps the five rows the header search looked at.
+            head = head[:index + 4] if index else head[:_HEAD_ROWS]
+            tab_formulas = _formula_rows(tab["name"], sheet)
+            entry = {"sheetId": tab["sheetId"], "name": tab["name"],
+                     "hidden": tab["hidden"],
+                     "dimension": sheet["dimension"] or _extent(sheet),
+                     "rows": sheet["max_row"], "cols": sheet["max_col"],
+                     "head": head, "header_row": index,
+                     "codes": _codes(head), "empty": sheet["empty"]}
+            labels = ({} if is_ids_tab(tab["name"]) or is_mirror_tab(tab_formulas)
+                      else row_labels(sheet, head, index))
+            if labels:
+                entry["row_labels"] = labels
+            sheets.append(entry)
+            formulas += tab_formulas
             validations += [[tab["name"], v["range"], v["type"], v["values"]]
                             for v in sheet["validations"]]
             for rule in sheet["cf"]:
@@ -748,11 +936,12 @@ def dump_workbook(xlsx_path, structure_md_path, out_dir, reference_tabs=(),
                 columns, reference_rows = _merge_columns(
                     columns, reference_rows, tab_columns, rows)
 
-    missing = [name for name in wanted
-               if name not in {tab["name"] for tab in tabs}]
-    for name in missing:
+    present = {tab["name"] for tab in tabs}
+    missing = [name for name in wanted if name not in present]
+    for name in missing + [n for n in (ids_tabs or ()) if n not in present]:
+        which = "reference_tabs" if name in wanted else "ids_tabs"
         print(f"dump-workbook: {xlsx_path.name} has no tab named {name!r} — "
-              "reference_tabs is stale", file=sys.stderr)
+              f"{which} is stale", file=sys.stderr)
 
     drift = []
     for sheet in sheets:
@@ -873,15 +1062,100 @@ def structure_md_for(xlsx_path):
     return xlsx_path.with_name(xlsx_path.stem + ".structure.md")
 
 
-def init_manifest(sheets_root):
-    """Fill the manifest's mechanical columns from the folder and write it.
+_JUDGEMENT = ("departments", "branches", "reference_tabs")
+_BRANCH_CODES = ("chalebagh", "naharkhoran")
 
-    Idempotent: an existing row is matched by `spreadsheetId`; a confirmed row is
-    left exactly as it is, an unconfirmed one has its mechanical columns
-    refreshed (a rename is mechanical), and a workbook with no row at all is
-    appended with `confirmed: false`. The judgement columns — `departments`,
-    `branches`, `reference_tabs` — are nobody's business here: the `quantify`
-    agent proposes them and a person confirms them at Gate M (§3).
+
+def _first_segment(directory):
+    """`MandeShab__ChaleBagh__Amar__Pitza` → `MandeShab`. The estate's paths
+    join their segments with `__` inside one directory name as often as with
+    `/`, so both separate."""
+    return next((s for part in (directory or "").split("/")
+                 for s in part.split("__") if s), "")
+
+
+def manifest_reconcile(row, dump):
+    """Take out of a row's `reference_tabs` the tabs that cannot be a reference
+    record, and say which and why (§2.2).
+
+    Three of the estate's confirmed rows name a tab that is not a table: an ids
+    tab, a mirror (QF-48) and a tab that computes — procurement's «مواد حساس»
+    and «مواد عادی». A person answered the question that was put at Gate M and
+    the question mentioned none of this, so the row is repaired in place and
+    silently; the issues come back for the run to report once, and none of them
+    makes the row unresolved. `dump` is `{"sheets": <the sheets.json
+    document>, "formulas": <the formulas.tsv rows>}`.
+    """
+    by_tab = {}
+    for formula in dump.get("formulas") or []:
+        by_tab.setdefault(formula[0], []).append(formula)
+    issues, kept = [], []
+    for name in row.get("reference_tabs") or []:
+        if is_ids_tab(name):
+            kind = "reference_tab_is_ids"
+        elif is_mirror_tab(by_tab.get(name) or []):
+            kind = "reference_tab_is_mirror"
+        elif by_tab.get(name):
+            kind = "reference_tab_computes"
+        else:
+            kept.append(name)
+            continue
+        issues.append({"kind": kind, "sheet": name, "run_only": True,
+                       "spreadsheetId": row.get("spreadsheetId")})
+    row["reference_tabs"] = kept
+    return issues
+
+
+def _reference_tab_proposal(dump):
+    """Tabs that read as definition tables: item codes in the head, no formula
+    of their own, no date column in the header (§2.2). The line-inventory and
+    sales tabs carry no formulas either, so the no-formula test alone does not
+    separate them — the date column does. A mirror always carries its one
+    formula, so the same test excludes it."""
+    computing = {formula[0] for formula in dump.get("formulas") or []}
+    out = []
+    for sheet in (dump.get("sheets") or {}).get("sheets") or []:
+        head, index = sheet.get("head") or [], sheet.get("header_row")
+        if (not sheet.get("codes") or sheet["name"] in computing
+                or is_ids_tab(sheet["name"])
+                or has_date_header(head[index - 1] if index else [])):
+            continue
+        out.append(sheet["name"])
+    return out
+
+
+def _propose(row, dump, workbooks):
+    """Write §2.2's proposal into each judgement column that is still empty. A
+    filled column is never re-proposed, and a proposal that comes out empty
+    leaves the column for Gate M to answer."""
+    if not row.get("departments"):
+        head = _first_segment(row.get("dir"))
+        seen = {tuple(w.get("departments") or []) for w in workbooks
+                if w is not row and w.get("confirmed")
+                and _first_segment(w.get("dir")) == head}
+        seen.discard(())
+        if len(seen) == 1:
+            row["departments"] = list(seen.pop())
+    if not row.get("branches"):
+        folded = (row.get("dir") or "").lower()
+        row["branches"] = [code for code in _BRANCH_CODES if code in folded]
+    if not row.get("reference_tabs") and dump:
+        row["reference_tabs"] = _reference_tab_proposal(dump)
+
+
+def init_manifest(sheets_root, dumps=None):
+    """Fill the manifest's mechanical columns from the folder, propose the
+    judgement columns from the dumps, and write it (§2.2).
+
+    Idempotent, and the two states are different: a **confirmed** row keeps
+    every answer it holds — an empty judgement column there is the owner's
+    «none», not a gap — and only has its reference tabs reconciled. An
+    unconfirmed or new row has its mechanical columns refreshed (a rename is
+    mechanical) and a proposal written into every judgement column still empty;
+    `unresolved[]` then names the columns no proposal could fill and
+    `confirmed` is derived from it, so the two can never disagree. `dumps` is
+    `{spreadsheetId: {"sheets": …, "formulas": …}}` from the same invocation's
+    dump; a workbook missing from it simply gets no proposal.
     """
     sheets_root = pathlib.Path(sheets_root)
     path = sheets_root / "manifest.json"
@@ -898,23 +1172,29 @@ def init_manifest(sheets_root):
         directory = xlsx.parent.relative_to(sheets_root).as_posix()
         scripts = sorted(f"{directory}/{gs.name}" for gs in xlsx.parent.glob("*.gs"))
         row = rows.get(spreadsheet_id)
-        if row is not None and row.get("confirmed"):
-            continue
         if row is None:
             row = {"spreadsheetId": spreadsheet_id, "short": "",
                    "departments": [], "branches": [], "reference_tabs": [],
-                   "confirmed": False}
+                   "unresolved": [], "confirmed": False}
             rows[spreadsheet_id] = row
             manifest["workbooks"].append(row)
+        dump = (dumps or {}).get(spreadsheet_id)
+        for issue in (manifest_reconcile(row, dump) if dump else []):
+            print(f"dump-workbook: warning: {xlsx.name}: {issue['sheet']} is not "
+                  f"a reference table ({issue['kind']}) — removed", file=sys.stderr)
+        if row.get("confirmed"):
+            row["unresolved"] = []
+            continue
         row["dir"], row["file"], row["scripts"] = directory, xlsx.name, scripts
         if not row.get("short"):
             row["short"] = _mint_short(directory, xlsx.stem, taken)
             if row["short"]:
                 taken.add(row["short"])
-        row.setdefault("confirmed", False)
-        for key, default in (("departments", []), ("branches", []),
-                             ("reference_tabs", [])):
-            row.setdefault(key, list(default))
+        for key in _JUDGEMENT:
+            row.setdefault(key, [])
+        _propose(row, dump, manifest["workbooks"])
+        row["unresolved"] = [key for key in _JUDGEMENT if not row[key]]
+        row["confirmed"] = not row["unresolved"]
 
     write_json_atomic(path, manifest)
     return manifest

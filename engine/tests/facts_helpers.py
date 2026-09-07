@@ -20,7 +20,8 @@ def _root(tmp_path):
     (tmp_path / "attachments" / "sheets").mkdir(parents=True)
     (tmp_path / "attachments" / "sheets" / "manifest.json").write_text(json.dumps(
         {"schema_version": 1,
-         "branches": [{"code": "chalebagh", "name": "چاله‌باغ"}],
+         "branches": [{"code": "chalebagh", "name": "چاله‌باغ"},
+                      {"code": "naharkhoran", "name": "ناهارخوران"}],
          "workbooks": []}), encoding="utf-8")
     # The files these fixtures' deltas cite, actually present.
     #
@@ -55,7 +56,7 @@ def _run_dir(tmp_path, n="20260901-101500"):
 
 
 def _units_delta():
-    return {"schema_version": 1, "entries": [{
+    return {"schema_version": 2, "entries": [{
         "id": "T-1", "kind": "record", "key": "units", "title": "واحدها",
         "statement": "جدول واحدها", "scope": {"departments": [], "branches": []},
         "source": [{"type": "chat", "ref": None}], "retired": False,
@@ -74,7 +75,7 @@ def _units_delta():
 
 
 def _const_delta(value=5, key="tol", dept="cooking"):
-    return {"schema_version": 1, "entries": [{
+    return {"schema_version": 2, "entries": [{
         "id": "T-1", "kind": "rule", "key": key, "title": "تلورانس " + key,
         "statement": "حد مجاز", "scope": {"departments": [dept], "branches": []},
         "source": [{"type": "voice", "ref": "meetings/transcripts/c.txt", "lines": "11"}],

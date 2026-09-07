@@ -152,7 +152,7 @@ def load_index(root: Path) -> dict:
     """
     path = Path(root) / "facts" / ".index.json"
     if not path.is_file():
-        return {"schema_version": 1, "entries": []}
+        return {"schema_version": 2, "entries": []}
     return storage.read_json(path)
 
 
@@ -445,6 +445,52 @@ def row_titles(root: Path, entry: dict) -> dict:
     return out
 
 
+def binding_labels(root: Path, entry: dict) -> dict:
+    """Where a binding or an instance actually sits — `{key: {workbook, sheet,
+    branch}}`.
+
+    A record carries its own `instances[]`, so its keys are answered from the
+    entry itself. A rule carries only `applies_to[].record`, and the sheet and
+    the branch live on the record it points at — so a rule's keys are answered
+    by loading those records once and matching the binding key's instance
+    prefix, which is how the key is built (`<instance key>__<column>__r<row>`).
+
+    Serving it is the only way the card can draw the designed row: the client
+    has no second entry and no manifest. A key whose instance cannot be
+    resolved is absent from the map rather than half-named — the card draws the
+    record's own title in that case, which is a true statement about where the
+    rule runs.
+    """
+    titles = manifest.workbook_titles(root)
+    names = {b.get("code"): b.get("name") for b in manifest.branches(root)}
+
+    def label(inst: dict) -> dict:
+        return {"workbook": titles.get(inst.get("spreadsheetId"), ""),
+                "sheet": inst.get("sheet") or "",
+                "branch": names.get(inst.get("branch"))}
+
+    data = entry.get("data") or {}
+    out = {i["key"]: label(i) for i in data.get("instances") or []
+           if isinstance(i, dict) and i.get("key")}
+    binds = [a for a in data.get("applies_to") or []
+             if isinstance(a, dict) and a.get("key")]
+    if not binds:
+        return out
+    # One walk of the store, not one per binding: a report rule binds ten
+    # instances of two records and the store is five small files.
+    instances = {}
+    for other in load_all(root):
+        for inst in (other.get("data") or {}).get("instances") or []:
+            if isinstance(inst, dict) and inst.get("key"):
+                instances[inst["key"]] = inst
+    for bind in binds:
+        prefix = "__".join(bind["key"].split("__")[:2])
+        inst = instances.get(prefix)
+        if inst is not None:
+            out[bind["key"]] = label(inst)
+    return out
+
+
 def _member_title(data: dict, group: str, key: str) -> str | None:
     """The Persian `title` of the keyed member `data[group][key]`, if any.
 
@@ -644,11 +690,12 @@ def process_links(root: Path, entry: dict) -> list:
 def coverage(root: Path) -> dict:
     """`{"read": n, "total": m}` — how much of the estate has been read.
 
-    The same count `merge facts check` reports (§12), joined the same way: a
-    workbook is *read* when a **non-stub** `record` names its `spreadsheetId`
-    in `data.location`. A stub is identity and nothing else (QF-20), so it
-    reads nothing; a retired record still counts, because the reading did
-    happen and the tab going away does not un-read the workbook.
+    The panel's own count: `merge facts check` withdrew its workbook
+    denominator in v3, so nothing upstream reports this and the join is made
+    here. A workbook is *read* when a **non-stub** `record` names its
+    `spreadsheetId` in `data.location`. A stub is identity and nothing else
+    (QF-20), so it reads nothing; a retired record still counts, because the
+    reading did happen and the tab going away does not un-read the workbook.
     """
     cited = set()
     for entry in load_all(root):

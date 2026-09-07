@@ -5,8 +5,9 @@ fills the manifest's mechanical columns, proposing nothing a person has to
 judge. `--manifest` runs after Gate M: it dumps the same structure and, for the
 tabs a **confirmed** row names in `reference_tabs[]`, their cells as `rows.tsv`.
 
-A workbook file on disk with no manifest row, or an unconfirmed one, is a
-precondition failure for `--manifest` (spec §3) — reported for every offending
+A workbook whose manifest row is still unresolved is warned about and skipped:
+Gate M never blocks a run (§2.2). A workbook file with no manifest row at all
+is still a precondition failure for `--manifest`, reported for every offending
 file at once, before anything is written.
 """
 import argparse
@@ -95,33 +96,41 @@ def main(argv=None):
     if args.manifest:
         manifest = _read_manifest(sheets_root)
         rows = {row["spreadsheetId"]: row for row in manifest["workbooks"]}
-        failures = []
+        failures, skipped = [], []
         for xlsx in books:
             row = rows.get(read_spreadsheet_id(structure_md_for(xlsx)))
             if row is None:
+                # Not a question anybody has been asked — the manifest is stale
+                # and `--init-manifest` is the pass that repairs it.
                 failures.append(f"{xlsx.name}: no manifest row")
-            elif not row.get("confirmed"):
-                failures.append(f"{xlsx.name}: manifest row is not confirmed "
-                                "(Gate M)")
+            elif row.get("unresolved") or not row.get("confirmed"):
+                print(f"dump-workbook: warning: {xlsx.name} skipped (unresolved)",
+                      file=sys.stderr)
+                skipped.append(xlsx)
             else:
                 reference_tabs[xlsx] = row.get("reference_tabs") or []
         if failures:
             for line in failures:
                 print(f"dump-workbook: {line}", file=sys.stderr)
             raise SystemExit(2)
+        books = [xlsx for xlsx in books if xlsx not in skipped]
 
+    dumps = {}
     for xlsx in books:
         summary = dump_workbook(xlsx, structure_md_for(xlsx), dump_root,
                                 reference_tabs=reference_tabs.get(xlsx, ()))
+        # `init_manifest` proposes from this same invocation's dump (§2.2) — the
+        # summary is what was just written, so nothing is read back off disk.
+        dumps[summary["spreadsheetId"]] = {"sheets": {"sheets": summary["sheets"]},
+                                           "formulas": summary["formulas"]}
         print(f"{summary['spreadsheetId']}\t{xlsx.name}\t"
               f"{summary['meta']['sheet_count']} tabs")
 
     if args.init_manifest:
-        manifest = init_manifest(sheets_root)
-        unconfirmed = [row for row in manifest["workbooks"]
-                       if not row.get("confirmed")]
+        manifest = init_manifest(sheets_root, dumps)
+        unresolved = [row for row in manifest["workbooks"] if row.get("unresolved")]
         print(f"manifest: {len(manifest['workbooks'])} workbooks, "
-              f"{len(unconfirmed)} awaiting Gate M")
+              f"{len(unresolved)} awaiting Gate M")
     return 0
 
 

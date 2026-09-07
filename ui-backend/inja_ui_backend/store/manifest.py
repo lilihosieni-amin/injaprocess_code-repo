@@ -47,6 +47,22 @@ def branches(root: Path) -> list:
     return [b for b in rows if isinstance(b, dict)] if isinstance(rows, list) else []
 
 
+def workbook_titles(root: Path) -> dict:
+    """`{spreadsheetId: title}` — a workbook's name as a person says it.
+
+    The estate has no Persian workbook title and the manifest has no column for
+    one, so the title is the file name without its extension («Mavade Avalie»),
+    which is what the owner sees on the drive and what Gate M reads out. A row
+    with no `file` contributes nothing rather than an empty name.
+    """
+    rows = read_manifest(root).get("workbooks")
+    if not isinstance(rows, list):
+        return {}
+    return {w["spreadsheetId"]: str(w["file"]).rsplit(".", 1)[0]
+            for w in rows if isinstance(w, dict)
+            and w.get("spreadsheetId") and w.get("file")}
+
+
 def workbook_count(root: Path) -> int:
     """The coverage denominator: every workbook the manifest names."""
     rows = read_manifest(root).get("workbooks")

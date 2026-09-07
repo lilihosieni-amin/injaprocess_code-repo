@@ -1,0 +1,1605 @@
+{
+ "schema_version": 1,
+ "unit": "u-items-food1",
+ "attempt": 1,
+ "decisions": [
+  {
+   "skeleton": "S-i-008511e525a7",
+   "action": "keep",
+   "key": "food_131",
+   "title": "اینجا برگر",
+   "statement": "اینجا برگر یکی از غذاهای منوی مجموعه است.",
+   "data": {
+    "category": "product",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-050adb4211ec",
+   "action": "keep",
+   "key": "ing_52",
+   "title": "جعبه سیب و قارچ",
+   "statement": "جعبه سیب و قارچ یکی از اقلام مصرفی آشپزخانه است.",
+   "data": {
+    "category": "ingredient",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-063c2e2a8206",
+   "action": "keep",
+   "key": "ing_43",
+   "title": "مینی مک",
+   "statement": "مینی مک یکی از اقلام مصرفی آشپزخانه است.",
+   "data": {
+    "category": "ingredient",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-0864387622a4",
+   "action": "keep",
+   "key": "ing_18",
+   "title": "فیله مرغ سوخاری تند",
+   "statement": "فیله مرغ سوخاری تند یکی از اقلام مصرفی آشپزخانه است.",
+   "data": {
+    "category": "ingredient",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-099392ba60c7",
+   "action": "keep",
+   "key": "ing_69",
+   "title": "پنیر گودا پنیر گودا فرنگی",
+   "statement": "پنیر گودا پنیر گودا فرنگی یکی از اقلام مصرفی آشپزخانه است.",
+   "data": {
+    "category": "ingredient",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-0aa517cad2c2",
+   "action": "keep",
+   "key": "food_553",
+   "title": "رما آلفردو",
+   "statement": "رما آلفردو یکی از غذاهای منوی مجموعه است.",
+   "data": {
+    "category": "product",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-0c8efc5b585a",
+   "action": "keep",
+   "key": "ing_6",
+   "title": "گوشت چرخ کرده",
+   "statement": "گوشت چرخ کرده یکی از اقلام مصرفی آشپزخانه است.",
+   "data": {
+    "category": "ingredient",
+    "unit": "kg"
+   }
+  },
+  {
+   "skeleton": "S-i-0e3d38424d3d",
+   "action": "keep",
+   "key": "ing_54",
+   "title": "کارتن ایتالیایی",
+   "statement": "کارتن ایتالیایی یکی از اقلام مصرفی آشپزخانه است.",
+   "data": {
+    "category": "ingredient",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-0e4187476b47",
+   "action": "keep",
+   "key": "food_350",
+   "title": "فیله اسپایسی چهار تکه",
+   "statement": "فیله اسپایسی چهار تکه یکی از غذاهای منوی مجموعه است.",
+   "data": {
+    "category": "product",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-0e60d286d3f3",
+   "action": "keep",
+   "key": "food_138",
+   "title": "برگر کلاسیک",
+   "statement": "برگر کلاسیک یکی از غذاهای منوی مجموعه است.",
+   "data": {
+    "category": "product",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-119fd0d403b3",
+   "action": "keep",
+   "key": "food_75",
+   "title": "پپرونی",
+   "statement": "پپرونی یکی از غذاهای منوی مجموعه است.",
+   "data": {
+    "category": "product",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-13d66cf4c0c0",
+   "action": "keep",
+   "key": "food_552",
+   "title": "فیلادلفیا",
+   "statement": "فیلادلفیا یکی از غذاهای منوی مجموعه است.",
+   "data": {
+    "category": "product",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-18ec7cfb1d55",
+   "action": "keep",
+   "key": "food_780",
+   "title": "میت",
+   "statement": "میت یکی از غذاهای منوی مجموعه است.",
+   "data": {
+    "category": "product",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-1db3fb0e32f9",
+   "action": "keep",
+   "key": "ing_26",
+   "title": "خمیر پیتزا",
+   "statement": "خمیر پیتزا یکی از اقلام مصرفی آشپزخانه است.",
+   "data": {
+    "category": "ingredient",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-212f53b39a40",
+   "action": "keep",
+   "key": "food_150",
+   "title": "دبل کینگ",
+   "statement": "دبل کینگ یکی از غذاهای منوی مجموعه است.",
+   "data": {
+    "category": "product",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-2433f3cc1f74",
+   "action": "keep",
+   "key": "food_151",
+   "title": "زینگرپلاس",
+   "statement": "زینگرپلاس یکی از غذاهای منوی مجموعه است.",
+   "data": {
+    "category": "product",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-2722653379b8",
+   "action": "keep",
+   "key": "food_767",
+   "title": "مخصوص",
+   "statement": "مخصوص یکی از غذاهای منوی مجموعه است.",
+   "data": {
+    "category": "product",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-2a78d98590f9",
+   "action": "keep",
+   "key": "food_44",
+   "title": "دبل دان",
+   "statement": "دبل دان یکی از غذاهای منوی مجموعه است.",
+   "data": {
+    "category": "product",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-2e7714cc3e64",
+   "action": "keep",
+   "key": "ing_31",
+   "title": "فلفل دلمه میکس",
+   "statement": "فلفل دلمه میکس یکی از اقلام مصرفی آشپزخانه است.",
+   "data": {
+    "category": "ingredient",
+    "unit": "kg"
+   }
+  },
+  {
+   "skeleton": "S-i-2f13ee8aba27",
+   "action": "keep",
+   "key": "ing_33",
+   "title": "سس گوجه کف",
+   "statement": "سس گوجه کف یکی از اقلام مصرفی آشپزخانه است.",
+   "data": {
+    "category": "ingredient",
+    "unit": "kg",
+    "tracked": [
+     {
+      "record": {
+       "ref": "S-rec-5d323801cf94"
+      },
+      "value": false,
+      "reason": "سس‌ها در شمارش پایان شب اندازه‌گیری نمی‌شوند."
+     }
+    ]
+   }
+  },
+  {
+   "skeleton": "S-i-3202462a2261",
+   "action": "keep",
+   "key": "ing_30",
+   "title": "زیتون سیاه",
+   "statement": "زیتون سیاه یکی از اقلام مصرفی آشپزخانه است.",
+   "data": {
+    "category": "ingredient",
+    "unit": "kg"
+   }
+  },
+  {
+   "skeleton": "S-i-33f69a08e0bd",
+   "action": "keep",
+   "key": "food_766",
+   "title": "کراکف",
+   "statement": "کراکف یکی از غذاهای منوی مجموعه است.",
+   "data": {
+    "category": "product",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-36af486262c3",
+   "action": "keep",
+   "key": "food_310",
+   "title": "پیتزا کاپری چیوسا",
+   "statement": "پیتزا کاپری چیوسا یکی از غذاهای منوی مجموعه است.",
+   "data": {
+    "category": "product",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-3724b6d09329",
+   "action": "keep",
+   "key": "food_134",
+   "title": "دبل برگر",
+   "statement": "دبل برگر یکی از غذاهای منوی مجموعه است.",
+   "data": {
+    "category": "product",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-3792cab6320e",
+   "action": "keep",
+   "key": "ing_11",
+   "title": "گوشت رستبیف فرنگی",
+   "statement": "گوشت رستبیف فرنگی یکی از اقلام مصرفی آشپزخانه است.",
+   "data": {
+    "category": "ingredient",
+    "unit": "kg"
+   }
+  },
+  {
+   "skeleton": "S-i-38ea2e6d569a",
+   "action": "keep",
+   "key": "ing_15",
+   "title": "بیکن ساندویچ",
+   "statement": "بیکن ساندویچ یکی از اقلام مصرفی آشپزخانه است.",
+   "data": {
+    "category": "ingredient",
+    "unit": "kg",
+    "units": [
+     {
+      "pack_unit": "pack",
+      "factor_to_base": 0.94
+     }
+    ],
+    "pack": {
+     "size": 0.94,
+     "unit": "kg"
+    }
+   }
+  },
+  {
+   "skeleton": "S-i-3de36fa62c0b",
+   "action": "keep",
+   "key": "ing_25",
+   "title": "سوسیس کراکف",
+   "statement": "سوسیس کراکف یکی از اقلام مصرفی آشپزخانه است.",
+   "data": {
+    "category": "ingredient",
+    "unit": "kg"
+   }
+  },
+  {
+   "skeleton": "S-i-3eb51bee0bf8",
+   "action": "keep",
+   "key": "food_86",
+   "title": "بیف استراگانف",
+   "statement": "بیف استراگانف یکی از غذاهای منوی مجموعه است.",
+   "data": {
+    "category": "product",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-3ebcdb38a0c7",
+   "action": "keep",
+   "key": "food_13",
+   "title": "مکزیکانو",
+   "statement": "مکزیکانو یکی از غذاهای منوی مجموعه است.",
+   "data": {
+    "category": "product",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-405d34114a2d",
+   "action": "keep",
+   "key": "ing_7",
+   "title": "کباب ترکی",
+   "statement": "کباب ترکی یکی از اقلام مصرفی آشپزخانه است.",
+   "data": {
+    "category": "ingredient",
+    "unit": "kg"
+   }
+  },
+  {
+   "skeleton": "S-i-4076e16a34cd",
+   "action": "keep",
+   "key": "food_5",
+   "title": "قارچ سوخاری",
+   "statement": "قارچ سوخاری یکی از غذاهای منوی مجموعه است.",
+   "data": {
+    "category": "product",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-42881a175bc0",
+   "action": "keep",
+   "key": "ing_2",
+   "title": "گوشت رست بیف",
+   "statement": "گوشت رست بیف یکی از اقلام مصرفی آشپزخانه است.",
+   "data": {
+    "category": "ingredient",
+    "unit": "kg"
+   }
+  },
+  {
+   "skeleton": "S-i-4540e9a0433d",
+   "action": "keep",
+   "key": "ing_358",
+   "title": "نوشابه خانواده سون آپ",
+   "statement": "نوشابه خانواده سون آپ یکی از اقلام مصرفی آشپزخانه است.",
+   "data": {
+    "category": "ingredient",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-471b9c1b7dfb",
+   "action": "keep",
+   "key": "ing_27",
+   "title": "کاهو پاک شده",
+   "statement": "کاهو پاک شده یکی از اقلام مصرفی آشپزخانه است.",
+   "data": {
+    "category": "ingredient",
+    "unit": "kg"
+   }
+  },
+  {
+   "skeleton": "S-i-4b606f496e40",
+   "action": "keep",
+   "key": "ing_63",
+   "title": "سه پایه پیتزا",
+   "statement": "سه پایه پیتزا یکی از اقلام مصرفی آشپزخانه است.",
+   "data": {
+    "category": "ingredient",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-4db0b42dfe66",
+   "action": "keep",
+   "key": "ing_36",
+   "title": "سس کف رست بیف",
+   "statement": "سس کف رست بیف یکی از اقلام مصرفی آشپزخانه است.",
+   "data": {
+    "category": "ingredient",
+    "unit": "kg"
+   }
+  },
+  {
+   "skeleton": "S-i-4de75738898d",
+   "action": "keep",
+   "key": "ing_48",
+   "title": "پرس دورچین استیک",
+   "statement": "پرس دورچین استیک یکی از اقلام مصرفی آشپزخانه است.",
+   "data": {
+    "category": "ingredient",
+    "unit": "kg"
+   }
+  },
+  {
+   "skeleton": "S-i-4f254ac4d6a2",
+   "action": "keep",
+   "key": "ing_42",
+   "title": "نان باگت",
+   "statement": "نان باگت یکی از اقلام مصرفی آشپزخانه است.",
+   "data": {
+    "category": "ingredient",
+    "unit": "pcs",
+    "tracked": [
+     {
+      "record": {
+       "ref": "S-rec-5d323801cf94"
+      },
+      "value": false,
+      "reason": "نان در شمارش پایان شب شمرده نمی‌شود."
+     }
+    ]
+   }
+  },
+  {
+   "skeleton": "S-i-508b48ca1ad3",
+   "action": "keep",
+   "key": "ing_110",
+   "title": "دوغ سون کاله",
+   "statement": "دوغ سون کاله یکی از اقلام مصرفی آشپزخانه است.",
+   "data": {
+    "category": "ingredient",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-516fb95e6a56",
+   "action": "keep",
+   "key": "ing_53",
+   "title": "جعبه سوخاری",
+   "statement": "جعبه سوخاری یکی از اقلام مصرفی آشپزخانه است.",
+   "data": {
+    "category": "ingredient",
+    "unit": "pcs",
+    "tracked": [
+     {
+      "record": {
+       "ref": "S-rec-5d323801cf94"
+      },
+      "value": false,
+      "reason": "اقلام یک‌بارمصرف در شمارش پایان شب شمرده نمی‌شوند."
+     }
+    ]
+   }
+  },
+  {
+   "skeleton": "S-i-538c30594fd3",
+   "action": "keep",
+   "key": "food_136",
+   "title": "ساندویچ رستبیف",
+   "statement": "ساندویچ رستبیف یکی از غذاهای منوی مجموعه است.",
+   "data": {
+    "category": "product",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-543e44d531a0",
+   "action": "keep",
+   "key": "ing_14",
+   "title": "برگر",
+   "statement": "برگر یکی از اقلام مصرفی آشپزخانه است.",
+   "data": {
+    "category": "ingredient",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-5560bc5afa66",
+   "action": "keep",
+   "key": "ing_55",
+   "title": "کارتن امریکایی",
+   "statement": "کارتن امریکایی یکی از اقلام مصرفی آشپزخانه است.",
+   "data": {
+    "category": "ingredient",
+    "unit": "pcs",
+    "tracked": [
+     {
+      "record": {
+       "ref": "S-rec-5d323801cf94"
+      },
+      "value": false,
+      "reason": "بسته‌بندی در شمارش پایان شب شمرده نمی‌شود."
+     }
+    ]
+   }
+  },
+  {
+   "skeleton": "S-i-5703f31fbd6c",
+   "action": "keep",
+   "key": "food_782",
+   "title": "مخصوص",
+   "statement": "مخصوص یکی از غذاهای منوی مجموعه است.",
+   "data": {
+    "category": "product",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-57211b1e6deb",
+   "action": "keep",
+   "key": "ing_5",
+   "title": "مرغ پیتزا",
+   "statement": "مرغ پیتزا یکی از اقلام مصرفی آشپزخانه است.",
+   "data": {
+    "category": "ingredient",
+    "unit": "kg"
+   }
+  },
+  {
+   "skeleton": "S-i-595b9e7a272c",
+   "action": "keep",
+   "key": "food_402",
+   "title": "سالاد چیزا",
+   "statement": "سالاد چیزا یکی از غذاهای منوی مجموعه است.",
+   "data": {
+    "category": "product",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-5c961b071f95",
+   "action": "keep",
+   "key": "food_81",
+   "title": "چیکن استیک",
+   "statement": "چیکن استیک یکی از غذاهای منوی مجموعه است.",
+   "data": {
+    "category": "product",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-5d15aa766f96",
+   "action": "keep",
+   "key": "ing_374",
+   "title": "نوشابه خانواده زیرو",
+   "statement": "نوشابه خانواده زیرو یکی از اقلام مصرفی آشپزخانه است.",
+   "data": {
+    "category": "ingredient",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-5e5615aef795",
+   "action": "keep",
+   "key": "food_76",
+   "title": "یونانی",
+   "statement": "یونانی یکی از غذاهای منوی مجموعه است.",
+   "data": {
+    "category": "product",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-5ff5cccb2196",
+   "action": "keep",
+   "key": "ing_104",
+   "title": "نوشابه قوطی اسپرایت",
+   "statement": "نوشابه قوطی اسپرایت یکی از اقلام مصرفی آشپزخانه است.",
+   "data": {
+    "category": "ingredient",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-60a100aea128",
+   "action": "keep",
+   "key": "ing_47",
+   "title": "مینی مک کانتر",
+   "statement": "مینی مک کانتر یکی از اقلام مصرفی آشپزخانه است.",
+   "data": {
+    "category": "ingredient",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-62444298a4a3",
+   "action": "keep",
+   "key": "food_74",
+   "title": "مخلوط",
+   "statement": "مخلوط یکی از غذاهای منوی مجموعه است.",
+   "data": {
+    "category": "product",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-65a1acb116a5",
+   "action": "keep",
+   "key": "food_133",
+   "title": "ماشروم برگر",
+   "statement": "ماشروم برگر یکی از غذاهای منوی مجموعه است.",
+   "data": {
+    "category": "product",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-66b2c4f76ef8",
+   "action": "keep",
+   "key": "ing_112",
+   "title": "نوشابه خانواده پرتقالی",
+   "statement": "نوشابه خانواده پرتقالی یکی از اقلام مصرفی آشپزخانه است.",
+   "data": {
+    "category": "ingredient",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-693a394a4778",
+   "action": "keep",
+   "key": "food_82",
+   "title": "پاستا پنه مرغ",
+   "statement": "پاستا پنه مرغ یکی از غذاهای منوی مجموعه است.",
+   "data": {
+    "category": "product",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-69c14be191a3",
+   "action": "keep",
+   "key": "food_303",
+   "title": "چیکن استراگانف",
+   "statement": "چیکن استراگانف یکی از غذاهای منوی مجموعه است.",
+   "data": {
+    "category": "product",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-6b3806b5bc0a",
+   "action": "keep",
+   "key": "food_401",
+   "title": "سالاد سزار",
+   "statement": "سالاد سزار یکی از غذاهای منوی مجموعه است.",
+   "data": {
+    "category": "product",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-6bf45bdc924d",
+   "action": "keep",
+   "key": "ing_757",
+   "title": "لیموناد خوشگوار",
+   "statement": "لیموناد خوشگوار یکی از اقلام مصرفی آشپزخانه است.",
+   "data": {
+    "category": "ingredient",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-6c911b677b31",
+   "action": "keep",
+   "key": "food_132",
+   "title": "چیز برگر",
+   "statement": "چیز برگر یکی از غذاهای منوی مجموعه است.",
+   "data": {
+    "category": "product",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-6cdab5e7706b",
+   "action": "keep",
+   "key": "food_62",
+   "title": "پیتزا استیک",
+   "statement": "پیتزا استیک یکی از غذاهای منوی مجموعه است.",
+   "data": {
+    "category": "product",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-6f38cebf9b26",
+   "action": "keep",
+   "key": "food_504",
+   "title": "سیب پنیر",
+   "statement": "سیب پنیر یکی از غذاهای منوی مجموعه است.",
+   "data": {
+    "category": "product",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-705e63fe1fc0",
+   "action": "keep",
+   "key": "food_781",
+   "title": "پپرونی",
+   "statement": "پپرونی یکی از غذاهای منوی مجموعه است.",
+   "data": {
+    "category": "product",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-70f2d840766e",
+   "action": "keep",
+   "key": "food_768",
+   "title": "مخصوص",
+   "statement": "مخصوص یکی از غذاهای منوی مجموعه است.",
+   "data": {
+    "category": "product",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-7241740bb61a",
+   "action": "keep",
+   "key": "ing_12",
+   "title": "مرغ فرنگی",
+   "statement": "مرغ فرنگی یکی از اقلام مصرفی آشپزخانه است.",
+   "data": {
+    "category": "ingredient",
+    "unit": "kg"
+   }
+  },
+  {
+   "skeleton": "S-i-72c4cedee31f",
+   "action": "keep",
+   "key": "ing_13",
+   "title": "پنیر پارمیسان",
+   "statement": "پنیر پارمیسان یکی از اقلام مصرفی آشپزخانه است.",
+   "data": {
+    "category": "ingredient",
+    "unit": "kg"
+   }
+  },
+  {
+   "skeleton": "S-i-742ae51cb1a6",
+   "action": "keep",
+   "key": "ing_19",
+   "title": "سینه مرغ سوخاری",
+   "statement": "سینه مرغ سوخاری یکی از اقلام مصرفی آشپزخانه است.",
+   "data": {
+    "category": "ingredient",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-747093514c04",
+   "action": "keep",
+   "key": "food_87",
+   "title": "پیتزا ناپولی",
+   "statement": "پیتزا ناپولی یکی از غذاهای منوی مجموعه است.",
+   "data": {
+    "category": "product",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-77de2048fcfa",
+   "action": "keep",
+   "key": "food_360",
+   "title": "نان سیر پیتزایی",
+   "statement": "نان سیر پیتزایی یکی از غذاهای منوی مجموعه است.",
+   "data": {
+    "category": "product",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-78f02b94046d",
+   "action": "keep",
+   "key": "food_84",
+   "title": "لازانیا رست بیف",
+   "statement": "لازانیا رست بیف یکی از غذاهای منوی مجموعه است.",
+   "data": {
+    "category": "product",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-7947869e1f10",
+   "action": "keep",
+   "key": "food_71",
+   "title": "رستبیف",
+   "statement": "رستبیف یکی از غذاهای منوی مجموعه است.",
+   "data": {
+    "category": "product",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-795f813bfb90",
+   "action": "keep",
+   "key": "food_769",
+   "title": "برگر مخصوص",
+   "statement": "برگر مخصوص یکی از غذاهای منوی مجموعه است.",
+   "data": {
+    "category": "product",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-7d58a81c4c7f",
+   "action": "keep",
+   "key": "food_27",
+   "title": "سیب زمینی ویژه",
+   "statement": "سیب زمینی ویژه یکی از غذاهای منوی مجموعه است.",
+   "data": {
+    "category": "product",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-8673ff933335",
+   "action": "keep",
+   "key": "ing_24",
+   "title": "لقمه مرغ سوخاری",
+   "statement": "لقمه مرغ سوخاری یکی از اقلام مصرفی آشپزخانه است.",
+   "data": {
+    "category": "ingredient",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-86d7011a9ea1",
+   "action": "keep",
+   "key": "ing_28",
+   "title": "روغن زیتون",
+   "statement": "روغن زیتون یکی از اقلام مصرفی آشپزخانه است.",
+   "data": {
+    "category": "ingredient",
+    "unit": "kg",
+    "tracked": [
+     {
+      "record": {
+       "ref": "S-rec-5d323801cf94"
+      },
+      "value": false,
+      "reason": "روغن در شمارش پایان شب اندازه‌گیری نمی‌شود."
+     }
+    ]
+   }
+  },
+  {
+   "skeleton": "S-i-87286d352950",
+   "action": "keep",
+   "key": "ing_16",
+   "title": "هات داگ",
+   "statement": "هات داگ یکی از اقلام مصرفی آشپزخانه است.",
+   "data": {
+    "category": "ingredient",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-8968fc14c93f",
+   "action": "keep",
+   "key": "ing_17",
+   "title": "فیله مرغ سوخاری",
+   "statement": "فیله مرغ سوخاری یکی از اقلام مصرفی آشپزخانه است.",
+   "data": {
+    "category": "ingredient",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-8b1aa5474fa7",
+   "action": "keep",
+   "key": "food_120",
+   "title": "فیله استریپس چهار تکه",
+   "statement": "فیله استریپس چهار تکه یکی از غذاهای منوی مجموعه است.",
+   "data": {
+    "category": "product",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-8c956aed07ae",
+   "action": "keep",
+   "key": "food_7",
+   "title": "اینجا باکس",
+   "statement": "اینجا باکس یکی از غذاهای منوی مجموعه است.",
+   "data": {
+    "category": "product",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-8e02c27fbed7",
+   "action": "keep",
+   "key": "ing_20",
+   "title": "بال و کتف",
+   "statement": "بال و کتف یکی از اقلام مصرفی آشپزخانه است.",
+   "data": {
+    "category": "ingredient",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-8ed9be7226d7",
+   "action": "keep",
+   "key": "food_73",
+   "title": "پیتزا چیکن باربیکیو",
+   "statement": "پیتزا چیکن باربیکیو یکی از غذاهای منوی مجموعه است.",
+   "data": {
+    "category": "product",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-907905be99be",
+   "action": "keep",
+   "key": "ing_39",
+   "title": "قارچ سوخاری",
+   "statement": "قارچ سوخاری یکی از اقلام مصرفی آشپزخانه است.",
+   "data": {
+    "category": "ingredient",
+    "unit": "kg"
+   }
+  },
+  {
+   "skeleton": "S-i-90aad09b1ecd",
+   "action": "keep",
+   "key": "food_63",
+   "title": "پیتزا چهارفصل",
+   "statement": "پیتزا چهارفصل یکی از غذاهای منوی مجموعه است.",
+   "data": {
+    "category": "product",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-91abda2eb217",
+   "action": "keep",
+   "key": "ing_752",
+   "title": "دوغ قوطی خوشگوار",
+   "statement": "دوغ قوطی خوشگوار یکی از اقلام مصرفی آشپزخانه است.",
+   "data": {
+    "category": "ingredient",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-927a6080e6e2",
+   "action": "keep",
+   "key": "ing_29",
+   "title": "گوجه گیلاسی",
+   "statement": "گوجه گیلاسی یکی از اقلام مصرفی آشپزخانه است.",
+   "data": {
+    "category": "ingredient",
+    "unit": "kg"
+   }
+  },
+  {
+   "skeleton": "S-i-94e6d2ca8fca",
+   "action": "keep",
+   "key": "food_1",
+   "title": "مخصوص",
+   "statement": "مخصوص یکی از غذاهای منوی مجموعه است.",
+   "data": {
+    "category": "product",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-96ca4c506199",
+   "action": "keep",
+   "key": "ing_108",
+   "title": "نوشابه قوطی رژیمی",
+   "statement": "نوشابه قوطی رژیمی یکی از اقلام مصرفی آشپزخانه است.",
+   "data": {
+    "category": "ingredient",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-9955cafb4eb4",
+   "action": "keep",
+   "key": "food_85",
+   "title": "لازانیا بلونز",
+   "statement": "لازانیا بلونز یکی از غذاهای منوی مجموعه است.",
+   "data": {
+    "category": "product",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-99c17fb35da6",
+   "action": "keep",
+   "key": "food_309",
+   "title": "تگزاس",
+   "statement": "تگزاس یکی از غذاهای منوی مجموعه است.",
+   "data": {
+    "category": "product",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-9ad9a9e6080c",
+   "action": "keep",
+   "key": "ing_23",
+   "title": "گوشت چرخ کرده فرنگی",
+   "statement": "گوشت چرخ کرده فرنگی یکی از اقلام مصرفی آشپزخانه است.",
+   "data": {
+    "category": "ingredient",
+    "unit": "kg"
+   }
+  },
+  {
+   "skeleton": "S-i-9b3e3fef4ffc",
+   "action": "keep",
+   "key": "ing_754",
+   "title": "دلستر لیمو",
+   "statement": "دلستر لیمو یکی از اقلام مصرفی آشپزخانه است.",
+   "data": {
+    "category": "ingredient",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-9cebada116f5",
+   "action": "keep",
+   "key": "food_551",
+   "title": "سبزیجات",
+   "statement": "سبزیجات یکی از غذاهای منوی مجموعه است.",
+   "data": {
+    "category": "product",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-9eb34b715a8e",
+   "action": "keep",
+   "key": "ing_9",
+   "title": "فیلادلفیا",
+   "statement": "فیلادلفیا یکی از اقلام مصرفی آشپزخانه است.",
+   "data": {
+    "category": "ingredient",
+    "unit": "kg"
+   }
+  },
+  {
+   "skeleton": "S-i-9f333ccea53b",
+   "action": "keep",
+   "key": "food_122",
+   "title": "بال و کتف سوخاری",
+   "statement": "بال و کتف سوخاری یکی از غذاهای منوی مجموعه است.",
+   "data": {
+    "category": "product",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-a0cfd6bf1228",
+   "action": "keep",
+   "key": "food_338",
+   "title": "سالاد کنتاکی",
+   "statement": "سالاد کنتاکی یکی از غذاهای منوی مجموعه است.",
+   "data": {
+    "category": "product",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-a29186807c63",
+   "action": "keep",
+   "key": "ing_74",
+   "title": "پنیر گودا لیوانی",
+   "statement": "پنیر گودا لیوانی یکی از اقلام مصرفی آشپزخانه است.",
+   "data": {
+    "category": "ingredient",
+    "unit": "kg"
+   }
+  },
+  {
+   "skeleton": "S-i-a8db0529783c",
+   "action": "keep",
+   "key": "ing_1",
+   "title": "پنیر پیتزا",
+   "statement": "پنیر پیتزا یکی از اقلام مصرفی آشپزخانه است.",
+   "data": {
+    "category": "ingredient",
+    "unit": "kg"
+   }
+  },
+  {
+   "skeleton": "S-i-a9ab76f77fc5",
+   "action": "keep",
+   "key": "ing_277",
+   "title": "نوشابه خانواده مشکی",
+   "statement": "نوشابه خانواده مشکی یکی از اقلام مصرفی آشپزخانه است.",
+   "data": {
+    "category": "ingredient",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-aa66758f7ecc",
+   "action": "keep",
+   "key": "ing_37",
+   "title": "سس الفردو پیتزا",
+   "statement": "سس الفردو پیتزا یکی از اقلام مصرفی آشپزخانه است.",
+   "data": {
+    "category": "ingredient",
+    "unit": "kg"
+   }
+  },
+  {
+   "skeleton": "S-i-ac127387849c",
+   "action": "keep",
+   "key": "food_123",
+   "title": "کریسپی سینه دو تکه",
+   "statement": "کریسپی سینه دو تکه یکی از غذاهای منوی مجموعه است.",
+   "data": {
+    "category": "product",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-aedf7d68705f",
+   "action": "keep",
+   "key": "ing_102",
+   "title": "نوشابه قوطی پرتقالی",
+   "statement": "نوشابه قوطی پرتقالی یکی از اقلام مصرفی آشپزخانه است.",
+   "data": {
+    "category": "ingredient",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-b6372d986fd4",
+   "action": "keep",
+   "key": "ing_368",
+   "title": "دلستر استوایی",
+   "statement": "دلستر استوایی یکی از اقلام مصرفی آشپزخانه است.",
+   "data": {
+    "category": "ingredient",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-b76b08cc3b6f",
+   "action": "keep",
+   "key": "ing_4",
+   "title": "پپرونی",
+   "statement": "پپرونی یکی از اقلام مصرفی آشپزخانه است.",
+   "data": {
+    "category": "ingredient",
+    "unit": "kg"
+   }
+  },
+  {
+   "skeleton": "S-i-b783563415ef",
+   "action": "keep",
+   "key": "ing_101",
+   "title": "نوشابه قوطی مشکی",
+   "statement": "نوشابه قوطی مشکی یکی از اقلام مصرفی آشپزخانه است.",
+   "data": {
+    "category": "ingredient",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-bbcc5df35918",
+   "action": "keep",
+   "key": "ing_41",
+   "title": "نان مک",
+   "statement": "نان مک یکی از اقلام مصرفی آشپزخانه است.",
+   "data": {
+    "category": "ingredient",
+    "unit": "pcs",
+    "tracked": [
+     {
+      "record": {
+       "ref": "S-rec-5d323801cf94"
+      },
+      "value": false,
+      "reason": "نان در شمارش پایان شب شمرده نمی‌شود."
+     }
+    ]
+   }
+  },
+  {
+   "skeleton": "S-i-bbd832c886f9",
+   "action": "keep",
+   "key": "food_61",
+   "title": "اینجا پیتزا",
+   "statement": "اینجا پیتزا یکی از غذاهای منوی مجموعه است.",
+   "data": {
+    "category": "product",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-bffaeeb73b2e",
+   "action": "keep",
+   "key": "ing_44",
+   "title": "پاستا پنه خام",
+   "statement": "پاستا پنه خام یکی از اقلام مصرفی آشپزخانه است.",
+   "data": {
+    "category": "ingredient",
+    "unit": "kg"
+   }
+  },
+  {
+   "skeleton": "S-i-c04e947323ce",
+   "action": "keep",
+   "key": "food_49",
+   "title": "میکس",
+   "statement": "میکس یکی از غذاهای منوی مجموعه است.",
+   "data": {
+    "category": "product",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-c28490ecc788",
+   "action": "keep",
+   "key": "ing_22",
+   "title": "ژامبون مرغ و گوشت میکس",
+   "statement": "ژامبون مرغ و گوشت میکس یکی از اقلام مصرفی آشپزخانه است.",
+   "data": {
+    "category": "ingredient",
+    "unit": "kg"
+   }
+  },
+  {
+   "skeleton": "S-i-c7f1796d7630",
+   "action": "keep",
+   "key": "food_386",
+   "title": "فیله اسپایسی سه تکه",
+   "statement": "فیله اسپایسی سه تکه یکی از غذاهای منوی مجموعه است.",
+   "data": {
+    "category": "product",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-cba346d44da9",
+   "action": "keep",
+   "key": "ing_45",
+   "title": "جعفری",
+   "statement": "جعفری یکی از اقلام مصرفی آشپزخانه است.",
+   "data": {
+    "category": "ingredient",
+    "unit": "kg",
+    "tracked": [
+     {
+      "record": {
+       "ref": "S-rec-5d323801cf94"
+      },
+      "value": false,
+      "reason": "سبزی و چاشنی در شمارش پایان شب وزن نمی‌شود."
+     }
+    ]
+   }
+  },
+  {
+   "skeleton": "S-i-cc0f76f45585",
+   "action": "keep",
+   "key": "ing_10",
+   "title": "مینی برگر",
+   "statement": "مینی برگر یکی از اقلام مصرفی آشپزخانه است.",
+   "data": {
+    "category": "ingredient",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-cd25866411e6",
+   "action": "keep",
+   "key": "food_11",
+   "title": "سیب سرخ شده",
+   "statement": "سیب سرخ شده یکی از غذاهای منوی مجموعه است.",
+   "data": {
+    "category": "product",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-d2cf14b16ac7",
+   "action": "keep",
+   "key": "food_407",
+   "title": "سالاد چیزا با پنیر اضافه",
+   "statement": "سالاد چیزا با پنیر اضافه یکی از غذاهای منوی مجموعه است.",
+   "data": {
+    "category": "product",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-d57f2e2f6012",
+   "action": "keep",
+   "key": "ing_21",
+   "title": "پرس مرغ رول سوخاری",
+   "statement": "پرس مرغ رول سوخاری یکی از اقلام مصرفی آشپزخانه است.",
+   "data": {
+    "category": "ingredient",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-d5f2bb8bb34b",
+   "action": "keep",
+   "key": "food_10",
+   "title": "پیتزا پرسنلی",
+   "statement": "پیتزا پرسنلی یکی از غذاهای منوی مجموعه است.",
+   "data": {
+    "category": "product",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-d94fead512a0",
+   "action": "keep",
+   "key": "food_784",
+   "title": "کراکف",
+   "statement": "کراکف یکی از غذاهای منوی مجموعه است.",
+   "data": {
+    "category": "product",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-d9d800f547c6",
+   "action": "keep",
+   "key": "food_348",
+   "title": "مینی مک",
+   "statement": "مینی مک یکی از غذاهای منوی مجموعه است.",
+   "data": {
+    "category": "product",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-dab0b4bca49a",
+   "action": "keep",
+   "key": "food_139",
+   "title": "هات داگ",
+   "statement": "هات داگ یکی از غذاهای منوی مجموعه است.",
+   "data": {
+    "category": "product",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-dc51aaa42e2e",
+   "action": "keep",
+   "key": "ing_40",
+   "title": "قارچ فرنگی",
+   "statement": "قارچ فرنگی یکی از اقلام مصرفی آشپزخانه است.",
+   "data": {
+    "category": "ingredient",
+    "unit": "kg"
+   }
+  },
+  {
+   "skeleton": "S-i-ddd830ebd2ac",
+   "action": "keep",
+   "key": "ing_32",
+   "title": "قارچ اسلایس شده",
+   "statement": "قارچ اسلایس شده یکی از اقلام مصرفی آشپزخانه است.",
+   "data": {
+    "category": "ingredient",
+    "unit": "kg",
+    "tracked": [
+     {
+      "record": {
+       "ref": "S-rec-5d323801cf94"
+      },
+      "value": false,
+      "reason": "قارچ در شمارش پایان شب وزن نمی‌شود."
+     }
+    ]
+   }
+  },
+  {
+   "skeleton": "S-i-dfebc35409a7",
+   "action": "keep",
+   "key": "food_400",
+   "title": "دونر",
+   "statement": "دونر یکی از غذاهای منوی مجموعه است.",
+   "data": {
+    "category": "product",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-e36b25a026a2",
+   "action": "keep",
+   "key": "ing_273",
+   "title": "آب معدنی",
+   "statement": "آب معدنی یکی از اقلام مصرفی آشپزخانه است.",
+   "data": {
+    "category": "ingredient",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-e5fb10e95f6c",
+   "action": "keep",
+   "key": "ing_8",
+   "title": "استیک",
+   "statement": "استیک یکی از اقلام مصرفی آشپزخانه است.",
+   "data": {
+    "category": "ingredient",
+    "unit": "kg"
+   }
+  },
+  {
+   "skeleton": "S-i-e601667ac310",
+   "action": "keep",
+   "key": "food_773",
+   "title": "برگر مخصوص",
+   "statement": "برگر مخصوص یکی از غذاهای منوی مجموعه است.",
+   "data": {
+    "category": "product",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-e65dcba2bc15",
+   "action": "keep",
+   "key": "food_771",
+   "title": "مخصوص",
+   "statement": "مخصوص یکی از غذاهای منوی مجموعه است.",
+   "data": {
+    "category": "product",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-e91fb84541aa",
+   "action": "keep",
+   "key": "ing_3",
+   "title": "ژامبون سه گانه",
+   "statement": "ژامبون سه گانه یکی از اقلام مصرفی آشپزخانه است.",
+   "data": {
+    "category": "ingredient",
+    "unit": "kg"
+   }
+  },
+  {
+   "skeleton": "S-i-e93a3bfcfaaf",
+   "action": "keep",
+   "key": "ing_38",
+   "title": "پنیر رول سوخاری",
+   "statement": "پنیر رول سوخاری یکی از اقلام مصرفی آشپزخانه است.",
+   "data": {
+    "category": "ingredient",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-ea0abe7b0818",
+   "action": "keep",
+   "key": "food_65",
+   "title": "چیکن آلفردو",
+   "statement": "چیکن آلفردو یکی از غذاهای منوی مجموعه است.",
+   "data": {
+    "category": "product",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-ecea03854c10",
+   "action": "keep",
+   "key": "food_385",
+   "title": "فیله استریپس سه تکه",
+   "statement": "فیله استریپس سه تکه یکی از غذاهای منوی مجموعه است.",
+   "data": {
+    "category": "product",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-ed6935fdfa6c",
+   "action": "keep",
+   "key": "ing_60",
+   "title": "ظرف سالاد کنتاکی",
+   "statement": "ظرف سالاد کنتاکی یکی از اقلام مصرفی آشپزخانه است.",
+   "data": {
+    "category": "ingredient",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-ee308e663faf",
+   "action": "keep",
+   "key": "food_308",
+   "title": "بیکن",
+   "statement": "بیکن یکی از غذاهای منوی مجموعه است.",
+   "data": {
+    "category": "product",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-f025110444e5",
+   "action": "keep",
+   "key": "food_137",
+   "title": "گریل چیکن",
+   "statement": "گریل چیکن یکی از غذاهای منوی مجموعه است.",
+   "data": {
+    "category": "product",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-f16db2dded95",
+   "action": "keep",
+   "key": "ing_46",
+   "title": "سالاد کنتاکی",
+   "statement": "سالاد کنتاکی یکی از اقلام مصرفی آشپزخانه است.",
+   "data": {
+    "category": "ingredient",
+    "unit": "kg",
+    "tracked": [
+     {
+      "record": {
+       "ref": "S-rec-5d323801cf94"
+      },
+      "value": false,
+      "reason": "سالاد آماده در شمارش پایان شب وزن نمی‌شود."
+     }
+    ]
+   }
+  },
+  {
+   "skeleton": "S-i-f18cae11689f",
+   "action": "keep",
+   "key": "food_4",
+   "title": "رستبیف",
+   "statement": "رستبیف یکی از غذاهای منوی مجموعه است.",
+   "data": {
+    "category": "product",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-f720cead9e6a",
+   "action": "keep",
+   "key": "food_601",
+   "title": "پاستا پستو",
+   "statement": "پاستا پستو یکی از غذاهای منوی مجموعه است.",
+   "data": {
+    "category": "product",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-fbe5b87baa9f",
+   "action": "keep",
+   "key": "food_783",
+   "title": "چیکن آلفردو",
+   "statement": "چیکن آلفردو یکی از غذاهای منوی مجموعه است.",
+   "data": {
+    "category": "product",
+    "unit": "pcs"
+   }
+  },
+  {
+   "skeleton": "S-i-fd08c8e4aca2",
+   "action": "keep",
+   "key": "ing_59",
+   "title": "سینگل مربع ایتالیایی",
+   "statement": "سینگل مربع ایتالیایی یکی از اقلام مصرفی آشپزخانه است.",
+   "data": {
+    "category": "ingredient",
+    "unit": "pcs"
+   }
+  }
+ ]
+}

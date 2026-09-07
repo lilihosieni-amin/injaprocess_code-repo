@@ -102,22 +102,38 @@ def test_path_grammar():
     assert path_exists(e, "data/fields/grams/unit")
     assert not path_exists(e, "data/fields/nope/unit")
 
-def test_find_match_prefers_sheet_identity_then_natural_key():
-    store = {k: {"schema_version": 1, "entries": []} for k in KIND_ORDER}
-    a = _entry(kind="record", key="old_key",
-               data={"medium": "sheet", "role": "reference",
-                     "location": {"spreadsheetId": "S1", "sheet": "پیتزا"}})
+def test_find_match_matches_any_instance_and_refuses_a_renamed_one():
+    store = {k: {"schema_version": 2, "entries": []} for k in KIND_ORDER}
+    a = _entry(kind="record", key="gozaresh_pitza",
+               data={"medium": "sheet", "role": "report",
+                     "location": {"spreadsheetId": "P1", "sheet": "پیتزا"},
+                     "instances": [
+                         {"key": "pz__s11", "spreadsheetId": "P1",
+                          "sheetId": 11, "sheet": "پیتزا"},
+                         {"key": "pz__s12", "spreadsheetId": "P2",
+                          "sheetId": 12, "sheet": "پیتزا"}]})
     store["record"]["entries"].append(a)
-    probe = _entry(kind="record", key="renamed",
-                   data={"medium": "sheet", "role": "reference",
-                         "location": {"spreadsheetId": "S1", "sheet": "پیتزا"}})
-    assert find_match(store, probe) is a          # matched by (spreadsheetId, sheet)
+    second = _entry(kind="record", key="gozaresh_pitza",
+                    data={"medium": "sheet", "role": "report",
+                          "location": {"spreadsheetId": "P2", "sheet": "پیتزا"},
+                          "instances": [{"key": "pz__s12", "spreadsheetId": "P2",
+                                         "sheetId": 12, "sheet": "پیتزا"}]})
+    assert find_match(store, second) is a       # matched on the second instance
+    renamed = _entry(kind="record", key="gozaresh_shabane_pitza",
+                     data={"medium": "sheet", "role": "report",
+                           "location": {"spreadsheetId": "P2", "sheet": "پیتزا"},
+                           "instances": [{"key": "pz__s12", "spreadsheetId": "P2",
+                                          "sheetId": 12, "sheet": "پیتزا"}]})
+    assert find_match(store, renamed) is None   # §3.2: not a match, never a rename
     b = _entry(kind="rule", key="k1")
     store["rule"]["entries"].append(b)
     assert find_match(store, _entry(kind="rule", key="k1")) is b
     closed = _entry(kind="rule", key="k2", valid_to="1404-01-01")
     store["rule"]["entries"].append(closed)
-    assert find_match(store, _entry(kind="rule", key="k2")) is None   # only open entries
+    assert find_match(store, _entry(kind="rule", key="k2")) is None   # only open
+    superseded = _entry(kind="rule", key="k3", superseded_by={"ref": "F-00099"})
+    store["rule"]["entries"].append(superseded)
+    assert find_match(store, _entry(kind="rule", key="k3")) is None   # §4: closed
 
 def test_account_id_is_stable_8_hex():
     src = {"type": "sheet", "ref": "a.xlsx", "sheet": "پیتزا", "cell": "H6"}

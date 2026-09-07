@@ -44,6 +44,21 @@ Three principles the whole design is built on:
                               └──────────────────────────┘
 ```
 
+**The facts store is the second output of the same disk.** The extraction
+pipeline turns recordings into `departments/**/processes/*.json`; the facts
+pipeline turns the same recordings, plus the dumped spreadsheet estate under
+`attachments/sheets/` and the department's field material, into
+`data-repo/facts/` — five files, one per kind (item, record, measurement, rule,
+note). It runs through the same control bot, over the same filesystem, with the
+same rule that only a deterministic CLI writes the output: `merge facts` is the
+sole writer of `facts/**`, exactly as `merge` is of `processes/`. The two
+pipelines share their inputs and touch none of each other's outputs — a session
+can be half process and half numbers, and neither run blocks the other. What
+reads the store is the Panel (a fact's detail view, its confirmations) and,
+later, whatever system runs the restaurant: FR-Q1 fixes the eight artefacts it
+may contain precisely so that the reader on the far side is a contract and not a
+hope.
+
 ---
 
 ## 2. Repository Topology

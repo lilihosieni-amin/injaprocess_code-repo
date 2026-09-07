@@ -10,7 +10,7 @@ def _load(name):
 
 
 def _wrap(*entries):
-    return {"schema_version": 1, "entries": list(entries)}
+    return {"schema_version": 2, "entries": list(entries)}
 
 
 KINDS = ["item", "record", "measurement", "rule", "note"]
@@ -33,10 +33,12 @@ def test_wrong_kind_payload_fails_on_required(validate):
     assert validate("facts.schema.json", _wrap(e)) != []
 
 
-def test_unknown_data_key_passes(validate):
+def test_unknown_data_key_fails(validate):
+    # §3.3: every payload is closed now — an invented key is what cause C looked
+    # like in the store (`achieved_count`, `vents_per_carton`, `port_reason`).
     e = _load("entry-item.json")
     e["data"]["future_field"] = {"anything": 1}
-    assert validate("facts.schema.json", _wrap(e)) == []
+    assert validate("facts.schema.json", _wrap(e)) != []
 
 
 def test_persian_key_fails(validate):
@@ -117,3 +119,222 @@ def test_manifest_proposal_admits_question_mark(validate):
         }
     }
     assert validate("manifest-proposal.schema.json", p) == []
+
+
+def test_sheet_record_with_instances_and_imports_validates(validate):
+    assert validate("facts.schema.json", _wrap(_load("entry-record-sheet.json"))) == []
+
+
+def test_role_mirror_fails(validate):
+    # QF-48: a mirror is an edge, not a record — the role leaves the vocabulary.
+    e = _load("entry-record.json")
+    e["data"]["role"] = "mirror"
+    assert validate("facts.schema.json", _wrap(e)) != []
+
+
+def test_note_without_about_fails(validate):
+    # QF-9: a note points at something and asks something, or it is not a note.
+    e = _load("entry-note.json")
+    del e["data"]["about"]
+    assert validate("facts.schema.json", _wrap(e)) != []
+
+
+def test_homoglyph_key_fails_under_both_grammars(validate):
+    # а is a Cyrillic а. `fields[].key` takes the minted SEGMENT grammar,
+    # `instances[].key` the minted KEY grammar; both are ASCII-anchored.
+    e = _load("entry-record-sheet.json")
+    e["data"]["fields"][0]["key"] = "mаsraf_elami"
+    assert validate("facts.schema.json", _wrap(e)) != []
+    e = _load("entry-record-sheet.json")
+    e["data"]["instances"][0]["key"] = "gozаresh_cb__s0"
+    assert validate("facts.schema.json", _wrap(e)) != []
+
+
+def test_original_as_an_array_fails(validate):
+    d = _load("delta-min.json")
+    d["data"]["original"] = ["=MINUS(SUM(F6,E6),G6)"]
+    assert validate("facts-delta.schema.json", _wrap(d)) != []
+
+
+def test_delta_carrying_original_ref_fails(validate):
+    d = _load("delta-min.json")
+    d["data"]["original_ref"] = "facts/originals/F-00042.txt"
+    assert validate("facts-delta.schema.json", _wrap(d)) != []
+
+
+def test_quote_is_admitted_on_voice_and_refused_on_chat(validate):
+    e = _load("entry-rule.json")
+    e["source"][1]["quote"] = "انحراف را شب‌ها می‌گیریم"
+    assert validate("facts.schema.json", _wrap(e)) == []
+    e["source"].append({"type": "chat", "ref": None, "quote": "x"})
+    assert validate("facts.schema.json", _wrap(e)) != []
+
+
+def test_rule_applies_to_with_params_validates(validate):
+    e = _load("entry-rule.json")
+    e["data"]["applies_to"] = [
+        {"key": "gozaresh_cb__s0__l__r6", "record": {"ref": "F-00040", "field": "c_l"},
+         "variant": 0, "range": "L6:L15",
+         "params": {"tolerancePerFoodGr": 5, "ref_1": {"ref": "F-00040", "field": "c_k"}},
+         "rows": [{"key": "r6", "row": 6, "label": "پنیر پیتزا", "item": "##1"}]}]
+    assert validate("facts.schema.json", _wrap(e)) == []
+
+
+# --- facts-unit.schema.json (§2.5) ------------------------------------------
+
+def _unit_doc():
+    return {
+        "schema_version": 1, "unit": "u-wb-gozaresh", "attempt": 1,
+        "decisions": [
+            {"skeleton": "S-r-0a1b2c3d4e5f", "action": "keep", "key": "enheraf",
+             "title": "انحراف مصرف",
+             "statement": "انحراف مصرف هر مادهٔ اولیه برابر است با مصرف واقعی منهای مصرف اعلامی.",
+             "aliases": ["مغایرت"],
+             "data": {"expr": "enheraf = masraf_vaqei - masraf_elami", "lang": "feel",
+                      "inputs": [{"key": "masraf_vaqei", "title": "مصرف واقعی", "unit": "kg",
+                                  "from": {"ref": "S-rec-aabbccddeeff", "field": "c_h"}}],
+                      "outputs": [{"key": "enheraf", "title": "انحراف",
+                                   "unit": {"value": "kg", "inferred": True},
+                                   "nature": "observed"}]},
+             "branches": ["chalebagh"],
+             "processes": [{"process": "cooking-030", "node": "n016",
+                            "quote": "انحراف را شب‌ها می‌گیریم"}]},
+            {"skeleton": "S-r-1111ffff2222", "action": "drop",
+             "reason_code": "date_passthrough", "reason": "خواندن تاریخ"},
+            {"skeleton": "S-i-222233334444", "action": "merge_into",
+             "into": "S-i-555566667777", "reason_code": "duplicate"},
+            {"skeleton": "S-rec-888899990000", "action": "keep",
+             "key": "gozaresh_shabane_pitza", "title": "گزارش شبانه پیتزا",
+             "statement": "جدول گزارش شبانهٔ لاین پیتزا.",
+             "data": {"role": "report", "cadence": "nightly",
+                      "fields": [{"from": "c_h", "key": "masraf_elami", "unit": "kg",
+                                  "description": "ستون مصرف اعلامی"}]}},
+            {"skeleton": "S-r-aaaabbbbcccc", "action": "split", "reason_code": "other",
+             "reason": "variants compute different things",
+             "into": [{"key": "enheraf_pitza", "title": "انحراف پیتزا",
+                       "statement": "انحراف لاین پیتزا.", "takes": ["gozaresh_cb__s0__j__r6"]},
+                      {"key": "enheraf_ferengi", "title": "انحراف فرنگی",
+                       "statement": "انحراف لاین فرنگی.", "takes": ["gozaresh_nk__s1__j__r6"]}]}],
+        "new": [{"kind": "note", "key": "note_placeholder", "title": "واحد نامشخص",
+                 "statement": "واحد این قلم پرسیده نشده است.",
+                 "data": {"about": [{"ref": "S-i-555566667777"}],
+                          "question": "واحد شمارش این قلم چیست؟"}}]}
+
+
+def _review_doc():
+    return {"schema_version": 1, "unit": "review", "attempt": 1,
+            "decisions": [
+                {"entry": {"kind": "rule", "key": "enheraf",
+                           "scope": {"departments": ["cooking"], "branches": []}},
+                 "action": "keep", "key": "enheraf", "title": "انحراف مصرف",
+                 "statement": "بازنویسی‌شده در بازبینی."},
+                {"entry": {"kind": "rule", "key": "enheraf_ba_tolerance"},
+                 "action": "contradiction", "field": "data/outputs/enheraf/unit",
+                 "resolution": "fix", "value": "kg", "reason": "یک طرف آشکارا اشتباه است"}]}
+
+
+def test_plan_unit_and_review_documents_validate(validate):
+    assert validate("facts-unit.schema.json", _unit_doc()) == []
+    assert validate("facts-unit.schema.json", _review_doc()) == []
+
+
+def test_contradiction_only_in_a_review_document(validate):
+    d = _unit_doc()
+    d["decisions"].append({"skeleton": "S-r-999999999999", "action": "contradiction",
+                           "field": "data/expr", "resolution": "account"})
+    assert validate("facts-unit.schema.json", d) != []
+
+
+def test_contradiction_addressed_by_a_skeleton_id_fails(validate):
+    # `_fold_review` matches a contradiction against the flags by the entry
+    # address, so one addressed by a skeleton id is always discarded — the
+    # schema says so rather than letting the whole review die for it.
+    d = _review_doc()
+    d["decisions"][1].pop("entry")
+    d["decisions"][1]["skeleton"] = "S-r-999999999999"
+    assert validate("facts-unit.schema.json", d) != []
+
+
+def test_review_over_sixty_decisions_fails(validate):
+    d = _review_doc()
+    d["decisions"] = d["decisions"] * 31          # 62
+    assert validate("facts-unit.schema.json", d) != []
+
+
+def test_unit_decision_shapes(validate):
+    d = _unit_doc(); d["decisions"][0].pop("statement")
+    assert validate("facts-unit.schema.json", d) != []        # keep needs a statement
+    d = _unit_doc(); d["decisions"][1].pop("reason_code")
+    assert validate("facts-unit.schema.json", d) != []        # drop needs a reason_code
+    d = _unit_doc(); d["decisions"][0]["data"]["mirror_of"] = {"ref": "S-rec-aabbccddeeff"}
+    assert validate("facts-unit.schema.json", d) != []        # data is closed
+    d = _unit_doc(); d["decisions"][0]["skeleton"] = "S-x-0a1b2c3d4e5f"
+    assert validate("facts-unit.schema.json", d) != []        # S-<kind>-<12 hex>
+    d = _unit_doc(); d["decisions"][0]["entry"] = {"kind": "rule", "key": "enheraf"}
+    assert validate("facts-unit.schema.json", d) != []        # skeleton XOR entry
+    d = _unit_doc(); d["decisions"][4]["into"] = d["decisions"][4]["into"][:1]
+    assert validate("facts-unit.schema.json", d) != []        # a split has two parts
+
+
+def test_manifest_unresolved_and_twin_of(validate):
+    m = {"schema_version": 1,
+         "branches": [{"code": "chalebagh", "name": "چاله‌باغ"}],
+         "workbooks": [{"spreadsheetId": "1abc", "dir": "D", "file": "F.xlsx",
+                        "short": "sokhari", "scripts": [], "departments": [],
+                        "branches": ["chalebagh"], "reference_tabs": [],
+                        "confirmed": False, "unresolved": ["departments"],
+                        "twin_of": "fried"}]}
+    assert validate("manifest.schema.json", m) == []
+    m["workbooks"][0]["unresolved"] = ["scripts"]
+    assert validate("manifest.schema.json", m) != []
+
+
+def test_run_meta_units(validate):
+    meta = {"department": "cooking", "origin": "pipeline", "actor": "operator",
+            "started_at": "2026-09-06T10:15:00Z", "finished_at": None,
+            "recordings": [], "attachments": [], "workbooks": [],
+            "delta": "runs/facts/cooking/20260906-101500/facts-delta.json",
+            "merged": False, "ids_created": [],
+            "units": [{"id": "u-wb-gozaresh", "type": "workbook",
+                       "state": "done", "attempts": 1}]}
+    assert validate("facts-run-meta.schema.json", meta) == []
+    meta["units"][0]["state"] = "running"
+    assert validate("facts-run-meta.schema.json", meta) != []
+
+
+def _delta_reference_record(row):
+    return {"kind": "record", "key": "mavad__pizza", "title": "ب.او.ام",
+            "statement": "شرح",
+            "scope": {"departments": ["cooking"], "branches": []},
+            "source": [{"type": "voice", "ref": "meetings/transcripts/c.txt", "lines": "5"}],
+            "retired": False,
+            "data": {"medium": "sheet", "role": "reference", "location": {},
+                     "fields": [{"key": "code", "type": "string"}],
+                     "primaryKey": ["code"], "rows": [row]}}
+
+
+def test_a_reference_delta_row_needs_no_key_the_stored_row_does(validate):
+    # QF-32 requires `rows[].key`, and the store schema holds it to that. The
+    # delta cannot: §9's `apply._derive_row_keys` mints a reference row's key
+    # from the primaryKey join AFTER the delta has validated — and a `refItems`
+    # cell may still be a temp id at that point — so the delta must not demand
+    # what its author cannot yet know.
+    d = _delta_reference_record({"code": "prod_61"})
+    assert validate("facts-delta.schema.json", _wrap(d)) == []
+    e = _load("entry-record.json")
+    del e["data"]["rows"][0]["key"]
+    assert validate("facts.schema.json", _wrap(e)) != []
+
+
+def test_reconciled_against_cell_is_local_not_a_ref(validate):
+    # v2 §9: the pair names a cell of THIS record — `{field, row}`, the shape
+    # `content._check_reconciled_against` reads — against another entry's
+    # output. A `{ref}` on the near side would name a different record.
+    e = _load("entry-record.json")
+    e["data"]["reconciled_against"] = [
+        {"cell": {"field": "start_stock", "row": "burger"},
+         "against": {"ref": "F-00051", "field": "dough_g"}}]
+    assert validate("facts.schema.json", _wrap(e)) == []
+    e["data"]["reconciled_against"][0]["cell"] = {"ref": "F-00002",
+                                                  "field": "start_stock"}
+    assert validate("facts.schema.json", _wrap(e)) != []

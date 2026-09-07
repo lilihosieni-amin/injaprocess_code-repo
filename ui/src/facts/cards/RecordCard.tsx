@@ -6,6 +6,7 @@ import {
 import { toFa } from '../../lib/format'
 import {
   isRecordFact, type FactBundle, type RecordData, type RecordField,
+  type RecordInstance,
 } from '../../api/types'
 import { redPath, refTitle, resolvedTitle, rowCount, rowTitle } from '../bundle'
 import {
@@ -512,6 +513,7 @@ function StructureCard({ bundle, data, onOpen }: {
 }) {
   const L = (k: string) => label(PAYLOAD_FIELD_LABELS, k)
   const loc = data.location ?? {}
+  const instances = data.instances ?? []
   // Note 6 — the file name, the sheet or the authority; NEVER the spreadsheet id
   // beside a Persian word inside one LTR run. The id is in the footer chip.
   //
@@ -540,7 +542,6 @@ function StructureCard({ bundle, data, onOpen }: {
   // `F-00018` (the Sepidz till) drew «قالب receipt number», two English words at
   // a Persian prose node.
   const format = loc.identifier_scheme?.format
-  const mirror = refTitle(bundle, data.mirror_of)
   // **Owner report, 2026-09-06:** every stored `foreignKeys` member is an
   // import descriptor — `{spreadsheetId, sheet, range, target}` — where the
   // spec's `{fields, reference, …}` (:903) belongs, and the row below joined
@@ -555,13 +556,18 @@ function StructureCard({ bundle, data, onOpen }: {
   return (
     <DetailCard className="mt-s7">
       <HeadBand>{label(SCREEN_LABELS, 'heading_record_structure')}</HeadBand>
-      <LabelRow text={L('location')}>
-        {where}
-        {format !== undefined && (
-          <Filled text={label(SCREEN_LABELS, 'location_format')} values={{ n: format }}
-            className="text-fs-micro text-faint" />
-        )}
-      </LabelRow>
+      {instances.length === 0 && (
+        <LabelRow text={L('location')}>
+          {where}
+          {format !== undefined && (
+            <Filled text={label(SCREEN_LABELS, 'location_format')} values={{ n: format }}
+              className="text-fs-micro text-faint" />
+          )}
+        </LabelRow>
+      )}
+      {instances.length > 0 && (
+        <Instances bundle={bundle} instances={instances} onOpen={onOpen} />
+      )}
       {data.grain !== undefined && (
         <LabelRow text={L('grain')}>
           {/* Ledger L-17 — the design's 1.95 normalises onto the long-form
@@ -669,11 +675,6 @@ function StructureCard({ bundle, data, onOpen }: {
           </div>
         </div>
       )}
-      {data.mirror_of !== undefined && (
-        <LabelRow text={L('mirror_of')}>
-          <RefLink named={mirror} onOpen={onOpen} className="text-fs-menu" />
-        </LabelRow>
-      )}
       {foreignKeys.length > 0 && (
         <div className="px-s9 py-s6 border-b border-line-row">
           <Eyebrow>{L('foreignKeys')}</Eyebrow>
@@ -720,5 +721,89 @@ function StructureCard({ bundle, data, onOpen }: {
         </div>
       )}
     </DetailCard>
+  )
+}
+
+/**
+ * «نسخه‌ها» — QF-47's `instances[]`, and the import edges that hang off them.
+ *
+ * **This replaces the single «محل» row, and only for a record that has
+ * instances.** A tab that repeats across two workbooks used to be two entries
+ * with one location each; it is one entry with two instances now, and a single
+ * location line would name the first of them and silently hide the rest — which
+ * is the whole reason the row is gone.
+ *
+ * A paper form and an external table keep the old row: they have a `location`
+ * and no instances, and nothing else says where they are.
+ *
+ * Each instance's `imports[]` renders directly beneath it as «ورودی از» — the
+ * source record's title and a link when it is a `{ref}`, the workbook's title
+ * and the tab when it is still a locator (spec §10 keeps both forms
+ * indefinitely, and every reader accepts either). A `column_shift` issue naming
+ * this instance is drawn with it rather than in the issues card: the columns it
+ * says went missing are this copy's, and reading it three cards away is how the
+ * last run's mirrors went unexplained.
+ */
+function Instances({ bundle, instances, onOpen }: {
+  bundle: FactBundle; instances: RecordInstance[]; onOpen: (id: string) => void
+}) {
+  const issues = bundle.entry.issues ?? []
+  return (
+    <div className="px-s9 py-s6 border-b border-line-row">
+      <Eyebrow>{label(PAYLOAD_FIELD_LABELS, 'instances')}</Eyebrow>
+      {instances.map((inst) => {
+        const where = bundle.binding_labels[inst.key]
+        const attached = issues.filter((x) => x.instance === inst.key)
+        return (
+          <div key={inst.key} style={PX.rowY7}>
+            <div className="flex items-baseline gap-s5 flex-wrap">
+              <Mono className="text-fs-menu font-semibold text-ink">
+                {/* Falsy, not nullish: an empty served title drew a blank cell
+                    where «—» says the title is the thing that is missing. It
+                    is the test «محل اجرا» already makes on the same label. */}
+                {where?.workbook || none()}
+              </Mono>
+              <span className="text-fs-sm2 text-ink">{inst.sheet ?? none()}</span>
+              {where?.branch !== null && where?.branch !== undefined && (
+                <span className="text-fs-caption text-muted">{where.branch}</span>
+              )}
+              {inst.hidden === true && (
+                <Pill tone="quiet">{label(PAYLOAD_FIELD_LABELS, 'hidden')}</Pill>
+              )}
+            </div>
+            {(inst.imports ?? []).map((im) => {
+              const named = refTitle(bundle, im.source as never)
+              const locator = im.source as { spreadsheetId?: string; sheet?: string }
+              return (
+                <div key={im.key} style={PX.gap9}
+                  className="flex items-baseline flex-wrap mt-s3 ps-s6">
+                  <span style={PX.label104} className="flex-none text-fs-caption text-faint">
+                    {label(PAYLOAD_FIELD_LABELS, 'imports')}
+                  </span>
+                  {named !== undefined
+                    ? <RefLink named={named} onOpen={onOpen} className="text-fs-sm2" />
+                    : (
+                      // Note 6 — the workbook's title and the tab, never the
+                      // drive id beside a Persian word in one LTR run.
+                      <Mono className="text-fs-sm2 text-ink">
+                        {[bundle.workbook_titles[locator.spreadsheetId ?? ''],
+                          locator.sheet].filter(Boolean).join(' · ')}
+                      </Mono>
+                    )}
+                  {im.range != null && (
+                    <Mono className="text-fs-caption text-faint">{im.range}</Mono>
+                  )}
+                </div>
+              )
+            })}
+            {attached.map((x, i) => (
+              <p key={i} className="text-fs-caption text-warn-fg leading-sub m-0 mt-s3 ps-s6">
+                {x.description}
+              </p>
+            ))}
+          </div>
+        )
+      })}
+    </div>
   )
 }

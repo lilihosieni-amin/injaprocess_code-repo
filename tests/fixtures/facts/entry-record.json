@@ -41,7 +41,6 @@
     "rows": [ { "key": "burger", "title": "برگر" }, { "key": "mini_burger", "title": "مینی برگر" } ],
     "signatures": [ { "role": "مسئول واحد", "row_range": "1-5" }, { "role": "انبار دار", "row_range": "6-10" } ],
     "primaryKey": ["date", "item"],
-    "foreignKeys": [],
     "approved_by": "انبار دار"
   }
 }

@@ -55,6 +55,31 @@ const FORMULA = bundleOf('rule', {
   },
 })
 
+/** One rule across two branches and two columns — QF-47's whole point: sixty
+ *  bindings are one entry, and the tolerance that differs per binding is a
+ *  parameter, not a second rule. */
+const BOUND = bundleOf('rule', {
+  inputs: [{ key: 'tolerance_gr', title: 'تلورانس', from: { param: 'tolerancePerFoodGr' } }],
+  outputs: [{ key: 'enheraf', title: 'انحراف' }],
+  expr: 'enheraf = masraf_vaqei - tolerance_gr',
+  applies_to: [
+    { key: 'pitza__s0__j__r6', record: { ref: 'F-00300', field: 'c_j' },
+      variant: 0, range: 'J6:J15',
+      params: { tolerancePerFoodGr: 5, table_1: { ref: 'F-00300' } } },
+    { key: 'farangi__s0__j__r6', record: { ref: 'F-00301', field: 'c_j' },
+      variant: 0, range: 'J6:J14', params: { tolerancePerKilogramGr: 140 } },
+  ],
+}, {
+  resolved: {
+    'F-00300': { kind: 'record', title: 'گزارش شبانه پیتزا' },
+    'F-00301': { kind: 'record', title: 'گزارش شبانه فرنگی' },
+  },
+  binding_labels: {
+    pitza__s0__j__r6: { workbook: 'Gozaresh markazi', sheet: 'پیتزا', branch: 'چاله‌باغ' },
+    farangi__s0__j__r6: { workbook: 'Gozaresh naharkhoran', sheet: 'فرنگی', branch: 'ناهارخوران' },
+  },
+})
+
 /** F-00032 — a `table` rule; the cells are Persian and the default is a band. */
 const TABLE = bundleOf('rule', {
   lang: 'table',
@@ -220,5 +245,36 @@ describe('the rule card', () => {
       <RuleCard bundle={bundleOf('note', {})} onOpen={vi.fn()} />,
     )
     expect(container).toBeEmptyDOMElement()
+  })
+
+  it('draws «محل اجرا» — one row per binding, with its numeric parameters', () => {
+    render(<RuleCard bundle={BOUND} onOpen={vi.fn()} />)
+    const table = screen.getByRole('table', { name: 'محل اجرا' })
+    expect(within(table).getByText('Gozaresh markazi')).toBeInTheDocument()
+    expect(within(table).getByText('پیتزا')).toBeInTheDocument()
+    expect(within(table).getByText('چاله‌باغ')).toBeInTheDocument()
+    expect(within(table).getByText('J6:J15')).toBeInTheDocument()
+    // That column shows `range` — an A1 span, not a count of rows, so «ردیف‌ها»
+    // named a column it does not draw.
+    expect(within(table).getByText('محدوده')).toBeInTheDocument()
+    expect(within(table).queryByText('ردیف‌ها')).toBeNull()
+    // A number is an LTR island beside its parameter name (QF-42).
+    expect(within(table).getByText(/tolerancePerFoodGr/)).toHaveAttribute('dir', 'ltr')
+    expect(within(table).getByText(/140/)).toBeInTheDocument()
+  })
+
+  it('renders a `{ref}` parameter as the record’s Persian title, never a table name', () => {
+    // §2.5 — `gate-b.md` renders a ref-valued parameter as the referenced
+    // record's title or omits it, and the panel keeps the same rule: a
+    // `Table_*` string is exactly what the style card refuses to show a reader.
+    render(<RuleCard bundle={BOUND} onOpen={vi.fn()} />)
+    const table = screen.getByRole('table', { name: 'محل اجرا' })
+    expect(within(table).getByText(/گزارش شبانه پیتزا/)).toBeInTheDocument()
+    expect(within(table).queryByText(/table_1/)).toBeNull()
+  })
+
+  it('draws no «محل اجرا» for a rule that is bound to nothing', () => {
+    render(<RuleCard bundle={FORMULA} onOpen={vi.fn()} />)
+    expect(screen.queryByRole('table', { name: 'محل اجرا' })).toBeNull()
   })
 })

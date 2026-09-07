@@ -1,0 +1,54 @@
+name	scope	formula
+Table_Farangi_First	workbook	Table_Farangi_First!$A:$M
+SheetsFileId_Pizza	workbook	SheetsFileIDs!$B$4
+Table_Ingredients_AmericanPizza	workbook	Table_Ingredients_AmericanPizza!$A:$V
+Table_Pizza_First	workbook	Table_Pizza_First!$A:$M
+Table_SalesData_Pasta	workbook	Table_SalesData_Pasta!$A:$E
+Table_Ingredients_Fried	workbook	Table_Ingredients_Fried!$A:$E
+Table_KitchenCounter_Last	workbook	Table_KitchenCounter_Last!$A:$R
+Table_SalesData_Steak	workbook	Table_SalesData_Steak!$A:$B
+Table_SalesData_Personel	workbook	Table_SalesData_Personel!$A:$B
+Refresher	workbook	Refresher!$A$1
+SheetsFileId_SalesData	workbook	SheetsFileIDs!$B$6
+Table_Fried_First	workbook	Table_Fried_First!$A:$K
+SheetsFileId_KitchenCounter	workbook	SheetsFileIDs!$B$3
+Table_Ingredients_ItalianPizza	workbook	Table_Ingredients_ItalianPizza!$A:$V
+Table_Fried_Last	workbook	Table_Fried_Last!$A:$K
+SheetsFileId_Ingredients	workbook	SheetsFileIDs!$B$7
+Table_SalesData_Starter	workbook	Table_SalesData_Starter!$A:$T
+Table_Farangi_Last	workbook	Table_Farangi_Last!$A:$M
+Table_Ingredients_Personel	workbook	Table_Ingredients_Personel!$A:$C
+Table_Pizza_Last	workbook	Table_Pizza_Last!$A:$M
+Table_SalesData_Salad	workbook	Table_SalesData_Salad!$A:$D
+Table_Ingredients_Salad	workbook	Table_Ingredients_Salad!$A:$K
+NamedRange1	workbook	SheetsFileIDs!$3:$3
+Table_Pizza_Request	workbook	Table_Pizza_Request!$A:$M
+Table_SalesData_ItalianPizza	workbook	Table_SalesData_ItalianPizza!$A:$O
+Table_Ingredients_Starter	workbook	Table_Ingredients_Starter!$A:$E
+Table_KitchenCounter_First	workbook	Table_KitchenCounter_First!$A:$R
+Table_SalesData_Farangi	workbook	Table_SalesData_Farangi!$A:$C
+SheetsFileId_Fried	workbook	SheetsFileIDs!$B$5
+Table_SalesData_AmericanPizza	Table_SalesData_SinglePizza	Table_SalesData_SinglePizza!$A:$N
+Table_SalesData_AmericanPizza	workbook	Table_SalesData_AmericanPizza!$A:$N
+Table_Ingredients_Sandwich	workbook	Table_Ingredients_Sandwich!$A:$P
+SheetsFileId_Farangi	workbook	SheetsFileIDs!$B$2
+Table_KitchenCounter_Request	workbook	Table_KitchenCounter_Request!$A:$R
+Table_Ingredients_Steak	workbook	Table_Ingredients_Steak!$A:$B
+Table_Ingredients_SinglePizza	workbook	Table_Ingredients_SinglePizza!$A:$U
+Table_Ingredients_Pasta	workbook	Table_Ingredients_Pasta!$A:$C
+Table_Ingredients_AmericanPizza	Table_Ingredients_SinglePizza	Table_Ingredients_SinglePizza!$A:$V
+Table_Ingredients_Farangi	workbook	Table_Ingredients_Farangi!$A:$D
+Table_Farangi_Request	workbook	Table_Farangi_Request!$A:$M
+Table_SalesData_Sandwich	workbook	Table_SalesData_Sandwich!$A:$O
+SheetsFileId_Warehouse	workbook	SheetsFileIDs!$B$8
+Table_Fried_Request	workbook	Table_Fried_Request!$A:$K
+Table_Ingredients_Lasagna	workbook	Table_Ingredients_Lasagna!$A:$D
+Table_SalesData_Fried	workbook	Table_SalesData_Fried!$A:$H
+Table_SalesData_SinglePizza	workbook	Table_SalesData_SinglePizza!$A:$M
+FORMAT_PERSIAN_DATE	workbook	LAMBDA(day, month, year, TEXT(year, "0000") & "/" & TEXT(MATCH(month, {"فروردین","اردیبهشت","خرداد","تیر","مرداد","شهریور","مهر","آبان","آذر","دی","بهمن","اسفند"}, 0), "00") & "/" & TEXT(day, "00"))
+GET_CELL_VALUE_BY_PERSIAN_DATE	workbook	LAMBDA(day, month, year, data, colindex, LET(\ndate,JALALI_TO_GREG(\nFORMAT_PERSIAN_DATE(day,month,year)),\n filteredData, FILTER_BY_DATE(data,date),\nINDEX(filteredData,,colindex)\n))
+CONVERT_GR_TO_KG	workbook	LAMBDA(weight, DIVIDE(weight,1000))
+IMPORT_FROM_SHEET	workbook	LAMBDA(sheetsfileid, sheetname, datarange, IMPORTRANGE("https://docs.google.com/spreadsheets/d/" & sheetsfileid, sheetname & "!" & datarange))
+GET_ROW_BY_PERSIAN_DATE	workbook	LAMBDA(day, month, year, data, LET(\n  persianDate, FORMAT_PERSIAN_DATE(day, month, year),\n  header, INDEX(data, 1),\n  isCombinedDateFormat, IS_COMBINED_PERSIAN_DATE(INDEX(data,2, 1)),\n  \n  IF(\n    isCombinedDateFormat,\n    VSTACK(header, FILTER(data, INDEX(data,,1) = persianDate)),\n    VSTACK(header, FILTER(data, FORMAT_PERSIAN_DATE(INDEX(data, ,1), INDEX(data, ,2), INDEX(data, ,3)) = persianDate))\n  )\n))
+IS_COMBINED_PERSIAN_DATE	workbook	LAMBDA(datestring, REGEXMATCH(TO_TEXT(datestring), "^\\d{4}/\\d{2}/\\d{2}$"))
+FILTER_BY_DATE	workbook	LAMBDA(data, date, FILTER(data, INDEX(data,,1) = DATEVALUE(date)\n))

@@ -164,3 +164,39 @@ def test_union_field_not_manufactured_when_incoming_lacks_it():
     inc = copy.deepcopy(e)                    # inc has no "aliases" key either
     merge_entry(e, inc, SRC_B)
     assert "aliases" not in e
+
+# --- v3: `location` is a derived pointer, not a reading (§4 ladder row) ----- #
+
+def test_location_is_skipped_by_leaf_name_at_any_depth_and_never_disputed():
+    e = _base()
+    e["kind"] = "record"
+    e["data"] = {"medium": "sheet", "role": "report",
+                 "location": {"spreadsheetId": "P1", "sheetId": 11,
+                              "sheet": "پیتزا", "hidden": False},
+                 "instances": [{"key": "pz__s11", "spreadsheetId": "P1",
+                                "sheetId": 11, "sheet": "پیتزا",
+                                "branch": "chalebagh", "hidden": False}]}
+    inc = copy.deepcopy(e)
+    inc["data"]["location"] = {"spreadsheetId": "P2", "sheetId": 12,
+                               "sheet": "پیتزا", "hidden": False}
+    changes = merge_entry(e, inc, SRC_B)
+    assert e["data"]["location"]["spreadsheetId"] == "P1"   # untouched
+    assert e.get("accounts", []) == []                      # never disputed
+    assert not any(path.startswith("data/location") for path, _ in changes)
+
+
+def test_a_derived_leaf_is_skipped_but_its_siblings_still_merge():
+    e = _base()
+    e["kind"] = "record"
+    e["data"] = {"medium": "sheet", "role": "report", "location": {},
+                 "instances": [{"key": "pz__s11", "spreadsheetId": "P1",
+                                "sheetId": 11, "sheet": "پیتزا",
+                                "branch": "chalebagh", "hidden": False}]}
+    inc = copy.deepcopy(e)
+    inc["data"]["location"] = {"spreadsheetId": "P2"}
+    inc["data"]["instances"].append({"key": "pz__s12", "spreadsheetId": "P2",
+                                     "sheetId": 12, "sheet": "پیتزا",
+                                     "branch": "naharkhoran", "hidden": False})
+    changes = merge_entry(e, inc, SRC_B)
+    assert e["data"]["location"] == {}                       # still derived-only
+    assert ("data/instances/pz__s12", "append") in changes

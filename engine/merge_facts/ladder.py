@@ -5,6 +5,14 @@ from merge_facts import account_id
 
 PROSE_LEAVES = frozenset({"statement", "grain", "method", "exceptions",
                           "reason", "why", "description"})
+# §4: `location` is a derived pointer, not a reading — `apply` recomputes it
+# from `instances[]` after every merge. Matched by LEAF NAME at any depth, the
+# way PROSE_LEAVES is, and deliberately NOT through TOP_SKIP: that set only
+# sees an entry's top-level fields and would never reach `data/location`, so a
+# second run over a second instance would dispute `data/location/spreadsheetId`
+# — a question about which tab is "the" tab, which nobody asked and nobody can
+# answer.
+DERIVED = frozenset({"location"})
 UNION_FIELDS = {"source": lambda s: (s.get("type"), s.get("ref"), s.get("sheet"),
                                      s.get("cell") or s.get("lines") or
                                      s.get("function") or s.get("node") or
@@ -158,6 +166,8 @@ def _merge_member(entry, current, incoming, path, source, changes, skip=frozense
         if k in skip:
             continue
         p = _join(path, k)
+        if k in DERIVED:
+            continue                                   # recomputed, never merged
         if k in PROSE_LEAVES:
             if k not in current or current.get(k) in (None, ""):
                 current[k] = v
