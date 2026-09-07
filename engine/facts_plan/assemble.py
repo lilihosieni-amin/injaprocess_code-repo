@@ -246,6 +246,11 @@ REASON_FA = {"not_a_fact": "واقعیت کمّی نبود",
 #: Every issue kind `build` can raise (§2.3), grouped for the owner. `report`
 #: prints the kind's words once and the engine's own Persian descriptions
 #: beneath it — the description names the sheet, never a path or an id.
+#: The three judgement columns of Gate M (§2.2), in the words the playbook's
+#: own Gate M block puts to the owner — never the enum string.
+UNRESOLVED_FA = {"departments": "دپارتمان", "branches": "شعبه",
+                 "reference_tabs": "برگه‌های مرجع"}
+
 ISSUE_FA = {"cross_record": "فهرست مقادیر مجاز بین نسخه‌ها یکی نیست",
             "column_shift": "ستون جاافتاده در جدول کپی‌شده",
             "leading_offset": "جابه‌جایی ستون‌های تاریخ",
@@ -1115,6 +1120,26 @@ def report(root, run_dir):
     entries = [e for kind in KIND_ORDER for e in store[kind]["entries"]
                if e["id"] in touched]
 
+    # §2.1's Stage 2 row: `dump-workbook --manifest` skips a row the owner has
+    # not placed, and this is where that workbook is named — by its file title
+    # and branch, the way `build._where` names a tab, never by an id or a path.
+    manifest = read_json(root / "attachments" / "sheets" / "manifest.json")
+    branch_fa = {b["code"]: b["name"] for b in manifest.get("branches") or []}
+    skipped = []
+    for row in manifest["workbooks"]:
+        departments = row.get("departments") or []
+        # An unplaced row belongs to no department, so no run would ever name
+        # it if this asked for a match alone.
+        if not row.get("unresolved") or (departments
+                                         and skeleton["department"] not in departments):
+            continue
+        where = "، ".join(branch_fa.get(b, b) for b in row.get("branches") or [])
+        skipped.append(
+            f'  • «{pathlib.Path(row.get("file") or "").stem}»'
+            + (f" ({where})" if where else "") + ": "
+            + " و ".join(UNRESOLVED_FA.get(c, c) for c in row["unresolved"])
+            + " مشخص نشده است.")
+
     disputes = [(e, [a for a in e.get("accounts") or []
                      if a.get("status") == "open"]) for e in entries]
     disputes = [(e, a) for e, a in disputes if a]
@@ -1155,6 +1180,10 @@ def report(root, run_dir):
             out.append(f'  {ISSUE_FA.get(kind, "ایراد")} ({_fa(len(described))} مورد):')
             out += [f"    • {d}" for d in described[:5]]
         out.append("")
+    if skipped:
+        out.append(f"فایل‌هایی که در این اجرا خوانده نشدند ({_fa(len(skipped))}"
+                   " مورد) — پس از تعیین تکلیف، در اجرای بعدی خوانده می‌شوند:")
+        out += skipped + [""]
     if assembly["undecided"]:
         out.append("یک بخش از داده‌ها ناتمام ماند و در اجرای بعدی تکمیل می‌شود.")
     out.append({"applied": "بازبینی انجام شد.",

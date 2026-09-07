@@ -24,6 +24,12 @@ def _store(root, entries):
     (root / "departments" / "registry.json").write_text(json.dumps(
         {"departments": [{"code": "cooking", "name": "آشپزخانه"}]}),
         encoding="utf-8")
+    # `report` names every workbook the pass skipped (§2.1 Stage 2); with no
+    # workbook at all there is nothing to name.
+    (root / "attachments" / "sheets").mkdir(parents=True, exist_ok=True)
+    (root / "attachments" / "sheets" / "manifest.json").write_text(json.dumps(
+        {"schema_version": 1, "branches": [], "workbooks": []}),
+        encoding="utf-8")
 
 
 def _run(tmp_path):

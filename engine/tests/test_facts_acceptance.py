@@ -77,3 +77,25 @@ def test_apply_then_the_report_the_owner_reads(tmp_path):
         assert banned not in text
     for line in text.splitlines():
         assert not LEAK.search(line), line
+    assert "خوانده نشدند" not in text          # every row of the estate is placed
+
+
+def test_a_workbook_the_owner_has_not_placed_is_named_once(tmp_path):
+    """§2.1's Stage 2 row: `dump-workbook --manifest` skips a row with an open
+    judgement column, and the report is where the owner hears about it."""
+    from merge_facts.apply import apply
+    root, run, _delta_doc = _delta(tmp_path)
+    apply(root, run / "facts-delta.json", run)      # `report` reads its id-map
+    path = root / "attachments" / "sheets" / "manifest.json"
+    manifest = json.loads(path.read_text(encoding="utf-8"))
+    row = next(w for w in manifest["workbooks"] if w["short"] == "amar_kanter")
+    row["unresolved"], row["confirmed"] = ["branches"], False
+    path.write_text(json.dumps(manifest, ensure_ascii=False), encoding="utf-8")
+
+    text = report(root, run).read_text(encoding="utf-8")
+
+    named = [line for line in text.splitlines() if line.startswith("  • «Kanter»")]
+    assert named == ["  • «Kanter» (ناهارخوران): شعبه مشخص نشده است."]
+    assert "فایل‌هایی که در این اجرا خوانده نشدند (۱ مورد)" in text
+    for line in text.splitlines():
+        assert not LEAK.search(line), line
