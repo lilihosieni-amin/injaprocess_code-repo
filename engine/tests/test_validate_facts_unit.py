@@ -7,6 +7,21 @@ import pytest
 from facts_plan.assemble import validate_unit
 from validate.cli import main
 
+#: What a candidate of each kind mechanically carries, and what a unit's `keep`
+#: writes over it — the store's own shapes, since the gate now holds a unit
+#: document to `facts-delta.schema.json` (I1). `output` is `render`, never
+#: payload: `ruleData` has no such key, and `build.label_of` reads it there.
+KINDS = {
+    "rule": ({}, {"render": {"output": "انحراف"}}, {"inputs": [], "outputs": []}),
+    # `c_h` is the mechanical column a record unit renames: `_rename_fields`
+    # merges what the unit wrote onto the columns the dumper found, so a record
+    # candidate with no `fields[]` is one whose `fields[]` decision is a no-op.
+    "record": ({"medium": "sheet", "role": "log",
+                "location": {"spreadsheetId": "SID", "sheet": "پیتزا"},
+                "fields": [{"key": "c_h", "title": "مصرف اعلامی"}]},
+               {"render": {"sheet": "پیتزا"}}, {"role": "log"}),
+}
+
 
 def _run(tmp_path, candidates=("S-r-000000000001",), kind="rule"):
     root = tmp_path
@@ -15,13 +30,15 @@ def _run(tmp_path, candidates=("S-r-000000000001",), kind="rule"):
         json.dumps({"id": "cooking-030",
                     "nodes": [{"id": "cooking-030-n016", "label": "شمارش"}]}),
         encoding="utf-8")
+    payload, extra, _ = KINDS[kind]
     run_dir = root / "runs" / "facts" / "cooking" / "20260906-101500"
     (run_dir / "units" / "u-wb-pitza").mkdir(parents=True)
     (run_dir / "skeleton.json").write_text(json.dumps(
         {"schema_version": 1, "department": "cooking", "run": "r",
          "unit_symbols": ["kg", "portion"],
          "candidates": [{"id": c, "kind": kind, "unit": "u-wb-pitza",
-                         "payload": {"output": "انحراف"}} for c in candidates],
+                         "payload": dict(payload), **extra}
+                        for c in candidates],
          "instances": [], "imports": [], "issues": []}, ensure_ascii=False),
         encoding="utf-8")
     (run_dir / "plan.json").write_text(json.dumps(
@@ -35,13 +52,13 @@ def _run(tmp_path, candidates=("S-r-000000000001",), kind="rule"):
     return root, run_dir
 
 
-def _doc(**over):
+def _doc(kind="rule", **over):
     doc = {"schema_version": 1, "unit": "u-wb-pitza", "attempt": 1,
            "decisions": [{"skeleton": "S-r-000000000001", "action": "keep",
                           "key": "enheraf", "title": "انحراف مصرف",
                           "statement": "انحراف مصرف هر مادهٔ اولیه برابر است با "
                                        "مصرف واقعی منهای مصرف اعلامی لاین.",
-                          "data": {"inputs": [], "outputs": []}}],
+                          "data": dict(KINDS[kind][2])}],
            "new": []}
     doc.update(over)
     return doc
@@ -139,21 +156,23 @@ def test_sheet_words_belong_to_a_records_own_statement(tmp_path):
     with the same message, and its candidates lost to `undecided[]`."""
     sentence = "شمارش هر شب در تب «کانتر» ثبت می‌شود."
     root, run_dir = _run(tmp_path / "rec", kind="record")
-    doc = _doc()
+    doc = _doc("record")
     doc["decisions"][0]["statement"] = sentence
     assert validate_unit(root, run_dir, _write(run_dir, doc)) == []
-    titled = _doc()
+    titled = _doc("record")
     titled["decisions"][0]["title"] = sentence
     assert any("title" in p for p in
                validate_unit(root, run_dir, _write(run_dir, titled, "out.2.json")))
     root, run_dir = _run(tmp_path / "rule")
+    rule_doc = _doc()
+    rule_doc["decisions"][0]["statement"] = sentence
     assert any("statement" in p for p in
-               validate_unit(root, run_dir, _write(run_dir, doc)))
+               validate_unit(root, run_dir, _write(run_dir, rule_doc)))
 
 
 def test_a_unit_written_on_a_non_numeric_field_is_an_error(tmp_path):
-    root, run_dir = _run(tmp_path)
-    doc = _doc()
+    root, run_dir = _run(tmp_path, kind="record")
+    doc = _doc("record")
     doc["decisions"][0]["data"] = {"fields": [{"from": "c_a", "key": "nam",
                                                "type": "string", "unit": "kg"}]}
     assert any("nam" in p and "unit" in p
@@ -244,3 +263,86 @@ def test_a_review_document_is_not_checked_for_completeness(tmp_path):
                                 "attempt": 1, "decisions": [], "new": []}),
                     encoding="utf-8")
     assert validate_unit(root, run_dir, path) == []
+
+
+def test_a_field_type_the_store_has_no_such_thing_as_fails_at_the_unit_gate(tmp_path):
+    """I1 — 30 of the 2026-09-07 run's 52 Stage V refusals were column types
+    written as `text`. The unit that wrote it is told, by field path, while it
+    still has an attempt."""
+    root, run_dir = _run(tmp_path, kind="record")
+    doc = _doc("record")
+    doc["decisions"][0]["data"] = {
+        "role": "log", "fields": [{"from": "c_h", "key": "masraf", "type": "text"}]}
+    problems = validate_unit(root, run_dir, _write(run_dir, doc))
+    assert any("decisions[0] S-r-000000000001" in p
+               and "data.fields[0].type" in p
+               and "'text' is not one of" in p for p in problems)
+    doc["decisions"][0]["data"]["fields"][0]["type"] = "number"
+    assert validate_unit(root, run_dir, _write(run_dir, doc, "out.2.json")) == []
+
+
+def test_a_new_paper_record_without_a_location_fails_at_the_unit_gate(tmp_path):
+    """§3.3 + I1 — the two photographed forms of the 2026-09-07 run, refused
+    where the unit can still fix them."""
+    root, run_dir = _run(tmp_path)
+    form = {"kind": "record", "key": "mande_shab", "title": "فرم مانده شب",
+            "statement": "فرم کاغذی مانده شب که هر شیفت پر می‌شود.",
+            "data": {"medium": "paper", "role": "log"}}
+    problems = validate_unit(root, run_dir,
+                             _write(run_dir, _doc(new=[form])))
+    assert any("new[0]" in p and "'location' is a required property" in p
+               for p in problems)
+    form["data"]["location"] = {"kept_at": "زونکن دفتر", "holder": "سرآشپز شیفت"}
+    assert validate_unit(root, run_dir,
+                         _write(run_dir, _doc(new=[form]), "out.2.json")) == []
+
+
+def test_a_paper_locations_prose_is_linted(tmp_path):
+    """Ruling 2 — `kept_at`/`holder`/`system` are prose leaves, so a location
+    written as a cell reference is refused where `title`/`statement` would be."""
+    root, run_dir = _run(tmp_path)
+    form = {"kind": "record", "key": "mande_shab", "title": "فرم مانده شب",
+            "statement": "فرم کاغذی مانده شب که هر شیفت پر می‌شود.",
+            "data": {"medium": "paper", "role": "log",
+                     "location": {"kept_at": "در سلول J6 دفتر آشپزخانه",
+                                  "holder": "سرآشپز شیفت"}}}
+    assert any("data.location.kept_at" in p
+               for p in validate_unit(root, run_dir,
+                                      _write(run_dir, _doc(new=[form]))))
+    form["data"]["location"]["kept_at"] = "در دفتر سرآشپز، کشوی اول"
+    assert validate_unit(root, run_dir,
+                         _write(run_dir, _doc(new=[form]), "out.2.json")) == []
+
+
+def test_the_content_pass_runs_over_the_materialised_entries(tmp_path):
+    """§3.1 step 3 — `check_document`, the same call `preconditions` makes, so
+    a rule whose expr reads an identifier it never declared is refused here and
+    not at Stage V."""
+    root, run_dir = _run(tmp_path)
+    doc = _doc()
+    doc["decisions"][0]["data"] = {
+        "expr": "enheraf = masraf_vaqei - masraf_elami", "lang": "feel",
+        "inputs": [{"key": "masraf_vaqei"}],
+        "outputs": [{"key": "enheraf"}]}
+    assert any("decisions[0] S-r-000000000001" in p and "masraf_elami" in p
+               for p in validate_unit(root, run_dir, _write(run_dir, doc)))
+
+
+def test_a_third_attempt_is_refused_by_the_cap(tmp_path):
+    """§3.5 — two attempts per unit is the engine's rule, not the
+    coordinator's. The 2026-09-07 run reached out.3.json and then asked the
+    owner to lift the cap."""
+    root, run_dir = _run(tmp_path)
+    assert validate_unit(root, run_dir, _write(run_dir, _doc(), "out.3.json")) == \
+        ["out.3.json: attempt cap: two per run"]
+    assert validate_unit(root, run_dir, _write(run_dir, _doc(), "out.2.json")) == []
+
+
+def test_status_reports_a_third_attempt_as_failed(tmp_path):
+    from facts_plan.cli import unit_states
+    root, run_dir = _run(tmp_path)
+    for n in (1, 2, 3):
+        _write(run_dir, _doc(), f"out.{n}.json")
+    states = {s["id"]: s for s in
+              unit_states(root, run_dir, [{"id": "u-wb-pitza", "type": "workbook"}])}
+    assert states["u-wb-pitza"]["state"] == "failed"

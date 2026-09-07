@@ -681,6 +681,48 @@ def test_the_delta_is_schema_valid_and_survives_a_simulated_apply(tmp_path):
     assert problems == []
 
 
+def test_what_the_unit_gate_passes_is_never_refused_downstream(tmp_path):
+    """I1 — a document `validate facts-unit` accepts is one `assemble` folds and
+    `simulate` applies without a per-entry refusal. A refusal after the unit's
+    gate is a defect, and this is the test that says so."""
+    root = _root(tmp_path)
+    _seed_units(root)
+    run_dir = _run(root, {"u-a": _record_out(), "u-b": _rule_out()})
+    for unit, name in (("u-a", "u-a"), ("u-b", "u-b")):
+        assert validate_unit(root, run_dir,
+                             run_dir / "units" / name / "out.1.json") == []
+    assemble(root, run_dir)
+    delta = run_dir / "facts-delta.json"
+    validate("facts-delta.schema.json",
+             json.loads(delta.read_text(encoding="utf-8")))
+    _store, problems = simulate(root, delta, run_dir)
+    assert problems == []
+
+
+def test_an_attachment_sidecar_is_cited_by_the_kind_of_file_it_came_from(tmp_path):
+    """Ruling 3 — a `.text/` sidecar cites `docx`/`pdf`/`photo` by its suffix;
+    only a transcript is `voice`. A photographed form written up as a `new[]`
+    record used to claim the meeting's audio as its evidence."""
+    root = _root(tmp_path)
+    sidecar = "departments/cooking/attachments/.text/form.image.md"
+    plan, rule = _plan(), _rule_out()
+    plan["units"][1]["inputs"] = [sidecar]
+    rule["new"] = [_second_record(key="mande_shab")]
+    run_dir = _run(root, {"u-a": _record_out(), "u-b": rule}, plan=plan)
+    assemble(root, run_dir)
+    delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
+    assert next(e for e in delta["entries"]
+                if e["key"] == "mande_shab")["source"] == \
+        [{"type": "photo", "ref": sidecar}]
+
+    plan["units"][1]["inputs"] = ["meetings/transcripts/c.txt#L1-L20"]
+    (run_dir / "plan.json").write_text(json.dumps(plan), encoding="utf-8")
+    assemble(root, run_dir)
+    delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
+    assert next(e for e in delta["entries"]
+                if e["key"] == "mande_shab")["source"][0]["type"] == "voice"
+
+
 def _tol_new(value):
     """A rule two units mint alike but for one number — step 7's `unit_drift`,
     which no source kind separates and only the reviewer settles (§2.6)."""
