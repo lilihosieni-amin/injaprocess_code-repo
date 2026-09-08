@@ -96,7 +96,8 @@ const PARAMS = bundleOf('rule', {
 }, {
   resolved: {
     'F-00300': { kind: 'record', title: 'گزارش شبانه پیتزا' },
-    'F-00149': { kind: 'record', title: 'کاردکس انبار' },
+    'F-00149': { kind: 'record', title: 'کاردکس انبار',
+      fields: { daryaft_az_anbar: 'دریافت از انبار' } },
   },
 })
 
@@ -305,7 +306,8 @@ describe('the rule card', () => {
     // The binding maps `ref_1` to a `{ref, field}`, so the row reads exactly as
     // a direct edge does — the record's own title, and it opens.
     expect(within(row).queryByText('ref_1')).toBeNull()
-    await user.click(within(row).getByRole('button', { name: 'کاردکس انبار' }))
+    await user.click(
+      within(row).getByRole('button', { name: 'کاردکس انبار — دریافت از انبار' }))
     expect(onOpen).toHaveBeenCalledWith('F-00149')
   })
 

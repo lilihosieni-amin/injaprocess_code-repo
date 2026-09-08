@@ -304,12 +304,21 @@ def red_paths(entry: dict) -> dict:
 
 
 def _labels(root: Path) -> dict[str, dict]:
-    """`id -> {kind, title, code?}`, and an item's **key** to the same label.
+    """`id -> {kind, title, code?, fields?}`, and an item's **key** to the same
+    label.
 
     Both are needed because the store references items two ways: a `{ref}`
     names the id, while a `refItems` cell holds the item's key (QF-37's one
     exception, so a reference row's key stays derivable). The two namespaces
     cannot collide — ids are `F-…`, keys are lower-case.
+
+    A **record** carries its columns too — `{field key: title}` — because a
+    `{ref, field}` edge names one of them and the panel could otherwise only
+    say which record a bound input reads, never which column. The title falls
+    back to the key: a column with no Persian is still the column that edge
+    names, and «record — key» answers the owner's question where «record»
+    alone does not. Masking is unaffected — a restricted neighbour's whole
+    label is replaced by the router, columns with it.
     """
     out: dict[str, dict] = {}
     for entry in load_all(root):
@@ -317,6 +326,12 @@ def _labels(root: Path) -> dict[str, dict]:
         code = (entry.get("data") or {}).get("code")
         if entry.get("kind") == "item" and code:
             label["code"] = str(code)
+        if entry.get("kind") == "record":
+            fields = {f["key"]: f.get("title") or f["key"]
+                      for f in (entry.get("data") or {}).get("fields") or []
+                      if isinstance(f, dict) and isinstance(f.get("key"), str)}
+            if fields:
+                label["fields"] = fields
         if isinstance(entry.get("id"), str):
             out[entry["id"]] = label
         if entry.get("kind") == "item" and isinstance(entry.get("key"), str):
@@ -389,7 +404,7 @@ def _ref_item_columns(data: dict) -> list[str]:
 
 def resolved_map(root: Path, entry: dict) -> dict:
     """Every id, item key and process id the entry points at → `{kind, title,
-    code?}` (spec §17).
+    code?, fields?}` (spec §17).
 
     The walk is over the **whole envelope**, not only `data`: `supersedes`,
     `superseded_by` and `issues[].affects` are `{ref}` objects too, and the

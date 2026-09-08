@@ -804,3 +804,17 @@ def test_a_v2_store_file_reads_exactly_as_a_v1_one_does(root):
     assert facts_store.load_entry(root, doc["entries"][0]["id"]) is not None
     assert facts_store.load_index(root / "nothing") == {
         "schema_version": 2, "entries": []}
+
+
+def test_resolved_carries_a_records_column_titles(root):
+    """The panel names the column a `{ref, field}` edge reads, so the record's
+    own `data.fields[]` ride in its label — title, or the key where a column
+    has no Persian."""
+    resolved = facts_store.resolved_map(root, facts_store.load_entry(root, "F-00030"))
+    # `inputs[0].from` reads the BOM's «گرم» column; `outputs[0].writes_to`
+    # writes the form's «مانده اول شب».
+    assert resolved["F-00020"]["fields"]["grams"] == "گرم"
+    assert resolved["F-00021"]["fields"]["start_stock"] == "مانده اول شب"
+    # A record with no declared columns carries no `fields` key at all, and
+    # nothing that is not a record carries one.
+    assert "fields" not in resolved["F-00032"]
