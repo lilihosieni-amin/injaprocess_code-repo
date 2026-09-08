@@ -87,6 +87,15 @@ _INDEX_RE = re.compile(r"\[[0-9]+\]")
 LINE_CAP = 80
 
 
+def capped(lines):
+    """§3.4's ceiling applied to any list of refusals: the first `LINE_CAP`,
+    then how many were left. One implementation, so the schema half and the
+    content half of a gate cannot cap differently (or one of them not at all).
+    """
+    return lines[:LINE_CAP] + [f"… and {len(lines) - LINE_CAP} more"] \
+        if len(lines) > LINE_CAP else lines
+
+
 def _path(parts):
     """A jsonschema error path as `entries[3].data.fields[2].type`."""
     out = ""
@@ -151,11 +160,10 @@ def _error_lines(schema, instance, errors):
     groups = {}
     for path, message in _expand(schema, instance, errors):
         groups.setdefault((_INDEX_RE.sub("[N]", path), message), []).append(path)
-    lines = [f"{paths[0]}: {message}" if len(paths) == 1 else
-             f"{generic}: {message} ({len(paths)} places: {', '.join(paths[:3])})"
-             for (generic, message), paths in groups.items()]
-    return lines[:LINE_CAP] + [f"… and {len(lines) - LINE_CAP} more"] \
-        if len(lines) > LINE_CAP else lines
+    return capped([f"{paths[0]}: {message}" if len(paths) == 1 else
+                   f"{generic}: {message} ({len(paths)} places: "
+                   f"{', '.join(paths[:3])})"
+                   for (generic, message), paths in groups.items()])
 
 
 def validate(schema_name, instance):

@@ -15,7 +15,7 @@ import pathlib
 import re
 import sys
 
-from engine_common import (read_json, validate, write_json_atomic,
+from engine_common import (capped, read_json, validate, write_json_atomic,
                            write_text_atomic)
 from merge_facts import (KIND_ORDER, _sheet_identities, canonical_scope,
                          iter_ref_objects, load_store, null_paths, set_path)
@@ -23,7 +23,7 @@ from merge_facts.apply import _derive_row_keys
 from merge_facts.audit import flags_over
 from merge_facts.content import _check_prose, check_document
 from merge_facts.preconditions import (_registered, _unit_row_keys,
-                                       _unit_symbols)
+                                       _unit_symbols, process_source_problems)
 
 from facts_plan.build import (estimate_tokens, label_of, process_index,
                               shape_section)
@@ -114,6 +114,11 @@ def validate_unit(root, run_dir, path):
     node_ids = {f'{n["process"]}::{n["node"]}' for n in nodes} \
         | {f'{n["process"]}::{n["node"].rsplit("-", 1)[-1]}' for n in nodes}
     problems, seen, unit = list(caps), [], None
+    # The document's own decisions by candidate, so a rule can be judged
+    # against the record it reads: the record's keys are minted here, not in
+    # the skeleton (`_swapped_inputs`).
+    decided = {d["skeleton"]: d for d in doc["decisions"]
+               if isinstance(d, dict) and d.get("skeleton")}
     in_units = path.parent.parent.name == "units"
     if doc["unit"] == "review":
         # A review lives at `review/out.json` and addresses assembled entries.
@@ -124,6 +129,17 @@ def validate_unit(root, run_dir, path):
             problems.append(f'{path.name}: is a review document, but it sits in '
                             f'units/{path.parent.name}/, whose candidates it '
                             "decides none of")
+        elif (run_dir / "review" / "input.sha256").is_file():
+            # The review's gate is the fold's own judgement (I1 for the
+            # reviewer): an address that lands nowhere or a contradiction no
+            # flag covers is refused here, per decision, instead of the whole
+            # document being discarded at `assemble` with no word to anyone.
+            # Without a digest stamp the fold reads no review, so there is
+            # nothing to judge it against.
+            _run, skel, st = _prepare(root, run_dir, False)
+            draft = _build_entries(root, skel, st)
+            _cross_unit(root, draft, st)
+            problems += _review_problems(run_dir, doc, st, draft, st)
     else:
         # A document belongs to the unit whose directory it sits in, never to
         # the one it names: a document declaring a zero-candidate sibling would
@@ -182,6 +198,7 @@ def validate_unit(root, run_dir, path):
             if skid and written and written not in columns:
                 problems.append(f"{label}: data.fields[{i}].from: {written!r} "
                                 "names no column of this candidate")
+        problems += _swapped_inputs(decision, label, candidates, decided)
         for field in _members(decision.get("data") or {}, "fields"):
             if field.get("unit") and field.get("type") not in (None, "number"):
                 problems.append(f'{label}: field {field.get("key")} is '
@@ -237,7 +254,11 @@ def _contract_problems(root, entries, named, symbols):
     """
     clean = [{k: v for k, v in e.items() if not k.startswith("_")} for e in entries]
     delta = {"schema_version": 2, "entries": clean}
-    out = []
+    # The schema half caps itself inside `validate` (§3.4); the content half is
+    # collected apart so it is capped by the same rule. A record whose every
+    # cell is refused otherwise buries the rest of the list under one line per
+    # cell, and the unit spends its attempt scrolling.
+    out, content = [], []
     try:
         validate("facts-delta.schema.json", delta)
     except ValueError as exc:
@@ -257,14 +278,17 @@ def _contract_problems(root, entries, named, symbols):
     if symbols:
         symbols = set(symbols) | _unit_row_keys(store, clean)
     for entry, label in zip(clean, named):
+        # I3 — the citation was live when the run was planned; the tombstone may
+        # have landed since, and `apply` would refuse the delta for it.
+        content.extend(f"{label}: {p}" for p in process_source_problems(root, entry))
         for n, branch in enumerate(entry["scope"]["branches"]):
             if branches and branch not in branches:
-                out.append(f"{label}: scope.branches[{n}]: branch {branch!r} is "
-                           "not in the sheets manifest")
+                content.append(f"{label}: scope.branches[{n}]: branch "
+                               f"{branch!r} is not in the sheets manifest")
         for symbol in _unit_symbols(entry) if symbols else ():
             if symbol not in symbols:
-                out.append(f"{label}: unit {symbol!r} is declared by no row of "
-                           "the units record")
+                content.append(f"{label}: unit {symbol!r} is declared by no "
+                               "row of the units record")
         # The store requires `rows[].key` and the delta schema cannot: a
         # reference table's keys are the primaryKey join `apply` derives (§9).
         # Run that same derivation here, so whatever it would leave keyless —
@@ -275,8 +299,8 @@ def _contract_problems(root, entries, named, symbols):
             _derive_row_keys(data)
             for n, row in enumerate(data.get("rows") or []):
                 if isinstance(row, dict) and "key" not in row:
-                    out.append(f"{label}: data.rows[{n}]: "
-                               "'key' is a required property")
+                    content.append(f"{label}: data.rows[{n}]: "
+                                   "'key' is a required property")
     # A `calls[]` ref this document could not resolve is `T-0`, so `_call_keys`
     # rescues nothing and every identifier that call declares reads as
     # undeclared. Cross-unit resolution is `_resolve_refs`' job — skip the expr
@@ -293,8 +317,8 @@ def _contract_problems(root, entries, named, symbols):
         head, sep, tail = message.partition(": ")
         if head in blind and tail.startswith("expr identifier "):
             continue
-        out.append(f"{by_temp.get(head, head)}{sep}{tail}")
-    return out
+        content.append(f"{by_temp.get(head, head)}{sep}{tail}")
+    return out + capped(content)
 
 
 #: `entries[3]` / `entries[N]` at the head of a §3.4 line, and the concrete
@@ -330,6 +354,48 @@ def _members(data, key):
     the lint skips rather than dies on."""
     value = data.get(key)
     return [m for m in value if isinstance(m, dict)] if isinstance(value, list) else []
+
+
+def _swapped_inputs(decision, label, candidates, decided):
+    """§3.2 — a rule input bound to a column it is not named for.
+
+    A rule that runs in several tabs takes its inputs by parameter: the input
+    says `from: {param: "ref_1"}` and each binding maps `ref_1` to a concrete
+    `{ref, field}`. The unit sees the parameter, not the column. The first real
+    run assigned them in the order it wrote its inputs: the input it called
+    «موجودی آغاز شب» reads «مقدار دریافت از انبار». `a + b` came out right and
+    the sentence in the store was false.
+
+    Only the visible swap is refused — an input whose key IS another column of
+    the record it reads. A key named for the concept rather than the column is
+    no evidence of anything, and neither is a record whose decision sits in
+    another unit: its minted keys are not in this document, so its columns are
+    still the skeleton's `c_<letter>` and no input key can collide with one.
+    """
+    data = decision.get("data") or {}
+    payload = (candidates.get(decision.get("skeleton")) or {}).get("payload") or {}
+    bindings = data.get("applies_to") or payload.get("applies_to") or []
+    params = (bindings[0].get("params") or {}) if isinstance(bindings, list) \
+        and bindings and isinstance(bindings[0], dict) else {}
+    out = []
+    for n, given in enumerate(data.get("inputs") or []):
+        source = given.get("from") if isinstance(given, dict) else None
+        bound = params.get(source.get("param")) if isinstance(source, dict) else None
+        record = candidates.get(bound.get("ref")) if isinstance(bound, dict) else None
+        if record is None or not bound.get("field"):
+            continue
+        # The record's own decision is what mints its keys — the same merge
+        # `_rename_fields` does at step 1b, over the one document in hand.
+        renames = {f["from"]: f["key"] for f in
+                   _members((decided.get(bound["ref"]) or {}).get("data") or {}, "fields")
+                   if f.get("from") and f.get("key")}
+        columns = {renames.get(f["key"], f["key"])
+                   for f in _members(record.get("payload") or {}, "fields")}
+        reads = renames.get(bound["field"], bound["field"])
+        if given.get("key") in columns and given.get("key") != reads:
+            out.append(f'{label}: data.inputs[{n}]: key {given["key"]} is bound '
+                       f'through {source["param"]} to column {reads}')
+    return out
 
 
 def _lint_decision(decision, label, symbols, kind=None):
@@ -528,22 +594,79 @@ def _collect(root, run_dir, plan, skeleton):
     return state
 
 
+def _review_hits(draft):
+    """`hits(ref) -> [entry]` for an `entryAddr`. `scope` is optional there:
+    without it, kind + key is the address, and it has to name exactly one
+    assembled entry across every scope."""
+    address = {}
+    for entry in draft:
+        address.setdefault(_address(entry), []).append(entry)
+
+    def hits(ref):
+        if ref.get("scope") is not None:
+            return address.get(_address(ref), [])
+        return [e for a, es in address.items() for e in es
+                if a[:2] == (ref["kind"], ref["key"])]
+    return hits
+
+
+def _review_problems(run_dir, doc, state, draft, scratch):
+    """Every reason the fold would discard this review, one line per decision —
+    the review's gate (`validate facts-unit review/out.json`) and `_fold_review`
+    judge by this one function, so what the gate admits the fold applies. The
+    flags are the ones `scratch` carries, which are the ones `review/input.md`
+    was rendered from — a field none of them names is an address the reviewer
+    invented (QF-52)."""
+    out = []
+    stamp = run_dir / "review" / "input.sha256"
+    text = _digest_text(scratch, draft)
+    if stamp.read_text(encoding="utf-8").strip() != \
+            hashlib.sha256(text.encode("utf-8")).hexdigest():
+        out.append("out.json: the digest changed since this review was written")
+    hits = _review_hits(draft)
+
+    def name(ref):
+        return f'{ref["kind"]} {ref["key"]}'
+    for n, decision in enumerate(doc["decisions"]):
+        label = f"decisions[{n}]"
+        if decision.get("action") == "contradiction":
+            named = {_address(e) for e in hits(decision["entry"])} \
+                if decision.get("entry") else set()
+            if not any(f["code"] == "unit_drift"
+                       and f["field"] == decision["field"]
+                       and _address(f["entry"]) in named
+                       for f in scratch["flags"]):
+                out.append(f'{label}: contradiction: no drift flag on '
+                           f'{decision["field"]} for {name(decision["entry"])}')
+            continue
+        if isinstance(decision.get("into"), dict):
+            k = len(hits(decision["into"]))
+            if k != 1:
+                out.append(f'{label}: into: {name(decision["into"])} names '
+                           f"{k} assembled entries")
+        if decision.get("skeleton"):
+            if decision["skeleton"] not in state["by_skeleton"]:
+                out.append(f'{label}: skeleton {decision["skeleton"]} is '
+                           "decided by no unit")
+            continue
+        k = len(hits(decision["entry"]))
+        if k != 1:
+            out.append(f'{label}: entry: {name(decision["entry"])} names {k} '
+                       "assembled entries")
+    return out
+
+
 def _fold_review(run_dir, state, draft, scratch):
     """Step 0 (§2.6). The digest hash must still match the assembly the reviewer
     read, and an address hitting zero or more than one entry discards the whole
     document: one round, no negotiation (§10)."""
     path = run_dir / "review" / "out.json"
-    stamp = run_dir / "review" / "input.sha256"
-    if not path.is_file() or not stamp.is_file():
+    if not path.is_file() or not (run_dir / "review" / "input.sha256").is_file():
         return "absent"
-    text = _digest_text(scratch, draft)
-    if stamp.read_text(encoding="utf-8").strip() != \
-            hashlib.sha256(text.encode("utf-8")).hexdigest():
-        return "discarded"
     doc = read_json(path)
-    address = {}
-    for entry in draft:
-        address.setdefault(_address(entry), []).append(entry)
+    if _review_problems(run_dir, doc, state, draft, scratch):
+        return "discarded"
+    hits = _review_hits(draft)
     folded, settled = [], []
     for decision in doc["decisions"]:
         if decision.get("action") == "contradiction":
@@ -552,41 +675,29 @@ def _fold_review(run_dir, state, draft, scratch):
             # `account` keeps both readings open for the owner. It settles a
             # record rather than deciding a candidate, so it never joins
             # `folded`: merged onto a decision it would replace the `keep` and
-            # the entry would leave the delta altogether. The flags are the
-            # ones `scratch` carries, which are the ones `review/input.md` was
-            # rendered from — a field none of them names is an address the
-            # reviewer invented, and an invented address discards the whole
-            # document (QF-52).
-            addr = _address(decision["entry"]) if decision.get("entry") else None
-            flag = next((f for f in scratch["flags"]
-                         if f["code"] == "unit_drift"
-                         and f["field"] == decision["field"]
-                         and _address(f["entry"]) == addr), None)
-            if flag is None:
-                return "discarded"
-            settled.append((flag, decision))
+            # the entry would leave the delta altogether.
+            hit = hits(decision["entry"])[0]
+            flag = next(f for f in scratch["flags"]
+                        if f["code"] == "unit_drift"
+                        and f["field"] == decision["field"]
+                        and _address(f["entry"]) == _address(hit))
+            # `_settle` finds the entry by its full address, so a scope the
+            # reviewer left out is filled in from the entry it named.
+            settled.append((flag, dict(decision, entry={
+                "kind": hit["kind"], "key": hit["key"],
+                "scope": hit.get("scope")})))
             continue
         # `into` may be an address too (`facts-unit.schema.json`'s `entryAddr`),
-        # and `_target_of` walks skeleton ids — so it is resolved here or the
-        # document is discarded, never handed on as a dict nothing can follow.
+        # and `_target_of` walks skeleton ids — so it is resolved here, never
+        # handed on as a dict nothing can follow.
         if isinstance(decision.get("into"), dict):
-            target = address.get(_address(decision["into"]), [])
-            if len(target) != 1:
-                return "discarded"
-            decision = dict(decision, into=target[0]["_skeleton"])
+            decision = dict(decision,
+                            into=hits(decision["into"])[0]["_skeleton"])
         if decision.get("skeleton"):
-            # A skeleton no unit decided is an address the reviewer invented:
-            # folding it would report `applied` for a decision that lands
-            # nowhere. (A *dropped* candidate is decided, so §2.6's reinstating
-            # `keep` still works.)
-            if decision["skeleton"] not in state["by_skeleton"]:
-                return "discarded"
             folded.append(decision)
             continue
-        hit = address.get(_address(decision["entry"]), [])
-        if len(hit) != 1:
-            return "discarded"
-        folded.append(dict(decision, skeleton=hit[0]["_skeleton"]))
+        folded.append(dict(decision,
+                           skeleton=hits(decision["entry"])[0]["_skeleton"]))
     for decision in folded:
         previous = state["by_skeleton"].get(decision["skeleton"], {})
         merged = {**previous, **{k: v for k, v in decision.items()
@@ -792,7 +903,12 @@ def _entry(candidate, decision, state, part=None):
     `scope` per §3.2, the `inferred` wrappers expanded into `field_status`."""
     written = part or decision
     status = {}
-    data = copy.deepcopy(candidate["payload"])
+    # The payload is unwrapped too, not just what the unit wrote: a `new[]`
+    # entry's data travels here as its pseudo-candidate's payload (`_pseudo`),
+    # so a hedge the model put on `filled_by`, `location.kept_at` or `by` would
+    # otherwise reach the store schema with its wrapper on. A mechanical
+    # payload carries no wrappers, so this is a no-op for every real candidate.
+    data = _unwrap(copy.deepcopy(candidate["payload"]), "data", status)
     given = _unwrap(written.get("data") or {}, "data", status)
     renames, fields = _rename_fields(data.pop("fields", []),
                                      given.pop("fields", []))
@@ -1223,14 +1339,21 @@ def _digest_text(state, entries):
                                  _address(entry)[2], entry["title"],
                                  entry["statement"], tail]))
     lines += ["", "## flags", ""]
-    lines += [f'{f["code"]} · {f["id"]} · {f["message"]}'
+    # A flag's `id` is a temp id minted for this assembly and nowhere else, so
+    # it addresses nothing the reviewer can go and read. A flag that carries the
+    # entry it is about is named by it instead.
+    def who(flag):
+        entry = flag.get("entry")
+        return f'{entry["kind"]} {entry["key"]}' if entry else flag["id"]
+
+    lines += [f'{f["code"]} · {who(f)} · {f["message"]}'
               for f in state["flags"]] or ["—"]
     lines += ["", "## dropped", ""]
     lines += [f'{d["skeleton"]} · {d["kind"]} · {d["label"]} · {d["reason_code"]}'
               for d in state["dropped"]] or ["—"]
     # The reviewer rewrites `title`/`statement` and may `keep` with `data`, so
     # it is held to the same closed contract the units are (§3.2).
-    lines += ["", shape_section()]
+    lines += ["", shape_section(state.get("unit_symbols") or ())]
     return "\n".join(lines) + "\n"
 
 
@@ -1246,6 +1369,10 @@ def _prepare(root, run_dir, review):
     state = _collect(root, run_dir, plan, skeleton)
     state.update({
         "department": skeleton["department"], "issues": skeleton["issues"],
+        # The reviewer is held to the same closed unit list a unit is (§3.3),
+        # so the digest carries it; `scratch` is a copy of this state, so the
+        # document the hash is checked against carries the same section.
+        "unit_symbols": skeleton.get("unit_symbols") or [],
         "units": {u["id"]: u for u in plan["units"]},
         "paths": {w["spreadsheetId"]: f'attachments/sheets/{w["dir"]}/{w["file"]}'
                   for w in manifest["workbooks"]},

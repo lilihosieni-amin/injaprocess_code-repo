@@ -79,9 +79,27 @@ export function resolvedTitle(bundle: FactBundle, ref: string): Named | undefine
   }
 }
 
-/** The same, for a `{ref}` edge. `field` and `row` narrow the cell, not the name. */
-export const refTitle = (bundle: FactBundle, ref: FactRef | undefined | null) =>
-  ref === undefined || ref === null ? undefined : resolvedTitle(bundle, ref.ref)
+/**
+ * The same, for a `{ref}` edge — **and the column, where the edge names one.**
+ *
+ * A `{ref, field}` reads «<record> — <column>», the join `row_titles`
+ * already composes with server-side. The owner's question of 2026-09-08 was
+ * *which column* a bound input reads, and the record's title alone does not
+ * answer it. The columns are the served `resolved[ref].fields` (a record's
+ * `data.fields[]`, title falling back to the key); a masked neighbour has no
+ * label at all and keeps «خارج از دسترسی شما», and a `row` still narrows the
+ * cell rather than the name.
+ */
+export function refTitle(
+  bundle: FactBundle, ref: FactRef | undefined | null,
+): Named | undefined {
+  if (ref === undefined || ref === null) return undefined
+  const named = resolvedTitle(bundle, ref.ref)
+  if (named === undefined || named.restricted || ref.field === undefined) return named
+  const found = bundle.resolved[ref.ref]
+  const column = isRestricted(found) ? undefined : found.fields?.[ref.field]
+  return column === undefined ? named : { ...named, text: `${named.text} — ${column}` }
+}
 
 /**
  * A row key → the row's Persian title (§17). Every row key is in the map, so a

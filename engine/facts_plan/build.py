@@ -1318,11 +1318,19 @@ def reuse_slice(own, index, item_units, department, tokens, cap=40):
 def process_index(root, department):
     """`{process, node, label}` for every labelled node of the department's
     processes — the whole index a citation is checked against; the unit sees a
-    ranked slice of it (§2.3)."""
+    ranked slice of it (§2.3).
+
+    A tombstoned process contributes nothing (I3): it is history, not content,
+    and the first real v3 run cited three of them because this index still
+    carried their nodes. `merge.tombstone` is the only writer of the flag and
+    `order.active` already reads it the same way.
+    """
     out = []
     directory = pathlib.Path(root) / "departments" / department / "processes"
     for path in sorted(directory.glob("*.json")):
         doc = read_json(path)
+        if doc.get("tombstoned"):
+            continue
         for node in doc.get("nodes") or []:
             if node.get("label"):
                 out.append({"process": doc["id"], "node": node["id"],
@@ -1846,6 +1854,17 @@ def _location_lines(record, indent):
     return out
 
 
+#: What the schema shows the *shape* of but never the content of, one sentence
+#: per kind (§3.3). The first run typed a column of ingredient names as
+#: `refItems`, which asks the gate to resolve every cell as an item: about a
+#: thousand cells refused and the unit dead at the cap.
+KIND_NOTE = {
+    "record": "ستونی که خانه‌هایش نام هستند `type: string` است؛ `refItems` فقط "
+              "برای خانه‌هایی است که کد `##` فهرست اقلام یا کلید یک قلم را "
+              "دارند.",
+    "rule": "`per` در خروجی یک قاعده کلید یک قلم است، نه یک نام."}
+
+
 #: Three `new[]` entries a unit can copy — a paper form (the case the first run
 #: had no shape for), a measurement, and a rule reading its parameters. A test
 #: validates all three against `facts-delta.schema.json`, so an example the
@@ -1922,6 +1941,8 @@ def shape_card(kinds, schema):
         out += _block(data, defs, "", {data_def})
         if kind == "record":
             out += [""] + _location_lines(data, "")
+        if kind in KIND_NOTE:
+            out += ["", KIND_NOTE[kind]]
         out.append("")
     out += ["## نمونه‌های کامل `new[]`", ""]
     for example in EXAMPLES:
@@ -1932,8 +1953,25 @@ def shape_card(kinds, schema):
     return "\n".join(out)
 
 
-def shape_section():
-    """`shape_card` over the schema on disk, for every kind a unit may write.
+def _symbols_lines(symbols):
+    """§3.3's «واحدهای مجاز» — the run's declared unit symbols, in the order
+    given. It is not part of `shape_card` because the card is a pure function
+    of the schema and this is a fact about the store at the moment of the run.
+    """
+    if not symbols:
+        return ["## واحدهای مجاز", "",
+                "هنوز رکورد واحدها ساخته نشده است؛ هر نماد واحد پیش از استفاده "
+                "باید به صورت یک سطر از آن رکورد اعلام شود."]
+    return ["## واحدهای مجاز", "",
+            "`unit` یکی از این نمادهاست؛ نماد دیگری تنها در صورتی پذیرفته "
+            "می‌شود که همین سند آن را به صورت یک سطر تازه به رکورد واحدها "
+            "(کلید `units`) اضافه کند، وگرنه رد می‌شود:",
+            "، ".join(f"`{symbol}`" for symbol in symbols)]
+
+
+def shape_section(symbols=()):
+    """`shape_card` over the schema on disk, for every kind a unit may write,
+    plus the run's `unit_symbols` (§3.3).
 
     The **delta** schema, not the store's: a unit writes a delta entry and
     `validate_unit` validates it against `facts-delta.schema.json`, so that is
@@ -1949,8 +1987,43 @@ def shape_section():
     ponytail: the schema is re-read once per unit (fifteen 12 KB reads a run).
     Cache it when a build ever spends measurable time here.
     """
-    return shape_card(WRITABLE_KINDS,
-                      read_json(schema_dir() / "facts-delta.schema.json"))
+    card = shape_card(
+        WRITABLE_KINDS, read_json(schema_dir() / "facts-delta.schema.json"))
+    return "\n".join([card] + _symbols_lines(symbols))
+
+
+def _param_lines(payload, skeleton):
+    """What each parameter of the FIRST binding actually reads (§3.2).
+
+    A rule that runs in several tabs takes its inputs by parameter — the unit
+    writes `from: {param: "ref_1"}` and cannot otherwise see which column
+    `ref_1` is. The first real run bound an input it called «موجودی آغاز شب»
+    to the column «مقدار دریافت از انبار»: the arithmetic survived, the
+    statement did not. The bindings agree on the parameter keys, so one
+    binding answers for all of them.
+    """
+    bindings = payload.get("applies_to") or []
+    by_id = {c["id"]: c for c in skeleton.get("candidates") or []}
+    out = []
+    for key, value in ((bindings[0].get("params") or {}) if bindings else {}).items():
+        if not isinstance(value, dict):
+            out.append(f"    {key} → {value}")
+            continue
+        record = by_id.get(value.get("ref"))
+        if record is None:
+            # A table slot is `{"table": <name>}` when the name resolves to no
+            # candidate, and `_resolve` leaves a reference it cannot tie to a
+            # column of this tab's own template as the `{cell}` §2.3 (d)
+            # recorded. Either is what a reader has; «?» threw it away.
+            out.append(f'    {key} → '
+                       f'{value.get("table") or value.get("cell") or "?"}')
+            continue
+        field = next((f for f in _view(record).get("fields") or []
+                      if f.get("key") == value.get("field")), None)
+        column = (f' ستون {field["key"][2:] if field["key"][:2] == "c_" else field["key"]}'
+                  f' «{field.get("title") or "—"}»' if field else "")
+        out.append(f'    {key} → «{label_of(record)}»{column}')
+    return out
 
 
 def _render_candidate(candidate, skeleton):
@@ -1967,6 +2040,7 @@ def _render_candidate(candidate, skeleton):
              f'{len(variants)} variant · '
              f'{len(payload.get("applies_to") or [])} bindings · '
              f'params: {"، ".join(params) or "—"}']
+            + _param_lines(payload, skeleton)
             + [f'    {v.get("shape", "")}' for v in variants])
     if kind == "record":
         instances = "، ".join(f'{i["key"]} ({i.get("branch") or "—"})'
@@ -2015,7 +2089,8 @@ def render_input(unit, skeleton, extras):
     # §3.2: the contract goes after the expression card and before the style
     # card — how to write the value, then what the shape may be, then how the
     # prose beside it reads.
-    out += ["", expression, "", shape_section(), "", style]
+    out += ["", expression, "",
+            shape_section(skeleton.get("unit_symbols") or ()), "", style]
     return "\n".join(out)
 
 
@@ -2075,7 +2150,8 @@ def _attachment_state(root, department):
     (§2.1 Stage 2) — naming an `.xlsx` here would be the same file twice.
     """
     from extract_attachment import (CONVERTERS, PASSTHROUGH_EXTENSIONS,
-                                    find_attachments, needs_conversion)
+                                    cache_path, find_attachments,
+                                    needs_conversion)
     root = pathlib.Path(root)
     adir = root / "departments" / department / "attachments"
     texts, issues = [], []
@@ -2083,19 +2159,21 @@ def _attachment_state(root, department):
         ext = src.suffix.lower()
         if ext in PASSTHROUGH_EXTENSIONS or ext == ".xlsx":
             continue
-        suffix = CONVERTERS.get(ext)
-        if suffix is None:
+        if ext not in CONVERTERS:
             why = UNREAD_NO_READER
         else:
-            dst = adir / ".text" / (src.stem + suffix)
+            dst = cache_path(adir, src)
             if not needs_conversion(src, dst):
                 texts.append(str(dst.relative_to(root)))
                 continue
             why = UNREAD_NOT_READY
-        # `target` is the file's own name, never a path: it is what `gate-b.md`
-        # and `report.md` print, and §2.7 admits no path in either.
-        issues.append(_issue("unread_attachment", target=src.name,
-                             file=src.name, why=why))
+        # `target` is the owner's own name for the file — its path relative to
+        # `attachments/`, which for most files is just the file name. It is
+        # what `gate-b.md` and `report.md` print, and §2.7 admits no store
+        # path in either.
+        name = src.relative_to(adir).as_posix()
+        issues.append(_issue("unread_attachment", target=name,
+                             file=name, why=why))
     return sorted(texts), issues
 
 

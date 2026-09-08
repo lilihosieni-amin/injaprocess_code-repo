@@ -200,6 +200,14 @@ def test_build_writes_the_four_artefacts_over_the_mini_estate(tmp_path):
                                          "label": "شمارش موجودی آخر شب"}]}),
         encoding="utf-8")
     run_dir = tmp_path / "runs" / "facts" / "cooking" / "20260906-101500"
+    (tmp_path / "facts").mkdir()
+    (tmp_path / "facts" / "records.json").write_text(json.dumps(
+        {"schema_version": 2, "entries": [{
+            "id": "F-00001", "kind": "record", "key": "units", "retired": False,
+            "valid_to": None, "data": {"rows": [
+                {"key": "kg", "retired": False, "valid_to": None},
+                {"key": "g", "retired": False, "valid_to": None}]}}]},
+        ensure_ascii=False), encoding="utf-8")
 
     out = build(tmp_path, "cooking", run_dir, ["cooking-1405-05-26"])
 
@@ -246,6 +254,9 @@ def test_build_writes_the_four_artefacts_over_the_mini_estate(tmp_path):
         # §3.2: every unit is shown the closed payload contract, and it fits
         # inside the same budget the rest of the input does.
         assert "Shape card" in text and "medium=paper: holder*، kept_at*" in text
+        # §3.3: and the run's own unit symbols, so no unit invents one.
+        assert "## واحدهای مجاز" in text
+        assert "`g`" in text and "`kg`" in text
     chunk = next(u for u in plan["units"] if u["type"] == "transcript")
     assert chunk["inputs"] == ["meetings/transcripts/cooking-1405-05-26.txt#L1-L39"]
     # a line under the cap is quoted byte for byte, trailing spaces included
@@ -303,17 +314,19 @@ def test_refresh_inputs_and_rebuild_together_are_refused():
     assert caught.value.code == 2
 
 
-def _attachment(root, name, text=None, suffix=None):
+def _attachment(root, name, text=None):
     """One department attachment, and its `.text/` cache when `text` is given —
-    in the exact two files `extract-attachment` writes: `.text/<stem><suffix>`
-    and `.text/<stem><suffix>.sha256` holding the SOURCE file's digest."""
+    in the exact two files `extract-attachment` writes: `cache_path`'s own
+    output and its `.sha256` sidecar, holding the SOURCE file's digest."""
     import hashlib
+
+    from extract_attachment import cache_path
     adir = root / "departments" / "cooking" / "attachments"
-    adir.mkdir(parents=True, exist_ok=True)
     src = adir / name
+    src.parent.mkdir(parents=True, exist_ok=True)
     src.write_bytes(name.encode("utf-8"))
     if text is not None:
-        dst = adir / ".text" / (src.stem + suffix)
+        dst = cache_path(adir, src)
         dst.parent.mkdir(parents=True, exist_ok=True)
         dst.write_text(text, encoding="utf-8")
         (dst.parent / (dst.name + ".sha256")).write_text(
@@ -348,7 +361,7 @@ def test_a_read_attachment_and_a_workbook_raise_nothing(tmp_path):
     for: the first by its cache, the second because it needs none, the third by
     the manifest, which names an unplaced workbook in the same block already."""
     from facts_plan.build import unread_attachments
-    _attachment(tmp_path, "فرم-تحویل.docx", text="متن فرم", suffix=".txt")
+    _attachment(tmp_path, "فرم-تحویل.docx", text="متن فرم")
     _attachment(tmp_path, "شمارش.csv")
     _attachment(tmp_path, "گزارش.xlsx")
     assert unread_attachments(tmp_path, "cooking") == []
@@ -358,7 +371,7 @@ def test_a_stale_cached_text_is_an_issue(tmp_path):
     """The gate is `extract-attachment`'s own: a source edited after its text
     was cached has not been read in the form this run would use."""
     from facts_plan.build import unread_attachments
-    src = _attachment(tmp_path, "فرم-تحویل.docx", text="متن فرم", suffix=".txt")
+    src = _attachment(tmp_path, "فرم-تحویل.docx", text="متن فرم")
     src.write_bytes(b"a different document")
     assert len(unread_attachments(tmp_path, "cooking")) == 1
 
@@ -376,8 +389,7 @@ def test_build_records_the_unread_files_in_the_skeleton(tmp_path):
     estate(tmp_path)
     _attachment(tmp_path, "چیدمان-انبار.xyz")
     _attachment(tmp_path, "فرم-تحویل.docx")
-    _attachment(tmp_path, "فرم-ضایعات.pdf", text="متن فرم ضایعات",
-                suffix=".pdf.md")
+    _attachment(tmp_path, "فرم-ضایعات.pdf", text="متن فرم ضایعات")
     run_dir = tmp_path / "runs" / "facts" / "cooking" / "20260907-101500"
 
     build(tmp_path, "cooking", run_dir, [])
@@ -400,8 +412,7 @@ def test_a_stale_cached_text_reaches_no_unit(tmp_path):
     import json as _json
     from facts_plan.build import build
     estate(tmp_path)
-    src = _attachment(tmp_path, "فرم-تحویل.docx", text="نشانهٔ متن کهنه",
-                      suffix=".txt")
+    src = _attachment(tmp_path, "فرم-تحویل.docx", text="نشانهٔ متن کهنه")
     src.write_bytes(b"a different document")
     run_dir = tmp_path / "runs" / "facts" / "cooking" / "20260907-101500"
 
@@ -417,10 +428,68 @@ def test_a_stale_cached_text_reaches_no_unit(tmp_path):
             if i["kind"] == "unread_attachment"] == ["فرم-تحویل.docx"]
 
 
+def test_an_unread_file_in_a_subdirectory_is_named_by_its_relative_path(tmp_path):
+    """I2 — the walk reaches a form filed in a subdirectory, and the owner is
+    told about it by the name they gave it: their own path, not a bare file
+    name that could be any of three folders."""
+    from facts_plan.build import unread_attachments
+    _attachment(tmp_path, "forms/چیدمان-انبار.xyz")
+    issues = unread_attachments(tmp_path, "cooking")
+    assert [i["target"] for i in issues] == ["forms/چیدمان-انبار.xyz"]
+    assert "forms/چیدمان-انبار.xyz" in issues[0]["description"]
+    assert "attachments" not in issues[0]["description"]
+
+
+def test_a_nested_cache_is_served_and_a_stale_nested_one_is_named(tmp_path):
+    """Both halves of I2 hold one level down: the fresh nested cache reaches a
+    unit under its flattened name, the stale one reaches the owner instead."""
+    from facts_plan.build import _attachment_state
+    _attachment(tmp_path, "forms/فرم-تحویل.docx", text="متن فرم")
+    stale = _attachment(tmp_path, "forms/فرم-ضایعات.pdf", text="متن کهنه")
+    stale.write_bytes(b"a different document")
+    texts, issues = _attachment_state(tmp_path, "cooking")
+    assert texts == ["departments/cooking/attachments/.text/"
+                     "forms__فرم-تحویل.txt"]
+    assert [i["target"] for i in issues] == ["forms/فرم-ضایعات.pdf"]
+
+
 def test_an_orphan_cached_text_is_served_to_nobody(tmp_path):
     """`.text/` is a cache, not a source: a file whose original is gone is a
     leftover of some earlier run and no unit is shown it."""
     from facts_plan.build import _attachment_state
-    src = _attachment(tmp_path, "فرم-تحویل.docx", text="متن فرم", suffix=".txt")
+    src = _attachment(tmp_path, "فرم-تحویل.docx", text="متن فرم")
     src.unlink()
     assert _attachment_state(tmp_path, "cooking") == ([], [])
+
+
+def test_a_rule_candidate_names_what_each_parameter_reads():
+    """§3.2 — the unit binds an input to `ref_1` and cannot see what `ref_1`
+    is. The first run swapped two of them and the store said something false;
+    the candidate line now spells every parameter out."""
+    skeleton = {"unit_symbols": [], "instances": [], "candidates": [
+        {"id": "S-rec-000000000001", "kind": "record", "unit": "u-wb-pitza",
+         "payload": {"instances": [{"key": "pitza__s5", "sheet": "پیتزا"}],
+                     "fields": [{"key": "c_e", "title": "موجودی آغاز شب"},
+                                {"key": "c_f", "title": "مقدار دریافت از انبار"}]}},
+        {"id": "S-r-0000000000002", "kind": "rule", "unit": "u-wb-pitza",
+         "payload": {"output": "مصرف", "variants": [{"shape": "PLUS(@,@)"}],
+                     "applies_to": [{"key": "pitza__s5__j__r6", "params": {
+                         "ref_1": {"ref": "S-rec-000000000001", "field": "c_f"},
+                         "tolerancePerFoodGr": 5,
+                         "table_1": {"table": "Table_Pitza"},
+                         "cell_1": {"cell": "CN"},
+                         "ref_9": {"ref": "S-rec-000000000009",
+                                   "field": "c_a"}}}]}}]}
+    unit = {"id": "u-wb-pitza", "type": "workbook", "inputs": [],
+            "candidates": ["S-r-0000000000002"], "nodes": [],
+            "est_tokens_in": 0, "est_tokens_out": 250}
+    text = render_input(unit, skeleton, {})
+    assert "params: cell_1، ref_1، ref_9، table_1، tolerancePerFoodGr" in text
+    assert "    ref_1 → «پیتزا» ستون f «مقدار دریافت از انبار»" in text
+    assert "    tolerancePerFoodGr → 5" in text
+    assert "    table_1 → Table_Pitza" in text
+    # `_resolve` leaves a locator it cannot tie to a column of this tab's own
+    # template as the `{cell}` §2.3 (d) recorded — the cell is what the reader
+    # has, and «?» threw it away.
+    assert "    cell_1 → CN" in text
+    assert "    ref_9 → ?" in text

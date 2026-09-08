@@ -1,4 +1,5 @@
 import hashlib
+import pathlib
 
 from engine_common import data_root, under, write_text_atomic
 
@@ -32,18 +33,35 @@ def text_dir(root, dept):
     return attachments_dir(root, dept) / ".text"
 
 
-def find_docx(root, dept):
-    adir = attachments_dir(root, dept)
-    # glob on a missing directory yields nothing; .text/ is a subdir so *.docx
-    # at this level never descends into it.
-    return sorted(p for p in adir.glob("*.docx") if p.is_file())
-
-
 def find_attachments(adir):
-    """Every plain file directly under `adir` — never `.text/` or dotfiles."""
+    """Every plain file under `adir`, at any depth, sorted by relative path.
+
+    The owner files forms in folders of their own, and I2 says every attachment
+    is read or named unread — a walk that stopped at the top level skipped a
+    nested one silently, which is neither. `sheets/` is dump-workbook's estate,
+    `.text/` is this tool's own cache, and a dot-name is nobody's form.
+    """
     if not adir.is_dir():
         return []
-    return sorted(p for p in adir.iterdir() if p.is_file() and not p.name.startswith("."))
+    files = [p for p in adir.rglob("*") if p.is_file()
+             and not any(part.startswith(".") or part == "sheets"
+                         for part in p.relative_to(adir).parts)]
+    return sorted(files, key=lambda p: p.relative_to(adir).as_posix())
+
+
+def cache_path(adir, src):
+    """Where the cached text of one source lives — the ONE derivation of it.
+
+    `.text/` is flat, so a nested source's path is flattened into its name:
+    `forms/tahvil.docx` -> `.text/forms__tahvil.txt`, while a top-level file
+    keeps the name it has always had. Every reader (`build`'s `_attachment_
+    state`, the conversion loop, the fixtures) asks here rather than rebuilding
+    the name, so the cache a run writes is the cache the next run serves.
+    """
+    rel = pathlib.Path(src).relative_to(adir)
+    return (adir / ".text"
+            / (rel.with_suffix("").as_posix().replace("/", "__")
+               + CONVERTERS[rel.suffix.lower()]))
 
 
 def docx_to_text(path):
@@ -127,16 +145,16 @@ def run_extract_attachment(dept, root=None, path=None, convert=None, describe=No
     ok, errors = [], []
     for src in find_attachments(adir):
         ext = src.suffix.lower()
+        name = src.relative_to(adir).as_posix()   # the owner's own name for it
         if ext in PASSTHROUGH_EXTENSIONS:
             continue
         if ext == ".xlsx":
-            errors.append((src.name, WORKBOOK_MESSAGE))
+            errors.append((name, WORKBOOK_MESSAGE))
             continue
-        suffix = CONVERTERS.get(ext)
-        if suffix is None:
-            errors.append((src.name, f"no converter for {src.suffix or '(no extension)'} files"))
+        if ext not in CONVERTERS:
+            errors.append((name, f"no converter for {src.suffix or '(no extension)'} files"))
             continue
-        dst = tdir / (src.stem + suffix)
+        dst = cache_path(adir, src)
         try:
             digest = _sha256(src)          # one read of src, reused for the gate and the sidecar
             if needs_conversion(src, dst, digest=digest):
@@ -146,5 +164,5 @@ def run_extract_attachment(dept, root=None, path=None, convert=None, describe=No
                 write_text_atomic(_sidecar(dst), digest + "\n")
             ok.append(dst.relative_to(root).as_posix())
         except Exception as e:  # one bad file must not sink the rest (supplement)
-            errors.append((src.name, str(e)))
+            errors.append((name, str(e)))
     return ok, errors

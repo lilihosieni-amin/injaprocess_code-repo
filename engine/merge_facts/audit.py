@@ -1026,7 +1026,11 @@ def _scope_shadow(walk):
 
 def _process_roles(root):
     """The vocabulary the process side already holds: every `actor` and every
-    `mechanisms` member of every process file (§15)."""
+    `mechanisms` member of every LIVE process file (§15).
+
+    I3: a tombstoned process is invisible as content everywhere else — a
+    citation into one is refused, a link into one is a finding — so its actor
+    cannot be what makes a role known here either."""
     roles = set()
     departments = root / "departments"
     if not departments.is_dir():
@@ -1035,6 +1039,8 @@ def _process_roles(root):
         try:
             doc = read_json(path)
         except (OSError, ValueError):
+            continue
+        if doc.get("tombstoned"):
             continue
         for holder in [doc.get("idef0") or {}] + [n for n in doc.get("nodes") or []
                                                   if isinstance(n, dict)]:

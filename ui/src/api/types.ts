@@ -529,8 +529,12 @@ export const isRestricted = (v: unknown): v is Restricted =>
   typeof v === 'object' && v !== null && (v as { restricted?: unknown }).restricted === true
 
 /** `resolved` — every id, item key and process id the entry references, → a
- *  Persian label. `code` is the estate code rendered beside an item's title. */
-export interface FactLabel { kind: string; title: string; code?: string }
+ *  Persian label. `code` is the estate code rendered beside an item's title;
+ *  `fields` is a **record's** columns, `{key: title}`, which is what lets a
+ *  `{ref, field}` edge name the column it reads and not only the record. */
+export interface FactLabel {
+  kind: string; title: string; code?: string; fields?: Record<string, string>
+}
 
 /** One entry the reverse index says uses this one (QF-39). */
 export type FactConsumer = { id: string; title: string | null } | ({ id: string } & Restricted)

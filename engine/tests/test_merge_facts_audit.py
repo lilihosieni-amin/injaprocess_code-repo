@@ -254,14 +254,18 @@ def test_dangling_ref_items_cell_whose_item_is_retired(tmp_path):
 
 def test_process_link_tombstoned_proposes_the_heir(tmp_path):
     root = _root(tmp_path); _seed_units(root)
-    _process(root, "cooking-003", nodes=["cooking-003-n010"], tombstoned=True,
-             superseded_by=["cooking-017"])
+    # The citation is written while the process is live — `preconditions` now
+    # refuses one into a tombstone (I3), so this is the only order in which the
+    # finding can exist at all: the tombstone lands after the fact was stored.
+    _process(root, "cooking-003", nodes=["cooking-003-n010"])
     d = _const_delta(5, key="tol")
     d["entries"][0]["processes"] = [{"ref": "cooking-003"}]
     d["entries"][0]["source"].append(
         {"type": "process", "ref": "departments/cooking/processes/cooking-003.json",
          "node": "cooking-003-n010", "quote": "تلورانس"})
     apply(root, _write(root, "d1.json", d), _run_dir(root, "1"))
+    _process(root, "cooking-003", nodes=["cooking-003-n010"], tombstoned=True,
+             superseded_by=["cooking-017"])
     found = _of(audit(root), "process_link")
     assert len(found) == 1
     assert found[0]["proposal"] == "cooking-017"
@@ -515,6 +519,20 @@ def test_unknown_role(tmp_path):
     unknown = _entry("T-2", "measurement", "m_unknown", "اندازه‌گیری ناشناخته",
                      {"quantity": "mass", "unit": "g", "by": "سرلاین"})
     _apply(root, [known, unknown], "1")
+    found = _of(audit(root), "unknown_role")
+    assert len(found) == 1 and "سرلاین" in found[0]["message"]
+
+
+def test_a_tombstoned_process_lends_no_role_to_the_vocabulary(tmp_path):
+    """I3 — a tombstoned process is invisible as content everywhere else, so
+    its actor cannot be what makes a role known either."""
+    root = _root(tmp_path)
+    _seed_units(root)
+    _process(root, "cooking-006", nodes=["cooking-006-n001"], actor="سرلاین",
+             tombstoned=True)
+    entry = _entry("T-1", "measurement", "m_x", "اندازه‌گیری",
+                   {"quantity": "mass", "unit": "g", "by": "سرلاین"})
+    _apply(root, [entry], "1")
     found = _of(audit(root), "unknown_role")
     assert len(found) == 1 and "سرلاین" in found[0]["message"]
 

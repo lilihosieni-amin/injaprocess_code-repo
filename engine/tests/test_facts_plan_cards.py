@@ -146,3 +146,40 @@ def test_render_input_carries_the_shape_section_after_the_expression_card():
     assert text.index("Expression card") < text.index("Shape card")
     assert text.index("Shape card") < text.index("Style card")
     assert "medium=paper: holder*، kept_at*" in text
+
+
+def test_the_card_lists_the_run_s_declared_unit_symbols():
+    """Problem 4 — the first run wrote «پرس» and «نفر» as units, symbols the
+    units record never declared, and every entry carrying one was refused. The
+    card shows the run's own list, so a unit can read what it may write."""
+    from facts_plan.build import shape_section
+    text = shape_section(["g", "kg", "pcs"])
+    assert "## واحدهای مجاز" in text
+    for symbol in ("`g`", "`kg`", "`pcs`"):
+        assert symbol in text, symbol
+    assert text.index("`g`") < text.index("`kg`") < text.index("`pcs`")
+    # …and says what the list actually forbids. A run that has to EXTEND the
+    # units record writes the new symbol and its row in one document, and the
+    # gate accepts exactly that (`_contract_problems` adds the document's own
+    # rows to the list); a card that read «نماد دیگری پذیرفته نمی‌شود» sent a
+    # unit looking for a symbol it was allowed to mint.
+    assert "نماد دیگری پذیرفته نمی‌شود" not in text
+    assert "همین سند" in text and "رکورد واحدها" in text
+    # The record is named by the key the gate matches (`UNITS_KEY`), never by
+    # its Persian title — a unit that wrote `key: "واحدها"` would be refused.
+    assert "(کلید `units`)" in text and "(`واحدها`)" not in text
+    empty = shape_section()
+    assert "## واحدهای مجاز" in empty and "`pcs`" not in empty
+    assert "رکورد واحدها" in empty and "سطر" in empty
+
+
+def test_the_card_says_which_cells_carry_an_item_key():
+    """Problem 6 — a column of ingredient *names* was typed `refItems`, which
+    asks the gate to resolve every cell as an item; the schema shows the shape
+    of `refItems` and of `per` but not what belongs in them."""
+    from facts_plan.build import shape_section
+    text = shape_section()
+    assert ("ستونی که خانه‌هایش نام هستند `type: string` است؛ `refItems` فقط "
+            "برای خانه‌هایی است که کد `##` فهرست اقلام یا کلید یک قلم را "
+            "دارند." in text)
+    assert "`per` در خروجی یک قاعده کلید یک قلم است، نه یک نام." in text

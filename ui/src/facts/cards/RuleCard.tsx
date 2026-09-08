@@ -6,7 +6,7 @@ import {
 import { toFa } from '../../lib/format'
 import { Icon } from '../../ui/Icon'
 import {
-  isRule, type FactBundle, type RuleBinding, type RuleData, type RuleInput,
+  isRule, type FactBundle, type FactRef, type RuleBinding, type RuleData, type RuleInput,
   type RuleOutput,
 } from '../../api/types'
 import { refTitle } from '../bundle'
@@ -119,11 +119,7 @@ function ConstantCard({ bundle, outputs, onOpen }: {
                 <span style={PX.label70} className="flex-none text-fs-sm2 text-muted">
                   {label(PAYLOAD_FIELD_LABELS, 'writes_to')}
                 </span>
-                <RefLink named={writes} onOpen={onOpen}>
-                  {o.writes_to?.field !== undefined && (
-                    <Mono className="text-fs-micro text-faint">{o.writes_to.field}</Mono>
-                  )}
-                </RefLink>
+                <RefLink named={writes} onOpen={onOpen} />
               </div>
             )}
           </div>
@@ -311,7 +307,8 @@ export function RuleCard({ bundle, onOpen }: {
             <IoHead heading="heading_inputs" hint="heading_inputs_hint"
               fill="bg-tile-v4 border-border-current" ink="text-violet" />
             {(d.inputs ?? []).map((i) => (
-              <InputRow key={i.key} bundle={bundle} input={i} onOpen={onOpen} />
+              <InputRow key={i.key} bundle={bundle} input={i}
+                params={d.applies_to?.[0]?.params} onOpen={onOpen} />
             ))}
           </DetailCard>
           <DetailCard>
@@ -462,18 +459,29 @@ function IoHead({ heading, hint, fill, ink }: {
   )
 }
 
-function InputRow({ bundle, input, onOpen }: {
-  bundle: FactBundle; input: RuleInput; onOpen: (id: string) => void
+function InputRow({ bundle, input, params, onOpen }: {
+  bundle: FactBundle; input: RuleInput
+  /** The FIRST binding's `params` — what the parameter below stands for. */
+  params?: Record<string, unknown>
+  onOpen: (id: string) => void
 }) {
   const unit = unitOf(input)
   const literal = typeof input.from === 'string' ? input.from : undefined
   const edge = input.from !== null && typeof input.from === 'object' ? input.from : undefined
-  // QF-47's third form: the value differs per binding, so it is named here and
-  // its numbers are drawn per binding in «مقادیر». The name is the parameter's
-  // own — there is no Persian for it — so it is an LTR island (QF-42), never a
-  // dangling ref, which is what an empty «خوانده می‌شود از» would read as.
+  // QF-47's third form: the value differs per binding, so the input names a
+  // parameter and the bindings say what it is. **Spec §3.7** — the owner asked
+  // what «ref_1» was, so the first binding answers it: a `{ref, field}` reads
+  // exactly as a direct edge does, a number reads «ref_1 = 75», and only a
+  // parameter nothing maps stays a bare LTR island (QF-42) — which is still
+  // better than the empty «خوانده می‌شود از» a dangling ref would draw.
   const param = edge !== undefined && 'param' in edge ? edge.param : undefined
-  const from = edge !== undefined && 'ref' in edge ? refTitle(bundle, edge) : undefined
+  const bound = param === undefined ? undefined : params?.[param]
+  const boundRef = typeof bound === 'object' && bound !== null && 'ref' in bound
+    ? bound as FactRef : undefined
+  const from = edge !== undefined && 'ref' in edge
+    ? refTitle(bundle, edge) : refTitle(bundle, boundRef)
+  const paramText = param === undefined ? undefined
+    : typeof bound === 'number' ? `${param} = ${bound}` : param
   const via = refTitle(bundle, input.via)
   return (
     // :1287 — `13px 18px`, and 13px HAS a token: `--pad-table-row-y`
@@ -490,8 +498,8 @@ function InputRow({ bundle, input, onOpen }: {
           ? <span className="text-fs-sm2 font-bold text-muted">
             {label(FROM_LITERAL_LABELS, literal)}
           </span>
-          : param !== undefined
-            ? <Mono className="text-fs-sm2 text-ink">{param}</Mono>
+          : paramText !== undefined && from === undefined
+            ? <Mono className="text-fs-sm2 text-ink">{paramText}</Mono>
             : <RefLink named={from} onOpen={onOpen} className="text-fs-sm2" />}
         {via !== undefined && (
           <>
@@ -542,11 +550,7 @@ function OutputRow({ bundle, output, onOpen }: {
           <span style={PX.label96} className="flex-none text-fs-caption text-faint">
             {label(PAYLOAD_FIELD_LABELS, 'writes_to_output')}
           </span>
-          <RefLink named={writes} onOpen={onOpen} className="text-fs-caption">
-            {output.writes_to?.field !== undefined && (
-              <Mono className="text-fs-nano text-faint">{output.writes_to.field}</Mono>
-            )}
-          </RefLink>
+          <RefLink named={writes} onOpen={onOpen} className="text-fs-caption" />
         </div>
       )}
     </div>

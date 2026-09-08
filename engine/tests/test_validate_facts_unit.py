@@ -496,3 +496,174 @@ def test_status_reports_a_third_attempt_as_failed(tmp_path):
     states = {s["id"]: s for s in
               unit_states(root, run_dir, [{"id": "u-wb-pitza", "type": "workbook"}])}
     assert states["u-wb-pitza"]["state"] == "failed"
+
+
+def _process(root, pid, *, tombstoned=False):
+    """One process file in the cooking department, live or tombstoned."""
+    path = root / "departments" / "cooking" / "processes" / f"{pid}.json"
+    doc = {"id": pid, "nodes": [{"id": f"{pid}-n001", "label": "شمارش"}]}
+    if tombstoned:
+        doc.update({"tombstoned": True, "superseded_by": ["cooking-030"]})
+    path.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
+    return path
+
+
+def test_a_citation_into_a_tombstoned_process_is_in_no_index(tmp_path):
+    """I3 — a tombstoned process is invisible as content, so citing a node of
+    it reads exactly like citing a node that never existed."""
+    root, run_dir = _run(tmp_path)
+    _process(root, "cooking-002", tombstoned=True)
+    doc = _doc()
+    doc["decisions"][0]["processes"] = [{"process": "cooking-002",
+                                         "node": "n001", "quote": "شمارش"}]
+    assert "decisions[0] S-r-000000000001: node n001 is in no process of cooking" \
+        in validate_unit(root, run_dir, _write(run_dir, doc))
+
+
+def test_a_source_into_a_process_tombstoned_after_the_build_is_refused(tmp_path):
+    """I1 both ways — the run was planned while the process was live, so the
+    citation is at the index; the tombstone lands before the gate runs, and the
+    materialised entry has to be refused there in the same words `apply` uses.
+    """
+    root, run_dir = _run(tmp_path)
+    _process(root, "cooking-002")
+    form = _paper(processes=[{"process": "cooking-002", "node": "n001",
+                              "quote": "شمارش"}])
+    doc = _doc(new=[form])
+    assert validate_unit(root, run_dir, _write(run_dir, doc)) == []
+    assert _simulate(root, run_dir, doc) == []
+    _process(root, "cooking-002", tombstoned=True)
+    line = "source[0]: process cooking-002 is tombstoned"
+    assert f"new[0] mande_shab: {line}" in \
+        validate_unit(root, run_dir, _write(run_dir, doc, "out.2.json"))
+    assert any(p.endswith(line) for p in _simulate(root, run_dir, doc))
+
+
+def _materialised(root, run_dir, doc, key):
+    from facts_plan.assemble import materialise
+    return next(e for e in materialise(root, run_dir, doc) if e["key"] == key)
+
+
+def test_a_new_entrys_hedge_wrappers_are_unwrapped_like_a_decisions(tmp_path):
+    """§3.4 — a `new[]` entry's data is the pseudo-candidate's payload, which
+    `_entry` used to copy verbatim: four units of the 2026-09-07 run lost an
+    attempt to `data.filled_by: {…} is not of type string`."""
+    root, run_dir = _run(tmp_path)
+    form = _paper()
+    form["data"]["filled_by"] = {"value": "سرآشپز", "inferred": True}
+    form["data"]["location"] = {"kept_at": {"value": "زونکن دفتر",
+                                            "inferred": True},
+                                "holder": "سرآشپز"}
+    doc = _doc(new=[form])
+    assert validate_unit(root, run_dir, _write(run_dir, doc)) == []
+    entry = _materialised(root, run_dir, doc, "mande_shab")
+    assert entry["data"]["filled_by"] == "سرآشپز"
+    assert entry["data"]["location"]["kept_at"] == "زونکن دفتر"
+    assert entry["field_status"] == {"data/filled_by": "inferred",
+                                     "data/location/kept_at": "inferred"}
+    assert _simulate(root, run_dir, doc) == []
+
+
+def test_a_new_measurements_hedged_by_is_unwrapped(tmp_path):
+    """The same hole on the other kind the run hit: `data.by`."""
+    root, run_dir = _run(tmp_path)
+    measure = {"kind": "measurement", "key": "mande_shab_vazn",
+               "title": "وزن مانده شب",
+               "statement": "وزن مانده هر ماده در پایان شب با ترازو اندازه "
+                            "گرفته می‌شود.",
+               "data": {"quantity": "mass", "unit": "kg",
+                        "by": {"value": "سرآشپز", "inferred": True}}}
+    doc = _doc(new=[measure])
+    assert validate_unit(root, run_dir, _write(run_dir, doc)) == []
+    entry = _materialised(root, run_dir, doc, "mande_shab_vazn")
+    assert entry["data"]["by"] == "سرآشپز"
+    assert entry["field_status"] == {"data/by": "inferred"}
+
+
+#: §3.2's real mistake, minimised: the rule reads column `c_f` through `ref_1`
+#: and `c_e` through `ref_2`, and the record's own decision names `c_f`
+#: «مقدار دریافت از انبار» and `c_e` «موجودی آغاز شب».
+RECORD = "S-rec-000000000002"
+
+
+def _bound_run(tmp_path):
+    root, run_dir = _run(tmp_path)
+    skeleton = json.loads((run_dir / "skeleton.json").read_text(encoding="utf-8"))
+    payload, extra, _ = KINDS["record"]
+    skeleton["candidates"].append(
+        {"id": RECORD, "kind": "record", "unit": "u-wb-pitza", **extra,
+         "payload": {**payload,
+                     "instances": [{"key": "pitza__s5", "sheet": "پیتزا",
+                                    "spreadsheetId": "SID"}],
+                     "fields": [{"key": "c_e", "title": "موجودی آغاز شب"},
+                                {"key": "c_f", "title": "مقدار دریافت از انبار"}]}})
+    skeleton["candidates"][0]["payload"]["applies_to"] = [
+        {"key": "pitza__s5__j__r6", "record": {"ref": RECORD},
+         "params": {"ref_1": {"ref": RECORD, "field": "c_f"},
+                    "ref_2": {"ref": RECORD, "field": "c_e"}}}]
+    (run_dir / "skeleton.json").write_text(json.dumps(skeleton, ensure_ascii=False),
+                                           encoding="utf-8")
+    plan = json.loads((run_dir / "plan.json").read_text(encoding="utf-8"))
+    plan["units"][0]["candidates"].append(RECORD)
+    (run_dir / "plan.json").write_text(json.dumps(plan, ensure_ascii=False),
+                                       encoding="utf-8")
+    return root, run_dir
+
+
+def _bound_doc(first, second):
+    doc = _doc()
+    doc["decisions"][0]["data"] = {
+        "inputs": [{"key": first, "from": {"param": "ref_1"}},
+                   {"key": second, "from": {"param": "ref_2"}}],
+        "outputs": [], "lang": "feel", "expr": f"{first} + {second}"}
+    doc["decisions"].append(
+        {"skeleton": RECORD, "action": "keep", "key": "amar_pitza",
+         "title": "آمار پیتزا",
+         "statement": "هر سطر این تب یک مادهٔ اولیهٔ لاین پیتزا را در یک روز "
+                      "نگه می‌دارد.",
+         "data": {"role": "log",
+                  "fields": [{"from": "c_e", "key": "mojudi_avval_shab"},
+                             {"from": "c_f", "key": "daryaft_az_anbar"}]}})
+    return doc
+
+
+def test_a_parameter_bound_input_named_for_another_column_is_refused(tmp_path):
+    root, run_dir = _bound_run(tmp_path)
+    problems = validate_unit(root, run_dir, _write(
+        run_dir, _bound_doc("mojudi_avval_shab", "daryaft_az_anbar")))
+    assert any("data.inputs[0]: key mojudi_avval_shab is bound through ref_1 "
+               "to column daryaft_az_anbar" in p for p in problems)
+    assert any("data.inputs[1]: key daryaft_az_anbar is bound through ref_2 "
+               "to column mojudi_avval_shab" in p for p in problems)
+
+
+def test_the_right_way_round_passes(tmp_path):
+    root, run_dir = _bound_run(tmp_path)
+    assert validate_unit(root, run_dir, _write(
+        run_dir, _bound_doc("daryaft_az_anbar", "mojudi_avval_shab"))) == []
+
+
+def test_an_input_key_that_is_no_column_of_that_record_is_not_judged(tmp_path):
+    """A rule may name an input for the concept it computes with, not for the
+    column it reads — only a key that IS another column of the same record is
+    a visible swap."""
+    root, run_dir = _bound_run(tmp_path)
+    assert validate_unit(root, run_dir, _write(
+        run_dir, _bound_doc("vorudi_yek", "vorudi_do"))) == []
+
+
+def test_the_content_half_of_the_gate_is_capped_like_the_schema_half(tmp_path):
+    """§3.4's ceiling belongs to both halves. A record whose every cell is
+    refused used to hand the unit one line per cell — 200 of them here, and the
+    first run's real records are wider than that: the attempt is spent scrolling
+    past a message it cannot read."""
+    root, run_dir = _run(tmp_path)
+    form = _paper()
+    form["data"]["fields"] = [
+        {"key": "ing", "title": "ماده اولیه", "type": "string",
+         "refItems": {"namespace": "##", "resolved_by": "code"}}]
+    form["data"]["rows"] = [{"key": f"r{n}", "ing": f"ماده {n}"}
+                            for n in range(200)]
+    problems = validate_unit(root, run_dir, _write(run_dir, _doc(new=[form])))
+    assert len([p for p in problems if "refItems cell" in p]) == 80
+    assert problems[-1] == "… and 120 more"

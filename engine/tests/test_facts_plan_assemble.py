@@ -305,7 +305,13 @@ def test_one_artefact_two_readings_is_unit_drift_not_an_account(tmp_path):
     plan["units"][0]["inputs"] = ["meetings/transcripts/c.txt#L1-L20"]
     run_dir = _run(root, {"u-a": record, "u-b": rule}, plan=plan)
     text = digest(root, run_dir).read_text(encoding="utf-8")
-    assert "unit_drift · T-2 · data/cadence" in text
+    # The flag names the entry it is about — `T-2` is minted for this assembly
+    # and nowhere else, so it addresses nothing the reviewer can go and read.
+    flag = next(line for line in text.splitlines()
+                if line.startswith("unit_drift · "))
+    assert flag == "unit_drift · record gozaresh_hafteqi · data/cadence: " \
+                   "'nightly' (u-a) vs 'shift' (u-b)"
+    assert "T-" not in flag
     assemble(root, run_dir)
     delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
     assert all("accounts" not in e for e in delta["entries"])
@@ -404,6 +410,23 @@ def test_a_review_address_hitting_nothing_discards_the_document(tmp_path):
     delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
     assert next(e for e in delta["entries"]
                 if e["key"] == "enheraf")["title"] == "انحراف مصرف"
+
+
+def test_a_review_address_without_scope_lands_on_the_one_entry_it_names(tmp_path):
+    """`entryAddr` makes `scope` optional, and the reviewer of the first real
+    run left it out on every decision — kind + key alone must land when it
+    names exactly one assembled entry."""
+    root = _root(tmp_path)
+    run_dir = _run(root, {"u-a": _record_out(), "u-b": _rule_out()})
+    digest(root, run_dir)
+    _write_review(run_dir, [{"entry": {"kind": "rule", "key": "enheraf"},
+                             "action": "keep", "key": "enheraf",
+                             "title": "انحراف دیگر",
+                             "statement": "انحراف مصرف اعلامی است."}])
+    assert assemble(root, run_dir, review=True)["review_status"] == "applied"
+    delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
+    assert next(e for e in delta["entries"]
+                if e["key"] == "enheraf")["title"] == "انحراف دیگر"
 
 
 def test_gate_b_is_persian_and_carries_no_locator(tmp_path):
@@ -922,6 +945,32 @@ def test_contradiction_on_a_field_with_no_drift_discards_the_review(tmp_path):
     assembly = json.loads((run_dir / "assembly.json").read_text(encoding="utf-8"))
     assert assembly["review_status"] == "discarded"
     assert _tol(run_dir)["data"]["outputs"][0]["value"] == 6
+
+
+def test_the_review_gate_refuses_what_the_fold_would_discard(tmp_path):
+    """I1 for the reviewer: `validate facts-unit review/out.json` names the
+    decision the fold would discard the whole document for. The first real run
+    lost fifteen sound decisions to two contradictions the digest never
+    flagged, and nobody was told."""
+    root, run_dir = _drifted_run(tmp_path)
+    review = run_dir / "review" / "out.json"
+    _write_review(run_dir, [
+        {"entry": {"kind": "rule", "key": "nabud"}, "action": "keep",
+         "key": "nabud", "title": "قاعدهٔ ناموجود",
+         "statement": "قاعده‌ای که هیچ واحدی ننوشته است."},
+        _contradiction(field="data/outputs/v/unit", resolution="fix",
+                       value="kg")])
+    assert validate_unit(root, run_dir, review) == [
+        "decisions[0]: entry: rule nabud names 0 assembled entries",
+        "decisions[1]: contradiction: no drift flag on data/outputs/v/unit "
+        "for rule tol"]
+    # The flagged field, addressed without a scope: admitted, then applied.
+    settle = _contradiction(resolution="fix", value=5)
+    settle["entry"] = {"kind": "rule", "key": "tol"}
+    _write_review(run_dir, [settle])
+    assert validate_unit(root, run_dir, review) == []
+    assert assemble(root, run_dir, review=True)["review_status"] == "applied"
+    assert _tol(run_dir)["data"]["outputs"][0]["value"] == 5
 
 
 def test_a_call_into_another_units_rule_is_not_an_undeclared_identifier(tmp_path):

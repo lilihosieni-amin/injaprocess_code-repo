@@ -6,6 +6,7 @@ from engine_common import read_json, validate
 from facts_helpers import _const_delta, _root, _run_dir, _seed_units, _units_delta, _write
 from merge_facts import account_id, is_open, load_store
 from merge_facts.apply import apply, simulate, used
+from merge_facts.preconditions import process_source_problems
 from validate.cli import main as validate_main
 
 def test_create_then_idempotent_reapply_is_byte_identical(tmp_path):
@@ -685,6 +686,24 @@ def test_an_accounts_source_is_checked_too(tmp_path):
     d = _const_delta(5)
     d["entries"][0]["accounts"] = [_account(4)]
     d["entries"][0]["accounts"][0]["source"] = {"type": "sheet", "ref": "nowhere/x.xlsx"}
+    with pytest.raises(SystemExit):
+        apply(root, _write(root, "d.json", d), _run_dir(root, "1"))
+
+
+def test_an_accounts_source_into_a_tombstoned_process_is_refused(tmp_path):
+    """I3 on the same footing: a `source[]` naming a tombstoned process is
+    refused, and an account's source is cited on the same screen through the
+    same route — so a dispute could not be evidenced by a document that is
+    gone either."""
+    root = _root(tmp_path); _seed_units(root)
+    ref = "departments/cooking/processes/cooking-002.json"
+    (root / ref).write_text(json.dumps({"id": "cooking-002", "tombstoned": True}),
+                            encoding="utf-8")
+    d = _const_delta(5)
+    d["entries"][0]["accounts"] = [_account(4)]
+    d["entries"][0]["accounts"][0]["source"] = {"type": "process", "ref": ref}
+    assert process_source_problems(root, d["entries"][0]) == \
+        ["accounts[0].source: process cooking-002 is tombstoned"]
     with pytest.raises(SystemExit):
         apply(root, _write(root, "d.json", d), _run_dir(root, "1"))
 

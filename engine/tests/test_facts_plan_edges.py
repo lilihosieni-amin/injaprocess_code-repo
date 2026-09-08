@@ -153,6 +153,25 @@ def test_process_index_and_ranking(tmp_path):
     assert rank(rows, _tokens("چیز دیگری"), 0, lambda r: r["label"]) == []
 
 
+def test_process_index_skips_a_tombstoned_process(tmp_path):
+    """I3 — a tombstoned process is not content: the index a unit is shown, and
+    every citation checked against it, must not see a single node of it."""
+    directory = tmp_path / "departments" / "cooking" / "processes"
+    directory.mkdir(parents=True)
+    (directory / "cooking-002.json").write_text(json.dumps(
+        {"id": "cooking-002", "tombstoned": True,
+         "superseded_by": ["cooking-030"],
+         "nodes": [{"id": "cooking-002-n001", "label": "شمارش قدیمی"}]}),
+        encoding="utf-8")
+    (directory / "cooking-030.json").write_text(json.dumps(
+        {"id": "cooking-030",
+         "nodes": [{"id": "cooking-030-n001", "label": "شمارش موجودی آخر شب"}]}),
+        encoding="utf-8")
+    assert process_index(tmp_path, "cooking") == [
+        {"process": "cooking-030", "node": "cooking-030-n001",
+         "label": "شمارش موجودی آخر شب"}]
+
+
 def test_function_library_folds_one_body_into_one_section(estate):
     text = function_library(estate)
     assert text.count("## CONVERT_GR_TO_KG") == 1          # one body, two definers
