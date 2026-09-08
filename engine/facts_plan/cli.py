@@ -20,7 +20,8 @@ VERBS = {"build": ("facts_plan.build", "build"),
          "digest": ("facts_plan.assemble", "digest"),
          "assemble": ("facts_plan.assemble", "assemble"),
          "report": ("facts_plan.assemble", "report"),
-         "status": ("facts_plan.cli", "status")}
+         "status": ("facts_plan.cli", "status"),
+         "preflight": ("facts_plan.preflight", "preflight")}
 
 
 def _parser():
@@ -35,6 +36,11 @@ def _parser():
     how = build.add_mutually_exclusive_group()
     how.add_argument("--rebuild", action="store_true")
     how.add_argument("--refresh-inputs", action="store_true")
+    # `preflight` builds into a scratch directory of its own, so it takes no
+    # `--run`: the deterministic half of a first run, before any model.
+    preflight = sub.add_parser("preflight")
+    preflight.add_argument("department")
+    preflight.add_argument("--recordings", default="")
     for name in ("digest", "assemble", "report", "status"):
         verb = sub.add_parser(name)
         verb.add_argument("--run", required=True)
@@ -51,7 +57,15 @@ def main(argv=None):
         print(f"facts-plan {args.verb}: not implemented in this build",
               file=sys.stderr)
         return 2
-    root, run = data_root(), pathlib.Path(args.run)
+    root = data_root()
+    if args.verb == "preflight":
+        result = verb(root, args.department,
+                      [r for r in args.recordings.split(",") if r])
+        for line in result.pop("lines"):
+            print(f"facts-plan: {line}", file=sys.stderr)
+        print(json.dumps(result, ensure_ascii=False, sort_keys=True))
+        return 2 if result["engine_refused"] else 0
+    run = pathlib.Path(args.run)
     if args.verb == "build" and args.refresh_inputs:
         from facts_plan.build import refresh_inputs
         result = refresh_inputs(root, run)
