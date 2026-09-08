@@ -287,7 +287,8 @@ def test_gate_b_and_the_report_group_what_was_held_back_by_its_reason(tmp_path):
                                            "dropped": [], "undecided": _HELD})
     text = report(tmp_path, run_dir).read_text(encoding="utf-8")
 
-    assert "کنار گذاشته شد: بزرگ‌تر از یک واحد" in gate
+    assert "بزرگ‌تر از یک واحد" in gate
+    assert "کنار گذاشته شد: بزرگ‌تر" not in gate   # an attachment unit is still read
     assert "«انبار مواد اولیه»" in gate
     assert "بررسی‌نشده: ۳ مورد" in gate           # the count gate B always had
     for reason in ("oversized", "cycle", "waits"):

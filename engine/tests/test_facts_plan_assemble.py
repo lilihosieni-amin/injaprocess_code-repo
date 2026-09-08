@@ -919,7 +919,7 @@ def test_an_oversized_attachment_is_named_to_the_owner(tmp_path):
     assert {"label": "forms/tahvil", "reason": "oversized", "skeleton": None,
             "kind": "attachment", "unit": None} in assembly["undecided"]
     gate = (run_dir / "gate-b.md").read_text(encoding="utf-8")
-    assert "کنار گذاشته شد: بزرگ‌تر از یک واحد" in gate
+    assert "بزرگ‌تر از یک واحد" in gate
     assert "«forms/tahvil»" in gate
 
 

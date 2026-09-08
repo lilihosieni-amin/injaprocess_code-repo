@@ -148,6 +148,22 @@ def test_render_input_carries_the_shape_section_after_the_expression_card():
     assert "medium=paper: holder*، kept_at*" in text
 
 
+def test_the_card_names_the_estates_table_prefix():
+    """The prose lint refuses a table name (`artefact_re(table_prefix)`), and
+    the unit prompt points at the card for which prefix that is — so the card
+    names the estate's own, and says nothing about tables for an estate that
+    declares none."""
+    from facts_plan.build import shape_section
+    from merge_facts.conventions import DEFAULTS, from_manifest
+    assert "`Table_`" in shape_section()
+    tbl = from_manifest({"conventions": dict(DEFAULTS, table_prefix="TBL_")})
+    text = shape_section(conventions=tbl)
+    assert "`TBL_`" in text and "`Table_`" not in text
+    none = from_manifest({"conventions": dict(DEFAULTS, table_prefix="")})
+    text = shape_section(conventions=none)
+    assert "نام جدول‌ها" not in text and "نام فایل‌ها" in text
+
+
 def test_the_card_lists_the_run_s_declared_unit_symbols():
     """Problem 4 — the first run wrote «پرس» and «نفر» as units, symbols the
     units record never declared, and every entry carrying one was refused. The

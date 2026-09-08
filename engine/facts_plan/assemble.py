@@ -493,7 +493,10 @@ ISSUE_FA = {"cross_record": "فهرست مقادیر مجاز بین نسخه‌
             "reference_tab_is_ids": "تب مرجع در واقع فهرست شناسه‌ها بود",
             "reference_tab_computes": "تب مرجع فرمول دارد",
             "unread_attachment": "فایلی که خوانده نشد",
-            "oversized": "کنار گذاشته شد: بزرگ‌تر از یک واحد"}
+            # No «کنار گذاشته شد» here: an over-budget attachment unit is still
+            # dispatched and read, so the block heading states only the size —
+            # the parent heading of `report.md` carries the "not reviewed".
+            "oversized": "بزرگ‌تر از یک واحد"}
 
 #: §3.2 — every `undecided[]` member carries a `reason`, and the owner reads one
 #: fixed line per reason. A run no longer stops for one input, so this list IS

@@ -2086,6 +2086,16 @@ def shape_card(kinds, schema, conventions=DEFAULT_CONVENTIONS):
             out += ["", KIND_NOTE[kind].format(
                 namespace=conventions.item_namespace)]
         out.append("")
+    # The artefact rule the prose lint enforces (`artefact_re`), in the
+    # estate's own terms: the unit prompt points here for the table prefix,
+    # so the card has to name it — or the rule is enforced and never shown.
+    prefix = conventions.table_prefix
+    out += ["## نام‌های فنی در متن نمی‌آیند", "",
+            ("نام جدول‌ها (هر نامی که با `" + prefix + "` شروع می‌شود) و "
+             if prefix else "") +
+            "نام فایل‌ها (`.xlsx`، `.gs`) و متن فرمول‌ها در هیچ `title` یا "
+            "`statement` یا `description` نمی‌آیند؛ جای آن‌ها `source[]` است.",
+            ""]
     out += ["## نمونه‌های کامل `new[]`", ""]
     for example in EXAMPLES:
         if example["kind"] in wanted:
