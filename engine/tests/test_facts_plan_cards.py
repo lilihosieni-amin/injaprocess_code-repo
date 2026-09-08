@@ -165,6 +165,9 @@ def test_the_card_lists_the_run_s_declared_unit_symbols():
     # unit looking for a symbol it was allowed to mint.
     assert "نماد دیگری پذیرفته نمی‌شود" not in text
     assert "همین سند" in text and "رکورد واحدها" in text
+    # The record is named by the key the gate matches (`UNITS_KEY`), never by
+    # its Persian title — a unit that wrote `key: "واحدها"` would be refused.
+    assert "(کلید `units`)" in text and "(`واحدها`)" not in text
     empty = shape_section()
     assert "## واحدهای مجاز" in empty and "`pcs`" not in empty
     assert "رکورد واحدها" in empty and "سطر" in empty
