@@ -496,3 +496,44 @@ def test_status_reports_a_third_attempt_as_failed(tmp_path):
     states = {s["id"]: s for s in
               unit_states(root, run_dir, [{"id": "u-wb-pitza", "type": "workbook"}])}
     assert states["u-wb-pitza"]["state"] == "failed"
+
+
+def _process(root, pid, *, tombstoned=False):
+    """One process file in the cooking department, live or tombstoned."""
+    path = root / "departments" / "cooking" / "processes" / f"{pid}.json"
+    doc = {"id": pid, "nodes": [{"id": f"{pid}-n001", "label": "شمارش"}]}
+    if tombstoned:
+        doc.update({"tombstoned": True, "superseded_by": ["cooking-030"]})
+    path.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
+    return path
+
+
+def test_a_citation_into_a_tombstoned_process_is_in_no_index(tmp_path):
+    """I3 — a tombstoned process is invisible as content, so citing a node of
+    it reads exactly like citing a node that never existed."""
+    root, run_dir = _run(tmp_path)
+    _process(root, "cooking-002", tombstoned=True)
+    doc = _doc()
+    doc["decisions"][0]["processes"] = [{"process": "cooking-002",
+                                         "node": "n001", "quote": "شمارش"}]
+    assert "decisions[0] S-r-000000000001: node n001 is in no process of cooking" \
+        in validate_unit(root, run_dir, _write(run_dir, doc))
+
+
+def test_a_source_into_a_process_tombstoned_after_the_build_is_refused(tmp_path):
+    """I1 both ways — the run was planned while the process was live, so the
+    citation is at the index; the tombstone lands before the gate runs, and the
+    materialised entry has to be refused there in the same words `apply` uses.
+    """
+    root, run_dir = _run(tmp_path)
+    _process(root, "cooking-002")
+    form = _paper(processes=[{"process": "cooking-002", "node": "n001",
+                              "quote": "شمارش"}])
+    doc = _doc(new=[form])
+    assert validate_unit(root, run_dir, _write(run_dir, doc)) == []
+    assert _simulate(root, run_dir, doc) == []
+    _process(root, "cooking-002", tombstoned=True)
+    line = "source[0]: process cooking-002 is tombstoned"
+    assert f"new[0] mande_shab: {line}" in \
+        validate_unit(root, run_dir, _write(run_dir, doc, "out.2.json"))
+    assert any(p.endswith(line) for p in _simulate(root, run_dir, doc))

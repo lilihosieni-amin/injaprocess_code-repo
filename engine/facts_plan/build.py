@@ -1318,11 +1318,19 @@ def reuse_slice(own, index, item_units, department, tokens, cap=40):
 def process_index(root, department):
     """`{process, node, label}` for every labelled node of the department's
     processes — the whole index a citation is checked against; the unit sees a
-    ranked slice of it (§2.3)."""
+    ranked slice of it (§2.3).
+
+    A tombstoned process contributes nothing (I3): it is history, not content,
+    and the first real v3 run cited three of them because this index still
+    carried their nodes. `merge.tombstone` is the only writer of the flag and
+    `order.active` already reads it the same way.
+    """
     out = []
     directory = pathlib.Path(root) / "departments" / department / "processes"
     for path in sorted(directory.glob("*.json")):
         doc = read_json(path)
+        if doc.get("tombstoned"):
+            continue
         for node in doc.get("nodes") or []:
             if node.get("label"):
                 out.append({"process": doc["id"], "node": node["id"],

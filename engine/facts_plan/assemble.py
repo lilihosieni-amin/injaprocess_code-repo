@@ -23,7 +23,7 @@ from merge_facts.apply import _derive_row_keys
 from merge_facts.audit import flags_over
 from merge_facts.content import _check_prose, check_document
 from merge_facts.preconditions import (_registered, _unit_row_keys,
-                                       _unit_symbols)
+                                       _unit_symbols, process_source_problems)
 
 from facts_plan.build import (estimate_tokens, label_of, process_index,
                               shape_section)
@@ -268,6 +268,9 @@ def _contract_problems(root, entries, named, symbols):
     if symbols:
         symbols = set(symbols) | _unit_row_keys(store, clean)
     for entry, label in zip(clean, named):
+        # I3 — the citation was live when the run was planned; the tombstone may
+        # have landed since, and `apply` would refuse the delta for it.
+        out.extend(f"{label}: {p}" for p in process_source_problems(root, entry))
         for n, branch in enumerate(entry["scope"]["branches"]):
             if branches and branch not in branches:
                 out.append(f"{label}: scope.branches[{n}]: branch {branch!r} is "

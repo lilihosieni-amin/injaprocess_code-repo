@@ -201,6 +201,34 @@ def _source_path_problems(root, entry, label):
     return problems
 
 
+def process_source_problems(root, entry):
+    """I3 at the source side: a `source[]` member of type `process` whose file
+    is tombstoned or gone. One line per member, unprefixed — the caller adds
+    the label, because the same check runs under the unit's decision labels at
+    the gate and under the entry's id in the pass below (I1).
+
+    `audit._process_link` reports the same two facts as findings on an entry
+    already in the store, where a re-point is the answer; here the citation has
+    not been written yet, so it is a refusal.
+    """
+    out = []
+    for n, src in enumerate(entry.get("source") or []):
+        if not isinstance(src, dict) or src.get("type") != "process":
+            continue
+        ref = src.get("ref")
+        if not isinstance(ref, str) or not ref:
+            continue
+        process_id = pathlib.PurePosixPath(ref).stem
+        try:
+            doc = read_json(pathlib.Path(root) / ref)
+        except (OSError, ValueError):
+            out.append(f"source[{n}]: process {process_id} has no file")
+            continue
+        if doc.get("tombstoned"):
+            out.append(f"source[{n}]: process {process_id} is tombstoned")
+    return out
+
+
 def preconditions(root, store, entries, run_dir):
     """Human-readable messages, empty when the delta may be written.
 
@@ -278,6 +306,7 @@ def preconditions(root, store, entries, run_dir):
                            f"immutable (QF-34)")
         out.extend(_reference_problems(store, by_temp, entry, label))
         out.extend(_source_path_problems(root, entry, label))
+        out.extend(f"{label}: {p}" for p in process_source_problems(root, entry))
     # Task 9: the content pass runs once over the whole delta (its checks are
     # document-wide — e.g. an intra-file unit edge needs the sibling entry),
     # on `entries` as they stand HERE: canonical scope applied, row keys
