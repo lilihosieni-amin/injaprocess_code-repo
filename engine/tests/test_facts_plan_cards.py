@@ -158,6 +158,13 @@ def test_the_card_lists_the_run_s_declared_unit_symbols():
     for symbol in ("`g`", "`kg`", "`pcs`"):
         assert symbol in text, symbol
     assert text.index("`g`") < text.index("`kg`") < text.index("`pcs`")
+    # …and says what the list actually forbids. A run that has to EXTEND the
+    # units record writes the new symbol and its row in one document, and the
+    # gate accepts exactly that (`_contract_problems` adds the document's own
+    # rows to the list); a card that read «نماد دیگری پذیرفته نمی‌شود» sent a
+    # unit looking for a symbol it was allowed to mint.
+    assert "نماد دیگری پذیرفته نمی‌شود" not in text
+    assert "همین سند" in text and "رکورد واحدها" in text
     empty = shape_section()
     assert "## واحدهای مجاز" in empty and "`pcs`" not in empty
     assert "رکورد واحدها" in empty and "سطر" in empty

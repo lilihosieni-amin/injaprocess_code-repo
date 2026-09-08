@@ -818,3 +818,21 @@ def test_resolved_carries_a_records_column_titles(root):
     # A record with no declared columns carries no `fields` key at all, and
     # nothing that is not a record carries one.
     assert "fields" not in resolved["F-00032"]
+
+
+def test_path_label_of_a_non_sheet_locations_leaves(root):
+    """§3.3 — a paper form and an external table have no `path` and no tab;
+    where they are is `kept_at`, `holder` and `system`, so Appendix D's labels
+    for those three have to be here too or a `field_status` line beside one
+    reads as its ASCII key."""
+    entry = _entry("F-00099", "record", "mande_shab", "فرم مانده شب",
+                   {"medium": "paper", "role": "log",
+                    "location": {"kept_at": "زونکن دفتر", "holder": "سرآشپز",
+                                 "system": "ERP"}},
+                   field_status={"data/location/kept_at": "inferred",
+                                 "data/location/holder": "inferred",
+                                 "data/location/system": "informal"})
+    assert facts_store.path_labels(root, entry) == {
+        "data/location/kept_at": "محل › نگهداری",
+        "data/location/holder": "محل › مسئول",
+        "data/location/system": "محل › سامانه"}

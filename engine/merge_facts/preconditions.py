@@ -211,8 +211,16 @@ def process_source_problems(root, entry):
     already in the store, where a re-point is the answer; here the citation has
     not been written yet, so it is a refusal.
     """
+    # `accounts[].source` is walked beside `source[]` for the reason
+    # `_source_path_problems` walks it: it is the evidence for one side of a
+    # dispute, drawn on the same screen and fetched through the same route.
     out = []
-    for n, src in enumerate(entry.get("source") or []):
+    labelled = [(f"source[{n}]", src)
+                for n, src in enumerate(entry.get("source") or [])]
+    labelled += [(f"accounts[{n}].source", a.get("source"))
+                 for n, a in enumerate(entry.get("accounts") or [])
+                 if isinstance(a, dict)]
+    for where, src in labelled:
         if not isinstance(src, dict) or src.get("type") != "process":
             continue
         ref = src.get("ref")
@@ -222,10 +230,10 @@ def process_source_problems(root, entry):
         try:
             doc = read_json(pathlib.Path(root) / ref)
         except (OSError, ValueError):
-            out.append(f"source[{n}]: process {process_id} has no file")
+            out.append(f"{where}: process {process_id} has no file")
             continue
         if doc.get("tombstoned"):
-            out.append(f"source[{n}]: process {process_id} is tombstoned")
+            out.append(f"{where}: process {process_id} is tombstoned")
     return out
 
 

@@ -477,14 +477,19 @@ def test_a_rule_candidate_names_what_each_parameter_reads():
                          "ref_1": {"ref": "S-rec-000000000001", "field": "c_f"},
                          "tolerancePerFoodGr": 5,
                          "table_1": {"table": "Table_Pitza"},
+                         "cell_1": {"cell": "CN"},
                          "ref_9": {"ref": "S-rec-000000000009",
                                    "field": "c_a"}}}]}}]}
     unit = {"id": "u-wb-pitza", "type": "workbook", "inputs": [],
             "candidates": ["S-r-0000000000002"], "nodes": [],
             "est_tokens_in": 0, "est_tokens_out": 250}
     text = render_input(unit, skeleton, {})
-    assert "params: ref_1، ref_9، table_1، tolerancePerFoodGr" in text
+    assert "params: cell_1، ref_1، ref_9، table_1، tolerancePerFoodGr" in text
     assert "    ref_1 → «پیتزا» ستون f «مقدار دریافت از انبار»" in text
     assert "    tolerancePerFoodGr → 5" in text
     assert "    table_1 → Table_Pitza" in text
+    # `_resolve` leaves a locator it cannot tie to a column of this tab's own
+    # template as the `{cell}` §2.3 (d) recorded — the cell is what the reader
+    # has, and «?» threw it away.
+    assert "    cell_1 → CN" in text
     assert "    ref_9 → ?" in text

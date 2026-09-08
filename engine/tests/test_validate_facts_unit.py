@@ -650,3 +650,20 @@ def test_an_input_key_that_is_no_column_of_that_record_is_not_judged(tmp_path):
     root, run_dir = _bound_run(tmp_path)
     assert validate_unit(root, run_dir, _write(
         run_dir, _bound_doc("vorudi_yek", "vorudi_do"))) == []
+
+
+def test_the_content_half_of_the_gate_is_capped_like_the_schema_half(tmp_path):
+    """§3.4's ceiling belongs to both halves. A record whose every cell is
+    refused used to hand the unit one line per cell — 200 of them here, and the
+    first run's real records are wider than that: the attempt is spent scrolling
+    past a message it cannot read."""
+    root, run_dir = _run(tmp_path)
+    form = _paper()
+    form["data"]["fields"] = [
+        {"key": "ing", "title": "ماده اولیه", "type": "string",
+         "refItems": {"namespace": "##", "resolved_by": "code"}}]
+    form["data"]["rows"] = [{"key": f"r{n}", "ing": f"ماده {n}"}
+                            for n in range(200)]
+    problems = validate_unit(root, run_dir, _write(run_dir, _doc(new=[form])))
+    assert len([p for p in problems if "refItems cell" in p]) == 80
+    assert problems[-1] == "… and 120 more"

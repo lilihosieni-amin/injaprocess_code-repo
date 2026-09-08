@@ -3,7 +3,6 @@ import os
 from extract_attachment import (
     cache_path,
     find_attachments,
-    find_docx,
     run_extract_attachment,
     text_dir,
 )
@@ -99,17 +98,6 @@ def test_corrupt_docx_is_recorded_as_error(data_root):
     ok, errors = run_extract_attachment("dining", root=data_root, convert=boom)
     assert ok == []
     assert errors == [("bad.docx", "bad zip")]
-
-
-def test_find_docx_sorted_and_skips_text_dir(data_root):
-    adir = _mk_attachments(data_root, "dining")
-    (adir / "b.docx").write_bytes(b"x")
-    (adir / "a.docx").write_bytes(b"x")
-    (adir / ".gitkeep").write_bytes(b"")
-    (adir / ".text").mkdir()
-    (adir / ".text" / "old.docx").write_bytes(b"x")   # must NOT be picked up
-    names = [p.name for p in find_docx(data_root, "dining")]
-    assert names == ["a.docx", "b.docx"]
 
 
 def test_cli_prints_ok_paths_and_exits_zero(data_root, capsys):

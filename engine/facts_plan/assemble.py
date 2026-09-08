@@ -15,7 +15,7 @@ import pathlib
 import re
 import sys
 
-from engine_common import (read_json, validate, write_json_atomic,
+from engine_common import (capped, read_json, validate, write_json_atomic,
                            write_text_atomic)
 from merge_facts import (KIND_ORDER, _sheet_identities, canonical_scope,
                          iter_ref_objects, load_store, null_paths, set_path)
@@ -254,7 +254,11 @@ def _contract_problems(root, entries, named, symbols):
     """
     clean = [{k: v for k, v in e.items() if not k.startswith("_")} for e in entries]
     delta = {"schema_version": 2, "entries": clean}
-    out = []
+    # The schema half caps itself inside `validate` (§3.4); the content half is
+    # collected apart so it is capped by the same rule. A record whose every
+    # cell is refused otherwise buries the rest of the list under one line per
+    # cell, and the unit spends its attempt scrolling.
+    out, content = [], []
     try:
         validate("facts-delta.schema.json", delta)
     except ValueError as exc:
@@ -276,15 +280,15 @@ def _contract_problems(root, entries, named, symbols):
     for entry, label in zip(clean, named):
         # I3 — the citation was live when the run was planned; the tombstone may
         # have landed since, and `apply` would refuse the delta for it.
-        out.extend(f"{label}: {p}" for p in process_source_problems(root, entry))
+        content.extend(f"{label}: {p}" for p in process_source_problems(root, entry))
         for n, branch in enumerate(entry["scope"]["branches"]):
             if branches and branch not in branches:
-                out.append(f"{label}: scope.branches[{n}]: branch {branch!r} is "
-                           "not in the sheets manifest")
+                content.append(f"{label}: scope.branches[{n}]: branch "
+                               f"{branch!r} is not in the sheets manifest")
         for symbol in _unit_symbols(entry) if symbols else ():
             if symbol not in symbols:
-                out.append(f"{label}: unit {symbol!r} is declared by no row of "
-                           "the units record")
+                content.append(f"{label}: unit {symbol!r} is declared by no "
+                               "row of the units record")
         # The store requires `rows[].key` and the delta schema cannot: a
         # reference table's keys are the primaryKey join `apply` derives (§9).
         # Run that same derivation here, so whatever it would leave keyless —
@@ -295,8 +299,8 @@ def _contract_problems(root, entries, named, symbols):
             _derive_row_keys(data)
             for n, row in enumerate(data.get("rows") or []):
                 if isinstance(row, dict) and "key" not in row:
-                    out.append(f"{label}: data.rows[{n}]: "
-                               "'key' is a required property")
+                    content.append(f"{label}: data.rows[{n}]: "
+                                   "'key' is a required property")
     # A `calls[]` ref this document could not resolve is `T-0`, so `_call_keys`
     # rescues nothing and every identifier that call declares reads as
     # undeclared. Cross-unit resolution is `_resolve_refs`' job — skip the expr
@@ -313,8 +317,8 @@ def _contract_problems(root, entries, named, symbols):
         head, sep, tail = message.partition(": ")
         if head in blind and tail.startswith("expr identifier "):
             continue
-        out.append(f"{by_temp.get(head, head)}{sep}{tail}")
-    return out
+        content.append(f"{by_temp.get(head, head)}{sep}{tail}")
+    return out + capped(content)
 
 
 #: `entries[3]` / `entries[N]` at the head of a §3.4 line, and the concrete
@@ -1335,7 +1339,14 @@ def _digest_text(state, entries):
                                  _address(entry)[2], entry["title"],
                                  entry["statement"], tail]))
     lines += ["", "## flags", ""]
-    lines += [f'{f["code"]} · {f["id"]} · {f["message"]}'
+    # A flag's `id` is a temp id minted for this assembly and nowhere else, so
+    # it addresses nothing the reviewer can go and read. A flag that carries the
+    # entry it is about is named by it instead.
+    def who(flag):
+        entry = flag.get("entry")
+        return f'{entry["kind"]} {entry["key"]}' if entry else flag["id"]
+
+    lines += [f'{f["code"]} · {who(f)} · {f["message"]}'
               for f in state["flags"]] or ["—"]
     lines += ["", "## dropped", ""]
     lines += [f'{d["skeleton"]} · {d["kind"]} · {d["label"]} · {d["reason_code"]}'

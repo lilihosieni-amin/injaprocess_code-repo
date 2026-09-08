@@ -85,7 +85,12 @@ _LEAF_LABELS: dict[str, str] = {
     "primaryKey": "کلید اصلی", "foreignKeys": "ارتباط با جدول دیگر",
     "reference_fields": "ستون‌های مقابل", "transform": "تبدیل",
     # record — place and lifecycle
-    "location": "محل", "path": "مسیر", "spreadsheetId": "شناسهٔ فایل",
+    "location": "محل",
+    # §3.3's non-sheet locations: a paper form and an external table have no
+    # path and no tab, and what says where they are is where they are kept,
+    # who holds them, and which system they live in.
+    "kept_at": "نگهداری", "holder": "مسئول", "system": "سامانه",
+    "path": "مسیر", "spreadsheetId": "شناسهٔ فایل",
     "sheet": "برگه", "sheetId": "شمارهٔ برگه", "hidden": "مخفی",
     "identifier_scheme": "شیوهٔ شناسه",
     "blank_master": "برگهٔ خالی برای پر کردن", "grain": "هر ردیف یعنی",

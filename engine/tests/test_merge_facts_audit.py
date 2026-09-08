@@ -523,6 +523,20 @@ def test_unknown_role(tmp_path):
     assert len(found) == 1 and "سرلاین" in found[0]["message"]
 
 
+def test_a_tombstoned_process_lends_no_role_to_the_vocabulary(tmp_path):
+    """I3 — a tombstoned process is invisible as content everywhere else, so
+    its actor cannot be what makes a role known either."""
+    root = _root(tmp_path)
+    _seed_units(root)
+    _process(root, "cooking-006", nodes=["cooking-006-n001"], actor="سرلاین",
+             tombstoned=True)
+    entry = _entry("T-1", "measurement", "m_x", "اندازه‌گیری",
+                   {"quantity": "mass", "unit": "g", "by": "سرلاین"})
+    _apply(root, [entry], "1")
+    found = _of(audit(root), "unknown_role")
+    assert len(found) == 1 and "سرلاین" in found[0]["message"]
+
+
 def test_findings_are_sorted_and_carry_the_four_keys(tmp_path):
     root = _root(tmp_path); _seed_units(root)
     apply(root, _write(root, "a.json", _const_delta()), _run_dir(root, "1"))

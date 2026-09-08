@@ -1963,7 +1963,9 @@ def _symbols_lines(symbols):
                 "هنوز رکورد واحدها ساخته نشده است؛ هر نماد واحد پیش از استفاده "
                 "باید به صورت یک سطر از آن رکورد اعلام شود."]
     return ["## واحدهای مجاز", "",
-            "`unit` فقط یکی از این نمادهاست؛ نماد دیگری پذیرفته نمی‌شود:",
+            "`unit` یکی از این نمادهاست؛ نماد دیگری تنها در صورتی پذیرفته "
+            "می‌شود که همین سند آن را به صورت یک سطر تازه به رکورد واحدها "
+            "(`واحدها`) اضافه کند، وگرنه رد می‌شود:",
             "، ".join(f"`{symbol}`" for symbol in symbols)]
 
 
@@ -2009,9 +2011,12 @@ def _param_lines(payload, skeleton):
             continue
         record = by_id.get(value.get("ref"))
         if record is None:
-            # `normalise` records a table slot as `{"table": <name>}` when the
-            # name resolves to no candidate — the name is what a reader wants.
-            out.append(f'    {key} → {value.get("table") or "?"}')
+            # A table slot is `{"table": <name>}` when the name resolves to no
+            # candidate, and `_resolve` leaves a reference it cannot tie to a
+            # column of this tab's own template as the `{cell}` §2.3 (d)
+            # recorded. Either is what a reader has; «?» threw it away.
+            out.append(f'    {key} → '
+                       f'{value.get("table") or value.get("cell") or "?"}')
             continue
         field = next((f for f in _view(record).get("fields") or []
                       if f.get("key") == value.get("field")), None)

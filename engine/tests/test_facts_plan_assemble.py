@@ -305,7 +305,13 @@ def test_one_artefact_two_readings_is_unit_drift_not_an_account(tmp_path):
     plan["units"][0]["inputs"] = ["meetings/transcripts/c.txt#L1-L20"]
     run_dir = _run(root, {"u-a": record, "u-b": rule}, plan=plan)
     text = digest(root, run_dir).read_text(encoding="utf-8")
-    assert "unit_drift · T-2 · data/cadence" in text
+    # The flag names the entry it is about — `T-2` is minted for this assembly
+    # and nowhere else, so it addresses nothing the reviewer can go and read.
+    flag = next(line for line in text.splitlines()
+                if line.startswith("unit_drift · "))
+    assert flag == "unit_drift · record gozaresh_hafteqi · data/cadence: " \
+                   "'nightly' (u-a) vs 'shift' (u-b)"
+    assert "T-" not in flag
     assemble(root, run_dir)
     delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
     assert all("accounts" not in e for e in delta["entries"])

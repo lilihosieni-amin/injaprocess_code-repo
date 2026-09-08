@@ -135,6 +135,10 @@ describe('the rule’s value cards', () => {
     // key, and a key is an island like every other key on this screen.
     const basis = screen.getByText('unit_sold')
     expect(basis).toHaveAttribute('dir', 'ltr')
+    // «ثبت در» names the record, and `refTitle` now composes «record — column»
+    // out of the served `fields`. The raw `writes_to.field` beside it was the
+    // key the same title already says in Persian, twice over.
+    expect(screen.queryByText('tolerance')).toBeNull()
   })
 
   it('paints a `null` value «؟» in the conflict ink (:4846)', () => {
@@ -240,6 +244,10 @@ describe('the rule card', () => {
     expect(screen.getByText('انتخاب اپراتور')).toBeInTheDocument()
     // The share is a percentage of the input (:1318).
     expect(screen.getByText(/۲۵٪/)).toBeInTheDocument()
+    // Same as the constant's: the output row names the record it writes to,
+    // never the raw column key beside it. The one `declared_use` left is the
+    // output's OWN key, which `FieldName` draws beside its title.
+    expect(screen.getAllByText('declared_use')).toHaveLength(1)
   })
 
   it('opens a `{ref}` edge through the id the bundle resolved', async () => {
@@ -304,7 +312,8 @@ describe('the rule card', () => {
     const { container } = render(<RuleCard bundle={PARAMS} onOpen={onOpen} />)
     const row = inputRow(container, 'stock')
     // The binding maps `ref_1` to a `{ref, field}`, so the row reads exactly as
-    // a direct edge does — the record's own title, and it opens.
+    // a direct edge does — the record's title joined to the column it reads,
+    // and it opens.
     expect(within(row).queryByText('ref_1')).toBeNull()
     await user.click(
       within(row).getByRole('button', { name: 'کاردکس انبار — دریافت از انبار' }))

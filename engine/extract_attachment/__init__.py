@@ -33,13 +33,6 @@ def text_dir(root, dept):
     return attachments_dir(root, dept) / ".text"
 
 
-def find_docx(root, dept):
-    adir = attachments_dir(root, dept)
-    # glob on a missing directory yields nothing; .text/ is a subdir so *.docx
-    # at this level never descends into it.
-    return sorted(p for p in adir.glob("*.docx") if p.is_file())
-
-
 def find_attachments(adir):
     """Every plain file under `adir`, at any depth, sorted by relative path.
 

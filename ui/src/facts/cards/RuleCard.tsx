@@ -119,11 +119,7 @@ function ConstantCard({ bundle, outputs, onOpen }: {
                 <span style={PX.label70} className="flex-none text-fs-sm2 text-muted">
                   {label(PAYLOAD_FIELD_LABELS, 'writes_to')}
                 </span>
-                <RefLink named={writes} onOpen={onOpen}>
-                  {o.writes_to?.field !== undefined && (
-                    <Mono className="text-fs-micro text-faint">{o.writes_to.field}</Mono>
-                  )}
-                </RefLink>
+                <RefLink named={writes} onOpen={onOpen} />
               </div>
             )}
           </div>
@@ -554,11 +550,7 @@ function OutputRow({ bundle, output, onOpen }: {
           <span style={PX.label96} className="flex-none text-fs-caption text-faint">
             {label(PAYLOAD_FIELD_LABELS, 'writes_to_output')}
           </span>
-          <RefLink named={writes} onOpen={onOpen} className="text-fs-caption">
-            {output.writes_to?.field !== undefined && (
-              <Mono className="text-fs-nano text-faint">{output.writes_to.field}</Mono>
-            )}
-          </RefLink>
+          <RefLink named={writes} onOpen={onOpen} className="text-fs-caption" />
         </div>
       )}
     </div>
