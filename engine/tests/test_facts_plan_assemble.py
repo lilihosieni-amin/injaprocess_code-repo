@@ -858,6 +858,71 @@ def test_a_run_that_assembles_nothing_still_stops(tmp_path, capsys):
     assert not (run_dir / "facts-delta.json").exists()
 
 
+def test_a_run_that_drops_everything_says_why_it_stopped(tmp_path, capsys):
+    """The stop printed one line per held-back candidate and, when nothing was
+    held back at all, nothing: a run whose units dropped every candidate exited
+    2 in silence and the playbook had no sentence to send."""
+    root = _root(tmp_path)
+    record, rule = _record_out(), _rule_out()
+    record["decisions"] = [{"skeleton": "S-rec-000000000001", "action": "drop",
+                            "reason_code": "cosmetic"}]
+    rule["decisions"] = [{"skeleton": s, "action": "drop",
+                          "reason_code": "cosmetic"}
+                         for s in ("S-r-000000000002", "S-i-000000000003")]
+    run_dir = _run(root, {"u-a": record, "u-b": rule})
+    with pytest.raises(SystemExit) as excinfo:
+        assemble(root, run_dir)
+    assert excinfo.value.code == 2
+    assert "facts-plan: nothing assembled — 3 candidates, 0 held back" \
+        in capsys.readouterr().err
+
+
+def test_a_column_derived_by_a_waiting_rule_keeps_its_table(tmp_path):
+    """The `_hold_back` sever, on `_resolve_refs`' path too: the rule waits for
+    an `F-` ref no store entry carries, and the table whose column it computes
+    lands with the link emptied instead of waiting with it."""
+    root = _root(tmp_path)
+    record = _record_out()
+    record["decisions"][0]["data"]["fields"][0]["derived"] = \
+        {"ref": "S-r-000000000002"}
+    rule = _rule_out()
+    rule["decisions"][0]["data"]["inputs"][1] = {
+        "key": "masraf_vaqei", "unit": "kg", "from": {"ref": "F-09999"}}
+    run_dir = _run(root, {"u-a": record, "u-b": rule})
+    assemble(root, run_dir)
+    delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
+    by_key = {e["key"]: e for e in delta["entries"]}
+    assert "enheraf" not in by_key                     # the rule waits
+    assert by_key["gozaresh_shabane_pitza"]["data"]["fields"][0]["derived"] \
+        is None
+    assembly = json.loads((run_dir / "assembly.json").read_text(encoding="utf-8"))
+    assert [u["reason"] for u in assembly["undecided"]] == ["unknown_ref"]
+    validate("facts-delta.schema.json", delta)
+
+
+def test_an_oversized_attachment_is_named_to_the_owner(tmp_path):
+    """`build` raises the issue; this is the other half — an attachment that
+    fits in no unit is no candidate, so nothing else in the run would ever name
+    it and `gate-b.md` said nothing about the file the unit was over budget
+    for."""
+    root = _root(tmp_path)
+    skeleton = _skeleton()
+    skeleton["issues"].append(
+        {"kind": "oversized", "instance": None, "target": "forms/tahvil",
+         "engine": True, "run_only": True,
+         "description": "«forms/tahvil» بزرگ‌تر از آن است که در یک بخش از کار "
+                        "جا شود؛ در این اجرا کنار گذاشته شد."})
+    run_dir = _run(root, {"u-a": _record_out(), "u-b": _rule_out()},
+                   skeleton=skeleton)
+    assemble(root, run_dir)
+    assembly = json.loads((run_dir / "assembly.json").read_text(encoding="utf-8"))
+    assert {"label": "forms/tahvil", "reason": "oversized", "skeleton": None,
+            "kind": "attachment", "unit": None} in assembly["undecided"]
+    gate = (run_dir / "gate-b.md").read_text(encoding="utf-8")
+    assert "کنار گذاشته شد: بزرگ‌تر از یک واحد" in gate
+    assert "«forms/tahvil»" in gate
+
+
 def _stop_sites(name):
     """Every stop left in one module: `(function, the ten source lines above
     the raise)`."""
@@ -875,17 +940,18 @@ def _stop_sites(name):
 
 
 def test_only_the_stops_the_design_keeps_are_left():
-    """§3.2 — nine places used to stop a run for one input. Four are left in
-    these two modules (`check_rebuild` is the fifth, in `cli.py`), and each is
-    an engine invariant or a run with nothing in it. A new `raise` here fails
-    this test until the design says which row of the table it is."""
+    """§3.2 — nine places used to stop a run for one input. Five are left in
+    the four modules a run goes through, and each is an engine invariant or a
+    run with nothing in it. A new `raise` in any of them fails this test until
+    the design says which row of the table it is."""
     kept = [("build.py", "plan_units", "candidate(s) in two units"),
             ("assemble.py", "_outputs", '{unit["id"]}: {message}'),
             ("assemble.py", "assemble",
              "A review's own rewrite is refused outright"),
-            ("assemble.py", "assemble", "nothing assembled")]
+            ("assemble.py", "assemble", "nothing assembled"),
+            ("cli.py", "check_rebuild", "pass --rebuild to replace the plan")]
     found = [(module, function, context)
-             for module in ("build.py", "assemble.py")
+             for module in ("build.py", "assemble.py", "cli.py", "preflight.py")
              for function, context in _stop_sites(module)]
     assert [(m, f) for m, f, _ in found] == [(m, f) for m, f, _ in kept]
     for (_m, _f, fragment), (_, _, context) in zip(kept, found):

@@ -111,6 +111,56 @@ def test_declared_members_win_over_the_defaults(tmp_path):
     assert not conventions.placeholder.match("Column 2")
 
 
+def test_a_placeholder_that_is_no_regex_falls_back_to_the_default(tmp_path):
+    """A typo in one member is not a traceback out of every verb that loads
+    the estate: the member no engine could compile is the default's."""
+    _write(tmp_path, {"schema_version": 1, "branches": [], "workbooks": [],
+                      "conventions": {"placeholder_header": "^Column ["}})
+    conventions = load(tmp_path)
+    assert conventions.placeholder.match("Column 3")
+
+
+def test_an_estate_that_names_no_tables_matches_no_word(tmp_path):
+    """`table_prefix: ""` is «this estate names no tables», not «every word is
+    a table name»: an empty alternative in any of the three patterns matched
+    everything, and every prose leaf was refused for naming a table."""
+    from facts_plan.build import _table_re, _table_reader_re
+    from merge_facts.content import artefact_re, lint_prose
+
+    _write(tmp_path, {"schema_version": 1, "branches": [], "workbooks": [],
+                      "conventions": {"table_prefix": ""}})
+    conventions = load(tmp_path)
+    assert conventions.table_prefix == ""
+    assert not artefact_re("").search("جدولی که سرلاین پیتزا هر شب پر می‌کند")
+    assert artefact_re("").search("pitza.xlsx")
+    assert not _table_re("").search("MINUS(J6,H6)")
+    assert not _table_reader_re("").search("return x + 1")
+    assert _table_reader_re("").search("IMPORTRANGE(x)")
+    assert lint_prose("جدولی که سرلاین پیتزا هر شب پر می‌کند.",
+                      exemptions=(), conventions=conventions) == []
+
+
+def test_declared_branch_tokens_are_compared_lower_cased(tmp_path):
+    """`strip_branch` folds the name it is given; a token the manifest spells
+    in mixed case has to be folded the same way or it never matches."""
+    _write(tmp_path, {"schema_version": 1, "branches": [], "workbooks": [],
+                      "conventions": {"branch_tokens": ["ChaleBagh"]}})
+    assert load(tmp_path).strip_branch("Amar ChaleBagh") == "amar"
+
+
+def test_a_namespace_the_store_schemas_would_refuse_is_a_manifest_error():
+    """`refItems.namespace` is `^[^\\sA-Za-z0-9]{1,3}$` in both store
+    schemas, so a manifest that declares `ab` would plan candidates every gate
+    then refuses. The manifest is where that is caught."""
+    good = {"schema_version": 1, "branches": [], "workbooks": [],
+            "conventions": {"code_namespaces": {"@": "sku"}}}
+    validate("manifest.schema.json", good)
+    for bad in ("ab", "", "@@@@"):
+        with pytest.raises(ValueError, match="code_namespaces"):
+            validate("manifest.schema.json",
+                     dict(good, conventions={"code_namespaces": {bad: "sku"}}))
+
+
 def test_a_manifest_that_cannot_be_read_is_not_a_stop(tmp_path):
     sheets = tmp_path / "attachments" / "sheets"
     sheets.mkdir(parents=True)
@@ -148,10 +198,41 @@ def test_init_manifest_adds_the_conventions_to_a_confirmed_manifest(tmp_path):
                                "branches": [{"code": "karaj", "name": "کرج"}]})
     manifest = init_manifest(sheets)
     validate("manifest.schema.json", manifest)
-    assert "karaj" in manifest["conventions"]["branch_tokens"]
-    assert "کرج" in manifest["conventions"]["branch_tokens"]
+    assert load(tmp_path).strip_branch("انبار کرج") == "انبار"
     # idempotent: the second pass finds them and writes them back unchanged.
     assert init_manifest(sheets)["conventions"] == manifest["conventions"]
+
+
+def test_the_written_conventions_never_freeze_the_branch_tokens(tmp_path):
+    """Stage 1 runs `--init-manifest` before Gate M declares the branches, so a
+    written token list would be the two defaults for ever and every branch the
+    owner declares afterwards would fold nowhere. `effective` writes no
+    `branch_tokens`, `from_manifest` derives them whenever the member is
+    absent, and declaring the member is the only way to override that."""
+    sheets = tmp_path / "attachments" / "sheets"
+    sheets.mkdir(parents=True)
+    assert "branch_tokens" not in init_manifest(sheets)["conventions"]
+
+    manifest = json.loads((sheets / "manifest.json").read_text(encoding="utf-8"))
+    manifest["branches"] = [{"code": "karaj", "name": "کرج"},
+                            {"code": "shiraz", "name": "شیراز"}]
+    (sheets / "manifest.json").write_text(json.dumps(manifest,
+                                                     ensure_ascii=False),
+                                          encoding="utf-8")
+    tokens = load(tmp_path).branch_tokens
+    assert {"karaj", "کرج", "shiraz", "شیراز"} <= set(tokens)
+    assert load(tmp_path).strip_branch("شمارش کرج") == "شمارش"
+
+
+def test_writing_the_effective_conventions_back_changes_nothing(tmp_path):
+    """The property `--init-manifest` has to hold on ANY manifest: what it
+    writes is what the reader already answered."""
+    for manifest in ({}, {"branches": [{"code": "karaj", "name": "کرج"}]},
+                     {"branches": [], "conventions": {"table_prefix": "T_"}}):
+        with_written = dict(manifest,
+                            conventions=dict(manifest.get("conventions") or {},
+                                             **effective(manifest)))
+        assert from_manifest(with_written) == from_manifest(manifest)
 
 
 def test_from_manifest_takes_the_object_as_it_stands():
@@ -252,4 +333,28 @@ def test_no_estate_literal_survives_in_the_readers(module):
     table prefix written into one of these modules is this estate's data in the
     engine's code, and the next estate silently gets fewer candidates."""
     found = _ESTATE_LITERALS.findall(_code_only(_ENGINE / module))
+    assert found == [], f"{module} still carries {sorted(set(found))}"
+
+
+def _namespace_literals(path):
+    """The estate's code namespaces written as string literals.
+
+    `##` counts wherever it stands. A bare `#` does not: it also separates a
+    line range (`…c.txt#L1-L20`), heads a cached spreadsheet error (`#NAME?`)
+    and marks a normalised number slot — so it counts only where the code
+    writes it as a value, which is what `EXAMPLES` did until 2026-09-08.
+    """
+    tokens = _code_only(path).split("\n")
+    return [token for n, token in enumerate(tokens)
+            if token.strip("\"'") == "##"
+            or (token.strip("\"'") == "#" and n and tokens[n - 1] == ":")]
+
+
+@pytest.mark.parametrize("module", _READERS)
+def test_no_code_namespace_is_written_out_in_the_readers(module):
+    """The regex source was the first round of this; the second is the plain
+    string. `build.EXAMPLES` shipped a `new[]` paper form whose column was
+    `"namespace": "##"`, so the card handed a `@` estate this estate's
+    namespace in the one place a unit copies from."""
+    found = _namespace_literals(_ENGINE / module)
     assert found == [], f"{module} still carries {sorted(set(found))}"

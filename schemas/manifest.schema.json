@@ -16,6 +16,7 @@
       "properties": {
         "branch_tokens": { "type": "array", "items": { "type": "string" } },
         "code_namespaces": { "type": "object",
+          "propertyNames": { "pattern": "^[^\\sA-Za-z0-9]{1,3}$" },
           "additionalProperties": { "type": "string",
                                     "pattern": "^[a-z][a-z0-9]*(_[a-z0-9]+)*$" } },
         "placeholder_header": { "type": "string" },

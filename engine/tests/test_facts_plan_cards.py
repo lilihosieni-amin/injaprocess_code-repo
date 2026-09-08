@@ -173,6 +173,27 @@ def test_the_card_lists_the_run_s_declared_unit_symbols():
     assert "رکورد واحدها" in empty and "سطر" in empty
 
 
+def test_the_worked_example_carries_the_estates_own_namespace(tmp_path):
+    """I6 in the one place a unit copies a shape from: the paper form's column
+    said `"namespace": "##"` whatever the estate's namespaces were, so a `@`
+    estate was handed this estate's codes in the example it was told to copy."""
+    import json as _json
+
+    from facts_plan.build import shape_section
+    from merge_facts.conventions import load
+
+    sheets = tmp_path / "attachments" / "sheets"
+    sheets.mkdir(parents=True)
+    (sheets / "manifest.json").write_text(_json.dumps(
+        {"schema_version": 1, "branches": [], "workbooks": [],
+         "conventions": {"code_namespaces": {"@": "sku"}}}), encoding="utf-8")
+    text = shape_section(conventions=load(tmp_path))
+    assert '"namespace": "@"' in text and '"##"' not in text
+    assert "کد `@` فهرست اقلام" in text
+    # …and today's estate still reads its own.
+    assert '"namespace": "##"' in shape_section()
+
+
 def test_the_card_says_which_cells_carry_an_item_key():
     """Problem 6 — a column of ingredient *names* was typed `refItems`, which
     asks the gate to resolve every cell as an item; the schema shows the shape

@@ -1169,6 +1169,14 @@ def _build_entries(root, skeleton, state):
     state["candidates"] = by_id
     state["dropped"], state["undecided"], state["provenance"] = [], [], {}
     kept = _kept_entries(by_id, state)
+    # A file too big for a unit is no candidate, so the pass above names it
+    # nowhere: its issue is the whole record of it, and the owner reads it with
+    # everything else this run could not fit (§3.2).
+    for issue in state["issues"]:
+        if issue["kind"] == "oversized" and issue.get("target") not in by_id:
+            state["undecided"].append(
+                {"skeleton": None, "kind": "attachment", "unit": None,
+                 "label": issue.get("target"), "reason": "oversized"})
     for cid in sorted(state["by_skeleton"],
                       key=lambda k: (state["by_skeleton"][k]["unit"], k)):
         decision = state["by_skeleton"][cid]
@@ -1255,6 +1263,8 @@ def _resolve_refs(entries, state):
                  "label": entry["title"], "unit": entry["_unit"], **why})
             state["provenance"].pop(entry["id"], None)
             kept.remove(entry)
+        _sever_derived(kept, {e["_skeleton"] for e, _ in held if e["_skeleton"]},
+                       key="_skeleton")
     for entry in kept:
         for obj in iter_ref_objects(entry):
             ref = obj.get("ref")
@@ -1536,6 +1546,9 @@ def assemble(root, run_dir, *, review=False):
     # reason it got there is printed, because this is the one message the owner
     # gets instead of a delta.
     if not entries:
+        print(f'facts-plan: nothing assembled — '
+              f'{len(state["candidates"])} candidates, '
+              f'{len(state["undecided"])} held back', file=sys.stderr)
         for row in state["undecided"]:
             print(f'facts-plan: nothing assembled — {row["unit"]}: '
                   f'{row["label"]}: '
@@ -1556,6 +1569,24 @@ def assemble(root, run_dir, *, review=False):
             "review_status": state["review_status"]}
 
 
+def _sever_derived(entries, gone, key="id"):
+    """A column derived by an entry that waits keeps its table: the link is
+    left empty and the rule re-links when it lands. Holding four report tables
+    back for one rule's identifier would take nine more rules with them.
+
+    `gone` names the entries that wait, by `key` — their temp ids in
+    `_hold_back`, their skeleton ids in `_resolve_refs`, which runs before the
+    refs are rewritten.
+    """
+    for entry in entries:
+        if entry.get(key) in gone:
+            continue
+        for field in entry["data"].get("fields") or []:
+            derived = field.get("derived") if isinstance(field, dict) else None
+            if isinstance(derived, dict) and derived.get("ref") in gone:
+                field["derived"] = None
+
+
 def _hold_back(entries, state, held):
     """Remove the entries step 8 refused (`{temp id: [lines]}`) and every
     entry that points at one of them, to a fixpoint; each joins `undecided[]`
@@ -1563,15 +1594,7 @@ def _hold_back(entries, state, held):
     flags. Prints one line per held entry so the console says what happened."""
     waiting = dict(held)
     by_id = {e["id"]: e for e in entries}
-    # A column derived by a rule that waits keeps its table: the link is left
-    # empty and the rule re-links when it lands. Holding four report tables
-    # back for one rule's identifier would take nine more rules with them.
-    for entry in entries:
-        for field in entry["data"].get("fields") or []:
-            derived = field.get("derived") if isinstance(field, dict) else None
-            if isinstance(derived, dict) and derived.get("ref") in waiting \
-                    and entry["id"] not in waiting:
-                field["derived"] = None
+    _sever_derived(entries, set(waiting))
     while True:
         grew = False
         for entry in entries:

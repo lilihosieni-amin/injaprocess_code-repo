@@ -152,21 +152,33 @@ def branch_tokens_for(manifest):
     return tuple(out + [t for t in DEFAULTS["branch_tokens"] if t not in out])
 
 
+def _placeholder(pattern):
+    """The manifest's own header pattern, or §3.1's where it is no regex — a
+    typo in one member must not be a traceback out of every verb that loads
+    the estate."""
+    try:
+        return re.compile(pattern)
+    except re.error:
+        return re.compile(DEFAULTS["placeholder_header"])
+
+
 def from_manifest(manifest):
     """The conventions a manifest declares, member by member over the defaults."""
     manifest = manifest or {}
     given = {k: v for k, v in (manifest.get("conventions") or {}).items()
              if v is not None}
     members = dict(DEFAULTS, **given)
-    tokens = tuple(members["branch_tokens"]) if given.get("branch_tokens") \
-        else branch_tokens_for(manifest)
+    # `strip_branch` lower-cases the name it is handed, so a declared token has
+    # to be folded the same way or «ChaleBagh» in a manifest never matches.
+    tokens = tuple(t.lower() for t in members["branch_tokens"]) \
+        if given.get("branch_tokens") else branch_tokens_for(manifest)
     namespaces = dict(members["code_namespaces"])
     return Conventions(
         branch_tokens=tokens,
         branch_codes=tuple(b["code"] for b in manifest.get("branches") or []
                            if b.get("code")) or DEFAULT_BRANCH_CODES,
         code_namespaces=namespaces,
-        placeholder=re.compile(members["placeholder_header"]),
+        placeholder=_placeholder(members["placeholder_header"]),
         month_names=tuple(members["month_names"]),
         table_prefix=members["table_prefix"],
         code_in_text=re.compile(
@@ -184,11 +196,17 @@ def from_manifest(manifest):
 
 
 def effective(manifest):
-    """The five members as a manifest carries them — what `--init-manifest`
-    writes into a manifest that has none."""
+    """The members as a manifest carries them — what `--init-manifest` writes
+    into a manifest that has none.
+
+    `branch_tokens` is deliberately not among them: Stage 1 runs this before
+    Gate M declares a single branch, so a written list would freeze §3.1's two
+    spellings into a new estate for ever and every branch declared afterwards
+    would fold nowhere. `from_manifest` derives the tokens whenever the member
+    is absent, which leaves declaring it the one way to override that.
+    """
     conventions = from_manifest(manifest)
-    return {"branch_tokens": list(conventions.branch_tokens),
-            "code_namespaces": dict(conventions.code_namespaces),
+    return {"code_namespaces": dict(conventions.code_namespaces),
             "placeholder_header": conventions.placeholder.pattern,
             "month_names": list(conventions.month_names),
             "table_prefix": conventions.table_prefix}

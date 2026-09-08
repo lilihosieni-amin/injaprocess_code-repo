@@ -166,6 +166,25 @@ def test_a_unit_with_no_axis_left_sets_its_biggest_candidates_aside():
     assert "بزرگ" in issue["description"]     # the label, as the owner reads it
 
 
+def test_an_attachment_unit_over_budget_is_named_rather_than_silent():
+    """An attachment is no candidate: `_axis_parts` has no axis for it and
+    `_set_aside` has nothing to step out, so the unit went to the model over
+    budget and the owner was told nothing at all. It is still dispatched — a
+    file that cannot be split is better read in part than not at all — but the
+    run now names the file that made it so, under the same heading as a table
+    too big to fit."""
+    skeleton = {"candidates": [], "instances": []}
+    unit = {"id": "u-attachments", "type": "attachment",
+            "inputs": ["departments/cooking/attachments/.text/forms__tahvil.txt"],
+            "candidates": [], "nodes": [], "est_tokens_in": 0,
+            "est_tokens_out": 0}
+    parts = split_unit(unit, skeleton, lambda u: "x" * (IN_BUDGET * 8))
+    assert [p["id"] for p in parts] == ["u-attachments"]
+    issue, = skeleton["issues"]
+    assert (issue["kind"], issue["run_only"]) == ("oversized", True)
+    assert "forms/tahvil" in issue["description"]
+
+
 def test_a_set_aside_candidate_is_in_no_unit_and_trips_no_invariant():
     """The placed/nowhere invariant counts a set-aside candidate as placed
     nowhere on purpose — it is the one candidate no unit may list."""

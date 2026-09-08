@@ -198,3 +198,14 @@ No new file-type branch anywhere in the units — I1 and I2 are the mechanism.
 2026-09-08 (addendum v3.5): a tombstoned process is never read as content (I3);
 intake walks subdirectories; the reviewer's contradictions are bounded to
 flagged fields; see the v3.5 spec.
+
+2026-09-08 (addendum v3.6, generality): **I4** — the engine's own candidates pass
+the engine's own gate for any estate the dumper can read (`facts-plan preflight`
+reports `engine_refused: 0`, over generated estates as well as the fixture);
+**I5** — a run stops only when nothing at all can be assembled, and every other
+refusal names one candidate or one entry, holds it back into `undecided[]` and
+lets the rest land (the five kept stops are listed in runbook §10); **I6** — the
+estate's own spellings (branch tokens, item-code namespaces, placeholder header,
+month names, table prefix) are data in `attachments/sheets/manifest.json` under
+`conventions`, written by `dump-workbook --init-manifest`, and no module that
+reads the estate carries one as a literal. See the v3.6 spec.

@@ -634,12 +634,16 @@ QUOTED_SPAN_RE = re.compile(r"«([^»]*)»")
 #: The spreadsheet artefacts a definition must not name. The table prefix is
 #: the estate's own (§3.1), so the pattern is built per prefix and kept —
 #: `lint_prose` runs over every prose leaf of every entry.
-_ARTEFACT = r"\.xlsx\b|\.gs\b|%s|IMPORT_FROM_SHEET|\bLET\(|LAMBDA"
+_ARTEFACT = r"\.xlsx\b|\.gs\b|IMPORT_FROM_SHEET|\bLET\(|LAMBDA"
 
 
 @functools.lru_cache(maxsize=None)
 def artefact_re(table_prefix):
-    return re.compile(_ARTEFACT % re.escape(table_prefix))
+    """An estate that names no tables (`table_prefix: ""`) drops the table
+    alternative: an empty one matches at every position, and every prose leaf
+    of such an estate was refused for naming a table."""
+    return re.compile((f"{re.escape(table_prefix)}|" if table_prefix else "")
+                      + _ARTEFACT)
 
 
 def _whole_word_re(words):

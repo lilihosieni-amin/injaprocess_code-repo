@@ -521,8 +521,50 @@ Five stops remain, and none of them is one input's fault:
 | `assemble` — the review's own rewrite fails the lint | holding it back would bury the unit's sound version under it |
 | `assemble` — nothing at all could be assembled | the one true stop; every held-back reason is printed |
 
-A new `raise SystemExit(2)` in `build.py` or `assemble.py` fails
-`test_only_the_stops_the_design_keeps_are_left` until this table gains a row.
+A new `raise SystemExit(2)` in `build.py`, `assemble.py`, `cli.py` or
+`preflight.py` fails `test_only_the_stops_the_design_keeps_are_left` until this
+table gains a row.
+
+### The estate's own spellings — `conventions` in the manifest (I6, added 2026-09-08)
+
+Nothing in the engine knows this estate's branch names, its `##`/`#` item-code
+namespaces, its `Column N` placeholder headers, its month names or its `Table_`
+prefix any more. They are one optional object in
+`attachments/sheets/manifest.json`:
+
+```json
+"conventions": {
+  "branch_tokens": ["چاله باغ", "naharkhoran"],
+  "code_namespaces": {"##": "ing", "#": "food"},
+  "placeholder_header": "^Column [0-9]+$",
+  "month_names": ["فروردین", "…"],
+  "table_prefix": "Table_"
+}
+```
+
+Every member is optional and an absent one falls back to today's value, so a
+manifest written before 2026-09-08 keeps working unchanged. Four rules are
+worth knowing at the console:
+
+- **Stage 1 writes it.** `dump-workbook --init-manifest` puts the effective
+  object into a manifest that carries none, and never rewrites one it finds —
+  it is an answer, like a judgement column. Editing it by hand is how an estate
+  differs; only the members that differ need to be there.
+- **`branch_tokens` is derived, not written.** Stage 1 runs before Gate M
+  declares a single branch, so `--init-manifest` deliberately writes no token
+  list: the tokens come from `branches[]` — each code and name, with and
+  without the space and the ZWNJ, lower-cased — plus today's spellings, and
+  they follow every branch the owner declares afterwards. A `branch_tokens`
+  written into the manifest **overrides** that derivation and is then the whole
+  list, so declare one only for a spelling the branch names do not carry.
+- **An empty `table_prefix` means «this estate names no tables»** — the table
+  alternative is dropped from the three patterns built off it, rather than
+  becoming an empty alternative that matched every word (which refused every
+  definition the units wrote for naming a table).
+- **A namespace is one to three non-Latin, non-digit characters** — the
+  manifest schema refuses anything else, because the store schemas do; and a
+  `placeholder_header` that is no regex falls back to today's rather than
+  raising out of every verb that loads the estate.
 
 ## 11. What the owner sees — the two message contracts
 

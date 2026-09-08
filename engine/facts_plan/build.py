@@ -10,6 +10,7 @@ must come out as a **parameter**, so one concept is one entry with many
 bindings (QF-47) instead of one entry per cell.
 """
 import collections
+import copy
 import functools
 import hashlib
 import json
@@ -56,8 +57,10 @@ _BARE_REF = re.compile(r"'[^']*'!@")
 @functools.lru_cache(maxsize=None)
 def _table_re(prefix):
     """A table name in a formula. The prefix is the estate's own (§3.1), and
-    the pattern is kept per prefix — `normalise` runs over every cell."""
-    return re.compile(r"(?<![A-Za-z0-9_])%s[A-Za-z0-9_]+" % re.escape(prefix))
+    the pattern is kept per prefix — `normalise` runs over every cell. An
+    estate that names no tables matches no word rather than every word."""
+    return re.compile(r"(?<![A-Za-z0-9_])%s[A-Za-z0-9_]+" % re.escape(prefix)
+                      if prefix else r"(?!)")
 
 
 def estimate_tokens(text):
@@ -749,13 +752,16 @@ _GS_FUNCTION = re.compile(r"^function\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(", re.M)
 _GS_LOGIC = re.compile(r"[-+*/%]|\bif\s*\(|\?")
 # ponytail: "reads a table or a sheet range" as one regex over the body — the
 # five spellings the estate uses. A sixth spelling means one more alternative.
-_TABLE_READER = (r"%s|IMPORT_FROM_SHEET|IMPORTRANGE"
+_TABLE_READER = (r"IMPORT_FROM_SHEET|IMPORTRANGE"
                  r"|getRangeByName|getSheetByName|getRange\(")
 
 
 @functools.lru_cache(maxsize=None)
 def _table_reader_re(prefix):
-    return re.compile(_TABLE_READER % re.escape(prefix))
+    """The same guard as `content.artefact_re`: no table prefix means no table
+    alternative, never an empty one that matches everywhere."""
+    return re.compile((f"{re.escape(prefix)}|" if prefix else "")
+                      + _TABLE_READER)
 
 
 # §2.3: the estate names a row's ingredient exactly once, as this LET local.
@@ -1368,7 +1374,10 @@ def process_index(root, department):
     out = []
     directory = pathlib.Path(root) / "departments" / department / "processes"
     for path in sorted(directory.glob("*.json")):
-        doc = read_json(path)
+        try:
+            doc = read_json(path)
+        except (OSError, ValueError):
+            continue                  # a half-written file is no department's stop
         if doc.get("tombstoned"):
             continue
         for node in doc.get("nodes") or []:
@@ -1607,6 +1616,13 @@ def _axis_parts(unit, skeleton, conventions=DEFAULT_CONVENTIONS):
             for a, b in ((first, middle), (middle + 1, last))]
 
 
+def _input_label(path):
+    """One of a unit's inputs as the owner reads it: the file's own name, with
+    the text cache's flattening undone, no directory and no line range (§2.7).
+    """
+    return pathlib.Path(path.split("#", 1)[0]).stem.replace("__", "/")
+
+
 def _set_aside(unit, skeleton, render, by_id):
     """A unit over budget with no axis left to split on (I5): its largest
     candidates step out, largest first, until what is left fits. Each becomes a
@@ -1627,6 +1643,18 @@ def _set_aside(unit, skeleton, render, by_id):
         unit["est_tokens_out"] = est_tokens_out(
             [by_id[c] for c in unit["candidates"]], unit["est_tokens_in"],
             unit["type"] == "transcript")
+    if not fits(unit, text):
+        # An attachment is no candidate: a unit whose content is one file has
+        # nothing to step out, so it is dispatched over budget rather than
+        # dropped — but silently until 2026-09-08. The file that made it so is
+        # named under the same heading as a table too big to fit.
+        for path in unit["inputs"] or []:
+            # `target` is the owner's own name for the file, as it is on an
+            # `unread_attachment` — never a candidate id, which is how the
+            # assembly tells the two apart.
+            label = _input_label(path)
+            skeleton.setdefault("issues", []).append(
+                _issue("oversized", target=label, label=label))
     return [unit]
 
 
@@ -1967,7 +1995,9 @@ KIND_NOTE = {
 #: Three `new[]` entries a unit can copy — a paper form (the case the first run
 #: had no shape for), a measurement, and a rule reading its parameters. A test
 #: validates all three against `facts-delta.schema.json`, so an example the
-#: schema would refuse cannot ship.
+#: schema would refuse cannot ship. The one estate-specific leaf, the item-code
+#: namespace of the paper form's column, is rendered per estate by
+#: `_with_namespace` — the card is the one place a unit copies a shape from.
 EXAMPLES = [
     {"kind": "record", "key": "form_tahvil_anbar",
      "title": "فرم تحویل کالا از انبار",
@@ -1981,7 +2011,8 @@ EXAMPLES = [
               "fields": [
                   {"key": "tarikh", "title": "تاریخ", "type": "date"},
                   {"key": "qalam", "title": "نام کالا", "type": "string",
-                   "refItems": {"namespace": "##", "resolved_by": "title"}},
+                   "refItems": {"namespace": DEFAULT_CONVENTIONS.item_namespace,
+                                "resolved_by": "title"}},
                   {"key": "meqdar", "title": "مقدار", "type": "number",
                    "unit": "kg"},
                   {"key": "tahvil_girande", "title": "تحویل‌گیرنده",
@@ -2013,6 +2044,17 @@ EXAMPLES = [
               "outputs": [{"key": "enheraf_ba_tolerance",
                            "title": "انحراف با تلورانس", "unit": "kg",
                            "nature": "observed"}]}}]
+
+
+def _with_namespace(example, conventions):
+    """The example as this estate reads it: `refItems.namespace` is the
+    estate's own item-code namespace (§3.1), the way `KIND_NOTE` already
+    renders it. Everything else in `EXAMPLES` is estate-neutral."""
+    example = copy.deepcopy(example)
+    for field in example["data"].get("fields") or []:
+        if isinstance(field.get("refItems"), dict):
+            field["refItems"]["namespace"] = conventions.item_namespace
+    return example
 
 
 def shape_card(kinds, schema, conventions=DEFAULT_CONVENTIONS):
@@ -2048,7 +2090,8 @@ def shape_card(kinds, schema, conventions=DEFAULT_CONVENTIONS):
     for example in EXAMPLES:
         if example["kind"] in wanted:
             out += ["```json",
-                    json.dumps(example, ensure_ascii=False, indent=2),
+                    json.dumps(_with_namespace(example, conventions),
+                               ensure_ascii=False, indent=2),
                     "```", ""]
     return "\n".join(out)
 
