@@ -1,6 +1,8 @@
 import os
 
 from extract_attachment import (
+    cache_path,
+    find_attachments,
     find_docx,
     run_extract_attachment,
     text_dir,
@@ -133,3 +135,49 @@ def test_cli_reports_errors_and_exits_nonzero(data_root, capsys, monkeypatch):
     # not the CLI's old undifferentiated non-zero.
     assert rc == 3
     assert "bad.docx" in err
+
+
+def test_find_attachments_walks_subdirectories_and_skips_the_rest(data_root):
+    """I2 — a form filed in a subdirectory is neither read nor named unread as
+    long as the walk stops at the top level. `sheets/` belongs to
+    `dump-workbook`, `.text/` is the cache, and a dot-name is nobody's form."""
+    adir = _mk_attachments(data_root, "dining")
+    (adir / "x.docx").write_bytes(b"x")
+    (adir / "forms").mkdir()
+    (adir / "forms" / "y.pdf").write_bytes(b"x")
+    (adir / "sheets").mkdir()
+    (adir / "sheets" / "z.xlsx").write_bytes(b"x")
+    (adir / ".text").mkdir()
+    (adir / ".text" / "y.pdf.md").write_bytes(b"x")
+    (adir / ".hidden").mkdir()
+    (adir / ".hidden" / "w.docx").write_bytes(b"x")
+    (adir / ".gitkeep").write_bytes(b"")
+    assert [p.relative_to(adir).as_posix() for p in find_attachments(adir)] == [
+        "forms/y.pdf", "x.docx"]
+
+
+def test_cache_path_flattens_a_nested_source(data_root):
+    """One derivation of the cache location, for every reader of it."""
+    adir = _mk_attachments(data_root, "dining")
+    assert cache_path(adir, adir / "forms" / "y.pdf") == (
+        adir / ".text" / "forms__y.pdf.md")
+    assert cache_path(adir, adir / "host.docx") == adir / ".text" / "host.txt"
+
+
+def test_a_nested_docx_is_converted_under_its_flattened_name(data_root):
+    adir = _mk_attachments(data_root, "dining")
+    (adir / "forms").mkdir()
+    _write_docx(adir / "forms" / "tahvil.docx", ["شرح شغل"])
+    ok, errors = run_extract_attachment("dining", root=data_root,
+                                        convert=CountingConvert())
+    assert errors == []
+    assert ok == ["departments/dining/attachments/.text/forms__tahvil.txt"]
+
+
+def test_an_unreadable_nested_file_is_reported_by_its_relative_path(data_root):
+    adir = _mk_attachments(data_root, "dining")
+    (adir / "forms").mkdir()
+    (adir / "forms" / "plan.xyz").write_bytes(b"x")
+    ok, errors = run_extract_attachment("dining", root=data_root)
+    assert ok == []
+    assert [name for name, _ in errors] == ["forms/plan.xyz"]

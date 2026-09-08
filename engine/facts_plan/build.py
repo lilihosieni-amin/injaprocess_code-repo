@@ -2145,7 +2145,8 @@ def _attachment_state(root, department):
     (§2.1 Stage 2) — naming an `.xlsx` here would be the same file twice.
     """
     from extract_attachment import (CONVERTERS, PASSTHROUGH_EXTENSIONS,
-                                    find_attachments, needs_conversion)
+                                    cache_path, find_attachments,
+                                    needs_conversion)
     root = pathlib.Path(root)
     adir = root / "departments" / department / "attachments"
     texts, issues = [], []
@@ -2153,19 +2154,21 @@ def _attachment_state(root, department):
         ext = src.suffix.lower()
         if ext in PASSTHROUGH_EXTENSIONS or ext == ".xlsx":
             continue
-        suffix = CONVERTERS.get(ext)
-        if suffix is None:
+        if ext not in CONVERTERS:
             why = UNREAD_NO_READER
         else:
-            dst = adir / ".text" / (src.stem + suffix)
+            dst = cache_path(adir, src)
             if not needs_conversion(src, dst):
                 texts.append(str(dst.relative_to(root)))
                 continue
             why = UNREAD_NOT_READY
-        # `target` is the file's own name, never a path: it is what `gate-b.md`
-        # and `report.md` print, and §2.7 admits no path in either.
-        issues.append(_issue("unread_attachment", target=src.name,
-                             file=src.name, why=why))
+        # `target` is the owner's own name for the file — its path relative to
+        # `attachments/`, which for most files is just the file name. It is
+        # what `gate-b.md` and `report.md` print, and §2.7 admits no store
+        # path in either.
+        name = src.relative_to(adir).as_posix()
+        issues.append(_issue("unread_attachment", target=name,
+                             file=name, why=why))
     return sorted(texts), issues
 
 

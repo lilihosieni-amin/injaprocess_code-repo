@@ -8,7 +8,7 @@ gate: whatever a unit writes, from whatever evidence — a `.docx`, a `.pdf`, an
 image, or a form only ever spoken about — is held to the same per-entry
 contract `merge facts apply` enforces.
 
-So: four forms, four kinds of evidence, one shape. Each one through
+So: five forms, five kinds of evidence, one shape. Each one through
 `validate facts-unit` (must pass), each one deliberately broken (must fail at
 that gate, naming the field), and all four through `assemble` and `simulate`
 (must not be refused).
@@ -23,9 +23,9 @@ from facts_helpers import _run_dir, _seed_units, _units_delta, _write
 from facts_plan_helpers import estate
 from merge_facts.apply import simulate
 
-#: The four forms, in the evidence each arrived on: a `.docx`, a `.pdf`, an
-#: image, and a transcript line. Every one is a paper record with the closed
-#: `location` of §3.3.
+#: The five forms, in the evidence each arrived on: a `.docx`, a `.pdf`, an
+#: image, a `.docx` filed one directory down, and a transcript line. Every one
+#: is a paper record with the closed `location` of §3.3.
 FORMS = [
     ("form_tahvil_anbar", "فرم تحویل کالا از انبار",
      "فرم کاغذی که هنگام تحویل هر قلم از انبار به لاین پر می‌شود و مقدار "
@@ -48,6 +48,14 @@ FORMS = [
      {"kept_at": "در یخچال", "holder": "مسئول شیفت"},
      [{"key": "qalam", "title": "نام کالا", "type": "string"},
       {"key": "tedad", "title": "تعداد", "type": "number", "unit": "pcs"}]),
+    ("form_anbargardani", "فرم انبارگردانی ماهانه",
+     "فرم کاغذی که موجودی شمارش‌شدهٔ هر قلم و اختلاف آن با دفتر را ماهانه "
+     "ثبت می‌کند.",
+     {"kept_at": "دفتر انبار", "holder": "سرپرست انبار"},
+     [{"key": "qalam", "title": "نام کالا", "type": "string"},
+      {"key": "mojudi", "title": "موجودی شمارش‌شده", "type": "number",
+       "unit": "kg"},
+      {"key": "ekhtelaf", "title": "اختلاف", "type": "number", "unit": "kg"}]),
     ("form_marjui", "فرم مرجوعی کالا به تأمین‌کننده",
      "فرم کاغذی که مقدار برگشتی هر قلم به تأمین‌کننده و علت مرجوعی را ثبت می‌کند.",
      {"kept_at": "زونکن دفتر انبار", "holder": "سرپرست انبار"},
@@ -113,10 +121,11 @@ def test_the_transcript_unit_is_shown_the_shape_section(tmp_path):
     assert "medium=paper: holder*، kept_at*" in text
     # the card's enums are rendered in the agent's language, not the brief's
     assert "* medium: یکی از: sheet | paper | external | native" in text
-    # the evidence itself, three sidecars deep
+    # the evidence itself, four sidecars deep
     assert "فرم تحویل کالا از انبار" in text
     assert "فرم ثبت ضایعات روزانه" in text
     assert "عکس یک فرم کاغذی" in text
+    assert "فرم انبارگردانی ماهانه" in text      # I2 — one directory down
     assert "فرم کاغذی هم داریم برای مرجوعی" in text
     assert "چیدمان-انبار" not in text            # the one nothing could read
     # I2 — invisible to the unit, visible to the owner, by its own file name.
@@ -157,7 +166,7 @@ def test_a_wrong_shape_is_refused_at_the_unit_gate_by_field(tmp_path, form,
     assert len(joined) < 2000, "the gate dumped the entry instead of the field"
 
 
-def test_the_four_forms_survive_assemble_and_simulate(tmp_path):
+def test_every_form_survives_assemble_and_simulate(tmp_path):
     """The whole of I1: what passes the unit's gate is what `apply` accepts. A
     per-entry refusal after this point is the defect §2 names."""
     root, run, unit_id = _run(tmp_path)
@@ -171,6 +180,11 @@ def test_the_four_forms_survive_assemble_and_simulate(tmp_path):
     assert "چیدمان-انبار.xyz" in gate
 
     delta = json.loads((run / "facts-delta.json").read_text(encoding="utf-8"))
+    # the nested form was read, and is cited as the `.docx` it is
+    assert {(c["type"], c["ref"]) for e in delta["entries"]
+            for c in e.get("source") or []} >= {
+        ("docx", "departments/cooking/attachments/.text/"
+                 "forms__فرم-انبارگردانی.txt")}
     records = [e for e in delta["entries"] if e["kind"] == "record"
                and e["data"]["medium"] == "paper"]
     assert sorted(e["key"] for e in records) == sorted(f[0] for f in FORMS)
