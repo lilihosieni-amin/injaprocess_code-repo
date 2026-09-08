@@ -614,6 +614,53 @@ a unit whose refreshed input no longer fits the budget is *reported* by id: the
 decision to split it is the plan author's. `review/input.md` is not this verb's
 business — `facts-plan digest` re-renders it.
 
+### Running the playbook headless
+
+The playbook can be driven without Telegram, one turn per `docker exec`, which is
+how the 2026-09-07 acceptance run was made. The container name is the one
+`docker compose ps` prints (`inja-food-process-local-control-bot-1` locally):
+
+```bash
+docker exec -d -w /data \
+  -e DATA_ROOT=/data -e SCHEMA_DIR=/opt/schemas \
+  -e CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1 \
+  inja-food-process-local-control-bot-1 sh -c \
+  'mkdir -p /tmp/acc; claude -p "/quantify cooking" --model "claude-opus-5[1m]" \
+     --allowedTools Read,Write,Edit,Bash,Glob,Grep,Task \
+     --disallowedTools AskUserQuestion,ExitPlanMode,EnterPlanMode \
+     --max-turns 200 --output-format stream-json --verbose \
+     </dev/null >/tmp/acc/turn-1.jsonl 2>/tmp/acc/turn-1.err; \
+   echo $? >/tmp/acc/turn-1.exit'
+```
+
+The turn is finished when `/tmp/acc/turn-1.exit` exists; its content is the exit
+status, and the transcript is the `.jsonl`. Four rules, all of them learned on
+2026-09-07:
+
+- **No permission mode.** `--permission-mode bypassPermissions` is *refused*
+  when `claude` runs as root, which it does in this container. Nothing replaces
+  it: the bot itself passes only the allowed and the disallowed tool lists, so
+  the headless recipe passes none either, and the two lists above are the bot's.
+- **Write the stream inside the container.** The redirections belong inside the
+  `sh -c`, as above. A host-side `docker exec` client holding the stream open
+  was killed for memory twice before the run finished; a container-side file and
+  `-d` cost nothing and survive the client.
+- **A fresh session after any change to a run's files.** Use `--continue` only
+  to answer the question the coordinator has just asked. After anything that
+  touched the run — moving a delta, re-validating an output, editing a unit —
+  start a fresh session (`claude -p "/quantify cooking"`), because the
+  playbook's Stage 0 resumes from disk while `--continue` resumes the
+  coordinator's *stale context*. On 2026-09-07 a resumed Gate B context read
+  «ادامه بده» as its own approval and tried to apply a delta that was no longer
+  there.
+- **`/root/.claude.json` is not on the credentials volume.** Recreating the
+  container loses that file. It is harmless — `claude` regenerates it — and the
+  sessions and the credentials under `/root/.claude` survive, because that path
+  is the volume.
+
+Cost, for planning: the 2026-09-07 acceptance run cost about **$29** across six
+turns, most of it the fourteen units at their second attempts.
+
 ### The bind mount and host-side git
 
 Docker Desktop's `/host_mnt` cache serves a stale `.git/index` and `packed-refs`

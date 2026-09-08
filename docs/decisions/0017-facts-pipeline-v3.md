@@ -194,3 +194,7 @@ optional `identifier_scheme`, native an optional `{kept_at}` and the same
 lines with no truncation and an 80-line cap, the attempt cap and the yield stop
 enforced by the engine, and a guard that blocks driving the engine from Python.
 No new file-type branch anywhere in the units — I1 and I2 are the mechanism.
+
+2026-09-08 (addendum v3.5): a tombstoned process is never read as content (I3);
+intake walks subdirectories; the reviewer's contradictions are bounded to
+flagged fields; see the v3.5 spec.
