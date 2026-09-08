@@ -537,3 +537,44 @@ def test_a_source_into_a_process_tombstoned_after_the_build_is_refused(tmp_path)
     assert f"new[0] mande_shab: {line}" in \
         validate_unit(root, run_dir, _write(run_dir, doc, "out.2.json"))
     assert any(p.endswith(line) for p in _simulate(root, run_dir, doc))
+
+
+def _materialised(root, run_dir, doc, key):
+    from facts_plan.assemble import materialise
+    return next(e for e in materialise(root, run_dir, doc) if e["key"] == key)
+
+
+def test_a_new_entrys_hedge_wrappers_are_unwrapped_like_a_decisions(tmp_path):
+    """§3.4 — a `new[]` entry's data is the pseudo-candidate's payload, which
+    `_entry` used to copy verbatim: four units of the 2026-09-07 run lost an
+    attempt to `data.filled_by: {…} is not of type string`."""
+    root, run_dir = _run(tmp_path)
+    form = _paper()
+    form["data"]["filled_by"] = {"value": "سرآشپز", "inferred": True}
+    form["data"]["location"] = {"kept_at": {"value": "زونکن دفتر",
+                                            "inferred": True},
+                                "holder": "سرآشپز"}
+    doc = _doc(new=[form])
+    assert validate_unit(root, run_dir, _write(run_dir, doc)) == []
+    entry = _materialised(root, run_dir, doc, "mande_shab")
+    assert entry["data"]["filled_by"] == "سرآشپز"
+    assert entry["data"]["location"]["kept_at"] == "زونکن دفتر"
+    assert entry["field_status"] == {"data/filled_by": "inferred",
+                                     "data/location/kept_at": "inferred"}
+    assert _simulate(root, run_dir, doc) == []
+
+
+def test_a_new_measurements_hedged_by_is_unwrapped(tmp_path):
+    """The same hole on the other kind the run hit: `data.by`."""
+    root, run_dir = _run(tmp_path)
+    measure = {"kind": "measurement", "key": "mande_shab_vazn",
+               "title": "وزن مانده شب",
+               "statement": "وزن مانده هر ماده در پایان شب با ترازو اندازه "
+                            "گرفته می‌شود.",
+               "data": {"quantity": "mass", "unit": "kg",
+                        "by": {"value": "سرآشپز", "inferred": True}}}
+    doc = _doc(new=[measure])
+    assert validate_unit(root, run_dir, _write(run_dir, doc)) == []
+    entry = _materialised(root, run_dir, doc, "mande_shab_vazn")
+    assert entry["data"]["by"] == "سرآشپز"
+    assert entry["field_status"] == {"data/by": "inferred"}

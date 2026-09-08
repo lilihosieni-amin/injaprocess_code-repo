@@ -851,7 +851,12 @@ def _entry(candidate, decision, state, part=None):
     `scope` per §3.2, the `inferred` wrappers expanded into `field_status`."""
     written = part or decision
     status = {}
-    data = copy.deepcopy(candidate["payload"])
+    # The payload is unwrapped too, not just what the unit wrote: a `new[]`
+    # entry's data travels here as its pseudo-candidate's payload (`_pseudo`),
+    # so a hedge the model put on `filled_by`, `location.kept_at` or `by` would
+    # otherwise reach the store schema with its wrapper on. A mechanical
+    # payload carries no wrappers, so this is a no-op for every real candidate.
+    data = _unwrap(copy.deepcopy(candidate["payload"]), "data", status)
     given = _unwrap(written.get("data") or {}, "data", status)
     renames, fields = _rename_fields(data.pop("fields", []),
                                      given.pop("fields", []))
