@@ -114,6 +114,11 @@ def validate_unit(root, run_dir, path):
     node_ids = {f'{n["process"]}::{n["node"]}' for n in nodes} \
         | {f'{n["process"]}::{n["node"].rsplit("-", 1)[-1]}' for n in nodes}
     problems, seen, unit = list(caps), [], None
+    # The document's own decisions by candidate, so a rule can be judged
+    # against the record it reads: the record's keys are minted here, not in
+    # the skeleton (`_swapped_inputs`).
+    decided = {d["skeleton"]: d for d in doc["decisions"]
+               if isinstance(d, dict) and d.get("skeleton")}
     in_units = path.parent.parent.name == "units"
     if doc["unit"] == "review":
         # A review lives at `review/out.json` and addresses assembled entries.
@@ -193,6 +198,7 @@ def validate_unit(root, run_dir, path):
             if skid and written and written not in columns:
                 problems.append(f"{label}: data.fields[{i}].from: {written!r} "
                                 "names no column of this candidate")
+        problems += _swapped_inputs(decision, label, candidates, decided)
         for field in _members(decision.get("data") or {}, "fields"):
             if field.get("unit") and field.get("type") not in (None, "number"):
                 problems.append(f'{label}: field {field.get("key")} is '
@@ -344,6 +350,48 @@ def _members(data, key):
     the lint skips rather than dies on."""
     value = data.get(key)
     return [m for m in value if isinstance(m, dict)] if isinstance(value, list) else []
+
+
+def _swapped_inputs(decision, label, candidates, decided):
+    """§3.2 — a rule input bound to a column it is not named for.
+
+    A rule that runs in several tabs takes its inputs by parameter: the input
+    says `from: {param: "ref_1"}` and each binding maps `ref_1` to a concrete
+    `{ref, field}`. The unit sees the parameter, not the column. The first real
+    run assigned them in the order it wrote its inputs: the input it called
+    «موجودی آغاز شب» reads «مقدار دریافت از انبار». `a + b` came out right and
+    the sentence in the store was false.
+
+    Only the visible swap is refused — an input whose key IS another column of
+    the record it reads. A key named for the concept rather than the column is
+    no evidence of anything, and neither is a record whose decision sits in
+    another unit: its minted keys are not in this document, so its columns are
+    still the skeleton's `c_<letter>` and no input key can collide with one.
+    """
+    data = decision.get("data") or {}
+    payload = (candidates.get(decision.get("skeleton")) or {}).get("payload") or {}
+    bindings = data.get("applies_to") or payload.get("applies_to") or []
+    params = (bindings[0].get("params") or {}) if isinstance(bindings, list) \
+        and bindings and isinstance(bindings[0], dict) else {}
+    out = []
+    for n, given in enumerate(data.get("inputs") or []):
+        source = given.get("from") if isinstance(given, dict) else None
+        bound = params.get(source.get("param")) if isinstance(source, dict) else None
+        record = candidates.get(bound.get("ref")) if isinstance(bound, dict) else None
+        if record is None or not bound.get("field"):
+            continue
+        # The record's own decision is what mints its keys — the same merge
+        # `_rename_fields` does at step 1b, over the one document in hand.
+        renames = {f["from"]: f["key"] for f in
+                   _members((decided.get(bound["ref"]) or {}).get("data") or {}, "fields")
+                   if f.get("from") and f.get("key")}
+        columns = {renames.get(f["key"], f["key"])
+                   for f in _members(record.get("payload") or {}, "fields")}
+        reads = renames.get(bound["field"], bound["field"])
+        if given.get("key") in columns and given.get("key") != reads:
+            out.append(f'{label}: data.inputs[{n}]: key {given["key"]} is bound '
+                       f'through {source["param"]} to column {reads}')
+    return out
 
 
 def _lint_decision(decision, label, symbols, kind=None):

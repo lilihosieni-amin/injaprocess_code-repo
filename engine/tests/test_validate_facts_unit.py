@@ -578,3 +578,75 @@ def test_a_new_measurements_hedged_by_is_unwrapped(tmp_path):
     entry = _materialised(root, run_dir, doc, "mande_shab_vazn")
     assert entry["data"]["by"] == "سرآشپز"
     assert entry["field_status"] == {"data/by": "inferred"}
+
+
+#: §3.2's real mistake, minimised: the rule reads column `c_f` through `ref_1`
+#: and `c_e` through `ref_2`, and the record's own decision names `c_f`
+#: «مقدار دریافت از انبار» and `c_e` «موجودی آغاز شب».
+RECORD = "S-rec-000000000002"
+
+
+def _bound_run(tmp_path):
+    root, run_dir = _run(tmp_path)
+    skeleton = json.loads((run_dir / "skeleton.json").read_text(encoding="utf-8"))
+    payload, extra, _ = KINDS["record"]
+    skeleton["candidates"].append(
+        {"id": RECORD, "kind": "record", "unit": "u-wb-pitza", **extra,
+         "payload": {**payload,
+                     "instances": [{"key": "pitza__s5", "sheet": "پیتزا",
+                                    "spreadsheetId": "SID"}],
+                     "fields": [{"key": "c_e", "title": "موجودی آغاز شب"},
+                                {"key": "c_f", "title": "مقدار دریافت از انبار"}]}})
+    skeleton["candidates"][0]["payload"]["applies_to"] = [
+        {"key": "pitza__s5__j__r6", "record": {"ref": RECORD},
+         "params": {"ref_1": {"ref": RECORD, "field": "c_f"},
+                    "ref_2": {"ref": RECORD, "field": "c_e"}}}]
+    (run_dir / "skeleton.json").write_text(json.dumps(skeleton, ensure_ascii=False),
+                                           encoding="utf-8")
+    plan = json.loads((run_dir / "plan.json").read_text(encoding="utf-8"))
+    plan["units"][0]["candidates"].append(RECORD)
+    (run_dir / "plan.json").write_text(json.dumps(plan, ensure_ascii=False),
+                                       encoding="utf-8")
+    return root, run_dir
+
+
+def _bound_doc(first, second):
+    doc = _doc()
+    doc["decisions"][0]["data"] = {
+        "inputs": [{"key": first, "from": {"param": "ref_1"}},
+                   {"key": second, "from": {"param": "ref_2"}}],
+        "outputs": [], "lang": "feel", "expr": f"{first} + {second}"}
+    doc["decisions"].append(
+        {"skeleton": RECORD, "action": "keep", "key": "amar_pitza",
+         "title": "آمار پیتزا",
+         "statement": "هر سطر این تب یک مادهٔ اولیهٔ لاین پیتزا را در یک روز "
+                      "نگه می‌دارد.",
+         "data": {"role": "log",
+                  "fields": [{"from": "c_e", "key": "mojudi_avval_shab"},
+                             {"from": "c_f", "key": "daryaft_az_anbar"}]}})
+    return doc
+
+
+def test_a_parameter_bound_input_named_for_another_column_is_refused(tmp_path):
+    root, run_dir = _bound_run(tmp_path)
+    problems = validate_unit(root, run_dir, _write(
+        run_dir, _bound_doc("mojudi_avval_shab", "daryaft_az_anbar")))
+    assert any("data.inputs[0]: key mojudi_avval_shab is bound through ref_1 "
+               "to column daryaft_az_anbar" in p for p in problems)
+    assert any("data.inputs[1]: key daryaft_az_anbar is bound through ref_2 "
+               "to column mojudi_avval_shab" in p for p in problems)
+
+
+def test_the_right_way_round_passes(tmp_path):
+    root, run_dir = _bound_run(tmp_path)
+    assert validate_unit(root, run_dir, _write(
+        run_dir, _bound_doc("daryaft_az_anbar", "mojudi_avval_shab"))) == []
+
+
+def test_an_input_key_that_is_no_column_of_that_record_is_not_judged(tmp_path):
+    """A rule may name an input for the concept it computes with, not for the
+    column it reads — only a key that IS another column of the same record is
+    a visible swap."""
+    root, run_dir = _bound_run(tmp_path)
+    assert validate_unit(root, run_dir, _write(
+        run_dir, _bound_doc("vorudi_yek", "vorudi_do"))) == []

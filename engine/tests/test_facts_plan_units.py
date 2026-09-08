@@ -424,3 +424,31 @@ def test_an_orphan_cached_text_is_served_to_nobody(tmp_path):
     src = _attachment(tmp_path, "فرم-تحویل.docx", text="متن فرم", suffix=".txt")
     src.unlink()
     assert _attachment_state(tmp_path, "cooking") == ([], [])
+
+
+def test_a_rule_candidate_names_what_each_parameter_reads():
+    """§3.2 — the unit binds an input to `ref_1` and cannot see what `ref_1`
+    is. The first run swapped two of them and the store said something false;
+    the candidate line now spells every parameter out."""
+    skeleton = {"unit_symbols": [], "instances": [], "candidates": [
+        {"id": "S-rec-000000000001", "kind": "record", "unit": "u-wb-pitza",
+         "payload": {"instances": [{"key": "pitza__s5", "sheet": "پیتزا"}],
+                     "fields": [{"key": "c_e", "title": "موجودی آغاز شب"},
+                                {"key": "c_f", "title": "مقدار دریافت از انبار"}]}},
+        {"id": "S-r-0000000000002", "kind": "rule", "unit": "u-wb-pitza",
+         "payload": {"output": "مصرف", "variants": [{"shape": "PLUS(@,@)"}],
+                     "applies_to": [{"key": "pitza__s5__j__r6", "params": {
+                         "ref_1": {"ref": "S-rec-000000000001", "field": "c_f"},
+                         "tolerancePerFoodGr": 5,
+                         "table_1": {"table": "Table_Pitza"},
+                         "ref_9": {"ref": "S-rec-000000000009",
+                                   "field": "c_a"}}}]}}]}
+    unit = {"id": "u-wb-pitza", "type": "workbook", "inputs": [],
+            "candidates": ["S-r-0000000000002"], "nodes": [],
+            "est_tokens_in": 0, "est_tokens_out": 250}
+    text = render_input(unit, skeleton, {})
+    assert "params: ref_1، ref_9، table_1، tolerancePerFoodGr" in text
+    assert "    ref_1 → «پیتزا» ستون f «مقدار دریافت از انبار»" in text
+    assert "    tolerancePerFoodGr → 5" in text
+    assert "    table_1 → Table_Pitza" in text
+    assert "    ref_9 → ?" in text

@@ -1961,6 +1961,37 @@ def shape_section():
                       read_json(schema_dir() / "facts-delta.schema.json"))
 
 
+def _param_lines(payload, skeleton):
+    """What each parameter of the FIRST binding actually reads (§3.2).
+
+    A rule that runs in several tabs takes its inputs by parameter — the unit
+    writes `from: {param: "ref_1"}` and cannot otherwise see which column
+    `ref_1` is. The first real run bound an input it called «موجودی آغاز شب»
+    to the column «مقدار دریافت از انبار»: the arithmetic survived, the
+    statement did not. The bindings agree on the parameter keys, so one
+    binding answers for all of them.
+    """
+    bindings = payload.get("applies_to") or []
+    by_id = {c["id"]: c for c in skeleton.get("candidates") or []}
+    out = []
+    for key, value in ((bindings[0].get("params") or {}) if bindings else {}).items():
+        if not isinstance(value, dict):
+            out.append(f"    {key} → {value}")
+            continue
+        record = by_id.get(value.get("ref"))
+        if record is None:
+            # `normalise` records a table slot as `{"table": <name>}` when the
+            # name resolves to no candidate — the name is what a reader wants.
+            out.append(f'    {key} → {value.get("table") or "?"}')
+            continue
+        field = next((f for f in _view(record).get("fields") or []
+                      if f.get("key") == value.get("field")), None)
+        column = (f' ستون {field["key"][2:] if field["key"][:2] == "c_" else field["key"]}'
+                  f' «{field.get("title") or "—"}»' if field else "")
+        out.append(f'    {key} → «{label_of(record)}»{column}')
+    return out
+
+
 def _render_candidate(candidate, skeleton):
     payload, kind = _view(candidate), candidate["kind"]
     if kind in ("rule", "script"):
@@ -1975,6 +2006,7 @@ def _render_candidate(candidate, skeleton):
              f'{len(variants)} variant · '
              f'{len(payload.get("applies_to") or [])} bindings · '
              f'params: {"، ".join(params) or "—"}']
+            + _param_lines(payload, skeleton)
             + [f'    {v.get("shape", "")}' for v in variants])
     if kind == "record":
         instances = "، ".join(f'{i["key"]} ({i.get("branch") or "—"})'
