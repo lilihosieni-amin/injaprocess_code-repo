@@ -29,8 +29,16 @@ from facts_plan.build import build, label_of
 
 #: What a unit owes and the engine never fills — a refusal matching one of
 #: these is reported, not counted against the engine.
+#:
+#: The title is the whole of the second one. A bare `keep` puts the engine's own
+#: mechanical label there — a tab name — because a refusal has to name something
+#: the reader can find; the unit writes the real, Persian sentence. So EVERY
+#: §5.2 refusal of a bare keep's `title` is the stand-in's, not the estate's:
+#: a `Table_Buy` tab (cooking's own `Table_*` tabs are mirrors, so no candidate
+#: of the fixture ever carried one as a title) used to make a plannable estate
+#: report `engine_refused: 1` and stop the pre-flight.
 UNIT_OWED = (re.compile(r"'[^']*' is a required property"),
-             re.compile(r"title carries the Latin word"))
+             re.compile(r": title \S"))
 
 _NON_ASCII = re.compile(r"[^a-z0-9]+")
 
