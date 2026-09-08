@@ -22,6 +22,8 @@ from merge_facts import (KIND_ORDER, _sheet_identities, canonical_scope,
 from merge_facts.apply import _derive_row_keys
 from merge_facts.audit import flags_over
 from merge_facts.content import _check_prose, check_document
+from merge_facts.conventions import DEFAULT as DEFAULT_CONVENTIONS
+from merge_facts.conventions import load as load_conventions
 from merge_facts.preconditions import (_registered, _unit_row_keys,
                                        _unit_symbols, process_source_problems)
 
@@ -110,6 +112,7 @@ def validate_unit(root, run_dir, path):
              for cid, c in candidates.items()}
     known = set(kinds)
     symbols = skeleton.get("unit_symbols") or []
+    conventions = load_conventions(root)
     nodes = process_index(root, skeleton["department"])
     node_ids = {f'{n["process"]}::{n["node"]}' for n in nodes} \
         | {f'{n["process"]}::{n["node"].rsplit("-", 1)[-1]}' for n in nodes}
@@ -204,12 +207,14 @@ def validate_unit(root, run_dir, path):
                 problems.append(f'{label}: field {field.get("key")} is '
                                 f'{field.get("type")} and carries a unit')
         problems += _lint_decision(decision, label, symbols,
-                                   kinds.get(skid) or entry.get("kind"))
+                                   kinds.get(skid) or entry.get("kind"),
+                                   conventions)
 
     for n, entry in enumerate(doc.get("new") or []):
         label = f'new[{n}] {entry.get("key")}'
         problems += _citations(entry, label, node_ids, skeleton["department"]) \
-            + _lint_decision(entry, label, symbols, entry.get("kind"))
+            + _lint_decision(entry, label, symbols, entry.get("kind"),
+                             conventions)
 
     if unit is not None:
         for cid in unit["candidates"]:
@@ -313,7 +318,8 @@ def _contract_problems(root, entries, named, symbols):
     # the writer ever wrote. Same rename as above, on the label instead of a path.
     by_temp = dict(zip((e["id"] for e in clean), named))
     for message in check_document(delta, "facts-delta", store,
-                                  unit_symbols=symbols):
+                                  unit_symbols=symbols,
+                                  conventions=load_conventions(root)):
         head, sep, tail = message.partition(": ")
         if head in blind and tail.startswith("expr identifier "):
             continue
@@ -398,7 +404,8 @@ def _swapped_inputs(decision, label, candidates, decided):
     return out
 
 
-def _lint_decision(decision, label, symbols, kind=None):
+def _lint_decision(decision, label, symbols, kind=None,
+                   conventions=DEFAULT_CONVENTIONS):
     """§5.2 at unit level (QF-50) — the unit that wrote a failing sentence is
     the one that fixes it, which is only true while the decision is still
     addressable by its own index.
@@ -421,7 +428,7 @@ def _lint_decision(decision, label, symbols, kind=None):
                       # A decision carries its issues under `data`; an assembled
                       # entry carries them at the top, where `_check_prose` looks.
                       "issues": part.get("issues") or data.get("issues") or []},
-                     symbols, out, label)
+                     symbols, out, label, conventions)
     return out
 
 
@@ -1347,9 +1354,10 @@ def _lint_entries(root, entries, symbols, reviewed=()):
     runs here and not only at `validate_unit`."""
     named = [f'review: {entry["key"]}' if entry["_skeleton"] in reviewed
              else f'{entry["_unit"]}: {entry["key"]}' for entry in entries]
+    conventions = load_conventions(root)
     out = [message for entry, label in zip(entries, named)
            for message in _lint_decision(entry, label, symbols,
-                                         entry.get("kind"))]
+                                         entry.get("kind"), conventions)]
     out += _contract_problems(root, entries, named, symbols)
     return list(dict.fromkeys(out))
 
@@ -1386,7 +1394,8 @@ def _digest_text(state, entries):
               for d in state["dropped"]] or ["—"]
     # The reviewer rewrites `title`/`statement` and may `keep` with `data`, so
     # it is held to the same closed contract the units are (§3.2).
-    lines += ["", shape_section(state.get("unit_symbols") or ())]
+    lines += ["", shape_section(state.get("unit_symbols") or (),
+                                state.get("conventions") or DEFAULT_CONVENTIONS)]
     return "\n".join(lines) + "\n"
 
 
@@ -1406,6 +1415,10 @@ def _prepare(root, run_dir, review):
         # so the digest carries it; `scratch` is a copy of this state, so the
         # document the hash is checked against carries the same section.
         "unit_symbols": skeleton.get("unit_symbols") or [],
+        # The estate's own conventions (§3.1) ride with the state, so the
+        # digest the reviewer read and the digest its hash is checked against
+        # are rendered from one object.
+        "conventions": load_conventions(root),
         "units": {u["id"]: u for u in plan["units"]},
         "paths": {w["spreadsheetId"]: f'attachments/sheets/{w["dir"]}/{w["file"]}'
                   for w in manifest["workbooks"]},

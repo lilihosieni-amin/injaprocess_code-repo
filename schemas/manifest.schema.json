@@ -8,9 +8,19 @@
   "properties": {
     "schema_version": { "const": 1 },
     "branches": { "type": "array", "items": { "$ref": "#/$defs/branch" } },
-    "workbooks": { "type": "array", "items": { "$ref": "#/$defs/workbook" } }
+    "workbooks": { "type": "array", "items": { "$ref": "#/$defs/workbook" } },
+    "conventions": { "$ref": "#/$defs/conventions" }
   },
   "$defs": {
+    "conventions": { "type": "object", "additionalProperties": false,
+      "properties": {
+        "branch_tokens": { "type": "array", "items": { "type": "string" } },
+        "code_namespaces": { "type": "object",
+          "additionalProperties": { "type": "string",
+                                    "pattern": "^[a-z][a-z0-9]*(_[a-z0-9]+)*$" } },
+        "placeholder_header": { "type": "string" },
+        "month_names": { "type": "array", "items": { "type": "string" } },
+        "table_prefix": { "type": "string" } } },
     "branch": { "type": "object", "additionalProperties": false,
       "required": ["code", "name"],
       "properties": {

@@ -21,6 +21,7 @@ from dump_workbook import (
     workbook_files,
 )
 from engine_common import data_root, read_json, validate
+from merge_facts.conventions import load as load_conventions
 
 
 def _sheets_root():
@@ -85,6 +86,9 @@ def main(argv=None):
     sheets_root = _sheets_root()
     dump_root = sheets_root / ".dump"
     books = workbook_files(sheets_root)
+    # The estate's own conventions (§3.1) — read before the dump, so the
+    # `--init-manifest` pass that will write them back still dumps by them.
+    conventions = load_conventions(data_root())
 
     reference_tabs = {}
     if args.init_manifest:
@@ -118,7 +122,8 @@ def main(argv=None):
     dumps = {}
     for xlsx in books:
         summary = dump_workbook(xlsx, structure_md_for(xlsx), dump_root,
-                                reference_tabs=reference_tabs.get(xlsx, ()))
+                                reference_tabs=reference_tabs.get(xlsx, ()),
+                                conventions=conventions)
         # `init_manifest` proposes from this same invocation's dump (§2.2) — the
         # summary is what was just written, so nothing is read back off disk.
         dumps[summary["spreadsheetId"]] = {"sheets": {"sheets": summary["sheets"]},

@@ -21,6 +21,7 @@ from merge_facts import (KEY_RE, KIND_ORDER, PROC_ID_RE, _sheet_identities,
                          canonical_scope, collect_leaves, find_match, is_open,
                          iter_ref_objects)
 from merge_facts.content import check_document
+from merge_facts.conventions import load as load_conventions
 
 FACT_ID_RE = re.compile(r"^F-[0-9]{5}$")
 TEMP_ID_RE = re.compile(r"^T-[0-9]+$")
@@ -330,5 +331,6 @@ def preconditions(root, store, entries, run_dir):
     # and is refused only at Stage V, spending the unit's second attempt on a
     # sentence that was never wrong. `audit._lint_failures` already passes them.
     out.extend(check_document({"schema_version": 1, "entries": entries},
-                              "facts-delta", store, unit_symbols=unit_rows))
+                              "facts-delta", store, unit_symbols=unit_rows,
+                              conventions=load_conventions(root)))
     return out

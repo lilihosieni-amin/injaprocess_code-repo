@@ -39,6 +39,8 @@ import xml.etree.ElementTree as ET
 import zipfile
 
 from engine_common import read_json, write_json_atomic, write_text_atomic
+from merge_facts.conventions import DEFAULT as DEFAULT_CONVENTIONS
+from merge_facts.conventions import effective, from_manifest
 
 SCHEMA_VERSION = 1
 
@@ -530,8 +532,6 @@ def header_row(head, merges=()):
 # --------------------------------------------------------------------------
 # what a tab is, and what its rows are called
 
-_MONTHS = ("فروردین", "اردیبهشت", "خرداد", "تیر", "مرداد", "شهریور",
-           "مهر", "آبان", "آذر", "دی", "بهمن", "اسفند")
 _DATE_WORDS = ("تاریخ", "روز", "ماه", "سال")
 _DATE_VALUE = re.compile(r"^\d{1,4}/\d{1,2}/\d{1,4}$")   # 1405/04/18, 16/4/1405
 _LABEL_ROWS = 60        # above this a tab logs nightly values, not a table
@@ -629,7 +629,7 @@ def _majority(values, test):
     return sum(1 for value in values if test(value)) * 2 > len(values)
 
 
-def row_labels(sheet, head, header_index):
+def row_labels(sheet, head, header_index, conventions=DEFAULT_CONVENTIONS):
     """`{row: text}` for the tab's label column, or `{}` — the rows of a small
     table named down its side (§4).
 
@@ -659,7 +659,8 @@ def row_labels(sheet, head, header_index):
         if not _majority(values, lambda v: not _is_number(v)):
             continue
         if _majority(values,
-                     lambda v: v in _MONTHS or bool(_DATE_VALUE.match(v))):
+                     lambda v: v in conventions.month_names
+                     or bool(_DATE_VALUE.match(v))):
             continue
         if max(len(value) for value in values) > _LABEL_CHARS:
             continue
@@ -802,7 +803,8 @@ def _sha256(path):
 
 
 def dump_workbook(xlsx_path, structure_md_path, out_dir, reference_tabs=(),
-                  ids_tabs=(), prev_sheets=None, roles=None):
+                  ids_tabs=(), prev_sheets=None, roles=None,
+                  conventions=DEFAULT_CONVENTIONS):
     """Dump one workbook under `out_dir/{spreadsheetId}/` and report sheetId
     drift on stdout.
 
@@ -819,7 +821,8 @@ def dump_workbook(xlsx_path, structure_md_path, out_dir, reference_tabs=(),
     anyone absent from it is `unknown`, which is the default for everyone.
     `prev_sheets` is the previous dump's `{sheetId: name}`; when it is None the
     map is read from the `sheets.json` already in place, so a re-dump reports
-    drift without being told anything (QF-29).
+    drift without being told anything (QF-29). `conventions` is the estate's
+    own (§3.1) — the month names a row label must not be.
     """
     xlsx_path = pathlib.Path(xlsx_path)
     roles = dict(roles or {})
@@ -913,7 +916,7 @@ def dump_workbook(xlsx_path, structure_md_path, out_dir, reference_tabs=(),
                      "head": head, "header_row": index,
                      "codes": _codes(head), "empty": sheet["empty"]}
             labels = ({} if is_ids_tab(tab["name"]) or is_mirror_tab(tab_formulas)
-                      else row_labels(sheet, head, index))
+                      else row_labels(sheet, head, index, conventions))
             if labels:
                 entry["row_labels"] = labels
             sheets.append(entry)
@@ -1063,7 +1066,6 @@ def structure_md_for(xlsx_path):
 
 
 _JUDGEMENT = ("departments", "branches", "reference_tabs")
-_BRANCH_CODES = ("chalebagh", "naharkhoran")
 
 
 def _first_segment(directory):
@@ -1124,7 +1126,7 @@ def _reference_tab_proposal(dump):
     return out
 
 
-def _propose(row, dump, workbooks):
+def _propose(row, dump, workbooks, conventions):
     """Write §2.2's proposal into each judgement column that is still empty. A
     filled column is never re-proposed, and a proposal that comes out empty
     leaves the column for Gate M to answer."""
@@ -1138,7 +1140,8 @@ def _propose(row, dump, workbooks):
             row["departments"] = list(seen.pop())
     if not row.get("branches"):
         folded = (row.get("dir") or "").lower()
-        row["branches"] = [code for code in _BRANCH_CODES if code in folded]
+        row["branches"] = [code for code in conventions.branch_codes
+                           if code in folded]
     if not row.get("reference_tabs") and dump:
         row["reference_tabs"] = _reference_tab_proposal(dump)
 
@@ -1153,7 +1156,13 @@ def init_manifest(sheets_root, dumps=None):
     unconfirmed or new row has its mechanical columns refreshed (a rename is
     mechanical) and a proposal written into every judgement column still empty;
     `unresolved[]` then names the columns no proposal could fill and
-    `confirmed` is derived from it, so the two can never disagree. `dumps` is
+    `confirmed` is derived from it, so the two can never disagree.
+
+    The estate's `conventions` (§3.1, I6) are written with today's effective
+    values into a manifest that carries none — derived from the branches it
+    declares — and a manifest that carries them keeps them verbatim: they are
+    an answer, like a judgement column, and this pass never overrules one.
+    `dumps` is
     `{spreadsheetId: {"sheets": …, "formulas": …}}` from the same invocation's
     dump; a workbook missing from it simply gets no proposal.
     """
@@ -1164,6 +1173,10 @@ def init_manifest(sheets_root, dumps=None):
         existing = read_json(path)
         manifest["branches"] = existing.get("branches") or []
         manifest["workbooks"] = list(existing.get("workbooks") or [])
+        if existing.get("conventions") is not None:
+            manifest["conventions"] = existing["conventions"]
+    manifest.setdefault("conventions", effective(manifest))
+    conventions = from_manifest(manifest)
     rows = {row.get("spreadsheetId"): row for row in manifest["workbooks"]}
     taken = {row.get("short") for row in manifest["workbooks"] if row.get("short")}
 
@@ -1192,7 +1205,7 @@ def init_manifest(sheets_root, dumps=None):
                 taken.add(row["short"])
         for key in _JUDGEMENT:
             row.setdefault(key, [])
-        _propose(row, dump, manifest["workbooks"])
+        _propose(row, dump, manifest["workbooks"], conventions)
         row["unresolved"] = [key for key in _JUDGEMENT if not row[key]]
         row["confirmed"] = not row["unresolved"]
 

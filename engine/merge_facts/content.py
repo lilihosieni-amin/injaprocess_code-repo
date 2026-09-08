@@ -28,14 +28,11 @@ differs is the constant-rule shape (#7): a delta's verbatim body is still
 `data.original`; the store's has already been moved to `facts/originals/`
 and become `data.original_ref` (§4, QF-31).
 """
+import functools
 import re
 
 from merge_facts import KEY_RE, KIND_ORDER, PROC_ID_RE, SEGMENT_RE, is_open, path_exists
-
-#: The code a sheet writes into a `refItems` cell, per namespace: `##1` for the
-#: ingredient list, `#61` for the food list — a lone `#` never matches a `##`.
-_CODE_IN_CELL = {"##": re.compile(r"##[0-9]+"),
-                 "#": re.compile(r"(?<!#)#(?!#)[0-9]+")}
+from merge_facts.conventions import DEFAULT as DEFAULT_CONVENTIONS
 
 JALALI_RE = re.compile(r"^[0-9]{4}-[0-9]{2}(-[0-9]{2})?$")
 
@@ -52,7 +49,8 @@ RESERVED_ROW_NAMES = frozenset({"key", "title", "unit", "unit_raw", "section",
                                 "supersedes"})
 
 
-def check_document(doc, kind_of_file, store=None, unit_symbols=None):
+def check_document(doc, kind_of_file, store=None, unit_symbols=None,
+                   conventions=DEFAULT_CONVENTIONS):
     """Every content-pass message for `doc`, empty when it may pass. Never
     raises on a malformed shape — a missing/wrong-typed field is the schema's
     job to have already refused; this pass only adds messages.
@@ -64,7 +62,12 @@ def check_document(doc, kind_of_file, store=None, unit_symbols=None):
 
     `unit_symbols`, when given, is the run's declared unit symbols
     (`skeleton.json`'s `unit_symbols[]`), exempted from the §5.2 lint's Latin
-    rule — every other caller passes none and gets the bare rule."""
+    rule — every other caller passes none and gets the bare rule.
+
+    `conventions` is the estate's own (§3.1): the item-code namespaces a
+    `refItems` cell may spell, and the table prefix §5.2 reads as an artefact.
+    Every caller that holds a root passes `conventions.load(root)`; the
+    standalone `validate` CLI holds none and gets today's."""
     entries = doc.get("entries") or []
     doc_by_id = {e["id"]: e for e in entries if isinstance(e, dict) and e.get("id")}
     combined_by_id = dict(doc_by_id)
@@ -79,7 +82,7 @@ def check_document(doc, kind_of_file, store=None, unit_symbols=None):
         label = entry.get("id") or entry.get("key") or "?"
         _check_expr(entry, combined_by_id, messages, label)
         _check_unit_edges(entry, doc_by_id, messages, label)
-        _check_keys(entry, messages, label)
+        _check_keys(entry, messages, label, conventions)
         _check_process_grammar(entry, messages, label)
         _check_record_shape(entry, messages, label)
         _check_shares(entry, messages, label)
@@ -89,7 +92,7 @@ def check_document(doc, kind_of_file, store=None, unit_symbols=None):
         _check_issue_dates(entry, messages, label)
         _check_source_exclusions(entry, messages, label)
         _check_process_links(entry, messages, label)
-        _check_prose(entry, unit_symbols, messages, label)
+        _check_prose(entry, unit_symbols, messages, label, conventions)
     return messages
 
 
@@ -289,7 +292,7 @@ def _check_key_list(members, messages, label, what):
                             f"minted segment")
 
 
-def _check_keys(entry, messages, label):
+def _check_keys(entry, messages, label, conventions=DEFAULT_CONVENTIONS):
     data = entry.get("data") or {}
     _check_key_list(data.get("fields"), messages, label, "field")
     _check_key_list(data.get("header_fields"), messages, label, "header field")
@@ -306,7 +309,9 @@ def _check_keys(entry, messages, label):
                 and not KEY_RE.fullmatch(str(row["key"])):
             messages.append(f"{label}: row key {row['key']!r} is not a "
                             f"minted key")
-    refitem_fields = {f["key"]: (f["refItems"].get("namespace") or "##")
+    default_namespace = conventions.item_namespace
+    refitem_fields = {f["key"]: (f["refItems"].get("namespace")
+                                 or default_namespace)
                       for f in data.get("fields") or []
                       if isinstance(f, dict) and isinstance(f.get("refItems"), dict)
                       and f.get("key")}
@@ -321,7 +326,7 @@ def _check_keys(entry, messages, label):
             # such cells is exactly what `refItems` is for; refusing the code
             # form made a unit that followed its card fail at the cap.
             if isinstance(value, str) and not SEGMENT_RE.fullmatch(value) \
-                    and not _CODE_IN_CELL[namespace].search(value):
+                    and not conventions.matches_code(namespace, value):
                 messages.append(f"{label}: refItems cell {name}={value!r} "
                                 f"on row {row.get('key')!r} is neither an "
                                 f"item key nor a {namespace} code")
@@ -624,9 +629,17 @@ LATIN_KEPT = frozenset({"csv", "excel", "sheet"})
 QUOTE_WORDS = 8
 
 REF_TOKEN_RE = re.compile(REF_TOKEN)
-ARTEFACT_RE = re.compile(r"\.xlsx\b|\.gs\b|Table_|IMPORT_FROM_SHEET|\bLET\(|LAMBDA")
 LATIN_WORD_RE = re.compile(r"[A-Za-z]{4,}")
 QUOTED_SPAN_RE = re.compile(r"«([^»]*)»")
+#: The spreadsheet artefacts a definition must not name. The table prefix is
+#: the estate's own (§3.1), so the pattern is built per prefix and kept —
+#: `lint_prose` runs over every prose leaf of every entry.
+_ARTEFACT = r"\.xlsx\b|\.gs\b|%s|IMPORT_FROM_SHEET|\bLET\(|LAMBDA"
+
+
+@functools.lru_cache(maxsize=None)
+def artefact_re(table_prefix):
+    return re.compile(_ARTEFACT % re.escape(table_prefix))
 
 
 def _whole_word_re(words):
@@ -643,7 +656,8 @@ COLLOQUIAL_RE = _whole_word_re(COLLOQUIAL)
 SHEET_WORDS_RE = _whole_word_re(SHEET_WORDS)
 
 
-def lint_prose(text, *, exemptions, allow_sheet_words=False):
+def lint_prose(text, *, exemptions, allow_sheet_words=False,
+               conventions=DEFAULT_CONVENTIONS):
     """§5.2's style card as a check: the messages a sentence earns, empty when
     it may be stored. One message per rule broken, not one per occurrence.
 
@@ -666,7 +680,7 @@ def lint_prose(text, *, exemptions, allow_sheet_words=False):
     if hit:
         out.append(f"names cell or range {hit.group()!r} — a locator belongs "
                    f"in source[], not in prose (QF-50)")
-    hit = ARTEFACT_RE.search(text)
+    hit = artefact_re(conventions.table_prefix).search(text)
     if hit:
         out.append(f"names {hit.group()!r} — a file, table or formula name "
                    f"belongs in source[], not in prose (QF-50)")
@@ -703,7 +717,8 @@ def lint_prose(text, *, exemptions, allow_sheet_words=False):
     return out
 
 
-def _check_prose(entry, unit_symbols, messages, label):
+def _check_prose(entry, unit_symbols, messages, label,
+                 conventions=DEFAULT_CONVENTIONS):
     """The lint at the field that carries the sentence, so the unit that wrote
     a failing one is the unit told to fix it (QF-50). The targets are §5.2's
     list; an `issues[].description` the ENGINE templated is exempt, because it
@@ -742,5 +757,6 @@ def _check_prose(entry, unit_symbols, messages, label):
                             False))
     for path, text, allow_sheet_words in targets:
         for msg in lint_prose(text, exemptions=unit_symbols or (),
-                              allow_sheet_words=allow_sheet_words):
+                              allow_sheet_words=allow_sheet_words,
+                              conventions=conventions):
             messages.append(f"{label}: {path} {msg}")
