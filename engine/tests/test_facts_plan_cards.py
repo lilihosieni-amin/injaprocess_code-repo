@@ -183,3 +183,10 @@ def test_the_card_says_which_cells_carry_an_item_key():
             "برای خانه‌هایی است که کد `##` فهرست اقلام یا کلید یک قلم را "
             "دارند." in text)
     assert "`per` در خروجی یک قاعده کلید یک قلم است، نه یک نام." in text
+    # The three rule bodies `content._check_constant_shape` admits — the unit
+    # that oscillated between «constant output carries no value or range» and
+    # «a rule with inputs carries no expr or original» on 2026-09-08 had been
+    # shown the enums and nothing about which members go together.
+    assert "سه شکل قاعده پذیرفته می‌شود" in text
+    assert "`lang: text`" in text and "`original`" in text \
+        and "`value` یا `range`" in text

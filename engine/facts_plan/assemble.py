@@ -915,6 +915,18 @@ def _entry(candidate, decision, state, part=None):
     data.update(given)
     if fields:
         data["fields"] = fields
+    # A reference table's rows and its `primaryKey` were built over the same
+    # provisional `c_<letter>` keys the fields carried (`reference_rows`), so
+    # they follow the fields' renames — otherwise the engine's own rows fail
+    # the engine's own gate as `member 'c_b' is not a declared field`, which
+    # is what killed the raw-materials unit in every run before 2026-09-08.
+    if renames:
+        if isinstance(data.get("rows"), list):
+            data["rows"] = [{renames.get(k, k): v for k, v in row.items()}
+                            if isinstance(row, dict) else row
+                            for row in data["rows"]]
+        if isinstance(data.get("primaryKey"), list):
+            data["primaryKey"] = [renames.get(k, k) for k in data["primaryKey"]]
     takes = written.get("takes")
     if takes is not None:
         for collection in ("applies_to", "instances"):
@@ -1135,7 +1147,7 @@ def _build_entries(root, skeleton, state):
     for n, entry in enumerate(entries, start=1):
         entry["id"] = f"T-{n}"
         state["provenance"][entry["id"]] = entry["_unit"]
-    _resolve_refs(entries, state)
+    entries = _resolve_refs(entries, state)
     by_temp = {e["id"]: e for e in entries}
     _attach_scopes(entries, state, by_temp)
     for entry in entries:
@@ -1157,7 +1169,6 @@ def _resolve_refs(entries, state):
     at it in the same run: a record's `movement` ends are `place` items, and
     nothing in the sheets mints those.
     """
-    by_skeleton = {e["_skeleton"]: e for e in entries if e["_skeleton"]}
     dropped = {d["skeleton"]: d["unit"] for d in state["dropped"]}
     for entry in entries:
         for source in (member.get("source")
@@ -1165,28 +1176,50 @@ def _resolve_refs(entries, state):
                        for member in instance.get("imports") or []):
             ref = (source or {}).get("ref")
             if isinstance(ref, str) and ref.startswith("S-") \
-                    and ref not in by_skeleton:
+                    and ref not in {e["_skeleton"] for e in entries}:
                 source.pop("ref", None)
                 source.update(state["locators"].get(ref, {}))
-        for obj in iter_ref_objects(entry):
-            ref = obj.get("ref")
-            if not isinstance(ref, str):
-                continue
-            if ref.startswith(("S-", "N-")):
-                target = by_skeleton.get(ref)
-                if target is None:
-                    # Dropped, or left undecided by a unit that never returned
-                    # — either way §2.6 wants both units named, so the owning
-                    # candidate answers when `dropped[]` cannot.
+    # An entry pointing at a candidate no unit kept is held back, not a wall:
+    # one table a unit could not finish (the raw-materials workbook on
+    # 2026-09-08) must not cost the owner every other entry of the run. It
+    # joins `undecided[]` naming what it waited for, and the fresh run that
+    # finishes the table brings it back. Held-back entries can themselves be
+    # referenced, so this runs to a fixpoint.
+    kept = list(entries)
+    while True:
+        by_skeleton = {e["_skeleton"]: e for e in kept if e["_skeleton"]}
+        held = []
+        for entry in kept:
+            for obj in iter_ref_objects(entry):
+                ref = obj.get("ref")
+                if not isinstance(ref, str):
+                    continue
+                if ref.startswith(("S-", "N-")) and ref not in by_skeleton:
                     owner = dropped.get(ref) \
                         or (state["candidates"].get(ref) or {}).get("unit") or "?"
-                    raise _fail(f'{entry["_unit"]}: ref {ref} names a candidate '
-                                f'unit {owner} did not keep')
+                    held.append((entry, ref, owner))
+                    break
+                if ref.startswith("F-") and ref not in state["store_scopes"]:
+                    raise _fail(f'{entry["_unit"]}: ref {ref} is in no store '
+                                "entry")
+        if not held:
+            break
+        for entry, ref, owner in held:
+            state["undecided"].append(
+                {"skeleton": entry["_skeleton"], "kind": entry["kind"],
+                 "label": entry["title"], "unit": entry["_unit"],
+                 "waits_for": ref, "waits_for_unit": owner})
+            state["provenance"].pop(entry["id"], None)
+            kept.remove(entry)
+    for entry in kept:
+        for obj in iter_ref_objects(entry):
+            ref = obj.get("ref")
+            if isinstance(ref, str) and ref.startswith(("S-", "N-")):
+                target = by_skeleton[ref]
                 obj["ref"] = target["id"]
                 if obj.get("field") in (target.get("_renames") or {}):
                     obj["field"] = target["_renames"][obj["field"]]
-            elif ref.startswith("F-") and ref not in state["store_scopes"]:
-                raise _fail(f'{entry["_unit"]}: ref {ref} is in no store entry')
+    return kept
 
 
 # --------------------------------------------------------------------------
@@ -1422,12 +1455,33 @@ def assemble(root, run_dir, *, review=False):
     entries = _build_entries(root, skeleton, state)
     _cross_unit(root, entries, state)
     _settle(entries, state)
-    problems = _lint_entries(root, entries, skeleton.get("unit_symbols") or [],
-                             state.get("reviewed") or ())
-    if problems:
+    symbols, reviewed = skeleton.get("unit_symbols") or [], state.get("reviewed") or ()
+    # Step 8 holds an entry back rather than refusing the run: what the unit
+    # gate could not judge — a rule summing another unit's table by column
+    # names that unit never minted (the central report over the raw-materials
+    # table, 2026-09-08) — waits in `undecided[]` with its lines, the entries
+    # that point at it wait with it, and everything else lands. A run refuses
+    # only when nothing at all can be assembled.
+    for _round in range(len(entries) + 1):
+        problems = _lint_entries(root, entries, symbols, reviewed)
+        if not problems:
+            break
+        labels = {(f'review: {e["key"]}' if e["_skeleton"] in reviewed
+                   else f'{e["_unit"]}: {e["key"]}'): e for e in entries}
+        held = {}
         for line in problems:
-            print(f"facts-plan: {line}", file=sys.stderr)
-        raise SystemExit(2)
+            label = next((l for l in labels if line.startswith(l + ": ")), None)
+            if label is not None and not label.startswith("review: "):
+                held.setdefault(labels[label]["id"], []).append(line[len(label) + 2:])
+        # A review's own rewrite is refused outright: holding it back would
+        # lose the unit's sound version under it, and `validate facts-unit`
+        # on `review/out.json` already judges the reviewer by these lines.
+        if not held or len(held) == len(entries) \
+                or any(line.startswith("review: ") for line in problems):
+            for line in problems:
+                print(f"facts-plan: {line}", file=sys.stderr)
+            raise SystemExit(2)
+        entries = _hold_back(entries, state, held)
     clean = [{k: v for k, v in e.items() if not k.startswith("_")}
              for e in entries]
     write_json_atomic(run_dir / "facts-delta.json",
@@ -1440,6 +1494,55 @@ def assemble(root, run_dir, *, review=False):
     return {"entries": len(clean), "dropped": len(state["dropped"]),
             "undecided": len(state["undecided"]),
             "review_status": state["review_status"]}
+
+
+def _hold_back(entries, state, held):
+    """Remove the entries step 8 refused (`{temp id: [lines]}`) and every
+    entry that points at one of them, to a fixpoint; each joins `undecided[]`
+    naming what it waited for, and its temp id leaves `provenance` and the
+    flags. Prints one line per held entry so the console says what happened."""
+    waiting = dict(held)
+    by_id = {e["id"]: e for e in entries}
+    # A column derived by a rule that waits keeps its table: the link is left
+    # empty and the rule re-links when it lands. Holding four report tables
+    # back for one rule's identifier would take nine more rules with them.
+    for entry in entries:
+        for field in entry["data"].get("fields") or []:
+            derived = field.get("derived") if isinstance(field, dict) else None
+            if isinstance(derived, dict) and derived.get("ref") in waiting \
+                    and entry["id"] not in waiting:
+                field["derived"] = None
+    while True:
+        grew = False
+        for entry in entries:
+            if entry["id"] in waiting:
+                continue
+            for obj in iter_ref_objects(entry):
+                ref = obj.get("ref")
+                if isinstance(ref, str) and ref in waiting and ref in by_id:
+                    waiting[entry["id"]] = [f'waits for {by_id[ref]["_unit"]}: '
+                                            f'{by_id[ref]["key"]}']
+                    grew = True
+                    break
+        if not grew:
+            break
+    kept = []
+    for entry in entries:
+        lines = waiting.get(entry["id"])
+        if lines is None:
+            kept.append(entry)
+            continue
+        state["undecided"].append({"skeleton": entry["_skeleton"],
+                                   "kind": entry["kind"], "label": entry["title"],
+                                   "unit": entry["_unit"], "refused": lines})
+        state["provenance"].pop(entry["id"], None)
+        print(f'facts-plan: held back {entry["_unit"]}: {entry["key"]}: '
+              f"{lines[0]}", file=sys.stderr)
+    kept_ids = {e["id"] for e in kept}
+    state["flags"] = [f for f in state.get("flags") or []
+                      if not isinstance(f.get("entry"), dict)
+                      or f["entry"].get("id") in kept_ids]
+    return kept
 
 
 def _rule_line(entry):
