@@ -619,6 +619,19 @@ def test_expr_missing_on_a_rule_that_is_bound_but_states_nothing(tmp_path):
     assert len(found) == 1 and "enheraf" in found[0]["message"]
 
 
+def test_a_text_rule_bound_to_formulas_states_its_computation_in_words(tmp_path):
+    """§5.3's third legal state — `lang: text` with the sentence in `original`
+    — is what the unit gate admits and the card teaches. The audit looked for a
+    `text` member instead and reported dining's F-00039 as stating nothing."""
+    root = _root(tmp_path); _seed_units(root)
+    bound = _bound_rule("T-2", "enheraf", "انحراف", "gz__s11__j__r6", "J6:J15")
+    bound["data"].pop("expr")
+    bound["data"]["lang"] = "text"
+    bound["data"]["original"] = "انحراف برابر مصرف واقعی منهای مصرف اعلامی است."
+    _apply(root, [_template(), bound], "1")
+    assert _of(audit(root), "expr_missing") == []
+
+
 def test_equal_expr_two_rules_stating_one_computation_in_one_scope(tmp_path):
     root = _root(tmp_path); _seed_units(root)
     _apply(root, [_template(),
