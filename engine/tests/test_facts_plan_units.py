@@ -94,9 +94,13 @@ def test_a_group_over_budget_splits_on_its_tabs_and_keeps_the_axis_in_the_id():
     assert all(p["est_tokens_out"] <= 20000 for p in parts)
 
 
-def test_a_template_spanning_two_groups_exits_2(capsys):
-    """One template over two workbooks the manifest keeps apart would put its
-    candidate in two units. `build` refuses instead, and names the remedy."""
+def test_a_template_spanning_two_groups_makes_them_one_unit():
+    """One template over two workbooks the manifest keeps apart IS the twin
+    relation: the candidate would sit in two units, so the groups become one,
+    named by the lower short — what `twin_of` would have said. Until
+    2026-09-08 `build` refused and told the operator to edit the manifest;
+    cooking's had been edited, cashier's and the warehouse's had not, and two
+    of nine departments could not plan at all."""
     skeleton = {"candidates": [
         {"id": "S-rec-000000000001", "kind": "record",
          "payload": {"instances": [{"key": "sokhari__s1", "sheet": "t"},
@@ -107,11 +111,11 @@ def test_a_template_spanning_two_groups_exits_2(capsys):
     manifest = {"workbooks": [
         _wb("sokhari", "MandeShab__ChaleBagh__Amar__Sokhari"),
         _wb("fried", "MandeShab__Naharkhoran__Amar__FRIED")]}
-    with pytest.raises(SystemExit) as excinfo:
-        plan_units(skeleton, workbook_groups(manifest, "cooking"), [], [], [])
-    assert excinfo.value.code == 2
-    err = capsys.readouterr().err
-    assert "sokhari" in err and "fried" in err and "twin_of" in err
+    units = plan_units(skeleton, workbook_groups(manifest, "cooking"), [], [], [])
+    assert [u["id"] for u in units] == ["u-wb-fried"]
+    assert units[0]["candidates"] == ["S-rec-000000000001"]
+    assert sorted(units[0]["inputs"]) == sorted(
+        w["file"] for w in manifest["workbooks"])
 
 
 def test_a_candidate_no_unit_holds_exits_2(capsys):

@@ -1612,20 +1612,42 @@ def plan_units(skeleton, groups, chunks, items, attachments, render=lambda u: ""
     # manifest row names the `.gs` file its body was read out of (§2.3).
     key_of_script = {s: key for key, rows in groups.items()
                      for w in rows for s in w.get("scripts") or []}
+    # A template two workbooks of one department share IS the twin relation
+    # (cooking's `fried`/`sokhari`, cashier's two till books, the warehouse's
+    # two branch books): the candidate that sits in both cannot be decided
+    # twice, so the two groups become one here, named by the lower short —
+    # exactly what a `twin_of` in the manifest would have done. Until
+    # 2026-09-08 `build` refused instead and told the operator to edit the
+    # manifest, which cooking's operator had done and no other department's
+    # had; two of nine departments could not plan at all.
+    parent = {key: key for key in groups}
+
+    def root_of(key):
+        while parent[key] != key:
+            parent[key] = parent[parent[key]]
+            key = parent[key]
+        return key
+    for cid, candidate in sorted(by_id.items()):
+        keys = sorted({key_of_short[instance_book[i]]
+                       for i in candidate_instances(candidate)
+                       if instance_book.get(i) in key_of_short})
+        for other in keys[1:]:
+            a, b = sorted((root_of(keys[0]), root_of(other)))
+            parent[b] = a
+    if any(parent[key] != key for key in groups):
+        merged = collections.defaultdict(list)
+        for key, rows in groups.items():
+            merged[root_of(key)] += rows
+        groups = dict(merged)
+        key_of_short = {w["short"]: key for key, rows in groups.items()
+                        for w in rows}
+        key_of_script = {s: key for key, rows in groups.items()
+                         for w in rows for s in w.get("scripts") or []}
     members = collections.defaultdict(list)
     for cid, candidate in sorted(by_id.items()):
-        homes = {}
-        for instance in candidate_instances(candidate):
-            short = instance_book.get(instance)
-            if short in key_of_short:
-                homes.setdefault(key_of_short[short], short)
-        if len(homes) > 1:
-            first, second = sorted(homes.values())[:2]
-            print(f"facts-plan: candidate {cid} sits in both {first} and "
-                  f"{second}, which the manifest keeps in two groups — one "
-                  f"decision cannot live in two units; set twin_of on "
-                  f"{first}/{second} in the manifest", file=sys.stderr)
-            raise SystemExit(2)
+        homes = {key_of_short[instance_book[i]]
+                 for i in candidate_instances(candidate)
+                 if instance_book.get(i) in key_of_short}
         home = next(iter(homes), None) or key_of_script.get(
             (candidate.get("render") or {}).get("script"))
         if home:

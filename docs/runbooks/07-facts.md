@@ -467,6 +467,32 @@ docker compose -f docker-compose.local.yml exec control-bot \
   test -f /root/.claude/.ponytail-active     # must exit 1
 ```
 
+### Before a department's FIRST run — `facts-plan preflight` (added 2026-09-08)
+
+Every run before 2026-09-08 was cooking's, and the engine's own candidates for the
+other eight departments had never been through the engine's own gate. Two of them
+could not even plan (their twin workbooks were not marked as twins — cooking's had
+been marked by hand). The pre-flight is the deterministic half of a first run,
+costs no model time, writes nothing under `DATA_ROOT`, and must exit 0 before a
+department's first `/quantify`:
+
+```bash
+docker compose exec control-bot sh -c \
+  'DATA_ROOT=/data facts-plan preflight accounting'
+# {"candidates": {"record": 6, "rule": 1}, "engine_refused": 0, "unit_owed": 2, "units": 1}
+```
+
+It builds the run into a scratch directory, pushes every engine-built candidate
+through `validate facts-unit` with the smallest decision a unit could write, and
+reports two counts: `unit_owed` — refusals the unit will answer (a rule's
+inputs, a Persian title for a script's name) — and `engine_refused`, which must
+be 0. A non-zero `engine_refused` is an engine defect (a shape the engine built
+and the engine refuses, the class that killed the raw-materials unit in every
+cooking run until the rows followed the fields' renames); its lines go to
+stderr grouped by rule with one example each, and the verb exits 2. Pass
+`--recordings a,b` to include transcript units, as `build` does. On 2026-09-08
+all nine departments exited 0.
+
 ## 11. What the owner sees — the two message contracts
 
 Two files, both written by the engine, both sent **verbatim** by the playbook.
