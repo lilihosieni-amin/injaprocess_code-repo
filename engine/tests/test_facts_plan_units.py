@@ -200,6 +200,14 @@ def test_build_writes_the_four_artefacts_over_the_mini_estate(tmp_path):
                                          "label": "شمارش موجودی آخر شب"}]}),
         encoding="utf-8")
     run_dir = tmp_path / "runs" / "facts" / "cooking" / "20260906-101500"
+    (tmp_path / "facts").mkdir()
+    (tmp_path / "facts" / "records.json").write_text(json.dumps(
+        {"schema_version": 2, "entries": [{
+            "id": "F-00001", "kind": "record", "key": "units", "retired": False,
+            "valid_to": None, "data": {"rows": [
+                {"key": "kg", "retired": False, "valid_to": None},
+                {"key": "g", "retired": False, "valid_to": None}]}}]},
+        ensure_ascii=False), encoding="utf-8")
 
     out = build(tmp_path, "cooking", run_dir, ["cooking-1405-05-26"])
 
@@ -246,6 +254,9 @@ def test_build_writes_the_four_artefacts_over_the_mini_estate(tmp_path):
         # §3.2: every unit is shown the closed payload contract, and it fits
         # inside the same budget the rest of the input does.
         assert "Shape card" in text and "medium=paper: holder*، kept_at*" in text
+        # §3.3: and the run's own unit symbols, so no unit invents one.
+        assert "## واحدهای مجاز" in text
+        assert "`g`" in text and "`kg`" in text
     chunk = next(u for u in plan["units"] if u["type"] == "transcript")
     assert chunk["inputs"] == ["meetings/transcripts/cooking-1405-05-26.txt#L1-L39"]
     # a line under the cap is quoted byte for byte, trailing spaces included

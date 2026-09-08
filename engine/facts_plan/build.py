@@ -1854,6 +1854,17 @@ def _location_lines(record, indent):
     return out
 
 
+#: What the schema shows the *shape* of but never the content of, one sentence
+#: per kind (§3.3). The first run typed a column of ingredient names as
+#: `refItems`, which asks the gate to resolve every cell as an item: about a
+#: thousand cells refused and the unit dead at the cap.
+KIND_NOTE = {
+    "record": "ستونی که خانه‌هایش نام هستند `type: string` است؛ `refItems` فقط "
+              "برای خانه‌هایی است که کد `##` فهرست اقلام یا کلید یک قلم را "
+              "دارند.",
+    "rule": "`per` در خروجی یک قاعده کلید یک قلم است، نه یک نام."}
+
+
 #: Three `new[]` entries a unit can copy — a paper form (the case the first run
 #: had no shape for), a measurement, and a rule reading its parameters. A test
 #: validates all three against `facts-delta.schema.json`, so an example the
@@ -1930,6 +1941,8 @@ def shape_card(kinds, schema):
         out += _block(data, defs, "", {data_def})
         if kind == "record":
             out += [""] + _location_lines(data, "")
+        if kind in KIND_NOTE:
+            out += ["", KIND_NOTE[kind]]
         out.append("")
     out += ["## نمونه‌های کامل `new[]`", ""]
     for example in EXAMPLES:
@@ -1940,8 +1953,23 @@ def shape_card(kinds, schema):
     return "\n".join(out)
 
 
-def shape_section():
-    """`shape_card` over the schema on disk, for every kind a unit may write.
+def _symbols_lines(symbols):
+    """§3.3's «واحدهای مجاز» — the run's declared unit symbols, in the order
+    given. It is not part of `shape_card` because the card is a pure function
+    of the schema and this is a fact about the store at the moment of the run.
+    """
+    if not symbols:
+        return ["## واحدهای مجاز", "",
+                "هنوز رکورد واحدها ساخته نشده است؛ هر نماد واحد پیش از استفاده "
+                "باید به صورت یک سطر از آن رکورد اعلام شود."]
+    return ["## واحدهای مجاز", "",
+            "`unit` فقط یکی از این نمادهاست؛ نماد دیگری پذیرفته نمی‌شود:",
+            "، ".join(f"`{symbol}`" for symbol in symbols)]
+
+
+def shape_section(symbols=()):
+    """`shape_card` over the schema on disk, for every kind a unit may write,
+    plus the run's `unit_symbols` (§3.3).
 
     The **delta** schema, not the store's: a unit writes a delta entry and
     `validate_unit` validates it against `facts-delta.schema.json`, so that is
@@ -1957,8 +1985,9 @@ def shape_section():
     ponytail: the schema is re-read once per unit (fifteen 12 KB reads a run).
     Cache it when a build ever spends measurable time here.
     """
-    return shape_card(WRITABLE_KINDS,
-                      read_json(schema_dir() / "facts-delta.schema.json"))
+    card = shape_card(
+        WRITABLE_KINDS, read_json(schema_dir() / "facts-delta.schema.json"))
+    return "\n".join([card] + _symbols_lines(symbols))
 
 
 def _param_lines(payload, skeleton):
@@ -2055,7 +2084,8 @@ def render_input(unit, skeleton, extras):
     # §3.2: the contract goes after the expression card and before the style
     # card — how to write the value, then what the shape may be, then how the
     # prose beside it reads.
-    out += ["", expression, "", shape_section(), "", style]
+    out += ["", expression, "",
+            shape_section(skeleton.get("unit_symbols") or ()), "", style]
     return "\n".join(out)
 
 

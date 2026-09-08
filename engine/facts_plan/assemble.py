@@ -1342,7 +1342,7 @@ def _digest_text(state, entries):
               for d in state["dropped"]] or ["—"]
     # The reviewer rewrites `title`/`statement` and may `keep` with `data`, so
     # it is held to the same closed contract the units are (§3.2).
-    lines += ["", shape_section()]
+    lines += ["", shape_section(state.get("unit_symbols") or ())]
     return "\n".join(lines) + "\n"
 
 
@@ -1358,6 +1358,10 @@ def _prepare(root, run_dir, review):
     state = _collect(root, run_dir, plan, skeleton)
     state.update({
         "department": skeleton["department"], "issues": skeleton["issues"],
+        # The reviewer is held to the same closed unit list a unit is (§3.3),
+        # so the digest carries it; `scratch` is a copy of this state, so the
+        # document the hash is checked against carries the same section.
+        "unit_symbols": skeleton.get("unit_symbols") or [],
         "units": {u["id"]: u for u in plan["units"]},
         "paths": {w["spreadsheetId"]: f'attachments/sheets/{w["dir"]}/{w["file"]}'
                   for w in manifest["workbooks"]},
