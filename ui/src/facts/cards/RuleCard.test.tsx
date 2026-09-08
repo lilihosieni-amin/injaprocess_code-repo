@@ -80,6 +80,30 @@ const BOUND = bundleOf('rule', {
   },
 })
 
+/** The same binding shape, read from the input's side — QF-47's parameter is a
+ *  name until the first binding says what it stands for (§3.7). */
+const PARAMS = bundleOf('rule', {
+  inputs: [
+    { key: 'stock', title: 'موجودی', from: { param: 'ref_1' } },
+    { key: 'tolerance_gr', title: 'تلورانس', from: { param: 'ref_2' } },
+    { key: 'spare', title: 'یدکی', from: { param: 'ref_9' } },
+  ],
+  outputs: [{ key: 'enheraf', title: 'انحراف' }],
+  applies_to: [
+    { key: 'pitza__s0__j__r6', record: { ref: 'F-00300', field: 'c_j' }, range: 'J6:J15',
+      params: { ref_1: { ref: 'F-00149', field: 'daryaft_az_anbar' }, ref_2: 75 } },
+  ],
+}, {
+  resolved: {
+    'F-00300': { kind: 'record', title: 'گزارش شبانه پیتزا' },
+    'F-00149': { kind: 'record', title: 'کاردکس انبار' },
+  },
+})
+
+/** An input row, by the `title` the card puts the key on (`InputRow`). */
+const inputRow = (container: HTMLElement, key: string) =>
+  container.querySelector(`[title="${key}"]`)!.parentElement as HTMLElement
+
 /** F-00032 — a `table` rule; the cells are Persian and the default is a band. */
 const TABLE = bundleOf('rule', {
   lang: 'table',
@@ -271,6 +295,29 @@ describe('the rule card', () => {
     const table = screen.getByRole('table', { name: 'محل اجرا' })
     expect(within(table).getByText(/گزارش شبانه پیتزا/)).toBeInTheDocument()
     expect(within(table).queryByText(/table_1/)).toBeNull()
+  })
+
+  it('names the column a parameter reads, through the first binding (§3.7)', async () => {
+    const user = userEvent.setup()
+    const onOpen = vi.fn()
+    const { container } = render(<RuleCard bundle={PARAMS} onOpen={onOpen} />)
+    const row = inputRow(container, 'stock')
+    // The binding maps `ref_1` to a `{ref, field}`, so the row reads exactly as
+    // a direct edge does — the record's own title, and it opens.
+    expect(within(row).queryByText('ref_1')).toBeNull()
+    await user.click(within(row).getByRole('button', { name: 'کاردکس انبار' }))
+    expect(onOpen).toHaveBeenCalledWith('F-00149')
+  })
+
+  it('writes a numeric parameter as «name = value»', () => {
+    const { container } = render(<RuleCard bundle={PARAMS} onOpen={vi.fn()} />)
+    expect(within(inputRow(container, 'tolerance_gr')).getByText('ref_2 = 75'))
+      .toBeInTheDocument()
+  })
+
+  it('keeps the raw name for a parameter no binding maps', () => {
+    const { container } = render(<RuleCard bundle={PARAMS} onOpen={vi.fn()} />)
+    expect(within(inputRow(container, 'spare')).getByText('ref_9')).toBeInTheDocument()
   })
 
   it('draws no «محل اجرا» for a rule that is bound to nothing', () => {
