@@ -688,7 +688,11 @@ def _expr_missing(walk):
         data = _data(rule)
         if not data.get("applies_to"):
             continue
-        if data.get("expr") or data.get("table") or data.get("text"):
+        # `lang: text` IS the third legal state (§5.3): the computation is
+        # stated in words, in `original`. The old `data.get("text")` looked for
+        # a member no rule carries, so every text rule bound to a formula was
+        # reported as stating no expression (dining's F-00039, 2026-09-08).
+        if data.get("expr") or data.get("table") or data.get("lang") == "text":
             continue
         items.append(_finding("expr_missing", rule["id"],
                               f"rule {rule['key']} is bound to "
