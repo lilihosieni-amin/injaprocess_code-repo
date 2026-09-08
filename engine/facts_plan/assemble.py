@@ -22,6 +22,8 @@ from merge_facts import (KIND_ORDER, _sheet_identities, canonical_scope,
 from merge_facts.apply import _derive_row_keys
 from merge_facts.audit import flags_over
 from merge_facts.content import _check_prose, check_document
+from merge_facts.conventions import DEFAULT as DEFAULT_CONVENTIONS
+from merge_facts.conventions import load as load_conventions
 from merge_facts.preconditions import (_registered, _unit_row_keys,
                                        _unit_symbols, process_source_problems)
 
@@ -110,6 +112,7 @@ def validate_unit(root, run_dir, path):
              for cid, c in candidates.items()}
     known = set(kinds)
     symbols = skeleton.get("unit_symbols") or []
+    conventions = load_conventions(root)
     nodes = process_index(root, skeleton["department"])
     node_ids = {f'{n["process"]}::{n["node"]}' for n in nodes} \
         | {f'{n["process"]}::{n["node"].rsplit("-", 1)[-1]}' for n in nodes}
@@ -204,12 +207,14 @@ def validate_unit(root, run_dir, path):
                 problems.append(f'{label}: field {field.get("key")} is '
                                 f'{field.get("type")} and carries a unit')
         problems += _lint_decision(decision, label, symbols,
-                                   kinds.get(skid) or entry.get("kind"))
+                                   kinds.get(skid) or entry.get("kind"),
+                                   conventions)
 
     for n, entry in enumerate(doc.get("new") or []):
         label = f'new[{n}] {entry.get("key")}'
         problems += _citations(entry, label, node_ids, skeleton["department"]) \
-            + _lint_decision(entry, label, symbols, entry.get("kind"))
+            + _lint_decision(entry, label, symbols, entry.get("kind"),
+                             conventions)
 
     if unit is not None:
         for cid in unit["candidates"]:
@@ -313,7 +318,8 @@ def _contract_problems(root, entries, named, symbols):
     # the writer ever wrote. Same rename as above, on the label instead of a path.
     by_temp = dict(zip((e["id"] for e in clean), named))
     for message in check_document(delta, "facts-delta", store,
-                                  unit_symbols=symbols):
+                                  unit_symbols=symbols,
+                                  conventions=load_conventions(root)):
         head, sep, tail = message.partition(": ")
         if head in blind and tail.startswith("expr identifier "):
             continue
@@ -398,7 +404,8 @@ def _swapped_inputs(decision, label, candidates, decided):
     return out
 
 
-def _lint_decision(decision, label, symbols, kind=None):
+def _lint_decision(decision, label, symbols, kind=None,
+                   conventions=DEFAULT_CONVENTIONS):
     """§5.2 at unit level (QF-50) — the unit that wrote a failing sentence is
     the one that fixes it, which is only true while the decision is still
     addressable by its own index.
@@ -421,7 +428,7 @@ def _lint_decision(decision, label, symbols, kind=None):
                       # A decision carries its issues under `data`; an assembled
                       # entry carries them at the top, where `_check_prose` looks.
                       "issues": part.get("issues") or data.get("issues") or []},
-                     symbols, out, label)
+                     symbols, out, label, conventions)
     return out
 
 
@@ -485,7 +492,23 @@ ISSUE_FA = {"cross_record": "فهرست مقادیر مجاز بین نسخه‌
             "reference_tab_is_mirror": "تب مرجع در واقع کپی بود",
             "reference_tab_is_ids": "تب مرجع در واقع فهرست شناسه‌ها بود",
             "reference_tab_computes": "تب مرجع فرمول دارد",
-            "unread_attachment": "فایلی که خوانده نشد"}
+            "unread_attachment": "فایلی که خوانده نشد",
+            # No «کنار گذاشته شد» here: an over-budget attachment unit is still
+            # dispatched and read, so the block heading states only the size —
+            # the parent heading of `report.md` carries the "not reviewed".
+            "oversized": "بزرگ‌تر از یک واحد"}
+
+#: §3.2 — every `undecided[]` member carries a `reason`, and the owner reads one
+#: fixed line per reason. A run no longer stops for one input, so this list IS
+#: how the owner learns why something is missing; a reason with no line here
+#: would come out blank.
+UNDECIDED_FA = {"oversized": ISSUE_FA["oversized"],
+                "cycle": "به هم ارجاع می‌دادند و هیچ‌کدام مقصد نبود",
+                "target_dropped": "موردی که در آن ادغام می‌شد ثبت نشد",
+                "unknown_ref": "به موردی ارجاع می‌داد که در سامانه نیست",
+                "refused": "با قرارداد ثبت جور در نیامد",
+                "waits": "منتظر بخشی است که در این اجرا تمام نشد",
+                "failed": "در این اجرا بررسی نشد"}
 
 #: §2.6 step 7's `wrapper_variants`: a variant that only converts or totals the
 #: reading beneath it is the same rule, not a second one.
@@ -978,24 +1001,38 @@ def _absorb(target, candidate):
                 target["data"].setdefault(collection, []).append(member)
 
 
+def _undecided(state, skid, **why):
+    """One candidate held back, named as the owner reads it (§3.2). Every
+    caller passes a `reason`; `refused`/`waits_for` say the rest."""
+    candidate = (state.get("candidates") or {}).get(skid) or {}
+    state["undecided"].append(
+        {"skeleton": skid, "kind": candidate.get("kind"),
+         "label": label_of(candidate) if candidate.get("payload") is not None
+         else skid,
+         "unit": candidate.get("unit"), **why})
+
+
 def _target_of(state, skid):
-    """`merge_into` to a fixpoint, ascending (unit id, skeleton id) — a cycle
-    is an error naming both units."""
+    """`merge_into` to a fixpoint, ascending (unit id, skeleton id). A cycle is
+    nobody's target: every candidate on it is held back naming the units it
+    crosses, `None` comes back, and the rest of the run lands (I5)."""
     seen = []
     while True:
         decision = state["by_skeleton"].get(skid)
         if not decision or decision["action"] != "merge_into":
             return skid
         if skid in seen:
-            raise _fail(f'{skid}: merge_into cycle across units '
-                        f'{", ".join(sorted({state["by_skeleton"][s]["unit"] for s in seen}))}')
+            units = ", ".join(sorted({state["by_skeleton"][s]["unit"]
+                                      for s in seen}))
+            held = state.setdefault("cycled", set())
+            for member in seen:
+                if member not in held:
+                    held.add(member)
+                    _undecided(state, member, reason="cycle",
+                               refused=[f"merge_into cycle across units {units}"])
+            return None
         seen.append(skid)
         skid = decision["into"]
-
-
-def _fail(message):
-    print(f"facts-plan: {message}", file=sys.stderr)
-    return SystemExit(2)
 
 
 def _note_key(entry, by_temp):
@@ -1022,13 +1059,18 @@ def _kept_entries(by_id, state):
     two cannot drift apart the way they did before the 2026-09-07 run.
     """
     kept = {}
+    # A candidate `build` set aside for its size is in no unit, so no unit could
+    # have decided it: it is held back under its own reason, not as a failure.
+    oversized = {i.get("target") for i in state.get("issues") or []
+                 if i["kind"] == "oversized"}
     for cid, candidate in sorted(by_id.items()):
         decision = state["by_skeleton"].get(cid)
         label = label_of(candidate)
         if decision is None or candidate.get("unit") in state["failed"]:
-            state["undecided"].append({"skeleton": cid, "kind": candidate["kind"],
-                                       "label": label,
-                                       "unit": candidate.get("unit")})
+            state["undecided"].append(
+                {"skeleton": cid, "kind": candidate["kind"], "label": label,
+                 "unit": candidate.get("unit"),
+                 "reason": "oversized" if cid in oversized else "failed"})
             continue
         if decision["action"] == "drop":
             state["dropped"].append({"skeleton": cid, "kind": candidate["kind"],
@@ -1130,16 +1172,28 @@ def _build_entries(root, skeleton, state):
     state["candidates"] = by_id
     state["dropped"], state["undecided"], state["provenance"] = [], [], {}
     kept = _kept_entries(by_id, state)
+    # A file too big for a unit is no candidate, so the pass above names it
+    # nowhere: its issue is the whole record of it, and the owner reads it with
+    # everything else this run could not fit (§3.2).
+    for issue in state["issues"]:
+        if issue["kind"] == "oversized" and issue.get("target") not in by_id:
+            state["undecided"].append(
+                {"skeleton": None, "kind": "attachment", "unit": None,
+                 "label": issue.get("target"), "reason": "oversized"})
     for cid in sorted(state["by_skeleton"],
                       key=lambda k: (state["by_skeleton"][k]["unit"], k)):
         decision = state["by_skeleton"][cid]
         if decision["action"] != "merge_into":
             continue
         target = _target_of(state, cid)
+        if target is None:                      # the cycle held its own back
+            continue
         if target not in kept:
-            raise _fail(f'{cid} (unit {decision["unit"]}) merges into {target} '
-                        f'(unit {(by_id.get(target) or {}).get("unit", "?")}), '
-                        "which no unit kept")
+            # I5 — the merger waits for the target its unit never kept, and
+            # everything else lands.
+            _undecided(state, cid, reason="target_dropped", waits_for=target,
+                       waits_for_unit=(by_id.get(target) or {}).get("unit", "?"))
+            continue
         _absorb(kept[target], by_id[cid])
     entries = list(kept.values())
     entries.sort(key=lambda e: (KIND_ORDER.index(e["kind"]),
@@ -1197,20 +1251,23 @@ def _resolve_refs(entries, state):
                 if ref.startswith(("S-", "N-")) and ref not in by_skeleton:
                     owner = dropped.get(ref) \
                         or (state["candidates"].get(ref) or {}).get("unit") or "?"
-                    held.append((entry, ref, owner))
+                    held.append((entry, {"reason": "waits", "waits_for": ref,
+                                         "waits_for_unit": owner}))
                     break
                 if ref.startswith("F-") and ref not in state["store_scopes"]:
-                    raise _fail(f'{entry["_unit"]}: ref {ref} is in no store '
-                                "entry")
+                    held.append((entry, {"reason": "unknown_ref", "refused": [
+                        f"ref {ref} is in no store entry"]}))
+                    break
         if not held:
             break
-        for entry, ref, owner in held:
+        for entry, why in held:
             state["undecided"].append(
                 {"skeleton": entry["_skeleton"], "kind": entry["kind"],
-                 "label": entry["title"], "unit": entry["_unit"],
-                 "waits_for": ref, "waits_for_unit": owner})
+                 "label": entry["title"], "unit": entry["_unit"], **why})
             state["provenance"].pop(entry["id"], None)
             kept.remove(entry)
+        _sever_derived(kept, {e["_skeleton"] for e, _ in held if e["_skeleton"]},
+                       key="_skeleton")
     for entry in kept:
         for obj in iter_ref_objects(entry):
             ref = obj.get("ref")
@@ -1347,9 +1404,10 @@ def _lint_entries(root, entries, symbols, reviewed=()):
     runs here and not only at `validate_unit`."""
     named = [f'review: {entry["key"]}' if entry["_skeleton"] in reviewed
              else f'{entry["_unit"]}: {entry["key"]}' for entry in entries]
+    conventions = load_conventions(root)
     out = [message for entry, label in zip(entries, named)
            for message in _lint_decision(entry, label, symbols,
-                                         entry.get("kind"))]
+                                         entry.get("kind"), conventions)]
     out += _contract_problems(root, entries, named, symbols)
     return list(dict.fromkeys(out))
 
@@ -1386,7 +1444,8 @@ def _digest_text(state, entries):
               for d in state["dropped"]] or ["—"]
     # The reviewer rewrites `title`/`statement` and may `keep` with `data`, so
     # it is held to the same closed contract the units are (§3.2).
-    lines += ["", shape_section(state.get("unit_symbols") or ())]
+    lines += ["", shape_section(state.get("unit_symbols") or (),
+                                state.get("conventions") or DEFAULT_CONVENTIONS)]
     return "\n".join(lines) + "\n"
 
 
@@ -1406,6 +1465,10 @@ def _prepare(root, run_dir, review):
         # so the digest carries it; `scratch` is a copy of this state, so the
         # document the hash is checked against carries the same section.
         "unit_symbols": skeleton.get("unit_symbols") or [],
+        # The estate's own conventions (§3.1) ride with the state, so the
+        # digest the reviewer read and the digest its hash is checked against
+        # are rendered from one object.
+        "conventions": load_conventions(root),
         "units": {u["id"]: u for u in plan["units"]},
         "paths": {w["spreadsheetId"]: f'attachments/sheets/{w["dir"]}/{w["file"]}'
                   for w in manifest["workbooks"]},
@@ -1482,6 +1545,19 @@ def assemble(root, run_dir, *, review=False):
                 print(f"facts-plan: {line}", file=sys.stderr)
             raise SystemExit(2)
         entries = _hold_back(entries, state, held)
+    # I5's other half: a run stops only when nothing can be assembled. Every
+    # reason it got there is printed, because this is the one message the owner
+    # gets instead of a delta.
+    if not entries:
+        print(f'facts-plan: nothing assembled — '
+              f'{len(state["candidates"])} candidates, '
+              f'{len(state["undecided"])} held back', file=sys.stderr)
+        for row in state["undecided"]:
+            print(f'facts-plan: nothing assembled — {row["unit"]}: '
+                  f'{row["label"]}: '
+                  f'{(row.get("refused") or [row.get("reason")])[0]}',
+                  file=sys.stderr)
+        raise SystemExit(2)
     clean = [{k: v for k, v in e.items() if not k.startswith("_")}
              for e in entries]
     write_json_atomic(run_dir / "facts-delta.json",
@@ -1496,6 +1572,24 @@ def assemble(root, run_dir, *, review=False):
             "review_status": state["review_status"]}
 
 
+def _sever_derived(entries, gone, key="id"):
+    """A column derived by an entry that waits keeps its table: the link is
+    left empty and the rule re-links when it lands. Holding four report tables
+    back for one rule's identifier would take nine more rules with them.
+
+    `gone` names the entries that wait, by `key` — their temp ids in
+    `_hold_back`, their skeleton ids in `_resolve_refs`, which runs before the
+    refs are rewritten.
+    """
+    for entry in entries:
+        if entry.get(key) in gone:
+            continue
+        for field in entry["data"].get("fields") or []:
+            derived = field.get("derived") if isinstance(field, dict) else None
+            if isinstance(derived, dict) and derived.get("ref") in gone:
+                field["derived"] = None
+
+
 def _hold_back(entries, state, held):
     """Remove the entries step 8 refused (`{temp id: [lines]}`) and every
     entry that points at one of them, to a fixpoint; each joins `undecided[]`
@@ -1503,15 +1597,7 @@ def _hold_back(entries, state, held):
     flags. Prints one line per held entry so the console says what happened."""
     waiting = dict(held)
     by_id = {e["id"]: e for e in entries}
-    # A column derived by a rule that waits keeps its table: the link is left
-    # empty and the rule re-links when it lands. Holding four report tables
-    # back for one rule's identifier would take nine more rules with them.
-    for entry in entries:
-        for field in entry["data"].get("fields") or []:
-            derived = field.get("derived") if isinstance(field, dict) else None
-            if isinstance(derived, dict) and derived.get("ref") in waiting \
-                    and entry["id"] not in waiting:
-                field["derived"] = None
+    _sever_derived(entries, set(waiting))
     while True:
         grew = False
         for entry in entries:
@@ -1534,7 +1620,8 @@ def _hold_back(entries, state, held):
             continue
         state["undecided"].append({"skeleton": entry["_skeleton"],
                                    "kind": entry["kind"], "label": entry["title"],
-                                   "unit": entry["_unit"], "refused": lines})
+                                   "unit": entry["_unit"], "reason": "refused",
+                                   "refused": lines})
         state["provenance"].pop(entry["id"], None)
         print(f'facts-plan: held back {entry["_unit"]}: {entry["key"]}: '
               f"{lines[0]}", file=sys.stderr)
@@ -1585,6 +1672,29 @@ def _disputes(entries):
 #: فایل‌ها»; this one is not a problem inside a file, it is a file nobody read,
 #: and it belongs beside the workbook the owner has not placed.
 UNREAD_KIND = "unread_attachment"
+
+#: Neither of these is an issue found IN a file: the unread files have their own
+#: heading and the set-aside candidates are named with the rest of what was held
+#: back, so counting them among the file problems would name them twice.
+NOT_A_FILE_ISSUE = (UNREAD_KIND, "oversized")
+
+
+def _held_back_blocks(undecided, reasons, bullet):
+    """§3.2 — what was held back, grouped by reason, one fixed Persian line
+    each. `gate-b.md` prints only the set-aside block; `report.md` prints them
+    all."""
+    grouped = {}
+    for row in undecided:
+        grouped.setdefault(row.get("reason") or "failed", []).append(
+            row.get("label") or "")
+    out = []
+    for reason in reasons:
+        labels = grouped.get(reason)
+        if labels:
+            out.append(f"{UNDECIDED_FA[reason]} ({_fa(len(labels))} مورد):")
+            out += [f"{bullet}«{label}»" for label in labels[:5]]
+            out.append("")
+    return out
 
 
 def _skipped_workbooks(root, department):
@@ -1637,7 +1747,8 @@ def gate_b(root, skeleton, entries, state):
     unknown = sum(len(null_paths(e)) for e in entries)
     # An unread file is not an issue found *in* a file — it has its own block
     # below, and counting it here would name it twice.
-    issues = [i for i in skeleton["issues"] if i["kind"] != UNREAD_KIND]
+    issues = [i for i in skeleton["issues"]
+              if i["kind"] not in NOT_A_FILE_ISSUE]
     reasons = []
     for dropped in state["dropped"]:
         word = REASON_FA.get(dropped["reason_code"])
@@ -1675,6 +1786,7 @@ def gate_b(root, skeleton, entries, state):
                       if len(issues) > len(shown) else ":"))
         out += [f'  • {i["description"]}' for i in shown]
         out.append("")
+    out += _held_back_blocks(state["undecided"], ("oversized",), "  • ")
     out += _unread_block(root, state["department"], skeleton["issues"])
     out += [f"بی‌پاسخ: {_fa(unknown)} خانه — در پنل.", "", "تأیید می‌کنید؟", ""]
     return "\n".join(out)
@@ -1732,7 +1844,8 @@ def report(root, run_dir):
         out += [f'  • {REASON_FA.get(code, REASON_FA["other"])}: {_fa(n)} مورد'
                 for code, n in sorted(counted.items())]
         out.append("")
-    found = [i for i in skeleton["issues"] if i["kind"] != UNREAD_KIND]
+    found = [i for i in skeleton["issues"]
+             if i["kind"] not in NOT_A_FILE_ISSUE]
     if found:
         out.append("ایرادهای یافته‌شده در فایل‌ها:")
         grouped = {}
@@ -1744,6 +1857,8 @@ def report(root, run_dir):
         out.append("")
     out += _unread_block(root, skeleton["department"], skeleton["issues"])
     if assembly["undecided"]:
+        out.append("چه چیزهایی بررسی نشد و در اجرای بعدی تکمیل می‌شود:")
+        out += _held_back_blocks(assembly["undecided"], UNDECIDED_FA, "    • ")
         out.append("یک بخش از داده‌ها ناتمام ماند و در اجرای بعدی تکمیل می‌شود.")
     out.append({"applied": "بازبینی انجام شد.",
                 "discarded": "بازبینی انجام نشد و نتیجه بدون آن ثبت شد.",

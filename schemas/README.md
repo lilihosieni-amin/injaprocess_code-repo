@@ -78,6 +78,34 @@ migration note added here:
   `{spreadsheetId, sheetId, sheet, hidden}` off the first instance); a branch
   narrower than its writer would make `save_store` refuse what `apply` wrote.
 
+**`conventions` (`manifest.schema.json`, v3.6 §3.1, I6).** The estate's own
+spellings are data, not engine constants: an optional top-level `conventions`
+object carries `branch_tokens[]` (the branch spellings a tab name is folded by),
+`code_namespaces` (`{"##": "ing", "#": "food"}` — the item-code prefix a sheet
+writes, mapped to the key prefix a store row is keyed by), `placeholder_header`
+(the regex an unnamed column's header matches, `^Column [0-9]+$` today),
+`month_names[]` and `table_prefix` (`Table_` today). Every member is optional
+and every one that is absent falls back to today's value, so an existing
+manifest keeps working unchanged; `branch_tokens` in particular defaults to
+what `branches[]` already declares (each code and name, with and without the
+space and the ZWNJ) plus today's spellings, so a new estate that declares its
+branches needs no token list. `dump-workbook --init-manifest` writes the
+effective object into a manifest that carries none and never rewrites one it
+finds — the object is an answer, like a judgement column — and it deliberately
+writes no `branch_tokens`: Stage 1 runs before Gate M declares a branch, so a
+written list would freeze today's two spellings into a new estate and every
+branch declared afterwards would fold nowhere. Declaring the member is the one
+way to override the derivation. A namespace has to be one to three non-Latin,
+non-digit characters (`propertyNames`), which is what the store schemas accept
+in `refItems.namespace`; an empty `table_prefix` means «this estate names no
+tables» and drops the table alternative from the three patterns built off it,
+and a `placeholder_header` that is no regex falls back to today's. One reader,
+`merge_facts.conventions.load(root)`, serves `facts_plan.build`,
+`dump_workbook` and `merge_facts.content`; no engine module may carry a branch
+name, a code namespace, a placeholder pattern, a month name or a table prefix
+as a literal used for reading the estate (`engine/tests/test_conventions.py`
+holds that line). `schema_version` stays at `1`: the member is optional.
+
 **`workbooks[].short` uniqueness (`manifest.schema.json`).** JSON Schema has
 no way to assert cross-row uniqueness (no `uniqueItems`-style constraint
 over one field of an array of objects), so `manifest.schema.json` only

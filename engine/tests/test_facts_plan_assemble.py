@@ -8,6 +8,7 @@ unit's output, `facts-delta.schema.json` for what `assemble` writes, and
 """
 import hashlib
 import json
+import pathlib
 
 import pytest
 from facts_helpers import _seed_units
@@ -752,30 +753,209 @@ def test_a_reference_tables_rows_follow_the_fields_renames(tmp_path):
     assert simulate(root, run_dir / "facts-delta.json", run_dir)[1] == []
 
 
-def test_merge_into_a_dropped_target_names_both_units(tmp_path, capsys):
-    # The target is a rule of u-a's: a merge across kinds is refused at the unit
-    # gate now, so it can no longer stand in for one whose target was dropped.
-    root = _root(tmp_path)
+def _twinned():
+    """The skeleton and plan with a second rule candidate, `S-r-000000000004`,
+    in u-a — the only shape in which two units can point `merge_into` at each
+    other."""
     skeleton, plan = _skeleton(), _plan()
     twin = json.loads(json.dumps(skeleton["candidates"][1]))     # the rule
     twin["id"], twin["unit"] = "S-r-000000000004", "u-a"
     skeleton["candidates"].append(twin)
     plan["units"][0]["candidates"].append(twin["id"])
+    return skeleton, plan
+
+
+def test_merge_into_a_target_no_unit_kept_holds_the_merger_back(tmp_path):
+    """I5 — the target is a rule of u-a's that u-a dropped. The merger waits in
+    `undecided[]` naming what it waited for; until 2026-09-08 it stopped the
+    whole run."""
+    root = _root(tmp_path)
+    skeleton, plan = _twinned()
     record = _record_out()
-    record["decisions"].append({"skeleton": twin["id"], "action": "drop",
+    record["decisions"].append({"skeleton": "S-r-000000000004", "action": "drop",
                                 "reason_code": "cosmetic"})
     rule = _rule_out()
     rule["decisions"][0] = {"skeleton": "S-r-000000000002",
                             "action": "merge_into",
-                            "into": twin["id"],
+                            "into": "S-r-000000000004",
                             "reason_code": "duplicate"}
     run_dir = _run(root, {"u-a": record, "u-b": rule},
                    skeleton=skeleton, plan=plan)
+    assemble(root, run_dir)
+    delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
+    assert {e["kind"] for e in delta["entries"]} == {"record", "item"}
+    assembly = json.loads((run_dir / "assembly.json").read_text(encoding="utf-8"))
+    held = next(u for u in assembly["undecided"]
+                if u["skeleton"] == "S-r-000000000002")
+    assert held["reason"] == "target_dropped" and held["unit"] == "u-b" \
+        and held["waits_for"] == "S-r-000000000004" \
+        and held["waits_for_unit"] == "u-a"
+    validate("facts-delta.schema.json", delta)
+
+
+def test_a_merge_into_cycle_holds_its_candidates_back_and_the_rest_lands(tmp_path):
+    """I5 — two units each merge their rule into the other's. Nobody's target
+    exists, so every candidate on the cycle waits and the record and the item
+    still land."""
+    root = _root(tmp_path)
+    skeleton, plan = _twinned()
+    record = _record_out()
+    record["decisions"].append({"skeleton": "S-r-000000000004",
+                                "action": "merge_into",
+                                "into": "S-r-000000000002",
+                                "reason_code": "duplicate"})
+    rule = _rule_out()
+    rule["decisions"][0] = {"skeleton": "S-r-000000000002",
+                            "action": "merge_into",
+                            "into": "S-r-000000000004",
+                            "reason_code": "duplicate"}
+    run_dir = _run(root, {"u-a": record, "u-b": rule},
+                   skeleton=skeleton, plan=plan)
+    assemble(root, run_dir)
+    delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
+    assert {e["kind"] for e in delta["entries"]} == {"record", "item"}
+    assembly = json.loads((run_dir / "assembly.json").read_text(encoding="utf-8"))
+    cycled = [u for u in assembly["undecided"] if u.get("reason") == "cycle"]
+    assert sorted(u["skeleton"] for u in cycled) == \
+        ["S-r-000000000002", "S-r-000000000004"]
+    assert all(u["refused"][0].startswith("merge_into cycle across units")
+               for u in cycled)
+    validate("facts-delta.schema.json", delta)
+
+
+def test_a_ref_to_an_entry_the_store_does_not_hold_waits(tmp_path):
+    """I5 — an `F-` ref the store cannot answer is exempt at the unit gate
+    (cross-store refs are), so it lands here. The note waits alone."""
+    root = _root(tmp_path)
+    rule = _rule_out()
+    rule["new"] = [{"kind": "note", "key": "x", "title": "پرسش دربارهٔ تلورانس",
+                    "statement": "تلورانس انحراف هنوز تعیین نشده است.",
+                    "data": {"about": [{"ref": "F-09999"}],
+                             "question": "تلورانس چند گرم است؟"}}]
+    run_dir = _run(root, {"u-a": _record_out(), "u-b": rule})
+    assemble(root, run_dir)
+    delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
+    assert "note" not in {e["kind"] for e in delta["entries"]}
+    assembly = json.loads((run_dir / "assembly.json").read_text(encoding="utf-8"))
+    held = next(u for u in assembly["undecided"] if u["reason"] == "unknown_ref")
+    assert held["refused"] == ["ref F-09999 is in no store entry"]
+    validate("facts-delta.schema.json", delta)
+
+
+def test_a_run_that_assembles_nothing_still_stops(tmp_path, capsys):
+    """The one true stop (I5): u-a never returned, u-b kept only the rule that
+    points at u-a's record, so the hold-back leaves nothing at all. Every
+    held-back reason is printed."""
+    root = _root(tmp_path)
+    rule = _rule_out()
+    rule["decisions"][1] = {"skeleton": "S-i-000000000003", "action": "drop",
+                            "reason_code": "cosmetic"}
+    run_dir = _run(root, {"u-b": rule})
     with pytest.raises(SystemExit) as excinfo:
         assemble(root, run_dir)
     assert excinfo.value.code == 2
-    err = capsys.readouterr().err
-    assert "unit u-b" in err and "unit u-a" in err
+    assert "nothing assembled" in capsys.readouterr().err
+    assert not (run_dir / "facts-delta.json").exists()
+
+
+def test_a_run_that_drops_everything_says_why_it_stopped(tmp_path, capsys):
+    """The stop printed one line per held-back candidate and, when nothing was
+    held back at all, nothing: a run whose units dropped every candidate exited
+    2 in silence and the playbook had no sentence to send."""
+    root = _root(tmp_path)
+    record, rule = _record_out(), _rule_out()
+    record["decisions"] = [{"skeleton": "S-rec-000000000001", "action": "drop",
+                            "reason_code": "cosmetic"}]
+    rule["decisions"] = [{"skeleton": s, "action": "drop",
+                          "reason_code": "cosmetic"}
+                         for s in ("S-r-000000000002", "S-i-000000000003")]
+    run_dir = _run(root, {"u-a": record, "u-b": rule})
+    with pytest.raises(SystemExit) as excinfo:
+        assemble(root, run_dir)
+    assert excinfo.value.code == 2
+    assert "facts-plan: nothing assembled — 3 candidates, 0 held back" \
+        in capsys.readouterr().err
+
+
+def test_a_column_derived_by_a_waiting_rule_keeps_its_table(tmp_path):
+    """The `_hold_back` sever, on `_resolve_refs`' path too: the rule waits for
+    an `F-` ref no store entry carries, and the table whose column it computes
+    lands with the link emptied instead of waiting with it."""
+    root = _root(tmp_path)
+    record = _record_out()
+    record["decisions"][0]["data"]["fields"][0]["derived"] = \
+        {"ref": "S-r-000000000002"}
+    rule = _rule_out()
+    rule["decisions"][0]["data"]["inputs"][1] = {
+        "key": "masraf_vaqei", "unit": "kg", "from": {"ref": "F-09999"}}
+    run_dir = _run(root, {"u-a": record, "u-b": rule})
+    assemble(root, run_dir)
+    delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
+    by_key = {e["key"]: e for e in delta["entries"]}
+    assert "enheraf" not in by_key                     # the rule waits
+    assert by_key["gozaresh_shabane_pitza"]["data"]["fields"][0]["derived"] \
+        is None
+    assembly = json.loads((run_dir / "assembly.json").read_text(encoding="utf-8"))
+    assert [u["reason"] for u in assembly["undecided"]] == ["unknown_ref"]
+    validate("facts-delta.schema.json", delta)
+
+
+def test_an_oversized_attachment_is_named_to_the_owner(tmp_path):
+    """`build` raises the issue; this is the other half — an attachment that
+    fits in no unit is no candidate, so nothing else in the run would ever name
+    it and `gate-b.md` said nothing about the file the unit was over budget
+    for."""
+    root = _root(tmp_path)
+    skeleton = _skeleton()
+    skeleton["issues"].append(
+        {"kind": "oversized", "instance": None, "target": "forms/tahvil",
+         "engine": True, "run_only": True,
+         "description": "«forms/tahvil» بزرگ‌تر از آن است که در یک بخش از کار "
+                        "جا شود؛ در این اجرا کنار گذاشته شد."})
+    run_dir = _run(root, {"u-a": _record_out(), "u-b": _rule_out()},
+                   skeleton=skeleton)
+    assemble(root, run_dir)
+    assembly = json.loads((run_dir / "assembly.json").read_text(encoding="utf-8"))
+    assert {"label": "forms/tahvil", "reason": "oversized", "skeleton": None,
+            "kind": "attachment", "unit": None} in assembly["undecided"]
+    gate = (run_dir / "gate-b.md").read_text(encoding="utf-8")
+    assert "بزرگ‌تر از یک واحد" in gate
+    assert "«forms/tahvil»" in gate
+
+
+def _stop_sites(name):
+    """Every stop left in one module: `(function, the ten source lines above
+    the raise)`."""
+    import facts_plan
+    lines = (pathlib.Path(facts_plan.__file__).parent / name) \
+        .read_text(encoding="utf-8").splitlines()
+    out = []
+    for n, line in enumerate(lines):
+        if line.strip().startswith(("raise SystemExit(2)", "raise _fail(")):
+            function = next(above[4:].split("(")[0]
+                            for above in reversed(lines[:n])
+                            if above.startswith("def "))
+            out.append((function, "\n".join(lines[max(0, n - 10):n])))
+    return out
+
+
+def test_only_the_stops_the_design_keeps_are_left():
+    """§3.2 — nine places used to stop a run for one input. Five are left in
+    the four modules a run goes through, and each is an engine invariant or a
+    run with nothing in it. A new `raise` in any of them fails this test until
+    the design says which row of the table it is."""
+    kept = [("build.py", "plan_units", "candidate(s) in two units"),
+            ("assemble.py", "_outputs", '{unit["id"]}: {message}'),
+            ("assemble.py", "assemble",
+             "A review's own rewrite is refused outright"),
+            ("assemble.py", "assemble", "nothing assembled"),
+            ("cli.py", "check_rebuild", "pass --rebuild to replace the plan")]
+    found = [(module, function, context)
+             for module in ("build.py", "assemble.py", "cli.py", "preflight.py")
+             for function, context in _stop_sites(module)]
+    assert [(m, f) for m, f, _ in found] == [(m, f) for m, f, _ in kept]
+    for (_m, _f, fragment), (_, _, context) in zip(kept, found):
+        assert fragment in context, fragment
 
 
 def test_a_ref_into_a_dropped_candidate_holds_the_entry_back(tmp_path):

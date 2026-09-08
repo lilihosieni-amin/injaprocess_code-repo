@@ -258,3 +258,49 @@ def test_neither_file_grows_the_heading_when_everything_was_read(tmp_path):
     gate = gate_b(tmp_path, skeleton, [],
                   {"department": "cooking", "dropped": [], "undecided": []})
     assert "خوانده نشدند" not in text and "خوانده نشدند" not in gate
+
+
+_HELD = [{"skeleton": "S-rec-1", "kind": "record", "label": "انبار مواد اولیه",
+          "unit": None, "reason": "oversized"},
+         {"skeleton": "S-r-2", "kind": "rule", "label": "مغایرت انبار",
+          "unit": "u-b", "reason": "cycle",
+          "refused": ["merge_into cycle across units u-a, u-b"]},
+         {"skeleton": "S-r-3", "kind": "rule", "label": "کسری روزانه",
+          "unit": "u-b", "reason": "waits", "waits_for": "S-rec-1"}]
+
+
+def test_gate_b_and_the_report_group_what_was_held_back_by_its_reason(tmp_path):
+    """§3.2 — a run no longer stops for one input, so `undecided[]` is now the
+    place the owner reads WHY something is missing. Every member carries a
+    `reason` and each reason has one fixed Persian line; the tables too big for
+    a unit get their own block in both files."""
+    from facts_plan.assemble import UNDECIDED_FA
+    run_dir = _run(tmp_path)
+    _store(tmp_path, [])
+    assembly = json.loads((run_dir / "assembly.json").read_text(encoding="utf-8"))
+    assembly["undecided"] = _HELD
+    (run_dir / "assembly.json").write_text(json.dumps(assembly,
+                                                      ensure_ascii=False),
+                                           encoding="utf-8")
+    skeleton = json.loads((run_dir / "skeleton.json").read_text(encoding="utf-8"))
+    gate = gate_b(tmp_path, skeleton, [], {"department": "cooking",
+                                           "dropped": [], "undecided": _HELD})
+    text = report(tmp_path, run_dir).read_text(encoding="utf-8")
+
+    assert "بزرگ‌تر از یک واحد" in gate
+    assert "کنار گذاشته شد: بزرگ‌تر" not in gate   # an attachment unit is still read
+    assert "«انبار مواد اولیه»" in gate
+    assert "بررسی‌نشده: ۳ مورد" in gate           # the count gate B always had
+    for reason in ("oversized", "cycle", "waits"):
+        assert UNDECIDED_FA[reason] in text
+    assert "«مغایرت انبار»" in text and "«کسری روزانه»" in text
+    for banned in ("S-rec-1", "S-r-2", "u-b", "cycle", "oversized"):
+        assert banned not in text and banned not in gate
+
+
+def test_every_held_back_reason_has_the_owner_s_words():
+    """A `reason` the report cannot name comes out blank, which tells the owner
+    nothing — so the two lists are held equal here."""
+    from facts_plan.assemble import UNDECIDED_FA
+    assert set(UNDECIDED_FA) == {"oversized", "cycle", "target_dropped",
+                                 "unknown_ref", "refused", "waits", "failed"}

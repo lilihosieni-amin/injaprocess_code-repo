@@ -134,19 +134,66 @@ def test_a_candidate_no_unit_holds_exits_2(capsys):
     assert "S-rec-000000000001" in capsys.readouterr().err
 
 
-def test_an_unsplittable_group_exits_2(capsys):
-    skeleton = {"candidates": [
+def _two_tabs_one_axis():
+    """Two records on ONE instance — so the workbook axis has a single value
+    and `split_unit` has nothing left to split on. The first is 400 fields
+    wide (24150 out-tokens on its own), the second is one field."""
+    return {"candidates": [
         {"id": "S-rec-000000000001", "kind": "record",
-         "payload": {"instances": [{"key": "x__s1"}],
-                     "fields": [{"key": "c_a"}] * 400}}],
+         "payload": {"instances": [{"key": "x__s1", "sheet": "بزرگ"}],
+                     "fields": [{"key": "c_a"}] * 400}},
+        {"id": "S-rec-000000000002", "kind": "record",
+         "payload": {"instances": [{"key": "x__s1", "sheet": "کوچک"}],
+                     "fields": [{"key": "c_a"}]}}],
         "instances": [{"key": "x__s1", "sheetId": 1}]}
+
+
+def test_a_unit_with_no_axis_left_sets_its_biggest_candidates_aside():
+    """I5 — a table too big to fit a unit costs the owner that table, never the
+    run. Until 2026-09-08 `split_unit` exited 2 here and the whole department
+    went unplanned for one oversized tab."""
+    skeleton = _two_tabs_one_axis()
     unit = {"id": "u-wb-x", "type": "workbook", "inputs": [],
-            "candidates": ["S-rec-000000000001"], "nodes": [],
-            "est_tokens_in": 0, "est_tokens_out": 24150}
-    with pytest.raises(SystemExit) as excinfo:
-        split_unit(unit, skeleton, lambda u: "x")
-    assert excinfo.value.code == 2
-    assert "u-wb-x" in capsys.readouterr().err
+            "candidates": ["S-rec-000000000001", "S-rec-000000000002"],
+            "nodes": [], "est_tokens_in": 0, "est_tokens_out": 24360}
+    parts = split_unit(unit, skeleton, lambda u: "x")
+    assert [p["id"] for p in parts] == ["u-wb-x"]
+    assert parts[0]["candidates"] == ["S-rec-000000000002"]   # the small one stays
+    assert parts[0]["est_tokens_out"] <= OUT_BUDGET
+    issue, = skeleton["issues"]
+    assert (issue["kind"], issue["target"], issue["run_only"]) == \
+        ("oversized", "S-rec-000000000001", True)
+    assert "بزرگ" in issue["description"]     # the label, as the owner reads it
+
+
+def test_an_attachment_unit_over_budget_is_named_rather_than_silent():
+    """An attachment is no candidate: `_axis_parts` has no axis for it and
+    `_set_aside` has nothing to step out, so the unit went to the model over
+    budget and the owner was told nothing at all. It is still dispatched — a
+    file that cannot be split is better read in part than not at all — but the
+    run now names the file that made it so, under the same heading as a table
+    too big to fit."""
+    skeleton = {"candidates": [], "instances": []}
+    unit = {"id": "u-attachments", "type": "attachment",
+            "inputs": ["departments/cooking/attachments/.text/forms__tahvil.txt"],
+            "candidates": [], "nodes": [], "est_tokens_in": 0,
+            "est_tokens_out": 0}
+    parts = split_unit(unit, skeleton, lambda u: "x" * (IN_BUDGET * 8))
+    assert [p["id"] for p in parts] == ["u-attachments"]
+    issue, = skeleton["issues"]
+    assert (issue["kind"], issue["run_only"]) == ("oversized", True)
+    assert "forms/tahvil" in issue["description"]
+
+
+def test_a_set_aside_candidate_is_in_no_unit_and_trips_no_invariant():
+    """The placed/nowhere invariant counts a set-aside candidate as placed
+    nowhere on purpose — it is the one candidate no unit may list."""
+    skeleton = _two_tabs_one_axis()
+    manifest = {"workbooks": [_wb("x", "MandeShab__ChaleBagh__Amar__X")]}
+    units = plan_units(skeleton, workbook_groups(manifest, "cooking"), [], [], [])
+    assert [u["candidates"] for u in units] == [["S-rec-000000000002"]]
+    assert "unit" not in skeleton["candidates"][0]
+    assert [i["target"] for i in skeleton["issues"]] == ["S-rec-000000000001"]
 
 
 def test_input_md_carries_the_candidates_the_slices_and_both_cards():
