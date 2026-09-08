@@ -51,7 +51,6 @@ REL_THREADED = "/relationships/threadedComment"
 _HEAD_ROWS = 5                      # rows searched for a header row
 _KEEP_ROWS = 9                      # rows kept: a header at row 5, plus four
 _LABEL_COLS = 2                     # left-most non-empty columns kept whole
-_CODE = re.compile(r"#{1,2}[^\s#]+")
 # `#NAME?` is a cached error, not a code — Google leaves plenty of them behind.
 _ERROR_NAME = re.compile(r"^#(REF|NAME|DIV|VALUE|NULL|NUM|N/A|ERROR|GETTING_DATA)",
                          re.I)
@@ -670,15 +669,21 @@ def row_labels(sheet, head, header_index, conventions=DEFAULT_CONVENTIONS):
     return {}
 
 
-def _codes(head):
-    """The `##`/`#` codes printed in a tab's first rows — the estate labels its
-    tables that way. A cached `#DIV/0!` is not one of them."""
+def _codes(head, conventions=DEFAULT_CONVENTIONS):
+    """The item codes printed in a tab's first rows — the estate labels its
+    tables that way, in its own namespaces (§3.1). A cached `#DIV/0!` is not
+    one of them.
+
+    `codes[]` is what `_reference_tab_proposal` reads a definition table by, so
+    an estate whose namespace is not `##`/`#` would otherwise dump no codes and
+    be proposed no reference tab at all (I6).
+    """
     out = []
     for row in head:
         for value in row:
             if _is_error(value):
                 continue
-            for code in _CODE.findall(value):
+            for code in conventions.code_in_head.findall(value):
                 if code not in out and not _ERROR_NAME.match(code):
                     out.append(code)
     return out
@@ -914,7 +919,8 @@ def dump_workbook(xlsx_path, structure_md_path, out_dir, reference_tabs=(),
                      "dimension": sheet["dimension"] or _extent(sheet),
                      "rows": sheet["max_row"], "cols": sheet["max_col"],
                      "head": head, "header_row": index,
-                     "codes": _codes(head), "empty": sheet["empty"]}
+                     "codes": _codes(head, conventions),
+                     "empty": sheet["empty"]}
             labels = ({} if is_ids_tab(tab["name"]) or is_mirror_tab(tab_formulas)
                       else row_labels(sheet, head, index, conventions))
             if labels:

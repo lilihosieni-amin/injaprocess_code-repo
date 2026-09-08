@@ -11,8 +11,10 @@ import re
 import tokenize
 
 import pytest
-from dump_workbook import init_manifest
+from dump_workbook import _codes, _reference_tab_proposal, init_manifest
+from dump_workbook.cli import main
 from engine_common import validate
+from fixtures.make_workbook import make_workbook
 from merge_facts.conventions import (
     DEFAULT,
     DEFAULTS,
@@ -158,12 +160,71 @@ def test_from_manifest_takes_the_object_as_it_stands():
 
 
 # --------------------------------------------------------------------------
+# the dump's own codes[] (fix round 1)
+
+
+def test_the_dumps_codes_are_read_in_the_estates_namespace(tmp_path):
+    """`codes[]` is what `_reference_tab_proposal` reads a definition table by,
+    so a `##`-only scan left an estate with another namespace no codes and no
+    reference tab proposed — the failure I6 exists to close."""
+    _write(tmp_path, {"schema_version": 1, "branches": [], "workbooks": [],
+                      "conventions": {"code_namespaces": {"@": "sku"}}})
+    conventions = load(tmp_path)
+    head = [["شکر @12", "مقدار"], ["", ""]]
+    assert _codes(head, conventions) == ["@12"]
+    assert _codes(head) == []                    # …and not in today's estate
+    dump = {"formulas": [],
+            "sheets": {"sheets": [{"name": "قند", "head": head, "header_row": 1,
+                                   "codes": _codes(head, conventions)}]}}
+    assert _reference_tab_proposal(dump) == ["قند"]
+
+
+def test_todays_codes_keep_their_non_digit_tail():
+    """The dumper's scan is looser than `code_in_text` on purpose: a tab heads
+    itself «گزارش روزانه ##RPT-1», and `test_dump_workbook` pins that. A cached
+    `#NAME?` is still not a code."""
+    assert _codes([["گزارش روزانه ##RPT-1", "#NAME?"]]) == ["##RPT-1"]
+    assert _codes([["پنیر ##1 و پیتزا #61"]]) == ["##1", "#61"]
+
+
+def test_the_dump_reads_the_manifest_end_to_end(tmp_path, monkeypatch, capsys):
+    """The whole wiring in one run: the same workbook dumps its `##RPT-1` under
+    today's manifest and nothing at all under one that declares `@` — so the
+    codes really do come off the manifest and not off this module."""
+    root = tmp_path / "data"
+    sheets = root / "attachments" / "sheets"
+    make_workbook(sheets / "Amar__Pitza" / "Pitza.xlsx", spreadsheet_id="SID1")
+    monkeypatch.setenv("DATA_ROOT", str(root))
+
+    assert main(["--init-manifest"]) == 0
+    dumped = json.loads((sheets / ".dump" / "SID1" / "sheets.json").read_text(
+        encoding="utf-8"))
+    assert {s["name"]: s["codes"] for s in dumped["sheets"]}["آمار"] == ["##RPT-1"]
+
+    manifest = json.loads((sheets / "manifest.json").read_text(encoding="utf-8"))
+    manifest["conventions"]["code_namespaces"] = {"@": "sku"}
+    (sheets / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False),
+                                          encoding="utf-8")
+    assert main(["--init-manifest"]) == 0
+    dumped = json.loads((sheets / ".dump" / "SID1" / "sheets.json").read_text(
+        encoding="utf-8"))
+    assert {s["name"]: s["codes"] for s in dumped["sheets"]}["آمار"] == []
+    # …and the answer the manifest carries is still the one it carries.
+    assert json.loads((sheets / "manifest.json").read_text(
+        encoding="utf-8"))["conventions"]["code_namespaces"] == {"@": "sku"}
+
+
+# --------------------------------------------------------------------------
 # I6 itself
 
 
-#: What no module that reads the estate may carry as a literal any more.
+#: What no module that reads the estate may carry as a literal any more. The
+#: last alternative is the code-namespace regex itself: `dump_workbook._CODE`
+#: was `#{1,2}[^\\s#]+` and shipped past the first round of this test, which
+#: only looked for words.
 _ESTATE_LITERALS = re.compile(
-    "چاله باغ|ناهارخوران|chalebagh|naharkhoran|فروردین|Column [0-9]|Table_")
+    "چاله باغ|ناهارخوران|chalebagh|naharkhoran|فروردین|Column [0-9]|Table_"
+    r"|#\{1,2\}")
 
 _ENGINE = pathlib.Path(__file__).resolve().parents[1]
 _READERS = ("facts_plan/build.py", "dump_workbook/__init__.py",

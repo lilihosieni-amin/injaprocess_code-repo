@@ -78,6 +78,11 @@ class Conventions:
     table_prefix: str
     #: Every namespace's codes in a run of text — `(?:##|#)[0-9]+`.
     code_in_text: re.Pattern
+    #: The same, as the DUMPER scans a tab's first rows: the tail is «anything
+    #: up to a space or another namespace», not digits, because a tab may head
+    #: itself «گزارش روزانه ##RPT-1». It answers *does this tab print codes*,
+    #: never *which key a row gets* — that is `code_in_text`'s stricter job.
+    code_in_head: re.Pattern
     #: `{namespace: pattern}`, each matching only its own namespace's codes.
     code_in_cell: dict
     #: A branch token wherever it sits in an identifier (`…__ChaleBagh__…`).
@@ -167,6 +172,12 @@ def from_manifest(manifest):
         code_in_text=re.compile(
             "(?:%s)[0-9]+" % "|".join(
                 re.escape(n) for n in sorted(namespaces, key=len, reverse=True))
+            if namespaces else r"(?!)"),
+        code_in_head=re.compile(
+            "(?:%s)[^\\s%s]+" % (
+                "|".join(re.escape(n) for n in
+                         sorted(namespaces, key=len, reverse=True)),
+                "".join(re.escape(n[0]) for n in sorted({n[0] for n in namespaces})))
             if namespaces else r"(?!)"),
         code_in_cell={n: cell_pattern(n, namespaces) for n in namespaces},
         branch_in_text=_alternation(tokens))
