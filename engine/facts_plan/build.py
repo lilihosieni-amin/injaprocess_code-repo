@@ -367,6 +367,23 @@ def load_estate(root):
     return estate
 
 
+def plans_here(row, department):
+    """Is this manifest row one the department's run reads?
+
+    Two answers to that question used to live in this module. `workbook_groups`
+    has always skipped a row the owner has not placed (`confirmed: false`) —
+    §2.1's Stage 2 leaves the judgement column open and `report.md` names the
+    file under «فایل‌هایی که در این اجرا خوانده نشدند». Every pass that MINTS
+    candidates read the department alone, so an unplaced row minted templates,
+    rules and script rules that `plan_units` then had no group for, and the
+    run stopped on its own invariant («… in none») — one unjudged row costing
+    the whole department its plan (I5). One predicate, one answer.
+    """
+    return (department is None
+            or (department in (row.get("departments") or [])
+                and bool(row.get("confirmed"))))
+
+
 def template_signature(tab_name, head_row, conventions=DEFAULT_CONVENTIONS):
     """(folded tab name, the header row's item codes in order). An empty cell,
     a placeholder header and an un-coded column contribute nothing."""
@@ -440,7 +457,7 @@ def _instances(estate, department, conventions=DEFAULT_CONVENTIONS):
     out = []
     for sid, dump in sorted(estate.items()):
         row = dump["row"]
-        if department not in (row.get("departments") or []):
+        if not plans_here(row, department):
             continue
         for name, sheet in sorted(dump["sheets"].items()):
             index = sheet.get("header_row")
@@ -995,7 +1012,7 @@ def script_rules(estate, department, called):
     out = []
     for _, dump in sorted(estate.items()):
         row = dump["row"]
-        if department not in (row.get("departments") or []):
+        if not plans_here(row, department):
             continue
         for script in row.get("scripts") or []:
             path = dump["sheets_root"] / script
@@ -1191,8 +1208,7 @@ def import_edges(estate, refs, department=None,
     """
     edges, issues = [], []
     for sid, dump in sorted(estate.items()):
-        if department is not None and \
-                department not in (dump["row"].get("departments") or []):
+        if not plans_here(dump["row"], department):
             continue
         short = dump["short"]
         by_tab, scan = {}, []
@@ -1248,8 +1264,7 @@ def reference_tab_issues(estate, department=None):
     out = []
     for sid, dump in sorted(estate.items()):
         row = dump["row"]
-        if department is not None and \
-                department not in (row.get("departments") or []):
+        if not plans_here(row, department):
             continue
         copy = {**row, "reference_tabs": list(row.get("reference_tabs") or [])}
         for issue in manifest_reconcile(copy, {
@@ -1473,8 +1488,7 @@ def workbook_groups(manifest, department, reference_only=(),
     ponytail: `twin_of` is resolved in one pass over pairs; the estate has two
     twins and no chains, and a union-find for two pairs is a joke.
     """
-    rows = [w for w in manifest["workbooks"]
-            if department in (w.get("departments") or []) and w.get("confirmed")]
+    rows = [w for w in manifest["workbooks"] if plans_here(w, department)]
     key_of = {w["short"]: (w["short"] if w["short"] in reference_only
                            else group_key(w, conventions)) for w in rows}
     for w in rows:
