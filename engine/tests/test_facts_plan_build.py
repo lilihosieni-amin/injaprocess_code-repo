@@ -158,7 +158,7 @@ def test_no_issue_description_names_an_id_or_a_path(tmp_path):
     """Every `ISSUE_TEXT` kind, rendered over the mini estate. `description`
     reaches `gate-b.md` and `report.md` verbatim, so a column letter and a tab
     name are all the locating it may do."""
-    from facts_plan.build import ISSUE_TEXT, _row_labels
+    from facts_plan.build import ISSUE_TEXT, _issue, _row_labels
     from facts_plan_helpers import estate as whole_estate
 
     root = tmp_path / "e"
@@ -187,6 +187,10 @@ def test_no_issue_description_names_an_id_or_a_path(tmp_path):
     sheet["head"][sheet["header_row"] - 1][0] = "ردیف"      # a second header
     issues += _row_labels(labelled[:2], est)[1]
     issues += reference_rows(est["SBOM"], "مواد", ["نام", "نام"], [])[2]
+    # A candidate `split_unit` sets aside (§3.2) names the owner's own label and
+    # nothing else — the mini estate is too small to be over budget.
+    issues.append(_issue("oversized", target="S-rec-000000000001",
+                         label="انبار مواد اولیه"))
 
     assert {i["kind"] for i in issues} == set(ISSUE_TEXT)
     for issue in issues:

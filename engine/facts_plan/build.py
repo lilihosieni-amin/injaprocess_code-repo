@@ -242,7 +242,7 @@ _FORMULA_COLUMNS = ("sheet", "range", "group", "formula", "count", "cached",
 RUN_ONLY = frozenset({"reference_tab_is_mirror", "reference_tab_is_ids",
                       "reference_tab_computes", "row_labels_ambiguous",
                       "row_labels_partial", "unheaded_formula",
-                      "unread_attachment"})
+                      "unread_attachment", "oversized"})
 
 # One Persian sentence per issue kind — `gate-b.md` and `report.md` print these
 # verbatim, so no caller ever composes owner-facing prose (QF-54).
@@ -253,6 +253,8 @@ ISSUE_TEXT = {
                             "ستون تکرار شده است: {detail}.",
     "row_labels_partial": "نام سطرها فقط در بعضی نسخه‌ها ثبت شده است: {detail}.",
     "row_labels_ambiguous": "ستون نام سطرها در نسخه‌ها یکسان نیست: {detail}.",
+    "oversized": "«{label}» بزرگ‌تر از آن است که در یک بخش از کار جا شود؛ "
+                 "در این اجرا کنار گذاشته شد.",
 }
 
 
@@ -1579,6 +1581,8 @@ def _axis_parts(unit, skeleton, conventions=DEFAULT_CONVENTIONS):
             return []
         return [(_code_slug(by_id[part[0]]["payload"]["code"], conventions),
                  part) for part in (ids[:half], ids[half:])]
+    if "#" not in (unit["inputs"] or [""])[0]:
+        return []
     first, last = (int(n[1:]) for n in
                    unit["inputs"][0].rsplit("#", 1)[1].split("-"))
     if last <= first:
@@ -1589,16 +1593,37 @@ def _axis_parts(unit, skeleton, conventions=DEFAULT_CONVENTIONS):
             for a, b in ((first, middle), (middle + 1, last))]
 
 
+def _set_aside(unit, skeleton, render, by_id):
+    """A unit over budget with no axis left to split on (I5): its largest
+    candidates step out, largest first, until what is left fits. Each becomes a
+    run-only `oversized` issue naming it in the owner's words, and no unit
+    lists it — one table too big for a unit costs the owner that table, never
+    the run. Until 2026-09-08 `build` exited 2 here and planned nothing at all.
+    """
+    order = sorted(unit["candidates"],
+                   key=lambda c: (-est_tokens_out([by_id[c]], 0, False), c))
+    text = render(unit)
+    while order and not fits(unit, text):
+        cid = order.pop(0)
+        unit["candidates"] = [c for c in unit["candidates"] if c != cid]
+        skeleton.setdefault("issues", []).append(
+            _issue("oversized", target=cid, label=label_of(by_id[cid])))
+        text = render(unit)
+        unit["est_tokens_in"] = estimate_tokens(text)
+        unit["est_tokens_out"] = est_tokens_out(
+            [by_id[c] for c in unit["candidates"]], unit["est_tokens_in"],
+            unit["type"] == "transcript")
+    return [unit]
+
+
 def split_unit(unit, skeleton, render, conventions=DEFAULT_CONVENTIONS):
     """A unit over a bound splits along its axis and each part is named after
-    it (`u-wb-gozaresh-s41`); a part with one axis value left cannot split, and
-    `build` exits 2 rather than dispatch a unit that will be truncated."""
+    it (`u-wb-gozaresh-s41`); a part with one axis value left cannot split, so
+    its biggest candidates are set aside instead."""
     parts = _axis_parts(unit, skeleton, conventions)
-    if len(parts) < 2:
-        print(f"facts-plan: unit {unit['id']} is over budget and has no axis "
-              "left to split on", file=sys.stderr)
-        raise SystemExit(2)
     by_id = {c["id"]: c for c in skeleton["candidates"]}
+    if len(parts) < 2:
+        return _set_aside(unit, skeleton, render, by_id)
     out = []
     for axis, members in parts:
         if unit["type"] == "workbook":
@@ -1719,7 +1744,11 @@ def plan_units(skeleton, groups, chunks, items, attachments,
     # silently lost work.
     placed = collections.Counter(cid for unit in out for cid in unit["candidates"])
     twice = sorted(cid for cid, n in placed.items() if n > 1)
-    nowhere = sorted(set(by_id) - set(placed))
+    # A candidate set aside for its size is the one candidate no unit may list:
+    # it is placed nowhere on purpose, and the owner is told so by its issue.
+    aside = {i["target"] for i in skeleton.get("issues") or []
+             if i["kind"] == "oversized"}
+    nowhere = sorted(set(by_id) - set(placed) - aside)
     if twice or nowhere:
         print(f"facts-plan: {len(twice)} candidate(s) in two units {twice[:3]}, "
               f"{len(nowhere)} in none {nowhere[:3]}", file=sys.stderr)
@@ -2460,7 +2489,9 @@ def build(root, department, run_dir, recordings, *, rebuild=False):
         conventions=conventions)
 
     # After `plan_units`, not before: `skeleton.json`'s candidates carry the
-    # unit they were planned into, and that is what `plan_units` assigns.
+    # unit they were planned into, and that is what `plan_units` assigns — and
+    # the candidates it set aside for their size are issues of the run (I5).
+    issues += skeleton.pop("issues", [])
     write_skeleton(run_dir, department, run_dir.name, skeleton["unit_symbols"],
                    candidates, instances, imports, issues)
     write_text_atomic(run_dir / "functions.md", function_library(estate))

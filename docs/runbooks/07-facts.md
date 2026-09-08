@@ -493,6 +493,37 @@ stderr grouped by rule with one example each, and the verb exits 2. Pass
 `--recordings a,b` to include transcript units, as `build` does. On 2026-09-08
 all nine departments exited 0.
 
+### When a run stops, and when it does not (I5, added 2026-09-08)
+
+On 2026-09-08 one unfinished table cost the owner a whole run. **A run now
+stops only when nothing at all can be assembled.** Every other refusal names
+one candidate or one entry, holds *it* back, and the rest of the run lands in
+the store. The held-back list is `assembly.json`'s `undecided[]`, and the owner
+reads it grouped by reason at the end of `report.md`.
+
+| where | what it does | the owner sees |
+|---|---|---|
+| a unit is over budget with no axis left to split on | its largest candidates are set aside, largest first, until the unit fits | «کنار گذاشته شد: بزرگ‌تر از یک واحد» in `gate-b.md` and `report.md`, naming each table |
+| two units point `merge_into` at each other | every candidate on the cycle is held back | «به هم ارجاع می‌دادند و هیچ‌کدام مقصد نبود» |
+| a candidate merges into a target no unit kept | the merger is held back naming what it waited for | «موردی که در آن ادغام می‌شد ثبت نشد» |
+| an entry cites an `F-` id no store entry carries | the entry is held back, and whatever cites it waits with it | «به موردی ارجاع می‌داد که در سامانه نیست» |
+| an entry fails the assembly's own lint (step 8) | the entry is held back, dependants with it | «با قرارداد ثبت جور در نیامد» |
+| an entry cites a candidate a unit dropped or never decided | the entry waits for it | «منتظر بخشی است که در این اجرا تمام نشد» |
+| a unit spent both attempts and returned nothing usable | its candidates are held back | «در این اجرا بررسی نشد» |
+
+Five stops remain, and none of them is one input's fault:
+
+| stop | why it stays |
+|---|---|
+| `build` — a candidate planned into two units or into none | an engine invariant; a candidate decided twice contradicts itself and one decided nowhere is lost work |
+| `facts-plan build` without `--rebuild` once a unit is done | protects finished work; resume through `facts-plan status` |
+| `assemble` — a unit's latest output does not validate and it still has an attempt | the run is not ready; Stage U re-dispatches that unit |
+| `assemble` — the review's own rewrite fails the lint | holding it back would bury the unit's sound version under it |
+| `assemble` — nothing at all could be assembled | the one true stop; every held-back reason is printed |
+
+A new `raise SystemExit(2)` in `build.py` or `assemble.py` fails
+`test_only_the_stops_the_design_keeps_are_left` until this table gains a row.
+
 ## 11. What the owner sees — the two message contracts
 
 Two files, both written by the engine, both sent **verbatim** by the playbook.
