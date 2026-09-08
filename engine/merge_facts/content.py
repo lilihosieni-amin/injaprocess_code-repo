@@ -32,6 +32,11 @@ import re
 
 from merge_facts import KEY_RE, KIND_ORDER, PROC_ID_RE, SEGMENT_RE, is_open, path_exists
 
+#: The code a sheet writes into a `refItems` cell, per namespace: `##1` for the
+#: ingredient list, `#61` for the food list — a lone `#` never matches a `##`.
+_CODE_IN_CELL = {"##": re.compile(r"##[0-9]+"),
+                 "#": re.compile(r"(?<!#)#(?!#)[0-9]+")}
+
 JALALI_RE = re.compile(r"^[0-9]{4}-[0-9]{2}(-[0-9]{2})?$")
 
 # §7 FEEL subset keywords — never checked against inputs/outputs/calls.
@@ -301,17 +306,25 @@ def _check_keys(entry, messages, label):
                 and not KEY_RE.fullmatch(str(row["key"])):
             messages.append(f"{label}: row key {row['key']!r} is not a "
                             f"minted key")
-    refitem_fields = {f["key"] for f in data.get("fields") or []
-                      if isinstance(f, dict) and f.get("refItems") and f.get("key")}
+    refitem_fields = {f["key"]: (f["refItems"].get("namespace") or "##")
+                      for f in data.get("fields") or []
+                      if isinstance(f, dict) and isinstance(f.get("refItems"), dict)
+                      and f.get("key")}
     for row in data.get("rows") or []:
         if not isinstance(row, dict):
             continue
-        for name in refitem_fields:
+        for name, namespace in refitem_fields.items():
             value = row.get(name)
-            if isinstance(value, str) and not SEGMENT_RE.fullmatch(value):
+            # A cell names an item either by its key or by the code the
+            # sheets write into the text («پنیر پیتزا ##1», «اینجا پیتزا #61»)
+            # — the same code `reference_rows` keys the row by. A column of
+            # such cells is exactly what `refItems` is for; refusing the code
+            # form made a unit that followed its card fail at the cap.
+            if isinstance(value, str) and not SEGMENT_RE.fullmatch(value) \
+                    and not _CODE_IN_CELL[namespace].search(value):
                 messages.append(f"{label}: refItems cell {name}={value!r} "
-                                f"on row {row.get('key')!r} is not a minted "
-                                f"segment")
+                                f"on row {row.get('key')!r} is neither an "
+                                f"item key nor a {namespace} code")
 
 
 # --------------------------------------------------------------------------- #

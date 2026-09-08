@@ -650,16 +650,106 @@ def test_two_records_on_one_tab_are_flagged_template_split(tmp_path):
            "(gozaresh_shabane_digar) both claim SID/پیتزا" in text
 
 
-def test_a_ref_into_an_undecided_candidate_names_both_units(tmp_path, capsys):
+def test_a_ref_into_an_undecided_candidate_holds_the_entry_back(tmp_path):
     """1a — the candidate is neither kept nor dropped because its unit never
-    returned; the message still has to say which unit that was."""
+    returned. The entry that points at it is held back with it (§2.6 step 5:
+    a gap the report carries), never a wall: on 2026-09-08 one unfinished
+    table cost the owner every other entry of a 14-unit run."""
     root = _root(tmp_path)
     run_dir = _run(root, {"u-b": _rule_out()})           # u-a never returned
-    with pytest.raises(SystemExit) as excinfo:
-        assemble(root, run_dir)
-    assert excinfo.value.code == 2
-    err = capsys.readouterr().err
-    assert "u-b: ref S-rec-000000000001 names a candidate unit u-a" in err
+    result = assemble(root, run_dir)
+    delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
+    assert [e["kind"] for e in delta["entries"]] == ["item"]   # the rule waits
+    assembly = json.loads((run_dir / "assembly.json").read_text(encoding="utf-8"))
+    held = [u for u in assembly["undecided"] if u["skeleton"] == "S-r-000000000002"]
+    assert held and held[0]["unit"] == "u-b" \
+        and held[0]["waits_for"] == "S-rec-000000000001" \
+        and held[0]["waits_for_unit"] == "u-a"
+    assert result["undecided"] == 2                       # the record, the rule
+    assert set(assembly["provenance"]) == {e["id"] for e in delta["entries"]}
+    validate("facts-delta.schema.json", delta)
+
+
+def test_an_entry_the_assembly_refuses_is_held_back_not_the_run(tmp_path):
+    """Step 8 — a rule that calls another unit's rule and uses an identifier
+    that rule never declares passes its own gate (the call is `T-0` there, so
+    the identifier is exempt) and fails only here. On 2026-09-08 the central
+    report's rule did exactly that over the raw-materials table, and the
+    whole run was refused for it. Now the rule waits, the rest lands."""
+    root = _root(tmp_path)
+    _seed_units(root)
+    record, rule = _record_out(), _rule_out()
+    record["new"] = [_tol_new(5)]                       # u-a mints `tol`
+    rule["decisions"][0]["data"]["expr"] = \
+        "enheraf = masraf_vaqei - masraf_elami - gram_dar_pors"
+    rule["decisions"][0]["data"]["calls"] = [{"ref": "N-u-a-0"}]
+    run_dir = _run(root, {"u-a": record, "u-b": rule})
+    for unit in ("u-a", "u-b"):
+        assert validate_unit(root, run_dir,
+                             run_dir / "units" / unit / "out.1.json") == []
+    result = assemble(root, run_dir)
+    delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
+    assert "enheraf" not in {e["key"] for e in delta["entries"]}
+    assert {e["key"] for e in delta["entries"]} >= {"gozaresh_shabane_pitza", "tol"}
+    assembly = json.loads((run_dir / "assembly.json").read_text(encoding="utf-8"))
+    held = next(u for u in assembly["undecided"] if u["unit"] == "u-b")
+    assert held["kind"] == "rule" and any("gram_dar_pors" in l for l in held["refused"])
+    assert set(assembly["provenance"]) == {e["id"] for e in delta["entries"]}
+    assert result["undecided"] == 1
+    validate("facts-delta.schema.json", delta)
+    assert simulate(root, run_dir / "facts-delta.json", run_dir)[1] == []
+
+
+def test_holding_a_rule_back_keeps_the_table_whose_column_it_derives():
+    """`_hold_back` — a record whose field is `derived` by the waiting rule
+    keeps its place with the link left empty; a rule that READS the waiting
+    rule waits with it."""
+    from facts_plan.assemble import _hold_back
+    table = {"id": "T-1", "kind": "record", "key": "gozaresh", "title": "گزارش",
+             "_skeleton": "S-rec-1", "_unit": "u-a",
+             "data": {"fields": [{"key": "masraf", "derived": {"ref": "T-2"}}]}}
+    rule = {"id": "T-2", "kind": "rule", "key": "masraf_vaqei", "title": "مصرف",
+            "_skeleton": "S-r-2", "_unit": "u-a", "data": {"inputs": []}}
+    reader = {"id": "T-3", "kind": "rule", "key": "enheraf", "title": "انحراف",
+              "_skeleton": "S-r-3", "_unit": "u-b",
+              "data": {"calls": [{"ref": "T-2"}], "inputs": []}}
+    state = {"undecided": [], "provenance": {"T-1": "u-a", "T-2": "u-a",
+                                             "T-3": "u-b"}, "flags": []}
+    kept = _hold_back([table, rule, reader], state, {"T-2": ["expr identifier x"]})
+    assert [e["id"] for e in kept] == ["T-1"]
+    assert table["data"]["fields"][0]["derived"] is None
+    assert [(u["skeleton"], u["refused"][0][:9]) for u in state["undecided"]] == \
+        [("S-r-2", "expr iden"), ("S-r-3", "waits for")]
+    assert set(state["provenance"]) == {"T-1"}
+
+
+def test_a_reference_tables_rows_follow_the_fields_renames(tmp_path):
+    """The engine builds a reference table's rows and `primaryKey` over the
+    same provisional `c_<letter>` keys its fields carry; when the unit renames
+    the fields, the rows and the key rename with them — or the engine's own
+    rows fail its own gate, which is what killed the raw-materials unit twice."""
+    root = _root(tmp_path)
+    _seed_units(root)
+    skeleton = _skeleton()
+    skeleton["candidates"][0]["payload"].update({
+        "role": "reference", "primaryKey": ["c_h"],
+        "fields": [{"key": "c_h", "title": "نام", "columns": {"pitza__s5": "H"}},
+                   {"key": "c_i", "title": "وزن", "columns": {"pitza__s5": "I"}}],
+        "rows": [{"key": "food_1", "c_h": "پنیر پیتزا ##1", "c_i": "250.0"}]})
+    record = _record_out()
+    record["decisions"][0]["data"] = {
+        "role": "reference",
+        "fields": [{"from": "c_h", "key": "nam", "type": "string"},
+                   {"from": "c_i", "key": "vazn", "type": "number", "unit": "kg"}]}
+    run_dir = _run(root, {"u-a": record, "u-b": _rule_out()}, skeleton=skeleton)
+    assert validate_unit(root, run_dir, run_dir / "units" / "u-a" / "out.1.json") == []
+    assemble(root, run_dir)
+    delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
+    table = next(e for e in delta["entries"] if e["kind"] == "record")
+    assert table["data"]["primaryKey"] == ["nam"]
+    assert table["data"]["rows"] == [{"key": "food_1", "nam": "پنیر پیتزا ##1",
+                                      "vazn": "250.0"}]
+    assert simulate(root, run_dir / "facts-delta.json", run_dir)[1] == []
 
 
 def test_merge_into_a_dropped_target_names_both_units(tmp_path, capsys):
@@ -688,20 +778,23 @@ def test_merge_into_a_dropped_target_names_both_units(tmp_path, capsys):
     assert "unit u-b" in err and "unit u-a" in err
 
 
-def test_a_ref_into_a_dropped_candidate_names_both_units(tmp_path, capsys):
-    """1a — the rule of one unit reads the record another unit threw away, and
-    no delta may be written on a ref that resolves to nothing."""
+def test_a_ref_into_a_dropped_candidate_holds_the_entry_back(tmp_path):
+    """1a — the rule of one unit reads the record another unit threw away. No
+    delta may carry a ref that resolves to nothing, so the rule waits in
+    `undecided[]` naming the unit that dropped its target; the rest lands."""
     root = _root(tmp_path)
     record = _record_out()
     record["decisions"][0] = {"skeleton": "S-rec-000000000001",
                               "action": "drop", "reason_code": "cosmetic"}
     run_dir = _run(root, {"u-a": record, "u-b": _rule_out()})
-    with pytest.raises(SystemExit) as excinfo:
-        assemble(root, run_dir)
-    assert excinfo.value.code == 2
-    err = capsys.readouterr().err
-    assert "u-b" in err and "u-a" in err
-    assert not (run_dir / "facts-delta.json").exists()
+    assemble(root, run_dir)
+    delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
+    assert [e["kind"] for e in delta["entries"]] == ["item"]
+    assembly = json.loads((run_dir / "assembly.json").read_text(encoding="utf-8"))
+    held = next(u for u in assembly["undecided"] if u["unit"] == "u-b")
+    assert held["waits_for"] == "S-rec-000000000001" \
+        and held["waits_for_unit"] == "u-a"
+    assert [d["skeleton"] for d in assembly["dropped"]] == ["S-rec-000000000001"]
 
 
 def test_a_unit_that_spent_both_attempts_leaves_undecided_candidates(tmp_path):

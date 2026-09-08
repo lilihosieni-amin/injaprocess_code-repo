@@ -1862,7 +1862,12 @@ KIND_NOTE = {
     "record": "ستونی که خانه‌هایش نام هستند `type: string` است؛ `refItems` فقط "
               "برای خانه‌هایی است که کد `##` فهرست اقلام یا کلید یک قلم را "
               "دارند.",
-    "rule": "`per` در خروجی یک قاعده کلید یک قلم است، نه یک نام."}
+    "rule": "`per` در خروجی یک قاعده کلید یک قلم است، نه یک نام. "
+            "سه شکل قاعده پذیرفته می‌شود: فرمول — `lang: feel` با `expr` و "
+            "`inputs[]`؛ عدد ثابت — `inputs: []`، بدون `expr`، و هر خروجی با "
+            "`value` یا `range`؛ سیاست بی‌فرمول — `lang: text`، `inputs[]` را "
+            "نام ببر، `expr` خالی، و جملهٔ اصلی را در `original` بنویس. "
+            "`nature: standard` یعنی عدد ثابت و `value` یا `range` می‌خواهد."}
 
 
 #: Three `new[]` entries a unit can copy — a paper form (the case the first run

@@ -327,6 +327,30 @@ def test_refitems_cell_not_minted_segment_fails():
     assert any("refItems" in m for m in msgs)
 
 
+def test_refitems_cell_carrying_the_namespaces_code_passes():
+    """The sheets write the item's code into the cell («پنیر پیتزا ##1»),
+    and `reference_rows` keys the row by that code — so a `refItems` column
+    of such cells is what the card tells the unit to declare, and the check
+    has to admit the code form as it admits the key form."""
+    def table(namespace, cell):
+        return _record(role="reference",
+                       data={"primaryKey": ["nam"],
+                             "fields": [{"key": "nam", "title": "نام",
+                                         "type": "string",
+                                         "refItems": {"namespace": namespace,
+                                                      "resolved_by": "code"}},
+                                        {"key": "grams", "title": "g",
+                                         "type": "number", "unit": "g"}],
+                             "rows": [{"key": "row1", "nam": cell, "grams": 5}]})
+    assert check_document(_doc(table("##", "پنیر پیتزا ##1")), "facts-delta") == []
+    assert check_document(_doc(table("#", "اینجا پیتزا #61")), "facts-delta") == []
+    msgs = check_document(_doc(table("##", "پنیر پیتزا")), "facts-delta")
+    assert any("neither an item key nor a ## code" in m for m in msgs)
+    # A `#` namespace does not admit a `##` code: the two are different lists.
+    msgs = check_document(_doc(table("#", "پنیر پیتزا ##1")), "facts-delta")
+    assert any("neither an item key nor a # code" in m for m in msgs)
+
+
 def test_refitems_cell_minted_segment_passes():
     record = _record(role="reference",
                      data={"primaryKey": ["ingredient"],
