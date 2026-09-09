@@ -6,6 +6,7 @@ import { LoadFailedScreen, ScreenSkeleton } from '../ui/states'
 import { RefusalScreen } from './Refusal'
 import { Card } from '../ui/Card'
 import { TickBox } from '../ui/Checkbox'
+import { KIND_LABELS } from '../lib/factsLabels'
 import type { PolicyField } from '../api/types'
 
 /** The two words §6.12 puts at the end of every row. Exported so the screen
@@ -13,9 +14,17 @@ import type { PolicyField } from '../api/types'
 export const STATE_ON = 'نمایش داده می‌شود'
 export const STATE_OFF = 'پنهان است'
 
-/** The six switches, in the order the store lists them: the process's own record
- *  first, then a node's. The labels name what a reader would see, never the
- *  storage key. */
+/** The twelve switches, in the order the store lists them: the process's own
+ *  record first, then a node's, then the five kinds of quantitative data and
+ *  the provenance of all of them. The labels name what a reader would see,
+ *  never the storage key.
+ *
+ *  The five fact kinds take their words from `KIND_LABELS` rather than
+ *  repeating them — owner ruling, 2026-09-09: *"this dropdown [نوع: آیتم،
+ *  جدول، اندازه‌گیری، قاعده، یادداشت]. it should show this names."* A switch
+ *  and the rows it governs must be called the same thing on both screens, and
+ *  a second copy of the words here is how the two would drift apart.
+ *  `fact_sources` is not a kind and has no entry there. */
 const ROWS: { field: PolicyField; label: string; hint: string }[] = [
   { field: 'process_summary', label: 'خلاصهٔ فرآیند',
     hint: 'متن کوتاهی که کارِ کلی فرآیند را توضیح می‌دهد.' },
@@ -29,6 +38,18 @@ const ROWS: { field: PolicyField; label: string; hint: string }[] = [
     hint: 'نقشی که انجام هر فعالیت بر عهدهٔ اوست.' },
   { field: 'node_icom', label: 'ICOM فعالیت',
     hint: 'ورودی‌ها، کنترل‌ها، خروجی‌ها و مکانیزم‌های هر فعالیت.' },
+  { field: 'fact_items', label: KIND_LABELS.item,
+    hint: 'اقلام داده‌های کمّی: مواد اولیه، محصول‌ها و بسته‌بندی‌ها با کد و واحد شمارش.' },
+  { field: 'fact_records', label: KIND_LABELS.record,
+    hint: 'جدول‌ها و فرم‌های ثبت روزانه با ستون‌هایشان.' },
+  { field: 'fact_measurements', label: KIND_LABELS.measurement,
+    hint: 'مقدارهای اندازه‌گیری‌شده: پار، ظرفیت، زمان و مانند آن.' },
+  { field: 'fact_rules', label: KIND_LABELS.rule,
+    hint: 'قاعده‌ها و فرمول‌ها: چه چیزی از چه چیزی محاسبه می‌شود.' },
+  { field: 'fact_notes', label: KIND_LABELS.note,
+    hint: 'یادداشت‌های پیوست‌شده به داده‌های کمّی.' },
+  { field: 'fact_sources', label: 'منبع داده‌ها',
+    hint: 'استناد هر داده به فایل، جدول یا جلسه‌ای که از آن آمده است.' },
 ]
 
 /** The hint for a switch the server declared and this file has no wording for.
@@ -66,8 +87,8 @@ const FAILED = 'انجام نشد؛ دوباره تلاش کنید.'
  * wording and order and nothing else; a field the server declared that this
  * file has no wording for is still drawn (under its own key), and a field
  * `ROWS` names that the server does not know is not drawn at all. A hardcoded
- * six would make the first case a field silently published with no way to turn
- * it off, and the second an always-off switch for something that does not
+ * list would make the first case a field silently published with no way to
+ * turn it off, and the second an always-off switch for something that does not
  * exist.
  */
 export function Visibility() {
