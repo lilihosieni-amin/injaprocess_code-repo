@@ -238,7 +238,7 @@ The cooking store (F-00002…F-00486) was produced under the rules this design w
 ## 5. Where the evidence lives
 
 - Verified problem inventory with per-problem evidence: Appendix A below.
-- Workflow reports (23 files, ~350 KB), the raw problem list with verdicts, the inventory script and the full estate table: `docs/postmortems/2026-09-06-quantify-cooking-run.evidence/` (uncommitted; 2.5 MB — keep or delete at your discretion).
+- Workflow reports (23 files, ~350 KB), the raw problem list with verdicts, the inventory script and the full estate table: `docs/postmortems/2026-09-06-quantify-cooking-run.evidence/` (committed 2026-09-09 at the owner's request; 2.2 MB).
 - Transcripts: `~/.claude/projects/…-data-repo/ffa1efdd-cf44-4caa-b4e3-9b3853970a43.jsonl` (+ `subagents/`), `bot-sessions/local-bot/06c1a404-….jsonl` (+ `subagents/`).
 
 ---
