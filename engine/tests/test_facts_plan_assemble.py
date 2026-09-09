@@ -1578,3 +1578,65 @@ def test_a_merge_into_whose_target_is_gone_is_held_back(tmp_path):
     assert [(r["n"], r["action"], r["reason"]) for r in assembly["review_held"]] \
         == [(0, "merge_into", "no_match")]
     assert assembly["review_held"][0]["label"] == "پرسش دربارهٔ تلورانس"
+
+
+def test_a_review_merge_into_that_breaks_its_target_is_held_back(tmp_path):
+    """R2 — the entry a `merge_into` changes is the target, not the source the
+    merge absorbs away: a target the merge makes unstorable holds that decision
+    back and returns to the unit's version, instead of the unit being blamed
+    for the reviewer's merge and losing its record to `undecided[]`."""
+    root = _root(tmp_path)
+    run_dir = _run(root, {"u-a": _record_out(), "u-b": _rule_out()})
+    digest(root, run_dir)
+    # A rule merged into a record: `_absorb` moves the rule's `applies_to` onto
+    # the record, which `recordData` has no room for. The unit gate refuses this
+    # across kinds; a review addresses assembled entries, so it reaches here.
+    _write_review(run_dir, [{"entry": {"kind": "rule", "key": "enheraf"},
+                             "action": "merge_into", "reason_code": "duplicate",
+                             "into": {"kind": "record",
+                                      "key": "gozaresh_shabane_pitza"}}])
+    assert assemble(root, run_dir, review=True)["review_status"] == "partial"
+    assembly = json.loads((run_dir / "assembly.json").read_text(encoding="utf-8"))
+    assert [(r["n"], r["action"], r["reason"]) for r in assembly["review_held"]] \
+        == [(0, "merge_into", "refused")]
+    assert assembly["review_held"][0]["lines"]
+    assert assembly["undecided"] == []
+    delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
+    by_key = {e["key"]: e for e in delta["entries"]}
+    assert "applies_to" not in by_key["gozaresh_shabane_pitza"]["data"]
+    assert by_key["enheraf"]["title"] == "انحراف مصرف"      # the unit's, restored
+
+
+def test_one_key_in_two_scopes_blames_only_the_decision_that_failed(tmp_path):
+    """The lint labels an entry `review: <key>`, and two reviewed entries may
+    mint one key in two scopes — so the label carries the scope when the key
+    alone would name both, and the sound decision is not held back beside the
+    failing one."""
+    root = _root(tmp_path)
+    record, rule = _record_out(), _rule_out()
+    record["new"] = [_tol_new(6)]                              # department-wide
+    rule["new"] = [dict(_tol_new(6), branches=["chalebagh"])]  # one tab
+    plan = _plan()
+    plan["units"][0]["inputs"] = ["meetings/transcripts/c.txt#L1-L20"]
+    run_dir = _run(root, {"u-a": record, "u-b": rule}, plan=plan)
+    digest(root, run_dir)
+    _write_review(run_dir, [
+        {"entry": {"kind": "rule", "key": "tol",
+                   "scope": {"departments": ["cooking"], "branches": []}},
+         "action": "keep", "key": "tol", "title": "حد مجاز انحراف",
+         "statement": "حد مجاز انحراف در J6 است."},           # a cell reference
+        {"entry": {"kind": "rule", "key": "tol",
+                   "scope": {"departments": ["cooking"],
+                             "branches": ["chalebagh"]}},
+         "action": "keep", "key": "tol", "title": "حد مجاز انحراف چاله‌باغ",
+         "statement": "حد مجاز انحراف مصرف را سرآشپز تعیین می‌کند."}])
+    assert assemble(root, run_dir, review=True)["review_status"] == "partial"
+    assembly = json.loads((run_dir / "assembly.json").read_text(encoding="utf-8"))
+    assert [(r["n"], r["reason"]) for r in assembly["review_held"]] == [(0, "refused")]
+    delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
+    titles = {json.dumps(e["scope"], sort_keys=True): e["title"]
+              for e in delta["entries"] if e["key"] == "tol"}
+    assert titles == {
+        '{"branches": [], "departments": ["cooking"]}': "حد مجاز انحراف مصرف",
+        '{"branches": ["chalebagh"], "departments": ["cooking"]}':
+            "حد مجاز انحراف چاله‌باغ"}

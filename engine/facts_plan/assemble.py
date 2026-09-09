@@ -8,6 +8,7 @@ can fold in without asking the model anything twice.
 The verbs land here as the tasks that implement them do; `cli.py` reports a
 verb whose function is not here yet rather than failing to import.
 """
+import collections
 import copy
 import hashlib
 import json
@@ -736,6 +737,17 @@ def _held_label(decision, hits, state):
     return label_of(candidate) if candidate else (decision.get("title") or "—")
 
 
+def _touched(decision):
+    """The skeletons a folded review decision changes: its own, and for a
+    `merge_into` the target as well. The source is absorbed away and leaves no
+    entry, so a merge that makes its target unstorable is the review's to
+    answer for — the unit that wrote the target changed nothing (R2)."""
+    into = decision.get("into")
+    return [decision["skeleton"]] + (
+        [into] if decision.get("action") == "merge_into"
+        and isinstance(into, str) else [])
+
+
 def _fold_review(run_dir, state, draft, scratch, exclude=frozenset(), held=None):
     """Step 0 (§2.6), under R1: the review is never dropped. Every decision that
     passes `_review_verdicts` is folded; the ones that do not are held back one
@@ -802,11 +814,13 @@ def _fold_review(run_dir, state, draft, scratch, exclude=frozenset(), held=None)
             merged["data"] = {**previous["data"], **decision["data"]}
         merged["unit"] = previous.get("unit", "review")
         state["by_skeleton"][decision["skeleton"]] = merged
-        reviewed_by.setdefault(decision["skeleton"], []).append(n)
+        for skid in _touched(decision):
+            reviewed_by.setdefault(skid, []).append(n)
     state["settled"] = settled
     # Whose mistake a refused entry is: the reviewer rewrote this one, so
     # `_lint_entries` names the review rather than the unit it came from.
-    state["reviewed"] = {decision["skeleton"] for _n, decision in folded}
+    state["reviewed"] = {skid for _n, decision in folded
+                         for skid in _touched(decision)}
     # …and which of its decisions did, so R2 can hold that one back by index
     # instead of refusing the document the lint line belongs to.
     state["reviewed_by"] = reviewed_by
@@ -1488,6 +1502,21 @@ def _cross_unit(root, entries, state):
     state["flags"] = flags
 
 
+def _review_labels(entries, reviewed):
+    """Who answers for each assembled entry, one label per entry and no two
+    alike: `review: <key>` for what the review rewrote, `<unit>: <key>` for the
+    rest, and the entry's kind and scope appended when the key alone would name
+    two of them. `assemble` maps a lint line back to its entry through these
+    labels, so a key minted in two scopes must not collapse to one — the sound
+    decision would be held back beside the failing one. `_cross_unit` leaves one
+    entry per `(kind, key, scope)`, which is what makes the long form unique."""
+    base = [f'review: {e["key"]}' if e["_skeleton"] in reviewed
+            else f'{e["_unit"]}: {e["key"]}' for e in entries]
+    twice = collections.Counter(base)
+    return [b if twice[b] == 1 else f'{b} {e["kind"]} {_address(e)[2]}'
+            for b, e in zip(base, entries)]
+
+
 def _lint_entries(root, entries, symbols, reviewed=()):
     """Step 8 — the §5.2 lint AND the store contract over every finished entry;
     a failure is refused, never stored, and the message names who wrote it.
@@ -1498,8 +1527,7 @@ def _lint_entries(root, entries, symbols, reviewed=()):
     gate for the one document no unit pass ever saw — the review's. Ruling 5:
     the shape half is that document's gate too, which is why `_contract_problems`
     runs here and not only at `validate_unit`."""
-    named = [f'review: {entry["key"]}' if entry["_skeleton"] in reviewed
-             else f'{entry["_unit"]}: {entry["key"]}' for entry in entries]
+    named = _review_labels(entries, reviewed)
     conventions = load_conventions(root)
     out = [message for entry, label in zip(entries, named)
            for message in _lint_decision(entry, label, symbols,
@@ -1636,16 +1664,18 @@ def assemble(root, run_dir, *, review=False):
             problems = _lint_entries(root, entries, symbols, reviewed)
             if not problems:
                 break
+            # The labels `_lint_entries` printed, from the same writer, so a
+            # line maps back to the entry that earned it and never to another.
+            by_label = dict(zip(_review_labels(entries, reviewed), entries))
             review_lines = [p for p in problems if p.startswith("review: ")]
             if review_lines:
                 # The reviewer's own rewrite: held back by decision (R1), never
                 # by refusing the run — the unit's sound version stands under it
                 # and the owner is told which decision went and why.
-                by_key = {e["key"]: e for e in entries
-                          if e["_skeleton"] in reviewed}
                 for line in review_lines:
-                    key = line[len("review: "):].split(": ", 1)[0]
-                    entry = by_key.get(key)
+                    entry = by_label.get(next(
+                        (k for k in by_label if line.startswith(k + ": ")),
+                        None))
                     decisions = (state["reviewed_by"].get(entry["_skeleton"])
                                  if entry else None) or []
                     if not decisions:
@@ -1658,13 +1688,12 @@ def assemble(root, run_dir, *, review=False):
                         exclude.add(n)
                 retry = True
                 break
-            labels = {f'{e["_unit"]}: {e["key"]}': e for e in entries
-                      if e["_skeleton"] not in reviewed}
             held = {}
             for line in problems:
-                label = next((l for l in labels if line.startswith(l + ": ")), None)
+                label = next((k for k in by_label if line.startswith(k + ": ")),
+                             None)
                 if label is not None:
-                    held.setdefault(labels[label]["id"], []).append(
+                    held.setdefault(by_label[label]["id"], []).append(
                         line[len(label) + 2:])
             if not held or len(held) == len(entries):
                 for line in problems:
