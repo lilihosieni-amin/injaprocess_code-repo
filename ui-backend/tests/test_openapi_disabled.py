@@ -72,6 +72,21 @@ def test_the_schema_is_still_gone_with_the_spa_mounted(data_root, tmp_path):
         assert "paths" not in r.text.lower(), path
 
 
+def test_the_spa_shell_is_never_served_from_a_stale_cache(data_root, tmp_path):
+    """The shell names content-hashed assets, so the shell itself must be
+    revalidated on every load — a deploy otherwise leaves the browser running
+    the previous bundle until a hard refresh. Both roads to the shell — `/`
+    and the catch-all for a client route — carry the header; a real 404 under
+    `/api` stays a 404."""
+    cfg = _with_spa(_cfg(data_root, tmp_path), tmp_path)
+    c = TestClient(create_app(cfg))
+    for path in ("/", "/facts/F-00193"):
+        r = c.get(path)
+        assert r.status_code == 200 and '<div id="root"></div>' in r.text, path
+        assert r.headers["cache-control"] == "no-cache", path
+    assert c.get("/api/nothing-here").status_code == 404
+
+
 def test_asking_for_the_docs_raises_no_warning(data_root, tmp_path):
     """Generating the schema warns, and now nothing generates it.
 

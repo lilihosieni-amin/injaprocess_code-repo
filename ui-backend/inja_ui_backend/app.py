@@ -42,13 +42,22 @@ class SPAStaticFiles(StaticFiles):
 
     async def get_response(self, path, scope):
         try:
-            return await super().get_response(path, scope)
+            response = await super().get_response(path, scope)
         except StarletteHTTPException as exc:
             # StaticFiles raises 404 for a missing path; serve the SPA shell for
             # client-side routes, but let real API and export 404s propagate.
-            if exc.status_code == 404 and not path.startswith(NOT_SPA_ROUTES):
-                return await super().get_response("index.html", scope)
-            raise
+            if exc.status_code != 404 or path.startswith(NOT_SPA_ROUTES):
+                raise
+            response = await super().get_response("index.html", scope)
+        if response.headers.get("content-type", "").startswith("text/html"):
+            # The shell is the one file whose name never changes while the
+            # assets it names are content-hashed. Served with only
+            # `last-modified`, a browser keeps it on heuristic freshness and
+            # runs the previous bundle after a deploy until a hard refresh —
+            # which is how a fixed screen stayed broken on 2026-09-09.
+            # `no-cache` means revalidate, and the ETag makes that a 304.
+            response.headers["cache-control"] = "no-cache"
+        return response
 
 
 def _configure_logging() -> None:

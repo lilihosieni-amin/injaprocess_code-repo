@@ -350,7 +350,7 @@ export interface RecordData {
   movement?: { from?: FactRef; to?: FactRef; reason?: string }
   grain?: string
   cadence?: 'nightly' | 'shift' | 'daily' | 'weekly' | 'monthly' | 'ad_hoc'
-  day_boundary?: string
+  day_boundary?: string | null
   approved_by?: string
   blank_master?: boolean
   stub?: boolean
