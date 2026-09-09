@@ -784,15 +784,24 @@ def _fold_review(run_dir, state, draft, scratch, exclude=frozenset(), held=None)
     run instead (R3) — the reviewer read another assembly, so nothing it wrote
     can be trusted onto this one.
 
+    The document is read and schema-checked *before* the stale-digest check,
+    deliberately: a file that cannot be parsed or does not fit the contract is
+    held back whole (R8 has already given the reviewer its two attempts), and
+    only a well-formed review is judged against the digest it claims to answer.
+
     Returns `"absent"`, `"applied"` (nothing held) or `"partial"`."""
     path = run_dir / "review" / "out.json"
     if not path.is_file() or not (run_dir / "review" / "input.sha256").is_file():
         return "absent"
-    doc = read_json(path)
     hits = _review_hits(draft)
+    doc = None
     try:
+        # A truncated or fenced write is the same failure class as a
+        # schema-invalid one: `json.JSONDecodeError` is a `ValueError`, so one
+        # `except` turns both into the whole-document hold-back below.
+        doc = read_json(path)
         validate("facts-unit.schema.json", doc)
-    except ValueError as exc:
+    except (OSError, ValueError) as exc:
         # R8 routes the reviewer's second failure straight here, so this is the
         # document the fold must survive, not the one it may assume away: every
         # field `_review_verdicts` reads is optional in a refused document.

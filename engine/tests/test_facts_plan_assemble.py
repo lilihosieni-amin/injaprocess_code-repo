@@ -1671,6 +1671,25 @@ def test_a_settled_contradiction_that_breaks_the_contract_is_held_back(tmp_path)
     assert _tol(run_dir)["data"]["outputs"][0]["unit"] == "kg"   # the keeper's
 
 
+def test_an_unparseable_review_file_is_held_back_whole_and_named(tmp_path):
+    """The other half of the same failure class: a truncated or fenced
+    `out.json` used to raise `json.JSONDecodeError` with a traceback. It is
+    one fallback row now, and the units' work still lands."""
+    root = _root(tmp_path)
+    run_dir = _run(root, {"u-a": _record_out(), "u-b": _rule_out()})
+    digest(root, run_dir)
+    (run_dir / "review" / "out.json").write_text(
+        '{"schema_version": 1, "unit": "review", "decisions": [', encoding="utf-8")
+    assert assemble(root, run_dir, review=True)["review_status"] == "partial"
+    assembly = json.loads((run_dir / "assembly.json").read_text(encoding="utf-8"))
+    assert [(r["n"], r["reason"], r["label"]) for r in assembly["review_held"]] \
+        == [(0, "refused", "—")]
+    assert assembly["review_held"][0]["lines"]
+    delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
+    assert next(e for e in delta["entries"]
+                if e["key"] == "enheraf")["title"] == "انحراف مصرف"
+
+
 @pytest.mark.parametrize("bad", [
     # a `contradiction` addressed by `skeleton`: the schema requires `entry`
     {"skeleton": "S-r-000000000002", "action": "contradiction",
