@@ -70,7 +70,7 @@ import sqlite3
 from . import storage, visibility
 from .access import permits
 from .fingerprint import fact_fingerprint, fingerprint
-from .store import chat_confirmations, confirmations, policy
+from .store import confirmations, policy
 
 
 class Disclosure:
@@ -174,7 +174,7 @@ class Disclosure:
         return all(self._may_edit(t) for t in targets)
 
     def may_serve_fact(self, entry: dict, targets: list[str],
-                       stored: str | None, chat: dict) -> bool:
+                       stored: str | None) -> bool:
         """May this caller be told that this **fact entry** exists (QF-23, D22)?
 
         `may_serve`'s rule, per entry rather than per department, and with one
@@ -191,8 +191,12 @@ class Disclosure:
         (`confirmations.stored_for`) exactly as `servable` does — D56's
         "filtered in the query, never client-side". `None` for an entry with no
         row, so the comparison fails closed for an unconfirmed target and for a
-        nonsense one alike. `chat` is the chat confirmation ledger, read
-        the same way and counting for the same reason (v3.7 §3.4).
+        nonsense one alike.
+
+        **The stored mark is the only confirmation there is** (owner ruling,
+        2026-09-09): the tick is set by a person in the panel and by nothing
+        else, so a bot edit — which re-stamps the entry and moves its print —
+        leaves it withheld again until someone confirms it there.
 
         The comparison is `stored == fact_fingerprint(entry)` and never `stored
         is not None`, for `may_serve`'s reason: a mark that no longer matches
@@ -201,14 +205,8 @@ class Disclosure:
         canonicaliser drops `source` at every depth, which on a fact is content
         (QF-24).
         """
-        if self.edits_fact(targets):
-            return True
-        if stored is not None and stored == fact_fingerprint(entry):
-            return True
-        # The chat actor's vouch counts here exactly as the mark does (I7): the
-        # owner's instruction is one round trip, so an entry it confirmed must
-        # not stay withheld from the Panel members who cannot edit it.
-        return chat_confirmations.confirmed(chat, entry)
+        return (self.edits_fact(targets)
+                or (stored is not None and stored == fact_fingerprint(entry)))
 
     def redact_fact(self, entry: dict, targets: list[str]) -> dict:
         """`entry` as this caller may receive it, or `{}` when its kind is

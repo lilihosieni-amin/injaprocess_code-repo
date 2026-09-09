@@ -48,7 +48,7 @@ from engine_common import (read_json, validate, write_json_atomic,
 # and `audit.py` read them off this module.
 from merge_facts import (KEY_RE, KIND_FILES, KIND_ORDER, PROC_ID_RE,
                          SEGMENT_RE, canonical_scope, derive_status, facts_dir,
-                         find_match, is_open, iter_ref_objects, ledger,
+                         find_match, is_open, iter_ref_objects,
                          load_store, save_store, sha256_file)
 # `_is_keyed_list` and `keyfn_for` are the ladder's own answers to "is this a
 # list merged member by member, and what matches its members" — a successor's
@@ -701,10 +701,6 @@ def _write(root, store, run_dir, delta_path, id_map, touched, adopted, originals
             _stamp_sources(root, record["entry"], run_ref)
     _snapshot(root, run_dir)
     save_store(root, store)
-    # A chat-origin run carries the owner's own instruction, so the entries it
-    # changed are vouched for without a visit to the UI (v3.7 §3.3); a pipeline
-    # or UI run writes no row.
-    ledger.record(root, run_dir, run_ref, [t["entry"] for t in touched if t["changed"]])
     kept = run_dir / "facts-delta.json"
     # The pipeline's own delta is already written there (QF-7); a caller from
     # elsewhere — `edit-fact`, the ui-backend — hands us one to copy in.

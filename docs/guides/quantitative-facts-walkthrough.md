@@ -549,8 +549,7 @@ merge facts apply --delta <run_dir>/facts-delta.json --run <run_dir>
 8. **Snapshot.** `facts-before/` gets a copy of the five store files as they were — this is what
    `revert` restores from.
 9. **Save.** All five files are validated against `facts.schema.json` *before* any is written;
-   then they are written atomically (temp file + rename), `.index.json` is rebuilt, and the chat
-   confirmation ledger is pruned (section 5.4).
+   then they are written atomically (temp file + rename) and `.index.json` is rebuilt.
 10. The run directory gets `id-map.json` (temp id → minted id, *minted ids only*), `touched.json`
     (every open entry the run changed), `adopted.json` (stub adoptions), and a copy of the delta.
 
@@ -698,10 +697,9 @@ What the verb does, in order:
 5. **The gate** — exactly the store gate every run passes and nothing less: the store schema
    over the whole file, the full content pass with the store, declared unit symbols, registered
    departments and branches, every `F-` reference resolving. Any refusal: `precondition failed:
-   …`, exit 2, nothing written — no snapshot, no delta record, no ledger row.
-6. On success: snapshot to `facts-before/`, save the store, **write the chat confirmation ledger
-   row** (section 5.4), and append `{"verb": "edit", "args": {"id", "patch", "ops"}}` to the
-   run's `facts-delta.json` (a list, for a verbs run).
+   …`, exit 2, nothing written — no snapshot, no delta record.
+6. On success: snapshot to `facts-before/`, save the store, and append `{"verb": "edit", "args":
+   {"id", "patch", "ops"}}` to the run's `facts-delta.json` (a list, for a verbs run).
 
 No `resolve` ever follows an `edit`; the verb settled everything itself.
 
@@ -709,39 +707,24 @@ No `resolve` ever follows an `edit`; the verb settled everything itself.
 
 Same allow-listed commit (`edit-fact(F-00150,…): …`). The report is one line per entry: the title
 and the «فعلی/پیشنهاد» pairs for a change; the id and what was added for an addition; "retired,
-not deleted" and the heir for a retirement. It ends with «در پنل تأییدشده است» — "it is confirmed
-in the panel" — because of the ledger.
+not deleted" and the heir for a retirement. It says the change is recorded and that the panel shows
+the entry «تأییدنشده» until someone confirms it there.
 
-### 5.4 The chat confirmation ledger — why a bot edit needs no panel step
+### 5.4 A bot edit un-confirms the entry — the tick is the panel's alone
 
 The panel's tick (section 6) is a **fingerprint**: a SHA-256 hash of the entry's content, stored
 in the panel's own database when a reviewer confirms. Any change to the entry moves the hash and
-the tick silently disappears — that is the point of hashing instead of a boolean. But after a bot
-edit *by the owner*, the owner has just said what the entry should say; making them re-tick it in
-the panel would be a second signature for one act. The engine cannot reach the panel's database
-(filesystem only), so it writes a small file the panel reads:
+the tick silently disappears — that is the point of hashing instead of a boolean. A bot edit is
+such a change: it rewrites content and stamps a new `updated_at`, so the entry reads «تأییدنشده»
+again the moment the edit lands, and a person re-confirms it in the panel when they have read it
+there.
 
-```
-facts/.confirmations.json
-{"schema_version": 1,
- "entries": {"F-00150": {"updated_at": "2026-09-09T09:12:31Z", "by": "owner",
-                         "run": "runs/facts/cooking/20260909-091210", "at": "…"}}}
-```
-
-A row vouches while its `updated_at` equals the entry's current `updated_at`. Every engine write
-path stamps the entries it changes, so a later change by *anything* moves the stamp and the row
-goes stale — no shared hash is needed between the two components. `edit` writes the row always;
-`apply`, `resolve`, `retire` and `promote` write it only when the run's `meta.json` says `origin:
-"chat"`; `revert` removes a run's rows; every store save prunes stale rows. Both the engine and the
-panel lock `facts/.confirmations.lock` (an OS-level file lock) around their read-modify-write, so a
-panel revoke and a chat run cannot lose each other's update. The lock file is git-ignored; the
-ledger is committed with `facts/`.
-
-This is invariant **I7**: *a chat instruction is one round trip.* The store ends in a state that
-needs no action in the panel.
-
-The first real use happened on 2026-09-09: the owner's ten-statement change ran through the bot in
-one commit, ten ledger rows, no dispute, nothing left to accept.
+v3.7 briefly shipped a second channel — `facts/.confirmations.json`, a file the engine wrote on a
+chat-origin run and the panel counted as a confirmation, so that a bot edit left nothing to accept.
+The owner withdrew it on 2026-09-09: *"I only mean that confirm button that's in the UI and gets
+saved in the database — I don't want it to get checked automatically."* The file, its schema, its
+lock and every reader of it are gone; automatic **revocation** — the fingerprint going stale — is
+what remains, and it is all that was ever wanted.
 
 ---
 
@@ -784,7 +767,7 @@ in Persian without ever computing a name of its own:
 | key | what it is for |
 |---|---|
 | `entry` | the fact document, whole for an editor of every department it names, kind-switched and source-stripped otherwise |
-| `confirmation` | `{fingerprint, confirmed, can_confirm}` — the current hash (what a confirm must echo), whether the database mark **or** the chat ledger vouches, and whether this caller may confirm |
+| `confirmation` | `{fingerprint, confirmed, can_confirm}` — the current hash (what a confirm must echo), whether the stored database mark equals it, and whether this caller may confirm |
 | `red_paths` | `{unknown: [...], disputed: [...]}` — every `null` leaf and every open-account field, as paths |
 | `resolved` | every id, item key and process id the entry references → `{kind, title, code?, fields?}`, or `{restricted: true}` for a neighbour this caller may not open (the row stays so counts are honest; the name goes) |
 | `row_titles` | reference-table row key → composed Persian title |
@@ -840,10 +823,10 @@ without a label fails the build rather than showing English.
 (the hash differs), 409 — re-read and try again. The stored row is `(target, fingerprint,
 confirmed_by, confirmed_at, data_repo_commit)`; the last field is the data-repo's git HEAD at that
 moment, so a database restored from an older backup can be told apart from genuine drift.
-`DELETE` withdraws the mark — and, for a fact, removes the chat ledger row too, under the lock.
+`DELETE` withdraws the mark.
 
 Visibility: an **editor** of every department a fact names sees it whole, confirmed or not. Anyone
-else in the panel sees only *confirmed* entries (database mark or chat ledger), only the kinds the
+else in the panel sees only *confirmed* entries (the database mark, matching), only the kinds the
 global visibility policy switches on, and with sources stripped if that switch is off. A neighbour
 the caller may not open appears as `{restricted: true}` — «خارج از دسترسی شما».
 
@@ -859,8 +842,6 @@ the caller may not open appears as `{restricted: true}` — «خارج از دس
 | `.index.json` | one flat row per entry (id, kind, key, title, aliases, scope, status, retired, valid_to, stub, processes, field-status counts, updated_at) — what the bot, the audit and the panel list against without loading payloads; rebuilt on every save |
 | `.id-seq.json` | `{"fact": 233}` — the global id counter; ids are `F-` plus five digits, one namespace for all five kinds, never reused |
 | `originals/F-xxxxx.txt` | the verbatim formula or script body of a rule, out of line |
-| `.confirmations.json` | the chat confirmation ledger (section 5.4) |
-| `.confirmations.lock` | its lock file (git-ignored) |
 
 Today's live store: 137 items, 43 records, 5 measurements, 40 rules, 8 notes — 233 entries, matching
 the counter exactly.
@@ -885,7 +866,7 @@ the counter exactly.
 | `issues[]` | Defects in the artefact as implemented (7.5). |
 | `processes[]` | Process ids this entry is *about* — a claim that must be backed by a `process`-typed source citing the node. |
 | `status` | **Derived, never written by a delta**: `disputed` if any account is open; else `unknown` if any data leaf is `null`; else `informal` / `inferred` from `field_status`; else `confirmed`. |
-| `updated_at` | ISO-8601 UTC, stamped by every write path that changed the entry; the chat ledger keys on it. |
+| `updated_at` | ISO-8601 UTC, stamped by every write path that changed the entry. |
 | `data` | The per-kind payload (7.6). |
 
 ### 7.3 `source[]` — provenance
@@ -1046,7 +1027,6 @@ them. The engine loads them from `SCHEMA_DIR` and caches the compiled validator.
 | `facts-delta.schema.json` | a proposed change set | the unit gate (materialised entries), `assemble`'s output, `apply`'s first step, `validate facts-delta` |
 | `facts-unit.schema.json` | a unit's or the review's decisions | `validate facts-unit` |
 | `facts-patch.schema.json` | an edit's operations | `merge facts edit` |
-| `facts-confirmations.schema.json` | the chat confirmation ledger | every ledger save |
 | `facts-run-meta.schema.json` | a run's `meta.json` | the playbooks (`validate facts-run-meta`) |
 | `facts-idseq.schema.json` | the id counter | — |
 | `facts-index.schema.json` | `.index.json` | — |
@@ -1136,10 +1116,10 @@ and the readiness line.
 
 Every writing command has the same contract: check everything first; on any refusal print
 `precondition failed: …` to stderr, exit 2, and leave every file exactly as it was — no snapshot,
-no run record, no ledger row. Files are written atomically (temp file in the same directory, then
+no run record. Files are written atomically (temp file in the same directory, then
 rename). Every write takes a snapshot first, and `merge facts revert --run <dir>` undoes one run at
 entry level: created ids are removed (never reused), matched entries restored wholesale from the
-snapshot, the run's ledger rows forgotten. It refuses if a *later* run touched any of the same
+snapshot. It refuses if a *later* run touched any of the same
 entries, and it refuses a run that adopted a workbook stub (revert the git commit instead). And
 behind all of that is git: every run and every edit is a commit on the data-repo, made with an
 allow-list of paths.
@@ -1196,8 +1176,6 @@ own misunderstanding.
   right; ADR 0017's body is not.
 - **`foreignKeys` is dead code** in the content pass and the ladder: absent from both schemas, so
   never reached.
-- **The chat ledger keys on `updated_at` at second resolution**: a write landing in the same
-  second as the vouched one leaves the row standing. Documented; no code guard.
 - **Upload-bot has no handler for a compressed Telegram photo**, only for documents; a photo sent
   as a file goes through the file flow and is read by the vision model later.
 - The bot's report names a newly *added* entry by its id (the owner's rule says prefer the title);
@@ -1230,8 +1208,6 @@ own misunderstanding.
 - **invariant** — a rule that must always hold; INV-n from the standing orders, I-n from the
   facts design.
 - **Jalali** — the Persian calendar; business dates in the store are Jalali strings.
-- **ledger (chat confirmation)** — `facts/.confirmations.json`, the engine's way of telling the
-  panel "the owner vouched for this through the bot".
 - **manifest** — `attachments/sheets/manifest.json`, one row per workbook with the owner's answers.
 - **mirror tab** — a tab whose only formula is `IMPORT_FROM_SHEET(...)`: an edge, not a record.
 - **natural key** — `(kind, key, scope)`; two open entries never share one.

@@ -550,9 +550,8 @@ def test_an_append_settles_nothing(tmp_path):
 
 
 def test_edit_refuses_a_run_that_carries_no_meta(tmp_path, capsys):
-    """The chat citation `edit` unions in points at `{run_dir}/meta.json`, and
-    the ledger reads the actor off it: a run without one leaves a dangling
-    source and an anonymous vouch."""
+    """The chat citation `edit` unions in points at `{run_dir}/meta.json`: a
+    run without one leaves a dangling source."""
     root = _root(tmp_path); _seed_units(root)
     apply(root, _write(root, "d1.json", _const_delta(5)), _run_dir(root, "1"))
     e = _rule_entry(root)

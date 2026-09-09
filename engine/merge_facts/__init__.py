@@ -320,12 +320,6 @@ def save_store(root, store):
     for kind, name in KIND_FILES.items():
         write_json_atomic(facts_dir(root) / name, store[kind])
     write_json_atomic(facts_dir(root) / ".index.json", build_index(store))
-    # The chat confirmation ledger (v3.7 §3) is not store content — it vouches
-    # for one `updated_at` per entry — so a write that moved a stamp has just
-    # invalidated whatever vouched for the old one. Local import: `ledger`
-    # imports `facts_dir` back out of this module.
-    from merge_facts import ledger
-    ledger.prune(root, store)
 
 def sha256_file(path):
     h = hashlib.sha256()

@@ -147,6 +147,8 @@ without reading the store file itself.
 
 ## 3. Chat confirmations — the ledger `facts/.confirmations.json`
 
+> **Withdrawn by the owner on 2026-09-09** — *"I don't want it to get checked automatically"*: the whole of §3 was deleted end to end (ADR 0017's ruling); the tick is set only in the panel, and a bot edit un-confirms the entry by moving its print. The section is kept as the record of what was built and removed.
+
 ### 3.1 Why a second channel
 
 A confirmation is the ui-backend's: `(target, fingerprint, confirmed_by, confirmed_at)` in

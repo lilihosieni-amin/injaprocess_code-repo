@@ -801,36 +801,18 @@ docker compose exec control-bot sh -c \
   nothing, and prints the current and proposed value of each op. This is what
   the owner is shown before a destructive or composed change.
 - **Refusals** are the usual ones: exit 2, `precondition failed: …` on stderr,
-  and nothing written at all — no store file, no snapshot, no ledger row.
-- **The confirmation.** A successful edit records the entry in
-  `facts/.confirmations.json` (`facts-confirmations.schema.json`): the entry's
-  `updated_at` as it now stands, the run's `actor`, the run ref, and the time.
-  The UI reads that row beside its own confirmations and shows the entry
-  confirmed as `chat:<actor>` — the owner's instruction *is* the approval, so
-  there is nothing left to accept in the UI. `apply`, `resolve`, `retire` and
-  `promote` write the same row, but only when the run's `meta.json` says
-  `origin: "chat"`; a pipeline or UI run writes none.
-- **The row goes stale on its own.** It vouches for one `updated_at`. Any later
-  write that touches the entry moves the stamp, and the next store write drops
-  the row — the file never claims the owner approved content they never saw.
-  Revoking the confirmation in the UI removes the row too. One corollary of
-  keying on `updated_at`, which has second resolution: a later write landing in
-  the **same UTC second** as the vouched one leaves the row standing. In
-  practice the second write is another human action, seconds or minutes later.
-- **The lock.** Every row written or dropped is a read-modify-write, and the
-  ui-backend removes rows too, so both sides hold `facts/.confirmations.lock`
-  (an empty sidecar, `flock`) for the whole of it. It is not store content and
-  is written by neither the five files nor the index.
+  and nothing written at all — no store file, no snapshot.
+- **The confirmation is the panel's, and only ever a person's** (owner ruling,
+  2026-09-09). A successful edit writes no confirmation of any kind: it stamps
+  the entry's `updated_at` and changes its content, so the mark a reviewer had
+  stored no longer matches the entry's fingerprint and the panel shows the
+  entry «تأییدنشده» again — the same rule a `merge` run on a process has always
+  had. The owner re-confirms it in the panel when they have read it there.
 - **Undo** is `merge facts revert --run <run_dir>` as for any other run (§6):
-  the entry comes back wholesale from `{run_dir}/facts-before/`, and the
-  confirmation rows that run wrote are forgotten with it.
+  the entry comes back wholesale from `{run_dir}/facts-before/`.
 
-**What is committed.** The ledger itself is store content: it lives under
-`facts/`, which the playbooks' `git add` allowlist already covers, and it is
-committed with the five files. Its lock is not — `facts/.confirmations.lock` is
-an empty sidecar `flock` holds open, it carries nothing, and it is in
-data-repo's `.gitignore` so an allowlisted `git add facts` never stages it.
-The bot may write neither by hand; only the engine and the ui-backend do.
+**What is committed.** The five store files and the run directory, as for every
+other verb. Nothing else: the edit writes no sidecar of its own.
 
 ## Next
 
