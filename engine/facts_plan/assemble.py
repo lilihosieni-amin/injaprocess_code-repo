@@ -142,7 +142,22 @@ def validate_unit(root, run_dir, path):
             _run, skel, st = _prepare(root, run_dir, False)
             draft = _build_entries(root, skel, st)
             _cross_unit(root, draft, st)
-            problems += _review_problems(run_dir, doc, st, draft, st)
+            review_lines = _review_problems(run_dir, doc, st, draft, st)
+            problems += review_lines
+            if not review_lines and not problems:
+                # …and the folded result is held to the store contract here,
+                # not first at `assemble --review`: a reviewer's rewrite that
+                # the assembly refuses (sixteen items without `category`,
+                # 2026-09-08) is the reviewer's to fix while it still has an
+                # attempt. Same `_lint_entries`, same `review: <key>` labels.
+                _r2, skel2, st2 = _prepare(root, run_dir, True)
+                if st2.get("review_status") == "applied":
+                    folded = _build_entries(root, skel2, st2)
+                    _cross_unit(root, folded, st2)
+                    _settle(folded, st2)
+                    problems += [line for line in _lint_entries(
+                        root, folded, skel2.get("unit_symbols") or [],
+                        st2.get("reviewed") or ()) if line.startswith("review: ")]
     else:
         # A document belongs to the unit whose directory it sits in, never to
         # the one it names: a document declaring a zero-candidate sibling would
@@ -725,6 +740,13 @@ def _fold_review(run_dir, state, draft, scratch):
         previous = state["by_skeleton"].get(decision["skeleton"], {})
         merged = {**previous, **{k: v for k, v in decision.items()
                                  if v is not None}}
+        # A review `keep` carrying `data` changes the members it lists and
+        # nothing else: the unit's `category`, `fields[]`, … stay. Replacing
+        # `data` wholesale (the shape until 2026-09-09) made a reviewer's
+        # one-member rewrite of sixteen items lose their `category`, and the
+        # whole review with it.
+        if isinstance(previous.get("data"), dict) and isinstance(decision.get("data"), dict):
+            merged["data"] = {**previous["data"], **decision["data"]}
         merged["unit"] = previous.get("unit", "review")
         state["by_skeleton"][decision["skeleton"]] = merged
     state["settled"] = settled
