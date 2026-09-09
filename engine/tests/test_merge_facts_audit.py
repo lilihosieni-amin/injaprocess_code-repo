@@ -252,6 +252,32 @@ def test_dangling_ref_items_cell_whose_item_is_retired(tmp_path):
     assert len(found) == 1 and "ing_1" in found[0]["message"]
 
 
+def test_a_ref_items_cell_holding_a_code_names_the_item_that_carries_it(tmp_path):
+    """The cooking recipe tables hold «مکزیکانو #13» in their item column and
+    the store's item is keyed `mekzikano` with `code: "#13"` — the content
+    pass admits the cell, so the audit must resolve it the same way."""
+    root = _root(tmp_path); _seed_units(root)
+    item = _entry("T-1", "item", "mekzikano", "مکزیکانو",
+                  {"category": "product", "unit": "pcs", "code": "#13"})
+    record = _entry("T-2", "record", "mavad__pizza", "ب.او.ام", {
+        "medium": "sheet", "role": "reference",
+        "location": {"spreadsheetId": "M", "sheetId": 2, "sheet": "پیتزا",
+                     "hidden": False},
+        "fields": [{"key": "nam", "title": "نام", "type": "string",
+                    "refItems": {"namespace": "#", "resolved_by": "title"}},
+                   {"key": "grams", "title": "گرم", "type": "number", "unit": "g"}],
+        "primaryKey": ["nam"],
+        "rows": [{"key": "food_13", "nam": "مکزیکانو #13", "grams": 250},
+                 {"key": "food_99", "nam": "ناشناخته #99", "grams": 1}]})
+    report = _apply(root, [item, record], "1")
+    found = _of(audit(root), "dangling_ref_items")
+    assert [f["message"] for f in found] == [
+        "row 'food_99' column 'nam': item 'ناشناخته #99' names no item"]
+    retire(root, report["id_map"]["T-1"], None, _run_dir(root, "2"))
+    found = _of(audit(root), "dangling_ref_items")
+    assert len(found) == 2 and any("#13' is retired" in f["message"] for f in found)
+
+
 def test_process_link_tombstoned_proposes_the_heir(tmp_path):
     root = _root(tmp_path); _seed_units(root)
     # The citation is written while the process is live — `preconditions` now
@@ -281,7 +307,8 @@ def test_process_link_node_gone_has_no_heir(tmp_path):
         {"type": "process", "ref": "departments/cooking/processes/cooking-004.json",
          "node": "cooking-004-n010", "quote": "تلورانس"})
     apply(root, _write(root, "d1.json", d), _run_dir(root, "1"))
-    found = _of(audit(root), "process_link")
+    assert "process_link" not in _codes(audit(root))
+    found = _of(audit(root), "process_node_gone")
     assert len(found) == 1 and found[0]["proposal"] is None
     assert "cooking-004-n010" in found[0]["message"]
 

@@ -260,22 +260,41 @@ def _orphan_ref(walk):
 
 
 def _dangling_ref_items(walk):
-    """A `refItems` cell holds an item **key** (QF-37's one exception); the item
-    it names must still be open."""
-    open_keys = {e["key"] for e in walk.store["item"]["entries"] if is_open(e)}
-    known_keys = {e["key"] for e in walk.store["item"]["entries"]}
+    """A `refItems` cell names an item by its **key** or by a **code** of the
+    column's namespace — the content pass admits both, and a sheet-derived
+    row holds what the sheet held («مکزیکانو #13»). The item it names must
+    still be open. Until 2026-09-09 this looked the cell up by key alone and
+    reported every code-bearing row of the cooking recipe tables as dangling."""
+    from merge_facts import conventions
+    from merge_facts.conventions import cell_pattern
+    entries = walk.store["item"]["entries"]
+    open_keys = {e["key"] for e in entries if is_open(e)}
+    known_keys = {e["key"] for e in entries}
+    open_codes = {str(_data(e).get("code")) for e in entries
+                  if is_open(e) and _data(e).get("code")}
+    known_codes = {str(_data(e).get("code")) for e in entries if _data(e).get("code")}
+    conv = conventions.load(walk.root)
     items = []
     for record in _records(walk):
-        columns = [f["key"] for f in _data(record).get("fields") or []
-                   if isinstance(f, dict) and f.get("refItems") and f.get("key")]
+        columns = [(f["key"], (f["refItems"].get("namespace") or conv.item_namespace))
+                   for f in _data(record).get("fields") or []
+                   if isinstance(f, dict) and isinstance(f.get("refItems"), dict)
+                   and f.get("key")]
         for row in _rows(record):
             if not is_open(row):
                 continue
-            for column in columns:
+            for column, namespace in columns:
                 cell = row.get(column)
                 if not isinstance(cell, str) or not cell or cell in open_keys:
                     continue
-                why = "is retired" if cell in known_keys else "names no item"
+                pattern = conv.code_in_cell.get(namespace) or cell_pattern(
+                    namespace, set(conv.code_in_cell) | {namespace})
+                hit = pattern.search(cell)
+                code = hit.group(0) if hit else None
+                if code in open_codes:
+                    continue
+                why = ("is retired" if cell in known_keys or code in known_codes
+                       else "names no item")
                 items.append(_finding(
                     "dangling_ref_items", record["id"],
                     f"row {row.get('key')!r} column {column!r}: item {cell!r} {why}"))
@@ -341,9 +360,12 @@ def _process_link(walk):
                     if isinstance(n, dict) and not n.get("removed")}
             for node in sorted(cited.get(process_id, ())):
                 if node not in live:
+                    # Its own code: the process is alive and right, one node
+                    # of it was removed (a later restructure or chat edit).
+                    # Nothing to re-point; the citation is simply stale.
                     items.append(_finding(
-                        "process_link", entry["id"],
-                        f"node {node} is no longer in process {process_id}"))
+                        "process_node_gone", entry["id"],
+                        f"node {node} was removed from process {process_id}"))
     return items
 
 
@@ -1137,6 +1159,7 @@ PERSIAN = {
     "orphan_ref": "ارجاع بی‌مقصد: «{title}»",
     "dangling_ref_items": "ارجاع به قلمی که دیگر نیست: «{title}»",
     "process_link": "پیوند با فرایندی که تغییر کرده است: «{title}»",
+    "process_node_gone": "گرهی که به آن استناد شده از فرایند برداشته شده است: «{title}»",
     "row_gone": "ردیفی که دیگر در فایل نیست: «{title}»",
     "dump_missing": "فایل این جدول هنوز خوانده نشده است: «{title}»",
     "binding_gone": "فرمولی که دیگر در فایل نیست: «{title}»",

@@ -87,9 +87,12 @@ Exit 2 with `precondition failed: …` on stderr and nothing written on any refu
    under `retired` is refused with «retire is the verb» — retiring dates the entry, names an heir
    and asks the owner first, which is `retire`'s job; `valid_to`, `supersedes` and `superseded_by`
    stay editable.
-3. A `remove` of a `source[]` member (provenance is never edited out; `repair-source-refs` is the
-   only writer of a citation's `ref`) — the other members of `source` are editable only through the
-   verbs that already own them, so any op under `source` is refused.
+3. *(Withdrawn, owner ruling 2026-09-09: «any edit at all has to be doable through the bot».)*
+   A citation is editable like any other member. A `source[]` member carries no key, so it is
+   addressed by **position** — `source/0`, `source/1/quote`. A member the ops add or change is
+   re-stamped the way `apply` stamps a new one (its file's hash, this run as the citing run); one the
+   ops left as it was keeps its stamp. At the gate an edited citation faces QF-5 (its `ref` names a
+   file inside the repo) and I3 (no tombstoned process), as a delta's does.
 4. The resulting entry fails the store gate — the same gate every run passes and nothing less:
    `facts.schema.json` for its kind's file (the `save_store` pass), and `content.check_document` on
    the kind's file with the store, the declared unit symbols and the estate conventions (the pass

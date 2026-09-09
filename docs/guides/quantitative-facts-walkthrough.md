@@ -559,21 +559,18 @@ one closing line — «بازبینی انجام شد.» (the review applied), �
 runs `merge facts resolve` itself in a fresh run directory and confirms by the field's Persian
 label.
 
-### Stage C — the audit review
+### No Stage C — the run ends with the report
 
-```
-merge facts audit --persian
-```
-
-The audit is twenty-six read-only checks over the whole store (section 10.4): duplicate titles,
-two rules writing one column, a rule referring to an item that is gone, a link to a retired
-process, a table cell disagreeing with a report constant by more than 1 %, shares not summing to
-one, a note nobody promoted, and so on. `--persian` renders each as a sentence built from the
-entry's title; the raw output is never shown. The coordinator numbers them, splits them into
-"actionable" and "report only", and waits per item. For an approved item it runs the matching verb
-(`resolve`, `retire`, `promote`, or a re-point `apply`) in a fresh run directory and commits. At the
-end `merge facts check` re-hashes every citation and prints the store's readiness line:
-`readiness: units_done=… review_ran=… lint_failures=… expr_missing=… open_disputes=…`.
+Until 2026-09-09 the run ended with an audit review: the coordinator ran the store-wide audit,
+presented its findings as numbered items and asked the owner which to act on, one turn per item.
+The owner ruled it out after the cooking run: of its 246 findings, 69 were a false positive in the
+audit itself (recipe cells naming an item by its code, which the audit did not resolve), 13
+described a removed process node as a changed process with a successor that did not exist, and
+the rest were information (menu items no rule reads yet, constants no rule reads yet, roles no
+process names). The reviewer already sees the audit's cross-entry checks for this run's own
+entries in its digest, and the remaining checks matter *between* runs, when something else moved.
+So the run now ends after the report. `merge facts audit` and `merge facts check` remain
+operator commands (runbook 07 §5 and §10.4 below), and the two defects were fixed the same day.
 
 That is the whole journey. The cooking run of 2026-09-08 took four bot turns, produced 226 entries
 from 14 units (13 on their first attempt), and cost about 22 dollars of model time.
@@ -662,8 +659,7 @@ What the verb does, in order:
    patch against `facts-patch.schema.json`; finds the entry.
 2. Applies the operations to a deep copy. Refused inside an operation: a path starting with
    `id`, `kind`, `key`, `status` or `updated_at` (identity and derived fields — a key is never
-   renamed, a kind change is `promote`'s job); anything under `source[]` (provenance is never
-   edited out); `set retired` with anything but `false` (retiring is `retire`'s job, so the entry
+   renamed, a kind change is `promote`'s job); `set retired` with anything but `false` (retiring is `retire`'s job, so the entry
    gets a date and possibly an heir; *un*-retiring a mistake is allowed); a path that names
    nothing; an `append` of a member whose key is already there; a `set` that changes a member's
    key.
@@ -1105,7 +1101,7 @@ relayed 2 068 one-per-cell errors taught everyone that nobody reads them.
 Read-only, always exit 0, twenty-six checks, each `{code, id, message, proposal}`: `two_writers`,
 `duplicate_title`, `note_overlap`, `equal_expr`, `duplicate_code`, `edge_disagreement`,
 `orphan_ref`, `dangling_ref_items`, `process_link` (a link to a tombstoned process, with the heir
-proposed), `row_gone`, `dump_missing`, `binding_gone`, `expr_missing`, `retired_row_live_edges`,
+proposed), `process_node_gone` (a cited node removed from a live process), `row_gone`, `dump_missing`, `binding_gone`, `expr_missing`, `retired_row_live_edges`,
 `template_drift`, `reconciliation` (a table cell and the report constant differ by over 1 %),
 `component_sum`, `unconsumed_constant`, `no_consumer`, `quantity_off_enum`,
 `note_targets_retired`, `import_unresolved`, `stale_prose`, `stale_stub`, `natural_key_dup`,

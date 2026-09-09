@@ -75,7 +75,9 @@ from merge_facts import conventions
 # there is something to restore them from.
 from merge_facts.apply import (KEY_RE, _recompute_location, _run_ref, _snapshot,
                                _today_jalali)
+from merge_facts.apply import _hash_of
 from merge_facts.audit import _manifest
+from merge_facts.preconditions import _source_path_problems, process_source_problems
 from merge_facts.content import check_document
 # `edit` settles a dispute the way the ladder raised one: the same numeric
 # equality (`_equal`), the same account id (`with_account_id`), the same dedup
@@ -330,9 +332,6 @@ def _apply_op(entry, op):
     head = path.split("/", 1)[0]
     if head in _EDIT_IMMUTABLE:
         raise ValueError(f"{path!r} is {_EDIT_IMMUTABLE[head]} and is never edited")
-    if head == "source":
-        raise ValueError("source[] is provenance and is never edited "
-                         "(repair-source-refs is the one writer of a citation)")
     if head == "retired" and not (verb == "set" and op.get("value") is False):
         raise ValueError(_EDIT_RETIRE_IS_THE_VERB)
     before = get_path(entry, path) if path_exists(entry, path) else None
@@ -346,8 +345,9 @@ def _apply_op(entry, op):
     if verb == "append":
         value = op["value"]
         members = before if isinstance(before, list) else []   # else: append_path refuses
-        keyfn = keyfn_for(path.rsplit("/", 1)[-1])
-        if isinstance(value, dict) and any(
+        name = path.rsplit("/", 1)[-1]
+        keyfn = UNION_FIELDS.get(name) or keyfn_for(name)   # a citation dedups on its locator
+        if isinstance(value, dict) and keyfn(value) is not None and any(
                 isinstance(m, dict) and keyfn(m) == keyfn(value) for m in members):
             raise ValueError(f"{path!r}: a member with that key is already there "
                              f"— set it")
@@ -409,7 +409,24 @@ def _gate(root, store, kind, entry):
         if isinstance(ref, str) and FACT_ID_RE.fullmatch(ref) \
                 and _find(store, ref)[1] is None:
             problems.append(f"{entry['id']}: ref {ref} names no entry")
+    # A citation the instruction wrote faces QF-5 and I3 exactly as a delta's
+    # does: its `ref` names a file inside the repo, and no process it cites is
+    # tombstoned.
+    problems += _source_path_problems(root, entry, entry["id"])
+    problems += [f"{entry['id']}: {line}" for line in process_source_problems(root, entry)]
     return problems
+
+
+def _restamp_sources(root, before, after, run_ref):
+    """A citation the ops added or changed is stamped the way `apply` stamps a
+    new one — its file's hash, and this run as the run that cited it. One the
+    ops left exactly as it was keeps the stamp it had (v3.7 §2.4)."""
+    untouched = before.get("source") or []
+    for member in after.get("source") or []:
+        if not isinstance(member, dict) or member in untouched:
+            continue
+        member["hash"] = _hash_of(root, member.get("ref"))
+        member["run"] = run_ref
 
 
 def edit(root, fact_id, patch_path, run_dir, preview=False):
@@ -478,6 +495,7 @@ def edit(root, fact_id, patch_path, run_dir, preview=False):
         else:
             work.pop("field_status", None)
         _recompute_location(work)
+        _restamp_sources(root, entry, work, run_ref)
         sources = work.setdefault("source", [])
         source_key = UNION_FIELDS["source"]
         if source_key(chat_src) not in {source_key(s) for s in sources}:
