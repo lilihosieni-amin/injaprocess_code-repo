@@ -73,7 +73,7 @@ from ..disclosure import Disclosure
 from ..fingerprint import fact_fingerprint
 from ..models import ResolveFactBody
 from ..scopes import contains
-from ..store import confirmations, manifest
+from ..store import chat_confirmations, confirmations, manifest
 
 router = APIRouter(prefix="/api/facts")
 
@@ -501,6 +501,10 @@ def list_facts(request: Request, user=Depends(panel_session)):
     entries = {e["id"]: e for e in facts_store.load_all(root)
                if isinstance(e.get("id"), str)}
     stored = confirmations.stored_for(conn, [r["id"] for r in rows])
+    # The second confirmation channel (v3.7 §3), read **once** for the listing
+    # exactly as the marks above are resolved in one statement: it is one small
+    # file, and per-row it would be one open per entry in the store.
+    chat = chat_confirmations.load(root)
 
     out = []
     for row in rows:
@@ -552,7 +556,12 @@ def list_facts(request: Request, user=Depends(panel_session)):
             # a screen show the state and act on it without ever computing a
             # print of its own, which QF-24 forbids the client doing.
             "fingerprint": now,
-            "confirmed": mark is not None and mark == now,
+            # Either channel vouches (v3.7 §3.4). The chat actor's row carries
+            # the entry's `updated_at` rather than a print — the engine cannot
+            # reach `app.db` and the two components share no canonicaliser — and
+            # goes stale by itself the moment anything stamps the entry again.
+            "confirmed": (mark is not None and mark == now)
+                         or chat_confirmations.confirmed(chat, entry),
             "updated_at": row.get("updated_at"),
         })
     return {"entries": out, "coverage": facts_store.coverage(root)}
@@ -660,6 +669,11 @@ def _bundle(request: Request, user, fid: str) -> dict:
     # GET of that entry return it" stops being a fact about this route.
     if not _served(shown, reach, entry, mark):
         raise HTTPException(status_code=404, detail=NOT_FOUND)
+    # The listing's rule for one entry — see `list_facts`; read after the
+    # refusal above so a withheld entry costs no file.
+    confirmed = ((mark is not None and mark == now)
+                 or chat_confirmations.confirmed(chat_confirmations.load(root),
+                                                 entry))
     served = shown.redact_fact(entry, targets)
     visible, names_a_fact = _neighbour_visibility(conn, root, shown, reach)
     titles = facts_store.row_titles(root, entry)
@@ -674,7 +688,7 @@ def _bundle(request: Request, user, fid: str) -> dict:
             # `confirmed` for the reason `routers/confirmations._row` reports
             # the same pair: the state, and the means to act on it, in one body.
             "fingerprint": now,
-            "confirmed": mark is not None and mark == now,
+            "confirmed": confirmed,
             # What the tick may do, not what it would say: `confirm` at every
             # department the entry names (QF-27), and nothing else. The second
             # half — "and not a red entry", QF-25's red-over-green — was

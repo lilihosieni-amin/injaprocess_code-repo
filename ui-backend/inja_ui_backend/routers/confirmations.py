@@ -31,7 +31,7 @@ from ..access import NOT_FOUND, requires, requires_every
 from ..auth import record, require_session
 from ..fingerprint import fact_fingerprint, fingerprint
 from ..models import ConfirmBody
-from ..store import confirmations
+from ..store import chat_confirmations, confirmations
 
 # The scope requirement of a fact entry, derived once for both gates — see
 # `_fact_departments`. `routers/facts` imports nothing from here, so there is
@@ -127,23 +127,38 @@ def _confirm_gate(request: Request, user=Depends(require_session)):
     return dep(request, user)
 
 
-def _row(conn, target: str, doc: dict) -> dict:
+def _row(conn, target: str, doc: dict, chat: dict) -> dict:
     """One confirmable target as this router reports it.
 
     `fingerprint` is the document's **current** one — what a `POST` must echo —
     and `confirmed` is whether the stored mark equals it. Reporting both is what
     lets the client show the state and act on it without ever computing a
     fingerprint of its own.
+
+    `chat` is the ledger the caller has already read (v3.7 §3.4) — the chat
+    actor's vouch, which counts for an `F-` target beside the mark in `app.db`.
+    Passed in rather than read here so the listing reads the file once for every
+    row it builds; a target that is not a fact never has a row there, and the
+    kind check says so rather than trusting the ledger's keys.
     """
     now = _fingerprint_of(target, doc)
     stored = confirmations.get(conn, target)
     ok = stored is not None and stored["fingerprint"] == now
+    vouched = _kind(target) == "fact" and chat_confirmations.confirmed(chat, doc)
     return {
         "target": target,
         "kind": _kind(target),
         "fingerprint": now,
-        "confirmed": ok,
-        "confirmed_by": stored["confirmed_by"] if ok else None,
+        "confirmed": ok or vouched,
+        # `chat:<by>` when only the ledger vouches — the actor is the one
+        # `meta.json` named, not a user of this service, and the prefix is what
+        # keeps the two apart in a body that has always meant "a username here".
+        # `confirmed_at` stays the DB column's: it is an epoch integer and the
+        # ledger's `at` is an ISO string, and a field that changes type is worse
+        # to a reader than an absent one.
+        "confirmed_by": (stored["confirmed_by"] if ok else
+                         f"chat:{chat.get(target, {}).get('by', '')}"
+                         if vouched else None),
         "confirmed_at": stored["confirmed_at"] if ok else None,
     }
 
@@ -189,10 +204,11 @@ def list_confirmations(request: Request,
     cfg = request.app.state.cfg
     conn = request.app.state.db
     code = request.query_params.get("department", "")
+    chat = chat_confirmations.load(cfg.data_root)
     out = []
     overview = storage.overview_path(cfg.data_root, code)
     if overview.is_file():
-        out.append(_row(conn, code, storage.read_json(overview)))
+        out.append(_row(conn, code, storage.read_json(overview), chat))
     for doc in storage.ordered_processes(cfg.data_root, code):
         if doc.get("tombstoned"):
             continue
@@ -211,7 +227,7 @@ def list_confirmations(request: Request,
         # by one of the two and not the other; that divergence is `disclosure`'s and
         # predates this router, and the write paths below stay lexical so nothing
         # here widens it.
-        out.append(_row(conn, doc["id"], doc))
+        out.append(_row(conn, doc["id"], doc, chat))
     return out
 
 
@@ -228,8 +244,9 @@ def set_confirmation(target: str, body: ConfirmBody, request: Request,
     than 404 because the caller is inside the department and learns nothing from
     being told so.
     """
+    cfg = request.app.state.cfg
     conn = request.app.state.db
-    doc = _load(request.app.state.cfg, target)
+    doc = _load(cfg, target)
     # **403, not 404, for a tombstone** (access.py's partition, D56). The 404 in
     # `_load` answers "not on disk at all" — indistinguishable from a typo,
     # because a caller inside the department learns nothing from it they could
@@ -283,11 +300,11 @@ def set_confirmation(target: str, body: ConfirmBody, request: Request,
     # stored value is not something to leave depending on a guard three lines up.
     confirmations.set_confirmation(conn, target=target, fingerprint=now,
                                    by=user["username"], at=int(time.time()),
-                                   data_repo_commit=gitcommit.head(request.app.state.cfg))
+                                   data_repo_commit=gitcommit.head(cfg))
     record(request, "confirmation.set", actor=user["username"],
            session_id=request.state.session_id, target=target,
            detail={"fingerprint": now, "kind": _kind(target)})
-    return _row(conn, target, doc)
+    return _row(conn, target, doc, chat_confirmations.load(cfg.data_root))
 
 
 @router.delete("/{target}")
@@ -306,10 +323,16 @@ def revoke_confirmation(target: str, request: Request,
     to say, and saying it would make this endpoint an existence probe for the
     confirmation state of every id in the department.
     """
+    cfg = request.app.state.cfg
     conn = request.app.state.db
-    doc = _load(request.app.state.cfg, target)
-    if confirmations.revoke(conn, target):
+    doc = _load(cfg, target)
+    # Both channels, because the withdrawal means "whatever is there is wrong"
+    # and a vouch left behind in the ledger would go on saying otherwise. The
+    # DB revoke is on the left of the `or` so it always runs.
+    chat = _kind(target) == "fact" and chat_confirmations.forget(cfg.data_root,
+                                                                 target)
+    if confirmations.revoke(conn, target) or chat:
         record(request, "confirmation.revoked", actor=user["username"],
                session_id=request.state.session_id, target=target,
-               detail={"kind": _kind(target)})
-    return _row(conn, target, doc)
+               detail={"kind": _kind(target), "chat": chat})
+    return _row(conn, target, doc, chat_confirmations.load(cfg.data_root))

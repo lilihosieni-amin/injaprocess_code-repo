@@ -21,7 +21,8 @@ from inja_ui_backend.access import NOT_FOUND
 from inja_ui_backend.app import create_app
 from inja_ui_backend.auth import hash_password
 from inja_ui_backend.fingerprint import fact_fingerprint
-from inja_ui_backend.store import confirmations, users
+from inja_ui_backend.routers import confirmations as confirmations_router
+from inja_ui_backend.store import chat_confirmations, confirmations, users
 from inja_ui_backend.tests_helpers import cfg_for
 
 PW = "test-password"
@@ -388,3 +389,169 @@ def test_commit_id_column_written_at_set_time(data_root, tmp_path):
         conn.close()
     assert row["data_repo_commit"] == head
     assert row["data_repo_commit"] != ""
+
+
+# --- the chat confirmation ledger (v3.7 §3) ---
+#
+# `facts/.confirmations.json` is the engine's, written on a chat-origin run; the
+# ui-backend only reads it — and removes a row on revoke. A row vouches while
+# its `updated_at` equals the entry's, which is why every test here plants the
+# stamp it is asserting about rather than a fixed string.
+
+def _ledger(data_root, rows):
+    (data_root / "facts" / ".confirmations.json").write_text(
+        json.dumps({"schema_version": 1, "entries": rows}, ensure_ascii=False),
+        encoding="utf-8")
+
+
+def _ledger_doc(data_root):
+    return json.loads((data_root / "facts" / ".confirmations.json")
+                      .read_text(encoding="utf-8"))
+
+
+def _vouch(stamp):
+    """§3.2's row: the entry's `updated_at` after the write, and who/when/which run."""
+    return {"updated_at": stamp, "by": "owner",
+            "run": "runs/facts/cooking/20260909-091210",
+            "at": "2026-09-09T09:12:31Z"}
+
+
+def test_a_ledger_row_at_the_entrys_stamp_reads_as_confirmed(data_root, tmp_path):
+    entry = facts_store.load_entry(data_root, RULE)
+    _ledger(data_root, {RULE: _vouch(entry["updated_at"])})
+    client = _client_as(data_root, tmp_path, "editor", "dept:cooking")
+
+    body = client.get(f"/api/facts/{RULE}").json()
+    assert body["confirmation"]["confirmed"] is True
+    rows = {r["id"]: r for r in client.get("/api/facts").json()["entries"]}
+    assert rows[RULE]["confirmed"] is True
+    # Nothing was written to `app.db` — the vouch is the file's alone.
+    conn = db.connect(client.app_db)
+    try:
+        assert confirmations.get(conn, RULE) is None
+    finally:
+        conn.close()
+
+
+def test_a_ledger_row_at_an_older_stamp_is_not_a_confirmation(data_root, tmp_path):
+    """The row goes stale on its own the way a fingerprint mismatch does: the
+    engine stamps `updated_at` on every entry it touches, so anything that
+    changed the entry after the vouch has already moved the stamp."""
+    _ledger(data_root, {RULE: _vouch("2000-01-01T00:00:00Z")})
+    client = _client_as(data_root, tmp_path, "editor", "dept:cooking")
+
+    assert client.get(f"/api/facts/{RULE}").json()["confirmation"]["confirmed"] is False
+    rows = {r["id"]: r for r in client.get("/api/facts").json()["entries"]}
+    assert rows[RULE]["confirmed"] is False
+
+
+def test_revoke_removes_a_ledger_row_and_says_so(data_root, tmp_path):
+    entry = facts_store.load_entry(data_root, RULE)
+    _ledger(data_root, {RULE: _vouch(entry["updated_at"]),
+                        RECORD: _vouch("2000-01-01T00:00:00Z")})
+    client = _client_as(data_root, tmp_path, "editor", "dept:cooking")
+
+    r = client.delete(f"/api/confirmations/{RULE}")
+    assert r.status_code == 200
+    assert r.json()["confirmed"] is False
+    doc = _ledger_doc(data_root)
+    assert RULE not in doc["entries"]
+    assert RECORD in doc["entries"]        # one row goes, not the file
+    assert doc["schema_version"] == 1      # rewritten, not replaced by a stub
+    assert client.get(f"/api/facts/{RULE}").json()["confirmation"]["confirmed"] is False
+
+    # The withdrawal is recorded even though `app.db` held nothing to withdraw,
+    # and says which channel it came out of.
+    events = _events(client, "confirmation.revoked")
+    assert [json.loads(e["detail"])["chat"] for e in events] == [True]
+
+
+def test_revoke_with_no_ledger_row_says_so_too(data_root, tmp_path):
+    """The other half: a DB-only withdrawal records `chat: false`, so the flag
+    is a fact about this revoke rather than a marker only ever set."""
+    client = _client_as(data_root, tmp_path, "editor", "dept:cooking")
+    fp = fact_fingerprint(_entry(data_root, "rules.json", RULE))
+    assert client.post(f"/api/confirmations/{RULE}",
+                       json={"fingerprint": fp}).status_code == 200
+
+    assert client.delete(f"/api/confirmations/{RULE}").status_code == 200
+    events = _events(client, "confirmation.revoked")
+    assert [json.loads(e["detail"])["chat"] for e in events] == [False]
+
+
+def test_a_db_mark_still_wins_when_the_ledger_is_stale(data_root, tmp_path):
+    """The two channels are an OR, not a replacement: a UI confirmation stands
+    on its own with a stale row beside it."""
+    client = _client_as(data_root, tmp_path, "editor", "dept:cooking")
+    fp = fact_fingerprint(_entry(data_root, "rules.json", RULE))
+    assert client.post(f"/api/confirmations/{RULE}",
+                       json={"fingerprint": fp}).status_code == 200
+
+    _ledger(data_root, {RULE: _vouch("2000-01-01T00:00:00Z")})
+    assert client.get(f"/api/facts/{RULE}").json()["confirmation"]["confirmed"] is True
+    rows = {r["id"]: r for r in client.get("/api/facts").json()["entries"]}
+    assert rows[RULE]["confirmed"] is True
+
+
+def test_a_malformed_ledger_reads_as_no_confirmation_and_never_raises(data_root,
+                                                                      tmp_path):
+    """A file no route requires must never be able to take one down — it is
+    written by the other component, so anything can be in it."""
+    client = _client_as(data_root, tmp_path, "editor", "dept:cooking")
+    path = data_root / "facts" / ".confirmations.json"
+    for junk in ("", "{ not json", "[]", '{"entries": []}',
+                 '{"entries": {"F-00001": 3}}', '{"entries": {"F-00001": {}}}',
+                 '{"entries": {"F-00001": {"updated_at": null}}}'):
+        path.write_text(junk, encoding="utf-8")
+        r = client.get(f"/api/facts/{RULE}")
+        assert r.status_code == 200, junk
+        assert r.json()["confirmation"]["confirmed"] is False, junk
+        listing = client.get("/api/facts")
+        assert listing.status_code == 200, junk
+        assert {r["id"]: r for r in listing.json()["entries"]}[RULE]["confirmed"] \
+            is False, junk
+    # And an absent file is the ordinary case, not an error.
+    path.unlink()
+    assert client.get(f"/api/facts/{RULE}").json()["confirmation"]["confirmed"] is False
+
+
+def test_the_listing_reads_the_ledger_once_per_request(data_root, tmp_path,
+                                                       monkeypatch):
+    """One read for the whole listing, the way the DB marks are resolved in one
+    statement — not one open per row."""
+    entry = facts_store.load_entry(data_root, RULE)
+    _ledger(data_root, {RULE: _vouch(entry["updated_at"])})
+    client = _client_as(data_root, tmp_path, "editor", "dept:cooking")
+    calls = []
+    real = chat_confirmations.load
+
+    def counted(root):
+        calls.append(root)
+        return real(root)
+
+    monkeypatch.setattr(chat_confirmations, "load", counted)
+    assert client.get("/api/facts").status_code == 200
+    assert len(calls) == 1
+
+
+def test_the_row_names_the_chat_actor_when_only_the_ledger_vouches(data_root,
+                                                                   tmp_path):
+    """`_row` directly, because no route hands it back in this state: the
+    confirmations listing carries the department overview and its processes and
+    never a fact, and `DELETE` has already removed the row by the time it builds
+    one. §3.4's `confirmed_by` is a contract all the same, so it is pinned where
+    it lives."""
+    entry = facts_store.load_entry(data_root, RULE)
+    chat = {RULE: _vouch(entry["updated_at"])}
+    client = _client_as(data_root, tmp_path, "editor", "dept:cooking")
+    conn = db.connect(client.app_db)
+    try:
+        row = confirmations_router._row(conn, RULE, entry, chat)
+        stale = confirmations_router._row(
+            conn, RULE, entry, {RULE: _vouch("2000-01-01T00:00:00Z")})
+    finally:
+        conn.close()
+    assert row["confirmed"] is True
+    assert row["confirmed_by"] == "chat:owner"
+    assert stale["confirmed"] is False
+    assert stale["confirmed_by"] is None
