@@ -481,7 +481,11 @@ def _check_constant_shape(entry, kind_of_file, messages, label):
         if data.get("lang") is None:
             messages.append(f"{label}: a rule with inputs carries no lang")
         original_key = "original_ref" if kind_of_file == "facts" else "original"
-        if not (data.get("expr") or data.get(original_key)):
+        # A decision table IS the body (§4, I8) — as much one as a formula or
+        # the verbatim original, and the only body a table rule ever carries.
+        if not (data.get("expr") or data.get(original_key)
+                or (data.get("lang") == "table"
+                    and isinstance(data.get("table"), dict))):
             messages.append(f"{label}: a rule with inputs carries no expr "
                             f"or {original_key}")
         for o in outputs:
@@ -511,7 +515,7 @@ def _check_table_shape(entry, messages, label):
         if not isinstance(table, dict):
             messages.append(f"{label}: lang: table carries no table")
             return
-        if data.get("expr"):
+        if data.get("expr") is not None:
             messages.append(f"{label}: a table rule carries expr — a table "
                             f"has no formula")
     elif table is not None:

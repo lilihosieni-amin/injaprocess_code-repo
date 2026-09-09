@@ -1134,3 +1134,20 @@ def test_the_two_cooking_tables_pass():
                 / "tables.json")
     doc = json.loads(fixtures.read_text(encoding="utf-8"))
     assert [m for m in check_document(doc, "facts") if "table" in m] == []
+
+
+def test_a_table_is_a_body_so_a_table_rule_needs_no_original():
+    """Review finding 1 — `_check_constant_shape` counted only `expr` and the
+    verbatim original as a body, so a well-formed table rule was refused with
+    «a rule with inputs carries no expr or original». For a table rule the
+    table IS the body, in the delta form and in the store's."""
+    rule = _table_rule([{"goruh": "x", "mabna": "y"}])
+    assert check_document(_doc(rule), "facts-delta") == []
+    assert check_document(_doc(rule), "facts") == []
+
+
+def test_an_empty_expr_on_a_table_rule_is_still_an_expr():
+    rule = _table_rule([{"goruh": "x", "mabna": "y"}])
+    rule["data"]["expr"] = ""
+    assert any("a table rule carries expr" in m for m in
+               check_document(_doc(rule), "facts-delta"))
