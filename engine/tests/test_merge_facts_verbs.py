@@ -351,6 +351,8 @@ def test_edit_set_remove_unset_append_in_order(tmp_path):
     ([{"op": "append", "path": "data/outputs", "value": {"key": "v", "value": 1}}], "already"),
     ([{"op": "set", "path": "statement", "value": "Table_Mavad را بخوان"}], "names"),
     ([{"op": "set", "path": "data/outputs/v/unit", "value": "stone"}], "unit"),
+    ([{"op": "set", "path": "scope/departments", "value": ["nope"]}], "registry"),
+    ([{"op": "set", "path": "scope/branches", "value": ["mars"]}], "manifest"),
     ([{"op": "set", "path": "data/outputs/v", "value": {"key": "z", "value": 1}}], "key"),
 ])
 def test_edit_refuses_and_writes_nothing(tmp_path, capsys, ops, fragment):
@@ -431,6 +433,26 @@ def test_edit_preview_prints_current_and_proposed_and_writes_nothing(tmp_path, c
     assert "حد مجاز" in out and "حد مجاز انحراف" in out and out.rstrip().endswith("OK")
     assert report["problems"] == [] and report["ops"][0]["after"] == "حد مجاز انحراف"
     assert _five(root) == before and not (run / "facts-before").exists()
+
+def test_edit_preview_reports_a_gate_refusal_after_printing_the_op(tmp_path, capsys):
+    """§2.5 — the block first, then the gate's own lines on stderr and exit 2:
+    a preview that refuses still shows the owner what was proposed."""
+    root = _root(tmp_path); _seed_units(root)
+    apply(root, _write(root, "d1.json", _const_delta(5)), _run_dir(root, "1"))
+    e = _rule_entry(root)
+    before = _five(root)
+    run = _run_dir(root, "2")
+    with pytest.raises(SystemExit) as exc:
+        edit(root, e["id"], _patch(root, "p.json",
+             [{"op": "set", "path": "data/outputs/v/unit", "value": "stone"}]),
+             run, preview=True)
+    assert exc.value.code == 2
+    out, err = capsys.readouterr()
+    assert "[1] set data/outputs/v/unit" in out and "پیشنهاد: stone" in out
+    assert "OK" not in out
+    assert "unit 'stone' is declared by no row" in err
+    assert _five(root) == before and not (run / "facts-before").exists()
+
 
 def test_edit_preview_reports_a_refusal_with_exit_2_from_the_cli(tmp_path, capsys, monkeypatch):
     from merge.cli import main as merge_main

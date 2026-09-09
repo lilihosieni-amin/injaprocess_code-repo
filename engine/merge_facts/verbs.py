@@ -83,7 +83,9 @@ from merge_facts.content import check_document
 # (`keyfn_for`). A second opinion on any of the four is a second store.
 from merge_facts.ladder import UNION_FIELDS, _equal, keyfn_for, with_account_id
 from merge_facts.preconditions import (FACT_ID_RE, _unit_row_keys,
-                                       undeclared_unit_problems)
+                                       registered_scope,
+                                       undeclared_unit_problems,
+                                       unregistered_scope_problems)
 
 _KIND_DATA_STUBS = {
     # Neutral containers `promote` may inject — empty, so nothing is
@@ -320,7 +322,8 @@ def _apply_op(entry, op):
         set_path(entry, path, value)          # creates a field, never a member
         return before, value
     if verb == "append":
-        value, members = op["value"], before or []
+        value = op["value"]
+        members = before if isinstance(before, list) else []   # else: append_path refuses
         keyfn = keyfn_for(path.rsplit("/", 1)[-1])
         if isinstance(value, dict) and any(
                 isinstance(m, dict) and keyfn(m) == keyfn(value) for m in members):
@@ -360,10 +363,13 @@ def _settle(entry, path, value, chat_src):
 
 def _gate(root, store, kind, entry):
     """The store gate every run passes, on this one entry (§2.3 item 4): the
-    `save_store` schema pass, the content pass `validate facts` runs, QF-40's
-    declared unit symbols and QF-37's resolvable `{ref}`s. Nothing less — an
-    entry a chat instruction rewrote is written to the same five files as one
-    a delta wrote, and there is no second, softer contract for it."""
+    `save_store` schema pass, the content pass `validate facts` runs, QF-33's
+    registered scope, QF-40's declared unit symbols and QF-37's resolvable
+    `{ref}`s. Nothing less — an entry a chat instruction rewrote is written to
+    the same five files as one a delta wrote, and there is no second, softer
+    contract for it. (The rules `preconditions` runs that are about a delta
+    rather than an entry — a creation's department, QF-34's title twin, one
+    open record per tab — belong to `apply` and are not re-run here.)"""
     problems = []
     try:
         validate("facts.schema.json", store[kind])
@@ -374,6 +380,8 @@ def _gate(root, store, kind, entry):
     problems += check_document(doc, "facts", store=store, unit_symbols=unit_rows,
                                conventions=conventions.load(root))
     problems += undeclared_unit_problems(entry, unit_rows, entry["id"])
+    problems += unregistered_scope_problems(entry, *registered_scope(root),
+                                            entry["id"])
     for obj in iter_ref_objects(entry.get("data") or {}):
         ref = obj.get("ref")
         if isinstance(ref, str) and FACT_ID_RE.fullmatch(ref) \
