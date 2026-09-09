@@ -512,15 +512,17 @@ reads it grouped by reason at the end of `report.md`.
 | an entry fails the assembly's own lint (step 8) | the entry is held back, dependants with it | «با قرارداد ثبت جور در نیامد» |
 | an entry cites a candidate a unit dropped or never decided | the entry waits for it | «منتظر بخشی است که در این اجرا تمام نشد» |
 | a unit spent both attempts and returned nothing usable | its candidates are held back | «در این اجرا بررسی نشد» |
+| `assemble` — a review decision fails the lint or an address lands nowhere | that decision is held back (`review_held`) and named in the report; the rest of the review applies | «بازبینی انجام شد؛ ۱ تصمیم آن کنار گذاشته شد:» and the entry's title with its reason |
 
-Five stops remain, and none of them is one input's fault:
+Six stops remain, and none of them is one input's fault:
 
 | stop | why it stays |
 |---|---|
 | `build` — a candidate planned into two units or into none | an engine invariant; a candidate decided twice contradicts itself and one decided nowhere is lost work |
 | `facts-plan build` without `--rebuild` once a unit is done | protects finished work; resume through `facts-plan status` |
 | `assemble` — a unit's latest output does not validate and it still has an attempt | the run is not ready; Stage U re-dispatches that unit |
-| `assemble` — the review's own rewrite fails the lint | holding it back would bury the unit's sound version under it |
+| `digest` — the digest is over the 400 K ceiling | no reviewer can read it, and a run recorded without a review is not an outcome the design allows; report it as a defect |
+| `assemble --review` — the review was written against an older digest | its addresses no longer name what they meant; the playbook re-enters Stage R and the review is written again, never skipped |
 | `assemble` — nothing at all could be assembled | the one true stop; every held-back reason is printed |
 
 A new `raise SystemExit(2)` in `build.py`, `assemble.py`, `cli.py` or
@@ -582,7 +584,7 @@ either file.
 | file | written by | sent at | carries |
 |---|---|---|---|
 | `{run_dir}/gate-b.md` | `facts-plan assemble` | **not sent** since 2026-09-09 — kept on disk as the run's record | counts per kind; the first three rules in one sentence each; how many were dropped and the commonest reasons; how many went unexamined; the disputes numbered with lettered options; how many issues were found in the files, three of them named; how many cells are unanswered; and the one question «تأیید می‌کنید؟» |
-| `{run_dir}/report.md` | `facts-plan report` | after the apply and the commit | what was recorded, dropped and left unexamined; the open disputes numbered with lettered options; the unanswered cells grouped per entry; the dropped list by reason in the owner's own words; every engine-found issue grouped by kind; whether a part was left unfinished; and whether the review ran |
+| `{run_dir}/report.md` | `facts-plan report` | after the apply and the commit | what was recorded, dropped and left unexamined; the open disputes numbered with lettered options; the unanswered cells grouped per entry; the dropped list by reason in the owner's own words; every engine-found issue grouped by kind; whether a part was left unfinished; and how the review went — applied whole, or applied with the decisions that were set aside named one per line |
 
 A third line runs through both files: **a file this run could not read is named
 once.** An extension `extract-attachment` has no converter for, or a supported
@@ -657,9 +659,10 @@ the content pass, plus a branch code off the sheets manifest, a unit symbol off
 the units record, `fields[].from` against the candidate's columns, and a
 `merge_into` across kinds. `assemble` re-runs the same contract over the
 assembly and over the review's rewrites, whose lines are labelled
-`review: <key>`. The final validation keeps only what is genuinely cross-entry —
-twin titles, instance ownership, references between units, the reviewer's caps —
-and each of those already names the unit that caused it.
+`review: <key>` — and such a line now holds back that one decision
+(`review_held`) rather than the review. The final validation keeps only what is
+genuinely cross-entry — twin titles, instance ownership, references between
+units — and each of those already names the unit that caused it.
 
 So the operator's reading of a failure changes: **a per-entry error at the final
 validation is a defect in the engine, not a unit to re-dispatch.** Stop the run

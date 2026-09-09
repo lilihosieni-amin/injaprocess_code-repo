@@ -408,8 +408,12 @@ per assembled entry (kind, key, scope, title, statement, and the formula or the 
 engine's **flags** (things it noticed across units — a title used twice, two units disagreeing
 about a leaf, one tab claimed by two keys, variants that differ only by a wrapper function), the
 dropped candidates, and the same shape section. It also writes `review/input.sha256`, a hash of
-the digest, so a review written against an older digest is detected. Above 50 000 tokens the digest
-is not written at all and the run proceeds without a review — the report says so.
+the digest, so a review written against an older digest is detected — and detected means *redone*:
+`assemble --review` refuses a stale review («the digest changed since this review was written»),
+and the playbook re-enters this stage rather than dropping it. The ceiling is 400 000 tokens (the
+runtime model holds a million; cooking, the largest department, digests to about 29 000). Above it
+`digest` writes nothing and exits naming the count — a digest no reviewer can read is a defect that
+stops the run, never a run recorded without a review.
 
 Then one dispatch: the **quantify agent in `review` mode**. It reads the whole assembled result
 at once — the only place anyone sees the department as a whole — and writes `review/out.json` in
@@ -417,11 +421,18 @@ the same `facts-unit` shape, addressing entries by `{kind, key, scope}` (ids do 
 may `keep` with corrections (a `data` it carries is merged member by member over the unit's own,
 never wholesale), `drop`, `merge_into`, and — only here — raise a `contradiction` on a field the
 engine flagged as *drift*, resolving it either as an `account` (open a dispute for the owner) or a
-`fix` (correct a demonstrable slip). Caps: 60 decisions, 20 statement rewrites. The same
-validator gates it, folding the review over the assembly and linting the result exactly as the
-assembly will; a review that addresses nothing, or names a field nobody flagged, or is stale, is
-**discarded whole** — one round, no negotiation. A failed review is re-dispatched once; after that
-the run proceeds without it.
+`fix` (correct a demonstrable slip). There is no cap on how many decisions it may write or how
+many statements it may rewrite; where to spend its attention — duplicates, contradictions,
+cell-reference statements, not polish — is guidance, not a count. A `code` it writes is ignored
+rather than refused: the code is the engine's. The same validator gates it, folding the review over
+the assembly and linting the result exactly as the assembly will, and a failure is re-dispatched
+**once** with the validator's own concrete lines — the reviewer gets the two attempts a unit gets.
+What still fails after that is not thrown away: **the review is never dropped whole.** Stage V
+applies every decision that passes and holds back the rest one decision at a time, each with its
+reason — an address that names no entry or names more than one, a `contradiction` on a field no
+drift flag names, a candidate no unit of this run decided, a `keep` that rewrites a table's columns
+(the digest shows minted keys, never the column keys the shape needs), or a folded entry the lint
+refuses.
 
 ### Stage V — Assemble and validate
 
@@ -436,7 +447,8 @@ ids minted in kind order (item → record → measurement → rule → note).
 1. It takes each unit's latest attempt (a unit with an invalid latest attempt *and an attempt
    left* is a stop — the coordinator re-dispatches it and runs `assemble` again; a unit that spent
    both attempts is simply absent).
-2. It folds the review (or records it as `absent`/`discarded`).
+2. It folds the review, holding back by decision what fails (`review_held`), or records it as
+   `absent` when there is none.
 3. For every `keep`, it builds the **entry**: the skeleton's mechanical payload plus the unit's
    judgement, the unit's field renames applied (and applied to the reference rows and primary key
    too), `source[]` written from the instances (one `sheet` citation per tab) or from the
@@ -459,19 +471,24 @@ ids minted in kind order (item → record → measurement → rule → note).
    to). Notes get their deterministic keys.
 8. **The lint.** Every finished entry goes through the same content checks and style lint as at
    the unit gate. An entry that fails is **held back** to `undecided[]` with its reason — the run
-   lands the rest (invariant **I5**: one bad input never stops a run). The only refusals that stop
-   the run: a *review's own* rewrite failing (holding it back would lose the unit's sound version
-   underneath), or nothing at all being assembled.
+   lands the rest (invariant **I5**: one bad input never stops a run). A lint line labelled
+   `review: <key>` names a review decision rather than a unit: that decision is held back, the
+   review is folded again without it, and the loop repeats until it settles. The only refusal that
+   stops the run here is nothing at all being assembled.
 9. It writes `facts-delta.json` (the proposed changes, `schema_version 2`, temp ids),
    `assembly.json` (`dropped[]`, `undecided[]` with reasons, which unit each temp id came from,
-   the review's status), and `gate-b.md` (the run's record of what it proposed).
+   the review's status — `applied`, `partial` or `absent` — and `review_held[]`, one row per
+   held-back decision with its reason and the title of the entry it addressed), and `gate-b.md`
+   (the run's record of what it proposed).
 
-The **five kept stops** — the only places the planner or the assembly may refuse a whole run —
-are pinned by a test: a candidate planned into two units or none; `build` without `--rebuild`
-once a unit is done; a unit's latest output invalid with an attempt left; the review's own
-rewrite failing the lint; nothing assembled at all. Everything else is a hold-back with a Persian
+The **six kept stops** — the only places the planner, the digest or the assembly may refuse a
+whole run — are pinned by a test: a candidate planned into two units or none; `build` without
+`--rebuild` once a unit is done; a unit's latest output invalid with an attempt left; a digest
+over the 400 000-token ceiling; a review written against an older digest (Stage R is re-entered);
+nothing assembled at all. Everything else is a hold-back with a Persian
 reason: «بزرگ‌تر از یک واحد» (too big for a unit), a merge cycle, a dropped target, an unknown
-reference, refused by the gate, waiting on a held-back entry, its unit failed.
+reference, refused by the gate, waiting on a held-back entry, its unit failed — and, on the
+review's side, a decision the fold could not apply, named in the report with its own reason.
 
 Then `validate facts-delta … --store --run` performs **the entire apply in memory** on a copy of
 the store, with a memory-only id minter, and validates the resulting store against the store
@@ -554,8 +571,13 @@ git add departments runs facts attachments && git commit -m "quantify(cooking): 
 The coordinator reads `report.md` and sends it verbatim: the open disputes numbered with lettered
 options, the unanswered cells per entry, the dropped candidates counted by reason, every engine
 issue grouped by kind, the unread/unplaced list, what was held back and why, and
-one closing line — «بازبینی انجام شد.» (the review applied), «… بدون آن ثبت شد» (discarded) or
-«بازبینی اجرا نشد.» (absent). When the owner answers a lettered dispute («۱ الف»), the coordinator
+the review's closing block. That block is one line — «بازبینی انجام شد.» — when every decision was
+applied; when some were held back it reads «بازبینی انجام شد؛ ۲ تصمیم آن کنار گذاشته شد:» followed
+by one line per held decision, «  • «عنوان» — نشانی به هیچ موردی نمی‌رسید», the entry by its
+Persian title and the reason in Persian. («بازبینی اجرا نشد.» exists for a run assembled without
+`--review`; the playbook never does that.)
+
+When the owner answers a lettered dispute («۱ الف»), the coordinator
 runs `merge facts resolve` itself in a fresh run directory and confirms by the field's Persian
 label.
 
@@ -997,7 +1019,7 @@ the store must name one of its open rows (QF-40); the panel's Persian unit words
 | `review/input.md`, `review/input.sha256` | `facts-plan digest` | the reviewer's view and its hash |
 | `review/out.json` | the quantify agent | the review's decisions |
 | `facts-delta.json` | `facts-plan assemble` (pipeline) **or** the verbs (a growing list of `{verb, args}`) | the proposed changes, or the record of what the verbs did |
-| `assembly.json` | `facts-plan assemble` | dropped, undecided (with reasons), provenance, review status |
+| `assembly.json` | `facts-plan assemble` | dropped, undecided (with reasons), provenance, review status, the review's held-back decisions |
 | `gate-b.md` | `facts-plan assemble` | the run's record of what it proposed (no longer sent) |
 | `facts-before/` | `apply` and every writing verb | the five store files before the write — what `revert` restores |
 | `id-map.json` | `apply` | temp id → minted id |
