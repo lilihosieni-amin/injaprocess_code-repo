@@ -1328,3 +1328,39 @@ def test_the_review_is_held_to_the_store_contract_too(tmp_path, capsys):
 
     _write_review(run_dir, [_review_keep(type="number")])
     assert assemble(root, run_dir, review=True)["review_status"] == "applied"
+
+
+def test_the_review_gate_holds_the_folded_result_to_the_store_contract(tmp_path):
+    """The owner's 2026-09-08 run: the reviewer's document passed its gate,
+    then `assemble --review` refused sixteen items — a refusal the reviewer
+    never saw while it had an attempt. The gate now folds and lints exactly
+    as the assembly does, under the same `review: <key>` labels."""
+    root, run_dir = _drifted_run(tmp_path)
+    review = run_dir / "review" / "out.json"
+    _write_review(run_dir, [_review_keep(type="text")])
+    lines = validate_unit(root, run_dir, review)
+    assert any(l.startswith("review: gozaresh_shabane_pitza:")
+               and "data.fields[0].type" in l for l in lines), lines
+    _write_review(run_dir, [_review_keep(type="number")])
+    assert validate_unit(root, run_dir, review) == []
+
+
+def test_a_review_keep_with_partial_data_keeps_the_units_other_members(tmp_path):
+    """A reviewer rewriting one member of an item's `data` (its unit) must not
+    lose the unit's `category`: `data` merges member by member, as a unit's
+    decision merges over a skeleton's payload."""
+    root = _root(tmp_path)
+    _seed_units(root)
+    run_dir = _run(root, {"u-a": _record_out(), "u-b": _rule_out()})
+    digest(root, run_dir)
+    _write_review(run_dir, [{"entry": {"kind": "item", "key": "item_1"},
+                             "action": "keep", "key": "item_1",
+                             "title": "پنیر پیتزا",
+                             "statement": "پنیر پیتزا که با کیلوگرم شمرده می‌شود.",
+                             "data": {"unit": {"value": "g", "inferred": True}}}])
+    assert validate_unit(root, run_dir, run_dir / "review" / "out.json") == []
+    assert assemble(root, run_dir, review=True)["review_status"] == "applied"
+    delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
+    item = next(e for e in delta["entries"] if e["kind"] == "item")
+    assert item["data"]["category"] == "ingredient" and item["data"]["unit"] == "g"
+    assert item["field_status"]["data/unit"] == "inferred"
