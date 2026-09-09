@@ -3,7 +3,7 @@ revert forgets one (v3.7 §3)."""
 import json
 
 from facts_helpers import _root, _seed_units, _const_delta, _write, _run_dir
-from merge_facts import load_store
+from merge_facts import KIND_FILES, load_store
 from merge_facts.apply import apply
 from merge_facts.revert import revert
 from merge_facts import verbs
@@ -101,3 +101,20 @@ def test_a_missing_ledger_reads_empty_and_a_stale_row_is_pruned_on_save(tmp_path
     from merge_facts import save_store
     save_store(root, load_store(root))
     assert _rows(root) == {}
+
+
+def test_the_lock_is_a_sidecar_the_store_never_names(tmp_path):
+    root = _root(tmp_path); _seed_units(root)
+    apply(root, _write(root, "d1.json", _const_delta(5)), _run_dir(root, "1"))
+    e = _rule(root)
+    run = _run_dir(root, "2"); _meta(run)
+    retire(root, e["id"], None, run)
+    # the row is written, and the lock the ui-backend's revoke takes too is
+    # there beside it under `facts/` — the file name is the contract
+    assert _rows(root)[e["id"]]["by"] == "owner"
+    assert (root / "facts" / ledger.LOCK).is_file()
+    # …and neither it nor the ledger is store content: the five files and the
+    # rebuilt index are written by name and name nothing else
+    store_text = "".join((root / "facts" / n).read_text(encoding="utf-8")
+                         for n in [*KIND_FILES.values(), ".index.json"])
+    assert ".confirmations" not in store_text

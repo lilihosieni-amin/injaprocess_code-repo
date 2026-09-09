@@ -220,7 +220,10 @@ marks, because the engine cannot reach that database (ARD §1). `edit` writes a
 row always; `apply`/`resolve`/`retire`/`promote` only when the run's `meta.json`
 says `origin: chat`; `revert` forgets the rows its run wrote; and `save_store`
 prunes every row whose entry has moved on or gone, so the file can never carry a
-stale vouch. See the v3.7 spec §2–§3.
+stale vouch — with one corollary of keying on `updated_at`'s second resolution: a
+write landing in the same UTC second as the vouched one leaves the row standing.
+Both sides of the ledger serialise their read-modify-write on
+`facts/.confirmations.lock`. See the v3.7 spec §2–§3.
 
 **I8** — a `lang: table` rule's `data.table.rows[]` is a list of **flat**
 objects keyed by the table's own `inputs[]`/`outputs[]`, and no other shape

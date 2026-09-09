@@ -805,7 +805,14 @@ docker compose exec control-bot sh -c \
 - **The row goes stale on its own.** It vouches for one `updated_at`. Any later
   write that touches the entry moves the stamp, and the next store write drops
   the row — the file never claims the owner approved content they never saw.
-  Revoking the confirmation in the UI removes the row too.
+  Revoking the confirmation in the UI removes the row too. One corollary of
+  keying on `updated_at`, which has second resolution: a later write landing in
+  the **same UTC second** as the vouched one leaves the row standing. In
+  practice the second write is another human action, seconds or minutes later.
+- **The lock.** Every row written or dropped is a read-modify-write, and the
+  ui-backend removes rows too, so both sides hold `facts/.confirmations.lock`
+  (an empty sidecar, `flock`) for the whole of it. It is not store content and
+  is written by neither the five files nor the index.
 - **Undo** is `merge facts revert --run <run_dir>` as for any other run (§6):
   the entry comes back wholesale from `{run_dir}/facts-before/`, and the
   confirmation rows that run wrote are forgotten with it.
