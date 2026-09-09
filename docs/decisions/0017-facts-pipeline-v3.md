@@ -238,3 +238,11 @@ column, a row that names no output, a table column that is not a declared
 input/output, an `expr` on a table rule and a `table` on a rule whose `lang` is
 not `table`; the shape card names the fourth rule body and carries a worked
 example of it; and the card reads the declared shape only. See the v3.7 spec §4.
+
+**Owner ruling, 2026-09-09 — Gate B removed.** The facts checkpoint (the engine-written
+`gate-b.md`, sent verbatim, the run stopped for «تأیید») is gone from the playbook: at the size a
+department produces the message was not something a person could judge, and an apply is
+reversible (`merge facts revert`, and the commit). Stage V passing is the approval; the run
+continues into the apply in the same turn and the owner receives `report.md`, where disputes are
+answered. `assemble` still writes `gate-b.md` as the run's record; `facts-plan status` reports the
+resume stage as `5` where it said `B`.
