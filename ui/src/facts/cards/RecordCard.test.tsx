@@ -271,6 +271,12 @@ describe('the record card', () => {
     expect(hint.className).toContain('text-fs-micro')
   })
 
+  it('draws a column’s unit badge as the units record’s word once the bundle serves it', () => {
+    draw(TEMPLATE({ unit_titles: { kg: 'کیلوگرم' } }))
+    expect(screen.getByText('کیلوگرم')).toBeInTheDocument()
+    expect(screen.queryByText('kg')).toBeNull()
+  })
+
   it('heads a grid column with the units record’s word, not the symbol', () => {
     draw(BOM({ unit_titles: { g: 'گرم' } }))
     // `grams` is titled «گرم» and its unit is `g` → «گرم · گرم» would be the
