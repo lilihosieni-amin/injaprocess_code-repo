@@ -32,7 +32,7 @@ const bundle = (
   confirmation: { confirmed: false, can_confirm: true, fingerprint: 'sha256:abc' },
   red_paths: { unknown: [], disputed: [] },
   resolved: {}, row_titles: {}, path_labels: {}, consumers: [], processes: [],
-  workbook_titles: {}, binding_labels: {},
+  workbook_titles: {}, unit_titles: {}, binding_labels: {},
   original: null,
   ...over,
 })
@@ -44,12 +44,12 @@ const RULE = bundle('F-00030', 'rule', 'مصرف اعلامی پیتزا', {
   expr: 'declared_use = start + received - end',
   original_ref: 'facts/originals/F-00030.txt',
   inputs: [
-    { key: 'start', title: 'موجودی اول شب', unit: 'kg', unit_title: 'کیلوگرم',
+    { key: 'start', title: 'موجودی اول شب', unit: 'kg',
       from: { ref: 'F-00016', field: 'start_stock' } },
     { key: 'received', title: 'دریافت از انبار', from: 'operator' },
   ],
   outputs: [{
-    key: 'declared_use', title: 'مصرف اعلامی', unit: 'kg', unit_title: 'کیلوگرم',
+    key: 'declared_use', title: 'مصرف اعلامی', unit: 'kg',
     nature: 'observed', writes_to: { ref: 'F-00016', field: 'declared_use' },
   }],
   calls: [{ ref: 'F-00031' }],
@@ -60,6 +60,7 @@ const RULE = bundle('F-00030', 'rule', 'مصرف اعلامی پیتزا', {
   confirmation: { confirmed: false, can_confirm: true, fingerprint: 'sha256:r30' },
   red_paths: { unknown: [], disputed: ['data/expr'] },
   path_labels: { 'data/expr': 'فرمول' },
+  unit_titles: { kg: 'کیلوگرم' },
   resolved: {
     'F-00016': { kind: 'record', title: 'گزارش مرکزی — پیتزا (چاله‌باغ)' },
     'F-00031': { kind: 'rule', title: 'مصرف استاندارد پیتزا' },
@@ -177,9 +178,10 @@ const PAPER = bundle('F-00011', 'record', 'مانده شب فرنگی و برگ�
 /** F-00026 — the constant: one big number, its unit, its nature and its «per». */
 const CONSTANT = bundle('F-00026', 'rule', 'تلورانس هر واحد — پیتزا', {
   inputs: [],
-  outputs: [{ key: 'tolerance_g', title: 'تلورانس (گرم)', unit: 'g', unit_title: 'گرم',
+  outputs: [{ key: 'tolerance_g', title: 'تلورانس (گرم)', unit: 'g',
     per: 'unit_sold', nature: 'limit', value: 5 }],
-}, { confirmation: { confirmed: true, can_confirm: true, fingerprint: 'sha256:c26' } })
+}, { confirmation: { confirmed: true, can_confirm: true, fingerprint: 'sha256:c26' },
+     unit_titles: { g: 'گرم' } })
 
 /** F-00048 — the item, with a RANGED `factor_to_base` (§7). */
 const ITEM = bundle('F-00048', 'item', 'روغن سرخ‌کردنی', {
@@ -367,7 +369,8 @@ test('fact detail — the design’s screen on the violet field, at three widths
   /* ---- the I/O pair — `[data-r-2col]`, and `expectDesign` graded its tracks ---- */
   await expect(page.getByText('چه چیزهایی لازم دارد')).toBeVisible()
   await expect(page.getByText('چه چیزی می‌سازد')).toBeVisible()
-  // Note 2 — the entry's own titles, and its own `unit_title`, never a `KEY_FA`.
+  // Note 2 — the entry's own titles, and the units record's word for `kg`
+  // (`bundle.unit_titles`), never a `KEY_FA`.
   await expect(page.getByText('موجودی اول شب')).toBeVisible()
   await expect(page.getByText('کیلوگرم').first()).toBeVisible()
   // One of the two `from` literals (:4752).
