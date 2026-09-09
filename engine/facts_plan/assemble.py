@@ -1670,8 +1670,8 @@ def _disputes(entries):
     """The open accounts grouped by `(entry, field)` — one dispute per field
     two sources disagree on, in one order.
 
-    The owner answers «۱ الف» at Gate B and the playbook resolves what that
-    number named, so `gate-b.md` and `report.md` have to number the same list
+    The owner answers «۱ الف» from the report and the playbook resolves what that
+    number named, so `gate-b.md` (the run's record) and `report.md` have to number the same list
     the same way — and two differing leaves on one entry are two disputes with
     two sides each, never one dispute with four.
     """

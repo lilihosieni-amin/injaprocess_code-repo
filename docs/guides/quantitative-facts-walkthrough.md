@@ -464,7 +464,7 @@ ids minted in kind order (item → record → measurement → rule → note).
    underneath), or nothing at all being assembled.
 9. It writes `facts-delta.json` (the proposed changes, `schema_version 2`, temp ids),
    `assembly.json` (`dropped[]`, `undecided[]` with reasons, which unit each temp id came from,
-   the review's status), and `gate-b.md`.
+   the review's status), and `gate-b.md` (the run's record of what it proposed).
 
 The **five kept stops** — the only places the planner or the assembly may refuse a whole run —
 are pinned by a test: a candidate planned into two units or none; `build` without `--rebuild`
@@ -480,19 +480,15 @@ schema. It writes nothing — not even the id counter changes. A delta that pass
 is left here is cross-entry only (twin titles, instance ownership, references between units); if
 it names a single entry's field anyway, that is a defect to report, never something to hand-repair.
 
-### Gate B — the facts checkpoint
+### No Gate B — the apply follows straight away
 
-The coordinator reads `gate-b.md` and **sends it verbatim**. It is a finished Persian message
-written by the engine: the department's name, counts per kind («ثبت می‌شود: ۳۹ قاعده، ۸ جدول، …»),
-how many candidates were set aside and why, how many are unexamined, the first three rules *in
-words with their numbers* (never a formula or a column), the disputes numbered with lettered sides
-(«۱ الف / ب»), the issues found in the files, the workbooks the owner has not placed and the
-attachments the system could not read, how many cells are unanswered («بی‌پاسخ: N خانه — در
-پنل»), and «تأیید می‌کنید؟». The turn ends. **Nothing under `facts/` has been written yet.**
-
-On «تأیید»/«بله»/«ok» the run continues. An answer to a lettered dispute is recorded and resolved
-after the apply. A correction needs a new run — the delta is the assembly of every unit; there is
-nothing to re-dispatch.
+Until 2026-09-09 the run stopped here and sent the owner a checkpoint message written by the
+engine (`gate-b.md`), waiting for «تأیید» before anything was written. The owner ruled it out: at
+the size a department produces (two hundred entries and more) the message was not something a
+person could actually judge, and an apply is reversible anyway. So the run now continues into
+Stage 5 in the same turn. `gate-b.md` is still written to the run directory as the record of what
+the run proposed, but it is never sent. The owner's decisions move to the report: a dispute is
+answered there («۱ الف»), and a run the owner rejects is undone with `merge facts revert`.
 
 ### Stage 5 — Apply
 
@@ -557,7 +553,7 @@ git add departments runs facts attachments && git commit -m "quantify(cooking): 
 
 The coordinator reads `report.md` and sends it verbatim: the open disputes numbered with lettered
 options, the unanswered cells per entry, the dropped candidates counted by reason, every engine
-issue grouped by kind, the same unread/unplaced list as Gate B, what was held back and why, and
+issue grouped by kind, the unread/unplaced list, what was held back and why, and
 one closing line — «بازبینی انجام شد.» (the review applied), «… بدون آن ثبت شد» (discarded) or
 «بازبینی اجرا نشد.» (absent). When the owner answers a lettered dispute («۱ الف»), the coordinator
 runs `merge facts resolve` itself in a fresh run directory and confirms by the field's Persian
@@ -1006,7 +1002,7 @@ the store must name one of its open rows (QF-40); the panel's Persian unit words
 | `review/out.json` | the quantify agent | the review's decisions |
 | `facts-delta.json` | `facts-plan assemble` (pipeline) **or** the verbs (a growing list of `{verb, args}`) | the proposed changes, or the record of what the verbs did |
 | `assembly.json` | `facts-plan assemble` | dropped, undecided (with reasons), provenance, review status |
-| `gate-b.md` | `facts-plan assemble` | the owner's checkpoint message |
+| `gate-b.md` | `facts-plan assemble` | the run's record of what it proposed (no longer sent) |
 | `facts-before/` | `apply` and every writing verb | the five store files before the write — what `revert` restores |
 | `id-map.json` | `apply` | temp id → minted id |
 | `touched.json` | `apply` | every open entry the run changed |
@@ -1201,7 +1197,7 @@ own misunderstanding.
 - **card** — a block of rules rendered into a unit's input: the expression card, the style card,
   the shape section.
 - **checkpoint / gate** — a point where the coordinator ends its turn and waits for the owner
-  (Gate M: the manifest; Gate A: the inputs; Gate B: the facts).
+  (Gate M: the manifest; Gate A: the inputs; the former Gate B was removed on 2026-09-09).
 - **coordinator** — the bot's own Claude Code session following a playbook.
 - **delta** — a proposed set of changes to the store (`facts-delta.json`), with temporary ids.
 - **dump** — what `dump-workbook` extracts from a workbook (structure and formulas, not values).

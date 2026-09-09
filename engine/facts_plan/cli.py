@@ -166,7 +166,7 @@ def _stage(run_dir, plan, states):
     if not (run_dir / "facts-delta.json").is_file():
         return "R"
     if not (run_dir / "id-map.json").is_file():
-        return "B"
+        return "5"           # the apply; Gate B was removed 2026-09-09
     return "6"
 
 

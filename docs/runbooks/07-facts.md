@@ -568,17 +568,20 @@ worth knowing at the console:
   `placeholder_header` that is no regex falls back to today's rather than
   raising out of every verb that loads the estate.
 
-## 11. What the owner sees — the two message contracts
+## 11. What the owner sees — the message contract
 
-Two files, both written by the engine, both sent **verbatim** by the playbook.
-Neither carries a command, an account id, an entry id, a path, a unit id, a run
+One file, `report.md`, written by the engine and sent **verbatim** by the playbook after the
+apply. `gate-b.md` is still written by `assemble` as the run's record of what it proposed, but it
+is no longer sent and the run no longer stops for it — owner ruling, 2026-09-09: at the size a
+department produces the checkpoint message was not readable, and an apply is reversible (§6).
+Neither file carries a command, an account id, an entry id, a path, a unit id, a run
 directory or a department code; both name an entry by its Persian **title** and
 nothing else — the id the Panel shows in its «شناسه» column never appears in
 either file.
 
 | file | written by | sent at | carries |
 |---|---|---|---|
-| `{run_dir}/gate-b.md` | `facts-plan assemble` | the facts checkpoint, before anything is written | counts per kind; the first three rules in one sentence each; how many were dropped and the commonest reasons; how many went unexamined; the disputes numbered with lettered options; how many issues were found in the files, three of them named; how many cells are unanswered; and the one question «تأیید می‌کنید؟» |
+| `{run_dir}/gate-b.md` | `facts-plan assemble` | **not sent** since 2026-09-09 — kept on disk as the run's record | counts per kind; the first three rules in one sentence each; how many were dropped and the commonest reasons; how many went unexamined; the disputes numbered with lettered options; how many issues were found in the files, three of them named; how many cells are unanswered; and the one question «تأیید می‌کنید؟» |
 | `{run_dir}/report.md` | `facts-plan report` | after the apply and the commit | what was recorded, dropped and left unexamined; the open disputes numbered with lettered options; the unanswered cells grouped per entry; the dropped list by reason in the owner's own words; every engine-found issue grouped by kind; whether a part was left unfinished; and whether the review ran |
 
 A third line runs through both files: **a file this run could not read is named
