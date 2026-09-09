@@ -327,11 +327,11 @@ def revoke_confirmation(target: str, request: Request,
     conn = request.app.state.db
     doc = _load(cfg, target)
     # Both channels, because the withdrawal means "whatever is there is wrong"
-    # and a vouch left behind in the ledger would go on saying otherwise. The
-    # DB revoke is on the left of the `or` so it always runs.
+    # and a vouch left behind in the ledger would go on saying otherwise.
+    revoked = confirmations.revoke(conn, target)
     chat = _kind(target) == "fact" and chat_confirmations.forget(cfg.data_root,
                                                                  target)
-    if confirmations.revoke(conn, target) or chat:
+    if revoked or chat:
         record(request, "confirmation.revoked", actor=user["username"],
                session_id=request.state.session_id, target=target,
                detail={"kind": _kind(target), "chat": chat})

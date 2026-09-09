@@ -191,7 +191,8 @@ def _reachable(request: Request, user, fid: str) -> dict:
     return entry
 
 
-def _served(shown: Disclosure, reach, entry: dict, mark: str | None) -> bool:
+def _served(shown: Disclosure, reach, entry: dict, mark: str | None,
+            chat: dict) -> bool:
     """May this caller be told what `GET /api/facts/{id}` would tell them?
 
     **The** predicate, and it has exactly two callers: `get_fact`, which is the
@@ -231,11 +232,11 @@ def _served(shown: Disclosure, reach, entry: dict, mark: str | None) -> bool:
     targets = _targets(entry.get("scope"))
     return (visibility.is_fact(entry)
             and reach(targets)
-            and shown.may_serve_fact(entry, targets, mark)
+            and shown.may_serve_fact(entry, targets, mark, chat)
             and bool(shown.redact_fact(entry, targets)))
 
 
-def _neighbour_visibility(conn, root, shown: Disclosure, reach):
+def _neighbour_visibility(conn, root, shown: Disclosure, reach, chat: dict):
     """`id or item key -> may this caller be told what it names?`
 
     The user's ruling on the bundle's three resolution maps (2026-08-31):
@@ -268,7 +269,8 @@ def _neighbour_visibility(conn, root, shown: Disclosure, reach):
     no way to tell which from outside.
 
     One `load_all` and one `stored_for` for the whole bundle, resolved before
-    the maps are walked, so this is not a read per neighbour.
+    the maps are walked, so this is not a read per neighbour; `chat` is the
+    request's one read of the confirmation ledger, passed in for that reason.
 
     Returns the pair `(visible, names_a_fact)` — see `names_a_fact` for why the
     second one exists.
@@ -301,7 +303,8 @@ def _neighbour_visibility(conn, root, shown: Disclosure, reach):
                     and shown.may_serve(doc or {}, storage.dept_of(name), name))
         found = by_name.get(name)
         return bool(found) and all(
-            _served(shown, reach, e, stored.get(e.get("id"))) for e in found)
+            _served(shown, reach, e, stored.get(e.get("id")), chat)
+            for e in found)
 
     def names_a_fact(value: object) -> bool:
         """Is this string an id or an item key the **store** knows?
@@ -533,7 +536,7 @@ def list_facts(request: Request, user=Depends(panel_session)):
         # implementation shared with the detail route rather than two.
         if not reach(targets):
             continue
-        if not shown.may_serve_fact(entry, targets, mark):
+        if not shown.may_serve_fact(entry, targets, mark, chat):
             continue
         if not shown.redact_fact(entry, targets):
             continue
@@ -663,19 +666,21 @@ def _bundle(request: Request, user, fid: str) -> dict:
     row = confirmations.get(conn, fid)
     mark = row["fingerprint"] if row is not None else None
     now = fact_fingerprint(entry)
+    # One read of the ledger for the request — the record gate below, the
+    # neighbour mask and the `confirmed` this body carries are one question
+    # asked three times.
+    chat = chat_confirmations.load(root)
     # `_served` and not the three conditions inline, though `_reachable` has
     # already run the first of them: this is the predicate the mask below asks
     # of every neighbour, and the route has to be its first caller or "would a
     # GET of that entry return it" stops being a fact about this route.
-    if not _served(shown, reach, entry, mark):
+    if not _served(shown, reach, entry, mark, chat):
         raise HTTPException(status_code=404, detail=NOT_FOUND)
-    # The listing's rule for one entry — see `list_facts`; read after the
-    # refusal above so a withheld entry costs no file.
+    # The listing's rule for one entry — see `list_facts`.
     confirmed = ((mark is not None and mark == now)
-                 or chat_confirmations.confirmed(chat_confirmations.load(root),
-                                                 entry))
+                 or chat_confirmations.confirmed(chat, entry))
     served = shown.redact_fact(entry, targets)
-    visible, names_a_fact = _neighbour_visibility(conn, root, shown, reach)
+    visible, names_a_fact = _neighbour_visibility(conn, root, shown, reach, chat)
     titles = facts_store.row_titles(root, entry)
     hidden_rows = _masked_rows(entry, titles, visible, names_a_fact)
     may_confirm = permits(conn, user, "confirm")
@@ -874,8 +879,9 @@ def _cites(conn, root: Path, user, target: Path) -> bool:
     entries = facts_store.load_all(root)
     stored = confirmations.stored_for(
         conn, [e["id"] for e in entries if isinstance(e.get("id"), str)])
+    chat = chat_confirmations.load(root)
     for entry in entries:
-        if not _served(shown, reach, entry, stored.get(entry.get("id"))):
+        if not _served(shown, reach, entry, stored.get(entry.get("id")), chat):
             continue
         served = shown.redact_fact(entry, _targets(entry.get("scope")))
         for ref in _cited_files(served):

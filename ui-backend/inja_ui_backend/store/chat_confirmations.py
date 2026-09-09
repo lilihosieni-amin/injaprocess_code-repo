@@ -22,6 +22,8 @@ confirmation record rather than store content, so `facts/**`'s merge-only rule
 """
 from __future__ import annotations
 
+import contextlib
+import fcntl
 from pathlib import Path
 
 from .. import storage
@@ -29,6 +31,26 @@ from .. import storage
 #: Relative to `DATA_ROOT`; a dotfile beside the store's five kind files and
 #: the derived `.index.json`, which is what the engine writes it with.
 LEDGER = Path("facts") / ".confirmations.json"
+
+#: The sidecar both components serialise their read-modify-writes on. Its name
+#: is the contract with the engine's own ledger writer — an advisory
+#: `flock(LOCK_EX)` only excludes another holder of the **same** file.
+LOCK = Path("facts") / ".confirmations.lock"
+
+
+@contextlib.contextmanager
+def _locked(root: Path):
+    """Hold `LOCK` exclusively for the whole read-modify-write.
+
+    The atomic rename underneath makes a *reader* safe — it sees the old file
+    or the whole new one — but not a second writer: two revokes that both read
+    before either wrote would each rewrite the file without the other's
+    deletion. The lock is a separate file so it is never the thing being
+    renamed out from under a waiter, and closing the handle releases it.
+    """
+    with open(Path(root) / LOCK, "a") as fh:
+        fcntl.flock(fh, fcntl.LOCK_EX)
+        yield
 
 
 def _rows(root: Path) -> tuple[Path, dict | None, dict | None]:
@@ -69,14 +91,23 @@ def confirmed(rows: dict[str, dict], entry: dict) -> bool:
 
 
 def forget(root: Path, fid: str) -> bool:
-    """Drop `fid`'s row, atomically; `True` when one was there to drop.
+    """Drop `fid`'s row, atomically and under the lock; `True` when one went.
 
     The rest of the file is rewritten as it was — the ledger holds every
     chat-confirmed entry in the store and a withdrawal is about one of them.
+
+    The existence check is deliberately **outside** the lock: with no ledger
+    there is nothing to serialise on, and taking the lock would leave a sidecar
+    behind in every store where the chat has never confirmed anything. Inside
+    the lock the file is read again, so the check is a shortcut and never the
+    decision.
     """
-    path, doc, rows = _rows(root)
-    if rows is None or fid not in rows:
+    if not (Path(root) / LEDGER).is_file():
         return False
-    del rows[fid]
-    storage.write_json_atomic(path, doc)
+    with _locked(root):
+        path, doc, rows = _rows(root)
+        if rows is None or fid not in rows:
+            return False
+        del rows[fid]
+        storage.write_json_atomic(path, doc)
     return True

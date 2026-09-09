@@ -10,10 +10,12 @@ single `dept:{code}` string, because `contains` only ever answers one string
 at a time.
 """
 import copy
+import fcntl
 import itertools
 import json
 import shutil
 import subprocess
+import threading
 
 from fastapi.testclient import TestClient
 from inja_ui_backend import db, facts_store, seed
@@ -555,3 +557,78 @@ def test_the_row_names_the_chat_actor_when_only_the_ledger_vouches(data_root,
     assert row["confirmed_by"] == "chat:owner"
     assert stale["confirmed"] is False
     assert stale["confirmed_by"] is None
+
+
+def test_only_the_ledger_vouches_and_a_non_editor_is_served(data_root, tmp_path):
+    """I7: the chat instruction leaves nothing to do in the UI — so the record
+    gate (D22) has to count the ledger too, or the entry the editor sees ticked
+    is still withheld from every Panel member who cannot edit it.
+
+    An admin is the non-editor the file's neighbours use
+    (`test_facts_api.test_an_admin_is_404d_off_an_entry_with_no_valid_
+    confirmation`): Panel, `*`-scoped, and without `edit`."""
+    entry = facts_store.load_entry(data_root, RULE)
+    _ledger(data_root, {RULE: _vouch(entry["updated_at"])})
+    admin = _client_as(data_root, tmp_path, "admin", "*")
+
+    assert admin.get(f"/api/facts/{RULE}").status_code == 200
+    listed = admin.get("/api/facts").json()["entries"]
+    assert [r["id"] for r in listed if r["id"] == RULE] == [RULE]
+    assert [r["confirmed"] for r in listed if r["id"] == RULE] == [True]
+
+
+def test_a_stale_ledger_row_withholds_the_entry_from_a_non_editor(data_root,
+                                                                  tmp_path):
+    """The other side of the gate: nothing vouches, so nothing is served."""
+    _ledger(data_root, {RULE: _vouch("2000-01-01T00:00:00Z")})
+    admin = _client_as(data_root, tmp_path, "admin", "*")
+
+    assert admin.get(f"/api/facts/{RULE}").status_code == 404
+    assert RULE not in [r["id"] for r in admin.get("/api/facts").json()["entries"]]
+
+
+# --- the sidecar lock (`facts/.confirmations.lock`) ---
+#
+# `forget` is a read-modify-write and the engine writes the same file, so both
+# sides serialise on one OS-level lock. The lock file's name is the contract
+# between the two components.
+
+def test_forget_takes_the_sidecar_lock_and_still_removes_the_row(data_root):
+    lock = data_root / "facts" / ".confirmations.lock"
+    _ledger(data_root, {RULE: _vouch("2026-09-09T09:12:31Z")})
+    assert not lock.exists()
+
+    assert chat_confirmations.forget(data_root, RULE) is True
+    assert lock.is_file()
+    assert _ledger_doc(data_root)["entries"] == {}
+
+
+def test_forget_without_a_ledger_takes_no_lock(data_root):
+    """Nothing to serialise on, so no file is made — a revoke of a target the
+    chat never confirmed leaves no trace in the store."""
+    assert chat_confirmations.forget(data_root, RULE) is False
+    assert not (data_root / "facts" / ".confirmations.lock").exists()
+
+
+def test_the_lock_is_exclusive(data_root):
+    """The lock is the point, not the file: a second holder keeps `forget`
+    waiting rather than letting it read a document another writer is about to
+    replace."""
+    entry = facts_store.load_entry(data_root, RULE)
+    _ledger(data_root, {RULE: _vouch(entry["updated_at"])})
+    lock = data_root / "facts" / ".confirmations.lock"
+    lock.touch()
+    done = threading.Event()
+
+    def revoke():
+        chat_confirmations.forget(data_root, RULE)
+        done.set()
+
+    with open(lock, "a") as held:
+        fcntl.flock(held, fcntl.LOCK_EX)
+        worker = threading.Thread(target=revoke)
+        worker.start()
+        assert not done.wait(0.3), "forget ran while the lock was held"
+    worker.join(5)
+    assert done.is_set()
+    assert _ledger_doc(data_root)["entries"] == {}
