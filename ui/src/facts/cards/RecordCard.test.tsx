@@ -313,6 +313,12 @@ describe('the record card', () => {
     expect(screen.getByText('ردیف ۱ تا ۵ را امضا می‌کند')).toBeInTheDocument()
   })
 
+  it('draws no day-boundary sentence for a `null` boundary — never «ساعت null بامداد»', () => {
+    draw(bundleOf('record', { medium: 'sheet', role: 'log', day_boundary: null }))
+    expect(screen.queryByText(/بامداد/)).toBeNull()
+    expect(screen.queryByText(/null/)).toBeNull()
+  })
+
   it('draws the scheme’s «قالب» beside the location — `sfRecLocExtra`’s surviving half', () => {
     draw(bundleOf('record', {
       medium: 'external', role: 'log',

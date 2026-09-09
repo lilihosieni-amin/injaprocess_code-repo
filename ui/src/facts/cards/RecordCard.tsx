@@ -605,7 +605,9 @@ function StructureCard({ bundle, data, onOpen }: {
         <span className="text-fs-menu text-ink">
           {data.cadence === undefined ? none() : label(CADENCE_LABELS, data.cadence)}
         </span>
-        {data.day_boundary !== undefined && (
+        {/* `null` is an unanswered leaf (the schema allows it), not a closing
+            time — «ساعت null بامداد» was what nine cooking records drew. */}
+        {data.day_boundary != null && (
           // **The design disagrees with itself here and this picks a side.**
           // `sfRecBoundary` (:4957) is the raw string, while `sfRecSigs.range`
           // (:4943) runs the same kind of number through `toFa` — so «۰۱:۱۵» and
