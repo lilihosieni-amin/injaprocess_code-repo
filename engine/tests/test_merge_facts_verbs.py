@@ -351,7 +351,7 @@ def test_edit_set_remove_unset_append_in_order(tmp_path):
     ([{"op": "set", "path": "key", "value": "other"}], "identity"),
     ([{"op": "set", "path": "id", "value": "F-00099"}], "identity"),
     ([{"op": "set", "path": "status", "value": "confirmed"}], "derived"),
-    ([{"op": "remove", "path": "source/0"}], "source"),
+    ([{"op": "remove", "path": "source/9"}], "not found"),
     ([{"op": "remove", "path": "data/outputs/nope"}], "not found"),
     ([{"op": "unset", "path": "data/nope"}], "not found"),
     ([{"op": "append", "path": "data/outputs", "value": {"key": "v", "value": 1}}], "already"),
@@ -572,3 +572,63 @@ def test_an_accounts_member_is_addressed_by_its_id(tmp_path):
     acc = e["accounts"][0]
     from merge_facts import get_path
     assert get_path(e, f"accounts/{acc['id']}") is acc
+
+
+# --------------------------------------------------------------------------- #
+# owner ruling 2026-09-09 — a citation is editable like any other member
+# --------------------------------------------------------------------------- #
+
+def test_edit_changes_a_citation_by_position_and_restamps_only_what_it_touched(tmp_path):
+    root = _root(tmp_path); _seed_units(root)
+    d = _const_delta(5)
+    d["entries"][0]["source"].append(
+        {"type": "voice", "ref": "meetings/transcripts/c.txt", "lines": "30"})
+    apply(root, _write(root, "d1.json", d), _run_dir(root, "1"))
+    (root / "meetings" / "transcripts" / "d.txt").write_text("y", encoding="utf-8")
+    e = _rule_entry(root)
+    run = _run_dir(root, "2"); _meta(run)
+    edit(root, e["id"], _patch(root, "p.json", [
+        {"op": "set", "path": "source/0/ref", "value": "meetings/transcripts/d.txt"},
+        {"op": "set", "path": "source/0/lines", "value": "1-2"},
+        {"op": "unset", "path": "source/1/lines"},
+        {"op": "append", "path": "source",
+         "value": {"type": "docx",
+                   "ref": "departments/cooking/attachments/p.jpg", "page": 1}},
+    ]), run)
+    voice = [s for s in _rule_entry(root)["source"] if s["type"] in ("voice", "docx")]
+    assert voice[0]["ref"] == "meetings/transcripts/d.txt" and voice[0]["lines"] == "1-2"
+    assert voice[0]["run"] == "runs/facts/cooking/2" and voice[0]["hash"].startswith("sha256:")
+    assert "lines" not in voice[1] and voice[1]["run"] == "runs/facts/cooking/2"
+    assert voice[2]["page"] == 1 and voice[2]["run"] == "runs/facts/cooking/2"
+
+
+def test_an_untouched_citation_keeps_its_stamp_and_a_removed_one_is_gone(tmp_path):
+    root = _root(tmp_path); _seed_units(root)
+    d = _const_delta(5)
+    d["entries"][0]["source"].append(
+        {"type": "voice", "ref": "meetings/transcripts/c.txt", "lines": "30"})
+    apply(root, _write(root, "d1.json", d), _run_dir(root, "1"))
+    e = _rule_entry(root)
+    run = _run_dir(root, "2"); _meta(run)
+    edit(root, e["id"], _patch(root, "p.json", [{"op": "remove", "path": "source/1"}]), run)
+    voice = [s for s in _rule_entry(root)["source"] if s["type"] == "voice"]
+    assert [s["lines"] for s in voice] == ["11"]
+    assert voice[0]["run"] == "runs/facts/cooking/1" and voice[0]["hash"] == e["source"][0]["hash"]
+
+
+def test_edit_refuses_a_citation_naming_no_file_and_a_duplicate_citation(tmp_path):
+    root = _root(tmp_path); _seed_units(root)
+    apply(root, _write(root, "d1.json", _const_delta(5)), _run_dir(root, "1"))
+    e = _rule_entry(root)
+    before = _five(root)
+    for n, ops, fragment in (
+            ("2", [{"op": "set", "path": "source/0/ref",
+                    "value": "meetings/transcripts/nope.txt"}], "names no file"),
+            ("3", [{"op": "append", "path": "source",
+                    "value": {"type": "voice", "ref": "meetings/transcripts/c.txt",
+                              "lines": "11"}}], "already there")):
+        run = _run_dir(root, n); _meta(run)
+        with pytest.raises(SystemExit) as exc:
+            edit(root, e["id"], _patch(root, f"p{n}.json", ops), run)
+        assert exc.value.code == 2
+        assert _five(root) == before and not (run / "facts-before").exists()

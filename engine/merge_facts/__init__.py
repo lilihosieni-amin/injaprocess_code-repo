@@ -221,11 +221,15 @@ def _step(value, seg):
     raise KeyError(seg)
 
 def _member_index(members, seg):
-    """Where the member `seg` names sits — by its `key`, or, for `accounts[]`,
-    by its `id` (v3.7 §2.2: the one keyed list whose members carry no `key`)."""
+    """Where the member `seg` names sits — by its `key`; for `accounts[]` by
+    its `id`; and for a list whose members carry neither (`source[]`) by its
+    position, `source/0` (v3.7 §2.2, owner ruling 2026-09-09: a citation is
+    editable like any other member)."""
     for i, member in enumerate(members):
         if isinstance(member, dict) and seg in (member.get("key"), member.get("id")):
             return i
+    if seg.isdigit() and int(seg) < len(members):
+        return int(seg)
     raise KeyError(seg)
 
 def get_path(entry, path):

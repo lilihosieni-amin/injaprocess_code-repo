@@ -246,3 +246,14 @@ reversible (`merge facts revert`, and the commit). Stage V passing is the approv
 continues into the apply in the same turn and the owner receives `report.md`, where disputes are
 answered. `assemble` still writes `gate-b.md` as the run's record; `facts-plan status` reports the
 resume stage as `5` where it said `B`.
+
+**Owner ruling, 2026-09-09 — Stage C removed; citations editable.** The audit review at
+the end of a run (findings presented item by item for approval) is gone from the playbook: on
+the cooking run it produced 246 findings of which none was rightly actionable — 69 were the
+audit's own false positive on code-bearing `refItems` cells (fixed: the audit now resolves a
+code the way the content pass does), 13 described a removed process node as a changed process
+with a successor (now their own code, `process_node_gone`, with no heir offered), the rest were
+information. The run ends with the report; `audit` and `check` stay operator commands. And a
+`source[]` member is editable through `merge facts edit` like any other member, addressed by
+position, re-stamped when touched, held to QF-5 and I3 at the gate — «any edit at all has to be
+doable through the bot».
