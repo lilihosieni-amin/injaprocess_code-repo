@@ -261,6 +261,24 @@ describe('the record card', () => {
     expect(symbol[0]).toHaveAttribute('dir', 'ltr')
   })
 
+  it('draws a printed row’s unit as the units record’s word once the bundle serves it', () => {
+    // The same `staff_sugar` row, with `unit_titles` served: the phrase is
+    // «بسته» and the symbol survives as the design's mono hint (:1420).
+    draw(PAPER({ unit_titles: { pack: 'بسته' } }))
+    expect(screen.getByText('بسته')).toBeInTheDocument()
+    const hint = screen.getByText('pack')
+    expect(hint).toHaveAttribute('dir', 'ltr')
+    expect(hint.className).toContain('text-fs-micro')
+  })
+
+  it('heads a grid column with the units record’s word, not the symbol', () => {
+    draw(BOM({ unit_titles: { g: 'گرم' } }))
+    // `grams` is titled «گرم» and its unit is `g` → «گرم · گرم» would be the
+    // title twice; the head keeps the title and draws the served word beside
+    // it only where the two differ — so the symbol never appears.
+    expect(screen.queryByText('g')).toBeNull()
+  })
+
   it('draws the source’s own word for a unit AND the design’s raw-symbol hint beside it', () => {
     // `F-00012`'s `burger_box`, verbatim. The design draws two nodes (:1419-1420)
     // — the phrase, then the stored symbol as a 10.5px mono LTR hint — and the

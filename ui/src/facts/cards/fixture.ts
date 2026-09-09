@@ -29,6 +29,7 @@ export function bundleOf(
     row_titles: {},
     path_labels: {},
     workbook_titles: {},
+    unit_titles: {},
     binding_labels: {},
     consumers: [],
     processes: [],

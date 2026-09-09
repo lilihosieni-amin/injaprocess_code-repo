@@ -728,6 +728,9 @@ def _bundle(request: Request, user, fid: str) -> dict:
         # where a neighbour's name is masked, and these carry no title of one).
         "workbook_titles": manifest.workbook_titles(root),
         "binding_labels": facts_store.binding_labels(root, entry),
+        # A unit's Persian is the units record's, and the entry cannot carry it
+        # (`ruleOutput` admits no `unit_title`; the entry is fingerprinted).
+        "unit_titles": facts_store.unit_titles(root),
         # «متن اصلی» — the body `data.original_ref` names, beside the entry and
         # never inside it: `entry` is what QF-24 fingerprints, and a field
         # arriving from a second file would change the print of every rule in

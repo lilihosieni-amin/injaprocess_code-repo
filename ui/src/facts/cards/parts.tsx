@@ -1,7 +1,8 @@
 import type { CSSProperties, HTMLAttributes, ReactNode } from 'react'
 import { Card } from '../../ui/Card'
 import { SCREEN_LABELS, label } from '../../lib/factsLabels'
-import type { Named } from '../bundle'
+import type { FactBundle } from '../../api/types'
+import { unitTitle, type Named } from '../bundle'
 
 /**
  * The pieces every card of the fact detail is built out of, and the one place
@@ -224,6 +225,21 @@ export function Mono({ className = '', title, style, children }: {
       {children}
     </span>
   )
+}
+
+/**
+ * A unit, as the units record names it in Persian — else the stored symbol as
+ * its own LTR island (QF-42), which is what every card drew before the bundle
+ * carried `unit_titles`. Draws nothing for no symbol at all.
+ */
+export function Unit({ bundle, symbol, className = '' }: {
+  bundle: FactBundle; symbol: string | null | undefined; className?: string
+}) {
+  if (symbol == null) return null
+  const title = unitTitle(bundle, symbol)
+  return title === undefined
+    ? <Mono className={className}>{symbol}</Mono>
+    : <span className={className}>{title}</span>
 }
 
 /**

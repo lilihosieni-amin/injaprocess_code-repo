@@ -19,8 +19,8 @@
  * note 9, which deletes the design's twelve inline `F*` dictionaries
  * (`Inja Panel.dc.html:3304–3318`) and its seven `*_FA` ones (4680–4735) in
  * favour of this file and the registries: departments from the department
- * registry, branches from `GET /api/facts/branches`, units from the entry's own
- * served `unit_title`.
+ * registry, branches from `GET /api/facts/branches`, units from the units
+ * record's titles served beside the entry (`bundle.unit_titles`).
  *
  * `factsLabels.test.ts` reads the five schemas that mention a fact and asserts
  * every `enum` member and `const` in them has a label here. **A value added to

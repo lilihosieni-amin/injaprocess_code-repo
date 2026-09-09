@@ -40,6 +40,24 @@ describe('the item card', () => {
     expect(screen.getByText(/لیتر/)).toBeInTheDocument()
   })
 
+  it('draws the base unit, the pack and the packaging chips in the units record’s words', () => {
+    render(<ItemCard bundle={bundleOf('item', OIL.entry.data, {
+      unit_titles: { l: 'لیتر', carton: 'کارتن', pack: 'بسته' },
+    })} />)
+    // «لیتر» once: the served title, with the identical `unit_raw` not
+    // repeated in brackets beside it.
+    expect(screen.getAllByText('لیتر')).toHaveLength(2)   // base unit + pack
+    expect(screen.queryByText('(لیتر)')).toBeNull()
+    // The pack is the number as an island and the word beside it — no «16 l».
+    expect(screen.getByText('16')).toHaveAttribute('dir', 'ltr')
+    expect(screen.queryByText('16 l')).toBeNull()
+    expect(screen.getByText('کارتن')).toBeInTheDocument()
+    // «بسته» twice: the pack row's own label, and the chip the title names.
+    expect(screen.getAllByText('بسته')).toHaveLength(2)
+    // A pack unit the record does not declare stays an island, never a blank.
+    expect(screen.getByText('box')).toHaveAttribute('dir', 'ltr')
+  })
+
   it('says «بدون کد» where the estate never gave the item one', () => {
     render(<ItemCard bundle={CODELESS} />)
     expect(screen.getByText('بدون کد')).toBeInTheDocument()
