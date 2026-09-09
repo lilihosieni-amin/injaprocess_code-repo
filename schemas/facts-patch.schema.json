@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "facts-patch.schema.json",
+  "title": "Facts patch — one chat instruction's operations on one entry (v3.7 §2.2)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "ops"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "ops": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/op" } }
+  },
+  "$defs": {
+    "path": { "type": "string",
+      "pattern": "^[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)*$" },
+    "op": { "type": "object", "additionalProperties": false,
+      "required": ["op", "path"],
+      "properties": {
+        "op": { "enum": ["set", "remove", "unset", "append"] },
+        "path": { "$ref": "#/$defs/path" },
+        "value": {} },
+      "if": { "properties": { "op": { "enum": ["set", "append"] } } },
+      "then": { "required": ["value"] } }
+  }
+}

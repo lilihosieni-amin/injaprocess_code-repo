@@ -10,6 +10,7 @@ from merge_facts.apply import apply as apply_facts
 from merge_facts.audit import audit as audit_facts
 from merge_facts.audit import check as check_facts
 from merge_facts.revert import revert as revert_facts
+from merge_facts.verbs import edit as edit_facts
 from merge_facts.verbs import export as export_facts
 from merge_facts.verbs import promote as promote_facts
 from merge_facts.verbs import repair_source_refs as repair_facts_source_refs
@@ -117,6 +118,11 @@ def _facts(args):
         elif args.facts_cmd == "retire":
             retire_facts(data_root(), args.id, args.heir, args.run, date=args.date)
             print(f"retired {args.id}")
+        elif args.facts_cmd == "edit":
+            report = edit_facts(data_root(), args.id, args.patch, args.run,
+                                preview=args.preview)
+            if not args.preview:
+                print(f"edited {args.id} — {len(report['ops'])} change(s)")
         elif args.facts_cmd == "promote":
             promote_facts(data_root(), args.id, args.kind, args.key, args.run)
             print(f"promoted {args.id} to {args.kind}")
@@ -215,6 +221,11 @@ def main(argv=None):
     frt.add_argument("--heir")
     frt.add_argument("--run", required=True)
     frt.add_argument("--date")
+    fed = fsub.add_parser("edit")
+    fed.add_argument("--id", required=True)
+    fed.add_argument("--patch", required=True)
+    fed.add_argument("--run", required=True)
+    fed.add_argument("--preview", action="store_true")
     fpr = fsub.add_parser("promote")
     fpr.add_argument("--id", required=True)
     fpr.add_argument("--kind", required=True)

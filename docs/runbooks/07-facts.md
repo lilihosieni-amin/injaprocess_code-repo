@@ -308,6 +308,8 @@ restore an adoption — revert the data-repo commit instead
 — which is exactly the recommended recovery: `git revert`/`reset` the
 data-repo commit that run made, past the point of no `merge facts` undo.
 
+Reverting a chat run also forgets the confirmation rows it wrote (§13).
+
 ## 7. Readiness and handover
 
 A scope (a department, a branch, or the whole estate) is ready to hand over
@@ -768,6 +770,59 @@ host git operation on the data-repo, restart the control bot before it runs
 git**, and verify the state on both sides. **Never run host git on the data-repo
 while a bot run is in progress** — the run's commit is the bot's, and a
 concurrent host-side operation is how a run ends holding an index nobody wrote.
+
+## 13. Editing through the bot (design addendum 2026-09-09)
+
+When the owner tells the bot to change something that is already recorded —
+one word in a statement, a wrong number, a department that should not be on an
+entry — the bot does not re-run the pipeline and does not send the owner to the
+UI. It writes a patch and calls one verb:
+
+```bash
+docker compose exec control-bot sh -c \
+  'DATA_ROOT=/data merge facts edit --id F-00150 \
+     --patch /data/runs/facts/cooking/20260909-091210/facts-patch.json \
+     --run /data/runs/facts/cooking/20260909-091210 --preview'
+```
+
+- **The patch** (`facts-patch.schema.json`) is a list of `set` / `remove` /
+  `unset` / `append` operations over the same field paths the UI and `resolve`
+  use. One entry per call, one run directory per call — a ten-record
+  instruction is ten runs, each revertible on its own.
+- **`--preview`** applies the patch to a copy, runs every refusal check, writes
+  nothing, and prints the current and proposed value of each op. This is what
+  the owner is shown before a destructive or composed change.
+- **Refusals** are the usual ones: exit 2, `precondition failed: …` on stderr,
+  and nothing written at all — no store file, no snapshot, no ledger row.
+- **The confirmation.** A successful edit records the entry in
+  `facts/.confirmations.json` (`facts-confirmations.schema.json`): the entry's
+  `updated_at` as it now stands, the run's `actor`, the run ref, and the time.
+  The UI reads that row beside its own confirmations and shows the entry
+  confirmed as `chat:<actor>` — the owner's instruction *is* the approval, so
+  there is nothing left to accept in the UI. `apply`, `resolve`, `retire` and
+  `promote` write the same row, but only when the run's `meta.json` says
+  `origin: "chat"`; a pipeline or UI run writes none.
+- **The row goes stale on its own.** It vouches for one `updated_at`. Any later
+  write that touches the entry moves the stamp, and the next store write drops
+  the row — the file never claims the owner approved content they never saw.
+  Revoking the confirmation in the UI removes the row too. One corollary of
+  keying on `updated_at`, which has second resolution: a later write landing in
+  the **same UTC second** as the vouched one leaves the row standing. In
+  practice the second write is another human action, seconds or minutes later.
+- **The lock.** Every row written or dropped is a read-modify-write, and the
+  ui-backend removes rows too, so both sides hold `facts/.confirmations.lock`
+  (an empty sidecar, `flock`) for the whole of it. It is not store content and
+  is written by neither the five files nor the index.
+- **Undo** is `merge facts revert --run <run_dir>` as for any other run (§6):
+  the entry comes back wholesale from `{run_dir}/facts-before/`, and the
+  confirmation rows that run wrote are forgotten with it.
+
+**What is committed.** The ledger itself is store content: it lives under
+`facts/`, which the playbooks' `git add` allowlist already covers, and it is
+committed with the five files. Its lock is not — `facts/.confirmations.lock` is
+an empty sidecar `flock` holds open, it carries nothing, and it is in
+data-repo's `.gitignore` so an allowlisted `git add facts` never stages it.
+The bot may write neither by hand; only the engine and the ui-backend do.
 
 ## Next
 

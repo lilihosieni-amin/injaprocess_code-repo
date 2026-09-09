@@ -70,6 +70,37 @@ def _unit_symbols(entry):
     return [s for s in out if s and s != UNKNOWN_UNIT]
 
 
+def registered_scope(root):
+    """The department and branch codes the estate registers (QF-33) — read once
+    per caller, since a delta tests every one of its entries against them."""
+    root = pathlib.Path(root)
+    return (_registered(root / "departments" / "registry.json", "departments"),
+            _registered(root / "attachments" / "sheets" / "manifest.json",
+                        "branches"))
+
+
+def unregistered_scope_problems(entry, departments, branches, label):
+    """QF-33's messages for a scope naming a code the estate does not register.
+    One writer of both sentences: `preconditions` tests every entry of a delta,
+    and `verbs.edit`'s store gate tests the one entry a chat instruction just
+    rewrote — an edit may set `scope` too, and it faces the same rule."""
+    scope = entry.get("scope") or {}
+    return ([f"{label}: department {d!r} is not in departments/registry.json"
+             for d in scope.get("departments") or [] if d not in departments]
+            + [f"{label}: branch {b!r} is not in "
+               f"attachments/sheets/manifest.json"
+               for b in scope.get("branches") or [] if b not in branches])
+
+
+def undeclared_unit_problems(entry, unit_rows, label):
+    """QF-40's message for every unit symbol no row of the units record
+    declares. Shared with `verbs.edit`'s store gate (v3.7 §2.3 item 4), which
+    checks the same rule on an entry a chat instruction just rewrote — one
+    writer of the sentence, so the two can never say it differently."""
+    return [f"{label}: unit {symbol!r} is declared by no row of the units record"
+            for symbol in _unit_symbols(entry) if symbol not in unit_rows]
+
+
 def _unit_row_keys(store, entries):
     """The open row keys of the `units` record — the store's, plus this delta's
     (the delta that creates or extends the table declares its own symbols)."""
@@ -275,25 +306,14 @@ def preconditions(root, store, entries, run_dir):
     # how a tab acquires its real key (QF-20).
     held_by = {ident: e for e in store["record"]["entries"] if is_open(e)
                for ident in _sheet_identities(e)}
-    departments = _registered(root / "departments" / "registry.json", "departments")
-    branches = _registered(root / "attachments" / "sheets" / "manifest.json",
-                           "branches")
+    departments, branches = registered_scope(root)
     for entry in entries:
         label = entry.get("id") or entry.get("key")
         if not KEY_RE.fullmatch(entry.get("key") or ""):
             out.append(f"{label}: key {entry.get('key')!r} is not a minted key")
-        for dept in entry["scope"]["departments"]:                   # QF-33
-            if dept not in departments:
-                out.append(f"{label}: department {dept!r} is not in "
-                           f"departments/registry.json")
-        for branch in entry["scope"]["branches"]:
-            if branch not in branches:
-                out.append(f"{label}: branch {branch!r} is not in "
-                           f"attachments/sheets/manifest.json")
-        for symbol in _unit_symbols(entry):                          # QF-40
-            if symbol not in unit_rows:
-                out.append(f"{label}: unit {symbol!r} is declared by no row of "
-                           f"the units record")
+        out.extend(unregistered_scope_problems(entry, departments, branches,   # QF-33
+                                               label))
+        out.extend(undeclared_unit_problems(entry, unit_rows, label))    # QF-40
         match = find_match(store, entry)
         if match is None:
             if not set(entry["scope"]["departments"]) <= {run_dept}:  # QF-43

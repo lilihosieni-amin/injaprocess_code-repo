@@ -209,3 +209,32 @@ estate's own spellings (branch tokens, item-code namespaces, placeholder header,
 month names, table prefix) are data in `attachments/sheets/manifest.json` under
 `conventions`, written by `dump-workbook --init-manifest`, and no module that
 reads the estate carries one as a literal. See the v3.6 spec.
+
+2026-09-09 (addendum v3.7): **I7** — a chat instruction is one round trip:
+`merge facts edit` rewrites a value in place (the write ladder could only
+create, fill, dispute, append and union, so «change this word» had no verb at
+all), settles any dispute its `set` touches, and leaves the entry confirmed as
+the chat actor's — a filesystem ledger, `facts/.confirmations.json`, keyed by
+the entry's own `updated_at` and read by the ui-backend beside its `app.db`
+marks, because the engine cannot reach that database (ARD §1). `edit` writes a
+row always; `apply`/`resolve`/`retire`/`promote` only when the run's `meta.json`
+says `origin: chat`; `revert` forgets the rows its run wrote; and `save_store`
+prunes every row whose entry has moved on or gone, so the file can never carry a
+stale vouch — with one corollary of keying on `updated_at`'s second resolution: a
+write landing in the same UTC second as the vouched one leaves the row standing.
+Both sides of the ledger serialise their read-modify-write on
+`facts/.confirmations.lock`. See the v3.7 spec §2–§3.
+
+**I8** — a `lang: table` rule's `data.table.rows[]` is a list of **flat**
+objects keyed by the table's own `inputs[]`/`outputs[]`, and no other shape
+survives. Three contracts had left the row shape undefined —
+both store schemas typed `table` as a bare object, and the shape card the model
+is shown gave no example — so the engine's units wrote flat rows while the UI
+was built from a design mock that nested them as `{when, then}`, and neither
+side was ever refused. Now both schemas close `table` (`inputs`, `outputs`,
+`rows` required; `hit`, `aggregate`, `default` optional), `content.py`'s
+`_check_table_shape` refuses a nested row by name, a row key that is not a
+column, a row that names no output, a table column that is not a declared
+input/output, an `expr` on a table rule and a `table` on a rule whose `lang` is
+not `table`; the shape card names the fourth rule body and carries a worked
+example of it; and the card reads the declared shape only. See the v3.7 spec §4.

@@ -115,9 +115,10 @@ const TABLE = bundleOf('rule', {
   table: {
     inputs: ['weekday'], outputs: ['coefficient'], hit: 'first', aggregate: 'sum',
     // `F-00032`'s own rows — the estate stores the SHORT weekday spelling.
+    // Flat, keyed by the table's own columns (v3.7 I8).
     rows: [
-      { when: { weekday: 'thu' }, then: { coefficient: 1.2 } },
-      { when: { weekday: 'wed' }, then: { coefficient: 1.1 } },
+      { weekday: 'thu', coefficient: 1.2 },
+      { weekday: 'wed', coefficient: 1.1 },
     ],
     default: { coefficient: 1, par: 40 },
   },
@@ -345,7 +346,7 @@ describe('the rule card', () => {
 /**
  * What the engine's units actually write — the cooking store of 2026-09-08
  * (`F-00193`, `F-00212`), which the design's mock never exercised: a `table`
- * rule with `expr: null` and flat rows, and a target open at one end.
+ * rule with `expr: null` and Persian cells, and a target open at one end.
  */
 describe('what the engine writes', () => {
   /** F-00193 — `lang: table`, `expr: null`, rows keyed by the column itself. */

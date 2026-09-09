@@ -1,0 +1,144 @@
+{
+  "schema_version": 2,
+  "entries": [
+    {
+      "kind": "rule",
+      "key": "mabnaye_sabt_mande_akhar_shab",
+      "title": "مبنای ثبت مانده پایان شب",
+      "statement": "مبنای ثبت مانده پایان شب برای هر گروه از اقلام متفاوت است: گروهی فقط با وزن ثبت می‌شوند، گروهی با تعداد، و گروهی اصلاً در مانده پایان شب نمی‌آیند هرچند در درخواست روز بعد آورده می‌شوند. بیکن و ژامبون ورقه‌ای با اینکه به تعداد از انبار تحویل گرفته می‌شوند فقط وزنشان نوشته می‌شود تا نیازی به شمردن تک‌تک ورق‌ها نباشد.",
+      "scope": {
+        "departments": [
+          "cooking"
+        ],
+        "branches": []
+      },
+      "source": [
+        {
+          "type": "voice",
+          "ref": "meetings/transcripts/cooking-1405-05-26.txt",
+          "lines": "175-347",
+          "hash": "sha256:b85c2a0c6fbc8d7218dd41051ac682d8150905be5340fcafac209c0437157357",
+          "run": "runs/facts/cooking/20260908-151433"
+        }
+      ],
+      "retired": false,
+      "data": {
+        "lang": "table",
+        "expr": null,
+        "inputs": [
+          {
+            "key": "goruh_qalam",
+            "title": "گروه قلم"
+          }
+        ],
+        "outputs": [
+          {
+            "key": "mabnaye_sabt",
+            "title": "مبنای ثبت مانده"
+          }
+        ],
+        "table": {
+          "inputs": [
+            "goruh_qalam"
+          ],
+          "outputs": [
+            "mabnaye_sabt"
+          ],
+          "rows": [
+            {
+              "goruh_qalam": "بیکن و ژامبون ورقه‌ای",
+              "mabnaye_sabt": "فقط وزن"
+            },
+            {
+              "goruh_qalam": "پنیر گودا",
+              "mabnaye_sabt": "کارتن باز یا کارتن بسته"
+            },
+            {
+              "goruh_qalam": "اقلام عددی لاین سوخاری و نان مک و نان باگت",
+              "mabnaye_sabt": "تعداد"
+            },
+            {
+              "goruh_qalam": "نوشیدنی‌های کانتر",
+              "mabnaye_sabt": "تعداد"
+            },
+            {
+              "goruh_qalam": "سس‌ها، گوجه و خیارشور و جعفری، ظروف، قارچ و روغن سرخ‌کن",
+              "mabnaye_sabt": "در مانده پایان شب ثبت نمی‌شود"
+            }
+          ]
+        },
+        "original_ref": "facts/originals/F-00193.txt"
+      },
+      "id": "F-00193",
+      "valid_from": null,
+      "valid_to": null,
+      "status": "unknown",
+      "updated_at": "2026-09-08T16:53:00Z"
+    },
+    {
+      "kind": "rule",
+      "key": "par_pasta_pene_farangi",
+      "title": "موجودی هدف پاستا پنه لاین فرنگی",
+      "statement": "موجودی هدف پاستا پنه پخته در لاین فرنگی در روزهای عادی ۴۰ پرس و در پنجشنبه و جمعه ۶۵ پرس است. لاین موجودی خود را به پرس تبدیل می‌کند و کسری تا این عدد را برای روز بعد درخواست می‌دهد.",
+      "scope": {
+        "departments": [
+          "cooking"
+        ],
+        "branches": []
+      },
+      "source": [
+        {
+          "type": "voice",
+          "ref": "meetings/transcripts/cooking-1405-05-26.txt",
+          "lines": "175-347",
+          "hash": "sha256:b85c2a0c6fbc8d7218dd41051ac682d8150905be5340fcafac209c0437157357",
+          "run": "runs/facts/cooking/20260908-151433"
+        }
+      ],
+      "retired": false,
+      "data": {
+        "lang": "table",
+        "expr": null,
+        "inputs": [
+          {
+            "key": "ruz_hafte",
+            "title": "روز هفته",
+            "from": "calendar"
+          }
+        ],
+        "outputs": [
+          {
+            "key": "par_pene",
+            "title": "موجودی هدف پاستا پنه",
+            "unit": "portion",
+            "nature": "target"
+          }
+        ],
+        "table": {
+          "inputs": [
+            "ruz_hafte"
+          ],
+          "outputs": [
+            "par_pene"
+          ],
+          "rows": [
+            {
+              "ruz_hafte": "روزهای عادی",
+              "par_pene": 40
+            },
+            {
+              "ruz_hafte": "پنجشنبه و جمعه",
+              "par_pene": 65
+            }
+          ]
+        },
+        "original_ref": "facts/originals/F-00194.txt"
+      },
+      "id": "F-00194",
+      "valid_from": null,
+      "valid_to": null,
+      "status": "unknown",
+      "updated_at": "2026-09-08T16:53:00Z"
+    }
+  ]
+}
