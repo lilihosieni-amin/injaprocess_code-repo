@@ -635,6 +635,18 @@ def test_the_list_row_carries_exactly_the_declared_columns(data_root, tmp_path):
     assert row["updated_at"] == "2026-07-06T10:00:00Z"
 
 
+def test_the_list_is_newest_created_first(data_root, tmp_path):
+    """Owner ruling 2026-09-09: newest created on top. Ids are minted in
+    creation order (`allocate-id`) and zero-padded to five digits, so string
+    order is creation order and the listing is id descending — not
+    `updated_at`, which one run stamps on many entries at once."""
+    _plant(data_root)
+    client = _client_as(data_root, tmp_path, "editor", "*")
+    ids = _ids(client.get("/api/facts").json())
+    assert len(ids) == len(ENTRIES) >= 2
+    assert ids == sorted(ids, reverse=True)
+
+
 def test_a_red_row_carries_its_two_counts_and_a_stub_row_its_badge(data_root,
                                                                    tmp_path):
     """§14 note 1: the counts sit beside the two-value chip, so they are two
@@ -752,8 +764,9 @@ def test_the_consumes_filter_returns_the_consuming_rule(data_root, tmp_path):
     client = _client_as(data_root, tmp_path, "editor", "*")
     # Two `{ref}` edges and one `refItems` cell — QF-37's one exception, where
     # the join is on the item's key rather than its id.
+    # Newest created first, like every other listing (`list_facts`).
     assert _ids(client.get(f"/api/facts?consumes={ITEM}").json()) == [
-        RULE, DINING_RULE, BOM]
+        BOM, DINING_RULE, RULE]
     assert _ids(client.get(f"/api/facts?consumes={NOTE}").json()) == []
     # An id the grammar refuses reaches nothing rather than everything.
     assert _ids(client.get("/api/facts?consumes=F-1").json()) == []

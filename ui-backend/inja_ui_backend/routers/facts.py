@@ -483,6 +483,11 @@ def list_facts(request: Request, user=Depends(panel_session)):
     404 is a dead link drawn by the server itself. The join costs nothing
     extra: the fingerprint, the red fallback and the process filter all need
     the entry anyway.
+
+    **Newest created first** (owner's ruling, 2026-09-09): `allocate-id` mints
+    fact ids in creation order and zero-pads them, so id descending *is*
+    newest-first — and unlike `updated_at`, which one `merge facts` run stamps
+    on many entries at once, it does not reshuffle the screen after a re-run.
     """
     cfg, conn = request.app.state.cfg, request.app.state.db
     root = cfg.data_root
@@ -560,6 +565,7 @@ def list_facts(request: Request, user=Depends(panel_session)):
             "confirmed": mark is not None and mark == now,
             "updated_at": row.get("updated_at"),
         })
+    out.sort(key=lambda r: r["id"], reverse=True)
     return {"entries": out, "coverage": facts_store.coverage(root)}
 
 
