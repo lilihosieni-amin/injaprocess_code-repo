@@ -1013,6 +1013,18 @@ def test_group_messages_folds_one_rule_into_one_line():
     assert lines[0].endswith("— 2 entries: T-1, T-2")
 
 
+def test_group_messages_keeps_the_first_message_s_specifics():
+    """The accounting review of 2026-09-09 was retried against
+    "primaryKey member … is not a declared field" — the name elided — and
+    failed the same way twice. The group key still folds the quotes; the
+    printed line carries the first body as written."""
+    lines = group_messages([
+        "review: primaryKey member 'tarikh' is not a declared field",
+        "u-a: primaryKey member 'sal' is not a declared field"])
+    assert lines == ["primaryKey member 'tarikh' is not a declared field "
+                     "— 2 entries: review, u-a"]
+
+
 # --------------------------------------------------------------------------- #
 # 7 (v3). a policy rule is `lang: text` with no inputs
 # --------------------------------------------------------------------------- #

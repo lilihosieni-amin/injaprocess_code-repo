@@ -179,7 +179,9 @@ def test_a_unit_written_on_a_non_numeric_field_is_an_error(tmp_path):
                for p in validate_unit(root, run_dir, _write(run_dir, doc)))
 
 
-def test_review_caps(tmp_path):
+def test_a_review_is_not_capped(tmp_path):
+    """R6 — the 60/20 caps are gone: a big review is a big review, not a
+    broken document. 61 drops pass the schema and the shape checks."""
     root, run_dir = _run(tmp_path)
     (run_dir / "review").mkdir()
     doc = {"schema_version": 1, "unit": "review", "attempt": 1,
@@ -191,7 +193,7 @@ def test_review_caps(tmp_path):
            "new": []}
     path = run_dir / "review" / "out.json"
     path.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
-    assert any("60" in p for p in validate_unit(root, run_dir, path))
+    assert validate_unit(root, run_dir, path) == []
 
 
 def test_the_cli_needs_a_run_directory(tmp_path, capsys):
@@ -231,17 +233,20 @@ def _review(run_dir, decisions, **over):
     return path
 
 
-def test_the_rewrite_cap_is_the_second_one(tmp_path):
+def test_the_rewrite_count_is_not_capped_either(tmp_path):
+    """R6 — the second cap is gone with the first. 21 statement rewrites are
+    what the reviewer found to rewrite, not a broken document; the lint, the
+    store contract and the report naming every rewrite are the real guards."""
     root, run_dir = _run(tmp_path)
     rewrites = [{"entry": {"kind": "rule", "key": f"k{n}"}, "action": "keep",
                  "key": f"k{n}", "title": "انحراف مصرف",
                  "statement": "مصرف واقعی هر شب ثبت می‌شود."} for n in range(21)]
-    assert any("rewrites" in p and "20" in p
-               for p in validate_unit(root, run_dir, _review(run_dir, rewrites)))
-    assert validate_unit(root, run_dir, _review(run_dir, rewrites[:20])) == []
+    assert validate_unit(root, run_dir, _review(run_dir, rewrites)) == []
 
 
-def test_a_schema_error_survives_beside_the_cap_message(tmp_path):
+def test_a_schema_error_in_a_big_review_is_still_reported(tmp_path):
+    """The size is no longer a message of its own (R6), so the one real fault
+    in a 61-decision document is the only thing said about it."""
     root, run_dir = _run(tmp_path)
     doc = {"schema_version": 1, "unit": "review",
            "decisions": [{"entry": {"kind": "rule", "key": f"k{n}"},
@@ -250,9 +255,7 @@ def test_a_schema_error_survives_beside_the_cap_message(tmp_path):
     path = run_dir / "review" / "out.json"
     (run_dir / "review").mkdir(exist_ok=True)
     path.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
-    problems = validate_unit(root, run_dir, path)
-    assert any("60" in p for p in problems)
-    assert any("attempt" in p for p in problems)
+    assert any("attempt" in p for p in validate_unit(root, run_dir, path))
 
 
 def test_a_review_document_is_not_checked_for_completeness(tmp_path):

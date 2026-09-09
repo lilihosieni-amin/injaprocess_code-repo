@@ -397,6 +397,65 @@ def test_digest_then_a_stale_review_is_discarded(tmp_path):
     assert assemble(root, run_dir, review=True)["review_status"] == "discarded"
 
 
+def test_a_review_of_any_size_is_accepted(tmp_path):
+    """R6: 61 decisions and 21 rewrites were a refusal of the whole document."""
+    root = _root(tmp_path)
+    run_dir = _run(root, {"u-a": _record_out(), "u-b": _rule_out()})
+    digest(root, run_dir)
+    keep = {"entry": {"kind": "rule", "key": "enheraf"}, "action": "keep",
+            "key": "enheraf", "title": "انحراف مصرف",
+            "statement": "انحراف مصرف برابر است با مصرف واقعی منهای مصرف اعلامی."}
+    _write_review(run_dir, [dict(keep) for _ in range(61)])
+    problems = validate_unit(root, run_dir, run_dir / "review" / "out.json")
+    assert not any("at most" in p for p in problems)
+
+
+def test_a_code_a_decision_writes_is_ignored(tmp_path):
+    """R4: the cooking review of 2026-09-08 was refused whole for copying the
+    engine-owned `code` back in. It passes now and changes nothing."""
+    root = _root(tmp_path)
+    record = _record_out()
+    record["decisions"][0]["data"]["code"] = "##99"
+    run_dir = _run(root, {"u-a": record, "u-b": _rule_out()})
+    assert validate_unit(root, run_dir, run_dir / "units" / "u-a" / "out.1.json") == []
+    assemble(root, run_dir)
+    delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
+    rec = next(e for e in delta["entries"] if e["key"] == "gozaresh_shabane_pitza")
+    assert rec["data"].get("code") != "##99"
+
+
+def test_a_code_the_review_writes_is_ignored_too(tmp_path):
+    """R4 on the path it actually broke on: the review copied the item codes
+    back into `data`, and the whole document was refused for it. The estate's
+    code stands and everything else the reviewer wrote lands."""
+    root = _root(tmp_path)
+    run_dir = _run(root, {"u-a": _record_out(), "u-b": _rule_out()})
+    digest(root, run_dir)
+    _write_review(run_dir, [{"entry": {"kind": "item", "key": "item_1"},
+                             "action": "keep", "key": "item_1",
+                             "title": "پنیر ورقه‌ای",
+                             "statement": "پنیر ورقه‌ای که با بسته شمرده می‌شود.",
+                             "data": {"code": "##99", "unit": "pack"}}])
+    assert validate_unit(root, run_dir, run_dir / "review" / "out.json") == []
+    assert assemble(root, run_dir, review=True)["review_status"] == "applied"
+    delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
+    item = next(e for e in delta["entries"] if e["key"] == "item_1")
+    assert item["data"]["code"] == "##1" and item["data"]["unit"] == "pack"
+
+
+def test_a_digest_over_the_ceiling_stops_the_run(tmp_path, monkeypatch):
+    """R7: over the ceiling is a defect that stops, not a run without review."""
+    import facts_plan.assemble as A
+    root = _root(tmp_path)
+    run_dir = _run(root, {"u-a": _record_out(), "u-b": _rule_out()})
+    monkeypatch.setattr(A, "DIGEST_CEILING", 10)
+    with pytest.raises(SystemExit) as exc:
+        digest(root, run_dir)
+    assert exc.value.code == 2
+    assert not (run_dir / "review" / "input.md").exists()
+    assert not (run_dir / "review" / "input.sha256").exists()
+
+
 def test_a_review_address_hitting_nothing_discards_the_document(tmp_path):
     root = _root(tmp_path)
     run_dir = _run(root, {"u-a": _record_out(), "u-b": _rule_out()})
@@ -940,12 +999,14 @@ def _stop_sites(name):
 
 
 def test_only_the_stops_the_design_keeps_are_left():
-    """§3.2 — nine places used to stop a run for one input. Five are left in
-    the four modules a run goes through, and each is an engine invariant or a
-    run with nothing in it. A new `raise` in any of them fails this test until
-    the design says which row of the table it is."""
+    """§3.2 — nine places used to stop a run for one input. Six are left in
+    the four modules a run goes through, and each is an engine invariant, a
+    run with nothing in it, or a defect the engine cannot work around. A new
+    `raise` in any of them fails this test until the design says which row of
+    the table it is."""
     kept = [("build.py", "plan_units", "candidate(s) in two units"),
             ("assemble.py", "_outputs", '{unit["id"]}: {message}'),
+            ("assemble.py", "digest", "reviewed in slices"),
             ("assemble.py", "assemble",
              "A review's own rewrite is refused outright"),
             ("assemble.py", "assemble", "nothing assembled"),

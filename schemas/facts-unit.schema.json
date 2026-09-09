@@ -13,7 +13,6 @@
     "new": { "type": "array", "items": { "$ref": "#/$defs/newEntry" } }
   },
   "if": { "properties": { "unit": { "const": "review" } }, "required": ["unit"] },
-  "then": { "properties": { "decisions": { "maxItems": 60 } } },
   "else": { "properties": { "decisions": { "items": {
     "properties": { "action": { "not": { "const": "contradiction" } } } } } } },
   "$defs": {
@@ -61,6 +60,7 @@
         "primaryKey": { "$ref": "#/$defs/leaf" },
         "fields": { "type": "array", "items": { "$ref": "#/$defs/decisionField" } },
         "category": { "$ref": "#/$defs/leaf" },
+        "code": { "$ref": "#/$defs/leaf" },
         "unit": { "$ref": "#/$defs/leaf" },
         "unit_raw": { "$ref": "#/$defs/leaf" },
         "units": { "$ref": "#/$defs/leaf" },

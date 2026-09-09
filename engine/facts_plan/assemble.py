@@ -34,7 +34,6 @@ from facts_plan.build import (estimate_tokens, label_of, process_index,
 #: `c_` prefix is what marks a ref provisional, so a field wearing it in any
 #: case is held to the grammar; anything else is a minted key.
 PROVISIONAL_FIELD = re.compile(r"^c_[a-z]{1,3}$")
-REVIEW_DECISIONS, REVIEW_REWRITES = 60, 20
 
 
 def _refs(value):
@@ -49,32 +48,14 @@ def _refs(value):
             yield from _refs(member)
 
 
-def _review_caps(doc):
-    """§2.6's two caps on a review document. The schema carries the first one
-    too, but its `maxItems` message is the whole 61-decision instance dumped
-    into one line — §4 asks for a line a reviewer can read, so this runs
-    before the schema and speaks for it."""
-    out = []
-    decisions = doc.get("decisions") or []
-    if len(decisions) > REVIEW_DECISIONS:
-        out.append(f"review: {len(decisions)} decisions, "
-                   f"at most {REVIEW_DECISIONS} (§2.6)")
-    rewrites = [d for d in decisions if isinstance(d, dict)
-                and d.get("action") == "keep" and d.get("statement")]
-    if len(rewrites) > REVIEW_REWRITES:
-        out.append(f"review: {len(rewrites)} statement rewrites, "
-                   f"at most {REVIEW_REWRITES} (§2.6)")
-    return out
-
-
 def validate_unit(root, run_dir, path):
     """Every message for one `facts-unit` document, empty when it may pass.
 
-    Checks, in order: the review's two caps; the schema; the `units/<id>/`
-    directory the document sits in against the `unit` it declares, and every
-    candidate of **that** unit's `plan.json` list decided exactly once (a plan
-    unit only — the review addresses assembled entries, which do not exist
-    yet); `S-` refs naming a candidate of this run; node ids in the
+    Checks, in order: the schema; the `units/<id>/` directory the document
+    sits in against the `unit` it declares, and every candidate of **that**
+    unit's `plan.json` list decided exactly once (a plan unit only — the
+    review addresses assembled entries, which do not exist yet); `S-` refs
+    naming a candidate of this run; node ids in the
     department's **whole** process index, in `decisions[]` and `new[]` alike;
     the provisional field grammar; the §5.2 lint on every prose field with
     `skeleton.json`'s `unit_symbols[]` exempted; and a `unit` written onto a
@@ -92,16 +73,10 @@ def validate_unit(root, run_dir, path):
         doc = read_json(path)
     except (OSError, ValueError) as exc:
         return [f"{path.name}: not readable as JSON ({exc})"]
-    caps = _review_caps(doc) if isinstance(doc, dict) \
-        and doc.get("unit") == "review" else []
-    # The schema carries the 60 cap too, and its `maxItems` message is the
-    # whole decisions array on one line (§4). Checking the trimmed document
-    # keeps that line out and every other schema error in.
-    checked = dict(doc, decisions=doc["decisions"][:REVIEW_DECISIONS]) if caps else doc
     try:
-        validate("facts-unit.schema.json", checked)
+        validate("facts-unit.schema.json", doc)
     except ValueError as exc:
-        return caps + [str(exc)]
+        return [str(exc)]
 
     skeleton = read_json(run_dir / "skeleton.json")
     plan = read_json(run_dir / "plan.json")
@@ -116,7 +91,7 @@ def validate_unit(root, run_dir, path):
     nodes = process_index(root, skeleton["department"])
     node_ids = {f'{n["process"]}::{n["node"]}' for n in nodes} \
         | {f'{n["process"]}::{n["node"].rsplit("-", 1)[-1]}' for n in nodes}
-    problems, seen, unit = list(caps), [], None
+    problems, seen, unit = [], [], None
     # The document's own decisions by candidate, so a rule can be judged
     # against the record it reads: the record's keys are minted here, not in
     # the skeleton (`_swapped_inputs`).
@@ -466,9 +441,11 @@ LETTERS_FA = ("الف", "ب", "ج", "د")
 #: its candidates go to `undecided[]` rather than blocking the assembly.
 ATTEMPTS = 2
 
-#: §2.6's ceiling on the reviewer's input — one unit's budget, spent on the
-#: whole run at once.
-DIGEST_CEILING = 50000
+#: The ceiling on the reviewer's input: the runtime model holds 1 M tokens and
+#: cooking, the largest department, digests to ~29 K. Above it the run stops —
+#: the assembled result would have to be reviewed in slices, which this engine
+#: cannot do, and skipping the review instead was silently dropping it (R7).
+DIGEST_CEILING = 400000
 
 #: The reason codes of §2.5 in the owner's words (§2.7) — `gate-b.md` names the
 #: commonest, `report` renders the whole list. Past tense: both files are read
@@ -955,6 +932,13 @@ def _entry(candidate, decision, state, part=None):
     # payload carries no wrappers, so this is a no-op for every real candidate.
     data = _unwrap(copy.deepcopy(candidate["payload"]), "data", status)
     given = _unwrap(written.get("data") or {}, "data", status)
+    # An item's `code` is the estate's, read off the header row and carried by
+    # the candidate's payload — never the model's to write. The schema admits
+    # it (a document that copies it back in is not a broken document) and it is
+    # dropped here, on the one path every decision takes: a unit's, a review's,
+    # and a split part's alike (R4). The cooking review of 2026-09-08 was
+    # refused whole for it.
+    given.pop("code", None)
     renames, fields = _rename_fields(data.pop("fields", []),
                                      given.pop("fields", []))
     data.update(given)
@@ -1437,9 +1421,7 @@ def _lint_entries(root, entries, symbols, reviewed=()):
 def _digest_text(state, entries):
     """`review/input.md` (§2.6) — one line per assembled entry, the flags, and
     the dropped candidates with their reason codes."""
-    lines = ["# digest",
-             f"decisions ≤ {REVIEW_DECISIONS}, statement rewrites ≤ "
-             f"{REVIEW_REWRITES}", "", "## entries", ""]
+    lines = ["# digest", "", "## entries", ""]
     for entry in entries:
         data = entry["data"]
         tail = {"rule": f'expr: {data.get("expr")}',
@@ -1515,7 +1497,8 @@ def _prepare(root, run_dir, review):
 
 def digest(root, run_dir):
     """`review/input.md` + `review/input.sha256` — steps 1–7 in memory, the temp
-    ids discarded. Above 50 K tokens the run proceeds without a review (§2.6)."""
+    ids discarded. Over `DIGEST_CEILING` the run stops (R7) — nothing is
+    written and the reviewer is never skipped."""
     run_dir, skeleton, state = _prepare(root, run_dir, False)
     entries = _build_entries(root, skeleton, state)
     _cross_unit(root, entries, state)
@@ -1524,9 +1507,10 @@ def digest(root, run_dir):
     tokens = estimate_tokens(text)
     if tokens > DIGEST_CEILING:
         print(f"facts-plan: digest is {tokens} tokens, over the "
-              f"{DIGEST_CEILING} ceiling — the run proceeds without a review",
-              file=sys.stderr)
-        return path
+              f"{DIGEST_CEILING} ceiling — the assembled result must be "
+              "reviewed in slices, which this engine cannot yet do; the run "
+              "stops here", file=sys.stderr)
+        raise SystemExit(2)
     write_text_atomic(path, text)
     write_text_atomic(run_dir / "review" / "input.sha256",
                       hashlib.sha256(text.encode("utf-8")).hexdigest() + "\n")
