@@ -87,6 +87,7 @@ def check_document(doc, kind_of_file, store=None, unit_symbols=None,
         _check_record_shape(entry, messages, label)
         _check_shares(entry, messages, label)
         _check_constant_shape(entry, kind_of_file, messages, label)
+        _check_table_shape(entry, messages, label)
         _check_field_status(entry, messages, label)
         _check_reconciled_against(entry, messages, label)
         _check_issue_dates(entry, messages, label)
@@ -487,6 +488,70 @@ def _check_constant_shape(entry, kind_of_file, messages, label):
             if isinstance(o, dict) and ("value" in o or "range" in o):
                 messages.append(f"{label}: output {o.get('key')!r} of a "
                                 f"rule with inputs carries value or range")
+
+
+# --------------------------------------------------------------------------- #
+# 7 (v3.7). decision-table row shape — §4, I8. The fourth rule body, beside the
+# three `_check_constant_shape` admits.
+# --------------------------------------------------------------------------- #
+
+def _check_table_shape(entry, messages, label):
+    """A `lang: table` rule's rows are FLAT objects keyed by the table's own
+    columns. The store schema typed `table` as a bare object, so the engine's
+    units wrote flat rows and the UI was built from a mock that nested them as
+    `{when, then}`; nothing refused either. Here `table` and `lang` have to
+    agree, the table's columns have to be the rule's own declared keys, and a
+    row may hold nothing but those columns — including the old nested pair,
+    which is named for what it is rather than read as two unknown columns."""
+    if entry.get("kind") != "rule":
+        return
+    data = entry.get("data") or {}
+    table = data.get("table")
+    if data.get("lang") == "table":
+        if not isinstance(table, dict):
+            messages.append(f"{label}: lang: table carries no table")
+            return
+        if data.get("expr"):
+            messages.append(f"{label}: a table rule carries expr — a table "
+                            f"has no formula")
+    elif table is not None:
+        messages.append(f"{label}: carries a table but its lang is not table")
+        return
+    else:
+        return
+    declared_in = {i.get("key") for i in data.get("inputs") or []
+                   if isinstance(i, dict)}
+    declared_out = {o.get("key") for o in data.get("outputs") or []
+                    if isinstance(o, dict)}
+    ins = [k for k in table.get("inputs") or [] if isinstance(k, str)]
+    outs = [k for k in table.get("outputs") or [] if isinstance(k, str)]
+    for k in ins:
+        if k not in declared_in:
+            messages.append(f"{label}: table input {k!r} is not a declared "
+                            f"input")
+    for k in outs:
+        if k not in declared_out:
+            messages.append(f"{label}: table output {k!r} is not a declared "
+                            f"output")
+    columns = set(ins) | set(outs)
+    for n, row in enumerate(table.get("rows") or [], 1):
+        if not isinstance(row, dict):
+            messages.append(f"{label}: table row {n} is not an object")
+            continue
+        if "when" in row or "then" in row:
+            messages.append(f"{label}: table row {n} carries when/then — a row "
+                            f"is flat, keyed by the table's columns")
+            continue
+        for k in row:
+            if k not in columns:
+                messages.append(f"{label}: table row {n} key {k!r} is not a "
+                                f"table column")
+        if not any(k in row for k in outs):
+            messages.append(f"{label}: table row {n} names no output")
+    for k in table.get("default") or {}:
+        if k not in outs:
+            messages.append(f"{label}: table default key {k!r} is not a table "
+                            f"output")
 
 
 # --------------------------------------------------------------------------- #

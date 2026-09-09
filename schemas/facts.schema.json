@@ -314,7 +314,15 @@
         "expr": { "type": ["string", "null"] },
         "lang": { "enum": ["feel", "table", "text", "sheets", "gs", null] },
         "text": { "type": ["string", "null"] },
-        "table": { "type": "object" },
+        "table": { "type": "object", "additionalProperties": false,
+          "required": ["inputs", "outputs", "rows"],
+          "properties": {
+            "inputs": { "type": "array", "items": { "$ref": "#/$defs/mintedSegment" } },
+            "outputs": { "type": "array", "items": { "$ref": "#/$defs/mintedSegment" } },
+            "rows": { "type": "array", "items": { "type": "object" } },
+            "hit": { "enum": ["first", "unique", "collect", null] },
+            "aggregate": { "enum": ["sum", "product", "min", "max", null] },
+            "default": { "type": "object" } } },
         "original_ref": { "type": "string" },
         "calls": { "type": "array", "items": { "$ref": "#/$defs/ref" } },
         "edge_cases": { "type": "array", "items": {

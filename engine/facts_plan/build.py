@@ -1985,16 +1985,20 @@ KIND_NOTE = {
               "برای خانه‌هایی است که کد `{namespace}` فهرست اقلام یا کلید یک "
               "قلم را دارند.",
     "rule": "`per` در خروجی یک قاعده کلید یک قلم است، نه یک نام. "
-            "سه شکل قاعده پذیرفته می‌شود: فرمول — `lang: feel` با `expr` و "
+            "چهار شکل قاعده پذیرفته می‌شود: فرمول — `lang: feel` با `expr` و "
             "`inputs[]`؛ عدد ثابت — `inputs: []`، بدون `expr`، و هر خروجی با "
             "`value` یا `range`؛ سیاست بی‌فرمول — `lang: text`، `inputs[]` را "
-            "نام ببر، `expr` خالی، و جملهٔ اصلی را در `original` بنویس. "
+            "نام ببر، `expr` خالی، و جملهٔ اصلی را در `original` بنویس؛ "
+            "جدول تصمیم — `lang: table`، `expr` خالی، و `table` با "
+            "`inputs`/`outputs` (کلیدهای همان ورودی و خروجی‌ها) و `rows[]` که "
+            "هر سطر یک شیء تخت است با همان کلیدها. "
             "`nature: standard` یعنی عدد ثابت و `value` یا `range` می‌خواهد."}
 
 
-#: Three `new[]` entries a unit can copy — a paper form (the case the first run
-#: had no shape for), a measurement, and a rule reading its parameters. A test
-#: validates all three against `facts-delta.schema.json`, so an example the
+#: Four `new[]` entries a unit can copy — a paper form (the case the first run
+#: had no shape for), a measurement, a rule reading its parameters, and a
+#: decision table (whose row shape the schema cannot state, §4/I8). A test
+#: validates all four against `facts-delta.schema.json`, so an example the
 #: schema would refuse cannot ship. The one estate-specific leaf, the item-code
 #: namespace of the paper form's column, is rendered per estate by
 #: `_with_namespace` — the card is the one place a unit copies a shape from.
@@ -2043,7 +2047,21 @@ EXAMPLES = [
                    "from": {"param": "ref_1"}}],
               "outputs": [{"key": "enheraf_ba_tolerance",
                            "title": "انحراف با تلورانس", "unit": "kg",
-                           "nature": "observed"}]}}]
+                           "nature": "observed"}]}},
+    {"kind": "rule", "key": "mabnaye_sabt_mande",
+     "title": "مبنای ثبت ماندهٔ پایان شب",
+     "statement": "مبنای ثبت ماندهٔ پایان شب برای هر گروه از اقلام متفاوت است: "
+                  "گروهی با وزن و گروهی با تعداد ثبت می‌شوند.",
+     "data": {"lang": "table", "expr": None,
+              "inputs": [{"key": "goruh_qalam", "title": "گروه قلم"}],
+              "outputs": [{"key": "mabnaye_sabt",
+                           "title": "مبنای ثبت مانده"}],
+              "table": {"inputs": ["goruh_qalam"],
+                        "outputs": ["mabnaye_sabt"],
+                        "rows": [{"goruh_qalam": "بیکن ورقه‌ای",
+                                  "mabnaye_sabt": "فقط وزن"},
+                                 {"goruh_qalam": "نوشیدنی‌های کانتر",
+                                  "mabnaye_sabt": "تعداد"}]}}}]
 
 
 def _with_namespace(example, conventions):

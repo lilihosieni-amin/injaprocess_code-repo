@@ -175,15 +175,6 @@ function tableCell(v: unknown, output: boolean): GridCell {
   return { node: <span className={`text-fs-sm ${ink}`}>{cellLabel(text)}</span> }
 }
 
-/** A row's cell — `{when, then}` as the design nests it (:4855), or flat
- *  `{key: value}` as the engine's units write it; the schema types `table` as
- *  a bare object and both shapes are in the store. */
-function cellOf(row: Record<string, unknown>, group: 'when' | 'then', key: string): unknown {
-  const nested = row[group]
-  return nested !== null && typeof nested === 'object'
-    ? (nested as Record<string, unknown>)[key] : row[key]
-}
-
 /** :1183 — «جدول تصمیم», its hit rule, its rows and its default band. */
 function DecisionTable({ data }: { data: RuleData }) {
   const t = data.table
@@ -221,8 +212,8 @@ function DecisionTable({ data }: { data: RuleData }) {
         rows={(t.rows ?? []).map((row, i) => ({
           key: String(i),
           cells: [
-            ...ins.map((k) => tableCell(cellOf(row, 'when', k), false)),
-            ...outs.map((k) => tableCell(cellOf(row, 'then', k), true)),
+            ...ins.map((k) => tableCell(row[k], false)),
+            ...outs.map((k) => tableCell(row[k], true)),
           ],
         }))}
       />

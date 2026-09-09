@@ -425,9 +425,7 @@ export interface RuleData {
   edge_cases?: { input?: string; expected?: string; why?: string }[]
   table?: {
     inputs?: string[]; outputs?: string[]
-    /** A row is `{when, then}` in the design (:4855) and flat `{key: value}`
-     *  from the engine's units — `facts.schema.json` types `table` as a bare
-     *  object, and the card reads both. */
+    /** Flat rows keyed by the table's columns (v3.7 I8). */
     rows?: Record<string, unknown>[]
     hit?: 'first' | 'unique' | 'collect'
     aggregate?: 'sum' | 'product' | 'min' | 'max'

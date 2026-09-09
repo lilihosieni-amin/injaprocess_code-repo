@@ -87,18 +87,27 @@ def test_the_shape_card_spells_location_out_per_medium():
     assert "medium=native: identifier_scheme، kept_at" in card
 
 
-def test_the_three_worked_examples_validate_against_the_store_contract():
+def test_the_worked_examples_validate_against_the_store_contract():
     """The examples are what a unit copies. One that does not validate teaches
     the shape Stage V refuses."""
     from engine_common import validate
     from facts_plan.build import EXAMPLES
-    assert [e["kind"] for e in EXAMPLES] == ["record", "measurement", "rule"]
+    assert [e["kind"] for e in EXAMPLES] == ["record", "measurement", "rule",
+                                         "rule"]
     assert EXAMPLES[0]["data"]["medium"] == "paper"
     assert set(EXAMPLES[0]["data"]["location"]) == {"kept_at", "holder"}
     validate("facts-delta.schema.json", {"schema_version": 2, "entries": [
         dict(entry, scope={"departments": ["cooking"], "branches": []},
              source=[{"type": "chat", "ref": None}], retired=False)
         for entry in EXAMPLES]})
+
+
+def test_the_shape_card_names_the_decision_table_shape():
+    """v3.7 §4 (I8) — the fourth rule body. The schema types a row as a bare
+    object, so the shape a row takes is the card's to say or nobody's."""
+    from facts_plan.build import shape_card
+    card = shape_card(("rule",), _schema())
+    assert "lang: table" in card and "rows[]" in card
 
 
 def test_the_two_schemas_carry_the_same_payload_definitions():
@@ -220,10 +229,12 @@ def test_the_card_says_which_cells_carry_an_item_key():
             "برای خانه‌هایی است که کد `##` فهرست اقلام یا کلید یک قلم را "
             "دارند." in text)
     assert "`per` در خروجی یک قاعده کلید یک قلم است، نه یک نام." in text
-    # The three rule bodies `content._check_constant_shape` admits — the unit
-    # that oscillated between «constant output carries no value or range» and
-    # «a rule with inputs carries no expr or original» on 2026-09-08 had been
-    # shown the enums and nothing about which members go together.
-    assert "سه شکل قاعده پذیرفته می‌شود" in text
+    # The four rule bodies `content._check_constant_shape` and
+    # `_check_table_shape` admit — the unit that oscillated between «constant
+    # output carries no value or range» and «a rule with inputs carries no expr
+    # or original» on 2026-09-08 had been shown the enums and nothing about
+    # which members go together.
+    assert "چهار شکل قاعده پذیرفته می‌شود" in text
     assert "`lang: text`" in text and "`original`" in text \
         and "`value` یا `range`" in text
+    assert "`lang: table`" in text and "`rows[]`" in text

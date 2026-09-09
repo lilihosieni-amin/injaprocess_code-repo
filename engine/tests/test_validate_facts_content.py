@@ -1073,3 +1073,64 @@ def test_apply_refuses_a_statement_that_names_a_cell(tmp_path, capsys):
         apply(root, _write(root, "dx.json", d), _run_dir(root, "9"))
     assert e.value.code == 2
     assert "J6" in capsys.readouterr().err
+
+
+# --------------------------------------------------------------------------- #
+# 9. decision-table row shape — v3.7 §4 (I8)
+# --------------------------------------------------------------------------- #
+
+def _table_rule(rows, **table_extra):
+    table = {"inputs": ["goruh"], "outputs": ["mabna"], "rows": rows,
+             **table_extra}
+    return _rule(data={"lang": "table", "expr": None,
+                       "inputs": [{"key": "goruh", "title": "گروه قلم"}],
+                       "outputs": [{"key": "mabna", "title": "مبنای ثبت"}],
+                       "table": table})
+
+
+def test_flat_rows_keyed_by_the_columns_pass():
+    rule = _table_rule([{"goruh": "پنیر گودا", "mabna": "کارتن"},
+                        {"goruh": "نوشیدنی", "mabna": "تعداد"}])
+    assert [m for m in check_document(_doc(rule), "facts-delta")
+            if "table" in m] == []
+
+
+def test_the_old_nested_when_then_rows_are_named():
+    rule = _table_rule([{"when": {"goruh": "پنیر گودا"},
+                         "then": {"mabna": "کارتن"}}])
+    msgs = check_document(_doc(rule), "facts-delta")
+    assert any("when/then" in m and "row 1" in m for m in msgs)
+
+
+def test_a_row_key_outside_the_columns_and_a_row_with_no_output_fail():
+    msgs = check_document(_doc(_table_rule([{"goruh": "x", "vazn": 1}])),
+                          "facts-delta")
+    assert any("vazn" in m and "column" in m for m in msgs)
+    msgs = check_document(_doc(_table_rule([{"goruh": "x"}])), "facts-delta")
+    assert any("no output" in m for m in msgs)
+
+
+def test_table_columns_must_be_declared_inputs_and_outputs():
+    rule = _table_rule([{"goruh": "x", "mabna": "y"}])
+    rule["data"]["table"]["inputs"] = ["ruz"]
+    msgs = check_document(_doc(rule), "facts-delta")
+    assert any("ruz" in m and "declared" in m for m in msgs)
+
+
+def test_a_table_rule_carries_no_expr_and_a_feel_rule_no_table():
+    rule = _table_rule([{"goruh": "x", "mabna": "y"}])
+    rule["data"]["expr"] = "mabna = goruh"
+    assert any("expr" in m for m in check_document(_doc(rule), "facts-delta"))
+    rule = _table_rule([{"goruh": "x", "mabna": "y"}])
+    rule["data"]["lang"] = "feel"
+    rule["data"]["expr"] = "mabna = goruh"
+    assert any("table" in m and "lang" in m
+               for m in check_document(_doc(rule), "facts-delta"))
+
+
+def test_the_two_cooking_tables_pass():
+    """F-00193 and F-00194 as the 2026-09-08 run wrote them — fixture copies."""
+    fixtures = (pathlib.Path(__file__).parent / "fixtures" / "facts_store"
+                / "tables.json")
+    doc = json.loads(fixtures.read_text(encoding="utf-8"))
+    assert [m for m in check_document(doc, "facts") if "table" in m] == []
