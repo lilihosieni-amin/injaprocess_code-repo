@@ -481,10 +481,12 @@ ids minted in kind order (item → record → measurement → rule → note).
    held-back decision with its reason and the title of the entry it addressed), and `gate-b.md`
    (the run's record of what it proposed).
 
-The **six kept stops** — the only places the planner, the digest or the assembly may refuse a
+The **eight kept stops** — the only places the planner, the digest or the assembly may refuse a
 whole run — are pinned by a test: a candidate planned into two units or none; `build` without
 `--rebuild` once a unit is done; a unit's latest output invalid with an attempt left; a digest
 over the 400 000-token ceiling; a review written against an older digest (Stage R is re-entered);
+a `review: <key>` lint line no decision owns (a defect — with nothing to hold back the fold loop
+would spin); a lint failure that pins to no entry or that would hold back every one of them;
 nothing assembled at all. Everything else is a hold-back with a Persian
 reason: «بزرگ‌تر از یک واحد» (too big for a unit), a merge cycle, a dropped target, an unknown
 reference, refused by the gate, waiting on a held-back entry, its unit failed — and, on the

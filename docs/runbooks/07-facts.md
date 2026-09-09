@@ -514,7 +514,7 @@ reads it grouped by reason at the end of `report.md`.
 | a unit spent both attempts and returned nothing usable | its candidates are held back | «در این اجرا بررسی نشد» |
 | `assemble` — a review decision fails the lint or an address lands nowhere | that decision is held back (`review_held`) and named in the report; the rest of the review applies | «بازبینی انجام شد؛ ۱ تصمیم آن کنار گذاشته شد:» and the entry's title with its reason |
 
-Six stops remain, and none of them is one input's fault:
+Eight stops remain, and none of them is one input's fault:
 
 | stop | why it stays |
 |---|---|
@@ -523,6 +523,8 @@ Six stops remain, and none of them is one input's fault:
 | `assemble` — a unit's latest output does not validate and it still has an attempt | the run is not ready; Stage U re-dispatches that unit |
 | `digest` — the digest is over the 400 K ceiling | no reviewer can read it, and a run recorded without a review is not an outcome the design allows; report it as a defect |
 | `assemble --review` — the review was written against an older digest | its addresses no longer name what they meant; the playbook re-enters Stage R and the review is written again, never skipped |
+| `assemble` — a `review: <key>` lint line no review decision owns | a defect in the fold: with nothing to hold back the loop would spin; the line is printed as it is |
+| `assemble` — a lint failure that pins to no entry, or one that would hold back every entry | there is nothing left to land, and a hold-back that empties the run is the run failing; every line is printed |
 | `assemble` — nothing at all could be assembled | the one true stop; every held-back reason is printed |
 
 A new `raise SystemExit(2)` in `build.py`, `assemble.py`, `cli.py` or
