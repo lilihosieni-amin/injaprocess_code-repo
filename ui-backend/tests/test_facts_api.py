@@ -190,10 +190,10 @@ def _plant(data_root, entries=None):
         by_kind.setdefault(entry["kind"], []).append(entry)
     for kind, filename in _FILES.items():
         (data_root / "facts" / filename).write_text(
-            json.dumps({"schema_version": 1, "entries": by_kind.get(kind, [])},
+            json.dumps({"schema_version": 2, "entries": by_kind.get(kind, [])},
                        ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     (data_root / "facts" / ".index.json").write_text(
-        json.dumps({"schema_version": 1,
+        json.dumps({"schema_version": 2,
                     "entries": [_index_row(e) for e in entries]},
                    ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
@@ -705,7 +705,7 @@ def test_a_malformed_store_answers_rather_than_crashing(data_root, tmp_path):
 
     # An entry the index names but no kind file holds.
     (data_root / "facts" / "notes.json").write_text(
-        json.dumps({"schema_version": 1, "entries": []}), encoding="utf-8")
+        json.dumps({"schema_version": 2, "entries": []}), encoding="utf-8")
     # And one whose stored `kind` is not a fact kind at all.
     rules = json.loads((data_root / "facts" / "rules.json").read_text(
         encoding="utf-8"))

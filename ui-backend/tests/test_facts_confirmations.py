@@ -441,15 +441,6 @@ def _edit_via_engine(cfg, fid, statement="بیانیهٔ تازه"):
     run — what `edit-fact` does. A stub here would prove nothing: the point of
     the assertion is what the engine writes (or no longer writes) to the store.
     """
-    # The five kind files are seeded at the store schema's older version (the
-    # service never reads the header; `save_store` validates it and refuses).
-    for name in ("items.json", "records.json", "measurements.json",
-                 "rules.json", "notes.json"):
-        path = cfg.data_root / "facts" / name
-        doc = json.loads(path.read_text(encoding="utf-8"))
-        doc["schema_version"] = 2
-        path.write_text(json.dumps(doc, ensure_ascii=False, indent=2) + "\n",
-                        encoding="utf-8")
     run = engine.facts_run_dir(cfg, "cooking", "owner")
     meta = json.loads((run / "meta.json").read_text(encoding="utf-8"))
     meta["origin"] = "chat"

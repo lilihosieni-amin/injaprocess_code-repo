@@ -55,7 +55,7 @@ def _write_facts_store(root):
         by_kind.setdefault(entry["kind"], []).append(entry)
     for kind, filename in _FACT_FILES.items():
         (root / "facts" / filename).write_text(
-            _dump({"schema_version": 1, "entries": by_kind.get(kind, [])}),
+            _dump({"schema_version": 2, "entries": by_kind.get(kind, [])}),
             encoding="utf-8")
     index_rows = [
         {"id": e["id"], "kind": e["kind"], "key": e["key"], "title": e["title"],
@@ -64,7 +64,7 @@ def _write_facts_store(root):
         for e in _FACT_ENTRIES
     ]
     (root / "facts" / ".index.json").write_text(
-        _dump({"schema_version": 1, "entries": index_rows}), encoding="utf-8")
+        _dump({"schema_version": 2, "entries": index_rows}), encoding="utf-8")
 
 
 @pytest.fixture

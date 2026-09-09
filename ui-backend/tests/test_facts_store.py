@@ -256,10 +256,10 @@ def root(tmp_path):
     """A DATA_ROOT holding the store above, its processes and its manifest."""
     for kind, filename in _FILES.items():
         _dump(tmp_path / "facts" / filename,
-              {"schema_version": 1,
+              {"schema_version": 2,
                "entries": [e for e in ENTRIES if e["kind"] == kind]})
     _dump(tmp_path / "facts" / ".index.json",
-          {"schema_version": 1,
+          {"schema_version": 2,
            "entries": [{"id": e["id"], "kind": e["kind"], "key": e["key"],
                         "title": e["title"], "scope": e["scope"],
                         "status": e["status"], "retired": e["retired"],
@@ -652,7 +652,7 @@ def test_consumers_excludes_lifecycle_links_and_process_refs(root):
     entry["supersedes"] = {"ref": "F-00033"}
     entry["data"].pop("template_of")
     _dump(root / "facts" / "rules.json",
-          {"schema_version": 1,
+          {"schema_version": 2,
            "entries": [entry if e["id"] == "F-00035" else e
                        for e in ENTRIES if e["kind"] == "rule"]})
     assert _consumer_ids(root, "F-00033") == ["F-00030"]   # the `calls[]` edge only
@@ -857,7 +857,7 @@ def test_unit_titles_are_the_units_records_open_rows(tmp_path):
             {"key": "bare", "symbol": "bare"},
         ]})
     _dump(tmp_path / "facts" / "records.json",
-          {"schema_version": 1, "entries": [units]})
+          {"schema_version": 2, "entries": [units]})
     assert facts_store.unit_titles(tmp_path) == {"g": "گرم", "percent": "درصد"}
 
 
