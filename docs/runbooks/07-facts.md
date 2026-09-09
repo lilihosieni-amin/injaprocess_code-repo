@@ -512,15 +512,19 @@ reads it grouped by reason at the end of `report.md`.
 | an entry fails the assembly's own lint (step 8) | the entry is held back, dependants with it | «با قرارداد ثبت جور در نیامد» |
 | an entry cites a candidate a unit dropped or never decided | the entry waits for it | «منتظر بخشی است که در این اجرا تمام نشد» |
 | a unit spent both attempts and returned nothing usable | its candidates are held back | «در این اجرا بررسی نشد» |
+| `assemble` — a review decision fails the lint or an address lands nowhere | that decision is held back (`review_held`) and named in the report; the rest of the review applies | «بازبینی انجام شد؛ ۱ تصمیم آن کنار گذاشته شد:» and the entry's title with its reason |
 
-Five stops remain, and none of them is one input's fault:
+Eight stops remain, and none of them is one input's fault:
 
 | stop | why it stays |
 |---|---|
 | `build` — a candidate planned into two units or into none | an engine invariant; a candidate decided twice contradicts itself and one decided nowhere is lost work |
 | `facts-plan build` without `--rebuild` once a unit is done | protects finished work; resume through `facts-plan status` |
-| `assemble` — a unit's latest output does not validate and it still has an attempt | the run is not ready; Stage U re-dispatches that unit |
-| `assemble` — the review's own rewrite fails the lint | holding it back would bury the unit's sound version under it |
+| `digest` / `assemble` — a unit's latest output does not validate and it still has an attempt | the run is not ready; Stage U re-dispatches that unit |
+| `digest` — the digest is over the 400 K ceiling | no reviewer can read it, and a run recorded without a review is not an outcome the design allows; report it as a defect |
+| `assemble --review` — the review was written against an older digest | its addresses no longer name what they meant; the playbook re-enters Stage R and the review is written again, never skipped |
+| `assemble` — a `review: <key>` lint line no review decision owns | a defect in the fold: with nothing to hold back the loop would spin; the line is printed as it is |
+| `assemble` — a lint failure that pins to no entry, or one that would hold back every entry | there is nothing left to land, and a hold-back that empties the run is the run failing; every line is printed |
 | `assemble` — nothing at all could be assembled | the one true stop; every held-back reason is printed |
 
 A new `raise SystemExit(2)` in `build.py`, `assemble.py`, `cli.py` or
@@ -582,7 +586,7 @@ either file.
 | file | written by | sent at | carries |
 |---|---|---|---|
 | `{run_dir}/gate-b.md` | `facts-plan assemble` | **not sent** since 2026-09-09 — kept on disk as the run's record | counts per kind; the first three rules in one sentence each; how many were dropped and the commonest reasons; how many went unexamined; the disputes numbered with lettered options; how many issues were found in the files, three of them named; how many cells are unanswered; and the one question «تأیید می‌کنید؟» |
-| `{run_dir}/report.md` | `facts-plan report` | after the apply and the commit | what was recorded, dropped and left unexamined; the open disputes numbered with lettered options; the unanswered cells grouped per entry; the dropped list by reason in the owner's own words; every engine-found issue grouped by kind; whether a part was left unfinished; and whether the review ran |
+| `{run_dir}/report.md` | `facts-plan report` | after the apply and the commit | what was recorded, dropped and left unexamined; the open disputes numbered with lettered options; the unanswered cells grouped per entry; the dropped list by reason in the owner's own words; every engine-found issue grouped by kind; whether a part was left unfinished; and how the review went — applied whole, or applied with the decisions that were set aside named one per line |
 
 A third line runs through both files: **a file this run could not read is named
 once.** An extension `extract-attachment` has no converter for, or a supported
@@ -657,9 +661,10 @@ the content pass, plus a branch code off the sheets manifest, a unit symbol off
 the units record, `fields[].from` against the candidate's columns, and a
 `merge_into` across kinds. `assemble` re-runs the same contract over the
 assembly and over the review's rewrites, whose lines are labelled
-`review: <key>`. The final validation keeps only what is genuinely cross-entry —
-twin titles, instance ownership, references between units, the reviewer's caps —
-and each of those already names the unit that caused it.
+`review: <key>` — and such a line now holds back that one decision
+(`review_held`) rather than the review. The final validation keeps only what is
+genuinely cross-entry — twin titles, instance ownership, references between
+units — and each of those already names the unit that caused it.
 
 So the operator's reading of a failure changes: **a per-entry error at the final
 validation is a defect in the engine, not a unit to re-dispatch.** Stop the run
@@ -796,36 +801,18 @@ docker compose exec control-bot sh -c \
   nothing, and prints the current and proposed value of each op. This is what
   the owner is shown before a destructive or composed change.
 - **Refusals** are the usual ones: exit 2, `precondition failed: …` on stderr,
-  and nothing written at all — no store file, no snapshot, no ledger row.
-- **The confirmation.** A successful edit records the entry in
-  `facts/.confirmations.json` (`facts-confirmations.schema.json`): the entry's
-  `updated_at` as it now stands, the run's `actor`, the run ref, and the time.
-  The UI reads that row beside its own confirmations and shows the entry
-  confirmed as `chat:<actor>` — the owner's instruction *is* the approval, so
-  there is nothing left to accept in the UI. `apply`, `resolve`, `retire` and
-  `promote` write the same row, but only when the run's `meta.json` says
-  `origin: "chat"`; a pipeline or UI run writes none.
-- **The row goes stale on its own.** It vouches for one `updated_at`. Any later
-  write that touches the entry moves the stamp, and the next store write drops
-  the row — the file never claims the owner approved content they never saw.
-  Revoking the confirmation in the UI removes the row too. One corollary of
-  keying on `updated_at`, which has second resolution: a later write landing in
-  the **same UTC second** as the vouched one leaves the row standing. In
-  practice the second write is another human action, seconds or minutes later.
-- **The lock.** Every row written or dropped is a read-modify-write, and the
-  ui-backend removes rows too, so both sides hold `facts/.confirmations.lock`
-  (an empty sidecar, `flock`) for the whole of it. It is not store content and
-  is written by neither the five files nor the index.
+  and nothing written at all — no store file, no snapshot.
+- **The confirmation is the panel's, and only ever a person's** (owner ruling,
+  2026-09-09). A successful edit writes no confirmation of any kind: it stamps
+  the entry's `updated_at` and changes its content, so the mark a reviewer had
+  stored no longer matches the entry's fingerprint and the panel shows the
+  entry «تأییدنشده» again — the same rule a `merge` run on a process has always
+  had. The owner re-confirms it in the panel when they have read it there.
 - **Undo** is `merge facts revert --run <run_dir>` as for any other run (§6):
-  the entry comes back wholesale from `{run_dir}/facts-before/`, and the
-  confirmation rows that run wrote are forgotten with it.
+  the entry comes back wholesale from `{run_dir}/facts-before/`.
 
-**What is committed.** The ledger itself is store content: it lives under
-`facts/`, which the playbooks' `git add` allowlist already covers, and it is
-committed with the five files. Its lock is not — `facts/.confirmations.lock` is
-an empty sidecar `flock` holds open, it carries nothing, and it is in
-data-repo's `.gitignore` so an allowlisted `git add facts` never stages it.
-The bot may write neither by hand; only the engine and the ui-backend do.
+**What is committed.** The five store files and the run directory, as for every
+other verb. Nothing else: the edit writes no sidecar of its own.
 
 ## Next
 

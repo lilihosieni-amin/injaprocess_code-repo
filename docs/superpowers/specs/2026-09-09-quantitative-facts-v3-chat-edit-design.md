@@ -147,6 +147,8 @@ without reading the store file itself.
 
 ## 3. Chat confirmations — the ledger `facts/.confirmations.json`
 
+> **Withdrawn by the owner on 2026-09-09** — *"I don't want it to get checked automatically"*: the whole of §3 was deleted end to end (ADR 0017's ruling); the tick is set only in the panel, and a bot edit un-confirms the entry by moving its print. The section is kept as the record of what was built and removed.
+
 ### 3.1 Why a second channel
 
 A confirmation is the ui-backend's: `(target, fingerprint, confirmed_by, confirmed_at)` in
@@ -287,12 +289,12 @@ no path the instruction did not ask about. The style card applies to every strin
 |---|---|
 | `merge_facts/verbs.py` | `edit(root, fact_id, patch_path, run_dir, preview=False)`; `_apply_ops`; `_settle`; the chat-source union; ledger write |
 | `merge_facts/__init__.py` | `_step` accepts `id` for `accounts[]` members; `remove_path`/`unset_path` beside `set_path`; `load_ledger`/`save_ledger`/`prune_ledger` (called by `save_store`) |
-| `merge_facts/apply.py`, `verbs.py`, `revert.py` | chat-origin runs write/remove ledger rows (§3.3) |
+| `merge_facts/apply.py`, `verbs.py`, `revert.py` | chat-origin runs write/remove ledger rows (§3.3) — **withdrawn 2026-09-09** (owner ruling: the tick is only ever set in the panel) |
 | `merge_facts/content.py` | `_check_table_shape` (§4) |
 | `merge/cli.py` | the `edit` sub-parser (`--id`, `--patch`, `--run`, `--preview`) |
 | `facts_plan/build.py` | `KIND_NOTE["rule"]` fourth shape; fourth `EXAMPLES` member |
-| `schemas/` | `facts-patch.schema.json`, `facts-confirmations.schema.json` (new); `table` in `facts.schema.json` and `facts-delta.schema.json`; `README.md` rows |
-| `ui-backend` | `store/chat_confirmations.py` (read/remove the ledger); `routers/facts.py` list+detail; `routers/confirmations.py` `_row`, `list_confirmations`, `revoke_confirmation` |
+| `schemas/` | `facts-patch.schema.json` (new), `facts-confirmations.schema.json` (new — **withdrawn 2026-09-09**); `table` in `facts.schema.json` and `facts-delta.schema.json`; `README.md` rows |
+| `ui-backend` | `store/chat_confirmations.py` (read/remove the ledger — **withdrawn 2026-09-09**); `routers/facts.py` list+detail; `routers/confirmations.py` `_row`, `list_confirmations`, `revoke_confirmation` |
 | `ui/src/facts/cards/RuleCard.tsx`, `api/types.ts` | flat rows only |
 | data-repo `.claude/skills/edit-fact/SKILL.md`, `.claude/agents/quantify.md`, `.claude/hooks/test_playbook_lint.py`, `.claude/hooks/test_guard.py`, `CLAUDE.md` | §5, §6, pins, the pointer table's `edit-fact` line |
 | `docs/runbooks/07-facts.md` | new §13 «Editing through the bot»: the verb, the preview, the ledger, revert; §6 gains the ledger |
@@ -317,7 +319,7 @@ no path the instruction did not ask about. The style card applies to every strin
   the confirmations route's `_row` agrees with the facts routes.
 - ui: `RuleCard.test.tsx` fixture flat; the nested-shape test goes.
 - Hooks: `test_guard.py` pins that `merge facts edit --patch runs/facts/x/y/facts-patch.json` is
-  allowed and a Bash write to `facts/.confirmations.json` is blocked; `test_playbook_lint.py` pins
+  allowed and a Bash write to a dotfile under `facts/` is blocked (the ledger file itself is withdrawn, 2026-09-09); `test_playbook_lint.py` pins
   the targeted section's two output forms and the skill's three-case table.
 - Schemas: `make test`'s frozen-contract check covers the two new files.
 

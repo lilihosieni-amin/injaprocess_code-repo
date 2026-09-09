@@ -149,17 +149,33 @@ export type ExportKind = 'flowchart' | 'steps'
  */
 export interface ExportResult { url: string; pdf_url?: string; generated_at: string }
 
-/** The six switchable fields (spec D17). A node has no KPIs: `process_kpis` is
- *  `process.kpis[]`, and what a node carries is ICOM. */
+/** The switchable fields, in the order `store/policy.py` lists them.
+ *
+ *  D17's six first: a node has no KPIs — `process_kpis` is `process.kpis[]`,
+ *  and what a node carries is ICOM. Then QF-26's six, one per fact kind plus
+ *  `fact_sources` for provenance; a kind whose switch is off is withheld whole
+ *  rather than blanked, and `fact_sources` strips `source[]` from all five at
+ *  once. */
 export type PolicyField =
   | 'process_summary' | 'process_idef0' | 'process_kpis'
   | 'node_description' | 'node_actor' | 'node_icom'
+  | 'fact_items' | 'fact_records' | 'fact_measurements'
+  | 'fact_rules' | 'fact_notes' | 'fact_sources'
 
 /** `version` is a digest of the policy, not a counter: it is what D27 keys the
  *  report cache on, so an artifact built under a different one is a different
- *  artifact. */
+ *  artifact.
+ *
+ *  `Partial`, because **the server owns the switch set and this union is only
+ *  the client's best knowledge of it** — the same reason `Visibility.tsx` draws
+ *  a field it has no wording for and draws nothing for a field `ROWS` names
+ *  that the answer omits. A total `Record` is a claim the client is in no
+ *  position to make: it was already false for a policy served without one of
+ *  the six, and every switch added to `store/policy.py` would break every
+ *  fixture in both projects before the screen that reads them changed at
+ *  all. */
 export interface VisibilityPolicy {
-  fields: Record<PolicyField, boolean>
+  fields: Partial<Record<PolicyField, boolean>>
   version: string
 }
 

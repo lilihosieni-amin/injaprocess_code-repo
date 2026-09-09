@@ -51,8 +51,7 @@ import sys
 
 from engine_common import read_json
 from merge_facts import (KIND_FILES, KIND_ORDER, STORE_SCHEMA_VERSION, find_match,
-                         load_store, ledger, save_store)
-from merge_facts.apply import _run_ref
+                         load_store, save_store)
 
 
 def _load_snapshot_store(run_dir):
@@ -162,7 +161,4 @@ def revert(root, run_dir):
             if snap_entry is not None:
                 store[snap_kind]["entries"].append(snap_entry)
     save_store(root, store)
-    # The rows this run vouched for go with it — the entries are back at the
-    # content that preceded the instruction (v3.7 §2.4).
-    ledger.forget_run(root, _run_ref(root, run_dir))
     return {"removed": sorted(created), "restored": sorted(matched)}

@@ -56,9 +56,9 @@ def _run_dir(tmp_path, n="20260901-101500"):
 
 
 def _meta(run, origin="chat", actor="owner"):
-    """`{run_dir}/meta.json` — the run's own identity. `edit` refuses a run
-    without one (the chat citation it writes points at this file), and the
-    confirmation ledger reads `origin` and `actor` off it."""
+    """`{run_dir}/meta.json` — the run's own identity (`facts-run-meta.schema.
+    json`). `edit` refuses a run without one: the chat citation it writes
+    points at this file."""
     (run / "meta.json").write_text(json.dumps({
         "department": "cooking", "origin": origin, "actor": actor,
         "started_at": "2026-09-09T09:00:00Z", "finished_at": None,

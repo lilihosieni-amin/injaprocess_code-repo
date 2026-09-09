@@ -55,7 +55,15 @@ def _plan_files(run_dir):
                       "reason_code": "cosmetic", "unit": "u-a"}],
          "undecided": [{"skeleton": "S-r-3", "kind": "rule", "label": "مغایرت",
                         "unit": "u-b"}],
-         "provenance": {"T-1": "u-a"}, "review_status": "discarded"},
+         "provenance": {"T-1": "u-a"}, "review_status": "partial",
+         "review_held": [
+             {"n": 0, "action": "keep", "label": "انحراف مصرف",
+              "reason": "refused",
+              "lines": ["review: enheraf: statement: a cell reference"]},
+             {"n": 2, "action": "merge_into", "label": "rule masraf",
+              "reason": "no_match",
+              "lines": ["decisions[2]: into: rule masraf names 0 assembled"
+                        " entries"]}]},
         ensure_ascii=False), encoding="utf-8")
     return run_dir
 
@@ -98,7 +106,7 @@ def test_report_letters_disputes_and_speaks_persian(tmp_path):
     assert "ظاهری بود (رنگ و قالب): ۱ مورد" in text
     assert "ستون «قیمت» جا افتاده است" in text
     assert "۲۴ فرمول بالای سطر عنوان" in text          # run-only, still reported
-    assert "بازبینی انجام نشد" in text
+    assert "بازبینی انجام شد؛ ۲ تصمیم آن کنار گذاشته شد:" in text
     assert "۱ مورد بررسی‌نشده" in text
     for banned in ("F-00487", "a1", "S-r-1", "u-a", "merge ", "runs/",
                    "date_passthrough"):
@@ -304,3 +312,29 @@ def test_every_held_back_reason_has_the_owner_s_words():
     from facts_plan.assemble import UNDECIDED_FA
     assert set(UNDECIDED_FA) == {"oversized", "cycle", "target_dropped",
                                  "unknown_ref", "refused", "waits", "failed"}
+
+
+def test_the_report_names_each_held_review_decision_in_persian(tmp_path):
+    """R9 — a review that half landed is not «انجام نشد»: the owner reads that
+    it ran, how many of its decisions were held back, and one line per decision
+    saying which one and why. The engine's own words for the failure — the
+    `lines` beside each held row — are for the log, never for this message."""
+    from facts_plan.assemble import REVIEW_HELD_FA
+    run_dir = _run(tmp_path)
+    _store(tmp_path, [])
+    text = report(tmp_path, run_dir).read_text(encoding="utf-8")
+    assert "بازبینی انجام شد؛ ۲ تصمیم آن کنار گذاشته شد:" in text
+    assert f'  • «انحراف مصرف» — {REVIEW_HELD_FA["refused"]}' in text
+    assert f'  • «rule masraf» — {REVIEW_HELD_FA["no_match"]}' in text
+    assert "بازبینی اجرا نشد" not in text
+    assert not re.search(r"\b[FTS]-\d|\bu-[a-z]|/|##|decisions\[", text)
+
+
+def test_every_review_hold_back_reason_has_the_owner_s_words():
+    """The mirror of the `undecided[]` guard: a reason code `_review_verdicts`
+    can put on a held row and `REVIEW_HELD_FA` does not name renders as a bullet
+    with nothing after the dash."""
+    from facts_plan.assemble import REVIEW_HELD_FA
+    assert set(REVIEW_HELD_FA) == {"no_match", "ambiguous", "no_drift",
+                                   "unknown_skeleton", "fields_rewrite",
+                                   "refused"}

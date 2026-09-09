@@ -405,10 +405,20 @@ def test_contradiction_addressed_by_a_skeleton_id_fails(validate):
     assert validate("facts-unit.schema.json", d) != []
 
 
-def test_review_over_sixty_decisions_fails(validate):
+def test_a_review_is_not_capped_by_the_schema(validate):
+    # R6 — `maxItems: 60` used to refuse the whole document for its size, and
+    # the message was the whole 62-decision instance on one line.
     d = _review_doc()
     d["decisions"] = d["decisions"] * 31          # 62
-    assert validate("facts-unit.schema.json", d) != []
+    assert validate("facts-unit.schema.json", d) == []
+
+
+def test_a_decision_may_carry_the_engine_s_code(validate):
+    # R4 — `code` is the estate's and the fold drops it, but a document that
+    # copies it back in is not a broken document.
+    d = _unit_doc()
+    d["decisions"][0]["data"]["code"] = "##99"
+    assert validate("facts-unit.schema.json", d) == []
 
 
 def test_unit_decision_shapes(validate):

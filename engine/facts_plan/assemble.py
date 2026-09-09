@@ -8,6 +8,7 @@ can fold in without asking the model anything twice.
 The verbs land here as the tasks that implement them do; `cli.py` reports a
 verb whose function is not here yet rather than failing to import.
 """
+import collections
 import copy
 import hashlib
 import json
@@ -34,7 +35,6 @@ from facts_plan.build import (estimate_tokens, label_of, process_index,
 #: `c_` prefix is what marks a ref provisional, so a field wearing it in any
 #: case is held to the grammar; anything else is a minted key.
 PROVISIONAL_FIELD = re.compile(r"^c_[a-z]{1,3}$")
-REVIEW_DECISIONS, REVIEW_REWRITES = 60, 20
 
 
 def _refs(value):
@@ -49,32 +49,14 @@ def _refs(value):
             yield from _refs(member)
 
 
-def _review_caps(doc):
-    """§2.6's two caps on a review document. The schema carries the first one
-    too, but its `maxItems` message is the whole 61-decision instance dumped
-    into one line — §4 asks for a line a reviewer can read, so this runs
-    before the schema and speaks for it."""
-    out = []
-    decisions = doc.get("decisions") or []
-    if len(decisions) > REVIEW_DECISIONS:
-        out.append(f"review: {len(decisions)} decisions, "
-                   f"at most {REVIEW_DECISIONS} (§2.6)")
-    rewrites = [d for d in decisions if isinstance(d, dict)
-                and d.get("action") == "keep" and d.get("statement")]
-    if len(rewrites) > REVIEW_REWRITES:
-        out.append(f"review: {len(rewrites)} statement rewrites, "
-                   f"at most {REVIEW_REWRITES} (§2.6)")
-    return out
-
-
 def validate_unit(root, run_dir, path):
     """Every message for one `facts-unit` document, empty when it may pass.
 
-    Checks, in order: the review's two caps; the schema; the `units/<id>/`
-    directory the document sits in against the `unit` it declares, and every
-    candidate of **that** unit's `plan.json` list decided exactly once (a plan
-    unit only — the review addresses assembled entries, which do not exist
-    yet); `S-` refs naming a candidate of this run; node ids in the
+    Checks, in order: the schema; the `units/<id>/` directory the document
+    sits in against the `unit` it declares, and every candidate of **that**
+    unit's `plan.json` list decided exactly once (a plan unit only — the
+    review addresses assembled entries, which do not exist yet); `S-` refs
+    naming a candidate of this run; node ids in the
     department's **whole** process index, in `decisions[]` and `new[]` alike;
     the provisional field grammar; the §5.2 lint on every prose field with
     `skeleton.json`'s `unit_symbols[]` exempted; and a `unit` written onto a
@@ -92,16 +74,10 @@ def validate_unit(root, run_dir, path):
         doc = read_json(path)
     except (OSError, ValueError) as exc:
         return [f"{path.name}: not readable as JSON ({exc})"]
-    caps = _review_caps(doc) if isinstance(doc, dict) \
-        and doc.get("unit") == "review" else []
-    # The schema carries the 60 cap too, and its `maxItems` message is the
-    # whole decisions array on one line (§4). Checking the trimmed document
-    # keeps that line out and every other schema error in.
-    checked = dict(doc, decisions=doc["decisions"][:REVIEW_DECISIONS]) if caps else doc
     try:
-        validate("facts-unit.schema.json", checked)
+        validate("facts-unit.schema.json", doc)
     except ValueError as exc:
-        return caps + [str(exc)]
+        return [str(exc)]
 
     skeleton = read_json(run_dir / "skeleton.json")
     plan = read_json(run_dir / "plan.json")
@@ -116,7 +92,7 @@ def validate_unit(root, run_dir, path):
     nodes = process_index(root, skeleton["department"])
     node_ids = {f'{n["process"]}::{n["node"]}' for n in nodes} \
         | {f'{n["process"]}::{n["node"].rsplit("-", 1)[-1]}' for n in nodes}
-    problems, seen, unit = list(caps), [], None
+    problems, seen, unit = [], [], None
     # The document's own decisions by candidate, so a rule can be judged
     # against the record it reads: the record's keys are minted here, not in
     # the skeleton (`_swapped_inputs`).
@@ -135,8 +111,9 @@ def validate_unit(root, run_dir, path):
         elif (run_dir / "review" / "input.sha256").is_file():
             # The review's gate is the fold's own judgement (I1 for the
             # reviewer): an address that lands nowhere or a contradiction no
-            # flag covers is refused here, per decision, instead of the whole
-            # document being discarded at `assemble` with no word to anyone.
+            # flag covers is named here, per decision, while the reviewer still
+            # has an attempt to fix it — `assemble` would only hold that one
+            # decision back (R1) and the reviewer would never hear of it.
             # Without a digest stamp the fold reads no review, so there is
             # nothing to judge it against.
             _run, skel, st = _prepare(root, run_dir, False)
@@ -150,8 +127,13 @@ def validate_unit(root, run_dir, path):
                 # the assembly refuses (sixteen items without `category`,
                 # 2026-09-08) is the reviewer's to fix while it still has an
                 # attempt. Same `_lint_entries`, same `review: <key>` labels.
-                _r2, skel2, st2 = _prepare(root, run_dir, True)
-                if st2.get("review_status") == "applied":
+                try:
+                    _r2, skel2, st2 = _prepare(root, run_dir, True)
+                except SystemExit:
+                    # A stale digest (R3) — `_review_problems` has already said
+                    # so, and there is nothing sound left to lint.
+                    st2 = {}
+                if st2.get("review_status") in ("applied", "partial"):
                     folded = _build_entries(root, skel2, st2)
                     _cross_unit(root, folded, st2)
                     _settle(folded, st2)
@@ -466,9 +448,11 @@ LETTERS_FA = ("الف", "ب", "ج", "د")
 #: its candidates go to `undecided[]` rather than blocking the assembly.
 ATTEMPTS = 2
 
-#: §2.6's ceiling on the reviewer's input — one unit's budget, spent on the
-#: whole run at once.
-DIGEST_CEILING = 50000
+#: The ceiling on the reviewer's input: the runtime model holds 1 M tokens and
+#: cooking, the largest department, digests to ~29 K. Above it the run stops —
+#: the assembled result would have to be reviewed in slices, which this engine
+#: cannot do, and skipping the review instead was silently dropping it (R7).
+DIGEST_CEILING = 400000
 
 #: The reason codes of §2.5 in the owner's words (§2.7) — `gate-b.md` names the
 #: commonest, `report` renders the whole list. Past tense: both files are read
@@ -524,6 +508,19 @@ UNDECIDED_FA = {"oversized": ISSUE_FA["oversized"],
                 "refused": "با قرارداد ثبت جور در نیامد",
                 "waits": "منتظر بخشی است که در این اجرا تمام نشد",
                 "failed": "در این اجرا بررسی نشد"}
+
+#: R1 — why one review decision was held back, in the owner's words (§2.7).
+#: `report` renders these under the review's own closing line; every code here
+#: is one `_review_verdicts` or the fold loop can put on a `review_held[]` row,
+#: and a code with no line here would come out blank.
+REVIEW_HELD_FA = {
+    "no_match": "نشانی به هیچ موردی نمی‌رسید",
+    "ambiguous": "نشانی به بیش از یک مورد می‌رسید",
+    "no_drift": "تناقض روی میدانی بود که پرچم اختلاف نداشت",
+    "unknown_skeleton": "نامزدی که نام برده شد در این اجرا نبود",
+    "fields_rewrite": "بازنویسی ستون‌های جدول از بازبینی پذیرفته نمی‌شود",
+    "refused": "نتیجهٔ بازنویسی با قرارداد ثبت جور در نیامد",
+}
 
 #: §2.6 step 7's `wrapper_variants`: a variant that only converts or totals the
 #: reading beneath it is the same rule, not a second one.
@@ -617,6 +614,10 @@ def _collect(root, run_dir, plan, skeleton):
     candidates of their own, and the units that returned nothing usable."""
     state = {"by_skeleton": {}, "new": [], "failed": set(),
              "review_status": "absent", "dropped": [], "undecided": [],
+             # Both halves of R1, seeded here so a run assembled without
+             # `--review` writes `review_held: []` rather than nothing, and the
+             # fold loop may read `reviewed_by` before any review is folded.
+             "review_held": [], "reviewed_by": {},
              "provenance": {}, "flags": []}
     returned = set()
     for unit, _path, doc in _outputs(root, run_dir, plan):
@@ -648,20 +649,23 @@ def _review_hits(draft):
     return hits
 
 
-def _review_problems(run_dir, doc, state, draft, scratch):
-    """Every reason the fold would discard this review, one line per decision —
-    the review's gate (`validate facts-unit review/out.json`) and `_fold_review`
-    judge by this one function, so what the gate admits the fold applies. The
-    flags are the ones `scratch` carries, which are the ones `review/input.md`
-    was rendered from — a field none of them names is an address the reviewer
-    invented (QF-52)."""
-    out = []
+def _review_verdicts(run_dir, doc, state, draft, scratch):
+    """`(stale, {index: (reason code, line)})` — R1's judgement of this review,
+    one verdict per decision. The review's gate (`validate facts-unit
+    review/out.json`) and `_fold_review` judge by this one function, so what the
+    gate admits the fold applies and what it names the fold holds back.
+
+    The flags are the ones `scratch` carries, which are the ones
+    `review/input.md` was rendered from — a field none of them names is an
+    address the reviewer invented (QF-52).
+    """
     stamp = run_dir / "review" / "input.sha256"
     text = _digest_text(scratch, draft)
-    if stamp.read_text(encoding="utf-8").strip() != \
-            hashlib.sha256(text.encode("utf-8")).hexdigest():
-        out.append("out.json: the digest changed since this review was written")
+    stale = stamp.read_text(encoding="utf-8").strip() != \
+        hashlib.sha256(text.encode("utf-8")).hexdigest()
     hits = _review_hits(draft)
+    assembled = {entry["_skeleton"] for entry in draft}
+    held = {}
 
     def name(ref):
         return f'{ref["kind"]} {ref["key"]}'
@@ -670,43 +674,160 @@ def _review_problems(run_dir, doc, state, draft, scratch):
         if decision.get("action") == "contradiction":
             named = {_address(e) for e in hits(decision["entry"])} \
                 if decision.get("entry") else set()
+            # `field` is optional in the schema for a `contradiction`, and a
+            # document that leaves it out is admitted — so it is answered here,
+            # where a missing field simply names no flag, and not with a
+            # `KeyError` over the reviewer's second attempt (R8).
             if not any(f["code"] == "unit_drift"
-                       and f["field"] == decision["field"]
+                       and f["field"] == decision.get("field")
                        and _address(f["entry"]) in named
                        for f in scratch["flags"]):
-                out.append(f'{label}: contradiction: no drift flag on '
-                           f'{decision["field"]} for {name(decision["entry"])}')
+                held[n] = ("no_drift",
+                           f'{label}: contradiction: no drift flag on '
+                           f'{decision.get("field")} for {name(decision["entry"])}')
             continue
-        if isinstance(decision.get("into"), dict):
-            k = len(hits(decision["into"]))
+        into = decision.get("into")
+        if isinstance(into, dict):
+            k = len(hits(into))
             if k != 1:
-                out.append(f'{label}: into: {name(decision["into"])} names '
+                held[n] = ("no_match" if k == 0 else "ambiguous",
+                           f'{label}: into: {name(into)} names '
                            f"{k} assembled entries")
+                continue
+        # `into` may also be a bare skeleton id (`facts-unit.schema.json` admits
+        # both). One naming a candidate this run did not keep is folded happily
+        # and then dies in `_build_entries` as `target_dropped` — blamed on the
+        # unit that wrote the *source*, which decided nothing of the sort.
+        elif isinstance(into, str) and decision.get("action") == "merge_into" \
+                and into not in assembled:
+            held[n] = ("unknown_skeleton",
+                       f"{label}: into: skeleton {into} is no assembled entry "
+                       "of this run")
+            continue
         if decision.get("skeleton"):
             if decision["skeleton"] not in state["by_skeleton"]:
-                out.append(f'{label}: skeleton {decision["skeleton"]} is '
+                held[n] = ("unknown_skeleton",
+                           f'{label}: skeleton {decision["skeleton"]} is '
                            "decided by no unit")
+                continue
+        else:
+            k = len(hits(decision["entry"]))
+            if k != 1:
+                held[n] = ("no_match" if k == 0 else "ambiguous",
+                           f'{label}: entry: {name(decision["entry"])} names '
+                           f"{k} assembled entries")
+                continue
+        # R1 `fields_rewrite`: the digest lists a record's columns by the keys
+        # its unit minted, never by the `c_<letter>` the shape is written over —
+        # so a `fields[]` from the review is a rewrite over names it never saw.
+        # The accounting review of 2026-09-09 lost its three decisions to one.
+        if decision.get("action") == "keep" \
+                and isinstance(decision.get("data"), dict) \
+                and "fields" in decision["data"]:
+            held[n] = ("fields_rewrite",
+                       f"{label}: fields: a review does not rewrite a record's "
+                       "fields (the digest shows minted keys, not column keys)")
+    return stale, held
+
+
+def _review_problems(run_dir, doc, state, draft, scratch):
+    """`_review_verdicts` as the flat list of lines a gate prints."""
+    stale, held = _review_verdicts(run_dir, doc, state, draft, scratch)
+    return (["out.json: the digest changed since this review was written"]
+            if stale else []) \
+        + [line for _n, (_code, line) in sorted(held.items())]
+
+
+def _held_label(decision, hits, state):
+    """What the owner is told a held decision was about (R1): the title of the
+    entry its address landed on, the bare `kind key` when the address landed
+    nowhere or everywhere, and the candidate's own label for a `skeleton`
+    address. Never an id — `review_held[]` is read out in `report.md`."""
+    if not isinstance(decision, dict):
+        return "—"
+    for key in ("entry", "into"):
+        ref = decision.get(key)
+        # Guarded, because a document the schema refused reaches here too: an
+        # address missing its halves is skipped rather than raising, and an
+        # entry whose title is empty still reads as something.
+        if not isinstance(ref, dict) or not isinstance(ref.get("kind"), str) \
+                or not isinstance(ref.get("key"), str):
             continue
-        k = len(hits(decision["entry"]))
-        if k != 1:
-            out.append(f'{label}: entry: {name(decision["entry"])} names {k} '
-                       "assembled entries")
-    return out
+        found = hits(ref) if isinstance(ref.get("scope"), (dict, type(None))) \
+            else []
+        return (found[0]["title"] if len(found) == 1
+                else f'{ref["kind"]} {ref["key"]}') or "—"
+    candidate = (state.get("candidates") or {}).get(decision.get("skeleton"))
+    return (label_of(candidate) if candidate else decision.get("title")) or "—"
 
 
-def _fold_review(run_dir, state, draft, scratch):
-    """Step 0 (§2.6). The digest hash must still match the assembly the reviewer
-    read, and an address hitting zero or more than one entry discards the whole
-    document: one round, no negotiation (§10)."""
+def _touched(decision):
+    """The skeletons a folded review decision changes: its own, and for a
+    `merge_into` the target as well. The source is absorbed away and leaves no
+    entry, so a merge that makes its target unstorable is the review's to
+    answer for — the unit that wrote the target changed nothing (R2).
+
+    A `contradiction` never joins `folded` (it settles a record rather than
+    deciding a candidate), so the entry it settles is registered where it is
+    resolved, in the fold loop above."""
+    into = decision.get("into")
+    return [decision["skeleton"]] + (
+        [into] if decision.get("action") == "merge_into"
+        and isinstance(into, str) else [])
+
+
+def _fold_review(run_dir, state, draft, scratch, exclude=frozenset(), held=None):
+    """Step 0 (§2.6), under R1: the review is never dropped. Every decision that
+    passes `_review_verdicts` is folded; the ones that do not are held back one
+    by one, and `exclude`/`held` carry back the ones `assemble`'s own lint
+    refused a round earlier (R2). A stale digest is the one thing that stops the
+    run instead (R3) — the reviewer read another assembly, so nothing it wrote
+    can be trusted onto this one.
+
+    The document is read and schema-checked *before* the stale-digest check,
+    deliberately: a file that cannot be parsed or does not fit the contract is
+    held back whole (R8 has already given the reviewer its two attempts), and
+    only a well-formed review is judged against the digest it claims to answer.
+
+    Returns `"absent"`, `"applied"` (nothing held) or `"partial"`."""
     path = run_dir / "review" / "out.json"
     if not path.is_file() or not (run_dir / "review" / "input.sha256").is_file():
         return "absent"
-    doc = read_json(path)
-    if _review_problems(run_dir, doc, state, draft, scratch):
-        return "discarded"
     hits = _review_hits(draft)
-    folded, settled = [], []
-    for decision in doc["decisions"]:
+    doc = None
+    try:
+        # A truncated or fenced write is the same failure class as a
+        # schema-invalid one: `json.JSONDecodeError` is a `ValueError`, so one
+        # `except` turns both into the whole-document hold-back below.
+        doc = read_json(path)
+        validate("facts-unit.schema.json", doc)
+    except (OSError, ValueError) as exc:
+        # R8 routes the reviewer's second failure straight here, so this is the
+        # document the fold must survive, not the one it may assume away: every
+        # field `_review_verdicts` reads is optional in a refused document.
+        # Nothing is dropped and nothing raises — every decision is held back
+        # under the schema's own line, and `report` names them.
+        decisions = doc.get("decisions") if isinstance(doc, dict) else None
+        rows = [{"n": n, "action": d.get("action") if isinstance(d, dict) else None,
+                 "label": _held_label(d, hits, scratch), "reason": "refused",
+                 "lines": [str(exc)]}
+                for n, d in enumerate(decisions if isinstance(decisions, list)
+                                      else [])]
+        state["review_held"] = rows or [{"n": 0, "action": None, "label": "—",
+                                         "reason": "refused",
+                                         "lines": [str(exc)]}]
+        state["settled"], state["reviewed"], state["reviewed_by"] = [], set(), {}
+        return "partial"
+    stale, verdicts = _review_verdicts(run_dir, doc, state, draft, scratch)
+    if stale:
+        print("facts-plan: review: the digest changed since this review was "
+              "written — run digest and the review again", file=sys.stderr)
+        raise SystemExit(2)
+    skip = set(verdicts) | set(exclude)
+    folded, settled, reviewed_by = [], [], {}
+    for n, decision in enumerate(doc["decisions"]):
+        if n in skip:
+            continue
         if decision.get("action") == "contradiction":
             # The fifth action, `review`-only: the reviewer settles a
             # `unit_drift` the cross-unit pass flagged — `fix` writes the leaf,
@@ -724,6 +845,7 @@ def _fold_review(run_dir, state, draft, scratch):
             settled.append((flag, dict(decision, entry={
                 "kind": hit["kind"], "key": hit["key"],
                 "scope": hit.get("scope")})))
+            reviewed_by.setdefault(hit["_skeleton"], []).append(n)
             continue
         # `into` may be an address too (`facts-unit.schema.json`'s `entryAddr`),
         # and `_target_of` walks skeleton ids — so it is resolved here, never
@@ -731,12 +853,11 @@ def _fold_review(run_dir, state, draft, scratch):
         if isinstance(decision.get("into"), dict):
             decision = dict(decision,
                             into=hits(decision["into"])[0]["_skeleton"])
-        if decision.get("skeleton"):
-            folded.append(decision)
-            continue
-        folded.append(dict(decision,
-                           skeleton=hits(decision["entry"])[0]["_skeleton"]))
-    for decision in folded:
+        if not decision.get("skeleton"):
+            decision = dict(decision,
+                            skeleton=hits(decision["entry"])[0]["_skeleton"])
+        folded.append((n, decision))
+    for n, decision in folded:
         previous = state["by_skeleton"].get(decision["skeleton"], {})
         merged = {**previous, **{k: v for k, v in decision.items()
                                  if v is not None}}
@@ -749,11 +870,29 @@ def _fold_review(run_dir, state, draft, scratch):
             merged["data"] = {**previous["data"], **decision["data"]}
         merged["unit"] = previous.get("unit", "review")
         state["by_skeleton"][decision["skeleton"]] = merged
+        for skid in _touched(decision):
+            reviewed_by.setdefault(skid, []).append(n)
     state["settled"] = settled
-    # Whose mistake a refused entry is: the reviewer rewrote this one, so
-    # `_lint_entries` names the review rather than the unit it came from.
-    state["reviewed"] = {decision["skeleton"] for decision in folded}
-    return "applied"
+    # Whose mistake a refused entry is: the reviewer touched this one, so
+    # `_lint_entries` names the review rather than the unit it came from —
+    # every entry a decision changed, which is exactly what `reviewed_by`
+    # collected: a `keep`'s own, a `merge_into`'s target, a settled
+    # `contradiction`'s record (R2).
+    state["reviewed"] = set(reviewed_by)
+    # …and which of its decisions did, so R2 can hold that one back by index
+    # instead of refusing the document the lint line belongs to.
+    state["reviewed_by"] = reviewed_by
+    rows = []
+    for n in sorted(skip):
+        if n in verdicts:
+            code, lines = verdicts[n][0], [verdicts[n][1]]
+        else:
+            code, lines = (held or {}).get(n) or ("refused", [])
+        rows.append({"n": n, "action": doc["decisions"][n].get("action"),
+                     "label": _held_label(doc["decisions"][n], hits, scratch),
+                     "reason": code, "lines": list(lines)})
+    state["review_held"] = rows
+    return "partial" if skip else "applied"
 
 
 def _settle(entries, state):
@@ -955,6 +1094,13 @@ def _entry(candidate, decision, state, part=None):
     # payload carries no wrappers, so this is a no-op for every real candidate.
     data = _unwrap(copy.deepcopy(candidate["payload"]), "data", status)
     given = _unwrap(written.get("data") or {}, "data", status)
+    # An item's `code` is the estate's, read off the header row and carried by
+    # the candidate's payload — never the model's to write. The schema admits
+    # it (a document that copies it back in is not a broken document) and it is
+    # dropped here, on the one path every decision takes: a unit's, a review's,
+    # and a split part's alike (R4). The cooking review of 2026-09-08 was
+    # refused whole for it.
+    given.pop("code", None)
     renames, fields = _rename_fields(data.pop("fields", []),
                                      given.pop("fields", []))
     data.update(given)
@@ -1414,6 +1560,21 @@ def _cross_unit(root, entries, state):
     state["flags"] = flags
 
 
+def _review_labels(entries, reviewed):
+    """Who answers for each assembled entry, one label per entry and no two
+    alike: `review: <key>` for what the review rewrote, `<unit>: <key>` for the
+    rest, and the entry's kind and scope appended when the key alone would name
+    two of them. `assemble` maps a lint line back to its entry through these
+    labels, so a key minted in two scopes must not collapse to one — the sound
+    decision would be held back beside the failing one. `_cross_unit` leaves one
+    entry per `(kind, key, scope)`, which is what makes the long form unique."""
+    base = [f'review: {e["key"]}' if e["_skeleton"] in reviewed
+            else f'{e["_unit"]}: {e["key"]}' for e in entries]
+    twice = collections.Counter(base)
+    return [b if twice[b] == 1 else f'{b} {e["kind"]} {_address(e)[2]}'
+            for b, e in zip(base, entries)]
+
+
 def _lint_entries(root, entries, symbols, reviewed=()):
     """Step 8 — the §5.2 lint AND the store contract over every finished entry;
     a failure is refused, never stored, and the message names who wrote it.
@@ -1424,8 +1585,7 @@ def _lint_entries(root, entries, symbols, reviewed=()):
     gate for the one document no unit pass ever saw — the review's. Ruling 5:
     the shape half is that document's gate too, which is why `_contract_problems`
     runs here and not only at `validate_unit`."""
-    named = [f'review: {entry["key"]}' if entry["_skeleton"] in reviewed
-             else f'{entry["_unit"]}: {entry["key"]}' for entry in entries]
+    named = _review_labels(entries, reviewed)
     conventions = load_conventions(root)
     out = [message for entry, label in zip(entries, named)
            for message in _lint_decision(entry, label, symbols,
@@ -1437,9 +1597,7 @@ def _lint_entries(root, entries, symbols, reviewed=()):
 def _digest_text(state, entries):
     """`review/input.md` (§2.6) — one line per assembled entry, the flags, and
     the dropped candidates with their reason codes."""
-    lines = ["# digest",
-             f"decisions ≤ {REVIEW_DECISIONS}, statement rewrites ≤ "
-             f"{REVIEW_REWRITES}", "", "## entries", ""]
+    lines = ["# digest", "", "## entries", ""]
     for entry in entries:
         data = entry["data"]
         tail = {"rule": f'expr: {data.get("expr")}',
@@ -1471,7 +1629,7 @@ def _digest_text(state, entries):
     return "\n".join(lines) + "\n"
 
 
-def _prepare(root, run_dir, review):
+def _prepare(root, run_dir, review, exclude=frozenset(), held=None):
     """Everything both verbs share: the run's files, the store, and the units'
     decisions with the review folded in when asked for."""
     run_dir = pathlib.Path(run_dir)
@@ -1509,13 +1667,15 @@ def _prepare(root, run_dir, review):
         scratch = copy.deepcopy(state)
         draft = _build_entries(root, skeleton, scratch)
         _cross_unit(root, draft, scratch)
-        state["review_status"] = _fold_review(run_dir, state, draft, scratch)
+        state["review_status"] = _fold_review(run_dir, state, draft, scratch,
+                                              exclude, held)
     return run_dir, skeleton, state
 
 
 def digest(root, run_dir):
     """`review/input.md` + `review/input.sha256` — steps 1–7 in memory, the temp
-    ids discarded. Above 50 K tokens the run proceeds without a review (§2.6)."""
+    ids discarded. Over `DIGEST_CEILING` the run stops (R7) — nothing is
+    written and the reviewer is never skipped."""
     run_dir, skeleton, state = _prepare(root, run_dir, False)
     entries = _build_entries(root, skeleton, state)
     _cross_unit(root, entries, state)
@@ -1524,9 +1684,10 @@ def digest(root, run_dir):
     tokens = estimate_tokens(text)
     if tokens > DIGEST_CEILING:
         print(f"facts-plan: digest is {tokens} tokens, over the "
-              f"{DIGEST_CEILING} ceiling — the run proceeds without a review",
-              file=sys.stderr)
-        return path
+              f"{DIGEST_CEILING} ceiling — the assembled result must be "
+              "reviewed in slices, which this engine cannot yet do; the run "
+              "stops here", file=sys.stderr)
+        raise SystemExit(2)
     write_text_atomic(path, text)
     write_text_atomic(run_dir / "review" / "input.sha256",
                       hashlib.sha256(text.encode("utf-8")).hexdigest() + "\n")
@@ -1536,37 +1697,69 @@ def digest(root, run_dir):
 def assemble(root, run_dir, *, review=False):
     """Steps 0–9 once over the merged decision set (§2.6). Deterministic:
     ascending unit id, ascending skeleton id, ids minted in kind order."""
-    run_dir, skeleton, state = _prepare(root, run_dir, review)
-    entries = _build_entries(root, skeleton, state)
-    _cross_unit(root, entries, state)
-    _settle(entries, state)
-    symbols, reviewed = skeleton.get("unit_symbols") or [], state.get("reviewed") or ()
-    # Step 8 holds an entry back rather than refusing the run: what the unit
-    # gate could not judge — a rule summing another unit's table by column
-    # names that unit never minted (the central report over the raw-materials
-    # table, 2026-09-08) — waits in `undecided[]` with its lines, the entries
-    # that point at it wait with it, and everything else lands. A run refuses
-    # only when nothing at all can be assembled.
-    for _round in range(len(entries) + 1):
-        problems = _lint_entries(root, entries, symbols, reviewed)
-        if not problems:
-            break
-        labels = {(f'review: {e["key"]}' if e["_skeleton"] in reviewed
-                   else f'{e["_unit"]}: {e["key"]}'): e for e in entries}
-        held = {}
-        for line in problems:
-            label = next((l for l in labels if line.startswith(l + ": ")), None)
-            if label is not None and not label.startswith("review: "):
-                held.setdefault(labels[label]["id"], []).append(line[len(label) + 2:])
-        # A review's own rewrite is refused outright: holding it back would
-        # lose the unit's sound version under it, and `validate facts-unit`
-        # on `review/out.json` already judges the reviewer by these lines.
-        if not held or len(held) == len(entries) \
-                or any(line.startswith("review: ") for line in problems):
+    # R2's fold loop: a `review: <key>` lint line names the review decision(s)
+    # that touched that entry, so those are held back and the review is folded
+    # again without them, to a fixpoint. Every pass strictly grows `exclude`
+    # (an excluded decision is not folded, so its entry reverts to the unit's
+    # and stops earning the line), which is what bounds the loop.
+    exclude, held_rows = set(), {}
+    for _outer in range(10_000):
+        run_dir, skeleton, state = _prepare(root, run_dir, review,
+                                            exclude, held_rows)
+        entries = _build_entries(root, skeleton, state)
+        _cross_unit(root, entries, state)
+        _settle(entries, state)
+        symbols = skeleton.get("unit_symbols") or []
+        reviewed = state.get("reviewed") or ()
+        retry = False
+        # Step 8 holds an entry back rather than refusing the run: what the unit
+        # gate could not judge — a rule summing another unit's table by column
+        # names that unit never minted (the central report over the raw-materials
+        # table, 2026-09-08) — waits in `undecided[]` with its lines, the entries
+        # that point at it wait with it, and everything else lands. A run refuses
+        # only when nothing at all can be assembled.
+        for _round in range(len(entries) + 1):
+            problems = _lint_entries(root, entries, symbols, reviewed)
+            if not problems:
+                break
+            # The labels `_lint_entries` printed, from the same writer, so a
+            # line maps back to the entry that earned it and never to another.
+            by_label = dict(zip(_review_labels(entries, reviewed), entries))
+            review_lines = [p for p in problems if p.startswith("review: ")]
+            if review_lines:
+                # The reviewer's own rewrite: held back by decision (R1), never
+                # by refusing the run — the unit's sound version stands under it
+                # and the owner is told which decision went and why.
+                for line in review_lines:
+                    entry = by_label.get(next(
+                        (k for k in by_label if line.startswith(k + ": ")),
+                        None))
+                    decisions = (state["reviewed_by"].get(entry["_skeleton"])
+                                 if entry else None) or []
+                    if not decisions:
+                        # No decision owns the line — a defect, and holding
+                        # nothing back would loop. Say it and stop.
+                        print(f"facts-plan: {line}", file=sys.stderr)
+                        raise SystemExit(2)
+                    for n in decisions:
+                        held_rows.setdefault(n, ("refused", []))[1].append(line)
+                        exclude.add(n)
+                retry = True
+                break
+            held = {}
             for line in problems:
-                print(f"facts-plan: {line}", file=sys.stderr)
-            raise SystemExit(2)
-        entries = _hold_back(entries, state, held)
+                label = next((k for k in by_label if line.startswith(k + ": ")),
+                             None)
+                if label is not None:
+                    held.setdefault(by_label[label]["id"], []).append(
+                        line[len(label) + 2:])
+            if not held or len(held) == len(entries):
+                for line in problems:
+                    print(f"facts-plan: {line}", file=sys.stderr)
+                raise SystemExit(2)
+            entries = _hold_back(entries, state, held)
+        if not retry:
+            break
     # I5's other half: a run stops only when nothing can be assembled. Every
     # reason it got there is printed, because this is the one message the owner
     # gets instead of a delta.
@@ -1587,11 +1780,13 @@ def assemble(root, run_dir, *, review=False):
     write_json_atomic(run_dir / "assembly.json",
                       {"dropped": state["dropped"], "undecided": state["undecided"],
                        "provenance": state["provenance"],
-                       "review_status": state["review_status"]})
+                       "review_status": state["review_status"],
+                       "review_held": state.get("review_held") or []})
     write_text_atomic(run_dir / "gate-b.md", gate_b(root, skeleton, entries, state))
     return {"entries": len(clean), "dropped": len(state["dropped"]),
             "undecided": len(state["undecided"]),
-            "review_status": state["review_status"]}
+            "review_status": state["review_status"],
+            "review_held": len(state.get("review_held") or [])}
 
 
 def _sever_derived(entries, gone, key="id"):
@@ -1882,9 +2077,22 @@ def report(root, run_dir):
         out.append("چه چیزهایی بررسی نشد و در اجرای بعدی تکمیل می‌شود:")
         out += _held_back_blocks(assembly["undecided"], UNDECIDED_FA, "    • ")
         out.append("یک بخش از داده‌ها ناتمام ماند و در اجرای بعدی تکمیل می‌شود.")
-    out.append({"applied": "بازبینی انجام شد.",
-                "discarded": "بازبینی انجام نشد و نتیجه بدون آن ثبت شد.",
-                "absent": "بازبینی اجرا نشد."}[assembly["review_status"]])
+    # R9 — a review is never dropped whole any more, so «انجام نشد» is gone:
+    # either it ran, or (engine-only) it was never asked for. A `partial` run
+    # names each decision it held back, by the entry's own title and the
+    # owner's words for the reason — never the engine's `lines`, which are an
+    # `n`, a field path and a code.
+    held = assembly.get("review_held") or []
+    status = assembly["review_status"]
+    if status == "partial" and held:
+        out.append(f"بازبینی انجام شد؛ {_fa(len(held))} تصمیم آن کنار گذاشته شد:")
+        out += [f'  • «{row["label"]}» — '
+                f'{REVIEW_HELD_FA.get(row["reason"], REVIEW_HELD_FA["refused"])}'
+                for row in held]
+    else:
+        out.append({"applied": "بازبینی انجام شد.",
+                    "partial": "بازبینی انجام شد.",
+                    "absent": "بازبینی اجرا نشد."}[status])
     path = run_dir / "report.md"
     write_text_atomic(path, "\n".join(out) + "\n")
     return path

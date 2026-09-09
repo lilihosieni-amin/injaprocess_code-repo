@@ -659,20 +659,23 @@ def group_messages(messages):
 
     A message is `"<label>: <rule stated with its specifics quoted>"`, so two
     messages state the same rule exactly when their bodies differ only inside
-    the quotes: the quoted spans fold to `…`, and the fold is the group key.
-    Insertion order is kept, so the output is deterministic.
+    the quotes: the quoted spans fold to `…`, and the fold is the group *key*.
+    What is printed is the first body of the group verbatim, specifics and all
+    — an agent retrying against `member … is not a declared field` cannot know
+    which member, and the accounting review of 2026-09-09 failed the same way
+    twice for it. Insertion order is kept, so the output is deterministic.
     """
     groups = {}
     for msg in messages:
         label, sep, body = msg.partition(": ")
         if not sep:
             label, body = "", msg
-        groups.setdefault(_QUOTED_RE.sub("…", body), []).append(label)
+        groups.setdefault(_QUOTED_RE.sub("…", body), (body, []))[1].append(label)
     out = []
-    for rule, labels in groups.items():
+    for first, labels in groups.values():
         shown = ", ".join(labels[:GROUP_IDS_SHOWN])
         tail = " …" if len(labels) > GROUP_IDS_SHOWN else ""
-        out.append(f"{rule} — {len(labels)} entries: {shown}{tail}")
+        out.append(f"{first} — {len(labels)} entries: {shown}{tail}")
     return out
 
 

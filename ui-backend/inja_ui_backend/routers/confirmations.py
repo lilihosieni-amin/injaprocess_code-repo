@@ -31,7 +31,7 @@ from ..access import NOT_FOUND, requires, requires_every
 from ..auth import record, require_session
 from ..fingerprint import fact_fingerprint, fingerprint
 from ..models import ConfirmBody
-from ..store import chat_confirmations, confirmations
+from ..store import confirmations
 
 # The scope requirement of a fact entry, derived once for both gates — see
 # `_fact_departments`. `routers/facts` imports nothing from here, so there is
@@ -127,7 +127,7 @@ def _confirm_gate(request: Request, user=Depends(require_session)):
     return dep(request, user)
 
 
-def _row(conn, target: str, doc: dict, chat: dict) -> dict:
+def _row(conn, target: str, doc: dict) -> dict:
     """One confirmable target as this router reports it.
 
     `fingerprint` is the document's **current** one — what a `POST` must echo —
@@ -135,30 +135,19 @@ def _row(conn, target: str, doc: dict, chat: dict) -> dict:
     lets the client show the state and act on it without ever computing a
     fingerprint of its own.
 
-    `chat` is the ledger the caller has already read (v3.7 §3.4) — the chat
-    actor's vouch, which counts for an `F-` target beside the mark in `app.db`.
-    Passed in rather than read here so the listing reads the file once for every
-    row it builds; a target that is not a fact never has a row there, and the
-    kind check says so rather than trusting the ledger's keys.
+    The stored mark is the only confirmation there is, for a fact as for a
+    process (owner ruling, 2026-09-09): the tick is set by a person here and
+    never by anything the engine writes.
     """
     now = _fingerprint_of(target, doc)
     stored = confirmations.get(conn, target)
     ok = stored is not None and stored["fingerprint"] == now
-    vouched = _kind(target) == "fact" and chat_confirmations.confirmed(chat, doc)
     return {
         "target": target,
         "kind": _kind(target),
         "fingerprint": now,
-        "confirmed": ok or vouched,
-        # `chat:<by>` when only the ledger vouches — the actor is the one
-        # `meta.json` named, not a user of this service, and the prefix is what
-        # keeps the two apart in a body that has always meant "a username here".
-        # `confirmed_at` stays the DB column's: it is an epoch integer and the
-        # ledger's `at` is an ISO string, and a field that changes type is worse
-        # to a reader than an absent one.
-        "confirmed_by": (stored["confirmed_by"] if ok else
-                         f"chat:{chat.get(target, {}).get('by', '')}"
-                         if vouched else None),
+        "confirmed": ok,
+        "confirmed_by": stored["confirmed_by"] if ok else None,
         "confirmed_at": stored["confirmed_at"] if ok else None,
     }
 
@@ -204,11 +193,10 @@ def list_confirmations(request: Request,
     cfg = request.app.state.cfg
     conn = request.app.state.db
     code = request.query_params.get("department", "")
-    chat = chat_confirmations.load(cfg.data_root)
     out = []
     overview = storage.overview_path(cfg.data_root, code)
     if overview.is_file():
-        out.append(_row(conn, code, storage.read_json(overview), chat))
+        out.append(_row(conn, code, storage.read_json(overview)))
     for doc in storage.ordered_processes(cfg.data_root, code):
         if doc.get("tombstoned"):
             continue
@@ -227,7 +215,7 @@ def list_confirmations(request: Request,
         # by one of the two and not the other; that divergence is `disclosure`'s and
         # predates this router, and the write paths below stay lexical so nothing
         # here widens it.
-        out.append(_row(conn, doc["id"], doc, chat))
+        out.append(_row(conn, doc["id"], doc))
     return out
 
 
@@ -304,7 +292,7 @@ def set_confirmation(target: str, body: ConfirmBody, request: Request,
     record(request, "confirmation.set", actor=user["username"],
            session_id=request.state.session_id, target=target,
            detail={"fingerprint": now, "kind": _kind(target)})
-    return _row(conn, target, doc, chat_confirmations.load(cfg.data_root))
+    return _row(conn, target, doc)
 
 
 @router.delete("/{target}")
@@ -326,13 +314,9 @@ def revoke_confirmation(target: str, request: Request,
     cfg = request.app.state.cfg
     conn = request.app.state.db
     doc = _load(cfg, target)
-    # Both channels, because the withdrawal means "whatever is there is wrong"
-    # and a vouch left behind in the ledger would go on saying otherwise.
     revoked = confirmations.revoke(conn, target)
-    chat = _kind(target) == "fact" and chat_confirmations.forget(cfg.data_root,
-                                                                 target)
-    if revoked or chat:
+    if revoked:
         record(request, "confirmation.revoked", actor=user["username"],
                session_id=request.state.session_id, target=target,
-               detail={"kind": _kind(target), "chat": chat})
-    return _row(conn, target, doc, chat_confirmations.load(cfg.data_root))
+               detail={"kind": _kind(target)})
+    return _row(conn, target, doc)

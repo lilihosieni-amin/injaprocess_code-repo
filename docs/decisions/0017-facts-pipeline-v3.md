@@ -122,9 +122,11 @@ what the engine does, so each belongs here rather than in a task report:
   fixture diff — but a department whose shape differs from cooking's may still
   split badly, and `build` exits 2 on a group it cannot fit rather than
   guessing.
-- ⚠️ **One review round, capped at 60 decisions and 20 rewrites.** Cross-unit
-  duplication beyond key, title and normalised-`expr` equality is the audit's
-  problem, not the run's.
+- ⚠️ **One review round, under a decision cap and a rewrite cap**
+  *(superseded 2026-09-09, see the ruling below: both caps are gone, and what
+  the review gets wrong is now held back decision by decision instead of
+  costing the round.)* Cross-unit duplication beyond key, title and
+  normalised-`expr` equality is the audit's problem, not the run's.
 - 📝 The store is reset and rebuilt (§8) rather than migrated: at one seed entry
   a migration verb would be more code than the thing it migrates.
 - 📝 `schema_version` moves to 2 with `additionalProperties: false` on every
@@ -213,17 +215,17 @@ reads the estate carries one as a literal. See the v3.6 spec.
 2026-09-09 (addendum v3.7): **I7** — a chat instruction is one round trip:
 `merge facts edit` rewrites a value in place (the write ladder could only
 create, fill, dispute, append and union, so «change this word» had no verb at
-all), settles any dispute its `set` touches, and leaves the entry confirmed as
-the chat actor's — a filesystem ledger, `facts/.confirmations.json`, keyed by
-the entry's own `updated_at` and read by the ui-backend beside its `app.db`
-marks, because the engine cannot reach that database (ARD §1). `edit` writes a
-row always; `apply`/`resolve`/`retire`/`promote` only when the run's `meta.json`
-says `origin: chat`; `revert` forgets the rows its run wrote; and `save_store`
-prunes every row whose entry has moved on or gone, so the file can never carry a
-stale vouch — with one corollary of keying on `updated_at`'s second resolution: a
-write landing in the same UTC second as the vouched one leaves the row standing.
-Both sides of the ledger serialise their read-modify-write on
-`facts/.confirmations.lock`. See the v3.7 spec §2–§3.
+all) and settles any dispute its `set` touches. It writes no confirmation: see
+the ruling below, which withdrew the second half of I7 the day it landed. See
+the v3.7 spec §2.
+
+**Owner ruling, 2026-09-09 — the confirm tick is only ever set in the panel.**
+The v3.7 chat channel (`facts/.confirmations.json`, a run of `origin: chat`
+vouching for what it wrote) is withdrawn: *"I don't want it to get checked
+automatically."* A bot edit re-stamps the entry, the stored mark no longer
+matches its print, and the panel shows «تأییدنشده» until a person confirms it
+there — the same rule a process has always had. Automatic revocation stays;
+automatic confirmation is gone.
 
 **I8** — a `lang: table` rule's `data.table.rows[]` is a list of **flat**
 objects keyed by the table's own `inputs[]`/`outputs[]`, and no other shape
@@ -257,3 +259,14 @@ information. The run ends with the report; `audit` and `check` stay operator com
 `source[]` member is editable through `merge facts edit` like any other member, addressed by
 position, re-stamped when touched, held to QF-5 and I3 at the gate — «any edit at all has to be
 doable through the bot».
+
+**Owner ruling, 2026-09-09 — the review is never dropped (v3.8).** Both real runs lost their
+review whole (cooking: a `code` the schema refused; accounting: a `fields[]` rewrite the digest
+cannot support, retried against an error with its names elided). Now `assemble --review` applies
+every decision that passes and holds back the rest by decision (`assembly.json` `review_held`,
+named in the report in Persian); a stale review makes `assemble` exit 2 and the playbook re-enters
+Stage R; `code` in a decision is ignored; the two caps are gone; the digest ceiling is 400 K by the
+engine's estimator and above it `digest` exits 2 — a defect that stops the run, never a run without
+review; grouped validator lines carry the first message's specifics. `review_status` is `applied`,
+`partial` or `absent`; `discarded` is gone. Spec:
+`docs/superpowers/specs/2026-09-09-quantitative-facts-v3-review-never-dropped-design.md`.
