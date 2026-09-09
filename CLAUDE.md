@@ -9,7 +9,7 @@ brain — extraction rules live in the separate `data-repo` (INV-2: code/data se
 |---|---|
 | `upload-bot/` | Bot 1: raw voice/file intake from Telegram (Python); `pip install -e upload-bot`; env vars: `TELEGRAM_BOT_TOKEN`, `ALLOWED_USER_IDS`, `DATA_ROOT`, `TELEGRAM_API_BASE_URL` (optional); run: `upload-bot` or `python -m upload_bot` |
 | `control-bot/` | Config & launch profile for `claude-code-telegram` (no custom code) |
-| `engine/` | Deterministic CLIs: `allocate-id` (ids, incl. `fact`), `dump-workbook` (sheets estate → structure dump + manifest), `extract-attachment` (dispatcher: `.docx`/`.pdf`/image → cached text, `.xlsx` skipped), `layout`, `merge` (incl. `facts` verbs — `apply, resolve, retire, revert, promote, export, audit, check`), `order`, `transcribe`, `validate`; installed via `pip install -e engine`; `SCHEMA_DIR` locates schemas at runtime |
+| `engine/` | Deterministic CLIs: `allocate-id` (ids, incl. `fact`), `dump-workbook` (sheets estate → structure dump + manifest), `extract-attachment` (dispatcher: `.docx`/`.pdf`/image → cached text, `.xlsx` skipped), `layout`, `merge` (incl. `facts` verbs — `apply, edit, resolve, retire, revert, promote, export, audit, check`), `order`, `transcribe`, `validate`; installed via `pip install -e engine`; `SCHEMA_DIR` locates schemas at runtime |
 | `ui/` | React + TypeScript + Vite + @xyflow/react frontend |
 | `ui-backend/` | Thin FastAPI backend: JSON read/write + auth, serves built frontend |
 | `deploy/` | docker-compose stack, Dockerfiles, proxy config |
