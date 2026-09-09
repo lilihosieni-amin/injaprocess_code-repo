@@ -222,9 +222,9 @@ says `origin: chat`; `revert` forgets the rows its run wrote; and `save_store`
 prunes every row whose entry has moved on or gone, so the file can never carry a
 stale vouch. See the v3.7 spec §2–§3.
 
-**I8** — a `lang: table` rule's `data.table.rows[]`
-is a list of **flat** objects keyed by the table's own `inputs[]`/`outputs[]`,
-and no other shape survives. Three contracts had left the row shape undefined —
+**I8** — a `lang: table` rule's `data.table.rows[]` is a list of **flat**
+objects keyed by the table's own `inputs[]`/`outputs[]`, and no other shape
+survives. Three contracts had left the row shape undefined —
 both store schemas typed `table` as a bare object, and the shape card the model
 is shown gave no example — so the engine's units wrote flat rows while the UI
 was built from a design mock that nested them as `{when, then}`, and neither
