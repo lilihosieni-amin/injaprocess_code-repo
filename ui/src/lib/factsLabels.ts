@@ -248,6 +248,7 @@ export const ISSUE_KIND_LABELS: Record<string, string> = {
   ambiguous_row_header: 'سرستون تکراری در یک برگه',
   binding_gone: 'محل اجرا دیگر وجود ندارد',
   unread_attachment: 'فایل خوانده‌نشده',
+  oversized: 'بزرگ‌تر از یک واحد',
 }
 
 /** `issues[].fix.op` — the repair the issue proposes. */
