@@ -4,7 +4,7 @@ import {
 } from '../../lib/factsLabels'
 import { isMeasurement, type FactBundle, type MeasurementData } from '../../api/types'
 import { refTitle } from '../bundle'
-import { DetailCard, Mono, PX, RefLink, none } from './parts'
+import { DetailCard, Mono, PX, RefLink, Unit, none } from './parts'
 
 /**
  * The `measurement` kind — `Inja Panel.dc.html:1618-1653`.
@@ -35,7 +35,7 @@ export function MeasurementCard({ bundle, onOpen }: {
         <Pane text={label(SCREEN_LABELS, 'measurement_quantity')} edge>
           <span className="text-fs-h5 font-extrabold text-ink">
             {label(QUANTITY_LABELS, d.quantity)} ·{' '}
-            <Mono>{d.unit}</Mono>
+            <Unit bundle={bundle} symbol={d.unit} />
           </span>
         </Pane>
         <Pane text={label(PAYLOAD_FIELD_LABELS, 'of')}>

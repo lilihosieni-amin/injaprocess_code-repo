@@ -27,6 +27,13 @@ describe('the measurement card', () => {
     expect(screen.getByText('پایان شیفت شب · مسئول واحد')).toBeInTheDocument()
   })
 
+  it('draws the unit as the units record’s word when the bundle serves it', () => {
+    render(<MeasurementCard bundle={{ ...WEIGHING, unit_titles: { kg: 'کیلوگرم' } }}
+      onOpen={vi.fn()} />)
+    expect(screen.getByText(/کیلوگرم/)).toBeInTheDocument()
+    expect(screen.queryByText('kg')).toBeNull()
+  })
+
   it('renders «ثبت در» as the record’s title and the column, never as `F-00011 end_stock`', () => {
     render(<MeasurementCard bundle={WEIGHING} onOpen={vi.fn()} />)
     // Conformance note 2 — the design binds `sfMeasWrId` + `sfMeasWrField` raw

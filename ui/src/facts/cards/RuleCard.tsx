@@ -12,7 +12,7 @@ import {
 import { refTitle } from '../bundle'
 import {
   CountBand, DetailCard, Eyebrow, FactGrid, FieldName, HeadBand, LabelRow, Mono, PX, Pill,
-  RefLink, Tag, none, unanswered, type GridCell,
+  RefLink, Tag, Unit, none, unanswered, type GridCell,
 } from './parts'
 
 /**
@@ -27,22 +27,28 @@ import {
  * interleaved — a rule draws no record, item or measurement card, so the edge
  * cases (:1657) follow the I/O pair directly.
  *
- * Titles are the entry's own (`inputs[].title`, `outputs[].title`,
- * `unit_title`) — conformance note 2 — and every other Persian word comes from
- * `lib/factsLabels.ts` (note 9).
+ * Titles are the entry's own (`inputs[].title`, `outputs[].title`) and a unit's
+ * Persian is the units record's (`bundle.unit_titles`) — conformance note 2 —
+ * and every other Persian word comes from `lib/factsLabels.ts` (note 9).
  */
 
-/** What a value slot shows: the number itself, «؟» for a `null`, «—» for absent. */
+/**
+ * What a value slot shows: the number itself, «؟» for a `null`, «—» for absent.
+ *
+ * A range may be open at one end — the schema lets either be `null`, and a
+ * target («دست‌کم ۹۵ درصد») or a cap («حداکثر ۲ درصد») is exactly that — so it
+ * reads «≥ 95» / «≤ 2», never «95–null».
+ */
 function valueText(o: RuleOutput): { text: string; unanswered: boolean } {
   if (o.value === null) return { text: unanswered(), unanswered: true }
   if (o.value !== undefined) return { text: String(o.value), unanswered: false }
-  if (o.range) return { text: `${o.range.min}–${o.range.max}`, unanswered: false }
+  const min = o.range?.min
+  const max = o.range?.max
+  if (min != null && max != null) return { text: `${min}–${max}`, unanswered: false }
+  if (min != null) return { text: `≥ ${min}`, unanswered: false }
+  if (max != null) return { text: `≤ ${max}`, unanswered: false }
   return { text: none(), unanswered: false }
 }
-
-/** The unit as the entry names it, falling back to the stored symbol (note 2). */
-const unitOf = (f: { unit?: string | null; unit_title?: string }) =>
-  f.unit_title ?? (f.unit ?? undefined) ?? undefined
 
 export function RuleValueCards({ bundle, onOpen }: {
   bundle: FactBundle; onOpen: (id: string) => void
@@ -56,7 +62,7 @@ export function RuleValueCards({ bundle, onOpen }: {
       {constant && (d.outputs ?? []).length > 0 && (
         <ConstantCard bundle={bundle} outputs={d.outputs} onOpen={onOpen} />
       )}
-      {d.expr !== undefined && d.expr !== '' && <FormulaCard expr={d.expr} />}
+      {typeof d.expr === 'string' && d.expr !== '' && <FormulaCard expr={d.expr} />}
       {d.table !== undefined && <DecisionTable data={d} />}
     </>
   )
@@ -70,7 +76,6 @@ function ConstantCard({ bundle, outputs, onOpen }: {
     <DetailCard clip={false} style={PX.card24} className="mt-s10">
       {outputs.map((o) => {
         const value = valueText(o)
-        const unit = unitOf(o)
         const of = refTitle(bundle, o.of)
         const writes = refTitle(bundle, o.writes_to)
         return (
@@ -86,9 +91,7 @@ function ConstantCard({ bundle, outputs, onOpen }: {
                 className={`font-extrabold leading-none ${value.unanswered ? 'text-conflict' : 'text-ink'}`}>
                 {value.text}
               </Mono>
-              {unit !== undefined && (
-                <span className="text-fs-h5 font-bold text-muted">{unit}</span>
-              )}
+              <Unit bundle={bundle} symbol={o.unit} className="text-fs-h5 font-bold text-muted" />
               <span style={PX.gap7} className="ms-auto flex flex-wrap">
                 {o.nature !== undefined && (
                   <Pill tone="violet">{label(NATURE_LABELS, o.nature)}</Pill>
@@ -172,6 +175,15 @@ function tableCell(v: unknown, output: boolean): GridCell {
   return { node: <span className={`text-fs-sm ${ink}`}>{cellLabel(text)}</span> }
 }
 
+/** A row's cell — `{when, then}` as the design nests it (:4855), or flat
+ *  `{key: value}` as the engine's units write it; the schema types `table` as
+ *  a bare object and both shapes are in the store. */
+function cellOf(row: Record<string, unknown>, group: 'when' | 'then', key: string): unknown {
+  const nested = row[group]
+  return nested !== null && typeof nested === 'object'
+    ? (nested as Record<string, unknown>)[key] : row[key]
+}
+
 /** :1183 — «جدول تصمیم», its hit rule, its rows and its default band. */
 function DecisionTable({ data }: { data: RuleData }) {
   const t = data.table
@@ -209,8 +221,8 @@ function DecisionTable({ data }: { data: RuleData }) {
         rows={(t.rows ?? []).map((row, i) => ({
           key: String(i),
           cells: [
-            ...ins.map((k) => tableCell(row.when?.[k], false)),
-            ...outs.map((k) => tableCell(row.then?.[k], true)),
+            ...ins.map((k) => tableCell(cellOf(row, 'when', k), false)),
+            ...outs.map((k) => tableCell(cellOf(row, 'then', k), true)),
           ],
         }))}
       />
@@ -465,7 +477,6 @@ function InputRow({ bundle, input, params, onOpen }: {
   params?: Record<string, unknown>
   onOpen: (id: string) => void
 }) {
-  const unit = unitOf(input)
   const literal = typeof input.from === 'string' ? input.from : undefined
   const edge = input.from !== null && typeof input.from === 'object' ? input.from : undefined
   // QF-47's third form: the value differs per binding, so the input names a
@@ -483,6 +494,10 @@ function InputRow({ bundle, input, params, onOpen }: {
   const paramText = param === undefined ? undefined
     : typeof bound === 'number' ? `${param} = ${bound}` : param
   const via = refTitle(bundle, input.via)
+  // A decision table's input is the table's own axis and reads from nowhere;
+  // «خوانده می‌شود از» over an empty slot says nothing, so the line is skipped.
+  const source = literal !== undefined || paramText !== undefined
+    || from !== undefined || via !== undefined
   return (
     // :1287 — `13px 18px`, and 13px HAS a token: `--pad-table-row-y`
     // (`tokens.css:395`), which `FactsList.tsx:215` already writes for the
@@ -490,24 +505,28 @@ function InputRow({ bundle, input, params, onOpen }: {
     <div className="px-s9 py-table-row-y border-b border-line-row">
       <div title={input.key} className="flex items-baseline gap-s4 flex-wrap">
         <FieldName title={input.title} name={input.key} />
-        {unit !== undefined && <Tag tone="violet2">{unit}</Tag>}
-      </div>
-      <div style={PX.mt7} className="flex items-baseline gap-s3 flex-wrap">
-        <span className="text-fs-sm2 text-muted">{label(PAYLOAD_FIELD_LABELS, 'from')}</span>
-        {literal !== undefined
-          ? <span className="text-fs-sm2 font-bold text-muted">
-            {label(FROM_LITERAL_LABELS, literal)}
-          </span>
-          : paramText !== undefined && from === undefined
-            ? <Mono className="text-fs-sm2 text-ink">{paramText}</Mono>
-            : <RefLink named={from} onOpen={onOpen} className="text-fs-sm2" />}
-        {via !== undefined && (
-          <>
-            <span className="text-fs-sm2 text-muted">{label(PAYLOAD_FIELD_LABELS, 'via')}</span>
-            <RefLink named={via} onOpen={onOpen} className="text-fs-sm2" />
-          </>
+        {input.unit != null && (
+          <Tag tone="violet2"><Unit bundle={bundle} symbol={input.unit} /></Tag>
         )}
       </div>
+      {source && (
+        <div style={PX.mt7} className="flex items-baseline gap-s3 flex-wrap">
+          <span className="text-fs-sm2 text-muted">{label(PAYLOAD_FIELD_LABELS, 'from')}</span>
+          {literal !== undefined
+            ? <span className="text-fs-sm2 font-bold text-muted">
+              {label(FROM_LITERAL_LABELS, literal)}
+            </span>
+            : paramText !== undefined && from === undefined
+              ? <Mono className="text-fs-sm2 text-ink">{paramText}</Mono>
+              : <RefLink named={from} onOpen={onOpen} className="text-fs-sm2" />}
+          {via !== undefined && (
+            <>
+              <span className="text-fs-sm2 text-muted">{label(PAYLOAD_FIELD_LABELS, 'via')}</span>
+              <RefLink named={via} onOpen={onOpen} className="text-fs-sm2" />
+            </>
+          )}
+        </div>
+      )}
     </div>
   )
 }
@@ -515,7 +534,6 @@ function InputRow({ bundle, input, params, onOpen }: {
 function OutputRow({ bundle, output, onOpen }: {
   bundle: FactBundle; output: RuleOutput; onOpen: (id: string) => void
 }) {
-  const unit = unitOf(output)
   const of = refTitle(bundle, output.of)
   const writes = refTitle(bundle, output.writes_to)
   return (
@@ -523,7 +541,9 @@ function OutputRow({ bundle, output, onOpen }: {
     <div className="px-s9 py-table-row-y border-b border-line-row">
       <div title={output.key} className="flex items-baseline gap-s4 flex-wrap">
         <FieldName title={output.title} name={output.key} />
-        {unit !== undefined && <Tag tone="ok">{unit}</Tag>}
+        {output.unit != null && (
+          <Tag tone="ok"><Unit bundle={bundle} symbol={output.unit} /></Tag>
+        )}
         {output.share !== undefined && (
           <Tag tone="violet2">
             {label(PAYLOAD_FIELD_LABELS, 'share')}{' '}

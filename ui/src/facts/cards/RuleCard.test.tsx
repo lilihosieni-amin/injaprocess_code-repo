@@ -19,11 +19,12 @@ import type { FactBundle } from '../../api/types'
 const CONSTANT = (over: Partial<FactBundle> = {}) => bundleOf('rule', {
   inputs: [],
   outputs: [{
-    key: 'tolerance_g', title: 'تلورانس (گرم)', unit: 'g', unit_title: 'گرم',
+    key: 'tolerance_g', title: 'تلورانس (گرم)', unit: 'g',
     per: 'unit_sold', nature: 'limit', value: 5,
     writes_to: { ref: 'F-00016', field: 'tolerance' },
   }],
-}, { resolved: { 'F-00016': { kind: 'record', title: 'گزارش مرکزی — پیتزا' } }, ...over })
+}, { resolved: { 'F-00016': { kind: 'record', title: 'گزارش مرکزی — پیتزا' } },
+     unit_titles: { g: 'گرم' }, ...over })
 
 /** The same shape with a `null` value — «؟» in `--conflict` (:4845-4846). */
 const UNANSWERED = bundleOf('rule', {
@@ -37,11 +38,11 @@ const FORMULA = bundleOf('rule', {
   expr: 'declared_use = start + received - end',
   original_ref: 'facts/originals/F-00030.txt',
   inputs: [
-    { key: 'start', title: 'موجودی اول شب', unit: 'kg', unit_title: 'کیلوگرم',
+    { key: 'start', title: 'موجودی اول شب', unit: 'kg',
       from: { ref: 'F-00016', field: 'start_stock' } },
     { key: 'received', title: 'دریافت از انبار', from: 'operator' },
   ],
-  outputs: [{ key: 'declared_use', title: 'مصرف اعلامی', unit: 'kg', unit_title: 'کیلوگرم',
+  outputs: [{ key: 'declared_use', title: 'مصرف اعلامی', unit: 'kg',
     nature: 'observed', share: 0.25, writes_to: { ref: 'F-00016', field: 'declared_use' } }],
   calls: [{ ref: 'F-00031' }],
   template_of: { ref: 'F-00038' },
@@ -53,6 +54,7 @@ const FORMULA = bundleOf('rule', {
     'F-00031': { kind: 'rule', title: 'مصرف استاندارد پیتزا' },
     'F-00038': { kind: 'rule', title: 'مصرف اعلامی (ناهارخوران)' },
   },
+  unit_titles: { kg: 'کیلوگرم' },
 })
 
 /** One rule across two branches and two columns — QF-47's whole point: sixty
@@ -240,6 +242,9 @@ describe('the rule card', () => {
     expect(screen.getByText('چه چیزهایی لازم دارد')).toBeInTheDocument()
     expect(screen.getByText('چه چیزی می‌سازد')).toBeInTheDocument()
     expect(screen.getByText('موجودی اول شب')).toBeInTheDocument()
+    // The unit is the units record's word (`bundle.unit_titles`), not «kg».
+    expect(screen.getAllByText('کیلوگرم').length).toBeGreaterThan(0)
+    expect(screen.queryByText('kg')).toBeNull()
     // `from: 'operator'` is one of the two string literals, not a `{ref}`.
     expect(screen.getByText('انتخاب اپراتور')).toBeInTheDocument()
     // The share is a percentage of the input (:1318).
@@ -334,5 +339,75 @@ describe('the rule card', () => {
   it('draws no «محل اجرا» for a rule that is bound to nothing', () => {
     render(<RuleCard bundle={FORMULA} onOpen={vi.fn()} />)
     expect(screen.queryByRole('table', { name: 'محل اجرا' })).toBeNull()
+  })
+})
+
+/**
+ * What the engine's units actually write — the cooking store of 2026-09-08
+ * (`F-00193`, `F-00212`), which the design's mock never exercised: a `table`
+ * rule with `expr: null` and flat rows, and a target open at one end.
+ */
+describe('what the engine writes', () => {
+  /** F-00193 — `lang: table`, `expr: null`, rows keyed by the column itself. */
+  const FLAT = bundleOf('rule', {
+    lang: 'table', expr: null,
+    inputs: [{ key: 'goruh_qalam', title: 'گروه قلم' }],
+    outputs: [{ key: 'mabnaye_sabt', title: 'مبنای ثبت مانده' }],
+    table: {
+      inputs: ['goruh_qalam'], outputs: ['mabnaye_sabt'],
+      rows: [
+        { goruh_qalam: 'پنیر گودا', mabnaye_sabt: 'کارتن باز یا کارتن بسته' },
+        { goruh_qalam: 'نوشیدنی‌های کانتر', mabnaye_sabt: 'تعداد' },
+      ],
+    },
+  })
+
+  /** F-00212 — a target with a floor and no ceiling, in percent. */
+  const TARGET = bundleOf('rule', {
+    inputs: [],
+    outputs: [{ key: 'hadaf_estandard', title: 'سهم غذاهای مطابق استاندارد',
+      unit: 'percent', nature: 'target', range: { min: 95, max: null } }],
+  }, { unit_titles: { percent: 'درصد' } })
+
+  it('reads flat rows — the cells are the values, not «در غیر این صورت»', () => {
+    render(<RuleValueCards bundle={FLAT} onOpen={vi.fn()} />)
+    const table = screen.getByRole('table', { name: 'جدول تصمیم' })
+    expect(within(table).getByText('پنیر گودا')).toBeInTheDocument()
+    expect(within(table).getByText('کارتن باز یا کارتن بسته')).toBeInTheDocument()
+    expect(within(table).getByText('تعداد')).toBeInTheDocument()
+    expect(screen.queryByText('در غیر این صورت')).toBeNull()
+  })
+
+  it('draws no formula card for a table rule whose `expr` is null', () => {
+    render(<RuleValueCards bundle={FLAT} onOpen={vi.fn()} />)
+    expect(screen.queryByText('فرمول')).toBeNull()
+  })
+
+  it('draws no «خوانده می‌شود از» for an input that is the table’s own axis', () => {
+    render(<RuleCard bundle={FLAT} onOpen={vi.fn()} />)
+    expect(screen.getByText('گروه قلم')).toBeInTheDocument()
+    expect(screen.queryByText('خوانده می‌شود از')).toBeNull()
+  })
+
+  it('writes a floor-only range as «≥ 95» with its Persian unit, never «95–null»', () => {
+    render(<RuleValueCards bundle={TARGET} onOpen={vi.fn()} />)
+    const value = screen.getByText('≥ 95')
+    expect(value).toHaveAttribute('dir', 'ltr')
+    expect(screen.getByText('درصد')).toBeInTheDocument()
+    expect(screen.getByText('هدف')).toBeInTheDocument()
+    expect(screen.queryByText(/null/)).toBeNull()
+    expect(screen.queryByText('percent')).toBeNull()
+  })
+
+  it('writes a ceiling-only range as «≤ 2»', () => {
+    const cap = bundleOf('rule', {
+      inputs: [],
+      outputs: [{ key: 'saqf', title: 'سقف ضایعات', unit: 'percent', nature: 'limit',
+        range: { min: null, max: 2 } }],
+    })
+    render(<RuleValueCards bundle={cap} onOpen={vi.fn()} />)
+    expect(screen.getByText('≤ 2')).toBeInTheDocument()
+    // No title served for the symbol: it stays an island, never a blank.
+    expect(screen.getByText('percent')).toHaveAttribute('dir', 'ltr')
   })
 })

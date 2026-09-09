@@ -836,3 +836,30 @@ def test_path_label_of_a_non_sheet_locations_leaves(root):
         "data/location/kept_at": "محل › نگهداری",
         "data/location/holder": "محل › مسئول",
         "data/location/system": "محل › سامانه"}
+
+
+# --------------------------------------------------------------------------- #
+# Unit titles — the units record's Persian, served beside the entry
+# --------------------------------------------------------------------------- #
+
+def test_unit_titles_are_the_units_records_open_rows(tmp_path):
+    units = _entry("F-00001", "record", "units", "واحدها", {
+        "medium": "native", "role": "reference", "primaryKey": ["symbol"],
+        "fields": [{"key": "symbol", "type": "string"},
+                   {"key": "unit_title", "type": "string"}],
+        "rows": [
+            {"key": "g", "symbol": "g", "unit_title": "گرم"},
+            {"key": "percent", "symbol": "percent", "unit_title": "درصد"},
+            # A retired symbol is no longer vocabulary, and a row with no
+            # Persian names nothing — both stay off the map, so the screen
+            # draws their symbol as an island rather than a blank.
+            {"key": "old", "symbol": "old", "unit_title": "قدیمی", "retired": True},
+            {"key": "bare", "symbol": "bare"},
+        ]})
+    _dump(tmp_path / "facts" / "records.json",
+          {"schema_version": 1, "entries": [units]})
+    assert facts_store.unit_titles(tmp_path) == {"g": "گرم", "percent": "درصد"}
+
+
+def test_unit_titles_of_a_store_with_no_units_record_is_empty(root):
+    assert facts_store.unit_titles(root) == {}

@@ -149,3 +149,11 @@ export function rowCount(all: number, live: number): string {
     : label(SCREEN_LABELS, 'row_count_live').replace('{n}', toFa(live)).replace('{m}', toFa(all))
   return label(SCREEN_LABELS, 'row_count').replace('{n}', n)
 }
+
+/**
+ * The Persian word for a unit symbol — the units record's `unit_title`, served
+ * as `unit_titles` beside the entry. `undefined` for a symbol the record does
+ * not declare; the card then draws the symbol as its own island (QF-42).
+ */
+export const unitTitle = (bundle: FactBundle, symbol: string | null | undefined) =>
+  symbol == null ? undefined : bundle.unit_titles[symbol]

@@ -2,7 +2,8 @@ import {
   CATEGORY_LABELS, GROUP_LABELS, PAYLOAD_FIELD_LABELS, SCREEN_LABELS, STATE_LABELS, label,
 } from '../../lib/factsLabels'
 import { isItem, type FactBundle, type ItemData } from '../../api/types'
-import { DetailCard, Eyebrow, LabelRow, Mono, PX, Pill, none, unanswered } from './parts'
+import { unitTitle } from '../bundle'
+import { DetailCard, Eyebrow, LabelRow, Mono, PX, Pill, Unit, none, unanswered } from './parts'
 
 /**
  * The `item` kind — `Inja Panel.dc.html:1555-1616`.
@@ -32,8 +33,10 @@ export function ItemCard({ bundle }: { bundle: FactBundle }) {
         <Pill tone="violet" fs="text-fs-sm">{label(CATEGORY_LABELS, d.category)}</Pill>
         <span className="ms-auto inline-flex items-baseline gap-s3">
           <span className="text-fs-xxs text-faint">{label(SCREEN_LABELS, 'item_base_unit')}</span>
-          <Mono className="text-fs-h4 font-extrabold text-violet">{d.unit}</Mono>
-          {d.unit_raw !== undefined && (
+          <Unit bundle={bundle} symbol={d.unit} className="text-fs-h4 font-extrabold text-violet" />
+          {/* :1563 — the source's own word beside the unit, unless it is the
+              very word the units record just drew. */}
+          {d.unit_raw !== undefined && d.unit_raw !== unitTitle(bundle, d.unit) && (
             <span className="text-fs-caption text-muted">({d.unit_raw})</span>
           )}
         </span>
@@ -42,18 +45,23 @@ export function ItemCard({ bundle }: { bundle: FactBundle }) {
       <LabelRow text={L('pack')} width={PX.label110}>
         {d.pack === undefined
           ? <span className="text-fs-body font-semibold text-ink">{none()}</span>
-          // :5008 writes `toFa(size) + ' ' + unitFa(unit)` — Persian digits and
-          // a Persian unit word. **QF-42 is a global constraint and overrides
-          // the design for the digits**: a number is Latin, and `unitFa` is the
-          // map note 2 deletes with nothing served to replace a PACK unit
-          // (`RuleInput`/`RuleOutput` carry `unit_title`; `ItemData.pack` does
-          // not). Both halves are therefore latin, and «16 l» inside a Persian
-          // row is the bidi mix note 6 is about — so it is one island.
-          : (
-            <Mono className="text-fs-body font-semibold text-ink">
-              {`${d.pack.size} ${d.pack.unit}`}
-            </Mono>
-          )}
+          // :5008 writes `toFa(size) + ' ' + unitFa(unit)`. **QF-42 is a global
+          // constraint and overrides the design for the digits**: a number is
+          // Latin. The unit is the units record's word where it has one; where
+          // it has none both halves are latin, and «16 l» inside a Persian row
+          // is the bidi mix note 6 is about — so it is one island.
+          : unitTitle(bundle, d.pack.unit) === undefined
+            ? (
+              <Mono className="text-fs-body font-semibold text-ink">
+                {`${d.pack.size} ${d.pack.unit}`}
+              </Mono>
+            )
+            : (
+              <span className="inline-flex items-baseline gap-s3 text-fs-body font-semibold text-ink">
+                <Mono>{String(d.pack.size)}</Mono>
+                <Unit bundle={bundle} symbol={d.pack.unit} />
+              </span>
+            )}
       </LabelRow>
 
       {d.group !== undefined && (
@@ -97,7 +105,7 @@ export function ItemCard({ bundle }: { bundle: FactBundle }) {
               <span key={u.pack_unit} style={{ ...PX.chip7, ...PX.gap7 }}
                 className="inline-flex items-baseline bg-surface-sub border border-border-current
                            rounded-input">
-                <Mono className="text-fs-sm font-bold text-violet">{u.pack_unit}</Mono>
+                <Unit bundle={bundle} symbol={u.pack_unit} className="text-fs-sm font-bold text-violet" />
                 <span aria-hidden className="text-fs-xxs text-faint">=</span>
                 {/* :1598 — the chip ends at the factor. The base unit is the
                     card's own header row and is not repeated on every chip. */}

@@ -9,9 +9,9 @@ import {
   type PaperLocation, type RecordData, type RecordField, type RecordInstance,
   type SheetLocation,
 } from '../../api/types'
-import { redPath, refTitle, resolvedTitle, rowCount, rowTitle } from '../bundle'
+import { redPath, refTitle, resolvedTitle, rowCount, rowTitle, unitTitle } from '../bundle'
 import {
-  CELL_TRUNCATE, CountBand, DetailCard, Eyebrow, FactGrid, Filled, HeadBand, LabelRow, Mono,
+  CELL_TRUNCATE, CountBand, DetailCard, Eyebrow, FactGrid, Filled, HeadBand, LabelRow, Mono, Unit,
   PX, Pill, RefLink,
   none, unanswered, type GridCell,
 } from './parts'
@@ -49,16 +49,12 @@ import {
  * mock exercises it (`F-00014`'s retired row carries `valid_to` and cells both).
  * Recorded in the task report rather than quietly widened here.
  *
- * **`unit_title` is the same trap, and it is the one this build has ASKED for.**
- * A row's unit symbol has no served Persian (report §13.6 row 27); serving
- * `rows[].unit_title` is the fix, and the day it is served every printed row
- * gains a key this set does not know, so `F-00011` and `F-00012` become grids of
- * mostly-«؟» cells. It is deliberately not pre-added: `unit_title` is already a
- * real COLUMN key in the estate (`F-00017`'s FOURTH field — `symbol`,
- * `dimension`, `factor_to_base`, `unit_title`), so putting it here
- * would widen the very coincidence-of-names hazard §5.9's proposed note is
- * about. Whoever serves the field adds it here in the same change — which is
- * why the request in the report says so rather than leaving it to be found.
+ * **`unit_title` is the same trap, and it is why a row's Persian unit arrives
+ * beside the entry (`bundle.unit_titles`) and never as a row key.** `unit_title`
+ * is already a real COLUMN key in the estate (the units record's FOURTH field —
+ * `symbol`, `dimension`, `factor_to_base`, `unit_title`), so a served row field
+ * of that name would widen the very coincidence-of-names hazard §5.9's proposed
+ * note is about.
  */
 const LOG_KEYS = new Set([
   'key', 'title', 'unit', 'unit_raw', 'section', 'when', 'open', 'retired', 'note',
@@ -99,7 +95,7 @@ export function RecordCard({ bundle, onOpen }: {
     <>
       {grid && <RecordGrid bundle={bundle} data={d} />}
       {!grid && (d.fields ?? []).length > 0 && <ColumnsTable bundle={bundle} data={d} onOpen={onOpen} />}
-      {!grid && (d.rows ?? []).length > 0 && <PrintedRows data={d} />}
+      {!grid && (d.rows ?? []).length > 0 && <PrintedRows bundle={bundle} data={d} />}
       <StructureCard bundle={bundle} data={d} onOpen={onOpen} />
     </>
   )
@@ -143,7 +139,7 @@ function RecordGrid({ bundle, data }: { bundle: FactBundle; data: RecordData }) 
         }}
         head={[
           ...(showRowKey ? [label(SCREEN_LABELS, 'row_key_column')] : []),
-          ...fields.map((f) => columnHead(f)),
+          ...fields.map((f) => columnHead(bundle, f)),
         ]}
         rows={rows.map((r) => ({
           key: String(r.key),
@@ -166,17 +162,16 @@ function RecordGrid({ bundle, data }: { bundle: FactBundle; data: RecordData }) 
  * :4898 — the column's own title, with its unit beside it where they differ.
  *
  * **Two nodes, not one string.** The design writes `fl.title + ' · ' +
- * unitFa(fl.unit)` and gets two Persian words; here the unit is often the stored
- * SYMBOL, because `resolved` carries no unit titles and `RecordField` has no
- * `unit_title` — so «گرم · g» would be a latin run inside a Persian text node,
- * which is the bidi mix note 6 is about. The symbol is an island of its own.
+ * unitFa(fl.unit)`; here the unit is the units record's word where it has one
+ * (`bundle.unit_titles`) and otherwise the stored SYMBOL as an island of its
+ * own — «گرم · g» as one text node would be the bidi mix note 6 is about.
  */
-function columnHead(f: RecordField): ReactNode {
+function columnHead(bundle: FactBundle, f: RecordField): ReactNode {
   const raw = f.unit_raw
   const symbol = f.unit ?? undefined
   if (raw !== undefined && raw !== f.title) return `${f.title} · ${raw}`
   if (raw === undefined && symbol !== undefined && symbol !== f.title) {
-    return <>{f.title} · <Mono>{symbol}</Mono></>
+    return <>{f.title} · <Unit bundle={bundle} symbol={symbol} /></>
   }
   return f.title
 }
@@ -402,7 +397,7 @@ function columnNotes(f: RecordField): string {
 }
 
 /** :1402 — the items already printed on a paper form; the clerk fills the number. */
-function PrintedRows({ data }: { data: RecordData }) {
+function PrintedRows({ bundle, data }: { bundle: FactBundle; data: RecordData }) {
   const rows = data.rows ?? []
   const sections = data.sections ?? []
   return (
@@ -416,10 +411,12 @@ function PrintedRows({ data }: { data: RecordData }) {
         </div>
       </div>
       {rows.map((r) => {
-        // :4934 — the source's own word for the unit, else the stored symbol.
+        // :4934 — `unit_raw || UNIT_FA[unit] || unit`: the source's own word,
+        // else the units record's, else the stored symbol as an island.
         const unitRaw = r.unit_raw as string | undefined
         const symbol = r.unit as string | undefined
-        const unit = unitRaw ?? symbol
+        const phrase = unitRaw ?? unitTitle(bundle, symbol)
+        const unit = phrase ?? symbol
         const section = sections.find((s) => s.key === r.section)?.title
           ?? (r.section as string | undefined)
         const when = r.when as string | undefined
@@ -446,23 +443,15 @@ function PrintedRows({ data }: { data: RecordData }) {
                         :1393) and was never this row's. `F-00012`'s `burger_box`
                         and `cup_lid` are the two rows it cost: «کارتن ۱۰۰تایی»
                         with `carton` nowhere on the screen.
-                        The phrase itself: `unit_raw` when the source wrote one,
-                        otherwise the stored symbol as its own island. The design
-                        writes `unit_raw || UNIT_FA[unit] || unit` (:4934) and
-                        note 2 deletes that inline map; its sanctioned
-                        replacement is the units record's `unit_title`, which the
-                        bundle does not carry for a ROW — `RecordField` has
-                        `unit_raw`, `rows[]` has neither, and
-                        `RuleInput`/`RuleOutput` both have `unit_title`. Filed in
-                        the report as the one served-shape gap this screen has.
-                        The hint is then skipped for exactly the case where it
-                        would repeat the phrase verbatim (`F-00012`'s
-                        `staff_sugar`, `pack` with no `unit_raw`) — that is one
-                        string drawn once, not the deleted element. */}
-                    {unitRaw !== undefined
-                      ? <span className="text-fs-menu font-semibold text-ink">{unitRaw}</span>
+                        The phrase: `unit_raw` when the source wrote one, else
+                        the units record's title (`bundle.unit_titles`, the
+                        design's `UNIT_FA` served rather than inlined), else the
+                        stored symbol as its own island — in which case the hint
+                        would repeat it verbatim and is skipped. */}
+                    {phrase !== undefined
+                      ? <span className="text-fs-menu font-semibold text-ink">{phrase}</span>
                       : <Mono className="text-fs-menu font-semibold text-ink">{symbol}</Mono>}
-                    {unitRaw !== undefined && symbol !== undefined && (
+                    {phrase !== undefined && symbol !== undefined && (
                       <Mono className="text-fs-micro text-faint">{symbol}</Mono>
                     )}
                   </PrintedDetail>

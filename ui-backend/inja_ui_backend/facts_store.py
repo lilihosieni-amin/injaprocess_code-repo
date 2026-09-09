@@ -511,6 +511,26 @@ def binding_labels(root: Path, entry: dict) -> dict:
     return out
 
 
+def unit_titles(root: Path) -> dict[str, str]:
+    """`{symbol: Persian title}` — the open rows of the `units` record, the
+    one place the store names a unit in Persian.
+
+    Served beside the entry and never inside it: `entry` is what QF-24
+    fingerprints, and `ruleOutput` admits no `unit_title` anyway. The screen
+    draws the title where a row names one and the bare symbol as an island
+    where none does, so an undeclared symbol is absent rather than half-named.
+    """
+    for entry in load_all(root):
+        if (entry.get("kind") == "record" and entry.get("key") == "units"
+                and entry.get("retired") is not True):
+            rows = (entry.get("data") or {}).get("rows") or []
+            return {r["symbol"]: r["unit_title"] for r in rows
+                    if isinstance(r, dict) and r.get("retired") is not True
+                    and isinstance(r.get("symbol"), str)
+                    and isinstance(r.get("unit_title"), str) and r["unit_title"]}
+    return {}
+
+
 def _member_title(data: dict, group: str, key: str) -> str | None:
     """The Persian `title` of the keyed member `data[group][key]`, if any.
 

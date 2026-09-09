@@ -376,20 +376,19 @@ export interface RuleInput {
   key: string
   title?: string
   unit?: string | null
-  unit_title?: string
   from?: FactRef | { param: string } | 'operator' | 'calendar' | null
   via?: FactRef
 }
 
 /** One value a rule produces. `value: null` is «بی‌پاسخ»; `range` is the
- *  two-ended form; `share` is a fraction of the input. */
+ *  two-ended form and either end may be `null` — open, as
+ *  `facts.schema.json` allows; `share` is a fraction of the input. */
 export interface RuleOutput {
   key: string
   title?: string
   unit?: string | null
-  unit_title?: string
   value?: unknown
-  range?: { min: number; max: number }
+  range?: { min: number | null; max: number | null }
   nature?: 'standard' | 'target' | 'observed' | 'limit'
   per?: string
   share?: number
@@ -415,7 +414,7 @@ export interface RuleData {
   outputs: RuleOutput[]
   applies_to?: RuleBinding[]
   lang?: 'feel' | 'table' | 'text' | 'sheets' | 'gs'
-  expr?: string
+  expr?: string | null
   identifier?: string
   original?: string
   original_ref?: string
@@ -426,7 +425,10 @@ export interface RuleData {
   edge_cases?: { input?: string; expected?: string; why?: string }[]
   table?: {
     inputs?: string[]; outputs?: string[]
-    rows?: { when?: Record<string, unknown>; then?: Record<string, unknown> }[]
+    /** A row is `{when, then}` in the design (:4855) and flat `{key: value}`
+     *  from the engine's units — `facts.schema.json` types `table` as a bare
+     *  object, and the card reads both. */
+    rows?: Record<string, unknown>[]
     hit?: 'first' | 'unique' | 'collect'
     aggregate?: 'sum' | 'product' | 'min' | 'max'
     default?: Record<string, unknown>
@@ -570,6 +572,12 @@ export interface FactBundle {
   /** `{spreadsheetId: title}` — the manifest's file name without its
    *  extension, which is the only name the estate has for a workbook. */
   workbook_titles: Record<string, string>
+  /** `{symbol: Persian title}` — the units record's own `unit_title` per open
+   *  row, beside the entry because the entry is what QF-24 fingerprints and
+   *  `ruleOutput` admits no `unit_title` (`facts.schema.json`). A card draws
+   *  the title where the record names one and the symbol as an island where
+   *  it does not. */
+  unit_titles: Record<string, string>
   /** Where a record instance or a rule binding sits, keyed by its own key. The
    *  entry cannot carry it: a rule's binding names a column of another entry,
    *  and the workbook's title is the manifest's. */
