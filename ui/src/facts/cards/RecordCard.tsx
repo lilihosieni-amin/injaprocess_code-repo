@@ -316,11 +316,12 @@ function ColumnsTable({ bundle, data, onOpen }: {
                         ? <UnitBadge tone="bg-tile-v2 text-violet">{f.unit_raw}</UnitBadge>
                         : f.unit == null
                           ? <span className="text-fs-sm2 text-muted">{none()}</span>
-                          // …otherwise the stored symbol, as its own island
-                          // (:4981's `unitDir`/`unitFont` switch, read through
-                          // note 6: a symbol is latin and stays latin).
+                          // …otherwise the units record's word, or the stored
+                          // symbol as its own island (:4981's `unitDir`/`unitFont`
+                          // switch, read through note 6: a symbol is latin and
+                          // stays latin).
                           : <UnitBadge tone="bg-tile-v2 text-violet">
-                            <Mono>{f.unit}</Mono>
+                            <Unit bundle={bundle} symbol={f.unit} />
                           </UnitBadge>}
                     {f.type !== undefined && (
                       <div className="text-fs-xxs text-faint mt-s2">
