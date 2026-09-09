@@ -1640,3 +1640,28 @@ def test_one_key_in_two_scopes_blames_only_the_decision_that_failed(tmp_path):
         '{"branches": [], "departments": ["cooking"]}': "حد مجاز انحراف مصرف",
         '{"branches": ["chalebagh"], "departments": ["cooking"]}':
             "حد مجاز انحراف چاله‌باغ"}
+
+
+def test_a_settled_contradiction_that_breaks_the_contract_is_held_back(tmp_path):
+    """R2 — the entry a `contradiction` settles is the review's to answer for
+    too: the reviewer's own value broke the contract, so that decision is held
+    back and the leaf keeps the reading the units agreed to keep."""
+    root = _root(tmp_path)
+    record, rule = _record_out(), _rule_out()
+    record["new"] = [_tol_new(6)]                       # u-a reads the unit kg
+    drifted = _tol_new(6)
+    drifted["data"]["outputs"][0]["unit"] = "pack"      # u-b reads it as pack
+    rule["new"] = [drifted]
+    plan = _plan()                     # both units read the same transcript
+    plan["units"][0]["inputs"] = ["meetings/transcripts/c.txt#L1-L20"]
+    run_dir = _run(root, {"u-a": record, "u-b": rule}, plan=plan)
+    assert "unit_drift" in digest(root, run_dir).read_text(encoding="utf-8")
+    _write_review(run_dir, [_contradiction(field="data/outputs/v/unit",
+                                           resolution="fix", value="lb")])
+    assert assemble(root, run_dir, review=True)["review_status"] == "partial"
+    assembly = json.loads((run_dir / "assembly.json").read_text(encoding="utf-8"))
+    assert [(r["n"], r["action"], r["reason"]) for r in assembly["review_held"]] \
+        == [(0, "contradiction", "refused")]
+    assert any("'lb'" in line for line in assembly["review_held"][0]["lines"])
+    assert assembly["undecided"] == []
+    assert _tol(run_dir)["data"]["outputs"][0]["unit"] == "kg"   # the keeper's

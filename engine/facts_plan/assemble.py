@@ -741,7 +741,11 @@ def _touched(decision):
     """The skeletons a folded review decision changes: its own, and for a
     `merge_into` the target as well. The source is absorbed away and leaves no
     entry, so a merge that makes its target unstorable is the review's to
-    answer for — the unit that wrote the target changed nothing (R2)."""
+    answer for — the unit that wrote the target changed nothing (R2).
+
+    A `contradiction` never joins `folded` (it settles a record rather than
+    deciding a candidate), so the entry it settles is registered where it is
+    resolved, in the fold loop above."""
     into = decision.get("into")
     return [decision["skeleton"]] + (
         [into] if decision.get("action") == "merge_into"
@@ -817,10 +821,12 @@ def _fold_review(run_dir, state, draft, scratch, exclude=frozenset(), held=None)
         for skid in _touched(decision):
             reviewed_by.setdefault(skid, []).append(n)
     state["settled"] = settled
-    # Whose mistake a refused entry is: the reviewer rewrote this one, so
-    # `_lint_entries` names the review rather than the unit it came from.
-    state["reviewed"] = {skid for _n, decision in folded
-                         for skid in _touched(decision)}
+    # Whose mistake a refused entry is: the reviewer touched this one, so
+    # `_lint_entries` names the review rather than the unit it came from —
+    # every entry a decision changed, which is exactly what `reviewed_by`
+    # collected: a `keep`'s own, a `merge_into`'s target, a settled
+    # `contradiction`'s record (R2).
+    state["reviewed"] = set(reviewed_by)
     # …and which of its decisions did, so R2 can hold that one back by index
     # instead of refusing the document the lint line belongs to.
     state["reviewed_by"] = reviewed_by
