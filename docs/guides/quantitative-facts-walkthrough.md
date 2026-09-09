@@ -570,9 +570,9 @@ git add departments runs facts attachments && git commit -m "quantify(cooking): 
 ### Stage 7 — Report
 
 The coordinator reads `report.md` and sends it verbatim: the open disputes numbered with lettered
-options, the unanswered cells per entry, the dropped candidates counted by reason, every engine
-issue grouped by kind, the unread/unplaced list, what was held back and why, and
-the review's closing block. That block is one line — «بازبینی انجام شد.» — when every decision was
+options, the unanswered cells per entry, the dropped candidates counted by reason, the
+unread/unplaced list, what was held back and why, and
+the review's closing block. What the message deliberately leaves out, since the owner's ruling of 2026-09-09, is the engine's own findings inside the files — a broken formula's cell range, a column that moved between two copies of a tab, a cell that only mirrors another. Nobody can act on those from a chat message, and forty such lines buried the three things the owner can act on. Each finding stays attached to the entry it concerns, where the panel draws it, and `gate-b.md` still counts them as the run's record. That block is one line — «بازبینی انجام شد.» — when every decision was
 applied; when some were held back it reads «بازبینی انجام شد؛ ۲ تصمیم آن کنار گذاشته شد:» followed
 by one line per held decision, «  • «عنوان» — نشانی به هیچ موردی نمی‌رسید», the entry by its
 Persian title and the reason in Persian. («بازبینی اجرا نشد.» exists for a run assembled without

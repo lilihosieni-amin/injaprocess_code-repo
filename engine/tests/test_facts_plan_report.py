@@ -104,13 +104,33 @@ def test_report_letters_disputes_and_speaks_persian(tmp_path):
     assert "الف) ۲۱۵ گرم" in text and "ب) ۱۰ عدد" in text
     assert "فقط تاریخ را منتقل می‌کرد: ۱ مورد" in text
     assert "ظاهری بود (رنگ و قالب): ۱ مورد" in text
-    assert "ستون «قیمت» جا افتاده است" in text
-    assert "۲۴ فرمول بالای سطر عنوان" in text          # run-only, still reported
+    # Owner ruling, 2026-09-09: a file's own problems are not in the message.
+    assert "ایرادهای یافته‌شده در فایل‌ها" not in text
+    assert "ستون «قیمت» جا افتاده است" not in text
+    assert "۲۴ فرمول بالای سطر عنوان" not in text
     assert "بازبینی انجام شد؛ ۲ تصمیم آن کنار گذاشته شد:" in text
     assert "۱ مورد بررسی‌نشده" in text
     for banned in ("F-00487", "a1", "S-r-1", "u-a", "merge ", "runs/",
                    "date_passthrough"):
         assert banned not in text
+
+
+def test_the_run_record_keeps_the_file_problems_the_message_no_longer_carries(tmp_path):
+    """They are not lost, they are moved: `gate-b.md` is the run's own record
+    and still counts them, each one is attached to the entry it concerns for
+    the panel to draw, and `merge facts audit` still reports them. Only the
+    owner's message is free of a broken formula's cell range."""
+    run_dir = _run(tmp_path)
+    _store(tmp_path, [])
+    skeleton = json.loads((run_dir / "skeleton.json").read_text(encoding="utf-8"))
+    gate = gate_b(tmp_path, skeleton, [], {"department": "cooking",
+                                           "dropped": [], "undecided": []})
+    assert "ایرادهای یافته‌شده در فایل‌ها: ۲ مورد" in gate
+    assert "ستون «قیمت» جا افتاده است" in gate
+
+    text = report(tmp_path, run_dir).read_text(encoding="utf-8")
+    assert "ایراد" not in text
+    assert "ستون «قیمت» جا افتاده است" not in text
 
 
 def _account(aid, field, statement, value):

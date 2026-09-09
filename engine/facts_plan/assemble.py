@@ -1885,9 +1885,10 @@ def _disputes(entries):
                                       d[1][0].get("field") or ""))
 
 
-#: §3.7. `report` groups every other issue kind under «ایرادهای یافته‌شده در
-#: فایل‌ها»; this one is not a problem inside a file, it is a file nobody read,
-#: and it belongs beside the workbook the owner has not placed.
+#: §3.7. `gate_b` counts every other issue kind under «ایرادهای یافته‌شده در
+#: فایل‌ها» (`report` names none of them — owner ruling, 2026-09-09); this one is
+#: not a problem inside a file, it is a file nobody read, and it belongs beside
+#: the workbook the owner has not placed, in both files.
 UNREAD_KIND = "unread_attachment"
 
 #: Neither of these is an issue found IN a file: the unread files have their own
@@ -2061,17 +2062,13 @@ def report(root, run_dir):
         out += [f'  • {REASON_FA.get(code, REASON_FA["other"])}: {_fa(n)} مورد'
                 for code, n in sorted(counted.items())]
         out.append("")
-    found = [i for i in skeleton["issues"]
-             if i["kind"] not in NOT_A_FILE_ISSUE]
-    if found:
-        out.append("ایرادهای یافته‌شده در فایل‌ها:")
-        grouped = {}
-        for issue in found:
-            grouped.setdefault(issue["kind"], []).append(issue["description"])
-        for kind, described in sorted(grouped.items()):
-            out.append(f'  {ISSUE_FA.get(kind, "ایراد")} ({_fa(len(described))} مورد):')
-            out += [f"    • {d}" for d in described[:5]]
-        out.append("")
+    # Owner ruling, 2026-09-09: the file problems do not go in the message.
+    # A broken formula in L13:L14, a column that moved between two copies of a
+    # tab, a cell that only mirrors another — the owner cannot act on any of it
+    # from a chat message, and forty such lines buried the three things they
+    # can act on. Every one of them is still attached to the entry it concerns
+    # and drawn in the panel (`IssuesCard`), still counted in `gate-b.md` as
+    # the run's own record, and still `merge facts audit`'s to report.
     out += _unread_block(root, skeleton["department"], skeleton["issues"])
     if assembly["undecided"]:
         out.append("چه چیزهایی بررسی نشد و در اجرای بعدی تکمیل می‌شود:")

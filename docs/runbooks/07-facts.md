@@ -586,7 +586,7 @@ either file.
 | file | written by | sent at | carries |
 |---|---|---|---|
 | `{run_dir}/gate-b.md` | `facts-plan assemble` | **not sent** since 2026-09-09 — kept on disk as the run's record | counts per kind; the first three rules in one sentence each; how many were dropped and the commonest reasons; how many went unexamined; the disputes numbered with lettered options; how many issues were found in the files, three of them named; how many cells are unanswered; and the one question «تأیید می‌کنید؟» |
-| `{run_dir}/report.md` | `facts-plan report` | after the apply and the commit | what was recorded, dropped and left unexamined; the open disputes numbered with lettered options; the unanswered cells grouped per entry; the dropped list by reason in the owner's own words; every engine-found issue grouped by kind; whether a part was left unfinished; and how the review went — applied whole, or applied with the decisions that were set aside named one per line |
+| `{run_dir}/report.md` | `facts-plan report` | after the apply and the commit | what was recorded, dropped and left unexamined; the open disputes numbered with lettered options; the unanswered cells grouped per entry; the dropped list by reason in the owner's own words; whether a part was left unfinished (the engine's file findings are **not** here since 2026-09-09 — they are on the entry in the panel and counted in `gate-b.md`); and how the review went — applied whole, or applied with the decisions that were set aside named one per line |
 
 A third line runs through both files: **a file this run could not read is named
 once.** An extension `extract-attachment` has no converter for, or a supported
