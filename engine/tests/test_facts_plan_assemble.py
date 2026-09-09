@@ -1042,9 +1042,13 @@ def test_only_the_stops_the_design_keeps_are_left():
     found = [(module, function, context)
              for module in ("build.py", "assemble.py", "cli.py", "preflight.py")
              for function, context in _stop_sites(module)]
-    assert [(m, f) for m, f, _ in found] == [(m, f) for m, f, _ in kept]
-    for (_m, _f, fragment), (_, _, context) in zip(kept, found):
-        assert fragment in context, fragment
+    # The context is compared in the same breath as the module and the
+    # function: three of the eight rows are `("assemble.py", "assemble")`, so
+    # the pair alone cannot tell them apart or catch two of them swapping.
+    assert len(found) == len(kept), [(m, f) for m, f, _c in found]
+    assert [(m2, f2, fragment in context)
+            for (_m, _f, fragment), (m2, f2, context) in zip(kept, found)] == \
+        [(m, f, True) for m, f, _c in kept]
 
 
 def test_a_ref_into_a_dropped_candidate_holds_the_entry_back(tmp_path):
@@ -1665,3 +1669,79 @@ def test_a_settled_contradiction_that_breaks_the_contract_is_held_back(tmp_path)
     assert any("'lb'" in line for line in assembly["review_held"][0]["lines"])
     assert assembly["undecided"] == []
     assert _tol(run_dir)["data"]["outputs"][0]["unit"] == "kg"   # the keeper's
+
+
+@pytest.mark.parametrize("bad", [
+    # a `contradiction` addressed by `skeleton`: the schema requires `entry`
+    {"skeleton": "S-r-000000000002", "action": "contradiction",
+     "field": "data/outputs/v/value", "resolution": "fix", "value": 5},
+    # neither `entry` nor `skeleton`, so nothing says what it decides
+    {"action": "keep", "key": "enheraf", "title": "انحراف تازه",
+     "statement": "انحراف مصرف اعلامی است."},
+    # a `contradiction` with no `field`: the fold read `decision["field"]` bare
+    {"entry": {"kind": "rule", "key": "enheraf"}, "action": "contradiction",
+     "resolution": "fix", "value": 5}])
+def test_a_schema_invalid_review_is_held_back_whole_and_named(tmp_path, bad):
+    """R8 hands the fold the reviewer's second failure, so a document the schema
+    refuses is what `assemble --review` must survive: every decision is held
+    back under the schema's line, the units' work lands, and nothing raises."""
+    root = _root(tmp_path)
+    run_dir = _run(root, {"u-a": _record_out(), "u-b": _rule_out()})
+    digest(root, run_dir)
+    _write_review(run_dir, [bad, {"entry": {"kind": "rule", "key": "enheraf"},
+                                  "action": "keep", "key": "enheraf",
+                                  "title": "انحراف دیگر",
+                                  "statement": "انحراف مصرف اعلامی است."}])
+    assert assemble(root, run_dir, review=True)["review_status"] == "partial"
+    assembly = json.loads((run_dir / "assembly.json").read_text(encoding="utf-8"))
+    assert [(r["n"], r["reason"]) for r in assembly["review_held"]] \
+        == [(0, "refused"), (1, "refused")]
+    assert all(r["lines"] and r["label"] for r in assembly["review_held"])
+    delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
+    assert next(e for e in delta["entries"]
+                if e["key"] == "enheraf")["title"] == "انحراف مصرف"   # the unit's
+
+
+def test_a_merge_into_a_skeleton_no_unit_kept_is_held_back(tmp_path):
+    """`into` may be a bare skeleton id too. One naming a candidate this run did
+    not keep used to fold happily and then die in step 3 as `target_dropped`,
+    blamed on the unit that wrote the source and taking its entry with it."""
+    root = _root(tmp_path)
+    rule = _rule_out()
+    rule["decisions"][1] = {"skeleton": "S-i-000000000003", "action": "drop",
+                            "reason_code": "cosmetic"}
+    run_dir = _run(root, {"u-a": _record_out(), "u-b": rule})
+    digest(root, run_dir)
+    _write_review(run_dir, [{"entry": {"kind": "rule", "key": "enheraf"},
+                             "action": "merge_into", "reason_code": "duplicate",
+                             "into": "S-i-000000000003"}])
+    assert assemble(root, run_dir, review=True)["review_status"] == "partial"
+    assembly = json.loads((run_dir / "assembly.json").read_text(encoding="utf-8"))
+    assert [(r["n"], r["reason"]) for r in assembly["review_held"]] \
+        == [(0, "unknown_skeleton")]
+    assert assembly["undecided"] == []
+    delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
+    assert any(e["key"] == "enheraf" for e in delta["entries"])
+
+
+def test_two_refused_decisions_are_both_held_in_order(tmp_path):
+    """The fold loop runs until no `review:` line is left, and every decision it
+    held is in `review_held` once, ordered by its index in the document."""
+    root = _root(tmp_path)
+    run_dir = _run(root, {"u-a": _record_out(), "u-b": _rule_out()})
+    digest(root, run_dir)
+    _write_review(run_dir, [
+        {"entry": {"kind": "rule", "key": "enheraf"}, "action": "keep",
+         "key": "enheraf", "title": "انحراف مصرف",
+         "statement": "انحراف مصرف برابر است با J6."},
+        {"entry": {"kind": "item", "key": "item_1"}, "action": "keep",
+         "key": "item_1", "title": "پنیر ورقه‌ای",
+         "statement": "پنیر ورقه‌ای در K7 نگهداری می‌شود."}])
+    assert assemble(root, run_dir, review=True)["review_status"] == "partial"
+    assembly = json.loads((run_dir / "assembly.json").read_text(encoding="utf-8"))
+    assert [(r["n"], r["reason"]) for r in assembly["review_held"]] \
+        == [(0, "refused"), (1, "refused")]
+    delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
+    by_key = {e["key"]: e for e in delta["entries"]}
+    assert by_key["enheraf"]["statement"].endswith("اعلامی لاین.")
+    assert by_key["item_1"]["title"] == "پنیر پیتزا"          # the unit's

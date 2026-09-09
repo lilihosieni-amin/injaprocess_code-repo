@@ -520,7 +520,7 @@ Eight stops remain, and none of them is one input's fault:
 |---|---|
 | `build` — a candidate planned into two units or into none | an engine invariant; a candidate decided twice contradicts itself and one decided nowhere is lost work |
 | `facts-plan build` without `--rebuild` once a unit is done | protects finished work; resume through `facts-plan status` |
-| `assemble` — a unit's latest output does not validate and it still has an attempt | the run is not ready; Stage U re-dispatches that unit |
+| `digest` / `assemble` — a unit's latest output does not validate and it still has an attempt | the run is not ready; Stage U re-dispatches that unit |
 | `digest` — the digest is over the 400 K ceiling | no reviewer can read it, and a run recorded without a review is not an outcome the design allows; report it as a defect |
 | `assemble --review` — the review was written against an older digest | its addresses no longer name what they meant; the playbook re-enters Stage R and the review is written again, never skipped |
 | `assemble` — a `review: <key>` lint line no review decision owns | a defect in the fold: with nothing to hold back the loop would spin; the line is printed as it is |

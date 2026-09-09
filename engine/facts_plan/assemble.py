@@ -664,6 +664,7 @@ def _review_verdicts(run_dir, doc, state, draft, scratch):
     stale = stamp.read_text(encoding="utf-8").strip() != \
         hashlib.sha256(text.encode("utf-8")).hexdigest()
     hits = _review_hits(draft)
+    assembled = {entry["_skeleton"] for entry in draft}
     held = {}
 
     def name(ref):
@@ -673,21 +674,36 @@ def _review_verdicts(run_dir, doc, state, draft, scratch):
         if decision.get("action") == "contradiction":
             named = {_address(e) for e in hits(decision["entry"])} \
                 if decision.get("entry") else set()
+            # `field` is optional in the schema for a `contradiction`, and a
+            # document that leaves it out is admitted — so it is answered here,
+            # where a missing field simply names no flag, and not with a
+            # `KeyError` over the reviewer's second attempt (R8).
             if not any(f["code"] == "unit_drift"
-                       and f["field"] == decision["field"]
+                       and f["field"] == decision.get("field")
                        and _address(f["entry"]) in named
                        for f in scratch["flags"]):
                 held[n] = ("no_drift",
                            f'{label}: contradiction: no drift flag on '
-                           f'{decision["field"]} for {name(decision["entry"])}')
+                           f'{decision.get("field")} for {name(decision["entry"])}')
             continue
-        if isinstance(decision.get("into"), dict):
-            k = len(hits(decision["into"]))
+        into = decision.get("into")
+        if isinstance(into, dict):
+            k = len(hits(into))
             if k != 1:
                 held[n] = ("no_match" if k == 0 else "ambiguous",
-                           f'{label}: into: {name(decision["into"])} names '
+                           f'{label}: into: {name(into)} names '
                            f"{k} assembled entries")
                 continue
+        # `into` may also be a bare skeleton id (`facts-unit.schema.json` admits
+        # both). One naming a candidate this run did not keep is folded happily
+        # and then dies in `_build_entries` as `target_dropped` — blamed on the
+        # unit that wrote the *source*, which decided nothing of the sort.
+        elif isinstance(into, str) and decision.get("action") == "merge_into" \
+                and into not in assembled:
+            held[n] = ("unknown_skeleton",
+                       f"{label}: into: skeleton {into} is no assembled entry "
+                       "of this run")
+            continue
         if decision.get("skeleton"):
             if decision["skeleton"] not in state["by_skeleton"]:
                 held[n] = ("unknown_skeleton",
@@ -727,14 +743,22 @@ def _held_label(decision, hits, state):
     entry its address landed on, the bare `kind key` when the address landed
     nowhere or everywhere, and the candidate's own label for a `skeleton`
     address. Never an id — `review_held[]` is read out in `report.md`."""
+    if not isinstance(decision, dict):
+        return "—"
     for key in ("entry", "into"):
         ref = decision.get(key)
-        if isinstance(ref, dict):
-            found = hits(ref)
-            return found[0]["title"] if len(found) == 1 \
-                else f'{ref["kind"]} {ref["key"]}'
+        # Guarded, because a document the schema refused reaches here too: an
+        # address missing its halves is skipped rather than raising, and an
+        # entry whose title is empty still reads as something.
+        if not isinstance(ref, dict) or not isinstance(ref.get("kind"), str) \
+                or not isinstance(ref.get("key"), str):
+            continue
+        found = hits(ref) if isinstance(ref.get("scope"), (dict, type(None))) \
+            else []
+        return (found[0]["title"] if len(found) == 1
+                else f'{ref["kind"]} {ref["key"]}') or "—"
     candidate = (state.get("candidates") or {}).get(decision.get("skeleton"))
-    return label_of(candidate) if candidate else (decision.get("title") or "—")
+    return (label_of(candidate) if candidate else decision.get("title")) or "—"
 
 
 def _touched(decision):
@@ -765,12 +789,31 @@ def _fold_review(run_dir, state, draft, scratch, exclude=frozenset(), held=None)
     if not path.is_file() or not (run_dir / "review" / "input.sha256").is_file():
         return "absent"
     doc = read_json(path)
+    hits = _review_hits(draft)
+    try:
+        validate("facts-unit.schema.json", doc)
+    except ValueError as exc:
+        # R8 routes the reviewer's second failure straight here, so this is the
+        # document the fold must survive, not the one it may assume away: every
+        # field `_review_verdicts` reads is optional in a refused document.
+        # Nothing is dropped and nothing raises — every decision is held back
+        # under the schema's own line, and `report` names them.
+        decisions = doc.get("decisions") if isinstance(doc, dict) else None
+        rows = [{"n": n, "action": d.get("action") if isinstance(d, dict) else None,
+                 "label": _held_label(d, hits, scratch), "reason": "refused",
+                 "lines": [str(exc)]}
+                for n, d in enumerate(decisions if isinstance(decisions, list)
+                                      else [])]
+        state["review_held"] = rows or [{"n": 0, "action": None, "label": "—",
+                                         "reason": "refused",
+                                         "lines": [str(exc)]}]
+        state["settled"], state["reviewed"], state["reviewed_by"] = [], set(), {}
+        return "partial"
     stale, verdicts = _review_verdicts(run_dir, doc, state, draft, scratch)
     if stale:
         print("facts-plan: review: the digest changed since this review was "
               "written — run digest and the review again", file=sys.stderr)
         raise SystemExit(2)
-    hits = _review_hits(draft)
     skip = set(verdicts) | set(exclude)
     folded, settled, reviewed_by = [], [], {}
     for n, decision in enumerate(doc["decisions"]):
