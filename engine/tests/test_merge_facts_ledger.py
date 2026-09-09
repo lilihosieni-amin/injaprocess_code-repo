@@ -1,22 +1,14 @@
 """`facts/.confirmations.json` — who wrote a row, when it is pruned, and how a
 revert forgets one (v3.7 §3)."""
-import json
 
-from facts_helpers import _root, _seed_units, _const_delta, _write, _run_dir
+from facts_helpers import (_root, _seed_units, _const_delta, _write, _run_dir,
+                           _meta)
 from merge_facts import KIND_FILES, load_store
 from merge_facts.apply import apply
 from merge_facts.revert import revert
 from merge_facts import verbs
 from merge_facts.verbs import edit, retire
 from merge_facts import ledger
-
-
-def _meta(run, origin="chat", actor="owner"):
-    (run / "meta.json").write_text(json.dumps({
-        "department": "cooking", "origin": origin, "actor": actor,
-        "started_at": "2026-09-09T09:00:00Z", "finished_at": None,
-        "recordings": [], "attachments": [], "workbooks": [], "delta": "",
-        "merged": False, "ids_created": []}), encoding="utf-8")
 
 
 def _rows(root):

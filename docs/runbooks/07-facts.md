@@ -817,9 +817,12 @@ docker compose exec control-bot sh -c \
   the entry comes back wholesale from `{run_dir}/facts-before/`, and the
   confirmation rows that run wrote are forgotten with it.
 
-Nothing here needs a new commit rule: the ledger lives under `facts/`, which the
-store's `git add` allowlist already covers, and the bot may never write it by
-hand — only the engine does.
+**What is committed.** The ledger itself is store content: it lives under
+`facts/`, which the playbooks' `git add` allowlist already covers, and it is
+committed with the five files. Its lock is not — `facts/.confirmations.lock` is
+an empty sidecar `flock` holds open, it carries nothing, and it is in
+data-repo's `.gitignore` so an allowlisted `git add facts` never stages it.
+The bot may write neither by hand; only the engine and the ui-backend do.
 
 ## Next
 

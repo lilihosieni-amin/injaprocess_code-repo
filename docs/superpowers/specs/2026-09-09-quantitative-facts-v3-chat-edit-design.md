@@ -78,10 +78,15 @@ Exit 2 with `precondition failed: …` on stderr and nothing written on any refu
 ### 2.3 Refusals
 
 1. Unknown `--id`; a patch that fails `facts-patch.schema.json`; an op whose path cannot be walked
-   (parent missing, list member not found).
+   (parent missing, list member not found); a `--run` directory with no `meta.json` in it (the
+   chat citation of §2.4 points at that file, and the ledger reads the actor off it).
 2. A path whose first segment is `id`, `kind`, `key`, `status` or `updated_at` — identity and
    derived fields. A kind change is `promote` (notes only, as today); a key is identity and is
-   never renamed (item keys live in `refItems` cells across the store).
+   never renamed (item keys live in `refItems` cells across the store). `retired` is half-immutable:
+   `set retired false` is allowed (§1's promise that a mistaken retire is undoable), anything else
+   under `retired` is refused with «retire is the verb» — retiring dates the entry, names an heir
+   and asks the owner first, which is `retire`'s job; `valid_to`, `supersedes` and `superseded_by`
+   stay editable.
 3. A `remove` of a `source[]` member (provenance is never edited out; `repair-source-refs` is the
    only writer of a citation's `ref`) — the other members of `source` are editable only through the
    verbs that already own them, so any op under `source` is refused.
@@ -92,8 +97,11 @@ Exit 2 with `precondition failed: …` on stderr and nothing written on any refu
    every `{ref}` resolvable, every `refItems` cell an open item or a namespace code, unit symbols
    declared, keys minted, the constant shape, `field_status` paths, the decision-table row shape
    (§4). The refusal names the op index and the gate's own message.
-5. An `applies_to`/`instances`/`imports` member added by `append` is checked exactly as `apply`'s
-   preconditions check one (the binding's record and field exist).
+5. An `applies_to`/`instances`/`imports` member added by `append` faces the gate of item 4 and
+   nothing more: an `F-` ref inside it that names no entry is refused, and a `refItems` cell that
+   is neither an open item nor a namespace code is refused. The binding's `record`/`field` pair
+   itself is not verified — `apply` has no such precondition either, so there is nothing here to
+   match (a ceiling, §9).
 
 ### 2.4 Effects on success
 
@@ -320,6 +328,8 @@ no path the instruction did not ask about. The style card applies to every strin
   it is named here so a future path that stamps blindly is known to cost a confirmation.
 - The chat actor is whoever `meta.json` names; the engine does not verify it. The bot's user
   allow-list is the only gate on who may instruct it.
+- An appended binding's `record`/`field` pair is not verified (§2.3 item 5): the gate resolves the
+  `F-` refs and `refItems` cells inside it and stops there, the same reach `apply` has.
 - The preview renders values, not diffs: a long statement shows whole, twice.
 - `field_status` is editable through `set field_status/<path>`; the content check keeps it honest.
 

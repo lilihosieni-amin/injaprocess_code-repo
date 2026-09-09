@@ -294,6 +294,14 @@ def promote(root, fact_id, kind, key, run_dir):
 _EDIT_IMMUTABLE = {"id": "identity", "kind": "identity (promote changes a note's kind)",
                    "key": "identity", "status": "derived", "updated_at": "derived"}
 
+#: `retired` is half-immutable, so it is not in the table above: `edit` may
+#: only take the flag OFF (spec §1's promise that a mistaken retire is
+#: undoable). Setting it ON is `retire`'s job and nothing else's — the verb
+#: dates the entry in Jalali, points it at an heir, and the playbook asks the
+#: owner first. `valid_to`, `supersedes` and `superseded_by` stay editable:
+#: they are the record of a retirement, not the act of one.
+_EDIT_RETIRE_IS_THE_VERB = "retire is the verb"
+
 #: How much of a value the preview prints before it elides the middle (§2.5).
 _RENDER_LIMIT = 400
 
@@ -325,6 +333,8 @@ def _apply_op(entry, op):
     if head == "source":
         raise ValueError("source[] is provenance and is never edited "
                          "(repair-source-refs is the one writer of a citation)")
+    if head == "retired" and not (verb == "set" and op.get("value") is False):
+        raise ValueError(_EDIT_RETIRE_IS_THE_VERB)
     before = get_path(entry, path) if path_exists(entry, path) else None
     if verb == "set":
         value = op["value"]
@@ -412,6 +422,11 @@ def edit(root, fact_id, patch_path, run_dir, preview=False):
     Returns `{"id", "ops": [{index, op, path, before, after}], "problems"}`.
     """
     root, run_dir = pathlib.Path(root), pathlib.Path(run_dir)
+    # The chat source unioned in below cites `{run_dir}/meta.json`, and the
+    # ledger reads the actor off it: without the file the citation dangles
+    # (`merge facts check` reports it moved) and the vouch is anonymous.
+    if not (run_dir / "meta.json").is_file():
+        _fail("run directory carries no meta.json")
     patch = read_json(patch_path)
     try:
         validate("facts-patch.schema.json", patch)
@@ -428,16 +443,33 @@ def edit(root, fact_id, patch_path, run_dir, preview=False):
     for i, op in enumerate(patch["ops"], 1):
         try:
             before, after = _apply_op(work, op)
+            ops.append({"index": i, "op": op["op"], "path": op["path"],
+                        "before": before, "after": after})
+            if op["op"] != "append":          # §2.4: a `set` settles a dispute
+                _settle(work, op["path"],     # and a remove/unset rejects it;
+                        op["value"] if op["op"] == "set" else None,  # an append
+                        chat_src)             # answers no question at all
         except KeyError as exc:
             problems.append(f"op {i} {op['op']} {op['path']}: not found ({exc})")
             break
-        except (TypeError, ValueError) as exc:
+        # AttributeError joins the tuple for the same reason the shape check
+        # below exists: a value of the wrong SHAPE reaches a step that trusts
+        # the entry to be built as the schema says (here `_settle`'s walk over
+        # `accounts`), and a wrong instruction is a refusal, never a traceback.
+        except (AttributeError, TypeError, ValueError) as exc:
             problems.append(f"op {i} {op['op']} {op['path']}: {exc}")
             break
-        ops.append({"index": i, "op": op["op"], "path": op["path"],
-                    "before": before, "after": after})
-        _settle(work, op["path"], op["value"] if op["op"] == "set" else None,
-                chat_src)
+    if not problems:
+        # The shape, before anything reads it. Every step below — the
+        # `field_status` pruning, `_recompute_location`, the source union, the
+        # gate's own scope and prose checks — walks `work` as the schema says
+        # it is built, so `set scope "cooking"` or `set data "x"` used to
+        # traceback out of one of them instead of being refused. One check at
+        # the root covers all of them; the gate re-runs it on the whole file.
+        try:
+            validate("facts.schema.json", {**store[kind], "entries": [work]})
+        except ValueError as exc:
+            problems.append(f"the result fails facts.schema.json: {exc}")
     if not problems:
         field_status = {p: v for p, v in (work.get("field_status") or {}).items()
                         if path_exists(work, p)}
