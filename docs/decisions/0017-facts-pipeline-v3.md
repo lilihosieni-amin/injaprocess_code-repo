@@ -210,7 +210,19 @@ month names, table prefix) are data in `attachments/sheets/manifest.json` under
 `conventions`, written by `dump-workbook --init-manifest`, and no module that
 reads the estate carries one as a literal. See the v3.6 spec.
 
-2026-09-09 (addendum v3.7): **I8** — a `lang: table` rule's `data.table.rows[]`
+2026-09-09 (addendum v3.7): **I7** — a chat instruction is one round trip:
+`merge facts edit` rewrites a value in place (the write ladder could only
+create, fill, dispute, append and union, so «change this word» had no verb at
+all), settles any dispute its `set` touches, and leaves the entry confirmed as
+the chat actor's — a filesystem ledger, `facts/.confirmations.json`, keyed by
+the entry's own `updated_at` and read by the ui-backend beside its `app.db`
+marks, because the engine cannot reach that database (ARD §1). `edit` writes a
+row always; `apply`/`resolve`/`retire`/`promote` only when the run's `meta.json`
+says `origin: chat`; `revert` forgets the rows its run wrote; and `save_store`
+prunes every row whose entry has moved on or gone, so the file can never carry a
+stale vouch. See the v3.7 spec §2–§3.
+
+**I8** — a `lang: table` rule's `data.table.rows[]`
 is a list of **flat** objects keyed by the table's own `inputs[]`/`outputs[]`,
 and no other shape survives. Three contracts had left the row shape undefined —
 both store schemas typed `table` as a bare object, and the shape card the model

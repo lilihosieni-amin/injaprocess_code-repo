@@ -57,6 +57,7 @@ from merge_facts import (
     get_path,
     is_open,
     iter_ref_objects,
+    ledger,
     load_store,
     path_exists,
     remove_path,
@@ -140,6 +141,14 @@ def _append_delta(run_dir, verb, args):
     write_json_atomic(path, doc)
 
 
+def _record_chat(root, run_dir, entry):
+    """The chat confirmation for the one entry this verb wrote — only when the
+    run says `origin: chat` (v3.7 §3.3). `edit` is the exception and records
+    always; it calls `ledger.record` itself."""
+    run_dir = pathlib.Path(run_dir)
+    ledger.record(root, run_dir, _run_ref(pathlib.Path(root), run_dir), [entry])
+
+
 def _clear_unit_ref(entry, field):
     """§4: resolving a `unit` leaf drops the `unit_ref` written beside it. The
     pair is written together, so a settled symbol left sitting next to the ref
@@ -187,6 +196,7 @@ def resolve(root, fact_id, field, account_id, run_dir):
     entry["updated_at"] = _now()
     _snapshot(root, pathlib.Path(run_dir))
     save_store(root, store)
+    _record_chat(root, run_dir, entry)
     _append_delta(run_dir, "resolve",
                   {"id": fact_id, "field": field, "account": account_id})
 
@@ -215,6 +225,7 @@ def retire(root, fact_id, heir, run_dir, date=None):
     entry["updated_at"] = _now()
     _snapshot(root, pathlib.Path(run_dir))
     save_store(root, store)
+    _record_chat(root, run_dir, entry)
     _append_delta(run_dir, "retire",
                   {"id": fact_id, "heir": heir, "date": entry["valid_to"]})
 
@@ -271,6 +282,7 @@ def promote(root, fact_id, kind, key, run_dir):
         save_store(root, store)
     except ValueError as e:
         _fail(str(e))
+    _record_chat(root, run_dir, entry)
     _append_delta(run_dir, "promote", {"id": fact_id, "kind": kind, "key": key})
 
 
@@ -409,7 +421,8 @@ def edit(root, fact_id, patch_path, run_dir, preview=False):
     kind, entry = _find(store, fact_id)
     if entry is None:
         _fail(f"entry {fact_id} not found")
-    chat_src = _chat_source(_run_ref(root, run_dir))
+    run_ref = _run_ref(root, run_dir)
+    chat_src = _chat_source(run_ref)
     work = copy.deepcopy(entry)
     ops, problems, entries = [], [], None
     for i, op in enumerate(patch["ops"], 1):
@@ -459,7 +472,9 @@ def edit(root, fact_id, patch_path, run_dir, preview=False):
     store[kind]["entries"] = entries
     _snapshot(root, run_dir)
     save_store(root, store)
-    # ledger: Task 2
+    # Always, whatever `meta.json` says: the verb exists for chat instructions,
+    # and I7 asks that one leave nothing for the UI to accept (v3.7 §3.3).
+    ledger.record(root, run_dir, run_ref, [work], force=True)
     _append_delta(run_dir, "edit", {"id": fact_id,
                                     "patch": pathlib.Path(patch_path).name,
                                     "ops": len(ops)})
