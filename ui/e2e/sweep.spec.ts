@@ -124,14 +124,14 @@ const RULE: FactBundle = {
     data: {
       lang: 'feel',
       expr: 'declared_use = start + received - end',
-      inputs: [{ key: 'start', title: 'موجودی اول شب', unit: 'kg', unit_title: 'کیلوگرم' }],
+      inputs: [{ key: 'start', title: 'موجودی اول شب', unit: 'kg' }],
       outputs: [{ key: 'declared_use', title: 'مصرف اعلامی', nature: 'observed' }],
     },
   },
   confirmation: { confirmed: true, can_confirm: true, fingerprint: 'sha256:abc' },
   red_paths: { unknown: [], disputed: [] },
   resolved: {}, row_titles: {}, path_labels: {}, consumers: [], processes: [],
-  workbook_titles: {}, binding_labels: {},
+  workbook_titles: {}, unit_titles: {}, binding_labels: {},
   original: null,
 }
 
