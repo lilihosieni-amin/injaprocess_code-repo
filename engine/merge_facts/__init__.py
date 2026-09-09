@@ -217,9 +217,15 @@ def _step(value, seg):
     if isinstance(value, dict):
         return value[seg]
     if isinstance(value, list):
-        for member in value:
-            if isinstance(member, dict) and member.get("key") == seg:
-                return member
+        return value[_member_index(value, seg)]
+    raise KeyError(seg)
+
+def _member_index(members, seg):
+    """Where the member `seg` names sits — by its `key`, or, for `accounts[]`,
+    by its `id` (v3.7 §2.2: the one keyed list whose members carry no `key`)."""
+    for i, member in enumerate(members):
+        if isinstance(member, dict) and seg in (member.get("key"), member.get("id")):
+            return i
     raise KeyError(seg)
 
 def get_path(entry, path):
@@ -235,25 +241,52 @@ def path_exists(entry, path):
     except (KeyError, TypeError):
         return False
 
+def _parent(entry, path):
+    """The container the last segment of `path` names, and that segment."""
+    segs = path.split("/")
+    node = entry
+    for seg in segs[:-1]:
+        node = _step(node, seg)
+    return node, segs[-1]
+
 def set_path(entry, path, value):
     """Write `value` at the QF-7 path `path` — the mirror of `get_path`. The
     walk to the parent container is identical (`_step`, segment by segment);
-    only the last segment differs, an assignment instead of a read."""
-    node = entry
-    segs = path.split("/")
-    for seg in segs[:-1]:
-        node = _step(node, seg)
-    last = segs[-1]
+    only the last segment differs, an assignment instead of a read. A missing
+    field on a dict parent is created; a missing list member is a KeyError —
+    there is nothing to name it by."""
+    node, last = _parent(entry, path)
     if isinstance(node, dict):
         node[last] = value
     elif isinstance(node, list):
-        for i, member in enumerate(node):
-            if isinstance(member, dict) and member.get("key") == last:
-                node[i] = value
-                return
-        raise KeyError(last)
+        node[_member_index(node, last)] = value
     else:
         raise TypeError(f"{path!r} is not addressable")
+
+def remove_path(entry, path):
+    """Delete the list member the last segment names (v3.7 §2.2 `remove`)."""
+    node, last = _parent(entry, path)
+    if not isinstance(node, list):
+        raise TypeError(f"{path!r} is not a list member")
+    del node[_member_index(node, last)]
+
+def unset_path(entry, path):
+    """Delete the dict field the last segment names (v3.7 §2.2 `unset`)."""
+    node, last = _parent(entry, path)
+    if not isinstance(node, dict):
+        raise TypeError(f"{path!r} is not a field")
+    del node[last]
+
+def append_path(entry, path, value):
+    """Append `value` to the list at `path`, creating it on an existing dict
+    parent (v3.7 §2.2 `append`)."""
+    node, last = _parent(entry, path)
+    if not isinstance(node, dict):
+        raise TypeError(f"{path!r} is not a field")
+    members = node.setdefault(last, [])
+    if not isinstance(members, list):
+        raise TypeError(f"{path!r} is not a list")
+    members.append(value)
 
 def account_id(field, statement, value, source):
     locator = source.get("cell") or source.get("lines") or source.get("function") \

@@ -3,12 +3,13 @@ from merge_facts import load_store
 from merge_facts.apply import apply
 from merge_facts.revert import revert
 from merge_facts.apply import _source_path_problems
-from merge_facts.verbs import (export, promote, repair_source_refs, resolve,
-                               retire)
+from merge_facts.verbs import (edit, export, promote, repair_source_refs,
+                               resolve, retire)
 import pytest
 
 # json: only the two locking tests below need it, to read `.index.json` back
 # and to snapshot the five facts files for a byte-identical check.
+import itertools
 import json
 
 def _disputed(root):
@@ -278,3 +279,186 @@ def test_resolving_a_unit_to_a_ref_is_refused_and_writes_nothing(tmp_path):
         resolve(root, entry["id"], "data/outputs/v/unit", chosen["id"],
                 _run_dir(root, "3"))
     assert {q.name: q.read_bytes() for q in (root / "facts").glob("*.json")} == before
+
+
+# --------------------------------------------------------------------------- #
+# v3.7 §2 — `merge facts edit`
+# --------------------------------------------------------------------------- #
+
+def _patch(root, name, ops):
+    return _write(root, name, {"schema_version": 1, "ops": ops})
+
+def _rule_entry(root, key="tol"):
+    return [x for x in load_store(root)["rule"]["entries"] if x["key"] == key][0]
+
+def _five(root):
+    """The five store files as bytes — the 'nothing written' assertion."""
+    from merge_facts import KIND_FILES, facts_dir
+    return {n: (facts_dir(root) / n).read_bytes() for n in KIND_FILES.values()
+            if (facts_dir(root) / n).is_file()}
+
+def test_edit_sets_a_prose_leaf_the_ladder_never_rewrites(tmp_path, monkeypatch):
+    root = _root(tmp_path); _seed_units(root)
+    apply(root, _write(root, "d1.json", _const_delta(5)), _run_dir(root, "1"))
+    e = _rule_entry(root)
+    run = _run_dir(root, "2")
+    # `_now` is second-resolution (QF-41's `iso`), and an apply and an edit in
+    # the same second stamp the same string — so the stamp is pinned rather
+    # than merely compared, which also says WHOSE clock wrote it.
+    monkeypatch.setattr("merge_facts.verbs._now", lambda: "2030-01-01T00:00:00Z")
+    edit(root, e["id"], _patch(root, "p.json",
+         [{"op": "set", "path": "statement", "value": "حد مجاز انحراف هر پرس"}]), run)
+    e2 = _rule_entry(root)
+    assert e2["statement"] == "حد مجاز انحراف هر پرس"
+    assert e2["updated_at"] == "2030-01-01T00:00:00Z" != e["updated_at"]
+    # provenance: one chat source naming the run, and the run's own record
+    chat = [s for s in e2["source"] if s["type"] == "chat"]
+    assert chat == [{"type": "chat", "ref": "runs/facts/cooking/2/meta.json",
+                     "run": "runs/facts/cooking/2"}]
+    assert (run / "facts-before" / "rules.json").is_file()
+    assert json.loads((run / "facts-delta.json").read_text(encoding="utf-8")) == [
+        {"verb": "edit", "args": {"id": e["id"], "patch": "p.json", "ops": 1}}]
+
+def test_edit_set_remove_unset_append_in_order(tmp_path):
+    root = _root(tmp_path); _seed_units(root)
+    delta = _const_delta(5)
+    delta["entries"][0]["aliases"] = ["تلورانس"]
+    delta["entries"][0]["data"]["outputs"][0]["per"] = "pizza"
+    apply(root, _write(root, "d1.json", delta), _run_dir(root, "1"))
+    e = _rule_entry(root)
+    edit(root, e["id"], _patch(root, "p.json", [
+        {"op": "set", "path": "data/outputs/v/value", "value": 7},
+        {"op": "unset", "path": "data/outputs/v/per"},
+        {"op": "append", "path": "aliases", "value": "حد مجاز"},
+        {"op": "append", "path": "data/outputs",
+         "value": {"key": "w", "title": "وزن", "unit": "g", "nature": "limit", "value": 1}},
+        {"op": "remove", "path": "data/outputs/w"},
+        {"op": "set", "path": "scope/departments", "value": ["cooking", "management"]},
+    ]), _run_dir(root, "2"))
+    e2 = _rule_entry(root)
+    out = e2["data"]["outputs"]
+    assert [o["key"] for o in out] == ["v"] and out[0]["value"] == 7 and "per" not in out[0]
+    assert e2["aliases"] == ["تلورانس", "حد مجاز"]
+    assert e2["scope"]["departments"] == ["cooking", "management"]
+
+@pytest.mark.parametrize("ops, fragment", [
+    ([{"op": "set", "path": "key", "value": "other"}], "identity"),
+    ([{"op": "set", "path": "id", "value": "F-00099"}], "identity"),
+    ([{"op": "set", "path": "status", "value": "confirmed"}], "derived"),
+    ([{"op": "remove", "path": "source/0"}], "source"),
+    ([{"op": "remove", "path": "data/outputs/nope"}], "not found"),
+    ([{"op": "unset", "path": "data/nope"}], "not found"),
+    ([{"op": "append", "path": "data/outputs", "value": {"key": "v", "value": 1}}], "already"),
+    ([{"op": "set", "path": "statement", "value": "Table_Mavad را بخوان"}], "names"),
+    ([{"op": "set", "path": "data/outputs/v/unit", "value": "stone"}], "unit"),
+    ([{"op": "set", "path": "data/outputs/v", "value": {"key": "z", "value": 1}}], "key"),
+])
+def test_edit_refuses_and_writes_nothing(tmp_path, capsys, ops, fragment):
+    root = _root(tmp_path); _seed_units(root)
+    apply(root, _write(root, "d1.json", _const_delta(5)), _run_dir(root, "1"))
+    e = _rule_entry(root)
+    before = _five(root)
+    run = _run_dir(root, "2")
+    with pytest.raises(SystemExit) as exc:
+        edit(root, e["id"], _patch(root, "p.json", ops), run)
+    assert exc.value.code == 2
+    assert fragment in capsys.readouterr().err
+    assert _five(root) == before
+    assert not (run / "facts-before").exists() and not (run / "facts-delta.json").exists()
+
+def test_edit_refuses_a_patch_the_schema_will_not_take(tmp_path, capsys):
+    """§2.3 item 1 — `facts-patch.schema.json` is the first gate: a `set`
+    without a `value` is an instruction with a hole in it, not an unset."""
+    root = _root(tmp_path); _seed_units(root)
+    apply(root, _write(root, "d1.json", _const_delta(5)), _run_dir(root, "1"))
+    e = _rule_entry(root)
+    before = _five(root)
+    with pytest.raises(SystemExit) as exc:
+        edit(root, e["id"], _patch(root, "p.json", [{"op": "set", "path": "statement"}]),
+             _run_dir(root, "2"))
+    assert exc.value.code == 2
+    assert "facts-patch.schema.json" in capsys.readouterr().err
+    assert _five(root) == before
+
+
+def test_edit_settles_a_dispute_three_ways(tmp_path):
+    root = _root(tmp_path); _seed_units(root)
+    e = _disputed(root)                                   # values 5 and 4 on data/outputs/v/value
+    # (a) the new value matches an account → chosen, the other rejected
+    edit(root, e["id"], _patch(root, "p1.json",
+         [{"op": "set", "path": "data/outputs/v/value", "value": 4}]), _run_dir(root, "3"))
+    e = _rule_entry(root)
+    assert {a["value"]: a["status"] for a in e["accounts"]} == {5: "rejected", 4: "chosen"}
+    assert e["status"] == "confirmed"
+    # (b) a value no account holds → a chosen chat account is appended, the rest rejected
+    e = _disputed_again(root)
+    edit(root, e["id"], _patch(root, "p2.json",
+         [{"op": "set", "path": "data/outputs/v/value", "value": 9}]), _run_dir(root, "5"))
+    e = _rule_entry(root)
+    chosen = [a for a in e["accounts"] if a["status"] == "chosen"]
+    assert len(chosen) == 1 and chosen[0]["value"] == 9 and chosen[0]["source"]["type"] == "chat"
+    assert not [a for a in e["accounts"] if a["status"] == "open"]
+    # (c) unset of a disputed path rejects every open account on it
+    e = _disputed_again(root)
+    edit(root, e["id"], _patch(root, "p3.json",
+         [{"op": "set", "path": "data/outputs/v/value", "value": None}]), _run_dir(root, "7"))
+    assert not [a for a in _rule_entry(root)["accounts"] if a["status"] == "open"]
+
+_again = itertools.count(101)
+
+def _disputed_again(root):
+    """A fresh dispute on the same path after the previous one was settled.
+
+    The value is new each call: `ladder._dispute` dedups an account by
+    (field, statement, value, source), so re-applying a value the entry has
+    already argued over adds nothing and would leave the path settled.
+    """
+    n = next(_again)
+    apply(root, _write(root, f"d{n}.json", _const_delta(n)), _run_dir(root, str(n)))
+    return _rule_entry(root)
+
+def test_edit_preview_prints_current_and_proposed_and_writes_nothing(tmp_path, capsys):
+    root = _root(tmp_path); _seed_units(root)
+    apply(root, _write(root, "d1.json", _const_delta(5)), _run_dir(root, "1"))
+    e = _rule_entry(root)
+    before = _five(root)
+    run = _run_dir(root, "2")
+    report = edit(root, e["id"], _patch(root, "p.json",
+                  [{"op": "set", "path": "statement", "value": "حد مجاز انحراف"}]), run,
+                  preview=True)
+    out = capsys.readouterr().out
+    assert "[1] set statement" in out and "فعلی:" in out and "پیشنهاد:" in out
+    assert "حد مجاز" in out and "حد مجاز انحراف" in out and out.rstrip().endswith("OK")
+    assert report["problems"] == [] and report["ops"][0]["after"] == "حد مجاز انحراف"
+    assert _five(root) == before and not (run / "facts-before").exists()
+
+def test_edit_preview_reports_a_refusal_with_exit_2_from_the_cli(tmp_path, capsys, monkeypatch):
+    from merge.cli import main as merge_main
+    root = _root(tmp_path); _seed_units(root)
+    apply(root, _write(root, "d1.json", _const_delta(5)), _run_dir(root, "1"))
+    e = _rule_entry(root)
+    patch = _patch(root, "p.json", [{"op": "set", "path": "key", "value": "x"}])
+    monkeypatch.setenv("DATA_ROOT", str(root))
+    with pytest.raises(SystemExit) as exc:
+        merge_main(["facts", "edit", "--id", e["id"], "--patch", str(patch),
+                    "--run", str(_run_dir(root, "2")), "--preview"])
+    assert exc.value.code == 2
+    assert "identity" in capsys.readouterr().err
+
+def test_revert_of_an_edit_restores_the_entry(tmp_path):
+    root = _root(tmp_path); _seed_units(root)
+    apply(root, _write(root, "d1.json", _const_delta(5)), _run_dir(root, "1"))
+    e = _rule_entry(root)
+    run = _run_dir(root, "2")
+    edit(root, e["id"], _patch(root, "p.json",
+         [{"op": "set", "path": "statement", "value": "حد مجاز انحراف"}]), run)
+    revert(root, run)
+    e2 = _rule_entry(root)
+    assert e2["statement"] == e["statement"] and e2["source"] == e["source"]
+
+def test_an_accounts_member_is_addressed_by_its_id(tmp_path):
+    root = _root(tmp_path); _seed_units(root)
+    e = _disputed(root)
+    acc = e["accounts"][0]
+    from merge_facts import get_path
+    assert get_path(e, f"accounts/{acc['id']}") is acc

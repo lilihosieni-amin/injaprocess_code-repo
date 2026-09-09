@@ -1,4 +1,4 @@
-"""`merge facts resolve|retire|promote|export|repair-source-refs` — the verbs
+"""`merge facts resolve|retire|promote|edit|export|repair-source-refs` — the verbs
 that mutate an already-applied entry by hand rather than by re-reading a source
 (spec §12, rows 2-5). `apply` is the only verb that reads a delta; these read a
 decision an operator (or a downstream tool) already made.
@@ -12,8 +12,13 @@ all, so what a delta cannot express has to be a verb or nothing. Its own
 docstring carries the bug it was written for and why `revert` could not serve
 instead.
 
-Every *writing* verb (`resolve`, `retire`, `promote` and `repair-source-refs`)
-shares one shape:
+`edit` (v3.7 §2) is the same argument taken one step further: the ladder
+cannot rewrite ANY value in place, so the owner asking the bot to change a
+word in ten statements changed nothing at all. It applies a patch of
+set/remove/unset/append ops to one entry, gated by the store's own gate.
+
+Every *writing* verb (`resolve`, `retire`, `promote`, `edit` and
+`repair-source-refs`) shares one shape:
 `load_store`, find the entry, mutate it, `entry["status"] = derive_status
 (entry)`, stamp `updated_at` on the touched entry only, snapshot the five
 files to `{run_dir}/facts-before/` (`apply`'s own `_snapshot`, Task 5 — taken
@@ -38,21 +43,28 @@ record rather than the day the verb ran.
 """
 import copy
 import csv
+import json
 import pathlib
 import sys
 from datetime import datetime, timezone
 
-from engine_common import read_json, under, write_json_atomic
+from engine_common import read_json, under, validate, write_json_atomic
 from merge_facts import (
     KIND_FILES,
     KIND_ORDER,
+    append_path,
     derive_status,
     get_path,
     is_open,
+    iter_ref_objects,
     load_store,
+    path_exists,
+    remove_path,
     save_store,
     set_path,
+    unset_path,
 )
+from merge_facts import conventions
 # `_snapshot` is `apply`'s own (Task 5): the five files as they stand right
 # before a write, kept at `{run_dir}/facts-before/` so `revert` (Task 7) can
 # restore an entry wholesale. Every *writing* verb here needs the same
@@ -60,8 +72,18 @@ from merge_facts import (
 # an `apply` run's, and the controller ruling for `revert` treats a verbs
 # run's `args["id"]` targets as ordinary matched entries, which only works if
 # there is something to restore them from.
-from merge_facts.apply import KEY_RE, _snapshot, _today_jalali
+from merge_facts.apply import (KEY_RE, _recompute_location, _run_ref, _snapshot,
+                               _today_jalali)
 from merge_facts.audit import _manifest
+from merge_facts.content import check_document
+# `edit` settles a dispute the way the ladder raised one: the same numeric
+# equality (`_equal`), the same account id (`with_account_id`), the same dedup
+# key for the chat citation it unions in (`UNION_FIELDS["source"]`) and the
+# same answer to "what makes two members of this collection the same one"
+# (`keyfn_for`). A second opinion on any of the four is a second store.
+from merge_facts.ladder import UNION_FIELDS, _equal, keyfn_for, with_account_id
+from merge_facts.preconditions import (FACT_ID_RE, _unit_row_keys,
+                                       undeclared_unit_problems)
 
 _KIND_DATA_STUBS = {
     # Neutral containers `promote` may inject — empty, so nothing is
@@ -83,9 +105,15 @@ _KIND_REQUIRED_KEYS = {
 }
 
 
-def _fail(msg):
-    print(f"precondition failed: {msg}", file=sys.stderr)
+def _refuse(problems):
+    """Exit 2 with every reason on stderr — and nothing written (ARD §7)."""
+    for msg in problems:
+        print(f"precondition failed: {msg}", file=sys.stderr)
     raise SystemExit(2)
+
+
+def _fail(msg):
+    _refuse([msg])
 
 
 def _find(store, fact_id):
@@ -242,6 +270,192 @@ def promote(root, fact_id, kind, key, run_dir):
     except ValueError as e:
         _fail(str(e))
     _append_delta(run_dir, "promote", {"id": fact_id, "kind": kind, "key": key})
+
+
+# --------------------------------------------------------------------------- #
+# `edit` — v3.7 §2: the one verb that rewrites a value in place
+# --------------------------------------------------------------------------- #
+
+#: The top-level fields an op may never name, and why (§2.3 item 2).
+_EDIT_IMMUTABLE = {"id": "identity", "kind": "identity (promote changes a note's kind)",
+                   "key": "identity", "status": "derived", "updated_at": "derived"}
+
+#: How much of a value the preview prints before it elides the middle (§2.5).
+_RENDER_LIMIT = 400
+
+
+def _chat_source(run_ref):
+    """The citation an edit leaves behind: the run that carried the owner's
+    own instruction — the card's «گفتگو» row."""
+    return {"type": "chat", "ref": f"{run_ref}/meta.json", "run": run_ref}
+
+
+def _render(value, limit=_RENDER_LIMIT):
+    """A value as the store holds it: the bare string for a string, JSON for
+    everything else (Latin digits for a number); elided in the middle past
+    `limit` characters (§2.5)."""
+    text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
+    if len(text) > limit:
+        text = text[:limit // 2] + "…" + text[-(limit // 2):]
+    return text
+
+
+def _apply_op(entry, op):
+    """One op on `entry`; returns `(before, after)` for the preview. Raises
+    KeyError for a path that names nothing, TypeError/ValueError with the
+    refusal's own wording for an op the entry will not take."""
+    path, verb = op["path"], op["op"]
+    head = path.split("/", 1)[0]
+    if head in _EDIT_IMMUTABLE:
+        raise ValueError(f"{path!r} is {_EDIT_IMMUTABLE[head]} and is never edited")
+    if head == "source":
+        raise ValueError("source[] is provenance and is never edited "
+                         "(repair-source-refs is the one writer of a citation)")
+    before = get_path(entry, path) if path_exists(entry, path) else None
+    if verb == "set":
+        value = op["value"]
+        if isinstance(before, dict) and "key" in before \
+                and isinstance(value, dict) and value.get("key") != before["key"]:
+            raise ValueError(f"{path!r}: a member replaced by set keeps its key")
+        set_path(entry, path, value)          # creates a field, never a member
+        return before, value
+    if verb == "append":
+        value, members = op["value"], before or []
+        keyfn = keyfn_for(path.rsplit("/", 1)[-1])
+        if isinstance(value, dict) and any(
+                isinstance(m, dict) and keyfn(m) == keyfn(value) for m in members):
+            raise ValueError(f"{path!r}: a member with that key is already there "
+                             f"— set it")
+        append_path(entry, path, value)
+        return None, value              # the preview shows what joins, not the list
+    if not path_exists(entry, path):          # remove / unset: nothing to undo
+        raise KeyError(path)
+    (remove_path if verb == "remove" else unset_path)(entry, path)
+    return before, None
+
+
+def _settle(entry, path, value, chat_src):
+    """A `set` on a disputed path settles it (§2.4), the way `resolve` does:
+    the account holding the value the edit installs is `chosen` — a new chat
+    account when none holds it — and every OTHER account on that path is
+    `rejected`, whatever it said before. A `remove`/`unset` (`value` None)
+    rejects them all and appends nothing: the question is gone, not answered.
+    """
+    accounts = entry.get("accounts") or []
+    on_path = [a for a in accounts if a.get("field") == path]
+    if not any(a.get("status") == "open" for a in on_path):
+        return                                # no dispute here to settle
+    match = next((a for a in on_path if _equal(a.get("value"), value)), None)
+    for a in on_path:
+        a["status"] = "rejected"
+    if match is not None:
+        match["status"] = "chosen"
+    elif value is not None:
+        accounts.append(with_account_id(
+            {"field": path, "statement": _render(value), "value": value,
+             "source": {k: v for k, v in chat_src.items() if k != "run"},
+             "speaker_role": None, "status": "chosen"}))
+    _clear_unit_ref(entry, path)
+
+
+def _gate(root, store, kind, entry):
+    """The store gate every run passes, on this one entry (§2.3 item 4): the
+    `save_store` schema pass, the content pass `validate facts` runs, QF-40's
+    declared unit symbols and QF-37's resolvable `{ref}`s. Nothing less — an
+    entry a chat instruction rewrote is written to the same five files as one
+    a delta wrote, and there is no second, softer contract for it."""
+    problems = []
+    try:
+        validate("facts.schema.json", store[kind])
+    except ValueError as exc:
+        problems.append(str(exc))
+    unit_rows = _unit_row_keys(store, [])
+    doc = {"schema_version": store[kind]["schema_version"], "entries": [entry]}
+    problems += check_document(doc, "facts", store=store, unit_symbols=unit_rows,
+                               conventions=conventions.load(root))
+    problems += undeclared_unit_problems(entry, unit_rows, entry["id"])
+    for obj in iter_ref_objects(entry.get("data") or {}):
+        ref = obj.get("ref")
+        if isinstance(ref, str) and FACT_ID_RE.fullmatch(ref) \
+                and _find(store, ref)[1] is None:
+            problems.append(f"{entry['id']}: ref {ref} names no entry")
+    return problems
+
+
+def edit(root, fact_id, patch_path, run_dir, preview=False):
+    """v3.7 §2 — set/remove/unset/append on one entry: the ladder can create,
+    fill, dispute, append and union, and none of those is "change this word".
+    The ops run in order on a copy, any dispute they touch settles, the copy
+    faces the store's own gate, and only then is anything written. `preview`
+    prints the block of §2.5 and writes nothing at all.
+
+    Returns `{"id", "ops": [{index, op, path, before, after}], "problems"}`.
+    """
+    root, run_dir = pathlib.Path(root), pathlib.Path(run_dir)
+    patch = read_json(patch_path)
+    try:
+        validate("facts-patch.schema.json", patch)
+    except ValueError as exc:
+        _fail(str(exc))
+    store = load_store(root)
+    kind, entry = _find(store, fact_id)
+    if entry is None:
+        _fail(f"entry {fact_id} not found")
+    chat_src = _chat_source(_run_ref(root, run_dir))
+    work = copy.deepcopy(entry)
+    ops, problems, entries = [], [], None
+    for i, op in enumerate(patch["ops"], 1):
+        try:
+            before, after = _apply_op(work, op)
+        except KeyError as exc:
+            problems.append(f"op {i} {op['op']} {op['path']}: not found ({exc})")
+            break
+        except (TypeError, ValueError) as exc:
+            problems.append(f"op {i} {op['op']} {op['path']}: {exc}")
+            break
+        ops.append({"index": i, "op": op["op"], "path": op["path"],
+                    "before": before, "after": after})
+        _settle(work, op["path"], op["value"] if op["op"] == "set" else None,
+                chat_src)
+    if not problems:
+        field_status = {p: v for p, v in (work.get("field_status") or {}).items()
+                        if path_exists(work, p)}
+        if field_status:
+            work["field_status"] = field_status
+        else:
+            work.pop("field_status", None)
+        _recompute_location(work)
+        sources = work.setdefault("source", [])
+        source_key = UNION_FIELDS["source"]
+        if source_key(chat_src) not in {source_key(s) for s in sources}:
+            sources.append(chat_src)
+        work["status"] = derive_status(work)
+        work["updated_at"] = _now()
+        entries = [work if e["id"] == fact_id else e
+                   for e in store[kind]["entries"]]
+        problems += _gate(root, {**store, kind: {**store[kind], "entries": entries}},
+                          kind, work)
+    report = {"id": fact_id, "ops": ops, "problems": problems}
+    if preview:
+        for o in ops:
+            print(f"[{o['index']}] {o['op']} {o['path']}")
+            if o["before"] is not None:
+                print(f"    فعلی:    {_render(o['before'])}")
+            if o["after"] is not None:
+                print(f"    پیشنهاد: {_render(o['after'])}")
+    if problems:
+        _refuse(problems)
+    if preview:
+        print("OK")
+        return report
+    store[kind]["entries"] = entries
+    _snapshot(root, run_dir)
+    save_store(root, store)
+    # ledger: Task 2
+    _append_delta(run_dir, "edit", {"id": fact_id,
+                                    "patch": pathlib.Path(patch_path).name,
+                                    "ops": len(ops)})
+    return report
 
 
 def _repaired_ref(root, manifest_by_id, ref):

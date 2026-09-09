@@ -19,6 +19,7 @@ these); kept in `code-repo` so runtime (INV-2) cannot weaken validation.
 | `facts.schema.json` | the facts store — envelope + five kinds (quantitative-facts design §6/§7) | merge facts | ui-backend, UI, later runs |
 | `facts-delta.schema.json` | agent-proposed changes to the facts store (design §4) | facts extract agent | merge facts |
 | `facts-unit.schema.json` | one unit's decisions over its candidates (v3 design §2.5) | quantify agent (unit/review mode) | `validate facts-unit`, `facts-plan assemble` |
+| `facts-patch.schema.json` | one chat instruction's operations on one entry — v3.7 §2.2 | facts chat agent | `merge facts edit` |
 | `facts-index.schema.json` | flattened, filterable rows over the facts store (design §7) | merge facts | ui-backend, UI |
 | `facts-idseq.schema.json` | facts id sequence counter state | allocate-id | allocate-id |
 | `facts-run-meta.schema.json` | per-run metadata for a facts pipeline/chat/UI run (design §4) | process-facts | audit |
