@@ -1990,9 +1990,22 @@ def report(root, run_dir):
         out.append("چه چیزهایی بررسی نشد و در اجرای بعدی تکمیل می‌شود:")
         out += _held_back_blocks(assembly["undecided"], UNDECIDED_FA, "    • ")
         out.append("یک بخش از داده‌ها ناتمام ماند و در اجرای بعدی تکمیل می‌شود.")
-    out.append({"applied": "بازبینی انجام شد.",
-                "discarded": "بازبینی انجام نشد و نتیجه بدون آن ثبت شد.",
-                "absent": "بازبینی اجرا نشد."}[assembly["review_status"]])
+    # R9 — a review is never dropped whole any more, so «انجام نشد» is gone:
+    # either it ran, or (engine-only) it was never asked for. A `partial` run
+    # names each decision it held back, by the entry's own title and the
+    # owner's words for the reason — never the engine's `lines`, which are an
+    # `n`, a field path and a code.
+    held = assembly.get("review_held") or []
+    status = assembly["review_status"]
+    if status == "partial" and held:
+        out.append(f"بازبینی انجام شد؛ {_fa(len(held))} تصمیم آن کنار گذاشته شد:")
+        out += [f'  • «{row["label"]}» — '
+                f'{REVIEW_HELD_FA.get(row["reason"], REVIEW_HELD_FA["refused"])}'
+                for row in held]
+    else:
+        out.append({"applied": "بازبینی انجام شد.",
+                    "partial": "بازبینی انجام شد.",
+                    "absent": "بازبینی اجرا نشد."}[status])
     path = run_dir / "report.md"
     write_text_atomic(path, "\n".join(out) + "\n")
     return path
