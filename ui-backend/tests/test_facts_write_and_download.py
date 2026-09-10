@@ -287,11 +287,11 @@ def test_a_resolve_runs_the_engine_and_serves_the_settled_entry(data_root,
     items = json.loads(
         (data_root / "facts" / "items.json").read_text(encoding="utf-8"))
     assert items["entries"][0]["data"]["unit"] == "kg"
-    # …and both halves are committed. The store and the run directory that
-    # says why it moved land in one commit, which is what a confirmation's
-    # `data_repo_commit` column is later reconciled against (QF-24); a store
-    # left dirty is a change the next `merge` run would carry into somebody
-    # else's commit.
+    # …and nothing is left uncommitted. The run directory that says why the
+    # store moved is committed; the store itself is ignored data since
+    # 2026-09-10 and is never staged, so a clean tree is the whole contract —
+    # anything dirty here is a change the next `merge` run would carry into
+    # somebody else's commit.
     dirty = subprocess.run(["git", "-C", str(data_root), "status", "--porcelain"],
                            capture_output=True, text=True).stdout
     assert dirty == "", f"left uncommitted:\n{dirty}"
