@@ -1092,8 +1092,8 @@ async def resolve_fact(fid: str, body: ResolveFactBody, request: Request,
     # snapshots of a store the other has already moved, which is a `revert`
     # that restores the wrong bytes.
     #
-    # The commit is inside for the reason it is inside there: the run that
-    # records why the store moved is written and committed under one lock.
+    # The commit is inside for the reason it is inside there: the store and
+    # the record of why it moved must not be split by another writer's commit.
     async with storage.file_lock(cfg.data_root / "facts"):
         run = engine.facts_run_dir(cfg, _run_department(entry),
                                    user["username"])
@@ -1102,10 +1102,6 @@ async def resolve_fact(fid: str, body: ResolveFactBody, request: Request,
         except engine.EngineError as e:
             raise HTTPException(status_code=422, detail=e.message)
         engine.finish_facts_run(run)
-        # `facts/` is ignored data since 2026-09-10 (owner's ruling), so the
-        # store itself is not staged — `git add` on an ignored path fails the
-        # whole commit. What is committed is the run: who resolved what, and
-        # why. Undoing a store change never needed git anyway; `merge facts
-        # revert` restores the run's own `facts-before` snapshot.
-        gitcommit.commit(cfg, [run], fid, f"facts resolve {body.field}")
+        gitcommit.commit(cfg, [cfg.data_root / "facts", run], fid,
+                         f"facts resolve {body.field}")
     return _bundle(request, user, fid)

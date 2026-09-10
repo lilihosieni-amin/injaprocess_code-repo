@@ -85,12 +85,6 @@ def data_root(tmp_path):
         _dump(ov), encoding="utf-8")
     (root / "facts").mkdir(parents=True)
     _write_facts_store(root)
-    # The real data-repo ignores `facts/` (owner's ruling, 2026-09-10: the
-    # store is data, kept on disk and never committed), so the fixture ignores
-    # it too — otherwise a write here would read as an uncommitted change that
-    # production would never have.
-    # Anchored: a bare `facts/` would also swallow `runs/facts/…`.
-    (root / ".gitignore").write_text("/facts/\n", encoding="utf-8")
     subprocess.run(["git", "init", "-q", str(root)], check=True)
     subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
     subprocess.run(["git", "-C", str(root), "-c", "user.name=t",
