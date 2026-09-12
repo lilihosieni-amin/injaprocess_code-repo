@@ -149,10 +149,14 @@ def build_handlers(config):
     async def f_collect(update: Update, ctx):
         if not guard(update):
             return ConversationHandler.END
-        doc = update.message.document
+        msg = update.message
+        # A picture sent from the gallery arrives as `photo` (a list of sizes, largest
+        # last) with no file_name; only «send as file» arrives as `document`.
+        doc = msg.document or msg.photo[-1]
         b = ctx.user_data["batch"]
         data = bytes(await (await doc.get_file()).download_as_bytearray())
-        b.add_file(doc.file_name or "file", stage(root, data, hint="file"))
+        name = getattr(doc, "file_name", None) or f"photo-{doc.file_unique_id}.jpg"
+        b.add_file(name, stage(root, data, hint="file"))
         await update.message.reply_text(f"دریافت شد ({len(b.files)})")
         return F_COLLECT
 

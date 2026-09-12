@@ -92,7 +92,7 @@ def build_application(config):
             V_DEPTS: [CallbackQueryHandler(h["v_depts"], pattern=r"^vd:")],
             V_FILE: [MessageHandler(filters.VOICE | filters.AUDIO, h["v_file"])],
             F_DEPT: [CallbackQueryHandler(h["f_dept"], pattern=r"^fd:")],
-            F_COLLECT: [MessageHandler(filters.Document.ALL, h["f_collect"]),
+            F_COLLECT: [MessageHandler(filters.Document.ALL | filters.PHOTO, h["f_collect"]),
                         CommandHandler("done", h["f_done"])],
         },
         fallbacks=[CommandHandler("cancel", h["cancel"])],
