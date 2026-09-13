@@ -863,7 +863,10 @@ def test_check_reports_qf44_v3_readiness(tmp_path):
     assert report["units_done"] is True and report["review_ran"] is True
 
 
-def test_check_counts_a_lint_failure_and_a_missing_expression(tmp_path):
+def test_a_style_finding_is_listed_and_does_not_block_readiness(tmp_path):
+    """Spec 2026-09-13 B38–B44, section 9 default: the prose lint is a note.
+    `audit` lists it as a `style` finding (information, not a defect) and
+    `check`'s readiness no longer counts it."""
     root = _root(tmp_path); _seed_units(root)
     bound = _bound_rule("T-2", "enheraf", "انحراف", "gz__s11__j__r6", "J6:J15")
     bound["data"].pop("expr")
@@ -881,7 +884,11 @@ def test_check_counts_a_lint_failure_and_a_missing_expression(tmp_path):
     path.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
     report = check(root)
     assert report["expr_missing"] == 1
-    assert report["lint_failures"] == 1
+    assert report["lint_failures"] == 0
+    style = _of(audit(root), "style")
+    assert {(i["id"], i["proposal"]) for i in style} == {(entry["id"], "info")}
+    assert any(i["message"].startswith("statement names cell or range 'J6'")
+               for i in style)
 
 
 def test_audit_persian_renders_every_code_from_the_entrys_title(tmp_path):

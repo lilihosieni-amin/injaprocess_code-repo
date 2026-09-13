@@ -3,6 +3,11 @@
 check (task-9-brief.md Step 1), each a minimal document, plus the two wiring
 points: `validate` CLI (schema pass, then content) and `merge facts apply`'s
 precondition pass (Task 5's ponytail marker, now replaced).
+
+Gate tiers (spec 2026-09-13 §5B): every rule here that used to refuse now
+notes, except a key still off the grammar after the safe repair. The checks
+below still assert what each rule says; `_noted` asserts none of it refuses.
+`test_content_tiers.py` asserts each note's path and mark.
 """
 import json
 import subprocess
@@ -12,8 +17,20 @@ import pathlib
 import pytest
 from facts_helpers import _const_delta, _root, _run_dir, _seed_units, _write
 from merge_facts.apply import apply
+from merge_facts import load_store
 from merge_facts.content import check_document, group_messages, lint_prose
+from merge_facts.tiers import REFUSE, lines
 from validate.cli import main
+
+NEEDS_TRACK_S = pytest.mark.xfail(
+    strict=True, reason="needs track S: apply stores a NOTE instead of refusing")
+
+
+def _noted(found):
+    """Today's `label: message` lines, after asserting that none of them is a
+    refusal any more (spec 2026-09-13 §5B)."""
+    assert [f.line() for f in found if f.tier == REFUSE] == []
+    return lines(found)
 
 
 # --------------------------------------------------------------------------- #
@@ -58,7 +75,7 @@ def test_expr_undeclared_identifier_fails():
                        "outputs": [{"key": "v", "title": "v", "unit": "g"}],
                        "lang": "feel", "expr": "v = x + y"})
     msgs = check_document(_doc(rule), "facts-delta")
-    assert any("y" in m for m in msgs)
+    assert any("y" in m for m in _noted(msgs))
 
 
 def test_expr_declared_identifiers_pass():
@@ -95,7 +112,7 @@ def test_aggregate_form_requires_whole_table_edge_with_no_row():
                        "lang": "feel",
                        "expr": "total = sum over bom_row of (a * b)"})
     msgs = check_document(_doc(bom, rule), "facts-delta")
-    assert any("sum over bom_row" in m for m in msgs)
+    assert any("sum over bom_row" in m for m in _noted(msgs))
 
 
 # --- Task 9 review round 2: the from-shape check must fire on EVERY -------- #
@@ -111,7 +128,7 @@ def test_aggregate_without_parens_and_illegal_row_from_fails_shape():
                        "lang": "feel",
                        "expr": "total = sum over bom_row of bom_row"})
     msgs = check_document(_doc(rule), "facts-delta")
-    assert any("sum over bom_row" in m for m in msgs)
+    assert any("sum over bom_row" in m for m in _noted(msgs))
 
 
 def test_aggregate_without_parens_and_legal_from_has_no_shape_message():
@@ -192,7 +209,7 @@ def test_aggregate_body_identifier_neither_input_nor_column_fails_when_target_re
                        "lang": "feel",
                        "expr": "total = sum over bom_row of (grams * mystery)"})
     msgs = check_document(_doc(bom, rule), "facts-delta")
-    assert any("mystery" in m for m in msgs)
+    assert any("mystery" in m for m in _noted(msgs))
 
 
 def test_aggregate_target_unresolvable_without_store_resolves_with_store():
@@ -227,7 +244,7 @@ def test_unresolved_call_identifier_fails():
                        "lang": "feel", "expr": "v = helper_fn()",
                        "calls": [{"ref": "F-09999"}]})
     msgs = check_document(_doc(rule), "facts-delta")
-    assert any("helper_fn" in m for m in msgs)
+    assert any("helper_fn" in m for m in _noted(msgs))
 
 
 def test_intra_document_call_identifier_resolves():
@@ -275,7 +292,7 @@ def test_unit_mismatch_without_via_fails():
                       "outputs": [{"key": "v", "title": "v", "unit": "g"}],
                       "lang": "feel", "expr": "v = x"})
     msgs = check_document(_doc(record, rule), "facts-delta")
-    assert any("kg" in m and "g" in m for m in msgs)
+    assert any("kg" in m and "g" in m for m in _noted(msgs))
 
 
 def test_unit_mismatch_with_via_passes():
@@ -305,11 +322,13 @@ def test_unit_agreeing_passes():
 # 3. key patterns + __ reservation; refItems cell values
 # --------------------------------------------------------------------------- #
 
-def test_bad_nested_key_pattern_fails():
+def test_bad_nested_key_pattern_is_noted_when_repairable_and_refused_when_not():
     record = _record(data={"fields": [{"key": "Not-A-Key", "title": "c",
                                        "type": "number"}]})
     msgs = check_document(_doc(record), "facts-delta")
-    assert any("Not-A-Key" in m for m in msgs)
+    assert any("Not-A-Key" in m for m in _noted(msgs))
+    record["data"]["fields"][0]["key"] = "Not.A.Key"
+    assert [f.tier for f in check_document(_doc(record), "facts-delta")] == [REFUSE]
 
 
 def test_refitems_cell_not_minted_segment_fails():
@@ -324,7 +343,7 @@ def test_refitems_cell_not_minted_segment_fails():
                            "rows": [{"key": "row1",
                                     "ingredient": "T-99", "grams": 5}]})
     msgs = check_document(_doc(record), "facts-delta")
-    assert any("refItems" in m for m in msgs)
+    assert any("refItems" in m for m in _noted(msgs))
 
 
 def test_refitems_cell_carrying_the_namespaces_code_passes():
@@ -345,10 +364,10 @@ def test_refitems_cell_carrying_the_namespaces_code_passes():
     assert check_document(_doc(table("##", "پنیر پیتزا ##1")), "facts-delta") == []
     assert check_document(_doc(table("#", "اینجا پیتزا #61")), "facts-delta") == []
     msgs = check_document(_doc(table("##", "پنیر پیتزا")), "facts-delta")
-    assert any("neither an item key nor a ## code" in m for m in msgs)
+    assert any("neither an item key nor a ## code" in m for m in _noted(msgs))
     # A `#` namespace does not admit a `##` code: the two are different lists.
     msgs = check_document(_doc(table("#", "پنیر پیتزا ##1")), "facts-delta")
-    assert any("neither an item key nor a # code" in m for m in msgs)
+    assert any("neither an item key nor a # code" in m for m in _noted(msgs))
 
 
 def test_refitems_cell_minted_segment_passes():
@@ -377,7 +396,7 @@ def test_processes_ref_bad_grammar_fails():
                         "ref": "departments/cooking/processes/not-a-process-id.json",
                         "node": "n1", "quote": "q"}])
     msgs = check_document(_doc(rule), "facts-delta")
-    assert any("process id grammar" in m for m in msgs)
+    assert any("process id grammar" in m for m in _noted(msgs))
 
 
 def test_processes_ref_good_grammar_passes_this_check():
@@ -404,7 +423,7 @@ def test_reference_row_missing_declared_field_fails():
                                       "type": "number", "unit": "g"}],
                            "rows": [{"key": "p1", "code": "p1"}]})  # no grams
     msgs = check_document(_doc(record), "facts-delta")
-    assert any("grams" in m for m in msgs)
+    assert any("grams" in m for m in _noted(msgs))
 
 
 def test_reference_row_with_null_field_passes():
@@ -426,7 +445,7 @@ def test_primary_key_member_not_declared_fails():
                                       "type": "string"}],
                            "rows": []})
     msgs = check_document(_doc(record), "facts-delta")
-    assert any("missing_col" in m for m in msgs)
+    assert any("missing_col" in m for m in _noted(msgs))
 
 
 def test_row_section_not_declared_fails():
@@ -435,7 +454,7 @@ def test_row_section_not_declared_fails():
                            "rows": [{"key": "r1", "item": "x",
                                     "section": "ghost_section"}]})
     msgs = check_document(_doc(record), "facts-delta")
-    assert any("ghost_section" in m for m in msgs)
+    assert any("ghost_section" in m for m in _noted(msgs))
 
 
 def test_row_member_not_a_declared_field_fails():
@@ -444,7 +463,7 @@ def test_row_member_not_a_declared_field_fails():
                            "rows": [{"key": "r1", "item": "x",
                                     "not_a_field": 1}]})
     msgs = check_document(_doc(record), "facts-delta")
-    assert any("not_a_field" in m for m in msgs)
+    assert any("not_a_field" in m for m in _noted(msgs))
 
 
 def test_foreign_key_without_its_two_sides_fails():
@@ -462,7 +481,7 @@ def test_foreign_key_without_its_two_sides_fails():
                                             "range": "A:X",
                                             "target": {"ref": "F-00193"}}]})
     msgs = check_document(_doc(record), "facts-delta")
-    assert any("foreignKeys" in m for m in msgs)
+    assert any("foreignKeys" in m for m in _noted(msgs))
 
 
 def test_foreign_key_missing_either_side_alone_fails():
@@ -476,11 +495,11 @@ def test_foreign_key_missing_either_side_alone_fails():
                              "foreignKeys": [fk]})
     no_reference = one({"fields": ["code"], "reference_fields": ["key"]})
     assert any("reference" in m
-               for m in check_document(_doc(no_reference), "facts-delta"))
+               for m in _noted(check_document(_doc(no_reference), "facts-delta")))
     no_fields = one({"reference": {"ref": "F-00007"},
                      "reference_fields": ["key"]})
     assert any("fields" in m
-               for m in check_document(_doc(no_fields), "facts-delta"))
+               for m in _noted(check_document(_doc(no_fields), "facts-delta")))
 
 
 def test_foreign_key_with_both_sides_passes():
@@ -499,7 +518,7 @@ def test_reserved_row_name_as_field_key_fails():
     record = _record(data={"fields": [{"key": "unit", "title": "u",
                                        "type": "string"}]})
     msgs = check_document(_doc(record), "facts-delta")
-    assert any("reserved" in m for m in msgs)
+    assert any("reserved" in m for m in _noted(msgs))
 
 
 # --------------------------------------------------------------------------- #
@@ -515,7 +534,7 @@ def test_shares_summing_to_point_nine_fails():
                                    "share": 0.4}],
                        "lang": "feel", "expr": "a = x * 0.5; b = x * 0.4"})
     msgs = check_document(_doc(rule), "facts-delta")
-    assert any("sum to" in m for m in msgs)
+    assert any("sum to" in m for m in _noted(msgs))
 
 
 def test_shares_summing_to_one_passes():
@@ -534,21 +553,21 @@ def test_share_out_of_range_fails():
                                                   "unit": "kg", "share": 1.5,
                                                   "value": 1}]})
     msgs = check_document(_doc(rule), "facts-delta")
-    assert any("(0, 1]" in m for m in msgs)
+    assert any("(0, 1]" in m for m in _noted(msgs))
 
 
 # --------------------------------------------------------------------------- #
 # 7. constant shape
 # --------------------------------------------------------------------------- #
 
-def test_rule_with_inputs_and_value_output_fails():
+def test_rule_with_inputs_and_value_output_passes():
+    # B22: a threshold on a computed output is legitimate; the rule is gone.
     rule = _rule(data={"inputs": [{"key": "x", "title": "x", "unit": "g",
                                    "from": "operator"}],
                        "outputs": [{"key": "v", "title": "v", "unit": "g",
                                    "value": 5}],
                        "lang": "feel", "expr": "v = x"})
-    msgs = check_document(_doc(rule), "facts-delta")
-    assert any("value or range" in m for m in msgs)
+    assert check_document(_doc(rule), "facts-delta") == []
 
 
 def test_constant_with_expr_fails():
@@ -556,14 +575,14 @@ def test_constant_with_expr_fails():
                                                   "unit": "g", "value": 5}],
                        "expr": "v = 5"})
     msgs = check_document(_doc(rule), "facts-delta")
-    assert any("expr/lang" in m for m in msgs)
+    assert any("expr/lang" in m for m in _noted(msgs))
 
 
 def test_constant_without_value_or_range_fails():
     rule = _rule(data={"inputs": [], "outputs": [{"key": "v", "title": "v",
                                                   "unit": "g"}]})
     msgs = check_document(_doc(rule), "facts-delta")
-    assert any("value or range" in m for m in msgs)
+    assert any("value or range" in m for m in _noted(msgs))
 
 
 def test_valid_constant_passes():
@@ -586,7 +605,7 @@ def test_facts_file_computed_rule_needs_original_ref_not_original():
                        "outputs": [{"key": "v", "title": "v", "unit": "g"}],
                        "lang": "feel", "original": "=X6"})   # no expr either
     msgs = check_document(_doc(rule), "facts")
-    assert any("original_ref" in m for m in msgs)
+    assert any("original_ref" in m for m in _noted(msgs))
     rule["data"]["original_ref"] = "facts/originals/F-00001.txt"
     del rule["data"]["original"]
     assert check_document(_doc(rule), "facts") == []
@@ -601,7 +620,7 @@ def test_field_status_missing_path_fails():
                                                   "unit": "g", "value": 5}]},
                 field_status={"data/outputs/nope/value": "inferred"})
     msgs = check_document(_doc(rule), "facts-delta")
-    assert any("data/outputs/nope/value" in m for m in msgs)
+    assert any("data/outputs/nope/value" in m for m in _noted(msgs))
 
 
 def test_field_status_existing_path_passes():
@@ -616,7 +635,7 @@ def test_field_status_bad_value_fails():
                                                   "unit": "g", "value": 5}]},
                 field_status={"data/outputs/v/value": "confirmed"})
     msgs = check_document(_doc(rule), "facts-delta")
-    assert any("confirmed" in m for m in msgs)
+    assert any("confirmed" in m for m in _noted(msgs))
 
 
 # --------------------------------------------------------------------------- #
@@ -633,7 +652,7 @@ def test_reconciled_against_undeclared_field_fails():
                                {"cell": {"field": "ghost", "row": "p1"},
                                 "against": {"ref": "F-00001", "field": "v"}}]})
     msgs = check_document(_doc(record), "facts-delta")
-    assert any("ghost" in m for m in msgs)
+    assert any("ghost" in m for m in _noted(msgs))
 
 
 def test_reconciled_against_undeclared_row_fails():
@@ -646,7 +665,7 @@ def test_reconciled_against_undeclared_row_fails():
                                {"cell": {"field": "code", "row": "ghost_row"},
                                 "against": {"ref": "F-00001", "field": "v"}}]})
     msgs = check_document(_doc(record), "facts-delta")
-    assert any("ghost_row" in m for m in msgs)
+    assert any("ghost_row" in m for m in _noted(msgs))
 
 
 def test_reconciled_against_declared_here_passes():
@@ -671,7 +690,7 @@ def test_bad_from_date_fails():
                 issues=[{"kind": "scale", "description": "d", "affects": [],
                         "from_date": "not-a-date"}])
     msgs = check_document(_doc(rule), "facts-delta")
-    assert any("not-a-date" in m for m in msgs)
+    assert any("not-a-date" in m for m in _noted(msgs))
 
 
 def test_good_from_date_passes():
@@ -692,7 +711,7 @@ def test_source_ref_naming_structure_md_fails():
                 source=[{"type": "sheet",
                         "ref": "attachments/sheets/Pitza/Pitza.structure.md"}])
     msgs = check_document(_doc(rule), "facts-delta")
-    assert any("structure.md" in m for m in msgs)
+    assert any("structure.md" in m for m in _noted(msgs))
 
 
 def test_source_ref_naming_named_functions_fails():
@@ -701,7 +720,7 @@ def test_source_ref_naming_named_functions_fails():
                 source=[{"type": "script",
                         "ref": "attachments/sheets/G/NAMED_FUNCTIONS.md"}])
     msgs = check_document(_doc(rule), "facts-delta")
-    assert any("NAMED_FUNCTIONS.md" in m for m in msgs)
+    assert any("NAMED_FUNCTIONS.md" in m for m in _noted(msgs))
 
 
 def test_ordinary_source_ref_passes():
@@ -723,7 +742,7 @@ def test_processes_entry_with_no_matching_process_source_fails():
                 source=[{"type": "voice", "ref": "meetings/transcripts/c.txt",
                         "lines": "1"}])
     msgs = check_document(_doc(rule), "facts-delta")
-    assert any("cooking-001" in m for m in msgs)
+    assert any("cooking-001" in m for m in _noted(msgs))
 
 
 def test_processes_entry_with_matching_process_source_passes():
@@ -746,16 +765,15 @@ def _write_json(tmp_path, obj, name="f.json"):
     return str(p)
 
 
-def test_validate_cli_content_failure_exits_2_after_schema_passes(tmp_path, capsys):
+def test_validate_cli_content_note_exits_0_after_schema_passes(tmp_path, capsys):
     rule = _rule(data={"inputs": [], "outputs": [{"key": "v", "title": "v",
                                                   "unit": "g", "value": 5}],
-                       "expr": "v = 5"})   # constant carrying expr — check 7
+                       "expr": "v = 5"})   # constant carrying expr — B18, a note
     f = _write_json(tmp_path, _doc(rule))
-    with pytest.raises(SystemExit) as e:
-        main(["facts-delta", f])
-    assert e.value.code == 2
+    assert main(["facts-delta", f]) == 0
     err = capsys.readouterr().err
-    assert "expr/lang" in err
+    assert "note: " in err and "expr/lang" in err
+
 
 
 def test_validate_cli_content_check_runs_for_facts_schema_too(tmp_path, capsys):
@@ -771,12 +789,10 @@ def test_validate_cli_content_check_runs_for_facts_schema_too(tmp_path, capsys):
         "updated_at": "2026-01-01T00:00:00Z",
         "data": {"inputs": [], "outputs": [{"key": "v", "title": "v",
                                             "unit": "g", "value": 5}],
-                "expr": "v = 5"}}   # constant carrying expr — check 7
+                "expr": "v = 5"}}   # constant carrying expr — B18, a note
     f = _write_json(tmp_path, _doc(rule), name="facts.json")
-    with pytest.raises(SystemExit) as e:
-        main(["facts", f])
-    assert e.value.code == 2
-    assert "expr/lang" in capsys.readouterr().err
+    assert main(["facts", f]) == 0
+    assert "note: " in capsys.readouterr().err
 
 
 def test_validate_cli_content_pass_exits_0(tmp_path):
@@ -798,28 +814,19 @@ def test_validate_cli_ignores_content_pass_for_unrelated_schemas(tmp_path):
 # wiring: merge facts apply's precondition pass
 # --------------------------------------------------------------------------- #
 
-def test_apply_refuses_a_content_violation_and_writes_nothing(tmp_path):
+@NEEDS_TRACK_S
+def test_apply_stores_a_content_note_with_its_mark(tmp_path):
+    # B18 at `apply`: the constant keeps its expr, which is marked inferred.
     root = _root(tmp_path)
     _seed_units(root)
     d = _const_delta()
     d["entries"][0]["data"]["expr"] = "v = 5"   # constant carrying expr
-    before = {p.name: p.read_bytes() for p in (root / "facts").glob("*.json")}
-    with pytest.raises(SystemExit) as e:
-        apply(root, _write(root, "dx.json", d), _run_dir(root, "9"))
-    assert e.value.code == 2
-    after = {p.name: p.read_bytes() for p in (root / "facts").glob("*.json")}
-    assert before == after
+    report = apply(root, _write(root, "dx.json", d), _run_dir(root, "9"))
+    stored = [e for e in load_store(root)["rule"]["entries"]
+              if e["id"] == report["id_map"]["T-1"]][0]
+    assert stored["data"]["expr"] == "v = 5"
+    assert stored["field_status"]["data/expr"] == "inferred"
 
-
-def test_apply_precondition_message_names_the_content_finding(tmp_path, capsys):
-    root = _root(tmp_path)
-    _seed_units(root)
-    d = _const_delta()
-    d["entries"][0]["data"]["expr"] = "v = 5"
-    with pytest.raises(SystemExit):
-        apply(root, _write(root, "dx.json", d), _run_dir(root, "9"))
-    err = capsys.readouterr().err
-    assert "precondition failed:" in err and "expr/lang" in err
 
 
 def test_apply_accepts_a_content_clean_delta(tmp_path):
@@ -936,20 +943,22 @@ def test_a_statement_naming_a_cell_or_a_file_fails():
     msgs = check_document(_doc(_constant(
         statement="انحراف در J6 نوشته می‌شود و از Pitza.xlsx می‌آید.")),
         "facts-delta")
-    assert any("statement" in m and "J6" in m for m in msgs)
-    assert any(".xlsx" in m for m in msgs)
+    assert any("statement" in m and "J6" in m for m in _noted(msgs))
+    assert any(".xlsx" in m for m in _noted(msgs))
 
 
 def test_a_title_naming_a_table_fails():
     msgs = check_document(_doc(_constant(title="تلورانس Table_BOM")),
                           "facts-delta")
-    assert any("title" in m and "Table_" in m for m in msgs)
+    assert any("title" in m and "Table_" in m for m in _noted(msgs))
 
 
-def test_a_pipeline_word_fails_but_a_word_that_contains_one_passes():
+def test_a_pipeline_word_is_noted_but_a_word_that_contains_one_passes():
+    # B40: «پاس» and «بچ» are kitchen words now; «واحد کاری» still names
+    # the pipeline.
     msgs = check_document(_doc(_constant(
-        statement="این مقدار در پاس دوم به دست آمد.")), "facts-delta")
-    assert any("پاس" in m for m in msgs)
+        statement="این مقدار در واحد کاری دوم به دست آمد.")), "facts-delta")
+    assert any("واحد کاری" in m for m in _noted(msgs))
     assert check_document(_doc(_constant(
         statement="پرسش بی‌پاسخ در پنل تعیین تکلیف می‌شود.")),
         "facts-delta") == []
@@ -962,24 +971,24 @@ def test_the_sheet_words_belong_to_a_record_statement_and_a_field_description():
         title="مصرف اعلامی",
         statement="ستون مصرف اعلامی هر شب توسط سرپرست لاین پر می‌شود.")
     assert check_document(_doc(record), "facts-delta") == []
-    assert any("ستون" in m and "title" in m for m in check_document(
-        _doc(_record(title="ستون مصرف")), "facts-delta"))
+    assert any("ستون" in m and "title" in m for m in _noted(check_document(
+        _doc(_record(title="ستون مصرف")), "facts-delta")))
 
 
 def test_a_declared_unit_symbol_is_not_a_latin_leak():
     rule = _constant(statement="هر پرس ۶۰ gram است.")
-    assert any("gram" in m for m in check_document(_doc(rule), "facts-delta"))
+    assert any("gram" in m for m in _noted(check_document(_doc(rule), "facts-delta")))
     assert check_document(_doc(rule), "facts-delta",
                           unit_symbols=["gram"]) == []
 
 
 def test_a_spoken_ending_and_a_long_quotation_fail():
-    assert any("می‌زنن" in m for m in check_document(
+    assert any("می‌زنن" in m for m in _noted(check_document(
         _doc(_constant(statement="آشپزها معمولاً بیشتر می‌زنن.")),
-        "facts-delta"))
-    assert any("quot" in m for m in check_document(_doc(_constant(
+        "facts-delta")))
+    assert any("quot" in m for m in _noted(check_document(_doc(_constant(
         statement="«یک عدد قارچ حدود ده تا پانزده گرم وزن دارد گاهی»")),
-        "facts-delta"))
+        "facts-delta")))
 
 
 def test_an_engine_written_issue_description_may_name_the_column():
@@ -987,8 +996,8 @@ def test_an_engine_written_issue_description_may_name_the_column():
              "description": "ستون K6 در نسخهٔ کپی‌شده جا افتاده است."}
     assert check_document(_doc(_constant(issues=[issue])), "facts-delta") == []
     unit_written = {k: v for k, v in issue.items() if k != "engine"}
-    assert any("K6" in m for m in check_document(
-        _doc(_constant(issues=[unit_written])), "facts-delta"))
+    assert any("K6" in m for m in _noted(check_document(
+        _doc(_constant(issues=[unit_written])), "facts-delta")))
 
 
 def test_the_workbook_stub_marker_is_not_linted_as_prose():
@@ -996,7 +1005,7 @@ def test_the_workbook_stub_marker_is_not_linted_as_prose():
     assert check_document(_doc(record), "facts-delta") == []
     record["data"]["grain"] = "nightly"
     assert any("grain" in m and "nightly" in m for m in
-               check_document(_doc(record), "facts-delta"))
+               _noted(check_document(_doc(record), "facts-delta")))
 
 
 def test_lint_prose_is_empty_for_a_definition_in_the_written_register():
@@ -1008,9 +1017,9 @@ def test_lint_prose_is_empty_for_a_definition_in_the_written_register():
 def test_group_messages_folds_one_rule_into_one_line():
     a = _constant(id_="T-1", key="tol", statement="انحراف برابر است با J6.")
     b = _constant(id_="T-2", key="tol2", statement="مصرف برابر است با K7.")
-    lines = group_messages(check_document(_doc(a, b), "facts-delta"))
-    assert len(lines) == 1
-    assert lines[0].endswith("— 2 entries: T-1, T-2")
+    grouped = group_messages(lines(check_document(_doc(a, b), "facts-delta")))
+    assert len(grouped) == 1
+    assert grouped[0].endswith("— 2 entries: T-1, T-2")
 
 
 def test_group_messages_keeps_the_first_message_s_specifics():
@@ -1037,7 +1046,7 @@ def test_a_policy_rule_with_no_inputs_and_lang_text_passes():
     assert check_document(_doc(rule), "facts-delta") == []
     rule["data"]["lang"] = "feel"
     assert any("expr/lang" in m for m in
-               check_document(_doc(rule), "facts-delta"))
+               _noted(check_document(_doc(rule), "facts-delta")))
 
 
 # --------------------------------------------------------------------------- #
@@ -1057,7 +1066,7 @@ def test_a_sheet_records_reference_rows_are_not_checked_for_completeness():
     assert check_document(_doc(record), "facts-delta") == []
     del record["data"]["instances"]
     assert any("grams" in m for m in
-               check_document(_doc(record), "facts-delta"))
+               _noted(check_document(_doc(record), "facts-delta")))
 
 
 # --------------------------------------------------------------------------- #
@@ -1076,15 +1085,19 @@ def test_a_param_input_is_an_ordinary_declared_identifier():
     assert check_document(_doc(rule), "facts-delta") == []
 
 
-def test_apply_refuses_a_statement_that_names_a_cell(tmp_path, capsys):
+@NEEDS_TRACK_S
+def test_apply_stores_a_statement_that_names_a_cell_with_no_mark(tmp_path):
+    # B38 at `apply`: style is a note with no mark on the entry — this also
+    # needs `tiers.apply_notes` to leave a `NO_MARK` note unmarked.
     root = _root(tmp_path)
     _seed_units(root)
     d = _const_delta()
     d["entries"][0]["statement"] = "حد مجاز در J6 نوشته شده است."
-    with pytest.raises(SystemExit) as e:
-        apply(root, _write(root, "dx.json", d), _run_dir(root, "9"))
-    assert e.value.code == 2
-    assert "J6" in capsys.readouterr().err
+    report = apply(root, _write(root, "dx.json", d), _run_dir(root, "9"))
+    stored = [e for e in load_store(root)["rule"]["entries"]
+              if e["id"] == report["id_map"]["T-1"]][0]
+    assert stored["statement"] == "حد مجاز در J6 نوشته شده است."
+    assert not stored.get("field_status") and not stored.get("issues")
 
 
 # --------------------------------------------------------------------------- #
@@ -1103,7 +1116,7 @@ def _table_rule(rows, **table_extra):
 def test_flat_rows_keyed_by_the_columns_pass():
     rule = _table_rule([{"goruh": "پنیر گودا", "mabna": "کارتن"},
                         {"goruh": "نوشیدنی", "mabna": "تعداد"}])
-    assert [m for m in check_document(_doc(rule), "facts-delta")
+    assert [m for m in _noted(check_document(_doc(rule), "facts-delta"))
             if "table" in m] == []
 
 
@@ -1111,33 +1124,33 @@ def test_the_old_nested_when_then_rows_are_named():
     rule = _table_rule([{"when": {"goruh": "پنیر گودا"},
                          "then": {"mabna": "کارتن"}}])
     msgs = check_document(_doc(rule), "facts-delta")
-    assert any("when/then" in m and "row 1" in m for m in msgs)
+    assert any("when/then" in m and "row 1" in m for m in _noted(msgs))
 
 
 def test_a_row_key_outside_the_columns_and_a_row_with_no_output_fail():
     msgs = check_document(_doc(_table_rule([{"goruh": "x", "vazn": 1}])),
                           "facts-delta")
-    assert any("vazn" in m and "column" in m for m in msgs)
+    assert any("vazn" in m and "column" in m for m in _noted(msgs))
     msgs = check_document(_doc(_table_rule([{"goruh": "x"}])), "facts-delta")
-    assert any("no output" in m for m in msgs)
+    assert any("no output" in m for m in _noted(msgs))
 
 
 def test_table_columns_must_be_declared_inputs_and_outputs():
     rule = _table_rule([{"goruh": "x", "mabna": "y"}])
     rule["data"]["table"]["inputs"] = ["ruz"]
     msgs = check_document(_doc(rule), "facts-delta")
-    assert any("ruz" in m and "declared" in m for m in msgs)
+    assert any("ruz" in m and "declared" in m for m in _noted(msgs))
 
 
 def test_a_table_rule_carries_no_expr_and_a_feel_rule_no_table():
     rule = _table_rule([{"goruh": "x", "mabna": "y"}])
     rule["data"]["expr"] = "mabna = goruh"
-    assert any("expr" in m for m in check_document(_doc(rule), "facts-delta"))
+    assert any("expr" in m for m in _noted(check_document(_doc(rule), "facts-delta")))
     rule = _table_rule([{"goruh": "x", "mabna": "y"}])
     rule["data"]["lang"] = "feel"
     rule["data"]["expr"] = "mabna = goruh"
     assert any("table" in m and "lang" in m
-               for m in check_document(_doc(rule), "facts-delta"))
+               for m in _noted(check_document(_doc(rule), "facts-delta")))
 
 
 def test_the_two_cooking_tables_pass():
@@ -1145,7 +1158,7 @@ def test_the_two_cooking_tables_pass():
     fixtures = (pathlib.Path(__file__).parent / "fixtures" / "facts_store"
                 / "tables.json")
     doc = json.loads(fixtures.read_text(encoding="utf-8"))
-    assert [m for m in check_document(doc, "facts") if "table" in m] == []
+    assert [m for m in _noted(check_document(doc, "facts")) if "table" in m] == []
 
 
 def test_a_table_is_a_body_so_a_table_rule_needs_no_original():
@@ -1162,4 +1175,4 @@ def test_an_empty_expr_on_a_table_rule_is_still_an_expr():
     rule = _table_rule([{"goruh": "x", "mabna": "y"}])
     rule["data"]["expr"] = ""
     assert any("a table rule carries expr" in m for m in
-               check_document(_doc(rule), "facts-delta"))
+               _noted(check_document(_doc(rule), "facts-delta")))
