@@ -114,10 +114,13 @@ def test_a_note_cannot_carry_another_kinds_payload(tmp_path):
         "source": [{"type": "voice", "ref": "meetings/transcripts/c.txt", "lines": "9"}],
         "retired": False, "data": {"about": [{"ref": "F-00001"}], "question": "؟",
                                    "category": "ingredient", "unit": "g"}}]}
-    # `apply` step 1 is the schema; it raises before any precondition runs, so
-    # this is a ValueError out of `validate`, not the exit-2 of a precondition.
-    with pytest.raises(ValueError):
-        apply(root, _write(root, "dn3.json", note), _run_dir(root, "1"))
+    # spec 2026-09-13 C5: the foreign keys leave the payload for `extra`, so
+    # the note lands and its payload is still only `about` + `question`.
+    r = apply(root, _write(root, "dn3.json", note), _run_dir(root, "1"))
+    stored = [e for e in load_store(root)["note"]["entries"]
+              if e["id"] == r["id_map"]["T-1"]][0]
+    assert set(stored["data"]) == {"about", "question"}
+    assert stored["extra"] == {"data/category": "ingredient", "data/unit": "g"}
 
 
 def test_promote_note_to_note_is_a_rekey_that_keeps_the_payload(tmp_path):
@@ -356,9 +359,7 @@ def test_edit_set_remove_unset_append_in_order(tmp_path):
     ([{"op": "unset", "path": "data/nope"}], "not found"),
     ([{"op": "append", "path": "data/outputs", "value": {"key": "v", "value": 1}}], "already"),
     ([{"op": "set", "path": "statement", "value": "Table_Mavad را بخوان"}], "names"),
-    ([{"op": "set", "path": "data/outputs/v/unit", "value": "stone"}], "unit"),
     ([{"op": "set", "path": "scope/departments", "value": ["nope"]}], "registry"),
-    ([{"op": "set", "path": "scope/branches", "value": ["mars"]}], "manifest"),
     ([{"op": "set", "path": "data/outputs/v", "value": {"key": "z", "value": 1}}], "key"),
     # A value of the wrong SHAPE: every one of these used to traceback (exit 1)
     # in a post-loop step that trusted the entry to be shaped as the schema
@@ -384,6 +385,24 @@ def test_edit_refuses_and_writes_nothing(tmp_path, capsys, ops, fragment):
     assert fragment in capsys.readouterr().err
     assert _five(root) == before
     assert not (run / "facts-before").exists() and not (run / "facts-delta.json").exists()
+
+def test_edit_notes_an_undeclared_unit_and_drops_an_unregistered_branch(tmp_path, capsys):
+    """Spec 2026-09-13 C28 and C25 at the edit gate, the tier `apply` gives
+    them: the entry is written, marked, and the note is on stderr."""
+    root = _root(tmp_path); _seed_units(root)
+    apply(root, _write(root, "d1.json", _const_delta(5)), _run_dir(root, "1"))
+    e = _rule_entry(root)
+    edit(root, e["id"], _patch(root, "p.json", [
+        {"op": "set", "path": "data/outputs/v/unit", "value": "stone"},
+        {"op": "set", "path": "scope/branches", "value": ["mars", "chalebagh"]}]),
+         _chat_run(root, "2"))
+    e2 = _rule_entry(root)
+    assert e2["data"]["outputs"][0]["unit"] == "stone"
+    assert e2["field_status"] == {"data/outputs/v/unit": "inferred"}
+    assert e2["scope"]["branches"] == ["chalebagh"]
+    err = capsys.readouterr().err
+    assert "unit 'stone' is declared by no row" in err and "'mars'" in err
+
 
 def test_edit_refuses_a_patch_the_schema_will_not_take(tmp_path, capsys):
     """§2.3 item 1 — `facts-patch.schema.json` is the first gate: a `set`
@@ -461,13 +480,13 @@ def test_edit_preview_reports_a_gate_refusal_after_printing_the_op(tmp_path, cap
     run = _chat_run(root, "2")
     with pytest.raises(SystemExit) as exc:
         edit(root, e["id"], _patch(root, "p.json",
-             [{"op": "set", "path": "data/outputs/v/unit", "value": "stone"}]),
+             [{"op": "set", "path": "scope/departments", "value": ["nope"]}]),
              run, preview=True)
     assert exc.value.code == 2
     out, err = capsys.readouterr()
-    assert "[1] set data/outputs/v/unit" in out and "پیشنهاد: stone" in out
+    assert "[1] set scope/departments" in out and "پیشنهاد: [\"nope\"]" in out
     assert "OK" not in out
-    assert "unit 'stone' is declared by no row" in err
+    assert "department 'nope' is not in departments/registry.json" in err
     assert _five(root) == before and not (run / "facts-before").exists()
 
 
@@ -615,14 +634,14 @@ def test_an_untouched_citation_keeps_its_stamp_and_a_removed_one_is_gone(tmp_pat
     assert voice[0]["run"] == "runs/facts/cooking/1" and voice[0]["hash"] == e["source"][0]["hash"]
 
 
-def test_edit_refuses_a_citation_naming_no_file_and_a_duplicate_citation(tmp_path):
+def test_edit_refuses_a_duplicate_citation_and_one_leaving_no_file_to_cite(tmp_path):
     root = _root(tmp_path); _seed_units(root)
     apply(root, _write(root, "d1.json", _const_delta(5)), _run_dir(root, "1"))
     e = _rule_entry(root)
     before = _five(root)
     for n, ops, fragment in (
             ("2", [{"op": "set", "path": "source/0/ref",
-                    "value": "meetings/transcripts/nope.txt"}], "names no file"),
+                    "value": "../../outside.txt"}], "names no file"),
             ("3", [{"op": "append", "path": "source",
                     "value": {"type": "voice", "ref": "meetings/transcripts/c.txt",
                               "lines": "11"}}], "already there")):
@@ -631,3 +650,19 @@ def test_edit_refuses_a_citation_naming_no_file_and_a_duplicate_citation(tmp_pat
             edit(root, e["id"], _patch(root, f"p{n}.json", ops), run)
         assert exc.value.code == 2
         assert _five(root) == before and not (run / "facts-before").exists()
+
+
+def test_edit_drops_a_citation_naming_no_file_while_the_chat_one_remains(tmp_path):
+    """Spec 2026-09-13 C33 (§9 default): the edit's own chat citation is a
+    valid source, so the missing one is kept aside with a note, not refused."""
+    root = _root(tmp_path); _seed_units(root)
+    apply(root, _write(root, "d1.json", _const_delta(5)), _run_dir(root, "1"))
+    e = _rule_entry(root)
+    run = _run_dir(root, "2"); _meta(run)
+    edit(root, e["id"], _patch(root, "p2.json", [
+        {"op": "set", "path": "source/0/ref", "value": "meetings/transcripts/nope.txt"}]),
+         run)
+    e2 = _rule_entry(root)
+    assert [s["type"] for s in e2["source"]] == ["chat"]
+    assert json.loads(json.dumps(e2["extra"]))["source/0"]["ref"] == \
+        "meetings/transcripts/nope.txt"

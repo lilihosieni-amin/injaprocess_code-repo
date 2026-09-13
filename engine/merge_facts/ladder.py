@@ -46,7 +46,27 @@ IMMUTABLE = frozenset({"id", "kind", "key", "status", "updated_at",
 # Top-level fields the ladder never touches directly: identity/lifecycle
 # (IMMUTABLE), set-union fields (handled separately, before this dispatch
 # runs), and accounts (handled separately, after).
-TOP_SKIP = IMMUTABLE | frozenset(UNION_FIELDS) | frozenset({"accounts"})
+TOP_SKIP = IMMUTABLE | frozenset(UNION_FIELDS) | frozenset({"accounts", "extra"})
+
+
+def merge_extra(existing, incoming):
+    """The preserved bag (spec 2026-09-13 C5): what the incoming entry kept
+    aside joins the stored bag — never disputed, never overwritten. A path the
+    bag already holds with another value is kept beside it as `path~2`.
+    Returns the keys added."""
+    added = []
+    for path, value in (incoming.get("extra") or {}).items():
+        bag = existing.setdefault("extra", {})
+        if any(k == path or k.startswith(path + "~") for k in bag
+               if bag[k] == value):
+            continue
+        key, n = path, 1
+        while key in bag:
+            n += 1
+            key = f"{path}~{n}"
+        bag[key] = copy.deepcopy(value)
+        added.append(key)
+    return added
 
 
 def keyfn_for(name):
@@ -127,11 +147,13 @@ def _merge_scalar(entry, holder, name, path, incoming_value, source, changes):
     if name not in holder:
         holder[name] = incoming_value
         changes.append((path, "create"))
+    elif _equal(current, incoming_value):
+        # before the fill: a null the gate wrote (spec 2026-09-13 C10) re-read
+        # as null is the same reading, not a change
+        changes.append((path, "noop"))
     elif current is None or current == "":
         holder[name] = incoming_value
         changes.append((path, "fill"))
-    elif _equal(current, incoming_value):
-        changes.append((path, "noop"))
     else:
         _dispute(entry, path, current, incoming_value, source, changes)
 
@@ -169,7 +191,7 @@ def _merge_member(entry, current, incoming, path, source, changes, skip=frozense
         if k in DERIVED:
             continue                                   # recomputed, never merged
         if k in PROSE_LEAVES:
-            if k not in current or current.get(k) in (None, ""):
+            if k not in current or (current.get(k) in (None, "") and v not in (None, "")):
                 current[k] = v
                 changes.append((p, "fill"))
             continue                                   # never disputed, never rewritten
@@ -202,6 +224,7 @@ def merge_entry(existing, incoming, incoming_source):
     # so e.g. `scope` disputes leaf-by-leaf (scope/branches) rather than as
     # a whole-dict blob.
     _merge_member(existing, existing, incoming, "", incoming_source, changes, skip=TOP_SKIP)
+    changes += [(f"extra/{key}", "union") for key in merge_extra(existing, incoming)]
     # incoming accounts (the agent may state competing readings itself)
     if incoming.get("accounts"):
         _merge_collection(existing, existing.setdefault("accounts", []),

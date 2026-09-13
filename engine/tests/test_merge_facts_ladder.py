@@ -200,3 +200,21 @@ def test_a_derived_leaf_is_skipped_but_its_siblings_still_merge():
     changes = merge_entry(e, inc, SRC_B)
     assert e["data"]["location"] == {}                       # still derived-only
     assert ("data/instances/pz__s12", "append") in changes
+
+
+def test_the_preserved_bag_unions_and_a_null_reread_is_no_change():
+    """Spec 2026-09-13 C5/C10: `extra` gains what it does not hold, keeps a
+    second value for a held path beside the first, and is never disputed; a
+    null the gate wrote, read again as null, is a noop — not a fill that would
+    restamp the entry on every run."""
+    existing = {"extra": {"data/x": 1}, "data": {"category": None},
+                "statement": ""}
+    incoming = {"extra": {"data/x": 2, "data/y": 3}, "data": {"category": None},
+                "statement": ""}
+    changes = merge_entry(existing, incoming, {"type": "chat", "ref": None})
+    assert existing["extra"] == {"data/x": 1, "data/x~2": 2, "data/y": 3}
+    assert [c for c in changes if c[1] != "noop"] == [
+        ("extra/data/x~2", "union"), ("extra/data/y", "union")]
+    assert merge_entry(existing, incoming, {"type": "chat", "ref": None}) == [
+        ("data/category", "noop")]
+    assert "accounts" not in existing

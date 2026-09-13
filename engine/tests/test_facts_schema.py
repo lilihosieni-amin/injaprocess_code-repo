@@ -18,8 +18,10 @@ def test_an_estate_declares_its_own_item_code_namespaces():
     that declares `@@` or `؛` writes a `refItems` field with it, and an enum of
     two literals refused it before a run could even reach the store."""
     for defs in _both():
+        # spec 2026-09-13 C17: the sigil grammar is the closed form of an open
+        # string — the gate marks a namespace outside it instead of refusing
         assert defs["field"]["properties"]["refItems"]["properties"][
-            "namespace"] == NAMESPACE
+            "namespace"] == {"anyOf": [NAMESPACE, {"type": "string"}]}
     pattern = re.compile(NAMESPACE["pattern"])
     for good in ("#", "##", "@@", "؛", "**"):
         assert pattern.fullmatch(good), good
@@ -31,7 +33,7 @@ def test_a_set_aside_candidate_s_issue_kind_is_in_both_halves():
     """§3.2 — `oversized` is written by `build` into `skeleton.json` and read by
     the report; the store and the delta both have to admit it."""
     for defs in _both():
-        assert "oversized" in defs["issue"]["properties"]["kind"]["enum"]
+        assert "oversized" in defs["issue"]["properties"]["kind"]["anyOf"][0]["enum"]
 
 
 def test_the_issue_definition_is_one_definition_in_two_files():
