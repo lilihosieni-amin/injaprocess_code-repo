@@ -39,7 +39,7 @@ from merge_facts import (KEY_RE, KIND_ORDER, PROC_ID_RE, _sheet_identities,
 from merge_facts.content import check_document
 from merge_facts.conventions import load as load_conventions
 from merge_facts.ladder import merge_entry
-from merge_facts.tiers import coerce, note, refuse
+from merge_facts.tiers import note, refuse
 
 FACT_ID_RE = re.compile(r"^F-[0-9]{5}$")
 TEMP_ID_RE = re.compile(r"^T-[0-9]+$")
@@ -988,7 +988,7 @@ def preconditions(root, store, entries, run_dir):
     # C36: the content pass, once over the whole delta (its checks are
     # document-wide), with the store for `calls[]` resolution and the run's
     # unit symbols for the Latin rule (QF-40). Its tiers are its own.
-    out += coerce(check_document({"schema_version": 1, "entries": entries},
-                                 "facts-delta", store, unit_symbols=unit_rows,
-                                 conventions=load_conventions(root)))
+    out += check_document({"schema_version": 1, "entries": entries},
+                          "facts-delta", store, unit_symbols=unit_rows,
+                          conventions=load_conventions(root))
     return out

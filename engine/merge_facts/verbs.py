@@ -77,7 +77,7 @@ from merge_facts.apply import _hash_of
 from merge_facts.audit import _manifest
 from merge_facts.content import check_document
 from merge_facts.normalise import normalise_entry
-from merge_facts.tiers import apply_notes, coerce, lines, notes, refusals
+from merge_facts.tiers import apply_notes, lines, notes, refusals
 # `edit` settles a dispute the way the ladder raised one: the same numeric
 # equality (`_equal`), the same account id (`with_account_id`), the same dedup
 # key for the chat citation it unions in (`UNION_FIELDS["source"]`) and the
@@ -385,8 +385,8 @@ def _gate(root, store, entry):
     label = entry["id"]
     unit_rows = _unit_row_keys(store, [])
     doc = {"schema_version": store[entry["kind"]]["schema_version"], "entries": [entry]}
-    found = coerce(check_document(doc, "facts", store=store, unit_symbols=unit_rows,
-                                  conventions=conventions.load(root)))
+    found = check_document(doc, "facts", store=store, unit_symbols=unit_rows,
+                           conventions=conventions.load(root))
     found += undeclared_unit_findings(entry, unit_rows, label)
     found += scope_findings(entry, *registered_scope(root), label)
     found += reference_findings(store, {}, entry, label, fields=False)

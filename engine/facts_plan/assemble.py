@@ -622,9 +622,8 @@ def _contract_problems(root, entries, named, symbols):
              if any(isinstance(c, dict) and c.get("ref") == "T-0"
                     for c in ((e.get("data") or {}).get("calls") or []))}
     by_temp = dict(zip((e.get("id") for e in clean), named))
-    for finding in tiers.coerce(check_document(delta, "facts-delta", store,
-                                               unit_symbols=symbols,
-                                               conventions=conventions)):
+    for finding in check_document(delta, "facts-delta", store,
+                                  unit_symbols=symbols, conventions=conventions):
         if finding.label in blind and finding.message.startswith("expr identifier "):
             continue
         label = by_temp.get(finding.label, finding.label)
