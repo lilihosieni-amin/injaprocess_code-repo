@@ -82,10 +82,13 @@ def find_match(store, entry):
 
     §3.2: an instance match whose natural key disagrees is **not** a match —
     `apply` never renames, and `digest` has already reported the pair to the
-    reviewer as `template_split`. `apply`'s own precondition then refuses the
-    delta rather than minting a second record on one tab. The one exception is
-    a stub (QF-20): it is identity and nothing else, and the owning run fills
-    it whatever key it carries.
+    reviewer as `template_split`. By the time `find_match` runs, the store
+    gate's `repair_tab_holder` (spec 2026-09-13 C22) has already given such an
+    entry the holder's key and scope, so the `_nk(e) == nk` test below matches
+    it — which is why the old "a tab held under another key" refusal (C23)
+    could no longer fire and was removed. The one exception is a stub (QF-20):
+    it is identity and nothing else, and the owning run fills it whatever key
+    it carries.
     """
     kind = entry["kind"]
     idents = set(_sheet_identities(entry))
