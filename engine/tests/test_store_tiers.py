@@ -173,6 +173,32 @@ def test_c15_a_key_is_normalised_c16_one_still_off_grammar_is_refused(tmp_path):
     assert [h["label"] for h in json.loads((run / "held.json").read_text())] == ["T-2"]
 
 
+def test_c16_an_off_grammar_member_key_holds_back_its_entry_alone(tmp_path):
+    """§9 «B4 / B6 / C16: refuse that decision — keys are identity»: a Persian
+    column key, and two columns one repair would collide, each hold back only
+    their own entry. A spaced key B4 can repair is renamed with its row cell
+    and its primaryKey member — the schema repair never renames it blindly."""
+    root = _root(tmp_path); _seed_units(root)
+    persian = _record("persian", fields=[{"key": "مقدار", "title": "م",
+                                          "type": "number"}])
+    collide = _record("collide", fields=[{"key": "Qty", "title": "م", "type": "number"},
+                                         {"key": "qty", "title": "م", "type": "number"}])
+    spaced = _record("spaced", fields=[{"key": "Qty Total", "title": "م",
+                                        "type": "number"}],
+                     primaryKey=["Qty Total"], rows=[{"key": "r1", "Qty Total": 3}])
+    for n, e in enumerate((persian, collide, spaced)):
+        e["id"], e["title"] = f"T-{n + 1}", f"برگهٔ {n + 1}"
+    _, run = _apply(root, _delta(persian, collide, spaced))
+    assert [e["key"] for e in _entries(root, "record")
+            if e["key"] in ("persian", "collide", "spaced")] == ["spaced"]
+    assert [h["label"] for h in json.loads((run / "held.json").read_text())] \
+        == ["T-1", "T-2"]
+    data = _one(root, "record", "spaced")["data"]
+    assert [f["key"] for f in data["fields"]] == ["qty_total"]
+    assert data["primaryKey"] == ["qty_total"]
+    assert data["rows"][0]["qty_total"] == 3
+
+
 def test_c17_a_date_is_normalised_and_c18_a_numeric_string_becomes_a_number(tmp_path):
     root = _root(tmp_path); _seed_units(root)
     d = _const_delta(value=5)

@@ -442,11 +442,31 @@ def _branch(entry, path, err, ctx, label, delta):
     return _sever(entry, path, label, "matches none of its shapes")
 
 
+#: The member lists whose keys the content pass renames across the entry (B4, B6).
+RENAMED_KEYS = frozenset({"fields", "header_fields", "sections", "inputs",
+                          "outputs", "rows"})
+
+
+def _content_owned(path):
+    """A pattern miss the content pass owns, left alone here: a B4/B6 member
+    key (renamed, with every place the entry names it, only when unique — a
+    blind rename here would orphan its cells or collide with a sibling; what
+    stays off-grammar is refused, C16), a `processes[]` ref (B8: removed with
+    an issue quoting it) and an issue date (B35: moved into the description)."""
+    return ((len(path) == 4 and path[0] == "data" and path[1] in RENAMED_KEYS
+             and path[3] == "key")
+            or (len(path) == 3 and path[0] == "processes" and path[2] == "ref")
+            or (len(path) == 3 and path[0] == "issues"
+                and path[2] in ("from_date", "to_date")))
+
+
 def _fix(entry, path, err, ctx, label, delta):
     """One schema error → `(changed, findings)`, or `None` for a refusal."""
     value, rule, schema = err.instance, err.validator, err.schema
     names = [p for p in path if isinstance(p, str)]
     owner = names[-1] if names else "entry"
+    if rule == "pattern" and _content_owned(path):
+        return None
     if names[:1] == ["field_status"]:
         return None                                     # the content pass's (B32)
     if rule == "additionalProperties":                  # C4, C5, C6

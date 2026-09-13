@@ -84,7 +84,6 @@ def test_f2_a_column_group_is_accepted_and_reaches_the_field(tmp_path):
     assert all(fields[k] == group for k, group in written.items())
 
 
-@pytest.mark.xfail(strict=True, reason="needs track K/S")
 @pytest.mark.parametrize("unit", MEETINGS)
 def test_each_refused_meeting_unit_lands_with_notes_and_no_refusal(tmp_path, unit):
     root, run = _prep_root(tmp_path)
@@ -281,7 +280,6 @@ def test_a6_an_unknown_member_is_kept_never_refused(tmp_path):
     assert entry["data"]["fields"][0]["group"] == {"key": "morgh", "title": "مرغ"}
 
 
-@pytest.mark.xfail(strict=True, reason="needs track K/S")
 def test_a6_the_kept_member_passes_the_store_too(tmp_path):
     root, run_dir = _run(tmp_path)
     doc = _doc()

@@ -165,7 +165,10 @@ def test_b4_a_spaced_key_is_repaired_everywhere_the_entry_names_it():
     data = entry["data"]
     assert [f["key"] for f in data["fields"]] == ["qty_total", "code"]
     assert data["primaryKey"] == ["code", "qty_total"]
-    assert data["foreignKeys"][0]["fields"] == ["qty_total"]
+    # The v2 store contract has no `foreignKeys`: C5 keeps it in `extra` (as
+    # text, since it holds a ref) — after B4 has already renamed its column.
+    assert "foreignKeys" not in data
+    assert '["qty_total"]' in entry["extra"]["data/foreignKeys"]
     assert data["rows"] == [{"key": "r1", "code": "a", "qty_total": 3}]
     assert data["reconciled_against"][0]["cell"]["field"] == "qty_total"
     assert entry["field_status"] == {"data/fields/qty_total/title": "inferred",
@@ -288,10 +291,15 @@ def test_b11_malformed_foreign_keys_are_dropped_or_kept_in_extra():
                      "foreignKeys": [None, {}, descriptor, "junk", good]})
     found = _check(copy.deepcopy(entry))
     assert found and {(f.tier, f.mark) for f in found} == {(NOTE, NO_MARK)}
-    assert _repair(entry) == []
+    whole = copy.deepcopy(entry)
+    assert content.repair_foreign_keys(entry, {}) is None
     assert entry["data"]["foreignKeys"] == [good]
     assert entry["extra"] == {"data/foreignKeys": [descriptor, "junk"]}
     assert _check(entry) == []
+    # At a gate the store's C5 runs first: the v2 contract has no
+    # `foreignKeys`, so the whole list is kept in `extra`, nothing lost.
+    assert _repair(whole) == []
+    assert "foreignKeys" not in whole["data"] and "data/foreignKeys" in whole["extra"]
 
 
 def test_b12_an_undeclared_join_column_is_a_note_on_foreign_keys():

@@ -22,10 +22,6 @@ from merge_facts.content import check_document, group_messages, lint_prose
 from merge_facts.tiers import REFUSE, lines
 from validate.cli import main
 
-NEEDS_TRACK_S = pytest.mark.xfail(
-    strict=True, reason="needs track S: apply stores a NOTE instead of refusing")
-
-
 def _noted(found):
     """Today's `label: message` lines, after asserting that none of them is a
     refusal any more (spec 2026-09-13 §5B)."""
@@ -814,7 +810,6 @@ def test_validate_cli_ignores_content_pass_for_unrelated_schemas(tmp_path):
 # wiring: merge facts apply's precondition pass
 # --------------------------------------------------------------------------- #
 
-@NEEDS_TRACK_S
 def test_apply_stores_a_content_note_with_its_mark(tmp_path):
     # B18 at `apply`: the constant keeps its expr, which is marked inferred.
     root = _root(tmp_path)
@@ -1085,7 +1080,6 @@ def test_a_param_input_is_an_ordinary_declared_identifier():
     assert check_document(_doc(rule), "facts-delta") == []
 
 
-@NEEDS_TRACK_S
 def test_apply_stores_a_statement_that_names_a_cell_with_no_mark(tmp_path):
     # B38 at `apply`: style is a note with no mark on the entry — this also
     # needs `tiers.apply_notes` to leave a `NO_MARK` note unmarked.

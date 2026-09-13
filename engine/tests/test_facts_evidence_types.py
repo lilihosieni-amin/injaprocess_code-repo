@@ -21,7 +21,9 @@ from facts_plan.assemble import assemble, validate_unit
 from facts_plan.build import build
 from facts_helpers import _run_dir, _seed_units, _units_delta, _write
 from facts_plan_helpers import estate
+from merge_facts import tiers
 from merge_facts.apply import simulate
+from merge_facts.normalise import normalise_entry
 
 #: The five forms, in the evidence each arrived on: a `.docx`, a `.pdf`, an
 #: image, a `.docx` filed one directory down, and a transcript line. Every one
@@ -179,14 +181,19 @@ def test_each_paper_form_passes_the_unit_gate(tmp_path, form):
 
 
 @pytest.mark.parametrize("form", FORMS, ids=[f[0] for f in FORMS])
-@pytest.mark.parametrize("break_it,names", [
-    ("type", "type"), ("signatures", "signatures"), ("location", "location")],
+@pytest.mark.parametrize("break_it,repaired", [
+    ("type", lambda e: e["data"]["fields"][0]["type"] == "string"),
+    ("signatures", lambda e: e["data"]["signatures"] == [{"role": "انباردار"}]
+     and e["extra"] == {"data/signatures/0/sections": []}),
+    ("location", lambda e: e["data"]["location"] == {"kept_at": None, "holder": None})],
     ids=["a text column", "an invented key", "an empty location"])
-def test_a_wrong_shape_is_refused_at_the_unit_gate_by_field(tmp_path, form,
-                                                            break_it, names):
-    """The three shapes the 2026-09-07 run actually wrote. Each must be refused
-    HERE — at the unit's own gate, within its two attempts — and the message
-    must name the field, not dump the entry (§3.4)."""
+def test_a_wrong_shape_the_run_wrote_is_repaired_not_refused(tmp_path, form,
+                                                            break_it, repaired):
+    """The three shapes the 2026-09-07 run actually wrote. Spec 2026-09-13
+    C13 (the `text` → `string` synonym), C5 (an unknown member kept in
+    `extra`) and C10 (a missing location member → `null`) make each a REPAIR:
+    the unit's gate refuses none of them, and the repair pass every gate runs
+    writes the accepted shape without losing what was written."""
     root, run, units = _run(tmp_path)
     entry = _record(form)
     if break_it == "type":
@@ -195,12 +202,12 @@ def test_a_wrong_shape_is_refused_at_the_unit_gate_by_field(tmp_path, form,
         entry["data"]["signatures"] = [{"role": "انباردار", "sections": []}]
     else:
         entry["data"]["location"] = {}
-    problems = validate_unit(root, run, _out(run, _writer(units, form),
-                                             [entry]))
-    assert problems, f"{break_it} passed the gate"
-    joined = "\n".join(problems)
-    assert names in joined, joined
-    assert len(joined) < 2000, "the gate dumped the entry instead of the field"
+    found = validate_unit(root, run, _out(run, _writer(units, form), [entry]))
+    assert tiers.refusals(found) == [], tiers.lines(found)
+    work = {"id": "T-1", **copy.deepcopy(entry)}
+    normalise_entry(work, {"root": root, "store": None, "unit_rows": [],
+                           "label": "T-1"})
+    assert repaired(work), work
 
 
 def test_every_form_survives_assemble_and_simulate(tmp_path):

@@ -358,7 +358,6 @@ def test_edit_set_remove_unset_append_in_order(tmp_path):
     ([{"op": "remove", "path": "data/outputs/nope"}], "not found"),
     ([{"op": "unset", "path": "data/nope"}], "not found"),
     ([{"op": "append", "path": "data/outputs", "value": {"key": "v", "value": 1}}], "already"),
-    ([{"op": "set", "path": "statement", "value": "Table_Mavad را بخوان"}], "names"),
     ([{"op": "set", "path": "scope/departments", "value": ["nope"]}], "registry"),
     ([{"op": "set", "path": "data/outputs/v", "value": {"key": "z", "value": 1}}], "key"),
     # A value of the wrong SHAPE: every one of these used to traceback (exit 1)
@@ -385,6 +384,18 @@ def test_edit_refuses_and_writes_nothing(tmp_path, capsys, ops, fragment):
     assert fragment in capsys.readouterr().err
     assert _five(root) == before
     assert not (run / "facts-before").exists() and not (run / "facts-delta.json").exists()
+
+def test_edit_stores_a_statement_that_names_a_cell_with_a_note(tmp_path, capsys):
+    """Spec 2026-09-13 B38: style is a note only — the edit is written."""
+    root = _root(tmp_path); _seed_units(root)
+    apply(root, _write(root, "d1.json", _const_delta(5)), _run_dir(root, "1"))
+    e = _rule_entry(root)
+    edit(root, e["id"], _patch(root, "p.json", [
+        {"op": "set", "path": "statement", "value": "Table_Mavad را بخوان"}]),
+        _chat_run(root, "2"))
+    assert _rule_entry(root)["statement"] == "Table_Mavad را بخوان"
+    assert "note: " in capsys.readouterr().err
+
 
 def test_edit_notes_an_undeclared_unit_and_drops_an_unregistered_branch(tmp_path, capsys):
     """Spec 2026-09-13 C28 and C25 at the edit gate, the tier `apply` gives

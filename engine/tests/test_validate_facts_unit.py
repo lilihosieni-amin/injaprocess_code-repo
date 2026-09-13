@@ -290,7 +290,6 @@ def test_a_review_document_is_not_checked_for_completeness(tmp_path):
     assert validate_unit(root, run_dir, path) == []
 
 
-@pytest.mark.xfail(strict=True, reason="needs track K/S")
 def test_a_field_type_written_as_a_synonym_is_repaired(tmp_path):
     """I1 — 30 of the 2026-09-07 run's 52 Stage V refusals were column types
     written as `text`. C13 maps the synonym to `string`: no finding, no retry."""
@@ -301,7 +300,6 @@ def test_a_field_type_written_as_a_synonym_is_repaired(tmp_path):
     assert validate_unit(root, run_dir, _write(run_dir, doc)) == []
 
 
-@pytest.mark.xfail(strict=True, reason="needs track K/S")
 def test_a_new_paper_record_without_a_location_is_stored(tmp_path):
     """§3.3 + I1 — the two photographed forms of the 2026-09-07 run. C10 fills
     the missing `location` with `{}` (unknown, red in the panel): no refusal."""
@@ -493,7 +491,6 @@ def test_a_symbol_this_document_adds_to_the_units_record_is_its_own(tmp_path):
                          _write(run_dir, _doc(new=[units, item]))) == []
 
 
-@pytest.mark.xfail(strict=True, reason="needs track K/S")
 def test_one_prose_nit_and_one_shape_error_are_one_line_each(tmp_path):
     """Ruling (e) — the gate runs even when something else was found, and the
     decision lint and the content pass say a prose nit in the same words, so it
@@ -680,7 +677,6 @@ def test_an_input_key_that_is_no_column_of_that_record_is_not_judged(tmp_path):
         run_dir, _bound_doc("vorudi_yek", "vorudi_do"))) == []
 
 
-@pytest.mark.xfail(strict=True, reason="needs track K/S")
 def test_the_content_half_of_the_gate_is_capped_like_the_schema_half(tmp_path):
     """§3.4's ceiling belongs to both halves. A record whose every cell is
     refused used to hand the unit one line per cell — 200 of them here, and the

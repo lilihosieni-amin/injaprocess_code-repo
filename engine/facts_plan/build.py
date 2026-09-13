@@ -1938,6 +1938,11 @@ def _atom(node, seen):
         return TERSE[name]
     if name:
         return f"→ {name}، مثل بالا"
+    branches = node.get("anyOf") or []
+    if len(branches) == 2 and set(branches[1]) == {"type"}:
+        # An open vocabulary (spec 2026-09-13 C13): the preferred form is the
+        # one the unit is shown; the bare fallback type is the store's.
+        return _atom(branches[0], seen)
     if "enum" in node:
         return "یکی از: " + " | ".join("null" if v is None else str(v)
                                        for v in node["enum"])

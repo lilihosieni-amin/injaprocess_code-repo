@@ -30,8 +30,8 @@ from merge_facts.conventions import DEFAULT as DEFAULT_CONVENTIONS
 from merge_facts.conventions import load as load_conventions
 from merge_facts.normalise import normalise_entry
 from merge_facts.preconditions import (_registered, _unit_row_keys,
-                                       process_source_problems,
-                                       undeclared_unit_problems)
+                                       process_findings,
+                                       undeclared_unit_findings)
 from merge_facts.tiers import note, refuse
 
 from facts_plan.build import (estimate_tokens, label_of, process_index,
@@ -601,7 +601,7 @@ def _contract_problems(root, entries, named, symbols):
                       for line in str(exc).splitlines()[1:]]
         # I3 — the citation was live when the run was planned; the tombstone may
         # have landed since (A33, the preconditions' own tier).
-        found += _labelled(label, process_source_problems(root, body))
+        found += process_findings(root, body, label)
         scope = body.get("scope") or {}
         off = [b for b in scope.get("branches") or [] if branches and b not in branches]
         if off:                                                     # A34
@@ -610,7 +610,7 @@ def _contract_problems(root, entries, named, symbols):
                                   "sheets manifest; dropped", fa=FA_BRANCH)
                       for b in off]
         if symbols:                                                 # A35
-            found += _labelled(label, undeclared_unit_problems(body, symbols, label))
+            found += undeclared_unit_findings(body, symbols, label)
         if body.get("kind") == "record" and isinstance(body.get("data"), dict):
             found += _row_keys(body["data"], label)                 # A36
     delta = {"schema_version": 2, "entries": clean}

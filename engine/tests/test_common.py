@@ -41,13 +41,15 @@ def test_is_empty(v, expected):
     assert is_empty(v) is expected
 
 
-def _rec(n, ftype):
-    """A delta record whose one column carries a type the store has no such thing as."""
+def _rec(n, fkey):
+    """A delta record whose one column key breaks the grammar — a failure that
+    stays a schema failure now the field types are an open vocabulary (spec
+    2026-09-13 C13 opened them; C16 keeps an off-grammar key refused)."""
     return {"kind": "record", "key": f"r{n}", "title": "ت", "statement": "ش",
             "scope": {"departments": ["cooking"], "branches": []},
             "source": [{"type": "chat", "ref": None}], "retired": False,
             "data": {"medium": "sheet", "role": "log", "location": {},
-                     "fields": [{"key": "x", "type": ftype}]}}
+                     "fields": [{"key": fkey, "type": "string"}]}}
 
 
 def _ruleless():
@@ -64,32 +66,32 @@ def test_a_oneof_failure_is_reported_by_field_path_and_grouped():
     the three places; the fourth entry's own rule is a second line. No entry is
     dumped into the message, which is what made the first run unreadable."""
     doc = {"schema_version": 2,
-           "entries": [_rec(1, "text"), _rec(2, "text"), _rec(3, "text"), _ruleless()]}
+           "entries": [_rec(1, "Qty"), _rec(2, "Qty"), _rec(3, "Qty"), _ruleless()]}
     with pytest.raises(ValueError) as excinfo:
         validate("facts-delta.schema.json", doc)
     lines = str(excinfo.value).splitlines()
     assert lines[0] == "facts-delta.schema.json validation failed:"
     assert lines[1:] == [
-        "entries[N].data.fields[N].type: 'text' is not one of "
-        "['string', 'number', 'integer', 'boolean', 'date'] (3 places: "
-        "entries[0].data.fields[0].type, entries[1].data.fields[0].type, "
-        "entries[2].data.fields[0].type)",
+        "entries[N].data.fields[N].key: 'Qty' does not match "
+        "'^[a-z][a-z0-9]*(_[a-z0-9]+)*$' (3 places: "
+        "entries[0].data.fields[0].key, entries[1].data.fields[0].key, "
+        "entries[2].data.fields[0].key)",
         "entries[3].data: 'outputs' is a required property"]
     assert "statement" not in str(excinfo.value)   # no entry body anywhere
 
 
 def test_a_lone_error_keeps_its_concrete_path():
-    doc = {"schema_version": 2, "entries": [_rec(1, "text")]}
+    doc = {"schema_version": 2, "entries": [_rec(1, "Qty")]}
     with pytest.raises(ValueError) as excinfo:
         validate("facts-delta.schema.json", doc)
     assert str(excinfo.value).splitlines()[1].startswith(
-        "entries[0].data.fields[0].type: 'text' is not one of")
+        "entries[0].data.fields[0].key: 'Qty' does not match")
     assert "places:" not in str(excinfo.value)
 
 
 def test_the_line_cap_holds_at_eighty():
     doc = {"schema_version": 2,
-           "entries": [_rec(n, f"text{n}") for n in range(100)]}
+           "entries": [_rec(n, f"Qty{n}") for n in range(100)]}
     with pytest.raises(ValueError) as excinfo:
         validate("facts-delta.schema.json", doc)
     lines = str(excinfo.value).splitlines()[1:]

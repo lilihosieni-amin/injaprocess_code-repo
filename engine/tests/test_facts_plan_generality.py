@@ -107,8 +107,9 @@ def test_a_generated_estate_plans_gates_and_assembles(seed, tmp_path, capsys):
     delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
     validate("facts-delta.schema.json", delta)
     _store, problems = simulate(tmp_path, run_dir / "facts-delta.json", run_dir)
-    assert problems == [], f"seed {seed}: apply would refuse this delta: " \
-                           f"{problems[:2]}"
+    refusals = tiers.lines(tiers.refusals(problems))
+    assert refusals == [], f"seed {seed}: apply would refuse this delta: " \
+                           f"{refusals[:2]}"
 
     RUNS[seed] = {"candidates": sum(built["candidates"].values()),
                   "units": built["units"], "held_back": result["undecided"],
