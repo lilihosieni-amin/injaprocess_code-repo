@@ -218,3 +218,16 @@ def test_the_preserved_bag_unions_and_a_null_reread_is_no_change():
     assert merge_entry(existing, incoming, {"type": "chat", "ref": None}) == [
         ("data/category", "noop")]
     assert "accounts" not in existing
+
+
+def test_an_incoming_null_never_challenges_a_known_value():
+    """Final review C-1: a null a gate REPAIR wrote (B19/C10/C19 — "unknown")
+    merged onto a stored value changes nothing and opens no dispute."""
+    e = _base()
+    inc = copy.deepcopy(e)
+    inc["data"]["outputs"][0]["value"] = None
+    inc["data"]["outputs"][0]["unit"] = None
+    before = copy.deepcopy(e)
+    changes = merge_entry(e, inc, SRC_B)
+    assert e == before
+    assert all(action == "noop" for _, action in changes)

@@ -609,3 +609,40 @@ def test_a_delta_carrying_notes_and_extra_reapplies_byte_identically(tmp_path):
     before = path.read_bytes()
     _apply(root, _delta(rec), "2")
     assert path.read_bytes() == before
+
+
+def _stored_bytes(root):
+    return {p.name: p.read_bytes() for p in (root / "facts").glob("*.json")}
+
+
+@pytest.mark.parametrize("row", ["b19", "c10", "c19"])
+def test_a_null_a_repair_wrote_never_disputes_a_stored_value(tmp_path, row):
+    """Final review C-1: the same entry read again with a member the gate
+    fills with null (B19 constant value, C10 computable member, C19 a leaf
+    moved to extra) keeps the stored value; no account, not disputed."""
+    root = _root(tmp_path); _seed_units(root)
+    if row == "c10":
+        item = {"id": "T-3", "kind": "item", "key": "ing_1", "title": "پنیر",
+                "statement": "پنیر پیتزا.", "scope": {"departments": [], "branches": []},
+                "source": [{"type": "voice", "ref": "meetings/transcripts/c.txt"}],
+                "retired": False, "data": {"category": "raw", "unit": "g"}}
+        _apply(root, _delta(item), "1")
+        again = copy.deepcopy(item)
+        del again["data"]["unit"]
+        kind, key, leaf = "item", "ing_1", lambda e: e["data"]["unit"]
+        first = "g"
+    else:
+        _apply(root, _const_delta(), "1")
+        again = _const_delta()["entries"][0]
+        out = again["data"]["outputs"][0]
+        if row == "b19":
+            del out["value"]
+            leaf, first = (lambda e: e["data"]["outputs"][0]["value"]), 5
+        else:
+            out["title"] = {"fa": "مقدار"}
+            leaf, first = (lambda e: e["data"]["outputs"][0]["title"]), "مقدار"
+        kind, key = "rule", "tol"
+    _apply(root, _delta(again), "2")
+    stored = _one(root, kind, key)
+    assert leaf(stored) == first
+    assert "accounts" not in stored and stored.get("status") != "disputed"

@@ -170,6 +170,10 @@ def _merge_scalar(entry, holder, name, path, incoming_value, source, changes):
     elif current is None or current == "":
         holder[name] = incoming_value
         changes.append((path, "fill"))
+    elif incoming_value is None:
+        # a null is "unknown" (a gate REPAIR writes it, B19/C10/C19): an
+        # unknown never challenges a known value
+        changes.append((path, "noop"))
     else:
         _dispute(entry, path, current, incoming_value, source, changes)
 
