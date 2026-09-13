@@ -10,32 +10,32 @@ verb whose function is not here yet rather than failing to import.
 """
 import collections
 import copy
+import functools
 import hashlib
 import json
 import pathlib
 import re
 import sys
+from dataclasses import replace
 
-from engine_common import (capped, read_json, validate, write_json_atomic,
-                           write_text_atomic)
-from merge_facts import (KIND_ORDER, _sheet_identities, canonical_scope,
-                         iter_ref_objects, load_store, null_paths, set_path)
+from engine_common import (LINE_CAP, read_json, schema_dir, validate,
+                           write_json_atomic, write_text_atomic)
+from merge_facts import (KIND_ORDER, SEGMENT_RE, _sheet_identities,
+                         canonical_scope, iter_ref_objects, load_store,
+                         null_paths, set_path, tiers)
 from merge_facts.apply import _derive_row_keys
 from merge_facts.audit import flags_over
 from merge_facts.content import _check_prose, check_document
 from merge_facts.conventions import DEFAULT as DEFAULT_CONVENTIONS
 from merge_facts.conventions import load as load_conventions
+from merge_facts.normalise import normalise_entry
 from merge_facts.preconditions import (_registered, _unit_row_keys,
-                                       _unit_symbols, process_source_problems)
+                                       process_source_problems,
+                                       undeclared_unit_problems)
+from merge_facts.tiers import note, refuse
 
 from facts_plan.build import (estimate_tokens, label_of, process_index,
                               shape_section)
-
-#: A template field the record unit has not renamed yet — §2.5's `c_h`. The
-#: `c_` prefix is what marks a ref provisional, so a field wearing it in any
-#: case is held to the grammar; anything else is a minted key.
-PROVISIONAL_FIELD = re.compile(r"^c_[a-z]{1,3}$")
-
 
 def _refs(value):
     """Every `{ref, field?}` object in a decision, in document order."""
@@ -50,193 +50,504 @@ def _refs(value):
 
 
 def validate_unit(root, run_dir, path):
-    """Every message for one `facts-unit` document, empty when it may pass.
+    """Every finding for one `facts-unit` document (spec 2026-09-13 §5A): a
+    REFUSE labelled `decisions[N] …` or `new[N] …` costs that item alone, one
+    labelled otherwise costs the document, and a NOTE costs nothing.
 
-    Checks, in order: the schema; the `units/<id>/` directory the document
-    sits in against the `unit` it declares, and every candidate of **that**
-    unit's `plan.json` list decided exactly once (a plan unit only — the
-    review addresses assembled entries, which do not exist yet); `S-` refs
-    naming a candidate of this run; node ids in the
-    department's **whole** process index, in `decisions[]` and `new[]` alike;
-    the provisional field grammar; the §5.2 lint on every prose field with
-    `skeleton.json`'s `unit_symbols[]` exempted; and a `unit` written onto a
-    field that is not a number.
+    Checks, in order: the attempt cap and the JSON; the document's own shape,
+    repaired where the meaning cannot change; each decision and `new[]` entry
+    against the schema on its own; the `units/<id>/` directory the document
+    sits in; every candidate of that unit decided (a note — a retry decides
+    only what an earlier attempt did not); `S-` refs, node citations, columns,
+    swapped inputs and the §5.2 lint; then the store contract over the entries
+    the document materialises.
     """
-    root, run_dir, path = pathlib.Path(root), pathlib.Path(run_dir), pathlib.Path(path)
-    # §3.5 — two attempts per unit is a rule of the engine. The 2026-09-07 run
-    # reached out.3.json and then asked the owner to lift the cap; `unit_states`
-    # and `_outputs` already read a third attempt as `failed`, they were only
-    # never told why.
-    attempt = re.fullmatch(r"out\.([0-9]+)\.json", path.name)
-    if attempt and int(attempt.group(1)) > ATTEMPTS:
-        return [f"{path.name}: attempt cap: two per run"]
-    try:
-        doc = read_json(path)
-    except (OSError, ValueError) as exc:
-        return [f"{path.name}: not readable as JSON ({exc})"]
-    try:
-        validate("facts-unit.schema.json", doc)
-    except ValueError as exc:
-        return [str(exc)]
+    return _judge(root, run_dir, path)[1]
 
-    skeleton = read_json(run_dir / "skeleton.json")
-    plan = read_json(run_dir / "plan.json")
-    # The candidate's store kind, not just its id: `_lint_decision` needs it to
-    # know whose `statement` may name a column (QF-50).
+
+#: A7 — what a decision or a `new[]` entry may not write, because the engine
+#: builds it (INV-1, INV-3): the unit's copy is dropped, never merged or kept.
+ENGINE_OWNED = ("id", "source", "scope", "field_status", "accounts", "retired")
+#: …and, under a decision's `data`, the candidate's own payload members.
+ENGINE_OWNED_DATA = ("code", "instances", "applies_to", "location")
+
+#: The Persian a note leaves on the entry for the panel (§4). Never a pipeline
+#: word, a sheet word or a Latin one: step 8 lints `issues[]` like any prose.
+FA_NO_STATEMENT = "برای این مورد جمله‌ای نوشته نشد؛ پیش از تأیید، توضیح آن را کامل کنید."
+FA_ONE_PART = "این مورد قرار بود به چند مورد تقسیم شود اما یک بخش داشت و به همان صورت ثبت شد."
+FA_ALL_TAKES = ("برای یک بخش از این تقسیم مشخص نشد کدام نسخه‌ها را در بر می‌گیرد؛ "
+                "همهٔ نسخه‌ها به آن نسبت داده شد.")
+FA_TWICE = "دربارهٔ این مورد دو توصیف متفاوت نوشته شد؛ توصیف اول ثبت شد."
+FA_CROSS_KIND = "این مورد قرار بود در موردی از نوع دیگر ادغام شود؛ به‌جای آن جداگانه ثبت شد."
+FA_CITATION = "ارجاعی به مرحله‌ای از فرایند که پیدا نشد برداشته شد."
+FA_NO_COLUMN = "توضیحی که برای یکی از عنوان‌های این جدول نوشته شد به هیچ عنوانی نرسید."
+FA_SEVERED = "پیوند این مورد به موردی که در این اجرا وجود ندارد برداشته شد."
+FA_SWAPPED = "ورودی‌های این قاعده ممکن است جابه‌جا نوشته شده باشند؛ پیش از تأیید بازبینی کنید."
+FA_UNIT_ON_TEXT = "برای مقداری که عددی نیست واحد نوشته شده است؛ پیش از تأیید بازبینی کنید."
+FA_BRANCH = "شعبه‌ای که برای این مورد نوشته شد در فهرست شعبه‌ها نبود و کنار گذاشته شد."
+
+
+@functools.lru_cache(maxsize=None)
+def _allowed(name):
+    """The member names `facts-unit.schema.json` gives one closed object."""
+    schema = read_json(schema_dir() / "facts-unit.schema.json")
+    return frozenset((schema if name == "root" else schema["$defs"][name])["properties"])
+
+
+def _clean_key(value):
+    """A8 — trim, lower-case, and spaces and `-` to `_`."""
+    return re.sub(r"[ \-]", "_", value.strip().lower()) \
+        if isinstance(value, str) else value
+
+
+def _plain(value):
+    """A leaf without its `{value, inferred}` wrapper — `_unwrap`'s own test."""
+    return value["value"] if isinstance(value, dict) \
+        and set(value) == {"value", "inferred"} else value
+
+
+def _labelled(label, items):
+    """Findings from a producer handed `label` (or none), all under `label` —
+    `coerce` splits a legacy line at its first `: `, and an assembly label
+    (`u-a: key`) carries one of its own."""
+    out = []
+    for finding in tiers.coerce(items):
+        line = finding.line()
+        message = line[len(label) + 2:] if line.startswith(label + ": ") else line
+        out.append(replace(finding, label=label, message=message))
+    return out
+
+
+def _stash(obj, name, prefix, extra):
+    """A6 — a member the unit contract does not name moves to the entry's
+    `extra` bag under its path, so nothing the unit wrote is lost."""
+    for key in sorted(set(obj) - _allowed(name)):
+        extra[prefix + key] = obj.pop(key)
+
+
+def _repair(item, where, ctx):
+    """A6–A14, A21, A23, A24 over one decision or `new[]` entry, in place and
+    before the schema sees it. Returns `[(message, path, mark, fa)]`, the notes
+    a repair that changed what is stored leaves behind."""
+    notes = []
+    extra = item.pop("extra", None)
+    extra = dict(extra) if isinstance(extra, dict) else {}
+    for key in ENGINE_OWNED:
+        item.pop(key, None)
+    decision = where == "decisions"
+    if decision and item.get("skeleton") and "entry" in item:
+        item.pop("entry")                                           # A14
+    _stash(item, "decision" if decision else "newEntry", "", extra)
+    for name in ("entry", "into"):
+        if isinstance(item.get(name), dict):
+            _stash(item[name], "entryAddr", f"{name}/", extra)
+            if isinstance(item[name].get("scope"), dict):
+                _stash(item[name]["scope"], "scope", f"{name}/scope/", extra)
+    kinds, skid = ctx["kinds"], item.get("skeleton")
+    into = item.get("into")
+    if decision and item.get("action") == "merge_into" and isinstance(into, str) \
+            and skid in kinds and into in kinds and kinds[skid] != kinds[into] \
+            and isinstance(item.get("key"), str) and isinstance(item.get("title"), str):
+        # A22, section 9 — the rule stands as its own entry.
+        item["action"] = "keep"
+        item.pop("into")
+        notes.append((f"merge_into: a {kinds[skid]} cannot merge into a "
+                      f"{kinds[into]} ({into}); kept as its own entry",
+                      None, "issue", FA_CROSS_KIND))
+    parts = []
+    if decision and item.get("action") == "split" and isinstance(into, list):
+        parts = [p for p in into if isinstance(p, dict)]
+        for n, part in enumerate(parts):
+            _stash(part, "splitPart", f"into/{n}/", extra)
+            if not part.get("takes"):                               # A13
+                part.pop("takes", None)
+                notes.append((f"into[{n}]: no takes, so the part keeps every "
+                              "binding", None, "issue", FA_ALL_TAKES))
+        if len(into) == 1 and parts:
+            part = parts.pop()
+            for key in ("into", "reason_code"):
+                item.pop(key, None)
+            item.update({k: part[k] for k in ("key", "title", "statement", "data")
+                         if k in part})
+            item["action"] = "keep"
+            notes.append(("split into one part: kept as that part", None, "issue",
+                          FA_ONE_PART))
+    if decision and item.get("action") in ("drop", "merge_into", "split") \
+            and item.get("reason_code") not in REASON_FA:           # A11
+        raw = item.pop("reason_code", None)
+        if isinstance(raw, str) and raw and not item.get("reason"):
+            item["reason"] = raw
+        item["reason_code"] = "other"
+    for obj in [item, *parts, item.get("entry"), item.get("into")]:
+        if isinstance(obj, dict) and "key" in obj:                  # A8
+            obj["key"] = _clean_key(obj["key"])
+    for part in parts:
+        if isinstance(part.get("takes"), list):
+            part["takes"] = [_clean_key(t) for t in part["takes"]]
+    for holder in ([item] if not decision or item.get("action") == "keep" else []) \
+            + parts:
+        if holder.get("statement") is None:                         # A9
+            holder["statement"] = ""
+            notes.append(("no statement", None, "issue", FA_NO_STATEMENT))
+    if not decision and "data" not in item:
+        item["data"] = {}                                           # A25
+    for ref in _refs(item):                                         # A21
+        field = ref.get("field")
+        if isinstance(field, str) and field.strip()[:2].lower() == "c_":
+            ref["field"] = field.strip().lower()
+    cited = item.get("processes")
+    if isinstance(cited, list):                                     # A23
+        kept = []
+        for n, citation in enumerate(cited):
+            if not isinstance(citation, dict):
+                kept.append(citation)
+                continue
+            _stash(citation, "procCite", f"processes/{n}/", extra)
+            node = f'{citation.get("process")}::{citation.get("node")}'
+            if node in ctx["node_ids"]:
+                kept.append(citation)
+            else:
+                notes.append((f'node {citation.get("node")} is in no process of '
+                              f'{ctx["department"]}; citation dropped', None,
+                              "issue", FA_CITATION))
+        item["processes"] = kept
+    if decision:
+        columns = {f.get("key") for f in _members(
+            (ctx["candidates"].get(skid) or {}).get("payload") or {}, "fields")}
+        for holder in [item, *parts]:
+            data = holder.get("data")
+            if not isinstance(data, dict):
+                continue
+            for key in ENGINE_OWNED_DATA:                           # A7
+                data.pop(key, None)
+            if not isinstance(data.get("fields"), list):
+                continue
+            kept = []
+            for i, field in enumerate(data["fields"]):              # A24
+                written = field.get("from") if isinstance(field, dict) else None
+                if not isinstance(field, dict) or (
+                        isinstance(written, str) and (not skid or written in columns)):
+                    kept.append(field)
+                    continue
+                notes.append((f"data.fields[{i}].from: {written!r} names no column "
+                              f"of this candidate; dropped {json.dumps(field, ensure_ascii=False)}",
+                              None, "issue", FA_NO_COLUMN))
+            data["fields"] = kept
+    if extra:
+        item["extra"] = extra
+    return notes
+
+
+def _lifted(item):
+    """A6 — the members of a decision's `data` and its fields the unit contract
+    does not name, taken out for the schema check and put back after it: they
+    pass through to the store schema, which knows them or keeps them (C5).
+    Returns the function that puts them back."""
+    held, into = [], item.get("into")
+    parts = [p for p in into if isinstance(p, dict)] if isinstance(into, list) else []
+    for holder in [item, *parts]:
+        data = holder.get("data")
+        if not isinstance(data, dict):
+            continue
+        members = [(data, "decisionData")] + [(f, "decisionField") for f in
+                                               _members(data, "fields")]
+        for obj, name in members:
+            for key in sorted(set(obj) - _allowed(name)):
+                held.append((obj, key, obj.pop(key)))
+
+    def restore():
+        for obj, key, value in held:
+            obj[key] = value
+    return restore
+
+
+def _item_label(where, n, item):
+    if where == "new":
+        return f'new[{n}] {item.get("key")}'
+    entry = item.get("entry") if isinstance(item.get("entry"), dict) else {}
+    return f"decisions[{n}] " + (item.get("skeleton")
+                                 or f'{entry.get("kind")}/{entry.get("key")}')
+
+
+def _probe(doc, where, n, item, label):
+    """Rows A3–A25's schema half for one item alone, so a failure names only it."""
+    probe = {"schema_version": 1, "unit": doc["unit"], "attempt": doc["attempt"],
+             "decisions": [], "new": []}
+    probe[where] = [item]
+    try:
+        validate("facts-unit.schema.json", probe)
+    except ValueError as exc:
+        return [refuse(label, re.sub(rf"^{where}\[(?:0|N)\](?:\.|: )?", "", line)
+                       .replace(f"{where}[0]", f"{where}[{n}]"))
+                for line in str(exc).splitlines()[1:]]
+    return []
+
+
+def _sever(item, label, known):
+    """A19/A20 — an `S-` ref naming no candidate of the run. A link the entry can
+    live without is cut (nulled, or removed from its list) with a note; the
+    required ones — a binding's `record`, a note's last `about` — refuse."""
+    out = []
+
+    def dangling(value):
+        return isinstance(value, dict) and isinstance(value.get("ref"), str) \
+            and value["ref"].startswith("S-") and value["ref"] not in known
+
+    def cut(ref, where):
+        out.append(note(label, f"{where}: ref {ref} names no candidate; link cut",
+                        fa=FA_SEVERED))
+
+    def walk(value, path):
+        if isinstance(value, dict):
+            for key, member in list(value.items()):
+                where = f"{path}.{key}" if path else key
+                if dangling(member) and key == "record" and ".applies_to[" in f".{path}":
+                    out.append(refuse(label, f'{where}: ref {member["ref"]} names no '
+                                             "candidate"))
+                elif dangling(member):
+                    cut(member["ref"], where)
+                    value[key] = None
+                else:
+                    walk(member, where)
+        elif isinstance(value, list):
+            gone = [i for i, member in enumerate(value) if dangling(member)]
+            if gone and len(gone) == len(value) and path.endswith("about"):
+                out.append(refuse(label, f"{path}: every ref names no candidate"))
+                return
+            for i in gone:
+                cut(value[i]["ref"], f"{path}[{i}]")
+            for i in reversed(gone):
+                del value[i]
+            for i, member in enumerate(value):
+                walk(member, f"{path}[{i}]")
+    walk(item, "")
+    return out
+
+
+def _judge_doc(root, run_dir, path, doc, semantics=True):
+    """`(doc, findings, unshaped)` — rows A3–A28 over a parsed document, in
+    place. `doc` is None when a finding refuses the whole of it; otherwise it is
+    the repaired document, a duplicate decision (A16) replaced by None so every
+    index still names what the writer wrote. `unshaped` is the `(where, n)` of
+    every item the schema refused: nothing can be built from those, while an
+    item refused for its content still is, so one attempt hears everything."""
+    name = path.name
+    if not isinstance(doc, dict):
+        return None, [refuse(name, "is not a JSON object")], set()
+    if path.parent.parent.name == "units" and doc.get("unit") != "review":
+        doc["unit"] = path.parent.name                              # A4
+    elif path.parent.name == "review":
+        doc["unit"] = "review"
+    attempt = re.fullmatch(r"out\.([0-9]+)\.json", name)
+    if attempt:
+        doc["attempt"] = int(attempt.group(1))
+    elif type(doc.get("attempt")) is not int or doc["attempt"] < 1:
+        doc["attempt"] = 1
+    if not isinstance(doc.get("unit"), str) or not doc["unit"]:
+        return None, [refuse(name, "names no unit")], set()
+    if doc.get("schema_version") != 1:                              # A3
+        return None, [refuse(name, f'schema_version {doc.get("schema_version")!r} '
+                                   "is not 1")], set()
+    for where in ("decisions", "new"):                              # A5
+        doc.setdefault(where, [])
+        if not isinstance(doc[where], list):
+            return None, [refuse(name, f"{where} is not a list")], set()
+    for key in sorted(set(doc) - _allowed("root")):
+        doc.pop(key)
+    skeleton = read_json(pathlib.Path(run_dir) / "skeleton.json")
     candidates = {c["id"]: c for c in skeleton["candidates"]}
-    kinds = {cid: KIND_OF.get(c["kind"], c["kind"])
-             for cid, c in candidates.items()}
-    known = set(kinds)
+    nodes = process_index(root, skeleton["department"])
+    ctx = {"candidates": candidates, "department": skeleton["department"],
+           "kinds": {cid: KIND_OF.get(c["kind"], c["kind"])
+                     for cid, c in candidates.items()},
+           "node_ids": {f'{n["process"]}::{n["node"]}' for n in nodes}
+           | {f'{n["process"]}::{n["node"].rsplit("-", 1)[-1]}' for n in nodes}}
+    found, passed, unshaped = [], [], set()
+    for where in ("decisions", "new"):
+        for n, item in enumerate(doc[where]):
+            if not isinstance(item, dict):
+                found.append(refuse(f"{where}[{n}]", "is not an object"))
+                unshaped.add((where, n))
+                continue
+            notes = _repair(item, where, ctx)
+            label = _item_label(where, n, item)
+            found += [note(label, m, path=p, mark=k, fa=fa) for m, p, k, fa in notes]
+            restore = _lifted(item) if where == "decisions" else (lambda: None)
+            probe = _probe(doc, where, n, item, label)
+            restore()
+            found += probe
+            if probe:
+                unshaped.add((where, n))
+            else:
+                passed.append((where, n, label))
+    if semantics:
+        found += _item_checks(root, doc, passed, ctx, skeleton)
+    return doc, found, unshaped
+
+
+def _item_checks(root, doc, passed, ctx, skeleton):
+    """A15, A16, A19/A20, A22, A26, A27 and the lint (A28) over the items the
+    schema admitted."""
+    kinds, known = ctx["kinds"], set(ctx["kinds"])
     symbols = skeleton.get("unit_symbols") or []
     conventions = load_conventions(root)
-    nodes = process_index(root, skeleton["department"])
-    node_ids = {f'{n["process"]}::{n["node"]}' for n in nodes} \
-        | {f'{n["process"]}::{n["node"].rsplit("-", 1)[-1]}' for n in nodes}
-    problems, seen, unit = [], [], None
-    # The document's own decisions by candidate, so a rule can be judged
-    # against the record it reads: the record's keys are minted here, not in
-    # the skeleton (`_swapped_inputs`).
     decided = {d["skeleton"]: d for d in doc["decisions"]
                if isinstance(d, dict) and d.get("skeleton")}
+    found, first = [], {}
+    for where, n, label in passed:
+        item = doc[where][n]
+        skid = item.get("skeleton")
+        if where == "decisions" and doc["unit"] != "review":
+            if not skid:
+                found.append(refuse(label, "addresses no candidate of this unit"))
+                continue
+            if skid not in known:
+                found.append(refuse(label, f"{skid} is not a candidate of this run"))
+                continue
+            if skid in first:                                       # A16
+                held = doc["decisions"][first[skid][0]]
+                if item != held:
+                    found.append(note(first[skid][1], f"{skid} is decided twice; "
+                                      f"decisions[{n}] set aside: "
+                                      f"{json.dumps(item, ensure_ascii=False)[:300]}",
+                                      fa=FA_TWICE))
+                doc["decisions"][n] = None
+                continue
+            first[skid] = (n, label)
+        into = item.get("into")
+        if item.get("action") == "merge_into" and isinstance(into, str) \
+                and skid in kinds and into in kinds and kinds[skid] != kinds[into]:
+            found.append(refuse(label, f"merge_into: a {kinds[skid]} cannot merge "
+                                       f"into a {kinds[into]} ({into}) and has no "
+                                       "key and title to stand on its own"))
+            continue
+        found += _sever(item, label, known)
+        for message, input_key in _swapped_inputs(item, candidates=ctx["candidates"],
+                                                  decided=decided):   # A26
+            found += [note(label, message, path=f"data/inputs/{input_key}",
+                           mark="inferred"),
+                      note(label, message, fa=FA_SWAPPED)]
+        for holder in [item] + [p for p in (into if isinstance(into, list) else [])
+                                if isinstance(p, dict)]:
+            for field in _members(holder.get("data") or {}, "fields"):   # A27
+                kind = _plain(field.get("type"))
+                if _plain(field.get("unit")) and kind not in (None, "number", "integer"):
+                    found.append(note(label, f'field {field.get("key")} is {kind} '
+                                             "and carries a unit",
+                                      path=f'data/fields/{field.get("key")}/unit',
+                                      fa=FA_UNIT_ON_TEXT))
+        kind = kinds.get(skid) or (item.get("entry") or {}).get("kind") \
+            if where == "decisions" else item.get("kind")
+        found += _labelled(label, _lint_decision(item, label, symbols, kind,
+                                                 conventions))
+    return found
+
+
+def _judge(root, run_dir, path):
+    """`(doc, findings)` for one document on disk: `validate_unit`'s body, and
+    the document `_outputs` folds (None when nothing in it can be)."""
+    root, run_dir, path = pathlib.Path(root), pathlib.Path(run_dir), pathlib.Path(path)
+    # §3.5 — two attempts per unit is a rule of the engine (A1, section 9).
+    attempt = re.fullmatch(r"out\.([0-9]+)\.json", path.name)
+    if attempt and int(attempt.group(1)) > ATTEMPTS:
+        return None, [refuse(path.name, "attempt cap: two per run")]
+    try:
+        doc = read_json(path)
+    except (OSError, ValueError) as exc:                            # A2
+        return None, [refuse(path.name, f"not readable as JSON ({exc})")]
+    doc, found, unshaped = _judge_doc(root, run_dir, path, doc)
+    if doc is None:
+        return None, found
+    plan = read_json(run_dir / "plan.json")
     in_units = path.parent.parent.name == "units"
+    working = _without(doc, unshaped)
     if doc["unit"] == "review":
-        # A review lives at `review/out.json` and addresses assembled entries.
-        # One written into a unit's directory used to skip both checks below —
-        # so the unit went `done` having decided none of its candidates, and
-        # `assemble` sent every one of them to `undecided[]`.
-        if in_units:
-            problems.append(f'{path.name}: is a review document, but it sits in '
-                            f'units/{path.parent.name}/, whose candidates it '
-                            "decides none of")
+        if in_units:                                                # A18
+            found.append(refuse(path.name, "is a review document, but it sits in "
+                                f"units/{path.parent.name}/, whose candidates it "
+                                "decides none of"))
         elif (run_dir / "review" / "input.sha256").is_file():
             # The review's gate is the fold's own judgement (I1 for the
-            # reviewer): an address that lands nowhere or a contradiction no
-            # flag covers is named here, per decision, while the reviewer still
-            # has an attempt to fix it — `assemble` would only hold that one
-            # decision back (R1) and the reviewer would never hear of it.
-            # Without a digest stamp the fold reads no review, so there is
-            # nothing to judge it against.
+            # reviewer): what `assemble` would hold back is named here while
+            # the reviewer still has an attempt. Without a digest stamp the
+            # fold reads no review, so there is nothing to judge it against.
             _run, skel, st = _prepare(root, run_dir, False)
             draft = _build_entries(root, skel, st)
             _cross_unit(root, draft, st)
-            review_lines = _review_problems(run_dir, doc, st, draft, st)
-            problems += review_lines
-            if not review_lines and not problems:
-                # …and the folded result is held to the store contract here,
-                # not first at `assemble --review`: a reviewer's rewrite that
-                # the assembly refuses (sixteen items without `category`,
-                # 2026-09-08) is the reviewer's to fix while it still has an
-                # attempt. Same `_lint_entries`, same `review: <key>` labels.
+            review_lines = tiers.coerce(_review_problems(run_dir, working, st,
+                                                         draft, st))
+            found += review_lines
+            if not tiers.refusals(found):
                 try:
                     _r2, skel2, st2 = _prepare(root, run_dir, True)
                 except SystemExit:
-                    # A stale digest (R3) — `_review_problems` has already said
-                    # so, and there is nothing sound left to lint.
-                    st2 = {}
+                    st2 = {}                # a stale digest, already said
                 if st2.get("review_status") in ("applied", "partial"):
                     folded = _build_entries(root, skel2, st2)
                     _cross_unit(root, folded, st2)
                     _settle(folded, st2)
-                    problems += [line for line in _lint_entries(
+                    found += [f for f in _lint_entries(
                         root, folded, skel2.get("unit_symbols") or [],
-                        st2.get("reviewed") or ()) if line.startswith("review: ")]
+                        st2.get("reviewed") or ()) if f.label.startswith("review: ")]
+        return doc, list(dict.fromkeys(found))
+    # A document belongs to the unit whose directory it sits in (A4, A18).
+    unit = next((u for u in plan["units"] if u["id"] == path.parent.name), None) \
+        if in_units else None
+    if not in_units:
+        found.append(refuse(path.name, "is in no units/<unit id>/ directory of the "
+                                       "run, so no plan entry says what it must decide"))
+    elif unit is None:
+        found.append(refuse(path.name, f"{path.parent.name} is no unit of this run's plan"))
     else:
-        # A document belongs to the unit whose directory it sits in, never to
-        # the one it names: a document declaring a zero-candidate sibling would
-        # otherwise decide nothing and still be `done`.
-        dir_unit = path.parent.name if in_units else None
-        unit = next((u for u in plan["units"] if u["id"] == dir_unit), None)
-        if not in_units:
-            problems.append(f"{path.name}: is in no units/<unit id>/ directory of "
-                            "the run, so no plan entry says what it must decide")
-        elif unit is None:
-            problems.append(f"{path.name}: {dir_unit} is no unit of this run's plan")
-        elif doc["unit"] != dir_unit:
-            problems.append(f'{path.name}: unit {doc["unit"]} does not match its '
-                            f"directory {dir_unit}")
+        # A17 — a candidate this attempt and no earlier one decided waits; it is
+        # a note, and joins a retry the unit owes anyway (section 9).
+        seen = {d.get("skeleton") for d in doc["decisions"] if isinstance(d, dict)} \
+            | _earlier_decided(root, run_dir, path)
+        found += [note(cid, "has no decision") for cid in unit["candidates"]
+                  if cid not in seen]
+    # I1 (§3.1) — the output side closes here: what the unit wrote, held to the
+    # contract `merge facts apply` enforces, over the items still standing.
+    found += _gate(root, run_dir, working)
+    return doc, list(dict.fromkeys(found))
 
-    for n, decision in enumerate(doc["decisions"]):
-        entry = decision.get("entry") or {}
-        label = f'decisions[{n}] ' + (decision.get("skeleton")
-                                      or f'{entry.get("kind")}/{entry.get("key")}')
-        skid = decision.get("skeleton")
-        if skid:
-            if skid not in known:
-                problems.append(f"{label}: {skid} is not a candidate of this run")
-            elif skid in seen:
-                problems.append(f"{label}: {skid} is decided twice")
-            seen.append(skid)
-        for ref in _refs(decision):
-            target = ref.get("ref")
-            if isinstance(target, str) and target.startswith("S-") \
-                    and target not in known:
-                problems.append(f"{label}: ref {target} names no candidate")
-            field = ref.get("field")
-            if isinstance(field, str) and field[:2].lower() == "c_" \
-                    and not PROVISIONAL_FIELD.match(field):
-                problems.append(f"{label}: provisional field {field!r} is not "
-                                "c_<column letter, lowercase>")
-        # `_absorb` moves `applies_to`/`instances` onto the target verbatim, and
-        # no kind but a rule has those keys — a rule merged into a record mints
-        # a record `facts-delta.schema.json` refuses, at the assembly, where no
-        # unit can be asked to fix it. Same kind or nothing.
-        into = decision.get("into")
-        if decision.get("action") == "merge_into" and isinstance(into, str) \
-                and skid in kinds and into in kinds and kinds[skid] != kinds[into]:
-            problems.append(f"{label}: merge_into: a {kinds[skid]} cannot merge "
-                            f"into a {kinds[into]} ({into})")
-        problems += _citations(decision, label, node_ids, skeleton["department"])
-        # `_rename_fields` walks the candidate's MECHANICAL columns and merges
-        # what the unit wrote onto them, so a member whose `from` names no such
-        # column is dropped without a word — the unit's work simply vanished
-        # between its gate and the delta. `_entry` cannot raise (`assemble` runs
-        # it too, over documents already gated); the refusal belongs here.
-        columns = {f.get("key") for f in
-                   _members(candidates.get(skid, {}).get("payload") or {}, "fields")}
-        for i, field in enumerate((decision.get("data") or {}).get("fields") or []):
-            written = isinstance(field, dict) and field.get("from")
-            if skid and written and written not in columns:
-                problems.append(f"{label}: data.fields[{i}].from: {written!r} "
-                                "names no column of this candidate")
-        problems += _swapped_inputs(decision, label, candidates, decided)
-        for field in _members(decision.get("data") or {}, "fields"):
-            if field.get("unit") and field.get("type") not in (None, "number"):
-                problems.append(f'{label}: field {field.get("key")} is '
-                                f'{field.get("type")} and carries a unit')
-        problems += _lint_decision(decision, label, symbols,
-                                   kinds.get(skid) or entry.get("kind"),
-                                   conventions)
 
-    for n, entry in enumerate(doc.get("new") or []):
-        label = f'new[{n}] {entry.get("key")}'
-        problems += _citations(entry, label, node_ids, skeleton["department"]) \
-            + _lint_decision(entry, label, symbols, entry.get("kind"),
-                             conventions)
+def _whole(found):
+    """A refusal no item owns — it costs the whole document."""
+    return any(tiers.item_of(f) is None for f in tiers.refusals(found))
 
-    if unit is not None:
-        for cid in unit["candidates"]:
-            if cid not in seen:
-                problems.append(f'{unit["id"]}: {cid} has no decision')
 
-    # I1 (§3.1) — the output side closes here. Whatever the unit wrote, from
-    # whatever evidence, is held to the contract `merge facts apply` enforces:
-    # the store schema per kind, then the content pass. A per-entry refusal
-    # after this point is a defect, not a finding.
-    #
-    # The review is not materialised here: it decides assembled entries, which
-    # do not exist until `assemble` has run — `_lint_entries` gates it there.
-    # Everything else is gated whatever else was found, so a unit spends one
-    # attempt on the whole list rather than one attempt per class of mistake.
-    if doc["unit"] != "review":
-        problems += _gate(root, run_dir, doc)
-    # The decision lint and the content pass walk the same prose leaves and now
-    # say the same words about them, so the same nit lands twice.
-    return list(dict.fromkeys(problems))
+def _without(doc, gone):
+    """The document with the items `gone` names emptied to None, indices kept."""
+    return dict(doc, **{where: [None if (where, n) in gone else item
+                                for n, item in enumerate(doc[where])]
+                        for where in ("decisions", "new")})
+
+
+def _without_refused(doc, found):
+    """The document with every refused item emptied — what the fold reads."""
+    return _without(doc, {tiers.item_of(f) for f in tiers.refusals(found)})
+
+
+def _earlier_decided(root, run_dir, path):
+    """A17 — the candidates an earlier attempt of this unit decided and its gate
+    admitted: a retry answers only what those left."""
+    attempt = re.fullmatch(r"out\.([0-9]+)\.json", path.name)
+    out = set()
+    for k in range(1, int(attempt.group(1)) if attempt else 1):
+        earlier = path.with_name(f"out.{k}.json")
+        if not earlier.is_file():
+            continue
+        doc, found = _judge(root, run_dir, earlier)
+        if doc is None or _whole(found):
+            continue
+        out |= {d["skeleton"] for d in _without_refused(doc, found)["decisions"]
+                if isinstance(d, dict) and d.get("skeleton")}
+    return out
 
 
 def _gate(root, run_dir, doc):
     """§3.1 steps 2–3 over the materialised entries, under the labels the unit's
-    other messages already use."""
+    other findings already use."""
     skeleton = read_json(pathlib.Path(run_dir) / "skeleton.json")
     entries = materialise(root, run_dir, doc)
     labels = _unit_labels(doc)
@@ -247,108 +558,121 @@ def _gate(root, run_dir, doc):
 
 def _contract_problems(root, entries, named, symbols):
     """The whole per-entry contract `merge facts apply` enforces, over entries
-    something has already materialised: the store schema per kind, the two
-    `preconditions` checks that live OUTSIDE the content pass (a branch code
-    off the sheets manifest, a unit symbol off the run's list), then
-    `check_document` itself. `named[i]` is what entry `i` is reported under — a
-    decision at the unit's gate, `<unit>: <key>` at the assembly — so no message
-    ever cites the temp id the writer never saw.
+    something has already materialised, one entry at a time so a refusal names
+    only its own: the repair pass (`normalise_entry`), the store schema, the
+    checks that live outside the content pass (a process citation, a branch code
+    off the sheets manifest, a unit symbol off the run's list, a row with no
+    key), then `check_document`. `named[i]` is what entry `i` is reported under
+    — a decision at the unit's gate, `<unit>: <key>` at the assembly — so no
+    finding ever cites the temp id the writer never saw.
+
+    The repairs land on `entries` themselves: the assembly writes what was
+    judged.
     """
-    clean = [{k: v for k, v in e.items() if not k.startswith("_")} for e in entries]
-    delta = {"schema_version": 2, "entries": clean}
-    # The schema half caps itself inside `validate` (§3.4); the content half is
-    # collected apart so it is capped by the same rule. A record whose every
-    # cell is refused otherwise buries the rest of the list under one line per
-    # cell, and the unit spends its attempt scrolling.
-    out, content = [], []
-    try:
-        validate("facts-delta.schema.json", delta)
-    except ValueError as exc:
-        # `entries[3].data.fields[2].type: …` → `decisions[1] S-…: data.…`, so
-        # the unit is told which of ITS decisions to go back to (§3.1 step 2).
-        for line in str(exc).splitlines()[1:]:
-            out.append(_renamed(line, named))
+    root = pathlib.Path(root)
+    store = load_store(root)
+    conventions = load_conventions(root)
     # QF-33/QF-40. A bare test estate has no manifest and a fresh run may have
     # no declared symbols; an empty list there means "nothing to check against",
     # never "everything is wrong".
-    branches = _registered(pathlib.Path(root) / "attachments" / "sheets" /
-                           "manifest.json", "branches")
-    store = load_store(root)
-    # The set `preconditions` will check against: the run's declared symbols
-    # plus the rows this document itself adds to the units record, or a
-    # document that extends the table is refused for using what it just added.
+    branches = _registered(root / "attachments" / "sheets" / "manifest.json",
+                           "branches")
+    public = [{k: v for k, v in e.items() if not k.startswith("_")} for e in entries]
     if symbols:
-        symbols = set(symbols) | _unit_row_keys(store, clean)
-    for entry, label in zip(clean, named):
+        symbols = set(symbols) | _unit_row_keys(store, public)
+    per, clean = {}, []
+    for entry, label in zip(entries, named):
+        found = per.setdefault(label, [])
+        body = {k: v for k, v in entry.items() if not k.startswith("_")}
+        found += _labelled(label, normalise_entry(body, {
+            "root": root, "store": store, "unit_rows": sorted(symbols or ()),
+            "conventions": conventions, "label": label}))
+        private = {k: v for k, v in entry.items() if k.startswith("_")}
+        entry.clear()
+        entry.update(body, **private)
+        clean.append(body)
+        try:
+            validate("facts-delta.schema.json",
+                     {"schema_version": 2, "entries": [body]})
+        except ValueError as exc:
+            # One entry was checked, so every `entries[0]` / `entries[N]` is it.
+            found += [refuse(label, re.sub(r"entries\[(?:0|N)\]\.?", "", line)
+                             .lstrip(": "))
+                      for line in str(exc).splitlines()[1:]]
         # I3 — the citation was live when the run was planned; the tombstone may
-        # have landed since, and `apply` would refuse the delta for it.
-        content.extend(f"{label}: {p}" for p in process_source_problems(root, entry))
-        for n, branch in enumerate(entry["scope"]["branches"]):
-            if branches and branch not in branches:
-                content.append(f"{label}: scope.branches[{n}]: branch "
-                               f"{branch!r} is not in the sheets manifest")
-        for symbol in _unit_symbols(entry) if symbols else ():
-            if symbol not in symbols:
-                content.append(f"{label}: unit {symbol!r} is declared by no "
-                               "row of the units record")
-        # The store requires `rows[].key` and the delta schema cannot: a
-        # reference table's keys are the primaryKey join `apply` derives (§9).
-        # Run that same derivation here, so whatever it would leave keyless —
-        # any other role, or a reference row whose key cell is not a segment —
-        # is refused where the unit can still fix it.
-        if entry["kind"] == "record":
-            data = copy.deepcopy(entry["data"])
-            _derive_row_keys(data)
-            for n, row in enumerate(data.get("rows") or []):
-                if isinstance(row, dict) and "key" not in row:
-                    content.append(f"{label}: data.rows[{n}]: "
-                                   "'key' is a required property")
+        # have landed since (A33, the preconditions' own tier).
+        found += _labelled(label, process_source_problems(root, body))
+        scope = body.get("scope") or {}
+        off = [b for b in scope.get("branches") or [] if branches and b not in branches]
+        if off:                                                     # A34
+            scope["branches"] = [b for b in scope["branches"] if b not in off]
+            found += [note(label, f"scope.branches: branch {b!r} is not in the "
+                                  "sheets manifest; dropped", fa=FA_BRANCH)
+                      for b in off]
+        if symbols:                                                 # A35
+            found += _labelled(label, undeclared_unit_problems(body, symbols, label))
+        if body.get("kind") == "record" and isinstance(body.get("data"), dict):
+            found += _row_keys(body["data"], label)                 # A36
+    delta = {"schema_version": 2, "entries": clean}
     # A `calls[]` ref this document could not resolve is `T-0`, so `_call_keys`
     # rescues nothing and every identifier that call declares reads as
     # undeclared. Cross-unit resolution is `_resolve_refs`' job — skip the expr
     # line here the way `_check_unit_edges` skips a target it cannot see.
-    blind = {e["id"] for e in clean
+    blind = {e.get("id") for e in clean
              if any(isinstance(c, dict) and c.get("ref") == "T-0"
-                    for c in (e["data"].get("calls") or []))}
-    # `check_document` labels a message with the entry's id, and the temp ids
-    # here are minted for the validation and nowhere else — `T-1` names nothing
-    # the writer ever wrote. Same rename as above, on the label instead of a path.
-    by_temp = dict(zip((e["id"] for e in clean), named))
-    for message in check_document(delta, "facts-delta", store,
-                                  unit_symbols=symbols,
-                                  conventions=load_conventions(root)):
-        head, sep, tail = message.partition(": ")
-        if head in blind and tail.startswith("expr identifier "):
+                    for c in ((e.get("data") or {}).get("calls") or []))}
+    by_temp = dict(zip((e.get("id") for e in clean), named))
+    for finding in tiers.coerce(check_document(delta, "facts-delta", store,
+                                               unit_symbols=symbols,
+                                               conventions=conventions)):
+        if finding.label in blind and finding.message.startswith("expr identifier "):
             continue
-        content.append(f"{by_temp.get(head, head)}{sep}{tail}")
-    return out + capped(content)
+        label = by_temp.get(finding.label, finding.label)
+        per.setdefault(label, []).append(replace(finding, label=label))
+    out = []
+    # §3.4's ceiling, per entry and on refusals only: a note carries a mark the
+    # entry must keep, and a refusal past the ceiling costs the same one item.
+    for label, found in per.items():
+        refused = tiers.refusals(found)
+        out += refused[:LINE_CAP] + tiers.notes(found)
+        if len(refused) > LINE_CAP:
+            out.append(refuse(label, f"… and {len(refused) - LINE_CAP} more"))
+    return out
 
 
-#: `entries[3]` / `entries[N]` at the head of a §3.4 line, and the concrete
-#: paths inside its `(n places: …)` tail — with the `.` that opens the path, so
-#: the seam is tidied where it is made and a `:.` the rule text carries of its
-#: own is left alone.
-_ENTRY_AT = re.compile(r"entries\[([0-9]+|N)\](\.)?")
+def _row_keys(data, label):
+    """A36 (section 9) — a record row with no `key` takes one from the table's
+    key columns (`primaryKey`, the join `apply` derives for a reference table),
+    else from its own title when that title is a segment no other row of the
+    table shares; else that decision is refused. Never a position: row order
+    moves between runs and a positional key would match the wrong row."""
+    _derive_row_keys(data)
+    rows = [r for r in data.get("rows") or [] if isinstance(r, dict)] \
+        if isinstance(data.get("rows"), list) else []
+    pk = [m for m in data.get("primaryKey") or [] if isinstance(m, str)] \
+        if isinstance(data.get("primaryKey"), list) else []
 
-
-def _renamed(line, named):
-    """§3.4's line with every `entries[<i>]` replaced by the decision that wrote
-    it. `entries[N]` — the generalised head of a grouped line — has no one
-    decision, so it keeps its shape and the `(n places: …)` tail names them."""
-    def swap(match):
-        n, dot = match.group(1), match.group(2) or ""
-        if n == "N" or int(n) >= len(named):
-            return f"entries[N]{dot}"
-        return f'{named[int(n)]}:{" " if dot else ""}'
-    return _ENTRY_AT.sub(swap, line)
-
-
-def _citations(entry, label, node_ids, department):
-    """§2.5 — a `processes[]` node id not in the department's index is an
-    error, wherever the citation sits."""
-    return [f'{label}: node {c["node"]} is in no process of {department}'
-            for c in entry.get("processes") or []
-            if f'{c["process"]}::{c["node"]}' not in node_ids]
+    def segment(value):
+        value = _clean_key(value)
+        return value if isinstance(value, str) and SEGMENT_RE.fullmatch(value) else None
+    titles = collections.Counter(segment(r.get("title")) for r in rows)
+    taken = {r["key"] for r in rows if "key" in r}
+    out = []
+    for n, row in enumerate(data.get("rows") or []):
+        if not isinstance(row, dict) or "key" in row:
+            continue
+        values = [row.get(m) for m in pk]
+        key = "__".join(values) if values and all(
+            isinstance(v, str) and SEGMENT_RE.fullmatch(v) for v in values) else None
+        title = segment(row.get("title"))
+        if key is None and title and titles[title] == 1:
+            key = title
+        if key and key not in taken:
+            row["key"] = key
+            taken.add(key)
+        else:
+            out.append(refuse(label, f"data.rows[{n}]: 'key' is a required property"))
+    return out
 
 
 def _members(data, key):
@@ -359,8 +683,9 @@ def _members(data, key):
     return [m for m in value if isinstance(m, dict)] if isinstance(value, list) else []
 
 
-def _swapped_inputs(decision, label, candidates, decided):
-    """§3.2 — a rule input bound to a column it is not named for.
+def _swapped_inputs(decision, candidates, decided):
+    """§3.2 — a rule input bound to a column it is not named for, as
+    `[(message, input key)]` (A26: stored, marked inferred, with a note).
 
     A rule that runs in several tabs takes its inputs by parameter: the input
     says `from: {param: "ref_1"}` and each binding maps `ref_1` to a concrete
@@ -369,19 +694,20 @@ def _swapped_inputs(decision, label, candidates, decided):
     «موجودی آغاز شب» reads «مقدار دریافت از انبار». `a + b` came out right and
     the sentence in the store was false.
 
-    Only the visible swap is refused — an input whose key IS another column of
+    Only the visible swap is named — an input whose key IS another column of
     the record it reads. A key named for the concept rather than the column is
     no evidence of anything, and neither is a record whose decision sits in
     another unit: its minted keys are not in this document, so its columns are
     still the skeleton's `c_<letter>` and no input key can collide with one.
     """
-    data = decision.get("data") or {}
+    data = decision.get("data") if isinstance(decision.get("data"), dict) else {}
     payload = (candidates.get(decision.get("skeleton")) or {}).get("payload") or {}
     bindings = data.get("applies_to") or payload.get("applies_to") or []
     params = (bindings[0].get("params") or {}) if isinstance(bindings, list) \
         and bindings and isinstance(bindings[0], dict) else {}
     out = []
-    for n, given in enumerate(data.get("inputs") or []):
+    for n, given in enumerate(data.get("inputs") if isinstance(data.get("inputs"), list)
+                              else []):
         source = given.get("from") if isinstance(given, dict) else None
         bound = params.get(source.get("param")) if isinstance(source, dict) else None
         record = candidates.get(bound.get("ref")) if isinstance(bound, dict) else None
@@ -396,16 +722,16 @@ def _swapped_inputs(decision, label, candidates, decided):
                    for f in _members(record.get("payload") or {}, "fields")}
         reads = renames.get(bound["field"], bound["field"])
         if given.get("key") in columns and given.get("key") != reads:
-            out.append(f'{label}: data.inputs[{n}]: key {given["key"]} is bound '
-                       f'through {source["param"]} to column {reads}')
+            out.append((f'data.inputs[{n}]: key {given["key"]} is bound through '
+                        f'{source["param"]} to column {reads}', given["key"]))
     return out
 
 
 def _lint_decision(decision, label, symbols, kind=None,
                    conventions=DEFAULT_CONVENTIONS):
     """§5.2 at unit level (QF-50) — the unit that wrote a failing sentence is
-    the one that fixes it, which is only true while the decision is still
-    addressable by its own index.
+    the one told, which is only true while the decision is still addressable by
+    its own index.
 
     `kind` is the store kind the decision lands as, and it decides one rule:
     «ستون»/«تب»/«سلول» belong in a **record's** own `statement`, which is what
@@ -413,14 +739,14 @@ def _lint_decision(decision, label, symbols, kind=None,
     unit's own card ask for. A title is strict whatever the kind.
 
     It IS `content._check_prose`, read over the decision as the entry it
-    becomes: the leaves are the same leaves, and a hand copy of them said the
-    same nit in different words («title: carries …» against «title carries …»),
-    which `group_messages` cannot fold — so the gate reported one mistake twice.
+    becomes (A28 — the content pass's tier, not this gate's).
     """
     out = []
     parts = decision.get("into") if decision.get("action") == "split" else [decision]
     for part in parts or []:
-        data = part.get("data") or {}
+        if not isinstance(part, dict):
+            continue
+        data = part.get("data") if isinstance(part.get("data"), dict) else {}
         _check_prose({**part, "kind": kind,
                       # A decision carries its issues under `data`; an assembled
                       # entry carries them at the top, where `_check_prose` looks.
@@ -506,6 +832,7 @@ UNDECIDED_FA = {"oversized": ISSUE_FA["oversized"],
                 "target_dropped": "موردی که در آن ادغام می‌شد ثبت نشد",
                 "unknown_ref": "به موردی ارجاع می‌داد که در سامانه نیست",
                 "refused": "با قرارداد ثبت جور در نیامد",
+                "not_decided": "در این اجرا درباره‌اش تصمیمی گرفته نشد",
                 "waits": "منتظر بخشی است که در این اجرا تمام نشد",
                 "failed": "در این اجرا بررسی نشد"}
 
@@ -557,30 +884,109 @@ def _outputs(root, run_dir, plan):
     ascending unit id — the only order `assemble` has, and the reason it is
     deterministic.
 
-    A latest attempt that is present and does not validate is refused here,
-    naming the unit: QF-51 checks a document the moment it returns, and one
-    nobody has fixed since must not be folded in silently. The exception is the
-    unit that has spent both its attempts — that is the `failed` unit step 5
-    sends to `undecided[]`, and the run finishes without it.
+    F3/A42: a document is folded with only its refused items taken out, and a
+    retry is folded over the attempt before it (`_overlay`). A unit is left out
+    — `failed`, its candidates to `undecided[]` — only when no attempt of it can
+    be read as a document. One with nothing readable and an attempt still owed
+    is refused here, naming the unit: QF-51 checks a document the moment it
+    returns, and one nobody has fixed since must not be skipped in silence.
     """
     out, problems = [], []
     for unit in sorted(plan["units"], key=lambda u: u["id"]):
         attempts = sorted((run_dir / "units" / unit["id"]).glob("out.*.json"))
-        for path in reversed(attempts):
-            try:
-                doc = read_json(path)
-            except (OSError, ValueError):
-                continue
-            found = validate_unit(root, run_dir, path)
-            if not found:
-                out.append((unit, path, doc))
-            elif len(attempts) < ATTEMPTS:
-                problems += [f'{unit["id"]}: {message}' for message in found]
-            break
+        merged, whole = None, []
+        for path in attempts:
+            doc, found = _judge(root, run_dir, path)
+            whole = [f.line() for f in tiers.refusals(found)
+                     if tiers.item_of(f) is None]
+            if doc is not None and not whole:
+                merged = _overlay(merged, _folded(doc, found), unit["id"])
+        if merged is not None:
+            out.append((unit, attempts[-1], merged))
+        elif attempts and len(attempts) < ATTEMPTS:
+            problems += [f'{unit["id"]}: {message}' for message in whole]
     if problems:
         for line in problems:
             print(f"facts-plan: {line}", file=sys.stderr)
         raise SystemExit(2)
+    return out
+
+
+def _folded(doc, found):
+    """F3 — one attempt as `_collect` reads it: its refused decisions gone (their
+    lines kept by candidate), a refused `new[]` entry's slot emptied so every
+    later `N-` handle keeps its index, and each item carrying its own notes."""
+    refused, noted = {}, {}
+    for finding in found:
+        item = tiers.item_of(finding)
+        if item is not None:
+            (refused if finding.tier == tiers.REFUSE else noted) \
+                .setdefault(item, []).append(finding)
+    out = {"decisions": [], "new": [], "refused": {}, "refused_new": {}}
+    for n, decision in enumerate(doc["decisions"]):
+        if not isinstance(decision, dict):
+            continue
+        if ("decisions", n) in refused:
+            if decision.get("skeleton"):
+                out["refused"][decision["skeleton"]] = \
+                    [f.line() for f in refused[("decisions", n)]]
+            continue
+        out["decisions"].append(dict(decision, _notes=noted.get(("decisions", n), [])))
+    for n, entry in enumerate(doc["new"]):
+        if isinstance(entry, dict) and ("new", n) in refused:
+            out["refused_new"][n] = {
+                "kind": entry.get("kind"), "key": entry.get("key"),
+                "title": entry.get("title"),
+                "lines": [f.line() for f in refused[("new", n)]]}
+        out["new"].append(dict(entry, _notes=noted.get(("new", n), []))
+                          if isinstance(entry, dict) and ("new", n) not in refused
+                          else None)
+    return out
+
+
+def _overlay(first, later, unit):
+    """A42 — a retry answers what an earlier attempt refused: its decisions
+    replace the earlier ones by candidate, its `new[]` entries by `(kind, key)`,
+    and each `N-<unit>-<n>` handle it wrote is renumbered to the slot its entry
+    takes. What the earlier attempt accepted and the retry refuses stays."""
+    if first is None:
+        return later
+    out, later = copy.deepcopy(first), copy.deepcopy(later)
+    def slot(row):
+        return json.dumps([row.get("kind"), row.get("key")], ensure_ascii=False)
+    slots = {slot(r): n for n, r in out["refused_new"].items()}
+    slots.update({slot(e): n for n, e in enumerate(out["new"]) if isinstance(e, dict)})
+    renumber = {}
+    rows = {m: dict(row, entry=None) for m, row in later["refused_new"].items()}
+    rows.update({m: {"kind": e.get("kind"), "key": e.get("key"), "entry": e}
+                 for m, e in enumerate(later["new"]) if isinstance(e, dict)})
+    for m, row in sorted(rows.items()):
+        n = slots.get(slot(row))
+        if n is None:
+            n = slots[slot(row)] = len(out["new"])
+            out["new"].append(None)
+        renumber[f"N-{unit}-{m}"] = f"N-{unit}-{n}"
+        if row["entry"] is not None:
+            out["new"][n] = row["entry"]
+            out["refused_new"].pop(n, None)
+        elif out["new"][n] is None:
+            out["refused_new"][n] = {k: v for k, v in row.items() if k != "entry"}
+    for item in later["decisions"] + [e for e in later["new"] if isinstance(e, dict)]:
+        for ref in _refs(item):
+            if ref.get("ref") in renumber:
+                ref["ref"] = renumber[ref["ref"]]
+    at = {d.get("skeleton"): i for i, d in enumerate(out["decisions"])}
+    for decision in later["decisions"]:
+        skid = decision.get("skeleton")
+        if skid in at:
+            out["decisions"][at[skid]] = decision
+        else:
+            at[skid] = len(out["decisions"])
+            out["decisions"].append(decision)
+        out["refused"].pop(skid, None)
+    for skid, lines in later["refused"].items():
+        if skid not in at:
+            out["refused"][skid] = lines
     return out
 
 
@@ -605,30 +1011,36 @@ def _pseudo(entry, unit, n):
     decision = {"action": "keep", "unit": unit, "data": {},
                 **{k: v for k, v in entry.items()
                    if k in ("key", "title", "statement", "aliases", "branches",
-                            "processes")}}
+                            "processes", "extra", "_notes")}}
     return handle, candidate, decision
 
 
 def _collect(root, run_dir, plan, skeleton):
     """The units' decisions keyed by skeleton id, their `new[]` entries as
-    candidates of their own, and the units that returned nothing usable."""
+    candidates of their own, what their gates refused, and the units that
+    returned nothing usable."""
     state = {"by_skeleton": {}, "new": [], "failed": set(),
              "review_status": "absent", "dropped": [], "undecided": [],
              # Both halves of R1, seeded here so a run assembled without
              # `--review` writes `review_held: []` rather than nothing, and the
              # fold loop may read `reviewed_by` before any review is folded.
              "review_held": [], "reviewed_by": {},
-             "provenance": {}, "flags": []}
+             "provenance": {}, "flags": [], "refused": {}, "refused_new": []}
     returned = set()
     for unit, _path, doc in _outputs(root, run_dir, plan):
         returned.add(unit["id"])
         for decision in doc["decisions"]:
             state["by_skeleton"][decision["skeleton"]] = dict(decision,
                                                               unit=unit["id"])
-        for n, entry in enumerate(doc.get("new") or []):
+        for n, entry in enumerate(doc["new"]):
+            if entry is None:
+                continue
             handle, candidate, decision = _pseudo(entry, unit["id"], n)
             state["new"].append(candidate)
             state["by_skeleton"][handle] = decision
+        state["refused"].update(doc["refused"])
+        state["refused_new"] += [dict(row, unit=unit["id"])
+                                 for _n, row in sorted(doc["refused_new"].items())]
     state["failed"] = {u["id"] for u in plan["units"] if u["id"] not in returned}
     return state
 
@@ -671,6 +1083,8 @@ def _review_verdicts(run_dir, doc, state, draft, scratch):
         return f'{ref["kind"]} {ref["key"]}'
     for n, decision in enumerate(doc["decisions"]):
         label = f"decisions[{n}]"
+        if not isinstance(decision, dict):
+            continue                    # refused by the item gate (A41)
         if decision.get("action") == "contradiction":
             named = {_address(e) for e in hits(decision["entry"])} \
                 if decision.get("entry") else set()
@@ -776,7 +1190,8 @@ def _touched(decision):
         and isinstance(into, str) else [])
 
 
-def _fold_review(run_dir, state, draft, scratch, exclude=frozenset(), held=None):
+def _fold_review(root, run_dir, state, draft, scratch, exclude=frozenset(),
+                 held=None):
     """Step 0 (§2.6), under R1: the review is never dropped. Every decision that
     passes `_review_verdicts` is folded; the ones that do not are held back one
     by one, and `exclude`/`held` carry back the ones `assemble`'s own lint
@@ -794,20 +1209,23 @@ def _fold_review(run_dir, state, draft, scratch, exclude=frozenset(), held=None)
     if not path.is_file() or not (run_dir / "review" / "input.sha256").is_file():
         return "absent"
     hits = _review_hits(draft)
-    doc = None
+    doc = raw = None
     try:
         # A truncated or fenced write is the same failure class as a
         # schema-invalid one: `json.JSONDecodeError` is a `ValueError`, so one
         # `except` turns both into the whole-document hold-back below.
         doc = read_json(path)
-        validate("facts-unit.schema.json", doc)
+        raw = copy.deepcopy(doc)
+        doc, found, _unshaped = _judge_doc(root, run_dir, path, doc, semantics=False)
+        if doc is None:
+            raise ValueError("; ".join(tiers.lines(found)))
     except (OSError, ValueError) as exc:
         # R8 routes the reviewer's second failure straight here, so this is the
         # document the fold must survive, not the one it may assume away: every
         # field `_review_verdicts` reads is optional in a refused document.
         # Nothing is dropped and nothing raises — every decision is held back
         # under the schema's own line, and `report` names them.
-        decisions = doc.get("decisions") if isinstance(doc, dict) else None
+        decisions = raw.get("decisions") if isinstance(raw, dict) else None
         rows = [{"n": n, "action": d.get("action") if isinstance(d, dict) else None,
                  "label": _held_label(d, hits, scratch), "reason": "refused",
                  "lines": [str(exc)]}
@@ -818,12 +1236,19 @@ def _fold_review(run_dir, state, draft, scratch, exclude=frozenset(), held=None)
                                          "lines": [str(exc)]}]
         state["settled"], state["reviewed"], state["reviewed_by"] = [], set(), {}
         return "partial"
+    # A41 — a decision the item gate refuses is held back alone, under its lines.
+    gate = {}
+    for finding in tiers.refusals(found):
+        where, n = tiers.item_of(finding)
+        if where == "decisions":
+            gate.setdefault(n, []).append(finding.line())
+    doc = _without_refused(doc, found)
     stale, verdicts = _review_verdicts(run_dir, doc, state, draft, scratch)
     if stale:
         print("facts-plan: review: the digest changed since this review was "
               "written — run digest and the review again", file=sys.stderr)
         raise SystemExit(2)
-    skip = set(verdicts) | set(exclude)
+    skip = set(verdicts) | set(exclude) | set(gate)
     folded, settled, reviewed_by = [], [], {}
     for n, decision in enumerate(doc["decisions"]):
         if n in skip:
@@ -884,12 +1309,15 @@ def _fold_review(run_dir, state, draft, scratch, exclude=frozenset(), held=None)
     state["reviewed_by"] = reviewed_by
     rows = []
     for n in sorted(skip):
-        if n in verdicts:
+        if n in gate:
+            code, lines = "refused", gate[n]
+        elif n in verdicts:
             code, lines = verdicts[n][0], [verdicts[n][1]]
         else:
             code, lines = (held or {}).get(n) or ("refused", [])
-        rows.append({"n": n, "action": doc["decisions"][n].get("action"),
-                     "label": _held_label(doc["decisions"][n], hits, scratch),
+        rows.append({"n": n, "action": (raw["decisions"][n] or {}).get("action")
+                     if isinstance(raw["decisions"][n], dict) else None,
+                     "label": _held_label(raw["decisions"][n], hits, scratch),
                      "reason": code, "lines": list(lines)})
     state["review_held"] = rows
     return "partial" if skip else "applied"
@@ -1081,6 +1509,10 @@ def _attach_scopes(entries, state, by_temp):
             entry["scope"]["branches"] = sorted(branches)
 
 
+#: F6 — the `source[].type`s that are the form itself rather than talk about it.
+READ_OFF_A_FORM = ("sheet", "photo", "pdf", "docx")
+
+
 def _entry(candidate, decision, state, part=None):
     """Step 2 — the envelope §2.6 describes: the skeleton's mechanical payload
     under the unit's own fields, `source[]` from every instance and binding,
@@ -1133,20 +1565,32 @@ def _entry(candidate, decision, state, part=None):
     # The citations hang off the decision, never off a split part (§2.5's
     # `splitPart` has no `processes`), so both parts of a split inherit them.
     sources += _process_sources(decision, state["department"])
-    entry = {"kind": KIND_OF.get(candidate["kind"], candidate["kind"]),
+    sources = sources or _unit_sources(state["units"].get(decision["unit"]))
+    kind = KIND_OF.get(candidate["kind"], candidate["kind"])
+    if kind == "record" and not any(s.get("type") in READ_OFF_A_FORM for s in sources):
+        # F6 — a table no sheet, photo or document shows was described from
+        # speech: its column names, types and units are the model's reading.
+        for field in _members(data, "fields"):
+            for member in ("title", "type", "unit"):
+                if member in field and isinstance(field.get("key"), str):
+                    status[f'data/fields/{field["key"]}/{member}'] = "inferred"
+    entry = {"kind": kind,
              "key": written["key"],
-             "title": written["title"], "statement": written["statement"],
+             "title": written["title"], "statement": written.get("statement") or "",
              "scope": _scope_of(candidate, state["department"], decision,
                                 state["candidates"]),
-             "source": sources
-             or _unit_sources(state["units"].get(decision["unit"])),
+             "source": sources,
              "retired": False, "data": data,
              "_skeleton": candidate["id"], "_unit": decision["unit"],
              "_renames": renames}
     if written.get("aliases"):
         entry["aliases"] = written["aliases"]
+    extra = {**(decision.get("extra") or {}), **((part or {}).get("extra") or {})}
+    if extra:
+        entry["extra"] = extra                                      # A6
     if status:
         entry["field_status"] = status
+    tiers.apply_notes(entry, decision.get("_notes"))
     for issue in state["issues"]:
         if issue.get("target") == candidate["id"] and not issue["run_only"]:
             # `affects` names the entry itself, through the candidate id step 1
@@ -1235,10 +1679,15 @@ def _kept_entries(by_id, state):
         decision = state["by_skeleton"].get(cid)
         label = label_of(candidate)
         if decision is None or candidate.get("unit") in state["failed"]:
-            state["undecided"].append(
-                {"skeleton": cid, "kind": candidate["kind"], "label": label,
-                 "unit": candidate.get("unit"),
-                 "reason": "oversized" if cid in oversized else "failed"})
+            refused = (state.get("refused") or {}).get(cid)
+            row = {"skeleton": cid, "kind": candidate["kind"], "label": label,
+                   "unit": candidate.get("unit"),
+                   "reason": "oversized" if cid in oversized
+                   else "failed" if candidate.get("unit") in state["failed"]
+                   else "refused" if refused else "not_decided"}
+            if row["reason"] == "refused":
+                row["refused"] = refused                            # F3
+            state["undecided"].append(row)
             continue
         if decision["action"] == "drop":
             state["dropped"].append({"skeleton": cid, "kind": candidate["kind"],
@@ -1267,9 +1716,11 @@ def _state_for(root, run_dir, doc):
     by_id = {c["id"]: c for c in skeleton["candidates"] if c.get("unit") == unit}
     by_skeleton = {}
     for decision in doc["decisions"]:
-        if decision.get("skeleton"):
+        if isinstance(decision, dict) and decision.get("skeleton"):
             by_skeleton[decision["skeleton"]] = dict(decision, unit=unit)
     for n, entry in enumerate(doc.get("new") or []):
+        if not isinstance(entry, dict):
+            continue
         handle, candidate, decision = _pseudo(entry, unit, n)
         by_id[handle], by_skeleton[handle] = candidate, decision
     # A run always has a manifest; a test estate and a fresh department may not,
@@ -1325,9 +1776,9 @@ def materialise(root, run_dir, doc, *, for_validation=True):
 def _unit_labels(doc):
     """`{handle: the label validate_unit's other messages already use}`."""
     out = {f'N-{doc["unit"]}-{n}': f'new[{n}] {entry.get("key")}'
-           for n, entry in enumerate(doc.get("new") or [])}
+           for n, entry in enumerate(doc.get("new") or []) if isinstance(entry, dict)}
     for n, decision in enumerate(doc["decisions"]):
-        if decision.get("skeleton"):
+        if isinstance(decision, dict) and decision.get("skeleton"):
             out[decision["skeleton"]] = f'decisions[{n}] {decision["skeleton"]}'
     return out
 
@@ -1340,6 +1791,11 @@ def _build_entries(root, skeleton, state):
     state["candidates"] = by_id
     state["dropped"], state["undecided"], state["provenance"] = [], [], {}
     kept = _kept_entries(by_id, state)
+    for row in state.get("refused_new") or []:
+        state["undecided"].append(                                  # F3
+            {"skeleton": None, "kind": row["kind"], "unit": row["unit"],
+             "label": row["title"] or row["key"], "reason": "refused",
+             "refused": row["lines"]})
     # A file too big for a unit is no candidate, so the pass above names it
     # nowhere: its issue is the whole record of it, and the owner reads it with
     # everything else this run could not fit (§3.2).
@@ -1587,10 +2043,10 @@ def _lint_entries(root, entries, symbols, reviewed=()):
     runs here and not only at `validate_unit`."""
     named = _review_labels(entries, reviewed)
     conventions = load_conventions(root)
-    out = [message for entry, label in zip(entries, named)
-           for message in _lint_decision(entry, label, symbols,
-                                         entry.get("kind"), conventions)]
-    out += _contract_problems(root, entries, named, symbols)
+    out = _contract_problems(root, entries, named, symbols)
+    for entry, label in zip(entries, named):
+        out += _labelled(label, _lint_decision(entry, label, symbols,
+                                               entry.get("kind"), conventions))
     return list(dict.fromkeys(out))
 
 
@@ -1650,6 +2106,7 @@ def _prepare(root, run_dir, review, exclude=frozenset(), held=None):
         # are rendered from one object.
         "conventions": load_conventions(root),
         "units": {u["id"]: u for u in plan["units"]},
+        "hashes": plan.get("hashes") or {},
         "paths": {w["spreadsheetId"]: f'attachments/sheets/{w["dir"]}/{w["file"]}'
                   for w in manifest["workbooks"]},
         "locators": {i["source"].get("ref"): {k: v for k, v in i["source"].items()
@@ -1667,7 +2124,7 @@ def _prepare(root, run_dir, review, exclude=frozenset(), held=None):
         scratch = copy.deepcopy(state)
         draft = _build_entries(root, skeleton, scratch)
         _cross_unit(root, draft, scratch)
-        state["review_status"] = _fold_review(run_dir, state, draft, scratch,
+        state["review_status"] = _fold_review(root, run_dir, state, draft, scratch,
                                               exclude, held)
     return run_dir, skeleton, state
 
@@ -1719,43 +2176,42 @@ def assemble(root, run_dir, *, review=False):
         # that point at it wait with it, and everything else lands. A run refuses
         # only when nothing at all can be assembled.
         for _round in range(len(entries) + 1):
-            problems = _lint_entries(root, entries, symbols, reviewed)
+            found = _lint_entries(root, entries, symbols, reviewed)
+            # The labels `_lint_entries` wrote, from the same writer, so a
+            # finding maps back to the entry that earned it and never to another.
+            by_label = dict(zip(_review_labels(entries, reviewed), entries))
+            for finding in tiers.notes(found):                      # A38
+                if finding.label in by_label:
+                    tiers.apply_notes(by_label[finding.label], [finding])
+            problems = tiers.refusals(found)
             if not problems:
                 break
-            # The labels `_lint_entries` printed, from the same writer, so a
-            # line maps back to the entry that earned it and never to another.
-            by_label = dict(zip(_review_labels(entries, reviewed), entries))
-            review_lines = [p for p in problems if p.startswith("review: ")]
+            review_lines = [p for p in problems if p.label.startswith("review: ")]
             if review_lines:
                 # The reviewer's own rewrite: held back by decision (R1), never
                 # by refusing the run — the unit's sound version stands under it
                 # and the owner is told which decision went and why.
                 for line in review_lines:
-                    entry = by_label.get(next(
-                        (k for k in by_label if line.startswith(k + ": ")),
-                        None))
+                    entry = by_label.get(line.label)
                     decisions = (state["reviewed_by"].get(entry["_skeleton"])
                                  if entry else None) or []
                     if not decisions:
                         # No decision owns the line — a defect, and holding
                         # nothing back would loop. Say it and stop.
-                        print(f"facts-plan: {line}", file=sys.stderr)
+                        print(f"facts-plan: {line.line()}", file=sys.stderr)
                         raise SystemExit(2)
                     for n in decisions:
-                        held_rows.setdefault(n, ("refused", []))[1].append(line)
+                        held_rows.setdefault(n, ("refused", []))[1].append(line.line())
                         exclude.add(n)
                 retry = True
                 break
             held = {}
             for line in problems:
-                label = next((k for k in by_label if line.startswith(k + ": ")),
-                             None)
-                if label is not None:
-                    held.setdefault(by_label[label]["id"], []).append(
-                        line[len(label) + 2:])
+                if line.label in by_label:
+                    held.setdefault(by_label[line.label]["id"], []).append(line.message)
             if not held or len(held) == len(entries):
                 for line in problems:
-                    print(f"facts-plan: {line}", file=sys.stderr)
+                    print(f"facts-plan: {line.line()}", file=sys.stderr)
                 raise SystemExit(2)
             entries = _hold_back(entries, state, held)
         if not retry:
@@ -1781,7 +2237,8 @@ def assemble(root, run_dir, *, review=False):
                       {"dropped": state["dropped"], "undecided": state["undecided"],
                        "provenance": state["provenance"],
                        "review_status": state["review_status"],
-                       "review_held": state.get("review_held") or []})
+                       "review_held": state.get("review_held") or [],
+                       "lost_sources": _lost_sources(root, skeleton, state)})
     write_text_atomic(run_dir / "gate-b.md", gate_b(root, skeleton, entries, state))
     return {"entries": len(clean), "dropped": len(state["dropped"]),
             "undecided": len(state["undecided"]),
@@ -1952,6 +2409,96 @@ def _unread_block(root, department, issues):
         + rows + [""]
 
 
+#: A photographed form (F5): `extract_attachment.CONVERTERS`' image files, and
+#: their sidecar when the file itself is gone.
+PHOTO_SUFFIXES = (".jpg", ".jpeg", ".png", ".webp", ".image.md")
+
+
+def _attachment_name(root, rel):
+    """The owner's name for the file a `.text/` sidecar was read out of —
+    `extract_attachment.cache_path` read backwards, `forms__tahvil.txt` →
+    `forms/tahvil.docx` — or the sidecar's own name when the file is gone."""
+    from extract_attachment import CONVERTERS
+    sidecar = pathlib.PurePosixPath(rel)
+    for ext, suffix in sorted(CONVERTERS.items()):
+        if sidecar.name.endswith(suffix):
+            name = sidecar.name[:-len(suffix)].replace("__", "/") + ext
+            if (pathlib.Path(root) / sidecar.parent.parent / name).is_file():
+                return name
+    return sidecar.name
+
+
+def _workbook_name(root, department, file):
+    """A workbook as the owner names it: its file title when that is Persian,
+    else the department's name (and the branch, for a one-branch book) — the
+    estate's files are transliterations of exactly that (`Amadesazi.xlsx`)."""
+    stem = pathlib.PurePosixPath(file).stem
+    if not re.search(r"[A-Za-z]", stem):
+        return stem
+    registry = read_json(pathlib.Path(root) / "departments" / "registry.json")
+    manifest = read_json(pathlib.Path(root) / "attachments" / "sheets" / "manifest.json")
+    name = next((d["name"] for d in registry["departments"]
+                 if d["code"] == department), department)
+    row = next((w for w in manifest["workbooks"] if w.get("file") == file), {})
+    branches = {b["code"]: b["name"] for b in manifest.get("branches") or []}
+    mine = row.get("branches") or []
+    return f"{name} {branches.get(mine[0], mine[0])}" if len(mine) == 1 else name
+
+
+def _lost_sources(root, skeleton, state):
+    """F5 — every input no unit's output carried into the assembly: the
+    workbooks and recordings of a `failed` unit, and each attachment that was
+    in a failed unit or in none. `report` names them first."""
+    units = state["units"]
+    counts = collections.Counter((c.get("unit"), KIND_OF.get(c["kind"], c["kind"]))
+                                 for c in skeleton["candidates"])
+    out, lost = [], set()
+    for uid in sorted(state["failed"]):
+        unit = units.get(uid) or {}
+        refs = [ref.partition("#")[0] for ref in unit.get("inputs") or []]
+        if unit.get("type") == "workbook":
+            out.append({"kind": "workbook", "label": "، ".join(
+                _workbook_name(root, state["department"], f) for f in refs),
+                "tables": counts[(uid, "record")], "formulas": counts[(uid, "rule")]})
+        for ref in refs:
+            if "/attachments/.text/" in ref:
+                lost.add(ref)
+            elif unit.get("type") == "transcript":
+                stem = pathlib.PurePosixPath(ref).stem
+                date = re.search(r"([0-9]{4})-([0-9]{2})-([0-9]{2})(?:-0*([0-9]+))?$", stem)
+                label = (f"{_fa(date.group(1))}/{_fa(date.group(2))}/{_fa(date.group(3))}"
+                         + (f" ({_fa(date.group(4))})" if date.group(4) else "")) \
+                    if date else stem
+                out.append({"kind": "recording", "label": label,
+                            "tables": 0, "formulas": 0})
+    placed = {ref.partition("#")[0] for u in units.values()
+              for ref in u.get("inputs") or []}
+    lost |= {rel for rel in state.get("hashes") or {}
+             if "/attachments/.text/" in rel and rel not in placed}
+    out += [{"kind": "attachment", "label": _attachment_name(root, rel),
+             "tables": 0, "formulas": 0} for rel in sorted(lost)]
+    return out
+
+
+def _lost_block(lost):
+    """F5's first block of `report.md`: what no unit could carry, in the owner's
+    words and names — never a path, an id or a count of anything but files."""
+    out = []
+    for row in lost:
+        if row["kind"] == "workbook":
+            out.append(f'فایل اکسل «{row["label"]}» ثبت نشد: {_fa(row["tables"])} '
+                       f'جدول و {_fa(row["formulas"])} فرمول آن بررسی نشد.')
+        elif row["kind"] == "recording":
+            out.append(f'بخشی از جلسهٔ «{row["label"]}» بررسی نشد.')
+    files = [r["label"] for r in lost if r["kind"] == "attachment"]
+    photos = [f for f in files if f.lower().endswith(PHOTO_SUFFIXES)]
+    if photos:
+        out.append(f"{_fa(len(photos))} عکس فرم بررسی نشد.")
+    if len(files) > len(photos):
+        out.append(f"{_fa(len(files) - len(photos))} فایل پیوست بررسی نشد.")
+    return out + [""] if out else []
+
+
 def gate_b(root, skeleton, entries, state):
     """`gate-b.md` (§2.7) — a finished Persian message the playbook sends
     verbatim. No id, no path, no code, no command; an entry is its title."""
@@ -2037,7 +2584,8 @@ def report(root, run_dir):
     unknown = [(e, null_paths(e)) for e in entries]
     unknown = [(e, p) for e, p in unknown if p]
 
-    out = [f"گزارش پایان اجرا — {name}", "",
+    out = [f"گزارش پایان اجرا — {name}", ""] \
+        + _lost_block(assembly.get("lost_sources") or []) + [
            f'ثبت شد: {_fa(len(entries))} مورد. '
            f'کنار گذاشته شد: {_fa(len(assembly["dropped"]))} مورد. '
            f'{_fa(len(assembly["undecided"]))} مورد بررسی‌نشده.', ""]

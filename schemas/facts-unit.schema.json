@@ -46,7 +46,10 @@
         "type": { "$ref": "#/$defs/leaf" },
         "description": { "$ref": "#/$defs/leaf" },
         "refItems": { "$ref": "#/$defs/leaf" },
-        "derived": { "$ref": "#/$defs/leaf" } } },
+        "derived": { "$ref": "#/$defs/leaf" },
+        "group": { "type": "object", "additionalProperties": false,
+          "properties": { "key": { "type": "string", "pattern": "^[a-z][a-z0-9]*(_[a-z0-9]+)*$" },
+                          "title": { "type": "string" } } } } },
     "decisionData": { "type": "object", "additionalProperties": false,
       "properties": {
         "role": { "$ref": "#/$defs/leaf" },
@@ -81,14 +84,15 @@
         "template_of": { "$ref": "#/$defs/leaf" },
         "divergence": { "$ref": "#/$defs/leaf" } } },
     "splitPart": { "type": "object", "additionalProperties": false,
-      "required": ["key", "title", "statement", "takes"],
+      "required": ["key", "title", "statement"],
       "properties": {
         "key": { "$ref": "#/$defs/mintedKey" },
         "title": { "type": "string" },
         "statement": { "type": "string" },
         "data": { "$ref": "#/$defs/decisionData" },
         "takes": { "type": "array", "minItems": 1,
-          "items": { "$ref": "#/$defs/mintedKey" } } } },
+          "items": { "$ref": "#/$defs/mintedKey" } },
+        "extra": { "type": "object" } } },
     "decision": { "type": "object", "additionalProperties": false,
       "required": ["action"],
       "oneOf": [{ "required": ["skeleton"] }, { "required": ["entry"] }],
@@ -112,7 +116,8 @@
         "reason": { "type": "string" },
         "field": { "type": "string" },
         "resolution": { "enum": ["account", "fix"] },
-        "value": { "$ref": "#/$defs/leaf" } },
+        "value": { "$ref": "#/$defs/leaf" },
+        "extra": { "type": "object" } },
       "allOf": [
         { "if": { "properties": { "action": { "const": "keep" } }, "required": ["action"] },
           "then": { "required": ["key", "title", "statement"] } },
@@ -140,6 +145,7 @@
         "aliases": { "type": "array", "items": { "type": "string" } },
         "branches": { "type": "array", "items": { "type": "string", "pattern": "^[a-z]+$" } },
         "processes": { "type": "array", "items": { "$ref": "#/$defs/procCite" } },
-        "data": { "type": "object" } } }
+        "data": { "type": "object" },
+        "extra": { "type": "object" } } }
   }
 }

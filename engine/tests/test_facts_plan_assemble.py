@@ -13,6 +13,7 @@ import pathlib
 import pytest
 from facts_helpers import _seed_units
 from facts_plan.assemble import assemble, digest, validate_unit
+from merge_facts import tiers
 from merge_facts.apply import simulate
 
 from engine_common import validate
@@ -318,22 +319,25 @@ def test_one_artefact_two_readings_is_unit_drift_not_an_account(tmp_path):
     assert all("accounts" not in e for e in delta["entries"])
 
 
-def test_a_lint_failure_refuses_the_assembly(tmp_path, capsys):
+def test_a_refused_decision_waits_and_the_assembly_lands(tmp_path):
+    """F3 — a decision its gate refuses (here a key no repair makes valid)
+    costs that decision: its candidate waits under `refused`, the rest lands."""
     root = _root(tmp_path)
     rule = _rule_out()
-    rule["decisions"][0]["statement"] = "انحراف در ستون J6:J15 نوشته می‌شود."
+    rule["decisions"][0]["key"] = "Enheraf!"
     run_dir = _run(root, {"u-a": _record_out(), "u-b": rule})
-    with pytest.raises(SystemExit) as excinfo:
-        assemble(root, run_dir)
-    assert excinfo.value.code == 2
-    assert "u-b" in capsys.readouterr().err
-    assert not (run_dir / "facts-delta.json").exists()
+    assemble(root, run_dir)
+    delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
+    assert "enheraf!" not in {e["key"] for e in delta["entries"]}
+    assembly = json.loads((run_dir / "assembly.json").read_text(encoding="utf-8"))
+    assert [(u["skeleton"], u["reason"]) for u in assembly["undecided"]] == \
+        [("S-r-000000000002", "refused")]
 
 
+@pytest.mark.xfail(strict=True, reason="needs track K/S")
 def test_the_reviewers_own_prose_is_linted_too(tmp_path):
-    """Step 8 is the only gate the review passes through: its rewrites reach
-    the delta without a unit's `facts-unit` pass ever seeing them. R2 — the
-    sentence it refuses costs that decision, not the run."""
+    """Step 8 is the only gate the review passes through. B38: a cell named in
+    prose is a style note, so the review's rewrite is stored, not held back."""
     root = _root(tmp_path)
     run_dir = _run(root, {"u-a": _record_out(), "u-b": _rule_out()})
     digest(root, run_dir)
@@ -343,14 +347,10 @@ def test_the_reviewers_own_prose_is_linted_too(tmp_path):
                              "action": "keep", "key": "enheraf",
                              "title": "انحراف مصرف",
                              "statement": "انحراف در ستون J6:J15 است."}])
-    assert assemble(root, run_dir, review=True)["review_status"] == "partial"
-    assembly = json.loads((run_dir / "assembly.json").read_text(encoding="utf-8"))
-    assert [(r["n"], r["reason"]) for r in assembly["review_held"]] == [(0, "refused")]
-    assert any("enheraf: statement" in line
-               for line in assembly["review_held"][0]["lines"])
+    assert assemble(root, run_dir, review=True)["review_status"] == "applied"
     delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
     assert next(e for e in delta["entries"]
-                if e["key"] == "enheraf")["statement"].endswith("اعلامی لاین.")
+                if e["key"] == "enheraf")["statement"] == "انحراف در ستون J6:J15 است."
 
 
 def test_a_note_key_is_stable_across_runs(tmp_path):
@@ -406,7 +406,7 @@ def test_a_stale_review_stops_the_assembly(tmp_path):
     assert exc.value.code == 2
     assert not (run_dir / "facts-delta.json").exists()
     assert "the digest changed since this review was written" in " ".join(
-        validate_unit(root, run_dir, run_dir / "review" / "out.json"))
+        tiers.lines(validate_unit(root, run_dir, run_dir / "review" / "out.json")))
 
 
 def test_a_review_of_any_size_is_accepted(tmp_path):
@@ -581,7 +581,7 @@ def test_a_review_document_in_a_unit_directory_is_refused(tmp_path):
     path = run_dir / "units" / "u-a" / "out.1.json"
     path.write_text(json.dumps(dict(_record_out(), unit="review"),
                                ensure_ascii=False), encoding="utf-8")
-    problems = validate_unit(root, run_dir, path)
+    problems = tiers.lines(tiers.refusals(validate_unit(root, run_dir, path)))
     assert len(problems) == 1 and "units/u-a" in problems[0]
 
 
@@ -751,6 +751,7 @@ def test_a_ref_into_an_undecided_candidate_holds_the_entry_back(tmp_path):
     validate("facts-delta.schema.json", delta)
 
 
+@pytest.mark.xfail(strict=True, reason="needs track K/S")
 def test_an_entry_the_assembly_refuses_is_held_back_not_the_run(tmp_path):
     """Step 8 — a rule that calls another unit's rule and uses an identifier
     that rule never declares passes its own gate (the call is `T-0` there, so
@@ -770,13 +771,10 @@ def test_an_entry_the_assembly_refuses_is_held_back_not_the_run(tmp_path):
                              run_dir / "units" / unit / "out.1.json") == []
     result = assemble(root, run_dir)
     delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
-    assert "enheraf" not in {e["key"] for e in delta["entries"]}
-    assert {e["key"] for e in delta["entries"]} >= {"gozaresh_shabane_pitza", "tol"}
-    assembly = json.loads((run_dir / "assembly.json").read_text(encoding="utf-8"))
-    held = next(u for u in assembly["undecided"] if u["unit"] == "u-b")
-    assert held["kind"] == "rule" and any("gram_dar_pors" in l for l in held["refused"])
-    assert set(assembly["provenance"]) == {e["id"] for e in delta["entries"]}
-    assert result["undecided"] == 1
+    # B1 — the undeclared identifier is a note: the rule lands, its expr marked.
+    rule = next(e for e in delta["entries"] if e["key"] == "enheraf")
+    assert rule["field_status"]["data/expr"] == "inferred"
+    assert result["undecided"] == 0
     validate("facts-delta.schema.json", delta)
     assert simulate(root, run_dir / "facts-delta.json", run_dir)[1] == []
 
@@ -1071,8 +1069,8 @@ def test_a_ref_into_a_dropped_candidate_holds_the_entry_back(tmp_path):
 
 
 def test_a_unit_that_spent_both_attempts_leaves_undecided_candidates(tmp_path):
-    """A `failed` unit is a gap the report carries (§2.6 step 5), not a wall:
-    only a unit still owed an attempt refuses the assembly."""
+    """A candidate a unit left undecided waits on its own (A17, a note); the
+    unit's other decision lands."""
     root = _root(tmp_path)
     broken = _rule_out()
     broken["decisions"] = broken["decisions"][:1]     # its item is undecided
@@ -1081,8 +1079,8 @@ def test_a_unit_that_spent_both_attempts_leaves_undecided_candidates(tmp_path):
         json.dumps(broken, ensure_ascii=False), encoding="utf-8")
     assemble(root, run_dir)
     doc = json.loads((run_dir / "assembly.json").read_text(encoding="utf-8"))
-    assert sorted(u["skeleton"] for u in doc["undecided"]) == \
-        ["S-i-000000000003", "S-r-000000000002"]
+    assert [(u["skeleton"], u["reason"]) for u in doc["undecided"]] == \
+        [("S-i-000000000003", "not_decided")]
 
 
 def test_the_delta_is_schema_valid_and_survives_a_simulated_apply(tmp_path):
@@ -1113,16 +1111,6 @@ def test_what_the_unit_gate_passes_is_never_refused_downstream(tmp_path):
              json.loads(delta.read_text(encoding="utf-8")))
     _store, problems = simulate(root, delta, run_dir)
     assert problems == []
-
-
-def test_a_messages_own_colon_dot_survives_the_rename():
-    """`_renamed` tidies the seam it just made — `<label>:` followed by the
-    path's leading `.` — and nothing else on the line. A rule text that carries
-    a `:.` of its own keeps it."""
-    from facts_plan.assemble import _renamed
-    line = 'entries[0].data.location: does not match "^[a-z]+:.[a-z]+$"'
-    assert _renamed(line, ["new[0] mande_shab"]) == \
-        'new[0] mande_shab: data.location: does not match "^[a-z]+:.[a-z]+$"'
 
 
 def test_the_sidecar_suffixes_are_the_ones_extract_attachment_writes():
@@ -1330,7 +1318,7 @@ def test_the_review_gate_refuses_what_the_fold_would_discard(tmp_path):
          "statement": "قاعده‌ای که هیچ واحدی ننوشته است."},
         _contradiction(field="data/outputs/v/unit", resolution="fix",
                        value="kg")])
-    assert validate_unit(root, run_dir, review) == [
+    assert tiers.lines(validate_unit(root, run_dir, review)) == [
         "decisions[0]: entry: rule nabud names 0 assembled entries",
         "decisions[1]: contradiction: no drift flag on data/outputs/v/unit "
         "for rule tol"]
@@ -1366,7 +1354,7 @@ def test_a_call_into_another_units_rule_is_not_an_undeclared_identifier(tmp_path
     del rule["decisions"][0]["data"]["calls"]
     path = run_dir / "units" / "u-b" / "out.1.json"
     path.write_text(json.dumps(rule, ensure_ascii=False), encoding="utf-8")
-    assert any("'tol'" in p for p in validate_unit(root, run_dir, path))
+    assert any("'tol'" in p for p in tiers.lines(validate_unit(root, run_dir, path)))
 
 
 def test_a_merge_into_across_kinds_is_refused_at_the_unit_gate(tmp_path):
@@ -1391,7 +1379,7 @@ def test_a_merge_into_across_kinds_is_refused_at_the_unit_gate(tmp_path):
     path = run_dir / "units" / "u-b" / "out.1.json"
     assert any("decisions[0] S-r-000000000002" in p and "merge_into:" in p
                and "a rule cannot merge into a record" in p
-               for p in validate_unit(root, run_dir, path))
+               for p in tiers.lines(tiers.refusals(validate_unit(root, run_dir, path))))
 
     rule["decisions"][0]["into"] = twin["id"]                   # a rule
     path.write_text(json.dumps(rule, ensure_ascii=False), encoding="utf-8")
@@ -1410,25 +1398,25 @@ def _review_keep(**data):
             "data": dict(data)}
 
 
+@pytest.mark.xfail(strict=True, reason="needs track K/S")
 def test_the_review_is_held_to_the_store_contract_too(tmp_path):
     """Ruling 5 — the review is the one document no unit gate ever saw, so the
     shape check hangs where the assembly reads it. R2: the line names the
     field, the decision is held back, and the unit's record stands."""
     root, run_dir = _drifted_run(tmp_path)
     _write_review(run_dir, [_review_keep(role="ledger")])
-    assert assemble(root, run_dir, review=True)["review_status"] == "partial"
-    assembly = json.loads((run_dir / "assembly.json").read_text(encoding="utf-8"))
-    assert [(r["n"], r["reason"]) for r in assembly["review_held"]] == [(0, "refused")]
-    assert any("data.role" in line
-               for line in assembly["review_held"][0]["lines"])
+    # C13 — an off-list role is stored as written and marked inferred.
+    assert assemble(root, run_dir, review=True)["review_status"] == "applied"
     delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
-    assert next(e for e in delta["entries"]
-                if e["key"] == "gozaresh_shabane_pitza")["data"]["role"] == "log"
+    record = next(e for e in delta["entries"] if e["key"] == "gozaresh_shabane_pitza")
+    assert record["data"]["role"] == "ledger"
+    assert record["field_status"]["data/role"] == "inferred"
 
     _write_review(run_dir, [_review_keep(role="report")])
     assert assemble(root, run_dir, review=True)["review_status"] == "applied"
 
 
+@pytest.mark.xfail(strict=True, reason="needs track K/S")
 def test_the_review_gate_holds_the_folded_result_to_the_store_contract(tmp_path):
     """The owner's 2026-09-08 run: the reviewer's document passed its gate,
     then `assemble --review` refused sixteen items — a refusal the reviewer
@@ -1437,9 +1425,10 @@ def test_the_review_gate_holds_the_folded_result_to_the_store_contract(tmp_path)
     root, run_dir = _drifted_run(tmp_path)
     review = run_dir / "review" / "out.json"
     _write_review(run_dir, [_review_keep(role="ledger")])
-    lines = validate_unit(root, run_dir, review)
-    assert any(l.startswith("review: gozaresh_shabane_pitza:")
-               and "data.role" in l for l in lines), lines
+    found = validate_unit(root, run_dir, review)
+    assert tiers.refusals(found) == []                          # C13: a note
+    assert any(f.label.startswith("review: gozaresh_shabane_pitza")
+               for f in tiers.notes(found)), found
     _write_review(run_dir, [_review_keep(role="report")])
     assert validate_unit(root, run_dir, review) == []
 
@@ -1465,6 +1454,7 @@ def test_a_review_keep_with_partial_data_keeps_the_units_other_members(tmp_path)
     assert item["field_status"]["data/unit"] == "inferred"
 
 
+@pytest.mark.xfail(strict=True, reason="needs track K/S")
 def test_a_keep_the_contract_refuses_is_held_back_and_the_unit_s_version_kept(tmp_path):
     """R2: the cooking review lost 22 decisions to sixteen items the fold could
     not store. The decision that fails the lint is held back; the rest apply."""
@@ -1479,15 +1469,12 @@ def test_a_keep_the_contract_refuses_is_held_back_and_the_unit_s_version_kept(tm
          "action": "keep", "key": "gozaresh_shabane_pitza",
          "title": "گزارش شبانهٔ پیتزا",
          "statement": "جدولی که سرلاین پیتزا هر شب پر می‌کند."}])
-    assert assemble(root, run_dir, review=True)["review_status"] == "partial"
+    # B38 — a cell named in prose is a note: both rewrites apply.
+    assert assemble(root, run_dir, review=True)["review_status"] == "applied"
     delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
     by_key = {e["key"]: e for e in delta["entries"]}
-    assert by_key["enheraf"]["statement"].endswith("اعلامی لاین.")   # the unit's
+    assert by_key["enheraf"]["statement"] == "انحراف مصرف برابر است با J6."
     assert by_key["gozaresh_shabane_pitza"]["title"] == "گزارش شبانهٔ پیتزا"
-    assembly = json.loads((run_dir / "assembly.json").read_text(encoding="utf-8"))
-    assert [(r["n"], r["reason"]) for r in assembly["review_held"]] == [(0, "refused")]
-    assert assembly["review_held"][0]["label"] == "انحراف مصرف"
-    assert assembly["review_held"][0]["lines"]
 
 
 def test_a_fields_rewrite_from_the_review_is_held_back(tmp_path):
@@ -1501,7 +1488,7 @@ def test_a_fields_rewrite_from_the_review_is_held_back(tmp_path):
          "title": "گزارش شبانهٔ پیتزا",
          "statement": "جدولی که سرلاین پیتزا هر شب پر می‌کند.",
          "data": {"fields": [{"from": "masraf_elami", "unit": "kg"}]}}])
-    lines = validate_unit(root, run_dir, run_dir / "review" / "out.json")
+    lines = tiers.lines(validate_unit(root, run_dir, run_dir / "review" / "out.json"))
     assert lines == ["decisions[0]: fields: a review does not rewrite a record's "
                      "fields (the digest shows minted keys, not column keys)"]
     assert assemble(root, run_dir, review=True)["review_status"] == "partial"
@@ -1584,6 +1571,7 @@ def test_a_merge_into_whose_target_is_gone_is_held_back(tmp_path):
     assert assembly["review_held"][0]["label"] == "پرسش دربارهٔ تلورانس"
 
 
+@pytest.mark.xfail(strict=True, reason="needs track K/S")
 def test_a_review_merge_into_that_breaks_its_target_is_held_back(tmp_path):
     """R2 — the entry a `merge_into` changes is the target, not the source the
     merge absorbs away: a target the merge makes unstorable holds that decision
@@ -1599,18 +1587,15 @@ def test_a_review_merge_into_that_breaks_its_target_is_held_back(tmp_path):
                              "action": "merge_into", "reason_code": "duplicate",
                              "into": {"kind": "record",
                                       "key": "gozaresh_shabane_pitza"}}])
-    assert assemble(root, run_dir, review=True)["review_status"] == "partial"
-    assembly = json.loads((run_dir / "assembly.json").read_text(encoding="utf-8"))
-    assert [(r["n"], r["action"], r["reason"]) for r in assembly["review_held"]] \
-        == [(0, "merge_into", "refused")]
-    assert assembly["review_held"][0]["lines"]
-    assert assembly["undecided"] == []
+    # C5 — `applies_to` on a record is an unknown member: kept in `extra`.
+    assert assemble(root, run_dir, review=True)["review_status"] == "applied"
     delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
-    by_key = {e["key"]: e for e in delta["entries"]}
-    assert "applies_to" not in by_key["gozaresh_shabane_pitza"]["data"]
-    assert by_key["enheraf"]["title"] == "انحراف مصرف"      # the unit's, restored
+    record = next(e for e in delta["entries"] if e["key"] == "gozaresh_shabane_pitza")
+    assert "applies_to" not in record["data"]
+    assert any(path.startswith("data/applies_to") for path in record.get("extra") or {})
 
 
+@pytest.mark.xfail(strict=True, reason="needs track K/S")
 def test_one_key_in_two_scopes_blames_only_the_decision_that_failed(tmp_path):
     """The lint labels an entry `review: <key>`, and two reviewed entries may
     mint one key in two scopes — so the label carries the scope when the key
@@ -1634,18 +1619,18 @@ def test_one_key_in_two_scopes_blames_only_the_decision_that_failed(tmp_path):
                              "branches": ["chalebagh"]}},
          "action": "keep", "key": "tol", "title": "حد مجاز انحراف چاله‌باغ",
          "statement": "حد مجاز انحراف مصرف را سرآشپز تعیین می‌کند."}])
-    assert assemble(root, run_dir, review=True)["review_status"] == "partial"
-    assembly = json.loads((run_dir / "assembly.json").read_text(encoding="utf-8"))
-    assert [(r["n"], r["reason"]) for r in assembly["review_held"]] == [(0, "refused")]
+    # B38 — the cell reference is a note, so neither decision is held back.
+    assert assemble(root, run_dir, review=True)["review_status"] == "applied"
     delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
     titles = {json.dumps(e["scope"], sort_keys=True): e["title"]
               for e in delta["entries"] if e["key"] == "tol"}
     assert titles == {
-        '{"branches": [], "departments": ["cooking"]}': "حد مجاز انحراف مصرف",
+        '{"branches": [], "departments": ["cooking"]}': "حد مجاز انحراف",
         '{"branches": ["chalebagh"], "departments": ["cooking"]}':
             "حد مجاز انحراف چاله‌باغ"}
 
 
+@pytest.mark.xfail(strict=True, reason="needs track K/S")
 def test_a_settled_contradiction_that_breaks_the_contract_is_held_back(tmp_path):
     """R2 — the entry a `contradiction` settles is the review's to answer for
     too: the reviewer's own value broke the contract, so that decision is held
@@ -1662,13 +1647,9 @@ def test_a_settled_contradiction_that_breaks_the_contract_is_held_back(tmp_path)
     assert "unit_drift" in digest(root, run_dir).read_text(encoding="utf-8")
     _write_review(run_dir, [_contradiction(field="data/outputs/v/unit",
                                            resolution="fix", value="lb")])
-    assert assemble(root, run_dir, review=True)["review_status"] == "partial"
-    assembly = json.loads((run_dir / "assembly.json").read_text(encoding="utf-8"))
-    assert [(r["n"], r["action"], r["reason"]) for r in assembly["review_held"]] \
-        == [(0, "contradiction", "refused")]
-    assert any("'lb'" in line for line in assembly["review_held"][0]["lines"])
-    assert assembly["undecided"] == []
-    assert _tol(run_dir)["data"]["outputs"][0]["unit"] == "kg"   # the keeper's
+    # C28 — an undeclared symbol is stored as written with a note.
+    assert assemble(root, run_dir, review=True)["review_status"] == "applied"
+    assert _tol(run_dir)["data"]["outputs"][0]["unit"] == "lb"
 
 
 def test_an_unparseable_review_file_is_held_back_whole_and_named(tmp_path):
@@ -1700,10 +1681,11 @@ def test_an_unparseable_review_file_is_held_back_whole_and_named(tmp_path):
     # a `contradiction` with no `field`: the fold read `decision["field"]` bare
     {"entry": {"kind": "rule", "key": "enheraf"}, "action": "contradiction",
      "resolution": "fix", "value": 5}])
-def test_a_schema_invalid_review_is_held_back_whole_and_named(tmp_path, bad):
+def test_a_schema_invalid_review_decision_is_held_back_alone_and_named(tmp_path, bad):
     """R8 hands the fold the reviewer's second failure, so a document the schema
-    refuses is what `assemble --review` must survive: every decision is held
-    back under the schema's line, the units' work lands, and nothing raises."""
+    refuses is what `assemble --review` must survive. A41: each decision is held
+    to the schema on its own, so only the failing one is held back under its
+    line, the sound one folds, and nothing raises."""
     root = _root(tmp_path)
     run_dir = _run(root, {"u-a": _record_out(), "u-b": _rule_out()})
     digest(root, run_dir)
@@ -1714,11 +1696,11 @@ def test_a_schema_invalid_review_is_held_back_whole_and_named(tmp_path, bad):
     assert assemble(root, run_dir, review=True)["review_status"] == "partial"
     assembly = json.loads((run_dir / "assembly.json").read_text(encoding="utf-8"))
     assert [(r["n"], r["reason"]) for r in assembly["review_held"]] \
-        == [(0, "refused"), (1, "refused")]
+        == [(0, "refused")]
     assert all(r["lines"] and r["label"] for r in assembly["review_held"])
     delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
     assert next(e for e in delta["entries"]
-                if e["key"] == "enheraf")["title"] == "انحراف مصرف"   # the unit's
+                if e["key"] == "enheraf")["title"] == "انحراف دیگر"   # the review's
 
 
 def test_a_merge_into_a_skeleton_no_unit_kept_is_held_back(tmp_path):
@@ -1743,6 +1725,7 @@ def test_a_merge_into_a_skeleton_no_unit_kept_is_held_back(tmp_path):
     assert any(e["key"] == "enheraf" for e in delta["entries"])
 
 
+@pytest.mark.xfail(strict=True, reason="needs track K/S")
 def test_two_refused_decisions_are_both_held_in_order(tmp_path):
     """The fold loop runs until no `review:` line is left, and every decision it
     held is in `review_held` once, ordered by its index in the document."""
@@ -1756,11 +1739,9 @@ def test_two_refused_decisions_are_both_held_in_order(tmp_path):
         {"entry": {"kind": "item", "key": "item_1"}, "action": "keep",
          "key": "item_1", "title": "پنیر ورقه‌ای",
          "statement": "پنیر ورقه‌ای در K7 نگهداری می‌شود."}])
-    assert assemble(root, run_dir, review=True)["review_status"] == "partial"
-    assembly = json.loads((run_dir / "assembly.json").read_text(encoding="utf-8"))
-    assert [(r["n"], r["reason"]) for r in assembly["review_held"]] \
-        == [(0, "refused"), (1, "refused")]
+    # B38 — both cell references are notes: both rewrites apply.
+    assert assemble(root, run_dir, review=True)["review_status"] == "applied"
     delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
     by_key = {e["key"]: e for e in delta["entries"]}
-    assert by_key["enheraf"]["statement"].endswith("اعلامی لاین.")
-    assert by_key["item_1"]["title"] == "پنیر پیتزا"          # the unit's
+    assert by_key["enheraf"]["statement"] == "انحراف مصرف برابر است با J6."
+    assert by_key["item_1"]["title"] == "پنیر ورقه‌ای"

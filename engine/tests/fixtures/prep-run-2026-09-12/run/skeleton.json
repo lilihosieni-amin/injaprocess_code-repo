@@ -1,0 +1,1117 @@
+{
+  "schema_version": 1,
+  "department": "preparation",
+  "run": "20260912-102718",
+  "unit_symbols": [
+    "carton",
+    "day",
+    "g",
+    "hour",
+    "irr",
+    "kg",
+    "l",
+    "min",
+    "ml",
+    "pack",
+    "pcs",
+    "percent",
+    "portion",
+    "ratio",
+    "slice"
+  ],
+  "candidates": [
+    {
+      "id": "S-rec-ef021443f7dc",
+      "kind": "record",
+      "unit": "u-wb-amadesazi",
+      "payload": {
+        "medium": "sheet",
+        "location": {
+          "path": "attachments/sheets/Amadesazi__Amadesazi/Amadesazi.xlsx",
+          "spreadsheetId": "1fAFZ5SbwDIoulj33mPIyyrpvSRBV6EUVQsorQ8MN2Ag",
+          "sheet": "ضایعات"
+        },
+        "instances": [
+          {
+            "key": "amadesazi__s1",
+            "spreadsheetId": "1fAFZ5SbwDIoulj33mPIyyrpvSRBV6EUVQsorQ8MN2Ag",
+            "sheetId": 1,
+            "sheet": "ضایعات",
+            "branch": null,
+            "hidden": false
+          }
+        ],
+        "fields": [
+          {
+            "key": "c_a",
+            "title": "تاریخ",
+            "columns": {
+              "amadesazi__s1": "a"
+            },
+            "type": "number"
+          },
+          {
+            "key": "c_b",
+            "title": "سینه مرغ",
+            "columns": {
+              "amadesazi__s1": "b"
+            },
+            "type": "number"
+          },
+          {
+            "key": "c_c",
+            "title": "فیله مرغ",
+            "columns": {
+              "amadesazi__s1": "c"
+            },
+            "type": "number"
+          },
+          {
+            "key": "c_d",
+            "title": "بال مرغ",
+            "columns": {
+              "amadesazi__s1": "d"
+            },
+            "type": "number"
+          },
+          {
+            "key": "c_e",
+            "title": "گوشت",
+            "columns": {
+              "amadesazi__s1": "e"
+            },
+            "type": "number"
+          }
+        ]
+      },
+      "render": {
+        "sheet": "ضایعات",
+        "signature": [
+          "ضایعات",
+          []
+        ],
+        "header_notes": [],
+        "row_labels": null,
+        "reference": false
+      }
+    },
+    {
+      "id": "S-rec-9f60dda7c289",
+      "kind": "record",
+      "unit": "u-wb-amadesazi",
+      "payload": {
+        "medium": "sheet",
+        "location": {
+          "path": "attachments/sheets/Amadesazi__Amadesazi/Amadesazi.xlsx",
+          "spreadsheetId": "1fAFZ5SbwDIoulj33mPIyyrpvSRBV6EUVQsorQ8MN2Ag",
+          "sheet": "خمیر"
+        },
+        "instances": [
+          {
+            "key": "amadesazi__s2",
+            "spreadsheetId": "1fAFZ5SbwDIoulj33mPIyyrpvSRBV6EUVQsorQ8MN2Ag",
+            "sheetId": 2,
+            "sheet": "خمیر",
+            "branch": null,
+            "hidden": false
+          }
+        ],
+        "fields": [
+          {
+            "key": "c_a",
+            "title": "تاریخ",
+            "columns": {
+              "amadesazi__s2": "a"
+            },
+            "type": "number"
+          },
+          {
+            "key": "c_b",
+            "title": "آمریکایی",
+            "columns": {
+              "amadesazi__s2": "b"
+            },
+            "type": "number"
+          },
+          {
+            "key": "c_c",
+            "title": "ایتالیایی",
+            "columns": {
+              "amadesazi__s2": "c"
+            },
+            "type": "number"
+          },
+          {
+            "key": "c_d",
+            "title": "وزن چاله باغ",
+            "columns": {
+              "amadesazi__s2": "d"
+            },
+            "type": "string"
+          },
+          {
+            "key": "c_e",
+            "title": "وزن ناهارخوران",
+            "columns": {
+              "amadesazi__s2": "e"
+            },
+            "type": "string"
+          }
+        ]
+      },
+      "render": {
+        "sheet": "خمیر",
+        "signature": [
+          "خمیر",
+          []
+        ],
+        "header_notes": [],
+        "row_labels": null,
+        "reference": false
+      }
+    },
+    {
+      "id": "S-rec-2c141582db58",
+      "kind": "record",
+      "unit": "u-wb-amadesazi",
+      "payload": {
+        "medium": "sheet",
+        "location": {
+          "path": "attachments/sheets/Amadesazi__Amadesazi/Amadesazi.xlsx",
+          "spreadsheetId": "1fAFZ5SbwDIoulj33mPIyyrpvSRBV6EUVQsorQ8MN2Ag",
+          "sheet": "خروجی آماده سازی به انبار"
+        },
+        "instances": [
+          {
+            "key": "amadesazi__s3",
+            "spreadsheetId": "1fAFZ5SbwDIoulj33mPIyyrpvSRBV6EUVQsorQ8MN2Ag",
+            "sheetId": 3,
+            "sheet": "خروجی آماده سازی به انبار",
+            "branch": null,
+            "hidden": false
+          }
+        ],
+        "fields": [
+          {
+            "key": "c_a",
+            "title": "تاریخ",
+            "columns": {
+              "amadesazi__s3": "a"
+            },
+            "type": "number"
+          },
+          {
+            "key": "c_b",
+            "title": "تعداد مینی برگر",
+            "columns": {
+              "amadesazi__s3": "b"
+            },
+            "type": "number"
+          },
+          {
+            "key": "c_c",
+            "title": "تعداد برگر",
+            "columns": {
+              "amadesazi__s3": "c"
+            },
+            "type": "number"
+          },
+          {
+            "key": "c_d",
+            "title": "تعداد لقمه (سینه)",
+            "columns": {
+              "amadesazi__s3": "d"
+            },
+            "type": "number"
+          },
+          {
+            "key": "c_e",
+            "title": "وزن لقمه (سینه)",
+            "columns": {
+              "amadesazi__s3": "e"
+            },
+            "type": "number"
+          },
+          {
+            "key": "c_f",
+            "title": "وزن پیتزا (سینه)",
+            "columns": {
+              "amadesazi__s3": "f"
+            },
+            "type": "number"
+          },
+          {
+            "key": "c_g",
+            "title": "وزن گریل",
+            "columns": {
+              "amadesazi__s3": "g"
+            },
+            "type": "number"
+          },
+          {
+            "key": "c_h",
+            "title": "وزن کنار شنیسل",
+            "columns": {
+              "amadesazi__s3": "h"
+            },
+            "type": "number"
+          },
+          {
+            "key": "c_i",
+            "title": "تعداد چیزا",
+            "columns": {
+              "amadesazi__s3": "i"
+            },
+            "type": "number"
+          },
+          {
+            "key": "c_j",
+            "title": "وزن چیزا",
+            "columns": {
+              "amadesazi__s3": "j"
+            },
+            "type": "number"
+          },
+          {
+            "key": "c_k",
+            "title": "وزن لقمه (فیله)",
+            "columns": {
+              "amadesazi__s3": "k"
+            },
+            "type": "number"
+          },
+          {
+            "key": "c_l",
+            "title": "تعداد لقمه (فیله)",
+            "columns": {
+              "amadesazi__s3": "l"
+            },
+            "type": "number"
+          },
+          {
+            "key": "c_m",
+            "title": "وزن کنار فیله",
+            "columns": {
+              "amadesazi__s3": "m"
+            },
+            "type": "number"
+          },
+          {
+            "key": "c_n",
+            "title": "وزن پیتزا (فیله)",
+            "columns": {
+              "amadesazi__s3": "n"
+            },
+            "type": "number"
+          },
+          {
+            "key": "c_o",
+            "title": "وزن فیله",
+            "columns": {
+              "amadesazi__s3": "o"
+            },
+            "type": "number"
+          },
+          {
+            "key": "c_p",
+            "title": "تعداد فیله",
+            "columns": {
+              "amadesazi__s3": "p"
+            },
+            "type": "number"
+          },
+          {
+            "key": "c_q",
+            "title": "وزن بال استاندارد",
+            "columns": {
+              "amadesazi__s3": "q"
+            },
+            "type": "number"
+          },
+          {
+            "key": "c_r",
+            "title": "تعداد بال استاندارد",
+            "columns": {
+              "amadesazi__s3": "r"
+            },
+            "type": "number"
+          },
+          {
+            "key": "c_s",
+            "title": "وزن بال غیر استاندارد",
+            "columns": {
+              "amadesazi__s3": "s"
+            },
+            "type": "string"
+          },
+          {
+            "key": "c_t",
+            "title": "تعداد بال غیر استاندارد",
+            "columns": {
+              "amadesazi__s3": "t"
+            },
+            "type": "string"
+          },
+          {
+            "key": "c_u",
+            "title": "وزن چرخی",
+            "columns": {
+              "amadesazi__s3": "u"
+            },
+            "type": "number"
+          },
+          {
+            "key": "c_v",
+            "title": "وزن رست بیف",
+            "columns": {
+              "amadesazi__s3": "v"
+            },
+            "type": "string"
+          }
+        ]
+      },
+      "render": {
+        "sheet": "خروجی آماده سازی به انبار",
+        "signature": [
+          "خروجی آماده سازی به انبار",
+          []
+        ],
+        "header_notes": [
+          {
+            "column": "b",
+            "text": "برگر"
+          },
+          {
+            "column": "d",
+            "text": "سینه مرغ"
+          },
+          {
+            "column": "k",
+            "text": "فیله مرغ"
+          },
+          {
+            "column": "q",
+            "text": "بال مرغ"
+          },
+          {
+            "column": "u",
+            "text": "گوشت"
+          },
+          {
+            "column": "w",
+            "text": "گوشت پخته شده (وزن)"
+          }
+        ],
+        "row_labels": null,
+        "reference": false
+      }
+    },
+    {
+      "id": "S-rec-e3f80534814b",
+      "kind": "record",
+      "unit": "u-wb-amadesazi",
+      "payload": {
+        "medium": "sheet",
+        "location": {
+          "path": "attachments/sheets/Amadesazi__Amadesazi/Amadesazi.xlsx",
+          "spreadsheetId": "1fAFZ5SbwDIoulj33mPIyyrpvSRBV6EUVQsorQ8MN2Ag",
+          "sheet": "ورودی آماده سازی از انبار"
+        },
+        "instances": [
+          {
+            "key": "amadesazi__s4",
+            "spreadsheetId": "1fAFZ5SbwDIoulj33mPIyyrpvSRBV6EUVQsorQ8MN2Ag",
+            "sheetId": 4,
+            "sheet": "ورودی آماده سازی از انبار",
+            "branch": null,
+            "hidden": false
+          }
+        ],
+        "fields": [
+          {
+            "key": "c_a",
+            "title": "تاریخ",
+            "columns": {
+              "amadesazi__s4": "a"
+            },
+            "type": "number"
+          },
+          {
+            "key": "c_b",
+            "title": "مغز ران",
+            "columns": {
+              "amadesazi__s4": "b"
+            },
+            "type": "number"
+          },
+          {
+            "key": "c_c",
+            "title": "سردست",
+            "columns": {
+              "amadesazi__s4": "c"
+            },
+            "type": "number"
+          },
+          {
+            "key": "c_d",
+            "title": "قلوه گاه گوسفندی",
+            "columns": {
+              "amadesazi__s4": "d"
+            },
+            "type": "number"
+          },
+          {
+            "key": "c_e",
+            "title": "قلوه گاه گوساله",
+            "columns": {
+              "amadesazi__s4": "e"
+            },
+            "type": "number"
+          },
+          {
+            "key": "c_f",
+            "title": "خورده راسته",
+            "columns": {
+              "amadesazi__s4": "f"
+            },
+            "type": "string"
+          },
+          {
+            "key": "c_g",
+            "title": "سینه",
+            "columns": {
+              "amadesazi__s4": "g"
+            },
+            "type": "number"
+          },
+          {
+            "key": "c_h",
+            "title": "فیله",
+            "columns": {
+              "amadesazi__s4": "h"
+            },
+            "type": "number"
+          },
+          {
+            "key": "c_i",
+            "title": "بال",
+            "columns": {
+              "amadesazi__s4": "i"
+            },
+            "type": "number"
+          },
+          {
+            "key": "c_j",
+            "title": "گلدست چرخی",
+            "columns": {
+              "amadesazi__s4": "j"
+            },
+            "type": "number"
+          },
+          {
+            "key": "c_k",
+            "title": "گلدست رست بیف",
+            "columns": {
+              "amadesazi__s4": "k"
+            },
+            "type": "number"
+          }
+        ]
+      },
+      "render": {
+        "sheet": "ورودی آماده سازی از انبار",
+        "signature": [
+          "ورودی آماده سازی از انبار",
+          []
+        ],
+        "header_notes": [
+          {
+            "column": "b",
+            "text": "برگر (وزن)"
+          },
+          {
+            "column": "g",
+            "text": "مرغ (وزن)"
+          },
+          {
+            "column": "j",
+            "text": "گوشت (وزن)"
+          }
+        ],
+        "row_labels": null,
+        "reference": false
+      }
+    },
+    {
+      "id": "S-rec-fedf9cc0dbe1",
+      "kind": "record",
+      "unit": "u-wb-amadesazi",
+      "payload": {
+        "medium": "sheet",
+        "location": {
+          "path": "attachments/sheets/Amadesazi__Amadesazi/Amadesazi.xlsx",
+          "spreadsheetId": "1fAFZ5SbwDIoulj33mPIyyrpvSRBV6EUVQsorQ8MN2Ag",
+          "sheet": "OFF اجرایی"
+        },
+        "instances": [
+          {
+            "key": "amadesazi__s5",
+            "spreadsheetId": "1fAFZ5SbwDIoulj33mPIyyrpvSRBV6EUVQsorQ8MN2Ag",
+            "sheetId": 5,
+            "sheet": "OFF اجرایی",
+            "branch": null,
+            "hidden": false
+          }
+        ],
+        "fields": [
+          {
+            "key": "c_a",
+            "title": "تاریخ",
+            "columns": {
+              "amadesazi__s5": "a"
+            },
+            "type": "number"
+          },
+          {
+            "key": "c_b",
+            "title": "تعداد از نظر هدف",
+            "columns": {
+              "amadesazi__s5": "b"
+            },
+            "type": "number"
+          },
+          {
+            "key": "c_c",
+            "title": "تعداد نفر کسب شده",
+            "columns": {
+              "amadesazi__s5": "c"
+            },
+            "type": "number"
+          },
+          {
+            "key": "c_d",
+            "title": "توضیحات",
+            "columns": {
+              "amadesazi__s5": "d"
+            },
+            "type": "string"
+          }
+        ]
+      },
+      "render": {
+        "sheet": "OFF اجرایی",
+        "signature": [
+          "off اجرایی",
+          []
+        ],
+        "header_notes": [],
+        "row_labels": null,
+        "reference": false
+      }
+    },
+    {
+      "id": "S-rec-a680471323d6",
+      "kind": "record",
+      "unit": "u-wb-amadesazi",
+      "payload": {
+        "medium": "sheet",
+        "location": {
+          "path": "attachments/sheets/Amadesazi__Amadesazi/Amadesazi.xlsx",
+          "spreadsheetId": "1fAFZ5SbwDIoulj33mPIyyrpvSRBV6EUVQsorQ8MN2Ag",
+          "sheet": "نیازمندیها و مشکلات"
+        },
+        "instances": [
+          {
+            "key": "amadesazi__s6",
+            "spreadsheetId": "1fAFZ5SbwDIoulj33mPIyyrpvSRBV6EUVQsorQ8MN2Ag",
+            "sheetId": 6,
+            "sheet": "نیازمندیها و مشکلات",
+            "branch": null,
+            "hidden": false
+          }
+        ],
+        "fields": [
+          {
+            "key": "c_a",
+            "title": "تاریخ",
+            "columns": {
+              "amadesazi__s6": "a"
+            },
+            "type": "number"
+          },
+          {
+            "key": "c_b",
+            "title": "نیازمندیها و مشکلات",
+            "columns": {
+              "amadesazi__s6": "b"
+            },
+            "type": "string"
+          },
+          {
+            "key": "c_c",
+            "title": "توضیحات و راه حل ها",
+            "columns": {
+              "amadesazi__s6": "c"
+            },
+            "type": "string"
+          }
+        ]
+      },
+      "render": {
+        "sheet": "نیازمندیها و مشکلات",
+        "signature": [
+          "نیازمندیها و مشکلات",
+          []
+        ],
+        "header_notes": [],
+        "row_labels": null,
+        "reference": false
+      }
+    },
+    {
+      "id": "S-rec-3d5d67801f5d",
+      "kind": "record",
+      "unit": "u-wb-amadesazi",
+      "payload": {
+        "medium": "sheet",
+        "location": {
+          "path": "attachments/sheets/Amadesazi__Amadesazi/Amadesazi.xlsx",
+          "spreadsheetId": "1fAFZ5SbwDIoulj33mPIyyrpvSRBV6EUVQsorQ8MN2Ag",
+          "sheet": "بازدهی"
+        },
+        "instances": [
+          {
+            "key": "amadesazi__s7",
+            "spreadsheetId": "1fAFZ5SbwDIoulj33mPIyyrpvSRBV6EUVQsorQ8MN2Ag",
+            "sheetId": 7,
+            "sheet": "بازدهی",
+            "branch": null,
+            "hidden": false
+          }
+        ],
+        "fields": [
+          {
+            "key": "c_a",
+            "title": "تاریخ",
+            "columns": {
+              "amadesazi__s7": "a"
+            },
+            "type": "number"
+          },
+          {
+            "key": "c_b",
+            "title": "ورودی (کیلو)",
+            "columns": {
+              "amadesazi__s7": "b"
+            },
+            "type": "number"
+          },
+          {
+            "key": "c_c",
+            "title": "نوع گوشت",
+            "columns": {
+              "amadesazi__s7": "c"
+            },
+            "type": "string"
+          },
+          {
+            "key": "c_d",
+            "title": "تولید 1",
+            "columns": {
+              "amadesazi__s7": "d"
+            },
+            "type": "string"
+          },
+          {
+            "key": "c_e",
+            "title": "تولید 2",
+            "columns": {
+              "amadesazi__s7": "e"
+            },
+            "type": "string"
+          },
+          {
+            "key": "c_f",
+            "title": "تولید 3",
+            "columns": {
+              "amadesazi__s7": "f"
+            },
+            "type": "string"
+          },
+          {
+            "key": "c_g",
+            "title": "خروجی 1 (کیلو)",
+            "columns": {
+              "amadesazi__s7": "g"
+            },
+            "type": "number"
+          },
+          {
+            "key": "c_h",
+            "title": "خروجی 2 (کیلو)",
+            "columns": {
+              "amadesazi__s7": "h"
+            },
+            "type": "number"
+          },
+          {
+            "key": "c_i",
+            "title": "خروجی 3 (کیلو)",
+            "columns": {
+              "amadesazi__s7": "i"
+            },
+            "type": "string"
+          },
+          {
+            "key": "c_j",
+            "title": "بازدهی خروجی 1(%)",
+            "columns": {
+              "amadesazi__s7": "j"
+            },
+            "type": "number"
+          },
+          {
+            "key": "c_k",
+            "title": "بازدهی خروجی 2(%)",
+            "columns": {
+              "amadesazi__s7": "k"
+            },
+            "type": "number"
+          },
+          {
+            "key": "c_l",
+            "title": "بازدهی خروجی 3(%)",
+            "columns": {
+              "amadesazi__s7": "l"
+            },
+            "type": "number"
+          }
+        ]
+      },
+      "render": {
+        "sheet": "بازدهی",
+        "signature": [
+          "بازدهی",
+          []
+        ],
+        "header_notes": [],
+        "row_labels": null,
+        "reference": false
+      }
+    },
+    {
+      "id": "S-r-c27932c46bfe",
+      "kind": "rule",
+      "unit": "u-wb-amadesazi",
+      "payload": {
+        "original": "# amadesazi__s7__j__r2\n(G:G/B:B)*100",
+        "applies_to": [
+          {
+            "key": "amadesazi__s7__j__r2",
+            "record": {
+              "ref": "S-rec-3d5d67801f5d",
+              "field": "c_j"
+            },
+            "variant": "v1",
+            "range": "J2:J28",
+            "params": {
+              "p1": 100
+            },
+            "rows": []
+          },
+          {
+            "key": "amadesazi__s7__j__r29",
+            "record": {
+              "ref": "S-rec-3d5d67801f5d",
+              "field": "c_j"
+            },
+            "variant": "v1",
+            "range": "J29",
+            "params": {
+              "p1": 100
+            },
+            "rows": []
+          },
+          {
+            "key": "amadesazi__s7__j__r30",
+            "record": {
+              "ref": "S-rec-3d5d67801f5d",
+              "field": "c_j"
+            },
+            "variant": "v1",
+            "range": "J30",
+            "params": {
+              "p1": 100
+            },
+            "rows": []
+          },
+          {
+            "key": "amadesazi__s7__j__r31",
+            "record": {
+              "ref": "S-rec-3d5d67801f5d",
+              "field": "c_j"
+            },
+            "variant": "v1",
+            "range": "J31",
+            "params": {
+              "p1": 100
+            },
+            "rows": []
+          },
+          {
+            "key": "amadesazi__s7__j__r32",
+            "record": {
+              "ref": "S-rec-3d5d67801f5d",
+              "field": "c_j"
+            },
+            "variant": "v1",
+            "range": "J32:J136",
+            "params": {
+              "p1": 100
+            },
+            "rows": []
+          }
+        ]
+      },
+      "render": {
+        "output": "بازدهی خروجی 1(%)",
+        "variants": [
+          {
+            "key": "v1",
+            "shape": "(G:G/B:B)*#",
+            "functions": [],
+            "table_reader": false
+          }
+        ],
+        "input_headers": [],
+        "calls": []
+      }
+    },
+    {
+      "id": "S-r-51db194ff5dd",
+      "kind": "rule",
+      "unit": "u-wb-amadesazi",
+      "payload": {
+        "original": "# amadesazi__s7__k__r2\n(H:H/B:B)*100",
+        "applies_to": [
+          {
+            "key": "amadesazi__s7__k__r2",
+            "record": {
+              "ref": "S-rec-3d5d67801f5d",
+              "field": "c_k"
+            },
+            "variant": "v1",
+            "range": "K2:K28",
+            "params": {
+              "p1": 100
+            },
+            "rows": []
+          },
+          {
+            "key": "amadesazi__s7__k__r30",
+            "record": {
+              "ref": "S-rec-3d5d67801f5d",
+              "field": "c_k"
+            },
+            "variant": "v1",
+            "range": "K30",
+            "params": {
+              "p1": 100
+            },
+            "rows": []
+          },
+          {
+            "key": "amadesazi__s7__k__r32",
+            "record": {
+              "ref": "S-rec-3d5d67801f5d",
+              "field": "c_k"
+            },
+            "variant": "v1",
+            "range": "K32:K136",
+            "params": {
+              "p1": 100
+            },
+            "rows": []
+          }
+        ]
+      },
+      "render": {
+        "output": "بازدهی خروجی 2(%)",
+        "variants": [
+          {
+            "key": "v1",
+            "shape": "(H:H/B:B)*#",
+            "functions": [],
+            "table_reader": false
+          }
+        ],
+        "input_headers": [],
+        "calls": []
+      }
+    },
+    {
+      "id": "S-r-fd9e0e8a8bd9",
+      "kind": "rule",
+      "unit": "u-wb-amadesazi",
+      "payload": {
+        "original": "# amadesazi__s7__l__r2\n(I:I/B:B)*100",
+        "applies_to": [
+          {
+            "key": "amadesazi__s7__l__r2",
+            "record": {
+              "ref": "S-rec-3d5d67801f5d",
+              "field": "c_l"
+            },
+            "variant": "v1",
+            "range": "L2:L28",
+            "params": {
+              "p1": 100
+            },
+            "rows": []
+          },
+          {
+            "key": "amadesazi__s7__l__r30",
+            "record": {
+              "ref": "S-rec-3d5d67801f5d",
+              "field": "c_l"
+            },
+            "variant": "v1",
+            "range": "L30",
+            "params": {
+              "p1": 100
+            },
+            "rows": []
+          },
+          {
+            "key": "amadesazi__s7__l__r32",
+            "record": {
+              "ref": "S-rec-3d5d67801f5d",
+              "field": "c_l"
+            },
+            "variant": "v1",
+            "range": "L32:L136",
+            "params": {
+              "p1": 100
+            },
+            "rows": []
+          }
+        ]
+      },
+      "render": {
+        "output": "بازدهی خروجی 3(%)",
+        "variants": [
+          {
+            "key": "v1",
+            "shape": "(I:I/B:B)*#",
+            "functions": [],
+            "table_reader": false
+          }
+        ],
+        "input_headers": [],
+        "calls": []
+      }
+    }
+  ],
+  "instances": [
+    {
+      "key": "amadesazi__s1",
+      "spreadsheetId": "1fAFZ5SbwDIoulj33mPIyyrpvSRBV6EUVQsorQ8MN2Ag",
+      "sheetId": 1,
+      "sheet": "ضایعات",
+      "branch": null,
+      "hidden": false,
+      "reference": false,
+      "signature": [
+        "ضایعات",
+        []
+      ],
+      "template": "S-rec-ef021443f7dc"
+    },
+    {
+      "key": "amadesazi__s2",
+      "spreadsheetId": "1fAFZ5SbwDIoulj33mPIyyrpvSRBV6EUVQsorQ8MN2Ag",
+      "sheetId": 2,
+      "sheet": "خمیر",
+      "branch": null,
+      "hidden": false,
+      "reference": false,
+      "signature": [
+        "خمیر",
+        []
+      ],
+      "template": "S-rec-9f60dda7c289"
+    },
+    {
+      "key": "amadesazi__s3",
+      "spreadsheetId": "1fAFZ5SbwDIoulj33mPIyyrpvSRBV6EUVQsorQ8MN2Ag",
+      "sheetId": 3,
+      "sheet": "خروجی آماده سازی به انبار",
+      "branch": null,
+      "hidden": false,
+      "reference": false,
+      "signature": [
+        "خروجی آماده سازی به انبار",
+        []
+      ],
+      "template": "S-rec-2c141582db58"
+    },
+    {
+      "key": "amadesazi__s4",
+      "spreadsheetId": "1fAFZ5SbwDIoulj33mPIyyrpvSRBV6EUVQsorQ8MN2Ag",
+      "sheetId": 4,
+      "sheet": "ورودی آماده سازی از انبار",
+      "branch": null,
+      "hidden": false,
+      "reference": false,
+      "signature": [
+        "ورودی آماده سازی از انبار",
+        []
+      ],
+      "template": "S-rec-e3f80534814b"
+    },
+    {
+      "key": "amadesazi__s5",
+      "spreadsheetId": "1fAFZ5SbwDIoulj33mPIyyrpvSRBV6EUVQsorQ8MN2Ag",
+      "sheetId": 5,
+      "sheet": "OFF اجرایی",
+      "branch": null,
+      "hidden": false,
+      "reference": false,
+      "signature": [
+        "off اجرایی",
+        []
+      ],
+      "template": "S-rec-fedf9cc0dbe1"
+    },
+    {
+      "key": "amadesazi__s6",
+      "spreadsheetId": "1fAFZ5SbwDIoulj33mPIyyrpvSRBV6EUVQsorQ8MN2Ag",
+      "sheetId": 6,
+      "sheet": "نیازمندیها و مشکلات",
+      "branch": null,
+      "hidden": false,
+      "reference": false,
+      "signature": [
+        "نیازمندیها و مشکلات",
+        []
+      ],
+      "template": "S-rec-a680471323d6"
+    },
+    {
+      "key": "amadesazi__s7",
+      "spreadsheetId": "1fAFZ5SbwDIoulj33mPIyyrpvSRBV6EUVQsorQ8MN2Ag",
+      "sheetId": 7,
+      "sheet": "بازدهی",
+      "branch": null,
+      "hidden": false,
+      "reference": false,
+      "signature": [
+        "بازدهی",
+        []
+      ],
+      "template": "S-rec-3d5d67801f5d"
+    }
+  ],
+  "imports": [],
+  "issues": []
+}

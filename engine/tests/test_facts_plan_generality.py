@@ -29,6 +29,7 @@ import pytest
 from facts_plan.assemble import assemble, validate_unit
 from facts_plan.build import build
 from facts_plan.preflight import UNIT_OWED, bare_keeps
+from merge_facts import tiers
 from fixtures.facts_plan.synth import synth_estate
 from merge_facts.apply import simulate
 
@@ -60,7 +61,7 @@ def _bare_keep_gate(root, run_dir):
         path = run_dir / "units" / unit / "out.1.json"
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
-        lines = validate_unit(root, run_dir, path)
+        lines = tiers.lines(tiers.refusals(validate_unit(root, run_dir, path)))
         for line in lines:
             if any(pattern.search(line) for pattern in UNIT_OWED):
                 owed += 1

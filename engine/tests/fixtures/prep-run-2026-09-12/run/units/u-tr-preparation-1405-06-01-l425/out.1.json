@@ -1,0 +1,489 @@
+{
+  "schema_version": 1,
+  "unit": "u-tr-preparation-1405-06-01-l425",
+  "attempt": 1,
+  "decisions": [],
+  "new": [
+    {
+      "kind": "item",
+      "key": "morgh_pizza_kham",
+      "title": "مرغ خام مرینت‌شدهٔ پیتزا",
+      "statement": "مرغ خامی که در لاین مرینت آماده‌سازی مرینت شده و به انبار تحویل داده شده است. لاین مرغ پیتزا آن را به کیلوگرم از انبار تحویل می‌گیرد و وزن آن هنگام تحویل در انبار اندازه گرفته می‌شود.",
+      "aliases": ["مرغ پیتزا خام"],
+      "data": {
+        "category": "ingredient",
+        "unit": "kg",
+        "state": "raw",
+        "group": "مرغ",
+        "code": null,
+        "code_absent": true,
+        "tracked": [
+          {
+            "record": { "ref": "S-rec-e3f80534814b" },
+            "value": true,
+            "reason": "وزن تحویل‌گرفته‌شده از انبار به‌عنوان ورودی آماده‌سازی ثبت می‌شود"
+          }
+        ]
+      },
+      "processes": [
+        {
+          "process": "preparation-013",
+          "node": "preparation-013-n001",
+          "quote": "می‌رم از انبار تحویل می‌گیرم"
+        }
+      ]
+    },
+    {
+      "kind": "item",
+      "key": "morgh_pizza_pokhte",
+      "title": "مرغ پختهٔ اسلایس‌شدهٔ پیتزا",
+      "statement": "مرغ پیتزا پس از پخت در فر، اسلایس شدن و سس خوردن، در ظرف‌های دو کیلویی بسته‌بندی می‌شود و شمارش خروجی بر مبنای همین ظرف‌ها انجام می‌شود. ظرف آخر هر نوبت وزن متغیر دارد و با وزن دقیق خود لیبل می‌خورد.",
+      "aliases": ["مرغ پخته پیتزا"],
+      "data": {
+        "category": "product",
+        "unit": "kg",
+        "state": "cooked",
+        "group": "مرغ",
+        "code": null,
+        "code_absent": true,
+        "pack": { "size": 2, "unit": "kg" }
+      },
+      "processes": [
+        {
+          "process": "preparation-013",
+          "node": "preparation-013-n043",
+          "quote": "هر دو کیلو دو کیلو شمارش می‌کنیم"
+        }
+      ]
+    },
+    {
+      "kind": "item",
+      "key": "sos_morgh_pizza",
+      "title": "سس مرغ پیتزا",
+      "statement": "سسی که در آماده‌سازی بر پایهٔ مایونز و خامه ساخته می‌شود و به مرغ پختهٔ اسلایس‌شدهٔ پیتزا زده می‌شود. مصرف آن به کیلوگرم اندازه گرفته و ثبت می‌شود.",
+      "data": {
+        "category": "ingredient",
+        "unit": "kg",
+        "state": "prepared",
+        "group": "سس",
+        "code": null,
+        "code_absent": true
+      }
+    },
+    {
+      "kind": "record",
+      "key": "form_tahvil_morgh_pokhte",
+      "title": "فرم تحویل مرغ پختهٔ پیتزا",
+      "statement": "فرم کاغذی لاین مرغ آماده‌سازی که در آن وزن کل مرغ خام تحویل‌گرفته‌شده، وزن مرغ پختهٔ به‌دست‌آمده، وزن ضایعات و کاست پخت نوشته می‌شود. مسئول لاین مرغ آن را پر می‌کند و در پایان هفته به سرپرست آماده‌سازی تحویل می‌دهد.",
+      "data": {
+        "medium": "paper",
+        "role": "log",
+        "location": {
+          "kept_at": "لاین مرغ در آماده‌سازی",
+          "holder": "مسئول لاین مرغ آماده‌سازی"
+        },
+        "cadence": "daily",
+        "grain": "هر نوبت پخت مرغ پیتزا در روز",
+        "filled_by": "مسئول لاین مرغ آماده‌سازی",
+        "approved_by": "سرپرست آماده‌سازی",
+        "fields": [
+          {
+            "key": "vazn_morgh_kham",
+            "title": "وزن کل مرغ خام",
+            "type": "number",
+            "unit": "kg",
+            "description": "وزن کل مرغ خام تحویل‌گرفته‌شده از انبار که در بالای فرم نوشته می‌شود"
+          },
+          {
+            "key": "vazn_morgh_pokhte",
+            "title": "وزن مرغ پخته‌شده",
+            "type": "number",
+            "unit": "kg",
+            "description": "وزن خالص مرغ پختهٔ اسلایس‌شده که در قسمت پایین‌تر فرم نوشته می‌شود"
+          },
+          {
+            "key": "vazn_zayeat",
+            "title": "وزن ضایعات",
+            "type": "number",
+            "unit": "kg",
+            "description": "وزن قطعه‌های کبود و خون‌مرده که کنار گذاشته شده‌اند؛ معمولاً ضایعاتی وجود ندارد و این مقدار خالی می‌ماند"
+          },
+          {
+            "key": "kast",
+            "title": "کاست پخت",
+            "type": "number",
+            "unit": "kg",
+            "description": "وزن از دست رفته در پخت که از کسر وزن مرغ پخته و ضایعات از وزن مرغ خام به دست می‌آید"
+          }
+        ]
+      },
+      "processes": [
+        {
+          "process": "preparation-013",
+          "node": "preparation-013-n045",
+          "quote": "یه فرم تحویل مرغ پخته شده داریم"
+        }
+      ]
+    },
+    {
+      "kind": "record",
+      "key": "form_nimsakht_morgh_pizza",
+      "title": "فرم نیم‌ساخت مرغ پیتزا",
+      "statement": "فرم کاغذی که در آن مقدار مرغ پختهٔ به‌دست‌آمده به کیلوگرم، مقدار سس مصرف‌شده و مقدار خروجی بسته‌بندی‌شده ثبت می‌شود تا مجموع مرغ پخته و سس با خروجی سنجیده شود. مسئول لاین مرغ آن را در پایان کار پر می‌کند.",
+      "data": {
+        "medium": "paper",
+        "role": "log",
+        "location": {
+          "kept_at": "لاین مرغ در آماده‌سازی",
+          "holder": "مسئول لاین مرغ آماده‌سازی"
+        },
+        "cadence": "daily",
+        "grain": "هر نوبت پخت مرغ پیتزا در روز",
+        "filled_by": "مسئول لاین مرغ آماده‌سازی",
+        "approved_by": "سرپرست آماده‌سازی",
+        "fields": [
+          {
+            "key": "vazn_morgh_pokhte",
+            "title": "مقدار مرغ پخته‌شده",
+            "type": "number",
+            "unit": "kg",
+            "description": "وزن مرغ پختهٔ اسلایس‌شده پیش از زدن سس"
+          },
+          {
+            "key": "vazn_sos_masrafi",
+            "title": "مقدار سس مصرف‌شده",
+            "type": "number",
+            "unit": "kg",
+            "description": "مقدار سس زده‌شده که از وزن مرغ پخته محاسبه می‌شود"
+          },
+          {
+            "key": "meqdar_khoruji",
+            "title": "مقدار خروجی",
+            "type": "number",
+            "unit": "kg",
+            "description": "وزن کل بسته‌های خروجی که از شمارش ظرف‌های دو کیلویی به دست می‌آید"
+          }
+        ]
+      },
+      "processes": [
+        {
+          "process": "preparation-013",
+          "node": "preparation-013-n043",
+          "quote": "مقدار خروجی کارش هم ثبت می‌کنیم"
+        }
+      ]
+    },
+    {
+      "kind": "record",
+      "key": "daftar_amar_lain_morgh",
+      "title": "دفتر آمار لاین مرغ آماده‌سازی",
+      "statement": "دفتر کاغذی شخصی مسئول لاین مرغ که وزن مرغ خام، وزن مرغ پخته، مقدار سس زده‌شده و وزن ظرف استیل مورد استفاده در آن یادداشت می‌شود و مبنای پر کردن فرم‌های لاین است. مسئول لاین آن را روزانه پر می‌کند و در پایان هفته به سرپرست آماده‌سازی تحویل می‌دهد.",
+      "aliases": ["دفتر یادداشت لاین مرغ"],
+      "data": {
+        "medium": "paper",
+        "role": "log",
+        "location": {
+          "kept_at": "لاین مرغ در آماده‌سازی",
+          "holder": "مسئول لاین مرغ آماده‌سازی"
+        },
+        "cadence": "daily",
+        "grain": "هر قلم کار روزانهٔ لاین",
+        "filled_by": "مسئول لاین مرغ آماده‌سازی",
+        "approved_by": "سرپرست آماده‌سازی",
+        "fields": [
+          {
+            "key": "vazn_morgh_kham",
+            "title": "وزن مرغ خام",
+            "type": "number",
+            "unit": "kg",
+            "description": "وزن مرغ خام تحویل‌گرفته‌شده از انبار"
+          },
+          {
+            "key": "vazn_morgh_pokhte",
+            "title": "وزن مرغ پخته‌شده",
+            "type": "number",
+            "unit": "kg"
+          },
+          {
+            "key": "vazn_sos",
+            "title": "مقدار سس زده‌شده",
+            "type": "number",
+            "unit": "kg"
+          },
+          {
+            "key": "vazn_zarf",
+            "title": "وزن ظرف",
+            "type": "number",
+            "unit": "kg",
+            "description": "وزن ظرف استیلی که مرغ اسلایس‌شده در آن گرفته شده است، برای اینکه در حساب و کتاب اشتباهی پیش نیاید"
+          }
+        ]
+      },
+      "processes": [
+        {
+          "process": "preparation-013",
+          "node": "preparation-013-n040",
+          "quote": "اول مقدار مرغ خامم می‌نویسم"
+        },
+        {
+          "process": "preparation-004",
+          "node": "preparation-004-n013",
+          "quote": "تو اون دفتری که دارم"
+        }
+      ]
+    },
+    {
+      "kind": "rule",
+      "key": "morgh_kham_darkhasti",
+      "title": "مقدار مرغ خام درخواستی از انبار",
+      "statement": "مسئول لاین مرغ به ازای هر ده کیلوگرم مرغ پیتزای مورد نیاز روز، سه کیلوگرم بیشتر مرغ خام از انبار تحویل می‌گیرد تا کاست پخت جبران شود. مقدار درخواستی برابر است با مقدار مورد نیاز به‌علاوهٔ سی درصد آن.",
+      "data": {
+        "lang": "feel",
+        "expr": "morgh_kham_darkhasti = morgh_moredniaz * 1.3",
+        "inputs": [
+          {
+            "key": "morgh_moredniaz",
+            "title": "مرغ پیتزای مورد نیاز روز",
+            "unit": "kg"
+          }
+        ],
+        "outputs": [
+          {
+            "key": "morgh_kham_darkhasti",
+            "title": "مرغ خام درخواستی از انبار",
+            "unit": "kg",
+            "nature": "target",
+            "of": null
+          }
+        ],
+        "edge_cases": [
+          {
+            "input": 20,
+            "expected": 26,
+            "why": "نمونهٔ یک روز کاری که بیست کیلوگرم مرغ نیاز بود و نزدیک بیست و شش کیلوگرم تحویل گرفته شد"
+          }
+        ]
+      },
+      "processes": [
+        {
+          "process": "preparation-013",
+          "node": "preparation-013-n001",
+          "quote": "در ازای هر ده کیلو من سه کیلو مرغ بیشتر می‌گیرم"
+        }
+      ]
+    },
+    {
+      "kind": "rule",
+      "key": "kast_pokht_morgh_pizza",
+      "title": "کاست پخت مرغ پیتزا",
+      "statement": "کاست پخت مرغ پیتزا برابر است با وزن مرغ خام تحویل‌گرفته‌شده منهای وزن مرغ پختهٔ به‌دست‌آمده و منهای وزن ضایعات. این مقدار در پایان کار لاین مرغ به کیلوگرم روی فرم تحویل مرغ پخته به دست می‌آید.",
+      "data": {
+        "lang": "feel",
+        "expr": "kast = vazn_morgh_kham - vazn_morgh_pokhte - vazn_zayeat",
+        "inputs": [
+          { "key": "vazn_morgh_kham", "title": "وزن مرغ خام", "unit": "kg" },
+          { "key": "vazn_morgh_pokhte", "title": "وزن مرغ پخته‌شده", "unit": "kg" },
+          { "key": "vazn_zayeat", "title": "وزن ضایعات", "unit": "kg" }
+        ],
+        "outputs": [
+          {
+            "key": "kast",
+            "title": "کاست پخت",
+            "unit": "kg",
+            "nature": "observed"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "rule",
+      "key": "nesbat_kast_morgh_pizza",
+      "title": "نسبت استاندارد کاست پخت مرغ پیتزا",
+      "statement": "کاست پخت مرغ پیتزا حدود سی درصد وزن مرغ خام است؛ یعنی به ازای هر ده کیلوگرم مرغ خام حدود سه کیلوگرم کاسته می‌شود. کاست به‌دست‌آمده در پایان کار باید با این نسبت همخوانی داشته باشد.",
+      "data": {
+        "lang": "feel",
+        "expr": null,
+        "inputs": [],
+        "outputs": [
+          {
+            "key": "nesbat_kast",
+            "title": "نسبت کاست پخت",
+            "unit": "percent",
+            "value": 30,
+            "nature": "standard",
+            "per": "morgh_pizza_kham"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "rule",
+      "key": "dozaj_sos_morgh_pizza",
+      "title": "دوز سس مرغ پیتزا",
+      "statement": "به ازای هر یک کیلوگرم مرغ پختهٔ اسلایس‌شده، هشتاد گرم سس مرغ پیتزا زده می‌شود. مقدار سس پس از به‌دست آمدن وزن خالص مرغ پخته محاسبه و ثبت می‌شود.",
+      "data": {
+        "lang": "feel",
+        "expr": null,
+        "inputs": [],
+        "outputs": [
+          {
+            "key": "meqdar_sos",
+            "title": "مقدار سس به ازای هر کیلوگرم مرغ پخته",
+            "unit": "g",
+            "value": 80,
+            "nature": "standard",
+            "per": "morgh_pizza_pokhte"
+          }
+        ]
+      },
+      "processes": [
+        {
+          "process": "preparation-013",
+          "node": "preparation-013-n034",
+          "quote": "یک کیلو هشتاد گرم"
+        }
+      ]
+    },
+    {
+      "kind": "rule",
+      "key": "tatbiq_khoruji_morgh_pizza",
+      "title": "تطبیق خروجی مرغ پیتزا",
+      "statement": "مجموع وزن مرغ پخته‌شده و مقدار سس مصرف‌شده باید با وزن کل بسته‌های خروجی برابر باشد. این تطبیق در پایان کار لاین مرغ و پس از شمارش ظرف‌های دو کیلویی انجام می‌شود.",
+      "data": {
+        "lang": "feel",
+        "expr": "khoruji_morede_entezar = vazn_morgh_pokhte + vazn_sos_masrafi",
+        "inputs": [
+          { "key": "vazn_morgh_pokhte", "title": "وزن مرغ پخته‌شده", "unit": "kg" },
+          { "key": "vazn_sos_masrafi", "title": "مقدار سس مصرف‌شده", "unit": "kg" }
+        ],
+        "outputs": [
+          {
+            "key": "khoruji_morede_entezar",
+            "title": "خروجی مورد انتظار مرغ پیتزا",
+            "unit": "kg",
+            "nature": "target"
+          }
+        ]
+      },
+      "processes": [
+        {
+          "process": "preparation-013",
+          "node": "preparation-013-n044",
+          "quote": "همخونی داره با خروجی کارش یا نه"
+        }
+      ]
+    },
+    {
+      "kind": "rule",
+      "key": "zayeat_morgh_khonmordegi",
+      "title": "تعیین ضایعات مرغ پیتزا",
+      "statement": "قطعه‌هایی از مرغ که کبودی یا خون‌مردگی دارند هنگام چیدن در سینی کنار گذاشته می‌شوند و پخته نمی‌شوند. وزن این قطعه‌ها به‌عنوان ضایعات ثبت می‌شود و در محاسبهٔ کاست پخت کسر می‌شود.",
+      "data": {
+        "lang": "text",
+        "expr": null,
+        "original": "اگه خون مردگی داشته باشه کبود باشه باید بذارن کنار نباید بپزن",
+        "inputs": [
+          {
+            "key": "vaziat_zaheri_qete_morgh",
+            "title": "وضعیت ظاهری قطعهٔ مرغ"
+          }
+        ],
+        "outputs": [
+          {
+            "key": "vazn_zayeat_morgh",
+            "title": "وزن ضایعات مرغ",
+            "unit": "kg",
+            "nature": "observed"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "rule",
+      "key": "zekhamat_eslais_morgh_pizza",
+      "title": "ضخامت اسلایس مرغ پیتزا",
+      "statement": "مرغ پختهٔ پیتزا با دستگاه اسلایسر به ضخامت یک سانتی‌متر برش داده می‌شود و برش نازک‌تر از این مقدار استفاده نمی‌شود.",
+      "data": {
+        "lang": "feel",
+        "expr": null,
+        "inputs": [],
+        "outputs": [
+          {
+            "key": "zekhamat_eslais",
+            "title": "ضخامت اسلایس مرغ",
+            "unit": null,
+            "value": 1,
+            "nature": "standard",
+            "per": "morgh_pizza_pokhte"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "rule",
+      "key": "damaye_fer_pokht_morgh_pizza",
+      "title": "دمای فر پخت مرغ پیتزا",
+      "statement": "پخت مرغ پیتزا زمانی آغاز می‌شود که دمای فر به دویست و هفتاد تا دویست و هشتاد درجه رسیده باشد. سینی‌ها پیش از رسیدن فر به این دما چیده می‌شوند.",
+      "data": {
+        "lang": "feel",
+        "expr": null,
+        "inputs": [],
+        "outputs": [
+          {
+            "key": "damaye_fer",
+            "title": "دمای فر پخت مرغ",
+            "unit": null,
+            "range": { "min": 270, "max": 280 },
+            "nature": "standard"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "measurement",
+      "key": "vazn_morgh_kham_tahvili",
+      "title": "وزن مرغ خام تحویلی به لاین مرغ",
+      "statement": "وزن مرغ خام مرینت‌شدهٔ پیتزا هنگام تحویل از انبار به لاین مرغ آماده‌سازی، در انبار و با ترازوی انبار به کیلوگرم اندازه گرفته و از سوی انباردار اعلام می‌شود.",
+      "data": {
+        "quantity": "mass",
+        "unit": "kg",
+        "method": "وزن‌کشی با ترازوی انبار هنگام تحویل",
+        "when": "بعدازظهر، پس از پایان کارهای پیشین لاین، حدود ساعت دو و نیم تا سه",
+        "by": "انباردار",
+        "writes_to": { "ref": "S-rec-e3f80534814b" }
+      },
+      "processes": [
+        {
+          "process": "preparation-026",
+          "node": "preparation-026-n001",
+          "quote": "داخل انبار وزن‌کشی می‌شه"
+        }
+      ]
+    },
+    {
+      "kind": "measurement",
+      "key": "vazn_khales_morgh_pokhte",
+      "title": "وزن خالص مرغ پختهٔ اسلایس‌شده",
+      "statement": "وزن خالص مرغ پختهٔ اسلایس‌شده به کیلوگرم اندازه گرفته می‌شود تا مقدار سس بر مبنای آن محاسبه شود. مسئول لاین مرغ پیش از ریختن مرغ، وزن ظرف خالی را روی ترازو صفر می‌کند.",
+      "data": {
+        "quantity": "mass",
+        "unit": "kg",
+        "method": "صفر کردن وزن ظرف خالی روی ترازو و سپس ریختن مرغ اسلایس‌شده در همان ظرف",
+        "when": "پس از پایان اسلایس کردن و پیش از زدن سس",
+        "by": "مسئول لاین مرغ آماده‌سازی"
+      },
+      "processes": [
+        {
+          "process": "preparation-013",
+          "node": "preparation-013-n033",
+          "quote": "وزن خالص مرغ پخته شده رو باید به دست بیارم"
+        },
+        {
+          "process": "preparation-026",
+          "node": "preparation-026-n018",
+          "quote": "وزن ظرفی که خالیه رو اونو می‌گیرم صفر می‌کنم"
+        }
+      ]
+    }
+  ]
+}
