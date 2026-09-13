@@ -6,6 +6,7 @@ shape here is one the landed contracts accept: `facts-unit.schema.json` for a
 unit's output, `facts-delta.schema.json` for what `assemble` writes, and
 `merge_facts.apply.simulate` for what `apply` would then do with it.
 """
+import copy
 import hashlib
 import json
 import pathlib
@@ -955,15 +956,18 @@ def test_a_run_that_drops_everything_says_why_it_stopped(tmp_path, capsys):
 
 def test_a_column_derived_by_a_waiting_rule_keeps_its_table(tmp_path):
     """The `_hold_back` sever, on `_resolve_refs`' path too: the rule waits for
-    an `F-` ref no store entry carries, and the table whose column it computes
-    lands with the link emptied instead of waiting with it."""
+    a candidate its unit dropped, and the table whose column it computes lands
+    with the link emptied instead of waiting with it. (An `F-` ref no store
+    entry carries is severed, not waited on — C29, final review I-2.)"""
     root = _root(tmp_path)
     record = _record_out()
     record["decisions"][0]["data"]["fields"][0]["derived"] = \
         {"ref": "S-r-000000000002"}
     rule = _rule_out()
     rule["decisions"][0]["data"]["inputs"][1] = {
-        "key": "masraf_vaqei", "unit": "kg", "from": {"ref": "F-09999"}}
+        "key": "masraf_vaqei", "unit": "kg", "from": {"ref": "S-i-000000000003"}}
+    rule["decisions"][1] = {"skeleton": "S-i-000000000003", "action": "drop",
+                            "reason_code": "cosmetic"}
     run_dir = _run(root, {"u-a": record, "u-b": rule})
     assemble(root, run_dir)
     delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
@@ -972,7 +976,7 @@ def test_a_column_derived_by_a_waiting_rule_keeps_its_table(tmp_path):
     assert by_key["gozaresh_shabane_pitza"]["data"]["fields"][0]["derived"] \
         is None
     assembly = json.loads((run_dir / "assembly.json").read_text(encoding="utf-8"))
-    assert [u["reason"] for u in assembly["undecided"]] == ["unknown_ref"]
+    assert [u["reason"] for u in assembly["undecided"]] == ["waits"]
     validate("facts-delta.schema.json", delta)
 
 
@@ -1754,3 +1758,117 @@ def test_two_refused_decisions_are_both_held_in_order(tmp_path):
     by_key = {e["key"]: e for e in delta["entries"]}
     assert by_key["enheraf"]["statement"] == "انحراف مصرف برابر است با J6."
     assert by_key["item_1"]["title"] == "پنیر ورقه‌ای"
+
+
+# --------------------------------------------------------------------------- #
+# final review I-1 / I-2 — the fold holds each row to the tier its gate does
+# --------------------------------------------------------------------------- #
+
+def _items(run_dir):
+    delta = json.loads((run_dir / "facts-delta.json").read_text(encoding="utf-8"))
+    return {e["key"]: e for e in delta["entries"]}
+
+
+def test_a_review_keep_with_no_statement_keeps_the_units_statement(tmp_path):
+    """I-1: A9 fills a missing statement with "" so the decision passes its
+    schema; folded, that "" must not blank the statement the unit wrote."""
+    root = _root(tmp_path)
+    _seed_units(root)
+    run_dir = _run(root, {"u-a": _record_out(), "u-b": _rule_out()})
+    digest(root, run_dir)
+    _write_review(run_dir, [{"entry": {"kind": "item", "key": "item_1"},
+                             "action": "keep", "key": "item_1",
+                             "title": "پنیر پیتزا",
+                             "data": {"unit": {"value": "g", "inferred": True}}}])
+    assert assemble(root, run_dir, review=True)["review_status"] == "applied"
+    item = _items(run_dir)["item_1"]
+    assert item["statement"] == "پنیر پیتزا که با کیلوگرم شمرده می‌شود."
+    assert item["data"]["unit"] == "g"
+    assert "issues" not in item
+
+
+def test_a_review_keep_with_no_statement_to_keep_is_empty_and_marked(tmp_path):
+    """I-1's other half: when the unit wrote no statement either, the entry is
+    stored with "" and the A9/C11 issue — once."""
+    root = _root(tmp_path)
+    _seed_units(root)
+    rule = _rule_out()
+    del rule["decisions"][1]["statement"]
+    run_dir = _run(root, {"u-a": _record_out(), "u-b": rule})
+    digest(root, run_dir)
+    _write_review(run_dir, [{"entry": {"kind": "item", "key": "item_1"},
+                             "action": "keep", "key": "item_1",
+                             "title": "پنیر پیتزا",
+                             "data": {"unit": {"value": "g", "inferred": True}}}])
+    assert assemble(root, run_dir, review=True)["review_status"] == "applied"
+    item = _items(run_dir)["item_1"]
+    assert item["statement"] == ""
+    assert [i["kind"] for i in item["issues"]] == ["shape"]
+
+
+def _dangling_of_keep():
+    keep = copy.deepcopy(_rule_out()["decisions"][0])
+    keep.pop("skeleton")
+    keep["entry"] = {"kind": "rule", "key": "enheraf"}
+    keep["data"] = {"outputs": [{"key": "enheraf", "title": "انحراف", "unit": "kg",
+                                 "nature": "observed",
+                                 "of": {"ref": "S-i-999999999999"}}]}
+    return keep
+
+
+def test_a_dangling_link_the_review_gate_cuts_does_not_hold_the_entry(tmp_path):
+    """I-2(a), A19: the review gate cuts a link to no candidate with a note;
+    the fold cuts it too, so the unit's sound entry lands with the issue
+    instead of waiting for a part nobody will finish."""
+    root = _root(tmp_path)
+    run_dir = _run(root, {"u-a": _record_out(), "u-b": _rule_out()})
+    digest(root, run_dir)
+    _write_review(run_dir, [_dangling_of_keep()])
+    found = validate_unit(root, run_dir, run_dir / "review" / "out.json")
+    assert tiers.refusals(found) == []
+    assert any("link cut" in line for line in tiers.lines(tiers.notes(found)))
+    assert assemble(root, run_dir, review=True)["review_status"] == "applied"
+    assembly = json.loads((run_dir / "assembly.json").read_text(encoding="utf-8"))
+    assert assembly["undecided"] == []
+    rule = _items(run_dir)["enheraf"]
+    assert rule["data"]["outputs"][0].get("of") is None
+    assert [i["kind"] for i in rule["issues"]] == ["shape"]
+
+
+def test_the_fold_holds_back_exactly_the_decisions_the_review_gate_refuses(tmp_path):
+    """I-2 gate parity: A22 (a merge across kinds with no key and title to
+    stand on) refuses one decision at the review gate; the fold holds that
+    decision back alone, under `refused`, and folds the rest."""
+    root = _root(tmp_path)
+    run_dir = _run(root, {"u-a": _record_out(), "u-b": _rule_out()})
+    digest(root, run_dir)
+    _write_review(run_dir, [
+        _dangling_of_keep(),
+        {"skeleton": "S-r-000000000002", "action": "merge_into",
+         "into": "S-rec-000000000001", "reason_code": "duplicate"}])
+    found = validate_unit(root, run_dir, run_dir / "review" / "out.json")
+    gate = sorted({tiers.item_of(f)[1] for f in tiers.refusals(found)
+                   if tiers.item_of(f)})
+    assert gate == [1]
+    assemble(root, run_dir, review=True)
+    assembly = json.loads((run_dir / "assembly.json").read_text(encoding="utf-8"))
+    assert [(r["n"], r["reason"]) for r in assembly["review_held"]] == \
+        [(n, "refused") for n in gate]
+    assert assembly["undecided"] == []
+    assert "enheraf" in _items(run_dir)
+
+
+def test_an_f_ref_naming_no_store_entry_is_severed_not_held(tmp_path):
+    """I-2(b), C29 at the assembly as at `apply`: a link to an `F-` id the store
+    does not hold is cut with a note; the entry lands."""
+    root = _root(tmp_path)
+    rule = _rule_out()
+    rule["decisions"][0]["data"]["outputs"][0]["of"] = {"ref": "F-09999"}
+    run_dir = _run(root, {"u-a": _record_out(), "u-b": rule})
+    assemble(root, run_dir)
+    assembly = json.loads((run_dir / "assembly.json").read_text(encoding="utf-8"))
+    assert assembly["undecided"] == []
+    out = _items(run_dir)["enheraf"]
+    assert "of" not in out["data"]["outputs"][0]
+    assert out["extra"] == {"data/outputs/enheraf/of": '{"ref": "F-09999"}'}
+    assert [i["kind"] for i in out["issues"]] == ["shape"]

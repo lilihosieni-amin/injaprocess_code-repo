@@ -29,9 +29,10 @@ from merge_facts.content import _check_prose, check_document
 from merge_facts.conventions import DEFAULT as DEFAULT_CONVENTIONS
 from merge_facts.conventions import load as load_conventions
 from merge_facts.normalise import normalise_entry
-from merge_facts.preconditions import (_registered, _unit_row_keys,
-                                       process_findings,
+from merge_facts.preconditions import (REQUIRED_SLOTS, _ref_sites, _registered,
+                                       _unit_row_keys, process_findings,
                                        undeclared_unit_findings)
+from merge_facts.preconditions import _sever as _sever_member
 from merge_facts.tiers import note, refuse
 
 from facts_plan.build import (estimate_tokens, label_of, process_index,
@@ -1215,7 +1216,10 @@ def _fold_review(root, run_dir, state, draft, scratch, exclude=frozenset(),
         # `except` turns both into the whole-document hold-back below.
         doc = read_json(path)
         raw = copy.deepcopy(doc)
-        doc, found, _unshaped = _judge_doc(root, run_dir, path, doc, semantics=False)
+        # The per-item checks too (A15/A19/A20/A22): the fold holds each row
+        # to the tier the review gate does — a link the gate cuts is cut here,
+        # a decision it refuses is held here (principle 4).
+        doc, found, _unshaped = _judge_doc(root, run_dir, path, doc)
         if doc is None:
             raise ValueError("; ".join(tiers.lines(found)))
     except (OSError, ValueError) as exc:
@@ -1235,12 +1239,17 @@ def _fold_review(root, run_dir, state, draft, scratch, exclude=frozenset(),
                                          "lines": [str(exc)]}]
         state["settled"], state["reviewed"], state["reviewed_by"] = [], set(), {}
         return "partial"
-    # A41 — a decision the item gate refuses is held back alone, under its lines.
-    gate = {}
-    for finding in tiers.refusals(found):
-        where, n = tiers.item_of(finding)
-        if where == "decisions":
+    # A41 — a decision the item gate refuses is held back alone, under its lines;
+    # a decision's notes ride with it onto the entry it folds into.
+    gate, noted = {}, {}
+    for finding in found:
+        where, n = tiers.item_of(finding) or (None, None)
+        if where != "decisions":
+            continue
+        if finding.tier == tiers.REFUSE:
             gate.setdefault(n, []).append(finding.line())
+        else:
+            noted.setdefault(n, []).append(finding)
     doc = _without_refused(doc, found)
     stale, verdicts = _review_verdicts(run_dir, doc, state, draft, scratch)
     if stale:
@@ -1283,8 +1292,16 @@ def _fold_review(root, run_dir, state, draft, scratch, exclude=frozenset(),
         folded.append((n, decision))
     for n, decision in folded:
         previous = state["by_skeleton"].get(decision["skeleton"], {})
+        notes = noted.get(n, [])
+        if decision.get("action") == "keep" and previous.get("statement") \
+                and any(f.fa == FA_NO_STATEMENT for f in notes):
+            # I-1: the "" A9 wrote so the keep passes its schema is no rewrite
+            # — the unit's statement stands, and there is nothing to mark.
+            decision = {k: v for k, v in decision.items() if k != "statement"}
+            notes = [f for f in notes if f.fa != FA_NO_STATEMENT]
         merged = {**previous, **{k: v for k, v in decision.items()
                                  if v is not None}}
+        merged["_notes"] = list(previous.get("_notes") or []) + notes
         # A review `keep` carrying `data` changes the members it lists and
         # nothing else: the unit's `category`, `fields[]`, … stay. Replacing
         # `data` wholesale (the shape until 2026-09-09) made a reviewer's
@@ -1833,6 +1850,27 @@ def _build_entries(root, skeleton, state):
     return entries
 
 
+def _sever_unknown(entry, known):
+    """C29 at the assembly as at `apply`: an `F-` ref naming no store entry is
+    severed with a note — its whole member when it fills a required slot. A
+    note whose every `about` names nothing is left for the hold-back (C30)."""
+    public = {k: v for k, v in entry.items() if not k.startswith("_")}
+    sites = list(_ref_sites(public, []))
+    gone = [(path, obj["ref"]) for path, obj in sites
+            if isinstance(obj.get("ref"), str) and obj["ref"].startswith("F-")
+            and obj["ref"] not in known]
+    about = [path for path, _ in sites if path[:2] == ["data", "about"]]
+    if about and len([p for p, _ in gone if p[:2] == ["data", "about"]]) == len(about):
+        return
+    found = []
+    for path, ref in reversed(gone):
+        if len(path) >= 3 and (path[-3], path[-1]) in REQUIRED_SLOTS:
+            path = path[:-1]
+        found += _sever_member(entry, path, entry.get("key"),
+                               f"ref {ref} is in no store entry")[1]
+    tiers.apply_notes(entry, found)
+
+
 def _resolve_refs(entries, state):
     """1a and 1b in one walk: an `S-` ref becomes the temp id of that
     candidate's kept entry, an `F-` ref is checked against the store, and a
@@ -1856,6 +1894,8 @@ def _resolve_refs(entries, state):
                     and ref not in {e["_skeleton"] for e in entries}:
                 source.pop("ref", None)
                 source.update(state["locators"].get(ref, {}))
+    for entry in entries:
+        _sever_unknown(entry, state["store_scopes"])
     # An entry pointing at a candidate no unit kept is held back, not a wall:
     # one table a unit could not finish (the raw-materials workbook on
     # 2026-09-08) must not cost the owner every other entry of the run. It
