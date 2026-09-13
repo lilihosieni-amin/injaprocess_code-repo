@@ -490,7 +490,8 @@ def _judge(root, run_dir, path):
                     _settle(folded, st2)
                     found += [f for f in _lint_entries(
                         root, folded, skel2.get("unit_symbols") or [],
-                        st2.get("reviewed") or ()) if f.label.startswith("review: ")]
+                        st2.get("reviewed") or ())[0]
+                        if f.label.startswith("review: ")]
         return doc, list(dict.fromkeys(found))
     # A document belongs to the unit whose directory it sits in (A4, A18).
     unit = next((u for u in plan["units"] if u["id"] == path.parent.name), None) \
@@ -2083,14 +2084,18 @@ def _lint_entries(root, entries, symbols, reviewed=()):
     what the delta would carry: the same surface, which is what makes it a real
     gate for the one document no unit pass ever saw — the review's. Ruling 5:
     the shape half is that document's gate too, which is why `_contract_problems`
-    runs here and not only at `validate_unit`."""
+    runs here and not only at `validate_unit`.
+
+    Returns `(findings, labels)`: `labels[i]` is what entry `i` was judged
+    under — taken before a repair re-keys it (C22), so a finding still maps
+    back to its entry afterwards."""
     named = _review_labels(entries, reviewed)
     conventions = load_conventions(root)
     out = _contract_problems(root, entries, named, symbols)
     for entry, label in zip(entries, named):
         out += _labelled(label, _lint_decision(entry, label, symbols,
                                                entry.get("kind"), conventions))
-    return list(dict.fromkeys(out))
+    return list(dict.fromkeys(out)), named
 
 
 def _digest_text(state, entries):
@@ -2219,10 +2224,10 @@ def assemble(root, run_dir, *, review=False):
         # that point at it wait with it, and everything else lands. A run refuses
         # only when nothing at all can be assembled.
         for _round in range(len(entries) + 1):
-            found = _lint_entries(root, entries, symbols, reviewed)
-            # The labels `_lint_entries` wrote, from the same writer, so a
-            # finding maps back to the entry that earned it and never to another.
-            by_label = dict(zip(_review_labels(entries, reviewed), entries))
+            found, labels = _lint_entries(root, entries, symbols, reviewed)
+            # The labels `_lint_entries` judged under, so a finding maps back to
+            # the entry that earned it even when a repair re-keyed it (M-2).
+            by_label = dict(zip(labels, entries))
             for finding in tiers.notes(found):                      # A38
                 if finding.label in by_label:
                     tiers.apply_notes(by_label[finding.label], [finding])

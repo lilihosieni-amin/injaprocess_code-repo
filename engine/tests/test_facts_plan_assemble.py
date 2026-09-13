@@ -1872,3 +1872,38 @@ def test_an_f_ref_naming_no_store_entry_is_severed_not_held(tmp_path):
     assert "of" not in out["data"]["outputs"][0]
     assert out["extra"] == {"data/outputs/enheraf/of": '{"ref": "F-09999"}'}
     assert [i["kind"] for i in out["issues"]] == ["shape"]
+
+
+def test_a_step_8_refusal_on_an_entry_a_repair_rekeys_holds_that_entry(tmp_path, monkeypatch):
+    """M-2: C22 re-keys a sheet record whose tab a stored record holds under
+    another key. Step 8's labels are the ones it judged under, so a refusal on
+    that entry still maps to it: the entry is held back and the run lands,
+    instead of nothing mapping and the whole assembly stopping."""
+    import facts_plan.assemble as asm
+    root = _root(tmp_path)
+    holder = {"id": "F-00001", "kind": "record", "key": "pitza_qadimi",
+              "title": "گزارش قدیمی پیتزا", "statement": "جدول قدیمی.",
+              "scope": {"departments": ["cooking"], "branches": ["chalebagh"]},
+              "source": [{"type": "sheet", "ref": "attachments/sheets/Pitza/pitza.xlsx"}],
+              "status": "draft", "retired": False,
+              "updated_at": "2026-09-01T00:00:00Z",
+              "data": {"medium": "sheet", "role": "log",
+                       "location": {"spreadsheetId": "SID", "sheet": "پیتزا"},
+                       "fields": []}}
+    (root / "facts" / "records.json").write_text(json.dumps(
+        {"schema_version": 2, "entries": [holder]}, ensure_ascii=False),
+        encoding="utf-8")
+    run_dir = _run(root, {"u-a": _record_out(), "u-b": _rule_out()})
+    real = asm._contract_problems
+
+    def one_more(root_, entries, named, symbols):
+        found = real(root_, entries, named, symbols)
+        if len(entries) > 1:          # step 8, not a unit's own gate
+            found += [tiers.refuse(label, "step 8 only") for entry, label
+                      in zip(entries, named) if entry["key"] == "pitza_qadimi"]
+        return found
+    monkeypatch.setattr(asm, "_contract_problems", one_more)
+    assemble(root, run_dir)
+    assembly = json.loads((run_dir / "assembly.json").read_text(encoding="utf-8"))
+    assert [u["label"] for u in assembly["undecided"]
+            if u.get("refused") == ["step 8 only"]] == ["گزارش شبانهٔ لاین پیتزا"]
