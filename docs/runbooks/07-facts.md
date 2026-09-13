@@ -254,16 +254,16 @@ docker compose exec control-bot sh -c 'DATA_ROOT=/data merge facts check'
 ```
 
 `check` reports a department's **readiness** (QF-44 v3) as its last stdout
-line — five answers, and no workbook denominator:
+line — four answers, and no workbook denominator:
 
 ```
-readiness: units_done=True review_ran=True lint_failures=0 expr_missing=0 open_disputes=0
+readiness: units_done=True review_ran=True expr_missing=0 open_disputes=0
 ```
 
 Every unit of the last run is done; the review ran; no rule bound to a formula
 is missing its expression; no dispute is still open. The last three are counts,
-so the ready state is `True True 0 0 0`. Since 2026-09-13 `lint_failures` is
-always 0: a style finding (a cell name, a Latin word, a spoken ending) is a note,
+so the ready state is `True True 0 0`. Since 2026-09-13 there is no `lint_failures`
+answer: a style finding (a cell name, a Latin word, a spoken ending) is a note,
 and `audit` lists it as a `style` finding for a reader — it no longer blocks
 readiness (§12, "Refuse, repair, note").
 
