@@ -14,6 +14,7 @@ the pure function with a store built in memory.
 import copy
 import datetime
 import json
+import os
 import pathlib
 import subprocess
 import sys
@@ -852,7 +853,7 @@ def test_check_reports_qf44_v3_readiness(tmp_path):
     assert report["review_ran"] is False
     assert report["expr_missing"] == 0
     assert report["open_disputes"] == 0
-    assert report["lint_failures"] == 0
+    assert "lint_failures" not in report          # B38–B44: style never blocks
 
     (run / "meta.json").write_text(json.dumps(
         {"units": [{"id": "u-wb-gozaresh", "type": "workbook", "state": "done",
@@ -884,7 +885,7 @@ def test_a_style_finding_is_listed_and_does_not_block_readiness(tmp_path):
     path.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
     report = check(root)
     assert report["expr_missing"] == 1
-    assert report["lint_failures"] == 0
+    assert "lint_failures" not in report
     style = _of(audit(root), "style")
     assert {(i["id"], i["proposal"]) for i in style} == {(entry["id"], "info")}
     assert any(i["message"].startswith("statement names cell or range 'J6'")
@@ -914,7 +915,9 @@ def _cli(root, *args):
     return subprocess.run([sys.executable, "-m", "merge.cli", "facts", *args],
                           capture_output=True, text=True,
                           env={"DATA_ROOT": str(root), "PATH": "",
-                               "SCHEMA_DIR": str(SCHEMAS), "SYSTEMROOT": ""})
+                               "SCHEMA_DIR": str(SCHEMAS), "SYSTEMROOT": "",
+                               # a worktree's tests run the worktree's engine
+                               "PYTHONPATH": os.environ.get("PYTHONPATH", "")})
 
 
 def test_cli_audit_and_check_print_one_line_each_and_exit_zero(tmp_path):
@@ -940,7 +943,7 @@ def test_cli_audit_and_check_print_one_line_each_and_exit_zero(tmp_path):
     assert proc.returncode == 0, proc.stderr
     lines = proc.stdout.splitlines()
     assert lines[-1] == ("readiness: units_done=True review_ran=False "
-                         "lint_failures=0 expr_missing=0 open_disputes=0")
+                         "expr_missing=0 open_disputes=0")
     assert any(line.startswith("uncited_workbook  ") for line in lines)  # id blank
 
 

@@ -164,8 +164,8 @@ def _facts(args):
                 # to the panel, which counts its own coverage.
                 print("readiness: " + " ".join(
                     f"{name}={report[name]}" for name in
-                    ("units_done", "review_ran", "lint_failures",
-                     "expr_missing", "open_disputes")))
+                    ("units_done", "review_ran", "expr_missing",
+                     "open_disputes")))
         else:
             _require(False, "not implemented yet")
     except ValueError as e:

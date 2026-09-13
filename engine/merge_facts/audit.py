@@ -1335,8 +1335,6 @@ def check(root):
             "review_ran": all((run / "review" / "out.json").is_file()
                               for run in runs) if runs else False,
             # B38–B44: style no longer blocks readiness — `audit` lists it as
-            # `style`. The key stays for the readiness line `merge facts
-            # check` prints, and is always 0.
-            "lint_failures": 0,
+            # `style`, so there is no lint count here any more.
             "expr_missing": len(_expr_missing(walk)),
             "open_disputes": sum(len(open_accounts(e)) for e in walk.open)}
